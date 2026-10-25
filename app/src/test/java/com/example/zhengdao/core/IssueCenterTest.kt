@@ -143,7 +143,8 @@ class IssueCenterTest {
             IssueCenter.ACTION_REPAIR_ENV,
             IssueCenter.ACTION_RETRY_SERVE,
             IssueCenter.ACTION_RESTART_SERVE,
-            IssueCenter.ACTION_GRANT_STORAGE,
+            // 第二百一十批：ACTION_GRANT_STORAGE（去系统授权页）删除——零个上报点，
+            // 权限申请统一走设置页「申请权限」卡（PermissionEntryGateTest）。
             IssueCenter.ACTION_VIEW_LOGS,
             IssueCenter.ACTION_VIEW_KEEPALIVE_LOGS,
             IssueCenter.ACTION_FEEDBACK,

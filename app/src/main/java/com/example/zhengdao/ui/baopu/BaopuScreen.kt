@@ -364,6 +364,19 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         addWorkspaceOpen = true
                     },
+                    // 第二百一十批：「定时任务」行进 ScheduleTasksActivity
+                    // （与设置页「后台」组那一行同一个页；本页只负责转交）。
+                    onScheduleTasks = {
+                        scope.launch { drawerState.close() }
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    context,
+                                    com.example.zhengdao.schedule.ScheduleTasksActivity::class.java,
+                                )
+                            )
+                        }
+                    },
                     // 点文件夹行＝临时提示完整路径 ＋ 落点抱朴设置页（那张「工作区」卡在这一页里）。
                     onWorkspaceTap = { path ->
                         scope.launch { drawerState.close() }
@@ -1003,9 +1016,21 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             // ask_user 的选项卡：就在输入栏上方（用户 2026-10-19 点名位置）。
             // 第一百零四批：只有**普通提问**（QUESTION）还走这张卡——组授权（97）与
             // 人设提案（96）已归入上面的决策卡单卡槽（同一张 engine.choice，按 kind 分流）。
-            controller.pendingChoice?.takeIf { it.kind == com.example.zhengdao.baopu.agent.AskKind.QUESTION }?.let { req ->
-                BaopuChoiceCard(request = req, onPick = { option -> controller.answerChoice(option.id) })
-                Spacer(Modifier.height(8.dp))
+            // 第二百零三批：带 questions 的问题组走多问卡（一张卡答完、一次提交）；
+            // 御批类不在此列（AskGroupRules.isGroupCard 恒 false，批准仍只认按钮）。
+            controller.pendingChoice?.let { req ->
+                if (com.example.zhengdao.baopu.agent.AskGroupRules.isGroupCard(req)) {
+                    BaopuQuestionGroupCard(
+                        request = req,
+                        onSubmit = { answers -> controller.answerGroup(answers) },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                } else {
+                    req.takeIf { it.kind == com.example.zhengdao.baopu.agent.AskKind.QUESTION }?.let { r ->
+                        BaopuChoiceCard(request = r, onPick = { option -> controller.answerChoice(option.id) })
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
             }
             // ── 第一百零四批：全局单卡槽（决策卡家族）──────────────────────────
             // 四类事共用一张卡；任何时刻只展示一张，其余排队（判据在 DecisionCardRules）。

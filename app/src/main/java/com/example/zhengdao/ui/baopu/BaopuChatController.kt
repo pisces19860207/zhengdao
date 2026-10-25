@@ -277,6 +277,39 @@ internal class BaopuChatController(context: Context) {
             com.example.zhengdao.keepalive.CoroutineCrashHandler,
     )
 
+    init {
+        // 第二百零七批 · 首启种子安装（幂等：已装/已拒绝/被用户改过 ⇒ 各自跳过，不覆盖）。
+        // IO 上跑、绝不拦着进抱朴；装成了几条说一句便签（**不弹卡**），失败只落 RunLog（不静默）。
+        scope.launch {
+            val report = withContext(Dispatchers.IO) {
+                val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+                com.example.zhengdao.baopu.SeedSkills.install(
+                    readAsset = { path ->
+                        runCatching {
+                            appCtx.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        }.getOrNull()
+                    },
+                    globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, ""),
+                    projectRoot = workspaceRoot,
+                    personaFiles = pf,
+                    backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                )
+            }
+            when {
+                report.installed.isNotEmpty() ->
+                    skillNote = BaopuNote(
+                        appCtx.getString(R.string.skill_seed_installed_note, report.installed.size),
+                        BaopuNoteLevel.Info,
+                    )
+                report.failed.isNotEmpty() ->
+                    skillNote = BaopuNote(
+                        appCtx.getString(R.string.skill_seed_install_failed, report.failed.size),
+                        BaopuNoteLevel.Error,
+                    )
+            }
+        }
+    }
+
     /**
      * 第五十批：模型提案**落盘后**的自检（单飞）。
      *
@@ -1029,6 +1062,29 @@ internal class BaopuChatController(context: Context) {
                 title = appCtx.getString(res, e.name),
             )
         }
+        // ⑤ 技能转正/回退记录（第二百零七批 §1.5：两条转正路——手动/满3次——都留痕；
+        //    审计旁挂账本 promote/promote_undo 行；最新一条是转正 ⇒ 可一键回退）
+        runCatching {
+            val ws = workspaceRoot
+            val pfNow = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+            val gRoot = java.io.File(pfNow.globalFile().parentFile ?: ws, "")
+            val lines = com.example.zhengdao.baopu.SkillPromote.recentLines(ws, gRoot)
+            val latest = com.example.zhengdao.baopu.SkillPromote.latestPerName(lines)
+            lines.forEachIndexed { i, l ->
+                val revertible = latest[l.name] === l &&
+                    l.action == com.example.zhengdao.baopu.SkillPromote.ACTION_PROMOTE
+                out += DecisionCenterRow(
+                    id = "skillpromote:$i:${l.ts}:${l.name}",
+                    variant = DecisionVariant.SUGGESTION,
+                    title = if (l.action == com.example.zhengdao.baopu.SkillPromote.ACTION_REVERT) {
+                        appCtx.getString(R.string.decision_history_skill_reverted, l.name)
+                    } else {
+                        appCtx.getString(R.string.decision_history_skill_promoted, l.name, l.reason)
+                    },
+                    undoable = revertible,
+                )
+            }
+        }
         return out
     }
 
@@ -1040,6 +1096,11 @@ internal class BaopuChatController(context: Context) {
      * 连卡都不弹；撤销只是收回「同意」这件事本身）。
      */
     fun undoDecisionGrant(id: String) {
+        // 第二百零七批：技能转正的回退入口（记录页「撤销」）——行键尾段带技能名。
+        if (id.startsWith("skillpromote:")) {
+            undoSkillPromote(id.substringAfterLast(':'))
+            return
+        }
         val key = when {
             id.startsWith("undo:session:") -> id.removePrefix("undo:session:")
             id.startsWith("undo:always:") -> id.removePrefix("undo:always:")
@@ -1056,6 +1117,68 @@ internal class BaopuChatController(context: Context) {
         com.example.zhengdao.baopu.agent.ToolGroupAudit.undo(group, scope)
         val name = appCtx.getString(baopuGroupTitle(group))
         undoneGrants.value = undoneGrants.value + name
+    }
+
+    /**
+     * 决策中心「撤销」一条技能转正（第二百零七批 §1.5 的回退路）：正式 → 草稿——
+     * 头改回 `status=draft`、索引行复原「草稿·未验证」标，正文一个字不删；
+     * 账本再留一条 `promote_undo`（判据：回退后再留一条回退记录）。
+     * 回的是**当前那份**正文——记录行只是入口，不回滚正文内容。
+     */
+    private fun undoSkillPromote(name: String) {
+        scope.launch {
+            val (ok, msg) = withContext(Dispatchers.IO) { revertSkillPromoteNow(name) }
+            skillNote = BaopuNote(msg, if (ok) BaopuNoteLevel.Info else BaopuNoteLevel.Error)
+        }
+    }
+
+    /** 回退的干活体（IO 线程跑）；返回「成没成 ＋ 给用户的一句话」，失败也要有声（不静默）。 */
+    private fun revertSkillPromoteNow(name: String): Pair<Boolean, String> {
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val ws = workspaceRoot
+        val gRoot = java.io.File(pf.globalFile().parentFile ?: ws, "")
+        val resolved = SkillRules.resolveSkillFile(ws, gRoot, name)
+            ?: return false to appCtx.getString(R.string.skill_promote_revert_missing, name)
+        val body = runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
+            ?: return false to appCtx.getString(R.string.skill_promote_revert_missing, name)
+        val newBody = com.example.zhengdao.baopu.SkillPromote.revertBody(body)
+            ?: return false to appCtx.getString(R.string.skill_promote_revert_not_active, name)
+        val rowScope = when (resolved.scope) {
+            MemoryScope.PROJECT -> com.example.zhengdao.baopu.SkillScope.PROJECT
+            MemoryScope.GLOBAL -> com.example.zhengdao.baopu.SkillScope.GLOBAL
+        }
+        val r = commitSkillDraft(
+            row = SkillDraftRow(
+                name = name,
+                scope = rowScope,
+                file = resolved.file,
+                body = body,
+                uses = com.example.zhengdao.baopu.SkillStore.usesOf(body),
+                canPromote = false,
+            ),
+            newBody = newBody,
+            stillDraft = true, // 索引行跟着回「草稿·未验证」标（判据：回退后索引标记复原）
+            projectRoot = ws,
+            globalRoot = gRoot,
+            personaFiles = pf,
+            backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+            reason = "决策中心回退为草稿",
+        )
+        return when (r) {
+            is com.example.zhengdao.baopu.SkillWriteResult.Written -> {
+                val audited = com.example.zhengdao.baopu.SkillPromote.auditRevert(
+                    resolved.file,
+                    if (rowScope == com.example.zhengdao.baopu.SkillScope.GLOBAL) "global" else "project",
+                    name,
+                    System.currentTimeMillis(),
+                )
+                if (!audited) {
+                    com.example.zhengdao.rootfs.RunLog.log("技能回退记录写入失败：$name")
+                }
+                true to appCtx.getString(R.string.skill_promote_reverted, name)
+            }
+            is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> false to r.reason
+        }
     }
 
     /** 动作结果的一句话（确认失败/重复等；给 UI 显示，5 秒后由 UI 清）。 */
@@ -1187,6 +1310,9 @@ internal class BaopuChatController(context: Context) {
 
     /** 用户点了一个选项。 */
     fun answerChoice(id: String) = engine.answerChoice(id)
+
+    /** 用户提交了多问卡（第二百零三批；answers 以问题 id 为键，原样交引擎）。 */
+    fun answerGroup(answers: Map<String, String>) = engine.answerGroup(answers)
 
     // ── 「这次学到」提案卡（第三十七批 B 段）─────────────────────────────
     //

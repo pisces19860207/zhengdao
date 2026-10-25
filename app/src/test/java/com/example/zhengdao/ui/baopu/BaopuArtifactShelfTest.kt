@@ -277,7 +277,11 @@ class BaopuArtifactShelfTest {
         assertTrue("数的是台账（现读库）", src.contains("remember(artifactTick, artifactRoot) { artifactShelfCount(artifactDb, artifactRoot) }"))
         // E-163 那条教训：drawerContent 常驻组合 ⇒ 必须有「打开」这个信号
         assertTrue("打开抽屉要重数一次", src.contains("LaunchedEffect(drawerOpen) { if (drawerOpen) artifactTick++ }"))
-        assertEquals("抽屉里两次「打开就重数」（回收站一次、产物一次）", 2, Regex("LaunchedEffect\\(drawerOpen\\)").findAll(src).count())
+        assertEquals(
+            // 第二百一十批：抽屉多了一行「定时任务」（状态也现读盘）⇒ 「打开就重数」从两次变三次。
+            "抽屉里三次「打开就重数」（回收站、产物、定时任务各一次）",
+            3, Regex("LaunchedEffect\\(drawerOpen\\)").findAll(src).count(),
+        )
         assertTrue("标题带 N 且走资源", src.contains("stringResource(R.string.baopu_artifact_shelf_title, artifactCount)"))
         assertFalse("产物那一行不置灰（空态也得进得去）", src.contains("enabled = artifactCount > 0"))
         assertFalse("更不许用 if 把整行包起来（那是消失）", Regex("if \\(artifactCount > 0\\)").containsMatchIn(src))

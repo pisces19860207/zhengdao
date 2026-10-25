@@ -28,18 +28,21 @@ internal object MainRouteRules {
     const val ROUTE_WELCOME = "welcome"
 
     /**
-     * 冷启动可恢复的 Compose 路由白名单（B-补-15 复核，2026-10-16；第七十六批随判定主体搬入本文件）。
+     * 冷启动可恢复的 Compose 路由白名单（B-补-15 复核，2026-10-16；第七十六批随判定主体搬入本文件；
+     * 第二百一十批随首启权限页退役改为三个目的地）。
      *
-     * NavHost 只有四个目的地：`welcome` / `home` / `permission_setup` / `settings`。
+     * NavHost 只有三个目的地：`welcome` / `home` / `settings`。
      *  - `welcome`：首次安装的入口，由 [startRoute] 决定，谈不上「恢复」；
      *  - `home`：默认落点，本身就是兜底；
-     *  - `permission_setup`：权限门槛，由 `guidePermissions` 那个效果按需重新叠加（见 `MainActivity.onCreate` 里的注释）；
      *  - `settings`：用户会主动离开、又期望回来还在原处的二级页 ⇒ **唯一值得恢复的**。
+     * （2026-10-25 删除了 `permission_setup`：首启权限页整页退役，权限申请统一到
+     *  设置页「申请权限」卡——老装机 prefs 里残留的该死值正下方那段兜底说的就是它。）
      *
      * ⚠️ 故意写成「白名单 + 兜底判空」，而不是 `nav.navigate(lastRoute)`：prefs 里可能残留
      * **老版本**的路由字符串 —— 例：插件页 2026-10-08 曾搬进抱朴抽屉（该抽屉的插件面板
-     * 复用 `ui/PluginsScreen.kt`；抽屉本身 2026-10-16 随旧抱朴线清场删除），`plugins` 路由随之删除，但老装机的
-     * `last_route` 里仍可能留着 "plugins"。直接 navigate 会抛
+     * 复用 `ui/PluginsScreen.kt`；抽屉本身 2026-10-16 随旧抱朴线清场删除），`plugins` 路由随之删除，
+     * 以及首启权限页 `permission_setup`（第二百一十批删除），老装机的
+     * `last_route` 里仍可能留着这些值。直接 navigate 会抛
      * `IllegalArgumentException` 崩在冷启动，白名单把这类死值一律当「没有可恢复的页面」。
      */
     val RESTORABLE_ROUTES = setOf("settings")

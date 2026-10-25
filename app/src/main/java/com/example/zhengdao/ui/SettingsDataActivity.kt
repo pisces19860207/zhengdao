@@ -4,8 +4,6 @@ package com.example.zhengdao.ui
 
 import android.content.Intent
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -103,7 +101,6 @@ import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.CoroutineScope
-import com.example.zhengdao.schedule.SchedulePermissions
 
 /** 二级页：终端与资料（逐字搬自「资料库 / 权限 / 终端外观 / 工作区 / 输入回归页」五张卡）。 */
 class SettingsDataActivity : ComponentActivity() {
@@ -143,71 +140,16 @@ private fun SettingsDataPage(onBack: () -> Unit) {
         com.example.zhengdao.terminal.ProotLauncher.storageGranted(ctx)   // v1.3 E2：单一判定源
 
     var storageOk by remember { mutableStateOf(storageGrantedNow()) }
-    var permHint by remember { mutableStateOf<String?>(null) }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        storageOk = storageGrantedNow()
-        permHint = if (storageOk) res.getString(R.string.data_perm_granted)
-        else res.getString(R.string.data_perm_denied)
-    }
 
     var netChecking by remember { mutableStateOf(false) }
     var netMsg by remember { mutableStateOf<String?>(null) }
-
-    fun manageGranted(): Boolean =
-        runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
-    var manageOk by remember { mutableStateOf(manageGranted()) }
-    fun launchManage() {
-        try {
-            ctx.startActivity(
-                Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    .setData("package:${ctx.packageName}".toUri())
-            )
-        } catch (e: Exception) {
-            try {
-                ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            } catch (e2: Exception) {
-                // 2026-10-08：异常原文 → 人话（[HumanizeError]）。原文已落日志
-                Toast.makeText(
-                    ctx,
-                    res.getString(R.string.data_open_failed, HumanizeError.title(e2, res)),
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
-        }
-    }
-
-    // ── 定时任务的三项权限（第一百六十七批 §2）──
-    // 判定只走 [SchedulePermissions] 那一个口子：调度器排闹钟时用的就是同一份判定，
-    // 页面自己再查一遍系统，两条路上迟早得出不同结论（本仓 E2「消双判」的同款教训）。
-    // 三项都是**功能级可选**：缺了走降级路径，不拦任何别的功能，所以不并进首启那套必需项。
-    var schedNotify by remember { mutableStateOf(SchedulePermissions.notificationsGranted(ctx)) }
-    var schedExact by remember { mutableStateOf(SchedulePermissions.canScheduleExactAlarms(ctx)) }
-    var schedBattery by remember { mutableStateOf(SchedulePermissions.isIgnoringBatteryOptimizations(ctx)) }
-    val schedNotifyLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { schedNotify = SchedulePermissions.notificationsGranted(ctx) }
-    // 后两项是「系统设置页」类授权，没有 ActivityResult 回执，只能靠上面的 ON_RESUME 重读。
-    /** 打开系统设置页：个别 ROM 缺那个 Activity ⇒ 说不出来，不许点了没反应还不吭声。 */
-    fun openSystemPage(intent: Intent) {
-        runCatching { ctx.startActivity(intent) }.onFailure {
-            Toast.makeText(
-                ctx,
-                res.getString(R.string.data_open_failed, HumanizeError.title(it, res)),
-                Toast.LENGTH_SHORT,
-            ).show()
-        }
-    }
 
     var storageTick by remember { mutableIntStateOf(0) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                manageOk = manageGranted()
                 storageOk = storageGrantedNow()
-                schedNotify = SchedulePermissions.notificationsGranted(ctx)
-                schedExact = SchedulePermissions.canScheduleExactAlarms(ctx)
-                schedBattery = SchedulePermissions.isIgnoringBatteryOptimizations(ctx)
                 storageTick++
                 // 2026-10-11：回到设置页就顺手刷一次资料库清单。用户常常是"先去文件管理器
                 // 把资料丢进 原始/，再切回 App"——那条路上没有任何机会触发会话启动，
@@ -535,13 +477,13 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        // ── 权限（存储读写 + 网络自检）──
-        // 存储：/sdcard 共享存储读写全靠 READ/WRITE 运行时授权（E-005 修正后的事实）
+        // ── 权限（存储状态 + 网络自检）──
+        // 第二百一十批起本卡只剩**状态与自检**：所有申请动作已收到 Hub 顶部「申请权限」卡。
+        // 存储：/sdcard 共享存储读写全靠「所有文件访问」（E-005 修正后的事实，36 上唯一通道）
         // 网络：INTERNET 为安装时权限系统自动授，无可引导项；用户真正会卡的是
         //      代理 App 分应用没勾选证道——给一键自检代替空喊"网络权限"
         SectionCard(stringResource(R.string.data_perm_ws_card)) {
-            // 两行常驻可点（用户提议）：已授权时点击 = 跳系统 App 详情页（查看/撤销/
-            // MagicOS 联网管控都在那里）；未授权时行内另给授权按钮
+            // 网络行的去路：系统「应用详情」页（分应用代理/联网管控都在那里）。
             val openAppDetails = {
                 runCatching {
                     ctx.startActivity(
@@ -558,39 +500,37 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 }
                 Unit
             }
-            // 未授权时整行可点＝直接拉起系统授权弹窗；已授权时点击＝去系统设置查看/撤销。
-            SettingRow(
-                label = stringResource(R.string.data_perm_storage),
-                value = if (storageOk) stringResource(R.string.data_perm_granted)
-                else stringResource(R.string.data_perm_not_granted),
-                // P2-11：未授予是状态文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
-                valueColor = if (storageOk) zhengdaoReady() else zhengdaoErrorText(),
-                onClick = {
-                    if (storageOk) {
-                        openAppDetails()
-                    } else {
-                        permLauncher.launch(
-                            arrayOf(
-                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                            )
-                        )
-                    }
-                },
-            )
+            // 第二百一十批（入口与权限归位）：这一行**只显示状态**，不再发起任何申请——
+            // 原 READ/WRITE 运行时请求在 minSdk=36 上早已 inert（134 批），同批把申请
+            // 入口全部收到 Hub 顶部「申请权限」卡（那里有「所有文件访问」一行，
+            // 36 上共享存储的唯一通道）。状态照旧显示（派工单负例 7：不许删状态）。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.data_perm_storage),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = if (storageOk) stringResource(R.string.data_perm_granted)
+                    else stringResource(R.string.data_perm_not_granted),
+                    style = MaterialTheme.typography.bodyMedium,
+                    // P2-11：未授予是状态文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
+                    color = if (storageOk) zhengdaoReady() else zhengdaoErrorText(),
+                )
+            }
             Text(
                 text = stringResource(R.string.data_perm_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (!storageOk) {
-                Spacer(Modifier.height(6.dp))
-                permHint?.let {
-                    // P2-11：提示正文 zhengdaoErrorText()
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = zhengdaoErrorText())
-                    Spacer(Modifier.height(6.dp))
-                }
-            }
+            Spacer(Modifier.height(6.dp))
+            // 指路一行：申请只在「设置 → 申请权限」（主色，能被看见）。
+            Text(
+                text = stringResource(R.string.perm_goto_card),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
 
             Spacer(Modifier.height(10.dp))
             SettingsDivider()
@@ -639,23 +579,12 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             SettingsDivider()
             Spacer(Modifier.height(10.dp))
 
-            // ── 所有文件访问（MANAGE_EXTERNAL_STORAGE，可选增强；用户定稿简化版）──
-            SettingRow(
-                label = stringResource(R.string.data_manage_row),
-                value = if (manageOk) stringResource(R.string.data_manage_on)
-                else stringResource(R.string.data_manage_off),
-                valueColor = if (manageOk) zhengdaoReady() else MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = { launchManage() },
-            )
-            Text(
-                text = stringResource(R.string.data_manage_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(Modifier.height(10.dp))
-            SettingsDivider()
-            Spacer(Modifier.height(10.dp))
+            // ── 所有文件访问（MANAGE_EXTERNAL_STORAGE）────────────────────────
+            // 第二百一十批：申请行已搬到 Hub 顶部「申请权限」卡（四行集中卡的第一行），
+            // 此处**整行撤掉**——同一功能两个入口正是本批要消灭的。卡里那行同样带状态
+            // 与「不给会怎样」，走的是同一个系统页。
+            // （历史留痕：原先行内 onClick 直接发 ACTION_MANAGE_APP_ALL_FILES_ACCESS_
+            //  PERMISSION 带 package: 的 Intent，ROM 缺页时回落通用列表页。）
 
             // ── 工作区（0.6 显性化：产出边界让用户看得见）──
             // 2026-10-12 并入「权限」卡（走查报告 §1.3：5 卡 → 3 卡）：权限与工作区
@@ -705,69 +634,17 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // ── 定时任务用到的权限（第一百六十七批 §2）──
-        // 派工单 §2 要求每行有状态、可读理由、且「拒绝不阻断主功能」，理由行必须把**降级口径**
-        // 说出来（不给会怎样），不许只写"需要该权限"。
-        // 三项都是功能级可选：不像上面那张卡那样参与首启必需项判定（见 SchedulePermissions 的类注释）。
-        // 电池那行只给**列表页**入口，不弹一键框：134 批 lint(BatteryLife) 的口径，也是"不诱导授权"。
-        SectionCard(stringResource(R.string.sched_perm_card)) {
-            SettingRow(
-                label = stringResource(R.string.sched_perm_notify),
-                value = if (schedNotify) stringResource(R.string.data_perm_granted)
-                else stringResource(R.string.data_perm_not_granted),
-                // P2-11 同款：未授予是状态文字，走 zhengdaoErrorText()
-                valueColor = if (schedNotify) zhengdaoReady() else zhengdaoErrorText(),
-                onClick = {
-                    // 已给 ⇒ 去系统页看/撤（再拉一次请求，系统直接回"已授予"＝点了没反应）；
-                    // 未给 ⇒ 就地拉起运行时请求（本页面唯一的新申请点，权限字面量用既有那个）。
-                    if (schedNotify) openSystemPage(SchedulePermissions.appDetailsIntent(ctx))
-                    else schedNotifyLauncher.launch(PermissionSetup.NOTIFICATIONS_PERMISSION)
-                },
-            )
-            Text(
-                text = stringResource(R.string.sched_perm_notify_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(Modifier.height(10.dp))
-            SettingsDivider()
-            Spacer(Modifier.height(10.dp))
-
-            SettingRow(
-                label = stringResource(R.string.sched_perm_exact),
-                value = if (schedExact) stringResource(R.string.data_perm_granted)
-                else stringResource(R.string.data_perm_not_granted),
-                valueColor = if (schedExact) zhengdaoReady() else zhengdaoErrorText(),
-                // 这一项不是运行时权限弹窗能给的（Android 12 起只能由用户去系统页允许），
-                // 所以给了/没给都是同一个去向：那张专属页上就是这一个开关。
-                onClick = { openSystemPage(SchedulePermissions.exactAlarmSettingsIntent(ctx)) },
-            )
-            Text(
-                text = stringResource(R.string.sched_perm_exact_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(Modifier.height(10.dp))
-            SettingsDivider()
-            Spacer(Modifier.height(10.dp))
-
-            SettingRow(
-                label = stringResource(R.string.sched_perm_battery),
-                value = if (schedBattery) stringResource(R.string.sched_state_exempt)
-                else stringResource(R.string.sched_state_not_exempt),
-                // 豁免与否都不是"错误"：没豁免只是可能被杀，用中性色，不用红字吓人。
-                valueColor = if (schedBattery) zhengdaoReady()
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = { openSystemPage(SchedulePermissions.batterySettingsIntent()) },
-            )
-            Text(
-                text = stringResource(R.string.sched_perm_battery_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        // ── 定时任务用到的权限（第二百一十批：整卡撤到 Hub 顶部「申请权限」卡）────
+        // 派工单（2026-10-25 用户口径升级）：**申请入口唯一化**——原来这张卡的三行
+        // （通知 / 精确闹钟 / 电池豁免）连同各自的申请动作一起搬进设置 Hub 顶部的
+        // 「申请权限」集中卡（四行：全文件访问/通知/精确闹钟/电池豁免），每行仍带
+        // 真实状态与「不给会怎样」的降级口径（sched_perm_*_desc 原文随行搬过去）。
+        // 原处只留一行指路文案——老用户照着走能找到新卡，不算删功能。
+        Text(
+            text = stringResource(R.string.perm_goto_card),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
         if (wsPickerOpen) {
             WorkspaceFolderPicker(
                 onDismiss = { wsPickerOpen = false },

@@ -70,8 +70,6 @@ import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
-import com.example.zhengdao.ui.PermissionSetup
-import com.example.zhengdao.ui.PermissionSetupScreen
 import com.example.zhengdao.ui.SettingsScreen
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.WelcomeScreen
@@ -267,78 +265,26 @@ class MainActivity : ComponentActivity() {
         // 但用户有权知道手里这个包是不是作者发的。常驻显示在设置页「关于」。
         warnIfUnofficialSignature()
 
-        // App 自更新：调用点**下移**到权限判定之后（§B 顺序 15 的「与权限框互斥」，见下面那段）。
-
-        // 首启权限引导（2026-10-11，用户反馈「新安装的时候申请各种权限的那个页面……单个卡片
-        // 有点晃眼也不符合使用习惯」）：首次安装且缺必需权限时，下面那些**逐个弹的系统对话框
-        // 全部让路**，改由一页「权限」（ui/PermissionSetupScreen.kt）把几项权限列在一屏里、
-        // 逐项点开授权。判定必须在这里算出来（而不是只放在 Compose 里）：对话框的触发点就在
-        // 下面几行，晚一步判断就会先弹系统对话框、把权限页顶到后面——那仍旧是"一次一个"。
-        val permissionSetupPending = PermissionSetup.shouldGuide(this)
-
-        if (!permissionSetupPending) {
-            // B-补-19 立账（2026-10-16，用户拍板「立账，并做了」）：**一次冷启动最多一个系统框**。
-            //
-            // 原先存储(100)与通知(101)是两段互不相干的 runCatching：已引导过的冷启动（例如在
-            // 权限页点了「稍后再说」）会把两个系统框连着排出去；而自更新 AlertDialog 是同一
-            // 次冷启动里第 3 个可能出现的框 —— 更新检查是网络后台线程，返回通常晚于系统框弹出，
-            // 结果是「系统权限框刚点掉、更新框又贴上来」。用「本次冷启动」的局部标记收敛：
-            //   ① 已经排过一个系统框，就不再排第二个（没排的那项下个冷启动照常补 —— 一次性标记
-            //      保证"问过就不再问"，见 PermissionSetup.shouldAutoRequest 的 KDoc）；
-            //   ② 本次排了系统框，就不发起自更新检查（与「更新框不与权限框抢同一屏」同一口径）。
-            // 权限页那段互斥（2026-10-11）在下面照旧：pending 时两个请求都不排。
-            var permDialogThisLaunch = false
-
-            // 存储运行时权限（2026-10-06 的第 0 步修复）在本代已整体退役：
-            // 第㉕刀（targetSdk 28 → 36）起 READ/WRITE_EXTERNAL_STORAGE 在 API 30+ 已 inert，
-            // 请求只会被系统静默拒绝，共享存储的唯一通道是「所有文件访问」
-            // （见 ProotLauncher.storageGranted 与权限页那两行）。
-            // 原 `SDK_INT < 30` 分支是死代码，134 批按 lint ObsoleteSdkInt 删除；
-            // 通知权限那条（下面）仍走"每项一辈子只问一次"的一次性标记。
-
-            // 通知权限（2026-10-09，#3 验收时发现）：安卓 13 起「装完清理 >500MB」的静默提示
-            // 必须拿到 POST_NOTIFICATIONS，否则系统直接把通知丢掉（真机 `dumpsys package` 里
-            // `POST_NOTIFICATIONS: granted=false`、`AppSettings importance=NONE`、通知列表为空，
-            // 而代码这边"发了通知"看起来一切正常）。冷启动缺就补一次；拒绝只是没有通知，
-            // 不影响任何功能（清理照跑、日志照写）。
-            // B-补-19：同一次冷启动不排第二个系统框 —— 存储是必需项，先排它；通知只是可选
-            // （拒绝仅影响装完清理的提示），让到下次冷启动，不跟存储框抢同一屏。
-            if (!permDialogThisLaunch) runCatching {
-                // 字面量收敛到 PermissionSetup.NOTIFICATIONS_PERMISSION（那边的 KDoc 本来
-                // 就写着「全文件只此一处」，原先这里是硬编码的重复一份）
-                val perm = PermissionSetup.NOTIFICATIONS_PERMISSION
-                val missing = androidx.core.content.ContextCompat.checkSelfPermission(this, perm) !=
-                    android.content.pm.PackageManager.PERMISSION_GRANTED
-                // §B 顺序 15：同样"每项最多自动问一次"（理由见上面存储那段）。
-                if (PermissionSetup.shouldAutoRequest(PermissionSetup.notifyAsked(this), missing)) {
-                    PermissionSetup.markNotifyAsked(this)
-                    androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 101)
-                    permDialogThisLaunch = true // B-补-19：同上（此处也守住"只排一个"）
-                }
-            }
-
-            // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户。
-            //
-            // §B 顺序 15（2026-10-14）：**与权限引导互斥** —— 权限是门槛，先过门槛再谈更新。
-            // 原先是无条件发起，更新 AlertDialog 会叠在权限页（甚至系统权限框）之上；
-            // 原代码只在 UI 线程里守 isFinishing/isDestroyed，管不了「同时有两个框」这件事。
-            // 跳过一次不影响功能：下个冷启动照常查（本就是"启动后台查一次、失败静默"）。
-            //
-            // B-补-19（2026-10-16）加一层：**本次冷启动排过系统权限框时也不查**。上面那条只
-            // 保证"不叠在权限页上"，管不了"不叠在系统权限框上" —— 系统框是系统的独立窗口，
-            // 应用内的 AlertDialog 拦不住它，只能自己不发起。系统框每项权限一辈子只排一次，
-            // 因此最多跳过一个冷启动（标记一次性，见 PermissionSetup）。
-            if (!permDialogThisLaunch) checkAppUpdateInBackground()
-        }
+        // App 自更新（用户第四批）：启动后台查 releases，网络失败静默忽略，不打断用户。
+        //
+        // 第二百一十批（入口与权限归位）：首启权限机制整体退役——原来这里先判
+        // 「要不要叠首启权限页」（PermissionSetup.shouldGuide），再在「不叠」的冷启动里
+        // 给通知权限补一次系统框（shouldAutoRequest 一次性闸门）。用户 2026-10-25 口径：
+        // 「欢迎页不用放权限申请」＋申请入口唯一化 ⇒ **冷启动不再发起任何权限请求**，
+        // 要授权走设置页「申请权限」卡（全 App 唯一入口，源码门禁 PermissionEntryGateTest）。
+        // 连带效果：自更新检查不再需要与权限框互斥（同一次冷启动没有系统框可撞了），
+        // 恢复无条件发起；「最多跳过一个冷启动」的取舍随权限框一起退役。
+        checkAppUpdateInBackground()
 
         // 存储主路径引导（E-005 修订 / P1，2026-10-06）：MANAGE_EXTERNAL_STORAGE 升为正式主路径。
-        // **2026-10-11 起这里那个「开启完整存储访问」AlertDialog 撤掉**，由权限页的
+        // **2026-10-11 起这里那个「开启完整存储访问」AlertDialog 撤掉**，改由设置页的
         // 「所有文件访问」行替代（同一件事、同一个系统页，只是不再单独弹窗抢在前面）；
-        // 设置页入口照旧保留。连带效果：prefs 键 `manage_prompted` 全仓只剩这条注释，不再写也不再读（老装机残留，无代码读取）。
+        // 第二百一十批后那行在 Hub 顶部「申请权限」卡里（申请入口唯一化）。
+        // 连带效果：prefs 键 `manage_prompted` 全仓只剩这条注释，不再写也不再读（老装机残留，无代码读取）。
         // ⚠️ 第㉕刀（2026-10-15，targetSdk 28 → 36）：旧注释说「该开关只对 target≥30 的 App
         // 存在、本 App 恒为 false」—— 抬到 36 后该前提消失，开关现在**可达且就是共享存储的
-        // 唯一通道**（READ/WRITE 运行时权限在 30+ 已 inert）。权限页的「共享存储」必需项已
-        // 经 ProotLauncher.storageGranted 双通道判定路由到它，不再有"永远完不成"的页面。
+        // 唯一通道**（READ/WRITE 运行时权限在 30+ 已 inert）。「所有文件访问」的必需项判定
+        // 经 ProotLauncher.storageGranted 双通道路由到它，不再有"永远完不成"的页面。
 
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
@@ -373,7 +319,6 @@ class MainActivity : ComponentActivity() {
                     ZhengdaoApp(
                         startInTerminal = openTerminal,
                         lastRoute = lastRoute,
-                        guidePermissions = permissionSetupPending,
                     )
                 }
             }
@@ -499,9 +444,6 @@ private fun terminalIntent(context: android.content.Context, autocmd: String?, a
 fun ZhengdaoApp(
     startInTerminal: Boolean = false,
     lastRoute: String? = null,
-    // 首启是否需要先走一遍「权限」页（判定在 MainActivity.onCreate，见那里的说明）。
-    // 默认 false：不传的调用方（预览/测试）行为与改动前完全一致。
-    guidePermissions: Boolean = false,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val res = androidx.compose.ui.platform.LocalResources.current
@@ -536,18 +478,6 @@ fun ZhengdaoApp(
         }
     }
 
-    // 首启「权限」页（2026-10-11）：叠在起始页之上，**绝不当 startDestination**——
-    // 同上面 startRoute 处的教训：起始页底下没有返回栈，popBackStack 无处可退（真机实测返回键与
-    // 右滑全失效）。起始页是 welcome（首次安装）还是 home（老装机补漏）都成立。
-    //
-    // 顺序有意为之：本效果写在下面的"恢复上次页面"之前，于是恢复页会看到 cur 不是起始页
-    // 而跳过这一次恢复——权限是门槛，先过门槛再谈回到哪一页（下次冷启动照常恢复）。
-    androidx.compose.runtime.LaunchedEffect(guidePermissions) {
-        if (guidePermissions) {
-            nav.navigate(PermissionSetup.ROUTE) { launchSingleTop = true }
-        }
-    }
-
     // 恢复上次页面：叠在 home 之上（返回键退回首页，不再有死返回）
     //
     // 2026-10-08 加固：真机上出现过"从设置页返回后整页纯白"（当次 2/2，随后 9 次导航 0 复现），
@@ -569,11 +499,8 @@ fun ZhengdaoApp(
     // 外部分享/深链（第八十三批 §B 88）：请求挂在进程级单例上，抱朴页不一定在屏上。
     // 冷启动落在欢迎页、或恢复态是设置页时，这里先回首页（launchSingleTop：已在 home 不动）。
     // 本效果写在恢复效果**之后**：同一帧里恢复先导航，这里再把它盖回 home。
-    // 权限页是门槛（guidePermissions=true）时不抢它的导航——用户点完「完成」本来就会进
-    // 首页，届时请求仍在，照样由输入框消费。
     val incomingPrompt by com.example.zhengdao.ui.baopu.BaopuIntents.promptRequestedState
-    androidx.compose.runtime.LaunchedEffect(incomingPrompt, guidePermissions) {
-        if (guidePermissions) return@LaunchedEffect
+    androidx.compose.runtime.LaunchedEffect(incomingPrompt) {
         if (incomingPrompt == null) return@LaunchedEffect
         nav.navigate("home") { launchSingleTop = true }
     }
@@ -684,22 +611,6 @@ fun ZhengdaoApp(
             HomeTabs(
                 onOpenTerminal = openTerminal,
                 onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
-            )
-        }
-        composable(PermissionSetup.ROUTE) {
-            // 首启「权限」页（2026-10-11）：一屏列全几项权限，逐项点开授权，
-            // 底部主按钮「完成，进入证道」／「稍后再说」。系统栏由该页自行避让
-            //（不套设置页那种"返回 + 居中标题"顶栏：这是首启的过渡页，出口只有底部那一个按钮，
-            //  少一个"返回"歧义入口——按返回＝不写已引导标记，见该页 KDoc）。
-            PermissionSetupScreen(
-                onDone = {
-                    // 摘掉本页再进主界面：只 navigate 不 popUpTo 会把权限页留在家页下方，
-                    // 用户一按返回又弹回来（正是"反复弹"）。
-                    nav.navigate("home") {
-                        popUpTo(PermissionSetup.ROUTE) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
             )
         }
         composable("settings") {

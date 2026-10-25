@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.SkillAutoOutcome
 import com.example.zhengdao.baopu.SkillAutoWrite
+import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
@@ -190,17 +191,29 @@ internal object SkillTools {
                 if (!isDraft) {
                     return ToolOutcome.Failed("$name 已经是正式技能，不用再记次数")
                 }
-                val newBody = SkillStore.bumpUses(old)
-                val after = SkillStore.usesOf(newBody)
-                val msg = if (SkillStore.canPromote(newBody)) {
-                    "（已用 $after/${SkillStore.PROMOTE_USES} 次，够了）"
+                // 第二百零七批 §1.5：数次数与转正出自同一份纯函数（afterUse）——第 3 次使用
+                // 当场转正、不弹卡，与设置页「用一次」同一条口径；转正 ⇒ 决策中心留一条「满3次」。
+                val after = SkillStore.afterUse(old)
+                val used = SkillStore.usesOf(after.body)
+                val msg = if (after.promoted) {
+                    "（已用 $used/${SkillStore.PROMOTE_USES} 次，用满自动转正，已记入决策中心）"
                 } else {
-                    "（已用 $after/${SkillStore.PROMOTE_USES} 次）"
+                    "（已用 $used/${SkillStore.PROMOTE_USES} 次）"
                 }
-                writeViaStore(root, pf, name, newBody, reason = "用过一次：记次数", keepDraft = true)
+                writeViaStore(
+                    root,
+                    pf,
+                    name,
+                    after.body,
+                    reason = if (after.promoted) "用满自动转正" else "用过一次：记次数",
+                    keepDraft = !after.promoted,
+                )
                     .let { r ->
                         when (r) {
-                            is ToolOutcome.Ok -> ToolOutcome.Ok(r.text + "\n" + msg)
+                            is ToolOutcome.Ok -> {
+                                if (after.promoted) recordPromote(root, name)
+                                ToolOutcome.Ok(r.text + "\n" + msg)
+                            }
                             else -> r
                         }
                     }
@@ -215,8 +228,21 @@ internal object SkillTools {
                 val newBody = SkillStore.draftHeader(status = "active", uses = uses) +
                     "\n" + stripHeader(old)
                 writeViaStore(root, pf, name, newBody, reason = "用满了：转正", keepDraft = false)
+                    .let { r ->
+                        // 转正不许静默（§1.5 判据）：成了一条「满3次」进决策中心，失败也要有日志。
+                        if (r is ToolOutcome.Ok) recordPromote(root, name)
+                        r
+                    }
             }
             else -> ToolOutcome.Failed("不认识的动作：$action（只认 write / use / promote）")
+        }
+    }
+
+    /** 转正记录进审计旁挂账本（决策中心「记录页」的数据源；失败只 log，转正本身不回退）。 */
+    private fun recordPromote(root: File, name: String) {
+        val f = File(SkillRules.projectSkillDir(root), "$name/${SkillRules.SKILL_FILE}")
+        if (!SkillPromote.auditPromote(f, "project", name, SkillPromote.REASON_FULL_USES)) {
+            com.example.zhengdao.rootfs.RunLog.log("技能转正记录写入失败：$name（${SkillPromote.REASON_FULL_USES}）")
         }
     }
 

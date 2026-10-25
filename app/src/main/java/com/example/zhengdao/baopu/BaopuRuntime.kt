@@ -697,6 +697,9 @@ internal object BaopuRuntime {
         )
         // ask_user：工具线程阻塞在 engine.askUser 上，UI 点一下即回（有界，与确认卡同超时）
         AskUserTool.sink = { req -> engine.askUser(req) }
+        // 第二百零三批：问题组（一卡多问、一次提交）走 engine.askGroup——阻塞到整组
+        // 答完并成一条 answers；同会话同批只问一次（账本在引擎里，与 171 同口径）
+        AskUserTool.groupSink = { req -> engine.askGroup(req) }
         // 第一百五十六批：工作区外访问的读数点（工具层自检现读，改开关即时生效）
         // ＋157 补充：每轮入口喂会话身份（授权账本按会话持久化，跨运行不再重问）。
         com.example.zhengdao.baopu.WorkspaceAccessPolicy.settingOn = { WorkspacePrefs.enabled(appCtx) }

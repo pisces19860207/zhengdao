@@ -60,7 +60,6 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.theme.zhengdaoReady
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.util.HumanizeError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -185,19 +184,10 @@ private fun ScheduleTasksPage(onBack: () -> Unit) {
         )
     }
 
+    /** 删除确认后写表 ＋ 重排（见 [persist]）。 */
     fun deleteConfirmed(task: ScheduleTask) {
         deleting = null
         persist(tasks.filter { it.id != task.id }, cancel = listOf(task))
-    }
-
-    /** 送用户去系统「精确闹钟」那页（这一页唯一的权限动作，状态仍由 SchedulePermissions 说）。 */
-    fun openExactAlarmPage() {
-        runCatching { ctx.startActivity(SchedulePermissions.exactAlarmSettingsIntent(ctx)) }
-            .onFailure {
-                scope.launch {
-                    snackbar.showSnackbar(res.getString(R.string.perm_open_failed, HumanizeError.title(it, res)))
-                }
-            }
     }
 
     SettingsSubPage(title = stringResource(R.string.sched_page_title), onBack = onBack, snackbar = snackbar) {
@@ -224,12 +214,17 @@ private fun ScheduleTasksPage(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = if (exactOk) zhengdaoReady() else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // 走的是降级路径时给一条**出路**，不只报状态：点它直接去系统那一页开。
-            // 这是入口不是第二份判据——这一行的文字仍由 SchedulePermissions.route() 决定。
+            // 走的是降级路径时给一条**出路**，不只报状态。第二百一十批（入口与权限归位）：
+            // 出路从「按钮直发系统精确闹钟页」改成一行指路文案——直接拉起系统授权页是
+            // 散落的申请入口，全 App 只许「设置 → 申请权限」卡那一处发起（源码门禁
+            // PermissionEntryGateTest）。本行的路线文字仍由 SchedulePermissions.route() 决定，
+            // 判定一格没动。
             if (!exactOk) {
-                TextButton(onClick = { openExactAlarmPage() }) {
-                    Text(stringResource(R.string.sched_perm_goto))
-                }
+                Text(
+                    text = stringResource(R.string.sched_exact_goto),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             if (tasks.isEmpty()) {
                 Spacer(Modifier.height(8.dp))
