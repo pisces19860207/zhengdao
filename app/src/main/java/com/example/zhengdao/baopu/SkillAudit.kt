@@ -31,6 +31,10 @@ internal object SkillAudit {
      * 追加一条审计。**失败只吞掉**（审计不能把写入搞失败），由调用方 log。
      *
      * @param skillFile 技能正文（用来推技能目录与摘要）
+     * @param auto 免批标（第一百九十二批）：true ⇒ 行里带 `"auto":true`，技能页凭它标「免批」；
+     *   缺省 false——既有的 `write`/`update` 行一个字节不变（174 验过的写盘顺序不受影响）
+     * @param sessionId 来源会话（免批审计的「谁」之一；没有就别硬造）
+     * @param candidateId 来源候选 id（同上）
      */
     fun record(
         skillFile: File,
@@ -41,6 +45,9 @@ internal object SkillAudit {
         beforeSha: String,
         indexUpdated: Boolean,
         nowMs: Long,
+        auto: Boolean = false,
+        sessionId: Long? = null,
+        candidateId: String? = null,
     ): Boolean = runCatching {
         val dir = skillFile.parentFile?.parentFile ?: return@runCatching false
         dir.mkdirs()
@@ -53,6 +60,9 @@ internal object SkillAudit {
             .put("beforeSha", beforeSha)
             .put("afterSha", shaOf(skillFile))
             .put("indexUpdated", indexUpdated)
+        if (auto) o.put("auto", true)
+        sessionId?.let { o.put("sessionId", it) }
+        candidateId?.let { o.put("candidateId", it) }
         fileIn(dir).appendText(o.toString() + "\n", Charsets.UTF_8)
         true
     }.getOrDefault(false)
