@@ -35,6 +35,11 @@ data class TeachElementInfo(
     val formLabel: String? = null, // 所在表单标签/列名（T8 上下文锚）
     val classes: List<String> = emptyList(),
     val xpath: String? = null,
+    /**
+     * 第二百批：`select` 录制时页面给的全部选项（值＋文案）。
+     * 参数化时它是**词表**：反问「可选：北京/天津」靠它，执行期「说天津 ⇒ 填天津的 value」也靠它。
+     */
+    val options: List<TeachOption> = emptyList(),
 ) {
     fun snapshot(): TeachElementSnapshot = TeachElementSnapshot(
         tag = tag.uppercase(),
@@ -128,6 +133,8 @@ internal object TeachLearner {
                 value = ev.value,
                 snapshot = snap,
                 expect = synthesizeExpect(ev),
+                // 第二百批：只有下拉步带选项表（别让每个「输入框」都驮一份空表）
+                options = if (ev.action == TeachAction.SELECT) el.options else emptyList(),
             )
         }
 
