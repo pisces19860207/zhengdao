@@ -1748,6 +1748,7 @@
 <string name="skill_card_backup_none">首次保存，不覆盖任何文件</string>
 <string name="skill_card_draft_hint">先按草稿保存（索引标「未验证」），用满 %1$d 次自动转正，也可以在设置里手动转正</string>
 <string name="skill_card_active_hint">这条已经是正式技能：保存会更新它，旧版进备份</string>
+<string name="skill_card_schema_pass">schema 预检：通过（%1$d 个工具示例）</string>
 <string name="skill_card_blocked">还不能记：%1$s</string>
 <string name="skill_card_remember">记住它</string>
 <string name="skill_card_dismiss">先不记</string>

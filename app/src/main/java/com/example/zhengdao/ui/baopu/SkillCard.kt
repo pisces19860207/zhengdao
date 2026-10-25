@@ -39,6 +39,7 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.SkillSchemaPrecheck
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
@@ -75,8 +76,11 @@ internal sealed interface SkillCardBuild {
  * @param preview 正文前 [SkillStore.PREVIEW_CHARS] 字
  * @param purpose 用途一句话（与索引场景同一取法）
  * @param backupName 同名技能已存在时的备份名；null ＝ 首次保存，不覆盖任何文件
- * @param blocked 非 null ⇒ 这张卡不能点「记住它」（空正文／名字不可用／索引满）
+ * @param blocked 非 null ⇒ 这张卡不能点「记住它」（空正文／名字不可用／索引满／schema 预检不过）
  * @param isDraft 草稿 ⇒ 索引行会带「草稿·未验证」标
+ * @param schemaCheckedCount 正文里有几个工具示例过了 schema 预检（第一百八十五批）；
+ *   null ＝ 正文里没有可预检的示例，卡上不显示这一行。失败时不走这行——
+ *   失败原因已经带在 [blocked] 里（红字＋禁用保存）。
  */
 internal data class SkillCardView(
     val draft: SkillCardDraft,
@@ -88,6 +92,7 @@ internal data class SkillCardView(
     val blocked: String?,
     val isDraft: Boolean,
     val exists: Boolean,
+    val schemaCheckedCount: Int? = null,
 ) {
     /** 「记住它」能不能点：判据只有一条——数据层没挡住。 */
     val canRemember: Boolean get() = blocked == null
@@ -192,6 +197,9 @@ internal object SkillCardRules {
             backupStamp = stamp,
             indexCountAfterAdd = indexCountAfterAdd,
         )
+        // 第一百八十五批：正文里有没有工具示例、预检过没过，卡上要有一句交代——
+        // 通过显示数量；失败原因在 plan.blocked 里（同一套判据，UI 不自己再判一遍）。
+        val schema = SkillSchemaPrecheck.precheck(humanBody)
         return SkillCardBuild.Ready(
             SkillCardView(
                 draft = draft.copy(scope = SkillScope.PROJECT),
@@ -203,6 +211,7 @@ internal object SkillCardRules {
                 blocked = plan.blocked,
                 isDraft = isDraft,
                 exists = existingBody != null,
+                schemaCheckedCount = if (plan.blocked == null && schema.checked > 0) schema.checked else null,
             ),
         )
     }
@@ -427,6 +436,14 @@ internal fun BaopuSkillCard(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        view.schemaCheckedCount?.let { n ->
+            Text(
+                text = stringResource(R.string.skill_card_schema_pass, n),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         view.blocked?.let { reason ->
             Text(
                 text = stringResource(R.string.skill_card_blocked, reason),
