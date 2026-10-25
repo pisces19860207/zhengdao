@@ -379,6 +379,18 @@ internal object RunRules {
     /** 同工具同参重复调用熔断阈值（§1.1；真源在 [BaopuKernel.Budget.REPEAT_CALL_LIMIT]）。 */
     const val REPEAT_CALL_LIMIT = BaopuKernel.Budget.REPEAT_CALL_LIMIT
 
+    /**
+     * 一批最多执行几个调用（第二百一十四批 · 183-a；设计《Harness编排形态》§3.2）。
+     *
+     * 与 [MAX_STEPS]/[REPEAT_CALL_LIMIT] 同址，单测直接引用。**超批不整批拒**：
+     * 前 8 个照常排段执行，第 9 个起一个都不执行、只回灌「未执行：本批超过 8 个上限」，
+     * 且**不计入打转计数**（没执行过的调用不该为模型的超发背一次重复）。
+     *
+     * 为什么是 8：手机上一批 8 个读已经能在一轮里把「看目录＋读三份笔记＋查两处引用」
+     * 这类并行动作收完；再多，单批时限与 1.5k 回灌预算都装不下。
+     */
+    const val MAX_BATCH_CALLS = 8
+
     /** 连续无新工具结果步数熔断阈值（§1.3；真源在 [BaopuKernel.Budget.NO_PROGRESS_STEPS]）。 */
     const val NO_PROGRESS_STEPS = BaopuKernel.Budget.NO_PROGRESS_STEPS
 
