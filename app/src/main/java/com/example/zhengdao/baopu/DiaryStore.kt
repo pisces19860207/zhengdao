@@ -118,6 +118,24 @@ internal class DiaryStore(
                 }
             }
         }
+        // 第二百零八批 §2.7 `diary_maintain`：归档/浓缩/清理这类**自动**动作要进决策中心
+        // （用户看不见它动过什么，就得能查、能判错）。三档可逆性在这里如实降级：
+        // 只归档 ⇒ 可回（归档件还在）；真清掉了归档件 ⇒ 不可回（降级）。
+        if (digested > 0 || archivedFiles > 0 || cleanedFiles > 0) {
+            DecisionLedger.record(
+                DecisionDraft(
+                    kind = DecisionKind.DIARY_MAINTAIN,
+                    actor = DecisionActor.AUTO,
+                    reason = "日记维护：浓缩 $digested 条／归档 $archivedFiles 个／清理 $cleanedFiles 条",
+                    evidence = "diary:maintain:$nowMs",
+                    before = "日记 $digested 条在日记目录",
+                    after = "归档 $archivedFiles 个文件，清理 $cleanedFiles 条",
+                    atMs = nowMs,
+                    rollbackRef = archiveDir().absolutePath,
+                    reversible = cleanedFiles == 0,
+                ),
+            )
+        }
         return MaintenanceReport(digested, archivedFiles, cleanedFiles)
     }
 
@@ -301,6 +319,25 @@ internal class DiaryStore(
         db?.let { d ->
             val idx = DiaryIndexStore(d)
             doomed.forEach { deletedIndexRows += idx.deleteById(it) }
+        }
+        // 第二百零八批 §2.7 `diary_purge`：**真删必留账、必抽检**（147 边界③：删了就没了，
+        // 所以 reversible 恒 false——kind 的默认就不可回滚，这里连降级参数都不给）。
+        if (deletedEntries > 0 || deletedFiles > 0) {
+            DecisionLedger.record(
+                DecisionDraft(
+                    kind = DecisionKind.DIARY_PURGE,
+                    actor = DecisionActor.USER,
+                    reason = "日记真删：${plan.targetIds.size} 条（按${if (plan.scope == DiaryDeletionScope.DAY) "日" else "条"}）",
+                    evidence = "diary:${plan.targetIds.sorted().joinToString(",").take(200)}",
+                    before = "${plan.targetIds.size} 条日记",
+                    after = "0 条（删了 ${deletedEntries} 条／${deletedFiles} 个文件）",
+                    atMs = System.currentTimeMillis(),
+                    rollbackRef = "",
+                    reversible = false,
+                ),
+            ) ?: com.example.zhengdao.rootfs.RunLog.log(
+                "日记真删：决策记录没写成（${DecisionLedger.lastError}）",
+            )
         }
         return DiaryDeletionReport(deletedEntries, deletedFiles, rebuiltDigests, removedArchiveFiles, deletedIndexRows)
     }

@@ -596,12 +596,38 @@ internal class BaopuChatController(context: Context) {
                     )
                 }
                 com.example.zhengdao.rootfs.RunLog.log("对拍：\n${outcome.table}")
+                // 第二百零八批 §1 `eval_verdict`：对拍结论进决策中心（只留档、不回滚；
+                // 证据 id＝fixture＋技能，判错的样本才由 §2.7 的「判错了」生成）
+                com.example.zhengdao.baopu.DecisionLedger.record(
+                    com.example.zhengdao.baopu.DecisionDraft(
+                        kind = com.example.zhengdao.baopu.DecisionKind.EVAL_VERDICT,
+                        actor = com.example.zhengdao.baopu.DecisionActor.AUTO,
+                        reason = "对拍结论：${c.verdict.name}——${c.reason}",
+                        evidence = "eval:${fixture.id}/$skillName",
+                        before = "无结论",
+                        after = c.verdict.name,
+                        atMs = System.currentTimeMillis(),
+                        sessionId = sessionId ?: -1L,
+                    ),
+                )
                 appCtx.getString(R.string.eval_note_done, skillName, c.verdict.name, c.reason)
             }
             is com.example.zhengdao.baopu.EvalOutcome.NotRun -> {
                 appendEvalArchive(
                     com.example.zhengdao.baopu.EvalGate.unrunArchiveLine(
                         fixture.id, skillName, outcome.reason, java.time.LocalDate.now(),
+                    ),
+                )
+                com.example.zhengdao.baopu.DecisionLedger.record(
+                    com.example.zhengdao.baopu.DecisionDraft(
+                        kind = com.example.zhengdao.baopu.DecisionKind.EVAL_VERDICT,
+                        actor = com.example.zhengdao.baopu.DecisionActor.AUTO,
+                        reason = "对拍没跑：${outcome.reason}",
+                        evidence = "eval:${fixture.id}/$skillName",
+                        before = "无结论",
+                        after = "UNRUN",
+                        atMs = System.currentTimeMillis(),
+                        sessionId = sessionId ?: -1L,
                     ),
                 )
                 appCtx.getString(R.string.eval_note_unrun, outcome.line)
@@ -1480,6 +1506,199 @@ internal class BaopuChatController(context: Context) {
         com.example.zhengdao.baopu.agent.ToolGroupAudit.undo(group, scope)
         val name = appCtx.getString(baopuGroupTitle(group))
         undoneGrants.value = undoneGrants.value + name
+    }
+
+    // ── 第二百零八批 · 决策记录页（统一记录流：查／筛／回滚／抽检）────────────────────
+    //
+    // 纪律：本段只**转发**——读账本用 `DecisionLedger.read`，分组/筛选/分页在
+    // `DecisionGroups`（纯函数），抽检命中在 `DecisionSampling`（纯函数），
+    // 回滚执行经 `DecisionRollbacks.run`（失败**不留** `rollback_of`）。
+    // 这样「记录页显示什么」可以全在 JVM 里断言，控制器只剩接线。
+
+    /** 记录页版本号（回滚/抽检后 +1；UI 在组合里**无条件先读它**再读账本）。 */
+    var decisionRecordVersion by mutableIntStateOf(0)
+        private set
+
+    /** 记录页的一句话回执（回滚成没成、抽检记没记上；不许静默）。 */
+    var decisionNote by mutableStateOf<BaopuNote?>(null)
+
+    /** 决策记录流的落点目录（与 `BaopuRuntime` 装配的那个同一处）。 */
+    fun decisionLedgerRoot(): java.io.File =
+        java.io.File(appCtx.filesDir, com.example.zhengdao.baopu.kernel.BaopuKernel.Data.DIR_GLOBAL_MEMORY)
+
+    /** 记录页现读（新→旧，最多 [com.example.zhengdao.baopu.DecisionLedger.READ_LIMIT] 条）。 */
+    fun decisionRecordList(): List<com.example.zhengdao.baopu.DecisionRecord> =
+        com.example.zhengdao.baopu.DecisionLedger.read(decisionLedgerRoot())
+
+    /** 已经判过的记录 id（待抽检组要把它们排除）。 */
+    fun decisionRecordJudgedIds(): Set<String> =
+        com.example.zhengdao.baopu.DecisionReview.judgedIds(
+            com.example.zhengdao.baopu.DecisionReview.read(decisionLedgerRoot()),
+        )
+
+    /** 待抽检 id（§2.7 的命中集，已在纯函数层扣过配额）。 */
+    fun decisionRecordPendingIds(records: List<com.example.zhengdao.baopu.DecisionRecord>): Set<String> =
+        com.example.zhengdao.baopu.DecisionSampling.pendingIds(records, decisionRecordJudgedIds())
+
+    /**
+     * 回滚一条记录（二次确认在 UI；这里只执行）。
+     *
+     * 失败（没有回滚通道／盘上已变／kind 本来就不回滚）⇒ **不留** `rollback_of`、
+     * 也不把那条标成已回滚——只说一句话。
+     */
+    fun onDecisionRecordRollback(record: com.example.zhengdao.baopu.DecisionRecord) {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                com.example.zhengdao.baopu.DecisionRollbacks.run(
+                    target = record,
+                    root = decisionLedgerRoot(),
+                    handler = com.example.zhengdao.baopu.DecisionRollbackHandler { rollbackDecisionNow(it) },
+                    atMs = System.currentTimeMillis(),
+                )
+            }
+            decisionRecordVersion += 1
+            decisionNote = BaopuNote(
+                if (ok) "已回滚：${record.reason}" else "没能回滚：${record.reason}（盘上已变或这类动作没有回滚通道）",
+                if (ok) BaopuNoteLevel.Info else BaopuNoteLevel.Error,
+            )
+        }
+    }
+
+    /** 各 kind 的回滚干活体（IO 线程跑；只认 `reversible` 的那几类）。 */
+    private fun rollbackDecisionNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean =
+        when (r.kind) {
+            // 转正 ⇒ 回退为草稿（207 的那条路；账本再留一条 promote_undo）
+            com.example.zhengdao.baopu.DecisionKind.SKILL_PROMOTE ->
+                revertSkillPromoteNow(r.evidence.substringAfter('/')).first
+
+            // 退役/软退役 ⇒ 归档件搬回正文位＋补索引行（`.deleted-*` → `SKILL.md`）
+            com.example.zhengdao.baopu.DecisionKind.SKILL_RETIRE,
+            com.example.zhengdao.baopu.DecisionKind.SKILL_DRAFT_RETIRE,
+            -> restoreRetiredSkillNow(r)
+
+            // 免批写入的技能 ⇒ 撤销它（正文改名 `.deleted-*` ＋ 索引去行，不真删）
+            com.example.zhengdao.baopu.DecisionKind.SKILL_AUTO_WRITE -> revokeAutoWrittenSkillNow(r)
+
+            // 产物删除 ⇒ 从回收站搬回原位（逐条 rename；有一条搬不动就算失败）
+            com.example.zhengdao.baopu.DecisionKind.ARTIFACT_DELETE -> restoreArtifactsNow(r)
+
+            // 其余（搜索范围／日记维护／评测／自治动作）没有统一回滚通道 ⇒ 老实返回 false。
+            // 搜索范围为什么不在这里：198 的 ⑥① 把拨开关的写入点钉死在设置页一处，
+            // 「读侧可见面只有那两片 UI」这条门禁不许控制器引 search 包 ⇒ 它记录为不可回滚，
+            // 回滚动作＝点行跳回设置页拨回去。
+            else -> false
+        }
+
+    /**
+     * 撤销一条「免批写入」的技能（`skill_auto_write` 的回滚含义）。
+     *
+     * 只做两件既有动作的组合，不新开写口：`SkillStore.archive` 把正文改名
+     * `.deleted-*`（原件字节不动）＋ 索引去行（`SkillRules.removeIndexLine` ＋
+     * `PersonaFiles.applyProposal`）——与技能页「删除」同一条路（[softDeleteSkill] 的口径）。
+     */
+    private fun revokeAutoWrittenSkillNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean {
+        val file = java.io.File(r.rollbackRef)
+        if (!file.isFile) return false
+        val key = r.evidence.removePrefix("skill:")
+        val scope = key.substringBefore('/')
+        val name = key.substringAfter('/', "").substringBefore('@')
+        if (name.isEmpty()) return false
+        val archived = com.example.zhengdao.baopu.SkillStore.archive(
+            file,
+            com.example.zhengdao.util.TimeFormats.fileStamp(),
+        )
+        if (archived !is com.example.zhengdao.baopu.SkillWriteResult.Written) return false
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val layer = if (scope == "global") {
+            com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL
+        } else {
+            com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
+        }
+        val current = pf.read(layer).orEmpty()
+        val edit = com.example.zhengdao.baopu.SkillRules.removeIndexLine(current, name)
+        if (edit is com.example.zhengdao.baopu.SkillRules.EditResult.Ok) {
+            return pf.applyProposal(
+                com.example.zhengdao.baopu.PersonaProposal(
+                    layer = layer,
+                    current = current,
+                    proposed = edit.newText,
+                    reason = "决策中心回滚：撤销免批写入的技能（$name）",
+                ),
+            )
+        }
+        // 索引里本来就没有这一行 ⇒ 正文撤掉了也算撤成（没有假索引可去）
+        return true
+    }
+
+    /** 归档件搬回正文位（复用技能页「恢复」那条唯一入口 [restoreArchived]）。 */
+    private fun restoreRetiredSkillNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean {
+        val archived = java.io.File(r.rollbackRef)
+        if (!archived.isFile) return false
+        val name = archived.parentFile?.name ?: return false
+        val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+        val ws = workspaceRoot
+        val gRoot = java.io.File(pf.globalFile().parentFile ?: ws, "")
+        val scope = if (archived.absolutePath.startsWith(gRoot.absolutePath)) {
+            com.example.zhengdao.baopu.SkillScope.GLOBAL
+        } else {
+            com.example.zhengdao.baopu.SkillScope.PROJECT
+        }
+        val target = java.io.File(archived.parentFile, com.example.zhengdao.baopu.SkillRules.SKILL_FILE)
+        val row = ArchivedSkillRow(
+            name = name,
+            scope = scope,
+            file = archived,
+            target = target,
+            relPath = archived.name,
+            targetRelPath = com.example.zhengdao.baopu.SkillRules.SKILL_FILE,
+            archivedAt = "",
+        )
+        return restoreArchived(row, ws, gRoot, pf) is ArchivedOutcome.Restored
+    }
+
+    /** 从回收站搬回原位（`原位=>回收站位` 一对一对；缺一半就不动）。 */
+    private fun restoreArtifactsNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean {
+        if (r.rollbackRef.isBlank()) return false
+        val root = workspaceRoot
+        return r.rollbackRef.split("；").filter { it.contains("=>") }.map { pair ->
+            val orig = pair.substringBefore("=>")
+            val trash = pair.substringAfter("=>")
+            runCatching {
+                val from = java.io.File(root, trash)
+                val to = java.io.File(root, orig)
+                if (!from.isFile || to.exists()) return@runCatching false
+                to.parentFile?.mkdirs()
+                from.renameTo(to)
+            }.getOrDefault(false)
+        }.let { results -> results.isNotEmpty() && results.all { it } }
+    }
+
+    /**
+     * 抽检结论（「确认无误」／「判错了」）。
+     *
+     * 判错**就是**回归样本（`DecisionReview` 一行写全动作摘要＋`matrixVersion`＋`reasonCode`），
+     * 219 的测试读 [com.example.zhengdao.baopu.DecisionReview.regressionSamples] 即可。
+     */
+    fun onDecisionRecordJudge(record: com.example.zhengdao.baopu.DecisionRecord, wrong: Boolean) {
+        val entry = com.example.zhengdao.baopu.DecisionReview.entryOf(
+            record,
+            if (wrong) {
+                com.example.zhengdao.baopu.DecisionRecord.VERDICT_WRONG
+            } else {
+                com.example.zhengdao.baopu.DecisionRecord.VERDICT_CONFIRMED
+            },
+            System.currentTimeMillis(),
+        )
+        val ok = com.example.zhengdao.baopu.DecisionReview.append(decisionLedgerRoot(), entry)
+        decisionRecordVersion += 1
+        decisionNote = BaopuNote(
+            if (ok) {
+                if (wrong) "已记为判错：回归样本已生成（${entry.matrixVersion}／${entry.reasonCode}）" else "已确认无误"
+            } else {
+                "抽检结论没记上（要不再点一次）"
+            },
+            if (ok) BaopuNoteLevel.Info else BaopuNoteLevel.Error,
+        )
     }
 
     /**

@@ -76,6 +76,27 @@ internal object SkillPromote {
      * 审计写不进不许把已经落盘的转正回滚（71 批① 同口径）。
      */
     fun auditPromote(skillFile: File, scope: String, name: String, reason: String, nowMs: Long = System.currentTimeMillis()): Boolean =
+        auditPromoted(skillFile, scope, name, reason, nowMs).also {
+            // 第二百零八批 §1 `skill_promote`：转正进决策中心记录页（actor 按两条路分：
+            // 「满3次」＝自动，「手动」＝用户点的那一下）。证据 id＝技能键，回滚引用＝正文路径。
+            DecisionLedger.record(
+                DecisionDraft(
+                    kind = DecisionKind.SKILL_PROMOTE,
+                    actor = if (reason == REASON_FULL_USES) DecisionActor.AUTO else DecisionActor.USER,
+                    reason = "转正：$reason",
+                    evidence = "skill:$scope/$name",
+                    before = "draft",
+                    after = "active",
+                    atMs = nowMs,
+                    rollbackRef = skillFile.absolutePath,
+                ),
+            ) ?: com.example.zhengdao.rootfs.RunLog.log(
+                "技能转正：决策记录没写成（$name／${DecisionLedger.lastError}）",
+            )
+        }
+
+    /** 207 的审计行本体（第二百零八批抽出来，好让「审计 + 决策记录」在同一处结算）。 */
+    private fun auditPromoted(skillFile: File, scope: String, name: String, reason: String, nowMs: Long): Boolean =
         SkillAudit.record(
             skillFile = skillFile,
             scope = scope,
@@ -90,6 +111,40 @@ internal object SkillPromote {
 
     /** 回退 ⇒ 再留一条（action=promote_undo；技能回草稿，正文不删）。 */
     fun auditRevert(skillFile: File, scope: String, name: String, nowMs: Long = System.currentTimeMillis()): Boolean =
+        auditReverted(skillFile, scope, name, nowMs).also {
+            // 第二百零八批 §2：**回滚本身也留一条**（`rollback_of` 指向被回滚那条转正记录）。
+            // 账本里找不到那条（207 之前就转正的老账）⇒ 不硬编一个 id，只留日志——
+            // `rollback_of` 指不出目标就等于没痕，那比不记更糟。
+            val evidence = "skill:$scope/$name"
+            val target = DecisionLedger.installedRoot()?.let { r ->
+                DecisionLedger.read(r).firstOrNull {
+                    it.kind == DecisionKind.SKILL_PROMOTE && it.evidence == evidence
+                }
+            }
+            if (target == null) {
+                com.example.zhengdao.rootfs.RunLog.log("技能回退：决策记录里找不到对应的转正行（$name）——不落 rollback_of")
+            } else {
+                DecisionLedger.record(
+                    DecisionDraft(
+                        kind = DecisionKind.ROLLBACK_OF,
+                        actor = DecisionActor.USER,
+                        reason = "回退为草稿",
+                        evidence = target.id,
+                        before = "active",
+                        after = "draft",
+                        atMs = nowMs,
+                        rollbackRef = skillFile.absolutePath,
+                        rollbackOf = target.id,
+                        groupOverride = DecisionGroup.SKILL,
+                    ),
+                ) ?: com.example.zhengdao.rootfs.RunLog.log(
+                    "技能回退：决策记录没写成（$name／${DecisionLedger.lastError}）",
+                )
+            }
+        }
+
+    /** 207 的回退审计行本体。 */
+    private fun auditReverted(skillFile: File, scope: String, name: String, nowMs: Long): Boolean =
         SkillAudit.record(
             skillFile = skillFile,
             scope = scope,

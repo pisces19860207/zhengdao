@@ -60,6 +60,8 @@ private data class DeleteRun(
     val ledgerOk: Boolean,
     val ledgerMarked: Int,
     val ledgerWhy: String?,
+    /** 第二百零八批：真搬进回收站的那些「原位=>回收站位」（决策记录的回滚引用就是它）。 */
+    val restoreRefs: List<String> = emptyList(),
 )
 
 /**
@@ -139,6 +141,7 @@ internal fun ArtifactPickerDialog(
                 val run = withContext(Dispatchers.IO) {
                     val moved = ArrayList<String>()
                     val failed = ArrayList<String>()
+                    val restoreRefs = ArrayList<String>()
                     names.forEach { name ->
                         val rel = "${BaopuLongformPolicy.PRODUCT_DIR}/$name"
                         // 名字必须仍落在产物目录这一层（越界/带分隔符的一律不动）
@@ -150,7 +153,11 @@ internal fun ArtifactPickerDialog(
                         }
                         when (outcome) {
                             // 文件已不在原地（Moved）或盘上本来就没有（LedgerOnly）⇒ 都算删成
-                            is ArtifactMoveOutcome.Moved, is ArtifactMoveOutcome.LedgerOnly -> moved += name
+                            is ArtifactMoveOutcome.Moved -> {
+                                moved += name
+                                restoreRefs += "$rel=>${outcome.trashRelPath}"
+                            }
+                            is ArtifactMoveOutcome.LedgerOnly -> moved += name
                             else -> failed += name
                         }
                     }
@@ -166,6 +173,7 @@ internal fun ArtifactPickerDialog(
                         ledgerOk = ledgerResult.ok,
                         ledgerMarked = ledgerResult.marked.size,
                         ledgerWhy = ledgerResult.why,
+                        restoreRefs = restoreRefs,
                     )
                 }
                 // 审计一行（批次摘要；每个文件那一行在台账里）
@@ -173,6 +181,27 @@ internal fun ArtifactPickerDialog(
                     "产物批量删：请求 ${run.requested} 条，移入回收站 ${run.moved} 条，失败 ${run.failed} 条，" +
                         "台账删除标记 ${run.ledgerMarked} 条${if (run.ledgerOk) "" else "（未写成：${run.ledgerWhy}）"}",
                 )
+                // 第二百零八批 §1：**有副作用就有账**——勾选批量删进决策中心记录页
+                // （kind=artifact_delete；回滚引用＝回收站里那份，能捞回来）。
+                if (run.moved > 0) {
+                    val rec = com.example.zhengdao.baopu.DecisionLedger.record(
+                        com.example.zhengdao.baopu.DecisionDraft(
+                            kind = com.example.zhengdao.baopu.DecisionKind.ARTIFACT_DELETE,
+                            actor = com.example.zhengdao.baopu.DecisionActor.USER,
+                            reason = "勾选批量删（${run.moved} 条移入回收站）",
+                            evidence = "artifact:${run.restoreRefs.firstOrNull() ?: names.firstOrNull().orEmpty()}",
+                            before = "${run.requested} 条在产物目录",
+                            after = "${run.moved} 条进回收站",
+                            atMs = nowMs,
+                            rollbackRef = run.restoreRefs.joinToString("；"),
+                            // 盘上本来就没有的那些（LedgerOnly）没东西可捞 ⇒ 整批按降级处理
+                            reversible = run.restoreRefs.size == run.moved,
+                        ),
+                    )
+                    if (rec == null) {
+                        RunLog.log("产物批量删：决策记录没写成（${com.example.zhengdao.baopu.DecisionLedger.lastError}）")
+                    }
+                }
                 val msg = when {
                     run.failed > 0 -> res.getString(
                         R.string.baopu_artifact_picker_failed_partial,

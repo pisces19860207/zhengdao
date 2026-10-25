@@ -68,6 +68,24 @@ internal object SkillAudit {
         candidateId?.let { o.put("candidateId", it) }
         source?.let { o.put("source", it) }
         fileIn(dir).appendText(o.toString() + "\n", Charsets.UTF_8)
+        // 第二百零八批 §1 `skill_auto_write`：免批判据判 AUTO 后的落地**必须在决策中心
+        // 留一条**（这是「模型没问你就把技能写了」那件事的唯一账）。只在 auto=true 时记，
+        // 既有手动行一个字节不变；回滚引用＝正文路径（撤销该技能走 `.deleted-*`）。
+        if (auto) {
+            DecisionLedger.record(
+                DecisionDraft(
+                    kind = DecisionKind.SKILL_AUTO_WRITE,
+                    actor = DecisionActor.AUTO,
+                    reason = "$action：$reason",
+                    evidence = "skill:$scope/$name@$beforeSha",
+                    before = "旧正文 $beforeSha",
+                    after = "新正文 ${o.optString("afterSha")}",
+                    atMs = nowMs,
+                    sessionId = sessionId ?: -1L,
+                    rollbackRef = skillFile.absolutePath,
+                ),
+            ) ?: RunLog.log("技能免批落地：决策记录没写成（$name／${DecisionLedger.lastError}）")
+        }
         true
     }.getOrDefault(false)
 }

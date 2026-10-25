@@ -1975,4 +1975,35 @@
     <string name="skill_promote_reverted">已回退为草稿：%1$s</string>
     <string name="skill_promote_revert_missing">没有这条技能：%1$s</string>
     <string name="skill_promote_revert_not_active">「%1$s」不是正式技能，没有可回退的</string>
+
+    <!-- 第二百零八批 · 决策记录页（分组卡／筛选／抽检） -->
+    <string name="decision_filter_all">全部</string>
+    <string name="decision_filter_today">今天</string>
+    <string name="decision_filter_session">本会话</string>
+    <string name="decision_filter_reversible">仅可撤销</string>
+    <string name="decision_group_sampling">待抽检</string>
+    <string name="decision_group_skill">技能</string>
+    <string name="decision_group_grant">授权</string>
+    <string name="decision_group_artifact">产物</string>
+    <string name="decision_group_eval">评测</string>
+    <string name="decision_group_diary">日记</string>
+    <string name="decision_group_head">%1$s · %2$d 条 · 最近 %3$s</string>
+    <string name="decision_group_head_undoable">%1$s · %2$d 条 · 最近 %3$s · %4$d 条可撤销</string>
+    <string name="decision_group_more">更多（%1$d 组）</string>
+    <string name="decision_group_more_rows">组内还有 %1$d 条（往下翻再加载）</string>
+    <string name="decision_record_expand">展开</string>
+    <string name="decision_record_collapse">收起</string>
+    <string name="decision_record_rollback_confirm_title">撤销这一条？</string>
+    <string name="decision_record_rollback_confirm">「%1$s」会真的撤回去，并且再留一条撤销记录。</string>
+    <string name="decision_record_judge_ok">确认无误</string>
+    <string name="decision_record_judge_wrong">判错了</string>
+    <string name="decision_record_hint_sampling">这些是自动做的事，抽几条给你看——判错的那条会变成回归样本</string>
+    <string name="decision_record_time_now">刚刚</string>
+    <string name="decision_record_time_min">%1$d 分钟前</string>
+    <string name="decision_record_time_hour">%1$d 小时前</string>
+    <string name="decision_record_time_day">%1$d 天前</string>
+    <string name="decision_record_time_older">更早</string>
+    <string name="decision_record_actor_user">你</string>
+    <string name="decision_record_actor_model">模型</string>
+    <string name="decision_record_actor_auto">自动</string>
 </resources>

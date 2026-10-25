@@ -737,6 +737,10 @@ internal object BaopuRuntime {
         // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
         // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
         ToolGroupAudit.sink = { line -> RunLog.log(line) }
+        // 第二百零八批 §1：**决策记录流**的落点（`<App私有>/抱朴记忆/决策记录.jsonl`）。
+        // 只存 File 不存 Context（`StaticFieldLeak` 的教训）；各域的写口（技能/产物/日记/评测/
+        // 守卫管线）都经 `DecisionLedger.record(...)` 落账，找不到落点就只留一行日志、不静默。
+        DecisionLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
         // 第九十六批：人设补丁留痕（`[persona] …`）。同一条口径：纯函数产行、装配层落盘。
         PersonaAudit.sink = { line -> RunLog.log(line) }
         return engine

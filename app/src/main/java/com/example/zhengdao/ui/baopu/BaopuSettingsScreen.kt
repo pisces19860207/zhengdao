@@ -471,7 +471,17 @@ internal fun BaopuSettingsScreen(
                     Switch(
                         checked = scopeStatus.switchOn,
                         onCheckedChange = { want ->
+                            val wasOn = scopeStatus.switchOn
                             SearchScopeSettings.set(ctx, want)
+                            // 第二百零八批：搜索范围这件事**只在这里**被用户拨动（198 ⑥① 钉死的
+                            // 唯一写入点），所以决策记录也落在这里；撤回得回这一页拨回去
+                            // （那条记录因此是「不可回滚」的，原因见 DecisionLedger.recordReadScope）。
+                            com.example.zhengdao.baopu.DecisionLedger.recordReadScope(
+                                wasOn = wasOn,
+                                on = want,
+                            ) ?: RunLog.log(
+                                "搜索范围：决策记录没写成（${com.example.zhengdao.baopu.DecisionLedger.lastError}）",
+                            )
                             // ⚠️ 拨完之后再读一次状态：`scopeStatus` 是**拨之前**那一帧的 remember，
                             // 拿它的 `access` 写日志，「刚打开开关」那次会打成「开关是关的」——
                             // 这句是要给真机验收看的（⑥③），说反话比不说还糟。

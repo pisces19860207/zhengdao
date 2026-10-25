@@ -1287,6 +1287,12 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     controller = controller,
                     onDismiss = { showDecisionCenter = false },
                     onOpenSettings = { showDecisionCenter = false; showSettings = true },
+                    // 第二百零八批：记录页里产物类那一跳——回收站在抽屉里（同一个面板），
+                    // 所以「跳回原上下文」＝收决策中心、开抽屉（不新开页）。
+                    onOpenTrash = {
+                        showDecisionCenter = false
+                        scope.launch { drawerState.open() }
+                    },
                 )
             }
             // 高风险采纳的二次确认层（验收 #8：无确认不可采纳；完整前后对比）
