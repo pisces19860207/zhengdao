@@ -1959,4 +1959,29 @@
     <string name="baopu_activity_repair">Fix this</string>
     <string name="baopu_activity_repair_none">Per the diagnosis this failure is not worth retrying; see the reason in the detail row, try another way or ask</string>
 
+
+    <!-- Batch 202 · taste profile and example bank (settings page; the archive lives at 产物/口味档案.md) -->
+    <string name="baopu_taste_title">Taste profile</string>
+    <string name="baopu_taste_intro_title">Why it writes this way</string>
+    <string name="baopu_taste_intro">Only what you confirmed is kept: every entry carries evidence, and deleting one takes effect on the next round. Off-limits entries rank highest — a match drops the topic entirely.</string>
+    <string name="baopu_taste_path">Archive: %1$s</string>
+    <string name="baopu_taste_reload">Reload</string>
+    <string name="baopu_taste_create">Create an empty archive</string>
+    <string name="baopu_taste_evidence">Evidence: %1$s</string>
+    <string name="baopu_taste_delete">Delete</string>
+    <string name="baopu_taste_deleted">Deleted; the next round uses the updated profile</string>
+    <string name="baopu_taste_delete_failed">Not deleted (writing the file failed); try again later</string>
+    <string name="baopu_taste_rejected">%1$s line(s) written but not in effect</string>
+    <string name="baopu_taste_examples_title">Examples · %1$s good / %2$s bad</string>
+    <string name="baopu_taste_examples_muted">%1$s moved out (files kept, just not picked)</string>
+    <string name="baopu_taste_reason">Reason: %1$s</string>
+    <string name="baopu_taste_mute">Move out</string>
+    <string name="baopu_taste_muted_toast">Moved out of the library (file kept)</string>
+    <string name="baopu_taste_mute_failed">Not moved out (writing the list failed)</string>
+    <string name="baopu_taste_preview_title">Injection preview · what the next round gets</string>
+    <string name="baopu_taste_empty">None yet</string>
+    <string name="baopu_taste_sec_theme">Topic preferences</string>
+    <string name="baopu_taste_sec_style">Style preferences</string>
+    <string name="baopu_taste_sec_forbidden">Off-limits</string>
+    <string name="baopu_taste_drawer_desc">Why it writes this way: preferences and good/bad examples, each one deletable</string>
 </resources>

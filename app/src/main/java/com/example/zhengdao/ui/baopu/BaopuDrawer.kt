@@ -351,6 +351,8 @@ internal fun BaopuDrawer(
     onMcp: () -> Unit,
     onChannel: () -> Unit,
     onSettings: () -> Unit,
+    /** 第二百零二批：口味档案（偏好与范例库，独立一页——不挤进抱朴设置页）。 */
+    onTaste: () -> Unit,
     /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
     onPurgeSession: (Long) -> Boolean,
     // 134 批 lint(ModifierParameter)：modifier 必须排在**第一个可选参数**的位置；
@@ -598,6 +600,13 @@ internal fun BaopuDrawer(
             title = stringResource(R.string.baopu_drawer_settings),
             description = stringResource(R.string.baopu_drawer_settings_desc),
             onClick = onSettings,
+        )
+        // 第二百零二批：口味档案（与抱朴设置并排，因为它是「它为什么这么写」的账本，
+        // 不属于工具/模型那些开关）。
+        DrawerItem(
+            title = stringResource(R.string.baopu_taste_title),
+            description = stringResource(R.string.baopu_taste_drawer_desc),
+            onClick = onTaste,
         )
         Spacer(Modifier.height(24.dp))
     }
