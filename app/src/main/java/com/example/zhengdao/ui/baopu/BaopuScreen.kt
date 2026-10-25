@@ -673,11 +673,27 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             // skillNote、libraryNote，最坏同屏 ≈200dp，比正文还高。现在收进**一个通知位**：
             // 同一时刻只显最高一档（错误 > 行动 > 提示），其余折成「还有 N 条」，点开看全量。
             // 这里不写优先级、不写同档先后——那些全在 BaopuNoticeSlot 的纯函数里
-            // （行动 续跑>导出；错误 记忆>资料库>技能；提示 引擎人话>Info 便签）。
+            // （行动 续跑>导出；错误 记忆>资料库>技能；提示 引擎人话>Info 便签>未发播报）。
             // 这一层只回答两件事：**有没有这一条**（判据原样搬过来）与**它的文案／入口**。
             val stats = controller.backupStats
             val nowMs = remember(stats) { System.currentTimeMillis() }
             val engineNotice = controller.engineNotice.value
+            // ── 第一百九十五批：未发播报（§4：v1 **不做定时**，只在打开抱朴时给一句）──────
+            // 读一次，不是每次重组都读库＋读偏好：闸门键在 `logisticsTick` 上。
+            // 面板关掉时重数一次——她可能刚在面板里点了「读 inbox」，那一天的数就变了。
+            // 判据（该不该播、播哪一句）全在 `LogisticsNotice` 的纯函数里，这里只接线。
+            var logisticsTick by remember { mutableIntStateOf(0) }
+            var logisticsSheetOpen by remember { mutableStateOf(false) }
+            val logisticsZone = remember { java.util.TimeZone.getDefault() }
+            val logisticsDay = remember { com.example.zhengdao.baopu.logistics.LogisticsAsk.dayKeyOf(nowMs, logisticsZone) }
+            val logisticsNotice = remember(logisticsTick) {
+                com.example.zhengdao.baopu.logistics.LogisticsNotice.forOpen(
+                    context,
+                    BaopuRuntime.logisticsStore(context),
+                    logisticsDay,
+                    logisticsZone,
+                )
+            }
             val noticeEntries = buildList {
                 // ① 错误档：errorContainer 红底、常驻、点掉才清（清通道仍是那三个既有 clear*）
                 controller.pendingNote?.let { note ->
@@ -763,8 +779,33 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 if (!engineNotice.isNullOrBlank()) {
                     add(BaopuNoticeEntry(source = BaopuNoticeSource.EngineNotice, text = engineNotice))
                 }
+                //    未发播报（195 批 §4）：提示档末位（背景状态，不是对她刚才那一下的回应）。
+                //    入口**长在条上**（63 批保命线 3 的同一处置）：点「展开看」直接进查询面板，
+                //    不让她读完一句还得自己去抽屉里找那一行。
+                logisticsNotice?.let { line ->
+                    add(
+                        BaopuNoticeEntry(
+                            source = BaopuNoticeSource.LogisticsUnsent,
+                            text = line,
+                            action = BaopuNoticeAction(stringResource(R.string.baopu_logistics_notice_open)) {
+                                logisticsSheetOpen = true
+                            },
+                        ),
+                    )
+                }
             }
             BaopuNoticeSlot(noticeEntries)
+            // 「今天提示过了」记在这一行**已经交给通知位之后**，不在 forOpen 里顺手写：
+            // 组合期写偏好＝把「也许没显示」当成「已经说过」，那样今天她就再也没机会看到这条。
+            // 折进「+N」也算说过：全量列表里这句原文都在，点开就读得到（不重弹，否则成了催）。
+            LaunchedEffect(logisticsNotice) {
+                if (logisticsNotice != null) {
+                    com.example.zhengdao.baopu.logistics.LogisticsNotice.markShown(context, logisticsDay)
+                }
+            }
+            if (logisticsSheetOpen) {
+                LogisticsSheet(onDismiss = { logisticsSheetOpen = false; logisticsTick++ })
+            }
             // 顶栏那一条（2026-10-18 定稿「固定到现在这个位置，不用跟着正文框跑」＋
             // 38 批 §8 追加「这一栏改成产物」）：位置不变、折叠态仍是一行高（§8.3）。
             // 二选一的判断全在 topBarSlot 里，这一层不写 isEmpty()。

@@ -189,7 +189,11 @@ class NoticeSlotTest {
     fun `B1_八处旧渲染点各有新家_屏里只剩一个出口`() {
         val src = screen()
         assertEquals("BaopuScreen 里只许有一个通知位出口", 1, Regex("BaopuNoticeSlot\\(").findAll(src).count())
-        assertEquals("八条条目构造＝旧八处各有新家，少一项就是打回", 8, Regex("BaopuNoticeEntry\\(").findAll(src).count())
+        // 61 批立这条时是 8；第一百九十五批把它改到 9——**不是**旧八处搬家，是新加了一档
+        // （`LogisticsUnsent` 未发播报，§4 那句「打开抱朴时给一句话」）。
+        // 旧八处的判据在下面逐条列着，那八条一个字没动；这里继续用精确数，
+        // 是为了「谁再新加一档必须回来登记」，而不是「以后加多少都不管」。
+        assertEquals("八条旧渲染点＋195 批未发播报＝九条条目构造，少一项就是打回", 9, Regex("BaopuNoticeEntry\\(").findAll(src).count())
         listOf(
             "controller.pendingNote?.let { note ->",
             "controller.skillNote?.let { note ->",
@@ -248,7 +252,10 @@ class NoticeSlotTest {
         assertTrue("条上必须渲染 top.action 那颗按钮", row.contains("top.action?.let"))
         assertTrue("按钮真的接上 run", src.contains("TextButton(onClick = a.run, enabled = a.enabled)"))
         assertTrue("「+N」也在条上（点开才谈全量）", row.contains("more > 0"))
-        assertEquals("屏里两个行动入口：导出／续跑", 2, Regex("BaopuNoticeAction\\(").findAll(screen()).count())
+        // 61 批的两个行动入口（导出／续跑）之外，第一百九十五批加了第三个：
+        // 未发播报那句条上的「展开看」直接进查询面板（63 批保命线 3 同处置：入口长在条上，
+        // 不让她读完一句还得自己去抽屉里找那一行）。数照旧写死，新加一档必须回来登记。
+        assertEquals("三个行动入口：导出／续跑／查询", 3, Regex("BaopuNoticeAction\\(").findAll(screen()).count())
     }
 
     /** 点掉错误便签走的还是那三个既有 clear*（61 批 B3 的原话，跟着渲染点搬进通知位）。 */

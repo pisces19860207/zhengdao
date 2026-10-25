@@ -487,6 +487,8 @@ class ToolSchemaAllTest {
             ),
             "write_skill" to JSONObject().put("name", "试样").put("body", "# 试样\n"),
             "append_persona" to JSONObject().put("text", "先列计划再动手"),
+            // 第一百九十五批：查询（唯一必填是 ask，三档之一；其余四个条件都可省）
+            "logistics_query" to JSONObject().put("ask", "loaded"),
             "read" to JSONObject().put("path", "a.md"),
             "bash" to JSONObject(),
         )

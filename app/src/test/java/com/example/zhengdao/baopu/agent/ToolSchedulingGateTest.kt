@@ -40,6 +40,9 @@ class ToolSchedulingGateTest {
         // 第一百五十五批：novel_project/novel_continue 都是纯文件读（FREE 只读、parallelSafe），
         // novel_create 会写盘（CONFIRM）**不在此列**
         "novel_project", "novel_continue",
+        // 第一百九十五批：查询读的是本机当日发货表（一次查询=一次只读 SELECT，不写盘、不碰工作区、
+        // 不调模型也不联网），与别的读可并行；写台账的是导入那一步，不是这个工具
+        "logistics_query",
     )
 
     // ── ① 分类自洽 ────────────────────────────────────────────────────────

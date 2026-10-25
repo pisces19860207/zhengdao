@@ -79,6 +79,8 @@ class ToolRegistrySwitchTest {
                 "capabilities", "preview_local_file",
                 // 第一百二十七批：多 Agent 协作（AGENT 组，默认不可见但默认启用）
                 "run_subtasks",
+                // 第一百九十五批：查询（LOGISTICS 组，默认不可见、capabilities 解锁；表尾一条）
+                "logistics_query",
             ),
             reg.names(),
         )

@@ -200,6 +200,8 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     // 第一百二十三批：外部 MCP 工具组（成员由连接成功后动态注册，默认不可见）
     ToolGroup.MCP -> R.string.baopu_tools_group_mcp
     ToolGroup.AGENT -> R.string.baopu_tools_group_agent
+    // 第一百九十五批：物流查询（默认不可见，capabilities 解锁）
+    ToolGroup.LOGISTICS -> R.string.baopu_tools_group_logistics
     // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
     ToolGroup.COMPAT -> compatNoSwitch()
 }
@@ -235,6 +237,8 @@ internal fun baopuGroupLine(group: ToolGroup): Int = when (group) {
     ToolGroup.PREVIEW -> R.string.baopu_group_line_preview
     ToolGroup.MCP -> R.string.baopu_group_line_mcp
     ToolGroup.AGENT -> R.string.baopu_group_line_agent
+    // 第一百九十五批：查询只读，读的是本机当天导入的表（不联网、不调模型）
+    ToolGroup.LOGISTICS -> R.string.baopu_group_line_logistics
     ToolGroup.COMPAT -> compatNoSwitch()
 }
 

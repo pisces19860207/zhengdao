@@ -577,6 +577,18 @@ internal fun BaopuDrawer(
             onClick = { artifactShelfOpen = true },
         )
 
+        // ── 查询（第一百九十五批 §3 的 C 档：本地查询面板）─────────────────────
+        // 紧跟「产物」那一行：它读的就是 产物/物流/inbox 里那份人工导出的表，
+        // 跟着「你在哪个文件夹干活」走，不是全局设置 ⇒ 不放进设置页。
+        // **永远可点**（与产物那一行同一理由）：一张表都没导过时，这一页恰恰是「读 inbox」的入口，
+        // 置灰就成了「要先有数据才能拿数据」。
+        var logisticsOpen by remember { mutableStateOf(false) }
+        DrawerItem(
+            title = stringResource(R.string.baopu_logistics_drawer_title),
+            description = stringResource(R.string.baopu_logistics_drawer_desc),
+            onClick = { logisticsOpen = true },
+        )
+
         // ── 回收站（第三十六批 A 段）────────────────────────────────────────
         // 常驻一行：N=0 时**只把 enabled 关掉，不许整条消失**（判据 T1）。
         // 为什么放在工作区树后面：回收站是**这个工作区里**的一个目录（Download/证道/回收站），
@@ -644,6 +656,12 @@ internal fun BaopuDrawer(
                     artifactTick++ // 关掉面板再数一次：面板里可能已经搬走了几条
                 },
             )
+        }
+
+        // 查询面板（195 批 §3 C 档）。放这儿而不是紧贴上面那一行：Dialog 是独立窗口，
+        // 行的顺序由上面 DrawerItem 的书写顺序决定，与这里无关（与 38 批同一处置）。
+        if (logisticsOpen) {
+            LogisticsSheet(onDismiss = { logisticsOpen = false })
         }
 
         HorizontalDivider(

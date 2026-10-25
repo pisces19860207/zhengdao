@@ -57,7 +57,10 @@ internal enum class BaopuNoticeLevel { Error, Action, Hint }
  * 定稿里那张「同优先级谁先上」的表就钉在这个枚举上，不在 UI 里散着写 if：
  * - 错误：记忆写失败 > 资料库错 > 技能错
  * - 行动：续跑 > 导出
- * - 提示：引擎人话 > Info 便签（进度一句话）
+ * - 提示：引擎人话 > Info 便签（进度一句话）> 未发播报
+ *
+ * 第一百九十五批末档的解释：未发播报是**背景状态**（今天还有几单没发），不是对她刚才那一下
+ * 操作的回应，所以排在最后——引擎人话与便签都是「刚发生了什么」，她那一下更需要立刻看到。
  */
 internal enum class BaopuNoticeSource(val level: BaopuNoticeLevel, val rank: Int) {
     MemoryWriteError(BaopuNoticeLevel.Error, 0),
@@ -67,6 +70,7 @@ internal enum class BaopuNoticeSource(val level: BaopuNoticeLevel, val rank: Int
     Export(BaopuNoticeLevel.Action, 1),
     EngineNotice(BaopuNoticeLevel.Hint, 0),
     InfoNote(BaopuNoticeLevel.Hint, 1),
+    LogisticsUnsent(BaopuNoticeLevel.Hint, 2),
 }
 
 /**
