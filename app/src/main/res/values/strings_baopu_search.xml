@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 本批文案单独成文件（房型照第一百五十八批的 strings_baopu_image.xml）：strings.xml 是每批都会碰的公共文件，抽出来少一处冲突点，也让本批的键名一眼数得清。资源合并后与放进 strings.xml 完全等价。 -->
+<resources>
+<!-- 第一百九十八批：全手机搜索（S3；分片扫描＋倒排＋增量＋回跳。只读，能搜哪儿仍由设置页那个开关说了算） -->
+<string name="baopu_phone_search_card">全手机搜索（只读）</string>
+<string name="baopu_phone_search_desc">搜的是已经建好索引的文件内容：第一次先点「扫描本机」，之后按上次的进度补扫。不上传、不后台常驻扫，一个文件都不改。</string>
+<string name="baopu_phone_search_hint">要搜的词（空格分开）</string>
+<string name="baopu_phone_search_action_search">搜索</string>
+<string name="baopu_phone_search_action_scan">扫描本机</string>
+<string name="baopu_phone_search_action_stop">停止</string>
+<string name="baopu_phone_search_action_rebuild">重建索引</string>
+<string name="baopu_phone_search_scanning">正在扫（一片 2000 个文件，点「停止」也要等当前这片扫完才停下）</string>
+<string name="baopu_phone_search_stop_tapped">已请求停止：当前这一片扫完就停下，已经入库的那几片不丢</string>
+<string name="baopu_phone_search_progress">已扫 %1$d／约 %2$d</string>
+<string name="baopu_phone_search_progress_unknown">已扫 %1$d（总数还不知道：还没完整扫过一次，不拿这一片冒充满总数）</string>
+<string name="baopu_phone_search_no_db">还没建过索引（库里一个文件都还没记）：先点「扫描本机」</string>
+<string name="baopu_phone_search_root_never">%1$s：还没全扫过</string>
+<string name="baopu_phone_search_root_scanned">%1$s：上次全扫见过 %2$d 个文件</string>
+<string name="baopu_phone_search_terms_cut">词太多，这一次只按前 %1$d 个词查</string>
+<string name="baopu_phone_search_empty">没搜到：换个词，或先点「扫描本机」把索引建全</string>
+<string name="baopu_phone_search_score">相关度 %1$d ／ 这个根在 %2$s</string>
+<string name="baopu_phone_search_action_session">跳到那个会话</string>
+<string name="baopu_phone_search_ownership_todo">这条文件的归属记录（归属清单）是下一批的活，暂时给不了</string>
+<string name="baopu_phone_search_action_preview">预览</string>
+<string name="baopu_phone_search_action_copy">复制进证道</string>
+<string name="baopu_phone_search_copied">已放进投递目录：%1$s</string>
+<string name="baopu_phone_search_copy_exists">投递目录里已经有同名文件，没有覆盖：%1$s</string>
+<string name="baopu_phone_search_copy_failed">复制失败：盘上没写成，原来那个文件一个字节都没动</string>
+<string name="baopu_phone_search_copy_bad_name">复制失败：这个名字放不下（路径不合规，只在证道里面另起目录）</string>
+<string name="baopu_phone_search_stop_cancelled">你点了停止：剩下的还没扫，下次接着扫</string>
+<string name="baopu_phone_search_stop_hits">够一屏就先停在这儿（想看全的再点一次「扫描本机」）</string>
+<string name="baopu_phone_search_stop_timeout">到 90 秒上限自动停：剩下的还没扫，下次接着扫</string>
+<string name="baopu_phone_search_stop_done">这一次扫完了</string>
+    <plurals name="baopu_phone_search_roots">
+        <item quantity="other">账上有 %1$d 个根</item>
+    </plurals>
+    <plurals name="baopu_phone_search_unclaimed">
+        <item quantity="other">没入账 %1$d 个（扩展名不收，或超过 2 MiB）</item>
+    </plurals>
+    <plurals name="baopu_phone_search_capped">
+        <item quantity="other">长文截断 %1$d 篇（只按前 12 万字符建索引）</item>
+    </plurals>
+    <plurals name="baopu_phone_search_failed">
+        <item quantity="other">%1$d 片入库失败（那几片没写成，其它片照常入账）</item>
+    </plurals>
+</resources>

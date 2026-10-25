@@ -1261,6 +1261,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuSettingsScreen(
                     onDismiss = { showSettings = false },
                     onOpenSessionLibrary = { showSettings = false; showSessionLibrary = true },
+                    // 第一百九十八批 §1⑤ 回跳路径①：搜索命中→产生它的那个会话。
+                    // 走 [BaopuChatController.requestOpenSession] 那条既有的门（别的会话在跑 ⇒ 只出确认卡，
+                    // 不停任何东西），不在这儿另造一套切换；先关设置页，那张卡才露得出来。
+                    onOpenSession = { sid -> showSettings = false; controller.requestOpenSession(sid) },
                 )
             }
             // ── 第二百零二批：口味档案（独立一页，不与设置页混）────────────────

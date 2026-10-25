@@ -69,6 +69,18 @@ internal class SearchDb(context: Context) : SQLiteOpenHelper(
     }.getOrDefault(false)
 
     /**
+     * 写侧句柄（房型照 `BaopuDb.write`：**给句柄，不包事务**）。事务三件套由调用方挂在自己的
+     * lambda 里写——仓里已有九处这个形状（RunEngine／PlanStore／BaopuChatController 的
+     * `db.write { d -> d.beginTransaction() … }`），[PhoneIndex.transact] 是第十处。
+     *
+     * 为什么不提成「带 `SQLiteDatabase` 形参的私有方法」：lint 的 `UseKtx` 只在那种形状下点
+     * `beginTransaction`（2026-10-25 两轮现数：方法形参形状红、lambda 形状全绿）。它建议的
+     * `SQLiteDatabase.transaction` 属 `androidx.core.database.sqlite.SQLiteDatabaseKt`（不是
+     * `sqlite-ktx`——第一轮找错了 artifact），而本仓解析的 core-ktx 1.19.1 的 classes.jar 只有
+     * 183 字节（unzip 现数）＝那个类不在这个版本里 ⇒ 建议用不了。不压制、不改基线。
+     */
+    fun <T> write(block: (SQLiteDatabase) -> T): T = block(writableDatabase)
+    /**
      * 只读连接（查询面）。**不做 runCatching**：拿不到连接要在调用方那里被吞成
      * 「没有授予/没有行」，吞的位置只有一处（[SqlSearchScopeStore]），壳里再吞一层就查不到是谁放行的。
      */

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This batch's strings live in their own file, same shape as batch 158's strings_baopu_image.xml. strings.xml is shared by every batch, so splitting it removes a conflict point; merged resources are equivalent. -->
+<resources>
+<!-- Batch 198: phone-wide search (S3; sharded scan + inverted index + incremental + jump back. Read only - the switch on the settings screen still decides what is searchable) -->
+<string name="baopu_phone_search_card">Phone-wide search (read only)</string>
+<string name="baopu_phone_search_desc">Searches the contents already written into the index: tap Scan once to build it, later runs only re-check what changed. Nothing is uploaded, nothing scans in the background, no file is modified.</string>
+<string name="baopu_phone_search_hint">Words to search (space separated)</string>
+<string name="baopu_phone_search_action_search">Search</string>
+<string name="baopu_phone_search_action_scan">Scan</string>
+<string name="baopu_phone_search_action_stop">Stop</string>
+<string name="baopu_phone_search_action_rebuild">Rebuild index</string>
+<string name="baopu_phone_search_scanning">Scanning (2000 files per shard; Stop only takes effect once the current shard is done)</string>
+<string name="baopu_phone_search_stop_tapped">Stop requested: this shard finishes first, shards already indexed stay</string>
+<string name="baopu_phone_search_progress">Scanned %1$d of about %2$d</string>
+<string name="baopu_phone_search_progress_unknown">Scanned %1$d (no total yet: never completed a full pass, this shard is not shown as the total)</string>
+<string name="baopu_phone_search_no_db">No index yet (the ledger holds no file): tap Scan first</string>
+<string name="baopu_phone_search_root_never">%1$s: never fully scanned</string>
+<string name="baopu_phone_search_root_scanned">%1$s: files seen by the last full pass: %2$d</string>
+<string name="baopu_phone_search_terms_cut">Too many words: this query used only the first %1$d</string>
+<string name="baopu_phone_search_empty">No hit: try other words, or tap Scan to finish the index</string>
+<string name="baopu_phone_search_score">Score %1$d / root at %2$s</string>
+<string name="baopu_phone_search_action_session">Open that session</string>
+<string name="baopu_phone_search_ownership_todo">The ownership record for this file is next batch work; not available yet</string>
+<string name="baopu_phone_search_action_preview">Preview</string>
+<string name="baopu_phone_search_action_copy">Copy into Zhengdao</string>
+<string name="baopu_phone_search_copied">Copied into the deliver folder: %1$s</string>
+<string name="baopu_phone_search_copy_exists">The deliver folder already has that name, nothing was overwritten: %1$s</string>
+<string name="baopu_phone_search_copy_failed">Copy failed: nothing was written, the source file is untouched</string>
+<string name="baopu_phone_search_copy_bad_name">Copy failed: that name is not allowed (path rejected, stays inside Zhengdao)</string>
+<string name="baopu_phone_search_stop_cancelled">You stopped it: the rest is not scanned, next run picks it up</string>
+<string name="baopu_phone_search_stop_hits">Enough for one screen, stopped here (tap Scan again for the full pass)</string>
+<string name="baopu_phone_search_stop_timeout">Hit the 90 second budget and stopped: the rest is not scanned, next run picks it up</string>
+<string name="baopu_phone_search_stop_done">This pass finished</string>
+    <plurals name="baopu_phone_search_roots">
+        <item quantity="one">%1$d root on the ledger</item>
+        <item quantity="other">%1$d roots on the ledger</item>
+    </plurals>
+    <plurals name="baopu_phone_search_unclaimed">
+        <item quantity="one">%1$d file not indexed (extension not accepted, or over 2 MiB)</item>
+        <item quantity="other">%1$d files not indexed (extension not accepted, or over 2 MiB)</item>
+    </plurals>
+    <plurals name="baopu_phone_search_capped">
+        <item quantity="one">%1$d long text capped (indexed from its first 120000 characters)</item>
+        <item quantity="other">%1$d long texts capped (indexed from their first 120000 characters)</item>
+    </plurals>
+    <plurals name="baopu_phone_search_failed">
+        <item quantity="one">%1$d shard failed to write (others still landed)</item>
+        <item quantity="other">%1$d shards failed to write (others still landed)</item>
+    </plurals>
+</resources>

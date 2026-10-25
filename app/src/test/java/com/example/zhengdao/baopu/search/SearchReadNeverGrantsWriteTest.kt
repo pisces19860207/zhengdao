@@ -10,8 +10,15 @@
 // 2. **对照层**：把读侧账本接到写判据的 `granted` 口上（那次接线错误本尊），输出**立刻**不一致
 //    ——这一条证明第 1 层不是「两侧同时漂」的空跑。
 // 3. **结构层**：写判据的入参里没有读侧的位置；`WorkspaceAccessPolicy` 只有两个读数（都是写侧的）；
-//    两个方向都不许 import 对方（读侧只被允许引 `WorkspaceGrantRules` 一个符号，用它把根归一成
-//    与写侧同一个字符串），读侧一片都不写盘、不联网、不自己抬权限，查询词进不了参数也进不了日志。
+//    两个方向都不许 import 对方（读侧只被允许引写侧那几个符号：`WorkspaceGrantRules` 用来把根归一成
+//    与写侧同一个字符串，S3 另外那几条全是「同一把尺子的第二个消费者」，逐条钉在哪个文件里；
+//    读侧一片都不写盘、不联网、不自己抬权限；查询词只进绑定参数，不进日志也不进 SQL 文本）。
+//
+// 第一百九十八批（S3）改了两处措辞，判据本身没松：
+// - 「读侧不接查询词」→「接了不许留」：S3 有了 `PhoneSearch.query(ctx, text)`，所以钉的改成
+//   原文只到切词为止、日志与 SQL 文本一个字都不带（列那半边仍由 `SearchSqlTest` 钉）。
+// - 包根 import 白名单从 2 条长成 6 条，并且**每条钉死所在文件**——白名单可以加长，
+//   但不能长成「六个文件随便引写侧邻居」。
 //
 // 说清楚各层的边界（免得读数被当成比实际更强的结论）：行为层在 JVM 里能拉的读侧状态只有
 // 纯算式与内存账本——生产那两样（`Environment.isExternalStorageManager()`、prefs 键）都要 Context，
@@ -242,10 +249,25 @@ class SearchReadNeverGrantsWriteTest {
     }
 
     @Test
-    fun `结构_读侧只被允许引两个baopu包根符号`() {
+    fun `结构_读侧只被允许引这些baopu包根符号`() {
         val allowed = setOf(
             "com.example.zhengdao.baopu.BaopuWorkspace", // 工作区根在哪（丁档要知道根是不是私有目录）
             "com.example.zhengdao.baopu.WorkspaceGrantRules", // 只用它的 rootKey：两边同一个字符串
+            // ↓ 第一百九十八批（S3）加的四条，全是「同一把尺子第二个消费者」，没有一条是判据：
+            "com.example.zhengdao.baopu.MemoryRules", // tokensOf：切词不许另造一把
+            "com.example.zhengdao.baopu.hasNulByte", // 前 8KB 有 NUL：与产物白名单同一个判据
+            "com.example.zhengdao.baopu.agent.TextDecode", // 编码嗅探／解码：与 file_info 同一套
+            "com.example.zhengdao.baopu.agent.FileInfoTool", // guessEncoding 的判序（BOM 先于 NUL）
+            "com.example.zhengdao.baopu.library.LibraryPaths", // classify/TEXT_EXTS/2 MiB：认领口径的真源
+        )
+        // 每条新许可钉死在**哪个文件**里出现（照下面 mkdirs 那两条例外的房型）：
+        // 「复用一把尺子」变成「六个文件都能随便引」就是这份白名单将来漂的样子。
+        val onlyIn = mapOf(
+            "com.example.zhengdao.baopu.MemoryRules" to "PhoneRank.kt",
+            "com.example.zhengdao.baopu.hasNulByte" to "PhoneText.kt",
+            "com.example.zhengdao.baopu.agent.TextDecode" to "PhoneText.kt",
+            "com.example.zhengdao.baopu.agent.FileInfoTool" to "PhoneText.kt",
+            "com.example.zhengdao.baopu.library.LibraryPaths" to "PhoneSearch.kt",
         )
         searchSources().forEach { (name, text) ->
             val fromBaopuRoot = text.lines()
@@ -258,10 +280,22 @@ class SearchReadNeverGrantsWriteTest {
                     "（WorkspaceAccessPolicy／AccessVerdict／workspaceBoundaryCheck／WorkspaceGrants 都不在允许清单里）",
                 fromBaopuRoot.all { it in allowed },
             )
+            onlyIn.forEach { (sym, owner) ->
+                if (sym in fromBaopuRoot) {
+                    assertEquals("$name 引了「$sym」：这条复用只许写在 $owner 里", owner, name)
+                }
+            }
             listOf("WorkspaceAccessPolicy", "AccessVerdict", "workspaceBoundaryCheck", "workspaceAccessVerdict", "WorkspaceGrants.")
                 .forEach { sym ->
                     assertFalse("$name 出现写侧判据符号「$sym」", code(text).contains(sym))
                 }
+        }
+        // `terminal.DocxTextExtractor` 不在这张表里（不在 `baopu.` 包根下，上面的 filter 抓不到它），
+        // 但它同样是「第二个消费者」⇒ 单独钉一处：只许 PhoneText.kt 引。
+        searchSources().forEach { (name, text) ->
+            if (text.contains("import com.example.zhengdao.terminal.DocxTextExtractor")) {
+                assertEquals("$name 引了 docx 抽取器：只许 PhoneText.kt 一处", "PhoneText.kt", name)
+            }
         }
     }
 
@@ -297,18 +331,21 @@ class SearchReadNeverGrantsWriteTest {
     }
 
     @Test
-    fun `负例_查询词进不了参数也进不了日志`() {
-        // 查询词是用户的意图，比文件内容更敏感，而且它会漂进三处：函数参数、日志、库里的列。
-        // 列那半边由 SearchSqlTest 钉（列白名单里没有能存查询词的列，也没有 FTS 虚拟表——
-        // 虚拟表会把原文留在索引里）。这里钉前两半：本批读侧对外一片都不接查询词。
+    fun `负例_查询词只进绑定参数_不进日志也不进SQL文本`() {
+        // 第一百九十七批时读侧「压根不接查询词」，所以那门禁的是参数名；第一百九十八批（S3）
+        // 接了——唯一的口是 `PhoneSearch.query(ctx, text, topK)`。所以这条从「不许接」改判成
+        // **「接了不许留」**：用户那几个字只许活在两处——函数入参和 SQL 的绑定参数，
+        // 三处持久面（SQL 文本／RunLog／库里的列）一处都不能出现它。
+        // 派工单 §2 点名的负例「把查询词写进 err／写进日志」在这一条里逐层钉。
         val queryWords = listOf("query", "keyword", "keywords", "phrase", "pattern", "regex")
         searchSources().forEach { (name, text) ->
             val c = code(text)
             signatures(c).forEach { (fn, params) ->
                 queryWords.forEach { w ->
                     assertFalse(
-                        "$name 的 `fun $fn($params)` 接了查询词「$w」：这一批读侧没有按词检索的口，" +
-                            "S3 真要接，改这条门禁时要一起说清词落在哪儿、留不留",
+                        "$name 的 `fun $fn($params)` 接了查询词一类的东西「$w」：" +
+                            "S3 的口径是入参叫 text（原文）或 terms/tokens（切好的词），" +
+                            "名字里带 query/keyword 就说明有人打算把原文一路带下去",
                         params.containsWord(w),
                     )
                 }
@@ -326,6 +363,36 @@ class SearchReadNeverGrantsWriteTest {
                 fn == "selectSearch" && params.contains("tokenCount") && !params.containsWord("query")
             },
         )
+        // 占位符生成器只许产出 `?`、逗号、空格——多一个字符就是有人在拼词进 SQL 文本。
+        (1..SearchSql.MAX_TOKENS).forEach { n ->
+            val ph = SearchSql.placeholders(n)
+            assertEquals("placeholders($n) 只该是问号与分隔符", true, ph.all { it == '?' || it == ',' || it == ' ' })
+            assertEquals("placeholders($n) 的问号个数", n, ph.count { it == '?' })
+        }
+        // 唯一接原文的口：`PhoneSearch.query` 的第一手动作必须是切词（`PhoneRank.termsOf`），
+        // 而且 `text` 这个变量在函数体里只许出现一次——第二次出现就是原文在下游漂。
+        val phoneSearch = code(sourceOf("PhoneSearch.kt"))
+        val queryFn = Regex("(?m)\\bfun query\\(([^)]*)\\)[^{]*\\{([\\s\\S]*?)\\n    }").find(phoneSearch)
+        assertNotNull("PhoneSearch 里必须还是那个 `fun query(...)`（改了形状就得回来解释这条门禁）", queryFn)
+        val body = queryFn!!.groupValues[2]
+        assertTrue("query 的第一手动作必须是 PhoneRank.termsOf（原文只到切词为止）", body.contains("PhoneRank.termsOf(text)"))
+        assertEquals(
+            "`text`（用户那几个字）在 query 里只许被用一次：多一次就是有人把它往日志或库里带",
+            1,
+            Regex("\\btext\\b").findAll(body).count(),
+        )
+        assertFalse("query 一个字都不进日志", body.contains("RunLog.log("))
+        // 切好的词只进绑定数组：`PhoneIndex.search` 的参数是 tokens，语句里只有占位符。
+        val idx = code(sourceOf("PhoneIndex.kt"))
+        assertTrue("PhoneIndex.search 接的是 tokens（切好的词），不是原文", signatures(idx).any { (fn, p) -> fn == "search" && p.contains("tokens") })
+        // ⚠️ Android 的 `SQLiteException` 文本会**抄绑定参数**：这个文件是唯一往库里绑 token 的地方，
+        // 所以它的任何一行日志都不许插异常变量（`$e`／`$it`／`$err`）——抄出来的就是用户搜的那些字。
+        idx.lines().filter { it.contains("RunLog.log(") }.forEach { line ->
+            listOf("\$e", "\$it", "\$err", "throwable", "message", "localizedMessage").forEach { leak ->
+                assertFalse("PhoneIndex 的日志行插了异常读数「$leak」（异常文本会抄绑定参数）：「$line」", line.contains(leak))
+            }
+        }
+        assertTrue("造场景：PhoneIndex 确实有日志行（没有的话上面那半条就是空跑）", idx.lines().any { it.contains("RunLog.log(") })
     }
 
     @Test

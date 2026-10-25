@@ -72,7 +72,9 @@ import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.eval.ProdEvalSettings
 import com.example.zhengdao.baopu.search.PhoneAccess
+import com.example.zhengdao.baopu.search.PhoneSearch
 import com.example.zhengdao.baopu.search.SearchScope
+import com.example.zhengdao.baopu.search.SearchScopeRules
 import com.example.zhengdao.baopu.search.SearchScopeSettings
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
@@ -94,7 +96,12 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
-internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: () -> Unit = {}) {
+internal fun BaopuSettingsScreen(
+    onDismiss: () -> Unit,
+    onOpenSessionLibrary: () -> Unit = {},
+    /** 第一百九十八批 §1⑤ 回跳路径①：全手机搜索那张卡用它跳回产生文件的会话（默认不给＝按钮不出现）。 */
+    onOpenSession: (Long) -> Unit = {},
+) {
     val ctx = LocalContext.current
     val res = LocalResources.current
     // 承载方式（2026-10-18 真机修正）：必须用 **Dialog 全屏**，不能直接摆在 BaopuScreen 的
@@ -465,11 +472,26 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         checked = scopeStatus.switchOn,
                         onCheckedChange = { want ->
                             SearchScopeSettings.set(ctx, want)
+                            // ⚠️ 拨完之后再读一次状态：`scopeStatus` 是**拨之前**那一帧的 remember，
+                            // 拿它的 `access` 写日志，「刚打开开关」那次会打成「开关是关的」——
+                            // 这句是要给真机验收看的（⑥③），说反话比不说还糟。
+                            val st = SearchScope.status(ctx)
+                            // ⑥③：「首次建库」这件事要在日志里看得见 ⇒ 先问一句「之前在不在」
+                            // （`sync` 一旦跑起来就会把库建出来，之后再问永远是「在」，那句话就永远是假话）。
+                            val firstBuild = !PhoneSearch.dbExists(ctx)
                             val rep = SearchScope.sync(ctx)
                             scopeTick++
+                            // 文案收进纯函数 [SearchScopeRules.syncLine]：这一行要能在 JVM 里被断言
+                            // （派工单 §1⑥ 那条「拨开关那条日志要能被真机看懂」），不许散在 UI 里漂。
                             RunLog.log(
-                                "抱朴设置：手机文件纳入搜索范围 = $want（只读；账本新增 ${rep.recorded} 行、" +
-                                    "撤销 ${rep.revoked.size} 个根；改文件仍按工作区边界逐次确认）",
+                                SearchScopeRules.syncLine(
+                                    switchOn = st.switchOn,
+                                    access = st.access,
+                                    recorded = rep.recorded,
+                                    revokedRoots = rep.revoked.size,
+                                    orphanRoots = rep.orphanRoots.size,
+                                    dbFirstBuild = firstBuild,
+                                ),
                             )
                         },
                         colors = zhengdaoSwitchColors(),
@@ -501,6 +523,13 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     )
                 }
             }
+
+            // ── 全手机搜索（第一百九十八批 · S3；派工单 §1①③④⑤）──
+            // 定位：上面那张卡决定「能搜哪儿」，这张卡决定「搜不搜、搜什么」。
+            // 扫描只在用户按下按钮时跑（没有常驻扫描：§2 点名的负例），
+            // 全部盘 IO 与库 IO 都在 IO 线程（见 BaopuPhoneSearchCard 文件头那三条纪律）。
+            Spacer(Modifier.height(12.dp))
+            BaopuPhoneSearchCard(onOpenSession = onOpenSession)
 
             // ── 第一百四十七批 · 日记（情景记忆）卡 ──
             // 定位：看近期流水、按条真删。删除语义全在 DiaryDeletionRules（纯函数）＋
