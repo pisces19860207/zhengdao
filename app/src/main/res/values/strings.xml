@@ -977,6 +977,18 @@
     <string name="baopu_extract_close">关闭</string>
     <!-- ── 抱朴工具开关（刀 2 追加包；设置 → 终端与资料）── -->
     <string name="baopu_tools_card">抱朴工具</string>
+    <string name="baopu_tool_sheet_read">读表</string>
+    <string name="baopu_tool_sheet_read_desc">把工作区里的 xlsx/csv 读成结构化行（单元格原样，空格给 null）。</string>
+    <string name="baopu_tool_search_web">联网检索</string>
+    <string name="baopu_tool_search_web_desc">搜公开网页拿标题/链接/摘要（只抓白名单站点，禁内网，日志只记检索词哈希）。</string>
+    <string name="baopu_tool_schedule_task">定时任务</string>
+    <string name="baopu_tool_schedule_task_desc">建/改/停到点自动跑的事（每次改动都要你确认；连败 3 次自动暂停）。</string>
+    <string name="baopu_tool_clipboard_write">写剪贴板</string>
+    <string name="baopu_tool_clipboard_write_desc">把结果放进系统剪贴板（≤100KB，含敏感号会提示）。</string>
+    <string name="baopu_tool_notify">发通知</string>
+    <string name="baopu_tool_notify_desc">发一条本地通知让你知道干完了（没权限会指路；每分钟 ≤3 条）。</string>
+    <string name="baopu_tool_phone_dial">拨号盘</string>
+    <string name="baopu_tool_phone_dial_desc">打开拨号盘并填号（只开盘不外呼；空号拒绝）。</string>
     <string name="baopu_tool_read_file">读文件</string>
     <string name="baopu_tool_read_file_desc">读工作区里的文本文件，可指定从第几行开始、读多少行。</string>
     <string name="baopu_tool_list_dir">列目录</string>
@@ -1490,6 +1502,14 @@
     <string name="baopu_group_line_preview">在玄览只显示工作区里的网页/源码，不执行、出不了网</string>
     <string name="baopu_group_line_mcp">用户手动连接的外部服务器；工具由服务器提供，首次使用要你确认</string>
     <string name="baopu_tools_group_mcp">外部工具（MCP）</string>
+    <string name="baopu_tools_group_data">读表</string>
+    <string name="baopu_tools_group_websearch">联网检索</string>
+    <string name="baopu_tools_group_schedule">定时任务</string>
+    <string name="baopu_tools_group_device">递到手上的事</string>
+    <string name="baopu_group_line_data">把工作区里的 xlsx/csv 读成结构化行（只读，不补 0 不猜类型）</string>
+    <string name="baopu_group_line_websearch">按词搜公开网页拿标题/链接/摘要（只抓白名单，禁内网）</string>
+    <string name="baopu_group_line_schedule">建、改、暂停、删除到点自动跑的事（每次改动都要你确认）</string>
+    <string name="baopu_group_line_device">写剪贴板、发本地通知、打开拨号盘填号（只开盘不外呼）</string>
     <string name="baopu_group_line_agent">把大任务拆成子任务并行或串行跑，收回汇总结果</string>
     <!-- 效果卡（100） -->
     <string name="decision_effect_once_note">这条只提醒一次；先留着＝结案，稍后处理＝留在记录里观察</string>
@@ -1900,6 +1920,8 @@
     <string name="sched_notif_fired_title">定时任务「%1$s」已经发出</string>
     <string name="sched_notif_late_title">定时任务「%1$s」补跑了一次（已过点）</string>
     <string name="sched_notif_fired_text">到点那句话已经进抱朴会话，点开看</string>
+    <string name="sched_notif_paused_title">「%1$s」连败 3 次，已自动暂停</string>
+    <string name="sched_notif_paused_text">到点不再触发；在定时任务列表里可恢复</string>
     <string name="sched_notif_failed_title">定时任务「%1$s」没跑成</string>
     <string name="sched_notif_reason_busy">另一个会话一直占着单活跃门，重试到上限仍未进去</string>
     <string name="sched_notif_reason_failed">发送时出错，详情在运行日志里</string>

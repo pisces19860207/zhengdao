@@ -106,6 +106,18 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
      */
     AGENT("agent", "多 Agent 协作：把大任务拆成子任务并行或串行跑，收回汇总结果"),
 
+    /** 第二百一十八批：读表（xlsx/csv → 结构化；只读）。默认不可见，capabilities 解锁。 */
+    DATA("data", "读表：把工作区里的 xlsx/csv 读成结构化行（只读）。看不到就先 capabilities 解锁"),
+
+    /** 第二百一十八批：联网检索（只读，白名单+禁内网，日志只记检索词哈希）。默认不可见。 */
+    WEBSEARCH("websearch", "联网检索：搜公开网页拿标题/链接/摘要（只抓白名单站点，禁内网）。看不到就先 capabilities 解锁"),
+
+    /** 第二百一十八批：定时任务（建/改/停——会产生无人值守的自己，必过确认卡）。默认不可见。 */
+    SCHEDULE("schedule", "定时任务：建、改、暂停、删除到点自动跑的事（每次改动都要你确认）。看不到就先 capabilities 解锁"),
+
+    /** 第二百一十八批：递到手上的三件（剪贴板/本地通知/拨号盘只开不呼）。默认不可见。 */
+    DEVICE("device", "递到手上的事：写剪贴板、发本地通知、打开拨号盘填号（只开盘不外呼）。看不到就先 capabilities 解锁"),
+
     /**
      * 免费通道的兼容占位（read / bash）：由通道决定注册与否，用户管不着、设置页也不列它们。
      * 注册了就**必须**默认可见（否则免费档 403），见 [ToolGroup.DEFAULT_VISIBLE] 的说明。
@@ -238,6 +250,14 @@ internal object ToolGroupTable {
         "run_subtasks" to ToolGroup.AGENT,
         "read" to ToolGroup.COMPAT,
         "bash" to ToolGroup.COMPAT,
+        // ── 第二百一十八批：工具补齐 v1（六件；四档档位在各 spec 的 riskTier，
+        //    等 219 合入对上。默认全部不可见——B1 的「默认可见 ≤12」硬卡不许破。）
+        "sheet_read" to ToolGroup.DATA,       // R0 只读
+        "search_web" to ToolGroup.WEBSEARCH,  // R0 只读（走网络，日志只记哈希）
+        "schedule_task" to ToolGroup.SCHEDULE, // R2 无人值守必确认
+        "clipboard_write" to ToolGroup.DEVICE, // R1
+        "notify" to ToolGroup.DEVICE,          // R1
+        "phone_dial" to ToolGroup.DEVICE,      // R1 只开拨号盘
     )
 
     /** 该组里的工具名（保持 ENTRIES 的表序，稳定 ⇒ tools 数组顺序不乱、缓存友好）。 */
@@ -501,6 +521,13 @@ data class ToolSpec(
      *   `capabilities` 改会话解锁、`update_plan` 改计划卡、`ask_user` 弹卡等人）也标 true
      *   —— 它们是「只读盘」，但**不许并行**（见 [parallelSafe]）。
      */
+    /**
+     * 四档风险档（第二百一十八批 · 协作注意 #1）：**只在本仓的工具注册处标注**，供
+     * 219 风险矩阵合入时对上（R0 只读／R1 递到手上有痕迹／R2 无人值守必确认／R3 有真实世界后果）。
+     * 空串＝本批之前的存量工具（矩阵归 173/219 管，本批不回填）。**未分类按 R2 必问**（fail-closed）
+     * 的判定逻辑在 219，不在这——这里只是标签。
+     */
+    val riskTier: String = "",
     val readOnly: Boolean = false,
     /**
      * **可并行标记**（第九十二批 §1）：能不能和别的读工具**同时**跑。
@@ -1118,6 +1145,8 @@ internal object BaopuToolCatalog {
      * CONFIRM，够不着「静默动手」——真要防，用户自己在设置里关。
      */
     val DEFAULT_ENABLED: Set<String> = setOf(
+        // 第二百一十八批：六件默认「启用」（组仍默认不可见——解锁即用，与 IMAGE/DRAW 同款口径）
+        "sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial",
         "read_file",
         "list_dir",
         "search_in_files",
@@ -1188,6 +1217,13 @@ internal object BaopuToolCatalog {
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
     val ENTRIES: List<Entry> = listOf(
+        // 第二百一十八批 · 工具补齐 v1（六件；riskTier：R0/R0/R2/R1/R1/R1，协作注意 #1）
+        Entry("sheet_read") { SheetReadTool.spec(it) },
+        Entry("search_web") { SearchWebTool.spec() },
+        Entry("schedule_task") { ScheduleTaskTool.spec() },
+        Entry("clipboard_write") { ClipboardWriteTool.spec() },
+        Entry("notify") { NotifyTool.spec() },
+        Entry("phone_dial") { PhoneDialTool.spec() },
         Entry("read_file") { ReadFileTool.spec() },
         Entry("list_dir") { ListDirTool.spec(it) },
         Entry("search_in_files") { SearchInFilesTool.spec(it) },

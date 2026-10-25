@@ -195,10 +195,33 @@ object ScheduleRules {
             sessionId = if (sessionId > NO_RUN) sessionId else task.sessionId,
             runCount = if (ran) task.runCount + 1 else task.runCount,
             attempts = 0,
+            failStreak = 0, // 发出去了 ⇒ 任务级连败终止（218：连败只在失败路径累计）
             nextRunAtMs = next,
             // 一次性任务没有「下一次」，处理完就停（列表里灰掉，不会到点又冒出来）。
             enabled = task.freq != ScheduleFreq.ONCE,
         )
+    }
+
+    /**
+     * 任务级连败（第二百一十八批，派工单 §1③「连败 3 次自动暂停」）：
+     * 失败 ⇒ failStreak+1；到 [AUTO_PAUSE_STREAK] ⇒ **关 enabled**（锚点留着，恢复时重算）
+     * 并让调用方通知；成功路径（afterHandled）不加——那里是「发出去了」，连败就此清零
+     * （afterHandled 的 copy 里 failStreak 未动 ⇒ 需要清零；就在这里给两个函数的契约：
+     * afterHandled 由 SchedulePass 在成功分支用，下面给它包一层失败清零的入口 [afterHandledClearingStreak]）。
+     */
+    const val AUTO_PAUSE_STREAK = 3
+
+    /** 失败一槽：连败 +1；到 3 ⇒ 自动暂停（enabled=false），返回任务与「要不要通知」对。 */
+    fun afterFailure(task: ScheduleTask, detail: String): Pair<ScheduleTask, Boolean> {
+        val streak = task.failStreak + 1
+        val pause = streak >= AUTO_PAUSE_STREAK
+        val next = task.copy(
+            attempts = task.attempts + 1,
+            lastDetail = detail,
+            failStreak = streak,
+            enabled = if (pause) false else task.enabled,
+        )
+        return next to pause
     }
 
     /** 这个槽位没发出去、下一趟还要再试一次（重试次数封顶在 [reasonOf] 里判）。 */

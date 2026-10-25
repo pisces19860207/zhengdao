@@ -40,6 +40,9 @@ class ToolSchedulingGateTest {
         // 第一百五十五批：novel_project/novel_continue 都是纯文件读（FREE 只读、parallelSafe），
         // novel_create 会写盘（CONFIRM）**不在此列**
         "novel_project", "novel_continue",
+        // 218: sheet_read (streaming sheet read) / search_web (plain GET) are pure reads
+        // with no shared mutable state - intentional extension of this expectation table.
+        "sheet_read", "search_web",
     )
 
     // ── ① 分类自洽 ────────────────────────────────────────────────────────

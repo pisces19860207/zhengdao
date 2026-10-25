@@ -417,6 +417,13 @@ class ToolSchemaAllTest {
          * 值本身不求真（契约只看类型/必填/枚举），求的是**每个工具都被点到**。
          */
         val REQUIRED_ONLY: Map<String, JSONObject> = mapOf(
+            // 第二百一十八批：工具补齐 v1（六件）
+            "sheet_read" to JSONObject().put("path", "biao.xlsx"),
+            "search_web" to JSONObject().put("query", "word"),
+            "schedule_task" to JSONObject().put("action", "list"),
+            "clipboard_write" to JSONObject().put("text", "text"),
+            "notify" to JSONObject().put("title", "t").put("body", "b"),
+            "phone_dial" to JSONObject().put("number", "13800138000"),
             "read_file" to JSONObject().put("path", "a.md"),
             "list_dir" to JSONObject().put("path", "资料库"),
             "search_in_files" to JSONObject().put("path", "资料库").put("query", "词"),

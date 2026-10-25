@@ -15,6 +15,9 @@ interface PassNotifier {
     fun fired(task: ScheduleTask, sessionId: Long, late: Boolean)
     fun failed(task: ScheduleTask, outcome: ScheduleOutcome, detail: String)
 
+    /** 连败自动暂停的那一声（第二百一十八批；默认空——单测的哑出口不用改）。 */
+    fun pausedByFailStreak(task: ScheduleTask, outcome: ScheduleOutcome, detail: String) = Unit
+
     companion object {
         /** 单测用的哑出口：只记不弹。 */
         val NOOP = object : PassNotifier {
@@ -90,12 +93,45 @@ class SchedulePass(
                             notifier.fired(next, result.sessionId, late)
                         }
 
-                        ScheduleOutcome.REFUSED_BUSY, ScheduleOutcome.FAILED, ScheduleOutcome.MISSED,
-                        ScheduleOutcome.NONE,
+                        ScheduleOutcome.FAILED, ScheduleOutcome.MISSED, ScheduleOutcome.NONE,
                         -> {
                             changed = true
+                            // 第二百一十八批：任务级连败计数先算（失败 +1；到 3 ⇒ 自动暂停并通知，
+                            // 不再无限重试——派工单 §1③）。167 的槽位重试封顶保持原样。
+                            val (streaked, pause) = ScheduleRules.afterFailure(task, result.detail)
+                            when {
+                                pause -> {
+                                    // 连败到顶：锚点照常推进（历史账不丢），任务自动暂停，说一声。
+                                    replace(
+                                        rows,
+                                        ScheduleRules.afterHandled(
+                                            streaked, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
+                                        ).copy(enabled = false),
+                                    )
+                                    notifier.pausedByFailStreak(streaked, result.outcome, result.detail)
+                                }
+                                task.attempts + 1 >= ScheduleRules.MAX_ATTEMPTS -> {
+                                    // 到上限：这一趟翻篇（写槽位＋推锚点），并说一声，不静默。
+                                    replace(
+                                        rows,
+                                        ScheduleRules.afterHandled(
+                                            streaked, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
+                                        ),
+                                    )
+                                    notifier.failed(task, result.outcome, result.detail)
+                                }
+                                else -> {
+                                    replace(rows, streaked)
+                                    moreRemain = true
+                                }
+                            }
+                        }
+
+                        ScheduleOutcome.REFUSED_BUSY -> {
+                            // 被别的会话挡住是**环境占用**，不是任务失败——不计连败（218），
+                            // 走 167 的原样：槽位重试封顶后翻篇并说一声。
+                            changed = true
                             if (task.attempts + 1 >= ScheduleRules.MAX_ATTEMPTS) {
-                                // 到上限：这一趟翻篇（写槽位＋推锚点），并说一声，不静默。
                                 replace(
                                     rows,
                                     ScheduleRules.afterHandled(

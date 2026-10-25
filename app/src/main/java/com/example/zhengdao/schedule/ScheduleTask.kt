@@ -99,6 +99,12 @@ data class ScheduleTask(
     /** 本槽位已尝试的次数（派工单 §1「不刷屏」靠它封顶）。 */
     val attempts: Int,
     val createdAtMs: Long,
+    /**
+     * 任务级连败计数（第二百一十八批）：发送失败（FAILED/REFUSED_BUSY/…）连续 +1，
+     * 发出去清零；达到 [ScheduleRules.AUTO_PAUSE_STREAK] ⇒ 由 SchedulePass 自动关 enabled
+     * 并通知（派工单 §1③「连败 3 次自动暂停」——167 只有槽位重试封顶，这是任务级的）。
+     */
+    val failStreak: Int = 0,
 ) {
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -120,6 +126,7 @@ data class ScheduleTask(
         put(K_RUN_COUNT, runCount)
         put(K_ATTEMPTS, attempts)
         put(K_CREATED, createdAtMs)
+        put(K_FAIL_STREAK, failStreak)
     }
 
     companion object {
@@ -141,6 +148,7 @@ data class ScheduleTask(
         const val K_RUN_COUNT = "runCount"
         const val K_ATTEMPTS = "attempts"
         const val K_CREATED = "createdAtMs"
+        const val K_FAIL_STREAK = "failStreak"
 
         /**
          * 解一条；任何一处不合要求就返回 null（**不做「能救一半就救一半」**——
@@ -182,6 +190,7 @@ data class ScheduleTask(
                 runCount = o.optInt(K_RUN_COUNT, 0),
                 attempts = o.optInt(K_ATTEMPTS, 0),
                 createdAtMs = o.optLong(K_CREATED, 0L),
+                failStreak = o.optInt(K_FAIL_STREAK, 0),
             )
         }
 

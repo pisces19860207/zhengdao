@@ -1015,6 +1015,18 @@
     <string name="baopu_extract_close">Close</string>
     <!-- ── Baopu tool switches (task 2 addendum; Settings → Terminal & library) ── -->
     <string name="baopu_tools_card">Baopu tools</string>
+    <string name="baopu_tool_sheet_read">Read sheet</string>
+    <string name="baopu_tool_sheet_read_desc">Read workspace xlsx/csv into structured rows (cells verbatim, blanks null).</string>
+    <string name="baopu_tool_search_web">Web search</string>
+    <string name="baopu_tool_search_web_desc">Search public pages for title/link/snippet (allowlist only, no intranet; logs hash only).</string>
+    <string name="baopu_tool_schedule_task">Scheduled task</string>
+    <string name="baopu_tool_schedule_task_desc">Create/change/pause things that run unattended (every change needs approval; auto-pauses after 3 failures).</string>
+    <string name="baopu_tool_clipboard_write">Copy to clipboard</string>
+    <string name="baopu_tool_clipboard_write_desc">Put results on the system clipboard (up to 100KB; warns on sensitive numbers).</string>
+    <string name="baopu_tool_notify">Notify</string>
+    <string name="baopu_tool_notify_desc">Post a local notification when work is done (points to settings if blocked; max 3/min).</string>
+    <string name="baopu_tool_phone_dial">Dialer</string>
+    <string name="baopu_tool_phone_dial_desc">Open the dialer with a number filled in (dial pad only, never calls; rejects blanks).</string>
     <string name="baopu_tool_read_file">Read file</string>
     <string name="baopu_tool_read_file_desc">Read a text file in the workspace, from a given line, for a given number of lines.</string>
     <string name="baopu_tool_list_dir">List directory</string>
@@ -1548,6 +1560,14 @@
     <string name="baopu_group_line_preview">Only display web pages/source in the workspace via Xuanlan; no execution, no network</string>
     <string name="baopu_group_line_mcp">Servers you connect manually; tools come from the server and ask you the first time</string>
     <string name="baopu_tools_group_mcp">External tools (MCP)</string>
+    <string name="baopu_tools_group_data">Sheets</string>
+    <string name="baopu_tools_group_websearch">Web search</string>
+    <string name="baopu_tools_group_schedule">Scheduled tasks</string>
+    <string name="baopu_tools_group_device">Hand-off</string>
+    <string name="baopu_group_line_data">Read workspace xlsx/csv into structured rows (read-only, no guessing)</string>
+    <string name="baopu_group_line_websearch">Search public pages for title/link/snippet (allowlist only, no intranet)</string>
+    <string name="baopu_group_line_schedule">Create, change, pause or delete things that run unattended (every change needs your approval)</string>
+    <string name="baopu_group_line_device">Copy to clipboard, post a local notification, open the dialer with a number (dial only, never call)</string>
     <string name="baopu_group_line_agent">Split a big task into subtasks, run them in parallel or in series, collect the summary</string>
     <!-- Effect card (100) -->
     <string name="decision_effect_once_note">This is a one-time reminder; Keep = close it, Later = keep it under observation in History</string>
@@ -1966,6 +1986,8 @@
     <string name="sched_notif_fired_title">Scheduled task “%1$s” was sent</string>
     <string name="sched_notif_late_title">Scheduled task “%1$s” caught up (past its time)</string>
     <string name="sched_notif_fired_text">Its prompt is now in a Baopu session — tap to open it</string>
+    <string name="sched_notif_paused_title">\"%1$s\" failed 3 times in a row — paused automatically</string>
+    <string name="sched_notif_paused_text">It will not fire again; resume it in the scheduled tasks list</string>
     <string name="sched_notif_failed_title">Scheduled task “%1$s” did not run</string>
     <string name="sched_notif_reason_busy">Another session held the single-active gate; retries hit the limit</string>
     <string name="sched_notif_reason_failed">Sending failed; details are in the run log</string>
