@@ -47,8 +47,11 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
-/** 一张技能卡的来路：用户明说的，还是「同一流程又成功了一次」之后的主动提议。 */
-internal enum class SkillCardSource { USER_SAID, REPEAT_SUCCESS }
+/**
+ * 一张技能卡的来路：用户明说的／「同一流程又成功了一次」的主动提议／反思器候选
+ * （第二百零五批：反思器产出的候选卡复用这张卡，来源标单独一个值，不冒充用户说的）。
+ */
+internal enum class SkillCardSource { USER_SAID, REPEAT_SUCCESS, REFLECTION }
 
 /**
  * 卡片上**用户可改的两个字段**（名字／正文）＋来路。
@@ -361,6 +364,7 @@ internal fun BaopuSkillCard(
     val sourceLabel = when (view.draft.source) {
         SkillCardSource.USER_SAID -> stringResource(R.string.skill_card_source_user)
         SkillCardSource.REPEAT_SUCCESS -> stringResource(R.string.skill_card_source_repeat)
+        SkillCardSource.REFLECTION -> stringResource(R.string.skill_card_source_reflection)
     }
     BaopuActionContainer(
         title = stringResource(R.string.skill_card_title),

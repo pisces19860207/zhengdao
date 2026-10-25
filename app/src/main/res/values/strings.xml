@@ -1755,6 +1755,40 @@
 <string name="skill_card_blocked">还不能记：%1$s</string>
 <string name="skill_card_remember">记住它</string>
 <string name="skill_card_dismiss">先不记</string>
+<string name="skill_card_source_reflection">反思器提议</string>
+<!-- 第二百零五批：反思器（候选卡文案） -->
+<string name="reflection_note_cards">今天复盘出 %1$d 张候选卡——抽屉「技能」里看</string>
+<string name="reflection_note_none">复盘过了，本轮无候选（空源情况见日志）</string>
+<!-- 第二百零五批 · 追加件：技能列表页 -->
+<string name="skill_library_title">技能</string>
+<string name="skill_library_group_draft">草稿·未验证（%1$d）</string>
+<string name="skill_library_group_active">已转正（%1$d）</string>
+<string name="skill_library_group_retired">已退役（%1$d）</string>
+<string name="skill_library_meta">%1$s · %2$s · 已用 %3$d 次 · 最近使用 %4$s</string>
+<string name="skill_library_retired_at"> · 退役于 %1$s</string>
+<string name="skill_library_source_seed">种子</string>
+<string name="skill_library_source_reflect">反思器</string>
+<string name="skill_library_source_manual">手动</string>
+<string name="skill_library_scope_global">全局</string>
+<string name="skill_library_scope_project">项目</string>
+<string name="skill_library_never_used">还没用过</string>
+<string name="skill_library_evidence">· %1$s（%2$s:%3$s）</string>
+<string name="skill_library_empty">还没有技能。用一阵子再来看看</string>
+<string name="skill_library_review_now">现在复盘一次</string>
+<string name="skill_library_review_section">复盘候选（%1$d）</string>
+<string name="skill_library_pending_count">进化档案里还有 %1$d 条待定候选（本轮无活卡）</string>
+<string name="skill_library_promote">转正</string>
+<string name="skill_library_delete">删除</string>
+<string name="skill_library_delete_confirm">再点一次确认软删（可从「已退役」恢复）</string>
+<string name="skill_library_restore">恢复</string>
+<string name="skill_library_shelve">先搁着</string>
+<string name="skill_library_reject">不再提</string>
+<string name="baopu_drawer_skills">技能</string>
+<string name="baopu_drawer_skills_desc">草稿、转正与复盘候选卡</string>
+<!-- 第二百零五批 · 追加件③：草稿自动治理 -->
+<string name="skill_library_duplicate"> · 疑似重复（与 %1$s）——只标不删，可一键合并</string>
+<string name="skill_library_merge">合并（保留这条）</string>
+
 <!-- 第一百九十六批：学习器（教它一次） -->
 <string name="teach_menu_start">教它一次</string>
 <string name="teach_menu_stop">结束示教</string>

@@ -8,16 +8,19 @@
 // 没有任何写盘口：不收任何文件对象与人设层对象、不出 proposal，
 // 目录清单由调用方从盘上列好了递进来（纯函数、无 IO、可 JVM 直测）。
 //
-// 三类不一致（派工单 §1.1，判据全部钉在这层）：
-// 1. **索引悬空**：索引里有该行，但 `技能/<名>/SKILL.md` 不存在；
+// 三类不一致（派工单 §1.1，判据全部钉在这层；第二百零五批追加：悬空拆两级＋软删未清单列）：
+// 1. **索引悬空**：索引里有该行，但 `技能/<名>/SKILL.md` 不存在——**两级**：
+//    ① 正文缺（目录在、SKILL.md 不在）；② 目录无（`技能/<名>/` 整个不存在或不是目录）；
 // 2. **正文失联**：`SKILL.md` 存在，但索引里没有对应行；
 // 3. **同场景双行**：两条索引行的场景归一后相同（去标点/空白、取前 20 字）。
+// 附：「软删未清索引」单列（205 追加）——目录里只剩 `SKILL.md.deleted-<ts>` 而索引还有行：
+// 删除是确认制、有意为之 ⇒ **不算悬空**，但「索引行没清」是真账，报出来。
 //
 // 三条去噪（不该报的就不报，免得自检自己变成噪音源）：
 // 1. `.bak` 不算正文——目录里只剩 `<名>.SKILL.md.bak-<ts>` ⇒ 正文已失，该悬空就悬空
 //    （真实例 punct3：把备份当正文就会漏报）；
-// 2. `.deleted-*` 软删不算悬空——目录里有 `SKILL.md.deleted-<ts>`（口径照
-//    `SkillStore.archive`：删除是确认制、有意为之）⇒ 不报，报出来就是噪音；
+// 2. `.deleted-*` **不算悬空**——软删是有意的，进「软删未清索引」那一类（205 起），
+//    正文与 `.deleted-*` 同在 ⇒ 正文在，两类都不进；
 // 3. 名字按**精确相等**对账——近似名不救两边也不误报（note1 不吃 note10 的正文，
 //    同名两条不同场景也不算双行：双行只看场景归一，不看名字）。
 package com.example.zhengdao.baopu
@@ -59,16 +62,28 @@ internal object SkillIndexReconcile {
     )
 
     /**
-     * 一次对账的账本。三类各自成表，次序＝**发现序**（悬空按索引行序、失联按目录清单序）。
+     * 一次对账的账本。悬空**拆两级**（第二百零五批追加：真机漏检「目录整个不存在」
+     * 那一半后补的口径）、软删未清索引**单列第三类**——四类各自成表，次序＝**发现序**
+     * （悬空按索引行序、失联按目录清单序）。
      */
     data class Report(
-        val dangling: List<String> = emptyList(),
+        /** 悬空①：目录在、`SKILL.md` 不在（只剩 `.bak`／空目录——真实例 punct3）。 */
+        val danglingBodyMissing: List<String> = emptyList(),
+        /** 悬空②：`技能/<名>/` 整个目录不存在（或不是目录——索引行指向空处）。 */
+        val danglingDirMissing: List<String> = emptyList(),
+        /** 第三类·软删未清索引：目录里只剩 `SKILL.md.deleted-<ts>`，索引却还有行
+         *  （删技能时正文软删了、索引行没去掉——报出来，但**不算悬空**：删除是确认制、有意为之）。 */
+        val softDeleteStale: List<String> = emptyList(),
         val orphans: List<String> = emptyList(),
         val doubleRows: List<DoubleRow> = emptyList(),
     ) {
+        /** 悬空合计（两级拼接；便签按两级分别报数量，这里给想拿合计的调用方）。 */
+        val dangling: List<String> get() = danglingBodyMissing + danglingDirMissing
+
         /** 全一致 ⇒ true（收尾便签必须保持零噪音：全一致时便签不出现）。 */
         val isClean: Boolean
-            get() = dangling.isEmpty() && orphans.isEmpty() && doubleRows.isEmpty()
+            get() = danglingBodyMissing.isEmpty() && danglingDirMissing.isEmpty() &&
+                softDeleteStale.isEmpty() && orphans.isEmpty() && doubleRows.isEmpty()
 
         /**
          * 两层账本合成一份：收尾便签**一行**要同时带全局与项目两层，先把两份账并起来再出文案。
@@ -76,7 +91,9 @@ internal object SkillIndexReconcile {
          * 「一份索引文本 ⇄ 一份技能目录清单」的输入口径一致，合并只搬不动判。
          */
         operator fun plus(other: Report): Report = Report(
-            dangling = dangling + other.dangling,
+            danglingBodyMissing = danglingBodyMissing + other.danglingBodyMissing,
+            danglingDirMissing = danglingDirMissing + other.danglingDirMissing,
+            softDeleteStale = softDeleteStale + other.softDeleteStale,
             orphans = orphans + other.orphans,
             doubleRows = doubleRows + other.doubleRows,
         )
@@ -87,10 +104,12 @@ internal object SkillIndexReconcile {
          */
         val signature: String
             get() {
-                val d = dangling.sorted().joinToString("+")
+                val b = danglingBodyMissing.sorted().joinToString("+")
+                val d = danglingDirMissing.sorted().joinToString("+")
+                val s = softDeleteStale.sorted().joinToString("+")
                 val o = orphans.sorted().joinToString("+")
                 val g = doubleRows.map { it.names.sorted().joinToString("+") }.sorted().joinToString("|")
-                return "dangling[$d]orphan[$o]double[$g]"
+                return "danglingBody[$b]danglingDir[$d]softStale[$s]orphan[$o]double[$g]"
             }
     }
 
@@ -111,12 +130,20 @@ internal object SkillIndexReconcile {
         val dirsByName = dirs.associateBy { it.name }
         val indexedNames = lines.map { it.name }.toHashSet()
 
-        // ① 索引悬空：有行没正文。软删的行有意压下（去噪 2），其余一个名字只报一次。
-        val dangling = LinkedHashSet<String>()
+        // ① 索引悬空（两级）：有行没正文。正文缺＝目录在但 SKILL.md 不在；
+        //    目录无＝整个 `技能/<名>/` 不存在（或不是目录）。软删的行**不算悬空**
+        //    ——落到第三类「软删未清索引」（有意删的，报未清账，不冒充悬空）。
+        val danglingBodyMissing = LinkedHashSet<String>()
+        val danglingDirMissing = LinkedHashSet<String>()
+        val softDeleteStale = LinkedHashSet<String>()
         for (line in lines) {
             val dir = dirsByName[line.name]
-            val suppressed = dir != null && dir.isSoftDeleted
-            if (dir?.hasBody != true && !suppressed) dangling.add(line.name)
+            when {
+                dir == null -> danglingDirMissing.add(line.name)
+                dir.hasBody -> Unit // 账实相符
+                dir.isSoftDeleted -> softDeleteStale.add(line.name)
+                else -> danglingBodyMissing.add(line.name)
+            }
         }
 
         // ② 正文失联：有正文没行（名字精确相等才算「有行」，去噪 3）。
@@ -129,7 +156,13 @@ internal object SkillIndexReconcile {
             .filter { it.value.size >= 2 }
             .map { (norm, group) -> DoubleRow(names = group.map { it.name }, scenario = group.first().scenario) }
 
-        return Report(dangling = dangling.toList(), orphans = orphans, doubleRows = doubleRows)
+        return Report(
+            danglingBodyMissing = danglingBodyMissing.toList(),
+            danglingDirMissing = danglingDirMissing.toList(),
+            softDeleteStale = softDeleteStale.toList(),
+            orphans = orphans,
+            doubleRows = doubleRows,
+        )
     }
 
     /** 场景归一（双行判据用）：标点／空白／符号全剥掉，取前 [SCENARIO_NORM_CHARS] 字。 */
@@ -141,16 +174,24 @@ internal object SkillIndexReconcile {
     /**
      * 收尾便签的**一行文案**；全一致 ⇒ null（零噪音）。
      *
-     * 房型（162 存量整成一行）：
-     * `技能账实不符：悬空 1（punct3）、失联 1（haiku-helper）、双行 1（note1/note2）——去技能页看`
+     * 房型（205 追加：悬空两级分别报数量、软删未清索引单列）：
+     * `技能账实不符：悬空 2（正文缺 1/目录无 1）、软删未清 1（gone1）、失联 1（haiku-helper）、双行 1（note1/note2）——去技能页看`
      *
-     * 只列不为零的三类；每类点名不超过 [NOTE_NAME_LIMIT] 个，超出收「等」。
+     * 悬空只报两级数量（205 追加件原话「悬空2（正文缺1/目录无1）」——名字太多会撑爆一行，
+     * 具体名字去技能页看）；其余三类照旧点名，每类不超过 [NOTE_NAME_LIMIT] 个，超出收「等」。
      */
     fun noteLine(report: Report): String? {
         if (report.isClean) return null
         val parts = mutableListOf<String>()
         if (report.dangling.isNotEmpty()) {
-            parts += "悬空 ${report.dangling.size}（${namesForNote(report.dangling)}）"
+            // 两级数量（205 追加件原话「悬空2（正文缺1/目录无1）」）；为零的那级不拖出来
+            val levels = mutableListOf<String>()
+            if (report.danglingBodyMissing.isNotEmpty()) levels += "正文缺 ${report.danglingBodyMissing.size}"
+            if (report.danglingDirMissing.isNotEmpty()) levels += "目录无 ${report.danglingDirMissing.size}"
+            parts += "悬空 ${report.dangling.size}（${levels.joinToString("/")}）"
+        }
+        if (report.softDeleteStale.isNotEmpty()) {
+            parts += "软删未清 ${report.softDeleteStale.size}（${namesForNote(report.softDeleteStale)}）"
         }
         if (report.orphans.isNotEmpty()) {
             parts += "失联 ${report.orphans.size}（${namesForNote(report.orphans)}）"

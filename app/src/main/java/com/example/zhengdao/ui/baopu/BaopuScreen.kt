@@ -154,6 +154,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     DisposableEffect(Unit) { onDispose { speaker.release() } }
     // 第二十批 §2.1.1：历史会话浮层（同一模式；抽屉「历史会话」进）。
     var showSessionLibrary by remember { mutableStateOf(false) }
+    // 第二百零五批：技能列表页（抽屉「技能」进；三组＋反思器候选卡的壳）。
+    var showSkillLibrary by remember { mutableStateOf(false) }
     // 「在这个工作区开新会话」：当前工作区直接开；别的文件夹要先问人（切工作区是全局动作）。
     var runHereNode by remember { mutableStateOf<DrawerWorkspaceNode?>(null) }
     // 「工作区」标题右侧的 ＋：选一个文件夹加进来（落点与设置页那张卡同一套选择器）。
@@ -388,6 +390,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     onLibrary = {
                         scope.launch { drawerState.close() }
                         openSettings(context)
+                    },
+                    // 第二百零五批：技能列表页（三组＋反思器候选卡的壳）。
+                    onSkillLibrary = {
+                        scope.launch { drawerState.close() }
+                        showSkillLibrary = true
                     },
                     onNovel = {
                         scope.launch { drawerState.close() }
@@ -1334,6 +1341,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 BaopuSessionLibraryScreen(
                     controller = controller,
                     onDismiss = { showSessionLibrary = false },
+                )
+            }
+            // 第二百零五批：技能列表页（抽屉「技能」进；Dialog 本体在 SkillLibraryScreen.kt，
+            // 与会话库同一模式——浮层各守各的文件）。
+            if (showSkillLibrary) {
+                SkillLibraryDialog(
+                    controller = controller,
+                    onDismiss = { showSkillLibrary = false },
                 )
             }
             // 第三十八批 B 段：产物只读查看器（点产物片才开，**不自动开**）。
