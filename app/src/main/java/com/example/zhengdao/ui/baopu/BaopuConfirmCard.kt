@@ -35,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.ConfirmScope
@@ -62,6 +63,14 @@ internal fun BaopuConfirmCard(
     modifier: Modifier = Modifier,
     /** 工作区根（第一百四十九批 组5）：标题与摘要都把路径剥成相对显示；null ⇒ 原样。 */
     projectRoot: File? = null,
+    /**
+     * 第二百二十批 · 影响提示：**一行小字**（≤30 字，已经由
+     * `ImpactLine.text` 保证单行＋不超字数；null ⇒ 这一行整个不渲染）。
+     *
+     * 为什么放最后且默认 null：存量调用点（含预览/测试）一个字不改，行为与本批之前
+     * 逐字节相同；这也让「关掉开关 ⇒ 完全无提示」在 UI 层是**同一个**分支。
+     */
+    impactLine: String? = null,
 ) {
     // 点过就进忙碌态（执行中…）；卡被摘掉（控制器置空）时本组件随之消失
     var busy by remember(request.callId) { mutableStateOf(false) }
@@ -95,6 +104,19 @@ internal fun BaopuConfirmCard(
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 4.dp),
         )
+        // 第二百二十批 · 影响提示：**最多一行、最多 30 字**（派工单 §2.5）。
+        // 它只是这张卡上的第三行小字——不多一张卡、不加按钮、不折叠不展开。
+        // 文案由 `ImpactLine` 算好（含「后果未知」降级），本层零判据。
+        if (impactLine != null) {
+            Text(
+                text = impactLine,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         // 提示：批准真的会改（写前自动备份）；拒绝就跳过
         Text(
             text = if (path != null) {

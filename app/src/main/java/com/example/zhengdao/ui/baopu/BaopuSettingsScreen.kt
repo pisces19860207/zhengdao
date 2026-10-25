@@ -58,6 +58,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.ImpactPrefs
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaBackup
@@ -426,6 +427,43 @@ internal fun BaopuSettingsScreen(
                             ProdEvalSettings.set(ctx, want)
                             prodEvalOn = want
                             RunLog.log("抱朴设置：周期性生产评测 = $want（会话收尾触发，24h 至多一次，烧额度）")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 影响提示（第二百二十批；派工单 §2.5）──
+            // 定位：**只管显不显示那一行小字**。开关关掉 ⇒ 控制器连算都不算
+            // （`queueImpactPreview` 第一行就是它），行为与本批之前逐字节一致。
+            // 它不改任何确认/权限判据：该问的照问，该拦的照拦。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_impact_card)) {
+                var impactOn by rememberSaveable { mutableStateOf(ImpactPrefs.get(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_impact_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_impact_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = impactOn,
+                        onCheckedChange = { want ->
+                            ImpactPrefs.set(ctx, want)
+                            impactOn = want
+                            RunLog.log("抱朴设置：显示影响提示 = $want")
                         },
                         colors = zhengdaoSwitchColors(),
                     )

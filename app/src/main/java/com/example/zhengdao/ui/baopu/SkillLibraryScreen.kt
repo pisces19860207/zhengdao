@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.GovernancePlan
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.ReflectionArchive
@@ -295,11 +296,22 @@ internal fun governDrafts(
     nowMs: Long,
     stamp: String = TimeFormats.fileStamp(),
     log: (String) -> Unit = {},
+    /**
+     * 第二百二十批 · 影响提示的只读预览口：**判据算完、执行之前**回调一次
+     * （[plan] = 四条规则的结论，[statsSize] = 草稿总数）。
+     *
+     * 为什么是回调而不是"再算一遍"：`draftStats` 要扫两层技能目录＋解析审计账，
+     * 为了显示一行字再扫一遍是纯浪费；这里 Plan 已经在手上，白送。
+     * 默认空实现 ⇒ 存量调用点（含测试）一个字不改。
+     */
+    onPreview: (GovernancePlan, Int) -> Unit = { _, _ -> },
 ): GovernanceReport {
     val scenarios = indexScenarios(personaFiles)
     val stats = SkillDraftGovernor.draftStats(projectRoot, globalRoot, lastUseMs, scenarios)
     if (stats.isEmpty()) return GovernanceReport()
     val plan = SkillDraftGovernor.plan(stats, nowMs)
+    // 第二百二十批：预览在**执行之前**（这时一条都还没改；事后再说"要退役 3 条"就是假话）
+    runCatching { onPreview(plan, stats.size) }
 
     // ③ 满 3 次 ⇒ 自动转正（唯一写口；治理路把「满3次」说进账本）
     val promoted = mutableListOf<String>()

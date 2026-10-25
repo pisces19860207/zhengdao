@@ -438,6 +438,23 @@ internal class BaopuChatController(context: Context) {
             lastUseMs = lastUse,
             nowMs = System.currentTimeMillis(),
             log = { com.example.zhengdao.rootfs.RunLog.log(it) },
+            // 第二百二十批：技能自治的影响提示（**无卡场景**：技能页治理是自动跑的，
+            // 没有确认卡 ⇒ 按 §2.5 屏幕上一个字都不显示，只把摘要写进事后账，
+            // 决策中心（208）读它。判据复用 205 的 Plan，这里一分钱不多花。
+            onPreview = { plan, size ->
+                if (plan.idleRetire.isNotEmpty() || plan.overflowRetire.isNotEmpty() ||
+                    plan.promoteDue.isNotEmpty()
+                ) {
+                    val impact = com.example.zhengdao.baopu.ImpactGovernance.skillGovern(
+                        plan = plan,
+                        statsSize = size,
+                        recentUsed = (size - plan.idleRetire.size).coerceAtLeast(0),
+                    )
+                    com.example.zhengdao.baopu.ImpactLine.text(impact)?.let { line ->
+                        com.example.zhengdao.baopu.ImpactLedger.record("skill_govern", line, shown = false)
+                    }
+                }
+            },
         )
         if (!governance.isEmpty) {
             com.example.zhengdao.rootfs.RunLog.log(
@@ -1563,6 +1580,72 @@ internal class BaopuChatController(context: Context) {
 
     /** 当前卡是重启重建的（没有活的挂起可苏醒）⇒ 批准/拒绝走恢复路径。 */
     private var confirmRestored = false
+
+    // ── 第二百二十批 · 影响提示（只在上面那张卡里加一行小字）───────────────
+    //
+    // 三条纪律（派工单 §2.5，逐条对应下面这份实现）：
+    // 1. **不新增卡**：这只是一个 String?，没有任何 UI 分支会因为它的存在多弹东西；
+    // 2. **卡先出行后到**：预览在 `Dispatchers.IO` 上算，主线程立刻先把卡摆出来——
+    //    算得慢/算炸了，用户看到的只是少一行字，不是少了那张卡；
+    // 3. **可关**：`ImpactPrefs.get` 为 false ⇒ 这里直接返回，连算都不算（关掉＝与现在
+    //    逐字节一致，负例「关掉开关仍有提示」的靶心）。
+    //
+    // 为什么钉 callId 而不是另开一个要到处清的字段：卡的生命周期在五个地方会置 null
+    // （批准/拒绝/停止/切会话/异常收尾），多一个字段就多五处清理点，漏一处就是
+    // 「上一张卡的影响挂在这一张上」那种脏数据。这里只认「当前卡的 callId」，
+    // 卡一换（或清空）这行自动失效。
+
+    /** (callId, 要显示的那一行)；callId 与当前卡不符 ⇒ 当作没有。 */
+    private var impactLineFor by mutableStateOf<Pair<String, String?>?>(null)
+
+    /** 卡面要显示的那一行（null = 不显示任何东西）。 */
+    val confirmImpactLine: String? get() = impactLineFor?.takeIf { it.first == confirmCard?.callId }?.second
+
+    /**
+     * 算影响（后台）——**只读、限时、失败即静默降级**。
+     *
+     * 时序：卡已出（[confirmCard] 已写）⇒ 这里慢慢算 ⇒ 算完回到主线程写 [impactLineFor]。
+     * 用户若是抢在预览回来之前就点了批准，卡已经没了 ⇒ 那次写入自然没人看（不闪、不补）。
+     */
+    private fun queueImpactPreview(req: ConfirmRequest) {
+        if (!com.example.zhengdao.baopu.ImpactPrefs.get(appCtx)) return
+        val call = runCatching {
+            com.example.zhengdao.baopu.agent.ToolCall(
+                req.callId,
+                req.tool,
+                org.json.JSONObject(req.argsJson),
+            )
+        }.getOrNull() ?: return
+        scope.launch {
+            val line = withContext(Dispatchers.IO) {
+                val facts = com.example.zhengdao.baopu.AndroidFacts.of(appCtx, workspaceRoot, db)
+                val t0 = facts.nowMs()
+                val impact = runCatching {
+                    com.example.zhengdao.baopu.ImpactPreview.preview(call, facts)
+                }.getOrNull()
+                com.example.zhengdao.baopu.ImpactStats.record(facts.nowMs() - t0)
+                if (impact == null) {
+                    // 预览自己崩了：**不崩卡、不拦动作**，只当没有这一行（负例 7）
+                    null
+                } else if (impact.unknown) {
+                    com.example.zhengdao.baopu.ImpactLine.UNKNOWN_TEXT
+                } else if (com.example.zhengdao.baopu.ImpactRisk.tierOf(call) < 2) {
+                    // R0/R1：即便意外出了卡，也不摆任何影响字（负例「R0 也显示」）
+                    null
+                } else {
+                    val text = com.example.zhengdao.baopu.ImpactLine.text(impact)
+                    if (text != null) {
+                        com.example.zhengdao.baopu.ImpactLedger.record(req.tool, text, shown = true)
+                        // 注入限流：只对写/删/移动（tier>=2 已保证）；同一句 8 秒内只注一次
+                        com.example.zhengdao.baopu.ImpactInject.noteFor(call, impact)
+                            ?.let { com.example.zhengdao.baopu.ImpactMailbox.offer(it) }
+                    }
+                    text
+                }
+            }
+            impactLineFor = req.callId to line
+        }
+    }
 
     // ── 题材与写法三卡（第一百九十批：建议→推荐→确认→批量产出）──────────────
     //
@@ -3319,6 +3402,10 @@ internal class BaopuChatController(context: Context) {
             if (ev is ConfirmRequest) {
                 confirmCard = ev
                 confirmRestored = false
+                // 第二百二十批：影响提示——**卡先出、行后到**（预览跑在 IO 协程上，
+                // 绝不挡出卡，也绝不挡动作）。算不出来就显示「后果未知」。
+                impactLineFor = null
+                queueImpactPreview(ev)
             }
             // 第二十四批 B 段：用户消息刚落库 ⇒ 把本轮附件补成 image part（B1）。
             // 必须在 refresh **之前**写：refresh 会重读 db，晚一步就要等下一次刷新才看得见图。

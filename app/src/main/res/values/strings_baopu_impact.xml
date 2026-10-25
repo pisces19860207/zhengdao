@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第二百二十批 · 影响提示（2026-10-26）。
+  单独成文件（房型照 158 批 `strings_baopu_image.xml`／198 批 `strings_baopu_search.xml`）：
+  共享 `strings.xml` 是多方并集的高冲突文件，本批对它的改动为 **0 字节**。
+-->
+<resources>
+    <!-- 设置页那张卡的标题 -->
+    <string name="baopu_impact_card">影响提示</string>
+    <string name="baopu_impact_title">显示影响提示</string>
+    <string name="baopu_impact_desc">确认卡上多一行小字：这次会改几个文件、删几条已发台账。关掉就与以前一样。</string>
+</resources>
