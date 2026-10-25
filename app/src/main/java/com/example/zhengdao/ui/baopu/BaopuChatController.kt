@@ -56,6 +56,12 @@ import com.example.zhengdao.baopu.ProposalCandidateStore
 import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.TopicArticleResult
+import com.example.zhengdao.baopu.TopicFlowPhase
+import com.example.zhengdao.baopu.TopicFlowRules
+import com.example.zhengdao.baopu.TopicFlowState
+import com.example.zhengdao.baopu.TopicPublishedRef
+import com.example.zhengdao.baopu.TopicSuggest
 import com.example.zhengdao.baopu.eval.EvalAttempt
 import com.example.zhengdao.baopu.eval.EvalEvidenceSource
 import com.example.zhengdao.baopu.eval.EvalResultFile
@@ -78,6 +84,7 @@ import com.example.zhengdao.baopu.eval.TargetKind
 import com.example.zhengdao.baopu.eval.TargetSnapshot
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.EngineEvent
+import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.agent.SendAcceptance
 import com.example.zhengdao.baopu.library.LibraryItem
@@ -1045,6 +1052,50 @@ internal class BaopuChatController(context: Context) {
     /** 当前卡是重启重建的（没有活的挂起可苏醒）⇒ 批准/拒绝走恢复路径。 */
     private var confirmRestored = false
 
+    // ── 题材与写法三卡（第一百九十批：建议→推荐→确认→批量产出）──────────────
+    //
+    // 分工：判据/候选池/查重/状态机全在 `baopu/TopicSuggest.kt`（纯函数，JVM 直测）；
+    // 这里只做装配——读台账在 IO 线程、UI 按钮折成 FlowEvent、确认后逐篇驱动引擎，
+    // 落盘与台账 append 复用 179 已合入的 BaopuLongformStore（不另造第二套路径）。
+    // 红线：确认按钮按下之前零落盘零台账——状态机里只有 ConfirmWrite 能开写闸，
+    // 用户文字对状态零副作用（「确认卡不被文字绕过」，沿御批卡口径）。
+
+    /** 三卡流状态（null＝没在走；迁移只经 [TopicFlowRules.reduce]）。 */
+    var topicFlow by mutableStateOf<TopicFlowState?>(null)
+        private set
+
+    /** 推荐档 id（流程开始时从本地偏好取定，整条流程稳定；「按推荐的来」用它）。 */
+    var topicRecommendedStyleId by mutableStateOf<String?>(null)
+        private set
+
+    /** 确认卡要显示的落点（相对工作区根；开流程时在 IO 上算好，渲染期不读盘）。 */
+    var topicDirRel by mutableStateOf("产物")
+        private set
+
+    /** 本地偏好（不联网）：上次成功落盘那套写法的 id。 */
+    private val topicPrefs = appCtx.getSharedPreferences("baopu-topic", android.content.Context.MODE_PRIVATE)
+
+    /** 正在等收尾的那轮写作指令（收尾对账按它锚定是哪一篇）。 */
+    private var topicPendingInstruction: String? = null
+
+    /**
+     * 发往引擎、还没收尾的用户文本队列（FIFO 对账用）。
+     *
+     * 为什么需要它：引擎是全局单活跃门、每轮只产出一条助手回复，但**光看消息位置
+     * 分不清哪条回复回答哪条消息**（用户中途插话时，插话的回复可能排在我们指令的
+     * 正文后面）。所以按发送顺序记账：每次 Settled 弹队首＝刚收尾那轮的用户文本，
+     * 弹出来正好是我们的指令 ⇒ 这轮的文章就是它（单活跃门保证一轮一回复）。
+     * 上限 32：正常聊天永远到不了；真到了说明对账早乱了，丢最老的比撑爆强。
+     */
+    private val topicRoundQueue = ArrayDeque<String>()
+
+    /** 一次台账+产物目录扫描的结果（[topicScan] 在 IO 上装好）。 */
+    private class TopicScan(
+        val refs: List<TopicPublishedRef>,
+        val productCount: Int,
+        val dirRel: String,
+    )
+
     // ── 资料库（A 段收料提问卡 / D 段导出 / 顶条统计）─────────────────────────
 
     /**
@@ -1700,7 +1751,13 @@ internal class BaopuChatController(context: Context) {
      */
     fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()): Boolean {
         if (text.isBlank()) return false
-        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
+        // 第一百九十批：题材触发词 ⇒ 本地开三卡流（建议→推荐→确认），不进引擎。
+        // 确认前零落盘零台账；确认后才逐篇驱动引擎写作（落盘走 179 的出口）。
+        // WRITING 中不拦：批量正在跑，重开建议卡会搅批次，文字照常进引擎当聊天。
+        if (TopicSuggest.isTopicRequest(text) && topicFlow?.phase != TopicFlowPhase.WRITING) {
+            topicStart()
+            return true
+        }        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
         // （这里是主线程，不许在这儿读 2 MB 的图）。图片路径随这条消息排队，不共享格子。
         val imageRelPaths = AttachmentParts.imageRelPaths(attachments)
         val sid = sessionId ?: engine.createSession(
@@ -1716,6 +1773,11 @@ internal class BaopuChatController(context: Context) {
             // 「本轮累计」必须是**本轮**的。只在本轮真开跑时清：排队的消息还没跑，
             // 清了会把正在跑那一轮的账抹掉。
             resetRoundUsage()
+        }
+        // 第一百九十批：FIFO 轮次记账（题材批量写作的收尾对账用，见 topicRoundQueue）。
+        if (verdict.accepted) {
+            topicRoundQueue.addLast(text)
+            while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
         }
         return verdict.accepted
     }
@@ -2260,6 +2322,215 @@ internal class BaopuChatController(context: Context) {
         runImport(choice)
     }
 
+    // ── 题材与写法三卡（第一百九十批）的方法段 ─────────────────────────────
+
+    /**
+     * 台账＋产物目录扫描（IO；落点与台账选择**原样复用 179**：
+     * [BaopuLongformStore.vaultRoot]/[BaopuLongformPolicy.pickLedger]，不另找路径）。
+     * 只读不写——确认前的「零落盘」从这里开始保证。
+     */
+    private suspend fun topicScan(): TopicScan = withContext(Dispatchers.IO) {
+        val root = BaopuLongformStore.vaultRoot(appCtx)
+        val dir = BaopuLongformStore.productDirOf(root)
+        val ledger = BaopuLongformPolicy.pickLedger(root, dir)
+        val names = (dir.listFiles()?.filter { it.isFile }?.map { it.name } ?: emptyList())
+            .filter { it != "台账.md" && it != BaopuLongformPolicy.EXTERNAL_LEDGER && !it.endsWith(".bak") && !it.endsWith(".tmp") }
+        val refs = TopicSuggest.publishedFromFiles(names) +
+            TopicSuggest.publishedFromLedger(
+                runCatching { if (ledger.isFile) ledger.readText() else null }.getOrNull(),
+            )
+        TopicScan(refs, names.size, RunRules.relativizePath(dir.absolutePath, workspaceRoot))
+    }
+
+    /** 触发词 ⇒ 开三卡流：IO 上算首批候选（已查重）与推荐档；不落任何盘。 */
+    private fun topicStart() {
+        scope.launch {
+            val scan = topicScan()
+            val last = runCatching { topicPrefs.getString("style_last", null) }.getOrNull()
+            val style = TopicSuggest.defaultStyle(last)
+            topicRecommendedStyleId = style.id
+            topicDirRel = scan.dirRel
+            // 轮转起点锚在已发条数上：不同天数出的首批自然不同
+            topicFlow = TopicFlowRules.start(
+                TopicSuggest.nextBatch(scan.refs, emptySet(), scan.productCount),
+                style.id,
+                scan.productCount,
+            )
+        }
+    }
+
+    /** 建议卡：点选某条（可多选；默认全选）。 */
+    fun topicSelect(seedId: String) {
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.Select(seedId))
+    }
+
+    /** 建议卡「换一批」：排除本流程展示过的**全部**种子重算（与上批零重复）。 */
+    fun topicChangeBatch() {
+        val cur = topicFlow ?: return
+        scope.launch {
+            val scan = topicScan()
+            val nextOffset = cur.poolOffset + TopicSuggest.CANDIDATES
+            topicFlow = TopicFlowRules.reduce(
+                cur,
+                TopicFlowRules.FlowEvent.BatchSwapped(
+                    TopicSuggest.nextBatch(scan.refs, cur.shownSeedIds, nextOffset),
+                    nextOffset,
+                ),
+            )
+        }
+    }
+
+    /** 建议卡「就写这些」⇒ 推荐卡。 */
+    fun topicToStyle() {
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.ToStyle)
+    }
+
+    /** 推荐卡：点某套写法（就地切换，不自动进确认卡）。 */
+    fun topicPickStyle(styleId: String) {
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.PickStyle(styleId))
+    }
+
+    /** 推荐卡「按推荐的来」：选回推荐档再直接进确认卡（卡上点过别的档也不影响）。 */
+    fun topicUseRecommended() {
+        val rec = topicRecommendedStyleId ?: return
+        topicFlow = TopicFlowRules.reduce(
+            TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.PickStyle(rec)),
+            TopicFlowRules.FlowEvent.UseRecommended,
+        )
+    }
+
+    /** 推荐卡「改一档」：就地切下一套，随后进确认卡。 */
+    fun topicShiftStyle() {
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.ShiftStyle)
+    }
+
+    /** 确认卡「改题材」⇒ 回建议卡。 */
+    fun topicBackToSuggest() {
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.BackToSuggest)
+    }
+
+    /** 确认卡「改写法」⇒ 回推荐卡。 */
+    fun topicBackToStyle() {
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.BackToStyle)
+    }
+
+    /** 各卡「先不写」⇒ 整条流程作废（WRITING 中没有这个入口，只给「停下这批」）。 */
+    fun topicDismiss() {
+        if (topicFlow?.phase == TopicFlowPhase.WRITING) return
+        topicFlow = null
+        topicPendingInstruction = null
+    }
+
+    /** 「停下这批」：当前轮也停（半成品留在会话里、不落盘），已出的结果保留在卡上。 */
+    fun topicStopWrite() {
+        engine.stop()
+        topicFlow = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.StopWrite)
+        topicPendingInstruction = null
+        // stop 清的是「还没开跑」的排队条；轮次队列里可能还躺着没弹的头，
+        // 全清掉——批次已停，对账不继续。
+        topicRoundQueue.clear()
+    }
+
+    /**
+     * 「就按这些写」——**唯一开写闸**。此后逐篇：发一轮写作指令 → 等收尾 →
+     * 用 179 的落库出口存正文 → 记账 → 下一篇。顺序落盘，哪篇没落在卡上逐行可见。
+     */
+    fun topicConfirmWrite() {
+        val next = TopicFlowRules.reduce(topicFlow, TopicFlowRules.FlowEvent.ConfirmWrite) ?: return
+        if (next.phase != TopicFlowPhase.WRITING) return
+        topicFlow = next
+        val n = next.writing?.queue?.size ?: return
+        pendingNote = appCtx.getString(R.string.baopu_topic_note_started, n.toString())
+        topicWriteNext()
+    }
+
+    /** 发当前篇的写作指令（引擎忙 ⇒ 排队，收尾时自然轮到）。 */
+    private fun topicWriteNext() {
+        val flow = topicFlow ?: return
+        val w = flow.writing ?: return
+        val cur = w.queue.getOrNull(w.done) ?: return
+        val instruction = TopicSuggest.writeInstruction(cur.seed.title, TopicSuggest.styleOf(flow.styleId))
+        val sid = sessionId ?: engine.createSession(
+            title = "题材批量写作",
+            now = System.currentTimeMillis(),
+        ).also { created ->
+            sessionId = created
+            recordSessionWorkspace(created)
+        }
+        topicPendingInstruction = instruction
+        val verdict = engine.send(sid, instruction, emptyList())
+        if (verdict == SendAcceptance.STARTED) resetRoundUsage()
+        if (verdict.accepted) {
+            topicRoundQueue.addLast(instruction)
+            while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
+        } else {
+            // 引擎拒收（别的会话占门等）⇒ 这篇没落，如实记账后接着试下一篇
+            topicRecordArticle(TopicArticleResult(cur.seed.title, false, "引擎没接这一轮（${verdict.name}）"))
+        }
+    }
+
+    /**
+     * 引擎每轮收尾（Settled）后到这里对账（refresh(force) 刚重读过 messages）。
+     *
+     * 配对：弹 [topicRoundQueue] 队首＝刚收尾那轮的用户文本；弹出来不是我们的指令
+     * ⇒ 这轮是别人的（用户插话/上一轮遗留下来的），不动批次账。是我们的 ⇒ 单活跃门
+     * 保证这条回复就是本篇正文（用户在我们写作期间又发的消息只会**排队**，不会插进
+     * 这一轮）。正文判据用**不带用户关键词**的形态：指令里写了「微头条」，带着
+     * userText 判会让任何短回复都算文章。
+     */
+    private fun topicBatchOnSettled() {
+        val flow = topicFlow ?: return
+        if (flow.phase != TopicFlowPhase.WRITING) return
+        val instruction = topicPendingInstruction ?: return
+        val head = topicRoundQueue.firstOrNull()
+        // 队首不是我们的指令：别人的轮次收尾，弹掉它继续等（FIFO）
+        if (head != instruction) {
+            if (head != null) topicRoundQueue.removeFirst()
+            return
+        }
+        topicRoundQueue.removeFirst()
+        val cur = flow.writing?.queue?.getOrNull(flow.writing.done) ?: return
+        val article = lastNonUserPartText(messages)
+        when {
+            engineState.value == RunState.ABORTED ->
+                topicRecordArticle(TopicArticleResult(cur.seed.title, false, "这一轮被中止，没写成"))
+            article.isBlank() ->
+                topicRecordArticle(TopicArticleResult(cur.seed.title, false, "这一轮没有产出正文"))
+            !BaopuLongformPolicy.isLongform(article) ->
+                topicRecordArticle(TopicArticleResult(cur.seed.title, false, "这轮回复不像一篇长文（太短/没结构），没落"))
+            else -> scope.launch {
+                val out = withContext(Dispatchers.IO) { BaopuLongformStore.save(appCtx, article, "md") }
+                topicRecordArticle(
+                    if (out.ok) TopicArticleResult(cur.seed.title, true, out.message, out.path)
+                    else TopicArticleResult(cur.seed.title, false, out.message),
+                )
+            }
+        }
+    }
+
+    /** 记一篇的账（reduce 自守相位；没记上＝重复收尾/相位已过，直接弃），还有下一篇就接着发。 */
+    private fun topicRecordArticle(result: TopicArticleResult) {
+        val cur = topicFlow ?: return
+        val next = TopicFlowRules.reduce(cur, TopicFlowRules.FlowEvent.ArticleDone(result)) ?: return
+        // done 没前进说明这条没记上（比如用户已「停下这批」）——不许重复收尾、重复便签
+        if (next.writing?.done == cur.writing?.done) return
+        topicFlow = next
+        if (next.phase == TopicFlowPhase.DONE) topicBatchFinished(next) else topicWriteNext()
+    }
+
+    /** 整批收尾：写本地偏好（上次成功那套）＋一句话便签（几篇落、几篇没落）。 */
+    private fun topicBatchFinished(flow: TopicFlowState) {
+        val results = flow.writing?.results.orEmpty()
+        val ok = results.count { it.ok }
+        if (ok > 0) runCatching { topicPrefs.edit { putString("style_last", flow.styleId) } }
+        topicPendingInstruction = null
+        // 明细（哪篇落了/哪篇没落、为什么）在进度卡上逐行常驻；这里只给一句总结
+        pendingNote = appCtx.getString(
+            R.string.baopu_topic_note_done,
+            results.size.toString(), ok.toString(), (results.size - ok).toString(),
+        )
+    }
+
     /**
      * 执行收料（A 段第 3/4 步）：私有复制 ＋ 两份清单 ＋ 索引镜像 ＋ 五步流水线。
      *
@@ -2487,6 +2758,9 @@ internal class BaopuChatController(context: Context) {
                 // 放在这里而不是 acceptSessionSwitch 里死等：Settled 由引擎在释放单活跃门之后才发，
                 // 是"这个 run 真结束了"的唯一权威信号（同上面对 interruptedStep 的那条口径）。
                 consumePendingSwitch()
+                // 第一百九十批：题材批量写作的逐篇对账（只在我们等的那轮上动作；
+                // messages 已在 refresh(force) 里重读过，拿到的是刚落库的最终消息集）。
+                topicBatchOnSettled()
             }
         }
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {

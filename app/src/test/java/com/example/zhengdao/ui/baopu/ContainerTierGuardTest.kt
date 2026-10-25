@@ -121,9 +121,11 @@ class ContainerTierGuardTest {
             "DecisionCard.kt",
             "BaopuLongformCard.kt", // 179 长文输出卡
             "SkillCard.kt", // 184 技能记忆入口
+            "BaopuTopicCard.kt", // 190 题材与写法卡（建议/确认/进度，同一行动卡家族）
+            "BaopuStyleCard.kt", // 190 推荐卡（写法档位）
         )
         assertTrue(
-            "行动卡调用点只许这七个（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
+            "行动卡调用点只许这九个（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
             callers.toSet() == expect,
         )
     }

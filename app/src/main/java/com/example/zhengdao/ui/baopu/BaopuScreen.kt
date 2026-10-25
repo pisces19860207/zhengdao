@@ -85,6 +85,8 @@ import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ModelPickerRules
 import com.example.zhengdao.baopu.ProviderPrefs
+import com.example.zhengdao.baopu.TopicFlowPhase
+import com.example.zhengdao.baopu.TopicSuggest
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.library.BackupRules
 import com.example.zhengdao.baopu.BaopuWorkspace
@@ -1089,6 +1091,67 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         editMsg = null
                     },
                 )
+            }
+            // ── 题材与写法三卡（第一百九十批）──────────────────────────────
+            // 紧贴输入栏上方内联展开（并 164：卡不挡输入框——本 Column 在 Composer
+            // 之上，键盘弹出随 imePadding 一起顶起；不采纳也能直接打字发送）。
+            // 确认前零落盘：这里的回调没有一个直接写盘，落盘只在控制器的
+            // topicConfirmWrite 之后、走 179 的 BaopuLongformStore。
+            controller.topicFlow?.let { flow ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 4.dp),
+                ) {
+                    when (flow.phase) {
+                        TopicFlowPhase.SUGGEST -> BaopuTopicSuggestCard(
+                            candidates = flow.candidates,
+                            selected = flow.selected,
+                            clashCount = flow.clashes.size,
+                            exhausted = flow.batchExhausted,
+                            onSelect = { controller.topicSelect(it) },
+                            onChangeBatch = { controller.topicChangeBatch() },
+                            onAccept = { controller.topicToStyle() },
+                            onDismiss = { controller.topicDismiss() },
+                        )
+
+                        TopicFlowPhase.STYLE -> BaopuStyleCard(
+                            styles = TopicSuggest.STYLES,
+                            chosenId = flow.styleId,
+                            recommendedId = controller.topicRecommendedStyleId ?: flow.styleId,
+                            lastUsedId = controller.topicRecommendedStyleId,
+                            onPick = { controller.topicPickStyle(it) },
+                            onUseRecommended = { controller.topicUseRecommended() },
+                            onShift = { controller.topicShiftStyle() },
+                            onDismiss = { controller.topicDismiss() },
+                        )
+
+                        TopicFlowPhase.CONFIRM -> {
+                            val topics = flow.candidates.filter { it.seed.id in flow.selected }
+                            val style = TopicSuggest.styleOf(flow.styleId)
+                            BaopuTopicConfirmCard(
+                                topics = topics,
+                                style = style,
+                                dirRel = controller.topicDirRel,
+                                estimate = TopicSuggest.estimate(topics.size, style),
+                                onConfirm = { controller.topicConfirmWrite() },
+                                onEditTopics = { controller.topicBackToSuggest() },
+                                onEditStyle = { controller.topicBackToStyle() },
+                                onDismiss = { controller.topicDismiss() },
+                            )
+                        }
+
+                        TopicFlowPhase.WRITING, TopicFlowPhase.DONE -> flow.writing?.let { w ->
+                            BaopuTopicProgressCard(
+                                writing = w,
+                                onDismiss = { controller.topicDismiss() },
+                                onStop = { controller.topicStopWrite() },
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
             }
             BaopuComposer(
                 busy = controller.busy,
