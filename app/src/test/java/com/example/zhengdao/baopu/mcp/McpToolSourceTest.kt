@@ -371,4 +371,28 @@ class McpToolSourceTest {
         assertNull(reg.find("mcp_srv_read_thing"))
         assertFalse(source.removeServer("srv"))
     }
+
+    @Test
+    fun `215负例5_外部工具判据不动_只读与并行都按会改远端状态`() {
+        // 第二百一十五批只做传输校正：McpToolSource 的 readOnly/parallelSafe 判据
+        // （线类工具一律 false）与 CONFIRM/FREE 授权逻辑一个字都不许动。
+        val reg = ToolRegistry()
+        val fake = FakeSession(
+            listOf(
+                descriptor("read_thing", readOnly = true),
+                descriptor("write_thing", readOnly = false),
+            ),
+        )
+        val source = McpToolSource(reg, clientFactory = { fake })
+        source.addServer(config)
+        source.connect("srv")
+
+        for (name in listOf("mcp_srv_read_thing", "mcp_srv_write_thing")) {
+            val spec = reg.find(name)!!
+            assertFalse("线类工具会改远端状态：$name", spec.readOnly)
+            assertFalse("不许进并行段：$name", spec.parallelSafe)
+            assertEquals(ToolPermission.CONFIRM, spec.permission)
+            assertEquals(ToolGroup.MCP, spec.group)
+        }
+    }
 }

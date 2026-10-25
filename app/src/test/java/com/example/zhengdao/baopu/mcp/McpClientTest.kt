@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百二十三批 · MCP v1：真实 OkHttp 栈 + MockWebServer 的线形单测。
+// 第二百一十五批 · 传输校正：initialize 只认 2026-07-28；版本头每个请求都带（含
+// initialize），与 body `params._meta.protocolVersion` 同源；会话头可选。
 // 覆盖 Streamable HTTP（JSON / SSE）、旧式 SSE 回退、超时、断连、HTTP 错误、
 // JSON-RPC error、isError、session 头与「密钥不进日志」。
 package com.example.zhengdao.baopu.mcp
@@ -78,7 +80,7 @@ class McpClientTest {
     }
 
     private val initJson =
-        """{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"fake","version":"1"}}"""
+        """{"protocolVersion":"2026-07-28","capabilities":{},"serverInfo":{"name":"fake","version":"1"}}"""
 
     private val toolOne =
         """{"name":"echo","description":"回显","inputSchema":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]},"annotations":{"readOnlyHint":true}}"""
@@ -112,7 +114,7 @@ class McpClientTest {
         val c = client(config())
         c.connect()
         assertEquals("streamable-http", c.mode)
-        assertEquals("2025-03-26", c.protocolVersion)
+        assertEquals("2026-07-28", c.protocolVersion)
 
         val tools = c.listTools()
         assertEquals(1, tools.size)
@@ -126,12 +128,22 @@ class McpClientTest {
         val posts = seen.filter { it.method == "POST" }
         assertEquals(4, posts.size)
         val init = posts.first { bodyOf(it).optString("method") == "initialize" }
-        assertNull("initialize 不带协议版本头", init.getHeader("Mcp-Protocol-Version"))
+        // 215 批：版本头**每个请求都带**（含 initialize）；body 的 protocolVersion 与
+        // _meta.protocolVersion 也都来自 McpJsonRpc.PROTOCOL 这一个常量。
+        assertEquals("2026-07-28", init.getHeader("MCP-Protocol-Version"))
+        assertEquals("application/json, text/event-stream", init.getHeader("Accept"))
+        val initParams = bodyOf(init).getJSONObject("params")
+        assertEquals("2026-07-28", initParams.getString("protocolVersion"))
+        assertEquals("2026-07-28", initParams.getJSONObject("_meta").getString("protocolVersion"))
         assertNull("initialize 不带 session", init.getHeader("Mcp-Session-Id"))
 
         val list = posts.first { bodyOf(it).optString("method") == "tools/list" }
-        assertEquals("2025-03-26", list.getHeader("Mcp-Protocol-Version"))
+        assertEquals("2026-07-28", list.getHeader("Mcp-Protocol-Version"))
         assertEquals("session-1", list.getHeader("Mcp-Session-Id"))
+        assertEquals(
+            "2026-07-28",
+            bodyOf(list).getJSONObject("params").getJSONObject("_meta").getString("protocolVersion"),
+        )
 
         val call = posts.first { bodyOf(it).optString("method") == "tools/call" }
         val params = bodyOf(call).getJSONObject("params")

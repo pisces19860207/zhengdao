@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百二十三批 · MCP 工具接入 v1：JSON-RPC 2.0 线形（纯 JVM，无网络/Android）。
+// 第二百一十五批 · MCP 传输校正：协议版本只认 2026-07-28（旧 2025-03-26 常量与
+// 「服务器说啥就用啥」的分支已删）；每条消息的 params._meta.protocolVersion 与
+// 传输层的 MCP-Protocol-Version 头同源——都取 [PROTOCOL] 这一个常量。
 // 只做「信封」：请求/通知构造、响应分类、错误文案清洗。传输在 McpClient。
 package com.example.zhengdao.baopu.mcp
 
@@ -13,23 +16,31 @@ import org.json.JSONObject
  * 三条纪律：
  * 1. **只认自己的 id**：服务器主动发来的请求/通知（sampling、roots、log…）一律不执行；
  *    传输层看到 [Incoming.ServerRequest] 只当作「不是给我的响应」跳过。
- * 2. **错误原文清洗**：[responseErrorText] 只取 code/message，`data` 一律不读——里面可能
- *    有服务器回显的请求参数（甚至 key）。
+ * 2. **错误原文清洗**：[responseErrorText] 只取 code/message，`data` 一律不当原文读——里面
+ *    可能 有服务器回显的请求参数（甚至 key）。唯一的窄口子是 [supportedVersions]：只认
+ *    `supported` 等三个键下的日期形字符串，给「服务器过旧」的文案列支持清单用。
  * 3. **不做批量优化**：v1 一次一个请求（串行），批量只解析不用。
  */
 internal object McpJsonRpc {
 
     const val VERSION = "2.0"
 
-    /** 客户端会声明的协议版本（MCP 2025-03-26）。 */
-    const val PROTOCOL = "2025-03-26"
+    /**
+     * 客户端**唯一**支持的协议版本（MCP 2026-07-28）。
+     *
+     * 第二百一十五批起只此一个：服务器不认就明确失败并回报它声明支持的版本列表，
+     * 不降级、不静默（握手校验在 [com.example.zhengdao.baopu.mcp.McpClient]）。
+     * 传输层的 `MCP-Protocol-Version` 头与每条消息 `params._meta.protocolVersion`
+     * 都取这里——一处常量，两边不可能不一致。
+     */
+    const val PROTOCOL = "2026-07-28"
 
     fun request(id: Long, method: String, params: JSONObject? = null): JSONObject {
         val o = JSONObject()
             .put("jsonrpc", VERSION)
             .put("id", id)
             .put("method", method)
-        params?.let { o.put("params", it) }
+            .put("params", withProtocolVersion(params))
         return o
     }
 
@@ -37,8 +48,41 @@ internal object McpJsonRpc {
         val o = JSONObject()
             .put("jsonrpc", VERSION)
             .put("method", method)
-        params?.let { o.put("params", it) }
+            .put("params", withProtocolVersion(params))
         return o
+    }
+
+    /**
+     * 给 params 补上 `_meta.protocolVersion`（与 `MCP-Protocol-Version` 头同源）。
+     *
+     * 2026-07-28 要求头与 body 里的版本一致（否则 400 HeaderMismatch）——两边都从
+     * [PROTOCOL] 取，结构上就不可能不一致。没有 params 的消息也带上（只含 _meta）。
+     */
+    private fun withProtocolVersion(params: JSONObject?): JSONObject {
+        val p = params ?: JSONObject()
+        val meta = p.optJSONObject("_meta") ?: JSONObject().also { p.put("_meta", it) }
+        meta.put("protocolVersion", PROTOCOL)
+        return p
+    }
+
+    /**
+     * 从 JSON-RPC error 的 `data` 里**只**取「服务器声明支持的版本列表」。
+     *
+     * 纪律不变：error 的 data 一律不当原文读（里面可能有服务器回显的请求参数甚至
+     * key）——这里只认 `supported` / `supportedVersions` / `versions` 三个键下的
+     * **日期形字符串**，别的内容一律不读。取不到返回空列表（调用方退化成普通文案）。
+     */
+    fun supportedVersions(error: JSONObject?): List<String> {
+        val data = error?.optJSONObject("data") ?: return emptyList()
+        val out = LinkedHashSet<String>()
+        for (key in SUPPORTED_KEYS) {
+            val arr = data.optJSONArray(key) ?: continue
+            for (i in 0 until arr.length()) {
+                val v = arr.optString(i).trim()
+                if (VERSION_RE.matches(v)) out.add(v)
+            }
+        }
+        return out.toList()
     }
 
     /** JSON-RPC 的响应（只用于「服务器主动请求我们」的拒绝；v1 不接服务器请求）。 */
@@ -168,7 +212,7 @@ internal object McpJsonRpc {
         }
         if (out.isEmpty()) {
             val structured = result.optJSONObject("structuredContent")
-            // 2025-03-26 的 structuredContent 是对象；数组/标量也不猜，按原样转文本。
+            // structuredContent 是对象；数组/标量也不猜，按原样转文本。
             val anyStructured = result.opt("structuredContent")
             when {
                 structured != null -> out.append(structured.toString())
@@ -192,4 +236,10 @@ internal object McpJsonRpc {
 
     /** 单次工具结果的上限（不含 Guard 的 spill 阈值；防服务器一次灌爆内存）。 */
     const val MAX_RESULT_CHARS = 200_000
+
+    /** 协议版本形状（只用于校验服务器回声/支持列表，不用于协商）。 */
+    private val VERSION_RE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+
+    /** error.data 里可能放支持列表的键（按优先级试）。 */
+    private val SUPPORTED_KEYS = listOf("supported", "supportedVersions", "versions")
 }

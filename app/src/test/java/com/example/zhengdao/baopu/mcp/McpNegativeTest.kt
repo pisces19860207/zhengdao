@@ -148,6 +148,38 @@ class McpNegativeTest {
     }
 
     @Test
+    fun `215负例6_MCP传输层不引新依赖_import白名单`() {
+        // 第二百一十五批红线「不新增第三方依赖」：MCP 传输层只准用既有几件套
+        // （org.json / okhttp3 / JDK / 本仓自己的包）。多一个 import 就红。
+        val root = File("src/main/java/com/example/zhengdao")
+            .takeIf { it.isDirectory }
+            ?: File("app/src/main/java/com/example/zhengdao")
+        val files = File(root, "baopu/mcp").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .toList()
+        assertTrue("扫描目标必须存在（否则这条负例是空转的）", files.size >= 6)
+
+        val allowed = listOf(
+            "com.example.zhengdao.", // 本仓库自己的包（ToolSpec/GuardPipeline 等）
+            "org.json.", // JSON 实现（既有依赖）
+            "okhttp3.", // HTTP（既有依赖）
+            "okio.", // okhttp 自带 io，不是新依赖
+            "android.", // 平台 API（McpServerPrefs）
+            "androidx.", // 既有 androidx 依赖族（androidx.core.content.edit）
+            "java.",
+            "javax.",
+            "kotlin.",
+            "kotlinx.coroutines.", // 既有协程；别的 kotlinx.* 不在白名单（如 serialization）
+        )
+        val offenders = files.filter { f ->
+            f.readLines()
+                .filter { it.startsWith("import ") }
+                .any { line -> allowed.none { line.removePrefix("import ").startsWith(it) } }
+        }.map { it.name }
+        assertEquals("MCP 传输层不许引白名单外的依赖：$offenders", emptyList<String>(), offenders)
+    }
+
+    @Test
     fun `负例_密钥与 query_不进日志文案`() {
         val logs = mutableListOf<String>()
         val cfg = McpServerConfig(

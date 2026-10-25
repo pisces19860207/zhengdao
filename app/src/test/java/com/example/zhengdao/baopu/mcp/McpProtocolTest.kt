@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百二十三批 · MCP v1：JSON-RPC/URL/文本清洗的纯 JVM 单测。
+// 第二百一十五批 · 传输校正：协议版本只认 2026-07-28；每条消息的 params._meta
+// 与传输层版本头同源；服务器支持列表只认日期形字符串（data 其余内容不读）。
 package com.example.zhengdao.baopu.mcp
 
 import org.json.JSONObject
@@ -85,6 +87,44 @@ class McpProtocolTest {
         } catch (e: McpException) {
             assertEquals(McpFailure.PROTOCOL, e.failure)
         }
+    }
+
+    // ── 215 批：协议版本只认 2026-07-28，头与 _meta 同源 ────────────────
+
+    @Test
+    fun `215_协议版本常量与_meta注入`() {
+        assertEquals("2026-07-28", McpJsonRpc.PROTOCOL)
+        // 请求：params 既有业务字段也有 _meta.protocolVersion
+        val req = McpJsonRpc.request(1, "tools/list", JSONObject().put("cursor", "c"))
+        val params = req.getJSONObject("params")
+        assertEquals("c", params.getString("cursor"))
+        assertEquals(McpJsonRpc.PROTOCOL, params.getJSONObject("_meta").getString("protocolVersion"))
+        // 通知（没有 params 也要带）
+        val note = McpJsonRpc.notification("notifications/initialized")
+        assertEquals(
+            McpJsonRpc.PROTOCOL,
+            note.getJSONObject("params").getJSONObject("_meta").getString("protocolVersion"),
+        )
+    }
+
+    @Test
+    fun `215_服务器支持列表_只认日期形字符串`() {
+        val error = JSONObject()
+            .put("code", -32002)
+            .put("message", "Unsupported protocol version")
+            .put(
+                "data",
+                JSONObject().put(
+                    "supported",
+                    org.json.JSONArray().put("2025-03-26").put("<script>x</script>").put(42),
+                ),
+            )
+        assertEquals(listOf("2025-03-26"), McpJsonRpc.supportedVersions(error))
+        assertTrue("没有 data ⇒ 空", McpJsonRpc.supportedVersions(JSONObject().put("message", "x")).isEmpty())
+        assertTrue(
+            "data 不是对象 ⇒ 不看",
+            McpJsonRpc.supportedVersions(JSONObject().put("data", "SECRET-TOKEN")).isEmpty(),
+        )
     }
 
     // ── tools-call 内容 ─────────────────────────────────────────────────

@@ -1,6 +1,12 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第一百二十三批 · MCP 工具接入 v1：HTTP/SSE 传输 + MCP 客户端。
+// 第二百一十五批 · MCP 传输校正（2026-07-28）：
+// - `initialize` 只发 `McpJsonRpc.PROTOCOL`（2026-07-28）；服务器回声旧版/回
+//   `UnsupportedProtocolVersionError` ⇒ **明确失败**，不降级、不静默，支持列表进 UI/日志；
+// - `MCP-Protocol-Version` 头**每个请求都带**，与 body `params._meta.protocolVersion`
+//   同源（都在 McpJsonRpc 里生成）；
+// - `Mcp-Session-Id` **可选**：捕获到就带（兼容旧服务器），不回/405 都不依赖会话继续。
 // 红线：只发 HTTP(S) 请求，不拉进程、不读本地配置、不执行服务器请求/代码。
 package com.example.zhengdao.baopu.mcp
 
@@ -39,6 +45,8 @@ internal interface McpSession : Closeable {
  * 连接只在 [connect] 时发生——构造器不发任何网络请求。传输优先 Streamable HTTP；
  * 仅当它在 initialize 阶段明确回 404/405/415 时才回退旧式 HTTP+SSE（见设计 §3）。
  *
+ * 协议版本（2026-07-28）只有一种：握手回声不是它就是明确失败，见 [handshake]。
+ *
  * 不打印请求头/URL/响应体；[log] 只拿 server id、阶段、工具数、连接方式。
  */
 internal class McpClient(
@@ -60,7 +68,7 @@ internal class McpClient(
     override var mode: String = "未连接"
         private set
 
-    /** 协商出的 MCP 协议版本（服务器不认时保留客户端版本）。 */
+    /** 协商出的 MCP 协议版本（215 批起只可能是 [McpJsonRpc.PROTOCOL]；不认就连接失败）。 */
     @Volatile
     override var protocolVersion: String = McpJsonRpc.PROTOCOL
         private set
@@ -167,24 +175,46 @@ internal class McpClient(
         }
     }
 
-    /** initialize → 记版本 → notifications/initialized。 */
+    /**
+     * initialize → 校验版本（只认 2026-07-28，不降级）→ notifications/initialized。
+     *
+     * 215 批：旧实现「服务器回声是日期形就用它、否则保留客户端版本」已删——那种写法
+     * 会把只讲 2025-03-26 的服务器**静默**降级用下去。现在：
+     * - 回声恰好是 [McpJsonRpc.PROTOCOL] ⇒ 协商成功；
+     * - 否则（回声旧版 / 干脆不给版本 / JSON-RPC error）⇒ 抛 [McpException]，
+     *   人话里写清「它只支持旧协议 + 它声明支持的版本列表」，UI 与日志各得一份。
+     */
     private fun handshake(t: Transport): String {
         val params = JSONObject()
             .put("protocolVersion", McpJsonRpc.PROTOCOL)
             .put("capabilities", JSONObject())
             .put("clientInfo", JSONObject().put("name", "zhengdao-baopu").put("version", "v1"))
-        val result = t.request(newId(), "initialize", params, config.connectTimeoutMs)
-        val rawVersion = result.optString("protocolVersion").trim()
-        val negotiated = if (VERSION_RE.matches(rawVersion)) rawVersion else McpJsonRpc.PROTOCOL
-        if (negotiated != rawVersion) {
-            log("[mcp] ${config.id} 服务器返回未知协议版本「${McpText.clip(McpText.flat(rawVersion), 40)}」，按 ${McpJsonRpc.PROTOCOL} 继续")
+        val result = try {
+            t.request(newId(), "initialize", params, config.connectTimeoutMs)
+        } catch (e: McpException) {
+            // 版本不支持（HTTP 400 + UnsupportedProtocolVersionError）或头不一致都走这里：
+            // 人话（含服务器声明支持的版本）进日志；UI 另拿同一句。
+            log("[mcp] ${config.id} initialize 被拒：${e.userMessage}")
+            throw e
         }
-        t.protocolVersion = negotiated
+        val echoed = result.optString("protocolVersion").trim()
+        if (echoed != McpJsonRpc.PROTOCOL) {
+            val said = McpText.clip(McpText.flat(echoed), 40)
+            log("[mcp] ${config.id} 服务器过旧：initialize 回声「$said」，不是 ${McpJsonRpc.PROTOCOL}")
+            throw McpException(
+                McpFailure.PROTOCOL,
+                "MCP 服务器「${config.name}」只支持旧协议" +
+                    "（它回应：${said.ifEmpty { "没有回应协议版本" }}）。本客户端只支持 " +
+                    "${McpJsonRpc.PROTOCOL}，不会自动降到旧版——请升级该服务器，" +
+                    "或换一个支持 ${McpJsonRpc.PROTOCOL} 的服务器",
+            )
+        }
+        t.protocolVersion = McpJsonRpc.PROTOCOL
         // initialized 是通知，没有响应；失败不阻断（有的实现回 202、有的干脆不接受）。
         runCatching { t.notify("notifications/initialized", null, config.connectTimeoutMs) }
             .onFailure { log("[mcp] ${config.id} initialized 通知未被接受（${it.javaClass.simpleName}）") }
-        log("[mcp] ${config.id} 已连接（${t.mode}）")
-        return negotiated
+        log("[mcp] ${config.id} initialize 协商成功（${McpJsonRpc.PROTOCOL}，${t.mode}）")
+        return McpJsonRpc.PROTOCOL
     }
 
     // ── 传输抽象 ─────────────────────────────────────────────────────────
@@ -245,7 +275,7 @@ internal class McpClient(
             method: String,
             readBody: Boolean,
         ): String? {
-            val req = baseRequest(method)
+            val req = baseRequest()
                 .post(body.toString().toRequestBody(JSON_MEDIA))
                 .build()
             val call = http.newCall(req)
@@ -253,7 +283,13 @@ internal class McpClient(
             val response = execute(call, method, timeoutMs, config.name)
             response.use { r ->
                 if (!r.isSuccessful) {
-                    throw httpError(r.code, method, config.name, fallback = method == "initialize")
+                    throw httpError(
+                        code = r.code,
+                        method = method,
+                        name = config.name,
+                        fallback = method == "initialize",
+                        detail = jsonRpcErrorDetail(r, body.optLong("id"), method),
+                    )
                 }
                 if (method == "initialize") captureSession(r.header("Mcp-Session-Id"))
                 if (!readBody) return null
@@ -283,16 +319,67 @@ internal class McpClient(
             }
         }
 
-        private fun baseRequest(method: String): Request.Builder {
+        /**
+         * 每个请求的公共头（215 批：版本头**每个请求都带**，含 initialize 与通知）。
+         *
+         * `Mcp-Session-Id` 只在服务器真的回过时才带（可选；不回就当一个无会话的
+         * 2026-07-28 服务器用，不因此失败）。Accept 双内容类型：响应可能是 JSON，
+         * 也可能是 SSE 流。
+         */
+        private fun baseRequest(): Request.Builder {
             val b = Request.Builder()
                 .url(config.url)
                 .header("Accept", "application/json, text/event-stream")
+                .header("MCP-Protocol-Version", McpJsonRpc.PROTOCOL)
             config.headers.forEach { (k, v) -> b.header(k, v) }
-            if (method != "initialize") {
-                b.header("MCP-Protocol-Version", protocolVersion)
-                sessionId?.let { b.header("Mcp-Session-Id", it) }
-            }
+            sessionId?.let { b.header("Mcp-Session-Id", it) }
             return b
+        }
+
+        /**
+         * 非 2xx 响应体里的 JSON-RPC error ⇒ 只取 message 与支持列表。
+         *
+         * 2026-07-28 的服务器用「HTTP 400 + error 体」表达版本不支持 / 头不一致，
+         * 支持列表在 `error.data.supported`——没有它，用户只看到「HTTP 400」，
+         * 不知道该升级谁。读不动/不是 JSON 就返回 null（退化成普通 HTTP 文案）。
+         *
+         * initialize 阶段拿到支持列表时，直接给完整结论：「它只支持旧协议 + 列表 +
+         * 不降级 + 该怎么办」——这就是派工单要的「明确失败」文案。
+         */
+        private fun jsonRpcErrorDetail(r: Response, id: Long, method: String): String? {
+            val contentType = r.header("Content-Type").orEmpty().lowercase()
+            if (!contentType.contains("json")) return null
+            val text = try {
+                readText(r)
+            } catch (e: McpException) {
+                return null // 错误体读不动/超大：不阻塞「普通 HTTP 失败」这条主路径
+            }
+            if (text.isBlank()) return null
+            val incoming = try {
+                McpJsonRpc.parse(text)
+            } catch (e: Exception) {
+                return null
+            }
+            val error = (incoming as? McpJsonRpc.Incoming.Response)
+                ?.takeIf { it.id == id } // 纪律①：只认自己的 id，别处的 error 不当回事
+                ?.error
+                ?: return null
+            val supported = McpJsonRpc.supportedVersions(error)
+            if (method == "initialize" && supported.isNotEmpty()) {
+                val said = McpText.clip(McpText.flat(error.optString("message")), 80)
+                return "该服务器不支持协议版本 ${McpJsonRpc.PROTOCOL}" +
+                    "（它回应：${said.ifEmpty { "未给出原因" }}；声明支持：" +
+                    "${supported.joinToString("、")}）。本客户端不会自动降到旧版——" +
+                    "请升级该服务器，或换一个支持 ${McpJsonRpc.PROTOCOL} 的服务器"
+            }
+            val msg = McpText.clip(McpText.flat(error.optString("message")), 120)
+            return buildString {
+                if (msg.isNotEmpty()) append(msg)
+                if (supported.isNotEmpty()) {
+                    if (isNotEmpty()) append("；")
+                    append("服务器声明支持：${supported.joinToString("、")}")
+                }
+            }.takeIf { it.isNotEmpty() }
         }
 
         private fun captureSession(raw: String?) {
@@ -538,6 +625,8 @@ internal class McpClient(
             val builder = Request.Builder()
                 .url(url)
                 .header("Accept", "application/json, text/event-stream")
+                // 与 Streamable 同一处常量：旧式传输的 JSON-RPC 消息也带版本头。
+                .header("MCP-Protocol-Version", McpJsonRpc.PROTOCOL)
                 .post(body.toString().toRequestBody(JSON_MEDIA))
             config.headers.forEach { (k, v) -> builder.header(k, v) }
             val call = http.newCall(builder.build())
@@ -597,7 +686,6 @@ internal class McpClient(
         private const val MAX_QUEUED_EVENTS = 256
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
-        private val VERSION_RE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val SESSION_RE = Regex("^[A-Za-z0-9._~+/=-]{1,256}$")
 
         fun defaultHttp(config: McpServerConfig): OkHttpClient = OkHttpClient.Builder()
@@ -622,8 +710,14 @@ internal class McpClient(
             else -> "请求「$method」"
         }
 
-        private fun httpError(code: Int, method: String, name: String, fallback: Boolean = false): McpException =
-            when (code) {
+        private fun httpError(
+            code: Int,
+            method: String,
+            name: String,
+            fallback: Boolean = false,
+            detail: String? = null,
+        ): McpException {
+            val base = when (code) {
                 401, 403 -> McpException(
                     McpFailure.AUTH,
                     "MCP 服务器「$name」认证失败（HTTP $code）——请检查请求头/服务端权限",
@@ -635,6 +729,11 @@ internal class McpClient(
                 )
                 else -> McpException(McpFailure.HTTP, "MCP 服务器「$name」在${stage(method)}返回 HTTP $code")
             }
+            if (detail.isNullOrBlank()) return base
+            // 服务器自己说的人话（版本不支持 / 头不一致 + 支持列表）接在后面——
+            // 全是已清洗内容（code/message/日期形版本号），不带请求头与 URL。
+            return McpException(base.failure, "${base.userMessage}；$detail", base.fallbackEligible, base.cause)
+        }
 
         private fun connectError(e: IOException, stageText: String, name: String): McpException =
             if (e is InterruptedIOException) {
@@ -676,9 +775,17 @@ internal class McpClient(
                     if (incoming.id != id) {
                         null
                     } else if (incoming.error != null) {
+                        // 215 批：错误文案后面接「服务器声明支持的版本」（只认日期形）——
+                        // 版本不支持时用户才知道该升级谁；没有支持列表就退回纯文案。
+                        val supported = McpJsonRpc.supportedVersions(incoming.error)
+                        val suffix = if (supported.isEmpty()) {
+                            ""
+                        } else {
+                            "（服务器声明支持：${supported.joinToString("、")}）"
+                        }
                         throw McpException(
                             if (method == "tools/call") McpFailure.TOOL else McpFailure.PROTOCOL,
-                            "${stage(method)}失败：${McpJsonRpc.responseErrorText(incoming.error)}",
+                            "${stage(method)}失败：${McpJsonRpc.responseErrorText(incoming.error)}$suffix",
                         )
                     } else {
                         incoming.result ?: JSONObject()
