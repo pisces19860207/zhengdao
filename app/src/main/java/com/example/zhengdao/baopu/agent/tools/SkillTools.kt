@@ -15,6 +15,8 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaFiles
+import com.example.zhengdao.baopu.SkillAutoOutcome
+import com.example.zhengdao.baopu.SkillAutoWrite
 import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
@@ -30,7 +32,9 @@ internal object SkillTools {
     private const val DESC =
         "把自己摸索到的流程（比如某个网络平台的填写方式）写成技能文件 SKILL.md。" +
             "写前自动备份、同名就是改上一次写的那份（平台改了就改名同一次）、写完自动加索引。" +
-            "会改用户文件：写前自动备份、每次改动记一行 `技能/_变更.jsonl`，可回滚；全局技能不许自查。正文别写没实测的东西——没验的段落标「未实测」。"
+            "只有「小技巧」能免批直接写（2026-10-24 口径）：项目技能、纯文字流程（无代码块、无链接、" +
+            "无权限/确认类词）、正文 ≤2KB、先落草稿、不改已有技能；不合尺度的会直接拒并说明原因，" +
+            "要么改小重写、要么请用户确认。全局技能不许自查。正文别写没实测的东西——没验的段落标「未实测」。"
 
     /**
      * 「技能被用过」的被动记录器（第五十七批 §1.1）。
@@ -137,19 +141,27 @@ internal object SkillTools {
                     reason = args.optString("reason").ifBlank { "抱朴自己记下来的" },
                     draft = draft,
                 )
-                val plan = SkillStore.plan(proposal, root, globalRoot, stamp(), indexCountAfterAdd = 0)
-                plan.blocked?.let { return ToolOutcome.Failed(it) }
-                val layer = if (scope == SkillScope.GLOBAL) PersonaLayer.B_GLOBAL else PersonaLayer.C_PROJECT
-                when (val r = SkillStore.apply(plan, pf, pf.read(layer).orEmpty())) {
-                    is SkillWriteResult.Written -> ToolOutcome.Ok(
+                // 第一百九十二批：写盘**前**插的免批判据层（SkillStore.apply 的写盘顺序一字未动，
+                // 174 验过）。decide 五条全满足才 AUTO——落草稿＋审计带免批标＋技能页可一键撤销；
+                // NEEDS_CONFIRM 一个字节都不写，把否决原因如实说给模型，让它改小或请用户确认。
+                when (val a = SkillAutoWrite.tryAutoWrite(proposal, root, globalRoot, pf, stamp())) {
+                    is SkillAutoOutcome.Written -> ToolOutcome.Ok(
                         buildString {
-                            append("已写入技能：").append(r.file.absolutePath)
+                            append("已免批写入技能（草稿）：").append(a.file.absolutePath)
                             append('\n').append("索引：")
-                            append(if (r.indexUpdated) "已更新（草稿会标「草稿·未验证」）" else "未更新（索引写入被拒，见 App 提示）")
-                            r.backup?.let { append('\n').append("改掉了旧版本，备份：").append(it) }
+                            append(if (a.result.indexUpdated) "已更新（带「草稿·未验证」标）" else "未更新（索引写入被拒，见 App 提示）")
+                            append('\n').append("用户可在技能页一键撤销；用满 ")
+                            append(SkillStore.PROMOTE_USES)
+                            append(" 次才会转正。")
                         },
                     )
-                    is SkillWriteResult.Rejected -> ToolOutcome.Failed(r.reason)
+                    is SkillAutoOutcome.NeedsConfirm -> ToolOutcome.Rejected(
+                        "这条不合免批判据，我不能不问就写：" + a.decision.reason +
+                            "。免批只放行：项目技能、纯文字流程（无代码块/无链接/无权限类词）、" +
+                            "正文 ≤2KB、先落草稿、不改已有技能。要么照这个尺度改小后重写，" +
+                            "要么请用户确认后让它自己在设置页写。",
+                    )
+                    is SkillAutoOutcome.Rejected -> ToolOutcome.Failed(a.reason)
                 }
             }
     }

@@ -1207,6 +1207,11 @@
     <string name="skill_draft_used">已给「%1$s」记一次</string>
     <string name="skill_draft_promoted">「%1$s」已转正，索引里多了一行</string>
     <string name="skill_draft_index_full">正文已转正，但索引已满（上限 %1$d 条）：索引行没加上，先去删几条</string>
+    <!-- ── 第一百九十二批 · 免批技能（技能页标签＋一键撤销）── -->
+    <string name="skill_auto_badge">免批</string>
+    <string name="skill_auto_undo">撤销</string>
+    <string name="skill_auto_undone">已撤销「%1$s」（正文改名 %2$s 留在原地，索引行已去掉）</string>
+    <string name="skill_auto_undo_fail">撤销失败：%1$s</string>
     <string name="skill_use_platform_template">用平台机制模板</string>
     <string name="skill_use_platform_template_hint">预填只改输入框，不写盘；保存仍要过确认卡。</string>
     <!-- ── 第三十四批：技能**能看见**（详情）·**能找回**（已归档）·**能改**（编辑）──

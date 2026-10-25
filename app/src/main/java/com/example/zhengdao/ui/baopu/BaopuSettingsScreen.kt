@@ -888,6 +888,13 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                 // JVM 可测）；最近失败时刻来自 skill_event **只读**查询，判据/存储一个字不改。
                 // 草稿数（待转正）也在这里先算好：顶部读数行要用，下面草稿段共用同一份。
                 val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
+                // 第一百九十二批：免批技能名单（`_变更.jsonl` 最后一行 action=auto 的项目技能）——
+                // 技能页标「免批」标签与「撤销」按钮都认这份名单；被确认制改过或撤过的自动掉出。
+                val autoNames = remember(skillReload) {
+                    com.example.zhengdao.baopu.SkillAutoWrite.autoWrittenNames(
+                        com.example.zhengdao.baopu.SkillRules.projectSkillDir(projectRoot),
+                    )
+                }
                 val failureRows = remember(skillReload) {
                     val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
                     fun lastFailedAtOf(name: String): Long? = d.read { x ->
@@ -1303,6 +1310,25 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                     skillReload++
                 }
 
+                /** 「撤销」：免批技能的一键撤销（改名 `.deleted-*`＋去索引＋审计；不真删）。 */
+                fun undoAuto(row: SkillDraftRow) {
+                    val msg = when (
+                        val r = com.example.zhengdao.baopu.SkillAutoWrite.undoAutoWrite(
+                            name = row.name,
+                            projectRoot = projectRoot,
+                            personaFiles = pf,
+                            stamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        )
+                    ) {
+                        is com.example.zhengdao.baopu.SkillWriteResult.Written ->
+                            res.getString(R.string.skill_auto_undone, row.name, r.file.name)
+                        is com.example.zhengdao.baopu.SkillWriteResult.Rejected ->
+                            res.getString(R.string.skill_auto_undo_fail, r.reason)
+                    }
+                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                    skillReload++
+                }
+
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.skill_draft_group),
@@ -1329,7 +1355,18 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(row.name, style = MaterialTheme.typography.bodyMedium)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(row.name, style = MaterialTheme.typography.bodyMedium)
+                                // 第一百九十二批：免批技能标「免批」标签（写它没弹确认卡，可一键撤销）。
+                                if (row.scope == SkillScope.PROJECT && row.name in autoNames) {
+                                    Text(
+                                        text = stringResource(R.string.skill_auto_badge),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(start = 6.dp),
+                                    )
+                                }
+                            }
                             Text(
                                 // T2：N 就是 SkillStore.usesOf 的读数，分母是 PROMOTE_USES——这里不自己数
                                 text = stringResource(R.string.skill_draft_uses, row.uses, SkillStore.PROMOTE_USES),
@@ -1339,6 +1376,12 @@ internal fun BaopuSettingsScreen(onDismiss: () -> Unit, onOpenSessionLibrary: ()
                         }
                         TextButton(onClick = { useOnce(row) }) {
                             Text(stringResource(R.string.skill_draft_use_once))
+                        }
+                        // 第一百九十二批：「撤销」只对免批技能出现（名单以审计最后一行为准）
+                        if (row.scope == SkillScope.PROJECT && row.name in autoNames) {
+                            TextButton(onClick = { undoAuto(row) }) {
+                                Text(stringResource(R.string.skill_auto_undo))
+                            }
                         }
                         // T3：「转正」只在 canPromote 为真时出现（够不够次数不由 UI 判）
                         if (row.canPromote) {

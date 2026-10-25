@@ -1256,6 +1256,11 @@
     <string name="skill_draft_used">Counted one use for %1$s</string>
     <string name="skill_draft_promoted">%1$s promoted; the index gained a line</string>
     <string name="skill_draft_index_full">Body promoted, but the index is full (cap %1$d): no index line added, remove a few first</string>
+    <!-- ── Batch 192 · auto-approved (no-confirm) skills: page badge + one-tap undo ── -->
+    <string name="skill_auto_badge">auto</string>
+    <string name="skill_auto_undo">Undo</string>
+    <string name="skill_auto_undone">Undone %1$s (body renamed to %2$s and kept in place; index line removed)</string>
+    <string name="skill_auto_undo_fail">Undo failed: %1$s</string>
     <string name="skill_use_platform_template">Use platform template</string>
     <string name="skill_use_platform_template_hint">Prefill only edits the box, nothing hits the disk; saving still goes through the confirmation card.</string>
     <!-- ── Batch 34: skills become **visible** (detail), **recoverable** (archived), **editable** ──
