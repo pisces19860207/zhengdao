@@ -802,7 +802,15 @@ internal fun restoreArchived(
     val current = personaFiles.read(layer).orEmpty()
     val ok = when (val edit = SkillRules.addIndexLine(current, planned.indexEntry)) {
         is SkillRules.EditResult.Ok -> {
-            val p = PersonaRules.propose(layer, current, edit.newText, "恢复技能索引：${row.name}")
+            // 第二百二十六批 G6：**不走** [PersonaRules.propose]——它会把 proposed.trim()，
+            // 首行空行与文末换行当场丢掉（222 实测 569→567 B）。索引行 + 首尾空行由
+            // addIndexLine 一字不差算好，这里原样交给唯一写口 applyProposal
+            // （canApply 复核不变：仍须 PENDING 且层可写）。
+            val p = if (PersonaRules.canWrite(layer)) {
+                PersonaProposal(layer, current, edit.newText, "恢复技能索引：${row.name}")
+            } else {
+                null
+            }
             p != null && personaFiles.applyProposal(p)
         }
         else -> false

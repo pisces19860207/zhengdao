@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,6 +58,8 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
+import com.example.zhengdao.baopu.TeachParam
+import com.example.zhengdao.baopu.TeachParamRun
 import com.example.zhengdao.util.TimeFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,6 +89,15 @@ internal data class SkillLibraryRow(
     /** 追加件③：与哪条草稿疑似重复（只标不删；一键合并＝保留本条、退役对方）。 */
     val duplicateOf: String? = null,
 )
+
+/** 回放结果一句话：跑完/停在第几步（`TeachParamRun.answerLine`）＋被拦动作数＋每步证据目录。 */
+internal fun replayAnswerLine(run: TeachParamRun): String = buildString {
+    append(run.answerLine())
+    run.report?.refusals?.takeIf { it.isNotEmpty() }?.let {
+        append("\n拦下 ${it.size} 个不该点的动作（提交/支付类），没有替你点")
+    }
+    run.report?.evidenceDir?.let { append("\n每步证据：$it") }
+}
 
 /** 草稿行 ⇒ 32 批的 [SkillDraftRow]（转正/用一次唯一写口的入参形状；判据同源）。 */
 internal fun SkillLibraryRow.toDraftRow(): SkillDraftRow? {
@@ -585,6 +597,10 @@ private fun SkillRow(
         withContext(Dispatchers.IO) { ui.view = buildRowView(ui.host, row) }
     }
     var confirmDelete by remember(row.file.absolutePath) { mutableStateOf(false) }
+    // 226-2：回放（参数非空时先要一句话；busy 防连点；ask 非空＝还差点参数，框继续开着）
+    var replayParams by remember(row.file.absolutePath) { mutableStateOf<List<TeachParam>?>(null) }
+    var replayAsk by remember(row.file.absolutePath) { mutableStateOf<String?>(null) }
+    var replayBusy by remember(row.file.absolutePath) { mutableStateOf(false) }
 
     Column(Modifier.fillMaxWidth()) {
         ui.view?.let { v ->
@@ -624,6 +640,39 @@ private fun SkillRow(
                     Text(stringResource(R.string.skill_library_merge))
                 }
             }
+            // 第二百二十六批第 2 条：回放（草稿/正式都有；退役不给）。没有玄览会话 ⇒ 一句人话。
+            if (row.status != SkillLibraryStatus.RETIRED) {
+                TextButton(
+                    enabled = !replayBusy,
+                    onClick = {
+                        replayBusy = true
+                        controller.prepareSkillReplay(row) { err, params ->
+                            when {
+                                err != null -> {
+                                    replayBusy = false
+                                    onActionDone(err)
+                                }
+                                params.isEmpty() -> controller.runSkillReplayAsync(row, "") { run ->
+                                    replayBusy = false
+                                    if (run.ask != null) {
+                                        // 声明了参数却没取到（空表不该走到这）：给反问，不空跑
+                                        onActionDone(run.ask)
+                                    } else {
+                                        onActionDone(replayAnswerLine(run))
+                                    }
+                                }
+                                else -> {
+                                    replayBusy = false
+                                    replayAsk = null
+                                    replayParams = params
+                                }
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.skill_library_replay))
+                }
+            }
             // 第二百零六批：「跑一次对拍」（不强制、不阻塞——结果以便签＋进化档案给出）
             // G1：真跑含网络 ⇒ 交给控制器的 scope（内部切 IO），不许落在 Compose onClick 的主线程上。
             if (row.status != SkillLibraryStatus.RETIRED) {
@@ -649,6 +698,77 @@ private fun SkillRow(
                             if (confirmDelete) R.string.skill_library_delete_confirm else R.string.skill_library_delete,
                         ),
                     )
+                }
+            }
+        }
+        replayParams?.let { params ->
+            ReplayParamsDialog(
+                skillName = row.name,
+                labels = params.joinToString("、") { it.label },
+                hint = replayAsk,
+                busy = replayBusy,
+                onCancel = {
+                    replayParams = null
+                    replayAsk = null
+                },
+                onSubmit = { sentence ->
+                    replayBusy = true
+                    controller.runSkillReplayAsync(row, sentence) { run ->
+                        replayBusy = false
+                        if (run.ask != null) {
+                            replayAsk = run.ask
+                        } else {
+                            replayParams = null
+                            replayAsk = null
+                            onActionDone(replayAnswerLine(run))
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 第二百二十六批第 2 条：回放前的「一句话」框。
+ *
+ * 只收一句话（参数解析全在 200 批的 `TeachParams.plan`，界面一个字不猜）；
+ * [hint] 非空＝上一轮没取全，把它的反问原样显示出来让人补一句；[busy] 时一个按钮都点不动。
+ */
+@Composable
+private fun ReplayParamsDialog(
+    skillName: String,
+    labels: String,
+    hint: String?,
+    busy: Boolean,
+    onCancel: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var sentence by remember(skillName) { mutableStateOf("") }
+    Dialog(onDismissRequest = { if (!busy) onCancel() }) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.skill_replay_params_title, skillName, labels),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                hint?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OutlinedTextField(
+                    value = sentence,
+                    onValueChange = { sentence = it },
+                    label = { Text(stringResource(R.string.skill_replay_sentence_label)) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onCancel, enabled = !busy) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                    TextButton(onClick = { onSubmit(sentence) }, enabled = !busy && sentence.isNotBlank()) {
+                        Text(stringResource(R.string.skill_replay_run))
+                    }
                 }
             }
         }

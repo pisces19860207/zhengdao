@@ -112,6 +112,17 @@ internal data class SelfCheckEvidence(
 }
 
 /**
+ * 第二百二十六批 G5：这条候选该不该出**卡**（纯判据，JVM 直测）。
+ *
+ * 222 验收里出现过「改进技能「storage-emu」？」＋「自检没过」「建议拒绝」的卡——
+ * 用户拿它没有可执行动作，读起来却像模型在建议改一个自己都没验过的东西。
+ * 口径：**自检没过就不出卡**，降级为一行日志（判定照常进审计/影子账，不丢证据）。
+ * 没有自检证据（null）仍出卡——那是"还没验"，不是"验了没过"，由卡上的证据栏说话。
+ */
+internal fun shouldPresentSuggestion(selfCheck: SelfCheckEvidence?): Boolean =
+    selfCheck == null || selfCheck.passed
+
+/**
  * eval 分数（0–1）与用例 id；未跑 eval 时调用方传 null。
  *
  * 第一百六十八批：加 [source] 与 [ranAt]——同一份分数来自本机生产跑批还是发版门禁，

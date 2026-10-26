@@ -1866,6 +1866,12 @@
 <string name="skill_library_delete_confirm">Tap again to soft-delete (recoverable from Retired)</string>
 <string name="skill_library_restore">Restore</string>
 <string name="skill_library_shelve">Shelve</string>
+<string name="skill_library_replay">Replay</string>
+<string name="skill_replay_no_session">Open a page in Xuanlan first, then replay %1$s</string>
+<string name="skill_replay_not_taught">%1$s has no teach-and-replay data (it was not taught)</string>
+<string name="skill_replay_params_title">Replay %1$s: say one sentence with the parameters (%2$s)</string>
+<string name="skill_replay_sentence_label">Put the parameters in this sentence, e.g. change the date to the day before yesterday</string>
+<string name="skill_replay_run">Start replay</string>
 <string name="skill_library_reject">Don\'t suggest again</string>
 <string name="baopu_drawer_skills">Skills</string>
 <string name="baopu_drawer_skills_desc">Drafts, promotions and review candidates</string>
@@ -1892,6 +1898,7 @@
 <string name="teach_confirm_save">Save skill</string>
 <string name="teach_confirm_discard">Discard</string>
 <string name="teach_empty">Nothing usable recorded this time, try again</string>
+<string name="teach_empty_nav">Recorded a page jump, but no reusable action — click a few times on the new page, then stop</string>
 <string name="teach_started_toast">Teaching started: click and type normally — recorded only, nothing is touched</string>
 <string name="teach_params_action">Parameterize…</string>
 <string name="teach_params_title">Which values can become parameters?</string>
