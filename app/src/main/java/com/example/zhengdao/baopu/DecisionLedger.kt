@@ -80,6 +80,15 @@ internal enum class DecisionKind(
     TOOL_GRANT("tool_grant", DecisionGroup.GRANT, true, DecisionAudit.NONE),
 
     /**
+     * 第二百二十八批 C 片：回放的**站点信任**加/撤（`evidence` 带方向：
+     * `site_trust_add:<host>`／`site_trust_remove:<host>`）。
+     *
+     * 可回滚（`reversible=true`）：加的回滚＝撤、撤的回滚＝加——名单文件的两个纯文件
+     * 操作就是回滚通道；回滚行本身由 [ROLLBACK_OF] 记，回滚动作不再重复写本类。
+     */
+    SITE_TRUST("site_trust", DecisionGroup.GRANT, true, DecisionAudit.NONE),
+
+    /**
      * 第二百二十三批：**未分类工具被闸问到**（fail-closed 的留痕）。
      *
      * 为什么必须有这一类、不能塞进 [AUTO_ACT]：AUTO_ACT 记的是"模型已经真的动了手"，

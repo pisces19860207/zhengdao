@@ -114,6 +114,9 @@ internal object ToolSchemaRules {
         "browser_forward" to "无参数：前进同 back（BrowserTools.forwardSpec，228 批 B-2）",
         "browser_reload" to "无参数：重载当前页，没有可填的东西（BrowserTools.reloadSpec，228 批 B-2）",
         "browser_tabs_list" to "无参数：列全部标签本身不需要输入（BrowserTools.tabsListSpec，228 批 B-4）",
+        "teach_record_start" to "无参数：开始录制作用于玄览当前页，没有可填的东西（TeachTools.recordStartSpec，228 批 C）",
+        "teach_record_stop" to "无参数：结束当前那段录制，没有可填的东西（TeachTools.recordStopSpec，228 批 C）",
+        "teach_skill_save" to "name 可省略：省略即用示教时自动起的名字（TeachTools.skillSaveSpec，228 批 C）",
     )
 
     /**
