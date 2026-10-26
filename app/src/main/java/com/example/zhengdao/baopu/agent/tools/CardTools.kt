@@ -9,6 +9,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.BaopuGuardCore
+import com.example.zhengdao.baopu.card.AssetKind
 import com.example.zhengdao.baopu.card.CardAsset
 import com.example.zhengdao.baopu.card.CardAssetParser
 import com.example.zhengdao.baopu.card.CardBuild
@@ -18,6 +19,11 @@ import com.example.zhengdao.baopu.card.CardRoster
 import com.example.zhengdao.baopu.card.CardJson
 import com.example.zhengdao.baopu.card.CardPng
 import com.example.zhengdao.baopu.card.CheckReport
+import com.example.zhengdao.baopu.card.Persona
+import com.example.zhengdao.baopu.card.Preset
+import com.example.zhengdao.baopu.card.RegexEntryView
+import com.example.zhengdao.baopu.card.RegexScript
+import com.example.zhengdao.baopu.card.UnparsedAsset
 import com.example.zhengdao.baopu.card.WebWork
 import com.example.zhengdao.baopu.card.FormatKind
 import com.example.zhengdao.baopu.card.FormatVerdict
@@ -35,6 +41,15 @@ internal object CardTools {
 
     /** 单次回灌的最多结论条数（再多就是刷屏，剩下的只报计数）。 */
     private const val MAX_LINES = 20
+
+    /** 人设描述折叠阈值：超过这么多个字就只显示开头（第二百二十五批）。 */
+    private const val PERSONA_PREVIEW = 80
+
+    /** 正则／预设／未解析三节各自最多列几条（其余只报计数）。 */
+    private const val ASSET_PREVIEW = 3
+
+    /** 折叠长文时把换行压成空格（只影响显示）。 */
+    private val WHITESPACE = Regex("\\s+")
 
     // ── card_inspect（FREE／只读）─────────────────────────────────────────
 
@@ -95,6 +110,7 @@ internal object CardTools {
             if (verdict.conflicts.isNotEmpty()) {
                 appendLine("并存特征：${verdict.conflicts.joinToString("；")}")
             }
+            assetSections(parsed)
             appendLine()
             appendLine("【体检】${sum(report)}")
             val shown = report.findings.take(MAX_LINES)
@@ -114,8 +130,110 @@ internal object CardTools {
         }.trimEnd()
     }
 
-    // ── card_export（CONFIRM／不覆盖）─────────────────────────────────────
+    // ── 人设／正则／预设三节（第二百二十五批）──────────────────────────────
+    //
+    // 落在**既有卡详情**（`card_inspect` 的这份报告）里，不新开页面。
+    // 三节都是「有则显示」：源里没有这一段，整节连标题都不出现——
+    // 空节比没有更误导（会让人以为「读到了、是空的」）。
 
+    private fun StringBuilder.assetSections(p: CardAssetParser.Parsed) {
+        p.persona?.let { personaSection(it) }
+        p.regex?.let { regexSection(it) }
+        p.preset?.let { presetSection(it) }
+        if (p.unparsed.isNotEmpty()) unparsedSection(p.unparsed)
+    }
+
+    private fun StringBuilder.personaSection(p: Persona) {
+        val bits = ArrayList<String>()
+        p.name?.takeIf { it.isNotBlank() }?.let { bits += "名：$it" }
+        p.description?.takeIf { it.isNotBlank() }?.let {
+            bits += if (it.length > PERSONA_PREVIEW) "描述 ${it.length} 字（长文折叠）" else "描述 ${it.length} 字"
+        }
+        if (p.traits.isNotEmpty()) bits += "标签 ${p.traits.size} 个"
+        p.scenario?.takeIf { it.isNotBlank() }?.let { bits += "场景 ${it.length} 字" }
+        if (p.examples.isNotEmpty()) bits += "样例 ${p.examples.size} 段"
+        appendLine("【人设】${bits.joinToString("｜")}")
+        p.description?.takeIf { it.isNotBlank() }?.let { appendLine("  描述：${fold(it)}") }
+        if (p.traits.isNotEmpty()) appendLine("  标签：${p.traits.joinToString("、")}")
+    }
+
+    private fun StringBuilder.regexSection(r: RegexScript) {
+        appendLine("【正则】${r.entries.size} 条${stateSummary(r.entries.map { it.enabled })}")
+        r.entries.take(ASSET_PREVIEW).forEachIndexed { i, e ->
+            appendLine("  ${i + 1}. ${regexLine(e)}")
+        }
+        if (r.entries.size > ASSET_PREVIEW) {
+            appendLine("  （还有 ${r.entries.size - ASSET_PREVIEW} 条未显示）")
+        }
+    }
+
+    private fun regexLine(e: RegexEntryView): String {
+        val bits = ArrayList<String>()
+        bits += e.find?.let { "匹配 ${shorten(it, 40)}" } ?: "匹配（未写）"
+        e.replace?.let { bits += if (it.isEmpty()) "替换（空串）" else "替换 ${shorten(it, 24)}" }
+        if (e.flags.isNotEmpty()) bits += "标志 ${e.flags.joinToString("")}"
+        if (e.scope.isNotEmpty()) bits += "范围 ${e.scope.joinToString("、")}"
+        bits += stateWord(e.enabled)
+        return bits.joinToString("｜")
+    }
+
+    private fun StringBuilder.presetSection(p: Preset) {
+        appendLine("【预设】${p.entries.size} 条${stateSummary(p.entries.map { it.enabled })}")
+        p.entries.take(ASSET_PREVIEW).forEachIndexed { i, e ->
+            val name = e.name?.takeIf { it.isNotBlank() } ?: "（未写名）"
+            val len = e.prompt?.let { "提示词 ${it.length} 字" } ?: "提示词（未写）"
+            appendLine("  ${i + 1}. $name｜$len｜${stateWord(e.enabled)}")
+        }
+        if (p.entries.size > ASSET_PREVIEW) {
+            appendLine("  （还有 ${p.entries.size - ASSET_PREVIEW} 条未显示）")
+        }
+    }
+
+    /** 读不出来的条目：**不丢**，把原文截一段摆出来（截断只影响显示，不影响 raw）。 */
+    private fun StringBuilder.unparsedSection(list: List<UnparsedAsset>) {
+        appendLine("【未解析】${list.size} 条（原文已保留，未改动任何文件）")
+        list.take(ASSET_PREVIEW).forEach { u ->
+            val where = if (u.index >= 0) "${assetName(u.kind)}[${u.index + 1}]" else assetName(u.kind)
+            appendLine("  $where：${u.reason}｜原文：${shorten(u.rawText, 60)}")
+        }
+        if (list.size > ASSET_PREVIEW) {
+            appendLine("  （还有 ${list.size - ASSET_PREVIEW} 条未显示）")
+        }
+    }
+
+    private fun stateSummary(states: List<Boolean?>): String {
+        if (states.isEmpty()) return ""
+        val on = states.count { it == true }
+        val off = states.count { it == false }
+        val unknown = states.count { it == null }
+        return "（启用 $on／关闭 $off／未标 $unknown）"
+    }
+
+    private fun stateWord(enabled: Boolean?): String = when (enabled) {
+        true -> "启用"
+        false -> "关闭"
+        null -> "未标启用"
+    }
+
+    private fun assetName(kind: AssetKind): String = when (kind) {
+        AssetKind.PERSONA -> "人设"
+        AssetKind.REGEX -> "正则"
+        AssetKind.PRESET -> "预设"
+    }
+
+    /** 折成一行再截断：长文只显示开头，尾巴标出总字数（**不改原文**）。 */
+    private fun fold(text: String): String {
+        val oneLine = text.replace(WHITESPACE, " ").trim()
+        if (oneLine.length <= PERSONA_PREVIEW) return oneLine
+        return oneLine.take(PERSONA_PREVIEW) + "…（共 ${text.length} 字，已折叠）"
+    }
+
+    private fun shorten(text: String, max: Int): String {
+        val oneLine = text.replace(WHITESPACE, " ").trim()
+        return if (oneLine.length <= max) oneLine else oneLine.take(max) + "…"
+    }
+
+    // ── card_export（CONFIRM／不覆盖）─────────────────────────────────────
     fun exportSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "card_export",
         description = "把一段 JSON 写成酒馆角色卡 PNG（内嵌 chara 与 ccv3 两块文本，插在 IEND 之前）。" +
