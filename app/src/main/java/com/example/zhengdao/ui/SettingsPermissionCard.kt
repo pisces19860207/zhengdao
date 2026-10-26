@@ -215,7 +215,7 @@ fun SettingsPermissionCard() {
         valueColor = if (notifyOk) zhengdaoReady() else zhengdaoErrorText(),
         onClick = {
             // 已给 ⇒ 去系统页看/撤；未给 ⇒ 就地拉起运行时请求（本 App 唯一的通知申请点）。
-            if (notifyOk) openAppDetails()
+            if (notifyOk) openNotificationSettings()
             else notifyLauncher.launch(PermissionSetup.NOTIFICATIONS_PERMISSION)
         },
     )

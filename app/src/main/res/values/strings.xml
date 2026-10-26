@@ -1813,6 +1813,13 @@
 <string name="eval_note_unrun">未跑：%1$s</string>
 <string name="eval_week_none">最近 7 天没有改过的技能，无从对拍</string>
 <string name="eval_week_done">每周对拍跑完（共 %1$d 条）——结论见进化档案</string>
+<!-- 第二百二十六批第 2 条：回放（执行器入口；退役技能不给） -->
+<string name="skill_library_replay">回放</string>
+<string name="skill_replay_no_session">先在玄览里打开一个页面，再回放「%1$s」</string>
+<string name="skill_replay_not_taught">「%1$s」没有示教回放数据（它不是教出来的技能）</string>
+<string name="skill_replay_params_title">回放「%1$s」：说一句话带上参数（%2$s）</string>
+<string name="skill_replay_sentence_label">这句话里带参数，比如「把日期换成前天」</string>
+<string name="skill_replay_run">开始回放</string>
 
 <!-- 第一百九十六批：学习器（教它一次） -->
 <string name="teach_menu_start">教它一次</string>
@@ -1825,6 +1832,8 @@
 <string name="teach_confirm_save">保存技能</string>
 <string name="teach_confirm_discard">放弃</string>
 <string name="teach_empty">这次示教没有录到可用的操作，再试一次</string>
+<!-- 第二百二十六批 G2：0 步但收到过导航（页面确实跳了）——别再说"没录到任何操作" -->
+<string name="teach_empty_nav">录到了页面跳转，但没有可复用的操作；在新页面上点几下再停</string>
 <string name="teach_started_toast">开始示教：正常点、正常输，结束前只记录不干预</string>
 <!-- 第二百批：技能参数化（勾值 → 占位符 → 换参数复用） -->
 <string name="teach_params_action">参数化…</string>

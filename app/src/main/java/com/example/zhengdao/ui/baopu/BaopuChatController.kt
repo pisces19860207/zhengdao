@@ -67,6 +67,7 @@ import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillWriteResult
+import com.example.zhengdao.ui.browser.BrowserTabManager
 import com.example.zhengdao.baopu.ExampleBank
 import com.example.zhengdao.baopu.TasteDrop
 import com.example.zhengdao.baopu.TasteInjection
@@ -390,9 +391,8 @@ internal class BaopuChatController(context: Context) {
             BaopuNoteLevel.Info,
         )
         notePrefs.edit { putLong(reflectionLastRunKey, System.currentTimeMillis()) }
-        if (scan.allEmpty || scan.candidates.isEmpty()) {
-            com.example.zhengdao.rootfs.RunLog.log(scan.logLine) // 无候选的一行留痕（不弹卡）
-        }
+        // 第二百二十六批 G4：「本轮无候选」那一行只由 ReflectionRunner.present() 写
+        // （scanAndPresent 内部已写）。这里再写一遍就是 222 验收里 `08:52:26 ×2` 的来源。
     }
 
     /** 用户对着候选卡做了决定：进化档案追加一行（否决 ⇒ 同键 30 天不再提）。 */
@@ -492,6 +492,61 @@ internal class BaopuChatController(context: Context) {
             }
             onDone(err)
         }
+    }
+
+    /**
+     * 第二百二十六批第 2 条：「回放」前的检查（**只读、不动作**）。
+     *
+     * 回放要真操作玄览里的那个页面：没有会话就给人话（不许静默失败）；
+     * 有会话则把这条技能的参数表交给界面——空表直接跑，非空先要一句话。
+     * 参数声明只读 [TeachSessionUiModel.paramsOf]；取不到参数时怎么反问、怎么停，
+     * 仍由 200 批的 `TeachParams.plan` 判，本入口不另立一套。
+     */
+    fun prepareSkillReplay(
+        row: SkillLibraryRow,
+        onDone: (String?, List<com.example.zhengdao.baopu.TeachParam>) -> Unit,
+    ) {
+        scope.launch {
+            if (BrowserTabManager.activeTab() == null) {
+                onDone(appCtx.getString(R.string.skill_replay_no_session, row.name), emptyList())
+                return@launch
+            }
+            val taught = withContext(Dispatchers.IO) {
+                com.example.zhengdao.baopu.TeachReplayStore.load(workspaceRoot, row.name) != null
+            }
+            if (!taught) {
+                onDone(appCtx.getString(R.string.skill_replay_not_taught, row.name), emptyList())
+                return@launch
+            }
+            teachModel().paramsOf(row.name) { params -> onDone(null, params) }
+        }
+    }
+
+    /**
+     * 第二百二十六批第 2 条：真正开跑（内部切 IO；完成回主线程）。
+     *
+     * 每步取证、「失败停在第几步」由 196 的 `TeachExecutor` 给；提交类按钮的拒绝也在那一层
+     * （`TeachSafety.CLICK_REFUSAL_TEXT`）——本入口不加重试、不改判据，只把结果交回界面。
+     */
+    fun runSkillReplayAsync(
+        row: SkillLibraryRow,
+        sentence: String,
+        onDone: (com.example.zhengdao.baopu.TeachParamRun) -> Unit,
+    ) {
+        teachModel().replayWith(row.name, sentence, workspaceRoot) { run -> onDone(run) }
+    }
+
+    /** 回放用的会话模型（现拼：只取 tabId／两个根，不持有录制状态）。 */
+    private fun teachModel(): com.example.zhengdao.baopu.TeachSessionUiModel {
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        return com.example.zhengdao.baopu.TeachSessionUiModel(
+            scope = scope,
+            context = appCtx,
+            tabId = { BrowserTabManager.activeTab()?.id },
+            projectRoot = { workspaceRoot },
+            globalRoot = { java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "") },
+            personaFiles = { BaopuRuntime.personaFiles(appCtx) },
+        )
     }
 
     /**
@@ -4148,7 +4203,19 @@ internal class BaopuChatController(context: Context) {
                 )
                 null
             }
-            if (suggestion != null) out += suggestion
+            if (suggestion != null) {
+                // 第二百二十六批 G5：自检没过的候选不出卡（降级为一行日志）。
+                // 判定与影子照常落账（上面已写），这里只决定"给不给用户看这张卡"。
+                val selfCheck = assessments[c.id]?.selfCheck
+                if (com.example.zhengdao.baopu.shouldPresentSuggestion(selfCheck)) {
+                    out += suggestion
+                } else {
+                    com.example.zhengdao.rootfs.RunLog.log(
+                        "[baopu-evolution] 候选 ${c.id}（${c.target}）自检未过 ⇒ 不出卡" +
+                            "（规则：${selfCheck?.failedRuleIds?.joinToString(",").orEmpty()}）",
+                    )
+                }
+            }
         }
         if (shadowRows.isNotEmpty()) {
             // 落账 → 汇总，两步各自兜底：影子是攒给「以后开不开闸」看的数，
