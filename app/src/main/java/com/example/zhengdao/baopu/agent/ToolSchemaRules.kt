@@ -120,6 +120,8 @@ internal object ToolSchemaRules {
         "teach_record_start" to "无参数：开始录制作用于玄览当前页，没有可填的东西（TeachTools.recordStartSpec，228 批 C）",
         "teach_record_stop" to "无参数：结束当前那段录制，没有可填的东西（TeachTools.recordStopSpec，228 批 C）",
         "teach_skill_save" to "name 可省略：省略即用示教时自动起的名字（TeachTools.skillSaveSpec，228 批 C）",
+        "table_query" to "两条入口二选一：question（一句话）或 op（结构化运算）；两个都不给就是" +
+            "「念一遍能问什么」的名册——必填在哪条路上由执行体点名报错（TableQueryTool.run，232 批）",
     )
 
     /**

@@ -1017,6 +1017,8 @@
     <string name="baopu_tools_card">Baopu tools</string>
     <string name="baopu_tool_sheet_read">Read sheet</string>
     <string name="baopu_tool_sheet_read_desc">Read workspace xlsx/csv into structured rows (cells verbatim, blanks null).</string>
+    <string name="baopu_tool_table_query">Table Q&amp;A</string>
+    <string name="baopu_tool_table_query_desc">Answer from real table data (xlsx/csv/tsv; PDF unsupported); every answer cites file, sheet and rows.</string>
     <string name="baopu_tool_search_web">Web search</string>
     <string name="baopu_tool_search_web_desc">Search public pages for title/link/snippet (allowlist only, no intranet; logs hash only).</string>
     <string name="baopu_tool_schedule_task">Scheduled task</string>
