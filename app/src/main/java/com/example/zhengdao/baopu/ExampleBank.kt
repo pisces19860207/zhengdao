@@ -60,10 +60,11 @@ internal object ExampleBank {
     fun saveArchive(productDir: File, archive: TasteArchive): Boolean {
         val f = archiveFile(productDir)
         return runCatching {
-            if (!f.parentFile.isDirectory) f.parentFile.mkdirs()
-            val tmp = File(f.parentFile, f.name + ".tmp")
+            val dir = f.parentFile ?: return@runCatching false
+            if (!dir.isDirectory) dir.mkdirs()
+            val tmp = File(dir, f.name + ".tmp")
             tmp.writeText(TasteProfile.render(archive, stamp()), Charsets.UTF_8)
-            if (f.isFile) f.copyTo(File(f.parentFile, f.name + ".bak"), overwrite = true)
+            if (f.isFile) f.copyTo(File(dir, f.name + ".bak"), overwrite = true)
             if (!tmp.renameTo(f)) {
                 f.writeText(tmp.readText(Charsets.UTF_8), Charsets.UTF_8)
                 tmp.delete()
@@ -78,7 +79,8 @@ internal object ExampleBank {
         if (archiveFile(productDir).isFile) return cur
         runCatching {
             val f = archiveFile(productDir)
-            if (!f.parentFile.isDirectory) f.parentFile.mkdirs()
+            val dir = f.parentFile ?: return@runCatching
+            if (!dir.isDirectory) dir.mkdirs()
             f.writeText(TasteProfile.template(stamp()), Charsets.UTF_8)
         }
         return loadArchive(productDir)
@@ -140,7 +142,8 @@ internal object ExampleBank {
         val cur = mutedSet(productDir)
         if (line in cur || name in cur) return false
         return runCatching {
-            if (!f.parentFile.isDirectory) f.parentFile.mkdirs()
+            val dir = f.parentFile ?: return@runCatching false
+            if (!dir.isDirectory) dir.mkdirs()
             f.appendText("$line\n", Charsets.UTF_8)
             true
         }.getOrDefault(false)

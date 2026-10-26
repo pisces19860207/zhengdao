@@ -1821,7 +1821,7 @@ internal class SessionCompressionStore(private val db: BaopuDb) : CompressionSto
     override fun lastFailedStep(sessionId: Long): Int? = db.read { d ->
         val stmt = BaopuSql.lastCompressionFailedStep(sessionId)
         d.rawQuery(stmt.sql, stmt.args).use { c -> if (c.moveToFirst()) c.getInt(0) else -1 }
-    }.takeIf { it != null && it >= 0 }
+    }.takeIf { it >= 0 }
 
     override fun markFailed(sessionId: Long, step: Int, code: Int, message: String) {
         appendCompressionLog(

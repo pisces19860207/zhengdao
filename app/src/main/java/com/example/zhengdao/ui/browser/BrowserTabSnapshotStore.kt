@@ -64,7 +64,7 @@ internal object BrowserTabSnapshotStore {
                         "url=excluded.url, title=excluded.title, scroll_x=excluded.scroll_x, " +
                         "scroll_y=excluded.scroll_y, updated_at=excluded.updated_at, " +
                         "last_used_at=CASE WHEN ? THEN excluded.last_used_at ELSE last_used_at END",
-                    arrayOf(
+                    arrayOf<Any?>(
                         tabId,
                         safeUrl,
                         redactor.redactTabTitle(title),
@@ -86,7 +86,7 @@ internal object BrowserTabSnapshotStore {
             BaopuRuntime.db(context).write { db ->
                 db.execSQL(
                     "UPDATE browser_tab SET scroll_x=?, scroll_y=? WHERE id=?",
-                    arrayOf(scrollX, scrollY, tabId),
+                    arrayOf<Any?>(scrollX, scrollY, tabId),
                 )
             }.get()
         }.onFailure { RunLog.log("玄览 滚动写入失败（tab#$tabId）：${it.message}") }
@@ -96,7 +96,7 @@ internal object BrowserTabSnapshotStore {
     fun touch(context: Context, tabId: Int, now: Long) {
         runCatching {
             BaopuRuntime.db(context).write { db ->
-                db.execSQL("UPDATE browser_tab SET last_used_at=? WHERE id=?", arrayOf(now, tabId))
+                db.execSQL("UPDATE browser_tab SET last_used_at=? WHERE id=?", arrayOf<Any?>(now, tabId))
             }.get()
         }.onFailure { RunLog.log("玄览 LRU 刷新失败（tab#$tabId）：${it.message}") }
     }
