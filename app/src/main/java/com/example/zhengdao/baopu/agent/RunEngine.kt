@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 依据：抱朴-Agent设计-程枢版 §2 状态机（每步迁移一次 SQLite 事务；max_steps=120（2026-10-19 两次上调 16→48→120，见 RunRules）；
+// 依据：抱朴-Agent设计-程枢版 §2 状态机（每步迁移一次 SQLite 事务；max_steps=300（189 起＝3 段×100；此前 2026-10-19 两次上调 16→48→120，见 RunRules）；
 // 一步 = 一次模型轮次；确认批不计步；全局单活跃会话；通道熔断）+ §8 错误矩阵。
 //
 // 2026-10-17（抱朴刀 3）：纯判据拆去 `RunRules.kt`、历史编解码拆去 `HistoryCodec.kt`、
@@ -260,6 +260,15 @@ internal class RunEngine(
      * 上一轮的文件算进来（假红比不验更坏）。
      */
     private val verifyTouched = LinkedHashSet<String>()
+
+    /**
+     * 227 §0.5：本轮**成功工具结果**的回灌原文（只在内存里攒）。
+     *
+     * 这是答案自检「数字必须来自表」的唯一依据：纯问答这轮 `verifyTouched` 为空，
+     * 旧收尾闸等于没验收；有了这份原文，才能判「回答里的数字本轮到底读没读过」。
+     * 一次 run 开始清空（续跑是新 run，不继承上一轮的表）。
+     */
+    private val roundToolText = StringBuilder()
 
     /** 已经让模型「按自检报告修过一次」的次数（只给一次机会，修不好就如实说没通过）。 */
     private var verifyRepairs = 0
@@ -1552,6 +1561,7 @@ internal class RunEngine(
 
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
+        roundToolText.setLength(0)
         verifyRepairs = 0
         // P1-2 / P1-3 的两个跨轮计数同样按 run 重置（续跑是新 run，不继承上一段的运气）
         badArgsRetries = 0
@@ -1738,6 +1748,20 @@ internal class RunEngine(
                         // 先落的日志保持原样：未过项摘要只进 run_log，文案以裁决结果为准
                         log("抱朴引擎：收尾闸未通过（已修过 ${verifyRepairs} 次），${findingBrief(findings)}")
                     }
+                    // 227 §0.5：产物闸之外，再对**回答本身**跑三条程序判据（纯问答轮也验收）。
+                    // 只报可疑、只进 notice 与日志——**不进上面的修复回路**（不阻断、不判卷）。
+                    // 工作/创作模式还没有设置项（173ac 只到设计，未实现），拿不准按工作模式。
+                    val answerFindings = AnswerGate.check(
+                        answer = outcome.text,
+                        ground = roundToolText.toString(),
+                        workMode = true,
+                    )
+                    if (answerFindings.isNotEmpty()) {
+                        log(
+                            "抱朴引擎：答案自检 ${answerFindings.size} 条可疑——" +
+                                AnswerGate.brief(answerFindings),
+                        )
+                    }
                     // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）。
                     // 覆盖顺序（改前源码的顺序，一级压一级）：截断 > 计划未勾 > 收尾闸摘要；
                     // 都不命中 ⇒ 不动 notice（保留本轮此前可能已贴的提示）。
@@ -1746,6 +1770,7 @@ internal class RunEngine(
                         findingsSummary = if (findings.isEmpty()) null else ArtifactVerifier.summarize(findings),
                         unfinishedPlanCount = planController.unfinishedCount(),
                         truncated = outcome.truncated,
+                        answerNotice = AnswerGate.notice(answerFindings),
                     )?.let { _notice.value = it }
 
                     persistAssistantMessage(sessionId, outcome.text)
@@ -2866,6 +2891,8 @@ internal class RunEngine(
             // 收尾闸记账：只记真写成功的调用（失败/被拒不算产物）
             val touchedPaths = VerifyTargets.pathsOf(result.call.name, result.call.arguments)
             touchedPaths.forEach { verifyTouched += it }
+            // 227 §0.5：答案自检的「表」＝本轮所有成功工具结果的原文（不落盘）。
+            AnswerGate.appendGround(roundToolText, result.wrapped)
             // 第三十八批 B 段：产物行就记账在这里——与收尾闸同一个源头（只有真写
             // 成功的才进来），失败走 Failed、被闸拦下走 Rejected，两个都不到这一行。
             publishRoundArtifacts()
@@ -3661,7 +3688,7 @@ internal class RunEngine(
      * **真跑一次压缩**（第十三批 A 段 —— 替换刀 0b 留下的恒返回 null 的桩）。
      *
      * 桩的问题（派工单 §1 现状证据）：只选区 + 记日志，恒 null ⇒ 长会话反复进
-     * `COMPRESSING` 却什么都没压，最后靠 `MAX_STEPS`（现 120，见 RunRules）硬刹车——用户看到的
+     * `COMPRESSING` 却什么都没压，最后靠 `MAX_STEPS`（现 300＝3 段×100，见 RunRules）硬刹车——用户看到的
      * 「压缩中」一直是假的。
      *
      * 现在交给 [CompressionRunner]（内核：选区 → 判通道 → 一次非流式补全 → 解析 →

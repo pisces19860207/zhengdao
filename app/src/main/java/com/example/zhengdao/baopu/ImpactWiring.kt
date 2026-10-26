@@ -21,7 +21,9 @@ import java.util.concurrent.atomic.AtomicLong
  *    （第二百二十三批：门槛跟着矩阵的口径，见 [noteFor] 里的注释）；
  * 2. 单次 ≤ [MAX_CHARS] 字；
  * 3. 同一句在 [DEDUPE_MS] 内只注一次（模型同一动作反复来，别把同一句话灌三遍）；
- * 4. **注入不改变确认清单**——本对象只产一句 note，不碰任何确认/权限判据。
+ * 4. **注入不改变确认清单**——本对象只产一句 note，不碰任何确认/权限判据；
+ * 5. 227 §0.6 的聚合提示走**同一个入口**（[noteFor] 的 `historyHint`）：
+ *    同样只 R2/R3、同样 ≤ [MAX_CHARS]、同样与影响提示共用上面那格 [DEDUPE_MS] 节流。
  */
 internal object ImpactInject {
 
@@ -45,21 +47,33 @@ internal object ImpactInject {
     /**
      * 该不该给模型注入这一句。
      *
+     * @param historyHint 227 §0.6 的聚合提示（同类动作近 7 天被拒/判错 ≥3 次的**一句事实**，
+     *   由 [AuditHint.lineFor] 算好传进来）。非空时优先于「这一次会怎样」——它更能改变
+     *   模型下一步做法；但它**不是免检通道**：R2/R3、字数、去重三条照样过。
      * @return 要注入的 note（≤40 字）；null = 不注入（只读/无事实/重复）
      */
-    fun noteFor(call: ToolCall, impact: Impact, nowMs: Long = System.currentTimeMillis()): String? {
+    fun noteFor(
+        call: ToolCall,
+        impact: Impact,
+        nowMs: Long = System.currentTimeMillis(),
+        historyHint: String? = null,
+    ): String? {
         if (impact.kind == Impact.Kind.NONE) return null
         if (impact.unknown) return null // "未知"没有信息量，注进去只是噪音
-        // 第二百二十三批：档位改由风险矩阵给（`RiskGate.tierOf` 就是 `RiskMatrix.classify` 的底档）。
-        // 门槛随之从"R2 以上"改成"非只读（R1 以上）"：矩阵里 R1 就是"写工作区内的东西"，
-        // 而 220 的本意是"改盘了才多说一句"——按 219 的命名，那句话的门槛正是 R0 之外。
+        // 第二百二十三批：档位改由风险矩阵给（RiskGate.tierOf＝RiskMatrix.classify 的底档）。
+        // 门槛从「R2 以上」改成「非只读（R1 以上）」；227 又补了「聚合提示」一路（historyHint）。
         val tier = RiskGate.tierOf(call)
         if (tier < 1) return null // R0 只读一律不注入
-        val worth = impact.overwriteTotal > 0 || impact.deleteCount > 0 ||
-            impact.moved > 0 || impact.collisions > 0 || impact.newFiles > 0
-        if (!worth) return null
-        val line = ImpactLine.text(impact) ?: return null
-        val text = ImpactLine.fit("【影响】$line")
+        val hint = historyHint?.trim()?.takeIf { it.isNotEmpty() }
+        val text = if (hint != null) {
+            clamp(hint)
+        } else {
+            val worth = impact.overwriteTotal > 0 || impact.deleteCount > 0 ||
+                impact.moved > 0 || impact.collisions > 0 || impact.newFiles > 0
+            if (!worth) return null
+            val line = ImpactLine.text(impact) ?: return null
+            ImpactLine.fit("【影响】$line")
+        }
         if (text.length > MAX_CHARS) return null // 兜底：宁可不注，不许超字数
         synchronized(this) {
             if (text == lastText && nowMs - lastAtMs < DEDUPE_MS) return null
@@ -68,13 +82,20 @@ internal object ImpactInject {
         }
         return text
     }
+
+    /** 单行 ＋ ≤ [MAX_CHARS]（聚合提示最坏二十来个字；这里是兜底，不是模板）。 */
+    private fun clamp(raw: String): String {
+        val one = raw.replace(Regex("""\s+"""), " ").trim()
+        return if (one.length <= MAX_CHARS) one else one.take(MAX_CHARS - 1) + "…"
+    }
 }
 
 /**
  * 影响提示的事后账（**决策中心 208 读它**）。
  *
- * 只存三样：时刻、动作名、一行摘要（＋它的 sha256）。**不存文件名清单**——卡面那一行
- * 已经是脱敏后的短句，再存原始名单等于给日志加一份目录结构（派工单 §4 负例 6）。
+ * 只存三样：时刻、动作名、一行摘要（＋它的 sha256）。**不存文件名清单**——存的就是
+ * 卡面那一行原文：单个覆盖时会带**一个**文件名（`覆盖「a.md」`），既不是整份名单、也不带
+ * 目录；再存原始清单等于给日志加一份目录结构（派工单 §4 负例 6）。
  *
  * 进程内环形缓冲（[CAPACITY] 条），不落盘：预览的红线是"只读"，为了一个事后可查的
  * 审计去写盘，等于自己破自己的红线。要长期留痕由 208 落库。

@@ -53,17 +53,28 @@ internal object RunLoopRules {
      *   （count 才是判据，summary 只是载荷——传 null 会安全降级成「不动」）
      * @param unfinishedPlanCount 计划里还没勾的条数
      * @param truncated 本轮回复是否被服务端截在输出上限
+     * @param answerNotice 227 §0.5 的答案自检结果（「这轮有 N 条可疑：…」；null = 无）。
+     *   它是**补充**，不改变上面三级覆盖的优先级：已有更高一级的提示时用「；」接在同一行；
+     *   三级都不命中时，它就是唯一那句。
      */
     fun textSettleNotice(
         findingsCount: Int,
         findingsSummary: String?,
         unfinishedPlanCount: Int,
         truncated: Boolean,
-    ): String? = when {
-        truncated -> "回复被输出上限截断了（服务端说的），点「继续说完」接着写"
-        unfinishedPlanCount > 0 -> "计划里还有 $unfinishedPlanCount 条没勾（进度看顶部计划卡）"
-        findingsCount > 0 -> findingsSummary
-        else -> null
+        answerNotice: String? = null,
+    ): String? {
+        val base = when {
+            truncated -> "回复被输出上限截断了（服务端说的），点「继续说完」接着写"
+            unfinishedPlanCount > 0 -> "计划里还有 $unfinishedPlanCount 条没勾（进度看顶部计划卡）"
+            findingsCount > 0 -> findingsSummary
+            else -> null
+        }
+        return when {
+            base == null -> answerNotice
+            answerNotice.isNullOrBlank() -> base
+            else -> "$base；$answerNotice"
+        }
     }
 
     // ── ② 失败人话化 ─────────────────────────────────────────────────────
