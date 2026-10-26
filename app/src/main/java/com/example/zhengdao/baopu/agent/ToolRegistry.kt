@@ -1381,7 +1381,6 @@ internal object BaopuToolCatalog {
         // 单发的 fields 分支仍旧只改页面不写盘（拿不到工作区时只有批量会明确拒绝）。
         Entry("form_fill") { root -> FormFillTool.spec(workspace = root) },
         // 不需要 workspaceRoot：它只改玄览里的页面，不写盘（证据随回执返回给模型）。
-        Entry("form_fill") { FormFillTool.spec() },
         // 示教/回放五件（228 批 C 片）：录制/保存/回放/信任名单——页面动作全部复用
         // 196/200/226 的执行链（TeachRecorder/TeachLearner/TeachExecutor），本表只放 spec。
         // 不需要 workspaceRoot：真身网关在 BaopuBrowserWiring（与浏览器件同一条接线）。
