@@ -1142,8 +1142,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     Spacer(Modifier.height(8.dp))
                 } else {
                     req.takeIf { it.kind == com.example.zhengdao.baopu.agent.AskKind.QUESTION }?.let { r ->
-                        BaopuChoiceCard(request = r, onPick = { option -> controller.answerChoice(option.id) })
-                        Spacer(Modifier.height(8.dp))
+                        // 第二百三十七批③：求助卡（subject 锚 `help:<工具>`）走四件分区那张卡；
+                        // 四件不在请求体里（放不下），从 ToolHelpPending 单槽取——对不上就退回普通选项卡。
+                        val help = com.example.zhengdao.baopu.agent.ToolHelpPending
+                        if (help != null && r.subject == "help:${help.tool}") {
+                            BaopuHelpCard(card = help) { option -> controller.answerChoice(option.id) }
+                            Spacer(Modifier.height(8.dp))
+                        } else {
+                            BaopuChoiceCard(request = r, onPick = { option -> controller.answerChoice(option.id) })
+                            Spacer(Modifier.height(8.dp))
+                        }
                     }
                 }
             }

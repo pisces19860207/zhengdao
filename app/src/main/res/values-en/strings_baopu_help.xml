@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百三十七批 · 工具失败降级与求助卡（English）。键必须与 values/strings_baopu_help.xml 一一对应。 -->
+<resources>
+    <string name="baopu_help_title">Help · this step did not go through</string>
+    <string name="baopu_help_badge">Needs you</string>
+    <string name="baopu_help_confirm">Confirm required</string>
+    <string name="baopu_help_group_tools">Tools in this group: </string>
+    <string name="decision_audit_fail_title">Tool failure audit, rows recorded: %1$d</string>
+    <string name="decision_audit_fail_title_empty">Tool failure audit · nothing recorded</string>
+    <string name="decision_audit_fail_readonly">Read-only: the detail stays on this page, never in the model context</string>
+    <string name="decision_audit_fail_more">Load more</string>
+</resources>
