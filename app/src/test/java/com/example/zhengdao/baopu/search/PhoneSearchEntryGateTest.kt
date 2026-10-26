@@ -10,8 +10,9 @@
 // （`BaopuPhoneSearchCard` 的 `syncLedgerLine`，用户点「扫描本机／重建索引」那一刻）。
 //
 // 于是「谁在什么时候能改读侧账本」变成两句能在源码里数出来的话，本文件就把这两句数出来：
-// - 写账本的语句只有一个入口函数（[SearchScope.sync]），它的调用点恰好两个文件；
-// - 拨开关的写入点恰好一处（设置页那个 `Switch`）。
+// - 写账本的语句只有一个入口函数（[SearchScope.sync]），它的调用点恰好一个文件
+//   （第二百二十九批起：设置页那个入口随开关一起删了）；
+// - 旧设置口（`SearchScopeSettings`）零调用——开关删了，判定不许再读它。
 // 结构门禁那一条（`SearchReadNeverGrantsWriteTest`）管的是「读不许变成写」；
 // **这一条管的是「读侧账本自己什么时候被动」**——两回事，都要钉。
 //
@@ -36,38 +37,40 @@ class PhoneSearchEntryGateTest {
     // ── ⑥① 调用点集合：账本什么时候被动 ────────────────────────────────────────
 
     @Test
-    fun `⑥①_写账本的调用点恰好两个手动入口`() {
+    fun `⑥①_写账本的调用点恰好一个手动入口`() {
+        // 第二百二十九批：设置页那个入口随开关一起删了——扫描卡「扫描本机／重建索引」前
+        // 的对账（syncLedgerLine）是唯一的手动入口。
         val hits = sourcesContaining("SearchScope.sync(")
         assertEquals(
-            "读侧账本只有一个写入口，调用点必须数得出来：多了就是长出第三个入口（自动同步就是这么混进来的）",
+            "读侧账本只有一个写入口，调用点必须数得出来：多了就是长出第二个入口（自动同步就是这么混进来的）",
             mapOf(
                 "PhoneSearch.kt" to 1, // `syncNow`：门面对 UI 的那一层，转调而已
-                "BaopuSettingsScreen.kt" to 1, // 设置页开关：用户改意愿的那一刻
             ),
             hits,
         )
     }
 
     @Test
-    fun `⑥①_拨开关的写入点只有一处`() {
-        assertEquals("开关只能有一个地方被拨下去", mapOf("BaopuSettingsScreen.kt" to 1), sourcesContaining("SearchScopeSettings.set("))
-        // 那个写入点必须在 Switch 的回调里（不是组合时、不是 LaunchedEffect 里）
-        val settings = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt").readText()
-        val at = settings.indexOf("SearchScopeSettings.set(")
-        val back = settings.substring(0, at).lines().takeLast(6).joinToString("\n")
-        assertTrue("拨开关那一行往上六行里没有 onCheckedChange：它不在用户动作的回调里（那句「用户明确动手」就没了）",
-            back.contains("onCheckedChange"))
+    fun `负例_开关没了_旧设置口零调用`() {
+        // 第二百二十九批负例「删了 UI 仍读开关」：`set(` 早已删除，`get(`（兼容读口）
+        // 也必须**零调用**——判定路径只认系统授权，老 prefs 的值不再产生任何效果。
+        assertEquals("写口必须已删干净", emptyMap<String, Int>(), sourcesContaining("SearchScopeSettings.set("))
+        assertEquals(
+            "兼容读口不许有任何调用方（有人想靠老 prefs 里的 false 把范围缩回去，这里当场红）",
+            emptyMap<String, Int>(),
+            sourcesContaining("SearchScopeSettings.get("),
+        )
     }
 
     @Test
     fun `⑥①_门面调用点只在搜索卡`() {
-        // 扫描／检索／现状读数：只有搜索卡会点（dbExists 另有一处——设置页拨开关前要先问「库之前在不在」）
+        // 扫描／检索／现状读数：只有搜索卡会点（229 起设置页不再有任何读侧调用）
         mapOf(
             "PhoneSearch.scan(" to setOf("BaopuPhoneSearchCard.kt"),
             "PhoneSearch.query(" to setOf("BaopuPhoneSearchCard.kt"),
             "PhoneSearch.snapshot(" to setOf("BaopuPhoneSearchCard.kt"),
             "PhoneSearch.syncNow(" to setOf("BaopuPhoneSearchCard.kt"),
-            "PhoneSearch.dbExists(" to setOf("BaopuPhoneSearchCard.kt", "BaopuSettingsScreen.kt"),
+            "PhoneSearch.dbExists(" to setOf("BaopuPhoneSearchCard.kt"),
         ).forEach { (call, where) ->
             assertEquals("「$call」的调用点集合漂了：读侧的扫描与检索只能由用户点按钮起", where, sourcesContaining(call).keys)
         }
@@ -94,8 +97,9 @@ class PhoneSearchEntryGateTest {
     }
 
     @Test
-    fun `⑥①_读侧的可见面只有那两片UI`() {
-        // 闭世界对账：全仓（只算 src/main）**认识**门面与账本的文件，除 search 包自己之外只许那两片 UI。
+    fun `⑥①_读侧的可见面只有搜索卡那一片UI`() {
+        // 闭世界对账：全仓（只算 src/main）**认识**门面与账本的文件，除 search 包自己之外只许搜索卡一片
+        // （设置页那片仍**实例化**搜索卡——它只是不再碰账本，所以仍在许可名单里，但只许这一处）。
         // 方向要说清：`allowed` 是「许可名单」，不是「与命中集相等」——包里有些文件（PhoneRank 那种）
         // 本来就不提门面，硬比相等会把它们判成违规。
         val pkg = sourcesInSearchPackage()
@@ -104,7 +108,7 @@ class PhoneSearchEntryGateTest {
         val outsiders = sources().filter { code(it.readText()).let { t -> t.contains("PhoneSearch") || t.contains("SearchScope") } }
             .map { it.name }.toSet() - allowed
         assertEquals(
-            "读侧的引用面长出了 search 包与那两片 UI 之外的文件：入口集合是 ⑥① 的裁定，加一处就要回来重新数一遍",
+            "读侧的引用面长出了 search 包与搜索卡之外的文件：入口集合是 ⑥① 的裁定，加一处就要回来重新数一遍",
             emptySet<String>(),
             outsiders,
         )
@@ -142,62 +146,53 @@ class PhoneSearchEntryGateTest {
     // ── ⑥③ 那条日志要能被真机看懂 ──────────────────────────────────────────────
 
     @Test
-    fun `⑥③_拨开关那行的六种形状逐条对账`() {
+    fun `⑥③_账本同步那行的六种形状逐条对账`() {
         // 「账本新增 N 行/撤销 M 个根」这句是要截图的 ⇒ 它的每个数字都必须在 JVM 里钉得住。
+        // 第二百二十九批：开关没了，这句话从「拨开关」改判成「账本同步」（扫描前的那次对账）。
         val line = SearchScopeRules.syncLine(
-            switchOn = true, access = PhoneAccess.GRANTED, recorded = 7, revokedRoots = 2, orphanRoots = 0, dbFirstBuild = false,
+            access = PhoneAccess.GRANTED, recorded = 7, revokedRoots = 2, orphanRoots = 0, dbFirstBuild = false,
         )
         assertEquals(
-            "开关打开、甲档已给：这句话要说清动了几个根，并且明说「只读」",
-            "抱朴设置：手机文件纳入搜索范围 = true（只读；账本新增 7 行、撤销 2 个根；改文件仍按工作区边界逐次确认）",
+            "授权已给：这句话要说清动了几个根，并且明说「只读」与「写不放大」",
+            "搜索范围：手机全盘 = 已纳入（只读；账本新增 7 行、撤销 2 个根；写文件不跟着放大：只限当前工作区与 Download/证道）",
             line,
         )
         listOf(
             Triple(
-                "新增 0 行也要说出来（用户拨了开关却一个根没入账，是最需要看得懂的一次）",
-                SearchScopeRules.syncLine(true, PhoneAccess.NO_PERMISSION, 0, 0, 0, false),
-                "抱朴设置：手机文件纳入搜索范围 = true（只读；账本新增 0 行、撤销 0 个根；系统还没给「所有文件访问」，所以手机档一行都没入账；改文件仍按工作区边界逐次确认）",
-            ),
-            Triple(
-                "开关关掉：说「只搜证道＋工作区」，不许让人以为索引没了",
-                SearchScopeRules.syncLine(false, PhoneAccess.SWITCH_OFF, 0, 1, 0, false),
-                "抱朴设置：手机文件纳入搜索范围 = false（只读；账本新增 0 行、撤销 1 个根；开关是关的：只搜证道＋工作区；改文件仍按工作区边界逐次确认）",
+                "新增 0 行也要说出来（授权没给时一个根没入账，是最需要看得懂的一次）",
+                SearchScopeRules.syncLine(PhoneAccess.NO_PERMISSION, 0, 0, 0, false),
+                "搜索范围：手机全盘 = 未纳入（只读；账本新增 0 行、撤销 0 个根；系统还没给「所有文件访问」，所以手机档一行都没入账；写文件不跟着放大：只限当前工作区与 Download/证道）",
             ),
             Triple(
                 "首次建库要单独说一句（⑥③ 的本体：这一句只在库之前不存在时出现）",
-                SearchScopeRules.syncLine(true, PhoneAccess.GRANTED, 3, 0, 0, true),
-                "抱朴设置：手机文件纳入搜索范围 = true（只读；账本新增 3 行、撤销 0 个根；这是首次建库：search.db 这个文件是这一刻才被建出来的；改文件仍按工作区边界逐次确认）",
+                SearchScopeRules.syncLine(PhoneAccess.GRANTED, 3, 0, 0, true),
+                "搜索范围：手机全盘 = 已纳入（只读；账本新增 3 行、撤销 0 个根；这是首次建库：search.db 这个文件是这一刻才被建出来的；写文件不跟着放大：只限当前工作区与 Download/证道）",
             ),
             Triple(
                 "撤销的根还留着索引行 ⇒ 必须带 ⚠（这是隐私事故，不许埋在计数里）",
-                SearchScopeRules.syncLine(true, PhoneAccess.GRANTED, 0, 2, 1, false),
-                "抱朴设置：手机文件纳入搜索范围 = true（只读；账本新增 0 行、撤销 2 个根；⚠ 撤销的根里还有 1 个留着索引行（要立刻重建索引）；改文件仍按工作区边界逐次确认）",
+                SearchScopeRules.syncLine(PhoneAccess.GRANTED, 0, 2, 1, false),
+                "搜索范围：手机全盘 = 已纳入（只读；账本新增 0 行、撤销 2 个根；⚠ 撤销的根里还有 1 个留着索引行（要立刻重建索引）；写文件不跟着放大：只限当前工作区与 Download/证道）",
             ),
             // 反面：首次建库那句不许在「库早就在了」的时候冒出来（那会把老用户吓成「刚建的索引不可信」）
             Triple(
                 "不是首次建库就不提 search.db",
-                SearchScopeRules.syncLine(true, PhoneAccess.GRANTED, 1, 0, 0, false),
-                "抱朴设置：手机文件纳入搜索范围 = true（只读；账本新增 1 行、撤销 0 个根；改文件仍按工作区边界逐次确认）",
+                SearchScopeRules.syncLine(PhoneAccess.GRANTED, 1, 0, 0, false),
+                "搜索范围：手机全盘 = 已纳入（只读；账本新增 1 行、撤销 0 个根；写文件不跟着放大：只限当前工作区与 Download/证道）",
             ),
         ).forEach { (title, actual, want) -> assertEquals(title, want, actual) }
     }
 
     @Test
     fun `⑥③_这句话只在真动了账本的时候说`() {
-        // 两处调用点（设置页 / 扫描前）都同一条形状：先问「库之前在不在」，再 sync，再组这句话。
+        // 唯一调用点（扫描卡）：先问「库之前在不在」，再 sync，再组这句话。
         val askFirst = "val firstBuild = !PhoneSearch.dbExists(ctx)"
-        listOf(
-            "src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt",
-            "src/main/java/com/example/zhengdao/ui/baopu/BaopuPhoneSearchCard.kt",
-        ).forEach { rel ->
-            val t = code(repoFile(rel).readText())
-            assertTrue("$rel 没有先问「库之前在不在」再 sync：那一步晚了，「首次建库」永远是假话", t.contains(askFirst))
-            assertTrue("$rel 没走 syncLine：文案散在 UI 里就没法在 JVM 里断言", t.contains("SearchScopeRules.syncLine("))
-        }
+        val rel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuPhoneSearchCard.kt"
+        val t = code(repoFile(rel).readText())
+        assertTrue("$rel 没有先问「库之前在不在」再 sync：那一步晚了，「首次建库」永远是假话", t.contains(askFirst))
+        assertTrue("$rel 没走 syncLine：文案散在 UI 里就没法在 JVM 里断言", t.contains("SearchScopeRules.syncLine("))
         // 扫描那一趟：动了账本才占界面一行（没动就不刷）；日志那边一条不落地说（验收要看的就是它）
-        val card = code(repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuPhoneSearchCard.kt").readText())
-        assertTrue("扫描前的账本句要先写进 RunLog 再决定给不给界面看", card.contains("RunLog.log(line)"))
-        assertTrue("没动账本就不占界面那一行", card.contains("if (rep.isNoop) null else line"))
+        assertTrue("扫描前的账本句要先写进 RunLog 再决定给不给界面看", t.contains("RunLog.log(line)"))
+        assertTrue("没动账本就不占界面那一行", t.contains("if (rep.isNoop) null else line"))
         // 扫之前库在不在 ⇒ 扫描那行日志要能自证「本次是首次建库」
         val shell = code(repoFile("src/main/java/com/example/zhengdao/baopu/search/PhoneSearch.kt").readText())
         assertTrue("扫描日志必须带「首次建库」那一截", shell.contains("\"（首次建库：扫之前 search.db 这个文件不存在）\""))

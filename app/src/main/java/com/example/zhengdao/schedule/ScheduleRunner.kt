@@ -77,6 +77,18 @@ object ScheduleRunner {
     }
 
     private fun notifier(app: Context) = object : PassNotifier {
+        override fun starting(task: ScheduleTask) {
+            // 第二百二十九批：到点先说「要开始了」。开关关 ⇒ 只发进会话不通知；
+            // 通知权限没给 ⇒ ScheduleNotifier.postStarting 里落 RunLog（不许静默），
+            // 且任务页顶部有「通知权限未开」的提示。手建与抱朴自建的任务同一处理。
+            val on = runCatching { SchedulePreNotify.enabled(app) }.getOrDefault(true)
+            if (!SchedulePreNotifyRules.shouldPreNotify(on)) {
+                log("开始前提醒已关：不响，只把 prompt 发进会话")
+                return
+            }
+            ScheduleNotifier.postStarting(app, task)
+        }
+
         override fun fired(task: ScheduleTask, sessionId: Long, late: Boolean) {
             ScheduleNotifier.postFired(app, task, sessionId, late)
         }

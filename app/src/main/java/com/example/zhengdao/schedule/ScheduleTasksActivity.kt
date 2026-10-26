@@ -250,6 +250,46 @@ private fun ScheduleTasksPage(onBack: () -> Unit) {
             ) { Text(stringResource(R.string.sched_btn_new)) }
         }
 
+        // ── 开始前提醒（第二百二十九批 §2）────────────────────────────────────
+        // 「定时任务开始前提醒」开关：**默认开**；关掉则到点只把 prompt 发进会话，
+        // 不先响那一声（判据在 SchedulePreNotifyRules，开关在 SchedulePreNotify）。
+        // 权限横幅：通知权限没给 ⇒ 提醒发不出**不许静默**——RunLog 由
+        // ScheduleNotifier.postStarting 落，这里把后果说在明处；申请入口仍在
+        // 设置页「申请权限」集中卡（一处一套，PermissionEntryGateTest 盯着）。
+        SectionCard(stringResource(R.string.sched_pre_notify_title)) {
+            var preOn by remember { mutableStateOf(SchedulePreNotify.enabled(ctx)) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.sched_pre_notify_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = preOn,
+                    onCheckedChange = { want ->
+                        SchedulePreNotify.set(ctx, want)
+                        preOn = want
+                    },
+                    colors = zhengdaoSwitchColors(),
+                )
+            }
+            // 与 exactOk 同一刷新时机：从系统权限页回来（ON_RESUME）重读一次。
+            val notifOk = remember(tick) { SchedulePermissions.notificationsGranted(ctx) }
+            if (!notifOk) {
+                Text(
+                    text = stringResource(R.string.sched_perm_missing_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = zhengdaoErrorText(),
+                )
+            }
+        }
+
         // 三行权限**只在设置页有**（见 ui/SettingsDataActivity 的「定时任务用到的权限」卡）。
         // 这里不重复一份开关：两处各一套控件迟早给出两个结论（本仓 E2「消双判」的教训），
         // 而这一页顶部那一行已经用同一个 SchedulePermissions.route() 把当前走的路说清楚了。

@@ -72,11 +72,6 @@ import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.eval.ProdEvalSettings
-import com.example.zhengdao.baopu.search.PhoneAccess
-import com.example.zhengdao.baopu.search.PhoneSearch
-import com.example.zhengdao.baopu.search.SearchScope
-import com.example.zhengdao.baopu.search.SearchScopeRules
-import com.example.zhengdao.baopu.search.SearchScopeSettings
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.FilterChip2
@@ -470,112 +465,20 @@ internal fun BaopuSettingsScreen(
                 }
             }
 
-            // ── 搜索范围（第一百九十七批 · S2 读侧授权阶梯；派工单 §1⑤）──
-            // 定位：读侧「能看见什么」的唯一入口。这条线不碰写判据——硬不变式
-            // （有只读授予时 workspaceBoundaryCheck 的返回值逐字不变）由
-            // SearchReadNeverGrantsWriteTest 钉着，本卡只是它的一个读数口。
-            // 账本只在「开关开 ＋ 系统真给了所有文件访问」时落 PHONE 行；
-            // 没授予却落账＝给 S3 的扫描器发一份假账（SearchScopeTest 那条负例盯着它）。
-            // 文案只说「读取」，一个字都不许暗示可写（派工单 §1⑤ 原话）。
-            Spacer(Modifier.height(12.dp))
-            SectionCard(stringResource(R.string.baopu_search_scope_card)) {
-                var scopeTick by remember { mutableIntStateOf(0) }
-                val scopeStatus = remember(scopeTick) { SearchScope.status(ctx) }
-                Text(
-                    text = stringResource(R.string.baopu_search_scope_desc),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // 命中 ≥48dp（与 168 批那张开关同款）
-                        .heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.baopu_search_scope_title),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = stringResource(R.string.baopu_search_scope_guard),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = scopeStatus.switchOn,
-                        onCheckedChange = { want ->
-                            val wasOn = scopeStatus.switchOn
-                            SearchScopeSettings.set(ctx, want)
-                            // 第二百零八批：搜索范围这件事**只在这里**被用户拨动（198 ⑥① 钉死的
-                            // 唯一写入点），所以决策记录也落在这里；撤回得回这一页拨回去
-                            // （那条记录因此是「不可回滚」的，原因见 DecisionLedger.recordReadScope）。
-                            com.example.zhengdao.baopu.DecisionLedger.recordReadScope(
-                                wasOn = wasOn,
-                                on = want,
-                            ) ?: RunLog.log(
-                                "搜索范围：决策记录没写成（${com.example.zhengdao.baopu.DecisionLedger.lastError}）",
-                            )
-                            // ⚠️ 拨完之后再读一次状态：`scopeStatus` 是**拨之前**那一帧的 remember，
-                            // 拿它的 `access` 写日志，「刚打开开关」那次会打成「开关是关的」——
-                            // 这句是要给真机验收看的（⑥③），说反话比不说还糟。
-                            val st = SearchScope.status(ctx)
-                            // ⑥③：「首次建库」这件事要在日志里看得见 ⇒ 先问一句「之前在不在」
-                            // （`sync` 一旦跑起来就会把库建出来，之后再问永远是「在」，那句话就永远是假话）。
-                            val firstBuild = !PhoneSearch.dbExists(ctx)
-                            val rep = SearchScope.sync(ctx)
-                            scopeTick++
-                            // 文案收进纯函数 [SearchScopeRules.syncLine]：这一行要能在 JVM 里被断言
-                            // （派工单 §1⑥ 那条「拨开关那条日志要能被真机看懂」），不许散在 UI 里漂。
-                            RunLog.log(
-                                SearchScopeRules.syncLine(
-                                    switchOn = st.switchOn,
-                                    access = st.access,
-                                    recorded = rep.recorded,
-                                    revokedRoots = rep.revoked.size,
-                                    orphanRoots = rep.orphanRoots.size,
-                                    dbFirstBuild = firstBuild,
-                                ),
-                            )
-                        },
-                        colors = zhengdaoSwitchColors(),
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = stringResource(R.string.baopu_search_scope_excluded),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = stringResource(
-                        when (scopeStatus.access) {
-                            PhoneAccess.GRANTED -> R.string.baopu_search_scope_tier_phone
-                            PhoneAccess.NO_PERMISSION -> R.string.baopu_search_scope_tier_private
-                            PhoneAccess.SWITCH_OFF -> R.string.baopu_search_scope_tier_switch_off
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                if (scopeStatus.homeRoot.isNotBlank()) {
-                    Text(
-                        text = stringResource(R.string.baopu_search_scope_home, scopeStatus.homeRoot),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            // ── 搜索范围卡（第二百二十九批整卡删除）──
+            // 用户 2026-10-26 口径：「给了存储权限就默认可全盘找，那个开关有点多余……不用加了」。
+            // 197 批那张「把手机文件纳入搜索范围」开关卡（标题/说明/开关三元组）连同
+            // 设置页那处读侧写入口、搜索范围的决策记录调用一起删除，不留半张空卡。
+            // 范围现在只跟系统授权走（SearchScopeRules.phoneAccessOf），
+            // 读写边界在写侧判据里另钉（workspaceWriteVerdict：写只限工作区＋Download/证道）。
+            // 下面的「全手机搜索」卡保留：它管「搜不搜、搜什么」，与范围是两回事。
 
             // ── 全手机搜索（第一百九十八批 · S3；派工单 §1①③④⑤）──
-            // 定位：上面那张卡决定「能搜哪儿」，这张卡决定「搜不搜、搜什么」。
+            // 定位：范围跟着系统授权走（229：开关已删）；这张卡决定「搜不搜、搜什么」。
             // 扫描只在用户按下按钮时跑（没有常驻扫描：§2 点名的负例），
             // 全部盘 IO 与库 IO 都在 IO 线程（见 BaopuPhoneSearchCard 文件头那三条纪律）。
+            // 229：扫描前把账本对齐现状这件事仍在这里（syncLedgerLine）——它现在是
+            // 读侧账本**唯一**的手动入口（设置页那个入口随开关一起删了）。
             Spacer(Modifier.height(12.dp))
             BaopuPhoneSearchCard(onOpenSession = onOpenSession)
 

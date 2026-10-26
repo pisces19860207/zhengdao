@@ -39,19 +39,25 @@ class SearchScopeTest {
     }
 
     @Test
-    fun `意愿与能力四组合_只有两个都真才算 Granted`() {
-        // 表驱动：开关（意愿）× 甲档（能力）。这一张表就是「读不放大写」之外那条「未点头就不读」。
-        val cases = listOf(
-            Triple(true, ReadTier.PHONE, PhoneAccess.GRANTED),
-            Triple(true, ReadTier.PRIVATE, PhoneAccess.NO_PERMISSION),
-            Triple(false, ReadTier.PHONE, PhoneAccess.SWITCH_OFF),
-            Triple(false, ReadTier.PRIVATE, PhoneAccess.SWITCH_OFF),
+    fun `授权即全盘_判定里没有开关这个输入`() {
+        // 第二百二十九批（2026-10-26 用户口径「给了存储权限就默认可全盘找，开关有点多余」）：
+        // 意愿开关从判定里除名——签名里连参数位都没有，「删了 UI 仍读开关」要作祟，
+        // 得先把参数加回来（编译期就红）＋下面的源码门禁（运行期也红）。
+        assertEquals(PhoneAccess.GRANTED, SearchScopeRules.phoneAccessOf(ReadTier.PHONE))
+        assertEquals(PhoneAccess.NO_PERMISSION, SearchScopeRules.phoneAccessOf(ReadTier.PRIVATE))
+        // SWITCH_OFF 那一档随开关一起删了：档位集合就两值，多出来一律算红。
+        assertEquals(setOf("GRANTED", "NO_PERMISSION"), PhoneAccess.values().map { it.name }.toSet())
+        // JVM 字节码钉签名：phoneAccessOf 只许一个入参（boolean 就是开关还魂的形状）。
+        val sigs = Class.forName("com.example.zhengdao.baopu.search.SearchScopeRules")
+            .declaredMethods
+            .filter { it.name == "phoneAccessOf" && !it.name.contains("\$default") }
+            .map { it.parameterTypes.map { t -> t.name } }
+        assertEquals(
+            "phoneAccessOf 只该有一个入参（ReadTier）——冒出 boolean 就是开关爬回了判定",
+            1,
+            sigs.size,
         )
-        cases.forEach { (switchOn, tier, want) ->
-            assertEquals("开关=$switchOn 档位=$tier", want, SearchScopeRules.phoneAccessOf(switchOn, tier))
-        }
-        // 开关关掉一律 SWITCH_OFF——能力再大也不算用户同意过（先查意愿，没意愿不必去看能力）。
-        assertEquals(PhoneAccess.SWITCH_OFF, SearchScopeRules.phoneAccessOf(false, ReadTier.PHONE))
+        assertTrue(sigs.single().all { it != "boolean" })
     }
 
     // ── 账本计划（负例「偷偷全盘扫」「凭空记授予」） ──────────────────────────
@@ -66,21 +72,21 @@ class SearchScopeTest {
     }
 
     @Test
-    fun `负例_没授权或没开关_绝不落手机档`() {
-        listOf(PhoneAccess.SWITCH_OFF, PhoneAccess.NO_PERMISSION).forEach { a ->
-            val drafts = SearchScopeRules.plan(a, home, phone)
-            assertEquals("$a 时只该有 HOME 一行", listOf(ScopeKind.HOME), kinds(drafts))
-            assertFalse(
-                "$a 时落 PHONE 行＝给 S3 的扫描器发一份假账，它会照着扫全盘",
-                drafts.any { it.kind == ScopeKind.PHONE },
-            )
-        }
+    fun `负例_没授权_绝不落手机档`() {
+        // 229 起唯一挡手机档的就是「系统没给全文件访问」：挡住时只该有 HOME 一行——
+        // 落 PHONE 行＝给 S3 的扫描器发一份假账，它会照着去扫全盘（偷全盘扫的前置）。
+        val drafts = SearchScopeRules.plan(PhoneAccess.NO_PERMISSION, home, phone)
+        assertEquals("没授权时只该有 HOME 一行", listOf(ScopeKind.HOME), kinds(drafts))
+        assertFalse(
+            "没授权落 PHONE 行＝给 S3 的扫描器发一份假账，它会照着扫全盘",
+            drafts.any { it.kind == ScopeKind.PHONE },
+        )
     }
 
     @Test
     fun `负例_本批永不产出媒体档`() {
         // 乙档（MEDIA）只在 DDL 的 CHECK 里存在；manifest 没有 READ_MEDIA_*，代码一片没写。
-        listOf(PhoneAccess.GRANTED, PhoneAccess.SWITCH_OFF, PhoneAccess.NO_PERMISSION).forEach { a ->
+        PhoneAccess.values().forEach { a ->
             val drafts = SearchScopeRules.plan(a, home, phone)
             assertTrue("$a 时出现了本批不支持的档", drafts.all { it.kind in SearchScopeRules.KINDS_THIS_BATCH })
         }
@@ -196,19 +202,45 @@ class SearchScopeTest {
         assertEquals(ScopeKind.PHONE, ScopeKind.fromTag("PHONE"))
     }
 
-    // ── 写口只有一处（源码门禁；房型照 168 批 ProdEvalTest） ──────────────────
+    // ── 写口与开关（源码门禁；房型照 168 批 ProdEvalTest） ────────────────────
 
     @Test
-    fun `写口只有一处_prefs布尔只能由SearchScopeSettings写`() {
+    fun `负例_写口一个都没有_prefs布尔不许再写`() {
+        // 第二百二十九批：设置页开关连写口一起删了——`putBoolean` 在读侧包里**零出现**。
+        // （197/198 时代是「只许 SearchScopeSettings 一处」；229 之后是「哪里都不许」。）
         val writers = searchSources().filter { (_, text) ->
             code(text).contains("putBoolean")
         }.map { it.first }
         assertEquals(
-            "往 prefs 写布尔的地方只该有一个（设置页开关的写入口）；账本文件里冒出 putBoolean，" +
-                "意味着读侧可以自己给自己发授权",
-            listOf("SearchScopeSettings.kt"),
+            "读侧包里冒出 putBoolean：账本能自己给自己发授权（写口已随 229 删除，一处都不许有）",
+            emptyList<String>(),
             writers,
         )
+    }
+
+    @Test
+    fun `负例_删了UI仍读开关_判定路径不许碰旧prefs`() {
+        // 派工单 §3 负例：「删了 UI 仍读开关（false 就只搜工作区）」。
+        // 判定路径（SearchScope.kt 与除 SearchScopeSettings 外的全部读侧文件）不许出现
+        // 旧键名与旧设置口——老 prefs 只兼容读、不再产生效果，这件事钉在源码上。
+        searchSources().forEach { (name, text) ->
+            val c = code(text)
+            if (name != "SearchScopeSettings.kt") {
+                assertFalse(
+                    "$name 出现旧键名 search_phone_on：开关已删（229），判定不许再读它",
+                    c.contains("search_phone_on"),
+                )
+                assertFalse(
+                    "$name 引用 SearchScopeSettings：兼容读口不该有任何调用方（删了 UI 仍读开关就是这个样子）",
+                    c.contains("SearchScopeSettings"),
+                )
+            }
+        }
+        // 兼容读口自身还在（老 prefs 的历史值要有一个明确的读法），但**必须没有写函数**。
+        val settings = code(searchSources().first { it.first == "SearchScopeSettings.kt" }.second)
+        assertTrue("兼容读口要保留（KEY_PHONE_ON 常量）", settings.contains("const val KEY_PHONE_ON"))
+        assertTrue("兼容读口的缺省值还是 false（老值不产生效果，这个缺省只是读法的形状）", settings.contains("getBoolean(KEY_PHONE_ON, false)"))
+        assertFalse("写函数 set 必须已删除", settings.contains("fun set("))
     }
 
     @Test

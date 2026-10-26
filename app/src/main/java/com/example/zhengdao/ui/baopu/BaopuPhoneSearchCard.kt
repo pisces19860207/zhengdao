@@ -405,20 +405,19 @@ private fun HitRowLine(
 /**
  * 扫描前把读侧账本拨到现状，并回「这一趟账本动了没有」那一句（动了才显示，没动不占屏）。
  *
- * ⑥① 的裁定写在这：**账本只有两个手动入口**——设置页那个开关（用户改意愿的时刻）和这里
- * （用户主动要结果的时刻）。两处都汇到同一个 [SearchScope.sync]，没有第三处、也没有
- * 「App 启动时自动同步」：加自动同步＝让「谁在什么时候能改读侧账本」变成运行时的随手一刻，
+ * ⑥① 的裁定（第二百二十九批更新）：账本的手动入口**只剩这里一个**——197 那个「设置页
+ * 拨开关」入口随开关一起删除（授权即全盘，没有意愿可改）。它汇到 [SearchScope.sync]，
+ * 没有「App 启动时自动同步」：加自动同步＝让「谁在什么时候能改读侧账本」变成运行时的随手一刻，
  * 而这张账本是读侧唯一的授权真相。调用点集合由 `PhoneSearchEntryGateTest` 扫源码钉住。
  *
  * ⚠️ 只能在 IO 线程上调（读库＋写库）。
  */
 private fun syncLedgerLine(ctx: Context): String? {
     val st = SearchScope.status(ctx)
-    // 与设置页同一句话的口径：先问「库之前在不在」，`sync` 一跑就会把库建出来，之后再问永远是「在」。
+    // 与日志同一句话的口径：先问「库之前在不在」，`sync` 一跑就会把库建出来，之后再问永远是「在」。
     val firstBuild = !PhoneSearch.dbExists(ctx)
     val rep = PhoneSearch.syncNow(ctx)
     val line = SearchScopeRules.syncLine(
-        switchOn = st.switchOn,
         access = st.access,
         recorded = rep.recorded,
         revokedRoots = rep.revoked.size,

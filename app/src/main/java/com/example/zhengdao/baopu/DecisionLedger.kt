@@ -51,9 +51,10 @@ internal enum class DecisionKind(
     /**
      * 搜索范围授权／撤销（197）。
      *
-     * **不可回滚**（`reversible=false`）——这不是偷懒：198 的 ⑥① 把「拨开关」的写入点钉死在
-     * 设置页那一处（`SearchScopeSettings.set(` 全仓只许一个调用点，且读侧包不许引写侧判据），
-     * 决策中心拿不到第二条写入口 ⇒ 标成可回滚就是骗人。回滚动作＝点行跳回设置页拨回去。
+     * **不可回滚**（`reversible=false`）——197/198 时代它由设置页开关产生，写入点全仓一处，
+     * 决策中心拿不到第二条写入口 ⇒ 标成可回滚就是骗人。
+     * **第二百二十九批起新行不再产生**（开关随 229 删除：授权即全盘，没有意愿可拨）；
+     * kind 本身保留——老账本里的历史行还要读得出来、还能在决策中心渲染。
      */
     READ_SCOPE("read_scope", DecisionGroup.GRANT, false, DecisionAudit.NONE),
 
@@ -266,10 +267,15 @@ internal object DecisionLedger {
     /**
      * 「搜索范围」这件事的**专用落点**（`read_scope`）。
      *
-     * 为什么单独给一个函数、而不是让设置页自己拼一条 [DecisionDraft]：
+     * 为什么单独给一个函数、而不是让调用方自己拼一条 [DecisionDraft]：
      * `BaopuSkillCategoryTest.T5` 把设置页的源码钉着「正文头里不许出现 kind 那种字段」
-     * （扫的是**整份文件**的代码文本）。把 kind 字面量收在数据层，设置页只留一次调用，
-     * 那条门禁就不必为了本批放宽——它的本意（分类不许进正文头）一个字都没动。
+     * （扫的是**整份文件**的代码文本）。把 kind 字面量收在数据层，调用方只留一次调用，
+     * 那条门禁就不必为此放宽——它的本意（分类不许进正文头）一个字都没动。
+     *
+     * **第二百二十九批起：新行不再产生。** 读侧开关随 229 删除（授权即全盘，没有意愿可拨），
+     * 全仓已没有 [recordReadScope] 的调用点（`DecisionWiringGateTest` 钉住零调用）。
+     * 本函数与 [DecisionKind.READ_SCOPE] **都保留**：老账本里的历史行还要读得出来、
+     * 还能在决策中心渲染（删 kind ＝ 老账变哑账，派工单 §3 负例点名）。
      */
     fun recordReadScope(wasOn: Boolean, on: Boolean, nowMs: Long = System.currentTimeMillis()): DecisionRecord? =
         record(

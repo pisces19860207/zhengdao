@@ -30,11 +30,21 @@ import com.example.zhengdao.ui.baopu.BaopuIntents
  * （169 是 20261101，本批 20261102）、`PendingIntent` 请求码各一个（169 是 4106，本批 4107），
  * 触发点也不同：本批在**到点那一刻**说一声「已经发进会话了」，169 在**整轮结束**时说「跑完了」。
  * 一次定时触发最多各响一条，且都在同一渠道、同一前台抑制口径下。
+ *
+ * 第二百二十九批再加一条：**到点之前**的「要开始了」（[postStarting]，id 20261103）。
+ * 仍复用同一渠道与前台口径，请求码沿用 [REQ_SCHEDULE]（同一挂单口，不撞号）——
+ * 「不新建渠道」的红线在 229 原样成立。
  */
 internal object ScheduleNotifier {
 
     /** 与 169 的 20261101、保活 42、安装 20261008、缓存 20261010 都区分开。 */
     private const val NOTIF_ID = 20261102
+
+    /**
+     * 「要开始了」那条通知的 id（第二百二十九批）。与 [NOTIF_ID]（20261102）分开：
+     * 先后两条通知**身份不同**——开始前的提醒不该顶掉「已经发进会话」那条。
+     */
+    private const val NOTIF_ID_PRE = 20261103
 
     /**
      * 点击通知的 PendingIntent 请求码。
@@ -51,10 +61,38 @@ internal object ScheduleNotifier {
     fun postFired(context: Context, task: ScheduleTask, sessionId: Long, late: Boolean) {
         post(
             context = context,
+            notifId = NOTIF_ID,
             titleRes = if (late) R.string.sched_notif_late_title else R.string.sched_notif_fired_title,
             titleArg = task.title,
             textRes = R.string.sched_notif_fired_text,
             sessionId = sessionId,
+        )
+    }
+
+    /**
+     * 到点**先**响的那一声（第二百二十九批 §2）：标题「定时任务要开始了」、正文任务名＋
+     * 「到点会自动开始」。与 [postFired] 同渠道（`AGENT`）、同前台抑制、同一挂单口，
+     * 只是 [NOTIF_ID_PRE] 与文案不同；点开进 App（会话此刻还没建，不带 session extra）。
+     *
+     * 权限缺失**不许静默**：这里先查一遍 `POST_NOTIFICATIONS`——没有就落一行 RunLog
+     * （任务页顶部还有「通知权限未开」的提示在等她），然后返回；任务照常开始。
+     * 手建与抱朴自建的任务一视同仁（调用点在 PassNotifier.starting，不区分来源）。
+     */
+    fun postStarting(context: Context, task: ScheduleTask) {
+        // 权限判定委托既有单一来源（SchedulePermissions → PermissionSetup），不抄第二份判定。
+        if (!SchedulePermissions.notificationsGranted(context)) {
+            RunLog.log(
+                "定时任务：开始前提醒发不出（通知权限未开）——任务「${task.title.take(20)}」将照常开始",
+            )
+            return
+        }
+        post(
+            context = context,
+            notifId = NOTIF_ID_PRE,
+            titleRes = R.string.sched_notif_pre_title,
+            titleArg = task.title.take(20),
+            textRes = R.string.sched_notif_pre_text,
+            sessionId = -1L,
         )
     }
 
@@ -69,6 +107,7 @@ internal object ScheduleNotifier {
         }
         post(
             context = context,
+            notifId = NOTIF_ID,
             titleRes = R.string.sched_notif_failed_title,
             titleArg = task.title,
             textRes = textRes,
@@ -85,6 +124,7 @@ internal object ScheduleNotifier {
     fun pausedByFailStreak(context: Context, task: ScheduleTask, outcome: ScheduleOutcome, detail: String) {
         post(
             context = context,
+            notifId = NOTIF_ID,
             titleRes = R.string.sched_notif_paused_title,
             titleArg = task.title,
             textRes = R.string.sched_notif_paused_text,
@@ -94,7 +134,7 @@ internal object ScheduleNotifier {
         RunLog.log("定时任务：连败自动暂停 ${outcome.wire} $detail")
     }
 
-    private fun post(context: Context, titleRes: Int, titleArg: String, textRes: Int, sessionId: Long) {
+    private fun post(context: Context, notifId: Int, titleRes: Int, titleArg: String, textRes: Int, sessionId: Long) {
         val granted = ContextCompat.checkSelfPermission(
             context, android.Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
@@ -115,7 +155,7 @@ internal object ScheduleNotifier {
                 .setOngoing(false)
                 .setOnlyAlertOnce(true)
                 .build()
-            context.getSystemService(NotificationManager::class.java)?.notify(NOTIF_ID, n)
+            context.getSystemService(NotificationManager::class.java)?.notify(notifId, n)
         }.onFailure {
             RunLog.log("定时任务：通知没发出去 ${it.javaClass.simpleName}: ${it.message}")
         }

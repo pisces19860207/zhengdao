@@ -524,6 +524,25 @@ internal fun BaopuDrawer(
             enabled = !busy,
             onClick = onNewSession,
         )
+        // ── 定时任务（第二百二十九批：入口归位到第一组「新会话」紧跟其后）──────────
+        // **为什么在这里**：它是抱朴自己的工作安排（用户原话「可以用对话让抱朴自己弄一个
+        // 定时任务」），不是设置项——放在设置组里是 210 批的位置，229 用户裁定挪到第一组。
+        // 设置组里那行**保留**为跳转（老用户找得到），两处进的是同一个 ScheduleTasksActivity。
+        //
+        // 状态怎么来：`schedule_tasks.json` 是**文件**（App 私有目录），所以
+        // ① 读盘必须离开主线程（withContext(IO)，派工单负例 4 盯这条）；
+        // ② 每次拉开抽屉重读一次（E-163 同款：抽屉内容常驻组合，不重读就永远是旧值）。
+        // 文字怎么排：纯函数 scheduleDrawerStatus 算（JVM 可直测），本文件只画。
+        var schedTick by remember { mutableIntStateOf(0) }
+        LaunchedEffect(drawerOpen) { if (drawerOpen) schedTick++ }
+        var schedStatus by remember { mutableStateOf<ScheduleDrawerStatus?>(null) }
+        LaunchedEffect(schedTick) {
+            val tasks = withContext(Dispatchers.IO) {
+                runCatching { ScheduleStore.of(ctx).load().tasks }.getOrDefault(emptyList())
+            }
+            schedStatus = scheduleDrawerStatus(tasks, System.currentTimeMillis())
+        }
+        ScheduleDrawerRow(status = schedStatus, onClick = onScheduleTasks)
         // ⛔ 「历史会话」这一行**已删掉**（2026-10-18 用户口径：会话都归在各自工作区下面了，
         // 再留一个「全部会话（平铺看）」就是同一批东西两个入口，抽屉还比 DSH 多一截）。
         // 那一页没消失，只是挪成低频入口：抱朴设置 → 会话记录（删除仍在那儿做）。
@@ -737,24 +756,16 @@ internal fun BaopuDrawer(
         )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_settings))
-        // ── 定时任务（第二百一十批：入口从设置页「后台」组搬进抽屉）──────────
-        // 用户 2026-10-25 原话「定时任务应该放到抱朴的左侧栏」。设置页那一行**保留**
-        // （降级为跳转，老用户照样找得到），两处进的是同一个 ScheduleTasksActivity。
-        //
-        // 状态怎么来：`schedule_tasks.json` 是**文件**（App 私有目录），所以
-        // ① 读盘必须离开主线程（withContext(IO)，派工单负例 4 盯这条）；
-        // ② 每次拉开抽屉重读一次（E-163 同款：抽屉内容常驻组合，不重读就永远是旧值）。
-        // 文字怎么排：纯函数 scheduleDrawerStatus 算（JVM 可直测），本文件只画。
-        var schedTick by remember { mutableIntStateOf(0) }
-        LaunchedEffect(drawerOpen) { if (drawerOpen) schedTick++ }
-        var schedStatus by remember { mutableStateOf<ScheduleDrawerStatus?>(null) }
-        LaunchedEffect(schedTick) {
-            val tasks = withContext(Dispatchers.IO) {
-                runCatching { ScheduleStore.of(ctx).load().tasks }.getOrDefault(emptyList())
-            }
-            schedStatus = scheduleDrawerStatus(tasks, System.currentTimeMillis())
-        }
-        ScheduleDrawerRow(status = schedStatus, onClick = onScheduleTasks)
+        // ── 定时任务·跳转行（第二百二十九批）─────────────────────────────────
+        // 主入口已归位到第一组「新会话」之后（它是抱朴自己的工作安排，不是设置项）；
+        // 这一行**保留**为跳转（210 批搬进抽屉时的老位置），两处点进去是同一个
+        // ScheduleTasksActivity——同一页，不建第二个入口。状态行（带「下次 HH:mm」）
+        // 只在新会话组那份，这里不重复读盘。
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_sched),
+            description = stringResource(R.string.baopu_drawer_sched_desc),
+            onClick = onScheduleTasks,
+        )
         DrawerItem(
             title = stringResource(R.string.baopu_drawer_mcp),
             description = stringResource(R.string.baopu_drawer_mcp_desc),
