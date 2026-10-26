@@ -21,6 +21,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
 
 class EnvNoticeDisplayGateTest {
 
@@ -251,7 +252,7 @@ class EnvNoticeDisplayGateTest {
     @Test
     fun `负例_只缩短第一句并继续用Toast必须被判红`() {
         val bad = """
-            if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.rootfs.RunLog::log)) {
+            if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.core.RunLog::log)) {
                 toastOnMain(ctx.getString(R.string.env_block_short), long = true)
                 return@TextButton
             }
@@ -259,7 +260,7 @@ class EnvNoticeDisplayGateTest {
         assertEquals("这个写法就是 ENV-D1 的病根，必须判红", 1, guardViolations(bad).size)
 
         val good = """
-            if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.rootfs.RunLog::log)) {
+            if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.core.RunLog::log)) {
                 snackbarHostState.showReadable(
                     message = blockMessage,
                     actionLabel = gotIt,

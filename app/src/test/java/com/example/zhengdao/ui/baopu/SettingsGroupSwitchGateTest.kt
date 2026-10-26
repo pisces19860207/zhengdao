@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
 
 /** 97 批组开关：刷新依赖与审计单写。 */
 class SettingsGroupSwitchGateTest {

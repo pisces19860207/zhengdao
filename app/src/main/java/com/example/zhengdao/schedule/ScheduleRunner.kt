@@ -10,7 +10,7 @@ import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.SendAcceptance
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 到点触发的装配层（第一百六十七批 §1「到点：开一个抱朴会话/轮次发送 prompt，结果落会话＋系统通知」）。

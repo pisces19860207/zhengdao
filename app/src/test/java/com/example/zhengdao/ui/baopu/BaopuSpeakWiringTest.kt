@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 朗读（系统 TTS）接线守卫 —— 2026-10-18 补上 `接线审计` §5 P4 里「账上写着、代码零命中」的那一条。

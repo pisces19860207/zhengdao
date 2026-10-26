@@ -68,7 +68,7 @@ import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 
 /** 面板上的一条提示（成功＝青、失败＝朱；两色都取主题，不新增色板）。 */
 private data class McpNotice(val ok: Boolean, val text: String)

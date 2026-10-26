@@ -31,7 +31,7 @@
 package com.example.zhengdao.perf
 
 import com.example.zhengdao.baopu.SkillStore
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.AgentManifest
 import com.example.zhengdao.ui.baopu.BaopuMessageAssembler
 import com.example.zhengdao.ui.baopu.BaopuPartRow

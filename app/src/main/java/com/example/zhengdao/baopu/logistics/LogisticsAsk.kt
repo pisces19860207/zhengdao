@@ -16,7 +16,7 @@
 // 不含单据内容的句子。真实单号也不写日志——它们只留在她自己的 产物/物流/ 里。
 package com.example.zhengdao.baopu.logistics
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.util.TimeZone
 
 /** 查询入口。 */

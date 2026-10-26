@@ -5,10 +5,11 @@ package com.example.zhengdao.ui
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 import com.example.zhengdao.rootfs.RootfsDownloader
-import com.example.zhengdao.terminal.Store
-import com.example.zhengdao.terminal.Workspace
 import java.io.File
+import com.example.zhengdao.terminal.Workspace
 
 /**
  * AgentInstaller（M3 骨架 §3 简化版）：安装脚本本地化 + 安装前清障。
@@ -66,13 +67,13 @@ object AgentInstaller {
             // npm 类：清锁 + 原组合命令（镜像已在 guest 配置）
             return buildCommand(ctx, agent, agent.installCmd ?: "")
         }
-        val dir = Store.agentScriptsDir(ctx)
+        val dir = ZhengdaoDirs.agentScriptsDir(ctx)
         // 老落点搬家（一次性、幂等、两处都收）：脚本原先放在**工作区**下的
         // `.zhengdao/scripts`（工作区可能是用户设的自定义内容目录，所以这里走
-        // Workspace.hostDir 而不是 Store.root），2026-10-08 换到公共区后
+        // Workspace.hostDir 而不是 ZhengdaoDirs.root），2026-10-08 换到公共区后
         // 公共区自己也短暂有过一份。搬完源目录空了会被删掉。
-        runCatching { Store.adoptDir(dir, File(Workspace.hostDir(ctx), ".zhengdao/scripts")) }
-        runCatching { Store.adoptDir(dir, File(Store.root(ctx), ".zhengdao/scripts")) }
+        runCatching { ZhengdaoDirs.adoptDir(dir, File(Workspace.hostDir(ctx), ".zhengdao/scripts")) }
+        runCatching { ZhengdaoDirs.adoptDir(dir, File(ZhengdaoDirs.root(ctx), ".zhengdao/scripts")) }
         var ok = dir.isDirectory || runCatching { dir.mkdirs() }.getOrDefault(false)
         if (!ok) return buildCommand(ctx, agent, agent.installCmd ?: "")
         val script = File(dir, "${agent.id}-install.sh")
@@ -95,7 +96,7 @@ object AgentInstaller {
                 tmp.delete()
             }
         }.onFailure { why = it.message }.isSuccess
-        if (!ok) com.example.zhengdao.rootfs.RunLog.log(
+        if (!ok) com.example.zhengdao.core.RunLog.log(
             "AgentInstaller: ${agent.id} 安装脚本下载失败（${why ?: "未知原因"}），退回 curl|bash 通道"
         )
         // E-057：上游脚本的最后一步（gateway 服务）在 proot 里注定失败并把 rc 顶成 1，
@@ -104,17 +105,17 @@ object AgentInstaller {
         if (ok && script.isFile && agent.id == "hermes") {
             val outcome = runCatching { HermesInstallScript.ensurePatched(script) }
                 .getOrElse { e ->
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "AgentInstaller: hermes 安装脚本补丁失败：${e.message ?: e::class.java.simpleName}"
                     )
                     null
                 }
             when (outcome) {
                 HermesInstallScript.Outcome.PATCHED ->
-                    com.example.zhengdao.rootfs.RunLog.log("AgentInstaller: hermes 安装脚本已打 gateway 补丁（只告警不失败）")
+                    com.example.zhengdao.core.RunLog.log("AgentInstaller: hermes 安装脚本已打 gateway 补丁（只告警不失败）")
                 HermesInstallScript.Outcome.ALREADY -> Unit
                 HermesInstallScript.Outcome.ANCHOR_MISSING ->
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "AgentInstaller: hermes 安装脚本里找不到 gateway 那一句（上游改版？）——未打补丁，" +
                             "安装若仍以退出码 1 收尾，原因多半是它"
                     )
@@ -126,7 +127,7 @@ object AgentInstaller {
         val effectiveCmd = if (privateScript != null) {
             // guest 内 /root/.zhengdao/scripts（= filesDir/home/.zhengdao/scripts，
             // ProotLauncher 把 home 绑成 /root），以本地文件执行、不走网络
-            "bash ${Store.GUEST_PRIVATE_SCRIPTS_DIR}/${privateScript.name}"
+            "bash ${ZhengdaoDirs.GUEST_PRIVATE_SCRIPTS_DIR}/${privateScript.name}"
         } else {
             agent.installCmd ?: "" // 本地化失败：退回原始 curl|bash（HTTPS 直取，不经共享存储）
         }
@@ -145,7 +146,7 @@ object AgentInstaller {
      * 复制完成后再核一次指纹：落地字节必须与源一致（复制途中被杀、存储写满都会留下半截文件）。
      */
     private fun copyToPrivateScripts(ctx: Context, agentId: String, source: File): File? = runCatching {
-        val dir = Store.hostPrivateScriptsDir(ctx)
+        val dir = ZhengdaoDirs.hostPrivateScriptsDir(ctx)
         if (!dir.isDirectory && !dir.mkdirs()) throw IllegalStateException("私有脚本目录建不出来：$dir")
         val dst = File(dir, "${agentId}-install.sh")
         // R-28（审计第 2 期）：这里原先直接 copyTo 到**执行副本的正式名** —— 中途被杀 / 写满
@@ -160,7 +161,7 @@ object AgentInstaller {
         if (fingerprintOf(dst) != fingerprintOf(source)) throw IllegalStateException("私有副本与源不一致")
         dst
     }.onFailure {
-        com.example.zhengdao.rootfs.RunLog.log(
+        com.example.zhengdao.core.RunLog.log(
             "AgentInstaller: $agentId 私有执行副本落盘失败（${it.message ?: it::class.java.simpleName}），" +
                 "退回官方 curl|bash"
         )
@@ -265,6 +266,6 @@ object AgentInstaller {
             onSuccess = { changed -> if (changed) "已写入/更新" else "已是最新（本次无需改动）" },
             onFailure = { e -> "预置失败：${e.message ?: e::class.java.simpleName}" },
         )
-        com.example.zhengdao.rootfs.RunLog.log("hermes uv 包装器宿主侧预置：$text")
+        com.example.zhengdao.core.RunLog.log("hermes uv 包装器宿主侧预置：$text")
     }
 }

@@ -4,6 +4,7 @@ package com.example.zhengdao.rootfs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
 
 /**
  * 审计第 2 期 **B-2** 的验收：同一秒内重启，归档名不能撞、更不能删掉上一份。

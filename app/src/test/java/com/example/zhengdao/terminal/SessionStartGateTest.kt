@@ -9,12 +9,13 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import com.example.zhengdao.core.RunLog
 
 /**
  * §B 顺序 6 / P1-3「冷启动主线程 IO」的验收（2026-10-14）。
  *
  * ## 修了什么
- * `SessionManager.start()` 里的重活（SHA256 / 拷 assets / `Store.adoptDir` 搬 JM 级缓存）
+ * `SessionManager.start()` 里的重活（SHA256 / 拷 assets / `ZhengdaoDirs.adoptDir` 搬 JM 级缓存）
  * 原先在**主线程**跑 —— 它的三个调用点（`TerminalActivity` 的 `onResume` / `onNewIntent` /
  * `relaunchDebian` 的 `runOnUiThread`）全在主线程，冷启动必卡。本刀把它挪到后台线程，
  * UI 与 attach 回主线程（对外行为不变：仍是「起会话 → 顶栏 → attach」）。

@@ -272,15 +272,17 @@ internal data class RiskTable(
          *
          * v2（第二百二十四批）：加 `form_fill` 一行（R2 ＋ 语义升 R3 ＋ 密码键硬拒）。
          * v3（第二百二十八批 B 片）：浏览器手眼断层九件入表（snapshot 几何/导航三件/动作三件/标签三件）。
+         * v4（第二百二十八批 C 片）：示教/回放五件入表（录制 R0、入库 R1、回放 R2＋必问、信任授权 R1＋必问）。
          */
-        const val DEFAULT_VERSION: Int = 3
+        const val DEFAULT_VERSION: Int = 5
 
         /**
-         * 唯一一张默认表（61 行分级 ＋ bash 豁免 = 注册工具 62 个全有账）。
+         * 唯一一张默认表（67 行分级 ＋ bash 豁免 = 注册工具 68 个全有账）。
          *
-         * 62 = `BaopuToolCatalog.ENTRIES` 58 条 ＋ 运行时注册 4 条（write_skill /
-         * append_persona / read / bash）；218 的六件与 228 批 B 片的九件都已接线在册
-         * （各自的单测直接读到这里的档）。改表必须同时动 [DEFAULT_VERSION]。
+         * 68 = `BaopuToolCatalog.ENTRIES` 64 条 ＋ 运行时注册 4 条（write_skill /
+         * append_persona / read / bash）；218 的六件、224 的 form_fill 与 228 批 B/C 两片
+         * 的十四件都已接线在册（各自的单测直接读到这里的档）。改表必须同时动
+         * [DEFAULT_VERSION]。
          */
         val DEFAULT: RiskTable = RiskTable(
             tools = mapOf(
@@ -389,6 +391,8 @@ internal data class RiskTable(
                 "logistics_query" to ToolRule(RiskClass.R0),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
+                // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────
+                "table_query" to ToolRule(RiskClass.R0),
                 "search_web" to ToolRule(RiskClass.R0, urlKeys = setOf("site")),
                 "schedule_task" to ToolRule(
                     RiskClass.R2,
@@ -410,6 +414,16 @@ internal data class RiskTable(
                     extraClickWords = setOf("登录", "登陆"),
                     fieldKeys = setOf("fields"),
                 ),
+                // 228 批 C 片：示教/回放五件。record_start/stop 只观察不代做（R0；信任名单
+                // 默认空＝连录制都开不了，闸在工具层）；skill_save 写技能库（R1，走 184 写口
+                // ＋凭证扫描，录到密码拒存）；replay_skill 自动执行页面动作（R2＋alwaysAsk：
+                // 每次回放一张卡，提交类点击由 TeachSafety 硬拒）；site_trust 是授权类
+                // （R1＋alwaysAsk：授权必问、撤销也过卡——fail-safe 方向）。
+                "teach_record_start" to ToolRule(RiskClass.R0),
+                "teach_record_stop" to ToolRule(RiskClass.R0),
+                "teach_skill_save" to ToolRule(RiskClass.R1),
+                "browser_replay_skill" to ToolRule(RiskClass.R2, alwaysAsk = true),
+                "teach_site_trust" to ToolRule(RiskClass.R1, alwaysAsk = true),
             ),
             // 173 口径：终端不参与分级——bash 不查档、不叠规则，原样交回终端那条路。
             // 注意它必须**显式豁免**：若只返回 null，fail-closed 会把它当未分类判 R2＋必问，

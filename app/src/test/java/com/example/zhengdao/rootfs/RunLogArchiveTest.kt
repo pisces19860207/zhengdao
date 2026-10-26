@@ -8,6 +8,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 运行日志"归档式保留"的单测（2026-10-08 用户拍板后改的语义）。

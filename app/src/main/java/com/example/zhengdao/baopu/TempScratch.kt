@@ -6,6 +6,7 @@
 package com.example.zhengdao.baopu
 
 import java.io.File
+import com.example.zhengdao.core.TimeFormats
 
 internal object TempScratch {
 
@@ -39,7 +40,7 @@ internal object TempScratch {
         if (files.isEmpty()) return 0
         val trash = File(workspaceRoot, "回收站")
         trash.mkdirs()
-        val stamp = com.example.zhengdao.util.TimeFormats.fileStamp(nowMs)
+        val stamp = com.example.zhengdao.core.TimeFormats.fileStamp(nowMs)
         var moved = 0
         for (f in files) {
             var target = File(trash, "$stamp-${f.name}")

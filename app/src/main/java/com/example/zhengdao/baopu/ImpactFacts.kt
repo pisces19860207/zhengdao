@@ -14,7 +14,7 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.bridge.BrowserCommands
-import com.example.zhengdao.terminal.KnowledgeBase
+import com.example.zhengdao.core.kb.KnowledgeBase
 import java.io.File
 import org.json.JSONObject
 

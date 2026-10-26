@@ -4,7 +4,7 @@ package com.example.zhengdao.ui
 
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import com.example.zhengdao.R
+import com.example.zhengdao.BackChevron
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -44,7 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.zhengdao.BackChevron
+import com.example.zhengdao.R
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.ui.theme.ZhengdaoTheme

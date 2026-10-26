@@ -16,8 +16,9 @@ import android.os.PowerManager
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
 import com.example.zhengdao.core.IssueCenter
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
+import com.example.zhengdao.core.notify.AppNotifications
 
 /**
  * M2 前台服务 = 保活锚点（骨架 §1，单会话简化）。
@@ -52,8 +53,8 @@ import java.io.File
 class SessionService : Service() {
 
     companion object {
-        // P6 渠道注册表在 NotificationChannels；此 ID 是历史发布值（换 ID 会重置用户通知设置）
-        private const val CHANNEL_ID = NotificationChannels.SESSION
+        // P6 渠道注册表在 AppNotifications；此 ID 是历史发布值（换 ID 会重置用户通知设置）
+        private const val CHANNEL_ID = AppNotifications.SESSION
         private const val NOTIF_ID = 42
         const val ACTION_TOGGLE_KEEPALIVE = "zhengdao.toggle_keepalive"
         const val ACTION_STOP_SESSION = "zhengdao.stop_session"
@@ -334,7 +335,7 @@ class SessionService : Service() {
 
     private fun createNotificationChannel() {
         // P6：4 渠道集中注册（本服务用 SESSION 渠道；其余渠道供安装/Agent/更新使用）
-        NotificationChannels.ensureAll(this)
+        AppNotifications.ensureAll(this)
     }
 
     /** 读 /proc/<pid>/status 的 VmRSS（软监控，骨架 §6；读不到返回 0，静默）。 */

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 228 批 C 片：示教/回放五件的字符串单独成文件（与 224 的 strings_baopu_form.xml 同一做法：
+     本片不往主干 strings.xml 上叠改动，工具文案门禁（BaopuToolStringsTest）按目录全读
+     strings*.xml，独立文件与并入完全等价。
+
+     文案里刻意写死四件事（与 TeachTools 五个 spec 的描述同口径）：
+     ① 信任名单默认空＝示教/回放默认全拒；② 提交类按钮一律拒点；
+     ③ 录到密码/验证码拒存；④ 加/撤信任都进决策记录、可回滚。 -->
+<resources>
+    <string name="baopu_tool_teach_record_start">开始示教</string>
+    <string name="baopu_tool_teach_record_start_desc">在玄览当前页开始录制示教：记录你点过、填过的操作，做成可回放的技能草稿。只记录、不代做。只允许在信任过的站点上开始——新站点要先加信任（默认名单是空的，等于默认全拒）。每次开始前都会弹确认卡。</string>
+    <string name="baopu_tool_teach_record_stop">结束示教</string>
+    <string name="baopu_tool_teach_record_stop_desc">结束正在进行的示教录制，生成技能草稿（只是草稿，不写盘）。录到几步、技能叫什么名、有什么要注意的都会如实回执；不保存就丢着，我不会自己写。免确认：结束录制本身没有任何副作用。</string>
+    <string name="baopu_tool_teach_skill_save">保存示教技能</string>
+    <string name="baopu_tool_teach_skill_save_desc">把示教草稿确认保存成可回放的技能（写进技能库）。保存前会过凭证扫描：录到密码、验证码这类字段就拒存。技能名可以自己起，省略就用自动起的名字。每次保存前都会弹确认卡。</string>
+    <string name="baopu_tool_browser_replay_skill">回放技能</string>
+    <string name="baopu_tool_browser_replay_skill_desc">回放一个已保存的示教技能：按示教时的步骤在玄览里自动定位并执行。有四道闸：授权域（只在示教时的那些站点跑）、站点信任、页面结构指纹（变了就停）、安全闸（提交、支付、删除类按钮一律拒点）。某一步点不动会先滚入视口重试一次，再不行就停并留下每一步的取证。每次回放都会弹确认卡。</string>
+    <string name="baopu_tool_teach_site_trust">信任站点管理</string>
+    <string name="baopu_tool_teach_site_trust_desc">查看、添加、撤销「回放信任站点」名单：名单默认是空的，示教与回放默认全拒；信任一个域名（如 m.example.com）才允许在那儿自动执行。localhost、IP、内网地址不收。加与撤都写决策记录，可以在决策中心回滚。每次加/撤都会弹确认卡。</string>
+</resources>

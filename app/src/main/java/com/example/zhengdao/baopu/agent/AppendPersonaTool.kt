@@ -13,8 +13,8 @@ import com.example.zhengdao.baopu.PersonaConsent
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaPatch
 import com.example.zhengdao.baopu.PersonaPatchApply
-import com.example.zhengdao.baopu.PersonaPatchScope
 import com.example.zhengdao.baopu.PersonaPatchRules
+import com.example.zhengdao.baopu.PersonaPatchScope
 import com.example.zhengdao.baopu.PersonaSection
 import com.example.zhengdao.baopu.PersonaSectionKind
 import org.json.JSONObject

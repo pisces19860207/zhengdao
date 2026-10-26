@@ -5,7 +5,7 @@
 // reindex 能从 抱朴记忆/ 的 .md/.json 重建）。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 
 /**

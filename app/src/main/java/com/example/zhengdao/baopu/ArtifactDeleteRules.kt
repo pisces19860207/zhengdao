@@ -1,8 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.rootfs.PathGuard
-import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
 /**

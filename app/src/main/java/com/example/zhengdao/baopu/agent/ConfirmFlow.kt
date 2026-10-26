@@ -13,7 +13,7 @@ import com.example.zhengdao.baopu.ConfirmScope
 import com.example.zhengdao.baopu.ConfirmScopeChoice
 import com.example.zhengdao.baopu.PendingRow
 import com.example.zhengdao.baopu.PendingStore
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay

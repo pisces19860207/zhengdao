@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * 第二十七批「死函数清理」的**结论守卫**。
@@ -34,7 +35,7 @@ class DeadCode27GuardTest {
     private fun read(rel: String): String = appFile(rel).readText()
 
     private val knowledgeBase: String
-        get() = read("src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt")
+        get() = read("../core/src/main/java/com/example/zhengdao/core/kb/KnowledgeBase.kt")
 
     private val terminalPrefs: String
         get() = read("src/main/java/com/example/zhengdao/terminal/TerminalPrefs.kt")

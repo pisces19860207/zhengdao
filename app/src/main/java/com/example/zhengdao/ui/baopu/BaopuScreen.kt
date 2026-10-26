@@ -79,32 +79,32 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
-import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.ui.SettingsDataActivity
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.ModelPickerRules
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.TasteProfile
+import com.example.zhengdao.baopu.TopBarSlot
 import com.example.zhengdao.baopu.TopicFlowPhase
 import com.example.zhengdao.baopu.TopicSuggest
-import com.example.zhengdao.baopu.agent.RunState
-import com.example.zhengdao.baopu.library.BackupRules
-import com.example.zhengdao.baopu.BaopuWorkspace
-import com.example.zhengdao.baopu.TopBarSlot
 import com.example.zhengdao.baopu.UsageCopy
-import com.example.zhengdao.baopu.shouldShowUsageNotice
-import com.example.zhengdao.baopu.toggleTopBarExpanded
-import com.example.zhengdao.baopu.topBarSlot
-import com.example.zhengdao.baopu.usageNoticeBody
-import com.example.zhengdao.baopu.kernel.KernelAudit
+import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.cards.ResultCardBody
 import com.example.zhengdao.baopu.cards.ResultCardLogistics
 import com.example.zhengdao.baopu.cards.ResultCardRegistry
 import com.example.zhengdao.baopu.cards.ResultCardState
 import com.example.zhengdao.baopu.cards.ResultCards
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.baopu.kernel.KernelAudit
+import com.example.zhengdao.baopu.library.BackupRules
+import com.example.zhengdao.baopu.shouldShowUsageNotice
+import com.example.zhengdao.baopu.toggleTopBarExpanded
+import com.example.zhengdao.baopu.topBarSlot
+import com.example.zhengdao.baopu.usageNoticeBody
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.ui.SettingsDataActivity
 import com.example.zhengdao.ui.WorkspaceFolderPicker
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -1142,8 +1142,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     Spacer(Modifier.height(8.dp))
                 } else {
                     req.takeIf { it.kind == com.example.zhengdao.baopu.agent.AskKind.QUESTION }?.let { r ->
-                        BaopuChoiceCard(request = r, onPick = { option -> controller.answerChoice(option.id) })
-                        Spacer(Modifier.height(8.dp))
+                        // 第二百三十七批③：求助卡（subject 锚 `help:<工具>`）走四件分区那张卡；
+                        // 四件不在请求体里（放不下），从 ToolHelpPending 单槽取——对不上就退回普通选项卡。
+                        val help = com.example.zhengdao.baopu.agent.ToolHelpPending
+                        if (help != null && r.subject == "help:${help.tool}") {
+                            BaopuHelpCard(card = help) { option -> controller.answerChoice(option.id) }
+                            Spacer(Modifier.height(8.dp))
+                        } else {
+                            BaopuChoiceCard(request = r, onPick = { option -> controller.answerChoice(option.id) })
+                            Spacer(Modifier.height(8.dp))
+                        }
                     }
                 }
             }

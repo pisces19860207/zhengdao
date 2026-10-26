@@ -125,9 +125,10 @@ class ContainerTierGuardTest {
             "BaopuStyleCard.kt", // 190 推荐卡（写法档位）
             "FormFillSheet.kt", // 201 表单场景的待发布卡（等你点创建，同属行动卡家族）
             "BaopuQuestionGroupCard.kt", // 203 批量问卡（一卡多问、一次提交；行动卡家族）
+            "HelpCard.kt", // 237 求助卡（停下问人那张；位置与壳照 137 批行动卡，不新造卡型）
         )
         assertTrue(
-            "行动卡调用点只许这十一张（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
+            "行动卡调用点只许这十二张（多一个＝新造卡型或到处行动卡，破「一屏最多 1 张」）：实际 $callers",
             callers.toSet() == expect,
         )
     }

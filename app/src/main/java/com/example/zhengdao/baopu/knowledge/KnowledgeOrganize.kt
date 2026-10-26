@@ -9,7 +9,7 @@ import com.example.zhengdao.baopu.kb.KbChunker
 import com.example.zhengdao.baopu.kb.KbIndexer
 import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.terminal.DocxTextExtractor
+import com.example.zhengdao.core.doc.DocxTextExtractor
 import org.json.JSONObject
 import java.io.File
 

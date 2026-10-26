@@ -3,8 +3,9 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 缓存清理（P4，2026-10-06；**二档 2026-10-07 落地**；**「Agent 包缓存」直删 2026-10-09 落地**）。
@@ -82,7 +83,7 @@ object CacheCleaner {
     fun measure(ctx: Context): Map<String, Long> {
         val out = LinkedHashMap<String, Long>()
         fun sum(vararg dirs: File?): Long = dirs.filterNotNull().sumOf { dirSizeMb(it) }
-        fun pub(kind: String): File? = runCatching { Store.cacheDirPath(ctx, kind) }.getOrNull()
+        fun pub(kind: String): File? = runCatching { ZhengdaoDirs.cacheDirPath(ctx, kind) }.getOrNull()
         out["npm 缓存"] = sum(File(ctx.filesDir, "home/.npm/_cacache"), pub("npm"))
         out["uv 缓存"] = sum(
             File(ctx.filesDir, "home/.cache/uv"),
@@ -96,7 +97,7 @@ object CacheCleaner {
         )
         out["安装包缓存"] = sum(
             runCatching { com.example.zhengdao.rootfs.RootfsCache.dir(ctx) }.getOrNull(),
-            runCatching { File(Store.root(ctx), "opencode") }.getOrNull(),
+            runCatching { File(ZhengdaoDirs.root(ctx), "opencode") }.getOrNull(),
         )
         // 二档报的是"真正会被删掉的量"，**不是**整个 /tmp 目录——tmux socket、
         // V8 编译缓存、锁文件、opencode 子目录都在里面，那些不归清理管，算进去就是虚报。
@@ -424,7 +425,7 @@ esac
     )
 
     private fun agentCacheTargetsFor(ctx: Context): List<Pair<String, File>> = runCatching {
-        agentCacheTargets(ctx.filesDir, Store.cacheRoot(ctx), Store.root(ctx))
+        agentCacheTargets(ctx.filesDir, ZhengdaoDirs.cacheRoot(ctx), ZhengdaoDirs.root(ctx))
     }.getOrDefault(emptyList())
 
     /** Agent 包缓存各项占用（MB），**只列真的存在的**，供确认弹窗逐条展示"将要删什么"。 */
@@ -440,7 +441,7 @@ esac
      * 可能被影响的是"此刻正在装依赖"的那次安装（缓存被删会重下），已经装好的东西不受影响。
      */
     fun cleanAgentCaches(ctx: Context): Long {
-        val roots = runCatching { listOf(ctx.filesDir, Store.cacheRoot(ctx), Store.root(ctx)) }
+        val roots = runCatching { listOf(ctx.filesDir, ZhengdaoDirs.cacheRoot(ctx), ZhengdaoDirs.root(ctx)) }
             .getOrDefault(listOf(ctx.filesDir))
         var freed = 0L
         var count = 0

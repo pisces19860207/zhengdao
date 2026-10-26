@@ -59,7 +59,8 @@ class ToolRegistrySwitchTest {
         assertEquals(
             listOf(
                 // 218：工具补齐 v1 六件（ENTRIES 最前；组默认不可见但默认启用）
-                "sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial",
+                "sheet_read", "table_query", "search_web", "schedule_task", "clipboard_write",
+                "notify", "phone_dial",
                 "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 小说工程三件（第一百五十五批）：表序即注册序（convert_encoding 之后）
@@ -89,6 +90,10 @@ class ToolRegistrySwitchTest {
                 "logistics_query",
                 // 第二百二十四批：表单填写（BROWSER 组，默认不可见但默认启用；表尾一条）
                 "form_fill",
+                // 228 批 C 片：示教/回放五件（BROWSER 组；信任名单默认空 ⇒ 录制三件默认开、
+                // replay/trust 恒 CONFIRM；表序即注册序，接在 form_fill 之后）
+                "teach_record_start", "teach_record_stop", "teach_skill_save",
+                "browser_replay_skill", "teach_site_trust",
             ),
             reg.names(),
         )

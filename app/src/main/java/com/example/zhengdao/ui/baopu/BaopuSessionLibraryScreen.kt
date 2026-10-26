@@ -44,9 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.SettingsTopBar
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.util.Locale
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /** 会话库一行（纯展示；判据字段的映射见 [buildSessionRows]）。 */
 internal data class SessionLibraryRow(
@@ -82,7 +83,7 @@ internal fun formatSessionTime(updatedAt: Long, now: Long, datePattern: String):
     val updatedDate = java.time.Instant.ofEpochMilli(updatedAt).atZone(zone).toLocalDate()
     val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     return if (updatedDate == today) {
-        com.example.zhengdao.util.TimeFormats.hourMinute(updatedAt)
+        com.example.zhengdao.core.TimeFormats.hourMinute(updatedAt)
     } else {
         java.time.format.DateTimeFormatter.ofPattern(datePattern, Locale.getDefault())
             .withZone(zone)

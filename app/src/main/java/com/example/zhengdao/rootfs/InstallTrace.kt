@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.rootfs
 
+import com.example.zhengdao.core.RunLog
+
 /**
  * 一次安装的分阶段计时（第六十五批 · 安装体验）。
  *

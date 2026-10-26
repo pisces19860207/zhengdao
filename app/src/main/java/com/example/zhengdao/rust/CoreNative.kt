@@ -3,7 +3,7 @@
 package com.example.zhengdao.rust
 
 import android.util.Log
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * Rust Core 统一 JNI 桥（v2.0 R1 收编）：

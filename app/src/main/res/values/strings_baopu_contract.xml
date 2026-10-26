@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百三十三批（第一批）：技能契约在技能页上的一行。字符串单独成文件（158 批同款做法）——
+     资源合并后与放进 strings.xml 完全等价，但不与 main 上正在改 strings.xml 的批次抢同一个文件。 -->
+<resources>
+    <string name="skill_library_contract">｜契约：%1$s</string>
+</resources>

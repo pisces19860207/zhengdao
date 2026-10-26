@@ -278,6 +278,8 @@ internal object ToolGroupTable {
         // ── 第二百一十八批：工具补齐 v1（六件；四档档位在各 spec 的 riskTier，
         //    等 219 合入对上。默认全部不可见——B1 的「默认可见 ≤12」硬卡不许破。）
         "sheet_read" to ToolGroup.DATA,       // R0 只读
+        // 第二百三十二批：通用表格问答（同样只读用户的表 ⇒ 归 DATA；默认不可见，B1 硬卡不破）
+        "table_query" to ToolGroup.DATA,
         "search_web" to ToolGroup.WEBSEARCH,  // R0 只读（走网络，日志只记哈希）
         "schedule_task" to ToolGroup.SCHEDULE, // R2 无人值守必确认
         "clipboard_write" to ToolGroup.DEVICE, // R1
@@ -287,6 +289,13 @@ internal object ToolGroupTable {
         // 归 BROWSER 组：它改的是玄览里的页面状态，和 browser_type 同一类风险面。
         // 默认不可见（要 capabilities 解锁）⇒ B1「默认可见 ≤12」的硬卡不破。
         "form_fill" to ToolGroup.BROWSER,      // R2
+        // ── 228 批 C 片：示教/回放五件（同 BROWSER：动的都是玄览页面＋信任名单）──
+        // 默认不可见（capabilities 解锁）⇒ B1 硬卡不破。
+        "teach_record_start" to ToolGroup.BROWSER,   // R0＋信任闸
+        "teach_record_stop" to ToolGroup.BROWSER,    // R0
+        "teach_skill_save" to ToolGroup.BROWSER,     // R1 写技能库
+        "browser_replay_skill" to ToolGroup.BROWSER, // R2 自动执行＋拒点提交
+        "teach_site_trust" to ToolGroup.BROWSER,     // R1 授权类
     )
 
     /** 该组里的工具名（保持 ENTRIES 的表序，稳定 ⇒ tools 数组顺序不乱、缓存友好）。 */
@@ -501,6 +510,15 @@ object ToolTimeout {
      * 20 秒留给沙箱的 15 秒上限＋落盘/预览的余量。
      */
     const val DRAW_MS = 20_000L
+
+    /**
+     * 示教回放（第二百二十八批 C 片）：一次回放是「N 步 ×（定位＋动作＋expect 轮询）」。
+     *
+     * 不能用 [BROWSER_MS]（20 秒）：单步就可能吃掉几秒（expect 轮询上限 3 秒＋每步取证），
+     * 多步技能正常也要几十秒。120 秒封顶的另一半理由：单线程工具池被占太久会拖住
+     * 其它工具轮次——更长的技能该拆成几次回放，而不是把超时调大。
+     */
+    const val REPLAY_MS = 120_000L
 
     /**
      * **等用户**的回答上限（第四十八批 P0-1）：确认超时 + 5 秒余量。
@@ -1176,6 +1194,8 @@ internal object BaopuToolCatalog {
     val DEFAULT_ENABLED: Set<String> = setOf(
         // 第二百一十八批：六件默认「启用」（组仍默认不可见——解锁即用，与 IMAGE/DRAW 同款口径）
         "sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial",
+        // 第二百三十二批：通用表格问答默认「启用」（组仍默认不可见——解锁即用，同上口径）
+        "table_query",
         "read_file",
         "list_dir",
         "search_in_files",
@@ -1260,12 +1280,23 @@ internal object BaopuToolCatalog {
         // 表单填写（第二百二十四批）：默认**开着**但默认不可见（BROWSER 组）——
         // 与 browser_* 同口径：capabilities 解锁后立即可用，不必先去设置页找开关。
         "form_fill",
+        // 示教/回放五件（228 批 C 片）：默认**开着**但默认不可见（BROWSER 组）——
+        // 全部 CONFIRM（record_stop 除外：只结束录制、不写盘）且信任名单默认空＝全拒，
+        // 「默认开着」不等于「默认能自动动页面」。
+        "teach_record_start",
+        "teach_record_stop",
+        "teach_skill_save",
+        "browser_replay_skill",
+        "teach_site_trust",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
     val ENTRIES: List<Entry> = listOf(
         // 第二百一十八批 · 工具补齐 v1（六件；riskTier：R0/R0/R2/R1/R1/R1，协作注意 #1）
         Entry("sheet_read") { SheetReadTool.spec(it) },
+        // 第二百三十二批：通用表格问答（一句话/结构化两种入口；PDF 明确不支持）。
+        // 与 sheet_read 的分工：sheet_read 是「把表读成行」的低层工具，本件在它之上做表模型与问答。
+        Entry("table_query") { TableQueryTool.spec(it) },
         Entry("search_web") { SearchWebTool.spec() },
         Entry("schedule_task") { ScheduleTaskTool.spec() },
         Entry("clipboard_write") { ClipboardWriteTool.spec() },
@@ -1356,6 +1387,15 @@ internal object BaopuToolCatalog {
         // 第二百零一批 ① 起要 workspaceRoot：批量分支把每张卡的逐字段回读落 `产物/填表/`；
         // 单发的 fields 分支仍旧只改页面不写盘（拿不到工作区时只有批量会明确拒绝）。
         Entry("form_fill") { root -> FormFillTool.spec(workspace = root) },
+        // 不需要 workspaceRoot：它只改玄览里的页面，不写盘（证据随回执返回给模型）。
+        // 示教/回放五件（228 批 C 片）：录制/保存/回放/信任名单——页面动作全部复用
+        // 196/200/226 的执行链（TeachRecorder/TeachLearner/TeachExecutor），本表只放 spec。
+        // 不需要 workspaceRoot：真身网关在 BaopuBrowserWiring（与浏览器件同一条接线）。
+        Entry("teach_record_start") { TeachTools.recordStartSpec() },
+        Entry("teach_record_stop") { TeachTools.recordStopSpec() },
+        Entry("teach_skill_save") { TeachTools.skillSaveSpec() },
+        Entry("browser_replay_skill") { TeachTools.replaySpec() },
+        Entry("teach_site_trust") { TeachTools.siteTrustSpec() },
     )
 
     /**

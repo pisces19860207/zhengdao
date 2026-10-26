@@ -5,7 +5,7 @@
 // 本层是**纯判据**：喂候选进，出「一张变更清单」，零 IO 零 Android。
 package com.example.zhengdao.baopu.knowledge
 
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 
 /**
  * 抱朴整理的**纯规则层**（第一百八十二批）。

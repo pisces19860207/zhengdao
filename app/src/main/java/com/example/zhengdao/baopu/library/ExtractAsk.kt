@@ -9,8 +9,8 @@
 package com.example.zhengdao.baopu.library
 
 import com.example.zhengdao.baopu.AskUserCard
-import com.example.zhengdao.baopu.AskUserOption
 import com.example.zhengdao.baopu.AskUserCardRules
+import com.example.zhengdao.baopu.AskUserOption
 
 /** 抽取模式（三个选项 + 自由输入的解释结果）。 */
 internal enum class ExtractMode { DIGEST, INDEX, DEEP }

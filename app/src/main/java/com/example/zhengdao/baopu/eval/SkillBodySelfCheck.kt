@@ -16,8 +16,9 @@
 // （那要调模型、烧额度、还要 key）。跑 eval 是 v1 的 `ProposalSelfCheck` 的事。
 package com.example.zhengdao.baopu.eval
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
+import com.example.zhengdao.core.TimeFormats
 
 /** 回滚走哪条路。判据只有一条：备份在不在、文件是不是首写。 */
 internal enum class RollbackVia {
@@ -163,7 +164,7 @@ internal object SkillBodySelfCheck {
 internal class SkillBodyGuard(
     private val sha256Of: (File) -> String? = { Sha256.of(it) },
     private val restoreOne: (TargetSnapshot, String) -> Boolean = { t, s -> ProposalRestore.restore(t, s) },
-    private val stamp: () -> String = { com.example.zhengdao.util.TimeFormats.fileStamp() },
+    private val stamp: () -> String = { com.example.zhengdao.core.TimeFormats.fileStamp() },
     private val log: (String) -> Unit = { RunLog.log(it) },
 ) {
 

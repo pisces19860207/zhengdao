@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
+import com.example.zhengdao.core.notify.AppNotifications
 
 /**
  * 安装进度常驻通知（2026-10-08）。
@@ -17,7 +18,7 @@ import com.example.zhengdao.R
  * 「点安装 → 离开终端去设置页 → 在环境检测里反复点下载」——因为他在设置页看不到任何
  * 安装正在进行的迹象。安装是几分钟到几十分钟的事，进度必须能跨页面看见。
  *
- * 渠道用的是 `NotificationChannels.INSTALL`（"环境与安装"，IMPORTANCE_LOW 静默）：
+ * 渠道用的是 `AppNotifications.INSTALL`（"环境与安装"，IMPORTANCE_LOW 静默）：
  * 这个渠道 2026-10-06 就注册好了，但**此前没有任何代码用过**——正好拿来干这件事，不新增渠道。
  *
  * 交互：点通知进终端页（与保活通知同一个 `open_terminal` extra）；安装结束即撤下
@@ -52,7 +53,7 @@ object InstallNotifier {
     )
 
     private fun builder(ctx: Context): Notification.Builder =
-        Notification.Builder(ctx, NotificationChannels.INSTALL)
+        Notification.Builder(ctx, AppNotifications.INSTALL)
             .setSmallIcon(R.drawable.ic_terminal)
             .setContentIntent(contentIntent(ctx))
 
@@ -69,7 +70,7 @@ object InstallNotifier {
             } else {
                 b.setProgress(0, 0, true) // 不确定进度：转圈
             }
-            NotificationChannels.ensureAll(ctx)
+            AppNotifications.ensureAll(ctx)
             ctx.getSystemService(NotificationManager::class.java)?.notify(NOTIF_ID, b.build())
         }
     }
@@ -77,7 +78,7 @@ object InstallNotifier {
     /** 结束：撤下常驻那条，换成可划掉的结论。 */
     fun finish(ctx: Context, text: String, failed: Boolean = false) {
         runCatching {
-            NotificationChannels.ensureAll(ctx)
+            AppNotifications.ensureAll(ctx)
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
             nm.cancel(NOTIF_ID)
             val b = builder(ctx)

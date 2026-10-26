@@ -43,7 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 
 /** 失败时刻的显示口径：`yyyy-MM-dd HH:mm`（util/TimeFormats 唯一真源，主源码不碰 SimpleDateFormat）。 */
 internal fun skillFailureTimeText(at: Long): String = TimeFormats.minuteStamp(at)

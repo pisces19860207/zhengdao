@@ -65,7 +65,7 @@ internal data class CopiedFile(
     val alreadyThere: Boolean = false,
 )
 
-/** 被拒绝的一件（越界/失败）——**拒绝绝不静默**，调用方要落 [com.example.zhengdao.rootfs.RunLog]。 */
+/** 被拒绝的一件（越界/失败）——**拒绝绝不静默**，调用方要落 [com.example.zhengdao.core.RunLog]。 */
 internal data class RejectedFile(val relPath: String, val reason: String)
 
 /** 一次收料执行的结果（数据；DB 落账由壳层接着做）。 */

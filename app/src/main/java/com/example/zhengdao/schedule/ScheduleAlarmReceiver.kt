@@ -5,7 +5,7 @@ package com.example.zhengdao.schedule
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 精确闹钟的落点（第一百六十七批 §3）。

@@ -38,7 +38,7 @@ import com.example.zhengdao.baopu.DiaryEntry
 import com.example.zhengdao.baopu.DiaryRecall
 import com.example.zhengdao.baopu.DiaryStore
 import com.example.zhengdao.baopu.MemoryLayout
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 设置页「日记」卡：看近期流水、按条删（真删）。

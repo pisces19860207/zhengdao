@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 公共存放区（[Store]）单测。
@@ -13,7 +14,7 @@ import java.io.File
  * 用户 2026-10-08 定稿：日志、包缓存、Agent 安装脚本与账本都要落在 `Download/证道/` 下，
  * 重装 App 后"像装环境一样瞬间装好"。落地时最怕的不是路径写错，而是**搬家把数据搬丢**：
  * 私有 `files/` 与公共 `/sdcard` 可能不是同一个文件系统（`renameTo` 会失败）、公共目录里
- * 可能已经有用户手动放的同名文件（绝不能覆盖）。所以 [Store.adoptDir] / [Store.adoptFile]
+ * 可能已经有用户手动放的同名文件（绝不能覆盖）。所以 [ZhengdaoDirs.adoptDir] / [ZhengdaoDirs.adoptFile]
  * 的每条分支都在这里锁住——它们每次启动都会被调用，是幂等的。
  */
 class StoreTest {
@@ -28,21 +29,21 @@ class StoreTest {
 
     @Test
     fun `合法的缓存类别名放行`() {
-        assertTrue(Store.isLegalKind("npm"))
-        assertTrue(Store.isLegalKind("uv"))
-        assertTrue(Store.isLegalKind("pip"))
-        assertTrue(Store.isLegalKind("node-compile_cache"))
+        assertTrue(ZhengdaoDirs.isLegalKind("npm"))
+        assertTrue(ZhengdaoDirs.isLegalKind("uv"))
+        assertTrue(ZhengdaoDirs.isLegalKind("pip"))
+        assertTrue(ZhengdaoDirs.isLegalKind("node-compile_cache"))
     }
 
     @Test
     fun `路径花活一律不放行`() {
-        assertFalse(Store.isLegalKind(""))
-        assertFalse(Store.isLegalKind("../x"))
-        assertFalse(Store.isLegalKind("a/b"))
-        assertFalse(Store.isLegalKind(".."))
-        assertFalse(Store.isLegalKind("a b"))
+        assertFalse(ZhengdaoDirs.isLegalKind(""))
+        assertFalse(ZhengdaoDirs.isLegalKind("../x"))
+        assertFalse(ZhengdaoDirs.isLegalKind("a/b"))
+        assertFalse(ZhengdaoDirs.isLegalKind(".."))
+        assertFalse(ZhengdaoDirs.isLegalKind("a b"))
         // 中文/符号也不行：guest 侧 bash 路径不要转义
-        assertFalse(Store.isLegalKind("缓存"))
+        assertFalse(ZhengdaoDirs.isLegalKind("缓存"))
     }
 
     @Test
@@ -50,12 +51,12 @@ class StoreTest {
         // AgentInstaller 里写死的安装命令依赖这两个约定：公共区被 bind 到 `/opt/zhengdao`
         // （刻意不挂在工作区下面——工作区可能是用户自己的内容目录），agents/scripts 是
         // 公共区子目录。改了这里就必须同步改命令与 ProotLauncher 的 bind，所以锁进单测。
-        assertEquals("/opt/zhengdao/agents/scripts", Store.GUEST_SCRIPTS_DIR)
-        assertEquals("/opt/zhengdao", Store.GUEST_ROOT)
-        assertEquals("/storage/emulated/0/Download/证道", Store.PUBLIC_ROOT)
-        assertEquals("logs", Store.DIR_LOGS)
-        assertEquals("cache", Store.DIR_CACHE)
-        assertEquals("agents", Store.DIR_AGENTS)
+        assertEquals("/opt/zhengdao/agents/scripts", ZhengdaoDirs.GUEST_SCRIPTS_DIR)
+        assertEquals("/opt/zhengdao", ZhengdaoDirs.GUEST_ROOT)
+        assertEquals("/storage/emulated/0/Download/证道", ZhengdaoDirs.PUBLIC_ROOT)
+        assertEquals("logs", ZhengdaoDirs.DIR_LOGS)
+        assertEquals("cache", ZhengdaoDirs.DIR_CACHE)
+        assertEquals("agents", ZhengdaoDirs.DIR_AGENTS)
     }
 
     @Test
@@ -63,12 +64,12 @@ class StoreTest {
         // P3-2（2026-10-10）：公共区那份只是缓存，执行的是 App 私有目录里的副本。
         // guest 侧路径必须落在 home 里 —— ProotLauncher 只把 filesDir/home 绑成 /root，
         // 落在别处 guest 根本看不见（rc 文件走的就是同一条 bind）。
-        assertEquals("/root/.zhengdao/scripts", Store.GUEST_PRIVATE_SCRIPTS_DIR)
-        assertTrue(Store.GUEST_PRIVATE_SCRIPTS_DIR.startsWith("/root/"))
+        assertEquals("/root/.zhengdao/scripts", ZhengdaoDirs.GUEST_PRIVATE_SCRIPTS_DIR)
+        assertTrue(ZhengdaoDirs.GUEST_PRIVATE_SCRIPTS_DIR.startsWith("/root/"))
         assertFalse(
             "执行副本不许再落回公共区/工作区（共享存储，别的 App 改得到）",
-            Store.GUEST_PRIVATE_SCRIPTS_DIR.contains("zhengdao/agents") ||
-                Store.GUEST_PRIVATE_SCRIPTS_DIR.startsWith("/workspace"),
+            ZhengdaoDirs.GUEST_PRIVATE_SCRIPTS_DIR.contains("zhengdao/agents") ||
+                ZhengdaoDirs.GUEST_PRIVATE_SCRIPTS_DIR.startsWith("/workspace"),
         )
     }
 
@@ -82,7 +83,7 @@ class StoreTest {
         old.child("installed.json", "{}")
         File(old, "sub").apply { mkdirs() }.child("b.sh", "bbb")
 
-        val moved = Store.adoptDir(pub, old)
+        val moved = ZhengdaoDirs.adoptDir(pub, old)
 
         assertEquals(3, moved)
         assertEquals("aaa", File(pub, "a-install.sh").readText())
@@ -98,7 +99,7 @@ class StoreTest {
         old.child("installed.json", "旧账本")
         old.child("other.sh", "keep")
 
-        val moved = Store.adoptDir(pub, old)
+        val moved = ZhengdaoDirs.adoptDir(pub, old)
 
         assertEquals(1, moved)
         assertEquals("新账本", File(pub, "installed.json").readText())
@@ -111,10 +112,10 @@ class StoreTest {
     @Test
     fun `adoptDir 对不存在的旧目录是无操作`() {
         val pub = dir("pub")
-        assertEquals(0, Store.adoptDir(pub, File(pub, "不存在")))
+        assertEquals(0, ZhengdaoDirs.adoptDir(pub, File(pub, "不存在")))
         // 旧路径是个文件（历史上真出现过同名文件）也不能炸
         val file = pub.child("not-a-dir")
-        assertEquals(0, Store.adoptDir(pub, file))
+        assertEquals(0, ZhengdaoDirs.adoptDir(pub, file))
     }
 
     @Test
@@ -122,8 +123,8 @@ class StoreTest {
         val pub = dir("pub")
         val old = dir("old")
         old.child("x.sh", "x")
-        assertEquals(1, Store.adoptDir(pub, old))
-        assertEquals(0, Store.adoptDir(pub, old))
+        assertEquals(1, ZhengdaoDirs.adoptDir(pub, old))
+        assertEquals(0, ZhengdaoDirs.adoptDir(pub, old))
         assertEquals("x", File(pub, "x.sh").readText())
     }
 
@@ -132,17 +133,17 @@ class StoreTest {
         val pub = dir("pub")
         val old = dir("old")
         val src = old.child("session.json", "内容")
-        assertTrue(Store.adoptFile(File(pub, "session.json"), src))
+        assertTrue(ZhengdaoDirs.adoptFile(File(pub, "session.json"), src))
         assertEquals("内容", File(pub, "session.json").readText())
         assertFalse(src.exists())
 
         // 目标已存在：原样保留目标，返回 false，源文件不动
         val src2 = old.child("session.json", "更新的内容")
-        assertFalse(Store.adoptFile(File(pub, "session.json"), src2))
+        assertFalse(ZhengdaoDirs.adoptFile(File(pub, "session.json"), src2))
         assertEquals("内容", File(pub, "session.json").readText())
         assertTrue(src2.exists())
 
         // 源不存在：无操作
-        assertFalse(Store.adoptFile(File(pub, "nope.json"), File(old, "nope.json")))
+        assertFalse(ZhengdaoDirs.adoptFile(File(pub, "nope.json"), File(old, "nope.json")))
     }
 }

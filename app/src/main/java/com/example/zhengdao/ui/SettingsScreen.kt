@@ -41,25 +41,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.R
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.core.kb.KnowledgeBase
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rDialog
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
-import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.example.zhengdao.ui.util.pressClickable
 
 /**
  * 设置（入口页，2026-10-11 重排；2026-10-12 按走查报告 §2 再收敛）。
@@ -103,7 +104,7 @@ fun SettingsScreen(
     var storageOk by remember { mutableStateOf(storageGrantedNow()) }
     var manageOk by remember { mutableStateOf(manageGranted()) }
     var kbEnabled by remember {
-        mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx))
+        mutableStateOf(com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx))
     }
     var kbFiles by remember { mutableStateOf<Int?>(null) }
     // 定时任务（第一百六十七批）：Hub 这一行只报「启用几个」，开关/编辑都在二级页里。
@@ -123,7 +124,7 @@ fun SettingsScreen(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 manageOk = manageGranted()
                 storageOk = storageGrantedNow()
-                kbEnabled = com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)
+                kbEnabled = com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx)
                 storageTick++
             }
         }
@@ -144,7 +145,7 @@ fun SettingsScreen(
         cacheMb = sizes.third
         LastValues.saveStorageMb(ctx, sizes.first, sizes.second, sizes.third)
         kbFiles = withContext(Dispatchers.IO) {
-            runCatching { com.example.zhengdao.terminal.KnowledgeBase.status(ctx).files }.getOrNull()
+            runCatching { com.example.zhengdao.core.kb.KnowledgeBase.status(ctx).files }.getOrNull()
         }
         // 定时任务表读的是文件 ⇒ 同样不许在主线程；读不出就保持占位，
         // 真状态在二级页列表里说（这里这一行只是个入口，不是判据的第二份）。

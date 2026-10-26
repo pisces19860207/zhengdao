@@ -6,6 +6,7 @@ package com.example.zhengdao.rootfs
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * P2-7（issue #17）：空 catch 全仓清零的守卫。

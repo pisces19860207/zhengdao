@@ -14,7 +14,7 @@
 // 会让人白催一次司机，这比少报一单更坏。取不到任何可用时间戳时**拒读**（不猜一天）。
 package com.example.zhengdao.baopu.logistics
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.security.MessageDigest
 import java.util.TimeZone

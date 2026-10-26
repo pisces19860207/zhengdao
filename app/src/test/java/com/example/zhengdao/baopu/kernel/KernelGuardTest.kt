@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 内核守卫（第二十六批 · 26-A）：钉住「四处真相源收成一处」这件事，别让它悄悄漂回去。
@@ -221,8 +222,12 @@ class KernelGuardTest {
     fun `K12_目录常量唯一来源_内核外不许再定义`() {
         // 精确按「常量名 = 值」匹配：MemoryStore 的 DIR_ENTRIES = "记忆"（147 记忆条目
         // 存储，另一概念）不在名单里，不误伤；但只要有人再抄一份内核常量定义就红。
+        // 第二百四十批：`DIR_PRODUCTS` / `LEGACY_LIBRARY_DIR` 两个**目录真源**下沉到 :core
+        // （`ZhengdaoDirs.PRODUCTS_DIR` / `ZhengdaoDirs.LEGACY_LIBRARY_DIR`）——资料库
+        // `core/kb/KnowledgeBase` 也要读它们，而 :core 不能反向 import 抱朴。内核里留的是
+        // **同名同值别名**（`= ZhengdaoDirs.X`），值本身一个字节没变。
+        // 所以下面这份名单只保留"仍在内核里定义字面量"的那些；两个下沉的另立判据（见下）。
         val defs = listOf(
-            """const val DIR_PRODUCTS = "产物""",
             """const val DIR_DELIVER = "投递""",
             """const val DIR_BACKUP = "备份""",
             """const val DIR_MEMORY = "记忆""",
@@ -232,7 +237,6 @@ class KernelGuardTest {
             """const val DIR_GLOBAL_MEMORY = "抱朴记忆""",
             """const val FILE_GLOBAL_MEMORY = "全局记忆.md""",
             """const val DIR_MEMORY_BACKUP = "备份""",
-            """const val LEGACY_LIBRARY_DIR = "资料库""",
             """const val LEGACY_BACKUP_DIR = ".baopu-bak""",
         )
         val root = repoFile("src/main/java/com/example/zhengdao")
@@ -248,6 +252,23 @@ class KernelGuardTest {
         }
         // 内核自己必须恰好定义一份（被删/改名 ⇒ 编译先炸，这里兜底值漂移）
         defs.forEach { lit -> assertTrue("内核里应有定义「$lit」", kernel().contains(lit)) }
+
+        // 下沉到 :core 的两条：字面量只许在 ZhengdaoDirs.kt 里出现一次，内核只许引用别名。
+        val coreDirs = repoFile("../core/src/main/java/com/example/zhengdao/core/ZhengdaoDirs.kt")
+        assertTrue(":core 的目录真源不见了：${coreDirs.path}", coreDirs.isFile)
+        val coreSrc = coreDirs.readText()
+        listOf(
+            """const val PRODUCTS_DIR = "产物""",
+            """const val LEGACY_LIBRARY_DIR = "资料库""",
+        ).forEach { lit ->
+            assertTrue(":core 里应有定义「$lit」", coreSrc.contains(lit))
+            assertFalse("内核里不许再写字面量「$lit」（只许引用 ZhengdaoDirs）", kernel().contains(lit))
+        }
+        assertTrue(
+            "内核的两个常量必须引用 :core 真源（别又抄一份字面量）",
+            kernel().contains("const val DIR_PRODUCTS = ZhengdaoDirs.PRODUCTS_DIR") &&
+                kernel().contains("const val LEGACY_LIBRARY_DIR = ZhengdaoDirs.LEGACY_LIBRARY_DIR"),
+        )
     }
 
     @Test

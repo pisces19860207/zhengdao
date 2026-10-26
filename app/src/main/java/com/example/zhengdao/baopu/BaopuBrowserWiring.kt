@@ -10,16 +10,28 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.baopu.agent.BaopuBrowser
+import com.example.zhengdao.baopu.agent.BaopuTeach
 import com.example.zhengdao.baopu.agent.BrowserGateway
 import com.example.zhengdao.baopu.agent.PageInfo
 import com.example.zhengdao.baopu.agent.PreviewSink
 import com.example.zhengdao.baopu.agent.PreviewTool
 import com.example.zhengdao.baopu.agent.Shot
+import com.example.zhengdao.baopu.agent.TeachGateway
+import com.example.zhengdao.baopu.agent.TeachTools
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.bridge.BrowserCommands
 import com.example.zhengdao.browser.SensitiveRedactor
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.browser.BrowserHolder
 import com.example.zhengdao.ui.browser.BrowserTabManager
 import com.example.zhengdao.ui.browser.LocalPreviewHolder
+import java.io.File
+import java.lang.ref.WeakReference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * 把 [BrowserGateway] 接到玄览（进程内直调，不经 HTTP 桥、不要 token）。
@@ -37,6 +49,7 @@ internal object BaopuBrowserWiring {
 
     fun install(context: Context) {
         val appCtx = context.applicationContext
+        installTeach(appCtx)
         BaopuBrowser.gateway = object : BrowserGateway {
 
             override fun open(url: String, newTab: Boolean): String =
@@ -195,4 +208,185 @@ internal object BaopuBrowserWiring {
 
     /** 进程级主线程 Handler（与 WebViewEngine 同规：不用 View 自身的 post，未 attach 时会压队列）。 */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // ══ 228 批 C 片：示教/回放五件工具的真身（[TeachGateway]）═════════════════════
+    //
+    // 与浏览器件同住本文件的理由（文件头写明）：「玄览的接线」只许有一个地方。
+    //
+    // 会话模型用 lazy 单例（与 BaopuChatController.teachModel 每次新建不同）：工具侧的
+    // stop → save 跨两次工具调用，草稿必须**共享**才接得上；UI 那条路不受影响（各自持有）。
+    // 已知并存现象：UI 录制与 agent 录制同开时，页面桥（__zdTeachBridge）同名互替——
+    // 轮询兜底仍在，事件不丢，只是两路各收一份；CONFIRM 弹卡保证 agent 发起录制时用户知情。
+
+    @Volatile
+    private var appCtxRef: WeakReference<Context>? = null
+
+    private val teachScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
+
+    private val teachModel by lazy {
+        val ctx = appCtxRef?.get() ?: error("BaopuBrowserWiring.install 还没跑")
+        TeachSessionUiModel(
+            scope = teachScope,
+            context = ctx,
+            tabId = { BrowserTabManager.activeTab()?.id },
+            projectRoot = { BaopuRuntime.workspaceRoot(ctx) },
+            globalRoot = { teachGlobalRoot(ctx) },
+            personaFiles = { BaopuRuntime.personaFiles(ctx) },
+        )
+    }
+
+    /** 示教停下来的草稿（stop 产出、save 消费；save 成败都清）。 */
+    @Volatile
+    private var lastDraft: TeachSkillDraft? = null
+
+    @Volatile
+    private var lastTeachError: String? = null
+
+    private fun teachGlobalRoot(ctx: Context): File =
+        File(ctx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)
+
+    private fun installTeach(ctx: Context) {
+        appCtxRef = WeakReference(ctx)
+        BaopuTeach.gateway = object : TeachGateway {
+
+            override fun currentUrl(): String? =
+                BrowserTabManager.activeTab()?.state?.url?.takeIf { it.isNotBlank() }
+
+            override fun trustedHosts(): List<String> = TeachSiteTrust.load(teachGlobalRoot(ctx))
+
+            override fun trustAdd(raw: String): String? {
+                val host = TeachSiteTrust.normalize(raw) ?: return "「$raw」不像可以信任的域名"
+                if (!TeachSiteTrust.add(teachGlobalRoot(ctx), host)) {
+                    return "信任名单没写成（盘上写失败了），没有当成已信任"
+                }
+                recordSiteTrust(ctx, "site_trust_add:$host", "信任站点 $host：示教与回放可在该域自动执行")
+                return null
+            }
+
+            override fun trustRemove(raw: String): String? {
+                val host = raw.trim().lowercase()
+                if (!TeachSiteTrust.remove(teachGlobalRoot(ctx), host)) {
+                    return "名单里没有「$host」——撤销了个寂寞（teach_site_trust list 现看名单）"
+                }
+                recordSiteTrust(ctx, "site_trust_remove:$host", "撤销信任 $host：示教与回放不再在该域自动执行")
+                return null
+            }
+
+            override fun startRecording(): String {
+                val model = teachModel
+                if (model.recording) {
+                    return "已经在录制了：这段示教还在进行（teach_record_stop 结束当前这段）"
+                }
+                lastTeachError = null
+                model.start { msg -> lastTeachError = msg }
+                return "开始示教：请像平常一样在页面上操作，做完说一声让我停（teach_record_stop）。" +
+                    "我只记录、不代做。"
+            }
+
+            override fun stopRecording(): String {
+                val model = teachModel
+                if (!model.recording) {
+                    return "现在没有在录制（先 teach_record_start 开始示教）"
+                }
+                val done = awaitMain<Pair<TeachStopKind, TeachSkillDraft?>> { onDone ->
+                    model.stop { kind, draft -> onDone(kind to draft) }
+                } ?: return "结束示教超时：录制还在收尾，稍后再试一次 teach_record_stop"
+                val (kind, draft) = done
+                lastDraft = draft
+                return when (kind) {
+                    TeachStopKind.DRAFT -> buildString {
+                        val d = draft
+                        append("已录到 ").append(d?.skill?.steps?.size ?: 0)
+                        append(" 步，生成技能草稿「").append(d?.skill?.name ?: "?").append("」")
+                        d?.summary?.takeIf { it.isNotBlank() }?.let { append("：").append(it) }
+                        if (!d?.warnings.isNullOrEmpty()) {
+                            append("\n注意：").append(d.warnings.joinToString("；"))
+                        }
+                        append("\n确认保存用 teach_skill_save（name 省略即用这个名字）。")
+                    }
+                    TeachStopKind.EMPTY_NO_EVENTS -> "没有录到任何操作：页面没动过，没有可存的技能。"
+                    TeachStopKind.EMPTY_NAV_ONLY -> "只录到了页面跳转，没有可复用的操作，不会生成技能。"
+                }
+            }
+
+            override fun saveDraft(name: String): String {
+                val d = lastDraft
+                    ?: return "现在没有待保存的示教草稿（先 teach_record_start → teach_record_stop 教一遍）"
+                val skill = if (name.isBlank()) d.skill else d.skill.copy(name = name)
+                val msg = awaitMain<String> { onDone ->
+                    teachModel.save(skill, d.warnings) { onDone(it) }
+                } ?: return "保存超时：草稿还留着，再试一次 teach_skill_save"
+                lastDraft = null
+                return msg
+            }
+
+            override fun skillAllowedDomains(name: String): List<String>? =
+                TeachReplayStore.load(BaopuRuntime.workspaceRoot(ctx), name)?.allowedDomains
+
+            override fun replay(name: String, sentence: String?): String {
+                val root = BaopuRuntime.workspaceRoot(ctx)
+                return if (sentence == null) {
+                    TeachTools.reportLine(
+                        TeachReplay.replaySkill(
+                            context = ctx,
+                            projectRoot = root,
+                            workspace = root,
+                            name = name,
+                            tabId = BrowserTabManager.activeTab()?.id,
+                        ),
+                    )
+                } else {
+                    val run = replaySkillWithParams(
+                        context = ctx,
+                        projectRoot = root,
+                        workspace = root,
+                        name = name,
+                        sentence = sentence,
+                        tabId = BrowserTabManager.activeTab()?.id,
+                    )
+                    when {
+                        run.ask != null -> run.ask
+                        run.report != null -> {
+                            val note = run.noteLine()
+                            if (note.isEmpty()) TeachTools.reportLine(run.report)
+                            else TeachTools.reportLine(run.report) + "（" + note + "）"
+                        }
+                        else -> "没跑起来：" + (run.stopReason ?: "原因不明")
+                    }
+                }
+            }
+        }
+    }
+
+    /** 站点信任的决策留痕（actor=USER：每一笔都过了确认卡才发生）。 */
+    private fun recordSiteTrust(ctx: Context, evidence: String, reason: String) {
+        DecisionLedger.recordTo(
+            teachGlobalRoot(ctx),
+            DecisionDraft(
+                kind = DecisionKind.SITE_TRUST,
+                actor = DecisionActor.USER,
+                reason = reason,
+                evidence = evidence,
+                before = "",
+                after = "",
+                atMs = System.currentTimeMillis(),
+            ),
+        )
+        DecisionLedger.lastError?.let { RunLog.log("site_trust 留痕失败：$it") }
+    }
+
+    /**
+     * 工作线程 → Main 回调的桥（工具执行在引擎工作线程，会话模型回调在 Main）。
+     * 限时等：等不到就回超时话术，**不无限吊住工具轮次**。
+     */
+    private inline fun <T> awaitMain(timeoutMs: Long = 15_000L, call: (onDone: (T) -> Unit) -> Unit): T? {
+        val latch = CountDownLatch(1)
+        var out: T? = null
+        call { v ->
+            out = v
+            latch.countDown()
+        }
+        latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+        return out
+    }
 }

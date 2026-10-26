@@ -39,7 +39,7 @@ import com.example.zhengdao.baopu.eval.EvalDeterminism
 import com.example.zhengdao.baopu.eval.EvalFile
 import com.example.zhengdao.baopu.eval.EvalHarness
 import com.example.zhengdao.baopu.eval.RuntimeEval
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.security.MessageDigest
 import java.time.Instant

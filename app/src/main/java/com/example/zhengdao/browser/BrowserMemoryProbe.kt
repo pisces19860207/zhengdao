@@ -4,7 +4,7 @@
 package com.example.zhengdao.browser
 
 import android.os.Debug
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 空 WebView 内存基线探针 —— 阶段 0 三条之一（2026-10-14 派工单并入第 ① 刀）。

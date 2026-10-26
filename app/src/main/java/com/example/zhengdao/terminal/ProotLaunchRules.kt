@@ -144,7 +144,7 @@ internal object ProotLaunchRules {
     fun workspaceBindArg(wsHostPath: String): List<String> = listOf("-b", "$wsHostPath:/workspace")
 
     /**
-     * 公共存放区 bind（原 `:549` 的等值搬移）：`Store.root`（日志/缓存/Agent 脚本
+     * 公共存放区 bind（原 `:549` 的等值搬移）：`ZhengdaoDirs.root`（日志/缓存/Agent 脚本
      * 账本）单独挂一份到 guest，路径与工作区无关、两种模式都成立。
      * guest 挂载点由调用点先 `mkdirs`（proot 不保证替调用方创建落点）。
      */

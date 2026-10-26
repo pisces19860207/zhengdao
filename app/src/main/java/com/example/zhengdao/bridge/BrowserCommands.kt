@@ -21,15 +21,16 @@ import com.example.zhengdao.browser.PageSnapshot
 import com.example.zhengdao.browser.SensitiveRedactor
 import com.example.zhengdao.browser.TapGeometry
 import com.example.zhengdao.browser.WebViewEngine
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Store
-import com.example.zhengdao.ui.browser.BrowserTabManager
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.core.ZhengdaoDirs
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import com.example.zhengdao.ui.browser.BrowserTabManager
 
 /**
  * 11 条命令的执行层（设计文档 §4.5「命令清单」）。
@@ -93,7 +94,7 @@ import kotlin.math.sqrt
  * `note`（**本刀自己写的降级说明**，内容受控、不含页面文本）。
  * ⚠️ 其中 `hostPath` 带的是**本机绝对路径**（`/storage/emulated/0/Download/证道/...`）——
  * 它是设备路径不是用户隐私值，但**别学它**：路径里唯一可能带隐私的是用户名，而本 App 的
- * 共享目录名由 [Store.root] 固定拼，不含用户名。
+ * 共享目录名由 [ZhengdaoDirs.root] 固定拼，不含用户名。
  * 全类扫描结论（第48刀A 任务③）：BrowserTabState 其余字段（`blockedMsg` / `everLoaded`）
  * 没有任何一条进桥的响应体。**若将来新增出口（如 `tabs` 列表命令）带 tab 元数据，
  * 必须补进上表** —— 门禁 `BridgeTitleRedactTest` 判据 C 按行扫响应体里的
@@ -116,7 +117,7 @@ import kotlin.math.sqrt
  * ## 一处对设计文档的有意偏离（截图落点）
  *
  * 设计文档 §4.5 写"输出 PNG 写入系统截图目录 `Pictures/Screenshots`"。
- * **这里改成共享目录 `Store.root()/截屏`**（＝ Downloads/证道，proot 已 bind 到
+ * **这里改成共享目录 `ZhengdaoDirs.root()/截屏`**（＝ Downloads/证道，proot 已 bind 到
  * guest `/opt/zhengdao/`）。理由：本桥的全部意义就是"给 guest 里的 agent 用"，
  * 而 `Pictures/Screenshots` 在 guest 里**读不到**（仅私有工作区档位下 `/sdcard` 根本不挂载）；
  * 落共享目录是 agent 唯一能稳定取到截图的路径。若将来要兼顾人看，可同时落两份。
@@ -890,15 +891,15 @@ object BrowserCommands {
     /**
      * 截图目录名（第一百七十七批用户口径：**`证道/截屏/`**）。
      *
-     * 为什么是固定公共区而不是工作区：`Store.PUBLIC_ROOT` 的 KDoc 明写「App 自己的东西
+     * 为什么是固定公共区而不是工作区：`ZhengdaoDirs.PUBLIC_ROOT` 的 KDoc 明写「App 自己的东西
      * 刻意不跟随工作区」（换工作区不该让截图失联）；为什么抱朴也能读：`VisionFiles.load`
-     * 本批加了 `extraRoot`，把 `Store.root()` 认作第二个允许的根。
+     * 本批加了 `extraRoot`，把 `ZhengdaoDirs.root()` 认作第二个允许的根。
      * **不进相册**：这里零 MediaStore——相册可见的 `Pictures/证道/截屏` 属第一百七十五批。
      */
     internal const val SHOT_DIR = "截屏"
 
     /** 截图目录（保证存在）。 */
-    internal fun shotDir(context: Context): File = File(Store.root(context), SHOT_DIR).apply { mkdirs() }
+    internal fun shotDir(context: Context): File = File(ZhengdaoDirs.root(context), SHOT_DIR).apply { mkdirs() }
 
     /** 两条说明合成一条（旧的在前；空串不占位）。199 起「退化说明 ＋ 相册说明」要同时出现。 */
     private fun joinNote(a: String?, b: String?): String? =
@@ -988,7 +989,7 @@ object BrowserCommands {
             ?: return ShotCapture.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
         // 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）
         val effectiveMode = if (note == null) mode else ShotMode.VIEWPORT
-        val stamp = com.example.zhengdao.util.TimeFormats.fileStamp()
+        val stamp = com.example.zhengdao.core.TimeFormats.fileStamp()
         val name = "证道截屏-$stamp"
 
         if (album) {

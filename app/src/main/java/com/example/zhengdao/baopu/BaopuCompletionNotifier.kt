@@ -14,8 +14,8 @@ import com.example.zhengdao.AppForeground
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.agent.RunState
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.NotificationChannels
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.notify.AppNotifications
 import com.example.zhengdao.ui.baopu.BaopuIntents
 
 /**
@@ -28,7 +28,7 @@ import com.example.zhengdao.ui.baopu.BaopuIntents
  * - 通知权限被拒 ⇒ 什么都不做（会话照常更新，权限页写明后果），绝不崩；
  * - 内容只有标题＋状态＋「点按回会话」，不含模型回复/工具输出/会话标题/Key。
  *
- * 渠道复用既有的 [NotificationChannels.AGENT]（2026-10-06 定稿的四个渠道，不新增第五个）。
+ * 渠道复用既有的 [AppNotifications.AGENT]（2026-10-06 定稿的四个渠道，不新增第五个）。
  */
 internal object BaopuCompletionNotifier {
 
@@ -81,8 +81,8 @@ internal object BaopuCompletionNotifier {
         lastPostedAtMs = now
         lastSessionId = sessionId
         runCatching {
-            NotificationChannels.ensureAll(ctx)
-            val n = Notification.Builder(ctx, NotificationChannels.AGENT)
+            AppNotifications.ensureAll(ctx)
+            val n = Notification.Builder(ctx, AppNotifications.AGENT)
                 .setSmallIcon(R.drawable.ic_terminal)
                 .setContentTitle(BaopuCompletionRules.titleOf(kind, outcome))
                 .setContentText(BaopuCompletionRules.textOf(kind, outcome))

@@ -15,7 +15,7 @@
 //      装失败 ⇒ 每条都有人话原因进 RunLog，不许静默。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import org.json.JSONArray
 import java.io.File
 

@@ -10,10 +10,12 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.IssueCenter
-import com.example.zhengdao.rootfs.RootfsInstaller
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
+import com.example.zhengdao.core.kb.KnowledgeBase
 import java.io.File
 import java.io.IOException
+import com.example.zhengdao.rootfs.RootfsInstaller
 
 object ProotLauncher {
 
@@ -40,24 +42,16 @@ object ProotLauncher {
     )
 
     /**
-     * 手机存储可直通判定（第㉕刀抬 targetSdk 36 后改为**双通道**，依据 ERRATA E-134 与
-     * 派工单第㉕刀）：
+     * 手机存储可直通判定 —— **委托** [com.example.zhengdao.core.EnvironmentScope.hasAllFilesAccess]。
      *
-     * - **targetSdk 36（现行）**：READ/WRITE_EXTERNAL_STORAGE 运行时权限在 API 30+ 已
-     *   inert（不再授予共享存储访问，系统对请求直接静默拒绝）⇒ 唯一通道是「所有文件访问」
-     *   （[android.os.Environment.isExternalStorageManager]）。
-     * - **targetSdk 28（旧口径，分支保留）**：Android 11+ 对 target≤29 的 App 自动保持
-     *   legacy 存储视图，拿到 WRITE_EXTERNAL_STORAGE 即可读写共享存储。
+     * 第二百四十批（终端解耦第一刀）：判定实现整体搬到 `:core`（逐字搬，含 targetSdk 28 的
+     * WRITE 兼容通道），抱朴不再"借终端类"判存储权限；本处保留同名函数只为**不改调用点**
+     * （终端侧 `ProotLaunchRules.sharedStorageAllowed` 等仍读它）。
      *
-     * 历史：2026-10-04 曾因「targetSdk=28 拿不到所有文件访问开关」把判定钉死在 WRITE
-     * 权限上（isExternalStorageManager 恒 false）；抬 36 后那个前提消失、开关可达 ⇒
-     * 两条都查，任一条真即算通（target 28 设备走后者、target 36 走前者）。
+     * ⚠️ 全仓仍只有**一个**判据（v1.3 E2 消双判）：这里不许再写第二份 `isExternalStorageManager`。
      */
     fun storageGranted(context: Context): Boolean =
-        runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false) ||
-            androidx.core.content.ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        com.example.zhengdao.core.EnvironmentScope.hasAllFilesAccess(context)
 
     /** 流式计算文件 SHA-256（版本固定校验用）。 */
     private fun sha256Of(file: File): String {
@@ -91,7 +85,7 @@ object ProotLauncher {
     /**
      * tmux 会话名的白名单（纯函数，可单测）：只允许 ASCII 字母数字与 `-` `_`。
      *
-     * 口径同 [com.example.zhengdao.terminal.Store.isLegalKind]：刻意不用 `Char.isLetterOrDigit()`
+     * 口径同 [com.example.zhengdao.core.ZhengdaoDirs.isLegalKind]：刻意不用 `Char.isLetterOrDigit()`
      * —— 它是 Unicode 语义，会把中文放进来，而这个名字要进 guest 内 bash 的命令行。
      */
     internal fun isLegalSessionName(name: String): Boolean = name.isNotEmpty() && name.all {
@@ -506,12 +500,12 @@ object ProotLauncher {
         // `Download/证道`，**不跟随工作区**）──
         // 工作区可能是用户自己的内容目录（真机上被设成了 `Download/男性`），
         // 所以 Agent 安装脚本不能再用 `/workspace/agents/scripts` 这个路径——
-        // 那会指到用户的内容目录里去。改为把 `Store.root` 单独挂一份到 guest 的
+        // 那会指到用户的内容目录里去。改为把 `ZhengdaoDirs.root` 单独挂一份到 guest 的
         // `/opt/zhengdao`：路径与工作区无关、两种模式（共享 / 仅私有兜底）都成立，
         // 脚本、账本、包缓存、日志在 guest 里也都能直接翻。
         // 挂载点先在 rootfs 里建好（proot 不保证替调用方创建落点）。
         runCatching { File(rootfsDir, "opt/zhengdao").mkdirs() }
-        args.addAll(ProotLaunchRules.storeRootBindArg(Store.root(context).absolutePath, Store.GUEST_ROOT))
+        args.addAll(ProotLaunchRules.storeRootBindArg(ZhengdaoDirs.root(context).absolutePath, ZhengdaoDirs.GUEST_ROOT))
 
         // ── 包缓存搬进公共区（用户 2026-10-08：「下载的东西都放到 download 证道 文件夹里」）──
         // Agent 重装的大头从来不是安装脚本，而是 npm / uv / pip 的**包缓存**（真机实测：
@@ -748,9 +742,9 @@ object ProotLauncher {
         rel: String,
     ) {
         try {
-            val pub = Store.cacheDir(context, kind)
+            val pub = ZhengdaoDirs.cacheDir(context, kind)
             val mount = File(homeDir, rel)
-            val moved = Store.adoptDir(pub, mount) // 幂等：目标已有同名条目就跳过
+            val moved = ZhengdaoDirs.adoptDir(pub, mount) // 幂等：目标已有同名条目就跳过
             if (!mount.isDirectory) mount.mkdirs()
             if (moved > 0) {
                 RunLog.log("缓存搬家: ~/$rel → ${pub.absolutePath}（$moved 项，重装 App 后免重下）")

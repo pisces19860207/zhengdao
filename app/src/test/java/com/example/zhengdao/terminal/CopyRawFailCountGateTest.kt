@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * 第七十一批⑤（§B 79 / 69 批清单应修 #10）的**源码门禁**：
@@ -42,7 +44,7 @@ class CopyRawFailCountGateTest {
     @Test
     fun `J5_资料复制失败必须计数并落汇总日志`() {
         val body = funBody(
-            code("src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt"),
+            code("../core/src/main/java/com/example/zhengdao/core/kb/KnowledgeBase.kt"),
             "fun copyRawInto(",
         )
         assertTrue(

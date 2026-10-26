@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,11 +47,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionFilter
 import com.example.zhengdao.baopu.DecisionGroup
 import com.example.zhengdao.baopu.DecisionGroupCard
 import com.example.zhengdao.baopu.DecisionRecord
 import com.example.zhengdao.baopu.foldDecisionRecords
+import com.example.zhengdao.baopu.agent.FailureAuditLog
+import com.example.zhengdao.baopu.agent.FailureAuditRow
 import com.example.zhengdao.ui.FilterChip2
 
 /**
@@ -276,6 +280,11 @@ private fun HistoryTab(
     var filter by remember { mutableStateOf(DecisionFilter.ALL) }
     var expanded by remember { mutableStateOf(setOf<DecisionGroup>()) }
     var confirmRollback by remember { mutableStateOf<DecisionRecord?>(null) }
+    // §2.6 的展开态提到这一层（照上面组卡把 `expanded` 提到 Tab 层同一个理由）：
+    // 明细行挂在 LazyColumn 的 item 里，状态留在 item 内部会随滚出可视区被销毁 ⇒
+    // 「展开后不记得收起状态」这条负例就落在那儿；离开本页重进 ⇒ 回到默认折叠。
+    var auditExpanded by remember { mutableStateOf(false) }
+    var auditLimit by remember { mutableIntStateOf(FailureAuditLog.PAGE) }
 
     // 现读账本（版本号一变就重算：回滚/抽检后组头计数即时更新）
     val now = remember(version) { System.currentTimeMillis() }
@@ -292,7 +301,11 @@ private fun HistoryTab(
         )
     }
 
-    DecisionTabBody(DecisionTab.HISTORY, empty = records.isEmpty()) {
+    // 第二百三十七批 §2.6：工具失败明细也归这一栏 ⇒ 空态判据要算上它
+    // （只撞过工具失败、还没做过任何决策的会话，明细不能整页被「暂无记录」盖住）。
+    val auditCount = remember(version) { FailureAuditLog.readAll().size }
+
+    DecisionTabBody(DecisionTab.HISTORY, empty = records.isEmpty() && auditCount == 0) {
         Column(Modifier.fillMaxSize()) {
             // 筛选 chips（§2.5 规则④：先筛再分组）
             Row(
@@ -347,6 +360,16 @@ private fun HistoryTab(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                         )
                     }
+                }
+                // 第二百三十七批 §2.6：工具失败审计明细（默认折叠的一栏，跟着列表滚）
+                item(key = "failure-audit") {
+                    FailureAuditSection(
+                        version = version,
+                        expanded = auditExpanded,
+                        limit = auditLimit,
+                        onToggle = { auditExpanded = !auditExpanded },
+                        onMore = { auditLimit += FailureAuditLog.PAGE },
+                    )
                 }
             }
         }
@@ -567,5 +590,112 @@ private fun DecisionRowCard(
             }
             trailing?.invoke()
         }
+    }
+}
+
+// ── 第二百三十七批 §2.6：工具失败审计明细（只读、默认折叠的一栏）──────────────
+
+/**
+ * 「工具失败审计」栏——折叠交互照上面那张组卡（[DecisionGroupCardView]），不新造组件。
+ *
+ * 四条纪律都在这段里：默认折叠（初值在 [HistoryTab]，重进本页回到折叠）；点一下展开、
+ * 再点收起；一次最多渲染 [FailureAuditLog.PAGE] 行，剩下的点「加载更多」再补一页；
+ * **只读**——失败没改过盘，所以行尾既没有回滚钮也没有别的动作口。
+ * 明细只活在这本 JSONL 与这一页：模型那边永远只看得见一句聚合（`ToolFallback.auditBrief`），
+ * 所以这里读盘渲染**不**回灌任何东西。
+ *
+ * 展开态与分页水位都由调用方持有：这一栏挂在 LazyColumn 的 item 里，状态自己留着
+ * 会随滚出可视区销毁（§2.6 的「展开后不记得收起状态」负例）。
+ */
+@Composable
+private fun FailureAuditSection(
+    version: Int,
+    expanded: Boolean,
+    limit: Int,
+    onToggle: () -> Unit,
+    onMore: () -> Unit,
+) {
+    val count = remember(version) { FailureAuditLog.readAll().size }
+    val rows = remember(version, expanded, limit) {
+        if (expanded) FailureAuditLog.readAll(limit) else emptyList()
+    }
+    val now = remember(version) { System.currentTimeMillis() }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (count == 0) {
+                    stringResource(R.string.decision_audit_fail_title_empty)
+                } else {
+                    stringResource(R.string.decision_audit_fail_title, count)
+                },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            Spacer(Modifier.weight(1f))
+            if (count > 0) {
+                TextButton(
+                    onClick = onToggle,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (expanded) R.string.decision_record_collapse else R.string.decision_record_expand,
+                        ),
+                    )
+                }
+            }
+        }
+        Text(
+            text = stringResource(R.string.decision_audit_fail_readonly),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (expanded) {
+            rows.forEach { row -> FailureAuditRowView(row, now) }
+            if (rows.size >= limit) {
+                TextButton(
+                    onClick = onMore,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.decision_audit_fail_more)) }
+            }
+        }
+    }
+}
+
+/** 一行明细：工具·级别·结果 ／ 谁定的·多久前·档位 ／ 证据原文（§2.6 的那几列）。 */
+@Composable
+private fun FailureAuditRowView(row: FailureAuditRow, nowMs: Long) {
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 6.dp)) {
+        Text(
+            text = "${row.tool} · ${row.stage} · ${row.outcome}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = "${stringResource(decisionActorLabel(DecisionActor.ofWire(row.actor)))}" +
+                " · ${failureAgeText(row.atMs, nowMs)} · ${row.risk}（${row.reasonCode}）· 组 ${row.groupKey}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (row.evidence.isNotBlank()) {
+            Text(
+                text = row.evidence,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 「多久前」那半句（与组头/记录行同一套档，不另造时间格式）。 */
+@Composable
+private fun failureAgeText(atMs: Long, nowMs: Long): String {
+    val age = decisionAgeOf(atMs, nowMs)
+    return when (age.bucket) {
+        DecisionTimeBucket.NOW -> stringResource(R.string.decision_record_time_now)
+        DecisionTimeBucket.MINUTES -> stringResource(R.string.decision_record_time_min, age.n)
+        DecisionTimeBucket.HOURS -> stringResource(R.string.decision_record_time_hour, age.n)
+        DecisionTimeBucket.DAYS -> stringResource(R.string.decision_record_time_day, age.n)
+        DecisionTimeBucket.OLDER -> stringResource(R.string.decision_record_time_older)
     }
 }

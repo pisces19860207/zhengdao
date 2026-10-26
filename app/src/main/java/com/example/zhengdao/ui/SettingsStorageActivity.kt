@@ -49,11 +49,11 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.ui.settings.StorageRules
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.BackChevron
+import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -66,11 +66,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.R
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RootfsDelta
@@ -79,7 +76,10 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -97,13 +97,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.BackChevron
-import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.ui.settings.StorageRules
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
-import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.ui.util.pressClickable
 import kotlinx.coroutines.CoroutineScope
+import com.example.zhengdao.util.HumanizeError
 
 /** 二级页：存储与缓存（逐字搬自原设置页的「存储占用 / 缓存清理 / 安装包缓存」三张卡）。 */
 class SettingsStorageActivity : ComponentActivity() {
@@ -404,7 +405,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
             Text(
                 text = stringResource(
                     R.string.storage_cache_location,
-                    com.example.zhengdao.terminal.Store.root(ctx).path,
+                    com.example.zhengdao.core.ZhengdaoDirs.root(ctx).path,
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -736,7 +737,7 @@ private fun SettingsStoragePage(onBack: () -> Unit) {
                                 // 第五十二批 · P0-5：活会话时不换 rootfs —— 回退也是一次整树替换
                                 // （旧树被 rename+递归删除），运行中的 proot/agent 后续 open/exec
                                 // 会 ENOENT。判定在解压/替换之前，被拦时零文件改动。
-                                if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "回退环境", com.example.zhengdao.rootfs.RunLog::log)) {
+                                if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "回退环境", com.example.zhengdao.core.RunLog::log)) {
                                     // ENV-D1：两行 Toast 会截掉第二句 ⇒ 走本页 Snackbar（不限行数）。
                                     snackbarHostState.showReadable(
                                         message = blockMessage,

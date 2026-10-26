@@ -5,6 +5,8 @@
 // JVM 直测），Android 侧实现 [SessionPlanStore]（薄壳，走 BaopuDb 单写者）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.RunLog
+
 /**
  * 工作计划（计划卡）的存取（第十七批 B 段）。
  *
@@ -58,7 +60,7 @@ internal class SessionPlanStore(private val db: BaopuDb) : PlanStore {
                 }
             }.get() // 等真落库（Future 不 get 等于没写）
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴计划：落库失败 ${it.javaClass.simpleName}: ${it.message}",
             )
         }

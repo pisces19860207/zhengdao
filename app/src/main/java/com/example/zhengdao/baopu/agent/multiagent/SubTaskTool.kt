@@ -9,9 +9,9 @@
 // ProgressiveToolsTest 硬钉 12，本批不占默认面）。
 package com.example.zhengdao.baopu.agent.multiagent
 
+import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolSpec
-import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.jsonArrayOf
 import com.example.zhengdao.baopu.agent.jsonObjectOf
 import org.json.JSONObject

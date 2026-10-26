@@ -5,6 +5,7 @@ package com.example.zhengdao.terminal
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * Qoder 审查 🟠-1 的**源码门禁**：系统重建服务时不得留下"会话运行中"的僵尸通知。

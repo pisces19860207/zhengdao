@@ -7,7 +7,7 @@
 // （那几件要 Context / IO）。本文件零 Android 依赖，输入是布尔 / 枚举 / 普通值。
 package com.example.zhengdao.ui.settings
 
-import com.example.zhengdao.terminal.KnowledgeBase
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * 终端与资料页的**纯判据层**（第七十七批 · §B 80 切片）。

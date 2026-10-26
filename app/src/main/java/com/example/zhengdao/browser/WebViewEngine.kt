@@ -18,6 +18,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.graphics.createBitmap
 import java.io.ByteArrayOutputStream
+import com.example.zhengdao.core.RunLog
 
 /**
  * WebViewEngine —— [BrowserEngine] 的系统 WebView 实现（阶段 1 已填肉）。
@@ -295,7 +296,7 @@ class WebViewEngine(
              * 只标状态不重建会成为下一次点击才暴露的定时炸弹。
              */
             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "玄览 渲染进程被系统回收（didCrash=${detail?.didCrash() ?: "未知"}）" +
                         " ⇒ 复位该标签并画「点一下重新加载」，不崩、不自动重载",
                 )

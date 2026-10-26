@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第二百三十七批 · 工具失败降级与求助卡（2026-10-27）。
+  单独成文件（房型照 220 批 `strings_baopu_impact.xml`／198 批 `strings_baopu_search.xml`）：
+  共享 `strings.xml` 是多方并集的高冲突文件，本批对它的改动为 **0 字节**。
+  卡上的句子（标题／四件／选项）由 `baopu/agent/ToolFallback.kt` 造，是可单测的数据；
+  这里只放卡片自身的门面词。
+-->
+<resources>
+    <!-- 求助卡的卡名（行动区标题） -->
+    <string name="baopu_help_title">求助 · 这一步没做成</string>
+    <!-- 四档容器共用的徽标词（照 137 批「待你操作」口径，本批不改共享文件所以自带一条） -->
+    <string name="baopu_help_badge">待你操作</string>
+    <!-- §2.5：R3 或不可逆动作 ⇒ 红字这一句 -->
+    <string name="baopu_help_confirm">要你确认</string>
+    <!-- ①选项下面那行：这一组里要点开哪些工具（最多 5 个） -->
+    <string name="baopu_help_group_tools">组内工具：</string>
+
+    <!-- §2.6 决策中心「工具失败审计」栏（明细只在这页，默认折叠） -->
+    <string name="decision_audit_fail_title">工具失败审计 · 共 %1$d 条</string>
+    <string name="decision_audit_fail_title_empty">工具失败审计 · 还没有记录</string>
+    <string name="decision_audit_fail_readonly">只读：明细只留在这一页，不进模型上下文</string>
+    <string name="decision_audit_fail_more">加载更多</string>
+</resources>
