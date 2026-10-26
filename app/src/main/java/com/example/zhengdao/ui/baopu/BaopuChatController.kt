@@ -1835,8 +1835,29 @@ internal class BaopuChatController(context: Context) {
     /** (callId, 要显示的那一行)；callId 与当前卡不符 ⇒ 当作没有。 */
     private var impactLineFor by mutableStateOf<Pair<String, String?>?>(null)
 
-    /** 卡面要显示的那一行（null = 不显示任何东西）。 */
-    val confirmImpactLine: String? get() = impactLineFor?.takeIf { it.first == confirmCard?.callId }?.second
+    /**
+     * 第二百二十三批：判定理由那一行（`RiskMatrix` 的主判据人话，随 [ConfirmRequest] 回来）。
+     *
+     * 为什么和"影响那一行"分开存、显示时才合成：两件事的**来路与寿命不同**——
+     * 理由是判定当场定的（同步、永远有），影响要去查盘（异步、可能算不出来/被开关关掉）。
+     * 分开存 ⇒ 影响算得慢或算崩了，理由那一行照样在（卡上的"为什么问你"不许跟着丢）。
+     */
+    private var reasonLineFor by mutableStateOf<Pair<String, String?>?>(null)
+
+    /**
+     * 卡面要显示的那一行（null = 不显示任何东西）。
+     *
+     * 合成规则在 `RiskTell.cardLine`（都无 ⇒ 不摆；只有一件 ⇒ 就是它；都有 ⇒
+     * 「原因｜影响」，超 30 字保原因）。两条都按 callId 对齐当前卡：卡一换，
+     * 旧卡的两行自动失效（不多一个要清的字段）。
+     */
+    val confirmImpactLine: String?
+        get() {
+            val id = confirmCard?.callId ?: return null
+            val reason = reasonLineFor?.takeIf { it.first == id }?.second
+            val impact = impactLineFor?.takeIf { it.first == id }?.second
+            return com.example.zhengdao.baopu.RiskTell.cardLine(reason, impact)
+        }
 
     /**
      * 算影响（后台）——**只读、限时、失败即静默降级**。
@@ -1866,8 +1887,10 @@ internal class BaopuChatController(context: Context) {
                     null
                 } else if (impact.unknown) {
                     com.example.zhengdao.baopu.ImpactLine.UNKNOWN_TEXT
-                } else if (com.example.zhengdao.baopu.ImpactRisk.tierOf(call) < 2) {
-                    // R0/R1：即便意外出了卡，也不摆任何影响字（负例「R0 也显示」）
+                } else if (com.example.zhengdao.baopu.RiskGate.tierOf(call) == 0) {
+                    // R0 只读：即便意外出了卡，也不摆任何影响字（负例「R0 也显示」）。
+                    // 第二百二十三批：档位改由矩阵给；`== 0`（只读）才不摆——R1 写工具
+                    // 也会出卡（`permission==CONFIRM`），它的事实照样该给用户看。
                     null
                 } else {
                     val text = com.example.zhengdao.baopu.ImpactLine.text(impact)
@@ -3644,6 +3667,9 @@ internal class BaopuChatController(context: Context) {
             if (ev is ConfirmRequest) {
                 confirmCard = ev
                 confirmRestored = false
+                // 第二百二十三批：判定理由（同步来、必定有）——先于预览落位，
+                // 这样卡一出现，"为什么问你"就已经在那一行里了。
+                reasonLineFor = ev.callId to ev.reasonLine
                 // 第二百二十批：影响提示——**卡先出、行后到**（预览跑在 IO 协程上，
                 // 绝不挡出卡，也绝不挡动作）。算不出来就显示「后果未知」。
                 impactLineFor = null

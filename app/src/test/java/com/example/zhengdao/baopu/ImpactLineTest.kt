@@ -107,11 +107,13 @@ class ImpactLineTest {
     }
 
     @Test
-    fun `判据_R2写入才注入且不超40字`() {
+    fun `判据_非只读写入才注入且不超40字`() {
         ImpactInject.reset()
         val impact = Impact(Impact.Kind.WRITE, overwriteTotal = 2, ledgerRows = 1)
+        // 第二百二十三批：门槛跟着矩阵口径走——write_file 是 R1（写工作区内）而不是 220 临时表
+        // 里的"R2"，所以这里断言的是"非只读就注入"，不再是"R2 才注入"。
         val note = ImpactInject.noteFor(tc("write_file"), impact, 1000)
-        assertTrue("R2 写盘要注入", note != null)
+        assertTrue("写盘（矩阵 R1）要注入", note != null)
         assertTrue("超 40 字：『$note』", note!!.length <= ImpactInject.MAX_CHARS)
         assertTrue("要带前缀，模型才认得出这是事实", note.startsWith("【影响】"))
     }
@@ -138,10 +140,18 @@ class ImpactLineTest {
     }
 
     @Test
-    fun `判据_档位口径_读写与破坏四档`() {
-        assertEquals(0, ImpactRisk.tierOf(tc("read_file")))
-        assertEquals(1, ImpactRisk.tierOf(tc("browser_click")))
-        assertEquals(2, ImpactRisk.tierOf(tc("write_file")))
-        assertEquals(3, ImpactRisk.tierOf(tc("delete_path")))
+    fun `判据_档位口径_唯一来源是风险矩阵`() {
+        // 第二百二十三批：`ImpactRisk`（临时口径）已删，档位只从 `RiskMatrix` 来。
+        // 三个读数与本批之前不同，是**删掉第二套边界**的必然结果（报告 §2 逐条对账）：
+        //   write_file 2→1（219 口径：写工作区内是 R1）；delete_path 3→2（R2 改外面的）；
+        //   browser_click 1→2（点网页会改外面状态）。
+        assertEquals(0, RiskGate.tierOf(tc("read_file")))
+        assertEquals(2, RiskGate.tierOf(tc("browser_click")))
+        assertEquals(1, RiskGate.tierOf(tc("write_file")))
+        assertEquals(2, RiskGate.tierOf(tc("delete_path")))
+        // 终端不在四档里（矩阵显式豁免）⇒ 沿用本批之前的保守读数 2，不借机改行为
+        assertEquals(2, RiskGate.tierOf(tc("bash")))
+        // 未分类同样落 R2（fail-closed），不许掉到 0
+        assertEquals(2, RiskGate.tierOf(tc("ghost_tool")))
     }
 }

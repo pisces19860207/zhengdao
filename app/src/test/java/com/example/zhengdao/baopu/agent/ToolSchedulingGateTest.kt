@@ -10,6 +10,9 @@
 //    把确认挪到执行之后，这条立刻红（派工单 §2 的第二个负例）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.RiskClass
+import com.example.zhengdao.baopu.RiskTable
+import com.example.zhengdao.baopu.ToolRule
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,6 +23,18 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 class ToolSchedulingGateTest {
+
+    /**
+     * 第二百二十三批：本文件测的是**调度**（走哪条 lane、什么顺序、原文是否逐字相同），
+     * 与风险档无关。夹具里那四个假工具在 219 的表上没有行 ⇒ 会 fail-closed 必问，
+     * 把调度断言全淹掉。所以给它们显式配 R0（"只读、不参与判定"）。
+     *
+     * ⚠️ 这是**测试夹具**的事，不是生产口径：生产里未分类照样 R2 必问（负例 3 钉着）。
+     */
+    private fun laneTable(): RiskTable = RiskTable.DEFAULT.copy(
+        tools = RiskTable.DEFAULT.tools + listOf("confirm_read", "confirm_write", "boom_read", "slow_read")
+            .associateWith { ToolRule(RiskClass.R0) },
+    )
 
     /** 真实工具表（JVM 里能建的那份：ENTRIES 的工厂只吃 `workspaceRoot`）。 */
     private fun catalog(): List<ToolSpec> =
@@ -153,7 +168,7 @@ class ToolSchedulingGateTest {
                 ),
             )
         }
-        val pipeline = GuardPipeline(reg, { File(".") }, { null }, ToolRunner(Executors.newSingleThreadExecutor()))
+        val pipeline = GuardPipeline(reg, { File(".") }, { null }, ToolRunner(Executors.newSingleThreadExecutor()), riskTable = laneTable())
         val call = ToolCall("g1", "confirm_write", JSONObject())
 
         val first = pipeline.execute(call) { _, _ -> null }
@@ -173,7 +188,7 @@ class ToolSchedulingGateTest {
     fun `门禁_并行读那条路仍要先过路径守卫与Schema`() {
         val reg = ToolRegistry().apply { register(ReadFileTool.spec()) }
         val root = File(".").absoluteFile
-        val pipeline = GuardPipeline(reg, { root }, { null }, ToolRunner(Executors.newSingleThreadExecutor()))
+        val pipeline = GuardPipeline(reg, { root }, { null }, ToolRunner(Executors.newSingleThreadExecutor()), riskTable = laneTable())
 
         val outside = pipeline.prepare(
             ToolCall("g1", "read_file", JSONObject().put("path", "../外面.txt")),
@@ -207,7 +222,7 @@ class ToolSchedulingGateTest {
                 ),
             )
         }
-        val pipeline = GuardPipeline(reg, { File(".") }, { null }, ToolRunner(Executors.newSingleThreadExecutor()))
+        val pipeline = GuardPipeline(reg, { File(".") }, { null }, ToolRunner(Executors.newSingleThreadExecutor()), riskTable = laneTable())
         val call = ToolCall("g1", "boom_read", JSONObject())
         val inline = pipeline.executeInline(call) { _, _ -> null }
         val serial = pipeline.execute(call) { _, _ -> null }
@@ -237,7 +252,7 @@ class ToolSchedulingGateTest {
                 ),
             )
         }
-        val pipeline = GuardPipeline(reg, { File(".") }, { null }, ToolRunner(Executors.newSingleThreadExecutor()))
+        val pipeline = GuardPipeline(reg, { File(".") }, { null }, ToolRunner(Executors.newSingleThreadExecutor()), riskTable = laneTable())
         val call = ToolCall("g1", "slow_read", JSONObject())
 
         // 串行 lane：ToolRunner 自己带超时

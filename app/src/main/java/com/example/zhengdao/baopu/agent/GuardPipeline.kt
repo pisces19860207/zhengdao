@@ -10,6 +10,11 @@ import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionDraft
 import com.example.zhengdao.baopu.DecisionKind
 import com.example.zhengdao.baopu.DecisionLedger
+import com.example.zhengdao.baopu.RiskClass
+import com.example.zhengdao.baopu.RiskCode
+import com.example.zhengdao.baopu.RiskGate
+import com.example.zhengdao.baopu.RiskTable
+import com.example.zhengdao.baopu.RiskTell
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.rootfs.RunLog
@@ -148,9 +153,11 @@ data class SpillResult(val file: File, val chars: Int)
  * 1. （①）注册表校验：名字存在？参数合 Schema？——[ToolRegistry.validateCall]；
  * 2. （②）路径守卫：arguments 里的 `path` 相对工作区根解析，[BaopuGuardCore.checkPath]
  *    （按路径组件比较，同前缀兄弟目录过不来）——越界即拒并 RunLog；
- * 3. （③）权限判定：[ToolPermission.FREE] 直行；[ToolPermission.CONFIRM] ⇒
- *    [Result.NeedsConfirm]（刀 3 A 段起通电：引擎挂起等用户点批准，批了走
- *    [executeApproved]——只跳这一段，其余四段原样）；
+ * 3. （③）权限判定（**第二百二十三批：风险矩阵是唯一口径**）：`RiskMatrix.classify` 一次定档——
+ *    `R0` 直行；`R1` 按既有策略（[ToolPermission.CONFIRM] ⇒ [Result.NeedsConfirm]）；
+ *    `R2` **必问**；`R3` **必问且不可自动**；`hardDeny` ⇒ [Result.Rejected]（终止本轮）；
+ *    未分类 ⇒ 按 `R2` 必问并记一条 `unclassified_tool`（fail-closed）。批准后走
+ *    [executeApproved]——只跳这一段，其余四段原样；
  * 4. （④）执行：[ToolRunner] 带超时；**顺序由调度层给**（第九十二批）：写工具单飞、
  *    读工具成段有界并行（[ToolScheduling]）；并行读走 [executeInline]（同一个池，直跑）；
  * 5. （⑤）输出处理：超 [SPILL_THRESHOLD_CHARS] ⇒ spill 落盘只回摘要；回灌必经
@@ -177,6 +184,15 @@ internal class GuardPipeline(
      * 默认关 = 越界一律拒（与 156 批之前完全同口径）。
      */
     private val allowOutside: () -> Boolean = { false },
+    /**
+     * 第二百二十三批：判定用的**风险矩阵表**——缺省就是 219 的那唯一一张。
+     *
+     * 为什么让它可注入：派工单 §2 的硬要求是「矩阵改一行 ⇒ 判定结果变」的**对照测试**，
+     * 而那条判据必须打在这道闸上（打在矩阵自己身上只能证明矩阵自洽）。生产调用点一个字
+     * 都不传；单测传 `DEFAULT.copy(tools = DEFAULT.tools + ("x" to 改过的行))`。
+     * 排在最后且带缺省 ⇒ 存量调用点（含测试）零改。
+     */
+    private val riskTable: RiskTable = RiskTable.DEFAULT,
 ) {
 
     sealed interface Result {
@@ -223,8 +239,15 @@ internal class GuardPipeline(
         /**
          * 需确认（刀 3 A 段通电）：引擎收到它就挂起出卡，用户点批准后走
          * [executeApproved]（只跳第 ③ 段）；点拒绝不执行，对话继续。
+         *
+         * [reasonLine]（第二百二十三批）：卡面上那一行的**判定理由**（人话，≤30 字单行）。
+         * 它与 220 的影响提示**共用卡上的同一个位置**（不新增卡片）——合成规则在
+         * `RiskTell.cardLine`，这里只负责把"为什么问你"带出去。
          */
-        data class NeedsConfirm(val call: ToolCall) : Result
+        data class NeedsConfirm(
+            val call: ToolCall,
+            val reasonLine: String? = null,
+        ) : Result
     }
 
     /**
@@ -325,12 +348,67 @@ internal class GuardPipeline(
             guardPath(call, spec.name, granting = skipConfirm, readOnly = spec.readOnly)
         }
         if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
-        if (guarded is Guarded.Ask) return Prepared.Settled(Result.NeedsConfirm(guarded.call))
+        // 第二百二十三批：越界弹卡的原因码由②段的事实直接给（走到这里已经是"越界"这个事实，
+        // 不需要再让矩阵猜一次）；文案唯一来源在 `RiskTell`，别处不许再拼一句。
+        if (guarded is Guarded.Ask) {
+            return Prepared.Settled(
+                Result.NeedsConfirm(guarded.call, RiskTell.hint(RiskCode.PATH_OUTSIDE_WORKSPACE)),
+            )
+        }
         val effectiveCall = (guarded as Guarded.Yes).call
 
-        // ③ 权限判定（批准路径跳过）
-        if (!skipConfirm && spec.permission == ToolPermission.CONFIRM) {
-            return Prepared.Settled(Result.NeedsConfirm(effectiveCall))
+        // ③ 判定（**风险矩阵唯一口径**，第二百二十三批；批准路径跳过）
+        if (!skipConfirm) {
+            // MCP 是**表外命名空间**：工具名由服务端描述符定（`mcp_<srv>_<tool>`），
+            // 本地矩阵里不可能有它的行——查就是"未分类"，fail-closed 会让每一次 MCP 调用
+            // 都弹卡（连只读快照也要问一次），那等于废掉 123/157 的「只读批准一次后免确认」。
+            // 它的档位由服务端描述符（readOnly）声明，本地不接管；②段跳过的是路径语义，
+            // 这一段跳过的是四档判定，两处同一个理由：**这一组不归本地规则管**。
+            // 其余四段（①Schema/④超时/⑤围栏/审计）一个不少。
+            val verdict = if (spec.group == ToolGroup.MCP) {
+                null
+            } else {
+                val root = workspaceRoot()
+                // 覆盖判定要的事实：这次会写到的目标里，哪些**已经在盘上**。
+                // 只查这几个目标（≤3 个 stat），不做目录遍历；查不到 ⇒ 当不存在（矩阵那边是纯函数）。
+                val existing = writeTargets(effectiveCall.name, effectiveCall.arguments, root)
+                    .filter { it.exists() }
+                    .map { it.absolutePath }
+                    .toSet()
+                RiskGate.judge(
+                    effectiveCall,
+                    roots = listOf(root.absolutePath),
+                    existing = existing,
+                    table = riskTable,
+                )
+            }
+            if (verdict != null) {
+                // 硬拒（原件区/密码框/私有 URL）⇒ **拒绝**，不是"问"：降级成问就是把红线交给用户点
+                if (verdict.rejected) {
+                    log(
+                        "抱朴管线：矩阵硬拒 ${effectiveCall.name}（${verdict.reasonCode.id}）" +
+                            "——${verdict.reasons.joinToString("；") { it.detail }}",
+                    )
+                    return Prepared.Settled(Result.Rejected(effectiveCall, RiskTell.rejectText(verdict)))
+                }
+                // 未分类 ⇒ fail-closed：按 R2 必问，并留一条账（带工具名与矩阵版本）
+                if (verdict.unclassified) {
+                    val rec = RiskGate.noteUnclassified(effectiveCall, verdict)
+                    log(
+                        "抱朴管线：未分类工具 ${effectiveCall.name} ⇒ R2 必问（矩阵 v${verdict.matrixVersion}" +
+                            (rec?.let { "，已记 ${it.id}" } ?: "，账本未装配") + "）",
+                    )
+                }
+            }
+            // R2/R3 一律必问（R3 在四档 UI 做出来之前也按"问"处理，但绝不放行）；R0/R1 走既有权限策略
+            val riskMustAsk = verdict != null && (
+                verdict.mustAsk || (verdict.risk?.ordinal ?: -1) >= RiskClass.R2.ordinal
+                )
+            if (riskMustAsk || spec.permission == ToolPermission.CONFIRM) {
+                return Prepared.Settled(
+                    Result.NeedsConfirm(effectiveCall, verdict?.let { RiskTell.cardHint(it) }),
+                )
+            }
         }
         return Prepared.Ready(effectiveCall, spec, guarded.grantedOutside)
     }

@@ -2,11 +2,13 @@
 //
 // 依据：派工单-2026-10-26-第二百二十批-后果预览 §2.5（卡面 ≤1 行 ≤30 字）＋ §3（注入限流）。
 //
-// 本文件放两件「说」的事：`ImpactLine`（事实 → 卡面那一行）与 `ImpactRisk`（动作 → 四档）。
+// 本文件放一件「说」的事：`ImpactLine`（事实 → 卡面那一行）。
 // 「算」在 `ImpactPreview`／`ImpactGovernance`，「读」在 `ImpactFacts`——三者之间没有回头路。
+//
+// 第二百二十三批：原住这里的 `ImpactRisk`（动作 → 四档的**临时口径**）已删除。
+// 四档的唯一来源是 `RiskMatrix.kt`（219）；要档位请调 `RiskGate.tierOf`，本文件不再有边界。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.baopu.agent.ToolCall
 import java.time.Instant
 import java.time.ZoneId
 
@@ -152,37 +154,4 @@ internal object ImpactLine {
     private const val KB = 1024L
     private const val MB = 1024L * 1024
     private const val GB = 1024L * 1024 * 1024
-}
-
-/**
- * 动作 → 风险档（**只有四档，只为本批的"注不注入"服务**）。
- *
- * ⚠️ 这是**临时口径**：第二百一十九批（风险矩阵 `RiskMatrix.kt`）合入后，注入档位
- * 应当以它为准（派工单 §3 原话「219 的判定可引用 Impact 事实」）。本对象因此只提供
- * [tierOf]，不提供任何"该不该拦"的结论——拦截仍由 `ConfirmRisk`／管线负责。
- *
- * 四档的边界（与 219 的命名对齐，便于将来替换）：
- * - R0 只读（读文件/列目录/搜索/看页面/查能力）：**永不注入**；
- * - R1 轻交互（打开网页、滚动、等待、计划、提问）：不入注入队列；
- * - R2 写盘（写/改/移动/转码/图片处理/画图）：入队；
- * - R3 破坏性（删、清空回收站、批量 ≥3 个）：入队并带数字。
- */
-internal object ImpactRisk {
-
-    /** 只读工具名（与 `ToolScheduling` 的只读分类同口径：这些动作不改盘）。 */
-    private val READ_ONLY = setOf(
-        "read_file", "list_dir", "find_files", "search_in_files", "file_info",
-        "kb_search", "kb_index", "library_list", "browser_snapshot", "capabilities",
-        "card_inspect", "preview_local_file", "ask_user", "update_plan", "read",
-    )
-
-    /** 破坏性（R3）。 */
-    private val DESTRUCTIVE = setOf("delete_path", "schedule_delete", "uninstall_agent")
-
-    fun tierOf(call: ToolCall): Int = when {
-        call.name in READ_ONLY -> 0
-        call.name in DESTRUCTIVE -> 3
-        call.name.startsWith("browser_") -> 1
-        else -> 2
-    }
 }
