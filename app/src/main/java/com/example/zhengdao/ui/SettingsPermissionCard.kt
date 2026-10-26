@@ -137,6 +137,16 @@ fun SettingsPermissionCard() {
         }
     }
 
+    /** 通知设置页（本 App 专属通道列表）；已授予时点进去改/关，不再跳通用应用详情。 */
+    val openNotificationSettings: () -> Unit = {
+        runCatching {
+            ctx.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+            )
+        }.onFailure { toastOpenFailed(ctx, res, it) }
+    }
+
     /** 「精确闹钟」系统设置页：Android 12 起只能由用户去那里允许，运行时弹窗给不了。 */
     val openExactAlarmPage: () -> Unit = {
         runCatching {
@@ -152,9 +162,20 @@ fun SettingsPermissionCard() {
      * 那个一键框（134 批 lint(BatteryLife) 口径：不诱导授权，用户自己在列表里找）。
      */
     val openBatteryListPage: () -> Unit = {
-        runCatching {
-            ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-        }.onFailure { toastOpenFailed(ctx, res, it) }
+        // 2026-10-26 用户：要直接跳到本 App 的开关，而不是让用户在长列表里自己找。
+        // 先试 App 专属确认框（Manifest 已有 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS），
+        // 个别 ROM 不给这个 Activity 再回落列表页。
+        val ok = runCatching {
+            ctx.startActivity(
+                Intent("android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS") // 字面量：本 App 侧载不上 Play，BatteryLife 的商店政策告警不适用；预算锁 0 又不许压制，故显式写 action
+                    .setData("package:${ctx.packageName}".toUri())
+            )
+        }.isSuccess
+        if (!ok) {
+            runCatching {
+                ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            }.onFailure { toastOpenFailed(ctx, res, it) }
+        }
     }
 
     // 卡级一句：不给会怎样的总口径（四行各自还有更具体的说法）。
