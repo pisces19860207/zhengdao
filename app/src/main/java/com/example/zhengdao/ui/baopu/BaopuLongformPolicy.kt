@@ -24,11 +24,28 @@ internal object BaopuLongformPolicy {
     /** 列表项（- 或 1. ）。 */
     private val LIST_ITEM = Regex("(?m)^(?:-|\\d+[.、])\\s+")
 
+    /** 围栏代码块（``` 或 ~~~ 包裹）——只认多行的。 */
+    private val FENCE = Regex("(?s)```[^\\n]*\\n.*?```|~~~[^\\n]*\\n.*?~~~")
+
+    /** 命令行行首（`$ ` / `# ` / `> ` 开头）——教人用命令行的典型形态。 */
+    private val SHELL_LINE = Regex("(?m)^\\s*(?:\\$|#|>)\\s+\\S")
+
     /** 字数阈值：超过就值得一张卡（普通一两段聊天到不了）。 */
     const val LENGTH_THRESHOLD = 600
 
-    /** 段落数阈值。 */
-    const val PARAGRAPH_THRESHOLD = 3
+    /**
+     * 「文件式内容」的次级阈值：有 `#` 标题、且正文到这个字数 ⇒ 才给卡。
+     *
+     * 2026-10-26 用户口径：文本卡**只在长文本 / .md / .txt / 代码 / 命令行教学**时出现。
+     * 原「有标题就给卡」「段落 ≥3 给卡」「列表 ≥3 给卡」是"几乎每条都出卡"的元凶，已删。
+     */
+    const val FILE_LIKE_THRESHOLD = 300
+
+    /** 代码块至少多少行才算"代码"（短片段不值得一张卡）。 */
+    const val CODE_BLOCK_MIN_LINES = 5
+
+    /** 命令行教学至少多少行命令。 */
+    const val SHELL_MIN_LINES = 3
 
     /** 文件名里 slug 的最大长度（字符）。 */
     const val SLUG_MAX = 20
@@ -38,21 +55,28 @@ internal object BaopuLongformPolicy {
     /**
      * 这条回复要不要渲染成输出卡。
      *
-     * 四条独立通道，命中任一即卡（图纸 §1）：
+     * **只有五种情况给卡**（2026-10-26 用户口径）：
      * 1. **用户点名**：这轮用户输入里有 微头条/文章/文案/长文；
-     * 2. **篇幅**：非空白字符 ≥ [LENGTH_THRESHOLD]；
-     * 3. **段落数** ≥ [PARAGRAPH_THRESHOLD]（多段是"结构化输出"最朴素的信号）；
-     * 4. **markdown 结构**：有标题行，或列表项 ≥ 3。
+     * 2. **长文本**：非空白字符 ≥ [LENGTH_THRESHOLD]；
+     * 3. **代码**：围栏代码块 ≥ [CODE_BLOCK_MIN_LINES] 行；
+     * 4. **命令行教学**：`$ `/`# `/`> ` 开头命令行 ≥ [SHELL_MIN_LINES] 行；
+     * 5. **文件式内容**（.md/.txt）：有 `#` 标题 **且** ≥ [FILE_LIKE_THRESHOLD] 字。
+     *
+     * 已删除的两条（曾让几乎所有回答都出卡）：段落数 ≥3、列表项 ≥3。
      */
     fun isLongform(text: String, userText: String = ""): Boolean {
         if (text.isBlank()) return false
         if (USER_KEYWORDS.containsMatchIn(userText)) return true
         val chars = wordCount(text)
         if (chars >= LENGTH_THRESHOLD) return true
-        val paras = text.split(Regex("\\n\\s*\\n")).count { it.isNotBlank() }
-        if (paras >= PARAGRAPH_THRESHOLD) return true
-        if (HEADING.containsMatchIn(text)) return true
-        return LIST_ITEM.findAll(text).count() >= 3
+        if (hasCodeBlock(text)) return true
+        if (SHELL_LINE.findAll(text).count() >= SHELL_MIN_LINES) return true
+        return HEADING.containsMatchIn(text) && chars >= FILE_LIKE_THRESHOLD
+    }
+
+    /** 有没有"够长"的围栏代码块。 */
+    private fun hasCodeBlock(text: String): Boolean = FENCE.findAll(text).any { m ->
+        m.value.count { it == '\n' } >= CODE_BLOCK_MIN_LINES
     }
 
     /** 字数＝非空白字符数（中文场景比"词数"直觉）。 */
