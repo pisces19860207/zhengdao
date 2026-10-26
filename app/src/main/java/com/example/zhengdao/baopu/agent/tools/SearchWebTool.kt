@@ -183,7 +183,13 @@ internal object SearchWebTool {
      *
      * @param fetchBody 调用方注入抓正文口（测试注入假页；生产真 OkHttp）
      */
-    fun run(args: JSONObject, nowMs: Long, fetchBody: (String, Int) -> String? = ::fetchBody): ToolOutcome {
+    fun run(
+        args: JSONObject,
+        nowMs: Long,
+        fetchBody: (String, Int) -> String? = ::fetchBody,
+        /** 检索页抓取口：测试注入假页/离线（默认走真 OkHttp）。 */
+        searchHtml: (String) -> String? = ::httpGet,
+    ): ToolOutcome {
         val query = args.optString(ARG_QUERY).ifBlank { return ToolOutcome.Failed("缺 query（检索词不能为空）") }
         val site = args.optString(ARG_SITE).ifBlank { null }
         val maxResults = args.optInt(ARG_MAX_RESULTS, SearchWebPolicy.DEFAULT_RESULTS)
@@ -202,7 +208,7 @@ internal object SearchWebTool {
         // 检索本身打 DDG；日志只记哈希（判据：不在日志写下检索原文）
         val q = if (site != null) "$query site:$site" else query
         RunLog.log(SearchWebPolicy.queryLogLine(query, site, maxResults))
-        val html = httpGet("https://html.duckduckgo.com/html/?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
+        val html = searchHtml("https://html.duckduckgo.com/html/?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
             ?: return ToolOutcome.Failed("检索页取不到（网络不可用或被拦）——不是没有结果，是没抓到")
         val hits = SearchWebParse.hits(html, maxResults, nowMs)
         if (hits.isEmpty()) {
