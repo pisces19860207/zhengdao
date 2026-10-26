@@ -979,6 +979,8 @@
     <string name="baopu_tools_card">抱朴工具</string>
     <string name="baopu_tool_sheet_read">读表</string>
     <string name="baopu_tool_sheet_read_desc">把工作区里的 xlsx/csv 读成结构化行（单元格原样，空格给 null）。</string>
+    <string name="baopu_tool_table_query">表格问答</string>
+    <string name="baopu_tool_table_query_desc">按表里的真实答案回答（xlsx/csv/tsv，PDF 不支持）；答案带文件·sheet·行号，表里没有就说没有。</string>
     <string name="baopu_tool_search_web">联网检索</string>
     <string name="baopu_tool_search_web_desc">搜公开网页拿标题/链接/摘要（只抓白名单站点，禁内网，日志只记检索词哈希）。</string>
     <string name="baopu_tool_schedule_task">定时任务</string>

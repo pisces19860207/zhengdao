@@ -278,6 +278,8 @@ internal object ToolGroupTable {
         // ── 第二百一十八批：工具补齐 v1（六件；四档档位在各 spec 的 riskTier，
         //    等 219 合入对上。默认全部不可见——B1 的「默认可见 ≤12」硬卡不许破。）
         "sheet_read" to ToolGroup.DATA,       // R0 只读
+        // 第二百三十二批：通用表格问答（同样只读用户的表 ⇒ 归 DATA；默认不可见，B1 硬卡不破）
+        "table_query" to ToolGroup.DATA,
         "search_web" to ToolGroup.WEBSEARCH,  // R0 只读（走网络，日志只记哈希）
         "schedule_task" to ToolGroup.SCHEDULE, // R2 无人值守必确认
         "clipboard_write" to ToolGroup.DEVICE, // R1
@@ -1192,6 +1194,8 @@ internal object BaopuToolCatalog {
     val DEFAULT_ENABLED: Set<String> = setOf(
         // 第二百一十八批：六件默认「启用」（组仍默认不可见——解锁即用，与 IMAGE/DRAW 同款口径）
         "sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial",
+        // 第二百三十二批：通用表格问答默认「启用」（组仍默认不可见——解锁即用，同上口径）
+        "table_query",
         "read_file",
         "list_dir",
         "search_in_files",
@@ -1290,6 +1294,9 @@ internal object BaopuToolCatalog {
     val ENTRIES: List<Entry> = listOf(
         // 第二百一十八批 · 工具补齐 v1（六件；riskTier：R0/R0/R2/R1/R1/R1，协作注意 #1）
         Entry("sheet_read") { SheetReadTool.spec(it) },
+        // 第二百三十二批：通用表格问答（一句话/结构化两种入口；PDF 明确不支持）。
+        // 与 sheet_read 的分工：sheet_read 是「把表读成行」的低层工具，本件在它之上做表模型与问答。
+        Entry("table_query") { TableQueryTool.spec(it) },
         Entry("search_web") { SearchWebTool.spec() },
         Entry("schedule_task") { ScheduleTaskTool.spec() },
         Entry("clipboard_write") { ClipboardWriteTool.spec() },

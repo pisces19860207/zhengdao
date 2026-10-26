@@ -20,7 +20,15 @@ import java.io.InputStream
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 
-/** 解析结果：行是「单元格值或 null」的列表；header 由 hasHeader 从首行切出。 */
+/**
+ * 解析结果：行是「单元格值或 null」的列表；header 由 hasHeader 从首行切出。
+ *
+ * @param rowNumbers 与 [rows] **一一对应**的「这一行在文件里是第几行」（1 起）。
+ *   第二百三十二批新增（只增不改：`sheet_read` 的输出一个字没动，它不读这个字段）——
+ *   通用表格问答的「出处必须点到行号」钉的就是这个数，而 xlsx 的 `<row r>` 会跳号
+ *   （中间删过行）、CSV 里有引号包住的换行，**用下标现推 `i + 2` 会推出假行号**。
+ *   默认空 ⇒ 老调用点行为逐字不变；读表的两条实现都填它。
+ */
 internal data class SheetGrid(
     val sheets: List<String>,
     val header: List<String?>,
@@ -28,6 +36,7 @@ internal data class SheetGrid(
     val truncated: Boolean,
     /** 每类跳过原因各记一次（空 map ＝ 什么都没跳）。 */
     val skipped: Map<String, Int>,
+    val rowNumbers: List<Int> = emptyList(),
 )
 
 /** 读不到／读不动的三种「未认领」（派工单：加密/不支持格式 ⇒ 明确报"未认领"）。 */
@@ -156,6 +165,8 @@ internal object SheetWorkbook {
         val shared = sharedStrings(zip, factory)
         val doc = factory.parse(bytes.inputStream()).documentElement
         val rowsRaw = mutableListOf<List<String?>>()
+        // 与 rowsRaw 一一对应的真实行号（`<row r>`；没有 r 属性就按已读行数 +1 兜底）
+        val nosRaw = mutableListOf<Int>()
         val rowNodes = doc.getElementsByTagName("row")
         val bounds = range?.let { SheetRange.parse(it) }
         for (i in 0 until rowNodes.length) {
@@ -180,8 +191,10 @@ internal object SheetWorkbook {
             if (bounds != null && rowNo < bounds.firstRow) continue
             if (bounds != null && rowNo > bounds.lastRow) break
             rowsRaw += filtered
+            nosRaw += rowNo
         }
         val limited = rowsRaw.take(maxRows)
+        val limitedNos = nosRaw.take(maxRows)
         val header = if (hasHeader) limited.firstOrNull() ?: emptyList() else emptyList()
         val body = if (hasHeader) limited.drop(1) else limited
         SheetGrid(
@@ -190,6 +203,7 @@ internal object SheetWorkbook {
             rows = body,
             truncated = rowsRaw.size > maxRows,
             skipped = emptyMap(),
+            rowNumbers = if (hasHeader) limitedNos.drop(1) else limitedNos,
         )
     }
 
@@ -268,8 +282,19 @@ internal data class SheetRange(val firstRow: Int, val lastRow: Int, val firstCol
  */
 internal object SheetCsv {
 
-    fun read(file: File, range: String?, hasHeader: Boolean, maxRows: Int): SheetGrid {
-        val records = parse(file.readText(Charsets.UTF_8))
+    /**
+     * @param delimiter 分隔符（默认逗号）。第二百三十二批新增的**只增不改**参数：
+     *   `.tsv` 与 `.csv` 是同一种「分隔文本」，差别只有一格分隔符——为它另写一套解析
+     *   （引号/换行/转义再判一遍）就是第二套口径。默认值保证 `.csv` 的解析逐字不变。
+     */
+    fun read(
+        file: File,
+        range: String?,
+        hasHeader: Boolean,
+        maxRows: Int,
+        delimiter: Char = ',',
+    ): SheetGrid {
+        val records = parse(file.readText(Charsets.UTF_8), delimiter)
         val bounds = range?.let { SheetRange.parse(it) }
         val sliced = if (bounds != null) {
             records.drop(bounds.firstRow - 1).take(bounds.lastRow - bounds.firstRow + 1)
@@ -280,17 +305,21 @@ internal object SheetCsv {
         val limited = sliced.take(maxRows)
         val header = if (hasHeader) limited.firstOrNull() ?: emptyList() else emptyList()
         val body = if (hasHeader) limited.drop(1) else limited
+        // 真实行号：csv 的「第几行」就是第几条记录（引号内的换行不算行），从 1 起
+        val offset = if (bounds != null) bounds.firstRow - 1 else 0
+        val nos = limited.indices.map { offset + it + 1 }
         return SheetGrid(
             sheets = listOf(file.name),
             header = header,
             rows = body,
             truncated = sliced.size > maxRows,
             skipped = emptyMap(),
+            rowNumbers = if (hasHeader) nos.drop(1) else nos,
         )
     }
 
-    /** 字符级状态机：引号段里的逗号/换行是内容；`""` 是字面引号。 */
-    fun parse(text: String): List<List<String?>> {
+    /** 字符级状态机：引号段里的分隔符/换行是内容；`""` 是字面引号。 */
+    fun parse(text: String, delimiter: Char = ','): List<List<String?>> {
         val rows = mutableListOf<List<String?>>()
         val row = mutableListOf<StringBuilder>()
         var cur = StringBuilder()
@@ -317,7 +346,7 @@ internal object SheetCsv {
                     else -> cur.append(ch)
                 }
                 ch == '"' && cur.isEmpty() -> inQuotes = true
-                ch == ',' -> endField()
+                ch == delimiter -> endField()
                 ch == '\r' -> Unit
                 ch == '\n' -> endRow()
                 else -> cur.append(ch)

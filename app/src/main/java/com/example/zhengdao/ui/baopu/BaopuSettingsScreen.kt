@@ -1494,6 +1494,8 @@ internal fun BaopuSettingsScreen(
 private fun baopuToolLabel(name: String): Int = when (name) {
     // 第二百一十八批：工具补齐 v1（六件）
     "sheet_read" -> R.string.baopu_tool_sheet_read
+    // 第二百三十二批：通用表格问答
+    "table_query" -> R.string.baopu_tool_table_query
     "search_web" -> R.string.baopu_tool_search_web
     "schedule_task" -> R.string.baopu_tool_schedule_task
     "clipboard_write" -> R.string.baopu_tool_clipboard_write
@@ -1591,6 +1593,8 @@ private fun effortLabel(level: String): Int = when (level) {
 private fun baopuToolDesc(name: String): Int = when (name) {
     // 第二百一十八批：工具补齐 v1（六件）
     "sheet_read" -> R.string.baopu_tool_sheet_read_desc
+    // 第二百三十二批：通用表格问答
+    "table_query" -> R.string.baopu_tool_table_query_desc
     "search_web" -> R.string.baopu_tool_search_web_desc
     "schedule_task" -> R.string.baopu_tool_schedule_task_desc
     "clipboard_write" -> R.string.baopu_tool_clipboard_write_desc

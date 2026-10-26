@@ -274,7 +274,7 @@ internal data class RiskTable(
          * v3（第二百二十八批 B 片）：浏览器手眼断层九件入表（snapshot 几何/导航三件/动作三件/标签三件）。
          * v4（第二百二十八批 C 片）：示教/回放五件入表（录制 R0、入库 R1、回放 R2＋必问、信任授权 R1＋必问）。
          */
-        const val DEFAULT_VERSION: Int = 4
+        const val DEFAULT_VERSION: Int = 5
 
         /**
          * 唯一一张默认表（67 行分级 ＋ bash 豁免 = 注册工具 68 个全有账）。
@@ -391,6 +391,8 @@ internal data class RiskTable(
                 "logistics_query" to ToolRule(RiskClass.R0),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
+                // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────
+                "table_query" to ToolRule(RiskClass.R0),
                 "search_web" to ToolRule(RiskClass.R0, urlKeys = setOf("site")),
                 "schedule_task" to ToolRule(
                     RiskClass.R2,
