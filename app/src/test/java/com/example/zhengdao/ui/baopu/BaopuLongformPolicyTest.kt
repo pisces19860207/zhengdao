@@ -35,15 +35,40 @@ class BaopuLongformPolicyTest {
     }
 
     @Test
-    fun `触发-c 三个以上段落_给卡`() {
+    fun `触发-c 三个以上段落_不再给卡（2026-10-26 口径收紧）`() {
         val text = "第一段。\n\n第二段。\n\n第三段。"
-        assertTrue(BaopuLongformPolicy.isLongform(text))
+        assertFalse("多段不再触发：它曾让几乎每条回答都出卡", BaopuLongformPolicy.isLongform(text))
     }
 
     @Test
-    fun `触发-d 有标题行或列表_给卡`() {
-        assertTrue(BaopuLongformPolicy.isLongform(longWeibo))
-        assertTrue(BaopuLongformPolicy.isLongform("要点：\n- 甲\n- 乙\n- 丙"))
+    fun `触发-d 有标题但不足 300 字_不给卡；够 300 字_给卡`() {
+        assertFalse(
+            "只有标题不算文件式内容",
+            BaopuLongformPolicy.isLongform("# 标题\n\n一句话。"),
+        )
+        assertTrue(
+            "标题＋300 字以上＝文件式内容",
+            BaopuLongformPolicy.isLongform("# 标题\n\n" + "字".repeat(300)),
+        )
+    }
+
+    @Test
+    fun `触发-e 围栏代码块够 5 行_给卡；不足 5 行_不给`() {
+        val code5 = "```kotlin\nfun a() = 1\nfun b() = 2\nfun c() = 3\nfun d() = 4\n```"
+        val code2 = "```kotlin\nfun a() = 1\n```"
+        assertTrue(BaopuLongformPolicy.isLongform(code5))
+        assertFalse(BaopuLongformPolicy.isLongform(code2))
+    }
+
+    @Test
+    fun `触发-f 命令行教学三行以上_给卡`() {
+        val shell = "\$ adb devices\n\$ adb install -r app.apk\n\$ adb shell am start -n x/y"
+        assertTrue(BaopuLongformPolicy.isLongform(shell))
+    }
+
+    @Test
+    fun `触发-g 列表三项_不再给卡（2026-10-26 口径收紧）`() {
+        assertFalse(BaopuLongformPolicy.isLongform("要点：\n- 甲\n- 乙\n- 丙"))
     }
 
     @Test
