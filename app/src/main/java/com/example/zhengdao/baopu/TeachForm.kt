@@ -325,6 +325,14 @@ data class FormCandidate(
     val placeholder: String? = null,
     val labelText: String? = null,
     val formLabel: String? = null,
+    /**
+     * `autocomplete` 属性原文（第二百二十四批补）。
+     *
+     * 为什么必须有：`autocomplete=\"one-time-code\"` 的验证码框，`type` 常是 `text`、
+     * `name` 也可能叫 `code`/`vcode`——只看 type/name 会把它当普通字段填进去。
+     * 这一列由 SCAN 脚本原样带回，判定仍走 [TeachSafety.refuseTypeReason]（同一份词表）。
+     */
+    val autocomplete: String? = null,
     val role: String? = null,
     val text: String? = null,
     val classes: List<String> = emptyList(),
@@ -360,6 +368,8 @@ data class FormProbe(
     val elemId: String? = null,
     val placeholder: String? = null,
     val text: String? = null,
+    /** `autocomplete` 实测值（第二百二十四批）：`one-time-code` 一律拒填，判据同 [TeachSafety]。 */
+    val autocomplete: String? = null,
     val reason: String? = null,
 )
 
@@ -481,7 +491,8 @@ internal object TeachFormRules {
         if (submitFace != null) {
             return Classified.Excluded("字段名像是提交/创建（$submitFace）——一律不填")
         }
-        TeachSafety.refuseTypeReason(c.inputType, c.inputName, c.elemId, c.placeholder, null)?.let {
+        // 第二百二十四批：autocomplete 也进拒填判据（`one-time-code` 的验证码框 type 常是 text）
+        TeachSafety.refuseTypeReason(c.inputType, c.inputName, c.elemId, c.placeholder, c.autocomplete)?.let {
             return Classified.Excluded(it)
         }
         if (type == "hidden") return Classified.Excluded("隐藏域（type=hidden），没有可填的值")
@@ -1038,7 +1049,8 @@ internal class FormFiller(private val dom: FormDom) {
             inputName = probe.inputName ?: f.inputName,
             inputId = probe.elemId,
             placeholder = probe.placeholder ?: f.placeholder,
-            autocomplete = null,
+            // 第二百二十四批：autocomplete 走探针实测（`one-time-code` 的验证码框只在这个属性上露馅）
+            autocomplete = probe.autocomplete,
         )?.let { return fail(it) }
 
         when (val r = dom.fill(f.locators, f.control, op.value, op.optionValue)) {
@@ -1291,7 +1303,7 @@ internal object FormScripts {
         val payload = "JSON.stringify({n:hits.length,el:{tag:hits[0].tagName," +
             "type:(hits[0].getAttribute('type')||''),ce:(hits[0].getAttribute('contenteditable')||'')," +
             "name:(hits[0].getAttribute('name')||''),id:(hits[0].id||'')," +
-            "ph:(hits[0].getAttribute('placeholder')||''),text:zlT(hits[0])}})"
+            "ph:(hits[0].getAttribute('placeholder')||''),ac:(hits[0].getAttribute('autocomplete')||''),text:zlT(hits[0])}})"
         val parts = locators.sortedBy { it.tier }.joinToString(";") { loc ->
             "hits=" + TeachScripts.matcherFor(loc.kind, loc.value) + ";if(hits.length>0)return $payload"
         }
@@ -1315,7 +1327,7 @@ for(var i=0;i<els.length&&out.length<80;i++){var el=els[i];var r=el.getBoundingC
 var ce=el.getAttribute('contenteditable');
 out.push({tag:el.tagName,type:(el.getAttribute('type')||''),ce:(ce=='true'||ce==''),
  id:el.id||'',testid:el.getAttribute('data-testid')||'',aria:el.getAttribute('aria-label')||'',
- name:el.getAttribute('name')||'',ph:el.getAttribute('placeholder')||'',
+ name:el.getAttribute('name')||'',ph:el.getAttribute('placeholder')||'',ac:el.getAttribute('autocomplete')||'',
  label:zlLb(el),form:zlFl(el),role:zlR(el),text:zlT(el),
  classes:(function(){var c=[];for(var k=0;k<el.classList.length&&c.length<8;k++)c.push(el.classList[k]);return c})(),
  xp:zlXp(el),options:zlOp(el),checked:!!el.checked,disabled:!!el.disabled,ro:!!el.readOnly,
@@ -1417,6 +1429,7 @@ internal class BrowserFormDom(private val tabId: Int?) : FormDom {
                 ariaLabel = c.optString("aria").takeIf { it.isNotEmpty() },
                 inputName = c.optString("name").takeIf { it.isNotEmpty() },
                 placeholder = c.optString("ph").takeIf { it.isNotEmpty() },
+                autocomplete = c.optString("ac").takeIf { it.isNotEmpty() },
                 labelText = c.optString("label").takeIf { it.isNotEmpty() },
                 formLabel = c.optString("form").takeIf { it.isNotEmpty() },
                 role = c.optString("role").takeIf { it.isNotEmpty() },
@@ -1460,6 +1473,7 @@ internal class BrowserFormDom(private val tabId: Int?) : FormDom {
                 inputName = el?.optString("name")?.takeIf { it.isNotEmpty() },
                 elemId = el?.optString("id")?.takeIf { it.isNotEmpty() },
                 placeholder = el?.optString("ph")?.takeIf { it.isNotEmpty() },
+                autocomplete = el?.optString("ac")?.takeIf { it.isNotEmpty() },
                 text = el?.optString("text")?.takeIf { it.isNotEmpty() },
             ),
         )

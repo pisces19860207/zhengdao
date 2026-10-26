@@ -37,6 +37,9 @@ class RiskWiringTest {
     fun cleanup() {
         roots.forEach { it.deleteRecursively() }
         RiskGate.resetForTest()
+        // 第二百二十四批：装过落点就必须还回去——它是进程级全局，不还的话同 JVM 里
+        // 「没装配落点就不落」那条用例会随执行顺序变红（见 DecisionLedger.uninstallForTest）
+        DecisionLedger.uninstallForTest()
     }
 
     // ── 夹具 ─────────────────────────────────────────────────────────────

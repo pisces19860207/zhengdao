@@ -506,6 +506,8 @@ class ToolSchemaAllTest {
             "append_persona" to JSONObject().put("text", "先列计划再动手"),
             // 第一百九十五批：查询（唯一必填是 ask，三档之一；其余四个条件都可省）
             "logistics_query" to JSONObject().put("ask", "loaded"),
+            // 第二百二十四批：表单填写（唯一必填是 fields；形状是「字段名 → 要填的值」）
+            "form_fill" to JSONObject().put("fields", JSONObject().put("标题", "A")),
             "read" to JSONObject().put("path", "a.md"),
             "bash" to JSONObject(),
         )

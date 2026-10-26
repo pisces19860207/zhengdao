@@ -385,11 +385,12 @@ class RiskMatrixTest {
         assertEquals(2, RiskTable.DEFAULT.matrixVersion)
         assertEquals(2, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
 
-        val v2 = RiskTable.DEFAULT.copy(matrixVersion = 2)
-        assertEquals(2, verdict("read_file", mapOf("path" to "产物/a.md"), table = v2).matrixVersion)
+        val bumped = RiskTable.DEFAULT_VERSION + 1
+        val v2 = RiskTable.DEFAULT.copy(matrixVersion = bumped)
+        assertEquals(bumped, verdict("read_file", mapOf("path" to "产物/a.md"), table = v2).matrixVersion)
         // 豁免与未分类也要带版本（208 的账不分档位）
-        assertEquals(2, verdict("bash", mapOf("command" to "x"), table = v2).matrixVersion)
-        assertEquals(2, verdict("mcp__s__t", table = v2).matrixVersion)
+        assertEquals(bumped, verdict("bash", mapOf("command" to "x"), table = v2).matrixVersion)
+        assertEquals(bumped, verdict("mcp__s__t", table = v2).matrixVersion)
     }
 
     @Test

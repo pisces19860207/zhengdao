@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 224: English half of strings_baopu_form.xml (form_fill).
+     Keys must match values/strings_baopu_form.xml one-for-one (lint MissingTranslation).
+     Same three promises as the description: fill only, the user clicks the buttons,
+     credentials are never filled. -->
+<resources>
+    <string name="baopu_tool_form_fill">Fill form</string>
+    <string name="baopu_tool_form_fill_desc">Fills the fields you named into the current page form: only the fields you list, matched by label, then name, then placeholder — if one name hits several fields it stops and reports the ambiguity instead of guessing. Passwords, verification codes and one-time codes are never filled. It never submits: the Save / Submit / Login / Pay buttons are always yours to click, the tool only lists them. Every filled field returns one line of evidence (locator, before → after; phone-number-like values are masked). If one field fails it stops and restores what it already filled. Hidden by default: unlock the Browser group via capabilities first.</string>
+</resources>

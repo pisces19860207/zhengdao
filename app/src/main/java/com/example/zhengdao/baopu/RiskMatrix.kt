@@ -193,6 +193,24 @@ internal data class ToolRule(
     val alwaysAsk: Boolean = false,
     /** 这个布尔参数为 true 时数量未知且必然是大批量（`delete_path.empty_trash`）。 */
     val unknownBatchFlag: String? = null,
+    /**
+     * **嵌套高危文本键**（第二百二十四批）：这些参数的值是对象/数组时，按里面的
+     * 「键名 / 字符串值」判 [RiskTable.dangerousClickWords]。
+     *
+     * 为什么需要它：`form_fill` 的入参是一张 `{字段名: 值}` 表，`clickTextKeys`
+     * （`target`/`selector`/`text`）一个都取不到 ⇒ 语义升档会静默失效。默认空集，
+     * 既有行行为**逐字不变**。
+     */
+    val clickNestedKeys: Set<String> = emptySet(),
+    /**
+     * 本行**专用**的高危词（不加进全局 [RiskTable.dangerousClickWords]）。
+     *
+     * 为什么不开在全局表上：全局词表一动，所有点击类工具的判定面跟着变（那等于改
+     * 一整列行为）；224 只被授权加 `form_fill` 一行 ⇒ 词挂在行上，影响面就锁在这一行。
+     * 派工单原话要求「提交/登录/支付/发布」四类语义 ⇒ 表里缺的两个（登录、支付类近义）
+     * 在这里补。
+     */
+    val extraClickWords: Set<String> = emptySet(),
 )
 
 /**
@@ -249,8 +267,13 @@ internal data class RiskTable(
     val internalHostSuffixes: Set<String> = setOf(".localhost", ".local", ".internal", ".lan"),
 ) {
     companion object {
-        /** 当前矩阵版本（**改一行表就 +1**；与 `DEFAULT` 同处，改表的人不会看不见）。 */
-        const val DEFAULT_VERSION: Int = 2
+        /**
+         * 当前矩阵版本（**改一行表就 +1**；与 `DEFAULT` 同处，改表的人不会看不见）。
+         *
+         * v2（第二百二十四批）：加 `form_fill` 一行（R2 ＋ 语义升 R3 ＋ 密码键硬拒）。
+         * v3（第二百二十八批 B 片）：浏览器手眼断层九件入表（snapshot 几何/导航三件/动作三件/标签三件）。
+         */
+        const val DEFAULT_VERSION: Int = 3
 
         /**
          * 唯一一张默认表（61 行分级 ＋ bash 豁免 = 注册工具 62 个全有账）。
@@ -376,6 +399,17 @@ internal data class RiskTable(
                 "notify" to ToolRule(RiskClass.R1, scanSensitiveText = true),
                 // 218：拨号只打开系统界面、不呼出 ⇒ R1；号码是它的本职工作，不按账号语义升档
                 "phone_dial" to ToolRule(RiskClass.R1),
+                // 224 表单能力接线：form_fill 只填不提交。基档 R2（改外部页面状态），三件事在这一行说清：
+                // ① fieldKeys=fields ⇒ 键名像密码/验证码的字段硬拒（⑥ 段，对象取键名）；
+                // ② clickNestedKeys=fields ⇒ 键名像提交/登录/支付/发布就升 R3 必问（⑤ 段）；
+                // ③ extraClickWords ⇒ 全局词表缺的「登录/登陆」只挂本行，不动别人的判定面。
+                "form_fill" to ToolRule(
+                    RiskClass.R2,
+                    clickLike = true,
+                    clickNestedKeys = setOf("fields"),
+                    extraClickWords = setOf("登录", "登陆"),
+                    fieldKeys = setOf("fields"),
+                ),
             ),
             // 173 口径：终端不参与分级——bash 不查档、不叠规则，原样交回终端那条路。
             // 注意它必须**显式豁免**：若只返回 null，fail-closed 会把它当未分类判 R2＋必问，
@@ -520,13 +554,11 @@ internal object RiskMatrix {
 
         // ⑤ 网页目标文本命中提交/结算/支付… ⇒ R3
         if (rule.clickLike) {
-            val words = table.dangerousClickWords
-            var hit: String? = null
-            for (key in table.clickTextKeys) {
-                val text = args.optString(key)
-                hit = words.firstOrNull { text.contains(it, ignoreCase = true) }
-                if (hit != null) break
-            }
+            val words = table.dangerousClickWords + rule.extraClickWords
+            // 平铺参数（browser_click/tap 的 target/selector/text）＋ 本行声明的嵌套面
+            val texts = table.clickTextKeys.map { args.optString(it) }.filter { it.isNotEmpty() } +
+                rule.clickNestedKeys.flatMap { nestedFaces(args.opt(it)) }
+            val hit = words.firstOrNull { w -> texts.any { it.contains(w, ignoreCase = true) } }
             if (hit != null) {
                 risk = higherOf(risk, RiskClass.R3)
                 reasons += RiskReason(RiskCode.SUBMIT_LIKE_BUTTON, "网页目标命中高危词「$hit」")
@@ -538,8 +570,15 @@ internal object RiskMatrix {
             val markers = table.sensitiveFieldMarkers
             var hit: String? = null
             for (key in rule.fieldKeys) {
-                val field = args.optString(key)
-                hit = markers.firstOrNull { field.contains(it, ignoreCase = true) }
+                // 第二百二十四批：`fields` 是对象时，**键名就是要填的字段名**
+                // （`{"密码":"…"}` 与 `{"password":"…"}` 都必须在这里被拒）
+                val faces = when (val raw = args.opt(key)) {
+                    is JSONObject -> raw.keys().asSequence().toList()
+                    else -> listOf(args.optString(key)).filter { it.isNotEmpty() }
+                }
+                hit = faces.firstNotNullOfOrNull { face ->
+                    markers.firstOrNull { face.contains(it, ignoreCase = true) }
+                }
                 if (hit != null) break
             }
             if (hit != null) {
@@ -751,9 +790,21 @@ internal object RiskMatrix {
         return host == d || host.endsWith(".$d")
     }
 
+    /**
+     * 嵌套参数里的「语义面」（第二百二十四批）：对象取**成员名**（`{"提交":"x"}` 的键
+     * 就是准备填的字段名），数组逐个递归，字符串原样。**不取对象成员的值**——那会把
+     * 「正文里写了『提交』两个字」误判成提交动作（假必问会训练用户无脑点同意）。
+     */
+    private fun nestedFaces(value: Any?): List<String> = when (value) {
+        null -> emptyList()
+        is String -> listOf(value)
+        is JSONObject -> value.keys().asSequence().toList()
+        is JSONArray -> (0 until value.length()).flatMap { nestedFaces(value.opt(it)) }
+        else -> emptyList()
+    }
+
     /** arguments 里所有字符串叶子（数组/对象递归；只读）。 */
-    private fun stringLeaves(args: JSONObject): List<String> {
-        val out = mutableListOf<String>()
+    private fun stringLeaves(args: JSONObject): List<String> {        val out = mutableListOf<String>()
         fun walk(value: Any?) {
             when (value) {
                 is String -> out += value

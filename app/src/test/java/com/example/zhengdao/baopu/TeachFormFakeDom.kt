@@ -32,6 +32,8 @@ class FakeFormEl(
     val store: ((String) -> String)? = null,
     /** true ＝ 填了也不存（页面把这格当装饰，静默丢弃）。 */
     val ignoreFill: Boolean = false,
+    /** 第二百二十四批：`autocomplete` 属性（`one-time-code` 的验证码框靠它露馅）。 */
+    val autocomplete: String? = null,
     var value: String = "",
     var checked: Boolean = false,
 ) {
@@ -131,6 +133,7 @@ class FakeFormDom(val elements: MutableList<FakeFormEl>) : FormDom {
             ariaLabel = el.ariaLabel,
             inputName = el.nameAttr,
             placeholder = el.placeholder,
+            autocomplete = el.autocomplete,
             labelText = el.label,
             formLabel = null,
             role = roleOf(el),
@@ -160,6 +163,7 @@ class FakeFormDom(val elements: MutableList<FakeFormEl>) : FormDom {
                 elemId = el.id,
                 placeholder = el.placeholder,
                 text = el.label,
+                autocomplete = el.autocomplete,
             ),
         )
     }

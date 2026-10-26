@@ -283,6 +283,10 @@ internal object ToolGroupTable {
         "clipboard_write" to ToolGroup.DEVICE, // R1
         "notify" to ToolGroup.DEVICE,          // R1
         "phone_dial" to ToolGroup.DEVICE,      // R1 只开拨号盘
+        // ── 第二百二十四批：表单填写（只填不提交；按钮人点）──────────────
+        // 归 BROWSER 组：它改的是玄览里的页面状态，和 browser_type 同一类风险面。
+        // 默认不可见（要 capabilities 解锁）⇒ B1「默认可见 ≤12」的硬卡不破。
+        "form_fill" to ToolGroup.BROWSER,      // R2
     )
 
     /** 该组里的工具名（保持 ENTRIES 的表序，稳定 ⇒ tools 数组顺序不乱、缓存友好）。 */
@@ -1253,6 +1257,9 @@ internal object BaopuToolCatalog {
         // 与 run_subtasks/generate_image 同口径：capabilities 解锁后立即可用，不必先去设置页翻开关。
         // 它是 readOnly + FREE（只读，弹卡等于每问一次装没装就打断一次用户）。
         "logistics_query",
+        // 表单填写（第二百二十四批）：默认**开着**但默认不可见（BROWSER 组）——
+        // 与 browser_* 同口径：capabilities 解锁后立即可用，不必先去设置页找开关。
+        "form_fill",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -1344,6 +1351,10 @@ internal object BaopuToolCatalog {
         // 不要 workspaceRoot：查的是 App 私有 `filesDir/物流/logistics.db`，与工作区无关
         // （inbox 只是她放导出文件的入口，读它的是导入那一步）。
         Entry("logistics_query") { LogisticsQueryTool.spec() },
+        // 表单填写（第二百二十四批）：201 的 TeachForm 接进生产的一个工具面——
+        // 只填点名的字段、拒填密码/验证码、**永不点提交**（按钮交给人）。
+        // 不需要 workspaceRoot：它只改玄览里的页面，不写盘（证据随回执返回给模型）。
+        Entry("form_fill") { FormFillTool.spec() },
     )
 
     /**
