@@ -625,9 +625,10 @@ private fun SkillRow(
                 }
             }
             // 第二百零六批：「跑一次对拍」（不强制、不阻塞——结果以便签＋进化档案给出）
+            // G1：真跑含网络 ⇒ 交给控制器的 scope（内部切 IO），不许落在 Compose onClick 的主线程上。
             if (row.status != SkillLibraryStatus.RETIRED) {
                 TextButton(onClick = {
-                    onActionDone(controller.runSkillRowAction(row, SkillRowAction.EVALUATE))
+                    controller.runSkillEvaluateAsync(row, onActionDone)
                 }) {
                     Text(stringResource(R.string.eval_once))
                 }

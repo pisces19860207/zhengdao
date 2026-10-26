@@ -146,6 +146,14 @@ internal data class DecisionRecord(
     val rollbackRef: String,
     /** 回滚行专用：被回滚那条的 id。 */
     val rollbackOf: String? = null,
+    /**
+     * 读侧标记（**不落盘**）：这条已经被回滚过。
+     *
+     * 222 真机验收 G3：账本里早有 `rollback_of` 行，但记录页没有消费它 ⇒ 回滚之后撤销钮还在、
+     * 组头「N 条可撤销」也不降。由 [read] 统一回填：被任何一条 `rollback_of` 指到的记录，
+     * `rolledBack=true` 且 `reversible` 降级为 false（只降级，不改写历史）。
+     */
+    val rolledBack: Boolean = false,
 ) {
     /** 写进 JSONL 的一行。 */
     fun toJson(): JSONObject = JSONObject()
@@ -341,9 +349,19 @@ internal object DecisionLedger {
     fun read(globalRoot: File, limit: Int = READ_LIMIT): List<DecisionRecord> = runCatching {
         val f = fileIn(globalRoot)
         if (!f.isFile) return@runCatching emptyList()
-        f.readLines(Charsets.UTF_8).asSequence()
+        val rows = f.readLines(Charsets.UTF_8).asSequence()
             .mapNotNull(::parseLine)
             .sortedByDescending { it.atMs }
+            .toList()
+        // G3：把「已被回滚」回填到原记录上（只降级，不改写账本）。
+        val rolledBackIds = rows.asSequence()
+            .filter { it.kind == DecisionKind.ROLLBACK_OF }
+            .mapNotNull { it.rollbackOf }
+            .toSet()
+        rows.asSequence()
+            .map { r ->
+                if (r.id in rolledBackIds) r.copy(reversible = false, rolledBack = true) else r
+            }
             .take(limit)
             .toList()
     }.getOrElse {
