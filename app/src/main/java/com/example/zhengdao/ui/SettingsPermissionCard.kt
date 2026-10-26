@@ -193,7 +193,9 @@ fun SettingsPermissionCard() {
         else stringResource(R.string.data_manage_off),
         valueColor = if (allFilesOk) zhengdaoReady()
         else MaterialTheme.colorScheme.onSurfaceVariant,
-        onClick = { if (allFilesOk) openAppDetails() else openAllFilesPage() },
+        // 2026-10-26 用户：存储这行要**永远**进"所有文件访问"的 App 专属开关页（2.2.1 就是）；
+                    // 已授予时以前跳通用应用详情，看起来"跳到整个 App 设置"，是回归。
+                    onClick = { openAllFilesPage() },
     )
     Text(
         text = stringResource(R.string.data_manage_hint),
