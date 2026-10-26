@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 182: knowledge base auto refresh + Baopu organize. Separate file (same pattern as 158/198). -->
+<resources>
+<string name="kb_refresh_card_title">Knowledge base (auto refresh)</string>
+<string name="kb_refresh_state_label">Index</string>
+<string name="kb_refresh_state_empty">No index yet (one foreground pass builds it)</string>
+<string name="kb_refresh_state">%1$d · updated %2$s</string>
+<string name="kb_refresh_last">Last refresh: %1$s (%2$s)</string>
+<string name="kb_refresh_path">Path: %1$s</string>
+<string name="kb_refresh_auto">Auto refresh (foreground only)</string>
+<string name="kb_refresh_desc">Only changes are processed: added/edited files are re-read; deletions come from the previous snapshot diff. Originals are read-only. The index lives in 证道/知识库/索引/ and rebuilds itself if deleted.</string>
+<string name="kb_refresh_now">Refresh now</string>
+<string name="kb_refresh_cancel">Stop</string>
+<string name="kb_refresh_running">Refreshing %1$d/%2$d</string>
+<string name="kb_refresh_running_unknown">Refreshing…</string>
+<string name="kb_refresh_done">Refreshed: added %1$d, changed %2$d, removed %3$d</string>
+<string name="kb_refresh_cancelled">Stopped: the previous index is kept; next run continues</string>
+<string name="kb_refresh_failed">Refresh failed: %1$s</string>
+<string name="kb_refresh_reason_start">launch</string>
+<string name="kb_refresh_reason_foreground">foreground</string>
+<string name="kb_refresh_reason_import">import done</string>
+<string name="kb_refresh_reason_mediastore">media store change</string>
+<string name="kb_refresh_reason_periodic">periodic fallback</string>
+<string name="kb_refresh_reason_manual">manual</string>
+<string name="kb_refresh_reason_organize">organize done</string>
+<string name="kb_organize_action">Organize knowledge base…</string>
+<string name="kb_organize_scanning">Building the change list…</string>
+<string name="kb_organize_empty">No readable text files in 原始/ yet</string>
+<string name="kb_organize_card_title">Organize change list (%1$d)</string>
+<string name="kb_organize_card_desc">Only copies are written into 整理/; originals are never modified, renamed or deleted. Review the list first.</string>
+<string name="kb_organize_item">%1$s → %2$s (%3$s)</string>
+<string name="kb_organize_more">…+%1$d</string>
+<string name="kb_organize_confirm">Start organizing</string>
+<string name="kb_organize_cancel">Cancel</string>
+<string name="kb_organize_result">Organized: wrote %1$d, skipped %2$d, failed %3$d</string>
+<string name="kb_organize_failed">Organize failed: %1$s</string>
+<string name="kb_organize_error">I/O failed (see log)</string>
+<string name="kb_organize_cat_doc">documents</string>
+<string name="kb_organize_cat_code">code</string>
+<string name="kb_organize_cat_sheet">sheets/data</string>
+<string name="kb_organize_cat_web">web</string>
+<string name="kb_organize_cat_other">other</string>
+</resources>

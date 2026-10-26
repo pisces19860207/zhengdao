@@ -3564,6 +3564,11 @@ internal class BaopuChatController(context: Context) {
             val rejectedCount = if (choice == MoveChoice.SKIP) 0 else out.rejected.size
             libraryNote = BaopuNote(parts.joinToString(""), BaopuNotePolicy.levelOfResult(rejectedCount))
             refreshBackupStats()
+            // 第一百八十二批：收料完成即触发一次知识库增量（只发现变化，不全量重扫）。
+            com.example.zhengdao.baopu.KnowledgeRefresh.request(
+                appCtx,
+                com.example.zhengdao.baopu.knowledge.KnowledgeRefreshRules.Trigger.IMPORT_DONE,
+            )
         }
     }
 

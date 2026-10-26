@@ -27,6 +27,8 @@ class ZhengdaoApp : Application() {
         RunLog.init(this)
         // 第一百六十九批 §3：完成通知只在后台发 ⇒ 这里装前台探针（只数 started，不做别的）。
         AppForeground.install(this)
+        // 第一百八十二批：知识库自动刷新（启动/回前台增量 ＋ MediaStore 可选加速 ＋ 前台周期兜底）。
+        com.example.zhengdao.baopu.KnowledgeRefresh.install(this)
         initWebViewDataDirectory()
         logSignature()
         keepalive()
