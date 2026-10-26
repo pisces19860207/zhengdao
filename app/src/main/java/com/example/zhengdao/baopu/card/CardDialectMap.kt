@@ -20,6 +20,60 @@ internal data class DialectFieldRow(
     val note: String = "",
 )
 
+/**
+ * 资产血统（第二百二十五批）。**四家与 [WorldbookDialect] 同源同义**，
+ * 但资产**不因此获得方言**——`CardAsset.dialect` 对卡／正则／预设／人设仍为 `null`
+ * （见 [CardAsset] 的注释），这里只是「查字段名时该翻哪一列」的键。
+ *
+ * 为什么不直接复用 [WorldbookDialect]：那个类型的语义是「世界书的注入方言」，
+ * 拿它当人设的字段表键会让人以为人设也有注入方言。两个类型之间只留一条
+ * 机械桥 [of]，测试钉住两边一一对应。
+ */
+internal enum class AssetLineage {
+    /** 网络平台（把世界书／人设渲染进服务端的那类聚合平台）。 */
+    WEB,
+    TAVO,
+    ST_NATIVE,
+    CCV3,
+    ;
+
+    companion object {
+        fun of(dialect: WorldbookDialect): AssetLineage = when (dialect) {
+            WorldbookDialect.WEB -> WEB
+            WorldbookDialect.TAVO -> TAVO
+            WorldbookDialect.ST_NATIVE -> ST_NATIVE
+            WorldbookDialect.CCV3 -> CCV3
+        }
+
+        /** `CardAsset.vendor` → 血统；认不出的来源 ⇒ null（**不硬塞一家**）。 */
+        fun ofVendor(vendor: String): AssetLineage? = when (vendor.lowercase()) {
+            "web" -> WEB
+            "tavo" -> TAVO
+            "sillytavern", "st" -> ST_NATIVE
+            "ccv3" -> CCV3
+            else -> null
+        }
+    }
+}
+
+/**
+ * 三类资产（人设／正则／预设）字段对应表的一行。
+ *
+ * [negated] 是**按列**的反义集合（不是整行一个布尔）：同一行里「启用」这个语义，
+ * web 与 Tavo 是正写 `enabled`，酒馆／CCv3 是反义 `disabled`——一个 `Boolean`
+ * 表达不了这件事，硬压成一个就会把其中一半改错。
+ */
+internal data class AssetFieldRow(
+    val asset: AssetKind,
+    val semantic: String,
+    val web: String?,
+    val tavo: String?,
+    val st: String?,
+    val ccv3: String?,
+    val negated: Set<AssetLineage> = emptySet(),
+    val note: String = "",
+)
+
 internal object CardDialectMap {
 
     /** §15.6 的字段对应表（＋ §15.2 的 WEB 列）。**映射只许走这张表**。 */
@@ -72,6 +126,81 @@ internal object CardDialectMap {
      */
     fun fieldsOf(dialect: WorldbookDialect): Set<String> =
         TABLE.mapNotNull { fieldOf(dialect, it) }.toSet()
+
+    // ── 三类资产（人设／正则／预设）的字段对应表（第二百二十五批）────────────
+    //
+    // 与上面那张**分开立**：上面按「世界书条目字段」立行，这里按「资产字段」立行。
+    // 混成一张会让 [fieldsOf] 把资产字段也当成世界书字段，体检立刻串味（F22）。
+    //
+    // 出处（每一列都要说得出出处；说不出的写 null＝不可表达，**不猜**）：
+    // - `tavo` 列以仓库内现场样例为准：`CardFixtures.J5`（角色卡）、`J6`（正则）、`J7`（预设）；
+    // - `st`／`ccv3` 列按 §15.6「Tavo 是酒馆的改名版」反推改名与反义；现场无样例 ⇒
+    //   缺字段一律给 null（**不会**因此编出一个值）；
+    // - `web` 列取派工单 §1 给定的通用人设段名与条目字段名
+    //   （name／description／traits／scenario／examples；find／replace／flags／scope／enabled）。
+    //   认脸层只认 Tavo 形态（FormatKind 九值不许扩）⇒ 该列**当前生产不可达**，表先立着。
+    val ASSET_TABLE: List<AssetFieldRow> = listOf(
+        // 人设
+        AssetFieldRow(AssetKind.PERSONA, "名", "name", "name", "name", "name"),
+        AssetFieldRow(AssetKind.PERSONA, "描述", "description", "description", "description", "description"),
+        AssetFieldRow(
+            AssetKind.PERSONA, "性格/标签", "traits", "personality", "personality", "personality",
+            note = "web 是字符串数组 traits；Tavo／酒馆／CCv3 是单串 personality",
+        ),
+        AssetFieldRow(AssetKind.PERSONA, "场景", "scenario", "scenario", "scenario", "scenario"),
+        AssetFieldRow(
+            AssetKind.PERSONA, "对话样例", "examples", "mes_example", "mes_example", "mes_example",
+            note = "单串，段与段之间用 <START> 分隔",
+        ),
+        // 正则
+        AssetFieldRow(AssetKind.REGEX, "匹配", "find", "findRegex", "findRegex", "findRegex"),
+        AssetFieldRow(AssetKind.REGEX, "替换", "replace", "replaceString", "replaceString", "replaceString"),
+        AssetFieldRow(
+            AssetKind.REGEX, "标志", "flags", null, null, null,
+            note = "Tavo／酒馆把标志写在 /pattern/flags 尾部 ⇒ 从匹配串里取；独立 flags 字段只有 web 形态有",
+        ),
+        AssetFieldRow(
+            AssetKind.REGEX, "范围", "scope", "placements", "placement", "placement",
+            note = "Tavo 复数 placements，酒馆单数 placement（§15.6 改名）",
+        ),
+        AssetFieldRow(
+            AssetKind.REGEX, "启用", "enabled", "enabled", "disabled", "disabled",
+            negated = setOf(AssetLineage.ST_NATIVE, AssetLineage.CCV3),
+            note = "反义：酒馆那侧 disabled=true 才是关；只在视图层取反，raw 不改",
+        ),
+        // 预设
+        AssetFieldRow(AssetKind.PRESET, "名", "name", "name", "name", null),
+        AssetFieldRow(
+            AssetKind.PRESET, "提示词", "prompt", "content", "content", null,
+            note = "Tavo／酒馆的条目正文叫 content",
+        ),
+        AssetFieldRow(AssetKind.PRESET, "启用", "enabled", "enabled", "enabled", null),
+    )
+
+    /** 某类资产某条语义的整行（`null` = 这张表里没有这条语义 ⇒ 调用方给 null，不猜）。 */
+    fun assetRow(kind: AssetKind, semantic: String): AssetFieldRow? =
+        ASSET_TABLE.firstOrNull { it.asset == kind && it.semantic == semantic }
+
+    /** 某血统下某类资产某条语义的**源字段名**；`null` = 该血统不可表达。 */
+    fun assetFieldOf(lineage: AssetLineage, kind: AssetKind, semantic: String): String? =
+        assetRow(kind, semantic)?.let { row ->
+            when (lineage) {
+                AssetLineage.WEB -> row.web
+                AssetLineage.TAVO -> row.tavo
+                AssetLineage.ST_NATIVE -> row.st
+                AssetLineage.CCV3 -> row.ccv3
+            }
+        }
+
+    /** 该血统该语义的源字段是不是**反义**（`disabled` 那一路）。 */
+    fun assetNegated(lineage: AssetLineage, kind: AssetKind, semantic: String): Boolean =
+        assetRow(kind, semantic)?.negated?.contains(lineage) == true
+
+    /** 某血统下某类资产**有名字**的全部字段（测试与报告用；与世界书那张同口径）。 */
+    fun assetFieldsOf(lineage: AssetLineage, kind: AssetKind): Set<String> =
+        ASSET_TABLE.filter { it.asset == kind }
+            .mapNotNull { assetFieldOf(lineage, kind, it.semantic) }
+            .toSet()
 
     /**
      * 认脸结果 → 血统（§16.3-3 三层并存里「格式 → 方言」这一层的唯一映射）。

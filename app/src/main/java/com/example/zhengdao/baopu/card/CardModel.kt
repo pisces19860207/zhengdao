@@ -29,6 +29,21 @@ internal enum class FormatKind {
 internal enum class Confidence { HIGH, LOW }
 
 /**
+ * 「老平台靠这三样」的三类资产（第二百二十五批）。
+ *
+ * 世界书**不在此列**：它早已解析完（`entries/keys/content/enabled/order` 全在，
+ * 酒馆 `disable` 的反义在视图层取反），本批不重做。
+ */
+internal enum class AssetKind {
+    /** 人设／角色设定。 */
+    PERSONA,
+    /** 正则脚本。 */
+    REGEX,
+    /** 预设。 */
+    PRESET,
+}
+
+/**
  * 认脸结果（§2.1 字段名照抄；末尾三个是本批追加，见报告「规格追加」一节）。
  *
  * 追加理由：
@@ -119,24 +134,86 @@ internal data class WorldbookEntryView(
     val raw: JSONObject,
 )
 
-/** 正则脚本（与酒馆同源；本批只认脸、只做卡内提取）。 */
+/**
+ * 一条「解析不出来」的条目：**不丢、不猜、不崩**（第二百二十五批红线）。
+ *
+ * 三种情况落在这里：① 元素根本不是 JSON 对象（字符串／数组／标量）；
+ * ② 元素是对象但读字段时抛了异常；③ 字段类型离谱到读不出（如 `findRegex` 是对象）。
+ * [raw] 能给对象就给对象（**同一个实例**，不是复制），[rawText] 是它在原文里的样子，
+ * 两条一起兑现「标 unparsed 并保留原文」。
+ */
+internal data class UnparsedAsset(
+    val kind: AssetKind,
+    val index: Int,
+    val reason: String,
+    val raw: JSONObject?,
+    val rawText: String,
+)
+
+/**
+ * 正则脚本条目的**统一只读视图**。
+ *
+ * [enabled] 三态：`true` 启用／`false` 关闭／`null` **源里没写**。
+ * 反义（酒馆那侧 `disabled=true` 才是关）只在视图层取反，`raw` 一个字节不改。
+ * [flags] 空表 = 源里没写标志位，**不等于**「无标志」。
+ */
+internal data class RegexEntryView(
+    val index: Int,
+    val find: String?,
+    val replace: String?,
+    val flags: List<String>,
+    val scope: List<String>,
+    val enabled: Boolean?,
+    val raw: JSONObject,
+)
+
+/** 正则脚本（与酒馆同源；卡内 `extensions.regex_scripts` 也走这里）。 */
 internal data class RegexScript(
     override val raw: JSONObject,
-    val entries: List<JSONObject>,
+    val entries: List<RegexEntryView>,
     override val vendor: String,
 ) : CardAsset
+
+/** 预设条目的**统一只读视图**（`enabled` 同 [RegexEntryView.enabled]，三态）。 */
+internal data class PresetEntryView(
+    val index: Int,
+    val name: String?,
+    val prompt: String?,
+    val enabled: Boolean?,
+    val raw: JSONObject,
+)
 
 /** 预设（近似但不同源）。 */
 internal data class Preset(
     override val raw: JSONObject,
-    val entries: List<JSONObject>,
+    val entries: List<PresetEntryView>,
     val basicPrompts: JSONObject?,
     override val vendor: String,
 ) : CardAsset
 
-/** 人设（本批只认脸，不解析细则）。 */
+/**
+ * 人设／角色设定（第二百二十五批：从「只认脸」补成全字段）。
+ *
+ * **容错口径**：缺字段给 `null`／空表，**不补默认值、不猜内容**——
+ * 源里没有的东西，这里就没有；「行为状态」可以少，但不能撒谎。
+ *
+ * [traits]／[examples] 是列表：源里本来就是数组就照收；源里是单串时按
+ * [CardAssetParser] 里写明的切分口径拆（`personality` 按标点／换行切，
+ * `mes_example` 按 `<START>` 切），切分口径写进交付报告，属于**值的规范化**、
+ * 不是凭空造字段。
+ */
 internal data class Persona(
     override val raw: JSONObject,
+    /** 人设名／角色名。 */
+    val name: String?,
+    /** 主要描述（可长文）。 */
+    val description: String?,
+    /** 性格／标签（源里有就收，没有就空）。 */
+    val traits: List<String>,
+    /** 场景／开场前提（有则收）。 */
+    val scenario: String?,
+    /** 对话样例（有则收）。 */
+    val examples: List<String>,
     override val vendor: String,
 ) : CardAsset
 
