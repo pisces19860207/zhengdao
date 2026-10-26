@@ -22,9 +22,13 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.zhengdao.baopu.agent.AppendPersonaTool
+import com.example.zhengdao.baopu.agent.BaopuToolCatalog
+import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.InMemoryToolPrefs
+import com.example.zhengdao.baopu.agent.SkillTools
 import com.example.zhengdao.baopu.agent.ToolCall
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
@@ -188,6 +192,51 @@ class RiskWiringInstrumentedTest {
         Evidence.write(ctx, "card_tree", compose.onRoot().printToString(maxDepth = 40))
         compose.onNodeWithText(line!!).assertExists()
         Evidence.write(ctx, "card_line", "OK 卡面含「$line」，整行字数=${line.length}（≤${ImpactLine.MAX_CHARS}）")
+    }
+
+    // ── ⑤ 真实工具表全覆盖（真机的 org.json 与 JVM 不是一套实现）──────────
+
+    @Test
+    fun 真表_53个注册工具在真机上每个都有档或显式豁免() {
+        val root = ws("catalog")
+        val files = { PersonaFiles(File(root, "global"), root) }
+        val reg = ToolRegistry(InMemoryToolPrefs())
+        BaopuToolCatalog.loadInto(reg) { root }
+        reg.register(SkillTools.spec(workspaceRoot = { root }, personaFiles = files))
+        reg.register(AppendPersonaTool.spec(personaFiles = files))
+        reg.register(CompatChannelTools.readSpec(readFileEnabled = true))
+        reg.register(CompatChannelTools.bashSpec())
+
+        val names = reg.names()
+        val missing = RiskMatrix.uncovered(names)
+        say("⑤-全覆盖", "注册 ${names.size} 个工具；缺档=${missing}；bash 豁免=${RiskMatrix.isExempt("bash")}")
+        assertEquals("注册表工具数变了：先更新 219 的表再回来", 53, names.size)
+        assertEquals("这些真工具在真机上查不到档：$missing", emptyList<String>(), missing)
+        // 每个工具都真跑一次 classify（真机 org.json 是插入序、与 JVM 的参考实现不同）
+        val nulls = names.filter { RiskMatrix.baseOf(it) == null }
+        assertEquals("只有 bash 允许空档（显式豁免）", listOf("bash"), nulls)
+        names.forEach { name ->
+            val v = RiskGate.judge(call(name))
+            assertTrue("$name 判不出档", v.exempt || v.risk != null)
+        }
+        say("⑤-全覆盖", "53 个工具逐个 classify 完成，无异常、无空档（bash 走豁免）")
+    }
+
+    // ── ⑥ 越界那条卡（②段给的事实，不是矩阵猜的）────────────────────────
+
+    @Test
+    fun 越界_写工作区外_弹卡且原因行是目标在工作区外() {
+        val parent = ws("outside-parent")
+        val root = File(parent, "ws").apply { mkdirs() }
+        val outside = File(parent, "别处/a.md").absolutePath
+        val tbl = table("w223_note" to ToolRule(RiskClass.R1, writePathKeys = setOf("path")))
+        val p = pipeline(root, tbl, outside = true, fake("w223_note", ToolPermission.FREE, "path"))
+        val r = p.execute(call("w223_note", "path" to outside)) { _, _ -> null }
+        val line = (r as? GuardPipeline.Result.NeedsConfirm)?.reasonLine
+        say("⑥-越界", "路径 ⇒ ${r::class.simpleName}；原因行=$line")
+        assertTrue("越界必须弹卡：$r", r is GuardPipeline.Result.NeedsConfirm)
+        assertEquals("目标在工作区外", line)
+        assertEquals("0 次", 0, ran.get())
     }
 
     private companion object {
