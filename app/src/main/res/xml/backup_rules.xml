@@ -27,4 +27,8 @@
          现在只按文件名排这一个文件（独立 prefs，见 bridge/BridgeToken.kt），
          不影响设置项等其他 sharedpref。 -->
     <exclude domain="sharedpref" path="bridge_token.xml" />
+    <!-- MCP OAuth token（2026-10-26，第二百一十六批）：值本身已用 AndroidKeyStore 的
+         AES-GCM 加密，但密文跟着云备份走去另一台设备也解不开、还会变成"看似已授权"的
+         脏状态；按文件名整份排除（见 baopu/mcp/McpTokenStoreAndroid.kt）。 -->
+    <exclude domain="sharedpref" path="baopu_mcp_token.xml" />
 </full-backup-content>

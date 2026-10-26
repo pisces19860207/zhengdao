@@ -27,6 +27,8 @@
         <!-- 浏览器桥 token（2026-10-15，ERRATA E-129）：独立 prefs 文件，按名排除。
              云备份与近场迁移两条路都排 —— 后者不加密、不可撤销。 -->
         <exclude domain="sharedpref" path="bridge_token.xml" />
+        <!-- MCP OAuth token（第二百一十六批）：加密值也不外流——换机后重新授权更干净。 -->
+        <exclude domain="sharedpref" path="baopu_mcp_token.xml" />
     </cloud-backup>
     <device-transfer>
         <!-- 只挡系统层：rootfs 与 proot 二进制在新机上重装一份更干净 -->

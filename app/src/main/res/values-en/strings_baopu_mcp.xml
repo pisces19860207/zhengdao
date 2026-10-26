@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 216 · MCP OAuth 2.1 + server list strings (English mirror of
+     values/strings_baopu_mcp.xml; keep the two files key-for-key identical). -->
+<resources>
+    <string name="baopu_mcp_oauth_add">Add and authorize</string>
+    <string name="baopu_mcp_oauth_client_id">Pre-registered client_id (only if the server has no dynamic registration)</string>
+    <string name="baopu_mcp_oauth_auth_none">Not authorized</string>
+    <string name="baopu_mcp_oauth_auth_valid">Authorized</string>
+    <string name="baopu_mcp_oauth_auth_expired">Expired</string>
+    <string name="baopu_mcp_oauth_auth_revoked">Revoked</string>
+    <string name="baopu_mcp_oauth_auth_unsupported">OAuth unsupported</string>
+    <string name="baopu_mcp_oauth_authorize">Authorize</string>
+    <string name="baopu_mcp_oauth_reauth">Re-authorize</string>
+    <string name="baopu_mcp_oauth_revoke_all">Disconnect all</string>
+    <string name="baopu_mcp_oauth_view_tools">View tools</string>
+    <string name="baopu_mcp_oauth_tools_title">Tools published by %1$s</string>
+    <string name="baopu_mcp_oauth_tools_empty">This server publishes no tools.</string>
+    <string name="baopu_mcp_oauth_unsupported_hint">This server does not support modern authorization (OAuth), so it cannot be added.</string>
+    <string name="baopu_mcp_oauth_browser_opened">Opened the authorization page in your browser. Come back here and it connects automatically.</string>
+    <string name="baopu_mcp_oauth_no_browser">No browser is available to open the authorization page.</string>
+    <string name="baopu_mcp_oauth_auth_ok">Authorized. Connecting…</string>
+    <string name="baopu_mcp_oauth_auth_failed">Authorization failed: %1$s</string>
+    <string name="baopu_mcp_oauth_token_note">Tokens are stored only in encrypted local storage - never in logs or reports.</string>
+    <string name="baopu_mcp_oauth_last_connected">Last connected: %1$s</string>
+    <string name="baopu_mcp_oauth_never_connected">Not connected this session</string>
+    <string name="baopu_mcp_oauth_disconnect_hint">Disconnecting clears the local token; reconnecting requires authorization again.</string>
+    <string name="baopu_mcp_oauth_revoked_all">Disconnected all servers (%1$d); tokens cleared.</string>
+    <string name="baopu_mcp_oauth_scope_missing">Needs the \"%1$s\" permission - please authorize again.</string>
+</resources>

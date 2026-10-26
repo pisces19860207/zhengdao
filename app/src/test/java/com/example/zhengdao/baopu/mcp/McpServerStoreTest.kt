@@ -68,11 +68,11 @@ class McpServerStoreTest {
     fun `负例_请求头绝不落盘`() {
         val storage = FakeStorage()
         val store = McpServerStore(storage)
-        store.save(listOf(config(headers = mapOf("Authorization" to "Bearer secret-abc-123"))))
+        store.save(listOf(config(headers = mapOf("X-Client" to "secret-abc-123"))))
 
         val raw = storage.text.orEmpty()
         assertFalse("密钥不许进 prefs", raw.contains("secret-abc-123"))
-        assertFalse("头名也不留", raw.contains("Authorization"))
+        assertFalse("头名也不留", raw.contains("X-Client"))
         assertTrue("配置本体还是要写的", raw.contains("127.0.0.1"))
 
         val back = store.load().single()

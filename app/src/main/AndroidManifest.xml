@@ -153,6 +153,20 @@
                     android:host="terminal"
                     android:scheme="zhengdao" />
             </intent-filter>
+            <!-- 第二百一十六批：MCP OAuth 回调（授权码 + PKCE 的 redirect_uri）。
+                 只开 `zhengdao://mcp/oauth` 一条：系统浏览器授权完跳回来，
+                 入口越窄越好（state 校验在 McpAuthFlow，路由只做形状判断）。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="mcp"
+                    android:pathPrefix="/oauth"
+                    android:scheme="zhengdao" />
+            </intent-filter>
         </activity>
         <!-- ⚠️ 终端页的实例唯一性由**发起方的 Intent flag** 保证（见 MainActivity.terminalIntent），
              不用 android:launchMode：

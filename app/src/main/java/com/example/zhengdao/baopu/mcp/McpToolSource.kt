@@ -11,14 +11,25 @@ import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolSpec
 import org.json.JSONObject
 
-/** 面板上一行（第一百七十批 B）：只带 UI 需要的字段，配置本体不外泄。 */
+/**
+ * 面板上一行（第一百七十批 B；第二百一十六批补授权列）。
+ *
+ * 只带 UI 需要的字段，配置本体与 token **一律不外泄**：没有 headers、没有 token、
+ * 没有 code/state。UI 想显示"授权状态"只能拿 [auth]（枚举），拿不到凭据。
+ */
 internal data class McpServerView(
     val id: String,
     val name: String,
     /** 已脱敏的地址（query/fragment 去掉），可以直接显示。 */
     val displayUrl: String,
+    /** 主机名（列表里"主机"那一列；也是用户认人的主要线索）。 */
+    val host: String,
     val status: McpServerStatus,
+    /** 授权状态（未授权/有效/过期/被撤销/不支持）。 */
+    val auth: McpAuthStatus,
     val toolCount: Int,
+    /** 最后一次连接成功的时刻（毫秒）；null = 本次进程还没连过。 */
+    val lastConnectedAtMs: Long?,
 )
 
 /**
@@ -37,10 +48,21 @@ internal data class McpServerView(
 internal class McpToolSource(
     registry: ToolRegistry,
     private val grants: McpGrantStore = InMemoryMcpGrants(),
-    private val clientFactory: (McpServerConfig) -> McpSession = { McpClient(it) },
+    /**
+     * 授权流程（null = 不做 OAuth，单测与"无鉴权服务器"用）。
+     *
+     * 生产必须传：不传就等于把 216 的授权接回"贴静态头"那条死路。
+     */
+    private val auth: McpAuthFlow? = null,
+    /** token 供给（按 server 绑定）；默认从 [auth] 取。 */
+    private val tokenProviderFactory: (McpServerConfig) -> McpTokenProvider? = { auth?.providerFor(it) },
+    private val clientFactory: (McpServerConfig) -> McpSession = {
+        McpClient(it, tokenProvider = tokenProviderFactory(it))
+    },
     private val log: (String) -> Unit = {},
     /** null = 不落盘（单测与「配置只在内存」的旧调用点）。 */
     private val store: McpServerStore? = null,
+    private val now: () -> Long = { System.currentTimeMillis() },
 ) {
 
     private class ServerState(
@@ -48,6 +70,9 @@ internal class McpToolSource(
         var client: McpSession? = null,
         var tools: List<McpConvertedTool> = emptyList(),
         var status: McpServerStatus = McpServerStatus.OFFLINE,
+        var lastConnectedAtMs: Long? = null,
+        /** 最近一次失败的结论（UI 上"失败可读"；不含 token/URL）。 */
+        var lastError: String? = null,
     ) {
         val wireNames: Set<String> get() = tools.map { it.wireName }.toSet()
     }
@@ -111,9 +136,12 @@ internal class McpToolSource(
     fun removeServer(id: String): Boolean = synchronized(lock) {
         val state = servers[id] ?: return false
         releaseLocked(state)
+        // 删除即清：token、撤销标记、授权会话（client_id）一起删，不留孤儿。
+        auth?.wipe(id)
+        auth?.clearSession(id)
         servers.remove(id)
         persistLocked()
-        log("[mcp] 移除 server=$id")
+        log("[mcp] 移除 server=$id（token 与会话已清）")
         true
     }
 
@@ -128,6 +156,24 @@ internal class McpToolSource(
             ?: return McpConnectOutcome.Failed("没有这个 MCP server（$id）")
         state.client?.let { return McpConnectOutcome.Ok(state.tools.size) }
 
+        // 216：没有可用 token 就先走授权——**不发匿名请求**（省一次必然 401 的往返，
+        // 也让"点连接"这件事在 UI 上直接变成"去授权"，不会先报一次错再让用户点第二次）。
+        auth?.let { flow ->
+            if (!flow.hasValidToken(state.config)) {
+                return when (val begin = flow.begin(state.config)) {
+                    is McpAuthBegin.Ready -> McpConnectOutcome.NeedsAuth(
+                        begin.authorizationUrl,
+                        "「${state.config.name}」需要授权：已打开授权页，回来会自动连上",
+                    )
+                    is McpAuthBegin.Failed -> {
+                        state.status = McpServerStatus.ERROR
+                        state.lastError = begin.message
+                        McpConnectOutcome.Failed(begin.message)
+                    }
+                }
+            }
+        }
+
         val client = try {
             clientFactory(state.config)
         } catch (e: Exception) {
@@ -141,14 +187,27 @@ internal class McpToolSource(
         } catch (e: McpException) {
             runCatching { client.close() }
             state.status = McpServerStatus.ERROR
+            state.lastError = e.userMessage
             log("[mcp] server=$id 连接失败：${e.failure}")
+            // 401 / 权限不足 ⇒ 转授权流程（正常一步，不是"失败"）。
+            auth?.let { flow ->
+                if (e.failure == McpFailure.AUTH_REQUIRED || e.failure == McpFailure.INSUFFICIENT_SCOPE) {
+                    val begin = flow.begin(state.config, scope = e.missingScope)
+                    if (begin is McpAuthBegin.Ready) {
+                        return McpConnectOutcome.NeedsAuth(
+                            authorizationUrl = begin.authorizationUrl,
+                            message = e.userMessage,
+                            missingScope = e.missingScope,
+                        )
+                    }
+                }
+            }
             return McpConnectOutcome.Failed(e.userMessage)
         } catch (e: Exception) {
             runCatching { client.close() }
             state.status = McpServerStatus.ERROR
-            return McpConnectOutcome.Failed(
-                "MCP 服务器「${state.config.name}」连接失败（${e.javaClass.simpleName}）",
-            )
+            state.lastError = "MCP 服务器「${state.config.name}」连接失败（${e.javaClass.simpleName}）"
+            return McpConnectOutcome.Failed(state.lastError!!)
         }
 
         val converted = try {
@@ -169,6 +228,8 @@ internal class McpToolSource(
         state.client = client
         state.tools = converted
         state.status = McpServerStatus.CONNECTED
+        state.lastConnectedAtMs = now()
+        state.lastError = null
         converted.forEach { registry.register(specFor(state, it)) }
 
         val warnings = ArrayList<String>(2)
@@ -183,13 +244,31 @@ internal class McpToolSource(
         McpConnectOutcome.Ok(converted.size, warnings)
     }
 
-    /** 断连：注销本 server 的全部工具、清授权、关传输；配置留着可重连。 */
+    /**
+     * 断开：注销工具、清工具授权、**清 token**（派工单 §2.5「断开＝清本机 token」）、关传输。
+     * 配置留着，可重新授权再连。
+     */
     fun disconnect(id: String) {
         synchronized(lock) {
             val state = servers[id] ?: return
             releaseLocked(state)
+            auth?.wipe(id)
             state.status = McpServerStatus.OFFLINE
-            log("[mcp] server=$id 已断开")
+            state.lastError = null
+            log("[mcp] server=$id 已断开（token 已清）")
+        }
+    }
+
+    /** 「全部断开」：清所有服务器的 token（不删配置、不断开之外的任何东西）。 */
+    fun disconnectAll() {
+        synchronized(lock) {
+            servers.values.forEach { state ->
+                releaseLocked(state)
+                state.status = McpServerStatus.OFFLINE
+                state.lastError = null
+            }
+            auth?.wipeAll()
+            log("[mcp] 已全部断开（${servers.size} 台服务器的 token 已清）")
         }
     }
 
@@ -202,10 +281,21 @@ internal class McpToolSource(
                 id = state.config.id,
                 name = state.config.name,
                 displayUrl = McpUrlRules.redact(state.config.url),
+                host = hostOf(state.config.url),
                 status = state.status,
+                auth = authStatusOf(state.config),
                 toolCount = state.tools.size,
+                lastConnectedAtMs = state.lastConnectedAtMs,
             )
         }
+    }
+
+    /** 最近一次失败的原因（"失败要可读"）；null = 没有失败记录。 */
+    fun lastError(id: String): String? = synchronized(lock) { servers[id]?.lastError }
+
+    /** 「查看工具」用：已连接时它公布的工具名（只读，按注册顺序）。 */
+    fun toolNames(id: String): List<String> = synchronized(lock) {
+        servers[id]?.tools?.map { it.remoteName }.orEmpty()
     }
 
     fun toolCount(id: String): Int = synchronized(lock) { servers[id]?.tools?.size ?: 0 }
@@ -225,6 +315,17 @@ internal class McpToolSource(
      * 在 [lock] 内调用：条数上限 16、整份覆盖，代价是一次 SP 写，不会拖慢连接路径
      * （连接本身也在同一把锁内串行，UI 侧全部在 IO 线程上点）。
      */
+    /** 授权状态：没有 auth 流程时一律 UNAUTHORIZED（单测/无鉴权服务器的口径）。 */
+    private fun authStatusOf(config: McpServerConfig): McpAuthStatus =
+        auth?.status(config) ?: McpAuthStatus.UNAUTHORIZED
+
+    /** 主机名（只用于显示；解析失败给空串，不抛）。 */
+    private fun hostOf(url: String): String = try {
+        java.net.URI(url).host.orEmpty()
+    } catch (e: Exception) {
+        ""
+    }
+
     private fun persistLocked() {
         val store = store ?: return
         store.save(servers.values.map { it.config })

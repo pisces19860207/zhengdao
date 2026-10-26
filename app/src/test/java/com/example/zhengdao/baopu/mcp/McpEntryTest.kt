@@ -166,11 +166,14 @@ class McpEntryTest {
     fun `snapshot 地址脱敏_不露 query`() {
         val storage = FakeStorage()
         val source = McpToolSource(ToolRegistry(), clientFactory = { FakeSession() }, store = McpServerStore(storage))
-        source.addServer(config.copy(url = "https://example.com/mcp?token=secret-xyz"))
+        // 216：地址里带凭据（?token=）现在会被构造器直接拒——这里用普通业务参数验证
+        // "列表只显示脱敏地址（不含 query）"这条老口径仍然成立。
+        source.addServer(config.copy(url = "https://example.com/mcp?tenant=secret-xyz"))
 
         val row = source.snapshot().single()
-        assertFalse("query 里的凭据不许显示", row.displayUrl.contains("secret-xyz"))
+        assertFalse("query 不许显示", row.displayUrl.contains("secret-xyz"))
         assertTrue(row.displayUrl.contains("example.com"))
+        assertEquals("主机列", "example.com", row.host)
     }
 
     @Test

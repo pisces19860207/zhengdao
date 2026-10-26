@@ -7,6 +7,13 @@
 // - `MCP-Protocol-Version` 头**每个请求都带**，与 body `params._meta.protocolVersion`
 //   同源（都在 McpJsonRpc 里生成）；
 // - `Mcp-Session-Id` **可选**：捕获到就带（兼容旧服务器），不回/405 都不依赖会话继续。
+// 第二百一十六批 · MCP OAuth 2.1：
+// - 每个请求带 `Authorization: Bearer <access_token>`（token 由 [McpTokenProvider] 给，
+//   **只在内存**，本类不打印、不落盘、不进异常文案）；
+// - 401 ⇒ 让供给器刷新**一次**并重放该请求；刷新失败 ⇒ `AUTH_REQUIRED` 明确报错，
+//   **绝不退回匿名请求**（负例⑤）；
+// - 403 + `insufficient_scope` ⇒ `INSUFFICIENT_SCOPE`，文案里带缺的 scope（step-up 线索）；
+// - `MCP-Protocol-Version` 头与 body `_meta.protocolVersion` 仍同源（215 的口径不变）。
 // 红线：只发 HTTP(S) 请求，不拉进程、不读本地配置、不执行服务器请求/代码。
 package com.example.zhengdao.baopu.mcp
 
@@ -53,6 +60,13 @@ internal class McpClient(
     private val config: McpServerConfig,
     private val http: OkHttpClient = defaultHttp(config),
     private val log: (String) -> Unit = {},
+    /**
+     * OAuth token 供给（null = 不做鉴权，单测与"无鉴权服务器"用）。
+     *
+     * 刻意只给两个动作：拿当前 token（不联网）、401 后刷新一次（可联网）。
+     * 传输层不认识 OAuth 的发现/注册/授权——那是 [McpAuthFlow] 的事。
+     */
+    private val tokenProvider: McpTokenProvider? = null,
 ) : McpSession {
 
     private val lock = Any()
@@ -78,7 +92,7 @@ internal class McpClient(
         synchronized(lock) {
             check(!closed) { "MCP 客户端已关闭" }
             if (transport != null) return
-            val streamable = StreamableTransport(config, http, log)
+            val streamable = StreamableTransport(config, http, log, tokenProvider)
             try {
                 streamable.open(config.connectTimeoutMs)
                 protocolVersion = handshake(streamable)
@@ -90,7 +104,7 @@ internal class McpClient(
                 log("[mcp] ${config.id} Streamable HTTP 不可用（${e.userMessage}），回退旧式 SSE")
                 // 长连接不能有读超时；call.cancel 负责关。
                 val legacyHttp = http.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build()
-                val legacy = LegacySseTransport(config, legacyHttp, log)
+                val legacy = LegacySseTransport(config, legacyHttp, log, tokenProvider)
                 try {
                     legacy.open(config.connectTimeoutMs)
                     protocolVersion = handshake(legacy)
@@ -237,6 +251,7 @@ internal class McpClient(
         private val config: McpServerConfig,
         private val http: OkHttpClient,
         private val log: (String) -> Unit,
+        private val tokenProvider: McpTokenProvider?,
     ) : Transport {
 
         override val mode = "streamable-http"
@@ -253,7 +268,24 @@ internal class McpClient(
         override fun close() = Unit
 
         override fun request(id: Long, method: String, params: JSONObject?, timeoutMs: Long): JSONObject {
-            val reply = post(McpJsonRpc.request(id, method, params), timeoutMs, method, readBody = true)
+            val body = McpJsonRpc.request(id, method, params)
+            val reply = try {
+                post(body, timeoutMs, method, readBody = true)
+            } catch (e: McpException) {
+                // 401 ⇒ 刷新**一次**再重放同一个请求。刷新失败就明确报错，不重试、不降级。
+                if (e.httpStatus != 401 || tokenProvider == null) throw e
+                val fresh = tokenProvider.refreshAfterUnauthorized()
+                if (fresh == null) {
+                    throw McpException(
+                        McpFailure.AUTH_REQUIRED,
+                        "MCP 服务器「${config.name}」的授权已过期，刷新也没成功：请重新授权" +
+                            "（不会退回匿名请求，也不会反复重试）",
+                        httpStatus = 401,
+                    )
+                }
+                log("[mcp] ${config.id} 已刷新授权，重放一次${stage(method)}")
+                post(body, timeoutMs, method, readBody = true)
+            }
             val raw = reply ?: throw McpException(
                 McpFailure.PROTOCOL,
                 "MCP 服务器「${config.name}」在${stage(method)}返回了空响应",
@@ -289,6 +321,7 @@ internal class McpClient(
                         name = config.name,
                         fallback = method == "initialize",
                         detail = jsonRpcErrorDetail(r, body.optLong("id"), method),
+                        challenge = McpOAuthDiscovery.parseWwwAuthenticate(r.header("WWW-Authenticate")),
                     )
                 }
                 if (method == "initialize") captureSession(r.header("Mcp-Session-Id"))
@@ -331,6 +364,10 @@ internal class McpClient(
                 .url(config.url)
                 .header("Accept", "application/json, text/event-stream")
                 .header("MCP-Protocol-Version", McpJsonRpc.PROTOCOL)
+            // token 只在内存里过一手：这里不打印、不缓存到字段（每次向供给器要最新的）。
+            tokenProvider?.accessToken()?.takeIf { it.isNotBlank() }?.let {
+                b.header("Authorization", "Bearer $it")
+            }
             config.headers.forEach { (k, v) -> b.header(k, v) }
             sessionId?.let { b.header("Mcp-Session-Id", it) }
             return b
@@ -475,6 +512,7 @@ internal class McpClient(
         private val config: McpServerConfig,
         private val http: OkHttpClient,
         private val log: (String) -> Unit,
+        private val tokenProvider: McpTokenProvider?,
     ) : Transport {
 
         override val mode = "legacy-sse"
@@ -506,6 +544,9 @@ internal class McpClient(
                 .header("Accept", "text/event-stream")
                 .header("Cache-Control", "no-cache")
                 .get()
+            tokenProvider?.accessToken()?.takeIf { it.isNotBlank() }?.let {
+                builder.header("Authorization", "Bearer $it")
+            }
             config.headers.forEach { (k, v) -> builder.header(k, v) }
             val call = http.newCall(builder.build())
             getCall = call
@@ -628,6 +669,9 @@ internal class McpClient(
                 // 与 Streamable 同一处常量：旧式传输的 JSON-RPC 消息也带版本头。
                 .header("MCP-Protocol-Version", McpJsonRpc.PROTOCOL)
                 .post(body.toString().toRequestBody(JSON_MEDIA))
+            tokenProvider?.accessToken()?.takeIf { it.isNotBlank() }?.let {
+                builder.header("Authorization", "Bearer $it")
+            }
             config.headers.forEach { (k, v) -> builder.header(k, v) }
             val call = http.newCall(builder.build())
             call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
@@ -716,13 +760,30 @@ internal class McpClient(
             name: String,
             fallback: Boolean = false,
             detail: String? = null,
+            challenge: McpBearerChallenge? = null,
         ): McpException {
-            val base = when (code) {
-                401, 403 -> McpException(
-                    McpFailure.AUTH,
-                    "MCP 服务器「$name」认证失败（HTTP $code）——请检查请求头/服务端权限",
+            val base = when {
+                // 401：没授权/授权过期。文案不再说"请检查请求头"——216 起没有手填头这条路。
+                code == 401 -> McpException(
+                    McpFailure.AUTH_REQUIRED,
+                    "MCP 服务器「$name」需要授权（HTTP 401）",
+                    httpStatus = 401,
                 )
-                404, 405, 415 -> McpException(
+                // 403 + insufficient_scope：**权限不够**，不是"没登录"——要 step-up 而不是重新登录。
+                code == 403 && challenge?.insufficientScope == true -> McpException(
+                    McpFailure.INSUFFICIENT_SCOPE,
+                    "MCP 服务器「$name」权限不足（HTTP 403）" +
+                        (challenge.scope?.let { "：需要「$it」权限" } ?: "：服务器没说要哪个权限") +
+                        "——请补充授权（step-up），不需要重新登录",
+                    httpStatus = 403,
+                    missingScope = challenge.scope,
+                )
+                code == 403 -> McpException(
+                    McpFailure.AUTH,
+                    "MCP 服务器「$name」拒绝了本次请求（HTTP 403）——服务端权限不足",
+                    httpStatus = 403,
+                )
+                code == 404 || code == 405 || code == 415 -> McpException(
                     McpFailure.HTTP,
                     "MCP 服务器「$name」在${stage(method)}返回 HTTP $code（端点不存在/方法不允许）",
                     fallbackEligible = fallback,
@@ -732,7 +793,14 @@ internal class McpClient(
             if (detail.isNullOrBlank()) return base
             // 服务器自己说的人话（版本不支持 / 头不一致 + 支持列表）接在后面——
             // 全是已清洗内容（code/message/日期形版本号），不带请求头与 URL。
-            return McpException(base.failure, "${base.userMessage}；$detail", base.fallbackEligible, base.cause)
+            return McpException(
+                base.failure,
+                "${base.userMessage}；$detail",
+                base.fallbackEligible,
+                base.cause,
+                base.httpStatus,
+                base.missingScope,
+            )
         }
 
         private fun connectError(e: IOException, stageText: String, name: String): McpException =

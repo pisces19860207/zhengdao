@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百一十六批 · MCP OAuth 2.1 与服务器清单的文案。
+     单独一份文件（房型照 strings_baopu_impact.xml）：共享 strings.xml 是多方在飞时
+     最容易撞车的文件，本批对它的改动保持零字节。 -->
+<resources>
+    <string name="baopu_mcp_oauth_add">添加并授权</string>
+    <string name="baopu_mcp_oauth_client_id">预注册 client_id（服务器不支持动态注册时填）</string>
+    <string name="baopu_mcp_oauth_auth_none">未授权</string>
+    <string name="baopu_mcp_oauth_auth_valid">授权有效</string>
+    <string name="baopu_mcp_oauth_auth_expired">已过期</string>
+    <string name="baopu_mcp_oauth_auth_revoked">已撤销</string>
+    <string name="baopu_mcp_oauth_auth_unsupported">不支持 OAuth</string>
+    <string name="baopu_mcp_oauth_authorize">去授权</string>
+    <string name="baopu_mcp_oauth_reauth">重新授权</string>
+    <string name="baopu_mcp_oauth_revoke_all">全部断开</string>
+    <string name="baopu_mcp_oauth_view_tools">查看工具</string>
+    <string name="baopu_mcp_oauth_tools_title">「%1$s」公布的工具</string>
+    <string name="baopu_mcp_oauth_tools_empty">这个服务器没有公布工具。</string>
+    <string name="baopu_mcp_oauth_unsupported_hint">该服务器不支持现代授权（OAuth），无法接入。</string>
+    <string name="baopu_mcp_oauth_browser_opened">已用系统浏览器打开授权页，完成后回到这里会自动连上。</string>
+    <string name="baopu_mcp_oauth_no_browser">没有可用的浏览器，打不开授权页。</string>
+    <string name="baopu_mcp_oauth_auth_ok">授权成功，正在连接…</string>
+    <string name="baopu_mcp_oauth_auth_failed">授权失败：%1$s</string>
+    <string name="baopu_mcp_oauth_token_note">令牌只保存在本机加密存储里，不进日志、不进报告。</string>
+    <string name="baopu_mcp_oauth_last_connected">最后连接：%1$s</string>
+    <string name="baopu_mcp_oauth_never_connected">本次启动还没连过</string>
+    <string name="baopu_mcp_oauth_disconnect_hint">断开后会清掉本机 token，再连要重新授权。</string>
+    <string name="baopu_mcp_oauth_revoked_all">已断开全部 %1$d 台服务器，token 已清。</string>
+    <string name="baopu_mcp_oauth_scope_missing">需要「%1$s」权限，请补充授权。</string>
+</resources>
