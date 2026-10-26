@@ -343,6 +343,8 @@ internal data class RiskTable(
                 // ── R3 花钱外发账号 ───────────────────────────────────────────
                 "generate_image" to ToolRule(RiskClass.R3),
 
+                // ── 195 物流查询：本机当日表只读，不联网不调模型 ──────────────
+                "logistics_query" to ToolRule(RiskClass.R0),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
                 "search_web" to ToolRule(RiskClass.R0, urlKeys = setOf("site")),

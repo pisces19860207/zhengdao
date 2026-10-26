@@ -5,6 +5,8 @@
 // 判据全在 agent/ 与 baopu/ 的纯函数层。
 package com.example.zhengdao.baopu
 
+import androidx.core.net.toUri
+
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
@@ -302,7 +304,7 @@ internal object BaopuRuntime {
             override fun openDialer(number: String): Boolean = runCatching {
                 // 只 ACTION_DIAL（打开拨号盘填号）；绝不 ACTION_CALL/CALL_PHONE（派工单 §1⑥ 红线）
                 val intent = android.content.Intent(android.content.Intent.ACTION_DIAL)
-                    .setData(android.net.Uri.parse("tel:" + android.net.Uri.encode(number)))
+                    .setData(("tel:" + android.net.Uri.encode(number)).toUri())
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 appCtx.startActivity(intent)
                 true

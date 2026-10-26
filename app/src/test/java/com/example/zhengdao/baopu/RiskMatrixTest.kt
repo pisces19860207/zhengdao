@@ -36,7 +36,7 @@ class RiskMatrixTest {
     @Test
     fun `注册表46个工具_每个都有档或显式豁免`() {
         val names = newRegistry().names()
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 46, names.size)
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 53, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),
@@ -54,7 +54,7 @@ class RiskMatrixTest {
         val pending = RiskTable.DEFAULT.tools.keys - names
         assertEquals(
             "表里多出/少掉了 218 的预置行：$pending",
-            setOf("sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial"),
+            emptySet<String>(), // 218 已接线：六件从「待接线」变成「已注册」，本行随之收口
             pending,
         )
         val expected = mapOf(
