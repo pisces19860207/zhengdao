@@ -174,8 +174,18 @@ fun SettingsScreen(
             // 通知 / 精确闹钟 / 电池优化豁免）各自带真实状态与「不给会怎样」。
             // 口径：**发起申请只此一处**——别处只许显示权限状态、或留一行「去设置 → 申请权限」
             // 指路文案（源码门禁见 PermissionEntryGateTest，负例 5/7 盯的就是这两条）。
+            // 2026-10-26 用户：这张卡改成和普通行一样——点一下展开四行，再点收回；
+            // 离开设置页（返回/切 tab）后重进是收起的（remember 不跨页面存活）。
+            var permExpanded by remember { mutableStateOf(false) }
             SectionCard(stringResource(R.string.settings_perm_card_title)) {
-                SettingsPermissionCard()
+                SettingRow(
+                    label = stringResource(R.string.settings_perm_row_label),
+                    value = if (permExpanded) stringResource(R.string.settings_perm_collapse) else stringResource(R.string.settings_perm_expand),
+                ) { permExpanded = !permExpanded }
+                if (permExpanded) {
+                    Spacer(Modifier.height(8.dp))
+                    SettingsPermissionCard()
+                }
             }
 
             // 2026-10-12 重构（走查报告 §2）：Hub 只做菜单——每行一个去向、状态一律短词。

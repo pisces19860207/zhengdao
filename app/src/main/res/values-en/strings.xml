@@ -2096,4 +2096,7 @@
     <string name="decision_record_actor_user">you</string>
     <string name="decision_record_actor_model">model</string>
     <string name="decision_record_actor_auto">auto</string>
+    <string name="settings_perm_expand">Expand</string>
+    <string name="settings_perm_collapse">Collapse</string>
+    <string name="settings_perm_row_label">All permissions</string>
 </resources>

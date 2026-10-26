@@ -2028,4 +2028,7 @@
     <string name="decision_record_actor_user">你</string>
     <string name="decision_record_actor_model">模型</string>
     <string name="decision_record_actor_auto">自动</string>
+    <string name="settings_perm_expand">展开</string>
+    <string name="settings_perm_collapse">收起</string>
+    <string name="settings_perm_row_label">全部权限</string>
 </resources>
