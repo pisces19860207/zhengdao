@@ -62,9 +62,10 @@ on:
     tags: [ 'v*' ]   # 推 v 开头 tag 时也触发，用于自动创建正式 Release
   workflow_dispatch:
 
+# 同 ci.yml：main 上排队跑完，PR 才取消（2026-10-26）。
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
