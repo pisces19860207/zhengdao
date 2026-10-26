@@ -528,6 +528,24 @@ internal class RunEngine(
     /** 连续工具失败计数（到 [RunRules.MAX_TOOL_FAILURES] 停下问人）。 */
     private var consecutiveToolFailures = 0
 
+    /**
+     * 第二百三十七批 A：三级降级的**已用状态**（①换参数／②换工具／③求助卡各一次）。
+     *
+     * 为什么归引擎而不是 [ToolFallback]：判据对象必须是纯函数（无跨调用状态）才能在 JVM
+     * 里钉死「只重试一次」；而这本账属于「这一轮」，与 [consecutiveToolFailures] 同生命周期，
+     * 所以同样在 [resetRunScopedCounters] 复位（续跑是新 run ⇒ 重新给一次梯子，
+     * 与 150 批「第二轮不许继承上一轮的失败账」同口径）。
+     */
+    private var ladderCounters = LadderCounters()
+
+    /**
+     * 梯子留痕（§1 判据「日志里两次尝试都留痕」）：①②各记一句，③的卡面与审计行都读它。
+     *
+     * 只在 `zd-baopu-run` 这一条线程上读写（与 [consecutiveToolFailures] 同款纪律），
+     * 所以不需要同步；[resetRunScopedCounters] 与 [ladderCounters] 一道清。
+     */
+    private val ladderAttempts = mutableListOf<String>()
+
     /** 当前通道连续失败计数（到 [RunRules.CHANNEL_BREAK_THRESHOLD] 熔断）。 */
     private var consecutiveChannelFailures = 0
 
@@ -618,6 +636,9 @@ internal class RunEngine(
      */
     private fun resetRunScopedCounters(sessionId: Long) {
         consecutiveToolFailures = 0
+        // 第二百三十七批：梯子三旗同批复位（续跑＝新 run，重新给一次「先换再问」）
+        ladderCounters = LadderCounters()
+        ladderAttempts.clear()
         consecutiveChannelFailures = 0
         channelSwitches = 0
         channelBroken = false
@@ -2866,6 +2887,325 @@ internal class RunEngine(
         )
     }
 
+    // ── 第二百三十七批 A/B/C：失败到线后的「先换再问」梯子 ＋ 求助卡 ＋ 聚合一句 ──
+    //
+    // 派工单把判据全放 [ToolFallback]（纯函数、JVM 直测），这里只剩四件事：
+    // 记账（[ladderCounters]／[ladderAttempts]／[FailureAuditLog]）、动手（一次
+    // `pipeline.execute` 或一句回灌）、弹卡（复用 203 的阻塞口 [askUser]／[askGroup]，
+    // 不新造第二套卡机制）、收尾（梯子没出路时照 87 批停轮，文案换成「没做成」的实话）。
+    // 三条红线在这一段的形状：① 引擎只**重跑已注册的工具**，且只重跑免确认＋只读＋R0/R1
+    // 的目标（[ToolFallback.autoRunnable]），执行前闸在人手里的两件（计划结构、截图授权）
+    // 一律不代跑；② 开能力只发一次 `capabilities(enable=[组])`，落不落授权由 97 批御批卡
+    // 决定；③ 草稿技能只记一条 208 账＋一句历史，不 bumpUses、不 promote。
+
+    /**
+     * 三级梯子的分派（87 批「到线就停」那个位置换成这里）。
+     *
+     * @return 梯子自己的流向；CONTINUE＝还有一步可走，STOP_RUN＝没出路（如实收尾）
+     */
+    private fun fallbackLadder(
+        sessionId: Long,
+        step: Int,
+        call: ToolCall?,
+        tool: String,
+        error: String,
+        kind: FailureKind,
+        advice: ToolRepairAdvice,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        val facts = FailureFacts(call, tool, error, kind, advice, ladderAttempts.toList())
+        val plan = ToolFallback.ladder(facts, ladderCounters, registry, sessionId, ladderDrafts())
+        return when (plan) {
+            is LadderPlan.RetryArgs -> {
+                ladderCounters = ladderCounters.markStage1()
+                ladderAttempts += "①同工具换参数：${plan.why}"
+                val target = ToolCall("tf1-${System.currentTimeMillis()}", plan.tool, plan.args)
+                if (plan.autoRun && !ladderGateHeldByUser(plan.tool)) {
+                    auditFailure(facts, "①", "换参数重跑：${plan.why}", com.example.zhengdao.baopu.DecisionActor.MODEL)
+                    rerunOnce(sessionId, step, facts, target, history)
+                } else {
+                    instructLadder(
+                        sessionId,
+                        facts,
+                        "①",
+                        "同一个目标只许再试一次，参数按建议改成 ${plan.args}（原因：${plan.why}）；" +
+                            "跑不跑由你决定，不许拿原参数再撞。",
+                        history,
+                    )
+                }
+            }
+
+            is LadderPlan.SwapTool -> {
+                ladderCounters = ladderCounters.markStage2()
+                ladderAttempts += "②换等价工具：${plan.from}→${plan.to}"
+                val target = ToolCall("tf2-${System.currentTimeMillis()}", plan.to, plan.args)
+                if (plan.autoRun && !ladderGateHeldByUser(plan.to)) {
+                    auditFailure(facts, "②", "${plan.from}→${plan.to}", com.example.zhengdao.baopu.DecisionActor.MODEL)
+                    rerunOnce(sessionId, step, facts, target, history)
+                } else {
+                    instructLadder(sessionId, facts, "②", ToolFeedback.swapNote(plan.from, plan.to), history)
+                }
+            }
+
+            is LadderPlan.InstructRetry -> {
+                ladderCounters = if (plan.stage == "②") ladderCounters.markStage2() else ladderCounters.markStage1()
+                ladderAttempts += "${plan.stage}${plan.note}"
+                instructLadder(sessionId, facts, plan.stage, plan.note, history)
+            }
+
+            is LadderPlan.Help -> helpStep(sessionId, step, facts, plan.card, history)
+
+            is LadderPlan.Stop -> stopLadder(sessionId, step, facts, plan.line, history)
+        }
+    }
+
+    /** 草稿技能候选（②的输入）。扫盘失败就当没有草稿——梯子照走，不为一本目录炸掉一轮。 */
+    private fun ladderDrafts(): List<FallbackDraft> =
+        runCatching { ToolFallback.draftsFor(spillRoot()) }.getOrDefault(emptyList())
+
+    /**
+     * 执行前闸**在人手里**的那两件：计划结构变更卡（140）与截图授权卡（177）。
+     *
+     * 它们不在 [ToolSpec.permission] 里（两件都是 FREE，闸是引擎侧加的），所以
+     * [ToolFallback.autoRunnable] 判不出——梯子必须自己认账：代跑等于替用户点同意。
+     */
+    private fun ladderGateHeldByUser(tool: String): Boolean =
+        tool == PlanTool.NAME || tool == BrowserTools.NAME_SCREENSHOT
+
+    /** ①②的「不可自动执行」形态：下达**唯一一次**指令，真重跑仍由模型决定。 */
+    private fun instructLadder(
+        sessionId: Long,
+        facts: FailureFacts,
+        stage: String,
+        note: String,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        auditFailure(facts, stage, "回灌指令：$note", com.example.zhengdao.baopu.DecisionActor.MODEL)
+        injectLadderNote(sessionId, "降级梯子 $stage（只此一次）：$note", history)
+        return ToolResultFlow.CONTINUE
+    }
+
+    /**
+     * ①②的「引擎自己再跑一次」：只读＋免确认＋R0/R1 才走到这里（[ToolFallback.autoRunnable]）。
+     *
+     * 结果**不进** [handleToolResult]：那条路会再涨一次 consecutiveToolFailures、再下一层梯子
+     * （一次失败套两张卡），而这一支的语义是「只此一次」。所以只记轨迹＋按同形形状回灌。
+     */
+    private fun rerunOnce(
+        sessionId: Long,
+        step: Int,
+        facts: FailureFacts,
+        attempt: ToolCall,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        val startedAt = System.currentTimeMillis()
+        val outcome = pipeline.execute(attempt) { name, text -> writeSpill(sessionId, name, text) }
+        trace.noteTool(
+            step = step,
+            tool = attempt.name,
+            args = attempt.arguments,
+            startedAtMs = startedAt,
+            status = traceStatusOf(outcome),
+            failureKind = traceFailureOf(outcome),
+        )
+        val ok = settleAttemptOutcome(sessionId, step, attempt, outcome, history)
+        if (ok) consecutiveToolFailures = 0
+        return ToolResultFlow.CONTINUE
+    }
+
+    /**
+     * 一次梯子动手的结果记账＋回灌，形状与 [handleToolResult] 逐字同（Done 用已围栏原文，
+     * 失败/被拒先落原文、回灌时套围栏）。
+     *
+     * @return 这次重跑成没成
+     */
+    private fun settleAttemptOutcome(
+        sessionId: Long,
+        step: Int,
+        attempt: ToolCall,
+        outcome: GuardPipeline.Result,
+        history: MutableList<HistoryMessage>,
+    ): Boolean {
+        // 这里用 if/else 而不是 `when (outcome) { is …Done -> … }`：`is GuardPipeline.Result.Done ->`
+        // 这串原文是 220 批 C2 门禁（[com.example.zhengdao.ui.baopu.BaopuArtifactShelfTest]）
+        // 按 indexOf 找「记账只发生在真写成功那一支」的锚点，本文件里它必须**只出现在
+        // handleToolResult 那一处**；梯子这边多写一份，那条门禁就会把锚点认在这里。
+        val done = outcome as? GuardPipeline.Result.Done
+        val text = if (done != null) {
+            done.wrapped
+        } else if (outcome is GuardPipeline.Result.Failed) {
+            "失败：${outcome.error}"
+        } else if (outcome is GuardPipeline.Result.Rejected) {
+            "被拒：${outcome.reason}"
+        } else {
+            "没执行：目标要用户确认，降级梯子不代批。"
+        }
+        persistToolExchange(sessionId, step, attempt.name, text)
+        history += HistoryMessage(
+            "local-tool-${System.nanoTime()}",
+            HistoryMessage.ROLE_ASSISTANT,
+            if (done != null) {
+                text
+            } else {
+                DataFence.wrap(attempt.name, System.currentTimeMillis(), text)
+            },
+        )
+        return done != null
+    }
+
+    /**
+     * ③：弹一张求助卡（§2 四个可点选项），按用户点的那一项分派。
+     *
+     * 进这里就先置 `helpIssued`（[ToolFallback.ladder] 之后只给 [LadderPlan.Stop]）——
+     * 「同一轮最多一张」不靠自觉。没人点（超时/忽略）⇒ 本轮结束并如实说「没做成」。
+     */
+    private fun helpStep(
+        sessionId: Long,
+        step: Int,
+        facts: FailureFacts,
+        card: HelpCardSpec,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        ladderCounters = ladderCounters.markHelp()
+        ladderAttempts += "③停下问人"
+        auditFailure(facts, "③", "弹求助卡", com.example.zhengdao.baopu.DecisionActor.MODEL)
+        ToolHelpPending = card
+        val picked = try {
+            askUser(card.toAskRequest())
+        } finally {
+            ToolHelpPending = null
+        }
+        if (picked == null) {
+            val line = ToolFeedback.ignoredLine(facts.tool)
+            auditFailure(facts, "③", "这张卡没人点", com.example.zhengdao.baopu.DecisionActor.USER)
+            return stopLadder(sessionId, step, facts, line, history)
+        }
+        auditFailure(facts, "③", "用户选了「${picked.label}」", com.example.zhengdao.baopu.DecisionActor.USER)
+        return dispatchHelpOption(sessionId, step, facts, card, picked, history)
+    }
+
+    /** 卡上那一项点下去之后做什么（四个出口，没有一个越过人）。 */
+    private fun dispatchHelpOption(
+        sessionId: Long,
+        step: Int,
+        facts: FailureFacts,
+        card: HelpCardSpec,
+        picked: AskUserOption,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow = when {
+        // ①开能力：引擎只发一次 capabilities(enable=[组])——同意与否在 97 批那张御批卡里
+        picked.id.startsWith(ToolFeedback.OPTION_GROUP_PREFIX) -> {
+            val groupKey = picked.id.removePrefix(ToolFeedback.OPTION_GROUP_PREFIX)
+            val enableCall = ToolFallback.groupEnableCall(groupKey, "tf-enable-$groupKey")
+            val enableOutcome = pipeline.execute(enableCall) { name, text -> writeSpill(sessionId, name, text) }
+            settleAttemptOutcome(sessionId, step, enableCall, enableOutcome, history)
+            injectLadderNote(sessionId, ToolFeedback.groupAskedLine(groupKey), history)
+            ToolResultFlow.CONTINUE
+        }
+        // ②只本次允许草稿技能：208 记一条**不可回滚**的账＋历史一句；uses 不变、不转正
+        picked.id.startsWith(ToolFeedback.OPTION_DRAFT_PREFIX) -> {
+            val skill = picked.id.removePrefix(ToolFeedback.OPTION_DRAFT_PREFIX)
+            val draft = ladderDrafts().firstOrNull { it.name == skill }
+            val uses = draft?.uses ?: 0
+            val wrote = com.example.zhengdao.baopu.DecisionLedger.record(
+                ToolFallback.draftAllowedRecord(skill, uses, sessionId, System.currentTimeMillis()),
+            ) != null
+            if (!wrote) log("抱朴引擎：②的 208 账没落上（本次允许仍只在历史里生效一句）")
+            injectLadderNote(
+                sessionId,
+                ToolFallback.draftAllowedNote(skill, uses, draft?.scenario ?: card.evidence),
+                history,
+            )
+            ToolResultFlow.CONTINUE
+        }
+        // ③先做技能：演示是用户的动作，引擎既不做观察也不编一条假技能硬跑 ⇒ 本轮如实停
+        picked.id == ToolFeedback.OPTION_MAKE_SKILL -> {
+            stopLadder(
+                sessionId,
+                step,
+                facts,
+                "你选了「先做一个技能再执行」：这一步停下，等你在玄览里演示完（235 观察/示教）再叫我。" +
+                    "本轮不编技能、不硬跑——没有技能就是没做成。",
+                history,
+            )
+        }
+        // ④告诉我该怎么做：203 的多问卡（≤3 问、每问带证据），答完原样交回模型
+        picked.id == ToolFeedback.OPTION_ASK -> {
+            val answers = askGroup(card.questionCardRequest())
+            val line = ToolFeedback.helpFeedback(card, picked.label) + "\n" +
+                ToolFeedback.answersLine(answers ?: emptyMap())
+            injectLadderNote(sessionId, line, history)
+            if (answers.isNullOrEmpty()) {
+                auditFailure(facts, "④", "提问卡没人答", com.example.zhengdao.baopu.DecisionActor.USER)
+                stopLadder(sessionId, step, facts, ToolFeedback.ignoredLine(facts.tool), history)
+            } else {
+                auditFailure(facts, "④", "用户口述了做法", com.example.zhengdao.baopu.DecisionActor.USER)
+                ToolResultFlow.CONTINUE
+            }
+        }
+
+        else -> stopLadder(sessionId, step, facts, ToolFeedback.stoppedLine(facts.tool), history)
+    }
+
+    /** 梯子的终点：如实收尾（沿用 87 批的停轮语义，只把文案换成「没做成」那句实话）。 */
+    private fun stopLadder(
+        sessionId: Long,
+        step: Int,
+        facts: FailureFacts,
+        line: String,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        injectLadderNote(sessionId, line, history)
+        _notice.value = line
+        settle(sessionId, step, RunState.ABORTED, "Aborted")
+        onEvent?.invoke(EngineEvent.AskUser(line))
+        log("抱朴引擎：梯子收尾（${facts.tool}）：$line")
+        return ToolResultFlow.STOP_RUN
+    }
+
+    /** 一句引擎的话：既落库（刷新后看得见），也进在途历史（模型下一轮看得见）。 */
+    private fun injectLadderNote(sessionId: Long, text: String, history: MutableList<HistoryMessage>) {
+        persistAssistantMessage(sessionId, text)
+        history += HistoryMessage("local-note-${System.nanoTime()}", HistoryMessage.ROLE_ASSISTANT, text)
+    }
+
+    /**
+     * 一行明细落 [FailureAuditLog]（§2.6），顺手算 §3 那句聚合。
+     *
+     * 明细**只进盘**：卡面与回灌都只读 [ToolFallback.auditBrief] 那一句聚合，
+     * 所以「审计明细进模型上下文」这条在本函数与 [ToolFeedback.feedbackForModel] 的
+     * 签名层都写不出来（另有源码闸钉着）。
+     */
+    private fun auditFailure(
+        facts: FailureFacts,
+        stage: String,
+        outcome: String,
+        actor: com.example.zhengdao.baopu.DecisionActor,
+    ) {
+        val group = registry.find(facts.tool)?.group ?: ToolGroup.CORE
+        val now = System.currentTimeMillis()
+        FailureAuditLog.append(
+            FailureAuditLog.row(
+                tool = facts.tool,
+                group = group,
+                stage = stage,
+                risk = ToolFallback.riskBrief(facts),
+                actor = actor,
+                outcome = outcome,
+                evidence = facts.error.ifBlank { ToolFallback.targetOf(facts) },
+                atMs = now,
+            ),
+        )
+        // §3：同能力/同技能近 7 天 ≥3 次 ⇒ 页面顶部一行（不弹窗、不中断、不替人决定）。
+        // 停轮那句更具体，所以收尾路径（stopLadder）在它之后才覆盖。
+        ToolFallback.aggregateLine(
+            tool = facts.tool,
+            group = group,
+            rows = FailureAuditLog.readAll(),
+            nowMs = now,
+        )?.let { _notice.value = it }
+    }
+
     // ── 工具结果处理（在线路径与批准路径共用：回灌、历史、可见卡同形） ──────
 
     /** 一次工具结果的流向（调用方据此决定：继续 / 终止本轮 / 整轮停下）。 */
@@ -2983,7 +3323,12 @@ internal class RunEngine(
                 // Retry 在这里的语义＝「回灌错误原文、让模型自己看着办」（与坏参数同款）：
                 // 工具层没有「偷偷再跑一次」这回事——真重跑决定权在模型，不在引擎。
                 ToolResultFlow.CONTINUE
+            } else if (batch == null) {
+                // 第二百三十七批 A：到线不再直接停——先走「先换再问」三级梯子
+                // （判据在 [ToolFallback]，这里只动手）。梯子没出路时仍落到下面那句停轮。
+                fallbackLadder(sessionId, step, result.call, name, result.error, kind, repair, history)
             } else {
+                // 214 §3：编排开时批自己收尾（每条调用都要有结局），不叠梯子。
                 val msg = "工具连续失败 ${consecutiveToolFailures} 次，已停下。" +
                     "换个说法或换个文件再试（不许硬试）。"
                 _notice.value = msg
@@ -3021,7 +3366,31 @@ internal class RunEngine(
             } else {
                 batch?.recordRejected(result.call, rejectedText)
             }
-            ToolResultFlow.TERMINATE_ROUND
+            // 第二百三十七批 §5 场景①：模型撞在「这一组没解锁」上（59 批那句桩文案）。
+            // 看不见工具这件事只有人能解（开关在他手里），所以它就是③的形状——
+            // 卡上的①只**申请**，授权仍走 97 批御批卡。被用户在设置里关掉的组不弹：
+            // 卡上给不出①，而拒绝原文已经把「被关了、我解不开」说尽了。
+            if (batch == null && ToolFallback.isGroupLockedRejection(result.reason) &&
+                !ladderCounters.helpIssued
+            ) {
+                val lockedFacts = FailureFacts(
+                    call = result.call,
+                    tool = name,
+                    error = result.reason,
+                    kind = FailurePolicy.classifyTool(result.reason),
+                    advice = repair,
+                    attempts = ladderAttempts.toList(),
+                )
+                helpStep(
+                    sessionId,
+                    step,
+                    lockedFacts,
+                    ToolFallback.helpCard(lockedFacts, registry, sessionId, ladderDrafts()),
+                    history,
+                )
+            } else {
+                ToolResultFlow.TERMINATE_ROUND
+            }
         }
 
         is GuardPipeline.Result.NeedsConfirm -> {
