@@ -218,8 +218,8 @@ class McpProtocolTest {
         val cfg = McpServerConfig(
             id = "demo",
             name = "演示",
-            url = "https://example.com/mcp?token=SECRET",
-            headers = mapOf("Authorization" to "Bearer SECRET"),
+            url = "https://example.com/mcp?tenant=SECRET",
+            headers = mapOf("X-Client" to "SECRET"),
         )
         val text = cfg.toString()
         assertFalse(text.contains("SECRET"))

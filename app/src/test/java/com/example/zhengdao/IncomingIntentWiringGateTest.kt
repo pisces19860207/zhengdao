@@ -259,9 +259,11 @@ class IncomingIntentWiringGateTest {
             mainBlock.contains("android:launchMode=\"singleTop\""),
         )
         // 第一百八十一批 #4：分享收图开两扇新门（SEND image/* ＋ SEND_MULTIPLE image/*）
+        // 第二百一十六批：MCP OAuth 回调开第七扇（`zhengdao://mcp/oauth`）——
+        // 授权码 + PKCE 的 redirect_uri，必须是自定义 scheme（不嵌 WebView）。
         assertEquals(
-            "MainActivity 应恰好六个 intent-filter（MAIN + SEND文本 + SEND图 + SEND_MULTIPLE图 + ask + terminal）",
-            6,
+            "MainActivity 应恰好七个 intent-filter（MAIN + SEND文本 + SEND图 + SEND_MULTIPLE图 + ask + terminal + mcp/oauth）",
+            7,
             Regex("<intent-filter>").findAll(mainBlock).count(),
         )
         assertEquals(
@@ -276,10 +278,13 @@ class IncomingIntentWiringGateTest {
         )
         assertEquals("只收一个 text/plain 过滤器", 1, Regex(Regex.escape("android:mimeType=\"text/plain\"")).findAll(mainBlock).count())
         assertEquals("图片过滤器恰好两个 image/*", 2, Regex(Regex.escape("android:mimeType=\"image/*\"")).findAll(mainBlock).count())
-        assertEquals("深链恰好两个 ACTION_VIEW", 2, Regex(Regex.escape("android.intent.action.VIEW")).findAll(mainBlock).count())
-        assertEquals("scheme 只认 zhengdao", 2, Regex(Regex.escape("android:scheme=\"zhengdao\"")).findAll(mainBlock).count())
+        assertEquals("深链恰好三个 ACTION_VIEW（ask/terminal/mcp）", 3, Regex(Regex.escape("android.intent.action.VIEW")).findAll(mainBlock).count())
+        assertEquals("scheme 只认 zhengdao", 3, Regex(Regex.escape("android:scheme=\"zhengdao\"")).findAll(mainBlock).count())
         assertEquals("host=ask 恰好一处", 1, Regex(Regex.escape("android:host=\"ask\"")).findAll(mainBlock).count())
         assertEquals("host=terminal 恰好一处", 1, Regex(Regex.escape("android:host=\"terminal\"")).findAll(mainBlock).count())
+        // 216：MCP 授权回调只开 `/oauth` 一条路径（入口越窄越好）。
+        assertEquals("host=mcp 恰好一处", 1, Regex(Regex.escape("android:host=\"mcp\"")).findAll(mainBlock).count())
+        assertEquals("mcp 只开 /oauth 一条路径", 1, Regex(Regex.escape("android:pathPrefix=\"/oauth\"")).findAll(mainBlock).count())
 
         // 玄览的浏览器地盘：http/https 不声明；本地文件/内容一律不收。
         listOf("http", "https", "file", "content").forEach { scheme ->

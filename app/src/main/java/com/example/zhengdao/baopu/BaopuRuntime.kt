@@ -47,7 +47,11 @@ import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.baopu.mcp.McpServerStore
+import com.example.zhengdao.baopu.mcp.McpAuthFlow
+import com.example.zhengdao.baopu.mcp.McpOAuthClient
+import com.example.zhengdao.baopu.mcp.McpTokenVault
 import com.example.zhengdao.baopu.mcp.McpToolSource
+import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
@@ -83,6 +87,9 @@ internal object BaopuRuntime {
      */
     @Volatile
     private var mcpSource: McpToolSource? = null
+
+    /** OAuth 授权流程（进程级单例；token 只在它背后的加密存储里）。 */
+    private var mcpAuth: McpAuthFlow? = null
 
     /**
      * 引擎**正在用**的那张工具注册表（第一百七十批 B）。
@@ -403,10 +410,35 @@ internal object BaopuRuntime {
         return mcpSourceFor(reg, appCtx)
     }
 
+    /**
+     * MCP 的 OAuth 流程（唯一实例）。
+     *
+     * 三件东西在这里装配，且只在这里装配：
+     * · [McpTokenVault]：token 唯一落点（AndroidKeyStore AES-GCM 加密的私有 prefs）；
+     * · [McpOAuthClient]：发现/注册/换 token/刷新（不跟重定向）；
+     * · 回调地址固定 `zhengdao://mcp/oauth`（与 Manifest 的 intent-filter 一字不差）。
+     *
+     * 不联网、不读 token：构造只是把三样东西拼起来（真正的网络在用户点授权之后）。
+     */
+    fun mcpAuth(context: Context): McpAuthFlow {
+        val appCtx = context.applicationContext
+        return mcpAuth ?: synchronized(this) {
+            mcpAuth ?: McpAuthFlow(
+                vault = McpTokenVault(
+                    PrefsMcpSecretStore(appCtx),
+                    log = { RunLog.log(it) },
+                ),
+                oauth = McpOAuthClient(McpOAuthClient.defaultHttp(), log = { RunLog.log(it) }),
+                log = { RunLog.log(it) },
+            ).also { mcpAuth = it }
+        }
+    }
+
     private fun mcpSourceFor(reg: ToolRegistry, context: Context): McpToolSource {
         val source = mcpSource ?: synchronized(this) {
             mcpSource ?: McpToolSource(
                 reg,
+                auth = mcpAuth(context),
                 log = { RunLog.log(it) },
                 // 配置落 prefs（JSON，不碰 BaopuDb.VERSION）：进程重启后地址还在，连接不自动重建。
                 store = McpServerStore(

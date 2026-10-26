@@ -185,13 +185,13 @@ class McpNegativeTest {
         val cfg = McpServerConfig(
             id = "srv",
             name = "带密钥",
-            url = "https://example.com/mcp?token=SECRET",
-            headers = mapOf("Authorization" to "Bearer SECRET"),
+            url = "https://example.com/mcp?tenant=SECRET",
+            headers = mapOf("X-Client" to "SECRET"),
         )
         logs.add(cfg.toString())
 
-        assertFalse("配置文案不带头部值", logs.any { it.contains("Bearer SECRET") })
-        assertFalse("配置文案不带 query", logs.any { it.contains("token=") })
+        assertFalse("配置文案不带头部值", logs.any { it.contains("SECRET") })
+        assertFalse("配置文案不带 query", logs.any { it.contains("tenant=") })
         assertFalse("配置文案不带密钥片段", logs.any { it.contains("SECRET") })
     }
 

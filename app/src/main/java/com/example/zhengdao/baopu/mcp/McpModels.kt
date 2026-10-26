@@ -16,6 +16,10 @@ import java.security.MessageDigest
  * - 请求头只存在内存，**不落盘、不进日志、不进错误原文**；
  * - [toString] 对 URL query/fragment 与头部值打码——把它塞进任何日志都带不出 key。
  *
+ * 第二百一十六批：**鉴权只剩 OAuth 一条路**（用户 2026-10-25「不要旧版本了」）——
+ * `Authorization`/`Cookie`/`Proxy-Authorization` 一律拒收（见 [AUTH_HEADERS]），
+ * 配置里再没有"贴个 token"的入口；[clientId] 只用于**预注册**的公共客户端（非机密）。
+ *
  * 为什么不带 `enabled`：v1 的「启用」是一次显式动作（[McpToolSource.connect]），
  * 不是一个随配置自动生效的布尔。配置里放 `enabled=true` 会让「重建对象」变成连接路径。
  */
@@ -28,6 +32,13 @@ internal data class McpServerConfig(
     val callTimeoutMs: Long = DEFAULT_CALL_TIMEOUT_MS,
     /** 连接/initialize 的 HTTP 总超时。 */
     val connectTimeoutMs: Long = DEFAULT_CONNECT_TIMEOUT_MS,
+    /**
+     * 预注册的 client_id（授权服务器不支持动态注册时由用户填）。
+     *
+     * **不是密钥**：公共客户端的 client_id 会出现在授权页地址栏里，落盘无害；
+     * 真正装不住的 client_secret 本仓**没有也不收**（负例⑨：硬编码密钥进 APK）。
+     */
+    val clientId: String? = null,
 ) {
     init {
         require(ID.matches(id)) { "MCP server id 只能是小写字母/数字/下划线/连字符（1–32 位）：$id" }
@@ -41,10 +52,20 @@ internal data class McpServerConfig(
             "MCP 连接超时要 ${MIN_TIMEOUT_MS}–${MAX_TIMEOUT_MS} ms"
         }
         require(headers.size <= MAX_HEADERS) { "MCP 请求头最多 $MAX_HEADERS 个" }
+        clientId?.let {
+            require(it.length <= MAX_CLIENT_ID && it.none { c -> c.code < 0x20 || c.code == 0x7f }) {
+                "MCP client_id 不合法"
+            }
+        }
         headers.forEach { (k, v) ->
             require(McpUrlRules.isHeaderName(k)) { "MCP 请求头名称不合法：$k" }
             // HTTP 头名大小写不敏感：Mcp-Session-Id 与 mcp-session-id 是同一个头。
             require(k.lowercase() !in RESERVED_HEADERS) { "MCP 请求头「$k」由客户端管理，不许手填" }
+            // 216：鉴权只能走 OAuth。静态 Authorization 入口**从形状上**删掉——
+            // 不是"UI 不显示"，而是构造配置时就抛（负例⑧）。
+            require(k.lowercase() !in AUTH_HEADERS) {
+                "MCP 请求头「$k」属于鉴权头：本客户端只用 OAuth 授权，不接受手工填 token"
+            }
             require(v.none { it == '\r' || it == '\n' || it.code == 0 }) { "MCP 请求头「$k」的值含换行/控制字符" }
             require(v.length <= MAX_HEADER_VALUE) { "MCP 请求头「$k」的值过长" }
         }
@@ -69,6 +90,16 @@ internal data class McpServerConfig(
             "host", "content-length", "transfer-encoding", "connection",
             "accept", "content-type", "mcp-session-id", "mcp-protocol-version",
         )
+
+        /**
+         * 鉴权头黑名单（216 起）。
+         *
+         * `Cookie` 一起拒：它是另一套"贴凭据"的老路，绕开 OAuth 就等于绕开受众绑定。
+         * 允许的只有**非鉴权**自定义头（如 `X-Client`）。
+         */
+        val AUTH_HEADERS = setOf("authorization", "proxy-authorization", "cookie", "www-authenticate")
+
+        const val MAX_CLIENT_ID = 512
     }
 }
 
@@ -93,8 +124,12 @@ internal object McpUrlRules {
         }
         val scheme = uri.scheme?.lowercase()
         if (scheme != "http" && scheme != "https") return "只允许 http(s)，实到「${uri.scheme ?: "无"}」"
-        if (uri.userInfo != null) return "URL 不许带用户名/密码（认证请走请求头）"
+        if (uri.userInfo != null) return "URL 不许带用户名/密码（认证走 OAuth）"
         if (uri.fragment != null) return "URL 不许带 #fragment"
+        // 216（派工单 §2.5）：**地址里塞 token 一律拒**。
+        // 为什么卡这个：URL 会进日志、进截图、进剪贴板历史、被别的 App 读到；把凭据放 query
+        // 等于把 token 从加密存储里搬到了最容易被看见的地方。
+        secretQueryKey(uri.query)?.let { return "URL 不许在 query 里带凭据（$it）：认证走 OAuth" }
         val host = uri.host?.lowercase()?.removeSurrounding("[", "]") ?: return "URL 缺主机名"
         if (scheme == "http" && host !in LOOPBACK) {
             return "明文 http 只允许环回（127.0.0.1/localhost）；外部主机必须 https"
@@ -142,6 +177,33 @@ internal object McpUrlRules {
         return r.toString()
     }
 
+    /**
+     * query 里的**凭据类**参数名（命中即拒）。
+     *
+     * 口径窄而明确：只拦"一看就是密钥"的名字，不拦普通业务参数（`?tenant=a` 仍可用）。
+     * 用 `contains` 兜住 `x-api-key`/`access_token`/`client_secret` 这类变体。
+     */
+    private fun secretQueryKey(query: String?): String? {
+        if (query.isNullOrBlank()) return null
+        for (part in query.split('&')) {
+            if (part.isEmpty()) continue
+            val key = part.substringBefore('=').trim().lowercase()
+            if (key.isEmpty()) continue
+            val hit = key in SECRET_QUERY_KEYS ||
+                key.contains("token") ||
+                key.contains("secret") ||
+                key.contains("api_key") ||
+                key.contains("apikey") ||
+                key.contains("password") ||
+                key == "sig" || key == "signature" || key == "auth"
+            if (hit) return key
+        }
+        return null
+    }
+
+    /** 一眼就是凭据的参数名（`contains` 兜不住的那些）。 */
+    private val SECRET_QUERY_KEYS = setOf("key", "auth", "authorization", "sig", "signature", "pwd")
+
     private fun effectivePort(u: URI): Int = when {
         u.port != -1 -> u.port
         u.scheme?.lowercase() == "https" -> 443
@@ -154,7 +216,15 @@ internal enum class McpFailure {
     CONFIG,
     CONNECT,
     TIMEOUT,
+
+    /** 401/403 且**刷新也救不回来**（或压根没授权）。 */
     AUTH,
+
+    /** 401：需要走一次授权（[McpAuthFlow] 给 URL）。 */
+    AUTH_REQUIRED,
+
+    /** 403 `insufficient_scope`：权限不够，要 step-up（不是重新登录）。 */
+    INSUFFICIENT_SCOPE,
     HTTP,
     PROTOCOL,
     SCHEMA,
@@ -174,6 +244,10 @@ internal class McpException(
     /** 只有「端点不存在/方法不允许」才允许从 Streamable HTTP 回退旧 SSE。 */
     val fallbackEligible: Boolean = false,
     cause: Throwable? = null,
+    /** HTTP 状态码（401/403 的区分靠它；不参与文案）。 */
+    val httpStatus: Int? = null,
+    /** `insufficient_scope` 时缺的 scope（step-up 的唯一依据）。 */
+    val missingScope: String? = null,
 ) : Exception(userMessage, cause)
 
 /** 从服务器列出来的一个工具（已做形状检查，尚未转成 ToolSpec）。 */
@@ -197,6 +271,19 @@ internal data class McpCallResult(
 /** 连接结果（UI 不抛异常；失败也给一句人话）。 */
 internal sealed interface McpConnectOutcome {
     data class Ok(val toolCount: Int, val warnings: List<String> = emptyList()) : McpConnectOutcome
+
+    /**
+     * 需要授权：把 [authorizationUrl] 交给系统浏览器。
+     *
+     * 这不是失败——是 OAuth 的正常一步。UI 上给「去授权」，回来后自动重连。
+     */
+    data class NeedsAuth(
+        val authorizationUrl: String,
+        val message: String,
+        /** step-up 时缺的 scope（普通首次授权为 null）。 */
+        val missingScope: String? = null,
+    ) : McpConnectOutcome
+
     data class Failed(val message: String) : McpConnectOutcome
 }
 

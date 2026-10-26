@@ -290,24 +290,29 @@ class McpClientTest {
         }
     }
 
+    /**
+     * 216 改写：401 的语义从「认证失败，请检查请求头」变成「需要授权」（OAuth 流程的第一步）。
+     * 没有 token 供给器时**不许**自己刷新、不许回退、不许改发匿名请求。
+     */
     @Test
-    fun `401_认证失败_不回退旧 SSE`() {
+    fun `401_需要授权_不回退旧 SSE`() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(req: RecordedRequest): MockResponse {
                 seen.add(req)
                 return MockResponse().setResponseCode(401)
             }
         }
-        val c = client(config(headers = mapOf("Authorization" to "Bearer SECRET")))
+        val c = client(config())
         try {
             c.connect()
-            fail("应当认证失败")
+            fail("应当要求授权")
         } catch (e: McpException) {
-            assertEquals(McpFailure.AUTH, e.failure)
-            assertTrue(e.userMessage.contains("认证失败"))
-            assertFalse("错误原文不带密钥", e.userMessage.contains("SECRET"))
+            assertEquals(McpFailure.AUTH_REQUIRED, e.failure)
+            assertEquals(401, e.httpStatus)
+            assertTrue(e.userMessage.contains("需要授权"))
         }
         assertFalse("401 不许回退", seen.any { it.method == "GET" })
+        assertEquals("401 只发一次（不自己重试）", 1, seen.size)
     }
 
     @Test
@@ -379,7 +384,7 @@ class McpClientTest {
                         .setResponseCode(302)
                         .setHeader("Location", other.url("/steal").toString())
             }
-            val cfg = config(headers = mapOf("Authorization" to "Bearer SECRET"))
+            val cfg = config(headers = mapOf("X-Client" to "SECRET"))
             // 用生产同款 client（关掉 followRedirects）；测试里裸 OkHttpClient() 会跟随。
             val c = McpClient(cfg, McpClient.defaultHttp(cfg))
             try {
@@ -420,13 +425,13 @@ class McpClientTest {
         val logs = Collections.synchronizedList(mutableListOf<String>())
         server.dispatcher = jsonDispatcher()
         val c = client(
-            config(headers = mapOf("Authorization" to "Bearer SECRET"), query = "?token=SECRET"),
+            config(headers = mapOf("X-Client" to "SECRET"), query = "?tenant=SECRET"),
             log = { logs.add(it) },
         )
         c.connect()
         c.listTools()
         c.callTool("echo", JSONObject())
         assertFalse("日志不含密钥", logs.any { it.contains("SECRET") })
-        assertFalse("日志不含 URL query", logs.any { it.contains("token=") })
+        assertFalse("日志不含 URL query", logs.any { it.contains("tenant=") })
     }
 }

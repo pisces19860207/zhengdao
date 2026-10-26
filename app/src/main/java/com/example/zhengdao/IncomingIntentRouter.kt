@@ -57,6 +57,17 @@ internal sealed interface IncomingRoute {
      * （只预填、不自动发送；发送前的图也是本地附件，不自动上传）。 */
     data class ShareImagesToBaopu(val count: Int) : IncomingRoute
 
+    /**
+     * `zhengdao://mcp/oauth?code=…&state=…`：MCP 授权回调（第二百一十六批）。
+     *
+     * 路由层**只做形状判断**（有没有 state、code/error 是否矛盾）；真正认不认这条回调，
+     * 由 [com.example.zhengdao.baopu.mcp.McpAuthFlow.complete] 按 state 决定。
+     * 这里不打印 code/state（它们是一次性凭据）。
+     */
+    data class McpOAuthCallback(
+        val callback: com.example.zhengdao.baopu.mcp.McpOAuthCallback,
+    ) : IncomingRoute
+
     /** 外部输入被拒：原因进日志，界面不弹任何东西。 */
     data class Rejected(val reason: RejectReason) : IncomingRoute
 
@@ -71,6 +82,9 @@ internal enum class RejectReason(val label: String) {
     MALFORMED_URI("URI 形态不合法"),
     UNKNOWN_HOST("未知 host"),
     EMPTY_TEXT("正文为空"),
+
+    /** OAuth 回调形状不对（没 state / code 与 error 矛盾 / 参数重复）。 */
+    CALLBACK_INVALID("授权回调参数不合法"),
     COMMAND_TOO_LONG("命令过长"),
     COMMAND_HAS_CONTROL("命令含换行/控制字符"),
 }
@@ -157,6 +171,9 @@ private fun routeView(request: IncomingIntent): IncomingRoute {
         return IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
     }
     val path = request.path.orEmpty()
+    // mcp 的授权回调带路径（`/oauth`），别的深链只认无路径——先按 host 分流再判路径，
+    // 免得为了一个带路径的入口把 ask/terminal 的「不接受路径」口径放宽。
+    if (request.host?.lowercase() == "mcp") return routeMcpOAuth(path, request.rawQuery)
     if (path.isNotEmpty() && path != "/") return IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
 
     return when (request.host?.lowercase()) {
@@ -164,6 +181,24 @@ private fun routeView(request: IncomingIntent): IncomingRoute {
         "terminal" -> routeTerminal(request.rawQuery)
         null -> IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
         else -> IncomingRoute.Rejected(RejectReason.UNKNOWN_HOST)
+    }
+}
+
+/**
+ * MCP 授权回调（`zhengdao://mcp/oauth?...`）。
+ *
+ * 只认 `/oauth` 一条路径：`zhengdao://mcp` 或 `/oauth/x` 都按畸形拒——
+ * 回调入口越窄，能被别的 App 构造的机会越少。
+ */
+private fun routeMcpOAuth(path: String, rawQuery: String?): IncomingRoute {
+    if (path != com.example.zhengdao.baopu.mcp.McpOAuthCallbacks.PATH) {
+        return IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
+    }
+    return when (val parsed = com.example.zhengdao.baopu.mcp.McpOAuthCallbacks.parse(rawQuery)) {
+        is com.example.zhengdao.baopu.mcp.McpOAuthCallbackParse.Ok ->
+            IncomingRoute.McpOAuthCallback(parsed.callback)
+        is com.example.zhengdao.baopu.mcp.McpOAuthCallbackParse.Invalid ->
+            IncomingRoute.Rejected(RejectReason.CALLBACK_INVALID)
     }
 }
 

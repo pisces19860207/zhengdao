@@ -22,16 +22,20 @@ class McpEntryWiringTest {
     private fun src(rel: String): String =
         File("src/main/java/com/example/zhengdao/$rel").readText()
 
+    /**
+     * 第二百一十六批：清单界面从 BaopuMcpSheet 搬到了 McpServerScreen（旧文件退成薄委托），
+     * 门禁跟着搬家 —— 否则"真入口还在不在"就没人盯了。
+     */
     @Test
     fun `负例_面板不再把连接塞进对话`() {
-        val sheet = src("ui/baopu/BaopuMcpSheet.kt")
+        val sheet = src("ui/baopu/McpServerScreen.kt")
         assertFalse("MCP 面板不许再 controller.send（那是假入口）", sheet.contains("controller.send"))
         assertFalse("不许再拼那句聊天指令", sheet.contains("连接 MCP 服务"))
     }
 
     @Test
     fun `面板直接走管理器这五件事`() {
-        val sheet = src("ui/baopu/BaopuMcpSheet.kt")
+        val sheet = src("ui/baopu/McpServerScreen.kt")
         listOf(
             "addServer(",
             "connect(",
@@ -42,6 +46,14 @@ class McpEntryWiringTest {
         ).forEach { call ->
             assertTrue("面板缺 $call（真入口少一环）", sheet.contains(call))
         }
+    }
+
+    /** 216：旧入口退成委托后，不许在这里偷偷长回第二套实现。 */
+    @Test
+    fun `旧面板只是委托`() {
+        val sheet = src("ui/baopu/BaopuMcpSheet.kt")
+        assertTrue("必须委托给 McpServerScreen", sheet.contains("McpServerScreen(onDismiss"))
+        assertFalse("不许自己再连一次（两套实现会漂）", sheet.contains("BaopuRuntime"))
     }
 
     @Test
