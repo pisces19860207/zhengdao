@@ -36,6 +36,8 @@ data class TeachRunReport(
     val refusals: List<String>,
     val ask: TeachAsk?,
     val evidenceDir: String?,
+    /** 动手失败后滚入视口重试成功的步号（第二百二十八批 C 片；空 = 没发生过重试）。 */
+    val retried: List<Int> = emptyList(),
 ) {
     /** 审计一行（§3.5：技能名/步数/结果/耗时/漂移/被拒动作）。 */
     fun auditLine(nowMs: Long): String {
@@ -58,6 +60,9 @@ data class TeachRunReport(
             sb.append(",\"refusals\":[")
             sb.append(refusals.joinToString(",") { "\"${jsonEsc(it)}\"" })
             sb.append("]")
+        }
+        if (retried.isNotEmpty()) {
+            sb.append(",\"retries\":[").append(retried.joinToString(",")).append("]")
         }
         sb.append("}")
         return sb.toString()
@@ -146,6 +151,7 @@ internal class TeachExecutor(
         val started = clock()
         val drifts = mutableListOf<TeachDrift>()
         val refusals = mutableListOf<String>()
+        val retried = mutableListOf<Int>()
         val evidenceDir = evidence.begin(skill.name, stamp(clock()))
         var stepsDone = 0
 
@@ -161,6 +167,7 @@ internal class TeachExecutor(
                 refusals = refusals,
                 ask = ask,
                 evidenceDir = evidenceDir,
+                retried = retried,
             )
             evidence.finish(report)
             audit(report, clock())
@@ -305,12 +312,37 @@ internal class TeachExecutor(
                 }
             }
 
-            // ── 动手 ──
-            val acted = dom.ask(TeachQuery.Act(locator, step.action, step.value))
-            val actOk = (acted as? TeachReply.Acted)
-                ?: return stop(step.index, "第 ${step.index} 步执行失败：${(acted as? TeachReply.Failed)?.reason ?: "页面无响应"}")
-            if (!actOk.ok) {
-                return stop(step.index, "第 ${step.index} 步执行失败：${actOk.reason ?: "未知"}")
+            // ── 动手（第二百二十八批 C 片：失败自愈）──
+            // act 失败＝什么都没发生过 ⇒ 重试安全；expect 不满足不在此列（动作已执行过，
+            // 重试等于双击双提交）。重试的判据是**起点页指纹复核**：锚点不全在 ⇒ 页面可能
+            // 已离开起点，重试不可判 ⇒ fail-closed 直接停。最多一次：滚入视口后重试同一
+            // 动作，再败即停，**不存在循环重试**。
+            var acted = dom.ask(TeachQuery.Act(locator, step.action, step.value))
+            var actOk = acted as? TeachReply.Acted
+            if (actOk == null || !actOk.ok) {
+                val failReason = (acted as? TeachReply.Failed)?.reason
+                    ?: actOk?.reason ?: "页面无响应"
+                if (!fingerprintLive(skill, dom)) {
+                    return stop(
+                        step.index,
+                        "第 ${step.index} 步执行失败：$failReason（重试前指纹复核不通过，页面可能已离开起点，不敢重试）",
+                    )
+                }
+                val scrolled = dom.ask(TeachQuery.Act(locator, TeachAction.SCROLL, null))
+                if (scrolled !is TeachReply.Acted || !scrolled.ok) {
+                    return stop(step.index, "第 ${step.index} 步执行失败：$failReason（滚入视口也不成）")
+                }
+                acted = dom.ask(TeachQuery.Act(locator, step.action, step.value))
+                actOk = acted as? TeachReply.Acted
+                if (actOk == null || !actOk.ok) {
+                    val retryReason = (acted as? TeachReply.Failed)?.reason
+                        ?: actOk?.reason ?: "未知"
+                    return stop(
+                        step.index,
+                        "第 ${step.index} 步执行失败：$retryReason（滚入视口重试一次后仍失败）",
+                    )
+                }
+                retried += step.index
             }
 
             // ── expect 校验（不满足 ⇒ 停并取证）──
@@ -351,6 +383,7 @@ internal class TeachExecutor(
             refusals = refusals,
             ask = null,
             evidenceDir = evidenceDir,
+            retried = retried,
         )
         evidence.finish(report)
         audit(report, clock())
@@ -396,6 +429,16 @@ internal class TeachExecutor(
     }
 
     private fun rowCount(): Int = (dom.ask(TeachQuery.RowCount) as? TeachReply.Count)?.n ?: 0
+
+    /**
+     * 起点页指纹锚点是否仍全在（自愈重试的判据）。拿不到结构 ⇒ 视为未通过：
+     * 重试的前提「页面没换」证明不了就不重试（fail-closed）。
+     */
+    private fun fingerprintLive(skill: TeachSkill, dom: TeachDom): Boolean {
+        val anchors = dom.ask(TeachQuery.HeadersAndButtons) as? TeachReply.Anchors ?: return false
+        val live = (anchors.headers + anchors.buttons).map { it.trim() }.toSet()
+        return skill.fingerprint.anchors.all { it.name.trim() in live }
+    }
 
     private fun domSummary(dom: TeachDom, url: String): String =
         "url=$url\n" + ((dom.ask(TeachQuery.DomSummary) as? TeachReply.Summary)?.text ?: "")
