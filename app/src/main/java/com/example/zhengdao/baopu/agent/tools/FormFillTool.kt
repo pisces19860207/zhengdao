@@ -8,12 +8,16 @@
 //   · 扫描/分类/排除  → `TeachFormRules.buildFields`（201 的判据层）
 //   · 拒填/敏感词表   → `TeachSafety.refuseTypeReason`（196 的三层同源名单）
 //   · 填 + 探针 + 回读 → `FormFiller.fillField`（201 的执行层，本文件不碰页面细节）
+//   · 排队 + 逐张核对 → `FormBatch.next/advance`、`TeachFormRules.parseCardsJson`/`uniqueName`（201 的批量层）
 //   · 端口            → `FormDom`（**签名里没有 click**：永不自点提交是结构保证，不是自觉）
 //
-// 结构（本文件只做三件 201 没做的事）：
+// 结构（本文件只做五件 201 没做的事；判据与跑卡逻辑仍然只在 201 那边）：
 //   ① [FormFillRules]：**按名字找字段**（标签→name→placeholder 三档，多命中即停）＋ 按钮面收集；
-//   ② [FormFillRunner]：一次调用内「填 → 证据 → 失败即停 → 回滚」的编排；
-//   ③ [FormFillTool]：JSON Schema ＋ 工具描述（「只填不提交」写进给模型看的那句话里）。
+//   ② [FormFillReport]：单发那一趟的回执（每字段一条「选择器 / 前值→后值」）；
+//   ③ [FormFillRunner]：一次调用内「填 → 证据 → 失败即停 → 回滚」的编排；
+//   ④ [FormBatchRunner]／[FormBatchSessions]／[FormBatchReport]：`batch` 分支——把 201 的
+//      [FormBatch]「一次一张、等你说下一张」原样搬进工具会话（跑卡逻辑一条都没新写）；
+//   ⑤ [FormFillTool]：JSON Schema ＋ 工具描述（「只填不提交」写进给模型看的那句话里）。
 //
 // 红线落在哪（负例逐条对得上）：
 //   1 工具自己点提交 ⇒ 端口没有 click、本文件没有 `.click(`，且 `submit=true` 直接被拒；
@@ -25,12 +29,27 @@
 //   7 描述暗示可提交 ⇒ [FormFillTool.DESCRIPTION] 开头就是「只填，不提交」，并有源级门禁钉死；
 //   8 另起一套实现 ⇒ 本文件的填表动作**全部**走 `FormFiller`/`FormScripts`，没有第二套匹配器。
 //
-// 示教入口（本单**不做**，派工单 §1-②）：`TeachReplay.kt` 正被 226 改（录制注入＋桥），
-// 本单按红线一个字不碰它；待 226 合入后，回放遇表单的那一支改调本文件的
-// [FormFillRunner]（＝ `form_fill` 的执行体），不要再写第二套——挂账在 224 派工单。
+// 第二百零一批的六条负例（批量分支逐条对得上；判据都在 201，这里只接线）：
+//   1 点到创建 ⇒ [FormDom] 没有 click 通道 ＋ `submit=true` 在最外层就拒（批量分支也走同一道）；
+//   2 填进密码框 ⇒ 模板由 `TeachFormRules.buildFields` 现扫生成，密码/验证码进不了模板；
+//   3 富文本降成纯文本 ⇒ [FormFiller] 的 RICH_TEXT 回读比行数（本文件不碰页面细节，降不了）；
+//   4 多段块只填第一段 ⇒ [FormFiller.fillCard] 出卡前复查缺段，缺哪段写进卡的 `notes`；
+//   5 回读不一致却报「填好」⇒ 回执里的 `card.ok` 直接抄 [PublishCard.ok]，而它只由回读决定；
+//   6 批量第二张盖掉第一张 ⇒ 卡名 `-2` 由 [TeachFormRules.uniqueName]、证据目录 `-2` 由
+//     [com.example.zhengdao.baopu.FileFormEvidence]，两道都在 201，且逐张都带自己的截图。
+//
+// 两条出口（第二百零一批补齐——224 只交了「单发填点名的那几个字段」这一条）：
+//   · 批量 → 本文件 [FormBatchRunner]（`form_fill` 的 `batch` 参数）→ [TeachForm.batch] → [FormBatch]；
+//   · 回放 → `TeachReplay.kt` 的 TYPE/SELECT 两支走 201 的 [FormFiller]（`FormFillingTeachDom`）。
+//
+// 224 原本把回放那一条挂账成「等 226 合入后改调本文件的 [FormFillRunner]」——第二百零一批做完了，
+// 但接线点是 [FormFiller] 而**不是** [FormFillRunner]：回放的定位来自技能（十档链＋自愈），
+// 不是「按名字找字段」；把 [FormFillRunner] 塞进回放等于丢掉十档与自愈。能复用、也该复用的是
+// **动手那一句**（探针→拒填闸→填→回读校验），那正是 [FormFiller.fillField]。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.BrowserFormDom
+import com.example.zhengdao.baopu.FormBatch
 import com.example.zhengdao.baopu.FormCandidate
 import com.example.zhengdao.baopu.FormControl
 import com.example.zhengdao.baopu.FormDom
@@ -38,10 +57,14 @@ import com.example.zhengdao.baopu.FormField
 import com.example.zhengdao.baopu.FormFiller
 import com.example.zhengdao.baopu.FormReply
 import com.example.zhengdao.baopu.FormScanResult
+import com.example.zhengdao.baopu.FormTemplate
+import com.example.zhengdao.baopu.PublishCard
+import com.example.zhengdao.baopu.TeachForm
 import com.example.zhengdao.baopu.TeachFormRules
 import com.example.zhengdao.baopu.TeachSafety
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 // ── ① 判据层（纯函数：按名字找字段 / 拒填判据 / 按钮面 / 脱敏）──────────────────
 
@@ -450,7 +473,280 @@ internal class FormFillRunner(private val dom: FormDom) {
     }
 }
 
-// ── ④ 工具面（schema ＋ 描述 ＋ 注册）────────────────────────────────────────
+// ── ④ 批量出口（会话 ＋ 回执 ＋ 执行体；跑卡的逻辑一条都不在这里）─────────────
+
+/**
+ * 一条批量会话＝模板 ＋ 卡队列 ＋ 跑到哪一张（进度、以及「上一张还等着发布」都住在 [batch] 里）。
+ *
+ * 为什么只存进程、不落盘：[FormBatch] 的「逐张核对」靠的是内存里的 [FormBatch.pending]——
+ * 一旦允许从磁盘重建会话，「拿同一份模板重新 start」就能绕过「等你点创建」。代价说清：
+ * App 重启＝会话没了，但每一张的截图与逐字段回读**已经落在** `产物/填表/`，卡不丢。
+ */
+internal class FormBatchSession(
+    val id: String,
+    val template: FormTemplate,
+    val batch: FormBatch,
+)
+
+/** 会话表（进程级、有上限：一次任务开十几批，也不许把十几套页面网关留在内存里）。 */
+internal object FormBatchSessions {
+
+    /** 同时在飞的批量会话上限；超了挤掉最老的（卡已落盘，挤掉不丢数据）。 */
+    private const val MAX_SESSIONS = 8
+
+    private var seq = 0
+    private val sessions = LinkedHashMap<String, FormBatchSession>()
+
+    /** 开一条新会话。id 由这里发——模型不许自拟，自拟会撞进别人的会话。 */
+    @Synchronized
+    fun open(template: FormTemplate, batch: FormBatch): FormBatchSession {
+        val session = FormBatchSession(id = "fb-${++seq}", template = template, batch = batch)
+        while (sessions.size >= MAX_SESSIONS) sessions.remove(sessions.keys.first())
+        sessions[session.id] = session
+        return session
+    }
+
+    @Synchronized
+    fun get(id: String): FormBatchSession? = sessions[id]
+}
+
+/** 批量分支的回执（只装事实；「一次只填一张」由 [FormBatch] 保证，这里不重复判）。 */
+internal data class FormBatchReport(
+    val sessionId: String,
+    val action: String,
+    val templateName: String,
+    val progress: String,
+    val total: Int,
+    /** 已出卡张数（含回读没过的那几张——出过卡就算一张，报告不许藏）。 */
+    val cardsOut: Int,
+    val finished: Boolean,
+    /** 这一趟交出的「待发布卡」（没卡＝放行后/收工后/status 无卡可看）。 */
+    val card: PublishCard?,
+    /** 非 null ＝ 这一趟被规则挡下（上一张还没发布），页面一个字段都没动。 */
+    val blocked: String?,
+    val summary: String,
+) {
+    fun toJson(): String = JSONObject()
+        .put("mode", "batch")
+        .put("sessionId", sessionId)
+        .put("action", action)
+        .put("template", templateName)
+        .put("submitted", false)
+        .put("progress", progress)
+        .put("total", total)
+        .put("cardsOut", cardsOut)
+        .put("finished", finished)
+        .put("card", card?.let { cardJson(it) } ?: JSONObject.NULL)
+        .put("blocked", blocked ?: JSONObject.NULL)
+        .put("summary", summary)
+        .put("note", note())
+        .toString()
+
+    /** 人话一句（回执尾部；卡片级原因在 `card.notes` 里，这里不重复）。 */
+    private fun note(): String = buildString {
+        when {
+            blocked != null -> {
+                append(blocked)
+                append("——这一张的卡还挂着，下一张没动（你不说放行，抱朴不填第二张）。")
+            }
+
+            card != null -> {
+                append("已填出「").append(card.title).append("」：")
+                append(if (card.ok) "每格回读一致" else "有 ${card.badRows.size} 格回读没过，先看红行")
+                append("。创建/发布这一步你自己点，点过之后再让我 next。")
+            }
+
+            finished -> append("全部 ").append(total).append(" 张都出过卡，页面没再动。").append(summary)
+
+            action == "advance" ->
+                append("已放行，现在可以填下一张（").append(progress).append("）。")
+
+            else -> append(progress).append("；这一趟没填新卡（只看不碰页面）。").append(summary)
+        }
+    }
+
+    companion object {
+        /**
+         * 卡面（派工单 §1：**只有「复制全文」「打开页面」两个动作**——回执里把这条写死，
+         * 模型照着念给用户时才念得出来；渲染在 `FormFillSheet`，230/235 的地盘）。
+         */
+        private fun cardJson(c: PublishCard): JSONObject = JSONObject()
+            .put("title", c.title)
+            .put("ok", c.ok)
+            .put("rows", JSONArray().also { arr ->
+                c.rows.forEach {
+                    arr.put(
+                        JSONObject()
+                            .put("label", it.label)
+                            .put("value", it.value)
+                            .put("ok", it.ok)
+                            .put("reason", it.reason ?: JSONObject.NULL),
+                    )
+                }
+            })
+            .put("shotPath", c.shotPath ?: JSONObject.NULL)
+            .put("openUrl", c.openUrl)
+            .put("copyText", c.copyText)
+            .put("notes", JSONArray(c.notes))
+            .put("actions", jsonArrayOf("复制全文", "打开页面"))
+    }
+}
+
+/**
+ * 批量分支的执行体（第二百零一批 ①）。四个动作，**一个都不点提交**：
+ * `start`（现扫当前页成模板＋排队＋填第一张）→ `next`（填下一张）→ `advance`（人已点过创建，放行）
+ * → `status`（只看不动页面）。
+ *
+ * 「一次只填一张」不在这里判：那是 [FormBatch.next] 的 `Blocked`（pending 非空就不许过），
+ * 本类只负责把它翻译成回执。`advance` 必须由模型单独调一次 ⇒ 配合 `ToolPermission.CONFIRM`，
+ * 一张卡一次批准＝逐张核对。
+ *
+ * [shot] 是注入点：生产默认截玄览当前页，JVM 单测要能证明「每张卡带的是**自己那张**截图、
+ * 第二张不覆盖第一张」（负例 6），而截图像素这一拍由真机验收覆盖。
+ */
+internal class FormBatchRunner(
+    private val dom: FormDom,
+    private val workspace: File?,
+    private val pageUrl: () -> String?,
+    private val shot: (cardName: String, index: Int) -> String? = { _, _ -> TeachForm.browserShot() },
+) {
+
+    fun run(batch: JSONObject): ToolOutcome {
+        // SchemaCheck 只查顶层（不递归进嵌套对象）⇒ batch 里的键在这里自己守一遍：
+        // 拼错的键不许被静吃掉（静吃掉就等于「你以为排了队，其实一张都没排」）。
+        unknownKey(batch)?.let { return ToolOutcome.Failed(it) }
+        val action = batch.optString(ARG_ACTION).trim().lowercase()
+        return when (action) {
+            "start" -> start(batch)
+            "next" -> step(batch)
+            "advance" -> advance(batch)
+            "status" -> status(batch)
+            else -> ToolOutcome.Failed(ACTION_HINT)
+        }
+    }
+
+    private fun unknownKey(batch: JSONObject): String? {
+        val unknown = batch.keys().asSequence().filter { it !in ALLOWED_KEYS }.sorted().toList()
+        return if (unknown.isEmpty()) null else
+            "batch 里有不认识的键：${unknown.joinToString("、")}（只认 ${ALLOWED_KEYS.sorted().joinToString("、")}）"
+    }
+
+    /** start：现扫 → 模板 → 排队 → 立刻填第一张（不填第一张的 start 等于让模型再猜一次键名）。 */
+    private fun start(batch: JSONObject): ToolOutcome {
+        val workspace = workspace ?: return ToolOutcome.Failed(NO_WORKSPACE)
+        val candidates = dom.scan()
+            ?: return ToolOutcome.Failed("没读到页面（玄览没开／没有标签页／还没加载完）——模板要从当前页现扫，先把要填的那一页打开")
+        val scan = TeachFormRules.buildFields(candidates)
+        if (scan.fields.isEmpty() && scan.blocks.isEmpty()) {
+            return ToolOutcome.Failed(
+                "这一页没有能填的字段。" +
+                    if (scan.excluded.isEmpty()) ""
+                    else "被排除的有：${scan.excluded.joinToString("、") { "${it.label}（${it.reason}）" }}",
+            )
+        }
+        val cards = batch.optJSONArray(ARG_CARDS)
+            ?: return ToolOutcome.Failed("start 要给 batch.cards：[{\"card\":\"名字\",\"values\":{\"字段\":\"值\"}}, …]")
+        val url = pageUrl().orEmpty()
+        val template = TeachFormRules.templateFrom(
+            scan = scan,
+            name = batch.optString(ARG_NAME).trim().ifBlank { "表单·" + (TeachSafety.hostOf(url) ?: "当前页") },
+            startUrl = url,
+            allowedDomains = TeachSafety.hostOf(url)?.let { listOf(it) } ?: emptyList(),
+            nowMs = System.currentTimeMillis(),
+        )
+        val queue = TeachFormRules.parseCardsJson(cards.toString(), template)
+        if (queue.isEmpty()) return ToolOutcome.Failed("batch.cards 里没有一张带值的卡（每张至少要有一个非空字段）")
+        val session = FormBatchSessions.open(
+            template, TeachForm.batch(workspace, template, queue, dom, shot),
+        )
+        return ok(session, "start", session.batch.next())
+    }
+
+    /** next：填下一张（上一张没放行 ⇒ Blocked，页面不动）。 */
+    private fun step(batch: JSONObject): ToolOutcome {
+        val session = require(batch) ?: return ToolOutcome.Failed(missingSession(batch))
+        return ok(session, "next", session.batch.next())
+    }
+
+    /** advance：**用户已经在页面上点过创建/发布**（或明确说这张不要了）⇒ 放行下一张。 */
+    private fun advance(batch: JSONObject): ToolOutcome {
+        val session = require(batch) ?: return ToolOutcome.Failed(missingSession(batch))
+        if (!session.batch.advance()) {
+            return ToolOutcome.Failed(
+                "现在没有「等着发布」的卡：这一张要么还没填（先 next），要么已经放行过了。" +
+                    "（进度不确定就 action=status）",
+            )
+        }
+        return ToolOutcome.Ok(report(session, "advance", null, null).toJson())
+    }
+
+    /** status：只读——不动页面、不填字段、不放行。 */
+    private fun status(batch: JSONObject): ToolOutcome {
+        val session = require(batch) ?: return ToolOutcome.Failed(missingSession(batch))
+        return ToolOutcome.Ok(report(session, "status", session.batch.pending(), null).toJson())
+    }
+
+    /** [FormBatch.Step] → 回执（Blocked 时仍把还挂着的那张卡附上：用户要看的正是它）。 */
+    private fun ok(session: FormBatchSession, action: String, step: FormBatch.Step): ToolOutcome = when (step) {
+        is FormBatch.Step.Filled -> ToolOutcome.Ok(report(session, action, step.card, null).toJson())
+        is FormBatch.Step.Blocked -> ToolOutcome.Ok(report(session, action, session.batch.pending(), step.reason).toJson())
+        FormBatch.Step.Done -> ToolOutcome.Ok(report(session, action, null, null).toJson())
+    }
+
+    private fun report(
+        session: FormBatchSession,
+        action: String,
+        card: PublishCard?,
+        blocked: String?,
+    ): FormBatchReport {
+        val batch = session.batch
+        return FormBatchReport(
+            sessionId = session.id,
+            action = action,
+            templateName = session.template.name,
+            progress = batch.progressText(),
+            total = batch.total,
+            cardsOut = batch.done.size,
+            finished = batch.done.size >= batch.total,
+            card = card,
+            blocked = blocked,
+            summary = batch.summary(),
+        )
+    }
+
+    private fun require(batch: JSONObject): FormBatchSession? =
+        FormBatchSessions.get(batch.optString(ARG_SESSION_ID).trim())
+
+    private fun missingSession(batch: JSONObject): String {
+        val id = batch.optString(ARG_SESSION_ID).trim()
+        return if (id.isEmpty()) {
+            "没给 batch.sessionId：$ACTION_HINT"
+        } else {
+            "没有这个批量会话「$id」（App 重启过，或已超出同时在飞上限）。" +
+                "已出的卡都在 `产物/填表/` 里没丢；要接着填请重新 action=start 排一次队"
+        }
+    }
+
+    companion object {
+        private const val ARG_ACTION = "action"
+        private const val ARG_CARDS = "cards"
+        private const val ARG_NAME = "name"
+        private const val ARG_SESSION_ID = "sessionId"
+
+        /** `batch` 里认识的键（其余一律拒，见 [unknownKey]）。 */
+        private val ALLOWED_KEYS: Set<String> = setOf(ARG_ACTION, ARG_SESSION_ID, ARG_NAME, ARG_CARDS)
+
+        private const val ACTION_HINT =
+            "batch.action 只认四个：start（现扫当前页排队，会填第一张）／next（填下一张，" +
+                "要带 sessionId）／advance（用户已点过创建，放行下一张）／status（只看不动）"
+
+        private const val NO_WORKSPACE =
+            "批量要往工作区 `产物/填表/` 落每张卡的回读记录，装配层没把工作区交给本工具——" +
+                "单发的 fields 分支不受影响"
+    }
+}
+
+// ── ⑤ 工具面（schema ＋ 描述 ＋ 注册）────────────────────────────────────────
 
 internal object FormFillTool {
 
@@ -465,19 +761,39 @@ internal object FormFillTool {
             "填完只把按钮列给你、由用户自己点。fields 是 {\"标签或name\":\"值\"}，只填你点名的字段；" +
             "名字按「标签 → name → placeholder」三档找，命中多个就停手报歧义（不猜）。" +
             "密码/验证码/一次性码（autocomplete=one-time-code）一律拒填。返回每字段的证据" +
-            "（选择器、前值→后值）与 needsHumanClick。"
+            "（选择器、前值→后值）与 needsHumanClick。" +
+            "批量走 batch：action=start 现扫当前页排队并填第一张，之后一次只填一张（next），" +
+            "用户在页面上点过创建之后才 advance 放行下一张；status 只看不碰页面。"
 
     private const val ARG_FIELDS = "fields"
     private const val ARG_SUBMIT = "submit"
     private const val ARG_ROLLBACK = "rollbackOnFailure"
+
+    /** 批量分支（第二百零一批 ①）：`FormBatch` 的工具出口。 */
+    private const val ARG_BATCH = "batch"
+
+    /** 两个入口都没给时的一句话（schema 的 required 已放开，判据只能落在这里）。 */
+    private const val FIELDS_OR_BATCH: String =
+        "要么给 fields（{\"标签或name\":\"值\"}，一次填点名的几个字段），" +
+            "要么给 batch（{\"action\":\"start\",…}，批量逐张）——两个都没给"
 
     /** `submit=true` 时的拒绝文案（工具层最后一道：连「代点」这个念头都在这里掐掉）。 */
     const val SUBMIT_REFUSAL: String =
         "form_fill 不做提交：它只填字段。提交/保存/登录/支付这一步必须由用户在页面上自己点" +
             "（把填好的页面留着，告诉用户点哪个按钮）。"
 
-    /** 生产装配：默认接玄览当前标签（`BrowserFormDom` 是 201 的端口实现，不新开桥）。 */
-    fun spec(dom: () -> FormDom = { BrowserFormDom(null) }): ToolSpec = ToolSpec(
+    /**
+     * 生产装配：默认接玄览当前标签（`BrowserFormDom` 是 201 的端口实现，不新开桥）。
+     *
+     * [workspace] 只有批量分支要——每张卡的逐字段回读要落 `产物/填表/`；注册表把它传进来，
+     * 单测给临时目录。拿不到工作区时批量明确拒绝（不许假装落过盘），单发的 `fields` 不受影响。
+     * [pageUrl] 是模板的 `startUrl` 来源：页面事实，不猜。
+     */
+    fun spec(
+        dom: () -> FormDom = { BrowserFormDom(null) },
+        workspace: () -> File? = { null },
+        pageUrl: () -> String? = { BaopuBrowser.require()?.pageInfo()?.url },
+    ): ToolSpec = ToolSpec(
         name = NAME,
         description = DESCRIPTION,
         inputSchema = jsonObjectOf(
@@ -485,7 +801,13 @@ internal object FormFillTool {
             "properties" to jsonObjectOf(
                 ARG_FIELDS to jsonObjectOf(
                     "type" to "object",
-                    "description" to "要填的字段：{\"标签或name\":\"值\"}。只填这里点名的字段，页面上其余字段不碰",
+                    "description" to "要填的字段：{\"标签或name\":\"值\"}。只填这里点名的字段，页面上其余字段不碰（与 batch 二选一）",
+                ),
+                ARG_BATCH to jsonObjectOf(
+                    "type" to "object",
+                    "description" to "批量逐张填：{\"action\":\"start|next|advance|status\",\"sessionId\":\"start 回执里的 id\"," +
+                        "\"name\":\"模板名（可省）\",\"cards\":[{\"card\":\"卡名\",\"values\":{\"字段键\":\"值\"}}]}。" +
+                        "start 现扫当前页成模板并立刻填第一张；一次只填一张，advance 代表用户已经在页面上点过创建",
                 ),
                 ARG_SUBMIT to jsonObjectOf(
                     "type" to "boolean",
@@ -496,20 +818,37 @@ internal object FormFillTool {
                     "description" to "某个字段失败时，把已经填好的字段清回原值（默认 true）",
                 ),
             ),
-            "required" to jsonArrayOf(ARG_FIELDS),
+            // required 放开（第二百零一批 ①）：fields 与 batch 二选一，这种「至少给一个」
+            // SchemaCheck 表达不了，只能在执行体里判（FIELDS_OR_BATCH）。
+            // 空数组 + REQUIRED_EMPTY_OK 登记是 94/119 批定的口径（同 `ask_user` 的两套形状），
+            // 不是漏写必填——少了这一段 S4/S5 门禁会红。
+            "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.CONFIRM,
         timeoutMs = ToolTimeout.BROWSER_MS,
         riskTier = "R2",
         readOnly = false,
-    ) { args -> execute(args, dom()) }
+    ) { args -> execute(args, dom(), workspace(), pageUrl) }
 
     /** 执行体（JVM 直测：单元测试传假 [FormDom]，不碰 WebView）。 */
-    fun execute(args: JSONObject, dom: FormDom): ToolOutcome {
+    fun execute(
+        args: JSONObject,
+        dom: FormDom,
+        workspace: File? = null,
+        pageUrl: () -> String? = { BaopuBrowser.require()?.pageInfo()?.url },
+        shot: (cardName: String, index: Int) -> String? = { _, _ -> TeachForm.browserShot() },
+    ): ToolOutcome {
         if (args.optBoolean(ARG_SUBMIT, false)) return ToolOutcome.Rejected(SUBMIT_REFUSAL)
+        if (args.has(ARG_BATCH)) {
+            val batch = args.optJSONObject(ARG_BATCH)
+                ?: return ToolOutcome.Failed("batch 必须是对象：{\"action\":\"start\",\"cards\":[…]}")
+            return FormBatchRunner(dom, workspace, pageUrl, shot).run(batch)
+        }
         val obj = args.optJSONObject(ARG_FIELDS)
-            ?: return ToolOutcome.Failed("fields 必须是对象：{\"标签或name\":\"值\"}")
+            ?: return ToolOutcome.Failed(
+                if (args.has(ARG_FIELDS)) "fields 必须是对象：{\"标签或name\":\"值\"}" else FIELDS_OR_BATCH,
+            )
         val requests = mutableListOf<Pair<String, String>>()
         val ignored = mutableListOf<String>()
         for (key in obj.keys()) {

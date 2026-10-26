@@ -9,6 +9,11 @@
 //   轮询收割事件；只记录不干预（用户正常点/输/翻页）。
 // - [TeachReplay]：回放入口（装技能 → 域检查/指纹/门控/自愈 → 审计+取证）。
 //
+// 第二百零一批 ② 加的一层：[FormFillingTeachDom]——回放里带值的两步（TYPE/SELECT）
+// 不再直接往元素上塞字符串，而是走 201 的 `FormFiller`（探针→拒填闸→填→**回读**→校验），
+// 跑完出「待发布卡」。`TeachExecutor.kt` 一个字没改：它每步只问一句 `ask(Act(…))`，
+// 换掉这一句的实现就等于换掉了动手的方式，而顺序铁律、门控、取证、审计全留在原处。
+//
 // 线程契约：BrowserCommands.execJs 是同步桥且**禁止主线程调用**——本文件的
 // 录制/回放都跑在调用方给的后台协程里，UI 只碰 [TeachSessionUiModel]。
 package com.example.zhengdao.baopu
@@ -784,6 +789,300 @@ internal class TeachSessionUiModel(
     }
 }
 
+// ── 第二百零一批 ②：回放遇表单步 ⇒ 走 201 的 FormFiller ──────────────────────
+
+/**
+ * 回放时的「动手」装饰器：196 执行器每步只问一句 `ask(Act(locator, action, value))`，
+ * 本类把 **TYPE/SELECT**（带值的两支）换成 201 的 [FormFiller]——
+ * 探针 → 拒填安全闸 → 填 → **回读** → 校验；其余查询原样透传。
+ *
+ * 为什么装饰而不改执行器：`TeachExecutor.kt` 不归本单（红线），而顺序铁律、门控、自愈、
+ * 取证、审计都在它里面——换掉动手的实现，那一条链一步不少。
+ *
+ * 四条口径：
+ * · **只接带值的两支**：CLICK/SCROLL/WAIT 一律透传。本单不许放宽拒点名单，「不点创建」
+ *   在 196 那一侧已由 [TeachSafety.refuseClickReason] 兜住，表单侧再由 [FormDom] 没有
+ *   点击通道兜住——两道都不动。
+ * · **判据不重写**：控件是什么由 [TeachFormRules.classify] 判，值对不对由
+ *   [TeachFormRules.check] 判（走 [FormFiller.fillField]），定位口径复用同一套
+ *   [TeachLocator]；本类只做「这一步的目标 → 一条 201 的字段」这一件翻译。
+ * · **回读不一致 ⇒ `Acted(ok=false)`**：执行器据此判这一步失败并停在玄览。228-C 会先复核
+ *   指纹、再滚入视口重试一次——重试＝把探针→拒填→填→回读整条再走一遍；填同一个值进同一个
+ *   格子是幂等的，不会多点任何东西。
+ * · **动手之前被拒也留一行红的**：形状变了／探针说是提交类或凭证框这类「还没碰就被拒」，
+ *   除了把原因串交出去，还要在 [formOutcomes] 里留一行——这一趟没跑完，卡上只印那几格绿的
+ *   就等于把「停在哪一格」藏起来了（逐张核对的人看的正是这张卡）。
+ */
+internal class FormFillingTeachDom(
+    private val delegate: TeachDom,
+    private val formDom: FormDom,
+) : TeachDom {
+
+    /** 目标元素 → 一次填表结局（自愈后同一格重填 ⇒ 后一次覆盖前一次：留的是页面上的最终状态）。 */
+    private val outcomes = LinkedHashMap<String, FieldOutcome>()
+
+    /** 这次回放走过的表单步结局（出「待发布卡」的原料；执行器不读它）。 */
+    val formOutcomes: List<FieldOutcome> get() = outcomes.values.toList()
+
+    /** 最后一次看到的页面地址（卡的「打开页面」落点；回放不改导航，这里只是抄一手）。 */
+    var lastUrl: String = ""
+        private set
+
+    override fun ask(query: TeachQuery): TeachReply {
+        val reply = when (query) {
+            is TeachQuery.Act -> when (query.action) {
+                TeachAction.TYPE, TeachAction.SELECT -> fillFormField(query.locator, query.action, query.value)
+                else -> delegate.ask(query)
+            }
+            else -> delegate.ask(query)
+        }
+        if (reply is TeachReply.Url) lastUrl = reply.url
+        return reply
+    }
+
+    /** 「这一步要往格子里塞一个值」——改成 201 的填法，并只认回读。 */
+    private fun fillFormField(loc: TeachLocator, action: TeachAction, raw: String?): TeachReply {
+        val value = raw?.takeIf { it.isNotBlank() }
+            ?: return actFailed("这一步没有要填的值（技能不完整）")
+
+        val picked = pickField(loc, action)
+        val field = when (picked) {
+            is FieldPick.Refused -> return refuseStep(loc, action, value, picked)
+            is FieldPick.Field -> picked.field
+        }
+        val op = TeachFormRules.resolveOp(field, value)
+            ?: if (field.control == FormControl.SELECT || field.control == FormControl.RADIO) {
+                // 选项表不在探针面上（走的是「认不回模板、只按页面事实判」那一支）时按原值塞：
+                // 回放的值本来就是页面要的 value——录制取的是 `el.value`，200 的枚举取值
+                // 也在这里之前就把用户说的中文映射回了 value。选不中由 fill 的 JS 拒、
+                // 再由 [TeachFormRules.check] 回读拦。
+                TeachFormRules.FormOp(field, value, value)
+            } else {
+                return refuseStep(
+                    loc, action, value,
+                    FieldPick.Refused("这个值落不进「${field.label.ifBlank { field.key }}」", field),
+                )
+            }
+
+        val outcome = FormFiller(formDom).fillField(op)
+        outcomes[loc.describe()] = outcome
+        if (!outcome.ok) {
+            // 原因串原样交出去：[FieldOutcome.reason] 两种来源都写清了——过闸前被拒（「密码框不填…」）
+            // 还是填完回读不一致（「回读不一致」/「下拉没选中…」）。执行器据此判这一步失败。
+            return actFailed(outcome.reason ?: "回读不一致")
+        }
+        val url = (delegate.ask(TeachQuery.CurrentUrl) as? TeachReply.Url)?.url ?: lastUrl
+        return TeachReply.Acted(ok = true, reason = null, urlAfter = url)
+    }
+
+    private fun actFailed(reason: String): TeachReply.Acted =
+        TeachReply.Acted(ok = false, reason = reason, urlAfter = "")
+
+    /**
+     * 动手之前就被拒（形状变了／是提交类／是凭证框）。
+     *
+     * 除了把原因串交给执行器（这一步判失败、停在玄览），还必须在结局里留一行红的：
+     * 这一趟没跑完，卡上若只有那几格绿的，就等于把「停在哪一格」藏起来了——
+     * 逐张核对的人看的正是这张卡。
+     */
+    private fun refuseStep(
+        loc: TeachLocator,
+        action: TeachAction,
+        value: String,
+        picked: FieldPick.Refused,
+    ): TeachReply {
+        val field = picked.field
+        outcomes[loc.describe()] = FieldOutcome(
+            key = field?.key ?: loc.value,
+            label = field?.label?.takeIf { it.isNotBlank() }
+                ?: picked.label.takeIf { it.isNotBlank() }
+                ?: loc.value,
+            // 卡面不印这一项，但 FieldOutcome 要它：认不出控件时按这一步录的动作给个名目
+            control = field?.control
+                ?: if (action == TeachAction.SELECT) FormControl.SELECT else FormControl.SINGLE_LINE,
+            blockIndex = field?.blockIndex ?: 0,
+            ok = false,
+            expected = value,
+            actual = "",
+            reason = picked.reason,
+        )
+        return actFailed(picked.reason)
+    }
+
+    // ── 「这一步的目标」→「201 的一条字段」────────────────────────────────────
+
+    private sealed class FieldPick {
+        data class Field(val field: FormField) : FieldPick()
+
+        /** 拒的理由给人看；[field]/[label] 是页面对这一格的认知（拿不到就留空）。 */
+        data class Refused(
+            val reason: String,
+            val field: FormField? = null,
+            val label: String = "",
+        ) : FieldPick()
+    }
+
+    /**
+     * 先按「当前页扫一遍 ＋ 定位器对得上」认——认回来就带页面标签、选项表、重复块的段号，
+     * 判据最全（与 224 的 `form_fill` 同一个来源：[TeachFormRules.buildFields]）。
+     *
+     * 认不回（自愈后的新定位器、或这一格被扫描面排除）退到**探针事实**：只问它是什么，
+     * 再由 [TeachFormRules.classify] 分类。两条路都拿不到、或它不是可填控件 ⇒ 拒，不动手。
+     */
+    private fun pickField(loc: TeachLocator, action: TeachAction): FieldPick {
+        val fromPage = formDom.scan()?.let { cands ->
+            val scan = TeachFormRules.buildFields(cands)
+            (scan.fields + scan.blocks.flatMap { it.fields }).firstOrNull { loc in it.locators }
+        }
+        if (fromPage != null) {
+            val mismatch = controlVsAction(fromPage.control, action, fromPage.label.ifBlank { fromPage.key })
+            if (mismatch != null) return FieldPick.Refused(mismatch, fromPage)
+            return FieldPick.Field(fromPage)
+        }
+
+        val probe = (formDom.probe(listOf(loc)) as? FormReply.Probed)?.probe
+            ?: return FieldPick.Refused("探不到这一格（页面没响应，或它不在页面上）", label = loc.value)
+        if (!probe.found) {
+            return FieldPick.Refused(
+                "页面里找不到这一格（${probe.reason ?: "定位器已失效"}）",
+                label = probe.text ?: probe.placeholder ?: probe.inputName ?: loc.value,
+            )
+        }
+        // 认不回模板时只有探针这一份事实：分类照 [classify] 的口径判，判不进去（不是可填控件、
+        // 像提交类、是密码/验证码）就拒——停下问人比塞错格子好。
+        // 注：单选在这一路只可能来自手改的技能：录制端的 `change` 只推 SELECT／TEXTAREA／
+        // INPUT(text|search|无 type)（[TeachScripts] 里那条监听），radio 的改动只留成一个
+        // CLICK 步，而 CLICK 归 196 的拒点名单管，不走这里。
+        val label = probe.text ?: probe.placeholder ?: probe.inputName ?: loc.value
+        val cls = TeachFormRules.classify(candidateOf(probe))
+        val control = when (cls) {
+            is TeachFormRules.Classified.Accepted -> cls.control
+            is TeachFormRules.Classified.Excluded -> return FieldPick.Refused(cls.reason, label = label)
+        }
+        val asField = FormField(
+            key = loc.describe(),
+            label = label,
+            control = control,
+            locators = listOf(loc),
+            inputType = probe.inputType,
+            inputName = probe.inputName,
+            placeholder = probe.placeholder,
+        )
+        controlVsAction(control, action, label)?.let { return FieldPick.Refused(it, asField) }
+        return FieldPick.Field(asField)
+    }
+
+    /** 录的是下拉、当前页面上它成了输入框（或反过来）⇒ 不猜（页面改了形状，这一步该重教）。 */
+    private fun controlVsAction(control: FormControl, action: TeachAction, label: String): String? =
+        when {
+            action == TeachAction.SELECT && control != FormControl.SELECT && control != FormControl.RADIO ->
+                "这一步录的是下拉，当前页面上「$label」不是下拉（是 $control）——页面形状变了，请重新教一遍"
+
+            action == TeachAction.TYPE && control == FormControl.SELECT ->
+                "这一步录的是输入框，当前页面上「$label」是下拉——页面形状变了，请重新教一遍"
+
+            else -> null
+        }
+
+    /**
+     * 探针面 → [FormCandidate]（只为复用 [TeachFormRules.classify] 的分类判据）。
+     *
+     * `disabled/readOnly` 探针不带 ⇒ 只能报 false；这两条在回放这一路不是红线（填得进去
+     * 只读框会把值留在页面上，但回读校验读的是页面真值，且端口没有点击通道），
+     * 在 `form_fill` 那一路仍由扫描期排除兜住。
+     */
+    private fun candidateOf(probe: FormProbe): FormCandidate = FormCandidate(
+        tag = probe.tag,
+        inputType = probe.inputType,
+        contentEditable = probe.contentEditable,
+        elemId = probe.elemId,
+        inputName = probe.inputName,
+        placeholder = probe.placeholder,
+        autocomplete = probe.autocomplete,
+        text = probe.text,
+        visible = true, // 找得到就说明可见：所有档的 matcher 都带 zlV（宽高非 0）
+    )
+}
+
+/**
+ * 回放跑完 ⇒ 「待发布卡」。
+ *
+ * 只填不提交这条线在卡上是结构性的：[PublishCard] 里没有 submit 字段，行里只有最终值、
+ * 截图与「复制全文／打开页面」两个出口（渲染层 `FormFillSheet.kt` 同样只有这两个按钮）。
+ *
+ * 卡片文本落进这次运行的证据目录（[TeachRunReport.evidenceDir]），值一律先过
+ * [TeachParams.redact]——200 的口径「参数值不进日志」在这一路同样成立；界面拿的是
+ * [PublishCard] 对象本身（用户要复制的就是那份原文）。
+ *
+ * internal 而不是 private：这一段是纯数据＋落盘，JVM 单测要能直接盯住「红行／脱敏／
+ * 没表单步不编空卡」三件事（`TeachReplayFormTest`）；带 Context 的截图那一拍留在
+ * [publishReplayCard]，由真机验收覆盖。
+ */
+internal fun buildReplayPublishCard(
+    skillName: String,
+    outcomes: List<FieldOutcome>,
+    evidenceDir: String?,
+    openUrl: String,
+    shotPath: String?,
+    redactValues: Map<String, String>,
+): PublishCard? {
+    if (outcomes.isEmpty()) return null // 这一趟没有表单步 ⇒ 不编一张空卡
+    val card = TeachFormRules.publishCardFromSteps(skillName, outcomes, openUrl, shotPath)
+    val dir = evidenceDir?.let { File(it) }?.takeIf { it.isDirectory } ?: return card
+    val text = buildString {
+        appendLine(card.title)
+        card.rows.forEach { row ->
+            append(if (row.ok) "✓ " else "✗ ")
+                .append(row.label).append(" = ").append(row.value)
+            if (!row.ok) append(" —— ").append(row.reason ?: "回读不一致")
+            appendLine()
+        }
+        card.notes.forEach { appendLine("· ").append(it) }
+        appendLine("截图：").append(card.shotPath ?: "（无）")
+        appendLine("页面：").append(card.openUrl)
+        appendLine("———「复制全文」的内容———")
+        appendLine(card.copyText)
+    }
+    runCatching {
+        File(dir, "待发布卡.txt").writeText(TeachParams.redact(text, redactValues), Charsets.UTF_8)
+    }.onFailure { RunLog.log("回放待发布卡落盘失败：skill=$skillName it=${it.message}") }
+    return card
+}
+
+/**
+ * 回放收尾（两条回放入口共用）：表单步出卡 ＋ 一行运行日志。
+ * 日志带的是真机验收要看的三样——几格、几格回读没过、截图与卡路径。
+ * 没有表单步的回放（纯点选翻页）不出卡、也不记这行。
+ */
+private fun publishReplayCard(
+    context: Context,
+    tabId: Int?,
+    report: TeachRunReport,
+    dom: FormFillingTeachDom,
+    skill: TeachSkill,
+    redactValues: Map<String, String> = emptyMap(),
+): PublishCard? {
+    val outcomes = dom.formOutcomes
+    if (outcomes.isEmpty()) return null
+    val shot = when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
+        is com.example.zhengdao.bridge.BrowserCommands.ShotCapture.Ok -> c.ref.hostPath
+        else -> null
+    }
+    val card = buildReplayPublishCard(
+        skillName = skill.name,
+        outcomes = outcomes,
+        evidenceDir = report.evidenceDir,
+        openUrl = dom.lastUrl.ifBlank { skill.startUrl },
+        shotPath = shot,
+        redactValues = redactValues,
+    )
+    RunLog.log(
+        "回放表单步：技能=${skill.name} 共 ${outcomes.size} 格，回读没过 ${outcomes.count { !it.ok }} 格；" +
+            "截图=${card?.shotPath ?: "无"} 卡=${report.evidenceDir?.let { "$it/待发布卡.txt" } ?: "未落盘"}",
+    )
+    return card
+}
+
 // ── 回放入口 ──────────────────────────────────────────────────────────────────
 
 object TeachReplay {
@@ -792,6 +1091,9 @@ object TeachReplay {
      * 回放一个已保存的技能。全流程：读技能 → 域检查 → 指纹 → 逐步定位/门控/安全闸/
      * 自愈 → expect → 取证（产物/玄览技能/<名>/<时间>/）→ 审计行。
      * **同步阻塞**（内部走 execJs 桥），调用方放后台线程。
+     *
+     * 第二百零一批 ②：TYPE/SELECT 两支的「动手」走 [FormFillingTeachDom]（＝201 的
+     * [FormFiller]），跑完出「待发布卡」（数据在 [PublishCard]，渲染在 `FormFillSheet.kt`）。
      */
     fun replaySkill(
         context: Context,
@@ -809,8 +1111,9 @@ object TeachReplay {
                 else -> null
             }
         }
+        val dom = FormFillingTeachDom(BrowserTeachDom(tabId), BrowserFormDom(tabId))
         val executor = TeachExecutor(
-            dom = BrowserTeachDom(tabId),
+            dom = dom,
             evidence = sink,
             audit = { report, now ->
                 if (!TeachReplayStore.appendAudit(projectRoot, report.auditLine(now))) {
@@ -818,7 +1121,9 @@ object TeachReplay {
                 }
             },
         )
-        return executor.run(skill)
+        val report = executor.run(skill)
+        publishReplayCard(context, tabId, report, dom, skill)
+        return report
     }
 
     private fun failedReport(name: String, reason: String): TeachRunReport = TeachRunReport(
@@ -846,6 +1151,13 @@ data class TeachParamRun(
     val ask: String?,
     val display: List<TeachParamValue>,
     val stopReason: String?,
+    /**
+     * 「待发布卡」（第二百零一批 ②）：这一趟有表单步才有，纯点选翻页的回放是 null。
+     *
+     * 默认 null ⇒ 老调用点（含 226 的源码门禁）一个字节不改。卡上只有「复制全文／打开页面」
+     * 两个出口——渲染层 `FormFillSheet.kt` 同样只有这两个按钮，没有第三个。
+     */
+    val publish: PublishCard? = null,
 ) {
     val ok: Boolean get() = report?.ok == true
 
@@ -862,6 +1174,8 @@ data class TeachParamRun(
             append("：${report.stepsDone} 步")
             report.stopReason?.let { append("，原因：$it") }
             noteLine().takeIf { it.isNotEmpty() }?.let { append("（").append(it).append("）") }
+            // 第二百零一批 ②：填了内容就要明说「等你点创建」——不说这句，用户会以为已经发出去了
+            if (publish != null) append("；内容已填好，最后一下（创建/发布）你自己点，卡上有「复制全文」")
         }
     }
 }
@@ -938,8 +1252,9 @@ fun replaySkillWithParams(
                     else -> null
                 }
             }
+            val dom = FormFillingTeachDom(BrowserTeachDom(tabId), BrowserFormDom(tabId))
             val executor = TeachExecutor(
-                dom = BrowserTeachDom(tabId),
+                dom = dom,
                 evidence = RedactingEvidenceSink(raw, pl.values),
                 audit = { report, now ->
                     if (!TeachReplayStore.appendAudit(projectRoot, TeachParams.redact(report.auditLine(now), pl.values))) {
@@ -947,7 +1262,10 @@ fun replaySkillWithParams(
                     }
                 },
             )
-            return TeachParamRun(executor.run(pl.skill), null, pl.display, null)
+            val report = executor.run(pl.skill)
+            // 表单步出「待发布卡」；落盘的文本按 200 的口径把参数值换回占位符，界面拿的对象不换
+            val card = publishReplayCard(context, tabId, report, dom, pl.skill, pl.values)
+            return TeachParamRun(report, null, pl.display, null, card)
         }
     }
 }
