@@ -55,11 +55,13 @@ class PhoneSearchColdScanInstrumentedTest {
     @Test
     fun `真机冷扫_文件数_字节_耗时_峰值内存一次记全`() {
         val st = SearchScope.status(ctx)
+        // 2026-10-26 第二百二十九批：搜索范围**不再有开关**——给了"所有文件访问"就默认全盘。
+        // 所以前提只剩一条：系统授权真的给了（没给就如实失败，不许交一个 0 根的数字）。
         assertTrue(
-            "前提未满足（开关=" + st.switchOn + "，档位=" + st.access + "）：这一条只出读数，" +
-                "先把 抱朴设置 → 搜索范围（只读） 的开关拨开，并在 系统设置 → 应用 → 证道 → 所有文件访问 里授予授权，"
-                + "再重跑（不许在没授权的情况下交一个 0 根的数字）",
-            st.switchOn && st.access == PhoneAccess.GRANTED,
+            "前提未满足（档位=" + st.access + "）：这一条只出读数——" +
+                "去 系统设置 → 应用 → 证道 → 所有文件访问 授予授权后重跑" +
+                "（不许在没授权的情况下交一个 0 根的数字）",
+            st.access == PhoneAccess.GRANTED,
         )
 
         val out = StringBuilder()
