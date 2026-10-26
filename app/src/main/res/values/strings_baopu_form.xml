@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百二十四批：表单填写（form_fill）的字符串单独成文件——与第一百五十八批（生图）、
+     第一百九十五批（物流查询）同一个做法：本批不往主干 strings.xml 上叠改动，
+     工具文案门禁（BaopuToolStringsTest）按目录全读 strings*.xml，独立文件与并入完全等价。
+
+     文案里刻意写死三件事（与 FormFillTool.DESCRIPTION 同口径，负例 7：描述不许暗示可提交）：
+     ① 只填不提交；② 按钮由用户自己点；③ 密码/验证码一律不填。 -->
+<resources>
+    <string name="baopu_tool_form_fill">填表单</string>
+    <string name="baopu_tool_form_fill_desc">把你说过的那几格填进玄览当前页的表单：只填你点名的字段，名字按标签、name、placeholder 三档找，命中多个就停下来报歧义（不猜）。密码、验证码、一次性码一律拒填。不会提交——提交／保存／登录／支付这些按钮永远由你自己点，工具只把它们列出来。每填一格回执里带一条证据（定位器、填前值→填后值，手机号这类会打码）。中途有一格没填对就停下，并把已经填好的清回原值。默认不可见：先在 capabilities 里解锁「网页操作」组才会出现。</string>
+</resources>

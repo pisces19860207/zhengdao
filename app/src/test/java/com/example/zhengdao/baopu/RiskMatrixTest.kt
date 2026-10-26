@@ -34,9 +34,10 @@ class RiskMatrixTest {
     // ── 门禁 1：注册表全覆盖 ──────────────────────────────────────────────
 
     @Test
-    fun `注册表46个工具_每个都有档或显式豁免`() {
+    fun `注册表53个工具_每个都有档或显式豁免`() {
         val names = newRegistry().names()
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 53, names.size)
+        // 224：加 form_fill（53 → 54）。这条数变了就说明有人加了工具没回来对表。
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 54, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),
@@ -340,7 +341,7 @@ class RiskMatrixTest {
         assertTrue(v.unclassified)
         assertEquals("unclassified_tool", v.auditTag)
         assertEquals(RiskCode.UNCLASSIFIED_TOOL, v.reasonCode)
-        assertEquals("未分类也要带矩阵版本", 1, v.matrixVersion)
+        assertEquals("未分类也要带矩阵版本", RiskTable.DEFAULT_VERSION, v.matrixVersion)
         assertFalse("必问不是硬拒", v.hardDeny)
         assertFalse("未分类绝不能被当 R0 放行", v.risk == RiskClass.R0)
     }
@@ -354,7 +355,7 @@ class RiskMatrixTest {
         assertNull("豁免项没有风险档", bash.risk)
         assertEquals("豁免项没有主判据", RiskCode.NONE, bash.reasonCode)
         assertFalse(bash.hardDeny)
-        assertEquals(1, bash.matrixVersion)
+        assertEquals(RiskTable.DEFAULT_VERSION, bash.matrixVersion)
 
         assertEquals(RiskClass.R0, RiskMatrix.baseOf("read"))
         assertEquals(RiskClass.R0, verdict("read", mapOf("path" to "产物/a.md")).risk)
@@ -381,14 +382,15 @@ class RiskMatrixTest {
 
     @Test
     fun `matrixVersion_表里带版本且原样回填`() {
-        assertEquals(1, RiskTable.DEFAULT.matrixVersion)
-        assertEquals(1, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
+        assertEquals(RiskTable.DEFAULT_VERSION, RiskTable.DEFAULT.matrixVersion)
+        assertEquals(RiskTable.DEFAULT_VERSION, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
 
-        val v2 = RiskTable.DEFAULT.copy(matrixVersion = 2)
-        assertEquals(2, verdict("read_file", mapOf("path" to "产物/a.md"), table = v2).matrixVersion)
+        val bumped = RiskTable.DEFAULT_VERSION + 1
+        val v2 = RiskTable.DEFAULT.copy(matrixVersion = bumped)
+        assertEquals(bumped, verdict("read_file", mapOf("path" to "产物/a.md"), table = v2).matrixVersion)
         // 豁免与未分类也要带版本（208 的账不分档位）
-        assertEquals(2, verdict("bash", mapOf("command" to "x"), table = v2).matrixVersion)
-        assertEquals(2, verdict("mcp__s__t", table = v2).matrixVersion)
+        assertEquals(bumped, verdict("bash", mapOf("command" to "x"), table = v2).matrixVersion)
+        assertEquals(bumped, verdict("mcp__s__t", table = v2).matrixVersion)
     }
 
     @Test

@@ -248,6 +248,19 @@ internal object DecisionLedger {
     /** 现读装配的落点（测试断言「装到哪了」用）。 */
     fun installedRoot(): File? = root
 
+    /**
+     * 卸掉落点（**只有测试会调**；装配层不调）。
+     *
+     * 为什么需要：落点是**进程级全局**。某个用例 [install] 之后如果不还原，同 JVM 里
+     * 「没装配落点就不落」那类用例就会随**执行顺序**变红（第二百二十四批实证：
+     * 新增一个测试类改变了类扫描顺序，RiskWiringTest 装完没还 ⇒ DecisionLedgerTest.L11 红）。
+     * 修在装配点这一侧（谁装谁还），而不是把那条断言改宽。
+     */
+    internal fun uninstallForTest() {
+        root = null
+        seq = 0
+    }
+
     /** 落点文件。 */
     fun fileIn(globalRoot: File): File = File(globalRoot, FILE_NAME)
 

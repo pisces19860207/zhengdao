@@ -37,6 +37,9 @@ class RiskWiringTest {
     fun cleanup() {
         roots.forEach { it.deleteRecursively() }
         RiskGate.resetForTest()
+        // 第二百二十四批：装过落点就必须还回去——它是进程级全局，不还的话同 JVM 里
+        // 「没装配落点就不落」那条用例会随执行顺序变红（见 DecisionLedger.uninstallForTest）
+        DecisionLedger.uninstallForTest()
     }
 
     // ── 夹具 ─────────────────────────────────────────────────────────────
@@ -376,8 +379,10 @@ class RiskWiringTest {
     @Test
     fun `负例7_219的表内容一个字节都没动`() {
         // 本批只许"调用"219 的表：版本号、行数、豁免集合、阈值都得是 219 留下的读数
-        assertEquals("矩阵版本被改了（改表才该 +1，本批不许改表）", 1, RiskTable.DEFAULT_VERSION)
-        assertEquals("表行数变了：219 的表被改过", 52, RiskTable.DEFAULT.tools.size)
+        // （第二百二十四批更新：224 被授权「只加 form_fill 一行」⇒ 版本 1→2、行数 52→53。
+        //   这条断言的判据没变——变了就红；变的是 224 留下的新读数。）
+        assertEquals("矩阵版本被改了（改表才该 +1，224 加了一行 form_fill）", 2, RiskTable.DEFAULT_VERSION)
+        assertEquals("表行数变了：224 之后应是 53 行", 53, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)
