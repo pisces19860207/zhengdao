@@ -14,6 +14,12 @@
 //   ② [FormFiller]：一张卡一条字段地填——探针 → 拒填安全闸 → 填 → **回读** → 校验；
 //   ③ [FormBatch]：一张一行、填完就出「待发布卡」、**等你说下一张才动下一张**。
 //
+// 两条出口（第二百零一批本批补的，之前这三层合了却一个调用点都没有）：
+//   · 批量 → `form_fill` 的 `batch` 分支调 [TeachForm.batch]，模板在 start 时从当前页
+//     现扫（[TeachForm.scanPage]）；
+//   · 回放 → 196 的示教回放在 TYPE/SELECT 两支改走 [FormFiller]（`TeachReplay.kt` 的
+//     `FormFillingTeachDom`）——「批量填」与「回放填」用的是同一个填表器，没有第二套。
+//
 // 六条负例的落点（派工单 §3）：
 //   1 点到创建 ⇒ [TeachFormRules.refuseSubmitLike] + 端口无点击通道 + 源级门禁；
 //   2 填进密码框 ⇒ 扫描期排除 + 动手前探针再拒（[TeachSafety.refuseTypeReason]）；
@@ -23,7 +29,7 @@
 //   6 批量重名覆盖 ⇒ [TeachFormRules.uniqueName]（`-2`/`-3`）+ 证据目录不覆盖。
 package com.example.zhengdao.baopu
 
-import android.content.Context
+import com.example.zhengdao.baopu.agent.BaopuBrowser
 import com.example.zhengdao.bridge.BrowserCommands
 import com.example.zhengdao.bridge.jsStringLiteral
 import org.json.JSONArray
@@ -882,7 +888,6 @@ internal object TeachFormRules {
         outcome: CardOutcome,
         shotPath: String?,
     ): PublishCard {
-        val rows = outcome.fields.map { PublishRow(it.label.ifBlank { it.key }, it.expected, it.ok, it.reason) }
         val notes = mutableListOf<String>()
         if (!outcome.ok) {
             notes += outcome.stopReason ?: "有 ${outcome.failures.size} 处没填对，先看红行"
@@ -890,10 +895,10 @@ internal object TeachFormRules {
         if (outcome.missingSegments.isNotEmpty()) {
             notes += "缺段：${outcome.missingSegments.joinToString("、") { "第 $it 段" }}"
         }
-        if (shotPath == null) notes += "这次没取到截图（页面可能没渲染完）"
+        if (shotPath == null) notes += NO_SHOT_NOTE
         return PublishCard(
             title = "待发布 · ${card.name}",
-            rows = rows,
+            rows = rowsOf(outcome.fields),
             shotPath = shotPath,
             openUrl = template.startUrl,
             copyText = copyText(template, card),
@@ -901,6 +906,42 @@ internal object TeachFormRules {
             ok = outcome.ok,
         )
     }
+
+    /**
+     * 出卡（**示教回放路径**，第二百零一批 ②）：这一路没有模板——技能是一步一步录下来的，
+     * 行与全文直接从「逐字段的回读结局」组。
+     *
+     * 为什么不走 [publishCard]：它要的 `FormTemplate`/`FormCard` 在这里不存在（回放没有
+     * 「一张卡」的概念，值来自技能步骤或 200 的参数）。行映射与截图缺位的话说同一句话，
+     * 都收在这里，两边不分叉。
+     */
+    fun publishCardFromSteps(
+        skillName: String,
+        outcomes: List<FieldOutcome>,
+        openUrl: String,
+        shotPath: String?,
+    ): PublishCard {
+        val bad = outcomes.filter { !it.ok }
+        val notes = mutableListOf<String>()
+        if (bad.isNotEmpty()) notes += "有 ${bad.size} 处回读不一致，先看红行"
+        if (shotPath == null) notes += NO_SHOT_NOTE
+        return PublishCard(
+            title = "待发布 · $skillName",
+            rows = rowsOf(outcomes),
+            shotPath = shotPath,
+            openUrl = openUrl,
+            copyText = outcomes.joinToString("\n") { "${it.label.ifBlank { it.key }}：${it.expected}" }.trim(),
+            notes = notes,
+            ok = outcomes.isNotEmpty() && bad.isEmpty(),
+        )
+    }
+
+    /** 卡面行：模板路径与回放路径共用这一份映射（别在两处各写一遍）。 */
+    private fun rowsOf(fields: List<FieldOutcome>): List<PublishRow> =
+        fields.map { PublishRow(it.label.ifBlank { it.key }, it.expected, it.ok, it.reason) }
+
+    /** 没截到图时卡上那句（两条出卡路径同一句话）。 */
+    private const val NO_SHOT_NOTE: String = "这次没取到截图（页面可能没渲染完）"
 
     // ── 批量输入：JSON / CSV → 卡（复用 200 的参数口径）─────────────────────
 
@@ -1506,42 +1547,42 @@ internal class BrowserFormDom(private val tabId: Int?) : FormDom {
     }
 }
 
-/** 生产入口（给接线层用；本批不挂主界面入口，见交付报告 §5）。 */
+/**
+ * 生产入口（第二百零一批 ① 之后有了调用点：`form_fill` 的 `batch` 分支——
+ * 之前这三层合了却一个调用点都没有，这一条就是本批要补的出口）。
+ */
 internal object TeachForm {
 
-    /** 扫一遍当前页 → 模板草稿所需的字段/块/排除清单（一个页面动作都不做：纯读）。 */
-    fun scanPage(tabId: Int?): FormScanResult? {
-        val dom = BrowserFormDom(tabId)
-        val cands = dom.scan() ?: return null
-        return TeachFormRules.buildFields(cands)
-    }
-
-    /** 一张卡的填表器（生产＝玄览；测试＝假 DOM）。 */
-    fun filler(tabId: Int?): FormFiller = FormFiller(BrowserFormDom(tabId))
+    /**
+     * 默认截图手：玄览当前标签截一张核对图。
+     *
+     * `album=false` ＝**核对图、不进相册**（一次任务几十张，刷相册会把用户相册占满）。
+     * 截不到就返回 null——卡上会明说「这次没取到截图」，不许留白让人以为有图。
+     * 单独成一个函数：工具层（`form_fill` 的 batch 分支）要能在 JVM 单测里把它换成假手。
+     */
+    fun browserShot(): String? = runCatching {
+        BaopuBrowser.require()?.screenshot(fullPage = false, album = false)?.relPath
+    }.getOrNull()
 
     /**
-     * 批量跑卡的生产壳：每张卡的截图走 `captureShotRef`（**核对图，不进相册**——
-     * 一次任务几十张，刷相册会把用户相册占满）。
+     * 批量跑卡的生产壳。[dom]/[shot] 是参数而不是写死：批量这条路要能被 JVM 单测驱动
+     * （假 DOM ＋ 临时工作区），而工具层的 `dom` 本来就是注入点——这里再自己 new 一个
+     * `BrowserFormDom` 就等于「测试填一套、生产填另一套」。默认值仍是生产实现，不传就是真页面。
+     *
+     * 证据落 `<工作区>/产物/填表/`：卡名重名由 [TeachFormRules.uniqueName] 加 `-2`，
+     * 目录重名由 [FileFormEvidence] 自己加（负例 6 两道都不覆盖）。
      */
     fun batch(
-        context: Context,
         workspace: File,
         template: FormTemplate,
         cards: List<FormCard>,
-        tabId: Int?,
-    ): FormBatch {
-        val evidenceRoot = File(MemoryLayout.productsDir(workspace), "填表")
-        return FormBatch(
-            template = template,
-            cards = cards,
-            filler = filler(tabId),
-            evidence = FileFormEvidence(evidenceRoot),
-            shot = { _, _ ->
-                when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
-                    is BrowserCommands.ShotCapture.Ok -> c.ref.hostPath
-                    else -> null
-                }
-            },
-        )
-    }
+        dom: FormDom = BrowserFormDom(null),
+        shot: (cardName: String, index: Int) -> String? = { _, _ -> browserShot() },
+    ): FormBatch = FormBatch(
+        template = template,
+        cards = cards,
+        filler = FormFiller(dom),
+        evidence = FileFormEvidence(File(MemoryLayout.productsDir(workspace), "填表")),
+        shot = shot,
+    )
 }

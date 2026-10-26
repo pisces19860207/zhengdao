@@ -11,6 +11,7 @@ import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.FormFillTool
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.agent.ToolOutcome
+import com.example.zhengdao.baopu.agent.ToolSchemaRules
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -277,14 +278,27 @@ class FormFillToolTest {
 
     @Test
     fun `负例6_schema契约齐全_描述不超上限`() {
-        val spec = FormFillTool.spec { pageDom() }
+        val spec = FormFillTool.spec(dom = { pageDom() })
         assertEquals(FormFillTool.NAME, spec.name)
         assertEquals("object", spec.inputSchema.optString("type"))
         assertFalse(spec.inputSchema.optBoolean("additionalProperties", true))
-        assertEquals(
-            listOf("fields"),
-            (0 until spec.inputSchema.getJSONArray("required").length()).map { spec.inputSchema.getJSONArray("required").getString(it) },
+        val props = spec.inputSchema.getJSONObject("properties")
+        for (k in listOf("fields", "batch", "submit", "rollbackOnFailure")) {
+            assertTrue("schema 少了 $k", props.has(k))
+        }
+        // 第二百零一批 ①：fields 与 batch 二选一。「至少给一个」这条 JSON Schema 面上写不出来
+        // （SchemaCheck 是平的、不递归），改由 execute() 手工判 ⇒ required 不许再写死 fields，
+        // 否则批量分支（只带 batch）会在 schema 校验那关就被误拒。
+        // 但「整段没有」过不了 94/119 批的 S4 门禁（ToolSchemaGateTest 会红）：口径是
+        // **空数组 ＋ 在 ToolSchemaRules.REQUIRED_EMPTY_OK 登记原因**（与 203 的 ask_user 同形制）。
+        assertTrue("required 段必须在（S4：缺段＝漏写必填的伪装）", spec.inputSchema.has("required"))
+        assertEquals("required 放开：批量分支不填 fields", 0, spec.inputSchema.getJSONArray("required").length())
+        assertTrue(
+            "空 required 要在签字表里登记原因，否则 S5 红",
+            ToolSchemaRules.REQUIRED_EMPTY_OK.containsKey(FormFillTool.NAME),
         )
+        assertTrue("batch 的说明要把四个动作写全", listOf("start", "next", "advance", "status")
+            .all { props.getJSONObject("batch").optString("description").contains(it) })
         assertTrue("描述不能超上限", spec.description.length <= 500)
         assertFalse("它改页面，不许标成只读", spec.readOnly)
     }
@@ -301,7 +315,7 @@ class FormFillToolTest {
             assertFalse("描述不许暗示能提交：$bad", d.contains(bad))
         }
         // schema 那一段也要说清 submit 传 true 会被拒
-        val submitDesc = FormFillTool.spec { pageDom() }
+        val submitDesc = FormFillTool.spec(dom = { pageDom() })
             .inputSchema.getJSONObject("properties").getJSONObject("submit").optString("description")
         assertTrue("submit 参数说明必须写明永不提交：$submitDesc", submitDesc.contains("永不提交"))
     }

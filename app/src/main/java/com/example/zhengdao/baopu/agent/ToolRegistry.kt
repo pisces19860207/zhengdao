@@ -1353,8 +1353,9 @@ internal object BaopuToolCatalog {
         Entry("logistics_query") { LogisticsQueryTool.spec() },
         // 表单填写（第二百二十四批）：201 的 TeachForm 接进生产的一个工具面——
         // 只填点名的字段、拒填密码/验证码、**永不点提交**（按钮交给人）。
-        // 不需要 workspaceRoot：它只改玄览里的页面，不写盘（证据随回执返回给模型）。
-        Entry("form_fill") { FormFillTool.spec() },
+        // 第二百零一批 ① 起要 workspaceRoot：批量分支把每张卡的逐字段回读落 `产物/填表/`；
+        // 单发的 fields 分支仍旧只改页面不写盘（拿不到工作区时只有批量会明确拒绝）。
+        Entry("form_fill") { root -> FormFillTool.spec(workspace = root) },
     )
 
     /**

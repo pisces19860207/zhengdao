@@ -114,6 +114,9 @@ internal object ToolSchemaRules {
         "browser_forward" to "无参数：前进同 back（BrowserTools.forwardSpec，228 批 B-2）",
         "browser_reload" to "无参数：重载当前页，没有可填的东西（BrowserTools.reloadSpec，228 批 B-2）",
         "browser_tabs_list" to "无参数：列全部标签本身不需要输入（BrowserTools.tabsListSpec，228 批 B-4）",
+        "form_fill" to "fields 与 batch 二选一（第二百零一批 ①）：单发点名字段给 fields，批量逐张给 " +
+            "batch——schema 表达不了「至少给一个」，由执行体点名报错（FormFillTool.FIELDS_OR_BATCH）；" +
+            "形状同 ask_user（203 批）",
     )
 
     /**
