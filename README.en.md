@@ -11,7 +11,7 @@
 
 An AI-agent runtime for Android with a built-in assistant, **Baopu (抱朴)**, and a real Debian terminal.
 
-One APK, no root, no commands. Baopu reads and writes files in its workspace, browses for you, handles images, and writes. **Xuanlan (玄览)** is its eyes: an in-app browser whose pages you can hand to Baopu. When you need a real shell, switch to **Xiaoyao (逍遥)** and its Debian terminal.
+One APK, no root, no commands. Baopu reads and writes files, can search the whole phone, run scheduled tasks on time, and connect to external MCP tool servers; it also browses for you, handles images, and writes. Before each action it tells you whether it will ask first and how many files it will touch — and afterwards the Decision Center shows what it did and lets you undo it. **Xuanlan (玄览)** is its eyes: an in-app browser whose pages you can hand to Baopu. When you need a real shell, switch to **Xiaoyao (逍遥)** and its Debian terminal.
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
@@ -19,7 +19,7 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
-**Baseline**: the feature set is baselined at v2.2.0 (v2.2.1 onward is incremental fixes and patches, no rewrites); new capabilities ship in separate batches.
+**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch. The package is still v2.2.1 (versionCode 39).
 
 ## Requirements
 
@@ -33,12 +33,12 @@ One APK, no root, no commands. Baopu reads and writes files in its workspace, br
 
 | Tab | What it is | What it does |
 |---|---|---|
-| Baopu | the built-in agent | Chat; read, write and search workspace files; view, edit and multi-attach images; read web pages; organise the library and build a local index; keep plans; grow skills. It writes novels and drafts, and it will write code — but code is only shown, never run |
+| Baopu | the built-in agent | Chat; read and write workspace files, search the whole phone (read-only, cancellable), run scheduled tasks, connect MCP tool servers; view, edit and multi-attach images; read web pages; organise the library and build a local index; keep plans; grow skills and replay a walkthrough. It writes novels and drafts, and it will write code — but code is only shown, never run |
 | Xiaoyao | the terminal | A Debian 13 environment for when you need a shell |
 | Xuanlan | the browser | Baopu's eyes: open a page in the app and hand it over. Baopu can also click and scroll it. Local pages and code are displayed, not executed |
 | Yiran | install & health | Install third-party agents (Hermes / Claude Code / Codex / AGY CLI — none preinstalled), see environment status, and run health checks |
 
-Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to Baopu, and results land back in the workspace. Baopu never touches a shell and never spawns a process; it works only inside its workspace. System-level work belongs to Xiaoyao.
+Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to Baopu, and results land back in the workspace. Baopu never runs a shell and never spawns a process. Files normally stay inside the workspace; if it genuinely needs to step outside, it asks once — and that grant lasts for this run only. A few system actions (clipboard, notifications, dialling, scheduling) go through authorised tools; everything else system-level belongs to Xiaoyao.
 
 **The conversation is all you see**: the transcript holds only your messages and Baopu's replies. Every step and tool call collapses into a single "process bar" at the end of each turn — tap it to see the details. Plans sit ahead as a capsule; the process bar looks back, and neither takes over the transcript.
 
@@ -48,24 +48,42 @@ Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to
 
 **See and edit.** Hand it pages and images: summarise, excerpt, resize, crop, convert. Pages open in Xuanlan; you can let Baopu click and turn pages, or point it at a specific page. The first time it needs the browser group, you get an approval card (this session / always). Images can be attached several at a time; it can also generate an image from a sentence (Gemini, one confirmation card per image).
 
-**Write.** Give it an outline and it writes chapter by chapter; keep going, or paste an old draft back and ask for changes. Output is plain files in the workspace — any file manager can open them. Same for code, except code is only displayed, never executed.
+**Write.** Give it an outline and it writes chapter by chapter; keep going, or paste an old draft back and ask for changes. Output is plain files in the workspace — any file manager can open them. Same for code, except code is only displayed, never executed. Long answers collapse into a card you can fold away, so the transcript stays readable.
+
+**Schedule.** Say "every morning at eight, turn yesterday's diary into one paragraph" and it creates a scheduled task that fires on its own. Without exact-alarm permission it says "roughly around then" instead of forcing it.
+
+**Search the phone.** Ask it to find "that invoice from last month" and it scans phone storage in slices: read-only, nothing leaves the device, cancellable at any time — then it asks whether to bring the file into the workspace.
+
+**Show it once.** Walk it through a task (where to tap, what to type) and it turns the session into a skill. Next time it replays the steps, checking each expectation first and stopping on a mismatch instead of tapping blind.
 
 ## It grows — but never behind your back
 
-Baopu accumulates skills and memories, and every step needs your nod. Writes and deletes, opening a new tool group, changing a memory or a skill — each one raises a decision card; the decision center in the top bar collects them:
+Baopu accumulates skills and memories, but it does not decide on its own without asking the right question. Writes, deletes, memory or skill changes raise a decision card by default; when cards pile up, the **Decision Center** in the top bar handles them:
 
-- **Skills** start as drafts that Baopu cannot see by default; after three uses a "promote" option appears, and it only becomes a real skill when you tap it. Writing one requires a confirmation card, and a backup is taken first, so you can restore the previous version.
-- **Memories** are distilled into candidates at the end of a session; they are written only when you tap "Remember", and discarded when you don't.
-- **Episodic memory**: what Baopu did is written into a diary; the files are the source of truth. You can recall a diary into the conversation, or delete it.
+- **Layered confirmation**: the same thing is asked once (same-key dedupe); one grant covers this run only; pure reads raise no card.
+- **Skills** start as drafts Baopu cannot see. On first launch three starter skills are installed (also drafts; deleting them does not reinstall, and same names are not overwritten). Promotion has two paths: you tap it, or three uses promote it automatically — either way it lands in the Decision Center with one-tap rollback.
+- **Auto-write** is allowed only when all five conditions hold (process-only, project skills only, small, draft first, audited and revertible); miss one and it goes back to a card.
+- **Memories** are distilled into candidates at the end of a session; they are written only when you tap "Remember", and discarded when you don't. **Episodic memory** records what Baopu did as a diary; the files are the source of truth — recall them into the conversation, or delete them.
 - **Persona** has three layers: the core is read-only; the global and project layers evolve with sessions, but only as proposals you approve. The global layer follows the app; the project layer follows the workspace.
+- **The Decision Center** keeps every side effect in one ledger: grouped cards, real undo, a sampling queue — what a change touched, and whether it can be undone, at a glance.
 - **Global skills** cannot be changed by Baopu — only proposed. You make the change yourself in settings.
 
 In short: it changes, but never without you.
 
+## How it guards itself
+
+Models make things up; there is no point pretending otherwise. Zhengdao stops that at three places:
+
+- **Before**: every action first gets a risk level and an impact hint — whether this asks you, how many files it touches, how many ledger entries it involves. Being foreseeable is itself a constraint.
+- **During**: irreversible actions are never taken alone (originals folder, password fields and intranet URLs are blocked); a tool that stalls for 300 ms degrades; you can stop at any time and interject mid-run.
+- **After**: every side effect lands in the Decision Center, where it can be inspected and undone; skill and memory changes keep a diff and a backup, so they can be rolled back.
+
+In one line: **the model thinks, the boundary blocks, the ledger remembers.**
+
 ## Why "heavy harness"
 
 - **The runtime lives in the app**: the agent loop, tools, step budget, context compaction and crash-resume are all implemented here — not a wrapper around a desktop CLI.
-- **Governance sits in the runtime**: per-group tool switches, confirmation before writes and deletes, workspace-only access, a step ceiling per task, a compaction threshold — enforced by code, not by prompt etiquette.
+- **Governance sits in the runtime**: per-group tool switches (only common groups on by default), confirmation before writes and deletes, one ask per run when stepping outside the workspace, a step ceiling and a no-progress circuit breaker, a compaction threshold — enforced by code, not by prompt etiquette.
 - **Evolution is a closed loop with gates**: skills go from draft to promotion, memories from candidate to disk, persona from proposal to effect — always backup first, confirm next, rollback possible.
 
 Together that is what "heavy harness" means here: not many tools, but a boundary and an audit trail around every action.
@@ -106,7 +124,9 @@ Android may kill backgrounded apps. For long tasks, keep Zhengdao in the foregro
 
 - Android 16 (API 36) and arm64 only, and verified end to end on a single device; other devices and OS versions have not been individually tested.
 - Baopu writes code but only displays it in Xuanlan — it never runs it. To run code on the phone, use Xiaoyao; the two sides do not cross.
-- Baopu never touches a shell and never spawns a process; system-level work is out of its scope by design.
+- Baopu never runs a shell and never spawns a process; clipboard, notifications, dialling and scheduling go through authorised tools, and the rest of the system is out of its scope by design.
+- The orchestration mode (several steps per turn, segmented budget) is **off by default**: it is faster on complex work and easier to run off the rails, so it stays behind a usage cap and a stop button until explicitly opened.
+- New capabilities from this round (Decision Center, scheduled tasks, teach-and-replay, risk matrix / impact hints, whole-phone search) all have unit gates, but **real-device feel is still being verified batch by batch** — confirmation frequency, whether auto-write feels right, whether schedules fire on time. Anything not yet verified is stated in the release notes.
 - Baopu needs a network; long tasks can be affected by background reclamation — see the previous section.
 
 ## License and trademarks
