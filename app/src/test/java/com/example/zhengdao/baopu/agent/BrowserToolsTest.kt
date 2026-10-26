@@ -78,6 +78,58 @@ class BrowserToolsTest {
             boom?.let { throw it }
             return answer
         }
+        override fun waitForStable(ms: Int): String {
+            calls += "stable:$ms"
+            boom?.let { throw it }
+            return answer
+        }
+
+        // ── 228 批 B 片九件 ──────────────────────────────────────────────────
+        override fun goBack(): String {
+            calls += "back"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun goForward(): String {
+            calls += "forward"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun reload(): String {
+            calls += "reload"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun selectOption(target: String, value: String): String {
+            calls += "select:$target=$value"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun hover(target: String): String {
+            calls += "hover:$target"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun scrollIntoView(target: String): String {
+            calls += "scroll_into:$target"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun tabsList(): String {
+            calls += "tabs_list"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun switchTab(tabId: Int): String {
+            calls += "tab_switch:$tabId"
+            boom?.let { throw it }
+            return answer
+        }
+        override fun closeTab(tabId: Int): String {
+            calls += "tab_close:$tabId"
+            boom?.let { throw it }
+            return answer
+        }
         override fun pageInfo(): PageInfo? = page
     }
 
@@ -103,10 +155,21 @@ class BrowserToolsTest {
         assertEquals(ToolPermission.CONFIRM, spec("browser_swipe").permission)
         assertEquals(ToolPermission.CONFIRM, spec("browser_long_press").permission)
         assertEquals(ToolPermission.CONFIRM, spec("browser_key").permission)
+        // 228 批 B：导航三件会改历史栈、select/hover 会改页面状态、切/关标签改会话状态
+        // ⇒ CONFIRM；scroll_into_view 只动滚动位置、tabs_list 纯读 ⇒ FREE
+        assertEquals(ToolPermission.CONFIRM, spec("browser_back").permission)
+        assertEquals(ToolPermission.CONFIRM, spec("browser_forward").permission)
+        assertEquals(ToolPermission.CONFIRM, spec("browser_reload").permission)
+        assertEquals(ToolPermission.CONFIRM, spec("browser_select").permission)
+        assertEquals(ToolPermission.CONFIRM, spec("browser_hover").permission)
+        assertEquals(ToolPermission.CONFIRM, spec("browser_tabs_switch").permission)
+        assertEquals(ToolPermission.CONFIRM, spec("browser_tabs_close").permission)
+        assertEquals(ToolPermission.FREE, spec("browser_scroll_into_view").permission)
+        assertEquals(ToolPermission.FREE, spec("browser_tabs_list").permission)
     }
 
     @Test
-    fun 十一个工具_名字与超时() {
+    fun 二十个工具_名字与超时() {
         val names = BrowserTools.all().map { it.name }
         assertEquals(
             listOf(
@@ -114,6 +177,9 @@ class BrowserToolsTest {
                 "browser_type", "browser_scroll", "browser_screenshot",
                 "browser_tap", "browser_swipe", "browser_long_press",
                 "browser_key", "browser_wait",
+                "browser_back", "browser_forward", "browser_reload",
+                "browser_select", "browser_hover", "browser_scroll_into_view",
+                "browser_tabs_list", "browser_tabs_switch", "browser_tabs_close",
             ),
             names,
         )
@@ -175,12 +241,24 @@ class BrowserToolsTest {
         assertTrue(outcome is ToolOutcome.Failed)
     }
 
+    // 228 批 A-1：句柄不再被工具层拦——原样透传，裁决权在玄览侧（四道闸）
     @Test
-    fun click_at句柄_明确说不支持() {
-        BaopuBrowser.gateway = FakeGateway()
+    fun click_at句柄_透传给玄览裁决() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
         val outcome = spec("browser_click").executor(JSONObject().put("target", "@e3"))
-        assertTrue(outcome is ToolOutcome.Failed)
-        assertTrue((outcome as ToolOutcome.Failed).error.contains("CSS"))
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("click:@e3"), fake.calls)
+    }
+
+    @Test
+    fun type_at句柄_透传给玄览裁决() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_type")
+            .executor(JSONObject().put("target", "@e2").put("text", "hi"))
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("type:@e2=hi"), fake.calls)
     }
 
     @Test
@@ -201,7 +279,7 @@ class BrowserToolsTest {
     }
 
     @Test
-    fun 网关没开_十一工具都回同一句人话() {
+    fun 网关没开_二十工具都回同一句人话() {
         BaopuBrowser.gateway = null
         val args = mapOf(
             "browser_open" to JSONObject().put("url", "https://a.com"),
@@ -215,6 +293,15 @@ class BrowserToolsTest {
             "browser_long_press" to JSONObject().put("x", 10).put("y", 20),
             "browser_key" to JSONObject().put("key", "enter"),
             "browser_wait" to JSONObject().put("ms", 100),
+            "browser_back" to JSONObject(),
+            "browser_forward" to JSONObject(),
+            "browser_reload" to JSONObject(),
+            "browser_select" to JSONObject().put("target", "@e1").put("value", "a"),
+            "browser_hover" to JSONObject().put("target", "@e1"),
+            "browser_scroll_into_view" to JSONObject().put("target", "@e1"),
+            "browser_tabs_list" to JSONObject(),
+            "browser_tabs_switch" to JSONObject().put("tab_id", 2),
+            "browser_tabs_close" to JSONObject().put("tab_id", 2),
         )
         for ((name, json) in args) {
             val outcome = spec(name).executor(json)
@@ -325,11 +412,122 @@ class BrowserToolsTest {
         assertEquals(listOf("wait:2000:null"), fake.calls)
     }
 
+    // ── 228 批 A-3：browser_wait 的 mode=stable ──────────────────────────────
+
+    @Test
+    fun wait_mode_stable_走stable通道() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_wait")
+            .executor(JSONObject().put("mode", "stable").put("ms", 1200))
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("stable:1200"), fake.calls)
+    }
+
+    @Test
+    fun wait_mode_非法_报错且不碰网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_wait").executor(JSONObject().put("mode", "quiet"))
+        assertTrue(outcome is ToolOutcome.Failed)
+        assertTrue((outcome as ToolOutcome.Failed).error.contains("stable"))
+        assertTrue(fake.calls.isEmpty())
+    }
+
+    @Test
+    fun wait_stable与selector互斥() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_wait")
+            .executor(JSONObject().put("mode", "stable").put("selector", "#a"))
+        assertTrue(outcome is ToolOutcome.Failed)
+        assertTrue(fake.calls.isEmpty())
+    }
+
     @Test
     fun 没有网关时_截图不会假装成功() {
         BaopuBrowser.gateway = null
         val outcome = spec("browser_screenshot").executor(JSONObject())
         assertTrue(outcome is ToolOutcome.Failed)
         assertNull(BaopuBrowser.gateway)
+    }
+
+    // ── 228 批 B 片九件的参数边界与透传 ───────────────────────────────────────
+
+    @Test
+    fun 导航三件_透传给网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        assertTrue(spec("browser_back").executor(JSONObject()) is ToolOutcome.Ok)
+        assertTrue(spec("browser_forward").executor(JSONObject()) is ToolOutcome.Ok)
+        assertTrue(spec("browser_reload").executor(JSONObject()) is ToolOutcome.Ok)
+        assertEquals(listOf("back", "forward", "reload"), fake.calls)
+    }
+
+    @Test
+    fun select_ref句柄与value_透传给网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_select")
+            .executor(JSONObject().put("target", "@e4").put("value", "杭州"))
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("select:@e4=杭州"), fake.calls)
+    }
+
+    @Test
+    fun select_空target_失败且不碰网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_select")
+            .executor(JSONObject().put("target", "  ").put("value", "a"))
+        assertTrue(outcome is ToolOutcome.Failed)
+        assertTrue(fake.calls.isEmpty())
+    }
+
+    @Test
+    fun hover_ref句柄_透传给网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_hover").executor(JSONObject().put("target", "@e7"))
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("hover:@e7"), fake.calls)
+    }
+
+    @Test
+    fun scroll_into_view_ref句柄_透传给网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_scroll_into_view").executor(JSONObject().put("target", "#foot"))
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("scroll_into:#foot"), fake.calls)
+    }
+
+    @Test
+    fun tabs_list_纯读透传() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        val outcome = spec("browser_tabs_list").executor(JSONObject())
+        assertTrue(outcome is ToolOutcome.Ok)
+        assertEquals(listOf("tabs_list"), fake.calls)
+    }
+
+    @Test
+    fun tabs_switch_关闭_把id传下去() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        assertTrue(spec("browser_tabs_switch").executor(JSONObject().put("tab_id", 3)) is ToolOutcome.Ok)
+        assertTrue(spec("browser_tabs_close").executor(JSONObject().put("tab_id", 3)) is ToolOutcome.Ok)
+        assertEquals(listOf("tab_switch:3", "tab_close:3"), fake.calls)
+    }
+
+    @Test
+    fun tabs_switch_关闭_非法id_失败且不碰网关() {
+        val fake = FakeGateway()
+        BaopuBrowser.gateway = fake
+        assertTrue(spec("browser_tabs_switch").executor(JSONObject().put("tab_id", 0)) is ToolOutcome.Failed)
+        assertTrue(spec("browser_tabs_close").executor(JSONObject().put("tab_id", -2)) is ToolOutcome.Failed)
+        // 缺参同拒（optInt 缺省 -1）
+        assertTrue(spec("browser_tabs_close").executor(JSONObject()) is ToolOutcome.Failed)
+        assertTrue(fake.calls.isEmpty())
     }
 }

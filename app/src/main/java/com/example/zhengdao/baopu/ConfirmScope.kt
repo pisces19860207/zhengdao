@@ -109,6 +109,15 @@ internal object ConfirmRisk {
         "browser_long_press",
         "browser_key",
         "browser_wait",
+        // 228 批 B 片七件（B-3 select/hover 与 B-2 导航三件、B-4 切换/关标签都是网页操作；
+        // scroll_into_view 与 tabs_list 走 FREE 免确认，不在本表——漏列只会照问，更安全）
+        "browser_back",
+        "browser_forward",
+        "browser_reload",
+        "browser_select",
+        "browser_hover",
+        "browser_tabs_switch",
+        "browser_tabs_close",
     )
 
     /** 高风险 ⇒ 永远只给「仅这一次」（负例「高风险被范围授权绕过」的判据本体）。 */

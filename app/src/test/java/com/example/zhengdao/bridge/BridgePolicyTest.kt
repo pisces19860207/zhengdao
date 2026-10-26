@@ -32,13 +32,14 @@ class BridgePolicyTest {
     // ── 白名单 ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `白名单恰好 11 条_与设计文档命令清单对齐`() {
-        assertEquals("设计文档 §4.5 命令清单是 11 条；数量变了说明有人加了第 12 条", 11, BridgePolicy.ALL.size)
+    fun `白名单恰好 15 条_设计文档 11 条加 228 批 B 片四条`() {
+        assertEquals("11（设计文档 §4.5）＋ 228 批 B 片 back/forward/reload/tabs ＝ 15；数量变了先过红线审视", 15, BridgePolicy.ALL.size)
         assertEquals(
-            "wireName 必须与设计文档逐字一致（agent 侧照文档写，大小写敏感）",
+            "wireName 逐字对齐（前 11 条照设计文档，后 4 条是 228 批 B 片新增）",
             listOf(
                 "snapshot", "execJS", "click", "type", "scroll",
                 "navigate", "newTab", "activeTab", "closeTab", "status", "screenshot",
+                "back", "forward", "reload", "tabs",
             ),
             BridgePolicy.ALL.map { it.wireName },
         )

@@ -123,6 +123,35 @@ internal object BaopuBrowserWiring {
             override fun waitFor(ms: Int, selector: String?): String =
                 BrowserCommands.await(ms, selector)
 
+            // 228 批 A-3：stable 等待接玄览内核（readyState==complete ＋ DOM 连续 200ms 无变化）
+            override fun waitForStable(ms: Int): String =
+                BrowserCommands.awaitStable(ms)
+
+            // ── 228 批 B 片九件：与桥同一套 BrowserCommands 内核（差别只在没过 token） ──
+
+            override fun goBack(): String = BrowserCommands.goBack()
+
+            override fun goForward(): String = BrowserCommands.goForward()
+
+            override fun reload(): String = BrowserCommands.reload()
+
+            override fun selectOption(target: String, value: String): String =
+                BrowserCommands.selectOption(target, value)
+
+            override fun hover(target: String): String =
+                BrowserCommands.hover(target)
+
+            override fun scrollIntoView(target: String): String =
+                BrowserCommands.scrollIntoView(target)
+
+            override fun tabsList(): String = BrowserCommands.tabsList()
+
+            override fun switchTab(tabId: Int): String =
+                BrowserCommands.activeTab(tabId.toString())
+
+            override fun closeTab(tabId: Int): String =
+                BrowserCommands.closeTab(tabId.toString())
+
             /**
              * 当前页身份：读活跃标签的 `state`（**只读**，不改 `BrowserTabManager`——
              * 那是 172 的文件）。拿不到 ⇒ null，授权闸按「未知页面」照样要授权。

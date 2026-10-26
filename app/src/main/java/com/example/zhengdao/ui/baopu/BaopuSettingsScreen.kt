@@ -1527,6 +1527,17 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "browser_long_press" -> R.string.baopu_tool_browser_long_press
     "browser_key" -> R.string.baopu_tool_browser_key
     "browser_wait" -> R.string.baopu_tool_browser_wait
+    // 228 批 B 片九件：导航三件/动作三件/标签三件（同批新增工具必须同步两张映射表，
+    // 否则真机进本页会 IllegalArgumentException —— 见下面 update_plan 那条教训）
+    "browser_back" -> R.string.baopu_tool_browser_back
+    "browser_forward" -> R.string.baopu_tool_browser_forward
+    "browser_reload" -> R.string.baopu_tool_browser_reload
+    "browser_select" -> R.string.baopu_tool_browser_select
+    "browser_hover" -> R.string.baopu_tool_browser_hover
+    "browser_scroll_into_view" -> R.string.baopu_tool_browser_scroll_into_view
+    "browser_tabs_list" -> R.string.baopu_tool_browser_tabs_list
+    "browser_tabs_switch" -> R.string.baopu_tool_browser_tabs_switch
+    "browser_tabs_close" -> R.string.baopu_tool_browser_tabs_close
     // 第十七批 A+B 段加的 update_plan：当时没同步这张表 ⇒ 2026-10-18 真机开本页直接崩
     // （IllegalArgumentException: 未知抱朴工具「update_plan」）。回归网见 BaopuSettingsGuardTest 的
     // 「catalog 每个工具都有标签/副标题」那条。
@@ -1603,6 +1614,15 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "browser_long_press" -> R.string.baopu_tool_browser_long_press_desc
     "browser_key" -> R.string.baopu_tool_browser_key_desc
     "browser_wait" -> R.string.baopu_tool_browser_wait_desc
+    "browser_back" -> R.string.baopu_tool_browser_back_desc
+    "browser_forward" -> R.string.baopu_tool_browser_forward_desc
+    "browser_reload" -> R.string.baopu_tool_browser_reload_desc
+    "browser_select" -> R.string.baopu_tool_browser_select_desc
+    "browser_hover" -> R.string.baopu_tool_browser_hover_desc
+    "browser_scroll_into_view" -> R.string.baopu_tool_browser_scroll_into_view_desc
+    "browser_tabs_list" -> R.string.baopu_tool_browser_tabs_list_desc
+    "browser_tabs_switch" -> R.string.baopu_tool_browser_tabs_switch_desc
+    "browser_tabs_close" -> R.string.baopu_tool_browser_tabs_close_desc
     "update_plan" -> R.string.baopu_tool_update_plan_desc
     "write_skill" -> R.string.baopu_tool_write_skill_desc
         "append_persona" -> R.string.baopu_tool_append_persona_desc

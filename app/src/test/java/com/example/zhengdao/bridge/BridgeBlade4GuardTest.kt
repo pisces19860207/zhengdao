@@ -92,9 +92,13 @@ class BridgeBlade4GuardTest {
 
     @Test
     fun `J8_负例自证_把 selector 退回静默忽略判别器必须报警`() {
-        val regressed = snapshotBody.replace("subtreeJsScript(sel)", "\"\"")
+        // 228 批 B-1：取数是一对表达式（HTML 路 subtreeJsScript ＋ 几何根 document.querySelector），
+        // 「静默忽略 selector」的仿真突变要把两条路一起退场，仿真才还成立
+        val regressed = snapshotBody
+            .replace("subtreeJsScript(sel)", "\"\"")
+            .replace("\"document.querySelector(\" + jsStringLiteral(sel) + \")", "\"document.documentElement\"")
         assertTrue("退回假过滤后判别器居然还过——门禁自己失效了", !regressed.contains("subtreeJsScript(sel)"))
-        assertTrue("regressed 体里必须看不到真用 selector 的形状", !regressed.contains("document.querySelector"))
+        assertTrue("regressed 体里必须看不到真用 selector 的形状", !regressed.contains("jsStringLiteral(sel)"))
     }
 
     // ── J6：fullPage 真做（含分支与降级口径） ──────────────────────────────

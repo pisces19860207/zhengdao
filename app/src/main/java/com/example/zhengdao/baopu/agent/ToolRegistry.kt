@@ -232,6 +232,17 @@ internal object ToolGroupTable {
         "browser_long_press" to ToolGroup.BROWSER,
         "browser_key" to ToolGroup.BROWSER,
         "browser_wait" to ToolGroup.BROWSER,
+        // 228 批 B 片九件：同样归 BROWSER（默认不可见，capabilities 解锁——默认可见
+        // 12 条的上下文硬卡不许破，ProgressiveToolsTest B1）
+        "browser_back" to ToolGroup.BROWSER,
+        "browser_forward" to ToolGroup.BROWSER,
+        "browser_reload" to ToolGroup.BROWSER,
+        "browser_select" to ToolGroup.BROWSER,
+        "browser_hover" to ToolGroup.BROWSER,
+        "browser_scroll_into_view" to ToolGroup.BROWSER,
+        "browser_tabs_list" to ToolGroup.BROWSER,
+        "browser_tabs_switch" to ToolGroup.BROWSER,
+        "browser_tabs_close" to ToolGroup.BROWSER,
         "file_info" to ToolGroup.FILES,
         "find_files" to ToolGroup.FILES,
         "move_path" to ToolGroup.FILES,
@@ -1188,6 +1199,17 @@ internal object BaopuToolCatalog {
         "browser_long_press",
         "browser_key",
         "browser_wait",
+        // 228 批 B 片九件：默认「启用」（组仍默认不可见——解锁即用，与上面坐标件同款口径）。
+        // 漏了这九行 ⇒ 工具注册了但默认被关，模型永远看不见（开关门禁会红）
+        "browser_back",
+        "browser_forward",
+        "browser_reload",
+        "browser_select",
+        "browser_hover",
+        "browser_scroll_into_view",
+        "browser_tabs_list",
+        "browser_tabs_switch",
+        "browser_tabs_close",
         // 工作计划卡（第十七批）：默认开——关了它，抱朴就不再「先列计划再干活」
         "update_plan",
         // 技能自写（第二十三批 A 段追加）：默认开，但写盘走 CONFIRM ⇒ 不会静默动手
@@ -1271,6 +1293,16 @@ internal object BaopuToolCatalog {
         Entry("browser_long_press") { BrowserTools.longPressSpec() },
         Entry("browser_key") { BrowserTools.keySpec() },
         Entry("browser_wait") { BrowserTools.waitSpec() },
+        // 228 批 B 片九件（B2 导航三件 / B3 动作三件 / B4 标签三件；同样不需要 workspaceRoot）
+        Entry("browser_back") { BrowserTools.backSpec() },
+        Entry("browser_forward") { BrowserTools.forwardSpec() },
+        Entry("browser_reload") { BrowserTools.reloadSpec() },
+        Entry("browser_select") { BrowserTools.selectSpec() },
+        Entry("browser_hover") { BrowserTools.hoverSpec() },
+        Entry("browser_scroll_into_view") { BrowserTools.scrollIntoViewSpec() },
+        Entry("browser_tabs_list") { BrowserTools.tabsListSpec() },
+        Entry("browser_tabs_switch") { BrowserTools.tabsSwitchSpec() },
+        Entry("browser_tabs_close") { BrowserTools.tabsCloseSpec() },
         // 工作计划卡（第十七批）：落点在引擎（PlanTool.sink），表里只放 spec
         Entry("update_plan") { PlanTool.spec() },
         // 资料库两件套（第三十一批）：library_list 只读清单；library_organize 写落地（CONFIRM）

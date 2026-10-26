@@ -450,6 +450,16 @@ class ToolSchemaAllTest {
             "browser_long_press" to JSONObject().put("x", 10).put("y", 20),
             "browser_key" to JSONObject().put("key", "enter"),
             "browser_wait" to JSONObject(),
+            // 228 批 B 片九件（导航三件与 tabs_list 全可选；select/hover/滚进视口/切/关必填目标）
+            "browser_back" to JSONObject(),
+            "browser_forward" to JSONObject(),
+            "browser_reload" to JSONObject(),
+            "browser_select" to JSONObject().put("target", "@e1").put("value", "选项"),
+            "browser_hover" to JSONObject().put("target", "@e1"),
+            "browser_scroll_into_view" to JSONObject().put("target", "@e1"),
+            "browser_tabs_list" to JSONObject(),
+            "browser_tabs_switch" to JSONObject().put("tab_id", 2),
+            "browser_tabs_close" to JSONObject().put("tab_id", 2),
             "update_plan" to JSONObject().put(
                 "items",
                 JSONArray().put(JSONObject().put("text", "写第十节").put("status", "doing")),

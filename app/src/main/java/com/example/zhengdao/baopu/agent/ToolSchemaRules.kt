@@ -110,6 +110,10 @@ internal object ToolSchemaRules {
         "novel_continue" to "path 可省略：同 novel_project 的唯一项目自动回退（2026-10-23 同一口径）",
         "list_dir" to "path 可省略＝列工作区根（2026-10-23：模型说 list the workspace root 时经常不传 path，Gemini 连拒两次就熔断）",
         "ask_user" to "两套形状二选一（第二百零三批）：问一个用 question+options，问一组用 questions——必填在哪套里由执行体点名报错（AskUserTool.executeLegacy/executeGroup）",
+        "browser_back" to "无参数：后退作用于当前页历史栈，没有可填的东西（BrowserTools.backSpec，228 批 B-2）",
+        "browser_forward" to "无参数：前进同 back（BrowserTools.forwardSpec，228 批 B-2）",
+        "browser_reload" to "无参数：重载当前页，没有可填的东西（BrowserTools.reloadSpec，228 批 B-2）",
+        "browser_tabs_list" to "无参数：列全部标签本身不需要输入（BrowserTools.tabsListSpec，228 批 B-4）",
     )
 
     /**

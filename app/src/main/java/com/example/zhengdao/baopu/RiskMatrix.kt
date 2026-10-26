@@ -250,14 +250,14 @@ internal data class RiskTable(
 ) {
     companion object {
         /** 当前矩阵版本（**改一行表就 +1**；与 `DEFAULT` 同处，改表的人不会看不见）。 */
-        const val DEFAULT_VERSION: Int = 1
+        const val DEFAULT_VERSION: Int = 2
 
         /**
-         * 唯一一张默认表（46 个现有工具 ＋ 218 预置 6 个）。
+         * 唯一一张默认表（61 行分级 ＋ bash 豁免 = 注册工具 62 个全有账）。
          *
-         * 46 = `BaopuToolCatalog.ENTRIES` 42 条 ＋ 运行时注册 4 条（write_skill /
-         * append_persona / read / bash）；218 的六件尚未合入，先按派工单口径预置，
-         * 218 落地时不用再回来改门禁（它的单测会直接读到这里的档）。
+         * 62 = `BaopuToolCatalog.ENTRIES` 58 条 ＋ 运行时注册 4 条（write_skill /
+         * append_persona / read / bash）；218 的六件与 228 批 B 片的九件都已接线在册
+         * （各自的单测直接读到这里的档）。改表必须同时动 [DEFAULT_VERSION]。
          */
         val DEFAULT: RiskTable = RiskTable(
             tools = mapOf(
@@ -275,6 +275,15 @@ internal data class RiskTable(
                 "browser_snapshot" to ToolRule(RiskClass.R0),
                 "browser_scroll" to ToolRule(RiskClass.R0),
                 "browser_wait" to ToolRule(RiskClass.R0),
+                // 228 批 B 片：导航三件只动历史栈，不产生新请求目标（URL 规则管不到——
+                // 回退/前进的地址是历史里已经放行过的）；scroll_into_view 与 scroll 同档；
+                // tabs_list 只读；tabs_switch 只改「哪颗是活跃」，不改页面内容。
+                "browser_back" to ToolRule(RiskClass.R0),
+                "browser_forward" to ToolRule(RiskClass.R0),
+                "browser_reload" to ToolRule(RiskClass.R0),
+                "browser_scroll_into_view" to ToolRule(RiskClass.R0),
+                "browser_tabs_list" to ToolRule(RiskClass.R0),
+                "browser_tabs_switch" to ToolRule(RiskClass.R0),
                 "update_plan" to ToolRule(RiskClass.R0),
                 "ask_user" to ToolRule(RiskClass.R0),
                 "capabilities" to ToolRule(RiskClass.R0),
@@ -331,6 +340,16 @@ internal data class RiskTable(
                 "browser_swipe" to ToolRule(RiskClass.R2),
                 "browser_long_press" to ToolRule(RiskClass.R2, clickLike = true),
                 "browser_key" to ToolRule(RiskClass.R2),
+                // 228 批 B 片：select 与 type 同口径（target 是页面目标；value 是要提交的内容
+                // ⇒ 扫语义）；hover 会触发页面上挂着监听的动作 ⇒ 不按只读算；关标签不可逆
+                // （关掉的页面状态没了）⇒ R2。
+                "browser_select" to ToolRule(
+                    RiskClass.R2,
+                    fieldKeys = setOf("target"),
+                    scanSensitiveText = true,
+                ),
+                "browser_hover" to ToolRule(RiskClass.R2),
+                "browser_tabs_close" to ToolRule(RiskClass.R2),
                 // 资料库整理：promote/rename 改工作区内的资料库，但派工单把它定在 R2。
                 // 它的 path 是「相对 投递/产物」的口径（GuardPipeline P0-4），不做越界路径判定。
                 "library_organize" to ToolRule(RiskClass.R2),

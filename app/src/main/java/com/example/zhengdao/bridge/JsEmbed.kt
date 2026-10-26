@@ -97,6 +97,50 @@ internal fun scrollElementJsScript(selector: String): String =
         "if(!el)return 'NOT_FOUND';el.scrollIntoView({behavior:'instant',block:'center'});return 'OK'})()"
 
 /**
+ * `select` 的页面脚本（228 批 B-3）：先按 option 的 `value` 精确配，配不上再按
+ * 可见文本去空格配；谁都没中 ⇒ `'NO_OPTION:'` 前缀带回原值。
+ *
+ * 选中必须**同时**改两处：`selectedIndex`（页面真实状态）＋ 选项的 `selected`
+ * **属性**。为什么属性不能省：快照的 value 反射读的是 PageSnapshot 解析
+ * outerHTML 后 option 的 `selected` 属性，而只设 selectedIndex/property 时浏览器
+ * 序列化 outerHTML **不会**回写该属性 ⇒ 快照永远看到旧值（228 批判据「选中后
+ * value 反射到快照」的落点就在这两个 removeAttribute/setAttribute）。改完补发
+ * input/change（React/Vue 受控组件监听事件，不监听赋值）。
+ */
+internal fun selectJsScript(selector: String, value: String): String =
+    "(function(){" +
+        "var el=document.querySelector(" + jsStringLiteral(selector) + ");" +
+        "if(!el)return 'NOT_FOUND';" +
+        "if(el.tagName!=='SELECT')return 'NOT_SELECT';" +
+        "var v=" + jsStringLiteral(value) + ";" +
+        "var hit=-1;" +
+        "for(var i=0;i<el.options.length;i++){if(el.options[i].value===v){hit=i;break}}" +
+        "if(hit<0){for(var j=0;j<el.options.length;j++){if(el.options[j].text.trim()===v){hit=j;break}}}" +
+        "if(hit<0)return 'NO_OPTION:'+v;" +
+        "for(var k=0;k<el.options.length;k++){el.options[k].removeAttribute('selected')}" +
+        "el.selectedIndex=hit;" +
+        "el.options[hit].setAttribute('selected','selected');" +
+        "el.dispatchEvent(new Event('input',{bubbles:true}));" +
+        "el.dispatchEvent(new Event('change',{bubbles:true}));" +
+        "return 'OK:'+el.value})()"
+
+/**
+ * `hover` 的页面脚本（228 批 B-3）：取元素几何中心当指针坐标，派 hover 一族事件
+ * （mouseover/mouseenter/mousemove/pointerover/pointerenter）。合成事件没有真指针，
+ * 中心是「最像用户会指的那一点」；菜单/tooltip 若靠 CSS `:hover` 展开则合成事件
+ * 触发不了它（浏览器限制，报告记档），JS 挂监听的那类展开不受影响。
+ */
+internal fun hoverJsScript(selector: String): String =
+    "(function(){var el=document.querySelector(" + jsStringLiteral(selector) + ");" +
+        "if(!el)return 'NOT_FOUND';" +
+        "var r=el.getBoundingClientRect();" +
+        "var cx=Math.round(r.left+r.width/2),cy=Math.round(r.top+r.height/2);" +
+        "var cfg={bubbles:true,cancelable:true,clientX:cx,clientY:cy,view:window};" +
+        "['mouseover','mouseenter','mousemove','pointerover','pointerenter'].forEach(function(n){" +
+        "el.dispatchEvent(new MouseEvent(n,cfg))});" +
+        "return 'OK'})()"
+
+/**
  * evaluateJavascript 回调值 → 页面求值结果的字符串形态。
  *
  * 回调值是 JSON 字面量：`null`/空 ⇒ null（保持旧契约「超时/失败归一 null」）；

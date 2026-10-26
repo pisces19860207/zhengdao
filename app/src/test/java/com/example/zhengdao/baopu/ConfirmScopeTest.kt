@@ -96,6 +96,9 @@ class ConfirmScopeTest {
         listOf(
             "browser_open", "browser_click", "browser_type", "browser_tap",
             "browser_swipe", "browser_long_press", "browser_key",
+            // 228 批 B 片七件（B-2 导航三件 / B-3 select、hover / B-4 切换、关标签）
+            "browser_back", "browser_forward", "browser_reload",
+            "browser_select", "browser_hover", "browser_tabs_switch", "browser_tabs_close",
         ).forEach { tool ->
             assertFalse("$tool 不该按高风险算", ConfirmRisk.isHighRisk(tool))
             assertEquals(4, ConfirmRisk.scopesFor(tool).size)

@@ -72,14 +72,20 @@ import kotlin.math.sqrt
  * | 响应体字段 | 出口 | 管线 |
  * |---|---|---|
  * | `url` | `status` / `navigate` 回执 | [SensitiveRedactor.redactUrl] |
+ * | snapshot 头部 `url` | `snapshot` 回包头（228 批 A-2，头部第一字段） | [SensitiveRedactor.redactUrl] |
  * | `title` | `status` / `snapshot` 标题位 | [SensitiveRedactor.redactTabTitle]（redactUrl 两段式 ＋ & 终止键值模式） |
  * | snapshot 正文 | `text` / `nodes` / `dom` | `scrubSecrets`→[SensitiveRedactor.redactDom] |
  * | execJS 返回值 | `result` | `redactText`→[SensitiveRedactor.redactPairs] |
+ * | `tabs` 列表的 `url` / `title`（228 批 B） | `tabs` 回包 | redactUrl / redactTabTitle —— tab 元数据第一次成列表出口，判据不变 |
  *
  * **刻意不进脱敏管线的字段（判据＝非页面/标签元数据，PII 无处栖身）**：
  * `loading`（布尔）/ `tabId` / `tabCount`（整数）/ `screenshot` 的 `file`·`bytes`·`guestPath`
  * （本机路径与字节数）/ `click`·`type`·`scroll` 回执里的 `selector`（agent 自带参数的原样
  * 回声，脱了反而破坏与请求的对应关系）。
+ * 228 批 B 同批核定（判据不变）：snapshot 节点几何 `x`/`y`/`inViewport`（整数与布尔，
+ * 由 [rectInViewport] 从矩形与视口尺寸现算，不含页面文本；节点定位子 `ref` 的定位链
+ * 由 SAFE_TAG 白名单字符构成，同样不含文本）。`select` 回执的 `value` 是**页面内容**
+ * （选中的选项值），照红线⑦过 redactText→redactPairs，不进本清单。
  *
  * 刀 4（2026-10-18）给 `screenshot` 新增的字段同批核定，判据不变（都不是页面/标签元数据）：
  * `hostPath`（宿主绝对路径，§2.3b(b) 补的）、`guestPathScope`（固定一句说明文案）、
@@ -338,24 +344,47 @@ object BrowserCommands {
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
         val m = mode?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "text"
-        // 刀 4 §2.4：selector 决定取整页还是取子树，两条路共用下面同一条脱敏管线
-        val html = if (sel == null) {
-            fetchOuterHtml(tab.webView) ?: return err("取不到页面 DOM（页面可能还在加载）")
-        } else {
-            when (val sub = evalJs(tab.webView, subtreeJsScript(sel))) {
-                null -> return err("执行超时或失败")
-                "NOT_FOUND" -> return err("找不到元素：$sel")
-                else -> sub
-            }
-        }
-        // 管线与第⑲刀落盘侧一致：先摘凭据 → 再打 PII
+        // 刀 4 §2.4：selector 决定取整页还是取子树，两条路共用下面同一条脱敏管线。
+        // 228 批 A：眼状态与 DOM 原文**同一次 JS 执行**取出——快照正文与锚定它的
+        // nonce/epoch 之间不许有缝（中间有缝 ⇒ 页面在两步之间变了而锚还是旧的）。
+        // 228 批 B-1：同一次执行里再带几何探针（真可见性＋视口坐标）——原子性口径不变。
+        val fetched = evalJs(
+            tab.webView,
+            eyeFetchJsScript(
+                if (sel == null) "document.documentElement.outerHTML" else subtreeJsScript(sel),
+                if (sel == null) "document.documentElement" else "document.querySelector(" + jsStringLiteral(sel) + ")",
+            ),
+        ) ?: return err(if (sel == null) "取不到页面 DOM（页面可能还在加载）" else "执行超时或失败")
+        val ef = parseEyeFetch(fetched)
+            ?: return err(if (sel == null) "取不到页面 DOM（页面可能还在加载）" else "执行超时或失败")
+        val eye = ef.probe
+        val html = ef.html
+        if (sel != null && html == "NOT_FOUND") return err("找不到元素：$sel")
+        if (html.isEmpty()) return err("取不到页面 DOM（页面可能还在加载）")
+        // 管线与第⑲刀落盘侧一致：先摘凭据 → 再打 PII（红线：几何是 JS 算的，
+        // 但**脱敏不前移也不省略**——两道仍在这里，几何只补数值与布尔）
         val clean = SensitiveRedactor().redactDom(PageSnapshot.scrubSecrets(html))
-        val summary = PageSnapshot.summarize(clean)
+        val parsed = PageSnapshot.summarize(clean)
+        // 228 批 B-1：几何套用——JS 判不可见（含 class 里的 display:none/opacity:0/零尺寸/
+        // visibility:hidden）的节点整行剔除；命中节点附视口坐标与 inViewport（Kotlin 现算）。
+        // 探针缺席（眼没装上/子树根没了/超条数上限）⇒ 原样列出，不假装有坐标。
+        val summary = ef.geo?.let { applyGeometry(parsed, it) } ?: parsed
+        // 228 批 A-2：头部 url 行——PageFingerprint 的 location.href，离桥过 redactUrl（口径与 status 同）
+        val fp = fingerprintOf(tab)
+        // 228 批 A-1：ref 句柄——眼装上了（能锚定）才发；重新快照即换代，旧 ref 随旧本整体作废
+        val entries = if (eye == null) emptyMap() else refEntriesOf(summary.nodes, sel)
+        installRefBook(
+            tab.id,
+            if (eye == null || entries.isEmpty()) null else RefBook(tab.id, eye.nonce, eye.epoch, entries),
+        )
         // 标题位显式兜底 redactTabTitle：正文已过 redactDom（title 在 DOM 里顺带打码），
         // 这里按「桥边界」再统一一遍——幂等，且将来 summarize 的取法变了也不漏。
-        val head = "\"title\":\"${PageSnapshot.jsonEscape(SensitiveRedactor().redactTabTitle(summary.title))}\"," +
-            "\"text\":\"${PageSnapshot.jsonEscape(clamp(summary.text))}\"," +
-            "\"nodes\":${renderNodes(summary)}"
+        val head = snapshotHeadJson(
+            url = fp?.url ?: "",
+            title = SensitiveRedactor().redactTabTitle(summary.title),
+            text = clamp(summary.text),
+            nodesJson = renderNodes(summary),
+        )
         return when (m) {
             "dom" -> okRaw("\"dom\":\"${PageSnapshot.jsonEscape(clamp(clean))}\"")
             "full" -> okRaw("$head,\"dom\":\"${PageSnapshot.jsonEscape(clamp(clean))}\"")
@@ -364,12 +393,32 @@ object BrowserCommands {
     }
 
     private fun renderNodes(s: PageSnapshot.Summary): String =
-        s.nodes.joinToString(",", "[", "]") { n ->
+        s.nodes.mapIndexed { i, n ->
+            // 228 批 A-1：有定位子的节点带 ref 句柄（编号即 nodes 数组序，e 从 1 起）
+            val ref = if (n.path.isNotEmpty()) ",\"ref\":\"e${i + 1}\"" else ""
+            // 228 批 B：几何读数（数值与布尔，刻意不过脱敏管线——判据见类 KDoc 边界表）。
+            // 没有读数的节点不带这三个键：如实缺席，不伪造 (0,0)。
+            val geo = if (n.x != null && n.y != null) {
+                ",\"x\":${n.x},\"y\":${n.y},\"inViewport\":${n.inViewport}"
+            } else ""
             "{\"role\":\"${PageSnapshot.jsonEscape(n.role)}\"," +
                 "\"name\":\"${PageSnapshot.jsonEscape(n.name)}\"," +
                 "\"value\":\"${PageSnapshot.jsonEscape(n.value)}\"," +
-                "\"states\":\"${PageSnapshot.jsonEscape(n.states)}\"}"
-        }
+                "\"states\":\"${PageSnapshot.jsonEscape(n.states)}\"$ref$geo}"
+        }.joinToString(",", "[", "]")
+
+    /**
+     * snapshot 回包头（**无 Android 内核**，第48刀A statusJson 同款做法 ⇒ JVM 单测直喂）。
+     *
+     * 228 批 A-2 起 url 是头部第一个字段：来自 PageFingerprint 的 `location.href`，
+     * 离桥必须过 [SensitiveRedactor.redactUrl]（口径与 status/navigate 同——真机实证过
+     * query 里的 PII 曾被原样带回）。字段级脱敏边界见类 KDoc 的表（**新增字段先进表再落码**）。
+     */
+    internal fun snapshotHeadJson(url: String, title: String, text: String, nodesJson: String): String =
+        "\"url\":\"${PageSnapshot.jsonEscape(SensitiveRedactor().redactUrl(url))}\"," +
+            "\"title\":\"${PageSnapshot.jsonEscape(SensitiveRedactor().redactTabTitle(title))}\"," +
+            "\"text\":\"${PageSnapshot.jsonEscape(text)}\"," +
+            "\"nodes\":$nodesJson"
 
     /**
      * `execJS`：页面内 JS 自由执行（高权限区，含读 cookie/localStorage）。
@@ -397,18 +446,39 @@ object BrowserCommands {
         return okRaw("\"result\":\"${PageSnapshot.jsonEscape(clamp(redacted))}\"")
     }
 
-    /** `click`：点一个元素（selector 已被 [BridgePolicy.checkSelector] 拦过引号/反斜杠）。㊽-C（§B 78）：`tabId` 可路由。 */
+    /**
+     * `click`：点一个元素。target 两可（228 批 A-1）：快照给的 ref 句柄（`@e3`）或
+     * CSS selector——`@` 开头一律走句柄路（见 [resolveRef]，形状不对也是拒），
+     * 其余走 [BridgePolicy.checkSelector]（拦引号/反斜杠）。㊽-C（§B 78）：`tabId` 可路由。
+     */
     fun click(selector: String?, tabId: String? = null): String {
-        val v = BridgePolicy.checkSelector(selector)
-        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        // 228：@ 句柄不走 CSS 校验（checkSelector 会把 @e3 当非法 CSS 拒掉）；CSS 路的
+        // 校验保持在取标签**之前**——无标签时引号 selector 也要先吃拒，不能漏成「没有活跃标签」。
+        val isRef = selector != null && selector.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(selector)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return if (selector != null && selector.startsWith("@")) {
+            when (val ro = resolveRef(tab, selector)) {
+                is RefOut.Use -> clickRun(tab, selector, ro.locator)
+                is RefOut.Deny -> err(ro.msg)
+                is RefOut.Css -> err("句柄解析异常：$selector") // 不可达（@ 开头 resolveRef 不回 Css），穷尽性兜底
+            }
+        } else {
+            clickRun(tab, selector!!, selector)
+        }
+    }
+
+    private fun clickRun(tab: BrowserTabManager.Tab, echo: String, eff: String): String {
         // 第㊷刀：selector 经 jsStringLiteral 带引号嵌入——旧写法裸拼 ⇒
         // document.querySelector(#btn) 语法错误，click 23ms「假超时」（真机实证）。
-        val js = clickJsScript(selector!!)
-        return when (val r = evalJs(tab.webView, js)) {
-            "OK" -> ok("clicked" to selector)
-            "NOT_FOUND" -> err("找不到元素：$selector")
+        return when (val r = evalJs(tab.webView, clickJsScript(eff))) {
+            // 回声保留 agent 原文（CSS 或 @e3）；实际点的是解析后的定位子
+            "OK" -> ok("clicked" to echo)
+            "NOT_FOUND" -> err("找不到元素：$echo")
             null -> err("执行超时或失败")
             else -> err("意外结果：$r")
         }
@@ -416,6 +486,7 @@ object BrowserCommands {
 
     /**
      * `type`：往任意输入框写文本（**含密码框** —— 高权限区，设计文档明确放开）。
+     * target 两可（228 批 A-1）：快照 ref 句柄（`@e3`）或 CSS（判路规则同 [click]）。
      *
      * text 经 [jsStringLiteral]（第㊷刀：双引号 + jsonEscape 转义 + 双引号）变成
      * 真正的 JS 字符串字面量再嵌入 ⇒ 引号/换行/反斜杠都不会逃逸（这是"任意文本
@@ -425,19 +496,34 @@ object BrowserCommands {
      * setter，直接赋值不触发它们的 onChange（页面就像没收到输入）。
      */
     fun type(selector: String?, text: String?, tabId: String? = null): String {
-        val v = BridgePolicy.checkSelector(selector)
-        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        // 判路规则同 [click]（228）：@ 句柄不走 CSS 校验；CSS 校验与 text 检查都在取标签之前
+        val isRef = selector != null && selector.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(selector)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
         if (text == null) return err("type 缺 text")
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
-        val js = typeJsScript(selector!!, text)
-        return when (val r = evalJs(tab.webView, js)) {
-            "OK" -> ok("typed" to selector)
-            "NOT_FOUND" -> err("找不到元素：$selector")
+        return if (selector != null && selector.startsWith("@")) {
+            when (val ro = resolveRef(tab, selector)) {
+                is RefOut.Use -> typeRun(tab, selector, ro.locator, text)
+                is RefOut.Deny -> err(ro.msg)
+                is RefOut.Css -> err("句柄解析异常：$selector") // 不可达（@ 开头 resolveRef 不回 Css），穷尽性兜底
+            }
+        } else {
+            typeRun(tab, selector!!, selector, text)
+        }
+    }
+
+    private fun typeRun(tab: BrowserTabManager.Tab, echo: String, eff: String, text: String): String =
+        when (val r = evalJs(tab.webView, typeJsScript(eff, text))) {
+            // 回声保留 agent 原文（CSS 或 @e3）；实际写的是解析后的定位子
+            "OK" -> ok("typed" to echo)
+            "NOT_FOUND" -> err("找不到元素：$echo")
             null -> err("执行超时或失败")
             else -> err("意外结果：$r")
         }
-    }
 
     /** `scroll`：按坐标（x,y）或按元素（selector 滚进视口）。㊽-C（§B 78）：`tabId` 可路由。 */
     fun scroll(x: String?, y: String?, selector: String?, tabId: String? = null): String {
@@ -455,6 +541,138 @@ object BrowserCommands {
         return when (val r = evalJs(tab.webView, js)) {
             "OK" -> ok("scrolled" to (selector ?: "$x,$y"))
             "NOT_FOUND" -> err("找不到元素：$selector")
+            null -> err("执行超时或失败")
+            else -> err("意外结果：$r")
+        }
+    }
+
+    // ── 228 批 B-3：动作补齐三件（select / hover / scroll_into_view）──────────
+    //
+    // target 判路规则与 [click]（228 批 A-1）逐字一致：@ 句柄走 resolveRef（形状不对
+    // 也是拒，绝不落回 CSS 去查一个非法选择器），其余一切走 [BridgePolicy.checkSelector]
+    // （校验保持在取标签**之前**——无标签时引号 selector 也要先吃拒）。
+
+    /**
+     * `select`：下拉框选值（`value` 可传 option 的 value 或可见文本，先 value 后文本）。
+     *
+     * 选中态**同时更新 property 与 `selected` 属性**（脚本侧做，理由见 [selectJsScript]）
+     * ——判据「选中后 value 反射到快照」靠属性这一半：Kotlin 解析器读的是 HTML 属性。
+     * 回执的 `value` 是选中的选项值＝**页面内容** ⇒ 过 redactText→redactPairs（红线⑦）；
+     * `selected` 回声保留 agent 原文（与 click/type 同口径）。
+     */
+    internal fun selectOption(target: String?, value: String?, tabId: String? = null): String {
+        val isRef = target != null && target.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(target)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
+        if (value == null) return err("select 缺 value")
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return if (isRef) {
+            when (val ro = resolveRef(tab, target)) {
+                is RefOut.Use -> selectRun(tab, target, ro.locator, value)
+                is RefOut.Deny -> err(ro.msg)
+                is RefOut.Css -> err("句柄解析异常：$target") // 不可达（@ 开头 resolveRef 不回 Css），穷尽性兜底
+            }
+        } else {
+            selectRun(tab, target!!, target, value)
+        }
+    }
+
+    private fun selectRun(tab: BrowserTabManager.Tab, echo: String, eff: String, value: String): String {
+        val before = fingerprintOf(tab)
+        return when (val r = evalJs(tab.webView, selectJsScript(eff, value))) {
+            "NOT_FOUND" -> err("找不到元素：$echo")
+            "NOT_SELECT" -> err("目标不是下拉框：$echo")
+            null -> err("执行超时或失败")
+            else -> {
+                if (!r.startsWith("OK:")) {
+                    return err("没有这个选项：${r.removePrefix("NO_OPTION:")}（$echo）")
+                }
+                val chosen = r.removePrefix("OK:")
+                Thread.sleep(NAV_SETTLE_MS)
+                val after = fingerprintOf(tab)
+                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(eff)))) {
+                    "YES" -> true
+                    "NO" -> false
+                    else -> null
+                }
+                // 选中的值是页面内容 ⇒ 过脱敏（红线⑦同款管线，execJS 的 result 同路）
+                val redacted = SensitiveRedactor().run { redactPairs(redactText(chosen)) }
+                ok(
+                    "selected" to echo,
+                    "value" to redacted,
+                    "check" to PageFingerprint.diff(before, after, still),
+                )
+            }
+        }
+    }
+
+    /** `hover`：悬停（派 mouseover/mouseenter/mousemove），展开菜单/tooltip 后再快照。回执带前后校验。 */
+    internal fun hover(target: String?, tabId: String? = null): String {
+        val isRef = target != null && target.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(target)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return if (isRef) {
+            when (val ro = resolveRef(tab, target)) {
+                is RefOut.Use -> hoverRun(tab, target, ro.locator)
+                is RefOut.Deny -> err(ro.msg)
+                is RefOut.Css -> err("句柄解析异常：$target") // 不可达（@ 开头 resolveRef 不回 Css），穷尽性兜底
+            }
+        } else {
+            hoverRun(tab, target!!, target)
+        }
+    }
+
+    private fun hoverRun(tab: BrowserTabManager.Tab, echo: String, eff: String): String {
+        val before = fingerprintOf(tab)
+        return when (val r = evalJs(tab.webView, hoverJsScript(eff))) {
+            "OK" -> {
+                Thread.sleep(NAV_SETTLE_MS)
+                val after = fingerprintOf(tab)
+                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(eff)))) {
+                    "YES" -> true
+                    "NO" -> false
+                    else -> null
+                }
+                ok("hovered" to echo, "check" to PageFingerprint.diff(before, after, still))
+            }
+            "NOT_FOUND" -> err("找不到元素：$echo")
+            null -> err("执行超时或失败")
+            else -> err("意外结果：$r")
+        }
+    }
+
+    /**
+     * `scroll_into_view`：把元素滚进视口中央（复用 [scrollElementJsScript]，与 `scroll`
+     * 的元素路同一脚本——不新写滚动逻辑）。只读（滚动同 [scroll]，不动页面内容）。
+     */
+    internal fun scrollIntoView(target: String?, tabId: String? = null): String {
+        val isRef = target != null && target.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(target)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val eff: String
+        if (isRef) {
+            when (val ro = resolveRef(tab, target)) {
+                is RefOut.Use -> eff = ro.locator
+                is RefOut.Deny -> return err(ro.msg)
+                is RefOut.Css -> return err("句柄解析异常：$target") // 不可达，穷尽性兜底
+            }
+        } else {
+            eff = target!!
+        }
+        return when (val r = evalJs(tab.webView, scrollElementJsScript(eff))) {
+            "OK" -> ok("scrolled_to" to target!!)
+            "NOT_FOUND" -> err("找不到元素：$target")
             null -> err("执行超时或失败")
             else -> err("意外结果：$r")
         }
@@ -483,6 +701,57 @@ object BrowserCommands {
         }
         return r.value
             ?: r.failure?.let { err("navigate 执行失败：${it.message}") }
+            ?: err("执行超时或失败")
+    }
+
+    // ── 228 批 B-2：导航三件（走 BrowserEngine 既有能力，不新造 WebView 控制器） ──
+    //
+    // 派工单 §2 B2 的三条口径：① 能力走 [com.example.zhengdao.browser.BrowserEngine]
+    // 既有的 goBack/goForward/reload（WebViewEngine 早已实现）；② 发起到完成是异步的
+    // ——回执只说「已发起」，新页面用 status/snapshot 确认（头部 url 来自
+    // PageFingerprint 的 location.href，导航完成后新快照自然读到新地址）；
+    // ③ 没有历史时明说（canGoBack/canGoForward 先问），不许假装成功。
+
+    /** `back`：后退一步（没有可后退的历史 ⇒ 明确回错误）。 */
+    internal fun goBack(tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return navRun(tab, "后退", "back", { eng ->
+            if (eng.canGoBack()) null else "没有可后退的历史（引擎报告不可后退）"
+        }, { it.goBack() })
+    }
+
+    /** `forward`：前进一步（没有可前进的历史 ⇒ 明确回错误）。 */
+    internal fun goForward(tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return navRun(tab, "前进", "forward", { eng ->
+            if (eng.canGoForward()) null else "没有可前进的历史（引擎报告不可前进）"
+        }, { it.goForward() })
+    }
+
+    /** `reload`：重新加载当前页（首帧未加载完时 reload 也无害，不设前置）。 */
+    internal fun reload(tabId: String? = null): String {
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return navRun(tab, "重新加载", "reload", { null }, { it.reload() })
+    }
+
+    /** 导航三件的公共外壳：guard 先问引擎 → 主线程执行 → 回执「已发起」。 */
+    private fun navRun(
+        tab: BrowserTabManager.Tab,
+        what: String,
+        wire: String,
+        guard: (com.example.zhengdao.browser.BrowserEngine) -> String?,
+        act: (com.example.zhengdao.browser.BrowserEngine) -> Unit,
+    ): String {
+        val r = onMain {
+            guard(tab.engine)?.let { return@onMain err(it) }
+            act(tab.engine)
+            ok(wire to "issued")
+        }
+        return r.value
+            ?: r.failure?.let { err("$what 执行失败：${it.message}") }
             ?: err("执行超时或失败")
     }
 
@@ -540,6 +809,32 @@ object BrowserCommands {
         }
         return r.value
             ?: r.failure?.let { err("closeTab 执行失败：${it.message}") }
+            ?: err("执行超时或失败")
+    }
+
+    /**
+     * `tabs`：列出全部标签（228 批 B-4）——id/是否活跃/url/title ＋ 总数与活跃 id。
+     *
+     * 脱敏与 [status] 同一道：url 过 redactUrl、title 过 redactTabTitle（两道都在 Kotlin，
+     * 桥边界处）。活跃 id 从 [target] 的缺省分支取——路由闸钉住 `BrowserTabManager.activeTab()`
+     * 在本文件恰 2 处，这里**不得**新增第三处直调。tabs()/activeId 都是 Compose 快照状态
+     * （限主线程读），整段进 onMain。
+     */
+    internal fun tabsList(): String {
+        val r = onMain {
+            val activeId = target(null).tab?.id
+            val items = BrowserTabManager.tabs().joinToString(",") { t ->
+                val st = t.state
+                val url = SensitiveRedactor().redactUrl(st.url)
+                val title = SensitiveRedactor().redactTabTitle(st.title)
+                """{"id":${t.id},"active":${t.id == activeId},""" +
+                    """"url":"${PageSnapshot.jsonEscape(url)}",""" +
+                    """"title":"${PageSnapshot.jsonEscape(title)}"}"""
+            }
+            okRaw("\"tabs\":[$items],\"tabCount\":${BrowserTabManager.count()},\"activeId\":${activeId ?: "null"}")
+        }
+        return r.value
+            ?: r.failure?.let { err("tabs 执行失败：${it.message}") }
             ?: err("执行超时或失败")
     }
 
@@ -1003,52 +1298,499 @@ object BrowserCommands {
 
     /**
      * 带前后校验的点击（**抱朴侧用这个**；桥的 `click` 仍走原路、回执不变）。
+     * 228 批 A-1：target 同样收 ref 句柄——`@e3` 解析成定位子再点；still 核对也对
+     * 定位子做（句柄本身不会出现在页面里）。
      */
     internal fun clickChecked(selector: String, tabId: String? = null): String {
-        val v = BridgePolicy.checkSelector(selector)
-        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        // 判路规则同 [click]（228）：@ 句柄不走 CSS 校验；CSS 校验在取标签之前
+        val isRef = selector.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(selector)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return if (isRef) {
+            when (val ro = resolveRef(tab, selector)) {
+                is RefOut.Use -> clickCheckedRun(tab, selector, ro.locator)
+                is RefOut.Deny -> err(ro.msg)
+                is RefOut.Css -> err("句柄解析异常：$selector") // 不可达（@ 开头 resolveRef 不回 Css），穷尽性兜底
+            }
+        } else {
+            clickCheckedRun(tab, selector, selector)
+        }
+    }
+
+    private fun clickCheckedRun(tab: BrowserTabManager.Tab, echo: String, eff: String): String {
         val before = fingerprintOf(tab)
-        val r = evalJs(tab.webView, clickJsScript(selector))
+        val r = evalJs(tab.webView, clickJsScript(eff))
         return when (r) {
             "OK" -> {
                 Thread.sleep(NAV_SETTLE_MS)
                 val after = fingerprintOf(tab)
-                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(selector)))) {
+                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(eff)))) {
                     "YES" -> true
                     "NO" -> false
                     else -> null
                 }
-                ok("clicked" to selector, "check" to PageFingerprint.diff(before, after, still))
+                ok("clicked" to echo, "check" to PageFingerprint.diff(before, after, still))
             }
-            "NOT_FOUND" -> err("找不到元素：$selector")
+            "NOT_FOUND" -> err("找不到元素：$echo")
             null -> err("执行超时或失败")
             else -> err("意外结果：$r")
         }
     }
 
-    /** 带前后校验的打字（抱朴侧用；桥的 `type` 不变）。 */
+    /** 带前后校验的打字（抱朴侧用；桥的 `type` 不变）。228 批 A-1：target 同收 ref 句柄。 */
     internal fun typeChecked(selector: String, text: String, tabId: String? = null): String {
-        val v = BridgePolicy.checkSelector(selector)
-        if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        // 判路规则同 [click]（228）：@ 句柄不走 CSS 校验；CSS 校验在取标签之前
+        val isRef = selector.startsWith("@")
+        if (!isRef) {
+            val v = BridgePolicy.checkSelector(selector)
+            if (v is BridgePolicy.Verdict.Deny) return err(v.reason)
+        }
         val t = target(tabId)
         val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        return if (isRef) {
+            when (val ro = resolveRef(tab, selector)) {
+                is RefOut.Use -> typeCheckedRun(tab, selector, ro.locator, text)
+                is RefOut.Deny -> err(ro.msg)
+                is RefOut.Css -> err("句柄解析异常：$selector") // 不可达（@ 开头 resolveRef 不回 Css），穷尽性兜底
+            }
+        } else {
+            typeCheckedRun(tab, selector, selector, text)
+        }
+    }
+
+    private fun typeCheckedRun(tab: BrowserTabManager.Tab, echo: String, eff: String, text: String): String {
         val before = fingerprintOf(tab)
-        val r = evalJs(tab.webView, typeJsScript(selector, text))
+        val r = evalJs(tab.webView, typeJsScript(eff, text))
         return when (r) {
             "OK" -> {
                 val after = fingerprintOf(tab)
-                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(selector)))) {
+                val still = when (evalJs(tab.webView, PageFingerprint.targetExistsScript(jsStringLiteral(eff)))) {
                     "YES" -> true
                     "NO" -> false
                     else -> null
                 }
-                ok("typed" to selector, "check" to PageFingerprint.diff(before, after, still))
+                ok("typed" to echo, "check" to PageFingerprint.diff(before, after, still))
             }
-            "NOT_FOUND" -> err("找不到元素：$selector")
+            "NOT_FOUND" -> err("找不到元素：$echo")
             null -> err("执行超时或失败")
             else -> err("意外结果：$r")
+        }
+    }
+
+    // ── 228 批 A：ref 句柄（快照代次绑定）＋ stable 等待 ─────────────────────
+    //
+    // 为什么这套东西存在（派工单 §1 硬要求）：快照给每个可交互节点发 `ref:"eN"`，
+    // click/type 收 `@eN`；**旧句柄绝不允许「点到别的元素却回成功」**——宁可报
+    // 「旧句柄已失效，请重新 browser_snapshot」。四道闸：
+    // ① 形状闸（[RefHandle]）：`@` 开头就必须是 `@e数字`，其余拒绝；
+    // ② 本闸（[refBookOf]）：该标签得有一本当前句柄本（快照时发的）；
+    // ③ 代次闸（nonce＋epoch）：文档换了（导航/刷新）或 DOM 变了 ⇒ 失效；
+    // ④ 命中闸（[refProbeJsScript]）：定位子在**当前页面**上查得到且 tagName 一致。
+    //
+    // 代次的锚是页面「眼」（[EYE_GETTER]）：每文档一次性安装的 MutationObserver，
+    // nonce 每文档随机（同 URL reload 内容相同时 epoch 会从头数——只对 epoch 会假匹配，
+    // nonce 把「这一份文档」钉死）、epoch 对任何 DOM 变更 +1。快照取 DOM 原文与读代次
+    // **在同一次 JS 执行**里完成（[eyeFetchJsScript]）——分两步取就有缝：中间页面
+    // 变了而锚还是旧的。
+
+    /** 一次眼读数：文档身份（nonce）、DOM 代次（epoch）、加载状态、最近一次变更距今毫秒。 */
+    internal data class EyeProbe(
+        val nonce: String,
+        val epoch: Long,
+        val readyState: String,
+        val quietMs: Long,
+    )
+
+    /** `stable` 的静默窗：DOM 连续这么多毫秒无变化才算稳（派工单口径 200ms）。 */
+    internal const val STABLE_QUIET_MS = 200L
+
+    /**
+     * 四段 `nonce|epoch|readyState|quietMs` 的解析。缺段/不是数 ⇒ null（调用方如实
+     * 报「取不到页面状态」，不猜）。
+     */
+    internal fun parseEyeProbe(raw: String?): EyeProbe? {
+        if (raw == null) return null
+        val p = raw.split('|')
+        if (p.size != 4) return null
+        val epoch = p[1].trim().toLongOrNull() ?: return null
+        val quiet = p[3].trim().toLongOrNull() ?: return null
+        return EyeProbe(p[0].trim(), epoch, p[2].trim(), quiet)
+    }
+
+    /** 一次快照原子取数的解析结果：眼读数 ＋ 正文 ＋ 几何表（228 批 B：几何可能缺席）。 */
+    internal data class EyeFetch(val probe: EyeProbe?, val html: String, val geo: GeometryTable?)
+
+    /**
+     * [eyeFetchJsScript] 回包的解析。三段以控制符分隔：`\u0001` 前是眼读数（或 `NO_EYE`），
+     * `\u0001`…`\u0002` 之间是正文，`\u0002` 之后是几何表（[parseGeometry]；空 ⇒ null）。
+     * 眼没装上（observer 建不出来）⇒ probe 为 null 但正文与几何照带——快照正文不该因为
+     * 锚不可用而丢。
+     */
+    internal fun parseEyeFetch(raw: String?): EyeFetch? {
+        if (raw == null) return null
+        val sep = raw.indexOf('\u0001')
+        if (sep < 0) return null
+        val head = raw.substring(0, sep)
+        val rest = raw.substring(sep + 1)
+        val geoSep = rest.indexOf('\u0002')
+        val html = if (geoSep < 0) rest else rest.substring(0, geoSep)
+        val geoRaw = if (geoSep < 0) "" else rest.substring(geoSep + 1)
+        val probe = if (head == "NO_EYE") null else parseEyeProbe(head) ?: return null
+        return EyeFetch(probe, html, parseGeometry(geoRaw))
+    }
+
+    /** [stableNow] 的判据面：加载完 ＋ 静默窗满。 */
+    internal fun stableNow(p: EyeProbe): Boolean =
+        p.readyState == "complete" && p.quietMs >= STABLE_QUIET_MS
+
+    /** 页面「眼」安装器（幂等）：nonce 每文档随机；observer 对任何 DOM 变更 +1 纪元并记录时刻。 */
+    private const val EYE_GETTER =
+        "(function(){" +
+            "if(!window.__zdEye){" +
+            "try{var o=new MutationObserver(function(){window.__zdEye.e++;window.__zdEye.t=Date.now()});" +
+            "o.observe(document.documentElement,{childList:true,subtree:true,attributes:true,characterData:true});" +
+            "window.__zdEye={n:Math.random().toString(36).slice(2),e:0,t:Date.now()}}" +
+            "catch(x){return null}}" +
+            "return window.__zdEye})()"
+
+    /**
+     * 快照的原子取数脚本：眼读数、正文（`innerExpr`）与几何探针（`rootExpr` 子树）
+     * **同一次执行**取出，`\u0001`/`\u0002` 分隔。先求 `v` 再判 `e`——眼没装上也不能丢正文。
+     */
+    private fun eyeFetchJsScript(innerExpr: String, rootExpr: String): String =
+        "(function(){var e=$EYE_GETTER;var v=($innerExpr);var g=${geometryJsScript(rootExpr)};" +
+            "if(!e)return 'NO_EYE\u0001'+v+'\u0002'+g;" +
+            "return [e.n,e.e,document.readyState,(Date.now()-e.t)].join('|')+'\u0001'+v+'\u0002'+g})()"
+
+    // ── 228 批 B-1：页面内几何探针（真可见性 ＋ 视口坐标）────────────────────
+    //
+    // 派工单 §2 B1：Kotlin 侧的 isHidden 只看 hidden/aria-hidden/内联 style，
+    // class 里的 display:none 全漏（§0 现状表）。真可见性只有页面自己知道
+    // （getComputedStyle 吃得到 class/样式表），所以探针在页面里跑；但**脱敏不前移**
+    // ——探针只产数值与布尔（坐标/尺寸/可见性），一个字符的页面文本都不碰，
+    // 正文照旧回 Kotlin 过 scrubSecrets→redactDom 两道。
+
+    /** 几何探针条数上限：万节点页面的回包不能把桥拖爆；超出的节点拿不到坐标，如实缺席。 */
+    internal const val MAX_GEO_ENTRIES = 2_000
+
+    /** 一个可交互元素的几何读数（CSS px，视口坐标；`visible` 由页面按计算样式判定）。 */
+    internal class GeoEntry(val x: Int, val y: Int, val w: Int, val h: Int, val visible: Boolean)
+
+    /** 一次快照的几何表：布局视口尺寸 ＋ 定位子 → 读数。 */
+    internal class GeometryTable(val viewW: Int, val viewH: Int, val byLocator: Map<String, GeoEntry>)
+
+    /**
+     * 几何段解析：首行 `viewW|viewH`，其后每行 `locator|x|y|w|h|vis`（`\u0003` 分行）。
+     * 定位子由 SAFE_TAG 白名单字符构成（不含 `|`），六段铁律；畸形行跳过（宁缺勿猜），
+     * 头行坏了整体作废（没有视口尺寸 inViewport 就算不出来）。
+     */
+    internal fun parseGeometry(raw: String?): GeometryTable? {
+        if (raw.isNullOrEmpty()) return null
+        val lines = raw.split('\u0003')
+        val head = lines[0].split('|')
+        if (head.size != 2) return null
+        val vw = head[0].trim().toIntOrNull() ?: return null
+        val vh = head[1].trim().toIntOrNull() ?: return null
+        val map = LinkedHashMap<String, GeoEntry>()
+        for (i in 1 until lines.size) {
+            val f = lines[i].split('|')
+            if (f.size != 6) continue
+            val x = f[1].trim().toIntOrNull() ?: continue
+            val y = f[2].trim().toIntOrNull() ?: continue
+            val w = f[3].trim().toIntOrNull() ?: continue
+            val h = f[4].trim().toIntOrNull() ?: continue
+            val vis = when (f[5].trim()) {
+                "1" -> true
+                "0" -> false
+                else -> continue
+            }
+            map[f[0]] = GeoEntry(x, y, w, h, vis)
+        }
+        return GeometryTable(vw, vh, map)
+    }
+
+    /**
+     * 节点矩形与布局视口是否相交（部分相交也算在视口里）。零尺寸矩形不算
+     * （vis=0 的在 [applyGeometry] 已被剔除，这里是同一条口径的算术面）。
+     * 派工单 B 负例口径：视口外的节点**必须**带 inViewport=false——判定在 Kotlin
+     * 现算，不信页面自报。
+     */
+    internal fun rectInViewport(g: GeoEntry, viewW: Int, viewH: Int): Boolean =
+        viewW > 0 && viewH > 0 && g.w > 0 && g.h > 0 &&
+            g.x < viewW && g.y < viewH && (g.x + g.w) > 0 && (g.y + g.h) > 0
+
+    /**
+     * 把几何表套到解析出的节点名单上（纯函数，JVM 直测）：
+     * - JS 判**不可见**（含 class 里的 display:none / opacity:0 / 零尺寸 / visibility:hidden）
+     *   ⇒ 整行剔除——这就是「class 隐藏的按钮不再出现在快照里」的落点；
+     * - 命中且可见 ⇒ 附视口坐标与 inViewport；
+     * - 定位子失配（解析器与实况 DOM 在病态 HTML 上漂移、超 [MAX_GEO_ENTRIES]、子树根自己）
+     *   ⇒ 原样保留、不带坐标——**如实缺席**，不假装看得见。
+     *
+     * nodesTotal 同步减去剔除数：不调它的话「100 个节点、10 个隐藏」会被误报成
+     * 「被截断」（nodesTruncated = total > listed）。截断场景（>300）里 300 之外的
+     * 隐藏节点数不可知，调整后的 total 只会偏大 ⇒ nodesTruncated 照旧为真，不回退。
+     */
+    internal fun applyGeometry(s: PageSnapshot.Summary, geo: GeometryTable): PageSnapshot.Summary {
+        var removed = 0
+        val kept = ArrayList<PageSnapshot.Node>(s.nodes.size)
+        for (n in s.nodes) {
+            val g = if (n.path.isNotEmpty()) geo.byLocator[n.path] else null
+            when {
+                g == null -> kept += n
+                !g.visible -> removed++
+                else -> kept += n.copy(x = g.x, y = g.y, inViewport = rectInViewport(g, geo.viewW, geo.viewH))
+            }
+        }
+        return PageSnapshot.Summary(s.title, kept, s.nodesTotal - removed, s.text, s.textTruncated)
+    }
+
+    /**
+     * 几何探针脚本：遍历 `root` 子树的可交互元素（判集合与 Kotlin 侧 [com.example.zhengdao.browser.PageSnapshot]
+     * 的 isInteractive 同一口径），每个算计算样式可见性 ＋ getBoundingClientRect，
+     * 定位子与 pathOf 同一 nth-of-type 方案（同型兄弟序号）。输出首行 `viewW|viewH`，
+     * 其后每行 `locator|x|y|w|h|vis`，`\u0003` 分行。
+     *
+     * 已知边界（写进报告）：Kotlin 迷你解析器与浏览器 DOM 在病态 HTML 上可能漂移
+     * （如浏览器给 `<table>` 自动插 `<tbody>`）——漂移的节点拿不到几何，按「如实缺席」保留，
+     * **不会**被误剔（剔除只认探针明说不可见）。
+     */
+    private fun geometryJsScript(rootExpr: String): String =
+        "(function(){var root=$rootExpr;if(!root)return '';" +
+            "var de=document.documentElement;" +
+            "var out=[(de.clientWidth||0)+'|'+(de.clientHeight||0)];" +
+            "var all=root.getElementsByTagName('*');" +
+            "for(var i=0;i<all.length&&out.length<=" + MAX_GEO_ENTRIES + ";i++){" +
+            "var el=all[i];var tag=(el.tagName||'').toLowerCase();" +
+            "if(!/^[a-z][a-z0-9-]*$/.test(tag))continue;" +
+            "if(tag==='input'){if((el.getAttribute('type')||'').toLowerCase()==='hidden')continue}" +
+            "else if(tag==='a'){if(!el.getAttribute('href'))continue}" +
+            "else if(tag!=='select'&&tag!=='textarea'&&tag!=='button'&&tag!=='summary'){" +
+            "if(!el.hasAttribute('role')&&!el.hasAttribute('contenteditable')&&!el.hasAttribute('onclick'))continue}" +
+            "var loc=(function(e,stop){var segs=[];var cur=e;var d=0;" +
+            "while(cur&&cur.nodeType===1&&d<32){var t=(cur.tagName||'').toLowerCase();" +
+            "if(!/^[a-z][a-z0-9-]*$/.test(t))return '';" +
+            "var p=cur.parentElement;" +
+            "if(p&&p.nodeType===1&&cur!==stop){var seen=0;var kids=p.children;" +
+            "for(var j=0;j<kids.length;j++){if(kids[j].tagName===cur.tagName){seen++;if(kids[j]===cur)break}}" +
+            "segs.push(t+':nth-of-type('+seen+')')}" +
+            "else{segs.push(t)}" +
+            "if(cur===stop)break;cur=p;d++}" +
+            "return segs.reverse().join(' > ')})(el,root);" +
+            "if(!loc)continue;" +
+            "var cs=getComputedStyle(el);var r=el.getBoundingClientRect();" +
+            "var invis=(cs.display==='none')||(cs.visibility==='hidden')||(parseFloat(cs.opacity)===0)||" +
+            "(r.width<=0&&r.height<=0);" +
+            "out.push(loc+'|'+Math.round(r.left)+'|'+Math.round(r.top)+'|'+Math.round(r.width)+'|'+" +
+            "Math.round(r.height)+'|'+(invis?'0':'1'))}" +
+            "return out.join('\\u0003')})()"
+
+    /** stable 轮询的眼探针：只取四段读数，不带正文。 */
+    private fun eyeProbeJsScript(): String =
+        "(function(){var e=$EYE_GETTER;" +
+            "if(!e)return 'NO_EYE';" +
+            "return [e.n,e.e,document.readyState,(Date.now()-e.t)].join('|')})()"
+
+    /** 一条 ref 句柄：定位子（纯 nth-of-type CSS 链）＋ 子树前缀（子树快照时）＋ tagName 核对值。 */
+    internal data class RefEntry(val locator: String, val subtreeSelector: String?, val tag: String)
+
+    /** 一本快照的句柄簿：绑定本次快照的眼读数（nonce＝文档身份，epoch＝DOM 代次）。 */
+    internal data class RefBook(
+        val tabId: Int,
+        val nonce: String,
+        val domEpoch: Long,
+        val entries: Map<String, RefEntry>,
+    )
+
+    /** 句柄簿全局上限（每标签只留当前一本；防疯狂开标签把簿撑爆）。 */
+    private const val REF_BOOK_KEEP = 8
+
+    private val refBooks = object : LinkedHashMap<Int, RefBook>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, RefBook>): Boolean =
+            size > REF_BOOK_KEEP
+    }
+
+    /** 快照换代：同一标签旧本整体丢弃（book=null ⇒ 该标签本轮快照没有可锚定的眼）。 */
+    internal fun installRefBook(tabId: Int, book: RefBook?) {
+        synchronized(refBooks) {
+            if (book == null) refBooks.remove(tabId) else refBooks[tabId] = book
+        }
+    }
+
+    internal fun refBookOf(tabId: Int): RefBook? = synchronized(refBooks) { refBooks[tabId] }
+
+    /** [RefHandle.decide] 的判定（纯函数矩阵，JVM 单测直接钉）。 */
+    internal sealed interface RefDecision {
+        /** 不是 ref 句柄（null 或非 `@` 开头）⇒ 调用方走既有 checkSelector 路。 */
+        data object NotRef : RefDecision
+
+        /** 失效/拒绝；除形状闸外文案统一含「旧句柄已失效，请重新 browser_snapshot」。 */
+        data class Stale(val reason: String) : RefDecision
+
+        /** 代次有效：给出该句的定位子与核对值。 */
+        data class Ok(val entry: RefEntry) : RefDecision
+    }
+
+    /**
+     * ref 句柄的纯判据（闸①②③；闸④要碰页面，在 [resolveRef]）。
+     *
+     * 为什么 nonce＋epoch 双锚：只对 epoch 的话，同 URL reload 会把「刷新过的页面」
+     * 误判成「没变」（epoch 从头数、内容可能一样）；nonce 把「这一份文档」钉死。
+     */
+    internal object RefHandle {
+        /** 协议形状：`@` ＋ `e` ＋ 数字（快照 renderNodes 发出的就是这形状）。 */
+        val REF_SHAPE: Regex = Regex("^@e\\d+$")
+
+        fun decide(
+            raw: String?,
+            book: RefBook?,
+            tabId: Int,
+            nowNonce: String?,
+            nowEpoch: Long?,
+        ): RefDecision {
+            if (raw == null || !raw.startsWith("@")) return RefDecision.NotRef
+            val t = raw.trim()
+            if (!REF_SHAPE.matches(t)) {
+                return RefDecision.Stale("@ 句柄只认快照里给的 @e数字（如 @e3）；先 browser_snapshot 再用")
+            }
+            if (book == null || book.tabId != tabId) {
+                return RefDecision.Stale(
+                    "旧句柄已失效，请重新 browser_snapshot（这个标签还没有可用的句柄本）",
+                )
+            }
+            // 键不带 @（refEntriesOf 发的是 e3）；句柄带 @，剥掉再查
+            val entry = book.entries[t.substring(1)]
+                ?: return RefDecision.Stale(
+                    "旧句柄已失效，请重新 browser_snapshot（句柄 $t 不在当前快照里）",
+                )
+            if (nowNonce == null || nowEpoch == null || nowNonce != book.nonce || nowEpoch != book.domEpoch) {
+                return RefDecision.Stale("旧句柄已失效，请重新 browser_snapshot（页面已导航或内容已变化）")
+            }
+            return RefDecision.Ok(entry)
+        }
+    }
+
+    /**
+     * 从快照节点造 ref 表：`eN`（N＝nodes 数组序，1 起）→ [RefEntry]。
+     *
+     * 整页快照：定位子＝[PageSnapshot.Node.path] 原样。子树快照：refProbe 是
+     * 「先查子树根、再在子树内查定位子」，所以剥掉 path 首段（子树根自己那段）；
+     * 剥不出来（path 只有一段＝子树根自己）⇒ 不发 ref——子树根直接用 CSS 更省事。
+     */
+    internal fun refEntriesOf(
+        nodes: List<PageSnapshot.Node>,
+        subtreeSelector: String?,
+    ): Map<String, RefEntry> {
+        val out = LinkedHashMap<String, RefEntry>()
+        nodes.forEachIndexed { i, n ->
+            if (n.path.isEmpty()) return@forEachIndexed
+            val locator = if (subtreeSelector == null) n.path else relativeLocator(n.path) ?: return@forEachIndexed
+            out["e${i + 1}"] = RefEntry(locator, subtreeSelector, tagOfPath(n.path))
+        }
+        return out
+    }
+
+    /** 子树快照的相对定位子：剥首段；没有 ` > ` ⇒ null（子树根自己）。 */
+    internal fun relativeLocator(path: String): String? =
+        if (path.contains(" > ")) path.substringAfter(" > ") else null
+
+    /** 路径末段标签名：`div > a:nth-of-type(2)` → `a`。 */
+    internal fun tagOfPath(path: String): String =
+        path.substringAfterLast(" > ").substringBefore(':').trim()
+
+    /** [resolveRef] 的结局：Css＝走既有 checkSelector 路；Use＝句柄解析成定位子；Deny＝拒绝。 */
+    internal sealed interface RefOut {
+        data object Css : RefOut
+        data class Use(val locator: String) : RefOut
+        data class Deny(val msg: String) : RefOut
+    }
+
+    /**
+     * click/type 的 target 判路（228 批 A-1，无含糊）：`@` 开头 ⇒ 句柄路（形状不对
+     * 也是拒，绝不落回 CSS 去 querySelector 一个非法选择器）；其余一切（含 null）⇒
+     * [RefOut.Css]。
+     *
+     * 句柄路的闸序：形状 → 本闸（[refBookOf]）→ 眼闸（页面探针）→ 代次
+     * （[RefHandle.decide]）→ 命中（[refProbeJsScript]）。任何一关不过都回
+     * 「旧句柄已失效，请重新 browser_snapshot」系文案——**宁失效，不点错**。
+     */
+    internal fun resolveRef(tab: BrowserTabManager.Tab, target: String?): RefOut {
+        if (target == null || !target.startsWith("@")) return RefOut.Css
+        val t = target.trim()
+        if (!RefHandle.REF_SHAPE.matches(t)) {
+            return RefOut.Deny("@ 句柄只认快照里给的 @e数字（如 @e3）；先 browser_snapshot 再用")
+        }
+        val book = refBookOf(tab.id)
+            ?: return RefOut.Deny(
+                "旧句柄已失效，请重新 browser_snapshot（这个标签还没有可用的句柄本：先 browser_snapshot）",
+            )
+        val probe = parseEyeProbe(evalJs(tab.webView, eyeProbeJsScript()))
+            ?: return RefOut.Deny(
+                "取不到页面状态（页面可能还没绘制）；句柄 $t 暂不可用，请重新 browser_snapshot",
+            )
+        return when (val d = RefHandle.decide(t, book, tab.id, probe.nonce, probe.epoch)) {
+            is RefDecision.Stale -> RefOut.Deny(d.reason)
+            is RefDecision.NotRef -> RefOut.Css
+            is RefDecision.Ok -> when (evalJs(tab.webView, refProbeJsScript(d.entry))) {
+                "OK" -> RefOut.Use(d.entry.locator)
+                "STALE" -> RefOut.Deny("旧句柄已失效，请重新 browser_snapshot（元素已不在原地）")
+                else -> RefOut.Deny(
+                    "取不到页面状态（页面可能还没绘制）；句柄 $t 暂不可用，请重新 browser_snapshot",
+                )
+            }
+        }
+    }
+
+    /**
+     * 句柄闸④的页面探针：定位子（含子树前缀）查得到且 tagName 与快照时一致 ⇒ `OK`，
+     * 否则（查无此元素 / 标签换了）`STALE`——失效按失效报，**绝不**把「点错」报成成功。
+     */
+    private fun refProbeJsScript(e: RefEntry): String {
+        val find = if (e.subtreeSelector == null) {
+            "document.querySelector(" + jsStringLiteral(e.locator) + ")"
+        } else {
+            "(function(){var r=document.querySelector(" + jsStringLiteral(e.subtreeSelector) + ");" +
+                "return r?r.querySelector(" + jsStringLiteral(e.locator) + "):null})()"
+        }
+        return "(function(){var el=$find;if(!el)return 'STALE';" +
+            "return (el.tagName?el.tagName.toLowerCase():'')===" + jsStringLiteral(e.tag) +
+            "? 'OK':'STALE'})()"
+    }
+
+    /**
+     * `browser_wait` 的 mode=stable（228 批 A-3）：readyState==complete ＋ DOM 连续
+     * [STABLE_QUIET_MS] 无变化。预算仍夹 [MAX_WAIT_MS]；到点不稳**如实报「未稳定」**
+     * （写清卡在哪），不冒充成功。
+     */
+    internal fun awaitStable(ms: Int, tabId: String? = null): String {
+        val budget = ms.coerceIn(0, MAX_WAIT_MS)
+        val t = target(tabId)
+        val tab = t.tab ?: return err(t.error ?: "没有活跃标签")
+        val deadline = System.currentTimeMillis() + budget
+        var waited = 0L
+        while (true) {
+            val probe = parseEyeProbe(evalJs(tab.webView, eyeProbeJsScript()))
+                ?: return err("等待时取不到页面状态（页面可能还没绘制）")
+            if (stableNow(probe)) {
+                return ok(
+                    "stable" to "readyState=${probe.readyState}，DOM 已连续 ≥${STABLE_QUIET_MS}ms 无变化",
+                    "waited" to "${waited}ms",
+                )
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                val why = if (probe.readyState != "complete") {
+                    "readyState=${probe.readyState}（页面还没加载完）"
+                } else {
+                    "DOM 最近一次变化在 ${probe.quietMs}ms 前（静默未满 ${STABLE_QUIET_MS}ms）"
+                }
+                return err("等了 ${budget}ms 仍未稳定：$why")
+            }
+            Thread.sleep(WAIT_POLL_MS)
+            waited += WAIT_POLL_MS
         }
     }
 
@@ -1070,10 +1812,6 @@ object BrowserCommands {
     }
 
     // ── WebView 桥接小工具 ─────────────────────────────────────────────────
-
-    /** 取渲染后 DOM（与第⑲刀导出器同一条路径：原生 evaluateJavascript）。 */
-    private fun fetchOuterHtml(webView: WebView): String? =
-        evalJs(webView, "document.documentElement.outerHTML")
 
     /**
      * `snapshot(selector)` 的子树脚本（刀 4 §2.4）：命中回 `outerHTML`，未命中回

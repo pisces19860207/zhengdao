@@ -1361,6 +1361,25 @@
     <string name="baopu_tool_browser_key_desc">给页面按一个键（回车/制表/退格/Esc）。回车是页面内合成事件，原生表单提交不保证。会弹确认卡。</string>
     <string name="baopu_tool_browser_wait">等一下</string>
     <string name="baopu_tool_browser_wait_desc">纯等一会儿，或等到某个元素出现（最多 5 秒）。页面慢的时候用它，比反复看快照省事。</string>
+    <!-- 228 批 B 片九件：导航三件／动作三件／标签三件（设置页开关联动，缺键会在 JVM 门禁红） -->
+    <string name="baopu_tool_browser_back">后退</string>
+    <string name="baopu_tool_browser_back_desc">回到当前页的上一页（历史后退一步）。是异步的：立刻返回，页面读完再取快照看新内容。会弹确认卡。</string>
+    <string name="baopu_tool_browser_forward">前进</string>
+    <string name="baopu_tool_browser_forward_desc">回到当前页的下一页（历史前进一步）。是异步的：立刻返回，页面读完再取快照看新内容。会弹确认卡。</string>
+    <string name="baopu_tool_browser_reload">刷新</string>
+    <string name="baopu_tool_browser_reload_desc">重新加载当前页。是异步的：立刻返回，页面读完再取快照看新内容。会弹确认卡。</string>
+    <string name="baopu_tool_browser_select">选下拉项</string>
+    <string name="baopu_tool_browser_select_desc">选中页面下拉框（select）的一个选项：先按 value 配、配不上再按可见文本配。选中后取快照能看到新值。会弹确认卡。</string>
+    <string name="baopu_tool_browser_hover">悬停</string>
+    <string name="baopu_tool_browser_hover_desc">把指针悬到页面元素上（触发悬停菜单/提示的展开）。target 传快照里的 ref 句柄或 CSS 选择器。会弹确认卡。</string>
+    <string name="baopu_tool_browser_scroll_into_view">滚到元素</string>
+    <string name="baopu_tool_browser_scroll_into_view_desc">滚动页面直到目标元素进入视口，方便后续点击或查看。免确认。</string>
+    <string name="baopu_tool_browser_tabs_list">列标签</string>
+    <string name="baopu_tool_browser_tabs_list_desc">列出当前打开的全部标签（编号/是否活跃/地址/标题）与活跃标签是哪个。免确认。</string>
+    <string name="baopu_tool_browser_tabs_switch">切标签</string>
+    <string name="baopu_tool_browser_tabs_switch_desc">把某个标签切成活跃标签（后续操作都作用在它上面）。tab_id 来自「列标签」。会弹确认卡。</string>
+    <string name="baopu_tool_browser_tabs_close">关标签</string>
+    <string name="baopu_tool_browser_tabs_close_desc">关闭指定标签（最后一个标签关不掉）。tab_id 来自「列标签」。会弹确认卡。</string>
         <string name="baopu_tool_write_skill">写技能</string>
     <string name="baopu_tool_write_skill_desc">把摸索到的流程写成 SKILL.md（写前备份、同名即改、写完进索引；项目档自动写、留审计）</string>
 <string name="baopu_tool_update_plan">工作计划</string>

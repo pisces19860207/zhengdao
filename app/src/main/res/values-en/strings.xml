@@ -1417,6 +1417,25 @@
     <string name="baopu_tool_browser_key_desc">Send a key (enter/tab/backspace/escape) to the focused element. Enter is a synthetic event; native form submission is not guaranteed. Asks for confirmation.</string>
     <string name="baopu_tool_browser_wait">Wait</string>
     <string name="baopu_tool_browser_wait_desc">Wait a while, or until an element appears (up to 5s). Cheaper than repeated snapshots on slow pages.</string>
+    <!-- 228 slice B: nine tools (nav x3 / actions x3 / tabs x3); keys must exist or the JVM gate goes red -->
+    <string name="baopu_tool_browser_back">Go back</string>
+    <string name="baopu_tool_browser_back_desc">Go back one step in this tab\'s history. Async: returns immediately; take a snapshot after the page settles. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_forward">Go forward</string>
+    <string name="baopu_tool_browser_forward_desc">Go forward one step in this tab\'s history. Async: returns immediately; take a snapshot after the page settles. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_reload">Reload</string>
+    <string name="baopu_tool_browser_reload_desc">Reload the current page. Async: returns immediately; take a snapshot after the page settles. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_select">Pick option</string>
+    <string name="baopu_tool_browser_select_desc">Select an option in a dropdown (select): by value first, then by visible text. Take a snapshot afterwards to see the new value. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_hover">Hover</string>
+    <string name="baopu_tool_browser_hover_desc">Hover the pointer over a page element (triggers hover menus and tooltips). target is a snapshot ref handle or a CSS selector. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_scroll_into_view">Scroll to element</string>
+    <string name="baopu_tool_browser_scroll_into_view_desc">Scroll the page until the target element is in view, ready for clicks or reading. No confirmation needed.</string>
+    <string name="baopu_tool_browser_tabs_list">List tabs</string>
+    <string name="baopu_tool_browser_tabs_list_desc">List all open tabs (id, active flag, URL, title) and which one is active. No confirmation needed.</string>
+    <string name="baopu_tool_browser_tabs_switch">Switch tab</string>
+    <string name="baopu_tool_browser_tabs_switch_desc">Make the given tab the active one (later actions apply to it). tab_id comes from List tabs. Asks for confirmation.</string>
+    <string name="baopu_tool_browser_tabs_close">Close tab</string>
+    <string name="baopu_tool_browser_tabs_close_desc">Close the given tab (the last one cannot be closed). tab_id comes from List tabs. Asks for confirmation.</string>
         <string name="baopu_tool_write_skill">Write skill</string>
     <string name="baopu_tool_write_skill_desc">Record a discovered flow as SKILL.md (backs up first, same name = edit it, adds an index line; asks for confirmation)</string>
 <string name="baopu_tool_update_plan">Work plan</string>

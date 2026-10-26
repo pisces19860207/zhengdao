@@ -34,9 +34,9 @@ class RiskMatrixTest {
     // ── 门禁 1：注册表全覆盖 ──────────────────────────────────────────────
 
     @Test
-    fun `注册表46个工具_每个都有档或显式豁免`() {
+    fun `注册表62个工具_每个都有档或显式豁免`() {
         val names = newRegistry().names()
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 53, names.size)
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 62, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),
@@ -340,7 +340,7 @@ class RiskMatrixTest {
         assertTrue(v.unclassified)
         assertEquals("unclassified_tool", v.auditTag)
         assertEquals(RiskCode.UNCLASSIFIED_TOOL, v.reasonCode)
-        assertEquals("未分类也要带矩阵版本", 1, v.matrixVersion)
+        assertEquals("未分类也要带矩阵版本", 2, v.matrixVersion)
         assertFalse("必问不是硬拒", v.hardDeny)
         assertFalse("未分类绝不能被当 R0 放行", v.risk == RiskClass.R0)
     }
@@ -354,7 +354,7 @@ class RiskMatrixTest {
         assertNull("豁免项没有风险档", bash.risk)
         assertEquals("豁免项没有主判据", RiskCode.NONE, bash.reasonCode)
         assertFalse(bash.hardDeny)
-        assertEquals(1, bash.matrixVersion)
+        assertEquals(2, bash.matrixVersion)
 
         assertEquals(RiskClass.R0, RiskMatrix.baseOf("read"))
         assertEquals(RiskClass.R0, verdict("read", mapOf("path" to "产物/a.md")).risk)
@@ -381,8 +381,9 @@ class RiskMatrixTest {
 
     @Test
     fun `matrixVersion_表里带版本且原样回填`() {
-        assertEquals(1, RiskTable.DEFAULT.matrixVersion)
-        assertEquals(1, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
+        // 228 批 B 片加了九行表 ⇒ DEFAULT_VERSION 1→2（改表必须 +1 的口径）
+        assertEquals(2, RiskTable.DEFAULT.matrixVersion)
+        assertEquals(2, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
 
         val v2 = RiskTable.DEFAULT.copy(matrixVersion = 2)
         assertEquals(2, verdict("read_file", mapOf("path" to "产物/a.md"), table = v2).matrixVersion)
@@ -495,7 +496,7 @@ class RiskMatrixTest {
 
     // ── 夹具 ─────────────────────────────────────────────────────────────
 
-    /** 与 `ToolSchemaGateTest` 同一套真注册表夹具（42 条 ENTRIES ＋ 运行时 4 条）。 */
+    /** 与 `ToolSchemaGateTest` 同一套真注册表夹具（58 条 ENTRIES ＋ 运行时 4 条＝62；228 批 B 片 +9）。 */
     private fun newRegistry(): ToolRegistry {
         val root = kotlin.io.path.createTempDirectory("zd-risk219-").toFile().also { roots += it }
         val files = { PersonaFiles(File(root, "global"), root) }

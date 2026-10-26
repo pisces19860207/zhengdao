@@ -197,7 +197,7 @@ class RiskWiringInstrumentedTest {
     // ── ⑤ 真实工具表全覆盖（真机的 org.json 与 JVM 不是一套实现）──────────
 
     @Test
-    fun 真表_53个注册工具在真机上每个都有档或显式豁免() {
+    fun 真表_62个注册工具在真机上每个都有档或显式豁免() {
         val root = ws("catalog")
         val files = { PersonaFiles(File(root, "global"), root) }
         val reg = ToolRegistry(InMemoryToolPrefs())
@@ -210,7 +210,7 @@ class RiskWiringInstrumentedTest {
         val names = reg.names()
         val missing = RiskMatrix.uncovered(names)
         say("⑤-全覆盖", "注册 ${names.size} 个工具；缺档=${missing}；bash 豁免=${RiskMatrix.isExempt("bash")}")
-        assertEquals("注册表工具数变了：先更新 219 的表再回来", 53, names.size)
+        assertEquals("注册表工具数变了：先更新 219 的表再回来", 62, names.size)
         assertEquals("这些真工具在真机上查不到档：$missing", emptyList<String>(), missing)
         // 每个工具都真跑一次 classify（真机 org.json 是插入序、与 JVM 的参考实现不同）
         val nulls = names.filter { RiskMatrix.baseOf(it) == null }
@@ -219,7 +219,7 @@ class RiskWiringInstrumentedTest {
             val v = RiskGate.judge(call(name))
             assertTrue("$name 判不出档", v.exempt || v.risk != null)
         }
-        say("⑤-全覆盖", "53 个工具逐个 classify 完成，无异常、无空档（bash 走豁免）")
+        say("⑤-全覆盖", "62 个工具逐个 classify 完成，无异常、无空档（bash 走豁免）")
     }
 
     // ── ⑥ 越界那条卡（②段给的事实，不是矩阵猜的）────────────────────────

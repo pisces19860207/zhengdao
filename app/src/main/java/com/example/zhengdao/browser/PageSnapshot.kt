@@ -59,6 +59,31 @@ object PageSnapshot {
         val value: String,
         /** 状态：`disabled` / `checked` / `required` 的空格连接；空串表示无。 */
         val states: String,
+        /**
+         * 228 批 A：ref 句柄的定位子（CSS 路径，如 `html > body > div:nth-of-type(2) > a:nth-of-type(1)`）。
+         *
+         * 只由**标签名 ＋ 同型序号**构成——不含 id/class/文本，引号类注入字符在构造层就进不来
+         * （[SAFE_TAG] 白名单）。空串＝无法安全生成（病态标签/超深树），快照对这种节点不发 ref。
+         * 空串也可能是「子树快照且目标就是子树根自己」（自己没法当自己的后代去查）。
+         */
+        val path: String = "",
+        /**
+         * 228 批 B：视口坐标（CSS px，`getBoundingClientRect()` 左上角取整）。
+         *
+         * null ＝ 本轮快照没有这个节点的几何读数（探针没跑、定位子与实况 DOM 失配、
+         * 超出探针条数上限）——**如实缺席**，不猜 (0,0)。坐标是数值不是页面文本，
+         * 走的是「刻意不过脱敏管线」那一侧（判据见 BrowserCommands 类 KDoc 边界表）。
+         */
+        val x: Int? = null,
+        /** 同 [x]：视口纵坐标。 */
+        val y: Int? = null,
+        /**
+         * 节点矩形与布局视口是否相交（只在 x/y 非空时有意义）。
+         * 派工单 B 负例口径：视口外的节点**必须**带 false——由 Kotlin 侧从矩形与
+         * 视口尺寸现算（[com.example.zhengdao.bridge.BrowserCommands.rectInViewport]），
+         * 不信页面自报。
+         */
+        val inViewport: Boolean = false,
     )
 
     /**
@@ -557,6 +582,53 @@ object PageSnapshot {
 
     // ── 可见性 / 交互性判定 ──
 
+    /**
+     * 228 批 A：元素的 CSS 定位子（ref 句柄的落点）。
+     *
+     * 逐级「标签 ＋ `:nth-of-type(同型序号)`」拼成（顶层 `html` 无序号），段间用 `>`。
+     * 两条构造纪律：
+     * 1. **只用标签与序号**——id 可能重复、class/文本可能带引号，都不可信；标签经
+     *    [SAFE_TAG] 白名单（`[a-z][a-z0-9-]*`），带任何其它字符的病态标签直接放弃（回空串）。
+     * 2. **超深放弃**（[MAX_PATH_DEPTH]）——真实页面深度远够不着；超限说明解析已失真，
+     *    失真的定位子宁可没有，也不发给模型去点。
+     *
+     * 已知局限（写进报告）：浏览器会对 `<table><tr>` 补 `tbody` 等隐式包裹，解析树没有——
+     * 这类页面的路径在真 DOM 上 `>` 会断链。断链的结局是点击时**查无此元素 ⇒ 按失效处理**，
+     * 绝不会点错人（宁失效不点错，228 批硬要求）。
+     */
+    private fun pathOf(el: El): String {
+        val segs = ArrayList<String>(8)
+        var cur: El? = el
+        var depth = 0
+        while (true) {
+            val node = cur ?: return ""
+            if (node.tag == "#document") break
+            if (depth >= MAX_PATH_DEPTH || !SAFE_TAG.matches(node.tag)) return ""
+            val parent = node.parent
+            if (parent != null && parent.tag != "#document") {
+                // 序号＝自己是第几个同型元素兄弟（nth-of-type 的语义）。数总数的话两个
+                // 同型兄弟会拿到同一条定位子——点谁都是第一个，等于「点错却报成功」。
+                var seen = 0
+                for (kid in parent.kids) {
+                    val e = kid as? El ?: continue
+                    if (e.tag == node.tag) {
+                        seen++
+                        if (e === node) break
+                    }
+                }
+                segs.add(node.tag + ":nth-of-type(" + seen + ")")
+            } else {
+                segs.add(node.tag)
+            }
+            cur = parent
+            depth++
+        }
+        return segs.reversed().joinToString(" > ")
+    }
+
+    private val SAFE_TAG = Regex("[a-z][a-z0-9-]*")
+    private const val MAX_PATH_DEPTH = 32
+
     private fun isHidden(el: El): Boolean {
         if (el.attrs.containsKey("hidden")) return true
         if (el.attrs["aria-hidden"]?.equals("true", ignoreCase = true) == true) return true
@@ -689,7 +761,7 @@ object PageSnapshot {
             val c = k as El
             if (c.tag in SKIP_TAGS || isHidden(c)) continue
             if (c.tag in BLOCK_TAGS) text.append('\n')
-            if (isInteractive(c)) nodes.add(Node(roleOf(c), nameOf(c), valueOf(c), statesOf(c)))
+            if (isInteractive(c)) nodes.add(Node(roleOf(c), nameOf(c), valueOf(c), statesOf(c), pathOf(c)))
             when (c.tag) {
                 "br" -> text.append('\n')
                 "img" -> c.attrs["alt"]?.let { if (it.isNotBlank()) text.append(it).append(' ') }

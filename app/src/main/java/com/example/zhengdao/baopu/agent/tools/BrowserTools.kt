@@ -31,7 +31,7 @@ internal interface BrowserGateway {
     /** 取当前页的结构快照（可交互元素 + 可见文本摘要）。 */
     fun snapshot(selector: String?): String
 
-    /** 点一个目标（CSS 选择器；`@eN` 句柄归玄览侧后续支持）。 */
+    /** 点一个目标（快照 ref 句柄 `@eN` 或 CSS 选择器；失效句柄由玄览侧拒绝并说明）。 */
     fun click(target: String): String
 
     /** 往输入框里打字（原生 value setter，触发 input/change）。 */
@@ -65,6 +65,41 @@ internal interface BrowserGateway {
 
     /** 等待：给 ms 就纯等，给 selector 就轮询到它出现（或预算用完）。 */
     fun waitFor(ms: Int, selector: String?): String
+
+    /**
+     * 等页面稳定（228 批 A-3）：readyState==complete ＋ DOM 连续 200ms 无变化。
+     * 默认实现退化为纯等——接玄览内核的网关（BaopuBrowserWiring）覆盖它。
+     */
+    fun waitForStable(ms: Int): String = waitFor(ms, null)
+
+    // ── 228 批 B 片九件（B2 导航三件 / B3 动作三件 / B4 标签三件） ──────────────
+
+    /** 后退一步（没有可后退的历史 ⇒ 玄览侧明确报错）。 */
+    fun goBack(): String
+
+    /** 前进一步（没有可前进的历史 ⇒ 玄览侧明确报错）。 */
+    fun goForward(): String
+
+    /** 重新加载当前页。 */
+    fun reload(): String
+
+    /** 选中下拉框选项（先按 value 配、配不上按可见文本配）。 */
+    fun selectOption(target: String, value: String): String
+
+    /** 悬停（展开菜单/tooltip 后再快照）。 */
+    fun hover(target: String): String
+
+    /** 把元素滚进视口中央（只动滚动位置，不动页面内容）。 */
+    fun scrollIntoView(target: String): String
+
+    /** 列出全部标签（id/是否活跃/url/title）。 */
+    fun tabsList(): String
+
+    /** 切换活跃标签。 */
+    fun switchTab(tabId: Int): String
+
+    /** 关闭标签（最后一个关不掉——WebView 宿主至少要有一个）。 */
+    fun closeTab(tabId: Int): String
 
     /**
      * 当前页身份（url/title）。
@@ -122,7 +157,16 @@ internal object BrowserTools {
     const val ARG_Y2 = "y2"
     const val ARG_DURATION = "duration_ms"
     const val ARG_MS = "ms"
+
+    /** 228 批 A-3：等待模式（唯一取值 `stable` ＝ 等整页加载完且 DOM 安静）。 */
+    const val ARG_MODE = "mode"
     const val ARG_KEY = "key"
+
+    /** 228 批 B-3：下拉框要选中的值（先按 option 的 value 配，配不上按可见文本配）。 */
+    const val ARG_VALUE = "value"
+
+    /** 228 批 B-4：标签号（tabs_list 回包里的 id）。 */
+    const val ARG_TAB_ID = "tab_id"
 
     /** 快照字符上限（约 1.5k token；超了就截断并明说）。 */
     const val MAX_SNAPSHOT_CHARS = 6_000
@@ -189,8 +233,10 @@ internal object BrowserTools {
 
     fun snapshotSpec(): ToolSpec = ToolSpec(
         name = "browser_snapshot",
-        description = "取玄览当前页的结构快照：可交互元素（角色/名称/序号）＋可见文本摘要。" +
-            "不含像素、不含整页 HTML。超过 ${MAX_SNAPSHOT_CHARS} 字符会截断并明说。",
+        description = "取玄览当前页的结构快照：头部带当前 url（已脱敏）；可交互元素各带 ref 句柄" +
+            "（如 \"ref\":\"e3\"，拿去当 browser_click/browser_type 的 target）＋可见文本摘要。" +
+            "旧句柄在页面变化后会失效，失效会明说。不含像素、不含整页 HTML。" +
+            "超过 ${MAX_SNAPSHOT_CHARS} 字符会截断并明说。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -215,14 +261,16 @@ internal object BrowserTools {
 
     fun clickSpec(): ToolSpec = ToolSpec(
         name = "browser_click",
-        description = "点玄览当前页里的一个元素。target 传 CSS 选择器（如 #submit、a[href*=login]）。" +
-            "点之前建议先 browser_snapshot 看清有哪些元素。回执里会带「点了之后页面变没变」的校验。",
+        description = "点玄览当前页里的一个元素。target 传快照给的 ref 句柄（如 @e3）或 CSS 选择器" +
+            "（如 #submit）。句柄失效（页面已变）会明说「旧句柄已失效，请重新 browser_snapshot」，" +
+            "绝不点错却报成功。点之前先 browser_snapshot 拿 ref。" +
+            "回执里会带「点了之后页面变没变」的校验。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
                 ARG_TARGET to jsonObjectOf(
                     "type" to "string",
-                    "description" to "CSS 选择器（@eN 句柄待玄览侧支持，暂不接受）",
+                    "description" to "快照里的 ref 句柄（@e3）或 CSS 选择器",
                 ),
             ),
             "required" to jsonArrayOf(ARG_TARGET),
@@ -233,9 +281,6 @@ internal object BrowserTools {
     ) { args ->
         val target = args.optString(ARG_TARGET).trim()
         if (target.isEmpty()) return@ToolSpec ToolOutcome.Failed("target 不能为空")
-        if (target.startsWith("@")) {
-            return@ToolSpec ToolOutcome.Failed("暂不支持 @eN 句柄，请改用 CSS 选择器")
-        }
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
         val text = runCatching { gateway.click(target) }
             .getOrElse { return@ToolSpec ToolOutcome.Failed("点击失败：${it.message ?: it.javaClass.simpleName}") }
@@ -245,11 +290,15 @@ internal object BrowserTools {
     fun typeSpec(): ToolSpec = ToolSpec(
         name = "browser_type",
         description = "往玄览当前页的一个输入框里写入文本（原生 setter，会触发 input/change 事件）。" +
-            "不自动回车：需要提交时再 browser_click 那个按钮，或 browser_key enter。",
+            "target 传快照里的 ref 句柄（如 @e3）或 CSS 选择器。不自动回车：" +
+            "需要提交时再 browser_click 那个按钮，或 browser_key enter。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
-                ARG_TARGET to jsonObjectOf("type" to "string", "description" to "输入框的 CSS 选择器"),
+                ARG_TARGET to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "输入框的快照 ref 句柄（@e3）或 CSS 选择器",
+                ),
                 ARG_TEXT to jsonObjectOf("type" to "string", "description" to "要写入的文本（可为空 = 清空）"),
             ),
             "required" to jsonArrayOf(ARG_TARGET, ARG_TEXT),
@@ -260,9 +309,6 @@ internal object BrowserTools {
     ) { args ->
         val target = args.optString(ARG_TARGET).trim()
         if (target.isEmpty()) return@ToolSpec ToolOutcome.Failed("target 不能为空")
-        if (target.startsWith("@")) {
-            return@ToolSpec ToolOutcome.Failed("暂不支持 @eN 句柄，请改用 CSS 选择器")
-        }
         val text = args.optString(ARG_TEXT)
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
         val out = runCatching { gateway.typeInto(target, text) }
@@ -475,7 +521,8 @@ internal object BrowserTools {
     fun waitSpec(): ToolSpec = ToolSpec(
         name = "browser_wait",
         description = "等一下：给 ms 就纯等（最多 $MAX_WAIT_MS 毫秒）；给 selector 就等到那个元素出现" +
-            "（最多等 ms，默认 2000）。页面加载慢、动画没结束时用它，比反复 snapshot 省事。",
+            "（最多等 ms，默认 2000）；mode=\"stable\" 就等整页加载完且 DOM 连续 200ms 无变化" +
+            "（点完链接、等动画收尾时用，比反复 snapshot 省事；到点没稳会如实说没稳）。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -487,6 +534,11 @@ internal object BrowserTools {
                     "type" to "string",
                     "description" to "等这个 CSS 选择器出现（省略 = 纯等 ms）",
                 ),
+                ARG_MODE to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("stable"),
+                    "description" to "stable = 等页面加载完且 DOM 安静（与 selector 互斥；省略 = 纯等/等元素）",
+                ),
             ),
             "required" to jsonArrayOf(),
             "additionalProperties" to false,
@@ -496,17 +548,225 @@ internal object BrowserTools {
         timeoutMs = ToolTimeout.BROWSER_MS,
     ) { args ->
         val ms = args.optInt(ARG_MS, 2000).coerceIn(0, MAX_WAIT_MS)
+        val mode = args.optString(ARG_MODE).trim().lowercase().ifBlank { null }
         val selector = args.optString(ARG_SELECTOR).trim().ifBlank { null }
+        if (mode != null && mode != "stable") {
+            return@ToolSpec ToolOutcome.Failed("mode 只支持 stable（收到：$mode）")
+        }
+        if (mode == "stable" && selector != null) {
+            return@ToolSpec ToolOutcome.Failed(
+                "mode=stable 与 selector 互斥：stable 等整页安静，selector 等某个元素出现，别一起给",
+            )
+        }
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
-        val text = runCatching { gateway.waitFor(ms, selector) }
-            .getOrElse { return@ToolSpec ToolOutcome.Failed("等待失败：${it.message ?: it.javaClass.simpleName}") }
+        val text = if (mode == "stable") {
+            runCatching { gateway.waitForStable(ms) }
+                .getOrElse { return@ToolSpec ToolOutcome.Failed("等待失败：${it.message ?: it.javaClass.simpleName}") }
+        } else {
+            runCatching { gateway.waitFor(ms, selector) }
+                .getOrElse { return@ToolSpec ToolOutcome.Failed("等待失败：${it.message ?: it.javaClass.simpleName}") }
+        }
         ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
     }
 
-    /** 十一个 spec（顺序即 tools 数组顺序）。 */
+    // ── 228 批 B 片九件 ───────────────────────────────────────────────────────
+
+    /** 导航三件的公共壳：同一条「拿网关 → 调 → cap」路径，只差动词与网关方法。 */
+    private fun navTool(
+        name: String,
+        verb: String,
+        call: BrowserGateway.() -> String,
+    ): ToolSpec = ToolSpec(
+        name = name,
+        description = "让玄览当前页$verb。是异步的：本工具立刻返回，页面读完再用 browser_snapshot 看内容" +
+            "（快照头部带新地址）。没有对应历史时玄览会明确说，不假装成功。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(),
+            "required" to jsonArrayOf(),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { _ ->
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.call() }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("${verb}失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun backSpec(): ToolSpec = navTool("browser_back", "后退一步") { goBack() }
+
+    fun forwardSpec(): ToolSpec = navTool("browser_forward", "前进一步") { goForward() }
+
+    fun reloadSpec(): ToolSpec = navTool("browser_reload", "重新加载") { reload() }
+
+    fun selectSpec(): ToolSpec = ToolSpec(
+        name = "browser_select",
+        description = "选中玄览当前页下拉框（select）的一个选项。target 传快照里的 ref 句柄（如 @e3）" +
+            "或 CSS 选择器；value 先按选项的 value 配、配不上再按可见文本配。" +
+            "选中后再取快照能看到新值；回执里的 value 是页面内容，已脱敏。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_TARGET to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "下拉框的快照 ref 句柄（@e3）或 CSS 选择器",
+                ),
+                ARG_VALUE to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "要选中的值（先配选项 value，配不上配可见文本）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_TARGET, ARG_VALUE),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val target = args.optString(ARG_TARGET).trim()
+        if (target.isEmpty()) return@ToolSpec ToolOutcome.Failed("target 不能为空")
+        val value = args.optString(ARG_VALUE)
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.selectOption(target, value) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("选择失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun hoverSpec(): ToolSpec = ToolSpec(
+        name = "browser_hover",
+        description = "悬停在玄览当前页的一个元素上（派 hover 一族事件），用于展开菜单/tooltip，" +
+            "悬停后再取 browser_snapshot 能看到展开出来的项。target 传快照 ref 句柄或 CSS 选择器。" +
+            "注意：纯 CSS :hover 展开的菜单合成事件触发不了，那种先用 browser_click。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_TARGET to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "目标元素的快照 ref 句柄（@e3）或 CSS 选择器",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_TARGET),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val target = args.optString(ARG_TARGET).trim()
+        if (target.isEmpty()) return@ToolSpec ToolOutcome.Failed("target 不能为空")
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.hover(target) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("悬停失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun scrollIntoViewSpec(): ToolSpec = ToolSpec(
+        name = "browser_scroll_into_view",
+        description = "把玄览当前页的一个元素滚进视口中央（只动滚动位置，不改页面内容），" +
+            "滚完再截图/看快照。target 传快照 ref 句柄或 CSS 选择器。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_TARGET to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "目标元素的快照 ref 句柄（@e3）或 CSS 选择器",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_TARGET),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.FREE,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val target = args.optString(ARG_TARGET).trim()
+        if (target.isEmpty()) return@ToolSpec ToolOutcome.Failed("target 不能为空")
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.scrollIntoView(target) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("滚动失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun tabsListSpec(): ToolSpec = ToolSpec(
+        name = "browser_tabs_list",
+        description = "列出玄览当前开的全部标签：id、是否活跃、url、title（url/title 已脱敏）。" +
+            "要操作哪个标签，先在这里拿 id，再 browser_tabs_switch 切过去。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(),
+            "required" to jsonArrayOf(),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.FREE,
+        readOnly = true,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { _ ->
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.tabsList() }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("列标签失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun tabsSwitchSpec(): ToolSpec = ToolSpec(
+        name = "browser_tabs_switch",
+        description = "切换玄览的活跃标签（后续 snapshot/click 等都作用在新活跃标签上）。" +
+            "tab_id 从 browser_tabs_list 的回包里拿；切到不存在的标签会明说。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_TAB_ID to jsonObjectOf(
+                    "type" to "integer",
+                    "minimum" to 1,
+                    "description" to "目标标签 id（browser_tabs_list 回包里的 id）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_TAB_ID),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val id = args.optInt(ARG_TAB_ID, -1)
+        if (id < 1) return@ToolSpec ToolOutcome.Failed("tab_id 必须是正整数（browser_tabs_list 回包里的 id）")
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.switchTab(id) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("切换失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    fun tabsCloseSpec(): ToolSpec = ToolSpec(
+        name = "browser_tabs_close",
+        description = "关闭玄览的一个标签（tab_id 从 browser_tabs_list 拿）。" +
+            "只剩一个标签时关不掉（浏览器至少要有一个）；关掉后指向该标签的操作会明说已失效。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_TAB_ID to jsonObjectOf(
+                    "type" to "integer",
+                    "minimum" to 1,
+                    "description" to "要关闭的标签 id（browser_tabs_list 回包里的 id）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_TAB_ID),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { args ->
+        val id = args.optInt(ARG_TAB_ID, -1)
+        if (id < 1) return@ToolSpec ToolOutcome.Failed("tab_id 必须是正整数（browser_tabs_list 回包里的 id）")
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.closeTab(id) }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("关标签失败：${it.message ?: it.javaClass.simpleName}") }
+        ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
+    }
+
+    /** 二十个 spec（顺序即 tools 数组顺序；228 批 B 片九件加在尾部）。 */
     fun all(): List<ToolSpec> = listOf(
         openSpec(), snapshotSpec(), clickSpec(), typeSpec(), scrollSpec(), screenshotSpec(),
         tapSpec(), swipeSpec(), longPressSpec(), keySpec(), waitSpec(),
+        backSpec(), forwardSpec(), reloadSpec(),
+        selectSpec(), hoverSpec(), scrollIntoViewSpec(),
+        tabsListSpec(), tabsSwitchSpec(), tabsCloseSpec(),
     )
 
     /** 当前页是不是敏感页（拿不到页面就按「不是」，但授权闸照样会问）。 */

@@ -69,6 +69,10 @@ class ToolRegistrySwitchTest {
                 // 第一百七十七批：坐标四件＋等待（表序即注册序，插在 screenshot 之后）
                 "browser_tap", "browser_swipe", "browser_long_press",
                 "browser_key", "browser_wait",
+                // 228 批 B 片九件：导航三件／动作三件／标签三件（表序即注册序，插在 wait 之后）
+                "browser_back", "browser_forward", "browser_reload",
+                "browser_select", "browser_hover", "browser_scroll_into_view",
+                "browser_tabs_list", "browser_tabs_switch", "browser_tabs_close",
                 "update_plan",
                 "library_list", "library_organize",
                 // 第一百二十八批两条：kb_index（建索引，CONFIRM）/ kb_search（检索，FREE 只读）

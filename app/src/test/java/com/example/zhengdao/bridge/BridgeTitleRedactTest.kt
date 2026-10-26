@@ -195,10 +195,16 @@ class BridgeTitleRedactTest {
     }
 
     @Test
-    fun `门禁_白名单没有 tabs 命令`() {
-        // 派工单㊽-A 措辞里的「tabs 列表」在本实现无落点（11 条白名单由 BridgePolicyTest 钉数）；
-        // 将来若新增 tabs，先补类 KDoc 脱敏边界表——本用例是钉子，红就是因为加了却没补。
-        assertTrue(BridgePolicy.ALL.none { it.wireName == "tabs" })
+    fun `门禁_tabs 命令的脱敏边界表行在场`() {
+        // 旧钉「白名单没有 tabs 命令」在其注释里写明：将来新增 tabs 必须先补类 KDoc
+        // 脱敏边界表，红就是因为加了却没补——228 批 B-4 落了 tabs，钉子按说明兑现成新形：
+        // 命令在场 ＋「tab 元数据第一次成列表出口」的那行边界表必须在场。
+        val raw = commandsSource()
+        assertTrue("tabs 应已在白名单（228 批 B-4）", BridgePolicy.ALL.any { it.wireName == "tabs" })
+        assertTrue(
+            "tabs 列表的 url/title 必须已补进类 KDoc 脱敏边界表",
+            raw.contains("`tabs` 列表的 `url` / `title`"),
+        )
     }
 
     @Test

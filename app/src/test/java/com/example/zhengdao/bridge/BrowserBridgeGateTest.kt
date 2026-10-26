@@ -62,13 +62,17 @@ class BrowserBridgeGateTest {
         assertEquals("127.0.0.1", BridgePolicy.BIND_HOST)
     }
 
-    // ── ② 白名单 11 条，分发层一条不少 ────────────────────────────────────
+    // ── ② 白名单 15 条（11 ＋ 228 批 B 片 4 条），分发层一条不少 ─────────────
 
     @Test
-    fun `分发层覆盖全部 11 条命令`() {
+    fun `分发层覆盖全部 15 条命令`() {
         // 数 dispatch 的 when 分支：每条命令都要有一个 `BrowserPolicy.Command.X ->`
         val branchCount = Regex("BridgePolicy\\.Command\\.[A-Z_]+\\s*->").findAll(bridge).count()
-        assertEquals("分发层必须一条命令一个分支（11 条）", 11, branchCount)
+        assertEquals(
+            "分发层必须一条命令一个分支（11 ＋ 228 批 B 片 back/forward/reload/tabs ＝ 15）",
+            15,
+            branchCount,
+        )
         // 每条命令都要有对应的执行函数（BrowserCommands 里出现同名 fun）
         BridgePolicy.ALL.forEach { cmd ->
             val fn = when (cmd) {
@@ -85,6 +89,11 @@ class BrowserBridgeGateTest {
                 BridgePolicy.Command.ACTIVE_TAB -> "fun activeTab("
                 BridgePolicy.Command.CLOSE_TAB -> "fun closeTab("
                 BridgePolicy.Command.SCREENSHOT -> "fun screenshot("
+                // 228 批 B 片：导航三件与 tabs 列表（browser 里同名 internal fun）
+                BridgePolicy.Command.BACK -> "fun goBack("
+                BridgePolicy.Command.FORWARD -> "fun goForward("
+                BridgePolicy.Command.RELOAD -> "fun reload("
+                BridgePolicy.Command.TABS -> "fun tabsList("
             }
             assertTrue("缺 $fn —— ${cmd.wireName} 会走到 else 静默失败", commands.contains(fn))
         }

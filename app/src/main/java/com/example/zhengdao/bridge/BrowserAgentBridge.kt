@@ -362,6 +362,11 @@ object BrowserAgentBridge {
             BridgePolicy.Command.NEW_TAB -> BrowserCommands.newTab(app, param(body, "url"))
             BridgePolicy.Command.ACTIVE_TAB -> BrowserCommands.activeTab(param(body, "tabId"))
             BridgePolicy.Command.CLOSE_TAB -> BrowserCommands.closeTab(param(body, "tabId"))
+            // 228 批 B-2/B-4：导航三件按 tabId 路由（同上口径），tabs 列表无参（列全部）
+            BridgePolicy.Command.BACK -> BrowserCommands.goBack(param(body, "tabId"))
+            BridgePolicy.Command.FORWARD -> BrowserCommands.goForward(param(body, "tabId"))
+            BridgePolicy.Command.RELOAD -> BrowserCommands.reload(param(body, "tabId"))
+            BridgePolicy.Command.TABS -> BrowserCommands.tabsList()
             BridgePolicy.Command.SCREENSHOT -> BrowserCommands.screenshot(
                 app,
                 param(body, "tabId"),

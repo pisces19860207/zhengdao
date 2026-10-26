@@ -76,8 +76,9 @@ class BridgeTabIdRoutingGuardTest {
     }
 
     // ① 七条命令都收 tabId，且都有默认值（老调用方零改动的判据）
+    // 228 批 B：B-2 导航三件与 B-3 动作三件同规入册（带 tabId 就必须能路由）
     @Test
-    fun `门禁_B补78_七条命令都收 tabId 且有默认值`() {
+    fun `门禁_B补78_带 tabId 的命令都收 tabId 且有默认值`() {
         val src = code(commandsRel)
         val signatures = listOf(
             "fun status(tabId: String? = null): String",
@@ -87,16 +88,26 @@ class BridgeTabIdRoutingGuardTest {
             "fun type(selector: String?, text: String?, tabId: String? = null): String",
             "fun scroll(x: String?, y: String?, selector: String?, tabId: String? = null): String",
             "fun navigate(url: String?, tabId: String? = null): String",
+            "internal fun goBack(tabId: String? = null): String",
+            "internal fun goForward(tabId: String? = null): String",
+            "internal fun reload(tabId: String? = null): String",
+            "internal fun selectOption(target: String?, value: String?, tabId: String? = null): String",
+            "internal fun hover(target: String?, tabId: String? = null): String",
+            "internal fun scrollIntoView(target: String?, tabId: String? = null): String",
         )
         signatures.forEach { sig ->
             assertTrue("签名缺 tabId 或缺默认值：$sig", src.contains(sig))
         }
     }
 
-    // ② dispatch 七条都透传 body 里的 tabId（吞掉 tabId 的旧形态就是 N4 本身）
+    // ② dispatch 里带 tabId 的命令都透传 body 里的 tabId（吞掉 tabId 的旧形态就是 N4 本身）
+    // 228 批 B：BACK/FORWARD/RELOAD 同规（TABS 列全部标签、不带 tabId，不在本清单）
     @Test
-    fun `门禁_B补78_dispatch 七条都透传 param_body_tabId`() {
-        val wire = listOf("STATUS", "SNAPSHOT", "EXEC_JS", "CLICK", "TYPE", "SCROLL", "NAVIGATE")
+    fun `门禁_B补78_dispatch 带 tabId 的命令都透传 param_body_tabId`() {
+        val wire = listOf(
+            "STATUS", "SNAPSHOT", "EXEC_JS", "CLICK", "TYPE", "SCROLL", "NAVIGATE",
+            "BACK", "FORWARD", "RELOAD",
+        )
         wire.forEach { cmd ->
             val branch = dispatchBranch(cmd)
             assertTrue("dispatch 里找不到 $cmd 分支", branch.isNotEmpty())
@@ -107,7 +118,7 @@ class BridgeTabIdRoutingGuardTest {
         }
     }
 
-    // ③ 七条命令体都经 target(tabId) 路由；"直接抓活跃标签"只许留在两处既有位置
+    // ③ 带命令体都经 target(tabId) 路由；"直接抓活跃标签"只许留在两处既有位置
     @Test
     fun `门禁_B补78_命令都经 target 路由`() {
         val src = code(commandsRel)
@@ -127,6 +138,16 @@ class BridgeTabIdRoutingGuardTest {
             "internal fun await(ms: Int, selector: String?, tabId: String? = null): String {",
             "internal fun clickChecked(selector: String, tabId: String? = null): String {",
             "internal fun typeChecked(selector: String, text: String, tabId: String? = null): String {",
+            // 228 A-3：stable 等待也是带 tabId 路由的命令，登记入册
+            "internal fun awaitStable(ms: Int, tabId: String? = null): String {",
+            // 228 批 B-2/B-3：导航三件与动作三件，同规入册（必须块体——表达式体会让
+            // 花括号配平抓错块）
+            "internal fun goBack(tabId: String? = null): String {",
+            "internal fun goForward(tabId: String? = null): String {",
+            "internal fun reload(tabId: String? = null): String {",
+            "internal fun selectOption(target: String?, value: String?, tabId: String? = null): String {",
+            "internal fun hover(target: String?, tabId: String? = null): String {",
+            "internal fun scrollIntoView(target: String?, tabId: String? = null): String {",
         )
         signatures.forEach { sig ->
             assertTrue("源码里找不到命令：$sig", src.contains(sig))
@@ -136,15 +157,18 @@ class BridgeTabIdRoutingGuardTest {
         assertTrue("swipe 丢了 target 路由", functionBody("internal fun swipe(").contains("target(tabId)"))
         // 直接抓活跃标签的位置恰 2 处：target() 的缺省分支 ＋ 截图自有的解析
         // （截图按 tabId 路由，但它要先拿到标签才能问页面几何，这一处从 4-B 起就在）。
+        // 228 批 B-4 的 tabsList 也不直调 activeTab()：活跃 id 走 target(null)（+3 里记账）。
         assertEquals(
             "BrowserTabManager.activeTab() 应恰 2 处（target 缺省分支 / 截图既有解析）",
             2,
             Regex("BrowserTabManager\\.activeTab\\(\\)").findAll(src).count(),
         )
         // 计数与名册同步：1 处定义 ＋ 全部命令各一处（新增命令别忘了登记本表）
+        // +3 = 定义 ＋ swipe（签名跨行按前缀找）＋ tabsList 的 target(null)——它列全部标签
+        // 不带 tabId，但「哪颗是活跃」也要问 target，这一处刻意记账在案（改掉必须动本行）。
         assertEquals(
-            "target( 出现应恰 ${signatures.size + 2} 处（1 定义 + ${signatures.size + 1} 条命令）",
-            signatures.size + 2,
+            "target( 出现应恰 ${signatures.size + 3} 处（1 定义 + swipe + tabsList + ${signatures.size} 条命令）",
+            signatures.size + 3,
             Regex("target\\(").findAll(src).count(),
         )
     }
