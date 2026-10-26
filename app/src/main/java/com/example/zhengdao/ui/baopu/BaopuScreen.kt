@@ -476,8 +476,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         showTaste = true
                     },
-                    // 第二百一十二批：抽屉里的「查询助手」是 195 面板的主入口，命中同样铺成卡
-                    onLogisticsQueryOutcome = pushResultCard,
+                    // 第二百一十二批：抽屉里的「查询助手」是 195 面板的主入口，命中同样铺成卡。
+                    // 卡浮起来时**顺手关抽屉**：抽屉盖在卡上面，不关的话用户看到的是抽屉、
+                    // 不是卡（真机实测踩到：面板关了、抽屉还开着，卡在抽屉底下没人看得见）。
+                    onLogisticsQueryOutcome = { outcome ->
+                        val shown = pushResultCard(outcome)
+                        if (shown) scope.launch { drawerState.close() }
+                        shown
+                    },
                 )
             }
     }
