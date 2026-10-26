@@ -49,7 +49,8 @@ internal object Normalizer {
     fun normalize(bytes: ByteArray): Result {
         val text = try {
             val buf = ByteBuffer.wrap(bytes)
-            strictDecoder.get().reset().decode(buf).toString()
+            val decoder = strictDecoder.get() ?: return Result(null, "UTF-8 解码器不可用（内部状态异常）")
+            decoder.reset().decode(buf).toString()
         } catch (e: CharacterCodingException) {
             return Result(null, "不是 UTF-8 编码（不猜 GBK，请先在外部转成 UTF-8）")
         }

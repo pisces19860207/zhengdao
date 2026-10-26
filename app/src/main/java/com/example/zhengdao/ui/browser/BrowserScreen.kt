@@ -350,7 +350,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             // 第㊱刀：空态不挂 WebView —— 共享 WebView 默认白底，深色模式下会把
             // 起始页的雾白图腾/标题压成 ~1:1（实测截图不可见）；空态时页面区就是
             // 起始页（背景走主题色），everLoaded 翻转后照常挂回，状态机零改动。
-            if (activeId != null && !recycled && !restored && !(active == null || !active.state.everLoaded)) {
+            if (activeId != null && !recycled && !restored && active.state.everLoaded) {
                 key(activeId) {
                     AndroidView(
                         factory = { BrowserTabManager.view() ?: WebView(it) },

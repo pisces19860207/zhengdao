@@ -93,8 +93,8 @@ internal class FileTeachEvidenceSink(
 ) : TeachEvidenceSink {
     private var dir: File? = null
 
-    override fun begin(skillName: String, stampText: String): String? {
-        val d = File(File(root, "玄览技能"), "${File(safeDirName(skillName)).name}-$stampText")
+    override fun begin(skillName: String, stamp: String): String? {
+        val d = File(File(root, "玄览技能"), "${File(safeDirName(skillName)).name}-$stamp")
         return runCatching {
             d.mkdirs()
             dir = d
