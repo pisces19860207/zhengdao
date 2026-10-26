@@ -3534,7 +3534,13 @@ internal class RunEngine(
     }
 
     /** assistant 消息：流结束一次性落库（判据 7：流式期间内存累积，不每 token 写一次）。 */
-    private fun persistAssistantMessage(sessionId: Long, text: String) {
+    private fun persistAssistantMessage(sessionId: Long, raw: String) {
+        // 213 批·答案先行（派工单 §1 次落点）：落库前删掉开头的铺垫句——本函数只加 2 行代码
+        // ＋形参 text→raw 一处改名（原 blank 守卫改判 tidy 之后的文本），其余是注释。
+        // 只删**不含事实的半句**——数字/路径/引用/代码块/表格一个字节都不动；词表见 AnswerFirstRules。
+        // 全限定名是刻意的：文件头加 import 会挪动对账单里冻结的 zd-baopu-run 创建点。
+        val text = com.example.zhengdao.baopu.AnswerFirstRules.tidy(raw)
+        if (text != raw) log("抱朴引擎：答案先行删铺垫 ${raw.length - text.length} 字（只删开场白，不动事实）")
         if (text.isBlank()) return
         var msgId = -1L
         // P2-3：同 persistUserMessage——等提交 + 事件在事务外
