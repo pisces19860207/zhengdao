@@ -379,10 +379,10 @@ class RiskWiringTest {
     @Test
     fun `负例7_219的表内容一个字节都没动`() {
         // 本批只许"调用"219 的表：豁免集合、阈值都得是 219 留下的读数。
-        // 版本号与行数是**当前账**的钉（219 原钉 1/52；228 B 片九个浏览器工具按
-        // 「改一行表就 +1」的规矩进表 ⇒ 2/61；谁再动表，先对账再改这两行）。
-        assertEquals("矩阵版本与表不配套（改表必 +1）", 3, RiskTable.DEFAULT_VERSION)
-        assertEquals("表行数变了：先对账再改（63 个注册工具 = 62 行 ＋ bash 豁免）", 62, RiskTable.DEFAULT.tools.size)
+        // 版本号与行数是**当前账**的钉（219 原钉 1/52；228 B 片九件 ⇒ 3/62；228 C 片
+        // 示教/回放五件进表 ⇒ 4/67。谁再动表，先对账再改这两行）。
+        assertEquals("矩阵版本与表不配套（改表必 +1）", 4, RiskTable.DEFAULT_VERSION)
+        assertEquals("表行数变了：先对账再改（68 个注册工具 = 67 行 ＋ bash 豁免）", 67, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)

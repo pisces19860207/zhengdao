@@ -1566,6 +1566,12 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "logistics_query" -> R.string.baopu_tool_logistics_query
     // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
     "form_fill" -> R.string.baopu_tool_form_fill
+    // 228 批 C 片：示教/回放五件。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
+    "teach_record_start" -> R.string.baopu_tool_teach_record_start
+    "teach_record_stop" -> R.string.baopu_tool_teach_record_stop
+    "teach_skill_save" -> R.string.baopu_tool_teach_skill_save
+    "browser_replay_skill" -> R.string.baopu_tool_browser_replay_skill
+    "teach_site_trust" -> R.string.baopu_tool_teach_site_trust
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -1649,6 +1655,12 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "logistics_query" -> R.string.baopu_tool_logistics_query_desc
     // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页工具卡副标题直接抛
     "form_fill" -> R.string.baopu_tool_form_fill_desc
+    // 228 批 C 片：示教/回放五件。漏这一行 ⇒ 设置页工具卡副标题直接抛（fail-fast）
+    "teach_record_start" -> R.string.baopu_tool_teach_record_start_desc
+    "teach_record_stop" -> R.string.baopu_tool_teach_record_stop_desc
+    "teach_skill_save" -> R.string.baopu_tool_teach_skill_save_desc
+    "browser_replay_skill" -> R.string.baopu_tool_browser_replay_skill_desc
+    "teach_site_trust" -> R.string.baopu_tool_teach_site_trust_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
 

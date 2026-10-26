@@ -117,6 +117,9 @@ internal object ToolSchemaRules {
         "form_fill" to "fields 与 batch 二选一（第二百零一批 ①）：单发点名字段给 fields，批量逐张给 " +
             "batch——schema 表达不了「至少给一个」，由执行体点名报错（FormFillTool.FIELDS_OR_BATCH）；" +
             "形状同 ask_user（203 批）",
+        "teach_record_start" to "无参数：开始录制作用于玄览当前页，没有可填的东西（TeachTools.recordStartSpec，228 批 C）",
+        "teach_record_stop" to "无参数：结束当前那段录制，没有可填的东西（TeachTools.recordStopSpec，228 批 C）",
+        "teach_skill_save" to "name 可省略：省略即用示教时自动起的名字（TeachTools.skillSaveSpec，228 批 C）",
     )
 
     /**

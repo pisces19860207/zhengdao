@@ -1672,6 +1672,19 @@ internal class BaopuChatController(context: Context) {
             // 产物删除 ⇒ 从回收站搬回原位（逐条 rename；有一条搬不动就算失败）
             com.example.zhengdao.baopu.DecisionKind.ARTIFACT_DELETE -> restoreArtifactsNow(r)
 
+            // 站点信任（228 批 C 片）⇒ 加的回滚＝撤、撤的回滚＝加（名单文件纯文件操作，
+            // 就是回滚通道；回滚行已由 rollback_of 记，这里不再写第二条 site_trust）
+            com.example.zhengdao.baopu.DecisionKind.SITE_TRUST -> {
+                val host = r.evidence.substringAfter(':', "")
+                when {
+                    host.isBlank() -> false
+                    r.evidence.startsWith("site_trust_add:") ->
+                        com.example.zhengdao.baopu.TeachSiteTrust.remove(decisionLedgerRoot(), host)
+                    else ->
+                        com.example.zhengdao.baopu.TeachSiteTrust.add(decisionLedgerRoot(), host)
+                }
+            }
+
             // 其余（搜索范围／日记维护／评测／自治动作）没有统一回滚通道 ⇒ 老实返回 false。
             // 搜索范围为什么不在这里：198 的 ⑥① 把拨开关的写入点钉死在设置页一处，
             // 「读侧可见面只有那两片 UI」这条门禁不许控制器引 search 包 ⇒ 它记录为不可回滚，

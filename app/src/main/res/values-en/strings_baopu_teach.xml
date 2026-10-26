@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 228 part C: English half of strings_baopu_teach.xml (five teach/replay tools).
+     Keys must match values/strings_baopu_teach.xml one-for-one (lint MissingTranslation).
+     Same four promises as the Chinese copy: the trust list starts empty (deny by default),
+     submit-like buttons are never clicked, recorded credentials are never saved,
+     trust grants/revokes are logged and rollback-capable. -->
+<resources>
+    <string name="baopu_tool_teach_record_start">Start teaching</string>
+    <string name="baopu_tool_teach_record_start_desc">Starts recording a teach session on the current Xuanlan page: what you click and type is captured into a replayable skill draft. It only records — it never acts for you. Only allowed on trusted sites: the trust list starts empty, so new sites must be trusted first. Every start shows a confirmation card.</string>
+    <string name="baopu_tool_teach_record_stop">Stop teaching</string>
+    <string name="baopu_tool_teach_record_stop_desc">Ends the ongoing teach recording and produces a skill draft (a draft only — nothing is written to disk). The receipt states how many steps were captured, the suggested skill name, and anything worth noting; if you don\'t save it, it is simply discarded. Confirmation-free: stopping a recording has no side effects.</string>
+    <string name="baopu_tool_teach_skill_save">Save teach skill</string>
+    <string name="baopu_tool_teach_skill_save_desc">Confirms the teach draft into a replayable skill (written to the skill library). A credential scan runs first: if the recording contains password or verification-code fields, saving is refused. You can name the skill or omit the name to use the suggested one. Every save shows a confirmation card.</string>
+    <string name="baopu_tool_browser_replay_skill">Replay skill</string>
+    <string name="baopu_tool_browser_replay_skill_desc">Replays a saved teach skill: locates and executes each step on the Xuanlan page as taught. Four gates apply: allowed domains (only the sites from the teach session), site trust, a page-structure fingerprint (stops if the page changed), and the safety gate (submit, pay and delete buttons are always refused). A step that fails to click gets one scroll-into-view retry, then the run stops with per-step evidence. Every replay shows a confirmation card.</string>
+    <string name="baopu_tool_teach_site_trust">Manage trusted sites</string>
+    <string name="baopu_tool_teach_site_trust_desc">Lists, adds and revokes entries in the replay trust list: the list starts empty, so teaching and replaying are denied everywhere until you explicitly trust a domain (e.g. m.example.com). localhost, IP addresses and internal hosts are rejected. Every grant and revoke is written to the decision ledger and can be rolled back there. Each add/revoke shows a confirmation card.</string>
+</resources>

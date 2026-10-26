@@ -508,6 +508,12 @@ class ToolSchemaAllTest {
             "logistics_query" to JSONObject().put("ask", "loaded"),
             // 第二百二十四批：表单填写（唯一必填是 fields；形状是「字段名 → 要填的值」）
             "form_fill" to JSONObject().put("fields", JSONObject().put("标题", "A")),
+            // 228 批 C 片：示教/回放五件（start/stop/save 全可选；replay 必填 name；trust 必填 action）
+            "teach_record_start" to JSONObject(),
+            "teach_record_stop" to JSONObject(),
+            "teach_skill_save" to JSONObject(),
+            "browser_replay_skill" to JSONObject().put("name", "查货"),
+            "teach_site_trust" to JSONObject().put("action", "list"),
             "read" to JSONObject().put("path", "a.md"),
             "bash" to JSONObject(),
         )
