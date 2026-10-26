@@ -208,7 +208,7 @@ class MainActivity : ComponentActivity() {
             is IncomingRoute.McpOAuthCallback -> {
                 // 第二百一十六批：授权回调只投递给收件箱（换 token 在面板的 IO 线程里做）。
                 // 日志只记"收到一条回调"，**不记 code/state**（一次性凭据，落日志等于泄漏）。
-                com.example.zhengdao.rootfs.RunLog.log("MCP 授权回调：已投递（不记录 code/state）")
+                com.example.zhengdao.core.RunLog.log("MCP 授权回调：已投递（不记录 code/state）")
                 com.example.zhengdao.ui.baopu.McpAuthInbox.deliver(route.callback)
             }
             is IncomingRoute.Rejected -> {

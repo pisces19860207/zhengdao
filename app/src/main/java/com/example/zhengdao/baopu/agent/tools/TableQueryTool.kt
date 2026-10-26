@@ -35,7 +35,7 @@ import com.example.zhengdao.baopu.table.TableQuery
 import com.example.zhengdao.baopu.table.TableRegistry
 import com.example.zhengdao.baopu.table.TableRoot
 import com.example.zhengdao.baopu.table.TableText
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

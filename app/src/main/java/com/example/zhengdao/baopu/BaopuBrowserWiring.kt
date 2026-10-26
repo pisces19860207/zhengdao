@@ -21,7 +21,7 @@ import com.example.zhengdao.baopu.agent.TeachTools
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.bridge.BrowserCommands
 import com.example.zhengdao.browser.SensitiveRedactor
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.browser.BrowserHolder
 import com.example.zhengdao.ui.browser.BrowserTabManager
 import com.example.zhengdao.ui.browser.LocalPreviewHolder
