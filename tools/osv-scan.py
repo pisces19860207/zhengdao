@@ -371,7 +371,7 @@ def count_by_severity(findings: list[dict]) -> dict:
     return counts
 
 
-def scan_sbom(sbom_path: Path, out_dir: Path, commit: str, date: str) -> Path:
+def scan_sbom(sbom_path: Path, out_dir: Path, commit: str, date: str, annotate: bool = True) -> Path:
     binary = ensure_scanner()
     snapshot = ensure_db()
     doc = json.loads(sbom_path.read_text(encoding="utf-8"))
@@ -399,9 +399,15 @@ def scan_sbom(sbom_path: Path, out_dir: Path, commit: str, date: str) -> Path:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("[osv] 写入 %s.md / .json（构件 %d，发现 %d 条）" % (base, scanned, len(findings)))
     for f in findings:
-        print("::warning title=OSV 发现 %s::%s@%s — %s（%s）"
-              % (f["severity"], f["package"], f["version"], f["id"],
-                 ", ".join(f["aliases"]) or "无 CVE"))
+        line = "%s@%s — %s（%s）" % (f["package"], f["version"], f["id"],
+                                    ", ".join(f["aliases"]) or "无 CVE")
+        if annotate:
+            # 真扫命中 ⇒ 值得在 PR 页上亮出来
+            print("::warning title=OSV 发现 %s::%s" % (f["severity"], line))
+        else:
+            # 自检夹具命中：**不许**用 ::warning（否则合成出来的 log4j 2.14.1 会被当成真实依赖报出去，
+            # 2026-10-26 就是这样在 Annotations 里冒出 10 条假 CVE）
+            print("[osv-selftest] 夹具命中 %s：%s" % (f["severity"], line))
     if not findings:
         print("[osv] ✓ 本次扫了 %d 个构件，0 高危 / 0 中危 / 0 低危（快照 %s）"
               % (scanned, snapshot["cutoff_date"]))
@@ -415,11 +421,11 @@ def selftest() -> int:
     with tempfile.TemporaryDirectory(prefix="osv-selftest-") as tmp:
         out_dir = Path(tmp)
         # 第一次
-        report1 = scan_sbom(fixture, out_dir, "selftest", "run1")
+        report1 = scan_sbom(fixture, out_dir, "selftest", "run1", annotate=False)
         text1 = report1.read_text(encoding="utf-8")
         findings1 = load_findings(out_dir / "osv-raw-run1.json")
         # 第二次（同输入同快照）
-        report2 = scan_sbom(fixture, out_dir, "selftest", "run2")
+        report2 = scan_sbom(fixture, out_dir, "selftest", "run2", annotate=False)
         text2 = report2.read_text(encoding="utf-8")
         body1 = text1.splitlines()[1:]
         body2 = text2.splitlines()[1:]
