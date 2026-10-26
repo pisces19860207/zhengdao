@@ -7,11 +7,15 @@
 
 判据（错误 => rc=1）：
   1. 章节头重复：`## ` / `#### ` 同一标题出现 >1 次（这是"整段被重复"的铁证）；
-  2. 完全重复行：同一段里，编号行（`| 123 |` / `| 173x |`）**内容逐字相同**出现 >1 次；
+  2. 同段内同编号且**内容逐字相同**的编号行出现 >1 次。2026-10-26 起由"警告"升级为**错误**：
+     "合并冲突不许并列保留双方"，重复行本身就是事故；处理办法是删重复，不是抬阈值；
   3. 文件行数 > 3200（正常约 2600–3000，超了说明可能又拼了一份）。
 
+编号允许带数字后缀（`173aq2` / `173as2` 这类真实在用的号）。旧正则只认「数字＋最多两个字母」，
+会把 `173aq2` 这类行整行漏掉 —— 这正是 2026-10-26 那三次重复没被拦下的原因。
+
 警告（rc 仍为 0，只打印）：
-  - 同一段里同编号但内容不同（历史长表里可能有合法的多表复用）；
+  - 同一段里同编号但内容不同（"重置 A"里同一号跨两个年代，属合法多表复用）；
   - 连续 3 行以上空行。
 
 背景：2026-10-26 发现 `docs/FEATURE-LEDGER.md` 被 1a084009 的合并并列保留了两份（5000 行、63 个章节头），
@@ -25,7 +29,7 @@ from collections import Counter, OrderedDict
 DEFAULT = "docs/FEATURE-LEDGER.md"
 MAX_LINES = 3200
 HEAD_RE = re.compile(r"^(#{2,4})\s")
-ROW_RE = re.compile(r"^\|\s*([0-9]{1,4}[a-z]{0,2})\s*\|")
+ROW_RE = re.compile(r"^\|\s*([0-9]{1,4}[a-z0-9]{0,4})\s*\|")
 
 
 def norm(line: str) -> str:
@@ -55,11 +59,11 @@ def main() -> int:
     if not heads:
         errors.append("没检测到任何章节头（## / ####），文件可能已损坏")
 
-    # 2) 同一段内完全重复的编号行 + 同号不同内容（警告）
+    # 2) 同一段内完全重复的编号行（错误）+ 同号不同内容（警告）
     cur = None
     exact = Counter()
     by_id = {}
-    for l in lines:
+    for i, l in enumerate(lines):
         if HEAD_RE.match(l):
             cur = l
             continue
@@ -69,17 +73,17 @@ def main() -> int:
         rid = m.group(1)
         digest = hashlib.sha256(l.encode()).hexdigest()[:12]
         exact[(cur, rid, digest)] += 1
-        by_id.setdefault((cur, rid), []).append(l)
+        by_id.setdefault((cur, rid), []).append((i + 1, l))
 
     dup_rows = [(sec, rid, n) for (sec, rid, _), n in exact.items() if n > 1]
-    if dup_rows:
-        warns.append(
-            f"同段内完全重复的编号行共 {len(dup_rows)} 组（最多一组 x{max(n for _, _, n in dup_rows)}）；"
-            f"多为历史表复用或追加残留，建议抽查：{dup_rows[0][0][:30]} / id={dup_rows[0][1]}"
+    for sec, rid, n in sorted(dup_rows, key=lambda x: -x[2]):
+        spots = [str(i) for (s, r), items in by_id.items() if s == sec and r == rid for i, _ in items]
+        errors.append(
+            f"同段内同编号完全重复 x{n}: {sec[:34]} / id={rid}（行 {', '.join(spots)}）"
         )
-    for (sec, rid), rows in by_id.items():
-        if len({hashlib.sha256(r.encode()).hexdigest() for r in rows}) > 1:
-            warns.append(f"同段同编号但内容不同: {sec[:36]} / id={rid}（{len(rows)} 行，可能是历史多表复用）")
+    for (sec, rid), items in by_id.items():
+        if len({hashlib.sha256(l.encode()).hexdigest() for _, l in items}) > 1:
+            warns.append(f"同段同编号但内容不同: {sec[:36]} / id={rid}（{len(items)} 行，可能是历史多表复用）")
 
     # 3) 行数上限
     if len(lines) > MAX_LINES:
@@ -101,7 +105,7 @@ def main() -> int:
             print(f"  ERR  {e}")
         print(f"[ledger-dupe] 失败：{len(errors)} 个错误（修复见 _zd-private/docs/账本修复-2026-10-26.md）")
         return 1
-    print("[ledger-dupe] OK 无重复章节、无完全重复行、行数正常")
+    print("[ledger-dupe] OK 无重复章节、无同段重复行、行数正常")
     return 0
 
 
