@@ -210,7 +210,7 @@ jobs:
 
       - name: 归档单测报告（无论成败都上传）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-results
           path: app/build/reports/tests/testDebugUnitTest/
@@ -237,7 +237,7 @@ jobs:
 
       - name: 上传 release APK（冒烟产物，保留 7 天）
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zhengdao-release-smoke
           path: app/build/outputs/apk/release/*.apk
@@ -255,7 +255,7 @@ jobs:
 
       - name: 归档 lint 报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
@@ -334,7 +334,7 @@ jobs:
 
       - name: 归档 SBOM
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: build/sbom/sbom-*.cdx.json
@@ -343,7 +343,7 @@ jobs:
 
       - name: 归档漏洞报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vuln-report
           # upload-artifact v4 不支持 `{md,json}` 花括号（v3 支持）⇒ 必须多行分别写。
@@ -355,7 +355,7 @@ jobs:
 
       - name: 归档许可/版本报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: license-report
           path: |
