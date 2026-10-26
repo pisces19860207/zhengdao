@@ -43,6 +43,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 class SearchReadNeverGrantsWriteTest {
 
@@ -294,7 +295,7 @@ class SearchReadNeverGrantsWriteTest {
         // `terminal.DocxTextExtractor` 不在这张表里（不在 `baopu.` 包根下，上面的 filter 抓不到它），
         // 但它同样是「第二个消费者」⇒ 单独钉一处：只许 PhoneText.kt 引。
         searchSources().forEach { (name, text) ->
-            if (text.contains("import com.example.zhengdao.terminal.DocxTextExtractor")) {
+            if (text.contains("import com.example.zhengdao.core.doc.DocxTextExtractor")) {
                 assertEquals("$name 引了 docx 抽取器：只许 PhoneText.kt 一处", "PhoneText.kt", name)
             }
         }

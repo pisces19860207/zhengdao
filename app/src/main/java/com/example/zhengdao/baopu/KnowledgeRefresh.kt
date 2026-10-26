@@ -17,7 +17,7 @@ import com.example.zhengdao.baopu.knowledge.RefreshControl
 import com.example.zhengdao.baopu.knowledge.RefreshState
 import com.example.zhengdao.baopu.knowledge.RefreshStatus
 import com.example.zhengdao.core.AppPrefs
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

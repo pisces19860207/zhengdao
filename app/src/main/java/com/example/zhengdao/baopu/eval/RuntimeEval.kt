@@ -16,7 +16,7 @@ import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.Providers
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 
 /**

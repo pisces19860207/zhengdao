@@ -46,14 +46,15 @@ import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaProposal
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SeedSkills
-import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillPromote
+import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.core.RunLog
 import java.io.File
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /**
  * 技能提案卡的判据（UI 第二批 §2 点名：这张卡「只显示正文最后一行非空」＝静默截断，
@@ -534,7 +535,7 @@ internal fun commitSkillDraft(
             SkillPromote.promoteReasonOf(row.body, newBody)?.let { why ->
                 val scope = if (row.scope == SkillScope.GLOBAL) "global" else "project"
                 if (!SkillPromote.auditPromote(r.file, scope, row.name, promoteReason ?: why)) {
-                    com.example.zhengdao.rootfs.RunLog.log("技能转正记录写入失败：${row.name}（$why）")
+                    com.example.zhengdao.core.RunLog.log("技能转正记录写入失败：${row.name}（$why）")
                 }
             }
         }
@@ -841,7 +842,7 @@ internal fun deleteArchived(row: ArchivedSkillRow, confirmed: Boolean): Archived
     if (gone.getOrDefault(false) && row.scope == SkillScope.GLOBAL && row.name in SeedSkills.NAMES) {
         val globalRoot = row.file.parentFile?.parentFile?.parentFile
         if (globalRoot == null || !SeedSkills.markDeclined(globalRoot, row.name)) {
-            com.example.zhengdao.rootfs.RunLog.log("种子拒绝名单写入失败：${row.name}（请手动检查 ${SeedSkills.DECLINED_FILE}）")
+            com.example.zhengdao.core.RunLog.log("种子拒绝名单写入失败：${row.name}（请手动检查 ${SeedSkills.DECLINED_FILE}）")
         }
     }
     return if (gone.getOrDefault(false) && !row.file.exists()) ArchivedOutcome.Deleted(row.relPath)

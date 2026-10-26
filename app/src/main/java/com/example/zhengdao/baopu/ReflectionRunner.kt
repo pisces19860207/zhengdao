@@ -17,7 +17,7 @@
 // 若今天没跑过」＋用户说「复盘一下」；技能页的「现在复盘一次」按钮）。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import org.json.JSONObject
 import java.io.File
 

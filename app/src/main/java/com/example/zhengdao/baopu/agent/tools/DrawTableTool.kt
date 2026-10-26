@@ -7,7 +7,7 @@
 // PNG 只是附赠的一眼预览，由沙箱截同一份 HTML 得到——不另写一套栅格排版。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 import java.io.File
 import org.json.JSONObject
 

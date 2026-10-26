@@ -42,8 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.ArtifactDeleteRules
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers

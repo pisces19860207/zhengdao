@@ -12,6 +12,7 @@ package com.example.zhengdao.baopu
 
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 internal object SkillPromote {
 
@@ -90,7 +91,7 @@ internal object SkillPromote {
                     atMs = nowMs,
                     rollbackRef = skillFile.absolutePath,
                 ),
-            ) ?: com.example.zhengdao.rootfs.RunLog.log(
+            ) ?: com.example.zhengdao.core.RunLog.log(
                 "技能转正：决策记录没写成（$name／${DecisionLedger.lastError}）",
             )
         }
@@ -122,7 +123,7 @@ internal object SkillPromote {
                 }
             }
             if (target == null) {
-                com.example.zhengdao.rootfs.RunLog.log("技能回退：决策记录里找不到对应的转正行（$name）——不落 rollback_of")
+                com.example.zhengdao.core.RunLog.log("技能回退：决策记录里找不到对应的转正行（$name）——不落 rollback_of")
             } else {
                 DecisionLedger.record(
                     DecisionDraft(
@@ -137,7 +138,7 @@ internal object SkillPromote {
                         rollbackOf = target.id,
                         groupOverride = DecisionGroup.SKILL,
                     ),
-                ) ?: com.example.zhengdao.rootfs.RunLog.log(
+                ) ?: com.example.zhengdao.core.RunLog.log(
                     "技能回退：决策记录没写成（$name／${DecisionLedger.lastError}）",
                 )
             }

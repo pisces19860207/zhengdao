@@ -3,10 +3,11 @@
 package com.example.zhengdao.ui
 
 import androidx.core.net.toUri
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.R
+import com.example.zhengdao.core.IssueCenter
 // 第七十三批 · 结构切片：Agent 卡片的「该显示哪一个」判据搬到了 ui/home/（纯逻辑，可 JVM 直测）。
 // 这里只留调用——渲染、文案、点击后跑什么命令、state 写回全在本文件原位没动。
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.home.HomePrimaryAction
 import com.example.zhengdao.ui.home.HomeStatusLine
 import com.example.zhengdao.ui.home.homeEntryVisible
@@ -14,7 +15,6 @@ import com.example.zhengdao.ui.home.homeMoreMenuVisible
 import com.example.zhengdao.ui.home.homePrimaryActionOf
 import com.example.zhengdao.ui.home.homeReinstallItemVisible
 import com.example.zhengdao.ui.home.homeStatusLineOf
-import com.example.zhengdao.ui.home.uninstallProgramPaths
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -94,9 +94,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
-import com.example.zhengdao.R
-import com.example.zhengdao.core.IssueCenter
-import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.ui.home.uninstallProgramPaths
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.util.pressClickable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

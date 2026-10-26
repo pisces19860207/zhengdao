@@ -36,10 +36,20 @@ class RunLogInitOnceGateTest {
         val app = src("ZhengdaoApp.kt")
         val main = src("MainActivity.kt")
         // 历史判据（日志必须落盘）由 Application 入口独立承担，不许跟着这行一起删掉
+        // 第二百四十批：init 改成注入式（`RunLog.init(this, legacyLogsDir=…, adoptFile=…)`），
+        // 调用变成跨行。判据从「同一行里有 `RunLog.init(this)`」改成**更强**的
+        // 「super.onCreate() 之后的第一条实质语句就是 RunLog.init(」——
+        // 要防的从来不是括号里写了什么，而是"Application 里这行被挪走/删掉"。
+        val afterSuper = app.substringAfter("override fun onCreate() {")
+            .substringAfter("super.onCreate()")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("//") && !it.startsWith("*") && !it.startsWith("/*") }
+            .firstOrNull()
+            .orEmpty()
         assertTrue(
-            "ZhengdaoApp.onCreate must still RunLog.init first",
-            app.substringAfter("override fun onCreate() {")
-                .substringAfter("super.onCreate()").contains("RunLog.init(this)"),
+            "ZhengdaoApp.onCreate must still RunLog.init first（实际第一条语句：$afterSuper）",
+            afterSuper.startsWith("RunLog.init("),
         )
         // MainActivity 不再第二次 init（只判代码行；注释里提到它是给后人看的，允许出现）
         assertFalse(

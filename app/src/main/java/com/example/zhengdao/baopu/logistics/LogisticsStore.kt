@@ -17,7 +17,7 @@ package com.example.zhengdao.baopu.logistics
 
 import android.content.Context
 import android.database.Cursor
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /** 某一天有表（面板的「数据时间」列表与「今天没表」提示都读它）。 */
 data class DaySummary(val day: String, val rows: Int, val exportedAt: Long)

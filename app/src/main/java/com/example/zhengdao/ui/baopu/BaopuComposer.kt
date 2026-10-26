@@ -10,7 +10,7 @@
 // （图要随消息落 image part）；待生效的显示成 chip 行，可撤销／撤回输入框改。
 package com.example.zhengdao.ui.baopu
 
-import com.example.zhengdao.baopu.BaopuWorkspace
+import com.example.zhengdao.MAX_BAOPU_CHARS
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -79,8 +79,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.getSystemService
-import com.example.zhengdao.MAX_BAOPU_CHARS
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.mergeIncomingDraft
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File

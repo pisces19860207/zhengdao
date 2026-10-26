@@ -27,7 +27,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
 class DecisionCardSpecsTest {

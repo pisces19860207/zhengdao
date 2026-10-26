@@ -8,10 +8,11 @@ package com.example.zhengdao.ui
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
-import com.example.zhengdao.rust.CoreNative
 import java.math.BigInteger
 import java.security.MessageDigest
+import com.example.zhengdao.rust.CoreNative
 
 /**
  * Agent 清单 manifest（M3，骨架 §1 简化版）：
@@ -221,7 +222,7 @@ object AgentManifest {
 
 /** RunLog 的轻引用（避免 ui 包反向依赖 rootfs 包名冲突的阅读成本）。 */
 private object RunLogCompat {
-    fun log(text: String) = com.example.zhengdao.rootfs.RunLog.log(text)
+    fun log(text: String) = com.example.zhengdao.core.RunLog.log(text)
 }
 
 /**

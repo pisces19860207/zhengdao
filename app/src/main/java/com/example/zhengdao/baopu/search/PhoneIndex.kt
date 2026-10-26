@@ -32,7 +32,7 @@ package com.example.zhengdao.baopu.search
 
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /** 一个还有效的授予根（[SearchSql.SELECT_ACTIVE_ROOTS] 的三列）。 */
 internal data class ActiveRoot(val rootId: Long, val absRoot: String, val kind: ScopeKind)

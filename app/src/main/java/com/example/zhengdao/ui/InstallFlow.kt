@@ -10,11 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.core.IssueCenter
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.rootfs.InstallPulse
 import com.example.zhengdao.rootfs.RootfsInstaller
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.terminal.InstallNotifier
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File
 
 /**

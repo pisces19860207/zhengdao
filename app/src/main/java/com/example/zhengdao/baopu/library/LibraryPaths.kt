@@ -5,9 +5,10 @@
 package com.example.zhengdao.baopu.library
 
 import android.content.Context
-import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.core.ZhengdaoDirs
+import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**
@@ -80,14 +81,20 @@ internal object LibraryPaths {
     /** 产物目录（157 起：`<工作区>/产物/`，旧 `资料库/整理/` 已迁走）。 */
     fun doneDirUnder(workspace: File): File = File(workspace, BaopuKernel.Data.DIR_PRODUCTS)
 
-    fun rawDirUnder(filesDir: File): File =
-        File(File(File(filesDir, DIR_BAOPU), DIR_LIBRARY_PRIVATE), SUB_RAW_PRIVATE)
+    /**
+     * 私有原件区（`filesDir/baopu/library/原始/`）。
+     *
+     * 第二百四十批：路径真源下沉到 [ZhengdaoDirs.rawDirUnder]（资料库 `core/kb/KnowledgeBase`
+     * 也要用它，而 `:core` 不能反向 import 抱朴）。**拼出来的路径逐字节不变**，
+     * 本函数只剩转发 —— 上面三个常量保留不动（别处若引用它们，语义仍是这几段目录名）。
+     */
+    fun rawDirUnder(filesDir: File): File = ZhengdaoDirs.rawDirUnder(filesDir)
 
     /**
      * 原件进私有目录的目标路径（**越界即拒**，判据 §5.4）。
      *
      * [relPath] 来自扫描结果（相对 `投递/` 的路径），但**不信任它**：`../` 逃逸、
-     * 绝对路径、盘符一律在这里拒（返回 null），由调用方落 [com.example.zhengdao.rootfs.RunLog]。
+     * 绝对路径、盘符一律在这里拒（返回 null），由调用方落 [com.example.zhengdao.core.RunLog]。
      * 双保险：先显式查危险形态，再过 [PathGuard.isInside]（组件级）。
      *
      * @return 合法目标路径；越界 ⇒ null

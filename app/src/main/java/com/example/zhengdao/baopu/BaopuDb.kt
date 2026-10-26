@@ -4,16 +4,17 @@
 // SQLite 官方文档（外键约束默认关闭、PRAGMA foreign_keys、AUTOINCREMENT 语义）。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.browser.BrowserTabSql
+import com.example.zhengdao.baopu.agent.CompressionRunner
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import com.example.zhengdao.baopu.agent.CompressionRunner
 import com.example.zhengdao.baopu.agent.CompressionStore
+import com.example.zhengdao.browser.BrowserTabSql
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Future
+import com.example.zhengdao.core.RunLog
 
 /**
  * 抱朴数据库的**纯 SQL 层**（表结构 / 语句拼装，无 Android 依赖，可 JVM 单测）。
@@ -1796,7 +1797,7 @@ internal class SessionCompressionStore(private val db: BaopuDb) : CompressionSto
         val stmt = BaopuSql.insertCompression(sessionId, record, sourceTokens, summaryTokens)
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
             .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "抱朴压缩：落库失败 ${it.javaClass.simpleName}: ${it.message}",
                 )
             }
@@ -1861,7 +1862,7 @@ internal class SessionCompressionStore(private val db: BaopuDb) : CompressionSto
         )
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
             .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "抱朴压缩：留痕失败 ${it.javaClass.simpleName}: ${it.message}",
                 )
             }
@@ -1878,7 +1879,7 @@ internal class SessionPendingStore(private val db: BaopuDb) : PendingStore {
         val stmt = BaopuSql.clearPending(sessionId)
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
             .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "抱朴 pending：清空失败 ${it.javaClass.simpleName}: ${it.message}",
                 )
             }
@@ -1939,7 +1940,7 @@ internal class DiaryIndexStore(private val db: BaopuDb) {
         val (sql, args) = replaceSql(e)
         runCatching { db.write { d -> d.execSQL(sql, args) }.get() }
             .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "抱朴日记：索引写入失败 ${it.javaClass.simpleName}: ${it.message}",
                 )
             }
@@ -1951,7 +1952,7 @@ internal class DiaryIndexStore(private val db: BaopuDb) {
         runCatching {
             db.write { d -> d.delete("diary_index", "id = ?", arrayOf(id)) }.get()
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴日记：索引删除失败 ${it.javaClass.simpleName}: ${it.message}",
             )
         }.getOrDefault(0)

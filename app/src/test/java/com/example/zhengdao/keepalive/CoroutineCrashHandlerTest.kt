@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * P4-4（issue #17）：协程未捕获异常 handler 的回归。

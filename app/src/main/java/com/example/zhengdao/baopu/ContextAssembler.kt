@@ -5,8 +5,8 @@
 // 压缩不动前缀、前缀字节级相同可断言）。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.agent.RunRules
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 
 /** 一条会话历史消息（id 用于压缩留痕：哪几条被压成摘要）。 */
 data class HistoryMessage(val id: String, val role: String, val text: String) {

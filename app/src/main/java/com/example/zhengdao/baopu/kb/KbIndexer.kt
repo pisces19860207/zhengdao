@@ -6,7 +6,7 @@ package com.example.zhengdao.baopu.kb
 
 import com.example.zhengdao.baopu.agent.TextDecode
 import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.terminal.DocxTextExtractor
+import com.example.zhengdao.core.doc.DocxTextExtractor
 import java.io.File
 
 /**

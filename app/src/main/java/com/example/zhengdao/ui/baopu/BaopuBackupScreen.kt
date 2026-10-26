@@ -26,9 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.baopu.BaopuWorkspace
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 
 /**
  * 快捷方式／入口按钮的**请求持有者**（进程级，与 BrowserHolder 的 pendingUrl 同房型）。

@@ -5,8 +5,9 @@
 package com.example.zhengdao.rootfs
 
 import android.util.Log
-import com.example.zhengdao.ui.Ed25519Verify
+import com.example.zhengdao.core.RunLog
 import java.util.Base64
+import com.example.zhengdao.ui.Ed25519Verify
 
 /**
  * 索引里的增量补丁引用（协议 §4 的 `patch` 对象）。

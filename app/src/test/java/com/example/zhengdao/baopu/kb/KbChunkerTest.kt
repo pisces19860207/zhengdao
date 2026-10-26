@@ -11,6 +11,7 @@ import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.doc.DocxTextExtractor
 
 class KbChunkerTest {
 
@@ -118,7 +119,7 @@ class KbChunkerTest {
             "<w:p><w:r><w:t>抱朴知识库</w:t></w:r></w:p>" +
                 "<w:p><w:r><w:t>第二段文字</w:t></w:r></w:p>",
         )
-        val text = com.example.zhengdao.terminal.DocxTextExtractor.extract(docx)
+        val text = com.example.zhengdao.core.doc.DocxTextExtractor.extract(docx)
         assertTrue("提取器应抽出正文：$text", text.contains("抱朴知识库"))
         val chunks = KbChunker.chunkText("书.docx", text, KbChunker.ChunkStyle.PLAIN, KbChunk.SOURCE_EXTRACTED)
         assertEquals(2, chunks.size)

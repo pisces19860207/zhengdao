@@ -58,12 +58,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.ImpactPrefs
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaBackup
 import com.example.zhengdao.baopu.PersonaBackupResult
 import com.example.zhengdao.baopu.PersonaLayer
+import com.example.zhengdao.baopu.PersonaPackError
+import com.example.zhengdao.baopu.PersonaPackPayload
+import com.example.zhengdao.baopu.PersonaPackPrefs
+import com.example.zhengdao.baopu.PersonaPackResult
+import com.example.zhengdao.baopu.PersonaPackRules
+import com.example.zhengdao.baopu.PersonaPackStore
+import com.example.zhengdao.baopu.PersonaPackSummary
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
@@ -73,22 +81,15 @@ import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.eval.ProdEvalSettings
 import com.example.zhengdao.baopu.kernel.KernelAudit
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.InfoRow
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsSubPage
 import com.example.zhengdao.ui.WorkspaceFolderPicker
-import com.example.zhengdao.baopu.BaopuWorkspace
-import com.example.zhengdao.baopu.PersonaPackError
-import com.example.zhengdao.baopu.PersonaPackPayload
-import com.example.zhengdao.baopu.PersonaPackPrefs
-import com.example.zhengdao.baopu.PersonaPackResult
-import com.example.zhengdao.baopu.PersonaPackRules
-import com.example.zhengdao.baopu.PersonaPackStore
-import com.example.zhengdao.baopu.PersonaPackSummary
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
@@ -953,7 +954,7 @@ internal fun BaopuSettingsScreen(
                         projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx),
                         globalRoot = File(ctx.filesDir, "抱朴记忆"),
                         personaFiles = pf,
-                        backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                     )
                 }
                 if (globalLines.isEmpty() && projectLines.isEmpty()) {
@@ -980,7 +981,7 @@ internal fun BaopuSettingsScreen(
                 /** 恢复到上一版（第二十三批 A 段）。没有备份就不出这个按钮，点了也没有意义。 */
                 fun restoreLast(layer: PersonaLayer, name: String) {
                     val file = skillFileOf(layer, name)
-                    val msg = when (val r = SkillStore.restore(file, com.example.zhengdao.util.TimeFormats.fileStamp())) {
+                    val msg = when (val r = SkillStore.restore(file, com.example.zhengdao.core.TimeFormats.fileStamp())) {
                         is com.example.zhengdao.baopu.SkillWriteResult.Written ->
                             res.getString(R.string.skill_restore_done)
                         is com.example.zhengdao.baopu.SkillWriteResult.Rejected -> r.reason
@@ -991,7 +992,7 @@ internal fun BaopuSettingsScreen(
 
                 fun removeIndex(layer: PersonaLayer, name: String) {
                     // 第二十三批 A 段追加：删索引行时把技能正文也**归档**（改名 .deleted-*，不硬删）
-                    val archived = SkillStore.archive(skillFileOf(layer, name), com.example.zhengdao.util.TimeFormats.fileStamp())
+                    val archived = SkillStore.archive(skillFileOf(layer, name), com.example.zhengdao.core.TimeFormats.fileStamp())
                     if (archived is com.example.zhengdao.baopu.SkillWriteResult.Rejected) {
                         Toast.makeText(ctx, archived.reason, Toast.LENGTH_SHORT).show()
                         return
@@ -1246,7 +1247,7 @@ internal fun BaopuSettingsScreen(
                             projectRoot = projectRoot,
                             globalRoot = globalRoot,
                             personaFiles = pf,
-                            backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                            backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                         )
                     ) {
                         is com.example.zhengdao.baopu.SkillWriteResult.Written -> {
@@ -1277,7 +1278,7 @@ internal fun BaopuSettingsScreen(
                             projectRoot = projectRoot,
                             globalRoot = globalRoot,
                             personaFiles = pf,
-                            backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                            backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                         )
                     ) {
                         // 索引没加上（上限挡着）时必须明说——正文已转正但模型还看不见它。
@@ -1297,7 +1298,7 @@ internal fun BaopuSettingsScreen(
                             name = row.name,
                             projectRoot = projectRoot,
                             personaFiles = pf,
-                            stamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                            stamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                         )
                     ) {
                         is com.example.zhengdao.baopu.SkillWriteResult.Written ->
@@ -1439,7 +1440,7 @@ internal fun BaopuSettingsScreen(
                         projectRoot = projectRoot,
                         globalRoot = globalRoot,
                         personaFiles = pf,
-                        backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                         lockedName = d.name,
                         initialBody = stripStatusHeader(d.body),
                         initialScope = d.scope,

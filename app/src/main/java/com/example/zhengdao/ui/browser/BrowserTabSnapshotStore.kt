@@ -8,7 +8,7 @@ import android.database.Cursor
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.browser.BrowserSnapshotPolicy
 import com.example.zhengdao.browser.BrowserTabSql
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 玄览页签快照的**落库出口**（第一百七十二批 L4）。

@@ -2,7 +2,7 @@
 // 依据的公开接口：ECMA-376（Office Open XML，.docx 的包与 document.xml 结构）、
 //   ZIP 容器格式（RFC 1951/deflate，.docx 就是个 zip）、XML 1.0 规范。
 //   以上均为公开标准，实现只用 JDK 自带的 java.util.zip 与 javax.xml。
-package com.example.zhengdao.terminal
+package com.example.zhengdao.core.doc
 
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
@@ -154,7 +154,9 @@ object DocxTextExtractor {
     }
 
     /** XML 实体还原（只处理这 5 个 + 数字实体，够用且不引库）。 */
-    internal fun unescapeXml(s: String): String {
+    // 第二百四十批：`internal` → `public`（纯字符串函数）。抱朴 `KbChunker` 要用它，
+    // 而 :core 与 :app 是两个 Kotlin 模块，internal 跨不过去。**零行为变化**。
+    fun unescapeXml(s: String): String {
         if ('&' !in s) return s
         val sb = StringBuilder(s.length)
         var i = 0

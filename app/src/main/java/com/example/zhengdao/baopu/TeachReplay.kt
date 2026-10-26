@@ -17,7 +17,7 @@ import android.content.Context
 import com.example.zhengdao.bridge.BrowserCommands
 import com.example.zhengdao.bridge.TeachCaptureBridge
 import com.example.zhengdao.bridge.jsStringLiteral
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +27,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.core.TimeFormats
 
 // ── 页面查询脚本族（全部自包含 IIFE，返回 JSON 字符串）─────────────────────────
 
@@ -726,7 +727,7 @@ internal class TeachSessionUiModel(
                 projectRoot = projectRoot(),
                 globalRoot = globalRoot(),
                 personaFiles = personaFiles(),
-                stampText = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                stampText = com.example.zhengdao.core.TimeFormats.fileStamp(),
             )
             val msg = if (r.written != null) "已保存技能「${skill.name}」" else (r.reason ?: "保存失败")
             withContext(Dispatchers.Main) { onDone(msg) }

@@ -226,21 +226,29 @@ class BaopuSessionLibraryTest {
 
     @Test
     fun `K6_workspace键字面量只许命中terminal_Workspace`() {
-        val root = File("src/main/java/com/example/zhengdao")
-        val bad = root.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .filter { f ->
-                // 行级去注释：// 后的内容不算（注释里提到这两个键是讲解，不是第二真源）。
-                // 块注释形态在本仓这两个键的语境里未出现，且造红（负例）走的是真代码。
-                val code = f.readText().lines()
-                    .joinToString("\n") { it.substringBefore("//") }
-                code.contains("workspace_mode") || code.contains("workspace_path")
-            }
-            .map { it.path.replace('\\', '/') }
-            .filter { !it.endsWith("terminal/Workspace.kt") }
-            .toList()
+        // 第二百四十批：两键的真源从 `terminal/Workspace.kt` 下沉到 `:core/ZhengdaoDirs.kt`
+        // （terminal/Workspace 现在只是转发壳，里面一个键都没有）。扫描范围跟着扩到 :core ——
+        // 否则这条门禁会"因为真源搬出了扫描目录"而变成空转。
+        val roots = listOf(
+            File("src/main/java/com/example/zhengdao"),
+            File("../core/src/main/java/com/example/zhengdao/core"),
+        ).filter { it.isDirectory }
+        assertTrue("扫描根一个都没找到（工作目录=${File(".").absolutePath}）", roots.isNotEmpty())
+        val bad = roots.flatMap { root ->
+            root.walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { f ->
+                    // 行级去注释：// 后的内容不算（注释里提到这两个键是讲解，不是第二真源）。
+                    // 块注释形态在本仓这两个键的语境里未出现，且造红（负例）走的是真代码。
+                    val code = f.readText().lines()
+                        .joinToString("\n") { it.substringBefore("//") }
+                    code.contains("workspace_mode") || code.contains("workspace_path")
+                }
+                .map { it.path.replace('\\', '/') }
+                .toList()
+        }.filter { !it.endsWith("core/ZhengdaoDirs.kt") }
         assertTrue(
-            "workspace 两键是 terminal/Workspace 的私有真源，不许在别处出现（含抱朴）：\n$bad",
+            "workspace 两键是 :core/ZhengdaoDirs 的私有真源，不许在别处出现（含抱朴）：\n$bad",
             bad.isEmpty(),
         )
     }

@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 
-package com.example.zhengdao.util
+package com.example.zhengdao.core
 
 import java.time.Instant
 import java.time.ZoneId

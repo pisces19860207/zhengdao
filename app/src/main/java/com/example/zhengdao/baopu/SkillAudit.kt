@@ -9,7 +9,7 @@
 // 本批记「用了之后有没有用」。红线：只采数据＋只读聚合，不晋升、不退役、不做 UI、不存正文。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest

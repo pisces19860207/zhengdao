@@ -36,6 +36,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import com.example.zhengdao.core.RunLog
 
 class ToolsV1Test {
 

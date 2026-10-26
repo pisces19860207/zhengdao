@@ -31,6 +31,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.TimeFormats
 
 /**
  * 第三十四批 · 技能详情／已归档／编辑（只动 UI）。

@@ -14,7 +14,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.edit
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 
@@ -150,7 +150,7 @@ object SessionManager {
     fun hasSession(): Boolean = session != null
 
     /**
-     * **只算**启动计划 —— 重活：SHA256 + 拷 assets + `Store.adoptDir` 搬 JM 级缓存。
+     * **只算**启动计划 —— 重活：SHA256 + 拷 assets + `ZhengdaoDirs.adoptDir` 搬 JM 级缓存。
      *
      * §B 顺序 6 / P1-3（2026-10-14）：它原先藏在 [start] 里、随 start 在主线程跑，
      * 冷启动必卡。拆出来是为了让调用方（`TerminalActivity`）能把它丢到**后台线程**。

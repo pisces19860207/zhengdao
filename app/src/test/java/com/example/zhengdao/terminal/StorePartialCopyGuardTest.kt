@@ -5,9 +5,10 @@ package com.example.zhengdao.terminal
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
- * Qoder 审查 🟡-1 的**源码门禁**：`Store.adoptDir` 的复制失败分支必须清掉半截副本。
+ * Qoder 审查 🟡-1 的**源码门禁**：`ZhengdaoDirs.adoptDir` 的复制失败分支必须清掉半截副本。
  *
  * 为什么用读源码的方式钉（而不是单测行为）：这条分支要求 `renameTo` 失败 **且**
  * `copyRecursively` 中途抛异常 —— 前者在单机上做不到（同盘 `renameTo` 总是成功，
@@ -27,8 +28,8 @@ class StorePartialCopyGuardTest {
         File(rel).let { if (it.exists()) it else File("app/$rel") }
 
     private fun adoptDirBody(): String {
-        val f = appFile("src/main/java/com/example/zhengdao/terminal/Store.kt")
-        assertTrue("找不到 Store.kt：${f.path}", f.isFile)
+        val f = appFile("../core/src/main/java/com/example/zhengdao/core/ZhengdaoDirs.kt")
+        assertTrue("找不到 ZhengdaoDirs.kt：${f.path}", f.isFile)
         val src = f.readText()
         val start = src.indexOf("fun adoptDir(")
         assertTrue("源码里找不到 adoptDir（锚点变了就更新本测试）", start >= 0)

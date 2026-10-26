@@ -11,6 +11,8 @@
 //   时钟 `clock`       ：测试注入固定值——窗口判定必须能复现，不许靠 sleep。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.RunLog
+
 /** 给 UI 的一条建议（**只有建议**：没有 apply、没有 restore）。 */
 internal data class PostAdoptionNotice(
     val eventId: String,
@@ -65,7 +67,7 @@ internal class PostAdoptionPort(
         log.append(event)
         true
     }.getOrElse {
-        com.example.zhengdao.rootfs.RunLog.log(
+        com.example.zhengdao.core.RunLog.log(
             "抱朴：采纳事件没记上（不影响采纳）${it.javaClass.simpleName}: ${it.message}",
         )
         false
@@ -96,7 +98,7 @@ internal class PostAdoptionPort(
                     minSamples = event.windowUses,
                 )
             }.getOrElse {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "抱朴：采纳后复测跳过（${it.javaClass.simpleName}）：${it.message}",
                 )
                 continue
@@ -185,7 +187,7 @@ internal class PostAdoptionPort(
             )
             true
         }.getOrElse {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：采纳效果处置没记上 ${it.javaClass.simpleName}: ${it.message}",
             )
             false

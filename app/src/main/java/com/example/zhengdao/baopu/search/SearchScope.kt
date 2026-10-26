@@ -36,7 +36,7 @@ import android.content.Context
 import android.os.Environment
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.WorkspaceGrantRules
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.Collections
 

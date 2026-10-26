@@ -153,4 +153,36 @@ class NotificationRequestCodeGateTest {
                     .forEach { fail("$name 里还有裸数字请求码：${it.value}（请求码必须命名，否则下次又撞）") }
             }
     }
+
+    // ── 第二百四十批：四个通知渠道 id 是**已发布值**，一个字都不许改 ──────────────
+
+    /**
+     * 渠道 id 的「发布即冻结」判据。
+     *
+     * 为什么单独立一条：`NotificationChannels` 第二百四十批搬进 `:core` 并改名
+     * `AppNotifications`，四个 id 字符串（`session` / `install` / `agent` / `update`）
+     * **逐字保留** —— 系统是按 id 记忆用户的通知设置（静音、重要性、气泡）的，
+     * 改 id 等于把用户调过的东西全部重置成默认，而且不报错、不崩，只是"设置莫名其妙没了"。
+     *
+     * 这条同时钉住「搬家没顺手改值」：门禁里自带负例（把 `agent` 改成 `agent_v2` 必须判红）。
+     */
+    @Test
+    fun `渠道 id 四个已发布值不许改`() {
+        val src = code("../core/src/main/java/com/example/zhengdao/core/notify/AppNotifications.kt")
+        val expected = listOf(
+            "const val SESSION = \"session\"",
+            "const val INSTALL = \"install\"",
+            "const val AGENT = \"agent\"",
+            "const val UPDATE = \"update\"",
+        )
+        expected.forEach { lit ->
+            assertTrue("渠道 id 是已发布值，缺了「$lit」——改 id 等于重置用户的全部通知设置", src.contains(lit))
+        }
+        // 负例：把 agent 改个名 ⇒ 上面那条必须红
+        val mutated = src.replace("const val AGENT = \"agent\"", "const val AGENT = \"agent_v2\"")
+        assertTrue(
+            "N：改渠道 id 后判据必须变红",
+            expected.any { !mutated.contains(it) },
+        )
+    }
 }

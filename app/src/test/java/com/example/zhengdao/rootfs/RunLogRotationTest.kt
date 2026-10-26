@@ -8,6 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * P2-13（issue #17）：`RunLog.appendRotated` 三步无锁的回归。
@@ -58,7 +59,7 @@ class RunLogRotationTest {
 
     @Test
     fun `门禁_appendRotated 必须在临界区内`() {
-        val src = File("src/main/java/com/example/zhengdao/rootfs/RunLog.kt").readText()
+        val src = File("../core/src/main/java/com/example/zhengdao/core/RunLog.kt").readText()
         val fn = src.substringAfter("private fun appendRotated(")
             .substringBefore("\n    }\n") // 函数体到下一个顶层方法的收尾
         assertTrue(

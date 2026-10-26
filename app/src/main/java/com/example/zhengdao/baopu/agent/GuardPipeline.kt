@@ -16,8 +16,8 @@ import com.example.zhengdao.baopu.RiskGate
 import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.rootfs.PathGuard
-import com.example.zhengdao.rootfs.RunLog
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Callable

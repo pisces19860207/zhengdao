@@ -16,7 +16,7 @@
 //   5. prompt 含扣费/外发类动作词 ⇒ 结果里**必须提示**（负例：含 R3 动作却不提示）。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.schedule.ScheduleFreq
 import com.example.zhengdao.schedule.ScheduleRules
 import com.example.zhengdao.schedule.ScheduleStore

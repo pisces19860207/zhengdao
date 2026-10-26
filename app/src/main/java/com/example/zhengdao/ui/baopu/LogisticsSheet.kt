@@ -74,8 +74,8 @@ import com.example.zhengdao.baopu.logistics.LogisticsImport
 import com.example.zhengdao.baopu.logistics.LogisticsLedger
 import com.example.zhengdao.baopu.logistics.LogisticsPhone
 import com.example.zhengdao.baopu.logistics.LogisticsQuery
-import com.example.zhengdao.baopu.logistics.QueryOutcome
 import com.example.zhengdao.baopu.logistics.LogisticsStatus
+import com.example.zhengdao.baopu.logistics.QueryOutcome
 import com.example.zhengdao.baopu.logistics.StoredRow
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.theme.zhengdaoErrorText

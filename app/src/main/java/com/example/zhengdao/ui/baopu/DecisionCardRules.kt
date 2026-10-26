@@ -15,8 +15,8 @@
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.R
-import com.example.zhengdao.baopu.EvolutionRecommendation
 import com.example.zhengdao.baopu.EvolutionReasonCode
+import com.example.zhengdao.baopu.EvolutionRecommendation
 import com.example.zhengdao.baopu.EvolutionRisk
 import com.example.zhengdao.baopu.ProposalKind
 

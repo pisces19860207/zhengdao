@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 第七十一批④（§B 79 / 69 批清单应修 #9）的**源码门禁**：

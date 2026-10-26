@@ -49,10 +49,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.BackChevron
+import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
+import com.example.zhengdao.core.RunLog
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
@@ -64,11 +64,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.R
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RootfsDelta
@@ -77,9 +74,12 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
-import com.example.zhengdao.ui.settings.EnvRules
+import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -98,12 +98,12 @@ import androidx.compose.material3.Surface
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.BackChevron
-import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.ui.settings.EnvRules
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
-import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.util.HumanizeError
 import kotlinx.coroutines.CoroutineScope
 
 /** 二级页：环境与更新（逐字搬自「修复环境 / Hermes 依赖环境 / 环境更新 / 运行内存上限」四张卡）。 */
@@ -409,7 +409,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             }
                         } catch (t: Throwable) {
                             // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
-                            com.example.zhengdao.rootfs.RunLog.log(
+                            com.example.zhengdao.core.RunLog.log(
                                 "环境检查失败（原文）：${t.javaClass.simpleName}: ${t.message}"
                             )
                             res.getString(R.string.env_check_failed, HumanizeError.title(t, res))
@@ -585,7 +585,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     // 就位 → 旧树递归删除」，运行中的 proot/agent 后续 open/exec 会 ENOENT。
                     // 判定放在任何下载/解压/替换之前；被拦时一个字节都不动，不报「安装失败」
                     // （这是前置条件不满足，不是安装失败）。
-                    if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.rootfs.RunLog::log)) {
+                    if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "修复环境", com.example.zhengdao.core.RunLog::log)) {
                         // ENV-D1：先关确认框再弹 Snackbar —— 对话框是独立窗口，不关会把
                         // 页面底部的 Snackbar 整个盖住；同时 Toast 两行上限会截掉第二句。
                         repairConfirm = false
@@ -663,11 +663,11 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                             actualSha,
                                         )
                                         if (env != null) {
-                                            com.example.zhengdao.rootfs.RunLog.log(
+                                            com.example.zhengdao.core.RunLog.log(
                                                 "修复环境：本地包与当前环境同源（sha=${actualSha.take(12)}），保留环境记录 $env",
                                             )
                                         } else {
-                                            com.example.zhengdao.rootfs.RunLog.log(
+                                            com.example.zhengdao.core.RunLog.log(
                                                 "修复环境：本地包与当前环境无法确认同源（sha=${actualSha.take(12)}），不写环境记录（下次更新要重下完整包）",
                                             )
                                         }
@@ -724,7 +724,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                     onClick = {
                     // 第五十二批 · P0-5：活会话时不换 rootfs（增量 apply 与全量 install 走同一个
                     // 整树替换）。判定在下单/下载之前，被拦时零文件改动。
-                    if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "环境更新", com.example.zhengdao.rootfs.RunLog::log)) {
+                    if (envInstallBlocked(com.example.zhengdao.terminal.SessionManager.isAlive(), "环境更新", com.example.zhengdao.core.RunLog::log)) {
                         // ENV-D1：同修复路径 —— 先关更新确认框，Snackbar 才不会被盖住。
                         updateMsg = null
                         scope.launch {
@@ -820,7 +820,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                     // R-29（第⑯刀）：fallbackNote 会进 InstallFlow.finish 的用户可见文案，
                                     // 原文只落 RunLog（下一行），UI 拿人话
                                     val why = HumanizeError.title(t, res)
-                                    com.example.zhengdao.rootfs.RunLog.log("小更新失败，改为完整下载：${t.message}")
+                                    com.example.zhengdao.core.RunLog.log("小更新失败，改为完整下载：${t.message}")
                                     fallbackNote = res.getString(R.string.env_patch_fallback, why)
                                 } finally {
                                     RootfsCache.cleanupDelta(ctx, deltaFile)
@@ -880,7 +880,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 val actualSha = verifiedSha ?: expectedSha
                                 val envToWrite = RootfsInstaller.envForMarker(index?.env, index?.sha256, actualSha)
                                 if (index != null && envToWrite == null) {
-                                    com.example.zhengdao.rootfs.RunLog.log(
+                                    com.example.zhengdao.core.RunLog.log(
                                         "安装包校验值与更新信息对不上，这次不写环境记录"
                                     )
                                 }
@@ -896,7 +896,7 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             android.os.Handler(ctx.mainLooper).post { storageTick++ }
                         } catch (t: Throwable) {
                             // R-29（第⑯刀）：why 进 InstallFlow.fail + 可读 Snackbar（用户可见），原文只落 RunLog
-                            com.example.zhengdao.rootfs.RunLog.log(
+                            com.example.zhengdao.core.RunLog.log(
                                 "环境更新失败（原文）：${t.javaClass.simpleName}: ${t.message}"
                             )
                             val why = HumanizeError.title(t, res)

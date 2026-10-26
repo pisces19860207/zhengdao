@@ -38,9 +38,9 @@ import com.example.zhengdao.baopu.knowledge.KnowledgeOrganize
 import com.example.zhengdao.baopu.knowledge.KnowledgeOrganizeRules
 import com.example.zhengdao.baopu.knowledge.KnowledgeRefreshRules
 import com.example.zhengdao.baopu.knowledge.RefreshState
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
-import com.example.zhengdao.util.TimeFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

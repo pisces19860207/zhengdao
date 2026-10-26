@@ -4,7 +4,7 @@ package com.example.zhengdao.terminal
 
 import android.util.Log
 import com.example.zhengdao.core.IssueCenter
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 
 /**

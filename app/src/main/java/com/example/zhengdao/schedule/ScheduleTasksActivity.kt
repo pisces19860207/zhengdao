@@ -50,8 +50,8 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.zhengdao.R
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsDivider

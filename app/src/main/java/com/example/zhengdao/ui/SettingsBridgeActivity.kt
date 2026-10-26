@@ -20,9 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.example.zhengdao.R
-import com.example.zhengdao.bridge.BrowserAgentBridge
 import com.example.zhengdao.bridge.BridgePolicy
 import com.example.zhengdao.bridge.BridgeToken
+import com.example.zhengdao.bridge.BrowserAgentBridge
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
 import androidx.core.content.getSystemService
 

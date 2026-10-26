@@ -1,14 +1,17 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 依据的公开接口：Android 官方文档（应用外部目录、java.io.File 语义）。
-package com.example.zhengdao.terminal
+package com.example.zhengdao.core.kb
+
+// 第二百四十批（抽 :core）可见性说明：`shouldCreate` / `countRawIn` 原为 `internal`，现放宽为
+// `public`：Kotlin 的 `internal` 是模块级的，而它们的单测留在 `:app`。两者都是纯判据/纯计数，
+// 放宽对行为零影响。
 
 import android.content.Context
 import androidx.core.content.edit
-import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.core.AppPrefs
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.core.ZhengdaoDirs
 import java.io.File
 import java.util.Locale
 
@@ -22,10 +25,10 @@ import java.util.Locale
  *   3) 分发指路到 guest `/root/`：`AGENTS.md`（AGENTS.md 开放标准，25+ 工具通用）＋ `CLAUDE.md`
  *
  * ## 157 目录收口（用户 2026-10-23 拍板，工作区可见目录恰四个：产物/回收站/备份/记忆）
- * - **私有原件** ＝ `filesDir/baopu/library/原始/`（[LibraryPaths.rawDirUnder]）：
+ * - **私有原件** ＝ `filesDir/baopu/library/原始/`（`ZhengdaoDirs.rawDirUnder`）：
  *   157 前终端侧自己建 `<工作区>/资料库/原始/` 给用户放原件；收口后原件区**并入抱朴
  *   私有原件区**（终端 agent 军规本就读不到原件，搬走照样成立），存量由
- *   [com.example.zhengdao.baopu.MemoryLayout] 迁移搬入（冲突不覆盖）。
+ *   `baopu/MemoryLayout` 迁移搬入（冲突不覆盖）。
  * - **产物** ＝ `<工作区>/产物/`（157 前 `<工作区>/资料库/整理/`）：清单与说明文档落这里。
  * - **旧根** `<工作区>/资料库/`（[root]）降为 legacy：只用于存量识别、迁移对账与
  *   「别处还有一份资料」的候选查找，**不再新建、不再写**。
@@ -43,7 +46,7 @@ import java.util.Locale
 object KnowledgeBase {
 
     /** 旧资料库根目录名（157 前的 `<工作区>/资料库/`）——**legacy**，仅存量识别用。 */
-    const val DIR = BaopuKernel.Data.LEGACY_LIBRARY_DIR
+    const val DIR = ZhengdaoDirs.LEGACY_LIBRARY_DIR
 
     /** 旧原件子目录名（157 前 `资料库/原始/`）——legacy，迁移对账用。 */
     const val SUB_RAW = "原始"
@@ -78,7 +81,7 @@ object KnowledgeBase {
      *
      * ⚠️ **达到上限时必须显式告知**（清单里写一行、设置页状态带后缀）——
      * 静默截断会让用户以为"资料全在这儿了"。
-     * 公开给 UI 用（[com.example.zhengdao.ui.SettingsScreen] 判"是否已达上限"）。
+     * 公开给 UI 用（设置页 `SettingsScreen` 判"是否已达上限"）。
      */
     const val MAX_SCAN = 2000
 
@@ -88,17 +91,17 @@ object KnowledgeBase {
     // ── 路径 ────────────────────────────────────────────────────────────────
 
     /** 旧资料库根（`<工作区>/资料库/`）——157 后 legacy，仅存量识别与迁移对账用。 */
-    fun root(ctx: Context): File = File(Workspace.hostDir(ctx), DIR)
+    fun root(ctx: Context): File = File(ZhengdaoDirs.hostDir(ctx), DIR)
 
     /**
      * 私有原件区（157 起：`filesDir/baopu/library/原始/`）。
-     * 与抱朴侧 [LibraryPaths.rawDirUnder] 同一目录——终端 agent 军规本就读不到原件，
+     * 与抱朴侧 `LibraryPaths.rawDirUnder` 同一目录——终端 agent 军规本就读不到原件，
      * 收口后两边共用一份，存量由 MemoryLayout 迁入。
      */
-    fun rawDir(ctx: Context): File = LibraryPaths.rawDirUnder(ctx.filesDir)
+    fun rawDir(ctx: Context): File = ZhengdaoDirs.rawDirUnder(ctx.filesDir)
 
     /** 产物目录（157 起：`<工作区>/产物/`）——清单与说明文档落这里。 */
-    fun doneDir(ctx: Context): File = File(Workspace.hostDir(ctx), BaopuKernel.Data.DIR_PRODUCTS)
+    fun doneDir(ctx: Context): File = File(ZhengdaoDirs.hostDir(ctx), ZhengdaoDirs.PRODUCTS_DIR)
 
     fun indexFile(ctx: Context): File = File(doneDir(ctx), F_INDEX)
 
@@ -151,7 +154,7 @@ object KnowledgeBase {
     private fun countRaw(ctx: Context): Int = countRawIn(rawDir(ctx))
 
     /** 同上，但指定 `原始/` 目录本身（提示"别处还有一份带资料的资料库"时要用）。 */
-    internal fun countRawIn(base: File): Int {
+    fun countRawIn(base: File): Int {
         if (!base.isDirectory) return 0
         var n = 0
         val stack = ArrayDeque<File>()
@@ -233,7 +236,7 @@ object KnowledgeBase {
     /**
      * 其他地方还放着资料的「资料库」候选（给设置页提示"你的资料可能在别处"）。
      *
-     * 只看**我们知道的**那几个位置：上一次用过的自定义工作区（[Workspace.prevHostDir]）、
+     * 只看**我们知道的**那几个位置：上一次用过的自定义工作区（[ZhengdaoDirs.prevHostDir]）、
      * 默认工作区 `Download/证道`、仅私有模式的 App 外部目录。**刻意不做全盘搜索** ——
      * 全盘扫一遍既慢又越界。也刻意不含"当前工作区"（那是卡片本来就在显示的那份）。
      *
@@ -244,9 +247,9 @@ object KnowledgeBase {
     fun otherPopulated(ctx: Context): List<Pair<String, Int>> = runCatching {
         val cur = rawDir(ctx).absolutePath.trimEnd('/')
         val candidates = LinkedHashSet<File>()
-        Workspace.prevHostDir(ctx)?.let { candidates.add(File(it, DIR)) }
-        candidates.add(File(Workspace.defaultDir(ctx), DIR))
-        candidates.add(File(Workspace.privateDir(ctx), DIR))
+        ZhengdaoDirs.prevHostDir(ctx)?.let { candidates.add(File(it, DIR)) }
+        candidates.add(File(ZhengdaoDirs.defaultDir(ctx), DIR))
+        candidates.add(File(ZhengdaoDirs.privateDir(ctx), DIR))
         candidates.map { File(it, SUB_RAW) }
             .filter { it.absolutePath.trimEnd('/') != cur }
             .mapNotNull { raw ->
@@ -332,7 +335,7 @@ object KnowledgeBase {
 
         // 仅私有模式：不主动预置（那是"在意痕迹"的场景，不该凭空塞东西）；
         // 但用户既然自己建了这个目录，就说明他想用 —— 补齐骨架。
-        if (!Workspace.isShared(ctx)) {
+        if (!ZhengdaoDirs.isShared(ctx)) {
             if (!r.isDirectory) return false
             return seedFiles(ctx)
         }
@@ -372,7 +375,7 @@ object KnowledgeBase {
      * 用户显式要求（设置页「重新整理」／重新打开开关）⇒ 重建。
      * 后两条的分界线就是"谁在要求"：自动流程不许复活他删掉的东西，手动按钮是他自己按的。
      */
-    internal fun shouldCreate(everCreated: Boolean, userDeleted: Boolean, forced: Boolean): Boolean =
+    fun shouldCreate(everCreated: Boolean, userDeleted: Boolean, forced: Boolean): Boolean =
         forced || (!everCreated && !userDeleted)
 
     /** 建私有原件区与产物目录 ＋ 写说明文档（幂等：内容未变不重写）。
@@ -476,7 +479,7 @@ object KnowledgeBase {
         val items = scan.items
 
         // 指纹 = 工作区路径 ＋ 每个文件的相对路径/大小/修改时间
-        val sb = StringBuilder(Workspace.hostDir(ctx).absolutePath)
+        val sb = StringBuilder(ZhengdaoDirs.hostDir(ctx).absolutePath)
         for (it in items) sb.append('|').append(it.rel).append(':').append(it.size).append(':').append(it.mtime)
         val sig = sb.toString().hashCode().toString()
 
@@ -743,11 +746,11 @@ object KnowledgeBase {
      * 含：环境说明（治"以为自己在电脑里"）＋ 资料库指路。
      */
     private fun dispatchAgentsText(ctx: Context): String {
-        val ws = Workspace.hostDir(ctx).absolutePath
-        val shared = Workspace.isShared(ctx)
+        val ws = ZhengdaoDirs.hostDir(ctx).absolutePath
+        val shared = ZhengdaoDirs.isShared(ctx)
         val wsNote = if (shared) "手机文件管理器直接可见、可自由删除；卸载证道后仍保留"
         else "应用专属目录，随应用卸载自动删除"
-        // 仅私有档**不 bind /sdcard**（B-补-1 修正之后 [Workspace.isShared] 才真的会判成 false）⇒
+        // 仅私有档**不 bind /sdcard**（B-补-1 修正之后 [ZhengdaoDirs.isShared] 才真的会判成 false）⇒
         // 文件地图里的共享盘指路必须跟着改，否则 agent 会照着一句到不了的路径满世界撞墙
         // （E-094 附带修正：改的是本函数里两处与模式相关的句子，其余文案一字未动）。
         val sdcardLine = if (shared) {

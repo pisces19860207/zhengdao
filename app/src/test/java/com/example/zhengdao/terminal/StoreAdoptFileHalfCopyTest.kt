@@ -7,9 +7,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
- * 审计第 2 期 **B-4** 的验收：`Store.adoptFile` 遇到「目标已存在但是半截」必须重拷。
+ * 审计第 2 期 **B-4** 的验收：`ZhengdaoDirs.adoptFile` 遇到「目标已存在但是半截」必须重拷。
  *
  * 现场怎么造：`legacy.copyTo(target)` 中途抛异常（存储写满 / 权限 / 被杀）会在目标名下留下
  * 源的**前 N 字节** —— 这正是"半截目标"。旧写法 `target.exists() → return false` 把它当成
@@ -17,7 +18,7 @@ import java.io.File
  *
  * 新判据（[Store] 里 `isHalfCopy`）：目标**严格短于**源、且字节逐位等于源的前缀 ⇒ 清掉重拷。
  * 反过来，内容对不上的同名文件（用户自己放在公共区的另一份）**绝不能被覆盖** —— 这条纪律
- * 与 [Store.adoptDir] 的「绝不覆盖」一致，本测试一并钉住。
+ * 与 [ZhengdaoDirs.adoptDir] 的「绝不覆盖」一致，本测试一并钉住。
  *
  * 为什么能用真单测（而不是像 `StorePartialCopyGuardTest` 那样只做源码门禁）：判据本身是
  * 纯文件操作，不依赖 `renameTo` 失败、也不依赖把复制打断 —— "半截目标"可以直接写出来。
@@ -44,7 +45,7 @@ class StoreAdoptFileHalfCopyTest {
 
         assertTrue(
             "半截目标必须触发重拷（旧写法 target.exists() → false ⇒ 永不重拷）",
-            Store.adoptFile(target, legacy),
+            ZhengdaoDirs.adoptFile(target, legacy),
         )
         assertArrayEquals("最终字节必须与源逐字节一致", expected, File(pub, "session.json").readBytes())
         assertFalse("搬完之后源不该还在", legacy.exists())
@@ -57,7 +58,7 @@ class StoreAdoptFileHalfCopyTest {
         val legacy = old.child("x.json", "内容")
         val target = File(pub, "x.json").apply { createNewFile() } // 0 字节：复制夭折在第一步
 
-        assertTrue("0 字节目标也是半截，必须重拷", Store.adoptFile(target, legacy))
+        assertTrue("0 字节目标也是半截，必须重拷", ZhengdaoDirs.adoptFile(target, legacy))
         assertEquals("内容", File(pub, "x.json").readText())
     }
 
@@ -68,7 +69,7 @@ class StoreAdoptFileHalfCopyTest {
         val legacy = old.child("session.json", "更新的内容")
         val target = pub.child("session.json", "内容") // 用户自己放的另一个同名文件
 
-        assertFalse("内容不是源的前缀 ⇒ 不是残片，一律不覆盖", Store.adoptFile(target, legacy))
+        assertFalse("内容不是源的前缀 ⇒ 不是残片，一律不覆盖", ZhengdaoDirs.adoptFile(target, legacy))
         assertEquals("内容", File(pub, "session.json").readText())
         assertTrue("被跳过的源必须留着（绝不静默丢数据）", legacy.exists())
     }
@@ -81,7 +82,7 @@ class StoreAdoptFileHalfCopyTest {
         val legacy = old.child("session.json", content)
         val target = pub.child("session.json", content) // 完整副本
 
-        assertFalse("长度不短于源 ⇒ 视为已搬完，不再重拷（幂等）", Store.adoptFile(target, legacy))
+        assertFalse("长度不短于源 ⇒ 视为已搬完，不再重拷（幂等）", ZhengdaoDirs.adoptFile(target, legacy))
         assertEquals(content, target.readText())
         assertTrue(legacy.exists())
     }

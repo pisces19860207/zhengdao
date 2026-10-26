@@ -2,7 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 
 /**
  * 输入回归页的**纯逻辑**（不依赖 Android，可单测）。

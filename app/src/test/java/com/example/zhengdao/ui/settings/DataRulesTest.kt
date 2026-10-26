@@ -7,7 +7,7 @@
 // 见交付报告「diff 等值证据」）：五条判据一条不改，负例口径见文件末注释。
 package com.example.zhengdao.ui.settings
 
-import com.example.zhengdao.terminal.KnowledgeBase
+import com.example.zhengdao.core.kb.KnowledgeBase
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

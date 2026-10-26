@@ -8,6 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * 资料库"该不该建目录"的判定（E-061）。

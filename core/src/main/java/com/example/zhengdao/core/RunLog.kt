@@ -1,10 +1,12 @@
 // 独立开发声明：本文件为本项目原创。
-package com.example.zhengdao.rootfs
+package com.example.zhengdao.core
+
+// 第二百四十批（抽 :core）可见性说明：下面几个 `fun` 原为 `internal`，现放宽为 `public`。
+// 原因：Kotlin 的 `internal` 是**模块级**的，而它们的单测留在 `:app`（本仓单测的既有位置，
+// 有 app 私有 testkit 依赖），跨模块访问不到。它们全是**纯函数**（不碰 Context、不碰 IO），
+// 放宽可见性对行为零影响 —— 这一条在交付报告里逐项列出，不是"顺手改"。
 
 import android.content.Context
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.terminal.Store
-import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
 /**
@@ -86,7 +88,26 @@ object RunLog {
      */
     private val lock = Any()
 
-    fun init(context: Context) {
+    /**
+     * 第二百四十批（终端解耦第一刀 · 先断环）：`RunLog` 原来直接调 `Store.logsDir` /
+     * `Store.adoptFile`，而 `Store`（现 [ZhengdaoDirs]）又调 [log] —— 两个 object 互相引用
+     * 成环，谁也没法单独进 `:core`。现在改成**启动时注入**：App 侧把
+     * `ZhengdaoDirs.logsDir` / `ZhengdaoDirs.adoptFile` 传进来，本类零外部依赖。
+     *
+     * ⚠️ 不是"把两个类一起塞进 `:core` 让它编过"——那样环还在，只是被模块边界盖住了。
+     */
+    private var legacyLogsDir: ((Context) -> File?)? = null
+
+    /** 同上：单文件搬家（`files/zhengdao-log.txt` → `logs/zhengdao-log.prev.txt`）。 */
+    private var adoptFileFn: ((target: File, legacy: File) -> Boolean)? = null
+
+    fun init(
+        context: Context,
+        legacyLogsDir: (Context) -> File?,
+        adoptFile: (target: File, legacy: File) -> Boolean,
+    ) {
+        this.legacyLogsDir = legacyLogsDir
+        this.adoptFileFn = adoptFile
         appContext = context.applicationContext
         val ctx = appContext ?: return
         val d = dir(ctx)
@@ -114,18 +135,19 @@ object RunLog {
     }
 
     /** 私有日志目录判据（纯函数，单测直接调）：恒为 `filesDir/logs`。 */
-    internal fun dirFor(filesDir: File): File = File(filesDir, "logs")
+    fun dirFor(filesDir: File): File = File(filesDir, "logs")
 
     /**
      * 迁移旧位置（N-4 A 案）：
      * ① `files/zhengdao-log.txt`（旧版"只留一代"的产物）→ `logs/zhengdao-log.prev.txt`；
-     * ② **公共区老日志复制一份进私有区**（`Store.logsDir` 下的四类文件）——源文件
+     * ② **公共区老日志复制一份进私有区**（注入的 `ZhengdaoDirs.logsDir` 下的四类文件）——源文件
      *    **不删、不改写**（是用户数据，且可能正被用户/Agent 看着）；复制失败不影响主流程。
      */
     fun migrateLegacy(context: Context, d: File = dir(context)) {
         try {
             val target = File(d, PREV_NAME)
-            Store.adoptFile(target, File(context.filesDir, NAME))
+            // 注入的搬家实现（见 [init]）；未注入 = 本进程还没跑过 init，按"没有旧文件可搬"处理。
+            adoptFileFn?.invoke(target, File(context.filesDir, NAME))
         } catch (t: Throwable) {
             // P2-7：老用户的旧日志搬失败 = 那批记录事实上丢了，不能静默。
             // 走 logcat 直连（migrateLegacy 可能在 init 早期被调，log() 未必就绪）。
@@ -143,7 +165,7 @@ object RunLog {
      */
     private fun copyLegacyFromPublic(context: Context, d: File) {
         try {
-            val pub = runCatching { Store.logsDir(context) }.getOrNull() ?: return
+            val pub = runCatching { legacyLogsDir?.invoke(context) }.getOrNull() ?: return
             if (!pub.isDirectory) return
             val names = mutableListOf(NAME)
             pub.listFiles { f -> f.isFile && isArchiveName(f.name) }?.forEach { names += it.name }
@@ -216,7 +238,7 @@ object RunLog {
             ?: emptyList()
 
     /** 归档文件名判定（单测直接调）。 */
-    internal fun isArchiveName(name: String): Boolean =
+    fun isArchiveName(name: String): Boolean =
         name.startsWith(ARCHIVE_PREFIX) && name.endsWith(ARCHIVE_SUFFIX) &&
             name != NAME && name != PREV_NAME && name != ERRORS_NAME &&
             name.length > ARCHIVE_PREFIX.length + ARCHIVE_SUFFIX.length
@@ -228,7 +250,7 @@ object RunLog {
      * 生成的名字仍满足 [isArchiveName] ⇒ 照样进 [pruneArchivesIn] 的保留策略，
      * 不会变成"没人管的孤儿文件"。
      */
-    internal fun archiveNameFor(stamp: String, taken: Set<String>): String {
+    fun archiveNameFor(stamp: String, taken: Set<String>): String {
         val base = "$ARCHIVE_PREFIX$stamp$ARCHIVE_SUFFIX"
         if (base !in taken) return base
         var n = 1
@@ -248,7 +270,7 @@ object RunLog {
      * 唯一的例外：最新那一份永远不删（哪怕它自己就超过 [maxBytes]），
      * 否则会退化成"一份都不剩"。
      */
-    internal fun pruneArchivesIn(
+    fun pruneArchivesIn(
         d: File,
         keep: Int = KEEP_ARCHIVES,
         maxBytes: Long = ARCHIVE_TOTAL_MAX,
@@ -338,7 +360,9 @@ object RunLog {
      *
      * ⚠️ 与 ⑯刀的边界：**不过滤 Exception / java.* 堆栈**——那归 ⑯刀，别撞车。
      */
-    internal fun redact(line: String, filesDirPath: String? = null): String {
+    // 第二百四十批：`internal` → `public`（纯函数）。设置页「导出日志」要把正文过一遍脱敏，
+    // 而 :core 与 :app 是两个 Kotlin 模块，internal 跨不过去。**零行为变化**。
+    fun redact(line: String, filesDirPath: String? = null): String {
         var s = line
         if (!filesDirPath.isNullOrEmpty()) s = s.replace(filesDirPath, "<私有目录>")
         // 私有绝对路径两类形态（包名段一整段替掉，含后面的全部子路径）。
@@ -384,7 +408,7 @@ object RunLog {
      * 触发判定用的却是字节数 ⇒ 轮换后文件实际约占 1.5×max 字节。这是改动前就有的
      * 近似（上限是 MB 量级、日志又是低频，这点误差不值得上字节数组）。
      */
-    internal fun rotateContent(current: String, max: Long): String =
+    fun rotateContent(current: String, max: Long): String =
         "…（旧日志已截断）…\n" + current.takeLast((max / 2).toInt())
 
     fun file(): File? = appContext?.let { File(dir(it), NAME) }?.takeIf { it.isFile }

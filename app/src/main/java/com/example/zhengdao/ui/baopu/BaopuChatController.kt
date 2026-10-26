@@ -16,13 +16,10 @@ import androidx.core.content.edit
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
-import com.example.zhengdao.baopu.agent.AskKind
-import com.example.zhengdao.baopu.agent.AskUserRequest
-import com.example.zhengdao.baopu.accumulateUsage
-import com.example.zhengdao.baopu.BaopuUsageRow
-import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuSql
+import com.example.zhengdao.baopu.BaopuUsageRow
+import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.DiaryEntry
 import com.example.zhengdao.baopu.DiaryEvidence
 import com.example.zhengdao.baopu.DiaryIndexStore
@@ -34,15 +31,8 @@ import com.example.zhengdao.baopu.EvolutionDecisionPort
 import com.example.zhengdao.baopu.EvolutionEvidence
 import com.example.zhengdao.baopu.EvolutionShadowHuman
 import com.example.zhengdao.baopu.EvolutionShadowLog
-import com.example.zhengdao.baopu.ShadowJudgement
-import com.example.zhengdao.baopu.agreementShadow
-import com.example.zhengdao.baopu.latestByCandidate
-import com.example.zhengdao.baopu.shadowSummaryLine
-import com.example.zhengdao.baopu.shadowVerdictOf
-import com.example.zhengdao.baopu.tallyShadow
-import com.example.zhengdao.baopu.emptyRoundUsage
+import com.example.zhengdao.baopu.ExampleBank
 import com.example.zhengdao.baopu.HistoryMessage
-import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.MemoryBackup
 import com.example.zhengdao.baopu.MemoryEntry
 import com.example.zhengdao.baopu.MemoryInjectionBudget
@@ -50,25 +40,24 @@ import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.MemoryRefine
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.MemoryStatus
-import com.example.zhengdao.baopu.PersonaLayer
-import com.example.zhengdao.baopu.toEffectSnapshot
 import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
+import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.ProposalCandidateStore
 import com.example.zhengdao.baopu.ProposalRules
 import com.example.zhengdao.baopu.ReflectionArchive
 import com.example.zhengdao.baopu.ReflectionCandidate
 import com.example.zhengdao.baopu.ReflectionRunner
 import com.example.zhengdao.baopu.ReflectionTrigger
+import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
+import com.example.zhengdao.baopu.ShadowJudgement
 import com.example.zhengdao.baopu.SkillAudit
 import com.example.zhengdao.baopu.SkillDraftGovernor
 import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillWriteResult
-import com.example.zhengdao.ui.browser.BrowserTabManager
-import com.example.zhengdao.baopu.ExampleBank
 import com.example.zhengdao.baopu.TasteDrop
 import com.example.zhengdao.baopu.TasteInjection
 import com.example.zhengdao.baopu.TasteProfile
@@ -81,6 +70,16 @@ import com.example.zhengdao.baopu.TopicPublishedRef
 import com.example.zhengdao.baopu.TopicStyle
 import com.example.zhengdao.baopu.TopicSuggest
 import com.example.zhengdao.baopu.TopicSuggestBatch
+import com.example.zhengdao.baopu.accumulateUsage
+import com.example.zhengdao.baopu.agent.AskKind
+import com.example.zhengdao.baopu.agent.AskUserRequest
+import com.example.zhengdao.baopu.agent.ConfirmRequest
+import com.example.zhengdao.baopu.agent.EngineEvent
+import com.example.zhengdao.baopu.agent.RunRules
+import com.example.zhengdao.baopu.agent.RunState
+import com.example.zhengdao.baopu.agent.SendAcceptance
+import com.example.zhengdao.baopu.agreementShadow
+import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.eval.EvalAttempt
 import com.example.zhengdao.baopu.eval.EvalEvidenceSource
 import com.example.zhengdao.baopu.eval.EvalResultFile
@@ -101,15 +100,16 @@ import com.example.zhengdao.baopu.eval.SkillBodyInput
 import com.example.zhengdao.baopu.eval.SkillBodyOutcome
 import com.example.zhengdao.baopu.eval.TargetKind
 import com.example.zhengdao.baopu.eval.TargetSnapshot
-import com.example.zhengdao.baopu.agent.ConfirmRequest
-import com.example.zhengdao.baopu.agent.EngineEvent
-import com.example.zhengdao.baopu.agent.RunRules
-import com.example.zhengdao.baopu.agent.RunState
-import com.example.zhengdao.baopu.agent.SendAcceptance
+import com.example.zhengdao.baopu.latestByCandidate
 import com.example.zhengdao.baopu.library.LibraryItem
 import com.example.zhengdao.baopu.library.LibraryKind
 import com.example.zhengdao.baopu.library.LibrarySource
 import com.example.zhengdao.baopu.library.MoveChoice
+import com.example.zhengdao.baopu.shadowSummaryLine
+import com.example.zhengdao.baopu.shadowVerdictOf
+import com.example.zhengdao.baopu.tallyShadow
+import com.example.zhengdao.baopu.toEffectSnapshot
+import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -117,6 +117,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.ui.browser.BrowserTabManager
 
 /**
  * 会话库一行（第二十批 §2.1 浮层数据源；SQL 在
@@ -303,7 +305,7 @@ internal class BaopuChatController(context: Context) {
                     globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, ""),
                     projectRoot = workspaceRoot,
                     personaFiles = pf,
-                    backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                    backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                 )
             }
             when {
@@ -437,7 +439,7 @@ internal class BaopuChatController(context: Context) {
             personaFiles = pf,
             lastUseMs = lastUse,
             nowMs = System.currentTimeMillis(),
-            log = { com.example.zhengdao.rootfs.RunLog.log(it) },
+            log = { com.example.zhengdao.core.RunLog.log(it) },
             // 第二百二十批：技能自治的影响提示（**无卡场景**：技能页治理是自动跑的，
             // 没有确认卡 ⇒ 按 §2.5 屏幕上一个字都不显示，只把摘要写进事后账，
             // 决策中心（208）读它。判据复用 205 的 Plan，这里一分钱不多花。
@@ -457,7 +459,7 @@ internal class BaopuChatController(context: Context) {
             },
         )
         if (!governance.isEmpty) {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "草稿治理：转正 ${governance.promoted.size}（${governance.promoted.joinToString("、")}）、" +
                     "软退役 ${governance.retiredIdle.size + governance.retiredOverflow.size}、疑似重复 ${governance.duplicates.size} 对（只标不删）",
             )
@@ -559,7 +561,7 @@ internal class BaopuChatController(context: Context) {
     fun runSkillRowAction(row: SkillLibraryRow, action: SkillRowAction): String? {
         val pf = BaopuRuntime.personaFiles(appCtx)
         val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
-        val stamp = com.example.zhengdao.util.TimeFormats.fileStamp()
+        val stamp = com.example.zhengdao.core.TimeFormats.fileStamp()
         return when (action) {
             SkillRowAction.PROMOTE -> {
                 val draftRow = row.toDraftRow()
@@ -685,7 +687,7 @@ internal class BaopuChatController(context: Context) {
                         ),
                     )
                 }
-                com.example.zhengdao.rootfs.RunLog.log("对拍：\n${outcome.table}")
+                com.example.zhengdao.core.RunLog.log("对拍：\n${outcome.table}")
                 // 第二百零八批 §1 `eval_verdict`：对拍结论进决策中心（只留档、不回滚；
                 // 证据 id＝fixture＋技能，判错的样本才由 §2.7 的「判错了」生成）
                 com.example.zhengdao.baopu.DecisionLedger.record(
@@ -735,7 +737,7 @@ internal class BaopuChatController(context: Context) {
             val header = if (file.isFile) "" else com.example.zhengdao.baopu.ReflectionArchive.header() + "\n"
             file.appendText(header + line + "\n", Charsets.UTF_8)
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log("对拍：进化档案追加失败（${it.javaClass.simpleName}：${it.message}）")
+            com.example.zhengdao.core.RunLog.log("对拍：进化档案追加失败（${it.javaClass.simpleName}：${it.message}）")
         }
     }
 
@@ -913,7 +915,7 @@ internal class BaopuChatController(context: Context) {
         }.onFailure {
             // 只记录不阻塞（65/89 口径）：排程自己崩了也不许把会话收尾带下去。
             ProdEvalSchedule.release()
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "[prod-eval] 排程异常（不阻塞对话）：${it.javaClass.simpleName}: ${it.message}",
             )
         }
@@ -1430,7 +1432,7 @@ internal class BaopuChatController(context: Context) {
                     recommendation = s.recommendation.name,
                 )
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：建议动作审计没记上（${action}/${s.candidateId}）${it.javaClass.simpleName}: ${it.message}",
             )
         }
@@ -1695,7 +1697,7 @@ internal class BaopuChatController(context: Context) {
         if (name.isEmpty()) return false
         val archived = com.example.zhengdao.baopu.SkillStore.archive(
             file,
-            com.example.zhengdao.util.TimeFormats.fileStamp(),
+            com.example.zhengdao.core.TimeFormats.fileStamp(),
         )
         if (archived !is com.example.zhengdao.baopu.SkillWriteResult.Written) return false
         val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
@@ -1833,7 +1835,7 @@ internal class BaopuChatController(context: Context) {
             projectRoot = ws,
             globalRoot = gRoot,
             personaFiles = pf,
-            backupStamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+            backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
             reason = "决策中心回退为草稿",
         )
         return when (r) {
@@ -1845,7 +1847,7 @@ internal class BaopuChatController(context: Context) {
                     System.currentTimeMillis(),
                 )
                 if (!audited) {
-                    com.example.zhengdao.rootfs.RunLog.log("技能回退记录写入失败：$name")
+                    com.example.zhengdao.core.RunLog.log("技能回退记录写入失败：$name")
                 }
                 true to appCtx.getString(R.string.skill_promote_reverted, name)
             }
@@ -2180,7 +2182,7 @@ internal class BaopuChatController(context: Context) {
     ) {
         val key = p.id + "|" + issues.joinToString("；")
         if (learnPrecheckAudited.add(key)) {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "[skill-body-selfcheck] 采纳卡前置校验不过（${p.id}）：${issues.joinToString("；")}",
             )
         }
@@ -2278,7 +2280,7 @@ internal class BaopuChatController(context: Context) {
             proposal,
             root,
             globalRoot,
-            com.example.zhengdao.util.TimeFormats.fileStamp(),
+            com.example.zhengdao.core.TimeFormats.fileStamp(),
         )
         plan.blocked?.let { return BaopuNote(it, BaopuNoteLevel.Error) }
         val layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT
@@ -2474,7 +2476,7 @@ internal class BaopuChatController(context: Context) {
             MemoryBackup(MemoryLayout.memoryBackupDir(appCtx.filesDir))
                 .snapshot(MemoryLayout.memoryDir(wsRoot), now)
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴日记：写前备份失败 ${it.javaClass.simpleName}: ${it.message}（仍继续写日记）",
             )
         }
@@ -2486,12 +2488,12 @@ internal class BaopuChatController(context: Context) {
             // 失败不阻塞会话收尾（try/catch ＋ 运行日志，同 MemoryStore 既有风格）。
             runCatching { store.maintain(now) }
                 .onFailure {
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "抱朴日记：维护失败 ${it.javaClass.simpleName}: ${it.message}",
                     )
                 }
         } else {
-            com.example.zhengdao.rootfs.RunLog.log("抱朴日记：$res.reason")
+            com.example.zhengdao.core.RunLog.log("抱朴日记：$res.reason")
         }
     }
 
@@ -2781,7 +2783,7 @@ internal class BaopuChatController(context: Context) {
                 }
             }.get()
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴附件：写 image part 失败 ${it.javaClass.simpleName}: ${it.message}",
             )
         }
@@ -2799,7 +2801,7 @@ internal class BaopuChatController(context: Context) {
         val stmt = com.example.zhengdao.baopu.BaopuSql.setSessionWorkspace(sid, path)
         runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
             .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "抱朴会话：记工作区失败 ${it.javaClass.simpleName}: ${it.message}",
                 )
             }
@@ -2903,7 +2905,7 @@ internal class BaopuChatController(context: Context) {
                 }
             }.get()
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：编辑消息失败 ${it.javaClass.simpleName}: ${it.message}",
             )
         }
@@ -3197,7 +3199,7 @@ internal class BaopuChatController(context: Context) {
                 d.execSQL(stmt.sql, stmt.args)
             }.get()
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：忘记记忆失败 ${it.javaClass.simpleName}: ${it.message}",
             )
             pendingNote = "这条没删掉（写库失败），稍后再试；错误已记日志"
@@ -3871,7 +3873,7 @@ internal class BaopuChatController(context: Context) {
         // 追加（不冲掉用户还没过目的老候选）＋ 同正文去重 ＋ 上限截断（先到先得）
         val merge = BaopuRefineWindow.mergePending(pendingMemories, r.candidates, maxPending)
         if (merge.dropped > 0) {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "[baopu-refine] 待过目候选超过 $maxPending 条，截断 ${merge.dropped} 条（body 去重后仍超限）",
             )
         }
@@ -3915,7 +3917,7 @@ internal class BaopuChatController(context: Context) {
                 }
             }
             settled.onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-proposal] 候选生成本轮失败（${it.javaClass.simpleName}）：${it.message}",
                 )
             }
@@ -4046,7 +4048,7 @@ internal class BaopuChatController(context: Context) {
         val written = store.appendNew(r.candidates, now)
         if (r.candidates.isNotEmpty() || r.dropped > 0 || r.skipped.isNotEmpty()) {
             // 只记计数与目标，不记 payload/用户正文（证据留痕的同一口径）。
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "[baopu-proposal] 候选生成：产出 ${r.candidates.size} 条，写入 $written，" +
                     "跳过 ${r.skipped.size} 条，超上限丢弃 ${r.dropped} 条",
             )
@@ -4119,7 +4121,7 @@ internal class BaopuChatController(context: Context) {
         if (prodEval != null && evalResult !== prodEval) {
             // 有生产证据但已过期：回退到发版证据可以，但要留一行账——
             // 不许安静地换来源（派工单「来源和日期必须标」在日志这一侧的同款要求）。
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "[baopu-eval] 个人生产证据已过期（ranAt=${prodEval.ranAt}），本次判定按发版证据",
             )
         }
@@ -4153,7 +4155,7 @@ internal class BaopuChatController(context: Context) {
                         ).toEffectSnapshot(com.example.zhengdao.baopu.evidenceIdsOf(c)),
                 )
             }.onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-evolution] 候选证据装配跳过（${it.javaClass.simpleName}）：${it.message}",
                 )
             }
@@ -4178,7 +4180,7 @@ internal class BaopuChatController(context: Context) {
                 runCatching {
                     shadowRows += shadowVerdictOf(input, decision, shadowAt)
                 }.onFailure {
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "[baopu-shadow] 影子判定跳过（${it.javaClass.simpleName}）：${it.message}",
                     )
                 }
@@ -4198,7 +4200,7 @@ internal class BaopuChatController(context: Context) {
                     evalRanAt = evalResult?.ranAt,
                 )
             }.getOrElse {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-evolution] 候选判定跳过（${it.javaClass.simpleName}）：${it.message}",
                 )
                 null
@@ -4210,7 +4212,7 @@ internal class BaopuChatController(context: Context) {
                 if (com.example.zhengdao.baopu.shouldPresentSuggestion(selfCheck)) {
                     out += suggestion
                 } else {
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "[baopu-evolution] 候选 ${c.id}（${c.target}）自检未过 ⇒ 不出卡" +
                             "（规则：${selfCheck?.failedRuleIds?.joinToString(",").orEmpty()}）",
                     )
@@ -4221,7 +4223,7 @@ internal class BaopuChatController(context: Context) {
             // 落账 → 汇总，两步各自兜底：影子是攒给「以后开不开闸」看的数，
             // 记不上/读不动只 log，绝不回头堵住 99 那条判定链（65/89「只记录不阻塞」口径）。
             runCatching { shadowRows.forEach { shadowLog.record(it) } }.onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-shadow] 影子账本写入失败（本轮不记账）${it.javaClass.simpleName}: ${it.message}",
                 )
             }
@@ -4230,11 +4232,11 @@ internal class BaopuChatController(context: Context) {
                 // 不去重就会把一致率灌满重复票。人工留痕读不到 ⇒ 本轮没有配对样本（不猜）。
                 val dedup = latestByCandidate(shadowLog.load().orEmpty())
                 val human = EvolutionShadowHuman.fromDb(db)
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-shadow] " + shadowSummaryLine(tallyShadow(dedup), agreementShadow(dedup, human)),
                 )
             }.onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-shadow] 汇总跳过（${it.javaClass.simpleName}）：${it.message}",
                 )
             }
@@ -4311,7 +4313,7 @@ internal class BaopuChatController(context: Context) {
             )
         }.getOrElse {
             // 读不到就标 UNKNOWN：判定时只出 DEFER，绝不当 0 用
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：采纳前基线读失败（记 UNKNOWN）${it.javaClass.simpleName}: ${it.message}",
             )
             PreAdoptionBaseline(emptyMap(), com.example.zhengdao.baopu.PostAdoptionBaseline.UNKNOWN)
@@ -4332,7 +4334,7 @@ internal class BaopuChatController(context: Context) {
         baseline: PreAdoptionBaseline,
     ) {
         if (com.example.zhengdao.baopu.SkillEffects.nameToken(skillName) == null) {
-            com.example.zhengdao.rootfs.RunLog.log("抱朴：采纳事件的名字过不了闸门，不记（channel=$channel）")
+            com.example.zhengdao.core.RunLog.log("抱朴：采纳事件的名字过不了闸门，不记（channel=$channel）")
             return
         }
         val backups = file?.let { com.example.zhengdao.baopu.SkillStore.backupsOf(it) }.orEmpty()
@@ -4365,7 +4367,7 @@ internal class BaopuChatController(context: Context) {
      */
     private fun postAdoptionRecheck(): com.example.zhengdao.baopu.PostAdoptionNotice? =
         runCatching { postAdoptionPort().recheck().firstOrNull() }.getOrElse {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：采纳后复测失败（不影响收尾）${it.javaClass.simpleName}: ${it.message}",
             )
             null
@@ -4402,7 +4404,7 @@ internal class BaopuChatController(context: Context) {
                         approvedBy = "user",
                         skillFile = file,
                         personaFile = null,
-                        stamp = com.example.zhengdao.util.TimeFormats.fileStamp(),
+                        stamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
                     )
                     if (r is com.example.zhengdao.baopu.PostAdoptionRollbackResult.Done) {
                         postAdoptionPort().recordUserAction(
@@ -4488,7 +4490,7 @@ internal class BaopuChatController(context: Context) {
         }
         val ok = runCatching { refineSkillsForSession(sid) }
             .onFailure {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "[baopu-skill] 封卷提炼失败（${it.javaClass.simpleName}）：${it.message} ⇒ 留给下次启动补算",
                 )
             }
@@ -4511,7 +4513,7 @@ internal class BaopuChatController(context: Context) {
         for (sid in ids) {
             val ok = runCatching { refineSkillsForSession(sid) }
                 .onFailure {
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "[baopu-skill] 自检补算失败（${it.javaClass.simpleName}）：${it.message}",
                     )
                 }
@@ -4711,7 +4713,7 @@ internal class BaopuChatController(context: Context) {
             db.write { d -> d.execSQL(stmt.sql, stmt.args) }
                 .get(3, java.util.concurrent.TimeUnit.SECONDS)
         }.onFailure {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：skill_decision 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}",
             )
         }
@@ -4725,7 +4727,7 @@ internal class BaopuChatController(context: Context) {
     ) {
         val name = com.example.zhengdao.baopu.SkillRefine.proposalNameOf(p)
         if (name == null) {
-            com.example.zhengdao.rootfs.RunLog.log("抱朴：提案留痕提不出名字，只记条目不记 hash")
+            com.example.zhengdao.core.RunLog.log("抱朴：提案留痕提不出名字，只记条目不记 hash")
             recordSkillDecision("（提不出名字）", adopted, hash = null, detail = detail)
             return
         }

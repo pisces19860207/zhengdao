@@ -21,7 +21,7 @@ package com.example.zhengdao.baopu.search
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 
 /**

@@ -120,7 +120,7 @@ class BaopuLongformLedgerTest {
     @Test
     fun `协议-e Store 保存产物并追加台账_bak 在_老行逐字不变`() {
         val root = tmp.newFolder("kb")
-        // 真实文件系统走一遍协议（Store.save 依赖 Android workspaceRoot，JVM 里以协议本体验证）
+        // 真实文件系统走一遍协议（ZhengdaoDirs.save 依赖 Android workspaceRoot，JVM 里以协议本体验证）
         val product = File(root, "产物").apply { mkdirs() }
         val ledger = File(product, "台账.md")
         ledger.writeText(oldLedger)

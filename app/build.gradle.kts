@@ -521,6 +521,10 @@ tasks.register<JavaExec>("detektBaselineUpdate") {
 }
 
 dependencies {
+    // 第二百四十批（终端解耦第一刀）：共享件模块。方向单向 —— :app → :core。
+    implementation(project(":core"))
+    // 单测也要直接引用 :core 的类（internal 之外的公开面），显式声明不依赖"恰好能看见"。
+    testImplementation(project(":core"))
     // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
     add("detektCli", libs.detekt.cli)
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd

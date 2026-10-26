@@ -5,7 +5,7 @@
 package com.example.zhengdao.baopu.kb
 
 import com.example.zhengdao.baopu.agent.TextDecode
-import com.example.zhengdao.terminal.DocxTextExtractor
+import com.example.zhengdao.core.doc.DocxTextExtractor
 
 /**
  * 切块与格式解析（**纯函数**：吃 String/ByteArray 出 [KbChunk]，零 IO 零 Android，JVM 直测）。

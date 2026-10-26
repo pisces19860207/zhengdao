@@ -9,7 +9,7 @@
 // 本类**不碰**技能/人设文件，不调用 `SkillStore.apply` / `PersonaFiles.applyProposal`。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

@@ -47,9 +47,9 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.BackChevron
+import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -62,11 +62,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.R
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RootfsDelta
@@ -75,7 +72,10 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -94,11 +94,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.BackChevron
-import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.ui.util.pressClickable
+import com.example.zhengdao.util.HumanizeError
 import kotlinx.coroutines.CoroutineScope
 
 /** 二级页：后台与保活（逐字搬自「荣耀 / MagicOS 保活指南」卡，含保活记录入口）。 */

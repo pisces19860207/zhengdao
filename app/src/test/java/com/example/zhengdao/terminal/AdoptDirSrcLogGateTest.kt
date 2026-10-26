@@ -5,10 +5,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 第七十一批③（§B 79 / 69 批清单应修 #8）的**源码门禁**：
- * `Store.adoptDir` 源目录列不出内容（IO 错误）时 `?: return 0` 静默放弃，迁移无声、
+ * `ZhengdaoDirs.adoptDir` 源目录列不出内容（IO 错误）时 `?: return 0` 静默放弃，迁移无声、
  * 旧数据滞留无提示。修法：return 0 前落一条「迁移源不可读，跳过（src=…）」；
  * 返回值/行为不变（源目录不存在走 isDirectory 正常路径，不打日志）。
  *
@@ -44,7 +46,7 @@ class AdoptDirSrcLogGateTest {
 
     @Test
     fun `J3_迁移源不可读必须落日志且返回值不变`() {
-        val body = funBody(code("src/main/java/com/example/zhengdao/terminal/Store.kt"), "fun adoptDir(")
+        val body = funBody(code("../core/src/main/java/com/example/zhengdao/core/ZhengdaoDirs.kt"), "fun adoptDir(")
         assertTrue(
             "源目录列不出内容时要先落一条日志再按原样 return 0：\n$body",
             adoptSrcLogged(body),

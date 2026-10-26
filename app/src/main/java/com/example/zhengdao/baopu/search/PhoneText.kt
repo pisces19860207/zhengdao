@@ -30,7 +30,7 @@ package com.example.zhengdao.baopu.search
 import com.example.zhengdao.baopu.agent.FileInfoTool
 import com.example.zhengdao.baopu.agent.TextDecode
 import com.example.zhengdao.baopu.hasNulByte
-import com.example.zhengdao.terminal.DocxTextExtractor
+import com.example.zhengdao.core.doc.DocxTextExtractor
 import java.io.File
 import java.security.MessageDigest
 

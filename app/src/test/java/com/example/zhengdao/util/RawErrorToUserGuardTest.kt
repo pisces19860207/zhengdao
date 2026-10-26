@@ -7,6 +7,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * P2-6（issue #17）：错误原文弹给用户的守卫。
@@ -75,7 +77,7 @@ class RawErrorToUserGuardTest {
     fun `文档性_开发日志继续用原文是对的`() {
         // 反向钉口径：RunLog/Log 里的 ${it.message} **不是**缺陷（HumanizeError KDoc 原则）。
         // 这条钉的是"分类边界"——防止后人把日志也一律改成人话，丢掉可诊断性。
-        val kb = File("src/main/java/com/example/zhengdao/terminal/KnowledgeBase.kt").readText()
+        val kb = File("../core/src/main/java/com/example/zhengdao/core/kb/KnowledgeBase.kt").readText()
         assertTrue(
             "资料库刷新失败仍落原文（日志面，正确）",
             kb.contains("RunLog.log(\"资料库刷新失败：\${it.message}\")"),

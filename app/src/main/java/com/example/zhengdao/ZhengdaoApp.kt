@@ -3,7 +3,8 @@
 package com.example.zhengdao
 
 import android.app.Application
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 应用入口。
@@ -24,7 +25,13 @@ class ZhengdaoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        RunLog.init(this)
+        // 第二百四十批：RunLog 的「公共区老日志目录」与「单文件搬家」两件事改成注入
+        // （先断环：RunLog 原先直接调 Store，而 Store 又调 RunLog，两者互为依赖）。
+        RunLog.init(
+            this,
+            legacyLogsDir = { ZhengdaoDirs.logsDir(it) },
+            adoptFile = ZhengdaoDirs::adoptFile,
+        )
         // 第一百六十九批 §3：完成通知只在后台发 ⇒ 这里装前台探针（只数 started，不做别的）。
         AppForeground.install(this)
         // 第一百八十二批：知识库自动刷新（启动/回前台增量 ＋ MediaStore 可选加速 ＋ 前台周期兜底）。

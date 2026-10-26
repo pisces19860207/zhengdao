@@ -48,10 +48,10 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.BackChevron
+import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
+import com.example.zhengdao.core.RunLog
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -64,11 +64,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.R
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RootfsDelta
@@ -77,7 +74,10 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -95,12 +95,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.BackChevron
-import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.ui.util.pressClickable
 import kotlinx.coroutines.CoroutineScope
+import com.example.zhengdao.util.HumanizeError
 
 /** 二级页：帮助（逐字搬自「新手指南 / 运行日志」两张卡 —— 指南放在首屏，B-补-23）。 */
 class SettingsHelpActivity : ComponentActivity() {
@@ -144,10 +145,10 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
     // 那里写的两个 state 已无人读取；这里原样补回来。
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
-            prevLogText = if (com.example.zhengdao.rootfs.RunLog.lastRunHadErrors(ctx))
-                (com.example.zhengdao.rootfs.RunLog.latestArchive()
-                    ?: com.example.zhengdao.rootfs.RunLog.prevFile())?.readText()
+            archiveCount = com.example.zhengdao.core.RunLog.archives().size
+            prevLogText = if (com.example.zhengdao.core.RunLog.lastRunHadErrors(ctx))
+                (com.example.zhengdao.core.RunLog.latestArchive()
+                    ?: com.example.zhengdao.core.RunLog.prevFile())?.readText()
             else null
         }
     }
@@ -230,7 +231,7 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
             OutlinedButton(
                 onClick = {
                     // B-补-24（2026-10-16）：共享 formatter（旧写法每次点导出都新建 SimpleDateFormat）
-                    val stamp = com.example.zhengdao.util.TimeFormats.fileStampMinute()
+                    val stamp = com.example.zhengdao.core.TimeFormats.fileStampMinute()
                     exportPendingName = "证道日志-$stamp.txt"
                     exportLauncher.launch(exportPendingName!!)
                 },
@@ -270,8 +271,8 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
                         confirmButton = {
                             TextButton(onClick = {
                                 pruneConfirm = false
-                                val n = com.example.zhengdao.rootfs.RunLog.pruneArchivesKeep(ctx, keep = 3)
-                                archiveCount = com.example.zhengdao.rootfs.RunLog.archives().size
+                                val n = com.example.zhengdao.core.RunLog.pruneArchivesKeep(ctx, keep = 3)
+                                archiveCount = com.example.zhengdao.core.RunLog.archives().size
                                 Toast.makeText(ctx, res.getQuantityString(R.plurals.help_log_pruned, n, n), Toast.LENGTH_SHORT).show()
                             }) { Text(stringResource(R.string.common_clean), color = zhengdaoErrorText()) }
                         },
@@ -298,14 +299,14 @@ private fun SettingsHelpPage(onBack: () -> Unit, scrollToEnd: Boolean = false) {
  */
 private fun writeLogExport(ctx: android.content.Context, uri: android.net.Uri): Boolean {
     return try {
-        val entries = com.example.zhengdao.rootfs.RunLog.exportEntries(ctx)
+        val entries = com.example.zhengdao.core.RunLog.exportEntries(ctx)
         val sb = StringBuilder()
         sb.append("证道运行日志导出\n")
         for ((label, f) in entries) {
             sb.append("\n===== $label =====\n")
             sb.append(runCatching { f.readText() }.getOrElse { "（读取失败：${it.message}）\n" })
         }
-        val text = com.example.zhengdao.rootfs.RunLog.redact(sb.toString(), ctx.filesDir.absolutePath)
+        val text = com.example.zhengdao.core.RunLog.redact(sb.toString(), ctx.filesDir.absolutePath)
         val out = ctx.contentResolver.openOutputStream(uri) ?: return false
         out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
         true

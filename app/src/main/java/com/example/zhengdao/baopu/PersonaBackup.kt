@@ -17,7 +17,7 @@
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
 /** 备份/恢复的结果。失败不许静默——设置页要能把 `reason` 直接弹给用户看。 */
