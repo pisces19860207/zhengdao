@@ -97,3 +97,46 @@ internal fun workspaceBoundaryCheck(root: File, target: File, shown: String, den
                 "工作区外访问要先过一次用户确认，未经批准已拒绝。"
         AccessVerdict.DENIED -> deniedReason
     }
+
+// ── 第二百二十九批：写侧硬边界（读全盘 ≠ 写全盘） ─────────────────────────────
+//
+// 用户 2026-10-26 口径（229 派工单 §3 读写边界表）：**读放大到全盘（搜索链路），写不放大**——
+// 写/改/删/移动只允许两处：① 当前工作区（调用方传进来的 `root`，生产＝`BaopuWorkspace.hostDir`）
+// ② 默认工作区 `Download/证道`（`BaopuWorkspace.defaultDir()`）。其余路径**一律拒绝**——
+// 不是弹卡问，是拒绝（156 批的 ASK_USER 那条路在写侧不再存在）。
+//
+// 实现纪律（与 197 的结构门禁一致）：
+// - **不新增** `WorkspaceAccessPolicy` 的第三个读数——`SearchReadNeverGrantsWriteTest`
+//   钉死它只有两个函数型字段，多一个就是后门；两个允许根都是**常量**（root 参数＋
+//   defaultDir），不需要运行时注入；
+// - **不引读侧任何符号**（SearchScope/PhoneAccess 等照旧是禁词）；
+// - 156 批的 `workspaceAccessVerdict`／`workspaceBoundaryCheck` 一个字不动：
+//   它们的三档语义被 `WorkspaceAccessTest`／`SearchReadNeverGrantsWriteTest` 逐字钉着，
+//   读类工具仍走它们；写类工具改走下面这对。
+
+/** 写侧判据（**纯函数**，JVM 直测）：两处允许根之内 INSIDE，其余 DENIED——**永不 ASK_USER**。 */
+fun workspaceWriteVerdict(root: File, target: File): AccessVerdict {
+    val allowed = LinkedHashSet<File>().apply { add(root); add(com.example.zhengdao.baopu.BaopuWorkspace.defaultDir()) }
+    val inside = allowed.any { candidate ->
+        runCatching { com.example.zhengdao.rootfs.PathGuard.isInside(candidate, target) }.getOrDefault(false)
+    }
+    return if (inside) AccessVerdict.INSIDE else AccessVerdict.DENIED
+}
+
+/**
+ * 写类工具（write/edit/delete/move/convert…）的**统一写边界出口**（229 起）。
+ *
+ * 与 [workspaceBoundaryCheck] 的分工：读写共用的一律走老的（三档语义不变）；
+ * 明确要落盘的工具一律走这里——「本会话用户批准过」也不能把两处根之外的写放出去
+ * （管线的确认卡可以照弹，弹完到这一步照样拒：宁可白弹一张卡，不许静默写出去）。
+ * 原件区／备份区等既有禁区不在这里判——各工具自己的 PathGuard 检查照旧跑在后面。
+ *
+ * @return null = 放行；非 null = 给模型的拒绝原文（调用方包成 `ToolOutcome.Rejected`）
+ */
+internal fun workspaceWriteBoundaryCheck(root: File, target: File, shown: String, deniedReason: String): String? =
+    when (workspaceWriteVerdict(root, target)) {
+        AccessVerdict.INSIDE -> null
+        // ASK_USER 在写判据里不存在（见 [workspaceWriteVerdict]）；这里 exhaustively 覆盖三档，
+        // 枚举将来加值时编译器会逼着来解释，而不是静默落进放行。
+        AccessVerdict.ASK_USER, AccessVerdict.DENIED -> deniedReason
+    }

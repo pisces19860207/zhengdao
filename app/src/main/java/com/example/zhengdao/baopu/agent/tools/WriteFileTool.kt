@@ -11,7 +11,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
+import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -26,7 +26,8 @@ import java.io.File
  * 为什么拒绝写 `备份/` 自己：备份区被写就会互相覆盖，备份就白做了。
  *
  * 路径不在本文件守卫第一道（管线第 ② 段按 path 参数名做）；本文件的 [write]
- * 自检 `workspaceBoundaryCheck`（156 批统一判据）是第二道——纯函数层因此可直测「越界即拒」；
+ * 自检 `workspaceWriteBoundaryCheck`（229 批写侧硬边界：只认工作区＋Download/证道）是第二道
+ * ——纯函数层因此可直测「越界即拒」；
  * `备份/` 禁区仍用 [PathGuard.isInside] 硬拒。
  */
 internal object WriteFileTool {
@@ -100,13 +101,13 @@ internal object WriteFileTool {
             return ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写的内容；不想写就别调 write_file）")
         }
         val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
-        // 第一百五十六批：越界不再一律硬拒——开关开且本运行已授权 ⇒ 放行（判据统一在
-        // workspaceBoundaryCheck）；开关关 ⇒ 原文拒绝（文案逐字不动）。
-        workspaceBoundaryCheck(
+        // 第二百二十九批：写侧硬边界——写只允许当前工作区＋默认工作区（Download/证道），
+        // 其余一律拒绝（不是弹卡；本会话批准过也不放）。判据统一在 workspaceWriteVerdict。
+        workspaceWriteBoundaryCheck(
             root,
             target,
             rel,
-            "路径越界被拒：$rel 不在工作区（${root.absolutePath}）内。" +
+            "路径越界被拒：$rel 在可写范围（当前工作区与 Download/证道）之外。" +
                 "write_file 只能写工作区里的文件。",
         )?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)

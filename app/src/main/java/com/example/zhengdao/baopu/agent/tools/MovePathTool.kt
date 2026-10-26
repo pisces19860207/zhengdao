@@ -15,7 +15,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
+import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.util.TimeFormats
 import java.io.File
@@ -113,20 +113,20 @@ internal object MovePathTool {
         PersonaGuard.blocked(toRel)?.let { return ToolOutcome.Rejected(it) }
         val src = resolve(root, fromRel)
         val dst = resolve(root, toRel)
-        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）。
-        // 备份区禁区（下面）与「不自动删源」口径一字不动。
-        workspaceBoundaryCheck(
+        // 第二百二十九批：写侧硬边界——移动的源与目标都只允许当前工作区＋默认工作区
+        // （Download/证道），其余一律拒绝（不是弹卡）。备份区禁区（下面）与「不自动删源」口径一字不动。
+        workspaceWriteBoundaryCheck(
             root,
             src,
             fromRel,
-            "路径越界被拒：$fromRel 不在工作区（${root.absolutePath}）内。" +
+            "路径越界被拒：$fromRel 在可写范围（当前工作区与 Download/证道）之外。" +
                 "move_path 只能在资料库里搬文件。",
         )?.let { return ToolOutcome.Rejected(it) }
-        workspaceBoundaryCheck(
+        workspaceWriteBoundaryCheck(
             root,
             dst,
             toRel,
-            "路径越界被拒：$toRel 不在工作区（${root.absolutePath}）内。" +
+            "路径越界被拒：$toRel 在可写范围（当前工作区与 Download/证道）之外。" +
                 "move_path 搬不到资料库外面去。",
         )?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)

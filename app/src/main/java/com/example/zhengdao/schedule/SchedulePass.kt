@@ -15,6 +15,16 @@ interface PassNotifier {
     fun fired(task: ScheduleTask, sessionId: Long, late: Boolean)
     fun failed(task: ScheduleTask, outcome: ScheduleOutcome, detail: String)
 
+    /**
+     * 到点**先**说一声「要开始了」（第二百二十九批 §2；默认空——单测的哑出口不用改）。
+     *
+     * 调用点在 [SchedulePass.run] 的发送分支里、`sender.send` **之前**：通知与执行不许同时，
+     * 更不许倒过来（负例「通知与执行同时（要先）」由 `SchedulePassTest` 的顺序断言钉住）。
+     * 响不响由装配层决定（229 的「开始前提醒」开关、通知权限都在那一层判），
+     * pass 只保证**顺序**：starting → send → fired/failed。
+     */
+    fun starting(task: ScheduleTask) = Unit
+
     /** 连败自动暂停的那一声（第二百一十八批；默认空——单测的哑出口不用改）。 */
     fun pausedByFailStreak(task: ScheduleTask, outcome: ScheduleOutcome, detail: String) = Unit
 
@@ -69,6 +79,10 @@ class SchedulePass(
                     }
                     val late = reason == ScheduleRules.Reason.FIRE_LATE
                     handled++
+                    // 第二百二十九批：先说「要开始了」，再把 prompt 发进会话——顺序不许反
+                    // （响不响由装配层的开关与权限判，pass 只保证 starting 在 send 之前；
+                    // 与下面 notifier.fired 同一房型：口子不许抛，装配层自己兜）。
+                    notifier.starting(task)
                     val result = runCatching { sender.send(task, nowMs) }
                         .getOrElse { SendResult(ScheduleOutcome.FAILED, -1L, it.javaClass.simpleName) }
                     when (result.outcome) {

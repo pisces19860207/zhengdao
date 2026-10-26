@@ -24,10 +24,12 @@
 //
 // ## 三件东西分得很清（别混）
 // 1. **系统授权态**（`isExternalStorageManager`）：能力，App 说了不算；
-// 2. **用户开关**（[SearchScopeSettings]，prefs `search_phone_on`）：意愿，默认关；
-// 3. **账本**（`scope` 表）：这两件同时成立才落一行 PHONE。
-// 只有 1 没有 2 ⇒ 不读（用户没同意）；只有 2 没有 1 ⇒ 不落 PHONE 行（凭空记一条没拿到的
-// 授予，S3 的扫描器就会照着假账去扫全盘）。落点在纯函数 [SearchScopeRules.plan]，JVM 直测。
+// 2. ~~用户开关~~（[SearchScopeSettings]，prefs `search_phone_on`）：**第二百二十九批起已停用**——
+//    用户 2026-10-26 口径「给了存储权限就默认可全盘找，开关有点多余」，判定不再读它；
+//    该键只剩**兼容读取**（老 prefs 里拨过的值不再产生任何效果），也没有写入口了；
+// 3. **账本**（`scope` 表）：授权成立才落一行 PHONE。
+// 只有授权没有 ⇒ 不读（能力是前提，没有能力谈不了范围）；有授权 ⇒ 直接 PHONE（意愿默认 expressed）。
+// 落点在纯函数 [SearchScopeRules.plan]，JVM 直测。
 package com.example.zhengdao.baopu.search
 
 import android.content.Context
@@ -72,13 +74,10 @@ internal enum class ScopeKind(val tag: String) {
 
 /** 手机档这一行到底建不建，以及不建是哪一条挡的（原因给文案用，不落库）。 */
 internal enum class PhoneAccess {
-    /** 开关开 ＋ 甲档 ⇒ 全盘进范围。 */
+    /** 甲档 ⇒ 全盘进范围（第二百二十九批起：不再问开关——授权即全盘）。 */
     GRANTED,
 
-    /** 甲档有，但用户没拨开关 ⇒ 不读（「未点头就不读」）。 */
-    SWITCH_OFF,
-
-    /** 开关开着，系统没给全文件访问 ⇒ 不落账，界面写「当前只搜证道＋工作区」。 */
+    /** 甲档没有，系统没给全文件访问 ⇒ 不落账，界面写「当前只搜证道＋工作区」。 */
     NO_PERMISSION,
 }
 
@@ -118,11 +117,15 @@ internal object SearchScopeRules {
     /** 甲／丁的唯一判据：只看「所有文件访问」。 */
     fun tierOf(allFilesAccess: Boolean): ReadTier = if (allFilesAccess) ReadTier.PHONE else ReadTier.PRIVATE
 
-    /** 意愿 × 能力 ⇒ 手机档这一行建不建（顺序：先查意愿——没点头不必去看能力）。 */
-    fun phoneAccessOf(switchOn: Boolean, tier: ReadTier): PhoneAccess = when {
-        !switchOn -> PhoneAccess.SWITCH_OFF
-        tier != ReadTier.PHONE -> PhoneAccess.NO_PERMISSION
-        else -> PhoneAccess.GRANTED
+    /**
+     * 能力 ⇒ 手机档这一行建不建（第二百二十九批：判定里**没有**「用户开关」这个输入了——
+     * 给了存储授权就全盘，老 prefs 里的 `search_phone_on` 不再产生任何效果；负例
+     * 「删了 UI 仍读开关」由 `SearchScopeTest` 的源码门禁与这里的签名一起钉死：
+     * 想把开关读回来，就得把参数加回签名，门禁当场红）。
+     */
+    fun phoneAccessOf(tier: ReadTier): PhoneAccess = when (tier) {
+        ReadTier.PHONE -> PhoneAccess.GRANTED
+        ReadTier.PRIVATE -> PhoneAccess.NO_PERMISSION
     }
 
     /**
@@ -151,43 +154,43 @@ internal object SearchScopeRules {
     fun rootKey(root: File): String = WorkspaceGrantRules.rootKey(root)
 
     /**
-     * 拨开关那行日志的**唯一**写法（第一百九十八批派工单 §1⑥「search.db 首次建库／拨开关那条
-     * 日志要能被真机看懂」）。
+     * 账本同步那行日志的**唯一**写法（第一百九十八批派工单 §1⑥「search.db 首次建库／拨开关那条
+     * 日志要能被真机看懂」；第二百二十九批起开关没了，这句话跟着改判成「账本同步」的读数——
+     * 生产调用点只剩搜索卡扫描前的 `syncLedgerLine` 一处）。
      *
      * 为什么是纯函数而不是 UI 里的一句字符串插值：这一行是真机验收时她唯一能对着看的读数
      * （「账本新增 N 行／撤销 M 个根」那句），它长在哪儿、说了什么必须能在 JVM 里被断言——
      * 散在 UI 里就是一条谁都能顺手改半句的文案。
      *
      * 三件必须说清的事，缺一件就是这条日志没写完：
-     * 1. **首次建库**（[dbFirstBuild]）：第一次拨开关时 `search.db` 这个文件是这一刻才被建出来的，
+     * 1. **首次建库**（[dbFirstBuild]）：第一次同步时 `search.db` 这个文件是这一刻才被建出来的，
      *    不说这一句，「新增 1 行」读起来就像「库早就在了、只是多了一条」；
      * 2. **撤销的根里还留着索引行**（[orphanRoots] > 0）：那是隐私事故，界面与日志都得响
      *    （[SearchScopeStore.orphanDocRoots] 那条残留探针就是为它存在的）；
-     * 3. **能力与意愿的差别**：开关开了但系统没给「所有文件访问」⇒ 一个根都没入账，
+     * 3. **能力与范围的差别**：系统没给「所有文件访问」⇒ 一个根都没入账，
      *      那句「新增 0 行」必须跟着「因为没拿到系统授权」，不许读成「坏了」。
      *
      * 一个查询词都不会出现在这行里（本函数不接任何文本输入，只接计数与档位）。
+     * 读写边界也要说清：读是全盘（授权后），写**没有**跟着放大——只限当前工作区与 Download/证道。
      */
     fun syncLine(
-        switchOn: Boolean,
         access: PhoneAccess,
         recorded: Int,
         revokedRoots: Int,
         orphanRoots: Int,
         dbFirstBuild: Boolean,
     ): String = buildString {
-        append("抱朴设置：手机文件纳入搜索范围 = ").append(switchOn)
+        append("搜索范围：手机全盘 = ")
+        append(if (access == PhoneAccess.GRANTED) "已纳入" else "未纳入")
         append("（只读；账本新增 ").append(recorded).append(" 行、撤销 ").append(revokedRoots).append(" 个根")
         if (dbFirstBuild) append("；这是首次建库：search.db 这个文件是这一刻才被建出来的")
-        when (access) {
-            PhoneAccess.GRANTED -> Unit
-            PhoneAccess.NO_PERMISSION -> append("；系统还没给「所有文件访问」，所以手机档一行都没入账")
-            PhoneAccess.SWITCH_OFF -> append("；开关是关的：只搜证道＋工作区")
+        if (access == PhoneAccess.NO_PERMISSION) {
+            append("；系统还没给「所有文件访问」，所以手机档一行都没入账")
         }
         if (orphanRoots > 0) {
             append("；⚠ 撤销的根里还有 ").append(orphanRoots).append(" 个留着索引行（要立刻重建索引）")
         }
-        append("；改文件仍按工作区边界逐次确认）")
+        append("；写文件不跟着放大：只限当前工作区与 Download/证道）")
     }
 }
 
@@ -353,13 +356,13 @@ internal class SqlSearchScopeStore(private val db: SearchDb) : SearchScopeStore 
  *
  * [status] 读数、[sync] 把账本拨到与「现在的开关＋现在的授权」一致。
  *
- * ## 谁能改这张账本（第一百九十八批 §1⑥ 的裁定，别再改回「唯一入口」）
- * [sync] 的调用点**只有两个，都是用户手动按下去的**：
- * 1. 设置页那个开关（[com.example.zhengdao.ui.baopu.BaopuSettingsScreen]）——用户改「意愿」的那一刻；
- * 2. 搜索卡的「扫描本机／重建索引」（[PhoneSearch.syncNow] ← [com.example.zhengdao.ui.baopu.BaopuPhoneSearchCard]）
- *    ——用户主动要结果的那一刻（不同步的话，「开关早开着但从没扫过」会扫到 0 个根）。
+ * ## 谁能改这张账本（第二百二十九批更新：拨开关那个入口随开关一起删了）
+ * [sync] 的调用点**只有一个，是用户手动按下去的**：
+ * 1. 搜索卡的「扫描本机／重建索引」（[PhoneSearch.syncNow] ← [com.example.zhengdao.ui.baopu.BaopuPhoneSearchCard]）
+ *    ——用户主动要结果的那一刻（197 那个「设置页拨开关」入口随开关一起删除：授权即全盘，
+ *    没有意愿可改，账本只在扫描/重建前对齐现状）。
  *
- * **没有**第三处，也**故意不加**「App 启动时自动同步」：这张账本是读侧唯一的授权真相，
+ * **没有**第二处，也**故意不加**「App 启动时自动同步」：这张账本是读侧唯一的授权真相，
  * 自动同步等于让「谁在什么时候能改它」变成运行时的随手一刻。要加自动同步，得先说清那句话，
  * 再改钉这件事的门禁（`PhoneSearchEntryGateTest` 扫源码比调用点集合，多一个 ⇒ 红）。
  *
@@ -383,16 +386,13 @@ internal object SearchScope {
         SearchScopeRules.rootKey(BaopuWorkspace.hostDir(ctx))
     }.getOrDefault("")
 
-    /** 现读三件东西（意愿／能力／根），给设置页渲染用；**不碰库、不抛异常**。 */
+    /** 现读两件东西（能力／根），给界面渲染用；**不碰库、不抛异常、不读任何开关**。 */
     fun status(ctx: Context): SearchScopeStatus {
-        val switchOn = SearchScopeSettings.get(ctx)
         val tier = SearchScopeRules.tierOf(
             allFilesAccess = runCatching { Environment.isExternalStorageManager() }.getOrDefault(false),
         )
         return SearchScopeStatus(
-            switchOn = switchOn,
-            tier = tier,
-            access = SearchScopeRules.phoneAccessOf(switchOn, tier),
+            access = SearchScopeRules.phoneAccessOf(tier),
             homeRoot = homeRoot(ctx),
             phoneRoot = phoneRoot(),
         )
@@ -424,10 +424,8 @@ internal object SearchScope {
     }
 }
 
-/** 设置页要渲染的那一坨读数（结构在内核、文案在 strings.xml）。 */
+/** 设置页/搜索卡要渲染的那一坨读数（结构在内核、文案在 strings.xml）。 */
 internal data class SearchScopeStatus(
-    val switchOn: Boolean,
-    val tier: ReadTier,
     val access: PhoneAccess,
     val homeRoot: String,
     val phoneRoot: String,

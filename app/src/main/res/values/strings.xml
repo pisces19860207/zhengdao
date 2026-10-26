@@ -1753,15 +1753,6 @@
 <string name="baopu_topic_note_done">%1$s 篇写完：%2$s 篇落盘、%3$s 篇没落（明细在上面那张卡）</string>
 <string name="baopu_topic_note_started">已确认，开始按批次逐篇写（共 %1$s 篇）</string>
 <!-- 第一百九十七批：搜索范围（读侧授权阶梯 S2；开关默认关，只放开「读取」）-->
-<string name="baopu_search_scope_card">搜索范围（只读）</string>
-<string name="baopu_search_scope_title">把手机文件纳入搜索范围</string>
-<string name="baopu_search_scope_desc">打开后，搜索会读取这台手机存储里的文件内容：不上传、不后台常扫、一个文件都不改。默认关闭；关着的时候只搜下面写的「证道＋工作区」。</string>
-<string name="baopu_search_scope_guard">这里只放大「能读到什么」，不放大「能改什么」：改、移、删工作区外的文件，仍按老规矩逐次弹卡确认。</string>
-<string name="baopu_search_scope_excluded">永远不读、开关也取消不了的清单：Android/data、Android/obb 与 Android 其它系统层、任何以 . 开头的目录和文件、backup 备份目录、终端的 logs/cache/agents/rootfs/截屏、密钥类文件（.key/.keystore/.jks/.p12/id_rsa 开头、netrc）。</string>
-<string name="baopu_search_scope_tier_phone">系统已给「所有文件访问」：手机存储全盘可搜（上面那份清单除外）。</string>
-<string name="baopu_search_scope_tier_private">当前只搜证道＋工作区（系统还没给「所有文件访问」）。</string>
-<string name="baopu_search_scope_tier_switch_off">开关没开：现在只搜证道＋工作区（系统那边给不给权限都不读手机文件）。</string>
-<string name="baopu_search_scope_home">证道根：%1$s</string>
 <string name="skill_draft_auto_promoted">「%1$s」用满 %2$d 次，已自动转正</string>
 <string name="skill_draft_auto_hint">用满 %1$d 次自动转正；也可以手动点「转正」</string>
 <string name="skill_card_title">记住这个技能？</string>
@@ -1925,6 +1916,11 @@
     <string name="sched_notif_failed_title">定时任务「%1$s」没跑成</string>
     <string name="sched_notif_reason_busy">另一个会话一直占着单活跃门，重试到上限仍未进去</string>
     <string name="sched_notif_reason_failed">发送时出错，详情在运行日志里</string>
+    <string name="sched_notif_pre_title">定时任务要开始了：%1$s</string>
+    <string name="sched_notif_pre_text">到点会自动开始；那句话随后会自动进抱朴会话</string>
+    <string name="sched_pre_notify_title">开始前提醒</string>
+    <string name="sched_pre_notify_desc">到点先发一条「定时任务要开始了」的通知，再把任务发进会话</string>
+    <string name="sched_perm_missing_note">通知权限未开：到点不会提醒，任务仍会照常开始（申请入口在 设置 → 申请权限）</string>
     <!-- 第一百七十八批：自产稿件清单勾选批量删（只列产物目录＋台账交集） -->
     <string name="baopu_artifact_picker_open">按台账勾选批量删</string>
     <string name="baopu_artifact_picker_title">稿件清单（%1$d）</string>

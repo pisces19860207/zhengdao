@@ -63,13 +63,21 @@ class SchedulePassTest {
     private class Recording : PassNotifier {
         val firedNotes = mutableListOf<Triple<String, Long, Boolean>>()
         val failedNotes = mutableListOf<Pair<String, ScheduleOutcome>>()
+        /** 第二百二十九批：事件顺序账——starting / sent 谁先谁后必须可断言。 */
+        val events = mutableListOf<String>()
+
+        override fun starting(task: ScheduleTask) {
+            events += "starting:${task.id}"
+        }
 
         override fun fired(task: ScheduleTask, sessionId: Long, late: Boolean) {
             firedNotes += Triple(task.id, sessionId, late)
+            events += "fired:${task.id}"
         }
 
         override fun failed(task: ScheduleTask, outcome: ScheduleOutcome, detail: String) {
             failedNotes += task.id to outcome
+            events += "failed:${task.id}"
         }
     }
 
@@ -100,6 +108,42 @@ class SchedulePassTest {
         assertTrue("锚点必须推进，否则下一趟读到同一个过去时刻会再发一遍", row.nextRunAtMs > due)
         assertEquals(1, rec.firedNotes.size)
         assertFalse("准点那条不算补跑", rec.firedNotes.single().third)
+    }
+
+    @Test
+    fun `负例_通知与执行不许同时_先说要开始了再发`() {
+        // 第二百二十九批 §2：到点**先**响「要开始了」，**再**把 prompt 发进会话——
+        // 顺序不许反、也不许并作一步（响不响由装配层的开关/权限判，pass 只保证顺序）。
+        val s = store()
+        s.save(listOf(task(next = due)))
+        val rec = Recording()
+        var sentAt = -1
+        SchedulePass(
+            s,
+            TaskSender { _, _ -> sentAt = rec.events.size; SendResult(ScheduleOutcome.FIRED, 7L, "started") },
+            rec,
+        ).run(due + 1_000L)
+        assertEquals(
+            "starting 必须先于 send（send 时刻 events 里只有 starting，还没有 fired）",
+            listOf("starting:t1"),
+            rec.events.subList(0, sentAt),
+        )
+        assertEquals("fired 在 send 之后才记", listOf("starting:t1", "fired:t1"), rec.events)
+    }
+
+    @Test
+    fun `失败路径也先响一声_顺序不变`() {
+        // REFUSED_BUSY 重试趟同样先 starting 再 send：顺序是 pass 的形状，与结局无关。
+        val s = store()
+        s.save(listOf(task(next = due)))
+        val rec = Recording()
+        var sentAt = -1
+        SchedulePass(
+            s,
+            TaskSender { _, _ -> sentAt = rec.events.size; SendResult(ScheduleOutcome.REFUSED_BUSY, -1L, "other_session_busy") },
+            rec,
+        ).run(due + 1_000L)
+        assertEquals(listOf("starting:t1"), rec.events.subList(0, sentAt))
     }
 
     @Test

@@ -96,12 +96,13 @@ class SearchReadNeverGrantsWriteTest {
         }
     }
 
-    /** 读侧「授予拉满」在 JVM 里能给的最好状态：意愿开 ＋ 甲档能力 ＋ 账本里两行都有效。 */
+    /** 读侧「授予拉满」在 JVM 里能给的最好状态：甲档能力 ＋ 账本里两行都有效
+     * （第二百二十九批起「意愿开关」不再存在，判定只看能力）。 */
     private fun fullReadGrant(): InMemorySearchScopeStore {
         val store = InMemorySearchScopeStore()
         val plan = SearchScopeRules.plan(PhoneAccess.GRANTED, rootKeyOf(File(homePath)), rootKeyOf(File(phonePath)))
         assertEquals("造场景：读侧两行都得入账", 2, store.record(plan, 1000L))
-        assertEquals(PhoneAccess.GRANTED, SearchScopeRules.phoneAccessOf(true, SearchScopeRules.tierOf(allFilesAccess = true)))
+        assertEquals(PhoneAccess.GRANTED, SearchScopeRules.phoneAccessOf(SearchScopeRules.tierOf(allFilesAccess = true)))
         assertEquals(
             "造场景：账上两行都必须是有效授予（revokedAt=null）",
             setOf(rootKeyOf(File(homePath)), rootKeyOf(File(phonePath))),

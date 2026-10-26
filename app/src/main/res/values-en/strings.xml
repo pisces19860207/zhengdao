@@ -1819,15 +1819,6 @@
 <string name="baopu_topic_note_done">Batch finished — saved: %1$s, not saved: %2$s (of %3$s; details on the card above)</string>
 <string name="baopu_topic_note_started">Confirmed — writing the batch one by one (%1$s pieces)</string>
 <!-- Batch 197: search scope (read-side grant ladder S2; off by default, widens reading only) -->
-<string name="baopu_search_scope_card">Search scope (read only)</string>
-<string name="baopu_search_scope_title">Include phone files in search</string>
-<string name="baopu_search_scope_desc">When on, search reads file contents on this device\'s storage. It never uploads, never scans in the background and never modifies a file. Off by default; while off, search covers Zhengdao plus the workspace only.</string>
-<string name="baopu_search_scope_guard">This widens what can be read, not what can be changed: editing, moving or deleting a file outside the workspace still asks for confirmation every time.</string>
-<string name="baopu_search_scope_excluded">Never read and not switchable: Android/data, Android/obb and other Android system folders, anything whose name starts with a dot, backup folders, the terminal\'s logs/cache/agents/rootfs/screenshots, and key files (.key/.keystore/.jks/.p12/id_rsa* and netrc).</string>
-<string name="baopu_search_scope_tier_phone">All files access is granted: the whole phone storage is searchable, except the list above.</string>
-<string name="baopu_search_scope_tier_private">Searching Zhengdao plus the workspace only for now (all files access not granted).</string>
-<string name="baopu_search_scope_tier_switch_off">Switch off: search covers Zhengdao plus the workspace only - phone files stay unread no matter what the system grants.</string>
-<string name="baopu_search_scope_home">Zhengdao root: %1$s</string>
 <string name="skill_draft_auto_promoted">%1$s auto-promoted: use count reached %2$d</string>
 <string name="skill_draft_auto_hint">Auto-promotes when the use count reaches %1$d; you can also tap "Promote" manually</string>
 <string name="skill_card_title">Remember this skill?</string>
@@ -1991,6 +1982,11 @@
     <string name="sched_notif_failed_title">Scheduled task “%1$s” did not run</string>
     <string name="sched_notif_reason_busy">Another session held the single-active gate; retries hit the limit</string>
     <string name="sched_notif_reason_failed">Sending failed; details are in the run log</string>
+    <string name="sched_notif_pre_title">Scheduled task starting: %1$s</string>
+    <string name="sched_notif_pre_text">It will start on time; the prompt will be sent into the session right after</string>
+    <string name="sched_pre_notify_title">Heads-up before start</string>
+    <string name="sched_pre_notify_desc">Post a \"starting\" notification first, then send the prompt into the session</string>
+    <string name="sched_perm_missing_note">Notification permission is off: no heads-up before start - tasks still run on time (grant it in Settings → Permissions)</string>
     <!-- Batch 178: pick and delete self-produced drafts (product folder + ledger only) -->
     <string name="baopu_artifact_picker_open">Pick and delete from ledger</string>
     <string name="baopu_artifact_picker_title">Drafts (%1$d)</string>

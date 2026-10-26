@@ -47,13 +47,17 @@ class DecisionWiringGateTest {
     /** 落点文件正文（把全限定名前缀去掉，好让 `com.…baopu.DecisionKind.X` 也能匹配）。 */
     private fun bodyOf(rel: String): String = text(rel).replace("com.example.zhengdao.baopu.", "")
 
-    /** (kind, 落点文件)：派工单 §1／§2.7 十类，一类一行。 */
+    /** (kind, 落点文件)：仍会**产生新行**的九类，一类一行。
+     *
+     * 第二百二十九批起 `READ_SCOPE` 退出本表：读侧开关随 229 删除（授权即全盘），
+     * `read_scope` 新行**不再产生**——但 kind 本身保留（老账本要读得出来），
+     * 那半边由下面的 `READ_SCOPE_229` 测试钉住。
+     */
     private val sites: List<Pair<DecisionKind, String>> = listOf(
         DecisionKind.SKILL_PROMOTE to "baopu/SkillPromote.kt",
         DecisionKind.SKILL_AUTO_WRITE to "baopu/SkillAudit.kt",
         DecisionKind.SKILL_RETIRE to "ui/baopu/SkillLibraryScreen.kt",
         DecisionKind.SKILL_DRAFT_RETIRE to "ui/baopu/SkillLibraryScreen.kt",
-        DecisionKind.READ_SCOPE to "ui/baopu/BaopuSettingsScreen.kt",
         DecisionKind.ARTIFACT_DELETE to "ui/baopu/BaopuArtifactPicker.kt",
         DecisionKind.DIARY_MAINTAIN to "baopu/DiaryStore.kt",
         DecisionKind.DIARY_PURGE to "baopu/DiaryStore.kt",
@@ -62,9 +66,13 @@ class DecisionWiringGateTest {
     )
 
     @Test
-    fun `W1_负例_十类kind每一类都有落点_且落点真的调了record`() {
-        assertEquals("派工单 §1 六类 + §2.7 四类", 10, sites.size)
-        assertEquals("十类清单不许自行增删", DecisionKind.REQUIRED.toSet(), sites.map { it.first }.toSet())
+    fun `W1_负例_九类在产kind每一类都有落点_且落点真的调了record`() {
+        assertEquals("派工单 §1 六类 + §2.7 四类，减去 229 停产的 read_scope", 9, sites.size)
+        assertEquals(
+            "在产九类不许自行增删（REQUIRED 里另外那个 READ_SCOPE 由 229 测试单独钉）",
+            DecisionKind.REQUIRED.toSet() - DecisionKind.READ_SCOPE,
+            sites.map { it.first }.toSet(),
+        )
         sites.forEach { (kind, rel) ->
             val body = bodyOf(rel)
             assertTrue(
@@ -76,6 +84,23 @@ class DecisionWiringGateTest {
                 body.contains("DecisionLedger.record"),
             )
         }
+    }
+
+    @Test
+    fun `W6_负例_read_scope随229停产_kind保留_落点零调用`() {
+        // 第二百二十九批：设置页开关整卡删除 ⇒ read_scope **新行不再产生**；
+        // 但 `DecisionKind.READ_SCOPE` 与 `recordReadScope` 都保留——老账本里的历史行
+        // 还要读得出来、还能在决策中心渲染（删 kind ＝ 老账变哑账，派工单 §3 负例点名）。
+        assertTrue("kind 必须还在 REQUIRED 里（保留给老账本）", DecisionKind.READ_SCOPE in DecisionKind.REQUIRED.toSet())
+        // `DecisionLedger.recordReadScope(` 是**调用点**的形状（定义处是 `fun recordReadScope(`，
+        // 不带前缀）——全仓零调用就是「不再产生」这句话的机检形态。
+        val callers = src.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(".kt") }
+            .count { f -> f.readText(Charsets.UTF_8).contains("DecisionLedger.recordReadScope(") }
+        assertEquals("read_scope 的调用点必须为零（停产，不是删账）", 0, callers)
+        // 停产的来路要说得清：设置页那处调用随开关卡一起没了（文件里不许再出现写口）。
+        val settings = text("ui/baopu/BaopuSettingsScreen.kt")
+        assertTrue("设置页不再调 recordReadScope", !settings.contains("recordReadScope"))
     }
 
     @Test
