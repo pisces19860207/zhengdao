@@ -477,6 +477,24 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 222 验收 G1：「跑一次对拍」的异步入口。
+     *
+     * 对拍会发**真网络请求**（`EvalHarness` 里 OkHttp `execute()`）——绝不能在 Compose `onClick`
+     * 的主线程上跑，否则必抛 `NetworkOnMainThreadException`、两轮都失败、结论被兜成假 DEFER。
+     * 这里用控制器自己的 scope（Main＋SupervisorJob＋[CoroutineCrashHandler]），内部切 IO；
+     * 完成后回主线程把失败原因交给页面（成功给 null）。
+     */
+    fun runSkillEvaluateAsync(row: SkillLibraryRow, onDone: (String?) -> Unit) {
+        scope.launch {
+            val err = withContext(Dispatchers.IO) {
+                runCatching { runSkillRowAction(row, SkillRowAction.EVALUATE) }
+                    .getOrElse { "对拍失败：${it.javaClass.simpleName}: ${it.message}" }
+            }
+            onDone(err)
+        }
+    }
+
+    /**
      * 技能页行内动作（转正/删除/恢复）——全部收口到既有口：
      * 转正＝`commitSkillDraft`（32 批唯一写口；写成了自动进决策中心留痕＝207）；
      * 删除＝`softDeleteSkill`（软删＋索引去行，不真删）；恢复＝`restoreArchived`（34 批 B）。

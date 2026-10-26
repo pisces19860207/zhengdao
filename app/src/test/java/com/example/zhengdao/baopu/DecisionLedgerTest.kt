@@ -139,6 +139,32 @@ class DecisionLedgerTest {
     }
 
     @Test
+    fun `L5b_已被回滚的那条_读侧降级为不可回滚并标rolledBack_组头计数随之下降`() {
+        // 222 真机验收 G3：账本里早有 rollback_of，但记录页没消费 ⇒ 撤销钮还在、组头计数不降。
+        val target = DecisionLedger.recordTo(root, draft())!!
+        assertTrue(
+            "前提：回滚前它是可回滚的",
+            DecisionLedger.read(root).single { it.id == target.id }.reversible,
+        )
+        val ok = DecisionRollbacks.run(
+            target = target,
+            root = root,
+            handler = DecisionRollbackHandler { true },
+            atMs = 1_760_000_100_000L,
+        )
+        assertTrue(ok)
+        val after = DecisionLedger.read(root).single { it.id == target.id }
+        assertTrue("被回滚过要打标", after.rolledBack)
+        assertFalse("被回滚过不许再显示可撤销", after.reversible)
+        // 组头「N 条可撤销」用的是 reversible ⇒ 被回滚那条不许再计入
+        assertEquals(
+            "回滚行自身也不可回滚，所以整个 SKILL 组可撤销数应为 0",
+            0,
+            DecisionLedger.read(root).count { it.group == DecisionGroup.SKILL && it.reversible },
+        )
+    }
+
+    @Test
     fun `L6_负例_回滚失败不留痕也不标成功`() {
         val target = DecisionLedger.recordTo(root, draft())!!
         val ok = DecisionRollbacks.run(
