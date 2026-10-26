@@ -474,6 +474,16 @@ internal fun BaopuDrawer(
     modifier: Modifier = Modifier,
     /** 回收站里恢复/彻底删除会话后，通知页面重读会话库。 */
     onSessionLibraryChanged: () -> Unit = {},
+    /**
+     * 第二百一十二批：查询面板的一次结果是「铺成卡」还是「留三行答案」。
+     *
+     * 返回 true ＝ 上游把这次结果铺成卡浮起来了 ⇒ 面板自己收起（卡长在聊天页上，Dialog 得让位
+     * 才看得见卡、也才点得到输入框）。默认 `{ false }`：没接这一口时行为与 195 批逐字一致。
+     *
+     * ⚠ 位置必须在 `modifier` **之后**：134 批 lint(ModifierParameter) 要求 modifier 是第一个可选参数，
+     * 本参数有默认值，放在它前面会把那条警告带回来（本批实跑过一次，预算闸 0→1 红）。
+     */
+    onLogisticsQueryOutcome: (com.example.zhengdao.baopu.logistics.QueryOutcome) -> Boolean = { false },
 ) {
     // 根 Column 左右各 8dp：条目自己再内缩 16dp ⇒ 文字左缘仍是 24dp（老落点），
     // 但圆角高亮块左右各留 8dp 呼吸位，不再像旧版那样从边贴到边。
@@ -661,7 +671,10 @@ internal fun BaopuDrawer(
         // 查询面板（195 批 §3 C 档）。放这儿而不是紧贴上面那一行：Dialog 是独立窗口，
         // 行的顺序由上面 DrawerItem 的书写顺序决定，与这里无关（与 38 批同一处置）。
         if (logisticsOpen) {
-            LogisticsSheet(onDismiss = { logisticsOpen = false })
+            LogisticsSheet(
+                onDismiss = { logisticsOpen = false },
+                onQueryOutcome = onLogisticsQueryOutcome,
+            )
         }
 
         HorizontalDivider(

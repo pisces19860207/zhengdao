@@ -73,6 +73,8 @@ import com.example.zhengdao.baopu.logistics.LogisticsBasis
 import com.example.zhengdao.baopu.logistics.LogisticsImport
 import com.example.zhengdao.baopu.logistics.LogisticsLedger
 import com.example.zhengdao.baopu.logistics.LogisticsPhone
+import com.example.zhengdao.baopu.logistics.LogisticsQuery
+import com.example.zhengdao.baopu.logistics.QueryOutcome
 import com.example.zhengdao.baopu.logistics.LogisticsStatus
 import com.example.zhengdao.baopu.logistics.StoredRow
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
@@ -88,6 +90,13 @@ private const val MAX_ROWS_SHOWN = 30
 @Composable
 internal fun LogisticsSheet(
     onDismiss: () -> Unit,
+    /**
+     * 第二百一十二批：一次查询的**结果条件**（判据仍是 195 的 `LogisticsQuery`，本面板不新增判断）。
+     *
+     * 返回 true ＝ 上游已经把这次结果铺成卡并浮起来了 ⇒ 面板自己收起（Dialog 罩着整屏，
+     * 不关掉就看不到卡，更点不到输入框）。默认 `{ false }`：没有人接这口时面板照旧只显示三行答案。
+     */
+    onQueryOutcome: (QueryOutcome) -> Boolean = { false },
 ) {
     val ctx = LocalContext.current
     val store = remember { BaopuRuntime.logisticsStore(ctx) }
@@ -233,7 +242,14 @@ internal fun LogisticsSheet(
                             // 面板与工具走同一条出话路径（LogisticsAsk）；号码是同一次查询顺手带出来的
                             // （命中行的手机号列），不在答案文本上再扫一遍——单号长得再像号码也不是号码。
                             reply = LogisticsAsk.reply(store, text, basis, day, now, zone)
+                            // 第二百一十二批：同一句话再取一次条件结果，只为把「这一票货」铺成卡。
+                            // 两次读都在这一次点击里、同一个线程上（中间插不进一次导入），所以读数同源；
+                            // 代价与替代方案（195 侧出一个 askAndReply）写在 212 的交付报告里。
+                            val outcome = LogisticsQuery.ask(store, day, text, basis)
+                            val shownAsCard = onQueryOutcome(outcome)
                             costMs = (System.nanoTime() - t0) / 1_000_000
+                            // 铺成卡了才收面板；没命中时面板留着，照旧显示 195 的三行答案（不弹空卡）
+                            if (shownAsCard) onDismiss()
                         },
                         enabled = rows.isNotEmpty(),
                     ) { Text(stringResource(R.string.baopu_logistics_ask)) }

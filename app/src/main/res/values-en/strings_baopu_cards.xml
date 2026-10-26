@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百一十二批 · 答案浮卡（English）。键必须与 values/strings_baopu_cards.xml 一一对应。 -->
+<resources>
+    <!-- ── card shell ──────────────────────────────────────────── -->
+    <string name="baopu_card_unfilled">Not filled</string>
+    <string name="baopu_card_body_line">Found %1$d, see card</string>
+    <string name="baopu_card_strip_line">%1$s · %2$d</string>
+    <string name="baopu_card_collapse">Collapse</string>
+    <string name="baopu_card_expand">Expand</string>
+    <string name="baopu_card_dismiss_all">Dismiss all</string>
+    <string name="baopu_card_hidden_count">Dismissed: %1$d</string>
+    <string name="baopu_card_others_rows">More: %1$d</string>
+    <string name="baopu_card_count">%1$d</string>
+    <string name="baopu_card_copied">Copied</string>
+    <string name="baopu_card_dial_desc">Call %1$s</string>
+    <string name="baopu_card_copy_desc">Copy %1$s</string>
+    <string name="baopu_card_sheet_desc">Result card: tap outside to collapse</string>
+    <string name="baopu_card_copy_pair">%1$s: %2$s</string>
+
+    <!-- ── read-only actions ───────────────────────────────────── -->
+    <string name="baopu_card_action_copy_all">Copy all</string>
+    <string name="baopu_card_action_detail">Details</string>
+    <string name="baopu_card_action_follow_up">Ask a follow-up</string>
+
+    <!-- ── validation style ────────────────────────────────────── -->
+    <string name="baopu_card_error_required">This field is required</string>
+    <string name="baopu_card_error_number">Enter a number</string>
+    <string name="baopu_card_error_too_many">Choose at most %1$d</string>
+    <string name="baopu_card_error_generic">Check this field</string>
+    <string name="baopu_card_error_summary">Left: %1$d</string>
+
+    <!-- ── template: logistics ─────────────────────────────────── -->
+    <string name="baopu_card_logistics_title">Logistics result</string>
+    <string name="baopu_card_logistics_g_summary">Summary</string>
+    <string name="baopu_card_logistics_orders">Orders</string>
+    <string name="baopu_card_logistics_vehicles">Vehicles</string>
+    <string name="baopu_card_logistics_pieces_total">Total pieces</string>
+    <string name="baopu_card_logistics_loaded">Loaded</string>
+    <string name="baopu_card_logistics_pending">Pending</string>
+    <string name="baopu_card_logistics_g_doc">Document</string>
+    <string name="baopu_card_logistics_g_customer">Customer</string>
+    <string name="baopu_card_logistics_g_goods">Goods</string>
+    <string name="baopu_card_logistics_g_route">Route</string>
+    <string name="baopu_card_logistics_g_vehicle">Vehicle</string>
+    <string name="baopu_card_logistics_waybill">Waybill</string>
+    <string name="baopu_card_logistics_order_no">Order no.</string>
+    <string name="baopu_card_logistics_status">Status</string>
+    <string name="baopu_card_logistics_data_time">Data time</string>
+    <string name="baopu_card_logistics_customer_name">Customer name</string>
+    <string name="baopu_card_logistics_customer_phone">Customer phone</string>
+    <string name="baopu_card_logistics_goods">Goods</string>
+    <string name="baopu_card_logistics_pieces">Pieces</string>
+    <string name="baopu_card_logistics_weight">Weight</string>
+    <string name="baopu_card_logistics_volume">Volume</string>
+    <string name="baopu_card_logistics_direction">Destination</string>
+    <string name="baopu_card_logistics_unload">Unload point</string>
+    <string name="baopu_card_logistics_driver">Driver</string>
+    <string name="baopu_card_logistics_driver_phone">Driver phone</string>
+    <string name="baopu_card_logistics_plate">Plate</string>
+    <string name="baopu_card_logistics_others">Other waybills</string>
+    <string name="baopu_card_logistics_peer">%1$s · %2$s pcs · %3$s</string>
+
+    <!-- ── template: study ─────────────────────────────────────── -->
+    <string name="baopu_card_study_title">Knowledge point</string>
+    <string name="baopu_card_study_g_ask">Question</string>
+    <string name="baopu_card_study_g_points">Key points and pitfalls</string>
+    <string name="baopu_card_study_g_steps">Solution steps</string>
+    <string name="baopu_card_study_g_source">Source</string>
+    <string name="baopu_card_study_question">Original question</string>
+    <string name="baopu_card_study_points">Key points</string>
+    <string name="baopu_card_study_pitfall">Pitfalls</string>
+    <string name="baopu_card_study_steps">Steps (collapsed)</string>
+    <string name="baopu_card_study_source">Textbook / chapter</string>
+    <string name="baopu_card_study_action_answer">Show answer</string>
+
+    <!-- ── template: writing plan ──────────────────────────────── -->
+    <string name="baopu_card_write_title">Topic plan</string>
+    <string name="baopu_card_write_g_plan">Plan</string>
+    <string name="baopu_card_write_g_risk">Risk</string>
+    <string name="baopu_card_write_topic">Topic</string>
+    <string name="baopu_card_write_style">Style</string>
+    <string name="baopu_card_write_words">Target length</string>
+    <string name="baopu_card_write_duration">Est. duration</string>
+    <string name="baopu_card_write_risk">Main risk</string>
+</resources>

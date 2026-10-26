@@ -98,6 +98,11 @@ import com.example.zhengdao.baopu.toggleTopBarExpanded
 import com.example.zhengdao.baopu.topBarSlot
 import com.example.zhengdao.baopu.usageNoticeBody
 import com.example.zhengdao.baopu.kernel.KernelAudit
+import com.example.zhengdao.baopu.cards.ResultCardBody
+import com.example.zhengdao.baopu.cards.ResultCardLogistics
+import com.example.zhengdao.baopu.cards.ResultCardRegistry
+import com.example.zhengdao.baopu.cards.ResultCardState
+import com.example.zhengdao.baopu.cards.ResultCards
 import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import kotlinx.coroutines.delay
@@ -126,6 +131,36 @@ private fun openSettings(context: Context) {
 fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val res = LocalResources.current
+    // ── 第二百一十二批：答案浮卡（卡＝答案、正文＝详情）────────────────────────
+    // 三态机与「不重查」全在 `ResultCards`／`ResultCardState`（纯函数，JVM 直测）；
+    // 这一层只持有那一份内存状态，**不碰查询**。
+    // 状态声明在这里而不是内容区：抽屉回调（查询面板的主入口）在抽屉作用域里，看不见内容区的变量。
+    var resultCards by remember { mutableStateOf(ResultCardState()) }
+    val resultCardZone = remember { java.util.TimeZone.getDefault() }
+    // 模板注册表：一份缓存跟着抱朴页走；资产读法用闭包注入（Context 不进 object：lint StaticFieldLeak）
+    val resultCardRegistry = remember {
+        ResultCardRegistry { path ->
+            runCatching {
+                context.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            }.getOrNull()
+        }
+    }
+    // 一次查询条件 → 卡 → 状态：两个入口（抽屉面板／通知位那句）共用这一段，
+    // 免得「铺卡」这件事写两份、迟早两份行为。
+    val pushResultCard: (com.example.zhengdao.baopu.logistics.QueryOutcome) -> Boolean = { outcome ->
+        val card = ResultCardLogistics.cardOf(
+            outcome = outcome,
+            registry = resultCardRegistry,
+            lookup = { key -> baopuCardString(key, res) },
+            zone = resultCardZone,
+        )
+        if (card != null) {
+            resultCards = ResultCards.push(resultCards, card)
+            // 只记模板与行数，**不记任何字段值**（§2：姓名与手机号不进日志）
+            RunLog.log(ResultCardBody.logLine(resultCards))
+        }
+        card != null
+    }
     // 换通道 = 换引擎：控制器构造期持引擎（BaopuChatController），改 epoch 让它重建。
     var channelEpoch by remember { mutableIntStateOf(0) }
     val controller = remember(channelEpoch) { BaopuChatController(context) }
@@ -441,6 +476,14 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         showTaste = true
                     },
+                    // 第二百一十二批：抽屉里的「查询助手」是 195 面板的主入口，命中同样铺成卡。
+                    // 卡浮起来时**顺手关抽屉**：抽屉盖在卡上面，不关的话用户看到的是抽屉、
+                    // 不是卡（真机实测踩到：面板关了、抽屉还开着，卡在抽屉底下没人看得见）。
+                    onLogisticsQueryOutcome = { outcome ->
+                        val shown = pushResultCard(outcome)
+                        if (shown) scope.launch { drawerState.close() }
+                        shown
+                    },
                 )
             }
     }
@@ -684,6 +727,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
             // 判据（该不该播、播哪一句）全在 `LogisticsNotice` 的纯函数里，这里只接线。
             var logisticsTick by remember { mutableIntStateOf(0) }
             var logisticsSheetOpen by remember { mutableStateOf(false) }
+
             val logisticsZone = remember { java.util.TimeZone.getDefault() }
             val logisticsDay = remember { com.example.zhengdao.baopu.logistics.LogisticsAsk.dayKeyOf(nowMs, logisticsZone) }
             val logisticsNotice = remember(logisticsTick) {
@@ -804,7 +848,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                 }
             }
             if (logisticsSheetOpen) {
-                LogisticsSheet(onDismiss = { logisticsSheetOpen = false; logisticsTick++ })
+                LogisticsSheet(
+                    onDismiss = { logisticsSheetOpen = false; logisticsTick++ },
+                    // 命中 ⇒ 铺成卡浮起来（面板随后自己收起：Dialog 罩着整屏，输入框要露出来）
+                    onQueryOutcome = pushResultCard,
+                )
             }
             // 顶栏那一条（2026-10-18 定稿「固定到现在这个位置，不用跟着正文框跑」＋
             // 38 批 §8 追加「这一栏改成产物」）：位置不变、折叠态仍是一行高（§8.3）。
@@ -975,6 +1023,23 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         }
                     }
                 }
+                // ── 第二百一十二批：答案浮卡（三态：展开／小条／整组收起）──────────
+                // 挂在这个 Box 里而不是 Dialog：Box 只到输入框上方 ⇒ 卡再高也压不到 composer
+                // （164 判据「卡展开时输入框仍可点」靠物理位置成立，不靠算高度）。
+                BaopuResultCardHost(
+                    state = resultCards,
+                    onCollapse = { resultCards = ResultCards.collapse(resultCards) },
+                    onExpand = { index -> resultCards = ResultCards.expand(resultCards, index) },
+                    onCollapseAll = { resultCards = ResultCards.collapseAll(resultCards) },
+                    onRestore = { resultCards = ResultCards.restore(resultCards) },
+                    onCopyAll = { RunLog.log(ResultCardBody.logLine(resultCards)) },
+                    // 追问一句＝回到提问入口（结果卡自己不收任何输入、不弹提交）
+                    onFollowUp = {
+                        resultCards = ResultCards.collapse(resultCards)
+                        logisticsSheetOpen = true
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             // ── 底部操作卡区（第十八批-B §2.1）────────────────────────────
             // 「要用户动手」的卡（确认/问人/待过目记忆/记忆候选）紧贴输入框上方：
