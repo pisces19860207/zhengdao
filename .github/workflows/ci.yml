@@ -22,9 +22,13 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# 2026-10-26：main 上**不再取消**，改成排队跑完。
+# 实测最近 90 轮 ci：34 次 cancelled / 8 次 failure / 2 次 success —— 多会话同时往 main 推，
+# 每推一次就把在跑的那轮掐掉，于是"永远是红叉/灰叉"，没人看得到真正的结论。
+# PR 仍取消（同一个 PR 连推只留最后一轮，省 runner）。
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
