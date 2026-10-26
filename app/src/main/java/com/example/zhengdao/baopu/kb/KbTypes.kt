@@ -56,10 +56,11 @@ data class KbStats(
     val chunksTotal: Int = 0,
     /** 达到文件数上限（[KbIndexer.MAX_FILES]）未列全。 */
     val truncated: Boolean = false,
-    /** 明细：过大 / 二进制或读失败 / 格式不认领。 */
+    /** 明细：过大 / 二进制或读失败 / 格式不认领 / 按目录前缀排除（182：索引/ 自身）。 */
     val skippedBig: Int = 0,
     val skippedBinary: Int = 0,
     val skippedUnclaimed: Int = 0,
+    val skippedExcluded: Int = 0,
     /** 增量时指纹没变、chunks 整体留用的文件数。 */
     val reused: Int = 0,
 )

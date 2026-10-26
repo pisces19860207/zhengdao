@@ -50,6 +50,7 @@ internal object KbIndexCodec {
             .put("skippedBig", index.stats.skippedBig)
             .put("skippedBinary", index.stats.skippedBinary)
             .put("skippedUnclaimed", index.stats.skippedUnclaimed)
+            .put("skippedExcluded", index.stats.skippedExcluded)
             .put("reused", index.stats.reused)
         return JSONObject()
             .put("format", index.format)
@@ -108,6 +109,7 @@ internal object KbIndexCodec {
                 skippedBig = stats?.optInt("skippedBig") ?: 0,
                 skippedBinary = stats?.optInt("skippedBinary") ?: 0,
                 skippedUnclaimed = stats?.optInt("skippedUnclaimed") ?: 0,
+                skippedExcluded = stats?.optInt("skippedExcluded") ?: 0,
                 reused = stats?.optInt("reused") ?: 0,
             ),
         )

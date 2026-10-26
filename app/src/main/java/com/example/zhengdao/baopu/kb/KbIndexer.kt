@@ -31,8 +31,11 @@ internal object KbIndexer {
     /** 单次索引文件数上限（与 [LibraryPaths.MAX_SCAN] 同量级；触顶明示，不静默）。 */
     const val MAX_FILES = LibraryPaths.MAX_SCAN
 
-    /** 建索引结果（索引本体 ＋ 给人看的账）。 */
-    data class BuildResult(val index: KbIndex, val report: String)
+    /**
+     * 建索引结果（索引本体 ＋ 给人看的账）。
+     * [cancelled] = 中途被取消（调用方**不要保存**这份半截索引，保持上一版）。
+     */
+    data class BuildResult(val index: KbIndex, val report: String, val cancelled: Boolean = false)
 
     /** 文件分类（索引口径）：无扩展名 ⇒ 不猜；docx ⇒ docx；html ⇒ html；文本扩展名 ⇒ text；其余 ⇒ null（不认领）。 */
     private fun kindOf(name: String): String? {
@@ -63,6 +66,12 @@ internal object KbIndexer {
         rebuild: Boolean = false,
         maxFiles: Int = MAX_FILES,
         now: Long = System.currentTimeMillis(),
+        /** 要排除的相对目录前缀（182：知识库索引不许把 `索引/` 自己也索引进去）。 */
+        excludeRelPrefixes: Set<String> = emptySet(),
+        /** 取消闸门（每文件查一次；取消后返回半截账并标记 [BuildResult.cancelled]）。 */
+        cancelled: () -> Boolean = { false },
+        /** 进度（已处理文件数 / 扫描到文件总数；只在内存里传，不落盘）。 */
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): BuildResult {
         val scan = LibraryPaths.scanTree(root)
         val reusable = if (rebuild || previous == null || previous.root != root.absolutePath) {
@@ -74,13 +83,27 @@ internal object KbIndexer {
         var skippedBig = 0
         var skippedBinary = 0
         var skippedUnclaimed = 0
+        var skippedExcluded = 0
         var reused = 0
         var truncated = false
+        var wasCancelled = false
+        val total = scan.files.size
+        var seen = 0
 
         for (f in scan.files) {
             if (docs.size >= maxFiles) {
                 truncated = true
                 break
+            }
+            if (cancelled()) {
+                wasCancelled = true
+                break
+            }
+            seen++
+            onProgress(seen, total)
+            if (excludeRelPrefixes.any { f.relPath == it || f.relPath.startsWith("$it/") }) {
+                skippedExcluded++
+                continue
             }
             val kind = kindOf(f.name)
             if (kind == null) {
@@ -112,12 +135,13 @@ internal object KbIndexer {
 
         val stats = KbStats(
             filesIndexed = docs.size,
-            filesSkipped = skippedBig + skippedBinary + skippedUnclaimed,
+            filesSkipped = skippedBig + skippedBinary + skippedUnclaimed + skippedExcluded,
             chunksTotal = docs.sumOf { it.chunks.size },
             truncated = truncated || scan.truncated,
             skippedBig = skippedBig,
             skippedBinary = skippedBinary,
             skippedUnclaimed = skippedUnclaimed,
+            skippedExcluded = skippedExcluded,
             reused = reused,
         )
         val index = KbIndex(
@@ -127,7 +151,12 @@ internal object KbIndexer {
             docs = docs,
             stats = stats,
         )
-        return BuildResult(index, report(index, stats, truncated || scan.truncated, maxFiles))
+        return BuildResult(
+            index,
+            report(index, stats, truncated || scan.truncated, maxFiles) +
+                if (wasCancelled) "（已取消：这份索引不保存，保持上一版）" else "",
+            wasCancelled,
+        )
     }
 
     /** 纯文本/html：走 [TextDecode] 解码后切块；读不出 ⇒ null（调用方计数跳过）。 */
@@ -166,7 +195,9 @@ internal object KbIndexer {
         append("已索引目录：").append(index.rootLabel).append('\n')
         append("文件：索引 ${stats.filesIndexed} 个（复用 ${stats.reused} 个），跳过 ${stats.filesSkipped} 个")
         if (stats.filesSkipped > 0) {
-            append("（过大 ${stats.skippedBig} / 读不出或二进制 ${stats.skippedBinary} / 格式不认领 ${stats.skippedUnclaimed}）")
+            append("（过大 ${stats.skippedBig} / 读不出或二进制 ${stats.skippedBinary} / 格式不认领 ${stats.skippedUnclaimed}")
+            if (stats.skippedExcluded > 0) append(" / 按目录排除 ${stats.skippedExcluded}")
+            append("）")
         }
         append("；切块共 ${stats.chunksTotal} 块\n")
         if (truncated) {

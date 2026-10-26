@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第一百八十二批：知识库自动刷新＋抱朴整理。单独成文件（房型照 158/198），对公共 strings.xml 零字节改动。 -->
+<resources>
+<string name="kb_refresh_card_title">知识库（自动刷新）</string>
+<string name="kb_refresh_state_label">索引</string>
+<string name="kb_refresh_state_empty">还没建索引（进一次前台会自动建）</string>
+<string name="kb_refresh_state">%1$d 个文件 · 更新于 %2$s</string>
+<string name="kb_refresh_last">上次刷新：%1$s（%2$s）</string>
+<string name="kb_refresh_path">路径：%1$s</string>
+<string name="kb_refresh_auto">自动刷新（只在前台）</string>
+<string name="kb_refresh_desc">只看文件有没有变：新增/改了才重读，删除靠上一轮快照比对；原件只读，索引在 证道/知识库/索引/，删了会自己重建。</string>
+<string name="kb_refresh_now">立即刷新</string>
+<string name="kb_refresh_cancel">停止</string>
+<string name="kb_refresh_running">正在刷新 %1$d/%2$d</string>
+<string name="kb_refresh_running_unknown">正在刷新…</string>
+<string name="kb_refresh_done">刷新完成：新增 %1$d，改动 %2$d，删除 %3$d</string>
+<string name="kb_refresh_cancelled">已停止：索引保持上一版，下次接着来</string>
+<string name="kb_refresh_failed">刷新失败：%1$s</string>
+<string name="kb_refresh_reason_start">启动</string>
+<string name="kb_refresh_reason_foreground">回前台</string>
+<string name="kb_refresh_reason_import">导入完成</string>
+<string name="kb_refresh_reason_mediastore">媒体库变化</string>
+<string name="kb_refresh_reason_periodic">定时兜底</string>
+<string name="kb_refresh_reason_manual">手动</string>
+<string name="kb_refresh_reason_organize">整理完成</string>
+<string name="kb_organize_action">整理知识库…</string>
+<string name="kb_organize_scanning">正在生成整理清单…</string>
+<string name="kb_organize_empty">原始/ 里还没有可整理的文本文件</string>
+<string name="kb_organize_card_title">整理变更清单（%1$d 项）</string>
+<string name="kb_organize_card_desc">只把整理后的副本写进 整理/；原件一个字节都不动，不删、不改名。先看清单再决定。</string>
+<string name="kb_organize_item">%1$s → %2$s（%3$s）</string>
+<string name="kb_organize_more">…还有 %1$d 项</string>
+<string name="kb_organize_confirm">开始整理</string>
+<string name="kb_organize_cancel">取消</string>
+<string name="kb_organize_result">整理完成：写入 %1$d 项，跳过 %2$d 项，失败 %3$d 项</string>
+<string name="kb_organize_failed">整理失败：%1$s</string>
+<string name="kb_organize_error">读写失败（详情见日志）</string>
+<string name="kb_organize_cat_doc">文档</string>
+<string name="kb_organize_cat_code">代码</string>
+<string name="kb_organize_cat_sheet">表格/数据</string>
+<string name="kb_organize_cat_web">网页</string>
+<string name="kb_organize_cat_other">其他</string>
+</resources>

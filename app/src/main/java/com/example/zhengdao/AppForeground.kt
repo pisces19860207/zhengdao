@@ -23,20 +23,38 @@ internal object AppForeground : Application.ActivityLifecycleCallbacks {
     /** 计数器只在主线程（Activity 回调）改；读侧是 volatile 布尔，供引擎线程判断。 */
     private var started = 0
 
+    /**
+     * 前/后台**边沿**监听（第一百八十二批：知识库「进前台一次增量」用它）。
+     * 只存函数类型、不存 Context；CopyOnWriteArraySet ⇒ 回调里增删监听也不炸。
+     */
+    private val listeners = java.util.concurrent.CopyOnWriteArraySet<(Boolean) -> Unit>()
+
     fun install(app: Application) {
         app.registerActivityLifecycleCallbacks(this)
+    }
+
+    fun addListener(listener: (Boolean) -> Unit) {
+        listeners.add(listener)
     }
 
     fun isForeground(): Boolean = foreground
 
     override fun onActivityStarted(activity: Activity) {
+        val was = foreground
         started++
         foreground = started > 0
+        if (!was && foreground) notify(true)
     }
 
     override fun onActivityStopped(activity: Activity) {
+        val was = foreground
         if (started > 0) started--
         foreground = started > 0
+        if (was && !foreground) notify(false)
+    }
+
+    private fun notify(front: Boolean) {
+        listeners.forEach { runCatching { it(front) } }
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit

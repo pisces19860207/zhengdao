@@ -421,6 +421,10 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             ExpandableHint(stringResource(R.string.data_hints_desc))
         }
 
+        // 第一百八十二批：知识库（证道/知识库 三目录）自动刷新＋抱朴整理。
+        // 与上面「资料库」（终端 agent 的清单）分工：这里管索引与整理产物，原件只读。
+        KnowledgeRefreshCard()
+
         // 第十八批 A 段：抱朴三块（工具开关 / 模型参数 / 思考深度）已整块搬进
         // ui/baopu/BaopuSettingsScreen.kt（抽屉「抱朴设置」直达）。本页不再有抱朴项。
 

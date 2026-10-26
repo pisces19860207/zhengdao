@@ -17,6 +17,9 @@ package com.example.zhengdao.baopu
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import com.example.zhengdao.rootfs.RunLog
 import java.io.File
@@ -90,6 +93,24 @@ internal object MediaStoreSink {
         }
         return uri.lastPathSegment?.toLongOrNull()
     }
+
+    /**
+     * 观察 `MediaStore.Files` 的**变化通知**（第一百八十二批：知识库刷新的可选加速）。
+     *
+     * 只读观察，不 insert/delete/update；放在本文件是为了守住 [MediaPathGateTest] 的
+     * 「MediaStore 只许一个出口」——别处连 `MediaStore.` 这个名字都不出现。
+     * 观察者不可靠（漏事件/厂商限制）时返回 false，调用方只记日志，正确性由周期扫描兜底。
+     */
+    fun registerFilesObserver(ctx: Context, onChange: () -> Unit): Boolean = runCatching {
+        val uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val obs = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, changed: android.net.Uri?) {
+                onChange()
+            }
+        }
+        ctx.contentResolver.registerContentObserver(uri, true, obs)
+        true
+    }.getOrDefault(false)
 
     /** 相册某个目录下**已发布**（`IS_PENDING=0`）的文件名——用来算「不覆盖」的名字。 */
     fun publishedNames(ctx: Context, relDir: String): Set<String> {

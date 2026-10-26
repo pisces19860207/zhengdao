@@ -669,6 +669,8 @@ internal object BaopuRuntime {
         val wsRoot = workspaceRoot(appCtx)
         MemoryLayout.ensureDirs(wsRoot)
         MemoryLayout.migrate(wsRoot, appCtx.filesDir)
+        // 第一百八十二批：知识库自动刷新的读侧索引合并（幂等；Application 已装时只是重复确认）。
+        KnowledgeRefresh.install(appCtx)
         // 第一百九十九批：相册通道 ＋ 两笔顺带迁移（都幂等，二遍全零）。
         // 装在这里的理由与上面那行一样：引擎一开跑就可能截图/生图，通道必须先可用；
         // 而「接 Android 的手只许有一只」⇒ ContentResolver 只经 MediaPublisher 这一处。
