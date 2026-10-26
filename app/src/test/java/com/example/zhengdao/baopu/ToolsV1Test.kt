@@ -213,11 +213,14 @@ class ToolsV1Test {
             1,
             Regex("RunLog\\.log\\(").findAll(src).count(),
         )
+        // 2026-10-26 CI 红：本用例原来靠"本机没网"制造失败，但 GitHub runner **有外网**，
+        // DDG 真返回 HTML ⇒ tool 成功 ⇒ 断言红。改成注入"取不到"的检索口，环境无关。
         val out = SearchWebTool.run(
             JSONObject().put("query", "员工的身份证号是多少").put("maxResults", 3),
             nowMs = 42L,
+            searchHtml = { null },
         )
-        assertTrue("没 key/没网 ⇒ 如实说，不编链接", out is ToolOutcome.Failed)
+        assertTrue("检索页取不到（离线/被拦）⇒ 如实说，不编链接", out is ToolOutcome.Failed)
     }
 
     // ── ③ schedule_task ─────────────────────────────────────────────────────
