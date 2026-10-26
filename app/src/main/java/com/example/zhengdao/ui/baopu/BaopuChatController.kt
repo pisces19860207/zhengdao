@@ -1827,8 +1827,10 @@ internal class BaopuChatController(context: Context) {
     // 3. **可关**：`ImpactPrefs.get` 为 false ⇒ 这里直接返回，连算都不算（关掉＝与现在
     //    逐字节一致，负例「关掉开关仍有提示」的靶心）。
     //
-    // 为什么钉 callId 而不是另开一个要到处清的字段：卡的生命周期在五个地方会置 null
-    // （批准/拒绝/停止/切会话/异常收尾），多一个字段就多五处清理点，漏一处就是
+    // 为什么钉 callId 而不是另开一个要到处清的字段：确认卡有 6 个置 null 的赋值点——
+    // 批准（`approveConfirm`）、拒绝（`rejectConfirm`）、换会话三个入口（`newSession`／
+    // `openSession`／`clearSessionView`）、引擎收尾（`pendingGone`：批准/拒绝/停止/超时
+    // 由 `ConfirmFlow` 清行，卡随 refresh 消失）。另开一个字段就是六处清理点，漏一处就是
     // 「上一张卡的影响挂在这一张上」那种脏数据。这里只认「当前卡的 callId」，
     // 卡一换（或清空）这行自动失效。
 
@@ -1873,10 +1875,28 @@ internal class BaopuChatController(context: Context) {
                     val text = com.example.zhengdao.baopu.ImpactLine.text(impact)
                     if (text != null) {
                         com.example.zhengdao.baopu.ImpactLedger.record(req.tool, text, shown = true)
-                        // 注入限流：只对写/删/移动（tier>=2 已保证）；同一句 8 秒内只注一次
-                        com.example.zhengdao.baopu.ImpactInject.noteFor(call, impact)
-                            ?.let { com.example.zhengdao.baopu.ImpactMailbox.offer(it) }
                     }
+                    // 227 §0.6：审计的唯一回灌——同类动作近 7 天被拒/判错 ≥3 次 ⇒ 一句聚合事实。
+                    // 只读两本账（决策记录/抽检结论），失败静默；句子由 AuditHint 生成，
+                    // 不列条目、不带时间/证据 id、不摊台账原文。
+                    val historyHint = runCatching {
+                        val root = com.example.zhengdao.baopu.DecisionLedger.installedRoot()
+                            ?: return@runCatching null
+                        com.example.zhengdao.baopu.AuditHint.lineFor(
+                            call = call,
+                            impact = impact,
+                            records = com.example.zhengdao.baopu.DecisionLedger.read(root),
+                            reviews = com.example.zhengdao.baopu.DecisionReview.read(root),
+                            nowMs = System.currentTimeMillis(),
+                        )
+                    }.getOrNull()
+                    // 注入限流：只对写/删/移动（tier>=2 已保证）；同一句 8 秒内只注一次。
+                    // 聚合提示与影响提示共用这一格节流（historyHint 非空时优先）。
+                    com.example.zhengdao.baopu.ImpactInject.noteFor(
+                        call = call,
+                        impact = impact,
+                        historyHint = historyHint,
+                    )?.let { com.example.zhengdao.baopu.ImpactMailbox.offer(it) }
                     text
                 }
             }
