@@ -66,6 +66,19 @@ class WebViewEngine(
     private var delegate: NavigationDelegate? = null
 
     /**
+     * 第二百二十六批 · 文档阶段探针（示教录制「跨导航重装」用）。
+     *
+     * 为什么与 [delegate] 分开：delegate 是每标签一份、语义是「把导航状态写进 tab」；
+     * 这两个回调是**录制期**的临时探针，录完即置空（挂/摘在
+     * [com.example.zhengdao.bridge.TeachCaptureBridge]）。都在主线程回调。
+     *
+     * 两个时机的差别是真机踩出来的：`onPageStarted` 时新文档未必已提交（注入可能落进旧文档），
+     * `onPageFinished` 一定在新文档里跑。录制器两处都装，600ms 轮询兜底。
+     */
+    var onDocumentStarted: ((String) -> Unit)? = null
+    var onDocumentReady: ((String) -> Unit)? = null
+
+    /**
      * JS alert/confirm 出口（第⑨刀 B 落地 §4.4「JS 弹窗收口」）。
      * null = 一律 cancel（安全默认）；UI 层（BrowserScreen）组合时注入、离场摘除——
      * 对话框要 Activity/Compose 宿主，而引擎只持 applicationContext 的 WebView。
@@ -202,10 +215,12 @@ class WebViewEngine(
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 delegate?.onPageStarted(url.orEmpty())
+                onDocumentStarted?.invoke(url.orEmpty())
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 delegate?.onPageFinished(url.orEmpty())
+                onDocumentReady?.invoke(url.orEmpty())
             }
 
             override fun onReceivedError(

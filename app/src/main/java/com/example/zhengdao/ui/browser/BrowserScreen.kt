@@ -62,6 +62,7 @@ import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.TeachLearner
 import com.example.zhengdao.baopu.TeachSessionUiModel
 import com.example.zhengdao.baopu.TeachSkillDraft
+import com.example.zhengdao.baopu.TeachStopKind
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.rootfs.RunLog
@@ -491,10 +492,16 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 teaching = teachRecording,
                 onTeachToggle = {
                     if (teachRecording) {
-                        teachModel.stop { d ->
+                        // 第二百二十六批 G2：停止时按「三步结局」说话——0 步也分
+                        // 「录到导航」与「真的什么都没有」，不再一律说"没录到操作"。
+                        teachModel.stop { kind, d ->
                             teachRecording = false
                             teachDraft = d
-                            if (d == null) uiMsg = res.getString(R.string.teach_empty)
+                            when (kind) {
+                                TeachStopKind.EMPTY_NAV_ONLY -> uiMsg = res.getString(R.string.teach_empty_nav)
+                                TeachStopKind.EMPTY_NO_EVENTS -> uiMsg = res.getString(R.string.teach_empty)
+                                TeachStopKind.DRAFT -> Unit
+                            }
                         }
                     } else {
                         teachRecording = true

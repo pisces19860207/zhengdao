@@ -15,6 +15,7 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.bridge.BrowserCommands
+import com.example.zhengdao.bridge.TeachCaptureBridge
 import com.example.zhengdao.bridge.jsStringLiteral
 import com.example.zhengdao.rootfs.RunLog
 import kotlinx.coroutines.CoroutineScope
@@ -293,9 +294,126 @@ internal class BrowserTeachDom(private val tabId: Int?) : TeachDom {
     }
 }
 
-// ── 示教录制（注入＋轮询收割；只记录不干预）───────────────────────────────────
+// ── 示教录制（点击即回传＋轮询兜底；只记录不干预）─────────────────────────────
+//
+// 第二百二十六批 G2：原实现只有「每文档队列＋600ms 轮询」——点击触发导航后旧文档连队列
+// 一起销毁，下一轮收割拿到新文档的空队列 ⇒ 跨导航事件必丢（222 实测 example.com→iana.org
+// 全程 0 步）。现在两路并存：
+//   ① 即时路：@JavascriptInterface 桥（[TeachCaptureBridge]），事件当场送原生累积；
+//   ② 兜底路：600ms 轮询照旧（桥不可用／被站点拦时仍有事件）。
+// 两路按 `doc#seq` 去重；步骤顺序按「文档首次到达序＋文档内序号」重排——到达先后不算数。
 
-/** 录制会话采到的原始事件流（线程安全由录制协程单写、stop 时移交）。 */
+/**
+ * 两路事件流的合并缓冲（纯 Kotlin：JVM 直测去重、排序与「这一步之后到了哪一页」）。
+ *
+ * 为什么不在到达时就算 before/after：两条路到达顺序不保证（立即路通常先到，轮询可能补
+ * 一批更早的），只有按文档序＋序号重排之后，前后关系才是页面上真实发生的顺序。
+ * 「文档序」＝该文档 URL 第一次被看到时的页序（`onPageStarted`／收割谁先报都算），
+ * **不是**这条事件什么时候到——否则即时路先送到新文档时，旧文档那条会被排到后面。
+ */
+internal class TeachEventBuffer(private val cap: Int = 500) {
+
+    private data class Entry(val docOrder: Int, val seq: Int, val event: TeachRawEvent, val rows: Int)
+
+    private val byKey = LinkedHashMap<String, Entry>()
+    private val docOrder = HashMap<String, Int>()
+    /** 页序：URL → 第一次被看到时的次序（`onPageStarted` 与收割都会报，谁先到都算）。 */
+    private val pageOrder = LinkedHashMap<String, Int>()
+    private var nextPageOrder = 0
+    private var lastPageUrl = ""
+    private var navSeen = false
+    private var rowsNow = 0
+
+    val size: Int @Synchronized get() = byKey.size
+    val sawNavigation: Boolean @Synchronized get() = navSeen
+
+    private fun orderOf(url: String): Int = pageOrder.getOrPut(url) { nextPageOrder++ }
+
+    /** 起点页（不算一次导航）。 */
+    @Synchronized
+    fun seedStart(url: String) {
+        if (url.isNotBlank() && lastPageUrl.isBlank()) {
+            lastPageUrl = url
+            orderOf(url)
+        }
+    }
+
+    /** 收割／导航看到的页面地址：与上一页不同才算一次导航。 */
+    @Synchronized
+    fun notePage(url: String, rows: Int = -1) {
+        if (url.isNotBlank()) {
+            when {
+                lastPageUrl.isBlank() -> lastPageUrl = url
+                url != lastPageUrl -> {
+                    navSeen = true
+                    lastPageUrl = url
+                }
+            }
+            orderOf(url)
+        }
+        if (rows >= 0) rowsNow = rows
+    }
+
+    /**
+     * 收一条；同一 `doc#seq` 第二次到达 ⇒ 丢掉（两路去重）。
+     *
+     * 文档序**按页序算，不按这条事件什么时候到**：即时路可能先送到新文档的事件，
+     * 轮询随后才补回旧文档那条——按到达先后排会把两步的顺序弄反（222 的根因之一）。
+     */
+    @Synchronized
+    fun add(doc: String, seq: Int, event: TeachRawEvent): Boolean {
+        val key = doc.ifBlank { "-" } + "#" + seq
+        if (byKey.containsKey(key)) return false
+        val order = docOrder.getOrPut(doc.ifBlank { "-" }) { orderOf(event.url) }
+        byKey[key] = Entry(order, seq, event, rowsNow)
+        if (byKey.size > cap) byKey.remove(byKey.keys.first())
+        return true
+    }
+
+    /**
+     * 出最终事件流。`beforeUrl`＝上一步所在页，`afterUrl`＝下一步所在页（最后一步用收尾页）——
+     * 这样「点击触发导航」那一步仍会带上 URL_CHANGED 的 expect（196 的语义一字不丢）。
+     * 行数同理：before＝上一步时的行数快照，after＝下一步的（最后一步用收尾快照）。
+     */
+    @Synchronized
+    fun snapshot(): List<TeachRawEvent> {
+        val sorted = byKey.values.sortedWith(compareBy({ it.docOrder }, { it.seq }))
+        if (sorted.isEmpty()) return emptyList()
+        val tailUrl = lastPageUrl.ifBlank { sorted.last().event.url }
+        return sorted.mapIndexed { i, e ->
+            val before = if (i == 0) e.event.url else sorted[i - 1].event.url
+            val after = if (i < sorted.size - 1) sorted[i + 1].event.url else tailUrl
+            val beforeRows = if (i == 0) 0 else sorted[i - 1].rows
+            val afterRows = if (i < sorted.size - 1) sorted[i + 1].rows else rowsNow
+            e.event.copy(
+                beforeUrl = before,
+                afterUrl = after,
+                beforeRows = beforeRows,
+                afterRows = afterRows,
+            )
+        }
+    }
+}
+
+/** 停止示教的三种结局（负例「0 步却当成功」的靶子：空就是空，还得说清为什么空）。 */
+internal enum class TeachStopKind { DRAFT, EMPTY_NO_EVENTS, EMPTY_NAV_ONLY }
+
+internal object TeachStopRules {
+    /** 有步骤 ⇒ 出卡；没步骤但见过导航 ⇒ 说「录到导航」；否则说「没有录到操作」。 */
+    fun kind(stepCount: Int, sawNavigation: Boolean): TeachStopKind = when {
+        stepCount > 0 -> TeachStopKind.DRAFT
+        sawNavigation -> TeachStopKind.EMPTY_NAV_ONLY
+        else -> TeachStopKind.EMPTY_NO_EVENTS
+    }
+}
+
+/** [TeachRecorder.finish] 的产物。 */
+internal data class TeachCollected(
+    val events: List<TeachRawEvent>,
+    val sawNavigation: Boolean,
+)
+
+/** 录制会话采到的原始事件流（两路合并；stop 时一次性移交）。 */
 internal class TeachRecorder(
     private val tabId: Int?,
     private val scope: CoroutineScope,
@@ -304,25 +422,38 @@ internal class TeachRecorder(
     var job: Job? = null
         private set
 
-    /** 收割循环活着时持续追加（只在录制协程里写）。 */
-    internal val raw = mutableListOf<TeachRawEvent>()
+    private val buffer = TeachEventBuffer()
+
+    /** 即时回传桥（没有标签时为 null ⇒ 只剩轮询兜底）。 */
+    private var capture: TeachCaptureBridge.Handle? = null
 
     /** 会话起点页事实（指纹原料）。 */
     internal var startFacts: TeachPageFacts? = null
         private set
 
+    internal val rawCount: Int get() = buffer.size
+
     private var lastUrl: String = ""
     private var lastRows: Int = 0
+    private var syntheticSeq = 0
 
-    /** 注入＋收割一体的脚本（幂等：没有队列就装监听，装完把这批事件带走）。 */
+    /** 注入＋收割一体的脚本（幂等：没有队列就装监听；装完把这批事件带走）。 */
     private fun harvestScript(): String = "(function(){\n" + TeachRecorderJs.INJECT + """
-var q=window.__zlTeach.q;window.__zlTeach.q=[];
+var t=window.__zlTeach;var q=t?t.q:[];
+if(t)t.q=[];
 var rows=document.querySelectorAll('table tr,[role=row],ol>li,ul>li').length;
-return JSON.stringify({u:location.href,r:rows,e:q.slice(0,20)})})()
+return JSON.stringify({u:location.href,r:rows,e:q.slice(0,50)})})()
 """
 
     fun start(onError: (String) -> Unit) {
         if (job?.isActive == true) return
+        // 即时路先挂（主线程：解析标签、挂 JS 接口），再起收割循环当兜底。
+        capture = TeachCaptureBridge.attach(
+            tabId = tabId,
+            injectJs = TeachRecorderJs.SCRIPT,
+            onEvent = { json -> ingest(json, null) },
+            onNavigation = { url -> buffer.notePage(url) },
+        )
         job = scope.launch(Dispatchers.IO) {
             // 起点页事实（指纹与 startUrl）
             runCatching {
@@ -336,11 +467,21 @@ return JSON.stringify({u:location.href,r:rows,e:q.slice(0,20)})})()
                     )
                     lastUrl = r.optString("u")
                     lastRows = r.optInt("r")
+                    buffer.seedStart(lastUrl)
                 }
             }
+            var failures = 0
             while (!Thread.currentThread().isInterrupted) {
                 val ok = runCatching { harvestOnce() }.getOrElse { false }
-                if (!ok) onError("示教收割失败（页面可能已关闭或还在加载）")
+                if (ok) {
+                    failures = 0
+                } else {
+                    failures++
+                    // 有即时路时轮询失败不打扰用户（桥还在收）；没有桥才报（且只报一次）。
+                    if (capture == null && failures == 1) {
+                        onError("示教收割失败（页面可能已关闭或还在加载）")
+                    }
+                }
                 delay(pollMs)
             }
         }
@@ -353,56 +494,80 @@ return JSON.stringify({u:location.href,r:rows,e:q.slice(0,20)})})()
         val r = runCatching { JSONObject(o.optString("result")) }.getOrNull() ?: return false
         val url = r.optString("u")
         val rows = r.optInt("r")
+        buffer.notePage(url, rows)
         val events = r.optJSONArray("e") ?: JSONArray()
         for (i in 0 until events.length()) {
             val ev = events.optJSONObject(i) ?: continue
-            val action = TeachAction.fromWire(ev.optString("a")) ?: continue
-            val el = ev.optJSONObject("el") ?: continue
-            val info = TeachElementInfo(
-                tag = el.optString("tag").uppercase(),
-                role = el.optString("role").takeIf { it.isNotEmpty() },
-                name = el.optString("name").takeIf { it.isNotEmpty() },
-                text = el.optString("text").takeIf { it.isNotEmpty() },
-                ariaLabel = el.optString("aria").takeIf { it.isNotEmpty() },
-                testid = el.optString("testid").takeIf { it.isNotEmpty() },
-                elemId = el.optString("id").takeIf { it.isNotEmpty() },
-                inputName = el.optString("inputName").takeIf { it.isNotEmpty() },
-                placeholder = el.optString("placeholder").takeIf { it.isNotEmpty() },
-                inputType = el.optString("inputType").takeIf { it.isNotEmpty() },
-                formLabel = el.optString("formLabel").takeIf { it.isNotEmpty() },
-                classes = jsonArr(el.optJSONArray("classes")),
-                xpath = el.optString("xpath").takeIf { it.isNotEmpty() },
-                // 第二百批：下拉项表（参数化的词表；非下拉恒空）
-                options = run {
-                    val oa = el.optJSONArray("options") ?: JSONArray()
-                    (0 until oa.length()).mapNotNull { i ->
-                        val o = oa.optJSONObject(i) ?: return@mapNotNull null
-                        val v = o.optString("v")
-                        if (v.isBlank()) null else TeachOption(v, o.optString("t").ifBlank { v })
-                    }
-                },
-            )
-            raw += TeachRawEvent(
-                action = action,
-                url = ev.optString("url").ifBlank { lastUrl },
-                element = info,
-                value = ev.optString("value").takeIf { it.isNotEmpty() },
-                beforeUrl = lastUrl,
-                afterUrl = url,
-                beforeRows = lastRows,
-                afterRows = rows,
-            )
+            ingest(ev.toString(), url)
         }
         lastUrl = url
         lastRows = rows
         return true
     }
 
-    /** 停止并移交事件流（幂等）。 */
-    fun stop(): List<TeachRawEvent> {
+    /**
+     * 一条事件 JSON → 缓冲（两路共用；`doc#seq` 去重）。
+     * 即时路与轮询路的入参形状完全一样（同一个 INJECT 产出），所以转换只有这一处。
+     */
+    private fun ingest(json: String, fallbackUrl: String?): Boolean {
+        val ev = runCatching { JSONObject(json) }.getOrNull() ?: return false
+        val action = TeachAction.fromWire(ev.optString("a")) ?: return false
+        val el = ev.optJSONObject("el") ?: return false
+        val url = ev.optString("url").ifBlank { fallbackUrl.orEmpty() }
+        // 旧脚本（无 s）不该出现；真出现了也不能全挤到同一个 key —— 给个本地序号。
+        val seq = if (ev.has("s")) ev.optInt("s") else ++syntheticSeq
+        return buffer.add(
+            doc = ev.optString("d"),
+            seq = seq,
+            event = TeachRawEvent(
+                action = action,
+                url = url,
+                element = toElementInfo(el),
+                value = ev.optString("value").takeIf { it.isNotEmpty() },
+                // before/after 由 snapshot 按真实顺序算（见 TeachEventBuffer 的 KDoc）
+                beforeUrl = url,
+                afterUrl = url,
+                beforeRows = 0,
+                afterRows = 0,
+            ),
+        )
+    }
+
+    /** 元素语义面（录制口径；与 TeachScripts 的可访问名规则一致）。 */
+    private fun toElementInfo(el: JSONObject): TeachElementInfo = TeachElementInfo(
+        tag = el.optString("tag").uppercase(),
+        role = el.optString("role").takeIf { it.isNotEmpty() },
+        name = el.optString("name").takeIf { it.isNotEmpty() },
+        text = el.optString("text").takeIf { it.isNotEmpty() },
+        ariaLabel = el.optString("aria").takeIf { it.isNotEmpty() },
+        testid = el.optString("testid").takeIf { it.isNotEmpty() },
+        elemId = el.optString("id").takeIf { it.isNotEmpty() },
+        inputName = el.optString("inputName").takeIf { it.isNotEmpty() },
+        placeholder = el.optString("placeholder").takeIf { it.isNotEmpty() },
+        inputType = el.optString("inputType").takeIf { it.isNotEmpty() },
+        formLabel = el.optString("formLabel").takeIf { it.isNotEmpty() },
+        classes = jsonArr(el.optJSONArray("classes")),
+        xpath = el.optString("xpath").takeIf { it.isNotEmpty() },
+        options = run {
+            val oa = el.optJSONArray("options") ?: JSONArray()
+            (0 until oa.length()).mapNotNull { i ->
+                val o = oa.optJSONObject(i) ?: return@mapNotNull null
+                val v = o.optString("v")
+                if (v.isBlank()) null else TeachOption(v, o.optString("t").ifBlank { v })
+            }
+        },
+    )
+
+    /** 收尾：停循环 → 尾批兜底收割 → 出事件流 → 摘桥。阻塞，调用方放 IO。 */
+    fun finish(): TeachCollected {
         job?.cancel()
         job = null
-        return raw.toList()
+        runCatching { harvestOnce() }
+        val events = buffer.snapshot()
+        val nav = buffer.sawNavigation
+        capture?.detach()
+        capture = null
+        return TeachCollected(events, nav)
     }
 
     private fun jsonArr(arr: JSONArray?): List<String> {
@@ -415,12 +580,25 @@ return JSON.stringify({u:location.href,r:rows,e:q.slice(0,20)})})()
     }
 }
 
-/** 录制注入脚本的原始字符串（[TeachRecorder] 拼 HARVEST 用）。 */
+/** 录制注入脚本的原始字符串（[TeachRecorder] 拼收割／重装脚本用）。 */
 internal object TeachRecorderJs {
-    /** 注入的监听（挂 window.__zlTeach；导航换页后由下一轮收割重新装）。 */
+
+    /** 整段注入（IIFE）：跨导航时由桥重装；也可单独执行。 */
+    val SCRIPT: String get() = "(function(){" + INJECT + "})()"
+
+    /**
+     * 注入的监听（挂 window.__zlTeach）。
+     *
+     * 第二百二十六批的三处改动：
+     * ① `push` 先把事件 `emit` 给原生（`window.__zdTeachBridge`），会话不再依赖文档存活；
+     * ② 事件带 `d`（文档 id）与 `s`（文档内单调序号），原生按 `d#s` 去重；
+     * ③ 队列改成 `window.__zlTeach.q` 现取现推 —— 旧写法把数组抓进闭包，收割把
+     *    `__zlTeach.q` 换成新数组后闭包还往旧数组里推，**第一批之后的事件再也没被收到过**。
+     */
     val INJECT: String = """
+
 if(!window.__zlTeach){
- var q=[];
+ var doc=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
  function txt(el){return (el.textContent||'').trim().replace(/\s+/g,' ').slice(0,40)}
  function iRole(el){var r=el.getAttribute('role');if(r)return r.toLowerCase();
   var t=el.tagName,it=el.getAttribute('type')||'';
@@ -450,7 +628,7 @@ if(!window.__zlTeach){
   id:el.id||'',inputName:el.getAttribute('name')||'',placeholder:el.getAttribute('placeholder')||'',
   inputType:(el.tagName=='INPUT'?(el.getAttribute('type')||'text'):''),
   formLabel:fl,classes:cls.slice(0,8),xpath:xp,options:ops}}
- function push(a,el,v){q.push({a:a,url:location.href,el:snap(el),value:v||''})}
+ function push(a,el,v){var t=window.__zlTeach;if(!t)return;var ev={a:a,url:location.href,el:snap(el),value:v||'',d:t.doc,s:++t.seq};t.q.push(ev);try{var b=window.__zdTeachBridge;if(b&&b.emit){b.emit(JSON.stringify(ev))}}catch(e){/* 桥不在或 emit 抛错：轮询兜底照收，不打断页面 */}}
  document.addEventListener('click',function(e){
   var el=e.target.closest?e.target.closest('button,a,[role=button],input,select,summary,label,[onclick]'):null;
   if(!el)el=e.target;if(el&&el.nodeType==1)push('click',el,'')},true);
@@ -463,7 +641,7 @@ if(!window.__zlTeach){
  document.addEventListener('scroll',function(e){
   var now=Date.now();if(now-lastScroll<800)return;lastScroll=now;
   var el=e.target;if(el&&el.nodeType==1)push('scroll',(el==document||el==document.body||el==document.documentElement)?document.body:el,'')},true);
- window.__zlTeach={q:q};
+ window.__zlTeach={q:[],doc:doc,seq:0};
 }
 """
 
@@ -497,8 +675,8 @@ internal class TeachSessionUiModel(
 
     private var recorder: TeachRecorder? = null
 
-    /** 到目前为止录到的原始事件数（UI 指示条轮询用）。 */
-    fun recordedSoFar(): Int = recorder?.raw?.size ?: 0
+    /** 到目前为止录到的原始事件数（UI 指示条轮询用；两路合并后的条数）。 */
+    fun recordedSoFar(): Int = recorder?.rawCount ?: 0
 
     /** 开始示教（失败给一句人话）。 */
     fun start(onError: (String) -> Unit) {
@@ -510,23 +688,31 @@ internal class TeachSessionUiModel(
         rec.start(onError)
     }
 
-    /** 结束示教 → 出草稿（不落盘；确认在 [save]）。 */
-    fun stop(onDraft: (TeachSkillDraft?) -> Unit) {
+    /**
+     * 结束示教 → 出草稿（不落盘；确认在 [save]）。
+     *
+     * 第二百二十六批：回调多一个 [TeachStopKind]——「0 步」不再一律说"没有录到操作"：
+     * 见过导航就说「录到了导航但没有可复用的操作」（222 验收里 example.com→iana.org 正是
+     * 这种：页面明明跳了，用户却被告知"没录到任何操作"）。
+     */
+    fun stop(onDone: (TeachStopKind, TeachSkillDraft?) -> Unit) {
         val rec = recorder ?: return
-        val events = rec.stop()
-        val facts = rec.startFacts ?: TeachPageFacts("", emptyList(), emptyList())
+        recorder = null
         recording = false
-        scope.launch(Dispatchers.IO) {
-            val d = if (events.isEmpty()) null else TeachLearner.buildDraft(
-                events = events,
+        scope.launch {
+            val collected = withContext(Dispatchers.IO) { rec.finish() }
+            val facts = rec.startFacts ?: TeachPageFacts("", emptyList(), emptyList())
+            val d = if (collected.events.isEmpty()) null else TeachLearner.buildDraft(
+                events = collected.events,
                 name = suggestName(facts.url),
                 purpose = "在 ${facts.url.substringAfter("//").substringBefore('/')} 上重复示教的操作",
                 startFacts = facts,
                 nowMs = System.currentTimeMillis(),
             )
+            val kind = TeachStopRules.kind(d?.skill?.steps?.size ?: 0, collected.sawNavigation)
             stepCount = d?.skill?.steps?.size ?: 0
-            draft = d
-            withContext(Dispatchers.Main) { onDraft(d) }
+            draft = if (kind == TeachStopKind.DRAFT) d else null
+            withContext(Dispatchers.Main) { onDone(kind, draft) }
         }
     }
 
