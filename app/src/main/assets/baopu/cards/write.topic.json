@@ -1,0 +1,30 @@
+{
+  "_comment": "第二百一十二批 · 选题方案卡（只借 190 的方案字段做样例；190 的流程卡本身一行不动）。",
+  "templateId": "write.topic",
+  "version": 1,
+  "titleKey": "baopu_card_write_title",
+  "emptyTextKey": "baopu_card_unfilled",
+  "groups": [
+    {
+      "key": "plan",
+      "titleKey": "baopu_card_write_g_plan",
+      "rows": [
+        { "key": "topic", "labelKey": "baopu_card_write_topic", "copyable": true },
+        { "key": "style", "labelKey": "baopu_card_write_style" },
+        { "key": "words", "labelKey": "baopu_card_write_words" },
+        { "key": "duration", "labelKey": "baopu_card_write_duration" }
+      ]
+    },
+    {
+      "key": "risk",
+      "titleKey": "baopu_card_write_g_risk",
+      "rows": [
+        { "key": "risk", "labelKey": "baopu_card_write_risk" }
+      ]
+    }
+  ],
+  "actions": [
+    { "id": "copyAll", "labelKey": "baopu_card_action_copy_all" },
+    { "id": "followUp", "labelKey": "baopu_card_action_follow_up" }
+  ]
+}
