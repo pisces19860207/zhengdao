@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicLong
  * 给模型的注入（**限流，别吵**）。
  *
  * 规则（派工单 §3.2，逐条落到代码）：
- * 1. **只对 R2/R3、批量、覆盖、删除**注入；R0 只读**一律不注入**；
+ * 1. **只对非只读（矩阵 R1 以上）、批量、覆盖、删除**注入；R0 只读**一律不注入**
+ *    （第二百二十三批：门槛跟着矩阵的口径，见 [noteFor] 里的注释）；
  * 2. 单次 ≤ [MAX_CHARS] 字；
  * 3. 同一句在 [DEDUPE_MS] 内只注一次（模型同一动作反复来，别把同一句话灌三遍）；
  * 4. **注入不改变确认清单**——本对象只产一句 note，不碰任何确认/权限判据。
@@ -49,8 +50,11 @@ internal object ImpactInject {
     fun noteFor(call: ToolCall, impact: Impact, nowMs: Long = System.currentTimeMillis()): String? {
         if (impact.kind == Impact.Kind.NONE) return null
         if (impact.unknown) return null // "未知"没有信息量，注进去只是噪音
-        val tier = ImpactRisk.tierOf(call)
-        if (tier < 2) return null // R0/R1 一律不注入
+        // 第二百二十三批：档位改由风险矩阵给（`RiskGate.tierOf` 就是 `RiskMatrix.classify` 的底档）。
+        // 门槛随之从"R2 以上"改成"非只读（R1 以上）"：矩阵里 R1 就是"写工作区内的东西"，
+        // 而 220 的本意是"改盘了才多说一句"——按 219 的命名，那句话的门槛正是 R0 之外。
+        val tier = RiskGate.tierOf(call)
+        if (tier < 1) return null // R0 只读一律不注入
         val worth = impact.overwriteTotal > 0 || impact.deleteCount > 0 ||
             impact.moved > 0 || impact.collisions > 0 || impact.newFiles > 0
         if (!worth) return null

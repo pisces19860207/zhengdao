@@ -3103,7 +3103,8 @@ internal class RunEngine(
         // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
         // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
         val oc = runBlocking {
-            confirmFlow.enter(sessionId, step, result.call) { name, text ->
+            // 第二百二十三批：把矩阵给的判定理由带进卡（卡面上那一行；null ⇒ 不摆）
+            confirmFlow.enter(sessionId, step, result.call, result.reasonLine) { name, text ->
                 writeSpill(sessionId, name, text)
             }
         }

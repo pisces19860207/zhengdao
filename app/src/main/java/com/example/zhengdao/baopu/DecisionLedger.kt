@@ -77,6 +77,18 @@ internal enum class DecisionKind(
 
     /** 104 批既有的工具组授权行（复用，不新造语义；不进抽检）。 */
     TOOL_GRANT("tool_grant", DecisionGroup.GRANT, true, DecisionAudit.NONE),
+
+    /**
+     * 第二百二十三批：**未分类工具被闸问到**（fail-closed 的留痕）。
+     *
+     * 为什么必须有这一类、不能塞进 [AUTO_ACT]：AUTO_ACT 记的是"模型已经真的动了手"，
+     * 而这条记的是"闸没有判据、只好先问"——前者是既成事实，后者是**配置缺口**。
+     * 混在一起，抽检时就分不出"这句该不该问"和"这件事该不该做"。
+     *
+     * `wire` 与 `RiskVerdict.auditTag` 逐字相同（`unclassified_tool`）：那就是这条账的机器键，
+     * 一个字都不许两边各写一个。
+     */
+    RISK_UNCLASSIFIED("unclassified_tool", DecisionGroup.GRANT, false, DecisionAudit.NONE),
     ;
 
     companion object {

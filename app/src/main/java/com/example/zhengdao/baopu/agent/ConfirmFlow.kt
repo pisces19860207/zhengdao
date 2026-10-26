@@ -41,6 +41,15 @@ data class ConfirmRequest(
     val mergeCount: Int = 1,
     val scopeOptions: List<ConfirmScope> = ConfirmRisk.scopesFor(tool),
     val highRisk: Boolean = ConfirmRisk.isHighRisk(tool),
+    /**
+     * 第二百二十三批：**为什么问你**——风险矩阵主判据的一句人话（≤30 字单行）。
+     *
+     * 缺省 null ⇒ 存量构造点（含重启恢复卡）一个字不改；它占的是 220 影响提示那**一行**
+     * 的位置（不新增卡片、不加按钮），合成在 `RiskTell.cardLine`。重启恢复卡没有判定
+     * 可重放（pending 只存了参数），所以恢复出来的卡上这一行本来就是空——如实留空，
+     * 不许现编一句。
+     */
+    val reasonLine: String? = null,
 ) : EngineEvent
 
 /**
@@ -143,11 +152,13 @@ internal class ConfirmFlow(
      *    与单活跃门丢弃第二个的同款收场——同一个请求执行一次即够）。
      *
      * @param spillWriter spill 落盘注入（引擎给：落工作区内 `.baopu-spill/`）
+     * @param reasonLine 第二百二十三批：矩阵主判据的一句人话（卡面上那一行；null ⇒ 不摆）
      */
     suspend fun enter(
         sessionId: Long,
         step: Int,
         call: ToolCall,
+        reasonLine: String? = null,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
     ): Outcome {
         val key = ConfirmKeys.of(call.name, call.arguments)
@@ -172,6 +183,7 @@ internal class ConfirmFlow(
                         mergeCount = merged,
                         scopeOptions = ConfirmRisk.scopesFor(waiting.call.name),
                         highRisk = ConfirmRisk.isHighRisk(waiting.call.name),
+                        reasonLine = reasonLine,
                     ),
                 )
                 log("抱朴确认：同 key 等待中（${call.name}），合并显示第 $merged 次，不重复弹卡")
@@ -199,6 +211,7 @@ internal class ConfirmFlow(
                 mergeCount = 1,
                 scopeOptions = ConfirmRisk.scopesFor(call.name),
                 highRisk = ConfirmRisk.isHighRisk(call.name),
+                reasonLine = reasonLine,
             ),
         )
         // ③ 挂起等（仅前台计时；见类 KDoc 为什么不用 withTimeoutOrNull）

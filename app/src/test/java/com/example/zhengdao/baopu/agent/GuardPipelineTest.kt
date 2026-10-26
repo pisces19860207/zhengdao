@@ -6,6 +6,9 @@
 // 坐实的话，「五段必须齐」只是文字。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.RiskClass
+import com.example.zhengdao.baopu.RiskTable
+import com.example.zhengdao.baopu.ToolRule
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -139,7 +142,17 @@ class GuardPipelineTest {
                     ToolOutcome.Failed("磁盘抖动")
                 },
             )
-            GuardPipeline(reg, { root }, { null }, directRunner()).execute(ToolCall("c", "boom", JSONObject()), { _, _ -> null })
+            // 第二百二十三批：假工具在 219 的表上没有行 ⇒ 会 fail-closed 必问；
+            // 这条测的是"执行崩了要给原文"，所以给 `boom` 显式配一行档（夹具的事）。
+            GuardPipeline(
+                reg,
+                { root },
+                { null },
+                directRunner(),
+                riskTable = RiskTable.DEFAULT.copy(
+                    tools = RiskTable.DEFAULT.tools + ("boom" to ToolRule(RiskClass.R0)),
+                ),
+            ).execute(ToolCall("c", "boom", JSONObject()), { _, _ -> null })
         }
         assertTrue(r is GuardPipeline.Result.Failed)
         assertTrue((r as GuardPipeline.Result.Failed).error.contains("磁盘抖动"))
