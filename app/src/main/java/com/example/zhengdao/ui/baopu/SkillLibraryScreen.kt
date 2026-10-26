@@ -50,7 +50,9 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.ReflectionArchive
 import com.example.zhengdao.baopu.ReflectionCandidate
 import com.example.zhengdao.baopu.SeedSkills
+import com.example.zhengdao.baopu.SkillApplicability
 import com.example.zhengdao.baopu.SkillAudit
+import com.example.zhengdao.baopu.SkillContract
 import com.example.zhengdao.baopu.SkillDraftGovernor
 import com.example.zhengdao.baopu.SkillIndexReconcile
 import com.example.zhengdao.baopu.SkillPromote
@@ -60,6 +62,7 @@ import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
 import com.example.zhengdao.baopu.TeachParam
 import com.example.zhengdao.baopu.TeachParamRun
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.util.TimeFormats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -601,6 +604,8 @@ private fun SkillRow(
     var replayParams by remember(row.file.absolutePath) { mutableStateOf<List<TeachParam>?>(null) }
     var replayAsk by remember(row.file.absolutePath) { mutableStateOf<String?>(null) }
     var replayBusy by remember(row.file.absolutePath) { mutableStateOf(false) }
+    // 第二百三十三批 §1 规则 1：回放前那句「先补契约」——提示，**不拦人**（人点名照样跑，负例⑧）
+    var replayNote by remember(row.file.absolutePath) { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxWidth()) {
         ui.view?.let { v ->
@@ -646,6 +651,7 @@ private fun SkillRow(
                     enabled = !replayBusy,
                     onClick = {
                         replayBusy = true
+                        replayNote = SkillApplicability.preReplayNote(row.body)
                         controller.prepareSkillReplay(row) { err, params ->
                             when {
                                 err != null -> {
@@ -654,6 +660,7 @@ private fun SkillRow(
                                 }
                                 params.isEmpty() -> controller.runSkillReplayAsync(row, "") { run ->
                                     replayBusy = false
+                                    replayNote = null
                                     if (run.ask != null) {
                                         // 声明了参数却没取到（空表不该走到这）：给反问，不空跑
                                         onActionDone(run.ask)
@@ -701,6 +708,13 @@ private fun SkillRow(
                 }
             }
         }
+        replayNote?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodySmall,
+                color = zhengdaoErrorText(),
+            )
+        }
         replayParams?.let { params ->
             ReplayParamsDialog(
                 skillName = row.name,
@@ -715,6 +729,7 @@ private fun SkillRow(
                     replayBusy = true
                     controller.runSkillReplayAsync(row, sentence) { run ->
                         replayBusy = false
+                        replayNote = null
                         if (run.ask != null) {
                             replayAsk = run.ask
                         } else {
@@ -790,10 +805,17 @@ private fun MetaLine(row: SkillLibraryRow) {
     val last = row.lastUseMs?.let { TimeFormats.minuteStamp(it) }
         ?: stringResource(R.string.skill_library_never_used)
     val duplicate = row.duplicateOf?.let { stringResource(R.string.skill_library_duplicate, it) }.orEmpty()
+    // 第二百三十三批规则 1：缺契约的技能**标出来**（contract_missing 不静默放过）——
+    // 判断全在纯函数 SkillContract 里，页面只显示那两个字。
+    val contract = stringResource(
+        R.string.skill_library_contract,
+        SkillContract.shortLabel(SkillContract.parse(row.body)),
+    )
     Text(
         text = stringResource(R.string.skill_library_meta, src, layer, row.uses, last) +
             (if (row.archivedAt != null) stringResource(R.string.skill_library_retired_at, row.archivedAt) else "") +
-            duplicate,
+            duplicate +
+            contract,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
