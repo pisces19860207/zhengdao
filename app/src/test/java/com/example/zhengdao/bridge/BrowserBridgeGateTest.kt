@@ -8,6 +8,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 浏览器桥门禁（阶段 3 重建，2026-10-15；设计文档 §4.5）。
@@ -196,12 +198,12 @@ class BrowserBridgeGateTest {
         assertFalse("不许 openFileInput/openFileOutput（App 私有文件）", commands.contains("openFileInput") || commands.contains("openFileOutput"))
         assertFalse("不许直接拿 Context 的 filesDir 写东西", commands.contains("context.filesDir"))
         assertFalse("不许起别的 App", commands.contains("startActivity"))
-        // 唯一允许的目录写入是截图落共享目录（Store.root = Downloads/证道，已 bind 给 guest）
+        // 唯一允许的目录写入是截图落共享目录（ZhengdaoDirs.root = Downloads/证道，已 bind 给 guest）
         // 第一百七十七批：目录名从 `screenshots` 改成 `截屏`（用户口径），落点仍必须是
         // 共享目录、仍不许是 App 私有目录 —— 判据跟着改名走，不是放宽。
         assertTrue(
             "截图必须落共享目录（agent 唯一可达路径），不是 App 私有目录",
-            commands.contains("File(Store.root(context), SHOT_DIR)"),
+            commands.contains("File(ZhengdaoDirs.root(context), SHOT_DIR)"),
         )
         assertTrue(
             "截图目录名必须是 截屏（用户 2026-10-24 口径）",

@@ -54,10 +54,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.PlanRules
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.theme.isZhengdaoDark
 import com.example.zhengdao.ui.theme.rPill
 import com.example.zhengdao.ui.theme.rSheet
-import com.example.zhengdao.util.TimeFormats
 import java.util.Calendar
 
 // ── 尺寸常量（唯一真源：门禁按常量读数，改大改小都要过一遍判断） ─────────────

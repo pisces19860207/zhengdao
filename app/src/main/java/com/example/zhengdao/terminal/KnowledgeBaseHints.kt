@@ -4,12 +4,13 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import androidx.core.content.edit
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.core.AppPrefs
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * FIX-F：**提问时自动附上「资料库线索」**（2026-10-10 用户拍板开工）。

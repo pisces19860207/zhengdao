@@ -5,9 +5,9 @@ import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import com.example.zhengdao.core.IssueCenter
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Store
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.core.ZhengdaoDirs
 import java.io.File
 
 /**
@@ -390,7 +390,7 @@ object KeepaliveArchive {
     /** 导出到公共区（`Download/证道/logs/keepalive`），返回目标目录；失败返回 null。 */
     fun export(ctx: Context): File? = runCatching {
         val src = dir(ctx)
-        val dst = File(Store.logsDir(ctx), DIR).apply { mkdirs() }
+        val dst = File(ZhengdaoDirs.logsDir(ctx), DIR).apply { mkdirs() }
         src.listFiles()?.forEach { f ->
             if (f.isFile) runCatching { f.copyTo(File(dst, f.name), overwrite = true) }
         }

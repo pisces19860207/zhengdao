@@ -19,8 +19,8 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.browser.SensitiveRedactor
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.baopu.BaopuLongformStore
-import com.example.zhengdao.util.TimeFormats
 import java.io.File
 import java.util.Locale
 

@@ -4,6 +4,7 @@ package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 情景记忆（日记）的**文件存取壳**（147 阶段①）——`MemoryStore` 同哲学：
@@ -335,7 +336,7 @@ internal class DiaryStore(
                     rollbackRef = "",
                     reversible = false,
                 ),
-            ) ?: com.example.zhengdao.rootfs.RunLog.log(
+            ) ?: com.example.zhengdao.core.RunLog.log(
                 "日记真删：决策记录没写成（${DecisionLedger.lastError}）",
             )
         }

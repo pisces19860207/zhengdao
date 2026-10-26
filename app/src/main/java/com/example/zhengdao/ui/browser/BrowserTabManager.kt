@@ -3,7 +3,7 @@
 
 package com.example.zhengdao.ui.browser
 
-import com.example.zhengdao.browser.BrowserSnapshotPolicy
+import com.example.zhengdao.R
 import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -13,15 +13,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.core.net.toUri
-import com.example.zhengdao.R
 import com.example.zhengdao.browser.BrowserMemoryProbe
+import com.example.zhengdao.browser.BrowserSnapshotPolicy
 import com.example.zhengdao.browser.BrowserTabPolicy
 import com.example.zhengdao.browser.EngineSecurityConfig
 import com.example.zhengdao.browser.LocalPreviewPolicy
 import com.example.zhengdao.browser.NavigationDelegate
 import com.example.zhengdao.browser.PreviewMode
 import com.example.zhengdao.browser.WebViewEngine
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 玄览多标签管理器（第⑨刀 B · 阶段 2 §4.2）——按 tabId 管多个 Engine + 渲染优先级 + 生命周期。

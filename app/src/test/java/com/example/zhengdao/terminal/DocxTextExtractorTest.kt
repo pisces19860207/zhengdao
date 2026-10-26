@@ -8,6 +8,7 @@ import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import com.example.zhengdao.core.doc.DocxTextExtractor
 
 /**
  * P3a `.docx` 提取的单测（**零依赖**：zip 用 JDK 自带，测试数据在测试里现造）。

@@ -14,6 +14,7 @@ import java.util.Locale
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.example.zhengdao.core.TimeFormats
 
 /**
  * B-补-24（2026-10-16）：时间戳格式化的共享 formatter。
@@ -137,20 +138,38 @@ class TimeFormatsTest {
 
     @Test
     fun `门禁_B_补_24_主源码里不再有 SimpleDateFormat`() {
-        val root = mainSourceRoot()
+        // 第二百四十批：TimeFormats 搬进 `:core`，扫描范围跟着扩到两个模块 ——
+        // 否则「主源码里不许再出现 SimpleDateFormat」这条会悄悄漏掉 :core（真源所在的那一半）。
+        val roots = listOf(mainSourceRoot(), coreSourceRoot())
         val offenders = mutableListOf<String>()
-        root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { f ->
-            val stripped = stripComments(f.readText())
-            if (stripped.contains("SimpleDateFormat(")) {
-                offenders += f.relativeTo(root).path
+        roots.forEach { root ->
+            root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { f ->
+                val stripped = stripComments(f.readText())
+                if (stripped.contains("SimpleDateFormat(")) {
+                    offenders += f.relativeTo(root).path
+                }
             }
         }
         assertTrue(
-            "主源码里不该再逐次新建 SimpleDateFormat（B-补-24）——请改用 util/TimeFormats.kt；命中：$offenders",
+            "主源码里不该再逐次新建 SimpleDateFormat（B-补-24）——请改用 :core 的 TimeFormats；命中：$offenders",
             offenders.isEmpty(),
         )
         // 真源存在性：TimeFormats 自己的并发安全由上一个用例保证，这里只防「文件被删」
-        assertTrue("util/TimeFormats.kt 必须在主源码里", File(root, "util/TimeFormats.kt").isFile)
+        assertTrue(
+            ":core 里的 TimeFormats.kt 必须在（真源）",
+            File(coreSourceRoot(), "TimeFormats.kt").isFile,
+        )
+    }
+
+    /** `:core` 的主源码根（第二百四十批新增：TimeFormats 的真源在这里）。 */
+    private fun coreSourceRoot(): File {
+        val candidates = listOf(
+            File("../core/src/main/java/com/example/zhengdao/core"),
+            File("core/src/main/java/com/example/zhengdao/core"),
+        )
+        val hit = candidates.firstOrNull { it.isDirectory }
+        assertTrue("找不到 :core 源码目录（cwd=${File(".").absolutePath}）：$candidates", hit != null)
+        return hit!!
     }
 
     private fun mainSourceRoot(): File {

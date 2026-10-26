@@ -11,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * 第七十七批源码门禁。
@@ -137,7 +138,7 @@ class SettingsPureGateTest {
             // ⑧ 扫描上限
             "MAX_SCAN",
             // ⑦ 路径行判据（状态文案分支里的 `State.DISABLED ->` 是视觉，不算）
-            "!= com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED",
+            "!= com.example.zhengdao.core.kb.KnowledgeBase.State.DISABLED",
             // ⑥ 别处资料库提示
             "otherKb.isNotEmpty()",
         )) {

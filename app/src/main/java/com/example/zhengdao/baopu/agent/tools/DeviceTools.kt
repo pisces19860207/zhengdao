@@ -12,7 +12,7 @@
 //   - phone_dial：号码清洗后只回显位数与前几位；日志只记长度。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import org.json.JSONObject
 
 /** Android 侧的三个口（生产实现在 `BaopuRuntime`；null ⇒ 工具如实说没接上）。 */

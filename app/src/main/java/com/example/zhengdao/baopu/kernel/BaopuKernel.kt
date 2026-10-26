@@ -18,6 +18,7 @@
 package com.example.zhengdao.baopu.kernel
 
 import com.example.zhengdao.baopu.SegmentKind
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 抱朴内核：**七条边界**的唯一真相源。
@@ -41,8 +42,14 @@ object BaopuKernel {
      * **不进工作区**）；全局与工作区不许互相覆盖。
      */
     object Data {
-        /** 抱朴唯一对外输出口（旧 `资料库/整理`）。 */
-        const val DIR_PRODUCTS = "产物"
+        /**
+         * 抱朴唯一对外输出口（旧 `资料库/整理`）。
+         *
+         * 第二百四十批起**真源在 :core**（[ZhengdaoDirs.PRODUCTS_DIR]）：资料库
+         * （`core/kb/KnowledgeBase`）与抱朴读同一个常量。这里保留同名同值别名，
+         * 只为不改动抱朴侧几十处调用点 —— **不许在这里改值**。
+         */
+        const val DIR_PRODUCTS = ZhengdaoDirs.PRODUCTS_DIR
 
         /** 用户投递原件的目录（旧 `资料库/投递`，已退回工作区根）。 */
         const val DIR_DELIVER = "投递"
@@ -78,7 +85,8 @@ object BaopuKernel {
         const val MEMORY_BACKUP_KEEP = 5
 
         // ── 旧布局（157 迁移专用；新代码不许引用） ──────────────────────────────
-        const val LEGACY_LIBRARY_DIR = "资料库"
+        // 第二百四十批：真源在 :core（[ZhengdaoDirs.LEGACY_LIBRARY_DIR]），此处为同名同值别名。
+        const val LEGACY_LIBRARY_DIR = ZhengdaoDirs.LEGACY_LIBRARY_DIR
         const val LEGACY_LIBRARY_RAW = "资料库/原始"
         const val LEGACY_LIBRARY_DONE = "资料库/整理"
         const val LEGACY_LIBRARY_DELIVER = "资料库/投递"

@@ -4,10 +4,11 @@
 package com.example.zhengdao.terminal
 
 import android.content.Context
-import com.example.zhengdao.rootfs.RootfsCache
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.rootfs.RootfsCache
 
 /**
  * 存储明细与「可选工具」清理（Issue #8 的 B / C / D）。
@@ -227,9 +228,9 @@ object StorageAudit {
                 }
             }
         }
-        runCatching { wipeFiles(Store.agentScriptsDir(ctx)) }
+        runCatching { wipeFiles(ZhengdaoDirs.agentScriptsDir(ctx)) }
         // guest 私有执行副本（/root/.zhengdao/scripts ← filesDir/home/.zhengdao/scripts）
-        runCatching { wipeFiles(Store.hostPrivateScriptsDir(ctx)) }
+        runCatching { wipeFiles(ZhengdaoDirs.hostPrivateScriptsDir(ctx)) }
         // （原先这里还清宿主侧指纹记录目录 filesDir/agents/script-sha —— 2026-10-14 取消
         //   本地缓存复用后不再产生该目录。）
         if (count > 0) {
@@ -307,9 +308,9 @@ object StorageAudit {
             }
 
         // C. 公共区：安装脚本缓存可清（下次安装重下），账本 / 日志 / 资料库只展示、永不清
-        runCatching { Store.agentsDir(ctx) }.getOrNull()?.let { agents ->
+        runCatching { ZhengdaoDirs.agentsDir(ctx) }.getOrNull()?.let { agents ->
             val scriptFiles = runCatching {
-                Store.agentScriptsDir(ctx).listFiles { f -> f.isFile }
+                ZhengdaoDirs.agentScriptsDir(ctx).listFiles { f -> f.isFile }
             }.getOrNull() ?: emptyArray()
             if (scriptFiles.isNotEmpty()) {
                 out += Item(
@@ -329,7 +330,7 @@ object StorageAudit {
                 )
             }
             listOf("logs" to "运行日志", "资料库" to "资料库").forEach { (n, label) ->
-                val d = File(Store.root(ctx), n)
+                val d = File(ZhengdaoDirs.root(ctx), n)
                 val mb = CacheCleaner.bytesToMb(CacheCleaner.fileLengths(d))
                 if (mb > 0) out += Item("公共区工作区", label, mb, removable = false, note = "用户数据：不清")
             }

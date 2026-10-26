@@ -2,7 +2,10 @@
 // 依据的公开接口：RFC 4180 的 CSV 引号转义语义。
 //   （原还列了 OpenCode serve 的 HTTP 端点与 oc/OcRepository.kt —— 那条线 2026-10-16 已随旧
 //    抱朴线清场删除，见 docs/ERRATA.md E-140；本文件保留的纯逻辑不依赖任何网络格式。）
-package com.example.zhengdao.terminal
+package com.example.zhengdao.core.kb
+
+// 第二百四十批（抽 :core）可见性说明：`unwrapArray` 原为 `internal`，现放宽为 `public`：
+// Kotlin 的 `internal` 是模块级的，而它的单测留在 `:app`。纯 JSON 变换，放宽对行为零影响。
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -123,7 +126,7 @@ object KnowledgeBaseSummarizer {
      *
      * @return JSON 数组；输入既非数组、也无 `data` 数组时返回 null
      */
-    internal fun unwrapArray(text: String?): JSONArray? {
+    fun unwrapArray(text: String?): JSONArray? {
         val t = text?.trimStart() ?: return null
         if (t.isEmpty()) return null
         return runCatching {

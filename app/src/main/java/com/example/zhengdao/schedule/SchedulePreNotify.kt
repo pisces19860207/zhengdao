@@ -5,7 +5,7 @@ package com.example.zhengdao.schedule
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.core.AppPrefs
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 「定时任务开始前提醒」的开关与判据（第二百二十九批 §2）。

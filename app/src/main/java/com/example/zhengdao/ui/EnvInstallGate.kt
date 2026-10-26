@@ -16,7 +16,7 @@ package com.example.zhengdao.ui
 
 import androidx.annotation.StringRes
 import com.example.zhengdao.R
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 活会话拦截时给**用户看**的正文资源（中/英各一份，见 strings.xml）。

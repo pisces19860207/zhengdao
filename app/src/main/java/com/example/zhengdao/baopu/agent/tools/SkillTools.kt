@@ -13,8 +13,8 @@
 //   3. **写完必进索引**（含草稿，标「草稿·未验证」）：否则下一次它看不见，只能重新摸索。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaFiles
+import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.SkillAutoOutcome
 import com.example.zhengdao.baopu.SkillAutoWrite
 import com.example.zhengdao.baopu.SkillPromote
@@ -25,6 +25,8 @@ import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
 
 /** 写技能（`write_skill`）：抱朴自己的「记下来」通道。 */
 internal object SkillTools {
@@ -242,7 +244,7 @@ internal object SkillTools {
     private fun recordPromote(root: File, name: String) {
         val f = File(SkillRules.projectSkillDir(root), "$name/${SkillRules.SKILL_FILE}")
         if (!SkillPromote.auditPromote(f, "project", name, SkillPromote.REASON_FULL_USES)) {
-            com.example.zhengdao.rootfs.RunLog.log("技能转正记录写入失败：$name（${SkillPromote.REASON_FULL_USES}）")
+            com.example.zhengdao.core.RunLog.log("技能转正记录写入失败：$name（${SkillPromote.REASON_FULL_USES}）")
         }
     }
 
@@ -286,7 +288,7 @@ internal object SkillTools {
         val head = lines.firstOrNull()?.trim().orEmpty()
         return if (head.startsWith("<!--") && head.contains("status=")) lines.drop(1).joinToString("\n") else body
     }
-    private fun stamp(): String = com.example.zhengdao.util.TimeFormats.fileStamp()
+    private fun stamp(): String = com.example.zhengdao.core.TimeFormats.fileStamp()
 }
 
 

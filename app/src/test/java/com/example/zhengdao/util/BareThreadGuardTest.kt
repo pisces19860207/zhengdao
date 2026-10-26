@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import kotlin.text.Charsets
+import com.example.zhengdao.core.kb.KnowledgeBase
 
 /**
  * P4-2（issue #17）：裸 Thread 纪律守卫。
@@ -346,13 +347,25 @@ class BareThreadGuardTest {
     /** 名字/daemon 的搜索窗口：创建处之后 400 字符（`.apply { … }`、`t.isDaemon = true` 都落在这里）。 */
     private val regionWindow = 400
 
-    /** 扫 App 自己的 Kotlin 源码（vendored termux 是 Java，天然不在范围内）。 */
+    /**
+     * 扫 App 自己的 Kotlin 源码（vendored termux 是 Java，天然不在范围内）。
+     *
+     * 第二百四十批：`KnowledgeBase` 搬进 `:core`（三条 zd-knowledge-base-* 创建点跟着走），
+     * 扫描范围补上 `:core` 的主源码 —— 对账单按**文件名**记，所以条目一个字都不用改；
+     * 同时 :core 里的线程也被这条纪律一起管住。
+     */
     private fun scanAppSources(): List<Site> {
-        val root = File("src/main/java/com/example/zhengdao")
-        return root.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .flatMap { collectSites(it.readText(Charsets.UTF_8), it.path) }
-            .toList()
+        val roots = listOf(
+            File("src/main/java/com/example/zhengdao"),
+            File("../core/src/main/java/com/example/zhengdao/core"),
+        ).filter { it.isDirectory }
+        return roots
+            .flatMap { root ->
+                root.walkTopDown()
+                    .filter { it.isFile && it.extension == "kt" }
+                    .flatMap { collectSites(it.readText(Charsets.UTF_8), it.path) }
+                    .toList()
+            }
     }
 
     /**

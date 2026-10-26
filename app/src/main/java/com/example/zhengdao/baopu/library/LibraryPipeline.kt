@@ -4,8 +4,8 @@
 // java.io.File 拷贝语义（JDK 标准库）。
 package com.example.zhengdao.baopu.library
 
-import com.example.zhengdao.terminal.DocxTextExtractor
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.core.doc.DocxTextExtractor
 import java.io.File
 
 /**

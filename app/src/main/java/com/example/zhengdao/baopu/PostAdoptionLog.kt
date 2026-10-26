@@ -14,6 +14,7 @@ package com.example.zhengdao.baopu
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /** 一条采纳事件 ⇒ JSONL 的一行（键名固定，测试逐个钉）。 */
 internal fun PostAdoptionEvent.toJson(): JSONObject = JSONObject()
@@ -99,7 +100,7 @@ internal class PostAdoptionLog(private val file: File) {
         val text = runCatching {
             if (file.isFile) file.readText(Charsets.UTF_8) else ""
         }.getOrElse {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：采纳效果账本读失败 ${it.javaClass.simpleName}: ${it.message}",
             )
             return null
@@ -122,7 +123,7 @@ internal class PostAdoptionLog(private val file: File) {
             }
         }
         if (dropped > 0) {
-            com.example.zhengdao.rootfs.RunLog.log("抱朴：采纳效果账本有 $dropped 行认不出（已跳过）")
+            com.example.zhengdao.core.RunLog.log("抱朴：采纳效果账本有 $dropped 行认不出（已跳过）")
         }
         return PostAdoptionLedger(events, settlements)
     }

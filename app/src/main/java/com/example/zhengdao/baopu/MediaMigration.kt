@@ -18,8 +18,8 @@
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
 /** 两笔迁移共用的「对账报告」出口（同一个目录，方便一起看）。 */

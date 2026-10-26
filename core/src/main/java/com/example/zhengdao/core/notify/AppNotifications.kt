@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 依据的公开接口：Android 官方文档（NotificationChannel，API 26+）。
-package com.example.zhengdao.terminal
+package com.example.zhengdao.core.notify
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,8 +10,13 @@ import android.content.Context
  * 通知渠道注册表（P6，2026-10-06）：4 渠道分类（用户定稿）。
  * - ID 发布后不可重命名（系统按 ID 记忆用户设置）——只在这里集中定义
  * - 首次调用时创建；重复创建是幂等操作（系统忽略同 ID 重复注册）
+ *
+ * 第二百四十批（终端解耦第一刀）：从 `terminal/NotificationChannels` 搬进 `:core`，
+ * 类名改为 [AppNotifications]（派工单口径）。**四个渠道 id 一字未改**——
+ * `session` / `install` / `agent` / `update` 是已发布值：系统按 id 记忆用户的通知设置，
+ * 改 id 等于把用户的静音/重要性设置全部重置（负例②）。
  */
-object NotificationChannels {
+object AppNotifications {
 
     /** 会话状态（前台服务常驻，LOW 不可划掉——划掉=保活失效） */
     const val SESSION = "session"

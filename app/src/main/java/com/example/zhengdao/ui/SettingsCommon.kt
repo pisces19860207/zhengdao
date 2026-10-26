@@ -52,11 +52,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
+import com.example.zhengdao.BackChevron
+import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.R
 import com.example.zhengdao.core.AppPrefs
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.core.RunLog
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -67,10 +67,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.core.kb.KnowledgeBase
+import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RootfsDelta
@@ -79,8 +77,10 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
-import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -97,12 +97,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.BackChevron
-import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.ui.AppState.rootfsInstalled
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.ui.util.pressClickable
 import kotlinx.coroutines.CoroutineScope
+import com.example.zhengdao.util.HumanizeError
 /**
  * 索引里的字节数 → 人读大小。`<= 0` = 索引没给这个字段（老格式/字段缺失），
  * 显示"大小未知"而不是"约 0 MB"（后者会让用户以为包是空的）。
@@ -489,13 +490,13 @@ internal fun KnowledgeBaseHelpDialog(ctx: android.content.Context, onDismiss: ()
         body = withContext(Dispatchers.IO) {
             runCatching {
                 val f = File(
-                    com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx),
-                    com.example.zhengdao.terminal.KnowledgeBase.F_README,
+                    com.example.zhengdao.core.kb.KnowledgeBase.doneDir(ctx),
+                    com.example.zhengdao.core.kb.KnowledgeBase.F_README,
                 )
                 if (f.isFile) f.readText(Charsets.UTF_8)
                 else ctx.getString(
                     R.string.kb_help_missing,
-                    com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx).absolutePath,
+                    com.example.zhengdao.core.kb.KnowledgeBase.doneDir(ctx).absolutePath,
                 )
             }.getOrDefault(ctx.getString(R.string.kb_help_failed))
         }

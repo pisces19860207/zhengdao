@@ -26,6 +26,7 @@ package com.example.zhengdao.baopu
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /** 影子的三值结论（派工单 §1 原文）。它描述的是**假想**的自动口，不是发生过的动作。 */
 internal enum class ShadowVerdict {
@@ -216,7 +217,7 @@ internal class EvolutionShadowLog(private val file: File) : EvolutionShadowSink 
         val text = runCatching {
             if (file.isFile) file.readText(Charsets.UTF_8) else ""
         }.getOrElse {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：影子账本读失败 ${it.javaClass.simpleName}: ${it.message}",
             )
             return null
@@ -234,7 +235,7 @@ internal class EvolutionShadowLog(private val file: File) : EvolutionShadowSink 
             rowOf(obj)?.let { out += it } ?: run { dropped++ }
         }
         if (dropped > 0) {
-            com.example.zhengdao.rootfs.RunLog.log("抱朴：影子账本有 $dropped 行认不出（已跳过）")
+            com.example.zhengdao.core.RunLog.log("抱朴：影子账本有 $dropped 行认不出（已跳过）")
         }
         return out
     }
@@ -482,7 +483,7 @@ internal object EvolutionShadowHuman {
                 }
             }
         }.getOrElse {
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "抱朴：人工留痕读数失败（本轮按无配对样本处理）${it.javaClass.simpleName}: ${it.message}",
             )
             emptyList()

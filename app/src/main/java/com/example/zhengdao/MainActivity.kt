@@ -67,11 +67,12 @@ import androidx.core.net.toUri
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.AppState
 import com.example.zhengdao.ui.HomeScreen
-import com.example.zhengdao.ui.SettingsScreen
 import kotlinx.coroutines.launch
+import com.example.zhengdao.ui.SettingsScreen
 import com.example.zhengdao.ui.WelcomeScreen
 
 /** App 自更新检查端点（GitHub Releases 最新发布）。 */
@@ -113,7 +114,7 @@ class MainActivity : ComponentActivity() {
         if (allowIncoming) {
             intent?.getLongExtra(com.example.zhengdao.ui.baopu.BaopuIntents.EXTRA_SESSION, -1L)
                 ?.takeIf { it > 0 }?.let {
-                    com.example.zhengdao.rootfs.RunLog.log("完成通知：请求打开会话 #$it")
+                    com.example.zhengdao.core.RunLog.log("完成通知：请求打开会话 #$it")
                     com.example.zhengdao.ui.baopu.BaopuIntents.requestSession(it)
                 }
         }
@@ -171,32 +172,32 @@ class MainActivity : ComponentActivity() {
         // 单次消费：同一 Intent 对象（例如转屏后 Activity 重建又拿到同一份 launch intent）
         // 只处理一次；两次独立分享即使正文一模一样也会分别处理（token 含对象身份）。
         if (!incomingIntentSingleShot.shouldHandle(request.token)) {
-            com.example.zhengdao.rootfs.RunLog.log("外部 Intent：同一次投递已处理，跳过")
+            com.example.zhengdao.core.RunLog.log("外部 Intent：同一次投递已处理，跳过")
             return
         }
         when (val route = routeIncomingIntent(request)) {
             is IncomingRoute.ShareToBaopu -> {
                 // 只记来源与长度，不记正文（分享内容可能是用户的私事）。
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "外部分享：预填抱朴 ${route.text.length} 字（截断=${route.truncated}）"
                 )
                 com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(route.text, route.truncated)
             }
             is IncomingRoute.ShareImagesToBaopu -> {
                 // 只记张数，不记 Uri（路径可能带别的 App 的目录结构）。
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "外部分享：收图 ${route.count} 张进抱朴附件条（只预填，不自动发送）"
                 )
                 com.example.zhengdao.ui.baopu.BaopuIntents.requestImages(streamUris)
             }
             is IncomingRoute.AskBaopu -> {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "深链提问：预填抱朴 ${route.text.length} 字（截断=${route.truncated}）"
                 )
                 com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(route.text, route.truncated)
             }
             is IncomingRoute.PrefillTerminal -> {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "深链终端：预填命令 ${route.command.length} 字（不执行）"
                 )
                 // 复用进终端的唯一入口 terminalIntent(...)；只带预填 extra，**不碰 autocmd**。
@@ -212,7 +213,7 @@ class MainActivity : ComponentActivity() {
             }
             is IncomingRoute.Rejected -> {
                 // 未知/畸形 URI 丢弃并记日志：不记正文，只记形态与长度，够定位即可。
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "外部 Intent 被拒：${route.reason.label}" +
                         "（action=${request.action.orEmpty()}" +
                         " scheme=${request.scheme.orEmpty()}" +
@@ -517,7 +518,7 @@ fun ZhengdaoApp(
             routePrefs.edit { putString("last_route", entry.destination.route) }
             // 路由面包屑（白屏排查用，见上）：一次导航一行，正常使用一天也就几行。
             runCatching {
-                com.example.zhengdao.rootfs.RunLog.log(
+                com.example.zhengdao.core.RunLog.log(
                     "路由 → ${entry.destination.route}" +
                         "（来自 ${nav.previousBackStackEntry?.destination?.route ?: "无"}）"
                 )
@@ -546,7 +547,7 @@ fun ZhengdaoApp(
             val reason = t.message ?: t.toString()
             android.util.Log.e(tag, "进终端失败", t)
             runCatching {
-                com.example.zhengdao.rootfs.RunLog.log("[错误] 进终端失败: $reason")
+                com.example.zhengdao.core.RunLog.log("[错误] 进终端失败: $reason")
             }
             // 2026-10-08：异常原文 → 人话。原文已落 RunLog，用户看的用 [HumanizeError]
             // 转成「没有权限 / 网络超时 / 文件找不到」之类可读短语
@@ -639,7 +640,7 @@ fun ZhengdaoApp(
                         onClick = {
                             if (!nav.popBackStack()) {
                                 runCatching {
-                                    com.example.zhengdao.rootfs.RunLog.log(
+                                    com.example.zhengdao.core.RunLog.log(
                                         "路由：设置页返回时栈已空，兜底回 home（白屏防御）"
                                     )
                                 }

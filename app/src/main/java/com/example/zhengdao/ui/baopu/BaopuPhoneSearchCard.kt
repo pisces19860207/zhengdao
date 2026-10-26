@@ -75,8 +75,8 @@ import com.example.zhengdao.baopu.search.QueryResult
 import com.example.zhengdao.baopu.search.ScanReport
 import com.example.zhengdao.baopu.search.SearchScope
 import com.example.zhengdao.baopu.search.SearchScopeRules
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.rootfs.RunLog
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File

@@ -4,10 +4,11 @@ package com.example.zhengdao.terminal
 
 import android.content.Context
 import com.example.zhengdao.R
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
 import org.json.JSONObject
 import java.io.File
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * Hermes 依赖环境（ERRATA E-025，2026-10-08 真机事故驱动）。
@@ -57,7 +58,7 @@ import java.io.File
 object HermesEnv {
 
     /**
-     * guest 侧脚本落点（相对 **home**；宿主侧 = `Store.hostPrivateScriptsDir(ctx)`，
+     * guest 侧脚本落点（相对 **home**；宿主侧 = `ZhengdaoDirs.hostPrivateScriptsDir(ctx)`，
      * 即 `filesDir/home/.zhengdao/scripts/`）。
      *
      * ⚠️ 2026-10-10（P3-2）：原先落在**工作区**（`Workspace.hostDir/.zhengdao/scripts`）——
@@ -307,7 +308,7 @@ object HermesEnv {
      * （共享存储）里的文件任何 App 都改得动。正文取自 APK 内置 raw 资源，不联网。
      */
     fun writeRepairScript(ctx: Context): Boolean = runCatching {
-        val dir = Store.hostPrivateScriptsDir(ctx)
+        val dir = ZhengdaoDirs.hostPrivateScriptsDir(ctx)
         if (!dir.isDirectory && !dir.mkdirs()) return false
         File(dir, "hermes-env-repair.sh").writeText(readRepairScript(ctx))
         true

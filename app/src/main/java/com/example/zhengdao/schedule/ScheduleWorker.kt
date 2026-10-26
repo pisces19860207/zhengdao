@@ -5,7 +5,7 @@ package com.example.zhengdao.schedule
 import android.content.Context
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 定时任务的执行体（第一百六十七批 §3）：WorkManager 那条路的落点，也是精确闹钟叫醒后的补扫落点。

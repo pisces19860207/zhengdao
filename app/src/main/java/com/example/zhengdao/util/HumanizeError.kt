@@ -31,7 +31,7 @@ import javax.net.ssl.SSLException
  * 3. **不透露敏感诊断**——文件系统路径、errno 数字、stack trace 不进 title（这些已在 RunLog）。
  *    iOS HIG：避免把调试细节塞给用户。
  * 4. **≤ 70 字符**（MD3 Toast 规范：Android 12+ 系统 Toasts 限 2 行）。
- * 5. **保留原始**——`t.message` 仍可经 [com.example.zhengdao.rootfs.RunLog] 落盘
+ * 5. **保留原始**——`t.message` 仍可经 [com.example.zhengdao.core.RunLog] 落盘
  *    （Snackbar 的"查看日志"按钮可看到），不丢可诊断性。
  * 6. **未知异常兜底保留类简名**——给"出错了"而不是再吐一个 NPE；但把异常类简名放进括号，
  *    报障时对得上号（`t.message` 原文仍只在日志里，不进用户文案）。
@@ -49,7 +49,7 @@ import javax.net.ssl.SSLException
  * - **RunLog.log**（开发/支持看的）→ 继续用 `t.message` / `t.javaClass.simpleName`。
  * - **业务断言 / 测试**→ 继续用原 `Throwable`。
  *
- * 2026-10-08 新增；与 [com.example.zhengdao.rootfs.RunLog] 并存而非替换。
+ * 2026-10-08 新增；与 [com.example.zhengdao.core.RunLog] 并存而非替换。
  *
  * ## 包位置
  *

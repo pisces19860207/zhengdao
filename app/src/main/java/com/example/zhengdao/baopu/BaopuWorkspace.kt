@@ -13,14 +13,15 @@
 //
 // 唯一还借用终端那边的东西是「共享存储授权」这一个**事实判定**——那不是设置，
 // 是这台机器当前的权限状态；复制一份判定就是 E-005 那种双判，所以这里委托
-// `ProotLauncher.storageGranted`（与 `terminal/Workspace` 用的是同一个实现）。
+// `EnvironmentScope.hasAllFilesAccess`（第二百四十批起判定已下沉 :core，
+// 与 `terminal/Workspace`、`ProotLauncher.storageGranted` 用的是同一个实现）。
 package com.example.zhengdao.baopu
 
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.core.AppPrefs
-import com.example.zhengdao.terminal.ProotLauncher
+import com.example.zhengdao.core.EnvironmentScope
 import java.io.File
 
 /**
@@ -42,8 +43,8 @@ object BaopuWorkspace {
     /** 默认工作区（`Download/证道`）——**不写死绝对路径以外的任何东西**，就这一个来源。 */
     fun defaultDir(): File = File("$SHARED_ROOT/Download/$DEFAULT_DIR_NAME")
 
-    /** 共享存储是否已授权（委托终端的**同一个实现**，不是第二份判定）。 */
-    fun storageGranted(ctx: Context): Boolean = ProotLauncher.storageGranted(ctx)
+    /** 共享存储是否已授权（委托 `:core` 的**同一个实现**，不是第二份判定）。 */
+    fun storageGranted(ctx: Context): Boolean = EnvironmentScope.hasAllFilesAccess(ctx)
 
     /**
      * 抱朴当前的宿主目录。保证目录存在。

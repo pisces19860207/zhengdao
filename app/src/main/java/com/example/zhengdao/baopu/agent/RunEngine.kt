@@ -18,18 +18,8 @@ import com.example.zhengdao.baopu.BaopuPreset
 import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.Compressor
 import com.example.zhengdao.baopu.ContextAssembler
-import com.example.zhengdao.baopu.SkillRefine
-import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.HardFacts
 import com.example.zhengdao.baopu.HistoryMessage
-import com.example.zhengdao.baopu.VisionConsent
-import com.example.zhengdao.baopu.VisionFiles
-import com.example.zhengdao.baopu.VisionRouting
-import com.example.zhengdao.baopu.ScreenshotConsent
-import com.example.zhengdao.baopu.SensitivePage
-import com.example.zhengdao.baopu.verify.ArtifactVerifier
-import com.example.zhengdao.baopu.verify.Finding
-import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.LlmClient
 import com.example.zhengdao.baopu.LlmEvent
 import com.example.zhengdao.baopu.LlmMessage
@@ -41,11 +31,21 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.baopu.ScreenshotConsent
+import com.example.zhengdao.baopu.SensitivePage
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SessionPlanStore
+import com.example.zhengdao.baopu.SkillRefine
+import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.VisionConsent
+import com.example.zhengdao.baopu.VisionFiles
+import com.example.zhengdao.baopu.VisionRouting
+import com.example.zhengdao.baopu.verify.ArtifactVerifier
+import com.example.zhengdao.baopu.verify.Finding
+import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -175,7 +175,7 @@ internal class RunEngine(
     /**
      * 截图目录的根（第一百七十七批）。
      *
-     * 生产传 `Store.root(appCtx)`（＝`Download/证道`）：`VisionFiles.load` 的越界判据
+     * 生产传 `ZhengdaoDirs.root(appCtx)`（＝`Download/证道`）：`VisionFiles.load` 的越界判据
      * 要认这第二个根，抱朴才读得到自己截的图。默认 `{ null }` ⇒ 关闭第二个根，
      * 存量调用点（含 JVM 测试）一个字都不用改。
      */

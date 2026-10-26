@@ -44,7 +44,7 @@ package com.example.zhengdao.baopu.search
 import android.content.Context
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 
 /** 一条检索命中（rootId 已翻成绝对根，UI 不用再查库）。 */

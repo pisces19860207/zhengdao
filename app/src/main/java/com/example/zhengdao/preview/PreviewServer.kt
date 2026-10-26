@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.preview
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.BufferedOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader

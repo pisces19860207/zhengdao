@@ -2,7 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.util.TimeFormats
+import com.example.zhengdao.core.TimeFormats
 
 /**
  * 情景记忆（日记）层——数据模型、编解码与结构判据（147 阶段①，纯函数 JVM 直测）。

@@ -11,6 +11,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.notify.AppNotifications
 
 class SchedulePreNotifyTest {
 
@@ -46,7 +48,7 @@ class SchedulePreNotifyTest {
     @Test
     fun `负例_不新建通知渠道_复用169那套`() {
         val notifier = source("ScheduleNotifier.kt")
-        assertTrue("仍走 AGENT 渠道", notifier.contains("NotificationChannels.AGENT"))
+        assertTrue("仍走 AGENT 渠道", notifier.contains("AppNotifications.AGENT"))
         assertTrue("仍与 169 同一个前台抑制口径", notifier.contains("AppForeground.isForeground()"))
         // 开始前那条与「已发出」那条身份不同：先响的不许顶掉后发的账
         assertTrue("开始前通知要有自己的 NOTIF_ID_PRE", notifier.contains("NOTIF_ID_PRE = 20261103"))

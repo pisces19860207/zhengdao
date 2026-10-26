@@ -65,9 +65,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuGuardCore
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
-import com.example.zhengdao.util.TimeFormats
 import java.io.File
 
 /**

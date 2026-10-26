@@ -4,7 +4,7 @@ package com.example.zhengdao.terminal
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.core.AppPrefs
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject

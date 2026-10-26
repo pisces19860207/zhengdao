@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
 
 /**
  * 模型路由与能力过滤的结构性门禁（G1–G9）。

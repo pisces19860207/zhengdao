@@ -160,15 +160,17 @@ class TargetSdkGateTest {
 
     @Test
     fun `存储判定双通道_36 走所有文件访问_28 走 WRITE 权限`() {
-        val launcher = kotlinCode(read("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt"))
+        // 第二百四十批：判定实现从 terminal/ProotLauncher 搬到 :core/EnvironmentScope
+        // （ProotLauncher.storageGranted 现在只剩委托）。判据一字未改，只是换了被扫的文件。
+        val scope = kotlinCode(read("../core/src/main/java/com/example/zhengdao/core/EnvironmentScope.kt"))
         assertTrue(
             "storageGranted 不查 isExternalStorageManager —— 36 上 WRITE 权限已 inert，" +
                 "少这条通道共享存储全灭",
-            launcher.contains("isExternalStorageManager"),
+            scope.contains("isExternalStorageManager"),
         )
         assertTrue(
             "storageGranted 不认 WRITE_EXTERNAL_STORAGE —— target 28 设备的 legacy 视图通道被删了",
-            launcher.contains("WRITE_EXTERNAL_STORAGE"),
+            scope.contains("WRITE_EXTERNAL_STORAGE"),
         )
         val main = kotlinCode(read("src/main/java/com/example/zhengdao/MainActivity.kt"))
         // 134 批（lint ObsoleteSdkInt）：minSdk=36 ⇒ 原 `SDK_INT < 30` 的存储补授权分支是死代码，

@@ -7,6 +7,8 @@ package com.example.zhengdao.baopu
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 第一百七十七批 · **接线门禁**（S1 像素进模型 ＋ 截图授权闸）。
@@ -166,8 +168,8 @@ class ScreenshotWiringTest {
         )
         val runtime = src("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt")
         assertTrue(
-            "生产必须注入落盘根（Store.root = Download/证道）",
-            runtime.contains("shotRoot = { Store.root(appCtx) }"),
+            "生产必须注入落盘根（ZhengdaoDirs.root = Download/证道）",
+            runtime.contains("shotRoot = { ZhengdaoDirs.root(appCtx) }"),
         )
     }
 

@@ -12,15 +12,15 @@ import androidx.core.content.ContextCompat
 import com.example.zhengdao.AppForeground
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.NotificationChannels
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.notify.AppNotifications
 import com.example.zhengdao.ui.baopu.BaopuIntents
 
 /**
  * 定时任务的通知（第一百六十七批 §0.5 约束 2）。
  *
  * **复用第一百六十九批那套，不建第二套**，具体复用四样：
- * 1. 渠道：既有 [NotificationChannels.AGENT]（2026-10-06 定稿的四个渠道，不新增第五个）；
+ * 1. 渠道：既有 [AppNotifications.AGENT]（2026-10-06 定稿的四个渠道，不新增第五个）；
  * 2. 前台口径：`App 在前台就不弹`——与 `BaopuCompletionRules.shouldPost` 同一个判断，
  *    用户正看着 App 时不再敲一下；
  * 3. 权限口径：`POST_NOTIFICATIONS` 缺失 ⇒ 只写日志、不弹、不崩，也不影响任务本身；
@@ -145,8 +145,8 @@ internal object ScheduleNotifier {
         }
         if (AppForeground.isForeground()) return
         runCatching {
-            NotificationChannels.ensureAll(context)
-            val n = Notification.Builder(context, NotificationChannels.AGENT)
+            AppNotifications.ensureAll(context)
+            val n = Notification.Builder(context, AppNotifications.AGENT)
                 .setSmallIcon(R.drawable.ic_terminal)
                 .setContentTitle(context.getString(titleRes, titleArg))
                 .setContentText(context.getString(textRes))

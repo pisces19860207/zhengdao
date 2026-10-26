@@ -6,6 +6,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * N-4 A 案隐私门禁（第⑰刀）——日志落点 + 脱敏 + 双语对称。
@@ -52,13 +54,13 @@ class RunLogPrivacyGateTest {
 
     @Test
     fun `dir 实现体不再探测公共区`() {
-        val src = source("src/main/java/com/example/zhengdao/rootfs/RunLog.kt")
-        // dir() 的函数体里不得再出现公共区探测（Store.logsDir 只允许出现在
+        val src = source("../core/src/main/java/com/example/zhengdao/core/RunLog.kt")
+        // dir() 的函数体里不得再出现公共区探测（ZhengdaoDirs.logsDir 只允许出现在
         // copyLegacyFromPublic 里——那是"读旧公共区老日志复制一份"的一次性迁移）。
         val dirBody = Regex("private fun dir\\(context: Context\\): File \\{[\\s\\S]*?\\n    \\}")
             .find(src)?.value ?: ""
         assertTrue("没找到 dir() 函数体，门禁失效了", dirBody.isNotEmpty())
-        assertFalse("dir() 里不得再探测公共区", dirBody.contains("Store.logsDir"))
+        assertFalse("dir() 里不得再探测公共区", dirBody.contains("ZhengdaoDirs.logsDir"))
         assertFalse("dir() 里不得再有 cacheDir 兜底", dirBody.contains("cacheDir"))
     }
 
@@ -133,7 +135,7 @@ class RunLogPrivacyGateTest {
 
     @Test
     fun `logcat 镜像在 BuildConfig_DEBUG 守卫内`() {
-        val src = source("src/main/java/com/example/zhengdao/rootfs/RunLog.kt")
+        val src = source("../core/src/main/java/com/example/zhengdao/core/RunLog.kt")
         val idx = src.indexOf("Log.i(\"zhengdao\"")
         assertTrue("没找到 logcat 镜像那行，门禁失效了", idx > 0)
         // 往前 200 字符内必须有 DEBUG 守卫

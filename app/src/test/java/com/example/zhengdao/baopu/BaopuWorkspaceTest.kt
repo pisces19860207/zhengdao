@@ -91,7 +91,13 @@ class BaopuWorkspaceTest {
     @Test
     fun `B5_授权判定委托同一个实现_不许自己写第二份`() {
         val src = appFile("src/main/java/com/example/zhengdao/baopu/BaopuWorkspace.kt").readText()
-        assertTrue("授权判定必须委托 ProotLauncher", src.contains("ProotLauncher.storageGranted(ctx)"))
+        // 第二百四十批：判定下沉到 :core（EnvironmentScope.hasAllFilesAccess），
+        // 抱朴仍然"委托同一个实现"、不自己写第二份 —— 判据的**意思**没变，只换了委托对象。
+        assertTrue(
+            "授权判定必须委托 :core 的唯一实现",
+            src.contains("EnvironmentScope.hasAllFilesAccess(ctx)"),
+        )
+        assertFalse("不许自己写第二份判定（E-005 双判）", src.contains("isExternalStorageManager"))
         assertTrue("用抱朴自己的键，不许碰终端的键", src.contains("\"baopu_ws_mode\""))
         assertTrue(src.contains("\"baopu_ws_path\""))
         assertFalse("不许出现终端的键名", src.contains("\"workspace_mode\""))

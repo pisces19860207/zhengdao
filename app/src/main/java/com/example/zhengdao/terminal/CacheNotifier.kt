@@ -9,12 +9,13 @@ import android.content.Context
 import android.content.Intent
 import com.example.zhengdao.MainActivity
 import com.example.zhengdao.R
+import com.example.zhengdao.core.notify.AppNotifications
 
 /**
  * 自动清理的**静默**通知（Issue #3，2026-10-10）。
  *
  * 清理是后台自己做的决定，提示必须"看得见但不吵"：渠道用既有的
- * [NotificationChannels.INSTALL]（IMPORTANCE_LOW = 无声、无振动）。2026-10-06 定稿的就是
+ * [AppNotifications.INSTALL]（IMPORTANCE_LOW = 无声、无振动）。2026-10-06 定稿的就是
  * 四个渠道，不为这件事新开第五个——它本来就叫"环境与安装"，缓存维护正属于这一类
  * （[InstallNotifier] 也是这么复用的）。
  *
@@ -49,9 +50,9 @@ object CacheNotifier {
     /** 清完了：报释放量。 */
     fun cleaned(ctx: Context, freedMb: Long, totalMb: Long) {
         runCatching {
-            NotificationChannels.ensureAll(ctx)
+            AppNotifications.ensureAll(ctx)
             val text = "释放 ${freedMb}MB（清理前 ${totalMb}MB）· 下次安装会重新下载"
-            val n = Notification.Builder(ctx, NotificationChannels.INSTALL)
+            val n = Notification.Builder(ctx, AppNotifications.INSTALL)
                 .setSmallIcon(R.drawable.ic_terminal)
                 .setContentTitle("证道 · 已自动清理缓存")
                 .setContentText(text)

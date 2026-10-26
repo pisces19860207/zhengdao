@@ -9,6 +9,7 @@ import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanRules.PlanItem
 import com.example.zhengdao.baopu.PlanStore
 import org.json.JSONObject
+import com.example.zhengdao.core.RunLog
 
 /**
  * update_plan 的内核（第十七批）：**校验归一化 ⇒ sticky done ⇒ 落库 ⇒ 回灌**。
@@ -31,7 +32,7 @@ import org.json.JSONObject
 internal class PlanController(
     private val sessionId: () -> Long,
     private val store: PlanStore,
-    private val log: (String) -> Unit = { com.example.zhengdao.rootfs.RunLog.log(it) },
+    private val log: (String) -> Unit = { com.example.zhengdao.core.RunLog.log(it) },
 ) : PlanSink {
 
     /** 当前轮的计划（内存态；库里的真相是 kind='plan' 的 part）。 */

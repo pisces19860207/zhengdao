@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.ZhengdaoDirs
 
 /**
  * 公共区包缓存挂载清单的**回归闸门**（ERRATA E-056，2026-10-09）。
@@ -45,7 +46,7 @@ class SharedCacheBindTest {
     @Test
     fun `每条落点都是 home 内的相对路径且 kind 合法`() {
         for ((kind, rel) in ProotLauncher.sharedCacheBindings()) {
-            assertTrue("kind 必须能安全拼进用户可见目录名: $kind", Store.isLegalKind(kind))
+            assertTrue("kind 必须能安全拼进用户可见目录名: $kind", ZhengdaoDirs.isLegalKind(kind))
             assertFalse("rel 必须是相对路径（会被拼到 /root/ 之后）: $rel", rel.startsWith("/"))
             assertFalse("rel 不许出现 ..: $rel", rel.split('/').contains(".."))
             assertFalse("rel 不许为空: $kind", rel.isBlank())

@@ -4,7 +4,7 @@ package com.example.zhengdao.core
 
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 「最近问题」中枢（#4 全 App 错误提示走查，2026-10-09）。

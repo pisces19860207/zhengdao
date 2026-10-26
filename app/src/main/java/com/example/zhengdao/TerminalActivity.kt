@@ -26,28 +26,28 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.rootfs.RootfsDownloader
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.AgentRepository
-import com.example.zhengdao.ui.AppState
-import com.example.zhengdao.ui.browser.BrowserHolder
 import com.example.zhengdao.terminal.EdgeSwipeTracker
 import com.example.zhengdao.terminal.KnowledgeBaseHints
+import com.example.zhengdao.terminal.NetWatch
+import com.example.zhengdao.terminal.ProotLauncher
+import com.example.zhengdao.terminal.SessionManager
+import com.example.zhengdao.terminal.SessionService
+import com.example.zhengdao.terminal.TerminalLinkPolicy
+import com.example.zhengdao.terminal.TerminalLinkScanner
+import com.example.zhengdao.terminal.TerminalPasteWriter
+import com.example.zhengdao.terminal.TerminalPrefs
 import com.example.zhengdao.terminal.deriveTerminalRequest
 import com.example.zhengdao.terminal.downloadPercentBucket
 import com.example.zhengdao.terminal.nextPaneCountAfterClose
 import com.example.zhengdao.terminal.nextPaneCountAfterSplit
-import com.example.zhengdao.terminal.NetWatch
-import com.example.zhengdao.terminal.ProotLauncher
-import com.example.zhengdao.terminal.SessionManager
-import com.example.zhengdao.terminal.TerminalLinkPolicy
-import com.example.zhengdao.terminal.TerminalLinkScanner
-import com.example.zhengdao.terminal.TerminalPrefs
-import com.example.zhengdao.terminal.TerminalPasteWriter
-import com.example.zhengdao.terminal.SessionService
+import com.example.zhengdao.ui.AgentRepository
+import com.example.zhengdao.ui.AppState
+import com.example.zhengdao.ui.browser.BrowserHolder
+import com.example.zhengdao.util.HumanizeError
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import java.io.File
@@ -140,7 +140,11 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         // 只是整段让出了主线程。为什么不放在这里另起线程：起会话前本来就必然经过那条
         // worker（新进程一定没有会话），复用它可以保证**清理一定早于启动计划**，
         // 不必再加一把锁去排序。
-        RunLog.init(applicationContext)
+        RunLog.init(
+            applicationContext,
+            legacyLogsDir = { com.example.zhengdao.core.ZhengdaoDirs.logsDir(it) },
+            adoptFile = com.example.zhengdao.core.ZhengdaoDirs::adoptFile,
+        )
         SessionManager.init(applicationContext)
         // 只在全新启动读取（Activity 异常重建会带原 intent，避免同一命令重跑两遍）
         if (savedInstanceState == null) {
@@ -599,7 +603,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             // §B 顺序 6 / P1-3（2026-10-14）：把 SessionManager.start() 挪出主线程。
             //
             // 它内部依次做：killInternal → **ProotLauncher.buildLaunchPlan**（重活：算
-            // SHA256、拷 assets、`Store.adoptDir` 搬 JM 级共享缓存）→ 建 TerminalSession
+            // SHA256、拷 assets、`ZhengdaoDirs.adoptDir` 搬 JM 级共享缓存）→ 建 TerminalSession
             // → 起前台服务。而本函数的三个调用点（onResume / onNewIntent /
             // relaunchDebian 的 runOnUiThread）**全在主线程** ⇒ 冷启动必卡主线程。
             //
@@ -648,7 +652,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /**
      * §B 顺序 6 / P1-3：把**重活**（`SessionManager.prepareLaunchPlan`：SHA256 / 拷 assets /
-     * `Store.adoptDir` 搬 JM 级缓存）丢后台线程；**起会话本身回主线程做**。
+     * `ZhengdaoDirs.adoptDir` 搬 JM 级缓存）丢后台线程；**起会话本身回主线程做**。
      *
      * ⚠️ 为什么只挪一半（2026-10-14 真机退回的教训）：`SessionManager.start()` 里的
      * `new TerminalSession(...)` 会创建 `TerminalSession$MainThreadHandler`（**无参** Handler
@@ -673,7 +677,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             //     保证任何漏网异常都落 RunLog（用户能在「设置 → 运行日志」里看到）。
             runCatching { RootfsInstaller.cleanupPartial(this) }
                 .onFailure { t ->
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "启动残局清理失败：${t.javaClass.simpleName}: ${t.message}"
                     )
                     android.util.Log.w("ZhengdaoColdStart", "cleanupPartial 失败", t)
@@ -684,14 +688,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 SessionManager.prepareLaunchPlan(this)
             } catch (t: Throwable) {
                 val msg = "冷启动：buildLaunchPlan 失败 ${t.javaClass.simpleName}: ${t.message}"
-                com.example.zhengdao.rootfs.RunLog.log(msg)
+                com.example.zhengdao.core.RunLog.log(msg)
                 android.util.Log.e("ZhengdaoColdStart", msg, t)
                 null
             }
             val cost = android.os.SystemClock.uptimeMillis() - t0
             // 打点（判据：冷启动期间主线程不得出现 >16ms 的长任务；真机读数归蓝总管采）
             android.util.Log.i("ZhengdaoColdStart", "prepareLaunchPlan cost=${cost}ms")
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "冷启动打点：prepareLaunchPlan ${cost}ms（含 SHA256 / 拷 assets / 缓存搬家）"
             )
             runOnUiThread {
@@ -699,7 +703,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (plan == null) {
                     // 重活失败：说人话 + 落日志（不再静默黑屏）
-                    com.example.zhengdao.rootfs.RunLog.log(
+                    com.example.zhengdao.core.RunLog.log(
                         "冷启动：启动计划没算出来，放弃起会话（失败原因见上一条）"
                     )
                     android.widget.Toast.makeText(
@@ -714,7 +718,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     SessionManager.start(this, plan)
                 } catch (t: Throwable) {
                     val msg = "冷启动：SessionManager.start 失败 ${t.javaClass.simpleName}: ${t.message}"
-                    com.example.zhengdao.rootfs.RunLog.log(msg)
+                    com.example.zhengdao.core.RunLog.log(msg)
                     android.util.Log.e("ZhengdaoColdStart", msg, t)
                     null
                 }
@@ -1150,7 +1154,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     }
                     .onFailure {
                         // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
-                        com.example.zhengdao.rootfs.RunLog.log(
+                        com.example.zhengdao.core.RunLog.log(
                             "粘贴失败（原文）：${it.javaClass.simpleName}: ${it.message}"
                         )
                         Toast.makeText(this, getString(R.string.term_paste_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()
@@ -1526,7 +1530,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     .onSuccess { Toast.makeText(this, getString(R.string.term_cleared), Toast.LENGTH_SHORT).show() }
                     .onFailure {
                         // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
-                        com.example.zhengdao.rootfs.RunLog.log(
+                        com.example.zhengdao.core.RunLog.log(
                             "清屏写入失败（原文）：${it.javaClass.simpleName}: ${it.message}"
                         )
                         Toast.makeText(this, getString(R.string.term_clear_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()
@@ -1561,7 +1565,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             finish()
         }.onFailure {
             // R-29（第⑯刀）：内部异常原文不进 UI —— 用户看 HumanizeError 人话，原文只落 RunLog
-            com.example.zhengdao.rootfs.RunLog.log(
+            com.example.zhengdao.core.RunLog.log(
                 "唤起玄览搜索失败（原文）：${it.javaClass.simpleName}: ${it.message}"
             )
             Toast.makeText(this, getString(R.string.term_browser_failed, HumanizeError.title(it, resources)), Toast.LENGTH_SHORT).show()

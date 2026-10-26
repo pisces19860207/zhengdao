@@ -90,14 +90,27 @@ class StoragePermissionGuardTest {
         )
         // 存储判定必须双通道：36 走「所有文件访问」、28 走 WRITE 权限。少前者 ⇒ 36 上共享
         // 存储全灭；少后者 ⇒ target 28 设备的 legacy 视图通道被删。
-        val launcher = src("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt").readText()
+        // 第二百四十批：判定实现搬到 :core/EnvironmentScope（ProotLauncher 只剩委托）。
+        // 判据一字未改，只是被扫的文件换了 —— 且仍要求「全仓唯一实现」：
+        // ProotLauncher.kt 里不许再出现第二份 isExternalStorageManager。
+        val scope = src("../core/src/main/java/com/example/zhengdao/core/EnvironmentScope.kt").readText()
         assertTrue(
             "storageGranted 不查 isExternalStorageManager —— 36 上 WRITE 权限已 inert",
-            launcher.contains("isExternalStorageManager"),
+            scope.contains("isExternalStorageManager"),
         )
         assertTrue(
             "storageGranted 不认 WRITE_EXTERNAL_STORAGE —— target 28 设备的 legacy 通道被删",
-            launcher.contains("WRITE_EXTERNAL_STORAGE"),
+            scope.contains("WRITE_EXTERNAL_STORAGE"),
+        )
+        // 只判**代码**：KDoc 里写着「这里不许再写第二份 isExternalStorageManager」是讲解，
+        // 不是第二份判定（这条注释本身就是为了让下一个人别抄）。
+        val launcherCode = src("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt")
+            .readText()
+            .replace(Regex("/\\*[\\s\\S]*?\\*/"), "")
+            .replace(Regex("//[^\n]*"), "")
+        assertFalse(
+            "ProotLauncher 里又出现了第二份 isExternalStorageManager（E2 消双判被回退）",
+            launcherCode.contains("isExternalStorageManager"),
         )
     }
 

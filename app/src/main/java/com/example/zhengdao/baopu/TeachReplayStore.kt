@@ -14,7 +14,7 @@
 // 执行器永不回写技能文件——本文件没有任何入口能让执行器改技能（「技能不自动改」结构性成立）。
 package com.example.zhengdao.baopu
 
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.security.MessageDigest
 

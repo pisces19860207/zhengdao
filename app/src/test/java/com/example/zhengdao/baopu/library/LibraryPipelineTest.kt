@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.baopu.library
 
-import com.example.zhengdao.terminal.DocxTextExtractor
+import com.example.zhengdao.core.doc.DocxTextExtractor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

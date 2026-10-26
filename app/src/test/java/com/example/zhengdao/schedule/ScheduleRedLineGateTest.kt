@@ -15,6 +15,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.notify.AppNotifications
 
 class ScheduleRedLineGateTest {
 
@@ -87,13 +89,13 @@ class ScheduleRedLineGateTest {
         }
         // rootfs 包里只许用日志那一个类（RunLog 是纯落盘日志，不是执行链）。
         Regex("com\\.example\\.zhengdao\\.rootfs\\.[A-Za-z]+").findAll(pkg).forEach {
-            assertEquals("rootfs 只许引 RunLog：${it.value}", "com.example.zhengdao.rootfs.RunLog", it.value)
+            assertEquals("rootfs 只许引 RunLog：${it.value}", "com.example.zhengdao.core.RunLog", it.value)
         }
         // terminal 包里唯一允许的引用是 169 那套通知渠道（§0.5 约束 2 要求复用它，不许另建）。
         Regex("com\\.example\\.zhengdao\\.terminal\\.[A-Za-z]+").findAll(pkg).forEach {
             assertEquals(
-                "terminal 只许引 NotificationChannels（复用渠道，不接终端执行链）：${it.value}",
-                "com.example.zhengdao.terminal.NotificationChannels",
+                "terminal 只许引 AppNotifications（复用渠道，不接终端执行链）：${it.value}",
+                "com.example.zhengdao.terminal.AppNotifications",
                 it.value,
             )
         }
@@ -123,7 +125,7 @@ class ScheduleRedLineGateTest {
     fun `约束2_通知复用既有渠道与前台口径`() {
         val notifier = code("src/main/java/com/example/zhengdao/schedule/ScheduleNotifier.kt")
         val pkg = packageCode()
-        assertTrue("必须走 169 那套渠道（AGENT），不新增第五个渠道", notifier.contains("NotificationChannels.AGENT"))
+        assertTrue("必须走 169 那套渠道（AGENT），不新增第五个渠道", notifier.contains("AppNotifications.AGENT"))
         assertTrue("必须与 169 同一个前台抑制口径", notifier.contains("AppForeground.isForeground()"))
         for (bad in listOf("NotificationChannel(", "createNotificationChannel")) {
             assertFalse("定时任务自己建了渠道（「$bad」）——那就是第二套通知栈", pkg.contains(bad))

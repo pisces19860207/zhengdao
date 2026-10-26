@@ -10,6 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 第一百二十四批 · **接线门禁**（照第二十四批 C 段 `VisionWiringTest` 的法子）。

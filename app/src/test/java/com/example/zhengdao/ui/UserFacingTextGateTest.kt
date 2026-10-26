@@ -4,6 +4,7 @@ package com.example.zhengdao.ui
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.core.RunLog
 
 /**
  * 审计第 2 期 **R-29**（第⑯刀 #1）的验收门禁：**用户可见文案的实参里不得出现内部异常痕迹**。

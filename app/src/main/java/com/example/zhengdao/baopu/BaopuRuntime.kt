@@ -10,13 +10,11 @@ import androidx.core.net.toUri
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
-import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.ArtifactRaster
-import com.example.zhengdao.schedule.ScheduleStore
+import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
-import com.example.zhengdao.baopu.agent.DeviceTools
-import com.example.zhengdao.baopu.agent.ScheduleTaskTool
 import com.example.zhengdao.baopu.agent.CompatChannelTools
+import com.example.zhengdao.baopu.agent.DeviceTools
 import com.example.zhengdao.baopu.agent.DrawPublish
 import com.example.zhengdao.baopu.agent.GenerateImage
 import com.example.zhengdao.baopu.agent.GenerateImageTool
@@ -27,6 +25,7 @@ import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.OrchestrationGate
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.RunRules
+import com.example.zhengdao.baopu.agent.ScheduleTaskTool
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolOutcome
@@ -55,13 +54,15 @@ import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Store
-import com.example.zhengdao.terminal.KnowledgeBase
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
+import com.example.zhengdao.core.kb.KnowledgeBase
+import com.example.zhengdao.core.notify.AppNotifications
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
+import com.example.zhengdao.schedule.ScheduleStore
 
 /**
  * 抱朴运行时（刀 1 · B 段）——**Context 装配的唯一处**，进程级单例。
@@ -291,9 +292,9 @@ internal object BaopuRuntime {
                 ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
             override fun postNotification(title: String, body: String, channel: String?): Boolean = runCatching {
-                com.example.zhengdao.terminal.NotificationChannels.ensureAll(appCtx)
+                com.example.zhengdao.core.notify.AppNotifications.ensureAll(appCtx)
                 val ch = if (channel.isNullOrBlank()) {
-                    com.example.zhengdao.terminal.NotificationChannels.AGENT
+                    com.example.zhengdao.core.notify.AppNotifications.AGENT
                 } else {
                     channel
                 }
@@ -633,7 +634,7 @@ internal object BaopuRuntime {
         }
         runCatching {
             val target = com.example.zhengdao.bridge.BrowserCommands.shotDir(appCtx)
-            val legacy = File(Store.root(appCtx), MediaMigration.LEGACY_SHOT_DIR)
+            val legacy = File(ZhengdaoDirs.root(appCtx), MediaMigration.LEGACY_SHOT_DIR)
             MediaMigration.migrateShots(ws, legacy, target)
         }.onFailure { RunLog.log("抱朴截屏目录迁移跳过：${it.javaClass.simpleName}") }
         runCatching { MediaMigration.registerPersonaResidue(ws) }
@@ -744,7 +745,7 @@ internal object BaopuRuntime {
             shrinkImage = { file -> ImageShrink.toJpeg(file) },
             // 第一百七十七批：截图落 `证道/截屏/`（App 固定公共区，不跟工作区走）。
             // 引擎读图时要认这第二个根，否则自己截的图会被越界判据拒掉。
-            shotRoot = { Store.root(appCtx) },
+            shotRoot = { ZhengdaoDirs.root(appCtx) },
             // 第一百二十八批：知识库自动注入（索引在 ⇒ 每轮把相关片段按 2k 预算拼进
             // 本轮输入；索引不在 ⇒ null，静默跳过不阻塞）。真实存储在 KbTools.store
             // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。

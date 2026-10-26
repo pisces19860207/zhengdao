@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.core.RunLog
 
 /**
  * 第一百七十八批 · 勾选批量删的**接线门禁**（判据 J8–J11 ＋ 负例）。

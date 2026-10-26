@@ -45,10 +45,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
-import com.example.zhengdao.ui.util.pressClickable
-import com.example.zhengdao.ui.settings.DataRules
-import com.example.zhengdao.util.HumanizeError
-import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.BackChevron
+import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.R
+import com.example.zhengdao.core.RunLog
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -61,11 +61,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ButtonDefaults
-import com.example.zhengdao.BuildConfig
-import com.example.zhengdao.R
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.core.kb.KnowledgeBase
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.keepalive.KeepaliveArchive
 import com.example.zhengdao.rootfs.PatchRef
 import com.example.zhengdao.rootfs.RootfsCache
 import com.example.zhengdao.rootfs.RootfsDelta
@@ -74,10 +72,12 @@ import com.example.zhengdao.rootfs.RootfsIndex
 import com.example.zhengdao.rootfs.RootfsIndexFetcher
 import com.example.zhengdao.rootfs.RootfsInstaller
 import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.terminal.CacheCleaner
+import com.example.zhengdao.terminal.HermesEnv
+import com.example.zhengdao.terminal.TerminalPrefs
+import com.example.zhengdao.terminal.Workspace
 import com.example.zhengdao.ui.AppState.rootfsInstalled
-import com.example.zhengdao.ui.theme.zhengdaoReady
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -94,13 +94,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.BackChevron
-import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.RunLog
-import com.example.zhengdao.terminal.Workspace
+import com.example.zhengdao.ui.settings.DataRules
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
-import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.theme.zhengdaoReady
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import com.example.zhengdao.ui.util.pressClickable
 import kotlinx.coroutines.CoroutineScope
+import com.example.zhengdao.util.HumanizeError
 
 /** 二级页：终端与资料（逐字搬自「资料库 / 权限 / 终端外观 / 工作区 / 输入回归页」五张卡）。 */
 class SettingsDataActivity : ComponentActivity() {
@@ -128,8 +129,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
     val ctx = LocalContext.current; val res = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
-    var kbStatus by remember { mutableStateOf<com.example.zhengdao.terminal.KnowledgeBase.Status?>(null) }
-    var kbEnabled by remember { mutableStateOf(com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)) }
+    var kbStatus by remember { mutableStateOf<com.example.zhengdao.core.kb.KnowledgeBase.Status?>(null) }
+    var kbEnabled by remember { mutableStateOf(com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx)) }
     var kbHelpOpen by remember { mutableStateOf(false) }
     // FIX-F（2026-10-10，E-084）：提问时自动附上资料线索 —— **默认关**，要用户自己打开
     var kbHints by remember { mutableStateOf(com.example.zhengdao.terminal.KnowledgeBaseHints.isEnabled(ctx)) }
@@ -155,7 +156,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 // 把资料丢进 原始/，再切回 App"——那条路上没有任何机会触发会话启动，
                 // 于是旧版显示的一直是"还没放资料"（他看到的＝"放了东西没反应"）。
                 // autoRefresh 只在后台比指纹+重建清单，不建骨架、不写分发指路。
-                com.example.zhengdao.terminal.KnowledgeBase.autoRefresh(ctx)
+                com.example.zhengdao.core.kb.KnowledgeBase.autoRefresh(ctx)
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
@@ -164,10 +165,10 @@ private fun SettingsDataPage(onBack: () -> Unit) {
 
     // 资料库状态：只重读本页用得到的三项（原 kb_effect 还带三处目录大小，那是存储页的活）。
     LaunchedEffect(storageTick) {
-        kbEnabled = com.example.zhengdao.terminal.KnowledgeBase.isEnabled(ctx)
+        kbEnabled = com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx)
         kbHints = com.example.zhengdao.terminal.KnowledgeBaseHints.isEnabled(ctx)
         kbStatus = withContext(Dispatchers.IO) {
-            com.example.zhengdao.terminal.KnowledgeBase.status(ctx)
+            com.example.zhengdao.core.kb.KnowledgeBase.status(ctx)
         }
     }
 
@@ -243,15 +244,15 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 else ""
             }
             val stateText = when (st?.state) {
-                com.example.zhengdao.terminal.KnowledgeBase.State.DISABLED ->
+                com.example.zhengdao.core.kb.KnowledgeBase.State.DISABLED ->
                     stringResource(R.string.data_kb_disabled)
-                com.example.zhengdao.terminal.KnowledgeBase.State.NOT_MOUNTED ->
+                com.example.zhengdao.core.kb.KnowledgeBase.State.NOT_MOUNTED ->
                     stringResource(R.string.data_kb_not_mounted)
-                com.example.zhengdao.terminal.KnowledgeBase.State.BUSY ->
+                com.example.zhengdao.core.kb.KnowledgeBase.State.BUSY ->
                     stringResource(R.string.data_kb_busy)
-                com.example.zhengdao.terminal.KnowledgeBase.State.ORGANIZED ->
+                com.example.zhengdao.core.kb.KnowledgeBase.State.ORGANIZED ->
                     pluralStringResource(R.plurals.data_kb_organized, st.files, st.files) + capNote(st.files)
-                com.example.zhengdao.terminal.KnowledgeBase.State.MOUNTED ->
+                com.example.zhengdao.core.kb.KnowledgeBase.State.MOUNTED ->
                     pluralStringResource(R.plurals.data_kb_mounted, st.files, st.files) + capNote(st.files)
                 null -> stringResource(R.string.data_kb_reading)
             }
@@ -289,7 +290,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             }
             LaunchedEffect(storageTick) {
                 otherKb = withContext(Dispatchers.IO) {
-                    com.example.zhengdao.terminal.KnowledgeBase.otherPopulated(ctx)
+                    com.example.zhengdao.core.kb.KnowledgeBase.otherPopulated(ctx)
                 }
             }
             // 未挂载 + 别处真有资料 ⇒ 提示并给复制入口（搬去 DataRules，第七十七批）。
@@ -315,7 +316,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                 stringResource(
                                     R.string.data_kb_copy_desc,
                                     otherPath,
-                                    com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW,
+                                    com.example.zhengdao.core.kb.KnowledgeBase.SUB_RAW,
                                 )
                             )
                         },
@@ -324,15 +325,15 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                                 copyAsk = false
                                 runClean(
                                     work = {
-                                        val n = com.example.zhengdao.terminal.KnowledgeBase
+                                        val n = com.example.zhengdao.core.kb.KnowledgeBase
                                             .copyRawInto(
                                                 ctx,
                                                 File(
                                                     otherPath,
-                                                    com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW,
+                                                    com.example.zhengdao.core.kb.KnowledgeBase.SUB_RAW,
                                                 ),
                                             )
-                                        com.example.zhengdao.terminal.KnowledgeBase
+                                        com.example.zhengdao.core.kb.KnowledgeBase
                                             .rebuildAfterCopy(ctx)
                                         n to 0L
                                     },
@@ -353,7 +354,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             Row {
                 TextButton(onClick = {
                     val p = kbStatus?.path
-                        ?: com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx).absolutePath
+                        ?: com.example.zhengdao.core.kb.KnowledgeBase.doneDir(ctx).absolutePath
                     runCatching {
                         val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                             as android.content.ClipboardManager
@@ -368,7 +369,7 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                 }) { Text(stringResource(R.string.data_copy_path)) }
                 TextButton(onClick = { kbHelpOpen = true }) { Text(stringResource(R.string.data_view_help)) }
                 TextButton(onClick = {
-                    com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
+                    com.example.zhengdao.core.kb.KnowledgeBase.requestRebuild(ctx)
                     // ── FIX-A（2026-10-10，E-080）：此处原先顺带调
                     //    KnowledgeBaseSummarizerRunner.requestSummaries()（该 Runner 2026-10-16 已删）—— 由抱朴的云端免费模型
                     //    把每个文件开头（≤1200 字，.docx 先抽正文）读走、写进清单的「文件摘要」节。
@@ -391,9 +392,9 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                     checked = kbEnabled,
                     onCheckedChange = { on ->
                         kbEnabled = on
-                        com.example.zhengdao.terminal.KnowledgeBase.setEnabled(ctx, on)
+                        com.example.zhengdao.core.kb.KnowledgeBase.setEnabled(ctx, on)
                         // 重新打开开关同样是显式要求：若资料库被删过，顺手把它建回来（E-061）。
-                        if (on) com.example.zhengdao.terminal.KnowledgeBase.requestRebuild(ctx)
+                        if (on) com.example.zhengdao.core.kb.KnowledgeBase.requestRebuild(ctx)
                         storageTick++
                     },
                     colors = zhengdaoSwitchColors(),
@@ -677,8 +678,8 @@ private fun SettingsDataPage(onBack: () -> Unit) {
             val curFiles = kbStatus?.files ?: 0
             // 显示给用户的是产物路径（157 收口后「资料库」的门面＝产物/）；
             // curKb 仍取旧根——换工作区时复制源就是旧 `资料库/原始/` 形态（存量对账，不丢文件）。
-            val curKbShown = com.example.zhengdao.terminal.KnowledgeBase.doneDir(ctx).absolutePath
-            val curKb = com.example.zhengdao.terminal.KnowledgeBase.root(ctx).absolutePath
+            val curKbShown = com.example.zhengdao.core.kb.KnowledgeBase.doneDir(ctx).absolutePath
+            val curKb = com.example.zhengdao.core.kb.KnowledgeBase.root(ctx).absolutePath
             AlertDialog(
                 onDismissRequest = { wsAsk = null },
                 title = { Text(stringResource(R.string.data_ws_change_title)) },
@@ -698,14 +699,14 @@ private fun SettingsDataPage(onBack: () -> Unit) {
                         Toast.makeText(ctx, askToast, Toast.LENGTH_SHORT).show()
                         runClean(
                             work = {
-                                val c = com.example.zhengdao.terminal.KnowledgeBase.copyRawInto(
+                                val c = com.example.zhengdao.core.kb.KnowledgeBase.copyRawInto(
                                     ctx,
                                     File(
                                         curKb,
-                                        com.example.zhengdao.terminal.KnowledgeBase.SUB_RAW,
+                                        com.example.zhengdao.core.kb.KnowledgeBase.SUB_RAW,
                                     ),
                                 )
-                                com.example.zhengdao.terminal.KnowledgeBase.rebuildAfterCopy(ctx)
+                                com.example.zhengdao.core.kb.KnowledgeBase.rebuildAfterCopy(ctx)
                                 c to 0L
                             },
                             toast = { c, _ ->

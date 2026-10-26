@@ -9,7 +9,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Process
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.terminal.SessionService
 import java.io.File
 import java.util.concurrent.Executor

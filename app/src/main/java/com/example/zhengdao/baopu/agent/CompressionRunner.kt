@@ -15,7 +15,7 @@ import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.LlmMessage
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.TokenEstimator
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 
 /**
  * 压缩落库与留痕的注入接口（实现在 `BaopuDb` 侧，照 [com.example.zhengdao.baopu.PendingStore] 房型）。

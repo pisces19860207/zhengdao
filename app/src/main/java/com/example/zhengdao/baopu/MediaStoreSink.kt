@@ -21,7 +21,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import com.example.zhengdao.rootfs.RunLog
+import com.example.zhengdao.core.RunLog
 import java.io.File
 
 /** 一次入库的结局（调用方据此决定回执说人话还是退回文件落盘）。 */
