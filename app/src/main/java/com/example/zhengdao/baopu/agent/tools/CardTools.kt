@@ -178,7 +178,10 @@ internal object CardTools {
     }
 
     private fun StringBuilder.presetSection(p: Preset) {
-        appendLine("【预设】${p.entries.size} 条${stateSummary(p.entries.map { it.enabled })}")
+        appendLine(
+            "【预设】${p.entries.size} 条${stateSummary(p.entries.map { it.enabled })}" +
+                "｜基础提示词 ${p.basicPrompts.size} 条",
+        )
         p.entries.take(ASSET_PREVIEW).forEachIndexed { i, e ->
             val name = e.name?.takeIf { it.isNotBlank() } ?: "（未写名）"
             val len = e.prompt?.let { "提示词 ${it.length} 字" } ?: "提示词（未写）"

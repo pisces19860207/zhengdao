@@ -316,9 +316,42 @@ internal object CardAssetParser {
         return Preset(
             raw = raw,
             entries = entries,
-            basicPrompts = CardJson.objectOf(raw, "basicPrompts"),
+            basicPrompts = basicPromptsOf(raw, bad),
             vendor = vendor,
         )
+    }
+
+    /**
+     * 基础提示词（`basicPrompts`）——现场是**数组**。
+     *
+     * 第二百四十五批 B2 的口径：照收数组、顺序照原样；**读不出来给空表**（不是 null）；
+     * 不是数组、或数组里混进非对象元素，都记 `unparsed` 并保留原文（不丢、不猜）。
+     */
+    private fun basicPromptsOf(raw: JSONObject, bad: MutableList<UnparsedAsset>): List<JSONObject> {
+        val arr = CardJson.arrayOf(raw, "basicPrompts")
+        if (arr == null) {
+            // 键在、但既不是数组也不是 JSON null ⇒ 这是"解析失败"，要留证
+            if (raw.has("basicPrompts") && !CardJson.isJsonNull(raw, "basicPrompts")) {
+                bad += UnparsedAsset(
+                    AssetKind.PRESET, -1, "basicPrompts 不是数组",
+                    null, rawTextOf(raw.opt("basicPrompts")),
+                )
+            }
+            return emptyList()
+        }
+        val out = ArrayList<JSONObject>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i)
+            if (o == null) {
+                bad += UnparsedAsset(
+                    AssetKind.PRESET, i, "第 ${i + 1} 条基础提示词不是 JSON 对象",
+                    null, rawTextOf(arr.opt(i)),
+                )
+            } else {
+                out += o
+            }
+        }
+        return out
     }
 
     private fun presetEntriesOf(

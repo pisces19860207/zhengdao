@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百四十五批 · B1：答案消息「详情 ▸」折叠的文案。
+     单独一份文件：共享 strings.xml 是多方在飞时最容易撞车的文件，本批对它的改动保持零字节。 -->
+<resources>
+    <string name="baopu_answer_fold_expand">详情 ▸</string>
+    <string name="baopu_answer_fold_collapse">收起 ▴</string>
+</resources>

@@ -187,7 +187,14 @@ internal data class PresetEntryView(
 internal data class Preset(
     override val raw: JSONObject,
     val entries: List<PresetEntryView>,
-    val basicPrompts: JSONObject?,
+    /**
+     * 基础提示词：现场是**数组**（Tavo 预设的 `basicPrompts`）。
+     *
+     * 第二百四十五批 B2：225 把这里写成了 `JSONObject?`，而样例里它是数组 ⇒ 恒 null，
+     * 这个字段从来没被读到过。现在照收数组；读不出来给**空表**（不是 null），
+     * 坏元素记 unparsed 并保留原文。
+     */
+    val basicPrompts: List<JSONObject>,
     override val vendor: String,
 ) : CardAsset
 

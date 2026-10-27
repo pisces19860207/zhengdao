@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -515,6 +516,16 @@ private fun BaopuMessageRow(
                         ""
                     }
                     val longform = !isUser && BaopuLongformPolicy.isLongform(assistantText)
+                    // 第二百四十五批 B1：答案消息「首块常显、其余折进『详情 ▸』」。
+                    // 只在**单段纯文本**上折叠：多段（含压缩点）各有各的渲染口，
+                    // 长文已进输出卡，这里都不抢。
+                    val answerFold = if (!isUser && !longform && textParts.size == 1 &&
+                        textParts[0].kind == "text"
+                    ) {
+                        BaopuAnswerFoldPolicy.split(textParts[0].text)
+                    } else {
+                        null
+                    }
                     if (textParts.isNotEmpty()) {
                         val renderParts: @Composable () -> Unit = {
                             Column {
@@ -534,6 +545,9 @@ private fun BaopuMessageRow(
                         } else if (longform) {
                             // 209：带上消息 id——折叠态按 id 记住，滚动回来不弹回
                             BaopuLongformCard(assistantText, messageId = msg.id.toString())
+                        } else if (answerFold != null && answerFold.foldable) {
+                            // 245：首块常显、其余默认收起；点开＝再点收起
+                            BaopuAnswerFoldView(answerFold, key = msg.id.toString())
                         } else {
                             androidx.compose.foundation.text.selection.SelectionContainer {
                                 renderParts()
@@ -594,12 +608,60 @@ private fun BaopuMessageRow(
 
 @Composable
 private fun BaopuTextPart(part: BaopuUiPart, key: String) {
-    if (part.text.isBlank()) return
+    BaopuTextPart(part.text)
+}
+
+/** 折叠的首块／尾部与正文同一档样式（折叠态由外层记住，这里只管画字）。 */
+@Composable
+private fun BaopuTextPart(text: String) {
+    if (text.isBlank()) return
     Text(
-        text = part.text,
+        text = text,
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(top = 4.dp),
     )
+}
+
+/**
+ * 245 · B1：「详情 ▸」容器。
+ *
+ * 手势与审计栏同一套（[TextButton] ＋ 48dp 触控高度；点开＝再点收起）；
+ * 首块常显、其余默认收起；折叠态按消息 id 记进 [BaopuCollapseMemory]（209 同一套记忆，
+ * 独立键 `#answer`，与长文卡、手动卡互不串）。
+ */
+@Composable
+private fun BaopuAnswerFoldView(fold: AnswerFold, key: String) {
+    val memoryKey = "$key#answer"
+    var expanded by remember(memoryKey) {
+        // 记忆里存的是「收起」；没记过 ⇒ 默认收起（派工单 B1）
+        mutableStateOf(BaopuCollapseMemory.get(memoryKey)?.let { !it } ?: false)
+    }
+    androidx.compose.foundation.text.selection.SelectionContainer {
+        Column {
+            BaopuTextPart(fold.head)
+            if (expanded) BaopuTextPart(fold.tail)
+        }
+    }
+    TextButton(
+        onClick = {
+            val next = !expanded
+            expanded = next
+            BaopuCollapseMemory.put(memoryKey, !next)
+        },
+        contentPadding = PaddingValues(0.dp),
+        modifier = Modifier.heightIn(min = 48.dp),
+    ) {
+        Text(
+            text = stringResource(
+                if (expanded) {
+                    R.string.baopu_answer_fold_collapse
+                } else {
+                    R.string.baopu_answer_fold_expand
+                },
+            ),
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
 }
 
 /**
