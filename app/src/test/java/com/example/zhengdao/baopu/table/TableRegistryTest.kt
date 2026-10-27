@@ -160,4 +160,14 @@ class TableRegistryTest {
         reg.refresh()
         assertEquals(listOf("成绩表.xlsx"), reg.entries().map { it.rel })
     }
+
+    @Test
+    fun `243 原件区的表扫不到_资料库的表能扫到`() {
+        writeCsv(ws, "资料库/原始/原件.csv", "a,b\n1,2\n")
+        writeCsv(ws, "资料库/普通表.csv", "a,b\n1,2\n")
+        val reg = registry()
+        val report = reg.refresh()
+        assertEquals(1, report.scanned)
+        assertEquals(listOf("资料库/普通表.csv"), reg.entries().map { it.rel })
+    }
 }

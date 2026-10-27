@@ -83,6 +83,9 @@ data class RefreshReport(
  * 线程口径：只有一个调用方线程（工具在工具线程里跑），内部 [synchronized] 兜住面板与工具
  * 同时进来的那一下——登记与内存缓存是同一份状态，撕不开。
  */
+/** 243②：原件区的末级目录名（资料库/原始、library/原始）。 */
+private const val RAW_SUB = "原始"
+
 class TableRegistry(
     private val home: File,
     roots: List<TableRoot>,
@@ -227,12 +230,21 @@ class TableRegistry(
         return if (label.isEmpty()) rel else "$label/$rel"
     }
 
+    /** 243②：原件区判定——末级目录 `原始`，上一级 `资料库` 或 `library`。 */
+    private fun isRawZone(dir: File): Boolean {
+        if (dir.name != RAW_SUB) return false
+        val parent = dir.parentFile?.name ?: return false
+        return parent == "资料库" || parent == "library"
+    }
+
+
     private fun walk(dir: File, root: File, label: String, depth: Int, sink: (File) -> Unit) {
         if (depth > MAX_DEPTH) return
         val listed = dir.listFiles() ?: return
         for (f in listed.sortedBy { it.name }) {
             if (f.isDirectory) {
                 if (f.name in SKIP_DIRS) continue
+                if (isRawZone(f)) continue // 243②：原件区不扫
                 walk(f, root, label, depth + 1, sink)
             } else if (f.isFile) {
                 sink(f)
