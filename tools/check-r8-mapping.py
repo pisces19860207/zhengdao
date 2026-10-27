@@ -50,7 +50,8 @@ try:  # Windows 控制台默认 GBK：个别字符编不出来时降级为替换
 except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
     pass
 
-CORE_KT_REL = "app/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
+# 2026-10-27（241 修正）：Rust 核搬进 :native-core（main 依赖它，终端模块也依赖它），路径随之改
+CORE_KT_REL = "native-core/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
 MAPPING_DIR = "app/build/outputs/mapping"
 # 优先 release（分发产物）；本机只构建过 benchmark 时用它兜底（两者 R8 配置同源）。
 VARIANTS = ("release", "benchmark")
