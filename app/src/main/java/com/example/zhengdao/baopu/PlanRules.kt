@@ -5,6 +5,8 @@
 // 接线（落库 + 内存态），UI 只做渲染，两边都不许各自实现一份「截断/覆盖」语义。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.plan.PlanContract
+import com.example.zhengdao.baopu.plan.PlanContractRules
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -165,8 +167,14 @@ internal object PlanRules {
      *
      * 键序固定（org.json 保插入序）⇒ 同一份计划永远序列化成同一串字节，
      * 「写入后读回逐字一致」（J4）才可判。
+     *
+     * 第二百四十二批（计划即契约）：多一个**带默认值**的 [contract] 参数——
+     * 没契约时字节与今天逐字相同（`v` 仍然是 1，不升版本、不动表结构），
+     * 有契约时只在末尾多挂一个 `contract` 对象。为什么不新开一个 kind：
+     * 契约是这份计划的约束，不是第二种数据（拆两行就要"读两次才知道一张计划卡"，
+     * 而 140 红线里 UI 只认一条 `part(kind='plan')`）。
      */
-    fun toJson(items: List<PlanItem>): String = JSONObject()
+    fun toJson(items: List<PlanItem>, contract: PlanContract? = null): String = JSONObject()
         .put("v", 1)
         .put(
             "items",
@@ -176,7 +184,19 @@ internal object PlanRules {
                 }
             },
         )
+        .apply { if (contract != null) put("contract", PlanContractRules.encode(contract)) }
         .toString()
+
+    /**
+     * payload → 契约（[toJson] 的逆；容错同 [fromJson]：坏数据 ⇒ null，不抛）。
+     *
+     * null 的含义是"这份计划没有契约"⇒ 不设执行上限（契约是上限不是下限，242 口径）。
+     */
+    fun contractFromJson(payload: String): PlanContract? {
+        val root = runCatching { JSONObject(payload) }.getOrNull() ?: return null
+        val obj = root.optJSONObject("contract") ?: return null
+        return PlanContractRules.decode(obj, fromJson(payload))
+    }
 
     /**
      * payload → 计划（[toJson] 的逆；容错：坏 JSON / 条目不全 ⇒ 跳过坏条目）。

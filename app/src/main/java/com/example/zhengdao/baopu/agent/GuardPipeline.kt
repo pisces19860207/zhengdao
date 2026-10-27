@@ -17,6 +17,12 @@ import com.example.zhengdao.baopu.RiskGate
 import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.baopu.plan.ContractDeviation
+import com.example.zhengdao.baopu.plan.ContractSource
+import com.example.zhengdao.baopu.plan.PlanContractBoard
+import com.example.zhengdao.baopu.plan.PlanContractCards
+import com.example.zhengdao.baopu.plan.PlanContractRules
+import com.example.zhengdao.baopu.plan.TouchFace
 import com.example.zhengdao.core.RunLog
 import org.json.JSONObject
 import java.io.File
@@ -193,6 +199,15 @@ internal class GuardPipeline(
      * 排在最后且带缺省 ⇒ 存量调用点（含测试）零改。
      */
     private val riskTable: RiskTable = RiskTable.DEFAULT,
+    /**
+     * 第二百四十二批：本次运行的**契约**（计划批准后装上的上限）。排在参数表**最后**
+     * 且默认全局板 ⇒ 存量调用点（含测试）一个字不改、行为逐字节不变：
+     * 板上没契约（今天的一切）⇒ 第 ③ 段末尾那块判定一次都不进、一个目标面都不算。
+     *
+     * 为什么做成注入接口而不是在这里读单例：判上限要的三个事实（契约／当前步骤／工作区根）
+     * 全是别人的状态；管线是执行层，"偷偷读世界"就没法在闸上直接测负例②③。
+     */
+    private val contracts: ContractSource = PlanContractBoard,
 ) {
 
     sealed interface Result {
@@ -243,10 +258,17 @@ internal class GuardPipeline(
          * [reasonLine]（第二百二十三批）：卡面上那一行的**判定理由**（人话，≤30 字单行）。
          * 它与 220 的影响提示**共用卡上的同一个位置**（不新增卡片）——合成规则在
          * `RiskTell.cardLine`，这里只负责把"为什么问你"带出去。
+         *
+         * [deviation]（第二百四十二批）：**契约外**动作——要弹的不是"这个动作危不危险"
+         * 那张风险卡，而是"计划里没有这一步，要不要扩计划"那张偏离卡。带上来的是判定事实
+         * ＋卡（引擎不许从文案里反推事实）。两条都有 ⇒ 偏离卡先出：范围没谈拢之前，
+         * 谈危险性是本末倒置；她同意扩了计划，引擎重走一遍完整管线，风险卡照旧弹
+         * （红线：批准计划不等于授权改盘）。null = 这一层没有话要说（今天的形状）。
          */
         data class NeedsConfirm(
             val call: ToolCall,
             val reasonLine: String? = null,
+            val deviation: ContractDeviation? = null,
         ) : Result
     }
 
@@ -358,6 +380,14 @@ internal class GuardPipeline(
         val effectiveCall = (guarded as Guarded.Yes).call
 
         // ③ 判定（**风险矩阵唯一口径**，第二百二十三批；批准路径跳过）
+        // 第二百四十二批：这一档要交给契约层比"预估"（[localRisk]），但契约**不重判**——
+        // RiskGate.judge 带调用计频（20 次/60 秒那条），多调一次就是自己给自己加账。
+        var localRisk: RiskClass? = null
+        var riskAsk: String? = null
+        /** 「该不该弹卡」的决定与 [riskAsk]（提示串）必须分开拿：R1/CONFIRM 工具与
+         *  MCP（矩阵无行 ⇒ verdict=null）的提示串是 null，但卡照弹——return 若挂在
+         *  提示串上，这两组就会从"问"滑成"直行"（全量门禁四红实证）。 */
+        var mustAsk = false
         if (!skipConfirm) {
             // MCP 是**表外命名空间**：工具名由服务端描述符定（`mcp_<srv>_<tool>`），
             // 本地矩阵里不可能有它的行——查就是"未分类"，fail-closed 会让每一次 MCP 调用
@@ -400,18 +430,79 @@ internal class GuardPipeline(
                     )
                 }
             }
+            localRisk = verdict?.risk
             // R2/R3 一律必问（R3 在四档 UI 做出来之前也按"问"处理，但绝不放行）；R0/R1 走既有权限策略
             val riskMustAsk = verdict != null && (
                 verdict.mustAsk || (verdict.risk?.ordinal ?: -1) >= RiskClass.R2.ordinal
                 )
             if (riskMustAsk || spec.permission == ToolPermission.CONFIRM) {
-                return Prepared.Settled(
-                    Result.NeedsConfirm(effectiveCall, verdict?.let { RiskTell.cardHint(it) }),
-                )
+                mustAsk = true
+                riskAsk = verdict?.let { RiskTell.cardHint(it) }
             }
         }
+        // 第二百四十二批 C 段：**动作派发之前**比契约（判据 3「立刻停」就落在这儿，
+        // 不是跑完之后回头报）。两条 lane、两条路径（含批准后的 executeApproved）都过
+        // 这一个口子；板上没契约 ⇒ 整个 if 不进，今天执行路径逐字节不变。
+        //
+        // 顺序为什么是「偏离卡 > 风险卡」：范围还没谈拢就谈危险性是本末倒置。她点了
+        // 「扩计划」，引擎重走一遍完整管线，那时这一格已经干净 ⇒ 风险卡照旧弹
+        // （红线：批准计划不构成 R2/R3 授权）。
+        contracts.activeContract()?.let { contract ->
+            val faces = contractFaces(effectiveCall)
+            val check = PlanContractRules.check(
+                contract,
+                faces,
+                localRisk,
+                isWrite = !spec.readOnly,
+                items = contracts.planItems(),
+                root = contracts.workspaceRoot(),
+            )
+            if (check.violated) {
+                log(
+                    "抱朴契约：拦下 ${effectiveCall.name}（${check.breach}：" +
+                        "${check.faceBrief.ifBlank { "步骤维度" }}）⇒ 弹偏离卡，这次动作先不发生",
+                )
+                return Prepared.Settled(
+                    Result.NeedsConfirm(
+                        effectiveCall,
+                        null,
+                        ContractDeviation(
+                            check,
+                            PlanContractCards.deviationRequest(check, effectiveCall.name),
+                        ),
+                    ),
+                )
+            }
+            // D 段对账的"实际做了什么"：真要领执行的才记（被拦下的那条走偏离卡回灌，
+            // 不混进动作流水——否则"没做成的事"会在账上变成"做过了"）。
+            contracts.noteAction(
+                PlanContractRules.ActualAction(
+                    id = effectiveCall.id,
+                    tool = effectiveCall.name,
+                    faces = faces,
+                    risk = localRisk,
+                    isWrite = !spec.readOnly,
+                    breach = check.breach,
+                ),
+            )
+        }
+        if (mustAsk) return Prepared.Settled(Result.NeedsConfirm(effectiveCall, riskAsk))
         return Prepared.Ready(effectiveCall, spec, guarded.grantedOutside)
     }
+
+    /**
+     * 这次动作要碰的目标（路径参数在第 ② 段已改写成绝对路径，直接进面）。
+     *
+     * 为什么按 [pathKeysFor] 的键取：那张表是「哪些参数是路径」的**唯一口径**
+     * （`path`/`from`/`to`/`out`）——契约层再列一份就会漂（矩阵那边三份归一化的教训在前）。
+     * URL 类目标由 [TouchFace.facesOf] 直接从参数里认（`url`/`site`/`link`/`href`）。
+     */
+    private fun contractFaces(call: ToolCall): List<TouchFace> = TouchFace.facesOf(
+        pathKeysFor(call.name, call.arguments).mapNotNull { key ->
+            call.arguments.optString(key).trim().takeIf { it.isNotEmpty() }
+        },
+        call.arguments,
+    )
 
     /**
      * 第 ④⑤ 段的**唯一实现**（三条入口共用）：④ 的 outcome 进来，⑤ spill ＋ 围栏出去。

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 242 (plan-as-contract): the contract lines inside the expanded plan card.
+     Kept in its own file (same practice as batches 158/233) so it does not contend with
+     batches that are editing strings.xml on main. -->
+<resources>
+    <string name="baopu_plan_contract_goal">Goal: %1$s</string>
+    <string name="baopu_plan_contract_touches">May touch: %1$s</string>
+    <string name="baopu_plan_contract_readonly">Read-only: %1$s</string>
+    <string name="baopu_plan_contract_asks">Expected asks: %1$d</string>
+    <string name="baopu_plan_contract_stop_if">Stop if: %1$s</string>
+    <string name="baopu_plan_contract_note">Approving this plan sets a ceiling for this run; writing to disk, deleting and sending out still ask once per action.</string>
+</resources>

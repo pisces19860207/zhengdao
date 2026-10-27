@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百四十二批（计划即契约）：计划卡展开态的契约那几行。字符串单独成文件（158/233 批同款
+     做法）——资源合并后与放进 strings.xml 完全等价，但不与 main 上正在改 strings.xml 的批次抢同一个文件。 -->
+<resources>
+    <string name="baopu_plan_contract_goal">目标：%1$s</string>
+    <string name="baopu_plan_contract_touches">可碰：%1$s</string>
+    <string name="baopu_plan_contract_readonly">只读：%1$s</string>
+    <string name="baopu_plan_contract_asks">预计问 %1$d 次</string>
+    <string name="baopu_plan_contract_stop_if">出现这些就停：%1$s</string>
+    <string name="baopu_plan_contract_note">批准这份计划＝给这次运行划一个上限；改盘、删除、外发这类动作照旧一次一问。</string>
+</resources>

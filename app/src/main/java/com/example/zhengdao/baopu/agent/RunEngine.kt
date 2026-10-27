@@ -41,6 +41,13 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.VisionConsent
 import com.example.zhengdao.baopu.VisionFiles
 import com.example.zhengdao.baopu.VisionRouting
+import com.example.zhengdao.baopu.plan.ContractApprovalRules
+import com.example.zhengdao.baopu.plan.ContractDeviation
+import com.example.zhengdao.baopu.plan.ContractDeviationAction
+import com.example.zhengdao.baopu.plan.ContractDeviationRules
+import com.example.zhengdao.baopu.plan.PlanContractBoard
+import com.example.zhengdao.baopu.plan.PlanContractCards
+import com.example.zhengdao.baopu.plan.PlanContractRules
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.VerifyTargets
@@ -720,6 +727,9 @@ internal class RunEngine(
         sessionId = { planSessionId },
         store = SessionPlanStore(db),
         log = log,
+        // 第二百四十二批：契约里写的相对目标要按工作区根解析。根的取法与守卫/spill 同源
+        // （[spillRoot] 就是 BaopuRuntime.workspaceRoot），不在这里另立一个真相源。
+        workspaceRoot = { spillRoot().absolutePath },
     )
 
     /** 这一步有没有成功执行过 update_plan（软档计数用；每步开始时清零）。 */
@@ -1126,6 +1136,9 @@ internal class RunEngine(
      * 阻塞有界（与确认卡同一超时），超时返回 null，由工具如实说「没人回答」。
      */
     fun askUser(req: AskUserRequest): AskUserOption? {
+        // 第二百四十二批 D 段第三项：每张"要人点"的卡都进问人账（对账的"实际"那一侧）。
+        // 没契约时板上自己短路 ⇒ 一次都不记，今天的执行路径逐字节不变。
+        PlanContractBoard.noteAsk()
         synchronized(choiceLock) {
             _choice.value = req
             choiceResult = null
@@ -1181,6 +1194,8 @@ internal class RunEngine(
         val merged = LinkedHashMap<String, String>()
         synchronized(groupLock) {
             for ((index, chunk) in chunks.withIndex()) {
+                // 拆出来的每一张都算一次问人（第二百四十二批 D 段：账要能对上"她点了几回"）
+                PlanContractBoard.noteAsk()
                 _choice.value = req.copy(
                     questions = chunk,
                     note = if (index == 0) AskGroupRules.moreNote(questions.size, chunk.size) else "",
@@ -1792,6 +1807,9 @@ internal class RunEngine(
                         unfinishedPlanCount = planController.unfinishedCount(),
                         truncated = outcome.truncated,
                         answerNotice = AnswerGate.notice(answerFindings),
+                        // 第二百四十二批 D 段：勘验对账的读数就在这一步结（一轮只结一次，
+                        // 后面的 settle 再拿只会取回同一份，不会重复写 208）。
+                        contractRecon = PlanContractBoard.reconcile()?.let { PlanContractRules.reconBrief(it) },
                     )?.let { _notice.value = it }
 
                     persistAssistantMessage(sessionId, outcome.text)
@@ -2747,6 +2765,10 @@ internal class RunEngine(
     }
 
     private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {
+        // 第二百四十二批 D 段：中止／熔断／停止这几条收尾路也要结账（正常完成那条在贴
+        // notice 时已经结过，这里只会取回同一份——板上"一轮只结一次"）。
+        // 没契约 ⇒ reconcile() 立刻返 null，一个字不记、一句不说：这一层完全惰性。
+        PlanContractBoard.reconcile()
         // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
         // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
         // 一轮 3 步正常完成后显示「上次中断于第 3 步」——就是这一瞬被 UI 读到了。
@@ -3474,13 +3496,31 @@ internal class RunEngine(
         screenshotGate(call, sessionId)?.let { blocked ->
             return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
         }
+        // 第二百四十二批 B 段：这一版计划带了新上限 ⇒ **执行之前**先请她批准。
+        // 位置在 pipeline.execute 之前是判据 1/2 的本体：批准后由 submit 把契约装进板上，
+        // 于是"契约内 R0/R1 不弹卡"从这一步之后才成立。不批准**不拦这次** update_plan：
+        // 计划照旧落库、卡面照旧看得见，只是本次不设执行范围上限（不封顶 ≠ 可以乱来）。
+        askContractApproval(call)
         val toolStartedAt = System.currentTimeMillis()
         val result = pipeline.execute(call) { name, text ->
             writeSpill(sessionId, name, text)
         }
-        if (result !is GuardPipeline.Result.NeedsConfirm) {
-            // 在线路径（不经人看）：工具真跑了，耗时是实测的
-            return handleResultAndTrace(sessionId, step, call, result, history, toolStartedAt)
+        // 第二百四十二批 C 段②：契约外的动作**没发生之前**停下来问人（判据 3——不是跑完再报）。
+        // 她选「扩计划」⇒ 重跑的是完整管线（不是 executeApproved）：范围谈拢之后，
+        // 危险性那一问照旧要问（红线①：批准计划不构成任何 R2/R3 授权）。
+        val settled = contractDeviationGate(call, result) {
+            pipeline.execute(call) { name, text -> writeSpill(sessionId, name, text) }
+        }
+        if (settled !is GuardPipeline.Result.NeedsConfirm) {
+            // 在线路径（不经人看）：工具真跑了，耗时是实测的；偏离卡等过人的那一段不算工具耗时
+            return handleResultAndTrace(
+                sessionId,
+                step,
+                call,
+                settled,
+                history,
+                if (settled === result) toolStartedAt else 0L,
+            )
         }
         // 第八十七批 R1：挂起那一刻先记一行 CONFIRM——它不是成功也不是失败，
         // 记成 OK 会让回放的人以为这次写已经生效了（P1-1 的同一类谎言）。
@@ -3498,9 +3538,11 @@ internal class RunEngine(
         // 确认制（刀 3 A 段）：落 pending → 出卡 → 挂起等 → 执行/拒绝/超时。
         // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
         // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
+        // 第二百四十二批 D 段第三项：这张卡要进"实际问了几次人"的账（对账的"实际"那一侧）。
+        PlanContractBoard.noteAsk()
         val oc = runBlocking {
             // 第二百二十三批：把矩阵给的判定理由带进卡（卡面上那一行；null ⇒ 不摆）
-            confirmFlow.enter(sessionId, step, result.call, result.reasonLine) { name, text ->
+            confirmFlow.enter(sessionId, step, settled.call, settled.reasonLine) { name, text ->
                 writeSpill(sessionId, name, text)
             }
         }
@@ -3744,6 +3786,115 @@ internal class RunEngine(
     }
 
     /**
+     * 契约批准闸（第二百四十二批 B 段；判据 1/2 的接线点）。
+     *
+     * 只在 `update_plan` **真执行之前**问一次：这一版带了一份没被批准过的新上限才弹
+     * （同一版她明确拒过 ⇒ 不再打扰；超时／没点不算她答过 ⇒ 下次照问——见
+     * [PlanController.previewContract]）。
+     *
+     * 两条不让步的口径：
+     * - **批准计划 ≠ 授权改盘**（红线①）：这张卡只决定"要不要给它设范围上限"，
+     *   任何 R2/R3 动作之后照旧各弹各的确认卡——契约只封上限，不放水；
+     * - **不批也放行 update_plan**：计划本身是她要看的（卡面、进度、勾选），
+     *   拦掉它等于为了一个附加字段把主功能扣了。
+     */
+    private fun askContractApproval(call: ToolCall) {
+        if (call.name != PlanTool.NAME) return
+        val declared = planController.previewContract(call.arguments) ?: return
+        log(
+            "抱朴契约：新上限声明待批准（${declared.steps.size} 步／白名单 ${declared.touches.size} 项／" +
+                "只读 ${declared.readonly.size} 项／预估问 ${declared.expectedAsks} 次）",
+        )
+        val picked = askUser(PlanContractCards.approvalRequest(declared))
+        val accepted = ContractApprovalRules.approved(picked?.id)
+        // 只有真点了「批准」才算数；点了「不批准」记这一版（同版不再问）；超时两者都不记。
+        planController.answerContractCard(declared.takeIf { accepted }, accepted)
+        if (!accepted && picked == null) log("抱朴契约：批准卡没人回答（超时）⇒ 本次不装上限，下次照问")
+    }
+
+    /**
+     * 偏离卡的弹与收（第二百四十二批 C 段②；判据 3/4 的接线点）。
+     *
+     * 三条硬口径，都写在这几行里而不是注释里：
+     * 1. **动作还没发生**：卡是在 `prepare` 阶段截下来的（[GuardPipeline.prepare] 里契约那一格），
+     *    executor 一次都没跑；
+     * 2. **默认不执行**：没点／超时／点「取消」⇒ 这次动作不做（fail-closed）；
+     * 3. **「扩计划」只放宽契约这一格**，放宽之后调用方重跑**完整管线**（[rerun]）——
+     *    走 `executeApproved` 就等于把"她同意扩范围"当成"她批准了这个动作"（红线①）。
+     *
+     * 只重跑一次：扩完仍然超限 ⇒ 如实回灌、不再问第二遍（同一件事连问两次是骚扰，
+     * 问第三次就是把人逼到随手点）。
+     *
+     * @return 与 [result] 同形状：没偏离 ⇒ 原样返回；否则这次的终局，或重跑之后的新结果
+     */
+    private fun contractDeviationGate(
+        call: ToolCall,
+        result: GuardPipeline.Result,
+        rerun: () -> GuardPipeline.Result,
+    ): GuardPipeline.Result {
+        val dev = (result as? GuardPipeline.Result.NeedsConfirm)?.deviation ?: return result
+        val terminal = contractDeviationCard(call, dev) ?: return stillBreach(call, rerun())
+        return GuardPipeline.Result.Failed(call, terminal)
+    }
+
+    /** 重跑之后的结果仍然超限 ⇒ 终局回灌（两条 lane 共用那一句）。 */
+    private fun stillBreach(call: ToolCall, result: GuardPipeline.Result): GuardPipeline.Result {
+        val again = (result as? GuardPipeline.Result.NeedsConfirm)?.deviation ?: return result
+        return GuardPipeline.Result.Failed(call, ContractDeviationRules.stillBreachText(again.check, call.name))
+    }
+
+    /**
+     * 偏离卡本体（两条 lane 共用；只在引擎线程调，[askUser] 有界等待）。
+     *
+     * @return null ⇒ 她同意扩计划、而且**扩得动**（调用方该重跑一遍）；
+     *   非 null = 回灌给模型的那句实话（取消／换做法／这一条扩不动）。
+     */
+    private fun contractDeviationCard(call: ToolCall, dev: ContractDeviation): String? {
+        val picked = askUser(dev.request)
+        val action = ContractDeviationRules.actionFor(picked?.id)
+        log("抱朴契约：偏离卡回答 $action（违约 ${dev.check.breach}，工具 ${call.name}）")
+        if (action == ContractDeviationAction.EXTEND_CONTRACT) {
+            // 只放宽这一格；扩不动的两种违约（只读区／步骤已勾完）如实说明该走哪条路
+            return if (PlanContractBoard.extendFor(dev.check)) null
+            else ContractDeviationRules.notExtendableText(dev.check, call.name)
+        }
+        // EXTEND 那一支上面已经走了；这里拿到的必是取消／换做法那句
+        return ContractDeviationRules.feedFor(action, dev.check, call.name)
+            ?: "【这次没做】${ContractDeviationRules.whyText(dev.check)}——这一步**没有发生**，别当成已完成。"
+    }
+
+    /**
+     * 并行读段里的偏离卡（第二百四十二批）：判据 3 对读动作同样成立——
+     * 「读计划外的目录」也是计划外动作，不能因为它不改盘就事后追报。
+     *
+     * 与串行那条的唯一差别：这一段的形状是"先全部判完、再并发执行"，所以扩过计划之后
+     * 重跑的是 [GuardPipeline.prepare]（拿一个新的 Ready 回批次），不是执行。
+     */
+    private fun contractDeviationInLane(
+        call: ToolCall,
+        prepared: GuardPipeline.Prepared,
+    ): GuardPipeline.Prepared {
+        val dev = (prepared as? GuardPipeline.Prepared.Settled)
+            ?.result
+            ?.let { (it as? GuardPipeline.Result.NeedsConfirm)?.deviation }
+            ?: return prepared
+        val terminal = contractDeviationCard(call, dev)
+            ?: return stillBreachPrepared(call, pipeline.prepare(call))
+        return GuardPipeline.Prepared.Settled(GuardPipeline.Result.Failed(call, terminal))
+    }
+
+    /** [contractDeviationInLane] 的重判版：还超限 ⇒ 终局 Failed（不循环弹卡）。 */
+    private fun stillBreachPrepared(call: ToolCall, prepared: GuardPipeline.Prepared): GuardPipeline.Prepared {
+        val dev = (prepared as? GuardPipeline.Prepared.Settled)
+            ?.result
+            ?.let { (it as? GuardPipeline.Result.NeedsConfirm)?.deviation }
+            ?: return prepared
+        return GuardPipeline.Prepared.Settled(
+            GuardPipeline.Result.Failed(call, ContractDeviationRules.stillBreachText(dev.check, call.name)),
+        )
+    }
+
+    /**
      * 一个**并行读段**（第九十二批）：
      * 1. 先按提交顺序把 ①②③（注册表/Schema、路径守卫、权限）跑完——这三段带顺序语义，
      *    第一个越界就要终止本轮、后面的不许再跑，所以**不能**丢进并发里；
@@ -3763,7 +3914,9 @@ internal class RunEngine(
         val ready = ArrayList<GuardPipeline.Prepared.Ready>(stage.calls.size)
         for (call in stage.calls) {
             val before = System.currentTimeMillis()
-            when (val p = pipeline.prepare(call)) {
+            // 第二百四十二批：读动作同样受契约上限管（判据 3 不区分读写——
+            // 「读计划外的目录」也是计划外动作，不能因为不改盘就事后追报）。
+            when (val p = contractDeviationInLane(call, pipeline.prepare(call))) {
                 is GuardPipeline.Prepared.Ready -> ready += p
                 // ①②③ 已定论（坏 Schema / 越界 / 需确认）：与串行走**同一个**收口函数
                 is GuardPipeline.Prepared.Settled -> {

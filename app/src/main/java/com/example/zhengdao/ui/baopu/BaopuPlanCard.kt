@@ -48,22 +48,57 @@ import com.example.zhengdao.baopu.PlanRules
 data class BaopuPlanItem(val text: String, val status: String)
 
 /**
+ * 挂在计划卡上的契约那一份（第二百四十二批 A 段字段的**卡面形状**）。
+ *
+ * public 的理由与 [BaopuPlanItem] 一样：它挂在公开的 [BaopuUiPlan] 上。
+ * 这里只有数据，判据一条都没有（上限怎么算、超了怎么停在 `baopu/plan/PlanContract.kt`）。
+ *
+ * [stepRisks] 与 [BaopuUiPlan.items] **同序**：第 i 格是第 i 步的预估上限，
+ * 空串＝这一格没有读数（步骤数与条目数不齐时的保守画法，不猜一个档出来）。
+ */
+data class BaopuUiContract(
+    val goal: String,
+    val touches: List<String>,
+    val readonly: List<String>,
+    val expectedAsks: Int,
+    val stopIf: List<String>,
+    val stepRisks: List<String>,
+)
+
+/**
  * 挂在消息上的计划（[com.example.zhengdao.ui.baopu.BaopuChatController] 从
  * `part(kind='plan')` 的 payload 解析而来）。
  *
  * 为什么绕一层解析而不是直接拿 payload：J16——plan 的 JSON 原文**不许**进 UI
  * 文本通道（A+B 段的裸 JSON 气泡事故就是那么来的）。
+ *
+ * 第二百四十二批：多一个 [contract]（没声明 ⇒ null，卡面与今天逐字相同）。
+ * 判据 1 要的是「卡上看得见 步骤 / 白名单 / 每步风险 / 预估问几次」——
+ * 步骤本来就是一条一行，剩下四项由 [BaopuPlanCard] 展开态的契约那几行渲染。
  */
-data class BaopuUiPlan(val items: List<BaopuPlanItem>) {
+data class BaopuUiPlan(
+    val items: List<BaopuPlanItem>,
+    val contract: BaopuUiContract? = null,
+) {
     companion object {
         /** payload ⇒ 计划；解析不出条目 ⇒ null（没有可显示的计划）。 */
         fun fromPayload(payload: String): BaopuUiPlan? {
             val items = PlanRules.fromJson(payload)
-            return if (items.isEmpty()) {
-                null
-            } else {
-                BaopuUiPlan(items.map { BaopuPlanItem(it.text, it.status) })
-            }
+            if (items.isEmpty()) return null
+            val contract = PlanRules.contractFromJson(payload)
+            return BaopuUiPlan(
+                items.map { BaopuPlanItem(it.text, it.status) },
+                contract?.let {
+                    BaopuUiContract(
+                        goal = it.goal,
+                        touches = it.touches,
+                        readonly = it.readonly,
+                        expectedAsks = it.expectedAsks,
+                        stopIf = it.stopIf,
+                        stepRisks = it.steps.map { step -> step.risk.name },
+                    )
+                },
+            )
         }
     }
 }
@@ -123,6 +158,24 @@ internal const val PLAN_ITEM_COLLAPSED_CHARS = 60
  */
 internal fun planItemNeedsExpand(text: String): Boolean = text.length > PLAN_ITEM_COLLAPSED_CHARS
 
+// ── 契约那几行的判据（第二百四十二批判据 1；JVM 直测） ──────────────────────
+
+/**
+ * 卡面上一个「读数值」：空白 ⇒ null（整行不摆）。
+ *
+ * 为什么要这一步而不是直接把空串塞进文案：「只读区：」后面跟空的，读起来像
+ * 数据丢了——没声明就是没这一行，才是实话。
+ */
+internal fun planContractValue(values: List<String>): String? =
+    values.joinToString("、").ifEmpty { null }
+
+/**
+ * 第 [index] 步的预估上限（"R2" 那样的档位符号，照 [planStatusSymbol] 的口径：
+ * 符号是字形不是文案，不走 strings）。没有那一格的读数 ⇒ null，**不猜一档**。
+ */
+internal fun planStepRiskTag(contract: BaopuUiContract?, index: Int): String? =
+    contract?.stepRisks?.getOrNull(index)?.takeIf { it.isNotEmpty() }
+
 // ── 渲染 ────────────────────────────────────────────────────────────────
 
 /**
@@ -141,6 +194,10 @@ internal fun planItemNeedsExpand(text: String): Boolean = text.length > PLAN_ITE
  *
  * 第一百四十批（2026-10-22）：再添两个可选参数 [highlightIndex] / [accentColor]——
  * 当前步骤只把符号与原文染成黛青，不加粗整行（11:50 设计约束）；默认 null ⇒ 旧行为不变。
+ *
+ * 第二百四十二批（2026-10-27 计划即契约）：展开态多契约那几行——目标、每步上限、白名单、
+ * 只读区、预估问几次、停机条件（判据 1「卡上看得见」）。没声明契约 ⇒
+ * [BaopuUiPlan.contract] 为 null，卡面与今天逐字相同。
  */
 @Composable
 internal fun BaopuPlanCard(
@@ -190,6 +247,11 @@ internal fun BaopuPlanCard(
                 }
             }
             if (expanded) {
+                // 第二百四十二批判据 1：目标那一行摆在步骤之前（先说这次要干成什么）。
+                val contract = plan.contract
+                if (contract != null) {
+                    PlanContractLine(stringResource(R.string.baopu_plan_contract_goal, contract.goal))
+                }
                 plan.items.forEachIndexed { index, item ->
                     // 140：当前步骤只换前景色（黛青），不整行加粗——高亮靠颜色指认。
                     val isCurrent = highlightIndex == index
@@ -248,9 +310,54 @@ internal fun BaopuPlanCard(
                                 )
                             }
                         }
+                        // 判据 1「每步风险」：上限那一档摆在条目右边（有读数才摆）。
+                        val riskTag = planStepRiskTag(contract, index)
+                        if (riskTag != null) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = riskTag,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
+                }
+                if (contract != null) {
+                    PlanContractLine(
+                        planContractValue(contract.touches)
+                            ?.let { stringResource(R.string.baopu_plan_contract_touches, it) },
+                    )
+                    PlanContractLine(
+                        planContractValue(contract.readonly)
+                            ?.let { stringResource(R.string.baopu_plan_contract_readonly, it) },
+                    )
+                    PlanContractLine(stringResource(R.string.baopu_plan_contract_asks, contract.expectedAsks))
+                    PlanContractLine(
+                        planContractValue(contract.stopIf)
+                            ?.let { stringResource(R.string.baopu_plan_contract_stop_if, it) },
+                    )
+                    // 红线①在卡面上的那句话：批准计划≠授权改盘（不靠她记住规则，写在眼前）。
+                    PlanContractLine(stringResource(R.string.baopu_plan_contract_note))
                 }
             }
         }
     }
+}
+
+/**
+ * 契约在卡面上的一行（小字、同组前景色）。
+ *
+ * null ⇒ 整行不摆：没声明过的东西不占位（「只读区：」跟空串，读起来像数据丢了）。
+ */
+@Composable
+private fun PlanContractLine(line: String?) {
+    if (line == null) return
+    Text(
+        text = line,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = PLAN_ITEM_COLLAPSED_MAX_LINES,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }

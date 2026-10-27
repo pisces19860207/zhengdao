@@ -8,6 +8,9 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanRules.PlanItem
 import com.example.zhengdao.baopu.PlanStore
+import com.example.zhengdao.baopu.plan.PlanContract
+import com.example.zhengdao.baopu.plan.PlanContractBoard
+import com.example.zhengdao.baopu.plan.PlanContractRules
 import org.json.JSONObject
 import com.example.zhengdao.core.RunLog
 
@@ -28,16 +31,40 @@ import com.example.zhengdao.core.RunLog
  *
  * @param sessionId 当前轮会话（引擎喂；落库要知道落到哪）
  * @param store 计划存取（接口；Android 侧实现 SessionPlanStore，单测用假件）
+ * @param workspaceRoot 工作区根绝对路径（第二百四十二批：契约里相对写法的目标要按它解析）；
+ *   缺省空串 ⇒ 目标按原样比较（存量调用点与单测一个字不改、行为不变）
  */
 internal class PlanController(
     private val sessionId: () -> Long,
     private val store: PlanStore,
     private val log: (String) -> Unit = { com.example.zhengdao.core.RunLog.log(it) },
+    private val workspaceRoot: () -> String = { "" },
 ) : PlanSink {
 
     /** 当前轮的计划（内存态；库里的真相是 kind='plan' 的 part）。 */
     @Volatile
     private var current: List<PlanItem> = emptyList()
+
+    // ── 契约（242）：上限声明，只在用户批准之后生效 ────────────────────────
+    //
+    // 三条口径（派工单 B 段＋红线）：
+    // - **批准才封顶**：模型自己发的契约没有"她批过"这一步 ⇒ 落库、卡上看得见，
+    //   但不进 [PlanContractBoard]（不设上限）——回灌里明说没生效，不许它以为批了；
+    // - **封顶不授权**：批准契约**不**给任何 R2/R3 放行，动作照走各自动作自己的确认卡；
+    // - **进度更新不洗掉上限**：只改 status 的那一版通常不带 contract，
+    //   此时沿用上一版——否则每打一个勾就把上限关掉一次。
+
+    /** 当前这份计划声明的契约（null = 没声明）。 */
+    @Volatile
+    private var contract: PlanContract? = null
+
+    /** 用户刚批准过一份契约（御批卡「批准计划」）；下一次带新契约的 submit 消费掉。 */
+    @Volatile
+    private var contractAuthorized = false
+
+    /** 她明确拒过的那一版契约（同一版重发不再打扰；改一版就重新问）。 */
+    @Volatile
+    private var rejectedContract: PlanContract? = null
 
     // ── 软档（140）：结构变更过卡 ＋ 连续 3 步偏离提示 ──────────────────────
     // 计数只统计「工具步」：一步跑完既没推进计划（update_plan 成功）也没更新计划
@@ -103,11 +130,45 @@ internal class PlanController(
         changeAuthorized = false
         // 能带着 needsCard 走到这里 ⇒ 一定是她批的；记下批准，覆盖此前的同版拒录。
         if (change.needsCard) changeMemory.record(change, PlanChangeDecision.APPROVED)
+        // ── 第二百四十二批：这一版带的契约（上限声明）──────────────────────────
+        // Error ⇒ 整次 submit 退回（不落库）：写了 contract 就是它想立上限，
+        // 缺字段的"半张契约"静默当成没契约＝悄悄放弃封顶，那是骗人（负例①）。
+        val contractParse = PlanContractRules.parse(args, ok.items)
+        if (contractParse is PlanContractRules.ContractParse.Error) {
+            log("抱朴契约：拒绝（${contractParse.message}）")
+            return ToolOutcome.Failed(contractParse.message)
+        }
+        // 声明了但没批准 ⇒ 只落库不进上限；同一版被拒过还原样重发，不再重复弹卡。
+        val declared = (contractParse as? PlanContractRules.ContractParse.Ok)?.contract
+            ?: contract
+        val freshContract = declared != null && declared != contract
+        val inForce = declared != null && (!freshContract || contractAuthorized)
+        contractAuthorized = false
         val applied = PlanRules.applyOverwrite(current, ok.items)
         current = applied.items
-        val payload = PlanRules.toJson(applied.items)
+        contract = declared
+        val payload = PlanRules.toJson(applied.items, declared)
         val sid = sessionId()
         store.insert(sid, payload)
+        // 契约进板（生效）／同步步骤勾选状态（已生效时上限跟着"现在在做哪一步"走）。
+        //
+        // 「生效」认两条路：新版本＋她批过（正常路），**或**板上还没装着上限而她批过——
+        // 后者是"第一次问没人答、她后来在重发的那次上点了批准"：版本没变（fresh=false），
+        // 但上限从来没装上过，只认 fresh 就永远装不上，ack 还会说"沿用上一版"那句谎话。
+        // 反过来，换版没批 ⇒ 旧上限必须跟着旧计划一起退场（计划条目已经换成新的了，
+        // 旧契约的步骤格子对不上新计划；赖在板上等于拿上一份计划的边界管这一次）。
+        val activated = inForce && (freshContract || !PlanContractBoard.hasContract())
+        if (activated) {
+            PlanContractBoard.activate(declared, applied.items, workspaceRoot(), sid)
+            log("抱朴契约：用户已批准 ⇒ 进上限（${declared.steps.size} 步）")
+        } else if (inForce) {
+            PlanContractBoard.notePlan(applied.items)
+        } else if (freshContract) {
+            PlanContractBoard.clear()
+            log("抱朴契约：这一版还没经用户批准 ⇒ 本次不设执行上限（卡面上照旧看得见）")
+        } else if (declared != null) {
+            log("抱朴契约：这一版还没经用户批准 ⇒ 本次不设执行上限（卡面上照旧看得见）")
+        }
         // 计划真的更新了（不论推进还是结构变更）⇒ 偏离计数清零、解除静音。
         stepsWithoutPlanUpdate = 0
         deviationPrompted = false
@@ -121,7 +182,31 @@ internal class PlanController(
                     "；notice ${ok.notices.size + applied.stickyNotes.size} 条）"
                 },
         )
-        return ToolOutcome.Ok(PlanRules.renderAck(applied.items, ok.notices + applied.stickyNotes))
+        return ToolOutcome.Ok(
+            PlanRules.renderAck(applied.items, ok.notices + applied.stickyNotes) +
+                contractStateLine(declared, activated, PlanContractBoard.hasContract()),
+        )
+    }
+
+    /**
+     * 契约状态那一句（跟在计划 ack 后面回灌给模型；没声明契约 ⇒ 空串，字节与今天相同）。
+     *
+     * 实话以**板上有没有上限**为准，不以"声明长什么样"为准：同一版重发她拒过 ⇒
+     * 板上没有，就得说"没生效"，不能因为声明没变就说"沿用上一版"。模型必须知道
+     * 自己头上有没有上限——不知道就会把"这次没弹卡"读成"用户已经授权"（负例②的成因）。
+     */
+    private fun contractStateLine(
+        declared: PlanContract?,
+        justActivated: Boolean,
+        boardActive: Boolean,
+    ): String = when {
+        declared == null -> ""
+        justActivated -> "契约已生效：之后的动作必须落在计划声明的步骤与白名单里，" +
+            "超出会立刻停下来问用户——这**不减少**任何该有的确认卡（批准计划不等于授权改盘）。"
+        boardActive -> "契约沿用上一版（这次没重发）：上限仍然生效，同上。"
+        else -> "契约**没有生效**（用户还没批准这份计划）：本次运行不设执行上限，" +
+            "但这不等于你可以动计划外的东西——该有的确认卡一张都不会少。" +
+            "要让它生效：先在正文里把目标和白名单讲清楚，请用户批准。"
     }
 
     /**
@@ -232,17 +317,72 @@ internal class PlanController(
      *
      * 只加在**普通工具结果**后面（`update_plan` 自己的 ack 已经有同类话术，别叠）；
      * 内容刻意短：剩余条数＋前两条＋一句「不标等于没做」。
+     *
+     * 第二百四十二批再挂一句「上次对账读数」：契约跑完发现预估骗人（问太少／风险估低），
+     * 下一版计划必须看见这句话，否则同一份错估算每轮重来一遍（派工单 D 段后半句）。
      */
     fun reminderLine(): String? {
         if (current.isEmpty()) return null
+        val hint = PlanContractBoard.estimateHint()
         val todo = current.filter { it.status != PlanRules.STATUS_DONE }
-        if (todo.isEmpty()) return null
+        if (todo.isEmpty()) return hint
         val names = todo.take(2).joinToString("；") { it.text }
         val more = if (todo.size > 2) "…" else ""
         return "【计划提醒】还有 ${todo.size} 条没勾（$names$more）。" +
             "打勾是干活的一部分：一步开始时先标 doing，做完那一刻立刻再调一次 update_plan、整表重发标 done；" +
             "卡住就留在 doing 并说明。" +
-            "不许攒到最后批量补、不许偷偷划掉、不许假装做完——不标就等于没做（用户看到的是没打勾）。"
+            "不许攒到最后批量补、不许偷偷划掉、不许假装做完——不标就等于没做（用户看到的是没打勾）。" +
+            (hint ?: "")
+    }
+
+    // ── 契约 API（242；判据全在 PlanContractRules，这里只管「批没批」这一票）────
+    //
+    // 引擎在 update_plan **执行之前**问 needsContractApproval、弹批准卡；她点了「批准」
+    // 才 authorizeContract()，随后重跑的那次 submit 把上限装进 [PlanContractBoard]。
+    // 这条链路是红线①的落地处：**批准计划 ≠ 授权任何 R2/R3**——契约只封上限，
+    // 动作该走的确认卡一张不少（见 GuardPipeline 的契约段与 RunEngine 的偏离分支）。
+
+    /**
+     * 批准卡收场。引擎把自己弹出去那一版还回来（[shown]），按选择收尾：
+     * - 批准 ⇒ 放行下一次 submit 装上限；
+     * - 不批／超时 ⇒ 记版次（同版不再重复打扰；超时不记，下次照问——见下）。
+     *
+     * 「没点／超时」不等于她答过 ⇒ 传 [shown] = null 时**不记拒**，只把放行清掉。
+     */
+    fun answerContractCard(shown: PlanContract?, accepted: Boolean) {
+        if (accepted) {
+            contractAuthorized = true
+            log("抱朴契约：用户批准 ⇒ 本次运行设执行上限")
+            return
+        }
+        contractAuthorized = false
+        if (shown != null) {
+            rejectedContract = shown
+            log("抱朴契约：用户明确不批准这一版上限声明 ⇒ 本次不设执行上限")
+        }
+    }
+
+    /** 当前声明的契约（内存态；null = 这一版计划没声明上限）。 */
+    fun currentContract(): PlanContract? = contract
+
+    /** 上限是否真的装上了（板上有契约 ⇒ 引擎此刻正在按契约设限）。 */
+    fun isContractInForce(): Boolean = PlanContractBoard.hasContract()
+
+    /**
+     * 这次 update_plan 带的是不是一份「还没经她批准」的契约（**不落库、不动内存**）。
+     *
+     * 三种不弹卡：没带／带的就是板上正在用那一版（进度更新）／同一版她明确拒过。
+     * **没点或超时不算拒**（那不等于她答过）⇒ 下次照样问，不许替她做决定。
+     * 坏契约（缺字段）也返 null：错误原文由 [submit] 回灌，别在预览层抢答。
+     */
+    fun previewContract(args: JSONObject): PlanContract? {
+        val parsed = PlanRules.parseItems(args) as? PlanRules.Parse.Ok ?: return null
+        val declared = (PlanContractRules.parse(args, parsed.items)
+            as? PlanContractRules.ContractParse.Ok)?.contract ?: return null
+        if (declared == rejectedContract) return null
+        if (contractAuthorized) return null
+        if (declared == contract && PlanContractBoard.hasContract()) return null
+        return declared
     }
 
     fun newRound() {
@@ -252,6 +392,11 @@ internal class PlanController(
         deviationMuted = false
         changeAuthorized = false
         changeMemory.clear()
+        // 契约（242）与计划同生命周期：新请求＝新上限，上一轮的封顶不许带到这一轮。
+        contract = null
+        contractAuthorized = false
+        rejectedContract = null
+        PlanContractBoard.clear()
     }
 
     /**
@@ -260,13 +405,23 @@ internal class PlanController(
      * 不回种的后果：模型重发计划时 sticky done 的 previous 是空表 ⇒ 已完成的
      * 条目被打回 doing，用户看到「打完的勾又亮了」（派工单 §1.2「重启/回看就
      * 没了」的另一半——内存态这一半）。
+     *
+     * 第二百四十二批：契约**只回种到卡面，不重装上限**。「她批过」这一步是进程内的
+     * 票，没有落盘（落盘等于替她记住一次授权）⇒ fail-closed：上限关掉，下次它重发
+     * 同一版时 [previewContract] 照常再问一次。上限关闭不等于随意——动作该走的确认卡
+     * 一张不少（与「声明了但没批准」同一口径）。
      */
     fun seedFromStore(sessionId: Long) {
-        current = PlanRules.fromJson(store.latest(sessionId) ?: return)
+        val payload = store.latest(sessionId) ?: return
+        current = PlanRules.fromJson(payload)
+        contract = PlanRules.contractFromJson(payload)
         stepsWithoutPlanUpdate = 0
         deviationPrompted = false
         deviationMuted = false
         changeAuthorized = false
         changeMemory.clear()
+        contractAuthorized = false
+        rejectedContract = null
+        PlanContractBoard.clear()
     }
 }

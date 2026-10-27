@@ -56,6 +56,9 @@ internal object RunLoopRules {
      * @param answerNotice 227 §0.5 的答案自检结果（「这轮有 N 条可疑：…」；null = 无）。
      *   它是**补充**，不改变上面三级覆盖的优先级：已有更高一级的提示时用「；」接在同一行；
      *   三级都不命中时，它就是唯一那句。
+     * @param contractRecon 第二百四十二批 D 段的**勘验对账**读数（「计划与执行对不上账：…」；
+     *   null = 这一轮没有契约，或对得上——对上时不多说，没契约时这一层完全不存在）。
+     *   与 [answerNotice] 同一级：都是补充，不改上面三级的优先级。
      */
     fun textSettleNotice(
         findingsCount: Int,
@@ -63,6 +66,7 @@ internal object RunLoopRules {
         unfinishedPlanCount: Int,
         truncated: Boolean,
         answerNotice: String? = null,
+        contractRecon: String? = null,
     ): String? {
         val base = when {
             truncated -> "回复被输出上限截断了（服务端说的），点「继续说完」接着写"
@@ -70,10 +74,11 @@ internal object RunLoopRules {
             findingsCount > 0 -> findingsSummary
             else -> null
         }
+        val tail = listOfNotNull(answerNotice, contractRecon).joinToString("；")
         return when {
-            base == null -> answerNotice
-            answerNotice.isNullOrBlank() -> base
-            else -> "$base；$answerNotice"
+            base == null -> tail.ifBlank { null }
+            tail.isBlank() -> base
+            else -> "$base；$tail"
         }
     }
 
