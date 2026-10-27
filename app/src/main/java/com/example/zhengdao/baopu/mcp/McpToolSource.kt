@@ -9,6 +9,7 @@ import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolSpec
+import okhttp3.OkHttpClient
 import org.json.JSONObject
 
 /**
@@ -288,6 +289,19 @@ internal class McpToolSource(
                 lastConnectedAtMs = state.lastConnectedAtMs,
             )
         }
+    }
+
+    /**
+     * 第二百四十五批 · B3「测试连接」：只探**地址**，不碰会话与凭据。
+     *
+     * 与 [connect] 的区别是结构性的：不建会话、不取/不存 token、不注册工具。
+     * 地址在锁内取一份副本，网络请求在锁外跑（不许拿着锁做 IO）。
+     *
+     * @return null ＝ 清单里没有这个 id
+     */
+    fun probe(id: String, http: OkHttpClient = McpOAuthClient.defaultHttp()): McpProbeResult? {
+        val url = synchronized(lock) { servers[id]?.config?.url } ?: return null
+        return McpConnectProbe.probe(url, http)
     }
 
     /** 最近一次失败的原因（"失败要可读"）；null = 没有失败记录。 */

@@ -26,4 +26,16 @@
     <string name="baopu_mcp_oauth_disconnect_hint">Disconnecting clears the local token; reconnecting requires authorization again.</string>
     <string name="baopu_mcp_oauth_revoked_all">Disconnected all servers (%1$d); tokens cleared.</string>
     <string name="baopu_mcp_oauth_scope_missing">Needs the \"%1$s\" permission - please authorize again.</string>
+    <string name="baopu_mcp_probe">Test connection</string>
+    <string name="baopu_mcp_probe_ok">\"%1$s\" reachable: HTTP %2$d.</string>
+    <string name="baopu_mcp_probe_auth">\"%1$s\" reachable: HTTP 401 (authorization required).</string>
+    <string name="baopu_mcp_probe_auth_discovery">\"%1$s\" reachable: HTTP 401 (authorization required; discovery found an authorization server).</string>
+    <string name="baopu_mcp_probe_http">\"%1$s\" unreachable: HTTP %2$d.</string>
+    <string name="baopu_mcp_probe_bad_url">\"%1$s\" has an invalid address; nothing to test.</string>
+    <string name="baopu_mcp_probe_dns">\"%1$s\" unreachable: DNS lookup failed.</string>
+    <string name="baopu_mcp_probe_tls">\"%1$s\" unreachable: certificate or TLS handshake failed.</string>
+    <string name="baopu_mcp_probe_timeout">\"%1$s\" unreachable: connection timed out.</string>
+    <string name="baopu_mcp_probe_refused">\"%1$s\" unreachable: connection refused (port closed or blocked).</string>
+    <string name="baopu_mcp_probe_network">\"%1$s\" unreachable: network error.</string>
+    <string name="baopu_mcp_probe_unknown">\"%1$s\" is not in the list; nothing to test.</string>
 </resources>

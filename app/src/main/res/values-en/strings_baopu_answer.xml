@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 245 · B1: "details" fold for answer messages (English mirror of
+     values/strings_baopu_answer.xml; keep the two files key-for-key identical). -->
+<resources>
+    <string name="baopu_answer_fold_expand">Details ▸</string>
+    <string name="baopu_answer_fold_collapse">Collapse ▴</string>
+</resources>

@@ -27,4 +27,16 @@
     <string name="baopu_mcp_oauth_disconnect_hint">断开后会清掉本机 token，再连要重新授权。</string>
     <string name="baopu_mcp_oauth_revoked_all">已断开全部 %1$d 台服务器，token 已清。</string>
     <string name="baopu_mcp_oauth_scope_missing">需要「%1$s」权限，请补充授权。</string>
+    <string name="baopu_mcp_probe">测试连接</string>
+    <string name="baopu_mcp_probe_ok">「%1$s」连通：HTTP %2$d。</string>
+    <string name="baopu_mcp_probe_auth">「%1$s」连通：HTTP 401（需要授权）。</string>
+    <string name="baopu_mcp_probe_auth_discovery">「%1$s」连通：HTTP 401（需要授权；discovery 已找到授权服务器）。</string>
+    <string name="baopu_mcp_probe_http">「%1$s」连不通：HTTP %2$d。</string>
+    <string name="baopu_mcp_probe_bad_url">「%1$s」地址不合法，测不了。</string>
+    <string name="baopu_mcp_probe_dns">「%1$s」连不通：域名解析失败（DNS）。</string>
+    <string name="baopu_mcp_probe_tls">「%1$s」连不通：证书或加密握手失败。</string>
+    <string name="baopu_mcp_probe_timeout">「%1$s」连不通：连接超时。</string>
+    <string name="baopu_mcp_probe_refused">「%1$s」连不通：连接被拒绝（端口没开或被防火墙拦了）。</string>
+    <string name="baopu_mcp_probe_network">「%1$s」连不通：网络错误。</string>
+    <string name="baopu_mcp_probe_unknown">「%1$s」不在清单里，测不了。</string>
 </resources>

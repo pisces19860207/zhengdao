@@ -235,9 +235,10 @@ class CardPersonaParseTest {
         assertEquals(AssetKind.PRESET, bad[0].kind)
         assertTrue(bad[0].rawText.contains("\"a\""))
         assertTrue(preset.entries.isEmpty())
-        // basicPrompts 在现场样例（J7）里是**数组**，而模型字段是 JSONObject? ⇒ null。
-        // 这是既有口径，本批不动它（世界书／预设的既有形状一个字都不改）。
-        assertNull(preset.basicPrompts)
+        // 245 B2：basicPrompts 在现场样例（J7）里是**数组**——225 的 JSONObject? 恒 null，
+        // 那是缺陷不是口径。现在是数组就照收：空数组 ⇒ 空表（不是 null），未解析条目只有一条。
+        assertTrue(preset.basicPrompts.isEmpty())
+        assertEquals(1, bad.size)
     }
 
     @Test

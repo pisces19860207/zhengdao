@@ -21,7 +21,10 @@ package com.example.zhengdao.ui.baopu
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import androidx.core.net.toUri
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,6 +64,8 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.mcp.McpAuthStatus
 import com.example.zhengdao.baopu.mcp.McpConnectOutcome
+import com.example.zhengdao.baopu.mcp.McpProbeFailure
+import com.example.zhengdao.baopu.mcp.McpProbeResult
 import com.example.zhengdao.baopu.mcp.McpServerDraft
 import com.example.zhengdao.baopu.mcp.McpServerStatus
 import com.example.zhengdao.baopu.mcp.McpServerView
@@ -219,6 +224,49 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                 false,
                 res.getString(R.string.baopu_mcp_connect_failed, outcome.message),
             )
+        }
+    }
+
+    /** 探针结论 → 一句具体的话（不出现任何头、体、token——它们压根没被读）。 */
+    fun probeNotice(name: String, result: McpProbeResult?): McpNotice {
+        val failure = result?.failure
+        if (failure != null) {
+            val text = when (failure) {
+                McpProbeFailure.BAD_URL -> res.getString(R.string.baopu_mcp_probe_bad_url, name)
+                McpProbeFailure.DNS -> res.getString(R.string.baopu_mcp_probe_dns, name)
+                McpProbeFailure.TLS -> res.getString(R.string.baopu_mcp_probe_tls, name)
+                McpProbeFailure.TIMEOUT -> res.getString(R.string.baopu_mcp_probe_timeout, name)
+                McpProbeFailure.REFUSED -> res.getString(R.string.baopu_mcp_probe_refused, name)
+                McpProbeFailure.NETWORK -> res.getString(R.string.baopu_mcp_probe_network, name)
+            }
+            return McpNotice(false, text)
+        }
+        val code = result?.statusCode
+            ?: return McpNotice(false, res.getString(R.string.baopu_mcp_probe_unknown, name))
+        return when {
+            code == 401 && result.discoveryFound ->
+                McpNotice(true, res.getString(R.string.baopu_mcp_probe_auth_discovery, name))
+            code == 401 -> McpNotice(true, res.getString(R.string.baopu_mcp_probe_auth, name))
+            code in 200..299 -> McpNotice(true, res.getString(R.string.baopu_mcp_probe_ok, name, code))
+            else -> McpNotice(false, res.getString(R.string.baopu_mcp_probe_http, name, code))
+        }
+    }
+
+    /**
+     * 245 B3「测试连接」：只探 discovery 与一次未授权请求（看是否 401）。
+     *
+     * 与连接**不是**同一条路：不登记、不建会话、不碰 token；失败给具体原因。
+     */
+    fun probeServer(target: McpServerView) {
+        if (busyId != null) return
+        busyId = target.id
+        notice = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { BaopuRuntime.mcp(context).probe(target.id) }.getOrNull()
+            }
+            busyId = null
+            notice = probeNotice(target.name, result)
         }
     }
 
@@ -434,6 +482,7 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                             onDisconnect = { pendingDisconnect = view },
                             onDelete = { pendingDelete = view },
                             onViewTools = { viewTools(view) },
+                            onProbe = { probeServer(view) },
                         )
                     }
                 }
@@ -518,7 +567,8 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
     }
 }
 
-/** 一行：名字 / 主机 / 状态 / 授权状态 / 工具数 / 最后连接 / 四个动作。 */
+/** 一行：名字 / 主机 / 状态 / 授权状态 / 工具数 / 最后连接 / 五个动作（245 加「测试连接」）。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun McpServerRow(
     view: McpServerView,
@@ -527,6 +577,7 @@ private fun McpServerRow(
     onDisconnect: () -> Unit,
     onDelete: () -> Unit,
     onViewTools: () -> Unit,
+    onProbe: () -> Unit,
 ) {
     val statusText = when (view.status) {
         McpServerStatus.CONNECTED -> stringResource(R.string.baopu_mcp_status_online)
@@ -617,28 +668,40 @@ private fun McpServerRow(
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
             )
-            if (connected) {
-                TextButton(onClick = onViewTools, enabled = !busy) {
-                    Text(stringResource(R.string.baopu_mcp_oauth_view_tools))
-                }
-                TextButton(onClick = onDisconnect, enabled = !busy) {
-                    Text(stringResource(R.string.baopu_mcp_disconnect))
-                }
-            } else {
-                TextButton(onClick = onConnect, enabled = !busy) {
-                    // 按钮文案按"现在缺什么"给：未授权=去授权，过期/撤销=重新授权，
-                    // 不支持 OAuth=去连接（点了只给说明，不静默失败），有效=连接。
-                    val label = when (view.auth) {
-                        McpAuthStatus.UNAUTHORIZED -> R.string.baopu_mcp_oauth_authorize
-                        McpAuthStatus.EXPIRED, McpAuthStatus.REVOKED -> R.string.baopu_mcp_oauth_reauth
-                        McpAuthStatus.UNSUPPORTED -> R.string.baopu_mcp_connect
-                        McpAuthStatus.VALID -> R.string.baopu_mcp_reconnect
+            // 245 B3：动作从 3 颗变 4 颗（多一颗「测试连接」）⇒ 按钮簇改用 FlowRow：
+            // 装得下时与原来同形（右对齐一行），窄屏／系统字号放大时折行，
+            // 不许把最后一颗挤出右沿（与 B-补-22 同一条理由）。
+            FlowRow(
+                modifier = Modifier.weight(2f),
+                horizontalArrangement = Arrangement.End,
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                if (connected) {
+                    TextButton(onClick = onViewTools, enabled = !busy) {
+                        Text(stringResource(R.string.baopu_mcp_oauth_view_tools))
                     }
-                    Text(stringResource(label))
+                    TextButton(onClick = onDisconnect, enabled = !busy) {
+                        Text(stringResource(R.string.baopu_mcp_disconnect))
+                    }
+                } else {
+                    TextButton(onClick = onConnect, enabled = !busy) {
+                        // 按钮文案按"现在缺什么"给：未授权=去授权，过期/撤销=重新授权，
+                        // 不支持 OAuth=去连接（点了只给说明，不静默失败），有效=连接。
+                        val label = when (view.auth) {
+                            McpAuthStatus.UNAUTHORIZED -> R.string.baopu_mcp_oauth_authorize
+                            McpAuthStatus.EXPIRED, McpAuthStatus.REVOKED -> R.string.baopu_mcp_oauth_reauth
+                            McpAuthStatus.UNSUPPORTED -> R.string.baopu_mcp_connect
+                            McpAuthStatus.VALID -> R.string.baopu_mcp_reconnect
+                        }
+                        Text(stringResource(label))
+                    }
                 }
-            }
-            TextButton(onClick = onDelete, enabled = !busy) {
-                Text(stringResource(R.string.baopu_mcp_delete))
+                TextButton(onClick = onProbe, enabled = !busy) {
+                    Text(stringResource(R.string.baopu_mcp_probe))
+                }
+                TextButton(onClick = onDelete, enabled = !busy) {
+                    Text(stringResource(R.string.baopu_mcp_delete))
+                }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
