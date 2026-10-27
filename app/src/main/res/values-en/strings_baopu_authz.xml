@@ -34,4 +34,13 @@
     <string name="baopu_authz_approve_grant">Approve plan and authorize this task</string>
     <string name="baopu_authz_approve_plan_only">Approve plan only (ask every step)</string>
     <string name="baopu_authz_decline">Skip this task</string>
+
+    <!-- Batch 249: on-device preview entry (debug builds only, see src/debug/AndroidManifest.xml) -->
+    <string name="baopu_authz_preview_launcher">Grant card preview</string>
+    <string name="baopu_authz_preview_title">Grant card preview (sample data)</string>
+    <string name="baopu_authz_preview_note">Just a look at the card: objects and limits are samples. The three buttons only echo your choice on this page; nothing runs and no production gate is wired.</string>
+    <string name="baopu_authz_preview_choice_none">No button tapped yet</string>
+    <string name="baopu_authz_preview_choice_grant">You chose: approve the plan and authorize this task</string>
+    <string name="baopu_authz_preview_choice_plan">You chose: approve the plan only (ask every step)</string>
+    <string name="baopu_authz_preview_choice_decline">You chose: skip this task</string>
 </resources>

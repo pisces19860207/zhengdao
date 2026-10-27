@@ -111,6 +111,31 @@ class TaskGrantSourceGateTest {
         }
     }
 
+    @Test
+    fun 预览入口只在开发包() {
+        // 用户 2026-10-28：只把这张卡接到真机上看一眼（最小可看版本），B 段接线另立一批。
+        val debugManifest = repoFile("src/debug/AndroidManifest.xml")
+        assertTrue("缺开发包清单：${debugManifest.absolutePath}", debugManifest.isFile)
+        assertTrue(
+            "开发包清单里要有预览入口（否则手机上点不到这张卡）",
+            debugManifest.readText().contains("TaskGrantCardPreviewActivity"),
+        )
+        val mainSrc = repoFile("src/main/AndroidManifest.xml").readText()
+        assertFalse(
+            "main 清单里出现了预览 Activity：正式包不该带这扇门",
+            mainSrc.contains("TaskGrantCardPreviewActivity"),
+        )
+        // 预览页只回显：不许装授权、不许落账——"看一眼"不等于接线。
+        val activity = repoFile(
+            "src/debug/java/com/example/zhengdao/baopu/authz/TaskGrantCardPreviewActivity.kt",
+        )
+        assertTrue("缺预览页：${activity.absolutePath}", activity.isFile)
+        val src = activity.readText()
+        listOf("TaskGrantRuntime.install", "DecisionLedger", "TaskGrantLedger", "TaskGrantGate").forEach { bad ->
+            assertFalse("预览页里出现了 $bad：这是「看一眼」，不是接线", src.contains(bad))
+        }
+    }
+
     private fun keysOf(f: File): Set<String> =
         Regex("""<string\s+name="([^"]+)"""")
             .findAll(f.readText())

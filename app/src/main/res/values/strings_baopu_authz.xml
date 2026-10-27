@@ -34,4 +34,13 @@
     <string name="baopu_authz_approve_grant">批准计划，并授权这一单</string>
     <string name="baopu_authz_approve_plan_only">只批准计划（每步照问）</string>
     <string name="baopu_authz_decline">这一单不做</string>
+
+    <!-- 第二百四十九批：真机预览入口（只在开发包里，见 src/debug/AndroidManifest.xml） -->
+    <string name="baopu_authz_preview_launcher">开工卡预览</string>
+    <string name="baopu_authz_preview_title">开工卡预览（样本数据）</string>
+    <string name="baopu_authz_preview_note">只给你看一眼卡面：对象与限额都是样本，三个按钮只在本页回显选择，不会真的动手，也不接生产闸。</string>
+    <string name="baopu_authz_preview_choice_none">还没有点按钮</string>
+    <string name="baopu_authz_preview_choice_grant">你选了：批准计划，并授权这一单</string>
+    <string name="baopu_authz_preview_choice_plan">你选了：只批准计划（每步照问）</string>
+    <string name="baopu_authz_preview_choice_decline">你选了：这一单不做</string>
 </resources>
