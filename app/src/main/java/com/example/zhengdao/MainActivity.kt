@@ -290,7 +290,8 @@ class MainActivity : ComponentActivity() {
         // 经 ProotLauncher.storageGranted 双通道路由到它，不再有"永远完不成"的页面。
 
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
-        val openTerminal = intent?.getBooleanExtra("open_terminal", false) == true
+        // 第二百五十批：不再读 open_terminal（终端已拆走），冷启动一律落主页。
+        val openTerminal = false
 
         // 快捷方式收栈（刀 2 D 段）：本 Activity 不是 task 根 ⇒ 栈里已经有一份主页
         // （典型：终端独立 Activity 压在主页之上时，快捷方式又拉起一个主页副本）。
@@ -402,12 +403,8 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleBaopuShortcut(intent)
         // P1-9（第五十三批）：热启动也要读 open_terminal。此前只有 onCreate 读它 ⇒
-        // App 已在栈里（home 在前台/后台）时点通知栏「回到终端」无效。
-        // 复用与冷启动 LaunchedEffect 同一个 terminalIntent(...)（同一入口、同一组 flag），
-        // 不新造第二条终端路由；setIntent 已同步，重复收到旧 intent 时这里不会反复拉起。
-        if (intent.getBooleanExtra("open_terminal", false)) {
-            openZhengdaoTerminal(this)
-        }
+        // 第二百五十批：通知栏不再有"回到终端"这类入口（终端已拆走），
+        // 旧包留下的 open_terminal extra 直接忽略 —— 主 APP 不检测、不跳转。
     }
 
     override fun onTrimMemory(level: Int) {
@@ -453,12 +450,8 @@ fun ZhengdaoApp(
     // 落 home，恢复页叠加其上。
     val startRoute = MainRouteRules.startRoute(startInTerminal, lastRoute)
 
-    // 通知栏直达终端：落到主页后立即拉起终端（会话由 SessionManager attach 恢复）
-    if (startInTerminal) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            openZhengdaoTerminal(context)
-        }
-    }
+    // 第二百五十批：`startInTerminal` 这条冷启动直达已无落点（终端不在本仓），
+    // 参数保留只为不动调用点签名；不再做任何跳转。
 
     // 恢复上次页面：叠在 home 之上（返回键退回首页，不再有死返回）
     //
@@ -515,8 +508,8 @@ fun ZhengdaoApp(
             tag, "进终端: autocmd=${autocmd?.length ?: 0}B agentId=$agentId ctx=$context"
         )
         try {
-            openZhengdaoTerminal(context)
-            android.util.Log.d(tag, "startActivity 已发出")
+            // 第二百五十批：终端不在本仓，这里只留一行日志（不再拉起任何页面）。
+            android.util.Log.d(tag, "终端已拆分到独立 APP，本仓不再拉起")
         } catch (t: Throwable) {
             // 异常不可见 = 用户眼里就是"点了没反应"，必须当面说清
             val reason = t.message ?: t.toString()
@@ -577,12 +570,8 @@ fun ZhengdaoApp(
             WelcomeScreen(
                 environmentInstalled = installed,
                 onStart = { envInstalled ->
-                    if (envInstalled) {
-                        nav.navigate("home") { launchSingleTop = true }
-                    } else {
-                        // 未安装：直达终端（安装对话框会在会话就绪后自动弹出）
-                        openZhengdaoTerminal(context)
-                    }
+                    // 第二百五十批：不再有"环境装没装"这个概念，直接进主页。
+                    nav.navigate("home") { launchSingleTop = true }
                 },
                 // 跳过环境安装直进主界面：**抱朴不依赖 Debian**（宿主 bionic serve，
                 // 从不进 PRoot），新用户可以先体验主打功能，想要终端再回来装。
@@ -664,18 +653,19 @@ fun ZhengdaoApp(
  * 启动页会无声无息地从"怡然"漂到"玄览"。改顺序时只动这里。
  */
 internal object TabIndex {
-    /** 抱朴（真实）：Compose 原生对话（内嵌 OpenCode）。 */
+    /** 抱朴（真实）：Compose 原生对话。 */
     const val BAOPU = 0
 
-    /** 逍遥（自由）：终端（独立整屏 Activity；本 Tab 本身只是回程落点）。 */
-    const val TERMINAL = 1
+    /** 玄览（期望）：浏览器。 */
+    const val BROWSER = 1
 
-    /** 玄览（期望）：浏览器（阶段 1 新增）。 */
-    const val BROWSER = 2
-
-    // 第二百四十八批（第四刀）：**怡然（AGENTS）Tab 随终端一起退役** —— 它是 Agent 安装卡，
-    // 而 Agent 装在终端的 rootfs 里；主仓不再有 rootfs，这张卡也就没有内容可显示。
-    // 逍遥（TERMINAL）Tab 留着，改成「去证道终端」的入口页（见 TerminalTabEmptyState）。
+    /**
+     * 律令（规矩）：设置。
+     *
+     * 第二百五十批：底栏从四 Tab 收到三 Tab —— 逍遥（终端）与怡然（Agent 管理）都随终端拆走，
+     * 腾出来的位置给设置：它是每天都可能进的页面，比"回程落点"值得占一格。
+     */
+    const val SETTINGS = 2
 }
 
 /** 首页骨架：Agent Tab（卡片列表）/ 终端 Tab（进入全屏终端）。 */
@@ -822,7 +812,7 @@ fun HomeTabs(
         lastTabClickAt.longValue = now()
         when (target) {
             TabIndex.BAOPU -> { tab = TabIndex.BAOPU }
-            TabIndex.TERMINAL -> { tab = TabIndex.TERMINAL; onTerminalClicked() }
+            TabIndex.SETTINGS -> { tab = TabIndex.SETTINGS }
             TabIndex.BROWSER -> { tab = TabIndex.BROWSER }
         }
     }
@@ -861,27 +851,6 @@ fun HomeTabs(
                         colors = tabColors,
                     )
                     NavigationBarItem(
-                        selected = tab == TabIndex.TERMINAL,
-                        // 点击直接进全屏终端（用户定：简单明了，不要占位页多一跳）
-                        //
-                        // ⚠️ `tab = TabIndex.TERMINAL` 不能省（2026-10-07 用户报「红点返回回的不是主界面，
-                        //    是抱朴 tab」）：人在抱朴页（tab=0）点逍遥进终端时若不改选中态，
-                        //    终端一整页盖在上面时看不出问题，等红点关掉终端就露馅了——
-                        //    底部高亮还停在抱朴，用户以为“返回到了 opencode”。
-                        //    逍遥是进终端的那个 tab，用过终端就该停在逍遥。
-                        // K1：终端 tab 双击不滚顶（点了就跳 Activity，列表根本不存在）。
-                        onClick = { onTabClicked(TabIndex.TERMINAL) { onOpenTerminal(null, null) } },
-                        icon = { XiaoYaoIcon(tab == TabIndex.TERMINAL) },
-                        // 改名链（留痕）：2026-10-08「洞天」→「终端」（与全站功能文案统一）；
-                        // 2026-10-14 派工单「终端」→「逍遥」（四 Tab 祝福命名定稿：
-                        // 抱朴/逍遥/怡然/玄览 = 真实/自由/幸福/期望）。Tab 名走资源
-                        // （nav_terminal），底栏/空态/WelcomeScreen 同源，不会再分裂。
-                        // 注意：2026-10-16 起**代码与图标名已与 Tab 名同一口径**（XiaoYaoIcon ⇒ XiaoYaoIcon、
-                        // 图形换成流云「逍遥」），本段只讲文案沿革；再没有"代码里仍称逍遥"这回事。
-                        label = { Text(stringResource(R.string.nav_terminal), style = tabLabelStyle) },
-                        colors = tabColors,
-                    )
-                    NavigationBarItem(
                         selected = tab == TabIndex.BROWSER,
                         // 玄览（期望）：浏览器。**排在逍遥之后**（§B 顺序 33，2026-10-14
                         // 用户要求：抱朴 / 逍遥 / 玄览 / 怡然）。
@@ -889,6 +858,15 @@ fun HomeTabs(
                         onClick = { onTabClicked(TabIndex.BROWSER) {} },
                         icon = { XuanLanIcon(tab == TabIndex.BROWSER) },
                         label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
+                        colors = tabColors,
+                    )
+                    NavigationBarItem(
+                        selected = tab == TabIndex.SETTINGS,
+                        // 律令（第二百五十批）：设置进底栏。以前设置是首页右上角的一个按钮，
+                        // 首页随终端删掉之后，设置需要一个固定入口。
+                        onClick = { onTabClicked(TabIndex.SETTINGS) {} },
+                        icon = { SettingsIcon(tint = tabIconColor(tab == TabIndex.SETTINGS)) },
+                        label = { Text(stringResource(R.string.nav_settings), style = tabLabelStyle) },
                         colors = tabColors,
                     )
                 }
@@ -915,12 +893,12 @@ fun HomeTabs(
                 // 旧线（opencode serve）史见 docs/ERRATA.md E-140；占位页 BaopuRebuilding
                 // 已于第六十二批删除；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
                 TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
-                    onExit = { tab = TabIndex.TERMINAL },
+                    onExit = { tab = TabIndex.BROWSER },
                 )
                 // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
-                TabIndex.TERMINAL -> TerminalTabEmptyState(onOpenTerminal = { openZhengdaoTerminal(context) })
+                TabIndex.SETTINGS -> com.example.zhengdao.ui.SettingsScreen()
                 // 玄览：浏览器（用户模式 MVP，阶段 1）。WebView 实例由 BrowserHolder
                 // 跨 Tab 保活；外部打开入口（终端链接点击等）走 BrowserHolder.pendingUrl
                 // + 上面 ON_RESUME 的切 Tab 消费（§4.6，第 ② 刀接线）。
@@ -931,79 +909,10 @@ fun HomeTabs(
     }
 }
 
-/**
- * 拉起独立 App「证道终端」（第四刀：终端整仓搬走）。
- *
- * 为什么用包名而不是类名：两个 APP 是两个 applicationId，本仓编译期看不到对方的 Activity 类；
- * `getLaunchIntentForPackage` 是系统给的正规入口，没装时返回 null —— 那就用一句话告诉用户去哪装，
- * 不假装"点了没反应"。
- */
-private fun openZhengdaoTerminal(context: android.content.Context) {
-    val pkg = "com.example.zhengdao.term"
-    val launch = context.packageManager.getLaunchIntentForPackage(pkg)
-    if (launch != null) {
-        runCatching { context.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            .onFailure {
-                android.widget.Toast.makeText(
-                    context,
-                    "打不开「证道终端」：${it.javaClass.simpleName}",
-                    android.widget.Toast.LENGTH_SHORT,
-                ).show()
-            }
-    } else {
-        android.widget.Toast.makeText(
-            context,
-            "还没装「证道终端」——到 github.com/pisces19860207/zhengdao-term 的 Releases 下载",
-            android.widget.Toast.LENGTH_LONG,
-        ).show()
-    }
-}
+// 第二百五十批：`openZhengdaoTerminal` 一并删除 —— 主 APP 不给终端任何入口（不提、不跳、不检测）。
 
-/**
- * 逍遥 Tab 的空态 —— 只是"从终端回来的落点"。
- *
- * 为什么需要：终端是**独立的整屏 Activity**（不在 Tab 里内嵌，见 TerminalActivity），
- * 所以逍遥这个 Tab 本身没有内容。红点 / 左边缘右滑关掉终端后落在这里，
- * 以前是一片全白（`else -> {}`），用户看到空白只会以为 App 坏了。
- * 空态里把"终端是个独立页面"说明白，并留一个再进去的入口。
- */
-@Composable
-private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            // 与底栏 Tab 文案保持一致：同一个 Tab，同一个名字（走 nav_terminal 资源，同源不再分裂）
-            text = stringResource(R.string.nav_terminal),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(20.dp))
-        Text(
-            text = "终端已独立为「证道终端」",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            // 第四刀（2026-10-27）：终端整仓搬走，主仓不再带 rootfs/proot。这里如实说明去哪了，
-            // 并给一个"直接过去"的按钮（装了就跳，没装就说清去哪装）。
-            text = "第二百四十八批起，终端（PTY ＋ Debian 环境 ＋ Agent 安装）搬到了独立 App「证道终端」，" +
-                "与本 App 可并存安装。会话、Agent、环境包都在那边。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-        )
-        Spacer(Modifier.height(20.dp))
-        Button(onClick = onOpenTerminal, shape = androidx.compose.foundation.shape.RoundedCornerShape(50)) {
-            Text("打开「证道终端」")
-        }
-    }
-}
+// 第二百五十批：`TerminalTabEmptyState`（逍遥 Tab 的空态/入口页）随三 Tab 改造删除 ——
+// 底栏已经没有逍遥这一格，本仓也不再提终端。
 
 // ── 底部 Tab 自绘图标：四枚一套（Compose Path，零第三方素材）──
 //

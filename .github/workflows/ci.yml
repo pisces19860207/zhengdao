@@ -68,44 +68,13 @@ jobs:
           restore-keys: |
             gradle-ci-${{ runner.os }}-
 
-      # §B 57 第③条（第㉗②-A）：NDK 版本**单一真源 = app/build.gradle.kts 的 ndkVersion**。
-      # 在这之前这里和 gradle 各写一遍 "27.2.12479018"：AGP 用 gradle 里那个编 native、
-      # CI 装的是本文件里那个，两边可以各改各的而 CI 全绿 —— 版本一漂移就是
-      # 「本机能编、CI 编不出」或反过来。现在两个消费者（本文件装 NDK、
-      # tools/check-so-provenance.py 校验基线）都从 gradle 的同一行读。
-      - name: 读取 NDK 版本（单一真源 = app/build.gradle.kts）
-        run: |
-          set -euo pipefail
-          NDK_VERSION="$(sed -n 's/^[[:space:]]*ndkVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
-          if [ -z "$NDK_VERSION" ]; then
-            echo "::error title=NDK 版本读取失败::app/build.gradle.kts 里找不到 ndkVersion = \"…\"（§B 57 第③条的单一真源）"
-            exit 1
-          fi
-          echo "NDK_VERSION=$NDK_VERSION" >> "$GITHUB_ENV"
-          echo "NDK 版本（来自 app/build.gradle.kts）= $NDK_VERSION"
-
-      - name: 安装 NDK（版本由 app/build.gradle.kts 决定）
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          # 2026-10-27：runner 上偶发「Error reading Zip content from a SeekableByteChannel」——
-          # NDK 包下载/解压损坏，随后 lint/编译全挂（CI 红在 lint 那步，根因却在这里）。
-          # 做法：最多重试 5 次，每次先清掉半成品；最后仍失败才红，并打印目录状态供排查。
-          ok=0
-          for attempt in 1 2 3 4 5; do
-            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null 2>&1 \
-               && [ -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties" ]; then
-              echo "NDK $NDK_VERSION 就绪（第 $attempt 次尝试）"
-              ok=1; break
-            fi
-            echo "::warning title=NDK 下载失败::第 $attempt 次：清掉半成品后重试"
-            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION" || true
-            sleep $((attempt * 5))
-          done
-          if [ "$ok" != "1" ]; then
-            echo "::error title=NDK 装不上::5 次重试后仍缺 source.properties（runner 网络/缓存问题，重跑一次通常就好）"
-            ls -la "$ANDROID_HOME/ndk" || true
-            exit 1
-          fi
+      # 第二百五十批（终端收尾）：**删掉「读 NDK 版本 + 装 NDK」两步**。
+      # 为什么可以删：主仓不再编任何 C/C++ —— 伪终端 JNI（libtermux.so）随终端搬去
+      # zhengdao-term，proot 四件套也搬走了；:native-core 只用**人工构建入库**的
+      # libzhengdao_core.so（不编，只打包）。NDK 留在 runner 上只是白等 3–5 分钟
+      # （冷缓存）或几十秒（热缓存），且它自己还会偶发下载损坏。
+      # 仍然保留的门禁（下面）：16KB 页对齐 + JNI 入口符号、.so 同源基线 —— 这两条
+      # 与"编不编 C"无关，只与"入库的 .so 对不对"有关，必须留着。
 
       # E-048：入库的 libzhengdao_core.so 是**人工** cargo build + llvm-strip 后拷进来的，
       # 两条 workflow 都不构建它；而 16KB 对齐漏掉、JNI 入口被 strip 掉都不会编译失败，

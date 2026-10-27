@@ -92,6 +92,16 @@ fun SettingsScreen(
         mutableStateOf(com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx))
     }
     var kbFiles by remember { mutableStateOf<Int?>(null) }
+    // 工作区可写？—— 只看共享存储里那个目录能不能写（不建目录、不改任何东西）
+    val workspaceStatus = remember(manageOk) {
+        val dir = File(android.os.Environment.getExternalStorageDirectory(), "Download/证道")
+        when {
+            !manageOk -> "需要「所有文件访问」"
+            dir.isDirectory && dir.canWrite() -> "可写"
+            dir.isDirectory -> "不可写"
+            else -> "未创建"
+        }
+    }
     // 定时任务（第一百六十七批）：Hub 这一行只报「启用几个」，开关/编辑都在二级页里。
     // null = 还没读完（这一页别的数字也用同一套「先占位后覆盖」的写法）。
     var schedEnabled by remember { mutableStateOf<Int?>(null) }
@@ -155,6 +165,27 @@ fun SettingsScreen(
             // SettingsDataActivity（终端数据/工作区），三页都搬去 zhengdao-term 了。
             // 主仓设置现在只剩：权限 / 后台保活 / 浏览器桥 / 定时任务 / 界面 / 关于。
             // （工作区与资料库的入口留给第七步「设置瘦身」重建一个不依赖 rootfs 的版本。）
+
+            // 第二百五十批：只留「工作区」「资料库」两组（终端相关的三节已随终端拆走）。
+            // 这两行**只报状态、不给跳转**：它们的二级页（SettingsDataActivity）跟着终端删了，
+            // 重建页面属于"加功能"，不在本刀范围 —— 所以这里只回答两个问题：
+            // 工作区可写吗？资料库可读吗？（也就是原来"缺 N 项"体检里跟抱朴有关的那两条。）
+            SectionCard(stringResource(R.string.settings_group_workspace)) {
+                SettingRow(
+                    label = stringResource(R.string.settings_workspace),
+                    value = workspaceStatus,
+                ) {}
+                SettingsDivider()
+                SettingRow(
+                    label = stringResource(R.string.settings_knowledge_base),
+                    value = when {
+                        !kbEnabled -> stringResource(R.string.settings_status_disabled)
+                        (kbFiles ?: 0) > 0 ->
+                            pluralStringResource(R.plurals.settings_status_file_count, kbFiles ?: 0, kbFiles ?: 0)
+                        else -> stringResource(R.string.settings_status_enabled)
+                    },
+                ) {}
+            }
 
             SectionCard(stringResource(R.string.settings_group_background)) {
                 SettingRow(

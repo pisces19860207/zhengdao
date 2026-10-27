@@ -23,7 +23,7 @@ import java.io.File
 object SystemInfoProvider {
 
     /** 第四刀：终端侧的读数（rootfs/发行版/proot/Agent）已随终端搬走，统一用这一句。 */
-    private const val MOVED_TO_TERMINAL = "见「证道终端」App"
+    private const val MOVED_TO_TERMINAL = "不在此 App"
 
 
     data class Info(
@@ -63,11 +63,6 @@ object SystemInfoProvider {
             out += s(R.string.sys_root, rooted)
             out += s(R.string.sys_gms_line, gms)
             out += s(R.string.sys_webview, webview)
-            out += s(R.string.sys_section_zd)
-            out += s(R.string.sys_rootfs_line, rootfs)
-            out += s(R.string.sys_distro, distro)
-            out += s(R.string.sys_proot_line, proot)
-            out += s(R.string.sys_agents, agentList)
             out += s(R.string.sys_python_line, python)
             out += s(R.string.sys_node_line, node)
             out += s(R.string.sys_uv_line, uv)
@@ -93,11 +88,10 @@ object SystemInfoProvider {
             R.string.sys_root to "Root: %1\$s",
             R.string.sys_gms_line to "GMS: %1\$s",
             R.string.sys_webview to "WebView: %1\$s",
-            R.string.sys_section_zd to "── 证道环境 ──",
-            R.string.sys_rootfs_line to "RootFS: %1\$s",
-            R.string.sys_distro to "发行版: %1\$s",
-            R.string.sys_proot_line to "proot: %1\$s",
-            R.string.sys_agents to "已装 Agent: %1\$s",
+
+
+
+
             R.string.sys_python_line to "Python: %1\$s",
             R.string.sys_node_line to "Node: %1\$s",
             R.string.sys_uv_line to "uv: %1\$s",

@@ -31,8 +31,8 @@ class TabClickRulesTest {
     fun `双击_窗口是严格小于正好300毫秒不算`() {
         assertFalse(
             TabClickRules.isDoubleTap(
-                currentTab = TabIndex.TERMINAL,
-                targetTab = TabIndex.TERMINAL,
+                currentTab = TabIndex.SETTINGS,
+                targetTab = TabIndex.SETTINGS,
                 nowMs = 1300L,
                 lastClickAtMs = 1000L,
             )
@@ -40,8 +40,8 @@ class TabClickRulesTest {
         // 299ms 仍然算
         assertTrue(
             TabClickRules.isDoubleTap(
-                currentTab = TabIndex.TERMINAL,
-                targetTab = TabIndex.TERMINAL,
+                currentTab = TabIndex.SETTINGS,
+                targetTab = TabIndex.SETTINGS,
                 nowMs = 1299L,
                 lastClickAtMs = 1000L,
             )
@@ -54,7 +54,7 @@ class TabClickRulesTest {
         assertFalse(
             TabClickRules.isDoubleTap(
                 currentTab = TabIndex.BAOPU,
-                targetTab = TabIndex.TERMINAL,
+                targetTab = TabIndex.SETTINGS,
                 nowMs = 1000L,
                 lastClickAtMs = 999L,
             )

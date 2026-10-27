@@ -9,7 +9,9 @@
   "证道 - Debian 13.7" is a fixed identity string (user requested).
 -->
 <resources>
+    <string name="app_name">Zhengdao</string>
     <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
 
     <!-- ── Common ── -->
     <string name="common_back">Back</string>
@@ -22,21 +24,30 @@
     <string name="common_learn_more">Learn more ›</string>
     <string name="common_collapse">Collapse</string>
     <string name="common_clean">Clean</string>
+    <string name="common_cleaning">Cleaning…</string>
     <string name="common_loading">Loading…</string>
+    <string name="common_view_log">View log</string>
+    <string name="common_clear">Clear</string>
+    <string name="common_feedback">Feedback</string>
+    <string name="common_repair">Repair</string>
+    <string name="common_later">Later</string>
     <string name="common_approx_mb">about %1$d MB</string>
     <string name="common_size_unknown">size unknown</string>
 
     <!-- ── Bottom navigation ── -->
     <string name="nav_taiji">Baopu</string>
-    <string name="nav_terminal">Xiaoyao</string>
     <string name="nav_browser">Xuanlan</string>
 
     <!-- ── Settings hub: groups ── -->
+    <string name="settings_group_env">Environment</string>
     <string name="settings_group_background">Background</string>
     <string name="settings_group_interface">Interface</string>
     <string name="settings_group_support">Support</string>
 
     <!-- ── Settings hub: rows ── -->
+    <string name="settings_env_update">Environment &amp; updates</string>
+    <string name="settings_storage">Storage &amp; cache</string>
+    <string name="settings_knowledge_base">Knowledge base</string>
     <string name="settings_keepalive">Keep-alive</string>
     <string name="settings_language">Language</string>
     <string name="settings_appearance">Appearance</string>
@@ -44,14 +55,95 @@
     <string name="settings_about">About</string>
 
     <!-- ── Settings hub: row status ── -->
+    <string name="settings_status_installed">Installed</string>
+    <string name="settings_status_not_installed">Not installed</string>
     <string name="settings_status_measuring">Measuring…</string>
+    <string name="settings_status_perm_pending">Permission needed</string>
+    <string name="settings_status_disabled">Off</string>
+    <string name="settings_status_enabled">On</string>
+    <plurals name="settings_status_file_count">
+        <item quantity="one">%1$d files</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
     <string name="settings_status_guide">Guide</string>
     <string name="settings_value_help">Getting started · Logs</string>
 
     <!-- ── Home screen ── -->
+    <string name="home_no_browser">No browser available</string>
+    <string name="home_env_ready">Environment ready</string>
+    <string name="home_env_missing">Environment not installed</string>
+    <plurals name="home_agent_count">
+        <item quantity="one">%1$d agents</item>
+        <item quantity="other">%1$d agents</item>
+    </plurals>
     <!-- Batch 18 B: detection slimming — healthy items hidden, missing merged into one red row -->
+    <plurals name="home_health_missing">
+        <item quantity="one">%1$d missing</item>
+        <item quantity="other">%1$d missing</item>
+    </plurals>
+    <string name="home_agent_missing">%1$s not installed</string>
+    <string name="home_abi_unknown">Unknown</string>
+    <string name="home_debian_installed">Debian 13.7 installed</string>
+    <string name="home_debian_missing">Debian not installed</string>
+    <string name="home_health_checking">Checking environment…</string>
+    <string name="home_health_scanning">Checking environment status…</string>
+    <string name="home_fix_ineffective">One-tap fix didn\'t take effect: %1$s</string>
+    <string name="home_fix_error_prefix">Error during repair: %1$s;</string>
+    <string name="home_fix_still">\"Repair\" ran, but the check still reports: %1$s. Go to Settings → \"Repair environment\" to unpack again (about 30s), then restart the app.</string>
+    <string name="home_fix_crashed">One-tap fix failed: %1$s</string>
+    <string name="home_fix_thread_threw">The repair thread threw %1$s%2$s. Go to Settings → \"Repair environment\" to unpack again (about 30s), then restart the app.</string>
+    <string name="home_fix_thread_msg">: %1$s</string>
+    <string name="home_repair_script_failed">Couldn\'t write the repair script — retry from Settings</string>
+    <string name="home_hermes_script_issue">Hermes repair script wasn\'t written to the workspace</string>
+    <string name="home_go_settings">Go to Settings</string>
+    <string name="home_btn_repair_env">Repair</string>
+    <string name="home_btn_net_check">Network test</string>
+    <string name="home_btn_storage_detail">Details</string>
+    <string name="home_btn_goto_perm">Open Settings → Request permissions</string>
+    <string name="home_btn_handle">Fix it</string>
+    <string name="home_sysinfo_copied">System info copied</string>
+    <string name="home_copy_sysinfo">Copy all info</string>
+    <string name="home_env_not_installed">The environment isn\'t installed yet</string>
+    <string name="home_env_install_desc">You need the Debian environment before installing agents (about 3 minutes, one time).</string>
+    <string name="home_install_env">Install environment</string>
+    <string name="home_recent_issues">Recent problems (%1$d)</string>
     <!-- Fix ② (ledger §B item 54 / §B-补-51, 2026-10-16): the same problem happened N times —
          the count is never hidden: one row plus an "×N" badge. -->
+    <string name="home_issue_count">×%1$d</string>
+    <string name="home_issues_note">Background failures used to go to the log only, invisible in the UI. They are listed here — tap a button when one can be handled. The full text lives in the app\'s private log; use Settings → Help to export it</string>
+    <string name="home_agent_reinstall">Reinstall</string>
+    <string name="home_agent_uninstall">Uninstall</string>
+    <string name="home_agent_retry_install">Retry install</string>
+    <string name="home_agent_start">Start</string>
+    <string name="home_agent_installing">Installing</string>
+    <string name="home_agent_install">Install</string>
+    <string name="home_agent_coming_soon">Coming soon</string>
+    <string name="home_agent_install_env_first">Install environment first</string>
+    <string name="home_agent_version">Installed: %1$s</string>
+    <string name="home_manifest_unreachable">Can\'t reach the agent manifest right now; check your network and come back — it refreshes automatically.</string>
+    <string name="home_size_measuring">Measuring size…</string>
+    <string name="home_about_mb">(about %1$d MB)</string>
+    <string name="home_actual_usage">(actual usage may vary)</string>
+    <string name="home_uninstall_detail">· Agent program %1$s\n· Installer cache (global, about %2$d MB)</string>
+    <string name="home_uninstall_title">Uninstall %1$s?</string>
+    <string name="home_uninstall_delete">Will delete:\n</string>
+    <string name="home_uninstall_keep">Will keep:\n· Session history and memory\n· API key config (if any)</string>
+    <string name="home_uninstall_purge">\n\n\"Erase everything\" also deletes your data (%1$s) — this cannot be undone.</string>
+    <string name="home_uninstall_action">Uninstall</string>
+    <string name="home_purge_action">Erase everything (incl. data)</string>
+    <string name="home_uninstall_command_label">Command to run:</string>
+    <string name="home_uninstall_purge_title">Erase %1$s completely?</string>
+    <string name="home_uninstall_purge_confirm">Tap \"Erase permanently\" again — these paths will be gone for good:
+%1$s</string>
+    <string name="home_uninstall_purge_confirm_action">Erase permanently</string>
+    <string name="home_uninstall_purge_back">Back</string>
+    <string name="home_uninstall_echo">Zhengdao: uninstalling %1$s…</string>
+    <string name="home_purge_echo">Zhengdao: erasing %1$s and its data…</string>
+    <string name="home_fixing">Repairing…</string>
+    <string name="home_refresh_failed">Refresh failed: %1$s</string>
+    <string name="home_refresh_timeout">Refresh timed out; pull down to try again.</string>
+    <string name="home_reinstall_title">Reinstall %1$s?</string>
+    <string name="home_reinstall_action">Reinstall</string>
 
     <!-- ── Terminal & files page ── -->
     <string name="data_perm_granted">Granted</string>
@@ -60,26 +152,235 @@
     <string name="settings_perm_card_title">Request permissions</string>
     <string name="settings_perm_card_desc">Permissions are requested on demand: without them things still work, just degraded. Tap a row to grant it; granted ones open system settings to review or revoke.</string>
     <string name="perm_goto_card">Go to Settings → Request permissions</string>
+    <string name="data_open_failed">Couldn\'t open: %1$s</string>
+    <string name="data_kb_card">Knowledge base</string>
+    <string name="data_kb_cap_note">(hit the scan limit — the list may be incomplete)</string>
+    <string name="data_kb_disabled">Off</string>
+    <string name="data_kb_not_mounted">Not mounted · no files yet</string>
+    <string name="data_kb_busy">Organizing…</string>
+    <plurals name="data_kb_organized">
+        <item quantity="one">Mounted · %1$d files (with summaries)</item>
+        <item quantity="other">Mounted · %1$d files (with summaries)</item>
+    </plurals>
+    <plurals name="data_kb_mounted">
+        <item quantity="one">Mounted · %1$d files</item>
+        <item quantity="other">Mounted · %1$d files</item>
+    </plurals>
+    <string name="data_kb_reading">Reading…</string>
+    <string name="data_state_label">Status</string>
+    <plurals name="data_kb_other_found">
+        <item quantity="one">Found another knowledge base with files: %1$s (%2$d files).\nThe knowledge base follows the workspace — after switching workspaces the old one stays where it is, but the app only reads the path above.</item>
+        <item quantity="other">Found another knowledge base with files: %1$s (%2$d files).\nThe knowledge base follows the workspace — after switching workspaces the old one stays where it is, but the app only reads the path above.</item>
+    </plurals>
+    <plurals name="data_kb_copy_btn">
+        <item quantity="one">Copy it over (%1$d files)</item>
+        <item quantity="other">Copy it over (%1$d files)</item>
+    </plurals>
+    <string name="data_kb_copy_title">Copy it over?</string>
+    <string name="data_kb_copy_desc">Copies files from %1$s into the current knowledge base\'s %2$s/ folder. Originals are untouched; same-name files are not overwritten (the current copy wins).</string>
+    <plurals name="data_kb_copied">
+        <item quantity="one">Copied %1$d files, index rebuilt</item>
+        <item quantity="other">Copied %1$d files, index rebuilt</item>
+    </plurals>
+    <string name="data_kb_copy_none">No files to copy (they may all be in the current knowledge base already)</string>
+    <string name="data_copy_action">Copy</string>
+    <string name="data_kb_path_label">knowledge-base path</string>
+    <string name="data_path_copied">Path copied: %1$s</string>
+    <string name="data_copy_path">Copy path</string>
+    <string name="data_view_help">View readme</string>
+    <string name="data_organizing">Organizing…</string>
+    <string name="data_rebuild">Rebuild</string>
+    <string name="data_hints_toggle">Attach file hints when asking</string>
+    <string name="data_font_size">Font size</string>
+    <string name="data_font_size_value">%1$d (default)</string>
+    <string name="data_inset">Padding</string>
+    <string name="data_inset_none">None (default)</string>
+    <string name="data_inset_value">%1$d dp top &amp; bottom</string>
+    <string name="data_color_scheme">Colours</string>
+    <string name="data_spacing">Line spacing</string>
+    <string name="data_spacing_desc">Comfortable: looser lines and more padding. Compact: same as before. Only affects line height, not column width.</string>
+    <string name="data_perm_ws_card">Permissions &amp; workspace</string>
+    <string name="data_perm_storage">File access (/sdcard)</string>
+    <string name="data_net_row">Network access</string>
+    <string name="data_net_auto">Granted automatically</string>
+    <string name="data_net_hint">The network permission is granted automatically at install — nothing to do. If you use a proxy, remember to tick Zhengdao in the proxy app\'s per-app list. Tap this row to see network controls in system settings.</string>
+    <string name="data_net_check">Network self-test</string>
+    <string name="data_net_checking">Checking…</string>
+    <string name="data_net_check_btn">Tap to test</string>
     <string name="data_manage_row">All files access (recommended)</string>
     <string name="data_manage_on">On</string>
     <string name="data_manage_off">Off</string>
-    <string name="data_manage_hint">Recommended. With it, the AI in the terminal can reach a wider storage range; without it things still work, just with a smaller range.</string>
+    <string name="data_manage_hint">建议开启。开了它，抱朴能访问更广的存储范围；不开也能用，只是范围小一些。</string>
+    <string name="data_ws_shared_desc">Visible in your file manager and safe to delete; the folder stays even if you uninstall Zhengdao — your output isn\'t lost.</string>
+    <string name="data_ws_private_desc">App-private folder: deleted when you uninstall Zhengdao (use this if you care about traces).</string>
+    <string name="data_ws_pick">Choose folder</string>
+    <string name="data_ws_restored">Restored to default (Download/证道) — takes effect next session</string>
+    <string name="data_ws_restore">Restore default</string>
+    <string name="data_ws_private_done">Switched to private-only — takes effect next session</string>
+    <string name="data_ws_private">Private only</string>
+    <string name="data_ws_invalid">That location isn\'t usable — pick a folder in internal storage</string>
+    <string name="data_ws_set">Workspace set to %1$s — takes effect next session</string>
+    <string name="data_ws_change_title">Switching workspace also switches the knowledge base</string>
+    <plurals name="data_ws_change_current">
+        <item quantity="one">Current knowledge base: %1$s (%2$d files)</item>
+        <item quantity="other">Current knowledge base: %1$s (%2$d files)</item>
+    </plurals>
+    <string name="data_ws_change_desc">The knowledge base sits under the workspace, so switching workspaces switches to a different one. This one stays where it is, no longer read (and never deleted).</string>
+    <string name="data_ws_change_ask">Copy these files into the new workspace\'s knowledge base? Originals stay put; same names are not overwritten.</string>
+    <plurals name="data_ws_change_copied">
+        <item quantity="one">Copied %1$d files to the new workspace, index rebuilt</item>
+        <item quantity="other">Copied %1$d files to the new workspace, index rebuilt</item>
+    </plurals>
+    <string name="data_ws_change_none">The new workspace already has these files — nothing to copy</string>
+    <string name="data_ws_change_copy_btn">Copy and switch</string>
+    <string name="data_ws_change_move_btn">Switch only, keep files here</string>
 
     <!-- ── Environment page ── -->
-    <string name="env_block_live_session">Terminal session is still open: end the current session first (go back to the terminal screen and type exit, or tap Close in the top-right corner), then try again.\nNo files were changed — the environment wasn\'t touched at all, and whatever is running in the session is still running.</string>
+    <string name="env_repair_card">Repair environment</string>
+    <string name="env_repair_action">Repair</string>
+    <string name="env_repair_desc">Unpacks the system files again; your logins and workspace are kept.</string>
+    <string name="env_repair_btn">Repair environment (30s)</string>
+    <string name="env_repair_confirm">Will unpack the system files again from a local installer (about 30s, plus agent reinstall time). Logins and your workspace are kept. Continue?</string>
+    <string name="env_repair_start">Repair: unpack again from local installer (%1$d MB), no download</string>
+    <string name="env_repair_done">Repair done: environment reset, logins and workspace kept (no download)</string>
+    <string name="env_repair_failed">Repair failed: %1$s</string>
+    <string name="env_block_live_session">有任务还在跑：请先等它结束（或先停下它），再重新点一次。
+本次没有改动任何文件——正在跑的东西也还在。</string>
+    <string name="env_hermes_card">Hermes dependencies</string>
+    <string name="env_hermes_checking">Checking…</string>
+    <string name="env_hermes_fix_record">Fix the record</string>
+    <string name="env_hermes_clean_marker">Clear update marker</string>
+    <string name="env_hermes_script_failed">Couldn\'t write the repair script</string>
+    <string name="env_hermes_broken">The dependency record is broken — running hermes fails immediately. Tap the button above to fix it.</string>
+    <string name="env_update_card">Environment update</string>
+    <string name="env_checking">Checking…</string>
+    <string name="env_check_btn">Check for updates</string>
+    <string name="env_version_unknown">Unknown version</string>
+    <string name="env_local_env_missing_cached">%1$s is installed but the environment record is missing. This time the installer is downloaded again; the local cached copy (%2$s) is no longer reused.</string>
+    <string name="env_local_cached">The local cached copy (%1$s) is no longer reused; this time the installer is downloaded again.</string>
+    <string name="env_local_env_missing_full">%1$s is installed but the environment record is missing: this time it will reinstall from the full package (%2$s) so later checks can tell old from new.</string>
+    <string name="env_new_version_no_local_record">New version %1$s (no local record, so this time it downloads the full package, %2$s)</string>
+    <string name="env_up_to_date">Up to date (%1$s, environment %2$s)</string>
+    <string name="env_new_version_cached">New version %1$s (the local cached copy %2$s is no longer reused; this time the installer is downloaded again)</string>
+    <string name="env_new_version_patch">New version %1$s — a small update is enough (only %2$s, no full download)</string>
+    <string name="env_new_version_full">New version %1$s (current environment %2$s, no matching patch) — full download required, %3$s</string>
+    <string name="env_feed_unreadable">Couldn\'t read the update info — no version number</string>
+    <string name="env_only_old_manifest">Couldn\'t reach the update feed; only the old manifest (local %1$s, manifest %2$s). That number is a distro version, so it can\'t tell new from old — to update, tap the button below.</string>
+    <string name="env_latest_release">Latest release: %1$s (can\'t install in-app yet — use \"Download\" to get it manually)</string>
+    <string name="env_repo_unparsable">Repository layout changed — couldn\'t parse the version</string>
+    <string name="env_check_failed">Check failed (network unreachable): %1$s</string>
+    <string name="env_install_local">using the local package, no network</string>
+    <string name="env_install_online">downloading</string>
+    <string name="env_install_last">Last install: %1$s</string>
+    <string name="env_install_last_failed">Last install failed: %1$s</string>
+    <string name="env_retry_install">Retry install</string>
+    <string name="env_manifest_line">Agent manifest: %1$s (refreshes automatically when you open the home screen; no app update needed)</string>
+    <string name="env_manifest_refreshing">Refreshing agent manifest…</string>
+    <string name="env_manifest_updated">Agent manifest updated</string>
+    <string name="env_manifest_failed">Refresh failed (keeping the current manifest)</string>
+    <string name="env_manifest_refresh_btn">Refresh agent manifest now</string>
+    <string name="env_memlimit_card">Memory limit</string>
+    <string name="env_memlimit_off">Off</string>
+    <string name="env_memlimit_toast_off">Turned off — takes effect next session</string>
+    <string name="env_memlimit_toast">Set to %1$s — takes effect next session</string>
+    <string name="env_update_dialog_title">Environment update</string>
+    <string name="env_preparing">Preparing the installer: %1$s</string>
+    <string name="env_unpacking_long">Unpacking (no detailed progress, about 30 seconds to a few minutes)…</string>
+    <string name="env_unpacking_here">Unpacking (no detailed progress — stay on this page)…</string>
+    <string name="env_update_start_download">Checking for updates: downloading the new version</string>
+    <string name="env_patch_downloading">Downloading the update patch (%1$s)…</string>
+    <string name="env_patch_progress">Downloading patch %1$d%% (%2$d/%3$d MB)</string>
+    <string name="env_patch_meta_missing">Patch metadata missing or unreadable</string>
+    <string name="env_patch_done">Small update done (only %1$s downloaded, no full package)</string>
+    <string name="env_patch_fallback">Small update failed (%1$s); switched to a full download;</string>
+    <string name="env_full_downloading">Downloading the environment %1$d%% (%2$d/%3$d MB — you can leave this page)</string>
+    <string name="env_update_failed">Update failed: %1$s</string>
+    <string name="env_install_download_btn">Download &amp; install</string>
 
     <!-- ── Storage & cache page ── -->
+    <string name="storage_usage_title">Storage usage</string>
+    <string name="storage_row_home">home (logins &amp; config)</string>
+    <string name="storage_row_cache">cache (downloads)</string>
+    <string name="storage_tag_removable">removable</string>
+    <string name="storage_tag_keep">keep</string>
+    <string name="storage_opt_btn">Clear rarely-used add-on tools (%1$d MB)</string>
+    <string name="storage_opt_title">Clear rarely-used add-on tools?</string>
+    <string name="storage_opt_free">Frees about %1$d MB.</string>
+    <string name="storage_opt_browser">Browser tools (agent-browser / chromium) are not removed — hermes needs them to open web pages, so they stay.</string>
+    <string name="storage_opt_ffmpeg">ffmpeg isn\'t included either: it\'s a required package for hermes, and removing it makes hermes report \"install out of sync\" on every start (it doesn\'t accept the copy bundled with the system layer).</string>
+    <string name="storage_opt_keeps">Not removed: python / node / uv / npm / ripgrep runtimes, the dependency environment, memory, the hermes installation itself, system files, or any of your data.</string>
+    <plurals name="storage_opt_deleted">
+        <item quantity="one">Deleted %1$d items, freed %2$d MB</item>
+        <item quantity="other">Deleted %1$d items, freed %2$d MB</item>
+    </plurals>
+    <string name="storage_opt_none">No optional tools to clean</string>
+    <string name="storage_script_btn">Clean scripts downloaded during install (re-downloaded next time)</string>
+    <string name="storage_script_title">Clean installer script cache?</string>
+    <string name="storage_script_desc2">The scripts are only tens of KB — this isn\'t about freeing space, it\'s about making the next install download a clean copy (if a reinstall keeps hitting the same failure, start here).</string>
+    <string name="storage_script_keeps">Not removed: installed agents and toolchains, logs, or the knowledge base.</string>
+    <plurals name="storage_script_cleared">
+        <item quantity="one">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</item>
+        <item quantity="other">Cleared %1$d cached script files (freed %2$d MB); the next install will re-download them</item>
+    </plurals>
+    <string name="storage_script_none">No script cache to clean</string>
+    <string name="storage_cache_title">Cache cleanup</string>
+    <string name="storage_temp_btn">Clean temp files (%1$d MB)</string>
+    <string name="storage_temp_none">No temp files to clean</string>
+    <string name="storage_temp_title">Clean temp files?</string>
+    <string name="storage_freed">Freed %1$d MB</string>
+    <string name="storage_temp_cleaned_none">No temp files to clean</string>
+    <string name="storage_agent_btn">Clean download caches left by tool installs (%1$d MB)</string>
+    <string name="storage_agent_btn_bare">Clean download caches left by tool installs</string>
+    <string name="storage_agent_title">Clean agent cache?</string>
+    <string name="storage_agent_desc">These caches will be deleted (they can be re-downloaded or regenerated):</string>
+    <string name="storage_agent_empty">(nothing measurable to clean this time)</string>
+    <string name="storage_agent_item">· %1$s — %2$d MB</string>
+    <string name="storage_agent_keeps">Not removed: installed agents and toolchains (hermes/tools, Python/Node), the dependency environment and memory, config files, system files, or your own files. These caches re-download when needed.</string>
+    <string name="storage_agent_cleaned_none">No agent cache to clean</string>
+    <string name="storage_gen_btn">Clean pre-upgrade old Python environments (%1$d MB)</string>
+    <string name="storage_gen_title">Clean old dependency files?</string>
+    <string name="storage_gen_free">Frees about %1$d MB.</string>
+    <string name="storage_gen_desc">Every reinstall of the dependency environment leaves an old copy (hundreds of MB), and the record only points at the newest one — this deletes the ones nothing refers to. The one in use and the newest one are kept.</string>
+    <string name="storage_gen_keeps">Not removed: the dependency environment in use, memory, installed toolchains, system files. hermes reinstalls when you need to go back (requires network).</string>
+    <plurals name="storage_gen_deleted">
+        <item quantity="one">Deleted %1$d copies, freed %2$d MB</item>
+        <item quantity="other">Deleted %1$d copies, freed %2$d MB</item>
+    </plurals>
+    <string name="storage_gen_none">No old dependency files to clean</string>
+    <string name="storage_installer_title">Installer cache</string>
+    <string name="storage_installer_dir">Folder: %1$s</string>
+    <plurals name="storage_installer_count">
+        <item quantity="one">%1$d installers cached (current environment: %2$s)</item>
+        <item quantity="other">%1$d installers cached (current environment: %2$s)</item>
+    </plurals>
+    <string name="storage_installer_item">· %1$s (%2$d MB)</string>
+    <plurals name="storage_installer_cleaned">
+        <item quantity="one">Cleaned %1$d old version files</item>
+        <item quantity="other">Cleaned %1$d old version files</item>
+    </plurals>
+    <string name="storage_installer_clean_btn">Clean old version cache (keeps the current version)</string>
+    <string name="storage_installer_clean_title">Permanently delete old installer packages?</string>
+    <string name="storage_installer_clean_desc">This permanently deletes every cached installer package except the current one (partially downloaded fragments included); only the current version is kept.</string>
+    <string name="storage_installer_clean_warn">Once deleted they are gone for good — no recycle bin, no undo; rolling back to them later means downloading again.</string>
+    <string name="storage_rollback_list">Old versions you can go back to (only the latest 2 installers are kept)</string>
+    <string name="storage_rollback_to">Roll back to %1$s</string>
+    <string name="storage_rollback_title">Roll back environment</string>
+    <string name="storage_rollback_desc">Will reinstall system files from %1$s (a few minutes). Logins and your workspace are kept.</string>
+    <string name="storage_rollback_start">Roll back: reinstall from local installer %1$s (no download)</string>
+    <string name="storage_unpacking">Unpacking (no detailed progress — stay on this page or watch the notification)…</string>
+    <string name="storage_rollback_failed">Rollback failed: %1$s</string>
+    <string name="storage_rollback_btn">Roll back</string>
 
     <!-- ── Help page ── -->
     <string name="help_guide_title">Getting started</string>
     <string name="help_guide_1">Tap \"Install environment\" on the home screen to set up Debian; then tap \"Install\" on any agent you want.</string>
     <string name="help_guide_2">Sign in inside each agent (it keeps its own credentials), and it is ready to use.</string>
-    <string name="help_guide_3">Open the \"Xiaoyao\" tab and type an agent command (claude / hermes / agy). OpenCode is built into \"Baopu\" and works out of the box. A separate opencode you install in the terminal is a different copy — the two do not interfere.</string>
+    <string name="help_guide_3">抱朴开箱即用（内置 agent 运行时）；第三方 Agent 已拆到独立应用，本仓不再内置。</string>
     <string name="help_faq_title">Common questions</string>
     <string name="help_faq_q1">Environment won\'t open / download fails?</string>
     <string name="help_faq_a1">Use \"Repair environment\" above to unpack it again — your logins are kept.</string>
     <string name="help_faq_q2">How do I update an agent?</string>
-    <string name="help_faq_a2">Re-run the install command in the terminal. To update the system, use \"Check for updates\".</string>
+    <string name="help_faq_a2">重新打开一次抱朴；仍有问题请到 GitHub Issues 反馈。</string>
     <string name="help_faq_q3">Where are my files?</string>
     <string name="help_faq_a3">Output goes into the workspace folder (by default Download/证道 on your phone).</string>
     <string name="help_log_desc">zhengdao-log.txt is this run; timestamped archives keep at most 20 files / 20 MB, oldest deleted first (a clean run is never deleted); errors.log records error lines only. Logs live in the app\'s private storage, unreadable by other apps.</string>
@@ -116,14 +417,16 @@
     <string name="ws_picker_hint">Agent output goes into this folder (visible in your file manager)</string>
     <string name="ws_picker_confirm">Use this folder</string>
     <string name="kb_help_title">About the knowledge base</string>
-    <string name="kb_help_missing">The readme hasn\'t been generated yet — open the terminal once and it will appear in the knowledge base folder.\n\nLocation: %1$s</string>
+    <string name="kb_help_missing">说明文件还没生成——打开一次资料库后，它就会出现在产物文件夹里。
+
+位置：%1$s</string>
     <string name="kb_help_failed">Couldn\'t read it — open the readme (说明.md) directly in the knowledge base folder.</string>
 
     <!-- ── Keep-alive page ── -->
     <string name="keepalive_title">Keep-alive</string>
     <string name="keepalive_guide_title">Honor / MagicOS keep-alive guide</string>
     <string name="keepalive_guide_steps">① App launch: Settings → Apps → App launch → Zhengdao → turn off \"Auto-manage\", then allow auto-start / linked start / background activity\n② Battery: Settings → Battery → More battery settings → Zhengdao → set to \"Don\'t optimize\"\n③ Task lock: in Recents find the Zhengdao card, swipe down for the lock icon and tap it\n④ If it exits on its own: Developer options → make sure \"Don\'t keep activities\" is off</string>
-    <string name="keepalive_note">Honor is fairly lenient with background services: keep the \"Session running\" notification visible and lock the task, and it will stay alive in the background. If the system does kill it, reopening the terminal takes you back to where you left off.</string>
+    <string name="keepalive_note">荣耀对后台服务比较宽容：让通知保持可见、再多任务上锁，就能长期后台存活。</string>
     <string name="keepalive_details_btn">Open app details (startup manager)</string>
     <string name="keepalive_details_toast">Find Zhengdao under Settings → Apps</string>
     <string name="keepalive_log_row">Keep-alive records</string>
@@ -190,7 +493,7 @@
     <string name="welcome_install_env">Install the runtime</string>
     <string name="welcome_skip">Try Baopu first (skip the runtime)</string>
     <string name="welcome_ready">Runtime ready</string>
-    <string name="welcome_env_note">The runtime powers Xiaoyao and other agents; Baopu doesn\'t need it</string>
+    <string name="welcome_env_note">抱朴不需要额外的运行环境</string>
 
     <!-- ── Keep-alive log page (KeepaliveLogActivity) ── -->
     <string name="keepalive_log_title">Keep-alive log</string>
@@ -224,6 +527,13 @@
     <!-- ── Environment health check (EnvHealth: labels and verdicts) ── -->
 
     <!-- ── Network self-check (NetSelfCheck: plain-language verdicts of the two probes) ── -->
+    <string name="net_ok_both">✅ Network available (%1$d ms) · ✅ update source reachable (%2$d ms)</string>
+    <string name="net_ok_index_down">✅ Network available (%1$d ms) · ⚠️ update source unreachable: downloading the runtime and \"Check for environment updates\" will both fail. If you\'re behind a proxy, enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="net_cn_down_index_ok">⚠️ CN mirror unreachable (%1$s), but the update source is reachable (%2$d ms)</string>
+    <string name="net_all_down">❌ Unreachable: %1$s — check the network, or enable Zhengdao in the proxy app\'s per-app proxy list</string>
+    <string name="net_timeout">timed out</string>
+    <string name="net_timeout_secs">timed out after %1$ds</string>
+    <string name="net_index_unreachable">index unreachable</string>
 
     <!-- ── Exception plain-language mapping (HumanizeError) ── -->
     <string name="err_no_permission">Permission denied</string>
@@ -258,9 +568,7 @@
     <string name="sys_gms_line">GMS: %1$s</string>
     <string name="sys_webview">WebView: %1$s</string>
     <string name="sys_section_zd">── Zhengdao environment ──</string>
-    <string name="sys_rootfs_line">RootFS: %1$s</string>
     <string name="sys_distro">Distribution: %1$s</string>
-    <string name="sys_proot_line">proot: %1$s</string>
     <string name="sys_agents">Installed agents: %1$s</string>
     <string name="sys_python_line">Python: %1$s</string>
     <string name="sys_node_line">Node: %1$s</string>
@@ -272,6 +580,7 @@
     <string name="sys_gms_no">No GMS</string>
     <string name="sys_installed">Installed</string>
     <string name="sys_not_installed">Not installed</string>
+    <string name="sys_none">None</string>
     <string name="sys_uv_embedded">%1$s (bundled with hermes)</string>
 
     <!-- ── Baopu OpenCode (OcManager: serve / install / update) ──
@@ -289,6 +598,54 @@
     <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
     <!-- 134 lint HardcodedText cleanup: the three traffic-dot accessibility labels + 17 key caps,
          moved verbatim out of res/layout*/ (key caps are technical identifiers, same literal in both locales). -->
+    <string name="term_close_split_cd">Close split pane</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_shift">SHIFT</string>
+    <string name="term_key_interrupt">^C</string>
+    <string name="term_key_up">↑</string>
+    <string name="term_key_down">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_pipe">|</string>
+    <string name="term_key_minus">\u002D</string>
+    <string name="term_key_slash">/</string>
+    <string name="term_key_del">DEL</string>
+    <string name="term_no_network">No network: the proxy app was probably killed in the background. Restart it, or let Zhengdao go direct over the phone network (no proxy) — that works too</string>
+    <string name="term_nothing_to_copy">Nothing to copy</string>
+    <plurals name="term_copied_screen">
+        <item quantity="one">Copied the screen content (%1$d characters)</item>
+        <item quantity="other">Copied the screen content (%1$d characters)</item>
+    </plurals>
+    <string name="term_clipboard_empty">Clipboard is empty</string>
+    <string name="term_session_not_ready">Session isn\'t ready yet — can\'t paste</string>
+    <plurals name="term_pasting">
+        <item quantity="one">Pasting %1$d characters…</item>
+        <item quantity="other">Pasting %1$d characters…</item>
+    </plurals>
+    <plurals name="term_pasted">
+        <item quantity="one">Pasted %1$d characters</item>
+        <item quantity="other">Pasted %1$d characters</item>
+    </plurals>
+    <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
+    <plurals name="term_copied_chars">
+        <item quantity="one">Copied %1$d characters</item>
+        <item quantity="other">Copied %1$d characters</item>
+    </plurals>
+    <string name="term_menu_web_search">Search selected text in Xuanlan</string>
+    <string name="term_menu_clear">Clear screen</string>
+    <string name="term_no_selection">No text selected</string>
+    <string name="term_cleared">Screen cleared</string>
+    <string name="term_clear_failed">Clear failed: %1$s</string>
+    <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
+    <string name="term_link_blocked">For safety, this link can\'t be opened inside the app</string>
+    <string name="term_link_confirm_title">Open this link?</string>
+    <string name="term_link_confirm_open">Open</string>
 
     <!-- Browser tab (Xuanlan, phase 1 user mode) -->
     <string name="browser_url_hint">Enter a URL or search</string>
@@ -334,8 +691,14 @@
     <string name="browser_start_shortcut_bing">Bing</string>
     <string name="browser_start_shortcut_debian">Debian docs</string>
     <string name="browser_start_shortcut_repo">Project repo</string>
+    <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
+    <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
+    <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>
+    <string name="term_install_title">Install the runtime (Debian 13.7)</string>
+    <string name="term_start_download">Start download</string>
+    <string name="term_pick_file">Pick from files</string>
     <string name="settings_bridge">Browser bridge</string>
-    <string name="settings_value_bridge">For agents inside the terminal</string>
+    <string name="settings_value_bridge">给外部 agent 用</string>
     <string name="bridge_title">Browser bridge</string>
     <string name="bridge_switch_group">Switch &amp; listen address</string>
     <string name="bridge_switch_label">Enable the browser bridge</string>
@@ -353,9 +716,14 @@
     <string name="bridge_copied">Passphrase copied to the clipboard</string>
     <string name="bridge_reset">Reset passphrase</string>
     <string name="bridge_reset_done">Reset done — the old passphrase no longer works</string>
-    <string name="bridge_howto_group">How to use it (for terminal agents)</string>
-    <string name="bridge_howto">In the terminal, note the passphrase first: export BRIDGE_TOKEN=&lt;the string you just copied&gt;. After that your agent can drive the browser tab over loopback, e.g.:\ncurl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status\nCommands: status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS.\nNote: an agent can do a lot on a page (including typing into password fields), but it cannot touch app-private data, change browser security settings, or switch privacy redaction off.\nBaopu (the built-in OpenCode) is not wired to this bridge — it gets its browser ability from its own plugins.</string>
+    <string name="bridge_howto_group">怎么用（给外部 agent）</string>
+    <string name="bridge_howto">先在 agent 那边记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让它走本机环回操作玄览页面，例如：
+curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
+可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。
+注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。
+抱朴（内置运行时）不接这条桥，它的浏览器能力由自身插件提供。</string>
     <!-- ── Baopu placeholder (legacy Baopu line retired 2026-10-16; the real page ships with Baopu cut 1) ── -->
+    <string name="home_baopu_retired">The old Baopu (built-in OpenCode) is gone — it could not start on Android 16 and its code has been removed. The new Baopu is being rebuilt; come back once it ships.</string>
     <!-- ── Baopu screen (cut 1, 2026-10-16; keys use the baopu_ prefix) ── -->
     <string name="baopu_input_hint">Tell Baopu what to do…</string>
     <string name="baopu_send">Send</string>
@@ -1033,7 +1401,7 @@
     <string name="baopu_tool_capabilities">Tool roster (capabilities)</string>
     <string name="baopu_tool_capabilities_desc">Look and unlock: lists every tool group with a one-line summary and who is default-visible / unlocked / switched off by you, then unlocks groups for this session. It only changes "which tools the model can see this round" and touches no files, so no confirmation card. A group you switched off stays locked — and it will say so honestly.</string>
     <string name="baopu_tool_preview_local_file">Local preview (XuanLan)</string>
-    <string name="baopu_tool_preview_local_file_desc">Sends one workspace file to the XuanLan "local preview" tab to **display only**: HTML renders, anything else shows as source, with a source/render toggle and copy. The tab is offline by default (every in-page http/https request is intercepted with an empty response) and runs no scripts by default; with the script sandbox on it still runs only inside that tab and still cannot reach the network. It never executes your program, never touches a terminal or rootfs, and rejects paths outside the workspace. Writes no files, so no confirmation card.</string>
+    <string name="baopu_tool_preview_local_file_desc">把工作区里的一个文件送到玄览「本地预览」页签**只显示**：HTML 看排版、其余看源码，栏上有「源码 / 排版」切换与复制。该页签默认断网（页面内所有 http/https 请求被拦成空响应）、默认禁 JS；开了「脚本沙箱」也只在这一页签跑、照样出不了网。不执行你的程序、不起子进程、不碰系统目录；路径越界直接拒。它不写任何文件，所以不弹确认卡。</string>
     <string name="baopu_tool_image_ops">Image tools</string>
     <string name="baopu_tool_image_ops_desc">Edit images (a confirmation card pops up before each run): resize to a max edge, crop by rectangle, convert to png/jpg/webp, extract the dominant palette (text only), or generate 48/72/96/144/192 square icon PNGs. The original is never overwritten — output goes to &lt;name&gt;-&lt;action&gt;.&lt;ext&gt; and an existing target is refused.</string>
     <string name="baopu_tool_delete_path_desc">Delete one file in the workspace (a confirmation card pops up before each run): by default it is **moved to the recycle bin** (workspace/.回收站/&lt;stamp&gt;-&lt;name&gt;), so it can be moved back; only with \"permanent\" ticked is it unrecoverable. Files only — directories are always refused; the backup area 备份/, the recycle bin itself and the private originals are off limits.</string>
@@ -1662,4 +2030,7 @@
     <string name="settings_perm_expand">Expand</string>
     <string name="settings_perm_collapse">Collapse</string>
     <string name="settings_perm_row_label">All permissions</string>
+    <string name="nav_settings">Statutes</string>
+    <string name="settings_group_workspace">Workspace &amp; library</string>
+    <string name="settings_workspace">Workspace</string>
 </resources>
