@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 249 · task-level explicit authorization v1 (2026-10-28).
+  Its own file (same shape as 158 `strings_baopu_image.xml` / 198 `strings_baopu_search.xml`):
+  `strings.xml` is being edited by batch 251, so this batch changes **0 bytes** of it.
+-->
+<resources>
+    <string name="baopu_authz_title">Task authorization (this task)</string>
+    <string name="baopu_authz_subtitle">Approving the plan is not the same as authorizing the writes: only what is listed below runs without asking.</string>
+    <string name="baopu_authz_badge">up to %1$d min</string>
+
+    <string name="baopu_authz_objects_title">Objects (an explicit file list)</string>
+    <string name="baopu_authz_object_new">%1$s · new</string>
+    <string name="baopu_authz_object_edit">%1$s · edit body</string>
+
+    <string name="baopu_authz_actions_title">Actions (only these)</string>
+    <string name="baopu_authz_action_line">%1$s</string>
+
+    <string name="baopu_authz_limits_title">Limits (over the line stops the grant)</string>
+    <string name="baopu_authz_limit_line">Objects (max): %1$d; per file (max): %2$s; total write (max): %3$s; actions (max): %4$d</string>
+
+    <string name="baopu_authz_ends_title">When it stops</string>
+    <string name="baopu_authz_end_task">Task ends</string>
+    <string name="baopu_authz_end_stop">You press stop</string>
+    <string name="baopu_authz_end_expiry">Expires (%1$d min)</string>
+    <string name="baopu_authz_end_restart">Process restart</string>
+    <string name="baopu_authz_end_revoked">You revoke it</string>
+
+    <string name="baopu_authz_still_ask_title">Still asked every time</string>
+    <string name="baopu_authz_still_ask_kinds">Delete, send, commit, execute, change permissions</string>
+    <string name="baopu_authz_still_ask_protected">Files in the original zone or password fields</string>
+    <string name="baopu_authz_still_ask_r3">Anything about money, sending out, or accounts</string>
+
+    <string name="baopu_authz_approve_grant">Approve plan and authorize this task</string>
+    <string name="baopu_authz_approve_plan_only">Approve plan only (ask every step)</string>
+    <string name="baopu_authz_decline">Skip this task</string>
+</resources>

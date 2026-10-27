@@ -161,6 +161,24 @@ internal enum class DecisionActor(val wire: String) {
     }
 }
 
+/**
+ * [DecisionLedger.recordOnce] 的三态（第二百四十九批）。
+ *
+ * `DUPLICATE` **不是错误**：同一个动作被重跑时，第二条账应当被吞掉——
+ * 一动作两账会让抽检分不清「真做了两次」还是「记了两次」。
+ */
+internal enum class DecisionAppend(val wire: String) {
+    /** 新落的。 */
+    APPENDED("appended"),
+
+    /** 这个事件键已经有一条账（不重复落）。 */
+    DUPLICATE("duplicate"),
+
+    /** 写不进去（缺键、账本损坏、盘错）。 */
+    FAILED("failed"),
+}
+
+
 /** 一条决策记录（JSONL 的一行；键名固定，测试逐个钉）。 */
 internal data class DecisionRecord(
     val id: String,
@@ -346,6 +364,50 @@ internal object DecisionLedger {
             lastError = "决策记录写失败（${draft.kind.wire}）：${it.javaClass.simpleName}: ${it.message}"
             null
         }
+    }
+
+    /**
+     * **幂等追加**（第二百四十九批）：同一个 `eventKey` 全本账只许有一条。
+     *
+     * 为什么要一个专门的入口、而不是让调用方先 [read] 一遍再 [recordTo]：
+     * 那两步之间没有锁，两个线程可以同时"没查到"然后各写一行；这里查与写在
+     * 同一个 `@Synchronized` 里完成（与方法锁的是同一把：`DecisionLedger` 这个实例）。
+     *
+     * 三条纪律：
+     * 1. `draft.evidence` 必须**逐字等于** `eventKey`——账本反查只认 `evidence` 一列，
+     *    两处各写一个键就会在"查不到"和"写得进"之间留一条缝；
+     * 2. 账本里出现**坏行**就整次拒写（宁可这一条不落，也不往后追加到读不出来的账里）；
+     * 3. 失败一律 [DecisionAppend.FAILED]，**不抛**（记录是留痕不是闸门，71 批① 口径）。
+     *
+     * @return APPENDED 新落；DUPLICATE 已有同键（**不写**）；FAILED 写不进去
+     */
+    @Synchronized
+    fun recordOnce(globalRoot: File, eventKey: String, draft: DecisionDraft): DecisionAppend {
+        if (eventKey.isBlank()) {
+            lastError = "幂等账缺事件键（${draft.kind.wire}）"
+            return DecisionAppend.FAILED
+        }
+        if (draft.evidence != eventKey) {
+            lastError = "幂等账的事件键必须与 evidence 逐字相同（$eventKey／${draft.evidence}）"
+            return DecisionAppend.FAILED
+        }
+        val existing = runCatching {
+            fileIn(globalRoot).takeIf { it.isFile }?.readLines(Charsets.UTF_8).orEmpty()
+        }.getOrElse {
+            lastError = "幂等账读失败：${it.javaClass.simpleName}: ${it.message}"
+            return DecisionAppend.FAILED
+        }
+        var found = false
+        for (line in existing) {
+            if (line.isBlank()) continue
+            val parsed = parseLine(line) ?: run {
+                lastError = "幂等账碰到坏行，这次不追加（$eventKey）"
+                return DecisionAppend.FAILED
+            }
+            if (parsed.evidence == eventKey) found = true
+        }
+        if (found) return DecisionAppend.DUPLICATE
+        return if (recordTo(globalRoot, draft) != null) DecisionAppend.APPENDED else DecisionAppend.FAILED
     }
 
     /** 校验＋组装（纯函数：给定 draft，要么给一条合法记录，要么 null 并留 [lastError]）。 */
