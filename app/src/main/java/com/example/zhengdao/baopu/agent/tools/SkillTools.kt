@@ -17,6 +17,9 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.SkillAutoOutcome
 import com.example.zhengdao.baopu.SkillAutoWrite
+import com.example.zhengdao.baopu.EntrySubject
+import com.example.zhengdao.baopu.EntryVerdict
+import com.example.zhengdao.baopu.SkillAcceptance
 import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillRules
@@ -133,6 +136,12 @@ internal object SkillTools {
             } else if (body.isBlank()) {
                 ToolOutcome.Failed("body 不能为空——空技能写下去只会占索引位")
             } else {
+            // 第二百五十五批 · 第一段入库闸：文字技能 G2（契约 success 可观察）→ G3（protected 未碰）。
+            // G1（两站点各验一次）只有写法能落实：本工具本来就恒落草稿，草稿由人点名后再谈转正。
+            when (val gate = SkillAcceptance.entryGate(EntrySubject.Prose(body))) {
+                is EntryVerdict.Reject -> return ToolOutcome.Rejected(gate.reason)
+                else -> Unit
+            }
                 val root = workspaceRoot()
                 val pf = personaFiles()
                 // 全局技能落 filesDir/抱朴记忆，项目技能落工作区；plan 只读目录状态，不写盘。

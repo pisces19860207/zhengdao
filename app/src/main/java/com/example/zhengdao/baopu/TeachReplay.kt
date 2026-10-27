@@ -33,6 +33,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 
 // ── 页面查询脚本族（全部自包含 IIFE，返回 JSON 字符串）─────────────────────────
 
@@ -734,7 +735,11 @@ internal class TeachSessionUiModel(
                 personaFiles = personaFiles(),
                 stampText = com.example.zhengdao.core.TimeFormats.fileStamp(),
             )
-            val msg = if (r.written != null) "已保存技能「${skill.name}」" else (r.reason ?: "保存失败")
+            val msg = if (r.written != null) {
+                "已保存技能「${skill.name}」" + (r.notice?.let { "（$it）" } ?: "")
+            } else {
+                r.reason ?: "保存失败"
+            }
             withContext(Dispatchers.Main) { onDone(msg) }
         }
     }
@@ -1105,6 +1110,10 @@ object TeachReplay {
     ): TeachRunReport {
         val skill = TeachReplayStore.load(projectRoot, name)
             ?: return failedReport(name, "没有这个回放技能：$name（先在玄览里教一遍）")
+
+        // 第二百五十五批 U3：上次环境指纹对不上 ⇒ fail-closed 判 SKILL_STALE，一个页面动作都不做
+        val nowMs = System.currentTimeMillis()
+        preAcceptanceBlock(projectRoot, name, nowMs)?.let { return failedReport(name, it) }
         val evidenceRoot = File(MemoryLayout.productsDir(workspace), "玄览技能")
         val sink = FileTeachEvidenceSink(evidenceRoot) { _ ->
             when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
@@ -1117,9 +1126,11 @@ object TeachReplay {
             dom = dom,
             evidence = sink,
             audit = { report, now ->
-                if (!TeachReplayStore.appendAudit(projectRoot, report.auditLine(now))) {
+                val opId = SkillAcceptance.opIdOf(report, now)
+                if (!TeachReplayStore.appendAudit(projectRoot, report.auditLine(now, opId))) {
                     RunLog.log("回放审计落盘失败：skill=${report.skillName}")
                 }
+                recordAcceptance(context, projectRoot, skill, report, now, opId)
             },
         )
         val report = executor.run(skill)
@@ -1231,6 +1242,9 @@ fun replaySkillWithParams(
     val skill = TeachReplayStore.load(projectRoot, name)
         ?: return TeachParamRun(null, null, emptyList(), "没有这个回放技能：$name（先在玄览里教一遍）")
 
+    // 第二百五十五批 U3：stale ⇒ 连导航都不发生（fail-closed，不带病执行）
+    preAcceptanceBlock(projectRoot, name, nowMs)?.let { return TeachParamRun(null, null, emptyList(), it) }
+
     when (val pl = TeachParams.plan(skill, sentence, nowMs)) {
         is TeachParams.TeachRunPlan.Ask -> return TeachParamRun(null, pl.line, emptyList(), null)
         is TeachParams.TeachRunPlan.Stop -> return TeachParamRun(null, null, emptyList(), pl.reason)
@@ -1258,9 +1272,11 @@ fun replaySkillWithParams(
                 dom = dom,
                 evidence = RedactingEvidenceSink(raw, pl.values),
                 audit = { report, now ->
-                    if (!TeachReplayStore.appendAudit(projectRoot, TeachParams.redact(report.auditLine(now), pl.values))) {
+                    val opId = SkillAcceptance.opIdOf(report, now)
+                    if (!TeachReplayStore.appendAudit(projectRoot, TeachParams.redact(report.auditLine(now, opId), pl.values))) {
                         RunLog.log("回放审计落盘失败：skill=${report.skillName}")
                     }
+                    recordAcceptance(context, projectRoot, pl.skill, report, now, opId)
                 },
             )
             val report = executor.run(pl.skill)
@@ -1268,5 +1284,39 @@ fun replaySkillWithParams(
             val card = publishReplayCard(context, tabId, report, dom, pl.skill, pl.values)
             return TeachParamRun(report, null, pl.display, null, card)
         }
+    }
+}
+
+// ── 第二百五十五批：回放前的验收闸与记账（两个回放入口共用；放文件级，TeachReplay 与带参数回放都能调）──
+
+/**
+ * 第二百五十五批 U3：回放前的验收闸（stale ⇒ 返回停手话，null ⇒ 可以跑）。
+ * 状态读失败/没有状态文件 ⇒ 不拦（没有账不等于有罪——第一次跑总是没有样本）。
+ */
+private fun preAcceptanceBlock(projectRoot: File, name: String, nowMs: Long): String? = runCatching {
+    val md = TeachReplayStore.skillMdFile(projectRoot, name).takeIf { it.isFile }
+        ?.readText(Charsets.UTF_8)
+    val status = md?.let { SkillStore.statusOf(it) } ?: "active"
+    SkillAcceptance.preflight(TeachReplayStore.loadAcceptance(projectRoot, name), status, nowMs).blocked
+}.getOrNull()
+
+/**
+ * 第二百五十五批 · 第二段：一次执行实例记一条验收（幂等 opId；U1 触发当场降级）。
+ * 记账失败只 log——验收账不许把回放本身弄丢。
+ */
+private fun recordAcceptance(
+    context: Context,
+    projectRoot: File,
+    skill: TeachSkill,
+    report: TeachRunReport,
+    nowMs: Long,
+    opId: String,
+) {
+    runCatching {
+        val pf = BaopuRuntime.personaFiles(context)
+        val globalRoot = File(context.applicationContext.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)
+        TeachReplayStore.recordRun(projectRoot, globalRoot, pf, skill, report, nowMs, opId)
+    }.onFailure {
+        RunLog.log("验收记账失败：${skill.name}（${it.javaClass.simpleName}）")
     }
 }

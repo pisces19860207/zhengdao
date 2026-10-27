@@ -40,12 +40,13 @@ data class TeachRunReport(
     val retried: List<Int> = emptyList(),
 ) {
     /** 审计一行（§3.5：技能名/步数/结果/耗时/漂移/被拒动作）。 */
-    fun auditLine(nowMs: Long): String {
+    fun auditLine(nowMs: Long, opId: String? = null): String {
         val sb = StringBuilder("{")
         sb.append("\"ts\":").append(nowMs)
             .append(",\"skill\":\"").append(jsonEsc(skillName)).append("\"")
             .append(",\"steps\":").append(stepsDone)
             .append(",\"ok\":").append(ok)
+        opId?.let { sb.append(",\"op\":\"").append(it).append('"') }
         failedStep?.let { sb.append(",\"failedStep\":").append(it) }
         stopReason?.let { sb.append(",\"reason\":\"").append(jsonEsc(it)).append("\"") }
         sb.append(",\"durationMs\":").append(durationMs)
