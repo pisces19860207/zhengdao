@@ -12,11 +12,11 @@
 // 4. 单次提交 ≤ 200 行、只改文本、**无删除能力**（不提供 delete 参数，也不删行以外的任何东西）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.core.TimeFormats
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

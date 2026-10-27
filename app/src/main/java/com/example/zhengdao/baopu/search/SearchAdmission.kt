@@ -27,7 +27,7 @@
 // 不在授予根内 ⇒ 同样不建行。两者都给得出原因，因为验收要逐条对账（派工单 §2）。
 package com.example.zhengdao.baopu.search
 
-import com.example.zhengdao.rootfs.PathGuard
+import com.example.zhengdao.core.PathGuard
 import java.io.File
 import java.nio.file.Paths
 

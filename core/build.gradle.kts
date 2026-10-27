@@ -14,6 +14,8 @@
 //   —— 依赖方向只能是 :app → :core，反过来就说明"还没解耦完，只是换了个目录"。
 plugins {
     alias(libs.plugins.android.library)
+    // 第二百四十八批：发布到 mavenLocal（publishing 的 Kotlin DSL 访问器要求插件在 plugins{} 里 apply）
+    `maven-publish`
 }
 
 android {
@@ -56,4 +58,30 @@ dependencies {
     testImplementation(libs.junit)
     // 单测里的 org.json 真实实现（KnowledgeBaseSummarizerTest 直接构造 JSONObject）
     testImplementation(libs.json)
+}
+
+
+// ── 第二百四十八批（终端解耦第四刀）：把 :core 发布成 Maven 产物 ──────────────────────
+// 为什么：终端搬去 zhengdao-term 之后，新仓**只引产物、不复制源码**（设计稿 §1 选型①）。
+// 版本号与主 APP 的 versionName 同步（2.2.1）——改 :core 就要发一次版本，靠版本号防漂移。
+//
+// 为什么不用 `from(components["release"])`：AGP 9 里没有生成名为 release 的软件组件
+// （singleVariant 也不生），配置期直接报 "SoftwareComponent with name 'release' not found"。
+// 所以直接挂 AAR 任务 + 手写 POM —— 产物一样是 .aar + .pom，坐标完全可控。
+publishing {
+    publications {
+        create<MavenPublication>("release") {
+            groupId = "com.example.zhengdao"
+            artifactId = "zhengdao-core"
+            version = "2.2.1"
+            afterEvaluate {
+                artifact(tasks.named("bundleReleaseAar"))
+            }
+            pom {
+                packaging = "aar"
+                name.set("zhengdao-core")
+                description.set("证道 / 证道终端共用的一层：目录真源、存储授权判定、RunLog、KB、通知、PathGuard")
+            }
+        }
+    }
 }

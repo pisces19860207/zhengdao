@@ -9,8 +9,6 @@ import android.os.Environment
 import android.os.StatFs
 import androidx.core.net.toUri
 import com.example.zhengdao.R
-import com.example.zhengdao.terminal.ProotBinaries
-import com.example.zhengdao.ui.AppState.rootfsInstalled
 import java.io.File
 
 /**
@@ -23,6 +21,10 @@ import java.io.File
  * 像 App 坏了一半，用户会以为环境没装好。
  */
 object SystemInfoProvider {
+
+    /** 第四刀：终端侧的读数（rootfs/发行版/proot/Agent）已随终端搬走，统一用这一句。 */
+    private const val MOVED_TO_TERMINAL = "见「证道终端」App"
+
 
     data class Info(
         // 系统与硬件
@@ -177,27 +179,14 @@ object SystemInfoProvider {
             val pi = ctx.packageManager.getPackageInfo("com.google.android.webview", 0)
             pi.versionName ?: unknown()
         },
-        rootfs = safe(res) {
-            if (rootfsInstalled(ctx)) res?.getString(R.string.sys_installed) ?: "已安装"
-            else res?.getString(R.string.sys_not_installed) ?: "未安装"
-        },
+        // 第二百四十八批（第四刀）：证道环境（rootfs / 发行版 / proot / Agent）随终端搬走，
+        // 这几行改成如实说明"不在此 App"，不再假装能读出状态。
+        rootfs = MOVED_TO_TERMINAL,
         // info 里存的是 debian-13.7，旧代码又拼了一次 "Debian "，
         // 真机上显示成 "Debian debian-13.7"。
-        distro = envField(ctx, "distro")?.removePrefix("debian-")
-            ?.let { "Debian $it" }
-            ?: (res?.getString(R.string.sys_not_installed) ?: "未安装"),
-        proot = safe(res) {
-            // 第⑳刀：四件套随 APK jniLibs 内置（nativeLibraryDir），不再看数据目录
-            val p = ProotBinaries.prootSo(ctx)
-            if (p.isFile && p.canExecute()) res?.getString(R.string.sys_proot_ready)
-                ?: "就绪（Termux fork）"
-            else res?.getString(R.string.sys_not_installed) ?: "未安装"
-        },
-        agentList = safe(res) {
-            val a = AppState.agents(ctx).filter { it.installed }
-            if (a.isEmpty()) res?.getString(R.string.sys_none) ?: "无"
-            else a.joinToString("、") { it.name }
-        },
+        distro = MOVED_TO_TERMINAL,
+        proot = MOVED_TO_TERMINAL,
+        agentList = MOVED_TO_TERMINAL,
         // 注意别在这里再拼一遍 "Python "——展示行已经是 "Python: $python"，
         // 原先就渲染成了 "Python: Python 3.13"。
         python = envField(ctx, "python")

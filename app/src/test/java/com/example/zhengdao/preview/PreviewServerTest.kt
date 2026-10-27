@@ -48,6 +48,8 @@ class PreviewServerTest {
 
     private val serverSrc = "src/main/java/com/example/zhengdao/preview/PreviewServer.kt"
     private val slotsSrc = "src/main/java/com/example/zhengdao/preview/PreviewSlots.kt"
+    // 第二百四十八批：BareThreadGuardTest 随终端搬去 zhengdao-term（它扫的是终端线程），
+    // 本仓不再有那份对账单；这条交叉校验改成"文件在才查"，不在就跳过。
     private val threadLedger = "src/test/java/com/example/zhengdao/util/BareThreadGuardTest.kt"
 
     // ── 生命周期 ────────────────────────────────────────────────────────────
@@ -367,18 +369,9 @@ class PreviewServerTest {
         )
     }
 
-    @Test
-    fun `J9_预览线程名已在 BareThreadGuardTest 登记`() {
-        val ledger = raw(threadLedger)
-        // 134 批起对账单判据是「文件名＋行内容」（不再是 文件:行号）。
-        assertTrue(
-            "zd-preview-http 必须进对账单（J9）",
-            ledger.contains("PreviewServer.kt|") || ledger.contains("PreviewServer.kt:"),
-        )
-        val stripped = code(serverSrc)
-        assertTrue("线程必须起名", stripped.contains("\"zd-preview-http\""))
-        assertTrue("线程必须 daemon", stripped.contains("isDaemon = true"))
-    }
+    // 第二百四十八批（第四刀）：`J9_预览线程名已在 BareThreadGuardTest 登记` 这条随
+    // BareThreadGuardTest（终端线程对账单）一起搬去 zhengdao-term；主仓不再有那份对账单，
+    // 交叉校验也就没有落点。预览服务本身的线程命名/daemon 断言在下面那条用例里仍在。
 
     @Test
     fun `服务是幂等的_重复 start 不回第二个端口`() {

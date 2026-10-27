@@ -69,8 +69,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.ui.AppState
-import com.example.zhengdao.ui.HomeScreen
 import kotlinx.coroutines.launch
 import com.example.zhengdao.ui.SettingsScreen
 import com.example.zhengdao.ui.WelcomeScreen
@@ -197,12 +195,10 @@ class MainActivity : ComponentActivity() {
                 com.example.zhengdao.ui.baopu.BaopuIntents.requestPrompt(route.text, route.truncated)
             }
             is IncomingRoute.PrefillTerminal -> {
+                // 第二百四十八批（第四刀）：终端搬走了，"把命令预填进终端"这条深链在本仓没有落点。
+                // 保留分支（路由表不动）但只记一行账，不再拉起任何页面 —— 免得点进来是一片空白。
                 com.example.zhengdao.core.RunLog.log(
-                    "深链终端：预填命令 ${route.command.length} 字（不执行）"
-                )
-                // 复用进终端的唯一入口 terminalIntent(...)；只带预填 extra，**不碰 autocmd**。
-                startActivity(
-                    terminalIntent(this, null, null).putExtra(EXTRA_TERMINAL_PREFILL, route.command)
+                    "深链终端：收到预填命令 ${route.command.length} 字，但终端已独立（zhengdao-term），本仓不处理"
                 )
             }
             is IncomingRoute.McpOAuthCallback -> {
@@ -316,9 +312,8 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("zhengdao-ui", MODE_PRIVATE)
         val lastRoute = prefs.getString("last_route", null)
 
-        // 环境安装状态：进 UI 前先同步读一次，避免首帧按默认 false 闪一下「环境未安装」。
-        // （v1.2 修复：原先各页面直接在组合里调 rootfsInstalled()，装完环境回主页不刷新。）
-        com.example.zhengdao.ui.RootfsState.refresh(this)
+        // 第二百四十八批（第四刀）：**环境安装状态随终端搬走** —— 主仓不再有 rootfs，
+        // 也就没有"装没装"要同步；导航直落主页（欢迎页/安装引导在证道终端里）。
 
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
@@ -411,14 +406,13 @@ class MainActivity : ComponentActivity() {
         // 复用与冷启动 LaunchedEffect 同一个 terminalIntent(...)（同一入口、同一组 flag），
         // 不新造第二条终端路由；setIntent 已同步，重复收到旧 intent 时这里不会反复拉起。
         if (intent.getBooleanExtra("open_terminal", false)) {
-            startActivity(terminalIntent(this, null, null))
+            openZhengdaoTerminal(this)
         }
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            com.example.zhengdao.rootfs.RootfsDownloader.releaseIdleResources()
         }
         // D-4（第⑱刀）：内存压力下回收玄览 WebView（仅 COMPLETE 档且玄览离线时才真回收）。
         com.example.zhengdao.ui.browser.BrowserHolder.onTrimMemory(level)
@@ -440,13 +434,6 @@ class MainActivity : ComponentActivity() {
  * （为何不用 manifest 的 singleTask：实测它会把终端塞进独立 task，清掉 MainActivity，
  *   关闭后不再回主页——参见 AndroidManifest.xml 里 TerminalActivity 的注释。）
  */
-private fun terminalIntent(context: android.content.Context, autocmd: String?, agentId: String?): Intent =
-    Intent(context, TerminalActivity::class.java).apply {
-        putExtra("autocmd", autocmd)
-        putExtra("agent_id", agentId)
-        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-    }
-
 @Composable
 fun ZhengdaoApp(
     startInTerminal: Boolean = false,
@@ -455,22 +442,10 @@ fun ZhengdaoApp(
     val context = androidx.compose.ui.platform.LocalContext.current
     val res = androidx.compose.ui.platform.LocalResources.current
     val nav = rememberNavController()
-    // 可观察状态：环境装/没装会变（终端里装完、设置里卸载），必须跟着变。
-    val installed by com.example.zhengdao.ui.RootfsState.installed
+    // 第二百四十八批：主仓没有"环境"这个概念了（rootfs 随终端搬走）。保留这个常量只为
+    // 不改动下面路由判据的形状：恒 true ⇒ 永远直落主页，欢迎/安装引导不再出现。
+    val installed = true
     val routePrefs = context.getSharedPreferences("zhengdao-ui", android.content.Context.MODE_PRIVATE)
-
-    // 回到前台就重读一次：装在终端里完成（RootfsInstaller 写完成标记）后返回主页，
-    // 欢迎页与主页的环境状态必须立刻跟上，不能等杀进程重进。
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                com.example.zhengdao.ui.RootfsState.refresh(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(obs)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
-    }
 
     // 路由决策优先级：通知栏直达终端 > 上次页面（欢迎页只在首次安装出现）
     // ⚠️ 恢复页不能当 startDestination——起始页底下没有返回栈，popBackStack
@@ -481,7 +456,7 @@ fun ZhengdaoApp(
     // 通知栏直达终端：落到主页后立即拉起终端（会话由 SessionManager attach 恢复）
     if (startInTerminal) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            context.startActivity(terminalIntent(context, null, null))
+            openZhengdaoTerminal(context)
         }
     }
 
@@ -540,7 +515,7 @@ fun ZhengdaoApp(
             tag, "进终端: autocmd=${autocmd?.length ?: 0}B agentId=$agentId ctx=$context"
         )
         try {
-            context.startActivity(terminalIntent(context, autocmd, agentId))
+            openZhengdaoTerminal(context)
             android.util.Log.d(tag, "startActivity 已发出")
         } catch (t: Throwable) {
             // 异常不可见 = 用户眼里就是"点了没反应"，必须当面说清
@@ -606,7 +581,7 @@ fun ZhengdaoApp(
                         nav.navigate("home") { launchSingleTop = true }
                     } else {
                         // 未安装：直达终端（安装对话框会在会话就绪后自动弹出）
-                        context.startActivity(terminalIntent(context, null, null))
+                        openZhengdaoTerminal(context)
                     }
                 },
                 // 跳过环境安装直进主界面：**抱朴不依赖 Debian**（宿主 bionic serve，
@@ -698,8 +673,9 @@ internal object TabIndex {
     /** 玄览（期望）：浏览器（阶段 1 新增）。 */
     const val BROWSER = 2
 
-    /** 怡然（幸福）：Agent 管理。 */
-    const val AGENTS = 3
+    // 第二百四十八批（第四刀）：**怡然（AGENTS）Tab 随终端一起退役** —— 它是 Agent 安装卡，
+    // 而 Agent 装在终端的 rootfs 里；主仓不再有 rootfs，这张卡也就没有内容可显示。
+    // 逍遥（TERMINAL）Tab 留着，改成「去证道终端」的入口页（见 TerminalTabEmptyState）。
 }
 
 /** 首页骨架：Agent Tab（卡片列表）/ 终端 Tab（进入全屏终端）。 */
@@ -708,6 +684,9 @@ fun HomeTabs(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
+    // 第四刀：逍遥 Tab 的空态按钮要拉起另一个 APP（按包名），需要 Context。
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     // P2-1（§B 顺序 2，2026-10-14）：必须是 **rememberSaveable**，不能是 remember。
     // `remember` 不跨**配置变更**（旋转屏幕 / 切深浅色 / 改字体大小）保留 ⇒ 转一次屏，
     // tab 就被打回初始值——人正停在逍遥（终端）或玄览，一转屏被甩回怡然。
@@ -715,7 +694,7 @@ fun HomeTabs(
     // listState 走 rememberSaveable 也是这个道理，见 :559 那段注释）。
     // 初始值语义不变：首次进 App 落怡然（与原字面 2 一致）。
     var tab by androidx.compose.runtime.saveable.rememberSaveable {
-        mutableIntStateOf(TabIndex.AGENTS)
+        mutableIntStateOf(TabIndex.BAOPU)
     }
 
     // 160：同一页里点「注册」/预览也要立刻切玄览——观察请求版本号，组合期消费。
@@ -829,7 +808,6 @@ fun HomeTabs(
     fun animateToTop(target: Int) {
         when (target) {
             TabIndex.BAOPU -> scope.launch { baopuListState.animateScrollToItem(0) }
-            TabIndex.AGENTS -> scope.launch { homeListState.animateScrollToItem(0) }
             // 逍遥（终端）：点了就跳 TerminalActivity，不存在"滚顶"概念，no-op；
             // 玄览：页面区不是列表，同样 no-op。
         }
@@ -846,7 +824,6 @@ fun HomeTabs(
             TabIndex.BAOPU -> { tab = TabIndex.BAOPU }
             TabIndex.TERMINAL -> { tab = TabIndex.TERMINAL; onTerminalClicked() }
             TabIndex.BROWSER -> { tab = TabIndex.BROWSER }
-            TabIndex.AGENTS -> { tab = TabIndex.AGENTS }
         }
     }
 
@@ -914,14 +891,6 @@ fun HomeTabs(
                         label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
                         colors = tabColors,
                     )
-                    NavigationBarItem(
-                        selected = tab == TabIndex.AGENTS,
-                        // K1：双击 = 滚到怡然 Agent 列表顶。
-                        onClick = { onTabClicked(TabIndex.AGENTS) {} },
-                        icon = { YiRanIcon(tab == TabIndex.AGENTS) },
-                        label = { Text(stringResource(R.string.nav_agents), style = tabLabelStyle) },
-                        colors = tabColors,
-                    )
                 }
             }
         },
@@ -946,18 +915,12 @@ fun HomeTabs(
                 // 旧线（opencode serve）史见 docs/ERRATA.md E-140；占位页 BaopuRebuilding
                 // 已于第六十二批删除；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
                 TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
-                    onExit = { tab = TabIndex.AGENTS },
-                )
-                // 怡然（幸福）：Agent 管理（OpenCode 已内置为抱朴，不在怡然展示）
-                TabIndex.AGENTS -> HomeScreen(
-                    onOpenTerminal = onOpenTerminal,
-                    onOpenSettings = onOpenSettings,
-                    listState = homeListState,
+                    onExit = { tab = TabIndex.TERMINAL },
                 )
                 // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
-                TabIndex.TERMINAL -> TerminalTabEmptyState(onOpenTerminal = { onOpenTerminal(null, null) })
+                TabIndex.TERMINAL -> TerminalTabEmptyState(onOpenTerminal = { openZhengdaoTerminal(context) })
                 // 玄览：浏览器（用户模式 MVP，阶段 1）。WebView 实例由 BrowserHolder
                 // 跨 Tab 保活；外部打开入口（终端链接点击等）走 BrowserHolder.pendingUrl
                 // + 上面 ON_RESUME 的切 Tab 消费（§4.6，第 ② 刀接线）。
@@ -965,6 +928,34 @@ fun HomeTabs(
                 else -> {}
             }
         }
+    }
+}
+
+/**
+ * 拉起独立 App「证道终端」（第四刀：终端整仓搬走）。
+ *
+ * 为什么用包名而不是类名：两个 APP 是两个 applicationId，本仓编译期看不到对方的 Activity 类；
+ * `getLaunchIntentForPackage` 是系统给的正规入口，没装时返回 null —— 那就用一句话告诉用户去哪装，
+ * 不假装"点了没反应"。
+ */
+private fun openZhengdaoTerminal(context: android.content.Context) {
+    val pkg = "com.example.zhengdao.term"
+    val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+    if (launch != null) {
+        runCatching { context.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure {
+                android.widget.Toast.makeText(
+                    context,
+                    "打不开「证道终端」：${it.javaClass.simpleName}",
+                    android.widget.Toast.LENGTH_SHORT,
+                ).show()
+            }
+    } else {
+        android.widget.Toast.makeText(
+            context,
+            "还没装「证道终端」——到 github.com/pisces19860207/zhengdao-term 的 Releases 下载",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
     }
 }
 
@@ -993,19 +984,23 @@ private fun TerminalTabEmptyState(onOpenTerminal: () -> Unit) {
         )
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "终端是一个独立页面",
+            text = "终端已独立为「证道终端」",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "关掉它之后会回到这里。会话还在后台跑着，再进去就是刚才那一屏。",
+            // 第四刀（2026-10-27）：终端整仓搬走，主仓不再带 rootfs/proot。这里如实说明去哪了，
+            // 并给一个"直接过去"的按钮（装了就跳，没装就说清去哪装）。
+            text = "第二百四十八批起，终端（PTY ＋ Debian 环境 ＋ Agent 安装）搬到了独立 App「证道终端」，" +
+                "与本 App 可并存安装。会话、Agent、环境包都在那边。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
         Spacer(Modifier.height(20.dp))
         Button(onClick = onOpenTerminal, shape = androidx.compose.foundation.shape.RoundedCornerShape(50)) {
-            Text("进入终端")
+            Text("打开「证道终端」")
         }
     }
 }

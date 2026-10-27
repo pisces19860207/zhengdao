@@ -382,7 +382,7 @@ class RiskWiringTest {
         // 版本号与行数是**当前账**的钉（219 原钉 1/52；228 B 片九件 ⇒ 3/62；228 C 片
         // 示教/回放五件进表 ⇒ 4/67；232 table_query 进表 ⇒ 5/68。谁再动表，先对账再改这两行）。
         assertEquals("矩阵版本与表不配套（改表必 +1）", 5, RiskTable.DEFAULT_VERSION)
-        assertEquals("表行数变了：先对账再改（69 个注册工具 = 68 行 ＋ bash 豁免）", 68, RiskTable.DEFAULT.tools.size)
+        assertEquals("表行数变了：先对账再改（67 个注册工具 = 67 行（COMPAT 退役后无豁免行））", 67, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)

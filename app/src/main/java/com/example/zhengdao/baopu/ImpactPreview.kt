@@ -14,8 +14,8 @@
 //    工具→高风险分类复用 `ConfirmRisk` 的口径思路，不另立一套路径/权限真相。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.agent.ToolCall
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 import org.json.JSONObject
 

@@ -14,6 +14,7 @@
 // `PathGuard` 本身一个字不改（回收站/备份/原件区的越界保护仍靠它）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.PathGuard
 import java.io.File
 
 /** 工作区外访问的判据结论（第一百五十六批；纯函数层，JVM 直测）。 */
@@ -43,7 +44,7 @@ enum class AccessVerdict {
  */
 fun workspaceAccessVerdict(root: File, target: File, userGranted: Boolean, settingOn: Boolean): AccessVerdict {
     val inside = runCatching {
-        com.example.zhengdao.rootfs.PathGuard.isInside(root, target)
+        com.example.zhengdao.core.PathGuard.isInside(root, target)
     }.getOrDefault(false)
     return when {
         inside -> AccessVerdict.INSIDE
@@ -118,7 +119,7 @@ internal fun workspaceBoundaryCheck(root: File, target: File, shown: String, den
 fun workspaceWriteVerdict(root: File, target: File): AccessVerdict {
     val allowed = LinkedHashSet<File>().apply { add(root); add(com.example.zhengdao.baopu.BaopuWorkspace.defaultDir()) }
     val inside = allowed.any { candidate ->
-        runCatching { com.example.zhengdao.rootfs.PathGuard.isInside(candidate, target) }.getOrDefault(false)
+        runCatching { com.example.zhengdao.core.PathGuard.isInside(candidate, target) }.getOrDefault(false)
     }
     return if (inside) AccessVerdict.INSIDE else AccessVerdict.DENIED
 }

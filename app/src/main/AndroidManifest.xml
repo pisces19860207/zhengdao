@@ -178,74 +178,13 @@
              CLEAR_TOP | SINGLE_TOP 组合在**同一个 task 内**达成同一目标：既有实例提到前台
              并走 onNewIntent，其上方 activity 被清理，下方的 MainActivity 保留 ⇒ 返回栈不变。
              会话保活不受影响：会话由 SessionManager + 前台服务持有，与 Activity 实例数无关。 -->
-        <activity
-            android:name=".TerminalActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Zhengdao.Terminal"
-            android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+        <!-- 第二百四十八批（第四刀）：TerminalActivity 随终端搬去 zhengdao-term（那边包名仍是
+             com.example.zhengdao.TerminalActivity，但装在新 APP 里）。主仓不再有终端页。 -->
 
-        <!-- 输入回归页（Issue #2 / 设计方案 v3 §3）：APK 内置，进 30 秒回归 IME
-             （同一套 vendored TerminalView 的 onCreateInputConnection，但会话跑 /system/bin/cat，
-             所以没装运行环境也能回归）。exported=true 只为让 PC 侧用
-             `adb shell am start -n com.example.zhengdao/.ui.ImeRegressionActivity` 一键起页，
-             页面本身不读任何私有数据（只有一个本地 cat）。 -->
-        <activity
-            android:name=".ui.ImeRegressionActivity"
-            android:exported="true"
-            android:label="输入回归页"
-            android:theme="@style/Theme.Zhengdao"
-            android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+        <!-- 输入法回归页（ImeRegressionActivity）随终端搬走：它测的是 TerminalView 的 IME 桥，
+             主仓已没有那套 View。 -->
 
-        <!-- 保活记录（被杀留档）二级页（2026-10-11）：原来这段内容内联在设置页的一张卡里，
-             用户嫌"太多太长"，拆成独立页，设置页只留一行入口。
-             exported=false（与输入回归页的有意区别）：只有本 App 设置页会拉起它，不需要
-             `adb am start` 那种外部入口；而这一页会显示私有目录绝对路径与 logcat 片段，
-             没有理由让别的 App 能直接把它调起来。
-             configChanges 与终端页/输入回归页同款：转屏不重建，正在看的留档列表不会被重置。
-             不写 windowSoftInputMode —— 本页没有任何输入控件（主题里已有 adjustResize）。 -->
-        <activity
-            android:name=".ui.KeepaliveLogActivity"
-            android:exported="false"
-            android:label="保活记录"
-            android:theme="@style/Theme.Zhengdao"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
-
-        <!-- 开源许可（随包分发的第三方许可证正文）二级页（2026-10-11）：正文在 assets/licenses/，
-             由 app/build.gradle.kts 的 stageLicenseAssets 在构建期从仓库根 licenses/ 与 LICENSE 装配。
-             exported=false —— 只有设置页「关于」会拉起；本页只读 assets，不碰任何私有数据。
-             configChanges 与保活记录页同款：转屏不重建，正在读的那份正文不会被重置。 -->
-        <activity
-            android:name=".ui.OpenSourceLicensesActivity"
-            android:exported="false"
-            android:label="开源许可"
-            android:theme="@style/Theme.Zhengdao"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
-
-        <!-- 设置页二级页（2026-10-11 设置页重排）：原来 17 张卡挤在一个页面里，
-             现在顶层只留「一句话状态 + 一次点击」，卡片内容一字未改地搬进这 6 页。
-             exported=false —— 只有设置页会拉起；label 就是各页顶栏下那句人话；
-             configChanges 与保活记录页同款：转屏不重建，页内正在跑的动作（下载/清理）不被打断。 -->
-        <activity
-            android:name=".ui.SettingsStorageActivity"
-            android:exported="false"
-            android:label="存储与缓存"
-            android:theme="@style/Theme.Zhengdao"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
-        <activity
-            android:name=".ui.SettingsEnvActivity"
-            android:exported="false"
-            android:label="环境与更新"
-            android:theme="@style/Theme.Zhengdao"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
-        <activity
-            android:name=".ui.SettingsDataActivity"
-            android:exported="false"
-            android:label="终端与资料"
-            android:theme="@style/Theme.Zhengdao"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
-        <activity
+                <activity
             android:name=".ui.SettingsKeepaliveActivity"
             android:exported="false"
             android:label="后台与保活"
@@ -291,14 +230,7 @@
                覆盖不到」的 specialUse（同类免 root Linux 环境产品的同一选择）。
              subtype 属性是 API 34+ 对 specialUse 的强制项（Play 政策要求说明为何其他类型
                不合适；本项目走 GitHub 直发不受政策约束，但仍按规范写全）。 -->
-        <service
-            android:name=".terminal.SessionService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Long-running terminal session keepalive: a user-driven Debian shell session must survive leaving the terminal UI, and no other FGS type covers a long shell session" />
-        </service>
+        <!-- 会话保活服务（SessionService）随终端搬走，主仓不再有前台服务。 -->
 
         <!-- 精确闹钟的落点（第一百六十七批 §3）：**必须是清单里的静态组件**，不能
              Context.registerReceiver —— AlarmManager 登记的 PendingIntent 要跨进程重启生效，

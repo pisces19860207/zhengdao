@@ -30,6 +30,7 @@
 // `-2`／`-3` 撞名后缀的规则整套抄过来——那才是把数据层的事搬到界面重算。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.core.PathGuard
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,7 +67,6 @@ import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuGuardCore
 import com.example.zhengdao.core.TimeFormats
-import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File
 
