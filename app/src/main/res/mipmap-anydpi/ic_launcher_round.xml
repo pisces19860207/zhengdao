@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  2026-10-27：统一为自适应图标（用户：「那还是统一成自适应吧，以后都不换了」）。
+  背景＝原图奶白纸色（@color/ic_launcher_background），前景＝墨迹层（「证」+ 绿笔触 + 红「郑」印，
+  已抠掉白卡与细边框，见 mipmap-*/ic_launcher_foreground.png）。
+  monochrome 供 Android 13+ 主题图标（按系统取色，只取 alpha 形状）。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
