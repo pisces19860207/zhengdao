@@ -146,6 +146,6 @@
 
 ## 致谢
 
-这个项目由作者和几个 AI 伙伴协作完成。也感谢这些随包或构建链路上的开源项目：
+这个项目由作者和几个 AI 伙伴协作完成。抱朴与玄览基于 Kotlin、Jetpack Compose、AndroidX 与系统 WebView 构建。
 
-- [astral-sh/uv](https://github.com/astral-sh/uv) —— Hermes 环境安装用到的 Python 包管理器
+终端相关组件（Termux、PRoot、Debian、uv 等）的致谢随终端一起放在 [zhengdao-term](https://github.com/pisces19860207/zhengdao-term)。

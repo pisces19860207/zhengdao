@@ -142,9 +142,6 @@ Tutorials, videos and paid setup help are welcome; redistribution (republishing 
 
 ## Acknowledgements
 
-This project was built by the author together with several AI collaborators. Thanks also to the open-source projects we ship or build on:
+This project was built by the author together with several AI collaborators. Baopu and Xuanlan are built on Kotlin, Jetpack Compose, AndroidX and the system WebView.
 
-- [Termux](https://github.com/termux/termux-packages) — the Android-adapted proot distribution, and the terminal-emulator / terminal-view engine
-- [proot-me/proot](https://github.com/proot-me/proot) — the foundation for running a full Linux environment without root
-- [astral-sh/uv](https://github.com/astral-sh/uv) — the Python package manager used by the Hermes installer
-- [Debian](https://www.debian.org/) — Debian 13 as the terminal environment base
+Terminal-side components (Termux, PRoot, Debian, uv, etc.) are credited with the terminal in [zhengdao-term](https://github.com/pisces19860207/zhengdao-term).
