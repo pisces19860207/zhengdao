@@ -45,8 +45,8 @@ class BrowserBridgeGateTest {
     private val token by lazy { strip(file("src/main/java/com/example/zhengdao/bridge/BridgeToken.kt")) }
     private val policy by lazy { strip(file("src/main/java/com/example/zhengdao/bridge/BridgePolicy.kt")) }
     private val manifest by lazy { file("src/main/AndroidManifest.xml") }
-    private val bridgePage by lazy { strip(file("src/main/java/com/example/zhengdao/ui/SettingsBridgeActivity.kt")) }
-    private val screen by lazy { strip(file("src/main/java/com/example/zhengdao/ui/SettingsScreen.kt")) }
+    // 第二百五十一批：`bridgePage`（SettingsBridgeActivity.kt）与 `screen`（律令首页）
+    // 两个读取点随桥的入口页一起删了 —— 主 APP 里已经没有桥的任何开关。
 
     // ── ① 只绑本机（最要紧的一条） ─────────────────────────────────────────
 
@@ -104,50 +104,30 @@ class BrowserBridgeGateTest {
     // ── ③ 默认关 ──────────────────────────────────────────────────────────
 
     @Test
-    fun `默认关_只有设置页开关能启动_且启动点带用户显式动作`() {
-        // 全仓对 start( 的调用只允许出现在设置页（用户拨开关）—— App 启动/服务里不许自启
+    fun `默认关_主 APP 里没有任何启动点`() {
+        // 第二百五十一批：桥的设置页（唯一能拨开关的地方）随"律令瘦身"删了，桥给终端 agent
+        // 走 HTTP 的用途也随终端拆仓消失 ⇒ 主 APP 里**一个 start() 调用点都不该有**。
+        // 这比原来的"只有设置页能启动"更严：现在没有任何 UI／服务能把 127.0.0.1 那个监听拉起来。
         val srcMain = File("src/main").walk().filter { it.extension == "kt" }.toList()
         val starters = srcMain.filter { f ->
             val t = strip(f.readText())
             t.contains("BrowserAgentBridge.start(")
         }
         assertEquals(
-            "只有设置页可以启动桥（默认关 = 用户显式开）。当前调用点：" +
+            "主 APP 里不该有桥的启动点（入口页已删）。当前调用点：" +
                 starters.joinToString { it.path },
-            1,
+            0,
             starters.size,
         )
-        assertTrue(
-            "启动点必须在 SettingsBridgeActivity 里",
-            starters.single().path.endsWith("SettingsBridgeActivity.kt"),
-        )
-        // 开关的 onCheckedChange 里才调 start（而不是 onCreate/LaunchedEffect 自启）
-        assertTrue(
-            "start 必须挂在用户拨开关的动作里",
-            bridgePage.contains("BrowserAgentBridge.start(ctx)"),
-        )
-        // 判据要精确到**块内**：页面里有 LaunchedEffect（toast 自动消失用它）不等于自启桥。
-        // 做法：取 LaunchedEffect(...) { … } 的块（花括号配平），块内不许出现 start。
-        val effectBlocks = Regex("LaunchedEffect\\s*\\([^)]*\\)\\s*\\{").findAll(bridgePage).map { it.range.last }
-        effectBlocks.forEach { openBrace ->
-            var depth = 1
-            var i = openBrace + 1
-            while (i < bridgePage.length && depth > 0) {
-                when (bridgePage[i]) {
-                    '{' -> depth++
-                    '}' -> depth--
-                }
-                i++
-            }
-            val block = bridgePage.substring(openBrace, i)
-            assertFalse(
-                "LaunchedEffect 块里出现了 BrowserAgentBridge.start —— 那是页面自己把桥拉起来了，" +
-                    "不是用户拨开关（默认关的纪律就破了）",
-                block.contains("BrowserAgentBridge.start"),
-            )
-        }
-        // Manifest 里不该有 boot receiver 之类把它拉起来
+        // Manifest 里也不该有 boot receiver 之类把它拉起来
         assertFalse("Manifest 里不该有 BOOT_COMPLETED 接收器把桥拉起来", manifest.contains("BOOT_COMPLETED"))
+        // 入口页的文件与清单条目都要真的没了（不是"只是没人点"）
+        assertFalse(
+            "SettingsBridgeActivity.kt 应已删除（第二百五十一批）",
+            File("src/main/java/com/example/zhengdao/ui/SettingsBridgeActivity.kt").exists() ||
+                File("app/src/main/java/com/example/zhengdao/ui/SettingsBridgeActivity.kt").exists(),
+        )
+        assertFalse("Manifest 里不该再登记桥的 Activity", manifest.contains("SettingsBridgeActivity"))
     }
 
     // ── ④ token 的存储与流转 ──────────────────────────────────────────────
@@ -229,17 +209,18 @@ class BrowserBridgeGateTest {
     // ── ⑧ 中英文案对称 ────────────────────────────────────────────────────
 
     @Test
-    fun `bridge 相关文案中英成对`() {
+    fun `桥的文案已随入口页删净_中英仍然成对`() {
         fun keys(rel: String): Set<String> =
             Regex("<string name=\"([^\"]+)\"").findAll(file(rel)).map { it.groupValues[1] }.toSet()
         val zh = keys("src/main/res/values/strings.xml")
         val en = keys("src/main/res/values-en/strings.xml")
         assertEquals("中英键数必须相等（红线③）", zh.size, en.size)
-        val bridgeKeys = zh.filter { it.startsWith("bridge_") || it == "settings_bridge" || it == "settings_value_bridge" }
-        assertTrue("一条 bridge 文案都没有？", bridgeKeys.isNotEmpty())
-        bridgeKeys.forEach { k ->
-            assertTrue("en 缺 $k", en.contains(k))
+        // 第二百五十一批：19 条 bridge_* 与 settings_bridge / settings_value_bridge 只被
+        // 那个已删的桥设置页用过，留着就是 UnusedResources ⇒ 一起删了。这里反过来钉住"别再回来"。
+        val leftovers = (zh + en).filter {
+            it.startsWith("bridge_") || it == "settings_bridge" || it == "settings_value_bridge"
         }
+        assertEquals("桥的文案不该再有（页面已删）：$leftovers", emptyList<String>(), leftovers)
     }
 
     // ── ⑨ 可运行期：body 参数解析（极简 JSON，纯函数） ────────────────────

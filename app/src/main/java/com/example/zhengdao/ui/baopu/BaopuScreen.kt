@@ -11,7 +11,6 @@
 package com.example.zhengdao.ui.baopu
 
 import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -102,17 +101,15 @@ import com.example.zhengdao.baopu.topBarSlot
 import com.example.zhengdao.baopu.usageNoticeBody
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.ui.SettingsBridgeActivity
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-/** 抽屉入口统一跳设置页（第四刀起：终端与资料页随终端搬走，这里落到主设置）。 */
-private fun openSettings(context: Context) {
-    context.startActivity(Intent(context, SettingsBridgeActivity::class.java))
-}
+// 第二百五十一批：原来这里有个 `openSettings(context)`（抽屉「资料库」行跳设置页，
+// 250 之后那一路落到的是**已经没用的那个桥设置页**）。现在资料库有自己的页
+// （KnowledgeLibraryScreen），这个跳转连同那个 Activity 一起退役。
 
 /**
  * 抱朴页（刀 1 · B 段）：真身（占位页 BaopuRebuilding 已于第六十二批删除）。
@@ -169,9 +166,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var showChannel by remember { mutableStateOf(ModelSheetDraft.showing) }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
-    // 2026-10-23：小说工程与 MCP 的抽屉入口（之前只有工具、没有落点）。
+    // 2026-10-23：小说工程的抽屉入口（之前只有工具、没有落点）。
     var showNovel by remember { mutableStateOf(false) }
-    var showMcp by remember { mutableStateOf(false) }
+    // 第二百五十一批：`showMcp` 随抽屉入口一起删 —— MCP 面板现在由律令「抱朴」组打开。
+    // 资料库有了自己的页（抱朴抽屉那一行不再跳设置页）。
+    var showKnowledgeLibrary by remember { mutableStateOf(false) }
     // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
     var menuMsg by remember { mutableStateOf<BaopuUiMessage?>(null) }
     var editMsg by remember { mutableStateOf<Pair<Long, String>?>(null) }
@@ -422,9 +421,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                     // 长按文件夹行＝只看路径，不跳页（派工单 §7 的「长按提示」）。
                     onWorkspaceHold = showWorkspacePath,
+                    // 第二百五十一批：「资料库」行不再跳设置页（250 之后那一路落到的页已废，
+                    // 是个死入口），改开抱朴自己的资料库页：索引状态／上次更新／重建索引。
                     onLibrary = {
                         scope.launch { drawerState.close() }
-                        openSettings(context)
+                        showKnowledgeLibrary = true
                     },
                     // 第二百零五批：技能列表页（三组＋反思器候选卡的壳）。
                     onSkillLibrary = {
@@ -461,17 +462,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                         val n = clearPreviewCache()
                         Toast.makeText(context, PreviewNotice.cleared(n), Toast.LENGTH_SHORT).show()
                     },
-                    onMcp = {
-                        scope.launch { drawerState.close() }
-                        showMcp = true
-                    },
-                    onChannel = {
-                        scope.launch { drawerState.close() }
-                        showChannel = true
-                    },                    onSettings = {
-                        scope.launch { drawerState.close() }
-                        showSettings = true
-                    },
+                    // 第二百五十一批：「外部工具（MCP）」「选模型」「抱朴设置」三个入口
+                    // 搬去了律令的「抱朴」组，抽屉不再转交（这里少三条 lambda）。
                     onTaste = {
                         scope.launch { drawerState.close() }
                         showTaste = true
@@ -1378,10 +1370,10 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                 )
             }
-            if (showMcp) {
-                // 第一百七十批 B：面板自己连（addServer → connect），不再把地址塞进对话。
-                // 关面板不关连接：工具留在表里，模型下一轮就能看见（要断在面板里点「断开」）。
-                BaopuMcpSheet(onDismiss = { showMcp = false })
+            if (showKnowledgeLibrary) {
+                // 第二百五十一批：资料库（索引状态＋重建）。承载方式与设置页同一套
+                // （Dialog 全屏，见 KnowledgeLibraryScreen 的文件头）。
+                KnowledgeLibraryScreen(onDismiss = { showKnowledgeLibrary = false })
             }
             if (showSettings) {
                 BaopuSettingsScreen(
