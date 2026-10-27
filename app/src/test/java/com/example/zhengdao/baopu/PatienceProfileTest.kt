@@ -205,4 +205,74 @@ class PatienceProfileTest {
             assertTrue("值只许数字或 -：$value", value.all { it.isDigit() || it == '-' || it == '1' })
         }
     }
+
+    // ── 6. 换挡点必须晚于耐心额度 ──────────────────────────────────────
+    //
+    // 238 的钳位只管「各自在自己的区间里」；换挡点=发火点会把两档并成一档。
+    // 判据：不满足 ⇒ 生效值按 `patienceBudget + 1`，用户原值不动；`outOfRangeFields()` 报 `angerAt`。
+
+    @Test
+    fun `换挡点_等于耐心额度时按额度加一生效且原值不动`() {
+        val raw = PatienceProfile(patienceBudget = 3, angerAt = 3)
+        val effective = raw.effective()
+        assertEquals("换挡点=发火点会让两档并成一档", 4, effective.angerAt)
+        assertEquals(3, effective.patienceBudget)
+        assertEquals(listOf("angerAt"), raw.outOfRangeFields())
+        assertEquals("用户原值不许被改掉", 3, raw.angerAt)
+        assertEquals(3, raw.patienceBudget)
+        assertEquals(raw.copy(angerAt = 4), raw.clamped())
+    }
+
+    @Test
+    fun `换挡点_低于耐心额度也抬到额度加一`() {
+        val raw = PatienceProfile(patienceBudget = 3, angerAt = 2)
+        assertEquals(4, raw.effective().angerAt)
+        assertEquals(listOf("angerAt"), raw.outOfRangeFields())
+        assertEquals("用户原值不许被改掉", 2, raw.angerAt)
+    }
+
+    @Test
+    fun `换挡点_本就比额度宽时原样保留`() {
+        val raw = PatienceProfile(patienceBudget = 2, angerAt = 4)
+        assertEquals("合法值不许被拉回额度加一", 4, raw.clamped().angerAt)
+        assertEquals(4, raw.effective().angerAt)
+        assertTrue(raw.outOfRangeFields().isEmpty())
+    }
+
+    @Test
+    fun `换挡点_恰好多一档时不报不改`() {
+        val raw = PatienceProfile(patienceBudget = 1, angerAt = 2)
+        assertEquals(1, raw.clamped().patienceBudget)
+        assertEquals(2, raw.clamped().angerAt)
+        assertTrue(raw.outOfRangeFields().isEmpty())
+    }
+
+    @Test
+    fun `换挡点_学出来的一档也守不变式`() {
+        val p = PatienceProfile(observations = 6, patienceBudget = 3, angerAt = 3, updatedAt = 1_000L)
+        val learned = p.learnedAdjustment(now = 1_000L)
+        assertNotNull("样本够 5 次应进入个性化", learned)
+        assertTrue("学出来的一档也要 anger > pb：$learned", learned!!.angerAt > learned.patienceBudget)
+    }
+
+    @Test
+    fun `换挡点_钳位与留痕同一判据`() {
+        for (pb in 0..5) {
+            for (anger in 0..6) {
+                val p = PatienceProfile(patienceBudget = pb, angerAt = anger)
+                val c = p.clamped()
+                assertTrue("pb=$pb anger=$anger ⇒ 生效值 $c 不满足不变式", c.angerAt > c.patienceBudget)
+                val expected = anger !in PatienceProfile.MIN_ANGER_AT..PatienceProfile.MAX_ANGER_AT || anger <= pb
+                assertEquals("pb=$pb anger=$anger 的留痕与判据不一致", expected, "angerAt" in p.outOfRangeFields())
+            }
+        }
+    }
+
+    @Test
+    fun `换挡点_落盘不许替用户改值`() {
+        val raw = PatienceProfile(patienceBudget = 3, angerAt = 3)
+        val decoded = PatienceProfileCodec.decode(PatienceProfileCodec.encode(raw))
+        assertEquals(3, decoded.angerAt)
+        assertEquals(3, decoded.patienceBudget)
+    }
 }
