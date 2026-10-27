@@ -99,6 +99,19 @@ internal enum class DecisionKind(
      * 一个字都不许两边各写一个。
      */
     RISK_UNCLASSIFIED("unclassified_tool", DecisionGroup.GRANT, false, DecisionAudit.NONE),
+
+    /**
+     * 第二百四十二批：**计划即契约的勘验对账不符**（实际动作超出契约／实际风险高于预估／
+     * 实际问人次数与 `expectedAsks` 对不上）。
+     *
+     * 为什么不塞进 [EVAL_VERDICT]：206 那条记的是"两个实现谁对谁错"的**裁决**，
+     * 这条记的是"同一次运行里说好的和做到的差在哪"——抽检时要能按它筛出
+     * "哪类计划估算老是不准"，混进裁决组就筛不出来。
+     *
+     * 不进 [REQUIRED]：派工单 §1 D 段只要求「不符 ⇒ 写 208」，没给这类记录点过名，
+     * 而 REQUIRED 是 208 那张"点名的十类"闭集。
+     */
+    PLAN_CONTRACT_FINDING("plan_contract_finding", DecisionGroup.EVAL, false, DecisionAudit.WEEKLY),
     ;
 
     companion object {
