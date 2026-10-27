@@ -256,10 +256,22 @@ class ToolSchemaAllTest {
         val root = newRoot()
         val reg = registryOf(root)
         val out = reg.find("write_skill")!!.executor(
-            JSONObject().put("name", "试样").put("scope", "project").put("body", "# 试样\n"),
+            JSONObject().put("name", "试样").put("scope", "project").put("body", "# 试样\n<!-- contract success element_appears=结果 -->\n"),
         )
         assertTrue("合法参数必须照旧写成功：$out", out is ToolOutcome.Ok)
         assertTrue("SKILL.md 没落盘", File(root, "技能/试样/SKILL.md").exists())
+    }
+
+    @Test
+    fun `负例_写技能没有契约_success只能靠看起来成了_拒收且不落盘`() {
+        val root = newRoot()
+        val reg = registryOf(root)
+        val out = reg.find("write_skill")!!.executor(
+            JSONObject().put("name", "试样").put("scope", "project").put("body", "# 试样\n"),
+        )
+        assertTrue("没契约必须拒收：$out", out is ToolOutcome.Rejected)
+        assertTrue("拒绝要说到 G2：$out", (out as ToolOutcome.Rejected).reason.contains("G2"))
+        assertFalse("拒收就一个字节都不许写", File(root, "技能/试样/SKILL.md").exists())
     }
 
     // ── ⑤ 负例：证明上面那批断言不是空转 ───────────────────────────────────

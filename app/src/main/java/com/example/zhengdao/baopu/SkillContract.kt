@@ -366,7 +366,15 @@ internal enum class SkillFit {
 }
 
 /** 一条技能的候选形状（[body] 是 SKILL.md 正文原文）。 */
-internal data class SkillCandidate(val name: String, val body: String, val uses: Int = 0)
+internal data class SkillCandidate(
+    val name: String,
+    val body: String,
+    val uses: Int = 0,
+    /** 第二百五十五批：验收结论（降级/过期/待退役 ⇒ false；由 [SkillAcceptance.verdict] 喂）。 */
+    val acceptanceOk: Boolean = true,
+    /** 验收未过的一句话原因（给人看；null ⇒ 用默认话）。 */
+    val acceptanceNote: String? = null,
+)
 
 /** 一条技能的适配评估。 */
 internal data class SkillFitResult(
@@ -535,7 +543,26 @@ internal object SkillApplicability {
      * 缺契约／不全／读不成 ⇒ [SkillFit.UNKNOWN_CONTRACT]（§2 规则 4：按「未知」处理）；
      * 有完整契约 ⇒ 全满足 [SkillFit.MATCHED]，一条都不满足 [SkillFit.UNMATCHED]，中间 [SkillFit.PARTIAL]。
      */
-    fun assess(name: String, body: String, uses: Int, ctx: SkillContext): SkillFitResult {
+    fun assess(
+        name: String,
+        body: String,
+        uses: Int,
+        ctx: SkillContext,
+        acceptanceOk: Boolean = true,
+        acceptanceNote: String? = null,
+    ): SkillFitResult {
+        // 第二百五十五批：验收不过（连续 2 败降级／指纹变／成功率 <60% 待退役）
+        // ⇒ **不自动选中**。契约说「该用」也不自动——用坏了的东西不该自己凑上来。
+        if (!acceptanceOk) {
+            return SkillFitResult(
+                name = name,
+                uses = uses,
+                fit = SkillFit.UNMATCHED,
+                checks = emptyList(),
+                note = acceptanceNote ?: "验收未过：不自动选中，可手动点名跑",
+                contract = (SkillContract.parse(body) as? SkillContract.Parsed.Contracted)?.contract,
+            )
+        }
         val parsed = SkillContract.parse(body)
         if (parsed !is SkillContract.Parsed.Contracted || !parsed.complete) {
             return SkillFitResult(
@@ -574,7 +601,7 @@ internal object SkillApplicability {
 
     /** 一轮适用性过滤（§2 规则 1＋3 的分拣）。 */
     fun rank(candidates: List<SkillCandidate>, ctx: SkillContext): SkillRanking {
-        val all = candidates.map { assess(it.name, it.body, it.uses, ctx) }
+        val all = candidates.map { assess(it.name, it.body, it.uses, ctx, it.acceptanceOk, it.acceptanceNote) }
         return SkillRanking(
             selectable = ranked(all.filter { it.fit == SkillFit.MATCHED }),
             weakCandidates = ranked(all.filter { it.fit == SkillFit.PARTIAL }),

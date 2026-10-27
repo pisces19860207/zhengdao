@@ -26,10 +26,17 @@ internal object TeachReplayStore {
     /** 执行审计文件（技能根目录下，追加一行一条）。 */
     const val AUDIT_FILE = "_回放审计.jsonl"
 
+    /**
+     * 验收状态（第二百五十五批）：与 `回放.json` 同目录旁挂的**状态快照**。
+     * 它**不是第二本账**——只存事件推不出来的东西（样本／累计修正／降级与 stale 的落章）；
+     * 每次降级同时进 `技能/_变更.jsonl` 与 208 `决策记录.jsonl`，两边按 opId 对得上。
+     */
+    const val ACCEPTANCE_FILE = "验收.json"
+
     /** 落盘结果：written 非空＝成功（skillMd 与回放.json 都在）；否则 reason 说明。 */
-    data class SaveResult(val written: File?, val reason: String?) {
+    data class SaveResult(val written: File?, val reason: String?, val notice: String? = null) {
         companion object {
-            fun ok(file: File) = SaveResult(file, null)
+            fun ok(file: File, notice: String? = null) = SaveResult(file, null, notice)
             fun reject(reason: String) = SaveResult(null, reason)
         }
     }
@@ -61,6 +68,20 @@ internal object TeachReplayStore {
         val safeName = SkillStore.sanitizeName(draft.skill.name)
             ?: return SaveResult.reject("技能名不可用（只许字母／数字／中文／_／-，且不能为空）")
 
+        // ①.5 第二百五十五批 · 第一段入库闸（G2 → G3 → G1）：拒收就一个字节不写；
+        // G1 不过（0/1 个站点验过）⇒ 强制草稿，并把原因写进人读卡的「示教警示」。
+        val existingMd = skillMdFile(projectRoot, safeName).takeIf { it.isFile }
+            ?.let { runCatching { it.readText(Charsets.UTF_8) }.getOrNull() }
+        val gate = SkillAcceptance.entryGate(
+            subject = EntrySubject.Replay(draft.skill, contractBody = existingMd),
+            rehearsal = Rehearsal(sites = listOfNotNull(TeachSafety.hostOf(draft.skill.startUrl))),
+        )
+        val gateNotice: String? = when (gate) {
+            is EntryVerdict.Reject -> return SaveResult.reject(gate.reason)
+            is EntryVerdict.DraftOnly -> gate.reason
+            is EntryVerdict.Pass -> null
+        }
+
         // ② 回放.json 先进临时文件（不转正前盘上没有它）
         val target = sidecarFile(projectRoot, safeName)
         val tmp = File(target.parentFile, "$REPLAY_FILE.tmp-$stampText")
@@ -72,7 +93,7 @@ internal object TeachReplayStore {
         }
 
         // ③ SKILL.md 走 184 写口（房型＝SkillCardWriter.save：先探盘上状态，头按现状重算）
-        val humanBody = skillMdBody(draft.skill, draft.warnings)
+        val humanBody = skillMdBody(draft.skill, draft.warnings + listOfNotNull(gateNotice))
         val probe = SkillStore.plan(
             proposal = SkillProposal(
                 scope = SkillScope.PROJECT,
@@ -94,7 +115,7 @@ internal object TeachReplayStore {
         } else {
             null
         }
-        val isDraft = existingBody?.let { SkillStore.statusOf(it) == "draft" } ?: true
+        val isDraft = gateNotice != null || (existingBody?.let { SkillStore.statusOf(it) == "draft" } ?: true)
         val uses = existingBody?.let { SkillStore.usesOf(it) } ?: 0
         val finalBody = if (isDraft) {
             SkillStore.draftHeader(status = "draft", uses = uses) + "\n" + humanBody
@@ -133,7 +154,9 @@ internal object TeachReplayStore {
                 tmp.copyTo(target, overwrite = true).let { tmp.delete() }
             }.getOrDefault(false) && target.isFile
         ) {
-            SaveResult.ok(target)
+            // 第二百五十五批：重教一遍＝验收从头来（旧样本属于旧正文，不清会拿旧账判新技能）
+            saveAcceptance(projectRoot, safeName, SkillAcceptance.onRelearned())
+            SaveResult.ok(target, gateNotice)
         } else {
             SaveResult.reject("SKILL.md 已写（${planned.file.name}），但回放数据转正失败——请重存一次")
         }
@@ -193,5 +216,188 @@ internal object TeachReplayStore {
             appendLine("- 示教警示：")
             warnings.forEach { appendLine("  - $it") }
         }
+
+    }
+
+    // ── 第二百五十五批 · 第二段用中校验（状态旁挂；事件仍进既有两本账）────────────
+
+    /** 一次记账的落地结论（给调用方一句话提示用）。 */
+    data class RunRecord(
+        val update: AcceptanceUpdate,
+        val demoted: Boolean,
+        val demotionOpIds: List<String>,
+        val notes: List<String>,
+    )
+
+    fun acceptanceFile(projectRoot: File, name: String): File =
+        File(SkillRules.projectSkillDir(projectRoot), "$name/$ACCEPTANCE_FILE")
+
+    /** 读验收状态（文件不在/读不出 ⇒ 空状态；**不改写**盘上坏文件——下一笔正常覆盖）。 */
+    fun loadAcceptance(projectRoot: File, name: String): AcceptanceState {
+        val f = acceptanceFile(projectRoot, name)
+        if (!f.isFile) return AcceptanceState()
+        return runCatching { AcceptanceState.fromJson(f.readText(Charsets.UTF_8)) }.getOrNull()
+            ?: AcceptanceState()
+    }
+
+    /** 写验收状态（临时文件转正；失败只 log——记账失败不许把回放本身弄丢）。 */
+    fun saveAcceptance(projectRoot: File, name: String, state: AcceptanceState): Boolean = runCatching {
+        val f = acceptanceFile(projectRoot, name)
+        f.parentFile?.mkdirs()
+        val tmp = File(f.parentFile, "$ACCEPTANCE_FILE.tmp")
+        tmp.writeText(state.toJsonText(), Charsets.UTF_8)
+        if (!tmp.renameTo(f)) {
+            tmp.copyTo(f, overwrite = true)
+            tmp.delete()
+        }
+        true
+    }.getOrElse {
+        RunLog.log("验收状态写入失败：$name（${it.javaClass.simpleName}）")
+        false
+    }
+
+    /**
+     * 一次**执行实例**记进验收（幂等：同 opId 一个数都不放大）。
+     *
+     * U1 触发时**当场**降为草稿：走 [SkillStore.plan]/[apply]（不手改文件），
+     * 在 `技能/_变更.jsonl` 记 `skill_demoted`，并在 208 记一条 `skill_demoted`
+     * （evidence 带两次 opId）——本批不新建第二本账。
+     */
+    fun recordRun(
+        projectRoot: File,
+        globalRoot: File,
+        personaFiles: PersonaFiles,
+        skill: TeachSkill,
+        report: TeachRunReport,
+        nowMs: Long,
+        opId: String? = null,
+    ): RunRecord {
+        val state = loadAcceptance(projectRoot, skill.name)
+        val sample = AcceptanceSample(
+            opId = opId ?: SkillAcceptance.opIdOf(report, nowMs),
+            atMs = nowMs,
+            ok = report.ok,
+            fingerprintOk = fingerprintOkOf(report),
+            driftCount = report.drifts.size,
+            site = TeachSafety.hostOf(skill.startUrl) ?: "",
+        )
+        val update = SkillAcceptance.applyRun(state, sample, nowMs)
+        if (update.duplicate) {
+            return RunRecord(update, demoted = false, demotionOpIds = emptyList(), notes = update.notes)
+        }
+        saveAcceptance(projectRoot, skill.name, update.state)
+        val notes = update.notes.toMutableList()
+        val demoted = if (update.demotedNow) {
+            applyDemotion(
+                projectRoot = projectRoot,
+                globalRoot = globalRoot,
+                personaFiles = personaFiles,
+                name = skill.name,
+                opIds = update.demotionOpIds,
+                nowMs = nowMs,
+                notes = notes,
+            )
+        } else {
+            false
+        }
+        return RunRecord(update, demoted, update.demotionOpIds, notes)
+    }
+
+    /**
+     * 指纹是否还对得上：执行器报「页面结构变了」或「重试前指纹复核不通过」⇒ 对不上（U3）；
+     * 「取不到页面结构指纹」只是**判不了**（页面没加载完），不当成环境变了——不猜。
+     */
+    internal fun fingerprintOkOf(report: TeachRunReport): Boolean {
+        val r = report.stopReason ?: return true
+        return !(r.contains("页面结构变了") || r.contains("指纹复核不通过"))
+    }
+
+    /** U1 落地：active → draft（保留 uses 与正文；索引行跟着改回「草稿·未验证」）。 */
+    private fun applyDemotion(
+        projectRoot: File,
+        globalRoot: File,
+        personaFiles: PersonaFiles,
+        name: String,
+        opIds: List<String>,
+        nowMs: Long,
+        notes: MutableList<String>,
+    ): Boolean {
+        val file = skillMdFile(projectRoot, name)
+        if (!file.isFile) return false
+        val old = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return false
+        // 已经是草稿 ⇒ 不重复写、不重复留痕（幂等的最后一道保险）
+        if (SkillStore.statusOf(old) != "active") return false
+        val uses = SkillStore.usesOf(old)
+        val body = SkillStore.draftHeader(status = "draft", uses = uses) + "\n" + stripStatusHeader(old)
+        val base = SkillProposal(
+            scope = SkillScope.PROJECT,
+            name = name,
+            body = body,
+            reason = "连续 ${SkillAcceptance.DEMOTE_FAILURES} 次失败：降为草稿",
+            draft = false,
+        )
+        val planned = SkillStore.plan(
+            proposal = base.copy(draft = true),
+            projectRoot = projectRoot,
+            globalRoot = globalRoot,
+            backupStamp = stamp(nowMs),
+            indexCountAfterAdd = 0,
+        )
+        planned.blocked?.let {
+            notes += "降级没写成：$it"
+            return false
+        }
+        val beforeSha = sha256Text(old).take(12)
+        return when (val r = SkillStore.apply(planned.copy(proposal = base), personaFiles, personaFiles.read(PersonaLayer.C_PROJECT).orEmpty())) {
+            is SkillWriteResult.Rejected -> {
+                notes += "降级没写成：${r.reason}"
+                false
+            }
+            is SkillWriteResult.Written -> {
+                val reason = "连续 ${SkillAcceptance.DEMOTE_FAILURES} 次执行失败（opId ${opIds.joinToString("、")}）"
+                if (!SkillAudit.record(
+                        skillFile = file,
+                        scope = "project",
+                        name = name,
+                        action = "skill_demoted",
+                        reason = reason,
+                        beforeSha = beforeSha,
+                        indexUpdated = r.indexUpdated,
+                        nowMs = nowMs,
+                        source = "acceptance",
+                    )
+                ) {
+                    RunLog.log("降级审计行写入失败：$name")
+                }
+                val rec = DecisionLedger.record(
+                    DecisionDraft(
+                        kind = DecisionKind.SKILL_DEMOTED,
+                        actor = DecisionActor.AUTO,
+                        reason = reason,
+                        evidence = "skill:project/$name@$beforeSha;opId=${opIds.joinToString(",")}",
+                        before = "active",
+                        after = "draft",
+                        atMs = nowMs,
+                    ),
+                )
+                if (rec == null) {
+                    RunLog.log("降级决策记录写入失败：$name（${DecisionLedger.lastError ?: "未知"}）")
+                }
+                notes += "已降为草稿：$name（不再自动选中；依据 opId ${opIds.joinToString("、")}）"
+                true
+            }
+        }
+    }
+
+    /** 只剥第一行状态头（契约行也是注释，不能像 contentWithoutHeader 那样整段剥掉）。 */
+    private fun stripStatusHeader(body: String): String {
+        val lines = body.lines()
+        val head = lines.firstOrNull()?.trim().orEmpty()
+        return if (head.startsWith("<!--") && head.contains("status=")) lines.drop(1).joinToString("\n") else body
+    }
+
+    private fun sha256Text(text: String): String {
+        val d = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+        return d.joinToString("") { "%02x".format(it) }
     }
 }

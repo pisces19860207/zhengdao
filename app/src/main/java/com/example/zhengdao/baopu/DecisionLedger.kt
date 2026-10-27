@@ -49,6 +49,18 @@ internal enum class DecisionKind(
     SKILL_DRAFT_RETIRE("skill_draft_retire", DecisionGroup.SKILL, true, DecisionAudit.WEEKLY),
 
     /**
+     * 第二百五十五批：连续 2 次执行失败 ⇒ 技能**降为草稿**（派工单点名的 `skillDemoted` 那一行；
+     * evidence 带两次失败执行的 opId）。
+     *
+     * 为什么不复用 [SKILL_DRAFT_RETIRE]：那个记的是「闲置」（30 天未用／超 20 条），
+     * 这条记的是「用坏了」——抽检与复盘时必须分得开。
+     * 不进 [REQUIRED]（208 点名的是十类，这类是本批新增的行为账）。
+     * `reversible=false`：正文没动、人确实能手改回去，但决策中心没有「草稿→正式」的通用回滚入口
+     * （[SKILL_PROMOTE] 的回滚是反方向），标可回滚就是骗人。
+     */
+    SKILL_DEMOTED("skill_demoted", DecisionGroup.SKILL, false, DecisionAudit.WEEKLY),
+
+    /**
      * 搜索范围授权／撤销（197）。
      *
      * **不可回滚**（`reversible=false`）——197/198 时代它由设置页开关产生，写入点全仓一处，
