@@ -70,12 +70,7 @@ SO_DIRS = (
 # §七同口径：我们手上没有 16KB 页设备，证不了；换 Termux 16KB 构建前先钉死哈希）。
 # 哈希值与 terminal/ProotBinaries.kt、PROVENANCE.md 三处同源一致；任何一处换版本
 # 都必须三处同步 + 重新登记。
-PROOT_PINNED = {
-    "libproot.so": "1545b85b312505db6eb6908ff8b2ded0a77a3bd689c50ae85aa7c1d8445dd717",
-    "libproot-loader.so": "cbdef0e652c2b78af25d867e1719fdebbb0915e25aae2dd35b3b5c1835f6b551",
-    "libtalloc.so": "742b438c4d09e276985a61d44164c9de207b6d8cc268f3018cb3001961bcb309",
-    "libandroid-shmem.so": "84475798e07c8174dbbfaec70a827fdb02f19ffa69a589380c13e7507fd0e731",
-}
+PROOT_PINNED = {}  # 250：proo t 四件套已随终端搬去 zhengdao-term，主仓不再要求在场
 
 blockers = []
 infos = []
@@ -244,6 +239,8 @@ def main(argv):
     #
     # 只判「名字出现在扫描结果里」，不改也不代替 1 里的 16KB 判据与 sha256 基线（那两条一行未动）。
     present_names = {so.name for so in libs}
+    if not PROOT_PINNED:
+        info("主仓已无 proot 四件套（250 随终端搬走），跳过在场判据")
     missing_pinned = [name for name in PROOT_PINNED if name not in present_names]
     if missing_pinned:
         for name in missing_pinned:
