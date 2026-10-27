@@ -446,7 +446,7 @@ class SearchReadNeverGrantsWriteTest {
         var dir: File? = File(".").absoluteFile
         while (dir != null) {
             // 第二百四十一批：rootfs/terminal 搬进 :terminal-core，多试一个模块根
-            listOf(File(dir, "app/$rel"), File(dir, rel), File(dir, "terminal-core/$rel"))
+            listOf(File(dir, "app/$rel"), File(dir, rel), File(dir, "terminal-core/$rel"), File(dir, "core/$rel"), File(dir, "native-core/$rel"))
                 .firstOrNull { it.exists() }?.let { return it }
             dir = dir.parentFile
         }

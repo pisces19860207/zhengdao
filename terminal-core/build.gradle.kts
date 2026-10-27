@@ -58,6 +58,8 @@ android {
 dependencies {
     // 单向：:terminal-core → :core（RunLog / ZhengdaoDirs / AppPrefs / TimeFormats / kb / notify）
     implementation(project(":core"))
+    // Rust 核（rootfs 的 sha256/解压/验签）由 :native-core 提供，与 :app 共用同一份 .so
+    implementation(project(":native-core"))
 
     // EnvironmentScope 之外的工具（ContextCompat 等）
     implementation(libs.androidx.core.ktx)

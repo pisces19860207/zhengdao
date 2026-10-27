@@ -533,6 +533,8 @@ dependencies {
     implementation(project(":core"))
     // 第二百四十一批（终端解耦第二刀）：终端内核模块（PTY/rootfs/proot/会话/体检依赖类）。
     // 方向单向 —— :app → :terminal-core → :core；终端页/设置页仍在 :app，只是改成向下依赖。
+    // Rust 核（Ed25519 清单校验 / dirSize / 解压验签）与终端无关，单独成模块：
+    implementation(project(":native-core"))
     implementation(project(":terminal-core"))
     // 单测也要直接引用 :core 的类（internal 之外的公开面），显式声明不依赖"恰好能看见"。
     testImplementation(project(":core"))

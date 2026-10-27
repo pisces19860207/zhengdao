@@ -127,7 +127,8 @@ object CoreNative {
      */
     @JvmStatic
     fun onProgress(entries: String, name: String) {
-        runCatching { com.example.zhengdao.rootfs.InstallPulse.fromRust(entries, name) }
+        // 2026-10-27 解耦：不直接认识 rootfs（那是终端模块），只把进度交给挂上来的 sink
+        NativeProgress.emit(entries, name)
         Log.i(TAG, "解压进度: $entries $name")
     }
 

@@ -3,7 +3,7 @@
 """check-native-so.py —— 入库 .so 的门禁：16KB 页对齐 + JNI 入口符号。
 
 为什么要它
-    app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 是**人工构建入库**的
+    native-core/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 是**人工构建入库**的
     （ci.yml / build.yml 里没有任何步骤构建它，见 docs/ERRATA.md E-045 教训 3）。
     而 16KB 页对齐是"静默降级"型故障：漏了 -Wl,-z,max-page-size=16384 不会崩溃，
     而是 16KB 页设备上 loadLibrary 失败 → CoreNative.isRustAvailable()=false
@@ -53,11 +53,15 @@ PAGE_16K = 0x4000
 PT_LOAD = 1
 SHT_DYNSYM = 11
 
-CORE_KT_REL = "terminal-core/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
+CORE_KT_REL = "native-core/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
 JNI_CLASS = "Java_com_example_zhengdao_rust_CoreNative_"
 CORE_SO = "libzhengdao_core.so"
 # .so 的扫描面：:app（搬家前）与 :terminal-core（第二百四十一批起）
-SO_DIRS = ("terminal-core/src/main/jniLibs", "app/src/main/jniLibs")
+SO_DIRS = (
+    "native-core/src/main/jniLibs",   # libzhengdao_core.so（Rust 核，主/终端共用）
+    "terminal-core/src/main/jniLibs",  # proot / talloc / shmem / zstd（终端专用）
+    "app/src/main/jniLibs",
+)
 
 # 第⑳刀（E-137）：proot 四件套的 4KB 对齐例外 + 完整性基线。
 # 这四个 .so 是 Termux 官方发行二进制（原样聚合分发，GPL 合规口径见 PROVENANCE.md），

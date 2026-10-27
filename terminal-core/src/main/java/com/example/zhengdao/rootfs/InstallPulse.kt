@@ -23,6 +23,11 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object InstallPulse {
 
+    // 2026-10-27 解耦：Rust 核（:native-core）不再认识 rootfs，改由本对象挂到它的 sink 上。
+    // 挂一次即可；重复挂是幂等的（同一个函数引用）。
+    init { com.example.zhengdao.rust.NativeProgress.sink = ::fromRust }
+
+
     /** 一次进度快照（纯数据，单测直接构造）。 */
     data class Snapshot(
         val entries: Long,

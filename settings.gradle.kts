@@ -34,6 +34,7 @@ include(":core")
 // 依赖方向单向：:app → :terminal-core → :core；:terminal-core 不许 import
 // com.example.zhengdao.baopu.** / com.example.zhengdao.ui.** / :app 的 R 与 MainActivity
 // （门禁 `:terminal-core:testDebugUnitTest` 里的 TerminalCoreBoundaryGateTest）。
+include(":native-core")
 include(":terminal-core")
 // Macrobenchmark：独立的 com.android.test 模块（Compose 性能测试的标准载体）。
 // 它不进 APK —— 只产出测试 APK，通过 targetProjectPath 指向 :app 并驱动真机跑基准。
