@@ -274,16 +274,20 @@ def report_section_diff(mine, theirs, max_ann=8):
 
 
 def read_ndk_version(repo):
-    """NDK 版本单一真源 = app/build.gradle.kts 的 ndkVersion（§B 57 第③条）。"""
-    path = repo / "app" / "build.gradle.kts"
-    if not path.is_file():
-        fail_env("找不到 app/build.gradle.kts", str(path))
-    text = path.read_text(encoding="utf-8", errors="replace")
-    m = re.search(r'^\s*ndkVersion\s*=\s*"([^"]+)"', text, re.M)
-    if not m:
-        fail_env("app/build.gradle.kts 里找不到 ndkVersion = \"…\"（§B 57 第③条的单一真源）")
-    return m.group(1)
+    """NDK 版本单一真源（§B 57 第③条）。
 
+    2026-10-27（第四刀后）：终端搬出主仓，app/build.gradle.kts 不再写 ndkVersion；
+    真源改为**第一个写了 ndkVersion 的模块**（现为 :native-core —— .so 是 NDK r27.2 编出来的）。
+    """
+    candidates = [repo / "native-core" / "build.gradle.kts", repo / "app" / "build.gradle.kts"]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        m = re.search(r'^\s*ndkVersion\s*=\s*"([^"]+)"', text, re.M)
+        if m:
+            return m.group(1)
+    fail_env("native-core / app 的 build.gradle.kts 里都找不到 ndkVersion = \"…\"（§B 57 第③条的单一真源）", str(repo))
 
 def find_sdk_root(repo=None):
     """SDK 根：先环境变量（CI 上由 setup-android 预装提供），再回退 `local.properties` 的 `sdk.dir`。
