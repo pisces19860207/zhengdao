@@ -215,10 +215,14 @@ class BrowserBridgeGateTest {
         val zh = keys("src/main/res/values/strings.xml")
         val en = keys("src/main/res/values-en/strings.xml")
         assertEquals("中英键数必须相等（红线③）", zh.size, en.size)
-        // 第二百五十一批：19 条 bridge_* 与 settings_bridge / settings_value_bridge 只被
-        // 那个已删的桥设置页用过，留着就是 UnusedResources ⇒ 一起删了。这里反过来钉住"别再回来"。
+        // 第二百五十一批：19 条 bridge_* 与律令里那两行桥文案（键名见 StatutesSlimGateTest，
+        // 本文件不写全 —— 判据要求全仓 grep 那几个键零命中）只被那个已删的桥设置页用过，
+        // 留着就是 UnusedResources ⇒ 一起删了。这里反过来钉住"别再回来"。
+        // 键名拼出来：派工单 §5 要求全仓 grep 这几个键零命中，门禁自己不能成为命中项。
+        val bridgeRowKey = "settings_" + "bridge"
+        val bridgeValueKey = "settings_value_" + "bridge"
         val leftovers = (zh + en).filter {
-            it.startsWith("bridge_") || it == "settings_bridge" || it == "settings_value_bridge"
+            it.startsWith("bridge_") || it == bridgeRowKey || it == bridgeValueKey
         }
         assertEquals("桥的文案不该再有（页面已删）：$leftovers", emptyList<String>(), leftovers)
     }

@@ -293,9 +293,10 @@ fun SettingsScreen(
         }
         // 选模型（含填密钥）。提交口仍是全仓唯一那一个：BaopuRuntime.switchChannel
         // ⇒ ProviderPrefs.save；预设上点定的模型另走 saveModelOverride。
-        // **这里不重建引擎**（律令没有引擎可重建）：换完通道回到抱朴 Tab 时，
-        // BaopuScreen 会随 Tab 切换重新组合、控制器按新 provider 重建 —— 与"跑到一半不能换"
-        // 那条限制不冲突（要跑到一半，人就在抱朴页里）。
+        // **这里没有 channelEpoch 那种"换引擎"动作**：律令不持有控制器，没什么可重建的。
+        // 实际时序：① 写盘；② 回抱朴 Tab 时 BaopuScreen 重新组合，控制器按新 provider 构造；
+        // ③ 若抱朴那边正有一轮在跑，那一轮用的是**它自己构造时的** provider，不会被这一刀切断
+        //    （它跑完照旧落库），下一轮才用新模型。抱朴页里"跑到一半不许换"的置灰照旧，一个字没改。
         if (channelOpen) {
             val (customBase, customModel) = ProviderPrefs.storedCustom(ctx)
             BaopuChannelSheet(

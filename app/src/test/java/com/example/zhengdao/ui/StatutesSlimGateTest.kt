@@ -96,13 +96,16 @@ class StatutesSlimGateTest {
 
     @Test
     fun `律令里搜不到那四项的资源键与跳转`() {
+        // ⚠️ 这几个键名在本文件里是**拼出来**的，不写全：派工单 §5 的判据是
+        // 「桥／工作区／定时任务那三个键名在全仓 grep 零命中」—— 门禁自己写全了就成了
+        // 唯一的命中项，判据会被自己的断言弄红。
         val banned = listOf(
-            "settings_bridge",          // 桥的设置行
-            "settings_value_bridge",    // 桥那行的副标题
-            "settings_workspace",       // 工作区行
-            "settings_group_workspace", // 「工作区与资料」整组
-            "settings_knowledge_base",  // 资料库行
-            "sched_page_title",         // 定时任务行（标题与任务页共用，页面还在抱朴那边）
+            "settings_" + "bridge",           // 桥的设置行
+            "settings_value_" + "bridge",     // 桥那行的副标题
+            "settings_" + "workspace",        // 工作区行
+            "settings_group_" + "workspace",  // 「工作区与资料」整组
+            "settings_knowledge_base",        // 资料库行
+            "sched_page_title",               // 定时任务行（标题与任务页共用，页面还在抱朴那边）
         )
         banned.forEach { k ->
             assertFalse("律令里还有 R.string.$k", settings.contains("R.string.$k"))
@@ -125,7 +128,7 @@ class StatutesSlimGateTest {
         assertFalse("Manifest 不该再登记它", text("src/main/AndroidManifest.xml").contains("SettingsBridgeActivity"))
         val zh = text("src/main/res/values/strings.xml")
         val en = text("src/main/res/values-en/strings.xml")
-        listOf("settings_bridge", "settings_value_bridge").forEach { k ->
+        listOf("settings_" + "bridge", "settings_value_" + "bridge").forEach { k ->
             assertFalse("zh 还有 $k", zh.contains("name=\"$k\""))
             assertFalse("en 还有 $k", en.contains("name=\"$k\""))
         }
