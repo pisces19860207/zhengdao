@@ -3,6 +3,7 @@
 // 第二百三十二批 · 表登记（发现 / 不扫 PDF / 增量 / 落盘）。
 package com.example.zhengdao.baopu.table
 
+import com.example.zhengdao.baopu.agent.HeaderNotes
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -159,5 +160,52 @@ class TableRegistryTest {
         val reg = registry()
         reg.refresh()
         assertEquals(listOf("成绩表.xlsx"), reg.entries().map { it.rel })
+    }
+
+    @Test
+    fun `243 原件区的表扫不到_资料库的表能扫到`() {
+        writeCsv(ws, "资料库/原始/原件.csv", "a,b\n1,2\n")
+        writeCsv(ws, "资料库/普通表.csv", "a,b\n1,2\n")
+        val reg = registry()
+        val report = reg.refresh()
+        assertEquals(1, report.scanned)
+        assertEquals(listOf("资料库/普通表.csv"), reg.entries().map { it.rel })
+    }
+
+    @Test
+    fun `243 用户指定表头行会记住_重开仍在`() {
+        writeCsv(ws, "资料库/表.csv", "姓名,班级\n张三,三班\n李四,三班\n")
+        val reg = registry()
+        reg.refresh()
+        val default = reg.modelOf("资料库/表.csv")
+        assertNotNull(default)
+        assertEquals("\u9ed8\u8ba4\u5c31\u662f\u7b2c 1 \u884c", 1, default!!.headerRowNumber)
+
+        assertTrue(reg.rememberHeaderRow("资料库/表.csv", null, 2))
+        assertEquals(2, reg.modelOf("资料库/表.csv")!!.headerRowNumber)
+
+        val reloaded = registry()
+        reloaded.refresh()
+        assertEquals(2, reloaded.modelOf("资料库/表.csv")!!.headerRowNumber)
+    }
+
+    @Test
+    fun `243 表头话只说一次`() {
+        HeaderNotes.reset()
+        assertTrue(HeaderNotes.once("资料库/表.csv#Sheet1#把1行当表头"))
+        assertFalse(HeaderNotes.once("资料库/表.csv#Sheet1#把1行当表头"))
+    }
+
+    @Test
+    fun `243 内容变了_用户指定表头仍在`() {
+        val f = writeCsv(ws, "资料库/表.csv", "姓名,班级\n张三,三班\n李四,三班\n")
+        val reg = registry()
+        reg.refresh()
+        assertTrue(reg.rememberHeaderRow("资料库/表.csv", null, 2))
+        f.writeText("姓名,班级\n张三,三班\n李四,三班\n王五,三班\n", Charsets.UTF_8)
+        f.setLastModified(f.lastModified() + 5_000)
+        val again = registry()
+        again.refresh()
+        assertEquals(2, again.modelOf("资料库/表.csv")!!.headerRowNumber)
     }
 }

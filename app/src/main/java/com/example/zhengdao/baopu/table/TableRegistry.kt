@@ -42,6 +42,10 @@ data class SheetEntry(
     val warnings: List<String>,
     /** 认不出表头时的那句话（非 null ⇒ 这张 sheet 要问用户）。 */
     val ask: String? = null,
+    /** 243③：用户指定的表头行（1 起）；存盘后不再猜也不再问。 */
+    val userHeaderRow: Int? = null,
+    /** 243③：记住表头时这张表的 mtime（内容变了要提醒）。 */
+    val userHeaderMtime: Long? = null,
 )
 
 /** 登记里的列（**只存列名与类型，不存任何单元格取值**——姓名与手机号不许落盘）。 */
@@ -83,6 +87,9 @@ data class RefreshReport(
  * 线程口径：只有一个调用方线程（工具在工具线程里跑），内部 [synchronized] 兜住面板与工具
  * 同时进来的那一下——登记与内存缓存是同一份状态，撕不开。
  */
+/** 243②：原件区的末级目录名（资料库/原始、library/原始）。 */
+private const val RAW_SUB = "原始"
+
 class TableRegistry(
     private val home: File,
     roots: List<TableRoot>,
@@ -140,7 +147,20 @@ class TableRegistry(
             // 那会让 modelOf 每次都重解析，正是负例 7「每次问答都全量重扫」的另一种形态）
             cache.keys.removeAll { it.startsWith("${hit.rel}#") }
             val entry = parseFile(hit, now)
-            if (entry != null) next[hit.rel] = entry
+            // 243③：重解析不能把用户指定的表头行丢了（负例 6）
+            val merged = entry?.let { e ->
+                old?.let { o ->
+                    e.copy(
+                        sheets = e.sheets.map { sh ->
+                            val prev = o.sheets.firstOrNull { it.name == sh.name }
+                            if (prev != null) {
+                                sh.copy(userHeaderRow = prev.userHeaderRow, userHeaderMtime = prev.userHeaderMtime)
+                            } else sh
+                        },
+                    )
+                } ?: e
+            }
+            if (merged != null) next[hit.rel] = merged
             parsed++
         }
         val removed = entries.keys.count { it !in next.keys }
@@ -172,10 +192,12 @@ class TableRegistry(
         synchronized(this) {
             val entry = entries[rel] ?: return null
             val target = entry.sheetNamed(sheet) ?: return null
-            val key = "$rel#${target.name}#${headerRowOverride ?: -1}"
+            // 243③：用户没现场指定时，用登记里记住的表头行
+            val effective = headerRowOverride ?: target.userHeaderRow
+            val key = "$rel#${target.name}#${effective ?: -1}"
             cache[key]?.let { return it }
             val file = fileOf(entry) ?: return null
-            val model = readModel(entry, file, target.name, headerRowOverride) ?: return null
+            val model = readModel(entry, file, target.name, effective) ?: return null
             cache[key] = model
             model
         }
@@ -227,12 +249,21 @@ class TableRegistry(
         return if (label.isEmpty()) rel else "$label/$rel"
     }
 
+    /** 243②：原件区判定——末级目录 `原始`，上一级 `资料库` 或 `library`。 */
+    private fun isRawZone(dir: File): Boolean {
+        if (dir.name != RAW_SUB) return false
+        val parent = dir.parentFile?.name ?: return false
+        return parent == "资料库" || parent == "library"
+    }
+
+
     private fun walk(dir: File, root: File, label: String, depth: Int, sink: (File) -> Unit) {
         if (depth > MAX_DEPTH) return
         val listed = dir.listFiles() ?: return
         for (f in listed.sortedBy { it.name }) {
             if (f.isDirectory) {
                 if (f.name in SKIP_DIRS) continue
+                if (isRawZone(f)) continue // 243②：原件区不扫
                 walk(f, root, label, depth + 1, sink)
             } else if (f.isFile) {
                 sink(f)
@@ -347,6 +378,29 @@ class TableRegistry(
         entries = loaded
     }
 
+
+    /**
+     * 243③：记住用户指定的表头行（1 起；null＝清掉指定）。
+     *
+     * 只改登记里的一个字段并落盘，**不重读表**；表内容变了
+     * 也不丢用户的指定（mtime/size 变只影响缓存重解析）。
+     *
+     * @return true＝真的写了（登记里有这张表/sheet）
+     */
+    fun rememberHeaderRow(rel: String, sheet: String?, row: Int?): Boolean = synchronized(this) {
+        val entry = entries[rel] ?: return false
+        val target = entry.sheetNamed(sheet) ?: return false
+        val updatedSheets = entry.sheets.map { s ->
+            if (s.name == target.name) {
+                s.copy(userHeaderRow = row, userHeaderMtime = if (row == null) null else entry.mtime)
+            } else s
+        }
+        entries = entries + (rel to entry.copy(sheets = updatedSheets))
+        cache.clear()
+        persist()
+        true
+    }
+
     private fun persist() {
         val tables = JSONArray()
         entries.values.forEach { e ->
@@ -377,6 +431,8 @@ class TableRegistry(
                     .put("keys", JSONArray(s.keys))
                     .put("warnings", JSONArray(s.warnings))
                     .put("ask", s.ask ?: JSONObject.NULL)
+                    .put("userHeaderRow", s.userHeaderRow ?: JSONObject.NULL)
+                    .put("userHeaderMtime", s.userHeaderMtime ?: JSONObject.NULL)
                     .put(
                         "columns",
                         JSONArray().also { cols ->
@@ -409,6 +465,8 @@ class TableRegistry(
                 keys = strings(o.optJSONArray("keys")),
                 warnings = strings(o.optJSONArray("warnings")),
                 ask = if (o.isNull("ask")) null else o.optString("ask"),
+                userHeaderRow = if (o.isNull("userHeaderRow")) null else o.optInt("userHeaderRow"),
+                userHeaderMtime = if (o.isNull("userHeaderMtime")) null else o.optLong("userHeaderMtime"),
             )
         }
         return out

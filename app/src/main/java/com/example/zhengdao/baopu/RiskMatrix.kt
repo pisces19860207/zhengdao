@@ -45,6 +45,7 @@ enum class RiskDecision {
  * （`unclassified_tool` 等）——改它等于改历史记录的读法，所以一个字不动。
  */
 enum class RiskCode(val id: String) {
+    NETWORK_ESCALATED("network_escalated"),
     /** 没有任何判据命中（正常放行）。 */
     NONE("none"),
     PATH_ORIGINAL_RAW("raw_zone"),
@@ -159,6 +160,7 @@ data class RiskCtx(
     val workspaceRoots: List<String> = emptyList(),
     val existingPaths: Set<String> = emptySet(),
     val allowedUrlDomains: Set<String>? = null,
+    val networkUsed: Boolean = false,
 )
 
 /**
@@ -169,6 +171,7 @@ data class RiskCtx(
  */
 internal data class ToolRule(
     val base: RiskClass,
+    val networkEscalates: Boolean = false,
     /** 会写盘的目标参数名（`move_path` 的源与目标都算：源被移走也是改盘）。 */
     val writePathKeys: Set<String> = emptySet(),
     /** 显式目标缺席时按这个键判（`image_ops` 不传 out 就落在源图同目录）。 */
@@ -392,7 +395,7 @@ internal data class RiskTable(
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
                 // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────
-                "table_query" to ToolRule(RiskClass.R0),
+                "table_query" to ToolRule(RiskClass.R0, networkEscalates = true),
                 "search_web" to ToolRule(RiskClass.R0, urlKeys = setOf("site")),
                 "schedule_task" to ToolRule(
                     RiskClass.R2,
@@ -492,6 +495,13 @@ internal object RiskMatrix {
         var risk = rule.base
         var reject = false
         var mustAsk = false
+
+        // 243：本地只读工具一旦走联网 ⇒ R2 必问（事实由调用方注入）
+        if (rule.networkEscalates && ctx.networkUsed) {
+            risk = higherOf(risk, RiskClass.R2)
+            mustAsk = true
+            reasons += RiskReason(RiskCode.NETWORK_ESCALATED, "t上联网了：从只读升到 R2，必须问")
+        }
 
         val targets = writeTargets(rule, args)
         val roots = ctx.workspaceRoots.map(::normalizePath)

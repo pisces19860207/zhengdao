@@ -524,4 +524,23 @@ class RiskMatrixTest {
         args.forEach { (k, v) -> json.put(k, v) }
         return RiskMatrix.classify(ToolCall("t", name, json), ctx, table)
     }
+
+    @Test
+    fun `243 本地只读取表保持R0_联网即升R2必问`() {
+        val local = verdict("table_query", mapOf("table" to "产物/a.xlsx"))
+        assertEquals(RiskClass.R0, local.risk)
+        assertEquals(RiskDecision.PROCEED, local.decision)
+
+        val net = verdict(
+            "table_query",
+            mapOf("table" to "产物/a.xlsx"),
+            ctx = RiskCtx(networkUsed = true),
+        )
+        assertEquals("联网了必须从 R0 升到 R2", RiskClass.R2, net.risk)
+        assertEquals("R2 必须问", RiskDecision.MUST_ASK, net.decision)
+        assertTrue(
+            "要给出 NETWORK_ESCALATED 判据",
+            net.reasons.any { it.code == RiskCode.NETWORK_ESCALATED },
+        )
+    }
 }

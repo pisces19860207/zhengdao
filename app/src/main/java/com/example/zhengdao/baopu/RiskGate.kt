@@ -148,6 +148,7 @@ internal object RiskTell {
     /** 主判据的一句人话（[cardHint] 的素材；null = 没有判据 ⇒ 不摆这一行）。 */
     fun hint(code: RiskCode): String? = when (code) {
         RiskCode.NONE -> null
+        RiskCode.NETWORK_ESCALATED -> "这次走联网，从只读升到 R2（必须问）"
         RiskCode.PATH_ORIGINAL_RAW -> "原件区只读"
         RiskCode.PATH_OUTSIDE_WORKSPACE -> "目标在工作区外"
         RiskCode.OVERWRITE_EXISTING -> "将覆盖已有产物"
