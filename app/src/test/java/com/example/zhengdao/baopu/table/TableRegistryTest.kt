@@ -170,4 +170,21 @@ class TableRegistryTest {
         assertEquals(1, report.scanned)
         assertEquals(listOf("资料库/普通表.csv"), reg.entries().map { it.rel })
     }
+
+    @Test
+    fun `243 用户指定表头行会记住_重开仍在`() {
+        writeCsv(ws, "资料库/表.csv", "姓名,班级\n张三,三班\n李四,三班\n")
+        val reg = registry()
+        reg.refresh()
+        val default = reg.modelOf("资料库/表.csv")
+        assertNotNull(default)
+        assertEquals("\u9ed8\u8ba4\u5c31\u662f\u7b2c 1 \u884c", 1, default!!.headerRowNumber)
+
+        assertTrue(reg.rememberHeaderRow("资料库/表.csv", null, 2))
+        assertEquals(2, reg.modelOf("资料库/表.csv")!!.headerRowNumber)
+
+        val reloaded = registry()
+        reloaded.refresh()
+        assertEquals(2, reloaded.modelOf("资料库/表.csv")!!.headerRowNumber)
+    }
 }

@@ -179,6 +179,11 @@ internal object TableQueryTool {
             }
             else -> return ToolOutcome.Ok(helpOf(registry).toString())
         }
+        // 243③：用户指定了表头行就记住（落登记簿，下次不再猜/不再问）
+        if (headerRow != null && headerRow > 0) {
+            val rel = answer.evidence?.path ?: table
+            if (!rel.isNullOrBlank()) runCatching { registry.rememberHeaderRow(rel, sheet, headerRow) }
+        }
         // 日志：只写这一行（**纯函数**产出，拿不到任何单元格取值；查询原话也不在里面）
         runCatching { RunLog.log(logLine(answer, opRaw.ifEmpty { "question" })) }
         return ToolOutcome.Ok(jsonOf(answer, registry).toString())

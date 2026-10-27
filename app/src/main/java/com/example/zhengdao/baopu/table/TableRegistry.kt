@@ -42,6 +42,8 @@ data class SheetEntry(
     val warnings: List<String>,
     /** 认不出表头时的那句话（非 null ⇒ 这张 sheet 要问用户）。 */
     val ask: String? = null,
+    /** 243③：用户指定的表头行（1 起）；存盘后不再猜也不再问。 */
+    val userHeaderRow: Int? = null,
 )
 
 /** 登记里的列（**只存列名与类型，不存任何单元格取值**——姓名与手机号不许落盘）。 */
@@ -175,10 +177,12 @@ class TableRegistry(
         synchronized(this) {
             val entry = entries[rel] ?: return null
             val target = entry.sheetNamed(sheet) ?: return null
-            val key = "$rel#${target.name}#${headerRowOverride ?: -1}"
+            // 243③：用户没现场指定时，用登记里记住的表头行
+            val effective = headerRowOverride ?: target.userHeaderRow
+            val key = "$rel#${target.name}#${effective ?: -1}"
             cache[key]?.let { return it }
             val file = fileOf(entry) ?: return null
-            val model = readModel(entry, file, target.name, headerRowOverride) ?: return null
+            val model = readModel(entry, file, target.name, effective) ?: return null
             cache[key] = model
             model
         }
@@ -359,6 +363,27 @@ class TableRegistry(
         entries = loaded
     }
 
+
+    /**
+     * 243③：记住用户指定的表头行（1 起；null＝清掉指定）。
+     *
+     * 只改登记里的一个字段并落盘，**不重读表**；表内容变了
+     * 也不丢用户的指定（mtime/size 变只影响缓存重解析）。
+     *
+     * @return true＝真的写了（登记里有这张表/sheet）
+     */
+    fun rememberHeaderRow(rel: String, sheet: String?, row: Int?): Boolean = synchronized(this) {
+        val entry = entries[rel] ?: return false
+        val target = entry.sheetNamed(sheet) ?: return false
+        val updatedSheets = entry.sheets.map { s ->
+            if (s.name == target.name) s.copy(userHeaderRow = row) else s
+        }
+        entries = entries + (rel to entry.copy(sheets = updatedSheets))
+        cache.clear()
+        persist()
+        true
+    }
+
     private fun persist() {
         val tables = JSONArray()
         entries.values.forEach { e ->
@@ -389,6 +414,7 @@ class TableRegistry(
                     .put("keys", JSONArray(s.keys))
                     .put("warnings", JSONArray(s.warnings))
                     .put("ask", s.ask ?: JSONObject.NULL)
+                    .put("userHeaderRow", s.userHeaderRow ?: JSONObject.NULL)
                     .put(
                         "columns",
                         JSONArray().also { cols ->
@@ -421,6 +447,7 @@ class TableRegistry(
                 keys = strings(o.optJSONArray("keys")),
                 warnings = strings(o.optJSONArray("warnings")),
                 ask = if (o.isNull("ask")) null else o.optString("ask"),
+                userHeaderRow = if (o.isNull("userHeaderRow")) null else o.optInt("userHeaderRow"),
             )
         }
         return out
