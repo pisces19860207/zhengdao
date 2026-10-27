@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,7 +22,7 @@ class TerminalShellP1GateTest {
 
     /** Gradle 单测的工作目录是模块目录 `app/`（同 TerminalSessionWiringGateTest 的约定）。 */
     private fun read(rel: String): String =
-        File(rel).let { if (it.exists()) it else File("app/$rel") }.readText()
+        SrcRoots.find(rel).readText()
 
     /** 取 `marker` 之后到 `endMarker` 之前的片段（函数体门禁用；带防呆断言）。 */
     private fun slice(src: String, marker: String, endMarker: String): String {
@@ -129,8 +131,10 @@ class TerminalShellP1GateTest {
         val src = stripComments(read("src/main/java/com/example/zhengdao/terminal/ResMonitor.kt"))
 
         assertTrue(
+            // 第二百四十一批：ResMonitor 搬进 :terminal-core 后 `internal` 放宽成 public
+            // （跨模块要给 :app 的用例看得见），判据的意图不变 —— 这个纯函数必须还在。
             "必须抽出可直测的纯函数 cpuDelta(Map, Map)",
-            src.contains("internal fun cpuDelta(")
+            Regex("""(internal\s+)?fun cpuDelta\(""").containsMatchIn(src)
         )
         assertTrue(
             "两侧采样必须收成 pid → ticks 的映射（.toMap）",

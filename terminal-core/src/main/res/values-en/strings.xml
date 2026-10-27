@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第二百四十一批：终端/体检字符串（英文）—— 随代码从 :app 搬来，这里是唯一真源。
+  与 values/strings.xml 同一批、同一理由（:app 侧的副本按 lint 结论已删）。
+-->
+<resources>
+    <!-- 终端长按菜单（com.termux.textselection.TextSelectionCursorController） -->
+    <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
+    <string name="text_selection_more">More</string>
+
+    <!-- ── Hermes dependency health (HermesEnv) ── -->
+    <string name="hermes_not_installed">Hermes not installed — skipped</string>
+    <string name="hermes_record_host_path">The dependency record points to host paths (invisible inside proot) — one tap to fix (a usable generation is on disk)</string>
+    <string name="hermes_record_broken">The dependency record points to a missing directory — one tap to fix (a usable generation is on disk)</string>
+    <string name="hermes_record_lost">The dependency environment is lost and must be rebuilt in the terminal (tap \"Repair\" — it runs in the terminal, visible)</string>
+    <string name="hermes_no_record">No dependency environment recorded yet (installation may not have finished) — rebuild in the terminal</string>
+    <string name="hermes_lock_missing">Source lock uv.lock is missing (a warning will appear on every launch) — one tap to restore it in the terminal</string>
+    <plurals name="hermes_ok_stale">
+        <item quantity="one">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</item>
+        <item quantity="other">Dependency record is valid (plus %1$d leftover marker files from interrupted updates — one tap to clean)</item>
+    </plurals>
+    <string name="hermes_ok">Dependency environment record is valid</string>
+
+    <!-- ── Resource usage health (ResMonitor) ── -->
+    <string name="resmon_idle">Neither Baopu nor the terminal is running — nothing to sample</string>
+    <plurals name="resmon_rss_over">
+        <item quantity="one">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Baopu</item>
+        <item quantity="other">⚠ Memory %1$d MB over the %2$d MB threshold (%3$d processes) — close unused sessions or restart Baopu</item>
+    </plurals>
+    <string name="resmon_cpu_over">⚠ CPU %1$s%% over the %2$d%% threshold — check plugins and session count</string>
+    <plurals name="resmon_normal">
+        <item quantity="one">RSS %1$d MB · CPU %2$s%% · %3$d processes</item>
+        <item quantity="other">RSS %1$d MB · CPU %2$s%% · %3$d processes</item>
+    </plurals>
+</resources>

@@ -2,9 +2,9 @@
   "version": 1,
   "comment": "libzhengdao_core.so 与 rust/core/src 的同源基线；只允许在确认重编后用 --write 刷新",
   "hash_mode": "so=raw-bytes; src=text-crlf-to-lf",
-  "generated_at": "2026-10-23T18:33:03",
+  "generated_at": "2026-10-27T10:05:49",
   "so": {
-    "app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": "ffad1eba232b860b3df0d86aefdfe8f70cd27132fda50f6d2d061deb7280808a"
+    "native-core/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": "ffad1eba232b860b3df0d86aefdfe8f70cd27132fda50f6d2d061deb7280808a"
   },
   "source_files": {
     "rust/core/src/dirsize.rs": "38ce360b81aa2ac7bd1ded4c35f1c46978d68514eb43cbda6ff9a4412b08fa18",
@@ -34,7 +34,7 @@
       "-Wl,-z,max-page-size=16384"
     ],
     "artifact_fingerprints": {
-      "app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": {
+      "native-core/src/main/jniLibs/arm64-v8a/libzhengdao_core.so": {
         "elf_machine": "aarch64",
         "clang": "Android (12470979, based on r522817c) clang version 18.0.3 (https://android.googlesource.com/toolchain/llvm-project d8003a456d14a3deb8054cdaa529ffbf02d9b262)",
         "linker": "Linker: LLD 18.0.3"

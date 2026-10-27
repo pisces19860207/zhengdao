@@ -11,7 +11,6 @@
     <string name="app_name">证道</string>
     <string name="copy_text">复制</string>
     <string name="paste_text">粘贴</string>
-    <string name="text_selection_more">更多</string>
 
     <!-- ── 通用 ── -->
     <string name="common_back">返回</string>
@@ -640,26 +639,8 @@
          2026-10-16：OcRepository 已删除，同上。 -->
 
     <!-- ── Hermes 依赖体检（HermesEnv）── -->
-    <string name="hermes_not_installed">未安装 Hermes，跳过</string>
-    <string name="hermes_record_host_path">依赖环境记录写的是宿主路径（proot 里看不见），可一键修正（盘上有可用的代）</string>
-    <string name="hermes_record_broken">依赖环境记录指向不存在的目录，可一键修正（盘上有可用的代）</string>
-    <string name="hermes_record_lost">依赖环境已丢失，需在终端重建（点「修复」会在终端里跑，过程可见）</string>
-    <string name="hermes_no_record">尚未登记依赖环境（安装可能没跑完），需在终端重建</string>
-    <string name="hermes_lock_missing">源码锁 uv.lock 缺失（每次启动会报警告），可在终端一键补回</string>
-    <plurals name="hermes_ok_stale">
-        <item quantity="other">依赖环境记录有效（另有 %1$d 个更新中断留下的标记文件，可一键清理）</item>
-    </plurals>
-    <string name="hermes_ok">依赖环境记录有效</string>
 
     <!-- ── 资源占用体检（ResMonitor）── -->
-    <string name="resmon_idle">抱朴与终端均未运行，无进程可采样</string>
-    <plurals name="resmon_rss_over">
-        <item quantity="other">⚠ 内存 %1$d MB 超阈值 %2$d MB（%3$d 个进程）——关掉不用的会话，或重启抱朴</item>
-    </plurals>
-    <string name="resmon_cpu_over">⚠ CPU %1$s%% 超阈值 %2$d%%——检查插件与会话规模</string>
-    <plurals name="resmon_normal">
-        <item quantity="other">RSS %1$d MB · CPU %2$s%% · %3$d 个进程</item>
-    </plurals>
 
     <!-- ── 终端页子集（TerminalActivity：安装引导 + 长按菜单 + 复制粘贴）── -->
     <!-- 其余 Toast（分屏 / 圆点说明 / 安装过程细节）按用户拍板登记豁免：终端画面本身是英文输出 -->

@@ -4,6 +4,8 @@
 // 本测试钉的是 2026-10-12 的两处手势守卫（§B-补-49 🟡1 / 🟡2）。
 package com.termux.view
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,7 +37,7 @@ class TerminalGestureGateTest {
     /** Gradle 单测的工作目录是模块目录 `app/`（同 R8KeepRuleGuardTest 的约定）。 */
     private fun sourceFile(): File {
         val rel = "src/main/java/com/termux/view/TerminalGestureController.java"
-        return File(rel).let { if (it.exists()) it else File("app/$rel") }
+        return SrcRoots.find(rel)
     }
 
     private val source: String by lazy { sourceFile().readText() }

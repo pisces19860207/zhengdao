@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.rootfs
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -121,8 +123,8 @@ class RootfsDownloaderTest {
     fun `分片续传必须追加写_不许用会截断的 outputStream`() {
         // 2026-10-22 真机：续传用了 File.outputStream()（截断），已下 41.9MB 的分片
         // 被写成 8.4MB，最终「长度不符」。这条门禁钉住「追加写」。
-        val src = File("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt")
-            .let { if (it.isFile) it else File("app/src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt") }
+        val src = SrcRoots.find("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt")
+            .let { if (it.isFile) it else SrcRoots.find("app/src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt") }
             .readText()
         assertTrue("分片续传必须用 FileOutputStream(f, true) 追加写", src.contains("FileOutputStream(f, true)"))
     }

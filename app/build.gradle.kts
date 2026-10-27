@@ -471,16 +471,9 @@ android {
         }
     }
 
-    // 锁定 NDK 版本（与已安装版本一致，保证本机与 CI 构建可复现）
-    ndkVersion = "27.2.12479018"
-
-    // 本机 C 代码：自研伪终端 JNI（见 src/main/cpp/，依据 POSIX 标准接口）
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
+    // 第二百四十一批（终端解耦第二刀）：伪终端 JNI（src/main/cpp/）与 jniLibs 里的 proot
+    // 四件套随终端代码搬进了 :terminal-core，NDK 版本锁定与 externalNativeBuild 也一起搬走
+    // ——主 APP 现在不编任何 C 代码，只通过 :terminal-core 的 AAR 拿到那些 .so。
 }
 
 // ── Detekt（P1-3，2026-10-19）──────────────────────────────────────────────────
@@ -538,8 +531,14 @@ tasks.register<JavaExec>("detektBaselineUpdate") {
 dependencies {
     // 第二百四十批（终端解耦第一刀）：共享件模块。方向单向 —— :app → :core。
     implementation(project(":core"))
+    // 第二百四十一批（终端解耦第二刀）：终端内核模块（PTY/rootfs/proot/会话/体检依赖类）。
+    // 方向单向 —— :app → :terminal-core → :core；终端页/设置页仍在 :app，只是改成向下依赖。
+    // Rust 核（Ed25519 清单校验 / dirSize / 解压验签）与终端无关，单独成模块：
+    implementation(project(":native-core"))
+    implementation(project(":terminal-core"))
     // 单测也要直接引用 :core 的类（internal 之外的公开面），显式声明不依赖"恰好能看见"。
     testImplementation(project(":core"))
+    testImplementation(project(":terminal-core"))
     // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
     add("detektCli", libs.detekt.cli)
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd

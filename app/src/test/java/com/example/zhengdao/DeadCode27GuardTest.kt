@@ -30,7 +30,7 @@ import com.example.zhengdao.core.kb.KnowledgeBase
 class DeadCode27GuardTest {
 
     private fun appFile(rel: String): File =
-        File(rel).let { if (it.exists()) it else File("app/$rel") }
+        SrcRoots.find(rel)
 
     private fun read(rel: String): String = appFile(rel).readText()
 

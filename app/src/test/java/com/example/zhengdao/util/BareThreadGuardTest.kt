@@ -3,6 +3,8 @@
 
 package com.example.zhengdao.util
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -356,8 +358,11 @@ class BareThreadGuardTest {
      */
     private fun scanAppSources(): List<Site> {
         val roots = listOf(
-            File("src/main/java/com/example/zhengdao"),
+            SrcRoots.find("src/main/java/com/example/zhengdao"),
             File("../core/src/main/java/com/example/zhengdao/core"),
+            // 第二百四十一批：终端内核（terminal/rootfs/rust/com.termux）搬进 :terminal-core，
+            // 它们仍是本 APP 的主源码，纪律一并管住（对账单按文件名记，条目不用改）。
+            File("../terminal-core/src/main/java/com/example/zhengdao"),
         ).filter { it.isDirectory }
         return roots
             .flatMap { root ->

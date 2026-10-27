@@ -285,7 +285,11 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                             // ① 增量协议：`rootfs-index.json` 是唯一事实来源，版本按 **env 内容指纹**比对。
                             //    老逻辑拿恒定的发行版号（13.7）比，于是永远判"已是最新"——本次修掉的正是它。
                             val idx = RootfsIndexFetcher.fetch()
-                            if (idx != null && !idx.env.isNullOrBlank()) {
+                            // 第二百四十一批：RootfsIndex 搬进 :terminal-core 后，`env` 成了跨模块的
+                            // public 属性 ⇒ Kotlin 不再对它做 smart cast。先取到本地 val，
+                            // 判据（非空且非空白）与取值一字不变。
+                            val idxEnv = idx?.env
+                            if (idx != null && idxEnv != null && idxEnv.isNotBlank()) {
                                 // 第八十批（2026-10-20）：这里原先是一坨 75 行的 when 树 —— 8 种口径
                                 // 各自决定"给哪句话 / 有没有下载目标 / 要不要先试增量"，从没有单测钉住
                                 // （2026-10-08「同版本被叫成发现新版本」的投诉就是这段判据失守）。
@@ -302,13 +306,13 @@ private fun SettingsEnvPage(onBack: () -> Unit) {
                                 // 不是文案前缀 —— 同版本补指纹的文案不以「发现新版本」开头，按前缀判
                                 // 会让它既不弹窗也不提示（2026-10-08 修）。挂 pending 放在判定之前，
                                 // 与迁移前同序（判定里读盘抛异常时，迁移前也是先挂了 pending）。
-                                if (!EnvRules.isUpToDate(localEnv, idx.env)) {
+                                if (!EnvRules.isUpToDate(localEnv, idxEnv)) {
                                     pendingUrl = idx.url; pendingSha = idx.sha256
                                     pendingIdx = idx
                                 }
                                 val plan = EnvRules.planUpdate(
                                     localEnv = localEnv,
-                                    indexEnv = idx.env,
+                                    indexEnv = idxEnv,
                                     indexVersion = ver,
                                     indexSize = idx.size,
                                     // 惰性取值：迁移前这两项只在需要它的分支里读盘，传闭包保持读盘次数不变

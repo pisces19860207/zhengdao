@@ -3,6 +3,8 @@
 
 package com.example.zhengdao.rootfs
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,7 +49,7 @@ class RootfsDownloaderBackoffTest {
 
     @Test
     fun `门禁_重试循环接了退避睡眠`() {
-        val src = File("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt").readText()
+        val src = SrcRoots.find("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt").readText()
         val loop = src.substringAfter("for (attempt in 0 until MAX_ATTEMPTS_PER_URL)")
             .substringBefore("dest.delete()")
         assertTrue(

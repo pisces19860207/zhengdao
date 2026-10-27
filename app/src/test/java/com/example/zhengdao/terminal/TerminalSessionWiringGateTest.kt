@@ -3,6 +3,8 @@
 
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -18,7 +20,7 @@ class TerminalSessionWiringGateTest {
 
     /** Gradle 单测的工作目录是模块目录 `app/`（同 TerminalGestureGateTest 的约定）。 */
     private fun read(rel: String): String =
-        File(rel).let { if (it.exists()) it else File("app/$rel") }.readText()
+        SrcRoots.find(rel).readText()
 
     @Test
     fun `onSessionDied 必须有赋值点（死钩子不得复活）`() {

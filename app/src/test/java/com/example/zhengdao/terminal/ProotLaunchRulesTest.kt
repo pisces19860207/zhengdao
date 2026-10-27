@@ -13,6 +13,8 @@
 //    （持锁 / 写盘 / RunLog / 软链 / IssueCenter）必须仍在 launcher。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,7 +35,7 @@ class ProotLaunchRulesTest {
 
     /** Gradle 单测的工作目录是模块目录 `app/`（与 TmuxConfAppendTest 同一约定）。 */
     private fun appFile(rel: String): File =
-        File(rel).let { if (it.exists()) it else File("app/$rel") }
+        SrcRoots.find(rel)
 
     private fun launcherSrc(): String =
         appFile("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt")

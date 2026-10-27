@@ -3,6 +3,8 @@
 
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,7 +25,7 @@ class SessionServiceWakeLockDefaultTest {
 
     @Test
     fun `门禁_renewWakeLockIfLost 必须保守默认`() {
-        val src = File("src/main/java/com/example/zhengdao/terminal/SessionService.kt").readText()
+        val src = SrcRoots.find("src/main/java/com/example/zhengdao/terminal/SessionService.kt").readText()
         val fn = src.substringAfter("private fun renewWakeLockIfLost()")
             .substringBefore("\n    }\n")
         assertTrue(
@@ -38,7 +40,7 @@ class SessionServiceWakeLockDefaultTest {
 
     @Test
     fun `门禁_applyIdlePolicy 必须保守默认`() {
-        val src = File("src/main/java/com/example/zhengdao/terminal/SessionService.kt").readText()
+        val src = SrcRoots.find("src/main/java/com/example/zhengdao/terminal/SessionService.kt").readText()
         val fn = src.substringAfter("private fun applyIdlePolicy()")
             .substringBefore("\n    }\n")
         assertTrue(

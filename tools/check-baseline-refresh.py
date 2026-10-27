@@ -44,7 +44,8 @@ except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
     pass
 
 BASELINE_JSON = "tools/so-provenance.json"
-SO_GLOB = "app/src/main/jniLibs/**/*.so"
+# 第二百四十一批：.so 搬进 :terminal-core，glob 改成模块无关的写法
+SO_GLOB = "*/src/main/jniLibs/**/*.so"
 SRC_DIR = "rust/core/src"
 
 
@@ -146,7 +147,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     so_changed = [
-        p for p in changed if p.startswith("app/src/main/jniLibs/") and p.endswith(".so")
+        p for p in changed if "/src/main/jniLibs/" in p and p.endswith(".so")
     ]
     src_changed = [p for p in changed if p.startswith(f"{SRC_DIR}/")]
     if so_changed or src_changed:

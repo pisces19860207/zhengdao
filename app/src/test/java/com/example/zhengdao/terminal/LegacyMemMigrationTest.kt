@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import java.io.File
 import java.nio.file.Files
 import org.json.JSONObject
@@ -181,7 +183,7 @@ class LegacyMemMigrationTest {
     // ── 接线门禁（源码文本级，先剥注释再断言） ──
 
     private fun code(rel: String): String =
-        File(rel).let { if (it.isFile) it else File("app/$rel") }.readText()
+        SrcRoots.find(rel).readText()
             .replace("\r\n", "\n")
             .replace(Regex("(?s)/\\*.*?\\*/"), "")
             .replace(Regex("(?m)^[ \\t]*//.*$"), "")
