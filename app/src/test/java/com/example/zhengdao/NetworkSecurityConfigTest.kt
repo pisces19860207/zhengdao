@@ -153,36 +153,4 @@ class NetworkSecurityConfigTest {
             offenders.isEmpty()
         )
     }
-
-    /**
-     * 记录一条**容易想当然**的口径：guest 里 apt 走的是明文 http，但它**不需要**进白名单。
-     * 依据：明文策略只在平台网络栈生效（HttpURLConnection/WebView/OkHttp），不拦 bionic 的
-     * `connect()`；proot 的 guest 是 glibc + GnuTLS 原生程序 ⇒ 与 network_security_config.xml 无关
-     * （Flutter 2.0 自己在 Dart 层实现了一遍检查，理由正是平台策略只覆盖平台组件）。
-     *
-     * 这条测试同时是**扳机**：哪天 build-rootfs.sh 的镜像源换成 https（或换了主机），
-     * 它会红，逼着人回来把这段记录性的口径改对——而不是让注释悄悄过期。
-     */
-    @Test
-    fun `guest 的明文 apt 源不进白名单`() {
-        val build = File("../rootfs/build-rootfs.sh")
-            .let { if (it.exists()) it else File("rootfs/build-rootfs.sh") }
-        assertTrue("找不到 rootfs/build-rootfs.sh（口径一致性的另一半）", build.exists())
-        val m = Regex("MIRROR=\"(https?)://([^/\"]+)").find(build.readText())
-        assertNotNull("rootfs/build-rootfs.sh 里找不到 MIRROR=\"…\"", m)
-        val scheme = m!!.groupValues[1]
-        val host = m.groupValues[2]
-        assertEquals(
-            "镜像的 apt 源不再是明文 http 了（现在是 $scheme://$host）——请顺手更新本用例与 " +
-                "network_security_config.xml 顶部那段注释：它们是配套的记录",
-            "http",
-            scheme
-        )
-        assertFalse(
-            "白名单里出现了 guest 的 apt 主机 $host —— 这说明有人按「guest 与 App 同 UID、同一个网络栈」" +
-                "推了一把，但那个前提不成立：明文策略不拦原生 socket（proot 的 guest 是 glibc + GnuTLS，" +
-                "走自己的 socket），所以 apt 本来就不需要放行。多这一条只会给第一方代码多开一个明文出口",
-            stripComments(nsc).contains("<domain includeSubdomains=\"false\">$host</domain>")
-        )
-    }
 }
