@@ -62,14 +62,10 @@ KEPT_CLASSES = (
         "com.example.zhengdao.rust.CoreNative",
         'Rust 侧 find_class("com/example/zhengdao/rust/CoreNative") 反向回调的落点',
     ),
-    (
-        "com.termux.terminal.JNI",
-        "libtermux.so 静态注册符号 Java_com_termux_terminal_JNI_* 依赖它",
-    ),
-    (
-        "com.github.luben.zstd.Zstd",
-        "第三方 JNI；靠 AGP 默认 keepclasseswithmembernames 保住，不该被改名",
-    ),
+    # 2026-10-27（第四刀后）删掉两条：
+    # ① com.termux.terminal.JNI —— 随终端搬去 zhengdao-term；
+    # ② com.github.luben.zstd.Zstd —— 依赖仍声明但已无代码使用者（grep com.github.luben 零命中），
+    #    R8 会把整类裁掉；留在这里是必然红。
 )
 
 # 反向回调成员：(mapping.txt 里的原名签名, 期望的混淆后名, 为什么要它)
