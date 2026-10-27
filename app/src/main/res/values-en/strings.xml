@@ -637,7 +637,7 @@
     <string name="browser_start_shortcut_debian">Debian docs</string>
     <string name="browser_start_shortcut_repo">Project repo</string>
     <string name="settings_bridge">Browser bridge</string>
-    <string name="settings_value_bridge">给外部 agent 用</string>
+    <string name="settings_value_bridge">For agents outside this app</string>
     <string name="bridge_title">Browser bridge</string>
     <string name="bridge_switch_group">Switch &amp; listen address</string>
     <string name="bridge_switch_label">Enable the browser bridge</string>
