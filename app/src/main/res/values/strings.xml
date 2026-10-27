@@ -3,9 +3,6 @@
   界面文案（中文，默认）。
   2026-10-12 起逐步外置：用户要求「设置页要可以选择 App 的英文界面」，
   英文对照见 res/values-en/strings.xml。
-
-  ⚠️ 豁免：终端页标题「证道 - Debian 13.7」（TerminalActivity.kt）不在此处，
-  它是终端环境的身份标识，中英文下都保持原样（用户 2026-10-12 点名保护）。
 -->
 <resources>
     <string name="app_name">证道</string>
@@ -34,8 +31,8 @@
     <string name="common_size_unknown">大小未知</string>
 
     <!-- ── 底部导航 ── -->
-    <!-- 2026-10-14 派工单：前三 Tab 同步改名为四祝福定稿（抱朴真实/逍遥自由/怡然幸福/玄览期望）。
-         改的只是 Tab 名；各处"终端里…"类功能指代文案不在改名范围（终端=功能，逍遥=Tab 名）。 -->
+    <!-- 2026-10-14 派工单：Tab 按四祝福定名（抱朴真实 / 玄览期望…）。
+         第二百五十批：底栏收到三格 —— 抱朴 / 玄览 / 律令（设置对外叫「律令」）。 -->
     <string name="nav_taiji">抱朴</string>
     <string name="nav_browser">玄览</string>
 
@@ -142,7 +139,7 @@
     <string name="home_reinstall_title">重新安装 %1$s？</string>
     <string name="home_reinstall_action">重新安装</string>
 
-    <!-- ── 终端与资料页 ── -->
+    <!-- ── 资料与权限 ── -->
     <string name="data_perm_granted">已授权</string>
     <string name="data_perm_not_granted">未授权</string>
     <!-- 第二百一十批 · 申请权限集中卡（全 App 唯一申请入口）── -->
@@ -572,55 +569,6 @@
 
     <!-- ── 资源占用体检（ResMonitor）── -->
 
-    <!-- ── 终端页子集（TerminalActivity：安装引导 + 长按菜单 + 复制粘贴）── -->
-    <!-- 其余 Toast（分屏 / 圆点说明 / 安装过程细节）按用户拍板登记豁免：终端画面本身是英文输出 -->
-    <!-- 134 批 lint HardcodedText 清零：工具栏三个圆点的读屏文案 + 快捷键条 17 个键帽，
-         原来硬编码在 res/layout*/ 里，这里逐字搬出（键帽是技术标识，中英同一字面值）。 -->
-    <string name="term_close_split_cd">关闭分屏</string>
-    <string name="term_key_esc">ESC</string>
-    <string name="term_key_tab">TAB</string>
-    <string name="term_key_ctrl">CTRL</string>
-    <string name="term_key_shift">SHIFT</string>
-    <string name="term_key_interrupt">^C</string>
-    <string name="term_key_up">↑</string>
-    <string name="term_key_down">↓</string>
-    <string name="term_key_left">←</string>
-    <string name="term_key_right">→</string>
-    <string name="term_key_pgup">PGUP</string>
-    <string name="term_key_pgdn">PGDN</string>
-    <string name="term_key_home">HOME</string>
-    <string name="term_key_end">END</string>
-    <string name="term_key_pipe">|</string>
-    <string name="term_key_minus">\u002D</string>
-    <string name="term_key_slash">/</string>
-    <string name="term_key_del">DEL</string>
-    <string name="term_no_network">网络不通：多半是代理 App 被系统后台杀掉了 —— 把它拉起来即可；不开代理、让「证道」直连手机网络也能通</string>
-    <string name="term_nothing_to_copy">没有可复制的内容</string>
-    <plurals name="term_copied_screen">
-        <item quantity="other">已复制屏幕内容（%1$d 字）</item>
-    </plurals>
-    <string name="term_clipboard_empty">剪贴板为空</string>
-    <string name="term_session_not_ready">会话未就绪，暂不能粘贴</string>
-    <plurals name="term_pasting">
-        <item quantity="other">正在粘贴 %1$d 个字符…</item>
-    </plurals>
-    <plurals name="term_pasted">
-        <item quantity="other">已粘贴 %1$d 个字符</item>
-    </plurals>
-    <string name="term_paste_failed">粘贴未完成：%1$s</string>
-    <plurals name="term_copied_chars">
-        <item quantity="other">已复制 %1$d 个字符</item>
-    </plurals>
-    <string name="term_menu_web_search">在玄览里搜索选中文字</string>
-    <string name="term_menu_clear">清屏</string>
-    <string name="term_no_selection">没有选中的文字</string>
-    <string name="term_cleared">已清屏</string>
-    <string name="term_clear_failed">清屏失败：%1$s</string>
-    <string name="term_browser_failed">打开浏览器失败：%1$s</string>
-    <string name="term_link_blocked">为了安全，这个链接不允许在 App 内打开</string>
-    <string name="term_link_confirm_title">要打开这个链接吗</string>
-    <string name="term_link_confirm_open">打开</string>
-
     <!-- 玄览（浏览器 Tab，阶段 1 用户模式） -->
     <string name="browser_url_hint">输入网址或搜索</string>
     <!-- 底栏改版（2026-10-18 定稿）：「前往」browser_go 随按钮删除（与键盘 Go 键同义，
@@ -669,12 +617,6 @@
     <string name="browser_start_shortcut_bing">必应</string>
     <string name="browser_start_shortcut_debian">Debian 文档</string>
     <string name="browser_start_shortcut_repo">项目仓库</string>
-    <string name="term_local_cache_installing">使用本地缓存包（%1$d MB，不联网下载）—— 正在校验并解压…</string>
-    <string name="term_first_run_need_grant">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议先点「授权存储」——授权后把安装包放进 Download/证道 文件夹，以后重装 App 无需重新下载。</string>
-    <string name="term_first_run">首次使用需要下载运行环境：下载约 326MB，解压后占约 1.5–2GB。\n建议在 WiFi 下进行；支持断点续传，中断可重试。\n提示：也可以手动把安装包放到 Download/证道 文件夹，重启 App 即可免下载安装。</string>
-    <string name="term_install_title">安装运行环境（Debian 13.7）</string>
-    <string name="term_start_download">开始下载</string>
-    <string name="term_pick_file">从文件选择</string>
     <string name="settings_bridge">浏览器桥</string>
     <string name="settings_value_bridge">给外部 agent 用</string>
     <string name="bridge_title">浏览器桥</string>
@@ -885,7 +827,7 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="baopu_extract_again">再抽一本</string>
     <string name="baopu_extract_done">完成</string>
     <string name="baopu_extract_close">关闭</string>
-    <!-- ── 抱朴工具开关（刀 2 追加包；设置 → 终端与资料）── -->
+    <!-- ── 抱朴工具开关（刀 2 追加包；设置 → 律令）── -->
     <string name="baopu_tools_card">抱朴工具</string>
     <string name="baopu_tool_sheet_read">读表</string>
     <string name="baopu_tool_sheet_read_desc">把工作区里的 xlsx/csv 读成结构化行（单元格原样，空格给 null）。</string>
@@ -939,7 +881,7 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
         <item quantity="other">已合并 %1$d 次相同请求（同一张卡，不重复弹）</item>
     </plurals>
     <string name="baopu_confirm_high_risk">高风险动作（写盘/删除/扣费类）：每次都会询问，不提供范围授权</string>
-    <!-- ── 抱朴思考深度（刀 3 · B 段；设置 → 终端与资料）── -->
+    <!-- ── 抱朴思考深度（刀 3 · B 段；设置 → 律令）── -->
     <string name="baopu_effort_card">思考深度</string>
     <string name="baopu_effort_desc">模型每一步想多深。机械活选低、复杂整理选最高；关掉省 token 但复杂任务会变笨。改完下一轮就生效，不用重建任何东西。</string>
     <string name="baopu_effort_none">关</string>

@@ -145,7 +145,7 @@
     <string name="home_reinstall_title">Reinstall %1$s?</string>
     <string name="home_reinstall_action">Reinstall</string>
 
-    <!-- ── Terminal & files page ── -->
+    <!-- ── Files & permissions ── -->
     <string name="data_perm_granted">Granted</string>
     <string name="data_perm_not_granted">Not granted</string>
     <!-- Batch 210 · Request-permissions card (the only grant entry in the app) -->
@@ -594,59 +594,6 @@
 
     <!-- ── Resource usage health (ResMonitor) ── -->
 
-    <!-- ── Terminal page subset (TerminalActivity: install guide + long-press menu + copy/paste) ── -->
-    <!-- Remaining toasts (split panes / dot help / install progress details) are exempt by user decision: the terminal screen itself prints in English -->
-    <!-- 134 lint HardcodedText cleanup: the three traffic-dot accessibility labels + 17 key caps,
-         moved verbatim out of res/layout*/ (key caps are technical identifiers, same literal in both locales). -->
-    <string name="term_close_split_cd">Close split pane</string>
-    <string name="term_key_esc">ESC</string>
-    <string name="term_key_tab">TAB</string>
-    <string name="term_key_ctrl">CTRL</string>
-    <string name="term_key_shift">SHIFT</string>
-    <string name="term_key_interrupt">^C</string>
-    <string name="term_key_up">↑</string>
-    <string name="term_key_down">↓</string>
-    <string name="term_key_left">←</string>
-    <string name="term_key_right">→</string>
-    <string name="term_key_pgup">PGUP</string>
-    <string name="term_key_pgdn">PGDN</string>
-    <string name="term_key_home">HOME</string>
-    <string name="term_key_end">END</string>
-    <string name="term_key_pipe">|</string>
-    <string name="term_key_minus">\u002D</string>
-    <string name="term_key_slash">/</string>
-    <string name="term_key_del">DEL</string>
-    <string name="term_no_network">No network: the proxy app was probably killed in the background. Restart it, or let Zhengdao go direct over the phone network (no proxy) — that works too</string>
-    <string name="term_nothing_to_copy">Nothing to copy</string>
-    <plurals name="term_copied_screen">
-        <item quantity="one">Copied the screen content (%1$d characters)</item>
-        <item quantity="other">Copied the screen content (%1$d characters)</item>
-    </plurals>
-    <string name="term_clipboard_empty">Clipboard is empty</string>
-    <string name="term_session_not_ready">Session isn\'t ready yet — can\'t paste</string>
-    <plurals name="term_pasting">
-        <item quantity="one">Pasting %1$d characters…</item>
-        <item quantity="other">Pasting %1$d characters…</item>
-    </plurals>
-    <plurals name="term_pasted">
-        <item quantity="one">Pasted %1$d characters</item>
-        <item quantity="other">Pasted %1$d characters</item>
-    </plurals>
-    <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
-    <plurals name="term_copied_chars">
-        <item quantity="one">Copied %1$d characters</item>
-        <item quantity="other">Copied %1$d characters</item>
-    </plurals>
-    <string name="term_menu_web_search">Search selected text in Xuanlan</string>
-    <string name="term_menu_clear">Clear screen</string>
-    <string name="term_no_selection">No text selected</string>
-    <string name="term_cleared">Screen cleared</string>
-    <string name="term_clear_failed">Clear failed: %1$s</string>
-    <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
-    <string name="term_link_blocked">For safety, this link can\'t be opened inside the app</string>
-    <string name="term_link_confirm_title">Open this link?</string>
-    <string name="term_link_confirm_open">Open</string>
-
     <!-- Browser tab (Xuanlan, phase 1 user mode) -->
     <string name="browser_url_hint">Enter a URL or search</string>
     <!-- Bottom bar redesign (2026-10-18): browser_go removed with the button; browser_menu
@@ -691,12 +638,6 @@
     <string name="browser_start_shortcut_bing">Bing</string>
     <string name="browser_start_shortcut_debian">Debian docs</string>
     <string name="browser_start_shortcut_repo">Project repo</string>
-    <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
-    <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
-    <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>
-    <string name="term_install_title">Install the runtime (Debian 13.7)</string>
-    <string name="term_start_download">Start download</string>
-    <string name="term_pick_file">Pick from files</string>
     <string name="settings_bridge">Browser bridge</string>
     <string name="settings_value_bridge">给外部 agent 用</string>
     <string name="bridge_title">Browser bridge</string>
@@ -920,7 +861,7 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="baopu_extract_again">Extract another</string>
     <string name="baopu_extract_done">Done</string>
     <string name="baopu_extract_close">Close</string>
-    <!-- ── Baopu tool switches (task 2 addendum; Settings → Terminal & library) ── -->
+    <!-- ── Baopu tool switches (task 2 addendum; Settings → Statutes) ── -->
     <string name="baopu_tools_card">Baopu tools</string>
     <string name="baopu_tool_sheet_read">Read sheet</string>
     <string name="baopu_tool_sheet_read_desc">Read workspace xlsx/csv into structured rows (cells verbatim, blanks null).</string>
@@ -976,7 +917,7 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
         <item quantity="other">Merged %1$d identical requests (one card, no repeats)</item>
     </plurals>
     <string name="baopu_confirm_high_risk">High-risk action (writes/deletes/billing): always asks, no scope approval</string>
-    <!-- ── Baopu thinking effort (knife 3, part B; Settings → Terminal & library) ── -->
+    <!-- ── Baopu thinking effort (knife 3, part B; Settings → Statutes) ── -->
     <string name="baopu_effort_card">Thinking depth</string>
     <string name="baopu_effort_desc">How deeply the model thinks each step. Low for mechanical work, Max for complex restructuring; Off saves tokens but complex tasks get dumber. Takes effect next round — nothing needs rebuilding.</string>
     <string name="baopu_effort_none">Off</string>
