@@ -5,9 +5,7 @@
   英文对照见 res/values-en/strings.xml。
 -->
 <resources>
-    <string name="app_name">证道</string>
     <string name="copy_text">复制</string>
-    <string name="paste_text">粘贴</string>
 
     <!-- ── 通用 ── -->
     <string name="common_back">返回</string>
@@ -20,13 +18,7 @@
     <string name="common_learn_more">了解详情 ›</string>
     <string name="common_collapse">收起</string>
     <string name="common_clean">清理</string>
-    <string name="common_cleaning">清理中…</string>
     <string name="common_loading">加载中…</string>
-    <string name="common_view_log">查看日志</string>
-    <string name="common_clear">清空</string>
-    <string name="common_feedback">反馈</string>
-    <string name="common_repair">修复</string>
-    <string name="common_later">稍后</string>
     <string name="common_approx_mb">约 %1$d MB</string>
     <string name="common_size_unknown">大小未知</string>
 
@@ -37,14 +29,11 @@
     <string name="nav_browser">玄览</string>
 
     <!-- ── 设置 Hub：分组 ── -->
-    <string name="settings_group_env">环境</string>
     <string name="settings_group_background">后台</string>
     <string name="settings_group_interface">界面</string>
     <string name="settings_group_support">支持</string>
 
     <!-- ── 设置 Hub：行 ── -->
-    <string name="settings_env_update">环境与更新</string>
-    <string name="settings_storage">存储与缓存</string>
     <string name="settings_knowledge_base">资料库</string>
     <string name="settings_keepalive">后台保活</string>
     <string name="settings_language">界面语言</string>
@@ -53,10 +42,7 @@
     <string name="settings_about">关于</string>
 
     <!-- ── 设置 Hub：行状态 ── -->
-    <string name="settings_status_installed">已安装</string>
-    <string name="settings_status_not_installed">未安装</string>
     <string name="settings_status_measuring">统计中…</string>
-    <string name="settings_status_perm_pending">权限待处理</string>
     <string name="settings_status_disabled">未启用</string>
     <string name="settings_status_enabled">已启用</string>
     <plurals name="settings_status_file_count">
@@ -66,78 +52,8 @@
     <string name="settings_value_help">新手指南 · 日志</string>
 
     <!-- ── 首页 ── -->
-    <string name="home_no_browser">没有可用的浏览器</string>
-    <string name="home_env_ready">环境就绪</string>
-    <string name="home_env_missing">环境未安装</string>
-    <plurals name="home_agent_count">
-        <item quantity="other">%1$d 个 Agent</item>
-    </plurals>
     <!-- 第十八批 B 段：检测瘦身——健康的不显示，缺失的合并成一行红叉 -->
-    <plurals name="home_health_missing">
-        <item quantity="other">缺 %1$d 项</item>
-    </plurals>
-    <string name="home_agent_missing">%1$s 未安装</string>
-    <string name="home_abi_unknown">未知</string>
-    <string name="home_debian_installed">Debian 13.7 已安装</string>
-    <string name="home_debian_missing">Debian 未安装</string>
-    <string name="home_health_checking">环境体检中…</string>
-    <string name="home_health_scanning">正在检查环境状态…</string>
-    <string name="home_fix_ineffective">一键修复没生效：%1$s</string>
-    <string name="home_fix_error_prefix">修复时出错：%1$s；</string>
-    <string name="home_fix_still">「修复」已执行，复检仍是：%1$s。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。</string>
-    <string name="home_fix_crashed">一键修复出错：%1$s</string>
-    <string name="home_fix_thread_threw">修复线程抛出 %1$s%2$s。可到设置页「修复环境」重解压系统层（约 30 秒）后重启 App。</string>
-    <string name="home_fix_thread_msg">：%1$s</string>
-    <string name="home_repair_script_failed">修复脚本写入失败，请到设置页重试</string>
-    <string name="home_hermes_script_issue">Hermes 修复脚本没写进工作区</string>
-    <string name="home_go_settings">去设置</string>
-    <string name="home_btn_repair_env">去修复</string>
-    <string name="home_btn_net_check">网络自检</string>
-    <string name="home_btn_storage_detail">看明细</string>
-    <string name="home_btn_goto_perm">去设置→申请权限</string>
-    <string name="home_btn_handle">去处理</string>
-    <string name="home_sysinfo_copied">已复制全部系统信息</string>
-    <string name="home_copy_sysinfo">一键复制全部信息</string>
-    <string name="home_env_not_installed">运行环境尚未安装</string>
-    <string name="home_env_install_desc">安装 Agent 前需要先装好 Debian 环境（约 3 分钟，只需一次）。</string>
-    <string name="home_install_env">安装运行环境</string>
-    <string name="home_recent_issues">最近问题（%1$d）</string>
     <!-- 改法②（台账 §B 顺序 54／§B-补-51，2026-10-16）：同一件事发生了 N 次 —— 次数不掩盖：压成一条 + 「×N」角标。 -->
-    <string name="home_issue_count">×%1$d</string>
-    <string name="home_issues_note">后台失败的痕迹以前只写日志、界面上看不见；这里列出来，每条能处理就点按钮。完整原文在应用私有日志里，需要时可到「设置 → 帮助」导出</string>
-    <string name="home_agent_reinstall">重新安装</string>
-    <string name="home_agent_uninstall">卸载</string>
-    <string name="home_agent_retry_install">重试安装</string>
-    <string name="home_agent_start">启动</string>
-    <string name="home_agent_installing">安装中</string>
-    <string name="home_agent_install">安装</string>
-    <string name="home_agent_coming_soon">即将支持</string>
-    <string name="home_agent_install_env_first">先装环境</string>
-    <string name="home_agent_version">已装版本：%1$s</string>
-    <string name="home_manifest_unreachable">Agent 清单暂时拉不到，检查网络后回到本页会自动刷新。</string>
-    <string name="home_size_measuring">尺寸统计中…</string>
-    <string name="home_about_mb">（约 %1$d MB）</string>
-    <string name="home_actual_usage">（以实际占用为准）</string>
-    <string name="home_uninstall_detail">· Agent 程序%1$s\n· 安装包缓存（全局，约 %2$d MB）</string>
-    <string name="home_uninstall_title">卸载 %1$s？</string>
-    <string name="home_uninstall_delete">将删除：\n</string>
-    <string name="home_uninstall_keep">将保留：\n· 会话历史与记忆\n· API Key 配置（如适用）</string>
-    <string name="home_uninstall_purge">\n\n「彻底清除」将连同用户数据（%1$s）一起删除，不可恢复。</string>
-    <string name="home_uninstall_action">卸载</string>
-    <string name="home_purge_action">彻底清除（含用户数据）</string>
-    <string name="home_uninstall_command_label">将执行的命令：</string>
-    <string name="home_uninstall_purge_title">彻底清除 %1$s？</string>
-    <string name="home_uninstall_purge_confirm">再点一次「确认彻底删除」——将永久删除以下路径，不可恢复：
-%1$s</string>
-    <string name="home_uninstall_purge_confirm_action">确认彻底删除</string>
-    <string name="home_uninstall_purge_back">返回</string>
-    <string name="home_uninstall_echo">证道：正在卸载 %1$s…</string>
-    <string name="home_purge_echo">证道：正在彻底清除 %1$s…</string>
-    <string name="home_fixing">修复中…</string>
-    <string name="home_refresh_failed">刷新失败：%1$s</string>
-    <string name="home_refresh_timeout">刷新超时，已停止转圈；下拉可重试。</string>
-    <string name="home_reinstall_title">重新安装 %1$s？</string>
-    <string name="home_reinstall_action">重新安装</string>
 
     <!-- ── 资料与权限 ── -->
     <string name="data_perm_granted">已授权</string>
@@ -146,210 +62,14 @@
     <string name="settings_perm_card_title">申请权限</string>
     <string name="settings_perm_card_desc">权限按需申请：不给也能用，只是对应功能降级。点每一行去授权；已给的可以点进系统页查看或撤销。</string>
     <string name="perm_goto_card">去设置 → 申请权限</string>
-    <string name="data_open_failed">打开失败：%1$s</string>
-    <string name="data_kb_card">资料库</string>
-    <string name="data_kb_cap_note">（已达扫描上限，可能未列全）</string>
-    <string name="data_kb_disabled">已关闭</string>
-    <string name="data_kb_not_mounted">未挂载 · 还没放资料</string>
-    <string name="data_kb_busy">正在整理中…</string>
-    <plurals name="data_kb_organized">
-        <item quantity="other">已挂载 · %1$d 个文件（含摘要）</item>
-    </plurals>
-    <plurals name="data_kb_mounted">
-        <item quantity="other">已挂载 · %1$d 个文件</item>
-    </plurals>
-    <string name="data_kb_reading">读取中…</string>
-    <string name="data_state_label">状态</string>
-    <plurals name="data_kb_other_found">
-        <item quantity="other">另外发现一份带资料的资料库：%1$s（%2$d 个文件）。\n资料库是跟着「工作区」走的——换过工作区之后，旧那份还留在原地，但 App 只读上面这个路径。</item>
-    </plurals>
-    <plurals name="data_kb_copy_btn">
-        <item quantity="other">把那份复制过来（%1$d 个文件）</item>
-    </plurals>
-    <string name="data_kb_copy_title">复制过来？</string>
-    <string name="data_kb_copy_desc">把 %1$s 里的文件复制进当前资料库的 %2$s/ 目录。原件不动；同名的文件不覆盖（以当前这份为准）。</string>
-    <plurals name="data_kb_copied">
-        <item quantity="other">已复制 %1$d 个文件，清单已重建</item>
-    </plurals>
-    <string name="data_kb_copy_none">没有可复制的文件（可能都已在当前资料库里）</string>
-    <string name="data_copy_action">复制</string>
-    <string name="data_kb_path_label">资料库路径</string>
-    <string name="data_path_copied">路径已复制：%1$s</string>
-    <string name="data_copy_path">复制路径</string>
-    <string name="data_view_help">查看说明</string>
-    <string name="data_organizing">正在整理…</string>
-    <string name="data_rebuild">重新整理</string>
-    <string name="data_hints_toggle">提问时自动附上资料线索</string>
-    <string name="data_font_size">字号</string>
-    <string name="data_font_size_value">%1$d（默认）</string>
-    <string name="data_inset">画布留白</string>
-    <string name="data_inset_none">无（默认）</string>
-    <string name="data_inset_value">上下 %1$d dp</string>
-    <string name="data_color_scheme">配色</string>
-    <string name="data_spacing">行距</string>
-    <string name="data_spacing_desc">舒适：行距更松、上下留白更多。紧凑：与旧版一致。只影响行高，不影响列宽。</string>
-    <string name="data_perm_ws_card">权限与工作区</string>
-    <string name="data_perm_storage">存储读写（共享存储 /sdcard）</string>
-    <string name="data_net_row">网络访问</string>
-    <string name="data_net_auto">自动授予</string>
-    <string name="data_net_hint">联网权限装 App 时自动给了，不用管。如果用代理，记得在代理 App 的「分应用代理」里勾上证道。点这一行看系统里的联网管控。</string>
-    <string name="data_net_check">网络自检</string>
-    <string name="data_net_checking">检测中…</string>
-    <string name="data_net_check_btn">点击检测</string>
     <string name="data_manage_row">所有文件访问（推荐开启·主路径）</string>
     <string name="data_manage_on">已开启</string>
     <string name="data_manage_off">未开启</string>
     <string name="data_manage_hint">建议开启。开了它，抱朴能访问更广的存储范围；不开也能用，只是范围小一些。</string>
-    <string name="data_ws_shared_desc">手机文件管理器直接可见、可自由删除；卸载证道后此文件夹仍会保留——产出不丢。</string>
-    <string name="data_ws_private_desc">应用专属目录：卸载证道时随之删除（在意痕迹时用）。</string>
-    <string name="data_ws_pick">选择文件夹</string>
-    <string name="data_ws_restored">已恢复默认（Download/证道），下次启动会话生效</string>
-    <string name="data_ws_restore">恢复默认</string>
-    <string name="data_ws_private_done">已切换仅私有，下次启动会话生效</string>
-    <string name="data_ws_private">仅私有</string>
-    <string name="data_ws_invalid">该位置不可用，请选择内部存储中的文件夹</string>
-    <string name="data_ws_set">工作区已设为 %1$s，下次启动会话生效</string>
-    <string name="data_ws_change_title">换工作区后，资料库也跟着换</string>
-    <plurals name="data_ws_change_current">
-        <item quantity="other">当前资料库：%1$s（%2$d 个文件）</item>
-    </plurals>
-    <string name="data_ws_change_desc">资料库挂在「工作区」下面，所以换工作区就等于换了一份资料库。这一份会原样留在原地、不再被读（不会被删）。</string>
-    <string name="data_ws_change_ask">要不要把这些文件一并复制到新工作区的资料库里？原件不动、同名不覆盖。</string>
-    <plurals name="data_ws_change_copied">
-        <item quantity="other">已把 %1$d 个文件复制到新工作区，清单已重建</item>
-    </plurals>
-    <string name="data_ws_change_none">新工作区里已有这些文件，没有可复制的</string>
-    <string name="data_ws_change_copy_btn">复制过去并切换</string>
-    <string name="data_ws_change_move_btn">只切换，资料留在原地</string>
 
     <!-- ── 环境与更新页 ── -->
-    <string name="env_repair_card">修复环境</string>
-    <string name="env_repair_action">修复</string>
-    <string name="env_repair_desc">重新解压系统文件，保留登录状态和工作区。</string>
-    <string name="env_repair_btn">修复环境（30 秒）</string>
-    <string name="env_repair_confirm">会用本地安装包重新解压系统文件（约 30 秒，另加 Agent 重装时间）。登录状态和工作区都会保留。确定？</string>
-    <string name="env_repair_start">修复环境：用本地安装包（%1$d MB）重新解压，不联网</string>
-    <string name="env_repair_done">修复完成：环境已重置，登录状态和工作区保留（这次没联网）</string>
-    <string name="env_repair_failed">修复失败：%1$s</string>
-    <string name="env_hermes_card">Hermes 依赖环境</string>
-    <string name="env_hermes_checking">检测中…</string>
-    <string name="env_hermes_fix_record">一键修正记录</string>
-    <string name="env_hermes_clean_marker">清理更新标记</string>
-    <string name="env_hermes_script_failed">修复脚本写入失败</string>
-    <string name="env_hermes_broken">依赖环境记录失效了，敲 hermes 会直接报错。点上面的按钮修一下即可。</string>
-    <string name="env_update_card">环境更新</string>
-    <string name="env_checking">检查中…</string>
-    <string name="env_check_btn">检查环境更新</string>
-    <string name="env_version_unknown">未知版本</string>
-    <string name="env_local_env_missing_cached">已装 %1$s，但少了环境记录。这次重新下载安装包补上；本地那份缓存包（%2$s）不再复用。</string>
-    <string name="env_local_cached">本地那份缓存包（%1$s）不再复用，这次重新下载安装。</string>
-    <string name="env_local_env_missing_full">已装 %1$s，但少了环境记录：这次会用完整包（%2$s）重装一次补上，之后「检查环境更新」才能判断新旧。</string>
-    <string name="env_new_version_no_local_record">发现新版本 %1$s（本地没记录版本，这次要重新下载完整包，%2$s）</string>
-    <string name="env_up_to_date">已是最新版本（%1$s，环境 %2$s）</string>
-    <string name="env_new_version_cached">发现新版本 %1$s（本地那份缓存包 %2$s 不再复用，这次重新下载安装）</string>
-    <string name="env_new_version_patch">发现新版本 %1$s，可以小更新（只下 %2$s，不用重下完整包）</string>
-    <string name="env_new_version_full">发现新版本 %1$s（当前环境 %2$s，没有对应的更新补丁），要重新下载完整包，%3$s</string>
-    <string name="env_feed_unreadable">更新信息读不出来，拿不到版本号</string>
-    <string name="env_only_old_manifest">拿不到更新信息，只读到旧清单（本地 %1$s、清单 %2$s）。这个号是发行版号，判断不了新旧；要更新直接点下面的按钮。</string>
-    <string name="env_latest_release">最新版本：%1$s（App 内暂时装不了，可点「去下载」手动获取）</string>
-    <string name="env_repo_unparsable">仓库结构变化，无法解析版本</string>
-    <string name="env_check_failed">检查失败（网络不可达）：%1$s</string>
-    <string name="env_install_local">用本地缓存包，不联网</string>
-    <string name="env_install_online">联网下载</string>
-    <string name="env_install_last">上一次安装：%1$s</string>
-    <string name="env_install_last_failed">上一次安装失败：%1$s</string>
-    <string name="env_retry_install">重试安装</string>
-    <string name="env_manifest_line">Agent 清单：%1$s（进主页时自动刷新，不用等 App 更新）</string>
-    <string name="env_manifest_refreshing">正在刷新 Agent 清单…</string>
-    <string name="env_manifest_updated">Agent 清单已更新</string>
-    <string name="env_manifest_failed">刷新失败（沿用现有清单）</string>
-    <string name="env_manifest_refresh_btn">立即刷新 Agent 清单</string>
-    <string name="env_memlimit_card">运行内存上限</string>
-    <string name="env_memlimit_off">关闭</string>
-    <string name="env_memlimit_toast_off">已关闭，下次启动会话生效</string>
-    <string name="env_memlimit_toast">已设为 %1$s，下次启动会话生效</string>
-    <string name="env_update_dialog_title">环境更新</string>
-    <string name="env_preparing">正在准备安装包：%1$s</string>
-    <string name="env_unpacking_long">正在解压（没有详细进度，约 30 秒到几分钟）…</string>
-    <string name="env_unpacking_here">正在解压（没有详细进度，请留在本页）…</string>
-    <string name="env_update_start_download">检查环境更新：开始下载新版本</string>
-    <string name="env_patch_downloading">正在下载更新补丁（%1$s）…</string>
-    <string name="env_patch_progress">更新补丁下载中 %1$d%%（%2$d/%3$d MB）</string>
-    <string name="env_patch_meta_missing">补丁元数据缺失或不可读</string>
-    <string name="env_patch_done">小更新完成（这次只下了 %1$s，没有重下完整包）</string>
-    <string name="env_patch_fallback">小更新失败（%1$s），已改为完整下载；</string>
-    <string name="env_full_downloading">正在下载环境包 %1$d%%（%2$d/%3$d MB，可以离开本页）</string>
-    <string name="env_update_failed">更新失败：%1$s</string>
-    <string name="env_install_download_btn">下载并安装</string>
 
     <!-- ── 存储与缓存页 ── -->
-    <string name="storage_usage_title">存储占用</string>
-    <string name="storage_row_home">home（登录态与配置）</string>
-    <string name="storage_row_cache">cache（下载缓存）</string>
-    <string name="storage_tag_removable">可清</string>
-    <string name="storage_tag_keep">保留</string>
-    <string name="storage_opt_btn">清理不常用的附加工具（%1$d MB）</string>
-    <string name="storage_opt_title">清理不常用的附加工具？</string>
-    <string name="storage_opt_free">可释放约 %1$d MB。</string>
-    <string name="storage_opt_browser">浏览器工具（agent-browser / chromium）不在删除范围内——有它 hermes 才能开网页，保留。</string>
-    <string name="storage_opt_ffmpeg">ffmpeg 也不在这里面：它是 hermes 的必需包，清掉之后它每次启动都会报 install out of sync（系统层自带的那份它不认）。</string>
-    <string name="storage_opt_keeps">不会删除：python / node / uv / npm / ripgrep 这些核心运行时、依赖环境、记忆、hermes 本体、系统文件、任何用户数据。</string>
-    <plurals name="storage_opt_deleted">
-        <item quantity="other">已删除 %1$d 项，释放 %2$d MB</item>
-    </plurals>
-    <string name="storage_opt_none">没有可清理的可选工具</string>
-    <string name="storage_script_btn">清理安装时下载的脚本（下次安装会重新下载）</string>
-    <string name="storage_script_title">清理安装时下载的脚本？</string>
-    <string name="storage_script_desc2">脚本只有几十 KB——这一步不是为了腾地方，而是让下次安装重新下载一份干净的（重装被同一个失败卡住时，先点这里）。</string>
-    <string name="storage_script_keeps">不会删：装好的 Agent 本体与工具链、日志、资料库。</string>
-    <plurals name="storage_script_cleared">
-        <item quantity="other">已清 %1$d 个脚本缓存文件（释放 %2$d MB），下次安装会重新下载</item>
-    </plurals>
-    <string name="storage_script_none">没有脚本缓存可清</string>
-    <string name="storage_cache_title">缓存清理</string>
-    <string name="storage_temp_btn">清理临时文件（%1$d MB）</string>
-    <string name="storage_temp_none">没有临时文件可清</string>
-    <string name="storage_temp_title">清理临时文件？</string>
-    <string name="storage_freed">已释放 %1$d MB</string>
-    <string name="storage_temp_cleaned_none">没有可清理的临时文件</string>
-    <string name="storage_agent_btn">清理装工具时留下的下载缓存（%1$d MB）</string>
-    <string name="storage_agent_btn_bare">清理装工具时留下的下载缓存</string>
-    <string name="storage_agent_title">清理装工具时留下的下载缓存？</string>
-    <string name="storage_agent_desc">将删除下面这些能重新下载 / 重新生成的缓存：</string>
-    <string name="storage_agent_empty">（这次没量到可清理的缓存）</string>
-    <string name="storage_agent_item">· %1$s — %2$d MB</string>
-    <string name="storage_agent_keeps">不会删除：装好的 Agent 本体与工具链（hermes/tools、Python/Node）、依赖环境与记忆、配置文件、系统文件，以及你自己的文件。下次需要时这些缓存会自己重新下载。</string>
-    <string name="storage_agent_cleaned_none">没有可清理的 Agent 缓存</string>
-    <string name="storage_gen_btn">清理升级前的旧 Python 环境（%1$d MB）</string>
-    <string name="storage_gen_title">清理升级前的旧 Python 环境？</string>
-    <string name="storage_gen_free">可释放约 %1$d MB。</string>
-    <string name="storage_gen_desc">每次重装依赖环境都会留下一份旧的（几百 MB），而记录只认得最新那份——这里删的就是没人再用的那些。正在用的和最新的都会留着。</string>
-    <string name="storage_gen_keeps">不会删：正在用的依赖环境、记忆、装好的工具链、系统文件。需要回到旧版时 hermes 会重装（要联网）。</string>
-    <plurals name="storage_gen_deleted">
-        <item quantity="other">已删除 %1$d 份，释放 %2$d MB</item>
-    </plurals>
-    <string name="storage_gen_none">没有可清理的旧依赖文件</string>
-    <string name="storage_installer_title">安装包缓存</string>
-    <string name="storage_installer_dir">目录：%1$s</string>
-    <plurals name="storage_installer_count">
-        <item quantity="other">已缓存 %1$d 个安装包（当前环境：%2$s）</item>
-    </plurals>
-    <string name="storage_installer_item">· %1$s（%2$d MB）</string>
-    <plurals name="storage_installer_cleaned">
-        <item quantity="other">已清理 %1$d 个旧版本文件</item>
-    </plurals>
-    <string name="storage_installer_clean_btn">清理旧版本缓存（保留当前版本）</string>
-    <string name="storage_installer_clean_title">永久删除旧版本安装包？</string>
-    <string name="storage_installer_clean_desc">这会永久删除除当前版本外的全部安装包缓存（含没下完的残片），只保留当前版本。</string>
-    <string name="storage_installer_clean_warn">删了就找不回来了，没有回收站，也不能撤销；以后要回退到这些版本只能重新下载。</string>
-    <string name="storage_rollback_list">能回到的旧版本（只留最近 2 个安装包）</string>
-    <string name="storage_rollback_to">回退到 %1$s</string>
-    <string name="storage_rollback_title">回退环境版本</string>
-    <string name="storage_rollback_desc">会用 %1$s 重装系统文件（约几分钟）。登录状态和工作区都会保留。</string>
-    <string name="storage_rollback_start">回退环境：用本地安装包 %1$s 重装（不联网）</string>
-    <string name="storage_unpacking">正在解压（没有详细进度，请留在本页或看通知栏）…</string>
-    <string name="storage_rollback_failed">回退失败：%1$s</string>
-    <string name="storage_rollback_btn">回退</string>
 
     <!-- ── 帮助页 ── -->
     <string name="help_guide_title">新手指南</string>
@@ -500,13 +220,6 @@
     <!-- ── 环境体检（EnvHealth：标签与各项结论）── -->
 
     <!-- ── 网络自检（NetSelfCheck：两条探针的人话结论）── -->
-    <string name="net_ok_both">✅ 网络可用（%1$dms）· ✅ 更新源可达（%2$dms）</string>
-    <string name="net_ok_index_down">✅ 网络可用（%1$dms）· ⚠️ 更新源不可达：下载环境包与「检查环境更新」都会失败。若在代理下，请到代理 App 的「分应用代理」里勾选证道</string>
-    <string name="net_cn_down_index_ok">⚠️ 国内镜像不通（%1$s），但更新源可达（%2$dms）</string>
-    <string name="net_all_down">❌ 不通：%1$s——检查网络，或在代理 App 的分应用代理里勾选证道</string>
-    <string name="net_timeout">超时</string>
-    <string name="net_timeout_secs">超时 %1$ds</string>
-    <string name="net_index_unreachable">索引不可达</string>
 
     <!-- ── 异常人话映射（HumanizeError）── -->
     <string name="err_no_permission">没有权限</string>
@@ -540,9 +253,6 @@
     <string name="sys_root">Root: %1$s</string>
     <string name="sys_gms_line">GMS: %1$s</string>
     <string name="sys_webview">WebView: %1$s</string>
-    <string name="sys_section_zd">── 证道环境 ──</string>
-    <string name="sys_distro">发行版: %1$s</string>
-    <string name="sys_agents">已装 Agent: %1$s</string>
     <string name="sys_python_line">Python: %1$s</string>
     <string name="sys_node_line">Node: %1$s</string>
     <string name="sys_uv_line">uv: %1$s</string>
@@ -553,7 +263,6 @@
     <string name="sys_gms_no">无 GMS</string>
     <string name="sys_installed">已安装</string>
     <string name="sys_not_installed">未安装</string>
-    <string name="sys_none">无</string>
     <string name="sys_uv_embedded">%1$s（hermes 内嵌）</string>
 
     <!-- ── 抱朴 OpenCode（OcManager：启动 / 安装 / 更新）──
@@ -641,7 +350,6 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
 注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。
 抱朴（内置运行时）不接这条桥，它的浏览器能力由自身插件提供。</string>
     <!-- ── 抱朴页占位（2026-10-16 旧抱朴线清场；真实页面归抱朴线刀 1）── -->
-    <string name="home_baopu_retired">旧抱朴（内置 OpenCode）已经下线了 —— 它在 Android 16 上起不来，代码已清出仓库。新抱朴正在重做，做好后回来。</string>
     <!-- ── 抱朴页（刀 1 · 2026-10-16；键一律 baopu_ 前缀）── -->
     <string name="baopu_input_hint">说说要做什么…</string>
     <string name="baopu_send">发送</string>
