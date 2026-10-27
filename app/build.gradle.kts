@@ -321,6 +321,14 @@ android {
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
         versionCode = 39
+        // 2026-10-27：桌面名分版（用户：「debug 包叫开发版/预览版，正式版还是正式版，
+        // 这样我能分清手机上装的是哪个版本」「预览版也有版本号那种」）。
+        // 做法：manifest 的 android:label 用占位符 ${appLabel}——
+        //   · 默认（release/正式版）→ 仍走 @string/app_name，中英各一份，不破坏本地化；
+        //   · debug（开发版）→ 直接在桌面名里带版本号与短 sha，装两个包也能一眼分清。
+        // 为什么不改 string 资源：资源不能插版本号；为什么不加 resValue：会与 main 的 app_name 撞名。
+        manifestPlaceholders["appLabel"] = "@string/app_name"
+
         versionName = appVersionName
         // 2026-10-23：构建指纹（只进 BuildConfig，不进日志/上报）。
         // 为什么需要：同一天多次构建 versionName 全是 2.2.0，用户在手机上无法分辨装的是哪一版
@@ -377,6 +385,13 @@ android {
     }
 
     buildTypes {
+        // 2026-10-27：开发版桌面名带版本号（用户：「预览版也有版本号那种」）——
+        // 桌面上直接显示 `证道·开发版 v2.2.1 (a1b2c3d4)`；正式版不受影响（走 @string/app_name）。
+        debug {
+            manifestPlaceholders["appLabel"] =
+                "证道·开发版 v$appVersionName (" +
+                    (System.getenv("GITHUB_SHA")?.take(8) ?: "local") + ")"
+        }
         release {
             optimization {
                 enable = true

@@ -87,7 +87,25 @@ jobs:
       - name: 安装 NDK（版本由 app/build.gradle.kts 决定）
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          # 2026-10-27：runner 上偶发「Error reading Zip content from a SeekableByteChannel」——
+          # NDK 包下载/解压损坏，随后 lint/编译全挂（CI 红在 lint 那步，根因却在这里）。
+          # 做法：最多重试 5 次，每次先清掉半成品；最后仍失败才红，并打印目录状态供排查。
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null 2>&1 \
+               && [ -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties" ]; then
+              echo "NDK $NDK_VERSION 就绪（第 $attempt 次尝试）"
+              ok=1; break
+            fi
+            echo "::warning title=NDK 下载失败::第 $attempt 次：清掉半成品后重试"
+            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION" || true
+            sleep $((attempt * 5))
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error title=NDK 装不上::5 次重试后仍缺 source.properties（runner 网络/缓存问题，重跑一次通常就好）"
+            ls -la "$ANDROID_HOME/ndk" || true
+            exit 1
+          fi
 
       # E-048：入库的 libzhengdao_core.so 是**人工** cargo build + llvm-strip 后拷进来的，
       # 两条 workflow 都不构建它；而 16KB 对齐漏掉、JNI 入口被 strip 掉都不会编译失败，

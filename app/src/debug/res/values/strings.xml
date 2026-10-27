@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  2026-10-27：debug 包的桌面名改成「证道·开发版」（用户：「debug 包叫开发版或预览版，正式版还是正式版，
+  这样我能分清手机上装的是哪个版本」）。
+  实现方式：**只覆盖 app_name 一个键**，走 debug source set 的资源合并；main 里的资源一个字节不动，
+  release 包（正式版）仍然是「证道」。
+  为什么不改 build.gradle 的 resValue / manifestPlaceholders：那要动构建脚本，还得给 flavor 加字段；
+  这里一个 xml 就够，且只影响 debug。
+-->
+<resources>
+    <string name="app_name">证道·开发版</string>
+</resources>
