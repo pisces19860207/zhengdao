@@ -81,7 +81,8 @@ CARGO_LOCK = "rust/Cargo.lock"
 CARGO_CONFIG = "rust/.cargo/config.toml"
 GRADLE_FILE = "app/build.gradle.kts"
 # 第二百四十一批：NDK 版本随伪终端 JNI 一起搬进 :terminal-core（"哪个模块在编 C"就是真源）。
-GRADLE_CANDIDATES = ("terminal-core/build.gradle.kts", "app/build.gradle.kts")
+# 2026-10-27（第四刀后）：终端模块已搬出主仓；NDK 版本现在只有 :native-core 需要
+GRADLE_CANDIDATES = ("native-core/build.gradle.kts", "terminal-core/build.gradle.kts", "app/build.gradle.kts")
 PAGE_16K = 0x4000
 
 # ABI 目录名 → Rust target triple。新增 ABI 必须同时在这里登记，否则 target_triple 写 null。

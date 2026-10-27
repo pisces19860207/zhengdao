@@ -22,6 +22,10 @@ android {
         version = release(37)
     }
 
+    // 本模块不编 C/C++，但 .so 是 NDK r27.2 编出来的：保留这一行作为**单一真源**
+    // （tools/check-so-provenance.py 与 check-native-so.py 都从这里读，删了会 fail-closed 判红）
+    ndkVersion = "27.2.12479018"
+
     defaultConfig {
         // 与 :app / :core / :terminal-core 同一条线（minSdk 36）
         minSdk = 36
