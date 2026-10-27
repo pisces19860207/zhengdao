@@ -9,6 +9,8 @@
 //   ① 样本闸：观察不足 5 次，`learnedAdjustment` 返回 null，个人化阈值完全不生效；
 //   ② 漂移闸：30 天半衰期，置信度衰减到 0.30 以下自动回默认；
 //   ③ 保守闸：阈值只能在默认值 ±1 档内浮动，越界夹回边界并可由 `outOfRangeFields()` 记 `familiarity_bad`。
+//   ④ 序关系不变量：`loopBudget > patienceBudget`、`angerAt > patienceBudget`；不满足时按额度 +1 生效，
+//      用户原值不动，由 `outOfRangeFields()` 报出来。
 //
 // 手工设置与「学出来的」分开：用户自己改的阈值走 `clamped()/effective()`，立即生效；
 // 样本闸只管 `learnedAdjustment()`。两者都不改事实标准、不改权限（本文件没有任何权限 API）。
@@ -30,12 +32,17 @@ internal data class PatienceProfile(
     val observations: Int = 0,
     val updatedAt: Long = 0L,
 ) {
-    /** 保守闸：每项只能在默认值 ±1 档内；`loopBudget` 还要比 `patienceBudget` 至少多 1。 */
+    /**
+     * 保守闸：每项只能在默认值 ±1 档内；`loopBudget` 还要比 `patienceBudget` 至少多 1。
+     * `angerAt` 另要晚于 `patienceBudget`（换挡点≠发火点）：不满足时按 `pb + 1` 生效，
+     * **用户原值不动**——原值仍留在对象里，由 `outOfRangeFields()` 报出来。
+     */
     fun clamped(): PatienceProfile {
         val pb = patienceBudget.coerceIn(MIN_PATIENCE_BUDGET, MAX_PATIENCE_BUDGET)
+        val anger = angerAt.coerceIn(MIN_ANGER_AT, MAX_ANGER_AT)
         return copy(
             patienceBudget = pb,
-            angerAt = angerAt.coerceIn(MIN_ANGER_AT, MAX_ANGER_AT),
+            angerAt = if (angerTooEarly(pb, anger)) pb + 1 else anger,
             loopBudget = loopBudget.coerceIn(maxOf(pb + 1, MIN_LOOP_BUDGET), MAX_LOOP_BUDGET),
             askTolerance = askTolerance.coerceIn(MIN_ASK_TOLERANCE, MAX_ASK_TOLERANCE),
         )
@@ -44,10 +51,16 @@ internal data class PatienceProfile(
     /** 越界字段清单：非空 ⇒ 调用方记一条 `familiarity_bad`（只记字段名，不记数值）。 */
     fun outOfRangeFields(): List<String> = buildList {
         if (patienceBudget !in MIN_PATIENCE_BUDGET..MAX_PATIENCE_BUDGET) add("patienceBudget")
-        if (angerAt !in MIN_ANGER_AT..MAX_ANGER_AT) add("angerAt")
+        if (angerAt !in MIN_ANGER_AT..MAX_ANGER_AT || angerTooEarly(patienceBudget, angerAt)) add("angerAt")
         if (loopBudget !in MIN_LOOP_BUDGET..MAX_LOOP_BUDGET || loopBudget <= patienceBudget) add("loopBudget")
         if (askTolerance !in MIN_ASK_TOLERANCE..MAX_ASK_TOLERANCE) add("askTolerance")
     }
+
+    /**
+     * 换挡点不晚于发火点 ⇒ 两档并成一档，语义打架。
+     * 钳位与留痕必须共用这一条；两处各写一套就会出现「夹了不报」或「报了没夹」。
+     */
+    private fun angerTooEarly(patienceBudget: Int, angerAt: Int): Boolean = angerAt <= patienceBudget
 
     /** 样本量换算的置信度（已含半衰期漂移）。 */
     fun familiarity(now: Long = 0L): Familiarity {
