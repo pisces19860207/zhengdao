@@ -69,18 +69,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.core.kb.KnowledgeBase
 import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.PatchRef
-import com.example.zhengdao.rootfs.RootfsCache
-import com.example.zhengdao.rootfs.RootfsDelta
-import com.example.zhengdao.rootfs.RootfsDownloader
-import com.example.zhengdao.rootfs.RootfsIndex
-import com.example.zhengdao.rootfs.RootfsIndexFetcher
-import com.example.zhengdao.rootfs.RootfsInstaller
-import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
-import com.example.zhengdao.terminal.Workspace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -97,7 +85,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.core.view.WindowCompat
-import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.theme.ZhengdaoTheme
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
@@ -135,16 +122,19 @@ object Settings {
  * 复刻一份 —— 卡片里的调用点一个字没改。
  */
 internal fun openTerminal(context: android.content.Context, autocmd: String?, agentId: String?) {
-    context.startActivity(
-        android.content.Intent(context, com.example.zhengdao.TerminalActivity::class.java).apply {
-            putExtra("autocmd", autocmd)
-            putExtra("agent_id", agentId)
-            addFlags(
-                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
-        }
-    )
+    // 第二百四十八批（第四刀）：终端整仓搬走，本仓不再有 TerminalActivity。
+    // 这里改成"按包名拉起「证道终端」"，没装就说清去哪装（与 MainActivity 的入口同一行为）。
+    val pkg = "com.example.zhengdao.term"
+    val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+    if (launch != null) {
+        runCatching { context.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    } else {
+        android.widget.Toast.makeText(
+            context,
+            "还没装「证道终端」——到 github.com/pisces19860207/zhengdao-term 的 Releases 下载",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
 }
 
 /**

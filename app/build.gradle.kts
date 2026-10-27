@@ -535,10 +535,8 @@ dependencies {
     // 方向单向 —— :app → :terminal-core → :core；终端页/设置页仍在 :app，只是改成向下依赖。
     // Rust 核（Ed25519 清单校验 / dirSize / 解压验签）与终端无关，单独成模块：
     implementation(project(":native-core"))
-    implementation(project(":terminal-core"))
     // 单测也要直接引用 :core 的类（internal 之外的公开面），显式声明不依赖"恰好能看见"。
     testImplementation(project(":core"))
-    testImplementation(project(":terminal-core"))
     // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
     add("detektCli", libs.detekt.cli)
     // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd
@@ -619,46 +617,9 @@ dependencies {
 // ─────────────────────────────────────────────────────────────────────────────
 val expectedAgentPubKeyB64 = "LW7JtVXGiZGrFBFl8x1wlyPBtBez7tNNWzz4AhSI54Q="
 
-val assertAgentPublicKey = tasks.register("assertAgentPublicKey") {
-    description = "构建期断言 AgentManifest.PUBLIC_KEY_B64（manifest 验签信任根）"
-    group = "verification"
-    val manifestKt = layout.projectDirectory.file(
-        "src/main/java/com/example/zhengdao/ui/AgentManifest.kt"
-    )
-    val expected = expectedAgentPubKeyB64
-    inputs.file(manifestKt).withPropertyName("agentManifestKt")
-    // 断言极廉价（读一个小文件 + 正则），不做增量跳过——免得「跳过」看起来像「通过」。
-    outputs.upToDateWhen { false }
-    doLast {
-        val src = manifestKt.asFile
-        if (!src.isFile) error("[assertAgentPublicKey] 找不到 $src —— 公钥是验签信任根，不可缺失")
-        val text = src.readText(Charsets.UTF_8)
-        val m = Regex("""PUBLIC_KEY_B64\s*=\s*"([^"]*)"""").find(text)
-            ?: error("[assertAgentPublicKey] AgentManifest.kt 里找不到 PUBLIC_KEY_B64 赋值")
-        val actual = m.groupValues[1]
-        check(actual.isNotBlank()) { "[assertAgentPublicKey] PUBLIC_KEY_B64 为空" }
-        check(!Regex("(?i)xxx|todo|placeholder|replace|changeme|占位").containsMatchIn(actual)) {
-            "[assertAgentPublicKey] PUBLIC_KEY_B64 仍是占位符：$actual"
-        }
-        val raw = Base64.getDecoder().decode(actual)
-        check(raw.size == 32) {
-            "[assertAgentPublicKey] PUBLIC_KEY_B64 解码后应为 32 字节（Ed25519 raw 公钥），实际 ${raw.size}"
-        }
-        check(actual == expected) {
-            "[assertAgentPublicKey] PUBLIC_KEY_B64 与构建期固化值不一致，构建中止。\n" +
-                "  构建期固化: $expected\n" +
-                "  源码实际值: $actual\n" +
-                "  若确为有意轮换：请同步更新 app/build.gradle.kts 的 expectedAgentPubKeyB64、" +
-                "AgentManifest.kt 的公钥、以及 tools/sign-agents-manifest.py 配套的私钥。"
-        }
-        logger.lifecycle("[assertAgentPublicKey] OK：公钥已固化（${actual.take(8)}…，32 字节）")
-    }
-}
-
-// 挂到所有变体的编译前置：assembleDebug / assembleRelease / bundle* 都绕不过去。
-tasks.matching { it.name.matches(Regex("pre[A-Z].*Build")) }.configureEach {
-    dependsOn(assertAgentPublicKey)
-}
+// 第二百四十八批（第四刀）：`assertAgentPublicKey` 随 AgentManifest 一起搬到 zhengdao-term。
+// 它校验的是「Agent 清单验签公钥」，属于终端侧（agent 装在终端的 rootfs 里）；
+// 主仓不再有清单、也就没有这条信任根要固化。新仓若要恢复，把这 40 行连同 expectedAgentPubKeyB64 搬过去。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 许可证正文装配（2026-10-11；同日随「第一方代码换许可」调整）：仓库根 licenses/*.txt + 根 LICENSE → assets/licenses/

@@ -20,7 +20,7 @@
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.agent.DeletePathTool
-import com.example.zhengdao.rootfs.PathGuard
+import com.example.zhengdao.core.PathGuard
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

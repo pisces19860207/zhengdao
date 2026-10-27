@@ -62,19 +62,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.KeepaliveArchive
-import com.example.zhengdao.rootfs.PatchRef
-import com.example.zhengdao.rootfs.RootfsCache
-import com.example.zhengdao.rootfs.RootfsDelta
-import com.example.zhengdao.rootfs.RootfsDownloader
-import com.example.zhengdao.rootfs.RootfsIndex
-import com.example.zhengdao.rootfs.RootfsIndexFetcher
-import com.example.zhengdao.rootfs.RootfsInstaller
-import com.example.zhengdao.rootfs.RootfsMarker
-import com.example.zhengdao.terminal.CacheCleaner
-import com.example.zhengdao.terminal.HermesEnv
-import com.example.zhengdao.terminal.TerminalPrefs
-import com.example.zhengdao.terminal.Workspace
-import com.example.zhengdao.ui.AppState.rootfsInstalled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -128,12 +115,8 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})",
                 onClick = {
                     versionTaps++
-                    if (versionTaps >= 3) {
-                        versionTaps = 0
-                        ctx.startActivity(
-                            android.content.Intent(ctx, ImeRegressionActivity::class.java),
-                        )
-                    }
+                    // 第二百四十八批：输入法回归页随终端搬走（它测的是 TerminalView 的 IME 桥），
+                    // 主仓不再有那套 View，这个隐藏入口也就没有落点了。
                 },
             )
             Spacer(Modifier.height(4.dp))

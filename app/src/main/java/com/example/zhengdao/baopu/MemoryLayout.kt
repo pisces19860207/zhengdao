@@ -2,10 +2,10 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

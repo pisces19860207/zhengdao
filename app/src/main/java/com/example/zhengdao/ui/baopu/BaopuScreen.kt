@@ -102,16 +102,16 @@ import com.example.zhengdao.baopu.topBarSlot
 import com.example.zhengdao.baopu.usageNoticeBody
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.ui.SettingsDataActivity
+import com.example.zhengdao.ui.SettingsBridgeActivity
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-/** 抽屉入口统一跳「终端与资料」页（工具开关、资料库都在那儿）。 */
+/** 抽屉入口统一跳设置页（第四刀起：终端与资料页随终端搬走，这里落到主设置）。 */
 private fun openSettings(context: Context) {
-    context.startActivity(Intent(context, SettingsDataActivity::class.java))
+    context.startActivity(Intent(context, SettingsBridgeActivity::class.java))
 }
 
 /**

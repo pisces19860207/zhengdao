@@ -17,6 +17,7 @@
 // 与 `terminal/Workspace`、`ProotLauncher.storageGranted` 用的是同一个实现）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.PathGuard
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.BuildConfig

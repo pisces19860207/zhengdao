@@ -10,7 +10,6 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Process
 import com.example.zhengdao.core.RunLog
-import com.example.zhengdao.terminal.SessionService
 import java.io.File
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
@@ -165,8 +164,12 @@ object KeepaliveWatcher {
         " · RSS=${KeepaliveArchive.rssMb(residentPages, 4096)}MB"
     }.getOrDefault("")
 
-    /** 前台保活服务在不在（[SessionService] 自己报的状态，比 getRunningServices 可靠）。 */
-    internal fun sessionServiceRunning(): Boolean = runCatching { SessionService.running }.getOrDefault(false)
+    /**
+     * 终端前台保活服务在不在 —— 第二百四十八批起**恒 false**：SessionService 随终端搬去
+     * zhengdao-term，本进程里没有这个服务了。保留函数是为了不动调用点的形状（它只用于
+     * 日志里那一句"会话服务：在/不在"），调用方按 false 走"不在"分支即可。
+     */
+    internal fun sessionServiceRunning(): Boolean = false
 
     // ── 生命周期 / 内存回调 ──
 

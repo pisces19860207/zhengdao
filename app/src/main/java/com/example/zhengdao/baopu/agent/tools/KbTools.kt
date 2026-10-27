@@ -14,13 +14,13 @@
 //    （房型同 `AskUserTool.sink`／`PlanTool.sink`）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.kb.KbAutoInject
 import com.example.zhengdao.baopu.kb.KbIndexStore
 import com.example.zhengdao.baopu.kb.KbIndexer
 import com.example.zhengdao.baopu.kb.KbRetriever
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

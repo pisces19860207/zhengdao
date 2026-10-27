@@ -5,6 +5,7 @@
 // 判据全在 agent/ 与 baopu/ 的纯函数层。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.PathGuard
 import androidx.core.net.toUri
 
 import android.content.Context
@@ -13,7 +14,6 @@ import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.ArtifactRaster
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
-import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.DeviceTools
 import com.example.zhengdao.baopu.agent.DrawPublish
 import com.example.zhengdao.baopu.agent.GenerateImage
@@ -376,12 +376,8 @@ internal object BaopuRuntime {
                 personaFiles = { personaFiles(appCtx) },
             ),
         )
-        if (provider.builtinFree) {
-            // 第一百一十九批：这两条的 schema 与执行器搬到了 CompatChannelTools
-            // （零依赖 object，JVM 门禁测试才够得着）；这里只剩下「按通道决定注册与否」。
-            reg.register(CompatChannelTools.readSpec(readFileEnabled = reg.isEnabled("read_file")))
-            reg.register(CompatChannelTools.bashSpec())
-        }
+        // 第二百四十八批（第四刀）：免费通道的 read/bash 兼容条目（COMPAT 组）已退役 ——
+        // agent 运行时随终端搬去 zhengdao-term，主仓不再注册这两条。
         // 第一百二十三批：MCP 工具桥接（只搬已连接的 server；**这里绝不联网**）。
         mcpSourceFor(reg, appCtx)
         // 第一百七十批 B：记下引擎真正要用的表（MCP 面板要靠它把工具注册进对的表）。

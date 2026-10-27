@@ -7,12 +7,12 @@
 // 所以「路径守卫、权限级、确认制」这三段和线上同源；假的只有执行器和落点。
 package com.example.zhengdao.baopu.evolution.eval
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.agent.jsonObjectOf
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject

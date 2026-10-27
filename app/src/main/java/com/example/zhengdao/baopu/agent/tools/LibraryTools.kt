@@ -16,11 +16,11 @@
 //    App 私有原件在工作区外，PathGuard 天然挡住，单测再放哨兵钉死。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.core.TimeFormats
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

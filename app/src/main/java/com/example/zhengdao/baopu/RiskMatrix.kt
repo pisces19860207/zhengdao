@@ -321,7 +321,6 @@ internal data class RiskTable(
                 // kb_index 只重建 App 私有索引缓存，不碰用户文件（派工单「只读部分」口径）
                 "kb_index" to ToolRule(RiskClass.R0),
                 // 免费通道的 read 是 read_file 的别名
-                "read" to ToolRule(RiskClass.R0),
 
                 // ── R1 写证道内 ───────────────────────────────────────────────
                 "write_file" to ToolRule(

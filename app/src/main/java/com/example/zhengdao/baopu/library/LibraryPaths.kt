@@ -4,11 +4,11 @@
 // 路径边界判定复用 `rootfs/PathGuard.kt`（组件级比较，防同前缀兄弟目录）。
 package com.example.zhengdao.baopu.library
 
+import com.example.zhengdao.core.PathGuard
 import android.content.Context
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.core.ZhengdaoDirs
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

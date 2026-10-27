@@ -5,6 +5,7 @@
 // （路径越界终止本轮；工具超时可重试×1）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.BaopuGuardCore
 import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionDraft
@@ -17,7 +18,6 @@ import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.core.RunLog
-import com.example.zhengdao.rootfs.PathGuard
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Callable

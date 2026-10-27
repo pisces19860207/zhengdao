@@ -50,8 +50,6 @@ import androidx.compose.ui.res.stringResource
 import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.R
 import com.example.zhengdao.core.kb.KnowledgeBase
-import com.example.zhengdao.terminal.Workspace
-import com.example.zhengdao.ui.AppState.rootfsInstalled
 import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
 import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
@@ -86,22 +84,9 @@ fun SettingsScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> },
 ) {
     val ctx = LocalContext.current
-    var storageTick by remember { mutableIntStateOf(0) }
-    // 2026-10-12 无感化（走查报告 §5.5）：打开即显上次实测值，量完后就地覆盖——
-    // 不再先显示「统计中…」再让三个数字一起蹦出来。
-    val lastStorage = remember { LastValues.loadStorageMb(ctx) }
-    var rootfsMb by remember { mutableLongStateOf(lastStorage?.first ?: -1L) }
-    var homeMb by remember { mutableLongStateOf(lastStorage?.second ?: -1L) }
-    var cacheMb by remember { mutableLongStateOf(lastStorage?.third ?: -1L) }
-
-    // 局部函数没有提升：必须先声明再用（否则 remember { } 里的调用会推不出类型）。
-    fun storageGrantedNow(): Boolean =
-        com.example.zhengdao.terminal.ProotLauncher.storageGranted(ctx)
-
     fun manageGranted(): Boolean =
         runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
 
-    var storageOk by remember { mutableStateOf(storageGrantedNow()) }
     var manageOk by remember { mutableStateOf(manageGranted()) }
     var kbEnabled by remember {
         mutableStateOf(com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx))
@@ -123,37 +108,11 @@ fun SettingsScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 manageOk = manageGranted()
-                storageOk = storageGrantedNow()
                 kbEnabled = com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx)
-                storageTick++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(storageTick) {
-        val sizes = withContext(Dispatchers.IO) {
-            Triple(
-                dirSizeMb(File(ctx.filesDir, "rootfs")),
-                dirSizeMb(File(ctx.filesDir, "home")),
-                dirSizeMb(ctx.cacheDir),
-            )
-        }
-        rootfsMb = sizes.first
-        homeMb = sizes.second
-        cacheMb = sizes.third
-        LastValues.saveStorageMb(ctx, sizes.first, sizes.second, sizes.third)
-        kbFiles = withContext(Dispatchers.IO) {
-            runCatching { com.example.zhengdao.core.kb.KnowledgeBase.status(ctx).files }.getOrNull()
-        }
-        // 定时任务表读的是文件 ⇒ 同样不许在主线程；读不出就保持占位，
-        // 真状态在二级页列表里说（这里这一行只是个入口，不是判据的第二份）。
-        schedEnabled = withContext(Dispatchers.IO) {
-            runCatching {
-                com.example.zhengdao.schedule.ScheduleStore.of(ctx).load().tasks.count { it.enabled }
-            }.getOrNull()
-        }
     }
 
     /** 二级页统一入口。 */
@@ -191,43 +150,11 @@ fun SettingsScreen(
 
             // 2026-10-12 重构（走查报告 §2）：Hub 只做菜单——每行一个去向、状态一律短词。
             // 同日接入 i18n（§5.7）：文案走 strings.xml，切英文时本页整页变英文。
-            SectionCard(stringResource(R.string.settings_group_env)) {
-                SettingRow(
-                    label = stringResource(R.string.settings_env_update),
-                    value = if (AppState.rootfsInstalled(ctx)) {
-                        stringResource(R.string.settings_status_installed)
-                    } else {
-                        stringResource(R.string.settings_status_not_installed)
-                    },
-                ) { open(SettingsEnvActivity::class.java) }
-                SettingsDivider()
-                SettingRow(
-                    label = stringResource(R.string.settings_storage),
-                    value = if (rootfsMb < 0) stringResource(R.string.settings_status_measuring)
-                    else "${rootfsMb + homeMb + cacheMb} MB",
-                ) { open(SettingsStorageActivity::class.java) }
-            }
-
-            SectionCard(stringResource(R.string.settings_group_terminal)) {
-                // 权限不再单占一行：待处理时由本行状态直接说出来，权限卡在二级页内。
-                SettingRow(
-                    label = stringResource(R.string.settings_terminal_workspace),
-                    value = if (storageOk && manageOk) Workspace.hostDir(ctx).name
-                    else stringResource(R.string.settings_status_perm_pending),
-                    // P2-11：待处理状态是文字，走 zhengdaoErrorText()（error 色 3.55:1 不达 AA）
-                    valueColor = if (storageOk && manageOk) Color.Unspecified else zhengdaoErrorText(),
-                ) { open(SettingsDataActivity::class.java) }
-                SettingsDivider()
-                SettingRow(
-                    label = stringResource(R.string.settings_knowledge_base),
-                    value = when {
-                        !kbEnabled -> stringResource(R.string.settings_status_disabled)
-                        (kbFiles ?: 0) > 0 ->
-                            pluralStringResource(R.plurals.settings_status_file_count, kbFiles ?: 0, kbFiles ?: 0)
-                        else -> stringResource(R.string.settings_status_enabled)
-                    },
-                ) { open(SettingsDataActivity::class.java) }
-            }
+            // 第二百四十八批（第四刀）：**「环境」与「终端与资料」两节随终端一起退役**。
+            // 它们原来指向 SettingsEnvActivity（装/更环境）、SettingsStorageActivity（rootfs 体积）、
+            // SettingsDataActivity（终端数据/工作区），三页都搬去 zhengdao-term 了。
+            // 主仓设置现在只剩：权限 / 后台保活 / 浏览器桥 / 定时任务 / 界面 / 关于。
+            // （工作区与资料库的入口留给第七步「设置瘦身」重建一个不依赖 rootfs 的版本。）
 
             SectionCard(stringResource(R.string.settings_group_background)) {
                 SettingRow(

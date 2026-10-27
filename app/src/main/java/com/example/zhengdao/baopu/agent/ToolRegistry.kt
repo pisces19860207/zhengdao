@@ -130,11 +130,17 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
     LOGISTICS("logistics", "物流查询：查当日发货表（方向/车牌/单号/件数/装没装），只读"),
 
     /**
-     * 免费通道的兼容占位（read / bash）：由通道决定注册与否，用户管不着、设置页也不列它们。
-     * 注册了就**必须**默认可见（否则免费档 403），见 [ToolGroup.DEFAULT_VISIBLE] 的说明。
+     * **墓碑（第二百四十八批，第四刀）**：免费通道的 `read` / `bash` 兼容条目已退役。
+     *
+     * 为什么枚举值还留着、而不是整条删掉：`policy/Policy.kt`、`CapabilitiesTool`、
+     * `ToolFallback`、`BaopuSettingsRules` 都在按"组"做可见性/文案判断，删枚举值等于
+     * 让它们全部改签名（本刀是搬家，不是重构）。保留一个**没有任何工具归属**的空组，
+     * 语义上等于"这个组存在但永远为空"，与"删掉"对用户可见的效果一致。
+     *
+     * 判据（门禁 `CompatToolsRetiredTest`）钉的是：**没有工具属于这个组**、且
+     * `BaopuRuntime` 不再注册 `read` / `bash` 两条。
      */
-    COMPAT("compat", "免费通道占位：read / bash 两个兼容条目（由通道决定，没有开关）"),
-
+    COMPAT("compat", "已退役：原免费通道占位（read / bash），本组不再有任何工具"),
     ;
 
     companion object {
@@ -197,7 +203,9 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
 internal object ToolGroupTable {
 
     /** 由装配层（BaopuRuntime）单独注册的名字——注释里写明为什么它们不在 ENTRIES。 */
-    val RUNTIME_REGISTERED: Set<String> = setOf("write_skill", "append_persona", "read", "bash")
+    // 第二百四十八批（第四刀）：`read` / `bash` 已随 COMPAT 组退役（见 ToolGroup.COMPAT 的墓碑注释），
+    // 这里同步去掉 —— 否则下面的 checkCoverage() 会判"分组表缺条目"、类初始化直接抛，整个 agent 起不来。
+    val RUNTIME_REGISTERED: Set<String> = setOf("write_skill", "append_persona")
 
     val GROUP_OF: Map<String, ToolGroup> = mapOf(
         // ── CORE：§6 点名的最小闭环（读 / 列 / 搜 / 问人 / 计划 / 浏览器读页）＋ capabilities 本体
@@ -273,8 +281,6 @@ internal object ToolGroupTable {
         // 第一百九十五批：查询只读工具（LOGISTICS 组，默认不可见，capabilities 解锁）。
         // 不进 CORE ⇒ 默认可见 12 条的硬卡不破。
         "logistics_query" to ToolGroup.LOGISTICS,
-        "read" to ToolGroup.COMPAT,
-        "bash" to ToolGroup.COMPAT,
         // ── 第二百一十八批：工具补齐 v1（六件；四档档位在各 spec 的 riskTier，
         //    等 219 合入对上。默认全部不可见——B1 的「默认可见 ≤12」硬卡不许破。）
         "sheet_read" to ToolGroup.DATA,       // R0 只读

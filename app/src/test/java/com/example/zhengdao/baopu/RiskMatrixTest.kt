@@ -7,7 +7,6 @@ package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.agent.AppendPersonaTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
-import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.InMemoryToolPrefs
 import com.example.zhengdao.baopu.agent.SkillTools
 import com.example.zhengdao.baopu.agent.ToolCall
@@ -36,15 +35,14 @@ class RiskMatrixTest {
     @Test
     fun `注册表69个工具_每个都有档或显式豁免`() {
         val names = newRegistry().names()
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 69, names.size)
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 67, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),
             RiskMatrix.uncovered(names),
         )
-        // 只有 bash 允许 baseOf=null：它是显式豁免（终端不参与分级）
-        assertEquals(listOf("bash"), names.filter { RiskMatrix.baseOf(it) == null })
-        assertTrue("bash 必须是显式豁免，不能靠 fail-closed 兜", RiskMatrix.isExempt("bash"))
+        // 第二百四十八批：read / bash（COMPAT 组）退役后，不再有"显式豁免 baseOf=null"的工具；
+        // 保留一条反向断言，防止有人拿豁免当后门。
         assertFalse("普通工具不得冒充豁免", RiskMatrix.isExempt("write_file"))
     }
 
@@ -345,20 +343,8 @@ class RiskMatrixTest {
         assertFalse("未分类绝不能被当 R0 放行", v.risk == RiskClass.R0)
     }
 
-    @Test
-    fun `bash不归本表_read是R0`() {
-        assertNull("bash 不能在四档里", RiskMatrix.baseOf("bash"))
-        assertTrue(RiskMatrix.isExempt("bash"))
-        val bash = verdict("bash", mapOf("command" to "rm -rf /"))
-        assertEquals(RiskDecision.EXEMPT, bash.decision)
-        assertNull("豁免项没有风险档", bash.risk)
-        assertEquals("豁免项没有主判据", RiskCode.NONE, bash.reasonCode)
-        assertFalse(bash.hardDeny)
-        assertEquals(5, bash.matrixVersion)
-
-        assertEquals(RiskClass.R0, RiskMatrix.baseOf("read"))
-        assertEquals(RiskClass.R0, verdict("read", mapOf("path" to "产物/a.md")).risk)
-    }
+    // 第二百四十八批（第四刀）：`bash不归本表_read是R0` 这条随 COMPAT 组（read/bash）退役一起删 ——
+    // 两条工具都不在注册表里了，豁免与 R0 的账没有对象可对。
 
     @Test
     fun `可解释字段_主判据与硬拒标记`() {
@@ -505,8 +491,6 @@ class RiskMatrixTest {
         BaopuToolCatalog.loadInto(reg) { root }
         reg.register(SkillTools.spec(workspaceRoot = { root }, personaFiles = files))
         reg.register(AppendPersonaTool.spec(personaFiles = files))
-        reg.register(CompatChannelTools.readSpec(readFileEnabled = true))
-        reg.register(CompatChannelTools.bashSpec())
         return reg
     }
 
