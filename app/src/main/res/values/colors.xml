@@ -22,7 +22,5 @@
       判据钉在 `app/src/test/java/com/example/zhengdao/ui/theme/ContrastGuardTest.kt`
       （从本文件与布局取值、当场按 WCAG 公式复算），改色会红。
     -->
-    <color name="term_key_active">#FF0F7A0F</color>
-    <color name="term_key_idle">#FF222222</color>
     <color name="ic_launcher_background">#FFF4F4EC</color>
 </resources>

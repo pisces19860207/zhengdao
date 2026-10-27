@@ -327,7 +327,7 @@ android {
         //   · 默认（release/正式版）→ 仍走 @string/app_name，中英各一份，不破坏本地化；
         //   · debug（开发版）→ 直接在桌面名里带版本号与短 sha，装两个包也能一眼分清。
         // 为什么不改 string 资源：资源不能插版本号；为什么不加 resValue：会与 main 的 app_name 撞名。
-        manifestPlaceholders["appLabel"] = "@string/app_name"
+        manifestPlaceholders["appLabel"] = "证道"
 
         versionName = appVersionName
         // 2026-10-23：构建指纹（只进 BuildConfig，不进日志/上报）。

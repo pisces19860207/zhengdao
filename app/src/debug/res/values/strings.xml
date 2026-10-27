@@ -8,5 +8,4 @@
   这里一个 xml 就够，且只影响 debug。
 -->
 <resources>
-    <string name="app_name">证道·开发版</string>
 </resources>

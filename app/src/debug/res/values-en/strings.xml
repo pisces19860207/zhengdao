@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 英文环境下 debug 包的桌面名（与 values/strings.xml 同款，只覆盖 app_name）。 -->
-<resources>
-    <string name="app_name">Zhengdao Dev</string>
-</resources>
