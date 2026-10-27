@@ -541,6 +541,20 @@ dependencies {
     // xz 解压（抱朴 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
     implementation(libs.xz)
 
+    // 第二百五十二批 · 旧版 Excel（.xls / BIFF）只读转换：F9 物流系统的导出只肯出 .xls，
+    // 抱朴的表格通道只认 xlsx / csv / tsv ⇒ 扫到 .xls 先转成 UTF-8 CSV 再走既有 CSV 通道。
+    //
+    // ⚠️ 必须排除 log4j（jxl 的 POM 把它声明成 **compile** 作用域，不排除就会跟着进 APK）：
+    //  · jxl 运行时**一个字节都不用** log4j —— 实测把 jar 里全部 534 个 class 逐个字节扫过，
+    //    没有一处出现 "org/apache"、"log4j"；它自带的 jxl/common/log/SimpleLogger 只往
+    //    System.out / System.err 写（`jxl/common/log/` 下只有 LoggerName 与 SimpleLogger 两个类）。
+    //  · log4j 1.2.14 已 EOL（2015 年起无维护），带着 CVE-2019-17571（反序列化 RCE，critical）
+    //    与 CVE-2021-4104（JMSAppender JNDI，high）。为了一个「用不上」的传递依赖把它打进包，
+    //    等于主动给自己造一个 400KB 的高危面，第四十三批那条供应链口径不允许。
+    implementation(libs.jxl) {
+        exclude(group = "log4j", module = "log4j")
+    }
+
     implementation(libs.androidx.navigation.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -698,6 +712,9 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             "BSD-3-Clause.txt",
             "GPL-2.0.txt",
             "GPL-3.0.txt",
+            // 第二百五十二批：jxl（旧版 .xls 读取）是 LGPL-2.1 —— 与 LGPL-3.0 是**两份不同版本**的正文
+            // （libtalloc 那一份替不了它），必须自己随包一份，否则 LGPL-2.1 第 3 条「随附正文」没履行。
+            "LGPL-2.1.txt",
             "LGPL-3.0.txt",
             "LICENSE-zhengdao.txt",
             "NOTICES.txt",

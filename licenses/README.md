@@ -14,6 +14,7 @@
 | [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | Termux `terminal-emulator` / `terminal-view` / `libtermux`（以及随 APK 分发的 Apache-2.0 Maven 依赖） | <https://www.apache.org/licenses/LICENSE-2.0.txt> | 2026-10-11 | 11,358 | 202 | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
 | [`GPL-2.0.txt`](GPL-2.0.txt) | GNU GPL v2.0 | proot（Termux fork 发行版，`app/src/main/assets/proot/`） | <https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt> | 2026-10-11 | 17,984 | 338 | `edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6` |
 | [`GPL-3.0.txt`](GPL-3.0.txt) | GNU GPL v3.0 | ① 满足 LGPL-3.0 第 2 条「并入 GPL-3.0」的要求（libtalloc）；② **历史版本**（≤ v2.0.15）里本项目自身的许可 —— **自 2026-10-11 起第一方代码改为「保留所有权利」，见仓库根 [`LICENSE`](../LICENSE) 第四节与文末** | 原先放在仓库根 `LICENSE`（2026-10-11 移入本目录，**逐字节未改**：同 35,149 B / 674 行 / 同一 SHA256） | 2026-10-11 | 35,149 | 674 | `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986` |
+| [`LGPL-2.1.txt`](LGPL-2.1.txt) | GNU LGPL v2.1 | jxl（JExcelApi `net.sourceforge.jexcelapi:jxl:2.6.12`，第二百五十二批：旧版 .xls 只读转换；上游 POM 只写「GNU Lesser General Public License」，版本按 Wikipedia/libraries.io 的 LGPL-2.1+ 定） | <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt> | 2026-10-28 | 26,419 | 501 | `20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95` |
 | [`LGPL-3.0.txt`](LGPL-3.0.txt) | GNU LGPL v3.0 | libtalloc（在 proot 进程内动态加载） | <https://www.gnu.org/licenses/lgpl-3.0.txt> | 2026-10-11 | 7,652 | 165 | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` |
 | [`BSD-2-Clause.txt`](BSD-2-Clause.txt) | BSD 2-Clause | zstd-jni（`com.github.luben:zstd-jni:1.5.6-4`，随包 native 库 `lib/arm64-v8a/libzstd-jni-1.5.6-4.so` 600,064 B） | <https://github.com/luben/zstd-jni>（v1.5.6-4 的 `LICENSE` 原样照录） | 2026-10-11 | 1,360 | 26 | `c6a6a8926f2f1732603e4b75779a5f6ce79238eb79bc36dcc5b7feb509bc6cd9` |
 | [`BSD-3-Clause.txt`](BSD-3-Clause.txt) | BSD 3-Clause | libandroid-shmem（在 proot 进程内动态加载） | <https://github.com/termux/libandroid-shmem>（`LICENSE` 原样照录） | 2026-10-11 | 1,529 | 28 | `0dd43abe17196b0224cb0b159819af798cd508a82a21e5870126fff4e899a7eb` |
@@ -60,14 +61,17 @@
   [`BSD-2-Clause.txt`](BSD-2-Clause.txt)、**它编译进去的 zstd 本体的 BSD 3-Clause** 见
   [`BSD-3-Clause-zstd.txt`](BSD-3-Clause-zstd.txt)（这两份都是**本次补的**：同一个 `.so` 里
   有两份版权人不同的 BSD 文本，谁也不能替谁履行）；需要在分发物里复现的归属声明
-  （Apache-2.0 第 4(d) 条）见 [`NOTICES.txt`](NOTICES.txt)。
+  （Apache-2.0 第 4(d) 条）见 [`NOTICES.txt`](NOTICES.txt)；**jxl 的 LGPL-2.1**（第二百五十二批，
+  旧版 `.xls` 只读转换）见 [`LGPL-2.1.txt`](LGPL-2.1.txt)——它是**聚合分发**的 LGPL-2.1 库，
+  第 3 条要求随附正文，而它自己的 jar 里一份许可证文本都没有（实测：`jxl-2.6.12.jar` 内
+  只有 `META-INF/MANIFEST.MF` 与 class/资源），指望构件自带是不成立的（E-105 同款）。
 - 逐组「依赖 → 声明许可证 → 覆盖方式」对照表在仓库根
   [`THIRD-PARTY-LICENSES.md`](../THIRD-PARTY-LICENSES.md) **§8**（含重新生成它的命令与两个坑）。
 - 完整取证与教训：`docs/ERRATA.md` **E-105**。
 
 ### 这几份正文也随 APK 分发（2026-10-11 起）
 
-上表里 `licenses/` 的每一份（**七份**许可证正文 ＋ NOTICE 汇总 ＋ 本 README）＋ 字体 `OFL.txt`，
+上表里 `licenses/` 的每一份（**八份**许可证正文 ＋ NOTICE 汇总 ＋ 本 README）＋ 字体 `OFL.txt`，
 再加上第一方声明 `LICENSE`（随包更名为 `LICENSE-zhengdao.txt`），构建期会被原样复制进 APK 的
 `assets/licenses/`（`app/build.gradle.kts` 的 `stageLicenseAssets` 任务，由 `preDebugBuild` /
 `preReleaseBuild` 拉起来）⇒ **只拿到安装包、不联网的人也能读到全部正文**。应用内入口 = 设置页
@@ -115,8 +119,8 @@ $z.Entries | Where-Object FullName -like 'assets/licenses/*' |
 $z.Dispose()
 ```
 
-期望看到 `assets/licenses/` 下**九份 `.txt`**（Apache-2.0 / BSD-2-Clause / BSD-3-Clause /
-BSD-3-Clause-zstd / GPL-2.0 / GPL-3.0 / LGPL-3.0 / LICENSE-zhengdao.txt / NOTICES）与本 README，
+期望看到 `assets/licenses/` 下**十份 `.txt`**（Apache-2.0 / BSD-2-Clause / BSD-3-Clause /
+BSD-3-Clause-zstd / GPL-2.0 / GPL-3.0 / LGPL-2.1 / LGPL-3.0 / LICENSE-zhengdao.txt / NOTICES）与本 README，
 其中第三方正文的字节数与上表一致；
 `assets/fonts/OFL.txt` 也在包里
 （字体那份按 OFL 惯例与字体同目录）。
@@ -128,8 +132,8 @@ BSD-3-Clause-zstd / GPL-2.0 / GPL-3.0 / LGPL-3.0 / LICENSE-zhengdao.txt / NOTICE
    （来源 URL、取回日期、字节数、行数、SHA256），并回到 `THIRD-PARTY-LICENSES.md` 的对照表加一行、
    **§8 的依赖表加/改组**；同时把文件名补进 `app/build.gradle.kts` 的 `stageLicenseAssets` 断言。
    > 加表行后**必须同步改 `app/src/test/java/com/example/zhengdao/LicenseTextsTest.kt` 里的记录数**
-   > （它断言本文件两张表解析出的正文份数恰好等于实际份数，加一份就要 +1；当前 = **9** =
-   > `licenses/` 八份 ＋ 字体 `OFL.txt`）。
+   > （它断言本文件两张表解析出的正文份数恰好等于实际份数，加一份就要 +1；当前 = **10** =
+   > `licenses/` 九份 ＋ 字体 `OFL.txt`）。
 2. **正文一律取官方原文**，不自行排版、不改换行、不加 BOM（`Apache-2.0.txt` 首行是空行，
    即官方原文形态，保持原样）。
 3. **升级组件版本** ⇒ 复核其许可证是否变更；换正文则同步更新 SHA256。

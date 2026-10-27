@@ -60,6 +60,11 @@ data class TableEntry(
     val size: Long,
     val sheets: List<SheetEntry>,
     val scannedAt: Long,
+    /**
+     * 252：这张表是 `.xls` 转出来的吗？非 null ⇒ 它**不是**登记簿的「原生」集合成员——
+     * 它先进过缓存目录、被转成 CSV 才进得来（派工单 §1①：`.xls` 与 `.xlsx` 不同级）。
+     */
+    val xls: XlsNotice? = null,
 ) {
     /** 默认问哪张 sheet：第一张认得出表头的；都认不出就第一张（让它去问用户）。 */
     val defaultSheet: SheetEntry? get() = sheets.firstOrNull { it.headerRow >= 0 } ?: sheets.firstOrNull()
@@ -117,6 +122,17 @@ class TableRegistry(
 
     val registryFile: File get() = File(home, FILE_NAME)
 
+    /** 252：`.xls` 转出来的 CSV 落在哪（`<工作区>/抱朴记忆/表格/缓存/`）。 */
+    val cacheDir: File get() = File(home, XlsCompat.DIR_CACHE)
+
+    /** 252：有没有 `.xls` 正在转（面板/日志要的「正在转换」可视状态；转换本身不在这里调度）。 */
+    val convertingXls: Boolean get() = XlsProgress.active
+
+    /** 252：上一次刷新里没能转成的一张 `.xls`（rel → 一句给用户的话；**不是异常，是话**）。 */
+    val xlsFailures: Map<String, String> get() = synchronized(this) { LinkedHashMap(xlsFail) }
+
+    private val xlsFail = LinkedHashMap<String, String>()
+
     fun entries(): List<TableEntry> = synchronized(this) { entries.values.toList() }
 
     fun entryOf(rel: String): TableEntry? = synchronized(this) { entries[rel] }
@@ -132,6 +148,7 @@ class TableRegistry(
      */
     fun refresh(now: Long = System.currentTimeMillis()): RefreshReport = synchronized(this) {
         if (entries.isEmpty()) loadFromDisk()
+        xlsFail.clear() // 252：失败账只对**本次刷新**有效（转成功了下次就不该再提）
         val found = discover()
         val next = LinkedHashMap<String, TableEntry>(found.size)
         var parsed = 0
@@ -275,7 +292,7 @@ class TableRegistry(
 
     private fun parseFile(hit: Found, now: Long): TableEntry? {
         parseCount++
-        val sheets = readSheets(hit.file) ?: return TableEntry(
+        val sheets = readSheets(hit.file, hit.rel) ?: return TableEntry(
             rel = hit.rel,
             root = hit.rootLabel,
             mtime = hit.mtime,
@@ -288,7 +305,11 @@ class TableRegistry(
                     columns = emptyList(),
                     keys = emptyList(),
                     warnings = emptyList(),
-                    ask = TableHeaderAsk.sentence("这个文件读不动（加密/损坏/不是表格）。"),
+                    // 252：`.xls` 转不动时说**那一种**失败的话（「加密了」「超过 50MB」「截断」），
+                    // 不拿「读不动（加密/损坏/不是表格）」这种什么都说了等于什么都没说的句子糊过去。
+                    ask = TableHeaderAsk.sentence(
+                        xlsFail[hit.rel] ?: "这个文件读不动（加密/损坏/不是表格）。",
+                    ),
                 ),
             ),
             scannedAt = now,
@@ -305,6 +326,7 @@ class TableRegistry(
             size = hit.size,
             sheets = models.map { it.toSheetEntry() },
             scannedAt = now,
+            xls = if (XlsCompat.isXls(hit.file.name)) xlsNoticeOf(hit.rel) else null,
         )
     }
 
@@ -313,8 +335,12 @@ class TableRegistry(
      *
      * `.xlsx` 先读一次拿 sheet 名单（第一张顺手读了），其余按名字逐个读；
      * `.csv` / `.tsv` 各只有一张「sheet」，名字就是文件名。
+     *
+     * 252：`.xls` 走 [readXls]（**先转成 CSV 再进既有通道**），它在 `if` 链的最前面——
+     * 这样下面那几行 xlsx/csv 分支**一个字都不用改**（红线：不动既有通道）。
      */
-    private fun readSheets(file: File): List<Pair<String, SheetGrid>>? {
+    private fun readSheets(file: File, rel: String): List<Pair<String, SheetGrid>>? {
+        if (XlsCompat.isXls(file.name)) return readXls(file, rel)
         val name = file.name.lowercase()
         if (name.endsWith(".tsv")) {
             val grid = runCatching {
@@ -335,15 +361,59 @@ class TableRegistry(
         return out
     }
 
+    /** 252：本次刷新里每张 `.xls` 的转换说明（按 rel 索引；`readXls` 填，`parseFile` 读）。 */
+    private val xlsNotices = LinkedHashMap<String, XlsNotice>()
+
+    private fun xlsNoticeOf(rel: String): XlsNotice? = xlsNotices[rel]
+
+    /**
+     * 252：`.xls` **不硬读** —— 先用 [XlsCompat] 转成 UTF-8 CSV，再交给既有的 CSV 通道。
+     *
+     * 三件事在这里定死：
+     * - 失败不许静默：每一种失败都翻译成一句能动手的话，落进 [xlsFail] 由 [parseFile] 说出去；
+     * - 转换的「行列数 / 余下几张表」记进 [xlsNotices]，回答里那句「已自动转成 CSV」念它；
+     * - 之后读的是**缓存里的 CSV**，与用户自己放的 CSV 走的是同一条 [SheetCsv]（不是第二套口径）。
+     */
+    private fun readXls(file: File, rel: String): List<Pair<String, SheetGrid>>? {
+        val done = XlsCompat.convert(file, cacheDir).getOrElse { e ->
+            xlsNotices.remove(rel)
+            xlsFail[rel] = (e as? XlsFailure)?.action
+                ?: "读不动（${e.message?.take(60) ?: e.javaClass.simpleName}）——请重新导出一份完整的 .xls"
+            return null
+        }
+        xlsFail.remove(rel)
+        xlsNotices[rel] = XlsNotice(
+            source = rel,
+            rows = done.rows,
+            columns = done.columns,
+            extraSheets = (done.sheets.size - 1).coerceAtLeast(0),
+        )
+        val grid = runCatching {
+            SheetCsv.read(done.csv, range = null, hasHeader = false, maxRows = maxRows)
+        }.getOrNull()
+        if (grid == null) {
+            xlsNotices.remove(rel)
+            xlsFail[rel] = "转成 CSV 之后还是读不动——请重新导出一份完整的 .xls"
+            return null
+        }
+        return listOf(done.sheet to grid)
+    }
+
     private fun readModel(entry: TableEntry, file: File, sheet: String, override: Int?): TableModel? {
         parseCount++
-        val grid = if (file.name.lowercase().endsWith(".tsv")) {
+        // ⚠️ 写成 `if / else if / else { … } ?: return null` 是**错的**——Kotlin 会把 `?:`
+        // 吸进 `else if` 那一段的表达式里（else 分支是 statement ⇒ 能吞下 elvis），
+        // 结果 `grid` 仍是 `SheetGrid?`，`build` 当场报类型不符。故这里老老实实分两步。
+        val maybe: SheetGrid? = if (XlsCompat.isXls(file.name)) {
+            readXls(file, entry.rel)?.firstOrNull()?.second
+        } else if (file.name.lowercase().endsWith(".tsv")) {
             runCatching {
                 SheetCsv.read(file, range = null, hasHeader = false, maxRows = maxRows, delimiter = '\t')
             }.getOrNull()
         } else {
             SheetReader.read(file, sheet = sheet, range = null, hasHeader = false, maxRows = maxRows).getOrNull()
-        } ?: return null
+        }
+        val grid = maybe ?: return null
         return TableModelBuilder.build(entry.rel, sheet, grid, override)
     }
 
@@ -373,6 +443,7 @@ class TableRegistry(
                 size = o.optLong("size"),
                 sheets = sheetsOf(o.optJSONArray("sheets")),
                 scannedAt = o.optLong("scannedAt"),
+                xls = xlsOf(o.optJSONObject("xls")),
             )
         }
         entries = loaded
@@ -411,7 +482,9 @@ class TableRegistry(
                     .put("mtime", e.mtime)
                     .put("size", e.size)
                     .put("scannedAt", e.scannedAt)
-                    .put("sheets", sheetsJson(e.sheets)),
+                    .put("sheets", sheetsJson(e.sheets))
+                    // 252：`.xls` 才有的那一段（xlsx/csv/tsv 一律是 NULL，**登记簿不因此变胖**）
+                    .put("xls", xlsJson(e.xls)),
             )
         }
         val body = JSONObject().put("version", VERSION).put("tables", tables).toString(2)
@@ -419,6 +492,29 @@ class TableRegistry(
             home.mkdirs()
             registryFile.writeText(body, Charsets.UTF_8)
         }
+    }
+
+    /** 252：`.xls` 说明落盘（没有就写 NULL；只有四个标量，不存任何单元格取值）。 */
+    private fun xlsJson(x: XlsNotice?): Any = if (x == null) {
+        JSONObject.NULL
+    } else {
+        JSONObject()
+            .put("source", x.source)
+            .put("rows", x.rows)
+            .put("columns", x.columns)
+            .put("extraSheets", x.extraSheets)
+    }
+
+    private fun xlsOf(o: JSONObject?): XlsNotice? {
+        if (o == null) return null
+        val src = o.optString("source")
+        if (src.isEmpty()) return null
+        return XlsNotice(
+            source = src,
+            rows = o.optInt("rows"),
+            columns = o.optInt("columns"),
+            extraSheets = o.optInt("extraSheets"),
+        )
     }
 
     private fun sheetsJson(sheets: List<SheetEntry>): JSONArray = JSONArray().also { arr ->
@@ -494,10 +590,17 @@ class TableRegistry(
         /** 登记簿的默认落点（`<工作区>/抱朴记忆/表格/registry.json`）。 */
         fun homeUnder(workspace: File): File = File(File(workspace, DIR_MEMORY), DIR_TABLES)
 
-        /** 认这三种后缀；**`.pdf` 不认**（派工单红线：不扫 PDF）。 */
+        /**
+         * 认这四种后缀；**`.pdf` 不认**（派工单红线：不扫 PDF）。
+         *
+         * 252：`.xls`（BIFF）也进候选——不扫它就等于 F9 导出的表在抱朴里**根本不存在**。
+         * 但它在登记簿里**不与 `.xlsx` 同级**：[TableEntry.xls] 非 null 就是它的记号，
+         * 意思是「这张表是先转成 CSV 才进来的」（派工单 §1①）。
+         */
         fun isTableFile(name: String): Boolean {
             val n = name.lowercase()
-            return n.endsWith(".xlsx") || n.endsWith(".csv") || n.endsWith(".tsv")
+            return n.endsWith(".xlsx") || n.endsWith(".csv") || n.endsWith(".tsv") ||
+                n.endsWith(".xls")
         }
 
         /** 是不是 PDF（唯一一处判据：工具拒绝与登记跳过都问它）。 */

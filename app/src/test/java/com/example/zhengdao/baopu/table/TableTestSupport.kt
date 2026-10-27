@@ -182,6 +182,70 @@ internal val PHONE_ROWS: List<List<String?>> = listOf(
     listOf("李四", "13900139000", "三班"),
 )
 
+// ── 252：旧版 `.xls`（BIFF）落盘夹具 ────────────────────────────────────────
+//
+// **用 jxl 自己写，不手搓字节**：手搓出来的「xls」只能骗过自己写的断言，骗不过真机——
+// 派工单点名「不许造假数据」，夹具本身也得是真的 BIFF（`Workbook.createWorkbook` 的产物）。
+
+/** 一张工作表的填法（列、行都 0 起）。 */
+internal class XlsSheet(val name: String) {
+
+    internal val cells = ArrayList<jxl.write.WritableCell>()
+
+    fun text(col: Int, row: Int, value: String): XlsSheet {
+        cells += jxl.write.Label(col, row, value)
+        return this
+    }
+
+    fun number(col: Int, row: Int, value: Double): XlsSheet {
+        cells += jxl.write.Number(col, row, value)
+        return this
+    }
+
+    /** 一个真日期格（**不是**写着日期样子的字符串）。 */
+    fun date(col: Int, row: Int, value: java.util.Date): XlsSheet {
+        cells += jxl.write.DateTime(col, row, value)
+        return this
+    }
+}
+
+internal fun xlsSheet(name: String): XlsSheet = XlsSheet(name)
+
+/** 在 [dir] 下落一张真 `.xls`（[sheets] 里的第一张就是「第一张工作表」）。 */
+internal fun writeXls(dir: File, name: String, vararg sheets: XlsSheet): File {
+    val f = File(dir, name)
+    f.parentFile?.mkdirs()
+    val wb = jxl.Workbook.createWorkbook(f)
+    try {
+        sheets.forEachIndexed { i, spec ->
+            val s = wb.createSheet(spec.name, i)
+            spec.cells.forEach { s.addCell(it) }
+        }
+        wb.write()
+    } finally {
+        wb.close()
+    }
+    return f
+}
+
+/** `yyyy-MM-dd HH:mm` 的 UTC 时刻（转表前后的日期口径就是 UTC，见 `XlsCompat` 文件头）。 */
+internal fun utcMoment(text: String): java.util.Date =
+    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }.parse(text)!!
+
+/**
+ * 252：真表夹具目录（`..\_zd-private\样本\f9\`）。
+ *
+ * 单测的工作目录是 `app/`，所以仓库根在 `../`、**私有侧还得再上一级**；
+ * 两个候选都试一遍（主工作树与新工作树都该能对上）。**一个都对不上就跳过真表那几条，
+ * 绝不造假数据顶替**——这是派工单的红线。
+ */
+internal val REAL_XLS_DIR: File = listOf(
+    File("../../_zd-private/样本/f9"),
+    File("../_zd-private/样本/f9"),
+).firstOrNull { it.isDirectory } ?: File("../../_zd-private/样本/f9")
+
 /** 临时工作区（用完删）。 */
 internal fun tempWorkspace(tag: String): File {
     val dir = File(System.getProperty("java.io.tmpdir"), "zd232-$tag-${System.nanoTime()}")
