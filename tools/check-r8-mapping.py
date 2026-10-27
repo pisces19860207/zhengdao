@@ -99,6 +99,13 @@ def find_mapping(repo):
         p = repo / MAPPING_DIR / variant / "mapping.txt"
         if p.is_file():
             return variant, p
+    # 2026-10-27（第四刀后）：AGP 9.x 个别配置把 mapping 落在变体子目录别处，
+    # 这里退一步全仓找最新一份（仍只认 VARIANTS 里的名字），找不到才判红。
+    cands = sorted((repo / MAPPING_DIR).rglob("mapping.txt"), key=lambda f: f.stat().st_mtime, reverse=True)
+    for c in cands:
+        for variant in VARIANTS:
+            if variant in c.parts:
+                return variant, c
     return None, None
 
 

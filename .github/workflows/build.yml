@@ -269,7 +269,11 @@ jobs:
       #   （E-022：onProgress 被 R8 改名 ⇒ release 一装环境就 SIGABRT）。
       #   必须紧跟 assembleRelease——它才有 mapping.txt；挂在别处就成了永远跳过的假门禁。
       - name: R8 产物断言（关键类未被改名 + onProgress 保住）
-        run: python3 tools/check-r8-mapping.py
+        run: |
+          # 2026-10-27：先打一份 map 文件清单——上一轮红在"没有 mapping.txt"，但 Release APK 那步成功，
+          # 得先看清 AGP 把 mapping 落到哪儿了。
+          find app/build/outputs -name 'mapping*' -o -name 'seeds*' | head -20 || true
+          python3 tools/check-r8-mapping.py
 
       - name: 校验 release 包的签名真的是那把正式 release key（验**产物**，不验替身）
         # ⚠️ 见 docs/ERRATA.md E-014 §7 与 E-099。上面那两步「还原签名密钥」只证明了**钥匙文件对**；
