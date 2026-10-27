@@ -3,14 +3,14 @@
 > 这个仓库同时有多个 agent 在干活（WorkBuddy / Zcode / DSH 桌面版）。**细则看 [`docs/协作规约.md`](docs/协作规约.md)。**
 > 历史上因为「不核对就开工」，同一个功能被反复实现、删了又加回来（实锤见 `docs/FEATURE-LEDGER.md` §4）。
 > **先花 30 秒核对，能省掉半天重做。**
-> 开工前**先读 [docs/FEATURE-LEDGER.md](docs/FEATURE-LEDGER.md) 的「结账 · 现状总表」** —— 那里写着已经做完并有证据的、待做的、以及明确判定不做的。
+> 开工前**先读台账**：公开仓 `docs/FEATURE-LEDGER.md` 只是占位，**全量在私有侧** `..\_zd-private\docs\FEATURE-LEDGER-全量-*.md`（公开摘要见 `docs/台账-公开摘要.md`） —— 那里写着已经做完并有证据的、待做的、以及明确判定不做的。
 
 ## 四条铁律
 
 1. **先同步，再动手。** `git fetch origin` 之后确认
    `git rev-list --left-right --count origin/main...HEAD` 的**左侧是 0**。
    落后就别写代码 —— 你看到的代码不是大家看到的代码。
-2. **先查重，再动手。** 用功能关键词在全部历史里搜一遍，并读 `docs/FEATURE-LEDGER.md` §2 / §3。
+2. **先查重，再动手。** 用功能关键词在全部历史里搜一遍，并读私有侧全量台账的 §2 / §3（公开仓只有摘要）。
    **已经被拍板删除的功能不许复活**，除非用户再次明确要求。
 3. **不要在主工作树上直接改。** `AndroidStudioProjects/zhengdao` 是集成用的主工作树；
    一个 agent 一个分支 / 一个工作树（`git worktree add`），做完再合。
