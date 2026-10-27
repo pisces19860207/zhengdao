@@ -161,7 +161,9 @@ data class SpillResult(val file: File, val chars: Int)
  *    （按路径组件比较，同前缀兄弟目录过不来）——越界即拒并 RunLog；
  * 3. （③）权限判定（**第二百二十三批：风险矩阵是唯一口径**）：`RiskMatrix.classify` 一次定档——
  *    `R0` 直行；`R1` 按既有策略（[ToolPermission.CONFIRM] ⇒ [Result.NeedsConfirm]）；
- *    `R2` **必问**；`R3` **必问且不可自动**；`hardDeny` ⇒ [Result.Rejected]（终止本轮）；
+ *    `R2` **必问**（**第二百四十九批改订**：任务级明确授权快照范围内的「新建/改正文」不再
+ *    逐次问，六步见 `authz/TaskGrantGate`；快照之外、受保护对象、硬拒、R3 仍逐次问或直接拒，
+ *    改订依据见 [ConfirmFlow] 类 KDoc）；`R3` **必问且不可自动**；`hardDeny` ⇒ [Result.Rejected]（终止本轮）；
  *    未分类 ⇒ 按 `R2` 必问并记一条 `unclassified_tool`（fail-closed）。批准后走
  *    [executeApproved]——只跳这一段，其余四段原样；
  * 4. （④）执行：[ToolRunner] 带超时；**顺序由调度层给**（第九十二批）：写工具单飞、
