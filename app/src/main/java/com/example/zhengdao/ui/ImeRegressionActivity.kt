@@ -51,6 +51,7 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.terminal.ime.ImeProbe
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 

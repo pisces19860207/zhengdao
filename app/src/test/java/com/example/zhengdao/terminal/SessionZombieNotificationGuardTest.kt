@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -23,7 +25,7 @@ class SessionZombieNotificationGuardTest {
 
     /** Gradle 单测的工作目录是模块目录 `app/`（与 TmuxConfAppendTest 同一约定）。 */
     private fun appFile(rel: String): File =
-        File(rel).let { if (it.exists()) it else File("app/$rel") }
+        SrcRoots.find(rel)
 
     private fun serviceSource(): String {
         val f = appFile("src/main/java/com/example/zhengdao/terminal/SessionService.kt")

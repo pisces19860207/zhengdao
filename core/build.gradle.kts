@@ -48,6 +48,11 @@ dependencies {
     // AppPrefs 的 `edit { }`、EnvironmentScope 的 ContextCompat.checkSelfPermission
     implementation(libs.androidx.core.ktx)
 
+    // IssueCenter 的状态是 Compose State（第二百四十一批随终端搬来：终端内核与抱朴都要报问题，
+    // 而它的 `State` 面是给 UI 观察的——只引 runtime，不引 UI）
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.runtime)
+
     testImplementation(libs.junit)
     // 单测里的 org.json 真实实现（KnowledgeBaseSummarizerTest 直接构造 JSONObject）
     testImplementation(libs.json)

@@ -2,6 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import com.example.zhengdao.terminal.ime.ImeProbe
+
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -31,7 +33,7 @@ import java.io.File
  */
 class NotificationRequestCodeGateTest {
 
-    private fun repoFile(rel: String): File = File(rel).let { if (it.isFile) it else File("app/$rel") }
+    private fun repoFile(rel: String): File = SrcRoots.find(rel)
 
     private fun raw(rel: String): String = repoFile(rel).readText().replace("\r\n", "\n")
 

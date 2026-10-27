@@ -50,10 +50,12 @@ class LoadLibraryGuardTest {
     )
 
     private fun scanSources(): ScanResult {
-        val root = File("src/main/java")
+        // 第二百四十一批：终端内核搬进 :terminal-core，loadLibrary 纪律一并覆盖它
+        val roots = listOf(File("src/main/java"), File("../terminal-core/src/main/java"))
+            .filter { it.isDirectory }
         val out = mutableMapOf<String, List<String>>()
         var total = 0
-        root.walkTopDown()
+        roots.asSequence().flatMap { it.walkTopDown() }
             .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
             .forEach { f ->
                 val text = f.readText()

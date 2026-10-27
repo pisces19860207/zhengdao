@@ -71,7 +71,8 @@ try:  # Windows 控制台默认 GBK：个别字符编不出来时降级为替换
 except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
     pass
 
-SO_GLOB = "app/src/main/jniLibs/**/libzhengdao_core.so"
+# 第二百四十一批：.so 随终端内核搬进 :terminal-core，glob 改成模块无关的写法
+SO_GLOB = "*/src/main/jniLibs/**/libzhengdao_core.so"
 SRC_DIR = "rust/core/src"
 BASELINE_JSON = "tools/so-provenance.json"
 
@@ -79,6 +80,8 @@ BASELINE_JSON = "tools/so-provenance.json"
 CARGO_LOCK = "rust/Cargo.lock"
 CARGO_CONFIG = "rust/.cargo/config.toml"
 GRADLE_FILE = "app/build.gradle.kts"
+# 第二百四十一批：NDK 版本随伪终端 JNI 一起搬进 :terminal-core（"哪个模块在编 C"就是真源）。
+GRADLE_CANDIDATES = ("terminal-core/build.gradle.kts", "app/build.gradle.kts")
 PAGE_16K = 0x4000
 
 # ABI 目录名 → Rust target triple。新增 ABI 必须同时在这里登记，否则 target_triple 写 null。
@@ -198,7 +201,9 @@ def detect_build_inputs(repo: Path, so_map: dict[str, str]) -> dict:
         }
 
     # ③ NDK 版本：单一真源 = gradle
-    gradle = repo / GRADLE_FILE
+    # 第二百四十一批：NDK 版本随伪终端 JNI 搬进 :terminal-core —— 取第一个写了 ndkVersion
+    # 的构建脚本（搬家前后都成立）。
+    gradle = next((repo / r for r in GRADLE_CANDIDATES if (repo / r).is_file()), repo / GRADLE_FILE)
     if gradle.is_file():
         m_ndk = NDK_GRADLE_RE.search(gradle.read_text(encoding="utf-8", errors="replace"))
         if m_ndk:

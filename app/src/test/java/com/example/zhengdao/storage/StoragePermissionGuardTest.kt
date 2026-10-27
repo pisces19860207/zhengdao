@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.storage
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,7 +38,7 @@ class StoragePermissionGuardTest {
 
     /** 从模块目录或仓库根出发找文件（单测的 CWD 在不同 Gradle 版本/IDE 下不一致）。 */
     private fun src(relative: String): File {
-        val candidates = listOf(File(relative), File("app/$relative"))
+        val candidates = SrcRoots.candidates(relative)
         val found = candidates.firstOrNull { it.isFile }
         if (found == null) {
             throw AssertionError("找不到 $relative（试过：${candidates.joinToString { it.path }}）")

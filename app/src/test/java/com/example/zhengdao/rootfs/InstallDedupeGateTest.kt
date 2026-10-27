@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.rootfs
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -25,7 +27,7 @@ import java.io.File
 class InstallDedupeGateTest {
 
     private fun source(relative: String): String =
-        File("src/main/java/com/example/zhengdao/$relative").readText()
+        SrcRoots.find("src/main/java/com/example/zhengdao/$relative").readText()
 
     @Test
     fun `修复路径不再自己整包哈希一遍`() {

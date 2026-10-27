@@ -29,6 +29,12 @@ include(":app")
 // 依赖方向单向：:app → :core；:core 不许 import com.termux.** / com.example.zhengdao.terminal.** /
 // com.example.zhengdao.baopu.**（门禁 `:core:testDebugUnitTest` 里的 CoreBoundaryGateTest）。
 include(":core")
+// :terminal-core —— 终端内核（第二百四十一批）。PTY/View、rootfs 安装器、proot 启动、
+// 会话与体检依赖类、伪终端 JNI 与 proot 四件套 .so。
+// 依赖方向单向：:app → :terminal-core → :core；:terminal-core 不许 import
+// com.example.zhengdao.baopu.** / com.example.zhengdao.ui.** / :app 的 R 与 MainActivity
+// （门禁 `:terminal-core:testDebugUnitTest` 里的 TerminalCoreBoundaryGateTest）。
+include(":terminal-core")
 // Macrobenchmark：独立的 com.android.test 模块（Compose 性能测试的标准载体）。
 // 它不进 APK —— 只产出测试 APK，通过 targetProjectPath 指向 :app 并驱动真机跑基准。
 include(":macrobenchmark")

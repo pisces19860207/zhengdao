@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -78,7 +80,7 @@ class SessionStartGateTest {
 
     /** Gradle 单测的工作目录是模块目录 `app/`。 */
     private fun src(rel: String): String {
-        val f = File(rel).let { if (it.exists()) it else File("app/$rel") }
+        val f = SrcRoots.find(rel)
         assertTrue("找不到 $rel：${f.path}", f.isFile)
         return f.readText()
     }

@@ -1,0 +1,758 @@
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+//
+// 本文件只做一件事：按 proot 官方文档记载的通用参数，组装启动命令与环境变量。
+// 所有参数均为 proot 上游（proot-me/proot）文档公开的选项，语义见行内注释；
+// 进程创建与 IO 由 Termux 官方 terminal-emulator 的 native 半边（libtermux.so）完成
+// （v3.9：自研 Pty.kt / pty.c 已随终端渲染层切换而退役删除，历史实现保留在 git 中）。
+package com.example.zhengdao.terminal
+
+import android.content.Context
+import com.example.zhengdao.core.AppPrefs
+import com.example.zhengdao.core.IssueCenter
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.ZhengdaoDirs
+import com.example.zhengdao.core.kb.KnowledgeBase
+import java.io.File
+import java.io.IOException
+import com.example.zhengdao.rootfs.RootfsInstaller
+
+object ProotLauncher {
+
+    /**
+     * 默认 RootFS 下载地址：latest 发布永远指向最新一次构建的产物，
+     * 因此这条地址长期有效。M3 起改为由 ed25519 验签的 manifest 动态下发。
+     */
+    const val DEFAULT_ROOTFS_URL =
+        "https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-base-arm64.tar.zst"
+
+    /**
+     * 一次启动的完整计划。
+     * @param cmd  宿主侧可直接 execve 的程序路径（proot 模式下 = proot 二进制；回退模式 = /system/bin/sh）
+     * @param args 命令行参数（proot 模式下末尾附带 guest 内要执行的命令 /bin/bash -l）
+     * @param env  传给子进程的环境变量（proot 会透传给 guest，guest 内进程全部可见）
+     */
+    data class LaunchPlan(
+        val cmd: String,
+        val args: Array<String>,
+        val env: Array<String>,
+        val isFallback: Boolean = false,
+        /** 会话是否由 tmux 保持（决定绿点分屏按钮是否可用） */
+        val usesTmux: Boolean = false,
+    )
+
+    /**
+     * 手机存储可直通判定 —— **委托** [com.example.zhengdao.core.EnvironmentScope.hasAllFilesAccess]。
+     *
+     * 第二百四十批（终端解耦第一刀）：判定实现整体搬到 `:core`（逐字搬，含 targetSdk 28 的
+     * WRITE 兼容通道），抱朴不再"借终端类"判存储权限；本处保留同名函数只为**不改调用点**
+     * （终端侧 `ProotLaunchRules.sharedStorageAllowed` 等仍读它）。
+     *
+     * ⚠️ 全仓仍只有**一个**判据（v1.3 E2 消双判）：这里不许再写第二份 `isExternalStorageManager`。
+     */
+    fun storageGranted(context: Context): Boolean =
+        com.example.zhengdao.core.EnvironmentScope.hasAllFilesAccess(context)
+
+    /** 流式计算文件 SHA-256（版本固定校验用）。 */
+    private fun sha256Of(file: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * 组装启动计划：
+     *  - 已安装 Debian 13.7 环境（rootfs 目录存在且带完成标记）→ 经 proot 启动 guest bash；
+     *  - 未安装 → 回退到系统自带 shell，App 端行为完全一致，用户无感降级。
+     */
+    fun buildLaunchPlan(context: Context, tmuxSession: String = "zhengdao"): LaunchPlan {
+        // N-5（审计第 2 期）：会话名会原样拼进交给 `bash -lc` 的命令串（见下方 tmux 分支）。
+        // 当前唯一调用方传的是常量，所以不可达；但这是 public API，一旦有人传外部字符串
+        // （工作区名 / 用户输入）而未加引号，就是一条 shell 注入。入口先按白名单封死。
+        require(isLegalSessionName(tmuxSession)) {
+            "非法 tmux 会话名（只允许 [A-Za-z0-9_-]）：$tmuxSession"
+        }
+        return RootfsInstaller.withPrepareLock("准备会话") { buildLaunchPlanLocked(context, tmuxSession) }
+    }
+
+    /**
+     * tmux 会话名的白名单（纯函数，可单测）：只允许 ASCII 字母数字与 `-` `_`。
+     *
+     * 口径同 [com.example.zhengdao.core.ZhengdaoDirs.isLegalKind]：刻意不用 `Char.isLetterOrDigit()`
+     * —— 它是 Unicode 语义，会把中文放进来，而这个名字要进 guest 内 bash 的命令行。
+     */
+    internal fun isLegalSessionName(name: String): Boolean = name.isNotEmpty() && name.all {
+        it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_'
+    }
+
+    /**
+     * [buildLaunchPlan] 的实现（**调用方必须已持有会话准备锁**，见 [RootfsInstaller.withPrepareLock]）。
+     *
+     * 为什么必须持锁：这一整段都会往 guest rootfs 里写东西 —— `etc/resolv.conf` / `etc/hosts`
+     * （[EnvSelfHeal.ensureDnsFiles]）、`/etc/localtime` 与时区、`etc/profile.d/zz-*.sh`、
+     * `usr/local/bin/zzclean`、`usr/local/bin/hermes` 软链、挂载落点 `opt/zhengdao`、
+     * `tmp/.zhengdao-banner-pending` 等。原先只在启动前"看一眼"
+     * [RootfsInstaller.isInstalling]，那是 TOCTOU：查完到写之间安装可能刚好置位，
+     * 而安装最后会**把整棵 rootfs 改名搬走再放新的**（[RootfsInstaller.swapIntoPlace]）
+     * ⇒ 刚写的配置落进被丢弃的旧树，或写进正在被搬走的目录（§B 顺序 18，2026-10-12）。
+     */
+    private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan {
+        val files = context.filesDir
+        val rootfsDir = File(files, "rootfs")
+
+        // 第⑳刀（2026-10-15）：执行链迁移 assets → jniLibs（E-134）。四件套（proot/
+        // loader/talloc/shmem）以 lib*.so 形态打进 APK jniLibs/arm64-v8a/，安装时由系统
+        // 解压到 nativeLibraryDir（天然带执行位——W^X 规则下唯一放行 exec 的位置），
+        // 为第㉑刀抬 targetSdk 铺路。assets/proot 随本刀删除。
+        // 2026-10-04 实测定论依然有效：自编译上游 proot 缺 Android 适配（App 域内加载
+        // guest 静默退出 255），基线必须是带 Android 补丁的 Termux 官方发行二进制
+        // （聚合分发，GPL 合规；PROVENANCE.md 有登记）。2026-10-05 废弃的那版 jniLibs
+        // 方案死因是**自编译二进制**，不是打包位置——E-134 已澄清。
+        // 路径/文件名/SHA256 的单一真相源＝[ProotBinaries]（EnvHealth、SystemInfoProvider
+        // 共用，防三处各写一份漂移）。
+        val nativeDir = ProotBinaries.nativeLibDir(context)
+        val prootBin = ProotBinaries.prootSo(context)
+        val loaderBin = ProotBinaries.loaderSo(context)
+
+        // 第⑳刀升级清理：旧方案（assets 释放）的 files/termux-proot/ 整目录删除
+        //（含旧四件套与旧戳文件）。幂等；失败只记日志（残留无功能影响，下次再删）。
+        ProotBinaries.cleanupLegacyTermuxProot(files)
+
+        // 运行期库目录：libtalloc.so → libtalloc.so.2（bionic 按 DT_NEEDED 文件名精确
+        // 查找，jniLibs 只认 *.so 结尾；复制改名是 Termux 生态通行做法）。PinnedAssets
+        // 戳文件也落这里（nativeLibraryDir 只读，戳只能放可写处）。
+        // fail-closed：libtalloc 缺失 ⇒ proot 起不来（CANNOT LINK EXECUTABLE），
+        // 与四件套缺失同等对待——报问题并降级，绝不带病硬起。
+        val rtDir = ProotBinaries.runtimeDir(context)
+        if (!ProotBinaries.ensureRuntimeLibs(context)) {
+            IssueCenter.report(
+                id = "proot-asset-sha",
+                title = "proot 运行库准备失败",
+                detail = "libtalloc.so.2 复制失败（$rtDir）⇒ proot 起不来 ⇒ " +
+                    "命令退回安卓自带 shell（不再是 Debian）。",
+                actionLabel = "修复环境",
+                actionId = IssueCenter.ACTION_REPAIR_ENV,
+            )
+            return ProotLaunchRules.fallbackPlan(files, context.cacheDir)
+        }
+
+        // 版本固定校验（与旧方案同款戳记机制，BUG-2 / E-083）：nativeLibraryDir 由
+        // 安装器写入、App 不可改，常态靠戳零重算。与旧方案的关键差别：jniLibs 里的
+        // 文件**无法在 App 内重放**（来源就是 APK 本身）——校验失败＝APK 损坏/被篡改，
+        // 只能引导修复环境/重装，不再有"从 assets 重新释放"的自愈路径。
+        val stampFile = File(rtDir, PinnedAssets.FILE_NAME)
+        val stamps = PinnedAssets.parse(runCatching { stampFile.readText() }.getOrDefault("")).toMutableMap()
+        var stampsChanged = false
+        val staleNames = stamps.keys - ProotBinaries.PINNED.keys
+        if (staleNames.isNotEmpty()) {
+            staleNames.forEach { stamps.remove(it) } // 清单换过的旧条目：清掉，别留在文件里骗人
+            stampsChanged = true
+        }
+        var reverified = 0
+        var skippedByStamp = 0
+        for ((name, expectedSha) in ProotBinaries.PINNED) {
+            val dst = File(nativeDir, name)
+            if (dst.isFile && !PinnedAssets.needsReverify(
+                    dst.length(), dst.lastModified(), expectedSha, stamps[name]
+                )
+            ) {
+                skippedByStamp++ // 戳一致：自那次核对后没被动过
+                continue
+            }
+            reverified++
+            if (!dst.isFile) {
+                RunLog.log("严重: $name 不存在（nativeLibraryDir=$nativeDir）——APK 损坏或安装异常")
+                IssueCenter.report(
+                    id = "proot-asset-sha",
+                    title = "内置 proot 缺失",
+                    detail = "$name 不在原生库目录（$nativeDir）⇒ proot 起不来 ⇒ " +
+                        "命令退回安卓自带 shell（不再是 Debian）。请用「修复环境」排查或重装 App。",
+                    actionLabel = "修复环境",
+                    actionId = IssueCenter.ACTION_REPAIR_ENV,
+                )
+                continue
+            }
+            val actual = sha256Of(dst)
+            if (!actual.equals(expectedSha, ignoreCase = true)) {
+                RunLog.log("严重: $name SHA256 不匹配（actual=$actual）——APK 被篡改或损坏")
+                // #4 的口径不变：后果是「整台设备的命令退回 /system/bin/sh」，必须报
+                // 一条带去路的（与旧方案差别：没有重放自愈，只能修复环境/重装）。
+                IssueCenter.report(
+                    id = "proot-asset-sha",
+                    title = "内置 proot 校验失败",
+                    detail = "$name 的 SHA256 与内置清单不符（actual=${actual.take(12)}…），" +
+                        "无法确认是登记过的 Termux 官方构建；proot 起不来 ⇒ " +
+                        "命令退回安卓自带 shell（不再是 Debian）。请重装 App。",
+                    actionLabel = "修复环境",
+                    actionId = IssueCenter.ACTION_REPAIR_ENV,
+                )
+                continue
+            }
+            stamps[name] = PinnedAssets.stampFor(dst.length(), dst.lastModified(), expectedSha)
+            stampsChanged = true
+        }
+        if (stampsChanged) {
+            // 第⑩刀审计 R-11 口径不变：戳记写失败要留一行可查的日志（不致命）。
+            runCatching { stampFile.writeText(PinnedAssets.format(stamps)) }
+                .onFailure { RunLog.log("警告: 戳记文件写失败 ${stampFile.name}：${it.message}") }
+        }
+        RunLog.log("termux-proot 版本固定校验: 跳过重算 $skippedByStamp 项 / 实算 $reverified 项")
+        RunLog.log(
+            "启动决策: proot=" + prootBin.isFile + " loader=" + loaderBin.isFile +
+                " marker=" + File(rootfsDir, ".zhengdao-rootfs-ok").isFile
+        )
+
+        val installMarker = File(rootfsDir, ".zhengdao-rootfs-ok")
+        val rootfsReady = ProotLaunchRules.rootfsReady(
+            prootBin.isFile, prootBin.canExecute(), loaderBin.isFile, installMarker.isFile
+        )
+
+        if (!rootfsReady) {
+            // #4：装了环境却又起不来 proot（文件被删 / 权限漂移）才算"出问题"；
+            // 完全没装环境是正常初始态，主页有自己的安装引导，不该在这里报红。
+            if (installMarker.isFile) {
+                IssueCenter.report(
+                    id = "proot-fallback",
+                    title = "已降级到安卓自带 shell",
+                    detail = "系统层标记在，但 proot=" + prootBin.isFile + "、loader=" + loaderBin.isFile +
+                        " ⇒ 命令还能跑，但不在 Debian 里（没有 python/apt/git 那一套）。",
+                    actionLabel = "修复环境",
+                    actionId = IssueCenter.ACTION_REPAIR_ENV,
+                )
+            }
+            return ProotLaunchRules.fallbackPlan(files, context.cacheDir)
+        }
+        // 正常路径：撤下这两条历史问题（下次真坏了会重新报）
+        IssueCenter.resolve("proot-fallback")
+        IssueCenter.resolve("proot-asset-sha")
+
+        // DNS 兜底（设计文档 §4：proot 内没有 systemd-resolved，缺 resolv.conf 就是
+        // "下载得动、上不了网"的第一大故障；App 每次启动前确保存在）。
+        // 实现收口在 EnvSelfHeal（P7：与首页「环境体检→修复」共用同一份）
+        EnvSelfHeal.ensureDnsFiles(File(rootfsDir, "etc/resolv.conf"), File(rootfsDir, "etc/hosts"))
+        // 时区同步（用户反馈：tmux 状态栏时钟比手机慢 8 小时）：rootfs 镜像构建时
+        // /etc/localtime 指向 Etc/UTC（实测 2026-10-05），guest 内 date/tmux 全按 UTC
+        // 显示。启动前把 /etc/localtime 改指 Asia/Shanghai 并补 /etc/timezone；
+        // 写不进去不阻断启动，下面 TZ 环境变量兜底
+        runCatching { EnvSelfHeal.ensureTimezone(rootfsDir) }
+
+        // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
+        // 这样「修复环境」重解压系统层时不碰用户数据
+        val homeDir = File(files, "home").apply { mkdirs() }
+        val prootTmp = File(files, "proot-tmp").apply { mkdirs() }
+
+        // 工作区解析（0.6 显性化）：唯一真相源 Workspace；bind/软链/人设/脚本落点共用。
+        // 在所有预置块之前解析——AGENTS.md 人设的文件地图需要当前映射。
+        val wsHost = Workspace.hostDir(context)
+        val wsShared = Workspace.isShared(context)
+
+        // .ignore（v1.2 阶段 2.2）：让 Agent 的 grep / 搜索类工具跳过大目录。
+        // ⚠️ 官方 opencode.json **没有** `.ignore` 这个配置项（已核对 opencode.ai/docs/config），
+        //    "让搜索跳过大目录"只能靠**在工作区根放 .ignore 文件**（opencode 的搜索工具
+        //    尊重 .ignore / .gitignore）。因此这里由 App 代放一次。
+        // 幂等：用户自己的 .ignore 一个字都不改（只在本来没有时才生成）。
+        runCatching {
+            val ignore = File(wsHost, ".ignore")
+            if (!ignore.isFile) {
+                ignore.writeText(
+                    "node_modules/\n" +
+                        "dist/\n" +
+                        "build/\n" +
+                        ".git/\n" +
+                        // App 自己的 OpenCode 安装包缓存就落在工作区里（实测 68.6 MB），
+                        // 对 Agent 是纯噪音，必须跳过
+                        "opencode/\n" +
+                        "*.log\n"
+                )
+                RunLog.log("工作区 .ignore 已生成（跳过 opencode/ 等大目录）")
+            }
+        }.onFailure {
+            // 失败必须可见：静默吞掉会让"搜索没跳过 opencode/"变成查不出来的玄学问题
+            RunLog.log("工作区 .ignore 生成失败: ${it.message}（路径 $wsHost）")
+        }
+
+        // ★ 把 Debian 自带的 /etc/skel 骨架落到 bind 挂载的 home 里（2026-10-07 根因修复）。
+        //
+        // 为什么必须做：Agent 官方安装脚本（agy / claude / hermes）一律把命令发布到
+        // ~/.local/bin。让这个目录进 PATH 的逻辑**Debian 一开始就有**，写在
+        // /etc/skel/.profile 里：
+        //     if [ -d "$HOME/.local/bin" ] ; then PATH="$HOME/.local/bin:$PATH" ; fi
+        // 但 /etc/skel 只在 useradd 建用户时复制到 home —— 本项目把 files/home 直接
+        // bind 挂到 guest 的 /root，root 的 home 从来不是 useradd 建的，home 里也没有
+        // .profile ⇒ 这段逻辑**从未执行过**。后果：装好的 agy/claude 在终端里一律
+        // "command not found"，用户看到的现象就是「点启动，Agent 起不来」。
+        // （hermes 当年"敲 hermes 没反应"是同一个坑，当时只给它单独软链绕过去了；
+        //   见下方保留的 hermes 特例——治根的就是这里。）
+        //
+        // 幂等且非破坏：只在目标文件不存在时写入，绝不覆盖用户自己改过的 dotfile。
+        // 只落 .profile —— PATH 逻辑就在它里面；.bashrc 会顺带改提示符与别名，
+        // 与本项目自己的 banner/光标 profile.d 有交互风险，不引入。
+        // tmux 的每个 pane 都是 login shell（ps 里可见 `-bash`），会读 ~/.profile，
+        // 故新开窗口立刻生效，不必重启 App。
+        runCatching {
+            val name = ".profile"
+            val dst = File(homeDir, name)
+            val src = File(rootfsDir, "etc/skel/$name")
+            if (!dst.isFile && src.isFile) {
+                dst.writeText(src.readText())
+                RunLog.log("已从 /etc/skel 落位 ~/$name（补回 ~/.local/bin 的 PATH 逻辑）")
+            }
+        }.onFailure { RunLog.log("落位 home 骨架失败: ${it.message}") }
+
+        // hermes 命令立即可用（用户反馈：装完敲 hermes 没反应）：安装器把命令发布在
+        // /root/.local/bin（home 层），但**早已存在的 shell 的 PATH 是启动时的快照**，
+        // 拿不到后装的目录。/usr/local/bin 天然在所有 shell 的 PATH 里且属系统层——
+        // 软链过去，新旧 shell 全覆盖。未装 hermes 时跳过，不留悬空链接。
+        // （上面的 skel 落位已从根上解决 PATH；这段保留是为"骨架落位前就已存在的旧
+        //   会话"兜底——它们的 PATH 快照里没有 ~/.local/bin，但一定有 /usr/local/bin。）
+        runCatching {
+            if (File(homeDir, ".local/bin/hermes").isFile) {
+                val link = File(rootfsDir, "usr/local/bin/hermes")
+                if (!link.exists()) {
+                    android.system.Os.symlink("/root/.local/bin/hermes", link.absolutePath)
+                }
+            }
+        }
+
+        // hermes uv 包装器接管（update 韧性）：hermes update 若拉到新的 pinned uv
+        // 版本会新开 tools/uv-<ver> 目录、放下真实二进制——裸奔一次就硬链接失败。
+        // 每次启动统一巡检：ELF 真身挪为 uv.real、原路径放包装器（实现收口 EnvSelfHeal）
+        runCatching { EnvSelfHeal.ensureHermesUvWrappers(homeDir) }
+        // 细光标（用户反馈块太粗）：每个 login shell 启动时发 DECSCUSR 6（bar 闪烁）。
+        // tmux 可能随后覆盖，profile 方式让每个 shell（含分屏新 pane）重新声明。
+        // 优化-2（E-085）：判据从"文件在就不管"改成**按内容比对后重写** —— 脚本正文会随 App
+        // 版本更新，只判存在会让老环境永远停在旧脚本上（下面 zzclean 那段注释点名的就是这个反例）。
+        // 这个文件是 App 自己放的（`zz-` 前缀、guest 里没有对应用户数据），所以判据取严格相等。
+        runCatching {
+            val profileDir2 = File(rootfsDir, "etc/profile.d")
+            if (profileDir2.isDirectory || profileDir2.mkdirs()) {
+                val f = File(profileDir2, "zz-cursor-bar.sh")
+                val want = "printf '\\u001B[6 q'\n"
+                if (!f.isFile || f.readText() != want) {
+                    f.writeText(want)
+                }
+            }
+        }
+
+        // 终端内缓存清理命令 zzclean（用户 2026-10-08：「可不可以做一个终端自己清理缓存的方法」）。
+        // 落 `/usr/local/bin`：系统层、天然在所有 shell 的 PATH 里，**新旧 shell 都拿得到**
+        // （与上面 hermes 软链同一个理由）。脚本正文由 CacheCleaner 生成 —— 命令清单与
+        // 设置页那条 "在终端中清理缓存" 同源，不会出现两边清的东西不一样。
+        // ⚠️ 每次启动**按内容比对后重写**，而不是"文件在就不管"：脚本正文会随 App 版本更新，
+        //    只判存在会让老环境永远停在旧脚本上（上一条 zz-cursor-bar.sh 就是那种写法）。
+        // ⚠️ 执行位也要一起判：内容相同但丢了 +x 的旧环境会被判成"已就绪"，终端里敲 zzclean
+        //    直接 Permission denied（2026-10-08 审查）。判据因此是「内容不同 **或** 不可执行」
+        //    时重写并重设执行位——幂等语义不变（内容与执行位都对时依然一次都不写）。
+        runCatching {
+            val binDir = File(rootfsDir, "usr/local/bin")
+            if (binDir.isDirectory || binDir.mkdirs()) {
+                val zz = File(binDir, "zzclean")
+                val want = CacheCleaner.zzcleanScript()
+                if (!zz.isFile || zz.readText() != want || !zz.canExecute()) {
+                    zz.writeText(want)
+                    zz.setExecutable(true, false)
+                    RunLog.log("终端清理命令已就绪：/usr/local/bin/zzclean")
+                }
+            }
+        }.onFailure { RunLog.log("写入 zzclean 失败：${it.message}") }
+        // npm 国内镜像（login shell 经 /etc/profile.d 自动生效）：官方 registry 从国内
+        // 拉 Agent 及其二进制要 2-4 分钟，npmmirror 通常几十秒。写失败不阻断。
+        runCatching {
+            val profileDir = File(rootfsDir, "etc/profile.d")
+            if (profileDir.isDirectory || profileDir.mkdirs()) {
+                val f = File(profileDir, "zz-npm-registry.sh")
+                // 优化-2（E-085）：原先只判"文件里出现过 npmmirror 这个子串" —— 被注释掉的
+                // 那一行（`# export NPM_CONFIG_REGISTRY=…npmmirror…`）同样能骗过它，于是镜像
+                // 其实没生效、每次启动还都判成"已就绪"。改成**逐行找一条真正生效的赋值**：
+                // 用户自己往里加的行不动它（不是严格相等，避免抹掉用户的追加）。
+                val want = "export NPM_CONFIG_REGISTRY=https://registry.npmmirror.com"
+                val active = f.isFile && f.readText().lineSequence().any { it.trim() == want }
+                if (!active) {
+                    f.writeText("$want\n")
+                }
+            }
+        }
+        // ~/.local/bin 进 PATH 的兜底（2026-10-09 真机，E-057 顺带）：
+        // Debian 的 /etc/profile 会**显式重置** PATH，root 分支是
+        // `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` —— 真机实测这个 shell
+        // 拿到的正是这一串，`~/.local/bin` 不在里面（上面的 proot 环境变量 + skel 的 ~/.profile
+        // 都被这一次重置盖掉了）。而 `/etc/profile.d/*.sh` 是在**重置之后**才 source 的，
+        // 所以把这条放这里：之后新开的每个 login shell（含 tmux 新窗口/分屏）都能拿到
+        // claude / agy / hermes 装出来的命令。
+        runCatching {
+            val profileDir = File(rootfsDir, "etc/profile.d")
+            if (profileDir.isDirectory || profileDir.mkdirs()) {
+                val f = File(profileDir, "zz-local-bin-path.sh")
+                val want = "export PATH=\"/root/.local/bin:\$PATH\"\n"
+                if (!f.isFile || f.readText() != want) {
+                    f.writeText(want)
+                }
+            }
+        }.onFailure { RunLog.log("写入 ~/.local/bin PATH 兜底失败：${it.message}") }
+        // uv 系统级配置（belt；主防护是 hermes 内嵌 uv 包装器巡检）：
+        // hermes 的 install.sh 全局 UV_NO_CONFIG=1 且 pm 剥 UV_* 环境变量、重定向
+        // XDG_CONFIG_HOME——用户级 uv.toml 全失效。/etc/uv/uv.toml 是 uv 官方配置
+        // 发现层级里的系统级路径；UV_NO_CONFIG 未传到 pm 的 uv 子进程时它会被读到
+        // → copy 模式兜底（实现收口 EnvSelfHeal）
+        runCatching { EnvSelfHeal.ensureUvConfig(rootfsDir) }
+        // home 与系统分离（设计文档 §8）：用户数据放 App 私有目录，bind 挂到 guest 的 /root，
+        // 这样「修复环境」重解压系统层时不碰用户数据（homeDir/prootTmp 已在前面的
+        // hermes 巡检块之前定义）
+
+        // git 克隆加速 + 加固（2026-10-11 重做，用户：「给终端里的 git 加下速和加固一下」）。
+        // 旧写法（只在 .gitconfig 不存在时写一段全局 url.insteadOf=gh-proxy.com）有两个毛病：
+        // ① 只判存在 ⇒ 换镜像是"只对新环境生效"；② 全局 insteadOf 连 push 一起改道到第三方镜像
+        // （凭据外泄 + 镜像不收 push）。现在改成：.gitconfig 只放加固键（绝不放 insteadOf），
+        // 镜像只在 /usr/local/bin/git 包装器里、对取数类子命令**临时**注入，且按内容比对幂等重写。
+        // 实现与理由见 terminal/GitAccel.kt。
+        runCatching { GitAccel.apply(rootfsDir, homeDir) }
+            .onSuccess { actions -> actions.forEach { RunLog.log(it) } }
+            .onFailure { RunLog.log("git 加速配置失败：${it.message}") }
+        // ── 抱朴实例的预置（人设 + opencode.json 性能/插件字段）已搬走 ──────────────
+        // 2026-10-09（ERRATA E-069）：那些内容是**抱朴的**，不该由"用户开终端"来触发，
+        // 也不该和终端耦合。现唯一入口曾是 oc/BaopuPreset.ensure(ctx)，由 ui/baopu/BaopuScreen（2026-10-16 两处均整批删除）
+        // 在拉 serve 之前调用。终端启动这条路径从此不再碰抱朴的任何配置。
+        // 资料库（P0）：预置骨架 ＋ 分发指路到 guest /root（供终端各类 agent 读取）。
+        // 与上面抱朴那份**完全分开**：抱朴读 <XDG_CONFIG_HOME>/opencode/AGENTS.md；
+        // 本份写 guest /root/AGENTS.md —— AGENTS.md 是跨 agent 开放标准（25+ 工具通用），
+        // 另补一份只含 @AGENTS.md 的 CLAUDE.md 给 Claude Code。
+        // 同步部分只写小文件（毫秒级）；扫描与清单生成在后台线程。失败不影响启动。
+        runCatching { KnowledgeBase.refresh(context) }
+            .onFailure { RunLog.log("资料库刷新失败：${it.message}") }
+
+        // tmux 预置（2026-10-05 补 / 2026-10-12 抽成纯函数 + 补第三条）：
+        // 需要追加什么由 `tmuxConfAppend()` 决定（纯函数，单测覆盖幂等性）。
+        // 已有配置时按需追加，不覆盖用户自有设置。
+        runCatching {
+            val f = File(homeDir, ".tmux.conf")
+            val cur = if (f.isFile) f.readText() else ""
+            val add = tmuxConfAppend(cur)
+            if (add.isNotEmpty()) {
+                f.writeText((if (cur.isBlank()) "" else cur.trimEnd() + "\n") + add)
+                add.lineSequence().filter { it.isNotBlank() }
+                    .forEach { RunLog.log("tmux 配置已补：$it") }
+            }
+        }
+
+        // TZ（双保险的第二层）：tmux server / date / Node 等都读它。带 zoneinfo 的
+        // 环境用地理名；万一哪个 rootfs 变体没装 zoneinfo，glibc 解析不了地理名，
+        // 就退到 POSIX 自包含写法 CST-8（= UTC+8，POSIX 偏移符号西正东负，零依赖）
+        // TZ 取值规则搬到了 ProotLaunchRules.tzNameFor（第七十五批）：zoneinfo 的
+        // 文件查询留在调用点，纯选择逻辑进 helper。
+        val tzName = ProotLaunchRules.tzNameFor(
+            File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai").isFile
+        )
+        // env 表拼装搬到了 ProotLaunchRules.envEntries（第七十五批）：每条字面量的
+        // 出处注释随行搬运；顺序/内容与拆分前逐字节一致（对账见 ProotLaunchRulesTest）。
+        val env = ProotLaunchRules.envEntries(
+            tzName = tzName,
+            prootTmpPath = prootTmp.absolutePath,
+            rtDirPath = rtDir.absolutePath,
+            nativeDirPath = nativeDir.absolutePath,
+            loaderBinPath = loaderBin.absolutePath,
+        )
+
+        // 固定段（proot 选项）先入队，存储 bind/缓存 bind/收尾命令随后追加——
+        // 顺序即原顺序（guest 命令必须收尾：bind 被追加到 bash 之后会被当成脚本
+        // 路径执行，exit 127；2026-10-04 修复）。
+        val args = mutableListOf<String>()
+        args.addAll(
+            ProotLaunchRules.baseArgs(
+                prootBinPath = prootBin.absolutePath,
+                rootfsPath = rootfsDir.absolutePath,
+                homePath = homeDir.absolutePath,
+            )
+        )
+        // 手机存储直通：共享存储绑进 guest 的相同路径 + /sdcard 视图。
+        // 工作区解析已在预置块前完成（wsHost/wsShared，统一走 Workspace）
+        if (ProotLaunchRules.sharedStorageAllowed(storageGranted(context), wsShared)) {
+            args.addAll(ProotLaunchRules.sharedStorageBindArgs())
+            // 工作区软链跟随当前工作区（guest 内 /root/工作区 直达；变更时重建）
+            try {
+                val link = File(context.filesDir, "home/工作区")
+                link.parentFile?.mkdirs()
+                val target = ProotLaunchRules.guestSymlinkTargetFor(wsHost.absolutePath)
+                val cur = runCatching { android.system.Os.readlink(link.absolutePath) }.getOrNull()
+                if (cur != target) {
+                    link.delete()
+                    android.system.Os.symlink(target, link.absolutePath)
+                }
+            } catch (t: Throwable) {
+                // P2-7：工作区软链刷新失败不能静默——它直接决定 guest 里
+                // 「工作区」目录指向哪里，失败时用户看到的是"文件写进去不见了"。
+                RunLog.log("工作区软链刷新失败（忽略）：${t.message}")
+            }
+        }
+        RunLog.log(
+            "工作区: /workspace <- ${wsHost.absolutePath}" +
+                if (wsShared) "（共享存储，卸载保留）" else "（仅私有，随卸载删除）"
+        )
+        args.addAll(ProotLaunchRules.workspaceBindArg(wsHost.absolutePath))
+
+        // ── 公共存放区直通（2026-10-08 用户拍板：日志 / 缓存 / Agent 脚本账本都放
+        // `Download/证道`，**不跟随工作区**）──
+        // 工作区可能是用户自己的内容目录（真机上被设成了 `Download/男性`），
+        // 所以 Agent 安装脚本不能再用 `/workspace/agents/scripts` 这个路径——
+        // 那会指到用户的内容目录里去。改为把 `ZhengdaoDirs.root` 单独挂一份到 guest 的
+        // `/opt/zhengdao`：路径与工作区无关、两种模式（共享 / 仅私有兜底）都成立，
+        // 脚本、账本、包缓存、日志在 guest 里也都能直接翻。
+        // 挂载点先在 rootfs 里建好（proot 不保证替调用方创建落点）。
+        runCatching { File(rootfsDir, "opt/zhengdao").mkdirs() }
+        args.addAll(ProotLaunchRules.storeRootBindArg(ZhengdaoDirs.root(context).absolutePath, ZhengdaoDirs.GUEST_ROOT))
+
+        // ── 包缓存搬进公共区（用户 2026-10-08：「下载的东西都放到 download 证道 文件夹里」）──
+        // Agent 重装的大头从来不是安装脚本，而是 npm / uv / pip 的**包缓存**（真机实测：
+        // hermes 的 uv 缓存 254 MB、npm 缓存几十 MB）。把这三处挂到
+        // `Download/证道/cache/<kind>` 之后，重装 App 再装 Agent，依赖直接从本地缓存走。
+        //
+        // 为什么必须走 bind 而不是环境变量：hermes 的 pm 会**剥离 UV_* 环境变量**
+        //（见 AgentInstaller 的注释），uv 缓存位置唯一可靠的注入点就是挂载点；
+        // npm / pip 各自也有写死的默认目录，环境变量只是可选覆盖。
+        // 挂载目标一律落在 bind 进来的 home 之内（`/root/…`），因此目标目录必须先存在。
+        // 没存储权限 / 仅私有模式就整段跳过——仅私有模式下目录随卸载删除，
+        // 搬过去没有任何收益，只会多一层不必要的读写绕路。
+        // ⚠️ uv 例外（2026-10-09，E-056）：uv 的缓存**绝不能**落在共享存储上。
+        // 共享存储在 guest 里是 FUSE（`/dev/fuse … fuse`, noexec），实测两处硬缺口：
+        //   ① 建不了软链：`ln -s` ⇒ EACCES（uv 要在 `wheels-v6/…/<wheel>` 建软链指向
+        //      `archive-v0/<hash>`，于是 `failed to symlink … Permission denied (13)`）；
+        //   ② 拿不到文件锁：`flock` ⇒ ENOSYS（uv 要锁 `sdists-v9/editable/<hash>/.lock`，
+        //      于是 `failed to lock … Function not implemented (os error 38)`）。
+        // 真机实测（同一最小工程）：默认缓存（= 被挂到 FUSE 的 `/root/.hermes/cache/uv`）
+        // 失败；`--cache-dir` 指到私有 f2fs ⇒ 成功且缓存里确实出现 1 条软链。
+        // hermes 的 pm 还会主动剥掉 `UV_*` 环境变量并显式设 `UV_CACHE_DIR`（见 :556 注释），
+        // 所以「缓存整块留在私有 home（f2fs）」是唯一可行解；代价只是重装 App 后
+        // uv 的轮子缓存要重下，npm / pip 缓存不受影响（它们不建软链、不 flock）。
+        if (ProotLaunchRules.sharedStorageAllowed(storageGranted(context), wsShared)) {
+            for ((kind, rel) in sharedCacheBindings()) {
+                bindSharedCache(context, args, homeDir, kind, rel)
+            }
+        }
+
+        // guest 命令必须收尾：所有 proot 选项在前（2026-10-04 修复：存储 bind 被追加
+        // 到 bash 之后时，bash 会把 bind 参数当脚本路径执行，exit 127）
+        // 运行内存上限（用户第四批）：ulimit -v 限制 guest 进程虚拟地址空间，防单个
+        // Agent / 编译任务无限膨胀拖垮整机。实测 3GB 下 Node v26 可正常启动（空闲态）。
+        // ⚠️ M2 骨架结论（2026-10-04）：虚拟地址空间≠物理内存，Node/V8 真实负载下虚拟
+        // 占用远超物理，硬限可能"正常用也崩"——因此默认关闭，交由 M2 的软监控
+        // （读 /proc VmRSS + 通知栏警告）负责内存治理。设置页「运行内存上限」可手动开启。
+        val memLimitMb = ProotLaunchRules.parseMemLimitMb(
+            AppPrefs.prefs(context).getString("guest_mem_limit_mb", "0")
+        )
+        val memPrefix = ProotLaunchRules.memLimitPrefix(memLimitMb)
+        // 会话保持（用户第三批）：tmux new-session -A = 有名为 zhengdao 的会话则 attach，
+        // 没有则新建——终端断线重进不丢现场；Agent 经 autocmd 注入的命令同样落在会话内。
+        // 外层 bash -l 先读 /etc/profile（UV_LINK_MODE 全局生效），再 exec 进 tmux。
+        // 宿主侧检查 rootfs 是否带 tmux：旧包没有时降级裸 bash，guest 内不会报 command not found。
+        val hasTmux = File(rootfsDir, "usr/bin/tmux").isFile
+        if (!hasTmux) RunLog.log("rootfs 未带 tmux，降级为裸 bash 会话")
+        args.addAll(ProotLaunchRules.guestCommandArgs(tmuxSession, memPrefix, hasTmux))
+
+        if (memLimitMb > 0) RunLog.log("guest 内存上限: ${memLimitMb}MB (ulimit -v)")
+
+        // apt 分层策略（用户第四批）：系统层不支持 apt upgrade；语言级依赖走 pip / npm。
+        // 横幅告知 + 设置页同步提示，替代对用户行为的假设。
+        // 终端网络（用户指定）：DNS 多路已就位；走代理的用户最常见故障是分应用代理
+        // 没勾选证道——横幅提示一次，省一轮排障。
+        // 启动横幅（用户定稿：只留最必要的两条提示）。文件投递 + profile.d 消费：
+        // 每次 fresh 启动把提示文本写入 guest 的 /tmp，pane 内首个 bash 经 profile.d
+        // `cat` 后删除。⚠️ 刻意不向 pty 键入命令——键入的命令会被 readline 回显，
+        // 两行提示前面拖着三四行命令本体（真机实测，观感差）；文件方案纯输出、
+        // 天然无输入竞争。外层 bash -lc 也读 profile.d，但 TMUX 变量未置 →
+        // 不打印不消费（外层输出会被 tmux 全屏重绘吞掉，标记还被误耗）。
+        // pending 文件每次启动重写（上轮残留只会显示一次本轮内容，不会叠印）。
+        runCatching {
+            val bannerDir = File(rootfsDir, "etc/profile.d")
+            if (bannerDir.isDirectory || bannerDir.mkdirs()) {
+                val f = File(bannerDir, "zz-banner.sh")
+                if (!f.isFile || !f.readText().contains("zhengdao-banner-pending")) {
+                    f.writeText(
+                        "# 证道启动横幅：pane 内首个 shell 打印即删（TMUX 变量区分外层 shell）\n" +
+                            "if [ -n \"${'$'}{TMUX:-}\" ] && [ -f /tmp/.zhengdao-banner-pending ]; then\n" +
+                            "  cat /tmp/.zhengdao-banner-pending\n" +
+                            "  rm -f /tmp/.zhengdao-banner-pending\n" +
+                            "fi\n"
+                    )
+                }
+            }
+            File(rootfsDir, "tmp").mkdirs()
+            // 横幅文案（v1.2 改写）：原先那条「两个 opencode、不必卸载任何一个」的说明已作废——
+            // 终端里的 npm 版 opencode 随 v1.2 主线一卸载了。现在 App 里只有抱朴 Tab 那一份
+            // OpenCode，这里改为直接告诉用户它在哪，避免"我终端里的 opencode 怎么没了"。
+            //
+            // 2026-10-08 追加：安装结论横幅。App 侧是原生 TerminalView，**不能往里注入文本**
+            //（写入 pty 会被当成用户输入），所以「环境已从本地缓存装好、本次没联网下载」这类
+            // 结论只能借这条现成通道送进终端可见区：TerminalActivity.writeTerminalNotice()
+            // 把结论写进 files/install-notice.txt，这里读出来附在横幅末尾并删除（只显示一次，
+            // 不每次开会话都刷屏）。读失败/没有就跳过，不影响启动。
+            val installNotice = try {
+                val f = File(homeDir.parentFile ?: rootfsDir, "install-notice.txt")
+                if (f.isFile) f.readText().trim().also { f.delete() } else ""
+            } catch (_: Throwable) {
+                ""
+            }
+            File(rootfsDir, "tmp/.zhengdao-banner-pending").writeText(
+                "[提示] 不要执行 apt upgrade（可能损坏环境）；优先用 pip / npm 装依赖\n" +
+                    "[网络] 安装失败时：检查代理 App 的「分应用代理」是否已勾选证道\n" +
+                    "[提示] OpenCode 在「抱朴」Tab 里（App 内置版，开箱即用）\n" +
+                    if (installNotice.isNotBlank()) "[环境] $installNotice\n" else ""
+            )
+        } // 写不进去不阻断启动（横幅只是提示）
+
+        return LaunchPlan(
+            cmd = prootBin.absolutePath,
+            args = args.toTypedArray(),
+            env = env.toTypedArray(),
+            usesTmux = hasTmux,
+        )
+    }
+
+    /** hermes 专属 uv 包装器（base64 免转义注入；AgentInstaller 安装时与本次启动
+     * 巡检共用）。逻辑：uv.real 缺失 → 从 GitHub pinned 地址下载 uv 0.12.3 arm64
+     * （失败换 hermes 官方镜像），SHA256 校验后落位；exec 真身前强制
+     * UV_LINK_MODE=copy + TMPDIR 兜底。真身获取失败退回系统 uv。
+     * URL/SHA256 与 hermes install.sh 同源。源文件见 build/hermes-uv-wrapper.sh。 */
+    const val HERMES_UV_WRAPPER_B64 =
+        "IyEvYmluL2Jhc2gKIyB6aGVuZ2RhbyBpbmplY3Rpb24gbGF5ZXI6IGhlcm1lcyBwbSBzdHJpcHMgVVZfKiBlbnYgdmFycyBhbmQgaWdub3JlcyB1diBjb25maWcKIyBmaWxlcyAoVVZfTk9fQ09ORklHPTEpIC0tIHdyYXBwaW5nIGl0cyBvd24gcGlubmVkIHV2IGJpbmFyeSBpcyB0aGUgb25seQojIHJlbGlhYmxlIGluamVjdGlvbiBwb2ludC4gVGhlIHJlYWwgYmluYXJ5IGxpdmVzIG5leHQgdG8gdGhpcyBhcyB1di5yZWFsLgpEPSIkKGNkICIkKGRpcm5hbWUgIiQwIikiICYmIHB3ZCkiClI9IiREL3V2LnJlYWwiCmlmIFsgISAteCAiJFIiIF07IHRoZW4KICBUPSIkKG1rdGVtcCAtZCAyPi9kZXYvbnVsbCB8fCBlY2hvIC90bXAvLnpkdXYuJCQpIgogIG1rZGlyIC1wICIkVCIKICBmb3IgVSBpbiBcCiAgICBodHRwczovL2dpdGh1Yi5jb20vYXN0cmFsLXNoL3V2L3JlbGVhc2VzL2Rvd25sb2FkLzAuMTIuMy91di1hYXJjaDY0LXVua25vd24tbGludXgtZ251LnRhci5neiBcCiAgICBodHRwczovL2hlcm1lcy1hc3NldHMubm91c3Jlc2VhcmNoLmNvbS91cHN0cmVhbS9zaGEyNTYvYmI2NmNiNTJlN2IxODIzYWVkMTE4MzYzMGQ4ZDhlNWM5NTg4NDBkNTg0YTRjNTVlYzEwYTRjZmMxNjhkY2NhMiA7IGRvCiAgICBjdXJsIC1Mc1NmICIkVSIgLW8gIiRUL3V2LnRneiIgJiYgYnJlYWsKICBkb25lCiAgaWYgWyAtZiAiJFQvdXYudGd6IiBdICYmIFsgIiQoc2hhMjU2c3VtICIkVC91di50Z3oiIDI+L2Rldi9udWxsIHwgY3V0IC1kJyAnIC1mMSkiID0gImJiNjZjYjUyZTdiMTgyM2FlZDExODM2MzBkOGQ4ZTVjOTU4ODQwZDU4NGE0YzU1ZWMxMGE0Y2ZjMTY4ZGNjYTIiIF07IHRoZW4KICAgIHRhciAteHpmICIkVC91di50Z3oiIC1DICIkVCIgMj4vZGV2L251bGwKICAgIEY9IiQoZmluZCAiJFQiIC1uYW1lIHV2IC10eXBlIGYgMj4vZGV2L251bGwgfCBoZWFkIC1uMSkiCiAgICBbIC1uICIkRiIgXSAmJiBtdiAiJEYiICIkUiIgJiYgY2htb2QgMDc1NSAiJFIiCiAgZmkKICBybSAtcmYgIiRUIgpmaQppZiBbICEgLXggIiRSIiBdOyB0aGVuCiAgZWNobyAiW3poZW5nZGFvXSB1diB3cmFwcGVyOiBwaW5uZWQgdXYgdW5hdmFpbGFibGUsIGZhbGxpbmcgYmFjayB0byBzeXN0ZW0gdXYiID4mMgogIFsgLXggL3Vzci9sb2NhbC9iaW4vdXYgXSAmJiBleGVjIC91c3IvbG9jYWwvYmluL3V2ICIkQCIKICBleGl0IDEyNwpmaQpleHBvcnQgVVZfTElOS19NT0RFPWNvcHkKZXhwb3J0IFRNUERJUj0iJHtUTVBESVI6LS9yb290L3RtcH0iCmV4ZWMgIiRSIiAiJEAiCg=="
+
+    /**
+     * **要挂到公共区**的包缓存清单（`kind to /root/<rel>`）。纯函数，可单测。
+     *
+     * ⚠️ uv **刻意不在表里**（2026-10-09，E-056）：uv 缓存必须在私有 f2fs 上 ——
+     * 共享存储在 guest 里是 FUSE，实测既建不了软链（`ln -s` ⇒ EACCES，uv 要在
+     * `wheels-v6/…` 建软链指向 `archive-v0/<hash>`）又拿不到文件锁（`flock` ⇒ ENOSYS，
+     * uv 要锁 `sdists-v9/editable/<hash>/.lock`）。两条都直接让 `uv sync` 退出 1，
+     * hermes 的依赖就装不上。npm / pip 的缓存里没有软链、也不 flock，可以照挂。
+     */
+    /**
+     * 计算需要往 `~/.tmux.conf` 追加的内容（纯函数；返回空串 = 什么都不用加）。
+     *
+     * 三条设置各自独立判重（用 `(?m)` 行首锚点），**不覆盖用户自有配置** —— 用户已经写过
+     * 其中任何一条时，那一行不会再被追加。可重复调用（幂等）：把返回值追加到原文后，
+     * 再调用一次必定返回空串。
+     *
+     * 1. **`set -g mouse on`**（2026-10-05 补）—— 触摸滑动能滚动历史。背景见
+     *    `TerminalView.onScroll` 的定制注释：tmux 采用全屏重绘，不产生本地回滚缓冲
+     *    （实测 `histRows=0`），必须把触摸滑动转成滚轮事件、且 tmux 端开启 mouse，
+     *    才能滚动 pane 自己的历史。
+     * 2. **`set -g set-clipboard on`**（2026-10-08 真机实测补）—— 三档负载
+     *    （100 / 9000 / 12345 字符）端到端验证「终端内的 OSC 52 → 手机剪贴板」这条链。
+     *    tmux 的 `set-clipboard` 默认是 `external`：实测这种模式下**pane 里应用发出的
+     *    OSC 52 不会被转发给外层终端**（App 收不到、剪贴板不变、也没有「已复制」提示）；
+     *    只有 `on` 模式下 tmux 才会既存自己的 buffer、又把 OSC 52 透传给 App。
+     *    因此必须显式开 `on`，否则 `TerminalEmulator` 里那套 OSC 52 处理（含 100 KiB
+     *    上限修复）在 tmux 里等于白做。
+     * 3. **`bind-key x kill-pane`**（2026-10-12 补 · §B 顺序 22 ②）—— tmux 默认的
+     *    `C-b x` 是 `confirm-before -p "kill-pane #P? (y/n)" kill-pane`，**要先答一次 y**。
+     *    客户端原先的处理是「发完 `C-b x` 再延迟 250 ms 盲发一个 y」：那条 `y` 没有任何
+     *    依据能保证此刻屏幕上是等待确认的提示符 —— 会话未启用 tmux、pane 数判断漂移、
+     *    或确认框还没起来时，这个 `y` 会**直接打进 pane 里前台程序的 stdin**（在跑 agent
+     *    TUI 时就是乱打字，审计报告 A4）。这里用一次绑定覆盖，把确认整段去掉：
+     *    客户端只发 `C-b x`，没有任何盲发按键，也没有时序竞态。
+     *    ⚠️ 生效范围：主会话每次启动都会先 `tmux kill-server`（见 [buildLaunchPlan]），
+     *    因此**主会话一进终端就吃到新绑定**；已经跑着的旧 server 要等它下次被重启
+     *    （副会话只是 attach 上现有 server，不负责读新配置）。
+     * 4. **copy-mode 的滚轮绑定改成 1 行/次**（2026-10-12 补 · 真机实测）—— tmux 默认
+     *    `WheelUpPane`/`WheelDownPane` 是每次滚 5 行，而客户端每滑过**一行**就发一个滚轮
+     *    事件（`TerminalGestureController.onScroll` 的 `rowsToScroll` 累加循环，实测
+     *    600 px 手指 = 9 次 `onScroll`）。两者相乘就是当年那句"滑动一顿一顿、不跟手"的
+     *    来源：**手指走 1 行，内容跳 5 行**（真机实测：两次 600 px 拖动让 tmux 的
+     *    `[位置/总行数]` 从 0 → 55 → 115，每次约 6 行/事件 = 5 行绑定 + 惯性补发）。
+     *    绑定成 `send -N1 -X scroll-up` 之后，手指 1 行 = 内容 1 行，且每次只跳一行 ——
+     *    与终端自己的本地回滚缓冲（也是 1 行 = 1 行）口径一致。
+     */
+    fun tmuxConfAppend(cur: String): String = buildString {
+        if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+mouse\\b").containsMatchIn(cur)) {
+            append("set -g mouse on\n")
+        }
+        if (!Regex("(?m)^\\s*set(-option)?\\s+-g\\s+set-clipboard\\b").containsMatchIn(cur)) {
+            append("set -g set-clipboard on\n")
+        }
+        // 5. **OSC 8 超链接能力声明**（§B 顺序 29 · 2026-10-14 真机验收立账）——
+        //    tmux 默认不把 `hyperlinks` 当作本客户端的能力转发：guest 实测
+        //    `#{client_termfeatures}` = `bpaste,ccolour,clipboard,cstyle,focus,margins,title`，
+        //    没有 hyperlinks（tmux 3.5a / TERM=xterm-256color）⇒ A 路径（OSC 8）在终端里
+        //    既不画下划线、点了也没反应。**运行期**补 `set -as …` + `refresh-client` 实测无效
+        //    （能力在 attach 时定下），所以必须 attach 前就位。主会话每次启动都先
+        //    `tmux kill-server`（见 [buildLaunchPlan]），因此一进终端的新客户端就吃到。
+        //    判重口径比上面两条略宽：`terminal-features` 是 **server option**（`-s`），
+        //    用户写法可能是 `set -s` / `set -as` / `set-option -as` —— 只要该选项名出现过，
+        //    就算他自己管了这条能力，我们不插手（与「用户写过就不覆盖」同一原则）。
+        if (!Regex("(?m)^\\s*set(-option)?\\s+-[a-zA-Z]+\\s+terminal-features\\b").containsMatchIn(cur)) {
+            append("set -as terminal-features 'xterm*:hyperlinks'\n")
+        }
+        if (!Regex("(?m)^\\s*bind(-key)?\\s+x\\s+kill-pane\\b").containsMatchIn(cur)) {
+            append("bind-key x kill-pane\n")
+        }
+        // 四条各自判重（与上面三条同一原则：用户自己写过该表的滚轮绑定就不动它）。
+        appendWheelBindIfMissing(cur, "copy-mode", "WheelUpPane", "scroll-up")
+        appendWheelBindIfMissing(cur, "copy-mode", "WheelDownPane", "scroll-down")
+        appendWheelBindIfMissing(cur, "copy-mode-vi", "WheelUpPane", "scroll-up")
+        appendWheelBindIfMissing(cur, "copy-mode-vi", "WheelDownPane", "scroll-down")
+    }
+
+    /**
+     * 追加一条"滚轮 = 1 行"的 copy-mode 绑定。
+     *
+     * **只在完全没有该表该键的绑定时才补** —— 与 [tmuxConfAppend] 前三条同一原则：
+     * 用户自己写过（哪怕行数不是 1）就说明他有意见，我们不覆盖。想改回去的人，
+     * 自己写一条 `bind -T copy-mode WheelUpPane …` 即可让这四条全部让位。
+     */
+    private fun StringBuilder.appendWheelBindIfMissing(
+        cur: String,
+        table: String,
+        pane: String,
+        action: String,
+    ) {
+        val re = Regex(
+            "(?m)^\\s*bind(-key)?\\s+-T\\s+" + Regex.escape(table) +
+                "\\s+" + Regex.escape(pane) + "\\b"
+        )
+        if (!re.containsMatchIn(cur)) {
+            append("bind -T $table $pane send -N1 -X $action\n")
+        }
+    }
+
+    fun sharedCacheBindings(): List<Pair<String, String>> = listOf(
+        "npm" to ".npm",
+        "pip" to ".cache/pip",
+    )
+
+    /**
+     * 把 guest 的一个包缓存目录挂到公共区 `Download/证道/cache/<kind>`（幂等，可反复调用）。
+     *
+     * 首次调用会把私有 home 里的旧缓存**搬进**公共区（用户不必因为这次改动重下 254 MB），
+     * 之后每次只是挂一遍。目标路径 `/root/<rel>` 落在 `-b homeDir:/root` 这条 bind
+     * **之内**：proot 按顺序解析 bind，落点先由 home 那条变成宿主上的 `homeDir/<rel>`，
+     * 再被本覆盖 ⇒ 所以这个落点目录必须真实存在（proot 不会替你建）。
+     *
+     * 任何一步失败都只是**少挂一个缓存**：捕获后记日志，绝不让终端起不来。
+     */
+    private fun bindSharedCache(
+        context: Context,
+        args: MutableList<String>,
+        homeDir: File,
+        kind: String,
+        rel: String,
+    ) {
+        try {
+            val pub = ZhengdaoDirs.cacheDir(context, kind)
+            val mount = File(homeDir, rel)
+            val moved = ZhengdaoDirs.adoptDir(pub, mount) // 幂等：目标已有同名条目就跳过
+            if (!mount.isDirectory) mount.mkdirs()
+            if (moved > 0) {
+                RunLog.log("缓存搬家: ~/$rel → ${pub.absolutePath}（$moved 项，重装 App 后免重下）")
+            }
+            args.addAll(arrayOf("-b", "${pub.absolutePath}:/root/$rel"))
+        } catch (t: Throwable) {
+            RunLog.log("缓存挂载失败($kind → /root/$rel)：${t.message}（该缓存留在私有 home）")
+        }
+    }
+
+}
