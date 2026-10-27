@@ -168,7 +168,7 @@ internal object TableQueryTool {
             return ToolOutcome.Rejected("表名只接受工作区里的相对路径：$table")
         }
         val registry = registryFor(root)
-        val answer = when {
+        var answer = when {
             question.isNotEmpty() -> TableQuery.askQuestion(registry, question, table, sheet, headerRow)
             opRaw.isNotEmpty() -> {
                 val ask = buildAsk(opRaw, args, table, sheet, headerRow)
@@ -178,6 +178,27 @@ internal object TableQueryTool {
                 TableQuery.ask(registry, ask)
             }
             else -> return ToolOutcome.Ok(helpOf(registry).toString())
+        }
+        // 243③：表头话只说一次（同表同会话）；内容变了要提醒仍按指定行
+        run {
+            val noteRel = answer.evidence?.path ?: table
+            if (!noteRel.isNullOrBlank()) {
+                val entry = registry.entryOf(noteRel)
+                val se = entry?.sheetNamed(sheet)
+                val notes = ArrayList<String>()
+                if (se?.userHeaderRow != null && entry != null && entry.mtime != se.userHeaderMtime) {
+                    notes += "内容变了，表头还按第 ${se.userHeaderRow} 行吗？不是就说一声"
+                }
+                if (se?.userHeaderRow == null) {
+                    val m = runCatching { registry.modelOf(noteRel, sheet) }.getOrNull()
+                    if (m != null && m.headerRowNumber == 1) notes += "我把第 1 行当表头了，不对你就说"
+                    m?.warnings?.firstOrNull()?.let { notes += it }
+                }
+                val fresh = notes.filter { HeaderNotes.once("$noteRel#${sheet ?: ""}#$it") }
+                if (fresh.isNotEmpty()) {
+                    answer = answer.copy(hint = listOf(answer.hint, fresh.joinToString("\n")).filter { it.isNotBlank() }.joinToString("\n"))
+                }
+            }
         }
         // 243③：用户指定了表头行就记住（落登记簿，下次不再猜/不再问）
         if (headerRow != null && headerRow > 0) {
@@ -344,4 +365,11 @@ internal object TableQueryTool {
                     "PDF 不在本批范围。",
             )
     }
+}
+
+/** 243③：表头类话本会话只说一次（key 含表名与句子）。 */
+internal object HeaderNotes {
+    private val said = HashSet<String>()
+    fun once(key: String): Boolean = said.add(key)
+    fun reset() = said.clear()
 }

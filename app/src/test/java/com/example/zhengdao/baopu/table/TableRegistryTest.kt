@@ -3,6 +3,7 @@
 // 第二百三十二批 · 表登记（发现 / 不扫 PDF / 增量 / 落盘）。
 package com.example.zhengdao.baopu.table
 
+import com.example.zhengdao.baopu.agent.HeaderNotes
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -186,5 +187,25 @@ class TableRegistryTest {
         val reloaded = registry()
         reloaded.refresh()
         assertEquals(2, reloaded.modelOf("资料库/表.csv")!!.headerRowNumber)
+    }
+
+    @Test
+    fun `243 表头话只说一次`() {
+        HeaderNotes.reset()
+        assertTrue(HeaderNotes.once("资料库/表.csv#Sheet1#把1行当表头"))
+        assertFalse(HeaderNotes.once("资料库/表.csv#Sheet1#把1行当表头"))
+    }
+
+    @Test
+    fun `243 内容变了_用户指定表头仍在`() {
+        val f = writeCsv(ws, "资料库/表.csv", "姓名,班级\n张三,三班\n李四,三班\n")
+        val reg = registry()
+        reg.refresh()
+        assertTrue(reg.rememberHeaderRow("资料库/表.csv", null, 2))
+        f.writeText("姓名,班级\n张三,三班\n李四,三班\n王五,三班\n", Charsets.UTF_8)
+        f.setLastModified(f.lastModified() + 5_000)
+        val again = registry()
+        again.refresh()
+        assertEquals(2, again.modelOf("资料库/表.csv")!!.headerRowNumber)
     }
 }

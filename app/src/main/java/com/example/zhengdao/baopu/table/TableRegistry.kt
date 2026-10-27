@@ -44,6 +44,8 @@ data class SheetEntry(
     val ask: String? = null,
     /** 243③：用户指定的表头行（1 起）；存盘后不再猜也不再问。 */
     val userHeaderRow: Int? = null,
+    /** 243③：记住表头时这张表的 mtime（内容变了要提醒）。 */
+    val userHeaderMtime: Long? = null,
 )
 
 /** 登记里的列（**只存列名与类型，不存任何单元格取值**——姓名与手机号不许落盘）。 */
@@ -145,7 +147,20 @@ class TableRegistry(
             // 那会让 modelOf 每次都重解析，正是负例 7「每次问答都全量重扫」的另一种形态）
             cache.keys.removeAll { it.startsWith("${hit.rel}#") }
             val entry = parseFile(hit, now)
-            if (entry != null) next[hit.rel] = entry
+            // 243③：重解析不能把用户指定的表头行丢了（负例 6）
+            val merged = entry?.let { e ->
+                old?.let { o ->
+                    e.copy(
+                        sheets = e.sheets.map { sh ->
+                            val prev = o.sheets.firstOrNull { it.name == sh.name }
+                            if (prev != null) {
+                                sh.copy(userHeaderRow = prev.userHeaderRow, userHeaderMtime = prev.userHeaderMtime)
+                            } else sh
+                        },
+                    )
+                } ?: e
+            }
+            if (merged != null) next[hit.rel] = merged
             parsed++
         }
         val removed = entries.keys.count { it !in next.keys }
@@ -376,7 +391,9 @@ class TableRegistry(
         val entry = entries[rel] ?: return false
         val target = entry.sheetNamed(sheet) ?: return false
         val updatedSheets = entry.sheets.map { s ->
-            if (s.name == target.name) s.copy(userHeaderRow = row) else s
+            if (s.name == target.name) {
+                s.copy(userHeaderRow = row, userHeaderMtime = if (row == null) null else entry.mtime)
+            } else s
         }
         entries = entries + (rel to entry.copy(sheets = updatedSheets))
         cache.clear()
@@ -415,6 +432,7 @@ class TableRegistry(
                     .put("warnings", JSONArray(s.warnings))
                     .put("ask", s.ask ?: JSONObject.NULL)
                     .put("userHeaderRow", s.userHeaderRow ?: JSONObject.NULL)
+                    .put("userHeaderMtime", s.userHeaderMtime ?: JSONObject.NULL)
                     .put(
                         "columns",
                         JSONArray().also { cols ->
@@ -448,6 +466,7 @@ class TableRegistry(
                 warnings = strings(o.optJSONArray("warnings")),
                 ask = if (o.isNull("ask")) null else o.optString("ask"),
                 userHeaderRow = if (o.isNull("userHeaderRow")) null else o.optInt("userHeaderRow"),
+                userHeaderMtime = if (o.isNull("userHeaderMtime")) null else o.optLong("userHeaderMtime"),
             )
         }
         return out
