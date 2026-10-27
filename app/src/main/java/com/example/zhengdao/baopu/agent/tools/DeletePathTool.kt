@@ -17,6 +17,7 @@
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.MediaDelete
 import com.example.zhengdao.baopu.MediaOwnership
 import com.example.zhengdao.baopu.MediaPublisher
@@ -24,7 +25,6 @@ import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.core.TimeFormats
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

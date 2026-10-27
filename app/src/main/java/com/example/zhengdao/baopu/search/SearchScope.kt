@@ -32,6 +32,7 @@
 // 落点在纯函数 [SearchScopeRules.plan]，JVM 直测。
 package com.example.zhengdao.baopu.search
 
+import com.example.zhengdao.core.PathGuard
 import android.content.Context
 import android.os.Environment
 import com.example.zhengdao.baopu.BaopuWorkspace

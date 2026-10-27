@@ -329,11 +329,8 @@ class ToolSchemaAllTest {
     ): ToolRegistry {
         val reg = ToolRegistry(InMemoryToolPrefs())
         BaopuToolCatalog.loadInto(reg) { root }
-        // 装配层那四条（第一百一十九批起换成 JVM 够得着的工厂，见 CompatChannelTools）
         reg.register(SkillTools.spec(workspaceRoot = { root }, personaFiles = { PersonaFiles(File(root, "global"), root) }))
         reg.register(AppendPersonaTool.spec(personaFiles = { PersonaFiles(File(root, "global"), root) }))
-        reg.register(CompatChannelTools.readSpec(readFileEnabled = true))
-        reg.register(CompatChannelTools.bashSpec())
         reg.currentSessionId = SESSION
         reg.unlockStore().unlock(SESSION, ToolGroup.values().toList())
         // 契约测试只看 schema，不看确认流程 ⇒ 统一降成 FREE，省掉「没人点卡」的噪声
@@ -516,8 +513,6 @@ class ToolSchemaAllTest {
             "teach_skill_save" to JSONObject(),
             "browser_replay_skill" to JSONObject().put("name", "查货"),
             "teach_site_trust" to JSONObject().put("action", "list"),
-            "read" to JSONObject().put("path", "a.md"),
-            "bash" to JSONObject(),
         )
 
         /** 数组成员的参数（按「工具名.参数名」索引）：自动造不出有意义的元素，手写。 */

@@ -236,7 +236,7 @@ class TeachToolsTest {
         )
         // 全在表里：全量注册名求差集为空（全覆盖门禁）
         val registered = BaopuToolCatalog.ENTRIES.map { it.name }.toSet() +
-            setOf("write_skill", "append_persona", "read", "bash")
+            setOf("write_skill", "append_persona")  // 第四刀：read/bash（COMPAT）已退役
         assertEquals("注册工具必须全有账", emptyList<String>(), RiskMatrix.uncovered(registered))
 
         // 拔掉 browser_replay_skill 一行 ⇒ 查不到档 = R2＋MUST_ASK＋unclassified_tool

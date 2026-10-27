@@ -5,7 +5,7 @@
 // 「linkname」的路径语义（linkname 相对**链接所在目录**，允许绝对路径）；
 // java.io.File / java.nio.file.Path 的 canonicalize（解析已存在的软链）与
 // normalize（纯词法折叠 `.` / `..`）语义（JDK 标准库，Android API 26+ 可用）。
-package com.example.zhengdao.rootfs
+package com.example.zhengdao.core
 
 import java.io.File
 

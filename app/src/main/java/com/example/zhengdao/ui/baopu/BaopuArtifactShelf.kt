@@ -1,5 +1,6 @@
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.core.PathGuard
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -40,7 +41,6 @@ import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.artifactFileName
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
-import com.example.zhengdao.rootfs.PathGuard
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

@@ -4,10 +4,10 @@
 // 迁移先备份→复制→校验、旧目录不删）；157 目录收口后工作区根为唯一根。
 package com.example.zhengdao.baopu.knowledge
 
+import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
-import com.example.zhengdao.rootfs.PathGuard
 import java.io.File
 
 /**

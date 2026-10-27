@@ -16,6 +16,7 @@ import com.example.zhengdao.baopu.PersonaFiles
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -88,10 +89,10 @@ class ToolSchemaGateTest {
             ToolGroupTable.GROUP_OF.keys,
             reg.names().toSet(),
         )
-        // 免费通道那两条也在名册里（第一百一十九批把它们搬到了 CompatChannelTools，
-        // 就是为了让 JVM 门禁也能看见 bash 的 schema）
-        assertNotNull("read 没注册", reg.all().firstOrNull { it.name == CompatChannelTools.NAME_READ })
-        assertNotNull("bash 没注册", reg.all().firstOrNull { it.name == CompatChannelTools.NAME_BASH })
+        // 第二百四十八批（第四刀）：免费通道的 read / bash（COMPAT 组）**已退役** ——
+        // 它们随终端/agent 运行时搬去 zhengdao-term。判据反过来钉：这两条**不许再出现**。
+        assertNull("read 已退役，不该再注册", reg.all().firstOrNull { it.name == "read" })
+        assertNull("bash 已退役，不该再注册", reg.all().firstOrNull { it.name == "bash" })
         val issues = reg.schemaIssues()
         assertTrue(
             "真注册表里有工具 schema 不合规（本该在 CI 就红，不该让用户当第一个发现者）：\n" +
@@ -109,8 +110,6 @@ class ToolSchemaGateTest {
         BaopuToolCatalog.loadInto(reg) { root }
         reg.register(SkillTools.spec(workspaceRoot = { root }, personaFiles = files))
         reg.register(AppendPersonaTool.spec(personaFiles = files))
-        reg.register(CompatChannelTools.readSpec(readFileEnabled = true))
-        reg.register(CompatChannelTools.bashSpec())
         return reg
     }
 
