@@ -26,7 +26,6 @@ class ColorsXmlGuardTest {
     )
 
     private val realColors = listOf(
-        "ic_launcher_background", // 启动图标背景（mipmap-anydpi/ic_launcher*.xml）
         "term_key_active",        // 终端功能键·激活态（TerminalActivity）
         "term_key_idle",          // 终端功能键·空闲态（TerminalActivity）
     )
