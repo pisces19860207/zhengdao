@@ -21,10 +21,8 @@ object SrcRoots {
     /** Java 源码根候选（按优先级）。cwd 可能是 `app/`，也可能是仓根。 */
     fun javaRoots(): List<File> = listOf(
         File("src/main/java"),                       // cwd = app/
-        File("../terminal-core/src/main/java"),      // 终端内核（第二百四十一批搬走的部分）
         File("../core/src/main/java"),               // 共享层（第二百四十批）
         File("app/src/main/java"),                   // cwd = 仓根
-        File("terminal-core/src/main/java"),
         File("core/src/main/java"),
     )
 
@@ -33,7 +31,7 @@ object SrcRoots {
      * 展开成一组候选 File，顺序即优先级。
      *
      * 非 Java 源码路径（`src/main/AndroidManifest.xml`、`build.gradle.kts`）**不套 java 根**，
-     * 按模块根展开 —— 它们只可能属于 :app 或 :terminal-core 的模块根。
+     * 按模块根展开 —— 它们只可能属于 :app 或 :core 的模块根。
      */
     fun candidates(path: String): List<File> {
         val p = path.replace('\\', '/')
@@ -41,12 +39,12 @@ object SrcRoots {
         val rel = when {
             p.startsWith("app/src/main/java/") -> p.removePrefix("app/src/main/java/")
             p.startsWith("src/main/java/") -> p.removePrefix("src/main/java/")
-            p.startsWith("app/") -> return listOf(File(path), File("../terminal-core/${p.removePrefix("app/")}"))
+            p.startsWith("app/") -> return listOf(File(path), File("../core/${p.removePrefix("app/")}"))
             else -> null
         }
         if (rel == null) {
             // 模块根相对路径（清单 / 构建脚本 / 资源）
-            return listOf(File(path), File("../terminal-core/$p"), File("../core/$p"))
+            return listOf(File(path), File("../core/$p"))
         }
         return javaRoots().map { File(it, rel) }
     }

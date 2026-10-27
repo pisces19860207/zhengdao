@@ -34,7 +34,6 @@ okhttp = "4.12.0"
 commonsCompress = "1.26.2"
 commonsLang3 = "3.18.0"
 mockwebserver = "4.12.0"
-zstdJni = "1.5.6-4"
 xz = "1.9"
 navigationCompose = "2.8.5"
 json = "20240303"
@@ -79,7 +78,6 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
 mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
-zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
 xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 json = { group = "org.json", name = "json", version.ref = "json" }
