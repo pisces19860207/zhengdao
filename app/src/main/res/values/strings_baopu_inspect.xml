@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百三十九批：纠察（勘验）的输出落在 208 记录页的「巡按」栏。字符串单独成文件
+     （158/233 批同款做法）——不与 main 上正在改 strings.xml 的批次抢同一个文件。
+     阈值、判定句、明细正文都住在 `baopu/inspect/`（那是判据层），这里只有界面用的框。 -->
+<resources>
+    <string name="decision_patrol_title_empty">巡按：还没巡过</string>
+    <string name="decision_patrol_run">巡一遍</string>
+    <string name="decision_patrol_running">正在勘验…</string>
+    <string name="decision_patrol_readonly">勘验只查不改：明细只在本栏，不交给模型</string>
+    <string name="decision_patrol_meta">上次 %1$s · %2$s</string>
+    <string name="decision_patrol_elapsed">用时（毫秒）：%1$d</string>
+    <string name="decision_patrol_mode_manual">手动</string>
+    <string name="decision_patrol_mode_night">夜间低峰</string>
+    <string name="decision_patrol_history_title">更早的巡按</string>
+    <string name="decision_patrol_verdict_hit">命中</string>
+    <string name="decision_patrol_verdict_clear">查过没问题</string>
+    <string name="decision_patrol_verdict_nodata">查不了</string>
+    <string name="decision_patrol_gate">现在不能巡：%1$s</string>
+    <string name="decision_patrol_failed">这一趟没巡成：%1$s</string>
+</resources>
