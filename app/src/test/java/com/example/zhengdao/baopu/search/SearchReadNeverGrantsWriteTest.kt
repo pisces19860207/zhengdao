@@ -29,6 +29,8 @@
 // `finally` 还原，不污染别的测试；`WorkspaceGrants` 用完 `resetForTest()`。
 package com.example.zhengdao.baopu.search
 
+import com.example.zhengdao.SrcRoots
+
 import com.example.zhengdao.baopu.AccessVerdict
 import com.example.zhengdao.baopu.WorkspaceAccessPolicy
 import com.example.zhengdao.baopu.WorkspaceGrantRules
@@ -443,7 +445,9 @@ class SearchReadNeverGrantsWriteTest {
     private fun repoFile(rel: String): File {
         var dir: File? = File(".").absoluteFile
         while (dir != null) {
-            listOf(File(dir, "app/$rel"), File(dir, rel)).firstOrNull { it.exists() }?.let { return it }
+            // 第二百四十一批：rootfs/terminal 搬进 :terminal-core，多试一个模块根
+            listOf(File(dir, "app/$rel"), File(dir, rel), File(dir, "terminal-core/$rel"), File(dir, "core/$rel"), File(dir, "native-core/$rel"))
+                .firstOrNull { it.exists() }?.let { return it }
             dir = dir.parentFile
         }
         throw AssertionError("找不到 $rel（工作目录 ${File(".").absolutePath}）")

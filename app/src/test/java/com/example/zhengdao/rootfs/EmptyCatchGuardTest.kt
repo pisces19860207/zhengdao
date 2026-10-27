@@ -3,6 +3,8 @@
 
 package com.example.zhengdao.rootfs
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -30,8 +32,10 @@ class EmptyCatchGuardTest {
 
     @Test
     fun `主源码不许有空 catch`() {
-        val root = File("src/main/java")
-        val offenders = root.walkTopDown()
+        // 第二百四十一批：终端内核搬进 :terminal-core，空 catch 纪律一并覆盖它
+        val roots = listOf(File("src/main/java"), File("../terminal-core/src/main/java"))
+            .filter { it.isDirectory }
+        val offenders = roots.asSequence().flatMap { it.walkTopDown() }
             .filter { it.isFile && it.extension == "kt" }
             .mapNotNull { f ->
                 val hit = emptyCatch.findAll(f.readText()).toList()
@@ -47,12 +51,12 @@ class EmptyCatchGuardTest {
 
     @Test
     fun `门禁_连接池清空与 chmod 的失败都落了日志`() {
-        val downloader = File("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt").readText()
+        val downloader = SrcRoots.find("src/main/java/com/example/zhengdao/rootfs/RootfsDownloader.kt").readText()
         assertTrue(
             "releaseIdleResources 的 evictAll 失败必须落日志",
             downloader.contains("连接池清空失败（best-effort，忽略）"),
         )
-        val launcher = File("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt").readText()
+        val launcher = SrcRoots.find("src/main/java/com/example/zhengdao/terminal/ProotLauncher.kt").readText()
         assertTrue(
             "best-effort 失败必须落日志（第⑳刀起：chmod 已删，由「戳记文件写失败」继承该纪律）",
             launcher.contains("戳记文件写失败") && launcher.contains("RunLog.log(\"警告: 戳记文件写失败"),

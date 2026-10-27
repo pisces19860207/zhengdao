@@ -3,7 +3,7 @@
 """check-native-so.py —— 入库 .so 的门禁：16KB 页对齐 + JNI 入口符号。
 
 为什么要它
-    app/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 是**人工构建入库**的
+    native-core/src/main/jniLibs/arm64-v8a/libzhengdao_core.so 是**人工构建入库**的
     （ci.yml / build.yml 里没有任何步骤构建它，见 docs/ERRATA.md E-045 教训 3）。
     而 16KB 页对齐是"静默降级"型故障：漏了 -Wl,-z,max-page-size=16384 不会崩溃，
     而是 16KB 页设备上 loadLibrary 失败 → CoreNative.isRustAvailable()=false
@@ -53,9 +53,15 @@ PAGE_16K = 0x4000
 PT_LOAD = 1
 SHT_DYNSYM = 11
 
-CORE_KT_REL = "app/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
+CORE_KT_REL = "native-core/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
 JNI_CLASS = "Java_com_example_zhengdao_rust_CoreNative_"
 CORE_SO = "libzhengdao_core.so"
+# .so 的扫描面：:app（搬家前）与 :terminal-core（第二百四十一批起）
+SO_DIRS = (
+    "native-core/src/main/jniLibs",   # libzhengdao_core.so（Rust 核，主/终端共用）
+    "terminal-core/src/main/jniLibs",  # proot / talloc / shmem / zstd（终端专用）
+    "app/src/main/jniLibs",
+)
 
 # 第⑳刀（E-137）：proot 四件套的 4KB 对齐例外 + 完整性基线。
 # 这四个 .so 是 Termux 官方发行二进制（原样聚合分发，GPL 合规口径见 PROVENANCE.md），
@@ -217,9 +223,11 @@ def main(argv):
         print(f"[错误] 找不到仓库根：{repo}（app/ 不存在）")
         return 2
 
-    libs = sorted((repo / "app/src/main/jniLibs").glob("*/*.so"))
+    # 第二百四十一批：jniLibs 随终端内核搬进 :terminal-core（proot 四件套 + zhengdao_core
+    # + zstd-jni + 自编 libtermux.so）。两处都扫：搬家前后都成立，不写死单一模块。
+    libs = sorted(p for d in SO_DIRS for p in (repo / d).glob("*/*.so"))
     if not libs:
-        print("[错误] app/src/main/jniLibs 下没有任何 .so —— 门禁失去意义，视为失败")
+        print(f"[错误] {' / '.join(SO_DIRS)} 下没有任何 .so —— 门禁失去意义，视为失败")
         return 1
 
     # ── 顺序 38（第㉗刀）：PROOT_PINNED 四件套**必须在场** ──
@@ -240,7 +248,7 @@ def main(argv):
     if missing_pinned:
         for name in missing_pinned:
             blocker(
-                f"PROOT_PINNED 四件套缺件：{name} 不在 app/src/main/jniLibs/**/*.so 的扫描结果里 —— "
+                f"PROOT_PINNED 四件套缺件：{name} 不在 {' / '.join(SO_DIRS)}/**/*.so 的扫描结果里 —— "
                 "16KB 判据与 sha256 完整性基线都是 glob 驱动的（文件不在就不跑）⇒ 缺件会静默绕过"
                 "两条判据（顺序 38）。修法：把该 .so 放回 jniLibs/<abi>/（工序见 rust/README.md "
                 "与 PROVENANCE.md），或同步三处登记（ProotBinaries.kt / PROVENANCE.md / 本脚本）"

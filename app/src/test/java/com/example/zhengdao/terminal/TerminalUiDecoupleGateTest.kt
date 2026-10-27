@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,12 +31,11 @@ class TerminalUiDecoupleGateTest {
     // ── 源码收集（双路径兜底：cwd 可能是仓根或 app/） ──
 
     private fun terminalDir(): File {
-        val roots = listOf(
-            File("app/src/main/java/com/example/zhengdao/terminal"),
-            File("src/main/java/com/example/zhengdao/terminal"),
-        )
-        return roots.firstOrNull { it.isDirectory }
-            ?: error("找不到 terminal 源码目录（cwd=${File("").absolutePath}）")
+        // 第二百四十一批：终端代码搬进 `:terminal-core`，按 [SrcRoots] 的候选根找；
+        // 判据（不许 import ui）一条没改，只是目录换了地方。
+        val candidates = SrcRoots.candidates("src/main/java/com/example/zhengdao/terminal")
+        return candidates.firstOrNull { it.isDirectory }
+            ?: error("找不到 terminal 源码目录（试过：${candidates.joinToString { it.path }}）")
     }
 
     /** terminal 包全部 .kt 源文件（含子包，若有）。 */

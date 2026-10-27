@@ -25,7 +25,7 @@ import java.io.File
  *   §4(b) 修改通知与 PROVENANCE 登记已是项目纪律）
  *
  * 扫描口径：
- * - 范围＝`app/src/main/java` 全量（kt + java，含 vendored com/termux——红线对
+ * - 范围＝`app/src/main/java` ＋ `terminal-core/src/main/java` ＋ `native-core/src/main/java` 全量（kt + java；红线对
  *   vendored 代码同样生效：上游本来就 loadLibrary 自己的 termux，属白名单内）；
  * - 只认**调用形态**（`loadLibrary("` / `System.load(`），注释/文案里提到
  *   "loadLibrary" 不算（OpenSourceLicensesActivity 的红线文案、EnvHealth 的 KDoc
@@ -50,10 +50,17 @@ class LoadLibraryGuardTest {
     )
 
     private fun scanSources(): ScanResult {
-        val root = File("src/main/java")
+        // 第二百四十一批：终端内核搬进 :terminal-core，loadLibrary 纪律一并覆盖它
+        // 2026-10-27：Rust 核搬进 :native-core（CoreNative 在那 loadLibrary），扫描面必须跟上
+        val roots = listOf(
+            File("src/main/java"),
+            File("../terminal-core/src/main/java"),
+            File("../native-core/src/main/java"),
+        )
+            .filter { it.isDirectory }
         val out = mutableMapOf<String, List<String>>()
         var total = 0
-        root.walkTopDown()
+        roots.asSequence().flatMap { it.walkTopDown() }
             .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
             .forEach { f ->
                 val text = f.readText()

@@ -1,6 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.terminal
 
+import com.example.zhengdao.SrcRoots
+
 import com.example.zhengdao.testkit.TestAssume
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -476,8 +478,8 @@ class CacheCleanerTest {
     /** 双路径找源码（Gradle 工作目录可能是仓库根，也可能是 `app/`）。 */
     private fun terminalSource(name: String): String {
         val candidates = listOf(
-            java.io.File("src/main/java/com/example/zhengdao/terminal/$name"),
-            java.io.File("app/src/main/java/com/example/zhengdao/terminal/$name"),
+            SrcRoots.find("src/main/java/com/example/zhengdao/terminal/$name"),
+            SrcRoots.find("app/src/main/java/com/example/zhengdao/terminal/$name"),
         )
         val file = candidates.firstOrNull { it.isFile }
             ?: error("找不到源码 $name，试过：${candidates.joinToString { it.path }}")
