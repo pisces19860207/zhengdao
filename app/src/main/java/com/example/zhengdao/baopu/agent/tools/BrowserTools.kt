@@ -368,8 +368,13 @@ internal object BrowserTools {
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
-        readOnly = true,
-        // parallelSafe 缺省 false：只读盘，但抢的是**同一个 WebView** ⇒ 不许并行
+        // C2 裁定（2026-10-27，两步走第二步）：截图落 证道/截屏/ 是**写副作用**，
+        // readOnly=true 是账本真缺陷——I1 在真机上巡出的那条漏账就是它（GuardPipeline
+        // 的 auto_act 写点 `if (!spec.readOnly)` 使它永不落 208）⇒ 改 false，让它进账。
+        // 权限**仍 FREE**（裁定原文：仍免问）；隐私确认（本轮首次会问一次）在工具内部，
+        // 与这条无关。真机读数：修前巡按报「审计漏 1 条」，修后同景复跑应 CLEAR。
+        readOnly = false,
+        // parallelSafe 缺省 false：它要写盘且抢的是**同一个 WebView** ⇒ 不许并行
         timeoutMs = ToolTimeout.BROWSER_MS,
     ) { args ->
         val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)

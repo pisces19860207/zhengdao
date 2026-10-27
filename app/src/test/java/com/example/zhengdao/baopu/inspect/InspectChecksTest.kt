@@ -305,6 +305,45 @@ class InspectChecksTest {
     }
 
     @Test
+    fun `I4_分子分母都给_裁定四`() {
+        // §10④：展示时分子分母都给——真机第 6 行「样本不足（9 个）」看不出 9 里多少是坏的
+        val rates = MediatorBiasCheck.rates(bias(
+            silent = 40, rb = 2, confirms = 9, tasks = 3, rounds = 10, overclaim = 4,
+            gaps = List(10) { ApprovalGap(now, 1L, it, if (it < 3) 800L else 30_000L) },
+        ))
+        val rb = rates.first { it.key == "silent_rollback" }
+        assertEquals(2, rb.num)
+        assertEquals(40, rb.denom)
+        assertTrue(rb.evidence().contains("分子 2／分母 40"))
+        val density = rates.first { it.key == "confirm_density" }
+        assertEquals(9, density.num)
+        assertEquals(3, density.denom)
+        val instant = rates.first { it.key == "instant_approval" }
+        assertEquals(3, instant.num) // 10 个间隔里 3 个 <5s
+        assertEquals(10, instant.denom)
+        assertTrue(instant.evidence().contains("分子 3／分母 10"))
+    }
+
+    @Test
+    fun `I4_分母不足也亮分子分母_不印零`() {
+        val rates = MediatorBiasCheck.rates(bias(silent = 9, rb = 0, rounds = 4, overclaim = 1))
+        val over = rates.first { it.key == "overclaim" }
+        assertFalse(over.computable)
+        assertTrue(over.evidence().contains("分子 1／分母 4"))
+        // 算不出不许被读成 0%
+        assertFalse(over.evidence().contains("0%"))
+    }
+
+    @Test
+    fun `I4_两条率窗口常量_裁定四`() {
+        // §10④：虚报率/秒批率滚动 30 天（PatrolRunner 的接线真机验）；I5 的 7 天不动
+        assertEquals(30, InspectLimits.RATE_WINDOW_DAYS)
+        assertEquals(7, InspectLimits.FAILURE_WINDOW_DAYS)
+        // 「分母 <10 记 unknown」的线就是两条率现有的样本线，不另立数
+        assertEquals(10, MediatorBiasCheck.MIN_RATE_SAMPLE)
+    }
+
+    @Test
     fun `I4_免问判据_同会话同步没摆过卡`() {
         val confirms = listOf(ConfirmTrace(now, 7L, 3, "file_write"))
         assertTrue(MediatorBiasCheck.isSilent(act(now, sid = 8L, step = 3), confirms))

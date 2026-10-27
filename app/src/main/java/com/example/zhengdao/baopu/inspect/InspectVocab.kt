@@ -101,6 +101,15 @@ internal object InspectLimits {
     /** I4 周报窗口（天）。 */
     const val WEEK_WINDOW_DAYS = 7
 
+    /**
+     * §10④（2026-10-27）：**两条率**（虚报率、秒批率——报告 §10 第 6 问点名的「没有持久口」那两条）
+     * 的窗口——**滚动 30 天**、按"动作实例"计数（不按会话；这两率的分母本来就是逐实例的：
+     * 回答轮次／摆卡次数）。**只喂这两条**：I2 抽检、I5 的 [FAILURE_WINDOW_DAYS]=7、
+     * I4 另两率（免问回滚／确认密度）的口径都不动。
+     * 分母 <10 记 unknown 的那条线就是 [MIN_RATIO_SAMPLE] 之外的 [com.example.zhengdao.baopu.inspect.MediatorBiasCheck.MIN_RATE_SAMPLE]=10。
+     */
+    const val RATE_WINDOW_DAYS = 30
+
     /** I5「近 7 天」窗口（天）——与 I4 同口径但**各写一个常量**：两处窗口打架过一次就再合不上。 */
     const val FAILURE_WINDOW_DAYS = 7
 

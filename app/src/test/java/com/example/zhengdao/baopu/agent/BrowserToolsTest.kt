@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.agent
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -166,6 +167,16 @@ class BrowserToolsTest {
         assertEquals(ToolPermission.CONFIRM, spec("browser_tabs_close").permission)
         assertEquals(ToolPermission.FREE, spec("browser_scroll_into_view").permission)
         assertEquals(ToolPermission.FREE, spec("browser_tabs_list").permission)
+    }
+
+    @Test
+    fun 截图算写_进账但不翻权限() {
+        // C2（239 补刀，2026-10-27 裁定）：截图落 证道/截屏/ 是写副作用 ⇒ readOnly=false，
+        // 让 GuardPipeline 的 auto_act 写点收它的账（真机 I1 巡出的漏账就是它）；
+        // 权限**仍 FREE**——免问口径不变，改的只是"有没有账"，不是"要不要问"。
+        val shot = spec("browser_screenshot")
+        assertFalse(shot.readOnly)
+        assertEquals(ToolPermission.FREE, shot.permission)
     }
 
     @Test
