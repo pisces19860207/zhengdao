@@ -38,9 +38,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -55,7 +57,20 @@ import com.example.zhengdao.baopu.DecisionRecord
 import com.example.zhengdao.baopu.foldDecisionRecords
 import com.example.zhengdao.baopu.agent.FailureAuditLog
 import com.example.zhengdao.baopu.agent.FailureAuditRow
+import com.example.zhengdao.baopu.inspect.InspectFinding
+import com.example.zhengdao.baopu.inspect.InspectLimits
+import com.example.zhengdao.baopu.inspect.InspectVerdict
+import com.example.zhengdao.baopu.inspect.PatrolEntry
+import com.example.zhengdao.baopu.inspect.PatrolLedger
+import com.example.zhengdao.baopu.inspect.PatrolRunner
+import com.example.zhengdao.baopu.inspect.PatrolScheduler
+import com.example.zhengdao.baopu.inspect.PatrolSources
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.FilterChip2
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 决策中心（全屏 Dialog；与抱朴设置同一条承载路子——摆对话 Column 里会露两端）。
@@ -285,6 +300,18 @@ private fun HistoryTab(
     // 「展开后不记得收起状态」这条负例就落在那儿；离开本页重进 ⇒ 回到默认折叠。
     var auditExpanded by remember { mutableStateOf(false) }
     var auditLimit by remember { mutableIntStateOf(FailureAuditLog.PAGE) }
+    // 第二百三十九批 §2.4：巡按栏（勘验的输出落点）。展开态同样提到这一层，理由与上面一样。
+    var patrolExpanded by remember { mutableStateOf(false) }
+    var patrolLimit by remember { mutableIntStateOf(InspectLimits.PAGE) }
+    // 一次巡按的四个界面态：跑没跑（按钮去抖）· 跑完重读台账的水位 · 闸门拒的那一句 · 跑不成的那一句。
+    // 后两个是**栏内一行字**，不是弹窗（§2.4「不许弹窗」负例⑥）。
+    var patrolBusy by remember { mutableStateOf(false) }
+    var patrolTick by remember { mutableIntStateOf(0) }
+    var patrolGateWhy by remember { mutableStateOf<String?>(null) }
+    var patrolFailWhy by remember { mutableStateOf<String?>(null) }
+    val patrolCtx = LocalContext.current
+    // P4-4 纪律：UI 作用域必须装 CoroutineCrashHandler
+    val patrolScope = rememberCoroutineScope { CoroutineCrashHandler }
 
     // 现读账本（版本号一变就重算：回滚/抽检后组头计数即时更新）
     val now = remember(version) { System.currentTimeMillis() }
@@ -304,8 +331,35 @@ private fun HistoryTab(
     // 第二百三十七批 §2.6：工具失败明细也归这一栏 ⇒ 空态判据要算上它
     // （只撞过工具失败、还没做过任何决策的会话，明细不能整页被「暂无记录」盖住）。
     val auditCount = remember(version) { FailureAuditLog.readAll().size }
+    // 第二百三十九批 §2.4：巡按栏现在直接顶在记录页第一行，不参与整页空态判定——
+    // 原先这里读一次巡按台账只为凑一个 patrolCount 去改空态条件，真机证明那条路走不通：
+    // 新机器上一次都没巡过 ⇒ patrolCount == 0 ⇒ 空态成立 ⇒ 唯一的「巡一遍」入口跟着被盖掉。
+    // §2.1 的两个入口，这一颗是手动那一个。判据（该不该跑、跑了查出什么）全在 `baopu/inspect/`，
+    // 这里只起协程、把这一趟的下场放回本栏那一行字：**不开弹窗、不碰被纠的数据**。
+    // 为什么协程起在界面而不是控制器——本批占用范围只有 inspect/ 与这一页，控制器不在范围内；
+    // 「界面只渲染＋转发」那条房型让给了批次边界，偏差如实记进交付报告。
+    val patrolLauncher: () -> Unit = {
+        val gate = PatrolScheduler.manualGate(running = patrolBusy || controller.busy)
+        if (gate.run) {
+            patrolGateWhy = null
+            patrolFailWhy = null
+            patrolBusy = true
+            patrolScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    PatrolRunner.run(patrolCtx, manual = true)
+                }
+                patrolBusy = false
+                // 跑不成也要有字（[PatrolResult.failReason]）；没跑成就不涨水位，栏里留上一次。
+                patrolFailWhy = result.failReason
+                patrolTick += 1
+            }
+        } else {
+            patrolGateWhy = gate.why
+        }
+    }
 
-    DecisionTabBody(DecisionTab.HISTORY, empty = records.isEmpty() && auditCount == 0) {
+    // 整页空态改成列表首行那句（§2.4）：这一栏的巡按入口不能被它盖住。
+    DecisionTabBody(DecisionTab.HISTORY, empty = false) {
         Column(Modifier.fillMaxSize()) {
             // 筛选 chips（§2.5 规则④：先筛再分组）
             Row(
@@ -333,6 +387,34 @@ private fun HistoryTab(
                 )
             }
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                // 第二百三十九批 §2.4：巡按栏顶在记录页最上面——一行结论（≤40 字）＋点开明细，
+                // 同审计栏交互。它必须在一台「一条记录都没有」的机器上也点得到：那一颗「巡一遍」
+                // 是 §2.1 两个入口里唯一真接通的这一个（真机 16:11 实测：原先它跟空态一起被盖掉了）。
+                item(key = "patrol") {
+                    PatrolSection(
+                        version = version,
+                        tick = patrolTick,
+                        expanded = patrolExpanded,
+                        limit = patrolLimit,
+                        busy = patrolBusy,
+                        gateWhy = patrolGateWhy,
+                        failWhy = patrolFailWhy,
+                        onToggle = { patrolExpanded = !patrolExpanded },
+                        onMore = { patrolLimit += InspectLimits.PAGE },
+                        onPatrol = patrolLauncher,
+                    )
+                }
+                // 记录与审计都空时，空态那句改在这里给——不再整页盖住上面那一栏。
+                if (records.isEmpty() && auditCount == 0) {
+                    item(key = "history-empty") {
+                        Text(
+                            text = stringResource(decisionEmptyText(DecisionTab.HISTORY)),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
+                        )
+                    }
+                }
                 items(fold.cards, key = { it.group.wire }) { card ->
                     DecisionGroupCardView(
                         card = card,
@@ -698,4 +780,187 @@ private fun failureAgeText(atMs: Long, nowMs: Long): String {
         DecisionTimeBucket.DAYS -> stringResource(R.string.decision_record_time_day, age.n)
         DecisionTimeBucket.OLDER -> stringResource(R.string.decision_record_time_older)
     }
+}
+
+/**
+ * 第二百三十九批 §2.4 的「巡按」栏（勘验的输出落点）。
+ *
+ * 形制就是派工单那三行：折叠态只给一行结论（≤40 字，钳形在 `InspectText.line`，
+ * 不在这里截）；点开才给正文两行＋六项明细＋更早的巡按。四条纪律在这段里都能看见：
+ * - **默认折叠**、展开态由调用方持有（与 [FailureAuditSection] 同一个理由）；
+ * - **零弹窗**：跑没跑成、闸门为什么拒，全是栏内的一行字，不另开 Dialog/AlertDialog；
+ * - **只读**：这一栏唯一的写是 `PatrolRunner` 追加自己的巡按台账，被纠的技能正文与账本
+ *   一个字节都不动（§5①由 `InspectReadOnlyGateTest` 从源码层钉，不靠这里自觉）；
+ * - 明细只在这里渲染：它们同时只写在 `巡按记录.jsonl` 里，**没有**第二个出口通向模型
+ *   （模型侧永远只拿一句 `PatrolReport.modelLine`＝标题那一句）。
+ *
+ * 读盘：一次巡按只写一行，台账一天最多长一行，`PatrolLedger.read` 又带水位上限 ⇒
+ * 与 237 的审计栏同一口径，在组合里现读不会卡 UI 线程。
+ */
+@Composable
+private fun PatrolSection(
+    version: Int,
+    tick: Int,
+    expanded: Boolean,
+    limit: Int,
+    busy: Boolean,
+    gateWhy: String?,
+    failWhy: String?,
+    onToggle: () -> Unit,
+    onMore: () -> Unit,
+    onPatrol: () -> Unit,
+) {
+    val entries = remember(version, tick, limit) {
+        PatrolSources.memoryRoot()?.let { PatrolLedger.read(it, limit) } ?: emptyList()
+    }
+    val latest = entries.firstOrNull()
+    val now = remember(version, tick) { System.currentTimeMillis() }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = latest?.headline ?: stringResource(R.string.decision_patrol_title_empty),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
+            )
+            if (latest != null) {
+                TextButton(
+                    onClick = onToggle,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (expanded) R.string.decision_record_collapse else R.string.decision_record_expand,
+                        ),
+                    )
+                }
+            }
+        }
+        Text(
+            text = stringResource(R.string.decision_patrol_readonly),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                onClick = onPatrol,
+                enabled = !busy,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(if (busy) R.string.decision_patrol_running else R.string.decision_patrol_run))
+            }
+            if (latest != null) {
+                Text(
+                    text = stringResource(
+                        R.string.decision_patrol_meta,
+                        failureAgeText(latest.atMs, now),
+                        stringResource(
+                            if (latest.manual) R.string.decision_patrol_mode_manual
+                            else R.string.decision_patrol_mode_night,
+                        ),
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        // 两句"没跑成"的话：闸门拒的（还没开跑）与跑坏了的（开跑了没结果）。都进不了弹窗。
+        gateWhy?.let { why ->
+            Text(
+                text = stringResource(R.string.decision_patrol_gate, why),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        failWhy?.let { why ->
+            Text(
+                text = stringResource(R.string.decision_patrol_failed, why),
+                style = MaterialTheme.typography.labelSmall,
+                color = zhengdaoErrorText(),
+            )
+        }
+        if (expanded && latest != null) {
+            latest.lines.forEach { line ->
+                Text(text = line, style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                text = stringResource(R.string.decision_patrol_elapsed, latest.elapsedMs),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (latest.allowanceLine.isNotBlank()) {
+                Text(
+                    text = latest.allowanceLine,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            latest.findings.forEach { PatrolFindingRow(it) }
+            if (entries.size > 1) {
+                Text(
+                    text = stringResource(R.string.decision_patrol_history_title),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                entries.drop(1).forEach { entry -> PatrolHistoryRow(entry, now) }
+            }
+            if (entries.size >= limit) {
+                TextButton(
+                    onClick = onMore,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.decision_audit_fail_more)) }
+            }
+        }
+    }
+}
+
+/** 一项勘验的明细（检查名·认定·那一行 ／ 建议 ／ 证据行）。命中项上色，清白与查不了不上。 */
+@Composable
+private fun PatrolFindingRow(finding: InspectFinding) {
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 6.dp)) {
+        Text(
+            text = "${finding.check.cn} · ${patrolVerdictLabel(finding.verdict)} · ${finding.oneLine}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            color = if (finding.verdict == InspectVerdict.HIT) {
+                zhengdaoErrorText()
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+        )
+        if (finding.suggestion.isNotBlank()) {
+            Text(
+                text = finding.suggestion,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        finding.evidence.forEach { row ->
+            Text(
+                text = row,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 更早的巡按：只一行结论（点开明细是"最近这一次"的事，历史不摊开，不然又是长篇报告）。 */
+@Composable
+private fun PatrolHistoryRow(entry: PatrolEntry, nowMs: Long) {
+    Text(
+        text = "${failureAgeText(entry.atMs, nowMs)} · " +
+            "${stringResource(if (entry.manual) R.string.decision_patrol_mode_manual else R.string.decision_patrol_mode_night)}" +
+            " · ${entry.headline}",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** 认定三态的人话（「查不了」必须与「查过没问题」是两个词——混了就是本批要纠的弊）。 */
+@Composable
+private fun patrolVerdictLabel(verdict: InspectVerdict): String = when (verdict) {
+    InspectVerdict.HIT -> stringResource(R.string.decision_patrol_verdict_hit)
+    InspectVerdict.CLEAR -> stringResource(R.string.decision_patrol_verdict_clear)
+    InspectVerdict.NO_DATA -> stringResource(R.string.decision_patrol_verdict_nodata)
 }
