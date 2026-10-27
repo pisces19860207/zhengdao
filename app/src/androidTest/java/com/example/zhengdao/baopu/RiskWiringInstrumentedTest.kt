@@ -24,7 +24,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.zhengdao.baopu.agent.AppendPersonaTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
-import com.example.zhengdao.baopu.agent.CompatChannelTools
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.InMemoryToolPrefs
@@ -204,8 +203,8 @@ class RiskWiringInstrumentedTest {
         BaopuToolCatalog.loadInto(reg) { root }
         reg.register(SkillTools.spec(workspaceRoot = { root }, personaFiles = files))
         reg.register(AppendPersonaTool.spec(personaFiles = files))
-        reg.register(CompatChannelTools.readSpec(readFileEnabled = true))
-        reg.register(CompatChannelTools.bashSpec())
+        // 2026-10-27：CompatChannelTools（bash/read 兼容通道）随终端搬走已退役，这里不再注册。
+        // 2026-10-27：CompatChannelTools（bash/read 兼容通道）随终端搬走已退役，这里不再注册。
 
         val names = reg.names()
         val missing = RiskMatrix.uncovered(names)

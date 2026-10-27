@@ -452,22 +452,10 @@ android {
     }
 
     // 原生库落盘为真实文件：jniLibs 里的 proot 需要被复制+chmod+execve，
-    // zstd-jni 的加载兜底也需要在 nativeLibraryDir 找到 libzstd-jni-*.so
+    // 原生库落盘为真实文件：jniLibs 里的 .so 需要被复制+chmod+execve（终端已搬出，保留通用行为）
     packaging {
         jniLibs {
             useLegacyPackaging = true
-        }
-        resources {
-            // zstd-jni 把桌面端各平台的原生库也塞进了 classes.jar，Android 一个都用不上
-            // （真机只加载 lib/arm64-v8a/libzstd-jni.so）。实测这 5 个文件占 4.58MB：
-            //   win/{aarch64,amd64,x86}/libzstd-jni-1.5.6-4.dll
-            //   darwin/{aarch64,x86_64}/libzstd-jni-1.5.6-4.dylib
-            // freebsd/ 与 linux/* 在 Android 变体里本就没有，一并排除以防换版本后回来。
-            excludes += setOf(
-                "win/**",
-                "darwin/**",
-                "freebsd/**",
-            )
         }
     }
 
@@ -539,7 +527,7 @@ dependencies {
     testImplementation(project(":core"))
     // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
     add("detektCli", libs.detekt.cli)
-    // RootFS 下载与解压（M1.1）：OkHttp 断点续传 + commons-compress 解 tar + zstd-jni 解 zstd
+    // HTTP 与压缩：OkHttp + commons-compress（解 tar）；zstd-jni 随终端搬走后已删（2026-10-27）解 zstd
     implementation(libs.okhttp)
     implementation(libs.commons.compress)
     // 供应链（第四十三批 OSV，2026-10-19）：commons-compress 传递进来的
@@ -549,7 +537,6 @@ dependencies {
     androidTestImplementation(libs.commons.compress)
     // 多源回退逻辑测试：本地环回假服务器，真实走 OkHttp 栈（零外网依赖）
     testImplementation(libs.mockwebserver)
-    implementation(libs.zstd.jni)
 
     // xz 解压（抱朴 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
     implementation(libs.xz)
@@ -709,7 +696,6 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             "Apache-2.0.txt",
             "BSD-2-Clause.txt",
             "BSD-3-Clause.txt",
-            "BSD-3-Clause-zstd.txt",
             "GPL-2.0.txt",
             "GPL-3.0.txt",
             "LGPL-3.0.txt",

@@ -138,7 +138,6 @@ class LicenseTextsTest {
             "Apache-2.0.txt",
             "BSD-2-Clause.txt",
             "BSD-3-Clause.txt",
-            "BSD-3-Clause-zstd.txt",
             "GPL-2.0.txt",
             "GPL-3.0.txt",
             "LGPL-3.0.txt",
