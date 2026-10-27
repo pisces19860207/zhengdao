@@ -92,6 +92,13 @@ data class TableAnswer(
     val digest: List<String> = emptyList(),
     /** 给用户看的追问/提示（NEED_* 与 NOT_IN_TABLE 用）。 */
     val hint: String = "",
+    /**
+     * 252：这张表是 `.xls` 转出来的 ⇒ 这一句必须说出来（「已把「X.xls」自动转成 CSV（N 行 × M 列）」）。
+     *
+     * 为什么不塞进 [hint]：hint 是「追问」，是给人下一步动作的；这一句是**交代这张表的来历**，
+     * 不交代用户就不知道自己那份 `.xls` 被处理过、也不知道还有几张工作表没读。
+     */
+    val converted: String = "",
 ) {
 
     val ok: Boolean get() = kind == AnswerKind.ANSWER
@@ -106,6 +113,7 @@ data class TableAnswer(
         val sb = StringBuilder(headline)
         if (criteria.isNotEmpty()) sb.append("\n（口径：").append(criteria.joinToString("；")).append("）")
         evidence?.let { sb.append('\n').append(it.text()) }
+        if (converted.isNotEmpty()) sb.append('\n').append(converted)
         if (hint.isNotEmpty()) sb.append('\n').append(hint)
         return sb.toString()
     }
@@ -167,7 +175,7 @@ data class TableAnswer(
         fun pdf(path: String): TableAnswer = TableAnswer(
             kind = AnswerKind.PDF,
             headline = "PDF 暂不支持（本批范围外）：$path",
-            hint = "能读的是 xlsx / csv / tsv；PDF 里的表请先另存成 xlsx 或 csv 再放进来。",
+            hint = "能读的是 xlsx / csv / tsv / .xls（旧版 Excel 会自动转成 CSV）；PDF 里的表请先另存成 xlsx 或 csv 再放进来。",
         )
     }
 }

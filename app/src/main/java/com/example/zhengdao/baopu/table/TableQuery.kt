@@ -121,7 +121,7 @@ object TableQuery {
         if (refresh) registry.refresh()
         if (registry.isEmpty()) {
             return TableAnswer.notInTable(
-                "没找到任何表（工作区里没有 xlsx / csv / tsv）",
+                "没找到任何表（工作区里没有 xlsx / csv / tsv / .xls）",
                 evidence = null,
                 hint = "把表放进工作区（默认 Download/证道）再问。PDF 不在本批范围。",
             )
@@ -138,9 +138,21 @@ object TableQuery {
                     model.headerAsk != null -> TableAnswer.needHeader(model.headerAsk, model.path, model.sheet)
                     ask.joinWith != null -> joinAndRun(registry, ask, model)
                     else -> run(model, ask)
-                }
+                }.withXls(registry, model.path)
             }
         }
+    }
+
+    /**
+     * 252：这张表是 `.xls` 转来的 ⇒ 答案里**交代一句**（派工单 §1④：「已把 X.xls 自动转成 CSV（N 行 × M 列）」）。
+     *
+     * 放在这一层而不是工具层：面板与工具共用 [ask] / [askQuestion]，
+     * 只有挂在这里，两处才会**用同一句**说话（各挂一次迟早会说出两个版本）。
+     */
+    private fun TableAnswer.withXls(registry: TableRegistry, path: String): TableAnswer {
+        if (converted.isNotEmpty()) return this
+        val note = registry.entryOf(path)?.xls?.sentence() ?: return this
+        return copy(converted = note)
     }
 
     /**
@@ -161,7 +173,7 @@ object TableQuery {
         if (refresh) registry.refresh()
         if (registry.isEmpty()) {
             return TableAnswer.notInTable(
-                "没找到任何表（工作区里没有 xlsx / csv / tsv）",
+                "没找到任何表（工作区里没有 xlsx / csv / tsv / .xls）",
                 evidence = null,
                 hint = "把表放进工作区（默认 Download/证道）再问。PDF 不在本批范围。",
             )
@@ -174,7 +186,7 @@ object TableQuery {
             )
             is Picked.One -> {
                 val model = picked.model
-                if (model.headerAsk != null) {
+                val out = if (model.headerAsk != null) {
                     TableAnswer.needHeader(model.headerAsk, model.path, model.sheet)
                 } else {
                     when (val parsed = TableNl.parse(model, question)) {
@@ -182,6 +194,7 @@ object TableQuery {
                         is TableNl.Result.Ask -> run(model, parsed.ask)
                     }
                 }
+                out.withXls(registry, model.path)
             }
         }
     }

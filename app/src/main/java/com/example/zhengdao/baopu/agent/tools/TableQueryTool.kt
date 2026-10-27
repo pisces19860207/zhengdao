@@ -101,6 +101,7 @@ internal object TableQueryTool {
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
         description = "按表格回答真实答案（只读、不联网、不调模型）：xlsx / csv / tsv 都认，" +
+            "**旧版 `.xls` 也认**（自动转成 CSV 再读，答案里会说明转了多少行多少列、还有几张工作表没读），" +
             "**PDF 不支持**（会直接说暂不支持）。问法两种：①question 一句话（「一共几个人」" +
             "「每科平均分」「最高分是谁」「几个人不及格」）；②op + column 等结构化参数。" +
             "答案必带出处（文件·sheet·行号）；表里没有就说「表里没有」，不推算、不补 0；" +
@@ -200,6 +201,8 @@ internal object TableQueryTool {
                 }
             }
         }
+        // 252：「已把 X.xls 自动转成 CSV」那句由 `TableQuery` 统一挂（面板与工具同一句），
+        // 本工具只负责把它原样回灌给模型（见 `jsonOf` → `answer.text()`）。
         // 243③：用户指定了表头行就记住（落登记簿，下次不再猜/不再问）
         if (headerRow != null && headerRow > 0) {
             val rel = answer.evidence?.path ?: table
@@ -329,6 +332,9 @@ internal object TableQueryTool {
         val sb = StringBuilder()
         answer.criteria.forEach { AnswerGate.appendGround(sb, it) }
         answer.digest.forEach { AnswerGate.appendGround(sb, it) }
+        // 252：「已转成 CSV（94 行 × 28 列）」里的两个数是**真的**（转换时数的），
+        // 不并进 ground，227 的 AnswerGate 就会把它报成「数字可能不是来自表」。
+        AnswerGate.appendGround(sb, answer.converted)
         answer.numbers.forEach { AnswerGate.appendGround(sb, TableText.number(it)) }
         answer.evidence?.let { e ->
             e.rows.forEach { AnswerGate.appendGround(sb, "第 $it 行") }
@@ -350,18 +356,27 @@ internal object TableQueryTool {
                     .put("columns", JSONArray(e.sheets.firstOrNull()?.columns?.map { it.name } ?: emptyList<String>()))
                     .put("keys", JSONArray(e.defaultSheet?.keys ?: emptyList<String>()))
                     .put("headerRow", (e.defaultSheet?.headerRow ?: -1) + 1)
-                    .put("needHeaderRow", e.defaultSheet?.ask ?: JSONObject.NULL),
+                    .put("needHeaderRow", e.defaultSheet?.ask ?: JSONObject.NULL)
+                    // 252：这张是 `.xls` 转来的？把「已转成 CSV（N 行 × M 列）」一起给模型看，
+                    // 免得它自己编一句转换过程（模型编的过程往往是假的）
+                    .put("converted", e.xls?.sentence() ?: JSONObject.NULL),
             )
         }
+        val converted = registry.entries().mapNotNull { it.xls?.sentence() }
+        val failed = registry.xlsFailures.map { (rel, why) -> "「$rel」没转成：$why" }
         return JSONObject()
             .put("ok", true)
             .put("kind", "HELP")
             .put("tables", tables)
             .put("pdfSkipped", registry.pdfSkipped)
+            .put("converted", JSONArray(converted))
+            .put("xlsFailures", JSONArray(failed))
             .put(
                 "answer",
                 "能问：" + OPS.joinToString("／") +
                     "；也可以直接给一句话（question）。表：${registry.entries().joinToString("、") { it.rel }}。" +
+                    (if (converted.isNotEmpty()) converted.joinToString("；") + "。" else "") +
+                    (if (failed.isNotEmpty()) failed.joinToString("；") + "。" else "") +
                     "PDF 不在本批范围。",
             )
     }

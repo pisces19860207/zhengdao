@@ -42,6 +42,16 @@ json = "20240303"
 # 版本目录写法（134 批 lint UseTomlInstead 口径：坐标不在 build.gradle.kts 里硬写）。2026-10-24
 workManager = "2.12.0"
 
+# 第二百五十二批 · 旧版 Excel（.xls / BIFF）只读：jxl（JExcelApi）。
+# 2.6.12 = Maven Central 上**唯一也是最后一个**发布版（`maven-metadata.xml` 里
+# `<latest>` / `<release>` 都是它，`lastUpdated=20110509`；实测 curl 见交付报告 §0.3）。
+# 选它的三条理由：① 纯 Java（jar 里 534 个 class 逐个扫过，**没有一处**引用
+# java.awt / javax / java.beans / org.apache / java.sql，Android 能直接跑）；
+# ② 只读 BIFF 不引 POI 那一大坨（POI 的 ooxml+scratchpad 要 10MB+ 且带 commons-math 等传递依赖）；
+# ③ 派工单点名。⚠️ 它的 POM 把 log4j 1.2.14 声明成 compile 作用域 —— 必须在依赖那一侧排除，
+# 原因写在 app/build.gradle.kts 的 jxl 那一段。
+jxl = "2.6.12"
+
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -84,6 +94,8 @@ json = { group = "org.json", name = "json", version.ref = "json" }
 # 定时任务（第一百六十七批）：只引 work-runtime（单进程），不引 work-runtime-ktx / work-testing——
 # Worker 走同步 doWork()，测试用 JVM 纯判据，不需要 Robolectric。
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime", version.ref = "workManager" }
+# 第二百五十二批 · 旧版 Excel（.xls / BIFF）只读转换（版本理由见 [versions] 的 jxl 注释）。
+jxl = { group = "net.sourceforge.jexcelapi", name = "jxl", version.ref = "jxl" }
 
 
 [plugins]

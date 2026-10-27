@@ -19,7 +19,8 @@ class LicenseTextsTest {
      * 表行形如：`| [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | … | 11,358 | 202 | `cfc7…` |`
      * 与 `| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | … | 4,572 | 95 | `6728…` |`。
      * 取路径的规则：该行里**第一个**「像路径」的反引号片段（`*.txt` 或 `LICENSE`）。
-     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 9 条 = `licenses/` 八份 + `OFL.txt`。
+     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 10 条 =
+     * `licenses/` 九份（252 的 LGPL-2.1 是第九份）+ `OFL.txt`。
      */
     private fun parseRecords(): Map<String, Record> {
         val md = File(repo, "licenses/README.md")
@@ -41,7 +42,7 @@ class LicenseTextsTest {
                 val path = when {
                     token.contains('/') -> token          // app/src/main/assets/fonts/OFL.txt
                     token == "LICENSE" -> token           // 仓库根 LICENSE（历史形态；现已不进表）
-                    else -> "licenses/$token"             // licenses/ 下的八份正文
+                    else -> "licenses/$token"             // licenses/ 下的九份正文（252 加了 LGPL-2.1）
                 }
                 out[path] = Record(bytes, lines, sha)
             }
@@ -72,8 +73,8 @@ class LicenseTextsTest {
     fun `README 记的每一份正文都与仓库文件逐字节一致`() {
         val records = parseRecords()
         assertEquals(
-            "README 的两张表应记 9 份正文（licenses/ 八份 + 字体 OFL.txt）",
-            9,
+            "README 的两张表应记 10 份正文（licenses/ 九份 + 字体 OFL.txt）",
+            10,
             records.size,
         )
         var stale = 0

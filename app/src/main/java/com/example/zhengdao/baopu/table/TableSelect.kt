@@ -40,7 +40,7 @@ internal object TableSelector {
                 TableAnswer.notInTable(
                     "工作区里没有能读的表（${registry.entries().size} 个文件都没认出表头）",
                     evidence = null,
-                    hint = "把 xlsx / csv / tsv 放进工作区再问；PDF 不在本批范围。",
+                    hint = "把 xlsx / csv / tsv / .xls 放进工作区再问；PDF 不在本批范围。",
                 ),
             )
         }
@@ -115,7 +115,7 @@ internal object TableSelector {
                 TableAnswer.notInTable(
                     "工作区里没有能读的表（${registry.entries().size} 个文件都没认出表头）",
                     evidence = null,
-                    hint = "把 xlsx / csv / tsv 放进工作区再问；PDF 不在本批范围。",
+                    hint = "把 xlsx / csv / tsv / .xls 放进工作区再问；PDF 不在本批范围。",
                 ),
             )
         }
