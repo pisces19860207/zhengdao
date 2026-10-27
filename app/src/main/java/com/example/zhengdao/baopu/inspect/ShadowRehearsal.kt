@@ -10,12 +10,14 @@
 //   2. 可回滚点真的可用（`.bak` 被人为删掉 ⇒ 影子阶段就发现）；
 //   3. 验收判据能在影子里成立（`success` 的可观察条件先在影子上过一遍）。
 //
-// 分工写死（§4 vs §9 的冲突在这里切开，报告里也如实记这一条）：
+// 分工写死（§10① 裁定 2026-10-27 后的口径；§4 vs §9 的冲突在这里切开）：
 // - **判定归纠察**（本文件：纯函数，零 IO、零写权）；
-// - **阻断归执行管线**（`GuardPipeline` 在 act 之前拿 [ShadowOutcome.verdict]，
-//   `MISMATCH`/`MISWIRED`/`UNVERIFIABLE` 一律不放行）——纠察自己不拦路，
-//   派工单 §4 那句"纠察不阻断执行"与 §9 那句"不一致就拦"不是同一层的活。
-// - **留痕归影子自己的账**（[ShadowLedger]，见那里的"为什么是 .jsonl 而不是单个 shadow.json"）。
+// - **只出 finding，放不放行归执行侧与 hardDeny**：勘验永远不出阻断（裁定原文），
+//   能拦路的只有 `hardDeny`（219 事先硬拒）与**人**（御批：看到 finding 自己喊停）。
+//   执行侧愿意拿 [ShadowOutcome.verdict] 当它自己的放行判据，那是执行侧的闸；
+//   本文件的产出是事实认定，不是闸门。高危 finding 可以"出声＋建议暂停这一批"，
+//   但**不自己按停**（§10① 可加项，同样只到建议为止）。
+// - **留痕归影子自己的账**（[ShadowLedger]，房型见那里的 §10② 裁定）。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.Impact
@@ -27,7 +29,7 @@ internal enum class ShadowVerdict(val wire: String, val cn: String) {
     /** 三件事全过：实际影响＝推演所称、回滚点在、判据在影子里成立。 */
     CONSISTENT("consistent", "影响与推演一致"),
 
-    /** 三件事里至少一件不对 ⇒ 管线据此不放行（§9「不一致就拦」）。 */
+    /** 三件事里至少一件不对 ⇒ 只出 finding，放不放行归执行侧与 hardDeny。 */
     MISMATCH("mismatch", "影响与推演不一致"),
 
     /** 影子接错了：读到的实测落在真实目标上（§9 负例「影子连真实目标」）。 */

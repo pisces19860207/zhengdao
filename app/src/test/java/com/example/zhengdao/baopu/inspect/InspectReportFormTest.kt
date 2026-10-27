@@ -180,18 +180,71 @@ class InspectReportFormTest {
     }
 
     @Test
-    fun `调度_每日一次靠二十小时间隔`() {
-        assertTrue(PatrolScheduler.autoGate(now - 21L * 3_600_000L, 3, now).run)
-        assertFalse(PatrolScheduler.autoGate(now - 19L * 3_600_000L, 3, now).run)
-        // 从没巡过 ⇒ 今夜第一趟就跑
-        assertTrue(PatrolScheduler.autoGate(null, 3, now).run)
+    fun `调度_自动夜跑默认关_裁定三`() {
+        // §10③（2026-10-27）：默认**不自动夜跑**——开关常量钉死 false，缺省闸一律拒
+        assertEquals(false, PatrolScheduler.AUTO_ENABLED)
+        val g = PatrolScheduler.autoGate(now - 21L * 3_600_000L, 3, now)
+        assertFalse(g.run)
+        assertTrue(g.why.contains("默认关"))
+    }
+
+    @Test
+    fun `调度_间隔与窗口判据_只在显式打开时生效`() {
+        val awake = { last: Long?, hour: Int ->
+            PatrolScheduler.autoGate(last, hour, now, enabled = true,
+                charging = true, deviceIdle = true, batteryPct = 80)
+        }
+        assertTrue(awake(now - 21L * 3_600_000L, 3).run)
+        assertFalse(awake(now - 19L * 3_600_000L, 3).run)
+        // 从没巡过 ⇒ 间隔不拦
+        assertTrue(awake(null, 3).run)
         // 不在窗口里 ⇒ 间隔再久也不巡
-        assertFalse(PatrolScheduler.autoGate(null, 9, now).run)
+        assertFalse(awake(null, 9).run)
+    }
+
+    @Test
+    fun `调度_自动夜跑三约束缺一不可_裁定三`() {
+        // WorkManager 三件（充电／空闲／电量>30%）在判据里再验一遍；缺一条都拒，
+        // 且每条的 why 说得出是哪个约束没过（"没跑"要有字）
+        val gate = { charging: Boolean, idle: Boolean, pct: Int ->
+            PatrolScheduler.autoGate(null, 3, now, enabled = true,
+                charging = charging, deviceIdle = idle, batteryPct = pct)
+        }
+        assertFalse(gate(false, true, 80).run)
+        assertTrue(gate(false, true, 80).why.contains("充电"))
+        assertFalse(gate(true, false, 80).run)
+        assertTrue(gate(true, false, 80).why.contains("空闲"))
+        assertFalse(gate(true, true, 30).run) // 电量 **>**30% 才巡：等于线也拦
+        assertTrue(gate(true, true, 30).why.contains("电量"))
+        assertTrue(gate(true, true, 31).run)
+    }
+
+    @Test
+    fun `调度_一次唤醒只跑一轮_裁定三`() {
+        assertEquals(1, PatrolScheduler.MAX_ROUNDS_PER_PATROL)
+        val g = PatrolScheduler.autoGate(null, 3, now, enabled = true,
+            charging = true, deviceIdle = true, batteryPct = 80, roundsThisWake = 1)
+        assertFalse(g.run)
+        assertTrue(g.why.contains("1 轮"))
+    }
+
+    @Test
+    fun `调度_七天提醒不弹窗_裁定三`() {
+        // 从没巡过 ≠ 该提醒：那是首趟引导，空态有自己的话
+        assertFalse(PatrolScheduler.remindGate(null, now).run)
+        val day = 24L * 3_600_000L
+        assertFalse(PatrolScheduler.remindGate(now - 6 * day, now).run)
+        val g = PatrolScheduler.remindGate(now - 7 * day, now)
+        assertTrue(g.run)
+        assertTrue(g.why.contains("7 天"))
+        assertEquals(7L, PatrolScheduler.remindDays(now - 7 * day, now))
+        // 裁定原文「每 7 天提醒一次」的间隔常量就住在这
+        assertEquals(7, PatrolScheduler.REMIND_AFTER_DAYS)
     }
 
     @Test
     fun `调度_有任务在跑就让路`() {
-        val g = PatrolScheduler.autoGate(null, 3, now, running = true)
+        val g = PatrolScheduler.autoGate(null, 3, now, enabled = true, running = true)
         assertFalse(g.run)
         assertTrue(g.why.contains("在跑"))
         assertFalse(PatrolScheduler.manualGate(running = true).run)
@@ -202,8 +255,10 @@ class InspectReportFormTest {
     fun `调度_闸门永远有字`() {
         listOf(
             PatrolScheduler.autoGate(null, 3, now),
-            PatrolScheduler.autoGate(now, 3, now),
+            PatrolScheduler.autoGate(now, 3, now, enabled = true),
             PatrolScheduler.manualGate(true),
+            PatrolScheduler.remindGate(null, now),
+            PatrolScheduler.remindGate(now, now),
         ).forEach { assertTrue(it.why.isNotBlank()) }
     }
 

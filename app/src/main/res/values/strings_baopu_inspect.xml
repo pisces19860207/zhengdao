@@ -17,4 +17,6 @@
     <string name="decision_patrol_verdict_nodata">查不了</string>
     <string name="decision_patrol_gate">现在不能巡：%1$s</string>
     <string name="decision_patrol_failed">这一趟没巡成：%1$s</string>
+    <!-- §10③（2026-10-27）：7 天提醒不弹窗，形态就是巡按栏里这一行 -->
+    <string name="decision_patrol_remind">距上次巡按已 %1$d 天，该巡了</string>
 </resources>

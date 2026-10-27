@@ -17,4 +17,7 @@
     <string name="decision_patrol_verdict_nodata">Not checkable</string>
     <string name="decision_patrol_gate">Cannot patrol now: %1$s</string>
     <string name="decision_patrol_failed">This patrol did not complete: %1$s</string>
+    <!-- §10③ (2026-10-27): the 7-day reminder is a line in the patrol panel, never a dialog.
+         Wording note: digit-then-English-word form trips PluralsCandidate, hence the colon. -->
+    <string name="decision_patrol_remind">Days since last patrol: %1$d — time to run one</string>
 </resources>

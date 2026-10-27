@@ -864,6 +864,20 @@ private fun PatrolSection(
                 )
             }
         }
+        // §10③：7 天提醒——她裁定不弹窗，形态就是栏里这一行；从没巡过不算提醒
+        // （空态的「巡按：还没巡过」自己会说话），提醒只在「巡过之后开始懈怠」时出现。
+        latest?.let { last ->
+            if (PatrolScheduler.remindGate(last.atMs, now).run) {
+                Text(
+                    text = stringResource(
+                        R.string.decision_patrol_remind,
+                        PatrolScheduler.remindDays(last.atMs, now),
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = zhengdaoErrorText(),
+                )
+            }
+        }
         // 两句"没跑成"的话：闸门拒的（还没开跑）与跑坏了的（开跑了没结果）。都进不了弹窗。
         gateWhy?.let { why ->
             Text(

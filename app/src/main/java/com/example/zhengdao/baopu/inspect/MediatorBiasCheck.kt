@@ -67,19 +67,26 @@ internal data class BiasRate(
     val limit: Double,
     /** 显示单位：`%` 或 ` 次/任务`（前导空格是给拼句用的，别让调用方再拼）。 */
     val unit: String,
-    val sample: Int,
+    /**
+     * 分子（§10④：展示时**分子分母都给**——真机第 6 行的教训：只印分母时
+     * 「样本不足（9 个）」看不出 9 里有多少是坏的）。
+     */
+    val num: Int,
+    /** 分母（**动作实例**数：免问直行数／任务数／回答轮次／摆卡次数——§10④「不按会话」）。 */
+    val denom: Int,
     /** 目标值（只进建议句，不参与判定；②那条的 2.0 就靠这个说清和 5.0 的分工）。 */
     val target: Double? = null,
 ) {
     val computable: Boolean get() = value != null
     val breached: Boolean get() = value != null && value > limit
 
-    /** 明细那一行（算不出就明说算不出，不许印 0%）。 */
+    /** 明细那一行（算不出就明说算不出，**且把分子分母亮出来**，不许印 0%）。 */
     fun evidence(): String = if (value == null) {
-        "$cn：样本不足（$sample 个），算不出率"
+        "$cn：分子 $num／分母 $denom，样本不足，算不出率"
     } else {
         val tail = if (target != null) "、目标 ≤${InspectText.pct(target)}$unit" else ""
-        "$cn ${InspectText.pct(value)}$unit（红线 ${InspectText.pct(limit)}$unit$tail，样本 $sample）⇒ " +
+        "$cn ${InspectText.pct(value)}$unit（分子 $num／分母 $denom，" +
+            "红线 ${InspectText.pct(limit)}$unit$tail）⇒ " +
             (if (breached) "越线" else "在界内")
     }
 }
@@ -100,60 +107,71 @@ internal object MediatorBiasCheck {
     fun isSilent(act: WriteTrace, confirms: List<ConfirmTrace>): Boolean =
         confirms.none { it.sessionId == act.sessionId && it.step == act.step }
 
-    /** 四条率一次算完（比率算术复用 236 的 `DelegationMetrics`，两处不能各一套算法）。 */
-    fun rates(input: BiasInputs): List<BiasRate> = listOf(
-        BiasRate(
-            key = "silent_rollback",
-            cn = "免问回滚率",
-            // 与 236 同口径：样本够了按比率判；样本不够但**已经出现回滚**也照报数（保守收回）。
-            value = if (input.silentActs >= DelegationMetrics.MIN_SAMPLE || input.rollbacksAfterSilent > 0) {
-                DelegationMetrics.rollbackRatePct(input.silentActs, input.rollbacksAfterSilent)
-            } else {
-                null
-            },
-            limit = InspectLimits.SILENT_ROLLBACK_PCT,
-            unit = "%",
-            sample = input.silentActs,
-        ),
-        BiasRate(
-            key = "confirm_density",
-            cn = "确认密度",
-            value = if (input.tasks >= 1 && input.confirms >= 1) {
-                DelegationMetrics.confirmDensity(input.confirms, input.tasks)
-            } else {
-                null
-            },
-            limit = InspectLimits.CONFIRM_DENSITY_LINE,
-            unit = " 次/任务",
-            sample = input.confirms,
-            target = InspectLimits.CONFIRM_DENSITY_TARGET,
-        ),
-        BiasRate(
-            key = "overclaim",
-            cn = "虚报率",
-            value = if (input.answerRounds >= MIN_RATE_SAMPLE) {
-                input.overclaimRounds * 100.0 / input.answerRounds
-            } else {
-                null
-            },
-            limit = InspectLimits.OVERCLAIM_PCT,
-            unit = "%",
-            sample = input.answerRounds,
-        ),
-        BiasRate(
-            key = "instant_approval",
-            cn = "秒批率",
-            value = if (input.gaps.size >= MIN_RATE_SAMPLE) {
-                val instant = input.gaps.count { it.deltaMs in 0L until InspectLimits.INSTANT_MS }
-                instant * 100.0 / input.gaps.size
-            } else {
-                null
-            },
-            limit = InspectLimits.INSTANT_APPROVAL_PCT,
-            unit = "%",
-            sample = input.gaps.size,
-        ),
-    )
+    /** 四条率一次算完（比率算术复用 236 的 `DelegationMetrics`，两处不能各一套算法）。
+     *
+     * 窗口归取数侧（PatrolRunner）：虚报率与秒批率的分母按 §10④ 从 30 天窗取
+     * （[InspectLimits.RATE_WINDOW_DAYS]），免问回滚率与确认密度仍吃 7 天日志窗；
+     * 本层只管拿到的实例数怎么算。
+     */
+    fun rates(input: BiasInputs): List<BiasRate> {
+        val instant = input.gaps.count { it.deltaMs in 0L until InspectLimits.INSTANT_MS }
+        return listOf(
+            BiasRate(
+                key = "silent_rollback",
+                cn = "免问回滚率",
+                // 与 236 同口径：样本够了按比率判；样本不够但**已经出现回滚**也照报数（保守收回）。
+                value = if (input.silentActs >= DelegationMetrics.MIN_SAMPLE || input.rollbacksAfterSilent > 0) {
+                    DelegationMetrics.rollbackRatePct(input.silentActs, input.rollbacksAfterSilent)
+                } else {
+                    null
+                },
+                limit = InspectLimits.SILENT_ROLLBACK_PCT,
+                unit = "%",
+                num = input.rollbacksAfterSilent,
+                denom = input.silentActs,
+            ),
+            BiasRate(
+                key = "confirm_density",
+                cn = "确认密度",
+                value = if (input.tasks >= 1 && input.confirms >= 1) {
+                    DelegationMetrics.confirmDensity(input.confirms, input.tasks)
+                } else {
+                    null
+                },
+                limit = InspectLimits.CONFIRM_DENSITY_LINE,
+                unit = " 次/任务",
+                num = input.confirms,
+                denom = input.tasks,
+                target = InspectLimits.CONFIRM_DENSITY_TARGET,
+            ),
+            BiasRate(
+                key = "overclaim",
+                cn = "虚报率",
+                value = if (input.answerRounds >= MIN_RATE_SAMPLE) {
+                    input.overclaimRounds * 100.0 / input.answerRounds
+                } else {
+                    null
+                },
+                limit = InspectLimits.OVERCLAIM_PCT,
+                unit = "%",
+                num = input.overclaimRounds,
+                denom = input.answerRounds,
+            ),
+            BiasRate(
+                key = "instant_approval",
+                cn = "秒批率",
+                value = if (input.gaps.size >= MIN_RATE_SAMPLE) {
+                    instant * 100.0 / input.gaps.size
+                } else {
+                    null
+                },
+                limit = InspectLimits.INSTANT_APPROVAL_PCT,
+                unit = "%",
+                num = instant,
+                denom = input.gaps.size,
+            ),
+        )
+    }
 
     /**
      * 认定态（三态都可能出现，顺序不许倒）：

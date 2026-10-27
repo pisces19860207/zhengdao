@@ -43,7 +43,7 @@ internal data class PatrolResult(
 
 internal object PatrolRunner {
 
-    /** 日志类窗口（I1/I4/I6 都按这个回看；§2.1 每日一次 ⇒ 一周够摊开且不拖垮手机）。 */
+    /** 日志类窗口（I1/I2/I3/I5/I6 与 I4 另两率都按这个回看；§2.1 每日一次 ⇒ 一周够摊开且不拖垮手机）。 */
     fun windowFrom(nowMs: Long, days: Int = InspectLimits.WEEK_WINDOW_DAYS): Long =
         nowMs - days * 24L * 3600_000L
 
@@ -73,11 +73,18 @@ internal object PatrolRunner {
             .getOrDefault(root)
 
         val from = windowFrom(nowMs)
+        // §10④（2026-10-27）：两条率（虚报率、秒批率）单独吃 **30 天滚动窗**、按动作实例
+        // 计数——它们俩是"没有持久口、只能推算"的那两条（报告 §10 第 6 问），7 天窗里
+        // 样本永远凑不齐；其余检查与 I4 另两率的口径**都不动**。
+        val rateFrom = windowFrom(nowMs, days = InspectLimits.RATE_WINDOW_DAYS)
         val ledger = PatrolSources.ledger(root)
         val acts = PatrolSources.writeTraces(db, from)
         val confirms = PatrolSources.confirmTraces(db, from)
+        val rateActs = PatrolSources.writeTraces(db, rateFrom)
+        val rateConfirms = PatrolSources.confirmTraces(db, rateFrom)
         val shadows = PatrolSources.shadows(root)
         val answers = PatrolSources.answerPool(db, from)
+        val rateAnswers = PatrolSources.answerPool(db, rateFrom)
         val findings = listOf(
             // I1：痕迹×账本交叉比对（漏 1 条就报）。
             AuditGapCheck.check(acts, ledger),
@@ -85,18 +92,19 @@ internal object PatrolRunner {
             NumberGroundingCheck.check(answers),
             // I3：抽 5 条技能跑 233 的验收清单。
             ContractHollowCheck.check(PatrolSources.skillPool(projectRoot, root)),
-            // I4：四率（算不出的走 NO_DATA，不冒充清白）。
+            // I4：四率（算不出的走 NO_DATA，不冒充清白）。虚报率/秒批率两个分母
+            // 从 §10④ 的 30 天窗取；免问回滚率/确认密度仍吃 7 天窗（口径不动）。
             MediatorBiasCheck.check(
                 BiasInputs(
                     silentActs = PatrolSources.silentActCount(acts, confirms),
                     rollbacksAfterSilent = PatrolSources.silentRollbackCount(ledger, acts, confirms),
                     confirms = confirms.size,
                     tasks = PatrolSources.taskCount(db, from),
-                    answerRounds = NumberGroundingCheck.sample(answers).size,
+                    answerRounds = NumberGroundingCheck.sample(rateAnswers).size,
                     overclaimRounds = NumberGroundingCheck.overclaimRounds(
-                        NumberGroundingCheck.sample(answers),
+                        NumberGroundingCheck.sample(rateAnswers),
                     ),
-                    gaps = PatrolSources.approvalGaps(acts, confirms),
+                    gaps = PatrolSources.approvalGaps(rateActs, rateConfirms),
                 ),
             ),
             // I5：7 天内 ≥3 次失败却没收拾。
