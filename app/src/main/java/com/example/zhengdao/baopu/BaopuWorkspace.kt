@@ -14,7 +14,7 @@
 // 唯一还借用终端那边的东西是「共享存储授权」这一个**事实判定**——那不是设置，
 // 是这台机器当前的权限状态；复制一份判定就是 E-005 那种双判，所以这里委托
 // `EnvironmentScope.hasAllFilesAccess`（第二百四十批起判定已下沉 :core，
-// 与 `terminal/Workspace`、`ProotLauncher.storageGranted` 用的是同一个实现）。
+// 与终端模块（zhengdao-term）里同名判定用的是同一个实现）。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.core.PathGuard

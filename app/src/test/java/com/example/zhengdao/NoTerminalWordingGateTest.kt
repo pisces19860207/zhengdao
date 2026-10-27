@@ -19,8 +19,11 @@ import java.io.File
  *   `com.termux`、`RootfsInstaller`、`SessionManager`、`ProotLauncher`、`SessionService`、
  *   `open_terminal`、`nav_terminal`、`nav_agents`。
  * - **判据 C（底栏）**：`R.string.nav_*` 恰好三条（抱朴 / 玄览 / 律令），且设置页对外叫「律令」。
+ * - **判据 D（前缀）**：资源里不许再有 `term_*` 前缀的键 —— 那一族 42 条（键帽 / 分屏 / 复制粘贴 /
+ *   安装引导）是终端页专属文案，页面随 248 删掉后它们全成了**零引用死资源**，
+ *   却因为值里没有"终端"二字躲过了判据 A。前缀本身就是身份，按前缀钉住。
  *
- * 三条都带负例自检 —— 防的是"判据写错了但永远绿"。
+ * 四条都带负例自检 —— 防的是"判据写错了但永远绿"。
  */
 class NoTerminalWordingGateTest {
 
@@ -64,6 +67,54 @@ class NoTerminalWordingGateTest {
         return hits
     }
 
+    /**
+     * 判据 A（整块口径）：一个 `<string>` / `<plurals>` 元素**整段**都算。
+     *
+     * 行口径会漏掉多行字符串的续行 —— 本文件里 `env_block_live_session` 那种
+     * 「第一行给结论、第二行给安抚」的写法很常见，续行写进"终端"照样是给用户看的字样。
+     */
+    fun resourceBlockViolations(files: List<Pair<String, List<String>>>): List<String> {
+        val hits = ArrayList<String>()
+        val element = Regex("""(?s)<(string|plurals)\s+name="([a-z0-9_]+)"[^>]*>(.*?)</\1>""")
+        for ((path, lines) in files) {
+            element.findAll(lines.joinToString("\n")).forEach { m ->
+                val key = m.groupValues[2]
+                val body = m.groupValues[3]
+                bannedWords.forEach { w -> if (body.contains(w)) hits += "$path: <$key> 含「$w」" }
+            }
+        }
+        return hits
+    }
+
+    /** 判据 D：`term_*` 前缀的资源键（终端页专属文案，页面删了它们就是死资源）。 */
+    fun termPrefixedKeys(files: List<Pair<String, List<String>>>): List<String> {
+        val hits = ArrayList<String>()
+        for ((path, lines) in files) {
+            lines.forEachIndexed { i, line ->
+                if (Regex("""<(string|plurals) name="term_[a-z0-9_]*"""").containsMatchIn(line)) {
+                    hits += "$path:${i + 1}: ${line.trim().take(90)}"
+                }
+            }
+        }
+        return hits
+    }
+
+    @Test
+    fun `资源里不许再有 term 前缀的键`() {
+        val files = File("src/main/res").walkTopDown()
+            .filter { it.isFile && it.name == "strings.xml" }
+            .sortedBy { it.path }
+            .map { it.path.replace('\\', '/') to it.readLines() }
+            .toList()
+        assertTrue("一个 strings.xml 都没扫到（cwd=${File("").absolutePath}）", files.isNotEmpty())
+        val hits = termPrefixedKeys(files)
+        assertEquals(
+            "资源里还有 term_* 死键（终端页文案，页面已随 248 删除）：\n" + hits.joinToString("\n"),
+            emptyList<String>(),
+            hits,
+        )
+    }
+
     @Test
     fun `资源里不许再出现终端字样`() {
         val files = File("src/main/res").walkTopDown()
@@ -74,6 +125,9 @@ class NoTerminalWordingGateTest {
         assertTrue("一个 strings.xml 都没扫到（cwd=${File("").absolutePath}）", files.isNotEmpty())
         val hits = resourceViolations(files)
         assertEquals("资源里还有终端字样（不许提示、不许显状态）：\n" + hits.joinToString("\n"), emptyList<String>(), hits)
+        // 行口径之外再按整块扫一遍：多行字符串的续行也算
+        val blockHits = resourceBlockViolations(files)
+        assertEquals("资源里有整块含终端字样的条目（续行也算）：\n" + blockHits.joinToString("\n"), emptyList<String>(), blockHits)
     }
 
     @Test
@@ -115,5 +169,28 @@ class NoTerminalWordingGateTest {
             listOf("Fake.kt" to stripComments(" * 终端已拆到独立仓（zhengdao-term）\n// 原 SessionService")),
         )
         assertEquals("注释里的提及不算：$okSrc", emptyList<String>(), okSrc)
+
+        // 判据 D 负例：term_* 键必须被抓到（<string> 与 <plurals> 两种写法都要抓）
+        val badTerm = termPrefixedKeys(
+            listOf(
+                "Fake/strings.xml" to listOf(
+                    """    <string name="term_key_esc">ESC</string>""",
+                    """    <plurals name="term_copied_screen">""",
+                    """    <string name="terminal_not_a_key">不该抓</string>""",
+                ),
+            ),
+        )
+        assertEquals("term_* 负例必须被抓到（且只抓前缀边界）：$badTerm", 2, badTerm.size)
+
+        // 判据 A 整块负例：禁用词写在多行字符串的**续行**上，行口径漏、整块口径必须抓到
+        val badBlock = resourceBlockViolations(
+            listOf(
+                "Fake/strings.xml" to listOf(
+                    """    <string name="a">第一行给结论，""",
+                    """第二行进终端看看</string>""",
+                ),
+            ),
+        )
+        assertEquals("续行里的禁用词必须被抓到：$badBlock", 1, badBlock.size)
     }
 }

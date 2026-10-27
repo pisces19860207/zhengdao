@@ -244,8 +244,6 @@
     <string name="env_repair_start">Repair: unpack again from local installer (%1$d MB), no download</string>
     <string name="env_repair_done">Repair done: environment reset, logins and workspace kept (no download)</string>
     <string name="env_repair_failed">Repair failed: %1$s</string>
-    <string name="env_block_live_session">有任务还在跑：请先等它结束（或先停下它），再重新点一次。
-本次没有改动任何文件——正在跑的东西也还在。</string>
     <string name="env_hermes_card">Hermes dependencies</string>
     <string name="env_hermes_checking">Checking…</string>
     <string name="env_hermes_fix_record">Fix the record</string>

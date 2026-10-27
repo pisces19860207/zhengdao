@@ -165,7 +165,7 @@ object KeepaliveWatcher {
     }.getOrDefault("")
 
     /**
-     * 终端前台保活服务在不在 —— 第二百四十八批起**恒 false**：SessionService 随终端搬去
+     * 终端前台保活服务在不在 —— 第二百四十八批起**恒 false**：会话服务随终端搬去
      * zhengdao-term，本进程里没有这个服务了。保留函数是为了不动调用点的形状（它只用于
      * 日志里那一句"会话服务：在/不在"），调用方按 false 走"不在"分支即可。
      */

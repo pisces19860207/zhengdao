@@ -13,7 +13,7 @@
 //
 // ## 只做甲、丁两档（派工单 §1③）
 // - **甲 全文件访问**：`Environment.isExternalStorageManager()` ⇒ 可搜 `/storage/emulated/0` 全量。
-//   这里**只认这一条**，不套 `terminal/ProotLauncher.kt:56-60` 那个 `|| WRITE_EXTERNAL_STORAGE`：
+//   这里**只认这一条**，不套终端模块里 `storageGranted` 那个 `|| WRITE_EXTERNAL_STORAGE`：
 //   那条注释自己写着「运行时权限在 API 30+ 已 inert（系统对请求直接静默拒绝）」，
 //   在 targetSdk 36 上两个析取支等价；但「拿到 WRITE 权限」≠「能读全盘」，
 //   把它当甲档判据入账，是一句将来会变成假话的判据（设计 §4 说的是「复用现成判定」的

@@ -287,10 +287,10 @@ class MainActivity : ComponentActivity() {
         // ⚠️ 第㉕刀（2026-10-15，targetSdk 28 → 36）：旧注释说「该开关只对 target≥30 的 App
         // 存在、本 App 恒为 false」—— 抬到 36 后该前提消失，开关现在**可达且就是共享存储的
         // 唯一通道**（READ/WRITE 运行时权限在 30+ 已 inert）。「所有文件访问」的必需项判定
-        // 经 ProotLauncher.storageGranted 双通道路由到它，不再有"永远完不成"的页面。
+        // 经 EnvironmentScope.hasAllFilesAccess 双通道路由到它，不再有"永远完不成"的页面。
 
         // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
-        // 第二百五十批：不再读 open_terminal（终端已拆走），冷启动一律落主页。
+        // 第二百五十批：不再读旧包的跳转 extra（终端已拆走），冷启动一律落主页。
         val openTerminal = false
 
         // 快捷方式收栈（刀 2 D 段）：本 Activity 不是 task 根 ⇒ 栈里已经有一份主页
@@ -395,16 +395,15 @@ class MainActivity : ComponentActivity() {
      * 热启动的快捷方式 intent（App 已在栈里，singleTop 语义下走到这里）。
      *
      * 不 `setIntent` 也无妨——请求只认 action 一次，挂进 [com.example.zhengdao.ui.baopu.BaopuIntents]
-     * 就由抱朴页消费；这里重复设一次 intent 是为了让后续 `intent?.getBooleanExtra("open_terminal")`
-     * 之类的读取不被旧 intent 误导（本类目前只有 onCreate 读它，保守起见照样同步）。
+     * 就由抱朴页消费；这里重复设一次 intent 是为了让后续对 intent extra 的读取不被旧 intent
+     * 误导（本类目前 onCreate 已不读任何跳转 extra，保守起见照样同步）。
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleBaopuShortcut(intent)
-        // P1-9（第五十三批）：热启动也要读 open_terminal。此前只有 onCreate 读它 ⇒
-        // 第二百五十批：通知栏不再有"回到终端"这类入口（终端已拆走），
-        // 旧包留下的 open_terminal extra 直接忽略 —— 主 APP 不检测、不跳转。
+        // 第二百五十批：通知栏不再有「回到终端」这类入口（终端已拆走），
+        // 旧包留下的跳转 extra 直接忽略 —— 主 APP 不检测、不跳转。
     }
 
     override fun onTrimMemory(level: Int) {
@@ -417,19 +416,13 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * 进终端的唯一 Intent 构造器（2026-10-07：任务栈曾叠到 10 个终端页）。
+ * 主界面（抱朴 / 玄览 / 律令 三 Tab 的宿主）。
  *
- * 为什么必须统一在这里加 flag：
- *   默认 standard 下每次 startActivity 都新建实例。五个入口（怡然安装/启动、逍遥 Tab、
- *   设置页清理缓存、通知栏回到终端、欢迎页装环境）各自 `Intent(ctx, TerminalActivity)`，
- *   来回几次就叠出一串——而 SessionManager.onViewUpdate 是**全局单例回调**，只指向最后
- *   建的实例，先前的全部变成死画面（pty 照常输出但永不重绘），且每个新实例还会重复
- *   attach、重复注入 autocmd。
+ * 第二百五十批：原先挂在这里的「进终端的唯一 Intent 构造器」KDoc 已随那个函数一起删掉 ——
+ * 终端搬到 zhengdao-term 之后，本类不再构造任何跨 App 的 Intent，也不再读跳转 extra。
  *
- * CLEAR_TOP | SINGLE_TOP：在**同一 task 内**把既有终端提到前台并走 onNewIntent，
- * 清理其上方 activity，保留下方的 MainActivity ⇒ 红点关闭仍回主页，返回栈语义不变。
- * （为何不用 manifest 的 singleTask：实测它会把终端塞进独立 task，清掉 MainActivity，
- *   关闭后不再回主页——参见 AndroidManifest.xml 里 TerminalActivity 的注释。）
+ * @param startInTerminal 只为不动调用点签名而保留；本仓没有可跳的落点，恒被忽略
+ * @param lastRoute 上次停留的路由，按白名单恢复（见 MainRouteRules.restoreRoute）
  */
 @Composable
 fun ZhengdaoApp(
