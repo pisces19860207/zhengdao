@@ -36,7 +36,6 @@
     <string name="settings_group_support">Support</string>
 
     <!-- ── Settings hub: rows ── -->
-    <string name="settings_knowledge_base">Knowledge base</string>
     <string name="settings_keepalive">Keep-alive</string>
     <string name="settings_language">Language</string>
     <string name="settings_appearance">Appearance</string>
@@ -46,7 +45,6 @@
     <!-- ── Settings hub: row status ── -->
     <string name="settings_status_measuring">Measuring…</string>
     <string name="settings_status_disabled">Off</string>
-    <string name="settings_status_enabled">On</string>
     <plurals name="settings_status_file_count">
         <item quantity="one">%1$d files</item>
         <item quantity="other">%1$d files</item>
@@ -331,31 +329,6 @@
     <string name="browser_start_shortcut_bing">Bing</string>
     <string name="browser_start_shortcut_debian">Debian docs</string>
     <string name="browser_start_shortcut_repo">Project repo</string>
-    <string name="settings_bridge">Browser bridge</string>
-    <string name="settings_value_bridge">For agents outside this app</string>
-    <string name="bridge_title">Browser bridge</string>
-    <string name="bridge_switch_group">Switch &amp; listen address</string>
-    <string name="bridge_switch_label">Enable the browser bridge</string>
-    <string name="bridge_status_on">On: reachable over loopback only, never from outside</string>
-    <string name="bridge_status_off">Off: the port is not listening</string>
-    <string name="bridge_started">Browser bridge is on</string>
-    <string name="bridge_stopped">Browser bridge is off</string>
-    <string name="bridge_port_label">Listen address</string>
-    <string name="bridge_listen_title">Listen address</string>
-    <string name="bridge_listen_detail">Bound to %1$s only (loopback). That means this port is reachable only from the phone itself — not from the internet, not from other devices on your network, and not from other apps on this phone.\n\nPort %2$s is fixed and cannot be changed: the port, bind address and auth scheme are hard limits of this bridge and are deliberately not adjustable from the UI.\n\nThe token lives in private storage of the app. This page shows only the first and last 4 characters; use \"Copy token\" below to copy it.</string>
-    <string name="bridge_token_group">Passphrase (token)</string>
-    <string name="bridge_token_label">Current passphrase</string>
-    <string name="bridge_token_hint">Only the first and last 4 characters are shown. Tap “Copy passphrase” when you actually need it — copying is an explicit action, not the default view. Resetting invalidates the old one immediately.</string>
-    <string name="bridge_copy">Copy passphrase</string>
-    <string name="bridge_copied">Passphrase copied to the clipboard</string>
-    <string name="bridge_reset">Reset passphrase</string>
-    <string name="bridge_reset_done">Reset done — the old passphrase no longer works</string>
-    <string name="bridge_howto_group">怎么用（给外部 agent）</string>
-    <string name="bridge_howto">先在 agent 那边记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让它走本机环回操作玄览页面，例如：
-curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
-可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。
-注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。
-抱朴（内置运行时）不接这条桥，它的浏览器能力由自身插件提供。</string>
     <!-- ── Baopu placeholder (legacy Baopu line retired 2026-10-16; the real page ships with Baopu cut 1) ── -->
     <!-- ── Baopu screen (cut 1, 2026-10-16; keys use the baopu_ prefix) ── -->
     <string name="baopu_input_hint">Tell Baopu what to do…</string>
@@ -671,7 +644,14 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="baopu_drawer_new_session_desc">Start a session in the current workspace; memories stay</string>
     <string name="baopu_drawer_group_library">Library</string>
     <string name="baopu_drawer_library">Library</string>
-    <string name="baopu_drawer_library_desc">Library mount status and export log (bookshelf page in the works)</string>
+    <string name="baopu_drawer_library_desc">Files indexed, last update, rebuild</string>
+    <string name="baopu_kb_group">Index</string>
+    <string name="baopu_kb_files_label">Indexed</string>
+    <string name="baopu_kb_updated">Last updated</string>
+    <string name="baopu_kb_never">Not built yet</string>
+    <string name="baopu_kb_rebuild">Rebuild index</string>
+    <string name="baopu_kb_rebuild_hint">Rebuilding only refreshes the 00-目录.md listing; originals are never touched.</string>
+    <string name="baopu_kb_rebuild_started">Rebuild started — check back in a moment</string>
     <string name="baopu_drawer_novel">Novel project</string>
     <string name="baopu_drawer_novel_desc">Create a project, see the overview, get a continue brief</string>
     <string name="baopu_drawer_mcp">External tools (MCP)</string>
@@ -1489,8 +1469,6 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="sched_exact_goto">Exact alarms are off — turn them on in Settings → Request permissions to fire on time</string>
     <string name="sched_state_exempt">Exempt</string>
     <string name="sched_state_not_exempt">Not exempt</string>
-    <string name="sched_hub_enabled">Enabled: %1$d</string>
-    <string name="sched_hub_none">No tasks</string>
     <string name="sched_state_paused">Paused</string>
     <string name="sched_state_no_next">No next run</string>
     <string name="sched_next_at">Next: %1$s</string>
@@ -1664,6 +1642,4 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="settings_perm_collapse">Collapse</string>
     <string name="settings_perm_row_label">All permissions</string>
     <string name="nav_settings">Statutes</string>
-    <string name="settings_group_workspace">Workspace &amp; library</string>
-    <string name="settings_workspace">Workspace</string>
 </resources>

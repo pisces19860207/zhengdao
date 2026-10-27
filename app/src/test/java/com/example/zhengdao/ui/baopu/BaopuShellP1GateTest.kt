@@ -92,11 +92,19 @@ class BaopuShellP1GateTest {
             assertTrue("第 ${i + 1} 段 ${order[i]} 不见了（七段缺一就是外壳残件）", at >= 0)
         }
         assertEquals("七段必须按设计顺序排（v1.4 §3.8），实得 $idx", idx.sorted(), idx)
-        // 设置组里的两项（换通道 / 抱朴设置）必须排在「设置」组标题之后——即全抽屉最底部
+        // 第二百五十一批：底部「设置」组**只留定时任务与口味档案** ——
+        // 「抱朴设置」与「选模型」「外部工具（MCP）」搬去律令的「抱朴」组了，
+        // 所以这里反过来钉：抽屉里不许再出现它们（重复入口 = 用户 2026-10-27 点名要消掉的东西）。
         val settingsGroup = src.indexOf("R.string.baopu_drawer_group_settings")
+        assertTrue("「设置」组必须还在（它是七段的最后一段）", settingsGroup > 0)
         assertTrue(
-            "「抱朴设置」入口必须在抽屉底部设置组里（v1.4：不占顶栏图标位）",
-            src.indexOf("R.string.baopu_drawer_settings)", settingsGroup) > settingsGroup,
+            "「设置」组之后应只剩定时任务与口味档案",
+            src.indexOf("R.string.baopu_drawer_sched", settingsGroup) > settingsGroup &&
+                src.indexOf("R.string.baopu_taste_title", settingsGroup) > settingsGroup,
+        )
+        assertTrue(
+            "抽屉里不该再有「抱朴设置」入口（已搬去律令）",
+            src.indexOf("R.string.baopu_drawer_settings)") < 0,
         )
     }
 
@@ -233,13 +241,17 @@ class BaopuShellP1GateTest {
      * 红＝有人给顶栏加第四颗图标（设置）——负例「设置入口另加顶栏图标」。
      */
     @Test
-    fun `T3_顶栏不加设置图标_入口只在抽屉`() {
+    fun `T3_顶栏不加设置图标_入口在律令抱朴组`() {
         val bar = topBarBlock()
         assertFalse("顶栏不许出现设置入口（showSettings）", bar.contains("showSettings"))
         assertFalse("顶栏不许出现「抱朴设置」文案", bar.contains("baopu_drawer_settings"))
-        // 反证：入口确实在抽屉里（不是被删了）
-        assertTrue("「抱朴设置」入口必须在抽屉里", drawer().contains("R.string.baopu_drawer_settings"))
-        assertTrue("抽屉要把 onSettings 接上", screen().contains("onSettings = {"))
+        // 第二百五十一批：入口从抽屉搬去**律令的「抱朴」组**（用户 2026-10-27：抱朴的事回抱朴，
+        // 但这一项属于"装 App 时配一次"，跟 MCP／选模型 一起归律令）。两处都钉住：
+        // ① 律令里真的有这个入口且进的是原页面；② 抽屉里不许再留一个（重复入口）。
+        val statutes = repoFile("src/main/java/com/example/zhengdao/ui/SettingsScreen.kt").readText()
+        assertTrue("律令里要有「抱朴设置」入口", statutes.contains("R.string.baopu_drawer_settings"))
+        assertTrue("律令里要真的打开抱朴设置页", statutes.contains("BaopuSettingsScreen("))
+        assertFalse("抽屉里不该再有它（重复入口）", drawer().contains("R.string.baopu_drawer_settings"))
     }
 
     /**

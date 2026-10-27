@@ -20,16 +20,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,19 +41,19 @@ import com.example.zhengdao.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.R
-import com.example.zhengdao.core.kb.KnowledgeBase
-import com.example.zhengdao.ui.SystemInfoProvider.dirSizeMb
+import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.ProviderPrefs
+import com.example.zhengdao.ui.baopu.BaopuChannelSheet
+import com.example.zhengdao.ui.baopu.BaopuIntents
+import com.example.zhengdao.ui.baopu.BaopuMcpSheet
+import com.example.zhengdao.ui.baopu.BaopuSettingsScreen
+import com.example.zhengdao.ui.baopu.ModelSheetDraft
 import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rDialog
-import com.example.zhengdao.ui.theme.zhengdaoErrorText
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
 import com.example.zhengdao.ui.util.pressClickable
 
 /**
@@ -74,37 +70,23 @@ import com.example.zhengdao.ui.util.pressClickable
  *
  * 2026-10-25 第二百一十批（入口与权限归位）：Hub 顶部新增「申请权限」集中卡
  * （四行：所有文件访问 / 通知 / 精确闹钟 / 电池优化豁免）——全 App **唯一**的权限
- * 申请入口。原「权限」行的口径（2026-10-12 删行、待处理并进「终端与工作区」行显示）
+ * 申请入口。原「权限」行的口径（2026-10-12 删行、待处理并进当时那两行里显示）
  * 随之退役：状态显示保留在各处，申请只在那张卡里。
  *
  * 二级页：存储与缓存 / 环境与更新 / 终端与资料 / 后台与保活 / 帮助 / 关于。
+ *
+ * 第二百五十一批（律令瘦身）：律令**只管「这个 App」**，抱朴的规矩/资料/任务回抱朴。
+ * - 搬进新组「抱朴」：外部工具（MCP）／选模型／抱朴设置（三页原样调用，一个字没改）；
+ * - 删：派工单 251 §1 表里那四项（其中一项连 Activity 整个文件一起删）；
+ * - 索引那一页的入口改到抱朴抽屉里（`KnowledgeLibraryScreen`）。
+ * 口径见派工单 251 §1／§2b：**只搬与删，不改任何开关的语义**。
+ * （本文件不再提那四项的名字 —— 判据之一是"在律令里搜不到"，注释里留着也算搜得到。）
  */
 @Composable
 fun SettingsScreen(
     onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> },
 ) {
     val ctx = LocalContext.current
-    fun manageGranted(): Boolean =
-        runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
-
-    var manageOk by remember { mutableStateOf(manageGranted()) }
-    var kbEnabled by remember {
-        mutableStateOf(com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx))
-    }
-    var kbFiles by remember { mutableStateOf<Int?>(null) }
-    // 工作区可写？—— 只看共享存储里那个目录能不能写（不建目录、不改任何东西）
-    val workspaceStatus = remember(manageOk) {
-        val dir = File(android.os.Environment.getExternalStorageDirectory(), "Download/证道")
-        when {
-            !manageOk -> "需要「所有文件访问」"
-            dir.isDirectory && dir.canWrite() -> "可写"
-            dir.isDirectory -> "不可写"
-            else -> "未创建"
-        }
-    }
-    // 定时任务（第一百六十七批）：Hub 这一行只报「启用几个」，开关/编辑都在二级页里。
-    // null = 还没读完（这一页别的数字也用同一套「先占位后覆盖」的写法）。
-    var schedEnabled by remember { mutableStateOf<Int?>(null) }
     // 界面语言（2026-10-12）：读系统记的 per-app locale，切换后系统重建 Activity、当场生效。
     var langTag by remember { mutableStateOf(LanguagePrefs.current(ctx)) }
     var langDialog by remember { mutableStateOf(false) }
@@ -112,18 +94,14 @@ fun SettingsScreen(
     var appearDialog by remember { mutableStateOf(false) }
     val appearTick = AppearancePrefs.changeTick.intValue
     val appearPref = remember(appearTick) { AppearancePrefs.get(ctx) }
-
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                manageOk = manageGranted()
-                kbEnabled = com.example.zhengdao.core.kb.KnowledgeBase.isEnabled(ctx)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+    // 第二百五十一批「抱朴」组的三张面板：都是**原有 composable**（Dialog／浮层自带窗口），
+    // 律令只负责挂入口 —— 页面与内部逻辑一行没动，所以这里只有三个开关量。
+    var mcpOpen by remember { mutableStateOf(false) }
+    // 初值读**进程级草稿**：选模型浮层里那两条「去玄览注册/看限额」会把本页整个带出组合
+    // （MainActivity 的 `when (tab)`），回来时"浮层还开着、已填的内容还在"这句话
+    // 只有 `ModelSheetDraft` 能兑现 —— 与抱朴页那一处（BaopuScreen 的 showChannel）同一口径。
+    var channelOpen by remember { mutableStateOf(ModelSheetDraft.showing) }
+    var baopuSettingsOpen by remember { mutableStateOf(false) }
 
     /** 二级页统一入口。 */
     fun open(page: Class<*>) {
@@ -138,10 +116,37 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            // ── 抱朴（第二百五十一批 · 律令瘦身）───────────────────────────────
+            // 用户 2026-10-27：「把抱朴的设置挪出来（律令里的）」。这三项从抱朴抽屉的
+            // 「设置」组搬到这里，**页面本身不动**：MCP 服务器清单（McpServerScreen）、
+            // 选模型浮层（BaopuChannelSheet）、抱朴设置页（BaopuSettingsScreen）都是原样调用，
+            // 连"默认锁着"与"跑到一半不能换"的口径也照旧（见各自 KDoc）。
+            // 为什么放第一组：装 App 时配一次的东西，进来就能看到，不用先滚过权限卡。
+            SectionCard(stringResource(R.string.nav_taiji)) {
+                SettingRow(
+                    label = stringResource(R.string.baopu_drawer_mcp),
+                    value = stringResource(R.string.baopu_drawer_mcp_desc),
+                    valueMaxLines = 2,
+                ) { mcpOpen = true }
+                SettingsDivider()
+                SettingRow(
+                    label = stringResource(R.string.baopu_channel_button),
+                    value = stringResource(R.string.baopu_drawer_channel_desc),
+                    valueMaxLines = 2,
+                ) { channelOpen = true }
+                SettingsDivider()
+                SettingRow(
+                    label = stringResource(R.string.baopu_drawer_settings),
+                    value = stringResource(R.string.baopu_drawer_settings_desc),
+                    valueMaxLines = 2,
+                ) { baopuSettingsOpen = true }
+            }
+
             // ── 「申请权限」集中卡（第二百一十批 · 入口与权限归位）─────────────
-            // 用户 2026-10-25 原话：「定时任务的权限等等各种权限申请应该放到证道 APP 的
-            // 设置里弄一个申请权限的卡」。放 Hub **第一张**＝显眼位置；四行（所有文件访问 /
-            // 通知 / 精确闹钟 / 电池优化豁免）各自带真实状态与「不给会怎样」。
+            // 用户 2026-10-25 原话：「……各种权限申请应该放到证道 APP 的
+            // 设置里弄一个申请权限的卡」。放 Hub 靠前＝显眼位置（第二百五十一批起「抱朴」组
+            // 排它前面，它是第二张）；四行（所有文件访问 / 通知 / 精确闹钟 / 电池优化豁免）
+            // 各自带真实状态与「不给会怎样」。
             // 口径：**发起申请只此一处**——别处只许显示权限状态、或留一行「去设置 → 申请权限」
             // 指路文案（源码门禁见 PermissionEntryGateTest，负例 5/7 盯的就是这两条）。
             // 2026-10-26 用户：这张卡改成和普通行一样——点一下展开四行，再点收回；
@@ -162,59 +167,19 @@ fun SettingsScreen(
             // 同日接入 i18n（§5.7）：文案走 strings.xml，切英文时本页整页变英文。
             // 第二百四十八批（第四刀）：**「环境」与「终端与资料」两节随终端一起退役**。
             // 它们原来指向 SettingsEnvActivity（装/更环境）、SettingsStorageActivity（rootfs 体积）、
-            // SettingsDataActivity（终端数据/工作区），三页都搬去 zhengdao-term 了。
-            // 主仓设置现在只剩：权限 / 后台保活 / 浏览器桥 / 定时任务 / 界面 / 关于。
-            // （工作区与资料库的入口留给第七步「设置瘦身」重建一个不依赖 rootfs 的版本。）
-
-            // 第二百五十批：只留「工作区」「资料库」两组（终端相关的三节已随终端拆走）。
-            // 这两行**只报状态、不给跳转**：它们的二级页（SettingsDataActivity）跟着终端删了，
-            // 重建页面属于"加功能"，不在本刀范围 —— 所以这里只回答两个问题：
-            // 工作区可写吗？资料库可读吗？（也就是原来"缺 N 项"体检里跟抱朴有关的那两条。）
-            SectionCard(stringResource(R.string.settings_group_workspace)) {
-                SettingRow(
-                    label = stringResource(R.string.settings_workspace),
-                    value = workspaceStatus,
-                ) {}
-                SettingsDivider()
-                SettingRow(
-                    label = stringResource(R.string.settings_knowledge_base),
-                    value = when {
-                        !kbEnabled -> stringResource(R.string.settings_status_disabled)
-                        (kbFiles ?: 0) > 0 ->
-                            pluralStringResource(R.plurals.settings_status_file_count, kbFiles ?: 0, kbFiles ?: 0)
-                        else -> stringResource(R.string.settings_status_enabled)
-                    },
-                ) {}
-            }
+            // SettingsDataActivity（终端数据与目录），三页都搬去 zhengdao-term 了。
+            // 第二百五十批：临时留了两行只报状态的条目。
+            // 第二百五十一批：**那两行也删了** —— 它们的去处都在抱朴左侧栏（切目录／看路径，
+            // 以及索引状态＋重建那一页），律令里不再重复第二遍。
 
             SectionCard(stringResource(R.string.settings_group_background)) {
                 SettingRow(
                     label = stringResource(R.string.settings_keepalive),
                     value = stringResource(R.string.settings_status_guide),
                 ) { open(SettingsKeepaliveActivity::class.java) }
-                SettingsDivider()
-                // 浏览器桥（2026-10-15，设计文档 §4.5）：给终端里的 agent 用。
-                // 放「后台」组 —— 它与保活同属"进程活着期间对外提供服务"的一类；
-                // 默认关，入口只是让人知道有这条路。
-                SettingRow(
-                    label = stringResource(R.string.settings_bridge),
-                    value = stringResource(R.string.settings_value_bridge),
-                    // 131 批 UI-D5：英文是整句（For agents inside the terminal），一行放不下
-                    // ⇒ 给两行；中文短句仍是一行（默认值 1，别处不受影响）。
-                    valueMaxLines = 2,
-                ) { open(SettingsBridgeActivity::class.java) }
-                SettingsDivider()
-                // 定时任务（第一百六十七批）：也放「后台」组——它和保活、浏览器桥同属
-                // "进程不在前台也要替用户做一件事"的一类。状态只报"启用几个"，
-                // 不在这行摊开权限（权限三行在「终端与资料」页那张卡里，一处一套控件）。
-                SettingRow(
-                    label = stringResource(R.string.sched_page_title),
-                    value = when (schedEnabled) {
-                        null -> stringResource(R.string.settings_status_measuring)
-                        0 -> stringResource(R.string.sched_hub_none)
-                        else -> stringResource(R.string.sched_hub_enabled, schedEnabled ?: 0)
-                    },
-                ) { open(com.example.zhengdao.schedule.ScheduleTasksActivity::class.java) }
+                // 第二百五十一批：本组另两行退役（§1 表）——
+                // 一项是给终端 agent 走 HTTP 用的（终端搬走 ⇒ 整项连 Activity 一起删），
+                // 一项抱朴左侧栏已有（建/看/停都在那一页），律令不再留第二个人口。
             }
 
             SectionCard(stringResource(R.string.settings_group_interface)) {
@@ -316,6 +281,54 @@ fun SettingsScreen(
                     TextButton(onClick = { langDialog = false }) {
                         Text(stringResource(R.string.common_cancel))
                     }
+                },
+            )
+        }
+
+        // ── 第二百五十一批：抱朴三张面板（原样调用，都是自带窗口的 Dialog／浮层）──────
+        // MCP 服务器清单（McpServerScreen 的薄壳）。关面板不关连接：工具留在表里，
+        // 模型下一轮就能看见 —— 与抱朴抽屉里那一份行为逐字一致。
+        if (mcpOpen) {
+            BaopuMcpSheet(onDismiss = { mcpOpen = false })
+        }
+        // 选模型（含填密钥）。提交口仍是全仓唯一那一个：BaopuRuntime.switchChannel
+        // ⇒ ProviderPrefs.save；预设上点定的模型另走 saveModelOverride。
+        // **这里没有 channelEpoch 那种"换引擎"动作**：律令不持有控制器，没什么可重建的。
+        // 实际时序：① 写盘；② 回抱朴 Tab 时 BaopuScreen 重新组合，控制器按新 provider 构造；
+        // ③ 若抱朴那边正有一轮在跑，那一轮用的是**它自己构造时的** provider，不会被这一刀切断
+        //    （它跑完照旧落库），下一轮才用新模型。抱朴页里"跑到一半不许换"的置灰照旧，一个字没改。
+        if (channelOpen) {
+            val (customBase, customModel) = ProviderPrefs.storedCustom(ctx)
+            BaopuChannelSheet(
+                currentChannelId = ProviderPrefs.currentChannelId(ctx),
+                customBaseUrl = customBase,
+                customModel = customModel,
+                customProtocol = ProviderPrefs.storedCustomProtocol(ctx),
+                onDismiss = {
+                    // 取消 ⇒ 草稿作废（输入过的 Key 原文不留过夜），SP 一个字不写。
+                    ModelSheetDraft.clear()
+                    channelOpen = false
+                },
+                onSave = { id, key, base, model, protocol, picked ->
+                    BaopuRuntime.switchChannel(ctx, id, key, base, model, protocol)
+                    if (id != ProviderPrefs.CHANNEL_CUSTOM) {
+                        ProviderPrefs.saveModelOverride(ctx, id, picked)
+                    }
+                    ModelSheetDraft.clear()
+                    channelOpen = false
+                },
+            )
+        }
+        // 抱朴设置页（工具开关／模型参数／思考深度／人设／技能索引），整页原样。
+        if (baopuSettingsOpen) {
+            BaopuSettingsScreen(
+                onDismiss = { baopuSettingsOpen = false },
+                // 全手机搜索卡上的「去这条会话」：走**既有的**进程级请求口
+                // （完成通知同一条路：挂请求 → 主页面切抱朴 Tab → 抱朴页消费并 requestOpenSession），
+                // 不在律令里另造一套切会话。页面本身一行没改。
+                onOpenSession = { sid ->
+                    baopuSettingsOpen = false
+                    BaopuIntents.requestSession(sid)
                 },
             )
         }

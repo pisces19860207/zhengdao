@@ -190,13 +190,6 @@
             android:label="后台与保活"
             android:theme="@style/Theme.Zhengdao"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
-        <!-- 浏览器桥（2026-10-15，设计文档 §4.5）：给终端里的 agent 用；默认关，页面里拨开关才 bind 127.0.0.1:14080 -->
-        <activity
-            android:name=".ui.SettingsBridgeActivity"
-            android:exported="false"
-            android:label="浏览器桥"
-            android:theme="@style/Theme.Zhengdao"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
         <!-- 定时任务页（第一百六十七批 §1）：列表（启停/编辑/删除/下次运行/上次结果）＋新建表单。
              与其余设置二级页同一套（exported=false：只有设置页 Hub 会拉起；configChanges 同款：
              转屏不重建，正在填的表单不会被清空）。

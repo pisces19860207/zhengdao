@@ -34,7 +34,6 @@
     <string name="settings_group_support">支持</string>
 
     <!-- ── 设置 Hub：行 ── -->
-    <string name="settings_knowledge_base">资料库</string>
     <string name="settings_keepalive">后台保活</string>
     <string name="settings_language">界面语言</string>
     <string name="settings_appearance">外观</string>
@@ -44,7 +43,6 @@
     <!-- ── 设置 Hub：行状态 ── -->
     <string name="settings_status_measuring">统计中…</string>
     <string name="settings_status_disabled">未启用</string>
-    <string name="settings_status_enabled">已启用</string>
     <plurals name="settings_status_file_count">
         <item quantity="other">%1$d 个文件</item>
     </plurals>
@@ -324,31 +322,6 @@
     <string name="browser_start_shortcut_bing">必应</string>
     <string name="browser_start_shortcut_debian">Debian 文档</string>
     <string name="browser_start_shortcut_repo">项目仓库</string>
-    <string name="settings_bridge">浏览器桥</string>
-    <string name="settings_value_bridge">给外部 agent 用</string>
-    <string name="bridge_title">浏览器桥</string>
-    <string name="bridge_switch_group">开关与监听地址</string>
-    <string name="bridge_switch_label">启用浏览器桥</string>
-    <string name="bridge_status_on">已开启：本机环回可连，外网够不着</string>
-    <string name="bridge_status_off">已关闭：端口未监听</string>
-    <string name="bridge_started">浏览器桥已开启</string>
-    <string name="bridge_stopped">浏览器桥已关闭</string>
-    <string name="bridge_port_label">监听地址</string>
-    <string name="bridge_listen_title">监听地址</string>
-    <string name="bridge_listen_detail">只绑 %1$s（本机环回地址）。意思是：这个端口只有手机自己能连，外网连不上、局域网里别的设备连不上、手机上别的 App 也连不上。\n\n端口 %2$s 是固定值，改不了——端口、绑定地址和鉴权方式都是这座桥的硬底线，不开放从界面调整。\n\n口令存在本机应用私有空间里，这一页只显示前后各 4 位，要复制请用下面的「复制口令」。</string>
-    <string name="bridge_token_group">口令（token）</string>
-    <string name="bridge_token_label">当前口令</string>
-    <string name="bridge_token_hint">只显示前后各 4 位。要复制请点下面「复制口令」——复制是显式动作，不默认摊开。重置后旧口令立即失效。</string>
-    <string name="bridge_copy">复制口令</string>
-    <string name="bridge_copied">口令已复制到剪贴板</string>
-    <string name="bridge_reset">重置口令</string>
-    <string name="bridge_reset_done">已重置，旧口令立即失效</string>
-    <string name="bridge_howto_group">怎么用（给外部 agent）</string>
-    <string name="bridge_howto">先在 agent 那边记下口令：export BRIDGE_TOKEN=刚复制的那串。之后就能让它走本机环回操作玄览页面，例如：
-curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
-可用命令：status / snapshot / navigate / click / type / scroll / newTab / activeTab / closeTab / screenshot / execJS。
-注意：agent 在网页里能做的事很多（包括往密码框里填），但它碰不到 App 私有数据、改不了浏览器安全设置、也关不掉隐私脱敏。
-抱朴（内置运行时）不接这条桥，它的浏览器能力由自身插件提供。</string>
     <!-- ── 抱朴页占位（2026-10-16 旧抱朴线清场；真实页面归抱朴线刀 1）── -->
     <!-- ── 抱朴页（刀 1 · 2026-10-16；键一律 baopu_ 前缀）── -->
     <string name="baopu_input_hint">说说要做什么…</string>
@@ -645,7 +618,14 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="baopu_drawer_new_session_desc">在当前工作区开一个新会话，记忆不动</string>
     <string name="baopu_drawer_group_library">资料与书</string>
     <string name="baopu_drawer_library">资料库</string>
-    <string name="baopu_drawer_library_desc">看资料库挂载状态与导出记录（书库页在做）</string>
+    <string name="baopu_drawer_library_desc">已索引几个文件、上次更新、重建索引</string>
+    <string name="baopu_kb_group">索引</string>
+    <string name="baopu_kb_files_label">已索引</string>
+    <string name="baopu_kb_updated">上次更新</string>
+    <string name="baopu_kb_never">还没生成</string>
+    <string name="baopu_kb_rebuild">重建索引</string>
+    <string name="baopu_kb_rebuild_hint">重建只更新「产物/00-目录.md」这份清单；原件一个不动。</string>
+    <string name="baopu_kb_rebuild_started">已开始重建，几秒后再看</string>
     <string name="baopu_drawer_novel">小说工程</string>
     <string name="baopu_drawer_novel_desc">建项目、看总览、拿续写简报</string>
     <string name="baopu_drawer_mcp">外部工具（MCP）</string>
@@ -1443,8 +1423,6 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="sched_exact_goto">精确闹钟未开启——到「设置 → 申请权限」里开，给了才准点打响</string>
     <string name="sched_state_exempt">已豁免</string>
     <string name="sched_state_not_exempt">未豁免</string>
-    <string name="sched_hub_enabled">启用 %1$d 个</string>
-    <string name="sched_hub_none">没任务</string>
     <string name="sched_state_paused">已暂停</string>
     <string name="sched_state_no_next">没有下次</string>
     <string name="sched_next_at">下次：%1$s</string>
@@ -1616,6 +1594,4 @@ curl -s -u browser:$BRIDGE_TOKEN http://127.0.0.1:14080/bridge/v1/status
     <string name="settings_perm_collapse">收起</string>
     <string name="settings_perm_row_label">全部权限</string>
     <string name="nav_settings">律令</string>
-    <string name="settings_group_workspace">工作区与资料</string>
-    <string name="settings_workspace">工作区</string>
 </resources>

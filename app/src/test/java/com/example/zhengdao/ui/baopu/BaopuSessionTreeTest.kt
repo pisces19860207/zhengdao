@@ -691,13 +691,15 @@ class BaopuSessionTreeTest {
     fun `口径1_低频入口一个都不许少_历史会话已移出抽屉`() {
         // 2026-10-18 用户口径改了：会话都归在各工作区下面 ⇒ 抽屉里**不再有**「历史会话」行。
         // 但那一页（含删除）不能因此丢掉，挪成低频入口：抱朴设置 → 会话记录。
+        //
+        // 2026-10-27（第二百五十一批）：`baopu_channel_button`（选模型）与
+        // `baopu_drawer_settings`（抱朴设置）**搬去律令「抱朴」组**了，从这张单子里去掉 ——
+        // 它们没消失，只是换了地方（新家的门禁在 StatutesSlimGateTest）。
         listOf(
             "baopu_new_session",
             "baopu_drawer_library",
             "baopu_extract_title",
             "baopu_backup_title",
-            "baopu_channel_button",
-            "baopu_drawer_settings",
         ).forEach { key ->
             assertTrue("抽屉少了入口：$key", drawerCode.contains("R.string.$key"))
         }
@@ -711,6 +713,7 @@ class BaopuSessionTreeTest {
 
     @Test
     fun `口径3_点项先关抽屉再跳_会话行与文件夹行也不例外`() {
+        // 第二百五十一批：`onChannel` / `onSettings` 两条随入口搬去律令一起删了（抽屉不再转交）。
         listOf(
             "onNewSession = {",
             "onOpenSession = { sid ->",
@@ -718,8 +721,6 @@ class BaopuSessionTreeTest {
             "onLibrary = {",
             "onExtract = {",
             "onBackup = {",
-            "onChannel = {",
-            "onSettings = {",
         ).forEach { sig ->
             assertTrue("$sig 必须先关抽屉", bodyOf(screenCode, sig).contains("drawerState.close()"))
         }

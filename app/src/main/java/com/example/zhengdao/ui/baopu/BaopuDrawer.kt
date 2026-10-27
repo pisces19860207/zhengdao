@@ -422,15 +422,17 @@ private fun SessionRow(
 /**
  * 抱朴的设置抽屉（顶部＝工作区树）。
  *
- * @param busy 引擎在跑：新会话与换通道都置灰。这是引擎层约束，不是 UI 洁癖——
- *             [com.example.zhengdao.baopu.BaopuChatController] 构造期就持引擎，
- *             换 provider 必须重建控制器，跑到一半换会丢现场。
+ * @param busy 引擎在跑：新会话与「预览这条回复」置灰。这是引擎层约束，不是 UI 洁癖——
+ *             [com.example.zhengdao.baopu.BaopuChatController] 构造期就持引擎。
  *             会话行**不**跟着置灰：撞上单活跃门由 B 段的确认卡去问人（不许自动停）。
+ *             （第二百五十一批：「换通道」那一行搬去律令了，它原来也吃这个 busy ——
+ *             限制本身没变，只是"跑到一半"这件事现在只发生在抱朴页里。）
  * @param nodes [buildWorkspaceTree] 算好的工作区树（顺序、名字、高亮都在纯函数里定了）。
  * @param onWorkspaceTap 点文件夹行：交出这一行的完整路径（临时提示＋设置页「工作区」卡落点）。
  * @param onWorkspaceHold 长按文件夹行：只给那句临时提示。
  * @param onScheduleTasks 第二百一十批：「定时任务」行——点开进 ScheduleTasksActivity
- *             （与设置页「后台」组那一行同一个页；状态文字由纯函数算，读盘在 IO 上做）。
+ *             （状态文字由纯函数算，读盘在 IO 上做）。第二百五十一批起律令里那一行已删，
+ *             抱朴成了唯一去处 —— 抽屉里这两处（第一组的状态行 ＋ 设置组的跳转行）都指着它。
  */
 @Composable
 internal fun BaopuDrawer(
@@ -461,10 +463,8 @@ internal fun BaopuDrawer(
     onPreviewLastReply: () -> Unit,
     /** 清空预览缓存（返回清掉的张数，由调用方说话）。 */
     onPreviewClear: () -> Unit,
-    /** 第一百二十三批 MCP：抽屉入口（之前只有工具组，没有落点）。 */
-    onMcp: () -> Unit,
-    onChannel: () -> Unit,
-    onSettings: () -> Unit,
+    // 第二百五十一批：「外部工具（MCP）」「选模型」「抱朴设置」三个回调随入口一起删 ——
+    // 它们现在挂在律令的「抱朴」组里（SettingsScreen），抽屉不再渲染这三项。
     /** 第二百零二批：口味档案（偏好与范例库，独立一页——不挤进抱朴设置页）。 */
     onTaste: () -> Unit,
     /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
@@ -766,24 +766,12 @@ internal fun BaopuDrawer(
             description = stringResource(R.string.baopu_drawer_sched_desc),
             onClick = onScheduleTasks,
         )
-        DrawerItem(
-            title = stringResource(R.string.baopu_drawer_mcp),
-            description = stringResource(R.string.baopu_drawer_mcp_desc),
-            onClick = onMcp,
-        )
-        DrawerItem(
-            title = stringResource(R.string.baopu_channel_button),
-            description = stringResource(R.string.baopu_drawer_channel_desc),
-            enabled = !busy,
-            onClick = onChannel,
-        )
-        DrawerItem(
-            title = stringResource(R.string.baopu_drawer_settings),
-            description = stringResource(R.string.baopu_drawer_settings_desc),
-            onClick = onSettings,
-        )
+        // 第二百五十一批（律令瘦身）：这一组**只留两行** —— 定时任务、口味档案。
+        // 「外部工具（MCP）」「选模型」「抱朴设置」三项搬去了律令的「抱朴」组
+        // （用户 2026-10-27：「把抱朴的设置挪出来」）：它们是一年改一两次的配置，
+        // 而抽屉是每天要拉的会话树，越短越好。**页面一个都没删**，只是入口换地方。
         // 第二百零二批：口味档案（与抱朴设置并排，因为它是「它为什么这么写」的账本，
-        // 不属于工具/模型那些开关）。
+        // 不属于工具/模型那些开关）——用户没让搬，留在原地。
         DrawerItem(
             title = stringResource(R.string.baopu_taste_title),
             description = stringResource(R.string.baopu_taste_drawer_desc),
