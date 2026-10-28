@@ -808,6 +808,11 @@
     <string name="skill_edit_saved">已保存（旧版已备份）</string>
     <!-- ── 第三十六批 A 段：抽屉「回收站」入口＋列表 ── -->
     <string name="trash_drawer_entry">回收站（%1$d）</string>
+    <!-- 第二百六十四批：读盘挪到 IO 之后的首帧文案——「还在读」不是「确实是 0 条」 -->
+    <string name="trash_drawer_entry_loading">回收站（读取中…）</string>
+    <string name="trash_dialog_title_loading">回收站（读取中…）</string>
+    <string name="trash_more_hint">还有 %1$d 条没显示</string>
+    <string name="trash_show_more">显示更多</string>
     <string name="trash_drawer_desc">删掉的文件先落在这里，能捞回来也能真删</string>
     <string name="trash_dialog_title">回收站（%1$d）</string>
     <string name="trash_none">回收站里没有文件</string>
@@ -1160,6 +1165,7 @@
     <string name="baopu_artifact_top_label">产物 · %1$d</string>
     <!-- 第三十八批 §9（用户 2026-10-19 追加）：抽屉产物区（中） -->
     <string name="baopu_artifact_shelf_title">产物（%1$d）</string>
+    <string name="baopu_artifact_shelf_title_loading">产物（读取中…）</string>
     <string name="baopu_artifact_shelf_desc">这一阵子写出来的文件；点开能回看，也能移进回收站</string>
     <string name="baopu_artifact_shelf_row_meta">%1$s ・ 更新 %2$s</string>
     <string name="baopu_artifact_shelf_row_session">来自：%1$s</string>

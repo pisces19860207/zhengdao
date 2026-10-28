@@ -21,6 +21,12 @@ package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.agent.DeletePathTool
 import com.example.zhengdao.core.PathGuard
+import com.example.zhengdao.core.RunLog
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,6 +156,27 @@ class BaopuTrashBinTest {
             assertTrue("过滤器必须问 GuardCore 要软链判定", bin().contains("!BaopuGuardCore.isSymlink(it)"))
             assertFalse("不许自己再写一份 Files.isSymbolicLink", bin().contains("Files.isSymbolicLink"))
         }
+    }
+
+    @Test
+    fun `T1_分页读_只给前N条大小_总数与排序口径不变`() {
+        // 第二百六十四批 A-P2-2：造 200 条，证明「一页只 stat 前 N 条」而不是全量
+        val names = (1..200).map { "17000000%04d-旧稿.txt".format(it) }
+        names.forEach { makeTrashFile(it, "x") }
+        File(trash, "子目录").mkdirs()
+
+        val page = trashListing(trash, TRASH_PAGE)
+        assertEquals("一页只读 TRASH_PAGE 条（每条才有 length/mtime）", TRASH_PAGE, page.rows.size)
+        assertEquals("总数是全部文件数（子目录不算）", 200, page.total)
+        assertEquals("排序与全量读同一口径：名字字典序", names.sorted().take(TRASH_PAGE), page.rows.map { it.name })
+        assertTrue("这一页每条的大小都是盘上真值", page.rows.all { it.bytes == 1L })
+
+        val zero = trashListing(trash, 0)
+        assertTrue("limit=0 ⇒ 一条都不 stat", zero.rows.isEmpty())
+        assertEquals("但总数照样数全（空态判断靠它）", 200, zero.total)
+
+        val all = trashRows(trash)
+        assertEquals("全量入口（抽屉/判据 T1）与分页读同一份顺序", names.sorted(), all.map { it.name })
     }
 
     @Test
@@ -317,15 +344,33 @@ class BaopuTrashBinTest {
     @Test
     fun `T3_界面那条闸靠的是比对路径_不是写死 true`() {
         val src = bin()
-        assertTrue("单条删除的确认位由比对得出", src.contains("deleteTrash(row, workspaceRoot, confirmingFile == row.file.absolutePath)"))
-        assertTrue("清空的确认位由 confirmingEmpty 得出", src.contains("emptyTrash(dir, confirmingEmpty)"))
-        assertTrue("关掉那一行/换一条就得重新确认", src.contains("confirmingFile = null"))
+        // ① 单条删除的确认位仍来自「比对盘上路径」。第二百六十四批只是把它挪到
+        // **进 IO 之前**算好（Compose 的 state 不在后台线程读），判据本身没变。
+        assertTrue(
+            "单条删除的确认位由比对得出（主线程先算好）",
+            src.contains("val confirmedDelete = confirmingFile == row.file.absolutePath"),
+        )
+        assertTrue(
+            "真删用的是这个算好的位，不是写死 true",
+            src.contains("deleteTrash(row, workspaceRoot, confirmedDelete)"),
+        )
         assertFalse("不许出现无条件删除的写法", src.contains("deleteTrash(row, workspaceRoot, true)"))
-        assertFalse("清空同理", src.contains("emptyTrash(dir, true)"))
-        // 判别器自证：坏形状（写死 true）确实被上面那条抓到
+        assertTrue("关掉那一行/换一条就得重新确认", src.contains("confirmingFile = null"))
+        // ② 清空仍是两击：第一击只出确认（`return@empty`），第二击才删。
+        // 第一击的账目改取面板快照（total/totalBytes），不再自己全量扫一遍。
+        assertTrue("第一击按快照出确认卡", src.contains("val needs = TrashOutcome.NeedsConfirm("))
+        assertTrue("第一击说完就 return", src.contains("sayBatch(needs)") && src.contains("return@empty"))
+        val firstBranch = src.substringAfter("if (!confirmingEmpty) {").substringBefore("return@empty")
+        assertFalse("第一击那段里一个字都不许删：$firstBranch", firstBranch.contains("emptyTrash("))
+        assertTrue("第二击才真删", src.contains("emptyTrash(dir, true)"))
+        // ③ 判别器自证：坏形状（写死 true）确实会被上面那条 assertFalse 抓到
+        val sabotaged = src.replace(
+            "deleteTrash(row, workspaceRoot, confirmedDelete)",
+            "deleteTrash(row, workspaceRoot, true)",
+        )
         assertTrue(
             "判别器抓得住写死 true",
-            Regex("emptyTrash\\(dir, true\\)").containsMatchIn("emptyTrash(dir, true)"),
+            sabotaged.contains("deleteTrash(row, workspaceRoot, true)"),
         )
     }
 
@@ -418,5 +463,46 @@ class BaopuTrashBinTest {
         assertTrue("判别器抓得住硬编码按钮", Regex("\"彻底删除\"").containsMatchIn("Text(\"彻底删除\")"))
         assertTrue("面板每一句走资源", src.contains("stringResource(R.string.trash_restore)"))
         assertTrue("抽屉那一行也走资源并带 N", drawer().contains("stringResource(R.string.trash_drawer_entry, trashCount)"))
+    }
+
+    // ── 第二百六十四批补齐：动作路径的取消语义 ────────────────────────────
+
+    @Test
+    fun `T9_面板被关掉_文件照样删完且账上有一行`() = runBlocking {
+        // 判据（用户 2026-10-28 批）：**取消场景下文件删了、账上必须有一行**。
+        // 现实里这一击由「点面板外面 / 按返回键」触发：Dialog 的组合 scope 被取消，
+        // 而 `File.delete()` 不是挂起函数不会被打断——取消只在 withContext 退出时才抛。
+        // 若没有 NonCancellable，`sayBatch`/`tick++` 会被一起吞掉：文件没了、界面一句话不说。
+        (1..3).forEach { makeTrashFile("17000000%04d-旧稿.txt".format(it)) }
+        val filesDir = File(root, "files-log").apply { mkdirs() }
+        RunLog.resetForTest()
+        RunLog.initForTest(filesDir)
+        assertTrue("日志善后就绪", RunLog.awaitPrepared())
+
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val reported = java.util.concurrent.atomic.AtomicBoolean(false)
+        val job = launch(Dispatchers.Default) {
+            runTrashAction(
+                label = "清空",
+                mainDispatcher = Dispatchers.Unconfined,
+                block = {
+                    started.countDown()
+                    release.await() // 把动作按在半路，模拟「用户这时点了外面」
+                    emptyTrash(trash, true)
+                },
+                describe = ::outcomeLine,
+            ) { reported.set(true) }
+        }
+        assertTrue("动作已经开始", started.await(5, TimeUnit.SECONDS))
+        job.cancel() // == 用户点了面板外面：Dialog 的 scope 被取消
+        release.countDown()
+        job.join()
+
+        assertEquals("取消归取消，文件必须真删完", 0, trashRows(trash).size)
+        val logText = File(RunLog.dirFor(filesDir), "zhengdao-log.txt").readText(Charsets.UTF_8)
+        assertTrue("账上必须有这一行：$logText", logText.contains("回收站清空"))
+        assertTrue("界面回灌也得执行（否则用户以为没删成，再点一次文案还对不上）", reported.get())
+        RunLog.resetForTest()
     }
 }

@@ -728,9 +728,11 @@ class BaopuSessionTreeTest {
 
     @Test
     fun `树数据只在开抽屉那一刻读_没开过就一条SELECT都不跑`() {
-        val build = bodyOf(screenCode, "val drawerNodes = remember(")
+        // 第二百六十四批：树快照从组合期的 remember 挪进 LaunchedEffect + IO，锚点随之改。
+        val build = bodyOf(screenCode, "LaunchedEffect(\n        drawerTick,")
         assertTrue("drawerTick==0 ⇒ 空树", build.contains("if (drawerTick == 0)"))
         assertTrue("读库只走会话库那一个入口", build.contains("controller.loadSessionLibrary()"))
+        assertTrue("读盘在 IO（组合期不再取根/查库）", build.contains("withContext(Dispatchers.IO)"))
         assertTrue(
             "开抽屉那一刻才 +1",
             bodyOf(screenCode, "LaunchedEffect(drawerState.isOpen)").contains("drawerTick++"),
@@ -741,7 +743,7 @@ class BaopuSessionTreeTest {
     fun `本批不许提前加预览入口_抽屉里不许出现那两个函数`() {
         // §85「明确不在本批」：预览两行等刀 4-B 落地后另接（那条门禁本体在 BaopuPreviewTest R8，
         // 这里只钉"29 批没顺手加"——两边各管各的，不重复咬同一件事）。
-        val screen = bodyOf(screenCode, "val drawerNodes = remember(")
+        val screen = bodyOf(screenCode, "LaunchedEffect(\n        drawerTick,")
         assertFalse(screen.contains("previewLastReply"))
         assertFalse(drawerCode.contains("previewLastReply"))
         assertFalse(drawerCode.contains("clearPreviewCache"))

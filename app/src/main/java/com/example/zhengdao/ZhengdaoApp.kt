@@ -3,6 +3,7 @@
 package com.example.zhengdao
 
 import android.app.Application
+import android.os.StrictMode
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.ZhengdaoDirs
 
@@ -25,6 +26,9 @@ class ZhengdaoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 第二百六十四批：debug 包装 StrictMode 主线程读盘探针（见 [installMainThreadDiskReadProbe]）。
+        // 必须**最先**装：它要覆盖下面 RunLog.init 与各 install 里的每一处主线程读盘。
+        installMainThreadDiskReadProbe()
         // 第二百四十批：RunLog 的「公共区老日志目录」与「单文件搬家」两件事改成注入
         // （先断环：RunLog 原先直接调 Store，而 Store 又调 RunLog，两者互为依赖）。
         RunLog.init(
@@ -122,4 +126,26 @@ class ZhengdaoApp : Application() {
     // zhengdao-term —— 它清的是 rootfs/agent 缓存，主仓已经没有那些目录了。
     // 第二百四十八批（第四刀）：`autoCleanJunk()`（缓存清理 + 旧代迁移 + 通知）随终端一起搬到
     // zhengdao-term —— 它清的是 rootfs/agent 缓存，主仓已经没有那些目录了。
+
+    /**
+     * DEBUG 包的**主线程读盘探针**（第二百六十四批的证据装置，release 不装）。
+     *
+     * 为什么要有：判据是「StrictMode `detectDiskReads` 不再报」，而这句话只有在真机上带
+     * 日志才验得了。`penaltyLog` 会把每一处违规打成一行，形如
+     * `StrictMode policy violation; ~duration=12 ms: android.os.StrictMode$StrictModeDiskReadViolation`，
+     * 其中 `~duration` 就是这一处读盘在主线程上真正耗掉的时间——改动前后拿它做读数。
+     *
+     * 只开 `detectDiskReads`（本批只治读盘）：写盘不在这一批的判据里，全开会把日志淹掉。
+     * `StrictMode.setThreadPolicy` 只作用于**调用它的线程**（这里就是主线程），恰好是我们要的。
+     * release 不装：StrictMode 有运行时开销，且 logcat 是外送面（N-4 的收窄口径）。
+     */
+    private fun installMainThreadDiskReadProbe() {
+        if (!BuildConfig.DEBUG) return
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .penaltyLog()
+                .build(),
+        )
+    }
 }

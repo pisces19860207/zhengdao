@@ -103,9 +103,11 @@ import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // 第二百五十一批：原来这里有个 `openSettings(context)`（抽屉「资料库」行跳设置页，
 // 250 之后那一路落到的是**已经没用的那个桥设置页**）。现在资料库有自己的页
@@ -238,7 +240,16 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         months = stringResource(R.string.baopu_drawer_time_months),
     )
     // drawerTick==0 ⇒ 一颗都没读：没开过抽屉就不该为它跑一条 SELECT。
-    val drawerNodes = remember(
+    //
+    // 第二百六十四批（A-P2-3 的同族，真机 StrictMode 抓到的）：这段的键是 `drawerTick`，
+    // 每拉一次抽屉都要 `BaopuWorkspace.hostDir`（mkdirs＋isDirectory）＋
+    // `controller.loadSessionLibrary`（一条 SELECT）——原先是组合期同步跑，
+    // 真机 3 条、每条 317~436ms，全压在主线程上（抽屉"一开就卡"的另一半在这里）。
+    // 现在整块挪到 IO；重读时**保留旧树**（只有第一次才是空），首帧由 `workspaceLoading`
+    // 画「读取中…」，不把「还没读到」画成「没有工作区」。
+    var drawerNodes by remember { mutableStateOf<List<DrawerWorkspaceNode>>(emptyList()) }
+    var drawerTreeLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(
         drawerTick,
         controller.sessionId,
         timeTemplates,
@@ -248,30 +259,35 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
         unnamedSessionLabel,
     ) {
         if (drawerTick == 0) {
-            emptyList()
+            drawerNodes = emptyList()
+            drawerTreeLoading = false
         } else {
-            val host = BaopuWorkspace.hostDir(context)
-            val wsState = workspaceStateOf(
-                BaopuWorkspace.storageGranted(context),
-                BaopuWorkspace.isPrivate(context),
-            )
-            buildWorkspaceTree(
-                entries = controller.loadSessionLibrary(),
-                currentHostPath = host.absolutePath,
-                currentLabel = workspaceFolderLabel(
-                    host.absolutePath,
-                    wsState,
-                    wsPrivateLabel,
-                    wsUnauthorizedLabel,
-                ),
-                currentState = wsState,
-                unknownLabel = wsUnknownLabel,
-                unknownPath = BaopuWorkspace.defaultDir().absolutePath,
-                currentSessionId = controller.sessionId,
-                now = System.currentTimeMillis(),
-                templates = timeTemplates,
-                fallbackTitle = unnamedSessionLabel,
-            )
+            drawerTreeLoading = true
+            drawerNodes = withContext(Dispatchers.IO) {
+                val host = BaopuWorkspace.hostDir(context)
+                val wsState = workspaceStateOf(
+                    BaopuWorkspace.storageGranted(context),
+                    BaopuWorkspace.isPrivate(context),
+                )
+                buildWorkspaceTree(
+                    entries = controller.loadSessionLibrary(),
+                    currentHostPath = host.absolutePath,
+                    currentLabel = workspaceFolderLabel(
+                        host.absolutePath,
+                        wsState,
+                        wsPrivateLabel,
+                        wsUnauthorizedLabel,
+                    ),
+                    currentState = wsState,
+                    unknownLabel = wsUnknownLabel,
+                    unknownPath = BaopuWorkspace.defaultDir().absolutePath,
+                    currentSessionId = controller.sessionId,
+                    now = System.currentTimeMillis(),
+                    templates = timeTemplates,
+                    fallbackTitle = unnamedSessionLabel,
+                )
+            }
+            drawerTreeLoading = false
         }
     }
     val showWorkspacePath: (String) -> Unit = { path ->
@@ -364,6 +380,7 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     // E-163：抽屉内容常驻组合，回收站个数得靠「打开」这个信号重数一次。
                     drawerOpen = drawerState.isOpen,
                     nodes = drawerNodes,
+                    workspaceLoading = drawerTreeLoading,
                     onNewSession = {
                         scope.launch { drawerState.close() }
                         controller.newSession()

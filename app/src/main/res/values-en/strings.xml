@@ -842,6 +842,10 @@
     <string name="skill_edit_saved">Saved (previous version backed up)</string>
     <!-- 36 A: trash drawer entry + list（与中文同序同键）-->
     <string name="trash_drawer_entry">Trash (%1$d)</string>
+    <string name="trash_drawer_entry_loading">Trash (loading…)</string>
+    <string name="trash_dialog_title_loading">Trash (loading…)</string>
+    <string name="trash_more_hint">Not shown: %1$d</string>
+    <string name="trash_show_more">Show more</string>
     <string name="trash_drawer_desc">Deleted files land here: restore them or erase for good</string>
     <string name="trash_dialog_title">Trash (%1$d)</string>
     <string name="trash_none">Trash is empty</string>
@@ -1207,6 +1211,7 @@
     <string name="baopu_artifact_top_label">Artifacts · %1$d</string>
     <!-- batch 38 §9: drawer artifact shelf (en) -->
     <string name="baopu_artifact_shelf_title">Artifacts (%1$d)</string>
+    <string name="baopu_artifact_shelf_title_loading">Artifacts (loading…)</string>
     <string name="baopu_artifact_shelf_desc">Files written lately. Open one to read it, or move it to the trash.</string>
     <string name="baopu_artifact_shelf_row_meta">%1$s - updated %2$s</string>
     <string name="baopu_artifact_shelf_row_session">From: %1$s</string>

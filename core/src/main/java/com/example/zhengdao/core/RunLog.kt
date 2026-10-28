@@ -81,6 +81,27 @@ object RunLog {
     private var settled = false
 
     /**
+     * 后台善后（旧日志迁移＋上一轮归档）是否已跑完（第二百六十四批）。
+     *
+     * **为什么要有这个标志**：迁移/归档都必须在**本轮第一行日志落盘之前**完成
+     * （不然 [archivePrevious] 会把本轮刚写的日志当成上一轮归档掉）。它又不能在
+     * `Application.onCreate` 的主线程上做（A-P2-5）⇒ 起一个后台线程跑，这期间
+     * 所有日志先排进 [pending] 内存队列，跑完再按原时间戳补写。
+     */
+    @Volatile
+    private var prepared = false
+
+    /** 善后线程只许起一次（`init` 可能在多个入口被调）。 */
+    private var prepareStarted = false
+
+    /** 脱敏用的私有根（纯字符串，不碰盘）：`init` 时记下，之后 `log()` 不再依赖 Context。 */
+    @Volatile
+    private var filesDirForRedact: String? = null
+
+    /** 善后完成前的日志（时间戳＋已脱敏正文）。启动那几行不能因为换线程而丢。 */
+    private val pending = ArrayDeque<Pair<Long, String>>()
+
+    /**
      * 写文件专用锁（P2-13）。
      *
      * 为什么不用类监视器（`synchronized(RunLog)`）：那是公开的，任何持 RunLog 引用的代码
@@ -108,13 +129,127 @@ object RunLog {
     ) {
         this.legacyLogsDir = legacyLogsDir
         this.adoptFileFn = adoptFile
-        appContext = context.applicationContext
-        val ctx = appContext ?: return
-        val d = dir(ctx)
-        migrateLegacy(ctx, d)
-        if (!settled) {
-            settled = true
-            archivePrevious(d)
+        val ctx = context.applicationContext
+        appContext = ctx
+        // 第二百六十四批（A-P2-5）：`Application.onCreate` 里**只做最小初始化**——
+        // ① 记住目录（纯路径拼接，不 stat、不 mkdirs）；② 把旧日志迁移＋上一轮归档丢后台线程。
+        // 原来这两步（公共区 listFiles＋逐文件 length）是在冷启动主线程上跑的：日志一多，
+        // 首帧就被读盘拖住，而它偏偏是最没人会怀疑的一处。
+        //
+        // `filesDir` 也**不向 Context 要**（2026-10-28 真机抓到的第二层）：`ContextImpl.filesDir`
+        // 内部先 `ensurePrivateDirExists` ⇒ 一次 `File.exists`，StrictMode 照样报在
+        // `RunLog.init` 这两行上（各 ~13ms）。`applicationInfo.dataDir` 是**纯字符串**，
+        // 框架里 `filesDir` 恒为 `<dataDir>/files`，拼出来与 `ctx.filesDir` 同一个路径。
+        val filesDir = File(ctx.applicationInfo.dataDir, "files")
+        resolvedDir = dirFor(filesDir)
+        filesDirForRedact = filesDir.absolutePath
+        startPrepare(filesDir, publicLogsDir = { runCatching { legacyLogsDir?.invoke(ctx) }.getOrNull() })
+    }
+
+    /**
+     * 后台善后（第二百六十四批）：建目录 → [migrateLegacy] → [archivePrevious]，三件事**串行**
+     * 在同一个线程里，跑完才放开日志落盘（期间的日志在 [pending] 里排队）。
+     *
+     * 为什么必须串行且先于第一行日志：顺序与改动前逐字一致（先迁移、再归档），
+     * 只是换了执行线程。乱序会让"上一轮日志"与"本轮日志"混在同一份文件里。
+     *
+     * 第二百六十四批的**测试缝**：`publicLogsDir` 由调用方给（不从 Context 求），`gate` 用来把
+     * 善后线程按在起点——单测据此证明「善后还没跑完时打的日志在内存队列里，跑完按原序补写」。
+     *
+     * ⚠️ `legacyLogsDir?.invoke(ctx)`（`ZhengdaoDirs.logsDir`，会 listFiles/mkdirs）**必须在
+     * 后台线程里求**，不能在上面的 `init()` 里先算好——那样只是把读盘从"迁移"挪到"求路径"，
+     * StrictMode 照样报。
+     */
+    private fun startPrepare(
+        filesDir: File,
+        publicLogsDir: () -> File?,
+        gate: java.util.concurrent.CountDownLatch? = null,
+    ) {
+        synchronized(lock) {
+            if (prepareStarted) return
+            prepareStarted = true
+        }
+        Thread({
+            try {
+                gate?.await()
+                val d = dirFor(filesDir)
+                d.mkdirs()
+                migrateLegacy(filesDir, publicLogsDir(), d)
+                if (!settled) {
+                    settled = true
+                    archivePrevious(d)
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w("zhengdao/RunLog", "后台善后失败（忽略）：${t.message}")
+            } finally {
+                flushPending(dirFor(filesDir))
+            }
+        }, "zhengdao-runlog-prepare").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * 把善后期间排队的日志按**原时间戳**补写，然后放开直接落盘。
+     *
+     * 排队而不是丢：`ZhengdaoApp` 启动后紧接着就会打「启动自检」「WebView 数据目录」这些行，
+     * 它们正是排查启动问题时要看的那几行（第 14 条历史教训：日志静默丢失比不记更糟）。
+     */
+    private fun flushPending(d: File) {
+        synchronized(lock) {
+            while (pending.isNotEmpty()) {
+                val (at, safe) = pending.removeFirst()
+                try {
+                    appendLine(d, at, safe)
+                } catch (e: Throwable) {
+                    android.util.Log.w("zhengdao/RunLog", "[落盘失败] $safe | ${e.message}")
+                }
+            }
+            prepared = true
+        }
+    }
+
+    /** 等后台善后跑完（单测/诊断用；App 运行路径不需要等它）。 */
+    fun awaitPrepared(timeoutMs: Long = 5_000L): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!prepared && System.currentTimeMillis() < deadline) {
+            Thread.sleep(5)
+        }
+        return prepared
+    }
+
+    /**
+     * 直测入口（第二百六十四批；生产不调，与 `ConfirmGrants.resetForTest` 同款纪律）。
+     *
+     * 为什么要有：判据「启动后立刻打一行日志能落到文件，迁移在后台时也不丢」必须能在 JVM 里
+     * 用**真临时目录**证明，而不是读源码字符串。`Context` 在 JVM 单测里是桩（`filesDir` 拿不到），
+     * 所以这里直接收 `filesDir`，并允许给 [publicLogsDir] 造"公共区老日志"。
+     *
+     * @param gate 把善后线程按在起点：`log()` 打在门后 ⇒ 证明那几行先进内存队列；
+     *   放开后 [awaitPrepared] 等到补写完成。
+     */
+    fun initForTest(
+        filesDir: File,
+        publicLogsDir: File? = null,
+        gate: java.util.concurrent.CountDownLatch? = null,
+        adoptFile: ((target: File, legacy: File) -> Boolean)? = null,
+    ) {
+        adoptFileFn = adoptFile
+        resolvedDir = dirFor(filesDir)
+        filesDirForRedact = filesDir.absolutePath
+        startPrepare(filesDir, { publicLogsDir }, gate)
+    }
+
+    /** 直测收尾：把进程级状态清干净（否则下一例的 `init` 会被 `prepareStarted` 挡住）。 */
+    fun resetForTest() {
+        synchronized(lock) {
+            pending.clear()
+            prepared = false
+            prepareStarted = false
+            settled = false
+            resolvedDir = null
+            filesDirForRedact = null
+            appContext = null
+            legacyLogsDir = null
+            adoptFileFn = null
         }
     }
 
@@ -144,16 +279,27 @@ object RunLog {
      *    **不删、不改写**（是用户数据，且可能正被用户/Agent 看着）；复制失败不影响主流程。
      */
     fun migrateLegacy(context: Context, d: File = dir(context)) {
+        migrateLegacy(context.filesDir, runCatching { legacyLogsDir?.invoke(context) }.getOrNull(), d)
+    }
+
+    /**
+     * 纯文件版迁移（第二百六十四批）：**不碰 Context、不要求主线程**。
+     *
+     * 215 批的 `install()` 在 `Application.onCreate` 上直接调 [migrateLegacy]：公共区
+     * `listFiles`＋逐文件 `length`＋复制，全在首帧之前 ⇒ A-P2-5。现在它只由后台善后线程调，
+     * 迁移源（`publicLogsDir`）也由那条线程自己求（见 [startPrepare]）。
+     */
+    private fun migrateLegacy(filesDir: File, publicLogsDir: File?, d: File) {
         try {
             val target = File(d, PREV_NAME)
             // 注入的搬家实现（见 [init]）；未注入 = 本进程还没跑过 init，按"没有旧文件可搬"处理。
-            adoptFileFn?.invoke(target, File(context.filesDir, NAME))
+            adoptFileFn?.invoke(target, File(filesDir, NAME))
         } catch (t: Throwable) {
             // P2-7：老用户的旧日志搬失败 = 那批记录事实上丢了，不能静默。
             // 走 logcat 直连（migrateLegacy 可能在 init 早期被调，log() 未必就绪）。
             android.util.Log.w("zhengdao/RunLog", "旧位置日志迁移失败（忽略）：${t.message}")
         }
-        copyLegacyFromPublic(context, d)
+        copyLegacyFromPublic(publicLogsDir, d)
     }
 
     /**
@@ -163,10 +309,9 @@ object RunLog {
      * 新日志从此只进私有区，公共区自然不再增长。目标已存在（非空）就跳过——私有区这份
      * 更新，不拿公共区的旧内容覆盖。
      */
-    private fun copyLegacyFromPublic(context: Context, d: File) {
+    private fun copyLegacyFromPublic(pub: File?, d: File) {
         try {
-            val pub = runCatching { legacyLogsDir?.invoke(context) }.getOrNull() ?: return
-            if (!pub.isDirectory) return
+            if (pub == null || !pub.isDirectory) return
             val names = mutableListOf(NAME)
             pub.listFiles { f -> f.isFile && isArchiveName(f.name) }?.forEach { names += it.name }
             names += ERRORS_NAME
@@ -312,8 +457,12 @@ object RunLog {
     }
 
     fun log(line: String) {
-        val ctx = appContext
-        if (ctx == null) {
+        // 第二百六十四批：落盘只依赖 `init()` 记下的目录（纯路径拼接，不碰盘），
+        // 不再要求 appContext 还在——善后线程和 log() 争的是同一个 [prepared] 标志，
+        // 而目录在 init 那一刻就定了。原来这里 `ctx == null` 就直接丢，迁移一旦挪到
+        // 后台线程，就有"主线程先打了几行、context 还没装配好"的窗口。
+        val redactRoot = filesDirForRedact ?: appContext?.filesDir?.absolutePath
+        if (resolvedDir == null && redactRoot == null) {
             // ⚠️ 绝不静默丢弃：拿不到 context 时至少进 logcat。
             //    「失败可见」的前提是日志存在——丢进黑洞**比不记日志更糟**，
             //    因为它会让人误判成"这段分支没执行 / 异常没触发"，
@@ -323,27 +472,48 @@ object RunLog {
         }
         // N-4 A 案：落盘前统一脱敏——私有绝对路径与口令不进任何持久化出口
         // （logcat 镜像那行也走脱敏后的文本：KeepaliveArchive 会把它抓成 logcat-boot-*.txt）。
-        val safe = redact(line, ctx.filesDir.absolutePath)
-        try {
-            val d = dir(ctx)
-            // B-补-24（2026-10-16）：这是**每行日志**的热路径，原来每次都新建 SimpleDateFormat
-            val ts = TimeFormats.logStamp(System.currentTimeMillis())
-            appendRotated(File(d, NAME), "[$ts] $safe\n")
-            // #5（2026-10-09）：**debug 构建才镜像进 logcat**（N-4 A 案收窄）。
-            // 为什么原来是每一行都镜像：进程被杀时文件里最后一行往往是"正常跑着"，而 logcat
-            // 环形缓冲里还留着死前那几十行；下一轮启动时 KeepaliveArchive.onStartup 会把这段
-            // 抓成 logcat-boot-*.txt 存下来。为什么收窄：release 包里这就是把每一行业务行
-            // （含私有路径/异常原文）送给任何能读 logcat 的程序 ⇒ 只在 BuildConfig.DEBUG 下做。
-            if (BuildConfig.DEBUG) {
-                android.util.Log.i("zhengdao", safe)
+        val safe = redact(line, redactRoot)
+        // #5（2026-10-09）：**debug 构建才镜像进 logcat**（N-4 A 案收窄）。
+        // 第二百六十四批：镜像**不排队**——进程在善后跑完前被杀时，文件里还没有这几行，
+        // logcat 环形缓冲里这份就是最后的线索（KeepaliveArchive 下一轮会把它抓成存档）。
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i("zhengdao", safe)
+        }
+        val at = System.currentTimeMillis()
+        synchronized(lock) {
+            if (!prepared) {
+                // 善后（迁移/归档）没跑完：先入内存队列，由 [flushPending] 按原时间戳补写。
+                pending.addLast(at to safe)
+                return
             }
-            // 错误汇总：跨轮次保留，用户在设置页点开就能看到"最近出过什么事"
-            if (ERROR_MARKERS.any { safe.contains(it, ignoreCase = true) }) {
-                appendRotated(File(d, ERRORS_NAME), "[$ts] $safe\n", ERRORS_MAX_BYTES)
+            val d = resolvedDir ?: appContext?.let { dir(it) }
+            if (d == null) {
+                // 落盘失败同样不能静默——否则又是一个黑洞
+                android.util.Log.w("zhengdao/RunLog", "[落盘失败·无目录] $safe")
+                return
             }
-        } catch (e: Throwable) {
-            // 落盘失败同样不能静默——否则又是一个黑洞
-            android.util.Log.w("zhengdao/RunLog", "[落盘失败] $safe | ${e.message}")
+            try {
+                appendLine(d, at, safe)
+            } catch (e: Throwable) {
+                // 落盘失败同样不能静默——否则又是一个黑洞
+                android.util.Log.w("zhengdao/RunLog", "[落盘失败] $safe | ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 落一行（调用方必须持 [lock]）：时间戳 + 轮转追加 + 错误汇总。
+     *
+     * 抽出来是为了让**实时写**（[log]）与**补写**（[flushPending]）走同一条路——
+     * 否则队列补写的那几行会漏掉错误汇总，等于换了个地方丢日志。
+     */
+    private fun appendLine(d: File, at: Long, safe: String) {
+        // B-补-24（2026-10-16）：这是**每行日志**的热路径，原来每次都新建 SimpleDateFormat
+        val ts = TimeFormats.logStamp(at)
+        appendRotated(File(d, NAME), "[$ts] $safe\n")
+        // 错误汇总：跨轮次保留，用户在设置页点开就能看到"最近出过什么事"
+        if (ERROR_MARKERS.any { safe.contains(it, ignoreCase = true) }) {
+            appendRotated(File(d, ERRORS_NAME), "[$ts] $safe\n", ERRORS_MAX_BYTES)
         }
     }
 
