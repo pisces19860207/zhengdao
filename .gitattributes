@@ -3,10 +3,8 @@
 *.bat text eol=crlf
 # shell 钩子没有扩展名，*.sh 规则匹配不到；必须是 LF，否则 Git for Windows 下 `#!/bin/sh` 解析失败
 tools/hooks/* text eol=lf
-rootfs/agents.json text eol=lf
-rootfs/agents.json.sig binary
 
-# 许可证正文 / 根 LICENSE / 字体 OFL 一律 LF：文档里记的 SHA256 以仓库内形态为准（见 licenses/README.md）
+# 许可证正文 / 根 LICENSE 一律 LF：文档里记的 SHA256 以仓库内形态为准（见 licenses/README.md）
 licenses/*.txt text eol=lf
 LICENSE text eol=lf
 docs/archive/** -text
