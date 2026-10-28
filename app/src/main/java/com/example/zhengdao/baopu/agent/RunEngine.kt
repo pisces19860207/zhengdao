@@ -1684,8 +1684,18 @@ internal class RunEngine(
             // 本身（逐字节一致），下面 buildList 的条件与 native 完全相同。
             val orchestrated = orchestrationEnabled()
             val systemText = if (orchestrated) BatchRules.systemPrefix(prefix) else prefix
+            // 第二百五十八批：调解器的**稳定契约**——一句话、恒定不变（所以不破前缀缓存），
+            // 说明"末尾那一行《调解指令》是系统给的基调，不是用户刚说的话，也不要复述"。
+            // **恒常追加**（不是"有话才加"）：随状态出现/消失才会让 system 逐轮变，等于自毁缓存。
+            // 单独一个变量是为了不动 214 那条源码门禁钉的 `val systemText = ...` 一行（编排关时
+            // 仍走 native 表达式，这里只在其后追加常量文本）。
+            val systemFinal = if (prefix.isBlank()) {
+                systemText
+            } else {
+                systemText + "\n\n" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT
+            }
             val messages = buildList {
-                if (systemText.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemText))
+                if (systemFinal.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemFinal))
                 // 图片必须挂在这一条 user 上（第二十四批 A 段的本意）。
                 // 2026-10-18 真机事故：这里从前只传文本，`prompt.images` 算出来就没人用 ⇒
                 // 图一路缩好、选好、日志也写了「已发送」，请求体里却一个 image 块都没有，
@@ -2426,7 +2436,12 @@ internal class RunEngine(
         // 第二百二十批：影响提示的**注入**（限流在 `ImpactInject.noteFor`：只对写/删/移动、
         // 单次 ≤40 字、同一句 8 秒内只注一次；只读动作永不入队）。信箱是**取走即清**，
         // 所以每步拼提示词时最多多出这一条，不会累积、不会重放（续跑也不重放）。
-        extraNotes = extraNotes + com.example.zhengdao.baopu.ImpactMailbox.drain(),
+        // 第二百五十八批 W3：调解器那句语气指令（≤60 字、零档位名/数字/画像词）。不加前缀
+        // 不换行——"只把那一句拼进去"是判据；CALM 时返回空列表 ⇒ 与接线前逐字节一致。
+        // 不消费（同一轮每一步同一句）：换批等于打破提示词前缀。
+        extraNotes = extraNotes +
+            com.example.zhengdao.baopu.ImpactMailbox.drain() +
+            com.example.zhengdao.baopu.MediatorWiring.promptNotes(),
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
         // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与
