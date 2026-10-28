@@ -19,6 +19,7 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.browser.SensitiveRedactor
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.baopu.BaopuLongformStore
 import java.io.File
@@ -48,12 +49,62 @@ internal object ExampleBank {
 
     // ── 档案读 / 写 / 删 ──────────────────────────────────────────────────
 
-    /** 现读档案（文件不存在 ⇒ 空档案，**不自动建**：没写过就是没写过）。 */
-    fun loadArchive(productDir: File): TasteArchive {
+    /** 档案读取结果（#10：改前「读不动」和「没写过」同形，都当空档案返回）。 */
+    internal sealed interface ArchiveRead {
+        /** 没写过——空档案是真的空。 */
+        data object Absent : ArchiveRead
+
+        data class Ok(val archive: TasteArchive) : ArchiveRead
+
+        /**
+         * 文件在、这一遍读不动——**别拿空档案写回去覆盖它**（[saveArchive] 会留 `.bak`，
+         * 但界面上整份档案看起来就是「空了」）。
+         *
+         * [why] 只带异常类型，不带路径与正文；[bytes] 是文件长度，给「多大一份东西没读上」
+         * 一个凭据。
+         */
+        data class Unreadable(val why: String, val bytes: Long) : ArchiveRead
+    }
+
+    /**
+     * 现读档案，并把「没有」与「坏了」分开交出去。
+     *
+     * [read] 是可注入的读体（与 `ArtifactDeleteRules` 的 readLedger 同款口子）：真机上就是
+     * `readText`，单测里喂一个抛异常的实现才复现得了「文件在但读不动」那一格——这台机器
+     * 造不出稳定的真实 IO 故障（NTFS 权限位不生效、同进程文件锁不拦裸读）。
+     */
+    fun loadArchiveState(
+        productDir: File,
+        read: (File) -> String = { it.readText(Charsets.UTF_8) },
+    ): ArchiveRead {
         val f = archiveFile(productDir)
-        if (!f.isFile) return TasteArchive()
-        val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull() ?: return TasteArchive()
-        return TasteProfile.parse(text)
+        if (!f.isFile) return ArchiveRead.Absent
+        val r = runCatching { read(f) }
+        val text = r.getOrNull()
+            ?: return ArchiveRead.Unreadable(r.exceptionOrNull()?.javaClass?.simpleName ?: "未知", f.length())
+        return ArchiveRead.Ok(TasteProfile.parse(text))
+    }
+
+    /**
+     * 现读档案（文件不存在 ⇒ 空档案，**不自动建**：没写过就是没写过）。
+     *
+     * 改前：读失败也回空档案，且一句都不说（A-P2-21 点名的数据丢失放大点）。
+     * 现在坏读有日志说明降级，状态本身走 [loadArchiveState]。
+     */
+    fun loadArchive(
+        productDir: File,
+        log: (String) -> Unit = { RunLog.log(it) },
+        read: (File) -> String = { it.readText(Charsets.UTF_8) },
+    ): TasteArchive = when (val r = loadArchiveState(productDir, read)) {
+        ArchiveRead.Absent -> TasteArchive()
+        is ArchiveRead.Ok -> r.archive
+        is ArchiveRead.Unreadable -> {
+            log(
+                "抱朴口味档案：文件读不动（${r.why}，${r.bytes} 字节）——本轮按空档案显示，" +
+                    "别在这上面写回整份档案（`.bak` 里还留着一份）",
+            )
+            TasteArchive()
+        }
     }
 
     /** 写回档案（临时文件 + rename，先留 .bak——用户手改的内容不能丢）。 */

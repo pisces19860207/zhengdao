@@ -110,15 +110,30 @@ internal object ProviderPrefs {
      */
     fun storedKey(context: Context, id: String): String? {
         val p = prefs(context)
-        val pool = KeyPool.migrate(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
+        val read = KeyPool.read(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
+        if (read is KeyPool.PoolRead.Corrupt) {
+            // 改前：坏池被压成空池 ⇒ 回落到老格，把用户**早就删掉的那把**发进请求。
+            // 现在坏池就当「这把 Key 拿不准」：不给 key、不回落老格。理由在本层不外传——
+            // Key 池这一层没有日志设施（93/251 两批的门禁钉死），要报的人自己走 keyPoolRead()。
+            return null
+        }
+        val pool = read.entriesOrEmpty()
         if (pool.isEmpty()) return null
         return KeyPool.activeKey(pool, p.getInt(cursorOf(id), 0), System.currentTimeMillis())
     }
 
     /** 某通道的 Key 池（选模型抽屉列 Key 用；给的是原文，**界面自己 [KeyPool.mask]**）。 */
-    fun keyPool(context: Context, id: String): List<KeyPool.Entry> {
+    fun keyPool(context: Context, id: String): List<KeyPool.Entry> = keyPoolRead(context, id).entriesOrEmpty()
+
+    /**
+     * 某通道 Key 池的**读取结果**（三档：没存过／读出来／读坏了；257 审计 A-P2-13）。
+     *
+     * 为什么要单独给这一层：[keyPool] 返回的是列表，坏池与空池在这里又混成一件事——
+     * 写侧（加/删/禁用/保存）必须先看清档位，否则会把读坏了的那一格整池盖掉。
+     */
+    fun keyPoolRead(context: Context, id: String): KeyPool.PoolRead {
         val p = prefs(context)
-        return KeyPool.migrate(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
+        return KeyPool.read(p.getString(keysOf(id), null), p.getString(keyOf(id), null))
     }
 
     /** 轮询走到哪一把（0 = 从头）。 */
@@ -141,10 +156,13 @@ internal object ProviderPrefs {
     /**
      * 加一把 Key（② 用户自管；App 不自动创建/购买、不预填、不读剪贴板）。
      *
-     * @return false = 空串／这把已在池里／池子到 [KeyPool.MAX_KEYS] 上限（一个字都不写）
+     * @return false = 空串／这把已在池里／池子到 [KeyPool.MAX_KEYS] 上限／**这一格读坏了**
+     *   （坏池一律「一个字都不写」，理由由 [poolWriteRefusal] 交给调用方）
      */
     fun addKey(context: Context, id: String, key: String): Boolean {
-        val pool = keyPool(context, id)
+        val read = keyPoolRead(context, id)
+        if (poolWriteRefusal(read) != null) return false
+        val pool = read.entriesOrEmpty()
         val next = KeyPool.add(pool, key)
         if (next.size == pool.size) return false
         saveKeyPool(context, id, next, keyCursor(context, id))
@@ -153,7 +171,9 @@ internal object ProviderPrefs {
 
     /** 删一把（按原文精确匹配）。 */
     fun removeKey(context: Context, id: String, key: String): Boolean {
-        val pool = keyPool(context, id)
+        val read = keyPoolRead(context, id)
+        if (poolWriteRefusal(read) != null) return false
+        val pool = read.entriesOrEmpty()
         val next = KeyPool.remove(pool, key)
         if (next.size == pool.size) return false
         saveKeyPool(context, id, next, keyCursor(context, id))
@@ -165,7 +185,9 @@ internal object ProviderPrefs {
      * 解禁顺带清掉它的冷却——用户既然说"这把还能用"，就别再拿旧冷却挡它。
      */
     fun setKeyDisabled(context: Context, id: String, index: Int, disabled: Boolean): Boolean {
-        val pool = keyPool(context, id)
+        val read = keyPoolRead(context, id)
+        if (poolWriteRefusal(read) != null) return false
+        val pool = read.entriesOrEmpty()
         if (index !in pool.indices) return false
         val next = KeyPool.setDisabled(pool, index, disabled)
             .mapIndexed { i, e -> if (i == index && !disabled) e.copy(cooldownUntil = 0L) else e }
@@ -246,7 +268,11 @@ internal object ProviderPrefs {
         protocol: String? = null,
     ) {
         val key = apiKey.trim()
-        val pool = keyPool(context, channelId)
+        val read = keyPoolRead(context, channelId)
+        // 坏池（读坏了）只有两种命运：用户当场填了一把新 Key ⇒ 按他说的重建这一格；
+        // 没填新 Key ⇒ 一个字都不盖——盖下去就把唯一的一份残留变成了「空池」（本批第 3 条）。
+        val refusal = poolWriteRefusal(read, key)
+        val pool = if (refusal == null) read.entriesOrEmpty() else emptyList()
         val next = if (key.isEmpty()) pool else KeyPool.add(pool, key)
         val cursor = if (next.isEmpty()) 0 else keyCursor(context, channelId).mod(next.size)
         prefs(context).edit {
@@ -264,6 +290,23 @@ internal object ProviderPrefs {
     }
 
     // ── Context-free 判据内核（JVM 直测） ─────────────────────────────────
+
+    /**
+     * 坏池面前的落盘判据（第二百五十九批 B 段第 3 条；257 审计 A-P2-13 的写侧半边）。
+     *
+     * 为什么单独做成 Context-free 函数：本仓无 Robolectric，SharedPreferences 在 JVM 里
+     * 实例化不了（文件头既有教训），而这条判据恰恰是最该被钉住的——「读坏了」被当成
+     * 「空池」之后再整池写回去，用户那几把 Key 就**真没了**，坏数据是唯一的一份残留。
+     *
+     * @param explicitKey 用户当场填进来的新 Key（非空 ⇒ 这是他明确要求的替换）
+     * @return null = 允许回写；非 null = 拒绝原因。调用方必须跳过整池写回；
+     *   这句话**不在本层记日志**（Key 池这一层没有日志设施），要报由上层取走。
+     */
+    internal fun poolWriteRefusal(read: KeyPool.PoolRead, explicitKey: String? = null): String? {
+        if (!read.isCorrupt()) return null
+        if (!explicitKey.isNullOrBlank()) return null
+        return "存过的数据读坏了，不拿它当空池覆写"
+    }
 
     /**
      * 「存出来的协议」→「真正发请求用的协议」（Context-free，JVM 直测）。

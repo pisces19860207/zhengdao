@@ -11,6 +11,7 @@ import com.example.zhengdao.baopu.kb.KbIndexer
 import com.example.zhengdao.baopu.kb.KbStats
 import com.example.zhengdao.baopu.library.LibraryPaths
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * 知识库索引的**读写壳**（第一百八十二批）：格式复用 128 批的 [KbIndexCodec]/[KbIndexer]，
@@ -36,18 +37,70 @@ internal object KnowledgeIndexStore {
 
     // ── 读 ──────────────────────────────────────────────────────────────────
 
-    fun load(workspace: File): KbIndex? = readIndex(KnowledgeLayout.indexFile(workspace))
+    /**
+     * 读侧三态（**259-08 / A-P2-18**）：「没有这个文件」与「文件在但读坏了」必须分开。
+     *
+     * 改前：`runCatching { f.readText() }.getOrDefault("")` → `decode("")` → null，于是**损坏的
+     * 索引**和**从没建过索引**在调用方眼里一模一样：界面显示「还没有索引」、刷新按全量重建
+     * 走（上一轮的增量复用静默没了），用户既不知道自己的索引文件被写坏过，也不知道这次重建
+     * 本来是可以省掉的。派工单的「不许当没有索引」就落在这三态上。
+     *
+     * [Corrupt] 只带**可对账、不可逆**的线索（字节数＋sha256 前 8 位）＋环节分类，
+     * 不带正文原文：索引里是用户的文档片段，原文进日志＝把内容搬到另一个落点。
+     */
+    internal sealed class FileRead<out T> {
+        /** 读数（`Missing`/`Corrupt` ⇒ null）：调用方还能当「没有」用，但**已经知道**是哪种没有。 */
+        abstract fun valueOrNull(): T?
 
-    fun loadSnapshot(workspace: File): KnowledgeSnapshot.Snapshot? {
-        val f = KnowledgeLayout.snapshotFile(workspace)
-        if (!f.isFile) return null
-        return KnowledgeSnapshot.decode(runCatching { f.readText(Charsets.UTF_8) }.getOrDefault(""))
+        /** 文件不存在 ⇒ 真的「没有」。 */
+        object Missing : FileRead<Nothing>() {
+            override fun valueOrNull(): Nothing? = null
+        }
+
+        /** 文件在，但读不出／解不开 ⇒ 「坏了」。 */
+        data class Corrupt(val why: String, val bytes: Int, val digest8: String) : FileRead<Nothing>() {
+            override fun valueOrNull(): Nothing? = null
+        }
+
+        data class Value<T>(val value: T) : FileRead<T>() {
+            override fun valueOrNull(): T = value
+        }
+
+        fun isCorrupt(): Boolean = this is Corrupt
     }
 
-    private fun readIndex(f: File): KbIndex? {
-        if (!f.isFile) return null
-        return KbIndexCodec.decode(runCatching { f.readText(Charsets.UTF_8) }.getOrDefault(""))
+    fun load(workspace: File): KbIndex? = loadRead(workspace).valueOrNull()
+
+    /** 索引文件的三态读数（259-08）；[load] 保持「拿不到就 null」的旧签名。 */
+    fun loadRead(workspace: File): FileRead<KbIndex> =
+        readFile(KnowledgeLayout.indexFile(workspace)) { KbIndexCodec.decode(it) }
+
+    fun loadSnapshot(workspace: File): KnowledgeSnapshot.Snapshot? = loadSnapshotRead(workspace).valueOrNull()
+
+    /** 快照文件的三态读数（A-P2-18 点的是 :44 与 :49 两处，同一口径）。 */
+    fun loadSnapshotRead(workspace: File): FileRead<KnowledgeSnapshot.Snapshot> =
+        readFile(KnowledgeLayout.snapshotFile(workspace)) { KnowledgeSnapshot.decode(it) }
+
+    /**
+     * 「文件在不在？读不读得出？解不解得开？」三问分开答（索引与快照共用这一份，不各写一套）。
+     */
+    internal fun <T> readFile(f: File, decode: (String) -> T?): FileRead<T> {
+        if (!f.isFile) return FileRead.Missing
+        val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+            ?: return FileRead.Corrupt("读不出（IO 故障）", 0, "")
+        val value = decode(text)
+        if (value != null) return FileRead.Value(value)
+        return FileRead.Corrupt("解不开（格式不符或 JSON 坏）", text.toByteArray(Charsets.UTF_8).size, digest8(text))
     }
+
+    /** sha256 前 8 位：同一份坏文件两次读数一致、改一个字就变；不可逆，也不含正文。 */
+    internal fun digest8(text: String): String = runCatching {
+        // 逐字节掩码（与 McpText.shortHash 同口径）：负 Byte 交给 "%02x" 的表述随版本
+        // 不一，而对账指纹必须每次读数都一致。
+        MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+            .take(4)
+            .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+    }.getOrDefault("00000000")
 
     // ── 写（原子写；失败如实报，不静默当成功） ───────────────────────────────
 

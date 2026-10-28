@@ -1788,6 +1788,16 @@ internal data class PendingRow(val tool: String, val argsJson: String, val at: L
  */
 internal class SessionCompressionStore(private val db: BaopuDb) : CompressionStore {
 
+    /**
+     * 上一次 [insert] 有没有真落库（改前：写失败只有 RunLog 一行，引擎照说「已落库」）。
+     *
+     * `db.write{}.get()` 在调用线程等结果 ⇒ 只有调用线程写；@Volatile 是给读的一方
+     * （同一线程立刻读，但字段可能被别的线程看过）保证可见性，不是防并发写。
+     */
+    @Volatile
+    override var lastInsertOk: Boolean = true
+        private set
+
     override fun insert(
         sessionId: Long,
         record: CompressionRecord,
@@ -1795,12 +1805,13 @@ internal class SessionCompressionStore(private val db: BaopuDb) : CompressionSto
         summaryTokens: Int,
     ) {
         val stmt = BaopuSql.insertCompression(sessionId, record, sourceTokens, summaryTokens)
-        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
-            .onFailure {
-                com.example.zhengdao.core.RunLog.log(
-                    "抱朴压缩：落库失败 ${it.javaClass.simpleName}: ${it.message}",
-                )
-            }
+        val wrote = runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+        lastInsertOk = wrote.isSuccess
+        wrote.onFailure {
+            com.example.zhengdao.core.RunLog.log(
+                "抱朴压缩：落库失败 ${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
     }
 
     override fun latest(sessionId: Long): CompressionRecord? = db.read { d ->
@@ -1925,6 +1936,18 @@ internal class DiaryIndexStore(private val db: BaopuDb) {
         val createdAt: Long,
     )
 
+    /**
+     * 「删了 0 行」有两种：本来就没有、这条根本没删动。后者记在这里，
+     * 由调用方（[DiaryStore.realDelete] 的索引半边）在一批之后读一次。
+     *
+     * 每个实例只服务一批、只在调用线程读写 ⇒ 不加锁（`BaopuDb.write` 的 Future 已经
+     * `.get()` 等完了才回来）。
+     */
+    private val failedIds = mutableListOf<String>()
+
+    /** 这批里没删动的 id（空 = 那些 0 行都只是「本来就没有」）。 */
+    fun deleteFailures(): List<String> = failedIds.toList()
+
     private fun replaceSql(e: DiaryEntry) = Pair(
         "INSERT OR REPLACE INTO diary_index" +
             "(id, date, session_id, time_from, time_to, title, evidence, created_at) " +
@@ -1947,11 +1970,15 @@ internal class DiaryIndexStore(private val db: BaopuDb) {
     }
 
     /** 删一条索引行（真删的索引半边；文件半边在 [DiaryStore.deleteById]）。 */
-    /** @return 删掉的行数（0 = 本来就没有）；失败不抛（记运行日志），调用方按 0 处理。 */
+    /**
+     * @return 删掉的行数（0 = 本来就没有，**或**这条没删动——后者另记进 [deleteFailures]）；
+     *   失败不抛（真删收尾不许炸），调用方一批之后读 [deleteFailures] 分辨这两种。
+     */
     fun deleteById(id: String): Int =
         runCatching {
             db.write { d -> d.delete("diary_index", "id = ?", arrayOf(id)) }.get()
         }.onFailure {
+            failedIds += id
             com.example.zhengdao.core.RunLog.log(
                 "抱朴日记：索引删除失败 ${it.javaClass.simpleName}: ${it.message}",
             )

@@ -239,7 +239,22 @@ internal object ArtifactDeleteRules {
      *         界面负责翻成人话；**失败不回滚已经移进回收站的文件**（文件是用户要删的，
      *         台账没记上由界面如实说一句，下次还能看见这一条）。
      */
-    fun markDeletedInLedger(ledger: File, names: Collection<String>, nowMs: Long): LedgerWriteResult {
+    fun markDeletedInLedger(ledger: File, names: Collection<String>, nowMs: Long): LedgerWriteResult =
+        markDeletedInLedger(ledger, names, nowMs) { ledger.readText() }
+
+    /**
+     * 同上，但把「读台账」这一步交出去（**259-06 / A-P2-16** 的可测缝）。
+     *
+     * 为什么要这道缝：①（写前重读）与 ③（写后校验）读的是同一个文件，「文件在、就是读不出」
+     * 在真机上没法靠文件系统造出来（造得出来的是权限/盘满，测试环境给不了），判据只能由
+     * [verifyAfterRead] 直测＋由这条缝喂一次真实的完整重试路径。生产仍走默认读法，签名不变。
+     */
+    internal fun markDeletedInLedger(
+        ledger: File,
+        names: Collection<String>,
+        nowMs: Long,
+        readLedger: () -> String,
+    ): LedgerWriteResult {
         val wants = names.distinct()
         if (wants.isEmpty()) return LedgerWriteResult(true, emptyList(), emptyList())
         if (!ledger.isFile) return LedgerWriteResult(false, emptyList(), emptyList(), "no_ledger")
@@ -247,7 +262,7 @@ internal object ArtifactDeleteRules {
         var lastWhy = "io"
         repeat(2) {
             // ① 写前重读最新（不许用缓存）
-            val oldText = runCatching { ledger.readText() }.getOrElse { return LedgerWriteResult(false, emptyList(), emptyList(), "io") }
+            val oldText = runCatching { readLedger() }.getOrElse { return LedgerWriteResult(false, emptyList(), emptyList(), "io") }
             val result = markDeletedText(oldText, wants, stamp)
             if (result.marked.isEmpty()) {
                 // 全都早已标过 / 台账里没有这几行 ⇒ 不用重写文件
@@ -272,14 +287,31 @@ internal object ArtifactDeleteRules {
                 return LedgerWriteResult(false, emptyList(), result.already, "io")
             }
             // ③ 写后校验：落盘的必须就是这一版（期间别人改过 ⇒ 重来一次）
-            val after = runCatching { ledger.readText() }.getOrNull()
-            if (after == result.text) return LedgerWriteResult(true, result.marked, result.already)
-            lastWhy = "concurrent"
+            val after = runCatching { readLedger() }.getOrNull()
+            val why = verifyAfterRead(after, result.text)
+            if (why == null) return LedgerWriteResult(true, result.marked, result.already)
+            lastWhy = why
         }
         return LedgerWriteResult(false, emptyList(), emptyList(), lastWhy)
     }
 
     // ── 内部 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 写后校验的判据（**259-06 / A-P2-16**）：**读不回 ≠ 被别人改**。
+     *
+     * 改前这一行是 `if (after == result.text) 成功 else lastWhy = "concurrent"`：
+     * `after == null`（文件明明在，就是读不出＝存储 IO 故障）落进 else ⇒ 界面把
+     * 「读不出」翻成「台账被别人同时改了，请重试」，用户被告知去查并发，而该查的是盘。
+     * 改后：null 报 `io`，内容不同才报 `concurrent`（真并发仍然重来一次，重试次数没动）。
+     *
+     * @return null＝校验通过；否则短标签，与 [LedgerWriteResult.why] 同一套取值
+     */
+    internal fun verifyAfterRead(after: String?, expected: String): String? = when {
+        after == null -> "io"
+        after == expected -> null
+        else -> "concurrent"
+    }
 
     /** 删除标记行的唯一形状（解析与写入共用一处，防两套写法漂移）。 */
     internal fun markerOf(name: String, stamp: String): String = "  - 🗑 已删 $name（$stamp · 移入回收站）"

@@ -12,6 +12,7 @@
 //    整本书从不进上下文；上下文预算归 ContextAssembler/压缩管线管。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.PathGuard
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -101,12 +102,33 @@ internal object NovelProjectStore {
         return dir to meta
     }
 
-    /** 把调用方的 path 参数解析成项目目录（相对工作区根；绝对路径也认——管线已守卫过）。 */
+    /**
+     * 把调用方的 path 参数解析成项目目录。
+     *
+     * 257 审计 A-P1-2（第二百五十九批 A 段第 1 条）改前：这里是
+     * `if (File(p).isAbsolute) File(p) else File(root, p)`，注释称「管线已守卫过」——
+     * 但 novel_* 并不在 `GuardPipeline.writeTargets` 的清单里（该函数对没登记的工具有
+     * `else -> emptyList()`），**没有任何守卫盖住它**：给个绝对路径就能读工作区外的
+     * `book.json`，`../../..` 这类相对爬出同样不拦。现在一律先过 [isInsideWorkspace]。
+     */
     fun resolveProject(root: File, path: String): File? {
         val p = path.trim()
         if (p.isEmpty()) return null
+        if (!isInsideWorkspace(root, p)) return null
         val f = if (File(p).isAbsolute) File(p) else File(root, p)
         return f.takeIf { it.isDirectory && File(it, NOVEL_META_FILE).isFile }
+    }
+
+    /**
+     * path 是否落在工作区根内——组件级判定（口径与 `PathGuard.isInside` 一致：
+     * `canonicalFile` + 逐组件比较，不是字符串前缀）。**绝对路径不再免检**：
+     * 它同样必须在 `root` 里才算合法。
+     */
+    fun isInsideWorkspace(root: File, path: String): Boolean {
+        val p = path.trim()
+        if (p.isEmpty()) return false
+        val candidate = if (File(p).isAbsolute) File(p) else File(root, p)
+        return PathGuard.isInside(root, candidate)
     }
 
     /** 工作区里所有小说项目（`小说/<书名>/book.json` 存在即算），按目录名排序。 */
@@ -132,6 +154,11 @@ internal object NovelProjectStore {
     fun pick(root: File, path: String): Picked {
         val p = path.trim()
         if (p.isNotEmpty()) {
+            // 越界与「不存在」是两件事，话也要分两句说（257 审计 A-P1-2 的可读错误要求）。
+            // 改前：绝对路径绕过守卫直接命中目录 ⇒ 这里连「不在工作区里」都看不见。
+            if (!isInsideWorkspace(root, p)) {
+                return Picked(null, "这个路径不在工作区里：$p（用工作区内的相对路径，如 $NOVEL_ROOT_DIR/<书名>）")
+            }
             val dir = resolveProject(root, p)
                 ?: return Picked(
                     null,

@@ -29,6 +29,18 @@ internal interface CompressionStore {
     /** 落一条压缩记录（成功才调；失败/跳过都不写这张表）。 */
     fun insert(sessionId: Long, record: CompressionRecord, sourceTokens: Int, summaryTokens: Int)
 
+    /**
+     * 上一次 [insert] 是否**真落库**（false = 摘要已经拿到，但 `compression` 表没写进去：
+     * 本轮能用这条摘要，重启后读不回来）。
+     *
+     * 为什么不直接把 [insert] 改成返回 Boolean：本仓两个 JVM 假件（`CompressionRunnerTest`／
+     * `CompressionIncrementTest`）`implements` 本接口，改签名就必须动那两个文件——它们在
+     * 259 清单外（越租红线）。带默认值的口子＝假件一行不改也编得过（它们的写不落真库，
+     * 本来就不会失败），真实现 [com.example.zhengdao.baopu.SessionCompressionStore] 覆盖它。
+     */
+    val lastInsertOk: Boolean
+        get() = true
+
     /** 本会话最近一条压缩记录（恢复用；没有 ⇒ null）。 */
     fun latest(sessionId: Long): CompressionRecord?
 
@@ -172,7 +184,16 @@ internal class CompressionRunner(
                     )
                 }.getOrNull()
                 store.insert(sessionId, record, sourceTokens, summaryTokens)
-                log("抱朴压缩：${ids.size} 条压成摘要（模型 ${r.model}），已落库")
+                // #9：改前这句「已落库」无条件说——落库失败只在 BaopuDb 里留一行日志，
+                // 调用方拿不到区别。成功路径的话术一个字没动（J3 钉的就是它）。
+                if (store.lastInsertOk) {
+                    log("抱朴压缩：${ids.size} 条压成摘要（模型 ${r.model}），已落库")
+                } else {
+                    log(
+                        "抱朴压缩：${ids.size} 条压成摘要（模型 ${r.model}），但压缩记录**没落库**" +
+                            "（本轮照用这条摘要；重启后读不回来，下次会重压同一段）",
+                    )
+                }
                 if (metrics != null) {
                     log("抱朴压缩度量：${metrics.summaryLine()}")
                     if (metrics.lowRetention) {

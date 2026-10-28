@@ -320,6 +320,15 @@ internal class DiaryStore(
         db?.let { d ->
             val idx = DiaryIndexStore(d)
             doomed.forEach { deletedIndexRows += idx.deleteById(it) }
+            // #9：改前「删失败」和「本来就没有」都是 0 行，一句都不说。文件已经删了，
+            // 索引残留必须留话（重建索引能清掉，但那是下一次的事）。
+            val residue = idx.deleteFailures()
+            if (residue.isNotEmpty()) {
+                RunLog.log(
+                    "日记真删：索引有 ${residue.size} 行没删动（共请求 ${doomed.size} 行；" +
+                        "文件侧已删，索引残留会在下次 rebuildIndex 时清掉）",
+                )
+            }
         }
         // 第二百零八批 §2.7 `diary_purge`：**真删必留账、必抽检**（147 边界③：删了就没了，
         // 所以 reversible 恒 false——kind 的默认就不可回滚，这里连降级参数都不给）。

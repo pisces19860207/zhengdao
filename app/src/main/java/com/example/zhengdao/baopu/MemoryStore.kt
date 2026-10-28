@@ -241,24 +241,36 @@ internal class MemoryStore(
      * [qualityPass]（读时算、零写入）；两处的排序键同名同序，所以「老数据默认满分」
      * 这种全平情形下 [loadAll] 与旧序逐位相同（[MemoryStore] 的兼容判据）。
      */
-    fun loadAll(): List<MemoryEntry> {
-        val out = mutableListOf<MemoryEntry>()
-        for (dir in listOf(globalDir(), projectDir())) {
-            val files = runCatching { dir.listFiles() }.getOrNull() ?: continue
-            for (f in files) {
-                if (!f.isFile || f.extension != "md") continue
-                val entry = runCatching { EntryCodec.parse(f.readText(Charsets.UTF_8)) }.getOrNull()
-                if (entry != null) out += entry
-            }
-        }
-        return out.sortedWith(MemoryQuality.rankComparator())
-    }
+    fun loadAll(): List<MemoryEntry> = scan().entries
+
+    /**
+     * 同一次扫描的**完整读数**：条目 ＋ 读坏了的文件名（**259-07 / A-P2-17**）。
+     *
+     * 改前：[loadAll] 里 `EntryCodec.parse(...).getOrNull()` 之后 `if (entry != null)` 就完了——
+     * 坏文件被**静默跳过**，而同文件 [reindex] 反而有 `brokenFiles`，两条读路一个报一个不报。
+     * 于是用户手改坏 front-matter 之后，召回路径上的表现是「这条记忆凭空没了」：界面看不到、
+     * 模型也不知道自己丢了一件事（派工单原话：记忆条目不许无声消失）。
+     *
+     * 现在两条路共用同一份 [scan]（口径不可能再漂），[loadAll] 的返回类型一字未动
+     * （MemoryQualityGateTest 钉住了 `loadAll＋trimToBudget` 那道口径），报错的口子由调用方接：
+     * 引擎侧见 `agent/RunEngine.kt`，界面侧（BaopuChatController）按 259 批裁定待 258 合入后补。
+     */
+    fun loadAllWithBroken(): ReindexResult = scan()
 
     /**
      * 重建索引：与 [loadAll] 同源（文件即真相），额外返回**解析失败的文件名**——
      * 坏文件要报出来，不静默跳过（用户可能刚手改过 front-matter）。
      */
-    fun reindex(): ReindexResult {
+    fun reindex(): ReindexResult = scan()
+
+    /**
+     * 两个记忆目录扫一遍——[loadAll]／[loadAllWithBroken]／[reindex] 共用这**一份**
+     * （259-07：以前是两个各写一遍的循环，所以能写出不同口径）。
+     *
+     * 只读：一个字节都不写盘（质量分当场重算＝改写用户记忆，红线；见 MemoryQualityGateTest
+     * 「读路径一个字节都不写」，本函数由 259 的新用例继续钉着）。
+     */
+    private fun scan(): ReindexResult {
         val entries = mutableListOf<MemoryEntry>()
         val broken = mutableListOf<String>()
         for (dir in listOf(globalDir(), projectDir())) {
