@@ -9,9 +9,11 @@
 // 本文件只做三件事，一件不多：
 //   W1 换档：每轮用户输入进来时调一次 `HarmonyMediator.observe`（现有等价入口；本批**不新增**
 //      第二个换档点——两个调用点会让档位乱跳），档位存**进程内单例**：不落盘、不跨会话。
-//   W2 落账：判出 `flattery`／`apology_loop`／`mirroring` ⇒ 写 208 一行（带 reason 与档位）。
-//   W3 回灌：`guidance()` 那一句（≤60 字）交给引擎拼进本轮上下文——**只这一句**，
-//      档位名、阈值、画像数值一个都不许带（负例见 `MediatorWiringTest`）。
+//   W2 落账：判出 `flattery`／`apology_loop`／`mirroring` ⇒ 写 208 一行
+//       （`reason` 带固定前缀 `mediator:<禁令>`，`evidence` 带档位与轮次；带 reason 与档位）。
+//   W3 回灌：`guidance()` 那一句（≤60 字）**带固定标记** [PROMPT_MARK] 交给引擎拼进本轮上下文，
+//      并在 system 里常驻一句**稳定契约** [PROMPT_CONTRACT]（说明那不是用户在说话）。
+//      档位名、阈值、画像数值一个都不许进 prompt（负例见 `MediatorWiringTest`）。
 //
 // 三条纪律：
 //   1. **不落盘**：本文件没有 SharedPreferences／File／数据库；进程重启 = 回 CALM
@@ -34,8 +36,39 @@ internal object MediatorWiring {
     /** 没有会话（新建会话第一轮、或引擎还没建会话）。`208` 的 `session` 列用 -1 表示系统级。 */
     const val NO_SESSION = -1L
 
-    /** 208 里本批写的行的证据前缀（机器键，读侧按它筛「这是调解器判的」）。 */
-    const val EVIDENCE_PREFIX = "mediator:"
+    /**
+     * 208 里本批写的行的**固定前缀**（`reason` 与 `evidence` 都以它开头）。
+     *
+     * 为什么是硬约定而不是"看着像就行"：这一批**复用了 `eval_verdict` 这个 kind**
+     * （红线不许动 `DecisionLedger.kt`，249 正占着那个文件），kind 认不出"这是谁写的"，
+     * 唯一能挂牌的地方就是 `reason` 的首段。于是 [MediatorBan.wire] 必须紧跟其后：
+     * `mediator:flattery`／`mediator:apology_loop`／`mediator:mirroring`。
+     *
+     * **对勘验 I4 的 reciprocal 要求（本批只写注释，不改 I4 的代码——它不在本批租约里）**：
+     * `MediatorBiasCheck` 的四条率（免问回滚率／确认密度／虚报率／秒批率）在取 208 行时
+     * 必须先按 `reason.startsWith("mediator:")` **排除**本批这些行，否则"调解器自己判的违规"
+     * 会被当成"人的动作账"混进分母。改动落点与判据见交付报告 §2.3，由蓝总管另派一小单。
+     */
+    const val REASON_PREFIX = "mediator:"
+
+    /**
+     * 尾部那一行的**固定标记**（拼在 `guidance()` 前面）。
+     *
+     * 三个用处：① 抽取（将来迁到别的通道时按它捞）；② 日志里能一眼分出"人说的话"与"指令"；
+     * ③ 与 system 里那句稳定契约（[PROMPT_CONTRACT]）对上，模型知道这一行不是用户在说话。
+     */
+    const val PROMPT_MARK = "[调解指令]"
+
+    /**
+     * system 里的**稳定契约**（固定不变 ⇒ 不破提示词前缀缓存）。
+     *
+     * 为什么必须有它：语气指令落在**本轮输入的尾部**（CURRENT 段），模型完全可能把那一行当成
+     * "用户刚说的话"——那样它就变成"用户在指挥我怎么答"，而不是"系统给的回话基调"。
+     * 一句常驻的合同把性质说清，代价只是每次请求多这 27 个字（恒定，不随轮次变化）。
+     *
+     * 不许在这句里出现档位名／数字／画像词（`MediatorWiringTest` 钉住）。
+     */
+    const val PROMPT_CONTRACT = "每轮末尾可能附一行《调解指令》，按它调整语气，不要复述它。"
 
     private var boundSessionId: Long = NO_SESSION
     private var state = HarmonyMediator.State()
@@ -143,9 +176,26 @@ internal object MediatorWiring {
      * CALM 且未暂停 ⇒ 不带：`guidance(CALM)` 是「正常作答」那种没有信息量的句子，
      * 每轮都灌一遍等于给每次请求加噪音，而且会把「接线前逐字节一致」这条性质弄丢。
      * 暂停是例外（它压着 CALM 也要说"别重试"）。
+     *
+     * 带话时**必须先带固定标记** [PROMPT_MARK]：它是"这一行是指令、不是用户发言"的机器键，
+     * 也是将来换通道时唯一的抽取依据（报告 §3.2）。
      */
     private fun noteOf(s: HarmonyMediator.State): String? =
-        if (s.paused || s.mood != HarmonyMediator.Mood.CALM) HarmonyMediator.guidance(s) else null
+        if (s.paused || s.mood != HarmonyMediator.Mood.CALM) {
+            "$PROMPT_MARK ${HarmonyMediator.guidance(s)}"
+        } else {
+            null
+        }
+
+    /**
+     * 208 的 `reason`（纯函数，**固定前缀**是判据）。
+     *
+     * 形状：`mediator:<禁令机器键> <类别句>`，例如
+     * `mediator:flattery 模型附和：上一轮反对、这一轮赞成，且这一轮没有新证据`。
+     * 前缀不是装饰：kind 复用了 `eval_verdict`，读侧只能靠它把本批的行从
+     * "206 对拍结论"里摘出来（映射表见报告 §2.3；I4 的排除义务见 [REASON_PREFIX]）。
+     */
+    internal fun reasonOf(flag: MediatorFlag): String = "$REASON_PREFIX${flag.ban.wire} ${flag.reason}"
 
     /**
      * 写 208 一行（违规留痕）。
@@ -154,15 +204,16 @@ internal object MediatorWiring {
      * （249 正占着那个文件，改枚举就是抢写）。在既有闭集里，`EVAL_VERDICT` 是唯一「只留档、
      * 不可回滚、不参与抽检」的类——与"判了一次违规"的形状一致；`AUTO_ACT` 不能用：它是
      * 勘验 I1「痕迹减账本」集合差的账本侧（多写一行就把漏行率算错），且决策中心会给出
-     * 一个指向产物回收站的空跳转。等 249 合入后应换回专门的 kind（报告 §7 已立账）。
+     * 一个指向产物回收站的空跳转。等 249 合入后应换回专门的 kind（报告 §7 缺陷 258-4）。
      */
     private fun write(flag: MediatorFlag, now: Long) {
         val draft = DecisionDraft(
             kind = DecisionKind.EVAL_VERDICT,
             actor = DecisionActor.MODEL,
-            reason = flag.reason,
-            // 证据 id：禁令机器键 ＋ 触发档位 ＋ 第几轮（都是类别与计数，**没有原话**）。
-            evidence = "$EVIDENCE_PREFIX${flag.ban.wire}:mood=${state.mood.name}:turn=$turns",
+            // 固定前缀（kind 认不出是谁写的，这里挂牌）：mediator:<禁令> <类别句>
+            reason = reasonOf(flag),
+            // 证据 id：同一套机器键 ＋ 触发档位 ＋ 第几轮（都是类别与计数，**没有原话**）。
+            evidence = "$REASON_PREFIX${flag.ban.wire}:mood=${state.mood.name}:turn=$turns",
             before = "未判违规",
             after = "记一条${flag.ban.cn}",
             atMs = now,

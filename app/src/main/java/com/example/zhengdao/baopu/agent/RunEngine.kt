@@ -1684,8 +1684,18 @@ internal class RunEngine(
             // 本身（逐字节一致），下面 buildList 的条件与 native 完全相同。
             val orchestrated = orchestrationEnabled()
             val systemText = if (orchestrated) BatchRules.systemPrefix(prefix) else prefix
+            // 第二百五十八批：调解器的**稳定契约**——一句话、恒定不变（所以不破前缀缓存），
+            // 说明"末尾那一行《调解指令》是系统给的基调，不是用户刚说的话，也不要复述"。
+            // **恒常追加**（不是"有话才加"）：随状态出现/消失才会让 system 逐轮变，等于自毁缓存。
+            // 单独一个变量是为了不动 214 那条源码门禁钉的 `val systemText = ...` 一行（编排关时
+            // 仍走 native 表达式，这里只在其后追加常量文本）。
+            val systemFinal = if (prefix.isBlank()) {
+                systemText
+            } else {
+                systemText + "\n\n" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT
+            }
             val messages = buildList {
-                if (systemText.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemText))
+                if (systemFinal.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemFinal))
                 // 图片必须挂在这一条 user 上（第二十四批 A 段的本意）。
                 // 2026-10-18 真机事故：这里从前只传文本，`prompt.images` 算出来就没人用 ⇒
                 // 图一路缩好、选好、日志也写了「已发送」，请求体里却一个 image 块都没有，

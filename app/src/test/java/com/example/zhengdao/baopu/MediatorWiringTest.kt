@@ -191,6 +191,10 @@ class MediatorWiringTest {
         assertTrue("kind 要能读回来：${lines[0]}", lines[0].contains("\"kind\":\"eval_verdict\""))
         assertTrue("证据要带禁令键与档位：${lines[0]}", lines[0].contains("\"evidence\":\"mediator:flattery:mood="))
         assertTrue("reason 要在：${lines[0]}", lines[0].contains("模型附和"))
+        assertTrue(
+            "reason 的**固定前缀**必须是 mediator:flattery（kind 复用了 eval_verdict，只能靠它挂牌）：${lines[0]}",
+            lines[0].contains("\"reason\":\"mediator:flattery "),
+        )
         // 账本里不许出现原话（策略表 §3 第三行）
         assertTrue("208 里不许记原话", !lines[0].contains("第3行"))
         // 证据行（交付报告里引用的就是这一行；JUnit XML 的 system-out 里能抓到）
@@ -215,7 +219,11 @@ class MediatorWiringTest {
         assertEquals(listOf(MediatorBan.APOLOGY_LOOP), flags.map { it.ban })
         val lines = ledgerLines()
         assertEquals("空转道歉必须落 208 一行：$lines", 1, lines.size)
-        assertTrue(lines[0].contains("mediator:apology_loop:mood="))
+        assertTrue(lines[0].contains("\"evidence\":\"mediator:apology_loop:mood="))
+        assertTrue(
+            "reason 必须带固定前缀（读侧靠它从 eval_verdict 里摘出来）：${lines[0]}",
+            lines[0].contains("\"reason\":\"mediator:apology_loop "),
+        )
     }
 
     @Test
@@ -299,23 +307,74 @@ class MediatorWiringTest {
     // ── W3：那一句真进上下文 ────────────────────────────────────────────────
 
     @Test
-    fun `W3_guidance那一句进上下文_且只有那一句`() {
+    fun `W3_guidance那一句进上下文_带固定标记且只有那一句`() {
         assertEquals("CALM 时不带话（不给每次请求加噪音）", emptyList<String>(), MediatorWiring.promptNotes())
         MediatorWiring.onUserTurn("这表第3行不对", "", sessionId = 11L, now = now)
         val notes = MediatorWiring.promptNotes()
         assertEquals("非 CALM 时恰好一句：$notes", 1, notes.size)
         val line = notes[0]
+        val guidance = HarmonyMediator.guidance(MediatorWiring.currentState())
         assertEquals(
-            "进上下文的必须逐字是 guidance()（不许加前缀、不许带别的字段）",
-            HarmonyMediator.guidance(MediatorWiring.currentState()),
+            "尾部那一行＝固定标记＋空白＋guidance() 本身（多一个字都不行）",
+            "${MediatorWiring.PROMPT_MARK} $guidance",
             line,
         )
-        assertTrue("字数上限 60：${line.length}", line.length <= HarmonyMediator.MAX_GUIDANCE_CHARS)
+        assertTrue("必须以固定标记开头（抽取/迁移/日志分流的机器键）", line.startsWith(MediatorWiring.PROMPT_MARK))
+        assertEquals("固定标记就是 [调解指令]", "[调解指令]", MediatorWiring.PROMPT_MARK)
+        assertTrue(
+            "指令句本身仍受 60 字上限：${guidance.length}",
+            guidance.length <= HarmonyMediator.MAX_GUIDANCE_CHARS,
+        )
         assertEquals("档位名/阈值/画像词/数字都不许出现：$line", emptyList<String>(), leaksInPrompt(line))
         // 非消费：同一轮的工具循环里每一步都该是同一句
         assertEquals(notes, MediatorWiring.promptNotes())
         println("[258-prompt] $line")
         println("[258-log] " + MediatorWiring.logLine(MediatorWiring.currentState(), emptyList(), MediatorWiring.turns()))
+    }
+
+    @Test
+    fun `W3_system里那句稳定契约_恒定且不破缓存`() {
+        val contract = MediatorWiring.PROMPT_CONTRACT
+        assertEquals(
+            "契约是写死的一句（逐字），改它就是改判据",
+            "每轮末尾可能附一行《调解指令》，按它调整语气，不要复述它。",
+            contract,
+        )
+        assertTrue("必须点明「不要复述」（否则模型会把指令当自己的话讲出来）", contract.contains("不要复述"))
+        assertEquals("契约里也不许出现档位名/画像词/数字：$contract", emptyList<String>(), leaksInPrompt(contract))
+        // 它必须真的挂在 system 那一路（源码门禁：出现且只出现一次，在 systemText 的拼装里）
+        val engine = src("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt")
+        assertEquals(
+            "契约必须由引擎拼进 system（RunEngine）",
+            1,
+            Regex("""MediatorWiring\.PROMPT_CONTRACT""").findAll(engine).count(),
+        )
+        assertTrue(
+            "必须拼在 system 那一路（追加在 systemText 之后，不动 214 钉的那一行）",
+            engine.contains("val systemFinal = if (prefix.isBlank())"),
+        )
+        assertTrue(
+            "追加方式：systemText + 空行 + 契约",
+            engine.contains("systemText + \"\\n\\n\" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT"),
+        )
+        // 恒定：常量不许参与插值（有插值符就说明它会随轮次变 ⇒ 破缓存）
+        assertTrue("契约里不许有插值：$contract", !contract.contains('$'))
+    }
+
+    @Test
+    fun `W2_reason的前缀是固定键_三条禁令逐个对上`() {
+        MediatorBan.entries.forEach { ban ->
+            val reason = MediatorWiring.reasonOf(MediatorFlag(ban, "类别句"))
+            assertTrue(
+                "reason 必须以 mediator:${ban.wire} 开头：$reason",
+                reason.startsWith("${MediatorWiring.REASON_PREFIX}${ban.wire} "),
+            )
+            assertTrue("前缀常量就是 mediator:", MediatorWiring.REASON_PREFIX == "mediator:")
+        }
+        // 门禁自证：没前缀的行必须对不上（否则 I4 那条排除义务无处落地）
+        listOf("评测评测", "eval_verdict:跑完了", " mediator:flattery").forEach { bad ->
+            assertTrue("这样的 reason 不该被当成调解器写的：$bad", !bad.startsWith(MediatorWiring.REASON_PREFIX))
+        }
     }
 
     @Test
