@@ -110,7 +110,7 @@ class LicenseTextsTest {
     }
 
     @Test
-    fun `gitattributes 仍把这六份文本钉在 LF - 换行不同哈希就不同`() {
+    fun `gitattributes 仍把许可正文钉在 LF - 换行不同哈希就不同（字体 OFL 已随终端搬走）`() {
         val ga = File(repo, ".gitattributes")
         assertTrue(".gitattributes 必须存在", ga.isFile)
         val text = ga.readText(Charsets.UTF_8)
@@ -129,6 +129,12 @@ class LicenseTextsTest {
         assertFalse(
             ".gitattributes 不该再钉 app/src/main/assets/fonts/OFL.txt——那个文件已随终端搬走，钉着一行无效规则",
             text.contains("app/src/main/assets/fonts/OFL.txt"),
+        )
+        // 同理：rootfs/ 自 248/250 起整仓搬去 zhengdao-term，本仓再给 rootfs/ 写属性规则就是死规则
+        // （2026-10-28 已删掉 agents.json / agents.json.sig 两行）。谁把它们写回来，这里立刻红。
+        assertFalse(
+            ".gitattributes 不该再有 rootfs/ 规则——rootfs/ 已随终端搬去 zhengdao-term，留着是死规则",
+            text.lineSequence().any { it.trimStart().startsWith("rootfs/") },
         )
     }
 
