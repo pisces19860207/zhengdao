@@ -4,6 +4,16 @@
 它们与本项目第一方代码**不链接、不混合**：App 运行时将其释放为独立可执行文件并
 以独立进程方式调用。本项目的 Kotlin/C 源码中**不含任何来自下列项目的代码**。
 
+> ⚠️ **2026-10-28 现状注（256 批对账；历史取证保留不改写）**
+> 终端已于 2026-10-27 整仓拆出到 [zhengdao-term](https://github.com/pisces19860207/zhengdao-term)。
+> 本文 §1（proot）、§2（libtalloc）、§3（libandroid-shmem）、§4（xterm.js）、§6（终端字体）、
+> §7（Debian rootfs）与末节「Termux terminal-emulator / terminal-view」描述的是 **v2.2.1 及更早已发布
+> 安装包**的随包组件（这些版本的 APK 确实携带它们，正文与义务履行记录保留在此以保追溯）；
+> **当前主仓源码已不再含这些组件**（`app/src/main/assets/proot/`、终端字体 TTF、`rootfs/` 等路径均已不存在，
+> 组件随终端迁往 zhengdao-term）。下一个发版起，随包清单以届时发版为准——新包要不要保留/改写本文
+> 各节，待项目所有者定（256 批报告 Q 清单）。引用的 `docs/ERRATA.md`、`docs/闭源切换清单-2026-10-11.md`
+> 已移至私有侧 `..\_zd-private\docs\`。
+
 > ### 许可证正文随仓库与 APK 分发（2026-10-11 补齐）
 >
 > 各组件需要哪几份正文、正文在哪：

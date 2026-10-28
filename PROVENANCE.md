@@ -3,6 +3,19 @@
 本项目（zhengdao / 安卓 AI Agent App）的第一方代码为**本项目原创，不含对第三方源码的拷贝**；随包第三方组件不在本声明范围，各按其许可证分发，清单见 `THIRD-PARTY-LICENSES.md`。开发与协作细节见 `docs/协作规约.md`。
 本文件是整个仓库的原创性规则，所有协作者（包括 AI）必须遵守。
 
+> ⚠️ **2026-10-28 现状注（256 批对账；终端已拆出，历史取证保留不改写）**
+> 终端已于 2026-10-27 整仓拆出到 [zhengdao-term](https://github.com/pisces19860207/zhengdao-term)。
+> 因此：① 本文与下文提到的 `rootfs/`、`app/src/main/java/com/termux/**`、`app/src/main/cpp/termux/`、
+> `app/src/main/java/com/example/zhengdao/terminal/**`、`app/src/main/assets/proot/`、终端字体资产
+> （`app/src/main/assets/fonts/` 整目录——TTF 随终端搬走，残留的 `OFL.txt` 亦于 2026-10-28 由 257 批
+> 审计收尾删除）等路径，**主仓已不存在**，相关内容现位于 zhengdao-term 仓；
+> ② 本文对 Termux / proot / rootfs / 字体 / `TerminalActivity` 等的描述，是**对 v2.2.1 及更早已发布
+> 安装包的历史取证**（这些版本的 APK 确实随包携带它们），保留原文以保追溯；
+> ③ 引用的 `docs/ERRATA.md`、`docs/闭源切换清单-2026-10-11.md`、台账 §A/§B 编号，全文在私有侧
+> `..\_zd-private\docs\`；
+> ④ 下一个发版起，主仓 APK 的随包第三方清单以届时发版说明与 `THIRD-PARTY-LICENSES.md` 的更新为准
+> （是否需要为"不含终端组件"的新包重写 §1–§7 与 Termux 节，待项目所有者定，见 256 批报告 Q 清单）。
+
 ## 第一方代码的版权与许可（2026-10-11）
 
 - **版权归属**：本仓库**第一方代码**（`app/` 中本项目编写的部分、`tools/`、`rootfs/` 下的本项目

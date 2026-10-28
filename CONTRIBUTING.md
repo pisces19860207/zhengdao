@@ -1,7 +1,8 @@
 # 贡献指南（CONTRIBUTING）
 
 感谢愿意花时间。这个仓库目前**只有一位版权人**（见 [`LICENSE`](LICENSE) 与
-[`docs/闭源切换清单-2026-10-11.md`](docs/闭源切换清单-2026-10-11.md) 第七节），
+`闭源切换清单-2026-10-11.md` 第七节——该文件已于 2026-10-20 随工程文档移到私有侧
+`..\_zd-private\docs\闭源切换清单-2026-10-11.md`，公开仓不再有副本），
 所以规则很短，但有几条是硬的。
 
 ## 一、贡献前必须知道的两件事
@@ -18,7 +19,7 @@
 - 本仓库装了钩子（`tools/hooks/`）：
   - `pre-commit` 有三道闸（**在 `main` 上直接 `git commit` 会被拦下**）——
     请开分支提交，再用 `git merge --no-ff` 合回 `main`；
-  - `pre-merge-commit` 是前向转发器，合并时会带 `ZHENGDAO_IN_MERGE=1`（见 `docs/ERRATA.md` E-103）。
+  - `pre-merge-commit` 是前向转发器，合并时会带 `ZHENGDAO_IN_MERGE=1`（见私有侧 `..\_zd-private\docs\ERRATA.md` E-103；`docs/ERRATA.md` 已移出公开仓）。
 - 提交信息用中文，说清「改了什么 / 为什么」；一次提交只做一件事。
 
 ## 三、构建与自检（本机口径）
@@ -31,9 +32,11 @@ python tools\check-native-so.py      # 必须退出 0
 ```
 
 - **Gradle 一律离线**（`--offline`），依赖已在本机缓存。
-- PR 前请贴出单测结果（当前基线见 `docs/FEATURE-LEDGER.md` 最近一行 §A 记录）。
-- ⚠️ **绝不要跑 `connectedDebugAndroidTest`，也不要 `adb uninstall`**：会清掉真机上的
-  `files/rootfs`、`files/home` 与偏好设置（`docs/ERRATA.md` E-085）。装包只走 `adb install -r`。
+- PR 前请贴出单测结果（当前基线见私有侧全量台账 `..\_zd-private\docs\FEATURE-LEDGER-全量-*.md` 最近一行 §A 记录；公开仓 `docs/FEATURE-LEDGER.md` 已是占位）。
+- ⚠️ **绝不要跑 `connectedDebugAndroidTest`，也不要 `adb uninstall`**：会清掉真机上 App 私有目录里的数据
+  （2026-10-27 前那句「清掉 `files/rootfs`、`files/home`」里的 rootfs 已随终端拆出到 zhengdao-term，
+  但 App 私有目录被清这件事对主仓 App 同样成立——记忆/技能/资料库索引都在里面；
+  终端环境文件则看 zhengdao-term，E-085 的告诫不变，见私有侧 `..\_zd-private\docs\ERRATA.md`）。装包只走 `adb install -r`。
 
 ## 四、代码约定
 
@@ -49,7 +52,8 @@ python tools\check-native-so.py      # 必须退出 0
 ## 五、报告问题
 
 开 [Issue](https://github.com/pisces19860207/zhengdao/issues) 时请带：设备型号与 Android 版本、
-App 版本（设置 → 关于）、复现步骤、日志（设置 → 关于 → 保活记录，或终端里的输出）。
+App 版本（设置 → 关于）、复现步骤、日志（设置 → 关于 → 保活记录；终端/环境类问题日志在
+[zhengdao-term](https://github.com/pisces19860207/zhengdao-term) 侧）。
 安全相关的问题请私下发邮件到 putaopanpan@gmail.com，不要开公开 Issue。
 
 ## 六、语言

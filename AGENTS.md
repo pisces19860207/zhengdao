@@ -1,7 +1,11 @@
 # 给 AI agent 的开工须知（证道 zhengdao）
 
+> **两仓分工（2026-10-27 起）**：终端（PTY/rootfs/proot/终端 UI）已整仓拆到
+> [zhengdao-term](https://github.com/pisces19860207/zhengdao-term)，**主仓不含终端代码、不维护终端**；
+> 终端相关的活、排查与文档去 zhengdao-term（或私有侧历史文档）。
+>
 > 这个仓库同时有多个 agent 在干活（WorkBuddy / Zcode / DSH 桌面版）。**细则看 [`docs/协作规约.md`](docs/协作规约.md)。**
-> 历史上因为「不核对就开工」，同一个功能被反复实现、删了又加回来（实锤见 `docs/FEATURE-LEDGER.md` §4）。
+> 历史上因为「不核对就开工」，同一个功能被反复实现、删了又加回来（实锤见全量台账 §4——公开仓 `docs/FEATURE-LEDGER.md` 已是占位，全文在私有侧 `..\_zd-private\docs\FEATURE-LEDGER-全量-*.md`；2026-10-28 注）。
 > **先花 30 秒核对，能省掉半天重做。**
 > 开工前**先读台账**：公开仓 `docs/FEATURE-LEDGER.md` 只是占位，**全量在私有侧** `..\_zd-private\docs\FEATURE-LEDGER-全量-*.md`（公开摘要见 `docs/台账-公开摘要.md`） —— 那里写着已经做完并有证据的、待做的、以及明确判定不做的。
 
@@ -18,21 +22,14 @@
 4. **先核最新，再动手。** 凡是涉及第三方 API / SDK / 模型 / 平台政策 / 安全边界的活，开工前先搜**官方文档/changelog**（用当前日期，别拿训练语料当依据），把来源链接＋版本/日期写进交付报告；没有官方来源就标“未核最新”。报告缺这一节，验收不销账。
    - 同时先查**现成方案/官方库**：能复用就不重造（FTS5、WorkManager、MediaStore、Markdown 渲染、JSON Schema、MCP SDK 等）；但云服务/重运行时（Temporal/LangGraph/Playwright/React）不硬搬，先写“为什么不用”。
 
-## 搬家 / 删除类改动：先过七处清单
-
-**删模块、搬模块、改包名、换仓库**都不用"边做边发现"——照 `..\_zd-private\docs\核对-搬家删除七处清单.md` 逐项过：
-**字符串 / 资源 / 许可 / 脚本 / CI / 测试 / 文档**。
-三条硬规矩：①脚本删了，引用它的 CI 步骤同一提交里删掉；②写进租约的路径先 `git ls-tree` 确认存在；
-③`is_file()` 守卫造成的"静默跳过"要故意造一次违规，确认门禁还在判。
-
-（2026-10-28 补：终端拆仓后连红两天，全部落在"被搬走的东西留下的引用"上，不是新 bug。）
-
 ## 开工前跑这条命令（唯一入口，纯 Python 标准库）
 
 ```powershell
 cd C:\Users\guoli\AndroidStudioProjects\zhengdao
-python tools\zd.py preflight -k 终端,单会话 `
-       -p app\src\main\java\com\example\zhengdao\terminal\你要新增的文件.kt
+# （2026-10-28 注：示例里的 `-k 终端,单会话 -p …\terminal\…` 是终端还在本仓时的旧例，
+#   终端已拆出到 zhengdao-term——关键词与 -p 路径请换成你本单实际要动的文件。）
+python tools\zd.py preflight -k <功能关键词> `
+       -p app\src\main\java\com\example\zhengdao\你要新增的文件.kt
 ```
 
 退出码 **0 = 可以开工**；**1 = 有阻塞项**（落后 / 关键词命中 / 复活风险），先看它列出来的东西。
@@ -49,7 +46,7 @@ python tools\zd.py preflight -k 终端,单会话 `
 
 ## 硬闸：提不上去，说明你做错了
 
-`.git/hooks/pre-commit`（源文件 `tools/hooks/pre-commit`，用 `python tools\zd.py install-hooks` 装到共享 `.git`；**合并提交**走 `pre-merge-commit`，它转交给同一个脚本 —— 见 `docs/ERRATA.md` E-103）
+`.git/hooks/pre-commit`（源文件 `tools/hooks/pre-commit`，用 `python tools\zd.py install-hooks` 装到共享 `.git`；**合并提交**走 `pre-merge-commit`，它转交给同一个脚本 —— 见 `..\_zd-private\docs\ERRATA.md` E-103；`docs/ERRATA.md` 已于 2026-10-20 移出公开仓）
 会在三种情况下**拒绝提交**：
 
 | 拦什么 | 为什么 |
@@ -67,7 +64,7 @@ python tools\zd.py preflight -k 终端,单会话 `
 | 想知道 | 读 |
 |---|---|
 | 多主体怎么协作、边界在哪、工具怎么用 | `docs/协作规约.md`（全文在 `..\_zd-private\docs\协作规约.md`） |
-| **已经做完 / 待做的结账总表（新会话先读这个）**、现在有哪些功能、哪些半残、哪些被拍板删过 | `docs/FEATURE-LEDGER.md` 的「结账 · 现状总表」+ §2 / §3（全文在私有副本） |
+| **已经做完 / 待做的结账总表（新会话先读这个）**、现在有哪些功能、哪些半残、哪些被拍板删过 | 私有侧全量台账 `..\_zd-private\docs\FEATURE-LEDGER-全量-*.md` 的「结账 · 现状总表」＋ §2 / §3（公开仓 `docs/FEATURE-LEDGER.md` 2026-10-27 起只是占位，不含条目） |
 | **抱朴现行架构/刀0–刀5对应**（旧方案只作历史） | `docs/抱朴-现行架构-2026-10-24.md` |
 | 踩过的坑与更正（E-xxx，按编号查） | `..\_zd-private\docs\ERRATA.md` |
 | 终端 / rootfs 出问题怎么排查 | `..\_zd-private\docs\milestones\证道-故障排查手册.md` |
