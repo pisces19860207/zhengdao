@@ -13,10 +13,10 @@
 package com.example.zhengdao.baopu.mcp
 
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.Dispatcher
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -73,13 +73,13 @@ class McpOAuthFlowTest {
 
     @After
     fun tearDown() {
-        runCatching { server.shutdown() }
+        runCatching { server.close() }
     }
 
     // ── 假服务器 ─────────────────────────────────────────────────────────
 
     private fun handle(req: RecordedRequest): MockResponse {
-        val path = req.path.orEmpty().substringBefore('?')
+        val path = req.target.orEmpty().substringBefore('?')
         return when {
             path == "/.well-known/oauth-protected-resource" -> {
                 if (!hasOAuthMetadata) return notFound()
@@ -110,7 +110,7 @@ class McpOAuthFlowTest {
                 )
             }
             path == "/register" -> {
-                val body = JSONObject(req.body.readUtf8())
+                val body = JSONObject(req.body?.utf8().orEmpty())
                 registrations += body
                 json(
                     JSONObject()
@@ -126,7 +126,7 @@ class McpOAuthFlowTest {
     }
 
     private fun handleToken(req: RecordedRequest): MockResponse {
-        val form = parseForm(req.body.readUtf8())
+        val form = parseForm(req.body?.utf8().orEmpty())
         tokenForms += form
         return when (form["grant_type"]) {
             "authorization_code" -> {
@@ -163,29 +163,29 @@ class McpOAuthFlowTest {
     }
 
     private fun handleMcp(req: RecordedRequest): MockResponse {
-        mcpAuthHeaders += req.getHeader("Authorization")
-        val auth = req.getHeader("Authorization")
+        mcpAuthHeaders += req.headers["Authorization"]
+        val auth = req.headers["Authorization"]
         if (auth != "Bearer $acceptedAccess") {
-            return MockResponse()
-                .setResponseCode(401)
+            return MockResponse.Builder()
+                .code(401)
                 .setHeader(
                     "WWW-Authenticate",
                     """Bearer resource_metadata="$base/.well-known/oauth-protected-resource"""",
                 )
                 .setHeader("Content-Type", "application/json")
-                .setBody("""{"error":"invalid_token"}""")
+                .body("""{"error":"invalid_token"}""").build()
         }
         requireScope?.let { need ->
-            return MockResponse()
-                .setResponseCode(403)
+            return MockResponse.Builder()
+                .code(403)
                 .setHeader(
                     "WWW-Authenticate",
                     """Bearer error="insufficient_scope", scope="$need"""",
                 )
                 .setHeader("Content-Type", "application/json")
-                .setBody("""{"error":"insufficient_scope"}""")
+                .body("""{"error":"insufficient_scope"}""").build()
         }
-        val body = JSONObject(req.body.readUtf8())
+        val body = JSONObject(req.body?.utf8().orEmpty())
         val id = body.opt("id") ?: 1
         val method = body.optString("method")
         val result = when (method) {
@@ -194,23 +194,23 @@ class McpOAuthFlowTest {
                 .put("capabilities", JSONObject())
                 .put("serverInfo", JSONObject().put("name", "fake").put("version", "1"))
             "tools/list" -> JSONObject().put("tools", org.json.JSONArray())
-            "notifications/initialized" -> return MockResponse().setResponseCode(202)
+            "notifications/initialized" -> return MockResponse.Builder().code(202).build()
             else -> JSONObject()
         }
         return json(JSONObject().put("jsonrpc", "2.0").put("id", id).put("result", result))
     }
 
-    private fun json(body: JSONObject): MockResponse = MockResponse()
-        .setResponseCode(200)
+    private fun json(body: JSONObject): MockResponse = MockResponse.Builder()
+        .code(200)
         .setHeader("Content-Type", "application/json")
-        .setBody(body.toString())
+        .body(body.toString()).build()
 
-    private fun oauthError(code: String, desc: String): MockResponse = MockResponse()
-        .setResponseCode(400)
+    private fun oauthError(code: String, desc: String): MockResponse = MockResponse.Builder()
+        .code(400)
         .setHeader("Content-Type", "application/json")
-        .setBody(JSONObject().put("error", code).put("error_description", desc).toString())
+        .body(JSONObject().put("error", code).put("error_description", desc).toString()).build()
 
-    private fun notFound(): MockResponse = MockResponse().setResponseCode(404)
+    private fun notFound(): MockResponse = MockResponse.Builder().code(404).build()
 
     private fun parseForm(body: String): Map<String, String> =
         body.split('&').filter { it.isNotEmpty() }.associate { part ->

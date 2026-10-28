@@ -10,10 +10,10 @@
 package com.example.zhengdao.baopu.mcp
 
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.Dispatcher
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,7 +39,7 @@ class McpTransport2026Test {
 
     @After
     fun tearDown() {
-        runCatching { server.shutdown() }
+        runCatching { server.close() }
     }
 
     private fun config() = McpServerConfig(
@@ -54,15 +54,15 @@ class McpTransport2026Test {
         McpClient(cfg, OkHttpClient(), log)
 
     private fun bodyOf(req: RecordedRequest): JSONObject {
-        val text = req.body.clone().readUtf8()
+        val text = req.body?.utf8().orEmpty()
         return if (text.isBlank()) JSONObject() else JSONObject(text)
     }
 
     private fun result(req: RecordedRequest, resultJson: String): MockResponse {
         val id = bodyOf(req).opt("id")
-        return MockResponse()
+        return MockResponse.Builder()
             .setHeader("Content-Type", "application/json")
-            .setBody("""{"jsonrpc":"2.0","id":$id,"result":$resultJson}""")
+            .body("""{"jsonrpc":"2.0","id":$id,"result":$resultJson}""").build()
     }
 
     private val initJson2026 =
@@ -85,30 +85,32 @@ class McpTransport2026Test {
         override fun dispatch(req: RecordedRequest): MockResponse {
             seen.add(req)
             if (req.method == "GET" || req.method == "DELETE") {
-                return MockResponse().setResponseCode(405)
+                return MockResponse.Builder().code(405).build()
             }
             val body = bodyOf(req)
-            val headerVersion = req.getHeader("MCP-Protocol-Version")
+            val headerVersion = req.headers["MCP-Protocol-Version"]
             val metaVersion = body.optJSONObject("params")
                 ?.optJSONObject("_meta")
                 ?.optString("protocolVersion")
             if (headerVersion != McpJsonRpc.PROTOCOL || metaVersion != McpJsonRpc.PROTOCOL) {
                 val id = body.opt("id")
-                return MockResponse()
-                    .setResponseCode(400)
+                return MockResponse.Builder()
+                    .code(400)
                     .setHeader("Content-Type", "application/json")
-                    .setBody(
+                    .body(
                         """{"jsonrpc":"2.0","id":$id,"error":{"code":-32000,"message":"HeaderMismatch"}}""",
-                    )
+                    ).build()
             }
             return when (body.optString("method")) {
-                "initialize" -> result(req, initJson2026).apply {
-                    if (returnSession) setHeader("Mcp-Session-Id", "sess-215")
+                "initialize" -> if (returnSession) {
+                    result(req, initJson2026).newBuilder().setHeader("Mcp-Session-Id", "sess-215").build()
+                } else {
+                    result(req, initJson2026)
                 }
-                "notifications/initialized" -> MockResponse().setResponseCode(202)
+                "notifications/initialized" -> MockResponse.Builder().code(202).build()
                 "tools/list" -> result(req, listBody)
                 "tools/call" -> result(req, """{"content":[{"type":"text","text":"pong"}],"isError":false}""")
-                else -> MockResponse().setResponseCode(400)
+                else -> MockResponse.Builder().code(400).build()
             }
         }
     }
@@ -120,14 +122,14 @@ class McpTransport2026Test {
             val body = bodyOf(req)
             if (body.optString("method") == "initialize") {
                 val id = body.opt("id")
-                return MockResponse()
-                    .setResponseCode(400)
+                return MockResponse.Builder()
+                    .code(400)
                     .setHeader("Content-Type", "application/json")
-                    .setBody(
+                    .body(
                         """{"jsonrpc":"2.0","id":$id,"error":{"code":-32002,"message":"Unsupported protocol version","data":{"supported":["2025-03-26","2025-06-18"]}}}""",
-                    )
+                    ).build()
             }
-            return MockResponse().setResponseCode(400)
+            return MockResponse.Builder().code(400).build()
         }
     }
 
@@ -142,7 +144,7 @@ class McpTransport2026Test {
                     """{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"old","version":"1"}}""",
                 )
             } else {
-                MockResponse().setResponseCode(400)
+                MockResponse.Builder().code(400).build()
             }
         }
     }
@@ -155,19 +157,19 @@ class McpTransport2026Test {
         override fun dispatch(req: RecordedRequest): MockResponse {
             seen.add(req)
             if (req.method == "GET") {
-                return MockResponse()
+                return MockResponse.Builder()
                     .setHeader("Content-Type", "text/event-stream")
-                    .setBody(
+                    .body(
                         "event: endpoint\ndata: /messages\n\n" +
                             "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":$initJson2026}\n\n" +
                             "data: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"tools\":[$toolOne]}}\n\n" +
                             "data: {\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"legacy-pong\"}]}}\n\n",
-                    )
+                    ).build()
             }
-            if (req.method == "POST" && req.path?.startsWith("/messages") == true) {
-                return MockResponse().setResponseCode(202)
+            if (req.method == "POST" && req.target.startsWith("/messages") == true) {
+                return MockResponse.Builder().code(202).build()
             }
-            return MockResponse().setResponseCode(405)
+            return MockResponse.Builder().code(405).build()
         }
     }
 
@@ -189,8 +191,8 @@ class McpTransport2026Test {
         val posts = seen.filter { it.method == "POST" }
         assertEquals(4, posts.size)
         posts.forEach { req ->
-            assertEquals("application/json, text/event-stream", req.getHeader("Accept"))
-            assertEquals(McpJsonRpc.PROTOCOL, req.getHeader("MCP-Protocol-Version"))
+            assertEquals("application/json, text/event-stream", req.headers["Accept"])
+            assertEquals(McpJsonRpc.PROTOCOL, req.headers["MCP-Protocol-Version"])
             val params = bodyOf(req).getJSONObject("params")
             assertEquals(McpJsonRpc.PROTOCOL, params.getJSONObject("_meta").getString("protocolVersion"))
         }
@@ -208,8 +210,8 @@ class McpTransport2026Test {
         c.listTools()
         assertEquals("pong", c.callTool("echo", JSONObject()).text)
         val posts = seen.filter { it.method == "POST" }
-        assertNull(posts.first().getHeader("Mcp-Session-Id")) // initialize 还不带
-        posts.drop(1).forEach { assertEquals("sess-215", it.getHeader("Mcp-Session-Id")) }
+        assertNull(posts.first().headers["Mcp-Session-Id"]) // initialize 还不带
+        posts.drop(1).forEach { assertEquals("sess-215", it.headers["Mcp-Session-Id"]) }
     }
 
     // ── 负例1：版本不支持 ⇒ 明确失败（不降级、不静默、给支持列表） ──────
@@ -257,7 +259,7 @@ class McpTransport2026Test {
                 return if (body.optString("method") == "initialize") {
                     result(req, """{"capabilities":{},"serverInfo":{"name":"mute","version":"1"}}""")
                 } else {
-                    MockResponse().setResponseCode(400)
+                    MockResponse.Builder().code(400).build()
                 }
             }
         }
@@ -282,7 +284,7 @@ class McpTransport2026Test {
         c.listTools()
         // 客户端侧直连断言：每个 POST 的头、_meta、Accept 都对得上
         seen.filter { it.method == "POST" }.forEach { req ->
-            assertEquals(McpJsonRpc.PROTOCOL, req.getHeader("MCP-Protocol-Version"))
+            assertEquals(McpJsonRpc.PROTOCOL, req.headers["MCP-Protocol-Version"])
             val meta = bodyOf(req).getJSONObject("params").getJSONObject("_meta")
             assertEquals(McpJsonRpc.PROTOCOL, meta.getString("protocolVersion"))
         }
@@ -301,7 +303,7 @@ class McpTransport2026Test {
         assertFalse(out.isError)
         val posts = seen.filter { it.method == "POST" }
         assertEquals(4, posts.size)
-        posts.forEach { assertNull("没有会话头也继续：${it.requestUrl}", it.getHeader("Mcp-Session-Id")) }
+        posts.forEach { assertNull("没有会话头也继续：${it.url}", it.headers["Mcp-Session-Id"]) }
     }
 
     // ── 负例4：405 不当致命 ─────────────────────────────────────────────
@@ -316,8 +318,8 @@ class McpTransport2026Test {
         assertEquals(1, c.listTools().size)
         assertEquals("legacy-pong", c.callTool("echo", JSONObject()).text)
         // 旧式传输的 POST 也带版本头与 _meta（同一处常量）
-        seen.filter { it.method == "POST" && it.path?.startsWith("/messages") == true }.forEach { req ->
-            assertEquals(McpJsonRpc.PROTOCOL, req.getHeader("MCP-Protocol-Version"))
+        seen.filter { it.method == "POST" && it.target.startsWith("/messages") == true }.forEach { req ->
+            assertEquals(McpJsonRpc.PROTOCOL, req.headers["MCP-Protocol-Version"])
             assertEquals(
                 McpJsonRpc.PROTOCOL,
                 bodyOf(req).getJSONObject("params").getJSONObject("_meta").getString("protocolVersion"),
@@ -332,17 +334,17 @@ class McpTransport2026Test {
             override fun dispatch(req: RecordedRequest): MockResponse {
                 seen.add(req)
                 if (req.method == "GET") {
-                    return MockResponse()
+                    return MockResponse.Builder()
                         .setHeader("Content-Type", "text/event-stream")
-                        .setBody(
+                        .body(
                             "event: endpoint\ndata: /messages\n\n" +
                                 "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{}}}\n\n",
-                        )
+                        ).build()
                 }
-                if (req.method == "POST" && req.path?.startsWith("/messages") == true) {
-                    return MockResponse().setResponseCode(202)
+                if (req.method == "POST" && req.target.startsWith("/messages") == true) {
+                    return MockResponse.Builder().code(202).build()
                 }
-                return MockResponse().setResponseCode(405)
+                return MockResponse.Builder().code(405).build()
             }
         }
         val c = client()

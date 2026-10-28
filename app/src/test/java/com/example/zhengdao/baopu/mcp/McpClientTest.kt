@@ -8,11 +8,11 @@
 package com.example.zhengdao.baopu.mcp
 
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.Dispatcher
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
-import okhttp3.mockwebserver.SocketPolicy
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,7 +39,7 @@ class McpClientTest {
 
     @After
     fun tearDown() {
-        runCatching { server.shutdown() }
+        runCatching { server.close() }
     }
 
     private fun config(
@@ -61,22 +61,22 @@ class McpClientTest {
 
     private fun bodyOf(req: RecordedRequest): JSONObject {
         // clone：同一个 RecordedRequest 会被 dispatcher 与断言各读一次，Buffer 读完就空。
-        val text = req.body.clone().readUtf8()
+        val text = req.body?.utf8().orEmpty()
         return if (text.isBlank()) JSONObject() else JSONObject(text)
     }
 
     private fun result(req: RecordedRequest, resultJson: String): MockResponse {
         val id = bodyOf(req).opt("id")
-        return MockResponse()
+        return MockResponse.Builder()
             .setHeader("Content-Type", "application/json")
-            .setBody("""{"jsonrpc":"2.0","id":$id,"result":$resultJson}""")
+            .body("""{"jsonrpc":"2.0","id":$id,"result":$resultJson}""").build()
     }
 
     private fun error(req: RecordedRequest, message: String): MockResponse {
         val id = bodyOf(req).opt("id")
-        return MockResponse()
+        return MockResponse.Builder()
             .setHeader("Content-Type", "application/json")
-            .setBody("""{"jsonrpc":"2.0","id":$id,"error":{"code":-32000,"message":"$message"}}""")
+            .body("""{"jsonrpc":"2.0","id":$id,"error":{"code":-32000,"message":"$message"}}""").build()
     }
 
     private val initJson =
@@ -97,11 +97,11 @@ class McpClientTest {
             val method = bodyOf(req).optString("method")
             return when {
                 method == "initialize" -> result(req, initJson)
-                    .setHeader("Mcp-Session-Id", "session-1")
-                method == "notifications/initialized" -> MockResponse().setResponseCode(202)
+                    .newBuilder().setHeader("Mcp-Session-Id", "session-1").build()
+                method == "notifications/initialized" -> MockResponse.Builder().code(202).build()
                 method == "tools/list" -> result(req, listBody)
                 method == "tools/call" -> callResponse(req)
-                else -> MockResponse().setResponseCode(400)
+                else -> MockResponse.Builder().code(400).build()
             }
         }
     }
@@ -130,16 +130,16 @@ class McpClientTest {
         val init = posts.first { bodyOf(it).optString("method") == "initialize" }
         // 215 批：版本头**每个请求都带**（含 initialize）；body 的 protocolVersion 与
         // _meta.protocolVersion 也都来自 McpJsonRpc.PROTOCOL 这一个常量。
-        assertEquals("2026-07-28", init.getHeader("MCP-Protocol-Version"))
-        assertEquals("application/json, text/event-stream", init.getHeader("Accept"))
+        assertEquals("2026-07-28", init.headers["MCP-Protocol-Version"])
+        assertEquals("application/json, text/event-stream", init.headers["Accept"])
         val initParams = bodyOf(init).getJSONObject("params")
         assertEquals("2026-07-28", initParams.getString("protocolVersion"))
         assertEquals("2026-07-28", initParams.getJSONObject("_meta").getString("protocolVersion"))
-        assertNull("initialize 不带 session", init.getHeader("Mcp-Session-Id"))
+        assertNull("initialize 不带 session", init.headers["Mcp-Session-Id"])
 
         val list = posts.first { bodyOf(it).optString("method") == "tools/list" }
-        assertEquals("2026-07-28", list.getHeader("Mcp-Protocol-Version"))
-        assertEquals("session-1", list.getHeader("Mcp-Session-Id"))
+        assertEquals("2026-07-28", list.headers["Mcp-Protocol-Version"])
+        assertEquals("session-1", list.headers["Mcp-Session-Id"])
         assertEquals(
             "2026-07-28",
             bodyOf(list).getJSONObject("params").getJSONObject("_meta").getString("protocolVersion"),
@@ -159,20 +159,20 @@ class McpClientTest {
                 val body = bodyOf(req)
                 return when (body.optString("method")) {
                     "initialize" -> result(req, initJson)
-                    "notifications/initialized" -> MockResponse().setResponseCode(202)
+                    "notifications/initialized" -> MockResponse.Builder().code(202).build()
                     "tools/list" -> {
                         val id = body.opt("id")
-                        MockResponse()
+                        MockResponse.Builder()
                             .setHeader("Content-Type", "text/event-stream")
-                            .setBody(
+                            .body(
                                 "event: message\n" +
                                     "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
                                     "event: message\n" +
                                     "data: {\"jsonrpc\":\"2.0\",\"id\":\"srv-9\",\"method\":\"sampling/createMessage\",\"params\":{}}\n\n" +
                                     "data: {\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"tools\":[$toolOne]}}\n\n",
-                            )
+                            ).build()
                     }
-                    else -> MockResponse().setResponseCode(400)
+                    else -> MockResponse.Builder().code(400).build()
                 }
             }
         }
@@ -192,9 +192,9 @@ class McpClientTest {
                     // Streamable 的第一次 initialize 已占掉 id=1（即使 404 也先取号），
                     // 旧 SSE 的 initialize 从 id=2 起。这里把 1..4 两套都摆上，客户端只认
                     // 自己发出去的那个 id——也顺带证明「不匹配的 id 会被跳过」。
-                    return MockResponse()
+                    return MockResponse.Builder()
                         .setHeader("Content-Type", "text/event-stream")
-                        .setBody(
+                        .body(
                             "event: endpoint\ndata: /messages\n\n" +
                                 "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":$initJson}\n\n" +
                                 "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":$initJson}\n\n" +
@@ -202,16 +202,16 @@ class McpClientTest {
                                 "data: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"tools\":[$toolOne]}}\n\n" +
                                 "data: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"legacy-pong\"}]}}\n\n" +
                                 "data: {\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"legacy-pong\"}]}}\n\n",
-                        )
+                        ).build()
                 }
-                if (req.method == "POST" && req.path?.startsWith("/messages") == true) {
-                    return MockResponse().setResponseCode(202)
+                if (req.method == "POST" && req.target.startsWith("/messages") == true) {
+                    return MockResponse.Builder().code(202).build()
                 }
                 val method = bodyOf(req).optString("method")
                 return if (method == "initialize") {
-                    MockResponse().setResponseCode(404)
+                    MockResponse.Builder().code(404).build()
                 } else {
-                    MockResponse().setResponseCode(400)
+                    MockResponse.Builder().code(400).build()
                 }
             }
         }
@@ -221,7 +221,7 @@ class McpClientTest {
         assertEquals(1, c.listTools().size)
         assertEquals("legacy-pong", c.callTool("echo", JSONObject()).text)
         assertTrue(seen.any { it.method == "GET" })
-        assertTrue(seen.any { it.method == "POST" && it.path?.startsWith("/messages") == true })
+        assertTrue(seen.any { it.method == "POST" && it.target.startsWith("/messages") == true })
     }
 
     // ── 失败路径 ────────────────────────────────────────────────────────
@@ -230,10 +230,10 @@ class McpClientTest {
     fun `连接超时_可读_TIMEOUT`() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(req: RecordedRequest): MockResponse =
-                MockResponse()
+                MockResponse.Builder()
                     .setHeader("Content-Type", "application/json")
-                    .setBody("""{"jsonrpc":"2.0","id":1,"result":$initJson}""")
-                    .setBodyDelay(2, TimeUnit.SECONDS)
+                    .body("""{"jsonrpc":"2.0","id":1,"result":$initJson}""")
+                    .bodyDelay(2, TimeUnit.SECONDS).build()
         }
         val c = client(config(connectTimeoutMs = 500))
         try {
@@ -252,11 +252,11 @@ class McpClientTest {
             override fun dispatch(req: RecordedRequest): MockResponse =
                 when (bodyOf(req).optString("method")) {
                     "initialize" -> result(req, initJson)
-                    "notifications/initialized" -> MockResponse().setResponseCode(202)
-                    "tools/call" -> MockResponse()
+                    "notifications/initialized" -> MockResponse.Builder().code(202).build()
+                    "tools/call" -> MockResponse.Builder()
                         .setHeader("Content-Type", "application/json")
-                        .setSocketPolicy(SocketPolicy.NO_RESPONSE)
-                    else -> MockResponse().setResponseCode(400)
+                        .onResponseStart(SocketEffect.Stall).build()
+                    else -> MockResponse.Builder().code(400).build()
                 }
         }
         val c = client(config(callTimeoutMs = 500))
@@ -276,7 +276,7 @@ class McpClientTest {
     fun `断连_可读_CONNECT`() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(req: RecordedRequest): MockResponse =
-                MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START)
+                MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build()
         }
         val c = client(config())
         try {
@@ -299,7 +299,7 @@ class McpClientTest {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(req: RecordedRequest): MockResponse {
                 seen.add(req)
-                return MockResponse().setResponseCode(401)
+                return MockResponse.Builder().code(401).build()
             }
         }
         val c = client(config())
@@ -362,7 +362,7 @@ class McpClientTest {
     fun `非法 session 头_协议错误`() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(req: RecordedRequest): MockResponse =
-                result(req, initJson).setHeader("Mcp-Session-Id", "bad value")
+                result(req, initJson).newBuilder().setHeader("Mcp-Session-Id", "bad value").build()
         }
         val c = client(config())
         try {
@@ -380,9 +380,9 @@ class McpClientTest {
         try {
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(req: RecordedRequest): MockResponse =
-                    MockResponse()
-                        .setResponseCode(302)
-                        .setHeader("Location", other.url("/steal").toString())
+                    MockResponse.Builder()
+                        .code(302)
+                        .setHeader("Location", other.url("/steal").toString()).build()
             }
             val cfg = config(headers = mapOf("X-Client" to "SECRET"))
             // 用生产同款 client（关掉 followRedirects）；测试里裸 OkHttpClient() 会跟随。
@@ -396,7 +396,7 @@ class McpClientTest {
             }
             assertEquals("第三方一个请求都不许收到", 0, other.requestCount)
         } finally {
-            runCatching { other.shutdown() }
+            runCatching { other.close() }
         }
     }
 
@@ -406,9 +406,9 @@ class McpClientTest {
         val huge = "x".repeat(4 * 1024 * 1024 + 1024)
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(req: RecordedRequest): MockResponse =
-                MockResponse()
+                MockResponse.Builder()
                     .setHeader("Content-Type", "application/json")
-                    .setChunkedBody("""{"jsonrpc":"2.0","id":1,"result":{"junk":"$huge"}}""", 8 * 1024)
+                    .chunkedBody("""{"jsonrpc":"2.0","id":1,"result":{"junk":"$huge"}}""", 8 * 1024).build()
         }
         val c = client(config())
         try {

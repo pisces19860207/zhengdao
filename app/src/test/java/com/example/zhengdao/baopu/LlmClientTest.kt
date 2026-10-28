@@ -5,8 +5,8 @@
 // 流式响应的公开文档形态。
 package com.example.zhengdao.baopu
 
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -49,7 +49,7 @@ class LlmClientTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     private fun provider(
@@ -66,9 +66,9 @@ class LlmClientTest {
         model = "test-model", apiKey = apiKey, headers = headers,
     )
 
-    private fun sse(body: String) = MockResponse()
+    private fun sse(body: String) = MockResponse.Builder()
         .setHeader("Content-Type", "text/event-stream")
-        .setBody(body)
+        .body(body).build()
 
     /** 跑一次流式，收到终止事件（Finished/Failed）或超时即返回。 */
     private fun collect(p: Provider, messages: List<LlmMessage>): List<LlmEvent> {
@@ -108,11 +108,11 @@ class LlmClientTest {
         )
         val req = server.takeRequest()
         assertEquals("POST", req.method)
-        assertEquals("/v1/chat/completions", req.path)
-        assertEquals("Bearer k", req.getHeader("Authorization"))
-        assertEquals("text/event-stream", req.getHeader("Accept"))
-        assertEquals("identity", req.getHeader("Accept-Encoding"))
-        val body = req.body.readUtf8()
+        assertEquals("/v1/chat/completions", req.target)
+        assertEquals("Bearer k", req.headers["Authorization"])
+        assertEquals("text/event-stream", req.headers["Accept"])
+        assertEquals("identity", req.headers["Accept-Encoding"])
+        val body = req.body?.utf8().orEmpty()
         assertTrue(body.contains("\"model\":\"test-model\""))
         assertTrue(body.contains("\"stream\":true"))
         assertTrue(body.contains("\"role\":\"user\""))
@@ -166,10 +166,10 @@ class LlmClientTest {
             events,
         )
         val req = server.takeRequest()
-        assertEquals("/v1/messages", req.path)
-        assertEquals("k", req.getHeader("x-api-key"))
-        assertEquals(LlmWire.ANTHROPIC_VERSION, req.getHeader("anthropic-version"))
-        val body = req.body.readUtf8()
+        assertEquals("/v1/messages", req.target)
+        assertEquals("k", req.headers["x-api-key"])
+        assertEquals(LlmWire.ANTHROPIC_VERSION, req.headers["anthropic-version"])
+        val body = req.body?.utf8().orEmpty()
         assertTrue(body.contains("\"max_tokens\":4096"))
     }
 
@@ -183,7 +183,7 @@ class LlmClientTest {
                 LlmMessage(LlmMessage.ROLE_USER, "hi"),
             ),
         )
-        val body = server.takeRequest().body.readUtf8()
+        val body = server.takeRequest().body?.utf8().orEmpty()
         assertTrue(body.contains("\"system\":\"你是抱朴\""))
         // messages 数组里只许有 user 那条
         val messagesStart = body.indexOf("\"messages\":")
@@ -250,9 +250,9 @@ class LlmClientTest {
         // 才回流末那帧纯 usage——负例 2（去掉 stream_options）下这条必须红
         // （派工单 §5 原话：「J5 必须红、J6 必须失败（因为后端不会再回 usage）」）。
         // 只喂固定 SSE 的话，负例只红 J5 不红 J6，那条负例就名不副实。
-        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
-            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
-                if (request.body.readUtf8().contains("include_usage")) {
+        server.dispatcher = object : mockwebserver3.Dispatcher() {
+            override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse =
+                if (request.body?.utf8().orEmpty().contains("include_usage")) {
                     sse(
                         "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"好\"}}]}\n\n" +
                             "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
@@ -475,8 +475,8 @@ class LlmClientTest {
     @Test
     fun `HTTP错误转Failed且原文只进日志`() {
         // 158：5xx 会重试一次 ⇒ 第一次失败后还要有第二个响应，否则会卡在无响应上。
-        server.enqueue(MockResponse().setResponseCode(500).setBody("服务端炸了"))
-        server.enqueue(MockResponse().setResponseCode(500).setBody("服务端又炸了"))
+        server.enqueue(MockResponse.Builder().code(500).body("服务端炸了").build())
+        server.enqueue(MockResponse.Builder().code(500).body("服务端又炸了").build())
         val events = collect(provider(LlmProtocol.OPENAI_COMPAT), listOf(LlmMessage("user", "hi")))
         assertEquals(1, events.size)
         val failed = events[0] as LlmEvent.Failed
@@ -496,15 +496,15 @@ class LlmClientTest {
             listOf(LlmMessage("user", "hi")),
         )
         val req = server.takeRequest()
-        assertEquals("Bearer custom", req.getHeader("Authorization"))
-        assertEquals("1", req.getHeader("X-Trace"))
+        assertEquals("Bearer custom", req.headers["Authorization"])
+        assertEquals("1", req.headers["X-Trace"])
     }
 
     @Test
     fun `无key时不发Authorization头`() {
         server.enqueue(sse("data: [DONE]\n\n"))
         collect(provider(LlmProtocol.OPENAI_COMPAT, apiKey = ""), listOf(LlmMessage("user", "hi")))
-        assertNull(server.takeRequest().getHeader("Authorization"))
+        assertNull(server.takeRequest().headers["Authorization"])
     }
 
     // ── LlmWire 纯函数 ────────────────────────────────────────────────────

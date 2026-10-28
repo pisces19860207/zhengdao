@@ -10,9 +10,9 @@
 // 请求仍打旧端点」这种半残；MockWebServer 把最后一跳也钉住（同 LlmClientTest 的房型）。
 package com.example.zhengdao.baopu
 
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,7 +39,7 @@ class CustomProtocolTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     /** 走生产同一个 resolve 口构造自定义 Provider（Key 只经 keyFor 进内存）。 */
@@ -114,17 +114,17 @@ class CustomProtocolTest {
     @Test
     fun 自定义Anthropic_真发请求走messages不误走chat_completions() {
         server.enqueue(
-            MockResponse()
+            MockResponse.Builder()
                 .setHeader("Content-Type", "text/event-stream")
-                .setBody("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"),
+                .body("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n").build(),
         )
         val req = sendOnce(custom(ProviderPrefs.PROTOCOL_ANTHROPIC))
         assertEquals("POST", req.method)
-        assertEquals("/v1/messages", req.path)
-        assertEquals(key, req.getHeader("x-api-key"))
-        assertEquals(LlmWire.ANTHROPIC_VERSION, req.getHeader("anthropic-version"))
-        assertNull(req.getHeader("Authorization"))
-        val body = req.body.readUtf8()
+        assertEquals("/v1/messages", req.target)
+        assertEquals(key, req.headers["x-api-key"])
+        assertEquals(LlmWire.ANTHROPIC_VERSION, req.headers["anthropic-version"])
+        assertNull(req.headers["Authorization"])
+        val body = req.body?.utf8().orEmpty()
         assertTrue("Anthropic 要的是顶层 system/messages 形状", body.contains("\"messages\":"))
         assertFalse("请求体里不许出现任何 Key 原文", body.contains(key))
     }
@@ -132,17 +132,17 @@ class CustomProtocolTest {
     @Test
     fun 自定义缺省协议_真发请求仍走chat_completions() {
         server.enqueue(
-            MockResponse()
+            MockResponse.Builder()
                 .setHeader("Content-Type", "text/event-stream")
-                .setBody(
+                .body(
                     "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n" +
                         "data: [DONE]\n\n",
-                ),
+                ).build(),
         )
         val req = sendOnce(custom(null))
-        assertEquals("/v1/chat/completions", req.path)
-        assertEquals("Bearer $key", req.getHeader("Authorization"))
-        assertNull(req.getHeader("x-api-key"))
+        assertEquals("/v1/chat/completions", req.target)
+        assertEquals("Bearer $key", req.headers["Authorization"])
+        assertNull(req.headers["x-api-key"])
     }
 
     // ── 3. 候选名单与校验：协议跟着自定义通道走，但不绕过 URL 闸 ────────────
