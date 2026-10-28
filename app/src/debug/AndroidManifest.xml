@@ -3,6 +3,9 @@
   第二百四十九批（2026-10-28）：**只在开发包里**多开一扇门——桌面上的「开工卡预览」。
   正式包（release）不合并这份清单，桌面不会出现第二个图标；
   `TaskGrantSourceGateTest.预览入口只在开发包` 钉住 main 清单里不许出现这个 Activity。
+
+  第二百六十三批（2026-10-28）并一行：离屏 WebView 渲染实验的唯一入口
+  OffscreenProbeActivity（exported=false，只能显式 am start；release 不合并本清单）。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
@@ -17,5 +20,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="com.example.zhengdao.browser.offscreen.OffscreenProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>
