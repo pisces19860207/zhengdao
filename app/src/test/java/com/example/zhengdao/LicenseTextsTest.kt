@@ -73,8 +73,8 @@ class LicenseTextsTest {
     fun `README 记的每一份正文都与仓库文件逐字节一致`() {
         val records = parseRecords()
         assertEquals(
-            "README 的两张表应记 10 份正文（licenses/ 九份 + 字体 OFL.txt）",
-            10,
+            "README 的两张表应记 9 份正文（licenses/ 九份；字体 OFL.txt 已随终端搬去 zhengdao-term）",
+            9,
             records.size,
         )
         var stale = 0
