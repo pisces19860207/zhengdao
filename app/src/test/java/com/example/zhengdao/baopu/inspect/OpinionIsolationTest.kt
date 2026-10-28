@@ -9,6 +9,22 @@ import org.junit.Test
 class OpinionIsolationTest {
     private val sourceRoot = File("src/main/java/com/example/zhengdao/baopu/inspect")
     private val newFiles = setOf("Opinion.kt", "OpinionAdapters.kt", "OpinionMerger.kt", "OpinionVotes.kt", "OpinionBudget.kt")
+
+    /**
+     * 契约的**合法消费方**（2026-10-29 蓝总管加，274 批）。
+     *
+     * 契约钉原口径是"270 之前的旧文件一个都不许引"，但**接线必须有消费方**——
+     * 所以把它拆成两张名单：`newFiles`＝契约本体；本表＝**经批准的消费方**（相对 `src/main/java/` 的路径）。
+     *
+     * 加一项的门槛（写在这是给后来的人看的）：
+     * 1) 该文件**确实构造/消费** `Opinion`（不是顺手 import）；
+     * 2) 它属于某一批**明确要求接线**的派工单（本表每项都带批号）；
+     * 3) 不许为了让它变绿而把"未接线的旧文件"塞进来——那是把契约做没。
+     */
+    private val approvedConsumers = mapOf(
+        // 274 批：把分类器的判定包成 Opinion 送调解器做预算判定（第一条真实链路）。
+        "com/example/zhengdao/baopu/agent/OpinionWiring.kt" to "274",
+    )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",
         "OpinionFeedback", "OpinionSignal", "EmergencyExemption", "LawRef", "ActionCode",
@@ -55,7 +71,12 @@ class OpinionIsolationTest {
             root.walkTopDown().filter { it.isFile && it.extension in setOf("kt", "java") }.toList()
         }
         assertTrue("No production source files scanned", files.size > additions.size)
-        val references = files.filter { it.canonicalFile !in additions && referencesContract(it.readText()) }
+        // 消费方按"相对 src/main/java 的路径"放行（文件不存在时既不放行也不报错——它还没被创建）。
+        val mainRoot = File("src/main/java").canonicalFile
+        val allowed = approvedConsumers.keys.map { File(mainRoot, it).canonicalFile }.toSet()
+        val references = files.filter {
+            it.canonicalFile !in additions && it.canonicalFile !in allowed && referencesContract(it.readText())
+        }
         assertEquals("Existing sources must not consume the contract", emptyList<String>(), references.map { it.path })
     }
 
