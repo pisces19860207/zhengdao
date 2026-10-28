@@ -13,8 +13,8 @@ import com.example.zhengdao.core.TimeFormats
 import java.io.File
 import java.net.InetAddress
 import java.util.Base64
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -55,7 +55,7 @@ class GenerateImageToolTest {
     @After
     fun tearDown() {
         GenerateImageTool.env = oldEnv
-        server.shutdown()
+        server.close()
     }
 
     private fun provider(apiKey: String = "k") = Provider(
@@ -82,10 +82,10 @@ class GenerateImageToolTest {
         return """{"models":[$rows]}"""
     }
 
-    private fun modelsOk(vararg ids: String): MockResponse = MockResponse()
-        .setResponseCode(200)
+    private fun modelsOk(vararg ids: String): MockResponse = MockResponse.Builder()
+        .code(200)
         .setHeader("Content-Type", "application/json")
-        .setBody(modelsBody(*ids))
+        .body(modelsBody(*ids)).build()
 
     private fun imageBody(mime: String, bytes: ByteArray, snake: Boolean = false): String {
         val b64 = Base64.getEncoder().encodeToString(bytes)
@@ -97,10 +97,10 @@ class GenerateImageToolTest {
         return "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"好了\"},$part]},\"finishReason\":\"STOP\"}]}"
     }
 
-    private fun ok(bytes: ByteArray = png, snake: Boolean = false) = MockResponse()
-        .setResponseCode(200)
+    private fun ok(bytes: ByteArray = png, snake: Boolean = false) = MockResponse.Builder()
+        .code(200)
         .setHeader("Content-Type", "application/json")
-        .setBody(imageBody("image/png", bytes, snake))
+        .body(imageBody("image/png", bytes, snake)).build()
 
     // ── ① 纯函数 ──────────────────────────────────────────────────────────
 
@@ -236,15 +236,15 @@ class GenerateImageToolTest {
 
         val listReq = server.takeRequest()
         assertEquals("先拉清单", "GET", listReq.method)
-        assertEquals("/v1beta/models?pageSize=1000", listReq.path)
-        assertEquals("k", listReq.getHeader("x-goog-api-key"))
-        assertFalse("Key 不许进 URL", listReq.path.orEmpty().contains("key"))
+        assertEquals("/v1beta/models?pageSize=1000", listReq.target)
+        assertEquals("k", listReq.headers["x-goog-api-key"])
+        assertFalse("Key 不许进 URL", listReq.target.orEmpty().contains("key"))
 
         val genReq = server.takeRequest()
         assertEquals("POST", genReq.method)
-        assertEquals("/v1beta/models/${GenerateImage.PREFERRED_PRO}:generateContent", genReq.path)
-        assertEquals("k", genReq.getHeader("x-goog-api-key"))
-        val body = JSONObject(genReq.body.readUtf8())
+        assertEquals("/v1beta/models/${GenerateImage.PREFERRED_PRO}:generateContent", genReq.target)
+        assertEquals("k", genReq.headers["x-goog-api-key"])
+        val body = JSONObject(genReq.body?.utf8().orEmpty())
         val cfg = body.getJSONObject("generationConfig")
         assertEquals(
             listOf("TEXT", "IMAGE"),
@@ -277,7 +277,7 @@ class GenerateImageToolTest {
         val out = GenerateImageTool.run(root, "把这张图改成水彩", "4:3", 1, "附件/cat.png")
         assertTrue(out is ToolOutcome.Ok)
         server.takeRequest()
-        val parts = JSONObject(server.takeRequest().body.readUtf8())
+        val parts = JSONObject(server.takeRequest().body?.utf8().orEmpty())
             .getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
         assertEquals(2, parts.length())
         val inline = parts.getJSONObject(1).getJSONObject("inline_data")
@@ -308,7 +308,7 @@ class GenerateImageToolTest {
         server.takeRequest()
         assertEquals(
             "/v1beta/models/${GenerateImage.PREFERRED_FLASH}:generateContent",
-            server.takeRequest().path,
+            server.takeRequest().target,
         )
     }
 
@@ -329,7 +329,7 @@ class GenerateImageToolTest {
     fun `E2_400_可读错误_不带响应体原文`() {
         env()
         server.enqueue(modelsOk(GenerateImage.PREFERRED_PRO))
-        server.enqueue(MockResponse().setResponseCode(400).setBody("SECRET-BODY-原文"))
+        server.enqueue(MockResponse.Builder().code(400).body("SECRET-BODY-原文").build())
         val text = (GenerateImageTool.run(root, "画一只橘猫", null, null, null) as ToolOutcome.Failed).error
         assertTrue("要报 400：$text", text.contains("400"))
         assertFalse("响应体原文不许进 UI：$text", text.contains("SECRET-BODY"))
@@ -341,8 +341,8 @@ class GenerateImageToolTest {
         env()
         server.enqueue(modelsOk(GenerateImage.PREFERRED_PRO))
         server.enqueue(
-            MockResponse().setResponseCode(200)
-                .setBody("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"你好\"}]},\"finishReason\":\"STOP\"}]}"),
+            MockResponse.Builder().code(200)
+                .body("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"你好\"}]},\"finishReason\":\"STOP\"}]}").build(),
         )
         val text = (GenerateImageTool.run(root, "画一只橘猫", null, null, null) as ToolOutcome.Failed).error
         assertTrue("要说明只回了文字：$text", text.contains("只回了文字"))
@@ -372,14 +372,14 @@ class GenerateImageToolTest {
         assertTrue("要点明没有可用生图模型：$text", text.contains("没有可用的生图模型"))
         assertTrue("要说明不回退：$text", text.contains("不会退回旧模型"))
         assertEquals("只拉了清单就停：1 次请求", 1, server.requestCount)
-        assertEquals("唯一一次是清单 GET", "/v1beta/models?pageSize=1000", server.takeRequest().path)
+        assertEquals("唯一一次是清单 GET", "/v1beta/models?pageSize=1000", server.takeRequest().target)
         assertFalse("没挑出模型不许建产物目录", File(root, "产物").exists())
     }
 
     @Test
     fun `E7_清单403_可读Key错误_不发generate请求`() {
         env()
-        server.enqueue(MockResponse().setResponseCode(403).setBody("SECRET-BODY-原文"))
+        server.enqueue(MockResponse.Builder().code(403).body("SECRET-BODY-原文").build())
         val text = (GenerateImageTool.run(root, "画一只橘猫", null, null, null) as ToolOutcome.Failed).error
         assertTrue("要报 403：$text", text.contains("403"))
         assertTrue("要指向 Key 设置：$text", text.contains("Key"))

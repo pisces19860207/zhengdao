@@ -14,10 +14,10 @@
 package com.example.zhengdao.baopu.mcp
 
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.Dispatcher
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -45,7 +45,7 @@ class McpTransportCaptureTest {
 
     @After
     fun tearDown() {
-        runCatching { server.shutdown() }
+        runCatching { server.close() }
     }
 
     private fun config() = McpServerConfig(
@@ -57,7 +57,7 @@ class McpTransportCaptureTest {
     )
 
     private fun bodyOf(req: RecordedRequest): JSONObject {
-        val text = req.body.clone().readUtf8()
+        val text = req.body?.utf8().orEmpty()
         return if (text.isBlank()) JSONObject() else JSONObject(text)
     }
 
@@ -72,7 +72,7 @@ class McpTransportCaptureTest {
         seq++
         val sb = StringBuilder()
         sb.append("── 请求 #$seq ").append("─".repeat(52)).append('\n')
-        sb.append(req.method).append(' ').append(req.path).append(" HTTP/1.1\n")
+        sb.append(req.method).append(' ').append(req.target).append(" HTTP/1.1\n")
         for (name in req.headers.names()) {
             val value = req.headers[name].orEmpty()
             val masked = name.lowercase().let {
@@ -81,8 +81,8 @@ class McpTransportCaptureTest {
             }
             sb.append(name).append(": ").append(if (masked) "***" else value).append('\n')
         }
-        if (req.getHeader("Mcp-Session-Id") == null) sb.append("（无 Mcp-Session-Id 头）\n")
-        val body = req.body.clone().readUtf8()
+        if (req.headers["Mcp-Session-Id"] == null) sb.append("（无 Mcp-Session-Id 头）\n")
+        val body = req.body?.utf8().orEmpty()
         sb.append("正文：").append(if (body.isBlank()) "（空）" else body).append("\n\n")
         dump.append(sb)
         return sb.toString()
@@ -102,10 +102,10 @@ class McpTransportCaptureTest {
     private fun send(code: Int, contentType: String?, body: String = ""): MockResponse {
         val headers = if (contentType != null) listOf("Content-Type" to contentType) else emptyList()
         recordResponse(code, headers, body)
-        val r = MockResponse().setResponseCode(code)
+        val r = MockResponse.Builder().code(code)
         if (contentType != null) r.setHeader("Content-Type", contentType)
-        if (body.isNotEmpty()) r.setBody(body)
-        return r
+        if (body.isNotEmpty()) r.body(body)
+        return r.build()
     }
 
     private fun resultBody(req: RecordedRequest, resultJson: String): String =
@@ -146,7 +146,7 @@ class McpTransportCaptureTest {
                     return send(405, null)
                 }
                 val body = bodyOf(req)
-                val headerVersion = req.getHeader("MCP-Protocol-Version")
+                val headerVersion = req.headers["MCP-Protocol-Version"]
                 val metaVersion = body.optJSONObject("params")
                     ?.optJSONObject("_meta")
                     ?.optString("protocolVersion")

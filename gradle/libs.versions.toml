@@ -30,10 +30,12 @@ markdownRenderer = "0.38.1"
 
 # 134 批 lint(UseTomlInstead) 清零：原来硬写在 app/build.gradle.kts 里的 9 条依赖搬进
 # 版本目录，**版本值与原来逐字相同**（不改任何依赖版本）。
-okhttp = "4.12.0"
+# 第二百四十六批 OkHttp 5 升级：okhttp 与 mockwebserver 必须同版本（mockwebserver3:5.5.1
+# 的 pom 直接依赖 okhttp-jvm:5.5.1，只升一半就是版本劈叉）。
+okhttp = "5.5.1"
 commonsCompress = "1.26.2"
 commonsLang3 = "3.18.0"
-mockwebserver = "4.12.0"
+mockwebserver = "5.5.1"
 xz = "1.9"
 navigationCompose = "2.8.5"
 json = "20240303"
@@ -87,7 +89,9 @@ detekt-cli = { group = "io.gitlab.arturbosch.detekt", name = "detekt-cli", versi
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
+# 246 批：5.x 起测试库换 artifact 名（mockwebserver → mockwebserver3），包名也从
+# okhttp3.mockwebserver 变 mockwebserver3；alias 保持 mockwebserver，build.gradle.kts 不用动。
+mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "mockwebserver" }
 xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 json = { group = "org.json", name = "json", version.ref = "json" }

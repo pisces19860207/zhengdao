@@ -27,8 +27,8 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -49,7 +49,7 @@ class WireMalformedReplayTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     private fun provider(protocol: LlmProtocol) = Provider(
@@ -61,9 +61,9 @@ class WireMalformedReplayTest {
         apiKey = "k",
     )
 
-    private fun sse(body: String) = MockResponse()
+    private fun sse(body: String) = MockResponse.Builder()
         .setHeader("Content-Type", "text/event-stream")
-        .setBody(body)
+        .body(body).build()
 
     /** 跑一次流式，收到终止事件（Finished/Failed）或 5 秒超时即返回。 */
     private fun collect(p: Provider): List<LlmEvent> {
@@ -317,7 +317,7 @@ class WireMalformedReplayTest {
     fun `畸形_400原始体_OpenAI_原文进Failed且不重试`() {
         val serverWords =
             "{\"error\":{\"message\":\"Invalid schema for tool 'read_file': string is too short\",\"type\":\"invalid_request_error\",\"code\":\"invalid_function_parameters\"}}"
-        server.enqueue(MockResponse().setResponseCode(400).setBody(serverWords))
+        server.enqueue(MockResponse.Builder().code(400).body(serverWords).build())
         val failed = failedOf(collect(provider(LlmProtocol.OPENAI_COMPAT)))
         assertEquals("HTTP 400", failed.error.message)
         assertEquals("服务端原话要逐字进 raw：${failed.raw}", serverWords, failed.raw)
@@ -328,7 +328,7 @@ class WireMalformedReplayTest {
     fun `畸形_400原始体_Anthropic_原文进Failed且不重试`() {
         val serverWords =
             "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"tools.0.input_schema: required field 'type' is missing\"}}"
-        server.enqueue(MockResponse().setResponseCode(400).setBody(serverWords))
+        server.enqueue(MockResponse.Builder().code(400).body(serverWords).build())
         val failed = failedOf(collect(provider(LlmProtocol.ANTHROPIC)))
         assertEquals("HTTP 400", failed.error.message)
         assertEquals(serverWords, failed.raw)
@@ -339,7 +339,7 @@ class WireMalformedReplayTest {
     fun `畸形_400原始体_Gemini_原文进Failed且不重试`() {
         val serverWords =
             "{\"error\":{\"code\":400,\"message\":\"Invalid value at 'tools[0].functionDeclarations[0].parametersJsonSchema'\",\"status\":\"INVALID_ARGUMENT\"}}"
-        server.enqueue(MockResponse().setResponseCode(400).setBody(serverWords))
+        server.enqueue(MockResponse.Builder().code(400).body(serverWords).build())
         val failed = failedOf(collect(provider(LlmProtocol.GEMINI_NATIVE)))
         assertEquals("HTTP 400", failed.error.message)
         assertEquals(serverWords, failed.raw)
@@ -350,8 +350,8 @@ class WireMalformedReplayTest {
     fun `对照_500才重试一次_再失败按原口径转Failed`() {
         // 与 400 对照：5xx 重试一次（158 口径），第二次仍 5xx ⇒ 按普通 Failed 收
         // （allowRetry=false 的那次不再抛 Retryable5xx，直接 sink Failed＋原文）。
-        server.enqueue(MockResponse().setResponseCode(503).setBody("{\"error\":\"busy\"}"))
-        server.enqueue(MockResponse().setResponseCode(503).setBody("{\"error\":\"still busy\"}"))
+        server.enqueue(MockResponse.Builder().code(503).body("{\"error\":\"busy\"}").build())
+        server.enqueue(MockResponse.Builder().code(503).body("{\"error\":\"still busy\"}").build())
         val failed = failedOf(collect(provider(LlmProtocol.OPENAI_COMPAT)))
         assertEquals("HTTP 503", failed.error.message)
         assertEquals("第二次的服务端原话要进 raw", "{\"error\":\"still busy\"}", failed.raw)

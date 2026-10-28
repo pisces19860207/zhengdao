@@ -16,8 +16,8 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import okhttp3.Dns
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,7 +39,7 @@ class McpConnectProbeTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     // MockWebServer.url() 的主机名取自本机规范名（Windows 上是机器名），
@@ -50,27 +50,27 @@ class McpConnectProbeTest {
 
     @Test
     fun `正例_200_连通_且这次探针不带Authorization`() {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"jsonrpc":"2.0","id":1}"""))
+        server.enqueue(MockResponse.Builder().code(200).body("""{"jsonrpc":"2.0","id":1}""").build())
         val r = McpConnectProbe.probe(mcpUrl())
         assertEquals(200, r.statusCode)
         assertTrue(r.reachable)
         assertNull(r.failure)
         val req = server.takeRequest()
         assertEquals("POST", req.method)
-        assertNull("探针必须是未授权请求：不许带 Authorization", req.getHeader("Authorization"))
-        assertNull("也不许带 Cookie", req.getHeader("Cookie"))
-        assertEquals("initialize", org.json.JSONObject(req.body.readUtf8()).optString("method"))
+        assertNull("探针必须是未授权请求：不许带 Authorization", req.headers["Authorization"])
+        assertNull("也不许带 Cookie", req.headers["Cookie"])
+        assertEquals("initialize", org.json.JSONObject(req.body?.utf8().orEmpty()).optString("method"))
     }
 
     @Test
     fun `正例_401_且discovery里有授权服务器`() {
-        server.enqueue(MockResponse().setResponseCode(401))
-        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse.Builder().code(401).build())
+        server.enqueue(MockResponse.Builder().code(404).build())
         server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
+            MockResponse.Builder().code(200).body(
                 """{"resource":"http://localhost:${server.port}/mcp",
                     "authorization_servers":["http://localhost:${server.port}"]}""",
-            ),
+            ).build(),
         )
         val r = McpConnectProbe.probe(mcpUrl())
         assertEquals(401, r.statusCode)
@@ -80,9 +80,9 @@ class McpConnectProbeTest {
 
     @Test
     fun `正例_401_但discovery没有元数据`() {
-        server.enqueue(MockResponse().setResponseCode(401))
-        server.enqueue(MockResponse().setResponseCode(404))
-        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse.Builder().code(401).build())
+        server.enqueue(MockResponse.Builder().code(404).build())
+        server.enqueue(MockResponse.Builder().code(404).build())
         val r = McpConnectProbe.probe(mcpUrl())
         assertEquals(401, r.statusCode)
         assertFalse(r.discoveryFound)
@@ -90,7 +90,7 @@ class McpConnectProbeTest {
 
     @Test
     fun `正例_404_原样报状态码_不冒充连通失败原因`() {
-        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse.Builder().code(404).build())
         val r = McpConnectProbe.probe(mcpUrl())
         assertEquals(404, r.statusCode)
         assertNull("有状态码就不是网络层失败", r.failure)
@@ -120,7 +120,7 @@ class McpConnectProbeTest {
 
     @Test
     fun `正例_超时给超时原因`() {
-        server.enqueue(MockResponse().setResponseCode(200).setHeadersDelay(3, TimeUnit.SECONDS))
+        server.enqueue(MockResponse.Builder().code(200).headersDelay(3, TimeUnit.SECONDS).build())
         val r = McpConnectProbe.probe(mcpUrl(), timeoutMs = 400)
         assertEquals(McpProbeFailure.TIMEOUT, r.failure)
     }
@@ -141,9 +141,9 @@ class McpConnectProbeTest {
 
     @Test
     fun `正例_探针前后清单一个字都没变`() {
-        server.enqueue(MockResponse().setResponseCode(401))
-        server.enqueue(MockResponse().setResponseCode(404))
-        server.enqueue(MockResponse().setResponseCode(404))
+        server.enqueue(MockResponse.Builder().code(401).build())
+        server.enqueue(MockResponse.Builder().code(404).build())
+        server.enqueue(MockResponse.Builder().code(404).build())
         val source = McpToolSource(ToolRegistry())
         assertTrue(
             source.addServer(McpServerConfig(id = "s1", name = "探针样本", url = mcpUrl())),
