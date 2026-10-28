@@ -4,5 +4,5 @@
   "warnings": 0,
   "infos": 0,
   "unbudgeted": 13,
-  "_comment": "第 134 批清零：234→0（errors 保持 0；11 条 NewerVersionAvailable 永久排除；另有 OldTargetApi / ChromeOsAbiSupport 2 条按定案不修、计入 unbudgeted：targetSdk 36 为真机验证基线（Android 16）定案，arm64-only 为 2026-10-06 用户定案，不为 lint 改配置）。此前 2026-10-21 第 133 批：483→239；2026-10-23 锁 234。"
+  "_comment": "第 134 批清零：234→0（errors 保持 0；11 条 NewerVersionAvailable 永久排除；另有 OldTargetApi / ChromeOsAbiSupport 2 条按定案不修、计入 unbudgeted：targetSdk 36 为真机验证基线（Android 16）定案，arm64-only 为 2026-10-06 用户定案，不为 lint 改配置）。2026-10-28 复核：用户再次确认**两条定案都不动**（36 保持、arm64-only 保持）⇒ 这 2 条继续按 unbudgeted 排除；同日实测预算项 total=0/errors=0/warnings=0/infos=0；其余不计预算的是 3 条 GradleDependency（okhttp 4.12.0→5.5.1 由 246 批升级；commons-compress 1.26.2→1.27.1、xz 1.9→1.10 待 246 释放 gradle/libs.versions.toml 租约后升）。此前 2026-10-21 第 133 批：483→239；2026-10-23 锁 234。"
 }
