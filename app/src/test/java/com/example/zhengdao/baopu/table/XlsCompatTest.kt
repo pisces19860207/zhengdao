@@ -8,7 +8,13 @@
 //   ③ 日期仍是序列号：`日期格成 yyyy-MM-dd HH:mm 而不是 46319 点几`＋真表那两条；
 //   ④ 失败静默：`截断的 xls 给的是能动手的一句话`／`超过 50MB 直接拒`；
 //   ⑤ 改了既有通道：`xlsx csv tsv 三条路一个字没动`（登记与行列数照旧）；
-//   ⑥ 大文件 OOM：`超过 20 万行先拒再读`（不读就不可能撑爆）。
+//   ⑥ 大文件 OOM：`超过 50MB 直接拒`（先看大小再打开）＋ 流式写；
+//      以及「行数超限」那条 —— **它曾经是 20 万行的假判据，现在是 65536 的格式上限守卫**。
+//
+// 另外三条钉**缓存档位 R1**（2026-10-28 裁定）：
+//   a) `缓存目录不许被当成表格登记`（根故意指到 `抱朴记忆/表格/` 这种最容易出事的指法）；
+//   b) `缓存只是缓存 整表不进模型`（答案里只有结果与出处，没有原始行）；
+//   c) `源被删 扫描时顺手清缓存`。
 //
 // 真表夹具：`..\_zd-private\样本\f9\` 里那两份（物流.xls / 到货库存.xls）。
 // 目录不在就 `Assume` 跳过 —— **宁可少跑，也不造假数据顶替**。
@@ -235,6 +241,80 @@ class XlsCompatTest {
         assertEquals(3, XlsCompat.convertCount)
     }
 
+    // ── 缓存档位 R1 的三条硬约束（2026-10-28 裁定） ────────────────────────
+
+    @Test
+    fun `源被删 扫描时顺手清缓存`() {
+        val src = writeXls(ws, "会删.xls", xlsSheet("sheet").apply { text(0, 0, "A") })
+        val reg = registry()
+        reg.refresh()
+        val csv = XlsCompat.cacheFile(cacheDir(), src)
+        val meta = File(csv.parentFile, csv.name + ".meta")
+        assertTrue("先得有缓存：${csv.absolutePath}", csv.isFile)
+        assertTrue(meta.isFile)
+
+        // 用户把源表删了（换工作区、清导出目录都会这样）⇒ 下一次扫描顺手清掉，不另起定时任务
+        assertTrue(src.delete())
+        reg.refresh()
+        assertFalse("源没了，缓存不该还在", csv.isFile)
+        assertFalse("元信息要跟着走", meta.isFile)
+        assertTrue("登记簿里也不该再有这张表", reg.entries().none { it.rel == "会删.xls" })
+    }
+
+    @Test
+    fun `源变了 旧缓存当场清掉 用户自己放的文件不碰`() {
+        val fresh = writeXls(ws, "没动.xls", xlsSheet("sheet").apply { text(0, 0, "A") })
+        val freshDone = XlsCompat.convert(fresh, cacheDir()).getOrNull()!!
+        val stale = writeXls(ws, "动了.xls", xlsSheet("sheet").apply { text(0, 0, "A") })
+        val staleDone = XlsCompat.convert(stale, cacheDir()).getOrNull()!!
+        // 用户自己往 缓存/ 里放了东西：绝不能被我们当成垃圾删掉
+        val own = File(cacheDir(), "用户自己放的.csv").apply { writeText("a,b\r\n") }
+
+        stale.setLastModified(System.currentTimeMillis() + 60_000) // 只动 mtime，内容一个字没动
+        val gone = XlsCompat.sweep(cacheDir(), listOf(fresh, stale))
+        assertTrue("源变了 ⇒ 旧缓存要清（清了 $gone 个）", gone >= 1)
+        assertFalse("过期的 CSV 不许留着", staleDone.csv.isFile)
+        assertFalse("过期的 .meta 也不许留着", File(staleDone.csv.parentFile, staleDone.csv.name + ".meta").isFile)
+        assertTrue("源没变的缓存必须留着（不然每次扫描都白转一遍）", freshDone.csv.isFile)
+        assertTrue("认不出的名字一律不碰", own.isFile)
+    }
+
+    @Test
+    fun `缓存目录不许被当成表格登记`() {
+        val src = writeXls(ws, "物流.xls", xlsSheet("sheet").apply { text(0, 0, "单号") })
+        XlsCompat.convert(src, cacheDir()).getOrNull()!!
+        val tablesDir = File(File(ws, "抱朴记忆"), "表格")
+        assertTrue(
+            "前提：缓存就在这个目录下面（${cacheDir().absolutePath}）",
+            cacheDir().absolutePath.startsWith(tablesDir.absolutePath),
+        )
+        // 故意把扫描根指到 `抱朴记忆/表格/`：缓存是它的一级子目录，最容易把 CSV 扫成第二张表。
+        // 光靠「抱朴记忆 恰好在 SKIP_DIRS 里」不算规格——那只是运气，换个根就漏。
+        val reg = TableRegistry(TableRegistry.homeUnder(ws), listOf(TableRoot(tablesDir)))
+        val report = reg.refresh()
+        assertEquals("缓存 CSV 不许被扫成表", 0, report.scanned)
+        assertTrue("登记簿必须是空的，实际：${reg.entries().map { it.rel }}", reg.entries().isEmpty())
+    }
+
+    @Test
+    fun `缓存只是缓存 整表一个字节都不进上下文`() {
+        val sheet = xlsSheet("sheet")
+        sheet.text(0, 0, "姓名"); sheet.text(1, 0, "班级")
+        listOf("张三", "李四", "王五").forEachIndexed { i, n ->
+            sheet.text(0, i + 1, n); sheet.text(1, i + 1, "三班")
+        }
+        val src = writeXls(ws, "名单.xls", sheet)
+        val reg = registry()
+        val a = TableQuery.ask(reg, TableAsk(op = TableOp.COUNT, table = "名单.xls", distinctBy = "姓名"))
+        val text = a.text()
+        assertTrue("结果本身要在（3 个人）：$text", text.contains("3"))
+        assertTrue("要交代它是怎么进来的：$text", text.contains("已把「名单.xls」自动转成 CSV"))
+        // R1 约束 b：进上下文的只有查询结果，缓存 CSV 的正文一个字都不许跟着走
+        val whole = XlsCompat.cacheFile(cacheDir(), src).readText(Charsets.UTF_8).trim()
+        assertFalse("整表不许进上下文（这是数据外发那类事故）：$text", text.contains(whole))
+        assertFalse("连表头那一行都不该整段出现：$text", text.contains("姓名,班级"))
+    }
+
     // ── 失败：不许静默 ──────────────────────────────────────────────────────
 
     @Test
@@ -274,29 +354,39 @@ class XlsCompatTest {
     }
 
     @Test
-    fun `行数超限先拒再读 不写半个文件`() {
-        // ⚠️ 造不出 20 万行的 `.xls`：**BIFF 一张表最多 65536 行**（jxl 的
-        // `RowsExceededException` 当场证明），所以 `.xls` 这一侧那条 20 万行上限
-        // 是**兜底闸门**——派工单要求保留，就保留；判据本身用注入的小上限钉住。
-        // 生产调用 `convert(src, cacheDir)` 一个字没变，MAX_ROWS 仍是 20 万。
+    fun `行数超限报的是格式上限 让人另存 xlsx 而不是拆成几份`() {
+        // ⚠️ 造不出 65537 行的 `.xls`：**BIFF 一张表最多 65536 行**（jxl 的
+        // `RowsExceededException` 当场证明）。所以这条判据只能靠注入的小上限钉住。
+        // 关键不是「拦得住」（真文件根本到不了），而是**拦下来时说的是什么话**：
+        // 拆成几份 `.xls` 是白费力气，唯一有用的动作是「另存为 .xlsx」。
         val sheet = xlsSheet("sheet")
         repeat(5) { r -> sheet.text(0, r, "第 $r 行") }
         val src = writeXls(ws, "太多行.xls", sheet)
 
         // 先试注入的小上限（此时还没有缓存，走的才是「打开 → 查行数 → 拒」那条路）；
         // 反过来的顺序会命中缓存直接返回，测不到判据。
-        val out = XlsCompat.convert(src, cacheDir(), maxRows = 3)
+        val out = XlsCompat.convert(src, cacheDir(), rowLimit = 3)
         assertTrue("超过注入的上限 ⇒ 必须失败", out.isFailure)
         val e = out.exceptionOrNull() as XlsFailure
         assertTrue("要说明行数与上限：${e.action}", e.action.contains("有 5 行"))
-        assertTrue("要说明上限：${e.action}", e.action.contains("超过 3 行上限"))
-        assertTrue("要告诉用户下一步：${e.action}", e.action.contains("拆"))
+        assertTrue("要说明这是格式上限：${e.action}", e.action.contains("格式上限"))
+        assertTrue("要给出真正有用的动作（另存 xlsx）：${e.action}", e.action.contains(".xlsx"))
+        assertFalse("拆成几份 .xls 是白费力气，不许这么建议：${e.action}", e.action.contains("拆成几份再放进"))
         // 拒了就不许真转（先查行数再写盘：写了再拒 = 下游可能读到一个半截的表）
         assertEquals("超限就不该真转", 0, XlsCompat.convertCount)
         // 上限内照常转（这一句钉住「注入的上限没把正常路径也关掉」）
         val ok = XlsCompat.convert(src, cacheDir())
         assertTrue("5 行在上限内 ⇒ 该成功：${ok.exceptionOrNull()?.message}", ok.isSuccess)
         assertEquals(5, ok.getOrNull()!!.rows)
+    }
+
+    @Test
+    fun `20 万行那条假判据必须已经不在了`() {
+        // 删掉它是因为 BIFF8 装不下 200k 行 ⇒ 永远触发不了 ⇒ 假判据比没有判据更坏。
+        // 用反射钉住「这个常量真的没了」，免得日后有人顺手加回来。
+        val ghost = runCatching { XlsCompat::class.java.getDeclaredField("MAX_ROWS") }
+        assertTrue("MAX_ROWS（20 万行）这条假判据必须已删除，实际还在：${ghost.getOrNull()}", ghost.isFailure)
+        assertEquals("行数闸门只有一个真身份：BIFF 自己的格式上限", 65_536, XlsCompat.BIFF_MAX_ROWS)
     }
 
     // ── 登记簿接线 ──────────────────────────────────────────────────────────

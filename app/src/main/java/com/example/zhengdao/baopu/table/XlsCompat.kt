@@ -18,9 +18,31 @@
 //      `((DateCell) cell).getDate()` 按 **UTC** 格式化      = `2026-10-24 09:36` ✔
 //    ⇒ 必须按 **UTC** 格式化，才是 Excel 里那个墙上时间。按本地时区格式化比漏出 `46319.4`
 //    更糟：它看起来是个正常日期，只是悄悄偏了 8 小时，没人会发现。
-// 3. **上限**：单文件 ≤ 50MB、≤ 20 万行、转换后 CSV ≤ 50MB；超了**拒绝并给一句能动手的话**，
-//    不许 OOM、不许卡主线程；
+// 3. **上限**：单文件 ≤ 50MB、第一张表 ≤ 65536 行（**BIFF 自己的格式上限**，不是我们另设的阀门）、
+//    转换后 CSV ≤ 50MB；超了**拒绝并给一句能动手的话**，不许 OOM、不许卡主线程。
+//    ⚠️ 这里曾经写过「20 万行上限」——那是**永远碰不到的假判据**：BIFF8 一张表最多 65536 行，
+//    jxl 连写都写不出来（`RowsExceededException` 当场证明）。假判据比没有判据更坏：它看着很严格，
+//    真出事时什么也拦不住，还会让人以为「20 万行以下都安全」。现在这条的真身份是**格式上限守卫**，
+//    真话是「这文件的行数超过了 .xls 能装下的行数 ⇒ 它不是一张正常的 .xls，另存为 .xlsx 再导」。
 // 4. **缓存**：源 `.xls` 的 mtime + size 一变就重转；没变就直接复用上一份 CSV。
+//
+// ## 缓存档位：**R1**（2026-10-28 蓝总管裁定，三条硬约束）
+//
+// R1 ＝ 可逆、只写用户自己的工作区、无外发。落点是固定的 `<工作区>/抱朴记忆/表格/缓存/`。
+// 三条约束**是规格，不是注释**，改动它们等于改档位，要重新裁定：
+//
+// a) **路径固定，且不许进资料库/知识库索引**。资料库那边的东西是会被检索、被引用的；
+//    缓存是派生物，进了索引就变成了「一份谁都能搜到的原始数据副本」。
+//    本文件只认 [XlsCompat.DIR_CACHE] 这一个目录名，不提供任何改路径的入口；
+//    `TableRegistry.walk()` 另有一道按路径身份的硬跳过（见那里的注释），不靠「恰好」不被扫到。
+// b) **整表绝不进模型**：缓存 CSV 一个字都不发。进上下文的只有**查询结果**（几行几列、
+//    聚合值、出处行号），这条路一直是 [TableQuery] 的既有口径，本批没有为 `.xls` 开任何例外。
+// c) **生命周期**：源 `.xls` 被删、或 mtime/size 变了 ⇒ **扫描时顺手清理**旧缓存（[XlsCompat.sweep]，
+//    惰性，不另起定时任务、不注册任何后台工作）。缓存是派生物：删掉不丢用户任何东西，下次问就重转。
+//
+// ⚠️ 另记一条（**本批不实现**，留给蓝总管定）：这是用户自己的物流数据（含姓名手机号），
+//    缓存目录**不进备份、不进云同步**。当前代码里没有任何备份/同步逻辑会碰它，
+//    但如果哪天加了「整个工作区打包上传」，这里就是那条必须先想清楚的边界。
 //
 // ## 负例在这里怎么堵
 //
@@ -29,9 +51,11 @@
 // - 「转换后列错位」：每一行都按 **`sheet.columns` 这个统一宽度**补齐。jxl 的 `getRow()` 只
 //   给到该行最后一个非空格，谁按行长度写谁就把中间空列挤掉了 —— 那才是错位；
 // - 「日期仍是序列号」：见上面第 2 条；
-// - 「失败静默」：四种失败各自一句能动手的话，见 [XlsFailure]；
+// - 「失败静默」：**五种**失败各自一句能动手的话，见 [XlsFailure]；
 // - 「大文件 OOM」：转换是**流式写**（一行一行进 `BufferedWriter`，不拼一个大 String），
 //   且**先看大小/行数再打开**，写的过程中还盯着已写字节数；
+// - 「缓存变成第二份原始数据」：路径固定进 [XlsCompat.DIR_CACHE]、按路径身份硬跳过、
+//   源一变就清（见上面 R1 那三条）。
 // - 「改了既有通道」：本文件的产出只是「一个 UTF-8 的 .csv 文件」，下游照旧。
 package com.example.zhengdao.baopu.table
 
@@ -89,7 +113,7 @@ data class XlsConverted(
 private const val MB_BYTES = 1024L * 1024L
 
 /**
- * 读不动的四种（派工单：失败必须**可操作**，不许只抛一个 `Exception`，更不许跳过）。
+ * 读不动的五种（派工单：失败必须**可操作**，不许只抛一个 `Exception`，更不许跳过）。
  *
  * 每种 [action] 都是一句「用户下一步该干什么」的话，不是错误码。
  */
@@ -101,9 +125,15 @@ sealed class XlsFailure(val action: String) : Exception(action) {
             "——请按日期拆成几份再放进工作区",
     )
 
-    /** 第一张工作表超过 [limit] 行（生产上是 [XlsCompat.MAX_ROWS]）。 */
-    class TooManyRows(rows: Int, limit: Int) : XlsFailure(
-        "第一张表有 $rows 行，超过 $limit 行上限——请拆成几份再放进工作区",
+    /**
+     * 第一张表超过 .xls 能装下的行数 ⇒ **这是文件本身的问题，不是我们设的阀门**。
+     *
+     * 措辞有意不提「上限」二字：用户看到的必须是「.xls 这个格式就到这儿了，另存为 .xlsx」，
+     * 而不是「你的表太大，请拆开」——拆成两份 `.xls` 是白费力气，真正该做的是换格式。
+     */
+    class AboveBiffLimit(rows: Int, limit: Int) : XlsFailure(
+        "这张表有 $rows 行，超过 .xls 的格式上限 $limit 行——这是 .xls 自己的限制，拆成几份也没用；" +
+            "请在 Excel 里另存为 .xlsx 再放进工作区（.xlsx 没有这个限制）",
     )
 
     /** 转换后 CSV 超过 [XlsCompat.MAX_CSV_BYTES]（行数够、内容太肥 ⇒ 下游读它会撑爆内存）。 */
@@ -161,11 +191,17 @@ object XlsProgress {
  */
 object XlsCompat {
 
-    /** 单文件上限（派工单 §2）。 */
+    /** 单文件上限（派工单 §2；这条是真闸门——50MB 的 BIFF 真能把堆吃穿）。 */
     const val MAX_FILE_BYTES = 50L * 1024 * 1024
 
-    /** 行数上限（派工单 §2）。 */
-    const val MAX_ROWS = 200_000
+    /**
+     * **BIFF 自己的行数上限**（.xls 一张工作表最多 65536 行）——不是我们另设的阀门。
+     *
+     * 这里曾经是 `MAX_ROWS = 200_000`。删掉它的理由：BIFF8 装不下 200k 行，
+     * 那条判据永远触发不了 ⇒ 是假判据。现在这个数只用来「认出一个装不下的文件」，
+     * 报的话也是「另存为 .xlsx」而不是「拆成几份」。
+     */
+    const val BIFF_MAX_ROWS = 65_536
 
     /** 转换后 CSV 的上限（**派工单没写，是本文件自己加的闸门**：见负例「大文件 OOM」）。 */
     const val MAX_CSV_BYTES = 50L * 1024 * 1024
@@ -219,16 +255,68 @@ object XlsCompat {
         return m.mtime == src.lastModified() && m.size == src.length()
     }
 
+    // ── 缓存的生命周期（R1 约束 c：扫描时顺手清，不另起定时任务） ─────────────
+
+    /** 我们自己的缓存产物长这样：`<原名>-<hash8>.csv`（外加它的 `.meta` / 写完前的 `.tmp`）。 */
+    private val CACHE_CSV = Regex(""".+-[0-9a-f]{8}\.csv""")
+
+    /** 是不是本文件写的缓存产物——**只有认得的才敢删**，`缓存/` 里用户自己放的文件一律不碰。 */
+    private fun isCacheArtifact(name: String): Boolean {
+        val base = when {
+            name.endsWith(".csv$META_SUFFIX") -> name.removeSuffix(META_SUFFIX)
+            name.endsWith(".csv.tmp") -> name.removeSuffix(".tmp")
+            name.endsWith(".csv") -> name
+            else -> return false
+        }
+        return CACHE_CSV.matches(base)
+    }
+
+    /**
+     * 惰性清缓存（R1 约束 c）：**刷新时顺手做**，不注册后台任务、不占主线程之外的东西。
+     *
+     * 清两种：
+     * 1. **源没了** —— `alive` 是本次扫描看到的 `.xls`。缓存文件名是「原名 + 源绝对路径的 hash8」，
+     *    hash 不可逆，所以这里按**名字集合**判：不在集合里的产物就是这个工作区里已经没有源了；
+     * 2. **源变了** —— 源还在但 mtime/size 与 `.meta` 对不上 ⇒ 旧 CSV 已经是过期数据，
+     *    留着只会诱惑别的代码去读它（下次问会重转）。
+     *
+     * ⚠️ 只删 [isCacheArtifact] 认得的名字。缓存是派生物：删掉不丢用户任何东西。
+     *
+     * @return 删掉的文件数（测试拿它钉「删干净了」）
+     */
+    fun sweep(cacheDir: File, alive: Collection<File>): Int {
+        val files = cacheDir.listFiles() ?: return 0
+        // 名字 → 源（hash8 不可逆，只能正着算一遍再按名字对）
+        val byName = HashMap<String, File>(alive.size * 2)
+        alive.forEach { byName[cacheFile(cacheDir, it).name] = it }
+        var gone = 0
+        for (f in files) {
+            if (!f.isFile || !isCacheArtifact(f.name)) continue
+            // `.tmp` 是「写完才 rename」留下的残余（写和 rename 在同一个调用里完成）⇒ 扫描时一定是垃圾
+            if (f.name.endsWith(".tmp")) {
+                if (f.delete()) gone++
+                continue
+            }
+            val csvName = f.name.removeSuffix(META_SUFFIX)
+            val src = byName[csvName]
+            // 源还在且没变 ⇒ 留着（这是唯一该留的情形）
+            if (src != null && isFresh(File(cacheDir, csvName), src)) continue
+            if (f.delete()) gone++
+        }
+        return gone
+    }
+
     /**
      * 转一张 `.xls`。
      *
      * @param src 源 `.xls`
-     * @param cacheDir 缓存目录（`<工作区>/抱朴记忆/表格/缓存/`）
-     * @param maxRows 行数上限（默认 [MAX_ROWS]；**只为让那条判据能被单测到**——
-     *   BIFF 一张表最多 65536 行，jxl 连 20 万行的 `.xls` 都写不出来，真造不出超限的夹具）
+     * @param cacheDir 缓存目录（**固定** `<工作区>/抱朴记忆/表格/缓存/`；参数只为单测换临时目录，
+     *   生产调用方 [TableRegistry.cacheDir] 只算这一个路径，不提供别的入口）
+     * @param rowLimit 行数上限，默认 [BIFF_MAX_ROWS]（＝格式上限）。**这个参数只为让那条判据
+     *   能被单测到**——真 `.xls` 装不下 65537 行，jxl 写都写不出来，造不出超限夹具
      * @return 成功给 [XlsConverted]；失败给 [XlsFailure]（**每一种都有一句能动手的话**）
      */
-    fun convert(src: File, cacheDir: File, maxRows: Int = MAX_ROWS): Result<XlsConverted> = runCatching {
+    fun convert(src: File, cacheDir: File, rowLimit: Int = BIFF_MAX_ROWS): Result<XlsConverted> = runCatching {
         val size = src.length()
         if (size > MAX_FILE_BYTES) throw XlsFailure.TooBig(size)
 
@@ -248,7 +336,7 @@ object XlsCompat {
 
         XlsProgress.begin(src.name)
         try {
-            convertNow(src, out, maxRows)
+            convertNow(src, out, rowLimit)
         } finally {
             XlsProgress.end()
         }
@@ -272,7 +360,7 @@ object XlsCompat {
         }
     }
 
-    private fun convertNow(src: File, out: File, maxRows: Int): XlsConverted {
+    private fun convertNow(src: File, out: File, rowLimit: Int): XlsConverted {
         val settings = WorkbookSettings().apply {
             // jxl 内存吃紧时会自己调 System.gc()：在 Android 上那一下会让整条线程停住。
             // 我们宁可让它多吃点堆，也不要一次不可预测的停顿（真 OOM 由上面的上限挡住）。
@@ -300,7 +388,7 @@ object XlsCompat {
             val first = wb.getSheet(0)
             val rows = first.rows
             val cols = first.columns
-            if (rows > maxRows) throw XlsFailure.TooManyRows(rows, maxRows)
+            if (rows > rowLimit) throw XlsFailure.AboveBiffLimit(rows, rowLimit)
 
             writeCsv(first, out)
             writeMeta(out, Meta(src.lastModified(), src.length(), rows, cols, first.name, names))
@@ -320,7 +408,7 @@ object XlsCompat {
     }
 
     /**
-     * 流式写 CSV（**不拼一个大 String**：20 万行 × 43 列拼起来就是几百 MB，那是负例 6 本人）。
+     * 流式写 CSV（**不拼一个大 String**：65536 行 × 43 列拼起来就是几十上百 MB，那是负例 6 本人）。
      *
      * 先写 `.tmp` 再改名：转一半崩了不会留下一个「看着新鲜、其实是半截」的 CSV。
      *

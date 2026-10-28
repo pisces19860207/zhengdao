@@ -3,6 +3,7 @@
 package com.example.zhengdao
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -19,8 +20,10 @@ class LicenseTextsTest {
      * 表行形如：`| [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | … | 11,358 | 202 | `cfc7…` |`
      * 与 `| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | … | 4,572 | 95 | `6728…` |`。
      * 取路径的规则：该行里**第一个**「像路径」的反引号片段（`*.txt` 或 `LICENSE`）。
-     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 10 条 =
-     * `licenses/` 九份（252 的 LGPL-2.1 是第九份）+ `OFL.txt`。
+     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 9 条 =
+     * `licenses/` 九条（八份许可证正文 ＋ `NOTICES.txt` 汇总；其中 LGPL-2.1 是 252 加的）。
+     * 字体 `OFL.txt` 那一条**已不在本仓**：2026-10-28 终端连带字体搬去 `zhengdao-term`，
+     * README 的 OFL 行同时删了（所以这里的 9 不是「加了一份又丢了一份」的巧合，是账真的平了）。
      */
     private fun parseRecords(): Map<String, Record> {
         val md = File(repo, "licenses/README.md")
@@ -73,7 +76,8 @@ class LicenseTextsTest {
     fun `README 记的每一份正文都与仓库文件逐字节一致`() {
         val records = parseRecords()
         assertEquals(
-            "README 的两张表应记 9 份正文（licenses/ 九份；字体 OFL.txt 已随终端搬去 zhengdao-term）",
+            "README 的两张表应记 9 条正文（licenses/ 九条 = 八份许可证正文 + NOTICES 汇总；" +
+                "字体 OFL 正文已随终端搬去 zhengdao-term，本仓不再列）",
             9,
             records.size,
         )
@@ -113,7 +117,6 @@ class LicenseTextsTest {
         listOf(
             "licenses/*.txt text eol=lf",
             "LICENSE text eol=lf",
-            "app/src/main/assets/fonts/OFL.txt text eol=lf",
         ).forEach {
             assertTrue(
                 ".gitattributes 缺少「$it」——Windows 检出会变 CRLF，README 里的 SHA256 就对不上了" +
@@ -121,6 +124,12 @@ class LicenseTextsTest {
                 text.contains(it),
             )
         }
+        // 字体那份 OFL 正文 2026-10-28 随终端搬去 zhengdao-term，本仓不再分发该文件，
+        // `.gitattributes` 里那行也删了。这里改成**反向**断言：还留着这行说明有人把已搬走的东西写回来了。
+        assertFalse(
+            ".gitattributes 不该再钉 app/src/main/assets/fonts/OFL.txt——那个文件已随终端搬走，钉着一行无效规则",
+            text.contains("app/src/main/assets/fonts/OFL.txt"),
+        )
     }
 
     @Test
