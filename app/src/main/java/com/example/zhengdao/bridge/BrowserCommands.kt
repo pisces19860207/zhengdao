@@ -6,6 +6,7 @@ package com.example.zhengdao.bridge
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -98,7 +99,7 @@ import com.example.zhengdao.ui.browser.BrowserTabManager
  * `hostPath`（宿主绝对路径，§2.3b(b) 补的）、`guestPathScope`（固定一句说明文案）、
  * `mode`（`viewport`/`fullpage`/`element` 三个定值）、`width`·`height`·`scale`（整数与比例）、
  * `note`（**本刀自己写的降级说明**，内容受控、不含页面文本）。
- * ⚠️ 其中 `hostPath` 带的是**本机绝对路径**（`/storage/emulated/0/Download/证道/...`）——
+ * ⚠️ 其中 `hostPath` 带的是**本机绝对路径**（268 起是 `/storage/emulated/0/Pictures/Screenshots/...`）——
  * 它是设备路径不是用户隐私值，但**别学它**：路径里唯一可能带隐私的是用户名，而本 App 的
  * 共享目录名由 [ZhengdaoDirs.root] 固定拼，不含用户名。
  * 全类扫描结论（第48刀A 任务③）：BrowserTabState 其余字段（`blockedMsg` / `everLoaded`）
@@ -120,13 +121,17 @@ import com.example.zhengdao.ui.browser.BrowserTabManager
  * 经 [onMain] 落主线程，主线程异常以 JSON 错误回给 agent（不再有 ClassCastException
  * 被 socket 静默吞掉的路径）。形态门禁见 BrowserBridgeGateTest 的「主线程亲和」。
  *
- * ## 一处对设计文档的有意偏离（截图落点）
+ * ## 截图落点：从「有意偏离」到回归设计（268，2026-10-28）
  *
- * 设计文档 §4.5 写"输出 PNG 写入系统截图目录 `Pictures/Screenshots`"。
- * **这里改成共享目录 `ZhengdaoDirs.root()/截屏`**（＝ Downloads/证道，proot 已 bind 到
- * guest `/opt/zhengdao/`）。理由：本桥的全部意义就是"给 guest 里的 agent 用"，
- * 而 `Pictures/Screenshots` 在 guest 里**读不到**（仅私有工作区档位下 `/sdcard` 根本不挂载）；
- * 落共享目录是 agent 唯一能稳定取到截图的路径。若将来要兼顾人看，可同时落两份。
+ * 设计文档 §4.5 写"输出 PNG 写入系统截图目录 `Pictures/Screenshots`"。177 曾**有意偏离**：
+ * 落共享目录 `ZhengdaoDirs.root()/截屏`（＝ Downloads/证道），理由是 guest 里只有
+ * `/opt/zhengdao` 能读到。199 又加了 `album=true` 的相册支路，于是有两条路、两个目录。
+ *
+ * **268 起（用户拍板方案 A）回归设计**：一条路、一个目录——所有截图走 MediaStore 进
+ * `Pictures/Screenshots/`（系统截屏夹，与用户自己截的图同目录）。guest 读截图的需求由
+ * 抱朴侧的读图管线承担（`VisionFiles.load` 的 extraRoot 指到 `Pictures`），不再靠 proot
+ * bind；`shotDir()`（`证道/截屏/`）只剩存量迁移一个用途。若终端 guest 也要读原图，
+ * 走账本里的 `hostPath`（绝对路径）经宿主侧读，不新增 bind。
  */
 object BrowserCommands {
 
@@ -944,17 +949,29 @@ object BrowserCommands {
     }
 
     /**
-     * 截图目录名（第一百七十七批用户口径：**`证道/截屏/`**）。
+     * 旧核对图目录名（第一百七十七批 ＝ `证道/截屏/`）。
      *
-     * 为什么是固定公共区而不是工作区：`ZhengdaoDirs.PUBLIC_ROOT` 的 KDoc 明写「App 自己的东西
-     * 刻意不跟随工作区」（换工作区不该让截图失联）；为什么抱朴也能读：`VisionFiles.load`
-     * 本批加了 `extraRoot`，把 `ZhengdaoDirs.root()` 认作第二个允许的根。
-     * **不进相册**：这里零 MediaStore——相册可见的 `Pictures/证道/截屏` 属第一百七十五批。
+     * 268 起新截图**不再写这里**（全部落系统截屏夹 [publicShotDir]）；本目录只剩一个用途：
+     * `MediaMigration.migrateShots` 把更老的 `screenshots/` 存量搬进来（`BaopuRuntime.installMedia`）。
+     * 常量留在原处还有一条理由：`MediaPathGateTest.G6`／`BrowserBridgeGateTest` 都钉着它——
+     * 搬走＝存量迁移目标失联。
      */
     internal const val SHOT_DIR = "截屏"
 
-    /** 截图目录（保证存在）。 */
+    /** 旧核对图目录（保证存在）。**只服务存量迁移**，别往里写新图。 */
     internal fun shotDir(context: Context): File = File(ZhengdaoDirs.root(context), SHOT_DIR).apply { mkdirs() }
+
+    /**
+     * 系统截屏夹（保证存在）：`<SD根>/Pictures/Screenshots/`——268 起所有截图的唯一落点
+     * （与用户自己截的图同目录；`VisionFiles` 的 extraRoot 指到 `Pictures` 就能回读）。
+     * 路径字符串只来自 [MediaOwnership.relShotDir]（门禁：`"Pictures/` 字面量只许在 MediaOwnership）。
+     */
+    internal fun publicShotDir(): File =
+        File(Environment.getExternalStorageDirectory(), MediaOwnership.relShotDir()).apply { mkdirs() }
+
+    /** 相册 relPath ⇒ 本机绝对路径（`<SD根>/<relPath>`；回执诊断用，读图不走它）。 */
+    private fun hostPathOf(albumRelPath: String): String =
+        File(Environment.getExternalStorageDirectory(), albumRelPath).absolutePath
 
     /** 两条说明合成一条（旧的在前；空串不占位）。199 起「退化说明 ＋ 相册说明」要同时出现。 */
     private fun joinNote(a: String?, b: String?): String? =
@@ -967,6 +984,8 @@ object BrowserCommands {
      *
      * 199 把文件名从「毫秒时间戳」换成 `fileStamp()`（相册那条支路要同一个名字口径），
      * 于是同一秒内连截两张会撞名——撞名就加序号，**不许覆盖**（前一张可能正被读图管线用着）。
+     * 268 起只服务退路（主路的名字不占用靠 MediaStore 判）——退路与主路落同一个目录，
+     * `File` 探测得到的正是 MediaStore 落地的那批真文件，撞名照样加序号。
      */
     private fun freeShotName(dir: File, base: String): String {
         if (!File(dir, "$base.png").exists()) return "$base.png"
@@ -982,24 +1001,25 @@ object BrowserCommands {
      * 截一张图并落盘（**唯一实现**：[screenshot] 与抱朴网关共用）。
      *
      * 与旧 [screenshot] 的行为逐字一致（几何问页面、两条截图路线、退化如实标注、
-     * 失败给原因），差别只有两个：① 返回 [ShotCapture] 而不是 JSON；② 落盘目录是
-     * [SHOT_DIR]（`截屏`）而不是旧的 `screenshots`。
+     * 失败给原因）。
+     *
+     * ## 落盘一条路（268，用户 2026-10-28 拍板方案 A）
+     *
+     * 199 的「核对图 vs 相册图」分叉**撤掉**：不管给谁看，都走 [MediaPublisher.publish]
+     * （MediaStore ＋ `IS_PENDING` 事务式发布）进系统截屏夹 `Pictures/Screenshots/`——
+     * 与用户自己截的图同目录，人翻相册、抱朴回读（extraRoot=`Pictures`）看的是同一处。
+     * **一份图只落一处**：一次入库一条账，不存在「文件一份、相册一份」的双写。
+     *
+     * 199 加的 `album` 参数**删掉**（二选一里选了删），理由：落点统一后「给谁看」在桥侧
+     * 没有任何行为差异，留着就是死参数——下一个读者会以为它还在改落点；「给谁看」的
+     * 语义完整地活在工具/网关层（`browser_screenshot` 的 schema 参数、`BaopuBrowserWiring`
+     * 的回执文案与「本轮读不读像素」决策），那里一个字没动。调用方两处同步改掉。
      */
     internal fun captureShotRef(
         context: Context,
         tabId: String?,
         fullPage: String?,
         selector: String? = null,
-        /**
-         * 第一百九十九批：这张图**给谁看**。
-         *
-         * `false`（默认）＝模型核对图：落 `证道/截屏/`（177 现状，`VisionFiles` 要回读），
-         * **零 MediaStore**（一次任务几十张，全刷进相册就是把用户相册占满）。
-         * `true` ＝用户可见截屏：走 `MediaStore` 进 `Pictures/证道/截屏/`（`IS_PENDING`
-         * 事务式发布），相册能看到；**不双写**——只落相册那一处（设计 §5.2「一份图只落一处」）。
-         * 相册通道不可用 ⇒ 退回文件落盘并在 `note` 里如实说明（不假装进了相册）。
-         */
-        album: Boolean = false,
     ): ShotCapture {
         val sel = selector?.trim()?.takeIf { it.isNotEmpty() }
         sel?.let {
@@ -1012,49 +1032,89 @@ object BrowserCommands {
             val id = tabId.trim().toIntOrNull() ?: return ShotCapture.Bad("screenshot 的 tabId 不是数字")
             BrowserTabManager.tabs().firstOrNull { it.id == id }
         } ?: return ShotCapture.Bad("没有这个标签")
-        val mode = shotMode(fullPage, sel)
-        // 几何问页面（CSS px）：页面不在台前也有数——这是 §2.3b(a) 的关键一步
+        // 问几何＋取像素（262 离屏重载为主路；退化如实标注——这一半见 [grabShot]）
+        val grab = grabShot(tab, shotMode(fullPage, sel), sel)
+        if (grab is Grab.Bad) return ShotCapture.Bad(grab.error)
+        grab as Grab.Got
+        val stamp = com.example.zhengdao.core.TimeFormats.fileStamp()
+        val name = "证道截屏-$stamp"
+        // ── 268：落盘只有一条路——MediaStore 进系统截屏夹（relDirOf(screenshot) 唯一真源） ──
+        return when (val pub = MediaPublisher.publish(
+            ctx = context,
+            bytes = grab.shot.bytes,
+            name = name,
+            mime = "image/png",
+            source = MediaOwnership.SOURCE_SCREENSHOT,
+            ext = "png",
+        )) {
+            is MediaPublish.Ok -> ShotCapture.Ok(
+                shotRefFor(
+                    pub.entry,
+                    grab,
+                    if (pub.ledgerRecorded) {
+                        "已存进系统截屏夹（${MediaOwnership.relShotDir()}），与你自己截的图同目录"
+                    } else {
+                        "已存进系统截屏夹，但归属清单没写成（删的时候会再问一次）"
+                    },
+                ),
+            )
+
+            is MediaPublish.Duplicate -> ShotCapture.Ok(
+                shotRefFor(pub.entry, grab, "同一张图此前已进截屏夹（没重复入库）"),
+            )
+
+            is MediaPublish.Unavailable ->
+                // 相册不可用：退回文件落盘，但落点**仍是系统截屏夹**（268 派工单 §1.5），
+                // note 如实说「没走相册事务」——不假装进了相册（相册要等媒体扫描才出现）
+                fallbackFileShot(grab.shot, grab.effectiveMode, name, pub.reason, grab.degradation)
+        }
+    }
+
+    /** 取像素的结局：要么（像素图＋退化说明＋如实 mode），要么一句可读错误（不抛、不回 1×1 假成功）。 */
+    private sealed interface Grab {
+        data class Got(val shot: Shot, val degradation: String?, val effectiveMode: ShotMode) : Grab
+        data class Bad(val error: String) : Grab
+    }
+
+    /**
+     * 问几何＋取像素（[captureShotRef] 的前半段）。
+     *
+     * 几何问页面（CSS px）：页面不在台前也有数（§2.3b(a) 的关键一步）。
+     * 262（2026-10-28 收窄后重做）：视口截图走**离屏重载**，这是唯一主路径——
+     * 抱朴在前台时玄览的 WebView 根本没在画，原地 `capturePicture` 必然是一张灰图；
+     * 离屏这条：1dp 挂窗（不抢焦点）→ 用目标 URL 重新载入（App 在前台才真渲染）→
+     * 等 visual → draw → 用 WhiteImageJudge 判；判出来不是真图就**如实报失败**。
+     * 代价（同时写进工具说明与 note）：反映**页面初始状态**，不是用户此刻的滚动位置/已填表单。
+     * 只对 VIEWPORT 生效：整页/元素裁剪要按页面几何切——那两种仍走原地抓，抓不出来就报失败。
+     * 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）。
+     */
+    private fun grabShot(tab: BrowserTabManager.Tab, mode: ShotMode, sel: String?): Grab {
         val bounds: ShotBounds? = when (mode) {
             ShotMode.FULL_PAGE -> null
             ShotMode.VIEWPORT -> ShotBounds.parse(evalJs(tab.webView, viewportBoundsJsScript()))
             ShotMode.ELEMENT -> {
-                val s = sel ?: return ShotCapture.Bad("screenshot 缺 selector")
+                val s = sel ?: return Grab.Bad("screenshot 缺 selector")
                 when (val raw = evalJs(tab.webView, elementBoundsJsScript(s))) {
-                    null -> return ShotCapture.Bad("执行超时或失败")
-                    "NOT_FOUND" -> return ShotCapture.Bad("找不到元素：$s")
+                    null -> return Grab.Bad("执行超时或失败")
+                    "NOT_FOUND" -> return Grab.Bad("找不到元素：$s")
                     else -> ShotBounds.parse(raw)
                 }
             }
         }
         if (mode == ShotMode.ELEMENT && bounds != null && (bounds.w <= 0.0 || bounds.h <= 0.0)) {
-            return ShotCapture.Bad("元素没有尺寸：$sel（${whole(bounds.w)}×${whole(bounds.h)} CSS px）")
+            return Grab.Bad("元素没有尺寸：$sel（${whole(bounds.w)}×${whole(bounds.h)} CSS px）")
         }
         if (mode != ShotMode.FULL_PAGE && bounds == null) {
-            return ShotCapture.Bad("取不到页面几何（页面可能还没绘制）")
+            return Grab.Bad("取不到页面几何（页面可能还没绘制）")
         }
         var note: String? = null
-        // ── 262（2026-10-28 收窄后重做）：视口截图走**离屏重载**，这是唯一主路径 ─────
-        //
-        // 为什么不原地抓（用户实测确认的根因）：抱朴在前台时玄览的 WebView 根本没在画，
-        // 原地 `capturePicture` 必然是一张灰图；"点一下玄览再回抱朴就正常"只是最后一帧
-        // 还留着，不是重新画出来的。决定性判据是「载入/渲染时那一页可不可见」（263 已验）。
-        //
-        // 离屏这条：1dp 挂窗（不抢焦点）→ 用目标 URL 重新载入（App 在前台才真渲染）→
-        // 等 visual → draw → 用 WhiteImageJudge 判；判出来不是真图就**如实报失败**，
-        // 绝不把灰图当成功回给模型。
-        //
-        // 代价（同时写进工具说明与 note）：这张是重新载入后画的 ⇒ 反映**页面初始状态**，
-        // 不是用户此刻的滚动位置/已填表单。要精确画面得走征询切屏那条。
-        //
-        // 只对 VIEWPORT 生效：整页/元素裁剪要按页面几何切，离屏这条出的是整屏视口图，
-        // 硬套会把"元素截图"变成"整屏截图"骗人 —— 那两种仍走原地抓，抓不出来就报失败。
         val shot: Shot = if (mode == ShotMode.VIEWPORT) {
             val pageUrl = tab.state.url
             if (pageUrl.isBlank()) {
-                return ShotCapture.Bad("截屏失败：玄览当前页还没有地址（没载入过页面）")
+                return Grab.Bad("截屏失败：玄览当前页还没有地址（没载入过页面）")
             }
             val hostActivity = com.example.zhengdao.ui.browser.BrowserHolder.topActivityOrNull()
-                ?: return ShotCapture.Bad(
+                ?: return Grab.Bad(
                     "截屏失败：拿不到当前界面（App 可能不在前台）。离屏取图要挂 1dp 容器，" +
                         "需要 App 在前台；要此页此刻的画面，可请用户允许切到玄览再截。",
                 )
@@ -1066,7 +1126,7 @@ object BrowserCommands {
                 }
 
                 is com.example.zhengdao.browser.offscreen.OffscreenShotter.Outcome.Fail -> {
-                    return ShotCapture.Bad(
+                    return Grab.Bad(
                         "截屏失败（${off.kind}）：${off.reason}。" +
                             "想看此页此刻的精确画面，可请用户允许切到玄览再截（征询卡）。",
                     )
@@ -1081,27 +1141,54 @@ object BrowserCommands {
                         "整页位图未取到（capturePicture 返回空），已退化为未裁剪的可视区"
                     }
                 }
-                ?: return ShotCapture.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
+                ?: return Grab.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
         }
-        // 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）
-        val effectiveMode = if (note == null) mode else ShotMode.VIEWPORT
-        val stamp = com.example.zhengdao.core.TimeFormats.fileStamp()
-        val name = "证道截屏-$stamp"
+        return Grab.Got(shot, note, if (note == null) mode else ShotMode.VIEWPORT)
+    }
 
-        if (album) {
-            // 人看的这张：只走相册（不做 File 落盘，避免同一张图两份、归属两条互打）
-            when (val pub = MediaPublisher.publish(
-                ctx = context,
-                bytes = shot.bytes,
-                name = name,
-                mime = "image/png",
-                source = MediaOwnership.SOURCE_SCREENSHOT,
-                ext = "png",
-            )) {
-                is MediaPublish.Ok -> return ShotCapture.Ok(
+    /** 已入库（Ok／Duplicate）⇒ 回执：回读路径＝相对 Pictures 根；账本里记的仍是相册口径全路径。 */
+    private fun shotRefFor(entry: MediaOwnership.Entry, grab: Grab.Got, landing: String): ShotRef =
+        ShotRef(
+            file = MediaOwnership.relUnderPictures(entry.relPath),
+            hostPath = hostPathOf(entry.relPath),
+            guestPath = "",
+            bytes = grab.shot.bytes.size,
+            mode = grab.effectiveMode.wire,
+            width = grab.shot.width,
+            height = grab.shot.height,
+            scale = grab.shot.scale,
+            note = joinNote(grab.degradation, landing),
+        )
+
+    /**
+     * 退路（268）：MediaStore 进不去时 `File` 直写**同一个目录** `Pictures/Screenshots/`
+     * （`MANAGE_EXTERNAL_STORAGE` 已授权 ⇒ 共享存储可写；门禁 G2 只禁「File 写 `Pictures`
+     * 与写调用同一行」，这里路径来自 [MediaOwnership.relShotDir] 且写调用单独一行）。
+     *
+     * 与主路（[MediaPublisher.publish]）的三条差别，全部如实进 `note`：
+     * - **没走相册事务**：没有 `IS_PENDING` 发布动作 ⇒ 相册里要等媒体扫描才可能出现；
+     * - **没有 MediaStore `_id`** ⇒ 账本条目的第一半就没了，**不入账**（跟 177 的核对图同口径）
+     *   ⇒ `delete_path` 对它会回「归属清单里没有这一条」（宁可多问，不猜）；
+     * - 名字占用靠目录探测（[freeShotName]）：MediaStore 落地的文件也在同一目录里，
+     *   探测得到，绝不覆盖。
+     */
+    private fun fallbackFileShot(
+        shot: Shot,
+        effectiveMode: ShotMode,
+        name: String,
+        reason: String,
+        degradation: String?,
+    ): ShotCapture {
+        val dir = publicShotDir()
+        // 同一秒内连截两张：名字撞了要加序号，**绝不覆盖**前一张（前一张可能正被模型读）
+        val fileName = freeShotName(dir, "$name")
+        val out = File(dir, fileName)
+        return runCatching { out.writeBytes(shot.bytes) }.fold(
+            onSuccess = {
+                ShotCapture.Ok(
                     ShotRef(
-                        file = pub.entry.relPath,
-                        hostPath = "",
+                        file = MediaOwnership.relUnderPictures(MediaOwnership.relShotDir()) + fileName,
+                        hostPath = out.absolutePath,
                         guestPath = "",
                         bytes = shot.bytes.size,
                         mode = effectiveMode.wire,
@@ -1109,51 +1196,10 @@ object BrowserCommands {
                         height = shot.height,
                         scale = shot.scale,
                         note = joinNote(
-                            note,
-                            if (pub.ledgerRecorded) "已存进相册（Pictures/证道/截屏/）"
-                            else "已存进相册，但归属清单没写成（删的时候会再问一次）",
+                            degradation,
+                            "相册没写成（$reason）：没走相册事务，已直接存 ${MediaOwnership.relShotDir()}（" +
+                                "相册里要等媒体扫描才出现；删除时会再跟你确认）",
                         ),
-                    ),
-                )
-
-                is MediaPublish.Duplicate -> return ShotCapture.Ok(
-                    ShotRef(
-                        file = pub.entry.relPath,
-                        hostPath = "",
-                        guestPath = "",
-                        bytes = shot.bytes.size,
-                        mode = effectiveMode.wire,
-                        width = shot.width,
-                        height = shot.height,
-                        scale = shot.scale,
-                        note = joinNote(note, "同一张图此前已进相册（没重复入库）"),
-                    ),
-                )
-
-                is MediaPublish.Unavailable -> {
-                    // 相册不可用：**退回 177 的文件落盘**，并如实说清这张不在相册里
-                    note = joinNote(note, "相册没写成（${pub.reason}），先存 证道/截屏/（不进相册）")
-                }
-            }
-        }
-
-        val dir = shotDir(context)
-        // 同一秒内连截两张：名字撞了要加序号，**绝不覆盖**前一张（前一张可能正被模型读）
-        val fileName = freeShotName(dir, "bridge-$stamp")
-        val out = File(dir, fileName)
-        return runCatching { out.writeBytes(shot.bytes) }.fold(
-            onSuccess = {
-                ShotCapture.Ok(
-                    ShotRef(
-                        file = "$SHOT_DIR/$fileName",
-                        hostPath = out.absolutePath,
-                        guestPath = "/opt/zhengdao/$SHOT_DIR/$fileName",
-                        bytes = shot.bytes.size,
-                        mode = effectiveMode.wire,
-                        width = shot.width,
-                        height = shot.height,
-                        scale = shot.scale,
-                        note = note,
                     ),
                 )
             },

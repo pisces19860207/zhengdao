@@ -9,6 +9,7 @@ import com.example.zhengdao.core.PathGuard
 import androidx.core.net.toUri
 
 import android.content.Context
+import android.os.Environment
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.ArtifactRaster
@@ -742,9 +743,11 @@ internal object BaopuRuntime {
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，
             // 不缩等于每张都发不出去——2026-10-18 真机「看不见图」就是这个原因。
             shrinkImage = { file -> ImageShrink.toJpeg(file) },
-            // 第一百七十七批：截图落 `证道/截屏/`（App 固定公共区，不跟工作区走）。
-            // 引擎读图时要认这第二个根，否则自己截的图会被越界判据拒掉。
-            shotRoot = { ZhengdaoDirs.root(appCtx) },
+            // 第二百六十八批：截图改落系统截屏夹 `Pictures/Screenshots/`（与用户自己截的图
+            // 同目录），读根跟着换成 `<SD根>/Pictures`——`VisionFiles.load` 的 extraRoot
+            // 只放开这一个目录（不是整张 SD 卡），`Screenshots/…` 的相对路径在这里解析。
+            // 没有这条，引擎会把抱朴自己截的图按「越界」拒掉（模型回读失败＝派工单负例③）。
+            shotRoot = { File(Environment.getExternalStorageDirectory(), "Pictures") },
             // 第一百二十八批：知识库自动注入（索引在 ⇒ 每轮把相关片段按 2k 预算拼进
             // 本轮输入；索引不在 ⇒ null，静默跳过不阻塞）。真实存储在 KbTools.store
             // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。

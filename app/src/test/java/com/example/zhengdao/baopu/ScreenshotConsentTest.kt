@@ -39,8 +39,9 @@ class ScreenshotConsentTest {
         val all = req.question + req.options.joinToString(" ") { it.detail }
         assertTrue("只说当前页", all.contains("当前这一页") || all.contains("只截玄览当前这一页"))
         assertTrue("不上传≠不发", all.contains("不上传"))
-        assertTrue("落点写明", all.contains("证道/截屏/"))
-        assertTrue("不进相册", all.contains("不进相册"))
+        // 268：截屏统一进系统截屏夹（相册可见）——卡上必须如实说，不许再写「不进相册」
+        assertTrue("落点写明（系统截屏夹）", all.contains("Pictures/Screenshots/"))
+        assertTrue("相册可见要写明", all.contains("相册里能看到"))
     }
 
     @Test
