@@ -73,42 +73,45 @@ fn mul_mod(a: &BigUint, b: &BigUint, p: &BigUint) -> BigUint {
     (a * b) % p
 }
 
-fn ctx() -> &'static Ctx {
-    static CTX: OnceLock<Ctx> = OnceLock::new();
-    CTX.get_or_init(|| {
-        let two = BigUint::from(2u8);
-        let p = two.pow(255) - BigUint::from(19u8);
-        // d = -121665/121666 mod p（费马小定理求逆：a^(p-2)，省掉额外依赖）
-        let inv = BigUint::from(121666u32).modpow(&(&p - BigUint::from(2u8)), &p);
-        let num = (BigUint::from(121665u32) * inv) % &p;
-        let d = sub_mod(&BigUint::zero(), &num, &p);
-        let d2 = mul_mod(&d, &two, &p);
-        let l = two.pow(252)
-            + BigUint::parse_bytes(b"27742317777372353535851937790883648493", 10)
-                .expect("L 常量字面量非法");
-        // sqrt(-1) = 2^((p-1)/4) mod p
-        let sqrt_m1 = two.modpow(&((&p - BigUint::one()) / BigUint::from(4u8)), &p);
-        let base = Point::new(
-            BigUint::parse_bytes(
-                b"15112221349535400772501151409588531511454012693041857206046113283949847762202",
-                10,
-            )
-            .expect("基点 X 常量字面量非法"),
-            BigUint::parse_bytes(
-                b"46316835694926478169428394003475163141307993866256225615783033603165251855960",
-                10,
-            )
-            .expect("基点 Y 常量字面量非法"),
-            BigUint::one(),
-            &p,
-        );
-        Ctx { p, d, d2, l, sqrt_m1, base }
-    })
+/// 把三条常量字面量读成大整数；读不进来 ⇒ `None`。
+///
+/// 改前三处直接 expect 崩：常量一旦被改坏，panic 就落在 JNI 调用栈上——整个进程没。
+/// 而本模块对外的契约是「任何参数非法或验签不过都返回 `false`——**绝不 panic 跨 FFI**」
+/// （见 [verify] 的 KDoc 与规范 #1），所以构造失败只能走 `None` 这条返回值。
+fn dec(bytes: &[u8]) -> Option<BigUint> {
+    BigUint::parse_bytes(bytes, 10)
+}
+
+/// 曲线常量的**构造**：任何一条字面量非法 ⇒ `None`，不 panic。
+fn build_ctx() -> Option<Ctx> {
+    let two = BigUint::from(2u8);
+    let p = two.pow(255) - BigUint::from(19u8);
+    // d = -121665/121666 mod p（费马小定理求逆：a^(p-2)，省掉额外依赖）
+    let inv = BigUint::from(121666u32).modpow(&(&p - BigUint::from(2u8)), &p);
+    let num = (BigUint::from(121665u32) * inv) % &p;
+    let d = sub_mod(&BigUint::zero(), &num, &p);
+    let d2 = mul_mod(&d, &two, &p);
+    let l = two.pow(252) + dec(b"27742317777372353535851937790883648493")?;
+    // sqrt(-1) = 2^((p-1)/4) mod p
+    let sqrt_m1 = two.modpow(&((&p - BigUint::one()) / BigUint::from(4u8)), &p);
+    let base = Point::new(
+        dec(b"15112221349535400772501151409588531511454012693041857206046113283949847762202")?,
+        dec(b"46316835694926478169428394003475163141307993866256225615783033603165251855960")?,
+        BigUint::one(),
+        &p,
+    );
+    Some(Ctx { p, d, d2, l, sqrt_m1, base })
+}
+
+/// 缓存的常量集；`None` = 构造失败 ⇒ 调用方一律按「验签不过」处理。
+fn ctx() -> Option<&'static Ctx> {
+    static CTX: OnceLock<Option<Ctx>> = OnceLock::new();
+    CTX.get_or_init(build_ctx).as_ref()
 }
 
 /// 统一加法（RFC 8032 §5.1.4，含倍点——公式对 P=Q 完备）。
-fn pt_add(a: &Point, b: &Point) -> Point {
-    let c = ctx();
+fn pt_add(a: &Point, b: &Point) -> Option<Point> {
+    let c = ctx()?;
     let p = &c.p;
     let aa = mul_mod(&sub_mod(&a.y, &a.x, p), &sub_mod(&b.y, &b.x, p), p);
     let bb = mul_mod(&add_mod(&a.y, &a.x, p), &add_mod(&b.y, &b.x, p), p);
@@ -118,13 +121,15 @@ fn pt_add(a: &Point, b: &Point) -> Point {
     let ff = sub_mod(&dd, &cc, p);
     let gg = add_mod(&dd, &cc, p);
     let hh = add_mod(&bb, &aa, p);
-    Point::new(
-        mul_mod(&ee, &ff, p),
-        mul_mod(&gg, &hh, p),
-        mul_mod(&ff, &gg, p),
-        p,
+    Some(
+        Point::new(
+            mul_mod(&ee, &ff, p),
+            mul_mod(&gg, &hh, p),
+            mul_mod(&ff, &gg, p),
+            p,
+        )
+        .with_t(mul_mod(&ee, &hh, p), p),
     )
-    .with_t(mul_mod(&ee, &hh, p), p)
 }
 
 impl Point {
@@ -136,26 +141,32 @@ impl Point {
 }
 
 /// 标量乘：LSB 双加（加法公式完备，无需显式倍点分支）。
-fn pt_mul(scalar: &BigUint, point: &Point) -> Point {
-    let l = &ctx().l;
+fn pt_mul(scalar: &BigUint, point: &Point) -> Option<Point> {
+    let c = ctx()?;
+    let l = &c.l;
     let s = scalar % l;
     let mut r = Point::identity();
     let mut t = point.clone();
     let bits = s.bits();
     for i in 0..bits {
         if s.bit(i) {
-            r = pt_add(&r, &t);
+            r = pt_add(&r, &t)?;
         }
-        t = pt_add(&t, &t);
+        t = pt_add(&t, &t)?;
     }
-    r
+    Some(r)
 }
 
 /// 投影坐标相等判定（X1·Z2 == X2·Z1 且 Y1·Z2 == Y2·Z1）。
 fn pt_equal(a: &Point, b: &Point) -> bool {
-    let p = &ctx().p;
-    mul_mod(&a.x, &b.z, p) == mul_mod(&b.x, &a.z, p)
-        && mul_mod(&a.y, &b.z, p) == mul_mod(&b.y, &a.z, p)
+    match ctx() {
+        None => false,
+        Some(c) => {
+            let p = &c.p;
+            mul_mod(&a.x, &b.z, p) == mul_mod(&b.x, &a.z, p)
+                && mul_mod(&a.y, &b.z, p) == mul_mod(&b.y, &a.z, p)
+        }
+    }
 }
 
 /// 小端字节 → 大整数。
@@ -170,7 +181,7 @@ fn decode_point(bytes: &[u8]) -> Option<Point> {
     if bytes.len() != 32 {
         return None;
     }
-    let c = ctx();
+    let c = ctx()?;
     let p = &c.p;
     let mut copy = bytes.to_vec();
     let x_odd = (copy[31] & 0x80) != 0;
@@ -215,7 +226,10 @@ pub fn verify(pub_key: &[u8], sig: &[u8], msg: &[u8]) -> bool {
     if pub_key.len() != 32 || sig.len() != 64 {
         return false;
     }
-    let c = ctx();
+    let c = match ctx() {
+        Some(v) => v,
+        None => return false,
+    };
     let a = match decode_point(pub_key) {
         Some(v) => v,
         None => return false,
@@ -234,8 +248,18 @@ pub fn verify(pub_key: &[u8], sig: &[u8], msg: &[u8]) -> bool {
     md.update(msg);
     let digest = md.finalize();
     let h = le_to_uint(digest.as_slice()) % &c.l;
-    let left = pt_mul(&s, &c.base);
-    let right = pt_add(&r, &pt_mul(&h, &a));
+    let left = match pt_mul(&s, &c.base) {
+        Some(v) => v,
+        None => return false,
+    };
+    let ha = match pt_mul(&h, &a) {
+        Some(v) => v,
+        None => return false,
+    };
+    let right = match pt_add(&r, &ha) {
+        Some(v) => v,
+        None => return false,
+    };
     pt_equal(&left, &right)
 }
 
@@ -336,6 +360,26 @@ mod tests {
     fn 长度非法_一律false不panic() {
         assert!(!verify(&[0u8; 31], &[0u8; 64], b"x"));
         assert!(!verify(&[0u8; 32], &[0u8; 63], b"x"));
+    }
+
+    /// 259-C#14：**常量读不进来时不许 panic**。改前这里根本没有可断言的东西——
+    /// `ctx()` 的返回类型是 `&'static Ctx`，三条 `BigUint::parse_bytes(...).expect("…常量字面量非法")`
+    /// 一旦命中就是跨 FFI 的 panic（进程没了，而不是"验签不过"）。改后构造走 `Option`，
+    /// 于是"非法字面量 ⇒ None ⇒ verify 返回 false"这条链第一次变得可测：
+    /// `dec` 对同一批字面量的合法/非法两侧各断言一次。
+    #[test]
+    fn 常量构造走option_坏字面量返回none() {
+        assert!(super::build_ctx().is_some(), "真常量必须能构造出来");
+        assert!(super::ctx().is_some());
+        // 合法侧：与 build_ctx 用的是同一批字面量
+        assert!(super::dec(b"27742317777372353535851937790883648493").is_some());
+        // 非法侧（把 L 的末位换成非十进制字符）：以前这里 panic，现在只是 None
+        assert!(super::dec(b"2774231777737235353585193779088364849x").is_none());
+        // 坏常量的下游只能得到 false：入口判定式原样跑通，不炸
+        match std::panic::catch_unwind(|| verify(&[0u8; 31], &[0u8; 64], b"x")) {
+            Ok(v) => assert!(!v, "长度非法必须返回 false"),
+            Err(_) => panic!("verify 不许 panic（本模块契约：绝不 panic 跨 FFI）"),
+        }
     }
 
     /// **已知边界（与 Kotlin 版逐位一致）**：全零公钥/签名解出来的都是阶为 4 的小阶点，

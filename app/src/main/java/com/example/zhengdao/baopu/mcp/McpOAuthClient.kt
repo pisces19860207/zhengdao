@@ -21,6 +21,7 @@ import okhttp3.Response
 import org.json.JSONObject
 import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 /** 发现结果：受保护资源元数据（可能来自 401 挑战或 well-known）+ 授权服务器元数据。 */
 internal data class McpDiscovery(
@@ -302,7 +303,10 @@ internal class McpOAuthClient(
      */
     private fun executeJson(req: Request, stage: String, failure: McpAuthFailure): JSONObject {
         execute(req, DISCOVERY_TIMEOUT_MS).use { r ->
-            val text = readCapped(r)
+            val (body, readFail) = readCapped(r, stage)
+            val text = body.orEmpty()
+            // 没有体／超限／读不出三类故障先记线索（带 HTTP 码、字节数、指纹），再走下面的分支。
+            readFail?.let { log(it.logLine()) }
             if (!r.isSuccessful) {
                 val (code, desc) = oauthError(text)
                 val detail = buildString {
@@ -312,10 +316,25 @@ internal class McpOAuthClient(
                         append(McpText.clip(McpText.flat(desc), 120))
                     }
                 }
+                log(
+                    McpFailureNote(
+                        stage = stage,
+                        why = if (detail.isEmpty()) "服务器没给可用的错误说明" else "服务器给了错误说明",
+                        httpStatus = r.code,
+                        bytes = text.toByteArray(Charsets.UTF_8).size.toLong(),
+                        digest8 = if (text.isEmpty()) "" else McpHttpNotes.digest8(text),
+                        // 只记白名单内的 §5.2 枚举值；其余值可能是回显的用户输入。
+                        oauthError = McpHttpNotes.oauthErrorCode(code),
+                    ).logLine(),
+                )
                 throw McpAuthException(
                     failure,
                     "$stage 失败（HTTP ${r.code}）" + if (detail.isEmpty()) "" else "：$detail",
                 )
+            }
+            if (readFail != null) {
+                // 改前：读不出 ⇒ text 为空 ⇒ 报「返回了空响应」——把「坏了」说成「没有」。
+                throw McpAuthException(failure, "$stage 失败：${readFail.why}（HTTP ${r.code}）")
             }
             if (text.isBlank()) {
                 throw McpAuthException(failure, "$stage 返回了空响应")
@@ -334,22 +353,45 @@ internal class McpOAuthClient(
         return try {
             call.execute()
         } catch (e: InterruptedIOException) {
+            log(McpFailureNote("授权服务器连接", "连接环节超时（${timeoutMs / 1000}s）").logLine())
             throw McpAuthException(McpAuthFailure.NO_METADATA, "授权服务器连接超时（${timeoutMs / 1000}s）", e)
         } catch (e: Exception) {
-            throw McpAuthException(McpAuthFailure.NO_METADATA, "授权服务器连接失败（${e.javaClass.simpleName}）", e)
+            // 环节只分类到「连接／证书-TLS」；不带 URL（授权地址上挂着 code/verifier）。
+            val kind = if (e is SSLException) "证书/TLS 握手" else "连接"
+            log(McpFailureNote("授权服务器$kind", "失败（${e.javaClass.simpleName}）").logLine())
+            throw McpAuthException(
+                McpAuthFailure.NO_METADATA,
+                "授权服务器${kind}失败（${e.javaClass.simpleName}）",
+                e,
+            )
         }
     }
 
-    private fun readCapped(r: Response): String {
-        val body = r.body ?: return ""
+    /**
+     * 读响应体（有上限）。
+     *
+     * **259 批 B4**：改前三条路径都 `return ""`（没有体／声明体积超限／读过程故障），
+     * 调用方只能把它们统一说成「返回了空响应」——「坏了」冒充「没有」。现在返回
+     * `正文 to 分类线索`（至多一个非空）：线索只有环节、字节数与指纹，没有原文
+     * （授权响应体里可能就是 token）。
+     */
+    private fun readCapped(r: Response, stage: String): Pair<String?, McpFailureNote?> {
+        val body = r.body ?: return null to McpFailureNote(stage, "响应没有体", r.code)
         val declared = body.contentLength()
-        if (declared > MAX_BODY_BYTES) return ""
+        if (declared > MAX_BODY_BYTES) {
+            return null to McpFailureNote(
+                stage,
+                "超过 ${MAX_BODY_BYTES / 1024} KB 上限，已拒读",
+                r.code,
+                bytes = declared.coerceAtLeast(0L),
+            )
+        }
         val bytes = try {
             body.byteStream().readNBytes(MAX_BODY_BYTES.toInt())
         } catch (e: Exception) {
-            return ""
+            return null to McpFailureNote(stage, "读不出（${e.javaClass.simpleName}）", r.code)
         }
-        return String(bytes, Charsets.UTF_8)
+        return String(bytes, Charsets.UTF_8) to null
     }
 
     /** RFC 6749 §5.2 的错误体：只取这两个字段。 */

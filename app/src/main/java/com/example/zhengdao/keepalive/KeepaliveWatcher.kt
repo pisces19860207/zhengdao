@@ -42,6 +42,9 @@ object KeepaliveWatcher {
     /** 心跳里最多带多少字符的"最近心跳"（崩溃留档用，别把整份心跳塞进崩溃文件）。 */
     internal const val CRASH_HEARTBEAT_CHARS = 4000
 
+    /** 装没装过（幂等闸）。object 是进程级单例，读它的线程不止一个：主线程装、
+     *  巡检线程与心跳线程都可能落到这里 —— 与同对象 [lastActivity] 同一口径。 */
+    @Volatile
     private var installed = false
 
     /** 最近一次活动的界面（心跳/崩溃时一起记，回答"死的时候用户在哪一页"）。 */
@@ -217,6 +220,9 @@ object KeepaliveWatcher {
         override fun onConfigurationChanged(newConfig: Configuration) = Unit
     }
 
+    /** 心跳要用的 ApplicationContext（[heartbeat] 声明「任何线程可调」，字段就得让
+     *  别的线程看得见的时机确定；同 [lastActivity] 口径）。 */
+    @Volatile
     private var appContext: Context? = null
 
     // ── 巡检 ──

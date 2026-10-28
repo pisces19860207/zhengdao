@@ -90,6 +90,9 @@ internal object BaopuRuntime {
     private var mcpSource: McpToolSource? = null
 
     /** OAuth 授权流程（进程级单例；token 只在它背后的加密存储里）。 */
+    // 同对象的 dbInstance/engineInstance/mcpSource 全有 @Volatile，唯独它漏了：装配线程
+    // 发布、引擎线程读（A-P2-9）。
+    @Volatile
     private var mcpAuth: McpAuthFlow? = null
 
     /**
@@ -1009,9 +1012,21 @@ internal object BaopuRuntime {
             if (v.needsRecheck) "（提醒：这条技能${SkillRefine.reasonOf(v)}，先用起来验证它还行不行，别照单全收）" else null
         }.getOrElse {
             RunLog.log("抱朴：skill_use 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}")
-            null
+            // #10：改前这里回 `null`——「这一条没记进账本」和「读过了、不用提醒」在答复里
+            // 一模一样；账本没写成必须说得出（但不拦本轮，57 批红线照旧）。
+            skillUseLedgerNote(it)
         }
     }
+
+    /**
+     * 账本没写成时带进工具答复的那一句（B 段 #10）。
+     *
+     * 纯函数、只吃 [Throwable] ⇒ JVM 直测（`recordSkillUse` 本体要 Context＋SQLite，进不了
+     * 单测）。只**说明**降级，不改本轮结果——记录是账本，不是闸门。
+     */
+    internal fun skillUseLedgerNote(e: Throwable): String =
+        "（提醒：这条技能这次的使用没记进账本（${e.javaClass.simpleName}），本轮照跑；" +
+            "晋升/退役的统计会少这一条）"
 
     /**
      * 第八十五批 §2：一次技能使用**再**记一条效果信号（`skill_event(kind='effect')`）。
@@ -1116,8 +1131,14 @@ internal object BaopuRuntime {
      *
      * @param skillFile 盘上那个技能正文文件（只为取 sha256 版本戳；读不到 ⇒ "-"）
      */
-    fun recordSkillUseManual(appCtx: Context, name: String, skillFile: java.io.File?) {
-        if (name.isBlank()) return
+    /**
+     * @return 两条账（use＋effect）是否**真落库**（#10：改前返回 Unit，设置页那句
+     *   「已记一次」在写失败时照样弹）。界面接线在 `BaopuSettingsScreen`（本单清单外），
+     *   先记进报告 §7；这里把区别交出去，调用方爱用不用。
+     */
+    fun recordSkillUseManual(appCtx: Context, name: String, skillFile: java.io.File?): Boolean {
+        if (name.isBlank()) return false
+        var wrote = false
         runCatching {
             val d = db(appCtx)
             val now = System.currentTimeMillis()
@@ -1143,9 +1164,11 @@ internal object BaopuRuntime {
             }
             d.write { x -> x.execSQL(stmt.sql, stmt.args) }
                 .get(3, java.util.concurrent.TimeUnit.SECONDS)
+            wrote = true
         }.getOrElse {
             RunLog.log("抱朴：手动使用记录失败（不影响设置页）${it.javaClass.simpleName}: ${it.message}")
         }
+        return wrote
     }
 
     /**

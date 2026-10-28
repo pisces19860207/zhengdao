@@ -140,37 +140,91 @@ internal object KeyPool {
         return arr.toString()
     }
 
-    /** 解码：不是合法 JSON、缺字段、脏类型 ⇒ 逐条跳过；整体读不出来 ⇒ 空池。 */
-    fun decode(stored: String?): List<Entry> {
+    /**
+     * 一次池子读取的**三种**结果（第二百五十九批 B 段第 3 条，257 审计 A-P2-13）。
+     *
+     * 改前这里只有两种命运，而且是同一个：`runCatching{…}.getOrNull() ?: emptyList()`
+     * ——「一把 Key 都没存过」与「存过但读坏了」都变成空池。空池在调用方不是中性的：
+     * [migrate] 见空池就回落到老格 `user_key_$id`，于是**用户早就删掉的那把旧 Key
+     * 被坏数据"救活"并发进请求**；写侧（ProviderPrefs 的加/删/禁用）见空池又把
+     * 「删光了」当成当前状态整池盖回去。现在三档分明。
+     *
+     * 纪律：[Corrupt.reason] **不许带任何原文**——org.json 的异常 message 会把被解析的
+     * 字符串片段打进去，而 Key 的红线是「不进 RunLog、不进上下文」（见 ProviderPrefs 文件头）。
+     */
+    sealed class PoolRead {
+
+        /** 没存过（新格为空/全空白，且老格也没有）。首次填 Key 就是这一档。 */
+        object Blank : PoolRead()
+
+        /** 读出来的一份合法池子。 */
+        data class Stored(val entries: List<Entry>) : PoolRead()
+
+        /** **读坏了**：存过，但解析不出来。调用方必须与 [Blank] 分开处理。 */
+        data class Corrupt(val reason: String) : PoolRead()
+
+        /** 读侧取用（坏/没存过 ⇒ 空列表）；**写侧别用它**，先过 ProviderPrefs 的落盘判据。 */
+        fun entriesOrEmpty(): List<Entry> = (this as? Stored)?.entries ?: emptyList()
+
+        /** 是不是「读坏了」。 */
+        fun isCorrupt(): Boolean = this is Corrupt
+    }
+
+    /**
+     * 读池子并分档（[PoolRead]）。`legacy` = 老格式单 Key 格，仅在**新格真的没存过/为空池**时
+     * 参与回落（与 [migrate] 的既有口径逐字一致，包括「新格是 `"[]"` 也仍回落老格」这条
+     * 由 `KeyPoolTest` 钉住的既有怪癖——本批不顺手改它）。
+     */
+    fun read(stored: String?, legacy: String? = null): PoolRead {
         val text = stored?.trim().orEmpty()
-        if (text.isEmpty()) return emptyList()
-        return runCatching {
-            val arr = JSONArray(text)
-            (0 until arr.length()).mapNotNull { i ->
-                val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                val k = o.optString("k")
-                if (k.isBlank()) return@mapNotNull null
-                Entry(
-                    key = k,
-                    cooldownUntil = o.optLong("u", 0L),
-                    disabled = o.optBoolean("d", false),
+        val entries: List<Entry> = if (text.isEmpty()) {
+            emptyList()
+        } else {
+            val parsed = runCatching {
+                val arr = JSONArray(text)
+                (0 until arr.length()).mapNotNull { i ->
+                    val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val k = o.optString("k")
+                    if (k.isBlank()) return@mapNotNull null
+                    Entry(
+                        key = k,
+                        cooldownUntil = o.optLong("u", 0L),
+                        disabled = o.optBoolean("d", false),
+                    )
+                }
+            }
+            if (parsed.isFailure) {
+                // 只记异常种类，绝不带 message 原文（Key 不进日志）。
+                return PoolRead.Corrupt(
+                    "存过的 Key 池读坏了（解析不出：${parsed.exceptionOrNull()?.javaClass?.simpleName ?: "JSONException"}），" +
+                        "内容省略不记",
                 )
             }
-        }.getOrNull() ?: emptyList()
+            parsed.getOrDefault(emptyList())
+        }
+        if (entries.isNotEmpty()) return PoolRead.Stored(entries)
+        val old = legacy?.trim().orEmpty()
+        return if (old.isEmpty()) PoolRead.Blank else PoolRead.Stored(listOf(Entry(old)))
     }
+
+    /**
+     * 解码（老 API，返回形态不变）：合法池子 ⇒ 条目；没存过/读坏了 ⇒ 空列表。
+     *
+     * 需要区分「没存过」与「读坏了」的调用方请用 [read]（本批第 3 条）。
+     */
+    fun decode(stored: String?): List<Entry> = read(stored, null).entriesOrEmpty()
 
     /**
      * 老格式迁移（②「同一 provider 可填多个 key」之前的单 Key 格 `user_key_$id`）。
      *
      * 新格有内容 ⇒ 以新格为准（**不合并**：合并会把已经删掉的那把又捞回来）；
      * 新格空而老格有 ⇒ 当成一把入池。薄壳首次写入新格时会清掉老格（见 ProviderPrefs）。
+     *
+     * 第二百五十九批：判据挪进 [read]，这一层只剩「把三档压回一个列表」。
+     * **坏池经这里也会被压成空列表**——所以坏数据面前该不该回落老格、该不该回写，
+     * 由调用方看 [read] 的档位决定，别再指望本函数替它分辨。
      */
-    fun migrate(stored: String?, legacy: String?): List<Entry> {
-        val pool = decode(stored)
-        if (pool.isNotEmpty()) return pool
-        val old = legacy?.trim().orEmpty()
-        return if (old.isEmpty()) emptyList() else listOf(Entry(old))
-    }
+    fun migrate(stored: String?, legacy: String?): List<Entry> = read(stored, legacy).entriesOrEmpty()
 
     // ── 轮询判据（顺序的唯一真相；全部 Context-free） ──────────────────────────
 

@@ -78,8 +78,9 @@ internal object BaopuCompletionNotifier {
             if (!permission) RunLog.log("抱朴完成通知：权限未授予，只更新会话不弹通知")
             return
         }
-        lastPostedAtMs = now
-        lastSessionId = sessionId
+        // #10：改前在**发之前**就把合并窗口记成「已发」——系统拒发（渠道被关/服务拿不到）
+        // 时这一窗口的通知全被自己吃掉，用户看到的是「永远收不到完成通知」，日志只有一行。
+        // 现在只有真发出去了才占窗口；发失败保持原窗口，下一轮还会再试。
         runCatching {
             AppNotifications.ensureAll(ctx)
             val n = Notification.Builder(ctx, AppNotifications.AGENT)
@@ -92,7 +93,11 @@ internal object BaopuCompletionNotifier {
                 // 同一 NOTIF_ID 的后续更新不再响铃/振动（合并而不是刷屏）
                 .setOnlyAlertOnce(true)
                 .build()
-            ctx.getSystemService(NotificationManager::class.java)?.notify(NOTIF_ID, n)
+            val mgr = ctx.getSystemService(NotificationManager::class.java)
+                ?: throw IllegalStateException("NotificationManager 拿不到")
+            mgr.notify(NOTIF_ID, n)
+            lastPostedAtMs = now
+            lastSessionId = sessionId
         }.onFailure {
             // 系统拒绝/渠道被关都不许把这一轮收尾弄崩。
             RunLog.log("抱朴完成通知：发送失败 ${it.javaClass.simpleName}: ${it.message}")

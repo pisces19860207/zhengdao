@@ -1497,6 +1497,17 @@ internal class RunEngine(
             ?.let { MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.recallBudgetFor(windowTokens)) }
             ?.picked ?: emptyList()
         recalledCache = recalled
+        // 第二百五十九批 #7（A-P2-17）：坏掉的记忆文件不许无声消失——只报事实（几个文件、
+        // 前三个文件名），不删文件、不改判据、不打扰用户（日志而已）。为什么多扫一遍：
+        // 上面 `trimToBudget(it.loadAll(), …)` 那行是 MemoryQualityGateTest 钉住的口径，不许
+        // 改成走新 API；记忆目录只有几个人到几十个 .md，一次回合多扫一遍换「失败可见」。
+        memoryStore?.loadAllWithBroken()?.brokenFiles?.let { broken ->
+            if (broken.isNotEmpty()) {
+                val shown = broken.take(3).joinToString("、") + if (broken.size > 3) "…" else ""
+                log("记忆读侧：${broken.size} 个文件解析失败（$shown），本轮没进上下文；" +
+                    "修法是把 记忆/ 里那几个文件的 front-matter 改回来，或让抱朴重建索引")
+            }
+        }
         // tools 数组**不在这里算**——它在下面步循环里、每次请求前算一次（第五十九批 §1.3）。
         // 为什么必须进循环：`capabilities` 解锁只改「模型能看见哪些组」，而解锁本身是一次
         // 工具调用——如果数组在循环外算死，模型这一整段（用户的一个回合）都拿不到刚解锁的

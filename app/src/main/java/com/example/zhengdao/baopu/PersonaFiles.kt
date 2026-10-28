@@ -189,7 +189,16 @@ internal class PersonaFiles(
             // 放在这里而不是各调用点：这是「写人设」的唯一道口，做成不变式才不会漏
             // （设置页删索引、技能转正、采纳提案、技能写索引全汇到这一处）。
             // 文件还不存在时它返回 null —— 首次写入不造空备份。
-            PersonaBackup.backupBefore(f, PersonaBackup.nowStamp())
+            //
+            // 257 审计 A-P1-3（第二百五十九批 A 段第 2 条）改前：backupBefore 的返回值被**丢弃**，
+            // 随后无条件 writeText 并返回 true ⇒ 备份没成功（目录不可写、盘满）时人设照样被覆盖，
+            // 而调用方拿到的是「写了、还带了备份」。现在照 `PersonaPatchApply.reset`（同仓的正面样板）
+            // 的纪律补刀：拿不到备份就不动原文件，并按现有错误通道（PersonaAudit.rejected）报出去。
+            // 「没有旧文件可备份」与「备份失败」仍要分开——前者（f 不是文件）是首次写入，照常放行。
+            if (f.isFile && PersonaBackup.backupBefore(f, PersonaBackup.nowStamp()) == null) {
+                PersonaAudit.rejected("写入前的备份没成功（没有动原文件）", "人设写入")
+                return@runCatching false
+            }
             f.writeText(p.proposed, Charsets.UTF_8)
             true
         }.getOrDefault(false)
