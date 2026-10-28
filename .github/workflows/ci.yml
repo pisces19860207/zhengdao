@@ -173,6 +173,20 @@ jobs:
       #   本机（Windows）与 CI（ubuntu）的差异由脚本自己注入：NDK 的 linker / CC / AR 路径
       #   按本机 SDK 现拼（rust/.cargo/config.toml 里那些是 Windows 绝对路径），
       #   归一化前缀＝sysroot / rustup home / cargo home / 仓库根 / 临时 target 目录。
+      # 2026-10-28 补：重编比对 lane 需要 NDK（cargo 交叉编译用 linker/CC/AR）。
+      # 250 曾把「装 NDK」整步删掉（主仓不再编 C/C++ 是对的），但这条 lane 仍要它 ⇒ 只在这一步前装，
+      # 装不上就明确红在半路（不许跳过），失败重试 3 次（NDK 下载偶发损坏，见 ERRATA）。
+      - name: 装 NDK（仅重编比对 lane 需要）
+        run: |
+          NDK_VER="27.2.12479018"
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -d "$SDK/ndk/$NDK_VER" ]; then echo "NDK $NDK_VER 已在：$SDK/ndk/$NDK_VER"; exit 0; fi
+          for i in 1 2 3; do
+            yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VER" >/dev/null 2>&1 && break
+            echo "第 $i 次装 NDK 失败，重试…"; sleep 5
+          done
+          test -d "$SDK/ndk/$NDK_VER" || { echo "::error::NDK $NDK_VER 装不上（重编比对 lane 需要它）"; exit 1; }
+
       - name: 重编比对 lane（第㊶刀 · B3+ 按主机基线：硬门禁）
         run: |
           python3 tools/rebuild-and-compare.py
