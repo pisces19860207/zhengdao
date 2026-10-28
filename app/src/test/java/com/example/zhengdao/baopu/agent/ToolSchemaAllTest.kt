@@ -451,6 +451,7 @@ class ToolSchemaAllTest {
             "novel_continue" to JSONObject().put("path", "小说/书名"),
             "browser_open" to JSONObject().put("url", "https://m.bing.com"),
             "browser_snapshot" to JSONObject(),
+            "browser_evidence" to JSONObject(),
             "browser_click" to JSONObject().put("target", "#a"),
             "browser_type" to JSONObject().put("target", "#a").put("text", "字"),
             "browser_scroll" to JSONObject().put("direction", "down"),

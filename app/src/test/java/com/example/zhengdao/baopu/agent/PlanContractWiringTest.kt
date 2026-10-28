@@ -451,7 +451,7 @@ class PlanContractWiringTest {
     fun `C1_批准卡与偏离闸都长在真执行之前`() {
         val t = moduleText(ENGINE)
         val ask = t.indexOf("askContractApproval(call)")
-        val exec = t.indexOf("val result = pipeline.execute(call)")
+        val exec = t.indexOf("val result = executeWithSwitch(switchForShot)")
         val gate = t.indexOf("val settled = contractDeviationGate(call, result)")
         assertTrue("批准卡要在 pipeline.execute 之前（判据 1/2 的本体）", ask in 0 until exec)
         assertTrue("偏离闸要在执行之后接住（没偏离原样返回）", gate > exec)

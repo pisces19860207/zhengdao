@@ -883,6 +883,8 @@
     <string name="baopu_tool_browser_open_desc">在玄览里打开网址（只认 http/https）。会弹确认卡；打开是异步的，内容随后再看。</string>
     <string name="baopu_tool_browser_snapshot">看网页</string>
     <string name="baopu_tool_browser_snapshot_desc">取当前页的可交互元素与可见文字（不含像素、不含整页 HTML），超长会截断并明说。</string>
+    <string name="baopu_tool_browser_evidence">取页面证据</string>
+    <string name="baopu_tool_browser_evidence_desc">取当前页的证据快照：网址、标题、结构摘要、无障碍文本、元素计数（不含像素）。不依赖页面在前台，超长会截断并明说。</string>
     <string name="baopu_tool_browser_click">点网页</string>
     <string name="baopu_tool_browser_click_desc">按 CSS 选择器点一个元素。会弹确认卡。</string>
     <string name="baopu_tool_browser_type">写网页</string>

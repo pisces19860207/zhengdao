@@ -78,6 +78,8 @@ import com.example.zhengdao.ui.browser.BrowserTabManager
  * | snapshot 正文 | `text` / `nodes` / `dom` | `scrubSecrets`→[SensitiveRedactor.redactDom] |
  * | execJS 返回值 | `result` | `redactText`→[SensitiveRedactor.redactPairs] |
  * | `tabs` 列表的 `url` / `title`（228 批 B） | `tabs` 回包 | redactUrl / redactTabTitle —— tab 元数据第一次成列表出口，判据不变 |
+ * | evidence 的 `url` / `title`（262 批） | `evidence` 回执头部 | redactUrl / redactTabTitle —— 判据不变 |
+ * | evidence 正文（骨架行/正文/AX 三段，262 批） | `evidence` 回执 | `scrubSecrets`→[SensitiveRedactor.redactDom] —— 页面文本第一次以非 HTML 形态过这两道（正则不依赖标签结构，照常生效） |
  *
  * **刻意不进脱敏管线的字段（判据＝非页面/标签元数据，PII 无处栖身）**：
  * `loading`（布尔）/ `tabId` / `tabCount`（整数）/ `screenshot` 的 `file`·`bytes`·`guestPath`
@@ -87,6 +89,10 @@ import com.example.zhengdao.ui.browser.BrowserTabManager
  * 由 [rectInViewport] 从矩形与视口尺寸现算，不含页面文本；节点定位子 `ref` 的定位链
  * 由 SAFE_TAG 白名单字符构成，同样不含文本）。`select` 回执的 `value` 是**页面内容**
  * （选中的选项值），照红线⑦过 redactText→redactPairs，不进本清单。
+ * 262 批同批核定（判据不变）：evidence 的 `elementCount`/`crossOriginFrames`（整数）、
+ * `readyState`（loading/interactive/complete 三定值）、两级截断位（布尔）——都不是页面
+ * 文本，刻意不过管线；骨架行里的 `#id` 片段随所在段一起过了 scrubSecrets→redactDom，
+ * 不单列。
  *
  * 刀 4（2026-10-18）给 `screenshot` 新增的字段同批核定，判据不变（都不是页面/标签元数据）：
  * `hostPath`（宿主绝对路径，§2.3b(b) 补的）、`guestPathScope`（固定一句说明文案）、
@@ -420,6 +426,55 @@ object BrowserCommands {
             "\"title\":\"${PageSnapshot.jsonEscape(SensitiveRedactor().redactTabTitle(title))}\"," +
             "\"text\":\"${PageSnapshot.jsonEscape(text)}\"," +
             "\"nodes\":$nodesJson"
+
+    /**
+     * `evidence`（262 批第一步）：页面证据快照——url、标题、DOM 结构骨架＋正文前 2000 字、
+     * 可访问性文本前 4000 字、元素计数，单次回包 ≤64KB（字节级总闸在 [EvidenceSnapshot]）。
+     *
+     * **不依赖前台可见**：取的全是 DOM 树与属性（textContent/getAttribute——刻意不用
+     * innerText，那要排版渲染，离屏未组合的标签会拿空）。这正是它与 [snapshot]（要
+     * 组合出 ref 句柄）和截图（要像素）的分工：巡按取证走这条，用户在别的页签也能取。
+     *
+     * 失败一律带原因（工单口径「不许静默空」）：无标签（[target] 的原文）／未加载
+     * （url 空 or `everLoaded=false`——恢复的标签要点开才 loadUrl）／执行超时／解析失败。
+     * 跨域 iframe 的**内容**取不到（同源策略），但数量如实计数并在回执里成行。
+     *
+     * 脱敏（口径与 [snapshot] 逐字一致；类 KDoc 边界表 262 批新增行）：
+     * url→[SensitiveRedactor.redactUrl]、title→[SensitiveRedactor.redactTabTitle]、
+     * 骨架/正文/AX 三段文本→[PageSnapshot.scrubSecrets]→[SensitiveRedactor.redactDom]
+     * （两道对纯文本无害——正则不依赖标签结构，手机号/凭据形态照打）。
+     *
+     * ⚠️ **不要在主线程调**（[evalJs] 的闩等在调用线程——与全类同规）。
+     */
+    fun evidenceSnapshot(tabId: String? = null): EvidenceCapture {
+        val t = target(tabId)
+        val tab = t.tab ?: return EvidenceCapture.Bad(t.error ?: "无 WebView：玄览当前没有打开的标签")
+        val st = tab.state
+        if (st.url.isBlank() || !st.everLoaded) {
+            return EvidenceCapture.Bad("页面未加载：标签存在但还没导航到任何页面（恢复的标签要打开一次才有内容）")
+        }
+        val raw = evalJs(tab.webView, EvidenceSnapshot.evidenceJsScript())
+            ?: return EvidenceCapture.Bad("取证据失败：执行超时或失败（页面可能卡在导航中）")
+        val parsed = EvidenceSnapshot.parse(raw)
+            ?: return EvidenceCapture.Bad("取证据失败：回包解析失败（页面可能正在导航）")
+        val red = parsed.copy(
+            url = SensitiveRedactor().redactUrl(parsed.url),
+            title = SensitiveRedactor().redactTabTitle(parsed.title),
+            domSummary = sanitizeEvidenceText(parsed.domSummary),
+            axText = sanitizeEvidenceText(parsed.axText),
+        )
+        return EvidenceCapture.Ok(EvidenceSnapshot.render(EvidenceSnapshot.clampTotal(red)))
+    }
+
+    /** 证据文本段的脱敏（与 snapshot 正文同一套两道；对纯文本照常生效）。 */
+    private fun sanitizeEvidenceText(s: String): String =
+        SensitiveRedactor().redactDom(PageSnapshot.scrubSecrets(s))
+
+    /** `evidence` 的回包：Ok 带最终文本（已脱敏＋钳制＋render），Bad 带原因。 */
+    sealed class EvidenceCapture {
+        data class Ok(val text: String) : EvidenceCapture()
+        data class Bad(val error: String) : EvidenceCapture()
+    }
 
     /**
      * `execJS`：页面内 JS 自由执行（高权限区，含读 cookie/localStorage）。

@@ -31,7 +31,12 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.baopu.ShotTier
+import com.example.zhengdao.baopu.ShotTierRule
 import com.example.zhengdao.baopu.ScreenshotConsent
+import com.example.zhengdao.baopu.ScreenshotSwitchConsent
+import com.example.zhengdao.baopu.ScreenSwitch
+import com.example.zhengdao.baopu.ScreenSwitchDesk
 import com.example.zhengdao.baopu.SensitivePage
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
@@ -2483,6 +2488,18 @@ internal class RunEngine(
     private val shotAuthorizedSessions: MutableSet<Long> =
         java.util.Collections.synchronizedSet(HashSet<Long>())
 
+    // ── 第二百六十二批：切屏征询的等待参数 ─────────────────────────────────
+    //
+    // 卡面承诺「约 2 秒」：切进后等玄览上屏就只等这么久（上屏 = BrowserScreen 组合进
+    // 界面；zd-baopu-run 线程睡等，切换是主线程的事）。等不到也执行——离屏照拍，
+    // 拍不出是工具自己的诚实错误，不假装成功。
+
+    /** 切进玄览后等上屏的上限（毫秒）——与征询卡文案「约 2 秒」对账。 */
+    private val switchOnScreenTimeoutMs = 2_000L
+
+    /** 上屏轮询间隔（毫秒）。 */
+    private val switchPollIntervalMs = 200L
+
     /**
      * 本轮**用户自带**的图片张数（`turnImages` 的前 N 个）。
      *
@@ -3522,20 +3539,32 @@ internal class RunEngine(
         screenshotGate(call, sessionId)?.let { blocked ->
             return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
         }
+        // 第二百六十二批：切屏征询闸（隐私闸**之后**——拒截就无所谓切不切屏；真执行之前）。
+        // 跳过 ⇒ SKIPPED_NO_VISUAL 收场（不算失败）；同意 ⇒ 真执行包进切进/切回之间。
+        val switchForShot = switchGate(call, sessionId)
+        if (switchForShot is ShotSwitch.Skip) {
+            return handleSkippedScreenshot(sessionId, step, call, switchForShot.note, history)
+        }
         // 第二百四十二批 B 段：这一版计划带了新上限 ⇒ **执行之前**先请她批准。
         // 位置在 pipeline.execute 之前是判据 1/2 的本体：批准后由 submit 把契约装进板上，
         // 于是"契约内 R0/R1 不弹卡"从这一步之后才成立。不批准**不拦这次** update_plan：
         // 计划照旧落库、卡面照旧看得见，只是本次不设执行范围上限（不封顶 ≠ 可以乱来）。
         askContractApproval(call)
         val toolStartedAt = System.currentTimeMillis()
-        val result = pipeline.execute(call) { name, text ->
-            writeSpill(sessionId, name, text)
+        // 262 征询式：同意切屏 ⇒ 执行包在切进玄览/切回原页签之间（两处 execute 都包——
+        // 偏离卡批准后重跑的那一次，也还是同一场「切过去截一张」）。
+        val result = executeWithSwitch(switchForShot) {
+            pipeline.execute(call) { name, text ->
+                writeSpill(sessionId, name, text)
+            }
         }
         // 第二百四十二批 C 段②：契约外的动作**没发生之前**停下来问人（判据 3——不是跑完再报）。
         // 她选「扩计划」⇒ 重跑的是完整管线（不是 executeApproved）：范围谈拢之后，
         // 危险性那一问照旧要问（红线①：批准计划不构成任何 R2/R3 授权）。
         val settled = contractDeviationGate(call, result) {
-            pipeline.execute(call) { name, text -> writeSpill(sessionId, name, text) }
+            executeWithSwitch(switchForShot) {
+                pipeline.execute(call) { name, text -> writeSpill(sessionId, name, text) }
+            }
         }
         if (settled !is GuardPipeline.Result.NeedsConfirm) {
             // 在线路径（不经人看）：工具真跑了，耗时是实测的；偏离卡等过人的那一段不算工具耗时
@@ -3698,6 +3727,217 @@ internal class RunEngine(
                 GuardPipeline.Result.Failed(call = call, error = ScreenshotConsent.deniedText())
             }
         }
+    }
+
+    // ── 第二百六十二批：切屏征询闸 ＋ SKIPPED_NO_VISUAL ＋ 切屏包裹 ────────────
+
+    /** 切屏征询的结果（没有「失败」态——工单原话「跳过记 SKIPPED_NO_VISUAL，不算失败」）。 */
+    private sealed interface ShotSwitch {
+        /** 同意：真执行包进切进/切回之间（[executeWithSwitch]；url/title 供切屏环节的审计行）。 */
+        data class SwitchFirst(val auditUrl: String, val auditTitle: String) : ShotSwitch
+
+        /** 跳过（或没应答）：本次不截，如实回灌。 */
+        data class Skip(val note: String) : ShotSwitch
+
+        /**
+         * §6 ②（前台无感载入）：**不出卡、不切屏**——App 在前台，页面没渲染过，
+         * 1dp 离屏挂窗把页面拉起来再画，用户无感。只多一个载入包裹（url/title 供
+         * 载入环节的审计行）。
+         */
+        data class LoadFirst(val auditUrl: String, val auditTitle: String) : ShotSwitch
+    }
+
+    /**
+     * 切屏征询闸（262 第二步·征询式；§6 起**三级分流**；**只在 `zd-baopu-run` 线程调**）。
+     *
+     * 与 [screenshotGate]（隐私层）**两层独立、都过才截**：那张管「截了给模型看」的数据
+     * 外发授权，这张管「要把你的屏幕切到玄览几秒」的界面打扰。隐私闸拒了根本走不到这里
+     * （拒截 ⇒ 无所谓切不切屏）。为何另立一道闸而不并进 [screenshotGate]：那一带的源码
+     * 被 `ScreenshotWiringTest`（177 批接线门禁）逐字钉死，且两层语义本就不同。
+     *
+     * §6（2026-10-28 追加，依据 263 实测「成败取决于载入时是否在前台」）：先按
+     * [ShotTierRule.decide]（渲染过没有 × App 在不在前台）分流——
+     * - [ShotTier.PAINT_OFFSCREEN]（渲染过）⇒ 直接画，免征询、免切屏（null）；
+     * - [ShotTier.LOAD_THEN_PAINT]（没渲染过、App 在前台）⇒ **不出卡**，1dp 离屏挂窗
+     *   载入包裹（[ShotSwitch.LoadFirst]）；
+     * - [ShotTier.ASK_TO_FOREGROUND]（没渲染过、App 在后台）⇒ 才出征询卡。卡面口径
+     *   不变：玄览已在屏上不问、没装配切屏台放行、超时/没人答/认不出一律跳过。
+     *
+     * @return null = 照常执行（可能带 [ShotSwitch.LoadFirst] 包裹已另行返回）；
+     *   [ShotSwitch.Skip] = 跳过收场；[ShotSwitch.SwitchFirst] = 切屏包裹。
+     */
+    private fun switchGate(call: ToolCall, sessionId: Long): ShotSwitch? {
+        if (call.name != BrowserTools.NAME_SCREENSHOT) return null
+        // 玄览没开就不问切屏（与隐私闸同一条理由：为一个必然失败的调用打扰用户，比不问更糟）。
+        if (BaopuBrowser.require() == null) return null
+        val sw = ScreenSwitchDesk.impl ?: return null
+        // §6 三级判定（两个事实都由切屏台回答；拿不到按保守档走——宁可多问不拿白图）。
+        val renderable = runCatching { sw.pageRenderable() }.getOrDefault(false)
+        val foreground = runCatching { sw.appInForeground() }.getOrDefault(true)
+        val tier = ShotTierRule.decide(renderable, foreground)
+        val info = runCatching { BaopuBrowser.require()?.pageInfo() }.getOrNull()
+        val url = redactedUrl(info?.url)
+        val title = info?.title.orEmpty()
+        when (tier) {
+            ShotTier.PAINT_OFFSCREEN -> {
+                log(ScreenshotConsent.auditLine("离屏直画（页面已渲染，免征询）", url, title, null, null))
+                return null
+            }
+
+            ShotTier.LOAD_THEN_PAINT -> {
+                log(ScreenshotConsent.auditLine("前台载入（1dp 挂窗，不出卡）", url, title, null, null))
+                return ShotSwitch.LoadFirst(auditUrl = url, auditTitle = title)
+            }
+
+            // 唯一打扰档。「玄览在屏就不问」的旧免问判据在这里**刻意没有**：页面有
+            // 没有像素已由 renderable 覆盖；走到这一档就是没渲染过——在屏也直拍＝
+            // 白图（§6 原话「别在页面未载入时直接画」）。App 在后台时卡等用户回来
+            // 再答；超时没人答 ⇒ 跳过（SKIPPED_NO_VISUAL），不偷截。
+            ShotTier.ASK_TO_FOREGROUND -> Unit
+        }
+        log("抱朴截图：玄览不在屏上，征询是否切屏（session=$sessionId）")
+        val picked = askUser(ScreenshotSwitchConsent.request(hostOf(info?.url), info?.title))
+        return when (ScreenshotSwitchConsent.decide(picked?.id)) {
+            ScreenshotSwitchConsent.Decision.AGREE -> {
+                log(ScreenshotConsent.auditLine("切屏征询=同意", url, title, null, null))
+                ShotSwitch.SwitchFirst(auditUrl = url, auditTitle = title)
+            }
+
+            ScreenshotSwitchConsent.Decision.SKIP -> {
+                log(ScreenshotConsent.auditLine("切屏征询=跳过/无应答", url, title, null, null))
+                ShotSwitch.Skip(ScreenshotSwitchConsent.skippedText())
+            }
+        }
+    }
+
+    /**
+     * 跳过收场（262·[ShotSwitch.Skip]）：本次不截，记 SKIPPED_NO_VISUAL。
+     *
+     * 为什么不是 `GuardPipeline.Result.Failed`：工单原话「不算失败」——失败会教模型重试，
+     * 重试只会再弹一次卡。账法照 [handleSerialCall] 的 Rejected 分支（trace 一行＋编排/单发
+     * 两条落点），status 用 [TraceStatus.SKIPPED] 让回放的人分得清「用户拒了」与「用户没给
+     * 视觉证据」。GuardPipeline 本体不动（249 批占用中）。
+     */
+    private fun handleSkippedScreenshot(
+        sessionId: Long,
+        step: Int,
+        call: ToolCall,
+        note: String,
+        history: MutableList<HistoryMessage>,
+    ): ToolResultFlow {
+        trace.noteTool(
+            step = step,
+            tool = call.name,
+            args = call.arguments,
+            startedAtMs = 0L,
+            status = TraceStatus.SKIPPED,
+        )
+        if (batch == null) {
+            persistAssistantMessage(sessionId, note)
+            history += HistoryMessage(
+                "local-note-${System.nanoTime()}",
+                HistoryMessage.ROLE_ASSISTANT,
+                note,
+            )
+        } else {
+            batch?.recordSkipped(call, note)
+        }
+        return ToolResultFlow.CONTINUE
+    }
+
+    /**
+     * 切屏/载入包裹（262·[ShotSwitch.SwitchFirst] 与 §6·[ShotSwitch.LoadFirst] 的执行
+     * 形态；switch 不是它们 ⇒ 原样执行）。
+     *
+     * **LoadFirst（§6 ②）**：进——[ScreenSwitch.loadForShot]（1dp 离屏挂窗前台载入，
+     * 不出卡不切屏，用户无感），等就绪 ≤载入上限（等不到也执行——离屏照拍，拍不出是
+     * 工具自己的诚实错误）；出——finally 里 [ScreenSwitch.detachForShot]，执行抛异常
+     * 也必须摘下挂载。
+     *
+     * **SwitchFirst（262 ③）**：进——[ScreenSwitch.openForShot] 记原页签并请求切到玄览，
+     * 等上屏 ≤[switchOnScreenTimeoutMs]；§6 起**切进后先 [ScreenSwitch.loadForShot]**
+     * （页面没渲染过就拍＝白图，263 实测口径），再执行。出——finally 里恢复＋摘挂载；
+     * 用户此刻已手动切走 ⇒ 那边不动（「用户手动切走就不抢」的落点，如实记审计）。
+     * 切进切出只切 App 内页签：滚动位置归 WebView 自己，切页签不碰它（工单红线）。
+     */
+    private fun <T> executeWithSwitch(switch: ShotSwitch?, block: () -> T): T {
+        when (switch) {
+            is ShotSwitch.SwitchFirst -> {
+                val sw = ScreenSwitchDesk.impl ?: return block()
+                val origin = sw.openForShot()
+                val ready = waitBrowserOnScreen(sw)
+                log(
+                    ScreenshotConsent.auditLine(
+                        if (ready) "切屏就位" else "切屏等待超时（仍执行）",
+                        switch.auditUrl,
+                        switch.auditTitle,
+                        null,
+                        null,
+                    ),
+                )
+                // §6：切进玄览 ≠ 页面活了。没渲染过的页先前台载入（此刻用户已同意看
+                // 这一眼，就地载入他看得见），再拍。
+                val loaded = runCatching { sw.loadForShot() }.getOrDefault(false)
+                log(
+                    ScreenshotConsent.auditLine(
+                        if (loaded) "前台载入就位" else "前台载入等待超时（仍执行）",
+                        switch.auditUrl,
+                        switch.auditTitle,
+                        null,
+                        null,
+                    ),
+                )
+                try {
+                    return block()
+                } finally {
+                    sw.detachForShot()
+                    val restored = sw.restoreAfterShot(origin)
+                    log(
+                        ScreenshotConsent.auditLine(
+                            if (restored) "切回原页签" else "切回不动（用户已手动切走）",
+                            switch.auditUrl,
+                            switch.auditTitle,
+                            null,
+                            null,
+                        ),
+                    )
+                }
+            }
+
+            is ShotSwitch.LoadFirst -> {
+                val sw = ScreenSwitchDesk.impl ?: return block()
+                val ready = runCatching { sw.loadForShot() }.getOrDefault(false)
+                log(
+                    ScreenshotConsent.auditLine(
+                        if (ready) "前台载入就位" else "前台载入等待超时（仍执行）",
+                        switch.auditUrl,
+                        switch.auditTitle,
+                        null,
+                        null,
+                    ),
+                )
+                try {
+                    return block()
+                } finally {
+                    sw.detachForShot()
+                }
+            }
+
+            // Skip 在 handleSerialCall 已分流收场，走不到这里；exhaustive 需要这一支。
+            is ShotSwitch.Skip -> return block()
+
+            null -> return block()
+        }
+    }
+
+    /** 等玄览真正上屏（组合进界面才算，[ScreenSwitch.browserOnScreen]）；超时如实回 false。 */
+    private fun waitBrowserOnScreen(sw: ScreenSwitch): Boolean {
+        val deadline = System.currentTimeMillis() + switchOnScreenTimeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sw.browserOnScreen()) return true
+            Thread.sleep(switchPollIntervalMs)
+        }
+        return sw.browserOnScreen()
     }
 
     /**

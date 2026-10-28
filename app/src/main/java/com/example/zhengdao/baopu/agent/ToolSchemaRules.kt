@@ -98,6 +98,7 @@ internal object ToolSchemaRules {
      */
     val REQUIRED_EMPTY_OK: Map<String, String> = mapOf(
         "browser_snapshot" to "唯一参数 selector 可选：省略即整页快照（BrowserTools.snapshotSpec）",
+        "browser_evidence" to "无参数：证据作用于当前页整体，没有可填的东西（BrowserTools.evidenceSpec，262 批）",
         "browser_screenshot" to "唯一参数 full_page 可选：默认当前视口（BrowserTools.screenshotSpec）",
         "browser_wait" to "两个参数都可选：ms 默认 2000、selector 省略即纯等（BrowserTools.waitSpec）",
         "card_build" to "spec 默认「母档.json」、out_dir 默认「成品/<name>/」，两个都有默认值（CardTools.buildSpec）",

@@ -67,6 +67,252 @@ object BrowserHolder {
     /** 切 Tab 请求（一次性）：终端在独立 Activity 点链接 → 回主页 → MainActivity ON_RESUME 消费。 */
     private val tabRequested = AtomicBoolean(false)
 
+    // ── 262 批：切 Tab 请求的目标 ＋ App 页签上报 ＋ 程序化切屏状态机 ────────────
+    //
+    // 老语义（requestBrowserTab ⇒ 消费侧硬编码 BROWSER）原样保留：consumeTabRequest()
+    // 的 Boolean 形状被 BaopuPreviewTest 钉着，既有调用方（BaopuPreview/终端 B 路径）
+    // 一行不改。目标值走旁路 [requestedTabTarget]——消费侧读它，读到的**总是最近一次**
+    // 请求的目标（两次请求挤进同一次消费窗口 ⇒ 合并，去哪由最新请求定）。
+
+    /** 最近一次切 Tab 请求的目标（[com.example.zhengdao.TabIndex] 序）。 */
+    @Volatile
+    private var requestedTab: Int = com.example.zhengdao.TabIndex.BROWSER
+
+    /** 程序化切屏前记录的原页签（[openForShot] 写、[restoreAfterShot] 消费）。 */
+    @Volatile
+    private var shotOriginTab: Int? = null
+
+    /**
+     * 用户/程序此刻所在的 App 页签（[MainActivity] 每次页签变化上报，TabIndex 序）。
+     * 「用户手动切走就不抢」的判定面：恢复那一刻读它，不在玄览 ⇒ 用户自己选的，不动。
+     */
+    @Volatile
+    var appTab: Int? = null
+
+    /** 请求主页切到指定 App 页签（262 批程序化切屏用；[requestBrowserTab] 的泛化）。 */
+    fun requestTabTo(target: Int) {
+        requestedTab = target
+        tabRequested.set(true)
+        tabRequestVersion++
+    }
+
+    /** 最近一次切 Tab 请求的目标（消费侧在 consumeTabRequest()==true 后读）。 */
+    fun requestedTabTarget(): Int = requestedTab
+
+    /**
+     * 程序化切到玄览（截图征询卡同意后调）：记录原页签、发切屏请求。
+     *
+     * @return 切之前的原 App 页签；拿不到（未上报/已在玄览）＝ null（截完就不用恢复）
+     */
+    fun openForShot(): Int? {
+        val origin = appTab
+        shotOriginTab = origin
+        requestTabTo(com.example.zhengdao.TabIndex.BROWSER)
+        return origin
+    }
+
+    /**
+     * 截完切回 [origin]。用户此刻已手动切走（不在玄览）⇒ **不动**并返回 false——
+     * 他切去哪儿是他此刻的选择，程序化恢复反而是抢屏（工单口径「用户手动切走就不抢」）。
+     */
+    fun restoreAfterShot(origin: Int?): Boolean {
+        shotOriginTab = null
+        val cur = appTab ?: return false
+        if (cur != com.example.zhengdao.TabIndex.BROWSER) return false
+        if (origin == null || origin == cur) return false
+        requestTabTo(origin)
+        return true
+    }
+
+    // ── 262 批 §6：三级截图链路的宿主半（前台载入台） ──────────────────────────
+    //
+    // 判定在纯函数 [com.example.zhengdao.baopu.ShotTierRule]（零 Android，JVM 直测）；
+    // 引擎只认 ScreenSwitch 接口；这里只出**事实与动作**的真身：App 前台真相的读口、
+    // 「页面渲染过没有」的读口、前台载入、摘离屏挂载。
+    //
+    // ⚠️ 全程**不抢焦点**：1dp 离屏容器是挂在现有 Activity 的 decorView 上的普通
+    // View（不是新窗口、不是全屏 Activity、不要焦点）——它对用户不可见，输入分发
+    // 照旧。工单原话「1dp 挂窗本来不抢，别改成全屏 Activity」钉的就是这条。
+
+    /** App 前台真相的读口（[BrowserTabManager] 的 onPageFinished 与 wiring 共用；不另设真相源）。 */
+    internal fun appInForegroundNow(): Boolean = appForeground
+
+    /** 最后 resumed 的 Activity 的弱引用（1dp 容器的挂点；框架本就强持有它，弱引用只为不拖住已销毁的实例）。 */
+    @Volatile
+    private var topActivityRef: java.lang.ref.WeakReference<android.app.Activity>? = null
+
+    private fun topActivity(): android.app.Activity? = topActivityRef?.get()
+
+    /** 截图目标页（玄览当前页）渲染过没有（[BrowserTabState.isRenderable] 的转发口）。 */
+    fun pageRenderableNow(): Boolean =
+        BrowserTabManager.activeTab()?.state?.isRenderable() == true
+
+    /** 主线程 Handler 工厂（Handler 不静态持有——它没跨调用状态，现用现建）。 */
+    private fun shotMainHandler(): android.os.Handler =
+        android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 1dp 离屏容器的弱引用（挂载期间 decorView 强持有 ⇒ 弱引用不丢；摘下后即死）。 */
+    private var shotContainerRef: java.lang.ref.WeakReference<android.widget.FrameLayout>? = null
+
+    /** 载入等待上限（毫秒）——§6 口径「切前台 2 秒载入」的同族量级。 */
+    private const val LOAD_TIMEOUT_MS = 2_500L
+
+    /** 载入轮询间隔（毫秒）。 */
+    private const val LOAD_POLL_MS = 150L
+
+    /** readyState 到 complete 之后的沉降（毫秒）——让最后一批渲染落定（263 实测的 settle）。 */
+    private const val LOAD_SETTLE_MS = 400L
+
+    /**
+     * 前台载入（§6 ②/③ 的补救动作；引擎线程调）。
+     *
+     * 三步：① 页面没挂在任何窗口 ⇒ 挂 1dp 离屏容器（玄览在屏的页签本来就挂在真实
+     * 窗口上，就地载入——用户看得见，那本来就是要给他看的页）；② 发起载入，**复用
+     * 既有出口**（恢复标签走 loadRestoredTab、回收标签走 reloadRecycled、普通页
+     * loadUrl——各自的标记清理别处已经写好，这里不另立第二套真相）；③ 轮询
+     * readyState 到 complete **且** 引擎提交了目标地址（about:blank 的 complete 不
+     * 算——那是「还没载入」，不是「载入完了」），就绪后沉降一小段再返回。
+     *
+     * @return 是否真的载入就绪；超时如实回 false（调用方照样执行截图——拍不出是
+     *   工具自己的诚实错误，不假装成功）。
+     */
+    fun loadForShot(): Boolean {
+        val tab = BrowserTabManager.activeTab() ?: return false
+        // 已渲染过就没有「载入」可做（引擎的 tier 判定已过滤，这里兜一次防白干）。
+        if (tab.state.isRenderable()) return true
+        val webView = tab.webView
+        // ① 挂载（只在没父容器时挂；有父容器＝组合或我们已挂好）。
+        onMainWait {
+            runCatching { if (webView.parent == null) attachOffscreenForShot(webView) }
+        }
+        // ② 发起载入。
+        onMainWait {
+            runCatching {
+                when {
+                    tab.state.restored -> BrowserTabManager.loadRestoredTab(tab.id)
+                    tab.state.recycled -> BrowserTabManager.reloadRecycled(tab.id)
+                    else -> webView.loadUrl(tab.state.url)
+                }
+            }
+        }
+        // ③ 轮询就绪（getUrl 文档明确可跨线程调；readyState 要回主线程问）。
+        val deadline = System.currentTimeMillis() + LOAD_TIMEOUT_MS
+        var ready = false
+        while (System.currentTimeMillis() < deadline) {
+            val rs = readyStateOf(webView)
+            val committed = runCatching { webView.url }.getOrNull()
+            if (com.example.zhengdao.baopu.ShotTierRule.isReadyState(rs) &&
+                !committed.isNullOrBlank() &&
+                committed != "about:blank"
+            ) {
+                ready = true
+                break
+            }
+            Thread.sleep(LOAD_POLL_MS)
+        }
+        if (ready) {
+            // 263 四步序的「等 visual」：readyState 只是 DOM 完事，合成帧未必出——
+            // postVisualStateCallback（263 实测的信号源）到了才算真的能画。
+            visualStateReady(webView)
+            Thread.sleep(LOAD_SETTLE_MS)
+        }
+        return ready
+    }
+
+    /**
+     * 摘下离屏挂载（与 [loadForShot] 配对；引擎的 finally 调——执行抛异常也必须摘）。
+     *
+     * 只摘**我们自己容器**还持有的 WebView：用户若在载入期间切到玄览，组合已把它
+     * 挂进界面（parent ≠ 容器），那一刻再摘等于当面拆页面。
+     */
+    fun detachForShot() {
+        val container = shotContainerRef?.get() ?: return
+        shotContainerRef = null
+        onMainWait {
+            runCatching {
+                val child = container.getChildAt(0)
+                if (child != null && child.parent === container) container.removeView(child)
+                (container.parent as? ViewGroup)?.removeView(container)
+            }
+        }
+    }
+
+    /**
+     * 1dp 挂窗：容器 1dp×1dp 挂 top-activity 的 decorView，WebView 给**真实屏幕
+     * 尺寸**的布局参数（capturePicture 成像走渲染器内容，视口尺寸必须是真的——
+     * WebView 若按 1dp 布局，页面按 1px 宽排版，画出来必是废图）。容器 clipChildren
+     * 保持默认（真）：子 view 画超界被裁到 1dp，对用户不可见。
+     */
+    private fun attachOffscreenForShot(webView: WebView): Boolean {
+        val activity = topActivity() ?: return false
+        val decor = activity.window?.decorView as? ViewGroup ?: return false
+        if (shotContainerRef?.get() != null) return true
+        val dm = activity.resources.displayMetrics
+        val one = maxOf(1, dm.density.toInt())
+        val container = android.widget.FrameLayout(activity)
+        container.addView(
+            webView,
+            android.widget.FrameLayout.LayoutParams(
+                maxOf(1, dm.widthPixels),
+                maxOf(1, dm.heightPixels),
+            ),
+        )
+        decor.addView(container, android.widget.FrameLayout.LayoutParams(one, one))
+        shotContainerRef = java.lang.ref.WeakReference(container)
+        return true
+    }
+
+    /** 引擎线程 → 主线程执行一段视操作并等它落地（有界 2s；已在主线程则就地执行）。 */
+    private fun onMainWait(block: () -> Unit) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            block()
+            return
+        }
+        val latch = java.util.concurrent.CountDownLatch(1)
+        shotMainHandler().post {
+            try {
+                block()
+            } finally {
+                latch.countDown()
+            }
+        }
+        latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    /** 问一页的 readyState（evaluateJavascript 的回调回主线程 ⇒ post 后由回调数闩）。 */
+    private fun readyStateOf(webView: WebView): String? {
+        var value: String? = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+        shotMainHandler().post {
+            runCatching {
+                webView.evaluateJavascript("document.readyState") { r ->
+                    value = r?.trim()?.trim('"')
+                    latch.countDown()
+                }
+            }.onFailure { latch.countDown() }
+        }
+        latch.await(1, java.util.concurrent.TimeUnit.SECONDS)
+        return value
+    }
+
+    /** 等视觉帧就绪（263 实测四步序的「等 visual」：postVisualStateCallback；有界 1s）。 */
+    private fun visualStateReady(webView: WebView): Boolean {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        shotMainHandler().post {
+            runCatching {
+                webView.postVisualStateCallback(
+                    0L,
+                    object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) {
+                            latch.countDown()
+                        }
+                    },
+                )
+            }.onFailure { latch.countDown() }
+        }
+        return latch.await(1, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
     /**
      * 玄览界面此刻是否显示在屏幕上（由 [BrowserScreen] 组合进出维护）。
      * 只读区在 UI 线程，但 TRIM 回调也可能来自别的线程 ⇒ @Volatile。
@@ -118,8 +364,14 @@ object BrowserHolder {
                     if (startedActivities.decrementAndGet() == 0) setAppForeground(false)
                 }
 
+                // 262 批 §6：记下最后 resumed 的 Activity——1dp 离屏载入容器的挂点
+                // （挂它的 decorView，不新建窗口，天然不抢焦点）。弱引用：已销毁的
+                // Activity 不许被静态字段拖住（StaticFieldLeak 纪律）。
+                override fun onActivityResumed(activity: android.app.Activity) {
+                    topActivityRef = java.lang.ref.WeakReference(activity)
+                }
+
                 override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) {}
-                override fun onActivityResumed(activity: android.app.Activity) {}
                 override fun onActivityPaused(activity: android.app.Activity) {}
                 override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
                 override fun onActivityDestroyed(activity: android.app.Activity) {}
@@ -159,6 +411,9 @@ object BrowserHolder {
         private set
 
     fun requestBrowserTab() {
+        // 262：老调用方的目标恒是玄览。requestedTab 可能被上一次程序化切屏（restoreAfterShot）
+        // 写成别的页签——不重置的话，消费侧读旁路就把终端点链接的人送错页。
+        requestedTab = com.example.zhengdao.TabIndex.BROWSER
         tabRequested.set(true)
         tabRequestVersion++
     }
@@ -168,10 +423,22 @@ object BrowserHolder {
 
     // ── 受控回收出口（第⑱刀 · D-4） ───────────────────────────────────────
 
+    /**
+     * 玄览上屏时的旁路钩子（262 批预约式：巡按的补拍队列在玄览上屏那一刻 drain）。
+     * 可空＝没人订阅就是零开销；订阅方（BaopuBrowserWiring）自己负责投后台线程——
+     * 钩子在**组合期**（主线程）回调，钩子里直调桥命令会撞 onMain 自等死锁。
+     */
+    @Volatile
+    var browserShownListener: (() -> Unit)? = null
+
     /** 玄览进入组合（[BrowserScreen] 显示）。 */
     internal fun onBrowserShown() {
         browserOnScreen = true
+        runCatching { browserShownListener?.invoke() }
     }
+
+    /** 玄览此刻是否显示在屏幕上（262 批征询式要跨包读它；TRIM 回调可在别的线程 ⇒ 只读不写）。 */
+    fun browserOnScreenNow(): Boolean = browserOnScreen
 
     /** 玄览离开组合（切到别的底栏 Tab）。 */
     internal fun onBrowserHidden() {

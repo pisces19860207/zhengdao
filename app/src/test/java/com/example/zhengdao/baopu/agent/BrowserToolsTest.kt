@@ -33,6 +33,11 @@ class BrowserToolsTest {
             boom?.let { throw it }
             return answer
         }
+        override fun evidence(): String {
+            calls += "evidence"
+            boom?.let { throw it }
+            return answer
+        }
         override fun click(target: String): String {
             calls += "click:$target"
             boom?.let { throw it }
@@ -180,11 +185,11 @@ class BrowserToolsTest {
     }
 
     @Test
-    fun 二十个工具_名字与超时() {
+    fun 二十一个工具_名字与超时() {
         val names = BrowserTools.all().map { it.name }
         assertEquals(
             listOf(
-                "browser_open", "browser_snapshot", "browser_click",
+                "browser_open", "browser_snapshot", "browser_evidence", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot",
                 "browser_tap", "browser_swipe", "browser_long_press",
                 "browser_key", "browser_wait",
@@ -195,6 +200,24 @@ class BrowserToolsTest {
             names,
         )
         assertTrue(BrowserTools.all().all { it.timeoutMs == ToolTimeout.BROWSER_MS })
+    }
+
+    @Test
+    fun evidence_只读免确认_失败翻回执() {
+        // 262 批：证据快照与 snapshot 同级（FREE 只读）；回执不再 cap（64KB 闸在桥内核收过）
+        val spec = spec("browser_evidence")
+        assertEquals(ToolPermission.FREE, spec.permission)
+        assertTrue(spec.readOnly)
+
+        BaopuBrowser.gateway = FakeGateway(answer = "页面证据：…")
+        val ok = spec.executor(JSONObject())
+        assertTrue(ok is ToolOutcome.Ok)
+        assertEquals("页面证据：…", (ok as ToolOutcome.Ok).text)
+
+        BaopuBrowser.gateway = FakeGateway(boom = IllegalStateException("页面未加载：标签存在但还没导航到任何页面"))
+        val bad = spec.executor(JSONObject())
+        assertTrue("失败用异常表达 ⇒ 翻成 Failed（不许装成功）", bad is ToolOutcome.Failed)
+        assertTrue((bad as ToolOutcome.Failed).error.contains("页面未加载"))
     }
 
     @Test

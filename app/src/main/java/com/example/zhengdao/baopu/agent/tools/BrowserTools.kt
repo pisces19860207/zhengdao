@@ -31,6 +31,15 @@ internal interface BrowserGateway {
     /** 取当前页的结构快照（可交互元素 + 可见文本摘要）。 */
     fun snapshot(selector: String?): String
 
+    /**
+     * 取当前页的**证据快照**（262 批）：url、标题、DOM 结构骨架＋正文前 2000 字、
+     * 可访问性文本前 4000 字、元素计数。**不依赖前台可见**——DOM/属性读取与渲染无关，
+     * 用户在别的页签也能取（区别于 [snapshot] 与 [screenshot] 的分工点，工单口径）。
+     * 失败用异常表达（与 [screenshot] 同规）：无标签／未加载／超时／解析失败都带原因；
+     * 跨域 iframe 内容取不到但如实计数（正常回执里成行）。
+     */
+    fun evidence(): String
+
     /** 点一个目标（快照 ref 句柄 `@eN` 或 CSS 选择器；失效句柄由玄览侧拒绝并说明）。 */
     fun click(target: String): String
 
@@ -257,6 +266,31 @@ internal object BrowserTools {
         val raw = runCatching { gateway.snapshot(args.optString(ARG_SELECTOR).ifBlank { null }) }
             .getOrElse { return@ToolSpec ToolOutcome.Failed("取快照失败：${it.message ?: it.javaClass.simpleName}") }
         ToolOutcome.Ok(cap(raw, MAX_SNAPSHOT_CHARS))
+    }
+
+    fun evidenceSpec(): ToolSpec = ToolSpec(
+        name = "browser_evidence",
+        description = "取玄览当前页的**证据快照**：url、标题、DOM 结构骨架＋正文前 2000 字、" +
+            "可访问性文本前 4000 字、元素计数。**不依赖页面在前台**——用户在别的页签也能取" +
+            "（DOM/属性读取与渲染无关），适合页面取证、留档、事后核对。" +
+            "失败会带原因（无标签／页面未加载）；跨域 iframe 的内容取不到但会报数量。" +
+            "要看元素句柄（拿去点）用 browser_snapshot；要看像素用 browser_screenshot。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(),
+            "required" to jsonArrayOf(),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.FREE,
+        readOnly = true,
+        // parallelSafe 缺省 false：只读，但抢的是**同一个 WebView** ⇒ 不许并行
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { _ ->
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.evidence() }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("取证据失败：${it.message ?: it.javaClass.simpleName}") }
+        // 回执 ≤64KB 已在桥内核（EvidenceSnapshot.clampTotal）字节级收过，不再 cap
+        ToolOutcome.Ok(text)
     }
 
     fun clickSpec(): ToolSpec = ToolSpec(
@@ -765,9 +799,9 @@ internal object BrowserTools {
         ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
     }
 
-    /** 二十个 spec（顺序即 tools 数组顺序；228 批 B 片九件加在尾部）。 */
+    /** 二十一个 spec（顺序即 tools 数组顺序；228 批 B 片九件加在尾部，262 批 evidence 紧随 snapshot）。 */
     fun all(): List<ToolSpec> = listOf(
-        openSpec(), snapshotSpec(), clickSpec(), typeSpec(), scrollSpec(), screenshotSpec(),
+        openSpec(), snapshotSpec(), evidenceSpec(), clickSpec(), typeSpec(), scrollSpec(), screenshotSpec(),
         tapSpec(), swipeSpec(), longPressSpec(), keySpec(), waitSpec(),
         backSpec(), forwardSpec(), reloadSpec(),
         selectSpec(), hoverSpec(), scrollIntoViewSpec(),

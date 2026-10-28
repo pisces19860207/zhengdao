@@ -138,4 +138,41 @@ class BrowserTabStateTest {
             src.contains("tab.state.onBlocked(")
         )
     }
+
+    // ── 262 批 §6：「载入过」与「前台渲染过」是两件事（263 实测口径） ──────────
+
+    @Test
+    fun `isRenderable_载入过但只在后台完成_不算渲染过`() {
+        val s = BrowserTabState()
+        s.rememberPage("https://example.com", loaded = true)
+        assertFalse(
+            "只 everLoaded 不够：后台载入的页渲染器没产出过像素，直拍＝白图",
+            s.isRenderable(),
+        )
+        s.markRenderedForeground()
+        assertTrue("前台渲染完成过 ⇒ 渲染过", s.isRenderable())
+    }
+
+    @Test
+    fun `isRenderable_被回收的页签不算渲染过`() {
+        val s = BrowserTabState()
+        s.rememberPage("https://example.com", loaded = true)
+        s.markRenderedForeground()
+        s.onRendererGone()
+        assertFalse(
+            "recycled 后旧实例已销毁、新实例是空白，直拍＝白图",
+            s.isRenderable(),
+        )
+    }
+
+    @Test
+    fun `管理器委托只在App前台时置真前台渲染位`() {
+        val rel = "src/main/java/com/example/zhengdao/ui/browser/BrowserTabManager.kt"
+        val f = File(rel).let { if (it.exists()) it else File("app/$rel") }
+        val src = f.readText()
+        assertTrue(
+            "onPageFinished 后要按前台真相置真渲染位（判据在管理器侧，state 保持零 Android）",
+            src.contains("if (BrowserHolder.appInForegroundNow()) tab.state.markRenderedForeground()"),
+        )
+    }
 }
