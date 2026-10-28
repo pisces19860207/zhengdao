@@ -33,10 +33,7 @@ markdownRenderer = "0.38.1"
 # 第二百四十六批 OkHttp 5 升级：okhttp 与 mockwebserver 必须同版本（mockwebserver3:5.5.1
 # 的 pom 直接依赖 okhttp-jvm:5.5.1，只升一半就是版本劈叉）。
 okhttp = "5.5.1"
-commonsCompress = "1.26.2"
-commonsLang3 = "3.18.0"
 mockwebserver = "5.5.1"
-xz = "1.9"
 navigationCompose = "2.8.5"
 json = "20240303"
 # 第一百六十七批 定时任务 v1：主调度用 WorkManager（非精确兜底），精确闹钟走 AlarmManager 自己发。
@@ -87,12 +84,13 @@ detekt-cli = { group = "io.gitlab.arturbosch.detekt", name = "detekt-cli", versi
 # 134 批 lint(UseTomlInstead)：下面 8 个坐标原来以字符串字面量写在 app/build.gradle.kts，
 # 版本值原样搬入（okhttp 与 mockwebserver 同版本但分列两条，便于各自独立升级）。
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
-commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
-commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
+# 第二百六十六批（2026-10-28）：`commons-compress` 与 `commons-lang3` 都已删（全仓源码零引用；
+# 原为终端解压链服务，终端搬去 zhengdao-term 后主仓压缩只剩 JDK 自带 java.util.zip）。
+# 同一批还删了 tukaani:xz（commons-compress 的 XZ 后端，随它一起失去引入方）。
+# 取证与 APK 体积变化见报告「266-静态分析与依赖体检」。
 # 246 批：5.x 起测试库换 artifact 名（mockwebserver → mockwebserver3），包名也从
 # okhttp3.mockwebserver 变 mockwebserver3；alias 保持 mockwebserver，build.gradle.kts 不用动。
 mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "mockwebserver" }
-xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 json = { group = "org.json", name = "json", version.ref = "json" }
 # 定时任务（第一百六十七批）：只引 work-runtime（单进程），不引 work-runtime-ktx / work-testing——

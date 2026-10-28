@@ -121,66 +121,58 @@ private data class LicenseEntry(
 private const val LINES_PER_CHUNK = 120
 
 private val ENTRIES = listOf(
+    /*
+     * 2026-10-28（第二百六十六批）：条目按「当前 APK 里真有这个组件吗」重排了一次 ——
+     * 随包的正文只剩四份（Apache-2.0 / BSD-3-Clause-zstd / LGPL-2.1 / NOTICES）＋ 第一方声明
+     * ＋ 本记录页所读的 README。proot（GPL-2.0）、libtalloc（LGPL-3.0）、libandroid-shmem
+     * （BSD-3-Clause）、zstd-jni（BSD-2-Clause）、旧版第一方 GPL-3.0 与字体 OFL 全部退出本页：
+     * 它们的正文仍在仓库 `licenses/`（历史留档，旧版本 ≤ v2.2.1 的包里有），但**不随这个包**，
+     * 列在这里就会变成"页面上说带、包里没有"——正是用户 2026-10-28 那句
+     * 「别把那些许可证也带进去了」要治的病。判据与台账见 `licenses/README.md` 两张表。
+     */
     LicenseEntry(
         title = "Apache-2.0",
         asset = "licenses/Apache-2.0.txt",
-        covers = "Termux terminal-emulator / terminal-view / libtermux（源码级聚合）＋ 随包分发的 Apache-2.0 Maven 依赖",
+        covers = "随包的 Apache-2.0 Maven 依赖：Compose / AndroidX / OkHttp / kotlinx / mikepenz 等" +
+            "（Termux 的三个组件已随终端搬去 zhengdao-term，本仓不再聚合）",
         obligation = "第 4(a) 条：随分发物给接收者许可证副本；第 4(b) 条：改过的文件逐个标注修改通知" +
             "（本项目 12 个衍生文件已在文件头标注，逐文件修改点见 PROVENANCE.md）；" +
-            "第 4(d) 条 NOTICE 不适用 —— 上游没有 NOTICE 文件。",
+            "第 4(d) 条 NOTICE 见下面那份汇总。",
     ),
     LicenseEntry(
-        title = "GNU GPL v2.0",
-        asset = "licenses/GPL-2.0.txt",
-        covers = "proot（Termux fork 发行版；assets 内置官方二进制，运行时释放为独立文件）",
-        obligation = "以独立进程 exec 调用、与本项目不链接 ⇒ 聚合分发（FSF GPL FAQ 的 fork/exec 判据）。" +
-            "红线：只能 exec，绝不 dlopen / loadLibrary。",
+        title = "BSD 3-Clause（zstd）",
+        asset = "licenses/BSD-3-Clause-zstd.txt",
+        covers = "zstd 本体（facebook/zstd v1.5.6）—— 由 Rust 核静态编进随包的 libzhengdao_core.so",
+        obligation = "二进制分发时须复现版权声明、条件列表与免责声明；无源码要约义务。" +
+            "这一份与已删的 zstd-jni（Java 包装，BSD-2-Clause）**版权人不同**，不能互相顶替。",
     ),
     LicenseEntry(
-        title = "GNU LGPL v3.0",
-        asset = "licenses/LGPL-3.0.txt",
-        covers = "libtalloc（在 proot 进程内动态加载的共享库）",
-        obligation = "LGPL 允许动态链接使用，须随附正文并给出源码获取途径（见 THIRD-PARTY-LICENSES.md 第 2 节）；" +
-            "LGPL-3.0 第 2 条并入 GPL-3.0 ⇒ 同时见本项目 GPL-3.0 全文。",
-    ),
-    LicenseEntry(
-        title = "BSD 3-Clause",
-        asset = "licenses/BSD-3-Clause.txt",
-        covers = "libandroid-shmem（在 proot 进程内动态加载的共享库）",
-        obligation = "二进制分发时须复现版权声明、条件列表与免责声明；无源码要约义务。",
+        title = "GNU LGPL v2.1",
+        asset = "licenses/LGPL-2.1.txt",
+        covers = "jxl（JExcelApi 2.6.12，旧版 .xls 只读转换）",
+        obligation = "LGPL-2.1 第 3 条：随附正文并给出源码获取途径（见 THIRD-PARTY-LICENSES.md 第 2 节）。" +
+            "该 jar 内一份许可证文本都没有（实测），所以必须我们自己随包。",
     ),
     LicenseEntry(
         title = "第三方 NOTICE 汇总",
         asset = "licenses/NOTICES.txt",
-        covers = "Apache Commons Compress 的 NOTICE ＋ OkHttp 内置 Public Suffix List 数据的 NOTICE",
+        covers = "OkHttp 内置 Public Suffix List 数据的 NOTICE（该数据为 MPL-2.0）",
         obligation = "Apache-2.0 第 4(d) 条：随附被分发组件 NOTICE 里可读的归属声明副本。" +
             "Android 打包默认剥掉构件顶层的 META-INF/NOTICE*，故由本项目另存一份随包。",
     ),
     LicenseEntry(
-        title = "SIL OFL 1.1（字体）",
-        asset = "fonts/OFL.txt",
-        covers = "JetBrains Maple Mono（终端默认字体，本项目已子集化）",
-        obligation = "OFL 允许修改与再分发，须保留许可证全文与版权行；本字体无 Reserved Font Name。",
-    ),
-    LicenseEntry(
         title = "第一方代码（本项目）",
         asset = "licenses/LICENSE-zhengdao.txt",
-        covers = "证道（zhengdao）自身的第一方代码（app/ 里本项目编写部分、tools/、rootfs 脚本、docs/ 等）",
+        covers = "证道（zhengdao）自身的第一方代码（app/ 里本项目编写部分、tools/、docs/ 等）",
         obligation = "自 2026-10-11 起为「保留所有权利」：可浏览、克隆、本地评估；再分发与任何商业使用" +
             "（含 SaaS / 捆绑 / OEM / 企业内部规模化部署）需项目所有者事先书面许可。" +
             "正文 = 仓库根 LICENSE 的构建期副本。",
     ),
     LicenseEntry(
-        title = "GNU GPL v3.0",
-        asset = "licenses/GPL-3.0.txt",
-        covers = "① 历史版本（≤ v2.0.15）里本项目自身的许可正文；② libtalloc 的 LGPL-3.0 第 2 条「并入 GPL-3.0」要求",
-        obligation = "GPL 授权一经发布不可撤回：已经拿到旧版本（≤ v2.0.15）的人，其 GPL-3.0 权利继续有效。" +
-            "此正文原为仓库根 LICENSE，2026-10-11 移入 licenses/ 逐字节未改（SHA256 与 licenses/README.md 一致）。",
-    ),
-    LicenseEntry(
         title = "正文来源与校验记录",
         asset = "licenses/README.md",
-        covers = "上列每一份正文的来源 URL、取回日期、字节数、行数与 SHA256",
+        covers = "随包每一份正文的来源 URL、取回日期、字节数、行数与 SHA256；" +
+            "另列「仅历史留档、不再随包」的那几份（proot / libtalloc / libandroid-shmem / zstd-jni / 旧版 GPL-3.0）",
         obligation = "想自己核的人照它跑一条命令即可（文中给了 sha256sum 与 git cat-file 两种写法）。",
     ),
 )

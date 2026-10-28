@@ -240,6 +240,66 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: python3 tools/check-r8-mapping.py
 
+      # ── 第二百六十六批（2026-10-28）：死代码清单 ＋ 依赖体检成品 ────────────────────
+      # R8 的 `-printusage`（见 app/proguard-rules.pro）把「发布包实际被裁掉的类/成员」逐条写出来 ——
+      #   这是编译器替我们做的可达性分析，比 detekt / grep 准。资源侧由 AGP 自己写
+      #   resources.txt（⚠️ R8 **不认** ProGuard 的 `-printresources`，实测整包构建直接失败）。
+      #   本机拿不到（release 签名规矩），所以清单在 CI 出、从 artifact 下载。
+      - name: 上传 R8 死代码清单（usage / resources / mapping）
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: r8-deadcode-lists
+          path: |
+            app/build/outputs/mapping/release/usage.txt
+            app/build/outputs/mapping/release/resources.txt
+            app/build/outputs/mapping/release/mapping.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+      # 第二百六十六批：detekt 从「只出报告」转为**上闸**（存量不动，新增即红）。
+      #   为什么不是 `--baseline` 判红：实测发现 `config/detekt/baseline.xml`（171 条，2026-10-19 冻结）
+      #   已经**整体失效** —— 带 baseline 跑仍报 330 条，因为 baseline ID 是「规则:文件名$完整签名」的
+      #   精确串，262/264 批改过签名后 ID 全漂了；而这份 baseline 从冻结起一次没在流水线跑过，
+      #   所以没人发现。派工单禁止「为了让 detekt 通过去改 baseline」⇒ 不动它，改用预算闸
+      #   （tools/check-detekt-budget.py ＋ config/detekt/issue-budget.json，与 lint-budget 同款口径）。
+      #   本机跑不了 detekt（Java 21 toolchain，foojay 在本机下不下来），所以读数只能在 CI 出。
+      - name: detekt 预算闸（存量 330 条冻结，新增即红）
+        run: |
+          ./gradlew :app:detektReport --console=plain
+          python3 tools/check-detekt-budget.py
+
+      - name: 归档 detekt 报告
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: detekt-report
+          path: |
+            app/build/reports/detekt/detekt.html
+            app/build/reports/detekt/detekt.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+      # 依赖体检：把 gradle 的依赖树整理成「零引用候选 / 重复版本 / 体积风险」三档。
+      #   本批用它找出了 commons-compress / commons-lang3 / tukaani:xz 三个无主依赖（已删）。
+      #   ⚠️ 零引用候选只是**候选**：能删的判据是「删完 assembleDebug ＋ 全量单测仍绿」。
+      - name: 依赖体检（三档清单 → dep-report artifact）
+        run: |
+          mkdir -p build/deps
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --console=plain > build/deps/deps.txt
+          python3 tools/dependency-report.py --deps build/deps/deps.txt
+
+      - name: 归档依赖体检表
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dep-report
+          path: |
+            build/deps/deps.txt
+            build/deps/deps-summary.md
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: 上传 release APK（冒烟产物，保留 7 天）
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
