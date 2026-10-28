@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import android.widget.Toast
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.content.Context
 import java.io.File
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -64,6 +66,7 @@ import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaBackup
 import com.example.zhengdao.baopu.PersonaBackupResult
+import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaPackError
 import com.example.zhengdao.baopu.PersonaPackPayload
@@ -90,6 +93,8 @@ import com.example.zhengdao.ui.SettingsSubPage
 import com.example.zhengdao.ui.WorkspaceFolderPicker
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** 抱朴设置页（第十八批 A 段）：三块归位 ＋ read/bash 只读说明 ＋ 思考深度提示。 */
 @Composable
@@ -823,90 +828,65 @@ internal fun BaopuSettingsScreen(
                 var archivedOpen by remember { mutableStateOf(false) }
                 // B 段：点过一次「彻底删除」的那一条（第二击才带 confirmed=true；闸在 deleteArchived 里）
                 var confirmingDelete by remember { mutableStateOf<File?>(null) }
-                val bText = remember(skillReload) { pf.read(PersonaLayer.B_GLOBAL) }
-                val cText = remember(skillReload) { pf.read(PersonaLayer.C_PROJECT) }
-                val globalLines = remember(skillReload) {
-                    SkillRules.parseIndexLines(bText, MemoryScope.GLOBAL)
-                }
-                val projectLines = remember(skillReload) {
-                    SkillRules.parseIndexLines(cText, MemoryScope.PROJECT)
-                }
-                // ── 第五十七批 §1.2 · 待重验（旁挂 `_重验.json`，SKILL.md 一个字节不动）──
-                // 判据是纯函数（SkillRefine.expiryVerdict），证据来自 skill_event 表；
-                // 算表＋幂等写旁挂 JSON 全在数据层函数 refreshRecheck（T5：设置页零写盘）。
-                // 记录上线前没有 use 数据 ⇒ 判不了 ⇒ 不标（宁可漏标不冤枉）。只提示不处置。
-                val recheckTables = remember(skillReload) {
-                    val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
-                    val now = System.currentTimeMillis()
-                    fun oksOf(name: String): List<Boolean> = d.read { x ->
-                        val s2 = com.example.zhengdao.baopu.BaopuSql.recentUseOks(
-                            name, com.example.zhengdao.baopu.SkillRefine.SkillExpiry.FAIL_WINDOW,
+                // ── 第二百六十四批（A-P2-4）：技能卡不再在组合期读盘 ──────────────────
+                // 原来这一屏的十来处 `remember {...}` 都跑在首帧的组合线程上：两层人设原文、
+                // 两份索引、`_重验.json` 的算表＋幂等写、草稿扫盘、免批名单、失败态 SQLite、
+                // 两份 `_分类.json`、归档扫盘，外加每个索引行一次 `SkillStore.backupsOf(...)`
+                // （listFiles）。技能一多，进设置页第一帧就卡在读盘上（StrictMode 同一帧一串）。
+                // 现在整份快照一次在 Dispatchers.IO 算完：
+                // · 首帧 `review == null` ⇒ 只画「读取中…」，不画「还没有技能／还没有草稿」——
+                //   那是读完之后才敢说的话（加载态与空态不混）；
+                // · 写盘后的重读（skillReload／catTick）**不清空旧快照**，读到新的再整体替换，
+                //   所以不会「先空白再闪」（这也是不用 produceState 换 key 的原因：
+                //   换 key 会把值重置成初始值，正好制造那次闪）。
+                // 排序、空态文案、数据格式一个字节没改——改的只是读盘在哪执行。
+                var catTick by remember { mutableIntStateOf(0) }
+                var failureDetail by remember { mutableStateOf<SkillFailureGroup?>(null) }
+                var picking by remember { mutableStateOf<Pair<SkillScope, String>?>(null) }
+                var review by remember { mutableStateOf<SkillReviewData?>(null) }
+                LaunchedEffect(skillReload, catTick) {
+                    review = withContext(Dispatchers.IO) {
+                        loadSkillReview(
+                            context = ctx,
+                            personaFiles = pf,
+                            globalRoot = globalRoot,
+                            projectRoot = projectRoot,
                         )
-                        x.rawQuery(s2.sql, s2.args).use { c ->
-                            (0 until c.count).map { c.moveToPosition(it); c.getInt(0) == 1 }
-                        }
                     }
-                    fun lastOf(name: String): Long? = d.read { x ->
-                        val s2 = com.example.zhengdao.baopu.BaopuSql.lastUseAt(name)
-                        x.rawQuery(s2.sql, s2.args).use { c ->
-                            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
-                        }
-                    }
-                    mapOf(
-                        "global" to refreshRecheck(
-                            SkillRules.globalSkillDir(globalRoot), globalLines, ::oksOf, ::lastOf, now,
-                        ),
-                        "project" to refreshRecheck(
-                            SkillRules.projectSkillDir(projectRoot), projectLines, ::oksOf, ::lastOf, now,
-                        ),
-                    )
                 }
-                val globalRecheck: Map<String, String> = recheckTables["global"].orEmpty()
-                val projectRecheck: Map<String, String> = recheckTables["project"].orEmpty()
-                // ── 第一百八十批 · 失败态摘要优先 ─────────────────────────────────
-                // 失败（待重验）技能聚成「同类失败 ×N」，判语原句只进详情——原来每个技能行下
-                // 铺一句红判语，失败一多就是一长串扫不动。聚合判据在 BaopuSkillFailure（纯函数，
-                // JVM 可测）；最近失败时刻来自 skill_event **只读**查询，判据/存储一个字不改。
-                // 草稿数（待转正）也在这里先算好：顶部读数行要用，下面草稿段共用同一份。
-                val draftRows = remember(skillReload) { draftSkillRows(projectRoot, globalRoot) }
+                val read = review
+                if (read == null) {
+                    Text(
+                        text = stringResource(R.string.common_loading),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    return@SectionCard
+                }
+                val bText = read.bText
+                val cText = read.cText
+                val globalLines = read.globalLines
+                val projectLines = read.projectLines
+                // 两层「这一条有备份可回滚」的名单（原来每个索引行各查一次 listFiles）
+                val globalBackupNames = read.globalBackupNames
+                val projectBackupNames = read.projectBackupNames
+                // 下面这些读数全部来自上面那份 IO 快照（`loadSkillReview` 在 IO 线程算完才交付）。
+                val failureRows = read.failureRows
+                val failureGroups = read.failureGroups
+                // 行内短状态查这个表（键带层：两层同名各算各的，与列表同一口径）
+                val failureByKey = read.failureByKey
+                val draftRows = read.draftRows
+                val draftGlobalNames = read.draftGlobalNames
+                val draftProjectNames = read.draftProjectNames
                 // 第一百九十二批：免批技能名单（`_变更.jsonl` 最后一行 action=auto 的项目技能）——
                 // 技能页标「免批」标签与「撤销」按钮都认这份名单；被确认制改过或撤过的自动掉出。
-                val autoNames = remember(skillReload) {
-                    com.example.zhengdao.baopu.SkillAutoWrite.autoWrittenNames(
-                        com.example.zhengdao.baopu.SkillRules.projectSkillDir(projectRoot),
-                    )
-                }
-                val failureRows = remember(skillReload) {
-                    val d = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
-                    fun lastFailedAtOf(name: String): Long? = d.read { x ->
-                        // 只读查询（BaopuDb 同族 helper，180 批新增）；查不到/判不了 ⇒ null 不拦截
-                        val s2 = com.example.zhengdao.baopu.BaopuSql.lastFailedUseAt(name)
-                        x.rawQuery(s2.sql, s2.args).use { c ->
-                            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
-                        }
-                    }
-                    buildSkillFailureRows(globalRecheck, projectRecheck, ::lastFailedAtOf)
-                }
-                val failureGroups = remember(skillReload) { aggregateSkillFailures(failureRows) }
-                // 行内短状态查这个表（键带层：两层同名各算各的，与列表同一口径）
-                val failureByKey = remember(skillReload) {
-                    failureRows.associateBy { it.global to it.name }
-                }
-                val draftGlobalNames = remember(skillReload) {
-                    draftRows.filter { it.scope == SkillScope.GLOBAL }.map { it.name }.toSet()
-                }
-                val draftProjectNames = remember(skillReload) {
-                    draftRows.filter { it.scope == SkillScope.PROJECT }.map { it.name }.toSet()
-                }
-                var failureDetail by remember { mutableStateOf<SkillFailureGroup?>(null) }
+                val autoNames = read.autoNames
                 // ── 第三十六批 B 段 · 技能分类（旁挂 `_分类.json`，SKILL.md 一个字不动）──
                 // 分类**只影响显示**：它不改索引行文本、不改正文、不改人设（判据 T5）。
                 // 两层各一份表（全局那份在 App 私有、项目那份在工作区），互不串。
                 // 坏 JSON 由纯函数当空表（corrupt=true），这里只补一句红字，页面不许崩。
-                var catTick by remember { mutableIntStateOf(0) }
-                var picking by remember { mutableStateOf<Pair<SkillScope, String>?>(null) }
-                val globalCats = remember(catTick) { readCategories(SkillRules.globalSkillDir(globalRoot)) }
-                val projectCats = remember(catTick) { readCategories(SkillRules.projectSkillDir(projectRoot)) }
+                val globalCats = read.globalCats
+                val projectCats = read.projectCats
                 Text(
                     text = stringResource(
                         R.string.skill_review_desc,
@@ -966,17 +946,8 @@ internal fun BaopuSettingsScreen(
                 }
 
                 /** 索引行 → 技能正文文件（回滚按钮要按文件找 `.bak-*`）。落点与 SkillRules 同一口径。 */
-                fun skillFileOf(layer: PersonaLayer, name: String): File {
-                    val root = when (layer) {
-                        PersonaLayer.B_GLOBAL -> File(ctx.filesDir, "抱朴记忆")
-                        else -> com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
-                    }
-                    val dir = when (layer) {
-                        PersonaLayer.B_GLOBAL -> SkillRules.globalSkillDir(root)
-                        else -> SkillRules.projectSkillDir(root)
-                    }
-                    return File(File(dir, name), SkillRules.SKILL_FILE)
-                }
+                fun skillFileOf(layer: PersonaLayer, name: String): File =
+                    skillFileOf(layer, name, globalRoot, projectRoot)
 
                 /** 恢复到上一版（第二十三批 A 段）。没有备份就不出这个按钮，点了也没有意义。 */
                 fun restoreLast(layer: PersonaLayer, name: String) {
@@ -1105,7 +1076,8 @@ internal fun BaopuSettingsScreen(
                                 .clickable { picking = SkillScope.GLOBAL to line.name }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         )
-                        if (SkillStore.backupsOf(skillFileOf(PersonaLayer.B_GLOBAL, line.name)).isNotEmpty()) {
+                        // 有没有备份也来自那份 IO 快照（原来是每行一次 listFiles，重组一次扫一遍）
+                        if (line.name in globalBackupNames) {
                             TextButton(onClick = { restoreLast(PersonaLayer.B_GLOBAL, line.name) }) {
                                 Text(stringResource(R.string.skill_restore_last))
                             }
@@ -1178,7 +1150,8 @@ internal fun BaopuSettingsScreen(
                                 .clickable { picking = SkillScope.PROJECT to line.name }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         )
-                        if (SkillStore.backupsOf(skillFileOf(PersonaLayer.C_PROJECT, line.name)).isNotEmpty()) {
+                        // 有没有备份也来自那份 IO 快照（原来是每行一次 listFiles，重组一次扫一遍）
+                        if (line.name in projectBackupNames) {
                             TextButton(onClick = { restoreLast(PersonaLayer.C_PROJECT, line.name) }) {
                                 Text(stringResource(R.string.skill_restore_last))
                             }
@@ -1377,7 +1350,7 @@ internal fun BaopuSettingsScreen(
                 // 删过的技能都躺在 `<名>/SKILL.md.deleted-<时间戳>`（23A 的归档口径：改名不硬删），
                 // 但界面上**从来没有入口** ⇒ 用户以为删了就真没了，抱朴自己也找不回来。
                 // 派工单原话：这一行「N=0 时灰掉但不许消失」——所以它是常驻的 TextButton，只把 enabled 关掉。
-                val archivedRows = remember(skillReload) { archivedSkillRows(projectRoot, globalRoot) }
+                val archivedRows = read.archivedRows
                 TextButton(enabled = archivedRows.isNotEmpty(), onClick = { archivedOpen = true }) {
                     Text(stringResource(R.string.skill_archived_group, archivedRows.size))
                 }
@@ -1482,6 +1455,161 @@ internal fun BaopuSettingsScreen(
             }
         }
     }
+}
+
+/**
+ * 第二百六十四批（A-P2-4）：技能审阅卡的**整份读盘快照**。
+ *
+ * 为什么要一次算完再交给界面：这一屏原来有十来处 `remember {...}` 在组合线程上现读盘——
+ * 两层人设原文、两份索引、`_重验.json` 的算表＋幂等写、草稿扫盘、免批名单、失败态 SQLite、
+ * 两份 `_分类.json`、归档扫盘，再加每个索引行一次 `SkillStore.backupsOf(...)`（listFiles）。
+ * 技能一多，进设置页第一帧就卡在读盘上（StrictMode `detectDiskReads` 同一帧报一串）。
+ *
+ * 快照在 [loadSkillReview] 里由 `Dispatchers.IO` 算完才赋值；界面拿到的是不可变数据。
+ * **口径没动**：索引行解析、分类重排、失败聚合、归档顺序、空态文案都还是原来那些函数。
+ */
+private data class SkillReviewData(
+    val bText: String?,
+    val cText: String?,
+    val globalLines: List<SkillRules.IndexLine>,
+    val projectLines: List<SkillRules.IndexLine>,
+    val failureRows: List<SkillFailureRow>,
+    val failureGroups: List<SkillFailureGroup>,
+    val failureByKey: Map<Pair<Boolean, String>, SkillFailureRow>,
+    val draftRows: List<SkillDraftRow>,
+    val draftGlobalNames: Set<String>,
+    val draftProjectNames: Set<String>,
+    val autoNames: Set<String>,
+    val globalCats: SkillCategoryTable,
+    val projectCats: SkillCategoryTable,
+    val archivedRows: List<ArchivedSkillRow>,
+    val globalBackupNames: Set<String>,
+    val projectBackupNames: Set<String>,
+)
+
+/** 索引行 → 技能正文文件。落点与 SkillRules 同一口径（页面内那层同名函数只是补两个根目录）。 */
+private fun skillFileOf(
+    layer: PersonaLayer,
+    name: String,
+    globalRoot: File,
+    projectRoot: File,
+): File {
+    val root = when (layer) {
+        PersonaLayer.B_GLOBAL -> globalRoot
+        else -> projectRoot
+    }
+    val dir = when (layer) {
+        PersonaLayer.B_GLOBAL -> SkillRules.globalSkillDir(root)
+        else -> SkillRules.projectSkillDir(root)
+    }
+    return File(File(dir, name), SkillRules.SKILL_FILE)
+}
+
+/**
+ * 一层里「有备份可回滚」的名字。
+ *
+ * 原来这是每个索引行在组合期各查一次 `SkillStore.backupsOf(...)`（listFiles）——
+ * 一屏几十行就是几十次目录读。挪进 IO 后一次算完，界面只做集合查名。
+ */
+private fun backupNames(
+    lines: List<SkillRules.IndexLine>,
+    layer: PersonaLayer,
+    globalRoot: File,
+    projectRoot: File,
+): Set<String> = lines.mapNotNull { line ->
+    if (SkillStore.backupsOf(skillFileOf(layer, line.name, globalRoot, projectRoot)).isNotEmpty()) {
+        line.name
+    } else {
+        null
+    }
+}.toSet()
+
+/**
+ * 技能审阅卡的全部读盘（第二百六十四批）：**只许在 IO 线程调用**。
+ *
+ * 顺序与原来逐句一致：先读人设原文→解析索引→算待重验表（旁挂 `_重验.json` 幂等写仍在
+ * 数据层 `refreshRecheck`，本函数不新开写口）→草稿/免批/失败态→两份分类表→归档。
+ * 判据一个字没改，改的只是这些语句在哪条线程跑。
+ */
+private fun loadSkillReview(
+    context: Context,
+    personaFiles: PersonaFiles,
+    globalRoot: File,
+    projectRoot: File,
+): SkillReviewData {
+    val bText = personaFiles.read(PersonaLayer.B_GLOBAL)
+    val cText = personaFiles.read(PersonaLayer.C_PROJECT)
+    val globalLines = SkillRules.parseIndexLines(bText, MemoryScope.GLOBAL)
+    val projectLines = SkillRules.parseIndexLines(cText, MemoryScope.PROJECT)
+    // ── 第五十七批 §1.2 · 待重验（旁挂 `_重验.json`，SKILL.md 一个字节不动）──
+    // 判据是纯函数（SkillRefine.expiryVerdict），证据来自 skill_event 表；
+    // 算表＋幂等写旁挂 JSON 全在数据层函数 refreshRecheck（T5：设置页零写盘）。
+    // 记录上线前没有 use 数据 ⇒ 判不了 ⇒ 不标（宁可漏标不冤枉）。只提示不处置。
+    val d = com.example.zhengdao.baopu.BaopuRuntime.db(context)
+    val now = System.currentTimeMillis()
+    fun oksOf(name: String): List<Boolean> = d.read { x ->
+        val s2 = com.example.zhengdao.baopu.BaopuSql.recentUseOks(
+            name, com.example.zhengdao.baopu.SkillRefine.SkillExpiry.FAIL_WINDOW,
+        )
+        x.rawQuery(s2.sql, s2.args).use { c ->
+            (0 until c.count).map { c.moveToPosition(it); c.getInt(0) == 1 }
+        }
+    }
+    fun lastOf(name: String): Long? = d.read { x ->
+        val s2 = com.example.zhengdao.baopu.BaopuSql.lastUseAt(name)
+        x.rawQuery(s2.sql, s2.args).use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
+    }
+    val recheckTables = mapOf(
+        "global" to refreshRecheck(
+            SkillRules.globalSkillDir(globalRoot), globalLines, ::oksOf, ::lastOf, now,
+        ),
+        "project" to refreshRecheck(
+            SkillRules.projectSkillDir(projectRoot), projectLines, ::oksOf, ::lastOf, now,
+        ),
+    )
+    val globalRecheck: Map<String, String> = recheckTables["global"].orEmpty()
+    val projectRecheck: Map<String, String> = recheckTables["project"].orEmpty()
+    // ── 第一百八十批 · 失败态摘要优先 ─────────────────────────────────
+    // 失败（待重验）技能聚成「同类失败 ×N」，判语原句只进详情——原来每个技能行下
+    // 铺一句红判语，失败一多就是一长串扫不动。聚合判据在 BaopuSkillFailure（纯函数，
+    // JVM 可测）；最近失败时刻来自 skill_event **只读**查询，判据/存储一个字不改。
+    // 草稿数（待转正）也在这里先算好：顶部读数行要用，下面草稿段共用同一份。
+    val draftRows = draftSkillRows(projectRoot, globalRoot)
+    // 第一百九十二批：免批技能名单（`_变更.jsonl` 最后一行 action=auto 的项目技能）——
+    // 技能页标「免批」标签与「撤销」按钮都认这份名单；被确认制改过或撤过的自动掉出。
+    val autoNames = com.example.zhengdao.baopu.SkillAutoWrite.autoWrittenNames(
+        com.example.zhengdao.baopu.SkillRules.projectSkillDir(projectRoot),
+    )
+    fun lastFailedAtOf(name: String): Long? = d.read { x ->
+        // 只读查询（BaopuDb 同族 helper，180 批新增）；查不到/判不了 ⇒ null 不拦截
+        val s2 = com.example.zhengdao.baopu.BaopuSql.lastFailedUseAt(name)
+        x.rawQuery(s2.sql, s2.args).use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
+    }
+    val failureRows = buildSkillFailureRows(globalRecheck, projectRecheck, ::lastFailedAtOf)
+    return SkillReviewData(
+        bText = bText,
+        cText = cText,
+        globalLines = globalLines,
+        projectLines = projectLines,
+        failureRows = failureRows,
+        failureGroups = aggregateSkillFailures(failureRows),
+        // 行内短状态查这个表（键带层：两层同名各算各的，与列表同一口径）
+        failureByKey = failureRows.associateBy { it.global to it.name },
+        draftRows = draftRows,
+        draftGlobalNames = draftRows.filter { it.scope == SkillScope.GLOBAL }.map { it.name }.toSet(),
+        draftProjectNames = draftRows.filter { it.scope == SkillScope.PROJECT }.map { it.name }.toSet(),
+        autoNames = autoNames,
+        // 第三十六批 B 段：两层各一份分类表（全局那份在 App 私有、项目那份在工作区，互不串）
+        globalCats = readCategories(SkillRules.globalSkillDir(globalRoot)),
+        projectCats = readCategories(SkillRules.projectSkillDir(projectRoot)),
+        archivedRows = archivedSkillRows(projectRoot, globalRoot),
+        globalBackupNames = backupNames(globalLines, PersonaLayer.B_GLOBAL, globalRoot, projectRoot),
+        projectBackupNames = backupNames(projectLines, PersonaLayer.C_PROJECT, globalRoot, projectRoot),
+    )
 }
 
 /**
