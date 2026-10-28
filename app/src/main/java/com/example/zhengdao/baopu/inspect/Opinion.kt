@@ -10,6 +10,8 @@ internal enum class LawRef {
     NONE,
     L1, L2, L3, L4, L5, L6, L7, L8, L9, L10, L11, L12,
     L13, L14, L15, L16, L17, L18, L19, L20, L21, L22, L23,
+    // 第二百七十二批：旁路对拍（法典 L28）。L24–L27 各归自己的批次（271 在飞），不在这里替它加。
+    L28,
 }
 
 internal data class Opinion(
