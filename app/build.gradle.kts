@@ -464,17 +464,22 @@ android {
     // ——主 APP 现在不编任何 C 代码，只通过 :terminal-core 的 AAR 拿到那些 .so。
 }
 
-// ── Detekt（P1-3，2026-10-19）──────────────────────────────────────────────────
-// 只开 LongMethod / CyclomaticComplexMethod 两条，report-only；CI 不接这一步
-//（质量工程报告 P1-3 原话「不设门槛前不影响 CI」）。
+// ── Detekt（P1-3，2026-10-19；第二百六十六批 2026-10-28 上闸）─────────────────
+// 只开 LongMethod / CyclomaticComplexMethod 两条。
+//
+// **2026-10-28 起进 CI 并上闸**：`detektReport`（出 html/xml）＋ `tools/check-detekt-budget.py`
+//   （比 `config/detekt/issue-budget.json`，多了就红）在 `.github/workflows/ci.yml` 的 verify job
+//   里跑，报告作 artifact。为什么用预算闸而不是 baseline 闸，见下面那段实测说明。
+//   之前的状态是「有配置、有 baseline，但流水线里一次没跑」—— 用户 2026-10-28 点出来的
+//   「静态分析处理好了吗」就是指这个：不跑的静态分析等于没有。
 //
 // 为什么走 CLI 而不是 Gradle 插件：Detekt 1.23.8 内置的 Kotlin 编译器不认 JDK 25
 //（`JavaVersion.parse("25.0.3")` 直接抛），而本仓 Gradle daemon 钉的是 JDK 25。
 // 插件任务与 daemon 同 JVM，绕不开；这里改用 `JavaExec` + Java 21 toolchain 起子进程，
 // 既保留 Detekt 本体，也不影响主构建的 JDK 25。
 //
-// 首跑（2026-10-19）的违规已写进 `config/detekt/baseline.xml` 冻结；以后新增违规只会出现在
-// `app/build/reports/detekt/detekt.html`，不会拦构建。
+// 首跑（2026-10-19）的 171 条违规写进 `config/detekt/baseline.xml` 冻结；`detektReport`
+// 仍然只出报告（不红，给人看趋势），**判红在 CI 侧由预算闸完成**（见下）。
 val detektCli = configurations.create("detektCli") {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -506,6 +511,26 @@ tasks.register<JavaExec>("detektReport") {
     isIgnoreExitValue = true
 }
 
+/*
+ * 第二百六十六批（2026-10-28）实测发现：**`config/detekt/baseline.xml` 已经失效**。
+ *
+ *   带 `--baseline` 跑，仍报 330 条（LongMethod 148 / CyclomaticComplexMethod 182），
+ *   而 baseline 里只有 171 条 —— 说明大部分冻结条目**匹配不上了**。原因是 detekt 的
+ *   baseline ID 是「规则:文件名$完整签名」的**精确字符串**：2026-10-19 冻结之后，262 / 264
+ *   等批改过大量函数签名（参数名、尾逗号、KDoc），ID 一变就不再匹配。
+ *   换句话说：这份 baseline 从冻结那天起就没人跑过（旧注释里写着「CI 不接这一步」），
+ *   所以「它已经对不上代码」这件事一直没被发现。
+ *
+ * ⇒ 处置：**不动 baseline.xml**（派工单 §3 负例 2 明令禁止「为了让 detekt 通过去改 baseline」），
+ *   改用仓库已有的「预算闸」模式（`tools/check-lint-budget.py` 同款）：把当前 330 条的
+ *   指纹存进 `config/detekt/issue-budget.json`，CI 跑 `detektReport` 后由
+ *   `tools/check-detekt-budget.py` 比对 —— **多了就红，少了只提示**。
+ *   这样「只拦新增」的口径成立，而 baseline 的历史真相（171 条）保持原样、可供追责。
+ *
+ * 想彻底解决（把 171 条修掉、baseline 与代码重新对齐）必须另立一批：
+ *   现开的两条规则都只能靠**结构性拆分**消除，本批护栏禁止为消警告改业务逻辑。
+ */
+
 tasks.register<JavaExec>("detektBaselineUpdate") {
     group = "verification"
     description = "重算 Detekt 基线（只跑 LongMethod / CyclomaticComplexMethod）"
@@ -527,19 +552,16 @@ dependencies {
     testImplementation(project(":core"))
     // Detekt CLI（P1-3）：只在 detektReport / detektBaselineUpdate 两个任务里用，不进 APK。
     add("detektCli", libs.detekt.cli)
-    // HTTP 与压缩：OkHttp + commons-compress（解 tar）；zstd-jni 随终端搬走后已删（2026-10-27）解 zstd
+    // HTTP：OkHttp（zstd-jni 随终端搬走后已删，2026-10-27；commons-compress 第二百六十六批删）
     implementation(libs.okhttp)
-    implementation(libs.commons.compress)
-    // 供应链（第四十三批 OSV，2026-10-19）：commons-compress 传递进来的
-    // commons-lang3 3.14.0 命中 CVE-2025-48924（GHSA-j288-q9x7-2f5v，中危）。
-    // 显式抬到修复版 3.18.0，不动 commons-compress 主版本（升级 compress 单开一批）。
-    implementation(libs.commons.lang3)
-    androidTestImplementation(libs.commons.compress)
+    // 第二百六十六批（2026-10-28）：commons-lang3 已删。它的历史身份是「为了修
+    // CVE-2025-48924（GHSA-j288-q9x7-2f5v）把 commons-compress 传递进来的 3.14.0 抬到 3.18.0」
+    // —— commons-compress 本身在源码里零引用、先一步删掉之后，lang3 就没有引入方了。
     // 多源回退逻辑测试：本地环回假服务器，真实走 OkHttp 栈（零外网依赖）
     testImplementation(libs.mockwebserver)
 
-    // xz 解压（抱朴 bionic OpenCode 的 .pkg.tar.xz 释放）：commons-compress 的 XZ 后端
-    implementation(libs.xz)
+    // 第二百六十六批（2026-10-28）：tukaani:xz 已删（源码零引用；它原本是 commons-compress 的
+    // XZ 后端，用于释放 .pkg.tar.xz，那条流水线已随终端搬去 zhengdao-term）。
 
     // 第二百五十二批 · 旧版 Excel（.xls / BIFF）只读转换：F9 物流系统的导出只肯出 .xls，
     // 抱朴的表格通道只认 xlsx / csv / tsv ⇒ 扫到 .xls 先转成 UTF-8 CSV 再走既有 CSV 通道。
@@ -666,6 +688,56 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
     private fun normalizeToLf(bytes: ByteArray): ByteArray =
         String(bytes, Charsets.UTF_8).replace("\r\n", "\n").replace('\r', '\n').toByteArray(Charsets.UTF_8)
 
+    companion object {
+        /**
+         * **随包**的许可证正文（唯一真源，2026-10-28 第二百六十六批重定）。
+         *
+         * 判据只有一条：**当前 APK 里有这个组件吗**？有 ⇒ 必须随包；没有 ⇒ 不随包但留档。
+         *   · Apache-2.0 —— Compose / OkHttp / AndroidX / kotlinx 等一大片；
+         *   · BSD-3-Clause-zstd —— `libzhengdao_core.so` 里**静态编进了 zstd 本体**
+         *     （实测 .so 内含 `zstd-safe-7.3.0/src/lib.rs` 路径串、`ZSTD_trace_decompress_*` 符号、
+         *     "bad error message from zstd" 错误串 ⇒ 不是"可能"，是真的在里面）；
+         *   · LGPL-2.1 —— jxl（第二百五十二批，旧版 .xls 只读），聚合分发的 LGPL 库必须随附正文；
+         *   · NOTICES —— Apache-2.0 §4(d) 的归属声明（okhttp 内置 Public Suffix List 的 MPL-2.0 数据）；
+         *   · README.md —— 上列每一份的来源 URL / 字节数 / SHA256 记录（用户自己可核）；
+         *   · LICENSE-zhengdao.txt（来自仓库根 LICENSE）—— 第一方声明，见下方 `need`。
+         */
+        val PACKAGED = listOf(
+            "Apache-2.0.txt",
+            "BSD-3-Clause-zstd.txt",
+            "LGPL-2.1.txt",
+            "NOTICES.txt",
+            "README.md",
+        )
+
+        /**
+         * **仅历史留档**、**不再随包**的正文。
+         *
+         * 这三份（＋ zstd-jni 包装代码的 BSD-2-Clause）服务的组件都已经不在当前 APK 里：
+         *   · GPL-2.0 —— proot（Termux fork）：proot 与整个终端已搬去 `zhengdao-term`，
+         *     `app/src/main/assets/` 现在只有 `baopu/`，没有任何 proot 二进制；
+         *   · LGPL-3.0 —— libtalloc：同上，在 proot 进程内动态加载，proot 走了它也就走了；
+         *   · BSD-3-Clause —— libandroid-shmem：同上；
+         *   · BSD-2-Clause —— zstd-jni（Java 包装）：2026-10-27 随终端搬走时删掉了依赖，
+         *     剩下的 zstd 本体（C）走 BSD-3-Clause-zstd.txt 那一份；
+         *   · GPL-3.0 —— ① 第一方历史版本（≤ v2.0.15）自身的许可声明；② 曾是满足 libtalloc 的
+         *     LGPL-3.0 第 2 条「并入 GPL-3.0」所需。两件都已是历史：当前包内**没有任何 GPL 组件**，
+         *     而拿到旧版本的人已从**那个版本的包**里得到正文（GPL 授权不可撤回，但也不是
+         *     "每个新包都得再带一遍"）。
+         *
+         * ⚠️ **正文文件必须留在仓库里**：旧版本还在 GitHub Releases 可下载（≤ v2.2.1 的包内
+         * 带着 proot/talloc/shmem），合规义务不因为"新版本不再分发"而消失。
+         * 它们只是**不随新包**（`tools/check-licenses.py` 会断言包里没有它们，多一份都红）。
+         */
+        val ARCHIVED = listOf(
+            "BSD-2-Clause.txt",
+            "BSD-3-Clause.txt",
+            "GPL-2.0.txt",
+            "GPL-3.0.txt",
+            "LGPL-3.0.txt",
+        )
+    }
+
     @TaskAction
     fun stage() {
         val outRoot = outDir.get().asFile
@@ -677,16 +749,41 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
         val out = File(outRoot, "licenses")
         check(out.mkdirs() || out.isDirectory) { "[stageLicenseAssets] 建不出输出目录：$out" }
 
+        // ── 分类账必须平（2026-10-28）──────────────────────────────────────────
+        // 仓库里每份 .txt 要么随包、要么明确登记为"仅历史留档"。两边都不在 ⇒ 有人加了正文
+        // 却忘了分类 ⇒ 当场红（这正是 E-104 那种"文档说有、包里没有"的缺口源头）。
+        // 两份清单不许重叠 —— 同一份既随包又"不随包"是自相矛盾的账。
+        check(PACKAGED.intersect(ARCHIVED.toSet()).isEmpty()) {
+            "[stageLicenseAssets] 分类账冲突，同时出现在随包与留档两份清单里：" +
+                PACKAGED.intersect(ARCHIVED.toSet())
+        }
+        val onDisk = licensesDir.get().asFile.listFiles { f -> f.isFile && f.name.endsWith(".txt") }
+            ?.map { it.name }
+            ?.sorted()
+            .orEmpty()
+        val unclassified = onDisk - (PACKAGED + ARCHIVED).toSet()
+        check(unclassified.isEmpty()) {
+            "[stageLicenseAssets] licenses/ 下这些正文没有分类（既不在 PACKAGED 也不在 ARCHIVED）：" +
+                "$unclassified —— 先判「当前 APK 里有没有这个组件」，再登记进对应清单" +
+                "（licenses/README.md 两张表要同步）"
+        }
+        val missingFromDisk = (PACKAGED + ARCHIVED).filter { it.endsWith(".txt") && it !in onDisk }
+        check(missingFromDisk.isEmpty()) {
+            "[stageLicenseAssets] 清单里登记了但仓库里没有这些正文：$missingFromDisk"
+        }
+
         // ⚠️ 一律归一成 LF 再落盘。仓库形态（git blob）本就是 LF，但 `core.autocrlf=true` 的**老检出**
         //    工作区里可能是 CRLF（本机主工作树就是），直接 copy 会把 CRLF 版本装进 APK ⇒
         //    随包正文的哈希随「在哪台机器上构建」变，`licenses/README.md` 记的 SHA256 就不再是
         //    「随包那一份」的摘要。归一之后：随包正文恒等于官方原文（LF）、与上表逐字节一致。
+        //
+        //    ⚠️ 2026-10-28 起**按 PACKAGED 白名单装配**（原来是把 licenses/ 整个目录拷进去）：
+        //    历史留档那几份必须留在仓库、但**不许进包**，靠"整目录拷贝 + 事后删除"太脆。
         val copies: List<Pair<File, String>> =
-            licensesDir.get().asFile.listFiles().orEmpty()
-                .filter { it.isFile }
-                .map { it to it.name } +
+            PACKAGED.map { name -> File(licensesDir.get().asFile, name) to name } +
                 (rootLicense.get().asFile to "LICENSE-zhengdao.txt")
         copies.forEach { (src, name) ->
+            check(src.isFile) { "[stageLicenseAssets] 找不到正文：$src" }
             val canonical = normalizeToLf(src.readBytes())
             File(out, name).writeBytes(canonical)
             if (canonical.size.toLong() != src.length()) {
@@ -702,26 +799,22 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             .map { it.name }
         check(withCr.isEmpty()) { "[stageLicenseAssets] 正文里仍有 CR（未归一成 LF）：$withCr" }
 
+        // 反向断言：历史留档一份都不许被装配进去（"多带一份"也从这里开始红）。
+        val leaked = out.listFiles().orEmpty().map { it.name }.filter { it in ARCHIVED }
+        check(leaked.isEmpty()) {
+            "[stageLicenseAssets] 历史留档的正文进了随包目录（$leaked）—— 当前 APK 已不含 proot/talloc/shmem，" +
+                "带进包等于给自己挂一份没对象的义务"
+        }
+
         val txts = out.listFiles { f -> f.isFile && f.name.endsWith(".txt") }
             ?.map { it.name }
             ?.sorted()
             .orEmpty()
-        val need = listOf(
-            "Apache-2.0.txt",
-            "BSD-2-Clause.txt",
-            "BSD-3-Clause.txt",
-            "GPL-2.0.txt",
-            "GPL-3.0.txt",
-            // 第二百五十二批：jxl（旧版 .xls 读取）是 LGPL-2.1 —— 与 LGPL-3.0 是**两份不同版本**的正文
-            // （libtalloc 那一份替不了它），必须自己随包一份，否则 LGPL-2.1 第 3 条「随附正文」没履行。
-            "LGPL-2.1.txt",
-            "LGPL-3.0.txt",
-            "LICENSE-zhengdao.txt",
-            "NOTICES.txt",
-        )
-        check(txts.containsAll(need)) {
-            "[stageLicenseAssets] 许可证正文缺失：应有 $need，实际 $txts ——" +
-                "APK 将不带正文（见 docs/ERRATA.md E-104 与 licenses/README.md）"
+        // 缺一份就红（原有口径）。多一份由上面的 leaked 断言与本任务的白名单双重看住。
+        val need = PACKAGED.filter { it.endsWith(".txt") } + "LICENSE-zhengdao.txt"
+        check(txts == need.sorted()) {
+            "[stageLicenseAssets] 随包正文与清单不一致：应有 ${need.sorted()}，实际 $txts ——" +
+                "APK 将不带正文或带多了（见 docs/ERRATA.md E-104 与 licenses/README.md）"
         }
         logger.lifecycle("[stageLicenseAssets] OK：已装配 ${txts.size} 份许可证正文 → ${out.absolutePath}")
     }

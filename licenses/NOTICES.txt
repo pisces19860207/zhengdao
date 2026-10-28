@@ -7,19 +7,7 @@
 只拿 APK 的人看不到它们。
 
 --------------------------------------------------------------------------------
-1) Apache Commons Compress（org.apache.commons:commons-compress:1.26.2）
-   构件内路径：META-INF/NOTICE.txt（178 B）；该构件另有 META-INF/LICENSE.txt = Apache-2.0 全文
-   （正文见 licenses/Apache-2.0.txt）
---------------------------------------------------------------------------------
-
-Apache Commons Compress
-Copyright 2002-2024 The Apache Software Foundation
-
-This product includes software developed at
-The Apache Software Foundation (https://www.apache.org/).
-
---------------------------------------------------------------------------------
-2) Public Suffix List 数据（经 com.squareup.okhttp3:okhttp:4.12.0 随包分发）
+1) Public Suffix List 数据（经 com.squareup.okhttp3:okhttp:5.5.1 随包分发）
    构件内路径：okhttp3/internal/publicsuffix/NOTICE（218 B）；同目录另有编译后的数据
    publicsuffixes.gz（41,394 B），APK 内两个文件都在（上游字节未修改）
 --------------------------------------------------------------------------------
@@ -33,4 +21,9 @@ https://mozilla.org/MPL/2.0/
 --------------------------------------------------------------------------------
 维护：新增 / 升级带 NOTICE 的依赖时，照上面的格式把该构件的 NOTICE 原文追加进来，并同步
 licenses/README.md 的字节数 / 行数 / SHA256 与 THIRD-PARTY-LICENSES.md 末节的依赖表。
+
+⚠️ 2026-10-28（第二百六十六批）：原来第 1 段是 Apache Commons Compress 的 NOTICE（178 B）。
+   该依赖已从 app 移除（全仓源码零引用，见报告「266-静态分析与依赖体检」），当前 APK 里没有它
+   ⇒ 第 4(d) 条的义务对象不存在，那段原文**删掉**（要查的人看 git 历史里本文件的上一版）。
+   保留它会变成「随包声明了一个包里没有的组件」——与本文件的目的正好相反。
 --------------------------------------------------------------------------------

@@ -150,17 +150,55 @@ class LicenseTextsTest {
             "build.gradle.kts 里没有 normalizeToLf：随包正文会随构建机的换行设置漂移（E-104 第三条补记）",
             g.contains("normalizeToLf"),
         )
-        listOf(
-            "Apache-2.0.txt",
-            "BSD-2-Clause.txt",
-            "BSD-3-Clause.txt",
-            "GPL-2.0.txt",
-            "GPL-3.0.txt",
-            "LGPL-3.0.txt",
-            "LICENSE-zhengdao.txt",
-            "NOTICES.txt",
-        ).forEach {
-            assertTrue("装配断言里漏了 $it —— 少一份就等于 APK 里没有它", g.contains(it))
+    }
+
+    /**
+     * 分类账必须平（2026-10-28 第二百六十六批）。
+     *
+     * 装配任务里有 `PACKAGED`（随包）与 `ARCHIVED`（仅历史留档）两份清单，装配时按 `PACKAGED`
+     * 白名单拷贝。这里在 JVM 侧把同一本账算一遍 —— 装配那边是 Gradle 任务，只有真打一次包才会报，
+     * 而这条单测跑一次全量单测就能看见：
+     *   ① 仓库 `licenses/` 下的每个 `.txt` 都被分类（两边都不在 ⇒ 有人加了正文忘了登记）；
+     *   ② 两份清单不重叠（同一份既随包又不随包是自相矛盾）；
+     *   ③ 清单里登记的文件都真的在仓库里。
+     * 为什么用户在意：2026-10-28 他说「别把那些许可证也带进去了」——
+     * 漏登记会让旧正文悄悄跟着新包走，多登记会让包缺正文，两种都在这条里红。
+     */
+    @Test
+    fun `随包与留档两份清单覆盖了 licenses 下全部正文 - 且不重叠`() {
+        val g = File("build.gradle.kts").readText(Charsets.UTF_8)
+        fun listOf(name: String): List<String> {
+            val i = g.indexOf("val $name = listOf(")
+            assertTrue("build.gradle.kts 里找不到 $name 清单", i >= 0)
+            val j = g.indexOf(")", i)
+            return Regex("\"([^\"]+)\"").findAll(g.substring(i, j)).map { it.groupValues[1] }.toList()
+        }
+        val packaged = listOf("PACKAGED")
+        val archived = listOf("ARCHIVED")
+
+        assertTrue("PACKAGED 为空", packaged.isNotEmpty())
+        assertTrue("ARCHIVED 为空", archived.isNotEmpty())
+        assertEquals(
+            "PACKAGED 与 ARCHIVED 有重叠：${packaged.intersect(archived.toSet())}",
+            emptyList<String>(),
+            packaged.intersect(archived.toSet()).toList(),
+        )
+        // README.md 是记录页（不是许可证正文），它随包但没有 .txt 后缀。
+        val onDisk = File(repo, "licenses").listFiles().orEmpty()
+            .filter { it.isFile && it.name.endsWith(".txt") }
+            .map { it.name }
+            .sorted()
+        val classified = (packaged + archived).filter { it.endsWith(".txt") }.sorted()
+        assertEquals(
+            "licenses/ 下的正文与两份清单不一致（未分类的会悄悄跟包 / 漏装的会让包缺正文）",
+            onDisk,
+            classified,
+        )
+        packaged.filter { it.endsWith(".txt") }.forEach {
+            assertTrue("PACKAGED 里的 $it 在仓库里不存在", File(repo, "licenses/$it").isFile)
+        }
+        archived.filter { it.endsWith(".txt") }.forEach {
+            assertTrue("ARCHIVED 里的 $it 在仓库里不存在（历史正文不许删）", File(repo, "licenses/$it").isFile)
         }
     }
 }

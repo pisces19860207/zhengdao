@@ -246,6 +246,21 @@ jobs:
           find app/build/outputs -name 'mapping*' -o -name 'seeds*' | head -20 || true
           python3 tools/check-r8-mapping.py
 
+      # 第二百六十六批（2026-10-28）：正式包这里的 R8 清单是「发布件实际被裁了什么」的
+      #   权威版本（ci.yml 的同类步骤用的是冒烟产物）。`-printusage` 的产物就是死代码清单；
+      #   资源侧由 AGP 写 resources.txt（R8 不认 ProGuard 的 `-printresources`，实测会直接失败）。
+      - name: 上传 R8 死代码清单（正式包口径）
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: r8-deadcode-lists-release
+          path: |
+            app/build/outputs/mapping/release/usage.txt
+            app/build/outputs/mapping/release/resources.txt
+            app/build/outputs/mapping/release/mapping.txt
+          retention-days: 90
+          if-no-files-found: warn
+
       - name: 校验 release 包的签名真的是那把正式 release key（验**产物**，不验替身）
         # ⚠️ 见 docs/ERRATA.md E-014 §7 与 E-099。上面那两步「还原签名密钥」只证明了**钥匙文件对**；
         #    2026-10-07 实测就是这个坑——「还原」那步全绿、密钥指纹逐字符吻合，打出来的包却是
