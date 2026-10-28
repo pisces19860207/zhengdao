@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 249 · task-level explicit authorization v1 (2026-10-28).
+  Its own file (same shape as 158 `strings_baopu_image.xml` / 198 `strings_baopu_search.xml`):
+  `strings.xml` is being edited by batch 251, so this batch changes **0 bytes** of it.
+  After the 2026-10-28 follow-up there is only **one** card (the start card): plan on top,
+  authorization section below, so no second-card title lives here any more.
+-->
+<resources>
+    <string name="baopu_authz_card_title">Start card</string>
+
+    <string name="baopu_authz_section_title">Authorization (this task)</string>
+    <string name="baopu_authz_select_hint">Only what you tick runs without asking; tick nothing and every step still asks.</string>
+
+    <string name="baopu_authz_object_new">%1$s · new</string>
+    <string name="baopu_authz_object_edit">%1$s · edit body</string>
+
+    <string name="baopu_authz_actions_title">Actions (only these)</string>
+
+    <string name="baopu_authz_limit_line">Objects (max): %1$d; per file (max): %2$s; total write (max): %3$s; actions (max): %4$d</string>
+    <string name="baopu_authz_ends_line">Task ends, you press stop, the %1$d-minute window runs out, or the process restarts — all void it</string>
+
+    <string name="baopu_authz_still_ask_kinds">Delete, send, commit, execute, change permissions — still asked</string>
+    <string name="baopu_authz_still_ask_protected">Files in the original zone or password fields — still asked</string>
+    <string name="baopu_authz_still_ask_r3">Anything about money, sending out, or accounts — still asked</string>
+
+    <string name="baopu_authz_start">Start</string>
+
+    <!-- Batch 249: on-device preview entry (debug builds only, see src/debug/AndroidManifest.xml) -->
+    <string name="baopu_authz_preview_launcher">Start card preview</string>
+    <string name="baopu_authz_preview_title">Start card preview (sample data)</string>
+    <string name="baopu_authz_preview_note">Just a look at the card: the plan for this task on top, the authorization ticks below; objects and limits are samples. Tapping Start only echoes your ticks on this page; nothing runs and no production gate is wired.</string>
+    <string name="baopu_authz_preview_choice_none">Start not tapped yet</string>
+    <string name="baopu_authz_preview_choice_start">You chose: start (objects ticked: %1$d; action types: %2$d)</string>
+</resources>

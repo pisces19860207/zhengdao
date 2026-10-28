@@ -73,6 +73,23 @@ data class ConfirmRequest(
  * 1. [enter] 开头：命中有效范围授权 ⇒ 不问、直接执行（五段一段不少）；
  * 2. [enter] 的单活跃门：同 key 等待中 ⇒ 合并计数、不重复弹卡；
  * 3. [resumeWithApproval]：批准时按用户选的范围记账（高风险强制「仅这一次」）。
+ *
+ * **第二百四十九批 §8：R2「逐次人批」口径改订**（依据
+ * `_zd-private/docs/派工单-2026-10-27-第二百四十九批-先斩后奏与追认窗口.md` §8 ＋
+ * `zhengdao/证道设计报告/任务级明确授权-完整方案-2026-10-28.md` §3.1）。
+ *
+ * 改订的就是下面这一条（原文在 [com.example.zhengdao.baopu.agent.GuardPipeline] 五段 KDoc 第 ③ 段）：
+ * - **旧**：`R2` **必问**——没有任何例外，每一次都弹卡；
+ * - **新**：`R2` 仍是人批制，但「人批」多了**任务级明确授权**这一种来源：它在
+ *   [com.example.zhengdao.baopu.authz.TaskGrant] 的快照范围内（列得出的对象清单、
+ *   新建/改正文两种动作、四个上限、R2 封顶、进程重启即失效）替用户沿用那一次批准。
+ *   快照之外的对象、受保护对象、矩阵硬拒、R3、影子三态不成立、额度用尽——**一处都不覆盖**，
+ *   逐次照问或直接停（`authz/TaskGrantGate` 的六步）。
+ *
+ * 为什么这条改订只动「逐次」这三个字：把 R2 整体降成 R1 是另一回事（那等于说「R2 不用问了」）；
+ * 本批一个字都没动 R2 的分档与矩阵，变的只是「谁算人批的那一次」。
+ * 判定不在本文件里做：六步在 [com.example.zhengdao.baopu.authz.TaskGrantGate]，
+ * 本流程拿到的仍是「问／不问」这一个结论。
  */
 internal class ConfirmFlow(
     private val pipeline: GuardPipeline,
