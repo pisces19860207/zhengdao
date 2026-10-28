@@ -744,6 +744,10 @@ def main():
                  % (norm["size"], norm["sha256"], baseline_rel, exp_size, exp_sha,
                     "一致" if fp_same else "不一致",
                     inputs["rustc"]["version"], inputs["rustc"]["commit_hash"], host))
+        annotate("notice", "重编比对·怎么更新基线（一键）",
+                 "触发 Actions → workflow 「so-baseline-emit」（手动），它会跑 --update 并把新基线作为 "
+                 "artifact 传出来；下载 so-repro-baseline-ci.json 原样覆盖回 %s 即可，不要再手工解码 base64。"
+                 % baseline_rel)
         print("[diff] size 相差 %+d B；sha256 %s"
               % (norm["size"] - exp_size, "一致" if same_hash else "不一致"))
         report_section_diff(norm.get("sections"), expect.get("sections"))
