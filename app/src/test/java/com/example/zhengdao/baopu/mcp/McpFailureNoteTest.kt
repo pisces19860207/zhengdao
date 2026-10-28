@@ -15,8 +15,8 @@
 package com.example.zhengdao.baopu.mcp
 
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,6 +34,13 @@ class McpFailureNoteTest {
     private lateinit var server: MockWebServer
     private val logs = Collections.synchronizedList(mutableListOf<String>())
 
+    private fun resp(code: Int, contentType: String? = null, body: String? = null): MockResponse {
+        val b = MockResponse.Builder().code(code)
+        if (contentType != null) b.addHeader("Content-Type", contentType)
+        if (body != null) b.body(body)
+        return b.build()
+    }
+
     @Before
     fun setUp() {
         server = MockWebServer()
@@ -42,7 +49,7 @@ class McpFailureNoteTest {
 
     @After
     fun tearDown() {
-        runCatching { server.shutdown() }
+        runCatching { server.close() }
     }
 
     private fun cfg(): McpServerConfig = McpServerConfig(
@@ -78,7 +85,7 @@ class McpFailureNoteTest {
 
     private fun refreshOnce(body: String, status: Int): String {
         server.enqueue(
-            MockResponse().setResponseCode(status).setHeader("Content-Type", "application/json").setBody(body),
+            resp(status, "application/json", body),
         )
         val res = runCatching {
             oauth().refresh(metadata, registration, "rt-轮换前的旧值", "https://example.com/mcp", 1_000_000L)
@@ -146,10 +153,7 @@ class McpFailureNoteTest {
     @Test
     fun `真请求_错误体不是合法JSON_说得出环节_金丝雀不进日志`() {
         server.enqueue(
-            MockResponse()
-                .setResponseCode(400)
-                .setHeader("Content-Type", "application/json")
-                .setBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"sk-CANARY-9d4f7a"),
+            resp(400, "application/json", "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"sk-CANARY-9d4f7a"),
         )
         try {
             client().connect()
@@ -171,10 +175,7 @@ class McpFailureNoteTest {
     @Test
     fun `真请求_id对不上_与不是合法JSON分得开`() {
         server.enqueue(
-            MockResponse()
-                .setResponseCode(400)
-                .setHeader("Content-Type", "application/json")
-                .setBody("""{"jsonrpc":"2.0","id":424242,"error":{"code":-32000,"message":"别的请求"}}"""),
+            resp(400, "application/json", """{"jsonrpc":"2.0","id":424242,"error":{"code":-32000,"message":"别的请求"}}"""),
         )
         try {
             client().connect()
@@ -191,10 +192,7 @@ class McpFailureNoteTest {
     @Test
     fun `真请求_错误体不是json_只进日志_异常文案不加猜`() {
         server.enqueue(
-            MockResponse()
-                .setResponseCode(500)
-                .setHeader("Content-Type", "text/html")
-                .setBody("<html>nginx 502 sk-CANARY-HTML</html>"),
+            resp(500, "text/html", "<html>nginx 502 sk-CANARY-HTML</html>"),
         )
         try {
             client().connect()
@@ -261,10 +259,7 @@ class McpFailureNoteTest {
     @Test
     fun `成功响应一个字都不记_好体也不进指纹`() {
         server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody("{\"token_type\":\"Bearer\",\"access_token\":\"at-CANARY-GOOD\",\"expires_in\":3600}"),
+            resp(200, "application/json", "{\"token_type\":\"Bearer\",\"access_token\":\"at-CANARY-GOOD\",\"expires_in\":3600}"),
         )
         val set = oauth().refresh(metadata, registration, "rt-CANARY-OLD", "https://example.com/mcp", 1_000_000L)
         assertEquals("at-CANARY-GOOD", set.accessToken)
