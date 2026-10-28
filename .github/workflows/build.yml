@@ -90,27 +90,11 @@ jobs:
           echo "rootfs=false" >> "$GITHUB_OUTPUT"
           echo "本次是否需要重建 RootFS：false（RootFS 已随终端搬去 zhengdao-term，本仓不再构建）"
 
-      - name: 释放磁盘空间（仅重建 RootFS 时需要）
-        # 这一步是为 RootFS 那次 ~10GB 的 qemu 构建腾地方；纯 App 代码的推送并不需要它，
-        # 以前每次白等 38 秒（E-030）。app 构建要的空间（NDK ~3GB + Gradle 缓存 + 产物）
-        # 在 runner 上充裕，df -h 的输出可随时核对。
-        if: steps.rootfs_needed.outputs.rootfs == 'true'
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          sudo docker image prune -af > /dev/null 2>&1 || true
-          df -h /
-
       - name: 安装 JDK 21（Gradle 启动器用；守护进程按项目配置经 foojay 自动供给 JDK 25）
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: 安装 RootFS 构建依赖
-        if: steps.rootfs_needed.outputs.rootfs == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y debootstrap qemu-user-static zstd
 
       - name: 安装 NDK r27.2（与 app/build.gradle.kts 的 ndkVersion 一致）
         run: |
@@ -344,87 +328,6 @@ jobs:
           cp app/build/outputs/apk/debug/zhengdao-*.apk apk-debug/
           ls -la apk-debug/
 
-      - name: 取上一版 rootfs 清单（增量下发的基线，取不到就只产全量包）
-        # 增量下发协议见 docs/milestones/证道-环境包增量下发协议.md。
-        # 基线清单是上一次构建发到滚动版 latest 的 rootfs-manifest.txt；连同 .sha256 一起校验，
-        # 校验不过就当作"没有基线"（宁可不产补丁，也不要拿一份坏基线算出脏补丁）。
-        # 这里**不**让整个构建失败：第一次启用时 latest 上本来就没有清单。
-        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
-        continue-on-error: true
-        run: |
-          mkdir -p rootfs-base
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/latest"
-          curl -fsSL --retry 3 -o rootfs-base/rootfs-manifest.txt "$BASE_URL/rootfs-manifest.txt" || true
-          curl -fsSL --retry 3 -o rootfs-base/rootfs-manifest.txt.sha256 "$BASE_URL/rootfs-manifest.txt.sha256" || true
-          if [ -s rootfs-base/rootfs-manifest.txt ] && [ -s rootfs-base/rootfs-manifest.txt.sha256 ]; then
-            # 本项目 .sha256 的既有约定是「只有 64 位摘要、不带文件名」（build-rootfs.sh 里
-            # `sha256sum … | awk '{print $1}'`，与线上 debian-*.tar.zst.sha256 一致），
-            # 所以**不能**用 `sha256sum -c`：它要求 `<hash>  <文件名>` 的标准格式，碰到裸摘要会
-            # 报 "no properly formatted checksum lines found" 而永远"校验失败" ⇒ 差分包永不产生。
-            EXPECTED="$(awk 'NR==1{print $1}' rootfs-base/rootfs-manifest.txt.sha256)"
-            ACTUAL="$(sha256sum rootfs-base/rootfs-manifest.txt | awk '{print $1}')"
-            if [ -n "$EXPECTED" ] && [ "$EXPECTED" = "$ACTUAL" ]; then
-              echo "✅ 基线清单校验通过：$(wc -l < rootfs-base/rootfs-manifest.txt) 行"
-            else
-              echo "::warning::基线清单 SHA256 校验失败（期望 ${EXPECTED:-空}，实得 $ACTUAL），本次不产补丁"
-              rm -f rootfs-base/rootfs-manifest.txt
-            fi
-          else
-            echo "::warning::latest 上没有上一版清单（首次启用/资产缺失），本次不产补丁"
-            rm -f rootfs-base/rootfs-manifest.txt
-          fi
-
-      - name: 构建 Debian 13.7 RootFS（qemu 交叉构建，约 30–90 分钟；失败不阻塞 APK 上传）
-        # 只在 rootfs/ 有改动、或手动触发时跑（判定见上面「判断本次推送要不要重建 RootFS」）。
-        # tag 推送不重建：正式 Release 只发 APK，RootFS 包由滚动版 latest 提供。
-        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
-        id: rootfs
-        continue-on-error: true
-        timeout-minutes: 240
-        env:
-          # 有基线才产差分包；文件不存在时脚本自己会降级为"不产补丁"（不失败）
-          BASE_MANIFEST: ${{ github.workspace }}/rootfs-base/rootfs-manifest.txt
-        run: sudo bash rootfs/build-rootfs.sh "$GITHUB_WORKSPACE/rootfs-out"
-
-      - name: 修正产物目录属主（rootfs 以 root 运行，目录归 root）
-        if: steps.rootfs.outcome == 'success' || steps.rootfs.outcome == 'failure'
-        run: |
-          if [ -d rootfs-out ]; then sudo chown -R "$(id -u):$(id -g)" rootfs-out; fi
-          ls -la rootfs-out 2>/dev/null || true
-
-      - name: 签名环境包索引（Ed25519；没有密钥就不许发布）
-        # 为什么这道必须**硬失败**：索引里的 sha256 与被校验的包在同一个 Release 里，
-        # sha256 只防传输损坏、**防不住发布端被篡改** ⇒ 这一层由"私钥签名 + App 内置公钥验签"补上。
-        # 本步一旦跳过，latest 上的 rootfs-index.json 就是**未签名**的，而 App 侧
-        # [RootfsIndexFetcher] 对未签名索引是**拒绝使用**的 ⇒ 用户会突然装不上环境更新。
-        # 与 E-014 的 keystore 关卡同一 philosophy：**宁可构建失败，也不要发一份用户用不了的东西。**
-        # ⚠️ 首次落地后要手动触发一次本工作流（workflow_dispatch）：rootfs 的重建门禁只在
-        #    rootfs/ 有改动或手动触发时才跑（见上面「判断本次推送要不要重建 RootFS」），
-        #    否则 latest 上那份**旧的未签名索引会一直留着**，直到下次重建才被签名。
-        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
-        env:
-          INDEX_KEY_PEM: ${{ secrets.ROOTFS_INDEX_SIGNING_KEY_PEM }}
-        run: |
-          if [ -z "$INDEX_KEY_PEM" ]; then
-            echo "::error::未配置 secret ROOTFS_INDEX_SIGNING_KEY_PEM——索引将以未签名状态发布，而 App 对未签名索引拒绝使用（环境更新会失败）。先配好 secret 再重建 RootFS。"
-            exit 1
-          fi
-          if [ ! -f rootfs-out/rootfs-index.json ]; then
-            echo "::error::rootfs-out/rootfs-index.json 不存在（RootFS 步骤失败，或未产索引）"
-            exit 1
-          fi
-          printf '%s\n' "$INDEX_KEY_PEM" > /tmp/index-sign.pem
-          # 私钥只在这一步存在于 runner 的临时文件里，签完立刻删
-          python3 tools/sign-rootfs-index.py --key /tmp/index-sign.pem rootfs-out/rootfs-index.json
-          rm -f /tmp/index-sign.pem
-          ls -la rootfs-out/rootfs-index.json*
-
-      - name: 收集 RootFS 产物
-        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
-        run: |
-          if [ -d rootfs-out ]; then cp -r rootfs-out/. rootfs-files/; fi
-          ls -la rootfs-files/
-
       - name: 上传产物（开发者用，需登录）
         uses: actions/upload-artifact@v7
         with:
@@ -435,20 +338,6 @@ jobs:
             rootfs-files/
           retention-days: 14
           if-no-files-found: error
-
-      - name: 发布 RootFS 包到 Releases
-        # 只在本次真的重建了 RootFS 时执行；跳过时 latest 上那份旧包继续有效。
-        # RootFS 步骤是 continue-on-error，失败时 rootfs-files/ 会是空的；
-        # 未展开的 glob 会被 gh 当成一个不存在的文件名而报错，所以先探测。
-        if: github.ref == 'refs/heads/main' && steps.rootfs_needed.outputs.rootfs == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if compgen -G "rootfs-files/*" > /dev/null; then
-            gh release upload latest rootfs-files/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            echo "::warning::rootfs-files/ 为空（RootFS 步骤可能失败），本次只更新了 APK"
-          fi
 
       - name: 诊断（仅失败/手动触发时跑）：AGP 到底认哪把 keystore
         # ⚠️ E-014 §8 的根因至今**未定论**：钥匙文件放对了、指纹也对，产物却是别的 key 签的。
