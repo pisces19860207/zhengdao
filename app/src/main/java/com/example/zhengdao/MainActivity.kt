@@ -289,9 +289,8 @@ class MainActivity : ComponentActivity() {
         // 唯一通道**（READ/WRITE 运行时权限在 30+ 已 inert）。「所有文件访问」的必需项判定
         // 经 EnvironmentScope.hasAllFilesAccess 双通道路由到它，不再有"永远完不成"的页面。
 
-        // 通知栏「回到终端」：跳过欢迎页直达终端（M2）
         // 第二百五十批：不再读旧包的跳转 extra（终端已拆走），冷启动一律落主页。
-        val openTerminal = false
+        // 第二百六十一批：通知栏直达终端的旧开关已删（恒 false 的死参数，接收方一并删除）。
 
         // 快捷方式收栈（刀 2 D 段）：本 Activity 不是 task 根 ⇒ 栈里已经有一份主页
         // （典型：终端独立 Activity 压在主页之上时，快捷方式又拉起一个主页副本）。
@@ -319,10 +318,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ZhengdaoApp(
-                        startInTerminal = openTerminal,
-                        lastRoute = lastRoute,
-                    )
+                    ZhengdaoApp(lastRoute = lastRoute)
                 }
             }
         }
@@ -421,30 +417,26 @@ class MainActivity : ComponentActivity() {
  * 第二百五十批：原先挂在这里的「进终端的唯一 Intent 构造器」KDoc 已随那个函数一起删掉 ——
  * 终端搬到 zhengdao-term 之后，本类不再构造任何跨 App 的 Intent，也不再读跳转 extra。
  *
- * @param startInTerminal 只为不动调用点签名而保留；本仓没有可跳的落点，恒被忽略
+ * 第二百六十一批：恒 false 的冷启动直达开关参数已删（接收方判据同步收紧）。
+ *
  * @param lastRoute 上次停留的路由，按白名单恢复（见 MainRouteRules.restoreRoute）
  */
 @Composable
 fun ZhengdaoApp(
-    startInTerminal: Boolean = false,
     lastRoute: String? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val res = androidx.compose.ui.platform.LocalResources.current
     val nav = rememberNavController()
     // 第二百四十八批：主仓没有"环境"这个概念了（rootfs 随终端搬走）。保留这个常量只为
     // 不改动下面路由判据的形状：恒 true ⇒ 永远直落主页，欢迎/安装引导不再出现。
     val installed = true
     val routePrefs = context.getSharedPreferences("zhengdao-ui", android.content.Context.MODE_PRIVATE)
 
-    // 路由决策优先级：通知栏直达终端 > 上次页面（欢迎页只在首次安装出现）
+    // 路由决策：有上次页面 ⇒ home，否则欢迎页（欢迎页只在首次安装出现）
     // ⚠️ 恢复页不能当 startDestination——起始页底下没有返回栈，popBackStack
     // 无处可退（用户实测：冷启动直落设置页后返回键和右滑全失效）。改为永远
     // 落 home，恢复页叠加其上。
-    val startRoute = MainRouteRules.startRoute(startInTerminal, lastRoute)
-
-    // 第二百五十批：`startInTerminal` 这条冷启动直达已无落点（终端不在本仓），
-    // 参数保留只为不动调用点签名；不再做任何跳转。
+    val startRoute = MainRouteRules.startRoute(lastRoute)
 
     // 恢复上次页面：叠在 home 之上（返回键退回首页，不再有死返回）
     //
@@ -458,7 +450,7 @@ fun ZhengdaoApp(
         // B-补-15（2026-10-16）：白名单化 —— 只有确实还在 NavHost 里的路由才恢复，
         // 老版本残留的死值（如已删除的 "plugins"）按「无可恢复页面」处理。
         // 判定主体在 MainRouteRules.restoreRoute（第七十六批抽出；白名单与 KDoc 同迁）。
-        val restore = MainRouteRules.restoreRoute(lastRoute, startInTerminal, cur)
+        val restore = MainRouteRules.restoreRoute(lastRoute, cur)
         if (restore != null) {
             nav.navigate(restore) { launchSingleTop = true }
         }
@@ -487,36 +479,8 @@ fun ZhengdaoApp(
         }
     }
 
-    // 跳终端（带可选自动命令）：逍遥入口与设置页「在终端中清理缓存」共用同一实现，
-    // 两处必须同一行为——此前 settings 路由没传参，onOpenTerminal 落到默认 no-op，
-    // 「在终端中清理缓存」点了零反应（连 Toast 都没有）。
-    //
-    // ⚠️ 失败必须可见（项目原则）＋ 可诊断：这条 lambda 是全 App 唯一的进终端入口，
-    //    它一旦 silently 失败，表现就是"点了没反应"，用户无从判断是没点到还是坏了。
-    //    故：入口处打点（autocmd/agentId 的长度而非全文——全文可能是几 KB 的安装命令），
-    //    startActivity 包 try/catch，任何异常都要 Toast 出原因并落 RunLog。
-    val openTerminal: (String?, String?) -> Unit = { autocmd, agentId ->
-        val tag = "OpenTerminal"
-        android.util.Log.d(
-            tag, "进终端: autocmd=${autocmd?.length ?: 0}B agentId=$agentId ctx=$context"
-        )
-        try {
-            // 第二百五十批：终端不在本仓，这里只留一行日志（不再拉起任何页面）。
-            android.util.Log.d(tag, "终端已拆分到独立 APP，本仓不再拉起")
-        } catch (t: Throwable) {
-            // 异常不可见 = 用户眼里就是"点了没反应"，必须当面说清
-            val reason = t.message ?: t.toString()
-            android.util.Log.e(tag, "进终端失败", t)
-            runCatching {
-                com.example.zhengdao.core.RunLog.log("[错误] 进终端失败: $reason")
-            }
-            // 2026-10-08：异常原文 → 人话。原文已落 RunLog，用户看的用 [HumanizeError]
-            // 转成「没有权限 / 网络超时 / 文件找不到」之类可读短语
-            android.widget.Toast.makeText(
-                context, "无法打开终端：${com.example.zhengdao.util.HumanizeError.title(t, res)}", android.widget.Toast.LENGTH_LONG
-            ).show()
-        }
-    }
+    // 第二百六十一批：进终端的空壳 lambda 与它向下的参数已删（终端独立成 zhengdao-term，
+    // 本仓不再有任何进终端入口；此前它只打一行日志，用户点了没有任何反应）。
 
     // ── 全图转场（B-补-26，2026-10-15）────────────────────────────────────
     // Compose Navigation 默认是**瞬间切换**：点「设置」整页凭空换成设置页、返回又凭空换回来。
@@ -573,7 +537,6 @@ fun ZhengdaoApp(
         }
         composable("home") {
             HomeTabs(
-                onOpenTerminal = openTerminal,
                 onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
             )
         }
@@ -624,9 +587,7 @@ fun ZhengdaoApp(
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
-                SettingsScreen(
-                    onOpenTerminal = openTerminal,
-                )
+                SettingsScreen()
             }
         }
     }
@@ -661,15 +622,11 @@ internal object TabIndex {
     const val SETTINGS = 2
 }
 
-/** 首页骨架：Agent Tab（卡片列表）/ 终端 Tab（进入全屏终端）。 */
+/** 首页骨架：抱朴 / 玄览 / 律令 三 Tab。 */
 @Composable
 fun HomeTabs(
-    onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
-    // 第四刀：逍遥 Tab 的空态按钮要拉起另一个 APP（按包名），需要 Context。
-    val context = androidx.compose.ui.platform.LocalContext.current
-
     // P2-1（§B 顺序 2，2026-10-14）：必须是 **rememberSaveable**，不能是 remember。
     // `remember` 不跨**配置变更**（旋转屏幕 / 切深浅色 / 改字体大小）保留 ⇒ 转一次屏，
     // tab 就被打回初始值——人正停在逍遥（终端）或玄览，一转屏被甩回怡然。
@@ -796,7 +753,7 @@ fun HomeTabs(
         }
     }
 
-    fun onTabClicked(target: Int, onTerminalClicked: () -> Unit) {
+    fun onTabClicked(target: Int) {
         if (TabClickRules.isDoubleTap(tab, target, now(), lastTabClickAt.longValue)) {
             animateToTop(target)
             lastTabClickAt.longValue = 0L
@@ -835,10 +792,10 @@ fun HomeTabs(
                     )
                     NavigationBarItem(
                         selected = tab == TabIndex.BAOPU,
-                        // 抱朴 = Tab 内嵌 TerminalView，直跑宿主 bionic opencode TUI
+                        // 抱朴 = Compose 原生对话页（旧的内嵌终端视图已随第四刀删除）
                         //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
                         // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
-                        onClick = { onTabClicked(TabIndex.BAOPU) {} },
+                        onClick = { onTabClicked(TabIndex.BAOPU) },
                         icon = { BaoPuIcon(tab == TabIndex.BAOPU) },
                         label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
                         colors = tabColors,
@@ -848,7 +805,7 @@ fun HomeTabs(
                         // 玄览（期望）：浏览器。**排在逍遥之后**（§B 顺序 33，2026-10-14
                         // 用户要求：抱朴 / 逍遥 / 玄览 / 怡然）。
                         // 页面区不是列表，双击滚顶 no-op（animateToTop 的 when 不含它）。
-                        onClick = { onTabClicked(TabIndex.BROWSER) {} },
+                        onClick = { onTabClicked(TabIndex.BROWSER) },
                         icon = { XuanLanIcon(tab == TabIndex.BROWSER) },
                         label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
                         colors = tabColors,
@@ -857,7 +814,7 @@ fun HomeTabs(
                         selected = tab == TabIndex.SETTINGS,
                         // 律令（第二百五十批）：设置进底栏。以前设置是首页右上角的一个按钮，
                         // 首页随终端删掉之后，设置需要一个固定入口。
-                        onClick = { onTabClicked(TabIndex.SETTINGS) {} },
+                        onClick = { onTabClicked(TabIndex.SETTINGS) },
                         icon = { SettingsIcon(tint = tabIconColor(tab == TabIndex.SETTINGS)) },
                         label = { Text(stringResource(R.string.nav_settings), style = tabLabelStyle) },
                         colors = tabColors,

@@ -115,29 +115,6 @@ object Settings {
 }
 
 /**
- * 打开终端并带上一次性命令 / agent id。
- *
- * 与 `MainActivity.terminalIntent` 是**同一条意图**（CLEAR_TOP | SINGLE_TOP，让既有终端
- * 提到前台并走 onNewIntent）。二级页各自是独立 Activity，lambda 传不过去，所以在这里
- * 复刻一份 —— 卡片里的调用点一个字没改。
- */
-internal fun openTerminal(context: android.content.Context, autocmd: String?, agentId: String?) {
-    // 第二百四十八批（第四刀）：终端整仓搬走，本仓不再有 TerminalActivity。
-    // 这里改成"按包名拉起「证道终端」"，没装就说清去哪装（与 MainActivity 的入口同一行为）。
-    val pkg = "com.example.zhengdao.term"
-    val launch = context.packageManager.getLaunchIntentForPackage(pkg)
-    if (launch != null) {
-        runCatching { context.startActivity(launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    } else {
-        android.widget.Toast.makeText(
-            context,
-            "还没装「证道终端」——到 github.com/pisces19860207/zhengdao-term 的 Releases 下载",
-            android.widget.Toast.LENGTH_LONG,
-        ).show()
-    }
-}
-
-/**
  * 二级设置页统一顶栏：左「‹ 返回」+ 居中标题（与保活记录页同款）。
  *
  * B-补-8（2026-10-16）：原来是写死的 `height(48.dp)` —— 48dp 是**触摸目标下限**，不是高度上限；
