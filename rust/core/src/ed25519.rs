@@ -266,32 +266,16 @@ pub fn verify(pub_key: &[u8], sig: &[u8], msg: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::verify;
-    use std::fs;
 
     fn h2b(s: &str) -> Vec<u8> {
         hex::decode(s.replace([' ', '\n', '\r'], "")).expect("hex 字面量非法")
     }
 
-    /// 极简 base64 解码（仅测试用：读仓库里的 .sig 文本，免得多引一个依赖）。
-    fn b64(s: &str) -> Vec<u8> {
-        const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = Vec::new();
-        let mut acc: u32 = 0;
-        let mut bits: u32 = 0;
-        for ch in s.bytes() {
-            if ch == b'=' || ch == b'\n' || ch == b'\r' || ch == b' ' {
-                continue;
-            }
-            let v = T.iter().position(|&t| t == ch).expect("base64 字符非法") as u32;
-            acc = (acc << 6) | v;
-            bits += 6;
-            if bits >= 8 {
-                bits -= 8;
-                out.push((acc >> bits) as u8);
-            }
-        }
-        out
-    }
+
+    // 2026-10-28：原本还有一条「真实清单」回归锁，读 `rootfs/agents.json` + `.sig`
+    // 验真签名。rootfs/ 已随终端整仓搬去 `zhengdao-term`（248/250），本仓新检出上
+    // 那两个夹具不存在 ⇒ 该用例必然 panic（CI 上一度就是它在红）。按 #478 的处置删掉，
+    // 口径（含公钥与真实签名）归 `zhengdao-term`；本仓保留 RFC 8032 向量验算法本身。
 
     // ── RFC 8032 §7.1 测试向量（原文抄录，勿改） ──
 
@@ -329,32 +313,6 @@ mod tests {
         assert!(!verify(&pub_key, &sig, &h2b("af83")));
     }
 
-    /// 真实产物：仓库里的 `rootfs/agents.json` + `rootfs/agents.json.sig`，公钥取自
-    /// `AgentManifest.PUBLIC_KEY_B64`（base64 → hex）。这条测试就是"信任根"的回归锁。
-    #[test]
-    fn 真实清单_验签通过与三类篡改拒绝() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../rootfs");
-        let body = fs::read(format!("{dir}/agents.json")).expect("读 rootfs/agents.json 失败");
-        let sig_text = fs::read_to_string(format!("{dir}/agents.json.sig"))
-            .expect("读 rootfs/agents.json.sig 失败");
-        let sig = b64(sig_text.trim());
-        let pub_key =
-            h2b("2d6ec9b555c68991ab141165f31d709723c1b417b3eed34d5b3cf8021488e784");
-        assert_eq!(sig.len(), 64, "签名长度必须是 64 字节");
-        assert!(verify(&pub_key, &sig, &body), "真实清单应当验签通过");
-
-        let mut tampered_body = body.clone();
-        tampered_body[0] ^= 0x01;
-        assert!(!verify(&pub_key, &sig, &tampered_body), "篡改正文必须拒绝");
-
-        let mut wrong_pub = pub_key.clone();
-        wrong_pub[0] ^= 0x01;
-        assert!(!verify(&wrong_pub, &sig, &body), "错公钥必须拒绝");
-
-        let mut bad_sig = sig.clone();
-        bad_sig[40] ^= 0x01;
-        assert!(!verify(&pub_key, &bad_sig, &body), "签名翻一位必须拒绝");
-    }
 
     #[test]
     fn 长度非法_一律false不panic() {
