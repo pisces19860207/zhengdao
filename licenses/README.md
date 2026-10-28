@@ -38,13 +38,12 @@
 > ⚠️ **上表的字节数与 SHA256 一律以「仓库内形态」为准（即 git 索引/blob 里的 LF 换行）。**
 > 本仓 `core.autocrlf=true` ＋ `.gitattributes` 的 `* text=auto` 会让 Windows 工作区检出成 CRLF
 > （同一份 `OFL.txt`：仓库形态 4,572 B，Windows 工作区形态 4,666 B），**照着工作区算出来的摘要会与上表不符**。
-> 现已为这些文本固定 `eol=lf`（`licenses/*.txt` 整个目录、根 `LICENSE`、`app/src/main/assets/fonts/OFL.txt`），
+> 现已为这些文本固定 `eol=lf`（`licenses/*.txt` 整个目录、根 `LICENSE`；字体那份 `OFL.txt` 已随终端搬走，规则也一并删了），
 > 任何平台检出后直接校验都能对上；对不上就先跑 `git ls-files --eol` 看属性是否生效，
 > **不要改上表的数字去迁就工作区**。二进制资产（字体 ttf）不受换行影响。
 > （2026-10-11 更正：此前一度把 `OFL.txt` 写成 4,666 B / `9e34ed24…`，那是 CRLF 工作区形态，见 `docs/ERRATA.md` E-104 补记。）
 
-> 字体那份**故意留在字体同目录**：OFL 要求「随字体一起分发」的惯例是文本与字体同处一地，
-> 而它在本项目里不是「第三方组件目录」而是 assets 资源。
+> 字体那份 `OFL.txt` 已随字体一起搬到 `zhengdao-term`（OFL 要求「随字体一起分发」，文本与字体同处一地）——本仓不再保留。
 
 ### 依赖正文怎么覆盖（2026-10-11 晚更正，原「不翻印的」一句已被实测推翻）
 
@@ -70,7 +69,7 @@
 
 ### 这几份正文也随 APK 分发（2026-10-11 起）
 
-上表里 `licenses/` 的每一份（**八份**许可证正文 ＋ NOTICE 汇总 ＋ 本 README）＋ 字体 `OFL.txt`，
+上表里 `licenses/` 的每一份（**八份**许可证正文 ＋ NOTICE 汇总 ＋ 本 README），
 再加上第一方声明 `LICENSE`（随包更名为 `LICENSE-zhengdao.txt`），构建期会被原样复制进 APK 的
 `assets/licenses/`（`app/build.gradle.kts` 的 `stageLicenseAssets` 任务，由 `preDebugBuild` /
 `preReleaseBuild` 拉起来）⇒ **只拿到安装包、不联网的人也能读到全部正文**。应用内入口 = 设置页
@@ -89,13 +88,12 @@
 ```bash
 cd <仓库根>
 sha256sum licenses/*.txt                       # 与上表逐一比对
-sha256sum app/src/main/assets/fonts/OFL.txt
 ```
 
 Windows PowerShell 等价：
 
 ```powershell
-Get-FileHash licenses\*.txt, app\src\main\assets\fonts\OFL.txt -Algorithm SHA256
+Get-FileHash licenses\*.txt -Algorithm SHA256
 ```
 
 ### 不依赖工作区换行的校准命令
@@ -121,8 +119,7 @@ $z.Dispose()
 期望看到 `assets/licenses/` 下**十份 `.txt`**（Apache-2.0 / BSD-2-Clause / BSD-3-Clause /
 BSD-3-Clause-zstd / GPL-2.0 / GPL-3.0 / LGPL-2.1 / LGPL-3.0 / LICENSE-zhengdao.txt / NOTICES）与本 README，
 其中第三方正文的字节数与上表一致；
-`assets/fonts/OFL.txt` 也在包里
-（字体那份按 OFL 惯例与字体同目录）。
+本仓 APK **不再含** `assets/fonts/OFL.txt`（字体与其 OFL 正文都已搬到 `zhengdao-term`）。
 **少一份就是构建期装配出了问题**：`stageLicenseAssets` 末尾有 `check` 断言，构建会直接失败。
 
 ## 三、维护规则（改动需经项目所有者确认）
