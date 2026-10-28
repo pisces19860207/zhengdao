@@ -62,8 +62,15 @@ DEFAULT_SPEC_DIR = _LAW / "spec"
 
 # 271 派工单 §1 那张表 + 法典 §待补门禁 19 条（并集；L28 随 272，不在本单）
 # 分两层：GATES＝造违规会红（碰生产）；SPECS＝判据在、生产未接线（不会红）
-GATES = [2, 4, 5, 7, 8, 12, 13, 14, 15, 17, 18, 20, 23]
-SPECS = [9, 10, 11, 21, 22, 24, 25, 26, 27]
+#
+# 271-补2（2026-10-29）：按"能红的就该进门禁账"把 L10/L11 拆成两半——
+#   行为面（UnarchivedFailureCheck／SkillContract.validate）留在门禁账；
+#   未接线的判据（catch 静默／快照）落到 spec 当补充。
+# 所以这两条**同时**出现在两层：门禁表里有它，spec 目录里也有它的补充文件。
+GATES = [2, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 17, 18, 20, 23]
+SPECS = [9, 21, 22, 24, 25, 26, 27]
+# 允许"门禁 + 规范补充"并存的法条（拆开的那两条）；其余法条一个号只能有一个归属
+SPLIT = {10, 11}
 
 # 文件名：L<号><英文描述>GateTest.kt ／ L<号><英文描述>Spec.kt
 GATE_FILE_RE = re.compile(r"^L(\d+)[A-Za-z]*GateTest\.kt$")
@@ -214,8 +221,8 @@ def judge(gate: dict, spec: dict) -> list[str]:
     for n in GATES:
         if n not in gate["laws"]:
             problems.append(f"L{n}: 门禁清单里有，但 law/ 下没有对应的 …GateTest.kt")
-        if n in spec["laws"]:
-            problems.append(f"L{n}: 同时在门禁与规范目录里（一个法条只能有一个归属）")
+        if n in spec["laws"] and n not in SPLIT:
+            problems.append(f"L{n}: 同时在门禁与规范目录里（只有拆开的 {sorted(SPLIT)} 允许这样）")
     for n in SPECS:
         if n not in spec["laws"]:
             problems.append(f"L{n}: 规范清单里有，但 spec/ 下没有对应的 …Spec.kt")
@@ -247,12 +254,22 @@ def report(gate: dict, spec: dict, problems: list[str]) -> None:
         s = gate["laws"][n]
         print(f"L{n:<5}{len(s['pos']):<6}{len(s['neg']):<6}{s['file']}")
     print()
-    print(f"【规范（待接线）】{len(spec['laws'])} 条（{spec['files']} 个文件）——生产未接线，不会红")
+    pure = len(set(spec["laws"]) - SPLIT)
+    print(
+        f"【规范目录】{spec['files']} 个文件 = 纯规范 {pure} 条 ＋ 拆分补充 {len(set(spec['laws']) & SPLIT)} 条"
+        f"——生产未接线，不会红"
+    )
     print(f"{'条':<6}{'正例':<6}{'负例':<6}文件")
     for n in sorted(spec["laws"]):
         s = spec["laws"][n]
         print(f"L{n:<5}{len(s['pos']):<6}{len(s['neg']):<6}{s['file']}")
-    print()
+    split_specs = sorted(set(spec["laws"]) & SPLIT)
+    if split_specs:
+        print(
+            "拆分补充（这些号的门禁在 law/，未接线的判据在 spec/）："
+            + "、".join(f"L{n}→{spec['laws'][n]['file']}" for n in split_specs)
+        )
+        print()
     if problems:
         print(f"✗ {len(problems)} 处不合规：")
         for p in problems:
@@ -264,7 +281,8 @@ def report(gate: dict, spec: dict, problems: list[str]) -> None:
         sn = sum(len(v["neg"]) for v in spec["laws"].values())
         print(
             f"✓ 全部合规：门禁 {len(GATES)} 条（正 {gp} 负 {gn}，都碰生产）＋ "
-            f"规范 {len(SPECS)} 条（正 {sp} 负 {sn}，都带强提示与缺陷号），无静默跳过"
+            f"规范 {len(SPECS)} 条（正 {sp} 负 {sn}，都带强提示与缺陷号）"
+            f"＋ 拆分补充 {len(set(spec['laws']) & SPLIT)} 条，无静默跳过"
         )
 
 
