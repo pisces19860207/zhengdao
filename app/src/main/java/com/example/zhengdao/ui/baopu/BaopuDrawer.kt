@@ -64,6 +64,7 @@ import com.example.zhengdao.schedule.ScheduleStore
 import com.example.zhengdao.schedule.ScheduleTask
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -472,6 +473,12 @@ internal fun BaopuDrawer(
     // 134 批 lint(ModifierParameter)：modifier 必须排在**第一个可选参数**的位置；
     // 原来它跟在 onSessionLibraryChanged（有默认值）之后，故与 onPurgeSession 之后的位置对调。
     modifier: Modifier = Modifier,
+    /**
+     * 工作区树还在 IO 上算（第二百六十四批）：只在树区画一行「读取中…」，
+     * 不让「还没读到」跟「一个工作区都没有」长成同一个空态。
+     * 有旧树时不置 true（重读保留旧值，不闪）。
+     */
+    workspaceLoading: Boolean = false,
     /** 回收站里恢复/彻底删除会话后，通知页面重读会话库。 */
     onSessionLibraryChanged: () -> Unit = {},
     /**
@@ -568,6 +575,21 @@ internal fun BaopuDrawer(
                 )
             },
         )
+        // 树还在 IO 上算（本批新形状）：首帧这一行是「读取中…」，不是空 ——
+        // 空树本身是合法状态（工作区树至少有一行当前工作区），不能拿它当加载态。
+        if (workspaceLoading && nodes.isEmpty()) {
+            Text(
+                text = stringResource(R.string.common_loading),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(
+                    start = BAO_LIST_INSET_DP.dp,
+                    end = BAO_LIST_INSET_DP.dp,
+                    top = 6.dp,
+                    bottom = 6.dp,
+                ),
+            )
+        }
         nodes.forEach { node ->
             WorkspaceRow(
                 node = node,
@@ -593,15 +615,42 @@ internal fun BaopuDrawer(
         //      「抱朴这一阵子写出来过什么」，回收站那一行回答的是「被扔出去过什么」。
         // E-163 那条教训照抄（判据 C3）：ModalNavigationDrawer 的 drawerContent 一直处于组合中，
         // 只 remember 一次 ⇒ N 永远停在刚进页面那一个值 ⇒ 每次拉开抽屉都重数一遍。
-        // 取根走全仓同一处（BaopuRuntime.workspaceRoot），面板的调用在回收站那一段之后（见那里）。
-        val artifactRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+        //
+        // 第二百六十四批（A-P2-3）：**取根本身也是读盘**——`BaopuWorkspace.hostDir` 里要
+        // `mkdirs()` 再 `isDirectory`（两个 syscall）。真机 StrictMode 在抽屉首帧抓到 4 次、
+        // 每次 ~84ms，栈顶正是这两行原来的位置。所以根**只解析一次、在 IO 上**：
+        // 读到之前是 null（计数行画「读取中…」、面板先不画）；重读时保留旧值，
+        // 不制造派工单点名的「先空白再闪」。取根仍走全仓同一处（BaopuRuntime.workspaceRoot）。
+        var workspaceRootState by remember { mutableStateOf<File?>(null) }
+        LaunchedEffect(Unit, drawerOpen) {
+            workspaceRootState = withContext(Dispatchers.IO) {
+                com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+            }
+        }
+        val artifactRoot = workspaceRootState
         val artifactDb = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
         var artifactTick by remember { mutableIntStateOf(0) }
         LaunchedEffect(drawerOpen) { if (drawerOpen) artifactTick++ }
-        val artifactCount = remember(artifactTick, artifactRoot) { artifactShelfCount(artifactDb, artifactRoot) }
+        // 第二百六十四批（A-P2-3 的同族）：`remember { artifactShelfCount(...) }` 是一条
+        // SQLite COUNT，也在组合期占主线程。与回收站那行一起挪到 IO（见下面 `trashCount`）。
+        // 读到之前是 null（画「读取中…」）；重数时**不清空旧值**，新值到了再替换——
+        // 不然每次拉开抽屉都会先闪一下「读取中」并把整行禁用掉。
+        var artifactCountState by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(artifactTick, artifactRoot) {
+            // 根还没读到 ⇒ 这个 effect 等 `workspaceRootState` 到位后由 key 变化重新拉起；
+            // 首帧只画「读取中…」，不把 null 当成 0（空态与加载态分开）。
+            if (artifactRoot != null) {
+                artifactCountState = withContext(Dispatchers.IO) { artifactShelfCount(artifactDb, artifactRoot) }
+            }
+        }
+        val artifactCount = artifactCountState ?: 0
         var artifactShelfOpen by remember { mutableStateOf(false) }
         DrawerItem(
-            title = stringResource(R.string.baopu_artifact_shelf_title, artifactCount),
+            title = if (artifactCountState == null) {
+                stringResource(R.string.baopu_artifact_shelf_title_loading)
+            } else {
+                stringResource(R.string.baopu_artifact_shelf_title, artifactCount)
+            },
             description = stringResource(R.string.baopu_artifact_shelf_desc),
             onClick = { artifactShelfOpen = true },
         )
@@ -625,7 +674,7 @@ internal fun BaopuDrawer(
         // N 现读盘：目录列表一次而已，且只在抽屉真的重组时读（remember 的键是 tick 与根）。
         // 面板自己管状态（[TrashDialog]）。E-163 之后多了一个形参 `drawerOpen`——抽屉内容常驻组合，
         // 没有「打开」这个信号，N 就永远是刚进页面那一次的值。
-        val trashRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)
+        val trashRoot = workspaceRootState
         var trashTick by remember { mutableIntStateOf(0) }
         // E-163（真机 2026-10-19 抓到的）：ModalNavigationDrawer 的 drawerContent 一直处于组合中，
         // remember 不会因为「把抽屉拉开」而重算 ⇒ 抱朴刚删完文件，抽屉里仍显示旧 N；
@@ -635,25 +684,41 @@ internal fun BaopuDrawer(
         // 2026-10-19 用户「移入回收站后以为没移进去」：会话是软删（47 批），
         // 不数它的话删完会话抽屉里的 N 一点不动 ⇒ 看上去像没生效。文件 + 会话一起数。
         val trashDb = com.example.zhengdao.baopu.BaopuRuntime.db(ctx)
-        val trashCount = remember(trashTick, trashRoot) {
-            val files = trashRows(BaopuTrashBin.dirOf(trashRoot)).size
-            val sessions = runCatching {
-                trashDb.read { d ->
-                    d.rawQuery(
-                        com.example.zhengdao.baopu.BaopuSql.countDeletedSessions().sql,
-                        emptyArray(),
-                    ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        // 第二百六十四批（A-P2-3）：原来 `remember(trashTick, trashRoot) { 列目录＋SQLite COUNT }`
+        // 在组合期同步跑——抽屉一拉开（drawerTick++）就重数一遍，回收站里有 2,000 条时整个抽屉卡住。
+        // 现在首帧画「读取中…」，读盘在 IO；读到后替换成真实 N（0 与"还没读到"不再混成一个样）。
+        // 重数时保留旧值，避免每拉一次抽屉都闪一下「读取中」/短暂禁用。
+        var trashCountState by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(trashTick, trashRoot) {
+            if (trashRoot != null) {
+                trashCountState = withContext(Dispatchers.IO) {
+                    val files = trashRows(BaopuTrashBin.dirOf(trashRoot)).size
+                    val sessions = runCatching {
+                        trashDb.read { d ->
+                            d.rawQuery(
+                                com.example.zhengdao.baopu.BaopuSql.countDeletedSessions().sql,
+                                emptyArray(),
+                            ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+                        }
+                    }.getOrDefault(0)
+                    files + sessions
                 }
-            }.getOrDefault(0)
-            files + sessions
+            }
         }
+        val trashCount = trashCountState ?: 0
         DrawerItem(
-            title = stringResource(R.string.trash_drawer_entry, trashCount),
+            title = if (trashCountState == null) {
+                stringResource(R.string.trash_drawer_entry_loading)
+            } else {
+                stringResource(R.string.trash_drawer_entry, trashCount)
+            },
             description = stringResource(R.string.trash_drawer_desc),
             enabled = trashCount > 0,
             onClick = { trashOpen = true },
         )
-        if (trashOpen) {
+        // 根还在 IO 上解析时（首帧）先不画面板：面板的 `workspaceRoot` 不能是猜的。
+        // 实际点得开这一刻 root 必然已到（那一行要 N>0 才 enabled，而 N 是 root 到位后才数的）。
+        if (trashOpen && trashRoot != null) {
             TrashDialog(
                 workspaceRoot = trashRoot,
                 onDismiss = {
@@ -673,7 +738,7 @@ internal fun BaopuDrawer(
         // 而 `trashTick` 是 36 批那一段里声明的局部量，本批不改它一个字——
         // Kotlin 不许可先读后声明，所以只能把调用放后面。Dialog 是独立窗口，
         // 声明顺序不改变「产物」那一行排在回收站上面这件事（上面那段才是行的顺序）。
-        if (artifactShelfOpen) {
+        if (artifactShelfOpen && artifactRoot != null) {
             ArtifactShelfDialog(
                 workspaceRoot = artifactRoot,
                 onChanged = {

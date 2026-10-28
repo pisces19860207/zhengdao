@@ -274,7 +274,13 @@ class BaopuArtifactShelfTest {
     fun `C3_打开抽屉重数一次N_而且那一行永远可点`() {
         val src = drawer()
         assertTrue("取根走全仓同一处", src.contains("com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(ctx)"))
-        assertTrue("数的是台账（现读库）", src.contains("remember(artifactTick, artifactRoot) { artifactShelfCount(artifactDb, artifactRoot) }"))
+        assertTrue("数的是台账（现读库）", src.contains("artifactShelfCount(artifactDb, artifactRoot)"))
+        // 第二百六十四批（A-P2-3 同族）：那条 COUNT 从组合期的 remember 挪到 IO，
+        // 判据的实质没变（现读库、抽屉打开就重数），只是不再占主线程。
+        assertTrue(
+            "抽屉重数必须在 IO 线程（组合期不许读库）",
+            src.contains("withContext(Dispatchers.IO) { artifactShelfCount(artifactDb, artifactRoot) }"),
+        )
         // E-163 那条教训：drawerContent 常驻组合 ⇒ 必须有「打开」这个信号
         assertTrue("打开抽屉要重数一次", src.contains("LaunchedEffect(drawerOpen) { if (drawerOpen) artifactTick++ }"))
         assertEquals(

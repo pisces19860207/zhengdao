@@ -37,10 +37,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -49,10 +53,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,9 +72,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuGuardCore
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import java.io.File
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 回收站一行 = **盘上事实**，没有一句人话。
@@ -107,20 +120,71 @@ internal object BaopuTrashBin {
  *
  * 排序按名字**字典序**（列表要稳定，且 JVM 断言才有确定值可写）。
  */
-internal fun trashRows(dir: File): List<TrashRow> {
-    if (!dir.isDirectory) return emptyList()
-    val kids = runCatching { dir.listFiles() }.getOrNull() ?: return emptyList()
-    return kids
+internal fun trashRows(dir: File): List<TrashRow> = trashListing(dir, Int.MAX_VALUE).rows
+
+/**
+ * 回收站一屏的条数（第二百六十四批：回收站大时不再把所有条目的 length 一次读进内存）。
+ *
+ * 80 条的理由：真机上开面板那一帧的开销已由 LazyColumn 挡住（只组合看得见的几条），
+ * 一页仍给到能连续滚一屏的量；「显示更多」一次加一页，顺序不变。
+ */
+internal const val TRASH_PAGE = 80
+
+/**
+ * 回收站的一页读数。
+ *
+ * @param rows 排序后**前 limit 条**（每条的 `length`/`mtime` 才是逐文件 stat 的开销）
+ * @param total 符合口径的文件**总数**（只数名字，不取大小）
+ *
+ * 第二百六十四批（A-P2-2）：原来面板在组合期 `trashRows` 全量读——2,000 条就是 2,000 次
+ * `length()`＋`lastModified()`，开面板那一下主线程直接卡住。现在排序/计数在 IO 线程，
+ * 且只对**前 N 条**取大小；其余按「还有 N 条」＋「显示更多」展开，内容与顺序不变。
+ */
+internal data class TrashListing(
+    val rows: List<TrashRow>,
+    val total: Int,
+    /**
+     * 全量文件的总体积（只数文件、不含子目录）。
+     *
+     * 第二百六十四批补齐：清空的确认红字要「N 个文件、共 X MB」，而分页后 `rows` 只有前 N 条
+     * ——**拿前 80 条的 bytes 去当 2,000 条的总体积，就是给用户一个假数字**。
+     * `wantBytes=false` 时为 0（抽屉只数个数，不需要体积，别为它白 stat 一遍）。
+     */
+    val totalBytes: Long = 0L,
+)
+
+/**
+ * 分页列回收站：先只按名字排序（不 stat 大小），再对前 `limit` 条取 `length`/`mtime`。
+ *
+ * 顺序口径与 [trashRows] 逐字一致（名字字典序）；`limit` 只影响「一次读多少」，不影响顺序。
+ *
+ * @param wantBytes true ⇒ **全量**再 stat 一遍求 [TrashListing.totalBytes]（2,000 条约 100ms，
+ *   只在 IO 线程上调，见 `TrashDialog` 的快照）；false ⇒ 只 stat `rows` 那一页。
+ */
+internal fun trashListing(
+    dir: File,
+    limit: Int = TRASH_PAGE,
+    wantBytes: Boolean = false,
+): TrashListing {
+    if (!dir.isDirectory) return TrashListing(emptyList(), 0)
+    val kids = runCatching { dir.listFiles() }.getOrNull() ?: return TrashListing(emptyList(), 0)
+    val files = kids
         .filter { it.isFile && !BaopuGuardCore.isSymlink(it) }
-        .map { f ->
-            TrashRow(
-                file = f,
-                name = f.name,
-                bytes = runCatching { f.length() }.getOrDefault(0L),
-                modifiedAt = f.lastModified(),
-            )
-        }
         .sortedBy { it.name }
+    val totalBytes = if (wantBytes) {
+        files.sumOf { runCatching { it.length() }.getOrDefault(0L) }
+    } else {
+        0L
+    }
+    val rows = files.take(limit.coerceAtLeast(0)).map { f ->
+        TrashRow(
+            file = f,
+            name = f.name,
+            bytes = runCatching { f.length() }.getOrDefault(0L),
+            modifiedAt = f.lastModified(),
+        )
+    }
+    return TrashListing(rows, files.size, totalBytes)
 }
 
 /**
@@ -248,6 +312,56 @@ internal fun emptyTrash(dir: File, confirmed: Boolean): TrashOutcome {
 }
 
 /**
+ * 回收站动作的**唯一执行体**（第二百六十四批补齐）：读盘/删盘在 IO，账先落，再回界面。
+ *
+ * ## 为什么必须 `NonCancellable` 包住整个
+ * 动作由面板按钮发起，`rememberCoroutineScope`（**带 handler 的那个写法**，见下方发起处）
+ * 绑的是 `Dialog` 的组合——点一下外面、
+ * 按返回键，`onDismiss` 就把这个 scope 取消了。而 `File.delete()` **不是挂起函数，不会被打断**：
+ * 取消只会在 `withContext` 退出时抛 `CancellationException`，把后面的 `sayBatch` / `tick++`
+ * 一起吞掉。真实后果是「文件删了、界面一句话不说、用户以为没删成，再点一次」。
+ *
+ * ⇒ 整段（含落账与回灌）装在 `NonCancellable` 里：取消只影响「谁在等」，不影响「这件事做完没有」。
+ *
+ * ## 为什么先落 RunLog 再回灌界面
+ * 界面可能已经没了（面板被关掉），但账必须留下——这段代码的可核查性就落在这一行上。
+ * 顺序不能反：先 `report` 后落账，`report` 抛异常（极端情况下组合已死）就把账一起丢了。
+ *
+ * @param mainDispatcher 回灌界面用的调度器；默认主线程。单测传 `Dispatchers.Unconfined`
+ *   （JVM 里没有 `Dispatchers.Main`）。
+ */
+internal suspend fun <T> runTrashAction(
+    label: String,
+    mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    block: () -> T,
+    describe: (T) -> String,
+    report: (T) -> Unit,
+) = withContext(NonCancellable) {
+    val outcome = withContext(Dispatchers.IO) { block() }
+    // 先落账（面板此刻可能已经关了，这一行是唯一留下的证据）
+    RunLog.log("回收站$label：${describe(outcome)}")
+    withContext(mainDispatcher) { report(outcome) }
+}
+
+/**
+ * 把 [TrashOutcome] 写成**一句人话**（进 RunLog）。
+ *
+ * 为什么不用 `javaClass.simpleName`：日志是给人查的，`Deleted` 不如「删了 2,000 个（1.9 MB）」；
+ * 尤其清空可能是**部分失败**，`failed` 不念出来就等于把"没删干净"藏起来。
+ */
+internal fun outcomeLine(o: TrashOutcome): String = when (o) {
+    is TrashOutcome.NeedsConfirm -> "待确认（${o.count} 个 / ${humanBytes(o.bytes)}）"
+    is TrashOutcome.Restored -> "已恢复 ${o.name}"
+    is TrashOutcome.Occupied -> "撞名未动（${o.target}）"
+    is TrashOutcome.Deleted -> when {
+        o.failed > 0 -> "删了 ${o.count} 个，${o.failed} 个没删掉"
+        else -> "删了 ${o.count} 个（${humanBytes(o.bytes)}）"
+    }
+    is TrashOutcome.Rejected -> "拒绝（${o.target}：${o.why}）"
+    is TrashOutcome.IoFailed -> "失败（${o.target}：${o.why}）"
+}
+
+/**
  * 体积说成人话（确认文案要「N 个文件、共 X MB」）。
  *
  * **整数运算**，不用浮点也不用 `Locale`——这样 JVM 里的期望值是写死的字符串，
@@ -273,6 +387,17 @@ private fun oneDecimal(value: Long, unit: Long, suffix: String): String {
     val frac = tenths % 10
     return if (frac == 0L) "$whole $suffix" else "$whole.$frac $suffix"
 }
+
+/**
+ * 回收站面板的一份快照（第二百六十四批）。
+ *
+ * 「还在读（null）」与「读到了、确实是空的（total=0）」是**两种不同的画面**（派工单负例 3）：
+ * 前者画「读取中…」，后者才画「回收站里没有文件」。
+ */
+private data class TrashPanelData(
+    val listing: TrashListing,
+    val sessions: List<Triple<Long, String, Int>>,
+)
 
 /**
  * 回收站面板（三十六批 A 段的「点开」）。
@@ -307,67 +432,132 @@ internal fun TrashDialog(
 ) {
     val ctx = LocalContext.current
     val dir = BaopuTrashBin.dirOf(workspaceRoot)
+    // 第二百六十四批补齐：动作的唯一发起口。**不要**换成 `GlobalScope`/自建 scope——
+    // 取消语义已经由 [runTrashAction] 的 NonCancellable 兜住，这里只负责「发起」。
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
+    // 一条动作在飞时不接第二条：恢复没有确认位，连点两次会各删各的（第二次必然失败并念错话）。
+    var busy by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
-    val rows = remember(tick) { trashRows(dir) }
+    // 一次展开多少条（第二百六十四批 A-P2-2：2,000 条不再一次全读进内存）。
+    var page by remember { mutableIntStateOf(TRASH_PAGE) }
     // 「等第二击」记的是**哪一个文件**（绝对路径）；换一条就得重新确认，
     // 关掉面板也清掉（下次进来重新问一遍——判据 T3 不许记住上次的许可）。
     var confirmingFile by remember { mutableStateOf<String?>(null) }
     var confirmingEmpty by remember { mutableStateOf(false) }
+    // 清空那一击拿到的真实数量与体积（分页之后 rows 只有前 N 条，不能拿它算这句话）
+    var emptyNeeds by remember { mutableStateOf<TrashOutcome.NeedsConfirm?>(null) }
     // 第四十七批：会话回收站（软删）——与文件回收站同一个面板，数字分开数。
     val res = LocalResources.current
     val db = remember { com.example.zhengdao.baopu.BaopuRuntime.db(ctx) }
     var confirmingSession by remember { mutableStateOf<Long?>(null) }
-    val deletedSessions = remember(tick) {
-        runCatching {
-            db.read { d ->
-                d.rawQuery(
-                    com.example.zhengdao.baopu.BaopuSql.listDeletedSessions().sql,
-                    emptyArray(),
-                ).use { c ->
-                    val out = ArrayList<Triple<Long, String, Int>>()
-                    while (c.moveToNext()) {
-                        out += Triple(c.getLong(0), c.getString(1), c.getInt(3))
+
+    // 第二百六十四批（A-P2-2）：`remember(tick) { trashRows(dir) }` → 快照 + IO。
+    // 文件列表（listFiles＋逐文件 length）与会话回收站的 SQLite 读都不再占主线程；
+    // 首帧画「读取中…」，两样一起读到后整体替换（排序与空态口径没动）。
+    // 重读（恢复/删除后 tick++、翻页）**保留旧内容**直到新快照到达——
+    // 先清空再填就是派工单点名的「先空白再闪」，这里不做。
+    var ready by remember { mutableStateOf<TrashPanelData?>(null) }
+    LaunchedEffect(dir, tick, page) {
+        ready = withContext(Dispatchers.IO) {
+            // wantBytes = true：清空确认要「共 X MB」，而分页后 rows 只有前 N 条
+            // ——只算那一页的体积就是给用户一个假数字（2,000 条约 100ms，在 IO 上）。
+            val listing = trashListing(dir, page, wantBytes = true)
+            val sessions = runCatching {
+                db.read { d ->
+                    d.rawQuery(
+                        com.example.zhengdao.baopu.BaopuSql.listDeletedSessions().sql,
+                        emptyArray(),
+                    ).use { c ->
+                        val out = ArrayList<Triple<Long, String, Int>>()
+                        while (c.moveToNext()) {
+                            out += Triple(c.getLong(0), c.getString(1), c.getInt(3))
+                        }
+                        out
                     }
-                    out
                 }
-            }
-        }.getOrDefault(emptyList())
+            }.getOrDefault(emptyList())
+            TrashPanelData(listing, sessions)
+        }
     }
+    val loading = ready == null
+    val rows = ready?.listing?.rows.orEmpty()
+    val total = ready?.listing?.total ?: 0
+    val more = (total - rows.size).coerceAtLeast(0)
+    val deletedSessions = ready?.sessions.orEmpty()
 
     fun restoreSessionRow(id: Long, title: String) {
-        val ok = runCatching {
-            db.write { d ->
-                val st = com.example.zhengdao.baopu.BaopuSql.restoreSession(id, System.currentTimeMillis())
-                d.execSQL(st.sql, st.args)
-            }.get()
-        }.isSuccess
-        Toast.makeText(
-            ctx,
-            res.getString(if (ok) R.string.trash_session_restored else R.string.trash_session_failed, title),
-            Toast.LENGTH_LONG,
-        ).show()
-        confirmingSession = null
-        tick++
-        onSessionsChanged()
+        // 第二百六十四批补齐：DB 写事务原来点一下就在主线程跑完（A-P2-2 的同族漏项）。
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                runTrashAction(
+                    label = "恢复会话",
+                    block = {
+                        runCatching {
+                            db.write { d ->
+                                val st = com.example.zhengdao.baopu.BaopuSql.restoreSession(
+                                    id,
+                                    System.currentTimeMillis(),
+                                )
+                                d.execSQL(st.sql, st.args)
+                            }.get()
+                        }.isSuccess
+                    },
+                    describe = { if (it) "成功" else "失败" },
+                ) { ok ->
+                    Toast.makeText(
+                        ctx,
+                        res.getString(
+                            if (ok) R.string.trash_session_restored else R.string.trash_session_failed,
+                            title,
+                        ),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    confirmingSession = null
+                    tick++
+                    onSessionsChanged()
+                }
+            } finally {
+                busy = false
+            }
+        }
     }
 
     fun purgeSessionRow(id: Long, title: String) {
+        // 两击判定留在主线程（纯 state 比对，不碰盘）；真删在 IO。
         if (confirmingSession != id) {
             confirmingSession = id
             return
         }
-        // 第一百二十一批：第二击才真删，且走控制器口子（controller.purgeSession）——
-        // 里面是同一个写事务跑完 deleteSessionStatements 六条（消息/产物/计划快照按外键序），
-        // 失败即整体保留（单写者事务天然原子），这里只把成败念出来（不许静默）。
-        val ok = onPurgeSession(id)
-        Toast.makeText(
-            ctx,
-            res.getString(if (ok) R.string.trash_session_purged else R.string.trash_session_failed, title),
-            Toast.LENGTH_LONG,
-        ).show()
-        confirmingSession = null
-        tick++
-        onSessionsChanged() // 与恢复对称：删完也让抽屉里那份会话库重读一次
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                // 第一百二十一批：第二击才真删，且走控制器口子（controller.purgeSession）——
+                // 里面是同一个写事务跑完 deleteSessionStatements 六条（消息/产物/计划快照按外键序），
+                // 失败即整体保留（单写者事务天然原子），这里只把成败念出来（不许静默）。
+                runTrashAction(
+                    label = "彻底删除会话",
+                    block = { onPurgeSession(id) },
+                    describe = { if (it) "成功" else "失败" },
+                ) { ok ->
+                    Toast.makeText(
+                        ctx,
+                        res.getString(
+                            if (ok) R.string.trash_session_purged else R.string.trash_session_failed,
+                            title,
+                        ),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    confirmingSession = null
+                    tick++
+                    onSessionsChanged() // 与恢复对称：删完也让抽屉里那份会话库重读一次
+                }
+            } finally {
+                busy = false
+            }
+        }
     }
 
     /** 每一种下场都要**说话**（不许静默）：句子全在 strings，这里只查键。 */
@@ -414,11 +604,16 @@ internal fun TrashDialog(
         ) {
             Column(Modifier.padding(18.dp)) {
                 Text(
-                    text = stringResource(R.string.trash_dialog_title, rows.size),
+                    // 读取中不报 0：0 是"读到了、确实没有"，两者不能混（派工单负例 3）
+                    text = if (loading) {
+                        stringResource(R.string.trash_dialog_title_loading)
+                    } else {
+                        stringResource(R.string.trash_dialog_title, total)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(8.dp))
-                if (rows.isEmpty()) {
+                if (!loading && total == 0) {
                     // 空表也要有一句人话（不许整页空白让用户以为坏了）
                     Text(
                         text = stringResource(R.string.trash_none),
@@ -427,8 +622,23 @@ internal fun TrashDialog(
                     )
                 }
                 Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        rows.forEach { row ->
+                    // 第二百六十四批：这一列改 LazyColumn。旧版是 `Column(verticalScroll)`，
+                    // 一页 20 条**全部**在开面板那一帧组合完（每条两行字＋两个 TextButton），
+                    // 真机上那正是回收站面板唯一超过 100ms 的一帧（200ms）。
+                    // 懒加载只组合看得见的几条 ⇒ 首帧开销与总条数、页大小都无关；
+                    // 内容、顺序、按钮、确认红字一律没动（rows 仍是算好的那一页）。
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        if (loading) {
+                            item {
+                                // 首帧：一句"读取中"，不是空表（2,000 条时这一段原来要卡住整帧）
+                                Text(
+                                    text = stringResource(R.string.common_loading),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        items(rows) { row ->
                             val isConfirming = confirmingFile == row.file.absolutePath
                             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                                 Text(
@@ -449,20 +659,53 @@ internal fun TrashDialog(
                                     fontFamily = FontFamily.Monospace,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    TextButton(onClick = {
-                                        sayOne(restoreTrash(row, workspaceRoot))
-                                        confirmingFile = null
-                                        tick++
-                                    }) { Text(stringResource(R.string.trash_restore)) }
-                                    TextButton(onClick = {
-                                        val o = deleteTrash(row, workspaceRoot, confirmingFile == row.file.absolutePath)
-                                        confirmingFile = if (o is TrashOutcome.NeedsConfirm) {
-                                            row.file.absolutePath
-                                        } else {
-                                            null
+                                    // 第二百六十四批补齐：两条都搬 IO（原来点一下就在主线程
+                                    // stat／rename／delete）。确认位**在主线程先算好**再进 IO——
+                                    // Compose 的 state 不该在后台线程读。
+                                    val confirmedDelete = confirmingFile == row.file.absolutePath
+                                    TextButton(onClick = restore@{
+                                        if (busy) return@restore
+                                        busy = true
+                                        scope.launch {
+                                            try {
+                                                runTrashAction(
+                                                    label = "恢复文件",
+                                                    block = { restoreTrash(row, workspaceRoot) },
+                                                    describe = ::outcomeLine,
+                                                ) { o ->
+                                                    sayOne(o)
+                                                    confirmingFile = null
+                                                    tick++
+                                                }
+                                            } finally {
+                                                busy = false
+                                            }
                                         }
-                                        sayOne(o)
-                                        tick++
+                                    }) { Text(stringResource(R.string.trash_restore)) }
+                                    TextButton(onClick = purge@{
+                                        if (busy) return@purge
+                                        busy = true
+                                        scope.launch {
+                                            try {
+                                                runTrashAction(
+                                                    label = "彻底删除文件",
+                                                    block = {
+                                                        deleteTrash(row, workspaceRoot, confirmedDelete)
+                                                    },
+                                                    describe = ::outcomeLine,
+                                                ) { o ->
+                                                    confirmingFile = if (o is TrashOutcome.NeedsConfirm) {
+                                                        row.file.absolutePath
+                                                    } else {
+                                                        null
+                                                    }
+                                                    sayOne(o)
+                                                    tick++
+                                                }
+                                            } finally {
+                                                busy = false
+                                            }
+                                        }
                                     }) { Text(stringResource(R.string.trash_delete)) }
                                 }
                                 if (isConfirming) {
@@ -478,68 +721,124 @@ internal fun TrashDialog(
                                 }
                             }
                         }
+                        // 分页：条数多时只读前 N 条，剩下的按「还有 N 条」展开（顺序不变）
+                        if (more > 0) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.trash_more_hint, more),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    TextButton(onClick = { page += TRASH_PAGE }) {
+                                        Text(stringResource(R.string.trash_show_more))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.trash_sessions_title, deletedSessions.size),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                if (deletedSessions.isEmpty()) {
+                // 会话回收站：读到之前不画「0 条」——那是"读到了、确实没有"的句子
+                if (!loading) {
                     Text(
-                        text = stringResource(R.string.trash_sessions_none),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = stringResource(R.string.trash_sessions_title, deletedSessions.size),
+                        style = MaterialTheme.typography.titleSmall,
                     )
-                }
-                Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
-                    deletedSessions.forEach { (id, title, count) ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text(
-                                text = pluralStringResource(R.plurals.trash_session_row, count, title, count),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TextButton(onClick = { restoreSessionRow(id, title) }) {
-                                    Text(stringResource(R.string.trash_session_restore))
-                                }
-                                TextButton(onClick = { purgeSessionRow(id, title) }) {
-                                    Text(stringResource(R.string.trash_session_purge))
-                                }
-                            }
-                            if (confirmingSession == id) {
+                    if (deletedSessions.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.trash_sessions_none),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
+                        deletedSessions.forEach { (id, title, count) ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                 Text(
-                                    text = stringResource(R.string.trash_session_confirm, title),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = zhengdaoErrorText(),
+                                    text = pluralStringResource(R.plurals.trash_session_row, count, title, count),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    TextButton(onClick = { restoreSessionRow(id, title) }) {
+                                        Text(stringResource(R.string.trash_session_restore))
+                                    }
+                                    TextButton(onClick = { purgeSessionRow(id, title) }) {
+                                        Text(stringResource(R.string.trash_session_purge))
+                                    }
+                                }
+                                if (confirmingSession == id) {
+                                    Text(
+                                        text = stringResource(R.string.trash_session_confirm, title),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = zhengdaoErrorText(),
+                                    )
+                                }
                             }
                         }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = {
-                        val o = emptyTrash(dir, confirmingEmpty)
-                        confirmingEmpty = o is TrashOutcome.NeedsConfirm
-                        sayBatch(o)
-                        tick++
+                    TextButton(onClick = empty@{
+                        if (busy) return@empty
+                        if (!confirmingEmpty) {
+                            // 第一击：账目直接取面板快照（IO 里已经算过 total 与 totalBytes），
+                            // 不再额外全量扫一遍。快照还没到就不做——确认卡上不写一个猜的数字。
+                            val listing = ready?.listing ?: return@empty
+                            val needs = TrashOutcome.NeedsConfirm(
+                                target = dir.name,
+                                count = listing.total,
+                                bytes = listing.totalBytes,
+                            )
+                            confirmingEmpty = true
+                            emptyNeeds = needs
+                            sayBatch(needs)
+                            return@empty
+                        }
+                        // 第二击：真删。**必须自己重新全量枚举**——分页快照只有前 N 条，
+                        // 拿它去删就只删 80 条、还回一句「清掉 80 个」（数据事故级）。
+                        busy = true
+                        scope.launch {
+                            try {
+                                runTrashAction(
+                                    label = "清空",
+                                    block = { emptyTrash(dir, true) },
+                                    describe = ::outcomeLine,
+                                ) { o ->
+                                    confirmingEmpty = o is TrashOutcome.NeedsConfirm
+                                    emptyNeeds = o as? TrashOutcome.NeedsConfirm
+                                    sayBatch(o)
+                                    tick++
+                                }
+                            } finally {
+                                busy = false
+                            }
+                        }
                     }) { Text(stringResource(R.string.trash_empty)) }
                     if (confirmingEmpty) {
-                        // 清空那一击前的红字：数量与体积都写进去（判据 T3 的文案要求）
-                        Text(
-                            text = pluralStringResource(
-                                R.plurals.trash_confirm_empty,
-                                rows.size,
-                                rows.size,
-                                humanBytes(rows.sumOf { it.bytes }),
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = zhengdaoErrorText(),
-                            modifier = Modifier.weight(1f),
-                        )
+                        // 清空那一击前的红字：数量与体积都写进去（判据 T3 的文案要求）。
+                        // 分页之后 rows 不是全量，这里用第一击回出来的真实读数。
+                        val needs = emptyNeeds
+                        if (needs != null) {
+                            Text(
+                                text = pluralStringResource(
+                                    R.plurals.trash_confirm_empty,
+                                    needs.count,
+                                    needs.count,
+                                    humanBytes(needs.bytes),
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = zhengdaoErrorText(),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.trash_close)) }

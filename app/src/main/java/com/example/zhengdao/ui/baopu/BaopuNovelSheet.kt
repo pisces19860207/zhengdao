@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,10 +38,18 @@ import com.example.zhengdao.baopu.agent.NOVEL_BODY_DIR
 import com.example.zhengdao.baopu.agent.NOVEL_META_FILE
 import com.example.zhengdao.baopu.agent.NOVEL_ROOT_DIR
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /** 一行小说项目读数（只读；不写盘、不建目录）。 */
 private data class NovelRow(val title: String, val chapters: Int, val chars: Int)
+
+/** 面板的两态：**读取中**与「读到了（可能是空表）」必须分开（派工单负例 3）。 */
+private sealed interface NovelState {
+    data object Loading : NovelState
+    data class Ready(val rows: List<NovelRow>) : NovelState
+}
 
 @Composable
 internal fun BaopuNovelSheet(
@@ -49,7 +58,12 @@ internal fun BaopuNovelSheet(
     onCreate: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
-    val rows = remember(workspaceRoot) { readNovels(workspaceRoot) }
+    // 第二百六十四批（A-P2-1）：原来 `remember(workspaceRoot) { readNovels(...) }` 在第 52 行
+    // 组合期同步读盘——200 本书就是 200 次 readText 数字数，进面板那一下整帧卡住。
+    // 现在首帧只画「读取中…」，读盘在 IO 线程；读到后整体替换（不是先画空态再闪内容）。
+    val state by produceState<NovelState>(NovelState.Loading, workspaceRoot) {
+        value = withContext(Dispatchers.IO) { NovelState.Ready(readNovels(workspaceRoot)) }
+    }
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(20.dp),
@@ -71,36 +85,43 @@ internal fun BaopuNovelSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                 )
-                if (rows.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.baopu_novel_empty),
+                when (val s = state) {
+                    is NovelState.Loading -> Text(
+                        text = stringResource(R.string.common_loading),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    rows.forEach { row ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = row.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                text = pluralStringResource(
-                                    R.plurals.baopu_novel_stats,
-                                    row.chapters,
-                                    row.chapters,
-                                    row.chars,
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                    is NovelState.Ready -> if (s.rows.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.baopu_novel_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        s.rows.forEach { row ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = row.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    text = pluralStringResource(
+                                        R.plurals.baopu_novel_stats,
+                                        row.chapters,
+                                        row.chapters,
+                                        row.chars,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
