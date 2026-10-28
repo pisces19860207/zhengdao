@@ -5,6 +5,7 @@ package com.example.zhengdao.ui.browser
 
 import android.content.Context
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -354,7 +355,14 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             if (activeId != null && !recycled && !restored && active.state.everLoaded) {
                 key(activeId) {
                     AndroidView(
-                        factory = { BrowserTabManager.view() ?: WebView(it) },
+                        factory = {
+                            // 262 批 §6：1dp 离屏载入台可能还持有这颗 WebView（载入
+                            // 窗口恰逢用户切进玄览）——addView 遇「已有父容器」会抛，
+                            // 先从旧父摘下（组合赢；载入台 detach 认父不对就 no-op）。
+                            BrowserTabManager.view()
+                                ?.also { v -> (v.parent as? ViewGroup)?.removeView(v) }
+                                ?: WebView(it)
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

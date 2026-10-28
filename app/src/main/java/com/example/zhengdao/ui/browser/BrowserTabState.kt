@@ -41,6 +41,33 @@ class BrowserTabState {
     /** 是否成功加载过页面（空态引导判据；只涨不落）。 */
     var everLoaded by mutableStateOf(false)
 
+    /**
+     * 页面**在前台渲染完成过**（262 批 §6 三级截图链路的判据位；只涨不落）。
+     *
+     * 为什么 [everLoaded] 不够（263 真机实测口径：成败取决于「载入时是否在前台」）：
+     * 后台载入的页 readyState 也会到 complete，但渲染器从没产出过像素，直接画必然
+     * 白图——「载入过」与「渲染过」是两件事，这个字段就是两者的差。
+     *
+     * 谁置真：[markRenderedForeground]，由管理器的委托在 onPageFinished 时、且 App
+     * 在前台才调（判据在管理器侧，本类保持零 Android）。
+     */
+    var renderedWhileForeground by mutableStateOf(false)
+
+    /**
+     * 截图链路的「页面渲染过没有」（262 批 §6 [com.example.zhengdao.baopu.ShotTierRule]
+     * 的第一判据）。
+     *
+     * 三个条件缺一不可：[everLoaded]（载入过）＋ [renderedWhileForeground]（前台
+     * 渲染完成过，防后台载入白图）＋ **没被回收**（[recycled] 为真时旧实例已销毁，
+     * 新实例还是空白）。
+     */
+    fun isRenderable(): Boolean = everLoaded && renderedWhileForeground && !recycled
+
+    /** 置真前台渲染位（管理器委托在 onPageFinished 且 App 前台时调；只涨不落）。 */
+    fun markRenderedForeground() {
+        renderedWhileForeground = true
+    }
+
     /** 本标签的安提示条（scheme 被拦 / SSL / Safe Browsing / 页面错误；可关闭）。 */
     var blockedMsg by mutableStateOf<String?>(null)
 

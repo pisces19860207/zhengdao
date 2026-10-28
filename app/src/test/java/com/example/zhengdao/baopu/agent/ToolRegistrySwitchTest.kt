@@ -65,7 +65,7 @@ class ToolRegistrySwitchTest {
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 小说工程三件（第一百五十五批）：表序即注册序（convert_encoding 之后）
                 "novel_create", "novel_project", "novel_continue",
-                "browser_open", "browser_snapshot", "browser_click",
+                "browser_open", "browser_snapshot", "browser_evidence", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot",
                 // 第一百七十七批：坐标四件＋等待（表序即注册序，插在 screenshot 之后）
                 "browser_tap", "browser_swipe", "browser_long_press",

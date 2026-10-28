@@ -278,7 +278,7 @@ class PlanGuardTest {
     fun `引擎接线_变更卡在真执行前_偏离卡不阻断`() {
         val src = source("baopu/agent/RunEngine.kt")
         val gateIdx = src.indexOf("planChangeGate(call)?.let")
-        val execIdx = src.indexOf("val result = pipeline.execute(call)")
+        val execIdx = src.indexOf("val result = executeWithSwitch(switchForShot)")
         assertTrue(
             "变更闸必须在真执行之前（先问人再落库；索引失效会让本判据静默通过）",
             gateIdx > 0 && execIdx > gateIdx,

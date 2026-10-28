@@ -217,6 +217,9 @@ internal object ToolGroupTable {
         "update_plan" to ToolGroup.CORE,
         "browser_open" to ToolGroup.CORE,
         "browser_snapshot" to ToolGroup.CORE,
+        // 262 批：证据快照归 BROWSER 组（默认不可见，capabilities 解锁——默认可见 12 条
+        // 的上下文硬卡不许破，ProgressiveToolsTest B1；取证是巡按/纠察场景，用到再解锁）
+        "browser_evidence" to ToolGroup.BROWSER,
         // ── EDIT：写产物的最小闭环（写 / 改 / 图片 / 写卡）
         "write_file" to ToolGroup.EDIT,
         "edit_file" to ToolGroup.EDIT,
@@ -1220,6 +1223,9 @@ internal object BaopuToolCatalog {
         // 浏览器六件（玄览）：读类免确认、写类 CONFIRM；网关没注入时统一回「玄览还没打开」
         "browser_open",
         "browser_snapshot",
+        // 262 批：DOM/AX 证据快照——只读（readOnly=true，不碰页面），默认开；漏了这行
+        // ⇒ 注册了但默认关，模型永远看不见（ToolRegistrySwitchTest 表数门禁会红）
+        "browser_evidence",
         "browser_click",
         "browser_type",
         "browser_scroll",
@@ -1327,6 +1333,8 @@ internal object BaopuToolCatalog {
         // 浏览器六件不需要 workspaceRoot（守卫走 URL/scheme，不走路径）
         Entry("browser_open") { BrowserTools.openSpec() },
         Entry("browser_snapshot") { BrowserTools.snapshotSpec() },
+        // 262 批：证据快照（FREE 只读、不依赖前台可见——DOM/属性读取，离屏标签也能取）
+        Entry("browser_evidence") { BrowserTools.evidenceSpec() },
         Entry("browser_click") { BrowserTools.clickSpec() },
         Entry("browser_type") { BrowserTools.typeSpec() },
         Entry("browser_scroll") { BrowserTools.scrollSpec() },

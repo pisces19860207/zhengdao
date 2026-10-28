@@ -31,6 +31,15 @@ internal interface BrowserGateway {
     /** 取当前页的结构快照（可交互元素 + 可见文本摘要）。 */
     fun snapshot(selector: String?): String
 
+    /**
+     * 取当前页的**证据快照**（262 批）：url、标题、DOM 结构骨架＋正文前 2000 字、
+     * 可访问性文本前 4000 字、元素计数。**不依赖前台可见**——DOM/属性读取与渲染无关，
+     * 用户在别的页签也能取（区别于 [snapshot] 与 [screenshot] 的分工点，工单口径）。
+     * 失败用异常表达（与 [screenshot] 同规）：无标签／未加载／超时／解析失败都带原因；
+     * 跨域 iframe 内容取不到但如实计数（正常回执里成行）。
+     */
+    fun evidence(): String
+
     /** 点一个目标（快照 ref 句柄 `@eN` 或 CSS 选择器；失效句柄由玄览侧拒绝并说明）。 */
     fun click(target: String): String
 
@@ -259,6 +268,31 @@ internal object BrowserTools {
         ToolOutcome.Ok(cap(raw, MAX_SNAPSHOT_CHARS))
     }
 
+    fun evidenceSpec(): ToolSpec = ToolSpec(
+        name = "browser_evidence",
+        description = "取玄览当前页的**证据快照**：url、标题、DOM 结构骨架＋正文前 2000 字、" +
+            "可访问性文本前 4000 字、元素计数。**不依赖页面在前台**——用户在别的页签也能取" +
+            "（DOM/属性读取与渲染无关），适合页面取证、留档、事后核对。" +
+            "失败会带原因（无标签／页面未加载）；跨域 iframe 的内容取不到但会报数量。" +
+            "要看元素句柄（拿去点）用 browser_snapshot；要看像素用 browser_screenshot。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(),
+            "required" to jsonArrayOf(),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.FREE,
+        readOnly = true,
+        // parallelSafe 缺省 false：只读，但抢的是**同一个 WebView** ⇒ 不许并行
+        timeoutMs = ToolTimeout.BROWSER_MS,
+    ) { _ ->
+        val gateway = BaopuBrowser.require() ?: return@ToolSpec ToolOutcome.Failed(NO_BROWSER)
+        val text = runCatching { gateway.evidence() }
+            .getOrElse { return@ToolSpec ToolOutcome.Failed("取证据失败：${it.message ?: it.javaClass.simpleName}") }
+        // 回执 ≤64KB 已在桥内核（EvidenceSnapshot.clampTotal）字节级收过，不再 cap
+        ToolOutcome.Ok(text)
+    }
+
     fun clickSpec(): ToolSpec = ToolSpec(
         name = "browser_click",
         description = "点玄览当前页里的一个元素。target 传快照给的 ref 句柄（如 @e3）或 CSS 选择器" +
@@ -350,7 +384,11 @@ internal object BrowserTools {
             "本轮首次截图会先问你一次，敏感页每次都问）。" +
             "用户说「存到相册/给我看/发我一张」时传 album=true：这张会进手机相册" +
             "（Pictures/证道/截屏/），按「谁来看」分流，**一轮核对别开它**。" +
-            "页面没排版时可能失败，失败会说原因。",
+            "⚠️ 代价先说清：这张是在离屏（看不见的地方）**重新载入这个页面**后画的，" +
+            "所以它反映的是**页面初始状态**——不是你此刻看到的滚动位置，也不包含用户已经填过的表单内容；" +
+            "懒加载/无限滚动出来的内容也不会出现在这张里。要看用户此刻的精确画面，" +
+            "别用这个：改为征询「切到玄览截一张」（约 2 秒随后切回）。" +
+            "截不出来会如实说原因（载入失败／等画面超时／画出来是整幅白或灰＝没渲染），不会拿灰图冒充。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -765,9 +803,9 @@ internal object BrowserTools {
         ToolOutcome.Ok(cap(text, MAX_TEXT_CHARS))
     }
 
-    /** 二十个 spec（顺序即 tools 数组顺序；228 批 B 片九件加在尾部）。 */
+    /** 二十一个 spec（顺序即 tools 数组顺序；228 批 B 片九件加在尾部，262 批 evidence 紧随 snapshot）。 */
     fun all(): List<ToolSpec> = listOf(
-        openSpec(), snapshotSpec(), clickSpec(), typeSpec(), scrollSpec(), screenshotSpec(),
+        openSpec(), snapshotSpec(), evidenceSpec(), clickSpec(), typeSpec(), scrollSpec(), screenshotSpec(),
         tapSpec(), swipeSpec(), longPressSpec(), keySpec(), waitSpec(),
         backSpec(), forwardSpec(), reloadSpec(),
         selectSpec(), hoverSpec(), scrollIntoViewSpec(),

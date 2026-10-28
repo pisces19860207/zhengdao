@@ -148,6 +148,8 @@ class BridgeTabIdRoutingGuardTest {
             "internal fun selectOption(target: String?, value: String?, tabId: String? = null): String {",
             "internal fun hover(target: String?, tabId: String? = null): String {",
             "internal fun scrollIntoView(target: String?, tabId: String? = null): String {",
+            // 262 批：证据快照同为带 tabId 路由的命令，登记入册（新增命令别忘了本表）
+            "fun evidenceSnapshot(tabId: String? = null): EvidenceCapture {",
         )
         signatures.forEach { sig ->
             assertTrue("源码里找不到命令：$sig", src.contains(sig))

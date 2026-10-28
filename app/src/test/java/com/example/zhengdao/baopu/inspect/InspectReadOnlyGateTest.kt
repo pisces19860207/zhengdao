@@ -5,7 +5,7 @@
 // 明细没拼进 prompt 也可能是"今天凑巧"。所以这一类一律从源码层钉，不靠自觉。
 //
 // 三条扫描口径（都在文件里写死，改动 `baopu/inspect/` 的人第一眼就能看见为什么被拦）：
-// 1. 勘验层没有写口：唯一允许落盘的是它自己那三本 JSONL（巡按/影子）的追加；
+// 1. 勘验层没有写口：唯一允许落盘的是它自己那几本 JSONL（巡按/影子/262 的视觉证据）的追加；
 // 2. 勘验层不碰模型：不许 import `agent` 里除 227 判据（`AnswerGate`）之外的任何东西，
 //    也不许出现 prompt／messages／LlmClient 那类拼上下文的字样；
 // 3. 每条 SQL 都带上界：一次 `rawQuery` 一段窗口，窗口里必须有 `LIMIT`（负例④「扫全库」）。
@@ -54,7 +54,8 @@ class InspectReadOnlyGateTest {
     @Test
     fun `负例①_唯一允许落盘的是自己那两本账`() {
         // 追加口只许出现在自己的台账文件里，且每个文件最多一处 appendText（一次巡按一行）
-        val ledgers = listOf("PatrolLedger.kt", "ShadowLedger.kt")
+        // 262 批起带 VisualEvidenceQueue.kt：视觉证据账（页面证据.jsonl）同款 ShadowLedger 形态
+        val ledgers = listOf("PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt")
         inspectFiles().forEach { f ->
             val text = code(f)
             val hits = Regex("""\.appendText\(""").findAll(text).count()
@@ -68,9 +69,10 @@ class InspectReadOnlyGateTest {
 
     @Test
     fun `负例①_建目录只在自己的台账里`() {
+        val ledgers = listOf("PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt")
         inspectFiles().forEach { f ->
             val hits = Regex("""mkdirs\(|mkdir\(""").findAll(code(f)).count()
-            if (f.name == "PatrolLedger.kt" || f.name == "ShadowLedger.kt") {
+            if (f.name in ledgers) {
                 assertTrue("${f.name} 要能自建父目录", hits in 1..1)
             } else {
                 assertEquals("${f.name} 不许建目录", 0, hits)

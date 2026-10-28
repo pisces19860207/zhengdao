@@ -641,8 +641,16 @@ fun HomeTabs(
     val tabReqVersion = com.example.zhengdao.ui.browser.BrowserHolder.tabRequestVersion
     androidx.compose.runtime.LaunchedEffect(tabReqVersion) {
         if (tabReqVersion > 0 && com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()) {
-            tab = TabIndex.BROWSER
+            // 262：目标读旁路（老请求恒是玄览；程序化切屏的恢复可能指向别的页签）。
+            tab = com.example.zhengdao.ui.browser.BrowserHolder.requestedTabTarget()
         }
+    }
+
+    // 262：页签变化上报（程序化切屏的「用户手动切走就不抢」判定面读它）。
+    // tab 的写入点分散（底栏/ON_RESUME/退出抱朴），逐点上报漏一处判定面就失真；
+    // 这里组合后统一报，初始值也覆盖。
+    androidx.compose.runtime.LaunchedEffect(tab) {
+        com.example.zhengdao.ui.browser.BrowserHolder.appTab = tab
     }
 
     // 切 Tab 保留滚动位置（K2）——把两个 tab 的 LazyListState 提到 HomeTabs 顶层。
@@ -676,7 +684,8 @@ fun HomeTabs(
                     // ⇒ 一进终端玄览所有标签当场降 WAIVED（L2「在终端/抱朴时页面要活着」破功）。
                     if (com.example.zhengdao.ui.browser.BrowserHolder.consumeTabRequest()
                     ) {
-                        tab = TabIndex.BROWSER
+                        // 262：目标读旁路（同上——恢复请求可能指向玄览以外的页签）。
+                        tab = com.example.zhengdao.ui.browser.BrowserHolder.requestedTabTarget()
                     }
                     // 抱朴快捷方式（刀 2 D 段第 1 条）：长按图标「备份原件」⇒ 回前台切到抱朴，
                     // 对话框由抱朴页组合时消费（请求是进程级的，冷/热启动都丢不了）。

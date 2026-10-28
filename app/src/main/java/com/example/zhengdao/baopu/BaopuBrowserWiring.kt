@@ -18,6 +18,7 @@ import com.example.zhengdao.baopu.agent.PreviewTool
 import com.example.zhengdao.baopu.agent.Shot
 import com.example.zhengdao.baopu.agent.TeachGateway
 import com.example.zhengdao.baopu.agent.TeachTools
+import com.example.zhengdao.baopu.inspect.VisualEvidenceQueue
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.bridge.BrowserCommands
 import com.example.zhengdao.browser.SensitiveRedactor
@@ -61,6 +62,14 @@ internal object BaopuBrowserWiring {
 
             override fun snapshot(selector: String?): String =
                 BrowserCommands.snapshot("text", selector)
+
+            // 262 批：证据快照（不依赖前台可见——DOM/属性读取；失败 Bad 翻成异常，
+            // 工具层 runCatching 接住翻 ToolOutcome.Failed——与 screenshot 同规）
+            override fun evidence(): String =
+                when (val r = BrowserCommands.evidenceSnapshot()) {
+                    is BrowserCommands.EvidenceCapture.Ok -> r.text
+                    is BrowserCommands.EvidenceCapture.Bad -> throw IllegalStateException(r.error)
+                }
 
             // 第一百七十七批 S3：抱朴这条线走**带前后校验**的内核（桥那条仍是原 `click`，
             // 回执形状不变）——「点好了」要带「页面变没变」，不许只说一句成功。
@@ -203,6 +212,81 @@ internal object BaopuBrowserWiring {
                 }
                 return null
             }
+        }
+
+        // ── 262 批第二步：切屏台真身 ＋ 预约式补拍的触发口 ──────────────────────
+        //
+        // 两件都挂这里（「玄览的接线只许有一个地方」）：引擎只认 ScreenSwitch 接口
+        // （[com.example.zhengdao.baopu.ScreenSwitchDesk]），真身是 BrowserHolder 的
+        // 状态机；预约队列的消费口挂在 onBrowserShown 上——玄览上屏那一刻投后台线程
+        // drain（静默补拍当前页）。**必须投后台**：钩子在组合期（主线程）回调，
+        // 桥命令（captureShotRef）主线程直调＝onMain 自等死锁（类 KDoc 第㉓刀）。
+        ScreenSwitchDesk.impl = object : ScreenSwitch {
+            override fun browserOnScreen(): Boolean = BrowserHolder.browserOnScreenNow()
+
+            // 两个切换都引擎线程直调：requestTabTo 写的是 @Volatile＋AtomicBoolean＋可观察
+            // 版本号，跨线程写由快照机制兜底（主线程下一次组合就消费）；不 post 的关键理由
+            // 是 restoreAfterShot 的返回值要如实进引擎审计行——post 就只能乐观回 true，
+            // 「用户手动切走就不抢」的裁决会被吞进异步里。
+            override fun openForShot(): Int? = BrowserHolder.openForShot()
+
+            override fun restoreAfterShot(origin: Int?): Boolean =
+                BrowserHolder.restoreAfterShot(origin)
+
+            // ── 262 批 §6 三级链路的四个口：都是转发，判据与动作的真身在
+            //    BrowserHolder（1dp 载入台）/BrowserTabState（isRenderable）——
+            //    本类是接线，不设第二真相。
+            override fun pageRenderable(): Boolean =
+                runCatching { BrowserHolder.pageRenderableNow() }.getOrDefault(false)
+
+            override fun appInForeground(): Boolean =
+                runCatching { BrowserHolder.appInForegroundNow() }.getOrDefault(true)
+
+            override fun loadForShot(): Boolean =
+                runCatching { BrowserHolder.loadForShot() }.getOrDefault(false)
+
+            override fun detachForShot() {
+                runCatching { BrowserHolder.detachForShot() }
+            }
+        }
+        BrowserHolder.browserShownListener = {
+            Thread {
+                val ctx = appCtxRef?.get() ?: return@Thread
+                VisualEvidenceQueue.drain(
+                    shoot = { item ->
+                        val shot = runCatching {
+                            BrowserCommands.captureShotRef(ctx, null, "0", album = false)
+                        }.getOrNull()
+                        when (shot) {
+                            is BrowserCommands.ShotCapture.Ok -> VisualEvidenceQueue.Done(
+                                reason = item.reason,
+                                enqueuedAtMs = item.enqueuedAtMs,
+                                atMs = System.currentTimeMillis(),
+                                shotRel = shot.ref.file,
+                                error = null,
+                            )
+                            is BrowserCommands.ShotCapture.Bad ->
+                                VisualEvidenceQueue.Done(
+                                    reason = item.reason,
+                                    enqueuedAtMs = item.enqueuedAtMs,
+                                    atMs = System.currentTimeMillis(),
+                                    shotRel = null,
+                                    error = shot.error,
+                                )
+                            null -> VisualEvidenceQueue.Done(
+                                reason = item.reason,
+                                enqueuedAtMs = item.enqueuedAtMs,
+                                atMs = System.currentTimeMillis(),
+                                shotRel = null,
+                                error = "补拍失败：桥调用异常",
+                            )
+                        }
+                    },
+                    append = { done ->
+                        VisualEvidenceQueue.appendDone(teachGlobalRoot(ctx), done)
+                    },
+                )
+            }.apply { name = "zd-visual-evidence"; isDaemon = true }.start()
         }
     }
 

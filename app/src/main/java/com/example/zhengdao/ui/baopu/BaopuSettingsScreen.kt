@@ -1519,6 +1519,8 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "convert_encoding" -> R.string.baopu_tool_convert_encoding
     "browser_open" -> R.string.baopu_tool_browser_open
     "browser_snapshot" -> R.string.baopu_tool_browser_snapshot
+    // 262 批：巡按取证快照（漏这行 ⇒ 设置页开工具卡直接抛，同 update_plan 教训）
+    "browser_evidence" -> R.string.baopu_tool_browser_evidence
     "browser_click" -> R.string.baopu_tool_browser_click
     "browser_type" -> R.string.baopu_tool_browser_type
     "browser_scroll" -> R.string.baopu_tool_browser_scroll
@@ -1618,6 +1620,7 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "convert_encoding" -> R.string.baopu_tool_convert_encoding_desc
     "browser_open" -> R.string.baopu_tool_browser_open_desc
     "browser_snapshot" -> R.string.baopu_tool_browser_snapshot_desc
+    "browser_evidence" -> R.string.baopu_tool_browser_evidence_desc
     "browser_click" -> R.string.baopu_tool_browser_click_desc
     "browser_type" -> R.string.baopu_tool_browser_type_desc
     "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc

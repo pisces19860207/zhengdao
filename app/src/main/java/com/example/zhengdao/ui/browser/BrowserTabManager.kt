@@ -757,6 +757,11 @@ object BrowserTabManager {
 
         override fun onPageFinished(url: String) {
             tab.state.onPageFinished(url)
+            // 262 批 §6：「渲染过」与「载入过」是两件事（263 实测：成败取决于载入时
+            // 是否在前台）。完成那一刻 App 在前台 ⇒ 页面真的产出过像素；后台完成的
+            // 不置真，下次截图走前台载入补救，不拿白图冒充。判据在 BrowserHolder
+            // （本类不另设前台真相），标记位归 [BrowserTabState]（保持零 Android）。
+            if (BrowserHolder.appInForegroundNow()) tab.state.markRenderedForeground()
             finishedAt[tab.id] = System.currentTimeMillis()
             appCtx?.let { c ->
                 BrowserTabSnapshotStore.upsert(

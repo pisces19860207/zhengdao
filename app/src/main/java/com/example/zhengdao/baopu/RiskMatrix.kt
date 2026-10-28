@@ -276,11 +276,13 @@ internal data class RiskTable(
          * v2（第二百二十四批）：加 `form_fill` 一行（R2 ＋ 语义升 R3 ＋ 密码键硬拒）。
          * v3（第二百二十八批 B 片）：浏览器手眼断层九件入表（snapshot 几何/导航三件/动作三件/标签三件）。
          * v4（第二百二十八批 C 片）：示教/回放五件入表（录制 R0、入库 R1、回放 R2＋必问、信任授权 R1＋必问）。
+         * v5（第二百三十二批）：table_query 入表（本地 R0、联网升 R2 必问）。
+         * v6（第二百六十二批）：browser_evidence 入表（R0 只读证据快照）。
          */
-        const val DEFAULT_VERSION: Int = 5
+        const val DEFAULT_VERSION: Int = 6
 
         /**
-         * 唯一一张默认表（67 行分级 ＋ bash 豁免 = 注册工具 68 个全有账）。
+         * 唯一一张默认表（68 行 = 注册工具 68 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
          *
          * 68 = `BaopuToolCatalog.ENTRIES` 64 条 ＋ 运行时注册 4 条（write_skill /
          * append_persona / read / bash）；218 的六件、224 的 form_fill 与 228 批 B/C 两片
@@ -301,6 +303,8 @@ internal data class RiskTable(
                 // 173 派工单只点名了 snapshot，另外三件按「读页面」口径补齐（报告 §1 逐条说明）。
                 "browser_open" to ToolRule(RiskClass.R0, urlKeys = setOf("url")),
                 "browser_snapshot" to ToolRule(RiskClass.R0),
+                // 262 批：证据快照只读（DOM/AX 文本，不碰页面、不落像素），与 snapshot 同档
+                "browser_evidence" to ToolRule(RiskClass.R0),
                 "browser_scroll" to ToolRule(RiskClass.R0),
                 "browser_wait" to ToolRule(RiskClass.R0),
                 // 228 批 B 片：导航三件只动历史栈，不产生新请求目标（URL 规则管不到——
