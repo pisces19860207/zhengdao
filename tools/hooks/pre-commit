@@ -123,6 +123,42 @@ for p in $added; do
   fi
 done
 
+# ---- 4. rust/core/src 改了但入库 .so 没重编（E-128）----
+#   rationale：改了 Rust 却没重编 .so 时，CI 第 7 步才红 —— 等于晚一轮才发现
+#   （2026-10-28 实锤：259 改了 rust/core/src/ed25519.rs 没重编，CI 红了一整天）。
+#   check-so-provenance.py 只比对源码树指纹与 .so sha，秒级、不编译，适合放在提交前。
+#   合并提交只提醒不拦：集成时源码与 .so 由上游一并带来，拦合并会把正当集成卡住。
+rust_touch=""
+for p in $staged; do
+  case "$p" in
+    rust/core/src/*|native-core/src/main/jniLibs/*/libzhengdao_core.so|tools/so-provenance.json)
+      rust_touch=1 ;;
+  esac
+done
+if [ -n "$rust_touch" ]; then
+  PY="$(command -v python3 || command -v python || true)"
+  if [ -n "$PY" ] && [ -f tools/check-so-provenance.py ]; then
+    so_log="$(mktemp 2>/dev/null || echo /tmp/zd-so-provenance.log)"
+    if ! "$PY" tools/check-so-provenance.py >"$so_log" 2>&1; then
+      if [ "$is_merge" = "1" ]; then
+        echo "⚠️  pre-commit: .so 与 rust 源不同源（合并提交只提醒，不拦）——CI 第 7 步会红" >&2
+        tail -4 "$so_log" | sed 's/^/     /' >&2
+      else
+        echo "" >&2
+        echo "✗ pre-commit 拦截：rust/core/src 改了，但入库的 .so 不是这份源码编出来的（E-128）。" >&2
+        echo "  这就是 CI 第 7 步「入库 .so 同源门禁」会红的那件事，别等到 CI 才知道。" >&2
+        tail -4 "$so_log" | sed 's/^/     /' >&2
+        echo "  修法（rust/README.md 的人工工序）：" >&2
+        echo "    cd rust && cargo build --release -p zhengdao_core --target aarch64-linux-android" >&2
+        echo "    llvm-strip --strip-unneeded → 拷回 native-core/src/main/jniLibs/arm64-v8a/" >&2
+        echo "    python tools/check-native-so.py && python tools/check-so-provenance.py --write" >&2
+        fail=1
+      fi
+    fi
+    rm -f "$so_log"
+  fi
+fi
+
 IFS=$oldIFS
 set +f
 
