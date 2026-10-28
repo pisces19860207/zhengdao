@@ -17,6 +17,7 @@ class TaskGrantCardFactsTest {
 
         // 对象：列得出来的清单（不是"整个工作区"这句字）
         assertEquals(listOf("task:t1:a@0", "task:t1:b@0"), facts.objects.map { it.handle })
+        assertEquals("卡上给人看的是文件名，不是账本句柄", listOf("a", "b"), facts.objects.map { it.objectId })
         assertTrue("夹具里两个对象都是新建", facts.objects.all { it.isNew })
 
         // 动作：只有两种文本动作

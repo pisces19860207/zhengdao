@@ -36,6 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.PlanRules
+import com.example.zhengdao.baopu.authz.BaopuPlanGrantSection
+import com.example.zhengdao.baopu.authz.GrantSelection
+import com.example.zhengdao.baopu.authz.TaskGrantFacts
 
 // ── 纯数据（JVM 直测） ───────────────────────────────────────────────────
 
@@ -198,6 +201,14 @@ internal fun planStepRiskTag(contract: BaopuUiContract?, index: Int): String? =
  * 第二百四十二批（2026-10-27 计划即契约）：展开态多契约那几行——目标、每步上限、白名单、
  * 只读区、预估问几次、停机条件（判据 1「卡上看得见」）。没声明契约 ⇒
  * [BaopuUiPlan.contract] 为 null，卡面与今天逐字相同。
+ *
+ * 第二百四十九批（2026-10-28 用户补一条）：**授权并进这张卡**，不再另起一张——
+ * 上半是这份计划（目标/步骤/可碰＝「做什么、碰哪些对象」），下半接
+ * [BaopuPlanGrantSection]（对象清单☑／动作类型☑／上限）＋一个「开工」按钮；
+ * 对外这张卡就叫「开工卡」，内部仍是 [BaopuUiContract]（契约）＋授权快照
+ * （[TaskGrantFacts]）。理由是她那句「用户不该为同一件事被打断两次」。
+ *
+ * 没给 [grant]（B 段接线之前的全部生产路径）⇒ 卡面与今天逐字相同。
  */
 @Composable
 internal fun BaopuPlanCard(
@@ -209,6 +220,8 @@ internal fun BaopuPlanCard(
     rowMinHeightDp: Int = 0,
     highlightIndex: Int? = null,
     accentColor: Color? = null,
+    grant: TaskGrantFacts? = null,
+    onStart: ((GrantSelection) -> Unit)? = null,
 ) {
     // 条目级展开：记条目下标（[plan.items] 的顺序由解析器给，同一次渲染内稳定）。
     var expandedItemIndexes by remember { mutableStateOf(setOf<Int>()) }
@@ -234,12 +247,17 @@ internal fun BaopuPlanCard(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = pluralStringResource(
-                            R.plurals.baopu_plan_summary,
-                            planDoneCount(plan.items),
-                            planDoneCount(plan.items),
-                            plan.items.size,
-                        ),
+                        text = if (grant != null && onStart != null) {
+                            // 249：这张卡带上授权段时，对外就叫「开工卡」。
+                            stringResource(R.string.baopu_authz_card_title)
+                        } else {
+                            pluralStringResource(
+                                R.plurals.baopu_plan_summary,
+                                planDoneCount(plan.items),
+                                planDoneCount(plan.items),
+                                plan.items.size,
+                            )
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -337,7 +355,13 @@ internal fun BaopuPlanCard(
                             ?.let { stringResource(R.string.baopu_plan_contract_stop_if, it) },
                     )
                     // 红线①在卡面上的那句话：批准计划≠授权改盘（不靠她记住规则，写在眼前）。
+                    // 249 起授权段就在下面：勾完点「开工」＝连同授权一起批，不勾就不授权，
+                    // 所以这句照样留着（它说的是「批准计划」这三个字本身不产生授权）。
                     PlanContractLine(stringResource(R.string.baopu_plan_contract_note))
+                }
+                // 249：授权并进同一张卡（不再另起一张，也不再有第二组批准按钮）。
+                if (grant != null && onStart != null) {
+                    BaopuPlanGrantSection(facts = grant, onStart = onStart)
                 }
             }
         }

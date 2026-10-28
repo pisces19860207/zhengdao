@@ -22,13 +22,13 @@ class TaskGrantSourceGateTest {
 
     @Test
     fun 授权层不带IO() {
-        // 快照/运行时/门禁/勘验/卡：一个字节的读写都没有（只有 Ledger 那个文件该有 File）。
+        // 快照/运行时/门禁/勘验/授权段：一个字节的读写都没有（只有 Ledger 那个文件该有 File）。
         val noIo = listOf(
             "TaskGrant.kt",
             "TaskGrantRuntime.kt",
             "TaskGrantGate.kt",
             "TaskGrantInspect.kt",
-            "TaskGrantCard.kt",
+            "TaskGrantSection.kt",
         )
         val byName = authzFiles().associateBy { it.name }
         noIo.forEach { name ->
@@ -134,6 +134,38 @@ class TaskGrantSourceGateTest {
         listOf("TaskGrantRuntime.install", "DecisionLedger", "TaskGrantLedger", "TaskGrantGate").forEach { bad ->
             assertFalse("预览页里出现了 $bad：这是「看一眼」，不是接线", src.contains(bad))
         }
+    }
+
+    @Test
+    fun 授权不自己另起一张卡() {
+        // 用户 2026-10-28：「**不要新建第二张卡**。授权并入现有计划卡……一张卡上半『做什么/
+        // 碰哪些对象』，下半『授权：对象清单☑ / 动作类型☑ / 上限』，按钮叫『开工』」。
+        // 所以：授权层里一个卡容器都不许有（外形/边框/标题条归计划卡），
+        // 而计划卡必须真的把这一段挂上去——否则「一张卡」只剩上半张。
+        val files = authzFiles()
+        assertTrue(
+            "authz 目录里还有 *Card.kt：那是第二张卡",
+            files.none { it.name.endsWith("Card.kt") },
+        )
+        files.forEach { f ->
+            val src = f.readText()
+            listOf("BaopuActionContainer", "Surface(").forEach { bad ->
+                assertFalse("${f.name} 里出现了 $bad：授权段不许自带卡壳（第二张卡）", src.contains(bad))
+            }
+        }
+        val planCard = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuPlanCard.kt")
+        assertTrue("缺计划卡：${planCard.absolutePath}", planCard.isFile)
+        assertTrue(
+            "计划卡没把授权段挂上去：一张卡就没落地",
+            planCard.readText().contains("BaopuPlanGrantSection("),
+        )
+        val preview = repoFile(
+            "src/debug/java/com/example/zhengdao/baopu/authz/TaskGrantCardPreviewActivity.kt",
+        )
+        assertTrue(
+            "预览页画的应当就是计划卡本身（画别的＝又把两张卡分开了）",
+            preview.readText().contains("BaopuPlanCard("),
+        )
     }
 
     private fun keysOf(f: File): Set<String> =

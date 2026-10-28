@@ -3,44 +3,33 @@
   第二百四十九批 · 任务级明确授权 v1（2026-10-28）。
   单独成文件（房型照 158 `strings_baopu_image.xml`／198 `strings_baopu_search.xml`）：
   `strings.xml` 正被 251 批改着，本批对它的改动为 **0 字节**。
+  2026-10-28 用户补一条后：只有**一张**卡（开工卡）＝计划卡上半＋授权段下半，
+  所以这里不再有第二张卡的自称标题，只剩段标题与「开工」。
 -->
 <resources>
-    <string name="baopu_authz_title">任务级授权（这一单）</string>
-    <string name="baopu_authz_subtitle">批准计划 ≠ 授权这一单：下面列出的写盘只在授权内自动做，别的一律照问。</string>
-    <string name="baopu_authz_badge">≤%1$d 分钟</string>
+    <string name="baopu_authz_card_title">开工卡</string>
 
-    <string name="baopu_authz_objects_title">对象（列得出来的文件清单）</string>
+    <string name="baopu_authz_section_title">授权（这一单）</string>
+    <string name="baopu_authz_select_hint">勾上的才免问；一个都不勾＝每一步照问。</string>
+
     <string name="baopu_authz_object_new">%1$s · 新建</string>
     <string name="baopu_authz_object_edit">%1$s · 改正文</string>
 
     <string name="baopu_authz_actions_title">动作（只做这些）</string>
-    <string name="baopu_authz_action_line">%1$s</string>
 
-    <string name="baopu_authz_limits_title">程度（超了就不算数）</string>
     <string name="baopu_authz_limit_line">对象最多 %1$d 个；单文件最多 %2$s；总写入最多 %3$s；动作最多 %4$d 次</string>
+    <string name="baopu_authz_ends_line">任务结束、你点停、%1$d 分钟后到期、进程重启——都失效</string>
 
-    <string name="baopu_authz_ends_title">什么时候失效</string>
-    <string name="baopu_authz_end_task">任务结束</string>
-    <string name="baopu_authz_end_stop">你点停</string>
-    <string name="baopu_authz_end_expiry">到期（%1$d 分钟）</string>
-    <string name="baopu_authz_end_restart">进程重启</string>
-    <string name="baopu_authz_end_revoked">你撤销</string>
+    <string name="baopu_authz_still_ask_kinds">删除、发送、提交、执行、改权限——照问</string>
+    <string name="baopu_authz_still_ask_protected">原件区、密码框里的东西——照问</string>
+    <string name="baopu_authz_still_ask_r3">花钱、外发、账号相关的动作——照问</string>
 
-    <string name="baopu_authz_still_ask_title">这些仍然逐次问你</string>
-    <string name="baopu_authz_still_ask_kinds">删除、发送、提交、执行、改权限</string>
-    <string name="baopu_authz_still_ask_protected">原件区、密码框里的东西</string>
-    <string name="baopu_authz_still_ask_r3">花钱、外发、账号相关的动作</string>
-
-    <string name="baopu_authz_approve_grant">批准计划，并授权这一单</string>
-    <string name="baopu_authz_approve_plan_only">只批准计划（每步照问）</string>
-    <string name="baopu_authz_decline">这一单不做</string>
+    <string name="baopu_authz_start">开工</string>
 
     <!-- 第二百四十九批：真机预览入口（只在开发包里，见 src/debug/AndroidManifest.xml） -->
     <string name="baopu_authz_preview_launcher">开工卡预览</string>
     <string name="baopu_authz_preview_title">开工卡预览（样本数据）</string>
-    <string name="baopu_authz_preview_note">只给你看一眼卡面：对象与限额都是样本，三个按钮只在本页回显选择，不会真的动手，也不接生产闸。</string>
-    <string name="baopu_authz_preview_choice_none">还没有点按钮</string>
-    <string name="baopu_authz_preview_choice_grant">你选了：批准计划，并授权这一单</string>
-    <string name="baopu_authz_preview_choice_plan">你选了：只批准计划（每步照问）</string>
-    <string name="baopu_authz_preview_choice_decline">你选了：这一单不做</string>
+    <string name="baopu_authz_preview_note">只给你看一眼卡面：上半是这一单的计划，下半是授权勾选；对象与限额都是样本。点「开工」只在本页回显你勾了什么，不会真的动手，也不接生产闸。</string>
+    <string name="baopu_authz_preview_choice_none">还没有点「开工」</string>
+    <string name="baopu_authz_preview_choice_start">你选了：开工（对象 %1$d 个、动作 %2$d 类）</string>
 </resources>
