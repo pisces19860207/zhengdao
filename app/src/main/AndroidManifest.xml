@@ -143,16 +143,9 @@
                     android:host="ask"
                     android:scheme="zhengdao" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:host="terminal"
-                    android:scheme="zhengdao" />
-            </intent-filter>
+            <!-- 2026-10-28：zhengdao://terminal 深链已删——终端独立成 zhengdao-term 后，
+                 本仓没有落点（点了只打日志），但系统层面它仍是合法落点（BROWSABLE），
+                 会让人以为「点一下就能到终端」。要唤起终端请直接拉那个 App 的包名。 -->
             <!-- 第二百一十六批：MCP OAuth 回调（授权码 + PKCE 的 redirect_uri）。
                  只开 `zhengdao://mcp/oauth` 一条：系统浏览器授权完跳回来，
                  入口越窄越好（state 校验在 McpAuthFlow，路由只做形状判断）。 -->

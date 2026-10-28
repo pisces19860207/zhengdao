@@ -79,12 +79,10 @@
     <ID>CyclomaticComplexMethod:PageSnapshot.kt$PageSnapshot$private fun walk(el: El, nodes: MutableList&lt;Node&gt;, text: StringBuilder)</ID>
     <ID>CyclomaticComplexMethod:PermissionSetupScreen.kt$@Composable fun PermissionSetupScreen(onDone: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:PinnedAssets.kt$PinnedAssets$fun parse(text: String): Map&lt;String, Stamp&gt;</ID>
-    <ID>CyclomaticComplexMethod:ProotLauncher.kt$ProotLauncher$private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan</ID>
     <ID>CyclomaticComplexMethod:RootfsDownloader.kt$RootfsDownloader$fun download( urls: List&lt;String&gt;, dest: File, shaUrls: List&lt;String&gt; = emptyList(), onProgress: (doneBytes: Long, totalBytes: Long) -&gt; Unit, ): String?</ID>
     <ID>CyclomaticComplexMethod:RootfsDownloader.kt$RootfsDownloader$private fun downloadOne( client: OkHttpClient, url: String, dest: File, hasFallback: Boolean, onProgress: (Long, Long) -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:RootfsIndex.kt$JsonReader$private fun readNumber(): Any</ID>
     <ID>CyclomaticComplexMethod:RootfsIndex.kt$JsonReader$private fun readString(): String</ID>
-    <ID>CyclomaticComplexMethod:RootfsInstaller.kt$RootfsInstaller$internal fun swapLocked(tmpDir: File, rootfsDir: File)</ID>
     <ID>CyclomaticComplexMethod:RunEngine.kt$RunEngine$private fun runLoop(sessionId: Long, userText: String?, resumed: Boolean)</ID>
     <ID>CyclomaticComplexMethod:SearchInFilesTool.kt$SearchInFilesTool$fun search( root: File, dir: File, query: String, caseSensitive: Boolean = false, ): ToolOutcome</ID>
     <ID>CyclomaticComplexMethod:SessionService.kt$GuestCpuCounter$fun read(myUid: Int, myPid: Int): Long?</ID>
@@ -142,7 +140,6 @@
     <ID>LongMethod:HermesEnv.kt$HermesEnv$fun inspect(root: File, res: android.content.res.Resources? = null): State</ID>
     <ID>LongMethod:HomeScreen.kt$@Composable fun HomeScreen( onOpenTerminal: (autocmd: String?, agentId: String?) -&gt; Unit, onOpenSettings: () -&gt; Unit = {}, // K2（切回 Tab 保留滚动位置）：外部 HomeTabs 注入的 listState。 // 走外部 state 让"切到抱朴再切回"时仍记得位置； // 不传时退化到内部新建（保持向后兼容，例如设置页内嵌的 HomeScreen 预览）。 listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(), )</ID>
     <ID>LongMethod:ImageOpsTool.kt$ImageOpsTool$fun spec(workspaceRoot: () -&gt; File): ToolSpec</ID>
-    <ID>LongMethod:ImeRegressionActivity.kt$@Composable private fun ImeRegressionScreen( verdicts: Map&lt;String, ImeProbe.Verdict&gt;, typedLines: Map&lt;String, String&gt;, logLines: List&lt;String&gt;, onMount: () -&gt; Unit, onJudge: (ImeProbe.Scenario) -&gt; Unit, onRestart: () -&gt; Unit, onCopy: () -&gt; Unit, onSelfCheck: suspend () -&gt; ImeProbe.Verdict, )</ID>
     <ID>LongMethod:KeepaliveLogActivity.kt$@Composable private fun KeepaliveLogScreen()</ID>
     <ID>LongMethod:LibraryImport.kt$LibraryImport$fun execute(choice: MoveChoice, now: Long): ImportOutcome</ID>
     <ID>LongMethod:LibraryPipeline.kt$LibraryPipeline$fun run( source: String = LibrarySource.DELIVER, isolatedBySha: Map&lt;String, Boolean&gt; = emptyMap(), onItem: (FaceIndex.Item) -&gt; Unit = {}, ): PipelineReport</ID>
@@ -153,7 +150,6 @@
     <ID>LongMethod:OpenSourceLicensesActivity.kt$@Composable private fun LicenseDetail(entry: LicenseEntry)</ID>
     <ID>LongMethod:PageSnapshot.kt$PageSnapshot$private fun parse(html: String): Doc</ID>
     <ID>LongMethod:PermissionSetupScreen.kt$@Composable fun PermissionSetupScreen(onDone: () -&gt; Unit)</ID>
-    <ID>LongMethod:ProotLauncher.kt$ProotLauncher$private fun buildLaunchPlanLocked(context: Context, tmuxSession: String): LaunchPlan</ID>
     <ID>LongMethod:RootfsDownloader.kt$RootfsDownloader$private fun downloadOne( client: OkHttpClient, url: String, dest: File, hasFallback: Boolean, onProgress: (Long, Long) -&gt; Unit, )</ID>
     <ID>LongMethod:RunEngine.kt$RunEngine$private fun runLoop(sessionId: Long, userText: String?, resumed: Boolean)</ID>
     <ID>LongMethod:SearchInFilesTool.kt$SearchInFilesTool$fun search( root: File, dir: File, query: String, caseSensitive: Boolean = false, ): ToolOutcome</ID>
