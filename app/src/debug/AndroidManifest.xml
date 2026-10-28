@@ -1,26 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  第二百四十九批（2026-10-28）：**只在开发包里**多开一扇门——桌面上的「开工卡预览」。
-  正式包（release）不合并这份清单，桌面不会出现第二个图标；
-  `TaskGrantSourceGateTest.预览入口只在开发包` 钉住 main 清单里不许出现这个 Activity。
+  只在**开发包**里存在的两个调试入口（release 不合并本清单）。
 
-  第二百六十三批（2026-10-28）并一行：离屏 WebView 渲染实验的唯一入口
-  OffscreenProbeActivity（exported=false，只能显式 am start；release 不合并本清单）。
+  ⚠️ 2026-10-28 用户定：**桌面上只许有一个图标**。
+  之前「开工卡预览」挂了自己的 LAUNCHER intent-filter，debug 包因此在桌面多出第二个图标，
+  多个 agent 看见它以为「开工卡没合好 / 那是另一个 App」，用户也被误导过。
+  ⇒ 现在两个调试页都**不注册 LAUNCHER**，只用下面两条 adb 命令显式拉起：
+
+      adb shell am start -n com.example.zhengdao/com.example.zhengdao.baopu.authz.TaskGrantCardPreviewActivity
+      adb shell am start -n com.example.zhengdao/com.example.zhengdao.browser.offscreen.OffscreenProbeActivity
+
+  `exported=true` 保留：Honor Android 16 上 shell 拉不起非导出组件（249/263 两批都踩到），
+  这两个页面都只在 debug 包内、且不解析任何外部 intent 参数。
+
+  第二百六十三批：离屏 WebView 渲染实验的唯一入口（同上，不挂桌面）。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- 开工卡预览（249 批）：不挂 LAUNCHER，桌面不出现图标。 -->
         <activity
             android:name="com.example.zhengdao.baopu.authz.TaskGrantCardPreviewActivity"
             android:exported="true"
             android:label="@string/baopu_authz_preview_launcher"
-            android:theme="@style/Theme.Zhengdao">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
+            android:theme="@style/Theme.Zhengdao" />
 
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
+        <!-- 离屏 WebView 渲染实验（263 批）：同上，只能显式 am start。 -->
         <activity
             android:name="com.example.zhengdao.browser.offscreen.OffscreenProbeActivity"
             android:exported="true"
