@@ -1,0 +1,56 @@
+package com.example.zhengdao.baopu.inspect
+
+import java.text.Normalizer
+import java.util.Locale
+
+internal data class OpinionMergeResult(
+    val merged: List<Opinion>,
+    val suggestions: List<Opinion>,
+)
+
+internal object OpinionMerger {
+    // 具体性是领域事实，不用句长或严重度冒充；选择器必须返回组内原意见。
+    fun merge(
+        opinions: List<Opinion>,
+        mostSpecific: (List<Opinion>) -> Opinion,
+    ): OpinionMergeResult {
+        val (suggestions, eligible) = opinions.partition { it.suggestionOnly }
+        val groups = mutableListOf<MutableList<Opinion>>()
+        eligible.forEach { opinion ->
+            val matching = groups.filter { group -> group.any { sameEvent(it, opinion) } }
+            if (matching.isEmpty()) {
+                groups.add(mutableListOf(opinion))
+            } else {
+                val first = matching.first()
+                matching.drop(1).forEach { group ->
+                    first.addAll(group)
+                    groups.remove(group)
+                }
+                first.add(opinion)
+            }
+        }
+        val merged = groups.map { group ->
+            val selected = mostSpecific(group.toList())
+            require(selected in group) { "mostSpecific must select an original opinion" }
+            val lawRef = if (selected.lawRef != LawRef.NONE) selected.lawRef else {
+                group.filter { it.lawRef != LawRef.NONE }
+                    .maxByOrNull { it.severity.rank }?.lawRef ?: LawRef.NONE
+            }
+            selected.copy(
+                severity = group.maxBy { it.severity.rank }.severity,
+                lawRef = lawRef,
+                evidence = group.flatMap { it.evidence }.distinct(),
+                vote = Math.toIntExact(group.sumOf { it.vote.toLong() }),
+            )
+        }
+        return OpinionMergeResult(merged, suggestions)
+    }
+
+    private fun sameEvent(a: Opinion, b: Opinion): Boolean =
+        a.evidence.first() == b.evidence.first() ||
+            (a.source == b.source && normalize(a.gist) == normalize(b.gist))
+
+    private fun normalize(gist: String): String =
+        Normalizer.normalize(gist, Normalizer.Form.NFKC)
+            .filterNot { it.isWhitespace() }.lowercase(Locale.ROOT)
+}
