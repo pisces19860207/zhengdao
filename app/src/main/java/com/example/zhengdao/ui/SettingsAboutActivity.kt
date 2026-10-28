@@ -115,8 +115,8 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})",
                 onClick = {
                     versionTaps++
-                    // 第二百四十八批：输入法回归页随终端搬走（它测的是 TerminalView 的 IME 桥），
-                    // 主仓不再有那套 View，这个隐藏入口也就没有落点了。
+                    // 第二百四十八批：输入法回归页随终端搬走（它测的是终端内嵌视图的 IME 桥，
+                    // 该视图已随第四刀删除），主仓不再有那套 View，这个隐藏入口也就没有落点了。
                 },
             )
             Spacer(Modifier.height(4.dp))

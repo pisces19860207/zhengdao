@@ -83,9 +83,7 @@ import com.example.zhengdao.ui.util.pressClickable
  * （本文件不再提那四项的名字 —— 判据之一是"在律令里搜不到"，注释里留着也算搜得到。）
  */
 @Composable
-fun SettingsScreen(
-    onOpenTerminal: (autocmd: String?, agentId: String?) -> Unit = { _, _ -> },
-) {
+fun SettingsScreen() {
     val ctx = LocalContext.current
     // 界面语言（2026-10-12）：读系统记的 per-app locale，切换后系统重建 Activity、当场生效。
     var langTag by remember { mutableStateOf(LanguagePrefs.current(ctx)) }

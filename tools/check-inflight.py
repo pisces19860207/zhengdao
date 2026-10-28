@@ -37,7 +37,11 @@ try:  # 与 tools/zd.py 同款：Windows 控制台 cp936 下中文容易炸，�
 except Exception:
     pass
 
-DEFAULT_TABLE = Path(__file__).resolve().parent.parent / "docs" / "在飞.md"
+_REPO = Path(__file__).resolve().parent.parent
+# 2026-10-28：租约表已移到私有侧（在途批次名与文件级租约不公开）。
+# 优先读私有侧；不存在（CI / 他人克隆）再回落到公开仓占位。
+_PRIVATE = _REPO.parent / "_zd-private" / "docs" / "在飞.md"
+DEFAULT_TABLE = _PRIVATE if _PRIVATE.is_file() else _REPO / "docs" / "在飞.md"
 _CELL_SPLIT = re.compile(r"[`'\",，、;；\s]+")  # 占用一格内的多个路径分隔符
 _SEP_CELL = re.compile(r":?-{2,}:?")           # 表格分隔行 |---|---|
 

@@ -122,7 +122,7 @@ class TableRegistry(
 
     val registryFile: File get() = File(home, FILE_NAME)
 
-    /** 252：`.xls` 转出来的 CSV 落在哪（`<工作区>/抱朴记忆/表格/缓存/`）。 */
+    /** 252：`.xls` 转出来的 CSV 落在哪（**固定** `<工作区>/抱朴记忆/表格/缓存/`；R1 约束 a）。 */
     val cacheDir: File get() = File(home, XlsCompat.DIR_CACHE)
 
     /** 252：有没有 `.xls` 正在转（面板/日志要的「正在转换」可视状态；转换本身不在这里调度）。 */
@@ -150,6 +150,12 @@ class TableRegistry(
         if (entries.isEmpty()) loadFromDisk()
         xlsFail.clear() // 252：失败账只对**本次刷新**有效（转成功了下次就不该再提）
         val found = discover()
+        // 252 · R1 约束 c：**扫描时顺手清缓存**（源被删 / 源变了 ⇒ 旧 CSV 立刻清掉）。
+        // 惰性，不注册任何后台任务；只在至少有一个根还能列的时候做——
+        // 整盘拔掉（U 盘/同步目录暂时不可见）时 discover 必然返回空，那时清缓存等于把好的缓存全删了。
+        if (roots.any { it.dir.isDirectory }) {
+            XlsCompat.sweep(cacheDir, found.map { it.file }.filter { XlsCompat.isXls(it.name) })
+        }
         val next = LinkedHashMap<String, TableEntry>(found.size)
         var parsed = 0
         var reused = 0
@@ -280,6 +286,11 @@ class TableRegistry(
         for (f in listed.sortedBy { it.name }) {
             if (f.isDirectory) {
                 if (f.name in SKIP_DIRS) continue
+                // 252 · R1 约束 a：**缓存目录按路径身份硬跳过**，不许被当成表格扫进来。
+                // 今天它恰好在 SKIP_DIRS 里的 `抱朴记忆` 下面，所以本来也扫不到——但「恰好扫不到」
+                // 不是规格：谁哪天把根指到 `抱朴记忆/表格/`，缓存 CSV 就会变成第二份「表」被问答命中。
+                // 这一行才是规格，测试按「根故意指到表格目录」钉它。
+                if (f.absolutePath == cacheDir.absolutePath) continue
                 if (isRawZone(f)) continue // 243②：原件区不扫
                 walk(f, root, label, depth + 1, sink)
             } else if (f.isFile) {

@@ -131,8 +131,9 @@ BSD-3-Clause-zstd / GPL-2.0 / GPL-3.0 / LGPL-2.1 / LGPL-3.0 / LICENSE-zhengdao.t
    （来源 URL、取回日期、字节数、行数、SHA256），并回到 `THIRD-PARTY-LICENSES.md` 的对照表加一行、
    **§8 的依赖表加/改组**；同时把文件名补进 `app/build.gradle.kts` 的 `stageLicenseAssets` 断言。
    > 加表行后**必须同步改 `app/src/test/java/com/example/zhengdao/LicenseTextsTest.kt` 里的记录数**
-   > （它断言本文件两张表解析出的正文份数恰好等于实际份数，加一份就要 +1；当前 = **10** =
-   > `licenses/` 九份 ＋ 字体 `OFL.txt`）。
+   > （它断言本文件两张表解析出的正文份数恰好等于实际份数，加一份就要 +1；当前 = **9** =
+   > `licenses/` 九条（八份许可证正文 ＋ `NOTICES.txt` 汇总）。字体那份 `OFL.txt` 已于 2026-10-28
+   > 随终端搬去 `zhengdao-term`，本仓不再分发该字体，也不在这两张表里 —— 那一行是随字体一起走的）。
 2. **正文一律取官方原文**，不自行排版、不改换行、不加 BOM（`Apache-2.0.txt` 首行是空行，
    即官方原文形态，保持原样）。
 3. **升级组件版本** ⇒ 复核其许可证是否变更；换正文则同步更新 SHA256。
