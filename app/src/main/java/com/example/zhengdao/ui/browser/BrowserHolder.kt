@@ -143,9 +143,23 @@ object BrowserHolder {
 
     private fun topActivity(): android.app.Activity? = topActivityRef?.get()
 
-    /** 截图目标页（玄览当前页）渲染过没有（[BrowserTabState.isRenderable] 的转发口）。 */
-    fun pageRenderableNow(): Boolean =
-        BrowserTabManager.activeTab()?.state?.isRenderable() == true
+    /**
+     * 截图目标页（玄览当前页）此刻**能不能画出一张像样的图**。
+     *
+     * 两条都要：① [BrowserTabState.isRenderable]（载入过 ＋ 载入完成时 App 在前台 ＋ 没被回收）；
+     * ② **WebView 真的挂在一个窗口上且有尺寸**。
+     *
+     * ⚠️ 只有 ① 会骗人（262 真机实测 2026-10-28）：`renderedWhileForeground` 在 `onPageFinished`
+     * 时只看「App 在不在前台」，不看这一页挂没挂窗口。玄览页签被切走（没组合）时 WebView 会被
+     * 摘下来、尺寸归 0×0，可 ① 仍然说"渲染过" ⇒ 引擎判 PAINT_OFFSCREEN 直接离屏画 ⇒
+     * 画出来什么都没有（连白图都不是，`draw` 拿不到尺寸）。加上 ② 之后这种情形会落到
+     * LOAD_THEN_PAINT，由 [loadForShot] 挂回窗口再画。
+     */
+    fun pageRenderableNow(): Boolean {
+        val tab = BrowserTabManager.activeTab() ?: return false
+        if (!tab.state.isRenderable()) return false
+        return onMainValue(false) { tab.webView.isAttachedToWindow && tab.webView.width > 0 }
+    }
 
     /** 主线程 Handler 工厂（Handler 不静态持有——它没跨调用状态，现用现建）。 */
     private fun shotMainHandler(): android.os.Handler =
@@ -178,20 +192,34 @@ object BrowserHolder {
      */
     fun loadForShot(): Boolean {
         val tab = BrowserTabManager.activeTab() ?: return false
-        // 已渲染过就没有「载入」可做（引擎的 tier 判定已过滤，这里兜一次防白干）。
-        if (tab.state.isRenderable()) return true
         val webView = tab.webView
+        // 已渲染过**并且真的挂在窗口上**，才没有「载入」可做（引擎的 tier 判定已过滤，这里兜一次防白干）。
+        //
+        // ⚠️ 只判 isRenderable 不够（262 真机实测 2026-10-28）：isRenderable 里的
+        // renderedWhileForeground 只表示「载入完成那一刻 App 在前台」，**不代表这一页被画到
+        // 过屏幕上**。玄览页签没组合时 WebView 从没 layout ⇒ 尺寸 0×0 ⇒ draw 出来什么都没有
+        // （连白图都不是）。这种情形本方法必须走挂载＋载入，否则秒回 true，调用方以为能画，
+        // 实际永远拿不到图。
+        val onWindow = onMainValue(false) { webView.isAttachedToWindow && webView.width > 0 }
+        if (tab.state.isRenderable() && onWindow) return true
         // ① 挂载（只在没父容器时挂；有父容器＝组合或我们已挂好）。
         onMainWait {
             runCatching { if (webView.parent == null) attachOffscreenForShot(webView) }
         }
-        // ② 发起载入。
-        onMainWait {
-            runCatching {
-                when {
-                    tab.state.restored -> BrowserTabManager.loadRestoredTab(tab.id)
-                    tab.state.recycled -> BrowserTabManager.reloadRecycled(tab.id)
-                    else -> webView.loadUrl(tab.state.url)
+        // ② 发起载入——**只在这页确实需要载入时才发**。
+        //
+        // （262 真机实测 2026-10-28）页面已经载入过、只是没挂窗口（玄览页签被切走），
+        // 挂上窗口就能画，重载一遍纯属白等：百度首页重载 2.5s 都不够，本方法会超时返回
+        // false，而调用方照样按"没就绪"去截图 ⇒ 白忙。所以已载入的普通页跳过载入。
+        val needLoad = !tab.state.everLoaded || tab.state.restored || tab.state.recycled
+        if (needLoad) {
+            onMainWait {
+                runCatching {
+                    when {
+                        tab.state.restored -> BrowserTabManager.loadRestoredTab(tab.id)
+                        tab.state.recycled -> BrowserTabManager.reloadRecycled(tab.id)
+                        else -> webView.loadUrl(tab.state.url)
+                    }
                 }
             }
         }
@@ -263,8 +291,7 @@ object BrowserHolder {
     }
 
     /** 引擎线程 → 主线程执行一段视操作并等它落地（有界 2s；已在主线程则就地执行）。 */
-    private fun onMainWait(block: () -> Unit) {
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+    private fun onMainWait(block: () -> Unit) {        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
             block()
             return
         }
@@ -277,6 +304,21 @@ object BrowserHolder {
             }
         }
         latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    /**
+     * 在主线程取一个值（[onMainWait] 的有返回版）：拿不到（超时/异常）返回 [fallback]。
+     *
+     * 为什么不直接跨线程读 View 的字段：`isAttachedToWindow`／`width` 都是 View 状态，
+     * 约定只在 UI 线程读；这里已经要等主线程，顺手带上返回值而已。
+     */
+    private fun <T> onMainValue(fallback: T, block: () -> T): T {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            return runCatching(block).getOrDefault(fallback)
+        }
+        var out = fallback
+        onMainWait { out = runCatching(block).getOrDefault(fallback) }
+        return out
     }
 
     /** 问一页的 readyState（evaluateJavascript 的回调回主线程 ⇒ post 后由回调数闩）。 */
