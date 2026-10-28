@@ -32,10 +32,9 @@
 > （自 2026-10-11 起为「保留所有权利」），随包时更名为 `assets/licenses/LICENSE-zhengdao.txt`。
 > 历史版本（≤ v2.0.15）所用的 GPL-3.0 正文已移入本目录（上表 `GPL-3.0.txt`），逐字节未改。
 
-| 正文 | 位置 | 覆盖 | 字节数 | 行数 | SHA256（小写） |
-|---|---|---|---|---|---|
-| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | JetBrains Maple Mono（终端默认字体） | 4,572 | 95 | `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533` |
 
+> **2026-10-28**：终端字体（JetBrains Maple Mono）及其 OFL 正文已随终端搬去 `zhengdao-term`；
+> 本仓不再分发该字体，故上表不再列 OFL 行（正文在那边 `app/src/main/assets/fonts/OFL.txt`）。
 > ⚠️ **上表的字节数与 SHA256 一律以「仓库内形态」为准（即 git 索引/blob 里的 LF 换行）。**
 > 本仓 `core.autocrlf=true` ＋ `.gitattributes` 的 `* text=auto` 会让 Windows 工作区检出成 CRLF
 > （同一份 `OFL.txt`：仓库形态 4,572 B，Windows 工作区形态 4,666 B），**照着工作区算出来的摘要会与上表不符**。
