@@ -2729,6 +2729,16 @@ internal class BaopuChatController(context: Context) {
      */
     fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()): Boolean {
         if (text.isBlank()) return false
+        // 第二百五十八批 W1：调解器的**唯一**接线点——每轮用户输入在这里过一道。
+        // 放在所有分支之前（含插话与题材流）：插话也是用户说的一句话，档位该跟着换；
+        // 别在 resume/retry/editUser 上再补一次——两处换档会让档位乱跳（派工单负例⑥）。
+        // 模型上一轮的回复从内存里的消息列表取（不额外查库）；档位只活在进程内，不落盘。
+        com.example.zhengdao.baopu.MediatorWiring.onUserTurn(
+            userText = text,
+            modelText = lastNonUserPartText(messages),
+            sessionId = sessionId ?: com.example.zhengdao.baopu.MediatorWiring.NO_SESSION,
+            now = System.currentTimeMillis(),
+        )
         // 第二百零五批：复盘话术 ⇒ 本地跑反思器（IO 单飞，不拦这句话进引擎——
         // 复盘结果以技能页候选卡＋便签给出，引擎照常聊天）。
         if (ReflectionTrigger.isReviewRequest(text)) runReflectionNow()
