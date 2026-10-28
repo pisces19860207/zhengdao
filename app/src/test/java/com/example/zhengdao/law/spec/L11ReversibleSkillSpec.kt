@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L11 不可逆必有回滚点**（派工单 271）
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L11），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L11 不可逆必有回滚点**（派工单 271）
 // ＋ 同一号在法典卷三的另一半：**技能必须可证伪**（`appliesWhen`/`success`/`protected` 缺一不可）。
 //
 // ## 判据（可执行）
@@ -8,15 +11,16 @@
 //    （缺契约的技能不许被自动选中）；三段齐才返回空表；
 // ② **动作侧（判据，未接线）**：不可逆动作必须带快照/回滚点，没有就**拒**，不是"警告"。
 //
-// ## 生产状态（诚实标注）
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L11），它不会红**
 // ① 在 `SkillContract`（生产）；② 只有判据——`DecisionLedger.build` 至今允许
 //    「reversible=true 但 rollbackRef 空」的账落下去（缺陷 #253-16a 仍在账，见 253 的 L16 门禁）
 //    ⇒ 缺陷 #271-L11 在账：接线时把 ② 挪进 `DecisionLedger.build` 或 `TaskGrantGate` 第④步。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // ① 缺 `success` 段 ⇒ `validate` 必须报「缺 success 段」；
 // ② 不可逆且无快照 ⇒ 必须判拒。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import com.example.zhengdao.baopu.SkillContract
 import org.junit.Assert.assertEquals
@@ -24,7 +28,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L11ReversibleSkillGateTest {
+class L11ReversibleSkillSpec {
 
     private val fullContract = """
         # 整理台账

@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L24 累进罚则：可再一再二，绝不可过三**（法典卷七 L24）。
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L24），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L24 累进罚则：可再一再二，绝不可过三**（法典卷七 L24）。
 //
 // ## 判据（可执行）
 // 同 `kind` 同违规类型、**30 天窗口**内累加：
@@ -9,21 +12,22 @@
 // 两条减免：**主动报账减一档**（自首）；**证据不足不罚只记**（疑罪从无，且不计入累进）。
 // 30 天无同类 ⇒ 计数归零（记录仍永久留档）。
 //
-// ## 生产状态（诚实标注）
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L24），它不会红**
 // 罚则引擎**还没落进生产码**（`app/src/main` 里没有违规计数与分档）⇒ 本条门禁钉的是
 // **判据形状**（policy-as-code），缺陷 #271-L24 在账；接线时把 [Penalty] 原样搬进生产、
 // 把 `decide` 的调用点接在 `GuardPipeline` 拒绝分支上，用例名不变。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // ① 第 3 次若只是"问"（没拦）⇒ 红；② 第 4 次若只是"拦"（没熔断）⇒ 红；
 // ③ 自首若没减档 / 证据不足若被罚 ⇒ 红。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L24ProgressivePenaltyGateTest {
+class L24ProgressivePenaltySpec {
 
     internal enum class Tier { RECORD, ASK, BLOCK, FUSE }
 

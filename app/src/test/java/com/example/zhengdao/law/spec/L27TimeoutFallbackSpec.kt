@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L27 超时保底**（法典卷九 L27）。
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L27），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L27 超时保底**（法典卷九 L27）。
 //
 // ## 判据（可执行）
 // 御案等待超过窗口（默认 24h）⇒ **视为不批**、**维持原状**；可回退者按原状回退；
@@ -10,19 +13,20 @@
 // 为什么超时必须算"不批"而不是"默认同意"：默认同意等于"人不看就自动过"，
 // 那 L20 的御批就白设了；默认不批，最坏结果是这件事没做，而不是做错。
 //
-// ## 生产状态（诚实标注）
-// 御案超时保底还没落进生产 ⇒ 判据形状门禁，缺陷 #271-L27 在账。
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L27），它不会红**
+// 御案超时保底还没落进生产 ⇒ 判据形状规范，缺陷 #271-L27 在账。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // ① 超时却不落账 ⇒ 红；② 同一事项二次上奏 ⇒ 红；③ 超时被当成"同意" ⇒ 红。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L27TimeoutFallbackGateTest {
+class L27TimeoutFallbackSpec {
 
     internal data class Settlement(
         val approved: Boolean,

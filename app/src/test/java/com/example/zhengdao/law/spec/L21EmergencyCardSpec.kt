@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L21 紧急上报权**（法典卷七 L21）。
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L21），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L21 紧急上报权**（法典卷七 L21）。
 //
 // ## 判据（可执行）
 // 紧急卡要弹得出去，**三样缺一不可**：
@@ -10,20 +13,21 @@
 // 为什么默认必须是"先停下"：L21 是"法外的唯一合法出口"，出口的默认位一旦偏向"动手"，
 // 每一次紧急都会变成一次未经审查的执行；默认停下，最坏结果是慢一点。
 //
-// ## 生产状态（诚实标注）
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L21），它不会红**
 // 生产码里还没有 `EMERGENCY` 这一层（`grep EMERGENCY app/src/main` 零命中）⇒
-// 本条门禁钉的是**判据形状**，缺陷 #271-L21 在账。
+// 本条规范钉的是**判据形状**，缺陷 #271-L21 在账。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // 缺标记／没写为何无法可依／没给时间窗／默认＝立刻处置 ⇒ 四种卡都必须被拒。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L21EmergencyCardGateTest {
+class L21EmergencyCardSpec {
 
     internal data class EmergencyCard(
         val hasMarker: Boolean = true,

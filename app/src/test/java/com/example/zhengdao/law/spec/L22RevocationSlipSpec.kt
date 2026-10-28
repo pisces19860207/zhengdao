@@ -1,26 +1,30 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L22 事后追认与撤销建议**（法典卷七 L22）。
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L22），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L22 事后追认与撤销建议**（法典卷七 L22）。
 //
 // ## 判据（可执行）
 // 任何 L21 处置，**24 小时内**必须产出「撤销单」，五栏缺一不可：
 //   发生了什么／当时授权了什么／风险／**建议撤销还是保留**／回滚点与影响面。
 // 逾期未出 ⇒ **记一次违规**（不是"补一份就算"）。
 //
-// ## 生产状态（诚实标注）
-// 生产码里还没有撤销单（`grep 撤销单 app/src/main` 零命中）⇒ 判据形状门禁，
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L22），它不会红**
+// 生产码里还没有撤销单（`grep 撤销单 app/src/main` 零命中）⇒ 判据形状规范，
 // 缺陷 #271-L22 在账。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // ① 逾期 24 小时以上 ⇒ 必须记违规；② 五栏缺一 ⇒ 必须拒收；③ 建议栏写"看情况" ⇒ 必须拒收。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L22RevocationSlipGateTest {
+class L22RevocationSlipSpec {
 
     internal enum class Advice(val label: String) { REVOKE("撤销这次授权"), KEEP("保留"), KEEP_TIGHTEN("保留但收紧") }
 

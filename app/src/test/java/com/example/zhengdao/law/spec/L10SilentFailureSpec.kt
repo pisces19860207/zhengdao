@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L10 失败不得静默**（派工单 271「负例：catch 里只 log 不外传 ⇒ 拒」）。
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L10），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L10 失败不得静默**（派工单 271「负例：catch 里只 log 不外传 ⇒ 拒」）。
 //
 // ## 判据（可执行）
 // ① **行为面**：同一能力近 7 天失败 ≥3 次，而 208 里既没有退役行、正文也没软删 ⇒
@@ -8,15 +11,16 @@
 // ② **代码面**：`catch` 块里只有 log、既不 rethrow 也不把失败外传（返回失败态／落账／置
 //    `lastError`）⇒ 判「静默」，必须被探针认出。
 //
-// ## 生产状态（诚实标注）
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L10），它不会红**
 // ① 已在生产（`UnarchivedFailureCheck`，239 交付）；
 // ② **只有判据探针，没有落成静态闸**（全仓 147 处 catch，逐处判定要先分「best-effort 清理」
 //    与「真失败被吞」两类，属设计问题）⇒ 缺陷 #271-L10 在账。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // ① 三次失败未归档 ⇒ 勘验必须 HIT（判据放宽就红）；
 // ② `catch { Log.e(...) }` 这样的块 ⇒ 探针必须认出（探针瞎了就红）。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import com.example.zhengdao.baopu.inspect.InspectVerdict
 import com.example.zhengdao.baopu.inspect.SkillFailure
@@ -26,7 +30,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L10SilentFailureGateTest {
+class L10SilentFailureSpec {
 
     private val now = 1_000_000_000L
 

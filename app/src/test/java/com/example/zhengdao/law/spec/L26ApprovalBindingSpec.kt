@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十一批 · 法典门禁 **L26 审批与撤销必须绑定操作身份**（法典卷九 L26）。
+// ⚠️ 本文件是**规范（spec）**，不是门禁：生产未接线（#271-L26），它**不会红**。
+//    它钉的是「判据长什么样」；接线那天把判据搬进生产、用例名不变，它才升格为门禁。
+//
+// 第二百七十一批 · 法典规范（spec，非门禁） **L26 审批与撤销必须绑定操作身份**（法典卷九 L26）。
 //
 // ## 判据（可执行）
 // 任何授权（开单）与撤销，都绑 **`actionId ＋ argsHash ＋ 对象清单摘要`** 三元组：
@@ -10,13 +13,14 @@
 // 摘要用**生产那一份**（`RunTraceRules.argsHash`，16 位 SHA-256 前缀）——
 // 判据层不再另造一个哈希，否则"授权时算一种、执行时算另一种"就会永远对不上。
 //
-// ## 生产状态（诚实标注）
+// ## 生产状态（诚实标注）——**本文件是规范，不是门禁；生产未接线（#271-L26），它不会红**
 // 三元组绑定还没落进生产（249 的授权只绑对象清单、不绑参数摘要；`RunTrace` 已有 argsHash 形态
-// 但没人拿它跟授权对拍）⇒ 判据形状门禁，缺陷 #271-L26 在账。
+// 但没人拿它跟授权对拍）⇒ 判据形状规范，缺陷 #271-L26 在账。
 //
-// ## 负例（本文件自证会红）
+// ## 负例（造违规即红——红的是**判据**，不是生产：生产里还没有它）
 // ① 改一个参数后仍用旧授权 ⇒ 必拒；② 按旧摘要撤销 ⇒ 必拒；③ 文本相同但对象不同的两件事 ⇒ 必拒。
-package com.example.zhengdao.law
+package com.example.zhengdao.law.spec
+
 
 import com.example.zhengdao.baopu.agent.RunTraceRules
 import org.json.JSONObject
@@ -25,7 +29,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class L26ApprovalBindingGateTest {
+class L26ApprovalBindingSpec {
 
     internal data class Binding(
         val actionId: String,
