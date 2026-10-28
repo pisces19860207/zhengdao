@@ -6,8 +6,8 @@ package com.example.zhengdao
  * `MainActivity` 的两条路由判据：**起始页**与**恢复上次页面**（第七十六批 · §B 80 纯逻辑抽取）。
  *
  * ⚠️ 这两条是**两份语义，不许合并成一个函数**：
- * - [startRoute] 只决定 NavHost 的 `startDestination`：只要不是首次安装（有 lastRoute）或
- *   通知栏直达终端，就落 `home`。它**不查白名单** —— 死值也照样落 `home`，因为 `home`
+ * - [startRoute] 只决定 NavHost 的 `startDestination`：只要不是首次安装（有 lastRoute）就落
+ *   `home`。它**不查白名单** —— 死值也照样落 `home`，因为 `home`
  *   本身就是兜底，最坏结果只是「没恢复到上次那页」，不会崩。
  * - [restoreRoute] 决定在起始页之上**再叠加**哪一页：必须过白名单，且只在确实站在起始页
  *   （`home` / `welcome`）时才叠加。返回 null = 不叠加。
@@ -48,23 +48,23 @@ internal object MainRouteRules {
     val RESTORABLE_ROUTES = setOf("settings")
 
     /**
-     * NavHost 的起始页：通知栏直达终端 ⇒ `home`；有上次页面 ⇒ `home`；否则 ⇒ `welcome`。
+     * NavHost 的起始页：有上次页面 ⇒ `home`；否则 ⇒ `welcome`。
      *
      * 恰好等价于「不是首次安装就落 home」。**不查白名单**（见类注释，两份语义不许合并）。
+     * 第二百六十一批：通知栏直达终端退役后，恒 false 的开关参数已删（已删）。
      */
-    fun startRoute(startInTerminal: Boolean, lastRoute: String?): String =
-        if (startInTerminal || lastRoute != null) ROUTE_HOME else ROUTE_WELCOME
+    fun startRoute(lastRoute: String?): String =
+        if (lastRoute != null) ROUTE_HOME else ROUTE_WELCOME
 
     /**
      * 起始页之上要不要再叠加恢复页；要 ⇒ 返回路由，不要 ⇒ null。
      *
-     * 三个前置条件缺一不可（顺序即短路顺序，与改前一致）：
-     * 1. 不是通知栏直达终端（那趟要直接拉终端，不该再叠一页）；
-     * 2. `lastRoute` 在白名单内（死值如 `plugins` ⇒ null）；
-     * 3. 当前确实站在起始页（`home` / `welcome`）——中间态叠加会造出「栈里只剩恢复页」的死返回。
+     * 两个前置条件缺一不可（顺序即短路顺序，与改前一致）：
+     * 1. `lastRoute` 在白名单内（死值如 `plugins` ⇒ null）；
+     * 2. 当前确实站在起始页（`home` / `welcome`）——中间态叠加会造出「栈里只剩恢复页」的死返回。
+     * 第二百六十一批：通知栏直达终端退役后，恒 false 的开关参数已删（已删）。
      */
-    fun restoreRoute(lastRoute: String?, startInTerminal: Boolean, currentRoute: String?): String? {
-        if (startInTerminal) return null
+    fun restoreRoute(lastRoute: String?, currentRoute: String?): String? {
         if (currentRoute != ROUTE_HOME && currentRoute != ROUTE_WELCOME) return null
         return lastRoute?.takeIf { it in RESTORABLE_ROUTES }
     }
