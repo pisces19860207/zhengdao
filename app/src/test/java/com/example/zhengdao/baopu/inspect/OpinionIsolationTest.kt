@@ -9,7 +9,6 @@ import org.junit.Test
 class OpinionIsolationTest {
     private val sourceRoot = File("src/main/java/com/example/zhengdao/baopu/inspect")
     private val newFiles = setOf("Opinion.kt", "OpinionAdapters.kt", "OpinionMerger.kt", "OpinionVotes.kt", "OpinionBudget.kt")
-
     /**
      * 契约的**合法消费方**（2026-10-29 蓝总管加，274 批）。
      *
@@ -24,6 +23,9 @@ class OpinionIsolationTest {
     private val approvedConsumers = mapOf(
         // 274 批：把分类器的判定包成 Opinion 送调解器做预算判定（第一条真实链路）。
         "com/example/zhengdao/baopu/agent/OpinionWiring.kt" to "274",
+        // 272 批：L28 旁路对拍器——派工单明令它产 `Opinion(source=PATROL, lawRef=L28)`，
+        // findings＋意见全部走勘验的路（真机实测见交付报告 §5）。
+        "com/example/zhengdao/baopu/inspect/TraceCrossCheck.kt" to "272",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

@@ -37,6 +37,12 @@ internal data class PatrolResult(
     val allowanceLine: String,
     /** 待落账的额度变动（null = 档没动／没依据可写）。 */
     val pendingChange: AllowanceLadder.AllowanceChange?,
+    /**
+     * 第二百七十二批：RunTrace ↔ 208 旁路对拍（法典 L28）的读数（null = 没跑成／没轮到）。
+     * findings 只带非 CLEAR 的维度；Opinion(source=PATROL, lawRef=L28) 已在其列，
+     * 走勘验的路，不直接打扰用户。对拍器自己不写账。
+     */
+    val crosscheck: CrossCheckPass? = null,
     /** 没跑成的原因（null = 跑成了）。 */
     val failReason: String? = null,
 )
@@ -69,8 +75,7 @@ internal object PatrolRunner {
         }
         val db: BaopuDb = runCatching { BaopuRuntime.db(ctx) }.getOrNull()
             ?: return notRun(nowMs, "库打不开，巡不了", System.currentTimeMillis() - t0)
-        val projectRoot: File = runCatching { BaopuRuntime.workspaceRoot(ctx) }
-            .getOrDefault(root)
+        val projectRoot: File = runCatching { BaopuRuntime.workspaceRoot(ctx) }.getOrDefault(root)
 
         val from = windowFrom(nowMs)
         // §10④（2026-10-27）：两条率（虚报率、秒批率）单独吃 **30 天滚动窗**、按动作实例
@@ -149,7 +154,20 @@ internal object PatrolRunner {
             nextBand = next,
             allowanceLine = readout,
             pendingChange = change?.takeIf { AllowanceLadder.refusalOf(it) == null },
+            crosscheck = crosscheckOf(db, root, nowMs),
         )
+    }
+
+    /**
+     * 第二百七十二批 · L28 旁路对拍（RunTrace ↔ 208）的一趟：六项判据之外的独立一路，
+     * 产出自己的 finding／Opinion（差一条就报，连续 3 次不一致升 CRITICAL），
+     * 不进六项的闭集、不写 208、不弹卡。读失败出「没跑成」的空读数，巡按主体照常。
+     */
+    private fun crosscheckOf(db: BaopuDb, root: File, nowMs: Long): CrossCheckPass {
+        val pass = runCatching { TraceCrossCheckSources.pass(db, root, nowMs) }.getOrNull()
+            ?: CrossCheckPass(0, emptyList(), emptyList(), "对拍没跑成（取数失败）")
+        if (pass.checked > 0) RunLog.log("勘验对拍：${pass.summaryLine}")
+        return pass
     }
 
     /** 没跑成的报告也要有字（§2.4：一行结论——"巡不了"就是那一句，不许留空白）。 */
