@@ -14,8 +14,14 @@
 package com.example.zhengdao.baopu.card
 
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
+import java.nio.file.AccessDeniedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
+import java.nio.file.NoSuchFileException
+import java.nio.file.NotDirectoryException
 import java.nio.file.StandardOpenOption
 import java.util.Base64
 import java.util.zip.CRC32
@@ -143,7 +149,7 @@ internal object CardPng {
         } catch (e: FileAlreadyExistsException) {
             PngWrite.Failed("目标已存在，未覆盖：${outPath.path}")
         } catch (e: Exception) {
-            PngWrite.Failed("写入失败：${e.message ?: e.javaClass.simpleName}")
+            PngWrite.Failed("写入失败（${cardIoFailureWhy(e)}）")
         }
     }
 
@@ -296,21 +302,85 @@ internal object CardPng {
     private fun uintAt(src: ByteArray, at: Int): Long = intAt(src, at).toLong() and 0xFFFFFFFFL
 }
 
-/** 内部便利：把 PNG 里解出来的 JSON 文本按对象读（失败返回 null）。 */
-internal fun CardPng.readObject(bytes: ByteArray): JSONObject? =
-    (read(bytes) as? PngRead.Ok)?.let { CardJson.parseObject(it.jsonText) }
+/**
+ * 卡文件写盘结果。
+ *
+ * 改前这里只回一个 `Boolean`：「目标已存在」和「父目录没建」都是 `false`，
+ * 调用方拿不到任何可执行的区别（B 段 #5 的「坏了」被说成「没有」）。
+ */
+internal sealed interface CardWrite {
+    data class Ok(val path: File) : CardWrite
 
-/** 内部便利：写文件（只给测试 helper／工具层用，保持一处 I/O 口径）。 */
-internal fun CardPng.writeBytesNew(path: File, bytes: ByteArray): Boolean = try {
-    Files.write(path.toPath(), bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
-    true
-} catch (e: Exception) {
-    false
+    /** [why] 是**分类**（见 [cardIoFailureWhy]）：不带操作系统原文，也不带整条路径。 */
+    data class Failed(val why: String) : CardWrite
 }
 
-/** 内部便利：供工具层「读源文件字节」用；不在这里做任何编码判断。 */
-internal fun File.readAllBytesOrNull(): ByteArray? = try {
-    if (isFile) readBytes() else null
+/** 卡文件读字节结果：「没有这个文件」和「文件在但读不动」是两件事。 */
+internal sealed interface CardBytes {
+    data class Ok(val bytes: ByteArray) : CardBytes
+
+    /** 不存在，或存在但不是普通文件（目录）。 */
+    data object Missing : CardBytes
+
+    /** 读的时候抛了异常——盘坏了／权限被拒，不能跟「没有」混报。 */
+    data class Failed(val why: String) : CardBytes
+}
+
+/** 从 PNG 里解出的卡对象：不把 [CardPng.read] 已经给出的那行人话丢成 `null`。 */
+internal sealed interface CardObject {
+    data class Ok(val json: JSONObject) : CardObject
+    data class Failed(val message: String) : CardObject
+}
+
+/**
+ * 一个 IO 异常归哪一类。
+ *
+ * 只出分类、不抄 `e.message`：操作系统原文换台机器就变（用例钉不住），还可能把整条路径
+ * 带到界面上；调用方要的是「该改哪一步」，不是「哪行系统调用报的」。
+ * 顺序有讲究：`InvalidPathException` 不是 `IOException` 的后代，得单列；
+ * 四个 `FileSystemException` 子类都排在 `IOException` 之前才命中得到。
+ */
+internal fun cardIoFailureWhy(e: Exception): String = when (e) {
+    is FileAlreadyExistsException -> "目标已存在（绝不做覆盖）"
+    is NoSuchFileException -> "路径里有一层不存在"
+    is NotDirectoryException -> "路径里有一层不是目录"
+    is AccessDeniedException -> "权限被拒"
+    is InvalidPathException -> "路径字符串本身不合法"
+    is FileNotFoundException -> "目标不存在或不可写"
+    is IOException -> "读写出错（磁盘或进程被系统拦下）"
+    else -> "未知失败（${e.javaClass.simpleName}）"
+}
+
+/**
+ * 内部便利：把 PNG 里解出来的 JSON 文本按对象读。
+ *
+ * 改前塌成 `null`：「PNG 里没卡块」和「卡数据解不开」两种人话原因一起丢掉。
+ */
+internal fun CardPng.readCardObject(bytes: ByteArray): CardObject = when (val r = read(bytes)) {
+    is PngRead.Ok -> {
+        val obj = CardJson.parseObject(r.jsonText)
+        if (obj != null) CardObject.Ok(obj)
+        else CardObject.Failed(CardText.pngPayload("解出来不是 JSON 对象"))
+    }
+
+    is PngRead.Failed -> CardObject.Failed(r.message)
+}
+
+/** 内部便利：写文件（只给工具层用，保持一处 I/O 口径；失败带分类）。 */
+internal fun CardPng.writeCardBytes(path: File, bytes: ByteArray): CardWrite = try {
+    Files.write(path.toPath(), bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+    CardWrite.Ok(path)
 } catch (e: Exception) {
-    null
+    CardWrite.Failed(cardIoFailureWhy(e))
+}
+
+/**
+ * 内部便利：供工具层「读源文件字节」用；不在这里做任何编码判断。
+ *
+ * 改前 `catch (e: Exception) { null }` 与「文件不存在」共用 `null`——盘坏了会被报成「没有这张卡」。
+ */
+internal fun File.readCardBytes(): CardBytes = try {
+    if (isFile) CardBytes.Ok(readBytes()) else CardBytes.Missing
+} catch (e: Exception) {
+    CardBytes.Failed(cardIoFailureWhy(e))
 }

@@ -77,11 +77,14 @@ internal object KnowledgeRefresh {
         val autoEnabled: Boolean,
         val status: RefreshStatus,
         val indexPath: String,
+        /** 索引文件**在**但读坏了（259-08）：与「还没有索引」分开，界面据此另给一句人话。 */
+        val indexBroken: Boolean = false,
     )
 
     fun summary(ctx: Context): Summary {
         val ws = BaopuWorkspace.hostDir(ctx)
-        val idx = KnowledgeIndexStore.load(ws)
+        val read = KnowledgeIndexStore.loadRead(ws)
+        val idx = read.valueOrNull()
         return Summary(
             files = idx?.stats?.filesIndexed ?: 0,
             updatedAt = idx?.updatedAt ?: 0L,
@@ -89,6 +92,7 @@ internal object KnowledgeRefresh {
             autoEnabled = autoEnabled(ctx),
             status = status,
             indexPath = KnowledgeLayout.indexDir(ws).absolutePath,
+            indexBroken = read.isCorrupt(),
         )
     }
 
@@ -181,6 +185,18 @@ internal object KnowledgeRefresh {
                 // 旧 资料库/原始 的存量：先备份→复制→校验→待删清单；旧文件一个都不删。
                 val migrated = KnowledgeLayout.migrateLegacy(ws)
                 if (!migrated.isEmpty) RunLog.log(migrated.summary())
+                // 259-08：损坏的索引不许当「没有索引」。这里先把它**说清楚**（环节＋字节数＋
+                // sha256 前 8 位，原文不进日志），再照旧走全量重建——重建本来就是坏索引的正确
+                // 处置，缺的只是「让用户/排障者知道发生过什么」。
+                // 为什么紧接着还要 `load(ws)` 一次：KnowledgeRefreshGateTest 钉住了
+                // 「previousIndex = KnowledgeIndexStore.load(ws)」这句（读不到 ⇒ previous=null ⇒ 全量），
+                // 不许换成新 API；刷新是前台＋节流＋后台线程，多读一个 JSON 换「失败可见」。
+                (KnowledgeIndexStore.loadRead(ws) as? KnowledgeIndexStore.FileRead.Corrupt)?.let {
+                    RunLog.log(
+                        "知识库索引读坏了：${it.why}（${it.bytes} 字节 · sha256 ${it.digest8}），" +
+                            "本轮按无索引全量重建",
+                    )
+                }
                 val out = KnowledgeIndexStore.build(
                     workspace = ws,
                     filesDir = ctx.filesDir,

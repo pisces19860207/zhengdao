@@ -29,6 +29,7 @@ import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.security.MessageDigest
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -47,6 +48,83 @@ internal interface McpSession : Closeable {
 }
 
 /**
+ * 「响应体没被用上」的**分类线索**（第二百五十九批 B4；257 审计 A-P2-14）。
+ *
+ * 派工单改判据（安全优先）——一条线索只许含这四样：
+ * ① HTTP 状态码；② RFC 6749 §5.2 的 `error` **枚举值**（白名单外的值可能是服务器回显的
+ * 用户输入，一律不记）；③响应体字节数＋sha256 前 8 位（可对账、不可逆）；④失败环节的
+ * 分类。**响应体原文、请求头、URL、token、账号标识都不进来**；也**不做「原文脱敏」**——
+ * 脱敏逻辑本身就是新的泄漏面。
+ */
+internal data class McpFailureNote(
+    /** 环节（连接 / 列工具 / 调用工具 / 受保护资源元数据……），中文短语，不带 URL。 */
+    val stage: String,
+    /** 分类原因，例如「错误体不是合法 JSON」。 */
+    val why: String,
+    val httpStatus: Int = 0,
+    val bytes: Long = 0,
+    val digest8: String = "",
+    /** 白名单内的 §5.2 错误码；其余（含拿不准的）为 null。 */
+    val oauthError: String? = null,
+) {
+    /** 进日志的那一行：字节数与指纹留给对账，不塞进用户看到的文案。 */
+    fun logLine(serverId: String? = null): String = buildString {
+        // 「线索」是这个口径的固定标记：单测只扫带它的行，别处再多日志也不影响判据。
+        append("[mcp] 线索 ")
+        if (serverId != null) append(serverId).append(' ')
+        append(stage).append("：").append(why)
+        val facts = listOfNotNull(
+            if (httpStatus > 0) "HTTP $httpStatus" else null,
+            oauthError?.let { "error=$it" },
+            if (bytes > 0) "$bytes 字节" else null,
+            if (digest8.isNotEmpty()) "sha256 $digest8" else null,
+        )
+        if (facts.isNotEmpty()) append("（").append(facts.joinToString(" · ")).append("）")
+    }
+
+    /**
+     * 给用户/模型的那一句：只说「服务器确实给了东西、客户端按口径没采用」。
+     * 压根没取到体（bytes=0）时不给这句——说了就是猜。
+     */
+    val hint: String?
+        get() = if (bytes > 0) "服务器给了错误说明，但客户端没采用：$why" else null
+}
+
+/** 错误码白名单与指纹（两个 mcp HTTP 客户端共用；放本文件是为了不新增文件）。 */
+internal object McpHttpNotes {
+    /** RFC 6749 §4.1.2.1/§4.2.2.1/§5.2 与 RFC 8707 §2.2 的固定串；只有这些允许被记录。 */
+    val STANDARD_ERROR_CODES: Set<String> = setOf(
+        "access_denied",
+        "account_selection_required",
+        "consent_required",
+        "interaction_required",
+        "invalid_client",
+        "invalid_grant",
+        "invalid_request",
+        "invalid_scope",
+        "invalid_target",
+        "login_required",
+        "server_error",
+        "temporarily_unavailable",
+        "unauthorized_client",
+        "unsupported_grant_type",
+        "unsupported_response_type",
+        "unsupported_token_type",
+    )
+
+    /** 白名单式记录：不确定就不记（值可能是服务器回显的 token/用户输入）。 */
+    fun oauthErrorCode(raw: String?): String? = raw?.trim()?.takeIf { it in STANDARD_ERROR_CODES }
+
+    /** 响应体指纹（sha256 前 8 位十六进制）：能证明「是同一份坏响应」，反推不出内容。 */
+    fun digest8(text: String): String = runCatching {
+        MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(Charsets.UTF_8))
+            .take(4)
+            .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+    }.getOrDefault("00000000")
+}
+
+/**
  * 一个 MCP server 的客户端（**一次只发一个请求**）。
  *
  * 连接只在 [connect] 时发生——构造器不发任何网络请求。传输优先 Streamable HTTP；
@@ -54,7 +132,8 @@ internal interface McpSession : Closeable {
  *
  * 协议版本（2026-07-28）只有一种：握手回声不是它就是明确失败，见 [handshake]。
  *
- * 不打印请求头/URL/响应体；[log] 只拿 server id、阶段、工具数、连接方式。
+ * 不打印请求头/URL/响应体；[log] 只拿 server id、阶段、工具数、连接方式，
+ * 外加「错误体没被用上」的**分类线索**（HTTP 码／字节数／sha256 前 8 位，见 [McpFailureNote]）。
  */
 internal class McpClient(
     private val config: McpServerConfig,
@@ -315,12 +394,15 @@ internal class McpClient(
             val response = execute(call, method, timeoutMs, config.name)
             response.use { r ->
                 if (!r.isSuccessful) {
+                    val (usable, withheld) = jsonRpcErrorDetail(r, body.optLong("id"), method)
+                    // 线索只进日志；异常文案里只留一句不含内容的「没采用」。
+                    withheld?.let { log(it.logLine(config.id)) }
                     throw httpError(
                         code = r.code,
                         method = method,
                         name = config.name,
                         fallback = method == "initialize",
-                        detail = jsonRpcErrorDetail(r, body.optLong("id"), method),
+                        detail = usable ?: withheld?.hint,
                         challenge = McpOAuthDiscovery.parseWwwAuthenticate(r.header("WWW-Authenticate")),
                     )
                 }
@@ -378,45 +460,77 @@ internal class McpClient(
          *
          * 2026-07-28 的服务器用「HTTP 400 + error 体」表达版本不支持 / 头不一致，
          * 支持列表在 `error.data.supported`——没有它，用户只看到「HTTP 400」，
-         * 不知道该升级谁。读不动/不是 JSON 就返回 null（退化成普通 HTTP 文案）。
+         * 不知道该升级谁。读不动/不是 JSON ⇒ 返回一条**分类线索**（259 批 B4：
+         * 改前四种故障一律 `return null`，在调用方手里一模一样）。线索进日志；异常文案
+         * 只在真的取到了体时补一句「没采用」。
          *
          * initialize 阶段拿到支持列表时，直接给完整结论：「它只支持旧协议 + 列表 +
          * 不降级 + 该怎么办」——这就是派工单要的「明确失败」文案。
          */
-        private fun jsonRpcErrorDetail(r: Response, id: Long, method: String): String? {
+        private fun jsonRpcErrorDetail(
+            r: Response,
+            id: Long,
+            method: String,
+        ): Pair<String?, McpFailureNote?> {
+            // 至多一个非空：可用说明 to 分类线索。字节数与指纹只在真的取到了体时才有。
+            fun miss(why: String, body: String? = null): Pair<String?, McpFailureNote?> =
+                null to McpFailureNote(
+                    stage = stage(method),
+                    why = why,
+                    httpStatus = r.code,
+                    bytes = body?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L,
+                    digest8 = if (body == null) "" else McpHttpNotes.digest8(body),
+                )
             val contentType = r.header("Content-Type").orEmpty().lowercase()
-            if (!contentType.contains("json")) return null
+            if (!contentType.contains("json")) return miss("错误体不是 JSON（Content-Type 没声明 json）")
             val text = try {
                 readText(r)
             } catch (e: McpException) {
-                return null // 错误体读不动/超大：不阻塞「普通 HTTP 失败」这条主路径
+                // 读不动/超大：不阻塞「普通 HTTP 失败」这条主路径，但要说得出坏在哪一环。
+                val why = when (e.failure) {
+                    McpFailure.PROTOCOL -> "错误体体积超限，已拒读"
+                    McpFailure.TIMEOUT -> "错误体读取超时"
+                    else -> "错误体读不出（连接中断）"
+                }
+                return miss(why)
             }
-            if (text.isBlank()) return null
+            if (text.isBlank()) return miss("错误体是空的", text)
             val incoming = try {
                 McpJsonRpc.parse(text)
             } catch (e: Exception) {
-                return null
+                return miss("错误体不是合法 JSON", text)
             }
-            val error = (incoming as? McpJsonRpc.Incoming.Response)
-                ?.takeIf { it.id == id } // 纪律①：只认自己的 id，别处的 error 不当回事
-                ?.error
-                ?: return null
+            // 纪律①：只认自己的 id，别处的 error 不当回事。
+            val reply = incoming as? McpJsonRpc.Incoming.Response
+            val error = if (reply != null && reply.id == id) reply.error else null
+            if (error == null) {
+                val why = when {
+                    reply == null -> "错误体不是本客户端认得的响应形状"
+                    reply.id != id -> "错误体是别的请求的（id 对不上）"
+                    else -> "错误体里没有 error 说明"
+                }
+                return miss(why, text)
+            }
             val supported = McpJsonRpc.supportedVersions(error)
             if (method == "initialize" && supported.isNotEmpty()) {
                 val said = McpText.clip(McpText.flat(error.optString("message")), 80)
-                return "该服务器不支持协议版本 ${McpJsonRpc.PROTOCOL}" +
+                val refused = "该服务器不支持协议版本 ${McpJsonRpc.PROTOCOL}" +
                     "（它回应：${said.ifEmpty { "未给出原因" }}；声明支持：" +
                     "${supported.joinToString("、")}）。本客户端不会自动降到旧版——" +
                     "请升级该服务器，或换一个支持 ${McpJsonRpc.PROTOCOL} 的服务器"
+                return refused to null
             }
             val msg = McpText.clip(McpText.flat(error.optString("message")), 120)
-            return buildString {
+            val detail = buildString {
                 if (msg.isNotEmpty()) append(msg)
                 if (supported.isNotEmpty()) {
                     if (isNotEmpty()) append("；")
                     append("服务器声明支持：${supported.joinToString("、")}")
                 }
-            }.takeIf { it.isNotEmpty() }
+            }
+            // error 对象在、但既没 message 也没支持列表：这同样是「坏了」，不是「没有」。
+            if (detail.isEmpty()) return miss("error 里既没 message 也没支持列表", text)
+            return detail to null
         }
 
         private fun captureSession(raw: String?) {
