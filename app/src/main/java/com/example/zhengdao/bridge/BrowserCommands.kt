@@ -1033,15 +1033,56 @@ object BrowserCommands {
             return ShotCapture.Bad("取不到页面几何（页面可能还没绘制）")
         }
         var note: String? = null
-        val shot = captureShot(tab.webView, bounds)
-            ?: captureViewportDraw(tab.webView)?.also {
-                note = if (mode == ShotMode.FULL_PAGE) {
-                    "页面过高/未取到整页布局，已退化为可视区"
-                } else {
-                    "整页位图未取到（capturePicture 返回空），已退化为未裁剪的可视区"
+        // ── 262（2026-10-28 收窄后重做）：视口截图走**离屏重载**，这是唯一主路径 ─────
+        //
+        // 为什么不原地抓（用户实测确认的根因）：抱朴在前台时玄览的 WebView 根本没在画，
+        // 原地 `capturePicture` 必然是一张灰图；"点一下玄览再回抱朴就正常"只是最后一帧
+        // 还留着，不是重新画出来的。决定性判据是「载入/渲染时那一页可不可见」（263 已验）。
+        //
+        // 离屏这条：1dp 挂窗（不抢焦点）→ 用目标 URL 重新载入（App 在前台才真渲染）→
+        // 等 visual → draw → 用 WhiteImageJudge 判；判出来不是真图就**如实报失败**，
+        // 绝不把灰图当成功回给模型。
+        //
+        // 代价（同时写进工具说明与 note）：这张是重新载入后画的 ⇒ 反映**页面初始状态**，
+        // 不是用户此刻的滚动位置/已填表单。要精确画面得走征询切屏那条。
+        //
+        // 只对 VIEWPORT 生效：整页/元素裁剪要按页面几何切，离屏这条出的是整屏视口图，
+        // 硬套会把"元素截图"变成"整屏截图"骗人 —— 那两种仍走原地抓，抓不出来就报失败。
+        val shot: Shot = if (mode == ShotMode.VIEWPORT) {
+            val pageUrl = tab.state.url
+            if (pageUrl.isBlank()) {
+                return ShotCapture.Bad("截屏失败：玄览当前页还没有地址（没载入过页面）")
+            }
+            val hostActivity = com.example.zhengdao.ui.browser.BrowserHolder.topActivityOrNull()
+                ?: return ShotCapture.Bad(
+                    "截屏失败：拿不到当前界面（App 可能不在前台）。离屏取图要挂 1dp 容器，" +
+                        "需要 App 在前台；要此页此刻的画面，可请用户允许切到玄览再截。",
+                )
+            when (val off = com.example.zhengdao.browser.offscreen.OffscreenShotter(hostActivity)
+                .capture(pageUrl)) {
+                is com.example.zhengdao.browser.offscreen.OffscreenShotter.Outcome.Ok -> {
+                    note = "离屏重载取图（反映页面初始状态，不是当前滚动位置/已填表单）"
+                    Shot(off.png, off.width, off.height, 1f, viaPicture = false)
+                }
+
+                is com.example.zhengdao.browser.offscreen.OffscreenShotter.Outcome.Fail -> {
+                    return ShotCapture.Bad(
+                        "截屏失败（${off.kind}）：${off.reason}。" +
+                            "想看此页此刻的精确画面，可请用户允许切到玄览再截（征询卡）。",
+                    )
                 }
             }
-            ?: return ShotCapture.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
+        } else {
+            captureShot(tab.webView, bounds)
+                ?: captureViewportDraw(tab.webView)?.also {
+                    note = if (mode == ShotMode.FULL_PAGE) {
+                        "页面过高/未取到整页布局，已退化为可视区"
+                    } else {
+                        "整页位图未取到（capturePicture 返回空），已退化为未裁剪的可视区"
+                    }
+                }
+                ?: return ShotCapture.Bad("截屏失败（页面还没绘制：整页位图与可视区都没取到）")
+        }
         // 退化到可视区时，mode 要如实改成 viewport（不许挂着 element/fullpage 的名义回一张别的图）
         val effectiveMode = if (note == null) mode else ShotMode.VIEWPORT
         val stamp = com.example.zhengdao.core.TimeFormats.fileStamp()

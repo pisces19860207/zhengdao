@@ -144,6 +144,15 @@ object BrowserHolder {
     private fun topActivity(): android.app.Activity? = topActivityRef?.get()
 
     /**
+     * 当前 top activity（离屏取图要往它的 decorView 挂 1dp 容器；见
+     * [com.example.zhengdao.browser.offscreen.OffscreenShotter]）。
+     *
+     * 拿不到（App 退到后台/没有 activity）⇒ null，调用方必须如实报错——
+     * 263 实测：后台新载入的页画不出，那种情形本来就该走征询切屏。
+     */
+    internal fun topActivityOrNull(): android.app.Activity? = topActivity()
+
+    /**
      * 截图目标页（玄览当前页）此刻**能不能画出一张像样的图**。
      *
      * 两条都要：① [BrowserTabState.isRenderable]（载入过 ＋ 载入完成时 App 在前台 ＋ 没被回收）；
