@@ -1,0 +1,125 @@
+<!doctype html>
+<!-- 262 批真机探针页（debug assets 专属，不进产品 assets）：给"后台取证据"与
+     "后台操作可靠性表"提供可观测点。前台组一律 *F 后缀，后台组 *B 后缀，互不干扰。 -->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>262 巡按取证据探针</title>
+<style>
+  html, body { margin: 0; padding: 0 16px; background: #ffffff; color: #111111;
+    font: 16px/1.5 sans-serif; }
+  h1 { font-size: 20px; }
+  button, input { font-size: 16px; padding: 6px 10px; margin: 4px 0; }
+  ul { padding-left: 20px; }
+  .box { height: 120px; background: #e3f2fd; margin: 12px 0; padding: 8px; }
+  .pad { height: 600px; }
+</style>
+</head>
+<body>
+  <h1 id="h">262 巡按取证据 · 真机探针</h1>
+  <p id="p0">这一行永远在 DOM 里：用 textContent 读，不要求页面在屏幕上。</p>
+
+  <button id="btnF" aria-label="前台点我">前台按钮</button>
+  <div id="logF">前台未点</div>
+
+  <label for="inpF">前台输入</label>
+  <input id="inpF" placeholder="前台输入框（placeholder 应进可访问性文本）">
+  <div id="logFI">前台未填</div>
+
+  <p>页面滚动位置：<span id="scrollY">0</span></p>
+
+  <div class="pad"></div>
+  <div class="box" id="boxF">前台懒加载区：未触发</div>
+  <div class="pad"></div>
+
+  <button id="btnB" aria-label="后台点我">后台按钮</button>
+  <div id="logB">后台未点</div>
+
+  <label for="inpB">后台输入</label>
+  <input id="inpB" placeholder="后台输入框">
+  <div id="logBI">后台未填</div>
+
+  <ul id="listF"><li>前台列表基线</li></ul>
+  <ul id="listB"><li>后台列表基线</li></ul>
+
+  <div class="box" id="boxB">后台懒加载区：未触发</div>
+
+  <!-- boxC 与 boxB 之间刻意留很长：保证测 boxB（scrollIntoView 强制布局）时
+       boxC 还在视口外，两次实验互不污染。 -->
+  <div style="height:2000px"></div>
+  <div class="box" id="boxC">后台懒加载区 C（纯滚动触发）：未触发</div>
+  <div class="pad"></div>
+
+<script>
+  window.__mode = 'F';
+
+  function setTxt(id, t) { var el = document.getElementById(id); if (el) el.textContent = t; }
+
+  document.getElementById('btnF').addEventListener('click', function () { setTxt('logF', '前台已点'); });
+  document.getElementById('btnB').addEventListener('click', function () { setTxt('logB', '后台已点'); });
+
+  (function bindInput(id, out) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', function () { setTxt(out, '已填:' + el.value); });
+    el.addEventListener('change', function () { setTxt(out, '已填(change):' + el.value); });
+  })('inpF', 'logFI');
+  (function bindInput(id, out) {
+    var el = document.getElementById(id);
+    el.addEventListener('input', function () { setTxt(out, '已填:' + el.value); });
+    el.addEventListener('change', function () { setTxt(out, '已填(change):' + el.value); });
+  })('inpB', 'logBI');
+
+  // 无限滚动 / 追加：滚到接近底部就往当前模式的列表里追加一条
+  // （上限 5 条：真无限滚动会一路追加到几百条，把页面撑变形、污染后面的元素计数与
+  //  绘制读数——本条只验"追加这条路通不通"，不是在压测）
+  window.addEventListener('scroll', function () {
+    setTxt('scrollY', String(Math.round(window.scrollY)));
+    var m = window.__mode;
+    var ul = document.getElementById(m === 'F' ? 'listF' : 'listB');
+    var nearBottom = window.scrollY + window.innerHeight >= document.body.scrollHeight - 80;
+    if (nearBottom && ul && ul.children.length < 5) {
+      var li = document.createElement('li');
+      li.textContent = m + '追加' + ul.children.length;
+      ul.appendChild(li);
+    }
+  });
+
+  // 懒加载：IntersectionObserver 进视口后改成「已加载」
+  (function watch(fieldId, boxId) {
+    if (!('IntersectionObserver' in window)) { setTxt(fieldId, '无 IntersectionObserver'); return; }
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting) { setTxt(fieldId, '已加载(懒加载触发)'); io.disconnect(); }
+      });
+    });
+    var box = document.getElementById(boxId);
+    if (box) io.observe(box);
+  })('boxF', 'boxF');
+  (function watch(fieldId, boxId) {
+    if (!('IntersectionObserver' in window)) { setTxt(fieldId, '无 IntersectionObserver'); return; }
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting) { setTxt(fieldId, '已加载(懒加载触发)'); io.disconnect(); }
+      });
+    });
+    var box = document.getElementById(boxId);
+    if (box) io.observe(box);
+  })('boxB', 'boxB');
+  (function watch(fieldId, boxId) {
+    if (!('IntersectionObserver' in window)) { setTxt(fieldId, '无 IntersectionObserver'); return; }
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting) { setTxt(fieldId, '已加载(懒加载触发)'); io.disconnect(); }
+      });
+    });
+    var box = document.getElementById(boxId);
+    if (box) io.observe(box);
+  })('boxC', 'boxC');
+
+  // rAF 计数：量「不可见时是否被降频/停掉」
+  window.__raf = 0;
+  (function tick() { window.__raf++; window.requestAnimationFrame(tick); })();
+</script>
+</body>
+</html>

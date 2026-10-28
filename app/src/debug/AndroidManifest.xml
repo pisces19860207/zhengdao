@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  只在**开发包**里存在的两个调试入口（release 不合并本清单）。
+  只在**开发包**里存在的三个调试入口（release 不合并本清单）。
 
   ⚠️ 2026-10-28 用户定：**桌面上只许有一个图标**。
   之前「开工卡预览」挂了自己的 LAUNCHER intent-filter，debug 包因此在桌面多出第二个图标，
   多个 agent 看见它以为「开工卡没合好 / 那是另一个 App」，用户也被误导过。
-  ⇒ 现在两个调试页都**不注册 LAUNCHER**，只用下面两条 adb 命令显式拉起：
+  ⇒ 现在三个调试页都**不注册 LAUNCHER**，只用下面三条 adb 命令显式拉起：
 
       adb shell am start -n com.example.zhengdao/com.example.zhengdao.baopu.authz.TaskGrantCardPreviewActivity
       adb shell am start -n com.example.zhengdao/com.example.zhengdao.browser.offscreen.OffscreenProbeActivity
+      adb shell am start -n com.example.zhengdao/com.example.zhengdao.patrol.EvidenceDeviceProbeActivity
 
   `exported=true` 保留：Honor Android 16 上 shell 拉不起非导出组件（249/263 两批都踩到），
-  这两个页面都只在 debug 包内、且不解析任何外部 intent 参数。
+  这几个页面都只在 debug 包内、且不解析任何外部 intent 参数。
 
   第二百六十三批：离屏 WebView 渲染实验的唯一入口（同上，不挂桌面）。
+
+  第二百六十二批（2026-10-28）并一行：巡按取证据的真机验收探针
+  EvidenceDeviceProbeActivity（无界面、跑完自动 finish、只能显式 am start）。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
@@ -30,6 +34,15 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 巡按取证据探针（262 批）：刻意**不设** noHistory——它要靠 moveTaskToBack
+             退到后台后继续用同一个 WebView 读 DOM；noHistory 会让 Activity 一不可见就
+             被 finish（WebView 一并销毁，后台读数全成 null——第一轮实测已踩过，见交付报告）。 -->
+        <activity
+            android:name="com.example.zhengdao.patrol.EvidenceDeviceProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>
