@@ -56,10 +56,10 @@ SHT_DYNSYM = 11
 CORE_KT_REL = "native-core/src/main/java/com/example/zhengdao/rust/CoreNative.kt"
 JNI_CLASS = "Java_com_example_zhengdao_rust_CoreNative_"
 CORE_SO = "libzhengdao_core.so"
-# .so 的扫描面：:app（搬家前）与 :terminal-core（第二百四十一批起）
+# .so 的扫描面：:native-core（Rust 核）与 :app
 SO_DIRS = (
     "native-core/src/main/jniLibs",   # libzhengdao_core.so（Rust 核，主/终端共用）
-    "terminal-core/src/main/jniLibs",  # proot / talloc / shmem / zstd（终端专用）
+    # 2026-10-28：terminal-core 已搬去 zhengdao-term，主仓不再扫它的 jniLibs。
     "app/src/main/jniLibs",
 )
 
