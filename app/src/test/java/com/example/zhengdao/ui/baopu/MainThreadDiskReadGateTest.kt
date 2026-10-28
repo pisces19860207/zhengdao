@@ -172,15 +172,12 @@ class MainThreadDiskReadGateTest {
     // ── ④ 设置页技能卡（A-P2-4）——租约在 262，合入后补 ────────────────
 
     @Test
-    fun `④设置技能卡_本批按租约不动_262合入后再补`() {
+    fun `④设置技能卡_262合入后已重放_走 IO 快照不回主线程`() {
         val src = settings()
-        // 262 正在改这个文件；本批若顺手改一半，262 合入时必冲突。
-        // 改动已存成仓外补丁（wt-264-settings-deferred-264.patch），262 合入后重放。
-        assertFalse("本批不许出现设置页读盘改造的痕迹", src.contains("loadSkillReview"))
-        assertFalse("更不许半截 remember(null) 快照", src.contains("var review by remember"))
+        // 262 合入后重放 264 的 ④ 补丁（git apply --check rc=0）：技能卡改走异步快照，
+        // 读数在 Dispatchers.IO 里算完才交付；本测钉住「已重放」而不是「不许出现」。
+        assertTrue("④ 应已重放：设置页要出现 loadSkillReview", src.contains("loadSkillReview"))
     }
-
-    // ── ⑤ RunLog 启动（A-P2-5）───────────────────────────────────────
 
     @Test
     fun `⑤RunLog_init只做最小初始化_迁移归档补写后台串行`() {
