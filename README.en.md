@@ -17,11 +17,11 @@ One APK, no root, no commands. Baopu reads and writes files, can search the whol
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.1 (versionCode 39).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.2 (versionCode 40).
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
-**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch. The package is still v2.2.1 (versionCode 39).
+**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch. The package is still v2.2.2 (versionCode 40).
 
 ## Requirements
 
