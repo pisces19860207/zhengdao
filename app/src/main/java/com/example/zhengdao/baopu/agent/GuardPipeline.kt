@@ -16,6 +16,12 @@ import com.example.zhengdao.baopu.RiskCode
 import com.example.zhengdao.baopu.RiskGate
 import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
+import com.example.zhengdao.baopu.RiskVerdict
+import com.example.zhengdao.baopu.authz.GrantWiring
+import com.example.zhengdao.baopu.authz.ProcessEpoch
+import com.example.zhengdao.baopu.authz.TaskGrantBoard
+import com.example.zhengdao.baopu.authz.TaskGrantWire
+import com.example.zhengdao.baopu.authz.WiringDisposition
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.plan.ContractDeviation
 import com.example.zhengdao.baopu.plan.ContractSource
@@ -210,6 +216,15 @@ internal class GuardPipeline(
      * 全是别人的状态；管线是执行层，"偷偷读世界"就没法在闸上直接测负例②③。
      */
     private val contracts: ContractSource = PlanContractBoard,
+    /**
+     * 第二百七十六批 P1：249 六步的**接线口**。排在参数表**最后**且带缺省 ⇒ 存量调用点
+     * （含测试）一个字不改、行为逐字节不变：生产用的就是 [TaskGrantWire] 那一份。
+     *
+     * 为什么做成注入接口而不是在这里读单例：与 [contracts] 同一条理由——判据要能打在参数上。
+     * 负例 N6（"ALLOW 那一支其实是死代码"）与 N7（"放行的动作落了两条账"）都只有从这里
+     * 喂一个假判定才抓得住；真影子适配器本批**不做**（2026-10-29 用户裁定 Q1：判据补强归 239）。
+     */
+    private val grantWiring: GrantWiring = TaskGrantWire,
 ) {
 
     sealed interface Result {
@@ -388,6 +403,10 @@ internal class GuardPipeline(
         // 第二百四十二批：这一档要交给契约层比"预估"（[localRisk]），但契约**不重判**——
         // RiskGate.judge 带调用计频（20 次/60 秒那条），多调一次就是自己给自己加账。
         var localRisk: RiskClass? = null
+        // 第二百七十六批 P1①：六步要的是**整份判定**（硬拒/受保护对象/必问三件事都在里面），
+        // 不只那一档。这里只做**搬运**——判定的每一个字节仍然是上面 `RiskGate.judge` 给的，
+        // 本批不许改分类器判定逻辑（2026-10-29 派工单红线）。
+        var localVerdict: RiskVerdict? = null
         var riskAsk: String? = null
         /** 「该不该弹卡」的决定与 [riskAsk]（提示串）必须分开拿：R1/CONFIRM 工具与
          *  MCP（矩阵无行 ⇒ verdict=null）的提示串是 null，但卡照弹——return 若挂在
@@ -440,6 +459,7 @@ internal class GuardPipeline(
                 }
             }
             localRisk = verdict?.risk
+            localVerdict = verdict
             // R2/R3 一律必问（R3 在四档 UI 做出来之前也按"问"处理，但绝不放行）；R0/R1 走既有权限策略
             val riskMustAsk = verdict != null && (
                 verdict.mustAsk || (verdict.risk?.ordinal ?: -1) >= RiskClass.R2.ordinal
@@ -494,6 +514,37 @@ internal class GuardPipeline(
                     breach = check.breach,
                 ),
             )
+        }
+        // 第二百七十六批 P1①（249-B 接线）：**六步第一次有了生产调用点**（判据①钉的就是这一行）。
+        // 位置在契约之后、`mustAsk` 之前——范围（242）先谈完，「这一格要不要问」才轮到授权链说；
+        // 本批**只接判定**（2026-10-29 用户裁定：开工卡上半计划/下半授权照旧，不动卡面）。
+        //
+        // 五种处置里只有两种改变今天的行为：
+        // · ALLOW＝免卡——P1 生产**不可达**：第⑤步恒 `ShadowSignal.None` ⇒ 六步停在 NO_DATA
+        //   （她那句「P1 不会少弹一张卡」就落在这儿）；
+        // · REJECT＝硬拒——矩阵的硬拒在上面已经 return 了，这一格是纵深，不是第二口径；
+        // · NOT_APPLICABLE／UNAUTHORIZED／STOPPED＝**逐字走今天**（该问的还是问）。
+        // 所以 P1 既不省一张卡也不多一张卡；报告里写的是「未接线、不可开放生产自动档」。
+        val laneRoot = workspaceRoot()
+        val grantLane = grantWiring.decide(
+            call = effectiveCall,
+            targets = writeTargets(effectiveCall.name, effectiveCall.arguments, laneRoot),
+            verdict = localVerdict,
+            root = laneRoot,
+            isWrite = !spec.readOnly,
+            nowMonoMs = TaskGrantWire.monoMs(),
+            epoch = ProcessEpoch.current,
+            log = log,
+        )
+        when (grantLane.disposition) {
+            WiringDisposition.ALLOW -> return Prepared.Ready(effectiveCall, spec, guarded.grantedOutside)
+            WiringDisposition.REJECT -> {
+                log("抱朴授权：硬拒 ${effectiveCall.name}（${grantLane.note}）——这次动作不发生")
+                return Prepared.Settled(
+                    Result.Rejected(effectiveCall, "任务级授权判为硬拒，这次动作不做：${grantLane.note}"),
+                )
+            }
+            else -> Unit
         }
         if (mustAsk) return Prepared.Settled(Result.NeedsConfirm(effectiveCall, riskAsk))
         return Prepared.Ready(effectiveCall, spec, guarded.grantedOutside)
@@ -550,28 +601,73 @@ internal class GuardPipeline(
                 contentHash = RunRules.sha256Hex(outcome.reason),
             )
         }
-        // 第二百零八批 §1 `auto_act`：**模型自己动手改了东西**必须留一条（`!readOnly` 才算
-        // ——读操作没有副作用，记了只会把记录页淹掉）。actor 恒 MODEL；`reversible` 如实
-        // **降级为 false**：通用写盘没有统一回滚引用，标成可回滚就是骗人（负例③的反面）。
-        if (!spec.readOnly) {
-            val target = effectiveCall.arguments.optString("path").ifBlank { effectiveCall.name }
-            DecisionLedger.record(
-                DecisionDraft(
-                    kind = DecisionKind.AUTO_ACT,
-                    actor = DecisionActor.MODEL,
-                    reason = "工具 ${spec.name} 执行成功",
-                    evidence = "tool:${spec.name}:$target",
-                    before = target,
-                    after = "已执行 ${spec.name}",
-                    atMs = System.currentTimeMillis(),
-                    reversible = false,
-                ),
-            )
-        }
+        // 第二百零八批的通用账与第二百七十六批 P1 的授权账整块挪进 [writeLedgers]（照搬，一个字节没改）——
+        // 拆它只为不新增 detekt LongMethod 条目：`finish` 在基线里没被咬过，本批不该把它推过 60 行（硬墙只准降）。
+        writeLedgers(spec, effectiveCall)
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
         // 第一百七十七批：工具产出的图片路径原样透传（围栏只管文本，图片走另一条通道）
         val images = (outcome as? ToolOutcome.Ok)?.imageRelPaths.orEmpty()
         return Result.Done(effectiveCall, wrapped, spilled, images, RunRules.sha256Hex(text))
+    }
+
+    /**
+     * 一次成功写入之后落的那两本账（从 [finish] 里照搬出来的后半，字面与形状都没改）：
+     * 这一格归授权链 ⇒ 通用 `auto_act` 不补，改由授权链落 `<opId>:applied`（负例 N7 钉的就是「一动作两账」）；
+     * 不归授权链 ⇒ 第二百零八批那条通用账照旧。208 的 `if (!spec.readOnly) {` 字面与
+     * `DecisionLedger.record(` 的调用形状一个字节没动（L4／L16 门禁钉着它们）。
+     */
+    private fun writeLedgers(spec: ToolSpec, effectiveCall: ToolCall) {
+        // 第二百零八批 §1 `auto_act`：**模型自己动手改了东西**必须留一条（`!readOnly` 才算
+        // ——读操作没有副作用，记了只会把记录页淹掉）。actor 恒 MODEL；`reversible` 如实
+        // **降级为 false**：通用写盘没有统一回滚引用，标成可回滚就是骗人（负例③的反面）。
+        //
+        // 第二百七十六批 P1（用户 2026-10-29 裁定 Q4：**允许接管**这一条通用账）。接管方式＝
+        // 在下面那条 `if (!spec.readOnly)` 里再套一格「这一格的账归不归授权链落」——
+        // 208 的写入格式、那条 `if` 的字面、`DecisionLedger.record(` 的调用形状都一个字节没动
+        // （L4／L16 两条门禁钉的就是这些字面）。六步第⑥步已经为同一个 `opId` 落过
+        // `<opId>:applied`，这里再补一行就是「一动作两账」（N7 判据钉的正是这一格）。
+        val grantPending = TaskGrantBoard.pendingFor(effectiveCall.id)
+        val ownedByGrant = grantPending != null || TaskGrantBoard.isAccounted(effectiveCall.id)
+        if (!spec.readOnly) {
+            if (!ownedByGrant) {
+                val target = effectiveCall.arguments.optString("path").ifBlank { effectiveCall.name }
+                DecisionLedger.record(
+                    DecisionDraft(
+                        kind = DecisionKind.AUTO_ACT,
+                        actor = DecisionActor.MODEL,
+                        reason = "工具 ${spec.name} 执行成功",
+                        evidence = "tool:${spec.name}:$target",
+                        before = target,
+                        after = "已执行 ${spec.name}",
+                        atMs = System.currentTimeMillis(),
+                        reversible = false,
+                    ),
+                )
+            }
+        }
+        // 第二百七十六批 P1（N7 的另一半）：这一格归授权链落的，账在这儿落定，板上钉住"落过了"。
+        // 落不上**只 log、不回滚、也不补通用账**——动作已经发生，208 是留痕不是闸门（71 批① 口径）；
+        // 补通用账会让同一个 opId 在账上变成两件事，那正是 N7 要拦的。
+        if (grantPending != null) {
+            val writtenTo = writeTargets(spec.name, effectiveCall.arguments, workspaceRoot()).firstOrNull()
+            val laid = writtenTo != null && TaskGrantWire.recordApplied(
+                grantPending,
+                writtenTo,
+                System.currentTimeMillis(),
+                log,
+            )
+            TaskGrantBoard.markAccounted(grantPending.opId)
+            val miss = when {
+                laid -> ""
+                writtenTo == null -> "取不到这次的写入目标"
+                else -> "208 没落上（未装配或写失败）"
+            }
+            log(
+                "抱朴授权：${grantPending.opId.take(12)} 的账" +
+                    if (laid) "由授权链落（<opId>:applied）"
+                    else "没落上（$miss），通用账不补——留痕缺一条，动作已发生",
+            )
+        }
     }
 
     /** 直跑（并行读用；崩了也走 [ToolRunner.crashFailure] 的同一句原文）。 */
