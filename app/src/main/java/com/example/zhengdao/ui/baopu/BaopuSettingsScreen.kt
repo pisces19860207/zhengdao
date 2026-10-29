@@ -2053,28 +2053,15 @@ private fun PersonaAddSection(ctx: Context, res: Resources) {
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(
-                onClick = {
-                    val msg = when (val x = PersonaPatchApply.restoreFactory(pfr)) {
-                        is PersonaApplyResult.Applied -> res.getString(R.string.persona_add_restored)
-                        is PersonaApplyResult.Rejected -> x.reason
-                    }
-                    Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
-                    tick += 1
-                },
-            ) { Text(res.getString(R.string.persona_add_restore)) }
-            Spacer(Modifier.weight(1f))
-            TextButton(
-                enabled = draft.isNotBlank(),
-                onClick = { askGlobal = true },
-            ) { Text(res.getString(R.string.persona_add_global)) }
-            Spacer(Modifier.width(8.dp))
-            Button(
-                enabled = draft.isNotBlank(),
-                onClick = { submit(PersonaConsent.WORKSPACE, PersonaPatchScope.C_PROJECT) },
-            ) { Text(res.getString(R.string.persona_add_local)) }
-        }
+        PersonaAddActions(
+            ctx = ctx,
+            res = res,
+            pfr = pfr,
+            draft = draft,
+            onAskGlobal = { askGlobal = true },
+            onSubmitLocal = { submit(PersonaConsent.WORKSPACE, PersonaPatchScope.C_PROJECT) },
+            onRestored = { tick += 1 },
+        )
         Text(
             text = res.getString(
                 if (usingFactory) R.string.persona_add_factory_on else R.string.persona_add_factory_off,
@@ -2098,35 +2085,86 @@ private fun PersonaAddSection(ctx: Context, res: Resources) {
         }
     }
 
-    if (askGlobal) {
-        // 复用 96 批的作用域裁剪：问题与 detail 都从 PersonaApprovalCard 取，
-        // 本页不自己解释"全局意味着什么"——两套解释迟早会说法不一。
-        val globalPatch = PersonaPatch(
-            scope = PersonaPatchScope.B_GLOBAL,
-            workspaceId = null,
-            sections = listOf(PersonaSection(PersonaSectionKind.RULES, draft.trim())),
-            reason = res.getString(R.string.persona_add_reason),
-        )
-        val req = PersonaApprovalCard.request(globalPatch)
-        AlertDialog(
-            onDismissRequest = { askGlobal = false },
-            title = { Text(req.question) },
-            text = {
-                Text(req.options.firstOrNull { it.id == PersonaApprovalCard.ID_GLOBAL }?.detail.orEmpty())
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        askGlobal = false
-                        submit(PersonaConsent.GLOBAL, PersonaPatchScope.B_GLOBAL)
-                    },
-                ) { Text(res.getString(R.string.persona_add_global_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { askGlobal = false }) {
-                    Text(res.getString(R.string.persona_add_cancel))
-                }
-            },
-        )
+    PersonaGlobalConfirmDialog(askGlobal, res, draft, onDismiss = { askGlobal = false }) {
+        askGlobal = false
+        submit(PersonaConsent.GLOBAL, PersonaPatchScope.B_GLOBAL)
     }
+}
+
+/**
+ * 人设区那排按钮（恢复出厂／升全局／记进本项目）。
+ *
+ * 抽出来只为压 [PersonaAddSection] 的长度（detekt LongMethod 60），行为逐行照搬。
+ */
+@Composable
+private fun PersonaAddActions(
+    ctx: Context,
+    res: Resources,
+    pfr: PersonaFiles,
+    draft: String,
+    onAskGlobal: () -> Unit,
+    onSubmitLocal: () -> Unit,
+    onRestored: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(
+            onClick = {
+                val msg = when (val x = PersonaPatchApply.restoreFactory(pfr)) {
+                    is PersonaApplyResult.Applied -> res.getString(R.string.persona_add_restored)
+                    is PersonaApplyResult.Rejected -> x.reason
+                }
+                Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                onRestored()
+            },
+        ) { Text(res.getString(R.string.persona_add_restore)) }
+        Spacer(Modifier.weight(1f))
+        TextButton(enabled = draft.isNotBlank(), onClick = onAskGlobal) {
+            Text(res.getString(R.string.persona_add_global))
+        }
+        Spacer(Modifier.width(8.dp))
+        Button(enabled = draft.isNotBlank(), onClick = onSubmitLocal) {
+            Text(res.getString(R.string.persona_add_local))
+        }
+    }
+}
+
+/**
+ * 「升全局」二次确认（只给人设区用）。
+ *
+ * 复用 96 批的作用域裁剪：问题与 detail 都从 [PersonaApprovalCard] 取，
+ * 本页不自己解释"全局意味着什么"——两套解释迟早会说法不一。
+ */
+@Composable
+private fun PersonaGlobalConfirmDialog(
+    visible: Boolean,
+    res: Resources,
+    draft: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    if (!visible) return
+    val globalPatch = PersonaPatch(
+        scope = PersonaPatchScope.B_GLOBAL,
+        workspaceId = null,
+        sections = listOf(PersonaSection(PersonaSectionKind.RULES, draft.trim())),
+        reason = res.getString(R.string.persona_add_reason),
+    )
+    val req = PersonaApprovalCard.request(globalPatch)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(req.question) },
+        text = {
+            Text(req.options.firstOrNull { it.id == PersonaApprovalCard.ID_GLOBAL }?.detail.orEmpty())
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(res.getString(R.string.persona_add_global_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(res.getString(R.string.persona_add_cancel))
+            }
+        },
+    )
 }
