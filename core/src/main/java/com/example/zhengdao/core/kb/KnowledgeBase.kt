@@ -454,8 +454,31 @@ object KnowledgeBase {
         return ScanResult(out, truncated)
     }
 
-    private fun isSymlink(f: File): Boolean =
-        runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
+    /**
+     * 软链探测（**A4，2026-10-29：安全修正，已御批——本处豁免「行为不变」**）。
+     *
+     * 改前：`runCatching { … }.getOrDefault(false)` 是 **fail-open**——探测一抛异常就当「不是软链」，
+     * 于是本该被跳过的条目被当普通文件读/搬（安全面）。改后：**探测失败 ⇒ 当可疑条目跳过**
+     * （fail-closed），并落一条可查的结构化失败（路径＋异常类名），绝不静默拒。
+     */
+    private fun isSymlink(f: File): Boolean = symlinkProbeFailsClosed(
+        probe = { java.nio.file.Files.isSymbolicLink(f.toPath()) },
+        onUnknown = { e ->
+            RunLog.log("[资料库] 软链探测失败，按可疑条目跳过：${f.absolutePath}（${e.javaClass.simpleName}）")
+        },
+    )
+
+    /**
+     * 纯判别（JVM 可直接测）：探测抛异常 ⇒ `true`（跳过）；正常返回就用它的值。
+     * 抽成纯函数是为了让「失败时到底跳不跳」有单测钉住——不然这条安全修正只能在真机上碰运气验。
+     */
+    internal fun symlinkProbeFailsClosed(probe: () -> Boolean, onUnknown: (Throwable) -> Unit = {}): Boolean =
+        try {
+            probe()
+        } catch (e: Exception) {
+            onUnknown(e)
+            true
+        }
 
     /**
      * 供 P2 摘要流程使用：列出 `原始/` 里的文件（相对路径 + 大小 + 修改时间）。
