@@ -31,6 +31,7 @@ import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.baopu.ReflectionWiring
 import com.example.zhengdao.baopu.ShotTier
 import com.example.zhengdao.baopu.ShotTierRule
 import com.example.zhengdao.baopu.ScreenshotConsent
@@ -273,6 +274,17 @@ internal class RunEngine(
      * 上一轮的文件算进来（假红比不验更坏）。
      */
     private val verifyTouched = LinkedHashSet<String>()
+
+    /**
+     * 第二百六十五批 R1：本轮的 runId 与起点（收工后那一次反思按这个窗口认领证据）。
+     *
+     * 为什么不现问 `trace.currentRunId()`：有两条收尾路（会话不存在／发图同意闸）在
+     * `trace.newRun` **之前**就收尾了，那时问它只会拿到**上一轮**的 runId ⇒ 把上一轮的
+     * 失败算到这一轮头上（错认的证据比没证据更坏）。起点同理：账本行的认领窗口是
+     * `[起点, 收工]`，起点为 0 时 [SettledReflectionRules.ledgerInRound] 一条都不认。
+     */
+    private var roundRunId: String = ""
+    private var roundStartedAtMs: Long = 0L
 
     /**
      * 227 §0.5：本轮**成功工具结果**的回灌原文（只在内存里攒）。
@@ -1624,7 +1636,9 @@ internal class RunEngine(
         clearRoundArtifactView()
         // 第八十七批 R1：**新 run ⇒ 新轨迹**。runId ＝ `r<sessionId>@<开跑时刻>`，
         // 回放时一眼看出是哪个会话、什么时候起的（续跑也是新 run，与 run_log 同口径）。
-        trace.newRun(sessionId)
+        // 265 R1：runId 与起点一并留下来——收工后那一次反思要按 `[起点, 收工]` 认领本轮证据。
+        roundStartedAtMs = System.currentTimeMillis()
+        roundRunId = trace.newRun(sessionId, roundStartedAtMs)
 
         // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
         // 内存是空的；不回种的话模型重发计划时 sticky done 失效，done 会被打回
@@ -2821,6 +2835,33 @@ internal class RunEngine(
         _state.value = state
         // 安全点 3（第六十四批）：本轮 Settled 之后——收尾后立刻切，不等下一轮。
         drainChannelSwitch(SafePoint.AfterSettled)
+        // 第二百六十五批 R1：**收工后**调一次反思判定（全仓唯一调用点，`ReflectionWiringTest` 钉住）。
+        // 放在最后是有意的：状态先切给 UI、通道先排空，反思读的才是刚 `.get()` 落完库的这一轮轨迹；
+        // 也绝不在轮次**开始**时调——那时本轮一行轨迹都还没写，反思的是残缺状态（负例②）。
+        reflectOnSettled()
+    }
+
+    /**
+     * 收工反思（265 R1–R3；判据与四条纪律全在 [ReflectionWiring] 的文件头，这里只说引擎侧两件事）。
+     *
+     * · **惰性**：没注入人设（JVM 单测的存量构造点）或本轮没起 run ⇒ 一个字节不写、一行日志不出；
+     * · **不许连累收尾**：反思自己出错只出声，绝不把 `settle()` 带崩——收尾失败比没反思严重得多。
+     *
+     * 一轮只调一次：进来先把 `roundRunId` 摘空，同一轮里万一再进一次 `settle()` 也不会重复入账。
+     * 结果**不进上下文**（负例③）：这里连返回值都不接，档案与日志就是它全部的出口。
+     */
+    private fun reflectOnSettled() {
+        val pf = personaFiles ?: return
+        val runId = roundRunId
+        val startedAt = roundStartedAtMs
+        roundRunId = ""
+        roundStartedAtMs = 0L
+        if (runId.isBlank()) return
+        runCatching {
+            ReflectionWiring.of(spillRoot(), pf, db, log).onSettled(runId, startedAt)
+        }.onFailure {
+            log("抱朴引擎：收工反思没跑成 ${it.javaClass.simpleName}: ${it.message}（这不等于「本轮没得反思」）")
+        }
     }
 
     /** 步迁移 = 一次事务（session.interrupted_step + updated_at + run_log）。返回落库 Future。 */
