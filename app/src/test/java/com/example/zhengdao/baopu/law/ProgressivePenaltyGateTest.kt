@@ -8,6 +8,8 @@
 //
 // 覆盖判据（法典 L24 原文逐条）：一记二问三拦四熔断／主动报账减一档／疑罪从无只记不罚且不计累进／
 // 30 天窗口外归零／同 kind 才累进／窗口是参数（改窗口 ⇒ 判定变，不许写死在实现里当玄学）。
+// 2026-10-29 裁定 Q1 的两条 FUSE 边界也钉在这里：只由计数触发（自首减档后不许留熔断）、
+// 只熔断本次会话且必须出御案报告（[PenaltyVerdict.imperialReportRequired]）。
 package com.example.zhengdao.baopu.law
 
 import org.junit.Assert.assertEquals
@@ -49,6 +51,8 @@ class ProgressivePenaltyGateTest {
         assertEquals("绕道第 4 次熔断", PenaltyTier.FUSE, fourth.tier)
         assertTrue("熔断要熔", fourth.haltSession)
         assertTrue("熔断要保留现场供御批：${fourth.reason}", fourth.reason.contains("御批"))
+        assertTrue("FUSE 必须出御案报告：${fourth.howToLift}", fourth.howToLift.contains("御案报告"))
+        assertTrue("御案报告只跟着 FUSE 走", fourth.imperialReportRequired)
 
         // 30 天无同类 ⇒ 计数归零（旧账不回算）
         val zeroed = ProgressivePenalty.decide(v(kind, 0), listOf(v(kind, 31), v(kind, 40), v(kind, 50)), t0)
@@ -102,6 +106,18 @@ class ProgressivePenaltyGateTest {
         val fourth = ProgressivePenalty.decide(v(kind, 0), listOf(v(kind, 9), v(kind, 3), v(kind, 1)), t0)
         assertEquals("绕道第 4 次只是拦、没熔断 ⇒ 红", PenaltyTier.FUSE, fourth.tier)
         assertTrue("第 4 次的须御批不许丢", fourth.requiresImperialApproval)
+
+        // Q1 第 ① 条：熔断只有累进计数这一个入口——第 4 次自首减到拦，熔断字段必须跟着关掉
+        val selfFourth = ProgressivePenalty.decide(
+            v(kind, 0, self = true),
+            listOf(v(kind, 9), v(kind, 3), v(kind, 1)),
+            t0,
+        )
+        assertEquals("第 4 次自首减一档到拦", PenaltyTier.BLOCK, selfFourth.tier)
+        assertFalse("减到拦就不许还熔着会话", selfFourth.haltSession)
+        assertFalse("减到拦就不许还催御案报告", selfFourth.imperialReportRequired)
+        assertFalse("拦不许熔会话", third.haltSession)
+        assertFalse("拦这一档不出御案报告", third.imperialReportRequired)
 
         // ③ 自首只减一档，不许减成"没这一条"：第 2 次自首 ⇒ 降到记，但档位仍存在
         val selfSecond = ProgressivePenalty.decide(v(kind, 0, self = true), listOf(v(kind, 9)), t0)

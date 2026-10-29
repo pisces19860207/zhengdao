@@ -8,13 +8,15 @@
 // 那半句法典——
 // **「可回退者按原状回退」**（[TimeoutVerdict.rollbackRequested]）。
 //
-// 覆盖判据（法典 L27 原文逐条）：超窗口⇒判不批／维持原状／可回退者回退／必落「待御裁」／
-// 同一事项二次上奏必被拒并记违规／窗口与次数是参数（改了判定必须跟着变）。
+// 覆盖判据（法典 L27 原文＋2026-10-29 裁定 Q2 的**窄口径**）：超窗口⇒判不批／维持原状／可回退者回退／
+// 必落「待御裁」／**已被超时结算过**的事项再奏必拒并记违规；没结算过的最多 2 次提交、第 3 次才拒／
+// 窗口与上奏上限都是参数（改了判定必须跟着变）。
 package com.example.zhengdao.baopu.law
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,12 +30,14 @@ class TimeoutFallbackGateTest {
         reversible: Boolean,
         submissions: Int = 1,
         recorded: Boolean = false,
+        settled: Boolean = false,
     ) = PendingRuling(
         caseId = "case-1",
         raisedAtMs = t0 - raisedAgoHours * hour,
         reversible = reversible,
         submissions = submissions,
         settlementRecorded = recorded,
+        timeoutSettled = settled,
     )
 
     // ── 正例：窗口内只等；超时按不批结算，可回退者回退，账已落则无违规 ──────
@@ -70,6 +74,11 @@ class TimeoutFallbackGateTest {
         assertFalse("不可回退者不许喊回退", stuck.rollbackRequested)
         assertFalse("账注不许写「已回退」：${stuck.recordNote}", stuck.recordNote.contains("已按原状回退"))
 
+        // Q2 窄口径的另一半：**没结算过**的事项允许再提一次，第 2 次还是"继续等"，不记违规
+        val again = TimeoutFallback.settle(r(2, reversible = true, submissions = 2), t0)
+        assertEquals("没结算过的第 2 次上奏：还在窗口里就该继续等", TimeoutOutcome.WAITING, again.outcome)
+        assertNull("再提一次本身不是违规：${again.violation}", again.violation)
+
         // 窗口是参数：换成 1 小时后，等了 2 小时的事项就该结算
         val oneHourWindow = TimeoutFallback.settle(r(2, reversible = true), t0, windowMs = hour)
         assertEquals("改窗口 ⇒ 判定必须跟着变", TimeoutOutcome.TIMEOUT_REJECTED, oneHourWindow.outcome)
@@ -90,13 +99,23 @@ class TimeoutFallbackGateTest {
         assertTrue("违规原文要点明落账：${silent.violation}", silent.violation!!.contains("落账"))
         assertTrue("账没落也要给出该落的抬头：${silent.recordNote}", silent.recordNote.contains("待御裁"))
 
-        // ③ 同一事项二次上奏 ⇒ 必被拒 + 记违规（最多一次的"一次"是上限，不是许可）
-        val second = TimeoutFallback.settle(r(48, reversible = true, submissions = 2), t0)
-        assertEquals("二次上奏必判被拒", TimeoutOutcome.REFILING_REJECTED, second.outcome)
-        assertFalse("二次上奏也不许放行", second.approved)
-        assertTrue("二次上奏必须记违规", second.violation != null)
-        assertTrue("违规原文要点明反复上奏：${second.violation}", second.violation!!.contains("上奏"))
-        assertFalse("不许二次回退（上一轮已按原状回退过）", second.rollbackRequested)
+        // ③ 已被超时结算过的事项再奏 ⇒ 必被拒 + 记违规（Q2 窄口径：结了就不再奏）
+        val refiling = TimeoutFallback.settle(r(48, reversible = true, submissions = 2, settled = true, recorded = true), t0)
+        assertEquals("结过案的第 2 次上奏必判被拒", TimeoutOutcome.REFILING_REJECTED, refiling.outcome)
+        assertFalse("再奏被拒也不许放行", refiling.approved)
+        assertTrue("再奏必记违规", refiling.violation != null)
+        assertTrue("违规原文要点明「已结算」：${refiling.violation}", refiling.violation!!.contains("结算"))
+        assertFalse("不许二次回退（上一轮已按原状回退过）", refiling.rollbackRequested)
+
+        // ③b 没结算过、但累计到第 3 次 ⇒ 照样必拒（上限就是 2 次）
+        val thirdSubmission = TimeoutFallback.settle(r(2, reversible = true, submissions = 3), t0)
+        assertEquals("第 3 次上奏必判被拒", TimeoutOutcome.REFILING_REJECTED, thirdSubmission.outcome)
+        assertTrue("违规原文要点明上限：${thirdSubmission.violation}", thirdSubmission.violation!!.contains("上限"))
+
+        // ③c 没结算过的第 2 次、且确实超了窗口 ⇒ 正常按超时结算，不许错判成"重复上奏被拒"
+        val secondExpired = TimeoutFallback.settle(r(48, reversible = true, submissions = 2), t0)
+        assertEquals("第 2 次上奏超窗口就按超时结算", TimeoutOutcome.TIMEOUT_REJECTED, secondExpired.outcome)
+        assertTrue("可回退者照旧按原状回退", secondExpired.rollbackRequested)
 
         // ④ 第一次不许被判违规（防"一次就报"的假门禁）
         val first = TimeoutFallback.settle(r(1, reversible = true, submissions = 1), t0)
@@ -112,6 +131,14 @@ class TimeoutFallbackGateTest {
 
         // ⑥ 参数口径钉住：窗口与上奏上限都不是随手数
         assertEquals("窗口默认 24 小时", 24L * hour, TimeoutFallback.WINDOW_MS)
-        assertEquals("同一事项上奏上限 1 次", 1, TimeoutFallback.MAX_SUBMISSIONS)
+        assertEquals("同一事项上奏上限 2 次（第 3 次才拒）", 2, TimeoutFallback.MAX_SUBMISSIONS)
+
+        // ⑦ 事实自相矛盾（说"结过案"却报第 1 次）⇒ 判据拒收，不许悄悄当成没结过案放行
+        assertThrows(IllegalArgumentException::class.java) {
+            TimeoutFallback.settle(
+                PendingRuling("case-4", raisedAtMs = t0, reversible = true, submissions = 1, timeoutSettled = true),
+                t0,
+            )
+        }
     }
 }

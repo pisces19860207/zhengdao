@@ -12,7 +12,11 @@
 // - `n = 1` ⇒ [PenaltyTier.RECORD] 记：落一条账，**不打扰**；
 // - `n = 2` ⇒ [PenaltyTier.ASK] 问：弹卡，给两个选项；
 // - `n = 3` ⇒ [PenaltyTier.BLOCK] 拦：拒绝执行，须御批才解；
-// - `n ≥ 4` ⇒ [PenaltyTier.FUSE] 停：绕道再犯，熔断本次会话并保留现场供御批。
+// - `n ≥ 4` ⇒ [PenaltyTier.FUSE] 停：绕道再犯，熔断本次会话、保留现场供御批，并出御案报告。
+//   FUSE 的两条边界（2026-10-29 裁定 Q1）：
+//   ①**只由累进计数触发**——除了 `n ≥ 4` 这条路，本层不给它开第二个入口（自首减档也不许留着熔断）；
+//   ②**只熔断本次会话**（[PenaltyVerdict.haltSession]）＋出一份御案报告（[PenaltyVerdict.imperialReportRequired]），
+//     不封账号、不删数据：本层的返回值里根本没有"账号级/数据级动作"这种字段，执行层无从依据。
 // 三条修正：
 // 1. **主动报账减一档**（自首）：[PenaltyTier.FUSE]→[PenaltyTier.BLOCK]→[PenaltyTier.ASK]→
 //    [PenaltyTier.RECORD]，且 RECORD 不再往下降——减档不许减成"没这一条"；
@@ -65,7 +69,8 @@ internal data class Violation(
  * - [counted] 说明本次有没有进这个数（只有的罪状时才 false）；
  * - [disturb] 是"要不要打扰用户"：只有 RECORD 为 false，问/拦/停都要出声；
  * - [requiresImperialApproval] 为真 ⇒ 这一档只能由御批解除，执行层不许自行放行；
- * - [haltSession] 为真 ⇒ 熔断本次会话（法典的"停"），并保留现场。
+ * - [haltSession] 为真 ⇒ 只熔断**本次会话**（法典的"停"）并保留现场，不涉及账号或数据（Q1 第 ② 条）；
+ * - [imperialReportRequired] 为真 ⇒ 这次要出一份御案报告——只有 FUSE 要，别的档都是 false。
  */
 internal data class PenaltyVerdict(
     val lawRef: String,
@@ -75,6 +80,7 @@ internal data class PenaltyVerdict(
     val disturb: Boolean,
     val requiresImperialApproval: Boolean,
     val haltSession: Boolean,
+    val imperialReportRequired: Boolean,
     val reason: String,
     val howToLift: String,
 )
@@ -88,8 +94,9 @@ internal object ProgressivePenalty {
     /**
      * 法条引用（落账与卡面引用用）。
      *
-     * 写成字符串而不是 270 的 `LawRef` 枚举：那个枚举目前只到 `L23`，而它归 272 的
-     * `baopu/inspect/` 片区分管 ⇒ 本批不许改它。接线批（276）扩完枚举后把这一格换成 `LawRef.L24`。
+     * 写成字符串而不是 270 的 `LawRef` 枚举：那个枚举归 272 的 `baopu/inspect/` 片区管（它只给自己补了 `L28`），
+     * 且 270 的闭集钉把 `"L24"` 列在「必须抛异常」名单里 ⇒ 补它是**两行同改**。按 2026-10-29 裁定（Q5）这活归 276：
+     * 扩完枚举与闭集钉后把这一格换成 `LawRef.L24`，本批不碰那两个文件。
      */
     const val LAW_REF = "L24"
 
@@ -121,6 +128,7 @@ internal object ProgressivePenalty {
                 disturb = false,
                 requiresImperialApproval = false,
                 haltSession = false,
+                imperialReportRequired = false,
                 reason = "证据不足：只记一条，不罚、不计入累进（疑罪从无）",
                 howToLift = "补上证据再奏：证据够的那一次才按累进定档",
             )
@@ -142,6 +150,7 @@ internal object ProgressivePenalty {
             disturb = tier != PenaltyTier.RECORD,
             requiresImperialApproval = tier == PenaltyTier.BLOCK || tier == PenaltyTier.FUSE,
             haltSession = tier == PenaltyTier.FUSE,
+            imperialReportRequired = tier == PenaltyTier.FUSE,
             reason = reasonOf(tier, n, fresh.selfReported),
             howToLift = liftOf(tier),
         )

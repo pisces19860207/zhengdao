@@ -13,8 +13,10 @@
 // - **维持原状**（[TimeoutVerdict.keepOriginal] 为 true）；
 // - **可回退者按原状回退**（[TimeoutVerdict.rollbackRequested] = 这件事项本身可不可回退）；
 // - **必须落一条「待御裁」账**（[TimeoutVerdict.mustRecord]；账没落 ⇒ [TimeoutVerdict.violation] 报违规）；
-// - **同一事项不得因超时反复上奏**（[MAX_SUBMISSIONS] 次为上限）：超上限的那次上奏必被拒
-//   （[TimeoutOutcome.REFILING_REJECTED]）并记一次违规，且**不许二次回退**（前次结算已回退过）。
+// - **反复上奏取窄口径**（2026-10-29 裁定 Q2），两条独立的必拒：
+//   ①事项**已被超时结算过**（[PendingRuling.timeoutSettled]）⇒ 再奏必被拒（[TimeoutOutcome.REFILING_REJECTED]）
+//     ＋记一次违规，且**不许二次回退**（上一轮结算已经把回退做掉了，再来一次会把已定的原状再改一遍）；
+//   ②没结算过（还在窗口里等）的事项**允许再提一次**，但同一事项累计以 [MAX_SUBMISSIONS] 次为上限，第 3 次照样必拒。
 //
 // ## 为什么超时算"不批"而不是"默认同意"
 // 默认同意＝"人不看就自动过"，那 L20 的御批就白设了。默认不批，最坏结果是这件事没做；
@@ -33,14 +35,18 @@ internal enum class TimeoutOutcome {
     /** 超窗口：按不批结算，维持原状（可回退者回退），并落一条「待御裁」。 */
     TIMEOUT_REJECTED,
 
-    /** 同一事项反复上奏（超过 [TimeoutFallback.MAX_SUBMISSIONS] 次）：这次上奏必被拒＋记违规。 */
+    /**
+     * 这次上奏必被拒＋记违规（窄口径两条触发之一，见文件头）：
+     * 事项已被超时结算过，或累计上奏已达 [TimeoutFallback.MAX_SUBMISSIONS] 次上限。
+     */
     REFILING_REJECTED,
 }
 
 /**
  * 一件在御案上等着被批的事（御案/208 行的最小投影，由调用方映射，本层不读盘）。
  *
- * [submissions] 含本次，所以"第一次上奏"传 1；[settlementRecorded] 是"这次的待御裁账已经落了吗"。
+ * [submissions] 含本次，所以"第一次上奏"传 1；[timeoutSettled] 是"这案此前结过没有"（Q2 窄口径只看它）；
+ * [settlementRecorded] 是"这次的待御裁账已经落了吗"。后两者是不同的事实：结过案但账没落，正是那条违规。
  */
 internal data class PendingRuling(
     /** 事项标识：L27 的"同一事项"按它判重。 */
@@ -51,6 +57,13 @@ internal data class PendingRuling(
     val reversible: Boolean,
     /** 该事项累计上奏次数（含本次）。 */
     val submissions: Int = 1,
+    /**
+     * 该事项此前**是否已被超时结算过**（御案行或 208 账里的既定事实，由调用方映射，本层不读盘）。
+     *
+     * Q2 的窄口径只看它：结过案 ⇒ 一次都不许多；没结过案（还在窗口里等）⇒ 允许再提一次。
+     * 别与 [settlementRecorded] 混用——那个问的是"账落没落"（幂等口径），这个问的是"案结没结"。
+     */
+    val timeoutSettled: Boolean = false,
     /** 208 里是否已有这条「待御裁（未批）」账。 */
     val settlementRecorded: Boolean = false,
 )
@@ -80,10 +93,14 @@ internal object TimeoutFallback {
     /** 御案等待窗口：默认 24 小时（法典写死可配，所以 [settle] 收一个 windowMs）。 */
     const val WINDOW_MS = 24L * 60 * 60 * 1000
 
-    /** 同一事项允许的上奏次数：超时之后最多再一次，再多必拒。 */
-    const val MAX_SUBMISSIONS = 1
+    /**
+     * 同一事项的上奏上限：**2 次**（第 3 次必拒），Q2 裁定的"人点两下不至于永远不能再问"。
+     *
+     * 已被超时结算过的事项走 [settle] 里的另一条窄口径，与这个上限无关——结了就不再奏。
+     */
+    const val MAX_SUBMISSIONS = 2
 
-    /** 法条引用（同 L24：270 的 `LawRef` 枚举只到 L23 且归 272 片区，本批不碰）。 */
+    /** 法条引用（同 L24：`LawRef` 枚举归 272 片区，扩 L24–L27 按裁定由 276 两处同改，本批不碰）。 */
     const val LAW_REF = "L27"
 
     /** 待御裁那条账的固定抬头（执行层直接照抄落账，不许自己改口径）。 */
@@ -103,35 +120,24 @@ internal object TimeoutFallback {
     ): TimeoutVerdict {
         require(pending.caseId.isNotBlank()) { "L27 结算的 caseId 不许为空：重复上奏靠它认事项" }
         require(pending.submissions >= 1) { "L27 的上奏次数至少含本次，即 >= 1" }
+        require(!(pending.timeoutSettled && pending.submissions <= 1)) {
+            "L27：已结算过的事项再奏必是第 2 次以上，submissions 要含本次"
+        }
         val waited = nowMs - pending.raisedAtMs
-        if (pending.submissions > MAX_SUBMISSIONS) {
-            return TimeoutVerdict(
-                lawRef = LAW_REF,
-                outcome = TimeoutOutcome.REFILING_REJECTED,
-                approved = false,
-                keepOriginal = true,
-                // 不许二次回退：上一轮超时结算已经把回退做掉了，再来一次会把已定的原状再改一遍
-                rollbackRequested = false,
-                mustRecord = true,
-                recordNote = "待御裁（重复上奏被拒）",
-                violation = "同一事项第 ${pending.submissions} 次上奏：超时不许反复上奏" +
-                    "（上限 $MAX_SUBMISSIONS 次），记一次违规",
-                waitedMs = waited,
-            )
+        // 窄口径（Q2）两条必拒：结过案还想再来 / 没结案但累计已到上限
+        val settledRefiling = pending.timeoutSettled && pending.submissions > 1
+        val overCap = pending.submissions > MAX_SUBMISSIONS
+        if (settledRefiling || overCap) {
+            val why = if (settledRefiling) {
+                "同一事项已被超时结算过，第 ${pending.submissions} 次上奏必拒：结了就不再奏"
+            } else {
+                "同一事项上奏上限 $MAX_SUBMISSIONS 次，第 ${pending.submissions} 次必拒：不许反复上奏"
+            }
+            return refilingVerdict(why, waited)
         }
         // 只数"真的等满了"：nowMs 早于上奏时刻（时钟回拨／填错）时 waited 为负 ⇒ 不算超时，继续等
         if (waited <= windowMs) {
-            return TimeoutVerdict(
-                lawRef = LAW_REF,
-                outcome = TimeoutOutcome.WAITING,
-                approved = false,
-                keepOriginal = false,
-                rollbackRequested = false,
-                mustRecord = false,
-                recordNote = "",
-                violation = null,
-                waitedMs = waited,
-            )
+            return waitingVerdict(waited)
         }
         return TimeoutVerdict(
             lawRef = LAW_REF,
@@ -149,4 +155,33 @@ internal object TimeoutFallback {
             waitedMs = waited,
         )
     }
+
+    /** 再奏被拒那条结论的构造（判据在 [settle] 的窄口径里，这里只搬字段，不再判一次）。 */
+    private fun refilingVerdict(why: String, waited: Long): TimeoutVerdict =
+        TimeoutVerdict(
+            lawRef = LAW_REF,
+            outcome = TimeoutOutcome.REFILING_REJECTED,
+            approved = false,
+            keepOriginal = true,
+            // 不许二次回退：上一轮超时结算已经把回退做掉了，再来一次会把已定的原状再改一遍
+            rollbackRequested = false,
+            mustRecord = true,
+            recordNote = "待御裁（重复上奏被拒）",
+            violation = "$why，记一次违规",
+            waitedMs = waited,
+        )
+
+    /** 窗口内还没到期那条结论的构造：三件事都不做（不批、不落账、不违规）。 */
+    private fun waitingVerdict(waited: Long): TimeoutVerdict =
+        TimeoutVerdict(
+            lawRef = LAW_REF,
+            outcome = TimeoutOutcome.WAITING,
+            approved = false,
+            keepOriginal = false,
+            rollbackRequested = false,
+            mustRecord = false,
+            recordNote = "",
+            violation = null,
+            waitedMs = waited,
+        )
 }
