@@ -45,6 +45,35 @@ import java.util.Locale
  */
 object KnowledgeBase {
 
+    /**
+     * 重建清单的结果（276a A1(a)，2026-10-29）。
+     *
+     * 为什么要有：以前 `rebuildIndex` 返回 `Unit`，而"没写成 / 读旧清单失败"全被吞成静默；
+     * 现在三态，让调用方**能把失败报出来**。**行为不变**：读失败仍照写（不改成拒绝写盘——
+     * 那是安全修正，需单独御批）。
+     */
+    sealed interface IndexOutcome {
+        /** 早退：没开资料库 / 没有原始目录 / 指纹没变且清单还在。 */
+        data object Skipped : IndexOutcome
+
+        /** 写了（或内容本来就一致）。[readFailure] 非空＝读旧清单失败，旧摘要已丢。 */
+        data class Written(val readFailure: String?) : IndexOutcome
+
+        /** 没写成（空内容被拒等）。 */
+        data class Failed(val why: String) : IndexOutcome
+    }
+
+    /** 一次带校验写的下场（A3）。`readFailure` 非空＝读旧内容失败 ⇒ `.bak` 留不下来。 */
+    data class WriteAttempt(val wrote: Boolean, val readFailure: String?)
+
+    /** 读旧清单失败的**人话说明**（纯函数，JVM 单测钉住措辞与要点）。 */
+    internal fun oldIndexReadFailureNote(name: String, e: Throwable): String =
+        "[资料库] 旧清单读不出来（${e.javaClass.simpleName}），本次重写会丢掉已有摘要：$name"
+
+    /** 读旧内容失败的**人话说明**（A3；纯函数）。 */
+    internal fun oldContentReadFailureNote(name: String, e: Throwable): String =
+        "[资料库] 旧内容读不出来（${e.javaClass.simpleName}），本次写盘无法留 .bak：$name"
+
     /** 旧资料库根目录名（157 前的 `<工作区>/资料库/`）——**legacy**，仅存量识别用。 */
     const val DIR = ZhengdaoDirs.LEGACY_LIBRARY_DIR
 
@@ -180,7 +209,10 @@ object KnowledgeBase {
         val t = Thread({
             runCatching {
                 if (ensureScaffold(ctx, forced = true)) dispatch(ctx)
-                rebuildIndex(ctx)
+                val outcome = rebuildIndex(ctx)
+                if (outcome is IndexOutcome.Failed) {
+                    RunLog.log("资料库手动整理未完成：${outcome.why}")
+                }
             }.onFailure { RunLog.log("资料库手动整理失败：${it.message}") }
         }, "zd-knowledge-base-rebuild")
         t.isDaemon = true
@@ -201,8 +233,7 @@ object KnowledgeBase {
             if (!ensureScaffold(ctx)) return@runCatching
             dispatch(ctx)
             val t = Thread({
-                runCatching { rebuildIndex(ctx) }
-                    .onFailure { RunLog.log("资料库清单生成失败：${it.message}") }
+                reportRebuild("资料库清单生成失败", runCatching { rebuildIndex(ctx) })
             }, "zd-knowledge-base-index")
             t.isDaemon = true
             t.start()
@@ -225,8 +256,7 @@ object KnowledgeBase {
             if (!isEnabled(ctx)) return@runCatching
             if (!doneDir(ctx).isDirectory) return@runCatching
             val t = Thread({
-                runCatching { rebuildIndex(ctx) }
-                    .onFailure { RunLog.log("资料库自动刷新失败：${it.message}") }
+                reportRebuild("资料库自动刷新失败", runCatching { rebuildIndex(ctx) })
             }, "zd-knowledge-base-auto")
             t.isDaemon = true
             t.start()
@@ -317,8 +347,20 @@ object KnowledgeBase {
      * 复制过来之后就地重建一次清单（[copyRawInto] 的搭档；同样要在后台线程调用）。
      */
     fun rebuildAfterCopy(ctx: Context) {
-        runCatching { rebuildIndex(ctx) }
-            .onFailure { RunLog.log("资料库复制后重建清单失败：${it.message}") }
+        reportRebuild("资料库复制后重建清单失败", runCatching { rebuildIndex(ctx) })
+    }
+
+    /**
+     * 统一报「后台重建」的下场（276a，2026-10-29）。
+     *
+     * 关键：**`runCatching` 照旧保留**——真实 IO 异常（磁盘满、权限）还在；
+     * 只是 `rebuildIndex` 现在改返回三态，`runCatching` 成功不代表事情办成了，
+     * 所以要看返回的 [IndexOutcome.Failed] 并报出来。以前这两件事都被当成"没异常＝成功"。
+     */
+    private fun reportRebuild(prefix: String, result: Result<IndexOutcome>) {
+        result.onSuccess { outcome ->
+            if (outcome is IndexOutcome.Failed) RunLog.log("$prefix：${outcome.why}")
+        }.onFailure { RunLog.log("$prefix：${it.message}") }
     }
 
     // ── 预置骨架 ────────────────────────────────────────────────────────────
@@ -496,8 +538,8 @@ object KnowledgeBase {
         scanRaw(ctx).map { it.rel to it.size }
 
     /** 重建 `整理/00-目录.md`。内容未变则跳过。 */
-    fun rebuildIndex(ctx: Context) {
-        if (!rawDir(ctx).isDirectory) return
+    fun rebuildIndex(ctx: Context): IndexOutcome {
+        if (!rawDir(ctx).isDirectory) return IndexOutcome.Skipped
         val scan = scanRawFull(ctx)
         val items = scan.items
 
@@ -510,17 +552,23 @@ object KnowledgeBase {
         // 指纹没变**且清单文件还在**才跳过：资料库被整个删掉再重建时，指纹可能恰好没变
         // （比如 `原始/` 本来就是空的），只比指纹会让 `整理/00-目录.md` 永远不再生成（E-061）。
         val idx = indexFile(ctx)
-        if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return
+        if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return IndexOutcome.Skipped
 
         val text = indexText(items, scan.truncated)
         // 重渲染是"整份覆盖"，而模板里没有 `## 文件摘要` 一节 ⇒ 不搬回来的话，
         // 只要 `原始/` 有增删改（或清单被删后重建），模型跑出来的摘要就被静默抹掉。
         // 搬之前先读旧清单；搬的时候只保留原件还在的行（见 [KnowledgeBaseSummarizer.carryOverSummary]）。
-        val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull()
-        val carried = KnowledgeBaseSummarizer.carryOverSummary(old, text)
-        if (atomicWriteChecked(idx, carried)) {
+        // A1(a)（2026-10-29）：读旧清单失败**行为不变**（照旧重写），但不再静默——
+        // 以前 `getOrNull()` 把"没有旧清单"和"读坏了"混成一个 null，摘要被抹掉也没人知道。
+        val read = runCatching { idx.readText(Charsets.UTF_8) }
+        read.exceptionOrNull()?.let { e -> RunLog.log(oldIndexReadFailureNote(idx.name, e)) }
+        val carried = KnowledgeBaseSummarizer.carryOverSummary(read.getOrNull(), text)
+        val attempt = atomicWriteChecked(idx, carried)
+        if (attempt.wrote) {
             prefs.edit { putString(KEY_SIG, sig) }
+            return IndexOutcome.Written(attempt.readFailure)
         }
+        return IndexOutcome.Failed("清单没写成（内容为空或被拒）")
     }
 
     // ── P2：摘要回写 ────────────────────────────────────────────────────────
@@ -552,7 +600,7 @@ object KnowledgeBase {
         if (!idx.isFile) return false
         val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull() ?: return false
         val merged = KnowledgeBaseSummarizer.renderInto(old, summaries) ?: return false
-        return atomicWriteChecked(idx, merged)
+        return atomicWriteChecked(idx, merged).wrote
     }
 
     /**
@@ -642,17 +690,22 @@ object KnowledgeBase {
      * 带校验的原子写：空内容拒绝写入；覆盖前留 `.bak` 可回滚。
      * @return true = 已写入或内容本来就一致
      */
-    private fun atomicWriteChecked(target: File, text: String): Boolean {
-        if (text.isBlank()) return false
-        val old = if (target.isFile) runCatching { target.readText(Charsets.UTF_8) }.getOrNull() else null
-        if (old == text) return true
+    private fun atomicWriteChecked(target: File, text: String): WriteAttempt {
+        if (text.isBlank()) return WriteAttempt(wrote = false, readFailure = null)
+        // A3(a)（2026-10-29）：读旧内容失败**行为不变**（照旧写、`.bak` 留不下），但要报出来。
+        val read: Result<String?> =
+            if (target.isFile) runCatching { target.readText(Charsets.UTF_8) as String? } else Result.success(null)
+        val old = read.getOrNull()
+        val failure = read.exceptionOrNull()
+        failure?.let { e -> RunLog.log(oldContentReadFailureNote(target.name, e)) }
+        if (old == text) return WriteAttempt(wrote = true, readFailure = failure?.javaClass?.simpleName)
         if (old != null) {
             runCatching {
                 File(target.parentFile, target.name + ".bak").writeText(old, Charsets.UTF_8)
             }
         }
         atomicWrite(target, text)
-        return true
+        return WriteAttempt(wrote = true, readFailure = failure?.javaClass?.simpleName)
     }
 
     /** 内容未变不重写（幂等，避免无意义的写盘与 mtime 抖动）。 */
