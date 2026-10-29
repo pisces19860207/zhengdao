@@ -1,9 +1,13 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第二百七十九批 §1 的判据靶：④一键停、⑤双闸配额、⑥充电顺延、⑦零模型调用，
+// 第二百七十九批 §1 的判据靶：④一键停、⑤双闸配额、⑥充电顺延、⑦零模型调用、⑫对账，
 // 外加「条＝被检记录」与「留痕不含正文」两条定义。
 package com.example.zhengdao.baopu.inspect
 
+import com.example.zhengdao.baopu.DecisionActor
+import com.example.zhengdao.baopu.DecisionGroup
+import com.example.zhengdao.baopu.DecisionKind
+import com.example.zhengdao.baopu.DecisionRecord
 import java.io.File
 import java.util.Random
 import org.junit.Assert.assertEquals
@@ -38,6 +42,21 @@ class NocturnalPatrolTest {
     )
 
     private fun record(id: String, kind: String = PatrolRecord.KIND_DECISION) = PatrolRecord(id, kind)
+
+    private fun row(id: String, atMs: Long = 10L, tool: String = "file_write") = DecisionRecord(
+        id = id,
+        kind = DecisionKind.AUTO_ACT,
+        group = DecisionGroup.GRANT,
+        actor = DecisionActor.MODEL,
+        reason = "免问直行：$tool",
+        evidence = "tool:$tool:a.txt",
+        before = "",
+        after = "",
+        atMs = atMs,
+        sessionId = -1L,
+        reversible = true,
+        rollbackRef = "",
+    )
 
     private fun finding(
         check: InspectCheck = InspectCheck.AUDIT_GAP,
@@ -123,10 +142,62 @@ class NocturnalPatrolTest {
         )
         assertEquals("额度按被检记录数扣", 5, round.inspected)
         assertEquals("命中数只是读数，不参与额度", 1, round.hits)
-        assertEquals(5, NocturnalPatrol.weeklyUsed(listOf(round), 10L))
+        assertEquals(5, NocturnalPatrol.windowUsed(listOf(round), 10L))
         // 负例的另一半：一条都没命中也照样吃掉 5 条额度——「少报」不该换来「少抽」
         val quiet = NocturnalPatrol.roundOf(10L, 1L, (1..5).map { record("decision:$it") }, emptyList())
-        assertEquals(5, NocturnalPatrol.weeklyUsed(listOf(quiet), 10L))
+        assertEquals(5, NocturnalPatrol.windowUsed(listOf(quiet), 10L))
+    }
+
+    // ── 裁定②（2026-10-29）：抽到的与判据看到的是同一批 ─────────────────────
+
+    @Test
+    fun `判据⑫_池子建在判据读的同一份输入上`() {
+        val ledger = listOf(row("r1", atMs = 10L))
+        val acts = listOf(WriteTrace(11L, "file_write", sessionId = 7L, step = 3))
+        val pool = NocturnalPatrol.poolOf(ledger, acts)
+        assertEquals(listOf("trace:7#3", "decision:r1"), pool.map { it.record.id })
+        assertEquals(PatrolRecord.KIND_TRACE, pool[0].record.kind)
+        assertEquals(11L, pool[0].atMs)
+        assertEquals(PatrolRecord.KIND_DECISION, pool[1].record.kind)
+        assertEquals("decision:r1", pool[1].key)
+    }
+
+    @Test
+    fun `判据⑫_抽中的五条原样投回判据输入`() {
+        val ledger = (1..8).map { row("r$it", atMs = it.toLong()) }
+        val acts = (1..8).map { WriteTrace(it.toLong(), "file_write", 7L, it) }
+        val pool = NocturnalPatrol.poolOf(ledger, acts)
+        val picked = NocturnalPatrol.pick(pool, 5, Random(3))
+        assertEquals(5, picked.size)
+        val scoped = NocturnalPatrol.scopeTo(picked, ledger, acts)
+        assertTrue("抽到的每一条都该在判据输入里：${scoped.coverage.missing}", scoped.coverage.reconciled)
+        assertEquals(5, scoped.coverage.found)
+        // 投回去的是判据那份列表里的**同一批对象**，不是另造的副本
+        val scopedKeys = scoped.acts.map { NocturnalPatrol.keyOf(it) } + scoped.rows.map { NocturnalPatrol.keyOf(it) }
+        assertEquals(picked.map { it.key }.toSet(), scopedKeys.toSet())
+        scoped.acts.forEach { a -> assertTrue("痕迹必须取自判据读的那份列表", acts.any { it === a }) }
+        scoped.rows.forEach { r -> assertTrue("账行必须取自判据读的那份账", ledger.any { it === r }) }
+    }
+
+    @Test
+    fun `负例_池子另抓一份就对不上`() {
+        val acts = (1..5).map { WriteTrace(it.toLong(), "file_write", 7L, it) }
+        val other = (6..10).map { WriteTrace(it.toLong(), "file_write", 8L, it) }
+        val scoped = NocturnalPatrol.scopeTo(NocturnalPatrol.poolOf(emptyList(), acts), emptyList(), other)
+        assertFalse("另抓一份还照样「对得上」＝对账是假的", scoped.coverage.reconciled)
+        assertEquals(5, scoped.coverage.missing.size)
+        assertTrue(scoped.acts.isEmpty())
+    }
+
+    @Test
+    fun `负例_账本也缩到抽样那份会造出假漏行`() {
+        val acts = listOf(WriteTrace(10L, "file_write", 7L, 3))
+        val ledger = listOf(row("r1", atMs = 10L), row("r2", atMs = 10L, tool = "dir_delete"))
+        val picked = NocturnalPatrol.poolOf(ledger, acts)
+            .filter { it.record.id == "trace:7#3" || it.record.id == "decision:r2" }
+        val scoped = NocturnalPatrol.scopeTo(picked, ledger, acts)
+        assertEquals("对手给全量：清白", InspectVerdict.CLEAR, AuditGapCheck.check(scoped.acts, ledger).verdict)
+        assertEquals("对手也缩到抽样那份：假漏行", InspectVerdict.HIT, AuditGapCheck.check(scoped.acts, scoped.rows).verdict)
     }
 
     // ── 判据⑥：非充电顺延，不叠加 ───────────────────────────────────────────
@@ -148,7 +219,7 @@ class NocturnalPatrolTest {
     @Test
     fun `CRITICAL不占额度`() {
         val emergency = round(0L, 1L, inspected = 5, emergency = true)
-        assertEquals("灾异那趟不进周额度", 0, NocturnalPatrol.weeklyUsed(listOf(emergency), 0L))
+        assertEquals("灾异那趟不进周额度", 0, NocturnalPatrol.windowUsed(listOf(emergency), 0L))
         assertEquals(0, NocturnalPatrol.tonightUsed(listOf(emergency), 1L))
         // 额度用尽时灾异通道仍开
         val full = (0..5).map { round(it * day, it.toLong(), 5) }
