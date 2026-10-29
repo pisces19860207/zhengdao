@@ -45,11 +45,18 @@ internal object VerdictExperienceStore {
     @Volatile
     private var privateRoot: File? = null
 
+    /** 最近的读写失败（给调用方/测试看的一句话；null＝没失败过。房型照 DecisionLedger）。 */
+    @Volatile
+    var lastError: String? = null
+        private set
+
     /** 装配：公共副本根（工作区）＋私有账根（`抱朴记忆/`）。私有根可为 null（没装配就只读公共侧）。 */
     @Synchronized
     fun install(workspaceRoot: File, memoryRoot: File?) {
-        // 同一棵目录时镜像没有意义（自己拷自己），宁可空转也别写出双份行
-        publicRoot = if (memoryRoot != null && samePath(workspaceRoot, memoryRoot)) null else workspaceRoot
+        // 同一棵目录时镜像没有意义（自己拷自己），宁可空转也别写出双份行。
+        // 判断要用**传入的根**；公共副本永远在 `<工作区>/判决经验/` 这一层。
+        val pubDir = File(workspaceRoot, DIR_NAME)
+        publicRoot = if (memoryRoot != null && samePath(workspaceRoot, memoryRoot)) null else pubDir
         privateRoot = memoryRoot
     }
 
@@ -104,28 +111,53 @@ internal object VerdictExperienceStore {
     /** 某本账在公共副本里的文件（勘验/后续批对账用；未装配 ⇒ null）。 */
     fun publicFileIn(name: String): File? = publicRoot?.let { File(it, name) }
 
+    /** 读写重试次数与间隔（Windows 实时扫描的短暂共享冲突，毫秒级就过去）。 */
+    const val READ_ATTEMPTS = 3
+    const val READ_RETRY_MS = 60L
+
     // ── 内部：读行、稳定键、追加 ────────────────────────────────────────────
 
-    private fun readRows(f: File): List<Pair<String, String>> = runCatching {
-        if (!f.isFile) emptyList()
-        else f.readLines(Charsets.UTF_8)
-            .filter { it.isNotBlank() }
-            .map { it to stableKey(it) }
-    }.getOrElse {
-        RunLog.log("判决经验：${f.name} 读失败——${it.javaClass.simpleName}")
-        emptyList()
+    /**
+     * 读行（带重试）：**刚写完就读**在 Windows 上会撞上实时扫描的短暂共享冲突
+     * （首次实测：读侧吞成空表 ⇒ 同一行反复导出）。文件在而读失败重试 3 次；
+     * 还失败就记 [lastError]、按空表走（写失败不抛的账本纪律）。
+     */
+    private fun readRows(f: File): List<Pair<String, String>> {
+        if (!f.isFile) return emptyList()
+        var last: Throwable? = null
+        repeat(READ_ATTEMPTS) { attempt ->
+            runCatching {
+                // 对偶一律是 **(键, 行)**：去重按 first（键），落盘按 second（行）——
+                // 上一版 here 造反过一次，公共副本里写进了键字符串，测试当场抓出来。
+                return f.readLines(Charsets.UTF_8)
+                    .filter { it.isNotBlank() }
+                    .map { stableKey(it) to it }
+            }.onFailure {
+                last = it
+                if (attempt < READ_ATTEMPTS - 1) Thread.sleep(READ_RETRY_MS)
+            }
+        }
+        lastError = "判决经验：${f.name} 读失败——${last?.javaClass?.simpleName}: ${last?.message}"
+        RunLog.log(lastError!!)
+        return emptyList()
     }
 
     private fun appendMissing(target: File, rows: List<Pair<String, String>>): Int {
         if (rows.isEmpty()) return 0
-        return runCatching {
-            target.parentFile?.mkdirs()
-            target.appendText(rows.joinToString("") { it.second + "\n" }, Charsets.UTF_8)
-            rows.size
-        }.getOrElse {
-            RunLog.log("判决经验：${target.name} 追加失败——${it.javaClass.simpleName}")
-            0
+        var last: Throwable? = null
+        repeat(READ_ATTEMPTS) { attempt ->
+            runCatching {
+                target.parentFile?.mkdirs()
+                target.appendText(rows.joinToString("") { it.second + "\n" }, Charsets.UTF_8)
+                return rows.size
+            }.onFailure {
+                last = it
+                if (attempt < READ_ATTEMPTS - 1) Thread.sleep(READ_RETRY_MS)
+            }
         }
+        lastError = "判决经验：${target.name} 追加失败——${last?.javaClass?.simpleName}: ${last?.message}"
+        RunLog.log(lastError!!)
+        return 0
     }
 
     /**

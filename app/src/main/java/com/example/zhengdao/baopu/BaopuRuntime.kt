@@ -55,6 +55,8 @@ import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
+import com.example.zhengdao.baopu.profile.UserProfileBlackbox
+import com.example.zhengdao.baopu.profile.VerdictExperienceStore
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.ZhengdaoDirs
 import com.example.zhengdao.core.kb.KnowledgeBase
@@ -856,6 +858,15 @@ internal object BaopuRuntime {
         // 只存 File 不存 Context（`StaticFieldLeak` 的教训）；各域的写口（技能/产物/日记/评测/
         // 守卫管线）都经 `DecisionLedger.record(...)` 落账，找不到落点就只留一行日志、不静默。
         DecisionLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        // 第二百八十批：画像黑箱（`filesDir/baopu_internal/`——**不在**抱朴记忆/工作区等可读
+        // 目录，M7 判据「画像文件不在可读目录」）；喂样/重算/判据消费的挂接点在行为路径，
+        // 由 M7 与 283 的接线批来接（本批纯数据层，不进 UI 不进上下文）。
+        UserProfileBlackbox.install(File(appCtx.filesDir, UserProfileBlackbox.INTERNAL_DIR))
+        // 第二百八十批：判决经验跨重装副本——冷启动把三本判决账（御批/意见判定/追认队列）
+        // 与 `<工作区>/判决经验/`（默认 `Download/证道/判决经验/`）双向并集同步：重装后私有账
+        // 空了，公共副本回灌回来，判决历史不随卸载消失（283 的前置）。
+        VerdictExperienceStore.install(workspaceRoot(appCtx), File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        VerdictExperienceStore.sync()
         // 第九十六批：人设补丁留痕（`[persona] …`）。同一条口径：纯函数产行、装配层落盘。
         PersonaAudit.sink = { line -> RunLog.log(line) }
         return engine

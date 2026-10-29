@@ -63,8 +63,8 @@ internal data class ShortTermEntry(
     }
 }
 
-/** 一类稳定层的聚合（基数＋记账时刻；有效权重＝base×0.5^(龄/半衰期)，读时现算）。 */
-internal data class StableBucket(val base: Double, val atMs: Long)
+/** 一类稳定层的聚合（基数＋条数＋记账时刻；有效值＝×0.5^(龄/半衰期)，读时现算）。 */
+internal data class StableBucket(val base: Double, val count: Double, val atMs: Long)
 
 /**
  * 两层画像引擎（纯状态机；持久化由 [UserProfileBlackbox] 做）。
@@ -123,9 +123,10 @@ internal class TwoLayerProfile(shortTermTtlDays: Int = DEFAULT_SHORT_TERM_DAYS) 
         val w = weight.toDouble() * (if (fromUser) 1.0 else MODEL_FACTOR)
         shortTerm.add(ShortTermEntry(kind, atMs, w, fromUser, textSha, textLen))
         if (shortTerm.size > ROLLING_CAP) shortTerm.removeAt(0)
-        // 稳定层：先把旧基数衰减到此刻，再累加（同一把半衰期尺）
+        // 稳定层：先把旧基数衰减到此刻，再累加（同一把半衰期尺）；条数一条记一条
         val old = effectiveOf(kind, atMs)
-        stable[kind] = StableBucket(base = old + w, atMs = atMs)
+        val oldCount = effectiveCountOf(kind, atMs)
+        stable[kind] = StableBucket(base = old + w, count = oldCount + 1.0, atMs = atMs)
         return true
     }
 
@@ -164,12 +165,13 @@ internal class TwoLayerProfile(shortTermTtlDays: Int = DEFAULT_SHORT_TERM_DAYS) 
         var changed = false
         for ((kind, bucket) in stable.entries.toList()) {
             val eff = effectiveOf(kind, now)
+            val effCount = effectiveCountOf(kind, now)
             if (eff < STABLE_FLOOR) {
                 stable.remove(kind)
                 stableSince.remove(kind)
                 changed = true
             } else {
-                stable[kind] = StableBucket(base = eff, atMs = now)
+                stable[kind] = StableBucket(base = eff, count = effCount, atMs = now)
                 if (bucket.base != eff) changed = true
             }
         }
@@ -200,11 +202,11 @@ internal class TwoLayerProfile(shortTermTtlDays: Int = DEFAULT_SHORT_TERM_DAYS) 
         return distinct.associateWith { (alpha + (eff[it] ?: 0.0)) / denom }
     }
 
-    /** 弱先验是否在生效（判据口径：清短期层后第一周，或证据不足）。 */
+    /** 弱先验是否在生效（判据口径：清短期层后第一周，或样本不足 20 条）。 */
     fun weakPriorActive(now: Long): Boolean {
         if (lastEmptiedAt > 0L && now - lastEmptiedAt < WEAK_PRIOR_DAYS * DAY_MS) return true
         if (lastEmptiedAt > now) return true // 时钟回拨：按保守侧处理（当弱先验）
-        return totalEffective(now) < STABLE_MIN_SAMPLES
+        return totalSampleCount(now) < STABLE_MIN_SAMPLES
     }
 
     /** 某类是否算"稳定偏好"（份额 ≥60% 且连续 ≥2 周；份额跌破即不算）。 */
@@ -234,12 +236,21 @@ internal class TwoLayerProfile(shortTermTtlDays: Int = DEFAULT_SHORT_TERM_DAYS) 
         return b.base * 0.5.pow(ageDays / HALF_LIFE_DAYS)
     }
 
+    private fun effectiveCountOf(kind: String, now: Long): Double {
+        val b = stable[kind] ?: return 0.0
+        val ageDays = (now - b.atMs).coerceAtLeast(0L).toDouble() / DAY_MS
+        return b.count * 0.5.pow(ageDays / HALF_LIFE_DAYS)
+    }
+
     private fun totalEffective(now: Long): Double = stable.keys.sumOf { effectiveOf(it, now) }
 
-    /** 复评「连续 2 周 ≥60%」：份额达标即起算（不重置），跌破即撤销。 */
+    /** 稳定层证据条数（与权重同半衰期：老样本自然淡出，20 条的门槛是"最近学到了多少"）。 */
+    private fun totalSampleCount(now: Long): Double = stable.keys.sumOf { effectiveCountOf(it, now) }
+
+    /** 复评「连续 2 周 ≥60%」：份额达标（且样本 ≥20）即起算（不重置），跌破即撤销。 */
     private fun reevaluateStableShares(now: Long) {
         val total = totalEffective(now)
-        if (total < STABLE_MIN_SAMPLES) { // 证据不足时谈不上稳定偏好
+        if (totalSampleCount(now) < STABLE_MIN_SAMPLES) { // 样本不足时谈不上稳定偏好
             stableSince.clear()
             return
         }
@@ -260,7 +271,9 @@ internal class TwoLayerProfile(shortTermTtlDays: Int = DEFAULT_SHORT_TERM_DAYS) 
         .put("ttl", ttlDays)
         .put("short", JSONArray().also { a -> shortTerm.forEach { a.put(it.toJson()) } })
         .put("stable", JSONObject().also { o ->
-            stable.forEach { (k, b) -> o.put(k, JSONObject().put("b", b.base).put("at", b.atMs)) }
+            stable.forEach { (k, b) ->
+                o.put(k, JSONObject().put("b", b.base).put("c", b.count).put("at", b.atMs))
+            }
         })
         .put("ssince", JSONObject().also { o -> stableSince.forEach { (k, at) -> o.put(k, at) } })
         .put("emptied", lastEmptiedAt)
@@ -279,8 +292,9 @@ internal class TwoLayerProfile(shortTermTtlDays: Int = DEFAULT_SHORT_TERM_DAYS) 
             st.keys().forEach { k ->
                 val b = st.optJSONObject(k) ?: return@forEach
                 val base = b.optDouble("b", 0.0)
+                val count = b.optDouble("c", 0.0)
                 val at = b.optLong("at", 0L)
-                if (base > 0.0 && at > 0L) stable[k] = StableBucket(base, at)
+                if (base > 0.0 && at > 0L) stable[k] = StableBucket(base, count, at)
             }
             val ss = o.optJSONObject("ssince") ?: JSONObject()
             ss.keys().forEach { k -> val at = ss.optLong(k, 0L); if (at > 0L) stableSince[k] = at }
