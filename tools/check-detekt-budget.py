@@ -61,6 +61,7 @@ import xml.etree.ElementTree as ET
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_XML = os.path.join(ROOT, "app", "build", "reports", "detekt", "detekt.xml")
 DEFAULT_BUDGET = os.path.join(ROOT, "config", "detekt", "issue-budget.json")
+DEFAULT_DETEKT_YML = os.path.join(ROOT, "config", "detekt", "detekt.yml")
 
 FUNC_RE = re.compile(r"The function (\w+)")
 
@@ -104,6 +105,16 @@ def read_issues(xml_path: str):
         for i, it in enumerate(ordered, 1):
             it["fp"] = "%s#%d" % (base, i)
     return [(it["fp"], it["rule"], it["rel"], it["line"]) for it in out]
+
+
+def read_max_issues(yml_path: str):
+    """从 detekt.yml 读 `maxIssues: N`（D1 的硬墙值、D2 互锁的另一端）。读不到返回 None。"""
+    try:
+        text = open(yml_path, "r", encoding="utf-8").read()
+    except OSError:
+        return None
+    m = re.search(r"(?m)^#\s*maxIssues:\s*(\d+)\s*$", text)
+    return int(m.group(1)) if m else None
 
 
 def rules_of(issues) -> dict:
@@ -154,6 +165,18 @@ def main(argv=None):
             )
             return 1
 
+        # D3：--write 必须与 detekt.yml 的硬墙同改（两处相等）。只改预算不改硬墙 ⇒ 拒绝。
+        wall_before = read_max_issues(DEFAULT_DETEKT_YML)
+        if wall_before is None:
+            print("::error title=detekt 硬墙互锁::detekt.yml 里没有 `maxIssues: N`；"
+                  "先补上并与本次预算 total=%d 相等再重记。" % current_total)
+            return 1
+        if wall_before != current_total:
+            print("::error title=detekt 硬墙互锁::本次预算 total=%d 与 detekt.yml 的 `maxIssues: %d` 不等。"
+                  "把 detekt.yml 那一行改成 %d 再跑 --write（两处同一提交一起改）。"
+                  % (current_total, wall_before, current_total))
+            return 1
+
         doc = {
             "total": current_total,
             "rules": rules,
@@ -196,6 +219,18 @@ def main(argv=None):
         b = budget.get("rules", {}).get(rule, 0)
         if n > b:
             print("::warning title=detekt 规则分布::%s %d > 预算 %d（只提示；判据是总量）" % (rule, n, b))
+
+    # D2/D3：互锁——detekt.yml 的 maxIssues 必须等于预算 total。
+    # 只改一处（改预算不改硬墙、或改硬墙不改预算）在这里立刻红，避免「脚本口径变了但硬墙放水」。
+    wall = read_max_issues(DEFAULT_DETEKT_YML)
+    if wall is None:
+        print("::error title=detekt 硬墙互锁::config/detekt/detekt.yml 里没有 `maxIssues: N` —— "
+              "硬墙没有上限；补上并与 issue-budget.json 的 total 相等（只降不升，两处同改）。")
+        return 1
+    if wall != budget_total:
+        print("::error title=detekt 硬墙互锁::`maxIssues: %d`（detekt.yml）≠ 预算 total %d（issue-budget.json）。"
+              "两处必须相等且**同一提交一起改**（只降不升）。" % (wall, budget_total))
+        return 1
 
     known = set(budget.get("issues", []))
     fresh = [i for i in issues if i[0] not in known]

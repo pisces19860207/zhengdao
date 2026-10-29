@@ -512,6 +512,42 @@ tasks.register<JavaExec>("detektReport") {
 }
 
 /*
+ * 276a D1（2026-10-29）：**硬墙**——与 detektReport 跑同一份分析，唯一差别是超上限就让构建红。
+ *
+ * 为什么单开一个任务：detektReport 是 report-only（`isIgnoreExitValue = true`），
+ * 而「只降不升」若只靠 `tools/check-detekt-budget.py`，那脚本被跳过 / 从 CI 里被删掉就没有第二道闸。
+ * 本任务把上限交给 **detekt 自己**（CLI `--max-issues`，官方 1.23.8 文档：
+ * 「return exit code 0 only when found issues count does not exceed specified issues count」），
+ * 超一条就非 0 退出 ⇒ 不依赖脚本。
+ *
+ * 上限值的唯一真源是 `config/detekt/detekt.yml` 里那行 `maxIssues: N`（人读＋本任务解析）；
+ * `check-detekt-budget.py` 另有互锁校验它必须等于 `issue-budget.json` 的 total。
+ */
+tasks.register<JavaExec>("detektWall") {
+    group = "verification"
+    description = "Detekt 硬墙（发现条数 > maxIssues 即失败；上限读 config/detekt/detekt.yml）"
+    classpath = detektCli
+    mainClass.set("io.gitlab.arturbosch.detekt.cli.Main")
+    javaLauncher.set(detektLauncher)
+    workingDir = projectDir
+
+    // 上限在**配置期**读：doFirst 里改 args 会破 configuration cache（实测报
+    // "cannot serialize Gradle script object references"），那会把这道闸变成假红/假绿。
+    val wallCfg = rootProject.file("config/detekt/detekt.yml")
+    val limit = Regex("(?m)^#\\s*maxIssues:\\s*(\\d+)\\s*$").find(wallCfg.readText(Charsets.UTF_8))
+        ?.groupValues?.get(1)
+        ?: throw GradleException(
+            "config/detekt/detekt.yml 里找不到 `# maxIssues: N` —— 硬墙没有上限就等于没有墙（276a D1）",
+        )
+    args = detektCommonArgs + listOf(
+        "--max-issues", limit,
+        "--report", "xml:build/reports/detekt/detekt-wall.xml",
+    )
+    // 硬墙：超上限就让构建红（这一行就是「第二道闸」）。
+    isIgnoreExitValue = false
+}
+
+/*
  * 第二百六十六批（2026-10-28）实测发现：**`config/detekt/baseline.xml` 已经失效**。
  *
  *   带 `--baseline` 跑，仍报 330 条（LongMethod 148 / CyclomaticComplexMethod 182），

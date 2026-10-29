@@ -279,7 +279,13 @@ jobs:
       #   所以没人发现。派工单禁止「为了让 detekt 通过去改 baseline」⇒ 不动它，改用预算闸
       #   （tools/check-detekt-budget.py ＋ config/detekt/issue-budget.json，与 lint-budget 同款口径）。
       #   本机跑不了 detekt（Java 21 toolchain，foojay 在本机下不下来），所以读数只能在 CI 出。
-      - name: detekt 预算闸（存量 330 条冻结，新增即红）
+      # 276a D1（2026-10-29）：**硬墙**先跑——上限取自 config/detekt/detekt.yml 的 `maxIssues`，
+      #   交给 detekt 自己的 `--max-issues`；超一条就非 0（不经过下面的 python 脚本）。
+      #   这道闸的意义：就算有人把预算脚本从流水线里删掉，上限还在 detekt 这边。
+      - name: detekt 硬墙（发现条数 > maxIssues 即失败，不经脚本）
+        run: ./gradlew :app:detektWall --console=plain
+
+      - name: detekt 预算闸（与硬墙互锁：两处必须相等；存量不动，新增即红）
         run: |
           ./gradlew :app:detektReport --console=plain
           python3 tools/check-detekt-budget.py

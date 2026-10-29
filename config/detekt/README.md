@@ -97,3 +97,49 @@ G7 点名的 5 个文件共 **16 条**：
 - 体量参考：329 条里约 80 条落在 `@Composable` 上（Compose 组合函数拆小常反而更难读，
   但这些也要按同口径处理或另立口径拍板）；重灾区 `RunEngine.runLoop`（527 行／复杂度 106）、
   `BaopuSettingsScreen`（992 行）、`RiskMatrix.classify`（185 行／复杂度 58）。
+
+
+## 硬墙与互锁（276a D1–D4，2026-10-29）
+
+**两道闸，缺一不可**：
+
+| 闸 | 在哪 | 判据 |
+|---|---|---|
+| **硬墙** | `:app:detektWall`（CI 里单独一步，先跑） | 发现条数 > `maxIssues` ⇒ detekt 自己非 0 退出（`Analysis failed with N weighted issues.`），**不经 python 脚本** |
+| **预算闸** | `tools/check-detekt-budget.py`（CI 里紧随其后） | 只看**总量**是否超 `issue-budget.json` 的 total；另做**互锁**：`maxIssues` 必须等于 total，不等即红 |
+
+> 为什么要有硬墙：预算闸是脚本，脚本被跳过 / 从流水线里删掉就没有第二道闸；
+> 上限交给 detekt 自己（CLI `--max-issues`，1.23.8 官方文档：
+> 「return exit code 0 only when found issues count does not exceed specified issues count」）。
+
+**值放哪**：`config/detekt/detekt.yml` 末尾一行 **注释形态**的 `# maxIssues: 326`。
+它故意是注释——实测 detekt 1.23.8 把未注释的 `maxIssues:` 当**非法配置键**
+（`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）⇒ 值由 `detektWall` 与预算闸
+用正则读，再作为 CLI `--max-issues` 交给 detekt。
+
+**当前值**：`# maxIssues: 326` ＝ `issue-budget.json` 的 `total`（真实读数 325，留 1 条余量）。
+
+### 降上限（唯一合法路径：两处同改）
+
+```bash
+# 1) 用 CI 的读数重记预算（--write 只许 CI 的 XML；本机读数不进预算）
+python3 tools/check-detekt-budget.py --write --xml <CI artifact detekt.xml> --from-ci "run #N"
+#    ⚠️ 若新 total 与 detekt.yml 的 maxIssues 不等，会被互锁拒绝——这正是设计：
+#       它逼你「两处同一提交一起改」，不允许只改一处让硬墙放水。
+
+# 2) 同一提交里把 detekt.yml 那行改成新值
+#    config/detekt/detekt.yml：  # maxIssues: <新 total>
+
+# 3) 本地复核两道闸（都要绿）
+./gradlew :app:detektWall                 # 硬墙：超上限即非 0
+python3 tools/check-detekt-budget.py      # 预算闸 + 互锁
+```
+
+**抬升**：`--allow-raise "为什么这次必须涨"`，同样**两处同改**，理由写进提交信息。
+
+### 负例（本机实做过，2026-10-29）
+
+- `# maxIssues: 324`（低于真实 325）⇒ `:app:detektWall` **BUILD FAILED**，
+  detekt 原文 `Analysis failed with 325 weighted issues.`（不经过脚本）。
+- `# maxIssues: 327` 而预算 326 ⇒ 预算闸 **rc=1**，报「`maxIssues: 327` ≠ 预算 total 326，两处必须相等且同一提交一起改」。
+- `--write` 后 total=325 但 yml 仍 326 ⇒ **rc=1** 并提示「把 detekt.yml 那行改成 325 再跑」。
