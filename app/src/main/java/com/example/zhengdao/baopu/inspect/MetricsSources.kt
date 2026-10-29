@@ -1,0 +1,160 @@
+// 独立开发声明：本文件为本项目原创，不含第三方源码拷贝。
+//
+// 第二百八十一批：读数层的**取数壳**。算在 [Metrics]（纯函数），这里只做三件事：
+// 读库（`rawQuery`）、读账本（JSONL）、读技能验收快照（`验收.json`）。
+//
+// 三条纪律与 239 的 `PatrolSources` 同款：
+// 1. **只读**：没有 `execSQL`／没有追加口／没有建目录（`InspectReadOnlyGateTest` 从源码层钉）；
+// 2. **每条 SQL 都带 `LIMIT`**（读数不是全库导出；超限按新→旧截断，与巡按同一纪律）；
+// 3. **取数窗取最大窗**（30 天），各指标再按自己的窗口（7/30 天）筛——
+//    窗口口径只在 [MetricKey.windowDays] 一处，取数层不另抄一份。
+//
+// 一处实话：M9 的判词没有持久账（281 不写新账，账本白名单不在本批租约里），
+// 所以 [snapshot] 的 M9 由调用方递进来；空表就是"这周没判"，读数会如实 unknown。
+package com.example.zhengdao.baopu.inspect
+
+import com.example.zhengdao.baopu.AcceptanceState
+import com.example.zhengdao.baopu.BaopuDb
+import com.example.zhengdao.baopu.DecisionLedger
+import com.example.zhengdao.baopu.DecisionRecord
+import com.example.zhengdao.baopu.DecisionReview
+import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.TeachReplayStore
+import java.io.File
+
+/** 取数上限（读数一次最多看多少行/多少个目录；别把整库搬进内存）。 */
+internal object MetricsBudget {
+
+    /** 一次最多读多少行日志/轨迹/子任务（新→旧截断）。 */
+    const val ROWS = 2_000
+
+    /** 取数窗（天）：等于最大的指标窗（误判率与技能成功率都是 30 天）。 */
+    const val SPAN_DAYS = 30
+
+    /** 一次最多读多少次巡按。 */
+    const val PATROLS = 60
+
+    /** 每层技能目录最多看多少个。 */
+    const val SKILL_DIRS = 200
+
+    private const val DAY_MS = 86_400_000L
+
+    /** 取数起点（各指标自己的窗在 [Metrics] 里再筛）。 */
+    fun fromOf(nowMs: Long): Long = nowMs - SPAN_DAYS * DAY_MS
+}
+
+/** 读数的取数口（供界面/装配层调用；M9 判词由调用方给）。 */
+internal object MetricsSources {
+
+    /** 记忆根（208 装配在哪，账本就落哪；没装配 ⇒ null，调用方直接不出数）。 */
+    fun memoryRoot(): File? = DecisionLedger.installedRoot()
+
+    /** 一次取全（任何一路失败 ⇒ 那一路为空表，其余照算；绝不因一路缺数把别的数编出来）。 */
+    fun snapshot(
+        db: BaopuDb,
+        projectRoot: File,
+        memoryRoot: File,
+        nowMs: Long,
+        m9: List<M9Judgment> = emptyList(),
+    ): Metrics.Inputs {
+        val from = MetricsBudget.fromOf(nowMs)
+        return Metrics.Inputs(
+            nowMs = nowMs,
+            ledger = ledger(memoryRoot),
+            reviews = reviews(memoryRoot),
+            logs = logSteps(db, from),
+            runs = runSteps(db, from),
+            subTasks = subTasks(db, from),
+            skills = skills(projectRoot, memoryRoot),
+            patrols = patrols(memoryRoot),
+            acts = PatrolSources.writeTraces(db, from),
+            m9 = m9,
+        )
+    }
+
+    /** 208 账本（读侧上限照 208 自己的 `READ_LIMIT`）。 */
+    fun ledger(root: File): List<DecisionRecord> = DecisionLedger.read(root)
+
+    /** 219 抽检结论。 */
+    fun reviews(root: File): List<DecisionReview.Entry> = DecisionReview.read(root)
+
+    /** 239 巡按台账（新→旧，最多 [MetricsBudget.PATROLS] 次）。 */
+    fun patrols(root: File, limit: Int = MetricsBudget.PATROLS): List<PatrolEntry> =
+        PatrolLedger.read(root, limit)
+
+    /** `run_log` 的动作/摆卡行（只取会话、步、状态、时刻；正文类字段一概不出库）。 */
+    fun logSteps(db: BaopuDb, fromMs: Long, limit: Int = MetricsBudget.ROWS): List<LogStep> = runCatching {
+        db.read { d ->
+            val rows = ArrayList<LogStep>()
+            d.rawQuery(
+                "SELECT id, session_id, step, state, created_at FROM run_log " +
+                    "WHERE created_at >= ? ORDER BY id DESC LIMIT ?",
+                arrayOf(fromMs.toString(), limit.toString()),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows += LogStep(c.getLong(0), c.getLong(1), c.getInt(2), c.getString(3), c.getLong(4))
+                }
+            }
+            rows
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * `run_trace` 的步（任务＝run_id；同一步的多行按 `started_at` 最小那条取）。
+     *
+     * 为什么按 (run_id, session_id, step) 分组：一个 run 的同一 step 可能落多行轨迹
+     * （阶段不同），不分组的"任务数"会被同一个 run 重复放大。
+     */
+    fun runSteps(db: BaopuDb, fromMs: Long, limit: Int = MetricsBudget.ROWS): List<RunStep> = runCatching {
+        db.read { d ->
+            val rows = ArrayList<RunStep>()
+            d.rawQuery(
+                "SELECT run_id, session_id, step, MIN(started_at) FROM run_trace " +
+                    "WHERE started_at >= ? GROUP BY run_id, session_id, step " +
+                    "ORDER BY MIN(started_at) DESC LIMIT ?",
+                arrayOf(fromMs.toString(), limit.toString()),
+            ).use { c ->
+                while (c.moveToNext()) rows += RunStep(c.getString(0), c.getLong(1), c.getInt(2), c.getLong(3))
+            }
+            rows
+        }
+    }.getOrDefault(emptyList())
+
+    /** `sub_task` 的终态行（`ended_at` 为窗口依据；未结束的 ended_at=0 自然不进窗）。 */
+    fun subTasks(db: BaopuDb, fromMs: Long, limit: Int = MetricsBudget.ROWS): List<SubTaskRow> = runCatching {
+        db.read { d ->
+            val rows = ArrayList<SubTaskRow>()
+            d.rawQuery(
+                "SELECT task_id, status, ended_at FROM sub_task " +
+                    "WHERE ended_at >= ? ORDER BY ended_at DESC LIMIT ?",
+                arrayOf(fromMs.toString(), limit.toString()),
+            ).use { c -> while (c.moveToNext()) rows += SubTaskRow(c.getString(0), c.getString(1), c.getLong(2)) }
+            rows
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * 两层技能目录的验收快照（`技能/<名>/验收.json`）。
+     *
+     * 只 `listFiles` 数目录、只读有 `验收.json` 的那几个；整份读不出（schema 不对/坏文件）
+     * ⇒ 这一条不进读数（不静默当"零样本"以外的任何东西）。
+     */
+    fun skills(
+        projectRoot: File,
+        globalRoot: File,
+        cap: Int = MetricsBudget.SKILL_DIRS,
+    ): List<SkillSnapshot> = listOf(
+        "project" to SkillRules.projectSkillDir(projectRoot),
+        "global" to SkillRules.globalSkillDir(globalRoot),
+    ).flatMap { (scope, dir) ->
+        val subs = runCatching {
+            dir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }.orEmpty()
+        }.getOrDefault(emptyList())
+        subs.take(cap).mapNotNull { sub ->
+            val file = File(sub, TeachReplayStore.ACCEPTANCE_FILE)
+            if (!file.isFile) return@mapNotNull null
+            val text = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return@mapNotNull null
+            AcceptanceState.fromJson(text)?.let { SkillSnapshot(scope, sub.name, it) }
+        }
+    }
+}
