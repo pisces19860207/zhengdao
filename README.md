@@ -151,3 +151,12 @@
 这个项目由作者和几个 AI 伙伴协作完成。抱朴与玄览基于 Kotlin、Jetpack Compose、AndroidX 与系统 WebView 构建。
 
 终端相关组件（Termux、PRoot、Debian、uv 等）的致谢随终端一起放在 [zhengdao-term](https://github.com/pisces19860207/zhengdao-term)。
+
+## 常见坑（工程侧，踩过才写上来）
+
+- **public 函数不能暴露 internal 类型**：`rebuildIndex` 是 public，改成返回三态时直接编译失败
+  （`'public' function exposes its 'internal' return type`）。要么把类型放 public，要么把函数改 internal——
+  别先怪编译器，先想清楚这个 API 要不要对外。
+- **"为了编译通过"的机械适配 ≠ 接线**：给某个函数换了返回类型后，零调用的旧代码（例：
+  `writeSummaries`）也得跟着改一行才能编译——那是**机械适配**，不代表把这个功能接进链路了。
+  交付时要把"改了什么、为什么必须改"分开写，别让下一个人以为功能上线了。
