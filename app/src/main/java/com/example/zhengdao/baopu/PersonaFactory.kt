@@ -34,10 +34,10 @@ internal object PersonaFactory {
      * **改这个常量必须同时改 `assets/persona/factory_c.md`，并且要有理由**——
      * 判据①就是靠它挡住"顺手把出厂层改成用户的东西"。
      */
-    const val SHA256 = "321a8f0478cc665312fc0d31529f0f4eab02c57fec1b39430c4e70213885e53a"
+    const val SHA256 = "41d971545462cc7408c5b73cf1cf895a4d93bb874cd3a5758e6d117f6b9e03b0"
 
     /** 出厂人设的字节数（与 [SHA256] 一起做双锚，改一个字就双双对不上）。 */
-    const val BYTE_COUNT = 504
+    const val BYTE_COUNT = 520
 
     /**
      * 读出厂人设（读不到 ⇒ null，**不抛**：assets 丢了不该让 App 起不来）。
