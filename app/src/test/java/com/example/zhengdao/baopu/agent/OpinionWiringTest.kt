@@ -467,4 +467,96 @@ class OpinionWiringTest {
         assertNotNull(ruling)
         assertEquals(LawRef.L9, ruling!!.opinion.lawRef)
     }
+
+    // ── 第二百七十七批：M2 真执行 ＋ L33 自决单 ──────────────────────────
+
+    @Test
+    fun `判据_同轮三条意见只弹一张另两条进延后队列`() {
+        // 同一轮（round 不换）三条不同工具的意见：这是派工单判据①本体
+        val a = OpinionWiring.onVerdict(call("a"), unclassified(), now)!!
+        val b = OpinionWiring.onVerdict(call("b"), unclassified(), now)!!
+        val c = OpinionWiring.onVerdict(call("c"), unclassified(), now)!!
+
+        assertEquals(OpinionDecision.POP, a.decision)
+        assertEquals(OpinionDecision.DEFER, b.decision)
+        assertEquals(OpinionDecision.DEFER, c.decision)
+        assertEquals("同轮只许弹一张", 1, listOf(a, b, c).count { it.decision == OpinionDecision.POP })
+        assertEquals("另两条必须在队列里、可回放", listOf(b.id, c.id), OpinionWiring.deferred().map { it.id })
+        assertEquals("一条都不许丢", 3, OpinionWiring.replay().size)
+    }
+
+    @Test
+    fun `判据_重启之后延后队列仍可读`() {
+        fillDay()
+        round = 4
+        val tail = OpinionWiring.onVerdict(call("d"), unclassified(), now)!!
+        assertEquals(OpinionDecision.DEFER, tail.decision)
+        val before = OpinionWiring.deferred().size
+        assertTrue(before >= 1)
+
+        // 模拟重启：内存队列清空，但账还在盘上（root 没动）
+        OpinionWiring.resetForTest()
+        val after = OpinionWiring.deferred()
+        assertEquals("重启后队列不许清空（判据④）", before, after.size)
+        assertTrue(after.any { it.id == tail.id })
+    }
+
+    @Test
+    fun `判据_延后队列三十天后仍可读`() {
+        fillDay()
+        round = 4
+        OpinionWiring.onVerdict(call("d"), unclassified(), now)
+        OpinionWiring.resetForTest()
+        // 40 天后读：队列不按"最近 30 天"过滤（那是投票窗，不是查账窗）
+        val rows = OpinionWiring.deferred()
+        assertTrue("40 天后队列仍非空", rows.isNotEmpty())
+        assertTrue(rows.all { it.decision == OpinionDecision.DEFER })
+    }
+
+    @Test
+    fun `判据_判了不打扰就落一条自决单`() {
+        // 硬拒 ⇒ SKIP（不打扰），必须有理由进追认队列
+        val ruling = OpinionWiring.onVerdict(call("deny"), hardDeny(), now)!!
+        assertEquals(OpinionDecision.SKIP, ruling.decision)
+        val rows = SelfRulingLedger.replay()
+        assertEquals(1, rows.size)
+        assertEquals("already_refused", rows[0].why)
+        assertEquals("理由要指向哪条意见", ruling.id, rows[0].opinionId)
+        assertTrue("理由不许空", rows[0].reason.isNotBlank())
+    }
+
+    @Test
+    fun `负例_自决单缺理由不许落账`() {
+        val opinion = opinion()
+        assertNull(
+            SelfRulingLedger.note(
+                opinion = opinion,
+                opinionId = "op:x",
+                round = "process",
+                tool = "t",
+                why = "no_law",
+                reason = "  ",
+                now = now,
+            ),
+        )
+        assertTrue(SelfRulingLedger.replay().isEmpty())
+    }
+
+    @Test
+    fun `负例_超预算不许丢_三条意见一条不落`() {
+        val a = OpinionWiring.onVerdict(call("a"), unclassified(), now)!!
+        val b = OpinionWiring.onVerdict(call("b"), unclassified(), now)!!
+        val c = OpinionWiring.onVerdict(call("c"), unclassified(), now)!!
+        val ids = OpinionWiring.replay().map { it.id }.toSet()
+        assertTrue("三条都要在账上", ids.containsAll(listOf(a.id, b.id, c.id)))
+        assertTrue("压下的那两条要能回放", OpinionWiring.deferred().map { it.id }.containsAll(listOf(b.id, c.id)))
+    }
+
+    @Test
+    fun `判据_同轮不弹第二张但每日三张仍然有效`() {
+        // 换了轮才弹：fillDay 每轮一张 ⇒ 三张全弹（不是"一天只弹一张"）
+        fillDay()
+        assertEquals(3, OpinionWiring.replay().count { it.decision == OpinionDecision.POP })
+        assertEquals(0, OpinionWiring.deferred().size)
+    }
 }
