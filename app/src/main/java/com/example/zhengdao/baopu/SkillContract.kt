@@ -193,49 +193,9 @@ internal object SkillContract {
             val section = if (sp > 0) payload.substring(0, sp) else payload
             val rest = if (sp > 0) payload.substring(sp + 1).trim() else ""
             when (section) {
-                SECTION_APPLIES -> {
-                    val eq = rest.indexOf('=')
-                    if (eq <= 0) {
-                        errors += "第 $no 行：$SECTION_APPLIES 少了「类型=值」（例：$SECTION_APPLIES ${ConditionKind.WORKSPACE_HAS.wire}=配货单-*.xlsx）"
-                    } else {
-                        val k = rest.substring(0, eq).trim()
-                        val v = unquote(rest.substring(eq + 1))
-                        val kind = ConditionKind.fromWire(k)
-                        when {
-                            kind == null -> errors +=
-                                "第 $no 行：未知的适用条件类型「$k」（只许 ${ConditionKind.entries.joinToString("／") { it.wire }}）"
-                            v.isEmpty() -> errors += "第 $no 行：$k 的值是空的"
-                            kind == ConditionKind.URL_DOMAIN && !looksLikeDomain(v) ->
-                                errors += "第 $no 行：url_domain 的值「$v」不像域名（例：example.com）"
-                            else -> {
-                                val c = Condition(kind, if (kind == ConditionKind.URL_DOMAIN) v.lowercase() else v)
-                                if (c !in applies) applies += c
-                            }
-                        }
-                    }
-                }
+                SECTION_APPLIES -> applyAppliesLine(no, rest, applies, errors)
 
-                SECTION_SUCCESS -> {
-                    val eq = rest.indexOf('=')
-                    if (eq <= 0) {
-                        errors += "第 $no 行：$SECTION_SUCCESS 少了「类型=值」（例：$SECTION_SUCCESS ${SuccessKind.ELEMENT_APPEARS.wire}=文案「装车状态」）"
-                    } else {
-                        val k = rest.substring(0, eq).trim()
-                        val v = unquote(rest.substring(eq + 1))
-                        val kind = SuccessKind.fromWire(k)
-                        when {
-                            kind == null -> errors +=
-                                "第 $no 行：未知的成功判据类型「$k」（只许 ${SuccessKind.entries.joinToString("／") { it.wire }}）"
-                            v.isEmpty() -> errors += "第 $no 行：$k 的值是空的"
-                            v.lowercase() in VAGUE_SUCCESS_VALUES -> errors +=
-                                "第 $no 行：「$v」不是可观察判据——要写页面上看得见的东西（元素文案或区域名），不许写「完成」这类结论"
-                            else -> {
-                                val s = Success(kind, v)
-                                if (s !in success) success += s
-                            }
-                        }
-                    }
-                }
+                SECTION_SUCCESS -> applySuccessLine(no, rest, success, errors)
 
                 SECTION_PROTECTED -> {
                     val clause = unquote(rest)
@@ -252,6 +212,69 @@ internal object SkillContract {
         if (errors.isNotEmpty()) return Parsed.Invalid(errors)
         val contract = Contract(applies.toList(), success.toList(), protectedClauses.toList())
         return Parsed.Contracted(contract, contract.missingSections())
+    }
+
+    /**
+     * 解析一行 `applies <类型>=<值>`（2026-10-29 从 [parse] 里抽出来：
+     * 它是**一个可以单独读、单独测的校验单元**，留在循环里只会把 parse 撑到 70+ 行）。
+     * 错误文案逐字保留——单测对着这些句子断言。
+     */
+    private fun applyAppliesLine(
+        no: Int,
+        rest: String,
+        applies: MutableList<Condition>,
+        errors: MutableList<String>,
+    ) {
+        val eq = rest.indexOf('=')
+        if (eq <= 0) {
+            errors += "第 $no 行：$SECTION_APPLIES 少了「类型=值」（例：$SECTION_APPLIES ${ConditionKind.WORKSPACE_HAS.wire}=配货单-*.xlsx）"
+            return
+        }
+        val k = rest.substring(0, eq).trim()
+        val v = unquote(rest.substring(eq + 1))
+        val kind = ConditionKind.fromWire(k)
+        when {
+            kind == null -> errors +=
+                "第 $no 行：未知的适用条件类型「$k」（只许 ${ConditionKind.entries.joinToString("／") { it.wire }}）"
+            v.isEmpty() -> errors += "第 $no 行：$k 的值是空的"
+            kind == ConditionKind.URL_DOMAIN && !looksLikeDomain(v) ->
+                errors += "第 $no 行：url_domain 的值「$v」不像域名（例：example.com）"
+            else -> {
+                val c = Condition(kind, if (kind == ConditionKind.URL_DOMAIN) v.lowercase() else v)
+                if (c !in applies) applies += c
+            }
+        }
+    }
+
+    /**
+     * 解析一行 `success <类型>=<值>`（同上，从 [parse] 抽出）。
+     * 「不可观察判据」那道拦（`完成`/`成功` 之类）只在这里，别挪走——它是 §2 的可执行面。
+     */
+    private fun applySuccessLine(
+        no: Int,
+        rest: String,
+        success: MutableList<Success>,
+        errors: MutableList<String>,
+    ) {
+        val eq = rest.indexOf('=')
+        if (eq <= 0) {
+            errors += "第 $no 行：$SECTION_SUCCESS 少了「类型=值」（例：$SECTION_SUCCESS ${SuccessKind.ELEMENT_APPEARS.wire}=文案「装车状态」）"
+            return
+        }
+        val k = rest.substring(0, eq).trim()
+        val v = unquote(rest.substring(eq + 1))
+        val kind = SuccessKind.fromWire(k)
+        when {
+            kind == null -> errors +=
+                "第 $no 行：未知的成功判据类型「$k」（只许 ${SuccessKind.entries.joinToString("／") { it.wire }}）"
+            v.isEmpty() -> errors += "第 $no 行：$k 的值是空的"
+            v.lowercase() in VAGUE_SUCCESS_VALUES -> errors +=
+                "第 $no 行：「$v」不是可观察判据——要写页面上看得见的东西（元素文案或区域名），不许写「完成」这类结论"
+            else -> {
+                val s = Success(kind, v)
+                if (s !in success) success += s
+            }
+        }
     }
 
     /** 缺契约／读不成／不齐——给人看的一句话（三种要分开说，别混成一句「没有契约」）。 */

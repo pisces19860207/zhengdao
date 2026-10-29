@@ -168,52 +168,11 @@ object ResultCardTemplates {
 
         val seen = HashSet<String>()
         val groups = ArrayList<CardGroupSpec>(groupArr.length())
-        for (gi in 0 until groupArr.length()) {
-            val g = groupArr.optJSONObject(gi) ?: return TemplateLoad.Bad("$source: groups[$gi] 不是对象")
-            val groupKey = g.optString("key").trim().ifEmpty { "g$gi" }
-            val titleKeyOfGroup = g.optString("titleKey").trim().ifEmpty { null }
-            val rowArr: JSONArray = g.optJSONArray("rows")
-                ?: return TemplateLoad.Bad("$source: groups[$gi] 缺 rows")
-            if (rowArr.length() == 0) return TemplateLoad.Bad("$source: groups[$gi] 没有行")
-            val rows = ArrayList<CardRowSpec>(rowArr.length())
-            for (ri in 0 until rowArr.length()) {
-                val r = rowArr.optJSONObject(ri)
-                    ?: return TemplateLoad.Bad("$source: groups[$gi].rows[$ri] 不是对象")
-                val key = r.optString("key").trim()
-                if (key.isEmpty()) return TemplateLoad.Bad("$source: groups[$gi].rows[$ri] 缺 key")
-                if (!seen.add(key)) return TemplateLoad.Bad("$source: key「$key」在同一模板里重复")
-                val labelKey = r.optString("labelKey").trim()
-                if (labelKey.isEmpty()) {
-                    return TemplateLoad.Bad("$source: 行「$key」缺 labelKey（文案不许写在 JSON 里）")
-                }
-                rows += CardRowSpec(
-                    key = key,
-                    labelKey = labelKey,
-                    copyable = r.optBoolean("copyable", false),
-                    dialable = r.optBoolean("dialable", false),
-                    sensitiveInLog = r.optBoolean("sensitiveInLog", false),
-                    collapsible = r.optBoolean("collapsible", false),
-                )
-            }
-            groups += CardGroupSpec(groupKey, titleKeyOfGroup, rows)
-        }
+        readGroups(source, groupArr, groups, seen)?.let { return TemplateLoad.Bad(it) }
 
         val actionArr = root.optJSONArray("actions") ?: JSONArray()
         val actions = ArrayList<CardActionSpec>(actionArr.length())
-        for (ai in 0 until actionArr.length()) {
-            val a = actionArr.optJSONObject(ai)
-                ?: return TemplateLoad.Bad("$source: actions[$ai] 不是对象")
-            val actionId = a.optString("id").trim()
-            if (actionId !in CardActions.KNOWN_ACTION_IDS) {
-                return TemplateLoad.Bad(
-                    "$source: actions[$ai] 的 id「$actionId」不在闭集 " +
-                        CardActions.KNOWN_ACTION_IDS.joinToString("/"),
-                )
-            }
-            val labelKey = a.optString("labelKey").trim()
-            if (labelKey.isEmpty()) return TemplateLoad.Bad("$source: 动作「$actionId」缺 labelKey")
-            actions += CardActionSpec(actionId, labelKey)
-        }
+        readActions(source, actionArr, actions)?.let { return TemplateLoad.Bad(it) }
 
         return TemplateLoad.Ok(
             ResultCardTemplate(
@@ -225,6 +184,70 @@ object ResultCardTemplates {
                 actions = actions,
             ),
         )
+    }
+
+    /**
+     * 读 `groups`（2026-10-29 从 [parse] 抽出）：一张模板的**形状校验**是独立的一件事，
+     * 挤在 parse 里只会让它 79 行、还要靠缩进才看得出层级。
+     * 返回 null＝通过，返回字符串＝错误（文案逐字保留，单测对着这些句子断言）。
+     */
+    private fun readGroups(
+        source: String,
+        groupArr: JSONArray,
+        out: MutableList<CardGroupSpec>,
+        seen: MutableSet<String>,
+    ): String? {
+        for (gi in 0 until groupArr.length()) {
+            val g = groupArr.optJSONObject(gi) ?: return "$source: groups[$gi] 不是对象"
+            val groupKey = g.optString("key").trim().ifEmpty { "g$gi" }
+            val titleKeyOfGroup = g.optString("titleKey").trim().ifEmpty { null }
+            val rowArr: JSONArray = g.optJSONArray("rows")
+                ?: return "$source: groups[$gi] 缺 rows"
+            if (rowArr.length() == 0) return "$source: groups[$gi] 没有行"
+            val rows = ArrayList<CardRowSpec>(rowArr.length())
+            for (ri in 0 until rowArr.length()) {
+                val r = rowArr.optJSONObject(ri)
+                    ?: return "$source: groups[$gi].rows[$ri] 不是对象"
+                val key = r.optString("key").trim()
+                if (key.isEmpty()) return "$source: groups[$gi].rows[$ri] 缺 key"
+                if (!seen.add(key)) return "$source: key「$key」在同一模板里重复"
+                val labelKey = r.optString("labelKey").trim()
+                if (labelKey.isEmpty()) {
+                    return "$source: 行「$key」缺 labelKey（文案不许写在 JSON 里）"
+                }
+                rows += CardRowSpec(
+                    key = key,
+                    labelKey = labelKey,
+                    copyable = r.optBoolean("copyable", false),
+                    dialable = r.optBoolean("dialable", false),
+                    sensitiveInLog = r.optBoolean("sensitiveInLog", false),
+                    collapsible = r.optBoolean("collapsible", false),
+                )
+            }
+            out += CardGroupSpec(groupKey, titleKeyOfGroup, rows)
+        }
+        return null
+    }
+
+    /** 读 `actions`（同上，从 [parse] 抽出）：动作 id 必须落在闭集里，这是一条独立判据。 */
+    private fun readActions(
+        source: String,
+        actionArr: JSONArray,
+        out: MutableList<CardActionSpec>,
+    ): String? {
+        for (ai in 0 until actionArr.length()) {
+            val a = actionArr.optJSONObject(ai)
+                ?: return "$source: actions[$ai] 不是对象"
+            val actionId = a.optString("id").trim()
+            if (actionId !in CardActions.KNOWN_ACTION_IDS) {
+                return "$source: actions[$ai] 的 id「$actionId」不在闭集 " +
+                    CardActions.KNOWN_ACTION_IDS.joinToString("/")
+            }
+            val labelKey = a.optString("labelKey").trim()
+            if (labelKey.isEmpty()) return "$source: 动作「$actionId」缺 labelKey"
+            out += CardActionSpec(actionId, labelKey)
+        }
+        return null
     }
 }
 
