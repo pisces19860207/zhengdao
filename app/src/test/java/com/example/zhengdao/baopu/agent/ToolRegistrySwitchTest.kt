@@ -63,6 +63,8 @@ class ToolRegistrySwitchTest {
                 "notify", "phone_dial",
                 "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
+                // 第二百六十九批：打包/解包（表序即注册序，convert_encoding 之后）
+                "archive_pack", "archive_extract",
                 // 小说工程三件（第一百五十五批）：表序即注册序（convert_encoding 之后）
                 "novel_create", "novel_project", "novel_continue",
                 "browser_open", "browser_snapshot", "browser_evidence", "browser_click",

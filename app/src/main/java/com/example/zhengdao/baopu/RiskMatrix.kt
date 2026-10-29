@@ -278,8 +278,9 @@ internal data class RiskTable(
          * v4（第二百二十八批 C 片）：示教/回放五件入表（录制 R0、入库 R1、回放 R2＋必问、信任授权 R1＋必问）。
          * v5（第二百三十二批）：table_query 入表（本地 R0、联网升 R2 必问）。
          * v6（第二百六十二批）：browser_evidence 入表（R0 只读证据快照）。
+         * v7（第二百六十九批）：archive_pack / archive_extract 入表（R1；dest 落到工作区外自动升 R2）。
          */
-        const val DEFAULT_VERSION: Int = 6
+        const val DEFAULT_VERSION: Int = 7
 
         /**
          * 唯一一张默认表（68 行 = 注册工具 68 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
@@ -361,6 +362,11 @@ internal data class RiskTable(
                 ),
                 "move_path" to ToolRule(RiskClass.R2, writePathKeys = setOf("from", "to")),
                 "convert_encoding" to ToolRule(RiskClass.R2, writePathKeys = setOf("path")),
+                // 第二百六十九批：打包/解包。默认档 R1（写的是工作区里的新东西：一个 zip／
+                // 一堆解开的文件）；`dest` 是写路径，落到工作区外时由 writePathKeys 自动升 R2。
+                // 解包**永不覆盖**同名文件、也永不写工作区外（zip-slip 整包拒），所以不给 R2。
+                "archive_pack" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
+                "archive_extract" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
                 "browser_click" to ToolRule(RiskClass.R2, clickLike = true),
                 "browser_type" to ToolRule(
                     RiskClass.R2,

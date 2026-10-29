@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 269: archive tool strings kept in their own file (same layout as strings_baopu_image.xml) —
+     zero bytes changed in the shared strings.xml, so merging never needs a union. -->
+<resources>
+    <string name="baopu_tool_archive_pack">Make zip</string>
+    <string name="baopu_tool_archive_pack_desc">Pack files or folders from the workspace into one zip (a confirmation card appears before each run): names are written as UTF-8 with the UTF-8 flag set, so Chinese names open correctly when double-clicked on Windows; Zip64 kicks in automatically when the entry count or size needs it; jpg/mp4/zip are stored as-is instead of being compressed again. If the target zip already exists the run is refused — nothing is overwritten.</string>
+    <string name="baopu_tool_archive_extract">Extract archive</string>
+    <string name="baopu_tool_archive_extract_desc">Extract an archive into a workspace folder (a confirmation card appears before each run): .zip is handled by Java, .tar/.tar.gz/.tgz/.tar.zst by Rust. Members containing .., absolute paths or symlinks reject the whole archive; total output is capped at 2 GB; if a file with the same name already exists nothing is written and nothing is overwritten. .rar and .7z are explicitly unsupported (no decoder, and it will never try to read them as zip).</string>
+</resources>

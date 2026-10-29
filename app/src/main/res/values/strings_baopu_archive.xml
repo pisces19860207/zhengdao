@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百六十九批：打包/解包文案单独成文件（房型照 158/198 的 strings_baopu_image.xml）。
+     理由：共享 strings.xml 上别的会话也在改，独立文件对共享文件**零字节改动**，合并时不必并集。
+     资源合并后与放进 strings.xml 完全等价（BaopuToolStringsTest 按目录全读，门禁照样生效）。 -->
+<resources>
+    <string name="baopu_tool_archive_pack">打 zip 包</string>
+    <string name="baopu_tool_archive_pack_desc">把工作区里的若干文件或目录打成一个 zip（每次执行前弹确认卡）：文件名按 UTF-8 写入并置 UTF-8 标志位，Windows 双击打开中文名不乱码；条目数或大小超限时自动走 Zip64；jpg/mp4/zip 这类已经压过的格式不再重复压缩。目标 zip 已存在就拒绝，不覆盖已有文件。</string>
+    <string name="baopu_tool_archive_extract">解压缩</string>
+    <string name="baopu_tool_archive_extract_desc">把一个归档解到工作区目录（每次执行前弹确认卡）：.zip 由 Java 解，.tar/.tar.gz/.tgz/.tar.zst 由 Rust 解。含 ..、绝对路径或符号链接的成员整包拒绝；解压后总量上限 2 GB；目标里已有同名文件时整包不落盘、不覆盖。.rar 与 .7z 明确不支持（没有解码器，也不会拿它当 zip 硬解）。</string>
+</resources>
