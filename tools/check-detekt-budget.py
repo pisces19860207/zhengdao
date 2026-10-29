@@ -44,11 +44,24 @@ DEFAULT_XML = os.path.join(ROOT, "app", "build", "reports", "detekt", "detekt.xm
 DEFAULT_BUDGET = os.path.join(ROOT, "config", "detekt", "issue-budget.json")
 
 
+FUNC_RE = re.compile(r"The function (\w+)")
+
+
 def fingerprint(source: str, path: str, message: str) -> str:
-    """规则 + 文件名 + 消息。不含行号 / 绝对路径（见文件头说明）。"""
+    """规则 + 文件名 + **函数名**。
+
+    不含行号 / 绝对路径（见文件头说明）；也**不含测出来的数字**——
+    2026-10-29 实测：`The function runLoop is too long (527)` 比预算里的 526 多一行，
+    旧指纹（带消息原文）就把它判成"新增违规"，而代码其实没变坏。测出来的值只进报告。
+
+    取不到函数名时退回「消息去掉所有数字」的形态，保证仍然稳定。
+    """
     rule = source.split(".")[-1] if source else "?"
     name = os.path.basename(path.replace("\\", "/"))
-    return "%s|%s|%s" % (rule, name, message)
+    m = FUNC_RE.search(message or "")
+    if m:
+        return "%s|%s|%s" % (rule, name, m.group(1))
+    return "%s|%s|%s" % (rule, name, re.sub(r"\d+", "#", message or ""))
 
 
 def read_issues(xml_path):
@@ -65,21 +78,34 @@ def read_issues(xml_path):
                 continue
             source = err.get("source", "")
             out.append(
-                (
-                    fingerprint(source, path, err.get("message", "")),
-                    source.split(".")[-1],
-                    rel,
-                    err.get("line", "?"),
-                )
+                {
+                    "fp": fingerprint(source, path, err.get("message", "")),
+                    "rule": source.split(".")[-1],
+                    "rel": rel,
+                    "line": err.get("line", "?"),
+                    "message": err.get("message", ""),
+                }
             )
-    return out
+    # 同名重载（同规则+同文件+同函数名）按行号升序加 #N，避免两条撞成一条：
+    # detekt 不给重载签名，行号是唯一稳定的区分依据（行号本身不进指纹的其他部分）。
+    groups = {}
+    for it in out:
+        groups.setdefault(it["fp"], []).append(it)
+    for base, items in groups.items():
+        if len(items) == 1:
+            items[0]["fp"] = base + "#1"
+            continue
+        for i, it in enumerate(sorted(items, key=lambda x: int(x["line"]) if str(x["line"]).isdigit() else 0), 1):
+            it["fp"] = "%s#%d" % (base, i)
+    return [(it["fp"], it["rule"], it["rel"], it["line"]) for it in out]
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="detekt 预算闸（存量不动，新增即红）")
     ap.add_argument("--xml", default=DEFAULT_XML)
     ap.add_argument("--budget", default=DEFAULT_BUDGET)
-    ap.add_argument("--write", action="store_true", help="把当前读数写成新预算（需人工确认）")
+    ap.add_argument("--write", action="store_true", help="把当前读数写成新预算（需人工确认；默认只许降不许升）")
+    ap.add_argument("--allow-raise", action="store_true", help="配合 --write：允许预算变大（需在提交信息里写理由）")
     args = ap.parse_args(argv)
 
     if not os.path.exists(args.xml):
@@ -93,6 +119,18 @@ def main(argv=None):
     current = {"total": len(issues), "rules": dict(sorted(rules.items())), "issues": sorted(fp for fp, *_ in issues)}
 
     if args.write:
+        # 预算只能降不能升：确实是新接受的存量（例如规则集扩容）才用 --allow-raise，并写进提交信息。
+        if os.path.exists(args.budget):
+            with open(args.budget, "r", encoding="utf-8") as fh:
+                prev = json.load(fh)
+            prev_total = prev.get("total", 0)
+            if current["total"] > prev_total and not args.allow_raise:
+                print(
+                    "::error title=detekt 预算闸::拒绝把预算抬高（%d → %d）。"
+                    "预算只能降不能升；确实要接受新增存量时用 --allow-raise 并在提交信息里写理由。"
+                    % (prev_total, current["total"])
+                )
+                return 1
         with open(args.budget, "w", encoding="utf-8", newline="\n") as fh:
             json.dump(current, fh, ensure_ascii=False, indent=2, sort_keys=False)
             fh.write("\n")
@@ -125,6 +163,13 @@ def main(argv=None):
 
     known = set(budget.get("issues", []))
     fresh = [i for i in issues if i[0] not in known]
+    # 指纹格式迁移提示：旧格式（消息原文入指纹）一条都对不上时，别刷成几百条"新增"。
+    if known and fresh and len(fresh) == len(issues) and any("|too long (" in k or "complexity: " in k for k in known):
+        print(
+            "::error title=detekt 预算闸::预算指纹仍是旧格式（带测出来的数字）——"
+            "先跑 `python3 tools/check-detekt-budget.py --write` 做一次性迁移（条数不变，只是去噪）。"
+        )
+        return 1
     # 指纹是集合；条数不增但指纹全换（改一个函数又新增一个）也要看得见。
     if fresh and not problems:
         # 只在新指纹数超过预算余量时判红：余量 = 预算总数 - 当前总数（应为 0）
