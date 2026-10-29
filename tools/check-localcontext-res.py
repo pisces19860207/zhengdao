@@ -74,6 +74,10 @@ def main() -> int:
             spans.append((start, end, is_comp))
         for i, line in enumerate(lines, 1):
             idx = i - 1
+            # 2026-10-29：跳过注释行——源码门禁只判代码；注释里提到 `ctx.getString` 不算违规
+            stripped = line.lstrip()
+            if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+                continue
             # 命中的 ctx 可能是**函数参数**（同文件别处另有 LocalContext）⇒ 签名里带 `ctx:` 的不算违规
             in_comp = False
             for s, e, c in spans:
