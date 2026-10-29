@@ -54,6 +54,18 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_ROOT = REPO / "app" / "src" / "main" / "java" / "com" / "example" / "zhengdao" / "ui"
 DEFAULT_WHITELIST = REPO / "tools" / "radius-whitelist.txt"
 
+# ── 白名单封顶（2026-10-29，用户口径：防止白名单变成后门）──────────────
+# 两个数都**只降不升**：底下一批每把一条裸值换成令牌，就把这两个数一起往下调。
+#
+# 为什么总数是 24 而不是用户建议的「≤20」：本仓已有 14 条**已拍板**的白名单
+# （玄览 shell 钉死 / 语义位待定等），要压到 20 得先把其中 4 条换成令牌，而那要语义拍板。
+# 今天先把 10 条「待拍板 · 276a 存量」登记进来（14 + 10 = 24）并封在此处，
+# 待拍板单独按 ≤20 卡住；下一批清到 20 以内时，把 MAX_WHITELIST_ENTRIES 一起下调。
+MAX_WHITELIST_ENTRIES = 24      # 白名单总条数上限（只降不升）
+MAX_PENDING_ENTRIES = 20        # 其中「待拍板」条目上限（用户 2026-10-29 指定）
+PENDING_MARK = "待拍板"
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
 TOKEN_VALUES = (4, 6, 8, 10, 12, 14, 16, 24)   # Radius.kt 的 8 档
 CAPSULE_AT = 50                                 # ≥50 ⇒ 胶囊（含 `RoundedCornerShape(50)` 百分比写法）
 CALL_RE = re.compile(r"RoundedCornerShape\s*\(")
@@ -241,11 +253,31 @@ def main(argv: list[str]) -> int:
     files = collect_files(tokens)
     entries = load_whitelist(Path(ns.whitelist))
 
+    # ── 白名单自身的两条约束（2026-10-29）──────────────────────────
+    # 1) 总数封顶（只降不升）：超了直接红，防止「什么都能塞」；
+    # 2) 待拍板条目必须有日期：没日期就没人能判断这笔债欠了多久。
+    whitelist_bad: list[str] = []
+    pending = [e for e in entries if PENDING_MARK in (e.reason or "")]
+    if len(entries) > MAX_WHITELIST_ENTRIES:
+        whitelist_bad.append(
+            "白名单 %d 条 > 上限 %d（上限只降不升：先把裸值换成令牌再往下调这个数）"
+            % (len(entries), MAX_WHITELIST_ENTRIES)
+        )
+    if len(pending) > MAX_PENDING_ENTRIES:
+        whitelist_bad.append(
+            "「%s」条目 %d 条 > 上限 %d" % (PENDING_MARK, len(pending), MAX_PENDING_ENTRIES)
+        )
+    for e in pending:
+        if not DATE_RE.search(e.reason or ""):
+            whitelist_bad.append("「%s」条目缺日期（要写 YYYY-MM-DD，否则没人知道欠了多久）：%s" % (PENDING_MARK, e.raw))
+
     hits: list[dict] = []
     for fp in files:
         hits.extend(scan_file(fp, rel_of(fp), entries))
 
     bad = [h for h in hits if h["verdict"] == "报红"]
+    for msg in whitelist_bad:
+        print("  ✗ 白名单约束：" + msg)
     stale = [e for e in entries if not e.used]
     counts = {
         "files": len(files),
@@ -270,7 +302,7 @@ def main(argv: list[str]) -> int:
             print(f"  ！白名单条目已无对应裸值（过期，可删）：{e.raw}")
         print("结论：" + ("✗ 有 %d 处报红" % counts["red"] if counts["red"] else "✓ 未发现报红项"))
 
-    return 1 if bad else 0
+    return 1 if (bad or whitelist_bad) else 0
 
 
 def fmt_value(v: float, form: str) -> str:
