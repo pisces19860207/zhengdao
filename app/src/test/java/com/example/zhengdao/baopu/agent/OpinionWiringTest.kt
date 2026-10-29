@@ -33,7 +33,7 @@ class OpinionWiringTest {
     /** 账本落点（每个用例一个临时目录：208 与本批的账都落在它下面）。 */
     private lateinit var root: File
 
-    /** 当前的"轮"（测试注入；生产＝258 的用户轮）。 */
+    /** 当前的"轮"（测试注入；生产默认不装＝进程级）。 */
     private var round = 1
 
     /** 固定时刻（2023-11-14 前后；算"日"用本地时区，所以只用 24h 的整数倍跨日）。 */
@@ -45,7 +45,7 @@ class OpinionWiringTest {
     fun setUp() {
         root = Files.createTempDirectory("opinion-wiring").toFile()
         OpinionWiring.resetForTest()
-        OpinionWiring.installRoundSource { round }
+        OpinionWiring.installRoundSource { round.toString() }
         DecisionLedger.install(root)
         round = 1
     }
@@ -180,11 +180,69 @@ class OpinionWiringTest {
 
     @Test
     fun `同轮同事件只判一次`() {
-        val a = OpinionWiring.onVerdict(call("probe"), unclassified(), now)!!
-        val b = OpinionWiring.onVerdict(call("probe"), unclassified(), now)!!
+        // 两个**不同**的调用撞出同一条意见（同轮同事件）：只判一次、只记一笔
+        val a = OpinionWiring.onVerdict(ToolCall("c1", "probe", JSONObject()), unclassified(), now)!!
+        val b = OpinionWiring.onVerdict(ToolCall("c2", "probe", JSONObject()), unclassified(), now)!!
 
         assertEquals(a.id, b.id)
         assertEquals(1, OpinionWiring.replay().count { it.opinion.gist == "未分类" })
+    }
+
+    // ── 轮来源：照实记 process，不装成轮号 ──────────────────────────────
+
+    @Test
+    fun `账上round列照实写process不装成轮号`() {
+        OpinionWiring.resetForTest() // 卸掉换源＝生产默认（进程级）
+
+        val ruling = OpinionWiring.onVerdict(call("probe"), unclassified(), now)!!
+
+        assertEquals(OpinionWiring.PROCESS_ROUND, ruling.round)
+        val back = OpinionWiring.replay().first { it.id == ruling.id }
+        assertEquals("process", back.round)
+        assertNull("不许装成轮号（数字）", back.round.toIntOrNull())
+    }
+
+    @Test
+    fun `装了真轮来源就记round号`() {
+        OpinionWiring.installRoundSource { "7" }
+
+        val ruling = OpinionWiring.onVerdict(call("probe"), unclassified(), now)!!
+
+        assertEquals("round#7", ruling.round)
+        assertEquals("round#7", OpinionWiring.replay().first { it.id == ruling.id }.round)
+    }
+
+    @Test
+    fun `进程级来源打一行可见日志且只打一行`() {
+        OpinionWiring.resetForTest()
+        assertTrue(OpinionWiring.processNote().contains("轮来源=process"))
+        assertTrue(OpinionWiring.processNote().contains("不装成轮号"))
+
+        val first = OpinionWiring.onVerdict(call("a"), unclassified(), now)!!
+        OpinionWiring.onVerdict(call("b"), outside(), now)
+        round = 2
+        OpinionWiring.onVerdict(call("c"), unclassified(), now)
+
+        assertTrue(OpinionWiring.logLine(first).contains("来源=process"))
+        assertEquals("进程级只打一行（不刷屏）", 1, OpinionWiring.processNoteCount())
+    }
+
+    // ── 幂等：越界两处都挂，只入账一条 ──────────────────────────────────
+
+    @Test
+    fun `越界两处都挂只入账一条`() {
+        val same = ToolCall("c-out", "write_file", JSONObject().put("path", "../x"))
+
+        val fromGate = OpinionWiring.onOutsidePath(same, now)
+        val fromMatrix = OpinionWiring.onVerdict(same, outside(), now)!!
+
+        assertEquals("同一次调用只产一条意见", fromGate.id, fromMatrix.id)
+        assertEquals("只入账一条（L24 累进罚则不许被打歪）", 1, OpinionWiring.replay().count { it.tool == "write_file" })
+        assertEquals("也只占一张预算", 1, OpinionWiring.replay().count { it.decision == OpinionDecision.POP })
+        // 先合并、后入账：两处证据并进内存那一条
+        assertTrue(fromMatrix.opinion.evidence.contains("gate:path_guard"))
+        assertTrue(fromMatrix.opinion.evidence.contains("risk:outside_workspace"))
+        assertTrue(OpinionWiring.pending().isEmpty())
     }
 
     // ── W2 预算：每日御案 ≤3 ────────────────────────────────────────────
@@ -342,7 +400,7 @@ class OpinionWiringTest {
 
         // 模拟重启：内存状态全清，盘上那本账还在
         OpinionWiring.resetForTest()
-        OpinionWiring.installRoundSource { round }
+        OpinionWiring.installRoundSource { round.toString() }
 
         round = 3
         val third = OpinionWiring.onVerdict(call("c"), unclassified(), now)!!
