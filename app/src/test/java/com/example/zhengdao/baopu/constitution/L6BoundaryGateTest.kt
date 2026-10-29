@@ -84,6 +84,11 @@ class L6BoundaryGateTest {
          * 引擎自己的暂存与审计落点）——不是给“绕开守卫自己挑路径写”开口子。
          */
         val WHITELIST: Map<String, Set<String>> = mapOf(
+            // 第二百七十四批：意见判定账（W3「结论落账可回放」的落点）。
+            // 不是模型指的工作区路径：落点＝208 已装配的那棵私有目录（`抱朴记忆/`，
+            // 取自 `DecisionLedger.installedRoot()`），文件名独立（`意见判定.jsonl`），
+            // 追加-only、不覆盖不删除；也不往 208 那本账里写（它的 kind 是闭集，本批红线）。
+            "agent/OpinionWiring.kt" to setOf("mkdirs", "appendText"),
             // 引擎 spill：输出过长时的暂存落盘，落点 = spillRoot()/.baopu-spill（应用私有目录），
             // 不是模型指的工作区路径；失败时降级为截断回灌并明说（不静默）。
             "agent/RunEngine.kt" to setOf("mkdirs", "writeText"),
