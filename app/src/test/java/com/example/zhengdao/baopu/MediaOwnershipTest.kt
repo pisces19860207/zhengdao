@@ -57,12 +57,20 @@ class MediaOwnershipTest {
     // ── ① 落点 ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `落点_相册两个目录_末尾必须带斜杠`() {
-        assertEquals("Pictures/证道/截屏/", MediaOwnership.relShotDir())
+    fun `落点_截屏进系统截屏夹_生图目录不动_末尾必须带斜杠`() {
+        // 268：截屏只有一条路，落系统截屏夹（与用户自己截的图同目录）
+        assertEquals("Pictures/Screenshots/", MediaOwnership.relShotDir())
+        // 负例：生图落点被顺手改掉（Pictures/证道/图片/ 不该动）
         assertEquals("Pictures/证道/图片/", MediaOwnership.relImageDir())
         // MediaStore 的 RELATIVE_PATH 不带结尾斜杠会被当成文件名前缀，这里钉死
         assertTrue(MediaOwnership.relShotDir().endsWith("/"))
         assertTrue(MediaOwnership.relImageDir().endsWith("/"))
+    }
+
+    @Test
+    fun `落点_存量目录还在_只作账本识别`() {
+        // 268 负例：只改名不改根 ≠ 把存量目录的真源抹掉——旧账本条目的 relPath 还是它
+        assertEquals("Pictures/证道/截屏/", MediaOwnership.relLegacyShotDir())
     }
 
     @Test
@@ -241,7 +249,16 @@ class MediaOwnershipTest {
     // ── ⑦ 相册路径识别 ───────────────────────────────────────────────────────
 
     @Test
-    fun `相册路径_三种写法都认`() {
+    fun `相册路径_新截屏夹三种写法都认`() {
+        val want = "Pictures/Screenshots/a.png"
+        assertEquals(want, MediaOwnership.albumRelPathOf("Pictures/Screenshots/a.png"))
+        assertEquals(want, MediaOwnership.albumRelPathOf("/storage/emulated/0/Pictures/Screenshots/a.png"))
+        assertEquals(want, MediaOwnership.albumRelPathOf("Screenshots/a.png"))
+        assertEquals(want, MediaOwnership.albumRelPathOf("  Pictures\\Screenshots\\a.png  "))
+    }
+
+    @Test
+    fun `相册路径_存量目录三种写法仍认_旧账本条目删得掉`() {
         val want = "Pictures/证道/截屏/a.png"
         assertEquals(want, MediaOwnership.albumRelPathOf("Pictures/证道/截屏/a.png"))
         assertEquals(want, MediaOwnership.albumRelPathOf("/storage/emulated/0/Pictures/证道/截屏/a.png"))
@@ -258,12 +275,24 @@ class MediaOwnershipTest {
     }
 
     @Test
-    fun `相册路径_只认两个子目录`() {
+    fun `相册路径_只认三个子目录_新旧都在册`() {
         assertTrue(MediaOwnership.isAlbumPath(MediaOwnership.relShotDir() + "a.png"))
+        assertTrue("存量目录必须还在删除判据里（旧账本条目要删得掉）",
+            MediaOwnership.isAlbumPath(MediaOwnership.relLegacyShotDir() + "a.png"))
         assertTrue(MediaOwnership.isAlbumPath(MediaOwnership.relImageDir() + "a.png"))
         assertFalse(MediaOwnership.isAlbumPath("Pictures/证道/别的/a.png"))
         // 负例：相册根本身不是落点
         assertFalse(MediaOwnership.isAlbumPath("Pictures/证道/a.png"))
+    }
+
+    @Test
+    fun `回读路径_相册口径换算成相对Pictures根`() {
+        // 引擎的 shotRoot = <SD根>/Pictures ⇒ 给引擎的路径要去掉 Pictures/ 前缀
+        assertEquals("Screenshots/a.png", MediaOwnership.relUnderPictures("Pictures/Screenshots/a.png"))
+        // 生图同理（虽然生图本轮不回读，换算不许只对截屏成立）
+        assertEquals("证道/图片/a.png", MediaOwnership.relUnderPictures("Pictures/证道/图片/a.png"))
+        // 已是相对口径（退路兜底拼的）原样返回
+        assertEquals("Screenshots/b.png", MediaOwnership.relUnderPictures("Screenshots/b.png"))
     }
 
     // ── ⑧⑨ 迁移计划 ──────────────────────────────────────────────────────────

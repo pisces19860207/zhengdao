@@ -185,11 +185,12 @@ internal class RunEngine(
      */
     private val shrinkImage: ((File) -> com.example.zhengdao.baopu.VisionFiles.ShrinkOutcome)? = null,
     /**
-     * 截图目录的根（第一百七十七批）。
+     * 截图目录的根（第一百七十七批；268 改指系统截屏夹的父目录）。
      *
-     * 生产传 `ZhengdaoDirs.root(appCtx)`（＝`Download/证道`）：`VisionFiles.load` 的越界判据
-     * 要认这第二个根，抱朴才读得到自己截的图。默认 `{ null }` ⇒ 关闭第二个根，
-     * 存量调用点（含 JVM 测试）一个字都不用改。
+     * 生产传 `Environment.getExternalStorageDirectory()/Pictures`（＝`<SD根>/Pictures`）：
+     * `VisionFiles.load` 的越界判据要认这第二个根，抱朴才读得到自己截的图——268 起截图
+     * 全落 `<SD根>/Pictures/Screenshots/`（系统截屏夹），相对路径 `Screenshots/…` 在这里
+     * 解析。默认 `{ null }` ⇒ 关闭第二个根，存量调用点（含 JVM 测试）一个字都不用改。
      */
     private val shotRoot: () -> File? = { null },
     /**

@@ -155,14 +155,54 @@ internal object MediaStoreSink {
         }
     }.getOrNull()
 
+    /**
+     * 按目录＋显示名找一行（真机证据用：从落地名反查相册行；`IS_PENDING=0` 才算）。
+     * `_id` 一并带回（[Row.id]），调用方好做清理。
+     */
+    fun rowByName(ctx: Context, relDir: String, name: String): Row? = runCatching {
+        ctx.contentResolver.query(
+            collection(),
+            arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+            ),
+            "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND " +
+                "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND " +
+                "${MediaStore.MediaColumns.IS_PENDING}=0",
+            arrayOf(relDir, name),
+            null,
+        )?.use { c ->
+            if (!c.moveToFirst()) return@use null
+            Row(
+                id = c.getLong(0),
+                name = c.getString(1) ?: "",
+                relPath = c.getString(2) ?: "",
+                ownerPackage = runCatching { c.getString(3) }.getOrNull(),
+            )
+        }
+    }.getOrNull()
+
+    /** 读一行的字节（真机证据用：回读与相册行逐字节对账）。 */
+    fun readBytes(ctx: Context, id: Long): ByteArray? = runCatching {
+        val uri = android.content.ContentUris.withAppendedId(collection(), id)
+        ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+    }.getOrNull()
+
     /** 按 `_id` 删行（**调用方必须先过 `deleteVerdict`**：这里不做判据）。 */
     fun deleteById(ctx: Context, id: Long): Boolean = runCatching {
         val uri = android.content.ContentUris.withAppendedId(collection(), id)
         ctx.contentResolver.delete(uri, null, null) > 0
     }.getOrDefault(false)
 
-    /** 一行相册记录的归属信息。 */
-    data class Row(val name: String, val relPath: String, val ownerPackage: String?)
+    /** 一行相册记录的归属信息（[id] 只有 [rowByName] 反查时才带）。 */
+    data class Row(
+        val id: Long = 0L,
+        val name: String,
+        val relPath: String,
+        val ownerPackage: String?,
+    )
 }
 
 /**
@@ -302,9 +342,11 @@ internal object MediaPublisher {
     /** 路径不合规时的那句人话（`null` ⇒ 其实合规，别用）。 */
     private fun albumPathReject(path: String): MediaDelete? {
         val rel = MediaOwnership.albumRelPathOf(path)
-            ?: return MediaDelete.Ask("这不像是本 App 相册里的路径（Pictures/证道/…）：$path")
+            ?: return MediaDelete.Ask(
+                "这不像是本 App 相册里的路径（Pictures/Screenshots/… 或 Pictures/证道/…）：$path",
+            )
         if (!MediaOwnership.isAlbumPath(rel)) {
-            return MediaDelete.Ask("$rel 不在相册的两个目录里（只认 截屏/ 与 图片/）")
+            return MediaDelete.Ask("$rel 不在我们自己的相册目录里（只认 Screenshots/、存量的 证道/截屏/ 与 证道/图片/）")
         }
         return null
     }

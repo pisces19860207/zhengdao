@@ -9,16 +9,17 @@ import org.junit.Test
 /**
  * 第一百九十九批 · **门禁**：相册这条路只许有一条（设计 §2.5／§5.3／派工单 §2）。
  *
- * 六条（每条都配一个「它到底在防什么」）：
+ * 六条（每条都配一个「它到底在防什么」；268 起截屏只有一条路，判据跟随）：
  * ① **`"Pictures/` 字面量只有一处**：路径只能由 `MediaOwnership.relShotDir/relImageDir` 拼，
  *    别处再写一次就是「第二套路径」——这正是设计 §2.5 点名的那种漂移；
  * ② **`File` 直写 `Pictures/` 在代码里不存在**（派工单原话：视为失败）：
  *    同一行既出现 `Pictures` 又出现 `writeBytes/writeText/FileOutputStream/outputStream(` 一律红；
  * ③ **`MediaStore.` / `contentResolver` 只许出现在 `MediaStoreSink`**：写入与删除的唯一出口；
- * ④ **桥的截图支路零 MediaStore**：核对图那条路（177）不许被相册逻辑污染；
+ * ④ **桥的截图支路零 MediaStore**：落盘经 `MediaPublisher.publish` 一处（268 起 album
+ *    分叉已撤，全部截图同一条路）；
  * ⑤ **账本名只有内核一处定义**：`.归属.jsonl` 在别处出现就是第二份真源；
- * ⑥ **177 的落点没被搬走**：`SHOT_DIR = "截屏"` 还在、`VisionFiles.extraRoot` 还在、
- *    引擎仍把 `shotRoot` 传给读图管线——搬走＝模型读不到自己截的图。
+ * ⑥ **177 的目录真源没被搬走**：`SHOT_DIR = "截屏"` 还在（268 起只服务存量迁移）、
+ *    `VisionFiles.extraRoot` 还在、引擎仍把 `shotRoot` 传给读图管线——搬走＝模型读不到自己截的图。
  */
 class MediaPathGateTest {
 
@@ -97,10 +98,10 @@ class MediaPathGateTest {
     @Test
     fun `G4_桥截图支路零MediaStore`() {
         val bridge = repoFile("src/main/java/com/example/zhengdao/bridge/BrowserCommands.kt").readText()
-        assertFalse("桥的截图支路不许碰 MediaStore（核对图不进相册）", bridge.contains("MediaStore."))
-        assertFalse("桥的截图支路不许拿 contentResolver", bridge.contains("contentResolver"))
-        // 但它必须还在把「人看的」那张交给 MediaPublisher（否则等于这条支路没接上）
-        assertTrue("album=true 那条必须经 MediaPublisher", bridge.contains("MediaPublisher.publish("))
+        assertFalse("桥不许直接碰 MediaStore（落盘只经 MediaPublisher 一处）", bridge.contains("MediaStore."))
+        assertFalse("桥不许拿 contentResolver", bridge.contains("contentResolver"))
+        // 落盘必须经 MediaPublisher（268 起全部截图同一条路，分叉不许回潮）
+        assertTrue("截图落盘必须经 MediaPublisher", bridge.contains("MediaPublisher.publish("))
     }
 
     @Test
@@ -119,11 +120,12 @@ class MediaPathGateTest {
     }
 
     @Test
-    fun `G6_177的核对图落点没被搬走`() {
+    fun `G6_177的目录真源没被搬走_读图第二根还在`() {
         val bridge = repoFile("src/main/java/com/example/zhengdao/bridge/BrowserCommands.kt").readText()
-        assertTrue("核对图仍落 证道/截屏/（SHOT_DIR）", bridge.contains("internal const val SHOT_DIR = \"截屏\""))
+        // 268 起它只服务存量迁移（MediaMigration 的目标），常量不许删
+        assertTrue("存量迁移目标（SHOT_DIR）不许搬走", bridge.contains("internal const val SHOT_DIR = \"截屏\""))
         val vision = repoFile("src/main/java/com/example/zhengdao/baopu/VisionFiles.kt").readText()
-        assertTrue("VisionFiles.load 必须保留 extraRoot（截屏目录是第二个读根）", vision.contains("extraRoot"))
+        assertTrue("VisionFiles.load 必须保留 extraRoot（截屏夹是第二个读根）", vision.contains("extraRoot"))
         val engine = repoFile("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt").readText()
         assertTrue("引擎读图时仍要把 shotRoot 传进去", engine.contains("extraRoot = shotRoot()"))
     }

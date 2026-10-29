@@ -97,7 +97,9 @@ internal object BaopuBrowserWiring {
              * 失败用异常表达：工具层 `runCatching` 会翻成 `ToolOutcome.Failed`，
              * 这样模型看到的是「失败：截图失败：<原因>」，而不是一条看着像成功的回执。
              *
-             * 第一百九十九批：[album] 透传给桥的截图支路（`true` ＝存相册给人看）。
+             * 268：落盘一条路（都进系统截屏夹 `Pictures/Screenshots/`），桥的 `album`
+             * 参数已撤；这里的 [album] 只决定回执文案与「本轮读不读像素」（`Shot.album`）——
+             * 用户要的那张，模型这轮不必再看一遍像素。
              */
             override fun screenshot(fullPage: Boolean, album: Boolean): Shot =
                 when (
@@ -105,14 +107,14 @@ internal object BaopuBrowserWiring {
                         appCtx,
                         null,
                         if (fullPage) "1" else "0",
-                        album = album,
                     )
                 ) {
                     is BrowserCommands.ShotCapture.Ok -> {
                         val ref = r.ref
                         val info = pageInfo()
                         val text = buildString {
-                            append(if (album) "已截图并存进相册：" else "已截图：").append(ref.file)
+                            append(if (album) "已截图并存进相册（系统截屏夹）：" else "已截图：")
+                            append(ref.file)
                             if (!album) {
                                 append("（").append(ref.mode).append(' ')
                                 append(ref.width).append('×').append(ref.height)
@@ -255,7 +257,7 @@ internal object BaopuBrowserWiring {
                 VisualEvidenceQueue.drain(
                     shoot = { item ->
                         val shot = runCatching {
-                            BrowserCommands.captureShotRef(ctx, null, "0", album = false)
+                            BrowserCommands.captureShotRef(ctx, null, "0")
                         }.getOrNull()
                         when (shot) {
                             is BrowserCommands.ShotCapture.Ok -> VisualEvidenceQueue.Done(

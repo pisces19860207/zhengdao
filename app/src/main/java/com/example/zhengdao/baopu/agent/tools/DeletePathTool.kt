@@ -66,9 +66,10 @@ internal object DeletePathTool {
             "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
             "只删单个文件：目录、备份区 $BACKUP_DIR_NAME/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
             "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
-            "相册里本 App 生成的图（Pictures/证道/截屏/、Pictures/证道/图片/）也走这条，path 给相册路径" +
-            "（如 Pictures/证道/截屏/证道截屏-20261025-083000.png）；只有**归属清单里登记为本 App 写的**才删，" +
-            "别人的照片一律拒绝。" +
+            "本 App 生成的相册图也走这条：截屏在系统截屏夹（Pictures/Screenshots/，与你手机自己截的图同一目录）、" +
+            "生图在 Pictures/证道/图片/（存量条目还可能在旧目录 Pictures/证道/截屏/）。" +
+            "path 给相册相对路径（如 Pictures/Screenshots/证道截屏-20261028-083000.png）；" +
+            "只有**归属清单里登记为本 App 写的**才删，你自己的截图和别人的照片一律拒绝。" +
             "确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -120,7 +121,8 @@ internal object DeletePathTool {
         root: File,
         stamp: String = TimeFormats.fileStamp(),
         /**
-         * 第一百九十九批：相册里的条目（`Pictures/证道/{截屏,图片}/`）交给它删。
+         * 第一百九十九批：相册里的条目（268 起截屏在 `Pictures/Screenshots/`，生图在
+         * `Pictures/证道/图片/`，存量在旧目录 `Pictures/证道/截屏/`）交给它删。
          *
          * 为什么单独一个参数：相册行**不在工作区里**，`File` 删不到也删不干净
          * （只删文件会在相册里留幽灵缩略图）；而 `ContentResolver` 只许活在装配层。
