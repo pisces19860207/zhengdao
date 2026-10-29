@@ -143,3 +143,18 @@ python3 tools/check-detekt-budget.py      # 预算闸 + 互锁
   detekt 原文 `Analysis failed with 325 weighted issues.`（不经过脚本）。
 - `# maxIssues: 327` 而预算 326 ⇒ 预算闸 **rc=1**，报「`maxIssues: 327` ≠ 预算 total 326，两处必须相等且同一提交一起改」。
 - `--write` 后 total=325 但 yml 仍 326 ⇒ **rc=1** 并提示「把 detekt.yml 那行改成 325 再跑」。
+
+### 改 `detektWall` 的坑：不要在 `doFirst` 里设 `args`
+
+实测（2026-10-29）：把 `--max-issues` / `args` 放到 `doFirst {}` 里设，Gradle 9.6 的
+configuration cache 会直接报
+
+```
+Configuration cache problems found in this build.
+- Task `:app:detektWall` of type `org.gradle.api.tasks.JavaExec`:
+  cannot serialize Gradle script object references ...
+```
+
+任务因此**失败**——而它本该只在"超上限"时失败。这类失败看起来像闸红了，实际是闸坏了（假红）；
+反过来若被误判成"报告成功"，就成了假绿。**上限必须在配置期读**（`tasks.register` 体内直接算），
+改 yml 后重跑即可（配置缓存会因 yml 变更自动失效）。
