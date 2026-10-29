@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 第二百七十七批：御案卡（M4）文案单独成文件——共享 strings.xml 零字节改动，
-     合并后与放进 strings.xml 完全等价（房型照 158/198/207）。 -->
+     合并后与放进 strings.xml 完全等价（房型照 158/198/207）。
+     第二百七十八批：补拟稿（中书舍人）的三行人话、三选项及后果、御案页签文案。
+     纪律：**这里的每一句都是给人看的**，不许出现法条号/机器键/枚举名/文件名——
+     判据在 RoyalCardGate.looksTechnical，写错了会拒渲染（有测试钉）。 -->
 <resources>
     <string name="royal_card_title">御案 · 请你定夺</string>
     <string name="royal_card_desc">御案卡（%1$s）：三行说清改什么、为什么、影不影响你</string>
@@ -11,4 +14,31 @@
     <string name="royal_line_why">为什么</string>
     <string name="royal_line_impact">影不影响你</string>
     <string name="royal_option_default">默认</string>
+
+    <!-- 拟稿：三行人话（每句 ≤30 字，且不含任何技术字段） -->
+    <string name="royal_what_l7">刚才那一步我停了一下：这个工具我还没规矩</string>
+    <string name="royal_why_l7">老规矩里没有它，我不敢替你决定安不安全</string>
+    <string name="royal_impact_l7">你手上的东西没被动过，只是这一步要你点头</string>
+    <string name="royal_what_l8">刚才那一步碰到了禁区，我已经拦住了</string>
+    <string name="royal_why_l8">原件区、密码框这类地方只许看，不许改</string>
+    <string name="royal_impact_l8">什么都没被改，你不用额外做什么</string>
+    <string name="royal_what_l9">刚才那一步想动工作区外面的文件</string>
+    <string name="royal_why_l9">外面的东西不归我管，动之前得问你一句</string>
+    <string name="royal_impact_l9">那些文件一个没动，你说行我才动</string>
+
+    <!-- 三选项＋各自后果（后果必须写，不让人猜） -->
+    <string name="royal_opt_approve">准了</string>
+    <string name="royal_opt_approve_consequence">按这条办，结果记进账</string>
+    <string name="royal_opt_reject">不行</string>
+    <string name="royal_opt_reject_consequence">这一步不做，我另想法子</string>
+    <string name="royal_opt_hold">搁一搁</string>
+    <string name="royal_opt_hold_consequence">留到明天再看，不急</string>
+
+    <!-- 证据区（技术字段只许活在这里） -->
+    <string name="royal_evidence_title">证据（点开看）</string>
+
+    <!-- 决策中心「御案」页签 -->
+    <string name="decision_tab_royal">御案</string>
+    <string name="decision_empty_royal">眼下没有待你定的：压下的与已处置的都在账上，随时能翻。</string>
+    <string name="royal_tab_hint">只列真的在等你的（延后队列＋刚压下的）；批/驳/搁置都会留账。</string>
 </resources>
