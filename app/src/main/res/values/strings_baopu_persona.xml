@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百八十五批：人设「加一条／恢复出厂」文案单独成文件——
+     共享 strings.xml 零字节改动（房型照 158/198/207/277/278）。 -->
+<resources>
+    <string name="persona_add_card">人设 · 你自己加一条</string>
+    <string name="persona_add_desc">加一条规矩或习惯。默认只对「当前工作区」生效，加进去立刻可用；账上会记下是谁、什么时候、原话是什么。</string>
+    <string name="persona_add_hint">写一条（比如：改文件前先说要改哪几个）</string>
+    <string name="persona_add_local">记进本项目</string>
+    <string name="persona_add_global">全局…</string>
+    <string name="persona_add_global_confirm">全局（所有工作区都生效）</string>
+    <string name="persona_add_cancel">不改了</string>
+    <string name="persona_add_done">已经加进去了</string>
+    <string name="persona_add_blank">先写一条再点</string>
+    <string name="persona_add_restore">恢复出厂</string>
+    <string name="persona_add_restored">已恢复到出厂那份（你原来那份按你的要求没有备份）</string>
+    <string name="persona_add_factory_on">现在用的是「出厂兜底」（你还没给这个工作区写过人设）</string>
+    <string name="persona_add_factory_off">现在用的是你自己那份；出厂层已退役但保留，随时能恢复</string>
+    <string name="persona_add_last">最近一条：%1$s · %2$s</string>
+    <string name="persona_add_reason">设置页手写</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百八十五批：人设「加一条／恢复出厂」英文文案（与 values 版一一对应）。 -->
+<resources>
+    <string name="persona_add_card">Persona · add one yourself</string>
+    <string name="persona_add_desc">Add one rule or habit. It applies to this workspace only by default, takes effect immediately, and the ledger records who, when, and the exact words.</string>
+    <string name="persona_add_hint">One line (e.g. say which files before touching them)</string>
+    <string name="persona_add_local">Save to this project</string>
+    <string name="persona_add_global">All workspaces…</string>
+    <string name="persona_add_global_confirm">All workspaces (applies everywhere)</string>
+    <string name="persona_add_cancel">Not now</string>
+    <string name="persona_add_done">Added</string>
+    <string name="persona_add_blank">Write a line first</string>
+    <string name="persona_add_restore">Restore factory</string>
+    <string name="persona_add_restored">Restored to the factory copy (your old one was not backed up, as you asked)</string>
+    <string name="persona_add_factory_on">Using the factory fallback (you have not written persona for this workspace yet)</string>
+    <string name="persona_add_factory_off">Using your own copy; the factory layer is retired but kept, restorable any time</string>
+    <string name="persona_add_last">Latest: %1$s · %2$s</string>
+    <string name="persona_add_reason">written in settings</string>
+</resources>
