@@ -187,6 +187,21 @@ jobs:
           done
           test -d "$SDK/ndk/$NDK_VER" || { echo "::error::NDK $NDK_VER 装不上（重编比对 lane 需要它）"; exit 1; }
 
+      # ── 2026-10-29：把四个"只写在纸上的门禁"接进 CI（此前从未在 ci.yml 出现过）──
+      #   为什么现在接：`git log -S <脚本名> -- ci.yml` 全部 0 次 ⇒ 它们写了但从没跑过；
+      #   法典门禁（271）尤其严重：删改法典条文不会红，等于没有门。
+      - name: 法典门禁自查（271 批：门禁 15／规范 7，含"门禁必须碰生产"机检）
+        run: python3 tools/check-law-gates.py
+
+      - name: 账本重复检查（同段重复行、重复章节）
+        run: python3 tools/check-ledger-dupe.py
+
+      - name: 圆角令牌门禁自测（第七十批：钉住"门禁自己会不会误杀/放水"）
+        run: python3 tools/check-radius-tokens-selftest.py
+
+      - name: LocalContext 取资源门禁（第 133 批；2026-10-29 起跳过注释行）
+        run: python3 tools/check-localcontext-res.py
+
       - name: 重编比对 lane（第㊶刀 · B3+ 按主机基线：硬门禁）
         run: |
           python3 tools/rebuild-and-compare.py
