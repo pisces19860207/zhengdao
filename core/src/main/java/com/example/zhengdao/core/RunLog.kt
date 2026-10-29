@@ -143,7 +143,15 @@ object RunLog {
         val filesDir = File(ctx.applicationInfo.dataDir, "files")
         resolvedDir = dirFor(filesDir)
         filesDirForRedact = filesDir.absolutePath
-        startPrepare(filesDir, publicLogsDir = { runCatching { legacyLogsDir?.invoke(ctx) }.getOrNull() })
+        startPrepare(filesDir, publicLogsDir = {
+            runCatching { legacyLogsDir?.invoke(ctx) }.getOrElse { e ->
+                // A9（2026-10-29）：供应器（ZhengdaoDirs.logsDir，会 listFiles/mkdirs）抛异常时，
+                // 以前被 getOrNull() 当成"没配公共区"，迁移就悄悄不做了。行为不变（仍当 null），
+                // 但把原因报出来。
+                log(legacyDirFailureNote(e))
+                null
+            }
+        })
     }
 
     /**
@@ -278,6 +286,14 @@ object RunLog {
      * ② **公共区老日志复制一份进私有区**（注入的 `ZhengdaoDirs.logsDir` 下的四类文件）——源文件
      *    **不删、不改写**（是用户数据，且可能正被用户/Agent 看着）；复制失败不影响主流程。
      */
+    /** A8 的人话说明（纯函数，JVM 单测钉住）。 */
+    internal fun pruneFailureNote(e: Throwable): String =
+        "[日志] 归档清理失败（${e.javaClass.simpleName}），一份都没删——不是「清完发现 0 份」"
+
+    /** A9 的人话说明（纯函数）。 */
+    internal fun legacyDirFailureNote(e: Throwable): String =
+        "[日志] 取旧日志目录失败（${e.javaClass.simpleName}），本次不迁移公共区老日志"
+
     fun migrateLegacy(context: Context, d: File = dir(context)) {
         migrateLegacy(context.filesDir, runCatching { legacyLogsDir?.invoke(context) }.getOrNull(), d)
     }
@@ -438,7 +454,12 @@ object RunLog {
 
     /** 设置页的手动清理：只留最近 [keep] 份（用户主动点，不从后台偷偷删）。 */
     fun pruneArchivesKeep(context: Context, keep: Int): Int =
-        runCatching { pruneArchivesIn(dir(context), keep = keep.coerceAtLeast(1)) }.getOrDefault(0)
+        // A8（2026-10-29）：`getOrDefault(0)` 把"清不动（权限/IO）"和"确实一个都没删"混成同一个 0，
+        // 设置页只会显示"清理了 0 份"，看不出是失败。行为不变（仍返回 0），但先报出来。
+        runCatching { pruneArchivesIn(dir(context), keep = keep.coerceAtLeast(1)) }.getOrElse { e ->
+            log(pruneFailureNote(e))
+            0
+        }
 
     private fun hasError(f: File): Boolean = runCatching {
         f.useLines { lines -> lines.any { line -> ERROR_MARKERS.any { line.contains(it, true) } } }

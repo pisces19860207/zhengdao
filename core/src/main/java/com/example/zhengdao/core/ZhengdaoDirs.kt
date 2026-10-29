@@ -186,14 +186,31 @@ object ZhengdaoDirs {
      * 纯 [File] 操作、无 Android 依赖，可直接单测（见 StoreTest）。
      * @return 实际搬动的条目数
      */
+    /** A5 的人话说明（纯函数，JVM 单测钉住措辞）。 */
+    internal fun dirListFailureNote(path: String, e: Throwable): String =
+        "[迁移] 目录列不出来（${e.javaClass.simpleName}）：$path"
+
+    /** A6 的人话说明（纯函数）：rename 与 copy 都失败时，把异常类名与两端路径留证。 */
+    internal fun moveFailureNote(from: String, to: String, e: Throwable): String =
+        "[迁移] 搬不动（rename 与 copy 都失败，${e.javaClass.simpleName}）：$from → $to"
+
     fun adoptDir(target: File, legacy: File): Int {
         if (!legacy.isDirectory) return 0
         if (!target.isDirectory && !target.mkdirs()) return 0
         // 第七十一批③：源目录列不出内容（IO 错误）之前静默 return 0，迁移悄悄放弃、
         // 旧数据滞留无提示——补一条日志再按原样返回；返回值/行为不变。
         // （源目录不存在走上面 isDirectory 那条正常路径，不算异常，不打日志。）
-        val src = runCatching { legacy.listFiles() }.getOrNull() ?: run {
-            RunLog.log("迁移源不可读，跳过（src=${legacy.path}）")
+        // A5（2026-10-29）：`File.listFiles()` **不抛异常**，出错时返回 null —— 原写法把
+        // "列不出来（IO/权限）"和"目录是空的"当成同一件事，日志里那句"不可读"也没说清是哪种。
+        // 行为不变（仍 return 0），但文案分清，并且带上异常类名（若真有异常）。
+        val src = runCatching { legacy.listFiles() }.fold(
+            onSuccess = { it },
+            onFailure = { e ->
+                RunLog.log(dirListFailureNote(legacy.path, e))
+                null
+            },
+        ) ?: run {
+            RunLog.log("迁移源列不出内容（IO/权限问题，不是空目录），跳过：src=${legacy.path}")
             return 0
         }
         var moved = 0
@@ -213,6 +230,7 @@ object ZhengdaoDirs {
                     // 这里把半截清掉，让下一轮自愈；清不掉也无妨（比方说文件被占用），返回 false 的
                     // 语义不变：宁可下轮再试，也不能把半截留在公共区当成品。
                     runCatching { dst.deleteRecursively() }
+                    RunLog.log(moveFailureNote(f.path, dst.path, it))
                     false
                 }
             if (ok) moved++
@@ -251,6 +269,7 @@ object ZhengdaoDirs {
             }.getOrElse {
                 // 失败留可重试状态：清掉半截目标，下一轮 target.exists() 为假 ⇒ 自愈重拷
                 runCatching { target.delete() }
+                RunLog.log(moveFailureNote(legacy.path, target.path, it))
                 false
             }
     }
