@@ -1,8 +1,8 @@
 {
-  "total": 330,
+  "total": 326,
   "rules": {
-    "CyclomaticComplexMethod": 182,
-    "LongMethod": 148
+    "CyclomaticComplexMethod": 181,
+    "LongMethod": 145
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|The function verdictOf appears to be too complex based on Cyclomatic Complexity (complexity: 19). Defined complexity threshold for methods is set to '15'",
@@ -335,5 +335,6 @@
     "LongMethod|ToolSchemaRules.kt|The function audit is too long (74). The maximum length is 60.",
     "LongMethod|TopicSuggest.kt|The function reduce is too long (83). The maximum length is 60.",
     "LongMethod|VisionFiles.kt|The function load is too long (72). The maximum length is 60."
-  ]
+  ],
+  "recorded_from": "2026-10-29 276a 第1片：本机 detekt 325（-4），预算取 CI 上界 330-4=326 留 1 条余量；等有 actions:read 时用 CI 读数 --write 校准"
 }

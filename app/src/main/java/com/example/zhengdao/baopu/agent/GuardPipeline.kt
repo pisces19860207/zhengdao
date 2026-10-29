@@ -375,6 +375,9 @@ internal class GuardPipeline(
         // 第二百二十三批：越界弹卡的原因码由②段的事实直接给（走到这里已经是"越界"这个事实，
         // 不需要再让矩阵猜一次）；文案唯一来源在 `RiskTell`，别处不许再拼一句。
         if (guarded is Guarded.Ask) {
+            // 第二百七十四批 W1：越界在②段就返回了（根本不进③的矩阵），所以这一条
+            // 单独送一次——只观察、不改判定：卡照弹、文案照旧，意见进调解器的账。
+            OpinionWiring.onOutsidePath(guarded.call)
             return Prepared.Settled(
                 Result.NeedsConfirm(guarded.call, RiskTell.hint(RiskCode.PATH_OUTSIDE_WORKSPACE)),
             )
@@ -415,6 +418,10 @@ internal class GuardPipeline(
                 )
             }
             if (verdict != null) {
+                // 第二百七十四批 W1：分类器结论 → Opinion（未分类⇒L7／硬拒⇒L8／越界⇒L9），
+                // 送调解器做预算判定并落账。**只观察**：下面每一行分支、返回值、文案
+                // 一个字节都不动——负例"改写分类器结论"的判据就在这条注释的两侧。
+                OpinionWiring.onVerdict(effectiveCall, verdict)
                 // 硬拒（原件区/密码框/私有 URL）⇒ **拒绝**，不是"问"：降级成问就是把红线交给用户点
                 if (verdict.rejected) {
                     log(

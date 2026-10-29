@@ -100,14 +100,15 @@ object VisionFiles {
         cap: Int = VisionRules.MAX_IMAGE_BYTES,
         shrink: ((File) -> ShrinkOutcome)? = null,
         /**
-         * 第一百七十七批：**第二个允许的根**（生产传 `ZhengdaoDirs.root()`＝`Download/证道`）。
+         * 第一百七十七批：**第二个允许的根**（268 起生产传 `<SD根>/Pictures`）。
          *
-         * 为什么需要：agent 自己截的图落在 `证道/截屏/`——那是 App 的固定公共区，**不跟
-         * 抱朴工作区走**（`ZhengdaoDirs.PUBLIC_ROOT` 的 KDoc 明写「刻意不跟随工作区」）。而本方法
-         * 的越界判据是「必须仍在 [root] 里」⇒ 不改这一条，抱朴自己截的图会被自己拒掉。
+         * 为什么需要：agent 自己截的图不跟抱朴工作区走——268 起统一落系统截屏夹
+         * `Pictures/Screenshots/`（与用户自己截的图同目录）。而本方法的越界判据是
+         * 「必须仍在 [root] 里」⇒ 不改这一条，抱朴自己截的图会被自己拒掉。
          *
          * 口径：解析后的真实路径落在 **root 内 或 extraRoot 内**都收；两个都不在才按越界记
-         * 「不在工作区里（越界）」。默认 `null` ⇒ 行为与本参数出现之前**逐字相同**。
+         * 「不在工作区里（越界）」。extraRoot 刻意只放开 `Pictures` 一个目录（不是整张
+         * SD 卡）——读边界跟着「图会在哪」走。默认 `null` ⇒ 行为与本参数出现之前**逐字相同**。
          */
         extraRoot: File? = null,
     ): Loaded {

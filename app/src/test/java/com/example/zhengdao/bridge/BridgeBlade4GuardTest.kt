@@ -68,7 +68,11 @@ class BridgeBlade4GuardTest {
     }
     // 第一百七十七批：截图实现从 `screenshot()` 抽到 `captureShotRef()`（JSON/ref 两个出口
     // 共用一份内核）。门禁跟着**实现**走，不是放宽——断言的那几句仍然在实现里。
-    private val screenshotBody by lazy { bodyOf(commands, "internal fun captureShotRef(") }
+    // 268：实现拆成两半（grabShot 问几何＋取像素；captureShotRef 落盘一条路），
+    // 门禁把两段都收进来——断言照样钉在实现原文上。
+    private val screenshotBody by lazy {
+        bodyOf(commands, "internal fun captureShotRef(") + bodyOf(commands, "private fun grabShot(")
+    }
 
     /** dispatch 里某一条命令分支的调用文本。 */
     private fun dispatchBranch(src: String, cmd: String): String {
@@ -147,7 +151,8 @@ class BridgeBlade4GuardTest {
 
     @Test
     fun `J7_元素不存在与零尺寸都必须明说不许拿整页充数`() {
-        assertTrue("元素不存在走 NOT_FOUND 哨兵", screenshotBody.contains("\"NOT_FOUND\" -> return ShotCapture.Bad(\"找不到元素"))
+        // 268：取像素那半搬进 grabShot，哨兵拼写跟着实现走（screenshotBody 已收两段）
+        assertTrue("元素不存在走 NOT_FOUND 哨兵", screenshotBody.contains("\"NOT_FOUND\" -> return Grab.Bad(\"找不到元素"))
         assertTrue("零尺寸必须明说", screenshotBody.contains("元素没有尺寸"))
         assertTrue("selector 校验走 checkSelector", screenshotBody.contains("BridgePolicy.checkSelector(it)"))
         assertTrue("几何缺失要如实报错", screenshotBody.contains("取不到页面几何"))

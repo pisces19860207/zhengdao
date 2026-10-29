@@ -79,7 +79,7 @@ class MediaDeleteBranchTest {
     fun `相册路径_三种写法都分流`() {
         val abs = "/storage/emulated/0/" + album()
         var seen = mutableListOf<String>()
-        for (p in listOf(album(), abs, "证道/" + "截屏/证道截屏-20261025-083000.png")) {
+        for (p in listOf(album(), abs, "Screenshots/" + "证道截屏-20261025-083000.png")) {
             val out = DeletePathTool.run(
                 path = p,
                 root = tmp.newFolder(),
@@ -91,8 +91,27 @@ class MediaDeleteBranchTest {
             assertTrue("$p 应当被识别为相册路径：$out", out is ToolOutcome.Rejected)
         }
         assertEquals(
-            "三条路径都要规整成同一口径",
+            "三条路径都要规整成同一口径（268：系统截屏夹）",
             listOf(album(), album(), album()),
+            seen,
+        )
+    }
+
+    @Test
+    fun `相册路径_存量目录的口语写法仍分流到相册通道`() {
+        // 268：旧目录 Pictures/证道/截屏/ 不再有新写入，但旧账本条目必须删得掉（判据照旧）
+        var seen = mutableListOf<String>()
+        val out = DeletePathTool.run(
+            path = "证道/" + "截屏/证道截屏-20261025-083000.png",
+            root = tmp.newFolder(),
+            albumDelete = { rel ->
+                seen += rel
+                MediaDelete.Ask("测试用")
+            },
+        )
+        assertTrue("存量路径也该走相册通道：$out", out is ToolOutcome.Rejected)
+        assertEquals(
+            listOf(MediaOwnership.relLegacyShotDir() + "证道截屏-20261025-083000.png"),
             seen,
         )
     }

@@ -2,9 +2,11 @@
 //
 // 第一百九十九批 · MediaStore 分流与归属（设计 §5／§8 行 13/14/15／§9 S4）。
 //
-// 一句话：**按「谁来看」分图**——人要翻相册找的（用户点保存的截屏、模型生图）走
-// ContentResolver 进 `Pictures/证道/{截屏,图片}`；模型每步「看一眼」的核对图仍落
-// `证道/截屏/`（177 现状），**不进相册**（一次任务几十张会把用户相册刷爆）。
+// 第二百六十八批改口径（用户 2026-10-28 拍板方案 A）：**截屏只有一条路**——不管给谁看，
+// 全部走 MediaStore 进**系统截屏夹** `Pictures/Screenshots/`（与用户自己截的图同目录，
+// 抱朴读图 extraRoot 指到 `Pictures` 就能回读）；生图落点 `Pictures/证道/图片/` **不动**。
+// `Pictures/证道/截屏/` 降级为**存量目录**：账本里旧条目的 `relPath` 还是它，删除判据必须
+// 继续认得（`relLegacyShotDir()`），但不再有新写入。
 //
 // 本文件只装**判据与账本**（纯逻辑 ＋ 薄文件 IO，JVM 临时目录直测）：
 //   · 相册落点与相对路径（`RELATIVE_PATH` 的唯一来源）；
@@ -28,7 +30,8 @@ import org.json.JSONObject
  * 1. **写相册只能走 ContentResolver**：本文件**不提供任何 `File` 写相册的方法**，
  *    连文件对象都不往外给（`MediaPathGateTest` 还会再扫一遍主源码）；
  * 2. **归属先有账，才谈删除**：账上没有 ⇒ 一律按「不是自己生成的」走确认；
- * 3. **一份图只落一处**：核对图进 `证道/截屏/`，人看的进 `Pictures/证道/…`，不双写。
+ * 3. **一份图只落一处**：截屏全落 `Pictures/Screenshots/`，生图落 `Pictures/证道/图片/`，
+ *    每张一个 MediaStore 行，不双写。
  */
 internal object MediaOwnership {
 
@@ -43,13 +46,25 @@ internal object MediaOwnership {
     const val SOURCE_SCREENSHOT = "screenshot"
     const val SOURCE_IMAGE = "generate_image"
 
-    // ── 落点（唯一来源：内核常量） ────────────────────────────────────────────
+    // ── 落点（唯一来源：内核常量 ＋ 本处一个系统目录名） ──────────────────────
 
-    /** `Pictures/证道/截屏/` —— 用户可见截屏。 */
-    fun relShotDir(): String =
+    /** 系统截屏夹目录名（用户自己截屏也落这里；`Pictures/Screenshots/`）。 */
+    private const val SYSTEM_SHOTS_DIR = "Screenshots"
+
+    /**
+     * `Pictures/Screenshots/` —— 截屏唯一落点（268 起与用户自己的截图同目录，
+     * `browser_screenshot` 的 `album` 参数**不再**改变这里）。
+     */
+    fun relShotDir(): String = "Pictures/$SYSTEM_SHOTS_DIR/"
+
+    /**
+     * `Pictures/证道/截屏/` —— **存量**目录（199–267 的落点）。账本里旧条目的
+     * `relPath` 还是它 ⇒ 删除判据必须继续认；新写入一个都不许来（负例「只改名不改根」）。
+     */
+    fun relLegacyShotDir(): String =
         "Pictures/${BaopuKernel.Data.DIR_ALBUM}/${BaopuKernel.Data.DIR_ALBUM_SHOTS}/"
 
-    /** `Pictures/证道/图片/` —— 模型生图/图生图。 */
+    /** `Pictures/证道/图片/` —— 模型生图/图生图（268 **没动**）。 */
     fun relImageDir(): String =
         "Pictures/${BaopuKernel.Data.DIR_ALBUM}/${BaopuKernel.Data.DIR_ALBUM_IMAGES}/"
 
@@ -62,6 +77,16 @@ internal object MediaOwnership {
         SOURCE_IMAGE -> relImageDir()
         else -> null
     }
+
+    /**
+     * 相册口径的 `relPath`（`Pictures/…`）⇒ 相对 `Pictures/` 根的路径（引擎回读用）。
+     *
+     * 为什么要有：268 起 `shotRoot` 装配成 `Environment.getExternalStorageDirectory()/Pictures`
+     * （越界判据的第二个根**只放开 Pictures 一个目录**，不是整张 SD 卡），而 `VisionFiles.load`
+     * 是拿相对路径去两个根下解析的 ⇒ 引擎要的是 `Screenshots/x.png`，账本要的仍是
+     * `Pictures/Screenshots/x.png`（删除判据按账本走）。两头的换算只许在这一处。
+     */
+    fun relUnderPictures(albumRelPath: String): String = albumRelPath.removePrefix("Pictures/")
 
     // ── 账本 ─────────────────────────────────────────────────────────────────
 
@@ -214,28 +239,37 @@ internal object MediaOwnership {
     // ── 相册路径识别 ─────────────────────────────────────────────────────────
 
     /**
-     * 把用户/模型给的一条路径规整成「相册内相对路径」（`Pictures/证道/…`）；不是相册的 ⇒ null。
+     * 把用户/模型给的一条路径规整成「相册内相对路径」（`Pictures/Screenshots/…` 或
+     * `Pictures/证道/…`）；不是相册的 ⇒ null。
      *
-     * 认三种写法（都是同一条路，不认就等于让人去猜）：
-     * - `Pictures/证道/截屏/x.png`
-     * - `/storage/emulated/0/Pictures/证道/截屏/x.png`
-     * - `证道/截屏/x.png`（相对 `Pictures/` 的口语写法，**只在账本里能对上时才用**）
+     * 认五种写法（都是同一条路，不认就等于让人去猜）：
+     * - `Pictures/Screenshots/x.png`（268 起的截屏落点）
+     * - `/storage/emulated/0/Pictures/Screenshots/x.png`
+     * - `Screenshots/x.png`（相对 `Pictures/` 的口语写法，**只在账本里能对上时才用**）
+     * - `Pictures/证道/截屏/x.png`／`/storage/…/Pictures/证道/…`（**存量**账本条目）
+     * - `证道/截屏/x.png`（同上，存量口语写法）
      */
     fun albumRelPathOf(path: String): String? {
         val p = path.trim().replace('\\', '/').trimStart('/')
         if (p.isEmpty()) return null
-        val root = relAlbumRoot() // "Pictures/证道/"
+        val shot = relShotDir() // "Pictures/Screenshots/"
+        if (p.indexOf(shot) >= 0) return p.substring(p.indexOf(shot))
+        val root = relAlbumRoot() // "Pictures/证道/"（存量）
         val idx = p.indexOf(root)
         if (idx >= 0) return p.substring(idx)
-        // 口语写法：证道/截屏/x.png ⇒ Pictures/证道/截屏/x.png
+        // 口语写法：Screenshots/x.png ⇒ Pictures/Screenshots/x.png
+        if (p.startsWith("$SYSTEM_SHOTS_DIR/")) return "Pictures/$p"
+        // 口语写法：证道/截屏/x.png ⇒ Pictures/证道/截屏/x.png（存量）
         val bare = "${BaopuKernel.Data.DIR_ALBUM}/"
         if (p.startsWith(bare)) return "Pictures/$p"
         return null
     }
 
-    /** 这条相册路径是不是我们两个相册目录之一（`截屏/` 或 `图片/`）。 */
+    /** 这条相册路径是不是我们的目录之一（新截屏 `Screenshots/`、**存量** `证道/截屏/`、生图 `图片/`）。 */
     fun isAlbumPath(relPath: String): Boolean =
-        relPath.startsWith(relShotDir()) || relPath.startsWith(relImageDir())
+        relPath.startsWith(relShotDir()) ||
+            relPath.startsWith(relLegacyShotDir()) ||
+            relPath.startsWith(relImageDir())
 
     // ── 不覆盖命名 ───────────────────────────────────────────────────────────
 

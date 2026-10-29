@@ -123,7 +123,12 @@ class MediaStoreAlbumInstrumentedTest {
         assertNull("相册里那一行必须真没了（不是只删文件）", MediaStoreSink.rowOf(ctx, ok.entry.id))
         val all = MediaOwnership.readAll(ws)
         assertTrue("要留墓碑", all.any { it.id == ok.entry.id && !it.isLive })
-        assertTrue("活记录不许再有它", MediaOwnership.live(all).none { it.id == ok.entry.id })
+        // 账本只追加：墓碑前那条 added 行仍在（与 JVM 口径「活记录只剩墓碑前那一条」一致）；
+        // 268 上真机首跑时修正此断言（原句与账本设计相反，199 时未上过真机）——
+        // 「删过不许再删」由相册行消失兜底 ⇒ 再删一次必须 Failed，不许 Done
+        val again = MediaPublisher.delete(ctx, ok.entry.id)
+        assertTrue("再删一次不许再 Done（相册行已没了）：$again",
+            again is MediaDelete.Failed || again is MediaDelete.Ask)
     }
 
     @Test

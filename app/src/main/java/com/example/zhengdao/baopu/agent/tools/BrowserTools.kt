@@ -55,8 +55,8 @@ internal interface BrowserGateway {
      * 相对路径是给引擎读图用的（`VisionFiles.load`）；拿不到路径时 [Shot.relPath] 为 null，
      * 工具回执里会明说「只有文件没有像素」——不假装模型能看见。
      *
-     * 第一百九十九批加 [album]：`true` ＝这张是给**人**看的（存进手机相册），
-     * `false`（默认）＝给**模型**核对的（落 `证道/截屏/`，不进相册）。
+     * 199 加 [album]：`true` ＝这张是给**人**看的。268 起落点统一：两张都进系统截屏夹
+     * `Pictures/Screenshots/`（与用户自己截的图同目录），[album] 只改回执文案与「本轮读不读像素」。
      */
     fun screenshot(fullPage: Boolean, album: Boolean = false): Shot
 
@@ -380,10 +380,11 @@ internal object BrowserTools {
 
     fun screenshotSpec(): ToolSpec = ToolSpec(
         name = NAME_SCREENSHOT,
-        description = "给玄览当前页截图。默认这张是**给我自己看**的（落 证道/截屏/，不进相册，" +
-            "本轮首次截图会先问你一次，敏感页每次都问）。" +
-            "用户说「存到相册/给我看/发我一张」时传 album=true：这张会进手机相册" +
-            "（Pictures/证道/截屏/），按「谁来看」分流，**一轮核对别开它**。" +
+        description = "给玄览当前页截图。截图统一存进**系统截屏夹**（Pictures/Screenshots/，与用户" +
+            "自己截的屏同一个目录——所以抱朴现在能读你自己截的图，读图根就是这个夹子）。" +
+            "默认这张是**给我自己看**的（我会回读像素核对页面；本轮首次截图会先问你一次，敏感页每次都问）。" +
+            "用户说「存到相册/给我看/发我一张」时传 album=true：落点是同一个夹子，但回执按「给你存的」写、" +
+            "我这轮不再读它的像素。**一轮核对别开它**。" +
             "⚠️ 代价先说清：这张是在离屏（看不见的地方）**重新载入这个页面**后画的，" +
             "所以它反映的是**页面初始状态**——不是你此刻看到的滚动位置，也不包含用户已经填过的表单内容；" +
             "懒加载/无限滚动出来的内容也不会出现在这张里。要看用户此刻的精确画面，" +
@@ -398,15 +399,15 @@ internal object BrowserTools {
                 ),
                 ARG_ALBUM to jsonObjectOf(
                     "type" to "boolean",
-                    "description" to "true = 存进手机相册给人看（Pictures/证道/截屏/）；" +
-                        "默认 false = 只给我核对用，不进相册",
+                    "description" to "true = 这张给用户看（同样存进系统截屏夹 Pictures/Screenshots/，" +
+                        "回执写明、本轮不读像素）；默认 false = 我自己核对用（我会回读像素）",
                 ),
             ),
             "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE,
-        // C2 裁定（2026-10-27，两步走第二步）：截图落 证道/截屏/ 是**写副作用**，
+        // C2 裁定（2026-10-27，两步走第二步）：截图落盘是**写副作用**，
         // readOnly=true 是账本真缺陷——I1 在真机上巡出的那条漏账就是它（GuardPipeline
         // 的 auto_act 写点 `if (!spec.readOnly)` 使它永不落 208）⇒ 改 false，让它进账。
         // 权限**仍 FREE**（裁定原文：仍免问）；隐私确认（本轮首次会问一次）在工具内部，
@@ -422,8 +423,8 @@ internal object BrowserTools {
         }.getOrElse { return@ToolSpec ToolOutcome.Failed("截图失败：${it.message ?: it.javaClass.simpleName}") }
         val warn = if (isSensitivePage(gateway)) "⚠ 敏感页截图。\n" else ""
         val tail = when {
-            // 199：给人看的这张只进相册（一份图只落一处），本轮本来就不读它的像素
-            shot.album -> "\n（这张已经存进手机相册（Pictures/证道/截屏/）；" +
+            // 268：给用户存的这张本轮不读像素（落点已统一，这里只剩「读不读」的差别）
+            shot.album -> "\n（这张已经存进系统截屏夹（Pictures/Screenshots/），跟你自己的截图在一起；" +
                 "我这一轮不看它的像素，要看内容用 browser_snapshot。）"
             shot.relPath == null ->
                 "\n（这张图没有可读路径，模型看不到像素；要看内容请用 browser_snapshot）"
@@ -431,8 +432,8 @@ internal object BrowserTools {
         }
         ToolOutcome.Ok(
             warn + cap(shot.text, MAX_TEXT_CHARS) + tail,
-            // 相册那张不往引擎的读图管线里塞：它不在工作区根也不在截屏根，塞进去只会
-            // 变成「有 1 张图片没发出去（不在工作区里（越界））」
+            // 268：给用户存的那张本轮不往引擎的读图管线里塞（模型不需要再看一遍；
+            // 自己核对的那张照旧交路径——它落系统截屏夹，shotRoot=Pictures 能解析）
             imageRelPaths = if (shot.album) emptyList() else listOfNotNull(shot.relPath),
         )
     }

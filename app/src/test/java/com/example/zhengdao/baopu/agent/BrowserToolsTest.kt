@@ -56,7 +56,7 @@ class BrowserToolsTest {
         override fun screenshot(fullPage: Boolean, album: Boolean): Shot {
             calls += "shot:$fullPage:$album"
             boom?.let { throw it }
-            // 199：相册那张不回可读路径（它不在工作区/截屏根里），与生产的 `Shot` 同形
+            // 268：给用户存的那张不回可读路径（本轮模型不读它的像素），与生产的 `Shot` 同形
             return if (album) Shot(answer, null, album = true) else Shot(answer, shotRel)
         }
         override fun tap(cssX: Int, cssY: Int): String {
@@ -176,7 +176,7 @@ class BrowserToolsTest {
 
     @Test
     fun 截图算写_进账但不翻权限() {
-        // C2（239 补刀，2026-10-27 裁定）：截图落 证道/截屏/ 是写副作用 ⇒ readOnly=false，
+        // C2（239 补刀，2026-10-27 裁定）：截图落盘（268 起在 Pictures/Screenshots/）是写副作用 ⇒ readOnly=false，
         // 让 GuardPipeline 的 auto_act 写点收它的账（真机 I1 巡出的漏账就是它）；
         // 权限**仍 FREE**——免问口径不变，改的只是"有没有账"，不是"要不要问"。
         val shot = spec("browser_screenshot")
