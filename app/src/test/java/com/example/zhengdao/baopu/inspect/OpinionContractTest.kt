@@ -70,7 +70,9 @@ class OpinionContractTest {
     }
 
     @Test fun `law reference is a closed set with explicit NONE`() {
-        assertEquals(listOf("NONE") + (1..23).map { "L$it" }, LawRef.entries.map { it.name })
+        // 第二百七十二批：L28 旁路对拍入列（法典 2026-10-27 版新增 L24–L28，L28 归 272，
+        // L24–L27 由 271 的批次自己加；加了之后这里要跟着长）。
+        assertEquals(listOf("NONE") + (1..23).map { "L$it" } + listOf("L28"), LawRef.entries.map { it.name })
         listOf("", " ", "L0", "L24", "据说").forEach {
             assertThrows(IllegalArgumentException::class.java) { LawRef.valueOf(it) }
         }

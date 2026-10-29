@@ -20,7 +20,7 @@ import com.example.zhengdao.core.ZhengdaoDirs
  * - 闸只是弹卡，DENY 分支却没返回 `Failed`（用户点了「不截」，图还是截了）；
  * - 读图不看 `provider.vision`（给未验证通道塞图片块，或把截图悄悄发出去）；
  * - 新截图不替换旧帧（模型以为看的是当前页，其实是三步前的）；
- * - `shotRoot` 没接（`证道/截屏/` 里的图被越界判据拒掉，静默变成「读不出来」）。
+ * - `shotRoot` 没接（`Pictures/Screenshots/` 里的图被越界判据拒掉，静默变成「读不出来」）。
  * 这些都在**两处调用之间**，只有源码级钉子能拦住。
  *
  * 证据等级：本文件全是 ②（代码原文）；行为面（真机截图进模型）在交付报告「未验」栏。
@@ -168,8 +168,8 @@ class ScreenshotWiringTest {
         )
         val runtime = src("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt")
         assertTrue(
-            "生产必须注入落盘根（ZhengdaoDirs.root = Download/证道）",
-            runtime.contains("shotRoot = { ZhengdaoDirs.root(appCtx) }"),
+            "生产必须注入落盘根（Environment/Pictures＝系统截屏夹的父目录，268）",
+            runtime.contains("shotRoot = { File(Environment.getExternalStorageDirectory(), \"Pictures\") }"),
         )
     }
 
@@ -206,7 +206,7 @@ class ScreenshotWiringTest {
             tools.contains("imageRelPaths = if (shot.album) emptyList() else listOfNotNull(shot.relPath)"),
         )
         assertTrue(
-            "相册那张不许塞进读图管线（它不在工作区/截屏根里，塞进去只会变成一条「越界」）",
+            "给用户存的那张不塞进读图管线（本轮不需要再看一遍像素，与落点无关）",
             tools.contains("if (shot.album) emptyList()"),
         )
         assertTrue("拿不到路径要明说", tools.contains("看不到像素"))

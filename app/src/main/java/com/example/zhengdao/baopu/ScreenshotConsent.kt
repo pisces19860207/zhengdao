@@ -23,7 +23,8 @@ import com.example.zhengdao.baopu.agent.AskUserRequest
  * ## 三条纪律（与 VisionConsent 同規）
  * 1. **默认不截**：超时/没人回答/认不出的答案一律 [Decision.DENY]——把超时算成同意，
  *    就是「后台偷截」的另一种写法；
- * 2. **文案只写事实**：只截当前页、不截其他 App、不上传、留 `证道/截屏/`、不进相册；
+ * 2. **文案只写事实**：只截当前页、不截其他 App、不上传、存进系统截屏夹
+ *    `Pictures/Screenshots/`（268 起与用户自己截的图同目录、相册可见）；
  *    不承诺「安全」（截图确实会发给模型，用户要知情）；
  * 3. **不猜页面内容**：卡片里只放 URL 主机名与标题（截断），不把页面正文塞进卡。
  */
@@ -70,7 +71,7 @@ internal object ScreenshotConsent {
         } else {
             "抱朴想截图当前玄览页面给模型核对" + if (where.isNotEmpty()) "（$where）" else ""
         }
-        val scope = "只截玄览当前这一页，不截其他 App、不上传；文件留在 证道/截屏/，不进相册"
+        val scope = "只截玄览当前这一页，不截其他 App、不上传；文件存进系统截屏夹 Pictures/Screenshots/（相册里能看到，与你自己截的图同目录）"
         return AskUserRequest(
             question = question,
             options = listOf(
