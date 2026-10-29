@@ -44,6 +44,28 @@ internal data class LogStep(val id: Long, val sessionId: Long, val step: Int, va
 /** `run_trace` 的一步（任务＝run_id；[atMs] 取该步 `started_at`）。 */
 internal data class RunStep(val runId: String, val sessionId: Long, val step: Int, val atMs: Long)
 
+/**
+ * `run_trace` 的**一次工具请求**（读数层的人介入率／不可逆动作占比按它算）。
+ *
+ * 去重键是 **(run_id, step, tool, args_hash) 四元组**（口径 §3.2／裁定⑤），所以这里不带
+ * `argsHash` 以外的参数——轨迹本来也只存 hash。同一次请求在库里可能落两行
+ * （挂起记 `CONFIRM`、批准后按真结果再记一行，`RunEngine.kt:3629`），两行在取数层就被并成一条。
+ *
+ * [atMs] 取该请求 `started_at` 的**最大值**：批准后补的那一行 `started_at = 0`（耗在等人点按钮上，
+ * 不算工具耗时），取最小会把整个请求的时刻拖到 0、掉出滚动窗。
+ */
+internal data class ToolRequest(
+    val runId: String,
+    val sessionId: Long,
+    val step: Int,
+    val tool: String,
+    val atMs: Long,
+    /** 该请求的行里出现过 `status = CONFIRM`（摆过确认卡）。 */
+    val hasConfirm: Boolean,
+    /** 该请求的行里出现过 `status = OK`（真执行了）。 */
+    val hasOk: Boolean,
+)
+
 /** `sub_task` 的一行（[status] 与 `SubTaskStatus` 枚举名同字面量；门禁不许 import agent 包）。 */
 internal data class SubTaskRow(val taskId: String, val status: String, val endedAt: Long)
 
@@ -68,7 +90,8 @@ internal enum class MetricKey(
     E1_CORRECTIONS("e1_corrections", "平均纠偏次数", 7, perTask = true),
     E1_HUMAN("e1_human", "人介入率", 7),
     E1_IRREVERSIBLE("e1_irreversible", "不可逆动作占比", 7),
-    E1_LEDGER_MISMATCH("e1_ledger_mismatch", "账实不符率", 7),
+    /** 2026-10-29 裁定④：算术不动（分母＝核对过的写侧动作数），只改名——「差条数÷总条数」那种读法作废。 */
+    E1_LEDGER_MISMATCH("e1_ledger_mismatch", "写侧账实不符率", 7),
     M9_HALLUCINATION("m9_hallucination", "可验证幻觉率", 7),
     ;
 
@@ -160,6 +183,31 @@ internal object Metrics {
     /** `run_log.state` 里"动了手"的字面量。 */
     const val STATE_ACTING = "Acting"
 
+    /** 询问用户的工具名（口径 §3.2／裁定⑦：它本身就是一张卡，算「摆过确认卡」）。 */
+    const val TOOL_ASK_USER = "ask_user"
+
+    /** 覆盖写判不出时读数行必须带的上界说明（口径 §3.6 缺口①）。 */
+    const val NOTE_OVERWRITE_UPPER = "覆盖写上界：含新建文件"
+
+    /**
+     * 破坏动作白名单（口径 §三·乙，**写死**：新增动作必须显式加名并同步改 METRICS.md）。
+     *
+     * 不用 `DecisionRecord.reversible = false`：那一列含 `read_scope`／`eval_verdict`／
+     * `rollback_of`／`skill_demoted` 等非破坏动作，当成"不可逆"会多算。
+     *
+     * 覆盖写那八支里，后四支（`novel_*`／`book_outline`／`card_build`）**可能只是新建**，
+     * 所以读数行永远带 [NOTE_OVERWRITE_UPPER]——上界说明对这八支都成立（裁定⑥）。
+     */
+    private val DANGER_TOOLS = setOf(
+        // 删除
+        "delete_path", "move_path",
+        // 外发
+        "search_web", "generate_image", "card_export", "phone_dial",
+        // 覆盖写（可能新建）
+        "write_file", "edit_file", "convert_encoding", "image_ops",
+        "novel_create", "novel_continue", "book_outline", "card_build",
+    )
+
     /** `sub_task.status` 的终态（与 `SubTaskStatus` 枚举名同字面量；门禁不许 import agent 包）。 */
     private val TERMINAL = setOf("DONE", "FAILED", "TIMEOUT", "CANCELLED")
 
@@ -170,6 +218,7 @@ internal object Metrics {
         val reviews: List<DecisionReview.Entry> = emptyList(),
         val logs: List<LogStep> = emptyList(),
         val runs: List<RunStep> = emptyList(),
+        val requests: List<ToolRequest> = emptyList(),
         val subTasks: List<SubTaskRow> = emptyList(),
         val skills: List<SkillSnapshot> = emptyList(),
         val patrols: List<PatrolEntry> = emptyList(),
@@ -304,26 +353,48 @@ internal object Metrics {
         return lineOf(MetricKey.E1_CORRECTIONS, rolls.size, tasks.size, rolls.map { "decision:${it.id}" })
     }
 
-    /** 人介入率：有摆卡的任务数 ÷ 任务数。 */
+    /**
+     * 人介入率：摆过确认卡的工具**请求** ÷ 工具请求总数（请求级，口径 §3.2）。
+     *
+     * 请求已在取数层按四元组去重（批准后补的那行并进来了）；这里只做窗口与判定，不再按行数算。
+     * `ask_user` 计入摆卡（裁定⑦）：它不产生 CONFIRM 行，漏掉会把"人介入"低估。
+     */
     private fun human(i: Inputs): MetricLine {
-        val days = MetricKey.E1_HUMAN.windowDays
-        val confirms = i.logs.filter { it.state == STATE_CONFIRM && inWindow(it.atMs, i.nowMs, days) }
-            .map { it.sessionId to it.step }
-            .toSet()
-        val runs = i.runs.filter { inWindow(it.atMs, i.nowMs, days) }
-        val tasks = runs.map { it.runId }.toSet()
-        val touched = runs.filter { (it.sessionId to it.step) in confirms }.map { it.runId }.toSet()
-        return lineOf(MetricKey.E1_HUMAN, touched.size, tasks.size, touched.map { "task:$it" })
+        val reqs = i.requests.filter { inWindow(it.atMs, i.nowMs, MetricKey.E1_HUMAN.windowDays) }
+        val asked = reqs.filter { it.hasConfirm || it.tool == TOOL_ASK_USER }
+        return lineOf(
+            MetricKey.E1_HUMAN,
+            asked.size,
+            reqs.size,
+            asked.map { "trace:${it.sessionId}#${it.step}" },
+        )
     }
 
-    /** 不可逆动作占比：`reversible = false` 的账行 ÷ 全部账行（读侧已回填回滚标记）。 */
+    /**
+     * 不可逆动作占比：破坏动作白名单命中数 ÷ 已执行工具请求数（口径 §3.3／§三·乙）。
+     *
+     * 「已执行」＝该请求有一行 `status = OK`：摆卡没批、被拒、超时的请求都不进分母——
+     * 没发生的动作谈不上"不可逆"。覆盖写判不出目标当时在不在 ⇒ 读数行永远带上界说明。
+     */
     private fun irreversible(i: Inputs): MetricLine {
-        val rows = i.ledger.filter { inWindow(it.atMs, i.nowMs, MetricKey.E1_IRREVERSIBLE.windowDays) }
-        val hard = rows.filter { !it.reversible }
-        return lineOf(MetricKey.E1_IRREVERSIBLE, hard.size, rows.size, hard.map { "decision:${it.id}" })
+        val reqs = i.requests.filter { inWindow(it.atMs, i.nowMs, MetricKey.E1_IRREVERSIBLE.windowDays) }
+        val executed = reqs.filter { it.hasOk }
+        val danger = executed.filter { it.tool in DANGER_TOOLS }
+        return lineOf(
+            MetricKey.E1_IRREVERSIBLE,
+            danger.size,
+            executed.size,
+            danger.map { "trace:${it.sessionId}#${it.step}" },
+            NOTE_OVERWRITE_UPPER,
+        )
     }
 
-    /** 账实不符率：直接吃 I1 的 [AuditGapCheck.compare]（账本空时 checked=0 ⇒ 自动 unknown）。 */
+    /**
+     * 写侧账实不符率：直接吃 I1 的 [AuditGapCheck.compare]（账本空时 checked=0 ⇒ 自动 unknown）。
+     *
+     * 2026-10-29 裁定④：**算术不动**，只是名字从「账实不符率」改成「写侧账实不符率」——
+     * 分母是"核对过的写侧动作数"，不是"账本总条数"；「差条数 ÷ 总条数」那种读法作废。
+     */
     private fun ledgerMismatch(i: Inputs): MetricLine {
         val res = AuditGapCheck.compare(i.acts, i.ledger)
         return lineOf(

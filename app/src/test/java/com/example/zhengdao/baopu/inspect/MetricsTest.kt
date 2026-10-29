@@ -72,6 +72,24 @@ class MetricsTest {
     private fun run(runId: String, sessionId: Long = 1L, step: Int = 1, at: Long = now) =
         RunStep(runId = runId, sessionId = sessionId, step = step, atMs = at)
 
+    private fun req(
+        runId: String = "run1",
+        sessionId: Long = 1L,
+        step: Int = 1,
+        tool: String = "write_file",
+        at: Long = now,
+        confirm: Boolean = false,
+        ok: Boolean = true,
+    ) = ToolRequest(
+        runId = runId,
+        sessionId = sessionId,
+        step = step,
+        tool = tool,
+        atMs = at,
+        hasConfirm = confirm,
+        hasOk = ok,
+    )
+
     private fun sub(taskId: String, status: String, at: Long = now) = SubTaskRow(taskId, status, at)
 
     private fun patrol(id: String, at: Long = now, verdicts: List<InspectVerdict>) = PatrolEntry(
@@ -295,16 +313,46 @@ class MetricsTest {
         assertTrue(line.display(), line.display().contains("0.3 次/任务"))
     }
 
+    // ── 人介入率：请求级（口径 §3.2／裁定⑤⑦）──────────────────────────────
+
     @Test
-    fun `人介入率_按任务去重_同任务多步摆卡算一次`() {
+    fun `人介入率_按请求算_同一次请求补第二行只算一次`() {
+        // 取数层已把「挂起 CONFIRM 行 ＋ 批准后那行」并成一条请求：这里给的就是并完的形状
         val inputs = Metrics.Inputs(
             nowMs = now,
-            runs = (1..12).map { run("run$it", step = it) },
-            logs = (1..12).map { log(step = it) } +
+            requests = (1..11).map { req(step = it) } + req(step = 12, confirm = true),
+        )
+        val line = line(inputs, MetricKey.E1_HUMAN)
+        assertEquals(1, line.ratio.num)
+        assertEquals(12, line.ratio.denom)
+        assertEquals(listOf("trace:1#12"), line.evidence)
+    }
+
+    @Test
+    fun `人介入率_一步里多个工具调用各算一个请求`() {
+        // 批编排一个 step 能连跑多个工具：按 (run_id, step) 去重会把 12 算成 10
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            requests = listOf(
+                req(step = 5, tool = "write_file"),
+                req(step = 5, tool = "read_file"),
+                req(step = 5, tool = "search_web"),
+            ) + (6..14).map { req(step = it) },
+        )
+        val line = line(inputs, MetricKey.E1_HUMAN)
+        assertEquals(0, line.ratio.num)
+        assertEquals("一步三调用算三个请求", 12, line.ratio.denom)
+    }
+
+    @Test
+    fun `人介入率_ask_user算摆卡`() {
+        // ask_user 本身就是一张卡，但不产生 CONFIRM 行；漏掉会把"人介入"低估
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            requests = (1..10).map { req(step = it) } +
                 listOf(
-                    log(step = 1, state = Metrics.STATE_CONFIRM),
-                    log(step = 1, state = Metrics.STATE_CONFIRM),
-                    log(step = 2, state = Metrics.STATE_CONFIRM),
+                    req(step = 11, tool = Metrics.TOOL_ASK_USER, confirm = false),
+                    req(step = 12, tool = Metrics.TOOL_ASK_USER, confirm = false),
                 ),
         )
         val line = line(inputs, MetricKey.E1_HUMAN)
@@ -312,20 +360,107 @@ class MetricsTest {
         assertEquals(12, line.ratio.denom)
     }
 
+    // ── 不可逆动作占比：破坏动作白名单（口径 §3.3／§三·乙）──────────────────
+
     @Test
-    fun `不可逆动作占比_读侧reversible直接算`() {
+    fun `不可逆动作占比_按白名单命中已执行请求算`() {
         val inputs = Metrics.Inputs(
             nowMs = now,
-            ledger = (1..16).map { row("r$it") } + (1..4).map { row("h$it", reversible = false) },
+            requests = listOf(
+                req(step = 1, tool = "delete_path"),
+                req(step = 2, tool = "search_web"),
+                req(step = 3, tool = "write_file"),
+            ) + (4..12).map { req(step = it, tool = "read_file") },
         )
         val line = line(inputs, MetricKey.E1_IRREVERSIBLE)
-        assertEquals(4, line.ratio.num)
-        assertEquals(20, line.ratio.denom)
+        assertEquals(3, line.ratio.num)
+        assertEquals(12, line.ratio.denom)
         assertTrue(line.known)
     }
 
     @Test
-    fun `账实不符率_复用I1_账本空就unknown`() {
+    fun `不可逆动作占比_剪贴板与浏览器不算`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            requests = listOf(
+                req(step = 1, tool = "clipboard_write"),
+                req(step = 2, tool = "browser_click"),
+                req(step = 3, tool = "notify"),
+                req(step = 4, tool = "write_skill"),
+            ) + (5..12).map { req(step = it, tool = "file_info") },
+        )
+        val line = line(inputs, MetricKey.E1_IRREVERSIBLE)
+        assertEquals("这四支不在白名单", 0, line.ratio.num)
+        assertEquals(12, line.ratio.denom)
+    }
+
+    @Test
+    fun `不可逆动作占比_白名单含novel四支`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            requests = listOf(
+                req(step = 1, tool = "novel_create"),
+                req(step = 2, tool = "novel_continue"),
+                req(step = 3, tool = "book_outline"),
+                req(step = 4, tool = "card_build"),
+            ) + (5..12).map { req(step = it, tool = "read_file") },
+        )
+        val line = line(inputs, MetricKey.E1_IRREVERSIBLE)
+        assertEquals("裁定⑥：这套确实落文件", 4, line.ratio.num)
+        assertEquals(12, line.ratio.denom)
+    }
+
+    @Test
+    fun `不可逆动作占比_没执行的请求不进分母`() {
+        // 摆卡没批 / 被拒 / 超时都没有 OK 行：没发生的动作谈不上"不可逆"
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            requests = listOf(
+                req(step = 1, tool = "delete_path", confirm = true, ok = false),
+                req(step = 2, tool = "write_file", ok = false),
+            ) + (3..14).map { req(step = it, tool = "read_file") },
+        )
+        val line = line(inputs, MetricKey.E1_IRREVERSIBLE)
+        assertEquals(0, line.ratio.num)
+        assertEquals("只有 12 条执行过", 12, line.ratio.denom)
+    }
+
+    // ── 不确定性必须跟数同行（用户 2026-10-29 硬要求）───────────────────────
+
+    @Test
+    fun `不可逆动作占比_读数行必须写覆盖写上界`() {
+        val line = line(Metrics.Inputs(nowMs = now, requests = (1..12).map { req(step = it) }), MetricKey.E1_IRREVERSIBLE)
+        assertTrue(
+            "读数行没写覆盖写上界，实际 note='${line.note}'",
+            line.note.contains("覆盖写上界：含新建文件"),
+        )
+    }
+
+    @Test
+    fun `不可逆动作占比_分母不够unknown时_上界照样要写`() {
+        val empty = line(Metrics.Inputs(nowMs = now), MetricKey.E1_IRREVERSIBLE)
+        assertFalse("空输入应当是 unknown", empty.known)
+        assertTrue(
+            "unknown 时把上界那句吞了，实际 note='${empty.note}'",
+            empty.note.contains("覆盖写上界：含新建文件"),
+        )
+    }
+
+    @Test
+    fun `周报_不确定性跟数同行_display里也看得见`() {
+        val report = Metrics.weekly(fullInputs())
+        val shown = report.lines.joinToString(" ／ ") { it.display() }
+        assertTrue("界面上看不到覆盖写上界：$shown", shown.contains("覆盖写上界：含新建文件"))
+    }
+
+    @Test
+    fun `备注_原字不改_少了含新建文件也算红`() {
+        val text = Metrics.weekly(fullInputs()).lines.joinToString(" ") { it.note }
+        assertTrue("上界说明被改短：$text", text.contains("覆盖写上界：含新建文件"))
+    }
+
+    @Test
+    fun `写侧账实不符率_复用I1_账本空就unknown`() {
         val acts = (1..10).map { act(step = it) }
         val emptyLedger = Metrics.Inputs(nowMs = now, acts = acts)
         assertFalse("账本空不许报 0%", line(emptyLedger, MetricKey.E1_LEDGER_MISMATCH).known)
@@ -389,6 +524,8 @@ class MetricsTest {
             review("w1", DecisionRecord.VERDICT_WRONG),
         logs = (1..12).map { log(step = it) } + log(step = 1, state = Metrics.STATE_CONFIRM),
         runs = (1..10).map { run("run$it", step = it) },
+        requests = (1..11).map { req(step = it, tool = "read_file") } +
+            req(step = 12, tool = "write_file", confirm = true),
         subTasks = (1..10).map { sub("t$it", if (it % 2 == 0) "DONE" else "FAILED") },
         skills = listOf(skill("s1", (1..10).map { sample("op$it", ok = it != 10) })),
         patrols = listOf(patrol("patrol:1", verdicts = List(6) { InspectVerdict.CLEAR })),
@@ -411,6 +548,7 @@ class MetricsTest {
             reviews = a.reviews.reversed(),
             logs = a.logs.reversed(),
             runs = a.runs.reversed(),
+            requests = a.requests.reversed(),
             subTasks = a.subTasks.reversed(),
             skills = a.skills.reversed(),
             patrols = a.patrols.reversed(),
