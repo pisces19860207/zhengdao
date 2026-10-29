@@ -141,6 +141,16 @@ internal class PersonaFiles(
      * 口径：**读**时新位置优先、缺了回落到旧位置；**写**只写新位置（旧的那份不动、不删）。
      */
     private val legacyProjectRoot: File? = null,
+    /**
+     * 第二百八十五批：**出厂 C 层**的正文（装配层从 `assets/persona/factory_c.md` 注入）。
+     *
+     * 为什么由外面注入而不是本类去读 assets：本类不碰 Context（整类可用临时目录 JVM 直测），
+     * 而 assets 只能通过 `AssetManager` 拿。注入之后，"出厂兜底"这条判据照样能纯函数测。
+     *
+     * 语义（用户 2026-10-29 定）：**只读兜底** —— active 与旧落点都没有时它才生效；
+     * 一旦用户/模型写过 active，它就**退役但保留**（内容还在这里，随时可一键恢复）。
+     */
+    private val factoryProjectText: String? = null,
 ) {
 
     /** B 全局人设文件（跟 App）。 */
@@ -170,11 +180,55 @@ internal class PersonaFiles(
         if (layer == PersonaLayer.C_PROJECT) {
             val legacy = legacyProjectFile()
             if (legacy != null && legacy.isFile) {
-                return runCatching { legacy.readText(Charsets.UTF_8) }.getOrNull()?.takeIf { it.isNotBlank() }
+                runCatching { legacy.readText(Charsets.UTF_8) }.getOrNull()
+                    ?.takeIf { it.isNotBlank() }?.let { return it }
             }
+            // 285：都没有 ⇒ 出厂兜底（只读；一旦写过 active 这条就轮不到，即"退役但保留"）
+            factoryText()?.let { return it }
         }
         return null
     }
+
+    /** 出厂 C 层正文（没有出厂兜底 ⇒ null）。 */
+    fun factoryText(): String? = factoryProjectText?.takeIf { it.isNotBlank() }
+
+    /**
+     * 当前 C 层是不是**还用着出厂那份**（设置页据此显示"出厂兜底中"）。
+     *
+     * 两种情形都算"用着出厂"：
+     * 1. active 与旧落点都空/缺 ⇒ 读到的是兜底；
+     * 2. **active 的内容正好等于出厂内容** ⇒ 刚点过「恢复出厂」。
+     *
+     * 第 2 条是 2026-10-29 真机抓出来的 bug：只看"空不空"的话，恢复出厂之后
+     * 文件里装的是出厂正文（非空），状态行会倔强地显示"你自己那份"——
+     * Toast 说恢复成功、状态行说没恢复，用户会以为功能坏了。
+     */
+    fun usingFactory(): Boolean {
+        val f = factoryText() ?: return false
+        val active = runCatching { projectFile().readText(Charsets.UTF_8) }.getOrNull()?.takeIf { it.isNotBlank() }
+        val legacy = legacyProjectFile()?.let {
+            runCatching { it.readText(Charsets.UTF_8) }.getOrNull()?.takeIf { t -> t.isNotBlank() }
+        }
+        val current = active ?: legacy ?: return true
+        return current.trim() == f.trim()
+    }
+
+    /**
+     * 恢复出厂：把出厂内容抄进 **active**（C 层新位置），**不备份用户那份**。
+     *
+     * 用户 2026-10-29 明确说「恢复就是恢复，别留一份念想」——所以这里**故意不走**
+     * [applyProposal] 的写前备份（那是给人改人设用的保险，不是给"我要回到出厂"用的）。
+     * 注意：写的是 active，**不是**出厂文件本身（出厂那份任何路径都不许写）。
+     *
+     * @return true ＝ 已经回到出厂；false ＝ 出厂内容不可用（没有出厂层）
+     */
+    fun restoreFactory(): Boolean = runCatching {
+        val text = factoryText() ?: return@runCatching false
+        val f = projectFile()
+        f.parentFile?.mkdirs()
+        f.writeText(text, Charsets.UTF_8)
+        true
+    }.getOrDefault(false)
 
     /**
      * 写一层。**只接受已确认的提案**（[PersonaRules.canApply] 复核）——

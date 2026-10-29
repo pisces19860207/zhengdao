@@ -235,6 +235,14 @@ internal object PersonaAudit {
     /** 重置一层（先备份再写空）。 */
     fun reset(layer: PersonaLayer): String = "$TAG 重置 ${layer.name}（先备份）".also { emit(it) }
 
+    /**
+     * 恢复出厂（285）：**不备份**用户那份，直接把出厂内容抄进 active。
+     *
+     * 与 [reset] 分开一行文案，是因为这两件事在账上必须能区分：
+     * 「重置」= 先备份再清空（可回滚），「恢复出厂」= 直接回到出厂（用户明确不要备份）。
+     */
+    fun restored(layer: PersonaLayer): String = "$TAG 恢复出厂 ${layer.name}（不备份）".also { emit(it) }
+
     private fun emit(line: String) {
         sink?.invoke(line)
     }

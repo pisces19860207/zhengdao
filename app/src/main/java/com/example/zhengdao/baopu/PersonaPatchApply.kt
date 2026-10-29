@@ -69,6 +69,41 @@ internal object PersonaPatchApply {
         files: PersonaFiles,
         source: String = "卡片",
     ): PersonaApplyResult {
+        val result = applyInner(patch, consent, currentWorkspaceId, files, source)
+        // 285：一条人设的来龙去脉必须留账（谁／何时／原文）——
+        // `[persona]` 那行日志会被轮转，账不会；而且它答不了"谁加的、原话是什么"。
+        PersonaChangeLedger.record(
+            who = whoOf(source),
+            layer = (result as? PersonaApplyResult.Applied)?.layer
+                ?: if (patch.scope == PersonaPatchScope.B_GLOBAL) PersonaLayer.B_GLOBAL else PersonaLayer.C_PROJECT,
+            text = patch.sections.joinToString("\n") { it.text.trim() },
+            reason = (result as? PersonaApplyResult.Rejected)?.reason ?: patch.reason,
+            applied = result is PersonaApplyResult.Applied,
+            source = source,
+        )
+        return result
+    }
+
+    /**
+     * 谁加的（按来源推断）。
+     *
+     * 只是账上那一列的取值，**不参与任何判据**——所以按关键字推断足够了，
+     * 不必给全仓每个调用点加参数（加参数反而会让"设置页"这条悄悄变成默认值）。
+     */
+    internal fun whoOf(source: String): PersonaWho = when {
+        source.contains("设置页") -> PersonaWho.USER
+        source.contains("导入") -> PersonaWho.IMPORT
+        source.contains("工具") || source.contains("模型") -> PersonaWho.MODEL
+        else -> PersonaWho.CARD
+    }
+
+    private fun applyInner(
+        patch: PersonaPatch,
+        consent: PersonaConsent,
+        currentWorkspaceId: String?,
+        files: PersonaFiles,
+        source: String = "卡片",
+    ): PersonaApplyResult {
         PersonaPatchRules.validate(patch)?.let {
             PersonaAudit.rejected(it, source)
             return PersonaApplyResult.Rejected(it)
@@ -205,5 +240,46 @@ internal object PersonaPatchApply {
             PersonaAudit.reset(layer)
             PersonaApplyResult.Applied(layer, "", backup)
         }.getOrElse { PersonaApplyResult.Rejected("重置失败：${it.javaClass.simpleName}") }
+    }
+
+    /**
+     * 恢复出厂（285）：把出厂 C 层抄进 active，**不备份用户那份**。
+     *
+     * 三条口径（用户 2026-10-29 定，逐字）：
+     * - 「恢复」= `active_c` 重置为 `factory_c` —— 写的是 active，出厂文件一个字节都不动；
+     * - 「不备份用户那份」——所以这里**故意**不调 [PersonaBackup.backupBefore]
+     *   （与 [reset] 的"先备份再清空"是两件事，账上也分开记）；
+     * - 「恢复后直接可用」——写完立刻生效，不需要重启（读路径每次现读文件）。
+     *
+     * 顺带说明 [reset] 与新兜底的关系：`reset` 把 active 写空之后，
+     * [PersonaFiles.read] 会回落到出厂层 —— 也就是"清空自己那份 ⇒ 回到出厂"，
+     * 这与"出厂是兜底"是同一个语义，不是 bug。
+     */
+    fun restoreFactory(files: PersonaFiles, source: String = "设置页"): PersonaApplyResult {
+        val factory = files.factoryText() ?: run {
+            val why = "没有出厂人设可用（出厂层缺失）"
+            PersonaAudit.rejected(why, source)
+            PersonaChangeLedger.record(
+                who = PersonaWho.USER, layer = PersonaLayer.C_PROJECT, text = "",
+                reason = why, applied = false, source = source,
+            )
+            return PersonaApplyResult.Rejected(why)
+        }
+        if (!files.restoreFactory()) {
+            val why = "恢复失败：人设文件没写进去"
+            PersonaAudit.rejected(why, source)
+            PersonaChangeLedger.record(
+                who = PersonaWho.USER, layer = PersonaLayer.C_PROJECT, text = factory,
+                reason = why, applied = false, source = source,
+            )
+            return PersonaApplyResult.Rejected(why)
+        }
+        PersonaAudit.restored(PersonaLayer.C_PROJECT)
+        PersonaChangeLedger.record(
+            who = PersonaWho.USER, layer = PersonaLayer.C_PROJECT, text = factory,
+            reason = "恢复出厂（不备份用户那份）", applied = true, source = source,
+        )
+        // backup = null：用户明确不要备份，所以"可回滚的那份"这里就是没有
+        return PersonaApplyResult.Applied(PersonaLayer.C_PROJECT, factory, null)
     }
 }

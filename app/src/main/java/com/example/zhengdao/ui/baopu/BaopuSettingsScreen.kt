@@ -30,7 +30,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -52,6 +56,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.content.res.Resources
 import android.content.Context
 import java.io.File
 import androidx.compose.ui.window.Dialog
@@ -64,8 +69,11 @@ import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.ImpactPrefs
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
+import com.example.zhengdao.baopu.PersonaApplyResult
 import com.example.zhengdao.baopu.PersonaBackup
 import com.example.zhengdao.baopu.PersonaBackupResult
+import com.example.zhengdao.baopu.PersonaChangeLedger
+import com.example.zhengdao.baopu.PersonaConsent
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
 import com.example.zhengdao.baopu.PersonaPackError
@@ -75,10 +83,17 @@ import com.example.zhengdao.baopu.PersonaPackResult
 import com.example.zhengdao.baopu.PersonaPackRules
 import com.example.zhengdao.baopu.PersonaPackStore
 import com.example.zhengdao.baopu.PersonaPackSummary
+import com.example.zhengdao.baopu.PersonaPatch
+import com.example.zhengdao.baopu.PersonaPatchApply
+import com.example.zhengdao.baopu.PersonaPatchRules
+import com.example.zhengdao.baopu.PersonaPatchScope
+import com.example.zhengdao.baopu.PersonaSection
+import com.example.zhengdao.baopu.PersonaSectionKind
 import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
+import com.example.zhengdao.baopu.agent.PersonaApprovalCard
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
@@ -510,6 +525,9 @@ internal fun BaopuSettingsScreen(
                     },
                 )
             }
+
+            // ── 第二百八十五批 · 人设：你自己加一条（默认 C 层）＋ 出厂层一键恢复 ──
+            PersonaAddSection(ctx, res)
 
             // ── 第三十七批 D 段 · 人设回滚（B 全局 / C 本项目各一行）──
             // 写入前的备份已经在唯一写盘口做完（PersonaFiles.applyProposal），
@@ -1970,3 +1988,183 @@ private fun queryOpenDisplayName(ctx: android.content.Context, uri: android.net.
             .query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
     }.getOrNull()
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 第二百八十五批 · 人设「加一条」＋「恢复出厂」
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 你自己往人设里加一条（默认 **C 层**，只对当前工作区生效）。
+ *
+ * 三条口径（用户 2026-10-29 定）：
+ * 1. **用户加的一律 C 层**——「记进本项目」是主按钮，不需要任何确认；
+ * 2. **要升全局必须显式点「全局」并二次确认**——复用 96 批 `PersonaApprovalCard`
+ *    的作用域口径（那里只有 B 层补丁才给「全局（仅 B）」按钮，文案与 detail 都从它取，
+ *    本页不另写一套作用域解释）；
+ * 3. **入账**：每次（成功或被拒）都进 `人设账.jsonl`，记 谁／何时／原文。
+ *
+ * 为什么不用 ask_user 卡片而用 AlertDialog：设置页不在对话流里，弹对话卡会把用户
+ * 从设置页拽走；二次确认要的是"同一页里再点一次"，不是换一个界面。
+ */
+@Composable
+private fun PersonaAddSection(ctx: Context, res: Resources) {
+    val pfr = remember { BaopuRuntime.personaFiles(ctx) }
+    var draft by remember { mutableStateOf("") }
+    var tick by remember { mutableIntStateOf(0) }
+    var askGlobal by remember { mutableStateOf(false) }
+    val usingFactory = remember(tick) { pfr.usingFactory() }
+    val lastChange = remember(tick) { PersonaChangeLedger.replay(1).firstOrNull() }
+
+    fun submit(consent: PersonaConsent, scope: PersonaPatchScope) {
+        val text = draft.trim()
+        if (text.isEmpty()) {
+            Toast.makeText(ctx, res.getString(R.string.persona_add_blank), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val wsId = PersonaPatchApply.workspaceIdOf(pfr)
+        val patch = PersonaPatch(
+            scope = scope,
+            workspaceId = if (scope == PersonaPatchScope.C_PROJECT) wsId else null,
+            sections = listOf(PersonaSection(PersonaSectionKind.RULES, text)),
+            reason = res.getString(R.string.persona_add_reason),
+        )
+        val r = PersonaPatchApply.apply(patch, consent, wsId, pfr, source = "设置页手写")
+        val msg = when (r) {
+            is PersonaApplyResult.Applied -> res.getString(R.string.persona_add_done)
+            is PersonaApplyResult.Rejected -> r.reason
+        }
+        Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+        if (r is PersonaApplyResult.Applied) draft = ""
+        tick += 1
+    }
+
+    SectionCard(res.getString(R.string.persona_add_card)) {
+        Text(
+            text = res.getString(R.string.persona_add_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it.take(PersonaPatchRules.MAX_SECTION_CHARS) },
+            singleLine = true,
+            label = { Text(res.getString(R.string.persona_add_hint)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(6.dp))
+        PersonaAddActions(
+            ctx = ctx,
+            res = res,
+            pfr = pfr,
+            draft = draft,
+            onAskGlobal = { askGlobal = true },
+            onSubmitLocal = { submit(PersonaConsent.WORKSPACE, PersonaPatchScope.C_PROJECT) },
+            onRestored = { tick += 1 },
+        )
+        Text(
+            text = res.getString(
+                if (usingFactory) R.string.persona_add_factory_on else R.string.persona_add_factory_off,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        lastChange?.let {
+            // 恢复出厂时账上记的是出厂全文，取前 20 字只会显示成 "# 出厂项目人设 ## 风格"——
+            // 那种行用户看不出发生了什么，所以这种情况直接说"恢复出厂"。
+            val what = if (it.reason.contains("恢复出厂")) {
+                it.reason.take(20)
+            } else {
+                it.text.replace("\n", " ").take(20)
+            }
+            Text(
+                text = res.getString(R.string.persona_add_last, it.who.cn, what),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    PersonaGlobalConfirmDialog(askGlobal, res, draft, onDismiss = { askGlobal = false }) {
+        askGlobal = false
+        submit(PersonaConsent.GLOBAL, PersonaPatchScope.B_GLOBAL)
+    }
+}
+
+/**
+ * 人设区那排按钮（恢复出厂／升全局／记进本项目）。
+ *
+ * 抽出来只为压 [PersonaAddSection] 的长度（detekt LongMethod 60），行为逐行照搬。
+ */
+@Composable
+private fun PersonaAddActions(
+    ctx: Context,
+    res: Resources,
+    pfr: PersonaFiles,
+    draft: String,
+    onAskGlobal: () -> Unit,
+    onSubmitLocal: () -> Unit,
+    onRestored: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(
+            onClick = {
+                val msg = when (val x = PersonaPatchApply.restoreFactory(pfr)) {
+                    is PersonaApplyResult.Applied -> res.getString(R.string.persona_add_restored)
+                    is PersonaApplyResult.Rejected -> x.reason
+                }
+                Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                onRestored()
+            },
+        ) { Text(res.getString(R.string.persona_add_restore)) }
+        Spacer(Modifier.weight(1f))
+        TextButton(enabled = draft.isNotBlank(), onClick = onAskGlobal) {
+            Text(res.getString(R.string.persona_add_global))
+        }
+        Spacer(Modifier.width(8.dp))
+        Button(enabled = draft.isNotBlank(), onClick = onSubmitLocal) {
+            Text(res.getString(R.string.persona_add_local))
+        }
+    }
+}
+
+/**
+ * 「升全局」二次确认（只给人设区用）。
+ *
+ * 复用 96 批的作用域裁剪：问题与 detail 都从 [PersonaApprovalCard] 取，
+ * 本页不自己解释"全局意味着什么"——两套解释迟早会说法不一。
+ */
+@Composable
+private fun PersonaGlobalConfirmDialog(
+    visible: Boolean,
+    res: Resources,
+    draft: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    if (!visible) return
+    val globalPatch = PersonaPatch(
+        scope = PersonaPatchScope.B_GLOBAL,
+        workspaceId = null,
+        sections = listOf(PersonaSection(PersonaSectionKind.RULES, draft.trim())),
+        reason = res.getString(R.string.persona_add_reason),
+    )
+    val req = PersonaApprovalCard.request(globalPatch)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(req.question) },
+        text = {
+            Text(req.options.firstOrNull { it.id == PersonaApprovalCard.ID_GLOBAL }?.detail.orEmpty())
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(res.getString(R.string.persona_add_global_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(res.getString(R.string.persona_add_cancel))
+            }
+        },
+    )
+}
