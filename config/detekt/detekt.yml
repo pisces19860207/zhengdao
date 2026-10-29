@@ -21,3 +21,22 @@ complexity:
   CyclomaticComplexMethod:
     active: true
     threshold: 15
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 硬墙（276a D1，2026-10-29）
+#
+# ⚠️ detekt 1.23.8 **没有 YAML `maxIssues` 键**（官方文档：build failure 是「有 severity=error 的
+#    问题就失败」，见 detekt 1.23.8 configurations）。硬墙用 CLI 的 `--max-issues` 实现：
+#    构建脚本 `:app:detektWall` 读**下面这一行**，把它作为 `--max-issues` 传给 detekt；
+#    一旦发现条数超过它，detekt 自己就非 0 退出（`isIgnoreExitValue=false`）——不依赖 python 脚本。
+#
+# 这一行同时是**互锁的一端**：`tools/check-detekt-budget.py` 会校验它必须等于
+# `config/detekt/issue-budget.json` 的 `total`，不等即红（D2/D3）。
+# 只准降不准升；要降时**两处同一提交一起改**（操作步骤见 config/detekt/README.md）。
+#
+# 为什么是 326：CI 预算上界 326（真实读数 325，留 1 条余量）。
+# maxIssues: 326
+#   ↑ 这行**故意是注释**：实测 detekt 1.23.8 把未注释的 `maxIssues:` 当非法键
+#     （`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）。
+#     值仍在这里（人读真源），由 `:app:detektWall` 与 check-detekt-budget.py 用正则读，
+#     再作为 CLI `--max-issues` 交给 detekt 执行。
