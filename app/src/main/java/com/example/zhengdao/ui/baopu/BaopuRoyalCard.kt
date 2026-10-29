@@ -23,8 +23,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -64,6 +69,7 @@ internal fun BaopuRoyalCard(
         card.lines.forEach { RoyalLineRow(it) }
         Spacer(Modifier.heightIn(min = 10.dp))
         RoyalOptionRow(card.options, onPick)
+        RoyalEvidence(card.evidence)
     }
 }
 
@@ -110,14 +116,50 @@ private fun RoyalOptionRow(options: List<RoyalOption>, onPick: (String) -> Unit)
                         Text(text = opt.label)
                     }
                 }
-                if (opt.isDefault) {
-                    Text(
-                        text = stringResource(R.string.royal_option_default),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
+                // 每个选项都写清"点了会怎样"（278 判据②）；默认项前面标出来
+                val hint = if (opt.isDefault) {
+                    stringResource(R.string.royal_option_default) + " · " + opt.consequence
+                } else {
+                    opt.consequence
                 }
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 证据区（278）：技术字段**只许活在这里**——卡面三行一个字都不带。
+ *
+ * 默认折起来：想核的人点开看账本行，不想核的人不被这些字打扰。
+ */
+@Composable
+private fun RoyalEvidence(evidence: List<String>) {
+    if (evidence.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        TextButton(
+            onClick = { open = !open },
+            modifier = Modifier.heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.royal_evidence_title),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (open) {
+            evidence.forEach { line ->
+                Text(
+                    text = line,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

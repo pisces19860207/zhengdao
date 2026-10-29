@@ -19,7 +19,7 @@ class RoyalCardRulesTest {
 
     /** 合规三行（改什么／为什么／影不影响你）。 */
     private fun threeLines() = listOf(
-        line(RoyalLineKind.WHAT, "把 L7 的误报行降一档"),
+        line(RoyalLineKind.WHAT, "把误报的那一档降下来"),
         line(RoyalLineKind.WHY, "上周 12 次里 8 次是误报"),
         line(RoyalLineKind.IMPACT, "不影响你已有的活，下次少问你一次"),
     )
@@ -29,8 +29,8 @@ class RoyalCardRulesTest {
         first: String = "ack",
         second: String = "later",
     ) = listOf(
-        RoyalOption(first, "照办", isDefault = true),
-        RoyalOption(second, "稍后"),
+        RoyalOption(first, "照办", "按这条办", isDefault = true),
+        RoyalOption(second, "稍后", "留到明天"),
     )
 
     private fun card(
@@ -101,7 +101,7 @@ class RoyalCardRulesTest {
 
     @Test
     fun `负例_没有默认项必须拒`() {
-        val noDefault = listOf(RoyalOption("a", "照办"), RoyalOption("b", "稍后"))
+        val noDefault = listOf(RoyalOption("a", "照办", "按这条办"), RoyalOption("b", "稍后", "留到明天"))
         val c = card(options = noDefault)
         assertTrue(
             "无默认项必须拒：${RoyalCardGate.check(c)}",
@@ -113,8 +113,8 @@ class RoyalCardRulesTest {
     @Test
     fun `负例_两个默认项等于没有默认_必须拒`() {
         val twoDefaults = listOf(
-            RoyalOption("a", "照办", isDefault = true),
-            RoyalOption("b", "稍后", isDefault = true),
+            RoyalOption("a", "照办", "按这条办", isDefault = true),
+            RoyalOption("b", "稍后", "留到明天", isDefault = true),
         )
         assertTrue(RoyalCardGate.check(card(options = twoDefaults)).contains(RoyalReject.MULTI_DEFAULT))
     }
@@ -126,7 +126,7 @@ class RoyalCardRulesTest {
 
     @Test
     fun `负例_选项id重复必须拒`() {
-        val dup = listOf(RoyalOption("a", "照办", isDefault = true), RoyalOption("a", "稍后"))
+        val dup = listOf(RoyalOption("a", "照办", "按这条办", isDefault = true), RoyalOption("a", "稍后", "留到明天"))
         assertTrue(RoyalCardGate.check(card(options = dup)).contains(RoyalReject.DUPLICATE_OPTION))
     }
 
@@ -135,7 +135,7 @@ class RoyalCardRulesTest {
     @Test
     fun `判据_有一行未核实整卡就标未核实_不许写成真`() {
         val mixed = listOf(
-            line(RoyalLineKind.WHAT, "把 L7 的误报行降一档"),
+            line(RoyalLineKind.WHAT, "把误报的那一档降下来"),
             line(RoyalLineKind.WHY, "上周 12 次里 8 次是误报", RoyalTruth.UNVERIFIED),
             line(RoyalLineKind.IMPACT, "不影响你已有的活"),
         )
@@ -149,7 +149,7 @@ class RoyalCardRulesTest {
     @Test
     fun `负例_有假主张的卡不得上御案`() {
         val withFalse = listOf(
-            line(RoyalLineKind.WHAT, "把 L7 的误报行降一档"),
+            line(RoyalLineKind.WHAT, "把误报的那一档降下来"),
             line(RoyalLineKind.WHY, "上周 12 次里 8 次是误报", RoyalTruth.FALSE),
             line(RoyalLineKind.IMPACT, "不影响你已有的活"),
         )
@@ -172,11 +172,108 @@ class RoyalCardRulesTest {
     @Test
     fun `判据_多处不合规要一次说全_不让改一轮才发现下一个`() {
         val four = threeLines() + line(RoyalLineKind.WHY, "第四行")
-        val c = card(lines = four, options = listOf(RoyalOption("a", "照办")))
+        val c = card(lines = four, options = listOf(RoyalOption("a", "照办", "按这条办")))
         val problems = RoyalCardGate.check(c)
         assertTrue(problems.contains(RoyalReject.TOO_MANY_LINES) && problems.contains(RoyalReject.NO_DEFAULT))
         // 日志那行也要把两件事都写出来（验收靠 grep 这句）
         val line = RoyalCardGate.rejectLine(c)
         assertTrue(line.contains(RoyalReject.TOO_MANY_LINES.cn) && line.contains(RoyalReject.NO_DEFAULT.cn))
+    }
+
+    // ── 278 新增：技术字段不许上卡面 ──────────────────────────────────────
+
+    @Test
+    fun `判据_技术字段识别式_该抓的都要抓到`() {
+        listOf(
+            "这一步被 L7 拦下",
+            "原因是 risk:unclassified_tool",
+            "我读了 read_file 这个工具",
+            "严重度 CRITICAL 所以拦了",
+            "账在 意见判定.jsonl 里",
+            "{\"a\":1}",
+            "matrix:v3 这一版",
+        ).forEach { sample ->
+            assertTrue("这条必须被认成技术字段：$sample", RoyalCardGate.looksTechnical(sample))
+        }
+    }
+
+    @Test
+    fun `负例_人话不许被误杀`() {
+        listOf(
+            "刚才那一步我停了一下：这个工具我还没规矩",
+            "原件区、密码框这类地方只许看，不许改",
+            "那些文件一个没动，你说行我才动",
+            "AI 也帮不上这一步",
+            "OK，那就先不动",
+            "第 7 条我会记着",
+        ).forEach { sample ->
+            assertFalse("这句是人话，不该被判技术字段：$sample", RoyalCardGate.looksTechnical(sample))
+        }
+    }
+
+    @Test
+    fun `负例_卡面带技术字段必须拒渲染`() {
+        val leaky = listOf(
+            line(RoyalLineKind.WHAT, "这一步被 L7 拦下了"),
+            line(RoyalLineKind.WHY, "老规矩里没有它"),
+            line(RoyalLineKind.IMPACT, "什么都没被改"),
+        )
+        val c = card(lines = leaky)
+        assertTrue(
+            "卡面带法条号必须拒：${RoyalCardGate.check(c)}",
+            RoyalCardGate.check(c).contains(RoyalReject.TECHNICAL_LEAK),
+        )
+        assertFalse(RoyalCardGate.renderable(c))
+    }
+
+    @Test
+    fun `判据_证据区可以带技术字段_因为它不在卡面上`() {
+        val c = RoyalCard(
+            key = "t:1",
+            lines = threeLines(),
+            options = options(),
+            evidence = listOf("risk:unclassified_tool", "ledger:op:1700000000000:1:1"),
+        )
+        assertTrue("证据区本来就该放这些，不许因此拒渲染：${RoyalCardGate.check(c)}", RoyalCardGate.renderable(c))
+    }
+
+    // ── 278 新增：选项 ≤3、各带后果、现状行 ≤30 字 ────────────────────────
+
+    @Test
+    fun `负例_选项超过三个必须拒`() {
+        val four = listOf(
+            RoyalOption("a", "准了", "照办", isDefault = true),
+            RoyalOption("b", "不行", "不做"),
+            RoyalOption("c", "搁一搁", "明天看"),
+            RoyalOption("d", "再问一句", "追问细节"),
+        )
+        assertTrue(RoyalCardGate.check(card(options = four)).contains(RoyalReject.TOO_MANY_OPTIONS))
+    }
+
+    @Test
+    fun `负例_选项没写后果必须拒`() {
+        val noHint = listOf(
+            RoyalOption("a", "准了", "  ", isDefault = true),
+            RoyalOption("b", "不行", "不做"),
+        )
+        assertTrue(RoyalCardGate.check(card(options = noHint)).contains(RoyalReject.NO_CONSEQUENCE))
+    }
+
+    @Test
+    fun `负例_现状行超三十字必须拒`() {
+        val long = listOf(
+            line(RoyalLineKind.WHAT, "这".repeat(RoyalCardGate.MAX_LINE_CHARS + 1)),
+            line(RoyalLineKind.WHY, "老规矩里没有它"),
+            line(RoyalLineKind.IMPACT, "什么都没被改"),
+        )
+        assertTrue(RoyalCardGate.check(card(lines = long)).contains(RoyalReject.LINE_TOO_LONG))
+    }
+
+    @Test
+    fun `判据_等效字宽中英同尺_换语言塞不进更多字`() {
+        assertEquals(30, RoyalCardGate.visualLength("这".repeat(30)))
+        assertEquals(31, RoyalCardGate.visualLength("这".repeat(31)))
+        assertTrue("59 个英文字符≈30 个字宽", RoyalCardGate.visualLength("a".repeat(59)) <= 30)
+        assertTrue("61 个英文字符就超了", RoyalCardGate.visualLength("a".repeat(61)) > 30)
     }
 }
