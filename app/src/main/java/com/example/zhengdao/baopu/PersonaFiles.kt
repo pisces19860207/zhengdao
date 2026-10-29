@@ -192,13 +192,25 @@ internal class PersonaFiles(
     /** 出厂 C 层正文（没有出厂兜底 ⇒ null）。 */
     fun factoryText(): String? = factoryProjectText?.takeIf { it.isNotBlank() }
 
-    /** 当前 C 层是不是**还用着出厂那份**（设置页据此显示"出厂兜底中"）。 */
-    fun usingFactory(): Boolean = factoryText() != null && run {
-        val active = projectFile()
-        val legacy = legacyProjectFile()
-        (!active.isFile || runCatching { active.readText(Charsets.UTF_8) }.getOrNull().isNullOrBlank()) &&
-            (legacy == null || !legacy.isFile ||
-                runCatching { legacy.readText(Charsets.UTF_8) }.getOrNull().isNullOrBlank())
+    /**
+     * 当前 C 层是不是**还用着出厂那份**（设置页据此显示"出厂兜底中"）。
+     *
+     * 两种情形都算"用着出厂"：
+     * 1. active 与旧落点都空/缺 ⇒ 读到的是兜底；
+     * 2. **active 的内容正好等于出厂内容** ⇒ 刚点过「恢复出厂」。
+     *
+     * 第 2 条是 2026-10-29 真机抓出来的 bug：只看"空不空"的话，恢复出厂之后
+     * 文件里装的是出厂正文（非空），状态行会倔强地显示"你自己那份"——
+     * Toast 说恢复成功、状态行说没恢复，用户会以为功能坏了。
+     */
+    fun usingFactory(): Boolean {
+        val f = factoryText() ?: return false
+        val active = runCatching { projectFile().readText(Charsets.UTF_8) }.getOrNull()?.takeIf { it.isNotBlank() }
+        val legacy = legacyProjectFile()?.let {
+            runCatching { it.readText(Charsets.UTF_8) }.getOrNull()?.takeIf { t -> t.isNotBlank() }
+        }
+        val current = active ?: legacy ?: return true
+        return current.trim() == f.trim()
     }
 
     /**

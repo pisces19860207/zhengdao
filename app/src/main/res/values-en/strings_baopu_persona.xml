@@ -3,7 +3,7 @@
 <resources>
     <string name="persona_add_card">Persona · add one yourself</string>
     <string name="persona_add_desc">Add one rule or habit. It applies to this workspace only by default, takes effect immediately, and the ledger records who, when, and the exact words.</string>
-    <string name="persona_add_hint">One line (e.g. say which files before touching them)</string>
+    <string name="persona_add_hint">One rule or habit</string>
     <string name="persona_add_local">Save to this project</string>
     <string name="persona_add_global">All workspaces…</string>
     <string name="persona_add_global_confirm">All workspaces (applies everywhere)</string>

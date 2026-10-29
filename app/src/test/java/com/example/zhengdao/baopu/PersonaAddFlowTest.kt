@@ -164,6 +164,8 @@ class PersonaAddFlowTest {
         assertTrue("恢复出厂不许备份用户那份，实际出现：${baks.map { it.name }}", baks.isEmpty())
         // 恢复后直接可用（不需要重启）
         assertEquals(factory, files().read(PersonaLayer.C_PROJECT))
+        // 而且状态必须**如实**变成"用着出厂那份"（2026-10-29 真机 bug：只看文件空不空 ⇒ 恢复后仍显示"你自己那份"）
+        assertTrue("恢复出厂之后 usingFactory() 必须为 true", files().usingFactory())
     }
 
     @Test

@@ -4,7 +4,7 @@
 <resources>
     <string name="persona_add_card">人设 · 你自己加一条</string>
     <string name="persona_add_desc">加一条规矩或习惯。默认只对「当前工作区」生效，加进去立刻可用；账上会记下是谁、什么时候、原话是什么。</string>
-    <string name="persona_add_hint">写一条（比如：改文件前先说要改哪几个）</string>
+    <string name="persona_add_hint">写一条规矩或习惯</string>
     <string name="persona_add_local">记进本项目</string>
     <string name="persona_add_global">全局…</string>
     <string name="persona_add_global_confirm">全局（所有工作区都生效）</string>

@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -2068,6 +2069,7 @@ private fun PersonaAddSection(ctx: Context, res: Resources) {
                 enabled = draft.isNotBlank(),
                 onClick = { askGlobal = true },
             ) { Text(res.getString(R.string.persona_add_global)) }
+            Spacer(Modifier.width(8.dp))
             Button(
                 enabled = draft.isNotBlank(),
                 onClick = { submit(PersonaConsent.WORKSPACE, PersonaPatchScope.C_PROJECT) },
@@ -2081,8 +2083,15 @@ private fun PersonaAddSection(ctx: Context, res: Resources) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         lastChange?.let {
+            // 恢复出厂时账上记的是出厂全文，取前 20 字只会显示成 "# 出厂项目人设 ## 风格"——
+            // 那种行用户看不出发生了什么，所以这种情况直接说"恢复出厂"。
+            val what = if (it.reason.contains("恢复出厂")) {
+                it.reason.take(20)
+            } else {
+                it.text.replace("\n", " ").take(20)
+            }
             Text(
-                text = res.getString(R.string.persona_add_last, it.who.cn, it.text.replace("\n", " ").take(20)),
+                text = res.getString(R.string.persona_add_last, it.who.cn, what),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
