@@ -89,6 +89,14 @@ class L6BoundaryGateTest {
             // 取自 `DecisionLedger.installedRoot()`），文件名独立（`意见判定.jsonl`），
             // 追加-only、不覆盖不删除；也不往 208 那本账里写（它的 kind 是闭集，本批红线）。
             "agent/OpinionWiring.kt" to setOf("mkdirs", "appendText"),
+            // 第二百七十七批：追认队列（L33 最小版「不打扰要留理由」的落点）。
+            // 落点同 274：208 已装配的那棵私有目录（`抱朴记忆/`），文件名独立
+            // （`追认队列.jsonl`），追加-only、不覆盖不删除；不往 208 那本账写。
+            "agent/SelfRulingLedger.kt" to setOf("mkdirs", "appendText"),
+            // 第二百七十八批：御批账（御案页签「批/驳/搁置」的落点）。
+            // 落点同 274/277：208 已装配的那棵私有目录，文件名独立（`御批.jsonl`），
+            // 追加-only；不往 208 写（那本记"做过什么"，这本记"你怎么裁的"）。
+            "agent/RoyalDecisionLedger.kt" to setOf("mkdirs", "appendText"),
             // 引擎 spill：输出过长时的暂存落盘，落点 = spillRoot()/.baopu-spill（应用私有目录），
             // 不是模型指的工作区路径；失败时降级为截断回灌并明说（不静默）。
             "agent/RunEngine.kt" to setOf("mkdirs", "writeText"),

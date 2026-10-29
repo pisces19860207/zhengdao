@@ -34,15 +34,18 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +60,11 @@ import com.example.zhengdao.baopu.DecisionRecord
 import com.example.zhengdao.baopu.foldDecisionRecords
 import com.example.zhengdao.baopu.agent.FailureAuditLog
 import com.example.zhengdao.baopu.agent.FailureAuditRow
+import com.example.zhengdao.baopu.agent.OpinionDecision
+import com.example.zhengdao.baopu.agent.OpinionWiring
+import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
+import com.example.zhengdao.baopu.agent.RoyalVerdict
+import com.example.zhengdao.baopu.agent.StubVerifier
 import com.example.zhengdao.baopu.inspect.InspectFinding
 import com.example.zhengdao.baopu.inspect.InspectLimits
 import com.example.zhengdao.baopu.inspect.InspectVerdict
@@ -65,6 +73,7 @@ import com.example.zhengdao.baopu.inspect.PatrolLedger
 import com.example.zhengdao.baopu.inspect.PatrolRunner
 import com.example.zhengdao.baopu.inspect.PatrolScheduler
 import com.example.zhengdao.baopu.inspect.PatrolSources
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.FilterChip2
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
@@ -129,16 +138,26 @@ internal fun DecisionCenterScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
+                // 五个页签必须**一眼看全**（ScrollableTabRow 会把第五个挤到屏幕外，
+                // 用户会以为只有四个）；同时禁止换行——固定 TabRow 均分宽度时
+                // 中文三字标签会被折成两行（2026-10-29 真机实测：「待授权」断成「待授 / 权」）
                 TabRow(selectedTabIndex = tab.ordinal) {
                     DecisionTab.entries.forEach { t ->
                         Tab(
                             selected = tab == t,
                             onClick = { tab = t },
-                            text = { Text(stringResource(decisionTabTitle(t))) },
+                            text = {
+                                Text(
+                                    text = stringResource(decisionTabTitle(t)),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            },
                         )
                     }
                 }
                 when (tab) {
+                    DecisionTab.ROYAL -> RoyalTab()
                     DecisionTab.TO_AUTHORIZE -> AuthorizeTab(controller)
                     DecisionTab.SUGGESTIONS -> SuggestionsTab(controller, openCardKey) { openCardKey = it }
                     DecisionTab.PROPOSALS -> ProposalsTab(controller)
@@ -190,16 +209,18 @@ internal fun DecisionCenterScreen(
     }
 }
 
-/** 页签标题（四句；空态见各 Tab）。 */
+/** 页签标题（五句；空态见各 Tab）。 */
 private fun decisionTabTitle(t: DecisionTab): Int = when (t) {
+    DecisionTab.ROYAL -> R.string.decision_tab_royal
     DecisionTab.TO_AUTHORIZE -> R.string.decision_tab_authorize
     DecisionTab.SUGGESTIONS -> R.string.decision_tab_suggestions
     DecisionTab.PROPOSALS -> R.string.decision_tab_proposals
     DecisionTab.HISTORY -> R.string.decision_tab_history
 }
 
-/** 页签空态（四句各一句，无插画）。 */
+/** 页签空态（五句各一句，无插画）。 */
 private fun decisionEmptyText(t: DecisionTab): Int = when (t) {
+    DecisionTab.ROYAL -> R.string.decision_empty_royal
     DecisionTab.TO_AUTHORIZE -> R.string.decision_empty_authorize
     DecisionTab.SUGGESTIONS -> R.string.decision_empty_suggestions
     DecisionTab.PROPOSALS -> R.string.decision_empty_proposals
@@ -226,9 +247,73 @@ private fun DecisionTabBody(tab: DecisionTab, empty: Boolean, content: @Composab
     }
 }
 
+/**
+ * 御案页签（278）：只列**真的在等你定夺**的——延后队列＋刚压下的；
+ * 批过/驳过的永不再列，今天搁置的明天自己回来（见 `RoyalDecisionLedger.suppressedIds`）。
+ *
+ * 每条都走完「拟稿 → ③b 核验 → 卡面自检」（`RoyalQueueRules`）：打回或卡面不合规的**不画**，
+ * 但要留一行日志——否则"为什么这条没出现"只能靠猜。
+ */
 @Composable
-private fun AuthorizeTab(controller: BaopuChatController) {
-    val spec = controller.pendingAuthorizationSpec()
+private fun RoyalTab() {
+    // 用 LocalResources 而不是 LocalContext.current.getString：后者不随配置变更刷新
+    // （lint LocalContextGetResourceValueCall 会报 error，且切语言后卡面会停在旧语言）
+    val res = LocalResources.current
+    val s = remember(res) { DecisionStrRes { id, args -> res.getString(id, *args) } }
+    var tick by remember { mutableIntStateOf(0) }
+    // 读账走 IO：账本在私有目录，主线程读盘是明令要挪走的活（264 同源）
+    val rows by produceState(initialValue = emptyList<RoyalRow>(), tick) {
+        value = withContext(Dispatchers.IO) { royalRows(s) }
+    }
+    val rejects by produceState(initialValue = emptyList<String>(), tick) {
+        value = withContext(Dispatchers.IO) { royalRejects(s) }
+    }
+    LaunchedEffect(rejects) { rejects.forEach { RunLog.log(it) } }
+    DecisionTabBody(DecisionTab.ROYAL, empty = rows.isEmpty()) {
+        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+            item {
+                Text(
+                    text = stringResource(R.string.royal_tab_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            items(rows, key = { it.id }) { row ->
+                BaopuRoyalCard(
+                    card = row.card,
+                    onPick = { optionId ->
+                        RoyalVerdict.ofOptionId(optionId)?.let {
+                            RoyalDecisionLedger.record(row.id, it)
+                            tick += 1
+                        }
+                    },
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 御案列表（读账 → 拟稿 → 核验 → 卡面自检；纯读，不写账）。 */
+private fun royalRows(s: DecisionStrRes): List<RoyalRow> {
+    val suppressed = RoyalDecisionLedger.suppressedIds(System.currentTimeMillis())
+    return OpinionWiring.replay()
+        .filter { it.decision != OpinionDecision.SKIP && it.id !in suppressed }
+        .mapNotNull { RoyalQueueRules.prepare(it, s, StubVerifier) }
+        .sortedByDescending { it.atMs }
+}
+
+/** 没上御案的那些的理由（每条一行，进日志）。 */
+private fun royalRejects(s: DecisionStrRes): List<String> {
+    val suppressed = RoyalDecisionLedger.suppressedIds(System.currentTimeMillis())
+    return OpinionWiring.replay()
+        .filter { it.decision != OpinionDecision.SKIP && it.id !in suppressed }
+        .mapNotNull { RoyalQueueRules.reasonLine(it, s, StubVerifier) }
+}
+
+@Composable
+private fun AuthorizeTab(controller: BaopuChatController) {    val spec = controller.pendingAuthorizationSpec()
     DecisionTabBody(DecisionTab.TO_AUTHORIZE, empty = spec == null) {
         LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
             item {

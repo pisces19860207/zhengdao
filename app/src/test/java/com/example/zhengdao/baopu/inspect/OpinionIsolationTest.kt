@@ -26,6 +26,17 @@ class OpinionIsolationTest {
         // 272 批：L28 旁路对拍器——派工单明令它产 `Opinion(source=PATROL, lawRef=L28)`，
         // findings＋意见全部走勘验的路（真机实测见交付报告 §5）。
         "com/example/zhengdao/baopu/inspect/TraceCrossCheck.kt" to "272",
+        // 277 批：L33 最小版——判了"不打扰"要留理由（`追认队列.jsonl`），
+        // 那条理由必须带来源意见的 gist/lawRef，所以它是契约的真消费方，不是顺手 import。
+        "com/example/zhengdao/baopu/agent/SelfRulingLedger.kt" to "277",
+        // 278 批：中书舍人拟稿——把一条意见写成"人能一眼看懂的三行"，
+        // 必须读 opinion 的 gist 与 lawRef 才能选对那一版人话（不是顺手 import）。
+        "com/example/zhengdao/ui/baopu/RoyalDrafts.kt" to "278",
+        // 279 批：暗卫抽检产 `Opinion(source=PATROL)`；金吾卫报告里的 issue 带 `LawRef`；
+        // 互查按 `(check, evidence, verdict)` 对表。三处都是构造/消费，不是顺手 import。
+        "com/example/zhengdao/baopu/inspect/NocturnalPatrol.kt" to "279",
+        "com/example/zhengdao/baopu/inspect/GoldenGuard.kt" to "279",
+        "com/example/zhengdao/baopu/inspect/PatrolMutual.kt" to "279",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

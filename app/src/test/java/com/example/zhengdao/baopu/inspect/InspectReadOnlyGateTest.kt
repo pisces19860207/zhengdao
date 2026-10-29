@@ -55,7 +55,11 @@ class InspectReadOnlyGateTest {
     fun `负例①_唯一允许落盘的是自己那两本账`() {
         // 追加口只许出现在自己的台账文件里，且每个文件最多一处 appendText（一次巡按一行）
         // 262 批起带 VisualEvidenceQueue.kt：视觉证据账（页面证据.jsonl）同款 ShadowLedger 形态
-        val ledgers = listOf("PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt")
+        // 279 批带三本新账：暗卫记录.jsonl／金吾卫报告.jsonl／互查记录.jsonl（各一处追加口）
+        val ledgers = listOf(
+            "PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt",
+            "NocturnalPatrol.kt", "GoldenGuard.kt", "PatrolMutual.kt",
+        )
         inspectFiles().forEach { f ->
             val text = code(f)
             val hits = Regex("""\.appendText\(""").findAll(text).count()
@@ -69,7 +73,10 @@ class InspectReadOnlyGateTest {
 
     @Test
     fun `负例①_建目录只在自己的台账里`() {
-        val ledgers = listOf("PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt")
+        val ledgers = listOf(
+            "PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt",
+            "NocturnalPatrol.kt", "GoldenGuard.kt", "PatrolMutual.kt",
+        )
         inspectFiles().forEach { f ->
             val hits = Regex("""mkdirs\(|mkdir\(""").findAll(code(f)).count()
             if (f.name in ledgers) {

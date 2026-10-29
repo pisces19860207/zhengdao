@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百七十七批：御案卡（M4）英文文案（与 values/strings_baopu_royal.xml 一一对应）。
+     第二百七十八批：补拟稿三行人话、三选项与后果、御案页签。 -->
+<resources>
+    <string name="royal_card_title">Royal desk · your call</string>
+    <string name="royal_card_desc">Royal-desk card (%1$s): three lines — what changes, why, and whether it affects you</string>
+    <string name="royal_mark_true">Verified · true</string>
+    <string name="royal_mark_unverified">Unverified</string>
+    <string name="royal_mark_false">False</string>
+    <string name="royal_line_what">What changes</string>
+    <string name="royal_line_why">Why</string>
+    <string name="royal_line_impact">Affects you</string>
+    <string name="royal_option_default">Default</string>
+
+    <string name="royal_what_l7">I paused: I have no rule for this tool yet</string>
+    <string name="royal_why_l7">No rule covers it, so I won\'t call it safe</string>
+    <string name="royal_impact_l7">Your files are untouched; this one step waits for you</string>
+    <string name="royal_what_l8">That step hit a no-go area, and I stopped it</string>
+    <string name="royal_why_l8">Original files and password fields are read-only to me</string>
+    <string name="royal_impact_l8">Nothing was changed; nothing for you to do</string>
+    <string name="royal_what_l9">That step wanted to touch files outside the work area</string>
+    <string name="royal_why_l9">Those are not mine to change, so I ask first</string>
+    <string name="royal_impact_l9">Not one of them was touched; I wait for your yes</string>
+
+    <string name="royal_opt_approve">Go ahead</string>
+    <string name="royal_opt_approve_consequence">Follow this; the result is recorded</string>
+    <string name="royal_opt_reject">No</string>
+    <string name="royal_opt_reject_consequence">Skip that step; I find another way</string>
+    <string name="royal_opt_hold">Park it</string>
+    <string name="royal_opt_hold_consequence">Look again tomorrow, no rush</string>
+
+    <string name="royal_evidence_title">Evidence (tap to open)</string>
+
+    <string name="decision_tab_royal">Royal desk</string>
+    <string name="decision_empty_royal">Nothing waits for you: what was held or decided stays on the ledger.</string>
+    <string name="royal_tab_hint">Only what truly waits: the deferred queue plus what was just held back.</string>
+</resources>

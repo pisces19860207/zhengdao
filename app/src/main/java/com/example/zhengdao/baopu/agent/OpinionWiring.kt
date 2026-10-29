@@ -478,6 +478,19 @@ internal object OpinionWiring {
             }
             pending.addLast(ruling)
         }
+        // L33 最小版（277）：判了"不打扰"就落一条自决单——理由＝这条判词本身。
+        // 缺理由不落（[SelfRulingLedger.note] 入口堵死）：没有理由的自决单等于把 L33 变成空话。
+        if (verdict.decision == OpinionDecision.SKIP) {
+            SelfRulingLedger.note(
+                opinion = opinion,
+                opinionId = ruling.id,
+                round = mark.second,
+                tool = tool,
+                why = verdict.why.wire,
+                reason = verdict.detail,
+                now = now,
+            )
+        }
         seen[key] = ruling
         if (callId.isNotBlank()) byCall["$callId:${opinion.lawRef.name}"] = ruling
         if (byCall.size > BY_CALL_CAP) byCall.clear()
@@ -565,6 +578,21 @@ internal object OpinionWiring {
     @Synchronized
     fun pending(): List<Ruling> = pending.toList()
 
+    /**
+     * 延后队列（**可回放、跨重启**）——判据④的本体。
+     *
+     * 内存 [pending] 只管本次进程：重启一次它就空了，而"30 天后仍可读"不允许这样。
+     * 所以这里以 `意见判定.jsonl` 里那些 DEFER 行为底，与内存队列并集去重（按 id）。
+     *
+     * **不设时间窗**：30 天后照样列得出来——"次日再看"是人的节奏，不是账本的过滤器。
+     * 顺序按时间正序（早压下的先看），与 [replay] 的新→旧相反，因为这是待办不是历史。
+     */
+    @Synchronized
+    fun deferred(): List<Ruling> =
+        (pending.toList() + replay().filter { it.decision == OpinionDecision.DEFER })
+            .distinctBy { it.id }
+            .sortedBy { it.atMs }
+
     /** 当前轮标记与当日已弹张数（日志/测试用）。 */
     @Synchronized
     fun state(): Pair<String, Int> = roundKey to royalToday
@@ -623,5 +651,7 @@ internal object OpinionWiring {
         byCall.clear()
         memory.clear()
         roundSource = null
+        // 自决单是同一条链路的下游账本：清账必须一起清，否则用例之间互相污染
+        SelfRulingLedger.resetForTest()
     }
 }
