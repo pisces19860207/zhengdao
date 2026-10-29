@@ -498,18 +498,31 @@ class MetricsTest {
         val end = rest.indexOf("\n## ")
         val section = if (end >= 0) rest.substring(0, end) else rest
 
-        val cells = section.lineSequence()
+        // 按 key 线值钉，不按中文名钉：改名由用户裁定（R4），代码侧 cn 允许晚一批跟上
+        val rows = section.lineSequence()
             .filter { it.startsWith("| ") }
-            .map { it.split("|")[1].trim() }
-            .filter { it.isNotEmpty() && it != "唯一数名（key）" && !it.all { c -> c == '-' } }
+            .map { it.split("|") }
+            .filter { it.size >= 5 }
+            .filterNot { it[1].trim().all { c -> c == '-' } }
+            .filterNot { it[1].trim() == "唯一数名（key）" }
             .toList()
-        assertTrue("同义词表没有数据行", cells.size >= MetricKey.entries.size)
+        assertTrue("同义词表没有数据行", rows.size >= MetricKey.entries.size)
 
         MetricKey.entries.forEach { key ->
-            val hits = cells.count { it.startsWith(key.cn) }
-            assertEquals("「${key.cn}」在表里出现 $hits 次（只许一处数名）", 1, hits)
-            val cell = cells.first { it.startsWith(key.cn) }
-            assertTrue("「${key.cn}」那行没写 key", cell.contains("`${key.wire}`"))
+            val hit = rows.filter { it[1].contains("`${key.wire}`") }
+            assertEquals("`${key.wire}` 在表里出现 ${hit.size} 次（只许一处数名）", 1, hit.size)
+            val row = hit.single()
+            assertTrue("`${key.wire}` 那行没写用户读法", row[2].trim().isNotEmpty())
+            assertTrue("`${key.wire}` 那行没写口径", row[3].trim().isNotEmpty())
+        }
+        // 每行只许一个 key；还没进词表的（第二批才落码）在 §七 里登记，不算漏写
+        val wireOf = Regex("""`([a-z][a-z0-9_]*)`""")
+        rows.forEach { row ->
+            val wires = wireOf.findAll(row[1]).map { it.groupValues[1] }.toList()
+            assertEquals("同义词表有一行没写 key 或写了多个名字：${row[1].trim()}", 1, wires.size)
+            if (MetricKey.ofWire(wires.single()) == null) {
+                assertTrue("`${wires.single()}` 不在词表里，§七 却没登记", text.contains("`${wires.single()}`"))
+            }
         }
     }
 
