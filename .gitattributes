@@ -12,3 +12,6 @@ docs/archive/** -text
 # 第一百一十三批：eval 真报告的 sha256 就是证据指纹，按提交进去的字节算；
 # -text 禁止 text=auto 把它在 checkout 时改成 CRLF（改一个字节指纹就废）。
 eval/report-*.json -text
+
+# 出厂人设的字节数与 sha256 被测试钉死：禁止行尾转换（2026-10-30）
+app/src/main/assets/persona/*.md -text
