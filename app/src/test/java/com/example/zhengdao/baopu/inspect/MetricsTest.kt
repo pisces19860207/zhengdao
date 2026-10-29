@@ -855,6 +855,25 @@ class MetricsTest {
     }
 
     @Test
+    fun `取数_滚动窗不许把批准补记的行读丢`() {
+        // 写入侧事实：`RunTrace.kt:235`「审批路径没有起点」⇒ 批准后补记那行 started_at = 0、
+        // 只有 ended_at 是真时刻。窗口按 started_at 开 ⇒ 那行整条读丢：
+        // run 的末行退回 CONFIRM（跑完了却被判成「还在等批」）、请求看不见 OK（判成没执行）。
+        // 少算的正是需要人介入那批任务——低估比高估危险（口径 §3.6#4）。
+        val text = File("src/main/java/com/example/zhengdao/baopu/inspect/MetricsSources.kt")
+            .readText(Charsets.UTF_8)
+        val body = text.substringAfter("fun runSummaries(").substringBefore("\n    /**")
+        assertTrue(
+            "runSummaries 的窗口判据没按取大：${body.take(400)}",
+            body.contains("MAX(started_at, ended_at) >= ?"),
+        )
+        assertFalse(
+            "runSummaries 里还留着按 started_at 开窗：${body.take(400)}",
+            body.contains("WHERE started_at >= ?"),
+        )
+    }
+
+    @Test
     fun `词表_key线值唯一且可回读`() {
         val wires = MetricKey.entries.map { it.wire }
         assertEquals(wires.size, wires.distinct().size)

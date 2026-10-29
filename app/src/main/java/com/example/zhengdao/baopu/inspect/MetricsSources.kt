@@ -127,6 +127,8 @@ internal object MetricsSources {
      *
      * 取数：`ORDER BY id DESC LIMIT ?` 拿**最新**的 N 行（超限按新→旧截断，与巡按同一纪律），
      * 再翻回 `id` 升序分组——状态序列的顺序就是发生顺序，终态判定靠它。
+     * 窗口判据取 `MAX(started_at, ended_at)`：批准后补记那行 `started_at = 0`（`RunTrace.kt:235`），
+     * 按 `started_at` 开窗会把它读丢 ⇒ 末行退回 CONFIRM、好端端一个跑完的 run 被判成「还在等批」。
      * 截断的代价如实说：跨截断线的老 run 只读到后半段（起点被抬高、回滚归属窗变窄），不补、不猜。
      *
      * 为什么不用 GROUP BY 在 SQL 里做：终态判定要**整个状态序列**（最后一行 + 中途有没有救回来的 OK），
@@ -137,7 +139,7 @@ internal object MetricsSources {
             val rows = ArrayList<TraceRowLite>()
             d.rawQuery(
                 "SELECT run_id, session_id, status, started_at, ended_at FROM run_trace " +
-                    "WHERE started_at >= ? ORDER BY id DESC LIMIT ?",
+                    "WHERE MAX(started_at, ended_at) >= ? ORDER BY id DESC LIMIT ?",
                 arrayOf(fromMs.toString(), limit.toString()),
             ).use { c ->
                 while (c.moveToNext()) {
