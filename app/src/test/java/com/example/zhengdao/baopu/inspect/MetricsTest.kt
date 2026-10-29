@@ -488,6 +488,32 @@ class MetricsTest {
     }
 
     @Test
+    fun `判据③_同义词表_每个指标只许一行一个数名`() {
+        // 用户 2026-10-29 裁定②：同一件事只许一个数名；换名先改这张表（R4）
+        val text = File("../docs/METRICS.md").readText(Charsets.UTF_8)
+        val head = "## 〇甲、同义词对照表"
+        val start = text.indexOf(head)
+        assertTrue("METRICS.md 少了同义词对照表", start >= 0)
+        val rest = text.substring(start + head.length)
+        val end = rest.indexOf("\n## ")
+        val section = if (end >= 0) rest.substring(0, end) else rest
+
+        val cells = section.lineSequence()
+            .filter { it.startsWith("| ") }
+            .map { it.split("|")[1].trim() }
+            .filter { it.isNotEmpty() && it != "唯一数名（key）" && !it.all { c -> c == '-' } }
+            .toList()
+        assertTrue("同义词表没有数据行", cells.size >= MetricKey.entries.size)
+
+        MetricKey.entries.forEach { key ->
+            val hits = cells.count { it.startsWith(key.cn) }
+            assertEquals("「${key.cn}」在表里出现 $hits 次（只许一处数名）", 1, hits)
+            val cell = cells.first { it.startsWith(key.cn) }
+            assertTrue("「${key.cn}」那行没写 key", cell.contains("`${key.wire}`"))
+        }
+    }
+
+    @Test
     fun `判据③_取数层不碰意见账_分母不取意见条数`() {
         // 注释里写"不许拿意见条数当分母"是说明（口径文档就是这么写的），要扫的是代码面
         fun code(text: String): String = text
