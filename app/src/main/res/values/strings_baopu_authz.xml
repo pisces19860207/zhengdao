@@ -32,4 +32,12 @@
     <string name="baopu_authz_preview_note">只给你看一眼卡面：上半是这一单的计划，下半是授权勾选；对象与限额都是样本。点「开工」只在本页回显你勾了什么，不会真的动手，也不接生产闸。</string>
     <string name="baopu_authz_preview_choice_none">还没有点「开工」</string>
     <string name="baopu_authz_preview_choice_start">你选了：开工（对象 %1$d 个、动作 %2$d 类）</string>
+    <!-- 第二百七十六批 Q2 补（2026-10-29 裁定「P1 补，只补最简版」）：开工卡上那一行「撤销本单」。 -->
+    <string name="baopu_authz_revoke_this">撤销本单</string>
+    <string name="baopu_authz_revoke_confirm">再点一次确认撤销</string>
+    <string name="baopu_authz_revoke_cancel">取消撤销</string>
+    <string name="baopu_authz_revoke_hint">撤销后这一单不再免问，每一笔照旧逐次问</string>
+    <string name="baopu_authz_revoke_done">已撤销：这一单不再免问</string>
+    <string name="baopu_authz_revoke_refused">撤销被拦：%1$s</string>
+    <string name="baopu_authz_revoke_no_ledger">已撤销，但这一笔没落进决策记录（账本没装配）</string>
 </resources>

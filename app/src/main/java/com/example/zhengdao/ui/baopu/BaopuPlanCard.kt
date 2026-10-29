@@ -36,7 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.PlanRules
+import com.example.zhengdao.baopu.authz.BaopuGrantRevokeRow
 import com.example.zhengdao.baopu.authz.BaopuPlanGrantSection
+import com.example.zhengdao.baopu.authz.TaskGrantBoard
 import com.example.zhengdao.baopu.authz.GrantSelection
 import com.example.zhengdao.baopu.authz.TaskGrantFacts
 
@@ -362,6 +364,13 @@ internal fun BaopuPlanCard(
                 // 249：授权并进同一张卡（不再另起一张，也不再有第二组批准按钮）。
                 if (grant != null && onStart != null) {
                     BaopuPlanGrantSection(facts = grant, onStart = onStart)
+                }
+                // 第二百七十六批 Q2 补（2026-10-29 用户裁定「P1 补，只补最简版」）：
+                // 授权段之后加**一行**「撤销本单」——撤销是安全出口，且这是 L26 的三元组第一次由人按下。
+                // 只在「这张卡就是那张开着的单」时画：没有开着的单就没有可撤的东西；
+                // 不新开页面、不做撤销列表／历史／批量（她：那是后面的事，别扩）。
+                if (grant != null && onStart != null && TaskGrantBoard.openedGrantId() == grant.grantId) {
+                    TaskGrantBoard.currentOffer()?.let { BaopuGrantRevokeRow(approved = it) }
                 }
             }
         }
