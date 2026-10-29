@@ -138,12 +138,21 @@ internal fun DecisionCenterScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
+                // 五个页签必须**一眼看全**（ScrollableTabRow 会把第五个挤到屏幕外，
+                // 用户会以为只有四个）；同时禁止换行——固定 TabRow 均分宽度时
+                // 中文三字标签会被折成两行（2026-10-29 真机实测：「待授权」断成「待授 / 权」）
                 TabRow(selectedTabIndex = tab.ordinal) {
                     DecisionTab.entries.forEach { t ->
                         Tab(
                             selected = tab == t,
                             onClick = { tab = t },
-                            text = { Text(stringResource(decisionTabTitle(t))) },
+                            text = {
+                                Text(
+                                    text = stringResource(decisionTabTitle(t)),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            },
                         )
                     }
                 }
