@@ -564,8 +564,12 @@ object RunLog {
     private fun appendRotated(f: File, text: String, max: Long = MAX_BYTES) {
         synchronized(lock) {
             if (f.length() > max) {
-                val current = runCatching { f.readText() }.getOrNull().orEmpty()
-                f.writeText(rotateContent(current, max))
+                // A7（2026-10-29，行为不变、只补报告）：读旧内容失败时，
+                // 改前是 `getOrNull().orEmpty()` —— 旧日志被当成"空日志"重写，
+                // 事后排查只看得到一句「已截断」，分不清是"本来就是空"还是"读坏了"。
+                // 现在仍不抛、照常轮换（行为不变），但把失败写进日志自身（不递归、不另开通道）。
+                val read = runCatching { f.readText() }
+                f.writeText(rotationPrefix(read.exceptionOrNull()) + rotateContent(read.getOrDefault(""), max))
             }
             f.appendText(text)
         }
@@ -578,6 +582,17 @@ object RunLog {
      * 触发判定用的却是字节数 ⇒ 轮换后文件实际约占 1.5×max 字节。这是改动前就有的
      * 近似（上限是 MB 量级、日志又是低频，这点误差不值得上字节数组）。
      */
+    /**
+     * A7：轮换前读旧内容失败时，往日志头部写一句**可查的失败说明**（纯函数，JVM 单测钉住）。
+     * 不抛异常、不改控制流——只是让「读坏了」不再伪装成「空日志」。
+     */
+    internal fun rotationPrefix(failure: Throwable?): String =
+        if (failure == null) {
+            ""
+        } else {
+            "…（轮换前读旧内容失败：${failure.javaClass.simpleName}；旧日志可能已丢）…\n"
+        }
+
     fun rotateContent(current: String, max: Long): String =
         "…（旧日志已截断）…\n" + current.takeLast((max / 2).toInt())
 
