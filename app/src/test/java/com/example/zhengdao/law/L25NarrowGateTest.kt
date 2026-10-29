@@ -32,6 +32,9 @@ class L25NarrowGateTest {
         val (outcome, why) = NarrowGate.judge(NarrowRequest(action = "rollback"))
         assertEquals("四条件齐应当自执行：$why", NarrowOutcome.SELF_EXECUTE, outcome)
         assertTrue("自执行必须提醒事后出撤销单", why.contains("撤销单"))
+        // 2026-10-29 御裁：2 小时初稿 → 24 小时定稿，两句话都留、不合一个数
+        assertTrue("放行话术必须点名「初稿」：$why", why.contains("初稿"))
+        assertTrue("放行话术必须留 24h 违规线：$why", why.contains("24h 违规线"))
         // 白名单四种动作都放行（法典点名，一个不许少）
         listOf("rollback", "isolate", "pause_service", "freeze_write").forEach { action ->
             assertEquals(
