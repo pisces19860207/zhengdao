@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百七十七批：御案卡（M4）英文文案（与 values/strings_baopu_royal.xml 一一对应）。 -->
+<resources>
+    <string name="royal_card_title">Royal desk · your call</string>
+    <string name="royal_card_desc">Royal-desk card (%1$s): three lines — what changes, why, and whether it affects you</string>
+    <string name="royal_mark_true">Verified · true</string>
+    <string name="royal_mark_unverified">Unverified</string>
+    <string name="royal_mark_false">False</string>
+    <string name="royal_line_what">What changes</string>
+    <string name="royal_line_why">Why</string>
+    <string name="royal_line_impact">Affects you</string>
+    <string name="royal_option_default">Default</string>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百七十七批：御案卡（M4）文案单独成文件——共享 strings.xml 零字节改动，
+     合并后与放进 strings.xml 完全等价（房型照 158/198/207）。 -->
+<resources>
+    <string name="royal_card_title">御案 · 请你定夺</string>
+    <string name="royal_card_desc">御案卡（%1$s）：三行说清改什么、为什么、影不影响你</string>
+    <string name="royal_mark_true">已核 · 真</string>
+    <string name="royal_mark_unverified">未核实</string>
+    <string name="royal_mark_false">假</string>
+    <string name="royal_line_what">改什么</string>
+    <string name="royal_line_why">为什么</string>
+    <string name="royal_line_impact">影不影响你</string>
+    <string name="royal_option_default">默认</string>
+</resources>
