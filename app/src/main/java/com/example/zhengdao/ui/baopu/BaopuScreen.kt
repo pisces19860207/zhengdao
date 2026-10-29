@@ -127,7 +127,7 @@ import kotlinx.coroutines.withContext
  * 用户把回复复制到别处用，是这一行设计的实际用途场景（报告里写明解释）。
  */
 @Composable
-fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
+fun BaopuScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val res = LocalResources.current
     // ── 第二百一十二批：答案浮卡（卡＝答案、正文＝详情）────────────────────────
@@ -314,6 +314,18 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     LaunchedEffect(completionSession) {
         val sid = completionSession ?: return@LaunchedEffect
         if (BaopuIntents.consumeSession() == sid) controller.requestOpenSession(sid)
+    }
+
+    // 历史会话库（第二百八十六批）：律令 Tab 的「抱朴设置」浮层里点那一行时，
+    // 请求挂在 BaopuIntents 上（那一页不持有控制器、够不着这里的 Dialog），本页组合时消费。
+    // 先关设置页再开库——两个全屏 Dialog 叠着会互相抢返回键。
+    val sessionLibraryReq by BaopuIntents.sessionLibraryRequestedState
+    LaunchedEffect(sessionLibraryReq) {
+        if (sessionLibraryReq) {
+            showSettings = false
+            showSessionLibrary = true
+            BaopuIntents.consumeSessionLibrary()
+        }
     }
 
     // 确认等待的**前台计时**（刀 3 A 段）：页面不可见时上报引擎——超时 15 分钟

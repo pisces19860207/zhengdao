@@ -865,6 +865,10 @@
     <!-- 134 批：baopu_drawer_history_desc 已随「历史会话平铺入口」退役（UI 零引用），
          129 批留的「测试钉住的僵尸文案」在本批连同单测判据一起清掉。 -->
     <string name="baopu_session_library_title">历史会话</string>
+    <!-- 第二百八十六批：抱朴设置页的「历史会话」入口（旧「会话记录」卡不复活，见 BaopuSessionTreeTest） -->
+    <string name="baopu_settings_session_card">会话</string>
+    <string name="baopu_settings_session_desc">历史会话按工作区列在一起；删除在左侧栏长按会话行。</string>
+    <string name="baopu_settings_session_open">打开历史会话</string>
     <string name="baopu_session_empty">还没有聊过。</string>
     <string name="baopu_session_unnamed">未命名会话</string>
     <plurals name="baopu_session_rounds">

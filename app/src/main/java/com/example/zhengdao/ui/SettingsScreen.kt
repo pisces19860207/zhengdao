@@ -321,6 +321,14 @@ fun SettingsScreen() {
         if (baopuSettingsOpen) {
             BaopuSettingsScreen(
                 onDismiss = { baopuSettingsOpen = false },
+                // 第二百八十六批：这一处原来**没传实参**（形参声明了、默认 `{}` 静默兜底），
+                // 于是律令这条路点「打开历史会话」什么都不会发生。律令不持有控制器、
+                // 也够不着抱朴页的 Dialog 状态 ⇒ 挂一条进程级请求：HomeTabs 切到抱朴 Tab，
+                // 抱朴页组合时消费并打开 BaopuSessionLibraryScreen（与完成通知回会话同一条路）。
+                onOpenSessionLibrary = {
+                    baopuSettingsOpen = false
+                    BaopuIntents.requestSessionLibrary()
+                },
                 // 全手机搜索卡上的「去这条会话」：走**既有的**进程级请求口
                 // （完成通知同一条路：挂请求 → 主页面切抱朴 Tab → 抱朴页消费并 requestOpenSession），
                 // 不在律令里另造一套切会话。页面本身一行没改。

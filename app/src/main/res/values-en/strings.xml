@@ -900,6 +900,10 @@
     <!-- 134: baopu_drawer_history_desc retired with the flat history entry (zero UI references);
          the batch-129 "pinned by tests" note is gone along with the test assertion. -->
     <string name="baopu_session_library_title">History</string>
+    <!-- 第二百八十六批：抱朴设置页的「历史会话」入口（与 zh 成对） -->
+    <string name="baopu_settings_session_card">Conversations</string>
+    <string name="baopu_settings_session_desc">Past conversations grouped by workspace; delete by long-pressing a row in the drawer.</string>
+    <string name="baopu_settings_session_open">Open history</string>
     <string name="baopu_session_empty">No conversations yet.</string>
     <string name="baopu_session_unnamed">Unnamed session</string>
     <plurals name="baopu_session_rounds">
