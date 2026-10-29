@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.DecisionReview
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -36,6 +37,7 @@ class MetricsTest {
         kind: DecisionKind = DecisionKind.AUTO_ACT,
         reversible: Boolean = true,
         rollbackOf: String? = null,
+        session: Long = -1L,
     ) = DecisionRecord(
         id = id,
         kind = kind,
@@ -46,7 +48,7 @@ class MetricsTest {
         before = "",
         after = "",
         atMs = at,
-        sessionId = -1L,
+        sessionId = session,
         reversible = reversible,
         rollbackRef = "",
         rollbackOf = rollbackOf,
@@ -89,6 +91,14 @@ class MetricsTest {
         hasConfirm = confirm,
         hasOk = ok,
     )
+
+    private fun runSummary(
+        runId: String,
+        sessionId: Long = 1L,
+        start: Long = now - 3_600_000L,
+        at: Long = now,
+        statuses: List<String> = listOf("OK"),
+    ) = RunSummary(runId = runId, sessionId = sessionId, startedAtMs = start, atMs = at, statuses = statuses)
 
     private fun sub(taskId: String, status: String, at: Long = now) = SubTaskRow(taskId, status, at)
 
@@ -288,16 +298,165 @@ class MetricsTest {
 
     // ── E1 五指标 ───────────────────────────────────────────────────────────
 
+    // ── 任务成功率：任务级（口径 §3.1，第二批）─────────────────────────────
+
     @Test
-    fun `任务成功率_只算终态_没结束的不进分母`() {
+    fun `任务成功率_按run算_同一份数据里的子任务不许进这个数`() {
+        // 子任务给一套完全不同的数（14 个终态／12 个 DONE）：混用就会算成 12/14
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            runSummaries = (1..8).map { runSummary("r$it") } +
+                (9..12).map { runSummary("r$it", statuses = listOf("FAILED")) },
+            subTasks = (1..12).map { sub("t$it", "DONE") } +
+                sub("f1", "FAILED") + sub("r1", "RUNNING") + sub("c1", "CANCELLED"),
+        )
+        val line = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        assertEquals(8, line.ratio.num)
+        assertEquals("分母＝已结束任务数，不是子任务数", 12, line.ratio.denom)
+        assertTrue(line.evidence.toString(), line.evidence.all { it.startsWith("task:r") })
+    }
+
+    @Test
+    fun `任务成功率_最后一行是CONFIRM_还在等批不算结束`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            runSummaries = (1..10).map { runSummary("r$it") } +
+                runSummary("wait1", statuses = listOf("OK", "CONFIRM")) +
+                runSummary("rej1", statuses = listOf("OK", "REJECTED")) +
+                runSummary("skip1", statuses = listOf("SKIPPED")),
+        )
+        val line = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        assertEquals("等批／被拒／跳过都不算结束", 10, line.ratio.denom)
+        assertEquals(10, line.ratio.num)
+    }
+
+    @Test
+    fun `任务成功率_FAILED之后又OK_算被救回来`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            runSummaries = (1..8).map { runSummary("r$it") } + listOf(
+                runSummary("rescued", statuses = listOf("FAILED", "OK", "FAILED", "OK")),
+                runSummary("dead", statuses = listOf("OK", "FAILED")),
+                runSummary("timeout", statuses = listOf("TIMEOUT")),
+                runSummary("cancelled", statuses = listOf("CANCELLED")),
+            ),
+        )
+        val line = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        assertEquals("8 个普通 + 救回来那 1 个", 9, line.ratio.num)
+        assertEquals(12, line.ratio.denom)
+        assertTrue(line.evidence.toString(), line.evidence.contains("task:rescued"))
+        assertFalse(line.evidence.toString(), line.evidence.contains("task:dead"))
+    }
+
+    @Test
+    fun `任务成功率_窗内同会话有回滚算没成功_窗外与别的会话不算`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            // 回滚点在 1 小时前：普通任务的跨度都在更早（碰不到），hit 的跨度正好罩住它
+            runSummaries = (1..8).map {
+                runSummary("r$it", start = now - 30 * 3_600_000L, at = now - 26 * 3_600_000L)
+            } + listOf(
+                runSummary("hit", start = now - 2 * 3_600_000L, at = now - 1_800_000L),
+                runSummary("other", sessionId = 2L, start = now - 2 * 3_600_000L, at = now - 1_800_000L),
+                runSummary("after", sessionId = 1L, start = now - 10 * 3_600_000L, at = now - 5 * 3_600_000L),
+            ),
+            ledger = listOf(
+                // 落在 hit 的跨度里（会话 1）⇒ hit 不算成功
+                row("rb1", kind = DecisionKind.ROLLBACK_OF, rollbackOf = "a1", at = now - 3_600_000L, session = 1L),
+                // 别的会话的回滚不归属 other
+                row("rb2", kind = DecisionKind.ROLLBACK_OF, rollbackOf = "a2", at = now - 3_600_000L, session = 9L),
+            ),
+        )
+        val line = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        assertEquals("只有 hit 被回滚", 10, line.ratio.num)
+        assertEquals(11, line.ratio.denom)
+        assertFalse(line.evidence.toString(), line.evidence.contains("task:hit"))
+        assertTrue(line.evidence.toString(), line.evidence.contains("task:after"))
+    }
+
+    @Test
+    fun `任务成功率_读数行必须写续跑未判`() {
+        val inputs = Metrics.Inputs(nowMs = now, runSummaries = (1..12).map { runSummary("r$it") })
+        val line = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        assertTrue(
+            "读数行没写续跑未判，实际 note='${line.note}'",
+            line.note.contains("续跑未判（缺标记）"),
+        )
+    }
+
+    @Test
+    fun `任务成功率_分母不够unknown时_续跑未判照样要写`() {
+        val empty = line(Metrics.Inputs(nowMs = now), MetricKey.E1_TASK_SUCCESS)
+        assertFalse("空输入应当是 unknown", empty.known)
+        assertTrue(
+            "unknown 时把续跑未判那句吞了，实际 note='${empty.note}'",
+            empty.note.contains("续跑未判（缺标记）"),
+        )
+    }
+
+    @Test
+    fun `任务成功率_读数行必须写新旧不可比`() {
+        val line = line(Metrics.Inputs(nowMs = now), MetricKey.E1_TASK_SUCCESS)
+        assertTrue(
+            "换了分母却没在读数行说不可比，实际 note='${line.note}'",
+            line.note.contains("新旧数不可比"),
+        )
+    }
+
+    // ── 子任务完成率：诊断口径（旧算式整段搬出）────────────────────────────
+
+    @Test
+    fun `子任务完成率_只算终态_没结束的不进分母`() {
         val inputs = Metrics.Inputs(
             nowMs = now,
             subTasks = (1..12).map { sub("t$it", "DONE") } +
                 sub("f1", "FAILED") + sub("r1", "RUNNING") + sub("p1", "PENDING") + sub("c1", "CANCELLED"),
         )
-        val line = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        val line = line(inputs, MetricKey.E1_SUBTASK_DONE)
         assertEquals(12, line.ratio.num)
         assertEquals("DONE+FAILED+CANCELLED 是终态", 14, line.ratio.denom)
+        assertTrue(line.note, line.note.contains("诊断口径"))
+    }
+
+    @Test
+    fun `子任务完成率与任务成功率_各算各的_名字也不许混`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            runSummaries = (1..10).map { runSummary("r$it") } + runSummary("dead", statuses = listOf("FAILED")),
+            subTasks = (1..8).map { sub("t$it", "DONE") } + sub("f1", "FAILED"),
+        )
+        val task = line(inputs, MetricKey.E1_TASK_SUCCESS)
+        val sub = line(inputs, MetricKey.E1_SUBTASK_DONE)
+        assertEquals("任务级：10/11", 10, task.ratio.num)
+        assertEquals(11, task.ratio.denom)
+        assertEquals("子任务级：8/9", 8, sub.ratio.num)
+        assertEquals(9, sub.ratio.denom)
+        assertNotEquals("两个数名不许一样", task.key.cn, sub.key.cn)
+        assertNotEquals(task.key.wire, sub.key.wire)
+    }
+
+    // ── 需介入任务占比：任务级辅助（口径 §3.5）──────────────────────────────
+
+    @Test
+    fun `需介入任务占比_按run聚合_同一任务摆两次卡只算一个任务`() {
+        val inputs = Metrics.Inputs(
+            nowMs = now,
+            requests = listOf(
+                req(runId = "r1", step = 1, confirm = true),
+                req(runId = "r1", step = 2, confirm = true),
+                req(runId = "r2", step = 1, tool = Metrics.TOOL_ASK_USER, confirm = false, ok = false),
+            ) + (3..11).map { req(runId = "r$it", step = 1) },
+        )
+        val task = line(inputs, MetricKey.E1_TASK_NEEDS_CONFIRM)
+        assertEquals("r1、r2 两个任务", 2, task.ratio.num)
+        assertEquals("11 个任务有工具请求", 11, task.ratio.denom)
+        assertEquals(listOf("task:r1", "task:r2"), task.evidence)
+        assertTrue(task.note, task.note.contains("与人介入率不同层"))
+
+        // 同一份数据差一层：人介入率是请求级 3/12
+        val human = line(inputs, MetricKey.E1_HUMAN)
+        assertEquals(3, human.ratio.num)
+        assertEquals(12, human.ratio.denom)
     }
 
     @Test
@@ -460,6 +619,13 @@ class MetricsTest {
     }
 
     @Test
+    fun `备注_原字不改_少了缺标记也算红`() {
+        val text = Metrics.weekly(fullInputs()).lines.joinToString(" ") { it.note }
+        // 少了「缺标记」＝把「没判」说成了「判过且没问题」
+        assertTrue("续跑说明被改短：$text", text.contains("续跑未判（缺标记）"))
+    }
+
+    @Test
     fun `写侧账实不符率_复用I1_账本空就unknown`() {
         val acts = (1..10).map { act(step = it) }
         val emptyLedger = Metrics.Inputs(nowMs = now, acts = acts)
@@ -524,6 +690,7 @@ class MetricsTest {
             review("w1", DecisionRecord.VERDICT_WRONG),
         logs = (1..12).map { log(step = it) } + log(step = 1, state = Metrics.STATE_CONFIRM),
         runs = (1..10).map { run("run$it", step = it) },
+        runSummaries = (1..10).map { runSummary("run$it") } + runSummary("runX", statuses = listOf("FAILED")),
         requests = (1..11).map { req(step = it, tool = "read_file") } +
             req(step = 12, tool = "write_file", confirm = true),
         subTasks = (1..10).map { sub("t$it", if (it % 2 == 0) "DONE" else "FAILED") },
@@ -548,6 +715,7 @@ class MetricsTest {
             reviews = a.reviews.reversed(),
             logs = a.logs.reversed(),
             runs = a.runs.reversed(),
+            runSummaries = a.runSummaries.reversed(),
             requests = a.requests.reversed(),
             subTasks = a.subTasks.reversed(),
             skills = a.skills.reversed(),
@@ -602,13 +770,21 @@ class MetricsTest {
     }
 
     @Test
-    fun `周报_十一项_unknown照实数`() {
+    fun `周报_十三项_unknown照实数`() {
         val report = Metrics.weekly(Metrics.Inputs(nowMs = now))
         assertEquals(MetricKey.entries.size, report.lines.size)
-        assertEquals(11, report.lines.size)
-        assertEquals(11, report.unknowns)
-        assertTrue(report.headline, report.headline.contains("11 项"))
-        assertTrue(report.headline, report.headline.contains("unknown 11"))
+        assertEquals(13, report.lines.size)
+        assertEquals(13, report.unknowns)
+        assertTrue(report.headline, report.headline.contains("13 项"))
+        assertTrue(report.headline, report.headline.contains("unknown 13"))
+    }
+
+    @Test
+    fun `词表_每个key一个数名_两组容易混的必须不同`() {
+        val names = MetricKey.entries.map { it.cn }
+        assertEquals("有重名数名：$names", names.size, names.distinct().size)
+        assertNotEquals(MetricKey.E1_TASK_SUCCESS.cn, MetricKey.E1_SUBTASK_DONE.cn)
+        assertNotEquals(MetricKey.E1_HUMAN.cn, MetricKey.E1_TASK_NEEDS_CONFIRM.cn)
     }
 
     // ── 判据③：口径先落盘（词表与文档一一对应）─────────────────────────────

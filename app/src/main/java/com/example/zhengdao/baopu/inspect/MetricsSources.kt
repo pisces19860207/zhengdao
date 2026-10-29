@@ -64,6 +64,7 @@ internal object MetricsSources {
             reviews = reviews(memoryRoot),
             logs = logSteps(db, from),
             runs = runSteps(db, from),
+            runSummaries = runSummaries(db, from),
             requests = toolRequests(db, from),
             subTasks = subTasks(db, from),
             skills = skills(projectRoot, memoryRoot),
@@ -120,6 +121,47 @@ internal object MetricsSources {
             rows
         }
     }.getOrDefault(emptyList())
+
+    /**
+     * `run_trace` 按 run 聚合的终态摘要（任务成功率按它算；口径 §3.1／§3.6#4）。
+     *
+     * 取数：`ORDER BY id DESC LIMIT ?` 拿**最新**的 N 行（超限按新→旧截断，与巡按同一纪律），
+     * 再翻回 `id` 升序分组——状态序列的顺序就是发生顺序，终态判定靠它。
+     * 截断的代价如实说：跨截断线的老 run 只读到后半段（起点被抬高、回滚归属窗变窄），不补、不猜。
+     *
+     * 为什么不用 GROUP BY 在 SQL 里做：终态判定要**整个状态序列**（最后一行 + 中途有没有救回来的 OK），
+     * 聚成一个字符串就又多一套口径；判定留在 [RunVerdict] 一处。
+     */
+    fun runSummaries(db: BaopuDb, fromMs: Long, limit: Int = MetricsBudget.ROWS): List<RunSummary> = runCatching {
+        db.read { d ->
+            val rows = ArrayList<TraceRowLite>()
+            d.rawQuery(
+                "SELECT run_id, session_id, status, started_at, ended_at FROM run_trace " +
+                    "WHERE started_at >= ? ORDER BY id DESC LIMIT ?",
+                arrayOf(fromMs.toString(), limit.toString()),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows += TraceRowLite(
+                        runId = c.getString(0),
+                        sessionId = c.getLong(1),
+                        status = c.getString(2),
+                        startedAt = c.getLong(3),
+                        endedAt = c.getLong(4),
+                    )
+                }
+            }
+            rows.asReversed().groupBy { it.runId }.map { (runId, rs) -> summarize(runId, rs) }.sortedBy { it.runId }
+        }
+    }.getOrDefault(emptyList())
+
+    /** 一组同 run 的行（已按 `id` 升序）⇒ 一个终态摘要。 */
+    private fun summarize(runId: String, rows: List<TraceRowLite>): RunSummary = RunSummary(
+        runId = runId,
+        sessionId = rows.first().sessionId,
+        startedAtMs = rows.map { it.startedAt }.filter { it > 0 }.minOrNull() ?: rows.first().startedAt,
+        atMs = rows.maxOf { maxOf(it.startedAt, it.endedAt) },
+        statuses = rows.map { it.status },
+    )
 
     /**
      * `run_trace` 的**工具请求**（人介入率／不可逆动作占比按它算；口径 §3.2）。
@@ -199,3 +241,12 @@ internal object MetricsSources {
         }
     }
 }
+
+/** 取数中间行（只在这一个文件里用；对外只出 [RunSummary]）。 */
+private data class TraceRowLite(
+    val runId: String,
+    val sessionId: Long,
+    val status: String,
+    val startedAt: Long,
+    val endedAt: Long,
+)
