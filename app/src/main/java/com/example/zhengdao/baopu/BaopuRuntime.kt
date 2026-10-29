@@ -167,6 +167,8 @@ internal object BaopuRuntime {
             projectRoot = File(ws, PersonaPackRules.DIR_ROOT),
             // 旧落点是工作区根（只读回退：升级那一刻读起来不能像「人设丢了」）
             legacyProjectRoot = ws,
+            // 285：出厂 C 层（assets 只读）——active 与旧落点都没有时才兜底
+            factoryProjectText = PersonaFactory.read(appCtx),
         )
     }
 
