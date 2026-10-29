@@ -34,7 +34,12 @@ markdownRenderer = "0.38.1"
 # 的 pom 直接依赖 okhttp-jvm:5.5.1，只升一半就是版本劈叉）。
 okhttp = "5.5.1"
 mockwebserver = "5.5.1"
-navigationCompose = "2.8.5"
+# 第二百八十四批 导航库跨大版本升级：2.8.5 → 2.10.2。
+# 2.10.2 = 2026-10-29 实测 Google Maven 元数据
+# （curl dl.google.com/dl/android/maven2/androidx/navigation/navigation-compose/maven-metadata.xml，
+#  <latest>/<release> 均为 2.10.2，<lastUpdated> 20260923170048），不是凭记忆写的版本号。
+# ⚠️ 本单**只升这一个库**：同批不动任何其他依赖，否则回归出问题分不清是导航还是别人坏的。
+navigationCompose = "2.10.2"
 json = "20240303"
 # 第一百六十七批 定时任务 v1：主调度用 WorkManager（非精确兜底），精确闹钟走 AlarmManager 自己发。
 # 2.12.0 = 2026-10 Google Maven maven-metadata.xml 里的 latest/release（实测 curl dl.google.com，见交付报告 §0.6）。
