@@ -156,6 +156,16 @@
 
 终端相关组件（Termux、PRoot、Debian、uv 等）的致谢随终端一起放在 [zhengdao-term](https://github.com/pisces19860207/zhengdao-term)。
 
+## 读数纪律（工程侧，2026-10-29）
+
+- **测试在运行时读仓里的文件，改那份文件后必须 `--rerun-tasks`**：`MetricsTest` 是直接读
+  `../docs/METRICS.md` 的（口径文档是它的输入），但 Gradle 的输入指纹里没有这份文档——
+  只改文档时 `:app:testDebugUnitTest` 会显示 `UP-TO-DATE`，**读到的是上一轮的旧 XML**，不能当复跑证据。
+  实测：删掉目标 XML 再加 `--rerun-tasks`，才得到新 XML（mtime 21:11:13）；不加 `--rerun-tasks`
+  那次直接 `UP-TO-DATE`、什么都没跑。
+- **报读数前先看 XML 的 mtime 与用例数**，别看 `BUILD SUCCESSFUL` 那行字：`UP-TO-DATE` 也会打
+  `BUILD SUCCESSFUL`。同理，"没有新 XML"就等于"这一遍没跑"。
+
 ## 常见坑（工程侧，踩过才写上来）
 
 - **public 函数不能暴露 internal 类型**：`rebuildIndex` 是 public，改成返回三态时直接编译失败

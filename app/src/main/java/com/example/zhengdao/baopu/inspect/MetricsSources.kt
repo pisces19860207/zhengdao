@@ -64,6 +64,7 @@ internal object MetricsSources {
             reviews = reviews(memoryRoot),
             logs = logSteps(db, from),
             runs = runSteps(db, from),
+            requests = toolRequests(db, from),
             subTasks = subTasks(db, from),
             skills = skills(projectRoot, memoryRoot),
             patrols = patrols(memoryRoot),
@@ -115,6 +116,46 @@ internal object MetricsSources {
                 arrayOf(fromMs.toString(), limit.toString()),
             ).use { c ->
                 while (c.moveToNext()) rows += RunStep(c.getString(0), c.getLong(1), c.getInt(2), c.getLong(3))
+            }
+            rows
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * `run_trace` 的**工具请求**（人介入率／不可逆动作占比按它算；口径 §3.2）。
+     *
+     * 去重键是 **(run_id, step, tool, args_hash) 四元组**：
+     * - 同一步批准后会落两行（挂起 CONFIRM、批准后按真结果再记一行，`RunEngine.kt:3629`），
+     *   两行的 tool 与 args_hash 一样 ⇒ 聚合成**一个**请求；
+     * - 批编排一个 step 能连跑多个工具调用（`RunEngine.kt:1953`）⇒ 不同 tool 的请求必须分开算，
+     *   所以不用 (run_id, step) 两元组。
+     *
+     * `tool = ''` 的行（THINK／COMPRESSING 边界）不是工具请求，直接不进。
+     * 时刻取 `MAX(started_at)`：批准后补的那行 `started_at = 0`，取最小会把请求拖出滚动窗。
+     */
+    fun toolRequests(db: BaopuDb, fromMs: Long, limit: Int = MetricsBudget.ROWS): List<ToolRequest> = runCatching {
+        db.read { d ->
+            val rows = ArrayList<ToolRequest>()
+            d.rawQuery(
+                "SELECT run_id, session_id, step, tool, MAX(started_at), " +
+                    "MAX(CASE WHEN status = 'CONFIRM' THEN 1 ELSE 0 END), " +
+                    "MAX(CASE WHEN status = 'OK' THEN 1 ELSE 0 END) " +
+                    "FROM run_trace WHERE started_at >= ? AND tool <> '' " +
+                    "GROUP BY run_id, step, tool, args_hash " +
+                    "ORDER BY MAX(started_at) DESC LIMIT ?",
+                arrayOf(fromMs.toString(), limit.toString()),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows += ToolRequest(
+                        runId = c.getString(0),
+                        sessionId = c.getLong(1),
+                        step = c.getInt(2),
+                        tool = c.getString(3),
+                        atMs = c.getLong(4),
+                        hasConfirm = c.getInt(5) == 1,
+                        hasOk = c.getInt(6) == 1,
+                    )
+                }
             }
             rows
         }
