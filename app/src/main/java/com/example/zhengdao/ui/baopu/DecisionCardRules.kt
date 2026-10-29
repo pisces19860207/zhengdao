@@ -289,8 +289,18 @@ internal fun suggestionAdoptEnabled(kind: ProposalKind): Boolean = when (kind) {
 // 四、决策中心（四页签）
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 决策中心四页签（设计稿 §0 决策 #5）。声明序＝页签序。 */
-internal enum class DecisionTab { TO_AUTHORIZE, SUGGESTIONS, PROPOSALS, HISTORY }
+/** 决策中心页签（设计稿 §0 决策 #5）。声明序＝页签序。 */
+internal enum class DecisionTab {
+    /**
+     * 御案（278）：只列**真的在等你**的意见——延后队列＋刚压下的，
+     * 每条三行＋真假标注＋批/驳/搁置。它排第一，因为这是"最该先看的那一屏"。
+     */
+    ROYAL,
+    TO_AUTHORIZE,
+    SUGGESTIONS,
+    PROPOSALS,
+    HISTORY,
+}
 
 /**
  * 决策中心里的一行（四页签共用；便览即可，动作仍回控制器）。
