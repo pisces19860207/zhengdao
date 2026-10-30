@@ -1723,6 +1723,9 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "teach_skill_save" -> R.string.baopu_tool_teach_skill_save
     "browser_replay_skill" -> R.string.baopu_tool_browser_replay_skill
     "teach_site_trust" -> R.string.baopu_tool_teach_site_trust
+    // 第二百六十九批：打包/解包。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
+    "archive_pack" -> R.string.baopu_tool_archive_pack
+    "archive_extract" -> R.string.baopu_tool_archive_extract
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
 }
 
@@ -1815,6 +1818,9 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "teach_skill_save" -> R.string.baopu_tool_teach_skill_save_desc
     "browser_replay_skill" -> R.string.baopu_tool_browser_replay_skill_desc
     "teach_site_trust" -> R.string.baopu_tool_teach_site_trust_desc
+    // 第二百六十九批：打包/解包（同上，漏了 fail-fast）
+    "archive_pack" -> R.string.baopu_tool_archive_pack_desc
+    "archive_extract" -> R.string.baopu_tool_archive_extract_desc
     else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
 }
 

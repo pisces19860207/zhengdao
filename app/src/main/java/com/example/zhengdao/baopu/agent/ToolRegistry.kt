@@ -259,6 +259,9 @@ internal object ToolGroupTable {
         "move_path" to ToolGroup.FILES,
         "convert_encoding" to ToolGroup.FILES,
         "delete_path" to ToolGroup.FILES,
+        // 第二百六十九批：打包/解包归 FILES（默认不可见，capabilities 解锁——B1「默认可见 ≤12」硬卡不破）
+        "archive_pack" to ToolGroup.FILES,
+        "archive_extract" to ToolGroup.FILES,
         "book_outline" to ToolGroup.LIBRARY,
         "library_list" to ToolGroup.LIBRARY,
         "library_organize" to ToolGroup.LIBRARY,
@@ -528,6 +531,15 @@ object ToolTimeout {
      * 其它工具轮次——更长的技能该拆成几次回放，而不是把超时调大。
      */
     const val REPLAY_MS = 120_000L
+
+    /**
+     * 打包/解包（第二百六十九批）：一次要把几百 MB 从盘上读一遍、再写一遍。
+     *
+     * 为什么不能复用 [FILE_MS]（5 秒）：5 秒连一个 500 MB 的 mp4 都拷不完，会被判「工具坏了」；
+     * 为什么封顶 120 秒：手机闪存顺序读写约 300–800 MB/s，2 GB 的包也在 30 秒内；再慢就是
+     * 「这个包不该在手机上处理」，让它如实超时，而不是把单线程工具池占死十分钟。
+     */
+    const val ARCHIVE_MS = 120_000L
 
     /**
      * **等用户**的回答上限（第四十八批 P0-1）：确认超时 + 5 秒余量。
@@ -1215,6 +1227,10 @@ internal object BaopuToolCatalog {
         "edit_file",
         "move_path",
         "convert_encoding",
+        // 第二百六十九批：打包/解包两件——都写盘，都是 CONFIRM（同 move_path 口径：
+        // 默认开不等于能静默动手，每次一张确认卡）。组归 FILES（默认不可见，capabilities 解锁）。
+        "archive_pack",
+        "archive_extract",
         // 小说工程三件（第一百五十五批 · W1/W2）：建项目 CONFIRM；看项目/续写简报 FREE 只读。
         // 正文写作仍走 write_file/edit_file，本组只是项目层骨架与简报
         "novel_create",
@@ -1324,6 +1340,10 @@ internal object BaopuToolCatalog {
         Entry("edit_file") { EditFileTool.spec(it) },
         Entry("move_path") { MovePathTool.spec(it) },
         Entry("convert_encoding") { ConvertEncodingTool.spec(it) },
+        // 第二百六十九批：打包（只做 zip，java.util.zip 零依赖）／解包（zip 走 Java，
+        // tar 家族走 Rust）。两件都写盘 ⇒ CONFIRM；FILES 组（默认不可见，capabilities 解锁）。
+        Entry("archive_pack") { ArchiveTools.packSpec(it) },
+        Entry("archive_extract") { ArchiveTools.extractSpec(it) },
         // 小说工程三件（第一百五十五批 · W1/W2）：novel_create 是唯一写盘入口（CONFIRM，
         // 只建骨架）；novel_project 看总览、novel_continue 拿续写简报，都 FREE 只读。
         // LIBRARY 组（默认不可见，capabilities 解锁）——默认可见 12 条的 §2 硬卡不许破

@@ -445,6 +445,9 @@ class ToolSchemaAllTest {
             "edit_file" to JSONObject().put("path", "a.md").put("op", "append").put("content", "新行"),
             "move_path" to JSONObject().put("from", "a.md").put("to", "b.md"),
             "convert_encoding" to JSONObject().put("path", "a.md"),
+            // 第二百六十九批：打包/解包（sources 是字符串数组，最小合法给一个文件）
+            "archive_pack" to JSONObject().put("dest", "包.zip").put("sources", JSONArray().put("a.md")),
+            "archive_extract" to JSONObject().put("archive", "包.zip"),
             // 小说工程三件（第一百五十五批）：create 必填书名；project/continue 必填项目路径
             "novel_create" to JSONObject().put("title", "书名"),
             "novel_project" to JSONObject().put("path", "小说/书名"),
