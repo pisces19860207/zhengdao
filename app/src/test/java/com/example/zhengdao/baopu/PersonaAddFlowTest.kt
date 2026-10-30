@@ -172,9 +172,10 @@ class PersonaAddFlowTest {
     fun `判据_恢复出厂也记账`() {
         val f = files()
         PersonaPatchApply.apply(patchOf("一条"), PersonaConsent.WORKSPACE, PersonaPatchApply.workspaceIdOf(f), f, source = "设置页手写")
+        val before = PersonaChangeLedger.replay().size
         PersonaPatchApply.restoreFactory(f)
         val rows = PersonaChangeLedger.replay()
-        assertEquals(2, rows.size)
+        assertEquals("这次恢复应新增 1 行账（账本是共享的，不能断言总数）", before + 1, rows.size)
         assertTrue("最新一条是恢复出厂", rows.first().reason.contains("恢复出厂"))
     }
 
