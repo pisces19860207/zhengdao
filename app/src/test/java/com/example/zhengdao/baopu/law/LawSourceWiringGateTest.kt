@@ -251,7 +251,7 @@ class LawSourceWiringGateTest {
     fun 批号判据不被日期糊弄() {
         // `\d{3}` 会被 2026-10-31 里的 202 满足——"待御裁（2026-10-31）"就白挂了账。
         // 批号必须是独立的数字 token：前后都不许再连数字。
-        val token = Regex("""(?<!\d)\d{3}(?!\d)""")
+        val token = batchToken
         assertFalse("日期里的三位不能当批号", token.containsMatchIn("待御裁（2026-10-31）"))
         assertFalse("四位数字里也不许截出三位", token.containsMatchIn("3033"))
         assertTrue("真批号要认：298", token.containsMatchIn("298（判决时查经验表）"))
