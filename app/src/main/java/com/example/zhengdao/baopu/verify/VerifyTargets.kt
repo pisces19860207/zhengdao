@@ -21,6 +21,7 @@ object VerifyTargets {
         "edit_file" to ARG_PATH,
         "convert_encoding" to ARG_PATH,
         "move_path" to ARG_TO,
+        "copy_path" to ARG_TO,
     )
 
     /**

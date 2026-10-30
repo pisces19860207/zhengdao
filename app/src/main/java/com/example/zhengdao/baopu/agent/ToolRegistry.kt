@@ -262,6 +262,13 @@ internal object ToolGroupTable {
         // 第二百六十九批：打包/解包归 FILES（默认不可见，capabilities 解锁——B1「默认可见 ≤12」硬卡不破）
         "archive_pack" to ToolGroup.FILES,
         "archive_extract" to ToolGroup.FILES,
+        // 第二百八十八批：复制/批量/整理五件归 FILES（默认不可见，capabilities 解锁——B1 硬卡不破）。
+        // organize_preview 是 FREE 只读，但同组同口径进同一名单（分组表只有一张）。
+        "copy_path" to ToolGroup.FILES,
+        "bulk_move" to ToolGroup.FILES,
+        "bulk_copy" to ToolGroup.FILES,
+        "organize" to ToolGroup.FILES,
+        "organize_preview" to ToolGroup.FILES,
         "book_outline" to ToolGroup.LIBRARY,
         "library_list" to ToolGroup.LIBRARY,
         "library_organize" to ToolGroup.LIBRARY,
@@ -540,6 +547,16 @@ object ToolTimeout {
      * 「这个包不该在手机上处理」，让它如实超时，而不是把单线程工具池占死十分钟。
      */
     const val ARCHIVE_MS = 120_000L
+
+    /**
+     * 复制/批量/整理（第二百八十八批）：一次要把几百 MB 到 1 GB 从盘上读一遍、再写一遍。
+     *
+     * 为什么不能复用 [FILE_MS]（5 秒）：5 秒连一个 1 GB 的视频都拷不完（判据①点名
+     * 「复制 1GB 不崩」），会被判「工具坏了」引来无意义的重试；为什么与 [ARCHIVE_MS]
+     * 同取 120 秒：手机闪存顺序读写约 300–800 MB/s，1 GB 在 5 秒量级、慢盘也有几十秒
+     * 余量；批量是「每文件一次系统调用」，几百个小文件的开销也在这个量级内。
+     */
+    const val COPY_MS = 120_000L
 
     /**
      * **等用户**的回答上限（第四十八批 P0-1）：确认超时 + 5 秒余量。
@@ -1231,6 +1248,13 @@ internal object BaopuToolCatalog {
         // 默认开不等于能静默动手，每次一张确认卡）。组归 FILES（默认不可见，capabilities 解锁）。
         "archive_pack",
         "archive_extract",
+        // 第二百八十八批：复制/批量/整理五件——预览 FREE 只读；其余 CONFIRM（每次一张卡），
+        // 且「先预览再执行」写进了工具描述。默认开不等于能静默动手。
+        "copy_path",
+        "bulk_move",
+        "bulk_copy",
+        "organize",
+        "organize_preview",
         // 小说工程三件（第一百五十五批 · W1/W2）：建项目 CONFIRM；看项目/续写简报 FREE 只读。
         // 正文写作仍走 write_file/edit_file，本组只是项目层骨架与简报
         "novel_create",
@@ -1344,6 +1368,13 @@ internal object BaopuToolCatalog {
         // tar 家族走 Rust）。两件都写盘 ⇒ CONFIRM；FILES 组（默认不可见，capabilities 解锁）。
         Entry("archive_pack") { ArchiveTools.packSpec(it) },
         Entry("archive_extract") { ArchiveTools.extractSpec(it) },
+        // 第二百八十八批：复制/批量/整理五件（预览 FREE 只读；其余 CONFIRM，都写盘）。
+        // 计划函数只有一份（PathCopyCore）⇒「预览与实际一致」是结构保证，不靠两处对齐。
+        Entry("copy_path") { CopyPathTool.spec(it) },
+        Entry("bulk_move") { BulkPathTools.moveSpec(it) },
+        Entry("bulk_copy") { BulkPathTools.copySpec(it) },
+        Entry("organize") { OrganizeTool.spec(it) },
+        Entry("organize_preview") { OrganizeTool.previewSpec(it) },
         // 小说工程三件（第一百五十五批 · W1/W2）：novel_create 是唯一写盘入口（CONFIRM，
         // 只建骨架）；novel_project 看总览、novel_continue 拿续写简报，都 FREE 只读。
         // LIBRARY 组（默认不可见，capabilities 解锁）——默认可见 12 条的 §2 硬卡不许破

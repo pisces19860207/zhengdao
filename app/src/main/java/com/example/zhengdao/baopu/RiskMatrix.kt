@@ -279,8 +279,11 @@ internal data class RiskTable(
          * v5（第二百三十二批）：table_query 入表（本地 R0、联网升 R2 必问）。
          * v6（第二百六十二批）：browser_evidence 入表（R0 只读证据快照）。
          * v7（第二百六十九批）：archive_pack / archive_extract 入表（R1；dest 落到工作区外自动升 R2）。
+         * v8（第二百八十八批）：复制/批量/整理五件入表——copy_path R1（只写新文件）；
+         * bulk_copy R1；bulk_move R2（源会消失）；organize R2（源会消失）；
+         * organize_preview R0（纯只读预览）。
          */
-        const val DEFAULT_VERSION: Int = 7
+        const val DEFAULT_VERSION: Int = 8
 
         /**
          * 唯一一张默认表（68 行 = 注册工具 68 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
@@ -367,6 +370,14 @@ internal data class RiskTable(
                 // 解包**永不覆盖**同名文件、也永不写工作区外（zip-slip 整包拒），所以不给 R2。
                 "archive_pack" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
                 "archive_extract" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
+                // ── 288 复制/批量/整理（ToolRule.writePathKeys 的口径：copy 只写新文件，
+                //    move/organize 的源会消失 ⇒ 范围目录也算写面；dest 在前，授权账
+                //    recordApplied 拿 firstOrNull 当「写到了哪」）─────────────────
+                "copy_path" to ToolRule(RiskClass.R1, writePathKeys = setOf("to")),
+                "bulk_move" to ToolRule(RiskClass.R2, writePathKeys = setOf("dest", "dir")),
+                "bulk_copy" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
+                "organize" to ToolRule(RiskClass.R2, writePathKeys = setOf("dest", "dir")),
+                "organize_preview" to ToolRule(RiskClass.R0),
                 "browser_click" to ToolRule(RiskClass.R2, clickLike = true),
                 "browser_type" to ToolRule(
                     RiskClass.R2,

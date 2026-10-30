@@ -448,6 +448,13 @@ class ToolSchemaAllTest {
             // 第二百六十九批：打包/解包（sources 是字符串数组，最小合法给一个文件）
             "archive_pack" to JSONObject().put("dest", "包.zip").put("sources", JSONArray().put("a.md")),
             "archive_extract" to JSONObject().put("archive", "包.zip"),
+            // 288：复制/批量/整理五件（copy 必填 from/to；bulk 必填 dir/dest；
+            // organize 必填 dir，undo_receipt 分支带 dir 也合法；preview 必填 dir）
+            "copy_path" to JSONObject().put("from", "投递/a.txt").put("to", "产物/a.txt"),
+            "bulk_move" to JSONObject().put("dir", "投递").put("dest", "产物/归档"),
+            "bulk_copy" to JSONObject().put("dir", "投递").put("dest", "产物/副本"),
+            "organize" to JSONObject().put("dir", "收料"),
+            "organize_preview" to JSONObject().put("dir", "收料"),
             // 小说工程三件（第一百五十五批）：create 必填书名；project/continue 必填项目路径
             "novel_create" to JSONObject().put("title", "书名"),
             "novel_project" to JSONObject().put("path", "小说/书名"),

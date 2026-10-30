@@ -63,6 +63,8 @@ class ToolSchedulingGateTest {
         "sheet_read", "search_web",
         // 232: table_query 只读用户的表（唯一落盘是 App 自己的登记簿），与别的读可并行
         "table_query",
+        // 288: organize_preview 只读预览（纯文件 stat/读，不写盘），与别的读可并行
+        "organize_preview",
     )
 
     // ── ① 分类自洽 ────────────────────────────────────────────────────────

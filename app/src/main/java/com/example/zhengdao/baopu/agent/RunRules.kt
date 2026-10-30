@@ -287,6 +287,17 @@ internal object RunRules {
             "move_path" -> "移动 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
                 showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
                 "（搬走后原件不在原处）"
+            // 第二百八十八批：复制/批量/整理——卡面说清「动哪个范围、源保不保留、能不能退回」。
+            "copy_path" -> "复制 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
+                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
+                "（源文件原地保留，重名不覆盖）"
+            "bulk_move" -> "批量搬动 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
+                showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +
+                "（源会离开原处；回执可退回）"
+            "bulk_copy" -> "批量复制 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
+                showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +
+                "（源文件原地保留，重名不覆盖）"
+            "organize" -> organizeSummary(args, projectRoot)
             // 第二百八十七批：删/移必确认，卡面第一句就要说清「删什么、能不能回」。
             "delete_path" -> deleteSummary(args, path)
             // 第一百五十八批：生图会烧 Gemini 额度，卡面第一句就把「几张、什么比例」说清；
@@ -323,8 +334,7 @@ internal object RunRules {
     }
 
     /** 删除卡摘要（287）：删什么、进回收站还是彻底删、能不能回——一句话说全。 */
-    private fun deleteSummary(args: JSONObject, path: String?): String {
-        if (args.optBoolean("empty_trash", false)) {
+    private fun deleteSummary(args: JSONObject, path: String?): String {        if (args.optBoolean("empty_trash", false)) {
             return "清空回收站（里面的文件彻底删除，不可恢复）"
         }
         val shown = path ?: "（未给路径）"
@@ -333,6 +343,18 @@ internal object RunRules {
         } else {
             "删除 $shown（先进回收站，可以捞回来）"
         }
+    }
+
+    /** 整理卡摘要（288）：整理还是退回、按什么分、源会离开原处——一句话说全。 */
+    private fun organizeSummary(args: JSONObject, projectRoot: File?): String {
+        val undo = args.optString("undo_receipt").trim()
+        if (undo.isNotEmpty()) {
+            return "按回执退回整理（$undo）：把搬过的文件逐条搬回原位，重名不覆盖"
+        }
+        val mode = args.optString("mode").trim().ifEmpty { "type" }
+        val how = if (mode == "date") "按修改年月" else "按类型"
+        return "整理 ${args.optString("dir").ifBlank { "?" }}（$how 归入子目录）：" +
+            "文件会离开原处，执行后留回执可一键退回"
     }
 
     /**
