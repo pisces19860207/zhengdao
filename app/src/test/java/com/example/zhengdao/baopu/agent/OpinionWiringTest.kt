@@ -227,21 +227,23 @@ class OpinionWiringTest {
         assertEquals("进程级只打一行（不刷屏）", 1, OpinionWiring.processNoteCount())
     }
 
-    // ── 幂等：越界两处都挂，只入账一条 ──────────────────────────────────
+    // ── 幂等：同一次调用重复送意见，只入账一条 ────────────────────────────
+    //
+    // 287：②段那条「越界两处都挂」的入口随 `Guarded.Ask` 退役（工作区不再是边界），
+    // 幂等判据改由**同一个调用送两次**钉住——幂等键仍是 `toolCallId + kind`，
+    // 与当时两处并发的语义等价（L24 累进罚则不许被打歪）。
 
     @Test
-    fun `越界两处都挂只入账一条`() {
+    fun `同一次调用送两次只入账一条`() {
         val same = ToolCall("c-out", "write_file", JSONObject().put("path", "../x"))
 
-        val fromGate = OpinionWiring.onOutsidePath(same, now)
-        val fromMatrix = OpinionWiring.onVerdict(same, outside(), now)!!
+        val first = OpinionWiring.onVerdict(same, outside(), now)!!
+        val second = OpinionWiring.onVerdict(same, outside(), now)!!
 
-        assertEquals("同一次调用只产一条意见", fromGate.id, fromMatrix.id)
+        assertEquals("同一次调用只产一条意见", first.id, second.id)
         assertEquals("只入账一条（L24 累进罚则不许被打歪）", 1, OpinionWiring.replay().count { it.tool == "write_file" })
         assertEquals("也只占一张预算", 1, OpinionWiring.replay().count { it.decision == OpinionDecision.POP })
-        // 先合并、后入账：两处证据并进内存那一条
-        assertTrue(fromMatrix.opinion.evidence.contains("gate:path_guard"))
-        assertTrue(fromMatrix.opinion.evidence.contains("risk:outside_workspace"))
+        assertTrue(second.opinion.evidence.contains("risk:outside_workspace"))
         assertTrue(OpinionWiring.pending().isEmpty())
     }
 
