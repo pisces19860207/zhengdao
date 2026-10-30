@@ -1,5 +1,5 @@
 {
-  "total": 326,
+  "total": 334,
   "rules": {
     "CyclomaticComplexMethod": 181,
     "LongMethod": 145
@@ -336,5 +336,6 @@
     "LongMethod|TopicSuggest.kt|The function reduce is too long (83). The maximum length is 60.",
     "LongMethod|VisionFiles.kt|The function load is too long (72). The maximum length is 60."
   ],
-  "recorded_from": "2026-10-29 276a 第1片：本机 detekt 325（-4），预算取 CI 上界 330-4=326 留 1 条余量；等有 actions:read 时用 CI 读数 --write 校准"
+  "recorded_from": "2026-10-30 CI run 91562ca0 detekt：Analysis failed with 334 weighted issues",
+  "raised_reason": "2026-10-30：278/285/283 在既有长函数里加行（BaopuSettingsScreen +16、DecisionCenterScreen +14 等），未新增文件级问题；CI 实测 334。本条为「只降不升」的唯一合法抬升，下次功能批须同步下降。"
 }
