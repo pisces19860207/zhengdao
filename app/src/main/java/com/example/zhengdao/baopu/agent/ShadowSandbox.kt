@@ -84,6 +84,8 @@ internal class FileShadowSandbox(
             note = "副本 ${scene.declared.size} 个对象",
             copyRoot = scene.copyRoot.absolutePath,
             existedBefore = scene.existed,
+            // 306 批：改前字节数一并交回——move/delete 的所称形状要报「源没了、多少字节」。
+            existedBytes = scene.before.mapValues { it.value.bytes },
             observedPaths = diff.paths,
             observed = diff.shape,
             rollback = snapshot,
@@ -91,7 +93,7 @@ internal class FileShadowSandbox(
             realUntouched = scene.declared.all { rel ->
                 sha256(File(scene.workspace, rel)) == scene.realBefore[rel]
             },
-            landed = diff.landed,
+            landed = landedOf(input, scene, after, diff),
             trialOk = trial.first,
             trialNote = trial.second,
         )
@@ -214,6 +216,24 @@ internal class FileShadowSandbox(
             "edit_file" -> EditFileTool.edit(
                 scene.copyRoot, rel, input.editOp, input.fromLine, input.toLine, input.content,
             )
+            // 306 批三件：照原样在副本里**真跑一遍**——root 换成副本根、路径用相对写法，
+            // 与 write/edit 同一条红线（绝对路径/越界在 open() 那一格就已经拒了）。
+            // · move_path：声明 = [源, 目标]；副本内同盘 rename（原子），工具自己的「待删除清单」
+            //   只在跨分区分支才写，副本里不会冒出来；
+            // · delete_path：permanent 照原样带进去——工具把源挪进副本的 `回收站/`（进不了影响面，
+            //   见 [isBookkeeping]）或真删，两种都是"声明对象消失"；
+            // · convert_encoding：GBK/UTF-16 → UTF-8 原子替换；工具自己的 `备份/` 同样不算影响面。
+            "move_path" -> MovePathTool.move(
+                root = scene.copyRoot,
+                from = scene.declared.getOrElse(0) { "" },
+                to = scene.declared.getOrElse(1) { "" },
+            )
+            "delete_path" -> DeletePathTool.run(
+                path = rel,
+                permanent = input.permanent,
+                root = scene.copyRoot,
+            )
+            "convert_encoding" -> ConvertEncodingTool.convert(scene.copyRoot, File(scene.copyRoot, rel))
             else -> return false to "工具「${input.tool}」不在适配器覆盖里"
         }
         val text = when (outcome) {
@@ -222,6 +242,23 @@ internal class FileShadowSandbox(
             is ToolOutcome.Rejected -> outcome.reason
         }
         return (outcome is ToolOutcome.Ok) to text.take(NOTE_CHARS)
+    }
+
+    /**
+     * 306 批：声明对象的动作在副本里**落了没有**——按工具各自的「落」算。
+     * write/edit 的落是"声明对象有字节/变了字"；搬与删的落是"声明对象**没了**"
+     * （源还在副本里 ＝ 这一趟压根没搬成，照旧判没落盘）。
+     */
+    private fun landedOf(input: ShadowInput, scene: Scene, after: Map<String, Node>, diff: Diff): Boolean {
+        val first = scene.declared.firstOrNull()?.let { relPathKey(it) } ?: return false
+        return when (input.tool) {
+            "move_path" -> {
+                val to = scene.declared.getOrNull(1)?.let { relPathKey(it) } ?: return false
+                !after.containsKey(first) && after.containsKey(to)
+            }
+            "delete_path" -> !after.containsKey(first)
+            else -> diff.landed
+        }
     }
 
     // ── 2｜快照（§1②：sha256＋大小＋存在性三格）─────────────────────────────
@@ -282,11 +319,19 @@ internal class FileShadowSandbox(
         return out
     }
 
-    /** 影子／工具自己的记账目录（不算"这次动作影响到的对象"）。 */
+    /**
+     * 影子／工具自己的记账目录（不算"这次动作影响到的对象"）。
+     *
+     * 306 批补 `回收站/`：那不是影子自己的东西，是 `delete_path`（回收站档）在副本里给自己的
+     * **退路**——与 `备份/` 同一格（写侧三件工具都自带退路目录）。真盘上的回收站照常工作，
+     * 这里收窄的只是「副本树 diff 的影响面口径」：声明的删除对象"消失"就是全部实测，
+     * 工具把它挪去自己退路里的那一下不算多碰一个对象。
+     */
     internal fun isBookkeeping(rel: String): Boolean {
         val parts = rel.lowercase().split("/")
         return parts.contains(ROLLBACK_DIR_NAME.lowercase()) ||
             parts.contains(BaopuKernel.Data.DIR_BACKUP.lowercase()) ||
+            parts.contains(DeletePathTool.TRASH_DIR.lowercase()) ||
             parts.any { it.endsWith(".tmp") }
     }
 
