@@ -3,7 +3,7 @@
 // `image_ops`（2026-10-18，用户逐字「落」）：让抱朴真能改图，而不是嘴上说「要不要我动手」。
 //
 // 五条硬纪律：
-// 1. 只在工作区内读写（workspaceBoundaryCheck——156 批起开关开＋已授权可越界，先过确认卡）；
+// 1. 全盘可读写（287）；只有系统与凭据目录一律拒（fileAccessCheck），输出路径照旧不覆盖已有文件；
 // 2. **永不动原图**：输出另存（默认 `<名>-<动作>.<ext>`），目标已存在即拒（不覆盖）；
 // 3. 权限 CONFIRM：每次一张确认卡（参数里写清 action/path/out，用户看一眼就懂）；
 // 4. 参数缺就报缺哪个（判据在 `ImageOps.missingParam`，不猜默认值蒙混）；
@@ -16,7 +16,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.fileAccessCheck
 import java.io.File
 
 /** `image_ops`：缩放 / 裁剪 / 转格式 / 取主色 / 生成图标各档。 */
@@ -123,12 +124,7 @@ internal object ImageOpsTool {
         if (path.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
         val src = resolve(root, path)
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        workspaceBoundaryCheck(
-            root,
-            src,
-            path,
-            "路径越界被拒：$path 不在工作区（${root.absolutePath}）内。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(src, FilePaths.display(root, src))?.let { return ToolOutcome.Rejected(it) }
         if (!src.isFile) return ToolOutcome.Failed("源图不存在：$path（先用 list_dir 看清有什么）")
         val srcFormat = ImageOps.formatOf(src.name)
             ?: return ToolOutcome.Failed("这不是认识的图片格式：${src.name}（只认 png/jpg/webp）")
@@ -196,12 +192,7 @@ internal object ImageOpsTool {
         val dir = out?.let { resolve(root, it).parentFile } ?: src.parentFile
         if (dir == null) return ToolOutcome.Failed("定位不到输出目录")
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        workspaceBoundaryCheck(
-            root,
-            dir,
-            dir.absolutePath,
-            "输出目录越界被拒：${dir.absolutePath}",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
         if (!dir.exists() && !dir.mkdirs()) return ToolOutcome.Failed("建不了输出目录：${dir.absolutePath}")
         val written = mutableListOf<String>()
         for (edge in ImageOps.ICON_SIZES) {
@@ -245,12 +236,7 @@ internal object ImageOpsTool {
         val target = out?.let { resolve(root, it) }
             ?: File(src.parentFile, ImageOps.outName(src.name, action, format))
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        workspaceBoundaryCheck(
-            root,
-            target,
-            target.absolutePath,
-            "输出路径越界被拒：${target.absolutePath}",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
         if (target.absolutePath == src.absolutePath) {
             return ToolOutcome.Failed("输出路径和原图相同——image_ops 永不覆盖原图，请换一个 out")
         }

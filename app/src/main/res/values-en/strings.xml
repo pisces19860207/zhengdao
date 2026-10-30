@@ -1266,19 +1266,16 @@
     <string name="baopu_tool_novel_project_desc">Read-only overview of a project: outline, characters, chapter list, actual words vs target.</string>
     <string name="baopu_tool_novel_continue">novel_continue: Continuation brief</string>
     <string name="baopu_tool_novel_continue_desc">Where to continue (chapter and paragraph), characters and notes, consistency hints; append via edit_file or start a new chapter via write_file, never overwrite.</string>
-    <string name="baopu_workspace_card">Workspace</string>
-    <string name="baopu_ws_outside_title">Allow access outside workspace</string>
-    <string name="baopu_ws_outside_desc">When on, Baopu asks with a confirmation card before touching files outside the workspace. It asks once per session (the answer survives restarts until you revoke it below). When off, outside access is always rejected.</string>
     <!-- Batch 168: production eval switch (eval_prod_on write entry; off by default) -->
     <string name="baopu_eval_prod_card">Production eval</string>
     <string name="baopu_eval_prod_title">Periodic production eval</string>
     <string name="baopu_eval_prod_desc">When on, after a session settles (at most once every 24 hours) Baopu runs a 10-case mini eval on your configured channel. It spends a small amount of your model quota and makes network requests. Results are written only to this device\'s private storage and serve as evidence for evolution suggestions; chat is never blocked and personas/skills are never changed. Off by default — only your explicit switch turns it on.</string>
-    <string name="baopu_ws_grant_card">Sessions allowed outside the workspace</string>
-    <string name="baopu_ws_grant_empty">No session allowed yet. A new session will ask the first time it needs to go outside.</string>
-    <string name="baopu_ws_grant_loading">Loading…</string>
-    <string name="baopu_ws_grant_revoke">Revoke</string>
-    <string name="baopu_ws_grant_root">Workspace: %1$s</string>
-    <string name="baopu_ws_grant_revoked">Revoked. This session will be asked again next time.</string>
+    <!-- Batch 287: file operation ledger (audit entry after full-disk read/write; 30-day replay) -->
+    <string name="baopu_file_op_card">File operations (last 30 days)</string>
+    <string name="baopu_file_op_desc">Baopu works with full-disk read/write like a desktop agent, and puts products in the workspace by default. Every read, write, delete, move, list and search is logged with time, action, purpose and path, and kept for 30 days. Deletes and moves always need your approval; overwriting an existing file backs it up first (files over 5MB are not backed up and the receipt says so); system and credential directories (.ssh, keystore) are never touched.</string>
+    <string name="baopu_file_op_empty">Nothing logged yet. Entries appear after the first file read or write.</string>
+    <string name="baopu_file_op_loading">Loading…</string>
+    <string name="baopu_file_op_more">Showing %1$d / %2$d</string>
     <!-- Batch 165: persona packs -->
     <string name="persona_pack_card">Persona packs</string>
     <string name="persona_pack_desc">Pick a template for who is helping: it changes only tone, style and working preferences. It never changes tool permissions or confirmations, and none of its content is executed.</string>

@@ -185,10 +185,18 @@ class FileInfoToolTest {
     // ── 拒绝 ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `越界即拒`() {
+    fun `凭据目录即拒`() {
+        // 287：工作区不再是边界；凭据目录才是硬拒的那一条。
+        setup()
+        val key = File(tmp.newFolder(".ssh"), "id_rsa").apply { writeText("x") }
+        assertTrue(info(key) is ToolOutcome.Rejected)
+    }
+
+    @Test
+    fun `工作区外的普通文件能看`() {
         setup()
         val outside = File(tmp.newFolder("outside"), "a.txt").apply { writeText("x") }
-        assertTrue(info(outside) is ToolOutcome.Rejected)
+        assertTrue("287：全盘可读，越界不该再拒", info(outside) is ToolOutcome.Ok)
     }
 
     @Test

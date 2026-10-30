@@ -361,20 +361,9 @@ internal object OpinionWiring {
         return OpinionAdapter.CLASSIFIER.adapt(severity, gist, action, law, evidence)
     }
 
-    /**
-     * ② 段那条"越界要问一次"（`Guarded.Ask`）包成 L9 意见。
-     *
-     * 为什么它单独一个入口：越界在**②段就返回了**（根本不进 ③ 的矩阵），
-     * 只挂 ③ 的话，最常见的越界反而一条意见都不产。
-     */
-    fun outsideOpinion(call: ToolCall): Opinion =
-        OpinionAdapter.CLASSIFIER.adapt(
-            Severity.MAJOR,
-            "越界访问",
-            ActionCode.REVIEW,
-            LawRef.L9,
-            listOf("gate:path_guard", "tool:${call.name}"),
-        )
+    // 287：②段那条"越界要问一次"随 `Guarded.Ask` 一起退役（工作区不再是边界）——
+    // `outsideOpinion`／`onOutsidePath` 一并删除，不留"入口还在、生产永远调不到"的死代码。
+    // 写到工作区外仍然产 L9：那条走的是 ③ 段矩阵（`RiskCode.PATH_OUTSIDE_WORKSPACE`）。
 
     // ── W1＋W2 的接线口（GuardPipeline 只调这两个） ─────────────────────
 
@@ -389,11 +378,6 @@ internal object OpinionWiring {
         val opinion = runCatching { opinionOf(call, verdict) }.getOrNull() ?: return null
         return submit(opinion, call.name, call.id, now, alreadyRefused = verdict.hardDeny)
     }
-
-    /** ② 段越界之后调（**只观察**）。 */
-    @Synchronized
-    fun onOutsidePath(call: ToolCall, now: Long = System.currentTimeMillis()): Ruling =
-        submit(outsideOpinion(call), call.name, call.id, now, alreadyRefused = false)
 
     /**
      * 通用入口：任何一器的意见都能走这里（四器统一形状之后，调解器只认 [Opinion]）。

@@ -1416,6 +1416,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV17Migration(db)
         applyV18Migration(db)
         applyV19Migration(db)
+        applyV20Migration(db)
     }
 
     /**
@@ -1453,6 +1454,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 17) applyV17Migration(db)
         if (oldVersion < 18) applyV18Migration(db)
         if (oldVersion < 19) applyV19Migration(db)
+        if (oldVersion < 20) applyV20Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1666,7 +1668,44 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
      * 老用户第一次越界照旧被问一次（没有历史放行行 ＝ 没批过）。
      */
     private fun applyV18Migration(db: SQLiteDatabase) {
-        WorkspaceGrantSql.DDL.forEach { db.execSQL(it) }
+        // 287：`WorkspaceGrantSql` 随授权模型一起退役（工作区不再是权限边界），
+        // 但**老库升上来时这两张表还得在**——它们的行是历史事实，不删表、不迁数据。
+        // DDL 原样搬到这里（与退役前逐字一致），老库与新库走同一条路径。
+        V18_DDL.forEach { db.execSQL(it) }
+    }
+
+    /** v18 两张表的 DDL（原 `WorkspaceGrantSql.DDL`，287 起只剩"老库兼容"这一个用途）。 */
+    private val V18_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS workspace_grant(
+          session_id INTEGER NOT NULL,
+          root_path TEXT NOT NULL,
+          granted_at INTEGER NOT NULL,
+          PRIMARY KEY(session_id, root_path)
+        )
+        """.trimIndent(),
+        """
+        CREATE TABLE IF NOT EXISTS workspace_audit(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          at INTEGER NOT NULL,
+          session_id INTEGER NOT NULL,
+          root_path TEXT NOT NULL,
+          path TEXT NOT NULL,
+          decision TEXT NOT NULL,
+          tool TEXT NOT NULL DEFAULT ''
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS idx_workspace_grant_session ON workspace_grant (session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_workspace_audit_at ON workspace_audit (at DESC)",
+    )
+
+    /**
+     * v20（第二百八十七批）：`file_op` 文件操作账（全盘操作入账，30 天可回放）。
+     *
+     * DDL 在 [FileOpSql] 一份字面量里，与 `onCreate` 共用——新装与升级不会分叉。
+     */
+    private fun applyV20Migration(db: SQLiteDatabase) {
+        FileOpSql.DDL.forEach { db.execSQL(it) }
     }
 
     /**
@@ -1717,8 +1756,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  步数/起止/原因/结果摘要，带 `ON DELETE CASCADE` 与 task_id UNIQUE）。
          *  v17 = 第一百四十七批（`diary_index` 情景记忆索引：文件是真相，索引只是加速）。
          *  v18 = 157 补充（`workspace_grant` 会话级放行 ＋ `workspace_audit` 越界审计：
-         *  工作区外授权从「一次运行问一次」改成「一次会话问一次」，按 sessionId 落库）。 */
-        const val VERSION = 19
+         *  工作区外授权从「一次运行问一次」改成「一次会话问一次」，按 sessionId 落库）。
+         *  v20 = 第二百八十七批（`file_op` 文件操作账：全盘可读写之后每笔文件操作入账，
+         *  路径＋用途，30 天可回放；v18 那两张表随授权模型退役，只留老库兼容）。 */
+        const val VERSION = 20
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

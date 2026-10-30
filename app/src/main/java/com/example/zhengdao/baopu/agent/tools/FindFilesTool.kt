@@ -9,8 +9,9 @@
 // 结果回灌走 GuardPipeline 第 ⑤ 段的 DataFence.wrap（与 read_file 同一出口）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 
 /**
@@ -43,9 +44,10 @@ internal object FindFilesTool {
     /** 构造注册用 Spec（workspaceRoot 注入：越界自检 + 相对路径渲染都要它）。 */
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "find_files",
-        description = "在工作区某个目录里按文件名找文件（子串匹配，大小写不敏感），" +
-            "回「相对路径 + 大小」。默认深度 $DEFAULT_DEPTH 层、最多 $DEFAULT_LIMIT 个命中，" +
-            "触顶会明说。找文件内容用 search_in_files。",
+        description = "在某个目录里按文件名找文件（子串匹配，大小写不敏感），回「路径 + 大小」。" +
+            "**全盘可找**：path 给绝对路径就能搜整台机器（如 /storage/emulated/0 找 Obsidian 库）；" +
+            "默认深度 $DEFAULT_DEPTH 层、最多 $DEFAULT_LIMIT 个命中，触顶会明说。" +
+            "找文件内容用 search_in_files。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -55,7 +57,7 @@ internal object FindFilesTool {
                 ),
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的目录（省略 = 工作区根）",
+                    "description" to "从哪个目录开始找：相对工作区根，或全盘绝对路径（省略 = 工作区根）",
                 ),
                 ARG_LIMIT to jsonObjectOf(
                     "type" to "integer",
@@ -96,18 +98,13 @@ internal object FindFilesTool {
         val needle = pattern.trim()
         if (needle.isEmpty()) return ToolOutcome.Failed("参数「$ARG_PATTERN」为空（要给一个文件名片段）")
         if (!dir.exists()) {
-            return ToolOutcome.Failed("不存在：${dir.name}（工作区里没有这个目录；先用 list_dir 看结构）")
+            return ToolOutcome.Failed("不存在：${dir.name}（这个位置没有这个目录；先用 list_dir 看结构）")
         }
         if (!dir.isDirectory) {
             return ToolOutcome.Failed("不是一个目录：${dir.name}（find_files 从目录开始找；读单个文件用 read_file）")
         }
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        workspaceBoundaryCheck(
-            root,
-            dir,
-            dir.name,
-            "路径越界被拒：${dir.name} 不在工作区（${root.absolutePath}）内。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
         val cap = limit.coerceIn(1, MAX_LIMIT)
         val depthCap = maxDepth.coerceIn(1, MAX_DEPTH)
         val lowered = needle.lowercase()
@@ -147,13 +144,13 @@ internal object FindFilesTool {
                     "换一个更短的片段再试，或用 list_dir 看目录结构。",
             )
         }
-        val sortedHits = hits.sortedBy { relPath(root, it) }
+        val sortedHits = hits.sortedBy { FilePaths.display(root, it) }
         val body = buildString {
             append("在 ")
-            append(if (dir == root) "工作区" else relPath(root, dir))
+            append(if (dir == root) "工作区" else FilePaths.display(root, dir))
             append(" 里找到 ${sortedHits.size} 个文件名含「$needle」的文件（扫了 $scanned 个，深度上限 $depthCap 层）：\n")
             sortedHits.forEach { f ->
-                append(relPath(root, f)).append('\t').append(f.length()).append(" B\n")
+                append(FilePaths.display(root, f)).append('\t').append(f.length()).append(" B\n")
             }
             if (truncatedByLimit) append("（已到 $cap 个上限，还有更多没列；把 limit 调大或换更具体的片段）")
             if (truncatedByScan) append("（扫到 $MAX_SCANNED 个文件就停了；把 path 指到更窄的目录再找）")
@@ -174,8 +171,4 @@ internal object FindFilesTool {
         )
     }
 
-    /** 相对路径渲染（统一 `/`，与 read_file 的 path 口径一致）。 */
-    private fun relPath(root: File, f: File): String = runCatching {
-        f.absoluteFile.toRelativeString(root.absoluteFile).replace('\\', '/')
-    }.getOrDefault(f.name)
 }

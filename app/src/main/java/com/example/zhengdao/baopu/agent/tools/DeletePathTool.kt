@@ -7,8 +7,9 @@
 //   - 但「点头」必须是**每次一张确认卡**，且默认可反悔（先进回收站，再谈彻底删）。
 //
 // 五条硬纪律：
-// 1. 越界判据统一走 workspaceBoundaryCheck（156 批起：开关开＋本运行已授权可越界，
-//    开关关＝原文拒绝）；禁区（备份/、回收站/、原件区）仍用 PathGuard 硬拒；
+// 1. 边界只有一条（287）：系统与凭据目录一律拒（`fileAccessCheck`）；**工作区不再是边界**——
+//    全盘的文件都能删，但「删」永远要过确认卡（本工具 permission = CONFIRM）；
+//    禁区（备份/、回收站/、原件区）仍用 PathGuard 硬拒；
 // 2. **默认进回收站**（`回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
 // 3. 只删**单个文件**：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
 // 4. 禁区一律拒并说清：`备份/`（157 起可见化，原 `.baopu-bak`，旧版本备份）、`回收站/`（回收站本身）、
@@ -22,8 +23,14 @@ import com.example.zhengdao.baopu.MediaDelete
 import com.example.zhengdao.baopu.MediaOwnership
 import com.example.zhengdao.baopu.MediaPublisher
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.FileOpKind
+import com.example.zhengdao.baopu.FileOpLog
+import com.example.zhengdao.baopu.FileOpRules
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.FilePolicy
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
@@ -62,7 +69,7 @@ internal object DeletePathTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "delete_path",
-        description = "删工作区里的一个文件。**默认进回收站**（工作区/回收站/时间戳-原名），" +
+        description = "删一个文件（相对工作区，或全盘绝对路径）。**默认进回收站**（工作区/回收站/时间戳-原名），" +
             "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
             "只删单个文件：目录、备份区 $BACKUP_DIR_NAME/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
             "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
@@ -76,7 +83,7 @@ internal object DeletePathTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "要删的文件（相对工作区根，如 附件/20261018-231057-shot.jpg）",
+                    "description" to "要删的文件：相对工作区根（如 附件/20261018-231057-shot.jpg），或全盘绝对路径",
                 ),
                 ARG_PERMANENT to jsonObjectOf(
                     "type" to "boolean",
@@ -152,15 +159,10 @@ internal object DeletePathTool {
         // 第三十七批 A 段：删掉人设＝让人设静默消失，同样不许（回收站那套逻辑原样保留）
         PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         val target = resolve(root, rel)
-        // 第二百二十九批：写侧硬边界——删只允许当前工作区＋默认工作区（Download/证道），
-        // 其余一律拒绝（不是弹卡）。回收站/备份区/原件区的既有禁区一字不动（下面各条照旧）。
-        workspaceWriteBoundaryCheck(
-            root,
-            target,
-            rel,
-            "路径越界被拒：$rel 在可写范围（当前工作区与 Download/证道）之外。" +
-                "delete_path 只能在资料库/工作区里删。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        // 第二百八十七批：工作区不是权限边界——全盘的文件都能删（系统/凭据目录除外）；
+        // 「删」这件事本身仍要用户点头（permission=CONFIRM，卡上写清删什么、能不能回）。
+        // 回收站/备份区/原件区的既有禁区一字不动（下面各条照旧）。
+        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
         if (target.absolutePath == root.absolutePath) {
             return ToolOutcome.Failed("不许删工作区根目录本身：${root.absolutePath}")
         }
@@ -238,6 +240,17 @@ internal object DeletePathTool {
         if (!trashDir.isDirectory) return ToolOutcome.Ok("回收站是空的（还没有东西进来），不用清。")
         val files = trashDir.listFiles()?.filter { it.isFile }.orEmpty()
         if (files.isEmpty()) return ToolOutcome.Ok("回收站里没有文件（只有子目录或本来就是空的）。")
+        // 287 入账：清空回收站没有 path 参数，管线那一层记不到它 ⇒ 在动作发生的地方补一行
+        // （「全盘操作入账」不允许有一个动作是黑洞；真没东西可清就不记，不编一笔）。
+        runCatching {
+            val e = FileOpLog.record(
+                tool = "delete_path",
+                kind = FileOpKind.DELETE,
+                path = FilePolicy.normalize(trashDir),
+                purpose = "清空回收站（不可恢复）",
+            )
+            RunLog.log(FileOpRules.lineOf(e))
+        }
         var deleted = 0
         var bytes = 0L
         val failed = mutableListOf<String>()

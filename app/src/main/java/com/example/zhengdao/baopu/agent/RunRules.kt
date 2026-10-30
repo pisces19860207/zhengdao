@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.Provider
+import com.example.zhengdao.baopu.FilePolicy
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import java.io.File
 import org.json.JSONObject
@@ -275,13 +276,19 @@ internal object RunRules {
         return when (tool) {
             "write_file" -> {
                 val lines = args.optString("content").lines().size
-                val verb = if (args.optBoolean("overwrite", false)) "覆盖" else "新建"
-                "$verb ${path ?: "（未给路径）"}（$lines 行）"
+                val overwrite = args.optBoolean("overwrite", false)
+                val verb = if (overwrite) "覆盖" else "新建"
+                val tail = if (overwrite) overwriteTail(args) else ""
+                "$verb ${path ?: "（未给路径）"}（$lines 行）$tail"
             }
 
-            "edit_file" -> "编辑 ${path ?: "（未给路径）"}"
+            // 第二百八十七批：改文件前必留旧版（>5MB 除外）——卡上要说清"能不能回"。
+            "edit_file" -> "编辑 ${path ?: "（未给路径）"}${overwriteTail(args)}"
             "move_path" -> "移动 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
-                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot)
+                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
+                "（搬走后原件不在原处）"
+            // 第二百八十七批：删/移必确认，卡面第一句就要说清「删什么、能不能回」。
+            "delete_path" -> deleteSummary(args, path)
             // 第一百五十八批：生图会烧 Gemini 额度，卡面第一句就把「几张、什么比例」说清；
             // 提示词只摘 40 字（卡面是标题，不是日志）。
             "generate_image" -> {
@@ -294,6 +301,37 @@ internal object RunRules {
                 "用 Gemini 画 $count 张 $size 的图（会烧额度）：「$brief」$refText"
             }
             else -> "$tool（${args.toString().take(60)}）"
+        }
+    }
+
+    /**
+     * 覆盖/编辑已有文件时的"能不能回"（287）：默认「旧版先备份」，超过 5MB 就说「不备份」。
+     *
+     * 为什么这里允许一次 `length()`：卡面必须说真话，而"这文件多大"只有盘上知道；
+     * 只 stat 不读内容，代价可以忽略（与"卡面不许读文件"那条纪律不冲突——那条禁的是读正文）。
+     */
+    private fun overwriteTail(args: JSONObject): String {
+        val raw = args.optString("path").trim()
+        if (raw.isEmpty()) return ""
+        val f = File(raw)
+        if (!f.isFile) return ""
+        return if (f.length() > FilePolicy.BACKUP_MAX_BYTES) {
+            "（旧文件 ${f.length() / 1024 / 1024} MB，超过 5MB 上限：**不备份**，覆盖后不可恢复）"
+        } else {
+            "（旧版先备份到 备份/）"
+        }
+    }
+
+    /** 删除卡摘要（287）：删什么、进回收站还是彻底删、能不能回——一句话说全。 */
+    private fun deleteSummary(args: JSONObject, path: String?): String {
+        if (args.optBoolean("empty_trash", false)) {
+            return "清空回收站（里面的文件彻底删除，不可恢复）"
+        }
+        val shown = path ?: "（未给路径）"
+        return if (args.optBoolean("permanent", false)) {
+            "彻底删除 $shown（不进回收站，删了就没了）"
+        } else {
+            "删除 $shown（先进回收站，可以捞回来）"
         }
     }
 

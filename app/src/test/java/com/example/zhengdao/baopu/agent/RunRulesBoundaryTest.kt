@@ -58,6 +58,6 @@ class RunRulesBoundaryTest {
     fun `confirmSummary_缺字段走占位不崩`() {
         assertEquals("新建 （未给路径）（1 行）", RunRules.confirmSummary("write_file", JSONObject()))
         assertEquals("编辑 （未给路径）", RunRules.confirmSummary("edit_file", JSONObject()))
-        assertEquals("移动 ? → ?", RunRules.confirmSummary("move_path", JSONObject()))
+        assertEquals("移动 ? → ?（搬走后原件不在原处）", RunRules.confirmSummary("move_path", JSONObject()))
     }
 }

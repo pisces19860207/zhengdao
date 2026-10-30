@@ -6,7 +6,7 @@
 //
 // 四条硬纪律：
 // 1. 权限 CONFIRM——改文件必须过用户那一下（与 write_file 同口径）；
-// 2. 路径过 workspaceBoundaryCheck（156 批统一判据；工作区外要用户批准），
+// 2. 路径过 fileAccessCheck（287：工作区不是权限边界；只有系统/凭据目录一律拒），
 //    纯函数层自检、JVM 直测；备份区等禁区另用 PathGuard 硬拒；
 // 3. 写之前先把旧版本备份到 <工作区>/备份/（157 起可见化，原 .baopu-bak；备份失败 ⇒ 放弃本次修改）；
 // 4. 单次提交 ≤ 200 行、只改文本、**无删除能力**（不提供 delete 参数，也不删行以外的任何东西）。
@@ -14,8 +14,10 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.backupSkippedFor
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
@@ -66,7 +68,9 @@ internal object EditFileTool {
         name = "edit_file",
         description = "按行改一个已有的文本文件：替换第 a–b 行、在某行后插入、或追加到末尾。" +
             "只提交要改的那几行（单次 ≤ $MAX_EDIT_LINES 行），不必整篇重写；" +
-            "写前自动把旧版本备份到 $BACKUP_DIR_NAME/。行号从 1 起（与 read_file 输出一致）。" +
+            "写前自动把旧版本备份到 $BACKUP_DIR_NAME/（旧文件 >5MB 时不备份，回执会说明）。" +
+            "相对路径相对工作区；**绝对路径可以改全盘**（系统目录与凭据目录除外）。" +
+            "行号从 1 起（与 read_file 输出一致）。" +
             "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
             "不要在回复里先问一句。本工具没有删除能力。",
         inputSchema = jsonObjectOf(
@@ -74,7 +78,7 @@ internal object EditFileTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的文件路径（如 产物/设定.md）",
+                    "description" to "文件路径：相对工作区根（如 产物/设定.md），或全盘绝对路径",
                 ),
                 ARG_OP to jsonObjectOf(
                     "type" to "string",
@@ -134,15 +138,8 @@ internal object EditFileTool {
             return ToolOutcome.Failed("参数「$ARG_OP」只能是 ${OPS.joinToString("／")}，收到的是「$op」")
         }
         val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
-        // 第二百二十九批：写侧硬边界——改只允许当前工作区＋默认工作区（Download/证道），
-        // 其余一律拒绝（不是弹卡）。判据统一在 workspaceWriteVerdict。
-        workspaceWriteBoundaryCheck(
-            root,
-            target,
-            rel,
-            "路径越界被拒：$rel 在可写范围（当前工作区与 Download/证道）之外。" +
-                "edit_file 只能改工作区里的文件。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        // 第二百八十七批：工作区不是权限边界——绝对路径可改全盘；只有系统/凭据目录一律拒。
+        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
         if (PathGuard.isInside(File(root, BACKUP_DIR_NAME), target)) {
             return ToolOutcome.Failed("不能改 $BACKUP_DIR_NAME/ 里的文件（那是旧版本备份区，改它等于毁掉退路）")
         }
@@ -240,10 +237,13 @@ internal object EditFileTool {
         if (newText == original) {
             return ToolOutcome.Ok("内容没有变化（$note），未写盘：${target.name}")
         }
-        // 备份旧版本（失败 ⇒ 放弃本次修改：宁可改不进去，也不能把旧内容弄丢）
+        // 备份旧版本（失败 ⇒ 放弃本次修改：宁可改不进去，也不能把旧内容弄丢）。
+        // 287：旧文件 >5MB 不备份——但回执里必须说明（不然用户以为还能回滚）。
         var backupNote = ""
-        if (exists) {
-            val backupName = backupFileName(rel, stamp)
+        if (exists && backupSkippedFor(target.length())) {
+            backupNote = "；旧版本 ${target.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（改完不可回滚）"
+        } else if (exists) {
+            val backupName = FilePaths.backupName(root, target, stamp)
             var cause = ""
             val ok = runCatching {
                 val dir = File(root, BACKUP_DIR_NAME)

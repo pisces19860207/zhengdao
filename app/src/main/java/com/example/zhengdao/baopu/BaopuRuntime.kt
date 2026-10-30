@@ -117,14 +117,14 @@ internal object BaopuRuntime {
         }
 
     /**
-     * 把工作区外放行账本绑到本机库（157 补充；幂等）。
+     * 把**文件操作账本**绑到本机库（287 补充；幂等）。
      *
-     * 调它的地方：装配层 [build]（引擎一开跑就得是库版账本）与设置页清单
-     * （用户先开设置、后跑抱朴的情形——那时引擎还没建，账本仍是内存版，清单会是空的）。
-     * 只换引用、不清库：库是真相，`install` 顺手清掉的只是内存缓存（下次读库回填）。
+     * 调它的地方：装配层 [build]（引擎一开跑就得是库版账本）与律令页「文件操作记录」卡
+     * （用户先开设置、后跑抱朴的情形——那时引擎还没建，账本仍是内存版，卡上会是空的）。
+     * 只换引用、不清库：库是真相（30 天可回放），内存版只是没接线时的兜底。
      */
-    fun installGrants(context: Context) {
-        WorkspaceGrants.install(SessionWorkspaceGrantStore(db(context.applicationContext)))
+    fun installFileOpLog(context: Context) {
+        FileOpLog.install(SessionFileOpStore(db(context.applicationContext)))
     }
 
     /**
@@ -652,32 +652,6 @@ internal object BaopuRuntime {
     }
 
     /**
-     * 第一百五十六批：设置项「允许访问工作区外（每次会问你）」的存储。
-     *
-     * 默认**开**（用户口径逐字：「用户觉得可以那就是可以」）——开 ≠ 不问：每次运行里
-     * 第一次越界仍要过确认卡，用户拒绝就做不了（红线「不许静默放行」）。
-     * 关 ⇒ 越界一律原文拒绝（与 156 批之前逐字一致）。
-     *
-     * 为什么不带 `appCtx` 静态字段（与 BaopuToolPrefs 不同款）：那套写法每份要交
-     * StaticFieldLeak＋UseKtx 两条 lint 的税（lint 报告里在案），这里调用方手里都有
-     * Context（装配层 build() 的 appCtx / 设置页的 ctx），直接传参就行——不欠新账。
-     */
-    internal object WorkspacePrefs {
-        private const val FILE = "baopu_workspace"
-        private const val KEY_ALLOW_OUTSIDE = "baopu_allow_outside"
-
-        private fun sp(context: Context) =
-            context.applicationContext.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
-
-        /** 默认开（key 没写过也是开）。 */
-        fun enabled(context: Context): Boolean = sp(context).getBoolean(KEY_ALLOW_OUTSIDE, true)
-
-        fun setEnabled(context: Context, on: Boolean) {
-            sp(context).edit { putBoolean(KEY_ALLOW_OUTSIDE, on) }
-        }
-    }
-
-    /**
      * 运行引擎（进程级一份；double-check lazy）。
      *
      * 刀 1 补丁：provider 从 ProviderPrefs 读（可换通道）。换通道 = [switchChannel]
@@ -721,15 +695,11 @@ internal object BaopuRuntime {
             // rawDir 即 App 私有原件区（filesDir/baopu/library/原始/）——天然在工作区外，
             // PathGuard 与 rawRejection 两道都成立。不在这里拼 "资料库/原始" 字符串。
             { KnowledgeBase.rawDir(appCtx) },
-            // 第一百五十六批：工作区外访问开关（设置页可关；默认开，开也每运行问一次）。
-            // 具名传参（allowOutside 排在参数表最后，第 4 位是 runner）
-            allowOutside = { WorkspacePrefs.enabled(appCtx) },
         )
         val db = db(appCtx)
-        // 157 补充（用户 2026-10-23）：工作区外授权按会话落库（v18 两张表）——
-        // 「一次会话问一次」，重启 App 不再问；设置页清单与一键撤销也走这份账本。
-        // 装在这里而不在别处：引擎一开跑就可能越界，账本必须先于管线可用。
-        WorkspaceGrants.install(SessionWorkspaceGrantStore(db))
+        // 第二百八十七批：文件操作账本落库（v20 的 file_op 表）——全盘操作入账，30 天可回放。
+        // 装在这里而不在别处：引擎一开跑就可能碰盘，账本必须先于第一次工具调用可用。
+        FileOpLog.install(SessionFileOpStore(db))
         // 选项卡的落点：引擎负责弹、等、收答案
         val engine = RunEngine(
             provider = provider,
@@ -821,11 +791,8 @@ internal object BaopuRuntime {
         // 第二百零三批：问题组（一卡多问、一次提交）走 engine.askGroup——阻塞到整组
         // 答完并成一条 answers；同会话同批只问一次（账本在引擎里，与 171 同口径）
         AskUserTool.groupSink = { req -> engine.askGroup(req) }
-        // 第一百五十六批：工作区外访问的读数点（工具层自检现读，改开关即时生效）
-        // ＋157 补充：每轮入口喂会话身份（授权账本按会话持久化，跨运行不再重问）。
-        com.example.zhengdao.baopu.WorkspaceAccessPolicy.settingOn = { WorkspacePrefs.enabled(appCtx) }
-        com.example.zhengdao.baopu.WorkspaceAccessPolicy.granted = { WorkspaceGrants.granted(it) }
-        engine.onSessionEnter = { WorkspaceGrants.enterSession(it) }
+        // 第二百八十七批：每轮入口喂会话身份（文件操作账按会话分账，回放时看得清是哪一轮）。
+        engine.onSessionEnter = { FileOpLog.enterSession(it) }
         // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。
         // 判据在 VisionRouting（候选规矩照用 ProviderPrefs.routeCandidates，能力过滤照用
         // ModelRouter + Need(vision=true)）；Key 只在这里现取现用 ⇒ 引擎不持 Key、不进日志。

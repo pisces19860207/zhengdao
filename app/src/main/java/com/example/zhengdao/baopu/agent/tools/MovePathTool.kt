@@ -5,7 +5,8 @@
 //（把 投递/ 里看过的书归到 产物/书目/、把书改名、建目录）只能靠人手动点文件管理器。
 //
 // 五条硬纪律（逐条对应口径）：
-// 1. 越界走 workspaceBoundaryCheck（156 批统一判据，纯函数层可测）；备份区禁区另用 PathGuard 硬拒；
+// 1. 边界只有一条（287）：系统与凭据目录一律拒（`fileAccessCheck`）；工作区不再是边界——
+//    全盘可搬，但「搬」永远要过确认卡（本工具 permission = CONFIRM）；备份区禁区另用 PathGuard 硬拒；
 // 2. 同分区优先 rename（原子，不留半截）；跨分区只能复制 ⇒ **不自动删源**，
 //    把源文件记进 `产物/_待删除清单.md`，由用户自己确认后删（与刀 2 的「待删除清单」同一口径）；
 // 3. **绝不覆盖**：撞名不同内容 ⇒ 加 sha 后缀让路；内容相同（sha 一致）⇒ 幂等回「已搬」；
@@ -15,8 +16,9 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
 import java.security.MessageDigest
@@ -52,7 +54,7 @@ internal object MovePathTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "move_path",
-        description = "在工作区内搬动或改名一个文件（from → to），也可以顺带建目标目录。" +
+        description = "搬动或改名一个文件（from → to；相对工作区，或全盘绝对路径），也可以顺带建目标目录。" +
             "同分区用 rename（原子）；跨分区只复制、把源文件记进「$PENDING_LIST_REL」，" +
             "不会自动删源。绝不覆盖：撞名不同内容自动加 sha 后缀让路，内容相同则视为已搬。" +
             "只搬文件不搬目录；确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
@@ -61,11 +63,11 @@ internal object MovePathTool {
             "properties" to jsonObjectOf(
                 ARG_FROM to jsonObjectOf(
                     "type" to "string",
-                    "description" to "源文件（相对工作区根，如 投递/某书.txt）",
+                    "description" to "源文件：相对工作区根（如 投递/某书.txt），或全盘绝对路径",
                 ),
                 ARG_TO to jsonObjectOf(
                     "type" to "string",
-                    "description" to "目标路径（相对工作区根；末段就是新文件名，如 产物/武侠/某书.txt）",
+                    "description" to "目标路径（相对工作区根，或全盘绝对路径；末段就是新文件名，如 产物/武侠/某书.txt）",
                 ),
                 ARG_CREATE_DIRS to jsonObjectOf(
                     "type" to "boolean",
@@ -113,22 +115,10 @@ internal object MovePathTool {
         PersonaGuard.blocked(toRel)?.let { return ToolOutcome.Rejected(it) }
         val src = resolve(root, fromRel)
         val dst = resolve(root, toRel)
-        // 第二百二十九批：写侧硬边界——移动的源与目标都只允许当前工作区＋默认工作区
-        // （Download/证道），其余一律拒绝（不是弹卡）。备份区禁区（下面）与「不自动删源」口径一字不动。
-        workspaceWriteBoundaryCheck(
-            root,
-            src,
-            fromRel,
-            "路径越界被拒：$fromRel 在可写范围（当前工作区与 Download/证道）之外。" +
-                "move_path 只能在资料库里搬文件。",
-        )?.let { return ToolOutcome.Rejected(it) }
-        workspaceWriteBoundaryCheck(
-            root,
-            dst,
-            toRel,
-            "路径越界被拒：$toRel 在可写范围（当前工作区与 Download/证道）之外。" +
-                "move_path 搬不到资料库外面去。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        // 第二百八十七批：工作区不是权限边界——源与目标都可以是全盘任意位置（系统/凭据目录除外）。
+        // 「搬」要用户点头（permission=CONFIRM）；备份区禁区（下面）与「不自动删源」口径一字不动。
+        fileAccessCheck(src, FilePaths.display(root, src))?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(dst, FilePaths.display(root, dst))?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)
         if (PathGuard.isInside(backupDir, src) || PathGuard.isInside(backupDir, dst)) {
             return ToolOutcome.Failed("不能把 $BACKUP_DIR_NAME/ 当搬动源或目标（那是旧版本备份区）")

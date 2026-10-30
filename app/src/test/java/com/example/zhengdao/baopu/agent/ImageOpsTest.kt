@@ -148,7 +148,7 @@ class ImageOpsTest {
     @Test
     fun `G3_永不覆盖原图_也没有越界能力`() {
         val src = code("src/main/java/com/example/zhengdao/baopu/agent/tools/ImageOpsTool.kt")
-        assertTrue("输出路径必须过工作区边界判据（156 批起统一走 workspaceBoundaryCheck）", src.contains("workspaceBoundaryCheck"))
+        assertTrue("输出路径必须过文件边界判据（287 起统一走 fileAccessCheck）", src.contains("fileAccessCheck"))
         assertTrue("必须拒绝覆盖已存在的目标", src.contains("目标已存在，不做覆盖"))
         assertTrue("必须拒绝和原图同路径", src.contains("image_ops 永不覆盖原图"))
         assertTrue("不存在递归删除", !src.contains("deleteRecursively"))

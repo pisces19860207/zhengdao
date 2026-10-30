@@ -215,7 +215,7 @@ class ConfirmFlowTest {
             // 批准 ≠ 绕过护栏：越界批准后必须 Rejected（派工单 §3.5 红线 1）
             outcome = r.flow.enter(
                 1L, 1,
-                ToolCall("call-5", "probe_write", JSONObject().put("path", "../ws-evil/steal.txt")),
+                ToolCall("call-5", "probe_write", JSONObject().put("path", "../.ssh/steal.txt")),
             ) { _, _ -> null }
         }
         awaitLive(r.flow, "call-5")
@@ -225,16 +225,18 @@ class ConfirmFlowTest {
         val approved = outcome as ConfirmFlow.Outcome.Approved
         val result = approved.result
         assertTrue(
-            "越界路径批准后是 Rejected（不是 NeedsConfirm 死循环，也不是执行成功）",
+            "受保护路径（凭据目录）批准后仍是 Rejected（不是 NeedsConfirm 死循环，也不是执行成功）",
             result is GuardPipeline.Result.Rejected,
         )
-        assertTrue((result as GuardPipeline.Result.Rejected).reason.contains("越界"))
-        assertFalse("没写出工作区", File(parent, "ws-evil/steal.txt").exists())
+        assertTrue((result as GuardPipeline.Result.Rejected).reason.contains("凭据"))
+        assertFalse("凭据目录里没写出东西", File(parent, ".ssh/steal.txt").exists())
         assertEquals("拒绝（越界）后也清 pending", 1, r.store.cleared)
     }
 
     @Test
-    fun `J5纵深防御_write_file越界_管线与工具自检双拒`() = runBlocking {
+    fun `J5纵深防御_write_file凭据目录_管线与工具自检双拒`() = runBlocking {
+        // 287：工作区外不再是红线（全盘可写），但**凭据目录**仍是——
+        // 「批准 ≠ 绕过护栏」这一条改由它钉住（同一条红线，换了个判据面）。
         val parent = tmp("j5b-parent")
         val root = File(parent, "ws").apply { mkdirs() }
         val r = rig(root)
@@ -242,7 +244,7 @@ class ConfirmFlowTest {
         val job = launch {
             outcome = r.flow.enter(
                 1L, 1,
-                ToolCall("call-5b", "write_file", JSONObject().put("path", "../ws-evil/x.txt").put("content", "脏手")),
+                ToolCall("call-5b", "write_file", JSONObject().put("path", "../.ssh/x.txt").put("content", "脏手")),
             ) { _, _ -> null }
         }
         awaitLive(r.flow, "call-5b")
@@ -250,7 +252,7 @@ class ConfirmFlowTest {
         job.join()
         val result = (outcome as ConfirmFlow.Outcome.Approved).result
         assertTrue("write_file 也有内置第二道自检", result is GuardPipeline.Result.Rejected)
-        assertFalse(File(parent, "ws-evil/x.txt").exists())
+        assertFalse(File(parent, ".ssh/x.txt").exists())
     }
 
     // ── pending 落库（T3 的 JVM 代理判据；负例演练②靶心） ────────────────

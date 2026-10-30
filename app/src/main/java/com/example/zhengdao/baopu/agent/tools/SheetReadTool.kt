@@ -12,7 +12,8 @@ import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.agent.ToolTimeout
 import com.example.zhengdao.baopu.agent.jsonArrayOf
 import com.example.zhengdao.baopu.agent.jsonObjectOf
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.fileAccessCheck
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -53,7 +54,7 @@ internal object SheetReadTool {
     fun run(args: JSONObject, root: File): ToolOutcome {
         val rel = args.optString(ARG_PATH).ifBlank { return ToolOutcome.Failed("缺 path（相对工作区根）") }
         val file = File(root, rel)
-        workspaceBoundaryCheck(root, file, rel, "路径越出工作区：$rel（sheet_read 只读工作区里的表）")
+        fileAccessCheck(file, FilePaths.display(root, file))
             ?.let { return ToolOutcome.Rejected(it) }
         if (!file.isFile) {
             return ToolOutcome.Failed("不存在：$rel（先用 list_dir 看结构）")

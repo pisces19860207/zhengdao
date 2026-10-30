@@ -94,7 +94,8 @@ class RiskWiringInstrumentedTest {
             matrixVersion = RiskTable.DEFAULT_VERSION + 1,
         )
 
-    private fun pipeline(root: File, tbl: RiskTable, outside: Boolean = false, vararg specs: ToolSpec): GuardPipeline {
+    // 287：`allowOutside` 参数随授权模型退役（工作区不再是边界）——这里只保留风险表注入。
+    private fun pipeline(root: File, tbl: RiskTable, vararg specs: ToolSpec): GuardPipeline {
         val reg = ToolRegistry(InMemoryToolPrefs())
         specs.forEach { reg.register(it) }
         return GuardPipeline(
@@ -103,8 +104,7 @@ class RiskWiringInstrumentedTest {
             { null },
             ToolRunner(Executors.newSingleThreadExecutor()),
             { msg -> Log.i(TAG, "管线：$msg"); Evidence.write(ctx, "管线", msg) },
-            { outside },
-            tbl,
+            riskTable = tbl,
         )
     }
 
@@ -120,7 +120,7 @@ class RiskWiringInstrumentedTest {
     fun r2_删一类动作_弹卡且不执行() {
         val root = ws("r2")
         val tbl = table("w223_del" to ToolRule(RiskClass.R2, deleteLike = true, writePathKeys = setOf("path")))
-        val p = pipeline(root, tbl, false, fake("w223_del", ToolPermission.FREE, "path"))
+        val p = pipeline(root, tbl, fake("w223_del", ToolPermission.FREE, "path"))
         val r = p.execute(call("w223_del", "path" to File(root, "产物/a.md").absolutePath)) { _, _ -> null }
         say("①-R2", "路径 ⇒ ${r::class.simpleName}；原因行=${(r as? GuardPipeline.Result.NeedsConfirm)?.reasonLine}")
         assertTrue("R2 必须弹卡：$r", r is GuardPipeline.Result.NeedsConfirm)
@@ -137,7 +137,7 @@ class RiskWiringInstrumentedTest {
     fun r3_点结算_弹卡且执行器0次() {
         val root = ws("r3")
         val tbl = table("w223_pay" to ToolRule(RiskClass.R2, clickLike = true))
-        val p = pipeline(root, tbl, false, fake("w223_pay", ToolPermission.FREE, "target"))
+        val p = pipeline(root, tbl, fake("w223_pay", ToolPermission.FREE, "target"))
         val c = call("w223_pay", "target" to "结算")
         val v = RiskGate.judge(c, table = tbl)
         say("②-R3-判定", "：档=${v.risk} 决策=${v.decision} 主判据=${v.reasonCode.id}")
@@ -155,7 +155,7 @@ class RiskWiringInstrumentedTest {
     fun 硬拒_密码框_拒绝而不是问() {
         val root = ws("deny")
         val tbl = table("w223_secret" to ToolRule(RiskClass.R2, fieldKeys = setOf("target")))
-        val p = pipeline(root, tbl, false, fake("w223_secret", ToolPermission.FREE, "target"))
+        val p = pipeline(root, tbl, fake("w223_secret", ToolPermission.FREE, "target"))
         val r = p.execute(call("w223_secret", "target" to "input[type=password]")) { _, _ -> null }
         val reason = (r as? GuardPipeline.Result.Rejected)?.reason
         say("③-硬拒", "路径 ⇒ ${r::class.simpleName}；原文=$reason")
@@ -229,7 +229,8 @@ class RiskWiringInstrumentedTest {
         val root = File(parent, "ws").apply { mkdirs() }
         val outside = File(parent, "别处/a.md").absolutePath
         val tbl = table("w223_note" to ToolRule(RiskClass.R1, writePathKeys = setOf("path")))
-        val p = pipeline(root, tbl, outside = true, fake("w223_note", ToolPermission.FREE, "path"))
+        // 287：越界不再由②段拦（工作区不是边界）——这张卡改由③段矩阵的 R2 出，原因行还是同一句。
+        val p = pipeline(root, tbl, fake("w223_note", ToolPermission.FREE, "path"))
         val r = p.execute(call("w223_note", "path" to outside)) { _, _ -> null }
         val line = (r as? GuardPipeline.Result.NeedsConfirm)?.reasonLine
         say("⑥-越界", "路径 ⇒ ${r::class.simpleName}；原因行=$line")

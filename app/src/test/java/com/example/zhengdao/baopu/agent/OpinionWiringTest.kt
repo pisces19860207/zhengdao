@@ -227,21 +227,23 @@ class OpinionWiringTest {
         assertEquals("进程级只打一行（不刷屏）", 1, OpinionWiring.processNoteCount())
     }
 
-    // ── 幂等：越界两处都挂，只入账一条 ──────────────────────────────────
+    // ── 幂等：同一次调用重复送意见，只入账一条 ────────────────────────────
+    //
+    // 287：②段那条「越界两处都挂」的入口随 `Guarded.Ask` 退役（工作区不再是边界），
+    // 幂等判据改由**同一个调用送两次**钉住——幂等键仍是 `toolCallId + kind`，
+    // 与当时两处并发的语义等价（L24 累进罚则不许被打歪）。
 
     @Test
-    fun `越界两处都挂只入账一条`() {
+    fun `同一次调用送两次只入账一条`() {
         val same = ToolCall("c-out", "write_file", JSONObject().put("path", "../x"))
 
-        val fromGate = OpinionWiring.onOutsidePath(same, now)
-        val fromMatrix = OpinionWiring.onVerdict(same, outside(), now)!!
+        val first = OpinionWiring.onVerdict(same, outside(), now)!!
+        val second = OpinionWiring.onVerdict(same, outside(), now)!!
 
-        assertEquals("同一次调用只产一条意见", fromGate.id, fromMatrix.id)
+        assertEquals("同一次调用只产一条意见", first.id, second.id)
         assertEquals("只入账一条（L24 累进罚则不许被打歪）", 1, OpinionWiring.replay().count { it.tool == "write_file" })
         assertEquals("也只占一张预算", 1, OpinionWiring.replay().count { it.decision == OpinionDecision.POP })
-        // 先合并、后入账：两处证据并进内存那一条
-        assertTrue(fromMatrix.opinion.evidence.contains("gate:path_guard"))
-        assertTrue(fromMatrix.opinion.evidence.contains("risk:outside_workspace"))
+        assertTrue(second.opinion.evidence.contains("risk:outside_workspace"))
         assertTrue(OpinionWiring.pending().isEmpty())
     }
 
@@ -446,24 +448,31 @@ class OpinionWiringTest {
     }
 
     @Test
-    fun `管线越界弹卡照旧且落一条L9`() {
+    fun `管线写工作区外_仍弹卡且落一条L9`() {
+        // 287：读全盘不再弹卡（那条路已删），但**写**到工作区外仍是矩阵的 R2 必问，
+        // 且原因码 PATH_OUTSIDE_WORKSPACE 照旧映射 L9——「越界降题」这条法条没被本批改掉。
         val parent = Files.createTempDirectory("opinion-outside").toFile()
         val ws = File(parent, "ws").apply { mkdirs() }
         File(parent, "out.txt").writeText("x")
-        val registry = ToolRegistry().apply { register(ReadFileTool.spec()) }
+        val registry = ToolRegistry().apply { register(MovePathTool.spec { ws }) }
         val pipeline = GuardPipeline(
             registry, { ws }, { null }, ToolRunner(Executors.newSingleThreadExecutor()),
-            log = {}, allowOutside = { true },
+            log = {},
         )
 
-        val prepared = pipeline.prepare(ToolCall("c1", "read_file", JSONObject().put("path", "../out.txt")))
+        val prepared = pipeline.prepare(
+            ToolCall(
+                "c1", "move_path",
+                JSONObject().put("from", "../out.txt").put("to", "../moved.txt"),
+            ),
+        )
 
         assertTrue(prepared is GuardPipeline.Prepared.Settled)
         assertTrue(
-            "判定不许被接线改掉：越界仍然问一次",
+            "判定不许被接线改掉：写到工作区外仍然问一次",
             (prepared as GuardPipeline.Prepared.Settled).result is GuardPipeline.Result.NeedsConfirm,
         )
-        val ruling = OpinionWiring.replay().firstOrNull { it.tool == "read_file" }
+        val ruling = OpinionWiring.replay().firstOrNull { it.tool == "move_path" }
         assertNotNull(ruling)
         assertEquals(LawRef.L9, ruling!!.opinion.lawRef)
     }

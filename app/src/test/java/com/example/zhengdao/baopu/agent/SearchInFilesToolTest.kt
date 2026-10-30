@@ -165,12 +165,21 @@ class SearchInFilesToolTest {
     }
 
     @Test
-    fun `越界目录即拒`() {
+    fun `工作区外的目录也能搜`() {
+        // 287：工作区不再是边界；「搜整台机器」是这一批的正向判据。
         setup()
         val outside = tmp.newFolder("outside")
         File(outside, "a.txt").writeText("有词")
         val r = search(outside, "词")
-        assertTrue(r is ToolOutcome.Rejected)
+        assertTrue("全盘可搜，越界不该再拒：$r", r is ToolOutcome.Ok)
+    }
+
+    @Test
+    fun `凭据目录拒`() {
+        setup()
+        val keys = tmp.newFolder(".ssh")
+        File(keys, "id_rsa").writeText("有词")
+        assertTrue(search(keys, "词") is ToolOutcome.Rejected)
     }
 
     @Test

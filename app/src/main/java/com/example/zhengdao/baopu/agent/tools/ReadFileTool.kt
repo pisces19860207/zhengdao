@@ -39,7 +39,8 @@ internal object ReadFileTool {
     /** 构造注册用 Spec。 */
     fun spec(): ToolSpec = ToolSpec(
         name = "read_file",
-        description = "读工作区内一个文件的指定行范围（offset 从 0 起 = 第一行）。" +
+        description = "读一个文件的指定行范围（offset 从 0 起 = 第一行）。" +
+            "**全盘可读**：相对路径相对工作区，绝对路径（如 /storage/emulated/0/小说/…）直接读；" +
             "自动识别 UTF-8（含 BOM）/UTF-16/GBK 并解码，GBK 老书不会读成乱码；" +
             "二进制文件直接拒绝。大文件被 spill 后，用这个工具带 offset/limit 把需要的那几段读回来。",
         inputSchema = jsonObjectOf(
@@ -47,7 +48,7 @@ internal object ReadFileTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的文件路径（如 资料库/原始/设定.md）",
+                    "description" to "文件路径：相对工作区根（如 资料库/原始/设定.md），或全盘绝对路径",
                 ),
                 ARG_OFFSET to jsonObjectOf(
                     "type" to "integer",
@@ -80,7 +81,7 @@ internal object ReadFileTool {
         // 模型会以为路径对、只是类型不对，于是原地反复重试（2026-10-17）。
         if (!file.exists()) {
             return ToolOutcome.Failed(
-                "不存在：${file.name}（工作区里没有这个文件；先用 list_dir 看结构再决定读哪个）"
+                "不存在：${file.name}（这个位置没有这个文件；先用 list_dir 看结构再决定读哪个）"
             )
         }
         if (!file.isFile) {

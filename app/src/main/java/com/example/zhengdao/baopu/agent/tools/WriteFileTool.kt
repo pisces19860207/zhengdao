@@ -3,16 +3,19 @@
 // 依据：抱朴线刀 2 追加包（通用写工具）。四条硬纪律逐条落地：
 // 1. 权限 CONFIRM——每次写都走单步确认（GuardPipeline 第 ③ 段 ⇒ NeedsConfirm，
 //    RunEngine 现有 AwaitConfirm 骨架；确认后的执行归下一刀，本刀只交工具本身）；
-// 2. 路径过 workspaceBoundaryCheck（156 批统一判据；管线第 ② 段已按 path 参数名守过一次，
-//    这里是工具层自检双保险，且让纯函数层 JVM 直测）；备份区禁区另用 PathGuard 硬拒；
+// 2. 路径过 fileAccessCheck（287：工作区不是权限边界，只有系统/凭据目录一律拒；管线第 ② 段
+//    已按 path 参数名守过一次，这里是工具层自检双保险，且让纯函数层 JVM 直测）；备份区禁区另用 PathGuard 硬拒；
 // 3. overwrite=true 时先把旧文件备份到 <工作区>/备份/ 再写（157 起可见化，原 .baopu-bak；不静默毁内容）；
+//    **287 追加**：旧文件 >5MB 不备份，但回执与确认卡都要说明（静默跳过＝骗用户「留了退路」）；
 // 4. 单次写入上限 200 行，超了拒绝并提示分次；**不提供任何删除能力**。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.PersonaGuard
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.backupSkippedFor
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
@@ -26,8 +29,8 @@ import java.io.File
  * 为什么拒绝写 `备份/` 自己：备份区被写就会互相覆盖，备份就白做了。
  *
  * 路径不在本文件守卫第一道（管线第 ② 段按 path 参数名做）；本文件的 [write]
- * 自检 `workspaceWriteBoundaryCheck`（229 批写侧硬边界：只认工作区＋Download/证道）是第二道
- * ——纯函数层因此可直测「越界即拒」；
+ * 自检 `fileAccessCheck`（287：只拒系统/凭据目录，其余全盘可写）是第二道
+ * ——纯函数层因此可直测「系统目录即拒」；
  * `备份/` 禁区仍用 [PathGuard.isInside] 硬拒。
  */
 internal object WriteFileTool {
@@ -45,8 +48,10 @@ internal object WriteFileTool {
     /** 构造注册用 Spec（workspaceRoot 注入：备份目录要落在工作区根下）。 */
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "write_file",
-        description = "把文本写进工作区内的一个文件（不存在则新建，存在需 overwrite=true " +
-            "且会把旧版本备份到 $BACKUP_DIR_NAME/）。单次最多 $MAX_WRITE_LINES 行，超了请分次写。" +
+        description = "把文本写进一个文件（不存在则新建，存在需 overwrite=true " +
+            "且会把旧版本备份到 $BACKUP_DIR_NAME/；旧文件超过 5MB 时不备份，回执里会说明）。" +
+            "相对路径相对工作区；**绝对路径可以写全盘**（系统目录与凭据目录除外）。" +
+            "单次最多 $MAX_WRITE_LINES 行，超了请分次写。" +
             "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
             "不要在回复里先问一句「要我写吗」。本工具没有任何删除能力。",
         inputSchema = jsonObjectOf(
@@ -54,7 +59,7 @@ internal object WriteFileTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的目标路径（如 产物/设定.md）",
+                    "description" to "目标路径：相对工作区根（如 产物/设定.md），或全盘绝对路径（如 /storage/emulated/0/小说/人物/某笔记.md）",
                 ),
                 ARG_CONTENT to jsonObjectOf(
                     "type" to "string",
@@ -101,15 +106,8 @@ internal object WriteFileTool {
             return ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写的内容；不想写就别调 write_file）")
         }
         val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
-        // 第二百二十九批：写侧硬边界——写只允许当前工作区＋默认工作区（Download/证道），
-        // 其余一律拒绝（不是弹卡；本会话批准过也不放）。判据统一在 workspaceWriteVerdict。
-        workspaceWriteBoundaryCheck(
-            root,
-            target,
-            rel,
-            "路径越界被拒：$rel 在可写范围（当前工作区与 Download/证道）之外。" +
-                "write_file 只能写工作区里的文件。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        // 第二百八十七批：工作区不是权限边界——绝对路径可写全盘；只有系统/凭据目录一律拒。
+        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)
         if (PathGuard.isInside(backupDir, target)) {
             return ToolOutcome.Failed(
@@ -137,10 +135,13 @@ internal object WriteFileTool {
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             return ToolOutcome.Failed("建不了目标目录：${parent.name}（权限或 IO 错误）")
         }
-        // 覆盖前先备份（备份失败 ⇒ 拒绝写：宁可写不进去，也不能把旧内容弄丢）
+        // 覆盖前先备份（备份失败 ⇒ 拒绝写：宁可写不进去，也不能把旧内容弄丢）。
+        // 287：旧文件 >5MB 不备份——**但要说出来**（回执与确认卡都写「未备份」）。
         var backupNote = ""
-        if (exists) {
-            val backupName = EditFileTool.backupFileName(rel, stamp)
+        if (exists && backupSkippedFor(target.length())) {
+            backupNote = "；旧版本 ${target.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（覆盖后不可恢复）"
+        } else if (exists) {
+            val backupName = FilePaths.backupName(root, target, stamp)
             var cause = ""
             val ok = runCatching {
                 backupDir.mkdirs()
