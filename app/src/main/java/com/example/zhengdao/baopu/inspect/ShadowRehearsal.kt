@@ -10,6 +10,16 @@
 //   2. 可回滚点真的可用（`.bak` 被人为删掉 ⇒ 影子阶段就发现）；
 //   3. 验收判据能在影子里成立（`success` 的可观察条件先在影子上过一遍）。
 //
+// 第二百九十六批 §1「判据补强」（2026-10-30 开工令）——影子第一次真跑，判据得先跑得住：
+//   ①副本根：实测的**每一条**路径都必须落在副本根里，出根即接错（负例「副本写在真目录」）；
+//   ②回滚点：快照＝sha256＋大小＋存在性三格，只比大小认不出"退路是别人的旧版"；
+//     新建对象本来没有旧版 ⇒ `expectsAbsent` 说"退路就是副本里原先没有"，不许永远红；
+//   ③影响比较：**计划改的路径集合 == 实际改的路径集合**，相等才算一致——
+//     **不比数量**（报 1 改 3 与报 3 改 1 都是差，只比个数会互相骗）；
+//   ④CONSISTENT = 集合相等 ＋ 真盘 before/after 字节 hash 相同（[compare] 的 `realUntouched`）
+//     ＋ 全部在副本根内。后两条不成立是**接错**（MISWIRED），不是"不一致"：
+//     影子摸到真盘，比 数错几个更坏。
+//
 // 分工写死（§10① 裁定 2026-10-27 后的口径；§4 vs §9 的冲突在这里切开）：
 // - **判定归纠察**（本文件：纯函数，零 IO、零写权）；
 // - **只出 finding，放不放行归执行侧与 hardDeny**：勘验永远不出阻断（裁定原文），
@@ -95,10 +105,25 @@ internal data class RollbackPoint(
     val bytes: Long = 0L,
     /** 被保护对象此刻的大小（影子副本里的原文件）；null = 读不到（新文件，本来就没有原件）。 */
     val originalBytes: Long? = null,
+    /** 296②：退路文件的内容摘要；空串 = 调用方没算（**不**当作"摘要为空"来比）。 */
+    val sha256: String = "",
+    /** 296②：被保护对象在拍快照那一刻的摘要（与 [sha256] 成对，缺任一侧即"这一格没查"）。 */
+    val originalSha256: String = "",
+    /** 296②：这次的退路形态是"原件本就不存在"（新建对象）⇒ 可用判据换成"确实没有"。 */
+    val expectsAbsent: Boolean = false,
 ) {
+    /** 摘要这一格查得出来吗（两侧都给齐了才算查过）。 */
+    private val hashKnown: Boolean get() = sha256.isNotBlank() && originalSha256.isNotBlank()
+
     /** 这个回滚点能用吗。 */
     val usable: Boolean
-        get() = exists && bytes > 0L && (originalBytes == null || bytes == originalBytes)
+        get() = when {
+            // 新建对象：旧版本来没有 ⇒ 退路＝"副本里确实原先没有"（写了就是多出来的一版，删掉即回）。
+            // 这时如果 `exists` 反倒说明副本里**已经**有同名东西，那份旧版才是该留住的退路。
+            expectsAbsent -> !exists && bytes == 0L
+            else -> exists && bytes > 0L && (originalBytes == null || bytes == originalBytes) &&
+                (!hashKnown || sha256 == originalSha256)
+        }
 }
 
 /**
@@ -163,8 +188,9 @@ internal data class ShadowOutcome(
 /**
  * 影子判据（纯函数）。
  *
- * 谁去建副本、谁去跑工具、谁去读实测——全在装配层（本批不接，见交付报告的挂接点）；
- * 本层只回答一句：**跑出来的这三件事对不对得上**。
+ * 谁去建副本、谁去跑工具、谁去读实测——在装配层（第二百九十六批起是 `ShadowAdapter` 与
+ * `agent/ShadowSandbox.kt`，239 交付时那句"本批不接"的挂接点已经接上了）；
+ * 本层只回答一句：**跑出来的这几件事对不对得上**。
  */
 internal object ShadowRehearsal {
 
@@ -190,6 +216,9 @@ internal object ShadowRehearsal {
      * @param realRoot 真实工作区根（用来识破"影子其实连着真盘"）
      * @param rollback 回滚点读数（R2+/不可逆动作必须有；null＝调用方没查 ⇒ 记「验不了」）
      * @param probes 验收判据（空表＝这个动作没有判据可验 ⇒ 「验不了」，不算通过）
+     * @param realUntouched 296④：真盘上被声明的那些对象，**影子跑完 before/after 字节 hash
+     *   是不是还相同**（＝影子只在副本里动手）。`false` ⇒ 接错（不是"不一致"——摸到真盘比
+     *   数错几个严重得多）；`null` = 调用方没测（旧口径，本批的适配器恒给真值）。
      */
     fun compare(
         claimed: ImpactShape,
@@ -198,25 +227,11 @@ internal object ShadowRehearsal {
         realRoot: String,
         rollback: RollbackPoint?,
         probes: List<SuccessProbe>,
+        realUntouched: Boolean? = null,
     ): ShadowOutcome {
         // ①先查接线：影子连着真实目标，后面三个数再漂亮也不能要。
-        val touchedReal = observed != null && observed.touchedPaths.any { touchesReal(it, realRoot, shadowRoot) }
-        if (shadowRoot.isBlank() || realRoot.isBlank() || normalize(shadowRoot) == normalize(realRoot) || touchedReal) {
-            return ShadowOutcome(
-                verdict = ShadowVerdict.MISWIRED,
-                items = listOf(
-                    ShadowItem(
-                        key = "wiring",
-                        cn = "影子没接在副本上",
-                        passed = false,
-                        detail = "shadow=${shortOf(shadowRoot)} real=${shortOf(realRoot)} " +
-                            "实测越界=${observed?.touchedPaths?.count { touchesReal(it, realRoot, shadowRoot) } ?: 0} 条",
-                    ),
-                ),
-                claimed = claimed,
-                observed = observed ?: ImpactShape(),
-            )
-        }
+        //   三种接错（296①④）：副本根＝真盘根／实测落点出根／真盘字节被影子的落点改了。
+        miswiredOutcome(claimed, observed, shadowRoot, realRoot, realUntouched)?.let { return it }
         // ②再查能不能验：推演自己都不知道，或影子里压根没读数 ⇒ 出不了结论（不当通过）。
         if (claimed.unknown || observed == null) {
             return ShadowOutcome(
@@ -252,7 +267,51 @@ internal object ShadowRehearsal {
         )
     }
 
-    /** 第 1 件事：实际影响 = 推演所述（逐项比数字，报出差在哪一格）。 */
+    /**
+     * ①接错（MISWIRED）的四个来源折成一条结论；不接错交回 null（compare 接着往下判）。
+     *
+     * 单独成函数不只是为了行数：接错的**明细**要能分开报「实测越界／出根／真盘字节」三格，
+     * 挤在 [compare] 的主干里那三个 `?: 0` 就成了行数与可读性的双重灾难。
+     */
+    private fun miswiredOutcome(
+        claimed: ImpactShape,
+        observed: ImpactShape?,
+        shadowRoot: String,
+        realRoot: String,
+        realUntouched: Boolean?,
+    ): ShadowOutcome? {
+        val touchedReal = observed != null && observed.touchedPaths.any { touchesReal(it, realRoot, shadowRoot) }
+        val escaped = observed != null && observed.touchedPaths.any { !isInside(it, shadowRoot) }
+        if (!(shadowRoot.isBlank() || realRoot.isBlank() || normalize(shadowRoot) == normalize(realRoot) ||
+                    touchedReal || escaped || realUntouched == false)
+        ) {
+            return null
+        }
+        return ShadowOutcome(
+            verdict = ShadowVerdict.MISWIRED,
+            items = listOf(
+                ShadowItem(
+                    key = "wiring",
+                    cn = "影子没接在副本上",
+                    passed = false,
+                    detail = "shadow=${shortOf(shadowRoot)} real=${shortOf(realRoot)} " +
+                        "实测越界=${observed?.touchedPaths?.count { touchesReal(it, realRoot, shadowRoot) } ?: 0} 条 " +
+                        "出根=${observed?.touchedPaths?.count { !isInside(it, shadowRoot) } ?: 0} 条 " +
+                        "真盘字节改动=${when (realUntouched) { false -> "有"; true -> "无"; else -> "未测" }}",
+                ),
+            ),
+            claimed = claimed,
+            observed = observed ?: ImpactShape(),
+        )
+    }
+
+    /**
+     * 第 1 件事：实际影响 = 推演所述。
+     *
+     * 296③：路径按**精确集合**比（相等才算一致），数量只作为七格数字一起比——
+     * 「报 1 改 1」与「报 1 改 3」在只比个数的口径里都会露馅：前者碰的可能是**另一个**对象，
+     * 后者可能被"少报的那个其实没改"蒙过去。所以这一格的判据是集合，不是差值。
+     */
     fun effectItem(claimed: ImpactShape, observed: ImpactShape): ShadowItem {
         val diffs = buildList {
             if (claimed.newFiles != observed.newFiles) add("新建 ${claimed.newFiles}≠${observed.newFiles}")
@@ -265,21 +324,32 @@ internal object ShadowRehearsal {
             if (claimed.moved != observed.moved) add("移动 ${claimed.moved}≠${observed.moved}")
             if (claimed.collisions != observed.collisions) add("撞名 ${claimed.collisions}≠${observed.collisions}")
         }
-        // 影子里**多碰**了路径也算差：推演说改 1 个、影子摸到 3 个，就是 §9 点名的例子。
-        val extraPaths = observed.touchedPaths.size - claimed.touchedPaths.size
-        if (extraPaths > 0 && claimed.touchedPaths.isNotEmpty()) {
+        // 空表＝这一侧不主张路径；两边都不主张 ⇒ 集合相等（不许拿"没主张"冒充"少碰了"）。
+        val claim = claimed.touchedPaths.map { key(it) }.toSet()
+        val reality = observed.touchedPaths.map { key(it) }.toSet()
+        if (claim != reality) {
+            val extra = (reality - claim).map { shortOf(it) }
+            val missing = (claim - reality).map { shortOf(it) }
             return ShadowItem(
                 key = ITEM_EFFECT,
                 cn = "影响面与推演不符",
                 passed = false,
-                detail = (diffs + "多碰 $extraPaths 个对象").joinToString("；"),
+                detail = diffs.joinToString("；").let {
+                    if (it.isEmpty()) "" else "$it；"
+                } + "路径集合不等：多碰 ${extra.size} 个[${extra.joinToString("、")}]" +
+                    " 少碰 ${missing.size} 个[${missing.joinToString("、")}]" +
+                    "（所称 ${claim.size}／实测 ${reality.size}）",
             )
         }
         return ShadowItem(
             key = ITEM_EFFECT,
             cn = "影响面",
             passed = diffs.isEmpty(),
-            detail = if (diffs.isEmpty()) "七格全等" else diffs.joinToString("；"),
+            detail = if (diffs.isEmpty()) {
+                "七格全等；路径集合相等（${claim.size} 个）"
+            } else {
+                diffs.joinToString("；")
+            },
         )
     }
 
@@ -290,10 +360,17 @@ internal object ShadowRehearsal {
         }
         return ShadowItem(
             key = ITEM_ROLLBACK,
-            cn = if (rollback.usable) "回滚点可用" else "回滚点不可用",
+            cn = when {
+                rollback.usable && rollback.expectsAbsent -> "新建对象：原先没有"
+                rollback.usable -> "回滚点可用"
+                else -> "回滚点不可用"
+            },
             passed = rollback.usable,
+            // 296②：摘要两格都进账（明细只进审计栏；给模型的那一句里没有这些）。
             detail = "${shortOf(rollback.path)} 存=${rollback.exists} 字节=${rollback.bytes}" +
-                " 原件=${rollback.originalBytes?.toString() ?: "无"}",
+                " 原件=${rollback.originalBytes?.toString() ?: "无"}" +
+                " 摘要=${shaBrief(rollback.sha256)}/${shaBrief(rollback.originalSha256)}" +
+                if (rollback.expectsAbsent) " 形态=新建(原先应无)" else "",
         )
     }
 
@@ -332,6 +409,20 @@ internal object ShadowRehearsal {
     /** 路径归一（Windows 反斜杠＋大小写不敏感＋去尾分隔符；比较前一律走它）。 */
     private fun normalize(p: String): String =
         p.replace('\\', '/').trimEnd('/', ' ').lowercase()
+
+    /** 集合比较用的路径键（与 [normalize] 同一口径，别处不许自己拼一套大小写规则）。 */
+    private fun key(p: String): String = normalize(p)
+
+    /** 296①：这条实测路径在**副本根**里吗（出根即"试跑没只在副本里"）。 */
+    private fun isInside(path: String, root: String): Boolean {
+        if (root.isBlank()) return false
+        val n = normalize(path)
+        val r = normalize(root)
+        return n == r || n.startsWith("$r/")
+    }
+
+    /** 摘要只留前 8 位进明细（整串进账没意义，还把明细行撑爆）。 */
+    private fun shaBrief(sha: String): String = if (sha.isBlank()) "—" else sha.take(8)
 
     /**
      * 实测路径是不是落在**真实**工作区里。

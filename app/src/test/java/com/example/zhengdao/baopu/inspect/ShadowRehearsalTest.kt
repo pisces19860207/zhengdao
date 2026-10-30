@@ -3,8 +3,10 @@
 // 第二百三十九批 §9：影子执行（I6）。四条负例逐条钉在这里：
 // ①影子连真实目标 ②给 R0 也跑影子 ③影子结果写进模型上下文 ④不一致还放行。
 //
-// 判据是纯函数，落盘那本账单独测（临时目录）；"谁去建副本、谁去跑工具"在装配层，
-// 本批不接（挂接点写在交付报告里），所以这里测的是**判定**，不是执行。
+// 判据是纯函数，落盘那本账单独测（临时目录）。第二百九十六批 §1 给这四态补了四条硬判据
+// （副本根／快照三格／路径精确集合／真盘字节），用例钉在文件末尾那一段。
+// 「谁去建副本、谁去跑工具」从 296 起有了适配器与沙盒，那一份测在 [ShadowAdapterTest]；
+// 本文件仍然只测**判定**，不测执行。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.RiskClass
@@ -263,5 +265,109 @@ class ShadowRehearsalTest {
     fun `I6_窗口内没有要跑影子的动作_清白`() {
         val f = ShadowCheck.check(listOf(trace(9L, 1, need = false)), emptyList())
         assertEquals(InspectVerdict.CLEAR, f.verdict)
+    }
+
+    // ── 第二百九十六批 §1：判据补强（四条各钉一条，负例照开工令）───────────────
+
+    @Test
+    fun `影子296③_两边各一个但对象不同_集合不等必红`() {
+        // 开工令点名的负例「只比数量」：报 1 改 1、改的却是**另一个**对象——
+        // 只比个数这一格就绿了，所以判据是集合，不是差值。
+        val out = cmp(
+            shape(newFiles = 1, paths = listOf("$shadowRoot/a.md")),
+            shape(newFiles = 1, paths = listOf("$shadowRoot/b.md")),
+        )
+        assertEquals(ShadowVerdict.MISMATCH, out.verdict)
+        assertFalse("两边各 1 个就判一致＝只比数量的负例成立", out.allow)
+        val effect = out.items.first { it.key == ShadowRehearsal.ITEM_EFFECT }
+        assertTrue(effect.passed == false)
+        assertTrue("明细要点名多碰／少碰：${effect.detail}", effect.detail.contains("路径集合不等"))
+        assertTrue(effect.detail.contains("多碰 1 个") && effect.detail.contains("少碰 1 个"))
+    }
+
+    @Test
+    fun `影子296③_两边都不主张路径_算集合相等`() {
+        // 空清单不等于「少碰了」：两边都不主张 ⇒ 集合相等（不许拿"没主张"冒充不一致）。
+        assertEquals(ShadowVerdict.CONSISTENT, cmp(shape(1), shape(1)).verdict)
+    }
+
+    @Test
+    fun `影子296①_实测出副本根即接错_哪怕没碰真盘`() {
+        val out = cmp(
+            shape(newFiles = 1, paths = listOf("$shadowRoot/a.md")),
+            shape(newFiles = 1, paths = listOf("/var/tmp/elsewhere/a.md")),
+        )
+        assertEquals(ShadowVerdict.MISWIRED, out.verdict)
+        assertFalse(out.allow)
+        val wiring = out.items.first()
+        assertEquals("wiring", wiring.key)
+        assertTrue("出根与碰真盘要分开报：${wiring.detail}", wiring.detail.contains("出根=1 条"))
+        assertTrue(wiring.detail.contains("实测越界=0 条"))
+    }
+
+    @Test
+    fun `影子296④_真盘字节被动过_算接错不算不一致`() {
+        val c = shape(newFiles = 1, paths = listOf("$shadowRoot/a.md"))
+        fun judge(untouched: Boolean?) = ShadowRehearsal.compare(
+            claimed = c,
+            observed = c,
+            shadowRoot = shadowRoot,
+            realRoot = realRoot,
+            rollback = goodRollback(),
+            probes = listOf(okProbe()),
+            realUntouched = untouched,
+        )
+        val moved = judge(false)
+        assertEquals(ShadowVerdict.MISWIRED, moved.verdict)
+        assertTrue(
+            "影子摸到真盘，比数错几个更坏：${moved.items.first().detail}",
+            moved.items.first().detail.contains("真盘字节改动=有"),
+        )
+        assertEquals(ShadowVerdict.CONSISTENT, judge(true).verdict)
+        assertEquals(
+            "null＝调用方没测（旧口径；适配器那一层把没测按结构故障收）",
+            ShadowVerdict.CONSISTENT,
+            judge(null).verdict,
+        )
+    }
+
+    @Test
+    fun `影子296②_大小对得上但内容不是那一版_退路不可用`() {
+        val otherVersion = RollbackPoint(
+            path = "$shadowRoot/.rollback/a.bak",
+            exists = true,
+            bytes = 128L,
+            originalBytes = 128L,
+            sha256 = "aaaaaaaa11111111",
+            originalSha256 = "bbbbbbbb22222222",
+        )
+        assertFalse("只比大小认不出「退路是别人的旧版」", otherVersion.usable)
+        assertTrue(otherVersion.copy(originalSha256 = "aaaaaaaa11111111").usable)
+        // 摘要缺一侧＝这一格没查（不许拿"没算"冒充"不一样"）
+        assertTrue(otherVersion.copy(sha256 = "").usable)
+        val item = ShadowRehearsal.rollbackItem(otherVersion)
+        assertTrue(item.passed == false)
+        assertTrue("两侧摘要短形都要进账：${item.detail}", item.detail.contains("摘要=aaaaaaaa/bbbbbbbb"))
+    }
+
+    @Test
+    fun `影子296②_新建对象的退路是原先没有_不许永远红`() {
+        val absent = RollbackPoint(path = "$shadowRoot/.rollback/new.md.bak", exists = false, expectsAbsent = true)
+        assertTrue(absent.usable)
+        val item = ShadowRehearsal.rollbackItem(absent)
+        assertTrue(item.passed == true)
+        assertEquals("新建对象：原先没有", item.cn)
+        assertTrue(item.detail.contains("形态=新建(原先应无)"))
+        assertFalse(
+            "声称原先没有、副本里却已有同名东西 ⇒ 那份旧版才是退路",
+            absent.copy(exists = true, bytes = 40L).usable,
+        )
+        // 这一格一旦永远红，249 第⑤步就永远停在 NO_DATA——新建对象必须能过。
+        val out = cmp(
+            shape(newFiles = 1, paths = listOf("$shadowRoot/new.md")),
+            shape(newFiles = 1, paths = listOf("$shadowRoot/new.md")),
+            rollback = absent,
+        )
+        assertEquals(ShadowVerdict.CONSISTENT, out.verdict)
     }
 }

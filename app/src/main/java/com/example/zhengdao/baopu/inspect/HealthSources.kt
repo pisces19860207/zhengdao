@@ -70,11 +70,12 @@ internal object OrganCensus {
             name = "影子",
             entry = "ShadowRehearsal.compare",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/ShadowRehearsal.kt",
-            callSites = 0,
+            // 第二百九十六批 §2/§3 之前这里是 `callSites = 0`（239 交付的就是"只有判据、没有跑的人"）。
+            callSites = 1,
             sink = "影子执行.jsonl",
             evidence = listOf(
-                "inspect/ShadowRehearsal.kt:194 compare() 定义，全仓零调用",
-                "inspect/AllowanceLadder.kt:193 只用了 shouldRehearse（判据，不是对拍）",
+                "inspect/ShadowAdapter.kt:229 judge() 里 compare() 的唯一调用点（296 §2 接上）",
+                "authz/TaskGrantGate.kt:231 shadowSignalFor() 向适配器要第⑤步的读数（296 §3）",
             ),
         ),
         OrganProbe(
