@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百九十一批（第二刀）：御医体检的**手动入口**文案。单独成文件（房型照 158/198 那几本）：
+     共享 strings.xml 每批都有人碰，抽出来少一处冲突点，键名也一眼数得清。
+     正式月位在 WorkManager 里（每 30 天、仅充电）；这一行只是"验收时随时能跑一趟"。 -->
+<resources>
+    <string name="settings_health_run">体检一次</string>
+    <string name="settings_health_run_desc">只读账本、不弹卡；跑完把单子写进决策中心（月度自动跑一次）</string>
+    <string name="settings_health_running">正在体检…</string>
+    <!-- 单子上来就自带「体检：」前缀（HealthRun.headline），这里不再重复一个 ⇒ 真机读数：
+         「上次体检：4 处没接线、6 处未取样」，不是「上次体检：体检：…」 -->
+    <string name="settings_health_done">上次%1$s</string>
+    <string name="settings_health_failed">没跑成：%1$s</string>
+</resources>

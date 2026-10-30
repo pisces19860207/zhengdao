@@ -59,6 +59,8 @@ class InspectReadOnlyGateTest {
         val ledgers = listOf(
             "PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt",
             "NocturnalPatrol.kt", "GoldenGuard.kt", "PatrolMutual.kt",
+            // 291（第二刀）：体检自己那本账（体检记录.jsonl，一行一份单子）
+            "HealthLedger.kt",
         )
         inspectFiles().forEach { f ->
             val text = code(f)
@@ -76,6 +78,8 @@ class InspectReadOnlyGateTest {
         val ledgers = listOf(
             "PatrolLedger.kt", "ShadowLedger.kt", "VisualEvidenceQueue.kt",
             "NocturnalPatrol.kt", "GoldenGuard.kt", "PatrolMutual.kt",
+            // 291（第二刀）：体检自己那本账（体检记录.jsonl，一行一份单子）
+            "HealthLedger.kt",
         )
         inspectFiles().forEach { f ->
             val hits = Regex("""mkdirs\(|mkdir\(""").findAll(code(f)).count()
@@ -103,11 +107,25 @@ class InspectReadOnlyGateTest {
     @Test
     fun `负例③_agent 包只许借227那一条判据`() {
         val allowed = "com.example.zhengdao.baopu.agent.AnswerGate"
+        // 第二百九十一批（第二刀）的**窄口子**：体检要数"68 个工具谁没被选中"、要把单子递进
+        // 延后队列——这两件事的对象本来就在 agent 包里。所以只给 `HealthRun.kt` 放开四个名字，
+        // 且**只放元数据与投递口**（工具表/分组/策略可见性/意见管道），一个模型客户端都不许借：
+        // 上一条门禁（禁 LlmClient／prompt／messages）仍然管着它，那是这条口子的边界。
+        val healthRunAllowed = setOf(
+            "com.example.zhengdao.baopu.agent.BaopuToolCatalog",
+            "com.example.zhengdao.baopu.agent.ToolGroup",
+            "com.example.zhengdao.baopu.agent.ToolGroupTable",
+            "com.example.zhengdao.baopu.agent.OpinionWiring",
+        )
         inspectFiles().forEach { f ->
+            val fileAllowed = if (f.name == "HealthRun.kt") healthRunAllowed else emptySet()
             Regex("""import\s+com\.example\.zhengdao\.baopu\.agent\.[A-Za-z.]+""")
                 .findAll(code(f))
                 .forEach { m ->
-                    assertEquals("${f.name} 借了 agent 的别的东西", allowed, m.value.replace("import ", "").trim())
+                    val name = m.value.replace("import ", "").trim()
+                    if (name !in fileAllowed) {
+                        assertEquals("${f.name} 借了 agent 的别的东西", allowed, name)
+                    }
                 }
         }
         // 而且确实借了：判据不自造（I2 复用 227，虚报率那两条也是它的）

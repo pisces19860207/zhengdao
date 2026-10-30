@@ -14,6 +14,10 @@
 // 在界面里是真接通的，真机读数从它取。
 package com.example.zhengdao.baopu.inspect
 
+import java.time.Instant
+import java.time.ZoneId
+import java.util.Locale
+
 /** 巡按的发起判据。 */
 internal object PatrolScheduler {
 
@@ -106,6 +110,59 @@ internal object PatrolScheduler {
     /** 距上次巡按过了多少个整天（提醒行的数字；[remindGate] 与它同一个算式）。 */
     fun remindDays(lastPatrolAtMs: Long, nowMs: Long): Long =
         (nowMs - lastPatrolAtMs) / (24L * 3_600_000L)
+
+    // ── 月位（第二百九十一批第二刀：御医体检的月度维护位） ──────────────────────
+    //
+    // 用户 2026-10-30 的原话：「挂到现成的 PatrolScheduler（夜巡那个调度器）一个月任务位——
+    // 每月一次、非精确闹钟、只在充电时跑（同夜巡四条前提）」。
+    //
+    // 所以"月位"这件事**只在这里有一份实现**：体检侧（`HealthScheduler`）只做装配，
+    // 不许自己再写一遍月键算法。与夜巡的区别只有节奏：夜巡是"每天低峰一趟（§10③ 默认关）"，
+    // 月位是"每个自然月一趟（默认开）"。四条前提同款：只在充电、零模型、不改业务、可一键停。
+
+    /** 月位的周期（天）：WorkManager 的周期只是"大致这么频繁"，真正的月位由 [monthlyKey] 判。 */
+    const val MONTHLY_PERIOD_DAYS: Long = 30L
+
+    /** 月位的一键停（与 [AUTO_ENABLED] 同款口径：改这一个常量即停，第一版不铺界面开关）。 */
+    const val MONTHLY_ENABLED: Boolean = true
+
+    const val WHY_MONTHLY_RUN: String = "本月还没体检、正在充电"
+    const val WHY_MONTHLY_DONE: String = "本月已经体检过（同月只跑一次）"
+    const val WHY_MONTHLY_NOT_CHARGING: String = "没在充电（同夜巡：只在充电时跑）"
+    const val WHY_MONTHLY_STOPPED: String = "自动体检已关（一键停）"
+
+    /**
+     * 自然月键（本地时区；`2026-10` 这种）。
+     *
+     * 用"自然月"而不是"距上次 30 天"：9/30 跑过、10/1 就该跑（月换了），
+     * 而不是"再等 29 天"——用户要的是"每月一次"，不是"每三十天一次"。
+     */
+    fun monthlyKey(atMs: Long): String {
+        val d = Instant.ofEpochMilli(atMs).atZone(ZoneId.systemDefault()).toLocalDate()
+        return String.format(Locale.ROOT, "%04d-%02d", d.year, d.monthValue)
+    }
+
+    /** 该不该跑：从没跑过，或上一趟不在本月。 */
+    fun monthlyDue(lastAtMs: Long?, nowMs: Long): Boolean =
+        lastAtMs == null || monthlyKey(lastAtMs) != monthlyKey(nowMs)
+
+    /**
+     * 月位的闸门：一键停 > 充电 > 月位（顺序与 [autoGate] 一致：关了就是关了，别拿充电当借口）。
+     *
+     * 充电这一条在装配层还有两半：WorkManager 的 `setRequiresCharging(true)`（排队时约束）
+     * 与调用方读到的 [charging]（真开跑时再验一次）——两道闸谁也不能单独放行。
+     */
+    fun monthlyGate(
+        lastAtMs: Long?,
+        nowMs: Long,
+        charging: Boolean,
+        enabled: Boolean = MONTHLY_ENABLED,
+    ): Gate = when {
+        !enabled -> Gate(false, WHY_MONTHLY_STOPPED)
+        !charging -> Gate(false, WHY_MONTHLY_NOT_CHARGING)
+        !monthlyDue(lastAtMs, nowMs) -> Gate(false, WHY_MONTHLY_DONE)
+        else -> Gate(true, WHY_MONTHLY_RUN)
+    }
 
     /** 上次巡按的时刻（台账新→旧排好，取第一条 ⇒ 最新一次）。 */
     fun lastPatrolAtMs(entries: List<PatrolEntry>): Long? = entries.maxOfOrNull { it.atMs }

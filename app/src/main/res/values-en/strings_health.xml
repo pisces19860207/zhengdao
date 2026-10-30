@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百九十一批（第二刀）：御医体检手动入口（英文）。键与 values/strings_health.xml 一一对应。 -->
+<resources>
+    <string name="settings_health_run">Run a checkup</string>
+    <string name="settings_health_run_desc">Read-only, no popups; the sheet lands in the decision center (also runs monthly)</string>
+    <string name="settings_health_running">Running…</string>
+    <string name="settings_health_done">Last: %1$s</string>
+    <string name="settings_health_failed">Did not run: %1$s</string>
+</resources>

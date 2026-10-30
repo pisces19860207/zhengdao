@@ -41,11 +41,14 @@ import com.example.zhengdao.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
 import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
+import com.example.zhengdao.baopu.inspect.HealthScheduler
+import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.baopu.BaopuChannelSheet
 import com.example.zhengdao.ui.baopu.BaopuIntents
 import com.example.zhengdao.ui.baopu.BaopuSettingsScreen
@@ -56,6 +59,9 @@ import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rDialog
 import com.example.zhengdao.ui.util.pressClickable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 设置（入口页，2026-10-11 重排；2026-10-12 按走查报告 §2 再收敛）。
@@ -105,6 +111,12 @@ fun SettingsScreen() {
     // 第二百八十六批（2026-10-30 用户裁定）：口味档案从抱朴抽屉的「设置」组搬到本组，
     // 与 MCP／选模型／抱朴设置 并列（抽屉那一组因此清空、整组删除）。
     var tasteOpen by remember { mutableStateOf(false) }
+    // 第二百九十一批（第二刀）：体检那一行的状态（跑着 / 上次结果）。只活在本页组合里——
+    // 离开设置页再进来会重新读账（`HealthLedger.lastAt`），不在这里另存一份。
+    var healthBusy by remember { mutableStateOf(false) }
+    var healthNote by remember { mutableStateOf<String?>(null) }
+    // P4-4 纪律：UI 作用域必须装 CoroutineCrashHandler（门禁扫「没装 handler 的裸作用域」）
+    val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
     /** 二级页统一入口。 */
     fun open(page: Class<*>) {
@@ -155,6 +167,38 @@ fun SettingsScreen() {
                     value = stringResource(R.string.baopu_taste_drawer_desc),
                     valueMaxLines = 2,
                 ) { tasteOpen = true }
+                SettingsDivider()
+                // 第二百九十一批（第二刀）：御医体检的手动入口。
+                // 为什么放在这里：月度自动那一趟在 WorkManager 里（每 30 天、仅充电），
+                // 验收时不能等一个月 ⇒ 给一行"现在就跑"。跑的是同一条 [HealthScheduler.runNow]：
+                // 只读账本、不弹卡，结果写成账并进决策中心的延后队列。
+                // 反馈只写在这一行的 value 上（不弹 Toast／不弹卡，与体检本身的口径一致）。
+                SettingRow(
+                    label = stringResource(R.string.settings_health_run),
+                    value = healthNote ?: stringResource(R.string.settings_health_run_desc),
+                    valueMaxLines = 2,
+                ) {
+                    if (!healthBusy) {
+                        healthBusy = true
+                        healthNote = null
+                        scope.launch {
+                            val r = withContext(Dispatchers.IO) {
+                                runCatching { HealthScheduler.runNow(ctx) }.getOrNull()
+                            }
+                            healthNote = when {
+                                r?.entry != null -> ctx.getString(
+                                    R.string.settings_health_done,
+                                    r.entry.headline,
+                                )
+                                else -> ctx.getString(
+                                    R.string.settings_health_failed,
+                                    r?.failReason ?: "没跑成（看日志）",
+                                )
+                            }
+                            healthBusy = false
+                        }
+                    }
+                }
             }
 
             // ── 「申请权限」集中卡（第二百一十批 · 入口与权限归位）─────────────
