@@ -6,6 +6,8 @@
     <string name="settings_health_run">体检一次</string>
     <string name="settings_health_run_desc">只读账本、不弹卡；跑完把单子写进决策中心（月度自动跑一次）</string>
     <string name="settings_health_running">正在体检…</string>
-    <string name="settings_health_done">上次体检：%1$s</string>
+    <!-- 单子上来就自带「体检：」前缀（HealthRun.headline），这里不再重复一个 ⇒ 真机读数：
+         「上次体检：4 处没接线、6 处未取样」，不是「上次体检：体检：…」 -->
+    <string name="settings_health_done">上次%1$s</string>
     <string name="settings_health_failed">没跑成：%1$s</string>
 </resources>
