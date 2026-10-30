@@ -661,6 +661,12 @@ internal class RunEngine(
      */
     private fun resetRunScopedCounters(sessionId: Long) {
         consecutiveToolFailures = 0
+        // 第三百零六批：开新一轮——动作步号钟换轮（轮号 +1、步号清零重来）。四个开局口
+        // （send/resume/approveRestoredPending/rejectRestoredPending/drainQueue）全收敛到
+        // runLoop ⇒ 这里是唯一的开轮点；授权链（TaskGrantGate）按 opId 从这口钟领
+        // (roundId, step)，免卡结论与影子账从此引用得到具体第几步（旧口径恒 0 的断点闭合）。
+        val roundMark = com.example.zhengdao.baopu.authz.ActionStepClock.beginRound()
+        log("抱朴引擎：开轮 R${roundMark.roundId}（步号从 1 重记）")
         // 第二百三十七批：梯子三旗同批复位（续跑＝新 run，重新给一次「先换再问」）
         ladderCounters = LadderCounters()
         ladderAttempts.clear()

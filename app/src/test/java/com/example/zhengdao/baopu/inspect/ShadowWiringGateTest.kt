@@ -151,15 +151,29 @@ class ShadowWiringGateTest {
         )
     }
 
-    // ── §2 的闭集：适配器只能报那四种原因，工具表只有两条 ──────────────────────
+    // ── §2 的闭集：适配器只能报那五种原因，覆盖表 306 起五件＋两件不适用 ──────────
 
     @Test
     fun `§2_覆盖表与原因码都是闭集`() {
-        assertEquals("第一版只接这两个工具（开工令 §2 原文）", listOf("write_file", "edit_file"), SHADOW_TOOLS)
+        assertEquals(
+            "第一版 write/edit 两件，306 开工令逐工具补齐到五件",
+            listOf("write_file", "edit_file", "move_path", "delete_path", "convert_encoding"),
+            SHADOW_TOOLS,
+        )
         val a = code(adapter())
         val used = Regex("""ShadowUnverifiable\.([A-Z_]+)""").findAll(a).map { it.groupValues[1] }.toSet()
-        assertEquals("适配器报的原因码必须正好是闭集那四条", ShadowUnverifiable.ALL.toSet(), used)
-        assertEquals(4, ShadowUnverifiable.ALL.size)
-        assertEquals("跑不成结论只许走 shortCircuit 这一条口", 6, a.occurrences("return shortCircuit("))
+        assertEquals("适配器报的原因码必须正好是闭集那五条", ShadowUnverifiable.ALL.toSet(), used)
+        assertEquals(5, ShadowUnverifiable.ALL.size)
+        assertEquals(
+            "跑不成结论只许走 shortCircuit 这一条口",
+            7,
+            a.occurrences("return shortCircuit("),
+        )
+        // 306 负例点名格：NOT_APPLICABLE 与 UNSUPPORTED 混为一谈 ＝ 无文件副作用的工具被
+        // 记成"下一批接谁"的待办，体检永远差两片接不上的假待办。
+        assertTrue(
+            "适配器要分得开「不适用」与「还没接」",
+            a.contains("ShadowUnverifiable.NOT_APPLICABLE") && a.contains("ShadowUnverifiable.UNSUPPORTED"),
+        )
     }
 }
