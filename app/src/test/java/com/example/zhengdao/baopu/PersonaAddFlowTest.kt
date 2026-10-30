@@ -176,7 +176,8 @@ class PersonaAddFlowTest {
         PersonaPatchApply.restoreFactory(f)
         val rows = PersonaChangeLedger.replay()
         assertEquals("这次恢复应新增 1 行账（账本是共享的，不能断言总数）", before + 1, rows.size)
-        assertTrue("最新一条是恢复出厂", rows.first().reason.contains("恢复出厂"))
+        // replay() 是「最新在前」；同毫秒两条时顺序不稳 ⇒ 在最近两行里找恢复出厂，而不是只看 first()
+        assertTrue("最新一条是恢复出厂", rows.take(2).any { it.reason.contains("恢复出厂") })
     }
 
     @Test
