@@ -31,6 +31,7 @@ import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.inspect.LawRef
 import com.example.zhengdao.baopu.inspect.Opinion
 import com.example.zhengdao.baopu.inspect.Severity
+import com.example.zhengdao.baopu.policy.VerdictExperienceRuntime
 import com.example.zhengdao.core.RunLog
 
 // ── 判决经验账（280 预留的持久化口）────────────────────────────────────────────
@@ -67,6 +68,14 @@ internal enum class ExperienceKind(val wire: String) {
 
     /** 事后重复问：压错了的回执（撤销压制）。 */
     REASK("reask"),
+
+    /**
+     * 第二百九十八批：两级裁决里**草稿被法典判据否掉**（判据③要求记的那一笔）。
+     *
+     * 与 VIOLATION 分开记：283 的那一笔是「学习想压、撞上法条」；这一笔是「表里学到的
+     * 结论与法典判据不一致」——同一件事在接线层的两站，分不开就没法各修各的阈值。
+     */
+    DRAFT_VETO("draft_veto"),
 }
 
 /**
@@ -218,8 +227,27 @@ internal object LearnWiring {
     /** 自决单 why 列的机器键（回放按它认出"这是学习器压的"）。 */
     const val SUPPRESS_WHY = "learn_suppress"
 
-    /** 持久化口：280 合入前＝内存桩（本批不落盘）；280 落 `Download/证道/` 后换实现，本文件零改动。 */
+    /** 持久化口：283 交的是内存桩；298 起生产装 [JudgmentExperienceLedger]（换实现，接口一个字没动）。 */
     private var store: JudgmentExperienceStore = InMemoryJudgmentExperienceStore()
+
+    /**
+     * 换持久化实现（298 装配点调一次：`installStore(JudgmentExperienceLedger)`）。
+     *
+     * 装完立刻按新账折一次表——启动顺序是"先装账、再装表"，这一步让两者从第一刻就对得上。
+     */
+    fun installStore(next: JudgmentExperienceStore, now: Long = System.currentTimeMillis()) {
+        store = next
+        refreshTable(now, "install")
+    }
+
+    /**
+     * 把账折成表并换指针（**只有会挪阈值的行落账后才调**：信号／重问／违规／草稿被否）。
+     *
+     * 观察行（ASK）不触发——每条意见都重建一张表，等于把"每判一次扫一遍全本"换个地方做。
+     */
+    private fun refreshTable(now: Long, source: String = "signal") {
+        RunLog.log(VerdictExperienceRuntime.refresh(store.readAll(), now, source))
+    }
 
     /** 轮来源（null＝进程级；照 `OpinionWiring.installRoundSource` 的房型，账上照实记来源不装轮号）。 */
     @Volatile
@@ -258,6 +286,8 @@ internal object LearnWiring {
             evidence = listOf(ref.trim()),
         )
         store.append(row)
+        // 298：用户的每一次表态都可能挪动"关到几次就不弹"——落账即折表（单写者，一次换指针）
+        refreshTable(now, if (signal == UserSignal.REASK) "reask" else "signal")
         RunLog.log(logLine(row))
         return row
     }
@@ -350,15 +380,20 @@ internal object LearnWiring {
     /**
      * 咨询口：这一类现在学出来是"问"还是"别问"（反思出卡侧下一批接的一行——
      * 反思候选出卡前问一句，压着的类就不摆卡；判据与法条闸的分工同 [onOpinion]）。
+     *
+     * 第二百九十八批起：**读表不读盘**（`current()` 一次 volatile 读）。判决与咨询因此
+     * 永远同一版表——两处各扫一遍全本，早晚会给出两个答案。
      */
     @Synchronized
     fun shouldAsk(cardClass: String, now: Long = System.currentTimeMillis()): Boolean =
-        !LearnPolicy.shouldSuppress(store.readAll(), cardClass, now).suppressed
+        !VerdictExperienceRuntime.current().suppresses(cardClass, now)
 
     /** 延后队列按学到的次序重排（次序=学习的另一半；压着的类上游已拦，不会出现在这里）。 */
     @Synchronized
-    fun orderDeferred(now: Long = System.currentTimeMillis()): List<Ruling> =
-        LearnPolicy.orderRulings(OpinionWiring.deferred(), { LearnPolicy.stats(store.readAll(), it, now) })
+    fun orderDeferred(now: Long = System.currentTimeMillis()): List<Ruling> = LearnPolicy.orderRulings(
+        OpinionWiring.deferred(),
+        { VerdictExperienceRuntime.current().statsOf(it, now) },
+    )
 
     /** 意见的"类"：意见账上没有别的稳定键，gist 就是"这张卡讲什么"（≤8 字，单行）。 */
     fun classKeyOf(opinion: Opinion): String = opinion.gist
@@ -409,6 +444,7 @@ internal object LearnWiring {
             ),
         )
         store.append(row)
+        refreshTable(now, "violation")
         val rec = runCatching {
             DecisionLedger.record(
                 DecisionDraft(
@@ -426,6 +462,62 @@ internal object LearnWiring {
             RunLog.log("抱朴学习器：违规没落进 208（${DecisionLedger.lastError}）")
         }
         RunLog.log(logLine(row))
+    }
+
+    /**
+     * 记一笔「草稿被否」（第二百九十八批 · 判据③）：经验账一行 ＋ 208 一行（供修正阈值）。
+     *
+     * 与 [recordViolation] 的分工要说清：那一笔是**学习闸**（283）想压、撞上法条；
+     * 这一笔是**判决路径**（298）查表得出的草稿被法典判据否掉。落在同一本账里但
+     * kind/前缀不同（`draft_veto` vs `violation`），回放分得开、阈值各修各的。
+     *
+     * 由 `OpinionWiring.submit` 在验证层否掉草稿时调——**记账之后才走完整流程**，
+     * 顺序本身就是判据：账上先有"为什么否"，后面那条判定才是"完整流程优先"的证据。
+     */
+    @Synchronized
+    fun recordDraftVeto(
+        opinion: Opinion,
+        rule: String,
+        vetoWhy: String,
+        now: Long = System.currentTimeMillis(),
+    ): ExperienceRow {
+        val cls = classKeyOf(opinion)
+        val closes = VerdictExperienceRuntime.current().statsOf(cls, now).closes
+        val row = ExperienceRow(
+            id = newId(now),
+            atMs = now,
+            kind = ExperienceKind.DRAFT_VETO,
+            cardClass = cls,
+            key = "draft_veto:law_first",
+            reason = vetoWhy,
+            evidence = listOf(
+                "law:${opinion.lawRef.name}",
+                "sev:${opinion.severity.name}",
+                "closes:$cls:$closes",
+                rule,
+            ),
+        )
+        store.append(row)
+        val rec = runCatching {
+            DecisionLedger.record(
+                DecisionDraft(
+                    kind = DecisionKind.EVAL_VERDICT,
+                    actor = DecisionActor.AUTO,
+                    reason = "${REASON_PREFIX}draft_veto ${row.key} $vetoWhy",
+                    evidence = "learn:draft_veto:class=$cls:law=${opinion.lawRef.name}:closes=$closes",
+                    before = "草稿（命中经验表 $rule）：不弹",
+                    after = "作废：法典判据要问，走完整宰相流程",
+                    atMs = now,
+                ),
+            )
+        }.getOrNull()
+        if (rec == null) {
+            RunLog.log("抱朴草稿：被否没落进 208（${DecisionLedger.lastError}）")
+        }
+        RunLog.log(logLine(row))
+        // 被否也是读数：这一类"学到的别弹"与法条顶上了 ⇒ 按最新账重折（修正阈值的输入）
+        refreshTable(now, "draft_veto")
+        return row
     }
 
     /** 轮标记（照实记来源：装了来源写 `round#N`，没装写 `process`——不装假的）。 */

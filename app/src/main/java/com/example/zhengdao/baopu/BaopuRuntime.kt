@@ -22,7 +22,9 @@ import com.example.zhengdao.baopu.agent.GenerateImage
 import com.example.zhengdao.baopu.agent.GenerateImageTool
 import com.example.zhengdao.baopu.agent.GroupUnlockStore
 import com.example.zhengdao.baopu.agent.GuardPipeline
+import com.example.zhengdao.baopu.agent.JudgmentExperienceLedger
 import com.example.zhengdao.baopu.agent.KbTools
+import com.example.zhengdao.baopu.agent.LearnWiring
 import com.example.zhengdao.baopu.agent.ListDirTool
 import com.example.zhengdao.baopu.agent.OrchestrationGate
 import com.example.zhengdao.baopu.agent.RunEngine
@@ -840,6 +842,13 @@ internal object BaopuRuntime {
         // 空了，公共副本回灌回来，判决历史不随卸载消失（283 的前置）。
         VerdictExperienceStore.install(workspaceRoot(appCtx), File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
         VerdictExperienceStore.sync()
+        // 第二百九十八批：**判决时真查表**的装配点（进化环第三圈）。283 把学到的东西写在
+        // 内存桩里（进程一散就没了），宰相判"弹不弹"时从没查过那张表——本批补这条链：
+        // 换成落盘账本（`抱朴记忆/判决经验账.jsonl`）⇒ 当场把账折成**不可变快照** ⇒
+        // 此后每次用户表态/草稿被否都**原子换指针**（判决路径只一次 volatile 读，不加锁）。
+        // 顺序要紧：必须在上面 `sync()` **之后**——回灌是把上一世的历史搬回私有账，
+        // 先装表等于装一张空表（30 天窗白学一次）。
+        LearnWiring.installStore(JudgmentExperienceLedger)
         // 第九十六批：人设补丁留痕（`[persona] …`）。同一条口径：纯函数产行、装配层落盘。
         PersonaAudit.sink = { line -> RunLog.log(line) }
         return engine

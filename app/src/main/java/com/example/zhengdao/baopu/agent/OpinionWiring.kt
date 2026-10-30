@@ -38,6 +38,12 @@ import com.example.zhengdao.baopu.inspect.Opinion
 import com.example.zhengdao.baopu.inspect.OpinionAdapter
 import com.example.zhengdao.baopu.inspect.Severity
 import com.example.zhengdao.baopu.inspect.Source
+import com.example.zhengdao.baopu.policy.DraftCounts
+import com.example.zhengdao.baopu.policy.DraftOutcome
+import com.example.zhengdao.baopu.policy.DraftTally
+import com.example.zhengdao.baopu.policy.DraftVerdict
+import com.example.zhengdao.baopu.policy.VerdictDraft
+import com.example.zhengdao.baopu.policy.VerdictExperienceRuntime
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.time.Instant
@@ -98,6 +104,15 @@ internal enum class OpinionWhy(val wire: String) {
      * 混进 [DAY_QUOTA] 会让回放时把月度体检算成"当天额度用光"的证据。
      */
     QUEUE_ONLY("queue_only"),
+
+    /**
+     * 命中判决经验表 ⇒ 采纳草稿的"不弹"（第二百九十八批 · 两级裁决的草稿层）。
+     *
+     * 为什么不复用 [NO_LAW]：那一条是"无法可依所以记档不打扰"，这一条是
+     * "有法可依、但同类卡 30 天内已被关到阈值，学到的是别在此刻问"。混进同一键，
+     * 回放时就把"学到的克制"读成了"法条没说话"——判据①要的正是能把它单独挑出来。
+     */
+    EXPERIENCE_HIT("experience_hit"),
     ;
 
     companion object {
@@ -131,6 +146,16 @@ internal data class Ruling(
     val tool: String,
     /** 豁免理由（只有 [OpinionWhy.EXEMPT_CRITICAL] 有值）。 */
     val exemptReason: String? = null,
+    /**
+     * 这一条判决时**两级裁决走到了哪一格**（第二百九十八批）：`draft_miss`／
+     * `draft_adopted`／`draft_vetoed`；空串＝这条没查表（[OpinionWhy.QUEUE_ONLY] 那种只进队列的）。
+     *
+     * 为什么单独一列而不是塞进 detail：判据①要"账上有命中经验表的证据"、判据②要
+     * "删掉表 ⇒ 行为退回原样"——两件事都得能按列数出来，让人话列去做判据迟早改文案就红。
+     */
+    val draft: String = "",
+    /** 命中/被否时那条规则的机器键（回放能说出"是哪一版表的哪一条"）。 */
+    val draftRule: String = "",
 ) {
     /** 当日（本地时区）。 */
     val day: String get() = OpinionWiring.dayOf(atMs).toString()
@@ -152,6 +177,8 @@ internal data class Ruling(
         .put("detail", detail)
         .put("royal", royalToday)
         .put("exempt", exemptReason ?: "")
+        .put("draft", draft)
+        .put("drule", draftRule)
         .put("ev", JSONArray(opinion.evidence))
 
     companion object {
@@ -185,6 +212,9 @@ internal data class Ruling(
                     atMs = o.optLong("at", 0L),
                     tool = o.optString("tool"),
                     exemptReason = o.optString("exempt").ifEmpty { null },
+                    // 298 加的两列：老行没这两个键 ⇒ 读成"没查表"，不猜、不补一个假的 miss
+                    draft = o.optString("draft"),
+                    draftRule = o.optString("drule"),
                 )
             }.getOrNull()
         }
@@ -465,21 +495,7 @@ internal object OpinionWiring {
         seen[key]?.let { return it }
 
         seedDay(now)
-        val verdict = if (queueOnly) {
-            OpinionJudge.Verdict(
-                OpinionDecision.DEFER,
-                OpinionWhy.QUEUE_ONLY,
-                "只进队列：这类意见不弹（不占御案额度）",
-            )
-        } else {
-            OpinionJudge.judge(
-                opinion = opinion,
-                royalToday = royalToday,
-                roundUsed = roundPops > 0,
-                alreadyRefused = alreadyRefused,
-                exemptionReason = exemptionReason,
-            )
-        }
+        val (verdict, drafted) = verdictWithDraft(opinion, now, mark.second, queueOnly, alreadyRefused, exemptionReason)
         seq += 1
         val ruling = Ruling(
             id = "op:$now:${mark.second}:$seq",
@@ -493,6 +509,8 @@ internal object OpinionWiring {
             atMs = now,
             tool = tool,
             exemptReason = verdict.exemptReason,
+            draft = drafted?.outcome?.wire ?: "",
+            draftRule = drafted?.draft?.rule ?: "",
         )
         if (verdict.decision == OpinionDecision.POP) {
             roundPops += 1
@@ -523,6 +541,57 @@ internal object OpinionWiring {
         record(ruling)
         RunLog.log(logLine(ruling))
         return ruling
+    }
+
+    /**
+     * 第二百九十八批：**判决时真查表**——两级裁决落在调解器的这一道口上。
+     *
+     * 三分支照派工单的顺序：
+     * - `未命中`（表里没这一类）⇒ 原样走 [OpinionJudge.judge]，行为与接表前逐字一致（判据②）；
+     * - `命中且验证层没反对` ⇒ 采纳草稿＝**不弹**，理由带"命中经验表"字样（判据①要的账面证据）；
+     * - `命中但撞法条` ⇒ **完整流程优先**：先记「草稿被否」再走 [OpinionJudge.judge]（判据③）。
+     *
+     * `queueOnly`（291 御医体检）**不查表**：那条路本来就不弹、也不占额度，
+     * 查它只会给计数掺水——账上 `draft` 留空＝"没查表"，不拿空字符串冒充"未命中"。
+     *
+     * 抽成私有函数只为**不让 [submit] 再长一节**（判据④要判决路径不加锁、也不加长）；
+     * 查表这一段零模型、零 IO、一次 volatile 读，源级门禁由 `DraftSourceGateTest` 钉死。
+     */
+    private fun verdictWithDraft(
+        opinion: Opinion,
+        now: Long,
+        round: String,
+        queueOnly: Boolean,
+        alreadyRefused: Boolean,
+        exemptionReason: String?,
+    ): Pair<OpinionJudge.Verdict, DraftVerdict?> {
+        if (queueOnly) {
+            return OpinionJudge.Verdict(
+                OpinionDecision.DEFER,
+                OpinionWhy.QUEUE_ONLY,
+                "只进队列：这类意见不弹（不占御案额度）",
+            ) to null
+        }
+        val drafted = VerdictDraft.decide(opinion, now)
+        DraftTally.note(round, drafted.outcome, drafted.consultNanos)
+        val full = {
+            OpinionJudge.judge(
+                opinion = opinion,
+                royalToday = royalToday,
+                roundUsed = roundPops > 0,
+                alreadyRefused = alreadyRefused,
+                exemptionReason = exemptionReason,
+            )
+        }
+        return when (drafted.outcome) {
+            DraftOutcome.ADOPTED ->
+                OpinionJudge.Verdict(OpinionDecision.SKIP, OpinionWhy.EXPERIENCE_HIT, drafted.adoptedReason ?: "") to drafted
+            DraftOutcome.VETOED -> {
+                LearnWiring.recordDraftVeto(opinion, drafted.draft?.rule ?: "", drafted.vetoWhy ?: "", now)
+                full() to drafted
+            }
+            DraftOutcome.MISS -> full() to drafted
+        }
     }
 
     /**
@@ -650,7 +719,23 @@ internal object OpinionWiring {
     /** 日志那一行（抽成纯函数：格式也是判据，埋在 RunLog 里就抓不到）。 */
     internal fun logLine(ruling: Ruling): String =
         "抱朴意见：${ruling.decision.cn}（${ruling.why.wire}）${ruling.opinion.gist}" +
-            "｜来源=${ruling.round} 今日御案=${ruling.royalToday}｜${ruling.detail}"
+            "｜来源=${ruling.round} 今日御案=${ruling.royalToday}" +
+            "｜草稿=${ruling.draft.ifBlank { "未查表" }}｜${ruling.detail}"
+
+    // ── 298 可观测面（判据④：每轮三计数＋查表耗时）────────────────────────
+
+    /** 本轮 命中/未命中/被否。 */
+    fun draftCounts(): DraftCounts = DraftTally.roundCounts()
+
+    /** 进程累计 命中/未命中/被否。 */
+    fun draftTotals(): DraftCounts = DraftTally.totals()
+
+    /** 查表次数与累计纳秒（真机按它核"判决 P90 没因查表上升"）。 */
+    fun draftConsultStats(): Pair<Int, Long> = DraftTally.consultStats()
+
+    /** 表那一侧的一行结论（只出计数，不出明细）。 */
+    fun tableConclusion(): String =
+        VerdictExperienceRuntime.current().conclusion(System.currentTimeMillis()) + "｜" + DraftTally.conclusion()
 
     /** 本地时区的"哪一天"（每日御案按它切）。 */
     internal fun dayOf(now: Long): LocalDate =
@@ -679,5 +764,9 @@ internal object OpinionWiring {
         roundSource = null
         // 自决单是同一条链路的下游账本：清账必须一起清，否则用例之间互相污染
         SelfRulingLedger.resetForTest()
+        // 298：表快照/计数/经验账同属这一条链路，一样"谁用谁还"
+        VerdictExperienceRuntime.reset()
+        DraftTally.reset()
+        JudgmentExperienceLedger.resetForTest()
     }
 }
