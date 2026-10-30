@@ -176,6 +176,8 @@ internal object MetricsSources {
      *
      * `tool = ''` 的行（THINK／COMPRESSING 边界）不是工具请求，直接不进。
      * 时刻取 `MAX(started_at)`：批准后补的那行 `started_at = 0`，取最小会把请求拖出滚动窗。
+     * 窗口判据同 `runSummaries()`（§3.6#4）取 `MAX(started_at, ended_at)`：那行的 `status = OK` 也在 `started_at = 0` 上，
+     * 按 `started_at` 开窗就看不见「摆卡获批后真执行了」——不可逆动作占比会把它当成没执行。
      */
     fun toolRequests(db: BaopuDb, fromMs: Long, limit: Int = MetricsBudget.ROWS): List<ToolRequest> = runCatching {
         db.read { d ->
@@ -184,7 +186,7 @@ internal object MetricsSources {
                 "SELECT run_id, session_id, step, tool, MAX(started_at), " +
                     "MAX(CASE WHEN status = 'CONFIRM' THEN 1 ELSE 0 END), " +
                     "MAX(CASE WHEN status = 'OK' THEN 1 ELSE 0 END) " +
-                    "FROM run_trace WHERE started_at >= ? AND tool <> '' " +
+                    "FROM run_trace WHERE MAX(started_at, ended_at) >= ? AND tool <> '' " +
                     "GROUP BY run_id, step, tool, args_hash " +
                     "ORDER BY MAX(started_at) DESC LIMIT ?",
                 arrayOf(fromMs.toString(), limit.toString()),
