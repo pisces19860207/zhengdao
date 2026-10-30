@@ -11,6 +11,7 @@
 // 覆盖判据（法典 L27 原文＋2026-10-29 裁定 Q2 的**窄口径**）：超窗口⇒判不批／维持原状／可回退者回退／
 // 必落「待御裁」／**已被超时结算过**的事项再奏必拒并记违规；没结算过的最多 2 次提交、第 3 次才拒／
 // 窗口与上奏上限都是参数（改了判定必须跟着变）。
+// 边界（2026-10-31 御裁 Q3）：elapsed == threshold ⇒ 触发；差 1 毫秒仍等待。
 package com.example.zhengdao.baopu.law
 
 import org.junit.Assert.assertEquals
@@ -51,12 +52,7 @@ class TimeoutFallbackGateTest {
         assertFalse("窗口内不落账", waiting.mustRecord)
         assertNull("窗口内没有违规", waiting.violation)
 
-        // 边界写死：等满 24h 整不算超时，超出 1ms 才算（口径只能有一个）
-        val exact = TimeoutFallback.settle(
-            PendingRuling("case-2", raisedAtMs = t0, reversible = true),
-            nowMs = t0 + TimeoutFallback.WINDOW_MS,
-        )
-        assertEquals("等满窗口整仍是等待（超出才算超时）", TimeoutOutcome.WAITING, exact.outcome)
+        // 边界改由下面那条专门的边界例钉住（2026-10-31 御裁 Q3：到达即触发）
 
         val rolled = TimeoutFallback.settle(r(TimeoutFallback.WINDOW_MS / hour + 1, reversible = true, recorded = true), t0)
         assertEquals("超窗口判超时不批", TimeoutOutcome.TIMEOUT_REJECTED, rolled.outcome)
@@ -82,6 +78,26 @@ class TimeoutFallbackGateTest {
         // 窗口是参数：换成 1 小时后，等了 2 小时的事项就该结算
         val oneHourWindow = TimeoutFallback.settle(r(2, reversible = true), t0, windowMs = hour)
         assertEquals("改窗口 ⇒ 判定必须跟着变", TimeoutOutcome.TIMEOUT_REJECTED, oneHourWindow.outcome)
+    }
+
+    // ── 边界（2026-10-31 御裁 Q3）：到达即触发 ────────────────────────────────
+
+    @Test
+    fun `L27_边界_到达阈值即触发_差一毫秒仍等待`() {
+        // 与旧口径 `>`（超过才触发）的差异由本例钉住：Q3 裁定 L27 是"时间到就兜底"，
+        // 不是"超过才算"——旧口径写在 TimeoutFallback.kt 的 `waited <= windowMs`，本批已改 `waited < windowMs`。
+        val at = TimeoutFallback.settle(
+            PendingRuling("edge-at", raisedAtMs = t0, reversible = true),
+            nowMs = t0 + TimeoutFallback.WINDOW_MS,
+        )
+        assertEquals("elapsed == threshold ⇒ 触发（到达即兜底）", TimeoutOutcome.TIMEOUT_REJECTED, at.outcome)
+        assertTrue("到达即触发也必须落「待御裁」账", at.mustRecord)
+
+        val before = TimeoutFallback.settle(
+            PendingRuling("edge-before", raisedAtMs = t0, reversible = true),
+            nowMs = t0 + TimeoutFallback.WINDOW_MS - 1,
+        )
+        assertEquals("差 1 毫秒仍是等待（触发点只在 >=）", TimeoutOutcome.WAITING, before.outcome)
     }
 
     // ── 负例：超时当同意／不落账／二次上奏放过，三种错法都要红 ──────────────

@@ -8,7 +8,7 @@
 // 并补上那份 spec 漏掉的半句法典原文——**「可回退者按原状回退」**（[TimeoutVerdict.rollbackRequested]）。
 //
 // ## 判据（输入→输出，逐条可执行）
-// 一件在御案上等批的事，`nowMs - raisedAtMs` 超过 [WINDOW_MS]（默认 24 小时）⇒
+// 一件在御案上等批的事，`nowMs - raisedAtMs` **到达** [WINDOW_MS]（默认 24 小时；2026-10-31 御裁 Q3：`>=` 到达即兜底）⇒
 // - **视为不批**（[TimeoutVerdict.approved] 恒为 false，超时永远不等于同意）；
 // - **维持原状**（[TimeoutVerdict.keepOriginal] 为 true）；
 // - **可回退者按原状回退**（[TimeoutVerdict.rollbackRequested] = 这件事项本身可不可回退）；
@@ -32,7 +32,7 @@ internal enum class TimeoutOutcome {
     /** 还在窗口内：继续等御批，什么都还不做。 */
     WAITING,
 
-    /** 超窗口：按不批结算，维持原状（可回退者回退），并落一条「待御裁」。 */
+    /** 到窗口（`>=`）：按不批结算，维持原状（可回退者回退），并落一条「待御裁」。 */
     TIMEOUT_REJECTED,
 
     /**
@@ -135,8 +135,9 @@ internal object TimeoutFallback {
             }
             return refilingVerdict(why, waited)
         }
-        // 只数"真的等满了"：nowMs 早于上奏时刻（时钟回拨／填错）时 waited 为负 ⇒ 不算超时，继续等
-        if (waited <= windowMs) {
+        // 只数"真的等满了"：nowMs 早于上奏时刻（时钟回拨／填错）时 waited 为负 ⇒ 不算超时，继续等。
+        // 边界＝到达即触发（>=），2026-10-31 御裁 Q3；旧口径 `>` 与它的差异由 TimeoutFallbackGateTest 的边界例钉住。
+        if (waited < windowMs) {
             return waitingVerdict(waited)
         }
         return TimeoutVerdict(

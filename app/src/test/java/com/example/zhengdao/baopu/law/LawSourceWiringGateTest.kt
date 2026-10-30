@@ -82,7 +82,7 @@ class LawSourceWiringGateTest {
             entry = "DiscretionLadder",
             law = "DiscretionLadder 的 decide（L9 三级：便宜行事／先斩后奏／题请）",
             host = "agent/GuardPipeline.kt:538 的 mustAsk 决定处（第②档会免掉今天必弹的那张卡）",
-            owner = "待御裁（303 交付报告 §5 拍板项：②档免卡＝新增能力，不是等价收敛）",
+            owner = "另行（2026-10-31 御裁 Q1：L9 另行立项，批号未定；303 交付报告 §7 裁定记录）",
             blockedBy = "接进去就是把 R2 的「必问」换成「先做后报」，行为变了；" +
                 "RiskMatrix 的 BATCH_OVER_20 与 MAX_FILES 只是数字相同，判据不同（L9 的①档不限文件数）",
         ),
@@ -90,7 +90,7 @@ class LawSourceWiringGateTest {
             entry = "ProgressivePenalty",
             law = "ProgressivePenalty 的 decide（L24 累进：记／问／拦／停，30 天窗口）",
             host = "agent/GuardPipeline.kt:433 的 verdict.rejected 分支（275 头注释原写的下一个宿主）",
-            owner = "待御裁（要先有「违规台账」喂 history；276-P1 未建，275 也写明本层不读盘）",
+            owner = "311（三司会审／累进，2026-10-31 批示：L24→311）",
             blockedBy = "生产没有同类违规计数可接：RiskMatrix 的频次升档数的是**调用**次数不是**违规**次数，" +
                 "接上去等于凭空给拦截加一档",
         ),
@@ -98,16 +98,16 @@ class LawSourceWiringGateTest {
             entry = "TimeoutFallback",
             law = "TimeoutFallback 的 settle（L27 超时未批⇒维持原状；二次上奏取窄口径）",
             host = "agent/RunRules.kt:227 的 confirmExpired（生产唯一「等御批」的超时线）",
-            owner = "待御裁（303 交付报告 §5 拍板项：边界是 >= 还是 >）",
-            blockedBy = "两条线不一致：生产是「到线即超时」（RunRules.kt:227 的 >=），" +
-                "法典判定是「超出窗口第 1 毫秒才算」（TimeoutFallback.kt:139 的 waited <= windowMs；TimeoutFallbackGateTest 钉着「等满整窗仍是等待」）。" +
-                "换任何一边都让既有用例红，且 15 分钟／60 分钟／24 小时不是同一个窗",
+            owner = "另行（2026-10-31 御裁 Q1：L27 另行立项，批号未定；边界已由 Q3 定为 >=）",
+            blockedBy = "边界已不再有分歧（2026-10-31 御裁 Q3 定为 >=，与生产 RunRules.kt:227／TaskGrantGate.kt:282 的「到线即超时」同口径）。" +
+                "仍拦着的是窗口与形状：生产超时线是 15 分钟／60 分钟（TaskGrantGate 的租约到期），settle 的窗写死 24 小时；" +
+                "且 settle 返回完整裁决（APPROVED／REJECTED／二次上奏），生产点位只想要一个布尔",
         ),
         Booked(
             entry = "NarrowGate",
             law = "NarrowGate 的 judge（L25 窄门自执行四条件、含删除必拒、30 天 >3 关通道）",
             host = "agent/GuardPipeline.kt 的 mustAsk 之后、动作真正执行之前（生产没有「自执行」这条通道）",
-            owner = "待御裁（303 交付报告 §5 拍板项：开自执行通道＝新增权限，超出「先等价」的口径）",
+            owner = "312（军令状，2026-10-31 批示：L25→312）",
             blockedBy = "生产里没有任何窄门判据可收敛（grep 窄门／自执行 在 app/src/main 零命中），" +
                 "接上就是第一次给模型「不问就做」的权力",
         ),
@@ -115,7 +115,7 @@ class LawSourceWiringGateTest {
             entry = "Revocation",
             law = "Revocation 的 judge（L22 撤销单五栏＋24 小时违规线）",
             host = "authz/TaskGrantWire.kt:336 的 revoke／authz/TaskGrantRevokeRow.kt:95 的 revokeNow（撤销二段确认）",
-            owner = "待御裁（276-Q2 已交「最简版撤销本单」，五栏与 24h 现在生效与否要她点头）",
+            owner = "306（步键，2026-10-31 批示：L22→306）",
             blockedBy = "撤销通道已存在但没有撤销单：judge 要五栏事实，现路径只带三元组；" +
                 "补五栏＝新落盘格式，与 208 写入格式那条红线撞在同一张卡上",
         ),
@@ -123,7 +123,7 @@ class LawSourceWiringGateTest {
             entry = "EmergencyClocks",
             law = "EmergencyClocks 的 informDeadlineMs／informBypass／ratifyDueAtMs（L30b 三时钟：止损 0 秒／告知 3 秒／追认 24 小时）",
             host = "agent/ConfirmFlow.kt:376 的等待循环（生产唯一「等用户」的地方）＋ inspect/NocturnalPatrol.kt:243 的投递档位",
-            owner = "待御裁（303 交付报告 §5 拍板项：最严重判定属 L29，L29 未接线）",
+            owner = "304（触发，2026-10-31 批示：L30b→304）",
             blockedBy = "NocturnalPatrol.kt:243 的 EMERGENCY 是**投递档位**（暗卫夜间通道），三样要件一个都没判；" +
                 "把三时钟接进去要先有「先动手后追认」的执行通道，本批没有",
         ),
