@@ -697,7 +697,8 @@ class BaopuSessionTreeTest {
         // 它们没消失，只是换了地方（新家的门禁在 StatutesSlimGateTest）。
         listOf(
             "baopu_new_session",
-            "baopu_drawer_library",
+            // 2026-10-30：资料库入口搬去律令「抱朴」组，MCP 从律令搬回抽屉（排在技能下面）。
+            "baopu_drawer_mcp",
             "baopu_extract_title",
             "baopu_backup_title",
         ).forEach { key ->
@@ -715,11 +716,12 @@ class BaopuSessionTreeTest {
     @Test
     fun `口径3_点项先关抽屉再跳_会话行与文件夹行也不例外`() {
         // 第二百五十一批：`onChannel` / `onSettings` 两条随入口搬去律令一起删了（抽屉不再转交）。
+        // 2026-10-30：`onLibrary`（资料库）搬去律令；MCP 搬回抽屉 —— 换成 `onMcp` 继续盯。
         listOf(
             "onNewSession = {",
             "onOpenSession = { sid ->",
             "onWorkspaceTap = { path ->",
-            "onLibrary = {",
+            "onMcp = {",
             "onExtract = {",
             "onBackup = {",
         ).forEach { sig ->

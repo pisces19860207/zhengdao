@@ -58,9 +58,9 @@ class StatutesSlimGateTest {
 
     @Test
     fun `律令抱朴组四项都在且都进原页面`() {
-        // 四行（用户 2026-10-27 指定三项 + 2026-10-30 追加口味档案，一个字不许改名）
+        // 四行（2026-10-27 三项 + 2026-10-30 追加口味档案；同日 MCP 搬回抽屉、资料库补位）
         listOf(
-            "baopu_drawer_mcp",
+            "baopu_drawer_library",
             "baopu_channel_button",
             "baopu_drawer_settings",
             "baopu_taste_title",
@@ -68,7 +68,7 @@ class StatutesSlimGateTest {
             assertTrue("律令「抱朴」组缺 $key", settings.contains("R.string.$key"))
         }
         // 四张面板都必须是**原 composable**（不是"再写一个精简版"）
-        assertTrue("MCP 面板没接上", settings.contains("BaopuMcpSheet("))
+        assertTrue("资料库页没接上", settings.contains("KnowledgeLibraryScreen("))
         assertTrue("选模型浮层没接上", settings.contains("BaopuChannelSheet("))
         assertTrue("抱朴设置页没接上", settings.contains("BaopuSettingsScreen("))
         assertTrue("口味档案页没接上", settings.contains("TasteSettingsScreen("))
@@ -119,9 +119,11 @@ class StatutesSlimGateTest {
         }
         assertFalse("律令里还有跳 ScheduleTasksActivity 的代码", settings.contains("ScheduleTasksActivity"))
         assertFalse("律令里还有跳桥页的代码", settings.contains("SettingsBridgeActivity"))
-        // 判据 §3 的口径：律令里连这四个词都不该出现 —— **注释也算"搜得到"**，
-        // 所以这一条盯未剥注释的原文（历史说明改写成"§1 表里那四项"，别把词写回来）。
-        listOf("浏览器桥", "工作区", "定时任务", "资料库").forEach { w ->
+        // 判据 §3 的口径：律令里连这几个词都不该出现 —— **注释也算"搜得到"**，
+        // 所以这一条盯未剥注释的原文（历史说明改写成"§1 表里那几项"，别把词写回来）。
+        // 2026-10-30 例外：**「资料库」现在是律令的正当入口**（用户裁定从抽屉搬来），
+        // 已从禁词表移除；它进的是抱朴自己的资料库页，不是当年那个「工作区与资料」桥页。
+        listOf("浏览器桥", "工作区", "定时任务").forEach { w ->
             assertFalse("律令源码（含注释）里还有「$w」", settingsRaw.contains(w))
         }
     }
@@ -160,11 +162,14 @@ class StatutesSlimGateTest {
             drawer.contains("R.string.baopu_taste_title"),
         )
         // 三个回调连同入口一起删（参数还在 = 有人还能从别处接回来）
-        listOf("onMcp", "onChannel", "onSettings", "onTaste").forEach { p ->
+        // 2026-10-30：`onMcp` 例外 —— MCP 已搬回抽屉（排在「技能」下面），它**应该**在。
+        listOf("onChannel", "onSettings", "onTaste").forEach { p ->
             assertFalse("BaopuDrawer 里还有 $p 参数/调用", drawer.contains(p))
         }
-        // 抱朴页那一侧也不再装配它们（面板本身留给律令；抱朴页里顶栏/工作区卡那两条老路不动）
-        assertFalse("BaopuScreen 里还有 showMcp", baopuScreen.contains("showMcp"))
+        assertTrue("MCP 搬回抽屉后 onMcp 应在", drawer.contains("onMcp"))
+        // 抱朴页那一侧同样：MCP 的本地开关回来了，其余三项仍不该出现。
+        assertTrue("MCP 搬回抽屉后抱朴页要有 showMcp", baopuScreen.contains("showMcp"))
+        assertFalse("BaopuScreen 里不该有 showTaste（口味档案已搬去律令）", baopuScreen.contains("showTaste"))
         assertFalse("BaopuScreen 里还有 showTaste（口味档案已搬去律令）", baopuScreen.contains("showTaste"))
     }
 
@@ -190,13 +195,14 @@ class StatutesSlimGateTest {
         assertEquals(emptyList<String>(), drawerSettingsGroupKeys("DrawerItem(title = \"x\")"))
     }
 
-    // ── ⑤ 资料库改成抱朴的：入口在抽屉，页里三件都在 ────────────────────────
+    // ── ⑤ 资料库：2026-10-30 起入口在律令「抱朴」组，页里三件都在 ──────────
 
     @Test
-    fun `资料库入口在抱朴抽屉且页面有状态与重建`() {
-        // 抽屉那一行不再跳设置页（250 之后那一路落到的是已删的桥页 —— 死入口）
-        assertTrue("抽屉「资料库」应开本页", baopuScreen.contains("KnowledgeLibraryScreen(onDismiss"))
-        assertFalse("抽屉「资料库」还在跳设置页", baopuScreen.contains("SettingsBridgeActivity"))
+    fun `资料库入口在律令抱朴组且页面有状态与重建`() {
+        // 2026-10-30 用户裁定：「左侧栏的资料库入口也挪到律令」⇒ 抽屉不再开它，律令开。
+        assertTrue("律令「抱朴」组应开资料库页", settings.contains("KnowledgeLibraryScreen(onDismiss"))
+        assertFalse("抽屉里不该再开资料库页", baopuScreen.contains("KnowledgeLibraryScreen(onDismiss"))
+        assertFalse("资料库还在跳设置页", baopuScreen.contains("SettingsBridgeActivity"))
         // 三件：已索引 N 个文件 / 上次更新 / 重建索引
         assertTrue("缺「已索引」", kbPage.contains("R.string.baopu_kb_files_label"))
         assertTrue("缺文件数（复用既有 plural）", kbPage.contains("R.plurals.settings_status_file_count"))

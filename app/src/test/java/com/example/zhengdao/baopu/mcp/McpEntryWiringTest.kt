@@ -58,15 +58,16 @@ class McpEntryWiringTest {
 
     @Test
     fun `负例_面板调用点不再传 onConnect`() {
-        // 第二百五十一批：面板的挂载点从抱朴抽屉搬到律令「抱朴」组（SettingsScreen）——
+        // 第二百五十一批：面板挂载点从抱朴抽屉搬到律令「抱朴」组（SettingsScreen）。
+        // 第二百八十六批（2026-10-30 用户裁定）：**搬回抱朴抽屉**（排在「技能」下面）——
         // 门禁跟着搬家，否则这条负例连调用点都找不到，"盯住真入口"就成了一句空话。
-        val screen = src("ui/SettingsScreen.kt")
+        val screen = src("ui/baopu/BaopuScreen.kt")
         val start = screen.indexOf("BaopuMcpSheet(")
-        assertTrue("找不到面板调用点（律令「抱朴」组）", start > 0)
+        assertTrue("找不到面板调用点（抱朴抽屉「技能」下面那行）", start > 0)
         val segment = screen.substring(start, minOf(start + 300, screen.length))
         assertFalse("onConnect 已废弃（面板自己连）", segment.contains("onConnect"))
-        // 抱朴页不许再挂一个：两个挂载点 = 两套会漂的入口
-        assertFalse("抱朴页不该再挂 MCP 面板", src("ui/baopu/BaopuScreen.kt").contains("BaopuMcpSheet("))
+        // 律令不许再挂一个：两个挂载点 = 两套会漂的入口
+        assertFalse("律令不该再挂 MCP 面板", src("ui/SettingsScreen.kt").contains("BaopuMcpSheet("))
     }
 
     @Test

@@ -170,9 +170,9 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     var showExtract by remember { mutableStateOf(false) }
     // 2026-10-23：小说工程的抽屉入口（之前只有工具、没有落点）。
     var showNovel by remember { mutableStateOf(false) }
-    // 第二百五十一批：`showMcp` 随抽屉入口一起删 —— MCP 面板现在由律令「抱朴」组打开。
-    // 资料库有了自己的页（抱朴抽屉那一行不再跳设置页）。
-    var showKnowledgeLibrary by remember { mutableStateOf(false) }
+    // 第二百八十六批（2026-10-30 用户裁定）：`showKnowledgeLibrary` 随「资料库」入口一起搬去律令；
+    // 同时把 `showMcp` 接回来 —— 外部工具（MCP）从律令搬回抽屉「技能」下面。
+    var showMcp by remember { mutableStateOf(false) }
     // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
     var menuMsg by remember { mutableStateOf<BaopuUiMessage?>(null) }
     var editMsg by remember { mutableStateOf<Pair<Long, String>?>(null) }
@@ -447,11 +447,11 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     },
                     // 长按文件夹行＝只看路径，不跳页（派工单 §7 的「长按提示」）。
                     onWorkspaceHold = showWorkspacePath,
-                    // 第二百五十一批：「资料库」行不再跳设置页（250 之后那一路落到的页已废，
-                    // 是个死入口），改开抱朴自己的资料库页：索引状态／上次更新／重建索引。
-                    onLibrary = {
+                    // 第二百八十六批（2026-10-30 用户裁定）：「资料库」搬去律令，
+                    // 「外部工具（MCP）」从律令搬回这里、排在「技能」下面。
+                    onMcp = {
                         scope.launch { drawerState.close() }
-                        showKnowledgeLibrary = true
+                        showMcp = true
                     },
                     // 第二百零五批：技能列表页（三组＋反思器候选卡的壳）。
                     onSkillLibrary = {
@@ -1394,10 +1394,9 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     },
                 )
             }
-            if (showKnowledgeLibrary) {
-                // 第二百五十一批：资料库（索引状态＋重建）。承载方式与设置页同一套
-                // （Dialog 全屏，见 KnowledgeLibraryScreen 的文件头）。
-                KnowledgeLibraryScreen(onDismiss = { showKnowledgeLibrary = false })
+            // 外部工具（MCP）清单（第二百八十六批：从律令搬回抽屉「技能」下面）。
+            if (showMcp) {
+                BaopuMcpSheet(onDismiss = { showMcp = false })
             }
             if (showSettings) {
                 BaopuSettingsScreen(
