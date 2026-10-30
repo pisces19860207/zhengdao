@@ -87,9 +87,25 @@ class GuardPipelineTest {
     fun `点点点逃逸_287起按真实目标解析_工作区外可读`() {
         val root = tmp("dots")
         val r = pipeline(root).execute(call("read_file", "../../etc/passwd"), { _, _ -> null })
-        // 平台无关：要么真读到（Linux/Android），要么"不存在"（Windows 上解析到别的目录）——
-        // 都不是 Rejected。**系统目录**那一条由 FilePolicyTest 的纯函数用例钉住。
-        assertTrue("287：不该再按「越界」拒：$r", r !is GuardPipeline.Result.Rejected)
+        // ⚠️ 平台差异（2026-10-30 CI 红出来的真因）：
+        //   · POSIX：这条**真的**落到 `/etc/passwd` —— 那是**系统目录**，FilePolicy 必须拒，
+        //     且拒绝理由只能是「系统目录」（L287 的三条硬下限之一），**不是**「工作区越界」。
+        //   · Windows：解析到别的目录，读不到 ⇒ Failed/Done 都行。
+        // 本用例钉的是「287 起不再按工作区边界拒」；系统目录该拒就拒，别把它当回潮。
+        val onPosix = !System.getProperty("os.name").orEmpty().startsWith("Windows")
+        if (onPosix) {
+            // ← CI（ubuntu）走这条：/etc/passwd 是系统目录 ⇒ 必须拒，而且理由必须是「系统目录」。
+            assertTrue(
+                "POSIX 上 ../../etc/passwd 落在系统目录 ⇒ 必须拒且理由是「系统目录」：$r",
+                r is GuardPipeline.Result.Rejected && r.reason.contains("系统目录"),
+            )
+        } else {
+            // Windows 上这条解析到别的目录（读不到）⇒ Failed/Done；唯一不许的是「越界」拒。
+            assertTrue(
+                "Windows 上不该按「越界」拒：$r",
+                r !is GuardPipeline.Result.Rejected || r.reason.contains("系统目录"),
+            )
+        }
     }
 
     @Test
