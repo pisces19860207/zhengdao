@@ -41,6 +41,9 @@ class OpinionIsolationTest {
         "com/example/zhengdao/baopu/inspect/NocturnalPatrol.kt" to "279",
         "com/example/zhengdao/baopu/inspect/GoldenGuard.kt" to "279",
         "com/example/zhengdao/baopu/inspect/PatrolMutual.kt" to "279",
+        // 291（第二刀）：御医体检把单子压成一条意见递进延后队列——真构造 Opinion（不是顺手 import），
+        // 走 `enqueueOnly`（只进队列、不占御案额度）。
+        "com/example/zhengdao/baopu/inspect/HealthRun.kt" to "291",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

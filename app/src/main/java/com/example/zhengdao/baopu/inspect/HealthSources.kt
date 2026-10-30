@@ -284,12 +284,18 @@ internal object HealthSources {
         }.getOrNull()
     }
 
-    /** 把普查表 + 轨迹读数拼成体检的输入（缺哪路就那一路为空，绝不编数）。 */
+    /**
+     * 把普查表 + 轨迹读数拼成体检的输入（缺哪路就那一路为空，绝不编数）。
+     *
+     * @param measured 轨迹表里**有没有任何一行**。有 ⇒ 表里没出现的工具就是"窗内 0 次调用"
+     *   （这是"理解卡"的唯一来源）；没有 ⇒ 全部记未取样（没数据源时不许把"看不见"说成"没人用"）。
+     */
     fun probes(
         stats: List<TraceStat>,
         visible: Set<String>,
         groupOf: Map<String, String>,
         allTools: Collection<String>,
+        measured: Boolean = stats.isNotEmpty(),
     ): List<ToolProbe> {
         val byTool = stats.associateBy { it.tool }
         return allTools.sorted().map { name ->
@@ -298,7 +304,7 @@ internal object HealthSources {
                 name = name,
                 group = groupOf[name] ?: "?",
                 visibleByDefault = name in visible,
-                calls = s?.calls,
+                calls = if (measured) (s?.calls ?: 0) else null,
                 ok = s?.ok ?: 0,
                 rejected = s?.rejected ?: 0,
                 p50Ms = s?.p50Ms ?: 0L,

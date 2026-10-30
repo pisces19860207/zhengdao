@@ -90,6 +90,14 @@ internal enum class OpinionWhy(val wire: String) {
 
     /** 无法可依且不致命：只记档，不打扰。 */
     NO_LAW("no_law"),
+
+    /**
+     * 只进队列、不占御案额度（第二百九十一批 · 御医体检）。
+     *
+     * 为什么单独一个键：它不是"预算满了被压"，而是"这一类意见本来就不该弹"——
+     * 混进 [DAY_QUOTA] 会让回放时把月度体检算成"当天额度用光"的证据。
+     */
+    QUEUE_ONLY("queue_only"),
     ;
 
     companion object {
@@ -414,6 +422,31 @@ internal object OpinionWiring {
         callId: String = "",
     ): Ruling = submit(opinion, tool, callId, now, alreadyRefused, exemptionReason)
 
+    /**
+     * 只进队列、不占御案额度（第二百九十一批 · 御医体检）。
+     *
+     * 与 [onOpinion] 只差一处：**跳过预算判定**，直接按"延后"落账。
+     * 为什么必须跳过：`OpinionJudge.judge` 在预算内会判"该弹"并吃掉当日御案额度（每日 ≤3），
+     * 而体检一个月一条、从来不需要人当场点——抢掉一张额度等于把真正要人定的确认卡挤到明天。
+     *
+     * 幂等／去重／落账（`意见判定.jsonl`）／自决单全部走同一条 [submit]，
+     * **不另起一套写入路径**（两套写同一本账迟早对不上）。
+     */
+    @Synchronized
+    fun enqueueOnly(
+        opinion: Opinion,
+        tool: String = "",
+        now: Long = System.currentTimeMillis(),
+    ): Ruling = submit(
+        opinion = opinion,
+        tool = tool,
+        callId = "",
+        now = now,
+        alreadyRefused = false,
+        exemptionReason = null,
+        queueOnly = true,
+    )
+
     // ── W2 预算判定 ＋ W3 落账 ──────────────────────────────────────────
 
     @Synchronized
@@ -424,6 +457,7 @@ internal object OpinionWiring {
         now: Long,
         alreadyRefused: Boolean,
         exemptionReason: String? = null,
+        queueOnly: Boolean = false,
     ): Ruling {
         val mark = roundMark()
         if (mark.first != roundKey) {
@@ -447,13 +481,21 @@ internal object OpinionWiring {
         seen[key]?.let { return it }
 
         seedDay(now)
-        val verdict = OpinionJudge.judge(
-            opinion = opinion,
-            royalToday = royalToday,
-            roundUsed = roundPops > 0,
-            alreadyRefused = alreadyRefused,
-            exemptionReason = exemptionReason,
-        )
+        val verdict = if (queueOnly) {
+            OpinionJudge.Verdict(
+                OpinionDecision.DEFER,
+                OpinionWhy.QUEUE_ONLY,
+                "只进队列：这类意见不弹（不占御案额度）",
+            )
+        } else {
+            OpinionJudge.judge(
+                opinion = opinion,
+                royalToday = royalToday,
+                roundUsed = roundPops > 0,
+                alreadyRefused = alreadyRefused,
+                exemptionReason = exemptionReason,
+            )
+        }
         seq += 1
         val ruling = Ruling(
             id = "op:$now:${mark.second}:$seq",

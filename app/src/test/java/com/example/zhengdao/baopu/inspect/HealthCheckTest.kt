@@ -419,9 +419,11 @@ class HealthCheckTest {
                 ),
                 toolRows = rows,
                 gatesRan = true,
-                // 2026-10-30 实测：detekt 硬墙 334 > 上限 326（基线 91562ca0 就已超，
-                // 本单三文件贡献 0 条）。体检单是**快照**：下一趟重跑要改这里，不是实时读数。
-                redGates = listOf("detektWall 334 > 326（2026-10-30 实测；本单三文件 0 条）"),
+                // 2026-10-30 实测：detektWall 334 条 / 上限 334 ⇒ 绿。
+                // 同日上午上限还是 326、这一条是红的（本单三文件 0 条）；同日 `a7856aed`
+                // 带理由把上限上调到 334 ⇒ 转绿。体检单是**快照**，不是实时读数：
+                // 下一趟重跑要改这里（红了就把那一行填进 redGates）。
+                redGates = emptyList(),
             ),
         )
         // 读数层零调用是**源码事实**（普查里查得到），所以"账在、没人算"这趟就能判，不必等数据。
@@ -440,7 +442,7 @@ class HealthCheckTest {
         assertEquals(7, sheet.unmeasured())
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.WIRING))
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.LEDGER))
-        assertEquals(ScanOutcome.HIT, sheet.outcomeOf(DefectSignal.TEST_RED))
+        assertEquals(ScanOutcome.NO_SIGNAL, sheet.outcomeOf(DefectSignal.TEST_RED))
         assertEquals(ScanOutcome.NO_DATA, sheet.outcomeOf(DefectSignal.CRASH_ANR))
 
         val out = File("build/reports").apply { mkdirs() }

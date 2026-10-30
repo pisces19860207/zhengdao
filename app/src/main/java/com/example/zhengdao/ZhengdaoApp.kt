@@ -40,6 +40,9 @@ class ZhengdaoApp : Application() {
         AppForeground.install(this)
         // 第一百八十二批：知识库自动刷新（启动/回前台增量 ＋ MediaStore 可选加速 ＋ 前台周期兜底）。
         com.example.zhengdao.baopu.KnowledgeRefresh.install(this)
+        // 第二百九十一批（第二刀）：御医体检的月位——一个月一次、非精确、只在充电时跑。
+        // 这里只**排**（KEEP 幂等，重复开 App 不会把周期清零）；跑不跑由 Worker 里的月位闸判。
+        com.example.zhengdao.baopu.inspect.HealthScheduler.ensureScheduled(this)
         initWebViewDataDirectory()
         logSignature()
         keepalive()
