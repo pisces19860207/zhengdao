@@ -43,6 +43,10 @@ class ZhengdaoApp : Application() {
         // 第二百九十一批（第二刀）：御医体检的月位——一个月一次、非精确、只在充电时跑。
         // 这里只**排**（KEEP 幂等，重复开 App 不会把周期清零）；跑不跑由 Worker 里的月位闸判。
         com.example.zhengdao.baopu.inspect.HealthScheduler.ensureScheduled(this)
+        // 第二百九十批：斥候——首启/版本变化/回前台（权限变更）后台探一遍"本机能干什么"，
+        // 产 `Opinion(source=SCOUT)` ＋ 一页能力清单（`<工作区>/记忆/能力清单.md`）。
+        // 必须**在 AppForeground.install 之后**：它要挂前/后台边沿监听（回前台＝用户可能刚改过权限）。
+        com.example.zhengdao.baopu.scout.Scout.install(this)
         initWebViewDataDirectory()
         logSignature()
         keepalive()

@@ -44,6 +44,10 @@ class OpinionIsolationTest {
         // 291（第二刀）：御医体检把单子压成一条意见递进延后队列——真构造 Opinion（不是顺手 import），
         // 走 `enqueueOnly`（只进队列、不占御案额度）。
         "com/example/zhengdao/baopu/inspect/HealthRun.kt" to "291",
+        // 290 批：斥候产 `Opinion(source=SCOUT)` 交四器——派工单明令的第二个产出，
+        // 不是顺手 import；`Scout.kt` 只是把 `ScoutOpinions` 的结果装进 Report（同一件事的两个文件）。
+        "com/example/zhengdao/baopu/scout/ScoutOpinions.kt" to "290",
+        "com/example/zhengdao/baopu/scout/Scout.kt" to "290",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

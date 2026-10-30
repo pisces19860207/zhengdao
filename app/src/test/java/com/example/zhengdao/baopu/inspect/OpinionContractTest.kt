@@ -10,12 +10,14 @@ class OpinionContractTest {
     private fun opinion(gist: String = "需复核", evidence: List<String> = listOf("event:1")) =
         Opinion(Source.PATROL, Severity.MAJOR, gist, ActionCode.REVIEW, LawRef.NONE, evidence)
 
-    @Test fun `four sources use the same contract without guessing a law`() {
+    @Test fun `every source uses the same contract without guessing a law`() {
         val samples = listOf(
             OpinionAdapter.CLASSIFIER.adapt(Severity.CRITICAL, "删除不可逆", ActionCode.SUGGEST_PAUSE, LawRef.NONE, listOf("risk:1")),
             OpinionAdapter.PATROL.adapt(Severity.MAJOR, "勘验缺证", ActionCode.SUPPLEMENT_EVIDENCE, LawRef.NONE, listOf("patrol:1")),
             OpinionAdapter.AUDIT.adapt(Severity.MAJOR, "账实不符", ActionCode.REVIEW, LawRef.NONE, listOf("audit:1")),
             OpinionAdapter.SHADOW.adapt(Severity.CRITICAL, "影响超推演", ActionCode.SUGGEST_PAUSE, LawRef.NONE, listOf("shadow:1")),
+            // 第二百九十批：第五个来源（斥候）——同样是"照显式字段原样落地，不替它猜法条"。
+            OpinionAdapter.SCOUT.adapt(Severity.MAJOR, "缺授权", ActionCode.REVIEW, LawRef.NONE, listOf("scout:1")),
         )
         assertEquals(Source.entries.toList(), samples.map { it.source })
         samples.forEach {
