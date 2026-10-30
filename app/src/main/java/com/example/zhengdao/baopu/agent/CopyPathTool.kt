@@ -72,29 +72,47 @@ internal object CopyPathTool {
     ): ToolOutcome {
         if (from.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_FROM」")
         if (to.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_TO」")
+        val guard = guardCopy(root, from, to)
+        if (guard is Guard.Bad) return guard.outcome
+        val (src, dst) = (guard as Guard.Ok)
+        return if (src.isDirectory) copyDir(root, src, dst, createDirs) else copySingleFile(root, src, dst, from, createDirs)
+    }
+
+    private sealed interface Guard {
+        data class Ok(val src: File, val dst: File) : Guard
+
+        data class Bad(val outcome: ToolOutcome) : Guard
+    }
+
+    /** 前置守卫：人设区/系统凭据区/备份区/同路径/源存在/目标形态——一条不过都别进复制。 */
+    private fun guardCopy(root: File, from: String, to: String): Guard {
         // 人设区照 move_path 口径：源/目标任一命中即拒（复制进人设区更是改）
-        PersonaGuard.blocked(from)?.let { return ToolOutcome.Rejected(it) }
-        PersonaGuard.blocked(to)?.let { return ToolOutcome.Rejected(it) }
+        PersonaGuard.blocked(from)?.let { return Guard.Bad(ToolOutcome.Rejected(it)) }
+        PersonaGuard.blocked(to)?.let { return Guard.Bad(ToolOutcome.Rejected(it)) }
         val src = PathCopyCore.resolve(root, from)
         val dst = PathCopyCore.resolve(root, to)
-        fileAccessCheck(src, FilePaths.display(root, src))?.let { return ToolOutcome.Rejected(it) }
-        fileAccessCheck(dst, FilePaths.display(root, dst))?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(src, FilePaths.display(root, src))?.let { return Guard.Bad(ToolOutcome.Rejected(it)) }
+        fileAccessCheck(dst, FilePaths.display(root, dst))?.let { return Guard.Bad(ToolOutcome.Rejected(it)) }
         // 备份区：源只读本无害，但与 move_path 保持同一句口径（备份区是回滚点，别拿它当料）
         if (PathCopyCore.insideBackup(root, src) || PathCopyCore.insideBackup(root, dst)) {
-            return ToolOutcome.Failed("不能把 备份/ 当复制源或目标（那是回滚点，模型只读）")
+            return Guard.Bad(ToolOutcome.Failed("不能把 备份/ 当复制源或目标（那是回滚点，模型只读）"))
         }
         if (src.absolutePath == dst.absolutePath) {
-            return ToolOutcome.Failed("源和目标同一路径：$from")
+            return Guard.Bad(ToolOutcome.Failed("源和目标同一路径：$from"))
         }
-        if (!src.exists()) return ToolOutcome.Failed("源不存在：$from")
+        if (!src.exists()) return Guard.Bad(ToolOutcome.Failed("源不存在：$from"))
         if (dst.exists() && dst.isDirectory && !src.isDirectory) {
-            return ToolOutcome.Failed(
-                "目标位置已是个目录：${PathCopyCore.relOf(root, dst)}（把 $ARG_TO 写到具体文件名）",
+            return Guard.Bad(
+                ToolOutcome.Failed(
+                    "目标位置已是个目录：${PathCopyCore.relOf(root, dst)}（把 $ARG_TO 写到具体文件名）",
+                ),
             )
         }
-        if (src.isDirectory) {
-            return copyDir(root, src, dst, createDirs)
-        }
+        return Guard.Ok(src, dst)
+    }
+
+    /** 单文件复制：撞名让路／幂等（与 move_path 同口径，但源永远保留）。 */
+    private fun copySingleFile(root: File, src: File, dst: File, from: String, createDirs: Boolean): ToolOutcome {
         val parent = dst.parentFile
         if (parent != null && !parent.exists()) {
             if (!createDirs) {
@@ -102,7 +120,6 @@ internal object CopyPathTool {
             }
             if (!parent.mkdirs()) return ToolOutcome.Failed("建不了目标目录：${parent.absolutePath}")
         }
-        // 单文件：撞名让路／幂等，与 move_path 同口径（但源永远保留）
         val sha = PathCopyCore.sha256(src)
             ?: return ToolOutcome.Failed("读不出源文件（IO 错误）：$from")
         var target = dst

@@ -138,18 +138,39 @@ internal object PathCopyCore {
         val maxKb: Long? = null,
     ) {
         /** 纯函数：这个文件命中规则吗（[nowMs] 注入以便 JVM 直测确定性）。 */
-        fun matches(f: File, nowMs: Long): Boolean {
-            if (f.isDirectory) return false
+        fun matches(f: File, nowMs: Long): Boolean =
+            !f.isDirectory &&
+                extMatches(f) &&
+                categoryMatches(f) &&
+                dateMatches(f, nowMs) &&
+                sizeMatches(f)
+
+        /** 扩展名筛（规则没配 exts ＝ 不筛）。 */
+        private fun extMatches(f: File): Boolean {
+            if (exts.isEmpty()) return true
             val ext = f.name.substringAfterLast('.', "").lowercase()
-            if (exts.isNotEmpty() && ext !in exts) return false
-            if (category != null && category !== Category.OTHER && Category.of(f) !== category) return false
+            return ext in exts
+        }
+
+        /** 类型筛（OTHER 不作为筛选口径——无扩展名的文件只受 exts 管）。 */
+        private fun categoryMatches(f: File): Boolean {
+            if (category == null || category === Category.OTHER) return true
+            return Category.of(f) === category
+        }
+
+        /** 日期筛（mtime 读不出＝时间未知 ⇒ 一律不过日期筛，宁可少选不误选）。 */
+        private fun dateMatches(f: File, nowMs: Long): Boolean {
+            if (olderThanDays == null && newerThanDays == null) return true
             val mtime = runCatching { f.lastModified() }.getOrDefault(0L)
-            olderThanDays?.let { days ->
-                if (mtime <= 0L || nowMs - mtime < days * 86_400_000L) return false
-            }
-            newerThanDays?.let { days ->
-                if (mtime <= 0L || nowMs - mtime > days * 86_400_000L) return false
-            }
+            if (mtime <= 0L) return false
+            olderThanDays?.let { days -> if (nowMs - mtime < days * 86_400_000L) return false }
+            newerThanDays?.let { days -> if (nowMs - mtime > days * 86_400_000L) return false }
+            return true
+        }
+
+        /** 大小筛（KB 口径；读不出长度按 0 算）。 */
+        private fun sizeMatches(f: File): Boolean {
+            if (minKb == null && maxKb == null) return true
             val len = runCatching { f.length() }.getOrDefault(0L)
             minKb?.let { if (len < it * 1024) return false }
             maxKb?.let { if (len > it * 1024) return false }
@@ -339,60 +360,91 @@ internal object PathCopyCore {
         val failed = mutableListOf<String>()
         val pendingDelete = mutableListOf<String>()
         for ((src, dst0) in plan.entries) {
-            // 目标目录先建（一次建齐，逐文件建是浪费；mkdirs 对已存在的目录返回 false，不当失败）
-            val dirReady = runCatching { dst0.parentFile?.mkdirs() }.getOrDefault(false) == true ||
-                dst0.parentFile?.isDirectory == true
-            if (!dirReady) {
-                failed += relOf(root, src)
-                continue
-            }
-            val sha = sha256(src)
-            if (sha == null) {
-                failed += relOf(root, src)
-                continue
-            }
-            var target = dst0
-            if (dst0.exists()) {
-                val dstSha = sha256(dst0)
-                if (dstSha == sha) {
-                    // 内容相同 ⇒ 幂等：move 语义下源还在的话把它也记进待删除清单（同 move_path 口径）
+            val r = execStep(src, dst0, move, preferCopy, onDone)
+            when (r.kind) {
+                StepKind.FAILED -> failed += relOf(root, src)
+                StepKind.SAME -> {
                     skippedSame++
-                    if (move && src.exists()) {
-                        pendingDelete += relOf(root, src)
-                        onDone(src, dst0)
-                    }
-                    continue
+                    // 幂等跳过时 move 语义下源还在 ⇒ 同样是「该删而没删」的候选（与 move_path 同口径）
+                    if (move && src.exists()) pendingDelete += relOf(root, src)
                 }
-                target = bypassTarget(dst0, sha)
-                bypassed++
-            }
-            val ok = if (move && !src.isDirectory && !preferCopy) {
-                val renamed = runCatching { src.renameTo(target) }.getOrDefault(false)
-                if (renamed) {
-                    true
-                } else {
-                    // 跨分区（或 rename 失败）：复制，源保留——**不自动删**（刀 2 铁律）
-                    val copied = copyFile(src, target)
-                    if (copied) pendingDelete += relOf(root, src)
-                    copied
+                StepKind.DONE -> {
+                    done++
+                    bytes += r.bytes
+                    if (r.bypassed) bypassed++
+                    if (r.keepSource) pendingDelete += relOf(root, src)
                 }
-            } else {
-                val copied = copyFile(src, target)
-                // move 语义走测试钩子（preferCopy）时同样「源保留」；copy 语义源本来就在
-                if (copied && move) pendingDelete += relOf(root, src)
-                copied
-            }
-            if (ok) {
-                done++
-                bytes += runCatching { src.length() }.getOrDefault(0L)
-                onDone(src, target)
-            } else {
-                runCatching { if (target.exists()) target.delete() }
-                failed += relOf(root, src)
             }
         }
         return ExecReport(done, skippedSame, bypassed, failed, bytes, pendingDelete)
     }
+
+    /** 一条计划项的结局（execStep 的回执；对账字段全在这里，executePlan 只管数数）。 */
+    private enum class StepKind { DONE, SAME, FAILED }
+
+    private data class StepResult(
+        val kind: StepKind,
+        val bypassed: Boolean = false,
+        val bytes: Long = 0L,
+        val keepSource: Boolean = false,
+    )
+
+    /**
+     * 执行**一条**计划项：建目录 → 撞名处置（同内容幂等/让路）→ rename 优先、
+     * 复制兜底（move 语义复制后源保留＝keepSource）→ 失败回删半截目标。
+     */
+    private fun execStep(
+        src: File,
+        dst0: File,
+        move: Boolean,
+        preferCopy: Boolean,
+        onDone: (File, File) -> Unit,
+    ): StepResult {
+        if (!ensureParent(dst0)) return StepResult(StepKind.FAILED)
+        val sha = sha256(src) ?: return StepResult(StepKind.FAILED)
+        var target = dst0
+        var bypassed = false
+        if (dst0.exists()) {
+            if (sha256(dst0) == sha) {
+                // 内容相同 ⇒ 幂等；回执也要记（撤销时把现位的那份搬回原位）
+                if (move && src.exists()) onDone(src, dst0)
+                return StepResult(StepKind.SAME)
+            }
+            target = bypassTarget(dst0, sha)
+            bypassed = true
+        }
+        val len = runCatching { src.length() }.getOrDefault(0L)
+        if (move && !src.isDirectory && !preferCopy) {
+            if (runCatching { src.renameTo(target) }.getOrDefault(false)) {
+                onDone(src, target)
+                return StepResult(StepKind.DONE, bypassed, len)
+            }
+            // 跨分区（或 rename 失败）：复制，源保留——**不自动删**（刀 2 铁律）
+            return finishCopy(src, target, bypassed, len, keepSource = true, onDone = onDone)
+        }
+        return finishCopy(src, target, bypassed, len, keepSource = move, onDone = onDone)
+    }
+
+    private fun finishCopy(
+        src: File,
+        target: File,
+        bypassed: Boolean,
+        len: Long,
+        keepSource: Boolean,
+        onDone: (File, File) -> Unit,
+    ): StepResult {
+        if (!copyFile(src, target)) {
+            runCatching { if (target.exists()) target.delete() }
+            return StepResult(StepKind.FAILED)
+        }
+        onDone(src, target)
+        return StepResult(StepKind.DONE, bypassed, len, keepSource)
+    }
+
+    /** 目标父目录就位（已存在或建成功；mkdirs 对已存在的目录返回 false，不算失败）。 */
+    private fun ensureParent(dst: File): Boolean = dst.parentFile?.let { p ->
+        p.isDirectory || runCatching { p.mkdirs() }.getOrDefault(false)
+    } == true
 
     // ── 回执与撤销 ───────────────────────────────────────────────────────
 
@@ -453,28 +505,37 @@ internal object PathCopyCore {
             if (parts.size != 2) continue
             val original = File(parts[0].trim()) // 原来在哪（要退回的地方）
             val current = File(parts[1].trim()) // 现在在哪（回执里「目标」端）
-            if (!current.exists()) {
-                skipped++
-                continue
-            }
-            val target = if (original.exists()) {
-                // 原位已有同名（用户后来自己放的新文件）⇒ 让路，绝不覆盖
-                val sha = sha256(current) ?: sha256(original) ?: ""
-                bypassTarget(original, sha)
-            } else {
-                runCatching { original.parentFile?.mkdirs() }
-                original
-            }
-            val ok = runCatching { current.renameTo(target) }.getOrDefault(false) ||
-                (copyFile(current, target) && runCatching { current.delete() }.getOrDefault(false))
-            if (ok) {
-                restored++
-                onEntry(current, target)
-            } else {
-                failed++
+            when (undoOne(original, current)) {
+                UndoKind.RESTORED -> {
+                    restored++
+                    onEntry(current, original)
+                }
+                UndoKind.SKIPPED -> skipped++
+                UndoKind.FAILED -> failed++
             }
         }
         return Triple(restored, skipped, failed)
+    }
+
+    private enum class UndoKind { RESTORED, SKIPPED, FAILED }
+
+    /**
+     * 退回**一条**回实行：现位不在（用户自己动过）＝跳过；原位已有同名（用户后来放的
+     * 新文件）＝让路绝不覆盖；搬回失败（复制兜底也不成）＝失败。
+     */
+    private fun undoOne(original: File, current: File): UndoKind {
+        if (!current.exists()) return UndoKind.SKIPPED
+        val target = if (original.exists()) {
+            // 原位已有同名 ⇒ 让路，绝不覆盖
+            val sha = sha256(current) ?: sha256(original) ?: ""
+            bypassTarget(original, sha)
+        } else {
+            runCatching { original.parentFile?.mkdirs() }
+            original
+        }
+        val ok = runCatching { current.renameTo(target) }.getOrDefault(false) ||
+            (copyFile(current, target) && runCatching { current.delete() }.getOrDefault(false))
+        return if (ok) UndoKind.RESTORED else UndoKind.FAILED
     }
 
     /** 备份区禁区判定（与 move_path / delete_path 同一处常量）。 */

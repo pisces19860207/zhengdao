@@ -115,30 +115,9 @@ internal object BulkPathTools {
 
     /** 执行体（两件共用；move 决定源要不要消失）。 */
     fun run(root: File, args: org.json.JSONObject, move: Boolean): ToolOutcome {
-        val dirRaw = args.optString(ARG_DIR).trim()
-        val destRaw = args.optString(ARG_DEST).trim()
-        if (dirRaw.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_DIR」")
-        if (destRaw.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_DEST」")
-        PersonaGuard.blocked(dirRaw)?.let { return ToolOutcome.Rejected(it) }
-        PersonaGuard.blocked(destRaw)?.let { return ToolOutcome.Rejected(it) }
-        val dir = PathCopyCore.resolve(root, dirRaw)
-        val dest = PathCopyCore.resolve(root, destRaw)
-        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
-        fileAccessCheck(dest, FilePaths.display(root, dest))?.let { return ToolOutcome.Rejected(it) }
-        if (PathCopyCore.insideBackup(root, dir) || PathCopyCore.insideBackup(root, dest)) {
-            return ToolOutcome.Failed("不能把 备份/ 当批量范围或目标（那是回滚点）")
-        }
-        if (dest.absolutePath == dir.absolutePath) {
-            return ToolOutcome.Failed("范围和目标是同一个目录：$dirRaw（搬了等于没搬）")
-        }
-        if (dest.absolutePath.startsWith(dir.absolutePath + File.separator) ||
-            dest.absolutePath == dir.absolutePath + File.separator
-        ) {
-            return ToolOutcome.Failed(
-                "目标在范围目录里面（$dirRaw 的子目录）：逐层收拢会把自己也搬进去，请换个目标。",
-            )
-        }
-        if (!dir.isDirectory) return ToolOutcome.Failed("范围不是目录（或不存在）：$dirRaw")
+        val scope = guardScope(root, args)
+        if (scope is Scope.Bad) return scope.outcome
+        val (dir, dest) = (scope as Scope.Ok).let { it.dir to it.dest }
         val rule = PathCopyCore.Rule.fromArgs(args)
         val plan = PathCopyCore.planBulk(
             dir, dest, rule,
@@ -152,7 +131,26 @@ internal object BulkPathTools {
                     "先用 find_files 或 list_dir 看看清有什么。",
             )
         }
-        // 预览式回执头：执行前先在话术里报数（卡上已经批过，这里对账）
+        val report = executeWithReceipt(root, dir, move, rule, plan)
+        val tail = report.second?.let { "；回执 $it 在 产物/_整理回执/，要退回就说一声" } ?: ""
+        if (report.first.failed.isNotEmpty()) {
+            return ToolOutcome.Failed(report.first.line(verb) + tail)
+        }
+        return ToolOutcome.Ok(
+            report.first.line(verb) +
+                "：${args.optString(ARG_DIR).trim()} → ${args.optString(ARG_DEST).trim()}$tail" +
+                if (plan.skippedSelf > 0) "（另有 ${plan.skippedSelf} 个已在目标位，跳过）" else "",
+        )
+    }
+
+    /** 执行＋写回执＋补一行 287 人话账（管线只记 dir/dest 两个路径，真正动了多少在这里说清）。 */
+    private fun executeWithReceipt(
+        root: File,
+        dir: File,
+        move: Boolean,
+        rule: PathCopyCore.Rule,
+        plan: PathCopyCore.Plan,
+    ): Pair<PathCopyCore.ExecReport, String?> {
         val stamp = TimeFormats.fileStamp()
         val kind = if (move) "批量搬动" else "批量复制"
         var receiptId: String? = null
@@ -160,23 +158,53 @@ internal object BulkPathTools {
             val id = PathCopyCore.appendReceipt(root, kind, src, dst, stamp)
             if (receiptId == null) receiptId = id
         }
-        // 287 入账：管线按 pathKeys 只记 dir/dest 两行；范围里真正动了多少在这里补一句人话
         runCatching {
             val e = FileOpLog.record(
                 tool = if (move) "bulk_move" else "bulk_copy",
                 kind = if (move) FileOpKind.MOVE else FileOpKind.COPY,
                 path = FilePolicy.normalize(dir),
-                purpose = "批量$verb ${report.done} 个（${rule.describe()}）",
+                purpose = "批量${if (move) "搬动" else "复制"} ${report.done} 个（${rule.describe()}）",
             )
             com.example.zhengdao.core.RunLog.log(FileOpRules.lineOf(e))
         }
-        val tail = receiptId?.let { "；回执 $it 在 产物/_整理回执/，要退回就说一声" } ?: ""
-        if (report.failed.isNotEmpty()) {
-            return ToolOutcome.Failed(report.line(verb) + tail)
+        return report to receiptId
+    }
+
+    // ── 范围守卫（两件共用；返回 Bad 时已带给模型的原文） ─────────────────
+
+    private sealed interface Scope {
+        data class Ok(val dir: File, val dest: File) : Scope
+
+        data class Bad(val outcome: ToolOutcome) : Scope
+    }
+
+    private fun guardScope(root: File, args: org.json.JSONObject): Scope {
+        val dirRaw = args.optString(ARG_DIR).trim()
+        val destRaw = args.optString(ARG_DEST).trim()
+        if (dirRaw.isBlank()) return Scope.Bad(ToolOutcome.Failed("缺少必填参数「$ARG_DIR」"))
+        if (destRaw.isBlank()) return Scope.Bad(ToolOutcome.Failed("缺少必填参数「$ARG_DEST」"))
+        PersonaGuard.blocked(dirRaw)?.let { return Scope.Bad(ToolOutcome.Rejected(it)) }
+        PersonaGuard.blocked(destRaw)?.let { return Scope.Bad(ToolOutcome.Rejected(it)) }
+        val dir = PathCopyCore.resolve(root, dirRaw)
+        val dest = PathCopyCore.resolve(root, destRaw)
+        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return Scope.Bad(ToolOutcome.Rejected(it)) }
+        fileAccessCheck(dest, FilePaths.display(root, dest))?.let { return Scope.Bad(ToolOutcome.Rejected(it)) }
+        if (PathCopyCore.insideBackup(root, dir) || PathCopyCore.insideBackup(root, dest)) {
+            return Scope.Bad(ToolOutcome.Failed("不能把 备份/ 当批量范围或目标（那是回滚点）"))
         }
-        return ToolOutcome.Ok(
-            report.line(verb) + "：$dirRaw → $destRaw$tail" +
-                if (plan.skippedSelf > 0) "（另有 ${plan.skippedSelf} 个已在目标位，跳过）" else "",
-        )
+        if (dest.absolutePath == dir.absolutePath) {
+            return Scope.Bad(ToolOutcome.Failed("范围和目标是同一个目录：$dirRaw（搬了等于没搬）"))
+        }
+        if (dest.absolutePath.startsWith(dir.absolutePath + File.separator) ||
+            dest.absolutePath == dir.absolutePath + File.separator
+        ) {
+            return Scope.Bad(
+                ToolOutcome.Failed(
+                    "目标在范围目录里面（$dirRaw 的子目录）：逐层收拢会把自己也搬进去，请换个目标。",
+                ),
+            )
+        }
+        if (!dir.isDirectory) return Scope.Bad(ToolOutcome.Failed("范围不是目录（或不存在）：$dirRaw"))
+        return Scope.Ok(dir, dest)
     }
 }

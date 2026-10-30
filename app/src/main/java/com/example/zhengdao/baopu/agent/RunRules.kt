@@ -288,16 +288,7 @@ internal object RunRules {
                 showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
                 "（搬走后原件不在原处）"
             // 第二百八十八批：复制/批量/整理——卡面说清「动哪个范围、源保不保留、能不能退回」。
-            "copy_path" -> "复制 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
-                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
-                "（源文件原地保留，重名不覆盖）"
-            "bulk_move" -> "批量搬动 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
-                showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +
-                "（源会离开原处；回执可退回）"
-            "bulk_copy" -> "批量复制 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
-                showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +
-                "（源文件原地保留，重名不覆盖）"
-            "organize" -> organizeSummary(args, projectRoot)
+            "copy_path", "bulk_move", "bulk_copy", "organize" -> copyGroupSummary(tool, args, projectRoot)
             // 第二百八十七批：删/移必确认，卡面第一句就要说清「删什么、能不能回」。
             "delete_path" -> deleteSummary(args, path)
             // 第一百五十八批：生图会烧 Gemini 额度，卡面第一句就把「几张、什么比例」说清；
@@ -343,6 +334,23 @@ internal object RunRules {
         } else {
             "删除 $shown（先进回收站，可以捞回来）"
         }
+    }
+
+    /** 288 四件的卡面摘要（复制/批量搬/批量复制/整理——每件一句话，见各自分支）。 */
+    private fun copyGroupSummary(tool: String, args: JSONObject, projectRoot: File?): String = when (tool) {
+        "copy_path" -> "复制 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
+            showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
+            "（源文件原地保留，重名不覆盖）"
+
+        "bulk_move" -> "批量搬动 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
+            showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +
+            "（源会离开原处；回执可退回）"
+
+        "bulk_copy" -> "批量复制 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
+            showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +
+            "（源文件原地保留，重名不覆盖）"
+
+        else -> organizeSummary(args, projectRoot)
     }
 
     /** 整理卡摘要（288）：整理还是退回、按什么分、源会离开原处——一句话说全。 */
