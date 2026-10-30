@@ -56,6 +56,12 @@ internal data class SkillWritePlan(
     val charCount: Int,
     val indexEntry: SkillRules.IndexLine,
     val blocked: String?,
+    /**
+     * 289：与既有技能**重名或高度相似**的命中（调用方没给既有索引行就恒 null——
+     * 旧调用方一行不改，行为不变）。非 null ⇒ 确认卡必须给「升级／新建」二选一，
+     * 不许静默覆盖（同名）或悄悄并排堆近似技能（近似）。
+     */
+    val duplicate: SkillHygiene.Duplicate? = null,
 )
 
 /**
@@ -111,6 +117,7 @@ object SkillStore {
         globalRoot: File,
         backupStamp: String,
         indexCountAfterAdd: Int = 0,
+        existingLines: List<SkillRules.IndexLine> = emptyList(),
     ): SkillWritePlan {
         val safe = sanitizeName(proposal.name)
         val dir = when (proposal.scope) {
@@ -136,6 +143,13 @@ object SkillStore {
 
         // 草稿也进索引（2026-10-18 用户口径）：不进索引 ⇒ 明天看不见 ⇒ 重新摸索＝白烧 token。
         val draftMark = if (proposal.draft) "（草稿·未验证，用前先 read_file 核对）" else ""
+        // 289①：重名/近似探查（判据在 SkillHygiene；调用方没给既有索引就查不出——行为照旧）。
+        val scenarioSentence = firstSentence(proposal.body)
+        val duplicate = if (safe != null) {
+            SkillHygiene.findDuplicate(name, scenarioSentence, existingLines)
+        } else {
+            null
+        }
         return SkillWritePlan(
             proposal = proposal.copy(name = name),
             file = file,
@@ -144,10 +158,11 @@ object SkillStore {
             charCount = proposal.body.length,
             indexEntry = SkillRules.IndexLine(
                 name = name,
-                scenario = firstSentence(proposal.body) + draftMark,
+                scenario = scenarioSentence + draftMark,
                 scope = scopeOf(proposal.scope),
             ),
             blocked = blocked,
+            duplicate = duplicate,
         )
     }
 
