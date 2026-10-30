@@ -332,7 +332,7 @@ class OrchestrationBatchTest {
         val db = repoRel("src/main/java/com/example/zhengdao/baopu/BaopuDb.kt").readText()
         assertTrue(
             "本批不动 BaopuDb.VERSION（动了就是迁移，必须回来改这一行并说明）",
-            db.contains("const val VERSION = 19"),
+            db.contains("const val VERSION = 20"),
         )
         val mainRoot = repoRel("src/main/java")
         val offenders = mainRoot.walkTopDown()

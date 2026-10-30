@@ -72,34 +72,46 @@ class GuardPipelineTest {
     // ── ② 路径守卫 ──────────────────────────────────────────────────────
 
     @Test
-    fun `同前缀兄弟目录_越界必拒`() {
-        // root=…/ws，兄弟 …/ws-evil ⇒ 字符串前缀会被骗过，按组件比较拒
+    fun `同前缀兄弟目录_可读_287起工作区不再是边界`() {
+        // 156/157 那会儿这条判的是「越界即拒」；287 起读全盘是默认能力，
+        // 兄弟目录当然读得到——真正该拒的只剩系统与凭据目录（见下一条）。
         val parent = tmp("sibling-parent")
         val root = File(parent, "ws").apply { mkdirs() }
         File(parent, "ws-evil").mkdirs()
         File(parent, "ws-evil/secret.txt").writeText("s")
         val r = pipeline(root).execute(call("read_file", "../ws-evil/secret.txt"), { _, _ -> null })
-        assertTrue(r is GuardPipeline.Result.Rejected)
-        assertTrue((r as GuardPipeline.Result.Rejected).reason.contains("越界"))
+        assertTrue("287：工作区外可读，不该再拒：$r", r is GuardPipeline.Result.Done)
     }
 
     @Test
-    fun `点点点逃逸_越界必拒`() {
+    fun `点点点逃逸_287起按真实目标解析_工作区外可读`() {
         val root = tmp("dots")
         val r = pipeline(root).execute(call("read_file", "../../etc/passwd"), { _, _ -> null })
-        assertTrue(r is GuardPipeline.Result.Rejected)
+        // 平台无关：要么真读到（Linux/Android），要么"不存在"（Windows 上解析到别的目录）——
+        // 都不是 Rejected。**系统目录**那一条由 FilePolicyTest 的纯函数用例钉住。
+        assertTrue("287：不该再按「越界」拒：$r", r !is GuardPipeline.Result.Rejected)
     }
 
     @Test
-    fun `绝对路径出工作区_越界必拒`() {
+    fun `绝对路径出工作区_可读`() {
         val root = tmp("abs")
-        // 跨平台的"工作区外绝对路径"：root 的父目录下的兄弟目录
-        // （Windows 上 /etc/passwd 不算绝对路径会被拼进工作区，Linux 语义才拒它——
-        //   真机是 Linux，那条路在 ReadFileToolTest 之外另钉不了，这里用平台无关写法）
-        val outsideAbs = File(root.parentFile ?: root, "elsewhere-outside").absolutePath
-        val r = pipeline(root).execute(call("read_file", outsideAbs), { _, _ -> null })
-        assertTrue(r is GuardPipeline.Result.Rejected)
-        assertTrue((r as GuardPipeline.Result.Rejected).reason.contains("越界"))
+        val outside = File(root.parentFile ?: root, "elsewhere-outside").apply { mkdirs() }
+        File(outside, "note.md").writeText("外面")
+        val r = pipeline(root).execute(call("read_file", File(outside, "note.md").absolutePath), { _, _ -> null })
+        assertTrue("287：绝对路径可读全盘：$r", r is GuardPipeline.Result.Done)
+    }
+
+    @Test
+    fun `凭据目录_必拒且留痕`() {
+        val root = tmp("cred")
+        val lines = mutableListOf<String>()
+        val key = File(root.parentFile ?: root, ".ssh/id_rsa").apply {
+            parentFile?.mkdirs()
+            writeText("私钥")
+        }
+        val r = pipeline(root) { lines += it }.execute(call("read_file", key.absolutePath), { _, _ -> null })
+        assertTrue("凭据目录必须拒：$r", r is GuardPipeline.Result.Rejected)
+        assertTrue("拒绝绝不静默", lines.any { it.contains("拒绝") })
     }
 
     @Test
@@ -114,11 +126,15 @@ class GuardPipelineTest {
     }
 
     @Test
-    fun `越界拒绝_留痕RunLog`() {
+    fun `凭据目录拒绝_留痕RunLog`() {
         val root = tmp("trace")
         val lines = mutableListOf<String>()
-        pipeline(root) { lines += it }.execute(call("read_file", "../x"), { _, _ -> null })
-        assertTrue("拒绝绝不静默", lines.any { it.contains("越界") })
+        val key = File(root.parentFile ?: root, ".ssh/id_ed25519").apply {
+            parentFile?.mkdirs()
+            writeText("私钥")
+        }
+        pipeline(root) { lines += it }.execute(call("read_file", key.absolutePath), { _, _ -> null })
+        assertTrue("拒绝绝不静默", lines.any { it.contains("拒绝") })
     }
 
     // ── ③ 权限判定 ──────────────────────────────────────────────────────

@@ -1275,7 +1275,7 @@
     <string name="baopu_file_op_desc">Baopu works with full-disk read/write like a desktop agent, and puts products in the workspace by default. Every read, write, delete, move, list and search is logged with time, action, purpose and path, and kept for 30 days. Deletes and moves always need your approval; overwriting an existing file backs it up first (files over 5MB are not backed up and the receipt says so); system and credential directories (.ssh, keystore) are never touched.</string>
     <string name="baopu_file_op_empty">Nothing logged yet. Entries appear after the first file read or write.</string>
     <string name="baopu_file_op_loading">Loading…</string>
-    <string name="baopu_file_op_more">Showing the latest %1$d of %2$d entries</string>
+    <string name="baopu_file_op_more">Showing %1$d / %2$d</string>
     <!-- Batch 165: persona packs -->
     <string name="persona_pack_card">Persona packs</string>
     <string name="persona_pack_desc">Pick a template for who is helping: it changes only tone, style and working preferences. It never changes tool permissions or confirmations, and none of its content is executed.</string>

@@ -192,10 +192,12 @@ class ToolSchedulingGateTest {
         val root = File(".").absoluteFile
         val pipeline = GuardPipeline(reg, { root }, { null }, ToolRunner(Executors.newSingleThreadExecutor()), riskTable = laneTable())
 
+        // 287：工作区外不再是拒绝面（全盘可读）⇒ 这条门禁改用**凭据目录**钉同一件事：
+        // 受保护路径必须在 prepare 阶段定论，不许进了并发池才拒。
         val outside = pipeline.prepare(
-            ToolCall("g1", "read_file", JSONObject().put("path", "../外面.txt")),
+            ToolCall("g1", "read_file", JSONObject().put("path", "../.ssh/id_rsa")),
         )
-        assertTrue("越界路径在 prepare 阶段就该被拒（不许进了并发池才拒）", outside is GuardPipeline.Prepared.Settled)
+        assertTrue("受保护路径在 prepare 阶段就该被拒（不许进了并发池才拒）", outside is GuardPipeline.Prepared.Settled)
         assertTrue((outside as GuardPipeline.Prepared.Settled).result is GuardPipeline.Result.Rejected)
 
         val badSchema = pipeline.prepare(

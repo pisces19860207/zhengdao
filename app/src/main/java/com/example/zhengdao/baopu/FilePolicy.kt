@@ -62,7 +62,7 @@ internal object FilePolicy {
      *
      * 平台口径：系统区（`/system` 一类）按 **POSIX 绝对路径**判——那是 Android 上 `File`
      * 的真实形态。JVM 单测跑在 Windows 上时，`File("/system/x")` 会被 JDK 解释成
-     * `C://system//x`（盘符相对路径），所以这一条由纯函数 [denyReasonOf] 直测钉住，
+     * `C:/system/x`（盘符相对路径），所以这一条由纯函数 [denyReasonOf] 直测钉住，
      * 不靠 `File` 走一圈（那是测试宿主的语义，不是被测行为）。
      */
     fun denyReason(target: File, pkg: String = BuildConfig.APPLICATION_ID): String? =
