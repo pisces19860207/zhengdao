@@ -100,6 +100,10 @@ class L6BoundaryGateTest {
             // 引擎 spill：输出过长时的暂存落盘，落点 = spillRoot()/.baopu-spill（应用私有目录），
             // 不是模型指的工作区路径；失败时降级为截断回灌并明说（不静默）。
             "agent/RunEngine.kt" to setOf("mkdirs", "writeText"),
+            // 第二百九十六批：影子沙盒（预演唯一碰盘处）——建副本/拍快照全在 `.shadow/<opId>/`
+            // 副本根里，真盘声明对象只读；deleteRecursively/delete 只用于清副本根自己
+            // （判据层说 CONSISTENT 才清，违规副本留着当证据）。
+            "agent/ShadowSandbox.kt" to setOf("mkdirs", "deleteRecursively", "delete"),
             // 工具失败审计 JSONL（208 之外的专业账）：落点由装配层注入的私有目录，追加-only。
             "agent/ToolFallback.kt" to setOf("mkdirs", "appendText"),
             // 产物栅格化：目标在守卫过的产物目录内；delete 只用于 tmp 清理。

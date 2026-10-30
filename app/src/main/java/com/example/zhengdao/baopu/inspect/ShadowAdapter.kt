@@ -326,10 +326,9 @@ internal object ShadowAdapter {
     private fun relKey(p: String): String =
         p.replace('\\', '/').trimEnd('/', ' ').lowercase()
 
-    /** 声明路径折进副本根下的写法（所称与实测共用一个坐标系）。 */
+    /** 声明路径折进副本根下的写法（所称与实测共用一个坐标系）——纯拼接，与沙盒 observedPaths（`absolutePath + "/" + key`）逐字节同式；剥根那把尺子全仓只许 RunRules 写一次（ConfirmCardPathDisplayTest 门禁）。 */
     private fun inCopy(copyRoot: String, rel: String): String =
-        if (copyRoot.isBlank()) rel.trim().replace('\\', '/').trimStart('/')
-        else "${copyRoot.trimEnd('/', '\\')}/${rel.trim().replace('\\', '/').trimStart('/')}"
+        "${copyRoot}/${rel.trim().replace('\\', '/').trimStart('/')}"
 
     /** 明细里的路径只留末两段（整条家目录进账没意义）。 */
     private fun tailOf(path: String): String =
