@@ -1,6 +1,16 @@
 package com.example.zhengdao.baopu.inspect
 
-internal enum class Source { CLASSIFIER, PATROL, AUDIT, SHADOW }
+internal enum class Source {
+    CLASSIFIER,
+    PATROL,
+    AUDIT,
+    SHADOW,
+
+    // 第二百九十批：斥候（Capability Scout）——只报"这台手机现在能不能做"，不掌权。
+    // 排在最后是**故意的**：四器的顺序是既有约定（`OpinionContractTest` 按枚举序对拍），
+    // 新来源只许往后加，不许插到中间去改别人已经对上的序号。
+    SCOUT,
+}
 
 internal enum class Severity(val rank: Int) { CRITICAL(3), MAJOR(2), MINOR(1) }
 
