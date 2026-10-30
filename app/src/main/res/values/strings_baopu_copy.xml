@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百八十八批：复制/批量/整理五件的工具开关文案单独成文件（房型照 269 的 strings_baopu_archive.xml）。
+     理由：共享 strings.xml 上别的会话也在改，独立文件对共享文件**零字节改动**，合并时不必并集。
+     资源合并后与放进 strings.xml 完全等价（BaopuToolStringsTest 按目录全读，门禁照样生效）。 -->
+<resources>
+    <string name="baopu_tool_copy_path">复制文件/目录</string>
+    <string name="baopu_tool_copy_path_desc">复制一个文件或整个目录（源原地不动）：流式复制不占内存、保留修改时间；撞名不覆盖，内容不同自动加后缀让路。每次执行前弹确认卡。</string>
+    <string name="baopu_tool_bulk_move">批量搬动</string>
+    <string name="baopu_tool_bulk_move_desc">按规则（扩展名/类型/日期/大小）把一个目录里命中条件的文件批量搬进目标目录：同盘改名原子完成，跨盘复制后源保留并记进待删除清单，绝不自动删；撞名不覆盖。先用预览工具把计划给用户看，再执行。</string>
+    <string name="baopu_tool_bulk_copy">批量复制</string>
+    <string name="baopu_tool_bulk_copy_desc">按规则（扩展名/类型/日期/大小）把一个目录里命中条件的文件批量复制进目标目录：源文件全部原地不动，保留修改时间；撞名不覆盖。先用预览工具把计划给用户看，再执行。</string>
+    <string name="baopu_tool_organize">整理归档</string>
+    <string name="baopu_tool_organize_desc">把一个目录按规则归入子目录（按类型分图片/视频/音频/文档/压缩包/其他，或按修改年月）：先预览再执行，执行后写回执（哪个搬到了哪），按回执可一键退回；撞名不覆盖；规则可存成整理技能下次直接重放。</string>
+    <string name="baopu_tool_organize_preview">整理预览</string>
+    <string name="baopu_tool_organize_preview_desc">只读预览：给整理/批量搬动/批量复制同一套参数，返回一行一条「源 → 目标」的完整计划，不碰任何文件、不需要确认。先看计划，点头后再执行。</string>
+</resources>

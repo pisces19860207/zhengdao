@@ -386,6 +386,7 @@ internal object ToolFallback {
         "write_file", "edit_file", "move_path", "delete_path", "convert_encoding",
         "image_ops", "card_build", "card_export", "library_organize", "kb_index",
         "write_skill", "append_persona", "generate_image", "schedule_task",
+        "copy_path", "bulk_move", "bulk_copy", "organize",
     )
 
     /** 靠「定位」工作的网页交互件（①级的建议按定位阶梯说，不按参数 schema 说）。 */

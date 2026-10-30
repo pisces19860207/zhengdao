@@ -205,6 +205,7 @@ internal object SkillRefine {
      */
     fun signalKindFor(toolName: String): SignalKind? = when (toolName) {
         "write_file", "edit_file", "move_path", "delete_path" -> SignalKind.FILE
+        "copy_path", "bulk_move", "bulk_copy", "organize" -> SignalKind.FILE
         "write_skill", "skill_lifecycle" -> SignalKind.SKILL
         else -> if (toolName.startsWith("browser_")) SignalKind.BROWSER else null
     }

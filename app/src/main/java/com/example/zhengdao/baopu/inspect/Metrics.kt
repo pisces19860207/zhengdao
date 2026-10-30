@@ -271,6 +271,7 @@ internal object Metrics {
     private val DANGER_TOOLS = setOf(
         // 删除
         "delete_path", "move_path",
+        "bulk_move", "organize",
         // 外发
         "search_web", "generate_image", "card_export", "phone_dial",
         // 覆盖写（可能新建）

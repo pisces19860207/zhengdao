@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 288: tool toggle strings for the copy/bulk/organize five (same shape as strings_baopu_archive.xml).
+     Kept in a standalone file so shared strings.xml gets zero-byte diff; resource merge makes it
+     equivalent (BaopuToolStringsTest reads every strings*.xml in the folder). -->
+<resources>
+    <string name="baopu_tool_copy_path">Copy file/folder</string>
+    <string name="baopu_tool_copy_path_desc">Copy one file or a whole folder (source stays put): streaming copy keeps memory flat and preserves mtime; never overwrites — a name clash with different content gets a suffix. A confirmation card appears before each run.</string>
+    <string name="baopu_tool_bulk_move">Bulk move</string>
+    <string name="baopu_tool_bulk_move_desc">Batch-move files matching a rule (extension/type/date/size) from one folder into a target: same-volume rename is atomic; cross-volume copies keep sources and log them to the pending-delete list (never auto-deletes); never overwrites. Preview the plan first, then run.</string>
+    <string name="baopu_tool_bulk_copy">Bulk copy</string>
+    <string name="baopu_tool_bulk_copy_desc">Batch-copy files matching a rule (extension/type/date/size) into a target folder: sources all stay put, mtimes preserved; never overwrites. Preview the plan first, then run.</string>
+    <string name="baopu_tool_organize">Tidy up</string>
+    <string name="baopu_tool_organize_desc">Sort a folder into subfolders (by type: photos/videos/audio/docs/archives/others, or by modified month): preview first, then run; a receipt records what went where so it can be undone in one step; never overwrites; save the rule as a tidy skill to replay later.</string>
+    <string name="baopu_tool_organize_preview">Tidy preview</string>
+    <string name="baopu_tool_organize_preview_desc">Read-only preview: feed the tidy/bulk-move/bulk-copy parameters and get a full source → target plan, touching nothing and needing no confirmation. Look first, run after approval.</string>
+</resources>

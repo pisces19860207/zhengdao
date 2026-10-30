@@ -831,6 +831,11 @@ internal class GuardPipeline(
             listOf(ReadFileTool.ARG_PATH).filter { args.has(it) }
 
         "move_path" -> listOf("from", "to").filter { args.has(it) }
+        // 288：复制/批量/整理——from/to（copy_path）与 dir/dest（批量·整理·预览）。
+        // 预览虽然只读，路径解析与系统区拒绝照走（② 段语义只有一份）。
+        "copy_path" -> listOf("from", "to").filter { args.has(it) }
+        "bulk_move", "bulk_copy", "organize", "organize_preview" ->
+            listOf("dir", "dest").filter { args.has(it) }
         // 读类：既有行为（read_file / list_dir 及将来任何带 path 的只读工具）
         else -> listOf(ReadFileTool.ARG_PATH, ListDirTool.ARG_PATH).distinct().filter { args.has(it) }
     }
@@ -853,6 +858,13 @@ internal class GuardPipeline(
                 listOfNotNull(resolved(ReadFileTool.ARG_PATH))
 
             "move_path" -> listOfNotNull(resolved("from"), resolved("to"))
+            // 288：写目标口径与 RiskTable 同源（copy 只写 to；move/organize 的源会消失，
+            // 范围目录也算写面，dest 在前——授权账取 firstOrNull 当「写到了哪」）。
+            // 原件区红线按这些判：dest/dir 落进原件区直接拒（范围目录**包含**原件区时
+            // 由工具内部的禁区跳过兜第二层——collect() 不把 原始/ 当原料）。
+            "copy_path" -> listOfNotNull(resolved("to"))
+            "bulk_move", "bulk_copy", "organize" ->
+                listOfNotNull(resolved("dest"), resolved("dir"))
             "image_ops" -> {
                 val out = args.optString("out").trim()
                 if (out.isNotEmpty()) listOfNotNull(resolved("out"))

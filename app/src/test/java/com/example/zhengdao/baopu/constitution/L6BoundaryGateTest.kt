@@ -125,6 +125,13 @@ class L6BoundaryGateTest {
             "agent/tools/NovelProjectTool.kt" to setOf("mkdirs", "writeText", "deleteRecursively", "delete"),
             // 写文件：目标路径经管线守卫；原子写 tmp。
             "agent/tools/WriteFileTool.kt" to setOf("mkdirs", "writeText", "delete"),
+            // 288 复制：目标目录 mkdirs；复制半途失败删掉半截目标（源不动，不留坏文件）。
+            "agent/CopyPathTool.kt" to setOf("mkdirs", "delete"),
+            // 288 共享内核：目标目录 mkdirs；失败回删半截目标；整理回执 writeText 首行 +
+            // appendText 逐条追加（源→目标，撤销按它逐条搬回）；undo 复制后删现位。
+            "agent/PathCopyCore.kt" to setOf("mkdirs", "writeText", "appendText", "delete"),
+            // 288 整理：范围/目标经管线守卫；mkdirs 只为配方目录，writeText 只写配方 json。
+            "agent/OrganizeTool.kt" to setOf("mkdirs", "writeText"),
         )
     }
 

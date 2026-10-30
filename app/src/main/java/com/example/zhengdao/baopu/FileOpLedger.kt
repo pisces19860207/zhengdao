@@ -23,6 +23,9 @@ internal enum class FileOpKind(val tag: String, val label: String) {
     WRITE("write", "写"),
     DELETE("delete", "删"),
     MOVE("move", "移"),
+
+    /** 288：复制（源保留，与写新文件、搬动都不同——回放时看得出是留了底的）。 */
+    COPY("copy", "拷"),
 }
 
 /** 账上一行（时间/会话/工具/种类/路径/用途——派工单 287 点名的"路径＋用途"）。 */
@@ -157,6 +160,10 @@ internal object FileOpRules {
         "write_file", "edit_file", "archive_pack", "archive_extract", "image_ops" -> FileOpKind.WRITE
         "delete_path" -> FileOpKind.DELETE
         "move_path" -> FileOpKind.MOVE
+        // 288：复制/批量/整理（预览是只读，按 READ 入账——「每笔读写入账」没有黑洞）
+        "copy_path", "bulk_copy" -> FileOpKind.COPY
+        "bulk_move", "organize" -> FileOpKind.MOVE
+        "organize_preview" -> FileOpKind.READ
         else -> null
     }
 
@@ -186,6 +193,13 @@ internal object FileOpRules {
             else if (args.optBoolean("permanent", false)) "彻底删（不可恢复）"
             else "删进回收站（可恢复）"
         "move_path" -> "移动/改名"
+        "copy_path" -> "复制（源保留）"
+        "bulk_move" -> "批量搬动（${args.optString("dir").ifBlank { "?" }}）"
+        "bulk_copy" -> "批量复制（${args.optString("dir").ifBlank { "?" }}）"
+        "organize" ->
+            if (args.optString("undo_receipt").isNotBlank()) "按回执退回"
+            else "整理归档（${args.optString("dir").ifBlank { "?" }}）"
+        "organize_preview" -> "整理预览（未动文件）"
         "archive_pack" -> "打包"
         "archive_extract" -> "解包"
         "image_ops" -> "图像处理"

@@ -91,13 +91,18 @@ internal object AuditHint {
     // ── 映射（动作 → 类别；域只用于"同类"匹配）──────────────────────────
 
     /** 文件类工具才按路径**父目录**分域；其余工具整类一个域（选择器等太长，不拿来当域）。 */
-    private val FILE_TOOLS = setOf("write_file", "edit_file", "delete_path", "move_path")
+    private val FILE_TOOLS = setOf(
+        "write_file", "edit_file", "delete_path", "move_path",
+        "copy_path", "bulk_move", "bulk_copy", "organize",
+    )
 
     private fun classOf(call: ToolCall, kind: Impact.Kind): ActionClass? {
         if (kind == Impact.Kind.NONE) return null
         val target = when (call.name) {
             "write_file", "edit_file", "delete_path" -> call.arguments.optString("path")
             "move_path" -> call.arguments.optString("from")
+            "copy_path" -> call.arguments.optString("from")
+            "bulk_move", "bulk_copy", "organize" -> call.arguments.optString("dir")
             else -> ""
         }
         return ActionClass(kind, domainOf(call.name, target))
@@ -123,6 +128,8 @@ internal object AuditHint {
         "write_file", "edit_file" -> Impact.Kind.WRITE
         "delete_path" -> Impact.Kind.DELETE
         "move_path" -> Impact.Kind.MOVE
+        "copy_path", "bulk_copy" -> Impact.Kind.WRITE
+        "bulk_move", "organize" -> Impact.Kind.MOVE
         "browser_click" -> Impact.Kind.CLICK
         "schedule_task" -> Impact.Kind.SCHEDULE
         else -> null
