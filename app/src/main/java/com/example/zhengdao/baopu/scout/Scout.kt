@@ -157,6 +157,60 @@ internal object Scout {
             return null
         }
 
+        val c = collect(ctx, trigger, ledger, loaded, device, atMs)
+
+        val elapsed = SystemClock.elapsedRealtime() - startedAt
+        val withinBudget = ScoutFreshness.withinBudget(elapsed)
+        val report = Report(
+            trigger = trigger,
+            reasons = c.reasons,
+            atMs = atMs,
+            elapsedMs = elapsed,
+            withinBudget = withinBudget,
+            device = device,
+            records = c.records,
+            opinions = ScoutOpinions.forVessels(c.records),
+            changed = c.changed.map { it.capability },
+            sheet = c.sheet,
+            sheetSaved = c.sheetSaved,
+            ledgerPaths = ledger.paths(),
+            privateFallback = BaopuWorkspace.isPrivate(ctx),
+        )
+        lastReport = report
+
+        RunLog.log(
+            "斥候：${c.reasons.joinToString("+") { it.wire }} 探 ${Capability.entries.size} 项，用时 ${elapsed}ms" +
+                (if (withinBudget) "" else "（超 ${ScoutLimits.MAX_PROBE_MS}ms 预算）") +
+                "，变化 ${c.changed.size} 项，清单 ${c.sheet.totalLines} 行，意见 ${report.opinions.size} 条" +
+                (if (c.sheetSaved) "" else "（清单落盘失败）"),
+        )
+        return report
+    }
+
+
+    /**
+     * 一趟探测的**采集半段**：算出理由、逐项定态、落账、出清单。
+     *
+     * 为什么单独一个函数（2026-10-30，detekt 硬墙红了 2 条）：`runProbe` 到 64 行、
+     * 混了「决策（要不要探）」「采集（探什么、记什么）」「汇报（Report ＋ 日志）」三件事。
+     * 拆出来的是**职责**，不是行数——采集本身要读写账本、要出清单，是完整的一步。
+     */
+    private data class Collected(
+        val reasons: List<ScoutTrigger>,
+        val records: List<ScoutRecord>,
+        val changed: List<ScoutRecord>,
+        val sheet: ScoutSheet.Sheet,
+        val sheetSaved: Boolean,
+    )
+
+    private fun collect(
+        ctx: Context,
+        trigger: ScoutTrigger,
+        ledger: ScoutLedger,
+        loaded: ScoutLedger.Loaded,
+        device: ScoutDevice,
+        atMs: Long,
+    ): Collected {
         // 这一趟到底**因为什么**探的：首启可能同时是"装了新包"或"升了系统"，
         // 日志与报告都要说得出原因，不然"为什么又探了"只能靠猜。
         val reasons = if (trigger == ScoutTrigger.FIRST_RUN) {
@@ -193,33 +247,7 @@ internal object Scout {
         val finalRecords = records.map { r ->
             mentioned.firstOrNull { it.capability == r.capability } ?: r
         }
-
-        val elapsed = SystemClock.elapsedRealtime() - startedAt
-        val withinBudget = ScoutFreshness.withinBudget(elapsed)
-        val report = Report(
-            trigger = trigger,
-            reasons = reasons,
-            atMs = atMs,
-            elapsedMs = elapsed,
-            withinBudget = withinBudget,
-            device = device,
-            records = finalRecords,
-            opinions = ScoutOpinions.forVessels(finalRecords),
-            changed = changed.map { it.capability },
-            sheet = sheet,
-            sheetSaved = sheetSaved,
-            ledgerPaths = ledger.paths(),
-            privateFallback = BaopuWorkspace.isPrivate(ctx),
-        )
-        lastReport = report
-
-        RunLog.log(
-            "斥候：${reasons.joinToString("+") { it.wire }} 探 ${Capability.entries.size} 项，用时 ${elapsed}ms" +
-                (if (withinBudget) "" else "（超 ${ScoutLimits.MAX_PROBE_MS}ms 预算）") +
-                "，变化 ${changed.size} 项，清单 ${sheet.totalLines} 行，意见 ${report.opinions.size} 条" +
-                (if (sheetSaved) "" else "（清单落盘失败）"),
-        )
-        return report
+        return Collected(reasons, finalRecords, changed, sheet, sheetSaved)
     }
 
     private fun ledgerFor(ctx: Context) = ScoutLedger(ScoutDirs.ledgerDirs(ctx))
