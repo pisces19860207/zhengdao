@@ -66,6 +66,59 @@ internal data class ToolRequest(
     val hasOk: Boolean,
 )
 
+/**
+ * 一个 run 的终态摘要（第二批：任务成功率按**任务**算，口径 §3.1）。
+ *
+ * [statuses] 是**按 `run_trace.id` 升序**的状态序列（自增主键＝真发生顺序）。
+ * 为什么不用 `started_at` 排序：批准路径补的那一行 `started_at = 0`（耗在等人点按钮上），
+ * 按时刻排会把它当成"最早发生的"，终态判定就整个反了。
+ */
+internal data class RunSummary(
+    val runId: String,
+    val sessionId: Long,
+    /** 该 run 首行 `started_at`（正数行里最小的那个）——回滚归属的时间跨度起点。 */
+    val startedAtMs: Long,
+    /** 末次活动时刻（`started_at`／`ended_at` 取大）——窗口依据。 */
+    val atMs: Long,
+    val statuses: List<String>,
+)
+
+/** 一个 run 的结局（[ended] 才进任务成功率的分母）。 */
+internal enum class RunOutcome(val ended: Boolean) {
+    SUCCESS(true),
+    FAILURE(true),
+
+    /** 最后一行是 `CONFIRM`：还在等你批。 */
+    WAITING(false),
+
+    /** 最后一行不是终态状态（`REJECTED`／`SKIPPED` 等），或这个 run 一行都没有。 */
+    UNFINISHED(false),
+}
+
+/**
+ * 终态判定（纯函数，只吃状态序列；口径 §3.1）。
+ *
+ * 「FAILED 之后同 run 又有 OK＝被救回来」不用单独判：最后一行是 `OK` 本身就说明
+ * 前面那次失败后面已经有 `OK` 兜住；反过来最后一行是 FAILED/TIMEOUT/CANCELLED 就是没兜住。
+ */
+internal object RunVerdict {
+
+    const val STATUS_OK = "OK"
+    const val STATUS_CONFIRM = "CONFIRM"
+
+    private val FAILED = setOf("FAILED", "TIMEOUT", "CANCELLED")
+
+    fun outcomeOf(statuses: List<String>): RunOutcome {
+        val last = statuses.lastOrNull() ?: return RunOutcome.UNFINISHED
+        return when {
+            last == STATUS_CONFIRM -> RunOutcome.WAITING
+            last == STATUS_OK -> RunOutcome.SUCCESS
+            last in FAILED -> RunOutcome.FAILURE
+            else -> RunOutcome.UNFINISHED
+        }
+    }
+}
+
 /** `sub_task` 的一行（[status] 与 `SubTaskStatus` 枚举名同字面量；门禁不许 import agent 包）。 */
 internal data class SubTaskRow(val taskId: String, val status: String, val endedAt: Long)
 
@@ -86,9 +139,16 @@ internal enum class MetricKey(
     INTERVENTION("intervention", "干预率", 7),
     SKIP("skip", "跳过率", 7),
     SKILL_SUCCESS("skill_success", "技能成功率", 30),
+    /** 第二批：任务级（`run_trace.run_id` 终态），不是子任务级——两个名字**不许混用**（R4）。 */
     E1_TASK_SUCCESS("e1_task_success", "任务成功率", 7),
+
+    /** 第二批：旧「任务成功率」那段算式整段搬过来，只改名叫子任务完成率（诊断）。 */
+    E1_SUBTASK_DONE("e1_subtask_done", "子任务完成率", 7),
     E1_CORRECTIONS("e1_corrections", "平均纠偏次数", 7, perTask = true),
     E1_HUMAN("e1_human", "人介入率", 7),
+
+    /** 第二批：任务级辅助指标（有过摆卡的任务占比）——与人介入率**不许混用**（R4）。 */
+    E1_TASK_NEEDS_CONFIRM("e1_task_needs_confirm", "需介入任务占比", 7),
     E1_IRREVERSIBLE("e1_irreversible", "不可逆动作占比", 7),
     /** 2026-10-29 裁定④：算术不动（分母＝核对过的写侧动作数），只改名——「差条数÷总条数」那种读法作废。 */
     E1_LEDGER_MISMATCH("e1_ledger_mismatch", "写侧账实不符率", 7),
@@ -189,6 +249,16 @@ internal object Metrics {
     /** 覆盖写判不出时读数行必须带的上界说明（口径 §3.6 缺口①）。 */
     const val NOTE_OVERWRITE_UPPER = "覆盖写上界：含新建文件"
 
+    /** 任务成功率的两条不确定性（口径 §3.1 原文；unknown 时也照样写——数算不出不等于不用提）。 */
+    const val NOTE_TASK_SUCCESS =
+        "续跑未判（缺标记）；新旧数不可比（旧口径按子任务算）；在跑任务可能被算成已结束（无 run 级终态行）"
+
+    /** 子任务完成率的防混用说明（R4：两个名字不许混用）。 */
+    const val NOTE_SUBTASK_DIAG = "诊断口径（子任务级），不是任务成功率"
+
+    /** 需介入任务占比的防混用说明（与人介入率不同层）。 */
+    const val NOTE_NEEDS_CONFIRM = "任务级（有过摆卡即算），与人介入率不同层"
+
     /**
      * 破坏动作白名单（口径 §三·乙，**写死**：新增动作必须显式加名并同步改 METRICS.md）。
      *
@@ -218,6 +288,7 @@ internal object Metrics {
         val reviews: List<DecisionReview.Entry> = emptyList(),
         val logs: List<LogStep> = emptyList(),
         val runs: List<RunStep> = emptyList(),
+        val runSummaries: List<RunSummary> = emptyList(),
         val requests: List<ToolRequest> = emptyList(),
         val subTasks: List<SubTaskRow> = emptyList(),
         val skills: List<SkillSnapshot> = emptyList(),
@@ -234,8 +305,10 @@ internal object Metrics {
         skip(inputs),
         skillSuccess(inputs),
         taskSuccess(inputs),
+        subtaskDone(inputs),
         corrections(inputs),
         human(inputs),
+        needsConfirm(inputs),
         irreversible(inputs),
         ledgerMismatch(inputs),
         hallucination(inputs),
@@ -337,12 +410,50 @@ internal object Metrics {
 
     // ── E1 五指标 ───────────────────────────────────────────────────────────
 
-    /** 任务成功率：DONE ÷ 终态（PENDING/RUNNING 不进分母）。 */
+    /**
+     * 任务成功率：终态「成功」的任务 ÷ **已结束任务数**（口径 §3.1；单位＝任务，不是子任务）。
+     *
+     * 成功＝[RunVerdict] 判 SUCCESS ＋ 该 run 时间跨度内同会话**没有**回滚账行。
+     * 续跑 v1 判不了、在跑的 run 没有终态行——两条不确定性都写在 note 上（用户 2026-10-29 硬要求）。
+     */
     private fun taskSuccess(i: Inputs): MetricLine {
         val days = MetricKey.E1_TASK_SUCCESS.windowDays
+        val rolls = i.ledger.filter { it.kind == DecisionKind.ROLLBACK_OF }.groupBy { it.sessionId }
+        val ended = i.runSummaries
+            .filter { inWindow(it.atMs, i.nowMs, days) }
+            .map { it to RunVerdict.outcomeOf(it.statuses) }
+            .filter { it.second.ended }
+        val ok = ended.filter { it.second == RunOutcome.SUCCESS && !rolledBack(it.first, rolls) }
+            .map { it.first.runId }
+        return lineOf(
+            MetricKey.E1_TASK_SUCCESS,
+            ok.size,
+            ended.size,
+            ok.map { "task:$it" },
+            NOTE_TASK_SUCCESS,
+        )
+    }
+
+    /** 该 run 的时间跨度内、同会话有没有回滚账行（账本不带 `run_id` ⇒ v1 只能按会话＋时间归属）。 */
+    private fun rolledBack(run: RunSummary, rollsBySession: Map<Long, List<DecisionRecord>>): Boolean =
+        rollsBySession[run.sessionId].orEmpty().any { it.atMs in run.startedAtMs..run.atMs }
+
+    /**
+     * 子任务完成率（诊断）：`DONE` ÷ 终态（`PENDING`/`RUNNING` 不进分母）。
+     *
+     * 算式是旧「任务成功率」**整段搬过来**的，一字未改语义——改的只是名字与位置（口径 §3.5）。
+     */
+    private fun subtaskDone(i: Inputs): MetricLine {
+        val days = MetricKey.E1_SUBTASK_DONE.windowDays
         val terminal = i.subTasks.filter { it.status in TERMINAL && inWindow(it.endedAt, i.nowMs, days) }
         val done = terminal.filter { it.status == "DONE" }
-        return lineOf(MetricKey.E1_TASK_SUCCESS, done.size, terminal.size, terminal.map { "task:${it.taskId}" })
+        return lineOf(
+            MetricKey.E1_SUBTASK_DONE,
+            done.size,
+            terminal.size,
+            terminal.map { "task:${it.taskId}" },
+            NOTE_SUBTASK_DIAG,
+        )
     }
 
     /** 平均纠偏次数：回滚行数 ÷ 任务数（均值，分母不够同样 unknown）。 */
@@ -367,6 +478,26 @@ internal object Metrics {
             asked.size,
             reqs.size,
             asked.map { "trace:${it.sessionId}#${it.step}" },
+        )
+    }
+
+    /**
+     * 需介入任务占比（辅助）：有过摆卡请求的任务 ÷ **有过工具请求的任务**（口径 §3.5）。
+     *
+     * 与人介入率同一张请求表、不同单位：这里按 `run_id` 聚合。没有请求的 run 不进分母——
+     * 纯思考的 run 不可能需要确认，拉进来只会把比例稀释成好看。
+     */
+    private fun needsConfirm(i: Inputs): MetricLine {
+        val days = MetricKey.E1_TASK_NEEDS_CONFIRM.windowDays
+        val reqs = i.requests.filter { inWindow(it.atMs, i.nowMs, days) }
+        val tasks = reqs.map { it.runId }.toSet()
+        val touched = reqs.filter { it.hasConfirm || it.tool == TOOL_ASK_USER }.map { it.runId }.toSet()
+        return lineOf(
+            MetricKey.E1_TASK_NEEDS_CONFIRM,
+            touched.size,
+            tasks.size,
+            touched.map { "task:$it" },
+            NOTE_NEEDS_CONFIRM,
         )
     }
 
