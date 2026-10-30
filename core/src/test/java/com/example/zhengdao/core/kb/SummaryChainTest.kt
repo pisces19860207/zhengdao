@@ -18,7 +18,9 @@ import java.io.File
  * 钉的是用户定的五条里的 ①~④：
  * - ① 索引重建后摘要落盘（账本 ＋ 清单的 `## 文件摘要` 一节）
  * - ② 改一个文件 ⇒ **只该文件**重算，其余沿用
- * - ③ 超限按"最久未命中"淘汰（条数与字节两条线都钉）
+ * - ③ 超限按 `lastHitAt` 淘汰（条数与字节两条线都钉）。
+ *   ⚠️ **口径**：判据原文叫"最久未命中"，但生产侧还没有检索消费者 ⇒ `lastHitAt ≡ genAt`
+ *   ⇒ **现状淘汰的是「最久未生成」**，接检索面板后恢复真 LRU。两条测试分别钉这两件事，别混着读。
  * - ④ 检索能用上摘要，且**原有文件行一条不少**（检索面没被摘要挤掉）
  *
  * ⑤（全程不调模型）是静态门禁，在 `SummaryChainGateTest`。
@@ -221,7 +223,9 @@ class SummaryChainTest {
     // ── 判据 ③′：超限淘汰（条数 / 字节两条线）──────────────────────────────
 
     @Test
-    fun `超限按最久未命中淘汰_命中过的留下`() {
+    fun `超限按 lastHitAt 淘汰_有真命中时命中过的留下`() {
+        // 本条验的是"检索面板接上之后"的形态：用 lookup 造出**真命中**，让 lastHitAt ≠ genAt。
+        // 生产现状（无检索消费者 ⇒ lastHitAt ≡ genAt ⇒ 最久未生成先走）由下一条钉。
         for (i in 1..5) put("f$i.txt", "第 $i 份资料。讲的是主题$i。")
         writeIndex()
         refresh(now = 100L)   // 5 条，lastHitAt 全是 100
@@ -235,10 +239,24 @@ class SummaryChainTest {
         assertEquals("5 条压到 3 条 ⇒ 淘汰 2", 2, rep.evicted)
         assertEquals(3, rep.entries)
         assertEquals(
-            "被淘汰的必须是最久未命中的 f1/f3（同分按 rel 定序），命中过的 f2/f4 留下",
+            "被淘汰的必须是 lastHitAt 最小的 f1/f3（同分按 rel 定序），命中过的 f2/f4 留下",
             listOf("f2.txt", "f4.txt", "f5.txt"),
             entries().map { it.rel },
         )
+    }
+
+    @Test
+    fun `没有命中时_淘汰的是最久未生成`() {
+        // 生产现状：lastHitAt 恒等于 genAt ⇒ 淘汰顺序实际由 genAt 决定 = "最久未生成"。
+        // 这条测试存在的意义就是**别让人把上一条读成现状**。
+        val a = KnowledgeBaseSummaries.Entry("a", "甲", "h", genAt = 10L, version = "rule-1", lastHitAt = 10L)
+        val b = KnowledgeBaseSummaries.Entry("b", "乙", "h", genAt = 20L, version = "rule-1", lastHitAt = 20L)
+        val c = KnowledgeBaseSummaries.Entry("c", "丙", "h", genAt = 30L, version = "rule-1", lastHitAt = 30L)
+
+        val pruned = KnowledgeBaseSummaries.prune(listOf(a, b, c), maxCount = 2, maxBytes = Long.MAX_VALUE)
+
+        assertEquals(1, pruned.evicted)
+        assertEquals("最久未生成（genAt 最小）的 a 先走", listOf("b", "c"), pruned.entries.map { it.rel })
     }
 
     @Test
@@ -253,7 +271,7 @@ class SummaryChainTest {
         val pruned = KnowledgeBaseSummaries.prune(listOf(e1, e2, e3), maxCount = 100, maxBytes = two)
 
         assertEquals(1, pruned.evicted)
-        assertEquals("最久未命中的 a 先走", listOf("b", "c"), pruned.entries.map { it.rel })
+        assertEquals("lastHitAt 最小的 a 先走（此处三条 lastHitAt 就是 genAt）", listOf("b", "c"), pruned.entries.map { it.rel })
         assertTrue("账出来的字节必须真的不超上限", pruned.bytes <= two)
         assertEquals(
             "同一批输入必须淘汰同一批人",

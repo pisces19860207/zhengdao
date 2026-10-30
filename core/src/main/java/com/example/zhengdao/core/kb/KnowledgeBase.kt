@@ -629,7 +629,8 @@ object KnowledgeBase {
      *
      * 做三件事，顺序固定：
      * 1. 取输入 —— [listRaw]（相对路径＋大小）
-     * 2. 重算该重算的 —— 逐文件比 sha256＋摘要器版本，只重算不符的；超限按"最久未命中"淘汰
+     * 2. 重算该重算的 —— 逐文件比 sha256＋摘要器版本，只重算不符的；超限按 `lastHitAt` 淘汰
+     *    （**现状淘汰的是「最久未生成」**：生产侧 `lastHitAt ≡ genAt`；**接检索面板后恢复真 LRU**）
      * 3. 落盘 —— 侧车账本 `产物/00-摘要.json` ＋ 清单正文（[writeSummaries] 唯一落盘点）
      *
      * ⚠️ 全程**不调模型**：摘要是纯字符串规则生成（见 [KnowledgeBaseSummaries.summarize]）。
@@ -657,7 +658,7 @@ object KnowledgeBase {
     }
 
     /**
-     * 301：**检索口**——按相对路径取一条摘要（取到即记一次"命中"，供 LRU 淘汰排序用）。
+     * 301：**检索口**——按相对路径取一条摘要（取到即记一次"命中"，供超限淘汰排序用）。
      *
      * 过期（源文件内容变了 / 摘要器版本变了 / 条目没了）一律当**没有**返回，
      * 绝不把旧摘要当新用。这一点有变异负例钉住。
@@ -677,7 +678,8 @@ object KnowledgeBase {
     /**
      * 301：**检索口**——按关键词查摘要（`rel` 或摘要正文含该词即命中，忽略大小写）。
      *
-     * 命中的条目会刷新 `lastHitAt`（LRU 的"命中"信号）；过期的条目直接跳过。
+     * 命中的条目会刷新 `lastHitAt`（淘汰排序的"命中"信号）；过期的条目直接跳过。
+     * ⚠️ 生产侧目前没有检索消费者 ⇒ `lastHitAt` 恒等于 `genAt` ⇒ 淘汰实际是"最久未生成"。
      * 可见性理由同 [summaryOf]。
      */
     internal fun searchSummaries(ctx: Context, query: String, limit: Int = 20): List<Pair<String, String>> =

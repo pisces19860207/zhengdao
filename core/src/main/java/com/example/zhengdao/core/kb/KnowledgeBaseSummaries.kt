@@ -22,7 +22,10 @@ import java.util.Locale
  * 1. **规则摘要**（[summarize]）：类型/标题/首句/体量/关键词，全由字符串规则得出
  * 2. **账本**（[Entry] ＋ 侧车 `产物/00-摘要.json`）：记住每条摘要的
  *    源文件 sha256 ＋ 生成时间 ＋ 摘要器版本，任一不符即**过期**（[staleness]）
- * 3. **上限淘汰**（[prune]）：≤ [MAX_ENTRIES] 条 / [MAX_BYTES] 字节，超了按"最久未命中"走
+ * 3. **上限淘汰**（[prune]）：≤ [MAX_ENTRIES] 条 / [MAX_BYTES] 字节，超了按 `lastHitAt` 升序走。
+ *    ⚠️ **口径**：判据的原文是"最久未命中"，但**现状淘汰的是「最久未生成」**——生产侧还没有
+ *    检索消费者，`lastHitAt` 恒等于 `genAt`；**接检索面板后恢复真 LRU**（缺陷台账：
+ *    「301 摘要无检索面板」，预期接入＝UI 批次）。别按"最久未命中"理解现状，见 [lookup]。
  *
  * ## 为什么账本在侧车、正文在清单
  *
@@ -73,7 +76,9 @@ object KnowledgeBaseSummaries {
      * @param sha256 生成这条摘要时**源文件**的全文哈希（不是开头 4 KB）
      * @param genAt 生成时间（毫秒）
      * @param version 生成时的 [SUMMARIZER_VERSION]
-     * @param lastHitAt 最后一次被检索命中的时间（LRU 淘汰的唯一依据）
+     * @param lastHitAt 最后一次被检索命中的时间，[prune] 按它升序淘汰。
+     *   ⚠️ **现状淘汰的是「最久未生成」**：生产侧还没有检索消费者 ⇒ 它恒等于 [genAt]；
+     *   **接检索面板后恢复真 LRU**（缺陷台账「301 摘要无检索面板」，预期 UI 批次）。见 [lookup]。
      */
     data class Entry(
         val rel: String,
@@ -328,7 +333,11 @@ object KnowledgeBaseSummaries {
 
     /**
      * 超限淘汰：条目数 > [maxCount] 或编码字节 > [maxBytes] 时，按 **`lastHitAt` 升序**
-     * （最久未命中先走；同值看 `genAt`，再看 `rel`）逐条丢，直到两条都满足。
+     * （同值看 `genAt`，再看 `rel`）逐条丢，直到两条都满足。
+     *
+     * ⚠️ **口径**：判据的原文是"最久未命中"，但**现状淘汰的是「最久未生成」**——生产侧没有
+     * 检索消费者，`lastHitAt` 恒等于 `genAt`（见 [Entry.lastHitAt]）；**接检索面板后恢复真 LRU**。
+     * 别把现状读成"最久未命中"。
      *
      * 结果**确定**：同一批条目、同一上限，淘汰的永远是同一批人。
      */
@@ -338,12 +347,12 @@ object KnowledgeBaseSummaries {
         maxBytes: Long = MAX_BYTES,
     ): Pruned {
         val keep = entries.toMutableList()
-        val byLru = entries.sortedWith(compareBy({ it.lastHitAt }, { it.genAt }, { it.rel }))
+        val byHit = entries.sortedWith(compareBy({ it.lastHitAt }, { it.genAt }, { it.rel }))
         var bytes = envelopeBytes() + entries.sumOf { entryBytes(it) }
         var evicted = 0
         var i = 0
-        while ((keep.size > maxCount || bytes > maxBytes) && i < byLru.size) {
-            val victim = byLru[i++]
+        while ((keep.size > maxCount || bytes > maxBytes) && i < byHit.size) {
+            val victim = byHit[i++]
             if (keep.remove(victim)) {
                 bytes -= entryBytes(victim)
                 evicted++
@@ -459,7 +468,7 @@ object KnowledgeBaseSummaries {
                     sha256 = sha ?: "",
                     genAt = now,
                     version = version,
-                    // 命中历史要跟着走，否则"改了一个文件"会把它的 LRU 位置重置成最新
+                    // 命中历史要跟着走，否则"改了一个文件"会把它的命中时间重置成最新（淘汰顺序被带偏）
                     lastHitAt = prev?.lastHitAt ?: now,
                 )
                 recomputed++
@@ -490,12 +499,14 @@ object KnowledgeBaseSummaries {
      * ## "命中"只有这一个信号源（诚实说明）
      *
      * 清单渲染**不算命中**：每轮刷新都会把所有留存条目渲染一遍，记了就等于把所有
-     * `lastHitAt` 一起推到 `now`，LRU 直接被抹平成 FIFO。
+     * `lastHitAt` 一起推到 `now`，淘汰顺序被抹平、退化成先来先走。
      *
-     * 现状：App 内还没有"按名/按词查摘要"的界面（agent 是直接读 `00-目录.md` 的），
-     * 所以生产侧 `lastHitAt` 目前恒等于 `genAt`，超限淘汰**退化为"最久未生成"**。
-     * 一旦检索面板接上本函数，LRU 立刻恢复真实语义。这条代价写在 301 交付报告里，
-     * 不藏着 —— 改这里的人应该先知道它，再决定要不要把命中信号接到别处。
+     * ## 现状口径：淘汰的是「最久未生成」，不是「最久未命中」
+     *
+     * App 内还没有"按名/按词查摘要"的界面（agent 是直接读 `00-目录.md` 的），所以生产侧
+     * `lastHitAt` **恒等于 `genAt`** ⇒ [prune] 实际淘汰的是**最久未生成**的那条。
+     * **接检索面板后恢复真 LRU**。这条已记进缺陷台账（「301 摘要无检索面板」，预期接入＝UI 批次），
+     * 也写在 301 交付报告里 —— 改这里的人应该先知道它，再决定要不要把命中信号接到别处。
      */
     internal fun lookup(storeFile: File, rawDir: File, rel: String, now: Long = System.currentTimeMillis()): String? {
         val store = decode(readOrNull(storeFile)) ?: return null
