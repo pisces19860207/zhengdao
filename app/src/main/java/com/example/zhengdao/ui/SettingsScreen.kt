@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -92,6 +93,11 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen() {
     val ctx = LocalContext.current
+    // 资源查询走 LocalResources（2026-10-30 修 lint Error `LocalContextGetResourceValueCall`）：
+    // `LocalContext.current.getString(…)` 不感知 Configuration 变化（语言/字号切换后会拿到旧值），
+    // 而下面体检反馈那段正是在协程里取字符串；LocalResources 随 Configuration 更新，
+    // 与 ScheduleTasksActivity／BaopuArtifactPicker 的既有写法一致。
+    val res = LocalResources.current
     // 界面语言（2026-10-12）：读系统记的 per-app locale，切换后系统重建 Activity、当场生效。
     var langTag by remember { mutableStateOf(LanguagePrefs.current(ctx)) }
     var langDialog by remember { mutableStateOf(false) }
@@ -186,11 +192,11 @@ fun SettingsScreen() {
                                 runCatching { HealthScheduler.runNow(ctx) }.getOrNull()
                             }
                             healthNote = when {
-                                r?.entry != null -> ctx.getString(
+                                r?.entry != null -> res.getString(
                                     R.string.settings_health_done,
                                     r.entry.headline,
                                 )
-                                else -> ctx.getString(
+                                else -> res.getString(
                                     R.string.settings_health_failed,
                                     r?.failReason ?: "没跑成（看日志）",
                                 )

@@ -137,6 +137,13 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      # 2026-10-30：这一步不判成败，只**把失败的用例变成注解**。
+      # 起因：CI 红在测试步时，注解里只有一句 `Process completed with exit code 1.`，
+      # 日志要登录才看得到 ⇒「红了但查不动」。现在匿名打开 Actions 页就能看到 类名#用例名 + 首行消息。
+      - name: 单测失败清单（注解：类名#用例名 + 首行消息）
+        if: always()
+        run: python3 tools/ci-test-annotations.py
+
       # #1（2026-10-09）：仪器测试（androidTest）在本仓库**进不了 CI 的模拟器**——
       # 本包只打 arm64-v8a（app/build.gradle.kts:103-110，用户 2026-10-06 定案「不做
       # x86_64 模拟器支持」），GitHub runner 上的 x86_64 模拟器装不上这个包。
