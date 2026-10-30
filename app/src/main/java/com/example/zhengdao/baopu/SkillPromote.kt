@@ -13,6 +13,7 @@ package com.example.zhengdao.baopu
 import org.json.JSONObject
 import java.io.File
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.baopu.verify.ChancellorWiring
 
 internal object SkillPromote {
 
@@ -94,6 +95,11 @@ internal object SkillPromote {
             ) ?: com.example.zhengdao.core.RunLog.log(
                 "技能转正：决策记录没写成（$name／${DecisionLedger.lastError}）",
             )
+            // 第三百零二批 · 右相验收闸：**生产调用点**（交付入口＝学习成果入库这一刻，判据④）。
+            // 只读、只出三态结论，不拦转正（右相没有执行权：不改文件、不执行工具、不替人拍板）；
+            // 结论整行进运行日志（UNVERIFIABLE/FAIL 必进报告，不许当通过）。
+            // 源级门禁：ChancellorSourceGateTest 钉死本调用点，删掉即红。
+            RunLog.log(ChancellorWiring.verifyLearningPromotion(skillFile, scope, name).render())
         }
 
     /** 207 的审计行本体（第二百零八批抽出来，好让「审计 + 决策记录」在同一处结算）。 */
