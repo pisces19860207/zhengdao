@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,8 +36,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaLayer
+import com.example.zhengdao.baopu.SkillHygiene
 import com.example.zhengdao.baopu.SkillProposal
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillSchemaPrecheck
@@ -96,6 +99,12 @@ internal data class SkillCardView(
     val isDraft: Boolean,
     val exists: Boolean,
     val schemaCheckedCount: Int? = null,
+    /**
+     * 289①：与既有技能重名/近似时的人话说明（null ＝ 没查出来，行为照旧）。
+     * 非 null ⇒ 卡上必须给「升级／新建」二选一（[altName] 是新建分支的建议名，可为 null）。
+     */
+    val duplicateNote: String? = null,
+    val altName: String? = null,
 ) {
     /** 「记住它」能不能点：判据只有一条——数据层没挡住。 */
     val canRemember: Boolean get() = blocked == null
@@ -163,6 +172,7 @@ internal object SkillCardRules {
         globalRoot: File,
         stamp: String,
         indexCountAfterAdd: Int = 0,
+        existingLines: List<SkillRules.IndexLine> = emptyList(),
     ): SkillCardBuild {
         if (draft.scope != SkillScope.PROJECT) return SkillCardBuild.Refused(GLOBAL_REFUSAL)
         val humanBody = SkillStore.contentWithoutHeader(draft.body)
@@ -199,7 +209,10 @@ internal object SkillCardRules {
             globalRoot = globalRoot,
             backupStamp = stamp,
             indexCountAfterAdd = indexCountAfterAdd,
+            existingLines = existingLines,
         )
+        // 289①：重名/近似命中 ⇒ 卡上摆「升级／新建」二选一（不静默覆盖）。
+        val duplicateNote = SkillCardRules.duplicateNoteOf(draft, plan.duplicate, existingLines)
         // 第一百八十五批：正文里有没有工具示例、预检过没过，卡上要有一句交代——
         // 通过显示数量；失败原因在 plan.blocked 里（同一套判据，UI 不自己再判一遍）。
         val schema = SkillSchemaPrecheck.precheck(humanBody)
@@ -215,9 +228,24 @@ internal object SkillCardRules {
                 isDraft = isDraft,
                 exists = existingBody != null,
                 schemaCheckedCount = if (plan.blocked == null && schema.checked > 0) schema.checked else null,
+                duplicateNote = duplicateNote,
+                altName = duplicateNote?.let {
+                    SkillHygiene.alternativeName(draft.name, existingLines.map { l -> l.name }.toSet() + draft.name)
+                },
             ),
         )
     }
+
+    /** 289①：卡上的重复说明一句（含新建建议名；null ＝ 没查出来）。从 [build] 拆出。 */
+    private fun duplicateNoteOf(
+        draft: SkillCardDraft,
+        dup: SkillHygiene.Duplicate?,
+        existingLines: List<SkillRules.IndexLine>,
+    ): String? = dup?.let {
+        val taken = existingLines.map { l -> l.name }.toSet() + draft.name
+        SkillHygiene.duplicateGuidance(it, SkillHygiene.alternativeName(draft.name, taken))
+    }
+
 }
 
 /**
@@ -230,23 +258,64 @@ internal object SkillCardRules {
  */
 internal object SkillCardWriter {
 
+    /** 289①「新建」分支的名字校验结果（从 [save] 拆出）。 */
+    private sealed interface NewNameCheck {
+        data class Ok(val draft: SkillCardDraft) : NewNameCheck
+        data class Reject(val reason: String) : NewNameCheck
+    }
+
+    /**
+     * 新名字过三道闸：安全化不改写 → 自己不撞既有 → 场景也不近似。
+     * 任何一道不过都给一句带「升级／新建」的人话，绝不静默换名落盘。
+     */
+    private fun checkNewName(
+        draft: SkillCardDraft,
+        asNewName: String,
+        existingLines: List<SkillRules.IndexLine>,
+    ): NewNameCheck {
+        val safe = SkillStore.sanitizeName(asNewName)
+            ?: return NewNameCheck.Reject("新名字不可用（只许字母／数字／中文／_／-）")
+        if (safe != asNewName) {
+            return NewNameCheck.Reject("新名字要被改写成「$safe」，请直接用后者")
+        }
+        val scenario = SkillStore.purposeOf(SkillStore.contentWithoutHeader(draft.body))
+        SkillHygiene.findDuplicate(safe, scenario, existingLines)?.let { dup ->
+            val alt = SkillHygiene.alternativeName(safe, existingLines.map { it.name }.toSet() + safe)
+            return NewNameCheck.Reject("「$safe」也撞上了：" + SkillHygiene.duplicateGuidance(dup, alt))
+        }
+        return NewNameCheck.Ok(draft.copy(name = safe))
+    }
+
+
     fun save(
         draft: SkillCardDraft,
         projectRoot: File,
         globalRoot: File,
         personaFiles: PersonaFiles,
         stamp: String,
+        /** 289①：非 null ⇒ 用户在卡上选了「新建」——按这个名字另立一条，不碰既有技能。 */
+        asNewName: String? = null,
+        /** 两层既有索引行（重名/近似探查；不给就查不出——旧行为）。 */
+        existingLines: List<SkillRules.IndexLine> = emptyList(),
     ): SkillWriteResult {
         if (draft.scope != SkillScope.PROJECT) {
             return SkillWriteResult.Rejected(SkillCardRules.GLOBAL_REFUSAL)
         }
-        val humanBody = SkillStore.contentWithoutHeader(draft.body)
+        // 289①「新建」分支：换名后重名/近似判据必须**再过一遍**——
+        // 建议名若也撞上（或用户手改的名字仍近似），拒绝并再给一次二选一，绝不静默。
+        val effectiveDraft = if (asNewName == null) draft else when (
+            val check = SkillCardWriter.checkNewName(draft, asNewName, existingLines)
+        ) {
+            is NewNameCheck.Ok -> check.draft
+            is NewNameCheck.Reject -> return SkillWriteResult.Rejected(check.reason)
+        }
+        val humanBody = SkillStore.contentWithoutHeader(effectiveDraft.body)
         val probe = SkillStore.plan(
             proposal = SkillProposal(
                 scope = SkillScope.PROJECT,
-                name = draft.name,
+                name = effectiveDraft.name,
                 body = humanBody,
-                reason = draft.reason,
+                reason = effectiveDraft.reason,
                 draft = true,
             ),
             projectRoot = projectRoot,
@@ -269,9 +338,9 @@ internal object SkillCardWriter {
         // 正文已经带好头 ⇒ 提案 draft=false（withDraftHeader 原样写），索引行仍按真实状态算。
         val proposal = SkillProposal(
             scope = SkillScope.PROJECT,
-            name = draft.name,
+            name = effectiveDraft.name,
             body = finalBody,
-            reason = draft.reason,
+            reason = effectiveDraft.reason,
             draft = false,
         )
         val planned = SkillStore.plan(
@@ -281,7 +350,7 @@ internal object SkillCardWriter {
             backupStamp = stamp,
         )
         if (planned.file.absolutePath != probe.file.absolutePath) {
-            return SkillWriteResult.Rejected("技能名「${draft.name}」落不到它自己的目录，先改个名字")
+            return SkillWriteResult.Rejected("技能名「${effectiveDraft.name}」落不到它自己的目录，先改个名字")
         }
         return SkillStore.apply(
             plan = planned.copy(proposal = proposal),
@@ -310,9 +379,22 @@ internal class SkillCardHost(
     var view: SkillCardView? = null
         private set
 
+    /**
+     * 289①：卡上「二选一」的当前选择——false＝升级覆盖既有（默认保留旧口径），true＝按
+     * [SkillCardView.altName] 另建一条。只在本卡有重复命中（duplicateNote 非 null）时有意义。
+     */
+    var preferNew: Boolean = false
+
+    /** 两层既有索引行（重名/近似探查的输入；只读）。 */
+    private fun existingLines(): List<SkillRules.IndexLine> {
+        val pf = personaFiles()
+        return SkillRules.parseIndexLines(pf.read(PersonaLayer.B_GLOBAL), MemoryScope.GLOBAL) +
+            SkillRules.parseIndexLines(pf.read(PersonaLayer.C_PROJECT), MemoryScope.PROJECT)
+    }
+
     /** 引擎／控制器出卡（未确认，不落盘）。全局请求在这里就被拒。 */
     fun offer(newDraft: SkillCardDraft): SkillCardBuild {
-        val built = SkillCardRules.build(newDraft, projectRoot(), globalRoot(), stamp())
+        val built = SkillCardRules.build(newDraft, projectRoot(), globalRoot(), stamp(), existingLines = existingLines())
         when (built) {
             is SkillCardBuild.Ready -> {
                 draft = newDraft
@@ -325,7 +407,7 @@ internal class SkillCardHost(
 
     /** 卡上改名字／正文：重新算预览、备份名与阻断原因；被拒（全局）时保留原卡。 */
     fun edit(newDraft: SkillCardDraft): SkillCardBuild {
-        val built = SkillCardRules.build(newDraft, projectRoot(), globalRoot(), stamp())
+        val built = SkillCardRules.build(newDraft, projectRoot(), globalRoot(), stamp(), existingLines = existingLines())
         draft = newDraft
         if (built is SkillCardBuild.Ready) view = built.view
         return built
@@ -334,7 +416,17 @@ internal class SkillCardHost(
     /** 点「记住它」：过 [SkillCardWriter]，成功才收卡；失败留着卡和原因，让用户改完再点。 */
     fun remember(): SkillWriteResult? {
         val d = draft ?: return null
-        val r = SkillCardWriter.save(d, projectRoot(), globalRoot(), personaFiles(), stamp())
+        // 289①：用户选了「新建」⇒ 按建议名另立；没选（升级）⇒ 照旧覆盖（先备份）。
+        val asNewName = if (preferNew) view?.altName else null
+        val r = SkillCardWriter.save(
+            d,
+            projectRoot(),
+            globalRoot(),
+            personaFiles(),
+            stamp(),
+            asNewName = asNewName,
+            existingLines = existingLines(),
+        )
         if (r is SkillWriteResult.Written) dismiss()
         return r
     }
@@ -359,6 +451,10 @@ internal fun BaopuSkillCard(
     onRemember: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 289①：当前选择（false＝升级覆盖）；卡上没有重复命中时忽略。 */
+    preferNew: Boolean = false,
+    /** 289①：用户点了「升级／另建」任一边（宿主把它落到 [SkillCardHost.preferNew]）。 */
+    onPreferNew: (Boolean) -> Unit = {},
 ) {
     var editingBody by remember { mutableStateOf(false) }
     val sourceLabel = when (view.draft.source) {
@@ -455,6 +551,48 @@ internal fun BaopuSkillCard(
                 color = zhengdaoErrorText(),
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+        // 289①：重名/近似命中 ⇒ 「升级／新建」二选一（不静默覆盖）。默认停在「升级」，
+        // 但必须**看见**这句说明——选择本身不许被静掉。
+        if (view.duplicateNote != null) {
+            Text(
+                text = view.duplicateNote.orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = !preferNew,
+                    onClick = { onPreferNew(false) },
+                    label = {
+                        Text(
+                            stringResource(R.string.skill_card_duplicate_upgrade),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                view.altName?.let { alt ->
+                    FilterChip(
+                        selected = preferNew,
+                        onClick = { onPreferNew(true) },
+                        label = {
+                            Text(
+                                stringResource(R.string.skill_card_duplicate_new, alt),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
         Row(
             Modifier.fillMaxWidth().padding(top = 12.dp),

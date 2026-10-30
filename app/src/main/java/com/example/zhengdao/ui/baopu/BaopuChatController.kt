@@ -34,6 +34,7 @@ import com.example.zhengdao.baopu.EvolutionShadowLog
 import com.example.zhengdao.baopu.ExampleBank
 import com.example.zhengdao.baopu.HistoryMessage
 import com.example.zhengdao.baopu.MemoryBackup
+import com.example.zhengdao.baopu.SkillHygiene
 import com.example.zhengdao.baopu.MemoryEntry
 import com.example.zhengdao.baopu.MemoryInjectionBudget
 import com.example.zhengdao.baopu.MemoryLayout
@@ -433,6 +434,8 @@ internal class BaopuChatController(context: Context) {
                 }
             }
         }.getOrDefault(emptyMap())
+        // 289④：命中率三数的数据面（被选用/成功/被检索到）＋ 289②成败序列——取数在 [loadSkillUsageData]。
+        val usage = loadSkillUsageData()
         val governance = governDrafts(
             projectRoot = workspaceRoot,
             globalRoot = globalRoot,
@@ -470,12 +473,126 @@ internal class BaopuChatController(context: Context) {
                 putIfAbsent(b, a)
             }
         }
-        val rows = skillLibraryRows(workspaceRoot, globalRoot, lastUse).map { row ->
-            if (row.status == SkillLibraryStatus.DRAFT) row.copy(duplicateOf = duplicateOf[row.name]) else row
-        }
+        val rows = assembledLibraryRows(globalRoot, lastUse, usage, duplicateOf)
+        // 289②③：归档/重验建议＋总量到线提醒（判据都在 SkillHygiene 纯层，这里只喂数）。
+        val (suggestions, totalReminder) = hygieneReadouts(rows, lastUse, usage)
         val pending = ReflectionArchive.parse(reflectionRunner().archiveText())
             .count { it.decision == ReflectionArchive.DECISION_PENDING }
-        return SkillLibraryState(rows = rows, pendingCount = pending)
+        return SkillLibraryState(
+            rows = rows,
+            pendingCount = pending,
+            totalReminder = totalReminder,
+            suggestions = suggestions,
+        )
+    }
+
+    /** 289：技能页行装配（命中率三数挂上、草稿疑似重复标上）。从 [loadSkillLibrary] 拆出。 */
+    private fun assembledLibraryRows(
+        globalRoot: File,
+        lastUse: Map<String, Long>,
+        usage: SkillUsageData,
+        duplicateOf: Map<String, String>,
+    ): List<SkillLibraryRow> =
+        skillLibraryRows(workspaceRoot, globalRoot, lastUse).map { row ->
+            val hit = usage.hitFor(row.name)
+            if (row.status == SkillLibraryStatus.DRAFT) {
+                row.copy(duplicateOf = duplicateOf[row.name], hits = hit)
+            } else {
+                row.copy(hits = hit)
+            }
+        }
+
+    /** 289②③：归档/重验建议＋总量到线提醒（草稿＋正式合计；退役的不占线）。 */
+    private fun hygieneReadouts(
+        rows: List<SkillLibraryRow>,
+        lastUse: Map<String, Long>,
+        usage: SkillUsageData,
+    ): Pair<List<SkillHygiene.Suggestion>, String?> {
+        val suggestions = SkillHygiene.hygieneSuggestions(
+            (rows.filter { it.status != SkillLibraryStatus.RETIRED }.map { it.name } + lastUse.keys).distinct()
+                .map { name -> SkillHygiene.UsageStat(name, lastUse[name], usage.oks[name].orEmpty()) },
+            nowMs = System.currentTimeMillis(),
+        )
+        val totalReminder = SkillHygiene.totalReminder(
+            rows.count { it.status != SkillLibraryStatus.RETIRED },
+        )
+        return suggestions to totalReminder
+    }
+
+    /**
+     * 289④：命中率读数的数据面（**289 专用取数壳**，从 `loadSkillLibrary` 里拆出来）。
+     *
+     * - 被检索到＝`file_op` 读账里指向 `技能/<名>/SKILL.md` 的行（file_op 留 30 天，读数窗口随它）；
+     * - 被选用＝`skill_event` kind=use 的次数；成功＝kind=effect 且 outcome=SUCCESS；
+     * - 成败序列＝use 行的 ok（旧→新，喂过期判据的失败率窗口）。
+     *
+     * 任一条读失败按空表处理（读数缺失不冒充 0，行上不显示），与 lastUse 同一口径。
+     */
+    private class SkillUsageData(
+        val useCounts: Map<String, Int>,
+        val oks: Map<String, List<Boolean>>,
+        val successCounts: Map<String, Int>,
+        val readPaths: List<String>,
+    ) {
+        /** 一条技能的命中率三数（纯装配）。 */
+        fun hitFor(name: String): SkillHygiene.HitRate = SkillHygiene.HitRate(
+            retrieved = SkillHygiene.retrievedCountOf(name, readPaths),
+            used = useCounts[name] ?: 0,
+            succeeded = successCounts[name] ?: 0,
+        )
+    }
+
+    private fun loadSkillUsageData(): SkillUsageData {
+        val db = db
+        val useCounts = runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    "SELECT name, COUNT(*) FROM skill_event WHERE kind='use' GROUP BY name",
+                    emptyArray(),
+                ).use { c ->
+                    val out = mutableMapOf<String, Int>()
+                    while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
+                    out
+                }
+            }
+        }.getOrDefault(emptyMap())
+        val oks = runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    "SELECT name, ok FROM skill_event WHERE kind='use' ORDER BY id ASC",
+                    emptyArray(),
+                ).use { c ->
+                    val out = mutableMapOf<String, MutableList<Boolean>>()
+                    while (c.moveToNext()) out.getOrPut(c.getString(0)) { mutableListOf() }.add(c.getInt(1) != 0)
+                    out
+                }
+            }
+        }.getOrDefault(emptyMap<String, List<Boolean>>())
+        val successCounts = runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    "SELECT name, COUNT(*) FROM skill_event WHERE kind='effect' AND outcome='SUCCESS' GROUP BY name",
+                    emptyArray(),
+                ).use { c ->
+                    val out = mutableMapOf<String, Int>()
+                    while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
+                    out
+                }
+            }
+        }.getOrDefault(emptyMap())
+        val readPaths = runCatching {
+            db.read { d ->
+                d.rawQuery(
+                    "SELECT DISTINCT path FROM file_op WHERE kind='read' AND path LIKE '%/SKILL.md'",
+                    emptyArray(),
+                ).use { c ->
+                    val out = mutableListOf<String>()
+                    while (c.moveToNext()) out.add(c.getString(0) ?: "")
+                    out
+                }
+            }
+        }.getOrDefault(emptyList())
+        return SkillUsageData(useCounts, oks, successCounts, readPaths)
     }
 
     /**
