@@ -280,13 +280,7 @@ internal object ShadowRehearsal {
         realRoot: String,
         realUntouched: Boolean?,
     ): ShadowOutcome? {
-        val touchedReal = observed != null && observed.touchedPaths.any { touchesReal(it, realRoot, shadowRoot) }
-        val escaped = observed != null && observed.touchedPaths.any { !isInside(it, shadowRoot) }
-        if (!(shadowRoot.isBlank() || realRoot.isBlank() || normalize(shadowRoot) == normalize(realRoot) ||
-                    touchedReal || escaped || realUntouched == false)
-        ) {
-            return null
-        }
+        if (!looksMiswired(observed, shadowRoot, realRoot, realUntouched)) return null
         return ShadowOutcome(
             verdict = ShadowVerdict.MISWIRED,
             items = listOf(
@@ -294,16 +288,48 @@ internal object ShadowRehearsal {
                     key = "wiring",
                     cn = "影子没接在副本上",
                     passed = false,
-                    detail = "shadow=${shortOf(shadowRoot)} real=${shortOf(realRoot)} " +
-                        "实测越界=${observed?.touchedPaths?.count { touchesReal(it, realRoot, shadowRoot) } ?: 0} 条 " +
-                        "出根=${observed?.touchedPaths?.count { !isInside(it, shadowRoot) } ?: 0} 条 " +
-                        "真盘字节改动=${when (realUntouched) { false -> "有"; true -> "无"; else -> "未测" }}",
+                    detail = wiringDetail(observed, shadowRoot, realRoot, realUntouched),
                 ),
             ),
             claimed = claimed,
             observed = observed ?: ImpactShape(),
         )
     }
+
+
+    /**
+     * 「影子没接在副本上」的判据（2026-10-30 拆；原先是一大串 `||` 挤在 if 里，复杂度刚越线）。
+     * 六种情形任一成立即判——每一种都能单独读、单独测。
+     */
+    private fun looksMiswired(
+        observed: ImpactShape?,
+        shadowRoot: String,
+        realRoot: String,
+        realUntouched: Boolean?,
+    ): Boolean =
+        shadowRoot.isBlank() || realRoot.isBlank() ||
+            normalize(shadowRoot) == normalize(realRoot) ||
+            touchedReal(observed, realRoot, shadowRoot) ||
+            escaped(observed, shadowRoot) ||
+            realUntouched == false
+
+    private fun touchedReal(observed: ImpactShape?, realRoot: String, shadowRoot: String): Boolean =
+        observed != null && observed.touchedPaths.any { touchesReal(it, realRoot, shadowRoot) }
+
+    private fun escaped(observed: ImpactShape?, shadowRoot: String): Boolean =
+        observed != null && observed.touchedPaths.any { !isInside(it, shadowRoot) }
+
+    /** 那一格给人看的明细（原样搬出，措辞与顺序未动）。 */
+    private fun wiringDetail(
+        observed: ImpactShape?,
+        shadowRoot: String,
+        realRoot: String,
+        realUntouched: Boolean?,
+    ): String =
+        "shadow=${shortOf(shadowRoot)} real=${shortOf(realRoot)} " +
+            "实测越界=${observed?.touchedPaths?.count { touchesReal(it, realRoot, shadowRoot) } ?: 0} 条 " +
+            "出根=${observed?.touchedPaths?.count { !isInside(it, shadowRoot) } ?: 0} 条 " +
+            "真盘字节改动=${when (realUntouched) { false -> "有"; true -> "无"; else -> "未测" }}"
 
     /**
      * 第 1 件事：实际影响 = 推演所述。

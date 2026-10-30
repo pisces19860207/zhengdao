@@ -35,6 +35,16 @@ internal enum class UnfinishedReason(val wire: String, val cn: String) {
     REJECTED("rejected", "被驳回"),
     TOOL_UNAVAILABLE("tool_unavailable", "工具不可用"),
     MODEL_MISJUDGED("model_misjudged", "模型判错"),
+
+    /**
+     * 第三百批：**现实漂移**——网页改版／表格换表头／命令升版，技能的旧契约对不上了。
+     *
+     * 为什么不并进 [TOOL_UNAVAILABLE]：那说的是"这台机器干不了"（不可补），
+     * 这里说的是"世界变了、技能该重学"（可补，且补法是"确认这是新版并重新校准"）——
+     * 两件事在未办成单里必须分得开，否则用户会去查权限，而该做的是校准。
+     */
+    REALITY_DRIFT("reality_drift", "现实漂移"),
+
     OTHER("other", "其他"),
     ;
 
@@ -49,6 +59,9 @@ internal enum class UnfinishedReason(val wire: String, val cn: String) {
  * [reasonRef] 是**后悔权的引用字段**：`ask:<卡 id>` 能一键跳回当初那张卡（原样重现当时的问题、
  * 选项、你选了什么）。本批只存引用，跳转与改判是 UI 批次的事——但字段与编码先定死，
  * 免得后面为了"能点"再改一次账本格式（改格式＝老账读不出来）。
+ *
+ * 出处形态（第三百批补一种）：`ask:<卡 id>`／`permission:<能力>`／`audit:<条目>`／
+ * `evidence:<巡按 id>`／`skill:<技能名>`（现实漂移：指回那条技能卡，校准入口在卡上）。
  */
 internal data class UnfinishedItem(
     /** 想做的事（人话；也是"同一件事只列一行"的归一依据）。 */

@@ -16,6 +16,9 @@
 // ## §2 的两条窄口径（她 2026-10-30 开工令原文）
 // 1. 第一版**只接** `write_file` / `edit_file`；其余工具 ⇒ `UNVERIFIABLE(reason=UNSUPPORTED)`
 //    ⇒ 不开放自动档（不是"跳过这一格放行"）；
+//    **第三百零六批**起一口一口补：`move_path`／`delete_path`／`convert_encoding` 在副本里
+//    真跑真验（各配一条"真实工具 ⇒ CONSISTENT"用例）；`phone_dial`／`notify` 没有文件副作用
+//    ⇒ 判 `NOT_APPLICABLE`（**与「还没接」分得开**：一个是"这格不适用"，一个是"下一批接谁"）；
 // 2. **结构故障**（副本建不起／快照失败／沙盒没装配／沙盒没交回真盘字节对照）
 //    ⇒ `UNVERIFIABLE(reason=STRUCTURE)` 并**取消本次自动资格**——没有"仍然执行"那颗按钮：
 //    本层唯一能交回的结论就是这四态，而四态里只有 CONSISTENT 能被 249 第⑤步认。
@@ -24,8 +27,23 @@ package com.example.zhengdao.baopu.inspect
 import com.example.zhengdao.baopu.RiskClass
 import java.io.File
 
-/** §2：第一版只接这两个工具（顺序即错误提示里的次序）。 */
-internal val SHADOW_TOOLS = listOf("write_file", "edit_file")
+/**
+ * §2：能进副本真跑真验的工具（顺序即错误提示里的次序）。
+ *
+ * 306 批起从两件扩到五件：`move_path`（搬＝源消失＋目标出现，副本里真搬一遍）、
+ * `delete_path`（副本里真删一遍，工具自己的 `回收站/` 归它的账不算影响面）、
+ * `convert_encoding`（副本里真转一遍，工具自己的 `备份/` 同理）。
+ */
+internal val SHADOW_TOOLS = listOf("write_file", "edit_file", "move_path", "delete_path", "convert_encoding")
+
+/**
+ * 306 批：**没有文件副作用**的工具——影子对它们不适用。
+ *
+ * 为什么单列而不留在 UNSUPPORTED 里：UNSUPPORTED 说的是"还没接，下一批接谁"；
+ * NOT_APPLICABLE 说的是"这一格本来就没有文件可比"（开拨号盘／发系统通知）。
+ * 混为一谈的后果是体检永远差两片接不上的"待办"，而它们根本不是待办（负例点名格）。
+ */
+internal val NOT_APPLICABLE_TOOLS = listOf("phone_dial", "notify")
 
 /**
  * 跑不出结论的**原因**（闭集字面量，进明细与影子账）。
@@ -39,6 +57,9 @@ internal object ShadowUnverifiable {
     /** §2：这个工具还没接适配器。 */
     const val UNSUPPORTED = "UNSUPPORTED"
 
+    /** 306 批：这个工具没有文件副作用，影子对它不适用（**不是**"还没接"）。 */
+    const val NOT_APPLICABLE = "NOT_APPLICABLE"
+
     /** 这次动作连"声明改了哪个对象"都说不出 ⇒ 没有可比的两份清单。 */
     const val NO_TARGET = "NO_TARGET"
 
@@ -49,7 +70,7 @@ internal object ShadowUnverifiable {
     const val STRUCTURE = "STRUCTURE"
 
     /** 全部原因（门禁钉的是"闭集"，新增必须在这儿挂号）。 */
-    val ALL: List<String> = listOf(UNSUPPORTED, NO_TARGET, NO_SANDBOX, STRUCTURE)
+    val ALL: List<String> = listOf(UNSUPPORTED, NOT_APPLICABLE, NO_TARGET, NO_SANDBOX, STRUCTURE)
 }
 
 /**
@@ -69,10 +90,20 @@ internal data class ShadowInput(
     val fromLine: Int? = null,
     val toLine: Int? = null,
     val overwrite: Boolean = false,
+    /** 306 批：`delete_path` 的 `permanent`（副本里照原样试：false＝进回收站，true＝真删）。 */
+    val permanent: Boolean = false,
     val risk: RiskClass? = null,
     val reversible: Boolean = false,
     val sessionId: Long = -1L,
-    /** 引擎步号（联键的一半）。授权链这一格取不到引擎步号 ⇒ 恒 0，见交付报告『遗留·I6 对表』。 */
+    /**
+     * 引擎分配的轮号＋步号（联键的一对；[ActionStepClock] 发的）。
+     *
+     * **口径变更点（2026-10-30，第三百零六批）**：这一对在此之前的存量账行里恒 `step=0`
+     * （授权链取不到引擎步号，见交付报告『遗留·I6 对表』）——旧账行**照原样留着不改写**；
+     * 此后的新行由授权链在第⑤步入口盖章（[TaskGrantGate.shadowSignalFor]），`roundId=0`
+     * ＝ 不在任何轮里（恢复执行），也不冒充轮号。
+     */
+    val roundId: Int = 0,
     val step: Int = 0,
     val wallMs: Long = 0L,
     /** 影子账的落点目录（＝208 那本账同一棵 `抱朴记忆/`）；空 = 没装配 ⇒ 只判定不落账。 */
@@ -93,6 +124,12 @@ internal data class ShadowRun(
     val copyRoot: String = "",
     /** 拍快照那一刻**已经存在**的声明对象（相对写法）⇒ 折算"覆盖几个/新建几个"。 */
     val existedBefore: List<String> = emptyList(),
+    /**
+     * 306 批：已存在声明对象的**改前字节数**（归一键 ⇒ 字节数）。
+     * `move_path`／`delete_path` 的所称形状要报「源没了、多少字节」——只有沙盒拍快照时知道，
+     * 不给这一格，所称就只能拿 0 冒充（比对必红，红的还不知为什么）。
+     */
+    val existedBytes: Map<String, Long> = emptyMap(),
     /** 副本树 diff 实测到的落点（副本根下的写法；出根的原样带回来，由判据层认定接错）。 */
     val observedPaths: List<String> = emptyList(),
     /** 实测七格（沙盒给 null ⇒ 适配器按 [observedPaths] 造一份只带路径的形状）。 */
@@ -155,7 +192,7 @@ internal object ShadowAdapter {
     /** 当前装的是哪一份（巡按/报告要知道"影子到底有没有人跑"）。 */
     fun installed(): ShadowSandbox? = port
 
-    fun supported(tool: String): Boolean = tool in SHADOW_TOOLS
+    fun supported(tool: String): Boolean = tool in SHADOW_TOOLS || tool in NOT_APPLICABLE_TOOLS
 
     /**
      * 跑一次预演。
@@ -171,7 +208,17 @@ internal object ShadowAdapter {
             return shortCircuit(
                 input,
                 ShadowUnverifiable.UNSUPPORTED,
-                "工具「${input.tool}」还没接影子适配器（第一版只接 ${SHADOW_TOOLS.joinToString("／")}）⇒ 不开放自动档",
+                "工具「${input.tool}」还没接影子适配器（已接 ${SHADOW_TOOLS.joinToString("／")}）⇒ 不开放自动档",
+                log,
+            )
+        }
+        // 306 批：无文件副作用的工具在「说不出对象」**之前**判——它们本来就轮不到谈路径，
+        // 落到 NO_TARGET 会把"这格不适用"谎报成"这次动作说不出对象"（原因码混用＝统计报废）。
+        if (input.tool in NOT_APPLICABLE_TOOLS) {
+            return shortCircuit(
+                input,
+                ShadowUnverifiable.NOT_APPLICABLE,
+                "工具「${input.tool}」没有文件副作用 ⇒ 影子不适用（NOT_APPLICABLE；与「还没接」两回事，也没有可复刻的文件动作）",
                 log,
             )
         }
@@ -262,15 +309,45 @@ internal object ShadowAdapter {
         return ShadowRehearsalResult(outcome, reason, accounted)
     }
 
-    /** 所称（声明侧）：路径就是声明的那几个，数字按"改前有没有原件"折算。 */
+    /**
+     * 所称（声明侧）：路径都是声明的那几个；数字按**这把工具实际会怎么改**折算——
+     * 306 批起按工具各算各的（一个工具一套折法，混用一套就是拿错的形状比对的假红/假绿）：
+     * · `move_path`：源消失（删 1 份、源字节数）＋目标出现/被覆盖，`moved` 不数（实测侧同样不数，两边零对零）；
+     * · `delete_path`：删 1 份、源字节数（副本里工具自己的 `回收站/` 不算影响面——那是它的退路，与 `备份/` 同一格）；
+     * · `convert_encoding`：覆盖 1 份（本来就是 UTF-8 时工具「没动」⇒ 实测 0 ≠ 所称 1，红——保守方向）；
+     * · 其余（write/edit）：照 296 的通用折法（改前在＝覆盖，不在＝新建）。
+     */
     private fun claimedOf(input: ShadowInput, run: ShadowRun): ImpactShape {
         val existed = run.existedBefore.map { relKey(it) }.toSet()
         val declared = input.declaredPaths.map { it.trim() }.filter { it.isNotEmpty() }
-        return ImpactShape(
-            newFiles = declared.count { relKey(it) !in existed },
-            overwriteTotal = declared.count { relKey(it) in existed },
-            touchedPaths = declared.map { inCopy(run.copyRoot, it) },
-        )
+        val touched = declared.map { inCopy(run.copyRoot, it) }
+        return when (input.tool) {
+            "move_path" -> {
+                val from = declared.getOrNull(0).orEmpty()
+                val to = declared.getOrNull(1).orEmpty()
+                ImpactShape(
+                    newFiles = if (relKey(to) in existed) 0 else 1,
+                    overwriteTotal = if (relKey(to) in existed) 1 else 0,
+                    deleteCount = if (relKey(from) in existed) 1 else 0,
+                    deleteBytes = run.existedBytes[relKey(from)] ?: 0L,
+                    touchedPaths = touched,
+                )
+            }
+            "delete_path" -> ImpactShape(
+                deleteCount = if (declared.any { relKey(it) in existed }) 1 else 0,
+                deleteBytes = declared.sumOf { run.existedBytes[relKey(it)] ?: 0L },
+                touchedPaths = touched,
+            )
+            "convert_encoding" -> ImpactShape(
+                overwriteTotal = if (declared.any { relKey(it) in existed }) 1 else 0,
+                touchedPaths = touched,
+            )
+            else -> ImpactShape(
+                newFiles = declared.count { relKey(it) !in existed },
+                overwriteTotal = declared.count { relKey(it) in existed },
+                touchedPaths = touched,
+            )
+        }
     }
 
     /**
@@ -318,6 +395,7 @@ internal object ShadowAdapter {
             step = input.step,
             atMs = input.wallMs,
             id = if (input.opId.isBlank()) "" else "sh:${input.opId}",
+            roundId = input.roundId,
         )
         return ShadowLedger.append(File(input.ledgerRoot), entry)
     }

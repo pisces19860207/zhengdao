@@ -48,6 +48,11 @@ class OpinionIsolationTest {
         // 不是顺手 import；`Scout.kt` 只是把 `ScoutOpinions` 的结果装进 Report（同一件事的两个文件）。
         "com/example/zhengdao/baopu/scout/ScoutOpinions.kt" to "290",
         "com/example/zhengdao/baopu/scout/Scout.kt" to "290",
+        // 302 批：右相验收闸——派工单 302 §一点名 `Opinion[]` 是托单三输入之一：
+        // 判据⑤（非建议级异议一票打回）与判据④③（学习成果不撞法条）都消费 lawRef/severity，
+        // 是真消费方；输入隔离（零模型/不读对话）另有源级门禁钉（ChancellorSourceGateTest）。
+        "com/example/zhengdao/baopu/verify/ChancellorGate.kt" to "302",
+        "com/example/zhengdao/baopu/verify/ChancellorInput.kt" to "302",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",
