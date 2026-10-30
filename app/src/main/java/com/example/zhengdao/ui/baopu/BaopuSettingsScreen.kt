@@ -1637,6 +1637,12 @@ private fun baopuToolLabel(name: String): Int = when (name) {
     "card_inspect" -> R.string.baopu_tool_card_inspect
     "card_export" -> R.string.baopu_tool_card_export
     "card_build" -> R.string.baopu_tool_card_build
+    // 第二百八十八批：复制/批量/整理五件
+    "copy_path" -> R.string.baopu_tool_copy_path
+    "bulk_move" -> R.string.baopu_tool_bulk_move
+    "bulk_copy" -> R.string.baopu_tool_bulk_copy
+    "organize" -> R.string.baopu_tool_organize
+    "organize_preview" -> R.string.baopu_tool_organize_preview
     "capabilities" -> R.string.baopu_tool_capabilities
     "preview_local_file" -> R.string.baopu_tool_preview_local_file
     "read_file" -> R.string.baopu_tool_read_file
@@ -1741,6 +1747,12 @@ private fun baopuToolDesc(name: String): Int = when (name) {
     "card_inspect" -> R.string.baopu_tool_card_inspect_desc
     "card_export" -> R.string.baopu_tool_card_export_desc
     "card_build" -> R.string.baopu_tool_card_build_desc
+    // 第二百八十八批：复制/批量/整理五件
+    "copy_path" -> R.string.baopu_tool_copy_path_desc
+    "bulk_move" -> R.string.baopu_tool_bulk_move_desc
+    "bulk_copy" -> R.string.baopu_tool_bulk_copy_desc
+    "organize" -> R.string.baopu_tool_organize_desc
+    "organize_preview" -> R.string.baopu_tool_organize_preview_desc
     "capabilities" -> R.string.baopu_tool_capabilities_desc
     "preview_local_file" -> R.string.baopu_tool_preview_local_file_desc
     "read_file" -> R.string.baopu_tool_read_file_desc
