@@ -440,7 +440,7 @@ internal object HealthCheck {
     private fun testSignal(i: SignalInput): SignalVerdict = when {
         !i.gatesRan -> SignalVerdict(DefectSignal.TEST_RED, ScanOutcome.NO_DATA, emptyList(), "这一趟没跑全量/lint")
         i.redGates.isEmpty() -> SignalVerdict(DefectSignal.TEST_RED, ScanOutcome.NO_SIGNAL, emptyList(), "全量与 lint 都绿")
-        else -> SignalVerdict(DefectSignal.TEST_RED, ScanOutcome.HIT, i.redGates.take(HealthLimits.MAX_EVIDENCE), "有红")
+        else -> SignalVerdict(DefectSignal.TEST_RED, ScanOutcome.HIT, i.redGates.take(HealthLimits.MAX_EVIDENCE), "有红：${i.redGates.take(2).joinToString("；")}")
     }
 
     private fun repeatSignal(i: SignalInput): SignalVerdict = when {
