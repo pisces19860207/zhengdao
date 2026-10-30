@@ -98,7 +98,7 @@ class LawSourceWiringGateTest {
             entry = "TimeoutFallback",
             law = "TimeoutFallback 的 settle（L27 超时未批⇒维持原状；二次上奏取窄口径）",
             host = "agent/RunRules.kt:227 的 confirmExpired（生产唯一「等御批」的超时线）",
-            owner = "另行（2026-10-31 御裁 Q1：L27 另行立项，批号未定；边界已由 Q3 定为 >=）",
+            owner = "另行（2026-10-31 御裁 Q1：L27 另行立项，批号未定；边界已由 Q3 定为 >=；303 交付报告 §7 裁定记录）",
             blockedBy = "边界已不再有分歧（2026-10-31 御裁 Q3 定为 >=，与生产 RunRules.kt:227／TaskGrantGate.kt:282 的「到线即超时」同口径）。" +
                 "仍拦着的是窗口与形状：生产超时线是 15 分钟／60 分钟（TaskGrantGate 的租约到期），settle 的窗写死 24 小时；" +
                 "且 settle 返回完整裁决（APPROVED／REJECTED／二次上奏），生产点位只想要一个布尔",
@@ -128,6 +128,9 @@ class LawSourceWiringGateTest {
                 "把三时钟接进去要先有「先动手后追认」的执行通道，本批没有",
         ),
     )
+
+    /** 批号 token：独立三位数字（日期 `2026-10-31` 里的 202 不算）。 */
+    private val batchToken = Regex("""(?<!\d)\d{3}(?!\d)""")
 
     // ── 扫描工具（只认代码行、只认生产树） ────────────────────────────────────
 
@@ -237,8 +240,22 @@ class LawSourceWiringGateTest {
                 assertTrue("${b.entry} 的「$what」是空的：挂账不是免罪牌", text.isNotBlank())
             }
             assertTrue("${b.entry} 的宿主点位要指到具体文件：${b.host}", b.host.contains(".kt"))
-            assertTrue("${b.entry} 的「谁接」要点批次号：${b.owner}", Regex("""\d{3}""").containsMatchIn(b.owner))
+            assertTrue(
+                "${b.entry} 的「谁接」要点批次号（三条路：真批号／「另行」立项／挂到某批的报告）：${b.owner}",
+                batchToken.containsMatchIn(b.owner),
+            )
         }
+    }
+
+    @Test
+    fun 批号判据不被日期糊弄() {
+        // `\d{3}` 会被 2026-10-31 里的 202 满足——"待御裁（2026-10-31）"就白挂了账。
+        // 批号必须是独立的数字 token：前后都不许再连数字。
+        val token = Regex("""(?<!\d)\d{3}(?!\d)""")
+        assertFalse("日期里的三位不能当批号", token.containsMatchIn("待御裁（2026-10-31）"))
+        assertFalse("四位数字里也不许截出三位", token.containsMatchIn("3033"))
+        assertTrue("真批号要认：298", token.containsMatchIn("298（判决时查经验表）"))
+        assertTrue("真批号要认：312", token.containsMatchIn("312（军令状）"))
     }
 
     // ── 4. 只扫生产，不认测试与注释与 law 自引（负例④） ────────────────────────
