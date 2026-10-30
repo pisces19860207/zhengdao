@@ -54,6 +54,7 @@ import com.example.zhengdao.baopu.SkillApplicability
 import com.example.zhengdao.baopu.SkillAudit
 import com.example.zhengdao.baopu.SkillContract
 import com.example.zhengdao.baopu.SkillDraftGovernor
+import com.example.zhengdao.baopu.SkillHygiene
 import com.example.zhengdao.baopu.SkillIndexReconcile
 import com.example.zhengdao.baopu.SkillPromote
 import com.example.zhengdao.baopu.SkillRules
@@ -92,6 +93,8 @@ internal data class SkillLibraryRow(
     val archivedAt: String? = null,
     /** 追加件③：与哪条草稿疑似重复（只标不删；一键合并＝保留本条、退役对方）。 */
     val duplicateOf: String? = null,
+    /** 289④：命中率三数（检索/用/成）；null ＝ 数据没接上（不显示，不冒充 0）。 */
+    val hits: SkillHygiene.HitRate? = null,
 )
 
 /** 回放结果一句话：跑完/停在第几步（`TeachParamRun.answerLine`）＋被拦动作数＋每步证据目录。 */
@@ -468,6 +471,13 @@ private class RowUi(val row: SkillLibraryRow, val host: SkillCardHost) {
 internal data class SkillLibraryState(
     val rows: List<SkillLibraryRow> = emptyList(),
     val pendingCount: Int = 0,
+    /**
+     * 289③：技能库总量到线提醒（null ＝ 没到线，不占地方）。只提醒不拦写——
+     * 「多了也不乱」靠命中率与归档建议，不靠硬卡数量。
+     */
+    val totalReminder: String? = null,
+    /** 289②：长期不用/老失败的卫生建议（只提示；处置走行内动作，归档＝软退役可恢复）。 */
+    val suggestions: List<SkillHygiene.Suggestion> = emptyList(),
 )
 
 @Composable
@@ -516,6 +526,8 @@ internal fun SkillLibraryDialog(
                 message?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                // 289③②：总量到线提醒 ＋ 长期不用/老失败的建议（归档＝行内「退役」，可恢复）
+                HygieneBanners(state)
                 controller.reflectionNote?.let {
                     Text(it.text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -589,6 +601,37 @@ private fun SkillGroup(
     }
 }
 
+/** 289②③：卫生横幅（总量到线提醒＋归档/重验建议）。从 SkillLibraryDialog 拆出，只渲染。 */
+@Composable
+private fun HygieneBanners(state: SkillLibraryState) {
+    state.totalReminder?.let {
+        Text(it, style = MaterialTheme.typography.labelSmall, color = zhengdaoErrorText())
+    }
+    if (state.suggestions.isEmpty()) return
+    val archive = state.suggestions.filter { it.action == SkillHygiene.SuggestAction.ARCHIVE }
+    val recheck = state.suggestions.filter { it.action == SkillHygiene.SuggestAction.RECHECK }
+    if (archive.isNotEmpty()) {
+        Text(
+            text = stringResource(
+                R.string.skill_library_suggest_archive,
+                archive.joinToString("、") { it.name },
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (recheck.isNotEmpty()) {
+        Text(
+            text = stringResource(
+                R.string.skill_library_suggest_recheck,
+                recheck.joinToString("、") { it.name },
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** 一行＝复用的 184 卡＋元信息行（徽标/层/uses/最近使用）＋行内动作（转正/删除/恢复）。 */
 @Composable
 private fun SkillRow(
@@ -610,11 +653,14 @@ private fun SkillRow(
 
     Column(Modifier.fillMaxWidth()) {
         ui.view?.let { v ->
+            var preferNew by remember(row.file.absolutePath) { mutableStateOf(false) }
             BaopuSkillCard(
                 view = v,
                 onEdit = { d ->
                     (ui.host.edit(d) as? SkillCardBuild.Ready)?.let { ui.view = it.view }
                 },
+                preferNew = preferNew,
+                onPreferNew = { preferNew = it; ui.host.preferNew = it },
                 onRemember = {
                     when (row.status) {
                         SkillLibraryStatus.RETIRED ->
@@ -806,6 +852,10 @@ private fun MetaLine(row: SkillLibraryRow) {
     val last = row.lastUseMs?.let { TimeFormats.minuteStamp(it) }
         ?: stringResource(R.string.skill_library_never_used)
     val duplicate = row.duplicateOf?.let { stringResource(R.string.skill_library_duplicate, it) }.orEmpty()
+    // 289④：命中率三数（检索/用/成）——「多而不乱」的证据行；没数据就不显示，不冒充 0。
+    val hits = row.hits?.takeIf { it.text().isNotEmpty() }
+        ?.let { stringResource(R.string.skill_library_hits, it.text()) }
+        .orEmpty()
     // 第二百三十三批规则 1：缺契约的技能**标出来**（contract_missing 不静默放过）——
     // 判断全在纯函数 SkillContract 里，页面只显示那两个字。
     val contract = stringResource(
@@ -816,6 +866,7 @@ private fun MetaLine(row: SkillLibraryRow) {
         text = stringResource(R.string.skill_library_meta, src, layer, row.uses, last) +
             (if (row.archivedAt != null) stringResource(R.string.skill_library_retired_at, row.archivedAt) else "") +
             duplicate +
+            hits +
             contract,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -849,11 +900,14 @@ private fun ReflectionCandidateRow(
             )
         }
         view?.let { v ->
+            var preferNew by remember(candidate.dedupKey) { mutableStateOf(false) }
             BaopuSkillCard(
                 view = v,
                 onEdit = { d ->
                     (host.edit(d) as? SkillCardBuild.Ready)?.let { view = it.view }
                 },
+                preferNew = preferNew,
+                onPreferNew = { preferNew = it; host.preferNew = it },
                 onRemember = {
                     when (val r = host.remember()) { // 184 的唯一写口：确认后才写技能与索引
                         null -> onDone(null)

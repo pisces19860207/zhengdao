@@ -1385,7 +1385,9 @@
 <string name="skill_card_active_hint">This is already a formal skill: saving updates it and backs up the old version</string>
 <string name="skill_card_schema_pass">Schema precheck: passed (tool examples: %1$d)</string>
 <string name="skill_card_blocked">Cannot remember yet: %1$s</string>
-<string name="skill_card_remember">Remember it</string>
+<string name="skill_card_duplicate_upgrade">Upgrade (backup kept)</string>
+    <string name="skill_card_duplicate_new">Create new "%1$s"</string>
+    <string name="skill_card_remember">Remember it</string>
 <string name="skill_card_dismiss">Not now</string>
 <string name="skill_card_source_reflection">Reflector suggestion</string>
 <!-- Batch 205: reflector (candidate cards) -->
@@ -1397,7 +1399,10 @@
 <string name="skill_library_group_active">Promoted (%1$d)</string>
 <string name="skill_library_group_retired">Retired (%1$d)</string>
 <string name="skill_library_meta">%1$s · %2$s · uses: %3$d · last use %4$s</string>
-<string name="skill_library_retired_at"> · retired %1$s</string>
+<string name="skill_library_hits"> · %1$s</string>
+    <string name="skill_library_suggest_archive">Suggest archiving (row action 「Retire」; file kept, restorable): %1$s</string>
+    <string name="skill_library_suggest_recheck">Suggest recheck: %1$s</string>
+    <string name="skill_library_retired_at"> · retired %1$s</string>
 <string name="skill_library_source_seed">seed</string>
 <string name="skill_library_source_reflect">reflector</string>
 <string name="skill_library_source_manual">manual</string>

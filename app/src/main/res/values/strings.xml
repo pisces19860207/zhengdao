@@ -1338,7 +1338,9 @@
 <string name="skill_card_active_hint">这条已经是正式技能：保存会更新它，旧版进备份</string>
 <string name="skill_card_schema_pass">schema 预检：通过（%1$d 个工具示例）</string>
 <string name="skill_card_blocked">还不能记：%1$s</string>
-<string name="skill_card_remember">记住它</string>
+<string name="skill_card_duplicate_upgrade">升级覆盖（留备份）</string>
+    <string name="skill_card_duplicate_new">另建「%1$s」</string>
+    <string name="skill_card_remember">记住它</string>
 <string name="skill_card_dismiss">先不记</string>
 <string name="skill_card_source_reflection">反思器提议</string>
 <!-- 第二百零五批：反思器（候选卡文案） -->
@@ -1350,7 +1352,10 @@
 <string name="skill_library_group_active">已转正（%1$d）</string>
 <string name="skill_library_group_retired">已退役（%1$d）</string>
 <string name="skill_library_meta">%1$s · %2$s · 已用 %3$d 次 · 最近使用 %4$s</string>
-<string name="skill_library_retired_at"> · 退役于 %1$s</string>
+<string name="skill_library_hits"> · %1$s</string>
+    <string name="skill_library_suggest_archive">建议归档（行内「退役」，原件保留可恢复）：%1$s</string>
+    <string name="skill_library_suggest_recheck">建议重验：%1$s</string>
+    <string name="skill_library_retired_at"> · 退役于 %1$s</string>
 <string name="skill_library_source_seed">种子</string>
 <string name="skill_library_source_reflect">反思器</string>
 <string name="skill_library_source_manual">手动</string>

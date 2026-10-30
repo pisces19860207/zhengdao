@@ -19,6 +19,9 @@ enum class SkillWriteVeto(val label: String) {
     /** 同目录已有同名 SKILL.md——改比新建危险一档。 */
     MODIFY_EXISTING("改已有技能"),
 
+    /** 289：与另一条**不同名**技能高度相似（名字像或场景像）——并排堆近似技能＝库变乱的第一来源。 */
+    NEAR_DUPLICATE("近似重复"),
+
     /** 全局技能是所有项目共用的人设底座，免批不许碰。 */
     GLOBAL_SCOPE("全局技能"),
 
@@ -51,6 +54,12 @@ sealed interface SkillWriteDecision {
 data class SkillWriteContext(
     /** 目标 `技能/<名>/SKILL.md` 已经存在 ⇒「改已有」，永远否决。 */
     val targetExists: Boolean = false,
+
+    /**
+     * 289：与哪条**不同名**技能高度相似（名字像／场景像；同名走 [targetExists]）。
+     * 非 null ⇒「近似重复」否决——AUTO 不许悄悄并排堆近似技能，二选一摆到明面上。
+     */
+    val nearDuplicateOf: String? = null,
 
     /** 备份是否备好（AUTO 恒为新建、无原件可备；调用方报 false 就走否决）。 */
     val backupReady: Boolean = true,
@@ -112,10 +121,11 @@ internal object SkillWritePolicy {
 
     private fun oversized(body: String): Boolean = utf8Bytes(body)?.let { it > BODY_MAX_BYTES } ?: true
 
-    /** 六个否决（**表**：一行一个否决，命中即拒）。 */
+    /** 否决表（**表**：一行一个否决，命中即拒；289 起七个）。 */
     private val VETO_TABLE: List<Pair<SkillWriteVeto, (SkillProposal, SkillWriteContext) -> Boolean>> = listOf(
         SkillWriteVeto.GLOBAL_SCOPE to { p, _ -> p.scope != SkillScope.PROJECT },
         SkillWriteVeto.MODIFY_EXISTING to { _, c -> c.targetExists },
+        SkillWriteVeto.NEAR_DUPLICATE to { _, c -> c.nearDuplicateOf != null },
         SkillWriteVeto.FORBIDDEN_CONTENT to { p, _ -> forbiddenFindings(p.body).isNotEmpty() },
         SkillWriteVeto.OVERSIZE to { p, _ -> oversized(p.body) },
         SkillWriteVeto.NAME_CONFLICT to { p, _ ->
@@ -196,11 +206,35 @@ internal object SkillAutoWrite {
         nowMs: Long = System.currentTimeMillis(),
     ): SkillAutoOutcome {
         // ① 先探一次落点：plan 是纯函数，只问路径不写盘（与 SkillCardWriter.save 同款探法）。
-        val probe = SkillStore.plan(proposal.copy(draft = true), projectRoot, globalRoot, stamp)
+        //    289：把两层既有索引一起喂进去，重名/近似命中在 plan.duplicate 里带回来
+        //    （读口在 SkillHygiene.existingIndexLines——本文件按 N8 门禁不许提 B 层字面量）。
+        val existingLines = SkillHygiene.existingIndexLines(personaFiles)
+        val probe = SkillStore.plan(
+            proposal.copy(draft = true),
+            projectRoot,
+            globalRoot,
+            stamp,
+            existingLines = existingLines,
+        )
         // ② decide()（纯）：盘上事实由这里算好装进 ctx。
-        val ctx = SkillWriteContext(targetExists = probe.file.isFile)
+        val ctx = SkillWriteContext(
+            targetExists = probe.file.isFile,
+            nearDuplicateOf = probe.duplicate
+                ?.takeIf { it.kind != SkillHygiene.DuplicateKind.SAME_NAME }?.existingName,
+        )
         val decision = SkillWritePolicy.decide(proposal, ctx)
-        if (decision is SkillWriteDecision.NeedsConfirm) return SkillAutoOutcome.NeedsConfirm(decision)
+        if (decision is SkillWriteDecision.NeedsConfirm) {
+            // 289①：重名/近似不给一句干巴巴的否决——把「升级／新建」二选一连同建议名一起说清。
+            val dup = probe.duplicate
+            val enriched = if (dup != null) {
+                val taken = existingLines.map { it.name }.toSet()
+                val alt = SkillHygiene.alternativeName(probe.proposal.name, taken)
+                decision.copy(reason = decision.reason + "。" + SkillHygiene.duplicateGuidance(dup, alt))
+            } else {
+                decision
+            }
+            return SkillAutoOutcome.NeedsConfirm(enriched)
+        }
         // ③ AUTO：正式 plan。draft 钉死 true；来源写进 reason——apply 自己那行审计因此也带来源。
         val beforeSha = SkillAudit.shaOf(probe.file)
         val auto = proposal.copy(
