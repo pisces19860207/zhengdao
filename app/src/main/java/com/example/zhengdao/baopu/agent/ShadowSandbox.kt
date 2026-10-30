@@ -119,6 +119,39 @@ internal class FileShadowSandbox(
 
     /** 建副本根＋复制声明对象；任何一条不合格 ⇒ (null, 原因)（调用方按结构故障收）。 */
     private fun open(input: ShadowInput): Pair<Scene?, String?> {
+        val prepared = prepareOpen(input)
+        val opened = prepared.first ?: return null to (prepared.second ?: "预演副本打不开")
+        val workspace = opened.workspace
+        val rels = opened.rels
+        val copyRoot = opened.copyRoot
+        val existed = mutableListOf<String>()
+        val before = LinkedHashMap<String, Node>()
+        val realBefore = LinkedHashMap<String, String>()
+        rels.forEach { rel ->
+            val one = copyOne(workspace, copyRoot, rel)
+            one.error?.let { return null to it }
+            if (one.existed) {
+                existed += rel
+                before[relPathKey(rel)] = one.node
+            }
+            // 真盘 before 摘要（跑完之后同一格再取一次，两值必须相等；新建对象＝空串＝"两边都不存在"）。
+            realBefore[rel] = one.realSha
+        }
+        return Scene(copyRoot, workspace, rels, existed, before, realBefore) to null
+    }
+
+
+    /** 「副本开好了」的三样东西（296 收口时把 open 的校验半段抽出来的形状）。 */
+    private data class Opened(val workspace: File, val rels: List<String>, val copyRoot: File)
+
+    /**
+     * 开副本前的**全部校验 + 建根**（2026-10-30，detekt 硬墙红了 2 条时拆出来的）。
+     *
+     * 为什么单拆：`open` 原来一屏里塞了「算工作区 → 算对象 → 判越界 → 判超大 → 算副本根 →
+     * 清旧 → 建目录 → 逐对象复制」八件事，复杂度 16 刚好越线；复制那段本来就是循环，
+     * 校验这边是一串**并列的拒绝条件**——拆出来的是"准入"这一件事。
+     */
+    private fun prepareOpen(input: ShadowInput): Pair<Opened?, String?> {
         if (input.opId.isBlank()) return null to "这次动作没有 opId ⇒ 副本没有归属，不开"
         val workspace = input.workspaceRoot.trim().takeIf { it.isNotEmpty() }?.let(::File)
             ?: return null to "工作区根没给"
@@ -135,20 +168,7 @@ internal class FileShadowSandbox(
         }
         if (copyRoot.isDirectory) discard(copyRoot.absolutePath)
         if (!copyRoot.mkdirs() && !copyRoot.isDirectory) return null to "建不了副本根目录"
-        val existed = mutableListOf<String>()
-        val before = LinkedHashMap<String, Node>()
-        val realBefore = LinkedHashMap<String, String>()
-        rels.forEach { rel ->
-            val one = copyOne(workspace, copyRoot, rel)
-            one.error?.let { return null to it }
-            if (one.existed) {
-                existed += rel
-                before[relPathKey(rel)] = one.node
-            }
-            // 真盘 before 摘要（跑完之后同一格再取一次，两值必须相等；新建对象＝空串＝"两边都不存在"）。
-            realBefore[rel] = one.realSha
-        }
-        return Scene(copyRoot, workspace, rels, existed, before, realBefore) to null
+        return Opened(workspace, rels, copyRoot) to null
     }
 
     /** 单对象复制上限这一格（超了交回错误文案，没超交回 null）。 */
