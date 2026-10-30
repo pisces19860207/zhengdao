@@ -453,7 +453,7 @@ class OpinionWiringTest {
         val registry = ToolRegistry().apply { register(ReadFileTool.spec()) }
         val pipeline = GuardPipeline(
             registry, { ws }, { null }, ToolRunner(Executors.newSingleThreadExecutor()),
-            log = {}, allowOutside = { true },
+            log = {},
         )
 
         val prepared = pipeline.prepare(ToolCall("c1", "read_file", JSONObject().put("path", "../out.txt")))

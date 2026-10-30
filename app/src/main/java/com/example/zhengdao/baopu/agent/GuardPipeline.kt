@@ -11,8 +11,12 @@ import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionDraft
 import com.example.zhengdao.baopu.DecisionKind
 import com.example.zhengdao.baopu.DecisionLedger
+import com.example.zhengdao.baopu.FileOpLog
+import com.example.zhengdao.baopu.FileOpRules
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.FilePolicy
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.RiskClass
-import com.example.zhengdao.baopu.RiskCode
 import com.example.zhengdao.baopu.RiskGate
 import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
@@ -193,12 +197,6 @@ internal class GuardPipeline(
     private val runner: ToolRunner = ToolRunner(ToolRunner.toolExecutor),
     private val log: (String) -> Unit = { RunLog.log(it) },
     /**
-     * 第一百五十六批：设置项「允许访问工作区外」现值（生产 = `WorkspacePrefs.enabled`）。
-     * 排在参数表**最后**且默认 `{ false }` ⇒ 存量调用点（含测试）一个字不改、行为逐字节不变；
-     * 默认关 = 越界一律拒（与 156 批之前完全同口径）。
-     */
-    private val allowOutside: () -> Boolean = { false },
-    /**
      * 第二百二十三批：判定用的**风险矩阵表**——缺省就是 219 的那唯一一张。
      *
      * 为什么让它可注入：派工单 §2 的硬要求是「矩阵改一行 ⇒ 判定结果变」的**对照测试**，
@@ -303,8 +301,6 @@ internal class GuardPipeline(
         data class Ready(
             val call: ToolCall,
             val spec: ToolSpec,
-            /** 第一百五十六批：批准路径里**本次记账放行**的工作区外原始路径（空 = 无；回灌用）。 */
-            val grantedOutside: List<String> = emptyList(),
         ) : Prepared
 
         /** ①②③ 里已有定论（Failed / Rejected / NeedsConfirm）——按 [result] 收场。 */
@@ -377,26 +373,14 @@ internal class GuardPipeline(
         // 第一百二十三批：外部 MCP 工具的 `path` 是**服务端**的路径语义，不是本地工作区
         // 路径——按本地规则改写/越界判定会把参数改坏（远端看到一个绝对路径）。MCP 组整组
         // 跳过②，但①③④⑤原样保留（Schema 校验、确认、超时、围栏一个都不少）。
-        // 第一百五十六批：skipConfirm=true 即「用户已在确认卡上批准」⇒ ② 段按授权口径跑
-        // （工作区外路径此刻记账放行——批准本身就是用户同意，不是静默放行）。
-        // 第一百七十一批：放 [readOnly] 进②段——授权根下「只读免卡、写/改/删仍确认」
-        // 的读写在管线里的分叉点就在这里（派工单 §1.2）。
+        // 第二百八十七批：② 段不再有「越界问一次」这一支——工作区不是权限边界，
+        // 全盘可读写；这一段现在只做三件事：解析相对路径、拒系统/凭据目录、入账。
         val guarded = if (spec.group == ToolGroup.MCP) {
             Guarded.Yes(call)
         } else {
-            guardPath(call, spec.name, granting = skipConfirm, readOnly = spec.readOnly)
+            guardPath(call, spec.name)
         }
         if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
-        // 第二百二十三批：越界弹卡的原因码由②段的事实直接给（走到这里已经是"越界"这个事实，
-        // 不需要再让矩阵猜一次）；文案唯一来源在 `RiskTell`，别处不许再拼一句。
-        if (guarded is Guarded.Ask) {
-            // 第二百七十四批 W1：越界在②段就返回了（根本不进③的矩阵），所以这一条
-            // 单独送一次——只观察、不改判定：卡照弹、文案照旧，意见进调解器的账。
-            OpinionWiring.onOutsidePath(guarded.call)
-            return Prepared.Settled(
-                Result.NeedsConfirm(guarded.call, RiskTell.hint(RiskCode.PATH_OUTSIDE_WORKSPACE)),
-            )
-        }
         val effectiveCall = (guarded as Guarded.Yes).call
 
         // ③ 判定（**风险矩阵唯一口径**，第二百二十三批；批准路径跳过）
@@ -537,7 +521,7 @@ internal class GuardPipeline(
             log = log,
         )
         when (grantLane.disposition) {
-            WiringDisposition.ALLOW -> return Prepared.Ready(effectiveCall, spec, guarded.grantedOutside)
+            WiringDisposition.ALLOW -> return Prepared.Ready(effectiveCall, spec)
             WiringDisposition.REJECT -> {
                 log("抱朴授权：硬拒 ${effectiveCall.name}（${grantLane.note}）——这次动作不发生")
                 return Prepared.Settled(
@@ -547,7 +531,7 @@ internal class GuardPipeline(
             else -> Unit
         }
         if (mustAsk) return Prepared.Settled(Result.NeedsConfirm(effectiveCall, riskAsk))
-        return Prepared.Ready(effectiveCall, spec, guarded.grantedOutside)
+        return Prepared.Ready(effectiveCall, spec)
     }
 
     /**
@@ -576,18 +560,11 @@ internal class GuardPipeline(
         effectiveCall: ToolCall,
         outcome: ToolOutcome,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
-        /** 第一百五十六批：非 null ⇒ 在围栏里先回灌一句「用户已授权工作区外：<path>」。 */
-        outsideNote: String? = null,
     ): Result {
         val text = when (outcome) {
-            is ToolOutcome.Ok -> {
-                val body = outcome.text
-                if (outsideNote == null) body
-                // 第一百七十一批：授权说明改成「读不再问、写仍确认」的实话——
-                // 156/157 那版写「本次运行内访问同一工作区不再重复询问」，在写操作上
-                // 是假话（171 起写入每次照问）。前缀不动（测试钉着它）。
-                else "（用户已在确认卡上授权访问工作区外：$outsideNote；本会话内读取该处不再重复询问，写入仍会逐次确认）\n$body"
-            }
+            // 第二百八十七批：越界不再有"授权说明"要回灌（工作区不是权限边界，
+            // 读全盘不弹卡）；工具自己的回执里会写清"备份/没备份"与"能不能回"。
+            is ToolOutcome.Ok -> outcome.text
             // 第一百八十九批 §1.3：哈希在**围栏前**算（围栏头/spill 文件名都带时刻，
             // 围栏后再算同一份输出每次字节都不同，无进展熔断会静默失效）。
             is ToolOutcome.Failed -> return Result.Failed(
@@ -704,8 +681,6 @@ internal class GuardPipeline(
                     p.call,
                     runner.run(p.spec, p.call.arguments),
                     spillWriter,
-                    // 第一百五十六批：这次批准里记账放行过工作区外 ⇒ 明说，不让模型猜
-                    outsideNote = p.grantedOutside.takeIf { it.isNotEmpty() }?.joinToString("、"),
                 )
             Result.Failed(p.call, "工具授权失败（${hookError.javaClass.simpleName}），这次不执行")
         }
@@ -751,44 +726,30 @@ internal class GuardPipeline(
     // ── ② 路径守卫 ────────────────────────────────────────────────────────
 
     private sealed interface Guarded {
-        data class Yes(
-            val call: ToolCall,
-            /** 第一百五十六批：本次记账放行的工作区外原始路径（只在批准路径上有值）。 */
-            val grantedOutside: List<String> = emptyList(),
-        ) : Guarded
+        /** 通过（[call] 的路径参数已改写成绝对路径）。 */
+        data class Yes(val call: ToolCall) : Guarded
 
+        /** 拒绝（系统/凭据目录，或原件区红线）——终止本轮，回灌原文。 */
         data class No(val reason: String) : Guarded
-
-        /**
-         * 第一百五十六批：工作区外、开关开、未授权 ⇒ 弹一次确认卡（复用现有 ConfirmFlow）。
-         * 第一百七十一批：已授权根下的**写/改/删**也走这里（读免卡、写不免）。
-         */
-        data class Ask(val call: ToolCall) : Guarded
     }
 
     /**
      * 把 arguments 里的路径参数解析 + 守卫，通过 ⇒ 返回已改写为**绝对路径**的新 ToolCall
      * （executor 只认绝对路径）；没有路径参数的工具（如纯计算类）原样放行。
      *
-     * 两处第四十八批的修正（审计 §一 P0-2 / P0-4）：
-     * - **P0-2**：对会改盘的工具，按**解析后的真实目标**判「原件区只读」红线——
+     * 第二百八十七批（2026-10-30 用户口径「和电脑的 agent 一样」）之后这一段只剩三件事：
+     * 1. **解析**：相对路径 / 不给路径 ⇒ 工作区根；绝对路径 ⇒ 原样（全盘）；
+     * 2. **拒**：系统目录与凭据目录一律拒（[fileAccessCheck]，判据在 `FilePolicy`）——
+     *    这是三道硬下限里唯一"不可商量"的一条；**不再有"越界问一次"**（工作区不是权限边界）；
+     * 3. **入账**：每笔文件操作落一行（路径＋用途，[FileOpLog]，30 天可回放）。
+     *
+     * 两处第四十八批的修正照旧（与权限模型无关，是**数据**红线）：
+     * - **P0-2**：对会改盘的工具，按**解析后的真实目标**判「原件区只读」——
      *   相对/绝对/`..` 折叠/多余分隔符先归一，再按路径组件比较（同前缀兄弟目录骗不过）；
      * - **P0-4**：`library_organize` 的 `path` 是「相对 投递/整理」的口径，**不改写**成
-     *   绝对路径（改写后 `LibraryTools.normalizeRel` 见 `/` 直接拒 ⇒ promote/rename 必败），
-     *   越界由 `normalizeRel` + `destinationUnder` + `PathGuard` 自己判。
-     *
-     * 第一百七十一批（派工单 §1.2 路径维度）：[readOnly] 决定已授权根下**放行还是再问**——
-     * 只读（read/list/find，按 [ToolSpec.readOnly] 的九十二批分类）免卡直行；
-     * 写/改/删仍走确认（「读免卡 ≠ 写免卡」——负例「写不弹」的判据就在这一刀）。
-     * 批准路径（[granting]）无论读写都授整根：批一次 = 授权这个**目录**，
-     * 此后该根下读取不再问；写入每次照问（范围授权另走 [ConfirmGrants] 的 key 账本）。
+     *   绝对路径（改写后 `LibraryTools.normalizeRel` 见 `/` 直接拒 ⇒ promote/rename 必败）。
      */
-    private fun guardPath(
-        call: ToolCall,
-        toolName: String,
-        granting: Boolean = false,
-        readOnly: Boolean = false,
-    ): Guarded {
+    private fun guardPath(call: ToolCall, toolName: String): Guarded {
         // P0-4：相对路径工具白名单——path 保持相对，改写会把它变成必然被拒的绝对路径
         if (toolName == LibraryTools.NAME) return Guarded.Yes(call)
 
@@ -802,103 +763,45 @@ internal class GuardPipeline(
             rawRejection(target)?.let { return Guarded.No(it) }
         }
 
-        // 第一百五十六批：本次记账放行的工作区外原始路径（批准路径上才有值；回灌给模型）
-        val grantedRaw = mutableListOf<String>()
-
         var newArgs = args
         for (key in keys) {
             val raw = args.optString(key).trim()
             if (raw.isBlank()) {
                 // 保持既有语义：path 为空是管线级拒绝（不走工具，避免把"没给路径"当可重试错误）
                 if (key == ReadFileTool.ARG_PATH) {
-                    return Guarded.No("参数「$key」为空（要一个相对工作区根的路径）")
+                    return Guarded.No("参数「$key」为空（要给一个路径：相对工作区根，或全盘的绝对路径）")
                 }
                 continue
             }
-            val resolved = resolve(root, raw)
-            when (val v = BaopuGuardCore.checkPath(root, resolved)) {
-                is BaopuGuardCore.PathVerdict.Inside -> {
-                    newArgs = JSONObject(newArgs.toString()).put(key, v.file.absolutePath)
-                }
-
-                is BaopuGuardCore.PathVerdict.Outside -> {
-                    // 第一百五十六批：把「硬拒」改成「问一次，用户同意就做」——判据本体在
-                    // `WorkspaceAccess`（四象限纯函数）；开关关 ⇒ 原文拒绝（文案逐字不动）；
-                    // 开关开且未授权 ⇒ Ask（弹一次确认卡）；开关开且已授权/批准路径 ⇒ 放行。
-                    // 157 补充（用户 2026-10-23）：粒度是**一次会话问一次**（账本按 sessionId
-                    // 落库），且**每次越界都记一条审计**（时间/路径/会话，见 `auditOutside`）。
-                    // 171 补充（用户 2026-10-24）：已授权根下**只读免卡、写/改/删仍确认**——
-                    // 「授权 Obsidian 根后读 50 个 md ⇒ 0 张卡；写 1 个 ⇒ 1 张」。
-                    val on = runCatching { allowOutside() }.getOrDefault(false)
-                    if (!on) {
-                        auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.DENIED)
-                        val reason = "路径越界被拒：$raw 不在工作区（${root.absolutePath}）内。" +
-                            "只读工作区里的文件；要读外面的，先把它复制进工作区。"
-                        log("抱朴管线：拒绝越界 $toolName $raw（root=${root.absolutePath}）")
-                        return Guarded.No(reason)
-                    }
-                    val already = com.example.zhengdao.baopu.WorkspaceGrants.granted(root)
-                    if (granting) {
-                        // 用户在确认卡上点了批准 ⇒ 记账（持久化到本会话；已记过就只更新时戳，
-                        // 不重复写库）——「同一次越界只审一条，处置写清是新批准还是早已放行」。
-                        if (!already) {
-                            com.example.zhengdao.baopu.WorkspaceGrants.grant(root)
-                            log("抱朴管线：用户已授权工作区外（root=${root.absolutePath}），本会话读取该处不再重复询问（写入仍会确认）")
-                        }
-                        auditOutside(
-                            root, v.target, toolName,
-                            if (already) com.example.zhengdao.baopu.OutsideDecision.ALREADY
-                            else com.example.zhengdao.baopu.OutsideDecision.APPROVED,
-                        )
-                        grantedRaw += raw
-                        newArgs = JSONObject(newArgs.toString()).put(key, v.target.absolutePath)
-                        continue
-                    }
-                    if (already) {
-                        if (readOnly) {
-                            // 171-③：授权根下只读（read/list/find）免卡直行
-                            auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ALREADY)
-                            grantedRaw += raw
-                            newArgs = JSONObject(newArgs.toString()).put(key, v.target.absolutePath)
-                            continue
-                        }
-                        // 171-③：写/改/删在已授权根下**仍要确认**——「读免卡 ≠ 写免卡」。
-                        // （负例「写不弹」判据：授权了根也不能静默改盘。）
-                        auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ASKED)
-                        log("抱朴管线：已授权根下写操作仍确认（171：读免卡、写不免）$toolName $raw")
-                        return Guarded.Ask(call)
-                    }
-                    auditOutside(root, v.target, toolName, com.example.zhengdao.baopu.OutsideDecision.ASKED)
-                    log("抱朴管线：工作区外 $toolName $raw 需用户确认（一次会话问一次）")
-                    return Guarded.Ask(call)
-                }
+            val target = resolve(root, raw)
+            // 287：唯一硬边界——系统与凭据目录一律拒（其余全盘可读写）
+            fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
+                log("抱朴管线：拒绝 $toolName $raw（${FilePolicy.denyReason(target)}）")
+                return Guarded.No(reason)
             }
+            newArgs = JSONObject(newArgs.toString()).put(key, target.absolutePath)
+            recordFileOp(toolName, args, target)
         }
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
-        return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs), grantedRaw)
+        return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
     }
 
     /**
-     * 越界审计（157 补充第 4 条：**每次越界逐条记**，时间/路径/会话）。
+     * 全盘操作入账（287 判据⑤「每笔读写入账，30 天可回放」）。
      *
-     * 为什么落在这里而不是各工具里：`guardPath` 是工具带路径参数的**唯一入口**
-     * （156 批就把越界判据收口在这一段），审计跟着判据走，才不会出现「有的工具记、有的不记」。
-     * 工具里的 `workspaceBoundaryCheck` 是第二道自检（生产不可达 ASK 分支），**不再重复记**
-     * ——一次越界一条审计，不许账上多出重影。
+     * 为什么落在管线而不是各工具里：[guardPath] 是带路径参数工具的**唯一入口**，
+     * 记账跟着它走才不会出现「有的工具记、有的不记」。账是**留痕不是闸门**：
+     * 写不进库也照样执行（[FileOpLog.record] 自己吞异常）。
      */
-    private fun auditOutside(
-        root: File,
-        target: File,
-        toolName: String,
-        decision: com.example.zhengdao.baopu.OutsideDecision,
-    ) {
-        val a = com.example.zhengdao.baopu.WorkspaceGrants.audit(
-            root = root,
-            path = target.absolutePath,
-            decision = decision,
+    private fun recordFileOp(toolName: String, args: JSONObject, target: File) {
+        val kind = FileOpRules.kindOf(toolName) ?: return
+        val entry = FileOpLog.record(
             tool = toolName,
+            kind = kind,
+            path = FilePolicy.normalize(target),
+            purpose = FileOpRules.purposeOf(toolName, args),
         )
-        log(com.example.zhengdao.baopu.WorkspaceGrantRules.auditLine(a))
+        log(FileOpRules.lineOf(entry))
     }
 
     private fun resolve(root: File, raw: String): File =

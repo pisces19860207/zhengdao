@@ -120,10 +120,24 @@ class ConvertEncodingToolTest {
     // ── ④ 越界 / 禁区 ───────────────────────────────────────────────────
 
     @Test
-    fun `工作区外被拒`() {
+    fun `凭据目录被拒`() {
+        // 287：工作区不再是边界；凭据目录（.ssh/keystore）才是硬拒的那一条。
         setup()
-        val outside = File(tmp.root, "外面.txt").apply { writeBytes("x".toByteArray(gb18030)) }
-        assertTrue(convert(outside) is ToolOutcome.Rejected)
+        val key = File(tmp.root, ".ssh/老书.txt").apply {
+            parentFile?.mkdirs()
+            writeBytes("x".toByteArray(gb18030))
+        }
+        assertTrue(convert(key) is ToolOutcome.Rejected)
+    }
+
+    @Test
+    fun `工作区外的普通文件能转_并备份到工作区`() {
+        setup()
+        // 内容必须是**非 ASCII**：纯 ASCII 字节本来就是合法 UTF-8，会被幂等短路成"没动"。
+        val outside = File(tmp.root, "外面.txt").apply { writeBytes("中文".toByteArray(gb18030)) }
+        val r = convert(outside)
+        assertTrue("287：全盘可写，越界不该再拒：$r", r is ToolOutcome.Ok)
+        assertTrue("旧版要备份到 备份/", File(root, "备份").listFiles().orEmpty().isNotEmpty())
     }
 
     @Test

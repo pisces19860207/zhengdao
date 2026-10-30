@@ -305,47 +305,14 @@ internal fun BaopuSettingsScreen(
                 )
             }
 
-            // ── 工作区（第一百五十六批：放开工作区边界，用户批准即可）──
-            // 开关只管「越界还要不要问」：开 ⇒ 每个会话第一次越界弹一张确认卡，同意才做
-            // （157 补充：授权按会话落库，重启不再问；清单与撤销在下面一张卡里）；
-            // 关 ⇒ 越界一律拒（与 156 批之前逐字一致）。存储在 BaopuRuntime.WorkspacePrefs。
-            SectionCard(stringResource(R.string.baopu_workspace_card)) {
-                var allowOutside by rememberSaveable { mutableStateOf(BaopuRuntime.WorkspacePrefs.enabled(ctx)) }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // 命中 ≥48dp（派工单设计约束第 3 条）
-                        .heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.baopu_ws_outside_title),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = stringResource(R.string.baopu_ws_outside_desc),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = allowOutside,
-                        onCheckedChange = { want ->
-                            BaopuRuntime.WorkspacePrefs.setEnabled(ctx, want)
-                            allowOutside = want
-                            RunLog.log("抱朴设置：允许访问工作区外 = $want（开也每会话问一次）")
-                        },
-                        colors = zhengdaoSwitchColors(),
-                    )
-                }
-            }
+            // ── 文件操作记录（第二百八十七批）──
+            // 287 把工作区降级成"默认落点"：干活全盘可读写，产物默认落工作区。
+            // 安全不靠开关（**律令页不再有任何权限开关**），靠三条默认行为：
+            // ① 删/移必确认 ② 覆盖前备份（>5MB 说明） ③ 系统与凭据目录一律拒。
+            // 这张卡是第 ④ 条：可审计——每笔文件操作一行（路径＋用途），30 天可回放。
+            FileOpCard()
 
-            // ── 已放行工作区外的会话（157 补充：一次会话问一次，可一键撤销）──
-            // 清单本身读库（workspace_grant）；撤销只影响那一个会话，撤完下次越界重新问。
             Spacer(Modifier.height(12.dp))
-            WorkspaceGrantCard()
 
             // ── 历史会话（第二百八十六批：把这条入口接回来）──────────────────────
             // 背景：c87d9dce 删过这里那张「会话记录」卡（一条条删太累，删除改到抽屉长按），

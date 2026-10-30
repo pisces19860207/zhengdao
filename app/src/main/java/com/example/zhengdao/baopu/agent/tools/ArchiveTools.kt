@@ -11,14 +11,14 @@
 // image_ops 同一档——用户点一次「就这样」比事后收拾一地被解开的文件便宜。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.PersonaGuard
 import com.example.zhengdao.baopu.archive.ArchiveExtractor
 import com.example.zhengdao.baopu.archive.ArchiveRules
 import com.example.zhengdao.baopu.archive.ExtractOutcome
 import com.example.zhengdao.baopu.archive.PackResult
 import com.example.zhengdao.baopu.archive.ZipPacker
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
-import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
+import com.example.zhengdao.baopu.fileAccessCheck
 import java.io.File
 
 /**
@@ -87,12 +87,7 @@ internal object ArchiveTools {
         val zipRel = if (dest.lowercase().endsWith(".zip")) dest else "$dest.zip"
         PersonaGuard.blocked(zipRel)?.let { return ToolOutcome.Rejected(it) }
         val zipFile = File(root, zipRel)
-        workspaceWriteBoundaryCheck(
-            root,
-            zipFile,
-            zipRel,
-            "路径越界被拒：$zipRel 在可写范围（当前工作区与 Download/证道）之外。archive_pack 只往工作区里写包。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(zipFile, FilePaths.display(root, zipFile))?.let { return ToolOutcome.Rejected(it) }
 
         val sources = ArrayList<File>(sourcesRel.size)
         for (rel in sourcesRel) {
@@ -100,12 +95,7 @@ internal object ArchiveTools {
             if (one.isBlank()) continue
             PersonaGuard.blocked(one)?.let { return ToolOutcome.Rejected(it) }
             val f = File(root, one)
-            workspaceBoundaryCheck(
-                root,
-                f,
-                one,
-                "路径越界被拒：$one 在工作区外，archive_pack 不往包里装工作区外的东西。",
-            )?.let { return ToolOutcome.Rejected(it) }
+            fileAccessCheck(f, FilePaths.display(root, f))?.let { return ToolOutcome.Rejected(it) }
             if (!f.exists()) return ToolOutcome.Failed("找不到：$one")
             sources.add(f)
         }
@@ -155,12 +145,7 @@ internal object ArchiveTools {
         if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_ARCHIVE」（要解开的归档）")
         PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
         val archive = File(root, rel)
-        workspaceBoundaryCheck(
-            root,
-            archive,
-            rel,
-            "路径越界被拒：$rel 在工作区外，archive_extract 只解工作区里的包。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(archive, FilePaths.display(root, archive))?.let { return ToolOutcome.Rejected(it) }
         if (!archive.exists()) return ToolOutcome.Failed("找不到这个归档：$rel")
 
         val destText = destRel.trim().ifBlank {
@@ -170,12 +155,7 @@ internal object ArchiveTools {
         }
         PersonaGuard.blocked(destText)?.let { return ToolOutcome.Rejected(it) }
         val dest = File(root, destText)
-        workspaceWriteBoundaryCheck(
-            root,
-            dest,
-            destText,
-            "路径越界被拒：$destText 在可写范围（当前工作区与 Download/证道）之外。archive_extract 只往工作区里解。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(dest, FilePaths.display(root, dest))?.let { return ToolOutcome.Rejected(it) }
 
         return when (val r = ArchiveExtractor.extract(archive, dest)) {
             is ExtractOutcome.Ok -> ToolOutcome.Ok(

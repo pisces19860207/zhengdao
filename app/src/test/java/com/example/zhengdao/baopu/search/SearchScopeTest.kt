@@ -11,7 +11,7 @@
 // - 「凭空记一条没拿到的授予」→ `手机档只在真授权时入账`。
 package com.example.zhengdao.baopu.search
 
-import com.example.zhengdao.baopu.WorkspaceGrantRules
+import com.example.zhengdao.baopu.FilePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -123,7 +123,7 @@ class SearchScopeTest {
     fun `rootKey_与写侧账本同一个写法`() {
         // 设计 §11.10「另造第二套路径」的一半就长在归一上：读侧与写侧对同一个根必须给出同一个字符串。
         val f = File("/storage/emulated/0/Download/证道")
-        assertEquals(WorkspaceGrantRules.rootKey(f), SearchScopeRules.rootKey(f))
+        assertEquals(FilePolicy.rootKey(f), SearchScopeRules.rootKey(f))
     }
 
     // ── 账本语义（内存实现；SQL 侧由 SearchSqlTest 钉文本） ────────────────────

@@ -90,17 +90,30 @@ class DeletePathToolTest {
     }
 
     @Test
-    fun `D5_越界拒绝_文件原样`() {
-        val outside = File(root.parentFile, "zd-del-outside-${System.nanoTime()}.txt").apply {
+    fun `D5_凭据目录拒绝_文件原样`() {
+        // 287：工作区不再是边界（外面的文件也能删）；凭据目录才是硬拒的那一条。
+        val key = File(root.parentFile, ".ssh/zd-del-${System.nanoTime()}.txt").apply {
+            parentFile?.mkdirs()
             writeText("外面", Charsets.UTF_8)
         }
         try {
-            val out = DeletePathTool.run("../${outside.name}", root = root)
-            assertTrue("越界必须是 Rejected", out is ToolOutcome.Rejected)
-            assertTrue("外面的文件不许动", outside.isFile)
+            val out = DeletePathTool.run(key.absolutePath, root = root)
+            assertTrue("凭据目录必须是 Rejected：$out", out is ToolOutcome.Rejected)
+            assertTrue("凭据文件不许动", key.isFile)
         } finally {
-            outside.delete()
+            key.delete()
         }
+    }
+
+    @Test
+    fun `D5b_工作区外的文件能删_进工作区回收站`() {
+        val outside = File(root.parentFile, "zd-del-outside-${System.nanoTime()}.txt").apply {
+            writeText("外面", Charsets.UTF_8)
+        }
+        val out = DeletePathTool.run(outside.absolutePath, root = root)
+        assertTrue("287：全盘可删（确认卡那一层照问）：$out", out is ToolOutcome.Ok)
+        assertFalse("外面的文件已经不在了", outside.isFile)
+        assertTrue("进了工作区回收站（可捞回来）", File(root, DeletePathTool.TRASH_DIR).listFiles().orEmpty().isNotEmpty())
     }
 
     @Test

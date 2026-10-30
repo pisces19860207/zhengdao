@@ -16,7 +16,7 @@ import org.junit.Test
  * 范围授权纯逻辑（ConfirmScope.kt）——无 Android、无引擎，JVM 直测。
  *
  * 账本是进程级单例 ⇒ 每例前后 [ConfirmGrants.resetForTest]（与
- * WorkspaceGrants.resetForTest 同款纪律，别让上一例的授权渗到下一例）。
+ * FileOpLog.resetForTest 同款纪律，别让上一例的账渗到下一例）。
  */
 class ConfirmScopeTest {
 

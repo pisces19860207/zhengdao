@@ -154,10 +154,22 @@ class BookOutlineToolTest {
     }
 
     @Test
-    fun `越界要 Rejected`() {
+    fun `凭据目录要 Rejected`() {
+        // 287：工作区不再是边界（外面能读）；**系统与凭据目录**才是硬拒的那一条。
+        setup()
+        val key = File(tmp.root, ".ssh/id_rsa").apply {
+            parentFile?.mkdirs()
+            writeText("第一章 甲\n", Charsets.UTF_8)
+        }
+        assertTrue(outline(key) is ToolOutcome.Rejected)
+    }
+
+    @Test
+    fun `工作区外的普通文件能读`() {
         setup()
         val outside = File(tmp.root, "外面.txt").apply { writeText("第一章 甲\n", Charsets.UTF_8) }
-        assertTrue(outline(outside) is ToolOutcome.Rejected)
+        val r = outline(outside)
+        assertTrue("287：全盘可读，越界不该再拒：$r", r is ToolOutcome.Ok)
     }
 
     @Test

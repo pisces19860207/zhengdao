@@ -3,15 +3,16 @@
 // 依据：抱朴线刀 2 追加包（关键词搜索工具）。四条硬纪律：
 // 1. 权限 READ（FREE）——只读不改；
 // 2. 只搜工作区内（目录参数名用 "path" ⇒ GuardPipeline 第 ② 段免费守卫；
-//    纯函数层再自检 workspaceBoundaryCheck——156 批起开关开＋已授权可越界，双保险仍在）；
+//    纯函数层再自检 fileAccessCheck（287：只拒系统/凭据目录，全盘可搜）；
 // 3. 只回「相对路径:行号:该行内容±1 行」，单次最多 40 条命中；
 // 4. 跳过 >8 MB 与二进制文件，并写明「已扫描 N 个文件 / 跳过 M 个」。
 // 结果回灌走 GuardPipeline 第 ⑤ 段的 DataFence.wrap（与 read_file 同一个围栏出口，
 // 本文件不自造围栏）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
 import java.io.File
 import java.nio.file.Files
 
@@ -45,7 +46,8 @@ internal object SearchInFilesTool {
     /** 构造注册用 Spec（workspaceRoot 注入：越界自检 + 相对路径渲染都要它）。 */
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "search_in_files",
-        description = "在工作区某个目录里搜一个词，回「相对路径:行号:命中行±1 行」。" +
+        description = "在某个目录里搜一个词，回「路径:行号:命中行±1 行」。" +
+            "**全盘可搜**：path 给绝对路径就搜整台机器；" +
             "单次最多 $MAX_HITS 条命中；大于 8 MB 与二进制文件会跳过并计数。" +
             "默认大小写不敏感。",
         inputSchema = jsonObjectOf(
@@ -53,7 +55,7 @@ internal object SearchInFilesTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的目录路径（如 资料库/原始）",
+                    "description" to "目录路径：相对工作区根（如 资料库/原始），或全盘绝对路径",
                 ),
                 ARG_QUERY to jsonObjectOf(
                     "type" to "string",
@@ -109,12 +111,7 @@ internal object SearchInFilesTool {
             return ToolOutcome.Failed("不是一个目录：${dir.name}（search_in_files 只搜目录；读文件用 read_file）")
         }
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        workspaceBoundaryCheck(
-            root,
-            dir,
-            dir.name,
-            "路径越界被拒：${dir.name} 不在工作区（${root.absolutePath}）内。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
         val needle = if (caseSensitive) q else q.lowercase()
         var scanned = 0
         var skippedBig = 0
@@ -239,10 +236,8 @@ internal object SearchInFilesTool {
     /** 二进制判定：头段里出现 NUL 即判二进制（与 file(1) 同口径）。 */
     internal fun looksBinary(head: ByteArray): Boolean = head.any { it == 0.toByte() }
 
-    /** 相对路径渲染（统一 `/` 分隔：Windows 上 relativize 给的是 `\`，输出要跨平台稳定）。 */
-    private fun relPath(root: File, f: File): String =
-        runCatching { root.toPath().relativize(f.toPath()).toString().replace('\\', '/') }
-            .getOrElse { f.name }
+    /** 路径渲染（287：工作区内相对、工作区外绝对——统一 `/` 分隔）。 */
+    private fun relPath(root: File, f: File): String = FilePaths.display(root, f)
 
     /** 软链判定（拿不到时保守判 false）。 */
     private fun isSymlink(f: File): Boolean =

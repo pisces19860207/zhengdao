@@ -5,11 +5,11 @@
 // ## 这条线与写侧的关系（本批的全部要害在这一段）
 // 派工单 §3.2 立的线：
 //     读侧：SearchScope ——「你能看到什么」—— 本文件，独立授予
-//     写侧：PathGuard / workspaceBoundaryCheck ——「你能改什么」—— 现成，一行不动
-// 读侧授予**永远不进入**写侧判据的输入：`WorkspaceAccessPolicy.granted` 装的是
-// `WorkspaceGrants::granted`（`BaopuRuntime.kt:661-662`），本文件既不读它、也不写它、
+//     写侧：PathGuard / fileAccessCheck ——「系统与凭据目录不碰」—— 现成（287 起只剩这一条）
+// 读侧授予**永远不进入**写侧判据的输入（287 起写侧已无授权输入，只剩系统/凭据目录拒绝）：
+// （287 起授权账本已退役：全盘可读写不需要授权），本文件既不读它、也不写它、
 // 更不 import 它。这条不是注释，是门禁——`SearchReadNeverGrantsWriteTest` 逐字比过
-// 「装了只读授予」与「什么都没装」两种状态下 `workspaceBoundaryCheck` 的返回值。
+// 「装了只读授予」与「什么都没装」两种状态下 `fileAccessCheck` 的返回值。
 //
 // ## 只做甲、丁两档（派工单 §1③）
 // - **甲 全文件访问**：`Environment.isExternalStorageManager()` ⇒ 可搜 `/storage/emulated/0` 全量。
@@ -36,7 +36,7 @@ import com.example.zhengdao.core.PathGuard
 import android.content.Context
 import android.os.Environment
 import com.example.zhengdao.baopu.BaopuWorkspace
-import com.example.zhengdao.baopu.WorkspaceGrantRules
+import com.example.zhengdao.baopu.FilePolicy
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.Collections
@@ -108,7 +108,7 @@ internal data class SyncReport(
 /**
  * 读侧判据（**纯函数，无 Android、无 IO**）：档位、根选择、账本计划。
  *
- * 路径归一故意复用 `WorkspaceGrantRules.rootKey`（写侧账本同一个函数）：读侧与写侧对
+ * 路径归一故意复用 `FilePolicy.rootKey`（287 起从退役的授权账本搬过来的同一个函数）：读侧与写侧对
  * 「同一个物理根」必须写出同一个字符串，否则「`/sdcard` 与 `/storage/emulated/0` 是不是同一个根」
  * 会出现两份答案——设计 §11.10 那条「另造第二套路径」的负例，一半就长在这种地方。
  * 复用的是**归一**，不是判据：越界判定另走 [SearchAdmission] 里的 `PathGuard.isInside`。
@@ -152,7 +152,7 @@ internal object SearchScopeRules {
     val KINDS_THIS_BATCH: Set<ScopeKind> = setOf(ScopeKind.HOME, ScopeKind.PHONE)
 
     /** 根路径的写法（与写侧账本同源，见类注释）。 */
-    fun rootKey(root: File): String = WorkspaceGrantRules.rootKey(root)
+    fun rootKey(root: File): String = FilePolicy.rootKey(root)
 
     /**
      * 账本同步那行日志的**唯一**写法（第一百九十八批派工单 §1⑥「search.db 首次建库／拨开关那条
@@ -381,7 +381,7 @@ internal object SearchScope {
      *
      * 一句实话：`hostDir` 自己会 `mkdirs()`（:60）——它是仓库里「当前工作区」的唯一真源，
      * 绕开它另算一条路径才是设计 §11.10 点名的「另造第二套路径」。读侧沿用它，
-     * 不等于读侧能写：能写与否只由 `workspaceBoundaryCheck` 说了算（见本文件顶部那条线）。
+     * 不等于读侧能写：能写与否只由 `fileAccessCheck` 说了算（见本文件顶部那条线）。
      */
     fun homeRoot(ctx: Context): String = runCatching {
         SearchScopeRules.rootKey(BaopuWorkspace.hostDir(ctx))

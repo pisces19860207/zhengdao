@@ -129,7 +129,6 @@ internal class EvolutionRunner(
                 rawDir = { null },
                 runner = ToolRunner(ToolRunner.toolExecutor),
                 log = { },
-                allowOutside = { false },
             )
 
             val systemPrompt = systemPrompt(candidate)

@@ -49,23 +49,33 @@ class MovePathToolTest {
     // ── ① 越界 ──────────────────────────────────────────────────────────
 
     @Test
-    fun `越界_源在工作区外被拒`() {
+    fun `工作区外的源也能搬进来`() {
+        // 287：工作区不再是边界（「把桌面的笔记搬进资料库」就是这条）；确认卡那一层照问。
         setup()
         val outside = File(tmp.root, "outside.txt")
         outside.writeText("x", Charsets.UTF_8)
         val r = move(outside.absolutePath, "资料库/整理/x.txt")
-        assertTrue("必须 Rejected：$r", r is ToolOutcome.Rejected)
-        assertTrue(outside.exists())
+        assertTrue("全盘可搬，越界不该再拒：$r", r is ToolOutcome.Ok)
+        assertFalse("源已经被搬走", outside.exists())
     }
 
     @Test
-    fun `越界_目标在工作区外被拒`() {
+    fun `目标在工作区外也能搬出去`() {
         setup()
         val src = put("资料库/投递/a.txt", "内容")
         val r = move("资料库/投递/a.txt", "../escape.txt")
-        assertTrue(r is ToolOutcome.Rejected)
-        assertTrue("源必须原样在：${src.absolutePath}", src.exists())
-        assertFalse(File(tmp.root, "escape.txt").exists())
+        assertTrue("全盘可搬，越界不该再拒：$r", r is ToolOutcome.Ok)
+        assertFalse("源已经不在了", src.exists())
+        assertTrue("目标就位", File(tmp.root, "escape.txt").exists())
+    }
+
+    @Test
+    fun `凭据目录不许当源或目标`() {
+        setup()
+        val src = put("资料库/投递/b.txt", "内容")
+        val r = move("资料库/投递/b.txt", "../.ssh/b.txt")
+        assertTrue("凭据目录必须 Rejected：$r", r is ToolOutcome.Rejected)
+        assertTrue("源必须原样在", src.exists())
     }
 
     // ── ② 同盘 rename ───────────────────────────────────────────────────

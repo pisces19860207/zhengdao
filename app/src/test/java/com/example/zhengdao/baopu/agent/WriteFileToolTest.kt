@@ -36,20 +36,22 @@ class WriteFileToolTest {
     // ── 判据①：越界即拒 ──────────────────────────────────────────────────
 
     @Test
-    fun `越界_相对路径逃逸被拒`() {
+    fun `凭据目录_相对路径也拒`() {
+        // 287：工作区不再是边界；凭据目录（.ssh）才是硬拒的那一条——相对路径也要拦住。
         setup()
-        val r = write("../outside.txt")
-        assertTrue("越界必须 Rejected：$r", r is ToolOutcome.Rejected)
-        assertFalse(File(tmp.root, "outside.txt").exists())
+        val r = write("../.ssh/known_hosts")
+        assertTrue("凭据目录必须 Rejected：$r", r is ToolOutcome.Rejected)
+        assertFalse(File(tmp.root, ".ssh/known_hosts").exists())
     }
 
     @Test
-    fun `越界_绝对路径在工作区外被拒`() {
+    fun `工作区外的普通文件能写`() {
+        // 287 的正向判据：绝对路径可以写全盘（产物默认落工作区，但不限于工作区）。
         setup()
         val outside = File(tmp.root, "outside.txt").absolutePath
         val r = write(outside)
-        assertTrue(r is ToolOutcome.Rejected)
-        assertFalse(File(outside).exists())
+        assertTrue("全盘可写，越界不该再拒：$r", r is ToolOutcome.Ok)
+        assertTrue("文件真的写出来了", File(outside).isFile)
     }
 
     @Test

@@ -36,14 +36,15 @@ internal object ListDirTool {
     /** 构造注册用 Spec。 */
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "list_dir",
-        description = "列出工作区内某个目录的内容（软链不跟随；深度与条数有上限，触顶会明说）。" +
-            "路径相对工作区根，如「资料库/原始」；**path 可省略＝列工作区根**。",
+        description = "列出一个目录的内容（软链不跟随；深度与条数有上限，触顶会明说）。" +
+            "**全盘可列**：路径相对工作区根（如「资料库/原始」），也可以给绝对路径" +
+            "（如 /storage/emulated/0/小说和人物资料）；**path 可省略＝列工作区根**。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "相对工作区根的目录路径（如 资料库/原始）",
+                    "description" to "目录路径：相对工作区根（如 资料库/原始），或全盘绝对路径",
                 ),
                 ARG_DEPTH to jsonObjectOf(
                     "type" to "integer",

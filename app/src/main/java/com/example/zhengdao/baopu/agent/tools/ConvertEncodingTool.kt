@@ -9,8 +9,10 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.core.PathGuard
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.backupSkippedFor
+import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.workspaceWriteBoundaryCheck
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
@@ -67,12 +69,7 @@ internal object ConvertEncodingTool {
         }
         // 第二百二十九批：写侧硬边界——改写只允许当前工作区＋默认工作区（Download/证道），
         // 其余一律拒绝（不是弹卡）。判据统一在 workspaceWriteVerdict。
-        workspaceWriteBoundaryCheck(
-            root,
-            file,
-            file.name,
-            "路径越界被拒：${file.name} 在可写范围（当前工作区与 Download/证道）之外。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(file, FilePaths.display(root, file))?.let { return ToolOutcome.Rejected(it) }
         val backupDir = File(root, BACKUP_DIR_NAME)
         if (PathGuard.isInside(backupDir, file)) {
             return ToolOutcome.Failed("不能转 $BACKUP_DIR_NAME/ 里的文件（那是旧版本备份区，改它等于毁掉退路）")
@@ -101,15 +98,18 @@ internal object ConvertEncodingTool {
         // 备份原始字节（不是转码后的文本——回滚要能一字不差地回去）
         // 门禁 B-补-24：主源码不许裸 SimpleDateFormat，时间戳一律走 TimeFormats
         val stamp = TimeFormats.fileStamp()
-        val rel = relPath(root, file)
-        val backupName = rel.replace('/', '_').replace('\\', '_') + "." + stamp + ".bak"
+        val backupName = FilePaths.backupName(root, file, stamp)
         val backupFile = File(backupDir, backupName)
-        val backupOk = runCatching {
-            backupDir.mkdirs()
-            backupFile.writeBytes(bytes)
-        }.isSuccess
-        if (!backupOk) {
-            return ToolOutcome.Failed("备份原文件失败（$BACKUP_DIR_NAME/$backupName），已放弃本次转换。")
+        // 287：>5MB 不备份（与 write_file/edit_file 同一条上限），但回执里必须说明。
+        val skipBackup = backupSkippedFor(file.length())
+        if (!skipBackup) {
+            val backupOk = runCatching {
+                backupDir.mkdirs()
+                backupFile.writeBytes(bytes)
+            }.isSuccess
+            if (!backupOk) {
+                return ToolOutcome.Failed("备份原文件失败（$BACKUP_DIR_NAME/$backupName），已放弃本次转换。")
+            }
         }
         // 原子替换：先写同目录临时文件，再 rename
         val utf8 = text.toByteArray(Charsets.UTF_8)
@@ -129,7 +129,11 @@ internal object ConvertEncodingTool {
         val lines = TextDecode.splitLines(text).size
         return ToolOutcome.Ok(
             "已转：${relPath(root, file)}  ${decoded.encoding} → UTF-8（$lines 行，${utf8.size} B）；" +
-                "原文件已备份到 $BACKUP_DIR_NAME/$backupName",
+                if (skipBackup) {
+                    "原文件 ${file.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（转错不可回滚）"
+                } else {
+                    "原文件已备份到 $BACKUP_DIR_NAME/$backupName"
+                },
         )
     }
 
@@ -140,8 +144,6 @@ internal object ConvertEncodingTool {
         return convert(root, File(path))
     }
 
-    /** 相对路径渲染（统一 `/`）。 */
-    private fun relPath(root: File, f: File): String = runCatching {
-        f.absoluteFile.toRelativeString(root.absoluteFile).replace('\\', '/')
-    }.getOrDefault(f.name)
+    /** 路径渲染（287：工作区内相对、工作区外绝对——统一 `/`）。 */
+    private fun relPath(root: File, f: File): String = FilePaths.display(root, f)
 }

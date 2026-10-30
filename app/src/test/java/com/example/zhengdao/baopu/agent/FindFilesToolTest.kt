@@ -122,11 +122,22 @@ class FindFilesToolTest {
     // ── ⑥ 越界 / 非法入参 ───────────────────────────────────────────────
 
     @Test
-    fun `起点目录在工作区外被拒`() {
+    fun `起点目录在工作区外也能找`() {
+        // 287：工作区不再是边界——「去 /storage/emulated/0 找 Obsidian 库」就是这条。
         setup()
         val outside = tmp.newFolder("outside")
+        File(outside, "x.md").writeText("内容")
         val r = find("x", dir = outside)
-        assertTrue("必须 Rejected：$r", r is ToolOutcome.Rejected)
+        assertTrue("全盘可找，越界不该再拒：$r", r is ToolOutcome.Ok)
+        assertTrue(text(r).contains("x.md"))
+    }
+
+    @Test
+    fun `凭据目录拒`() {
+        setup()
+        val keys = tmp.newFolder(".ssh")
+        File(keys, "id_rsa").writeText("x")
+        assertTrue(find("x", dir = keys) is ToolOutcome.Rejected)
     }
 
     @Test

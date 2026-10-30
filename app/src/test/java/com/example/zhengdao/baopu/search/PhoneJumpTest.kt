@@ -130,7 +130,7 @@ class PhoneJumpTest {
         val jump = code(sourceOf("PhoneJump.kt"))
         listOf(
             "FileWriter", "writeText(", "writeBytes(", ".delete(", "deleteRecursively", "ContentResolver",
-            "Intent", "startActivity", "FileProvider", "workspaceBoundaryCheck", "WorkspaceAccessPolicy",
+            "Intent", "startActivity", "FileProvider", "fileAccessCheck", "FilePolicy",
         ).forEach { f -> assertFalse("PhoneJump 里出现「$f」：判据层不执行动作，更不写盘", jump.contains(f)) }
         assertTrue("COPY_INTO_VAULT 的名字要说清是「复制进证道」", jump.contains("COPY_INTO_VAULT"))
     }

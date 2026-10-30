@@ -347,10 +347,10 @@ internal class RunEngine(
     private val draining = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     /**
-     * 第一百五十六批起的每轮入口钩子；157 补充（用户 2026-10-23）改成**喂会话身份**。
+     * 每轮入口钩子（第一百五十六批起；第二百八十七批起**只喂会话身份**）。
      *
-     * 生产接线：`onSessionEnter = WorkspaceGrants::enterSession`（工作区外授权账本按会话
-     * 持久化 ⇒ 同会话跨运行仍放行，新会话才重新问；156 批的「每轮清账」已按用户裁定撤掉）。
+     * 生产接线：`onSessionEnter = FileOpLog::enterSession`——文件操作账按会话分账，
+     * 回放时看得清哪一笔是哪一轮干的（287 起授权账本已随权限模型退役）。
      * 默认空实现 ⇒ 引擎直测（没有装配层）行为逐字节不变；声明点在冻结创建点
      * `Thread(r, "zd-baopu-run")` **之下**，不挪对账单。
      */

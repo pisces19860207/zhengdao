@@ -97,7 +97,7 @@ class ConfirmCardPathDisplayTest {
     fun `move_path的两端都剥_只剥一端会写出半截真话`() {
         val args = JSONObject().put("from", abs("a.txt")).put("to", abs("b/c.txt"))
         val shown = RunRules.confirmSummary("move_path", args, root)
-        val expect = "移动 ${File("a.txt").path} → ${File("b/c.txt").path}"
+        val expect = "移动 ${File("a.txt").path} → ${File("b/c.txt").path}（搬走后原件不在原处）"
         assertEquals(expect, shown)
     }
 
@@ -107,7 +107,7 @@ class ConfirmCardPathDisplayTest {
         val abs = abs("a.txt")
         assertEquals("新建 $abs（1 行）", RunRules.confirmSummary("write_file", JSONObject().put("path", abs).put("content", "甲")))
         assertEquals("编辑 $abs", RunRules.confirmSummary("edit_file", JSONObject().put("path", abs)))
-        assertEquals("移动 ? → ?", RunRules.confirmSummary("move_path", JSONObject()))
+        assertEquals("移动 ? → ?（搬走后原件不在原处）", RunRules.confirmSummary("move_path", JSONObject()))
     }
 
     // ── 接线门禁（接上前这几条红）────────────────────────────────────────

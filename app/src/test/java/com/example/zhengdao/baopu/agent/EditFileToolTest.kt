@@ -45,20 +45,26 @@ class EditFileToolTest {
     // ── ① 越界即拒 ──────────────────────────────────────────────────────
 
     @Test
-    fun `越界_相对路径逃逸被拒`() {
+    fun `凭据目录_相对路径也拒`() {
+        // 287：工作区不再是边界；凭据目录（.ssh）才是硬拒的那一条——相对路径也要拦住。
         setup()
-        put("a.txt", "一\n二\n")
-        val r = edit("../outside.txt", EditFileTool.OP_REPLACE, 1, 1)
-        assertTrue("越界必须 Rejected：$r", r is ToolOutcome.Rejected)
+        val key = File(tmp.root, ".ssh/known.txt").apply {
+            parentFile?.mkdirs()
+            writeText("一\n二\n", Charsets.UTF_8)
+        }
+        val r = edit("../.ssh/known.txt", EditFileTool.OP_REPLACE, 1, 1)
+        assertTrue("凭据目录必须 Rejected：$r", r is ToolOutcome.Rejected)
+        assertTrue("凭据文件不许改", key.readText().startsWith("一"))
     }
 
     @Test
-    fun `越界_绝对路径在工作区外被拒`() {
+    fun `工作区外的普通文件能改_并备份`() {
         setup()
         val outside = File(tmp.root, "outside.txt")
-        outside.writeText("x\n", Charsets.UTF_8)
-        val r = edit(outside.absolutePath, EditFileTool.OP_REPLACE, 1, 1)
-        assertTrue(r is ToolOutcome.Rejected)
+        outside.writeText("一\n二\n", Charsets.UTF_8)
+        val r = edit(outside.absolutePath, EditFileTool.OP_REPLACE, 1, 1, "改过")
+        assertTrue("287：全盘可改，越界不该再拒：$r", r is ToolOutcome.Ok)
+        assertTrue("旧版要备份到 备份/", File(root, "备份").listFiles().orEmpty().isNotEmpty())
     }
 
     @Test

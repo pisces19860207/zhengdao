@@ -1218,19 +1218,16 @@
     <string name="baopu_tool_novel_project_desc">看一个项目的总览：大纲、人物、目录、每章实际字数与目标差；只读。</string>
     <string name="baopu_tool_novel_continue">novel_continue：续写简报</string>
     <string name="baopu_tool_novel_continue_desc">接哪章哪段、人物与设定、一致性提示；续写用 edit_file 追加或 write_file 新开一章，不覆盖正文。</string>
-    <string name="baopu_workspace_card">工作区</string>
-    <string name="baopu_ws_outside_title">允许访问工作区外</string>
-    <string name="baopu_ws_outside_desc">打开后，抱朴要读写工作区外的文件时会先弹卡问你，同意才做；每个会话只问一次（重启后仍算同意，可在下面撤销）。关掉则一律拒绝。</string>
     <!-- 第一百六十八批：生产评测开关（eval_prod_on 写入口；默认关） -->
     <string name="baopu_eval_prod_card">生产评测</string>
     <string name="baopu_eval_prod_title">周期性生产评测</string>
     <string name="baopu_eval_prod_desc">打开后，每次会话收尾时若距上次已超过 24 小时，会用你当前设置的通道跑一轮 10 条用例的迷你评测（会消耗模型额度、发网络请求，大约几分钱），结果只写进这台手机的私有目录，作为进化建议的证据；不阻塞聊天、不改人设与技能。默认关闭，只有你在这里拨动才算数。</string>
-    <string name="baopu_ws_grant_card">已放行工作区外的会话</string>
-    <string name="baopu_ws_grant_empty">还没有放行过任何会话。新会话第一次要访问工作区外时会问你。</string>
-    <string name="baopu_ws_grant_loading">读取中…</string>
-    <string name="baopu_ws_grant_revoke">撤销</string>
-    <string name="baopu_ws_grant_root">工作区：%1$s</string>
-    <string name="baopu_ws_grant_revoked">已撤销，这个会话下次越界会重新问你</string>
+    <!-- 第二百八十七批：文件操作记录（全盘可读写之后的审计入口；30 天可回放） -->
+    <string name="baopu_file_op_card">文件操作记录（近 30 天）</string>
+    <string name="baopu_file_op_desc">抱朴干活是全盘可读写的（和电脑上的 agent 一样），产物默认落在工作区。每笔读、写、删、移、列、搜都会记一行（时间·动作·用途·路径），30 天后自动清掉。删除与移动每次都要你点头；覆盖旧文件会先备份，超过 5MB 不备份并当场说明；系统目录与凭据目录（.ssh、keystore）一律不碰。</string>
+    <string name="baopu_file_op_empty">还没有记录。第一次读写文件之后这里就会出现流水。</string>
+    <string name="baopu_file_op_loading">读取中…</string>
+    <string name="baopu_file_op_more">只显示最近 %1$d 条（共 %2$d 条）</string>
     <!-- 第一百六十五批：人设包（Persona Pack v1） -->
     <string name="persona_pack_card">人设包</string>
     <string name="persona_pack_desc">选一套「谁在帮你」的模板：只改语气、风格和工作偏好。它不会改工具权限、确认制，也不会执行里面的任何代码。</string>

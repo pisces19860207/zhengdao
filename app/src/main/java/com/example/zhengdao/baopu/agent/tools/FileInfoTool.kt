@@ -7,7 +7,8 @@
 //    超过 8 MB 的文件不数字数——5 秒超时里数不完，且模型也不需要那么准）。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.baopu.workspaceBoundaryCheck
+import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.fileAccessCheck
 import java.io.File
 
 /**
@@ -72,19 +73,14 @@ internal object FileInfoTool {
     fun info(root: File, file: File): ToolOutcome {
         if (!file.exists()) {
             return ToolOutcome.Failed(
-                "不存在：${file.name}（工作区里没有这个文件；先用 list_dir 看结构）",
+                "不存在：${file.name}（这个位置没有这个文件；先用 list_dir 看结构）",
             )
         }
         if (!file.isFile) {
             return ToolOutcome.Failed("不是一个文件：${file.name}（file_info 只看文件；列目录用 list_dir）")
         }
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        workspaceBoundaryCheck(
-            root,
-            file,
-            file.name,
-            "路径越界被拒：${file.name} 不在工作区（${root.absolutePath}）内。",
-        )?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(file, FilePaths.display(root, file))?.let { return ToolOutcome.Rejected(it) }
         val size = file.length()
         val head = runCatching { readHead(file, SNIFF_BYTES) }.getOrNull()
             ?: return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.name}")

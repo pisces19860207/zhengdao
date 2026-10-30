@@ -95,7 +95,6 @@ class RiskWiringTest {
     private fun pipeline(
         root: File,
         table: RiskTable = RiskTable.DEFAULT,
-        outside: Boolean = false,
         log: (String) -> Unit = {},
         vararg specs: ToolSpec,
     ): GuardPipeline = GuardPipeline(
@@ -104,8 +103,7 @@ class RiskWiringTest {
         { null },
         ToolRunner(Executors.newSingleThreadExecutor()),
         log,
-        { outside },
-        table,
+        riskTable = table,
     )
 
     private fun call(name: String, vararg args: Pair<String, Any?>): ToolCall {
@@ -135,7 +133,6 @@ class RiskWiringTest {
         val p = pipeline(
             root,
             table,
-            outside = false,
             log = {},
             specs = arrayOf(fake("note_write", ToolPermission.FREE, "path")),
         )
@@ -156,7 +153,7 @@ class RiskWiringTest {
         val root = tmp("r1-confirm")
         val table = tableWith("note_write" to ToolRule(RiskClass.R1, writePathKeys = setOf("path")))
         // 同一个动作、同一张表，只是工具自己声明了 CONFIRM ⇒ 仍弹卡（「R1 按现有策略」）
-        val p = pipeline(root, table, false, {}, fake("note_write", ToolPermission.CONFIRM, "path"))
+        val p = pipeline(root, table, log = {}, specs = arrayOf(fake("note_write", ToolPermission.CONFIRM, "path")))
         val card = assertNeedsConfirm(run(root, call("note_write", "path" to "产物/a.md"), p))
         assertEquals("R1 没有判据 ⇒ 卡上不摆理由行", null, card.reasonLine)
         assertEquals("弹卡 ⇒ 一个字节都没执行", 0, ran.get())
@@ -170,7 +167,6 @@ class RiskWiringTest {
         val p = pipeline(
             root,
             tableWith("note_write" to ToolRule(RiskClass.R1, writePathKeys = setOf("path"))),
-            outside = true,
             log = {},
             specs = arrayOf(fake("note_write", ToolPermission.FREE, "path")),
         )
@@ -189,7 +185,6 @@ class RiskWiringTest {
         val p = pipeline(
             root,
             table,
-            outside = false,
             log = {},
             specs = arrayOf(fake("pay_click", ToolPermission.FREE, "target")),
         )
@@ -213,7 +208,7 @@ class RiskWiringTest {
         val root = tmp("ghost")
         val ledgerRoot = tmp("ghost-ledger")
         DecisionLedger.install(ledgerRoot)
-        val p = pipeline(root, RiskTable.DEFAULT, false, {}, fake("ghost_tool", ToolPermission.FREE, "path"))
+        val p = pipeline(root, RiskTable.DEFAULT, log = {}, specs = arrayOf(fake("ghost_tool", ToolPermission.FREE, "path")))
         val card = assertNeedsConfirm(run(root, call("ghost_tool", "path" to "a.md"), p))
         assertEquals("这个工具没有登记风险档", card.reasonLine)
         assertEquals(0, ran.get())
@@ -241,7 +236,8 @@ class RiskWiringTest {
         val asR1 = pipeline(
             root,
             tableWith("note_write" to ToolRule(RiskClass.R1, writePathKeys = setOf("path"))),
-            false, {}, *spec,
+            log = {},
+            specs = spec,
         )
         val first = run(root, c, asR1)
 
@@ -249,7 +245,8 @@ class RiskWiringTest {
         val asR3 = pipeline(
             root,
             tableWith("note_write" to ToolRule(RiskClass.R3, writePathKeys = setOf("path"))),
-            false, {}, *spec,
+            log = {},
+            specs = spec,
         )
         val second = run(root, c, asR3)
 
@@ -257,7 +254,8 @@ class RiskWiringTest {
         val backToR1 = pipeline(
             root,
             tableWith("note_write" to ToolRule(RiskClass.R1, writePathKeys = setOf("path"))),
-            false, {}, *spec,
+            log = {},
+            specs = spec,
         )
         val third = run(root, c, backToR1)
 
@@ -283,7 +281,8 @@ class RiskWiringTest {
         val p = pipeline(
             root,
             tableWith("write_file" to ToolRule(RiskClass.R3, writePathKeys = setOf("path"))),
-            false, {}, fake("write_file", ToolPermission.FREE, "path"),
+            log = {},
+            specs = arrayOf(fake("write_file", ToolPermission.FREE, "path")),
         )
         val card = assertNeedsConfirm(run(root, call("write_file", "path" to "产物/a.md"), p))
         assertEquals("花钱、外发或账号类动作", card.reasonLine)
@@ -316,7 +315,7 @@ class RiskWiringTest {
         assertEquals("未分类的档必须是 R2", RiskClass.R2, verdict.risk)
         assertTrue("未分类必须 MUST_ASK", verdict.mustAsk)
         assertEquals("unclassified_tool", verdict.auditTag)
-        val p = pipeline(root, RiskTable.DEFAULT, false, {}, fake("totally_new_tool", ToolPermission.FREE, "path"))
+        val p = pipeline(root, RiskTable.DEFAULT, log = {}, specs = arrayOf(fake("totally_new_tool", ToolPermission.FREE, "path")))
         assertNeedsConfirm(run(root, c, p))
         assertEquals(0, ran.get())
     }
@@ -326,7 +325,7 @@ class RiskWiringTest {
         val root = tmp("neg4")
         val c = call("generate_image", "path" to "产物/x.png")
         assertEquals("generate_image 的底档必须是 R3", RiskClass.R3, RiskGate.judge(c).risk)
-        val p = pipeline(root, RiskTable.DEFAULT, false, {}, fake("generate_image", ToolPermission.FREE, "path"))
+        val p = pipeline(root, RiskTable.DEFAULT, log = {}, specs = arrayOf(fake("generate_image", ToolPermission.FREE, "path")))
         assertNeedsConfirm(run(root, c, p))
         assertEquals("R3 执行了就是负例", 0, ran.get())
     }
@@ -338,7 +337,8 @@ class RiskWiringTest {
         val p = pipeline(
             root,
             tableWith("type_secret" to ToolRule(RiskClass.R2, fieldKeys = setOf("target"))),
-            false, {}, fake("type_secret", ToolPermission.FREE, "target"),
+            log = {},
+            specs = arrayOf(fake("type_secret", ToolPermission.FREE, "target")),
         )
         val r = run(root, c, p)
         assertTrue("密码框必须**拒绝**，不许降级成问：${r::class.simpleName}", r is GuardPipeline.Result.Rejected)
@@ -362,7 +362,8 @@ class RiskWiringTest {
         val p2 = pipeline(
             root,
             tableWith("del_thing" to ToolRule(RiskClass.R2, deleteLike = true)),
-            false, {}, fake("del_thing", ToolPermission.FREE, "path"),
+            log = {},
+            specs = arrayOf(fake("del_thing", ToolPermission.FREE, "path")),
         )
         val card = assertNeedsConfirm(run(root, call("del_thing", "path" to "a.md"), p2))
         val line = card.reasonLine

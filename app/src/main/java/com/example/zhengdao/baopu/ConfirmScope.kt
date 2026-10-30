@@ -5,8 +5,8 @@
 // 四档范围「仅这一次（默认）/ 本次运行 / 本会话 / 本技能」；高风险与扣费类永远只给
 // 「仅这一次」；授权可撤销、运行/会话结束自动清、审计记「谁授权/范围/次数」。
 //
-// 为什么纯逻辑住 `baopu/` 包而不住 `agent/`：账本与路径授权的账本
-// （[WorkspaceGrants]，157）是**同一层**的东西——都是「用户批过什么」的事实，
+// 为什么纯逻辑住 `baopu/` 包而不住 `agent/`：授权账本与文件操作账
+// （`FileOpLedger`，287）是**同一层**的东西——都是「用户批过什么、动过什么」的事实，
 // 判据不该依赖引擎。本文件无 Android/Compose/SQLite，JVM 直测。
 package com.example.zhengdao.baopu
 
@@ -150,7 +150,7 @@ internal data class ConfirmAuditEntry(
     val useCount: Int,
 )
 
-/** 审计处置（短标签可 grep；与 [OutsideDecision] 的四值同款思路：分得清「问过/刚批/早已放行」）。 */
+/** 审计处置（短标签可 grep；分得清「刚批/用过/撤销/自动清」，与文件操作账同款思路）。 */
 internal enum class ConfirmAuditDecision(val tag: String, val text: String) {
     /** 用户批了范围授权（记账）。 */
     GRANTED("granted", "用户授权范围"),
@@ -172,7 +172,7 @@ internal enum class ConfirmAuditDecision(val tag: String, val text: String) {
 }
 
 /**
- * 进程级授权账本（与 [WorkspaceGrants] 同款房型：进程级单例、按 sessionId 分账）。
+ * 进程级授权账本（与 `FileOpLog` 同款房型：进程级单例、按 sessionId 分账）。
  *
  * 为什么按 sessionId 分账而不是全局一张表：「换会话不继承」是负例判据——
  * 全局表会让会话 B 白捡会话 A 的授权。会话内跨**运行**仍有效（THIS_SESSION
@@ -181,7 +181,7 @@ internal enum class ConfirmAuditDecision(val tag: String, val text: String) {
  * 生死：授权只住内存（不落库）——进程被杀全部失效，重启后重新问。
  * 这是**故意**的：落库要把「谁在什么时候批了什么范围」变成跨重启事实，
  * 而 171 的红线是「不降低高风险确认」，内存账本是保守的那一端。
- * （路径根的授权另有 [WorkspaceGrants] 落库管，两本账不要混。）
+ * （287 起路径根不再需要授权；文件操作流水另有 `FileOpLog` 落库管，两本账不要混。）
  */
 internal object ConfirmGrants {
 
@@ -328,7 +328,7 @@ internal object ConfirmGrants {
     fun auditFor(sessionId: Long): List<ConfirmAuditEntry> =
         sessions[sessionId]?.audit?.toList() ?: emptyList()
 
-    /** 直测收尾：全清（生产不调；与 [WorkspaceGrants.resetForTest] 同款纪律）。 */
+    /** 直测收尾：全清（生产不调；与 `FileOpLog.resetForTest` 同款纪律）。 */
     fun resetForTest() {
         sessions.clear()
     }
