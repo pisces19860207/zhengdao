@@ -220,7 +220,11 @@ internal class GuardPipeline(
      *
      * 为什么做成注入接口而不是在这里读单例：与 [contracts] 同一条理由——判据要能打在参数上。
      * 负例 N6（"ALLOW 那一支其实是死代码"）与 N7（"放行的动作落了两条账"）都只有从这里
-     * 喂一个假判定才抓得住；真影子适配器本批**不做**（2026-10-29 用户裁定 Q1：判据补强归 239）。
+     * 喂一个假判定才抓得住。
+     *
+     * **第二百七十六批 P1 当时**真影子适配器不做（2026-10-29 用户裁定 Q1：判据补强归 239）。
+     * 第二百九十六批 §2 把那份补强落了地：生产影子由 249 第⑤步自己向 `ShadowAdapter` 要，
+     * 管线这一格**仍然不喂影子**（`TaskGrantWiringGateTest` 的 `P1生产不传影子` 钉的就是这一条）。
      */
     private val grantWiring: GrantWiring = TaskGrantWire,
 ) {
@@ -504,11 +508,12 @@ internal class GuardPipeline(
         // 本批**只接判定**（2026-10-29 用户裁定：开工卡上半计划/下半授权照旧，不动卡面）。
         //
         // 五种处置里只有两种改变今天的行为：
-        // · ALLOW＝免卡——P1 生产**不可达**：第⑤步恒 `ShadowSignal.None` ⇒ 六步停在 NO_DATA
-        //   （她那句「P1 不会少弹一张卡」就落在这儿）；
+        // · ALLOW＝免卡——第二百七十六批 P1 那会儿生产**不可达**（第⑤步恒 `ShadowSignal.None` ⇒ 停在
+        //   NO_DATA，她那句「P1 不会少弹一张卡」就落在这儿）；**第二百九十六批起可达**：第⑤步真去
+        //   跑一次影子，跑出 CONSISTENT 才免卡，跑不出/不一致一律照旧弹卡；
         // · REJECT＝硬拒——矩阵的硬拒在上面已经 return 了，这一格是纵深，不是第二口径；
         // · NOT_APPLICABLE／UNAUTHORIZED／STOPPED＝**逐字走今天**（该问的还是问）。
-        // 所以 P1 既不省一张卡也不多一张卡；报告里写的是「未接线、不可开放生产自动档」。
+        // P1 当时既不省一张卡也不多一张卡；本批之后能省的只有影子跑成一致的那一格。
         val laneRoot = workspaceRoot()
         val grantLane = grantWiring.decide(
             call = effectiveCall,

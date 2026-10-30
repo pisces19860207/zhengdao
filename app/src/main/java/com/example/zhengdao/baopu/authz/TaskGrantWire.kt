@@ -35,6 +35,7 @@ import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.RiskVerdict
 import com.example.zhengdao.baopu.agent.RunTraceRules
 import com.example.zhengdao.baopu.agent.ToolCall
+import com.example.zhengdao.baopu.inspect.ShadowInput
 import com.example.zhengdao.baopu.plan.PlanContract
 import com.example.zhengdao.baopu.plan.TouchFace
 import com.example.zhengdao.baopu.plan.TouchFaceKind
@@ -65,7 +66,7 @@ internal enum class WiringDisposition {
     /** 没有生效的单，或 L26 三元组对不上 ⇒ **视为未授权**，照今天默认流程走。 */
     UNAUTHORIZED,
 
-    /** 六步全过**且**三元组相符 ⇒ 这一格免卡（P1 生产不可达：第⑤步恒没影子 ⇒ NO_DATA）。 */
+    /** 六步全过**且**三元组相符 ⇒ 这一格免卡（第二百九十六批起**生产可达**：第⑤步真去跑影子，跑出 CONSISTENT 才走到这儿）。 */
     ALLOW,
 
     /** 六步判了硬拒 ⇒ 连问都不问（管线出 [com.example.zhengdao.baopu.agent.GuardPipeline.Result.Rejected]）。 */
@@ -369,9 +370,11 @@ internal object TaskGrantWire : GrantWiring {
         isWrite: Boolean,
         nowMonoMs: Long,
         epoch: String,
-        // 默认值写在接口那一侧（override 不许再给）：P1 生产恒 `None`——影子预演没有调用方。
-        // 留这一格是为了负例 N6——测试注入 `Rehearsed(CONSISTENT)` 后 ALLOW 必须真的免卡，
-        // 否则"放行分支"就只是一句死代码（判据补强归 239，本批不自己造适配器）。
+        // 默认值写在接口那一侧（override 不许再给）。这一格现在生产里**没人喂**：管线那一处
+        // 不传影子（`TaskGrantWiringGateTest` 钉着），它留给的是负例 N6——测试直接塞一份现成
+        // 结论，跳过真预演也要能证明"放行"分支是活的。
+        // 第二百九十六批起，生产走的不是这一格而是下面 [shadowInputOf] 那一格：本层只交
+        // 预演的**输入**，跑与判都归第⑤步（`TaskGrantGate` → `ShadowAdapter`）。
         shadow: ShadowSignal,
         log: (String) -> Unit,
     ): WiringResult {
@@ -389,7 +392,10 @@ internal object TaskGrantWire : GrantWiring {
         val target = targets.first()
         val objectId = runCatching { target.absoluteFile.toRelativeString(root.absoluteFile) }
             .getOrDefault(target.name).replace('\\', '/')
-        val request = requestOf(call, state.grant, objectId, target, verdict, nowMonoMs, epoch, shadow)
+        // 第二百九十六批 §3：本层只交预演的**输入**（跑与判都归第⑤步），所以这一格多带一份
+        // ShadowInput；工具不在适配器名单上也不要紧——适配器自己会报 UNSUPPORTED。
+        val request = requestOf(call, state.grant, objectId, target, verdict, nowMonoMs, epoch, shadow,
+            shadowInputOf(call, root, objectId, verdict, state.grant))
         val binding = bindingOf(state.grant)
         // L26 先判：份都对不上，不配谈范围。
         val grantedBinding = TaskGrantBoard.bindingOfOpened()
@@ -524,9 +530,11 @@ internal object TaskGrantWire : GrantWiring {
         verdict: RiskVerdict,
         nowMonoMs: Long,
         epoch: String,
-        // 生产恒 `None`——管线那一格不传，走这个默认值；测试注入 `Rehearsed(CONSISTENT)`
-        // 只为负例 N6 证明"放行"分支是活的（影子适配器本批不做，判据补强归 239）。
+        // 生产不传（管线那一格不喂影子）；测试注入 `Rehearsed(CONSISTENT)` 只为负例 N6 证明
+        // "放行"分支是活的。第二百九十六批起生产的影子走下面那格 [shadowInput]，第⑤步自己跑。
         shadow: ShadowSignal = ShadowSignal.None,
+        // 预演的输入（由 [shadowInputOf] 算；null ⇒ 这一格没交给影子，第⑤步照旧"没跑过"）。
+        shadowInput: ShadowInput? = null,
     ): ActionRequest {
         val exists = target.isFile
         val bytes = call.arguments.optString(CONTENT_KEY).toByteArray(Charsets.UTF_8).size.toLong()
@@ -541,13 +549,55 @@ internal object TaskGrantWire : GrantWiring {
             risk = verdict.risk ?: RiskClass.R2,
             mustAskIndependently = mustAskIndependentlyOf(verdict),
             boundary = boundaryFactsOf(verdict),
-            // P1 不开自动档的**唯一原因**就写在这一格：影子预演在生产里没有调用方（判据归 239 补强）。
+            // 影子：现成结论（只有测试会喂）与预演输入两条口，判定都归第⑤步。
             shadow = shadow,
+            shadowInput = shadowInput,
             before = if (exists) ObjectState.Present(sha256File(target), target.length()) else ObjectState.Absent,
             nowMonoMs = nowMonoMs,
             processEpoch = epoch,
         )
     }
+
+    /**
+     * 第二百九十六批 §3：第⑤步要的那份**预演输入**（本层算事实，跑与判都不在这儿）。
+     *
+     * 四个口径为什么这样取：
+     * · 路径只交**相对工作区根**的写法（＝六步第①步那个 `objectId`），不交管线改写后的绝对路径——
+     *   副本根开在真根之下，交绝对路径会把"副本里那一份"和"真盘那一份"混进同一坐标系，
+     *   §1④ 那条「出根＝接错」就无从判起；
+     * · `content` 之外不猜字节：`decide` 已经挡过「参数里没有 content ⇒ 不进授权链」，
+     *   这一格与它同一把尺；
+     * · `reversible=false` 照 237 的 [com.example.zhengdao.baopu.agent.ToolFallback] 口径抄
+     *   （写类动作"已有内容被覆盖就找不回来"）——本层不另起一套可逆性判据，影子账两处才有同一个数；
+     * · `step` 恒 0：授权链这一格取不到引擎步号（2026-10-29 裁定 Q6 不改 `prepare/execute` 三个签名）。
+     *   后果写在交付报告『遗留·I6 对表』：影子账与巡按 I6 的联键是 (会话,步骤)。
+     */
+    internal fun shadowInputOf(
+        call: ToolCall,
+        root: File,
+        objectId: String,
+        verdict: RiskVerdict,
+        grant: TaskGrant,
+    ): ShadowInput = ShadowInput(
+        opId = call.id,
+        tool = call.name,
+        workspaceRoot = root.absolutePath,
+        declaredPaths = listOf(objectId),
+        content = call.arguments.optString(CONTENT_KEY),
+        editOp = call.arguments.optString("op"),
+        fromLine = lineArgOf(call, "from_line"),
+        toLine = lineArgOf(call, "to_line"),
+        overwrite = call.arguments.optBoolean("overwrite", false),
+        risk = verdict.risk ?: RiskClass.R2,
+        reversible = false,
+        sessionId = grant.sessionId,
+        wallMs = System.currentTimeMillis(),
+        ledgerRoot = DecisionLedger.installedRoot()?.absolutePath.orEmpty(),
+    )
+
+    /** 行号参数：没给就交 null，让工具按自己的缺省走——在这儿填 0 是冒充"第 0 行"。 */
+    private fun lineArgOf(call: ToolCall, key: String): Int? =
+        if (call.arguments.has(key)) call.arguments.optInt(key) else null
 
     /** 契约里最高的一档，压到授权能覆盖的上限（R2）——预估超 R2 的计划本来就该逐次问。 */
     internal fun maxRiskOf(contract: PlanContract): Int =

@@ -166,8 +166,8 @@ internal object TaskGrantBoard {
      *
      * 为什么只放一格、不做表：写工具在调度层是**单飞**的（`ToolScheduling` 那条），
      * 同一进程里不会有两格并行的授权内写入；放成表反而会让"取哪一格"变成第二个口径。
-     * 只有 [WiringDisposition.ALLOW] 才写它——P1 生产不可达（第⑤步恒没影子），
-     * 这一格现在是空的，接的是 P2/P3 的路。
+     * 只有 [WiringDisposition.ALLOW] 才写它——第二百七十六批 P1 那会儿生产不可达（第⑤步恒没影子，
+     * 这一格是空的）；第二百九十六批起这一格**有了真内容**：影子跑成 CONSISTENT 才免卡，免卡才挂它。
      */
     @Volatile
     private var pending: ActionRequest? = null

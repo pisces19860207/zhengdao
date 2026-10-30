@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.DeviceTools
 import com.example.zhengdao.baopu.agent.DrawPublish
+import com.example.zhengdao.baopu.agent.FileShadowSandbox
 import com.example.zhengdao.baopu.agent.GenerateImage
 import com.example.zhengdao.baopu.agent.GenerateImageTool
 import com.example.zhengdao.baopu.agent.GroupUnlockStore
@@ -41,6 +42,7 @@ import com.example.zhengdao.baopu.agent.multiagent.SubAgentRules
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentRunner
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.inspect.ShadowAdapter
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
@@ -825,6 +827,10 @@ internal object BaopuRuntime {
         // 只存 File 不存 Context（`StaticFieldLeak` 的教训）；各域的写口（技能/产物/日记/评测/
         // 守卫管线）都经 `DecisionLedger.record(...)` 落账，找不到落点就只留一行日志、不静默。
         DecisionLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        // 第二百九十六批 §2：**影子预演**的沙盒在这里装配（这是全仓唯一一处 `ShadowAdapter.install`）。
+        // 没装 ⇒ 第⑤步只能报 `NO_SANDBOX` ⇒ 六步停在 NO_DATA ⇒ 一张卡也不会少弹（保守方向）。
+        // 只交引用、不交 Context：沙盒要的全部事实（工作区根／声明对象／内容）都由调用方给。
+        ShadowAdapter.install(FileShadowSandbox())
         // 第二百八十批：画像黑箱（`filesDir/baopu_internal/`——**不在**抱朴记忆/工作区等可读
         // 目录，M7 判据「画像文件不在可读目录」）；喂样/重算/判据消费的挂接点在行为路径，
         // 由 M7 与 283 的接线批来接（本批纯数据层，不进 UI 不进上下文）。

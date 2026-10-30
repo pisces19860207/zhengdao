@@ -437,9 +437,10 @@ class HealthCheckTest {
         )
 
         // 首次体检（无设备数据）的读数：能静态判的只有 NOT_WIRED，其余一律未取样。
-        assertEquals(7, sheet.count(OrganState.NOT_WIRED))
+        // 第二百九十六批 §2/§3：影子有了生产调用点 ⇒ 从 NOT_WIRED 挪进"未取样"（6/8，原来是 7/7）。
+        assertEquals(6, sheet.count(OrganState.NOT_WIRED))
         assertEquals(0, sheet.count(OrganState.ACTIVE))
-        assertEquals(7, sheet.unmeasured())
+        assertEquals(8, sheet.unmeasured())
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.WIRING))
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.LEDGER))
         assertEquals(ScanOutcome.NO_SIGNAL, sheet.outcomeOf(DefectSignal.TEST_RED))

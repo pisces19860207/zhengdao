@@ -14,6 +14,8 @@ package com.example.zhengdao.baopu.authz
 import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.RiskCode
 import com.example.zhengdao.baopu.RiskVerdict
+import com.example.zhengdao.baopu.inspect.ShadowAdapter
+import com.example.zhengdao.baopu.inspect.ShadowInput
 import com.example.zhengdao.baopu.inspect.ShadowVerdict
 
 /** 六步（`wire` 是交付报告与账本的稳定键；改字面量＝老读数读不出步骤）。 */
@@ -71,8 +73,14 @@ internal sealed interface ShadowSignal {
     /** 这个动作一次影子预演都没跑 ⇒ 不许放行（NO_DATA）。 */
     data object None : ShadowSignal
 
-    /** 跑了，结论是 [verdict]（四态；只有 CONSISTENT 放行）。 */
-    data class Rehearsed(val verdict: ShadowVerdict) : ShadowSignal
+    /**
+     * 跑了，结论是 [verdict]（四态；只有 CONSISTENT 放行）。
+     *
+     * [reason]（第二百九十六批）：`UNVERIFIABLE` 的**原因码**（`UNSUPPORTED`／`NO_SANDBOX`／
+     * `STRUCTURE`／`NO_TARGET`）。为什么要跟着结论走：四态只说"跑不出结论"，原因才说得出
+     * "下一批接谁才能开自动档"——原因掉了，六步第⑤步的读数就永远只是一句"影子跑不出结论"。
+     */
+    data class Rehearsed(val verdict: ShadowVerdict, val reason: String = "") : ShadowSignal
 }
 
 /**
@@ -118,6 +126,15 @@ internal data class ActionRequest(
     val mustAskIndependently: Boolean = false,
     val boundary: BoundaryFacts = BoundaryFacts(),
     val shadow: ShadowSignal = ShadowSignal.None,
+    /**
+     * 第二百九十六批 §3：第⑤步**去问适配器**时要带的那份输入（谁、改哪个对象、写多少字节）。
+     *
+     * 为什么做成可注入的字段而不是让第⑤步自己去构造：本层零 IO 是 249 钉死的纪律
+     * （[TaskGrantSourceGateTest] 的「授权层不带IO」），副本／快照／diff 全都归沙盒。
+     * 没给 ⇒ 第⑤步照旧 `None`（停在 NO_DATA），一个字节都不碰盘——249/276 那批纯判定测试
+     * 因此逐字不变，真跑的只有交了输入的那一条路径。
+     */
+    val shadowInput: ShadowInput? = null,
     /** 动作开始前的对象状态（改正文必须与快照里的那一版对得上）。 */
     val before: ObjectState = ObjectState.Absent,
     val nowMonoMs: Long = 0L,
@@ -197,6 +214,25 @@ internal object TaskGrantGate {
      * （§7 负例⑥）。
      */
     internal fun shadowAllows(verdict: ShadowVerdict): Boolean = verdict == ShadowVerdict.CONSISTENT
+
+    /**
+     * 第⑤步的**取数口**（第二百九十六批 §3：判据⑤「第⑤步有真实调用点」打的就是这一行）。
+     *
+     * 这一句问出去之后发生的事：沙盒在 `<工作区>/.shadow/<opId>/` 里把这次动作复刻一遍，
+     * 判据层（[ShadowAdapter] → `ShadowRehearsal.compare`）交回四态，本函数只翻成 [ShadowSignal]。
+     * · 构造层没交输入 ⇒ [ShadowSignal.None]（连问都没问，与 249 交付时同一态）；
+     * · 工具没接适配器／沙盒没装／副本建不起 ⇒ `UNVERIFIABLE` ＋原因码，第⑤步停在 NO_DATA，
+     *   **一张卡都不省**——没有"仍然执行"那颗按钮，本层唯一认的免卡凭据是 CONSISTENT。
+     *
+     * 为什么判定层可以"问"而不能"跑"：[ShadowAdapter] 自己一字节盘都不写（落账走它自己的
+     * 账本、建副本走注入的沙盒口），碰盘的那份实现住在装配层；「授权层不带IO」那条门禁
+     * 扫的是本文件的原文（注释也扫），所以这里连一个 IO 字样都不出现。
+     */
+    internal fun shadowSignalFor(input: ShadowInput?, log: (String) -> Unit = { }): ShadowSignal {
+        if (input == null) return ShadowSignal.None
+        val run = ShadowAdapter.rehearse(input, log = log)
+        return ShadowSignal.Rehearsed(run.outcome.verdict, run.reason)
+    }
 
     fun evaluate(request: ActionRequest, state: GrantState?): GateDecision {
         val steps = mutableListOf<StepReading>()
@@ -361,13 +397,28 @@ internal object TaskGrantGate {
         )
 
         // ⑤ 影子三态（每个动作都查；UNKNOWN 停下报 NO_DATA，不弹卡）
-        val verdict = (request.shadow as? ShadowSignal.Rehearsed)?.verdict
+        // 第二百九十六批 §3：这一格**第一次真去问适配器**——249 交付时它是"全绿但零调用"，
+        // 276 P1 接上六步之后它仍然恒 `None`（管线那一格不传影子）。现在只要构造层交了
+        // [ActionRequest.shadowInput]，第⑤步就自己去跑一次预演拿结论；调用方已经交回结论的
+        // （276 的 N6 注入那一格）不重跑第二次——影子是有代价的，同一次动作只许跑一遍。
+        val signal = request.shadow.takeIf { it is ShadowSignal.Rehearsed }
+            ?: shadowSignalFor(request.shadowInput)
+        val verdict = (signal as? ShadowSignal.Rehearsed)?.verdict
         if (verdict == null) {
             steps += StepReading(GrantStep.SHADOW, null, "这个动作没跑影子预演")
             return decide(GateOutcome.STOPPED, CODE_NO_DATA)
         }
         if (!shadowAllows(verdict)) {
-            steps += StepReading(GrantStep.SHADOW, false, "影子结论是 ${verdict.cn}（${verdict.wire}）")
+            val reason = (signal as ShadowSignal.Rehearsed).reason
+            steps += StepReading(
+                GrantStep.SHADOW,
+                // 「跑不出结论」不是「对不上」：MISMATCH/MISWIRED 是实测交回了差，UNVERIFIABLE
+                // 是压根没有可比的东西（工具没接／沙盒没装／副本建不起）。记成"未验"才与
+                // 239 那条「验不了不许冒充绿、也不许冒充红」同口径，结论码仍是 NO_DATA。
+                passed = if (verdict == ShadowVerdict.UNVERIFIABLE) null else false,
+                detail = "影子结论是 ${verdict.cn}（${verdict.wire}" +
+                    if (reason.isBlank()) "）" else "：reason=$reason）",
+            )
             return decide(
                 GateOutcome.STOPPED,
                 when (verdict) {
