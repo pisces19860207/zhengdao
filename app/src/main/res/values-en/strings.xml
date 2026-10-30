@@ -719,7 +719,6 @@
     <string name="baopu_drawer_sched_off">Off</string>
     <string name="baopu_drawer_sched_on">On: %1$d</string>
     <string name="baopu_drawer_sched_next">Next %1$s</string>
-    <string name="baopu_drawer_group_settings">Settings</string>
     <string name="baopu_drawer_channel_desc">Pick a model or provider (rebuilds the engine; not while running)</string>
     <string name="baopu_drawer_settings">Baopu settings</string>
     <string name="baopu_drawer_settings_desc">Tool switches, model parameters, reasoning effort, persona, skill index</string>

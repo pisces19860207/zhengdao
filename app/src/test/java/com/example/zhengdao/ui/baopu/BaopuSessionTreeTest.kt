@@ -706,8 +706,9 @@ class BaopuSessionTreeTest {
         listOf(
             "baopu_drawer_group_session",
             "baopu_drawer_group_library",
-            "baopu_drawer_group_settings",
         ).forEach { assertTrue("少了分组标题：$it", drawerCode.contains("R.string.$it")) }
+        // 第二百八十六批（2026-10-30 用户裁定）：「设置」组整组删除（定时任务跳转行与口味档案
+        // 都搬去律令「抱朴」组），故不再要求它存在；反向由 BaopuShellP1GateTest D1 钉着。
         assertTrue("工作区那一组是新加的", drawerCode.contains("baopu_drawer_group_workspace"))
     }
 

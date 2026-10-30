@@ -466,8 +466,7 @@ internal fun BaopuDrawer(
     onPreviewClear: () -> Unit,
     // 第二百五十一批：「外部工具（MCP）」「选模型」「抱朴设置」三个回调随入口一起删 ——
     // 它们现在挂在律令的「抱朴」组里（SettingsScreen），抽屉不再渲染这三项。
-    /** 第二百零二批：口味档案（偏好与范例库，独立一页——不挤进抱朴设置页）。 */
-    onTaste: () -> Unit,
+    // 第二百八十六批：`onTaste`（口味档案）同样随入口搬去律令「抱朴」组，回调一并删。
     /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
     onPurgeSession: (Long) -> Boolean,
     // 134 批 lint(ModifierParameter)：modifier 必须排在**第一个可选参数**的位置；
@@ -815,33 +814,13 @@ internal fun BaopuDrawer(
             onClick = onPreviewClear,
         )
 
-        HorizontalDivider(
-            Modifier.padding(vertical = 6.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-
-        DrawerGroup(stringResource(R.string.baopu_drawer_group_settings))
-        // ── 定时任务·跳转行（第二百二十九批）─────────────────────────────────
-        // 主入口已归位到第一组「新会话」之后（它是抱朴自己的工作安排，不是设置项）；
-        // 这一行**保留**为跳转（210 批搬进抽屉时的老位置），两处点进去是同一个
-        // ScheduleTasksActivity——同一页，不建第二个入口。状态行（带「下次 HH:mm」）
-        // 只在新会话组那份，这里不重复读盘。
-        DrawerItem(
-            title = stringResource(R.string.baopu_drawer_sched),
-            description = stringResource(R.string.baopu_drawer_sched_desc),
-            onClick = onScheduleTasks,
-        )
-        // 第二百五十一批（律令瘦身）：这一组**只留两行** —— 定时任务、口味档案。
-        // 「外部工具（MCP）」「选模型」「抱朴设置」三项搬去了律令的「抱朴」组
-        // （用户 2026-10-27：「把抱朴的设置挪出来」）：它们是一年改一两次的配置，
-        // 而抽屉是每天要拉的会话树，越短越好。**页面一个都没删**，只是入口换地方。
-        // 第二百零二批：口味档案（与抱朴设置并排，因为它是「它为什么这么写」的账本，
-        // 不属于工具/模型那些开关）——用户没让搬，留在原地。
-        DrawerItem(
-            title = stringResource(R.string.baopu_taste_title),
-            description = stringResource(R.string.baopu_taste_drawer_desc),
-            onClick = onTaste,
-        )
+        // ── 第二百八十六批（2026-10-30 用户裁定）：抽屉不再有「设置」组 ──────────
+        // 组里原本两行：①「定时任务」跳转行 —— 与第一组「新会话」下面那行
+        // `ScheduleDrawerRow` 进的是同一个 ScheduleTasksActivity，抽屉里出现两个同名条目；
+        // ②「口味档案」—— 用户原话「口味档案还在抱朴的设置里」，一并搬去律令的「抱朴」组
+        // （与 MCP／选模型／抱朴设置 同处，那三项 251 批就搬了）。
+        // 两行都走后这一组空了，整组连同分隔线一起删 —— 抽屉只留「每天要拉的东西」。
+        // 定时任务的**主入口**仍在第一组（带「未启用／下次 HH:mm」状态位），页面一个没删。
         Spacer(Modifier.height(24.dp))
     }
 }

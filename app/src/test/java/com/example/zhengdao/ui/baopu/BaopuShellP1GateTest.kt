@@ -71,12 +71,14 @@ class BaopuShellP1GateTest {
     // ── ① 抽屉（v1.4 §3.8）──────────────────────────────────────────────
 
     /**
-     * D1 七段顺序：会话 → 工作区 → 产物 → 回收站 → 资料与书 → 预览 → 设置。
+     * D1 六段顺序：会话 → 工作区 → 产物 → 回收站 → 资料与书 → 预览。
      *
-     * 红＝谁把某一段挪了位置、或把「设置」从底部挪走（设计里设置是低频位，必须在最后）。
+     * 红＝谁把某一段挪了位置。**第二百八十六批（2026-10-30 用户裁定）删掉原第七段「设置」**：
+     * 组里两行（定时任务跳转行 / 口味档案）先后搬去律令的「抱朴」组，整组随之删除，
+     * 抽屉只留「每天要拉的东西」。这条判据从「七段」改成「六段 + 不许再长出设置组」。
      */
     @Test
-    fun `D1_抽屉七段顺序固定_设置在最底部`() {
+    fun `D1_抽屉六段顺序固定_不许再长出设置组`() {
         val src = drawer()
         val order = listOf(
             "R.string.baopu_drawer_group_session",
@@ -85,26 +87,24 @@ class BaopuShellP1GateTest {
             "R.string.trash_drawer_entry",
             "R.string.baopu_drawer_group_library",
             "R.string.baopu_drawer_group_preview",
-            "R.string.baopu_drawer_group_settings",
         )
         val idx = order.map { src.indexOf(it) }
         idx.forEachIndexed { i, at ->
-            assertTrue("第 ${i + 1} 段 ${order[i]} 不见了（七段缺一就是外壳残件）", at >= 0)
+            assertTrue("第 ${i + 1} 段 ${order[i]} 不见了（六段缺一就是外壳残件）", at >= 0)
         }
-        assertEquals("七段必须按设计顺序排（v1.4 §3.8），实得 $idx", idx.sorted(), idx)
-        // 第二百五十一批：底部「设置」组**只留定时任务与口味档案** ——
-        // 「抱朴设置」与「选模型」「外部工具（MCP）」搬去律令的「抱朴」组了，
-        // 所以这里反过来钉：抽屉里不许再出现它们（重复入口 = 用户 2026-10-27 点名要消掉的东西）。
-        val settingsGroup = src.indexOf("R.string.baopu_drawer_group_settings")
-        assertTrue("「设置」组必须还在（它是七段的最后一段）", settingsGroup > 0)
+        assertEquals("六段必须按设计顺序排（v1.4 §3.8 减去已删的设置组），实得 $idx", idx.sorted(), idx)
+        // 第二百八十六批：设置组已整组删除 —— 抽屉里不许再出现它，也不许出现那两行的入口。
         assertTrue(
-            "「设置」组之后应只剩定时任务与口味档案",
-            src.indexOf("R.string.baopu_drawer_sched", settingsGroup) > settingsGroup &&
-                src.indexOf("R.string.baopu_taste_title", settingsGroup) > settingsGroup,
+            "抽屉里不许再有「设置」组（组里两行都搬去律令了）",
+            src.indexOf("R.string.baopu_drawer_group_settings") < 0,
         )
         assertTrue(
             "抽屉里不该再有「抱朴设置」入口（已搬去律令）",
             src.indexOf("R.string.baopu_drawer_settings)") < 0,
+        )
+        assertTrue(
+            "抽屉里不该再有「口味档案」入口（已搬去律令）",
+            src.indexOf("R.string.baopu_taste_title") < 0,
         )
     }
 

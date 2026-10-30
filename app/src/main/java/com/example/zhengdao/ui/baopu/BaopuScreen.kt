@@ -179,9 +179,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
     // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
     var showSettings by remember { mutableStateOf(false) }
-    // 第二百零二批：口味档案（偏好＋范例库）独立一页。刻意**不**塞进 BaopuSettingsScreen
-    // （198 在飞占着那个文件），走抽屉直达＋Dialog 全屏，与设置页同一种承载方式。
-    var showTaste by remember { mutableStateOf(false) }
+    // 第二百八十六批：口味档案的 `showTaste` 随入口一起删 —— 它现在从律令「抱朴」组进
+    // （SettingsScreen 原样调用 TasteSettingsScreen），抱朴页不再承载这一页。
     // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
     var showDecisionCenter by remember { mutableStateOf(false) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
@@ -213,8 +212,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
-    // 第二百零二批：口味档案浮层同口径（Dialog 自己也会收，这里保证返回键不留死页）。
-    BackHandler(enabled = showTaste) { showTaste = false }
     // 第一百零四批：决策中心浮层的返回键（Dialog 自己也会收，这里与设置同口径）。
     BackHandler(enabled = showDecisionCenter) { showDecisionCenter = false }
     // 会话库浮层同口径（第二十批）。
@@ -493,10 +490,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     },
                     // 第二百五十一批：「外部工具（MCP）」「选模型」「抱朴设置」三个入口
                     // 搬去了律令的「抱朴」组，抽屉不再转交（这里少三条 lambda）。
-                    onTaste = {
-                        scope.launch { drawerState.close() }
-                        showTaste = true
-                    },
+                    // 第二百八十六批：口味档案同理搬走 —— 抽屉与抱朴页都不再挂它，
+                    // 状态 `showTaste` 一并删除（入口在律令「抱朴」组，那一页原样调用）。
                     // 第二百一十二批：抽屉里的「查询助手」是 195 面板的主入口，命中同样铺成卡。
                     // 卡浮起来时**顺手关抽屉**：抽屉盖在卡上面，不关的话用户看到的是抽屉、
                     // 不是卡（真机实测踩到：面板关了、抽屉还开着，卡在抽屉底下没人看得见）。
@@ -1413,10 +1408,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     // 不停任何东西），不在这儿另造一套切换；先关设置页，那张卡才露得出来。
                     onOpenSession = { sid -> showSettings = false; controller.requestOpenSession(sid) },
                 )
-            }
-            // ── 第二百零二批：口味档案（独立一页，不与设置页混）────────────────
-            if (showTaste) {
-                TasteSettingsScreen(onDismiss = { showTaste = false })
             }
             // ── 第一百零四批：决策中心（顶栏盾牌；四页签）────────────────────
             if (showDecisionCenter) {

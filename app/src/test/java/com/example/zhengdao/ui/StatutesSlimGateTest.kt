@@ -13,7 +13,8 @@ import java.io.File
  * 这一批只做两件事：把抱朴的三项配置搬进律令，把律令里属于抱朴/已随终端离开的四项删掉。
  * 两类退化都不会让任何行为测试变红，只会悄悄把"两个入口"或"死入口"带回来：
  *
- * 1. **抽屉里又长回那三项**（用户 2026-10-27 明确要"抱朴的事回抱朴"，抽屉只留定时任务与口味档案）；
+ * 1. **抽屉里又长回那三项**（用户 2026-10-27 明确要"抱朴的事回抱朴"；2026-10-30 又追加：
+ *    抽屉「设置」组整组删除，口味档案也搬进律令「抱朴」组）；
  * 2. **律令里又出现那四项**（改名藏起来也算 —— 所以这里钉的是资源键与跳转目标，不是文案）。
  *
  * 判据一律钉**结构事实**（谁调谁、哪个键、哪个文件在不在），不钉行号与局部变量名
@@ -53,18 +54,24 @@ class StatutesSlimGateTest {
             .toList()
     }
 
-    // ── ① 律令「抱朴」组：三项都在，且都进原页面 ──────────────────────────
+    // ── ① 律令「抱朴」组：四项都在，且都进原页面 ──────────────────────────
 
     @Test
-    fun `律令抱朴组三项都在且都进原页面`() {
-        // 三行（用户 2026-10-27 指定的三项，一个字不许改名）
-        listOf("baopu_drawer_mcp", "baopu_channel_button", "baopu_drawer_settings").forEach { key ->
+    fun `律令抱朴组四项都在且都进原页面`() {
+        // 四行（用户 2026-10-27 指定三项 + 2026-10-30 追加口味档案，一个字不许改名）
+        listOf(
+            "baopu_drawer_mcp",
+            "baopu_channel_button",
+            "baopu_drawer_settings",
+            "baopu_taste_title",
+        ).forEach { key ->
             assertTrue("律令「抱朴」组缺 $key", settings.contains("R.string.$key"))
         }
-        // 三张面板都必须是**原 composable**（不是"再写一个精简版"）
+        // 四张面板都必须是**原 composable**（不是"再写一个精简版"）
         assertTrue("MCP 面板没接上", settings.contains("BaopuMcpSheet("))
         assertTrue("选模型浮层没接上", settings.contains("BaopuChannelSheet("))
         assertTrue("抱朴设置页没接上", settings.contains("BaopuSettingsScreen("))
+        assertTrue("口味档案页没接上", settings.contains("TasteSettingsScreen("))
         // 组标题就是「抱朴」（复用底栏那个标签，不新造文案）
         assertTrue("组标题应为 nav_taiji（抱朴）", settings.contains("SectionCard(stringResource(R.string.nav_taiji))"))
     }
@@ -137,21 +144,28 @@ class StatutesSlimGateTest {
         assertFalse("bridge_* 文案还在（en）", Regex("<string name=\"bridge_").containsMatchIn(en))
     }
 
-    // ── ④ 抱朴抽屉「设置」组：只剩定时任务与口味档案 ───────────────────────
+    // ── ④ 抱朴抽屉「设置」组：第二百八十六批整组删除 ─────────────────────────
 
     @Test
-    fun `抽屉设置组只剩定时任务与口味档案`() {
+    fun `抽屉不再有设置组_两行都搬去律令抱朴组`() {
+        // 2026-10-30 用户裁定：抽屉里两个「定时任务」只留一个、口味档案也搬走 ⇒
+        // 设置组清空、整组删除。判据从「只剩两项」改成「一项都不剩」。
         assertEquals(
-            "抽屉「设置」组的条目变了（用户 2026-10-27：只留这两项）",
-            listOf("baopu_drawer_sched", "baopu_taste_title"),
+            "抽屉里不许再有「设置」组（整组已删）",
+            emptyList<String>(),
             drawerSettingsGroupKeys(drawer),
         )
+        assertFalse(
+            "抽屉里不许再有「口味档案」入口（已搬去律令「抱朴」组）",
+            drawer.contains("R.string.baopu_taste_title"),
+        )
         // 三个回调连同入口一起删（参数还在 = 有人还能从别处接回来）
-        listOf("onMcp", "onChannel", "onSettings").forEach { p ->
+        listOf("onMcp", "onChannel", "onSettings", "onTaste").forEach { p ->
             assertFalse("BaopuDrawer 里还有 $p 参数/调用", drawer.contains(p))
         }
         // 抱朴页那一侧也不再装配它们（面板本身留给律令；抱朴页里顶栏/工作区卡那两条老路不动）
         assertFalse("BaopuScreen 里还有 showMcp", baopuScreen.contains("showMcp"))
+        assertFalse("BaopuScreen 里还有 showTaste（口味档案已搬去律令）", baopuScreen.contains("showTaste"))
     }
 
     @Test

@@ -51,6 +51,7 @@ import com.example.zhengdao.ui.baopu.BaopuIntents
 import com.example.zhengdao.ui.baopu.BaopuMcpSheet
 import com.example.zhengdao.ui.baopu.BaopuSettingsScreen
 import com.example.zhengdao.ui.baopu.ModelSheetDraft
+import com.example.zhengdao.ui.baopu.TasteSettingsScreen
 import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rDialog
@@ -100,6 +101,9 @@ fun SettingsScreen() {
     // 只有 `ModelSheetDraft` 能兑现 —— 与抱朴页那一处（BaopuScreen 的 showChannel）同一口径。
     var channelOpen by remember { mutableStateOf(ModelSheetDraft.showing) }
     var baopuSettingsOpen by remember { mutableStateOf(false) }
+    // 第二百八十六批（2026-10-30 用户裁定）：口味档案从抱朴抽屉的「设置」组搬到本组，
+    // 与 MCP／选模型／抱朴设置 并列（抽屉那一组因此清空、整组删除）。
+    var tasteOpen by remember { mutableStateOf(false) }
 
     /** 二级页统一入口。 */
     fun open(page: Class<*>) {
@@ -138,6 +142,15 @@ fun SettingsScreen() {
                     value = stringResource(R.string.baopu_drawer_settings_desc),
                     valueMaxLines = 2,
                 ) { baopuSettingsOpen = true }
+                SettingsDivider()
+                // 第二百八十六批：口味档案（偏好与范例库）—— 原来在抱朴抽屉「设置」组，
+                // 用户 2026-10-30：「抱朴的口味档案入口也挪到律令的抱朴设置里」。
+                // 页面原样调用（TasteSettingsScreen），一个字没改。
+                SettingRow(
+                    label = stringResource(R.string.baopu_taste_title),
+                    value = stringResource(R.string.baopu_taste_drawer_desc),
+                    valueMaxLines = 2,
+                ) { tasteOpen = true }
             }
 
             // ── 「申请权限」集中卡（第二百一十批 · 入口与权限归位）─────────────
@@ -337,6 +350,10 @@ fun SettingsScreen() {
                     BaopuIntents.requestSession(sid)
                 },
             )
+        }
+        // 口味档案（第二百八十六批：从抱朴抽屉搬来的入口，页面原样）。
+        if (tasteOpen) {
+            TasteSettingsScreen(onDismiss = { tasteOpen = false })
         }
     }
 }

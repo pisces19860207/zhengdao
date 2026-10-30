@@ -9,6 +9,7 @@
 package com.example.zhengdao.ui.baopu
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -42,16 +43,29 @@ class BaopuDrawerScheduleGateTest {
     }
 
     @Test
-    fun `负例_设置组最底部不许塞定时任务_跳转行在设置组内保留`() {
+    fun `第二百八十六批_抽屉里只有一个定时任务入口_设置组整组已删`() {
+        // 229 批曾在「设置」组保留一条跳转行（"老用户找得到"），结果抽屉里出现两个同名条目；
+        // 2026-10-30 用户裁定：「只留『新会话』下面那一个」。同日「口味档案」也搬去律令 ⇒
+        // 「设置」组清空、整组删除。本判据钉新形态：
         val s = source()
-        val atSettingsGroup = s.indexOf("R.string.baopu_drawer_group_settings")
-        val atJump = s.indexOf("R.string.baopu_drawer_sched", atSettingsGroup)
-        assertTrue("设置组里必须仍有跳转行（老用户找得到）", atJump > atSettingsGroup)
-        // 跳转行与状态行进的是同一个页面：同一回调 onScheduleTasks（两处各一次调用）。
+        assertFalse(
+            "「设置」组必须已从抽屉删除（组里两行都搬走了）",
+            s.contains("R.string.baopu_drawer_group_settings"),
+        )
         assertEquals(
-            "onScheduleTasks 恰好两处调用（状态行＋跳转行），两处同页",
-            2,
+            "抽屉里「定时任务」只许剩一处（会话组那条带状态位的）",
+            1,
+            Regex("R\\.string\\.baopu_drawer_sched\\b").findAll(s).count(),
+        )
+        assertEquals(
+            "onScheduleTasks 只许一处调用（跳转行已删）",
+            1,
             Regex("onClick = onScheduleTasks").findAll(s).count(),
+        )
+        // 口味档案也搬走了：抽屉里不许再有它的入口。
+        assertFalse(
+            "口味档案已搬去律令「抱朴」组，抽屉里不许再有入口",
+            s.contains("R.string.baopu_taste_title"),
         )
         // 「为什么在这里」要写在代码里：它是抱朴自己的工作安排，不是设置项（派工单 §1③）。
         assertTrue(
