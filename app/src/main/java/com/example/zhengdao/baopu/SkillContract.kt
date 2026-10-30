@@ -40,11 +40,21 @@ internal object SkillContract {
     const val SECTION_SUCCESS = "success"
     const val SECTION_PROTECTED = "protected"
 
+    /**
+     * 第三百批：现实指纹（**可选段**）。
+     *
+     * 为什么可选：[missingSections] 只数前三段——没有指纹的技能只是"不做漂移比对"，
+     * 不是"契约不齐"。把指纹算进齐不齐，会让全仓既有技能一夜之间掉出自动选中（那是改坏，不是改对）。
+     * 指纹自己的解析/渲染在 [DriftCheck]（同一行一条注释，同一个 `contract` 前缀）。
+     */
+    const val SECTION_FINGERPRINT = "fingerprint"
+
     /** 段名闭集（未知段 ⇒ 拒收）。 */
-    val SECTIONS: List<String> = listOf(SECTION_APPLIES, SECTION_SUCCESS, SECTION_PROTECTED)
+    val SECTIONS: List<String> =
+        listOf(SECTION_APPLIES, SECTION_SUCCESS, SECTION_PROTECTED, SECTION_FINGERPRINT)
 
     /** HTML 注释的收尾串（值里出现它会拆掉整行，解析前先剥掉）。 */
-    private const val COMMENT_CLOSE = "-->"
+    internal const val COMMENT_CLOSE = "-->"
 
     /** 「该不该用」的条件类型——闭集（§1 规则 2）。 */
     enum class ConditionKind(val wire: String) {
@@ -102,13 +112,15 @@ internal object SkillContract {
      *
      * @param protectedClauses 段名沿用派工单的 `protected`；Kotlin 里 `protected` 是关键字，
      *   字段名取 `protectedClauses`，**线值仍是 `protected`**（读写两头都以线值为准）。
+     * @param fingerprints 第三百批的现实指纹（可空：一条都没有＝不做漂移比对，见 [SECTION_FINGERPRINT]）。
      */
     data class Contract(
         val appliesWhen: List<Condition>,
         val success: List<Success>,
         val protectedClauses: List<String>,
+        val fingerprints: List<DriftFingerprint> = emptyList(),
     ) {
-        /** 三段里哪几段一条都没有（齐 = 三段都有；§2 规则 4 的 fail-closed 用它）。 */
+        /** 三段里哪几段一条都没有（齐 = 三段都有；§2 规则 4 的 fail-closed 用它）。指纹不在其中。 */
         fun missingSections(): List<String> = buildList {
             if (appliesWhen.isEmpty()) add(SECTION_APPLIES)
             if (success.isEmpty()) add(SECTION_SUCCESS)
@@ -160,8 +172,8 @@ internal object SkillContract {
         return s.substring(1, s.length - 1).trim()
     }
 
-    /** 域名形状（小写、只留字母数字点连字符、至少一个点、点不带头尾）。 */
-    private fun looksLikeDomain(v: String): Boolean {
+    /** 域名形状（小写、只留字母数字点连字符、至少一个点、点不带头尾）。第三百批起 [DriftCheck] 也用它判指纹里的域名。 */
+    internal fun looksLikeDomain(v: String): Boolean {
         val s = v.trim().lowercase()
         if (s.isEmpty() || s.startsWith(".") || s.endsWith(".") || s.contains("..")) return false
         if (!s.contains('.')) return false
@@ -182,6 +194,7 @@ internal object SkillContract {
         val applies = mutableListOf<Condition>()
         val success = mutableListOf<Success>()
         val protectedClauses = mutableListOf<String>()
+        val fingerprints = mutableListOf<DriftFingerprint>()
         val errors = mutableListOf<String>()
 
         for ((no, payload) in lines) {
@@ -206,11 +219,13 @@ internal object SkillContract {
                     }
                 }
 
+                SECTION_FINGERPRINT -> DriftCheck.parseLine(no, rest, fingerprints, errors)
+
                 else -> errors += "第 $no 行：不认得契约段「$section」（只许 ${SECTIONS.joinToString("／")}）"
             }
         }
         if (errors.isNotEmpty()) return Parsed.Invalid(errors)
-        val contract = Contract(applies.toList(), success.toList(), protectedClauses.toList())
+        val contract = Contract(applies.toList(), success.toList(), protectedClauses.toList(), fingerprints.toList())
         return Parsed.Contracted(contract, contract.missingSections())
     }
 
@@ -313,11 +328,12 @@ internal object SkillContract {
         is Parsed.Contracted -> if (parsed.complete) "齐" else "缺 ${parsed.missingSections.joinToString("／")}"
     }
 
-    /** 一份契约 ⇒ 头部行（渲染顺序固定：appliesWhen → success → protected；**与 [parse] 互为逆运算**）。 */
+    /** 一份契约 ⇒ 头部行（渲染顺序固定：appliesWhen → success → protected → fingerprint；**与 [parse] 互为逆运算**）。 */
     fun render(contract: Contract): List<String> = buildList {
         contract.appliesWhen.forEach { add("<!-- $MARK $SECTION_APPLIES ${it.kind.wire}=${it.value} -->") }
         contract.success.forEach { add("<!-- $MARK $SECTION_SUCCESS ${it.kind.wire}=${it.value} -->") }
         contract.protectedClauses.forEach { add("<!-- $MARK $SECTION_PROTECTED $it -->") }
+        contract.fingerprints.forEach { add(DriftCheck.renderLine(it)) }
     }
 
     /** 正文去掉所有契约行（其余行**原样**留着——修订门槛拿它比对「脚本有没有被动」）。 */
