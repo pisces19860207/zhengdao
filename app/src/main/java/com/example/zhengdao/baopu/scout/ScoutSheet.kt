@@ -64,6 +64,40 @@ internal object ScoutSheet {
         }
         val unavailable = ordered.filter { it.state == ScoutState.UNAVAILABLE }
 
+        val body = bodyLines(available, limited, revokedNew, ask, silent, unavailable)
+
+        val headline = "【本机能力】${TimeFormats.monthDay(atMs)} ${TimeFormats.hourMinute(atMs)} 探测"
+        // 形制闸：正常情况下最多 6 行正文；这里再钳一次是**防以后加桶**把 10 行顶破。
+        val lines = (listOf(headline) + body).let { all ->
+            if (all.size <= ScoutLimits.MAX_SHEET_LINES) all.drop(1) else all.drop(1).take(ScoutLimits.MAX_SHEET_LINES - 1)
+        }
+        val sheet = Sheet(
+            headline = headline,
+            lines = lines,
+            revokedToMention = revokedNew.map { it.capability },
+        )
+        check(sheet.totalLines <= ScoutLimits.MAX_SHEET_LINES) {
+            "capability sheet exceeds ${ScoutLimits.MAX_SHEET_LINES} lines"
+        }
+        return sheet
+    }
+
+
+    /**
+     * 能力清单的**正文行**（2026-10-30 从 [compose] 抽出）。
+     *
+     * 为什么单拆：compose 里六段 `if (isNotEmpty)` 是**六个桶各写一句话**，判据本身互不相干；
+     * 混在 compose 里只让分数涨、读的人还得连着「形制闸/含标题」一起跳。
+     * 拆出来的是「怎么说」这一件事；`compose` 只剩「括号、标题、形制闸」。
+     */
+    private fun bodyLines(
+        available: List<ScoutRecord>,
+        limited: List<ScoutRecord>,
+        revokedNew: List<ScoutRecord>,
+        ask: List<ScoutRecord>,
+        silent: List<ScoutRecord>,
+        unavailable: List<ScoutRecord>,
+    ): List<String> {
         val body = mutableListOf<String>()
         if (available.isNotEmpty()) {
             body += "能直接用：" + available.joinToString("、") { it.capability.cn }
@@ -95,21 +129,7 @@ internal object ScoutSheet {
             // 一项都没读出来（探针全失败/账本空）——**不许**写成"什么都能做"。
             body += "这次没探到能力状态（原因见账本 ${ScoutLimits.LEDGER_FILE}）。"
         }
-
-        val headline = "【本机能力】${TimeFormats.monthDay(atMs)} ${TimeFormats.hourMinute(atMs)} 探测"
-        // 形制闸：正常情况下最多 6 行正文；这里再钳一次是**防以后加桶**把 10 行顶破。
-        val lines = (listOf(headline) + body).let { all ->
-            if (all.size <= ScoutLimits.MAX_SHEET_LINES) all.drop(1) else all.drop(1).take(ScoutLimits.MAX_SHEET_LINES - 1)
-        }
-        val sheet = Sheet(
-            headline = headline,
-            lines = lines,
-            revokedToMention = revokedNew.map { it.capability },
-        )
-        check(sheet.totalLines <= ScoutLimits.MAX_SHEET_LINES) {
-            "capability sheet exceeds ${ScoutLimits.MAX_SHEET_LINES} lines"
-        }
-        return sheet
+        return body
     }
 
     /**

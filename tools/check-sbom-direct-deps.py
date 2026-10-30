@@ -200,6 +200,12 @@ def check_module(build_file: Path, sections: dict[str, set[str]], catalog: dict,
                 skipped.append("%s（构建期工具，不进运行时闭包，SBOM 不应含它）"
                                % ":".join(x for x in resolved if x))
             continue
+        # 2026-10-30：`project(":core")` / `project(":native-core")` 是**模块内**依赖，
+        # 不是外部构件，SBOM 里本来就不该有它 ⇒ 跳过，不算「表达式解析不了」。
+        # （此前这行被当错误报，CI 上每轮 4 条红注解；步骤本身 continue-on-error，不影响成败。）
+        if expr.strip().startswith("project("):
+            skipped.append("%s（模块内项目依赖，不是外部构件）" % expr)
+            continue
         section = CONFIG_TO_SECTION.get(config)
         if section is None:
             skipped.append("configuration=%s 未映射到 SBOM 分节：%s" % (config, expr))
