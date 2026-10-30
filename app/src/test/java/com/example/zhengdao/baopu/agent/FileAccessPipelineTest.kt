@@ -196,6 +196,17 @@ class FileAccessPipelineTest {
     }
 
     @Test
+    fun `判据五_用户还没批的删除不入账_账是做过什么不是想过什么`() {
+        // 287 真机验收抓到的真 bug：记账原本落在 ② 段（出卡之前）⇒ 用户点「拒绝」也记一行
+        // "删进回收站（可恢复）"，账上写着删过、文件其实没动。现在只在执行成功之后记。
+        val f = outsideFile("待删-未批.md")
+        val p = pipeline()
+        assertTrue(p.execute(call("delete_path", f.absolutePath), { _, _ -> null }) is GuardPipeline.Result.NeedsConfirm)
+        assertEquals("没批准 ⇒ 一笔都不该记", 0, FileOpLog.count())
+        assertTrue("文件原样在", f.exists())
+    }
+
+    @Test
     fun `判据五_被拒的操作不入账_不假装做过`() {
         pipeline().execute(call("read_file", "/storage/emulated/0/.ssh/id_rsa"), { _, _ -> null })
         assertEquals("拒掉的调用没有发生，不该记账", 0, FileOpLog.count())

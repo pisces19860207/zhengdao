@@ -581,6 +581,9 @@ internal class GuardPipeline(
         // 第二百零八批的通用账与第二百七十六批 P1 的授权账整块挪进 [writeLedgers]（照搬，一个字节没改）——
         // 拆它只为不新增 detekt LongMethod 条目：`finish` 在基线里没被咬过，本批不该把它推过 60 行（硬墙只准降）。
         writeLedgers(spec, effectiveCall)
+        // 287 文件操作账：**只在真的执行成功之后**落行（用户拒绝/被拒/失败都不记——
+        // 账是"做过什么"的事实，不是"想过做什么"的意向书）。
+        recordFileOps(spec, effectiveCall)
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
         // 第一百七十七批：工具产出的图片路径原样透传（围栏只管文本，图片走另一条通道）
         val images = (outcome as? ToolOutcome.Ok)?.imageRelPaths.orEmpty()
@@ -780,7 +783,9 @@ internal class GuardPipeline(
                 return Guarded.No(reason)
             }
             newArgs = JSONObject(newArgs.toString()).put(key, target.absolutePath)
-            recordFileOp(toolName, args, target)
+            // 287 修正（真机验收抓到）：**不在这里记账**——这一段在"出卡之前"跑，
+            // 用户点了拒绝也照样会走到这里，账上就会出现"删过"而文件其实没动（看着做过、其实没做）。
+            // 记账挪到 [finish] 的 Ok 分支：真的执行成功才落一行。
         }
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
@@ -789,19 +794,27 @@ internal class GuardPipeline(
     /**
      * 全盘操作入账（287 判据⑤「每笔读写入账，30 天可回放」）。
      *
-     * 为什么落在管线而不是各工具里：[guardPath] 是带路径参数工具的**唯一入口**，
+     * 为什么落在管线而不是各工具里：管线是带路径参数工具的**唯一入口**，
      * 记账跟着它走才不会出现「有的工具记、有的不记」。账是**留痕不是闸门**：
      * 写不进库也照样执行（[FileOpLog.record] 自己吞异常）。
+     *
+     * 时机（287 真机验收修正）：在 [finish] 的**执行成功之后**记，不在 [guardPath] 记——
+     * ② 段跑在出卡之前，用户点「拒绝」也会经过它，在那里记就会把"没发生的事"记成发生过。
      */
-    private fun recordFileOp(toolName: String, args: JSONObject, target: File) {
-        val kind = FileOpRules.kindOf(toolName) ?: return
-        val entry = FileOpLog.record(
-            tool = toolName,
-            kind = kind,
-            path = FilePolicy.normalize(target),
-            purpose = FileOpRules.purposeOf(toolName, args),
-        )
-        log(FileOpRules.lineOf(entry))
+    private fun recordFileOps(spec: ToolSpec, call: ToolCall) {
+        val kind = FileOpRules.kindOf(spec.name) ?: return
+        val args = call.arguments
+        val targets = LinkedHashSet<File>()
+        for (key in pathKeysFor(spec.name, args)) {
+            val raw = args.optString(key).trim()
+            if (raw.isNotEmpty()) targets += File(raw)
+        }
+        targets += writeTargets(spec.name, args, workspaceRoot())
+        val purpose = FileOpRules.purposeOf(spec.name, args)
+        for (target in targets) {
+            val entry = FileOpLog.record(spec.name, kind, FilePolicy.normalize(target), purpose)
+            log(FileOpRules.lineOf(entry))
+        }
     }
 
     private fun resolve(root: File, raw: String): File =
