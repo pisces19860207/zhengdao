@@ -156,6 +156,34 @@ object BaopuIntents {
         sessionRequested.value = null
         return v
     }
+
+    /**
+     * 请求打开「历史会话」库（第二百八十六批）。
+     *
+     * 为什么需要一条进程级通道：抱朴设置页（[com.example.zhengdao.ui.baopu.BaopuSettingsScreen]）
+     * 有两个宿主 —— 抱朴页（自己就能开那个 Dialog，本地开关即可）与**律令 Tab**
+     * （`ui/SettingsScreen.kt` 里把同一个设置页当浮层打开）。律令不持有控制器、也够不着
+     * 抱朴页的 Dialog 状态 ⇒ 只能挂单，由抱朴页组合时消费，与备份／会话回跳同一条路。
+     */
+    private val sessionLibraryRequested = mutableStateOf(false)
+
+    /** 请求状态（抱朴页用 LaunchedEffect 观察；切 Tab 由 HomeTabs 观察）。 */
+    internal val sessionLibraryRequestedState: State<Boolean> get() = sessionLibraryRequested
+
+    /** 请求打开历史会话库（律令 Tab 侧调）。 */
+    fun requestSessionLibrary() {
+        sessionLibraryRequested.value = true
+    }
+
+    /** 看一眼有没有待打开的会话库（切 Tab 用，**不清**——真消费在抱朴页）。 */
+    fun peekSessionLibrary(): Boolean = sessionLibraryRequested.value
+
+    /** 抱朴页消费（只消费一次）。 */
+    fun consumeSessionLibrary(): Boolean {
+        val v = sessionLibraryRequested.value
+        sessionLibraryRequested.value = false
+        return v
+    }
 }
 
 /**

@@ -12,7 +12,7 @@
     <ID>CyclomaticComplexMethod:BaopuExtractSheet.kt$@Composable internal fun BaopuExtractSheet(onDismiss: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:BaopuMessageList.kt$@Composable private fun BaopuMessageRow( msg: BaopuUiMessage, onSpeak: ((String) -&gt; Unit)? = null, onUserLongPress: ((BaopuUiMessage) -&gt; Unit)? = null, )</ID>
     <ID>CyclomaticComplexMethod:BaopuPreview.kt$private fun renderBody(markdown: String, title: String): String</ID>
-    <ID>CyclomaticComplexMethod:BaopuScreen.kt$@Composable fun BaopuScreen(onExit: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>CyclomaticComplexMethod:BaopuScreen.kt$@Composable fun BaopuScreen(modifier: Modifier = Modifier)</ID>
     <ID>CyclomaticComplexMethod:BaopuSettingsScreen.kt$@Composable internal fun BaopuSettingsScreen(onDismiss: () -&gt; Unit, onOpenSessionLibrary: () -&gt; Unit = {})</ID>
     <ID>CyclomaticComplexMethod:BaopuSettingsScreen.kt$private fun baopuToolDesc(name: String): Int</ID>
     <ID>CyclomaticComplexMethod:BaopuSettingsScreen.kt$private fun baopuToolLabel(name: String): Int</ID>
@@ -113,7 +113,7 @@
     <ID>LongMethod:BaopuMessageList.kt$@Composable private fun BaopuMessageRow( msg: BaopuUiMessage, onSpeak: ((String) -&gt; Unit)? = null, onUserLongPress: ((BaopuUiMessage) -&gt; Unit)? = null, )</ID>
     <ID>LongMethod:BaopuNoticeTicker.kt$@Composable internal fun BaopuNoticeTicker( items: List&lt;NoticeItem&gt;, modifier: Modifier = Modifier, )</ID>
     <ID>LongMethod:BaopuPreset.kt$BaopuPreset$fun personaText(workspacePath: String): String</ID>
-    <ID>LongMethod:BaopuScreen.kt$@Composable fun BaopuScreen(onExit: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:BaopuScreen.kt$@Composable fun BaopuScreen(modifier: Modifier = Modifier)</ID>
     <ID>LongMethod:BaopuSessionLibraryScreen.kt$@Composable internal fun BaopuSessionLibraryScreen( controller: BaopuChatController, onDismiss: () -&gt; Unit, )</ID>
     <ID>LongMethod:BaopuSettingsScreen.kt$@Composable internal fun BaopuSettingsScreen(onDismiss: () -&gt; Unit, onOpenSessionLibrary: () -&gt; Unit = {})</ID>
     <ID>LongMethod:BaopuSkillCard.kt$@Composable internal fun SkillArchivedDialog( rows: List&lt;ArchivedSkillRow&gt;, confirming: File?, onDismiss: () -&gt; Unit, onRestore: (ArchivedSkillRow) -&gt; Unit, onDelete: (ArchivedSkillRow) -&gt; Unit, )</ID>

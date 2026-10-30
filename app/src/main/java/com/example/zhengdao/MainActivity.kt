@@ -536,10 +536,16 @@ fun ZhengdaoApp(
             )
         }
         composable("home") {
-            HomeTabs(
-                onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
-            )
+            HomeTabs()
         }
+        // ⚠️ 第二百八十六批：**本路由只服务冷启动恢复，正常请走「律令」Tab**。
+        // 「律令」Tab（`TabIndex.SETTINGS`）渲染的就是同一个 `SettingsScreen()`——设置的本体在那里，
+        // 顶栏是底栏 Tab 的形态（无返回栏）；这里的形态是「‹ 返回 + 居中标题」的二级页，
+        // 只在 `MainRouteRules.restoreRoute` 命中白名单（`last_route == "settings"`）时叠加出来，
+        // 让老装机冷启动能回到上次那一页、且返回键能退回 home。
+        // 除恢复路径外**没有任何入口**会 navigate 到这里，这是刻意的（不是漏接线）：
+        // 以前从「怡然」页的齿轮进来，怡然随终端拆走后入口就没了；若再补一个入口，
+        // 就等于同一个 SettingsScreen 有两套顶栏、两个进法——别接，接了要再删一遍。
         composable("settings") {
             // 设置页（二级页）：顶栏＝「‹ 返回 + 居中标题」，内容区不再重复写一遍标题
             //（旧版外层"设置"与页内大字"设置"上下叠着，是最扎眼的重复）。
@@ -624,9 +630,7 @@ internal object TabIndex {
 
 /** 首页骨架：抱朴 / 玄览 / 律令 三 Tab。 */
 @Composable
-fun HomeTabs(
-    onOpenSettings: () -> Unit = {},
-) {
+fun HomeTabs() {
     // P2-1（§B 顺序 2，2026-10-14）：必须是 **rememberSaveable**，不能是 remember。
     // `remember` 不跨**配置变更**（旋转屏幕 / 切深浅色 / 改字体大小）保留 ⇒ 转一次屏，
     // tab 就被打回初始值——人正停在逍遥（终端）或玄览，一转屏被甩回怡然。
@@ -728,6 +732,13 @@ fun HomeTabs(
     val incomingSession by com.example.zhengdao.ui.baopu.BaopuIntents.sessionRequestedState
     androidx.compose.runtime.LaunchedEffect(incomingSession) {
         if (incomingSession != null) tab = TabIndex.BAOPU
+    }
+
+    // 历史会话库（第二百八十六批）：律令 Tab 的「抱朴设置」里点「历史会话」时挂的请求。
+    // 这一页必须切到抱朴才会被消费（Dialog 状态在抱朴页里），与上面两条同一套路。
+    val incomingSessionLibrary by com.example.zhengdao.ui.baopu.BaopuIntents.sessionLibraryRequestedState
+    androidx.compose.runtime.LaunchedEffect(incomingSessionLibrary) {
+        if (incomingSessionLibrary) tab = TabIndex.BAOPU
     }
 
     // K2 的另外两个伴随量（baopuFollow / baopuPositionedSession）2026-10-16 随旧抱朴页
@@ -846,14 +857,13 @@ fun HomeTabs(
                 .consumeWindowInsets(padding),
             color = MaterialTheme.colorScheme.background,
         ) {
-            // 分支沿用原物理顺序（语义见 [TabIndex]）：抱朴 → 怡然 → 逍遥 → 玄览。
+            // 分支按 TabIndex 语义（抱朴 / 玄览 / 律令）。
             when (tab) {
                 // 抱朴：刀 1 起是真页面（自研 agent：状态机 + 守卫管线 + 两个读工具）。
-                // 旧线（opencode serve）史见 docs/ERRATA.md E-140；占位页 BaopuRebuilding
-                // 已于第六十二批删除；onExit 仍落**怡然**（另一个有真实内容的 Tab）。
-                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
-                    onExit = { tab = TabIndex.BROWSER },
-                )
+                // 旧线（opencode serve）史见 docs/ERRATA.md E-140；占位页 BaopuRebuilding 已于第六十二批删除。
+                // 第二百八十六批：`onExit` 形参已删 —— 它自始没有调用点（抱朴页从不主动切 Tab），
+                // 原注释「onExit 仍落怡然」也跟着删了：怡然随终端拆走，这句早已不成立。
+                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen()
                 // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。

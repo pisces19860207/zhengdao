@@ -48,9 +48,10 @@ import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.ui.baopu.BaopuChannelSheet
 import com.example.zhengdao.ui.baopu.BaopuIntents
-import com.example.zhengdao.ui.baopu.BaopuMcpSheet
 import com.example.zhengdao.ui.baopu.BaopuSettingsScreen
+import com.example.zhengdao.ui.baopu.KnowledgeLibraryScreen
 import com.example.zhengdao.ui.baopu.ModelSheetDraft
+import com.example.zhengdao.ui.baopu.TasteSettingsScreen
 import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rDialog
@@ -94,12 +95,16 @@ fun SettingsScreen() {
     val appearPref = remember(appearTick) { AppearancePrefs.get(ctx) }
     // 第二百五十一批「抱朴」组的三张面板：都是**原有 composable**（Dialog／浮层自带窗口），
     // 律令只负责挂入口 —— 页面与内部逻辑一行没动，所以这里只有三个开关量。
-    var mcpOpen by remember { mutableStateOf(false) }
+    // 第二百八十六批（2026-10-30 用户裁定）：MCP 搬回抱朴抽屉，资料库搬进本组。
+    var libraryOpen by remember { mutableStateOf(false) }
     // 初值读**进程级草稿**：选模型浮层里那两条「去玄览注册/看限额」会把本页整个带出组合
     // （MainActivity 的 `when (tab)`），回来时"浮层还开着、已填的内容还在"这句话
     // 只有 `ModelSheetDraft` 能兑现 —— 与抱朴页那一处（BaopuScreen 的 showChannel）同一口径。
     var channelOpen by remember { mutableStateOf(ModelSheetDraft.showing) }
     var baopuSettingsOpen by remember { mutableStateOf(false) }
+    // 第二百八十六批（2026-10-30 用户裁定）：口味档案从抱朴抽屉的「设置」组搬到本组，
+    // 与 MCP／选模型／抱朴设置 并列（抽屉那一组因此清空、整组删除）。
+    var tasteOpen by remember { mutableStateOf(false) }
 
     /** 二级页统一入口。 */
     fun open(page: Class<*>) {
@@ -121,11 +126,14 @@ fun SettingsScreen() {
             // 连"默认锁着"与"跑到一半不能换"的口径也照旧（见各自 KDoc）。
             // 为什么放第一组：装 App 时配一次的东西，进来就能看到，不用先滚过权限卡。
             SectionCard(stringResource(R.string.nav_taiji)) {
+                // 第二百八十六批（2026-10-30 用户裁定）：「外部工具（MCP）」搬回抱朴抽屉
+                // （排在「技能」下面），本组让出第一行；「资料库」从抽屉搬进来补位
+                // （「左侧栏的资料库入口也挪到律令」）。两个页面都原样调用。
                 SettingRow(
-                    label = stringResource(R.string.baopu_drawer_mcp),
-                    value = stringResource(R.string.baopu_drawer_mcp_desc),
+                    label = stringResource(R.string.baopu_drawer_library),
+                    value = stringResource(R.string.baopu_drawer_library_desc),
                     valueMaxLines = 2,
-                ) { mcpOpen = true }
+                ) { libraryOpen = true }
                 SettingsDivider()
                 SettingRow(
                     label = stringResource(R.string.baopu_channel_button),
@@ -138,6 +146,15 @@ fun SettingsScreen() {
                     value = stringResource(R.string.baopu_drawer_settings_desc),
                     valueMaxLines = 2,
                 ) { baopuSettingsOpen = true }
+                SettingsDivider()
+                // 第二百八十六批：口味档案（偏好与范例库）—— 原来在抱朴抽屉「设置」组，
+                // 用户 2026-10-30：「抱朴的口味档案入口也挪到律令的抱朴设置里」。
+                // 页面原样调用（TasteSettingsScreen），一个字没改。
+                SettingRow(
+                    label = stringResource(R.string.baopu_taste_title),
+                    value = stringResource(R.string.baopu_taste_drawer_desc),
+                    valueMaxLines = 2,
+                ) { tasteOpen = true }
             }
 
             // ── 「申请权限」集中卡（第二百一十批 · 入口与权限归位）─────────────
@@ -286,8 +303,9 @@ fun SettingsScreen() {
         // ── 第二百五十一批：抱朴三张面板（原样调用，都是自带窗口的 Dialog／浮层）──────
         // MCP 服务器清单（McpServerScreen 的薄壳）。关面板不关连接：工具留在表里，
         // 模型下一轮就能看见 —— 与抱朴抽屉里那一份行为逐字一致。
-        if (mcpOpen) {
-            BaopuMcpSheet(onDismiss = { mcpOpen = false })
+        // 资料库（第二百八十六批：从抱朴抽屉搬来的入口，页面原样 —— 索引状态／上次更新／重建索引）。
+        if (libraryOpen) {
+            KnowledgeLibraryScreen(onDismiss = { libraryOpen = false })
         }
         // 选模型（含填密钥）。提交口仍是全仓唯一那一个：BaopuRuntime.switchChannel
         // ⇒ ProviderPrefs.save；预设上点定的模型另走 saveModelOverride。
@@ -321,6 +339,14 @@ fun SettingsScreen() {
         if (baopuSettingsOpen) {
             BaopuSettingsScreen(
                 onDismiss = { baopuSettingsOpen = false },
+                // 第二百八十六批：这一处原来**没传实参**（形参声明了、默认 `{}` 静默兜底），
+                // 于是律令这条路点「打开历史会话」什么都不会发生。律令不持有控制器、
+                // 也够不着抱朴页的 Dialog 状态 ⇒ 挂一条进程级请求：HomeTabs 切到抱朴 Tab，
+                // 抱朴页组合时消费并打开 BaopuSessionLibraryScreen（与完成通知回会话同一条路）。
+                onOpenSessionLibrary = {
+                    baopuSettingsOpen = false
+                    BaopuIntents.requestSessionLibrary()
+                },
                 // 全手机搜索卡上的「去这条会话」：走**既有的**进程级请求口
                 // （完成通知同一条路：挂请求 → 主页面切抱朴 Tab → 抱朴页消费并 requestOpenSession），
                 // 不在律令里另造一套切会话。页面本身一行没改。
@@ -329,6 +355,10 @@ fun SettingsScreen() {
                     BaopuIntents.requestSession(sid)
                 },
             )
+        }
+        // 口味档案（第二百八十六批：从抱朴抽屉搬来的入口，页面原样）。
+        if (tasteOpen) {
+            TasteSettingsScreen(onDismiss = { tasteOpen = false })
         }
     }
 }

@@ -127,7 +127,7 @@ import kotlinx.coroutines.withContext
  * 用户把回复复制到别处用，是这一行设计的实际用途场景（报告里写明解释）。
  */
 @Composable
-fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
+fun BaopuScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val res = LocalResources.current
     // ── 第二百一十二批：答案浮卡（卡＝答案、正文＝详情）────────────────────────
@@ -170,18 +170,17 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     var showExtract by remember { mutableStateOf(false) }
     // 2026-10-23：小说工程的抽屉入口（之前只有工具、没有落点）。
     var showNovel by remember { mutableStateOf(false) }
-    // 第二百五十一批：`showMcp` 随抽屉入口一起删 —— MCP 面板现在由律令「抱朴」组打开。
-    // 资料库有了自己的页（抱朴抽屉那一行不再跳设置页）。
-    var showKnowledgeLibrary by remember { mutableStateOf(false) }
+    // 第二百八十六批（2026-10-30 用户裁定）：`showKnowledgeLibrary` 随「资料库」入口一起搬去律令；
+    // 同时把 `showMcp` 接回来 —— 外部工具（MCP）从律令搬回抽屉「技能」下面。
+    var showMcp by remember { mutableStateOf(false) }
     // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
     var menuMsg by remember { mutableStateOf<BaopuUiMessage?>(null) }
     var editMsg by remember { mutableStateOf<Pair<Long, String>?>(null) }
     // 第十八批 A 段：抽屉「抱朴设置」直达抱朴自己的设置页（页内全屏浮层，
     // 与章节抽取／备份／换通道同一模式）——不再去「终端与资料」大杂烩页。
     var showSettings by remember { mutableStateOf(false) }
-    // 第二百零二批：口味档案（偏好＋范例库）独立一页。刻意**不**塞进 BaopuSettingsScreen
-    // （198 在飞占着那个文件），走抽屉直达＋Dialog 全屏，与设置页同一种承载方式。
-    var showTaste by remember { mutableStateOf(false) }
+    // 第二百八十六批：口味档案的 `showTaste` 随入口一起删 —— 它现在从律令「抱朴」组进
+    // （SettingsScreen 原样调用 TasteSettingsScreen），抱朴页不再承载这一页。
     // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
     var showDecisionCenter by remember { mutableStateOf(false) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
@@ -213,8 +212,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     // 设置浮层开着的返回键语义：先关浮层（注册在抽屉的后面 ⇒ 两者同时可用时它优先）。
     BackHandler(enabled = showSettings) { showSettings = false }
-    // 第二百零二批：口味档案浮层同口径（Dialog 自己也会收，这里保证返回键不留死页）。
-    BackHandler(enabled = showTaste) { showTaste = false }
     // 第一百零四批：决策中心浮层的返回键（Dialog 自己也会收，这里与设置同口径）。
     BackHandler(enabled = showDecisionCenter) { showDecisionCenter = false }
     // 会话库浮层同口径（第二十批）。
@@ -314,6 +311,18 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
     LaunchedEffect(completionSession) {
         val sid = completionSession ?: return@LaunchedEffect
         if (BaopuIntents.consumeSession() == sid) controller.requestOpenSession(sid)
+    }
+
+    // 历史会话库（第二百八十六批）：律令 Tab 的「抱朴设置」浮层里点那一行时，
+    // 请求挂在 BaopuIntents 上（那一页不持有控制器、够不着这里的 Dialog），本页组合时消费。
+    // 先关设置页再开库——两个全屏 Dialog 叠着会互相抢返回键。
+    val sessionLibraryReq by BaopuIntents.sessionLibraryRequestedState
+    LaunchedEffect(sessionLibraryReq) {
+        if (sessionLibraryReq) {
+            showSettings = false
+            showSessionLibrary = true
+            BaopuIntents.consumeSessionLibrary()
+        }
     }
 
     // 确认等待的**前台计时**（刀 3 A 段）：页面不可见时上报引擎——超时 15 分钟
@@ -438,11 +447,11 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                     // 长按文件夹行＝只看路径，不跳页（派工单 §7 的「长按提示」）。
                     onWorkspaceHold = showWorkspacePath,
-                    // 第二百五十一批：「资料库」行不再跳设置页（250 之后那一路落到的页已废，
-                    // 是个死入口），改开抱朴自己的资料库页：索引状态／上次更新／重建索引。
-                    onLibrary = {
+                    // 第二百八十六批（2026-10-30 用户裁定）：「资料库」搬去律令，
+                    // 「外部工具（MCP）」从律令搬回这里、排在「技能」下面。
+                    onMcp = {
                         scope.launch { drawerState.close() }
-                        showKnowledgeLibrary = true
+                        showMcp = true
                     },
                     // 第二百零五批：技能列表页（三组＋反思器候选卡的壳）。
                     onSkillLibrary = {
@@ -481,10 +490,8 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                     // 第二百五十一批：「外部工具（MCP）」「选模型」「抱朴设置」三个入口
                     // 搬去了律令的「抱朴」组，抽屉不再转交（这里少三条 lambda）。
-                    onTaste = {
-                        scope.launch { drawerState.close() }
-                        showTaste = true
-                    },
+                    // 第二百八十六批：口味档案同理搬走 —— 抽屉与抱朴页都不再挂它，
+                    // 状态 `showTaste` 一并删除（入口在律令「抱朴」组，那一页原样调用）。
                     // 第二百一十二批：抽屉里的「查询助手」是 195 面板的主入口，命中同样铺成卡。
                     // 卡浮起来时**顺手关抽屉**：抽屉盖在卡上面，不关的话用户看到的是抽屉、
                     // 不是卡（真机实测踩到：面板关了、抽屉还开着，卡在抽屉底下没人看得见）。
@@ -1387,10 +1394,9 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     },
                 )
             }
-            if (showKnowledgeLibrary) {
-                // 第二百五十一批：资料库（索引状态＋重建）。承载方式与设置页同一套
-                // （Dialog 全屏，见 KnowledgeLibraryScreen 的文件头）。
-                KnowledgeLibraryScreen(onDismiss = { showKnowledgeLibrary = false })
+            // 外部工具（MCP）清单（第二百八十六批：从律令搬回抽屉「技能」下面）。
+            if (showMcp) {
+                BaopuMcpSheet(onDismiss = { showMcp = false })
             }
             if (showSettings) {
                 BaopuSettingsScreen(
@@ -1401,10 +1407,6 @@ fun BaopuScreen(onExit: () -> Unit, modifier: Modifier = Modifier) {
                     // 不停任何东西），不在这儿另造一套切换；先关设置页，那张卡才露得出来。
                     onOpenSession = { sid -> showSettings = false; controller.requestOpenSession(sid) },
                 )
-            }
-            // ── 第二百零二批：口味档案（独立一页，不与设置页混）────────────────
-            if (showTaste) {
-                TasteSettingsScreen(onDismiss = { showTaste = false })
             }
             // ── 第一百零四批：决策中心（顶栏盾牌；四页签）────────────────────
             if (showDecisionCenter) {

@@ -347,6 +347,25 @@ internal fun BaopuSettingsScreen(
             Spacer(Modifier.height(12.dp))
             WorkspaceGrantCard()
 
+            // ── 历史会话（第二百八十六批：把这条入口接回来）──────────────────────
+            // 背景：c87d9dce 删过这里那张「会话记录」卡（一条条删太累，删除改到抽屉长按），
+            // 但 `onOpenSessionLibrary` 形参留着、页面 `BaopuSessionLibraryScreen` 也留着 ⇒
+            // 结果是**那个页面全仓没有任何入口**（唯一置 true 的地方就是这个从不触发的回调）。
+            // 本批按用户 2026-10-29 的裁定接回，但**不复活旧卡**（`baopu_session_manage_card`
+            // 的缺席由 BaopuSessionTreeTest 钉着）：这里只做一行「打开历史会话」的跳转，
+            // 删除仍在抽屉里长按会话行 —— 与那条裁定不冲突。
+            SectionCard(stringResource(R.string.baopu_settings_session_card)) {
+                Text(
+                    text = stringResource(R.string.baopu_settings_session_desc),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onOpenSessionLibrary) {
+                    Text(stringResource(R.string.baopu_settings_session_open))
+                }
+            }
+
             // ── 模型参数（刀 3 B 段 · 第十四批 J12：只读展示，不许编数）──（原样搬入）
             // 定位：当前通道向服务端声明的两个硬参数。没声明 ⇒ 「未声明」——
             // **不许显示 0 或 128000**：0 是「确实是 0」、128000 是已作废的旧回退值，

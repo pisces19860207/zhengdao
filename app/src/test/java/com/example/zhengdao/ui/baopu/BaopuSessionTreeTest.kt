@@ -697,7 +697,8 @@ class BaopuSessionTreeTest {
         // 它们没消失，只是换了地方（新家的门禁在 StatutesSlimGateTest）。
         listOf(
             "baopu_new_session",
-            "baopu_drawer_library",
+            // 2026-10-30：资料库入口搬去律令「抱朴」组，MCP 从律令搬回抽屉（排在技能下面）。
+            "baopu_drawer_mcp",
             "baopu_extract_title",
             "baopu_backup_title",
         ).forEach { key ->
@@ -706,19 +707,21 @@ class BaopuSessionTreeTest {
         listOf(
             "baopu_drawer_group_session",
             "baopu_drawer_group_library",
-            "baopu_drawer_group_settings",
         ).forEach { assertTrue("少了分组标题：$it", drawerCode.contains("R.string.$it")) }
+        // 第二百八十六批（2026-10-30 用户裁定）：「设置」组整组删除（定时任务跳转行与口味档案
+        // 都搬去律令「抱朴」组），故不再要求它存在；反向由 BaopuShellP1GateTest D1 钉着。
         assertTrue("工作区那一组是新加的", drawerCode.contains("baopu_drawer_group_workspace"))
     }
 
     @Test
     fun `口径3_点项先关抽屉再跳_会话行与文件夹行也不例外`() {
         // 第二百五十一批：`onChannel` / `onSettings` 两条随入口搬去律令一起删了（抽屉不再转交）。
+        // 2026-10-30：`onLibrary`（资料库）搬去律令；MCP 搬回抽屉 —— 换成 `onMcp` 继续盯。
         listOf(
             "onNewSession = {",
             "onOpenSession = { sid ->",
             "onWorkspaceTap = { path ->",
-            "onLibrary = {",
+            "onMcp = {",
             "onExtract = {",
             "onBackup = {",
         ).forEach { sig ->
