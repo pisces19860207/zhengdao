@@ -12,12 +12,16 @@
 // 「小笨蛋 + 废物」这种混句必须按攻击处理——白名单不能当挡箭牌。
 //
 // 零 Android / 零 IO / 零时钟：输入一个字符串，输出一个字符串，JVM 直测。
+// 第二百九十三批（2026-10-31）：本文件自 :app 搬进 :policy（宰相的白名单匣）。
+// 一起搬进来的还有可见性——Kotlin 的 internal 以编译单元为界，:app 看不见 :policy 的
+// internal，故顶层声明由 internal 放宽为公开。**只放宽可见性，判据一个字没动**
+// （搬前搬后的逐行对照与放宽清单见交付报告）。
 package com.example.zhengdao.baopu
 
 /** 转译方向：用户 → 模型，或模型 → 下一轮上下文。 */
-internal enum class Side { USER, MODEL }
+enum class Side { USER, MODEL }
 
-internal object ReframeFilter {
+object ReframeFilter {
 
     /** 爱称白名单（派工单 §3.5.4）：命中即原样透传，不计责备、不抬情绪、不动 emoji 预算。 */
     val PASS: List<String> = listOf(

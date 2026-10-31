@@ -20,17 +20,21 @@
 //
 // 零 Android / 零 IO / 零网络 / 零时钟：本文件只吃字符串，不取时间、不落盘、不记原话。
 // 落 208、换档、进 prompt 都在挂接层（[MediatorWiring]）。
+// 第二百九十三批（2026-10-31）：本文件自 :app 搬进 :policy（宰相的白名单匣）。
+// 一起搬进来的还有可见性——Kotlin 的 internal 以编译单元为界，:app 看不见 :policy 的
+// internal，故顶层声明由 internal 放宽为公开。**只放宽可见性，判据一个字没动**
+// （搬前搬后的逐行对照与放宽清单见交付报告）。
 package com.example.zhengdao.baopu
 
 /** 一段话落在哪个态（法典 L1/L3 的第一道门）。 */
-internal enum class TaskMode { TASK, CHAT }
+enum class TaskMode { TASK, CHAT }
 
 /**
  * 任务态 vs 闲聊态的**词表级**边界（253 探针逐字搬运，见文件头）。
  *
  * 保守方向写死一条：命中不了①②③就归闲聊态——**宁可漏判进不了禁令，不把玩笑当办事**。
  */
-internal object TaskModeBoundary {
+object TaskModeBoundary {
 
     // ── ① 执行意图 / 工具调用形态（"帮我改/查/装"）───────────────────────────
     private val INTENT = listOf(
@@ -99,7 +103,7 @@ internal object TaskModeBoundary {
 /**
  * 三条禁令的机器键（`wire` 进 208 的 `evidence`，**稳定**；改字面量等于让老账本读不出来）。
  */
-internal enum class MediatorBan(val wire: String, val cn: String) {
+enum class MediatorBan(val wire: String, val cn: String) {
     FLATTERY("flattery", "附和"),
     APOLOGY_LOOP("apology_loop", "空转道歉"),
     MIRRORING("mirroring", "情绪镜像"),
@@ -111,10 +115,10 @@ internal enum class MediatorBan(val wire: String, val cn: String) {
  * `reason` 是**类别句**（谁犯了哪条禁令、为什么），**不含任何原话**——208 只记字段名与事件
  * （策略表 §3 第三行），原文一律不进账本。
  */
-internal data class MediatorFlag(val ban: MediatorBan, val reason: String)
+data class MediatorFlag(val ban: MediatorBan, val reason: String)
 
 /** 判官的运行时判据（纯函数；状态由 [MediatorWiring] 持有，跨轮记忆由调用方传回）。 */
-internal object MediatorJudge {
+object MediatorJudge {
 
     /** 连续空转道歉的违规轮次下限（策略表 §2.3 原文「**连续 2 轮**」；改成别的数就是改法典）。 */
     const val APOLOGY_LIMIT = 2

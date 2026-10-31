@@ -24,9 +24,13 @@
 //
 // 零 Android / 零 IO / 零网络 / 零时钟：`now` 由调用方传入，缺省 0 表示不做时间判断。
 // 读写盘、会话表、设置页都在挂接层（见交付报告的「挂接点」一页）。
+// 第二百九十三批（2026-10-31）：本文件自 :app 搬进 :policy（宰相的白名单匣）。
+// 一起搬进来的还有可见性——Kotlin 的 internal 以编译单元为界，:app 看不见 :policy 的
+// internal，故顶层声明由 internal 放宽为公开。**只放宽可见性，判据一个字没动**
+// （搬前搬后的逐行对照与放宽清单见交付报告）。
 package com.example.zhengdao.baopu
 
-internal object HarmonyMediator {
+object HarmonyMediator {
 
     /** 四档：CALM → CAREFUL → STRAINED → LOOP；LOOP 是本轮终态。 */
     enum class Mood { CALM, CAREFUL, STRAINED, LOOP }
@@ -287,7 +291,7 @@ internal object HarmonyMediator {
  * **不存原话**：只存计数、哈希、类别；`sessionId` 与失败类别都做 hex，
  * 编码结果里搜不到任何消息文本。
  */
-internal object HarmonyStateCodec {
+object HarmonyStateCodec {
     private const val VERSION = "h1"
     private const val HEX = "0123456789abcdef"
 

@@ -23,10 +23,14 @@ import org.junit.Test
 
 class L18MediatorNoWriteGateTest {
 
+    /**
+     * 宰相三个文件（第二百九十三批起住 `:policy`，`GateIo.repoFile` 对 `../policy` 与
+     * `app/../policy` 两档 cwd 都能解析；读不到就是抛，本闸不许空转）。
+     */
     private val mediatorFiles = listOf(
-        "${LawIo.MAIN_ROOT}/baopu/HarmonyMediator.kt",
-        "${LawIo.MAIN_ROOT}/baopu/MediatorWiring.kt",
-        "${LawIo.MAIN_ROOT}/baopu/MediatorJudge.kt",
+        "../policy/src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt",
+        "../policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt",
+        "../policy/src/main/java/com/example/zhengdao/baopu/MediatorJudge.kt",
     )
 
     internal object Mediator {

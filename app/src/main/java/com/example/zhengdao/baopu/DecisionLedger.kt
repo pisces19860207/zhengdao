@@ -19,174 +19,21 @@
 //   ③ 回滚失败**不许**留 `rollback_of`、不许把目标行标成已回滚。
 //
 // 本文件零 Android 依赖（只 file＋org.json），JVM 用真临时目录直测。
+//
+// 第二百九十三批 ③（2026-10-31）：本文件的两处搬家与一处新增，都在**形状与口**的界线上：
+//   · 208 的词表（`DecisionKind`／`DecisionGroup`／`DecisionAudit`／`DecisionActor`／`DecisionDraft`）
+//     搬进 `:policy` 的 `DecisionDraft.kt`——宰相要落账就得拿得到形状，而 :policy 不许反向依赖 :app。
+//     **搬的是逐字文本**：wire 字面量、注释、默认值一个没改（逐行对照见交付报告）。
+//     跟着搬的只有可见性：`internal` 以编译单元为界，故顶层声明放宽为公开。
+//   · 本对象实现 `:policy` 的 [LedgerPort]，并在既有的 [install]／[uninstallForTest] 里登记／摘除
+//     ——**没有新增装配点**：装账本＝装端口，还是那一处 `install`。
+//   · `DecisionRecord`／`DecisionAppend` **没搬**：一个带 `org.json`、一个是 `recordOnce` 的三态，
+//     都是实现侧的事，搬进白名单匣就是把 IO 壳塞进匣子。
 package com.example.zhengdao.baopu
 
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
-
-/** 这件事归哪一类（**闭集**：十类＋回滚行＋104 批的授权行；不许自造，见 [ofWire]）。 */
-internal enum class DecisionKind(
-    /** JSONL 里 `kind` 字段的字面量（稳定键：改字面量等于让老账本读不出来）。 */
-    val wire: String,
-    /** 归到哪个对象组（历史 tab 的分组卡按它折）。 */
-    val group: DecisionGroup,
-    /** 这类事天生能不能回滚（写进每条记录；只能被降级，不能被改写）。 */
-    val reversible: Boolean,
-    /** 抽检档：必抽 100%／每周配额／不抽。 */
-    val audit: DecisionAudit,
-) {
-    /** 草稿转正（手动／满 3 次自动，207 §1.5）⇒ 回退为草稿。 */
-    SKILL_PROMOTE("skill_promote", DecisionGroup.SKILL, true, DecisionAudit.NONE),
-
-    /** 192 免批判据判 AUTO 后的落地 ⇒ 撤销该技能（`.deleted-*`）。 */
-    SKILL_AUTO_WRITE("skill_auto_write", DecisionGroup.SKILL, true, DecisionAudit.NONE),
-
-    /** 正式技能退役／归档 ⇒ 恢复正文与索引行。 */
-    SKILL_RETIRE("skill_retire", DecisionGroup.SKILL, true, DecisionAudit.ALWAYS),
-
-    /** 治理器软退役草稿（30 天未用／超 20 条）⇒ 恢复正文与索引行。 */
-    SKILL_DRAFT_RETIRE("skill_draft_retire", DecisionGroup.SKILL, true, DecisionAudit.WEEKLY),
-
-    /**
-     * 第二百五十五批：连续 2 次执行失败 ⇒ 技能**降为草稿**（派工单点名的 `skillDemoted` 那一行；
-     * evidence 带两次失败执行的 opId）。
-     *
-     * 为什么不复用 [SKILL_DRAFT_RETIRE]：那个记的是「闲置」（30 天未用／超 20 条），
-     * 这条记的是「用坏了」——抽检与复盘时必须分得开。
-     * 不进 [REQUIRED]（208 点名的是十类，这类是本批新增的行为账）。
-     * `reversible=false`：正文没动、人确实能手改回去，但决策中心没有「草稿→正式」的通用回滚入口
-     * （[SKILL_PROMOTE] 的回滚是反方向），标可回滚就是骗人。
-     */
-    SKILL_DEMOTED("skill_demoted", DecisionGroup.SKILL, false, DecisionAudit.WEEKLY),
-
-    /**
-     * 搜索范围授权／撤销（197）。
-     *
-     * **不可回滚**（`reversible=false`）——197/198 时代它由设置页开关产生，写入点全仓一处，
-     * 决策中心拿不到第二条写入口 ⇒ 标成可回滚就是骗人。
-     * **第二百二十九批起新行不再产生**（开关随 229 删除：授权即全盘，没有意愿可拨）；
-     * kind 本身保留——老账本里的历史行还要读得出来、还能在决策中心渲染。
-     */
-    READ_SCOPE("read_scope", DecisionGroup.GRANT, false, DecisionAudit.NONE),
-
-    /** 178 勾选批量删 ⇒ 从回收站恢复。 */
-    ARTIFACT_DELETE("artifact_delete", DecisionGroup.ARTIFACT, true, DecisionAudit.NONE),
-
-    /** 日记归档／浓缩／清理空条目 ⇒ 归档可回、浓缩与清理不可回（由写入方降级）。 */
-    DIARY_MAINTAIN("diary_maintain", DecisionGroup.DIARY, true, DecisionAudit.WEEKLY),
-
-    /** 日记真删 ⇒ **不可回滚**（147 边界③：删了就没了）⇒ 必抽检。 */
-    DIARY_PURGE("diary_purge", DecisionGroup.DIARY, false, DecisionAudit.ALWAYS),
-
-    /** 206 对拍结论（ADOPT/DEFER/REJECT／UNRUN）⇒ 不回滚，只留档。 */
-    EVAL_VERDICT("eval_verdict", DecisionGroup.EVAL, false, DecisionAudit.NONE),
-
-    /** 自治块的通用副作用（模型自己动手改了东西，没有更专门的 kind）。 */
-    AUTO_ACT("auto_act", DecisionGroup.ARTIFACT, true, DecisionAudit.NONE),
-
-    /** 回滚本身（派工单 §2：回滚也要留一条）——组随被回滚那条走。 */
-    ROLLBACK_OF("rollback_of", DecisionGroup.GRANT, false, DecisionAudit.NONE),
-
-    /** 104 批既有的工具组授权行（复用，不新造语义；不进抽检）。 */
-    TOOL_GRANT("tool_grant", DecisionGroup.GRANT, true, DecisionAudit.NONE),
-
-    /**
-     * 第二百二十八批 C 片：回放的**站点信任**加/撤（`evidence` 带方向：
-     * `site_trust_add:<host>`／`site_trust_remove:<host>`）。
-     *
-     * 可回滚（`reversible=true`）：加的回滚＝撤、撤的回滚＝加——名单文件的两个纯文件
-     * 操作就是回滚通道；回滚行本身由 [ROLLBACK_OF] 记，回滚动作不再重复写本类。
-     */
-    SITE_TRUST("site_trust", DecisionGroup.GRANT, true, DecisionAudit.NONE),
-
-    /**
-     * 第二百二十三批：**未分类工具被闸问到**（fail-closed 的留痕）。
-     *
-     * 为什么必须有这一类、不能塞进 [AUTO_ACT]：AUTO_ACT 记的是"模型已经真的动了手"，
-     * 而这条记的是"闸没有判据、只好先问"——前者是既成事实，后者是**配置缺口**。
-     * 混在一起，抽检时就分不出"这句该不该问"和"这件事该不该做"。
-     *
-     * `wire` 与 `RiskVerdict.auditTag` 逐字相同（`unclassified_tool`）：那就是这条账的机器键，
-     * 一个字都不许两边各写一个。
-     */
-    RISK_UNCLASSIFIED("unclassified_tool", DecisionGroup.GRANT, false, DecisionAudit.NONE),
-
-    /**
-     * 第二百四十二批：**计划即契约的勘验对账不符**（实际动作超出契约／实际风险高于预估／
-     * 实际问人次数与 `expectedAsks` 对不上）。
-     *
-     * 为什么不塞进 [EVAL_VERDICT]：206 那条记的是"两个实现谁对谁错"的**裁决**，
-     * 这条记的是"同一次运行里说好的和做到的差在哪"——抽检时要能按它筛出
-     * "哪类计划估算老是不准"，混进裁决组就筛不出来。
-     *
-     * 不进 [REQUIRED]：派工单 §1 D 段只要求「不符 ⇒ 写 208」，没给这类记录点过名，
-     * 而 REQUIRED 是 208 那张"点名的十类"闭集。
-     */
-    PLAN_CONTRACT_FINDING("plan_contract_finding", DecisionGroup.EVAL, false, DecisionAudit.WEEKLY),
-
-    /**
-     * 第二百九十二批 P1：**账本自己的口径变更点**（派工单 292-P1 修法④）。
-     *
-     * 历史账行不许改（只增不改），但同一本账里前后是两种口径——「prepare 出卡之前就记」
-     * 与「执行成功之后才记」。不标出来，抽检的人拿着一行「删进回收站」无从判断
-     * 那一行到底是做过的事还是当时的一念头；标在文档里不算数，得在**账上**。
-     *
-     * 为什么单开一类而不是塞进 [AUTO_ACT]：AUTO_ACT 记的是「模型动过手」，这条记的是
-     * 「账本从这一天起改了记法」——它不是副作用，没有回滚通道（`reversible=false`），
-     * 也不进抽检队列（`NONE`）。
-     * 不进 [REQUIRED]：那是 208 点名的十类**业务账**；这一条是账本的自述，
-     * 由 [DecisionLedger] 自己在第一笔新口径的账落进这本账时标一次（不是各调用方各标）。
-     */
-    LEDGER_POLICY("ledger_policy", DecisionGroup.EVAL, false, DecisionAudit.NONE),
-    ;
-
-    companion object {
-        /** 线值 ⇒ kind；**认不出就 null**（自造 kind 一律不渲染，也不静默当别的类）。 */
-        fun ofWire(wire: String): DecisionKind? = entries.firstOrNull { it.wire == wire }
-
-        /** 派工单 §1＋§2.7 点名的那十类（自造 kind 的负例就比这张表）。 */
-        val REQUIRED: List<DecisionKind> = listOf(
-            SKILL_PROMOTE, SKILL_AUTO_WRITE, SKILL_RETIRE, SKILL_DRAFT_RETIRE, READ_SCOPE,
-            ARTIFACT_DELETE, DIARY_MAINTAIN, DIARY_PURGE, EVAL_VERDICT, AUTO_ACT,
-        )
-    }
-}
-
-/** 记录按**对象**归组（§2.5 的分组卡；组必须纯净——混进别组的 kind 即红）。 */
-internal enum class DecisionGroup(val wire: String) {
-    /** §2.7 待抽检组（只放抽检命中的记录，不是对象组）。 */
-    SAMPLING("sampling"),
-    SKILL("skill"),
-    GRANT("grant"),
-    ARTIFACT("artifact"),
-    EVAL("eval"),
-    DIARY("diary"),
-}
-
-/** 抽检档（§2.7：真删与正式退役 100%，其余每周 ≤5 条配额）。 */
-internal enum class DecisionAudit {
-    /** 必抽（100%）。 */
-    ALWAYS,
-
-    /** 每周配额（≤ [DecisionSampling.WEEKLY_QUOTA] 条）。 */
-    WEEKLY,
-
-    /** 不抽（可逆、见过就够）。 */
-    NONE,
-}
-
-/** 谁做的（记录行的 `actor`）。 */
-internal enum class DecisionActor(val wire: String) {
-    USER("user"),
-    MODEL("model"),
-    AUTO("auto"),
-    ;
-
-    companion object {
-        fun ofWire(wire: String): DecisionActor = entries.firstOrNull { it.wire == wire } ?: AUTO
-    }
-}
 
 /**
  * [DecisionLedger.recordOnce] 的三态（第二百四十九批）。
@@ -262,46 +109,13 @@ internal data class DecisionRecord(
 }
 
 /**
- * 写一条记录的输入（[reversible] 为 null ⇒ 按 kind 的默认；非 null ⇒ **只能降级**）。
- */
-internal data class DecisionDraft(
-    val kind: DecisionKind,
-    val actor: DecisionActor,
-    val reason: String,
-    val evidence: String,
-    val before: String,
-    val after: String,
-    val atMs: Long,
-    val sessionId: Long = -1L,
-    val rollbackRef: String = "",
-    val reversible: Boolean? = null,
-    val rollbackOf: String? = null,
-    /**
-     * 组覆盖（只有 `rollback_of` 用）：回滚行要跟着被回滚那条待在**同一个组**，
-     * 否则分组卡的「可撤销数」会在两个组之间对不上。其余 kind 传了就按 kind 的组走。
-     */
-    val groupOverride: DecisionGroup? = null,
-    /**
-     * 第二百九十二批 P1：**这一条按 `evidence` 幂等**（同一个事件键在这本账里只许有一行）。
-     *
-     * 为什么是 draft 上的一格、而不是让调用方改走 [DecisionLedger.recordOnce]：
-     * 208 的通用账由 `GuardPipeline` 那**唯一**一处 `DecisionLedger.record(` 落
-     * （`TaskGrantWiringGateTest` 与 291 的部位普查都把那一处钉着），换入口就是改接线；
-     * 而「同一个动作重跑不许补第二条」是**账本**的属性，不是某个调用方的自觉——
-     * 放在账本里，明天新增的调用点也躲不掉。
-     * 缺省 `false` ⇒ 存量调用点一个字不改、行为逐字节不变。
-     */
-    val uniqueByEvidence: Boolean = false,
-)
-
-/**
  * 决策记录流（追加式 JSONL，`抱朴记忆/决策记录.jsonl`）。
  *
  * 房型照 [EvolutionAuditLog]：只追加、不覆盖、`@Synchronized`、父目录不存在就建。
  * 与它不同的是**写失败不抛**：记录是留痕不是闸门——动作已经发生了，账本卡住不许
  * 把用户已经看到的动作回滚（71 批① 口径）。失败由 [lastError] 给调用方 log。
  */
-internal object DecisionLedger {
+internal object DecisionLedger : LedgerPort {
 
     /** 文件名（与记忆/技能同一棵目录，用户可看可备份）。 */
     const val FILE_NAME = "决策记录.jsonl"
@@ -312,15 +126,21 @@ internal object DecisionLedger {
 
     /** 最近的写失败（给调用方 log 的一句话；null＝没失败过）。 */
     @Volatile
-    var lastError: String? = null
+    override var lastError: String? = null
         private set
 
     private var seq = 0
 
-    /** 装配层调用（只存目录，不存 Context——`StaticFieldLeak` 的教训）。 */
+    /**
+     * 装配层调用（只存目录，不存 Context——`StaticFieldLeak` 的教训）。
+     *
+     * 293 ③ 起这里顺手把本对象登记成 `:policy` 的账本端口：**装账本＝装端口，还是这一个装配点**。
+     * 拆成两处（装目录一处、装端口一处）就是"落点装了、端口没装"那种静默不落账。
+     */
     fun install(globalRoot: File) {
         root = globalRoot
         seq = 0
+        LedgerPorts.ledger = this
     }
 
     /** 现读装配的落点（测试断言「装到哪了」用）。 */
@@ -333,10 +153,14 @@ internal object DecisionLedger {
      * 「没装配落点就不落」那类用例就会随**执行顺序**变红（第二百二十四批实证：
      * 新增一个测试类改变了类扫描顺序，RiskWiringTest 装完没还 ⇒ DecisionLedgerTest.L11 红）。
      * 修在装配点这一侧（谁装谁还），而不是把那条断言改宽。
+     *
+     * 293 ③：账本端口跟着落点一起摘——同一句"谁装谁还"，否则上一个用例装的端口会带着
+     * 它的临时目录被下一个用例写进去。
      */
     internal fun uninstallForTest() {
         root = null
         seq = 0
+        LedgerPorts.ledger = null
     }
 
     /** 落点文件。 */
@@ -354,6 +178,15 @@ internal object DecisionLedger {
         }
         return recordTo(r, draft)
     }
+
+    /**
+     * [LedgerPort] 的实现：**逐字转发** [record]，只是把「落成的那条」折成「落没落」。
+     *
+     * 为什么不返回 `DecisionRecord`：那个类型带 `toJson()`（org.json），而 :policy 的白名单
+     * 只许 `:core`＋stdlib——把它的返回值递进匣子，等于让匣子间接依赖 org.json。
+     * 失败原因走 [lastError]，与 `record` 返回 null 时调用方本来该读的那一句是同一句。
+     */
+    override fun write(draft: DecisionDraft): Boolean = record(draft) != null
 
     /**
      * 「搜索范围」这件事的**专用落点**（`read_scope`）。
@@ -679,3 +512,4 @@ internal object DecisionRollbacks {
         return true
     }
 }
+

@@ -12,8 +12,9 @@
 //   ② 存储与上下文：android.content.Context / android.database / BaopuDb / Room
 //   ③ 完整对话历史：messages / history 一类的全量入口（**只禁"全量"，不禁 Opinion 这种结构化输入**）
 //
-// 与 293 的关系：293 会把宰相抽成 `:policy` 模块，用 **Gradle 依赖白名单**实现更强的隔离；
-// 本闸是**过渡期的廉价护栏**（半天成本、立刻生效），293 落地后仍然保留（双保险）。
+// 与 293 的关系：第二百九十三批已把宰相抽成 `:policy` 模块，用**依赖白名单闸**
+// （`PolicyBoundaryGateTest`）实现更强的隔离；本闸照旧保留——
+// 白名单防外部污染，黑名单防内部新增，双保险（292 派工单原话）。
 //
 // 加白名单的门槛（给后来的人）：只有"新功能确实需要、且不破坏纯判定"才可加，
 // 每加一条必须写清批号与理由——**不许为了让红变绿就把名字塞进 ALLOWED**。
@@ -25,17 +26,24 @@ import org.junit.Test
 
 class MediatorPurityGateTest {
 
-    /** 宰相本体（纯判定）：这些文件里**禁止**出现 IO/上下文/网络 */
-    private val mediatorFiles = listOf(
-        "src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt",
-        "src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt",
-        "src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+    /**
+     * 宰相本体（纯判定）：这些文件里**禁止**出现 IO/上下文/网络。
+     *
+     * 第二百九十三批：宰相（本体＋判官＋接线层）整体搬进 `:policy`（宰相的白名单匣），
+     * 只有学习器挂接层仍住 `:app`——所以这里的路径一半走 `PolicyPaths`（读不到就抛，不许空转），
+     * 一半仍是 `:app` 的老路径。键名跟着文件走，**ALLOWED 一条没加也没删**。
+     */
+    private val mediatorFiles: List<Pair<String, File>> = listOf(
+        PolicyPaths.rel("HarmonyMediator.kt") to PolicyPaths.file("HarmonyMediator.kt"),
+        PolicyPaths.rel("MediatorWiring.kt") to PolicyPaths.file("MediatorWiring.kt"),
+        "src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt"
+            to File("src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt"),
     )
 
     /** 允许的例外（文件 → 允许的 import 前缀）：每条必须带批号与理由 */
     private val allowed = mapOf(
         // 2026-10-31 · 292：装配层需要日志（RunLog 是纯 IO-free 的落盘口，不算"看上下文"）
-        "src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt" to listOf(
+        PolicyPaths.rel("MediatorWiring.kt") to listOf(
             "com.example.zhengdao.core.RunLog",
         ),
         // 2026-10-31 · 283：学习器接线需要决策账本与裁决数据（它负责"记"，不负责"看"）
@@ -70,8 +78,7 @@ class MediatorPurityGateTest {
     @Test
     fun `宰相本体不得持有网络_存储_上下文_完整历史`() {
         val violations = mutableListOf<String>()
-        for (path in mediatorFiles) {
-            val file = File(path)
+        for ((path, file) in mediatorFiles) {
             assertTrue("找不到宰相源文件：$path（路径变了就更新本闸，别让它静默跳过）", file.isFile)
             val text = file.readText()
             val allow = allowed[path].orEmpty()
@@ -104,8 +111,8 @@ class MediatorPurityGateTest {
     @Test
     fun `闸自己不能静默跳过`() {
         // 三个文件必须都在：删文件也算"绕闸"，必须红
-        mediatorFiles.forEach {
-            assertTrue("宰相源文件缺失：$it", File(it).isFile)
+        mediatorFiles.forEach { (path, file) ->
+            assertTrue("宰相源文件缺失：$path", file.isFile)
         }
     }
 }

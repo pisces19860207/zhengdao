@@ -164,7 +164,11 @@ class L1NoFlatteryGateTest {
     @Test
     fun `源码门禁_ReframeFilter调用点存在于主源码_且改写入口接的是模型侧`() {
         val apis = mapOf("reframe-call" to Regex("""ReframeFilter\."""))
-        val hits = GateIo.scanTree("src/main/java/com/example/zhengdao/baopu", apis)
+        // 第二百九十三批：宰相（`HarmonyMediator`／`MediatorJudge`）搬进 `:policy`，
+        // 「主源码」从此是**两棵树**（:app 与 :policy）。只扫 :app 那棵会把搬家误读成
+        // 「改写防线被拆了」，所以两棵都扫——判据（有调用点、且落在调和器里）一个字没改。
+        val hits = GateIo.scanTree("src/main/java/com/example/zhengdao/baopu", apis) +
+            GateIo.scanTree("../policy/src/main/java/com/example/zhengdao/baopu", apis)
         assertTrue(
             "主源码里找不到任何 ReframeFilter 调用点——「不洗白、保事实」的改写防线被拆了：" +
                 hits.joinToString { it.where() },
@@ -177,7 +181,7 @@ class L1NoFlatteryGateTest {
         )
         // 双向改写入口（USER 进 / MODEL 出）都要在：模型侧改写正是「自贬改认错」的那条线。
         val mediator = GateIo.stripComments(
-            GateIo.read("src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt"),
+            GateIo.read("../policy/src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt"),
         )
         assertTrue("HarmonyMediator 必须把改写统一转给 ReframeFilter（不许自己另写一套）", mediator.contains("ReframeFilter.reframe("))
         assertTrue("模型侧（Side.MODEL）的改写入口必须在（自贬→『该步失败』的承接）", mediator.contains("Side.MODEL"))

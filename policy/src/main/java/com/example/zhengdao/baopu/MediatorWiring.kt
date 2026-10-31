@@ -20,6 +20,16 @@
 //      （`HarmonyStateCodec` 存在但**本批不调**——落地盘就是"跨会话带状态"）。
 //   2. **不跨会话**：会话 id 一变立即回 CALM，上一个会话的不高兴不许迁怒到下一个。
 //   3. **不改判据**：档位迁移、阈值、禁令词表全在 238/253 的既有实现里，本文件只搬运不重写。
+//
+// 第二百九十三批（2026-10-31）：本文件随宰相一起搬进 `:policy`（白名单匣），两处跟着动、
+// 一处**没**动：
+//   · 动了 1——`internal object`／`internal fun` 放宽为公开（Kotlin 的 internal 以编译单元为界，
+//     :app 的调用方与单测看不见 :policy 的 internal）。
+//   · 动了 2——W2 落账不再直接叫 `DecisionLedger`（那是 :app 的实现），改叫 `:policy` 的
+//     [LedgerPort]（293 ③）。写进去的**还是同一本 208**：`write` 逐字转发 `record`，
+//     `reason`／`evidence`／`kind`／`sessionId`／那句失败日志的形状全部逐字节不变。
+//   · 没动——判据、档位机、词表、`PROMPT_MARK`／`PROMPT_CONTRACT` 那两句一个字。
+//   纪律 1 照旧成立：端口拿不到 `File`，落盘那套留在 :app，本文件仍然零 IO。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.core.RunLog
@@ -31,7 +41,7 @@ import com.example.zhengdao.core.RunLog
  * （不落盘、不跨会话）」——重启就忘是**要求**，不是缺陷：调解器管的是"这几步顺不顺"，
  * 不是用户档案（那是 [PatienceProfile] 的事，且本批不接）。
  */
-internal object MediatorWiring {
+object MediatorWiring {
 
     /** 没有会话（新建会话第一轮、或引擎还没建会话）。`208` 的 `session` 列用 -1 表示系统级。 */
     const val NO_SESSION = -1L
@@ -132,7 +142,7 @@ internal object MediatorWiring {
      * 抽成纯函数是为了**可断言**：格式本身也是判据的一部分（档位必须出现、违规必须点名），
      * 埋在 `RunLog.log(...)` 的字符串拼接里就只能靠真机日志抓，单测抓不到。
      */
-    internal fun logLine(state: HarmonyMediator.State, flags: List<MediatorFlag>, turns: Int): String =
+    fun logLine(state: HarmonyMediator.State, flags: List<MediatorFlag>, turns: Int): String =
         "抱朴调解器：第 $turns 轮档位 ${state.mood.name}" +
             (if (noteOf(state) != null) "（本轮带语气指令）" else "") +
             (if (flags.isEmpty()) {
@@ -195,7 +205,7 @@ internal object MediatorWiring {
      * 前缀不是装饰：kind 复用了 `eval_verdict`，读侧只能靠它把本批的行从
      * "206 对拍结论"里摘出来（映射表见报告 §2.3；I4 的排除义务见 [REASON_PREFIX]）。
      */
-    internal fun reasonOf(flag: MediatorFlag): String = "$REASON_PREFIX${flag.ban.wire} ${flag.reason}"
+    fun reasonOf(flag: MediatorFlag): String = "$REASON_PREFIX${flag.ban.wire} ${flag.reason}"
 
     /**
      * 写 208 一行（违规留痕）。
@@ -205,6 +215,10 @@ internal object MediatorWiring {
      * 不可回滚、不参与抽检」的类——与"判了一次违规"的形状一致；`AUTO_ACT` 不能用：它是
      * 勘验 I1「痕迹减账本」集合差的账本侧（多写一行就把漏行率算错），且决策中心会给出
      * 一个指向产物回收站的空跳转。等 249 合入后应换回专门的 kind（报告 §7 缺陷 258-4）。
+     *
+     * 第二百九十三批：本文件搬进 `:policy` 后够不着 :app 的 `DecisionLedger`，于是只认 [LedgerPort]。
+     * **上面这套复用 `EVAL_VERDICT` 的判断一个字没改**，换的只是"用什么名字找到那本账"；
+     * 写进去的仍是同一个对象、同一次落盘、同一行 JSONL。
      */
     private fun write(flag: MediatorFlag, now: Long) {
         val draft = DecisionDraft(
@@ -219,9 +233,9 @@ internal object MediatorWiring {
             atMs = now,
             sessionId = boundSessionId,
         )
-        val rec = DecisionLedger.record(draft)
-        if (rec == null) {
-            RunLog.log("抱朴调解器：${flag.ban.cn} 没落进 208（${DecisionLedger.lastError}）")
+        val port = LedgerPorts.ledger
+        if (port == null || !port.write(draft)) {
+            RunLog.log("抱朴调解器：${flag.ban.cn} 没落进 208（${port?.lastError ?: "账本端口未接线"}）")
         }
     }
 }

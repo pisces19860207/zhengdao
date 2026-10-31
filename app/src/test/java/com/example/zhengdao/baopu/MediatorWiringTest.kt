@@ -125,7 +125,7 @@ class MediatorWiringTest {
             "BaopuDb", "insertOrReplace", "HarmonyStateCodec", "putString", "putInt", "putLong",
             "System.currentTimeMillis",
         )
-        val hits = scanCode(src(MEDIATOR_WIRING), tokens)
+        val hits = scanCode(PolicyPaths.read("MediatorWiring.kt"), tokens)
         assertEquals("MediatorWiring 不许有任何持久化/取时钟的痕迹：$hits", emptyList<String>(), hits)
 
         // 合成违规样本必须被抓出来（否则上面那条只是"没扫到"）
@@ -153,8 +153,10 @@ class MediatorWiringTest {
             1,
             Regex("""MediatorWiring\.onUserTurn\(""").findAll(controller).count(),
         )
-        // 全仓主源码里 `HarmonyMediator.observe(` 也只有一处，且就在接线层
-        val callers = File("src/main/java").walkTopDown()
+        // 全仓主源码里 `HarmonyMediator.observe(` 也只有一处，且就在接线层。
+        // 第二百九十三批：宰相搬进 `:policy` 之后，主源码树是**两棵**（:app 与 :policy），
+        // 只扫一棵就会把"搬家"误判成"调用点消失"，所以两棵一起扫，计数口径不变。
+        val callers = (File("src/main/java").walkTopDown() + PolicyPaths.srcDir().walkTopDown())
             .filter { it.isFile && it.name.endsWith(".kt") }
             .filter { it.readText(Charsets.UTF_8).contains("HarmonyMediator.observe(") }
             .map { it.name }
@@ -501,6 +503,6 @@ class MediatorWiringTest {
 
     private companion object {
         const val CONTROLLER = "src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt"
-        const val MEDIATOR_WIRING = "src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+        // 接线层本体 293 起住在 `:policy`，取它的源码走 `PolicyPaths`（两棵源码树的路径口径）。
     }
 }

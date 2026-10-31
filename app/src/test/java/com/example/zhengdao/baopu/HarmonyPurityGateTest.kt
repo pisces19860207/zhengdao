@@ -7,6 +7,10 @@
 // 所以这里直接扫源码：允许 `kotlin.math.pow` 这种纯计算，禁止一切 IO / 平台句柄。
 //
 // 扫之前先证明门禁本身会咬人（合成违规行必须被抓出来），免得「全绿」只是没扫到。
+//
+// 第二百九十三批（2026-10-31）：宰相搬进 `:policy`，本闸改从 `:policy` 源码目录读文件
+// （`PolicyPaths`，取不到就抛）。**判据一个字没改**：形制断言里的 `internal` 之所以去掉，
+// 是因为跨了编译单元后 `:app` 看不见 `internal`，可见性放宽是搬家的代价，不是改判据。
 package com.example.zhengdao.baopu
 
 import java.io.File
@@ -16,12 +20,12 @@ import org.junit.Test
 
 class HarmonyPurityGateTest {
 
-    private val dir = File("src/main/java/com/example/zhengdao/baopu")
+    private val dir = PolicyPaths.srcDir()
 
     private val files = listOf(
-        "HarmonyMediator.kt" to "internal object HarmonyMediator",
-        "ReframeFilter.kt" to "internal object ReframeFilter",
-        "PatienceProfile.kt" to "internal data class PatienceProfile",
+        "HarmonyMediator.kt" to "object HarmonyMediator",
+        "ReframeFilter.kt" to "object ReframeFilter",
+        "PatienceProfile.kt" to "data class PatienceProfile",
     )
 
     private val forbidden = listOf(

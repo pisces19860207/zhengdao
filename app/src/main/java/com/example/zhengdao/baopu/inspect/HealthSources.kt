@@ -59,7 +59,9 @@ internal object OrganCensus {
             name = "计簿",
             entry = "DecisionLedger.record",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/DecisionLedger.kt",
-            callSites = 22,
+            // 第二百九十三批：宰相接线层搬进 `:policy`，它那处 `DecisionLedger.record(` 出了
+            // 本口径的扫描根（普查只数 `app/src/main`，见上面的口径注释）⇒ 22 改 21，不是有人删了接线。
+            callSites = 21,
             sink = "决策记录.jsonl",
             evidence = listOf(
                 "agent/GuardPipeline.kt:634 入账点（DecisionLedger.record）",
@@ -83,7 +85,9 @@ internal object OrganCensus {
         OrganProbe(
             name = "宰相",
             entry = "MediatorWiring.onUserTurn",
-            declaredIn = "app/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt",
+            // 第二百九十三批：接线层搬进 `:policy`（白名单匣）。路径照实写，哪怕它已经不在
+            // 本口径的扫描根里——普查的口径是"调用点数只数 app/src/main"，定义文件在哪不影响数。
+            declaredIn = "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt",
             callSites = 1,
             sink = "调解指令（进本轮上下文的那一句）",
             evidence = listOf(

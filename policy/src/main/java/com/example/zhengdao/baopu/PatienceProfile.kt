@@ -16,12 +16,16 @@
 // 样本闸只管 `learnedAdjustment()`。两者都不改事实标准、不改权限（本文件没有任何权限 API）。
 //
 // 零 Android / 零 IO / 零时钟：`now` 由调用方传入，缺省 0 表示「不做时间判断」。
+// 第二百九十三批（2026-10-31）：本文件自 :app 搬进 :policy（宰相的白名单匣）。
+// 一起搬进来的还有可见性——Kotlin 的 internal 以编译单元为界，:app 看不见 :policy 的
+// internal，故顶层声明由 internal 放宽为公开。**只放宽可见性，判据一个字没动**
+// （搬前搬后的逐行对照与放宽清单见交付报告）。
 package com.example.zhengdao.baopu
 
 import kotlin.math.pow
 
 /** 使用者耐心画像：全是计数/布尔，**没有一句话**。 */
-internal data class PatienceProfile(
+data class PatienceProfile(
     val patienceBudget: Int = DEFAULT_PATIENCE_BUDGET,
     val angerAt: Int = DEFAULT_ANGER_AT,
     val loopBudget: Int = DEFAULT_LOOP_BUDGET,
@@ -121,7 +125,7 @@ internal data class PatienceProfile(
 }
 
 /** 熟悉度：只由样本量与距上次观察的天数换算，不含任何内容。 */
-internal data class Familiarity(
+data class Familiarity(
     val observations: Int,
     val confidence: Double,
     val halfLifeDays: Int = DEFAULT_HALF_LIFE_DAYS,
@@ -158,7 +162,7 @@ internal data class Familiarity(
  * 只有数字与布尔；没有版本以外的自由文本。坏数据回默认，
  * 不抛异常、不把上一份画像「猜」回来。
  */
-internal object PatienceProfileCodec {
+object PatienceProfileCodec {
     private const val VERSION = "p1"
 
     fun encode(profile: PatienceProfile): String = listOf(

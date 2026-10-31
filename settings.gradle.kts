@@ -38,3 +38,10 @@ include(":native-core")
 // Macrobenchmark：独立的 com.android.test 模块（Compose 性能测试的标准载体）。
 // 它不进 APK —— 只产出测试 APK，通过 targetProjectPath 指向 :app 并驱动真机跑基准。
 include(":macrobenchmark")
+// :policy —— 宰相（调解器）的**白名单匣**（第二百九十三批）。
+// 只装「判」：HarmonyMediator／MediatorJudge／ReframeFilter／PatienceProfile，
+// 外加 208 的行词汇与账本接口 `LedgerPort`（本批只切这一刀，其余账本不抽）。
+// 依赖方向单向：:app → :policy → :core；:policy 的依赖白名单只有 :core 与 Kotlin stdlib，
+// 禁 okhttp／openai／android.*／java.net／baopu.kb.*／baopu.inspect.*／baopu.agent.*／具体存储实现
+// （门禁 `PolicyBoundaryGateTest`：源码 import 与 policy/build.gradle.kts 的依赖声明两头都扫）。
+include(":policy")
