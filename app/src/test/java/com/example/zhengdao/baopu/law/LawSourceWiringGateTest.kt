@@ -19,13 +19,15 @@
 //   7. **假接兜底**（负例①）：谁把 EmergencyGate 登记成已接线，那条判据的手抄件就必须同时清零——
 //      只加一句调用、判据还留在原地，本文件红。
 //
-// ## 今天的账（315 在基线 f93fd021 上取数；311 更账）
+// ## 今天的账（315 在基线 f93fd021 上取数；311 更账；323 更账）
 // 311 起再添一条已接线：**L24（ProgressivePenalty）由三司会审接线**（都察院抓到假PASS 走
 // decide），从 BOOKED 移 WIRED 并逐字登记调用点（verify/ThreeCourts.kt 一处），BOOKED 余四条。
+// 323 起再添两条挂账：**L29（AnomalyGate）／L32（AccountabilityGate）**——判定与门禁本批交，
+// 证据源（灾异计数／双盲复核认定）还没有生产提出方，硬接＝假接（四格见 BOOKED）。
 // 七条判定源里**三条已接线**：315 把 EmergencyGate／EmergencyClocks 接进 inspect/EmergencyWiring.kt
 // （紧急闸：紧急卡必人批＋止损 0 秒＋24h 追认），WIRED 按点号调用数逐字登记。
 // OpinionWiring ×1，收敛归 298，见 REMAINING_L21_COPIES）——那是"新增接线"不顶替旧手抄的口径。
-// 剩下四条仍挂账。
+// 剩下六条仍挂账。
 package com.example.zhengdao.baopu.law
 
 import java.io.File
@@ -124,6 +126,23 @@ class LawSourceWiringGateTest {
             owner = "306（步键，2026-10-31 批示：L22→306）",
             blockedBy = "撤销通道已存在但没有撤销单：judge 要五栏事实，现路径只带三元组；" +
                 "补五栏＝新落盘格式，与 208 写入格式那条红线撞在同一张卡上",
+        ),
+        Booked(
+            entry = "AnomalyGate",
+            law = "AnomalyGate 的 classify（L29 灾异四类定义：命中任一且不可局部回滚且有证据 ⇒ 必须进紧急通道）",
+            host = "灾异证据源的观测点（损毁计数／泄露留痕／失败连击——应落在 inspect/NocturnalPatrol.kt 的灾异通道与勘验层一带）",
+            owner = "323（判定＋门禁本批交；证据源接线另行立项）",
+            blockedBy = "灾异的证据源在生产里还不存在（NocturnalPatrol 只管巡检额度，没有损毁/泄露/不可用的计数器）；" +
+                "硬造一个调用点＝假接（271-补 治的就是这个病）。「进紧急通道」的另一半口径已接线：" +
+                "L29 门禁逐字复合 EmergencyGate.isEmergencyCard 与 EmergencyWiring 的 Opinion 投影",
+        ),
+        Booked(
+            entry = "AccountabilityGate",
+            law = "AccountabilityGate 的 decide（L32 追责收紧：第一次放行／同类第二次收紧两级／收紧后再犯永久须御批）",
+            host = "复盘与双盲复核的产出落点（认定应从 verify/ThreeCourts.kt 的会审产出落下来）",
+            owner = "323（判定＋门禁本批交；双盲复核接线另行立项）",
+            blockedBy = "认定需双盲复核任一方提出＋御批确认，这两步还没有生产调用方；" +
+                "现在接进去就是程序自定罪（L32 判据①的第一条负例）",
         ),
     )
 
