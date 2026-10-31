@@ -6,23 +6,30 @@
 // 她点「拒绝」的那次删除，账上却写着「14:54 删·删进回收站」——记账发生在管线
 // `prepare` 阶段、批准**之前** ⇒ 没做的事也被记成做了。它比一般 bug 坏：审计从根上不可信。
 //
-// ## 判据（派工单四条，逐条打）
+// ## 判据（派工单四条 ＋ 2026-10-31 追加裁定一条，逐条打）
 // ① 拒绝一次删除 ⇒ 账上**没有**该动作的成功行；
 // ② 执行成功 ⇒ 有且只有一行；
 // ③ 同一动作重试不会写两行；
-// ④ 超时／取消 同样不落业务账。
+// ④ 超时／取消 同样不落业务账；
+// ⑤ **被拒不能丢**：拒绝一次删除 ⇒ 业务账无该动作行 ＋ **卡处置账**有一行
+//    （追加裁定：`DecisionLedger ＝ 事实`、`CardDisposition ＝ 处置`，两本分表、id 不互通，
+//    不许拿处置账去补业务账）。
 // 外加修法第 2、4 条：`prepare` 阶段不记业务账；账上要有一条「口径变更点」（只增不改）。
 //
-// ## 打的是哪两本账
+// ## 打的是哪三本账
 // 管线一次成功写入落**两本**：第二百零八批的通用账（`DecisionKind.AUTO_ACT`）与
 // 第二百八十七批的文件操作账（`FileOpLog`，她看到的那一行「删·删进回收站」就是它）。
 // 四条判据对两本**同样**成立——所以每条都同时读两处，缺一处就不算过。
+// 第三本是这批新建的 `卡处置.jsonl`：它只回答"这张卡被怎么处理的"，
+// 一条业务事实都不记（判据⑤那两条断言就是这条分界，读不通就是它被拿来补账了）。
 //
 // ## 负例（本文件自证会红，字节变异在报告里）
 // 1. `prepare` 就记账（把落行挪回出卡之前）；2. 拒绝仍落账；3. 同一动作写两行；
-// 4. 改历史账行（去重靠"重写整本账"而不是"跳过第二条"）。
+// 4. 改历史账行（去重靠"重写整本账"而不是"跳过第二条"）；
+// 5. 拒绝时**处置账**也漏了（被拒这一问丢了，318 就没信号）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.agent.ConfirmFlow
 import com.example.zhengdao.baopu.agent.DeletePathTool
 import com.example.zhengdao.baopu.agent.GuardPipeline
 import com.example.zhengdao.baopu.agent.ToolCall
@@ -45,10 +52,14 @@ import com.example.zhengdao.baopu.plan.PlanContractRules
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.Executors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -68,12 +79,14 @@ class LedgerAfterExecTest {
         TaskGrantBoard.resetForTest()
         FileOpLog.resetForTest()
         FileOpLog.enterSession(SESSION)
+        CardDisposition.resetForTest()
     }
 
     @After
     fun teardown() {
         TaskGrantBoard.resetForTest()
         FileOpLog.resetForTest()
+        CardDisposition.resetForTest()
         DecisionLedger.uninstallForTest()
         listOf(ws, ledgerRoot).forEach { runCatching { it.deleteRecursively() } }
     }
@@ -192,6 +205,7 @@ class LedgerAfterExecTest {
         assertEquals("208 不许有这一笔的成功行", 0, actRows().size)
         assertEquals("文件操作账也不许有（她看到的就是这一行）", 0, FileOpLog.count())
         assertEquals("连意向都不该进 208（整本账要能读出真做过什么）", 0, rows().size)
+        assertEquals("卡还没人裁 ⇒ 处置账也不许先落一行（下判据）", 0, dispositionRows().size)
     }
 
     @Test
@@ -373,6 +387,192 @@ class LedgerAfterExecTest {
         )
         val stillThere = rows().firstOrNull { it.id == firstRow.id }
         assertEquals("老行的时刻/证据/结论读回来还是原来那份", firstRow, stillThere)
+    }
+
+    // ── 判据⑤（2026-10-31 追加裁定）：被拒不能丢，但它只进处置账 ──────────────
+
+    /** pending 落库是引擎壳的事（真 SQLite + 事务）；本批只问账，假件收走即可。 */
+    private class FakePending : PendingStore {
+        override fun clear(sessionId: Long) = Unit
+        override fun load(sessionId: Long): PendingRow? = null
+    }
+
+    /** 确认制内核：真管线、真执行器；前台计时可注入（超时例要拨表）。 */
+    private fun confirmFlow(p: GuardPipeline, foregroundElapsedMs: () -> Long = { 0L }): ConfirmFlow =
+        ConfirmFlow(
+            pipeline = p,
+            store = FakePending(),
+            foregroundElapsedMs = foregroundElapsedMs,
+            projectRoot = { ws },
+        )
+
+    /** 等卡挂上（liveCallId 出现）；超 2 秒算失败——不等就是赛跑。 */
+    private suspend fun awaitLive(flow: ConfirmFlow, callId: String) {
+        repeat(200) {
+            if (flow.liveCallId() == callId) return
+            delay(10)
+        }
+        throw AssertionError("确认卡没挂上（liveCallId=${flow.liveCallId()}）")
+    }
+
+    private fun dispositionRows(): List<CardDisposition.CardDispositionRow> = CardDisposition.replay()
+
+    /** 生产源码（分表那条闸要读字节；测试跑在 app/ 下，回退到仓库根）。 */
+    private fun mainSource(rel: String): String {
+        val candidates = listOf(
+            File("src/main/java/com/example/zhengdao/baopu/$rel"),
+            File("app/src/main/java/com/example/zhengdao/baopu/$rel"),
+        )
+        return requireNotNull(candidates.firstOrNull { it.isFile }) { "生产源码没找到：$rel" }.readText()
+    }
+
+    @Test
+    fun 判据五_拒绝一次删除_业务账零行并且处置账一行() = runBlocking {
+        val f = touch("资料库/被拒删.md")
+        val p = pipeline(DeletePathTool.spec { ws })
+        val flow = confirmFlow(p)
+        var outcome: ConfirmFlow.Outcome? = null
+        val job = launch {
+            outcome = flow.enter(SESSION, 1, call("op-5", "delete_path", f.absolutePath)) { _, _ -> null }
+        }
+        awaitLive(flow, "op-5")
+        assertEquals("卡挂上那一刻账上还是空的（出卡之前不记处置）", 0, dispositionRows().size)
+        flow.resumeWithApproval("op-5", approved = false, note = "先别删，我要再看一眼")
+        job.join()
+        assertTrue("结局是拒绝：$outcome", outcome is ConfirmFlow.Outcome.Rejected)
+        assertTrue("文件原样在", f.exists())
+        assertEquals("业务账一行都不许有", 0, actRows().size)
+        assertEquals("文件操作账一行都不许有", 0, FileOpLog.count())
+        assertEquals("被拒这一问不能丢：处置账要正好一行（318 学的是它）", 1, dispositionRows().size)
+        val d = dispositionRows().single()
+        assertEquals("选了哪个", CardDisposition.Choice.REJECT, d.choice)
+        assertEquals("谁裁的", CardDisposition.Actor.USER, d.actor)
+        assertEquals("哪张卡：确认卡", CardDisposition.Face.CONFIRM, d.face)
+        assertEquals("指得回这一次询问", "op-5", d.cardId)
+        assertTrue("她留的原话要进账：${d.why}", d.why.contains("先别删"))
+        assertTrue("卡讲的是哪件事：${d.subject}", d.subject.contains("被拒删.md"))
+    }
+
+    @Test
+    fun 判据五_批准之后_两本账各一行_处置不代替事实() = runBlocking {
+        val f = touch("资料库/批准删2.md")
+        val p = pipeline(DeletePathTool.spec { ws })
+        val flow = confirmFlow(p)
+        var outcome: ConfirmFlow.Outcome? = null
+        val job = launch {
+            outcome = flow.enter(SESSION, 1, call("op-6", "delete_path", f.absolutePath)) { _, _ -> null }
+        }
+        awaitLive(flow, "op-6")
+        flow.resumeWithApproval("op-6", approved = true, note = null)
+        job.join()
+        assertTrue("批了才真执行：$outcome", (outcome as ConfirmFlow.Outcome.Approved).result is GuardPipeline.Result.Done)
+        assertFalse("文件真没了", f.exists())
+        assertEquals("事实账一行（做过了）", 1, actRows().size)
+        assertEquals("处置账也一行（她批的）", 1, dispositionRows().size)
+        assertEquals(CardDisposition.Choice.APPROVE, dispositionRows().single().choice)
+        assertTrue(
+            "两本账的行 id 不许相同（id 不互通：拿处置行冒充事实行冒充不了）",
+            dispositionRows().none { it.id == actRows().single().id },
+        )
+    }
+
+    @Test
+    fun 判据五_用户点停止是不用了_不算驳也不落业务账() = runBlocking {
+        val f = touch("资料库/停止删.md")
+        val p = pipeline(DeletePathTool.spec { ws })
+        val flow = confirmFlow(p)
+        var outcome: ConfirmFlow.Outcome? = null
+        val job = launch {
+            outcome = flow.enter(SESSION, 1, call("op-7", "delete_path", f.absolutePath)) { _, _ -> null }
+        }
+        awaitLive(flow, "op-7")
+        flow.abandon()
+        job.join()
+        assertTrue("结局是作废：$outcome", outcome is ConfirmFlow.Outcome.Abandoned)
+        assertTrue("文件原样在", f.exists())
+        assertEquals("作废的那一步不落业务账", 0, actRows().size)
+        assertEquals("处置账要有一行", 1, dispositionRows().size)
+        val d = dispositionRows().single()
+        assertEquals("点停止＝这张卡不用了，不是驳", CardDisposition.Choice.DISMISS, d.choice)
+        assertEquals("裁的还是人", CardDisposition.Actor.USER, d.actor)
+        assertTrue("理由要说清是不用了：${d.why}", d.why.contains("不用了"))
+    }
+
+    @Test
+    fun 判据五_确认超时_处置账有一行_谁那一格写的是计时器() = runBlocking {
+        val f = touch("资料库/超时删.md")
+        val p = pipeline(DeletePathTool.spec { ws })
+        // 注入超时钟：前台已累计过线（171 批 J3 同一手法；真机 T4 拨系统时间同理）。
+        val flow = confirmFlow(p) { Long.MAX_VALUE }
+        var outcome: ConfirmFlow.Outcome? = null
+        val job = launch {
+            outcome = flow.enter(SESSION, 1, call("op-8", "delete_path", f.absolutePath)) { _, _ -> null }
+        }
+        job.join()
+        assertTrue("结局是超时：$outcome", outcome is ConfirmFlow.Outcome.TimedOut)
+        assertTrue("文件原样在", f.exists())
+        assertEquals("超时不落业务账（判据④的另一半）", 0, actRows().size)
+        assertEquals("但这一问要留在处置账上", 1, dispositionRows().size)
+        val d = dispositionRows().single()
+        assertEquals("没人表态 ⇒ 这张卡不用了", CardDisposition.Choice.DISMISS, d.choice)
+        assertEquals(
+            "**谁**这一格是计时器：读的人不许把一次超时当成一次驳回",
+            CardDisposition.Actor.CLOCK,
+            d.actor,
+        )
+        assertTrue("理由要自证没人表态：${d.why}", d.why.contains("没人表态"))
+    }
+
+    @Test
+    fun 分表_两本账互读不成对方的行() {
+        val p = pipeline(okWrite())
+        val r = p.execute(call("op-9", "write_file", "笔记/分表.md"), { _, _ -> null })
+        assertTrue("先跑出一笔真事实：$r", r is GuardPipeline.Result.Done)
+        val fact = actRows().single()
+        CardDisposition.record(
+            choice = CardDisposition.Choice.REJECT,
+            face = CardDisposition.Face.CONFIRM,
+            cardId = "op-9",
+        )
+        val dispositionLines = CardDisposition.fileIn(ledgerRoot).readLines(Charsets.UTF_8).filter { it.isNotBlank() }
+        val factLines = DecisionLedger.fileIn(ledgerRoot).readLines(Charsets.UTF_8).filter { it.isNotBlank() }
+        assertEquals("处置账自己一个文件（不与 208 同本）", "卡处置.jsonl", CardDisposition.fileIn(ledgerRoot).name)
+        assertEquals(
+            "处置行拿 208 的尺子读：读不出来 ⇒ 补不成业务账",
+            null,
+            DecisionLedger.parseLine(dispositionLines.single()),
+        )
+        assertNull("业务行拿处置账的尺子读：同样读不出来", CardDisposition.CardDispositionRow.parse(factLines.last()))
+        val parsed = requireNotNull(CardDisposition.CardDispositionRow.parse(dispositionLines.single()))
+        assertTrue(
+            "处置行的 id 走自己那一格的空间（前缀 " + CardDisposition.ID_PREFIX + "），与业务 id 不同源",
+            parsed.id.startsWith(CardDisposition.ID_PREFIX),
+        )
+        assertFalse("事实行的证据里不带处置账的 id", fact.evidence.contains(CardDisposition.ID_PREFIX))
+    }
+
+    @Test
+    fun 分表_业务那一侧永远读不到处置账_写出点只在确认内核() {
+        // 这条闸守的是分界的另一头：谁都不许在事实侧的入口里顺手写处置（那本账只认卡）。
+        // 318 加卡面入口时往处置账里写，走的是同一个 record；反过来在管线/208 里写才是错。
+        assertFalse("管线不许写处置账", mainSource("agent/GuardPipeline.kt").contains("CardDisposition.record("))
+        assertFalse("208 不许写处置账", mainSource("DecisionLedger.kt").contains("CardDisposition"))
+        assertFalse("处置账不许往 208 里写一行", mainSource("CardDisposition.kt").contains("DecisionLedger.record("))
+        assertTrue("确认内核是这批唯一的写出点", mainSource("agent/ConfirmFlow.kt").contains("CardDisposition.record("))
+    }
+
+    @Test
+    fun 处置账也只增不改_后一行不许动前面那些字节() {
+        CardDisposition.record(CardDisposition.Choice.REJECT, CardDisposition.Face.CONFIRM, cardId = "op-a1")
+        val before = CardDisposition.fileIn(ledgerRoot).readBytes()
+        CardDisposition.record(CardDisposition.Choice.APPROVE, CardDisposition.Face.CONFIRM, cardId = "op-a2")
+        val after = CardDisposition.fileIn(ledgerRoot).readBytes()
+        assertTrue("只许变长", after.size > before.size)
+        assertTrue(
+            "前面的字节逐字不动（改历史＝伪造处置）",
+            after.copyOfRange(0, before.size).contentEquals(before),
+        )
+        assertEquals("两行都在，谁也没顶掉谁", 2, dispositionRows().size)
     }
 
     private companion object {
