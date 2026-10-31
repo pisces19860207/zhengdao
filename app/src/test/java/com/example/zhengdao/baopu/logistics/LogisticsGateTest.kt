@@ -144,8 +144,15 @@ class LogisticsGateTest {
         val root = File("src/test").takeIf { it.isDirectory } ?: File("app/src/test")
         val data = root.walkTopDown().filter { it.isFile && (LogisticsPaths.isReadable(it.name) || it.name.endsWith(".db")) }.toList()
         assertEquals("测试目录里不许放真的表：$data", emptyList<Any>(), data)
+        // 335 起 test/resources 合法用于评测用例（eval-adversarial/cases.json）——但**真实的客户表**仍不许进：
+        // 判据从「目录不许存在」收窄成「目录里没有可读的物流数据文件」，保护面不变。
         val res = File("src/test/resources").takeIf { it.isDirectory } ?: File("app/src/test/resources")
-        assertFalse("也不许开一个 resources 目录来放它们", res.isDirectory)
+        if (res.isDirectory) {
+            val leaked = res.walkTopDown()
+                .filter { it.isFile && (LogisticsPaths.isReadable(it.name) || it.name.endsWith(".db")) }
+                .toList()
+            assertEquals("resources 里不许放真的表：$leaked", emptyList<Any>(), leaked)
+        }
     }
 
     // ── 独立库：不动 BaopuDb ─────────────────────────────────────────────────
