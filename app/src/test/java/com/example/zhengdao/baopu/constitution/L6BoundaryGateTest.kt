@@ -93,6 +93,10 @@ class L6BoundaryGateTest {
             // 落点同 274：208 已装配的那棵私有目录（`抱朴记忆/`），文件名独立
             // （`追认队列.jsonl`），追加-only、不覆盖不删除；不往 208 那本账写。
             "agent/SelfRulingLedger.kt" to setOf("mkdirs", "appendText"),
+            // 第二百九十八批：判决经验账（283 那个内存桩的落盘替身——判据①要的"30 天"
+            // 跨重启才成立）。落点同 274/277：208 已装配的那棵私有目录（`抱朴记忆/`），
+            // 文件名独立（`判决经验账.jsonl`），追加-only、不覆盖不删除；不往 208 那本账写。
+            "agent/JudgmentExperienceLedger.kt" to setOf("mkdirs", "appendText"),
             // 第二百七十八批：御批账（御案页签「批/驳/搁置」的落点）。
             // 落点同 274/277：208 已装配的那棵私有目录，文件名独立（`御批.jsonl`），
             // 追加-only；不往 208 写（那本记"做过什么"，这本记"你怎么裁的"）。

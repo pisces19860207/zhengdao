@@ -53,6 +53,10 @@ class OpinionIsolationTest {
         // 是真消费方；输入隔离（零模型/不读对话）另有源级门禁钉（ChancellorSourceGateTest）。
         "com/example/zhengdao/baopu/verify/ChancellorGate.kt" to "302",
         "com/example/zhengdao/baopu/verify/ChancellorInput.kt" to "302",
+        // 298 批：两级裁决的草稿层——验证层那条判据就是契约里的 `lawRef`/`severity`
+        // （L7 未分类／L8 硬拒／critical 必问，撞上 ⇒ 草稿作废）。它不构造意见，只**读**
+        // 意见的这两个字段来验草稿，所以是真消费方，不是顺手 import。
+        "com/example/zhengdao/baopu/policy/VerdictDraft.kt" to "298",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

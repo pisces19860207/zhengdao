@@ -23,6 +23,12 @@ internal data class RoyalRow(
     val id: String,
     val card: RoyalCard,
     val atMs: Long,
+    /**
+     * 这条意见的"类"（298 学习分组的键，与 [com.example.zhengdao.baopu.policy.VerdictDraft]
+     * 查表用的 `opinion.gist` 同一个字）。**只随行、不上卡**：卡面出现技术字段是 278
+     * `RoyalCardGate` 明令拒渲染的，所以它待在行上，决定按钮按下时交给学习器。
+     */
+    val gist: String,
 )
 
 /**
@@ -49,7 +55,7 @@ internal object RoyalQueueRules {
         val card = RoyalDrafts.draft(ruling, checks, s) ?: return null
         // ④ 卡面自检
         if (!RoyalCardGate.renderable(card)) return null
-        return RoyalRow(id = ruling.id, card = card, atMs = ruling.atMs)
+        return RoyalRow(id = ruling.id, card = card, atMs = ruling.atMs, gist = ruling.opinion.gist)
     }
 
     /**
