@@ -31,6 +31,11 @@ except Exception:
 ROOT = Path(__file__).resolve().parent.parent
 POLICY = ROOT / "app" / "src" / "main" / "java" / "com" / "example" / "zhengdao" / "baopu" / "policy"
 BAOPU_MAIN = ROOT / "app" / "src" / "main" / "java" / "com" / "example" / "zhengdao" / "baopu"
+# 第二百九十三批：宰相（HarmonyMediator／MediatorJudge）从 :app 搬进 :policy 模块。
+# 注意与上面的 `POLICY` 区分——那是 `baopu/policy/` **判据产物包**，这里是新的**模块**根。
+# 禁令跟着文件走，不跟着目录走：同一个宰相，搬进哪个模块都不许碰准入符号，
+# 所以下面两处扫描要把两棵树都算进来（少一棵＝那条禁令悄悄变成恒绿）。
+POLICY_MODULE_MAIN = ROOT / "policy" / "src" / "main" / "java" / "com" / "example" / "zhengdao" / "baopu"
 PRIVATE = ROOT.parent / "_zd-private"
 
 SURFACE = ["ImmutableCriteria.kt", "CriteriaEvolution.kt", "AnchorSet.kt", "CriteriaEpoch.kt"]
@@ -168,17 +173,19 @@ def runtime_leak_problems():
     """宰相的在线路径只查表：agent/ 与宰辅两文件里不许出现准入符号。
 
     三个目标文件本身也要在——钉子指向一个改名后的空气，等于这条禁令没人守。
+    「在」按**两棵树**算（:app 与 :policy，293 搬模块）：任一处命中即算在，两处都没有才是丢。
     """
     found = []
     targets = []
     for name in CHANCELLOR_PATHS:
-        path = BAOPU_MAIN / name
-        if not path.exists():
+        matches = [root / name for root in (BAOPU_MAIN, POLICY_MODULE_MAIN) if (root / name).exists()]
+        if not matches:
             found.append("宰相路径不见了：%s（准入禁令悬空，先改这行再改代码）" % name)
-        elif path.is_dir():
-            targets.extend(path.rglob("*.kt"))
-        else:
-            targets.append(path)
+        for path in matches:
+            if path.is_dir():
+                targets.extend(path.rglob("*.kt"))
+            else:
+                targets.append(path)
     for path in targets:
         code = strip_comments(path.read_text(encoding="utf-8"))
         found.extend(leak_in_code(code, path.relative_to(ROOT).as_posix()))
@@ -229,7 +236,9 @@ def scalar_surface_problems():
 
 def scalar_repo_problems():
     found = []
-    for path in BAOPU_MAIN.rglob("*.kt"):
+    # 两棵树一起扫（293 搬模块后只扫 :app 会让「判据结论类型不许带浮点」少掉宰相那四个文件）。
+    paths = [p for root in (BAOPU_MAIN, POLICY_MODULE_MAIN) if root.is_dir() for p in root.rglob("*.kt")]
+    for path in paths:
         code = strip_comments(path.read_text(encoding="utf-8"))
         if not VERDICT_CLASS.search(code):
             continue
