@@ -149,6 +149,25 @@ internal object AccountabilityGate {
         )
     }
 
+    /**
+     * 双盲复核的出场口（339）：把一条复核不一致（DISAGREEMENT）按 L32 认定口径收进来——
+     * **提出位自动为真**（影子就是双盲任一方，调用方不许替它填 false，也不许替它装御批）；
+     * **御批确认位留给人**（[AccountabilityFinding.confirmedByThrone]＝false）——
+     * 复核说了不算：收紧哪个类别的权限是认定后果，按法典只有御批能定。
+     * 御批到场那天，把这一条的 confirmedByThrone 置真再走 [decide]，累进照算。
+     */
+    fun blindReviewFinding(
+        kind: AccountabilityKind,
+        category: String,
+        atMs: Long,
+    ): AccountabilityFinding = AccountabilityFinding(
+        kind = kind,
+        category = category,
+        atMs = atMs,
+        raisedByBlindReview = true,
+        confirmedByThrone = false,
+    )
+
     /** L32 的累进梯子：同类有效认定第 n 次 ⇒ 该类别走到哪一档（判据②③④的本体）。 */
     private fun ladderOf(
         n: Int,

@@ -232,6 +232,44 @@ class LawSourceWiringGateTest {
         }
     }
 
+    // ── 2.5 名册纪律（339）：灾异与追责的 BOOKED→WIRED 只能由「真实事件流」机检放行，不许手改 ──
+
+    /**
+     * 「确实存在生产事件流」的机检口径（339 御批）：
+     * 非 law/ 的生产源码里，真的有人把事实**喂进判定层**——
+     * AnomalyGate 看 `classify(`／`normalChannelRejection(` 的调用（判定真被喂了事实），
+     * AccountabilityGate 看 `decide(` 的调用（认定真被喂进了累进）。
+     * 构造器/便捷口（如 blindReviewFinding）不算流——造一条数据不是喂闸，闸吃了才算。
+     *
+     * AnomalyFeed 只发事实、不判决（源级门禁另钉），它的存在**不等于**闸有了输入；
+     * 谁把事件喂进判定层的那一刻，本机检才放行。两向都咬：
+     * 还没流就手改成 WIRED ⇒ 这里红；真接了流还赖在 BOOKED ⇒ 上面「挂账不许隐身」红。
+     */
+    private fun eventFlowExists(): Map<String, Boolean> {
+        val flowRegexes = mapOf(
+            "AnomalyGate" to Regex("""\bAnomalyGate\s*\.\s*(classify|normalChannelRejection)\s*\("""),
+            "AccountabilityGate" to Regex("""\bAccountabilityGate\s*\.\s*decide\s*\("""),
+        )
+        val hosts = mainSources.filterNot { it.name.startsWith(LAW_PATH) }
+        return flowRegexes.mapValues { (_, rx) -> hosts.any { rx.containsMatchIn(it.code) } }
+    }
+
+    @Test
+    fun 名册纪律_灾异与追责的WIRED只能由事件流机检放行不许手改() {
+        val flow = eventFlowExists()
+        val wired = WIRED.map { it.entry }.toSet()
+        flow.forEach { (entry, hasFlow) ->
+            if (!hasFlow) {
+                assertTrue(
+                    "名册纪律（339）：生产还没有事件流（没有人把事实喂进 $entry）⇒ $entry 必须保持 BOOKED；" +
+                        "BOOKED→WIRED 只能由本机检放行，不许手改名册硬接",
+                    entry !in wired,
+                )
+            }
+            // hasFlow==true 而还挂在 BOOKED ⇒ 「挂账不许隐身」当场红（判据已在，两向合拢）。
+        }
+    }
+
     @Test
     fun 接线之后手抄的判据必须清零() {
         // 负例①（只加调用不改行为＝假接）的防线：源级门禁只看得见"有没有人调"，
