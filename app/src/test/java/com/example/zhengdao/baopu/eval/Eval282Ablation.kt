@@ -27,6 +27,8 @@ import com.example.zhengdao.baopu.agent.OpinionWiring
 import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.inspect.Budget
 import com.example.zhengdao.baopu.inspect.Opinion
+import com.example.zhengdao.baopu.inspect.OpinionLifecycle
+import com.example.zhengdao.baopu.inspect.OpinionMerger
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.ChancellorClaimKind
 import com.example.zhengdao.baopu.verify.ChancellorDeliverable
@@ -168,6 +170,10 @@ internal data class Eval282Row(
     val dir: String,
     /** 335 观测：提交轨迹「name|target[|wait]」——等待确认机械检查与过程探测器的数据源。 */
     val callTrace: List<String> = emptyList(),
+    /** 336 观测：同事件重试被并入的次数（事件键去重生效的直接证据）。 */
+    val eventRetries: Int = 0,
+    /** 336 观测：DEFERRED 满 3 轮自动结案的次数。 */
+    val deferSettled: Int = 0,
     /** 335 观测：「等待确认（评测里不该出现）」回灌次数。 */
     val waitConfirms: Int = 0,
     /** 335 观测：本任务文件账行快照「kind.tag|path」（落点违规探测器的数据源）。 */
@@ -206,6 +212,8 @@ internal data class Eval282Row(
         .put("callTrace", JSONArray(callTrace))
         .put("waitConfirms", waitConfirms)
         .put("fileOps", JSONArray(fileOps))
+        .put("eventRetries", eventRetries)
+        .put("deferSettled", deferSettled)
 }
 
 internal object Eval282Ablation {
@@ -241,14 +249,23 @@ internal object Eval282Ablation {
         /** 335 观测：提交轨迹「name|target[|wait]」（探测器和等待确认机械检查的数据源）。 */
         val callTrace = ArrayList<String>()
 
-        /** 已判过意见的调用（幂等键：callId＋法条，口径同 OpinionWiring.byCall）。 */
-        val judgedOpinions = HashSet<String>()
-
         /** 勘验已重做过一次的路径（口径 §五②：每路径每任务至多 1 次）。 */
         val redonePaths = HashSet<String>()
 
-        /** 本任务的全部四器意见（D 组右相 C5 要用）。 */
-        val opinions = ArrayList<Opinion>()
+        /**
+         * 336 评测侧：事件键 → 该事件的第一条意见（同一事件的重试提交不再产新意见——
+         * 282 D 组 C5 死循环的根因修复；键口径＝OpinionMerger.eventKeyOf）。
+         */
+        val opinionEvents = LinkedHashMap<String, Opinion>()
+
+        /** 336 评测侧：事件键 → 生命周期状态（RESOLVED/SETTLED 不进右相 C5）。 */
+        val lifecycleStates = HashMap<String, OpinionLifecycle.State>()
+
+        /** 336 观测：同事件重试被并入的次数（去重生效的直接证据）。 */
+        var eventRetries = 0
+
+        /** 336 观测：DEFERRED 满 3 轮自动结案的次数。 */
+        var deferSettled = 0
 
         /** 收到过失败/被拒回灌的（工具＋目标）键：再次提交即自然重试（口径 §三 S3）。 */
         val failedAttempts = HashSet<String>()
@@ -349,8 +366,17 @@ internal object Eval282Ablation {
                         }.getOrNull()
                         opinion = pureVerdict?.let { v -> runCatching { OpinionWiring.opinionOf(call, v) }.getOrNull() }
                         if (opinion != null) {
-                            counters.judgments += 1
-                            counters.opinions.add(opinion)
+                            // 336 评测侧：事件键去重——同一事件的重试提交不再产新意见、不重复判定。
+                            // （282 D 组 C5 死循环根因：幂等键 callId+lawRef，重试＝新 callId＝新意见。）
+                            val ek = OpinionMerger.eventKeyOf(opinion)
+                            if (counters.opinionEvents.containsKey(ek)) {
+                                counters.eventRetries += 1
+                                opinion = null
+                            } else {
+                                counters.opinionEvents[ek] = opinion
+                                counters.lifecycleStates[ek] = OpinionLifecycle.initial()
+                                counters.judgments += 1
+                            }
                         }
                     }
 
@@ -420,8 +446,10 @@ internal object Eval282Ablation {
                             .put("tool_call_id", call.id)
                             .put("content", feed),
                     )
-                    // 左相（口径 §六）：意见过生产 OpinionJudge 预算裁定；POP ⇒ 打扰＋模拟用户应答注入
-                    if (sw.mediator && opinion != null && counters.judgedOpinions.add("${call.id}:${opinion.lawRef.name}")) {
+                    // 左相（口径 §六）：意见过生产 OpinionJudge 预算裁定；POP ⇒ 打扰＋模拟用户应答注入。
+                    // 336：POP 的模拟应答即「御案处置」⇒ 事件 RESOLVED；DEFER 计轮，满 3 轮自动 SETTLED。
+                    if (sw.mediator && opinion != null) {
+                        val ek = OpinionMerger.eventKeyOf(opinion)
                         counters.opinionsJudged += 1
                         val verdict = OpinionJudge.judge(
                             opinion = opinion,
@@ -430,13 +458,23 @@ internal object Eval282Ablation {
                             budget = Budget(),
                             alreadyRefused = pureVerdict?.hardDeny == true,
                         )
-                        if (verdict.decision.name == "POP") {
-                            counters.royalToday += 1
-                            roundUsedPop = true
-                            counters.popCards += 1
-                            popTurns.put(JSONObject().put("role", "user").put("content", popCardText(opinion)))
+                        val st = counters.lifecycleStates[ek] ?: OpinionLifecycle.initial()
+                        when (verdict.decision.name) {
+                            "POP" -> {
+                                counters.royalToday += 1
+                                roundUsedPop = true
+                                counters.popCards += 1
+                                counters.lifecycleStates[ek] =
+                                    OpinionLifecycle.advance(st, OpinionLifecycle.Event.DISPOSITIONED)
+                                popTurns.put(JSONObject().put("role", "user").put("content", popCardText(opinion)))
+                            }
+                            "DEFER" -> {
+                                val ns = OpinionLifecycle.advance(st, OpinionLifecycle.Event.DEFERRED)
+                                counters.lifecycleStates[ek] = ns
+                                if (OpinionLifecycle.autoSettlement(ek, ns) != null) counters.deferSettled += 1
+                            }
+                            else -> Unit // SKIP：不改相（记档不打扰，口径 §六）
                         }
-                        // DEFER/SKIP：记账不注入（口径 §六）
                     }
                 }
                 for (i in 0 until popTurns.length()) messages.put(popTurns.get(i))
@@ -532,7 +570,12 @@ internal object Eval282Ablation {
         }
         return ChancellorSubmission(
             deliverables = deliverables,
-            opinions = counters.opinions.toList(),
+            // 336 评测侧：右相 C5 只认「还在 OPEN/DEFERRED 的意见」——已处置（RESOLVED）与
+            // 自动结案（SETTLED）的不再一票打回（282 D 组死循环的直接修复点）。
+            opinions = counters.opinionEvents.entries.mapNotNull { (ek, op) ->
+                val st = counters.lifecycleStates[ek] ?: OpinionLifecycle.initial()
+                if (OpinionLifecycle.blocksAcceptance(st)) op else null
+            },
             ledger = ChancellorLedger(fileOps = FileOpLog.recent(500)),
             root = dir,
         )
@@ -743,6 +786,8 @@ internal object Eval282Ablation {
             error = error,
             dir = dir.absolutePath,
             callTrace = counters.callTrace.toList(),
+            eventRetries = counters.eventRetries,
+            deferSettled = counters.deferSettled,
             waitConfirms = counters.callTrace.count { it.endsWith("|wait") },
             fileOps = FileOpLog.recent(500).map { "${it.kind.tag}|${it.path}" },
         )

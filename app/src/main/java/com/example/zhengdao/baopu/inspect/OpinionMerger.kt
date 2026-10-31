@@ -46,6 +46,17 @@ internal object OpinionMerger {
         return OpinionMergeResult(merged, suggestions)
     }
 
+    /**
+     * 336 · 事件键：sameEvent 的**第一判据**（证据首项）做成可复用的键。
+     *
+     * 为什么只要第一判据：同一动作的重试提交（282 D 组 C5 死循环的根因）每次都会产出
+     * 「证据完全相同」的意见——证据首项同键即可把它们并成一条。第二判据（source+gist 归一化）
+     * **有意不进键**：不同证据的同名意见是不同事实，并错比漏并更坏（口径记录在 336 报告）。
+     * 调解器按此键做生命周期（[OpinionLifecycle]）：已 RESOLVED/SETTLED 的事件不再重复弹卡、
+     * 不再打回验收。
+     */
+    fun eventKeyOf(opinion: Opinion): String = "ev1:${opinion.evidence.first()}"
+
     private fun sameEvent(a: Opinion, b: Opinion): Boolean =
         a.evidence.first() == b.evidence.first() ||
             (a.source == b.source && normalize(a.gist) == normalize(b.gist))
