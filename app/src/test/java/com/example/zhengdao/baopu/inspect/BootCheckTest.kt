@@ -626,7 +626,7 @@ class BootCheckTest {
     @Test
     fun `判据⑨_简报里就有策略那一行`() {
         val strategy = BootPolicy.of(SessionShape(workspaceType = "资料库", hourOfDay = 14), emptyList())
-        val report = BootCheck.run(allGreen().copy(strategy = strategy), FakeSinks(), T0, 600L)
+        val report = BootCheck.run(allGreen().copy(strategyLine = strategy.line()), FakeSinks(), T0, 600L)
         val line = report.brief.single { it.contains("弹卡策略") }
         assertEquals("一行可见＝渲染层不再折行、也不改写", strategy.line(), line)
         assertTrue("三个计数都在：$line", line.contains("必弹") && line.contains("可弹") && line.contains("不弹"))
@@ -645,7 +645,7 @@ class BootCheckTest {
             inspector = InspectorReading(workspaceReadable = false, ledger = LedgerProbe.DIR_MISSING),
             physician = listOf(organ("学习器", OrganState.NOT_WIRED, Disposition.DEFECT)),
             audit = audit(InspectVerdict.HIT, 2),
-            strategy = BootPolicy.of(SessionShape(), emptyList()),
+            strategyLine = BootPolicy.of(SessionShape(), emptyList()).line(),
         )
         val out = BootCheck.run(readings, sinks, T0, 900L)
         assertEquals(10, out.brief.size)

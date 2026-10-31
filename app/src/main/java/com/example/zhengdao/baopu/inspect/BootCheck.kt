@@ -21,10 +21,10 @@
 //    [BootFinding.wire]。负例"不可用的能力仍假装能做"就红在这一格——没探过就是没探过，不许写成"11 项都可用"。
 // 4. **只弹一次靠事件键去重**：键是 `boot:<原因码>`，权威在装配层那本账上（[BootSinks.interruptShown]），
 //    不在本进程里。第二遍开检的简报照写（事实不许藏），卡不许再弹——这两件事必须分得开。
-// 5. **定策那一行由开检渲染，不由开检计算**：算档在 `agent/QuietMode.kt` 的 [com.example.zhengdao.baopu.agent.BootPolicy]
-//    （纯函数，同工作区同历史⇒同一行）。开检只把已经算好的 [BootReadings.strategy] 印进简报——
+// 5. **定策那一行由开检渲染，不由开检计算**：算档在 `agent/QuietMode.kt` 的 `BootPolicy`
+//    （纯函数，同工作区同历史⇒同一行）。开检只把已经算好的那一行文字 [BootReadings.strategyLine] 印进简报——
 //    派工单补充页说这行"开机产出、必须一行可见"，而开机可见的地方只有简报这一处。
-//    没算（`strategy == null`）就**不印这行**，也不印一句"策略未生成"占掉一行：那等于把没测过的东西写成一行事实。
+//    没算（`strategyLine == null`）就**不印这行**，也不印一句"策略未生成"占掉一行：那等于把没测过的东西写成一行事实。
 //
 // 与 290 的分工：斥候那一趟探测（读系统、写能力账）在它自己手里，本文件只读它最近一次的报告；
 // 与 291 的分工：御医那 14 个部位的普查与取数在它自己手里，本文件只读它给出的结论（"轻量"＝不重跑体检）。
@@ -33,11 +33,12 @@
 // （租约只含这三个新文件，`ZhengdaoApp.onCreate` 不在内）。所以判据①的"≤2 秒"这一批是
 // 按"一轮判定＋简报渲染"的耗时算的，真机整轮（含四个部位各自的取数）要等接线那批在机上量。
 // 同一条实话也说给补充页：那一行的**渲染**在这儿，但三颗按钮（全不弹／全部弹／按默认）
-// 的可见与点击归 UI 批——本批测的是 `BootStrategy.click(...)` 这个纯函数，
-// 测到的是"按下去这一档真的会重算、且必弹那一档一类不少"，**不是**"手机上真有三颗能点的按钮"。
+// 的可见与点击归 UI 批——本批测的是"策略那一行进简报、且必弹那一档一类不少"，
+// **不是**"手机上真有三颗能点的按钮"。那一行是装配层算好后**以字符串递进来**的：
+// 勘验层借 agent 的判据有门禁（InspectReadOnlyGateTest 负例③只许借 AnswerGate），
+// 而开检本来也只该印那一行、不该再算一遍档——两处各算，同一次开机就能出两个策略。
 package com.example.zhengdao.baopu.inspect
 
-import com.example.zhengdao.baopu.agent.BootStrategy
 import com.example.zhengdao.baopu.scout.Scout
 import com.example.zhengdao.baopu.scout.ScoutRecord
 import com.example.zhengdao.baopu.scout.ScoutState
@@ -204,12 +205,17 @@ internal data class BootReadings(
     /** 审计：最近 N 行有动作无账的那条勘验结论（null ⇒ 没跑过）。 */
     val audit: InspectFinding? = null,
     /**
-     * 开机定策：[com.example.zhengdao.baopu.agent.BootPolicy] 算好的那份策略（null ⇒ 这一轮没算，简报不印那一行）。
+     * 开机定策那一行：装配层用 `agent.BootPolicy` 算好后**以一行文字**递进来（null ⇒ 这一轮没算，简报不印）。
      *
      * 为什么开检只**印**不**算**：算档的输入（30 天卡处置／近 7 天误判／时段）都在装配层数，
      * 而"这一行必须开机可见"的落点只有简报——两处各算一遍，同一次开机就能出两个不同的策略。
+     * 传文字而不是传那个类型，还有一条硬理由：勘验层借 agent 的判据有门禁
+     * （`InspectReadOnlyGateTest` 负例③只许借 `AnswerGate`），判定层与档位算法各守各家。
+     *
+     * 只收一行：多行串会占掉简报的别的行，"一行可见"就成了空话——真递了换行进来，
+     * 顶破 [BootLimits.MAX_BRIEF_LINES] 那条 `check` 就是它的门禁（响亮地红，不静默吞掉）。
      */
-    val strategy: BootStrategy? = null,
+    val strategyLine: String? = null,
 )
 
 /** 一条部位结论（判据②：四部位各一条，不可用必带原因码）。 */
@@ -364,7 +370,7 @@ internal object BootCheck {
             verdicts = verdicts,
             brief = briefOf(
                 verdicts, healed.size, healFailures.size, rulings.size, unfinished.size,
-                blocking.size, interrupts.size, elapsedMs, readings.strategy
+                blocking.size, interrupts.size, elapsedMs, readings.strategyLine
             ),
             healed = healed,
             healFailures = healFailures,
@@ -586,7 +592,7 @@ internal object BootCheck {
         blocking: Int,
         cards: Int,
         elapsedMs: Long,
-        strategy: BootStrategy?,
+        strategyLine: String?,
     ): List<String> {
         val usable = verdicts.count { it.usable }
         val budget = if (elapsedMs <= BootLimits.MAX_BOOT_MS) "预算内" else "超预算"
@@ -601,7 +607,7 @@ internal object BootCheck {
         // 事实不许因为"已经弹过了"就从简报里消失：这一行按阻断条数写，弹几次另说。
         if (blocking > 0) lines += "④阻断 $blocking 项：本轮弹 $cards 次（弹过的不重复弹）"
         // 没算定策就不占一行：把"没测过"写成一行事实，等于给没发生的事编个读数。
-        strategy?.let { lines += it.line() }
+        strategyLine?.let { lines += it }
         check(lines.size <= BootLimits.MAX_BRIEF_LINES) {
             "简报 ${lines.size} 行，超了派工单的 ${BootLimits.MAX_BRIEF_LINES} 行上限"
         }
