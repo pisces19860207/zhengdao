@@ -47,6 +47,12 @@ class ZhengdaoApp : Application() {
         // 产 `Opinion(source=SCOUT)` ＋ 一页能力清单（`<工作区>/记忆/能力清单.md`）。
         // 必须**在 AppForeground.install 之后**：它要挂前/后台边沿监听（回前台＝用户可能刚改过权限）。
         com.example.zhengdao.baopu.scout.Scout.install(this)
+        // 262六格验收后补：玄览 WebView 远程调试（仅 debug 包）
+        // 没有这一行，chrome://inspect 看不到 App 内任何 WebView；
+        // 正式包 BuildConfig.DEBUG=false，行为逐字节不变。
+        if (BuildConfig.DEBUG) {
+            android.webkit.WebView.setWebContentsDebuggingEnabled(true)
+        }
         initWebViewDataDirectory()
         logSignature()
         keepalive()
