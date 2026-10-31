@@ -73,7 +73,7 @@ internal object TeachTools {
     const val ARG_DRIFT = "drift"
 
     /** drift 参数的合法值（与 [com.example.zhengdao.baopu.DriftChoice] 的 wire 一致）。 */
-    val DRIFT_WIRES = setOf("proceed", "new_version", "cancel")
+    val DRIFT_WIRES = setOf("proceed", "new_version", "cancel", "mute")
 
     /** 拿不到网关时的统一话术（与浏览器件同一把声音）。 */
     val NO_TEACH = "玄览还没打开：先在底部切到「玄览」并打开一个页面，再教我或让我回放。"
@@ -170,10 +170,10 @@ internal object TeachTools {
                 ),
                 ARG_DRIFT to jsonObjectOf(
                     "type" to "string",
-                    "enum" to jsonArrayOf("proceed", "new_version", "cancel"),
-                    "description" to "漂移闸的回答：上次回放因「页面与契约对不上」停下问你时，用户答了什么。" +
-                        "proceed=照跑（先记一笔）；new_version=这是新版（重新校准后跑）；cancel=算了不跑。" +
-                        "没问过就不要给这个参数。",
+                    "enum" to jsonArrayOf("proceed", "new_version", "cancel", "mute"),
+                    "description" to "漂移闸的回答：上次回放因「页面与记录对不上」停下问你时，用户答了什么。" +
+                        "proceed=照跑（先记一笔）；new_version=这是新版（重新校准后跑）；cancel=算了不跑；" +
+                        "mute=以后别问（不再提「重新学一遍」，只报用不了）。没问过就不要给这个参数。",
                 ),
             ),
             "required" to jsonArrayOf(ARG_NAME),

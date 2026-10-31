@@ -205,6 +205,86 @@ class DriftWireTest {
     }
 
     @Test
+    fun `W11_校准连拒两次_停机话给重新学的出路_只提一次`() {
+        putSkill("装车核对")
+        val reader = FakeReader(present = setOf("#order-list"))
+        repeat(3) { i -> gate(reader, choice = DriftChoice.PROCEED, nowMs = 1_000L + i) }
+        reader.presentSet = emptySet() // 页面彻底改版 ⇒ 读数全空 ⇒ 校准必拒
+
+        val first = gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 9_000L, stampText = "s2")
+        assertTrue(first is DriftGateOutcome.Stop)
+        assertFalse("第 1 次被拒只报错不出路：${(first as DriftGateOutcome.Stop).reason}",
+            first.reason.contains("要我重新学一遍吗"))
+        assertEquals("被拒要计数（跨回放记忆）", 1, DriftStore.load(ws, "装车核对").recalibrateRefusals)
+
+        val second = gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 10_000L, stampText = "s3")
+        assertTrue(second is DriftGateOutcome.Stop)
+        val ask = (second as DriftGateOutcome.Stop).reason
+        assertTrue("第 2 次必须给明确出路：$ask",
+            ask.contains("要我重新学一遍吗") && ask.contains("重新学 装车核对"))
+        // 314-B ②：带可核查的缺失项数（契约 2 个关键位置、现场 2 个都找不到）
+        assertTrue("要报几个里缺几个：$ask", ask.contains("2 个关键位置里有 2 个找不到了"))
+        // 314-B ③：带永久出口
+        assertTrue("要给「以后别问」的出口：$ask", ask.contains("以后别问"))
+        // 314-B ④：不露内部词
+        for (banned in listOf("DriftState", "契约漂移", "preflight", "Preflight")) {
+            assertFalse("文案不许露内部词（$banned）：$ask", ask.contains(banned))
+        }
+        assertTrue("提示只提一次的置位", DriftStore.load(ws, "装车核对").reteachAsked)
+        assertEquals(2, DriftStore.load(ws, "装车核对").recalibrateRefusals)
+
+        val third = gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 11_000L, stampText = "s4")
+        assertTrue(third is DriftGateOutcome.Stop)
+        assertFalse("314-B ①：第 3 次不许重复提：${(third as DriftGateOutcome.Stop).reason}",
+            third.reason.contains("要我重新学一遍吗"))
+        assertEquals("计数照常推进", 3, DriftStore.load(ws, "装车核对").recalibrateRefusals)
+        assertNotNull("出路只是话，不许自动解停用", DriftStore.load(ws, "装车核对").disabledAtMs)
+    }
+
+    @Test
+    fun `W12_校准成功_拒绝计数与提示位立刻归零`() {
+        putSkill("装车核对")
+        val reader = FakeReader(present = setOf("#order-list"))
+        repeat(3) { i -> gate(reader, choice = DriftChoice.PROCEED, nowMs = 1_000L + i) }
+        reader.presentSet = emptySet()
+        gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 9_000L, stampText = "s2") // 拒 1 次
+        gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 10_000L, stampText = "s3") // 拒 2 次＋提过出路
+        assertEquals(2, DriftStore.load(ws, "装车核对").recalibrateRefusals)
+        assertEquals(true, DriftStore.load(ws, "装车核对").reteachAsked)
+
+        // 页面恢复了（旧锚点都回来了）⇒ 校准成功 ⇒ 计数与提示位一起清零（"连续"二字靠这一格）
+        reader.presentSet = setOf("#order-list", "#status-badge")
+        val out = gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 11_000L, stampText = "s4")
+        assertTrue("校准该成：$out", out is DriftGateOutcome.Proceed)
+        val state = DriftStore.load(ws, "装车核对")
+        assertEquals("成功即归零", 0, state.recalibrateRefusals)
+        assertEquals("提过位也要复位（下一轮漂移是新的一轮）", false, state.reteachAsked)
+    }
+
+    @Test
+    fun `W14_以后别问_置位后永不再提_只报用不了`() {
+        putSkill("装车核对")
+        val reader = FakeReader(present = setOf("#order-list"))
+        repeat(3) { i -> gate(reader, choice = DriftChoice.PROCEED, nowMs = 1_000L + i) }
+        reader.presentSet = emptySet()
+        gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 9_000L, stampText = "s2") // 拒 1 次
+
+        // 用户答「以后别问」⇒ 置位＋确认，不跑任何页面动作
+        val muted = gate(reader, choice = DriftChoice.MUTE_RETEACH, nowMs = 9_500L, stampText = "s2b")
+        assertTrue(muted is DriftGateOutcome.Stop)
+        assertTrue("要确认静音：${(muted as DriftGateOutcome.Stop).reason}",
+            muted.reason.contains("只报用不了"))
+        assertEquals(true, DriftStore.load(ws, "装车核对").reteachMuted)
+
+        // 之后再被拒：哪怕到了第 2 次，也不许再提「重新学一遍」（314-B ③ 永久闭嘴）
+        val second = gate(reader, choice = DriftChoice.NEW_VERSION, nowMs = 10_000L, stampText = "s3")
+        assertTrue(second is DriftGateOutcome.Stop)
+        assertFalse("静音后不许再提出路：${(second as DriftGateOutcome.Stop).reason}",
+            (second as DriftGateOutcome.Stop).reason.contains("要我重新学一遍吗"))
+        assertEquals("静音不许改计数口径", 2, DriftStore.load(ws, "装车核对").recalibrateRefusals)
+    }
+
+    @Test
     fun `W4b_停用不许照跑绕过_只能校准`() {
         putSkill("装车核对")
         val reader = FakeReader(present = setOf("#order-list"))
@@ -340,6 +420,7 @@ class DriftWireTest {
         assertNull(DriftChoice.ofWire("whatever"))
         assertEquals(DriftChoice.PROCEED, DriftChoice.ofWire("proceed"))
         assertEquals(DriftChoice.NEW_VERSION, DriftChoice.ofWire("new_version"))
+        assertEquals(DriftChoice.MUTE_RETEACH, DriftChoice.ofWire("mute"))
         assertEquals(DriftChoice.CANCEL, DriftChoice.ofWire("cancel"))
         assertEquals(DriftChoice.ASK, DriftChoice.ofWire("ask"))
     }

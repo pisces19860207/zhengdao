@@ -186,6 +186,9 @@ internal object DriftStore {
         state.disabledAtMs?.let { put("disabledAt", it) }
         state.disabledWhy?.let { put("disabledWhy", it) }
         state.lastRecalibratedAtMs?.let { put("recalibratedAt", it) }
+        if (state.recalibrateRefusals > 0) put("recalibrateRefusals", state.recalibrateRefusals)
+        if (state.reteachAsked) put("reteachAsked", true)
+        if (state.reteachMuted) put("reteachMuted", true)
     }
 
     fun fromJson(text: String): DriftState? = runCatching {
@@ -201,6 +204,9 @@ internal object DriftStore {
             disabledWhy = o.optString("disabledWhy").takeIf { it.isNotBlank() },
             recalibrations = o.optInt("recalibrations", 0).coerceAtLeast(0),
             lastRecalibratedAtMs = o.optLong("recalibratedAt", 0L).takeIf { it > 0L },
+            recalibrateRefusals = o.optInt("recalibrateRefusals", 0).coerceAtLeast(0),
+            reteachAsked = o.optBoolean("reteachAsked", false),
+            reteachMuted = o.optBoolean("reteachMuted", false),
         )
     }.getOrNull()
 }

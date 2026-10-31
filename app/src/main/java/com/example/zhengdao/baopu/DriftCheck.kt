@@ -163,6 +163,16 @@ internal data class DriftState(
     /** 重新校准次数（每次都是人点的"这是新版"）。 */
     val recalibrations: Int = 0,
     val lastRecalibratedAtMs: Long? = null,
+    /**
+     * 连续「校准被拒」次数（314-B 加：人确认了"这是新版"但现场读数算不出新指纹 ⇒ +1，
+     * 校准成功 ⇒ 归零）。到 [DriftWire.RETEACH_AFTER] 次 ⇒ 停机话里给「重新学一遍」的出路，
+     * 不让用户卡在只有"拒"的死路上。判据函数不读它——这是体验兜底，不是比对逻辑。
+     */
+    val recalibrateRefusals: Int = 0,
+    /** 出路提示只提一次：提过就置位，第 3/4 次被拒不再重复（314-B ①）。校准成功 ⇒ 复位。 */
+    val reteachAsked: Boolean = false,
+    /** 用户说了「以后别问」⇒ 置位，之后被拒只报"用不了"，永不提重学（314-B ③；永久，用户明说的）。 */
+    val reteachMuted: Boolean = false,
 )
 
 /** 记一次比对的结论（纯函数产物；落盘由 [DriftStore] 照单写）。 */

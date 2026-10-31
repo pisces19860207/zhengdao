@@ -161,6 +161,13 @@ class TeachToolsTest {
         )
         assertEquals("replay:查货/-/new_version", passed.calls.single())
 
+        val mute = FakeGw(trusted = listOf("m.example.com"))
+        runTool(
+            "browser_replay_skill", mute,
+            JSONObject().put("name", "查货").put("drift", "mute"),
+        )
+        assertEquals("314-B ③：mute 是合法回答，照常透传", "replay:查货/-/mute", mute.calls.single())
+
         val bad = FakeGw(trusted = listOf("m.example.com"))
         val out = runTool(
             "browser_replay_skill", bad,

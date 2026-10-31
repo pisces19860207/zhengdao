@@ -23,6 +23,7 @@
 //   这里不替它空转一遍（也没有页面可问）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.RunLog
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
@@ -74,6 +75,9 @@ enum class DriftChoice(val wire: String) {
     /** 这是新版：重新校准（写回契约）后跑。 */
     NEW_VERSION("new_version"),
 
+    /** 「以后别问」（314-B ③）：不再提「重新学一遍」，之后被拒只报用不了。 */
+    MUTE_RETEACH("mute"),
+
     /** 算了：不跑也不记（没执行就不算一次现实漂移）。 */
     CANCEL("cancel"),
     ;
@@ -102,10 +106,15 @@ internal object DriftWire {
     /** 校准的确认人（本批唯一确认通道＝人在对话里答「这是新版」，由 agent 转述）。 */
     const val CONFIRMED_BY = "用户（对话里确认：这是新版）"
 
+    /** 连续几次「校准被拒」⇒ 停机话里给「重新学一遍」的出路（314-B；派工口径写死 2，不是可调参数）。 */
+    const val RETEACH_AFTER = 2
+
     /** 一次闸判定的装配（分支共享的上下文；免得每个分支都拖九个参数）。 */
     private class GateCtx(
         val pre: DriftPreflight,
         val live: DriftObservation.Web,
+        /** 契约里登记的选择器原串（出路提示要报「几个里缺几个」，可核查）。 */
+        val contractSelectors: List<String>,
         val projectRoot: File,
         val name: String,
         val unfinishedDirs: List<File>,
@@ -144,7 +153,7 @@ internal object DriftWire {
         val r = reader ?: return DriftGateOutcome.Proceed
         val live = DriftProbe.observe(r.currentUrl(), r.selectorPresence(webFp.selectors))
         val pre = DriftCheck.preflight(fps, live, DriftStore.load(projectRoot, name))
-        val ctx = GateCtx(pre, live, projectRoot, name, unfinishedDirs, globalRoot, personaFiles, stampText, nowMs)
+        val ctx = GateCtx(pre, live, webFp.selectors, projectRoot, name, unfinishedDirs, globalRoot, personaFiles, stampText, nowMs)
         return when (pre.gate) {
             DriftGate.RUN -> onRun(ctx)
             DriftGate.CONFIRM -> onConfirm(ctx, choice)
@@ -160,7 +169,7 @@ internal object DriftWire {
         return DriftGateOutcome.Proceed
     }
 
-    /** CONFIRM＝问人三选一（ASK 把问题交回去；PROCEED 先记账再跑；NEW_VERSION 校准；CANCEL 不跑不记）。 */
+    /** CONFIRM＝问人三选一（ASK 把问题交回去；PROCEED 先记账再跑；NEW_VERSION 校准；MUTE 闭嘴；CANCEL 不跑不记）。 */
     private fun onConfirm(ctx: GateCtx, choice: DriftChoice): DriftGateOutcome = when (choice) {
         DriftChoice.ASK -> DriftGateOutcome.Ask(askLine(ctx.pre))
         DriftChoice.PROCEED -> {
@@ -168,6 +177,7 @@ internal object DriftWire {
             if (upd?.disabledNow == true) DriftGateOutcome.Stop(disabledLine(upd)) else DriftGateOutcome.Proceed
         }
         DriftChoice.NEW_VERSION -> recalibrate(ctx)
+        DriftChoice.MUTE_RETEACH -> muteReteach(ctx)
         DriftChoice.CANCEL -> DriftGateOutcome.Stop(CANCEL_LINE)
     }
 
@@ -177,12 +187,19 @@ internal object DriftWire {
      */
     private fun onDisabled(ctx: GateCtx, choice: DriftChoice): DriftGateOutcome = when (choice) {
         DriftChoice.NEW_VERSION -> recalibrate(ctx)
+        DriftChoice.MUTE_RETEACH -> muteReteach(ctx)
         else -> DriftGateOutcome.Stop(
             ctx.pre.reason + "（确认这是新版：回放时用 drift=new_version）",
         )
     }
 
-    /** 「这是新版」的处置：校准成了 ⇒ 照常跑；被拒（人没确认/读数不全）⇒ 把原因交回去。 */
+    /**
+     * 「这是新版」的处置（314-B 补体验兜底）：
+     * - 成了 ⇒ 照常跑，并把「连续被拒／提过出路」两格清零（成功的那次校准自己不清——判据层不知道它们的存在）；
+     * - 被拒（人确认了但现场读数算不出新指纹）⇒ 计数 +1；连到第 [RETEACH_AFTER] 次 ⇒
+     *   停机话里给「重新学一遍」的出路——**只提一次**（[DriftState.reteachAsked] 置位后不再重复）；
+     *   用户说了「以后别问」（[DriftState.reteachMuted]）⇒ 永不再提，只报用不了。
+     */
     private fun recalibrate(ctx: GateCtx): DriftGateOutcome = when (
         val done = DriftStore.recalibrate(
             projectRoot = ctx.projectRoot,
@@ -195,9 +212,69 @@ internal object DriftWire {
             nowMs = ctx.nowMs,
         )
     ) {
-        is RecalibrateOutcome.Done -> DriftGateOutcome.Proceed
-        is RecalibrateOutcome.Refused -> DriftGateOutcome.Stop(done.reason)
+        is RecalibrateOutcome.Done -> {
+            if (!DriftStore.save(
+                    ctx.projectRoot, ctx.name,
+                    done.state.copy(recalibrateRefusals = 0, reteachAsked = false),
+                )
+            ) {
+                RunLog.log("校准拒绝计数归零写盘失败：${ctx.name}（下次校准成功前旧计数仍在）")
+            }
+            DriftGateOutcome.Proceed
+        }
+        is RecalibrateOutcome.Refused -> {
+            val loaded = DriftStore.load(ctx.projectRoot, ctx.name)
+            val refusals = loaded.recalibrateRefusals + 1
+            val next = loaded.copy(recalibrateRefusals = refusals)
+            if (!DriftStore.save(ctx.projectRoot, ctx.name, next)) {
+                RunLog.log("校准拒绝计数写盘失败：${ctx.name}（本次判定照常返回，盘上可能还是旧计数）")
+            }
+            val offer = !next.reteachMuted && !next.reteachAsked && refusals >= RETEACH_AFTER
+            if (offer) {
+                if (!DriftStore.save(ctx.projectRoot, ctx.name, next.copy(reteachAsked = true))) {
+                    RunLog.log("出路提示置位写盘失败：${ctx.name}")
+                }
+                DriftGateOutcome.Stop(
+                    reteachLine(ctx.name, done.reason, ctx.contractSelectors.size, missingCount(ctx)),
+                )
+            } else {
+                DriftGateOutcome.Stop(done.reason)
+            }
+        }
     }
+
+    /** 契约里记着、现场却不在了的关键位置个数（出路提示要报「几个里缺几个」，可核查）。 */
+    private fun missingCount(ctx: GateCtx): Int {
+        val hits = ctx.live.selectors.map { it.trim() }.toSet()
+        return ctx.contractSelectors.count { it.trim() !in hits }
+    }
+
+    /**
+     * 用户说了「以后别问」（314-B ③）：置位并确认——之后这条技能被拒只报用不了，永不提重学。
+     * 只闭「提重学」的嘴：用户主动说「这是新版」时校准照做（人的主动指令不截）。
+     */
+    private fun muteReteach(ctx: GateCtx): DriftGateOutcome {
+        val loaded = DriftStore.load(ctx.projectRoot, ctx.name)
+        if (!DriftStore.save(ctx.projectRoot, ctx.name, loaded.copy(reteachMuted = true))) {
+            RunLog.log("静音置位写盘失败：${ctx.name}")
+        }
+        return DriftGateOutcome.Stop(MUTED_LINE)
+    }
+
+    /**
+     * 第 [RETEACH_AFTER] 次被拒的停机话（314-B）：不只报错，给一条明确的出路——
+     * 带缺失项数（「几个里缺几个」，可核查），带「以后别问」的永久出口；不露内部词。
+     */
+    fun reteachLine(name: String, reason: String, total: Int, missing: Int): String {
+        val count = if (missing > 0) "这个页面的 $total 个关键位置里有 $missing 个找不到了，光改记录修不好。\n" else ""
+        return reason + "\n" + count +
+            "这个网站改版了，要我重新学一遍吗？回「重新学 $name」就带你重录一遍（旧版留有备份）；" +
+            "不想再被问，回「以后别问」，之后只报用不了。"
+    }
+
+    /** 闭嘴确认（314-B ③）。 */
+    val MUTED_LINE = "好：以后这条技能被拒时只报用不了，不再提重新学。" +
+        "想恢复提示，随时说「这是新版」重新校准就行。"
 
     private fun record(ctx: GateCtx, verdict: DriftVerdict): DriftUpdate =
         DriftStore.recordVerdict(ctx.projectRoot, ctx.name, verdict, ctx.nowMs, ctx.unfinishedDirs)
