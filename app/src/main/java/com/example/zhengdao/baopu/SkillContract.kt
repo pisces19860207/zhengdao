@@ -210,14 +210,7 @@ internal object SkillContract {
 
                 SECTION_SUCCESS -> applySuccessLine(no, rest, success, errors)
 
-                SECTION_PROTECTED -> {
-                    val clause = unquote(rest)
-                    if (clause.isEmpty()) {
-                        errors += "第 $no 行：$SECTION_PROTECTED 这条是空的——受保护约束要写成人话一句（例：不点提交/保存/支付类按钮）"
-                    } else if (clause !in protectedClauses) {
-                        protectedClauses += clause
-                    }
-                }
+                SECTION_PROTECTED -> applyProtectedLine(no, rest, protectedClauses, errors)
 
                 SECTION_FINGERPRINT -> DriftCheck.parseLine(no, rest, fingerprints, errors)
 
@@ -227,6 +220,27 @@ internal object SkillContract {
         if (errors.isNotEmpty()) return Parsed.Invalid(errors)
         val contract = Contract(applies.toList(), success.toList(), protectedClauses.toList(), fingerprints.toList())
         return Parsed.Contracted(contract, contract.missingSections())
+    }
+
+    /**
+     * 解析一行 `protected <一句话>`（2026-10-31 抽出）。
+     *
+     * 为什么要拆：第三百批给 `parse` 加了 `fingerprint` 段（多一个 when 分支），复杂度到 16 越线；
+     * 而 `protected` 这三行本来就是一个独立判据（空/重复/收下），搬出去就把 `parse` 拉回 when 分发本身。
+     * 错误文案逐字保留。
+     */
+    private fun applyProtectedLine(
+        no: Int,
+        rest: String,
+        out: MutableList<String>,
+        errors: MutableList<String>,
+    ) {
+        val clause = unquote(rest)
+        if (clause.isEmpty()) {
+            errors += "第 $no 行：$SECTION_PROTECTED 这条是空的——受保护约束要写成人话一句（例：不点提交/保存/支付类按钮）"
+        } else if (clause !in out) {
+            out += clause
+        }
     }
 
     /**
