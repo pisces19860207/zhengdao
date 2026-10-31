@@ -36,6 +36,8 @@ import com.example.zhengdao.baopu.inspect.Budget
 import com.example.zhengdao.baopu.inspect.LawRef
 import com.example.zhengdao.baopu.inspect.Opinion
 import com.example.zhengdao.baopu.inspect.OpinionAdapter
+import com.example.zhengdao.baopu.inspect.OpinionLifecycle
+import com.example.zhengdao.baopu.inspect.OpinionMerger
 import com.example.zhengdao.baopu.inspect.Severity
 import com.example.zhengdao.baopu.inspect.Source
 import com.example.zhengdao.baopu.policy.DraftCounts
@@ -113,6 +115,18 @@ internal enum class OpinionWhy(val wire: String) {
      * 回放时就把"学到的克制"读成了"法条没说话"——判据①要的正是能把它单独挑出来。
      */
     EXPERIENCE_HIT("experience_hit"),
+
+    /**
+     * 御案处置完成（336 P2 · 意见处置闭合）：该事件的卡已被拍板/应答 ⇒ 事件 RESOLVED，
+     * 不再拦验收、不再因重试重复弹。追加式账本上这是**新的一行**（同事件键、phase=resolved）。
+     */
+    DISPOSITION("disposition"),
+
+    /**
+     * DEFERRED 满 3 轮自动结案（336 P2）：不是"学到的克制"也不是"该不该弹"的判定——
+     * 是生命周期到点收口。压在队列里 3 轮没人处置的意见自动 SETTLED 并落账（账是追加式）。
+     */
+    AUTO_SETTLED("auto_settled"),
     ;
 
     companion object {
@@ -156,6 +170,12 @@ internal data class Ruling(
     val draft: String = "",
     /** 命中/被否时那条规则的机器键（回放能说出"是哪一版表的哪一条"）。 */
     val draftRule: String = "",
+    /**
+     * 336 P2 · 生命周期相位（[OpinionLifecycle.Phase.wire]：open/deferred/resolved/settled）。
+     * 追加式账本：处置/自动结案是**新的一行**（同事件键、新相位）；回放按事件键取最新相位。
+     * 老行没有这一列 ⇒ 读成 open（旧账语义不变）。加字段不升 VERSION（本文件头既有约定）。
+     */
+    val phase: String = OpinionLifecycle.Phase.OPEN.wire,
 ) {
     /** 当日（本地时区）。 */
     val day: String get() = OpinionWiring.dayOf(atMs).toString()
@@ -179,6 +199,7 @@ internal data class Ruling(
         .put("exempt", exemptReason ?: "")
         .put("draft", draft)
         .put("drule", draftRule)
+        .put("phase", phase)
         .put("ev", JSONArray(opinion.evidence))
 
     companion object {
@@ -215,6 +236,8 @@ internal data class Ruling(
                     // 298 加的两列：老行没这两个键 ⇒ 读成"没查表"，不猜、不补一个假的 miss
                     draft = o.optString("draft"),
                     draftRule = o.optString("drule"),
+                    // 老行没有 phase 列 ⇒ 读成 open（旧账语义不变）
+                    phase = o.optString("phase", OpinionLifecycle.Phase.OPEN.wire),
                 )
             }.getOrNull()
         }
@@ -352,6 +375,19 @@ internal object OpinionWiring {
     private const val BY_CALL_CAP = 512
 
     /**
+     * 336 P2 · 生命周期状态（事件键 → 相位）。事件键＝[OpinionMerger.eventKeyOf]
+     * （sameEvent 第一判据：证据首项）——同一动作的重试提交（新 callId）并到同一事件，
+     * 不再产新意见、不再重复弹卡、不再重复打回验收（282 D 组 C5 死循环的根因）。
+     */
+    private val eventStates = HashMap<String, OpinionLifecycle.State>()
+
+    /** 336 P2：事件键 → 该事件的第一条判定（重试并入它；处置/结案行以它为底）。 */
+    private val firstRulings = HashMap<String, Ruling>()
+
+    /** 336 P2：同事件重试被并入的次数（观测/验收读数）。 */
+    private var eventRetries = 0
+
+    /**
      * **幂等表**（`toolCallId + kind` → 那条判定）：同一次调用只产一条意见。
      *
      * 为什么必须有：越界挂了**两处**（②段 `Guarded.Ask` 与 ③段矩阵），②段是常见路径、
@@ -478,6 +514,8 @@ internal object OpinionWiring {
             roundKey = mark.first
             roundPops = 0
             seen.clear()
+            // 336 P2：换轮 ⇒ 每个 DEFERRED 事件计一轮；满 3 轮自动 SETTLED 并落账（追加式）。
+            advanceDeferredRounds(now)
         }
         // 幂等（**先合并、后入账**）：同一次调用同一种意见，只判一次、只记一笔。
         // 第二次观察不进预算、不写账，只把证据并进内存里那一条（账是追加式，行不改写）。
@@ -489,6 +527,20 @@ internal object OpinionWiring {
                 RunLog.log("抱朴意见：合并（同调用同类别）${first.id}｜${opinion.evidence.firstOrNull()}")
                 return merged
             }
+        }
+        // 336 P2 · 事件键幂等（口径 §一）：同一**事件**的重试提交并入首条——
+        // 已处置/已结案的事件原样返回（不弹、不记新账）；未处置的并证据进首条（预算不重复消耗）。
+        val eventKey = OpinionMerger.eventKeyOf(opinion)
+        eventStates[eventKey]?.let { st ->
+            eventRetries += 1
+            val first = firstRulings[eventKey]!!
+            RunLog.log("抱朴意见：事件重试并入（$eventKey｜相位=${st.wire}）｜${opinion.evidence.firstOrNull()}")
+            if (OpinionLifecycle.blocksAcceptance(st)) {
+                val merged = first.copy(opinion = mergeOpinion(first.opinion, opinion))
+                firstRulings[eventKey] = merged
+                return merged
+            }
+            return first
         }
         // 同轮同事件只判一次（同一条意见被两个工具撞出来不该记两笔）
         val key = "${opinion.source.name}:${opinion.gist}:$tool:${opinion.evidence.first()}"
@@ -538,10 +590,102 @@ internal object OpinionWiring {
         seen[key] = ruling
         if (callId.isNotBlank()) byCall["$callId:${opinion.lawRef.name}"] = ruling
         if (byCall.size > BY_CALL_CAP) byCall.clear()
-        record(ruling)
-        RunLog.log(logLine(ruling))
-        return ruling
+        // 336 P2：新事件注册生命周期；相位随判定走（POP=等处置，DEFER=队列，SKIP 不改相）。
+        val lifecycleEvent = when (verdict.decision) {
+            OpinionDecision.POP -> OpinionLifecycle.Event.POPPED
+            OpinionDecision.DEFER -> OpinionLifecycle.Event.DEFERRED
+            OpinionDecision.SKIP -> OpinionLifecycle.Event.SKIPPED
+        }
+        val lifeState = OpinionLifecycle.advance(
+            eventStates[eventKey] ?: OpinionLifecycle.initial(),
+            lifecycleEvent,
+        )
+        eventStates[eventKey] = lifeState
+        firstRulings[eventKey] = ruling
+        val phased = ruling.copy(phase = lifeState.wire)
+        seen[key] = phased
+        if (callId.isNotBlank()) byCall["$callId:${opinion.lawRef.name}"] = phased
+        record(phased)
+        RunLog.log(logLine(phased))
+        return phased
     }
+
+    /**
+     * 336 P2 · 换轮推进：每个 DEFERRED 事件计一轮；[OpinionLifecycle.DEFER_AUTO_SETTLE_ROUNDS]
+     * 轮没人处置 ⇒ 自动 SETTLED 并**追加一行结案账**（why=AUTO_SETTLED，同事件键）。
+     * 由 [submit] 的换轮分支驱动——不需要 RunEngine 改一行（轮源已由 installRoundSource 供给）。
+     */
+    private fun advanceDeferredRounds(now: Long) {
+        val deferred = eventStates.entries.filter { it.value.phase == OpinionLifecycle.Phase.DEFERRED }
+        for ((ek, st) in deferred) {
+            val ns = OpinionLifecycle.advance(st, OpinionLifecycle.Event.DEFERRED)
+            eventStates[ek] = ns
+            if (ns.phase == OpinionLifecycle.Phase.SETTLED) {
+                val first = firstRulings[ek] ?: continue
+                seq += 1
+                val row = Ruling(
+                    id = "op:$now:deferred:$seq",
+                    opinion = first.opinion,
+                    decision = OpinionDecision.DEFER,
+                    why = OpinionWhy.AUTO_SETTLED,
+                    detail = OpinionLifecycle.autoSettleWhy(),
+                    round = roundKey,
+                    royalToday = royalToday,
+                    atMs = now,
+                    tool = first.tool,
+                    phase = ns.wire,
+                )
+                record(row)
+                RunLog.log(logLine(row))
+            }
+        }
+    }
+
+    /**
+     * 336 P2 · 御案处置回写：事件的卡被拍板/应答后由御案侧调用（评测里＝模拟用户应答）。
+     * 事件转 RESOLVED 并**追加一行处置账**（同事件键、phase=resolved）——已处置的事件不再
+     * 拦验收（[acceptanceBlockers]）、不再因重试重复弹卡（事件键幂等分支原样返回）。
+     *
+     * @param how 处置方式的一句人话（进账 detail；"同意"/"驳回：理由"等，原样入账）。
+     * @return 处置后的那一行账；事件不存在为 null。
+     */
+    @Synchronized
+    fun onDisposition(eventKey: String, how: String, now: Long = System.currentTimeMillis()): Ruling? {
+        val first = firstRulings[eventKey] ?: return null
+        val st = eventStates[eventKey] ?: return null
+        val ns = OpinionLifecycle.advance(st, OpinionLifecycle.Event.DISPOSITIONED)
+        eventStates[eventKey] = ns
+        seq += 1
+        val row = Ruling(
+            id = "op:$now:disposition:$seq",
+            opinion = first.opinion,
+            decision = first.decision,
+            why = OpinionWhy.DISPOSITION,
+            detail = "御案处置：$how",
+            round = roundKey,
+            royalToday = royalToday,
+            atMs = now,
+            tool = first.tool,
+            phase = ns.wire,
+        )
+        record(row)
+        RunLog.log(logLine(row))
+        return row
+    }
+
+    /** 336 P2 · 右相 C5 的口径：只有还在 OPEN/DEFERRED 的意见拦验收（已处置/已结案不拦）。 */
+    fun acceptanceBlockers(): List<Opinion> = eventStates.entries.mapNotNull { (ek, st) ->
+        if (OpinionLifecycle.blocksAcceptance(st)) firstRulings[ek]?.opinion else null
+    }
+
+    /** 336 P2 观测：同事件重试被并入的次数（验收读数：重试用例必须 >0）。 */
+    fun eventRetryCount(): Int = eventRetries
+
+    /** 336 P2 观测：本进程内出现过的事件数（＝意见判定的去重口径）。 */
+    fun distinctEventCount(): Int = eventStates.size
+
+    /** 336 P2 观测：DEFERRED 满 3 轮自动结案的账行数（回放账里 why=auto_settled 的行）。 */
+    fun autoSettledCount(): Int = replay().count { it.why == OpinionWhy.AUTO_SETTLED }
 
     /**
      * 第二百九十八批：**判决时真查表**——两级裁决落在调解器的这一道口上。
@@ -761,6 +905,10 @@ internal object OpinionWiring {
         seen.clear()
         byCall.clear()
         memory.clear()
+        // 336 P2：生命周期三件套同属这条链路，谁用谁还
+        eventStates.clear()
+        firstRulings.clear()
+        eventRetries = 0
         roundSource = null
         // 自决单是同一条链路的下游账本：清账必须一起清，否则用例之间互相污染
         SelfRulingLedger.resetForTest()
