@@ -1,0 +1,20 @@
+{
+  "id": "cand-309-askheavy",
+  "title": "L20 对拍：技能转正一律先问",
+  "source": "人提（309 演练·多问阈值用）",
+  "ops": [
+    {
+      "op": "add_rule",
+      "rule": {
+        "id": "cand-L20-promote-ask",
+        "law": "L20",
+        "action": "ask",
+        "match": {
+          "kinds": [
+            "skill_promote"
+          ]
+        }
+      }
+    }
+  ]
+}

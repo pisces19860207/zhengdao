@@ -87,19 +87,29 @@ internal sealed interface DriftFingerprint {
  *
  * 每个字段都可空：空读数在 [DriftCheck.compare] 里判 [DriftVerdict.NoData]，
  * **绝不当成"一致"**——"判不了"与"对得上"是两回事。
+ *
+ * **接线口径（314 照这个喂，别猜）**：
+ * - `selectors` 是**存在性结果**——只放"页面上确实命中了"的那几条，而且**原样回抄契约里的字符串**
+ *   （比对是逐字相等：`trim()` 后 `in` 判断，不做 CSS 归一化，别把 `#a > .b` 重写成别的形状）。
+ *   **不是"要查的清单"**：把契约里那份清单原样传进来，比对就永远一致，等于把这道闸关掉。
+ * - `selectors` 传空列表 ⇒ 判不了（NoData），不是"一条都没有"；这条路上闸会降到 CONFIRM，但不计漂移次数。
+ * - `url` 传当前页地址即可：scheme／端口／路径由 [SkillApplicability.hostOf] 剥掉并转小写，null ⇒ 判不了。
  */
 internal sealed interface DriftObservation {
 
     val target: DriftTarget
 
+    /** @param url 当前页地址（可空）；@param selectors **命中的**选择器（原样字符串，可空） */
     data class Web(val url: String?, val selectors: List<String>) : DriftObservation {
         override val target: DriftTarget get() = DriftTarget.WEB
     }
 
+    /** @param name 文件名（用来取扩展名，可空）；@param headers 实际读到的表头，一条一列 */
     data class FileShape(val name: String?, val headers: List<String>) : DriftObservation {
         override val target: DriftTarget get() = DriftTarget.FILE
     }
 
+    /** @param path 实际执行的可执行文件路径；@param version 原样抄的版本串（整串比对） */
     data class Command(val path: String?, val version: String?) : DriftObservation {
         override val target: DriftTarget get() = DriftTarget.CMD
     }
@@ -352,6 +362,23 @@ internal object DriftCheck {
      *
      * 停用是硬状态（只有重新校准能解），所以排在最前——否则"这次刚好又对上了"会把停用悄悄解开，
      * 那就成了"漂移自己恢复"，正是本批要防的假话。
+     *
+     * **调用顺序（314 接线照抄，本函数不落盘、不提问、不执行）**：
+     * 1. 指纹：`(SkillContract.parse(md) as? Parsed.Contracted)?.contract?.fingerprints.orEmpty()`；
+     * 2. 状态：`DriftStore.load(projectRoot, name)`；
+     * 3. 现场：`DriftObservation.Web(url = 当前页地址, selectors = 只放命中的选择器)`；
+     * 4. 本函数 ⇒ [DriftPreflight.gate]：
+     *    - [DriftGate.RUN] ⇒ 照常跑；
+     *    - [DriftGate.CONFIRM] ⇒ 先问人，三选一：
+     *      **照跑**（不改契约）⇒ 先把这次的 [DriftPreflight.verdict] 交给
+     *      `DriftStore.recordVerdict(projectRoot, name, verdict, nowMs, dirs)` 再跑——不记就永远数不到 3；
+     *      **这是新版** ⇒ 直接 `DriftStore.recalibrate(...)`（确认人非空），它自己复位，**不要再记 verdict**
+     *      （记了会把刚清掉的计数又加回去）；**算了** ⇒ 不跑也不记（没执行就不算一次"现实漂移"）。
+     *    - [DriftGate.DISABLED] ⇒ 不跑，把 [DriftPreflight.reason] 原样说给用户（此时 verdict 为 null，不记账）。
+     *
+     * @param fingerprints 契约里那份（可能为空：没有指纹 ⇒ 直接 RUN，不做比对）
+     * @param live 现场读数（[DriftObservation] 的字段口径见它自己的注释：selectors 是**命中结果**）
+     * @param state 历史状态（[DriftStore.load]）
      */
     fun preflight(
         fingerprints: List<DriftFingerprint>,

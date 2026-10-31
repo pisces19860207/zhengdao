@@ -1039,6 +1039,19 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 第三百零四批：评测自动触发的调用点（[com.example.zhengdao.baopu.agent.EngineEvent.Settled]）。
+     *
+     * 与 [scheduleProdEvalOnSettle] 的分工：那边是**网络**评测（烧额度，用户拨了开关才跑）；
+     * 这边是**离线**机械评测（零额度，事件驱动，限频在引擎里）。取数与判定全在
+     * `EvalTriggerWiring`／`EvalTriggerEngine`，这里只递 Context／库／会话号——
+     * 唯一的生产调用点（源级门禁 `EvalTriggerSourceGateTest` 盯着，删了就红）。
+     */
+    private fun evalTriggerOnSettle() {
+        val sid = sessionId ?: return
+        com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring.onRunSettled(appCtx, db, sid, scope)
+    }
+
+    /**
      * 网络通不通（节流判据之一）。
      *
      * 与 [com.example.zhengdao.ui.EnvHealth] 的体检同款取法，但只做轻量判断：
@@ -3947,6 +3960,10 @@ internal class BaopuChatController(context: Context) {
                 // 第一百六十八批：ProdEval 调用点（收尾触发；闸门默认关，
                 // 关着这一行除了读一次 prefs 什么都不做；IO 上跑，不阻塞聊天）。
                 scheduleProdEvalOnSettle()
+                // 第三百零四批：评测自动触发（四条件：终态 FAILED/回滚、连续纠错、
+                // 成功率跌破阈值、手动预留；限频后跑离线机械评测，证据进账本与
+                // 未办成单/提案——不弹卡；IO 上跑，不阻塞聊天）。
+                evalTriggerOnSettle()
                 // 第一百零三批 §B②：被前置校验挡下的候选不出卡，但要给一句人话原因
                 // （审计行在采样处已落 `[skill-body-selfcheck]` 锚）。
                 noteFilteredLearn()

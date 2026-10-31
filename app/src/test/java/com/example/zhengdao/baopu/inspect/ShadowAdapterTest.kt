@@ -292,7 +292,7 @@ class ShadowAdapterTest {
         val ws = workspace()
         val led = ledgerRoot()
         val r = ShadowAdapter.rehearse(
-            input(ws, tool = "delete_path", declared = listOf("notes/a.md"), ledger = led),
+            input(ws, tool = "bash", declared = listOf("notes/a.md"), ledger = led),
             override = FileShadowSandbox(),
         )
         assertEquals(ShadowVerdict.UNVERIFIABLE, r.outcome.verdict)
@@ -306,15 +306,23 @@ class ShadowAdapterTest {
     }
 
     @Test
-    fun `§2_覆盖表是闭集两条`() {
-        assertEquals(listOf("write_file", "edit_file"), SHADOW_TOOLS)
+    fun `§2_覆盖表是闭集306起五件加两件不适用`() {
+        // 296 交付时是 write/edit 两件；306 开工令点名逐工具接：move_path → delete_path →
+        // convert_encoding（副本里真跑真验），phone_dial/notify 无文件副作用判 NOT_APPLICABLE。
+        assertEquals(
+            listOf("write_file", "edit_file", "move_path", "delete_path", "convert_encoding"),
+            SHADOW_TOOLS,
+        )
         assertTrue(ShadowAdapter.supported("write_file"))
         assertTrue(ShadowAdapter.supported("edit_file"))
-        listOf("delete_path", "move_path", "bash", "browser_click", "").forEach {
+        listOf("phone_dial", "notify").forEach {
+            assertTrue("$it 没有文件副作用，适配器认得它（判 NOT_APPLICABLE）", ShadowAdapter.supported(it))
+        }
+        listOf("bash", "browser_click", "").forEach {
             assertFalse("$it 没接适配器，不许 supported()", ShadowAdapter.supported(it))
         }
-        assertEquals(4, ShadowUnverifiable.ALL.size)
-        assertEquals(4, ShadowUnverifiable.ALL.distinct().size)
+        assertEquals(5, ShadowUnverifiable.ALL.size)
+        assertEquals(5, ShadowUnverifiable.ALL.distinct().size)
     }
 
     // ── 负例 N3：结构故障一律不放行（四种跑不成都得报出原因）───────────────────

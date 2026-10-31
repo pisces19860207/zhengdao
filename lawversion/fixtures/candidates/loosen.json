@@ -1,0 +1,21 @@
+{
+  "id": "cand-309-loosen",
+  "title": "（反面教材）把 L8 日记真删硬拒改成放行",
+  "source": "人提（309 演练·少拦否决用）",
+  "ops": [
+    {
+      "op": "replace_rule",
+      "target": "R1-L8-purge-block",
+      "rule": {
+        "id": "R1-L8-purge-block",
+        "law": "L8",
+        "action": "allow",
+        "match": {
+          "kinds": [
+            "diary_purge"
+          ]
+        }
+      }
+    }
+  ]
+}
