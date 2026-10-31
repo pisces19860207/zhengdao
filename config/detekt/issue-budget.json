@@ -353,5 +353,6 @@
         "LongMethod": 61
       }
     }
-  }
+  },
+  "merge_back_when": "294（UI 重做）收口时必须用 --single-ledger 合并回一本账；长期两本等于默认 UI 可以永远欠债"
 }
