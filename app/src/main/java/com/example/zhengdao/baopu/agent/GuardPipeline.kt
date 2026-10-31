@@ -621,11 +621,18 @@ internal class GuardPipeline(
                         kind = DecisionKind.AUTO_ACT,
                         actor = DecisionActor.MODEL,
                         reason = "工具 ${spec.name} 执行成功",
-                        evidence = "tool:${spec.name}:$target",
+                        // 房型仍是 `tool:<名>:<目标>`，只在尾巴上多挂一段 `:<opId>`：
+                        // 292-P1 判据③「同一动作重试不写两行」要有**动作身份**才能查重，
+                        // 而取工具名的那几家（AuditGapCheck / TraceCrossCheck / AuditHint）
+                        // 都只切第一段 ⇒ 尾巴不影响它们。
+                        evidence = "tool:${spec.name}:$target:${effectiveCall.id}",
                         before = target,
                         after = "已执行 ${spec.name}",
                         atMs = System.currentTimeMillis(),
                         reversible = false,
+                        // 同一个 opId 只许一行：引擎重试（尤其超时那一遍——盘可能其实已经写了）
+                        // 走的是同一次调用、同一个 id，账上必须还是"一件事"（判据③）。
+                        uniqueByEvidence = true,
                     ),
                 )
             }
@@ -805,6 +812,11 @@ internal class GuardPipeline(
      *
      * 时机（287 真机验收修正）：在 [finish] 的**执行成功之后**记，不在 [guardPath] 记——
      * ② 段跑在出卡之前，用户点「拒绝」也会经过它，在那里记就会把"没发生的事"记成发生过。
+     *
+     * 一动作一笔（292-P1 判据③）：引擎重试把**同一个 `opId`** 再跑一遍（超时那条尤其危险：
+     * 第一遍可能其实已经写成了盘），这里按「动作 × 目标」认领一次，第二遍不再补行——
+     * 208 那一本靠 [DecisionDraft.uniqueByEvidence] 查重，这一本没有事件键可查，
+     * 于是在唯一入口这一侧认领。
      */
     private fun recordFileOps(spec: ToolSpec, call: ToolCall) {
         val kind = FileOpRules.kindOf(spec.name) ?: return
@@ -817,9 +829,30 @@ internal class GuardPipeline(
         targets += writeTargets(spec.name, args, workspaceRoot())
         val purpose = FileOpRules.purposeOf(spec.name, args)
         for (target in targets) {
-            val entry = FileOpLog.record(spec.name, kind, FilePolicy.normalize(target), purpose)
+            val normalized = FilePolicy.normalize(target)
+            if (!claimFileOp(call.id, normalized)) continue
+            val entry = FileOpLog.record(spec.name, kind, normalized, purpose)
             log(FileOpRules.lineOf(entry))
         }
+    }
+
+    /** 认领过的「动作 × 目标」（有界 FIFO：管线实例跟着会话活，账不许无限攒）。 */
+    private val fileOpsClaimed = LinkedHashSet<String>()
+
+    /**
+     * 这一笔「动作 × 目标」是否第一次入账（已认领过 ⇒ false，不再补行）。
+     *
+     * 键带目标而不只是 `opId`：一次 `move_path` 有两个目标，两笔都要入账；
+     * 只有**同一个目标的第二遍**才是重复。空 opId ⇒ 不认领（照旧每笔直记，
+     * 宁可多一行也不把真发生过的事吞掉）。
+     */
+    private fun claimFileOp(opId: String, path: String): Boolean {
+        if (opId.isBlank()) return true
+        if (!fileOpsClaimed.add("$opId|$path")) return false
+        while (fileOpsClaimed.size > FILE_OPS_CLAIM_CAP) {
+            fileOpsClaimed.remove(fileOpsClaimed.first())
+        }
+        return true
     }
 
     private fun resolve(root: File, raw: String): File =
@@ -905,5 +938,8 @@ internal class GuardPipeline(
 
         /** spill 失败时的回灌截断长度（仍然 ≤ 阈值，不给上下文第二次暴击）。 */
         const val SPILL_SNIPPET_CHARS = BaopuKernel.Tools.SPILL_SNIPPET_CHARS
+
+        /** 「动作 × 目标」认领表的上限（292-P1 判据③；一轮几十笔，512 够跑很久且不攒内存）。 */
+        const val FILE_OPS_CLAIM_CAP = 512
     }
 }

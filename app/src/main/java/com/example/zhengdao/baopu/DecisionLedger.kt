@@ -124,6 +124,21 @@ internal enum class DecisionKind(
      * 而 REQUIRED 是 208 那张"点名的十类"闭集。
      */
     PLAN_CONTRACT_FINDING("plan_contract_finding", DecisionGroup.EVAL, false, DecisionAudit.WEEKLY),
+
+    /**
+     * 第二百九十二批 P1：**账本自己的口径变更点**（派工单 292-P1 修法④）。
+     *
+     * 历史账行不许改（只增不改），但同一本账里前后是两种口径——「prepare 出卡之前就记」
+     * 与「执行成功之后才记」。不标出来，抽检的人拿着一行「删进回收站」无从判断
+     * 那一行到底是做过的事还是当时的一念头；标在文档里不算数，得在**账上**。
+     *
+     * 为什么单开一类而不是塞进 [AUTO_ACT]：AUTO_ACT 记的是「模型动过手」，这条记的是
+     * 「账本从这一天起改了记法」——它不是副作用，没有回滚通道（`reversible=false`），
+     * 也不进抽检队列（`NONE`）。
+     * 不进 [REQUIRED]：那是 208 点名的十类**业务账**；这一条是账本的自述，
+     * 由 [DecisionLedger] 自己在第一笔新口径的账落进这本账时标一次（不是各调用方各标）。
+     */
+    LEDGER_POLICY("ledger_policy", DecisionGroup.EVAL, false, DecisionAudit.NONE),
     ;
 
     companion object {
@@ -266,6 +281,17 @@ internal data class DecisionDraft(
      * 否则分组卡的「可撤销数」会在两个组之间对不上。其余 kind 传了就按 kind 的组走。
      */
     val groupOverride: DecisionGroup? = null,
+    /**
+     * 第二百九十二批 P1：**这一条按 `evidence` 幂等**（同一个事件键在这本账里只许有一行）。
+     *
+     * 为什么是 draft 上的一格、而不是让调用方改走 [DecisionLedger.recordOnce]：
+     * 208 的通用账由 `GuardPipeline` 那**唯一**一处 `DecisionLedger.record(` 落
+     * （`TaskGrantWiringGateTest` 与 291 的部位普查都把那一处钉着），换入口就是改接线；
+     * 而「同一个动作重跑不许补第二条」是**账本**的属性，不是某个调用方的自觉——
+     * 放在账本里，明天新增的调用点也躲不掉。
+     * 缺省 `false` ⇒ 存量调用点一个字不改、行为逐字节不变。
+     */
+    val uniqueByEvidence: Boolean = false,
 )
 
 /**
@@ -362,11 +388,19 @@ internal object DecisionLedger {
      * 写一条到指定目录（测试与「跨根」场景用）。
      *
      * 校验在前（[validate]），落盘在后——**校验不过一个字节都不写**。
+     * [DecisionDraft.uniqueByEvidence] 为真时先查一次账（与 [recordOnce] 共用
+     * [rowsWithEvidence]）：同键已有行就**不写第二条**——是「不写」，不是「重写整本账把它抹掉」，
+     * 历史账行一个字节都不许动（第二百九十二批 P1 判据③／负例「改历史账行」）。
      */
     @Synchronized
     fun recordTo(globalRoot: File, draft: DecisionDraft): DecisionRecord? {
+        if (draft.uniqueByEvidence) {
+            // 三态里"能继续"只有一种：读得动、且这个键一条都没有（空表）。
+            val hits = rowsWithEvidence(globalRoot, draft.evidence)
+            if (hits == null || hits.isNotEmpty()) return null
+        }
         val rec = build(draft) ?: return null
-        return runCatching {
+        val written = runCatching {
             val f = fileIn(globalRoot)
             f.parentFile?.mkdirs()
             f.appendText(rec.toJson().toString() + "\n", Charsets.UTF_8)
@@ -376,6 +410,69 @@ internal object DecisionLedger {
             lastError = "决策记录写失败（${draft.kind.wire}）：${it.javaClass.simpleName}: ${it.message}"
             null
         }
+        // 第二百九十二批 P1 修法④：这本账第一次用「执行后才记账」的新口径落行 ⇒ 当场标一条口径变更点。
+        // 标在账本里而不是标在管线里：管线只许有一处 208 写入（276 的那道闸钉着），
+        // 而「谁先动这本账、谁负责说清口径」本来就是账本自己的事。
+        if (written != null && draft.uniqueByEvidence) stampChangePoint(globalRoot)
+        return written
+    }
+
+    /**
+     * 一次读盘的**幂等查重**（[recordOnce] 与 `uniqueByEvidence` 那一路共用——一把机制只实现一遍）。
+     *
+     * 查与写必须落在**同一个方法锁**里：先 `read` 再 `recordTo` 中间没有锁，
+     * 两个线程可以同时"没查到"然后各写一行（249 批说过的话，这里不把它重新拆开）。
+     *
+     * @return `emptyList()`＝账上还没有这个键；非空＝已有同键的行；
+     *         `null`＝读不动**或**碰到坏行 ⇒ 调用方一律**不写**（宁可缺这一条，
+     *         也不往一本读不出来的账后面追加，更没法保证同键那条不在场）
+     */
+    private fun rowsWithEvidence(globalRoot: File, eventKey: String): List<DecisionRecord>? =
+        runCatching {
+            val f = fileIn(globalRoot)
+            if (!f.isFile) return@runCatching emptyList()
+            val hits = mutableListOf<DecisionRecord>()
+            for (line in f.readLines(Charsets.UTF_8)) {
+                if (line.isBlank()) continue
+                val parsed = parseLine(line)
+                if (parsed == null) {
+                    lastError = "幂等账碰到坏行，这次不追加（$eventKey）"
+                    return@runCatching null
+                }
+                if (parsed.evidence == eventKey) hits += parsed
+            }
+            hits
+        }.getOrElse {
+            lastError = "幂等账读失败：${it.javaClass.simpleName}: ${it.message}"
+            null
+        }
+
+    /** 口径变更点的事件键（`evidence` 与键逐字相同——249 那条纪律）。 */
+    const val POLICY_EVENT_KEY = "ledger_policy:exec_then_record"
+
+    /**
+     * 口径变更点：第二百九十二批 P1（2026-10-31，本机时区零点）起，业务账只在**执行成功之后**落行。
+     *
+     * 写死成一个时刻，而不是"这台机器第一次落账那天"：变更的是**口径**，不是开机日——
+     * 一台三个月后才第一次写账的手机，账上也该说「10-31 之后＝执行后记账」。
+     */
+    const val POLICY_CHANGE_MS = 1_793_376_000_000L
+
+    /** 标一次口径变更点（同一本账只有一条：走 [recordOnce] 的事件键幂等）。 */
+    private fun stampChangePoint(globalRoot: File) {
+        recordOnce(
+            globalRoot,
+            POLICY_EVENT_KEY,
+            DecisionDraft(
+                kind = DecisionKind.LEDGER_POLICY,
+                actor = DecisionActor.AUTO,
+                reason = "账本口径变更：自 2026-10-31 起业务账只在执行成功后落行——拒绝／取消／超时一律不落",
+                evidence = POLICY_EVENT_KEY,
+                before = "prepare（出卡之前）就记账：没做的事也被记成做了",
+                after = "执行成功之后才记账：账上只有真做过的事",
+                atMs = POLICY_CHANGE_MS,
+            ),
+        )
     }
 
     /**
@@ -403,22 +500,9 @@ internal object DecisionLedger {
             lastError = "幂等账的事件键必须与 evidence 逐字相同（$eventKey／${draft.evidence}）"
             return DecisionAppend.FAILED
         }
-        val existing = runCatching {
-            fileIn(globalRoot).takeIf { it.isFile }?.readLines(Charsets.UTF_8).orEmpty()
-        }.getOrElse {
-            lastError = "幂等账读失败：${it.javaClass.simpleName}: ${it.message}"
-            return DecisionAppend.FAILED
-        }
-        var found = false
-        for (line in existing) {
-            if (line.isBlank()) continue
-            val parsed = parseLine(line) ?: run {
-                lastError = "幂等账碰到坏行，这次不追加（$eventKey）"
-                return DecisionAppend.FAILED
-            }
-            if (parsed.evidence == eventKey) found = true
-        }
-        if (found) return DecisionAppend.DUPLICATE
+        // 查重只认 [rowsWithEvidence] 这一把机制（292-P1：uniqueByEvidence 那一路走同一个读盘口）。
+        val existing = rowsWithEvidence(globalRoot, eventKey) ?: return DecisionAppend.FAILED
+        if (existing.isNotEmpty()) return DecisionAppend.DUPLICATE
         return if (recordTo(globalRoot, draft) != null) DecisionAppend.APPENDED else DecisionAppend.FAILED
     }
 
