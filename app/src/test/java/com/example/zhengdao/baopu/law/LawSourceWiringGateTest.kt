@@ -19,11 +19,13 @@
 //   7. **假接兜底**（负例①）：谁把 EmergencyGate 登记成已接线，那条判据的手抄件就必须同时清零——
 //      只加一句调用、判据还留在原地，本文件红。
 //
-// ## 今天的账（315 在基线 f93fd021 上取数）
-// 七条判定源里**两条已接线**：315 把 EmergencyGate／EmergencyClocks 接进 inspect/EmergencyWiring.kt
+// ## 今天的账（315 在基线 f93fd021 上取数；311 更账）
+// 311 起再添一条已接线：**L24（ProgressivePenalty）由三司会审接线**（都察院抓到假PASS 走
+// decide），从 BOOKED 移 WIRED 并逐字登记调用点（verify/ThreeCourts.kt 一处），BOOKED 余四条。
+// 七条判定源里**三条已接线**：315 把 EmergencyGate／EmergencyClocks 接进 inspect/EmergencyWiring.kt
 // （紧急闸：紧急卡必人批＋止损 0 秒＋24h 追认），WIRED 按点号调用数逐字登记。
-// 剩下五条仍挂账。EmergencyGate 的 L21「资格判据」三处手抄仍留在生产（OpinionBudget ×2＋
 // OpinionWiring ×1，收敛归 298，见 REMAINING_L21_COPIES）——那是"新增接线"不顶替旧手抄的口径。
+// 剩下四条仍挂账。
 package com.example.zhengdao.baopu.law
 
 import java.io.File
@@ -81,6 +83,12 @@ class LawSourceWiringGateTest {
             entry = "EmergencyClocks",
             sites = listOf("com/example/zhengdao/baopu/inspect/EmergencyWiring.kt" to 6),
         ),
+        // 311：L24 累进（ProgressivePenalty）由三司会审接线——都察院抓到假PASS 就走
+        // `ProgressivePenalty.decide`（BOOKED 四格 2026-10-31 批示的 owner＝311，本批兑现）。
+        Wired(
+            entry = "ProgressivePenalty",
+            sites = listOf("com/example/zhengdao/baopu/verify/ThreeCourts.kt" to 1),
+        ),
     )
 
     private val BOOKED = listOf(
@@ -91,14 +99,6 @@ class LawSourceWiringGateTest {
             owner = "另行（2026-10-31 御裁 Q1：L9 另行立项，批号未定；303 交付报告 §7 裁定记录）",
             blockedBy = "接进去就是把 R2 的「必问」换成「先做后报」，行为变了；" +
                 "RiskMatrix 的 BATCH_OVER_20 与 MAX_FILES 只是数字相同，判据不同（L9 的①档不限文件数）",
-        ),
-        Booked(
-            entry = "ProgressivePenalty",
-            law = "ProgressivePenalty 的 decide（L24 累进：记／问／拦／停，30 天窗口）",
-            host = "agent/GuardPipeline.kt:433 的 verdict.rejected 分支（275 头注释原写的下一个宿主）",
-            owner = "311（三司会审／累进，2026-10-31 批示：L24→311）",
-            blockedBy = "生产没有同类违规计数可接：RiskMatrix 的频次升档数的是**调用**次数不是**违规**次数，" +
-                "接上去等于凭空给拦截加一档",
         ),
         Booked(
             entry = "TimeoutFallback",
