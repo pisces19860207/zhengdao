@@ -168,13 +168,17 @@ Configuration cache problems found in this build.
 | 账本 | 范围 | 判据 |
 |---|---|---|
 | `engine` | 除 `ui/` 之外的全部（`baopu/agent`、`inspect`、`logistics`、`core`…） | **超预算 ⇒ 红**（这一红才是真该拆的） |
-| `frozen_ui` | `app/src/main/java/com/example/zhengdao/ui/` | **超预算 ⇒ 只 warning**（UI 待重做，允许浮动；重做时两本账一起重记） |
+| `frozen_ui` | `app/src/main/java/com/example/zhengdao/ui/` | **超预算 ⇒ 红**（2026-10-31 用户追加：**冻结区也只降不升**——否则 UI 可以永远欠着新债） |
 | 总量 | 两本之和 | 超 `total` ⇒ 红；且必须等于 `detekt.yml` 的 `# maxIssues`（D1/D2 互锁不变） |
 
 **当前**：总量 334（引擎 **240** ／冻结 **94**）；`# maxIssues: 334`。
 
-**负例（本机实做）**
-- 把引擎预算压到 239（实际 240）⇒ **rc=1**，报「引擎侧 240 > 预算 239……这一条红就是真该拆的」；
-- 把冻结预算压到 93（实际 94）⇒ **rc=0**，只打 `::warning`「UI 待重做，只警告不判红」。
+**负例（本机实做，2026-10-31 两条追加后重跑）**
+- 引擎压到 239（实际 240）⇒ **rc=1**；
+- 冻结压到 93（实际 94）⇒ **rc=1**（改前只 warning；用户追加「冻结区也只降不升」后同为硬约束）；
+- `--write` 把冻结从 93 写成 94 ⇒ **rc=1**「分区也只降不升；确实要涨请用 --allow-raise "理由"」；
+- **合并回一本账**：294（UI 重做）收口时用
+  `python3 tools/check-detekt-budget.py --write --xml <CI 的 xml> --from-ci "run #N" --single-ledger`
+  ⇒ 预算里不再有 `zones`，回到一本账（长期两本等于默认 UI 可以永远欠债，用户 2026-10-31 明确不许）。
 
 **以后怎么算账**：UI 推倒重做时，两本账一起重记（`ui/` 归零或大降，引擎侧按实际）；不许只改一本。
