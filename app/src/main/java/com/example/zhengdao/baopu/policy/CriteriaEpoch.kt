@@ -132,6 +132,15 @@ internal object EpochRuntime {
     /** 每纪元的三个计数：候选／通过／否决。 */
     private val counters = LinkedHashMap<Long, IntArray>()
 
+    /**
+     * 回滚事件账（2026-10-31 用户裁定 Q3：回滚零参数、不问审批，**但必须落一行账**）。
+     *
+     * 为什么要单独记：`state = ROLLED_BACK` 只挂在「当前纪元」那一行上，
+     * 下一个纪元开始后它就被覆盖了 —— 事后问「什么时候退回去的、从哪退到哪」会查不到。
+     * 这里记成**只增不改的事件序列**。
+     */
+    private val rollbackEvents = ArrayList<String>()
+
     @Volatile
     private var state: EpochState = EpochState.NO_CHANGE
 
@@ -142,6 +151,9 @@ internal object EpochRuntime {
     fun previousSnapshot(): CriteriaSnapshot? = previous
 
     fun ledgerState(): EpochState = state
+
+    /** 回滚事件账（按发生顺序，只增不改）。空 = 从没回滚过。 */
+    fun rollbackLedger(): List<String> = ArrayList(rollbackEvents)
 
     /**
      * 记一次准入读数进纪元账。
@@ -214,6 +226,8 @@ internal object EpochRuntime {
         current = prev
         previous = null
         state = EpochState.ROLLED_BACK
+        // Q3：回滚必须落一行账（事件序列只增不改，见 rollbackEvents 注释）
+        rollbackEvents += "${cur.epoch.label()}→${prev.epoch.label()}"
         RollbackResult(true, "已回滚：${cur.epoch.label()} → ${prev.epoch.label()}（即时，未走进化通道）")
     }
 
