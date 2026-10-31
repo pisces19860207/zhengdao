@@ -60,11 +60,13 @@ import com.example.zhengdao.baopu.DecisionRecord
 import com.example.zhengdao.baopu.foldDecisionRecords
 import com.example.zhengdao.baopu.agent.FailureAuditLog
 import com.example.zhengdao.baopu.agent.FailureAuditRow
+import com.example.zhengdao.baopu.agent.LearnWiring
 import com.example.zhengdao.baopu.agent.OpinionDecision
 import com.example.zhengdao.baopu.agent.OpinionWiring
 import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
 import com.example.zhengdao.baopu.agent.RoyalVerdict
 import com.example.zhengdao.baopu.agent.StubVerifier
+import com.example.zhengdao.baopu.agent.UserSignal
 import com.example.zhengdao.baopu.inspect.InspectFinding
 import com.example.zhengdao.baopu.inspect.InspectLimits
 import com.example.zhengdao.baopu.inspect.InspectVerdict
@@ -261,6 +263,8 @@ private fun RoyalTab() {
     val res = LocalResources.current
     val s = remember(res) { DecisionStrRes { id, args -> res.getString(id, *args) } }
     var tick by remember { mutableIntStateOf(0) }
+    // P4-4 纪律：UI 作用域必须装 CoroutineCrashHandler（门禁 CoroutineCrashHandlerTest）
+    val learnScope = rememberCoroutineScope { CoroutineCrashHandler }
     // 读账走 IO：账本在私有目录，主线程读盘是明令要挪走的活（264 同源）
     val rows by produceState(initialValue = emptyList<RoyalRow>(), tick) {
         value = withContext(Dispatchers.IO) { royalRows(s) }
@@ -285,6 +289,11 @@ private fun RoyalTab() {
                     onPick = { optionId ->
                         RoyalVerdict.ofOptionId(optionId)?.let {
                             RoyalDecisionLedger.record(row.id, it)
+                            // 第二百九十八批：人的表态 ⇒ 标签进判决经验账（学习唯一入口）。
+                            // 折表要读整本账，压主线程会卡（264 同一口径），所以走 IO 作用域。
+                            learnScope.launch(Dispatchers.IO) {
+                                LearnWiring.onUserSignal(UserSignal.ofRoyal(it), row.gist, row.id)
+                            }
                             tick += 1
                         }
                     },

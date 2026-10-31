@@ -137,6 +137,17 @@ internal enum class UserSignal(val wire: String, val cn: String, val vote: Int) 
     companion object {
         /** 认不出就 null（自造值不进账，也不静默当别的类）。 */
         fun ofWire(wire: String): UserSignal? = entries.firstOrNull { it.wire == wire }
+
+        /**
+         * 御案三裁 ⇒ 学习五信号（第二百九十八批接线）。映射写在这里而不是 UI 里：
+         * 「搁置」是"以后再说"，**不是"关"**——[LearnPolicy.stats] 只把关卡与驳回计进阈值，
+         * 搁置要是一算成关，三次"明天再看"就能把一类永久压住，那是学歪了。
+         */
+        fun ofRoyal(verdict: RoyalVerdict): UserSignal = when (verdict) {
+            RoyalVerdict.APPROVE -> APPROVE
+            RoyalVerdict.REJECT -> REJECT
+            RoyalVerdict.HOLD -> DEFER
+        }
     }
 }
 

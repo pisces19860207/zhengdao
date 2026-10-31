@@ -13,6 +13,10 @@
 // 判据⑤（全程无模型）是源码级门禁，在 `policy/DraftSourceGateTest`；
 // 快照的不可变／原子换指针／半截表在 `policy/VerdictSnapshotTest`。
 //
+// 生产接线（2026-10-31 裁定①）：`御案决定按钮 → LearnWiring.onUserSignal` 那一行由本文件的
+// `生产接线_…` 钉住——手工灌账能让上面几条全绿，但生产上永远没数据（291 记的「做了没接线」）。
+// 判据①要的是"人真的在手机上驳三次，第三次以后不再弹"，所以入口那一行也算交付的一部分。
+//
 // 反空转：本文件的用例全部走**生产入口** `OpinionWiring.onOpinion`（不是直接调草稿层），
 // 所以「把查表那一句删掉」在这里必红——那正是负例①「学了不生效」。
 package com.example.zhengdao.baopu.agent
@@ -369,11 +373,69 @@ class ExperienceConsumeTest {
         assertTrue("queueOnly 直接返回、不查表", queueOnly.contains("QUEUE_ONLY"))
     }
 
+    // ── 接线（2026-10-31 裁定①）：御案决定按钮 ⇒ 标签 ⇒ 表换版 ⇒ 下次不弹 ──
+    //
+    // 手工灌账能过测试，生产上却永远没数据（291 记的「做了没接线」就是这个坑）。
+    // 所以这一条把两端钉在一起：**UI 那一行调用还在**（删了就红）＋**三裁的语义各归其位**
+    // （批＝正票、驳＝关、搁置＝"以后"不计关）——阈值只由人的表态挪，不由测试挪。
+
+    @Test
+    fun `生产接线_御案三裁走学习器_驳满三次才不弹_搁置不算关`() {
+        // ① 源级钉：学习入口在生产 UI 里，且只有一处（四器结论不许往这儿递）
+        val ui = uiFile("ui/baopu/DecisionCenterScreen.kt").readText(Charsets.UTF_8)
+        assertEquals("御案页签只许一处学习入口", 1, occurrences(ui, "LearnWiring.onUserSignal("))
+        assertTrue(
+            "递的两个落点必须是行上的 gist（类）与意见判定 id（缺一个学习器就拒收）",
+            ui.contains("LearnWiring.onUserSignal(UserSignal.ofRoyal(it), row.gist, row.id)"),
+        )
+
+        installLedger()
+        // ② 搁置三次 ⇒ 一条也没计进"关"：阈值没动，下一次照弹
+        for (i in 1..3) {
+            val at = now + i * dayMs
+            round = i
+            val r = OpinionWiring.onOpinion(pathOp(i), tool = "shell", now = at)!!
+            assertEquals("第 $i 次：搁置是「以后再说」，之前照弹", OpinionDecision.POP, r.decision)
+            LearnWiring.onUserSignal(UserSignal.ofRoyal(RoyalVerdict.HOLD), clsPath, r.id, at)
+        }
+        // 信号行本身照记（三裁都进账），只是搁置不算关——账与阈值是两件事
+        val defers = JudgmentExperienceLedger.readAll().count { it.key == "signal:defer" }
+        assertEquals("三次搁置都落进了判决经验账", 3, defers)
+        round = 4
+        val afterHolds = OpinionWiring.onOpinion(pathOp(4), tool = "shell", now = now + 4 * dayMs)!!
+        assertEquals("搁置不计关 ⇒ 不许学到「不弹」", OpinionDecision.POP, afterHolds.decision)
+
+        // ③ 驳回三次 ⇒ 三次"关" ⇒ 这一类下次不弹（判据①的生产闭环）
+        for (i in 5..7) {
+            val at = now + i * dayMs
+            round = i
+            val r = OpinionWiring.onOpinion(pathOp(i), tool = "shell", now = at)!!
+            assertEquals("第 $i 次：关没满三次之前照弹", OpinionDecision.POP, r.decision)
+            LearnWiring.onUserSignal(UserSignal.ofRoyal(RoyalVerdict.REJECT), clsPath, r.id, at)
+        }
+        round = 8
+        val afterRejects = OpinionWiring.onOpinion(pathOp(8), tool = "shell", now = now + 8 * dayMs)!!
+        assertEquals("同类 30 天内被驳三次＝三次关 ⇒ 不弹", OpinionDecision.SKIP, afterRejects.decision)
+        assertEquals(OpinionWhy.EXPERIENCE_HIT, afterRejects.why)
+
+        // ④ 批是正票，不挪"关"的读数（否则批三次也会学出"别问了"）
+        LearnWiring.onUserSignal(UserSignal.ofRoyal(RoyalVerdict.APPROVE), clsPath, afterHolds.id, now + 9 * dayMs)
+        val exp = VerdictExperienceRuntime.current().classes.getValue(clsPath)
+        assertEquals("三驳＝三关", 3, exp.closesAt(now + 9 * dayMs))
+        assertEquals("一批＝一正票", 1, exp.approves)
+    }
+
     // ── 帮手 ────────────────────────────────────────────────────────────
 
     private fun mainFile(rel: String): File {
         val direct = File("src/main/java/com/example/zhengdao/baopu/$rel")
         return if (direct.isFile) direct else File("app/src/main/java/com/example/zhengdao/baopu/$rel")
+    }
+
+    /** UI 那一份不在 `baopu/` 底下（`ui/baopu/`），单独取。 */
+    private fun uiFile(rel: String): File {
+        val direct = File("src/main/java/com/example/zhengdao/$rel")
+        return if (direct.isFile) direct else File("app/src/main/java/com/example/zhengdao/$rel")
     }
 
     private fun occurrences(text: String, token: String): Int = text.split(token).size - 1
