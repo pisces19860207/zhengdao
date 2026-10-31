@@ -1,0 +1,11 @@
+{
+  "id": "cand-309-badop",
+  "title": "op 打错字的坏候选",
+  "source": "人提（309 演练·输入坏用）",
+  "ops": [
+    {
+      "op": "merge_rule",
+      "target": "R1-L8-purge-block"
+    }
+  ]
+}

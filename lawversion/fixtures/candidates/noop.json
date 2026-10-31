@@ -1,0 +1,21 @@
+{
+  "id": "cand-309-noop",
+  "title": "与现行逐字段相同的 replace（应落显式无变更）",
+  "source": "人提（309 演练·三态用）",
+  "ops": [
+    {
+      "op": "replace_rule",
+      "target": "R3-L11-auto-skill-ask",
+      "rule": {
+        "id": "R3-L11-auto-skill-ask",
+        "law": "L11",
+        "action": "ask",
+        "match": {
+          "kinds": [
+            "skill_auto_write"
+          ]
+        }
+      }
+    }
+  ]
+}

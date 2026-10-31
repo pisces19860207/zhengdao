@@ -1,0 +1,16 @@
+{
+  "id": "cand-309-tighten",
+  "title": "收紧演练：正式技能退役从自动放行改为必须拦下（引 L5 不可逆必批）",
+  "source": "人提（309 演练）",
+  "ops": [
+    {
+      "op": "add_rule",
+      "rule": {
+        "id": "cand-L5-retire-block",
+        "law": "L5",
+        "action": "block",
+        "match": { "kinds": ["skill_retire"] }
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "R1-L8-purge-block",
+      "law": "L8",
+      "action": "block",
+      "match": { "kinds": ["diary_purge"] }
+    },
+    {
+      "id": "R2-L5-irreversible-ask",
+      "law": "L5",
+      "action": "ask",
+      "match": { "reversible": false }
+    },
+    {
+      "id": "R3-L11-auto-skill-ask",
+      "law": "L11",
+      "action": "ask",
+      "match": { "kinds": ["skill_auto_write"] }
+    }
+  ]
+}
