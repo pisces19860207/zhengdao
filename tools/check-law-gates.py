@@ -25,13 +25,13 @@
     python tools/check-law-gates.py --selftest      # 用内置坏样本证明本脚本会红
 
 退出码
-    0 = 门禁 19 条 / 规范 4 条，各自正负成对、前缀同号、零静默跳过，门禁都碰生产，
+    0 = 门禁 25 条 / 规范 4 条，各自正负成对、前缀同号、零静默跳过，门禁都碰生产，
         且 md↔门禁 L 号集合相等（md 不可得时是**告警跳过**，不是通过——见判据 7）
     1 = 有缺口（缺条 / 缺正例 / 缺负例 / 前缀串味 / 静默跳过 / 门禁不碰生产 /
         规范缺强提示或缺缺陷号 / md↔门禁 L 号集合不等）
 
 判据（七条，逐条可解释）
-    1. **覆盖**：`GATES` 与 `SPECS` 并起来是 23 条，两表不重不漏；
+    1. **覆盖**：`GATES` 与 `SPECS` 并起来是 29 条，两表不重不漏；
     2. **正负成对**：每条至少一条 `Lx_正例…`、一条 `Lx_负例…`（两层都要）；
     3. **前缀归属**：文件名 `Lx…` 与文件内每个测试名前缀必须同号（防"L7 用例混进 L8 文件"）；
     4. **零静默**：不许 `@Ignore`／`@Disabled`／`Assume.`／`assumeTrue`／`assumeFalse`／`//ignore`；
@@ -41,7 +41,8 @@
     6. **规范必须自报家门**：`Spec` 文件头必须有「本文件是规范，不是门禁」那句强提示，
        且必须写出缺陷号 `#271-Lxx`（接线后凭它销账）；
     7. **md ↔ 门禁同笔提交**（309 新增的硬判据）：《法典》md 的 L 号集合与门禁**实扫覆盖**
-       （law/ 门禁文件 ∪ law/spec/ 规范文件解析出的法条 id）必须**相等**——md 说必须拦而门禁没拦
+       （law/ 门禁 ∪ law/spec/ 规范 ∪ constitution/ 宪法门 ∪ EXPLICIT_GATE_FILES 显式映射
+       ——316 扩大实扫范围——解析出的法条 id）必须**相等**——md 说必须拦而门禁没拦
        （或反之）就是漂移，新增/删除都必须两边在同一笔提交里同步，不等即红。
        两向演练（只加 md ⇒ 红／只加门禁 ⇒ 红）在 `--selftest` 与 `lawversion/` 里各有一份。
        md 的找法：`--md` > 环境变量 `ZHENGDAO_LAW_MD` > 仓内 `*法典*.md` >
@@ -72,6 +73,10 @@ _REPO = Path(__file__).resolve().parent.parent
 _LAW = _REPO / "app" / "src" / "test" / "java" / "com" / "example" / "zhengdao" / "law"
 DEFAULT_DIR = _LAW
 DEFAULT_SPEC_DIR = _LAW / "spec"
+# 316：宪法五门住在 baopu/constitution/，也是门禁，只是目录与形制不同
+DEFAULT_CONSTITUTION_DIR = (
+    _REPO / "app" / "src" / "test" / "java" / "com" / "example" / "zhengdao" / "baopu" / "constitution"
+)
 
 # 271 派工单 §1 那张表 + 法典 §待补门禁 19 条（并集；L28 随 272，不在本单）
 # 分两层：GATES＝造违规会红（碰生产）；SPECS＝判据在、生产未接线（不会红）
@@ -88,13 +93,30 @@ DEFAULT_SPEC_DIR = _LAW / "spec"
 # 309（2026-10-31）：法条 id 改成**带后缀的字符串**（"L30b"）——《法典》md 里 L30（灾异处置权）
 #   与 L30b（超时旁路三时钟）是**两条**，门禁只覆盖后者；此前表里记 int 30、文件按 L(\d+) 解析，
 #   两条被并成一条，md↔门禁的集合比对就永远对不上。字符串 id 是判据 7（md↔门禁同笔提交）的地基。
+#
+# 316（2026-10-31）：修扫描器覆盖面（**不是补门禁**）。md 34 条里有 11 条被报"独有"，
+#   其中 6 条其实有门禁，只是扫描器没扫到：
+#   · L1/L3/L6/L16/L19 → constitution/（253 批宪法五门，用例形制是「门1_/负例1_/真码1_」，
+#     不带 Lx_ 正例/负例前缀）——扩大实扫范围，形制判据按目录放宽（见 scan 的 strict）；
+#   · L28 → 272 批对拍器 TraceCrossCheckTest——命名推断不出来，写死在 EXPLICIT_GATE_FILES。
+#   剩下 L29/L30/L31/L32/L33 是**真缺口**（md 里本就标"待落地"），如实报漂移，不白名单藏。
 GATES = {
-    "L2", "L4", "L5", "L7", "L8", "L10", "L11", "L12", "L13", "L14", "L15",
-    "L17", "L18", "L20", "L21", "L22", "L23", "L25", "L30b",
+    "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L10", "L11", "L12",
+    "L13", "L14", "L15", "L16", "L17", "L18", "L19", "L20", "L21", "L22",
+    "L23", "L25", "L28", "L30b",
 }
 SPECS = {"L9", "L24", "L26", "L27"}
 # 允许"门禁 + 规范补充"并存的法条（拆开的那两条）；其余法条一个号只能有一个归属
 SPLIT = {"L10", "L11"}
+
+# 316：命名推断不出来的门禁，在这里**写死映射**（键＝法条 id，值＝仓库根相对路径）。
+# 可读可审计，且挂三道硬校验（见 scan_explicit）防"白名单藏缺口"：
+#   ① 文件必须存在——不存在 ⇒ 红（防映射表与实际文件名不符）；
+#   ② 去注释后的代码里必须真的出现该法条 id——防映射挂错文件/文件改了没同步；
+#   ③ 文件里必须至少有一个 @Test——空文件/纯文档不许挂在门禁账上。
+EXPLICIT_GATE_FILES = {
+    "L28": "app/src/test/java/com/example/zhengdao/baopu/inspect/TraceCrossCheckTest.kt",  # 272 批旁路对拍器
+}
 
 # 文件名：L<号><法条后缀><英文描述>GateTest.kt ／ L<号><法条后缀><英文描述>Spec.kt
 # 法条后缀是号后**一个小写字母**（L30b 的 "b"），算进法条 id（309：md 里 L30 与 L30b 是两条）；
@@ -124,7 +146,7 @@ PRODUCTION_TOUCH = re.compile(r"\bbaopu\.|\bLawIo\.|\bGateIo\.")
 SPEC_BANNER = "本文件是规范，不是门禁"
 
 # 共用探针设施（不是法条文件，允许不带法条号）
-INFRA_FILES = {"LawIo.kt"}
+INFRA_FILES = {"LawIo.kt", "GateIo.kt", "TaskModeBoundary.kt"}
 
 # 静默跳过的写法（一律不许）
 SILENT = [
@@ -164,13 +186,13 @@ def md_gate_sync(md_ids: set, gate_ids: set) -> list:
     problems: list[str] = []
     for x in sorted(md_ids - gate_ids, key=law_key):
         problems.append(
-            f"md↔门禁漂移：{x} 在《法典》md 里有条文，门禁覆盖（law/＋law/spec/ 实扫）里没有"
-            f"——补门禁或删条文，两边同笔提交"
+            f"md↔门禁漂移：{x} 在《法典》md 里有条文，门禁覆盖（law/＋law/spec/＋constitution/"
+            f"＋显式映射 实扫）里没有——补门禁或删条文，两边同笔提交"
         )
     for x in sorted(gate_ids - md_ids, key=law_key):
         problems.append(
-            f"md↔门禁漂移：{x} 在门禁覆盖（law/＋law/spec/ 实扫）里挂着，《法典》md 里没有条文"
-            f"——补 md 或删门禁，两边同笔提交"
+            f"md↔门禁漂移：{x} 在门禁覆盖（law/＋law/spec/＋constitution/＋显式映射 实扫）里挂着，"
+            f"《法典》md 里没有条文——补 md 或删门禁，两边同笔提交"
         )
     return problems
 
@@ -244,56 +266,61 @@ def strip_comments(text: str) -> str:
     return "\n".join(out)
 
 
-def scan(dir_path: Path, kind: str) -> dict:
-    """扫一层目录。kind = 'gate' | 'spec'。"""
-    file_re = GATE_FILE_RE if kind == "gate" else SPEC_FILE_RE
-    laws: dict[int, dict] = {}
-    problems: list[str] = []
-    files = sorted(dir_path.glob("*.kt")) if dir_path.is_dir() else []
-    if not files:
-        problems.append(f"[{kind}] 目录里没有 .kt 文件：{dir_path}（路径写错？）")
+def scan_file(path: Path, kind: str, strict: bool = True, law_id: str | None = None) -> tuple:
+    """扫一个文件。返回 (law_id 或 None, slot, problems)。
 
-    for path in files:
+    strict=True（law/ 与 spec/ 的 271 形制）：测试名必须带 Lx_ 前缀、正负成对；
+    strict=False（constitution/ 五门与显式映射文件，253/272 批形制）：只核覆盖、
+    静默跳过、自称规范、碰生产，不套 Lx_ 前缀与正负成对——形制不同，不是缺门禁。
+    law_id 显式给出时（显式映射文件）不走文件名解析。
+    """
+    law_id_override = law_id is not None
+    file_re = GATE_FILE_RE if kind == "gate" else SPEC_FILE_RE
+    problems: list[str] = []
+    if law_id is None:
         m = file_re.match(path.name)
         if not m:
             if path.name in INFRA_FILES:
-                continue
+                return None, None, problems
             problems.append(f"[{kind}] {path.name}: 文件名不合形制（门禁 L7…GateTest.kt／规范 L21…Spec.kt）")
-            continue
+            return None, None, problems
         law_no = int(m.group(1))
-        suffix = m.group(2)
-        law_id = f"L{law_no}{suffix}"  # "L30b" 这类带后缀的法条与 "L7" 同账（309）；描述不算 id
-        raw = path.read_text(encoding="utf-8")
-        body = strip_comments(raw)
+        law_id = f"L{law_no}{m.group(2)}"  # "L30b" 这类带后缀的法条与 "L7" 同账（309）；描述不算 id
+    else:
+        law_no = int(LAW_ID_RE.match(law_id).group(1))
+    raw = path.read_text(encoding="utf-8")
+    body = strip_comments(raw)
 
-        # 判据 4：不许静默跳过（注释已去掉查真代码；`//ignore` 查原文）
-        for label, rx in SILENT:
-            hay = raw if label == "//ignore" else body
-            if rx.search(hay):
-                problems.append(f"[{kind}] {path.name}: 出现 {label}（271 §2：不许静默跳过）")
+    # 判据 4：不许静默跳过（注释已去掉查真代码；`//ignore` 查原文）——两种形制都要
+    for label, rx in SILENT:
+        hay = raw if label == "//ignore" else body
+        if rx.search(hay):
+            problems.append(f"[{kind}] {path.name}: 出现 {label}（271 §2：不许静默跳过）")
 
-        # 判据 5 / 6：两层各自的身份
-        if kind == "gate":
-            if SPEC_BANNER in raw:
-                problems.append(
-                    f"[gate] {path.name}: 自称「规范」却挂在门禁目录——两层不许混（这就是 271-补 要治的病）"
-                )
-            if not PRODUCTION_TOUCH.search(body):
-                problems.append(
-                    f"[gate] {path.name}: 没有一处碰生产（既无 `baopu.` 也无 `LawIo.`）"
-                    f"——它只可能在自己造的世界里自证，不许当门禁；请移入 spec/ 并改名 …Spec"
-                )
-        else:
-            if SPEC_BANNER not in raw:
-                problems.append(
-                    f"[spec] {path.name}: 文件头缺强提示「{SPEC_BANNER}；生产未接线（#271-Lxx），它不会红」"
-                )
-            if f"#271-L{law_no}" not in raw:
-                problems.append(f"[spec] {path.name}: 没写缺陷号 #271-L{law_no}（接线后凭它销账）")
+    # 判据 5 / 6：两层各自的身份
+    if kind == "gate":
+        if SPEC_BANNER in raw:
+            problems.append(
+                f"[gate] {path.name}: 自称「规范」却挂在门禁目录——两层不许混（这就是 271-补 要治的病）"
+            )
+        if not PRODUCTION_TOUCH.search(body):
+            problems.append(
+                f"[gate] {path.name}: 没有一处碰生产（既无 `baopu.` 也无 `LawIo.`）"
+                f"——它只可能在自己造的世界里自证，不许当门禁；请移入 spec/ 并改名 …Spec"
+            )
+    else:
+        if SPEC_BANNER not in raw:
+            problems.append(
+                f"[spec] {path.name}: 文件头缺强提示「{SPEC_BANNER}；生产未接线（#271-Lxx），它不会红」"
+            )
+        if f"#271-L{law_no}" not in raw:
+            problems.append(f"[spec] {path.name}: 没写缺陷号 #271-L{law_no}（接线后凭它销账）")
 
-        slot = laws.setdefault(law_id, {"file": path.name, "pos": [], "neg": [], "other": []})
-        for m2 in TEST_RE.finditer(body):
-            name = m2.group(1) or m2.group(2) or ""
+    slot = {"file": path.name, "pos": [], "neg": [], "other": [], "strict": strict,
+            "src": "mapped" if law_id_override else ("relaxed" if not strict else "law")}
+    for m2 in TEST_RE.finditer(body):
+        name = m2.group(1) or m2.group(2) or ""
+        if strict:
             pm = PREFIX_RE.match(name)
             if not pm:
                 problems.append(f"[{kind}] {path.name}: 测试名「{name}」不带法条号前缀（应 L{law_no}_…）")
@@ -303,13 +330,65 @@ def scan(dir_path: Path, kind: str) -> dict:
                     f"[{kind}] {path.name}: 测试名「{name}」的法条号与文件名 L{law_no} 不一致（混装会让报告对不上号）"
                 )
                 continue
-            if "正例" in name:
-                slot["pos"].append(name)
-            elif "负例" in name:
-                slot["neg"].append(name)
-            else:
-                slot["other"].append(name)
+        if "正例" in name:
+            slot["pos"].append(name)
+        elif "负例" in name:
+            slot["neg"].append(name)
+        else:
+            slot["other"].append(name)
+    return law_id, slot, problems
+
+
+def scan(dir_path: Path, kind: str, strict: bool = True) -> dict:
+    """扫一层目录。kind = 'gate' | 'spec'。strict 见 scan_file。"""
+    laws: dict[str, dict] = {}
+    problems: list[str] = []
+    files = sorted(dir_path.glob("*.kt")) if dir_path.is_dir() else []
+    if not files:
+        problems.append(f"[{kind}] 目录里没有 .kt 文件：{dir_path}（路径写错？）")
+
+    for path in files:
+        lid, slot, probs = scan_file(path, kind, strict=strict)
+        problems.extend(probs)
+        if lid is None or slot is None:
+            continue
+        if lid in laws:
+            problems.append(f"[{kind}] {lid} 在 {dir_path} 下有两个归属文件：{laws[lid]['file']} 与 {path.name}")
+            continue
+        laws[lid] = slot
     return {"laws": laws, "problems": problems, "files": len(files)}
+
+
+def scan_explicit(mappings: dict) -> dict:
+    """316：扫显式映射的门禁文件（EXPLICIT_GATE_FILES）。返回与 scan 同形的 dict。
+
+    三道硬校验防"白名单藏缺口"：
+      ① 文件必须存在——不存在 ⇒ 点名法条 id 报红；
+      ② 去注释后的代码里必须出现该法条 id（如 TraceCrossCheckTest 里的 `lawRef等于L28`）；
+      ③ 文件里必须至少有一个 @Test。
+    """
+    laws: dict[str, dict] = {}
+    problems: list[str] = []
+    for law_id, rel in sorted(mappings.items(), key=lambda kv: law_key(kv[0])):
+        path = _REPO / rel
+        if not path.is_file():
+            problems.append(
+                f"显式映射失效：{law_id} → {rel} 文件不存在——映射表与实际文件不符，"
+                f"修映射或补文件（不许为凑数删映射）"
+            )
+            continue
+        lid, slot, probs = scan_file(path, "gate", strict=False, law_id=law_id)
+        problems.extend(probs)
+        body = strip_comments(path.read_text(encoding="utf-8"))
+        if not re.search(rf"\b{re.escape(law_id)}\b", body):
+            problems.append(
+                f"显式映射失效：{law_id} → {path.name} 的代码里没有出现 {law_id}"
+                f"（映射挂错文件？法条号被改名了？）"
+            )
+        if not slot["pos"] and not slot["neg"] and not slot["other"]:
+            problems.append(f"显式映射失效：{law_id} → {path.name} 里一个 @Test 都没有")
+        laws[law_id] = slot
+    return {"laws": laws, "problems": problems, "files": len(mappings)}
 
 
 def judge(gate: dict, spec: dict) -> list[str]:
@@ -331,10 +410,13 @@ def judge(gate: dict, spec: dict) -> list[str]:
         if n in gate["laws"]:
             problems.append(f"{n}: 同时在门禁与规范目录里（一个法条只能有一个归属）")
 
-    # 判据 2：正负成对（两层都查）
+    # 判据 2：正负成对——只对 271 形制（law/ 与 spec/）强校验；
+    # constitution/ 五门与显式映射文件是 253/272 批形制（门1_/负例1_/真码1_），不套这个名约定
     for label, layer in (("门禁", gate["laws"]), ("规范", spec["laws"])):
         for n in sorted(layer, key=law_key):
             slot = layer[n]
+            if not slot.get("strict", True):
+                continue
             if not slot["pos"]:
                 problems.append(f"{label} {n}（{slot['file']}）: 缺正例（至少要一条 {n}_正例…）")
             if not slot["neg"]:
@@ -355,6 +437,13 @@ def report(gate: dict, spec: dict, problems: list[str]) -> None:
     for n in sorted(gate["laws"], key=law_key):
         s = gate["laws"][n]
         print(f"{n:<6}{len(s['pos']):<6}{len(s['neg']):<6}{s['file']}")
+    relaxed = sorted((n for n, s in gate["laws"].items() if s.get("src") != "law"), key=law_key)
+    if relaxed:
+        print(
+            "（316 覆盖面：constitution/ 宪法门（relaxed 形制）与显式映射计入上表："
+            + "、".join(f"{n}←{gate['laws'][n]['file']}" for n in relaxed)
+            + "）"
+        )
     print()
     pure = len(set(spec["laws"]) - SPLIT)
     print(
@@ -369,7 +458,7 @@ def report(gate: dict, spec: dict, problems: list[str]) -> None:
     if split_specs:
         print(
             "拆分补充（这些号的门禁在 law/，未接线的判据在 spec/）："
-            + "、".join(f"L{n}→{spec['laws'][n]['file']}" for n in split_specs)
+            + "、".join(f"{n}→{spec['laws'][n]['file']}" for n in split_specs)
         )
         print()
     if problems:
@@ -385,6 +474,7 @@ def report(gate: dict, spec: dict, problems: list[str]) -> None:
             f"✓ 全部合规：门禁 {len(GATES)} 条（正 {gp} 负 {gn}，都碰生产）＋ "
             f"规范 {len(SPECS)} 条（正 {sp} 负 {sn}，都带强提示与缺陷号）"
             f"＋ 拆分补充 {len(set(spec['laws']) & SPLIT)} 条，无静默跳过"
+            f"（其中 constitution/ 宪法门与显式映射按 relaxed 形制核，不查正负名成对）"
         )
 
 
@@ -428,15 +518,29 @@ def selftest() -> int:
         "// 本文件是规范，不是门禁；生产未接线（#271-L7），它不会红",
         "// 生产未接线（#271-L7），它不会红",
     )
+    # 316：constitution/ 五门的 253 批形制（门1_/负例1_/真码1_，不带 Lx_ 前缀）在 relaxed 下零问题
+    relaxed_gate = """
+    package com.example.zhengdao.baopu.constitution
 
-    def run(text: str, name: str, kind: str) -> list[str]:
+    import com.example.zhengdao.baopu.GuardPipeline
+    class L1XGateTest {
+        @Test
+        fun `门1_调用点必须全在白名单内`() { GuardPipeline.deny(null) }
+        @Test
+        fun `负例1_白名单外起子进程_扫描器抓到`() { }
+    }
+    """
+
+    def run(text: str, name: str, kind: str, strict: bool = True) -> list[str]:
         """单文件跑一遍：scan 的形制问题 ＋ 正负成对（与 judge 同口径）。"""
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             (d / name).write_text(text, encoding="utf-8")
-            res = scan(d, kind)
+            res = scan(d, kind, strict=strict)
             problems = list(res["problems"])
             for n, slot in res["laws"].items():
+                if not slot.get("strict", True):
+                    continue
                 if not slot["pos"]:
                     problems.append(f"缺正例 L{n}")
                 if not slot["neg"]:
@@ -462,6 +566,17 @@ def selftest() -> int:
         ("md↔门禁：只在门禁加一条必须报（方向二演练）",
          [p for p in md_gate_sync(md_base, gate_base | {"L33"}) if "L33" in p], 1),
     ]
+    # 316 §二：relaxed 形制与显式映射的自证
+    cases += [
+        ("relaxed 形制：253 批门1_/负例1_ 命名零问题", run(relaxed_gate, "L1XGateTest.kt", "gate", strict=False), 0),
+        ("relaxed 形制：同样本在 strict 下必须报（形制判据没被一起放松）",
+         run(relaxed_gate, "L1XGateTest.kt", "gate", strict=True), 1),
+        ("显式映射：映射指到不存在的文件必须点名报红",
+         [p for p in scan_explicit({"L99": "no/such/FileGateTest.kt"})["problems"] if "L99" in p], 1),
+        ("显式映射：映射到没有该法条号的文件必须报红",
+         [p for p in scan_explicit({"L99": "app/src/test/java/com/example/zhengdao/baopu/inspect/TraceCrossCheckTest.kt"})["problems"]
+          if "L99" in p], 1),
+    ]
     failures = 0
     for label, got, expect in cases:
         # expect=0 ⇒ 必须一条问题都没有；expect>0 ⇒ 至少报出这么多（一条坏样本可能同时踩两条判据）
@@ -475,6 +590,8 @@ def selftest() -> int:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="法典门禁 / 规范 形状核对（含 md↔门禁同笔提交自检）")
     ap.add_argument("--dir", default=str(DEFAULT_DIR), help="门禁测试目录（默认 law/）")
+    ap.add_argument("--constitution-dir", default=str(DEFAULT_CONSTITUTION_DIR),
+                    help="宪法门禁目录（默认 baopu/constitution/；253 批形制，按 relaxed 形制核）")
     ap.add_argument("--spec-dir", default=str(DEFAULT_SPEC_DIR), help="规范目录（默认 law/spec/）")
     ap.add_argument("--md", default=None,
                     help="《法典》md 路径（默认自动找：--md > ZHENGDAO_LAW_MD > 仓内 > 私有侧 ../_zd-private/docs/）")
@@ -488,8 +605,24 @@ def main(argv: list[str]) -> int:
         return selftest()
 
     gate = scan(Path(args.dir), "gate")
+    constitution = scan(Path(args.constitution_dir), "gate", strict=False)
+    mapped = scan_explicit(EXPLICIT_GATE_FILES)
     spec = scan(Path(args.spec_dir), "spec")
-    problems = judge(gate, spec)
+
+    # 三处门禁来源并成一本账；同一法条只许一个归属
+    overlap = (set(gate["laws"]) & set(constitution["laws"])) | \
+              (set(gate["laws"]) & set(mapped["laws"])) | \
+              (set(constitution["laws"]) & set(mapped["laws"]))
+    dup_problems = [
+        f"{n}: 门禁在多处覆盖（law/／constitution/／显式映射）——一个法条只许一个归属"
+        for n in sorted(overlap, key=law_key)
+    ]
+    gate = {
+        "laws": {**constitution["laws"], **mapped["laws"], **gate["laws"]},  # law/ 优先
+        "problems": gate["problems"] + constitution["problems"] + mapped["problems"],
+        "files": gate["files"] + constitution["files"] + mapped["files"],
+    }
+    problems = dup_problems + judge(gate, spec)
 
     # 判据 7：md↔门禁 L 号集合必须相等。md 不可得是「看得见的跳过」（打 ⚠ 行、JSON 落状态），
     # 不是通过——但也不替 CI 假红：GitHub runner 上没有私有侧的《法典》md，找不到就明说没跑。
