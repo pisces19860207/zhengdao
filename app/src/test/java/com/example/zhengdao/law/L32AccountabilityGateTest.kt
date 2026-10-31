@@ -82,12 +82,14 @@ class L32AccountabilityGateTest {
         val day = 24L * 3600 * 1000
         // 历史只有一条同类有效认定（OVER_WHITELIST／隔离）
         val history = listOf(finding(category = "隔离", atMs = t0))
-        // 别的类别：第一次 ⇒ 照旧（收紧不许一竿子打翻所有类别）
+        // 回归钉子（323 交付时抓出的生产 bug：计数漏了 category，「回滚」被「隔离」旧账连坐收紧）：
+        // 混账历史下，回滚的计数必须是 0——隔离的旧账不许替回滚攒次数。
         val otherCategory = AccountabilityGate.decide(
             finding(category = "回滚", atMs = t0 + day),
             history,
             nowMs = t0 + day,
         )
+        assertEquals("回滚不计隔离的旧账（连坐回归钉子）", 0, otherCategory.priorCount)
         assertEquals("别的类别不受牵连", AccountabilityStanding.OPEN, otherCategory.standing)
         // 同类别、别的认定类型：分开累进（本不该判灾异 ≠ 处置超白名单）
         val otherKind = AccountabilityGate.decide(
@@ -95,6 +97,7 @@ class L32AccountabilityGateTest {
             history,
             nowMs = t0 + day,
         )
+        assertEquals("别的认定类型分开算", 0, otherKind.priorCount)
         assertEquals("别的认定类型分开算", AccountabilityStanding.OPEN, otherKind.standing)
         // 同类别同类型：第二次 ⇒ 收紧
         val same = AccountabilityGate.decide(
@@ -102,6 +105,7 @@ class L32AccountabilityGateTest {
             history,
             nowMs = t0 + day,
         )
+        assertEquals("同类第二次必须收紧", 1, same.priorCount)
         assertEquals("同类第二次必须收紧", AccountabilityStanding.PETITION_FIRST, same.standing)
     }
 
