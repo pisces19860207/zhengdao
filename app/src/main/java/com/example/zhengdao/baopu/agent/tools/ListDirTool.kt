@@ -84,16 +84,38 @@ internal object ListDirTool {
         }
         val effectiveDepth = depth.coerceIn(1, MAX_DEPTH)
         val effectiveLimit = limit.coerceIn(1, MAX_LIMIT)
+        val walk = walkTree(target, effectiveDepth, effectiveLimit)
+        walk.error?.let { return ToolOutcome.Failed(it) }
+        val lines = walk.lines
+        val truncated = walk.truncated
+        if (lines.isEmpty()) {
+            return ToolOutcome.Ok("（空目录）")
+        }
+        val body = buildString {
+            append(lines.joinToString("\n"))
+            if (truncated) {
+                append("\n")
+                append("（已触达条目上限 $effectiveLimit，下面可能还有更多内容——")
+                append("把 limit 提到 $MAX_LIMIT、把 path 指到更深的目录、或用 read_file 直接读具体文件）")
+            }
+        }
+        return ToolOutcome.Ok(body)
+    }
+
+    /** 337 拆出：走树结果；error 非 null ⇒ 调用方直接回 Failed。 */
+    private class DirWalk(val lines: MutableList<String>, val truncated: Boolean, val error: String?)
+
+    /** 337 拆出：栈式 DFS（同层按"目录在前、名称序"排——输出稳定，缓存友好）。 */
+    private fun walkTree(target: File, effectiveDepth: Int, effectiveLimit: Int): DirWalk {
         val lines = mutableListOf<String>()
         var truncated = false
-        // 栈式 DFS（同层按"目录在前、名称序"排——输出稳定，缓存友好）
         data class Item(val file: File, val level: Int)
         val stack = ArrayDeque<Item>()
         stack.addLast(Item(target, 1))
         while (stack.isNotEmpty()) {
             val (dir, level) = stack.removeLast()
             val children = runCatching { dir.listFiles() }.getOrNull()
-                ?: return ToolOutcome.Failed("读不了这个目录（权限或 IO 错误）：${dir.name}")
+                ?: return DirWalk(lines, truncated, "读不了这个目录（权限或 IO 错误）：${dir.name}")
             val sorted = children.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
             for (f in sorted) {
                 if (lines.size >= effectiveLimit) {
@@ -113,18 +135,7 @@ internal object ListDirTool {
             }
             if (truncated) break
         }
-        if (lines.isEmpty()) {
-            return ToolOutcome.Ok("（空目录）")
-        }
-        val body = buildString {
-            append(lines.joinToString("\n"))
-            if (truncated) {
-                append("\n")
-                append("（已触达条目上限 $effectiveLimit，下面可能还有更多内容——")
-                append("把 limit 提到 $MAX_LIMIT、把 path 指到更深的目录、或用 read_file 直接读具体文件）")
-            }
-        }
-        return ToolOutcome.Ok(body)
+        return DirWalk(lines, truncated, null)
     }
 
     /** executor：arguments 里的 path 已是守卫过的绝对路径；省略（blank）＝工作区根。 */

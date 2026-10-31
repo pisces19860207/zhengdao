@@ -108,60 +108,17 @@ internal object MovePathTool {
     ): ToolOutcome {
         val fromRel = from.trim()
         val toRel = to.trim()
-        if (fromRel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_FROM」")
-        if (toRel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_TO」")
-        // 第三十七批 A 段：**源或目标**任一命中即拒（搬走也是改，搬进来更是改）
-        PersonaGuard.blocked(fromRel)?.let { return ToolOutcome.Rejected(it) }
-        PersonaGuard.blocked(toRel)?.let { return ToolOutcome.Rejected(it) }
         val src = resolve(root, fromRel)
         val dst = resolve(root, toRel)
-        // 第二百八十七批：工作区不是权限边界——源与目标都可以是全盘任意位置（系统/凭据目录除外）。
-        // 「搬」要用户点头（permission=CONFIRM）；备份区禁区（下面）与「不自动删源」口径一字不动。
-        fileAccessCheck(src, FilePaths.display(root, src))?.let { return ToolOutcome.Rejected(it) }
-        fileAccessCheck(dst, FilePaths.display(root, dst))?.let { return ToolOutcome.Rejected(it) }
-        val backupDir = File(root, BACKUP_DIR_NAME)
-        if (PathGuard.isInside(backupDir, src) || PathGuard.isInside(backupDir, dst)) {
-            return ToolOutcome.Failed("不能把 $BACKUP_DIR_NAME/ 当搬动源或目标（那是旧版本备份区）")
-        }
-        if (src.absolutePath == dst.absolutePath) {
-            return ToolOutcome.Failed("源和目标同一路径：$fromRel（改名请把 $ARG_TO 写成新名字）")
-        }
-        if (!src.exists()) return ToolOutcome.Failed("源文件不存在：$fromRel")
-        if (src.isDirectory) {
-            return ToolOutcome.Failed(
-                "源是个目录：${src.name}。move_path 只搬单个文件——目录请逐个文件搬，或改用库导入流水线。",
-            )
-        }
-        val parent = dst.parentFile
-        if (parent != null && !parent.exists()) {
-            if (!createDirs) {
-                return ToolOutcome.Failed(
-                    "目标目录不存在：${parent.absolutePath}（把 $ARG_CREATE_DIRS 设为 true，或先建目录）",
-                )
-            }
-            if (!parent.mkdirs()) {
-                return ToolOutcome.Failed("建不了目标目录：${parent.absolutePath}（权限或 IO 错误）")
-            }
-        }
+        guardMove(root, src, dst, fromRel, toRel)?.let { return it }
         val srcSha = sha256(src)
             ?: return ToolOutcome.Failed("读不出源文件（IO 错误）：$fromRel")
         // 目标已存在：内容相同 ⇒ 幂等；不同 ⇒ 加 sha 后缀让路（绝不覆盖）
-        var target = dst
-        var renameNote = ""
-        if (dst.exists() && !dst.isDirectory) {
-            val dstSha = sha256(dst)
-            if (dstSha != null && dstSha == srcSha) {
-                return ToolOutcome.Ok(
-                    "目标已有相同内容（sha 前 8 位 ${srcSha.take(SHA_SUFFIX_LEN)}），视为已搬。" +
-                        "源文件仍在 $fromRel，没动任何文件。",
-                )
-            }
-            target = bypassTarget(dst, srcSha)
-            renameNote = "；目标已有同名文件，改名让路 ⇒ ${target.name}"
-        }
-        if (target.exists() && target.isDirectory) {
-            return ToolOutcome.Failed("目标位置是个目录：${target.absolutePath}")
-        }
+        val prepared = prepareTarget(root, dst, srcSha, createDirs, fromRel)
+        prepared.error?.let { return it }
+        prepared.idempotent?.let { return it }
+        val target = prepared.target
+        val renameNote = prepared.renameNote
         if (!preferCopy) {
             val renamed = runCatching { src.renameTo(target) }.getOrDefault(false)
             if (renamed) {
@@ -185,6 +142,94 @@ internal object MovePathTool {
                     "（待删除清单写不进去，请自己留意这个源文件）"
                 },
         )
+    }
+
+    /**
+     * 337 拆出：move 前置守卫（顺序与错误文案与原内联版逐字相同）。
+     * 源/目标任一命中 PersonaGuard 即拒（搬走也是改，搬进来更是改）；备份区禁区同口径。
+     * @return null = 通过。
+     */
+    private fun guardMove(root: File, src: File, dst: File, fromRel: String, toRel: String): ToolOutcome? {
+        if (fromRel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_FROM」")
+        if (toRel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_TO」")
+        PersonaGuard.blocked(fromRel)?.let { return ToolOutcome.Rejected(it) }
+        PersonaGuard.blocked(toRel)?.let { return ToolOutcome.Rejected(it) }
+        // 第二百八十七批：工作区不是权限边界——源与目标都可以是全盘任意位置（系统/凭据目录除外）。
+        // 「搬」要用户点头（permission=CONFIRM）；备份区禁区（下面）与「不自动删源」口径一字不动。
+        fileAccessCheck(src, FilePaths.display(root, src))?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(dst, FilePaths.display(root, dst))?.let { return ToolOutcome.Rejected(it) }
+        val backupDir = File(root, BACKUP_DIR_NAME)
+        if (PathGuard.isInside(backupDir, src) || PathGuard.isInside(backupDir, dst)) {
+            return ToolOutcome.Failed("不能把 $BACKUP_DIR_NAME/ 当搬动源或目标（那是旧版本备份区）")
+        }
+        if (src.absolutePath == dst.absolutePath) {
+            return ToolOutcome.Failed("源和目标同一路径：$fromRel（改名请把 $ARG_TO 写成新名字）")
+        }
+        if (!src.exists()) return ToolOutcome.Failed("源文件不存在：$fromRel")
+        if (src.isDirectory) {
+            return ToolOutcome.Failed(
+                "源是个目录：${src.name}。move_path 只搬单个文件——目录请逐个文件搬，或改用库导入流水线。",
+            )
+        }
+        return null
+    }
+
+    /** 337 拆出：目标准备结果；error/idempotent 非 null ⇒ 调用方直接回（优先 error）。 */
+    private class MovePrepare(
+        val target: File,
+        val renameNote: String,
+        val error: ToolOutcome?,
+        val idempotent: ToolOutcome?,
+    )
+
+    /**
+     * 337 拆出：建目标目录（按 createDirs）＋撞名让路（内容相同 ⇒ 幂等；不同 ⇒ sha 后缀让路，
+     * 绝不覆盖）。error 文案与原内联版逐字相同。
+     */
+    private fun prepareTarget(root: File, dst: File, srcSha: String, createDirs: Boolean, fromRel: String): MovePrepare {
+        val parent = dst.parentFile
+        if (parent != null && !parent.exists()) {
+            if (!createDirs) {
+                return MovePrepare(
+                    dst, "",
+                    ToolOutcome.Failed(
+                        "目标目录不存在：${parent.absolutePath}（把 $ARG_CREATE_DIRS 设为 true，或先建目录）",
+                    ),
+                    null,
+                )
+            }
+            if (!parent.mkdirs()) {
+                return MovePrepare(
+                    dst, "",
+                    ToolOutcome.Failed("建不了目标目录：${parent.absolutePath}（权限或 IO 错误）"),
+                    null,
+                )
+            }
+        }
+        var target = dst
+        var renameNote = ""
+        if (dst.exists() && !dst.isDirectory) {
+            val dstSha = sha256(dst)
+            if (dstSha != null && dstSha == srcSha) {
+                return MovePrepare(
+                    dst, "", null,
+                    ToolOutcome.Ok(
+                        "目标已有相同内容（sha 前 8 位 ${srcSha.take(SHA_SUFFIX_LEN)}），视为已搬。" +
+                            "源文件仍在 $fromRel，没动任何文件。",
+                    ),
+                )
+            }
+            target = bypassTarget(dst, srcSha)
+            renameNote = "；目标已有同名文件，改名让路 ⇒ ${target.name}"
+        }
+        if (target.exists() && target.isDirectory) {
+            return MovePrepare(
+                target, renameNote,
+                ToolOutcome.Failed("目标位置是个目录：${target.absolutePath}"),
+                null,
+            )
+        }
+        return MovePrepare(target, renameNote, null, null)
     }
 
     /** 撞名让路：`名.ext` ⇒ `名.<sha8>.ext`；再撞就 `名.<sha8>-2.ext`。 */

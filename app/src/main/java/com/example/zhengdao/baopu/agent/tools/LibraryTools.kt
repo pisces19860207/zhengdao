@@ -123,6 +123,27 @@ internal object LibraryTools {
         if (matched.isEmpty()) {
             sb.append("（没有可列的文件）\n")
         }
+        val listing = listLines(target, matched)
+        sb.append(listing.text)
+        val rest = matched.size - listing.shown
+        if (rest > 0) {
+            sb.append("…还有 $rest 条没列（输出封顶 ${BrowserTools.MAX_TEXT_CHARS} 字符）——")
+                .append("用 pattern 收窄后重试，或先 library_organize 归掉一批再看\n")
+        }
+        if (listing.shown > 0) sb.append("（以上 ${listing.shown} 条共 ${listing.bytes} B；只读清单，没动任何文件）\n")
+        sb.append("（整理动作用 library_organize：promote 移到产物 / rename 改名 / index 重建索引）")
+        return ToolOutcome.Ok(sb.toString().trimEnd())
+    }
+
+    /** 337 拆出：逐条列行结果（行文本＋条数＋字节数）。 */
+    private class ListingResult(val text: String, val shown: Int, val bytes: Long)
+
+    /**
+     * 337 拆出：逐条列行。sha256 只给**真正印出来的行**算（封顶前先量行长，不浪费 IO）——
+     * 清单动辄上千条，每条都算哈希等于每次调用把整个资料库读一遍。
+     */
+    private fun listLines(target: File, matched: List<LibraryPaths.ScannedFile>): ListingResult {
+        val sb = StringBuilder()
         var shown = 0
         var bytes = 0L
         for (f in matched) {
@@ -135,14 +156,7 @@ internal object LibraryTools {
             shown++
             bytes += f.size
         }
-        val rest = matched.size - shown
-        if (rest > 0) {
-            sb.append("…还有 $rest 条没列（输出封顶 ${BrowserTools.MAX_TEXT_CHARS} 字符）——")
-                .append("用 pattern 收窄后重试，或先 library_organize 归掉一批再看\n")
-        }
-        if (shown > 0) sb.append("（以上 $shown 条共 $bytes B；只读清单，没动任何文件）\n")
-        sb.append("（整理动作用 library_organize：promote 移到产物 / rename 改名 / index 重建索引）")
-        return ToolOutcome.Ok(sb.toString().trimEnd())
+        return ListingResult(sb.toString(), shown, bytes)
     }
 
     // ── B 段：library_organize（写，一律 CONFIRM） ────────────────────────────

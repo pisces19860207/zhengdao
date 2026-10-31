@@ -96,48 +96,14 @@ internal object FindFilesTool {
         maxDepth: Int = DEFAULT_DEPTH,
     ): ToolOutcome {
         val needle = pattern.trim()
-        if (needle.isEmpty()) return ToolOutcome.Failed("参数「$ARG_PATTERN」为空（要给一个文件名片段）")
-        if (!dir.exists()) {
-            return ToolOutcome.Failed("不存在：${dir.name}（这个位置没有这个目录；先用 list_dir 看结构）")
-        }
-        if (!dir.isDirectory) {
-            return ToolOutcome.Failed("不是一个目录：${dir.name}（find_files 从目录开始找；读单个文件用 read_file）")
-        }
-        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
+        guardFind(dir, needle, root)?.let { return it }
         val cap = limit.coerceIn(1, MAX_LIMIT)
         val depthCap = maxDepth.coerceIn(1, MAX_DEPTH)
-        val lowered = needle.lowercase()
-        val hits = mutableListOf<File>()
-        var scanned = 0
-        var truncatedByLimit = false
-        var truncatedByScan = false
-        data class Item(val file: File, val level: Int)
-        val stack = ArrayDeque<Item>()
-        stack.addLast(Item(dir, 1))
-        while (stack.isNotEmpty()) {
-            val (current, level) = stack.removeLast()
-            val children = runCatching { current.listFiles() }.getOrNull() ?: continue
-            // 同层「目录在前、名称序」：输出稳定，模型两次调用看到同样的顺序
-            children.sortedWith(compareBy({ !it.isDirectory }, { it.name })).forEach { child ->
-                // 内部目录/隐藏文件不找；`备份/`（改前快照区，模型只读）也不列
-                if (child.name.startsWith(".") || child.name == BaopuKernel.Data.DIR_BACKUP) return@forEach
-                if (child.isDirectory) {
-                    if (level < depthCap) stack.addLast(Item(child, level + 1))
-                    return@forEach
-                }
-                scanned++
-                if (scanned > MAX_SCANNED) {
-                    truncatedByScan = true
-                    return@forEach
-                }
-                if (child.name.lowercase().contains(lowered)) {
-                    hits += child
-                    if (hits.size >= cap) truncatedByLimit = true
-                }
-            }
-            if (truncatedByLimit || truncatedByScan) break
-        }
+        val scan = scanHits(dir, needle.lowercase(), cap, depthCap)
+        val hits = scan.hits
+        val scanned = scan.scanned
+        val truncatedByLimit = scan.truncatedByLimit
+        val truncatedByScan = scan.truncatedByScan
         if (hits.isEmpty()) {
             return ToolOutcome.Ok(
                 "没找到文件名含「$needle」的文件（扫了 $scanned 个文件，深度上限 $depthCap 层）。" +
@@ -156,6 +122,75 @@ internal object FindFilesTool {
             if (truncatedByScan) append("（扫到 $MAX_SCANNED 个文件就停了；把 path 指到更窄的目录再找）")
         }
         return ToolOutcome.Ok(body.toString().trimEnd())
+    }
+
+    /** 337 拆出：find 前置守卫（顺序与错误文案与原内联版逐字相同）。@return null = 通过。 */
+    private fun guardFind(dir: File, needle: String, root: File): ToolOutcome? {
+        if (needle.isEmpty()) return ToolOutcome.Failed("参数「$ARG_PATTERN」为空（要给一个文件名片段）")
+        if (!dir.exists()) {
+            return ToolOutcome.Failed("不存在：${dir.name}（这个位置没有这个目录；先用 list_dir 看结构）")
+        }
+        if (!dir.isDirectory) {
+            return ToolOutcome.Failed("不是一个目录：${dir.name}（find_files 从目录开始找；读单个文件用 read_file）")
+        }
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
+        return null
+    }
+
+    /** 337 拆出：栈式扫描结果（hits 未排序，输出前由调用方按路径排序）。 */
+    private class FindScan(
+        val hits: MutableList<File>,
+        val scanned: Int,
+        val truncatedByLimit: Boolean,
+        val truncatedByScan: Boolean,
+    )
+
+    /** 337 拆出：跨 child 的扫描内部状态。 */
+    private class ScanState(val lowered: String, val cap: Int) {
+        var scanned = 0
+        var truncatedByLimit = false
+        var truncatedByScan = false
+        val hits = mutableListOf<File>()
+    }
+
+    /** 337 拆出：DFS 栈条目。 */
+    private data class ScanItem(val file: File, val level: Int)
+
+    /** 337 拆出：栈式扫描（内部目录/隐藏文件不找，`备份/` 不列；扫描上限与命中上限语义原样）。 */
+    private fun scanHits(startDir: File, lowered: String, cap: Int, depthCap: Int): FindScan {
+        val st = ScanState(lowered, cap)
+        val stack = ArrayDeque<ScanItem>()
+        stack.addLast(ScanItem(startDir, 1))
+        while (stack.isNotEmpty()) {
+            val (current, level) = stack.removeLast()
+            val children = runCatching { current.listFiles() }.getOrNull() ?: continue
+            // 同层「目录在前、名称序」：输出稳定，模型两次调用看到同样的顺序
+            children.sortedWith(compareBy({ !it.isDirectory }, { it.name })).forEach { child ->
+                scanChild(st, child, level, depthCap, stack)
+            }
+            if (st.truncatedByLimit || st.truncatedByScan) break
+        }
+        return FindScan(st.hits, st.scanned, st.truncatedByLimit, st.truncatedByScan)
+    }
+
+    /** 337 拆出：单 child 处理（隐藏/备份过滤、目录压栈、文件计数与命中；语义与原内联版逐字相同）。 */
+    private fun scanChild(st: ScanState, child: File, level: Int, depthCap: Int, stack: ArrayDeque<ScanItem>) {
+        // 内部目录/隐藏文件不找；`备份/`（改前快照区，模型只读）也不列
+        if (child.name.startsWith(".") || child.name == BaopuKernel.Data.DIR_BACKUP) return
+        if (child.isDirectory) {
+            if (level < depthCap) stack.addLast(ScanItem(child, level + 1))
+            return
+        }
+        st.scanned++
+        if (st.scanned > MAX_SCANNED) {
+            st.truncatedByScan = true
+            return
+        }
+        if (child.name.lowercase().contains(st.lowered)) {
+            st.hits += child
+            if (st.hits.size >= st.cap) st.truncatedByLimit = true
+        }
     }
 
     /** executor：path 可省略（省略 = 工作区根）。 */
