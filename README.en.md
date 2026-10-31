@@ -145,3 +145,15 @@ Tutorials, videos and paid setup help are welcome; redistribution (republishing 
 This project was built by the author together with several AI collaborators. Baopu and Xuanlan are built on Kotlin, Jetpack Compose, AndroidX and the system WebView.
 
 Terminal-side components (Termux, PRoot, Debian, uv, etc.) are credited with the terminal in [zhengdao-term](https://github.com/pisces19860207/zhengdao-term).
+
+**Four agent projects, four philosophies** (we are the fourth):
+
+| Project | In one line |
+|---|---|
+| OpenHands | **Get it done** — give agents an environment to work in |
+| Hermes | **Get better with use** — grow through experience and skills |
+| OpenClaw | **Always reachable** — connect channels and apps |
+| **Baopu (this project)** | **Act on evidence, act within limits** — every action is authorised, supervised, audited and independently accepted |
+
+Positioning we use consistently: **Governance-first Agent Runtime**.
+

@@ -1,8 +1,8 @@
 {
-  "total": 435,
+  "total": 427,
   "rules": {
-    "CyclomaticComplexMethod": 246,
-    "LongMethod": 189
+    "CyclomaticComplexMethod": 242,
+    "LongMethod": 185
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -23,7 +23,6 @@
     "CyclomaticComplexMethod|BaopuChatController.kt|runSkillRowAction#1",
     "CyclomaticComplexMethod|BaopuChatController.kt|runWeeklyEval#1",
     "CyclomaticComplexMethod|BaopuComposer.kt|BaopuComposer#1",
-    "CyclomaticComplexMethod|BaopuCostAndArtifacts.kt|artifactViewOf#1",
     "CyclomaticComplexMethod|BaopuDb.kt|onUpgrade#1",
     "CyclomaticComplexMethod|BaopuDrawer.kt|BaopuDrawer#1",
     "CyclomaticComplexMethod|BaopuExtractSheet.kt|BaopuExtractSheet#1",
@@ -70,7 +69,6 @@
     "CyclomaticComplexMethod|CardPng.kt|read#1",
     "CyclomaticComplexMethod|ChannelSwitchFsm.kt|dispatch#1",
     "CyclomaticComplexMethod|ContextAssembler.kt|assemble#1",
-    "CyclomaticComplexMethod|ConvertEncodingTool.kt|convert#1",
     "CyclomaticComplexMethod|DecisionCard.kt|DecisionCard#1",
     "CyclomaticComplexMethod|DecisionCenterScreen.kt|PatrolSection#1",
     "CyclomaticComplexMethod|DeletePathTool.kt|run#1",
@@ -83,7 +81,6 @@
     "CyclomaticComplexMethod|DrawChartTool.kt|run#1",
     "CyclomaticComplexMethod|DrawTable.kt|parseCsv#1",
     "CyclomaticComplexMethod|DrawTableTool.kt|run#1",
-    "CyclomaticComplexMethod|EditFileTool.kt|edit#1",
     "CyclomaticComplexMethod|EvalHarness.kt|check#1",
     "CyclomaticComplexMethod|EvolutionCompare.kt|judge#1",
     "CyclomaticComplexMethod|EvolutionRunner.kt|assertHolds#1",
@@ -242,7 +239,6 @@
     "CyclomaticComplexMethod|ToolFailureAdvisor.kt|convertTo#1",
     "CyclomaticComplexMethod|ToolRegistry.kt|handle#1",
     "CyclomaticComplexMethod|ToolRegistry.kt|typeMismatch#1",
-    "CyclomaticComplexMethod|ToolRegistry.kt|validate#1",
     "CyclomaticComplexMethod|ToolScheduling.kt|runParallel#1",
     "CyclomaticComplexMethod|ToolSchemaRules.kt|audit#1",
     "CyclomaticComplexMethod|TopicSuggest.kt|reduce#1",
@@ -272,7 +268,6 @@
     "LongMethod|BaopuComposer.kt|BaopuComposer#1",
     "LongMethod|BaopuConfirmCard.kt|BaopuConfirmCard#1",
     "LongMethod|BaopuContainers.kt|BaopuActionContainer#1",
-    "LongMethod|BaopuCostAndArtifacts.kt|artifactViewOf#1",
     "LongMethod|BaopuDiaryCard.kt|BaopuDiaryCard#1",
     "LongMethod|BaopuDrawer.kt|BaopuDrawer#1",
     "LongMethod|BaopuExtractSheet.kt|BaopuExtractSheet#1",
@@ -287,7 +282,6 @@
     "LongMethod|BaopuPlanArea.kt|BaopuPlanArea#1",
     "LongMethod|BaopuPlanArea.kt|PlanSummaryBlock#1",
     "LongMethod|BaopuPlanCard.kt|BaopuPlanCard#1",
-    "LongMethod|BaopuPreset.kt|personaText#1",
     "LongMethod|BaopuProcessBar.kt|ActivityRow#1",
     "LongMethod|BaopuProcessBar.kt|ProcessDetailPopup#1",
     "LongMethod|BaopuQuestionGroupCard.kt|BaopuQuestionGroupCard#1",
@@ -325,7 +319,6 @@
     "LongMethod|CompressionRunner.kt|runOnce#1",
     "LongMethod|ConfirmFlow.kt|enter#1",
     "LongMethod|ContextAssembler.kt|assemble#1",
-    "LongMethod|ConvertEncodingTool.kt|convert#1",
     "LongMethod|CopyBox.kt|CopyBox#1",
     "LongMethod|DecisionCard.kt|DecisionCard#1",
     "LongMethod|DecisionCenterScreen.kt|DecisionCenterScreen#1",
@@ -337,7 +330,6 @@
     "LongMethod|Draw.kt|toSvg#1",
     "LongMethod|DrawChart.kt|draw#1",
     "LongMethod|DrawChartTool.kt|run#1",
-    "LongMethod|EditFileTool.kt|edit#1",
     "LongMethod|EvalCase.kt|parse#1",
     "LongMethod|EvalHarness.kt|runCase#1",
     "LongMethod|EvolutionCompare.kt|judge#1",
@@ -441,14 +433,14 @@
     "LongMethod|ZipIndex.kt|read#1",
     "LongMethod|ZipPacker.kt|pack#1"
   ],
-  "recorded_from": "324 口径修正重记：无 baseline 真读数（本机 JDK21 + detekt 1.23.8，与 CI 同版本；带/无双跑对照 334→435 同源验证，CI 复核随 PR）",
-  "recorded_at": "2026-10-31T16:23:00+0800",
+  "recorded_from": "329 还债重记：本机 JDK21 + detekt 1.23.8（324 已交叉验证本机与 CI 同源 435=435）；5 条清债后真读数 427（引擎 296／冻结 131）",
+  "recorded_at": "2026-10-31T21:03:12+0800",
   "zones": {
     "engine": {
-      "total": 304,
+      "total": 296,
       "rules": {
-        "CyclomaticComplexMethod": 199,
-        "LongMethod": 105
+        "CyclomaticComplexMethod": 195,
+        "LongMethod": 101
       }
     },
     "frozen_ui": {
@@ -459,6 +451,5 @@
       }
     }
   },
-  "merge_back_when": "294（UI 重做）收口时用 --single-ledger 合并回一本账，别长期两本",
-  "raised_reason": "删除 10-19 旧 baseline，暴露被压的真读数——口径修正，非放宽。工单预估 15 条（12 UI）系比对口径有误，双跑对照实测被压 101 条（引擎 64／UI 37）：334→435。只降不升自 435 起算，下一批至少降 5 条"
+  "merge_back_when": "294（UI 重做）收口时用 --single-ledger 合并回一本账，别长期两本"
 }

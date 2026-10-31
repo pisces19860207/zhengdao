@@ -662,7 +662,15 @@ internal object SchemaCheck {
         if (!schema.optString("type").equals("object", ignoreCase = true)) {
             return "工具 schema 的顶层 type 必须是 object（注册表配置错误，不是模型错）"
         }
-        // required
+        // 329 拆分：三段校验顺序与原内联版一致，错误原文逐字相同。
+        requiredProblem(schema, args)?.let { return it }
+        unknownParamProblem(schema, args)?.let { return it }
+        typeProblems(schema, args)?.let { return it }
+        return null
+    }
+
+    /** 329 拆出：required 检查（缺字段即错，错误原文点名缺哪个）。 */
+    private fun requiredProblem(schema: JSONObject, args: JSONObject): String? {
         val required = schema.optJSONArray("required")
         if (required != null) {
             for (i in 0 until required.length()) {
@@ -672,16 +680,24 @@ internal object SchemaCheck {
                 }
             }
         }
+        return null
+    }
+
+    /** 329 拆出：additionalProperties=false 时的未知参数拒绝（模型幻觉参数不能直通）。 */
+    private fun unknownParamProblem(schema: JSONObject, args: JSONObject): String? {
+        if (schema.optBoolean("additionalProperties", true)) return null
         val props = schema.optJSONObject("properties") ?: JSONObject()
-        // additionalProperties: false ⇒ 未知参数拒绝
-        if (schema.optBoolean("additionalProperties", true).not()) {
-            for (key in args.keys()) {
-                if (!props.has(key)) {
-                    return "未知参数「$key」（本工具不接受这个参数；可用参数：${props.keys().asSequence().joinToString("、")}）"
-                }
+        for (key in args.keys()) {
+            if (!props.has(key)) {
+                return "未知参数「$key」（本工具不接受这个参数；可用参数：${props.keys().asSequence().joinToString("、")}）"
             }
         }
-        // 逐个类型/取值校验
+        return null
+    }
+
+    /** 329 拆出：逐参数类型/取值校验（typeMismatch 单参数口径不变）。 */
+    private fun typeProblems(schema: JSONObject, args: JSONObject): String? {
+        val props = schema.optJSONObject("properties") ?: JSONObject()
         for (key in props.keys()) {
             if (!args.has(key)) continue
             val ps = props.optJSONObject(key) ?: continue

@@ -5,6 +5,7 @@
 // [PendingStore] 是注入的接口）与引擎壳（[RunEngine] 只做接线）由此彻底分离。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.CardDisposition
 import com.example.zhengdao.baopu.ConfirmAuditEntry
 import com.example.zhengdao.baopu.ConfirmGrants
 import com.example.zhengdao.baopu.ConfirmKeys
@@ -236,14 +237,20 @@ internal class ConfirmFlow(
         val p = pending
         pending = null
         deferred = null
+        // 第二百九十二批 P1 裁定：这张卡的下场只进**卡处置账**（谁/哪张卡/几点/选了哪个），
+        // 业务账一格都不许从这儿落——「问过」不是「做过」，两本分表、id 不互通。
+        // 落笔在动作之前：处置在这一刻已经定了（人点了、或时钟把卡收走了），
+        // 执行成不成是事实账那一侧后面自己记的事。
         return when (verdict) {
             null -> {
+                noteDisposition(call, summary, false, abandoned = false, timedOut = true)
                 store.clear(sessionId)
                 ConfirmScopeChoice.discard(call.id) // 超时收走 ⇒ 没消费的范围选择作废
                 Outcome.TimedOut(RunRules.CONFIRM_TIMEOUT_NOTE)
             }
 
             false -> {
+                noteDisposition(call, summary, false, abandoned, timedOut = false)
                 store.clear(sessionId)
                 ConfirmScopeChoice.discard(call.id) // 拒绝同理（批准才会消费）
                 // 用户点「停止」导致的作废不回灌「用户拒绝」（那是误述）⇒ 单独结局
@@ -255,11 +262,42 @@ internal class ConfirmFlow(
             }
 
             true -> {
+                noteDisposition(call, summary, true, abandoned = false, timedOut = false)
                 val result = pipeline.executeApproved(call, spillWriter)
                 store.clear(sessionId) // 批准/拒绝/超时后清空（§3.3）；执行后立刻清，窗口毫秒级
                 Outcome.Approved(p?.call ?: call, result)
             }
         }
+    }
+
+    /**
+     * 落一行卡处置（第二百九十二批 P1；唯一写出点，账的形状与纪律在
+     * [com.example.zhengdao.baopu.CardDisposition]）。
+     *
+     * 三种下场与她的原话一一对应：
+     * · 批 → `批/用户`（业务账随后那一行是**另一本账**的事，这里不代替它）；
+     * · 驳 → `驳/用户`；用户点「停止」的作废是 `不用了/用户`——那不是驳（她没批这一步，
+     *   是这一轮整个不要了），把两者混成一格，318 学到的就是错的东西；
+     * · 超时 → `不用了/计时器`：没人表态，是时钟把卡收走。**谁**这一格写的就是计时器，
+     *   所以读的人不会把一次超时当成一次驳回。
+     *
+     * 免卡直跑（范围授权命中）与重复请求被合并**都不调这里**：那两条路上根本没有卡，
+     * 没有卡就没有处置——给没发生过的问答留一行，正是本批要清的病。
+     */
+    private fun noteDisposition(call: ToolCall, summary: String, approved: Boolean, abandoned: Boolean, timedOut: Boolean) {
+        val choice = when {
+            approved -> CardDisposition.Choice.APPROVE
+            timedOut || abandoned -> CardDisposition.Choice.DISMISS
+            else -> CardDisposition.Choice.REJECT
+        }
+        CardDisposition.record(
+            choice = choice,
+            face = CardDisposition.Face.CONFIRM,
+            cardId = call.id,
+            actor = if (timedOut) CardDisposition.Actor.CLOCK else CardDisposition.Actor.USER,
+            subject = summary,
+            why = note.orEmpty(),
+        )
     }
 
     /**

@@ -200,6 +200,9 @@ jobs:
       - name: 法典门禁自查（271 批：门禁 15／规范 7，含"门禁必须碰生产"机检）
         run: python3 tools/check-law-gates.py
 
+      - name: 判据进化门禁（310 批：不可进化清单／锚定只增／纪元账三态／禁标量分）
+        run: python3 tools/check-criteria-gates.py
+
       - name: 账本重复检查（同段重复行、重复章节）
         run: python3 tools/check-ledger-dupe.py
 

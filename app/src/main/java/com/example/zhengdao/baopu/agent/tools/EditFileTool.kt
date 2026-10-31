@@ -131,18 +131,69 @@ internal object EditFileTool {
         stamp: String = TimeFormats.fileStamp(),
     ): ToolOutcome {
         val rel = path.trim()
-        if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        val guarded = guardEditArgs(root, rel, op, content)
+        guarded.second?.let { return it }
+        val t = guarded.first!!
+        // 解码统一走 [TextDecode]（2026-10-17）：以前这里硬读 UTF-8，改 GBK 老书会把
+        // 乱码写回去——有备份也仍是数据损失。encoding 记下来，写回时按原编码写。
+        val original = readOriginalText(t.target, t.exists)
+        original.error?.let { return it }
+        if (t.exists && original.text.take(SNIFF_CHARS).contains('\u0000')) {
+            return ToolOutcome.Failed("像是二进制文件：${t.target.name}（edit_file 只改文本）")
+        }
+        // E-168 / D-03（2026-10-19）：写回要**保住原文件的行尾与「有没有尾换行」**。
+        // 旧实现一律 LF＋补一个尾换行 ⇒ 一个 CRLF 文件被改一行，整篇行尾都变。
+        // 新文件（不存在）沿用旧习惯：LF＋尾换行；已存在的文件按原文件保真（E-168）
+        val eolStyle = if (t.exists) detectEol(original.text) else EolStyle("\n", endsWithNewline = true)
+        val body = original.text.removeSuffix("\r\n").removeSuffix("\n").removeSuffix("\r")
+        val lines = if (body.isEmpty()) mutableListOf() else body.split("\r\n", "\n", "\r").toMutableList()
+        val total = lines.size
+        val applied = applyEditOp(op, lines, t.contentLines, fromLine, toLine, total)
+        applied.error?.let { return it }
+        val newText = joinWithEol(lines, eolStyle)
+        if (newText == original.text) {
+            return ToolOutcome.Ok("内容没有变化（${applied.note}），未写盘：${t.target.name}")
+        }
+        val backup = backupOldVersion(root, t.target, t.exists, stamp)
+        backup.error?.let { return it }
+        if (!atomicWriteEncoded(t.target, newText, original.encoding)) {
+            return ToolOutcome.Failed("写入失败（IO 错误）：${t.target.name}；请用 read_file 复核后再试")
+        }
+        val encodingNote = if (original.encoding == FileInfoTool.Encodings.UTF8) "" else "；保持原编码 ${original.encoding}"
+        return ToolOutcome.Ok(
+            "已改 ${t.target.name}：${applied.note}；总行数 $total → ${lines.size}；" +
+                "${newText.length} 字符$encodingNote${backup.note}",
+        )
+    }
+
+    /** 329 拆出：edit 守卫簇的通过产物。 */
+    private class EditGuarded(val target: File, val exists: Boolean, val contentLines: List<String>)
+
+    /**
+     * 329 拆出：前置守卫簇（顺序与错误文案与原内联版逐字相同）。
+     * @return first=通过时的目标（second 为 null）；second=不通过时的 outcome（first 为 null）。
+     */
+    private fun guardEditArgs(root: File, rel: String, op: String, content: String): Pair<EditGuarded?, ToolOutcome?> {
+        if (rel.isBlank()) return null to ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
         // 第三十七批 A 段：同上（edit_file 改的也是那两个文件）
-        PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
+        PersonaGuard.blocked(rel)?.let { return null to ToolOutcome.Rejected(it) }
         if (op !in OPS) {
-            return ToolOutcome.Failed("参数「$ARG_OP」只能是 ${OPS.joinToString("／")}，收到的是「$op」")
+            return null to ToolOutcome.Failed("参数「$ARG_OP」只能是 ${OPS.joinToString("／")}，收到的是「$op」")
         }
         val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
         // 第二百八十七批：工作区不是权限边界——绝对路径可改全盘；只有系统/凭据目录一律拒。
-        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
+        fileAccessCheck(target, FilePaths.display(root, target))?.let { return null to ToolOutcome.Rejected(it) }
         if (PathGuard.isInside(File(root, BACKUP_DIR_NAME), target)) {
-            return ToolOutcome.Failed("不能改 $BACKUP_DIR_NAME/ 里的文件（那是旧版本备份区，改它等于毁掉退路）")
+            return null to ToolOutcome.Failed("不能改 $BACKUP_DIR_NAME/ 里的文件（那是旧版本备份区，改它等于毁掉退路）")
         }
+        contentGuard(op, content)?.let { return null to it }
+        val exists = target.exists()
+        targetGuard(target, exists, rel, op)?.let { return null to it }
+        return EditGuarded(target, exists, content.lines()) to null
+    }
+
+    /** 329 拆出：content 三守卫（空／超行数）；错误文案与原内联版逐字相同。 */
+    private fun contentGuard(op: String, content: String): ToolOutcome? {
         if (content.isEmpty()) {
             return ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写入的内容；只想删行请用 $OP_REPLACE 把区间换成空字符串占位说明）")
         }
@@ -152,10 +203,14 @@ internal object EditFileTool {
                 "一次最多提交 $MAX_EDIT_LINES 行，这次有 ${contentLines.size} 行。请分几次改。",
             )
         }
+        return null
+    }
+
+    /** 329 拆出：目标文件三守卫（目录／不存在／太大）；错误文案与原内联版逐字相同。 */
+    private fun targetGuard(target: File, exists: Boolean, rel: String, op: String): ToolOutcome? {
         if (target.exists() && target.isDirectory) {
             return ToolOutcome.Failed("目标是个目录：${target.name}（edit_file 只改文本文件）")
         }
-        val exists = target.exists()
         if (!exists && op != OP_APPEND) {
             return ToolOutcome.Failed(
                 "文件不存在：$rel。$OP_REPLACE / $OP_INSERT_AFTER 只改已有文件；" +
@@ -168,98 +223,119 @@ internal object EditFileTool {
                     "再决定是分块改还是整篇重写（write_file 有 200 行上限）。",
             )
         }
-        // 解码统一走 [TextDecode]（2026-10-17）：以前这里硬读 UTF-8，改 GBK 老书会把
-        // 乱码写回去——有备份也仍是数据损失。encoding 记下来，写回时按原编码写。
-        var encoding = FileInfoTool.Encodings.UTF8
-        val original = if (exists) {
-            val bytes = runCatching { target.readBytes() }.getOrElse {
-                return ToolOutcome.Failed("读不出这个文件（权限或 IO 错误）：${target.name}")
-            }
-            val decoded = TextDecode.decode(target, bytes)
-            val text = decoded.text
-                ?: return ToolOutcome.Failed(decoded.error ?: "读不出这个文件（编码或 IO 错误）：${target.name}")
-            encoding = decoded.encoding
-            text
-        } else {
-            ""
+        return null
+    }
+
+    /** 329 拆出：读原文＋探测编码的结果；error 非 null ⇒ 调用方直接回。 */
+    private class OriginalText(val text: String, val encoding: String, val error: ToolOutcome?)
+
+    private fun readOriginalText(target: File, exists: Boolean): OriginalText {
+        if (!exists) return OriginalText("", FileInfoTool.Encodings.UTF8, null)
+        val bytes = runCatching { target.readBytes() }.getOrElse {
+            return OriginalText("", FileInfoTool.Encodings.UTF8, ToolOutcome.Failed("读不出这个文件（权限或 IO 错误）：${target.name}"))
         }
-        if (exists && original.take(SNIFF_CHARS).contains('\u0000')) {
-            return ToolOutcome.Failed("像是二进制文件：${target.name}（edit_file 只改文本）")
-        }
-        // E-168 / D-03（2026-10-19）：写回要**保住原文件的行尾与「有没有尾换行」**。
-        // 旧实现一律 LF＋补一个尾换行 ⇒ 一个 CRLF 文件被改一行，整篇行尾都变。
-        // 新文件（不存在）沿用旧习惯：LF＋尾换行；已存在的文件按原文件保真（E-168）
-        val eolStyle = if (exists) detectEol(original) else EolStyle("\n", endsWithNewline = true)
-        val body = original.removeSuffix("\r\n").removeSuffix("\n").removeSuffix("\r")
-        val lines = if (body.isEmpty()) mutableListOf() else body.split("\r\n", "\n", "\r").toMutableList()
-        val total = lines.size
-        val note: String
-        when (op) {
-            OP_REPLACE -> {
-                val from = fromLine
-                    ?: return ToolOutcome.Failed("$OP_REPLACE 需要参数「$ARG_FROM_LINE」（1 起）")
-                val to = toLine ?: from
-                if (from < 1 || to < from) {
-                    return ToolOutcome.Failed("行号不合法：from=$from to=$to（1 起，且 to ≥ from）")
-                }
-                if (from > total || to > total) {
-                    return ToolOutcome.Failed(
+        val decoded = TextDecode.decode(target, bytes)
+        val text = decoded.text
+            ?: return OriginalText(
+                "",
+                FileInfoTool.Encodings.UTF8,
+                ToolOutcome.Failed(decoded.error ?: "读不出这个文件（编码或 IO 错误）：${target.name}"),
+            )
+        return OriginalText(text, decoded.encoding, null)
+    }
+
+    /** 329 拆出：op 分派的产物；error 非 null ⇒ 调用方直接回（行表未被消费）。 */
+    private class OpApplied(val note: String, val error: ToolOutcome?)
+
+    /** 329 拆出：按 op 就地改 [lines] 并产出回执 note（三分支语义与原 when 逐字相同）。 */
+    private fun applyEditOp(
+        op: String,
+        lines: MutableList<String>,
+        contentLines: List<String>,
+        fromLine: Int?,
+        toLine: Int?,
+        total: Int,
+    ): OpApplied = when (op) {
+        OP_REPLACE -> {
+            val from = fromLine
+                ?: return OpApplied("", ToolOutcome.Failed("$OP_REPLACE 需要参数「$ARG_FROM_LINE」（1 起）"))
+            val to = toLine ?: from
+            if (from < 1 || to < from) {
+                OpApplied("", ToolOutcome.Failed("行号不合法：from=$from to=$to（1 起，且 to ≥ from）"))
+            } else if (from > total || to > total) {
+                OpApplied(
+                    "",
+                    ToolOutcome.Failed(
                         "行号越界：这个文件只有 $total 行，你要改第 $from–$to 行。" +
                             "先 read_file 确认行号。",
-                    )
-                }
+                    ),
+                )
+            } else {
                 val removed = to - from + 1
                 lines.subList(from - 1, to).clear()
                 lines.addAll(from - 1, contentLines)
-                note = "替换第 $from–$to 行（删 $removed 行 ⇒ 写 ${contentLines.size} 行）"
+                OpApplied("替换第 $from–$to 行（删 $removed 行 ⇒ 写 ${contentLines.size} 行）", null)
             }
-            OP_INSERT_AFTER -> {
-                val at = fromLine
-                    ?: return ToolOutcome.Failed("$OP_INSERT_AFTER 需要参数「$ARG_FROM_LINE」（0 = 插到最前）")
-                if (at < 0 || at > total) {
-                    return ToolOutcome.Failed(
+        }
+        OP_INSERT_AFTER -> {
+            val at = fromLine
+                ?: return OpApplied("", ToolOutcome.Failed("$OP_INSERT_AFTER 需要参数「$ARG_FROM_LINE」（0 = 插到最前）"))
+            if (at < 0 || at > total) {
+                OpApplied(
+                    "",
+                    ToolOutcome.Failed(
                         "行号越界：$OP_INSERT_AFTER 可填 0–$total（0 = 插到文件最前），收到 $at",
-                    )
-                }
-                lines.addAll(at, contentLines)
-                note = if (at == 0) {
-                    "插入到文件最前（${contentLines.size} 行）"
-                } else {
-                    "在第 $at 行后插入 ${contentLines.size} 行"
-                }
-            }
-            else -> { // OP_APPEND
-                lines.addAll(contentLines)
-                note = "追加 ${contentLines.size} 行到末尾"
-            }
-        }
-        val newText = joinWithEol(lines, eolStyle)
-        if (newText == original) {
-            return ToolOutcome.Ok("内容没有变化（$note），未写盘：${target.name}")
-        }
-        // 备份旧版本（失败 ⇒ 放弃本次修改：宁可改不进去，也不能把旧内容弄丢）。
-        // 287：旧文件 >5MB 不备份——但回执里必须说明（不然用户以为还能回滚）。
-        var backupNote = ""
-        if (exists && backupSkippedFor(target.length())) {
-            backupNote = "；旧版本 ${target.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（改完不可回滚）"
-        } else if (exists) {
-            val backupName = FilePaths.backupName(root, target, stamp)
-            var cause = ""
-            val ok = runCatching {
-                val dir = File(root, BACKUP_DIR_NAME)
-                dir.mkdirs()
-                target.copyTo(File(dir, backupName), overwrite = true)
-            }.onFailure { cause = "：${it.javaClass.simpleName}: ${it.message}" }.isSuccess
-            if (!ok) {
-                return ToolOutcome.Failed(
-                    "备份旧版本失败（${target.name}）$cause，已放弃本次修改。文件原样未动。",
+                    ),
                 )
+            } else {
+                lines.addAll(at, contentLines)
+                val note = if (at == 0) "插入到文件最前（${contentLines.size} 行）" else "在第 $at 行后插入 ${contentLines.size} 行"
+                OpApplied(note, null)
             }
-            backupNote = "；旧版本已备份到 $BACKUP_DIR_NAME/$backupName"
         }
-        // 原子写：先 .tmp 再 rename（半截文件比不写更坏）。
-        // 字节按**原编码**编码（GBK 老书改完还是 GBK；UTF-8 BOM / UTF-16 的 BOM 由
-        // TextDecode.encode 补回去）——否则「只改了一行」实际把整本换了编码。
+        else -> { // OP_APPEND
+            lines.addAll(contentLines)
+            OpApplied("追加 ${contentLines.size} 行到末尾", null)
+        }
+    }
+
+    /** 329 拆出：备份旧版本的结果；error 非 null ⇒ 放弃修改。 */
+    private class OldVersionBackup(val note: String, val error: ToolOutcome?)
+
+    /**
+     * 329 拆出：备份旧版本（失败 ⇒ 放弃本次修改：宁可改不进去，也不能把旧内容弄丢）。
+     * 287：旧文件 >5MB 不备份——但回执里必须说明（不然用户以为还能回滚）。
+     */
+    private fun backupOldVersion(root: File, target: File, exists: Boolean, stamp: String): OldVersionBackup {
+        if (exists && backupSkippedFor(target.length())) {
+            return OldVersionBackup(
+                "；旧版本 ${target.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（改完不可回滚）",
+                null,
+            )
+        }
+        if (!exists) return OldVersionBackup("", null)
+        val backupName = FilePaths.backupName(root, target, stamp)
+        var cause = ""
+        val ok = runCatching {
+            val dir = File(root, BACKUP_DIR_NAME)
+            dir.mkdirs()
+            target.copyTo(File(dir, backupName), overwrite = true)
+        }.onFailure { cause = "：${it.javaClass.simpleName}: ${it.message}" }.isSuccess
+        if (!ok) {
+            return OldVersionBackup(
+                "",
+                ToolOutcome.Failed("备份旧版本失败（${target.name}）$cause，已放弃本次修改。文件原样未动。"),
+            )
+        }
+        return OldVersionBackup("；旧版本已备份到 $BACKUP_DIR_NAME/$backupName", null)
+    }
+
+    /**
+     * 329 拆出：原子写（先 .tmp 再 rename，半截文件比不写更坏）。
+     * 字节按**原编码**编码（GBK 老书改完还是 GBK；UTF-8 BOM / UTF-16 的 BOM 由
+     * TextDecode.encode 补回去）——否则「只改了一行」实际把整本换了编码。
+     */
+    private fun atomicWriteEncoded(target: File, newText: String, encoding: String): Boolean {
         val tmp = File(target.parentFile, target.name + ".edit-tmp")
         val written = runCatching {
             target.parentFile?.mkdirs()
@@ -271,13 +347,8 @@ internal object EditFileTool {
         }.isSuccess
         if (!written) {
             runCatching { tmp.delete() }
-            return ToolOutcome.Failed("写入失败（IO 错误）：${target.name}；请用 read_file 复核后再试")
         }
-        val encodingNote = if (encoding == FileInfoTool.Encodings.UTF8) "" else "；保持原编码 $encoding"
-        return ToolOutcome.Ok(
-            "已改 ${target.name}：$note；总行数 $total → ${lines.size}；" +
-                "${newText.length} 字符$encodingNote$backupNote",
-        )
+        return written
     }
 
     /**
