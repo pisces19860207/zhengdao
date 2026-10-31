@@ -45,4 +45,18 @@ internal object EmergencyClocks {
 
     /** 追认截止时刻：处置时刻 + 24 小时，不多不少。 */
     fun ratifyDueAtMs(handledAtMs: Long): Long = handledAtMs + RATIFY_MS
+
+    // ── 第三百一十五批：三时钟的三个判据读数（落账就用它们，不许各处手抄数字） ──
+
+    /** 止损时钟判据：0 秒就是 0 毫秒——执行路径上多出来的任何等待都过不了这一关。 */
+    fun stopLossElapsedOk(elapsedMs: Long): Boolean = elapsedMs <= STOP_LOSS_MS
+
+    /** 上报截止时刻：止损执行完 3 秒内账上必须查得到（与告知时钟同一只）。 */
+    fun reportDueAtMs(executedAtMs: Long): Long = executedAtMs + INFORM_MS
+
+    /** 上报判据：账上查到它的时刻不晚于截止（差一毫秒都算迟——与 [informBypass] 同尺）。 */
+    fun reportInTime(executedAtMs: Long, seenAtMs: Long): Boolean = seenAtMs <= reportDueAtMs(executedAtMs)
+
+    /** 追认逾期判定：到线即超时（`>=`，与 303 Q3 定的边界同口径）。 */
+    fun ratifyOverdue(handledAtMs: Long, nowMs: Long): Boolean = nowMs >= ratifyDueAtMs(handledAtMs)
 }
