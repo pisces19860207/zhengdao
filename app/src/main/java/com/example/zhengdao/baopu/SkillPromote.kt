@@ -99,7 +99,12 @@ internal object SkillPromote {
             // 只读、只出三态结论，不拦转正（右相没有执行权：不改文件、不执行工具、不替人拍板）；
             // 结论整行进运行日志（UNVERIFIABLE/FAIL 必进报告，不许当通过）。
             // 源级门禁：ChancellorSourceGateTest 钉死本调用点，删掉即红。
-            RunLog.log(ChancellorWiring.verifyLearningPromotion(skillFile, scope, name).render())
+            val chancellor = ChancellorWiring.verifyLearningPromotion(skillFile, scope, name)
+            RunLog.log(chancellor.render())
+            // 第三百二十五批 · 三司会审接线（触发②③）：学习成果入库 ⇒ 送三司会审一次。
+            // 触发③恒命中（入库即送审）；右相对同一技能连续 2 次 FAIL ⇒ 按触发②（连续 FAIL）开审。
+            // 会审只出结论（裁定书整行进运行日志），不拦转正、不改文件——右相同款纪律。
+            ChancellorWiring.conveneAtLearningPromotion(skillFile, scope, name, chancellor, nowMs)
         }
 
     /** 207 的审计行本体（第二百零八批抽出来，好让「审计 + 决策记录」在同一处结算）。 */

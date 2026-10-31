@@ -55,6 +55,7 @@ import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
+import com.example.zhengdao.baopu.verify.ChancellorWiring
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
@@ -1868,6 +1869,15 @@ internal class RunEngine(
                     // 第四十批：被输出上限截断 ⇒ 记下标记（壳层给「继续说完」）——
                     // 「看着写完了其实没写完」必须让用户看见（notice 文案在上面裁决）。
                     _tailTruncated.value = outcome.truncated
+                    // 第三百二十五批 · 三司会审触发①：不可逆动作的交付（本 run 动过删/移类）
+                    // ⇒ 收尾时刻送三司会审；只出结论进运行日志，不拦收尾、不改文件。
+                    // 本 run 没动过删/移 ⇒ 日常交付，接线层直接返回（convene 一次都不调）。
+                    ChancellorWiring.conveneIrreversibleDelivery(
+                        deliveryId = roundRunId,
+                        sessionId = sessionId,
+                        sinceMs = roundStartedAtMs,
+                        nowMs = System.currentTimeMillis(),
+                    )
                     emitLearnCardIfDue()
                     settle(sessionId, stepCount, RunState.DONE, "Done")
                     return
