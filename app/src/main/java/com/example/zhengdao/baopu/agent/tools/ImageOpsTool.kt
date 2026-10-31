@@ -37,15 +37,8 @@ internal object ImageOpsTool {
     /** 取主色默认几个。 */
     const val DEFAULT_COLORS = 5
 
-    fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
-        name = "image_ops",
-        description = "改图（每次执行前弹确认卡）：resize＝等比缩到长边 max_edge；" +
-            "crop＝按 left/top/right/bottom（原图像素，左上右下）裁一块；" +
-            "convert＝转成 png/jpg/webp（jpg 无透明通道，透明区压白底）；" +
-            "palette＝回这张图的主色（hex ＋ 占比，只回文本不落盘）；" +
-            "icon＝一次生成 48/72/96/144/192 五档方图标 PNG。" +
-            "**原图永不覆盖**：默认另存 <名>-<动作>.<ext>，目标已存在就拒绝。",
-        inputSchema = jsonObjectOf(
+    /** 337 拆出：image_ops 的 inputSchema（键、枚举与描述文案与原内联版逐字相同）。 */
+    private fun imageOpsSchema() = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
                 ARG_ACTION to jsonObjectOf(
@@ -81,7 +74,17 @@ internal object ImageOpsTool {
             ),
             "required" to jsonArrayOf(ARG_ACTION, ARG_PATH),
             "additionalProperties" to false,
-        ),
+        )
+
+    fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
+        name = "image_ops",
+        description = "改图（每次执行前弹确认卡）：resize＝等比缩到长边 max_edge；" +
+            "crop＝按 left/top/right/bottom（原图像素，左上右下）裁一块；" +
+            "convert＝转成 png/jpg/webp（jpg 无透明通道，透明区压白底）；" +
+            "palette＝回这张图的主色（hex ＋ 占比，只回文本不落盘）；" +
+            "icon＝一次生成 48/72/96/144/192 五档方图标 PNG。" +
+            "**原图永不覆盖**：默认另存 <名>-<动作>.<ext>，目标已存在就拒绝。",
+        inputSchema = imageOpsSchema(),
         permission = ToolPermission.CONFIRM,
         timeoutMs = ToolTimeout.FILE_MS,
     ) { args ->
@@ -142,26 +145,36 @@ internal object ImageOpsTool {
                     val (w, h) = ImageOps.fitSize(decoded.width, decoded.height, maxEdge!!)
                     writeOne(root, src, "resize", out, srcFormat, scaleTo(decoded, w, h))
                 }
-                ImageOps.ACT_CROP -> {
-                    val r = ImageOps.clampCrop(decoded.width, decoded.height, rect!!)
-                        ?: return ToolOutcome.Failed(
-                            "裁剪矩形不成立：left/top/right/bottom＝${rect.left}/${rect.top}/${rect.right}/${rect.bottom}，" +
-                                "原图 ${decoded.width}×${decoded.height}",
-                        )
-                    val cropped = runCatching {
-                        Bitmap.createBitmap(decoded, r.left, r.top, r.width, r.height)
-                    }.getOrNull() ?: return ToolOutcome.Failed("裁剪失败（矩形超出图像？）")
-                    try {
-                        writeOne(root, src, "crop", out, srcFormat, cropped)
-                    } finally {
-                        runCatching { cropped.recycle() }
-                    }
-                }
+                ImageOps.ACT_CROP -> cropAndWrite(root, src, out, srcFormat, decoded, rect!!)
                 ImageOps.ACT_CONVERT -> writeOne(root, src, "convert", out, format!!, decoded)
                 else -> ToolOutcome.Failed("不认识的动作：$action（只认 ${ImageOps.ACTIONS.joinToString("/")}）")
             }
         } finally {
             runCatching { decoded.recycle() }
+        }
+    }
+
+    /** 337 拆出：crop 动作（clamp ＋ 裁剪 ＋ 写出；bitmap 生命周期与错误文案与原内联版逐字相同）。 */
+    private fun cropAndWrite(
+        root: File,
+        src: File,
+        out: String?,
+        srcFormat: String,
+        decoded: Bitmap,
+        rect: PixelRect,
+    ): ToolOutcome {
+        val r = ImageOps.clampCrop(decoded.width, decoded.height, rect)
+            ?: return ToolOutcome.Failed(
+                "裁剪矩形不成立：left/top/right/bottom＝${rect.left}/${rect.top}/${rect.right}/${rect.bottom}，" +
+                    "原图 ${decoded.width}×${decoded.height}",
+            )
+        val cropped = runCatching {
+            Bitmap.createBitmap(decoded, r.left, r.top, r.width, r.height)
+        }.getOrNull() ?: return ToolOutcome.Failed("裁剪失败（矩形超出图像？）")
+        try {
+            return writeOne(root, src, "crop", out, srcFormat, cropped)
+        } finally {
+            runCatching { cropped.recycle() }
         }
     }
 
@@ -233,19 +246,10 @@ internal object ImageOpsTool {
         format: String,
         bmp: Bitmap,
     ): ToolOutcome {
-        val target = out?.let { resolve(root, it) }
-            ?: File(src.parentFile, ImageOps.outName(src.name, action, format))
-        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
-        if (target.absolutePath == src.absolutePath) {
-            return ToolOutcome.Failed("输出路径和原图相同——image_ops 永不覆盖原图，请换一个 out")
-        }
-        if (target.exists()) {
-            return ToolOutcome.Failed("目标已存在，不做覆盖：${relOf(root, target)}（换一个 out，或先删掉旧的）")
-        }
-        val fmt = ImageOps.formatOf(target.name)
-            ?: return ToolOutcome.Failed("输出文件名要带 png/jpg/webp 扩展名：${target.name}")
-        target.parentFile?.let { p -> if (!p.exists() && !p.mkdirs()) return ToolOutcome.Failed("建不了输出目录：$p") }
+        val wt = resolveWriteTarget(root, src, action, out, format)
+        wt.error?.let { return it }
+        val target = wt.target
+        val fmt = wt.format
         // jpg 无 alpha：判据在 ImageOps.supportsAlpha，这里按它决定是否压白底
         val toEncode = if (!ImageOps.supportsAlpha(fmt)) flattenOnWhite(bmp) else bmp
         try {
@@ -259,6 +263,42 @@ internal object ImageOpsTool {
         } finally {
             if (toEncode !== bmp) runCatching { toEncode.recycle() }
         }
+    }
+
+    /** 337 拆出：输出目标定位＋守卫（不覆盖/不越界/可建目录）；error 非 null ⇒ 调用方直接回。 */
+    private class WriteTarget(val target: File, val format: String, val error: ToolOutcome?)
+
+    private fun resolveWriteTarget(
+        root: File,
+        src: File,
+        action: String,
+        out: String?,
+        format: String,
+    ): WriteTarget {
+        val target = out?.let { resolve(root, it) }
+            ?: File(src.parentFile, ImageOps.outName(src.name, action, format))
+        // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
+        fileAccessCheck(target, FilePaths.display(root, target))
+            ?.let { return WriteTarget(target, format, ToolOutcome.Rejected(it)) }
+        if (target.absolutePath == src.absolutePath) {
+            return WriteTarget(
+                target, format,
+                ToolOutcome.Failed("输出路径和原图相同——image_ops 永不覆盖原图，请换一个 out"),
+            )
+        }
+        if (target.exists()) {
+            return WriteTarget(
+                target, format,
+                ToolOutcome.Failed("目标已存在，不做覆盖：${relOf(root, target)}（换一个 out，或先删掉旧的）"),
+            )
+        }
+        val fmt = ImageOps.formatOf(target.name)
+            ?: return WriteTarget(
+                target, format,
+                ToolOutcome.Failed("输出文件名要带 png/jpg/webp 扩展名：${target.name}"),
+            )
+        target.parentFile?.let { p -> if (!p.exists() && !p.mkdirs()) return WriteTarget(target, fmt, ToolOutcome.Failed("建不了输出目录：$p")) }
+        return WriteTarget(target, fmt, null)
     }
 
     // ── Bitmap 小工具 ────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 {
-  "total": 427,
+  "total": 418,
   "rules": {
-    "CyclomaticComplexMethod": 242,
-    "LongMethod": 185
+    "CyclomaticComplexMethod": 236,
+    "LongMethod": 182
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -91,7 +91,6 @@
     "CyclomaticComplexMethod|FailurePolicy.kt|decide#1",
     "CyclomaticComplexMethod|FakePolicyModel.kt|matches#1",
     "CyclomaticComplexMethod|FileOpLedger.kt|purposeOf#1",
-    "CyclomaticComplexMethod|FindFilesTool.kt|find#1",
     "CyclomaticComplexMethod|FormFillTool.kt|restore#1",
     "CyclomaticComplexMethod|FormFillTool.kt|run#1",
     "CyclomaticComplexMethod|GenerateImage.kt|imageModelIds#1",
@@ -103,8 +102,6 @@
     "CyclomaticComplexMethod|HarmonyMediator.kt|decode#1",
     "CyclomaticComplexMethod|HarmonyMediator.kt|observe#1",
     "CyclomaticComplexMethod|HumanizeError.kt|title#1",
-    "CyclomaticComplexMethod|ImageOpsTool.kt|run#1",
-    "CyclomaticComplexMethod|ImageOpsTool.kt|writeOne#1",
     "CyclomaticComplexMethod|ImpactPreview.kt|delete#1",
     "CyclomaticComplexMethod|JsEmbed.kt|unescapeJsonString#1",
     "CyclomaticComplexMethod|KbChunker.kt|htmlToText#1",
@@ -118,9 +115,7 @@
     "CyclomaticComplexMethod|LibraryImport.kt|parseEntry#1",
     "CyclomaticComplexMethod|LibraryPaths.kt|scanTree#1",
     "CyclomaticComplexMethod|LibraryPipeline.kt|run#1",
-    "CyclomaticComplexMethod|LibraryTools.kt|list#1",
     "CyclomaticComplexMethod|LibraryTools.kt|rename#1",
-    "CyclomaticComplexMethod|ListDirTool.kt|list#1",
     "CyclomaticComplexMethod|LlmClient.kt|plainTextOf#1",
     "CyclomaticComplexMethod|LlmClient.kt|streamOnce#1",
     "CyclomaticComplexMethod|LlmClient.kt|toolCallDeltas#1",
@@ -154,7 +149,6 @@
     "CyclomaticComplexMethod|MemoryStore.kt|parse#1",
     "CyclomaticComplexMethod|ModelCatalog.kt|parseEntries#1",
     "CyclomaticComplexMethod|ModelPickerRules.kt|prettify#1",
-    "CyclomaticComplexMethod|MovePathTool.kt|move#1",
     "CyclomaticComplexMethod|NativeExtractor.kt|extract#1",
     "CyclomaticComplexMethod|PageSnapshot.kt|nameOf#1",
     "CyclomaticComplexMethod|PageSnapshot.kt|parse#1",
@@ -335,14 +329,12 @@
     "LongMethod|EvolutionCompare.kt|judge#1",
     "LongMethod|EvolutionRunner.kt|runCase#1",
     "LongMethod|FakeTools.kt|register#1",
-    "LongMethod|FindFilesTool.kt|find#1",
     "LongMethod|FormFillSheet.kt|FormFillSheet#1",
     "LongMethod|FormFillTool.kt|run#1",
     "LongMethod|GenerateImageTool.kt|run#1",
     "LongMethod|GuardPipeline.kt|prepare#1",
     "LongMethod|HarmonyMediator.kt|observe#1",
     "LongMethod|HelpCard.kt|BaopuHelpCard#1",
-    "LongMethod|ImageOpsTool.kt|spec#1",
     "LongMethod|KbIndexer.kt|build#1",
     "LongMethod|KeepaliveLogActivity.kt|KeepaliveLogScreen#1",
     "LongMethod|KnowledgeLibraryScreen.kt|KnowledgeLibraryScreen#1",
@@ -368,7 +360,6 @@
     "LongMethod|McpToolSource.kt|connect#1",
     "LongMethod|MediaMigration.kt|migrateShots#1",
     "LongMethod|MemoryLayout.kt|migrate#1",
-    "LongMethod|MovePathTool.kt|move#1",
     "LongMethod|OpenSourceLicensesActivity.kt|LicenseDetail#1",
     "LongMethod|OpinionWiring.kt|submit#1",
     "LongMethod|PageSnapshot.kt|parse#1",
@@ -433,14 +424,14 @@
     "LongMethod|ZipIndex.kt|read#1",
     "LongMethod|ZipPacker.kt|pack#1"
   ],
-  "recorded_from": "329 还债重记：本机 JDK21 + detekt 1.23.8（324 已交叉验证本机与 CI 同源 435=435）；5 条清债后真读数 427（引擎 296／冻结 131）",
-  "recorded_at": "2026-10-31T21:03:12+0800",
+  "recorded_from": "337 还债重记：本机 JDK21 + detekt 1.23.8（324 已交叉验证本机与 CI 同源）；第二批 5 条清债后真读数 418（引擎 287／冻结 131）",
+  "recorded_at": "2026-10-31T23:07:23+0800",
   "zones": {
     "engine": {
-      "total": 296,
+      "total": 287,
       "rules": {
-        "CyclomaticComplexMethod": 195,
-        "LongMethod": 101
+        "CyclomaticComplexMethod": 189,
+        "LongMethod": 98
       }
     },
     "frozen_ui": {
