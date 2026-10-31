@@ -31,6 +31,12 @@
 // 但 [qualifiesForExemption]／[reasonStated] 已就位，且源级门禁
 // `app/src/test/java/com/example/zhengdao/baopu/law/LawSourceWiringGateTest.kt`
 // 把"手抄几份、谁还没换"钉成账：多抄一份即红，换成本文件也要红一次（逼登记）。
+//
+// ## 第三百二十三批在本文件添了两组判定（L30 白名单／L33 四类禁区，对象仍是这一个）
+// 316 对账后法典还剩五条「待落地」，其中 L30 与 L33 的判定口就长在本文件——
+// 白名单是 law 的（[STOP_LOSS_WHITELIST]），自决禁区是 law 的（[forbiddenCategoryRejection]），
+// 不另起炉灶复制一套紧急机制；L29 的灾异定义与 L32 的追责收紧各立新文件
+// （AnomalyGate／AccountabilityGate），L31 三件套直接钉在 EmergencyClocks／EmergencyWiring 上。
 package com.example.zhengdao.baopu.law
 
 /** L21 紧急卡的要素（判据缺一即拒；见 [EmergencyGate.admit] 的拒的理由）。 */
@@ -100,4 +106,62 @@ internal object EmergencyGate {
     fun selfRulingRejection(isEmergencyCard: Boolean): String? =
         if (isEmergencyCard) "紧急卡必须人批：自决路径不许放行（L21／L30b——止损 0 秒可以自执行，处置授权不行）"
         else null
+
+    // ── 第三百二十三批：L30 灾异处置权——白名单住在 law/，程序路径拿不到白名单外的处置权 ──
+    //
+    // 法典卷十 L30：白名单内**可先斩**（止损 0 秒，见 [EmergencyClocks.STOP_LOSS_MS]）；
+    // 白名单外一律不许先斩，处置权只能是人（回 L21 紧急卡人批）；「永久排除」四类
+    // （删除数据／外发数据／改制度／改授权范围）连人都不能授权程序做。
+    // wire 键与 `inspect/StopLossAction`（315 的可执行子集）同源：程序可执行的每一个
+    // 止损动作都必须在本名单内（门禁逐字核——名单外冒出可执行动作 ⇒ 红）。
+
+    /** L30 止损白名单（法典原文五件：停机／隔离／回滚／冻结写入／撤销本次授权；wire 键＝账上稳定键）。 */
+    val STOP_LOSS_WHITELIST: Set<String> =
+        setOf("stop_machine", "quarantine", "rollback", "freeze_writes", "revoke_grant")
+
+    /** L30 永久排除四类：删除数据／外发数据／改制度／改授权范围——谁都不许「先斩」。 */
+    val DISPOSAL_PERMANENTLY_EXCLUDED: Set<String> =
+        setOf("delete_data", "exfiltrate_data", "alter_law", "alter_grant")
+
+    /** 白名单内 ⇒ true（可先做，不等判定——0 秒止损是 L30 的授权，不是程序自封的）。 */
+    fun isStopLossWhitelisted(actionWire: String): Boolean = actionWire in STOP_LOSS_WHITELIST
+
+    /** 永久排除四类 ⇒ true（这一类连「人批了再做」都不许以灾异的名义走程序）。 */
+    fun isDisposalPermanentlyExcluded(actionWire: String): Boolean =
+        actionWire in DISPOSAL_PERMANENTLY_EXCLUDED
+
+    /**
+     * L30：程序路径的处置申请。白名单内 ⇒ null（可先做）；其余一律拒——
+     * 永久排除四类点名「永久排除」，白名单外点名「处置权只能是人（回 L21）」。
+     *
+     * 这是程序侧处置资格的**唯一**判定口：止损执行层（inspect/EmergencyWiring）按本名单领授权，
+     * 名单外的动作程序连申请的资格都没有——签名上只收白名单枚举，运行时再经本函数复核。
+     */
+    fun programDisposalRejection(actionWire: String): String? = when {
+        isStopLossWhitelisted(actionWire) -> null
+        isDisposalPermanentlyExcluded(actionWire) ->
+            "永久排除：删除数据／外发数据／改制度／改授权范围不许先斩，人批也不许以灾异的名义走程序"
+        else -> "白名单外不许先斩：处置权只能是人（回 L21 紧急卡人批）"
+    }
+
+    // ── 第三百二十三批：L33 宰相自决——四类禁区不许自决；自决不得覆盖 requiresApproval ──
+    //
+    // 法典卷十一 L33：自决权再宽也有四类禁区——越授权、改制度、花钱、真假冲突，
+    // 命中任一 ⇒ 自决必拒，必须上奏。本判定与 [selfRulingRejection]（紧急卡必须人批）叠加：
+    // 两道门各管各的，谁更严听谁的——都拒。自决单必须落账的判据住在 SelfRulingLedger（277），
+    // 本层不设第二个「缺理由拒收」的口径。
+
+    /** L33 四类禁区：命中任一 ⇒ 拒因非空（必须上奏）；四类不沾 ⇒ null（自决路照走）。 */
+    fun forbiddenCategoryRejection(
+        touchesGrantScope: Boolean,
+        touchesLaw: Boolean,
+        spendsMoney: Boolean,
+        truthConflict: Boolean,
+    ): String? = when {
+        touchesGrantScope -> "越授权不许自决：授权范围只有人能改，自决单扩大自己的权力＝政变"
+        touchesLaw -> "改制度不许自决：制度修订走御批入口，宰相无权改规矩"
+        spendsMoney -> "花钱不许自决：凡有价钱的事必须上奏（R3 红线），自决单不许碰"
+        truthConflict -> "真假冲突不许自决：两份证据打架只能并列上御案（各标真假），不许替人拍板"
+        else -> null
+    }
 }

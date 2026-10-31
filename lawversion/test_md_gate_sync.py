@@ -121,18 +121,26 @@ class EndToEnd(LawversionCase):
         self.assertEqual(r.returncode, 0)
 
     def test_real_state_is_honest(self):
-        """不指 --md 跑真发现：本机必有真《法典》⇒ 集合不等 ⇒ 红（309 要的就是这个红）；
-        CI 没私有侧 ⇒ md 不可得 ⇒ 其余判据照跑且绿（明打 ⚠/落 JSON 状态，不是静默）。"""
+        """不指 --md 跑真发现：本机必有真《法典》⇒ 比对真跑（323 收口后两边应相等、rc=0）；
+        CI 没私有侧 ⇒ md 不可得 ⇒ 其余判据照跑且绿（明打 ⚠/落 JSON 状态，不是静默）。
+        309 立此哨兵时两边真漂移（法典 34 条 vs 门禁账 23 条，md 独有 11 条 ⇒ rc=1 是设计红）；
+        323 补齐 L29–L33 五条门禁后账平——本用例随之翻成「收口」口径：**再漂移必红**。"""
         rj = run_tool(SCRIPT, "--json")
         payload = json.loads(rj.stdout)
         sync = payload["md_sync"]
         if sync["status"] == "md_not_found":
             self.assertEqual(rj.returncode, 0, "CI 路径：md 不可得只告警，不替其余判据假红")
             return
-        self.assertEqual(sync["status"], "drift")
         drifted = bool(sync["md_only"]) or bool(sync["gate_only"])
         self.assertEqual(rj.returncode, 1 if drifted else 0, "退出码必须与集合是否相等一致")
-        self.assertGreater(len(sync["md_only"]), 0, "当前真漂移：法典 34 条 vs 门禁账 23 条，md 独有不可能是空")
+        self.assertEqual(
+            sync["status"],
+            "ok",
+            f"md↔门禁又漂移了：md 独有 {sync['md_only']}、门禁独有 {sync['gate_only']}"
+            "——两边同笔提交补齐，或把本哨兵改回 drift 口径并留话",
+        )
+        self.assertEqual(sync["md_only"], [], "323 收口后 md 独有必须为空（再出现＝新漂移）")
+        self.assertEqual(sync["gate_only"], [], "323 收口后门禁独有必须为空")
 
     def test_md_missing_strict_is_red(self):
         """--md-strict：md 找不到也红（本地验收口径）。mock 掉发现函数模拟 CI 缺私有侧。"""
