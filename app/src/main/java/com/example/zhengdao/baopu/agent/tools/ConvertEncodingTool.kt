@@ -97,31 +97,18 @@ internal object ConvertEncodingTool {
         }
         // 备份原始字节（不是转码后的文本——回滚要能一字不差地回去）
         // 门禁 B-补-24：主源码不许裸 SimpleDateFormat，时间戳一律走 TimeFormats
+        // 287：>5MB 不备份（与 write_file/edit_file 同一条上限），但回执里必须说明。
+        // 329：备份名沿用原口径**永远先算**（写回失败的文案要带它）；只跳过实际写备份。
         val stamp = TimeFormats.fileStamp()
         val backupName = FilePaths.backupName(root, file, stamp)
-        val backupFile = File(backupDir, backupName)
-        // 287：>5MB 不备份（与 write_file/edit_file 同一条上限），但回执里必须说明。
         val skipBackup = backupSkippedFor(file.length())
-        if (!skipBackup) {
-            val backupOk = runCatching {
-                backupDir.mkdirs()
-                backupFile.writeBytes(bytes)
-            }.isSuccess
-            if (!backupOk) {
-                return ToolOutcome.Failed("备份原文件失败（$BACKUP_DIR_NAME/$backupName），已放弃本次转换。")
-            }
+        val backupOk = skipBackup || doBackupBytes(File(root, BACKUP_DIR_NAME), backupName, bytes)
+        if (!backupOk) {
+            return ToolOutcome.Failed("备份原文件失败（$BACKUP_DIR_NAME/$backupName），已放弃本次转换。")
         }
         // 原子替换：先写同目录临时文件，再 rename
         val utf8 = text.toByteArray(Charsets.UTF_8)
-        val tmp = File(file.parentFile ?: root, file.name + ".baopu-tmp")
-        val written = runCatching {
-            tmp.writeBytes(utf8)
-            if (file.exists() && !file.delete()) error("旧文件删不掉")
-            if (!tmp.renameTo(file)) error("rename 失败")
-        }.isSuccess
-        if (!written) {
-            runCatching { tmp.delete() }
-            runCatching { file.writeBytes(bytes) } // 尽力恢复原字节（备份仍在）
+        if (!atomicReplaceUtf8(root, file, utf8, bytes)) {
             return ToolOutcome.Failed(
                 "写回失败：${file.name}。已尽力恢复原字节；备份在 $BACKUP_DIR_NAME/$backupName。",
             )
@@ -135,6 +122,27 @@ internal object ConvertEncodingTool {
                     "原文件已备份到 $BACKUP_DIR_NAME/$backupName"
                 },
         )
+    }
+
+    /** 329 拆出：把原始字节写进备份目录。返回是否成功（名字已由调用方算好）。 */
+    private fun doBackupBytes(backupDir: File, backupName: String, bytes: ByteArray): Boolean = runCatching {
+        backupDir.mkdirs()
+        File(backupDir, backupName).writeBytes(bytes)
+    }.isSuccess
+
+    /** 329 拆出：原子替换（先写同目录临时文件，再 rename）；失败时尽力恢复原字节（备份仍在）。 */
+    private fun atomicReplaceUtf8(root: File, file: File, utf8: ByteArray, originalBytes: ByteArray): Boolean {
+        val tmp = File(file.parentFile ?: root, file.name + ".baopu-tmp")
+        val written = runCatching {
+            tmp.writeBytes(utf8)
+            if (file.exists() && !file.delete()) error("旧文件删不掉")
+            if (!tmp.renameTo(file)) error("rename 失败")
+        }.isSuccess
+        if (!written) {
+            runCatching { tmp.delete() }
+            runCatching { file.writeBytes(originalBytes) }
+        }
+        return written
     }
 
     /** executor：arguments 里的 path 已是守卫过的绝对路径。 */
