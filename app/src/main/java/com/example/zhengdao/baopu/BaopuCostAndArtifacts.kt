@@ -349,16 +349,42 @@ fun countTextLines(text: String): Int = when {
  *
  * 只在 IO 线程上调（`produceState` + `Dispatchers.IO`，与本仓图片解码同房型）。
  */
-fun artifactViewOf(root: File, relPath: String): ArtifactView? {
-    val f = File(root, relPath)
-    if (!f.isFile) return null
-    val cap = ByteArray(ARTIFACT_VIEW_MAX_BYTES)
+/**
+ * 329 拆出：[artifactViewOf] 的逐字节「收存＋计数」累加器（行为与原内联版逐字节等价）。
+ * totalNewlines 永远计数；收存超过字节上限或行数上限即停（truncated 置位），计数继续。
+ */
+private class ArtifactViewScan(val cap: ByteArray) {
     var kept = 0
     var keptNewlines = 0
     var totalNewlines = 0
-    var scanned = 0L
     var stoppedCollecting = false
     var truncated = false
+
+    fun feed(b: Byte) {
+        if (b == NEWLINE_BYTE) totalNewlines++
+        if (stoppedCollecting) return
+        if (kept < cap.size) {
+            cap[kept] = b
+            kept++
+            if (b == NEWLINE_BYTE) {
+                keptNewlines++
+                if (keptNewlines >= ARTIFACT_VIEW_MAX_LINES) {
+                    stoppedCollecting = true
+                    truncated = true
+                }
+            }
+        } else {
+            stoppedCollecting = true
+            truncated = true
+        }
+    }
+}
+
+fun artifactViewOf(root: File, relPath: String): ArtifactView? {
+    val f = File(root, relPath)
+    if (!f.isFile) return null
+    val scan = ArtifactViewScan(ByteArray(ARTIFACT_VIEW_MAX_BYTES))
+    var scanned = 0L
     var scanCapped = false
     var lastByte: Int = -1
     val ok = runCatching {
@@ -368,28 +394,10 @@ fun artifactViewOf(root: File, relPath: String): ArtifactView? {
                 val n = input.read(chunk)
                 if (n < 0) break
                 scanned += n
-                var i = 0
-                while (i < n) {
+                for (i in 0 until n) {
                     val b = chunk[i]
-                    if (b == NEWLINE_BYTE) totalNewlines++
                     lastByte = b.toInt() and 0xFF
-                    if (!stoppedCollecting) {
-                        if (kept < cap.size) {
-                            cap[kept] = b
-                            kept++
-                            if (b == NEWLINE_BYTE) {
-                                keptNewlines++
-                                if (keptNewlines >= ARTIFACT_VIEW_MAX_LINES) {
-                                    stoppedCollecting = true
-                                    truncated = true
-                                }
-                            }
-                        } else {
-                            stoppedCollecting = true
-                            truncated = true
-                        }
-                    }
-                    i++
+                    scan.feed(b)
                 }
                 if (scanned > ARTIFACT_SCAN_MAX_BYTES) {
                     scanCapped = true
@@ -400,18 +408,30 @@ fun artifactViewOf(root: File, relPath: String): ArtifactView? {
         }
     }.isSuccess
     if (!ok) return null
-    val keptTail = if (kept > 0) cap[kept - 1].toInt() and 0xFF else -1
+    return buildArtifactView(relPath, scan, scanCapped, lastByte, f.length())
+}
+
+/** 329 拆出：扫描结果组装（keptTail 行数口径与 totalLines 的「扫到上限 ⇒ -1」语义在原内联版）。 */
+private fun buildArtifactView(
+    relPath: String,
+    scan: ArtifactViewScan,
+    scanCapped: Boolean,
+    lastByte: Int,
+    fileBytes: Long,
+): ArtifactView {
+    val kept = scan.kept
+    val keptTail = if (kept > 0) scan.cap[kept - 1].toInt() and 0xFF else -1
     return ArtifactView(
         relPath = relPath,
-        text = String(cap.copyOfRange(0, kept), Charsets.UTF_8),
-        shownLines = if (kept == 0) 0 else keptNewlines + (if (keptTail == '\n'.code) 0 else 1),
+        text = String(scan.cap.copyOfRange(0, kept), Charsets.UTF_8),
+        shownLines = if (kept == 0) 0 else scan.keptNewlines + (if (keptTail == '\n'.code) 0 else 1),
         totalLines = when {
             scanCapped -> -1
-            lastByte == '\n'.code -> totalNewlines
-            else -> totalNewlines + 1
+            lastByte == '\n'.code -> scan.totalNewlines
+            else -> scan.totalNewlines + 1
         },
-        truncated = truncated,
-        fileBytes = f.length(),
+        truncated = scan.truncated,
+        fileBytes = fileBytes,
     )
 }
 
