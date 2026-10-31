@@ -59,11 +59,13 @@ internal object OrganCensus {
             name = "计簿",
             entry = "DecisionLedger.record",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/DecisionLedger.kt",
-            callSites = 21,
+            callSites = 22,
             sink = "决策记录.jsonl",
             evidence = listOf(
                 "agent/GuardPipeline.kt:634 入账点（DecisionLedger.record）",
                 "AutonomySelfEdit.kt:304 入账点（同上）",
+                // 第二百九十八批判据③：草稿被法典判据否掉时补一笔 208（供修正阈值）。
+                "agent/LearnWiring.kt:502 入账点（同上，草稿被否）",
             ),
         ),
         OrganProbe(
