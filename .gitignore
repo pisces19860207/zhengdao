@@ -60,3 +60,9 @@ buildtmp/
 _zd-private/
 # 账本/文档备份：只留在本机与历史里，别再进公开仓（2026-10-26 清债）
 docs/*.bak-*.md
+
+# 密钥类文件永不入库（2026-10-31）
+*.key
+*.pem
+eval-key*
+.zhengdao-keys/
