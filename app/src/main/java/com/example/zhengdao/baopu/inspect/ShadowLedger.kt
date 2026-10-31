@@ -28,7 +28,13 @@ internal data class ShadowEntry(
     val atMs: Long,
     /** 来源会话；-1 = 无会话（系统级动作）。 */
     val sessionId: Long,
+    /**
+     * 动作步号（[ActionStepClock] 发的那一半；**口径变更点 2026-10-30 / 306 批**：此前存量行恒 0，
+     * 照原样留着不改写——追加式账本不回头改行；读侧对缺 `round` 格的老行按 0 收）。
+     */
     val step: Int,
+    /** 轮号（306 批起新行才带；0 ＝ 不在任何轮里/旧口径行，不冒充轮号）。 */
+    val roundId: Int = 0,
     /** 219 判的档（线值；"null"＝没判过——**照实写**，不许填空串冒充 R0）。 */
     val riskWire: String,
     val reversible: Boolean,
@@ -53,6 +59,7 @@ internal data class ShadowEntry(
         .put("id", id)
         .put("at", atMs)
         .put("session", sessionId)
+        .put("round", roundId)
         .put("step", step)
         .put("risk", riskWire)
         .put("reversible", reversible)
@@ -106,6 +113,8 @@ internal object ShadowLedger {
         step: Int,
         atMs: Long,
         id: String = "",
+        /** 306 批：轮号（缺省 0＝旧口径；新行由授权链从 [ActionStepClock] 盖章带真轮号）。 */
+        roundId: Int = 0,
     ): ShadowEntry = ShadowEntry(
         // id 缺省按「会话:步骤:时刻」推：够用，且不引入全局序号（208 的 seq 是它的进程级
         // 状态，影子账不需要再背一个）。
@@ -113,6 +122,7 @@ internal object ShadowLedger {
         atMs = atMs,
         sessionId = sessionId,
         step = step,
+        roundId = roundId,
         riskWire = risk?.name ?: RISK_NONE,
         reversible = reversible,
         actions = actions.take(InspectDetailLimits.MAX_EVIDENCE_PER_FINDING),
@@ -159,6 +169,8 @@ internal object ShadowLedger {
             atMs = o.optLong("at", 0L),
             sessionId = o.optLong("session", -1L),
             step = o.optInt("step", 0),
+            // 306 批：老行没有 round 格 ⇒ 0（旧口径原样收，不改写也不冒充轮号）。
+            roundId = o.optInt("round", 0),
             riskWire = o.optString("risk", RISK_NONE),
             reversible = o.optBoolean("reversible", true),
             actions = strList(o.optJSONArray("actions")),

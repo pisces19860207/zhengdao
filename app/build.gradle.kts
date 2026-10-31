@@ -885,6 +885,7 @@ androidComponents {
 // ─────────────────────────────────────────────────────────────────────────────
 // 评测集/基线进包（2026-10-19 第五十批）：仓库根 `eval/cases.json` ＋ `eval/baseline.json`
 //   → `assets/eval/`。App 运行时读不到仓库里的文件，要自检就得把用例带进包。
+//   第三百零四批追加 `eval/evolution/{cases,fake-policy}.json`（事件触发的离线机械评测随包）。
 //
 // 为什么必须构建期复制、而不是在 `app/src/main/assets/` 里再存一份：
 //   两份东西放在两个地方，早晚会漂移——那时随包那份就成了假真源。复制 + 逐字节回读断言
@@ -918,16 +919,20 @@ abstract class StageEvalAssetsTask : DefaultTask() {
         val out = File(outRoot, "eval")
         check(out.mkdirs() || out.isDirectory) { "[stageEvalAssets] 建不出输出目录：$out" }
 
-        val names = listOf("cases.json", "baseline.json")
+        // 第三百零四批起带 evolution/ 子目录：事件触发的自动评测要在 App 内跑 163 批的
+        // 离线机械评测，13 场景＋假决策表必须随包（真源仍是仓库 eval/evolution/ 这一份）。
+        val names = listOf("cases.json", "baseline.json", "evolution/cases.json", "evolution/fake-policy.json")
         for (name in names) {
             val src = File(evalDir.get().asFile, name)
             check(src.isFile) {
                 "[stageEvalAssets] 缺 $name（$src）——仓库 eval/ 是唯一真源，缺了就是漏交付"
             }
+            val dst = File(out, name)
+            dst.parentFile?.mkdirs()
             val bytes = src.readBytes()
-            File(out, name).writeBytes(bytes)
+            dst.writeBytes(bytes)
             // 防漂移断言：回读与源逐字节一致（复制即校验，成本可忽略）
-            val copy = File(out, name).readBytes()
+            val copy = dst.readBytes()
             check(copy.contentEquals(bytes)) {
                 "[stageEvalAssets] $name 副本与 eval/ 逐字节不一致（漂移）——中止，别把假用例装进 APK"
             }
