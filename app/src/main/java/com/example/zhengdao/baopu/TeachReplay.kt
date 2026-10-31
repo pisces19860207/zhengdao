@@ -34,6 +34,7 @@ import org.json.JSONObject
 import java.io.File
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.baopu.scout.ScoutDirs
 
 // ── 页面查询脚本族（全部自包含 IIFE，返回 JSON 字符串）─────────────────────────
 
@@ -1107,6 +1108,7 @@ object TeachReplay {
         workspace: File,
         name: String,
         tabId: Int?,
+        driftChoice: DriftChoice = DriftChoice.ASK,
     ): TeachRunReport {
         val skill = TeachReplayStore.load(projectRoot, name)
             ?: return failedReport(name, "没有这个回放技能：$name（先在玄览里教一遍）")
@@ -1114,6 +1116,12 @@ object TeachReplay {
         // 第二百五十五批 U3：上次环境指纹对不上 ⇒ fail-closed 判 SKILL_STALE，一个页面动作都不做
         val nowMs = System.currentTimeMillis()
         preAcceptanceBlock(projectRoot, name, nowMs)?.let { return failedReport(name, it) }
+
+        // 第三百一十四批：契约漂移闸（只接线不改判据）——web 指纹对不上 ⇒ 降级为需确认，
+        // 停用/校准/照跑的处置全在 [DriftWire.gate]（300 交付报告 §2.3 的顺序，一处没动）。
+        driftGate(context, projectRoot, name, driftChoice, tabId)
+            ?.let { return failedReport(name, it) }
+
         val evidenceRoot = File(MemoryLayout.productsDir(workspace), "玄览技能")
         val sink = FileTeachEvidenceSink(evidenceRoot) { _ ->
             when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
@@ -1238,6 +1246,7 @@ fun replaySkillWithParams(
     sentence: String,
     tabId: Int?,
     nowMs: Long = System.currentTimeMillis(),
+    driftChoice: DriftChoice = DriftChoice.ASK,
 ): TeachParamRun {
     val skill = TeachReplayStore.load(projectRoot, name)
         ?: return TeachParamRun(null, null, emptyList(), "没有这个回放技能：$name（先在玄览里教一遍）")
@@ -1260,6 +1269,9 @@ fun replaySkillWithParams(
                     )
                 }
             }
+            // 第三百一十四批：契约漂移闸——导航到起点页之后再探（探的是起点页，不是调用时的页面）
+            driftGate(context, projectRoot, name, driftChoice, tabId)
+                ?.let { return TeachParamRun(null, null, pl.display, it) }
             val evidenceRoot = File(MemoryLayout.productsDir(workspace), "玄览技能")
             val raw = FileTeachEvidenceSink(evidenceRoot) { _ ->
                 when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
@@ -1299,6 +1311,40 @@ private fun preAcceptanceBlock(projectRoot: File, name: String, nowMs: Long): St
     val status = md?.let { SkillStore.statusOf(it) } ?: "active"
     SkillAcceptance.preflight(TeachReplayStore.loadAcceptance(projectRoot, name), status, nowMs).blocked
 }.getOrNull()
+
+/**
+ * 第三百一十四批：漂移闸的生产装配（**只装配不判断**——判据全在 DriftCheck/DriftStore，
+ * 调度在 [DriftWire.gate]）。tabId 空 ⇒ 没有页面可探，不设闸（执行器会自己停在「取不到当前页面」）。
+ *
+ * @return null＝放行；非 null＝停下把这句给人看（问人／停用／被拒都算停）。
+ */
+private fun driftGate(
+    context: Context,
+    projectRoot: File,
+    name: String,
+    choice: DriftChoice,
+    tabId: Int?,
+): String? {
+    val pf = BaopuRuntime.personaFiles(context)
+    val globalRoot = File(context.applicationContext.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)
+    return when (
+        val d = DriftWire.gate(
+            reader = tabId?.let { BrowserDriftReader(it) },
+            projectRoot = projectRoot,
+            name = name,
+            choice = choice,
+            unfinishedDirs = runCatching { ScoutDirs.ledgerDirs(context) }.getOrDefault(emptyList()),
+            globalRoot = globalRoot,
+            personaFiles = pf,
+            stampText = TimeFormats.fileStamp(),
+            nowMs = System.currentTimeMillis(),
+        )
+    ) {
+        is DriftGateOutcome.Ask -> d.reason
+        is DriftGateOutcome.Stop -> d.reason
+        DriftGateOutcome.Proceed -> null
+    }
+}
 
 /**
  * 第二百五十五批 · 第二段：一次执行实例记一条验收（幂等 opId；U1 触发当场降级）。

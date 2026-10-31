@@ -46,8 +46,8 @@ class TeachToolsTest {
         override fun stopRecording(): String { calls += "stop"; return "已录到 3 步，生成技能草稿「m.example.com-流程」" }
         override fun saveDraft(name: String): String { calls += "save:$name"; return "已保存技能「$name」" }
         override fun skillAllowedDomains(name: String): List<String>? = allowed
-        override fun replay(name: String, sentence: String?): String {
-            calls += "replay:$name/${sentence ?: "-"}"
+        override fun replay(name: String, sentence: String?, driftChoice: String?): String {
+            calls += "replay:$name/${sentence ?: "-"}/${driftChoice ?: "-"}"
             return "回放完成：3 步；取证：/tmp/evidence"
         }
     }
@@ -148,7 +148,30 @@ class TeachToolsTest {
         val text = (out as ToolOutcome.Ok).text
         assertTrue("回执要带结果：$text", text.contains("回放完成：3 步"))
         assertTrue("回执要带取证：$text", text.contains("取证"))
-        assertEquals("replay:查货/查昨天那单", gw.calls.single())
+        assertEquals("replay:查货/查昨天那单/-", gw.calls.single())
+    }
+
+    @Test
+    fun `回放_drift参数_合法值透传_非法值拒_缺省不带`() {
+        // 第三百一十四批：漂移闸的回答从工具参数进（314 接线）
+        val passed = FakeGw(trusted = listOf("m.example.com"))
+        runTool(
+            "browser_replay_skill", passed,
+            JSONObject().put("name", "查货").put("drift", "new_version"),
+        )
+        assertEquals("replay:查货/-/new_version", passed.calls.single())
+
+        val bad = FakeGw(trusted = listOf("m.example.com"))
+        val out = runTool(
+            "browser_replay_skill", bad,
+            JSONObject().put("name", "查货").put("drift", "haha"),
+        )
+        assertTrue("不认得的 drift 要拒（fail-closed，不许悄悄当没答）", out is ToolOutcome.Failed)
+        assertTrue("拒了就不许发起回放", bad.calls.none { it.startsWith("replay:") })
+
+        val none = FakeGw(trusted = listOf("m.example.com"))
+        runTool("browser_replay_skill", none, JSONObject().put("name", "查货"))
+        assertEquals("没被问到就不许带（透传 null）", "replay:查货/-/-", none.calls.single())
     }
 
     // ── 信任名单工具：add/remove/list ───────────────────────────────────────

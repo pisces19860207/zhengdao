@@ -409,8 +409,10 @@ internal object BaopuBrowserWiring {
             override fun skillAllowedDomains(name: String): List<String>? =
                 TeachReplayStore.load(BaopuRuntime.workspaceRoot(ctx), name)?.allowedDomains
 
-            override fun replay(name: String, sentence: String?): String {
+            override fun replay(name: String, sentence: String?, driftChoice: String?): String {
                 val root = BaopuRuntime.workspaceRoot(ctx)
+                // 第三百一十四批：人对漂移问题的回答接线进回放层；不认得的值退回 ASK（再问一遍）。
+                val choice = DriftChoice.ofWire(driftChoice) ?: DriftChoice.ASK
                 return if (sentence == null) {
                     TeachTools.reportLine(
                         TeachReplay.replaySkill(
@@ -419,6 +421,7 @@ internal object BaopuBrowserWiring {
                             workspace = root,
                             name = name,
                             tabId = BrowserTabManager.activeTab()?.id,
+                            driftChoice = choice,
                         ),
                     )
                 } else {
@@ -429,6 +432,7 @@ internal object BaopuBrowserWiring {
                         name = name,
                         sentence = sentence,
                         tabId = BrowserTabManager.activeTab()?.id,
+                        driftChoice = choice,
                     )
                     when {
                         run.ask != null -> run.ask

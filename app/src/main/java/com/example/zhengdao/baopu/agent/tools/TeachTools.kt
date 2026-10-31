@@ -45,8 +45,12 @@ internal interface TeachGateway {
     /** 技能的授权域（回放前置闸用）；没有这个技能 ⇒ null。 */
     fun skillAllowedDomains(name: String): List<String>?
 
-    /** 回放（同步阻塞；name 带 sentence 时按一句话换算参数）。 */
-    fun replay(name: String, sentence: String?): String
+    /**
+     * 回放（同步阻塞；name 带 sentence 时按一句话换算参数）。
+     * 第三百一十四批：[driftChoice] 是人对漂移问题的回答（ask/proceed/new_version/cancel；
+     * null/「ask」＝先问）——接线层 [com.example.zhengdao.baopu.DriftWire] 按它处置。
+     */
+    fun replay(name: String, sentence: String?, driftChoice: String? = null): String
 }
 
 /** 端口的运行时持有者（与 [BaopuBrowser] 同规：每次调用现取，不抓引用）。 */
@@ -64,6 +68,12 @@ internal object TeachTools {
     const val ARG_SENTENCE = "sentence"
     const val ARG_ACTION = "action"
     const val ARG_HOST = "host"
+
+    /** 第三百一十四批：人对漂移问题的回答（漂移闸三选一；没问过就不要给）。 */
+    const val ARG_DRIFT = "drift"
+
+    /** drift 参数的合法值（与 [com.example.zhengdao.baopu.DriftChoice] 的 wire 一致）。 */
+    val DRIFT_WIRES = setOf("proceed", "new_version", "cancel")
 
     /** 拿不到网关时的统一话术（与浏览器件同一把声音）。 */
     val NO_TEACH = "玄览还没打开：先在底部切到「玄览」并打开一个页面，再教我或让我回放。"
@@ -143,8 +153,9 @@ internal object TeachTools {
     fun replaySpec(): ToolSpec = ToolSpec(
         name = "browser_replay_skill",
         description = "回放一个已保存的示教技能：按示教时的步骤自动定位并执行" +
-            "（有指纹校验、授权域闸、信任闸；提交/支付类按钮一律拒点；失败自动滚入视口重试一次，" +
-            "不成即停）。sentence 给一句话时按它换算技能参数（缺参数会反问）。" +
+            "（有指纹校验、授权域闸、信任闸、契约漂移闸；提交/支付类按钮一律拒点；" +
+            "失败自动滚入视口重试一次，不成即停）。sentence 给一句话时按它换算技能参数（缺参数会反问）。" +
+            "页面与契约对不上时会停下问人（三选一），用户答了就用 drift 带回来再跑一次。" +
             "只在信任过的站点上跑。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -156,6 +167,13 @@ internal object TeachTools {
                 ARG_SENTENCE to jsonObjectOf(
                     "type" to "string",
                     "description" to "一句话参数（如「查昨天发的那单」）；技能没参数就不用给",
+                ),
+                ARG_DRIFT to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("proceed", "new_version", "cancel"),
+                    "description" to "漂移闸的回答：上次回放因「页面与契约对不上」停下问你时，用户答了什么。" +
+                        "proceed=照跑（先记一笔）；new_version=这是新版（重新校准后跑）；cancel=算了不跑。" +
+                        "没问过就不要给这个参数。",
                 ),
             ),
             "required" to jsonArrayOf(ARG_NAME),
@@ -176,7 +194,13 @@ internal object TeachTools {
         TeachSiteTrust.gateError(url, gw.trustedHosts(), "回放")
             ?.let { return@ToolSpec ToolOutcome.Failed(it) }
         val sentence = args.optString(ARG_SENTENCE).trim()
-        runCatching { ToolOutcome.Ok(gw.replay(name, sentence.ifEmpty { null })) }
+        val drift = args.optString(ARG_DRIFT).trim().ifEmpty { null }
+        if (drift != null && drift !in DRIFT_WIRES) {
+            return@ToolSpec ToolOutcome.Failed(
+                "drift 只认 ${DRIFT_WIRES.joinToString("／")}（拿到的是「$drift」）；没被问到就不要给这个参数",
+            )
+        }
+        runCatching { ToolOutcome.Ok(gw.replay(name, sentence.ifEmpty { null }, drift)) }
             .getOrElse { ToolOutcome.Failed("回放失败：${it.message ?: it.javaClass.simpleName}") }
     }
 
