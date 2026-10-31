@@ -57,6 +57,10 @@ class OpinionIsolationTest {
         // （L7 未分类／L8 硬拒／critical 必问，撞上 ⇒ 草稿作废）。它不构造意见，只**读**
         // 意见的这两个字段来验草稿，所以是真消费方，不是顺手 import。
         "com/example/zhengdao/baopu/policy/VerdictDraft.kt" to "298",
+        // 315 批：紧急闸接线——派工单明令「Opinion 标 requiresApproval」：紧急卡三布尔投影
+        // （marker/severity/lawRef）交给 law/EmergencyGate 判，判据与自决拒因都出自 law/，
+        // 本文件是接线宿主，真消费契约（不是顺手 import）。
+        "com/example/zhengdao/baopu/inspect/EmergencyWiring.kt" to "315",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

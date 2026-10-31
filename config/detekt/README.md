@@ -11,13 +11,15 @@
 > 266 批（2026-10-28）已把 detekt **接进 CI 并上闸**——`detektReport` 仍 `isIgnoreExitValue = true`
 > （只出报告、不自己红），判红改由 `tools/check-detekt-budget.py` 比
 > `config/detekt/issue-budget.json` 完成：**只比总量，超了才红**；指纹对不上只打诊断 annotation。
-> `baseline.xml` 自 2026-10-19 冻结后**一次都没在流水线里跑过**，函数签名一改 ID 就失配，
-> 现已**退役**（保留文件只为历史；判定口径全部走预算闸）。
+> `baseline.xml` 自 2026-10-19 冻结后**一次都没在流水线里跑过**，函数签名一改 ID 就失配。
+> **324（2026-10-31）把 baseline 文件整条删除**：它一直压着 101 条真读数（详见下面 324 节）；
+> 门禁 `tools/check-detekt-no-baseline.py` 盯着 build 脚本与 config，那个 CLI 参数字面量再现即红。
 >
 > **判据只有一条：总量**（2026-10-29 按用户口径收紧）。`当前总数 > 预算总数` ⇒ 红。
 > 逐条指纹**只作诊断**（打印对不上的前 15 条，方便看是重构还是改名），**不参与判红**、
 > 规则分布超预算也只 warning —— 因为 detekt 自己的 ID 带行号，行号一漂移键就全变
-> （266 那批的 `baseline.xml` 就是这样整体失效的：带 `--baseline` 跑仍报 330 条）。
+> （266 那批的 `baseline.xml` 就是这样整体失效的：266 当年实测它压不住、只拦到 330 条里的一小部分；
+> 324 逐条对照才发现它其实还**压着 101 条真读数**——所以干脆整条删除，见下面 324 节）。
 >
 > **预算只能降不能升，但留一个带理由的抬升通道**：`--write` 默认拒绝变大，
 > 确实要接受（例如新代码真多一个长函数）时用
@@ -34,10 +36,21 @@
 > 也不含测出来的数字（`too long (527)` / `complexity: 106` 只属于报告）。同名重载按行号顺序编号
 > （`fromJson#1` / `fromJson#2`），不会两条撞成一条。
 
-**当前读数**：预算仍记 **330 条**（266 批记下的、当时在 CI 出的读数——本机读数不进预算，
-见下「`--write` 只许用 CI 的读数」）。2026-10-29 本机复核为 **329 条**（`CyclomaticComplexMethod` 182 ＋
-`LongMethod` 147，真有一个长方法被改短了），闸按「总量」判仍通过，并会提示「下次用 CI 读数
-`--write` 顺手降预算」。
+**当前读数**：**435 条**（324 用无 baseline 真读数重记，2026-10-31；引擎 304／冻结 UI 131。
+带/无 baseline 双跑对照 334→435，被压的 101 条已如实回账——口径修正，非放宽，见下节）。
+
+## 324（2026-10-31）：删 baseline、真读数重记账——**口径修正，非放宽**
+
+- 10-19 首跑把 171 条违规冻结进 `baseline.xml`，之后 detekt 跑法一直带着指到它的参数。
+- 324 双跑对照（同一份代码，唯一差别是那个参数）：带 baseline **334** 条、无 baseline **435** 条
+  ⇒ baseline 实际仍压着 **101 条**（引擎 64：CCM 47＋LM 17；UI 冻结区 37：LM 23＋CCM 14），
+  其中任何一条改签名就会悄悄掉进「新增」，账永远对不上。
+- **工单预估 15 条（12 条 UI）有误**：那是按指纹比对估的，与真跑不符；以双跑对照为准。
+- 处置：baseline 文件与参数整条删除（原文证据存 `证道设计报告/324-baseline原文存档-2026-10-31.xml`）；
+  预算用真读数重记（`raised_reason` 写明口径修正）；**只降不升自 435 起算，下一批至少降 5 条**。
+- 门禁：`tools/check-detekt-no-baseline.py`（CI 与本地同一条命令）——build 脚本与 config 里
+  那个 CLI 参数字面量**再现即红**；`detektBaselineUpdate` 任务一并删除（它会一把把全部违规
+  重新冻成新 baseline，等于撕账本重写）。
 
 ## 怎么跑
 
@@ -53,11 +66,9 @@
 
 报告：`app/build/reports/detekt/detekt.html`（另有 XML）。
 
-重算基线（只在有意接受新违规时做，做完把 `baseline.xml` 的 diff 一并提交）：
-
-```powershell
-.\gradlew.bat :app:detektBaselineUpdate -Porg.gradle.java.installations.paths=<JDK21>
-```
+baseline 重算任务（`detektBaselineUpdate`）已随 324 **删除**——没有 baseline 的世界里，
+跑一次它就会把当前全部违规重新冻成新 baseline（撕账本重写）。要接受新增违规，
+唯一合法路径是预算闸 `--allow-raise "理由"`，两本账（总量＋分区）同改。
 
 ## 首跑读数（2026-10-19，历史留档；**当前见上面 329 条**）
 
@@ -112,12 +123,13 @@ G7 点名的 5 个文件共 **16 条**：
 > 上限交给 detekt 自己（CLI `--max-issues`，1.23.8 官方文档：
 > 「return exit code 0 only when found issues count does not exceed specified issues count」）。
 
-**值放哪**：`config/detekt/detekt.yml` 末尾一行 **注释形态**的 `# maxIssues: 326`。
+**值放哪**：`config/detekt/detekt.yml` 末尾一行 **注释形态**的 `# maxIssues: 435`。
 它故意是注释——实测 detekt 1.23.8 把未注释的 `maxIssues:` 当**非法配置键**
 （`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）⇒ 值由 `detektWall` 与预算闸
 用正则读，再作为 CLI `--max-issues` 交给 detekt。
 
-**当前值**：`# maxIssues: 326` ＝ `issue-budget.json` 的 `total`（真实读数 325，留 1 条余量）。
+**当前值**：`# maxIssues: 435` ＝ `issue-budget.json` 的 `total`（324 口径修正后的真读数；
+只降不升自 435 起算，下一批至少降 5 条）。
 
 ### 降上限（唯一合法路径：两处同改）
 
@@ -171,7 +183,8 @@ Configuration cache problems found in this build.
 | `frozen_ui` | `app/src/main/java/com/example/zhengdao/ui/` | **超预算 ⇒ 红**（2026-10-31 用户追加：**冻结区也只降不升**——否则 UI 可以永远欠着新债） |
 | 总量 | 两本之和 | 超 `total` ⇒ 红；且必须等于 `detekt.yml` 的 `# maxIssues`（D1/D2 互锁不变） |
 
-**当前**：总量 334（引擎 **240** ／冻结 **94**）；`# maxIssues: 334`。
+**当前**：总量 435（引擎 **304** ／冻结 **131**）；`# maxIssues: 435`（324 口径修正重记；
+旧账 334＝240＋94 少了被 baseline 压住的 101 条）。
 
 **负例（本机实做，2026-10-31 两条追加后重跑）**
 - 引擎压到 239（实际 240）⇒ **rc=1**；

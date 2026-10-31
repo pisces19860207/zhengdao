@@ -82,4 +82,22 @@ internal object EmergencyGate {
 
     /** 多条不适用条文：有一条成话即算说清（[reasonStated] 的复数形式，同一把尺）。 */
     fun reasonStated(reasons: List<String>): Boolean = reasons.any { reasonStated(it) }
+
+    // ── 第三百一十五批：紧急卡必须人批（L21 的执行面） ────────────────────────
+    //
+    // 276 只判了「卡能不能以紧急的名义弹出去」，315 判「弹出去之后归谁定」：
+    // 紧急卡**必须人批**——任何自决路径撞上它只能拒，没有"特殊情况"。
+    // 判定层照旧不依赖契约层：三个布尔由调用方投影（与 [qualifiesForExemption] 同一口径）。
+
+    /** 一条处置诉求算不算紧急卡：标记＋致命＋L21，三样缺一就只是普通意见。 */
+    fun isEmergencyCard(hasMarker: Boolean, severityIsCritical: Boolean, lawRefIsL21: Boolean): Boolean =
+        hasMarker && severityIsCritical && lawRefIsL21
+
+    /** 紧急卡必须人批：认成紧急卡 ⇒ 恒 true——这一位不许任何"特殊情况"改写。 */
+    fun requiresApproval(isEmergencyCard: Boolean): Boolean = isEmergencyCard
+
+    /** 自决路径撞上紧急卡 ⇒ 一律拒（null＝非紧急，按各路径原判走；拒因唯一出自本层）。 */
+    fun selfRulingRejection(isEmergencyCard: Boolean): String? =
+        if (isEmergencyCard) "紧急卡必须人批：自决路径不许放行（L21／L30b——止损 0 秒可以自执行，处置授权不行）"
+        else null
 }
