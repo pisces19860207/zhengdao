@@ -209,7 +209,8 @@ object KnowledgeBase {
         val t = Thread({
             runCatching {
                 if (ensureScaffold(ctx, forced = true)) dispatch(ctx)
-                val outcome = rebuildIndex(ctx)
+                // 301：手动按钮 ⇒ 摘要全量重算（forceSummaries = true）。自动流程不带这个。
+                val outcome = rebuildIndex(ctx, forceSummaries = true)
                 if (outcome is IndexOutcome.Failed) {
                     RunLog.log("资料库手动整理未完成：${outcome.why}")
                 }
@@ -464,10 +465,20 @@ object KnowledgeBase {
     /** 扫描结果：条目 ＋ **是否因达到 [MAX_SCAN] 而截断**（截断必须告知，不能静默）。 */
     private class ScanResult(val items: List<Item>, val truncated: Boolean)
 
-    private fun scanRaw(ctx: Context): List<Item> = scanRawFull(ctx).items
+    private fun scanRawIn(base: File): List<Item> = scanRawFull(base).items
 
-    private fun scanRawFull(ctx: Context): ScanResult {
-        val base = rawDir(ctx)
+    /**
+     * 301：同一次扫描，但**指定根目录**，且只回相对路径＋大小。
+     *
+     * 抽出来只为一件事：摘要链的判据（"改一个文件⇒只该文件过期"）必须能在 JVM 单测里
+     * 喂一个临时目录验，而不是只能在真机上碰运气。实现与 [rebuildIndex] 用的那份是同一份。
+     */
+    internal fun listRawIn(base: File): List<Pair<String, Long>> =
+        scanRawIn(base).map { it.rel to it.size }
+
+    private fun scanRawFull(ctx: Context): ScanResult = scanRawFull(rawDir(ctx))
+
+    private fun scanRawFull(base: File): ScanResult {
         if (!base.isDirectory) return ScanResult(emptyList(), false)
         val out = ArrayList<Item>()
         val stack = ArrayDeque<File>()
@@ -525,20 +536,16 @@ object KnowledgeBase {
     /**
      * 供 P2 摘要流程使用：列出 `原始/` 里的文件（相对路径 + 大小 + 修改时间）。
      *
-     * 保留原因（第二十七批审计，2026-10-18）：**P2 摘要链未接线，本函数是链头**。
-     * 现状：`git grep -w listRaw` 只命中本处定义（零调用）。但它不是"写完忘了删"——
-     * 摘要链三件（[listRaw] 取输入 → [writeSummaries] 落盘 → [markBusy] 标记进行中）
-     * 都齐了，缺的是**触发者**（要调 LLM 逐文件生成摘要，属独立功能，未立单）。
-     * 单独接上它没有场景（唯一消费者就是那条链）；删它则要连 `KnowledgeBaseSummarizer`
-     * 的写入侧一起删（那是把半个功能删掉，不是清理死代码）。
-     * **一同存亡条件**：P2 摘要立单时一并接上；若决定不做摘要功能，应连同
-     * `KnowledgeBaseSummarizer.renderInto` 与 [writeSummaries] 整条链一起删。
+     * **301 起已接线**：`refreshSummaries` 用它取输入（原先零调用，是整条链缺的"链头"）。
      */
-    fun listRaw(ctx: Context): List<Pair<String, Long>> =
-        scanRaw(ctx).map { it.rel to it.size }
+    fun listRaw(ctx: Context): List<Pair<String, Long>> = listRawIn(rawDir(ctx))
 
-    /** 重建 `整理/00-目录.md`。内容未变则跳过。 */
-    fun rebuildIndex(ctx: Context): IndexOutcome {
+    /** 重建 `整理/00-目录.md`。内容未变则跳过。
+     *
+     * @param forceSummaries 301：`true` ＝ 用户手动「重新整理」⇒ 摘要**全量重算**。
+     *   自动流程一律 `false`（只算内容变了的），这是用户定的"全量重算仅手动触发"。
+     */
+    fun rebuildIndex(ctx: Context, forceSummaries: Boolean = false): IndexOutcome {
         if (!rawDir(ctx).isDirectory) return IndexOutcome.Skipped
         val scan = scanRawFull(ctx)
         val items = scan.items
@@ -566,6 +573,10 @@ object KnowledgeBase {
         val attempt = atomicWriteChecked(idx, carried)
         if (attempt.wrote) {
             prefs.edit { putString(KEY_SIG, sig) }
+            // 301：索引写完了 ⇒ 接着补摘要。顺序不能反：writeSummaries 的前置守则是"清单已存在"。
+            // ⚠️ 摘要这一步**不碰 KEY_SIG**（见 writeSummaries 的 KDoc）——所以下一轮
+            // "该不该重算清单"的判断仍只由原始文件的指纹决定，不会被摘要写盘带偏。
+            refreshSummaries(ctx, force = forceSummaries)
             return IndexOutcome.Written(attempt.readFailure)
         }
         return IndexOutcome.Failed("清单没写成（内容为空或被拒）")
@@ -587,21 +598,97 @@ object KnowledgeBase {
      * ⚠️ 写入后**故意不更新** [KEY_SIG]：摘要不是"原始文件变了"，更新指纹会让下一次
      * 真该重算清单的改动被跳过。代价只是"有摘要时清单会多渲染一次"，无害。
      *
-     * 保留原因（第二十七批审计，2026-10-18）：**P2 摘要链的落盘点，链未接线**。
-     * `git grep -w writeSummaries` 只命中本处定义；但它是 P2 唯一的写盘口（"[P2] 唯一的
-     * 落盘点"就在上一段），删了等于宣布"摘要永不落盘"。它的三个前置守则都还活着
-     * （`carryOverSummary` 被 [rebuildIndex] 调用），说明这条链不是全死、只是缺触发者。
-     * **一同存亡条件**：同 [listRaw]——P2 立单时接上；不做就整条链一起删。
+     * **301 起已接线**：触发者是 [refreshSummaries]（索引写完 ⇒ 重算该重算的 ⇒ 从这里落盘）。
+     * 判据"写盘后不许动 [KEY_SIG]"由 `SummaryChainGateTest` 机检本函数体（含注释剥离后的代码），
+     * 并有一条变异负例（往这里塞 `putString(KEY_SIG, …)`）证明它真会红。
      *
      * @return true = 确实写入了
      */
     fun writeSummaries(ctx: Context, summaries: Map<String, String>): Boolean {
-        val idx = indexFile(ctx)
+        return writeSummariesTo(indexFile(ctx), summaries)
+    }
+
+    /**
+     * [writeSummaries] 的**文件层**（301 抽出，行为一字未改）。
+     *
+     * 为什么要有：`writeSummaries` 要 `Context` 才能拿到清单路径，而 JVM 单测没有 Context。
+     * 判据 ①（索引重建后摘要落盘）必须在单测里能验，所以把"给定清单文件"的这一半露出来。
+     * 两个前置守则原样保留：
+     * 1. 清单文件**已存在**（摘要只是追加一节，不凭空造清单）
+     * 2. 合并后正文非空（[KnowledgeBaseSummarizer.renderInto] 返回 null 就什么都不写）
+     */
+    internal fun writeSummariesTo(idx: File, summaries: Map<String, String>): Boolean {
         if (!idx.isFile) return false
         val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull() ?: return false
         val merged = KnowledgeBaseSummarizer.renderInto(old, summaries) ?: return false
         return atomicWriteChecked(idx, merged).wrote
     }
+
+    /**
+     * 301：摘要链的**触发者**（原来整条链缺的就是它）。
+     *
+     * 做三件事，顺序固定：
+     * 1. 取输入 —— [listRaw]（相对路径＋大小）
+     * 2. 重算该重算的 —— 逐文件比 sha256＋摘要器版本，只重算不符的；超限按 `lastHitAt` 淘汰
+     *    （**现状淘汰的是「最久未生成」**：生产侧 `lastHitAt ≡ genAt`；**接检索面板后恢复真 LRU**）
+     * 3. 落盘 —— 侧车账本 `产物/00-摘要.json` ＋ 清单正文（[writeSummaries] 唯一落盘点）
+     *
+     * ⚠️ 全程**不调模型**：摘要是纯字符串规则生成（见 [KnowledgeBaseSummaries.summarize]）。
+     *
+     * ⚠️ 必须在后台线程调用（要哈希每个文件、要读写清单）。
+     *
+     * @param force `true` ＝ 全量重算（只有设置页「重新整理」走这条）
+     */
+    internal fun refreshSummaries(ctx: Context, force: Boolean): KnowledgeBaseSummaries.Report {
+        if (!isEnabled(ctx)) return KnowledgeBaseSummaries.Report.skipped("资料库开关关着")
+        val report = KnowledgeBaseSummaries.refresh(
+            rows = listRaw(ctx),
+            rawDir = rawDir(ctx),
+            indexFile = indexFile(ctx),
+            storeFile = KnowledgeBaseSummaries.storeFile(ctx),
+            force = force,
+        )
+        if (report.wroteIndex || report.recomputed > 0 || report.evicted > 0) {
+            RunLog.log(
+                "资料库摘要：共 ${report.total} 个文件，沿用 ${report.fresh}，重算 ${report.recomputed}，" +
+                    "过期丢 ${report.dropped}，超限淘汰 ${report.evicted}（${report.entries} 条 / ${report.bytes} B）",
+            )
+        }
+        return report
+    }
+
+    /**
+     * 301：**检索口**——按相对路径取一条摘要（取到即记一次"命中"，供超限淘汰排序用）。
+     *
+     * 过期（源文件内容变了 / 摘要器版本变了 / 条目没了）一律当**没有**返回，
+     * 绝不把旧摘要当新用。这一点有变异负例钉住。
+     *
+     * ⚠️ **刻意不开成 `public`**：App 内现在没有"按名查摘要"的界面（agent 是直接读
+     * `00-目录.md` 的），开了就是又一个零调用公开 API —— 这个仓库为此吃过审计。
+     * 命中信号的意义见 [KnowledgeBaseSummaries.lookup] 的 KDoc。
+     *
+     * @return null ＝ 没有这条 / 已过期
+     */
+    internal fun summaryOf(ctx: Context, rel: String): String? = KnowledgeBaseSummaries.lookup(
+        storeFile = KnowledgeBaseSummaries.storeFile(ctx),
+        rawDir = rawDir(ctx),
+        rel = rel,
+    )
+
+    /**
+     * 301：**检索口**——按关键词查摘要（`rel` 或摘要正文含该词即命中，忽略大小写）。
+     *
+     * 命中的条目会刷新 `lastHitAt`（淘汰排序的"命中"信号）；过期的条目直接跳过。
+     * ⚠️ 生产侧目前没有检索消费者 ⇒ `lastHitAt` 恒等于 `genAt` ⇒ 淘汰实际是"最久未生成"。
+     * 可见性理由同 [summaryOf]。
+     */
+    internal fun searchSummaries(ctx: Context, query: String, limit: Int = 20): List<Pair<String, String>> =
+        KnowledgeBaseSummaries.search(
+            storeFile = KnowledgeBaseSummaries.storeFile(ctx),
+            rawDir = rawDir(ctx),
+            query = query,
+            limit = limit,
+        )
 
     /**
      * 标记"摘要任务正在跑"（设置页状态显示为「整理中」）。
@@ -616,9 +703,12 @@ object KnowledgeBase {
      * 也就是说 `status()` 的 BUSY 分支**永远走不到**——这是个真缺口，但补它的位置
      * 不在"清理批"里能定的：真正该标 busy 的是 P2 摘要（调 LLM，几分钟级）；
      * [rebuildIndex] 是毫秒到秒级的同步重渲染，标了也几乎看不到中间态（装样子）。
-     * **一同存亡条件**：P2 立单时接进摘要流程；若不做摘要，则连同 [status] 的
-     * `State.BUSY` 分支与 `KEY_BUSY`/`KEY_BUSY_AT` 一起删（那是 10 行的连带改动，
-     * 超出"1 小时清理"的边界）。
+     * **301 复核**：P2 已接线（[refreshSummaries]），但摘要改成**纯规则生成、不调模型**，
+     * 耗时与索引重建同量级（哈希＋读 4 KB 头）⇒ 按上面同一条理由**仍不标 busy**：
+     * 标了只是让设置页闪一下「整理中」，是装样子。若将来摘要改回慢路径（真模型/大文件抽取），
+     * 才在这里 `markBusy` 并在 finally 里 `clearBusy`。
+     * **一同存亡条件**：若确认永不做慢路径摘要，则连同 [status] 的 `State.BUSY` 分支与
+     * `KEY_BUSY`/`KEY_BUSY_AT` 一起删。
      */
     fun markBusy(ctx: Context) {
         AppPrefs.prefs(ctx).edit {
@@ -643,25 +733,34 @@ object KnowledgeBase {
         return true
     }
 
-    private fun indexText(items: List<Item>, truncated: Boolean = false): String {
+    private fun indexText(items: List<Item>, truncated: Boolean = false): String =
+        indexTextFor(items.map { it.rel to it.size }, truncated)
+
+    /**
+     * [indexText] 的**纯行版**（301 抽出，模板一字未改）。
+     *
+     * 只为一件事：JVM 单测要能造出一份**真的**清单正文（含 `## 给 AI 的提示（重要）` 锚点），
+     * 才验得了"摘要插在哪一节之前"与"重建后摘要还在不在"。造不出真清单的测试只能自欺。
+     */
+    internal fun indexTextFor(rows: List<Pair<String, Long>>, truncated: Boolean = false): String {
         val sb = StringBuilder()
         // B-补-24（2026-10-16）：共享 formatter（旧写法每次新建 SimpleDateFormat）
         val ts = TimeFormats.minuteStamp()
         sb.append("# 资料库目录\n\n")
         sb.append("> 由证道自动生成 · 更新于 ").append(ts).append("  \n")
         sb.append("> 原始文件在 `原始/` 里（**只读**）。本文件只是索引。\n\n")
-        if (items.isEmpty()) {
+        if (rows.isEmpty()) {
             sb.append("_（还没有文件。把资料放进 `原始/`，就会出现在这里。）_\n")
         } else {
-            sb.append("共 **").append(items.size).append("** 个文件：\n\n")
+            sb.append("共 **").append(rows.size).append("** 个文件：\n\n")
             if (truncated) {
                 // 不静默：清单是给 agent 和用户看的，必须自己说出"这不全"
                 sb.append("> ⚠️ **已达单次扫描上限 ").append(MAX_SCAN)
                     .append(" 个 —— 这里只列出了前 ").append(MAX_SCAN)
                     .append(" 个；`原始/` 里可能还有文件**未**列出来。**\n\n")
             }
-            for (it in items) {
-                sb.append("- `").append(it.rel).append("` — ").append(humanSize(it.size)).append("\n")
+            for ((rel, size) in rows) {
+                sb.append("- `").append(rel).append("` — ").append(humanSize(size)).append("\n")
             }
         }
         sb.append("\n---\n\n")
@@ -738,7 +837,8 @@ object KnowledgeBase {
         }
     }
 
-    private fun humanSize(n: Long): String = when {
+    /** 301：`internal` —— 摘要行里要报体量，同一套口径不抄第二份。 */
+    internal fun humanSize(n: Long): String = when {
         n >= 1024L * 1024L -> String.format(Locale.CHINA, "%.1f MB", n / 1024.0 / 1024.0)
         n >= 1024L -> String.format(Locale.CHINA, "%.1f KB", n / 1024.0)
         else -> "$n B"

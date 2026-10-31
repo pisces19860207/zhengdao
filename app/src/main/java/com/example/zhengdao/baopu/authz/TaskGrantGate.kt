@@ -1,5 +1,11 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
+// 第三百零六批（step 联键）：六步从此带**引擎分配的 (roundId, step)**——
+// [ActionStepClock] 的轮号由 RunEngine 每轮 `beginRound` 推进（本轮内自增、跨轮重置并记轮号），
+// 授权链在 [TaskGrantGate.evaluate] 入口按 opId 领号：免卡结论（第⑥步读数与 [GateDecision]）
+// 引用得起点，影子账 [com.example.zhengdao.baopu.inspect.ShadowLedger] 那一行也落在真步号上。
+// 2026-10-29 之前的存量账行 step=0 属旧口径，**照原样留着不改写**（追加式账本，见 ShadowInput.step 注）。
+//
 // 第二百四十九批：六步放行（§5「对象→动作→上限→protected/hardDeny→影子三态→执行落 208」）。
 //
 // 三条纪律钉在这个文件的形状上：
@@ -17,6 +23,70 @@ import com.example.zhengdao.baopu.RiskVerdict
 import com.example.zhengdao.baopu.inspect.ShadowAdapter
 import com.example.zhengdao.baopu.inspect.ShadowInput
 import com.example.zhengdao.baopu.inspect.ShadowVerdict
+
+/**
+ * 第三百零六批：动作步号钟——授权链里 `(roundId, step)` 的**唯一来源**。
+ *
+ * 分工与两条纪律：
+ * · **轮归引擎**：RunEngine 每轮入口调 [beginRound]（本轮内自增、跨轮重置并记轮号）——
+ *   「跨轮重开」的判据就是它：第二认 `step` 从 1 重新数，[Mark.roundId] 却单调向前；
+ * · **步按动作**：同一个 opId 一辈子一个号（[stepFor] 第一次见它才领号，之后复用）——
+ *   确认卡批准后的第二遍 prepare、偏离卡批准后的重跑，都还是**同一个动作**，不许换号；
+ *   同一轮里两个不同动作必然两个号（判据「同轮两次动作步号不同」）。
+ *
+ * 为什么授权链自己兜底领号而不等引擎喂：引擎只在轮边界碰这口钟；动作的号由六步入口
+ * （[TaskGrantGate.evaluate]）按 opId 领——哪条执行路径漏喂都不会再产出恒 0 的旧口径
+ * （那正是 306 开工令点名的"真断点"）。没开过轮（进程重启后的恢复执行、纯判定单测）
+ * ⇒ roundId=0，step 照实领：账行上 `轮 0` 一眼能认出"这一笔不在任何轮里"，不冒充轮号。
+ *
+ * 房型照 [TaskGrantBoard]：进程级单例＋锁，只在内存；[resetForTest] 供单测清场。
+ */
+internal object ActionStepClock {
+
+    /** 一次动作的 (轮号, 步号)。`roundId=0` ＝ 不在任何轮里（见类注释），不算旧口径的"恒 0"。 */
+    data class Mark(val roundId: Int, val step: Int)
+
+    private val lock = Any()
+    private var roundCounter = 0
+    private var roundId = 0
+    private var stepCounter = 0
+
+    /** 本轮已领过号的 opId → 步号（同 opId 复用；换轮整表清）。 */
+    private val byOp = HashMap<String, Int>()
+
+    /** 开新一轮：轮号 +1，步号清零重来（RunEngine 每轮入口调一次，别的口不许开轮）。 */
+    fun beginRound(): Mark = synchronized(lock) {
+        roundCounter += 1
+        roundId = roundCounter
+        stepCounter = 0
+        byOp.clear()
+        Mark(roundId, 0)
+    }
+
+    /**
+     * 这个动作的步号（第一次见才领号，之后同 opId 永远同一个号）。
+     * 本轮第几个领号的就是第几步；跨轮后从 1 重开。
+     */
+    fun stepFor(opId: String): Mark = synchronized(lock) {
+        byOp[opId]?.let { return Mark(roundId, it) }
+        stepCounter += 1
+        byOp[opId] = stepCounter
+        Mark(roundId, stepCounter)
+    }
+
+    /** 只读不领号（报告/巡按回读用；没领过 ⇒ 轮内步号 0，不悄悄把号发出去）。 */
+    fun peek(opId: String): Mark = synchronized(lock) {
+        Mark(roundId, byOp[opId] ?: 0)
+    }
+
+    /** 单测清场（生产不调；与 TaskGrantBoard.resetForTest 同一条纪律）。 */
+    fun resetForTest() = synchronized(lock) {
+        roundCounter = 0
+        roundId = 0
+        stepCounter = 0
+        byOp.clear()
+    }
+}
 
 /** 六步（`wire` 是交付报告与账本的稳定键；改字面量＝老读数读不出步骤）。 */
 internal enum class GrantStep(val wire: String, val cn: String) {
@@ -168,6 +238,12 @@ internal data class GateDecision(
     val ledgerKey: String = "",
     /** 执行侧落地后要重新比对的「执行前状态」。 */
     val expectedBefore: ObjectState = ObjectState.Absent,
+    /**
+     * 第三百零六批：这次判定领到的 (roundId, step)（[ActionStepClock] 发的；免卡结论引用它）。
+     * `roundId=0` ＝ 不在任何轮里（恢复执行／纯判定单测），step 照实——不冒充轮号。
+     */
+    val roundId: Int = 0,
+    val step: Int = 0,
 ) {
     val allow: Boolean get() = outcome == GateOutcome.ALLOW
 
@@ -230,11 +306,17 @@ internal object TaskGrantGate {
      */
     internal fun shadowSignalFor(input: ShadowInput?, log: (String) -> Unit = { }): ShadowSignal {
         if (input == null) return ShadowSignal.None
-        val run = ShadowAdapter.rehearse(input, log = log)
+        // 第三百零六批：进适配器前把引擎分配的 (roundId, step) 盖上——影子账那一行的落点
+        // 从此是真步号（旧口径恒 0 的"真断点"在这一行闭合）；没有轮（roundId=0）照实带 0。
+        val mark = ActionStepClock.stepFor(input.opId)
+        val run = ShadowAdapter.rehearse(input.copy(roundId = mark.roundId, step = mark.step), log = log)
         return ShadowSignal.Rehearsed(run.outcome.verdict, run.reason)
     }
 
     fun evaluate(request: ActionRequest, state: GrantState?): GateDecision {
+        // 第三百零六批：入口先领 (roundId, step)——同 opId 复用同一个号（确认卡第二遍、
+        // 偏离卡重跑都是同一个动作）；免卡结论第⑥步引用它，影子账也落它。
+        val mark = ActionStepClock.stepFor(request.opId)
         val steps = mutableListOf<StepReading>()
         fun decide(outcome: GateOutcome, code: String, delta: DeltaQuestion? = null): GateDecision =
             GateDecision(
@@ -245,6 +327,8 @@ internal object TaskGrantGate {
                 opId = request.opId,
                 ledgerKey = ledgerKeyOf(request.opId),
                 expectedBefore = request.before,
+                roundId = mark.roundId,
+                step = mark.step,
             )
 
         // ① 对象：先识破「整个工作区」，再核对清单、进程、任务、有效期、落点、版本
@@ -442,7 +526,8 @@ internal object TaskGrantGate {
         steps += StepReading(
             GrantStep.RECORD,
             true,
-            "opId=${request.opId}，账键=${ledgerKeyOf(request.opId)}，尚未落过",
+            "opId=${request.opId}，账键=${ledgerKeyOf(request.opId)}，尚未落过" +
+                "（轮 ${mark.roundId} 步 ${mark.step}）",
         )
         return decide(GateOutcome.ALLOW, CODE_ALLOW)
     }

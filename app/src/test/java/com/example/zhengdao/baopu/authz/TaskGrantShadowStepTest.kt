@@ -130,7 +130,8 @@ class TaskGrantShadowStepTest {
     fun `第五步_UNVERIFIABLE_停在no_data且原因码进明细`() {
         val fake = Fake(runOf(listOf("$copyRoot/a")))
         ShadowAdapter.install(fake)
-        val d = TaskGrantGate.evaluate(requestWith(inputOf(tool = "delete_path")), AuthzFixtures.state())
+        // 306 批起 delete_path 已接影子（走它自己的用例）；「没接」的例子换成 bash。
+        val d = TaskGrantGate.evaluate(requestWith(inputOf(tool = "bash")), AuthzFixtures.state())
         assertEquals(GateOutcome.STOPPED, d.outcome)
         assertEquals("没接适配器的工具既不许冒充红、也不许冒充绿", TaskGrantGate.CODE_NO_DATA, d.code)
         assertTrue("验不了记未验（与 239 同口径）", step(d).passed == null)
