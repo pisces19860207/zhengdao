@@ -267,10 +267,15 @@ class CriteriaEvolutionTest {
         EpochRuntime.swap(CriteriaSnapshot.of(e0, 1, listOf(CriterionEntry("k1", "判据一", harmlessTarget, 0))), weekStart(0))
         EpochRuntime.swap(CriteriaSnapshot.of(e1, 2, listOf(CriterionEntry("k2", "判据二", harmlessTarget, 1))), weekStart(1))
 
+        val before = EpochRuntime.rollbackLedger().size
         val rolled = EpochRuntime.rollbackToPrevious()
         assertTrue("严重缺陷的回滚不许等周一", rolled.rolledBack)
         assertEquals(e0, EpochRuntime.currentSnapshot()?.epoch)
         assertEquals(EpochState.ROLLED_BACK, EpochRuntime.ledgerState())
+        // Q3（2026-10-31 用户裁定）：回滚零参数、不问审批，**但必须落一行账**。
+        val ledger = EpochRuntime.rollbackLedger()
+        assertEquals("回滚必须落一行账", before + 1, ledger.size)
+        assertTrue("账行要能看出从哪退到哪", ledger.last().contains(e0.label()) && ledger.last().contains(e1.label()))
         // 结构性证据：回滚这条路上没有任何审批参数（有的话就该带 approved 之类的入参）。
         val arity = EpochRuntime::class.java.getDeclaredMethods().filter { it.name.startsWith("rollbackToPrevious") }
         assertEquals(1, arity.size)
