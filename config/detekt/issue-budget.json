@@ -1,8 +1,8 @@
 {
   "total": 334,
   "rules": {
-    "CyclomaticComplexMethod": 181,
-    "LongMethod": 145
+    "CyclomaticComplexMethod": 185,
+    "LongMethod": 149
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|The function verdictOf appears to be too complex based on Cyclomatic Complexity (complexity: 19). Defined complexity threshold for methods is set to '15'",
@@ -336,6 +336,23 @@
     "LongMethod|TopicSuggest.kt|The function reduce is too long (83). The maximum length is 60.",
     "LongMethod|VisionFiles.kt|The function load is too long (72). The maximum length is 60."
   ],
-  "recorded_from": "2026-10-30 CI run 91562ca0 detekt：Analysis failed with 334 weighted issues",
-  "raised_reason": "2026-10-30：278/285/283 在既有长函数里加行（BaopuSettingsScreen +16、DecisionCenterScreen +14 等），未新增文件级问题；CI 实测 334。本条为「只降不升」的唯一合法抬升，下次功能批须同步下降。"
+  "recorded_from": "2026-10-31 方案 C 分账迁移：总量 334 与 CI 硬墙读数一致（#1680/#1688 在 334 通过、335 失败），分区数取本机同版本 detekt（引擎 240 / 冻结 94）；UI 重做时两本账一起重记",
+  "raised_reason": "2026-10-30：278/285/283 在既有长函数里加行（BaopuSettingsScreen +16、DecisionCenterScreen +14 等），未新增文件级问题；CI 实测 334。本条为「只降不升」的唯一合法抬升，下次功能批须同步下降。",
+  "zones": {
+    "engine": {
+      "total": 240,
+      "rules": {
+        "CyclomaticComplexMethod": 152,
+        "LongMethod": 88
+      }
+    },
+    "frozen_ui": {
+      "total": 94,
+      "rules": {
+        "CyclomaticComplexMethod": 33,
+        "LongMethod": 61
+      }
+    }
+  },
+  "merge_back_when": "294（UI 重做）收口时必须用 --single-ledger 合并回一本账；长期两本等于默认 UI 可以永远欠债"
 }

@@ -65,6 +65,31 @@ DEFAULT_DETEKT_YML = os.path.join(ROOT, "config", "detekt", "detekt.yml")
 
 FUNC_RE = re.compile(r"The function (\w+)")
 
+# ── 方案 C（2026-10-31 用户拍板）：预算分两本账 ────────────────────────────
+# 为什么分：334 条里 94 条落在 Compose/UI（设计使然，用户已定「UI 还要重做，那些长函数不是债」），
+# 它们和引擎侧 240 条混在一个数字里，红起来没有诊断价值。
+# 判据：总量超 ⇒ 红（硬墙不动）；**引擎区**超 ⇒ 红；**冻结区**超 ⇒ 只 warning（UI 待重做）。
+# 分区口径＝路径前缀：`app/src/main/java/com/example/zhengdao/ui/` 是冻结区，其余是引擎区。
+ZONE_FROZEN_PREFIX = "app/src/main/java/com/example/zhengdao/ui/"
+
+
+def zone_of(rel: str) -> str:
+    """一条告警属于哪一本账：frozen_ui（UI，待重做）还是 engine。"""
+    return "frozen_ui" if rel.startswith(ZONE_FROZEN_PREFIX) else "engine"
+
+
+def zone_totals(issues) -> dict:
+    """{zone: {total, rules}}（--write 记账 / 判红都用它）。"""
+    out = {}
+    for _fp, rule, rel, _ln in issues:
+        z = out.setdefault(zone_of(rel), {"total": 0, "rules": {}})
+        z["total"] += 1
+        z["rules"][rule] = z["rules"].get(rule, 0) + 1
+    for z in out.values():
+        z["rules"] = dict(sorted(z["rules"].items()))
+    return out
+
+
 
 def fingerprint(source: str, path: str, message: str) -> str:
     """规则 + 文件名 + 函数名（不含行号 / 绝对路径 / 测出来的数字）。"""
@@ -132,6 +157,8 @@ def main(argv=None):
     ap.add_argument("--from-ci", dest="from_ci", default=None, help="读数出处（--write 必填，例如 'run #1234 的 detekt-report artifact'）")
     ap.add_argument("--allow-raise", dest="allow_raise", default=None, metavar="理由",
                     help="允许预算变大：必须写清理由（会记进 raised_reason）")
+    ap.add_argument("--single-ledger", dest="single_ledger", action="store_true",
+                    help="合并回一本账（294 UI 重做收口时用）：写预算时不带 zones，只留总量")
     args = ap.parse_args(argv)
 
     # ── 写预算模式 ────────────────────────────────────────────────
@@ -151,6 +178,7 @@ def main(argv=None):
         issues = read_issues(args.xml)
         current_total = len(issues)
         rules = rules_of(issues)
+        zones = zone_totals(issues)
 
         prev_total = 0
         if os.path.exists(args.budget):
@@ -165,6 +193,19 @@ def main(argv=None):
             )
             return 1
 
+        # ① 分区也只降不升：`--write` 把某本账写大 ⇒ 必须带 --allow-raise。
+        prev_zones = {}
+        if os.path.exists(args.budget):
+            with open(args.budget, "r", encoding="utf-8") as fh:
+                prev_zones = (json.load(fh).get("zones") or {})
+        for zname, z in zones.items():
+            prev_z = (prev_zones.get(zname) or {}).get("total")
+            if prev_z is not None and z["total"] > prev_z and not args.allow_raise:
+                print("::error title=detekt 分区::%s 从 %d 涨到 %d —— 分区也只降不升；"
+                      "确实要涨请用 --allow-raise \"为什么这次必须涨\"。"
+                      % (zname, prev_z, z["total"]))
+                return 1
+
         # D3：--write 必须与 detekt.yml 的硬墙同改（两处相等）。只改预算不改硬墙 ⇒ 拒绝。
         wall_before = read_max_issues(DEFAULT_DETEKT_YML)
         if wall_before is None:
@@ -177,6 +218,8 @@ def main(argv=None):
                   % (current_total, wall_before, current_total))
             return 1
 
+        # ②（用户 2026-10-31）：294 完成时必须合并回一本账——长期两本＝默认 UI 可以永远欠债。
+        #    合并时不再写 zones；旧预算里有 zones 就顺带打印一句"已合并"。
         doc = {
             "total": current_total,
             "rules": rules,
@@ -184,11 +227,19 @@ def main(argv=None):
             "recorded_from": args.from_ci,
             "recorded_at": datetime.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
+        if args.single_ledger:
+            doc.pop("zones", None)
+        elif zones:
+            doc["zones"] = zones
+            doc["merge_back_when"] = "294（UI 重做）收口时用 --single-ledger 合并回一本账，别长期两本"
         if current_total > prev_total:
             doc["raised_reason"] = args.allow_raise
         with open(args.budget, "w", encoding="utf-8", newline="\n") as fh:
             json.dump(doc, fh, ensure_ascii=False, indent=2)
             fh.write("\n")
+        for zname, z in zones.items():
+            print("[detekt-budget]   分区 %s：%d 条（%s）"
+                  % (zname, z["total"], ", ".join("%s=%d" % kv for kv in z["rules"].items())))
         print("[detekt-budget] 预算已重记：%d 条（%s）；出处：%s%s"
               % (current_total, ", ".join("%s=%d" % kv for kv in rules.items()), args.from_ci,
                  ("；抬升理由：%s" % args.allow_raise) if current_total > prev_total else ""))
@@ -231,6 +282,37 @@ def main(argv=None):
         print("::error title=detekt 硬墙互锁::`maxIssues: %d`（detekt.yml）≠ 预算 total %d（issue-budget.json）。"
               "两处必须相等且**同一提交一起改**（只降不升）。" % (wall, budget_total))
         return 1
+
+    # 方案 C：分区判据（引擎区红、冻结区只警告）。
+    zones_now = zone_totals(issues)
+    zones_budget = budget.get("zones") or {}
+    if not zones_budget:
+        print("::notice title=detekt 分区::预算里还没有 zones（旧格式）⇒ 只按总量判；"
+              "下次用 CI 读数 --write 会自动带上引擎区/冻结区两本账。")
+    else:
+        eng_now, froz_now = zones_now.get("engine", {}), zones_now.get("frozen_ui", {})
+        eng_budget = zones_budget.get("engine", {})
+        froz_budget = zones_budget.get("frozen_ui", {})
+        print("[detekt-budget] 分区：引擎 %d/%d，冻结(UI) %d/%d"
+              % (eng_now.get("total", 0), eng_budget.get("total", 0),
+                 froz_now.get("total", 0), froz_budget.get("total", 0)))
+        if eng_now.get("total", 0) > eng_budget.get("total", 0):
+            print("::error title=detekt 引擎区::引擎侧 %d 条 > 预算 %d（多 %d 条）。"
+                  "UI 那本账不影响这里——**这一条红就是真该拆的**。"
+                  % (eng_now.get("total", 0), eng_budget.get("total", 0),
+                     eng_now.get("total", 0) - eng_budget.get("total", 0)))
+            return 1
+        # ①（用户 2026-10-31）：冻结区**也只降不升**——否则 UI 可以永远欠着新债。
+        if froz_now.get("total", 0) > froz_budget.get("total", 0):
+            print("::error title=detekt 冻结区::UI 侧 %d 条 > 冻结预算 %d（多 %d 条）。"
+                  "冻结区**只降不升**：UI 重做前不许再往里加长函数；真要大改就走 294 合并回一本账。"
+                  % (froz_now.get("total", 0), froz_budget.get("total", 0),
+                     froz_now.get("total", 0) - froz_budget.get("total", 0)))
+            return 1
+        if froz_now.get("total", 0) < froz_budget.get("total", 0):
+            print("::notice title=detekt 冻结区::UI 侧降到 %d 条（预算 %d）——有人拆过，"
+                  "下次用 CI 读数 --write 顺手把冻结预算也降下来。"
+                  % (froz_now.get("total", 0), froz_budget.get("total", 0)))
 
     known = set(budget.get("issues", []))
     fresh = [i for i in issues if i[0] not in known]
