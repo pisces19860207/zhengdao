@@ -12,13 +12,13 @@
 //
 // 五条取舍（为什么长成这样，不是别的样子）：
 // 1. **本文件一个写口都没有**。`InspectReadOnlyGateTest` 从源码层钉着勘验层只查不改，所以修、
-//    落自决单、记未办成单、弹那一次全走 [BootSinks] 交出去，由装配层实现（那三本账归 277／290）。
+//    修成后留那一笔账、落自决单、记未办成单、弹那一次全走 [BootSinks] 交出去，由装配层实现（那三本账归 277／290）。
 //    开检只做一件事：把四个部位的读数折成**一条结论＋一档处置**。
 // 2. **处置长在事实表上，不长在调用方身上**：每种 [BootFinding] 自带部位、自带"这部位还算不算能用"、
 //    自带处置。尤其 [BootDisposition.interrupts] 全表只有 [BootDisposition.BLOCKING] 一格为真——
 //    判据④"必须人的事弹卡数＝0"是类型层的保证，不是谁的自觉。
 // 3. **不可用必须带原因码**（承 290 斥候那句"不带原因的不可用等于不知道"）：部位不可用时结论一定挂着
-//    [BootFinding.wire]。负例"不可用的能力仍假装能做"就红在这一格——没探过就是没探过，不许写成"11 项都能用"。
+//    [BootFinding.wire]。负例"不可用的能力仍假装能做"就红在这一格——没探过就是没探过，不许写成"11 项都可用"。
 // 4. **只弹一次靠事件键去重**：键是 `boot:<原因码>`，权威在装配层那本账上（[BootSinks.interruptShown]），
 //    不在本进程里。第二遍开检的简报照写（事实不许藏），卡不许再弹——这两件事必须分得开。
 // 5. **定策那一行由开检渲染，不由开检计算**：算档在 `agent/QuietMode.kt` 的 [com.example.zhengdao.baopu.agent.BootPolicy]
@@ -269,6 +269,15 @@ internal interface BootSinks {
     /** ①自己修（自建台账目录、重写能力清单）。假 ⇒ 升格成"必须人"，不许静默。 */
     fun repair(finding: BootFinding): Boolean
 
+    /**
+     * ①修成了要**在账上留一笔**（判据③原文：可自修的那几类各自"自己好了"，**账上有记录**）。
+     *
+     * 这一格不是给弹卡用的：不打扰＝不弹卡，不等于没留痕。简报那一行会随会话过去消失，
+     * 账上这一行才是三个月后"它当时到底修没修"的唯一凭据。修成了没落账 ⇒ 由装配层判
+     * （本层只交"哪一件、说的是那句事实"）。
+     */
+    fun noteHealed(finding: BootFinding, didWhat: String): Boolean
+
     /** ②自决单：一句"这次没打扰你，因为…"。 */
     fun noteSelfRuling(finding: BootFinding, reason: String): Boolean
 
@@ -444,8 +453,11 @@ internal object BootCheck {
         if (candidates.isEmpty()) return PartVerdict(part, null, fact)
         val heals = candidates.filter { it.disposition == BootDisposition.SELF_HEAL }
         val failed = heals.filter { !sinks.repair(it) }
-        healed += heals.filter { it !in failed }
+        val done = heals.filter { it !in failed }
+        healed += done
         healFailures += failed
+        // 判据③那半句"账上有记录"：修好了不许只在简报里一闪，每一件都要落一笔。
+        done.forEach { sinks.noteHealed(it, "开检自修：${it.cn}（${part.cn}）——不打扰，但这一笔留在账上") }
         val rest = candidates.filter { it !in heals }
         val chosen = (rest + failed).maxByOrNull { it.disposition.rank }
             // 只剩"修成了"的那几条 ⇒ 这个部位本轮不留问题（①的定义就是不打扰）。
@@ -465,16 +477,21 @@ internal object BootCheck {
     }
 
     /**
-     * 斥候那一句：四态各数一遍（能用／曾收回／被驳回／本机做不了）。
+     * 斥候那一句：四态各数一遍（**可用／被收回／被驳回／不支持**＝派工单第三节那四个词，一个不自造）。
      *
-     * 没探过时**不许写成"11 项都能用"**——负例"不可用的能力仍假装能做"就红在这一句写虚。
+     * 数的是 290 的 [ScoutState]：GRANTED⇒可用、REVOKED⇒被收回、DENIED⇒被驳回、UNAVAILABLE⇒不支持。
+     * UNAVAILABLE 在 290 那一侧装着两种情形（本机没有／系统不支持），都并进"不支持"这一格数——
+     * 所以 [BootFinding.SCOUT_CAPABILITY_UNAVAILABLE] 的结论名仍写"本机做不了"：那句说的是某一项能力
+     * 为什么进不了这一格，比"不支持"宽，换成票面词反而把"本机没 root"说成了"系统不支持"。
+     *
+     * 没探过时**不许写成"11 项都可用"**——负例"不可用的能力仍假装能做"就红在这一句写虚。
      */
     private fun scoutFact(report: Scout.Report?): String {
         if (report == null) return "还没探过：能力四态一个数都没有"
         val n = report.records
         fun count(state: ScoutState): Int = n.count { it.state == state }
-        return "${n.size} 项能力：能用 ${count(ScoutState.GRANTED)}、曾收回 ${count(ScoutState.REVOKED)}、" +
-            "被驳回 ${count(ScoutState.DENIED)}、本机做不了 ${count(ScoutState.UNAVAILABLE)}"
+        return "${n.size} 项能力：可用 ${count(ScoutState.GRANTED)}、被收回 ${count(ScoutState.REVOKED)}、" +
+            "被驳回 ${count(ScoutState.DENIED)}、不支持 ${count(ScoutState.UNAVAILABLE)}"
     }
 
     private fun physicianFact(verdicts: List<OrganVerdict>): String {

@@ -46,9 +46,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 假出口：①修／②自决单／③未办成单／④弹一次 各记一笔，测试按笔数断言。 */
+/** 假出口：①修／①修成留账／②自决单／③未办成单／④弹一次 各记一笔，测试按笔数断言。 */
 private class FakeSinks(var repairOk: Boolean = true) : BootSinks {
     val repaired = ArrayList<BootFinding>()
+    val healedNotes = ArrayList<Pair<String, String>>()
     val ruled = ArrayList<String>()
     val items = ArrayList<UnfinishedItem>()
     val emitted = ArrayList<BootInterrupt>()
@@ -57,6 +58,12 @@ private class FakeSinks(var repairOk: Boolean = true) : BootSinks {
     override fun repair(finding: BootFinding): Boolean {
         repaired += finding
         return repairOk
+    }
+
+    override fun noteHealed(finding: BootFinding, didWhat: String): Boolean {
+        assertTrue("①修成了那一笔也要带那句事实：${finding.wire}", didWhat.isNotBlank())
+        healedNotes += finding.wire to didWhat
+        return true
     }
 
     override fun noteSelfRuling(finding: BootFinding, reason: String): Boolean {
@@ -155,13 +162,18 @@ class BootCheckTest {
     @Test
     fun `判据③_可自恢复_自己修完不打扰`() {
         val sinks = FakeSinks(repairOk = true)
-        // 只有①那一格坏，别的部位都给绿读数：这一轮除了简报里那一行事实，哪儿都不许留痕。
+        // 只有①那一格坏，别的部位都给绿读数：这一轮不许弹卡、不许落自决单、不许占未办成单——
+        // 但判据③那半句"账上有记录"要成立：修成的那一件必须留下一笔（不打扰≠没留痕）。
         val report = BootCheck.run(
             allGreen().copy(inspector = InspectorReading(workspaceReadable = true, ledger = LedgerProbe.DIR_MISSING)),
             sinks, T0, 600L
         )
         assertEquals(listOf(BootFinding.LEDGER_DIR_MISSING), sinks.repaired)
         assertEquals(listOf(BootFinding.LEDGER_DIR_MISSING), report.healed)
+        assertEquals(
+            "①修成了要在账上留那一笔", listOf("ledger_dir_missing"), sinks.healedNotes.map { it.first }
+        )
+        assertTrue("留的那一笔要说清修的是什么：${sinks.healedNotes}", sinks.healedNotes.first().second.contains("台账目录不在"))
         assertTrue("修成了就不该有没修成的", report.healFailures.isEmpty())
         assertEquals("①修成了就不该留结论", null, report.verdicts.first { it.part == BootPart.INSPECTOR }.finding)
         assertEquals(0, report.cardCount)
@@ -337,11 +349,11 @@ class BootCheckTest {
         assertEquals(BootFinding.SCOUT_NOT_PROBED, scout.finding)
         assertFalse("没探过＝不可用", scout.usable)
         assertTrue("简报里要写明还没探过", scout.fact.contains("还没探过"))
-        assertFalse("不许把没探过写成能做", scout.fact.contains("能用"))
+        assertFalse("不许把没探过写成能做", scout.fact.contains("可用"))
     }
 
     @Test
-    fun `负例②_本机做不了的那几项要在事实里点到数`() {
+    fun `负例②_不支持的那几项要在事实里点到数`() {
         val report = BootCheck.run(
             BootReadings(
                 scout = report(
@@ -355,8 +367,8 @@ class BootCheckTest {
             FakeSinks(), T0, 400L
         )
         val line = report.verdicts.first { it.part == BootPart.SCOUT }.fact
-        assertTrue("四态要各数各的：$line", line.contains("本机做不了 2"))
-        assertTrue(line.contains("能用 1"))
+        assertTrue("四态要各数各的：$line", line.contains("不支持 2"))
+        assertTrue(line.contains("可用 1"))
     }
 
     @Test
@@ -375,7 +387,7 @@ class BootCheckTest {
         val scout = both.verdicts.first { it.part == BootPart.SCOUT }
         assertEquals("能补的那条优先（做不了的不占人的手）", BootFinding.SCOUT_PERMISSION_MISSING, scout.finding)
         assertEquals(1, both.unfinished.size)
-        assertTrue("做不了的那几项仍在事实句里", scout.fact.contains("本机做不了 1"))
+        assertTrue("做不了的那几项仍在事实句里", scout.fact.contains("不支持 1"))
     }
 
     // ── 负例③：自修失败静默 ─────────────────────────────────────────────────
