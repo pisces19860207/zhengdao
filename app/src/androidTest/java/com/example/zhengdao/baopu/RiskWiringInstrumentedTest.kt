@@ -215,7 +215,8 @@ class RiskWiringInstrumentedTest {
         assertEquals("这些真工具在真机上查不到档：$missing", emptyList<String>(), missing)
         // 每个工具都真跑一次 classify（真机 org.json 是插入序、与 JVM 的参考实现不同）
         val nulls = names.filter { RiskMatrix.baseOf(it) == null }
-        assertEquals("只有 bash 允许空档（显式豁免）", listOf("bash"), nulls)
+        // 295 真机勘误：bash 已随终端退役（不再注册）⇒ 注册表里一个空档都不许有，不是"只有 bash 允许"
+        assertEquals("注册表里这些工具查不到档：$nulls", emptyList<String>(), nulls)
         names.forEach { name ->
             val v = RiskGate.judge(call(name))
             assertTrue("$name 判不出档", v.exempt || v.risk != null)
