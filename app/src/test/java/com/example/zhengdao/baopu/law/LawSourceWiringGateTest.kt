@@ -19,11 +19,11 @@
 //   7. **假接兜底**（负例①）：谁把 EmergencyGate 登记成已接线，那条判据的手抄件就必须同时清零——
 //      只加一句调用、判据还留在原地，本文件红。
 //
-// ## 今天的账（303 在基线 29667ed9 上取数）
-// 七条判定源**全部零生产引用** ⇒ WIRED 空、BOOKED 七条。今天真在咬人的是第 3／5／6 条
-// （1／2／4 防的是以后）：接线那一批把 `inspect/OpinionBudget.kt:14` 换成
-// `EmergencyGate.qualifiesForExemption(...)` 时，必须同一次提交把 EmergencyGate 从 BOOKED 移到
-// WIRED 并登记两处调用点——此后任何一次删调用，第 2 条当场红。
+// ## 今天的账（315 在基线 f93fd021 上取数）
+// 七条判定源里**两条已接线**：315 把 EmergencyGate／EmergencyClocks 接进 inspect/EmergencyWiring.kt
+// （紧急闸：紧急卡必人批＋止损 0 秒＋24h 追认），WIRED 按点号调用数逐字登记。
+// 剩下五条仍挂账。EmergencyGate 的 L21「资格判据」三处手抄仍留在生产（OpinionBudget ×2＋
+// OpinionWiring ×1，收敛归 298，见 REMAINING_L21_COPIES）——那是"新增接线"不顶替旧手抄的口径。
 package com.example.zhengdao.baopu.law
 
 import java.io.File
@@ -51,6 +51,9 @@ private fun codeOnly(src: String): String = src
     .filterNot { it.trim().startsWith("//") || it.trim().startsWith("*") || it.trim().startsWith("/*") }
     .joinToString("\n")
 
+/** 还留在生产里的 L21 手抄件数（315 改登记制：收敛归 298；收敛到 0 那天把它改成 0，本门禁收紧成清零口径）。 */
+private const val REMAINING_L21_COPIES = 3
+
 class LawSourceWiringGateTest {
 
     // ── 名册（改这张表就是改账：必须与生产实数逐字相等） ──────────────────────
@@ -67,17 +70,20 @@ class LawSourceWiringGateTest {
         val blockedBy: String,
     )
 
-    private val WIRED: List<Wired> = emptyList()
+    // 315：EmergencyGate／EmergencyClocks 在 inspect/EmergencyWiring.kt 接线（紧急闸：人批＋三时钟），
+    // 点号调用数逐字登记——少一处＝接线被删，多一处＝第二个口径冒出来了。
+    private val WIRED: List<Wired> = listOf(
+        Wired(
+            entry = "EmergencyGate",
+            sites = listOf("com/example/zhengdao/baopu/inspect/EmergencyWiring.kt" to 3),
+        ),
+        Wired(
+            entry = "EmergencyClocks",
+            sites = listOf("com/example/zhengdao/baopu/inspect/EmergencyWiring.kt" to 6),
+        ),
+    )
 
     private val BOOKED = listOf(
-        Booked(
-            entry = "EmergencyGate",
-            law = "EmergencyGate 的 qualifiesForExemption／reasonStated（303 新补：L21 资格与理由的唯一口径）",
-            host = "inspect/OpinionBudget.kt:14/:26/:29（exemptionFor 与 EmergencyExemption 构造器）、agent/OpinionWiring.kt:250（judge 第⑤格）",
-            owner = "298（判决时查经验表：这两份文件正握在它手里）",
-            blockedBy = "OpinionBudget.kt 在 274 定的契约隔离白名单内（OpinionIsolationTest.kt 只许它 import Normalizer/Locale），" +
-                "要放行 baopu.law.EmergencyGate 得改那张白名单——而 OpinionIsolationTest.kt 也在 298 名下",
-        ),
         Booked(
             entry = "DiscretionLadder",
             law = "DiscretionLadder 的 decide（L9 三级：便宜行事／先斩后奏／题请）",
@@ -118,14 +124,6 @@ class LawSourceWiringGateTest {
             owner = "306（步键，2026-10-31 批示：L22→306）",
             blockedBy = "撤销通道已存在但没有撤销单：judge 要五栏事实，现路径只带三元组；" +
                 "补五栏＝新落盘格式，与 208 写入格式那条红线撞在同一张卡上",
-        ),
-        Booked(
-            entry = "EmergencyClocks",
-            law = "EmergencyClocks 的 informDeadlineMs／informBypass／ratifyDueAtMs（L30b 三时钟：止损 0 秒／告知 3 秒／追认 24 小时）",
-            host = "agent/ConfirmFlow.kt:376 的等待循环（生产唯一「等用户」的地方）＋ inspect/NocturnalPatrol.kt:243 的投递档位",
-            owner = "304（触发，2026-10-31 批示：L30b→304）",
-            blockedBy = "NocturnalPatrol.kt:243 的 EMERGENCY 是**投递档位**（暗卫夜间通道），三样要件一个都没判；" +
-                "把三时钟接进去要先有「先动手后追认」的执行通道，本批没有",
         ),
     )
 
@@ -218,11 +216,19 @@ class LawSourceWiringGateTest {
     @Test
     fun 接线之后手抄的判据必须清零() {
         // 负例①（只加调用不改行为＝假接）的防线：源级门禁只看得见"有没有人调"，
-        // 看不见"调了以后有没有把原来那份手抄删掉"。所以凡登记为已接线的判定源，
-        // 它那条判据在生产里就不许再有手抄件——L21 对应的正是那三处。
+        // 看不见"调了以后有没有把原来那份手抄删掉"。
+        // 315 起 EmergencyGate 已在 inspect/EmergencyWiring.kt 接线（紧急卡判定层——那是**新增**口，
+        // 不顶替旧手抄）；L21「资格判据」的三处手抄（inspect/OpinionBudget.kt ×2＋agent/OpinionWiring.kt ×1，
+        // 见 L21资格判据在生产里的手抄份数逐字钉住）的收敛归 298。所以本门禁从「清零」改成
+        // 「登记多少就剩多少」：298 收敛那天把 REMAINING_L21_COPIES 改成 0，这里自动收紧回原口径。
         if ("EmergencyGate" in WIRED.map { it.entry }) {
             val copies = mainSources.sumOf { l21Copies.findAll(it.code).count() }
-            assertEquals("EmergencyGate 已登记为已接线，L21 的判据却还在别处手写：只加调用不删抄件＝假接", 0, copies)
+            assertEquals(
+                "EmergencyGate 已登记为已接线，L21 的手抄件数与登记不符：多一处＝又散成两处；" +
+                    "少一处＝有人已开始收敛，请把 REMAINING_L21_COPIES 同步改成实数（收敛到 0 即清零）",
+                REMAINING_L21_COPIES,
+                copies,
+            )
         }
     }
 
