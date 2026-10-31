@@ -478,8 +478,10 @@ android {
 // 插件任务与 daemon 同 JVM，绕不开；这里改用 `JavaExec` + Java 21 toolchain 起子进程，
 // 既保留 Detekt 本体，也不影响主构建的 JDK 25。
 //
-// 首跑（2026-10-19）的 171 条违规写进 `config/detekt/baseline.xml` 冻结；`detektReport`
-// 仍然只出报告（不红，给人看趋势），**判红在 CI 侧由预算闸完成**（见下）。
+// 首跑（2026-10-19）的 171 条违规曾写进 `config/detekt/baseline.xml` 冻结。
+// **324（2026-10-31）账目修正**：baseline 文件与「指到它」的参数整条删除——那 171 条里
+// 156 条早已因签名漂移失效，仍有 15 条被压在账外（12 条在 UI 冻结区），删掉才是如实记账；
+// 判红由预算闸＋硬墙完成（见下），原文证据存 `证道设计报告/324-baseline原文存档-2026-10-31.xml`。
 val detektCli = configurations.create("detektCli") {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -492,7 +494,6 @@ val detektLauncher = extensions.getByType<JavaToolchainService>().launcherFor {
 val detektCommonArgs = listOf(
     "--input", "src/main/java",
     "--config", rootProject.file("config/detekt/detekt.yml").absolutePath,
-    "--baseline", rootProject.file("config/detekt/baseline.xml").absolutePath,
     "--jvm-target", "17",
 )
 
@@ -550,32 +551,28 @@ tasks.register<JavaExec>("detektWall") {
 /*
  * 第二百六十六批（2026-10-28）实测发现：**`config/detekt/baseline.xml` 已经失效**。
  *
- *   带 `--baseline` 跑，仍报 330 条（LongMethod 148 / CyclomaticComplexMethod 182），
- *   而 baseline 里只有 171 条 —— 说明大部分冻结条目**匹配不上了**。原因是 detekt 的
- *   baseline ID 是「规则:文件名$完整签名」的**精确字符串**：2026-10-19 冻结之后，262 / 264
+ *   266 当时把带 baseline 文件参数的跑法与无参数跑法对比：仍报 330 条
+ *  （LongMethod 148 / CyclomaticComplexMethod 182），而 baseline 里只有 171 条 ——
+ *   说明大部分冻结条目**匹配不上了**。原因是 detekt 的 baseline ID 是
+ *  「规则:文件名$完整签名」的**精确字符串**：2026-10-19 冻结之后，262 / 264
  *   等批改过大量函数签名（参数名、尾逗号、KDoc），ID 一变就不再匹配。
  *   换句话说：这份 baseline 从冻结那天起就没人跑过（旧注释里写着「CI 不接这一步」），
  *   所以「它已经对不上代码」这件事一直没被发现。
  *
- * ⇒ 处置：**不动 baseline.xml**（派工单 §3 负例 2 明令禁止「为了让 detekt 通过去改 baseline」），
- *   改用仓库已有的「预算闸」模式（`tools/check-lint-budget.py` 同款）：把当前 330 条的
- *   指纹存进 `config/detekt/issue-budget.json`，CI 跑 `detektReport` 后由
- *   `tools/check-detekt-budget.py` 比对 —— **多了就红，少了只提示**。
- *   这样「只拦新增」的口径成立，而 baseline 的历史真相（171 条）保持原样、可供追责。
+ * ⇒ 266 处置：当时选择「不动 baseline.xml」（派工单 §3 负例 2 明令禁止「为了让 detekt
+ *   通过去改 baseline」），改用仓库已有的「预算闸」模式（`tools/check-lint-budget.py`
+ *   同款）：把当前读数的指纹存进 `config/detekt/issue-budget.json`，CI 跑 `detektReport`
+ *   后由 `tools/check-detekt-budget.py` 比对 —— **多了就红，少了只提示**。
  *
- * 想彻底解决（把 171 条修掉、baseline 与代码重新对齐）必须另立一批：
- *   现开的两条规则都只能靠**结构性拆分**消除，本批护栏禁止为消警告改业务逻辑。
+ * ⇒ **324（2026-10-31）修正**：逐条比对证实 171 条里 156 条失效、**15 条仍活且被压着**
+ *  （12 条在 UI 冻结区、3 条在引擎区）——旧账 334 漏了 15 条。本次把 baseline 文件与
+ *   指到它的参数**整条删除**，用无参数的真读数重记两本账；`raised_reason` 写明
+ *  「口径修正，非放宽」。只降不升从新数起算。
+ *
+ *   `detektBaselineUpdate` 任务一并删除：baseline 文件没了以后，这个任务一跑就会把
+ *   当前全部违规重新冻成新 baseline（等于把账本撕了重写），留它就是留后门。
+ *   门禁 `tools/check-detekt-no-baseline.py` 盯着 build 脚本与 config：字面量再现即红。
  */
-
-tasks.register<JavaExec>("detektBaselineUpdate") {
-    group = "verification"
-    description = "重算 Detekt 基线（只跑 LongMethod / CyclomaticComplexMethod）"
-    classpath = detektCli
-    mainClass.set("io.gitlab.arturbosch.detekt.cli.Main")
-    javaLauncher.set(detektLauncher)
-    workingDir = projectDir
-    args = detektCommonArgs + "--create-baseline"
-}
 
 dependencies {
     // 第二百四十批（终端解耦第一刀）：共享件模块。方向单向 —— :app → :core。

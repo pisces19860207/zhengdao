@@ -279,13 +279,10 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      # 第二百六十六批：detekt 从「只出报告」转为**上闸**（存量不动，新增即红）。
-      #   为什么不是 `--baseline` 判红：实测发现 `config/detekt/baseline.xml`（171 条，2026-10-19 冻结）
-      #   已经**整体失效** —— 带 baseline 跑仍报 330 条，因为 baseline ID 是「规则:文件名$完整签名」的
-      #   精确串，262/264 批改过签名后 ID 全漂了；而这份 baseline 从冻结起一次没在流水线跑过，
-      #   所以没人发现。派工单禁止「为了让 detekt 通过去改 baseline」⇒ 不动它，改用预算闸
-      #   （tools/check-detekt-budget.py ＋ config/detekt/issue-budget.json，与 lint-budget 同款口径）。
-      #   本机跑不了 detekt（Java 21 toolchain，foojay 在本机下不下来），所以读数只能在 CI 出。
+      # detekt 从「只出报告」转为**上闸**（266 批，2026-10-28）。
+      #   324（2026-10-31）**口径修正**：10-19 的旧 baseline 实际还压着 101 条真读数
+      #   （双跑对照 334→435），baseline 文件与指到它的参数已整条删除、预算用真读数重记
+      #  （raised_reason 写明「口径修正，非放宽」）。防回归门禁见下一步。
       # 276a D1（2026-10-29）：**硬墙**先跑——上限取自 config/detekt/detekt.yml 的 `maxIssues`，
       #   交给 detekt 自己的 `--max-issues`；超一条就非 0（不经过下面的 python 脚本）。
       #   这道闸的意义：就算有人把预算脚本从流水线里删掉，上限还在 detekt 这边。
@@ -296,6 +293,9 @@ jobs:
         run: |
           ./gradlew :app:detektReport --console=plain
           python3 tools/check-detekt-budget.py
+
+      - name: detekt 门禁：build 脚本与 config 不许再现 baseline 参数（324）
+        run: python3 tools/check-detekt-no-baseline.py
 
       - name: 归档 detekt 报告
         if: always()
