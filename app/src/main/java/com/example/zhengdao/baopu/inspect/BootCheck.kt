@@ -3,12 +3,14 @@
 // 第三百三十批 · 开机自检——"打开就自己干活、少烦人"那台机器的判定层。
 //
 // 用户 2026-10-31（派工单原文）：开机 1–2 秒跑一轮（后台、不弹窗、不等用户），查四个部位——
-//   斥候（能力四态）· 勘验（工作区可读／账本可写）· 御医轻量（该接没接）· 审计（最近 N 行有动作无账）
-// 三级处置：①可自恢复⇒自己修不打扰 ②可自决⇒左相出自决单、不弹卡、进记事页 ③必须人⇒只留一条未办成单、不弹卡；
+//   斥候（能力四态）· 勘验（工作区可读／账本可写／**路径解析正常？**）· 御医轻量（该接没接／**上次体检的未闭环项**）·
+//   审计（最近 N 行有动作无账）
+// 三级处置：①可自恢复⇒自己修不打扰 ②可自决⇒左相出自决单、不弹卡、进记事页 ③必须人⇒只留一条「未办成单」、不弹卡；
 //   ④唯一例外：阻断性（账写不了／文件读不了）⇒弹**一次**，说清"我干不了活，因为 X"。
-// 另出简报：≤10 行、只写事实，供首条消息前回灌。
+// 另出简报：≤10 行、只写事实，供首条消息前回灌；简报页点名要带**工作区／记忆位置**；
+//   补充页（开机定策）那一行 `必弹 N 类 · 可弹 M 类 · 不弹 K 类` 也在这里出（"必须一行可见"）。
 //
-// 四条取舍（为什么长成这样，不是别的样子）：
+// 五条取舍（为什么长成这样，不是别的样子）：
 // 1. **本文件一个写口都没有**。`InspectReadOnlyGateTest` 从源码层钉着勘验层只查不改，所以修、
 //    落自决单、记未办成单、弹那一次全走 [BootSinks] 交出去，由装配层实现（那三本账归 277／290）。
 //    开检只做一件事：把四个部位的读数折成**一条结论＋一档处置**。
@@ -19,6 +21,10 @@
 //    [BootFinding.wire]。负例"不可用的能力仍假装能做"就红在这一格——没探过就是没探过，不许写成"11 项都能用"。
 // 4. **只弹一次靠事件键去重**：键是 `boot:<原因码>`，权威在装配层那本账上（[BootSinks.interruptShown]），
 //    不在本进程里。第二遍开检的简报照写（事实不许藏），卡不许再弹——这两件事必须分得开。
+// 5. **定策那一行由开检渲染，不由开检计算**：算档在 `agent/QuietMode.kt` 的 [com.example.zhengdao.baopu.agent.BootPolicy]
+//    （纯函数，同工作区同历史⇒同一行）。开检只把已经算好的 [BootReadings.strategy] 印进简报——
+//    派工单补充页说这行"开机产出、必须一行可见"，而开机可见的地方只有简报这一处。
+//    没算（`strategy == null`）就**不印这行**，也不印一句"策略未生成"占掉一行：那等于把没测过的东西写成一行事实。
 //
 // 与 290 的分工：斥候那一趟探测（读系统、写能力账）在它自己手里，本文件只读它最近一次的报告；
 // 与 291 的分工：御医那 14 个部位的普查与取数在它自己手里，本文件只读它给出的结论（"轻量"＝不重跑体检）。
@@ -26,8 +32,12 @@
 // 一处如实（本批不谎报）：本文件是**判定层**，还没有人调它——开机那一点是 331 接线批的活
 // （租约只含这三个新文件，`ZhengdaoApp.onCreate` 不在内）。所以判据①的"≤2 秒"这一批是
 // 按"一轮判定＋简报渲染"的耗时算的，真机整轮（含四个部位各自的取数）要等接线那批在机上量。
+// 同一条实话也说给补充页：那一行的**渲染**在这儿，但三颗按钮（全不弹／全部弹／按默认）
+// 的可见与点击归 UI 批——本批测的是 `BootStrategy.click(...)` 这个纯函数，
+// 测到的是"按下去这一档真的会重算、且必弹那一档一类不少"，**不是**"手机上真有三颗能点的按钮"。
 package com.example.zhengdao.baopu.inspect
 
+import com.example.zhengdao.baopu.agent.BootStrategy
 import com.example.zhengdao.baopu.scout.Scout
 import com.example.zhengdao.baopu.scout.ScoutRecord
 import com.example.zhengdao.baopu.scout.ScoutState
@@ -108,15 +118,31 @@ internal enum class BootFinding(
     ),
     SCOUT_MIRROR_NOT_SAVED("scout_mirror_not_saved", "账只有私有本", BootPart.SCOUT, BootDisposition.SELF_RULING, true),
 
-    // ── 勘验（工作区可读／账本可写） ────────────────────────────────────────
+    // ── 勘验（工作区可读／账本可写／路径解析正常） ──────────────────────────
     WORKSPACE_UNREADABLE("workspace_unreadable", "工作区读不了", BootPart.INSPECTOR, BootDisposition.BLOCKING, false),
     LEDGER_UNWRITABLE("ledger_unwritable", "账本写不了", BootPart.INSPECTOR, BootDisposition.BLOCKING, false),
     LEDGER_DIR_MISSING("ledger_dir_missing", "台账目录不在", BootPart.INSPECTOR, BootDisposition.SELF_HEAL, true),
     LEDGER_UNTESTED("ledger_untested", "落点没测过", BootPart.INSPECTOR, BootDisposition.SELF_RULING, false),
 
-    // ── 御医轻量（该接没接） ────────────────────────────────────────────────
+    /**
+     * 路径解析失败（派工单勘验那一格第三问）＝ 后面每一步都会踩空 ⇒ 算阻断。
+     *
+     * 排在 [LEDGER_UNTESTED] 之后：三条阻断同轮时按闭集序取最前一条说话（工作区读不了＞账写不了＞路径没开），
+     * 这个次序是简报里"我干不了活，因为 X"那句的 X 到底是谁的唯一依据。
+     */
+    PATH_NOT_RESOLVED("path_not_resolved", "路径没解析开", BootPart.INSPECTOR, BootDisposition.BLOCKING, false),
+
+    // ── 御医轻量（该接没接／上次体检的未闭环项） ────────────────────────────
     PHYSICIAN_NOT_RUN("physician_not_run", "御医没给结论", BootPart.PHYSICIAN, BootDisposition.SELF_RULING, false),
     ORGAN_NOT_WIRED("organ_not_wired", "该接没接", BootPart.PHYSICIAN, BootDisposition.SELF_RULING, true),
+
+    /**
+     * 上次体检留下的未闭环项（`Disposition.DEFECT` 进了缺陷台账还没销）。
+     *
+     * 为什么单独一格、不并进 [ORGAN_NOT_WIRED]：那个说的是"零件在、没人接线"，
+     * 这个说的是"接了线但那天判出问题"——两件事的修法不一样，混成一条就没法给未办成单写"怎么补"。
+     */
+    HEALTH_OPEN_DEFECT("health_open_defect", "上次体检有未闭环", BootPart.PHYSICIAN, BootDisposition.SELF_RULING, true),
 
     // ── 审计（最近 N 行有动作无账） ─────────────────────────────────────────
     AUDIT_NO_DATA("audit_no_data", "无从比对", BootPart.AUDITOR, BootDisposition.SELF_RULING, false),
@@ -147,10 +173,21 @@ internal enum class LedgerProbe(val wire: String, val cn: String) {
     UNTESTED("untested", "没测过"),
 }
 
-/** 勘验那一格的读数（工作区可读＋账本落点探针）。 */
+/**
+ * 勘验那一格的读数（工作区可读＋账本落点探针＋路径解析＋两个位置）。
+ *
+ * @param pathResolved 派工单那一问"路径解析正常？"的探针：**null ⇒ 没单独测 ⇒ 不据此报警**，
+ *        也**不许**默认成 true（那等于替盘说话）。工作区那一探本身已经读过一次盘，
+ *        所以装配层没单列路径探针时交 null 才是对的——这条界在 [pathWord] 里写成"没单独测"三个字。
+ * @param workspacePath 工作区在哪（派工单简报页点名要带的位置；空串 ⇒ 没报，简报写"未报"）
+ * @param memoryPath 记忆（台账）在哪；同上
+ */
 internal data class InspectorReading(
     val workspaceReadable: Boolean = false,
     val ledger: LedgerProbe = LedgerProbe.UNTESTED,
+    val pathResolved: Boolean? = null,
+    val workspacePath: String = "",
+    val memoryPath: String = "",
 )
 
 /**
@@ -160,12 +197,19 @@ internal data class InspectorReading(
 internal data class BootReadings(
     /** 斥候：最近一次探测报告（null ⇒ 这一台还没探过／没装配）。 */
     val scout: Scout.Report? = null,
-    /** 勘验：工作区与账本落点的探针读数。 */
+    /** 勘验：工作区、账本落点、路径解析与两个位置的探针读数。 */
     val inspector: InspectorReading = InspectorReading(),
     /** 御医轻量：只带它已经给出的部位结论（本批不重跑体检）。 */
     val physician: List<OrganVerdict> = emptyList(),
     /** 审计：最近 N 行有动作无账的那条勘验结论（null ⇒ 没跑过）。 */
     val audit: InspectFinding? = null,
+    /**
+     * 开机定策：[com.example.zhengdao.baopu.agent.BootPolicy] 算好的那份策略（null ⇒ 这一轮没算，简报不印那一行）。
+     *
+     * 为什么开检只**印**不**算**：算档的输入（30 天卡处置／近 7 天误判／时段）都在装配层数，
+     * 而"这一行必须开机可见"的落点只有简报——两处各算一遍，同一次开机就能出两个不同的策略。
+     */
+    val strategy: BootStrategy? = null,
 )
 
 /** 一条部位结论（判据②：四部位各一条，不可用必带原因码）。 */
@@ -311,7 +355,7 @@ internal object BootCheck {
             verdicts = verdicts,
             brief = briefOf(
                 verdicts, healed.size, healFailures.size, rulings.size, unfinished.size,
-                blocking.size, interrupts.size, elapsedMs
+                blocking.size, interrupts.size, elapsedMs, readings.strategy
             ),
             healed = healed,
             healFailures = healFailures,
@@ -350,7 +394,7 @@ internal object BootCheck {
     }
 
     private fun inspectorFindings(r: InspectorReading): List<BootFinding> {
-        val out = ArrayList<BootFinding>(2)
+        val out = ArrayList<BootFinding>(3)
         if (!r.workspaceReadable) out += BootFinding.WORKSPACE_UNREADABLE
         when (r.ledger) {
             LedgerProbe.WRITABLE -> Unit
@@ -358,19 +402,26 @@ internal object BootCheck {
             LedgerProbe.NOT_WRITABLE -> out += BootFinding.LEDGER_UNWRITABLE
             LedgerProbe.UNTESTED -> out += BootFinding.LEDGER_UNTESTED
         }
+        // null ⇒ 没单独测这一格（不许替盘说"解析正常"，也不许凭空报一条阻断）。
+        if (r.pathResolved == false) out += BootFinding.PATH_NOT_RESOLVED
         return out
     }
 
-    /** 御医轻量：只数它已经判成"该接没接"且当日进缺陷台账的那几个（裁定关着的不算缺陷）。 */
+    /** 御医轻量：只数它已经给出的结论——"该接没接"排前，其次才是"上次体检的未闭环项"。 */
     private fun physicianFindings(verdicts: List<OrganVerdict>): List<BootFinding> = when {
         verdicts.isEmpty() -> listOf(BootFinding.PHYSICIAN_NOT_RUN)
-        notWired(verdicts).isEmpty() -> emptyList()
-        else -> listOf(BootFinding.ORGAN_NOT_WIRED)
+        notWired(verdicts).isNotEmpty() -> listOf(BootFinding.ORGAN_NOT_WIRED)
+        openDefects(verdicts).isNotEmpty() -> listOf(BootFinding.HEALTH_OPEN_DEFECT)
+        else -> emptyList()
     }
 
     private fun notWired(verdicts: List<OrganVerdict>): List<OrganVerdict> = verdicts.filter {
         it.state == OrganState.NOT_WIRED && it.disposition == Disposition.DEFECT
     }
+
+    /** 未闭环＝当日进过缺陷台账的那几条（`DEFECT`；裁定关着的 `BY_DESIGN` 不是缺陷，不算）。 */
+    private fun openDefects(verdicts: List<OrganVerdict>): List<OrganVerdict> =
+        verdicts.filter { it.disposition == Disposition.DEFECT }
 
     private fun auditFindings(finding: InspectFinding?): List<BootFinding> = when {
         finding == null -> listOf(BootFinding.AUDIT_NO_DATA)
@@ -407,7 +458,8 @@ internal object BootCheck {
     private fun factOf(part: BootPart, r: BootReadings): String = when (part) {
         BootPart.SCOUT -> scoutFact(r.scout)
         BootPart.INSPECTOR -> "工作区可读=${yes(r.inspector.workspaceReadable)}·" +
-            "账本${r.inspector.ledger.cn}"
+            "账本${r.inspector.ledger.cn}·路径${pathWord(r.inspector.pathResolved)}·" +
+            "位置 ${locWord(r.inspector.workspacePath)}／记忆 ${locWord(r.inspector.memoryPath)}"
         BootPart.PHYSICIAN -> physicianFact(r.physician)
         BootPart.AUDITOR -> r.audit?.oneLine ?: "审计这一轮没跑，没有比对结论"
     }
@@ -431,8 +483,24 @@ internal object BootCheck {
         val names = dead.take(BootLimits.MAX_ORGAN_NAMES).joinToString("、") { it.name }
         val more = if (dead.size > BootLimits.MAX_ORGAN_NAMES) "等" else ""
         return "体检结论 ${verdicts.size} 条：该接没接 ${dead.size} 个" +
-            (if (names.isEmpty()) "" else "（$names$more）")
+            (if (names.isEmpty()) "" else "（$names$more）") +
+            "·上次体检未闭环 ${openDefects(verdicts).size} 条"
     }
+
+    /** 路径解析那一探的三种读数（没单独测就照实说没测，既不算正常也不算故障）。 */
+    private fun pathWord(resolved: Boolean?): String = when (resolved) {
+        true -> "解析正常"
+        false -> "没解析开"
+        null -> "没单独测"
+    }
+
+    /**
+     * 位置那一格（派工单简报页要"工作区/记忆位置"）。
+     *
+     * **不截断**：路径截一半比长一行更坏——人照着半条路径找不到东西，还以为是自己记错了。
+     * 空串 ⇒ "未报"（空着在账里读起来等于"没记"，照 [PartVerdict.CODE_OK] 同一条理由）。
+     */
+    private fun locWord(path: String): String = if (path.isBlank()) "未报" else path.trim()
 
     // ── ③未办成单 / ④阻断那一次 ─────────────────────────────────────────────
 
@@ -484,10 +552,13 @@ internal object BootCheck {
     // ── 简报 ────────────────────────────────────────────────────────────────
 
     /**
-     * ≤10 行、只写事实：表头 1 行＋四部位各 1 行＋①②③④各至多 1 行 ＝ 结构上界 9 行。
+     * ≤10 行、只写事实：表头 1 行＋四部位各 1 行＋①②③④各至多 1 行＋定策 1 行 ＝ 结构上界 10 行。
      *
-     * 所以这里**没有**"超了就截断"这一步：行数超了只可能是有人加了第五类行，
+     * 所以这里**没有**"超了就截断"这一步：行数超了只可能是有人加了第六类行，
      * 那种事该红，不该被 `take(10)` 藏掉——[check] 就是给它红的地方，判据由测试按上限钉。
+     *
+     * 定策那一行排在最后：派工单说它"必须一行可见"，但它不是四个部位之一的读数，
+     * 排在前头会让人以为"必弹 3 类"是勘验的结论。
      */
     private fun briefOf(
         verdicts: List<PartVerdict>,
@@ -498,6 +569,7 @@ internal object BootCheck {
         blocking: Int,
         cards: Int,
         elapsedMs: Long,
+        strategy: BootStrategy?,
     ): List<String> {
         val usable = verdicts.count { it.usable }
         val budget = if (elapsedMs <= BootLimits.MAX_BOOT_MS) "预算内" else "超预算"
@@ -511,6 +583,8 @@ internal object BootCheck {
         if (unfinished > 0) lines += "③要你办 $unfinished 项：只记了一行未办成单（不弹卡）"
         // 事实不许因为"已经弹过了"就从简报里消失：这一行按阻断条数写，弹几次另说。
         if (blocking > 0) lines += "④阻断 $blocking 项：本轮弹 $cards 次（弹过的不重复弹）"
+        // 没算定策就不占一行：把"没测过"写成一行事实，等于给没发生的事编个读数。
+        strategy?.let { lines += it.line() }
         check(lines.size <= BootLimits.MAX_BRIEF_LINES) {
             "简报 ${lines.size} 行，超了派工单的 ${BootLimits.MAX_BRIEF_LINES} 行上限"
         }
