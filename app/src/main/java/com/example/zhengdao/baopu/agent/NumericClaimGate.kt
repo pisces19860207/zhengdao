@@ -87,70 +87,117 @@ internal object NumericClaimGate {
             ?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
 
         for (clause in clauses(answer)) {
-            val sumKw = sumKeywordOf(clause)
-            if (sumKw != null) {
-                val claimed = numAfter(clause, sumKw)
-                if (claimed != null && seen.add("sum:$claimed")) {
-                    sumLike(Kind.SUM, claimed, root, numericSrc, srcWhy, lineRange, out)
-                }
-                continue
-            }
-            if (clause.contains("平均") || Regex("保留[一二两三四五六]位小数").containsMatchIn(clause)) {
-                // AVG 声称值取**子句内最后一个数**（模型常先报未舍入值再报舍入值——交付口径是最后一个）；
-                // 精度＝「保留 N 位小数」口径，没写就用声称值自己的小数位。
-                val claimed = clause.let { c -> NUMBER.findAll(c).lastOrNull()?.let { bd(it.value) } }
-                if (claimed != null && seen.add("avg:$claimed")) {
-                    val statedScale = Regex("保留([一二两三四五六])位小数").find(clause)?.groupValues?.get(1)?.let { w ->
-                        when (w) { "一" -> 1; "两", "二" -> 2; "三" -> 3; "四" -> 4; "五" -> 5; else -> claimed.scale() }
-                    } ?: claimed.scale()
-                    // 同一答案里先报未舍入值再报舍入值（335 avg A1 形状）：交付口径是最后一个
-                    // 声称——AVG 结果只保留最后一条。
-                    out.removeAll { it.kind == Kind.AVG }
-                    avgLike(claimed, statedScale, root, numericSrc, srcWhy, out)
-                }
-                continue
-            }
-            val pct = PERCENT.find(clause)
-            if (pct != null) {
-                val claimed = clause.substring(pct.range.last + 1)
-                    .let { s -> NUMBER.find(s.substring(0, minOf(s.length, 10)))?.let { bd(it.value) } }
-                if (claimed != null && seen.add("pct:${pct.groupValues[1]}:$claimed")) {
-                    pctLike(claimed, pct.groupValues[1].toLong(), root, numericSrc, srcWhy, out)
-                }
-                continue
-            }
-            // LINES：「行数/共/一共 …N 行」（排除「第 N 行」——那是引用不是计数）
-            val lines = Regex("""(?<!第)(\d[\d,，]*)\s*行""").find(clause)
-            if (lines != null && (clause.contains("行数") || clause.contains("共") || clause.contains("一共"))) {
-                val claimed = bd(lines.groupValues[1])
-                val src = PATH.find(clause)?.value
-                if (src != null && seen.add("lines:$src:$claimed")) {
-                    val f = File(root, src)
-                    val actual = if (f.isFile) runCatching { BigDecimal(f.readLines().size.toLong()) }.getOrNull() else null
-                    if (actual == null) {
-                        out += Result(Kind.LINES, claimed, null, Status.UNVERIFIABLE, src, UNVERIFIED_UNREADABLE)
-                    } else {
-                        out += Result(Kind.LINES, claimed, actual, verdict(claimed, actual), src, diffText(claimed, actual))
-                    }
-                }
-            }
-            // FILE_COUNT：「N 个文件」＋子句里的目录（取最后一个「xx/」提示）
-            val fc = Regex("""(\d[\d,，]*)\s*个文件""").find(clause)
-            if (fc != null) {
-                val claimed = bd(fc.groupValues[1])
-                val dirHint = Regex("""[\w\-一-龥]+/""").findAll(clause).lastOrNull()?.value?.trimEnd('/') ?: "."
-                if (seen.add("fc:$dirHint:$claimed")) {
-                    val d = File(root, dirHint)
-                    val actual = if (d.isDirectory) BigDecimal((d.listFiles()?.size ?: 0).toLong()) else null
-                    if (actual == null) {
-                        out += Result(Kind.FILE_COUNT, claimed, null, Status.UNVERIFIABLE, dirHint, UNVERIFIED_UNREADABLE)
-                    } else {
-                        out += Result(Kind.FILE_COUNT, claimed, actual, verdict(claimed, actual), dirHint, diffText(claimed, actual))
-                    }
-                }
-            }
+            // 一类声称一个处理函数（2026-11-01 拆；原先五段挤在 check 里，69 行 / 复杂度越线）。
+            // 顺序＝判据优先级，别调：SUM → AVG → PERCENT → LINES → FILE_COUNT。
+            if (handleSum(clause, root, numericSrc, srcWhy, lineRange, seen, out)) continue
+            if (handleAvg(clause, root, numericSrc, srcWhy, seen, out)) continue
+            if (handlePercent(clause, root, numericSrc, srcWhy, seen, out)) continue
+            if (handleLines(clause, root, seen, out)) continue
+            handleFileCount(clause, root, seen, out)
         }
         return out
+    }
+
+    private fun handleSum(
+        clause: String,
+        root: File,
+        numericSrc: String?,
+        srcWhy: String,
+        lineRange: Pair<Int, Int>?,
+        seen: HashSet<String>,
+        out: ArrayList<Result>,
+    ): Boolean {
+        val sumKw = sumKeywordOf(clause) ?: return false
+        val claimed = numAfter(clause, sumKw)
+        if (claimed != null && seen.add("sum:$claimed")) {
+            sumLike(Kind.SUM, claimed, root, numericSrc, srcWhy, lineRange, out)
+        }
+        return true
+    }
+
+    private fun handleAvg(
+        clause: String,
+        root: File,
+        numericSrc: String?,
+        srcWhy: String,
+        seen: HashSet<String>,
+        out: ArrayList<Result>,
+    ): Boolean {
+        if (!clause.contains("平均") && !Regex("保留[一二两三四五六]位小数").containsMatchIn(clause)) return false
+        // AVG 声称值取**子句内最后一个数**（模型常先报未舍入值再报舍入值——交付口径是最后一个）；
+        // 精度＝「保留 N 位小数」口径，没写就用声称值自己的小数位。
+        val claimed = NUMBER.findAll(clause).lastOrNull()?.let { bd(it.value) }
+        if (claimed != null && seen.add("avg:$claimed")) {
+            val statedScale = Regex("保留([一二两三四五六])位小数").find(clause)?.groupValues?.get(1)?.let { w ->
+                when (w) { "一" -> 1; "两", "二" -> 2; "三" -> 3; "四" -> 4; "五" -> 5; else -> claimed.scale() }
+            } ?: claimed.scale()
+            // 同一答案里先报未舍入值再报舍入值（335 avg A1 形状）：交付口径是最后一个
+            // 声称——AVG 结果只保留最后一条。
+            out.removeAll { it.kind == Kind.AVG }
+            avgLike(claimed, statedScale, root, numericSrc, srcWhy, out)
+        }
+        return true
+    }
+
+    private fun handlePercent(
+        clause: String,
+        root: File,
+        numericSrc: String?,
+        srcWhy: String,
+        seen: HashSet<String>,
+        out: ArrayList<Result>,
+    ): Boolean {
+        val pct = PERCENT.find(clause) ?: return false
+        val claimed = clause.substring(pct.range.last + 1)
+            .let { s -> NUMBER.find(s.substring(0, minOf(s.length, 10)))?.let { bd(it.value) } }
+        if (claimed != null && seen.add("pct:${pct.groupValues[1]}:$claimed")) {
+            pctLike(claimed, pct.groupValues[1].toLong(), root, numericSrc, srcWhy, out)
+        }
+        return true
+    }
+
+    private fun handleLines(
+        clause: String,
+        root: File,
+        seen: HashSet<String>,
+        out: ArrayList<Result>,
+    ): Boolean {
+        // LINES：「行数/共/一共 …N 行」（排除「第 N 行」——那是引用不是计数）
+        val lines = Regex("""(?<!第)(\d[\d,，]*)\s*行""").find(clause) ?: return false
+        if (!clause.contains("行数") && !clause.contains("共") && !clause.contains("一共")) return false
+        val claimed = bd(lines.groupValues[1])
+        val src = PATH.find(clause)?.value ?: return true
+        if (seen.add("lines:$src:$claimed")) {
+            val f = File(root, src)
+            val actual = if (f.isFile) runCatching { BigDecimal(f.readLines().size.toLong()) }.getOrNull() else null
+            if (actual == null) {
+                out += Result(Kind.LINES, claimed, null, Status.UNVERIFIABLE, src, UNVERIFIED_UNREADABLE)
+            } else {
+                out += Result(Kind.LINES, claimed, actual, verdict(claimed, actual), src, diffText(claimed, actual))
+            }
+        }
+        return true
+    }
+
+    private fun handleFileCount(
+        clause: String,
+        root: File,
+        seen: HashSet<String>,
+        out: ArrayList<Result>,
+    ) {
+        // FILE_COUNT：「N 个文件」＋子句里的目录（取最后一个「xx/」提示）
+        val fc = Regex("""(\d[\d,，]*)\s*个文件""").find(clause) ?: return
+        val claimed = bd(fc.groupValues[1])
+        val dirHint = Regex("""[\w\-一-龥]+/""").findAll(clause).lastOrNull()?.value?.trimEnd('/') ?: "."
+        if (seen.add("fc:$dirHint:$claimed")) {
+            val d = File(root, dirHint)
+            val actual = if (d.isDirectory) BigDecimal((d.listFiles()?.size ?: 0).toLong()) else null
+            if (actual == null) {
+                out += Result(Kind.FILE_COUNT, claimed, null, Status.UNVERIFIABLE, dirHint, UNVERIFIED_UNREADABLE)
+            } else {
+                out += Result(Kind.FILE_COUNT, claimed, actual, verdict(claimed, actual), dirHint, diffText(claimed, actual))
+            }
+        }
     }
 
     private fun sumLike(
