@@ -569,6 +569,53 @@ internal object PlanPledgeAmendRules {
             .put("prev_accept", old?.accept ?: "")
     }
 
+    /**
+     * 重签（312 老路）删项的变更账行：删项不能没有凭据。
+     *
+     * 312 的 `applyResign` 只写一行状态账（event=resign），账上没有 DROPPED 这回事——
+     * 历版并集一看就是「静默缩表」，判据③ 收口时照样报红。这条行补上那半张凭据：
+     * 与 [encodeChange] 同表同键（`kinds=["dropped"]`、`dropped=[…]`、`asked=false`），
+     * [seedFrom] 认得出，跨会话接得回。312 的入参没有逐项原因，用本轮 reason 兜底。
+     */
+    fun encodeResignDrops(
+        prior: PledgeSnapshot,
+        next: PledgeSnapshot,
+        drops: List<DropRecord>,
+        reason: String,
+        channel: ResignChannel,
+        atMs: Long,
+    ): JSONObject = JSONObject()
+        .put("v", 1)
+        .put("event", EVENT_AMEND)
+        .put("pledge", prior.id)
+        .put("id", next.id)
+        .put("from", prior.version)
+        .put("version", next.version)
+        .put("kinds", JSONArray(listOf(AmendKind.DROP.wire)))
+        .put("by", AmendBy.MODEL.wire)
+        .put("channel", channel.wire)
+        .put("asked", false)
+        .put("reason", reason)
+        .put("ops", JSONArray())
+        .put("reset", JSONArray())
+        .put("dropped", JSONArray().also { arr ->
+            drops.forEach { d ->
+                arr.put(
+                    JSONObject()
+                        .put("text", d.text)
+                        .put("state", STATE_DROPPED)
+                        .put("reason", d.reason)
+                        .put("version", d.version)
+                        .put("by", d.by.wire)
+                        .put("channel", d.channel.wire)
+                        .put("at", d.atMs),
+                )
+            }
+        })
+        .put("kept", 0)
+        .put("at", atMs)
+        .put("session", next.sessionId)
+
     /** 跨进程续跑用的种子读数：变更账里的 DROPPED、顶替关系与已问次数。 */
     data class AmendSeed(
         val dropped: List<DropRecord>,

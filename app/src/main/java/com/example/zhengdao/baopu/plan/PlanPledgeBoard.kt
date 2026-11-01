@@ -25,6 +25,7 @@ import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendDecision
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendKind
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendParse
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.DropRecord
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendBy
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.EndingDeclaration
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeSnapshot
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.ResignChannel
@@ -334,6 +335,7 @@ internal object PlanPledgeBoard {
         reason: String,
         channel: ResignChannel,
         atMs: Long,
+        by: AmendBy = AmendBy.MODEL,
     ): PledgeSnapshot? = synchronized(this) {
         val old = active ?: return null
         val next = PlanPledgeRules.snapshotOf(incoming, accepts, old.version + 1, old.goal, atMs, old.sessionId)
@@ -354,6 +356,13 @@ internal object PlanPledgeBoard {
                 channel,
             ),
         )
+        // 343 判据③：重签摘掉的项也要有 DROPPED 凭据——不给凭据就是「静默缩表」，
+        // 收口按历版并集照样报红。变更账补这一行（与 amend 的 drop 同一种账行）。
+        val drops = removed.map { DropRecord(it, reason, next.version, by, channel, atMs) }
+        drops.forEach { dropped[it.text] = it }
+        if (drops.isNotEmpty()) {
+            appendChange(PlanPledgeAmendRules.encodeResignDrops(old, next, drops, reason, channel, atMs))
+        }
         RunLog.log(
             "抱朴军令状：重签（第 ${old.version}→${next.version} 版，加 ${added.size}／删 ${removed.size}，" +
                 "原因：$reason，通道 ${channel.wire}）",

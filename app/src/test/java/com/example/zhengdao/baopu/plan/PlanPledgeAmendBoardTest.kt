@@ -189,32 +189,29 @@ class PlanPledgeAmendBoardTest {
     // ── 判据③／负例①：悄悄摘项 ⇒ 门禁红（在板上走一遍）────────────────────
 
     @Test
-    fun `负例1_重签摘项不留DROPPED_收口判未完成并进未办成单`() {
-        PlanPledgeBoard.freeze(snap("甲", "乙", "丙"))
-        // 312 的老路：只发重签，把没做的「乙」摘掉——今天没有 DROPPED 这个概念
-        PlanPledgeBoard.applyResign(
-            items("甲", "丙"),
-            listOf("交付「甲」并核对", "交付「丙」并核对"),
-            "乙先不做了",
-            ResignChannel.HUMAN,
-            atMs = 2_000L,
+    fun `负例1_旧账里静默摘掉的项_收口照样报红并进未办成单`() {
+        // 343 之前的账：第 1 版五项、第 2 版三项（312 的重签摘了「丁」「戊」，
+        // 那本账里没有 DROPPED 这回事）——跨会话接回来时，这笔旧账照样要还
+        PlanPledgeBoard.seed(
+            snap("甲", "乙", "丙", version = 2),
+            priorVersions = listOf(snap("甲", "乙", "丙", "丁", "戊", version = 1)),
         )
-        // 312 的重签会把结局清空（重签后从头结），所以申报要在重签之后给
-        PlanPledgeBoard.noteCloseout(listOf(declDone("甲"), declDone("丙")))
+        PlanPledgeBoard.noteCloseout(listOf(declDone("甲"), declDone("乙"), declDone("丙")))
         val verdict = PlanPledgeBoard.settle(doneTexts = emptySet(), atMs = 3_000L)!!
         assertFalse("摘掉的项照样欠着", verdict.complete)
-        val shrink = verdict.gaps.first { it.text == "乙" }
+        val shrink = verdict.gaps.first { it.text == "丁" }
         assertEquals("缺的是 DROPPED 那一张凭据", PlanPledgeAmendRules.MISSING_SHRINK, shrink.missing)
+        assertEquals(listOf("丁", "戊"), verdict.gaps.map { it.text })
         assertTrue(
             "缺口逐行进未办成单",
-            UnfinishedLedger(listOf(root)).load().any { it.intent == "乙" },
+            UnfinishedLedger(listOf(root)).load().any { it.intent == "丁" },
         )
-        assertTrue("312 的老路不写变更账（没 amend 就没有变更行）", changeRows().isEmpty())
 
-        // 正经的删项申报（amend drop，人批）⇒ 有了 DROPPED ⇒ 结清
-        applied(amend(listOf(drop("乙", "这件事不做了")), channel = ResignChannel.HUMAN))
+        // 补记账（amend drop 旧项，人批）⇒ 有了 DROPPED ⇒ 结清；表不动
+        applied(amend(listOf(drop("丁", "这件事不做了"), drop("戊", "这件事也不做了")), channel = ResignChannel.HUMAN))
         val after = PlanPledgeBoard.settle(doneTexts = emptySet(), atMs = 4_000L)!!
-        assertTrue("记了 DROPPED ⇒ 收口通过：${after.gaps}", after.complete)
+        assertTrue("补了凭据 ⇒ 收口通过：${after.gaps}", after.complete)
+        assertEquals("现役还是三项（补记账不改表）", 3, PlanPledgeBoard.activeSnapshot()!!.entries.size)
         assertEquals("DROPPED 进变更账", "dropped", changeRows().single().optJSONArray("dropped")!!.optJSONObject(0)!!.optString("state"))
     }
 
@@ -322,6 +319,40 @@ class PlanPledgeAmendBoardTest {
     }
 
     // ── 判据⑥：三本账分表 ──────────────────────────────────────────────────
+
+    // ── 判据③的另一半：312 的重签老路也不能静默缩表 ──────────────────────────
+
+    @Test
+    fun `判据3_重签老路删项也记DROPPED_收口不再报静默缩表`() {
+        PlanPledgeBoard.freeze(snap("甲", "乙", "丙"))
+        val next = PlanPledgeBoard.applyResign(
+            items("甲", "乙"),
+            listOf("交付「甲」并核对", "交付「乙」并核对"),
+            "丙不要了",
+            ResignChannel.HUMAN,
+            atMs = 2_000L,
+        )!!
+        assertEquals(2, next.version)
+        assertEquals("删掉的项有 DROPPED 凭据", listOf("丙"), PlanPledgeBoard.droppedRecords().map { it.text })
+        assertEquals("变更账补了这一行（不是只在内存）", 1, changeRows().size)
+        val row = changeRows().single()
+        assertEquals(PlanPledgeAmendRules.EVENT_AMEND, row.optString("event"))
+        assertEquals("human", row.optString("channel"))
+        assertEquals(
+            "丙",
+            row.optJSONArray("dropped")!!.optJSONObject(0)!!.optString("text"),
+        )
+        assertEquals(
+            "跨会话接得回同一份凭据",
+            listOf("丙"),
+            PlanPledgeAmendRules.seedFrom(changeRows()).dropped.map { it.text },
+        )
+
+        PlanPledgeBoard.noteCloseout(listOf(declDone("甲"), declDone("乙")))
+        val verdict = PlanPledgeBoard.settle(doneTexts = setOf("甲", "乙"), atMs = 3_000L)!!
+        assertTrue("有凭据就不算静默缩表：${verdict.gaps.map { it.text }}", verdict.complete)
+        assertEquals(2, verdict.total)
+    }
 
     @Test
     fun `判据6_三本账三个文件_各记各的`() {
