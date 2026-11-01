@@ -180,46 +180,73 @@ object PatienceProfileCodec {
 
     fun decode(raw: String?): PatienceProfile {
         if (raw.isNullOrBlank()) return PatienceProfile()
+        val map = parseMap(raw) ?: return PatienceProfile()
+        val nums = parseNumbers(map) ?: return PatienceProfile()
+        val flags = parseFlags(map) ?: return PatienceProfile()
+        return PatienceProfile(
+            patienceBudget = nums.pb,
+            angerAt = nums.ag,
+            loopBudget = nums.lb,
+            askTolerance = nums.at,
+            prefersEmoji = flags.pe,
+            prefersShort = flags.ps,
+            enabled = flags.en,
+            observations = nums.obs,
+            updatedAt = nums.upd,
+        )
+    }
+
+    /** 版本行对不上就整份作废（null ⇒ 调用方回默认画像）。 */
+    private fun parseMap(raw: String): Map<String, String>? {
         val lines = raw.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        if (lines.firstOrNull() != VERSION) return PatienceProfile()
-        val map = lines.drop(1).mapNotNull { line ->
+        if (lines.firstOrNull() != VERSION) return null
+        return lines.drop(1).mapNotNull { line ->
             val i = line.indexOf('=')
             if (i <= 0) null else line.substring(0, i) to line.substring(i + 1)
         }.toMap()
+    }
 
-        fun int(key: String, def: Int): Int? {
-            val value = map[key] ?: return def
-            return value.toIntOrNull()
-        }
+    /** 阈值与观察量。 */
+    private data class Numbers(
+        val pb: Int,
+        val ag: Int,
+        val lb: Int,
+        val at: Int,
+        val obs: Int,
+        val upd: Long,
+    )
 
-        fun bool(key: String, def: Boolean): Boolean? = when (map[key]) {
-            null -> def
-            "1" -> true
-            "0" -> false
-            else -> null
-        }
+    /** 两个偏好开关 + 总开关。 */
+    private data class Flags(val pe: Boolean, val ps: Boolean, val en: Boolean)
 
-        val pb = int("pb", DEFAULT_PATIENCE_BUDGET) ?: return PatienceProfile()
-        val ag = int("ag", DEFAULT_ANGER_AT) ?: return PatienceProfile()
-        val lb = int("lb", DEFAULT_LOOP_BUDGET) ?: return PatienceProfile()
-        val at = int("at", DEFAULT_ASK_TOLERANCE) ?: return PatienceProfile()
-        val pe = bool("pe", true) ?: return PatienceProfile()
-        val ps = bool("ps", true) ?: return PatienceProfile()
-        val en = bool("en", true) ?: return PatienceProfile()
-        val obs = int("obs", 0) ?: return PatienceProfile()
+    private fun parseNumbers(map: Map<String, String>): Numbers? {
+        val pb = intOf(map, "pb", DEFAULT_PATIENCE_BUDGET) ?: return null
+        val ag = intOf(map, "ag", DEFAULT_ANGER_AT) ?: return null
+        val lb = intOf(map, "lb", DEFAULT_LOOP_BUDGET) ?: return null
+        val at = intOf(map, "at", DEFAULT_ASK_TOLERANCE) ?: return null
+        val obs = intOf(map, "obs", 0) ?: return null
         val upd = map["upd"]?.toLongOrNull() ?: 0L
+        return Numbers(pb, ag, lb, at, obs, upd)
+    }
 
-        return PatienceProfile(
-            patienceBudget = pb,
-            angerAt = ag,
-            loopBudget = lb,
-            askTolerance = at,
-            prefersEmoji = pe,
-            prefersShort = ps,
-            enabled = en,
-            observations = obs,
-            updatedAt = upd,
-        )
+    private fun parseFlags(map: Map<String, String>): Flags? {
+        val pe = boolOf(map, "pe", true) ?: return null
+        val ps = boolOf(map, "ps", true) ?: return null
+        val en = boolOf(map, "en", true) ?: return null
+        return Flags(pe, ps, en)
+    }
+
+    /** 缺键取默认；键在但值坏 ⇒ null（整份作废）。 */
+    private fun intOf(map: Map<String, String>, key: String, def: Int): Int? {
+        val value = map[key] ?: return def
+        return value.toIntOrNull()
+    }
+
+    private fun boolOf(map: Map<String, String>, key: String, def: Boolean): Boolean? = when (map[key]) {
+        null -> def
+        "1" -> true
+        "0" -> false
+        else -> null
     }
 
     private const val DEFAULT_PATIENCE_BUDGET = PatienceProfile.DEFAULT_PATIENCE_BUDGET

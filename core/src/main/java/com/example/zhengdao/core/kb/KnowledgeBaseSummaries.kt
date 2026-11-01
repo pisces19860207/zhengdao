@@ -257,22 +257,28 @@ object KnowledgeBaseSummaries {
     /** 按扩展名分类。没有扩展名/不认识的，老实说"文件"。 */
     fun kindOf(name: String): String {
         val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        return when (ext) {
-            "md", "markdown" -> "Markdown 笔记"
-            "txt", "log", "text" -> "纯文本"
-            "csv", "tsv" -> "表格文本"
-            "json", "yaml", "yml", "toml", "ini", "xml" -> "配置/数据"
-            "kt", "java", "py", "js", "ts", "sh", "rs", "go", "c", "cpp", "h", "sql" -> "代码"
-            "docx", "doc", "odt", "rtf" -> "Word 文档"
-            "pdf" -> "PDF"
-            "xlsx", "xls", "ods" -> "电子表格"
-            "pptx", "ppt", "odp" -> "演示文稿"
-            "png", "jpg", "jpeg", "webp", "gif", "bmp", "heic" -> "图片"
-            "zip", "7z", "rar", "tar", "gz" -> "压缩包"
-            "mp3", "wav", "m4a", "flac" -> "音频"
-            "mp4", "mov", "mkv" -> "视频"
-            else -> "文件"
-        }
+        return KIND_BY_EXT[ext] ?: "文件"
+    }
+
+    /**
+     * 扩展名 → 人话类别。第二百五十九批从 14 个 `when` 分支改成一张表：
+     * 分类是**数据**不是**逻辑**，加一类只加一行，也不用再跟复杂度阈值拉锯。
+     */
+    private val KIND_BY_EXT: Map<String, String> = buildMap {
+        fun put(label: String, vararg exts: String) = exts.forEach { this[it] = label }
+        put("Markdown 笔记", "md", "markdown")
+        put("纯文本", "txt", "log", "text")
+        put("表格文本", "csv", "tsv")
+        put("配置/数据", "json", "yaml", "yml", "toml", "ini", "xml")
+        put("代码", "kt", "java", "py", "js", "ts", "sh", "rs", "go", "c", "cpp", "h", "sql")
+        put("Word 文档", "docx", "doc", "odt", "rtf")
+        put("PDF", "pdf")
+        put("电子表格", "xlsx", "xls", "ods")
+        put("演示文稿", "pptx", "ppt", "odp")
+        put("图片", "png", "jpg", "jpeg", "webp", "gif", "bmp", "heic")
+        put("压缩包", "zip", "7z", "rar", "tar", "gz")
+        put("音频", "mp3", "wav", "m4a", "flac")
+        put("视频", "mp4", "mov", "mkv")
     }
 
     /** 首个非空行当标题：剥掉 `#`/`>`/`-`/`*`/`=` 与成对引号，超 40 字截断。 */
@@ -299,34 +305,51 @@ object KnowledgeBaseSummaries {
 
     /** 关键词：中文取 2-gram、英文取 ≥3 字母词，去停用词，按次数取前 [limit] 个。 */
     fun keywords(text: String, limit: Int = 3): List<String> {
-        val counts = LinkedHashMap<String, Int>()
-        var i = 0
-        while (i < text.length) {
-            val c = text[i]
-            if (isCjk(c)) {
-                var j = i
-                while (j < text.length && isCjk(text[j])) j++
-                val run = text.substring(i, j)
-                if (run.length == 2) bump(counts, run) else {
-                    for (k in 0..run.length - 2) bump(counts, run.substring(k, k + 2))
-                }
-                i = j
-            } else if (c.code < 128 && c.isLetterOrDigit()) {
-                var j = i
-                while (j < text.length && text[j].code < 128 && text[j].isLetterOrDigit()) j++
-                val w = text.substring(i, j).lowercase(Locale.ROOT)
-                if (w.length >= 3 && w !in ASCII_STOP) bump(counts, w)
-                i = j
-            } else {
-                i++
-            }
-        }
+        val counts = countTokens(text)
         val ranked = counts.entries
             .filter { (k, n) -> k !in CJK_STOP && (n > 1 || k.length >= 3) }
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { counts.keys.indexOf(it.key) })
         if (ranked.isNotEmpty()) return ranked.take(limit).map { it.key }
         // 短文档：一个词都不重复 ⇒ 退回"最长且最先出现"的三个，至少别交白卷
         return counts.keys.filter { it !in CJK_STOP }.sortedWith(compareByDescending<String> { it.length }).take(limit)
+    }
+
+    /** 一次扫完：中文按 2-gram、英文按整词，边扫边累加。 */
+    private fun countTokens(text: String): LinkedHashMap<String, Int> {
+        val counts = LinkedHashMap<String, Int>()
+        var i = 0
+        while (i < text.length) i = countTokenAt(text, i, counts)
+        return counts
+    }
+
+    /** 认一个位置上的字符：中文交给 [countCjk]，ASCII 词交给 [countAscii]，其余跳过一格里。 */
+    private fun countTokenAt(text: String, start: Int, counts: LinkedHashMap<String, Int>): Int {
+        val c = text[start]
+        if (isCjk(c)) return countCjk(text, start, counts)
+        if (c.code < 128 && c.isLetterOrDigit()) return countAscii(text, start, counts)
+        return start + 1
+    }
+
+    /** 连续汉字：长度恰为 2 就整段算一词，否则滑 2-gram。 */
+    private fun countCjk(text: String, start: Int, counts: LinkedHashMap<String, Int>): Int {
+        var j = start
+        while (j < text.length && isCjk(text[j])) j++
+        val run = text.substring(start, j)
+        if (run.length == 2) {
+            bump(counts, run)
+        } else {
+            for (k in 0..run.length - 2) bump(counts, run.substring(k, k + 2))
+        }
+        return j
+    }
+
+    /** 连续 ASCII 字母数字：≥3 个字母才记，小写归一，命中停用词丢掉。 */
+    private fun countAscii(text: String, start: Int, counts: LinkedHashMap<String, Int>): Int {
+        var j = start
+        while (j < text.length && text[j].code < 128 && text[j].isLetterOrDigit()) j++
+        val w = text.substring(start, j).lowercase(Locale.ROOT)
+        if (w.length >= 3 && w !in ASCII_STOP) bump(counts, w)
+        return j
     }
 
     // ── ④ 上限淘汰（纯函数）─────────────────────────────────────────────────

@@ -170,18 +170,7 @@ object DocxTextExtractor {
                 sb.append(c); i++; continue
             }
             val ent = s.substring(i + 1, semi)
-            val decoded = when {
-                ent == "amp" -> "&"
-                ent == "lt" -> "<"
-                ent == "gt" -> ">"
-                ent == "quot" -> "\""
-                ent == "apos" -> "'"
-                ent.startsWith("#x") || ent.startsWith("#X") ->
-                    ent.substring(2).toIntOrNull(16)?.let { code -> codeToString(code) }
-                ent.startsWith("#") ->
-                    ent.substring(1).toIntOrNull()?.let { code -> codeToString(code) }
-                else -> null
-            }
+            val decoded = decodeEntity(ent)
             if (decoded == null) {
                 sb.append(c); i++                  // 认不出的实体：原样保留 &，避免吞掉文字
             } else {
@@ -189,6 +178,29 @@ object DocxTextExtractor {
             }
         }
         return sb.toString()
+    }
+
+    /** 五个命名实体（够用且不引库）。 */
+    private val NAMED_ENTITIES = mapOf(
+        "amp" to "&",
+        "lt" to "<",
+        "gt" to ">",
+        "quot" to "\"",
+        "apos" to "'",
+    )
+
+    /**
+     * 一个实体（不含首尾的 `&` `;`）→ 还原后的文本；认不出返回 null（调用方原样保留）。
+     * 数字实体两种写法：`#x1F600`（十六进制）/ `#128512`（十进制）。
+     */
+    private fun decodeEntity(ent: String): String? {
+        NAMED_ENTITIES[ent]?.let { return it }
+        val code = when {
+            ent.startsWith("#x") || ent.startsWith("#X") -> ent.substring(2).toIntOrNull(16)
+            ent.startsWith("#") -> ent.substring(1).toIntOrNull()
+            else -> null
+        }
+        return code?.let { codeToString(it) }
     }
 
     private fun codeToString(code: Int): String? =

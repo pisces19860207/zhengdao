@@ -4,19 +4,20 @@
 
 背景
 ----
-352 把 detekt 的视野从「只扫 app/src/main/java」扩到 :policy 与 :core。但 :policy/:core
+352 把 detekt 的视野从「只扫 app/src/main/java」扩到 :policy 与 :core。当时这两个模块
 有 **8 条存量**（policy 5 ＋ core 3，2026-11-01 以 JDK 21.0.13 ＋ detekt 1.23.8 实测，
-与 341 记账同源；app 本体 402 与账本分毫不差，交叉验证通过）。预算 402 一个字不动
-（那是 354/359 的账）⇒ 走「观察档」：
+与 341 记账同源；app 本体 402 与账本分毫不差，交叉验证通过）。预算一个字不动
+（那是 354/359 的账）⇒ 当时走「观察档」：
 
   * 主 lane（:app:detektWall / :app:detektReport / check-detekt-budget.py）**原样不动**，
-    仍只扫 app —— CI 不因这 8 条存量变红；
+    仍只扫 app；
   * 本闸消费 :app:detektModulesReport（新任务，只扫 ../policy ＋ ../core）的 XML：
-      - 把每条存量打成 ::notice 注解（Actions 注解匿名可读，仓库惯例见 E-028）——先「看得见」；
-      - **只增即红**：某模块条数 > CEILING（下常量，出处 352 实测）⇒ ::error ＋ 退出 1；
-      - 条数变少只 notice：359 清债的进度自己会说话。
-  * 359 清完（policy 0 ＋ core 0）后，把 app/build.gradle.kts 的 detektCommonArgs
-    --input 切到全模块（strict，一个开关），本脚本与观察任务一并退役。
+      - 把每条存量打成 ::notice 注解（Actions 注解匿名可读，仓库惯例见 E-028）；
+      - **只增即红**：某模块条数 > CEILING（下常量）⇒ ::error ＋ 退出 1。
+
+**359 清债后（2026-11-02）**：8 条已全部拆掉、实测归 0，`CEILING` 由 5/3 置 **0/0**——
+本闸从此对 :policy/:core 是**零容忍**（冒一条就是新增）。strict 切换（把 detektCommonArgs
+的 --input 切全模块）属 352，切完后本脚本与观察任务一并退役。
 
 防「路径不存在被当成 0 条」（派工单明令）
 ----------------------------------------
@@ -51,12 +52,12 @@ except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_XML = os.path.join(ROOT, "app", "build", "reports", "detekt", "detekt-modules.xml")
 
-# 观察档上限 = 352 实测存量（2026-11-01，JDK 21.0.13 ＋ detekt 1.23.8）：
-#   policy 5：HarmonyMediator.observe（长方法＋复杂度）/HarmonyMediator.decay/decode、
-#             PatienceProfile.decode
-#   core   3：DocxTextExtractor.unescapeXml、KnowledgeBaseSummaries.kindOf/keywords
-# 359 清债后由清债批改成 0（两处同提交：这里 ＋ 本文件头注释）；strict 切换后整个观察档退役。
-CEILING = {"policy": 5, "core": 3}
+# 观察档上限 = 0（**359 已清，不再放行存量**；2026-11-02 由清债批 359 从 5/3 置 0）。
+#   policy/core 原本的 8 条存量（HarmonyMediator.observe/decay/decode、PatienceProfile.decode、
+#   DocxTextExtractor.unescapeXml、KnowledgeBaseSummaries.kindOf/keywords）已在 359 拆到
+#   ≤59 行 / ≤14 复杂度，detekt 实测归 0。从此这两个模块**一条都不许再冒**：
+#   冒一条就是新增，红——与主 lane（app）「只降不升」同一个口径。
+CEILING = {"policy": 0, "core": 0}
 
 # XML 里的路径可能是绝对路径（本机/CI 工作目录不同）——按「模块源根子串」归模块。
 MODULE_MARKERS = {"policy": "policy/src/main/java", "core": "core/src/main/java"}
@@ -122,21 +123,29 @@ def judge(issues: list[dict], ceiling: dict[str, int]) -> int:
         parts.append("%s %d/%d" % (mod, n, limit))
         if n > limit:
             print(
-                "::error title=detekt 观察档::%s 新增 %d 条（观察档上限 %d，出处 352 实测存量）。"
-                "存量只降不升；359 负责降，新增请同批清掉或先报验收。" % (mod, n - limit, limit)
+                "::error title=detekt 观察档::%s 新增 %d 条（上限 %d）。"
+                "这两个模块只降不升（359 已把存量清零）；新增请同批清掉，否则本闸红。"
+                % (mod, n - limit, limit)
             )
             code = 1
         elif n < limit:
             print(
-                "::notice title=detekt 观察档::%s 读数 %d < 上限 %d —— 359 清债有进展，"
+                "::notice title=detekt 观察档::%s 读数 %d < 上限 %d —— 清债有进展，"
                 "清零后把主 lane --input 切全模块（strict）并退役观察档。" % (mod, n, limit)
             )
-    print("[detekt 观察档] " + " ｜ ".join(parts) + "（存量不拦闸，只增即红）")
+    tail = "（上限 0：这两个模块一条都不许冒）" if all(v == 0 for v in ceiling.values()) \
+        else "（存量不拦闸，只增即红）"
+    print("[detekt 观察档] " + " ｜ ".join(parts) + tail)
     return code
 
 
 def selftest() -> int:
-    """三个负例 ＋ 一个正例，不依赖仓库状态（仿 check-radius-tokens-selftest 惯例）。"""
+    """负例 ＋ 正例，不依赖仓库状态（仿 check-radius-tokens-selftest 惯例）。
+
+    359 置 0 后分两组测：①判闸逻辑本身用一张**演示上限**（5/3，历史口径）测边界，
+    否则上限是 0，边界永远只测得着"一条就红"这一种；②再对**真实 CEILING** 测
+    0/0 的两条：一条都没有 ⇒ 0、冒出一条 ⇒ 1（这是 359 后的生产态）。
+    """
     ok = True
 
     def case(name: str, got: int, want: int) -> None:
@@ -155,10 +164,13 @@ def selftest() -> int:
             "message": "The function observe is too long (96). The maximum length is 60.",
         }
 
+    demo = {"policy": 5, "core": 3}  # 352 的存量口径，只用来测边界
     print("[detekt 观察档 --selftest]")
-    case("限内（5/3）", judge([issue("policy") for _ in range(5)] + [issue("core") for _ in range(3)], CEILING), 0)
-    case("policy 超 1 ⇒ 红", judge([issue("policy") for _ in range(6)] + [issue("core") for _ in range(3)], CEILING), 1)
-    case("core 归零（359 目标态）", judge([issue("policy") for _ in range(5)], CEILING), 0)
+    case("演示口径限内（5/3）", judge([issue("policy") for _ in range(5)] + [issue("core") for _ in range(3)], demo), 0)
+    case("演示口径 policy 超 1 ⇒ 红", judge([issue("policy") for _ in range(6)] + [issue("core") for _ in range(3)], demo), 1)
+    case("演示口径 core 超 1 ⇒ 红", judge([issue("policy") for _ in range(5)] + [issue("core") for _ in range(4)], demo), 1)
+    case("359 生产口径：一条都没有 ⇒ 0", judge([], CEILING), 0)
+    case("359 生产口径：冒出一条 ⇒ 红", judge([issue("core")], CEILING), 1)
     case("认不出的路径 ⇒ 环境错", judge([{"module": "?", "file": "X.kt", "line": "1", "rule": "LongMethod", "message": "m"}], CEILING), 2)
     print("  结果：%s" % ("全部通过 ✔" if ok else "有失败 ✘"))
     return 0 if ok else 1

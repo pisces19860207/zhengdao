@@ -82,6 +82,9 @@ object HarmonyMediator {
      *
      * 调用顺序很重要：`userText`/`modelText` 必须是**原话**（界面那一份），
      * 不是 `reframe()` 之后的那一份——否则责备信号和自贬计数会被自己洗掉。
+     *
+     * 第二百五十九批（2026-11-02）：原本一整个 96 行／复杂度 51 的大函数，按
+     * 「读信号 → 走计数 → 定档 → 拼状态」四步拆开；每一步都是纯函数，**判据一个字没动**。
      */
     fun observe(
         prev: State,
@@ -98,27 +101,70 @@ object HarmonyMediator {
         // 人给台阶就下：立即 CALM，连暂停与追问计数一起清。
         if (ReframeFilter.isReset(userText)) return State()
 
-        val blame = ReframeFilter.isBlame(userText)
-        val pause = ReframeFilter.isPause(userText)
-        val negation = ReframeFilter.isShortNegation(userText) && !pause
-        val handoff = ReframeFilter.isHandoff(userText)
-        val selfDep = ReframeFilter.selfDeprecationCount(modelText)
-        val reframes = if (
-            ReframeFilter.needsReframe(userText, Side.USER) ||
-            ReframeFilter.needsReframe(modelText, Side.MODEL)
-        ) 1 else 0
+        val signals = readSignals(userText, modelText, decayed)
+        val counters = advanceCounters(decayed, outcome, signals.negation)
 
+        // 连续两次成功：直接回落 CALM，计数清空（派工单 §3.6「任意 → CALM」）。
+        // 但「用户暂停」要等人说「继续吧」才能解，成功不能替人做主。
+        if (counters.successes >= 2) return State(paused = decayed.paused)
+
+        val mood = resolveMood(decayed.mood, counters, signals, limits)
+        return buildState(decayed, counters, signals, mood, outcome, limits, now)
+    }
+
+    /** 第一步读出来的文本信号（只有布尔与计数，不含原话）。 */
+    private data class Signals(
+        val blame: Boolean,
+        val pause: Boolean,
+        val negation: Boolean,
+        val handoff: Boolean,
+        val selfDep: Int,
+        val reframes: Int,
+        val askHash: Int,
+        val askRepeats: Int,
+    )
+
+    /** 第一步：从原话读信号。`askRepeats` 要对照上一次的哈希，故把 `decayed` 一并传入。 */
+    private fun readSignals(userText: String, modelText: String, decayed: State): Signals {
+        val pause = ReframeFilter.isPause(userText)
         val normalized = userText.trim().replace(Regex("\\s+"), "")
         val askHash = if (normalized.isEmpty()) 0 else normalized.hashCode()
-        val askRepeats = when {
-            askHash == 0 -> 0
-            askHash == decayed.lastAskHash -> decayed.askRepeats + 1
-            else -> 1
-        }
+        return Signals(
+            blame = ReframeFilter.isBlame(userText),
+            pause = pause,
+            negation = ReframeFilter.isShortNegation(userText) && !pause,
+            handoff = ReframeFilter.isHandoff(userText),
+            selfDep = ReframeFilter.selfDeprecationCount(modelText),
+            reframes = if (
+                ReframeFilter.needsReframe(userText, Side.USER) ||
+                ReframeFilter.needsReframe(modelText, Side.MODEL)
+            ) 1 else 0,
+            askHash = askHash,
+            askRepeats = askRepeatsAfter(askHash, decayed),
+        )
+    }
 
-        var sameKind = decayed.consecutiveFailures
-        var taskFailures = decayed.taskFailures
+    /** 同一句话又问一次 ⇒ 追问计数 +1；换了话 ⇒ 从 1 重新数。空文本不记。 */
+    private fun askRepeatsAfter(askHash: Int, decayed: State): Int = when {
+        askHash == 0 -> 0
+        askHash == decayed.lastAskHash -> decayed.askRepeats + 1
+        else -> 1
+    }
+
+    /** 第二步走进来的账：同类失败、任务失败、成功、否定连击、失败类别。 */
+    private data class Counters(
+        val sameKind: Int,
+        val taskFailures: Int,
+        val successes: Int,
+        val lastKind: String?,
+        val negations: Int,
+    )
+
+    /** 第二步：按本轮结果结算计数。失败同类才累加，换类归 1；成功清零并放开类别。 */
+    private fun advanceCounters(decayed: State, outcome: Outcome, negation: Boolean): Counters {
         var successes = decayed.successes
+        var taskFailures = decayed.taskFailures
+        var sameKind = decayed.consecutiveFailures
         var lastKind = decayed.lastFailureKind
 
         when (outcome) {
@@ -145,65 +191,77 @@ object HarmonyMediator {
             negation -> decayed.consecutiveNegations + 1
             else -> 0
         }
+        return Counters(sameKind, taskFailures, successes, lastKind, negations)
+    }
 
-        // 连续两次成功：直接回落 CALM，计数清空（派工单 §3.6「任意 → CALM」）。
-        // 但「用户暂停」要等人说「继续吧」才能解，成功不能替人做主。
-        if (successes >= 2) return State(paused = decayed.paused)
-
-        val loopTrigger = sameKind >= LOOP_SAME_KIND_FAILURES ||
-            (limits.loopBudget > 0 && taskFailures >= limits.loopBudget) ||
-            (selfDep >= 2 && decayed.mood == Mood.STRAINED)
-        val strainTrigger = taskFailures >= limits.patienceBudget ||
-            blame ||
-            negations >= 2 ||
-            selfDep >= 2
-        val carefulTrigger = taskFailures >= 1 || negation || selfDep >= 1
-
+    /** 第三步定档：先问熔断，再问紧张，再问留神；同一任务内只升不降。 */
+    private fun resolveMood(prev: Mood, c: Counters, s: Signals, limits: PatienceProfile): Mood {
         val target = when {
-            loopTrigger -> Mood.LOOP
-            strainTrigger -> Mood.STRAINED
-            carefulTrigger -> Mood.CAREFUL
-            else -> decayed.mood
+            isLoop(c, s, limits, prev) -> Mood.LOOP
+            isStrained(c, s, limits) -> Mood.STRAINED
+            isCareful(c, s) -> Mood.CAREFUL
+            else -> prev
         }
-        // 同一任务内只升不降；回落只走「两次成功 / 用户复位 / 静置衰减」。
-        val mood = if (target.ordinal > decayed.mood.ordinal) target else decayed.mood
+        // 回落只走「两次成功 / 用户复位 / 静置衰减」。
+        return if (target.ordinal > prev.ordinal) target else prev
+    }
 
-        val nearLine = mood != Mood.LOOP &&
+    private fun isLoop(c: Counters, s: Signals, limits: PatienceProfile, prev: Mood): Boolean =
+        c.sameKind >= LOOP_SAME_KIND_FAILURES ||
+            (limits.loopBudget > 0 && c.taskFailures >= limits.loopBudget) ||
+            (s.selfDep >= 2 && prev == Mood.STRAINED)
+
+    private fun isStrained(c: Counters, s: Signals, limits: PatienceProfile): Boolean =
+        c.taskFailures >= limits.patienceBudget ||
+            s.blame ||
+            c.negations >= 2 ||
+            s.selfDep >= 2
+
+    private fun isCareful(c: Counters, s: Signals): Boolean =
+        c.taskFailures >= 1 || s.negation || s.selfDep >= 1
+
+    /** 第四步拼新状态。所有字段都来自前三步，这里只做组装。 */
+    private fun buildState(
+        decayed: State,
+        c: Counters,
+        s: Signals,
+        mood: Mood,
+        outcome: Outcome,
+        limits: PatienceProfile,
+        now: Long,
+    ): State = State(
+        mood = mood,
+        consecutiveFailures = c.sameKind,
+        taskFailures = c.taskFailures,
+        selfDeprecations = s.selfDep,
+        reframes = s.reframes,
+        emojiBudget = if (limits.prefersEmoji && (mood == Mood.STRAINED || mood == Mood.LOOP)) 1 else 0,
+        lastShiftAt = shiftAt(mood, decayed, outcome, s, now),
+        lastFailureKind = c.lastKind,
+        consecutiveNegations = c.negations,
+        successes = c.successes,
+        paused = decayed.paused || s.pause,
+        strategySwitch = s.handoff ||
+            (s.askHash != 0 && s.askRepeats > limits.askTolerance && outcome !is Outcome.Success),
+        lastAskHash = if (outcome is Outcome.Success) 0 else s.askHash,
+        askRepeats = if (outcome is Outcome.Success) 0 else s.askRepeats,
+        nearAngerLine = nearAngerLine(mood, c.taskFailures, limits),
+    )
+
+    /** 「下一脚就踩线」：还没到发火点，再来一次就到。 */
+    private fun nearAngerLine(mood: Mood, taskFailures: Int, limits: PatienceProfile): Boolean =
+        mood != Mood.LOOP &&
             limits.angerAt > 0 &&
             taskFailures > 0 &&
             taskFailures < limits.angerAt &&
             taskFailures + 1 >= limits.angerAt
 
-        val paused = decayed.paused || pause
-        val strategySwitch = handoff ||
-            (askHash != 0 && askRepeats > limits.askTolerance && outcome !is Outcome.Success)
-
-        val lastShiftAt = when {
-            mood == Mood.CALM -> 0L
-            mood != decayed.mood -> now
-            outcome is Outcome.Failure || blame || selfDep > 0 || negation -> now
-            else -> decayed.lastShiftAt
-        }
-
-        val emojiBudget = if (limits.prefersEmoji && (mood == Mood.STRAINED || mood == Mood.LOOP)) 1 else 0
-
-        return State(
-            mood = mood,
-            consecutiveFailures = sameKind,
-            taskFailures = taskFailures,
-            selfDeprecations = selfDep,
-            reframes = reframes,
-            emojiBudget = emojiBudget,
-            lastShiftAt = lastShiftAt,
-            lastFailureKind = lastKind,
-            consecutiveNegations = negations,
-            successes = successes,
-            paused = paused,
-            strategySwitch = strategySwitch,
-            lastAskHash = if (outcome is Outcome.Success) 0 else askHash,
-            askRepeats = if (outcome is Outcome.Success) 0 else askRepeats,
-            nearAngerLine = nearLine,
-        )
+    /** 高压档的起算时刻：回落 CALM 归零，换档/再出状况刷新，否则沿用。 */
+    private fun shiftAt(mood: Mood, decayed: State, outcome: Outcome, s: Signals, now: Long): Long = when {
+        mood == Mood.CALM -> 0L
+        mood != decayed.mood -> now
+        outcome is Outcome.Failure || s.blame || s.selfDep > 0 || s.negation -> now
+        else -> decayed.lastShiftAt
     }
 
     /**
@@ -247,10 +305,7 @@ object HarmonyMediator {
      * 降到 CALM 时清空旧账，但保留「用户暂停」——暂停要等人说「继续吧」。
      */
     private fun decay(prev: State, now: Long): State {
-        if (prev.mood == Mood.CALM || prev.lastShiftAt <= 0L || now <= prev.lastShiftAt) return prev
-        val windows = ((now - prev.lastShiftAt) / DECAY_WINDOW_MILLIS)
-            .toInt()
-            .coerceIn(0, MAX_DECAY_STEPS)
+        val windows = decayWindows(prev, now)
         if (windows == 0) return prev
 
         var mood = prev.mood
@@ -258,12 +313,7 @@ object HarmonyMediator {
         var sameKind = prev.consecutiveFailures
         var negations = prev.consecutiveNegations
         repeat(windows) {
-            mood = when (mood) {
-                Mood.LOOP -> Mood.STRAINED
-                Mood.STRAINED -> Mood.CAREFUL
-                Mood.CAREFUL -> Mood.CALM
-                Mood.CALM -> Mood.CALM
-            }
+            mood = stepDown(mood)
             if (taskFailures > 0) taskFailures -= 1
             if (sameKind > 0) sameKind -= 1
             if (negations > 0) negations -= 1
@@ -279,6 +329,22 @@ object HarmonyMediator {
             emojiBudget = if (mood == Mood.STRAINED || mood == Mood.LOOP) 1 else 0,
             lastShiftAt = prev.lastShiftAt + windows.toLong() * DECAY_WINDOW_MILLIS,
         )
+    }
+
+    /** 过了几个静置窗口。0 ＝ 不衰减：还在 CALM / 从没进过高压档 / 时间没往前走。 */
+    private fun decayWindows(prev: State, now: Long): Int {
+        if (prev.mood == Mood.CALM || prev.lastShiftAt <= 0L || now <= prev.lastShiftAt) return 0
+        return ((now - prev.lastShiftAt) / DECAY_WINDOW_MILLIS)
+            .toInt()
+            .coerceIn(0, MAX_DECAY_STEPS)
+    }
+
+    /** 降一档：LOOP → STRAINED → CAREFUL → CALM。 */
+    private fun stepDown(mood: Mood): Mood = when (mood) {
+        Mood.LOOP -> Mood.STRAINED
+        Mood.STRAINED -> Mood.CAREFUL
+        Mood.CAREFUL -> Mood.CALM
+        Mood.CALM -> Mood.CALM
     }
 }
 
@@ -317,69 +383,105 @@ object HarmonyStateCodec {
 
     fun decode(raw: String?, sessionId: String): HarmonyMediator.State {
         if (raw.isNullOrBlank() || sessionId.isEmpty()) return HarmonyMediator.State()
-        val lines = raw.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        if (lines.firstOrNull() != VERSION) return HarmonyMediator.State()
-        val map = lines.drop(1).mapNotNull { line ->
-            val i = line.indexOf('=')
-            if (i <= 0) null else line.substring(0, i) to line.substring(i + 1)
-        }.toMap()
+        val map = parseMap(raw) ?: return HarmonyMediator.State()
         if (map["session"] != hex(sessionId)) return HarmonyMediator.State()
 
         val mood = HarmonyMediator.Mood.entries.firstOrNull { it.name == map["mood"] }
             ?: return HarmonyMediator.State()
-
-        fun int(key: String, def: Int): Int? {
-            val value = map[key] ?: return def
-            return value.toIntOrNull()
-        }
-
-        fun long(key: String, def: Long): Long? {
-            val value = map[key] ?: return def
-            return value.toLongOrNull()
-        }
-
-        fun bool(key: String, def: Boolean): Boolean? = when (map[key]) {
-            null -> def
-            "1" -> true
-            "0" -> false
-            else -> null
-        }
-
-        val cf = int("cf", 0) ?: return HarmonyMediator.State()
-        val tf = int("tf", 0) ?: return HarmonyMediator.State()
-        val sd = int("sd", 0) ?: return HarmonyMediator.State()
-        val rf = int("rf", 0) ?: return HarmonyMediator.State()
-        val eb = int("eb", 0) ?: return HarmonyMediator.State()
-        val ls = long("ls", 0L) ?: return HarmonyMediator.State()
-        val cn = int("cn", 0) ?: return HarmonyMediator.State()
-        val ok = int("ok", 0) ?: return HarmonyMediator.State()
-        val paused = bool("paused", false) ?: return HarmonyMediator.State()
-        val switch = bool("switch", false) ?: return HarmonyMediator.State()
-        val hash = int("hash", 0) ?: return HarmonyMediator.State()
-        val ask = int("ask", 0) ?: return HarmonyMediator.State()
-        val near = bool("near", false) ?: return HarmonyMediator.State()
         val kind = when (val rawKind = map["lfk"]) {
             null, "-" -> null
             else -> unhex(rawKind) ?: return HarmonyMediator.State()
         }
 
+        val nums = parseNumbers(map) ?: return HarmonyMediator.State()
+        val flags = parseFlags(map) ?: return HarmonyMediator.State()
         return HarmonyMediator.State(
             mood = mood,
-            consecutiveFailures = cf,
-            taskFailures = tf,
-            selfDeprecations = sd,
-            reframes = rf,
-            emojiBudget = eb,
-            lastShiftAt = ls,
+            consecutiveFailures = nums.cf,
+            taskFailures = nums.tf,
+            selfDeprecations = nums.sd,
+            reframes = nums.rf,
+            emojiBudget = nums.eb,
+            lastShiftAt = nums.ls,
             lastFailureKind = kind,
-            consecutiveNegations = cn,
-            successes = ok,
-            paused = paused,
-            strategySwitch = switch,
-            lastAskHash = hash,
-            askRepeats = ask,
-            nearAngerLine = near,
+            consecutiveNegations = nums.cn,
+            successes = nums.ok,
+            paused = flags.paused,
+            strategySwitch = flags.switch,
+            lastAskHash = flags.hash,
+            askRepeats = flags.ask,
+            nearAngerLine = flags.near,
         )
+    }
+
+    /** 版本行对不上就整份作废（null ⇒ 调用方回 CALM）。 */
+    private fun parseMap(raw: String): Map<String, String>? {
+        val lines = raw.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        if (lines.firstOrNull() != VERSION) return null
+        return lines.drop(1).mapNotNull { line ->
+            val i = line.indexOf('=')
+            if (i <= 0) null else line.substring(0, i) to line.substring(i + 1)
+        }.toMap()
+    }
+
+    /** 计数类字段（任一坏掉整份作废，宁可忘掉也不迁怒）。 */
+    private data class Numbers(
+        val cf: Int,
+        val tf: Int,
+        val sd: Int,
+        val rf: Int,
+        val eb: Int,
+        val ls: Long,
+        val cn: Int,
+        val ok: Int,
+    )
+
+    /** 开关类字段。 */
+    private data class Flags(
+        val paused: Boolean,
+        val switch: Boolean,
+        val hash: Int,
+        val ask: Int,
+        val near: Boolean,
+    )
+
+    private fun parseNumbers(map: Map<String, String>): Numbers? {
+        val cf = intOf(map, "cf", 0) ?: return null
+        val tf = intOf(map, "tf", 0) ?: return null
+        val sd = intOf(map, "sd", 0) ?: return null
+        val rf = intOf(map, "rf", 0) ?: return null
+        val eb = intOf(map, "eb", 0) ?: return null
+        val ls = longOf(map, "ls", 0L) ?: return null
+        val cn = intOf(map, "cn", 0) ?: return null
+        val ok = intOf(map, "ok", 0) ?: return null
+        return Numbers(cf, tf, sd, rf, eb, ls, cn, ok)
+    }
+
+    private fun parseFlags(map: Map<String, String>): Flags? {
+        val paused = boolOf(map, "paused", false) ?: return null
+        val switch = boolOf(map, "switch", false) ?: return null
+        val hash = intOf(map, "hash", 0) ?: return null
+        val ask = intOf(map, "ask", 0) ?: return null
+        val near = boolOf(map, "near", false) ?: return null
+        return Flags(paused, switch, hash, ask, near)
+    }
+
+    /** 缺键取默认；键在但值坏 ⇒ null（整份作废）。 */
+    private fun intOf(map: Map<String, String>, key: String, def: Int): Int? {
+        val value = map[key] ?: return def
+        return value.toIntOrNull()
+    }
+
+    private fun longOf(map: Map<String, String>, key: String, def: Long): Long? {
+        val value = map[key] ?: return def
+        return value.toLongOrNull()
+    }
+
+    private fun boolOf(map: Map<String, String>, key: String, def: Boolean): Boolean? = when (map[key]) {
+        null -> def
+        "1" -> true
+        "0" -> false
+        else -> null
     }
 
     private fun hex(text: String): String {
