@@ -148,7 +148,6 @@ enum class BudgetPreset(
     }
 }
 
-
 // ── 六样之一：目标 ────────────────────────────────────────────────────────
 
 /**
@@ -479,12 +478,29 @@ data class TaskContract(
     val exit: TaskExit,
 ) {
 
-    /** 一项都不违 ⇒ 空表；每条是一句"哪儿不对"（写回派工单与拒单理由都够用）。 */
+    /** 一项都不违 ⇒ 空表；每条是一句"哪儿不对"（写回派工单与拒单理由都够用）。
+     *
+     * 分节是形状问题不是判据问题：352-A（2026-11-01）把 `:core` 纳入 detekt 观察档
+     * （`LongMethod` 60 行／`CyclomaticComplexMethod` 15，上限 core=3、只增即红），
+     * 一个 70 行的总函数会把读数顶穿。下面每段搬原文一字节没改，
+     * 报错顺序仍是头→目标→交付物→授权→预算→证据→出口。
+     */
     fun violations(): List<String> {
         val v = ArrayList<String>()
         if (contractId.isBlank()) v += "contract_id 为空"
         if (revision < MIN_REVISION) v += "revision 从 $MIN_REVISION 起（$revision）"
+        v += goalViolations()
+        v += deliverableViolations()
+        v += authorityViolations()
+        v += budgetViolations()
+        v += evidenceViolations()
+        v += exit.outOfRangeSlots()
+        return v
+    }
 
+    /** 目标：一句话＋可验判据；判据里不许有价值判断词。 */
+    private fun goalViolations(): List<String> {
+        val v = ArrayList<String>()
         if (goal.text.isBlank()) v += "goal.text 为空"
         if (goal.text.length > TaskGoal.MAX_TEXT_CHARS) v += "goal.text 超 ${TaskGoal.MAX_TEXT_CHARS} 字"
         if (goal.criteria.isEmpty()) v += "goal.criteria 至少一条判据"
@@ -496,7 +512,12 @@ data class TaskContract(
                 if (c.contains(w)) v += "goal.criteria[$i] 含价值判断词「$w」"
             }
         }
+        return v
+    }
 
+    /** 交付物：每项都要有自己的验收契约，id 不许重。 */
+    private fun deliverableViolations(): List<String> {
+        val v = ArrayList<String>()
         if (deliverables.isEmpty()) v += "deliverables 至少一项"
         if (deliverables.size > TaskDeliverable.MAX_DELIVERABLES) {
             v += "deliverables 超 ${TaskDeliverable.MAX_DELIVERABLES} 项（${deliverables.size}）"
@@ -518,7 +539,12 @@ data class TaskContract(
         deliverables.map { it.id.trim() }.groupingBy { it }.eachCount()
             .filterValues { it > 1 }
             .forEach { (id, n) -> v += "deliverable.id 重复：$id ×$n" }
+        return v
+    }
 
+    /** 授权：读根必填、写根不许越出读范围、不许出网。 */
+    private fun authorityViolations(): List<String> {
+        val v = ArrayList<String>()
         if (authority.readRoots.isEmpty()) v += "authority.read_roots 至少一个根（没读范围的单子无从取证）"
         if (authority.writeRootsEscapingRead().isNotEmpty()) {
             v += "authority.write_roots 越出读范围：${authority.writeRootsEscapingRead().joinToString()}"
@@ -529,7 +555,12 @@ data class TaskContract(
         val rootCount = authority.readRoots.size + authority.writeRoots.size
         if (rootCount > TaskAuthority.MAX_ROOTS) v += "授权根超 ${TaskAuthority.MAX_ROOTS} 个（$rootCount）"
         if (authority.egressAllowed) v += "authority.egress 必须为 false"
+        return v
+    }
 
+    /** 预算：三格界值＋预设档（档是形状不是申请额度）。 */
+    private fun budgetViolations(): List<String> {
+        val v = ArrayList<String>()
         if (budget.maxWallMs !in TaskBudget.MIN_WALL_MS..TaskBudget.MAX_WALL_MS) {
             v += "budget.max_wall_ms 越界：${budget.maxWallMs}（${TaskBudget.MIN_WALL_MS}–${TaskBudget.MAX_WALL_MS}）"
         }
@@ -548,12 +579,15 @@ data class TaskContract(
                 "${budget.maxWallMs}／${budget.maxSteps}／${budget.maxInterruptions} ≠ " +
                 "${preset.wallMs}／${preset.steps}／${preset.interruptions}（档位是形状，不是申请额度）"
         }
+        return v
+    }
 
+    /** 证据：至少一类，且不许重复声明。 */
+    private fun evidenceViolations(): List<String> {
+        val v = ArrayList<String>()
         if (evidence.isEmpty()) v += "evidence 至少一类（没有证据要求的单子无法验收）"
         evidence.groupingBy { it }.eachCount().filterValues { it > 1 }
             .forEach { (k, n) -> v += "evidence 重复：${k.wire} ×$n" }
-
-        v += exit.outOfRangeSlots()
         return v
     }
 
