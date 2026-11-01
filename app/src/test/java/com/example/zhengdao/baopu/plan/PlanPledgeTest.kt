@@ -258,7 +258,14 @@ class PlanPledgeTest {
     @Test
     fun `判据7_源级门禁_本包源码不出现价值判断词`() {
         val dir = File("src/main/java/com/example/zhengdao/baopu/plan")
-        val files = listOf("PlanPledge.kt", "PlanPledgeCards.kt", "PlanPledgeBoard.kt")
+        // 343 的两份新文件同在一把尺子下：变更卡的回灌也是模型看得见的话
+        val files = listOf(
+            "PlanPledge.kt",
+            "PlanPledgeCards.kt",
+            "PlanPledgeBoard.kt",
+            "PlanPledgeAmend.kt",
+            "PlanPledgeAmendCards.kt",
+        )
             .associateWith { stripComments(File(dir, it).readText()) }
         assertTrue("被扫的源文件得在", files.values.all { it.isNotBlank() })
         files.forEach { (name, code) ->
