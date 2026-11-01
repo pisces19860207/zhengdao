@@ -472,112 +472,145 @@ internal object TeachParams {
     ): TeachParamParse {
         if (params.isEmpty()) return TeachParamParse.Ok(emptyMap(), emptyList())
         val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        val t = Taken(sentence.trim())
+        takeExplicit(params, t)
+        takeDate(params, today, t)
+        takeEnum(params, t)
+        takeTokens(params, t)
+        return askOrOk(params, t)
+    }
 
-        var rest = sentence.trim()
-        val values = LinkedHashMap<String, String>()
-        val display = mutableListOf<TeachParamValue>()
-        val conflicts = mutableListOf<String>()
+    /** 取值的中间账：`rest` 是还没被认领的句子，`values`/`display` 是已认领的，`conflicts` 是歧义。 */
+    private class Taken(
+        var rest: String,
+        val values: LinkedHashMap<String, String> = LinkedHashMap(),
+        val display: MutableList<TeachParamValue> = mutableListOf(),
+        val conflicts: MutableList<String> = mutableListOf(),
+    )
 
-        // ── 0. 显式赋值：名字/标签 = 值 ──
+    /** 枚举命中的一条候选（词表里的词出现在句子里）。 */
+    private data class EnumHit(
+        val p: TeachParam,
+        val opt: TeachOption,
+        val start: Int,
+        val len: Int,
+        val matched: String,
+    )
+
+    /** ── 0. 显式赋值：`名字=值`／`标签：值`（用户自己写死的，最可靠）── */
+    private fun takeExplicit(params: List<TeachParam>, t: Taken) {
         for (p in params) {
             val keys = listOf(p.name, p.label).filter { it.isNotBlank() }.distinct()
             for (k in keys) {
                 val re = Regex("${Regex.escape(k)}\\s*[=＝:：]\\s*([^\\s，。；、,;]{1,32})")
-                val m = re.find(rest) ?: continue
-                values[p.name] = m.groupValues[1].trim()
-                display += TeachParamValue(p.name, labelOf(p), m.value.trim(), values[p.name]!!, null)
-                rest = rest.removeRange(m.range)
+                val m = re.find(t.rest) ?: continue
+                t.values[p.name] = m.groupValues[1].trim()
+                t.display += TeachParamValue(p.name, labelOf(p), m.value.trim(), t.values[p.name]!!, null)
+                t.rest = t.rest.removeRange(m.range)
                 break
             }
         }
+    }
 
-        // ── 1. 日期 ──
-        val dateParams = params.filter { it.shape == TeachParamShape.DATE && it.name !in values }
-        if (dateParams.isNotEmpty()) {
-            val found = dateExpressions(rest, today)
-            when {
-                found.isEmpty() -> Unit
-                found.size > 1 -> conflicts += "这句话里有 ${found.size} 个日期，不知道该用哪个"
-                dateParams.size > 1 -> conflicts += "技能里有 ${dateParams.size} 个日期参数，一句话只给了一个日期，不知道该填哪个"
-                else -> {
-                    val p = dateParams.single()
-                    val d = found.single()
-                    values[p.name] = d.iso
-                    display += TeachParamValue(
-                        name = p.name,
-                        label = labelOf(p),
-                        spoken = d.raw,
-                        value = d.iso,
-                        note = "${d.raw} → ${d.iso}",
-                    )
-                    rest = rest.removeRange(d.range)
+    /** ── 1. 日期（只有 DATE 形状）：相对日期当场换算；多个日期或多个日期参数都反问 ── */
+    private fun takeDate(params: List<TeachParam>, today: LocalDate, t: Taken) {
+        val pending = params.filter { it.shape == TeachParamShape.DATE && it.name !in t.values }
+        if (pending.isEmpty()) return
+        val found = dateExpressions(t.rest, today)
+        when {
+            found.isEmpty() -> Unit
+            found.size > 1 -> t.conflicts += "这句话里有 ${found.size} 个日期，不知道该用哪个"
+            pending.size > 1 -> t.conflicts += "技能里有 ${pending.size} 个日期参数，一句话只给了一个日期，不知道该填哪个"
+            else -> {
+                val p = pending.single()
+                val d = found.single()
+                t.values[p.name] = d.iso
+                t.display += TeachParamValue(
+                    name = p.name,
+                    label = labelOf(p),
+                    spoken = d.raw,
+                    value = d.iso,
+                    note = "${d.raw} → ${d.iso}",
+                )
+                t.rest = t.rest.removeRange(d.range)
+            }
+        }
+    }
+
+    /** ── 2. 枚举（选项表就是词表）：长词优先，认领过的字从句子挖掉 ── */
+    private fun takeEnum(params: List<TeachParam>, t: Taken) {
+        val pending = params.filter {
+            it.shape == TeachParamShape.ENUM && it.name !in t.values && it.options.isNotEmpty()
+        }
+        if (pending.isEmpty()) return
+        val hits = enumHits(pending, t.rest)
+        val best = hits.sortedWith(compareByDescending<EnumHit> { it.len }.thenBy { it.start })
+        val claimed = mutableListOf<IntRange>()
+        for (h in best) {
+            val range = h.start until (h.start + h.len)
+            if (h.p.name in t.values) continue
+            if (claimed.any { r -> r.first <= range.first && range.last <= r.last }) continue
+            t.values[h.p.name] = h.opt.value
+            t.display += TeachParamValue(h.p.name, labelOf(h.p), h.matched, h.opt.value, null)
+            claimed += range
+        }
+        // 同一段话被两个枚举参数同时认领 ⇒ 分不清，反问（绝不选一个）
+        val claimedTwice = hits.groupBy { it.start }.filterValues { it.map { h -> h.p.name }.distinct().size > 1 }
+        if (claimedTwice.isNotEmpty()) {
+            claimedTwice.values.first().map { it.p.name }.distinct().let {
+                t.conflicts += "这一段话里「${claimedTwice.values.first().first().matched}」可能属于 ${it.joinToString("、")} 两个参数"
+            }
+        }
+        // 认领过的字要从事后文本里挖掉（先记后删：边删边算索引会错位）
+        for (r in claimed.sortedByDescending { it.first }) t.rest = t.rest.removeRange(r)
+    }
+
+    /** 词表里的词在句子里出现的所有位置（单字选项太容易误命中，直接跳过）。 */
+    private fun enumHits(params: List<TeachParam>, text: String): List<EnumHit> {
+        val hits = mutableListOf<EnumHit>()
+        for (p in params) {
+            for (opt in p.options) {
+                for (w in listOf(opt.label, opt.value).filter { it.isNotBlank() }.distinct()) {
+                    if (w.length < 2) continue
+                    val at = text.indexOf(w)
+                    if (at >= 0) hits += EnumHit(p, opt, at, w.length, w)
                 }
             }
         }
+        return hits
+    }
 
-        // ── 2. 枚举（选项表就是词表）──
-        val enumParams = params.filter { it.shape == TeachParamShape.ENUM && it.name !in values && it.options.isNotEmpty() }
-        if (enumParams.isNotEmpty()) {
-            data class Hit(val p: TeachParam, val opt: TeachOption, val start: Int, val len: Int, val matched: String)
-            val hits = mutableListOf<Hit>()
-            for (p in enumParams) {
-                for (opt in p.options) {
-                    for (w in listOf(opt.label, opt.value).filter { it.isNotBlank() }.distinct()) {
-                        if (w.length < 2) continue // 单字选项太容易误命中（「是」「否」）
-                        val at = rest.indexOf(w)
-                        if (at >= 0) hits += Hit(p, opt, at, w.length, w)
-                    }
-                }
-            }
-            val best = hits.sortedWith(compareByDescending<Hit> { it.len }.thenBy { it.start })
-            val claimed = mutableListOf<IntRange>()
-            for (h in best) {
-                val range = h.start until (h.start + h.len)
-                if (h.p.name in values) continue
-                if (claimed.any { r -> r.first <= range.first && range.last <= r.last }) continue
-                values[h.p.name] = h.opt.value
-                display += TeachParamValue(h.p.name, labelOf(h.p), h.matched, h.opt.value, null)
-                claimed += range
-            }
-            // 同一段话被两个枚举参数同时认领 ⇒ 分不清，反问（绝不选一个）
-            val claimedTwice = hits.groupBy { it.start }.filterValues { it.map { h -> h.p.name }.distinct().size > 1 }
-            if (claimedTwice.isNotEmpty()) {
-                claimedTwice.values.first().map { it.p.name }.distinct().let {
-                    conflicts += "这一段话里「${claimedTwice.values.first().first().matched}」可能属于 ${it.joinToString("、")} 两个参数"
-                }
-            }
-            // 认领过的字要从事后文本里挖掉（先记后删：边删边算索引会错位）
-            for (r in claimed.sortedByDescending { it.first }) rest = rest.removeRange(r)
-        }
-
-        // ── 3. 编码 / 4. 数字 / 5. 引号 ──
+    /** ── 3/4/5. 编码 / 数字 / 引号：同一套「取不到就反问、多个候选也反问」── */
+    private fun takeTokens(params: List<TeachParam>, t: Taken) {
         for (shape in listOf(TeachParamShape.CODE, TeachParamShape.NUMBER, TeachParamShape.TEXT)) {
-            val pending = params.filter { it.shape == shape && it.name !in values }
+            val pending = params.filter { it.shape == shape && it.name !in t.values }
             if (pending.isEmpty()) continue
             val tokens = when (shape) {
-                TeachParamShape.CODE -> codeTokens(rest)
-                TeachParamShape.NUMBER -> numberTokens(rest)
-                else -> quotedTokens(rest)
+                TeachParamShape.CODE -> codeTokens(t.rest)
+                TeachParamShape.NUMBER -> numberTokens(t.rest)
+                else -> quotedTokens(t.rest)
             }
             when {
                 tokens.isEmpty() -> Unit
-                tokens.size > 1 -> conflicts += "${labelOf(pending.first())}给了 ${tokens.size} 个候选（${tokens.joinToString("/") { it } }），不知道该用哪个"
-                pending.size > 1 -> conflicts += "${pending.joinToString("、") { labelOf(it) }} 都是${shapeName(shape)}，不知道该给哪个填「${tokens.single()}」"
+                tokens.size > 1 -> t.conflicts += "${labelOf(pending.first())}给了 ${tokens.size} 个候选（${tokens.joinToString("/") { it } }），不知道该用哪个"
+                pending.size > 1 -> t.conflicts += "${pending.joinToString("、") { labelOf(it) }} 都是${shapeName(shape)}，不知道该给哪个填「${tokens.single()}」"
                 else -> {
                     val p = pending.single()
                     val tok = tokens.single()
-                    values[p.name] = tok
-                    display += TeachParamValue(p.name, labelOf(p), tok, tok, null)
-                    rest = rest.replace(tok, " ")
+                    t.values[p.name] = tok
+                    t.display += TeachParamValue(p.name, labelOf(p), tok, tok, null)
+                    t.rest = t.rest.replace(tok, " ")
                 }
             }
         }
+    }
 
-        // ── 6. 还差就反问一行（冲突优先级最高）──
-        val missing = params.filter { it.name !in values }
-        if (conflicts.isNotEmpty()) {
+    /** ── 6. 还差就反问一行（冲突优先级最高）── */
+    private fun askOrOk(params: List<TeachParam>, t: Taken): TeachParamParse {
+        val missing = params.filter { it.name !in t.values }
+        if (t.conflicts.isNotEmpty()) {
             return TeachParamParse.Ask(
-                line = singleLine(conflicts.first()),
+                line = singleLine(t.conflicts.first()),
                 missing = missing.map { it.name },
                 offered = missing.associate { it.name to it.default },
             )
@@ -589,7 +622,7 @@ internal object TeachParams {
                 offered = missing.associate { it.name to it.default },
             )
         }
-        return TeachParamParse.Ok(values, display)
+        return TeachParamParse.Ok(t.values, t.display)
     }
 
     private fun labelOf(p: TeachParam): String = p.label.ifBlank { p.name }

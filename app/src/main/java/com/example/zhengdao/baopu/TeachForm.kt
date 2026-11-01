@@ -485,35 +485,45 @@ internal object TeachFormRules {
      */
     fun classify(c: FormCandidate): Classified {
         val label = c.labelText ?: c.ariaLabel ?: c.inputName ?: c.placeholder ?: c.tag
-        if (!c.visible) return Classified.Excluded("看不见（宽高为 0）")
-        if (c.disabled) return Classified.Excluded("禁用状态")
-        if (c.readOnly) return Classified.Excluded("只读")
         val type = c.inputType?.lowercase().orEmpty()
         val submitFace = listOfNotNull(c.text, c.labelText, c.ariaLabel, c.testid, c.inputName, c.elemId)
             .firstOrNull { SUBMIT_LIKE.containsMatchIn(it) }
+        excludeReason(c, type, submitFace, label)?.let { return Classified.Excluded(it) }
+        val control = acceptedControl(c, type)
+        return if (control == null) Classified.Excluded("不是可填控件") else Classified.Accepted(control)
+    }
+
+    /** 排除判据（顺序即优先级，第一条命中就是答案）；null ＝ 没被排除。 */
+    private fun excludeReason(c: FormCandidate, type: String, submitFace: String?, label: String): String? {
+        if (!c.visible) return "看不见（宽高为 0）"
+        if (c.disabled) return "禁用状态"
+        if (c.readOnly) return "只读"
         if (c.tag.uppercase() == "BUTTON" || c.role == "button" || type in setOf("submit", "button", "reset", "image")) {
-            return Classified.Excluded("提交/创建/保存类控件（${submitFace ?: label}）——抱朴不点，也不填")
+            return "提交/创建/保存类控件（${submitFace ?: label}）——抱朴不点，也不填"
         }
         if (submitFace != null) {
-            return Classified.Excluded("字段名像是提交/创建（$submitFace）——一律不填")
+            return "字段名像是提交/创建（$submitFace）——一律不填"
         }
         // 第二百二十四批：autocomplete 也进拒填判据（`one-time-code` 的验证码框 type 常是 text）
         TeachSafety.refuseTypeReason(c.inputType, c.inputName, c.elemId, c.placeholder, c.autocomplete)?.let {
-            return Classified.Excluded(it)
+            return it
         }
-        if (type == "hidden") return Classified.Excluded("隐藏域（type=hidden），没有可填的值")
+        if (type == "hidden") return "隐藏域（type=hidden），没有可填的值"
         if (type in setOf("file", "checkbox", "color", "range", "date", "time", "month", "week", "datetime-local")) {
-            return Classified.Excluded("$type 控件不在 v1 支持范围（单行/多行/下拉/单选/固定条数重复块）")
+            return "$type 控件不在 v1 支持范围（单行/多行/下拉/单选/固定条数重复块）"
         }
-        return when {
-            c.tag.uppercase() == "SELECT" -> Classified.Accepted(FormControl.SELECT)
-            type == "radio" -> Classified.Accepted(FormControl.RADIO)
-            c.tag.uppercase() == "TEXTAREA" -> Classified.Accepted(FormControl.RICH_TEXT)
-            c.contentEditable -> Classified.Accepted(FormControl.RICH_TEXT)
-            c.tag.uppercase() == "INPUT" && type in setOf("text", "search", "email", "tel", "url", "number", "") ->
-                Classified.Accepted(FormControl.SINGLE_LINE)
-            else -> Classified.Excluded("不是可填控件")
-        }
+        return null
+    }
+
+    /** 准入映射：认得的控件 → 四类叶子之一；null ＝ 不是可填控件。 */
+    private fun acceptedControl(c: FormCandidate, type: String): FormControl? = when {
+        c.tag.uppercase() == "SELECT" -> FormControl.SELECT
+        type == "radio" -> FormControl.RADIO
+        c.tag.uppercase() == "TEXTAREA" -> FormControl.RICH_TEXT
+        c.contentEditable -> FormControl.RICH_TEXT
+        c.tag.uppercase() == "INPUT" && type in setOf("text", "search", "email", "tel", "url", "number", "") ->
+            FormControl.SINGLE_LINE
+        else -> null
     }
 
     /**
@@ -696,10 +706,24 @@ internal object TeachFormRules {
         if (extra.isNotEmpty()) {
             reasons += "卡里有模板没有的字段：${extra.joinToString("、")}（是不是拿错了卡？）"
         }
-        val ops = mutableListOf<FormOp>()
         val shapes = template.params.associateBy { it.name }
-        template.fields.forEach { f ->
-            val v = card.values[f.key].orEmpty()
+        val ops = leafOps(template.fields, card.values, shapes, reasons)
+        val blockResult = blockOps(template.blocks, card.values, shapes)
+        ops += blockResult.first
+        reasons += blockResult.second
+        return if (reasons.isEmpty()) Precheck.Ok(ops) else Precheck.Rejected(reasons)
+    }
+
+    /** 叶子字段 → 填表指令；缺必填 / 形状不合规的写进 [reasons]。 */
+    private fun leafOps(
+        fields: List<FormField>,
+        values: Map<String, String>,
+        shapes: Map<String, FormParamDecl>,
+        reasons: MutableList<String>,
+    ): MutableList<FormOp> {
+        val ops = mutableListOf<FormOp>()
+        fields.forEach { f ->
+            val v = values[f.key].orEmpty()
             if (v.isBlank()) {
                 if (f.required) reasons += "缺「${f.label}」（${f.key}）"
                 return@forEach
@@ -707,25 +731,36 @@ internal object TeachFormRules {
             shapeProblem(f, v, shapes)?.let { reasons += it; return@forEach }
             resolveOp(f, v)?.let { ops += it } ?: reasons.add(shapeReason(f, v))
         }
-        template.blocks.sortedBy { it.index }.forEach { b ->
+        return ops
+    }
+
+    /** 重复块 → 填表指令；某段没填全就整段不进 ops，改成一句原因（负例 4 的前半：先查段，再动手）。 */
+    private fun blockOps(
+        blocks: List<FormBlock>,
+        values: Map<String, String>,
+        shapes: Map<String, FormParamDecl>,
+    ): Pair<MutableList<FormOp>, List<String>> {
+        val ops = mutableListOf<FormOp>()
+        val reasons = mutableListOf<String>()
+        blocks.sortedBy { it.index }.forEach { b ->
             val missingHere = mutableListOf<String>()
-            val blockOps = mutableListOf<FormOp>()
+            val here = mutableListOf<FormOp>()
             b.fields.forEach { f ->
-                val v = card.values[f.key].orEmpty()
+                val v = values[f.key].orEmpty()
                 if (v.isBlank()) {
                     if (f.required) missingHere += f.label
                     return@forEach
                 }
                 shapeProblem(f, v, shapes)?.let { missingHere += f.label; return@forEach }
-                resolveOp(f, v)?.let { blockOps += it } ?: missingHere.add(shapeReason(f, v))
+                resolveOp(f, v)?.let { here += it } ?: missingHere.add(shapeReason(f, v))
             }
             if (missingHere.isNotEmpty()) {
                 reasons += "第 ${b.index} 段（${b.label}）没填全：${missingHere.joinToString("、")}"
             } else {
-                ops += blockOps
+                ops += here
             }
         }
-        return if (reasons.isEmpty()) Precheck.Ok(ops) else Precheck.Rejected(reasons)
+        return ops to reasons
     }
 
     private fun shapeReason(f: FormField, v: String): String = "「${f.label}」的值不合要求（$v）"
@@ -771,59 +806,66 @@ internal object TeachFormRules {
      * 富文本多比一项「行数」：纯文本塞进 `contenteditable` 会把换行吃掉，
      * 文字可能全等而结构已丢——这正是负例 3。
      */
-    fun check(field: FormField, expected: String, optionValue: String?, read: FormReadback): FieldCheck {
-        val actualText = read.text
-        return when (field.control) {
-            FormControl.SINGLE_LINE -> {
-                if (normalize(actualText) == normalize(expected)) {
-                    FieldCheck(true, actualText)
-                } else {
-                    FieldCheck(false, actualText, "回读不一致")
-                }
+    fun check(field: FormField, expected: String, optionValue: String?, read: FormReadback): FieldCheck =
+        when (field.control) {
+            FormControl.SINGLE_LINE -> checkSingleLine(expected, read.text)
+            FormControl.RICH_TEXT -> checkRichText(expected, read.text)
+            FormControl.SELECT -> checkSelect(expected, optionValue, read)
+            FormControl.RADIO -> checkRadio(expected, optionValue, read)
+        }
+
+    private fun checkSingleLine(expected: String, actual: String): FieldCheck =
+        if (normalize(actual) == normalize(expected)) {
+            FieldCheck(true, actual)
+        } else {
+            FieldCheck(false, actual, "回读不一致")
+        }
+
+    /**
+     * 富文本多比一项「行数」：纯文本塞进 `contenteditable` 会把换行吃掉，
+     * 文字可能全等而结构已丢——这正是负例 3。
+     */
+    private fun checkRichText(expected: String, actual: String): FieldCheck {
+        val want = normalizeMultiline(expected)
+        val got = normalizeMultiline(actual)
+        val wantLines = nonEmptyLines(want)
+        val gotLines = nonEmptyLines(got)
+        return when {
+            got == want -> if (wantLines > 1 && gotLines < wantLines) {
+                FieldCheck(
+                    false, actual,
+                    "富文本被塞成纯文本：要 $wantLines 行、回读只有 $gotLines 行（换行/分段丢了）",
+                )
+            } else {
+                FieldCheck(true, actual)
             }
-            FormControl.RICH_TEXT -> {
-                val want = normalizeMultiline(expected)
-                val got = normalizeMultiline(actualText)
-                when {
-                    got == want -> {
-                        val wantLines = nonEmptyLines(want)
-                        val gotLines = nonEmptyLines(got)
-                        if (wantLines > 1 && gotLines < wantLines) {
-                            FieldCheck(
-                                false, actualText,
-                                "富文本被塞成纯文本：要 $wantLines 行、回读只有 $gotLines 行（换行/分段丢了）",
-                            )
-                        } else {
-                            FieldCheck(true, actualText)
-                        }
-                    }
-                    // 文字一个不少、只是空白变了 ⇒ 典型「纯文本塞进富文本编辑器」：结构丢了
-                    squeeze(got) == squeeze(want) -> FieldCheck(
-                        false, actualText,
-                        "富文本被塞成纯文本：字都在，换行/分段没了（要 ${nonEmptyLines(want)} 行）",
-                    )
-                    else -> FieldCheck(false, actualText, "回读不一致")
-                }
-            }
-            FormControl.SELECT -> {
-                val want = optionValue ?: expected
-                // 读回面：value 字段优先；有些站点把选中项放 text
-                val got = read.value.ifBlank { read.text }
-                if (got == want || normalize(got) == normalize(want)) {
-                    FieldCheck(true, got)
-                } else {
-                    FieldCheck(false, got, "下拉没选中「$want」")
-                }
-            }
-            FormControl.RADIO -> {
-                val want = optionValue ?: expected
-                val got = read.value
-                when {
-                    !read.checked -> FieldCheck(false, got, "单选没被选中")
-                    got == want || normalize(got) == normalize(want) -> FieldCheck(true, got)
-                    else -> FieldCheck(false, got, "选中的是「$got」不是「$want」")
-                }
-            }
+            // 文字一个不少、只是空白变了 ⇒ 典型「纯文本塞进富文本编辑器」：结构丢了
+            squeeze(got) == squeeze(want) -> FieldCheck(
+                false, actual,
+                "富文本被塞成纯文本：字都在，换行/分段没了（要 $wantLines 行）",
+            )
+            else -> FieldCheck(false, actual, "回读不一致")
+        }
+    }
+
+    private fun checkSelect(expected: String, optionValue: String?, read: FormReadback): FieldCheck {
+        val want = optionValue ?: expected
+        // 读回面：value 字段优先；有些站点把选中项放 text
+        val got = read.value.ifBlank { read.text }
+        return if (got == want || normalize(got) == normalize(want)) {
+            FieldCheck(true, got)
+        } else {
+            FieldCheck(false, got, "下拉没选中「$want」")
+        }
+    }
+
+    private fun checkRadio(expected: String, optionValue: String?, read: FormReadback): FieldCheck {
+        val want = optionValue ?: expected
+        val got = read.value
+        return when {
+            !read.checked -> FieldCheck(false, got, "单选没被选中")
+            got == want || normalize(got) == normalize(want) -> FieldCheck(true, got)
+            else -> FieldCheck(false, got, "选中的是「$got」不是「$want」")
         }
     }
 

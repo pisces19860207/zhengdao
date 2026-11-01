@@ -1,8 +1,8 @@
 {
-  "total": 418,
+  "total": 402,
   "rules": {
-    "CyclomaticComplexMethod": 236,
-    "LongMethod": 182
+    "CyclomaticComplexMethod": 224,
+    "LongMethod": 178
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -55,7 +55,6 @@
     "CyclomaticComplexMethod|CardAssetParser.kt|parse#1",
     "CyclomaticComplexMethod|CardCheck.kt|checkCardInfo#1",
     "CyclomaticComplexMethod|CardCheck.kt|checkSt#1",
-    "CyclomaticComplexMethod|CardCheck.kt|checkTavo#1",
     "CyclomaticComplexMethod|CardCheck.kt|checkWeb#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifySt#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifyTavo#1",
@@ -97,10 +96,7 @@
     "CyclomaticComplexMethod|GenerateImage.kt|jpegSize#1",
     "CyclomaticComplexMethod|GenerateImageTool.kt|generateOne#1",
     "CyclomaticComplexMethod|GenerateImageTool.kt|run#1",
-    "CyclomaticComplexMethod|GuardPipeline.kt|prepare#1",
-    "CyclomaticComplexMethod|HarmonyMediator.kt|decay#1",
-    "CyclomaticComplexMethod|HarmonyMediator.kt|decode#1",
-    "CyclomaticComplexMethod|HarmonyMediator.kt|observe#1",
+    "CyclomaticComplexMethod|GuardPipeline.kt|prepareImpl#1",
     "CyclomaticComplexMethod|HumanizeError.kt|title#1",
     "CyclomaticComplexMethod|ImpactPreview.kt|delete#1",
     "CyclomaticComplexMethod|JsEmbed.kt|unescapeJsonString#1",
@@ -150,13 +146,9 @@
     "CyclomaticComplexMethod|ModelCatalog.kt|parseEntries#1",
     "CyclomaticComplexMethod|ModelPickerRules.kt|prettify#1",
     "CyclomaticComplexMethod|NativeExtractor.kt|extract#1",
-    "CyclomaticComplexMethod|PageSnapshot.kt|nameOf#1",
-    "CyclomaticComplexMethod|PageSnapshot.kt|parse#1",
+    "CyclomaticComplexMethod|OpinionWiring.kt|submit#1",
     "CyclomaticComplexMethod|PageSnapshot.kt|parseAttrs#1",
-    "CyclomaticComplexMethod|PageSnapshot.kt|pathOf#1",
-    "CyclomaticComplexMethod|PageSnapshot.kt|roleOf#1",
     "CyclomaticComplexMethod|PageSnapshot.kt|walk#1",
-    "CyclomaticComplexMethod|PatienceProfile.kt|decode#1",
     "CyclomaticComplexMethod|PersonaPatch.kt|parsePatches#1",
     "CyclomaticComplexMethod|PersonaPatchApply.kt|applyInner#1",
     "CyclomaticComplexMethod|PlanContract.kt|normalizePath#1",
@@ -211,11 +203,8 @@
     "CyclomaticComplexMethod|TeachExecutor.kt|run#1",
     "CyclomaticComplexMethod|TeachExecutor.kt|verifyExpects#1",
     "CyclomaticComplexMethod|TeachForm.kt|buildFields#1",
-    "CyclomaticComplexMethod|TeachForm.kt|check#1",
-    "CyclomaticComplexMethod|TeachForm.kt|classify#1",
     "CyclomaticComplexMethod|TeachForm.kt|fillField#1",
     "CyclomaticComplexMethod|TeachForm.kt|fromJson#1",
-    "CyclomaticComplexMethod|TeachForm.kt|precheck#1",
     "CyclomaticComplexMethod|TeachLearner.kt|buildDraft#1",
     "CyclomaticComplexMethod|TeachLearner.kt|buildLocators#1",
     "CyclomaticComplexMethod|TeachLearner.kt|stepLine#1",
@@ -224,7 +213,6 @@
     "CyclomaticComplexMethod|TeachParams.kt|collect#1",
     "CyclomaticComplexMethod|TeachParams.kt|dateExpressions#1",
     "CyclomaticComplexMethod|TeachParams.kt|parameterize#1",
-    "CyclomaticComplexMethod|TeachParams.kt|parse#1",
     "CyclomaticComplexMethod|TeachReplay.kt|ask#1",
     "CyclomaticComplexMethod|TeachReplay.kt|pickField#1",
     "CyclomaticComplexMethod|TeachReplayStore.kt|saveConfirmed#1",
@@ -305,7 +293,6 @@
     "LongMethod|BrowserStartPage.kt|BrowserStartPage#1",
     "LongMethod|CardCheck.kt|checkCardInfo#1",
     "LongMethod|CardCheck.kt|checkSt#1",
-    "LongMethod|CardCheck.kt|checkTavo#1",
     "LongMethod|CardCheck.kt|checkWeb#1",
     "LongMethod|CardFormat.kt|judgePng#1",
     "LongMethod|CardFormat.kt|recognize#1",
@@ -332,8 +319,7 @@
     "LongMethod|FormFillSheet.kt|FormFillSheet#1",
     "LongMethod|FormFillTool.kt|run#1",
     "LongMethod|GenerateImageTool.kt|run#1",
-    "LongMethod|GuardPipeline.kt|prepare#1",
-    "LongMethod|HarmonyMediator.kt|observe#1",
+    "LongMethod|GuardPipeline.kt|prepareImpl#1",
     "LongMethod|HelpCard.kt|BaopuHelpCard#1",
     "LongMethod|KbIndexer.kt|build#1",
     "LongMethod|KeepaliveLogActivity.kt|KeepaliveLogScreen#1",
@@ -362,7 +348,6 @@
     "LongMethod|MemoryLayout.kt|migrate#1",
     "LongMethod|OpenSourceLicensesActivity.kt|LicenseDetail#1",
     "LongMethod|OpinionWiring.kt|submit#1",
-    "LongMethod|PageSnapshot.kt|parse#1",
     "LongMethod|PatrolRunner.kt|run#1",
     "LongMethod|PhoneSearch.kt|scan#1",
     "LongMethod|PlanContract.kt|parse#1",
@@ -409,7 +394,6 @@
     "LongMethod|TeachLearner.kt|buildDraft#1",
     "LongMethod|TeachParams.kt|collect#1",
     "LongMethod|TeachParams.kt|parameterize#1",
-    "LongMethod|TeachParams.kt|parse#1",
     "LongMethod|TeachReplayStore.kt|applyDemotion#1",
     "LongMethod|TeachReplayStore.kt|saveConfirmed#1",
     "LongMethod|ToolFailureAdvisor.kt|advise#1",
@@ -424,14 +408,14 @@
     "LongMethod|ZipIndex.kt|read#1",
     "LongMethod|ZipPacker.kt|pack#1"
   ],
-  "recorded_from": "337 还债重记：本机 JDK21 + detekt 1.23.8（324 已交叉验证本机与 CI 同源）；第二批 5 条清债后真读数 418（引擎 287／冻结 131）",
-  "recorded_at": "2026-10-31T23:07:23+0800",
+  "recorded_from": "341 本机 JDK21 + detekt 1.23.8（与 324 交叉验证同源）",
+  "recorded_at": "2026-11-01T14:18:32+0800",
   "zones": {
     "engine": {
-      "total": 287,
+      "total": 271,
       "rules": {
-        "CyclomaticComplexMethod": 189,
-        "LongMethod": 98
+        "CyclomaticComplexMethod": 177,
+        "LongMethod": 94
       }
     },
     "frozen_ui": {

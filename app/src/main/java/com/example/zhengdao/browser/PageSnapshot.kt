@@ -436,81 +436,120 @@ object PageSnapshot {
 
     /** 解析 HTML 成树；容错（畸形输入不抛）。 */
     private fun parse(html: String): Doc {
-        val root = El("#document")
-        var cur = root
-        var title = ""
-        var i = 0
+        val st = ParseState(El("#document"))
         val n = html.length
-        while (i < n) {
-            val lt = html.indexOf('<', i)
+        while (st.i < n) {
+            val lt = html.indexOf('<', st.i)
             if (lt < 0) {
-                appendRawText(cur, html, i, n)
+                appendRawText(st.cur, html, st.i, n)
                 break
             }
-            if (lt > i) appendRawText(cur, html, i, lt)
-            if (html.startsWith("<!--", lt)) {
-                val end = html.indexOf("-->", lt + 4)
-                i = if (end < 0) n else end + 3
-                continue
-            }
-            if (html.startsWith("<!", lt) || html.startsWith("<?", lt)) {
-                val end = html.indexOf('>', lt)
-                i = if (end < 0) n else end + 1
-                continue
-            }
-            val gt = findTagEnd(html, lt)
-            if (gt < 0) break
-            val inner = html.substring(lt + 1, gt)
-            i = gt + 1
-            if (inner.isEmpty()) continue
-            if (inner[0] == '/') {
-                val name = inner.substring(1).trim().lowercase().substringBefore(' ')
-                var t: El? = cur
-                while (t != null && t !== root && t.tag != name) t = t.parent
-                if (t != null && t !== root) cur = t.parent ?: root
-                continue
-            }
-            val selfClose = inner.endsWith("/")
-            val body = if (selfClose) inner.dropLast(1) else inner
-            val sp = body.indexOfFirst { it.isWhitespace() }
-            val name = (if (sp < 0) body else body.substring(0, sp)).lowercase()
-            if (name.isEmpty() || !name[0].isLetter()) continue
-            val attrs = if (sp < 0) emptyMap() else parseAttrs(body.substring(sp))
-
-            // ── 原始文本类标签（内容原样吃，不做标签解析）──
-            // ⚠️ 必须排除**空元素**（meta / link / base）：它们没有闭合标签，若也走"找 </meta>"
-            //    这条路，就会 `end < 0 ⇒ i = n`、把 `<meta>` 之后的**整篇文档**吞掉
-            //    （2026-10-14 实测踩到：带 `<meta name="csrf-token">` 的页面摘要全空）。
-            //    空元素只该落成一个无子节点的元素，交给 walk 按 SKIP_TAGS 忽略。
-            if (name in SKIP_TAGS && name !in VOID_TAGS) {
-                val end = indexOfIgnoreCase(html, "</$name", i)
-                if (name == "title" && title.isEmpty()) {
-                    val raw = if (end < 0) html.substring(i) else html.substring(i, end)
-                    title = decodeEntities(raw).trim()
-                }
-                i = if (end < 0) n else (html.indexOf('>', end).let { if (it < 0) n else it + 1 })
-                continue
-            }
-            if (name == "textarea") {
-                val end = indexOfIgnoreCase(html, "</textarea", i)
-                val raw = if (end < 0) html.substring(i) else html.substring(i, end)
-                val el = El(name)
-                el.attrs = attrs
-                el.parent = cur
-                el.kids.add(decodeEntities(raw))
-                cur.kids.add(el)
-                i = if (end < 0) n else (html.indexOf('>', end).let { if (it < 0) n else it + 1 })
-                continue
-            }
-
-            val el = El(name)
-            el.attrs = attrs
-            el.parent = cur
-            cur.kids.add(el)
-            if (!selfClose && name !in VOID_TAGS) cur = el
+            if (lt > st.i) appendRawText(st.cur, html, st.i, lt)
+            st.i = lt
+            if (stepTag(html, st)) break
         }
-        return Doc(root, title)
+        return Doc(st.root, st.title)
     }
+
+    /** 分词游标：位置 / 当前节点 / 标题（只装状态，判据仍在本对象里）。 */
+    private class ParseState(val root: El) {
+        var cur: El = root
+        var title: String = ""
+        var i: Int = 0
+    }
+
+    /** 处理一个 `<` 起始的标记；返回 true ＝ 标记断在半截（调用方收工）。 */
+    private fun stepTag(html: String, st: ParseState): Boolean {
+        val skipped = skipMarkup(html, st.i)
+        if (skipped >= 0) {
+            st.i = skipped
+            return false
+        }
+        val gt = findTagEnd(html, st.i)
+        if (gt < 0) return true
+        val inner = html.substring(st.i + 1, gt)
+        st.i = gt + 1
+        if (inner.isEmpty()) return false
+        if (inner[0] == '/') closeTag(st, inner) else openTag(html, st, inner)
+        return false
+    }
+
+    /** 注释 / `<!DOCTYPE>` / `<?…?>`：整段跳过，返回新游标；不是这类标记 ⇒ -1。 */
+    private fun skipMarkup(html: String, lt: Int): Int {
+        if (html.startsWith("<!--", lt)) {
+            val end = html.indexOf("-->", lt + 4)
+            return if (end < 0) html.length else end + 3
+        }
+        if (html.startsWith("<!", lt) || html.startsWith("<?", lt)) {
+            val end = html.indexOf('>', lt)
+            return if (end < 0) html.length else end + 1
+        }
+        return -1
+    }
+
+    /** 闭合标签：沿父链回退到同名节点，游标落到它的父节点。 */
+    private fun closeTag(st: ParseState, inner: String) {
+        val name = inner.substring(1).trim().lowercase().substringBefore(' ')
+        var t: El? = st.cur
+        while (t != null && t !== st.root && t.tag != name) t = t.parent
+        if (t != null && t !== st.root) st.cur = t.parent ?: st.root
+    }
+
+    /** 开标签：原始文本类（script/style/title/textarea）与普通元素分两条路。 */
+    private fun openTag(html: String, st: ParseState, inner: String) {
+        val selfClose = inner.endsWith("/")
+        val body = if (selfClose) inner.dropLast(1) else inner
+        val sp = body.indexOfFirst { it.isWhitespace() }
+        val name = (if (sp < 0) body else body.substring(0, sp)).lowercase()
+        if (name.isEmpty() || !name[0].isLetter()) return
+        val attrs = if (sp < 0) emptyMap() else parseAttrs(body.substring(sp))
+
+        // ── 原始文本类标签（内容原样吃，不做标签解析）──
+        // ⚠️ 必须排除**空元素**（meta / link / base）：它们没有闭合标签，若也走"找 </meta>"
+        //    这条路，就会 `end < 0 ⇒ i = n`、把 `<meta>` 之后的**整篇文档**吞掉
+        //    （2026-10-14 实测踩到：带 `<meta name="csrf-token">` 的页面摘要全空）。
+        //    空元素只该落成一个无子节点的元素，交给 walk 按 SKIP_TAGS 忽略。
+        if (name in SKIP_TAGS && name !in VOID_TAGS) {
+            skipRawText(html, st, name)
+            return
+        }
+        if (name == "textarea") {
+            textareaRaw(html, st, name, attrs)
+            return
+        }
+
+        val el = El(name)
+        el.attrs = attrs
+        el.parent = st.cur
+        st.cur.kids.add(el)
+        if (!selfClose && name !in VOID_TAGS) st.cur = el
+    }
+
+    /** 原始文本类标签：内容原样吃到闭合标签，不进树（`title` 顺手记下来）。 */
+    private fun skipRawText(html: String, st: ParseState, name: String) {
+        val end = indexOfIgnoreCase(html, "</$name", st.i)
+        if (name == "title" && st.title.isEmpty()) {
+            val raw = if (end < 0) html.substring(st.i) else html.substring(st.i, end)
+            st.title = decodeEntities(raw).trim()
+        }
+        st.i = afterCloseTag(html, end)
+    }
+
+    /** `textarea` 的内容是**文本节点**：整段解码后挂成一个子节点（不走标签解析）。 */
+    private fun textareaRaw(html: String, st: ParseState, name: String, attrs: Map<String, String>) {
+        val end = indexOfIgnoreCase(html, "</textarea", st.i)
+        val raw = if (end < 0) html.substring(st.i) else html.substring(st.i, end)
+        val el = El(name)
+        el.attrs = attrs
+        el.parent = st.cur
+        el.kids.add(decodeEntities(raw))
+        st.cur.kids.add(el)
+        st.i = afterCloseTag(html, end)
+    }
+
+    /** 闭合标签之后的游标（找不到闭合就吃到尾）。 */
+    private fun afterCloseTag(html: String, from: Int): Int =
+        if (from < 0) html.length else html.indexOf('>', from).let { if (it < 0) html.length else it + 1 }
 
     /** 找标签结束的 `>`（跳过引号内的 `>`）。 */
     private fun findTagEnd(html: String, from: Int): Int {
@@ -605,25 +644,32 @@ object PageSnapshot {
             if (node.tag == "#document") break
             if (depth >= MAX_PATH_DEPTH || !SAFE_TAG.matches(node.tag)) return ""
             val parent = node.parent
-            if (parent != null && parent.tag != "#document") {
-                // 序号＝自己是第几个同型元素兄弟（nth-of-type 的语义）。数总数的话两个
-                // 同型兄弟会拿到同一条定位子——点谁都是第一个，等于「点错却报成功」。
-                var seen = 0
-                for (kid in parent.kids) {
-                    val e = kid as? El ?: continue
-                    if (e.tag == node.tag) {
-                        seen++
-                        if (e === node) break
-                    }
-                }
-                segs.add(node.tag + ":nth-of-type(" + seen + ")")
-            } else {
-                segs.add(node.tag)
-            }
+            segs.add(
+                if (parent != null && parent.tag != "#document") {
+                    node.tag + ":nth-of-type(" + nthOfType(node, parent) + ")"
+                } else {
+                    node.tag
+                },
+            )
             cur = parent
             depth++
         }
         return segs.reversed().joinToString(" > ")
+    }
+
+    /**
+     * 自己是第几个同型元素兄弟（nth-of-type 的语义）。数总数的话两个同型兄弟会拿到
+     * 同一条定位子——点谁都是第一个，等于「点错却报成功」。
+     */
+    private fun nthOfType(node: El, parent: El): Int {
+        var seen = 0
+        for (kid in parent.kids) {
+            val e = kid as? El ?: continue
+            if (e.tag != node.tag) continue
+            seen++
+            if (e === node) break
+        }
+        return seen
     }
 
     private val SAFE_TAG = Regex("[a-z][a-z0-9-]*")
@@ -653,34 +699,40 @@ object PageSnapshot {
             "select" -> "combobox"
             "textarea" -> "textbox"
             "summary" -> "summary"
-            "input" -> when (el.attrs["type"]?.lowercase() ?: "text") {
-                "checkbox" -> "checkbox"
-                "radio" -> "radio"
-                "submit", "button", "reset", "image" -> "button"
-                "search" -> "searchbox"
-                "range" -> "slider"
-                "file" -> "file"
-                "number" -> "spinbutton"
-                else -> "textbox"
-            }
+            "input" -> inputRole(el.attrs["type"]?.lowercase() ?: "text")
             else -> el.tag
         }
     }
 
+    /** `input` 的 type → 角色（不认识的 type 一律按文本框）。 */
+    private fun inputRole(type: String): String = when (type) {
+        "checkbox" -> "checkbox"
+        "radio" -> "radio"
+        "submit", "button", "reset", "image" -> "button"
+        "search" -> "searchbox"
+        "range" -> "slider"
+        "file" -> "file"
+        "number" -> "spinbutton"
+        else -> "textbox"
+    }
+
     private fun nameOf(el: El): String {
         el.attrs["aria-label"]?.takeIf { it.isNotBlank() }?.let { return it }
-        val type = el.attrs["type"]?.lowercase() ?: ""
         val inputLike = el.tag == "input" || el.tag == "textarea" || el.tag == "select"
-        if (inputLike) {
-            el.attrs["placeholder"]?.takeIf { it.isNotBlank() }?.let { return it }
-            if (el.tag == "input" && type in setOf("submit", "button", "reset", "image")) {
-                el.attrs["value"]?.takeIf { it.isNotBlank() }?.let { return it }
-            }
-            el.attrs["title"]?.takeIf { it.isNotBlank() }?.let { return it }
-            return el.attrs["name"]?.takeIf { it.isNotBlank() } ?: ""
-        }
+        if (inputLike) return inputNameOf(el)
         val own = innerText(el)
         if (own.isNotBlank()) return own
+        el.attrs["title"]?.takeIf { it.isNotBlank() }?.let { return it }
+        return el.attrs["name"]?.takeIf { it.isNotBlank() } ?: ""
+    }
+
+    /** 控件类取名：placeholder → 按钮 value → title → name（都没有就空串）。 */
+    private fun inputNameOf(el: El): String {
+        el.attrs["placeholder"]?.takeIf { it.isNotBlank() }?.let { return it }
+        val type = el.attrs["type"]?.lowercase() ?: ""
+        if (el.tag == "input" && type in setOf("submit", "button", "reset", "image")) {
+            el.attrs["value"]?.takeIf { it.isNotBlank() }?.let { return it }
+        }
         el.attrs["title"]?.takeIf { it.isNotBlank() }?.let { return it }
         return el.attrs["name"]?.takeIf { it.isNotBlank() } ?: ""
     }

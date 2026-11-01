@@ -405,65 +405,15 @@ internal object CardCheck {
     ): CheckStats {
         val text = joinedSystemText(prompt, pre, post)
         for (v in entries) {
-            val e = v.raw
-            val ref = EntryRef(index = v.index, uid = CardJson.stringOf(e, "identifier"), key = truncate(v.keys.firstOrNull() ?: "", 30))
-
-            for (f in listOf("keywords", "content")) {
-                if (!e.has(f) || CardJson.isJsonNull(e, f)) {
-                    out += Finding(Level.ERROR, "TV_MISSING_FIELD", Stage.FIELD, ref, f, "第 ${v.index} 条缺少字段 $f。")
-                }
-            }
-            if (e.has("keywords") && !CardJson.isJsonNull(e, "keywords") && e.opt("keywords") !is JSONArray) {
-                out += Finding(Level.ERROR, "TV_TYPE_MISMATCH", Stage.FIELD, ref, "keywords", "第 ${v.index} 条的 keywords 类型不对：应为数组。")
-            }
-            if (e.has("content") && !CardJson.isJsonNull(e, "content") && e.opt("content") !is String) {
-                out += Finding(Level.ERROR, "TV_TYPE_MISMATCH", Stage.FIELD, ref, "content", "第 ${v.index} 条的 content 类型不对：应为字符串。")
-            }
-            if (e.has("enabled") && !CardJson.isJsonNull(e, "enabled") && e.opt("enabled") !is Boolean) {
-                out += Finding(Level.ERROR, "TV_TYPE_MISMATCH", Stage.FIELD, ref, "enabled", "第 ${v.index} 条的 enabled 类型不对：应为布尔值。")
-            }
-            CardJson.numberAsInt(e, "probability")?.let {
-                if (it !in 1..100) out += Finding(Level.ERROR, "TV_PROBABILITY_RANGE", Stage.FIELD, ref, "probability", "第 ${v.index} 条的触发概率是 $it，不在 1–100 之间。", "$it")
-            }
-            // §16.3-1 裁定：Tavo scanDepth 只要求整数 ≥0，**不设上限**（>20 不报错）
-            val scanDepth = e.opt("scanDepth")
-            if (e.has("scanDepth") && !CardJson.isJsonNull(e, "scanDepth")) {
-                val n = CardJson.numberAsInt(e, "scanDepth")
-                if (n == null || n < 0) {
-                    out += Finding(Level.ERROR, "TV_SCAN_DEPTH_ODD", Stage.FIELD, ref, "scanDepth", "第 ${v.index} 条的扫描深度不是非负整数。", "${scanDepth}")
-                }
-            }
-            CardJson.numberAsInt(e, "injectionDepth")?.let {
-                if (it !in 0..999) out += Finding(Level.ERROR, "TV_INJECTION_DEPTH_ODD", Stage.FIELD, ref, "injectionDepth", "第 ${v.index} 条的注入深度是 $it，不在 0–999 之间。", "$it")
-            }
-            CardJson.stringOf(e, "injectionPosition")?.let {
-                if (it !in setOf("lorebookBefore", "lorebookAfter", "atDepth")) {
-                    out += Finding(Level.WARN, "TV_POSITION_UNKNOWN", Stage.FIELD, ref, "injectionPosition", "第 ${v.index} 条的注入位置「$it」没取证过，只提示不拦。", it)
-                }
-            }
-            CardJson.stringOf(e, "strategy")?.let {
-                if (it !in setOf("constant", "keyword")) {
-                    out += Finding(Level.WARN, "TV_STRATEGY_UNKNOWN", Stage.FIELD, ref, "strategy", "第 ${v.index} 条的触发策略「$it」没取证过，只提示不拦。", it)
-                }
-            }
-            CardJson.stringOf(e, "secondaryKeywordStrategy")?.let {
-                if (it !in setOf("none", "andAny")) {
-                    out += Finding(Level.WARN, "TV_SECONDARY_STRATEGY_UNKNOWN", Stage.FIELD, ref, "secondaryKeywordStrategy", "第 ${v.index} 条的次键逻辑「$it」没取证过，只提示不拦。", it)
-                }
-            }
-            if (CardJson.stringOf(e, "content") == "") {
-                out += Finding(Level.WARN, "TV_CONTENT_EMPTY", Stage.FIELD, ref, "content", "第 ${v.index} 条的正文是空的。", "")
-            }
-            for (f in listOf("caseSensitive", "matchWholeWord")) {
-                if (e.has(f) && e.opt(f) !is Boolean) {
-                    out += Finding(Level.ERROR, "TV_CASE_MATCH_ODD", Stage.FIELD, ref, f, "第 ${v.index} 条的 $f 不是布尔值。")
-                }
-            }
-            // Tavo 不扫角色卡 ⇒ 标签名不会进扫描范围；只有玩家/模型真写了才会命中 ⇒ 只报 INFO
-            htmlTokenFinding(v, ref, hasBroad = false, level = Level.INFO)?.let { out += it }
-            if (CardJson.stringOf(e, "strategy") == "keyword" && v.keys.isEmpty()) {
-                out += Finding(Level.WARN, "TV_KEYWORDS_EMPTY", Stage.SEMANTIC, ref, "keywords", "第 ${v.index} 条按关键词触发，但一个关键词都没有 ⇒ 永不触发。", "")
-            }
+            val ref = EntryRef(
+                index = v.index,
+                uid = CardJson.stringOf(v.raw, "identifier"),
+                key = truncate(v.keys.firstOrNull() ?: "", 30),
+            )
+            checkTavoFields(v, ref, out)
+            checkTavoRanges(v, ref, out)
+            checkTavoHints(v, ref, out)
+            checkTavoContent(v, ref, out)
         }
 
         val cls = classifyTavo(entries, text, given, out)
@@ -476,6 +426,82 @@ internal object CardCheck {
             notApplicableCount = cls.notApplicable,
             broadKeyCount = 0,
         )
+    }
+
+    /** Tavo：必备字段与类型（缺字段 / keywords 非数组 / content 非串 / enabled 非布尔）。 */
+    private fun checkTavoFields(v: WorldbookEntryView, ref: EntryRef, out: MutableList<Finding>) {
+        val e = v.raw
+        for (f in listOf("keywords", "content")) {
+            if (!e.has(f) || CardJson.isJsonNull(e, f)) {
+                out += Finding(Level.ERROR, "TV_MISSING_FIELD", Stage.FIELD, ref, f, "第 ${v.index} 条缺少字段 $f。")
+            }
+        }
+        if (e.has("keywords") && !CardJson.isJsonNull(e, "keywords") && e.opt("keywords") !is JSONArray) {
+            out += Finding(Level.ERROR, "TV_TYPE_MISMATCH", Stage.FIELD, ref, "keywords", "第 ${v.index} 条的 keywords 类型不对：应为数组。")
+        }
+        if (e.has("content") && !CardJson.isJsonNull(e, "content") && e.opt("content") !is String) {
+            out += Finding(Level.ERROR, "TV_TYPE_MISMATCH", Stage.FIELD, ref, "content", "第 ${v.index} 条的 content 类型不对：应为字符串。")
+        }
+        if (e.has("enabled") && !CardJson.isJsonNull(e, "enabled") && e.opt("enabled") !is Boolean) {
+            out += Finding(Level.ERROR, "TV_TYPE_MISMATCH", Stage.FIELD, ref, "enabled", "第 ${v.index} 条的 enabled 类型不对：应为布尔值。")
+        }
+    }
+
+    /** Tavo：数值区间（概率 1–100；扫描深度只要非负整数；注入深度 0–999）。 */
+    private fun checkTavoRanges(v: WorldbookEntryView, ref: EntryRef, out: MutableList<Finding>) {
+        val e = v.raw
+        CardJson.numberAsInt(e, "probability")?.let {
+            if (it !in 1..100) out += Finding(Level.ERROR, "TV_PROBABILITY_RANGE", Stage.FIELD, ref, "probability", "第 ${v.index} 条的触发概率是 $it，不在 1–100 之间。", "$it")
+        }
+        // §16.3-1 裁定：Tavo scanDepth 只要求整数 ≥0，**不设上限**（>20 不报错）
+        val scanDepth = e.opt("scanDepth")
+        if (e.has("scanDepth") && !CardJson.isJsonNull(e, "scanDepth")) {
+            val n = CardJson.numberAsInt(e, "scanDepth")
+            if (n == null || n < 0) {
+                out += Finding(Level.ERROR, "TV_SCAN_DEPTH_ODD", Stage.FIELD, ref, "scanDepth", "第 ${v.index} 条的扫描深度不是非负整数。", "$scanDepth")
+            }
+        }
+        CardJson.numberAsInt(e, "injectionDepth")?.let {
+            if (it !in 0..999) out += Finding(Level.ERROR, "TV_INJECTION_DEPTH_ODD", Stage.FIELD, ref, "injectionDepth", "第 ${v.index} 条的注入深度是 $it，不在 0–999 之间。", "$it")
+        }
+    }
+
+    /** Tavo：没取证过的枚举值——只提示不拦。 */
+    private fun checkTavoHints(v: WorldbookEntryView, ref: EntryRef, out: MutableList<Finding>) {
+        val e = v.raw
+        CardJson.stringOf(e, "injectionPosition")?.let {
+            if (it !in setOf("lorebookBefore", "lorebookAfter", "atDepth")) {
+                out += Finding(Level.WARN, "TV_POSITION_UNKNOWN", Stage.FIELD, ref, "injectionPosition", "第 ${v.index} 条的注入位置「$it」没取证过，只提示不拦。", it)
+            }
+        }
+        CardJson.stringOf(e, "strategy")?.let {
+            if (it !in setOf("constant", "keyword")) {
+                out += Finding(Level.WARN, "TV_STRATEGY_UNKNOWN", Stage.FIELD, ref, "strategy", "第 ${v.index} 条的触发策略「$it」没取证过，只提示不拦。", it)
+            }
+        }
+        CardJson.stringOf(e, "secondaryKeywordStrategy")?.let {
+            if (it !in setOf("none", "andAny")) {
+                out += Finding(Level.WARN, "TV_SECONDARY_STRATEGY_UNKNOWN", Stage.FIELD, ref, "secondaryKeywordStrategy", "第 ${v.index} 条的次键逻辑「$it」没取证过，只提示不拦。", it)
+            }
+        }
+    }
+
+    /** Tavo：内容与语义层（空正文 / 布尔开关 / 标签名 / 按关键词触发却一个词都没有）。 */
+    private fun checkTavoContent(v: WorldbookEntryView, ref: EntryRef, out: MutableList<Finding>) {
+        val e = v.raw
+        if (CardJson.stringOf(e, "content") == "") {
+            out += Finding(Level.WARN, "TV_CONTENT_EMPTY", Stage.FIELD, ref, "content", "第 ${v.index} 条的正文是空的。", "")
+        }
+        for (f in listOf("caseSensitive", "matchWholeWord")) {
+            if (e.has(f) && e.opt(f) !is Boolean) {
+                out += Finding(Level.ERROR, "TV_CASE_MATCH_ODD", Stage.FIELD, ref, f, "第 ${v.index} 条的 $f 不是布尔值。")
+            }
+        }
+        // Tavo 不扫角色卡 ⇒ 标签名不会进扫描范围；只有玩家/模型真写了才会命中 ⇒ 只报 INFO
+        htmlTokenFinding(v, ref, hasBroad = false, level = Level.INFO)?.let { out += it }
+        if (CardJson.stringOf(e, "strategy") == "keyword" && v.keys.isEmpty()) {
+            out += Finding(Level.WARN, "TV_KEYWORDS_EMPTY", Stage.SEMANTIC, ref, "keywords", "第 ${v.index} 条按关键词触发，但一个关键词都没有 ⇒ 永不触发。", "")
+        }
     }
 
     // ── 酒馆原生世界书 ───────────────────────────────────────────────────
