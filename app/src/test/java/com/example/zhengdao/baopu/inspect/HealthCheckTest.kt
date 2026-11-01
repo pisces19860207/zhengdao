@@ -426,25 +426,36 @@ class HealthCheckTest {
                 redGates = emptyList(),
             ),
         )
-        // 读数层零调用是**源码事实**（普查里查得到），所以"账在、没人算"这趟就能判，不必等数据。
+        // 读数层有没有人调是**源码事实**（普查里查得到），所以"账在、没人算"这趟就能判，不必等数据。
         val readerWired = OrganCensus.of("读数层")?.let { it.callSites > 0 }
+        // 348：读数那行照实印——这趟一台新机、一条记录都没有 ⇒ 只写「样本不足」，一个 % 都不许有。
+        val reading = MetricsWiring.sheetLines(Metrics.compute(Metrics.Inputs(nowMs = FIRST_SHEET_AT_MS)))
         val sheet = HealthCheck.sheet(
             FIRST_SHEET_AT_MS,
             organs,
             rows,
             signals,
             HealthCheck.blockers(organs, rows, SignalInput(ledgerReaderWired = readerWired)),
+            readings = reading,
         )
 
         // 首次体检（无设备数据）的读数：能静态判的只有 NOT_WIRED，其余一律未取样。
         // 第二百九十六批 §2/§3：影子有了生产调用点 ⇒ 从 NOT_WIRED 挪进"未取样"（6/8，原来是 7/7）。
-        assertEquals(6, sheet.count(OrganState.NOT_WIRED))
+        // 第三百四十八批：读数层接上了（0 ⇒ 1）⇒ 再挪一个进"未取样"（5/9）。
+        assertEquals(5, sheet.count(OrganState.NOT_WIRED))
         assertEquals(0, sheet.count(OrganState.ACTIVE))
-        assertEquals(8, sheet.unmeasured())
+        assertEquals(9, sheet.unmeasured())
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.WIRING))
-        assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.LEDGER))
+        // 348 起"账在、没人算"不再是事实（读数层有生产调用点了）⇒ 账卡退回未取样
+        // （这一趟没做账实对拍），不许因此报"未发现信号"。
+        assertEquals(ScanOutcome.NO_DATA, sheet.outcomeOf(Blocker.LEDGER))
         assertEquals(ScanOutcome.NO_SIGNAL, sheet.outcomeOf(DefectSignal.TEST_RED))
         assertEquals(ScanOutcome.NO_DATA, sheet.outcomeOf(DefectSignal.CRASH_ANR))
+        // 348 负例③：没有样本 ⇒ 单子上是「样本不足」，不是 0%（0% 会被读成"一次都没错"）。
+        val readingLine = sheet.lines.firstOrNull { it.contains(MetricsWiring.FOUR_RATE_HEAD) }
+        assertNotNull("读数那行没印出来", readingLine)
+        assertTrue("空样本要写样本不足：$readingLine", readingLine!!.contains("样本不足"))
+        assertFalse("空样本印了百分号：$readingLine", readingLine.contains("%"))
 
         val out = File("build/reports").apply { mkdirs() }
         File(out, "health291-sheet.md").writeText(sheet.lines.joinToString("\n"), Charsets.UTF_8)

@@ -192,11 +192,13 @@ internal object OrganCensus {
             name = "读数层",
             entry = "MetricsSources.snapshot",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/MetricsSources.kt",
-            callSites = 0,
+            // 第三百四十八批：281 交付时这里是 0（"算了没人看"）。348 把取数口接进体检编排，
+            // 每次体检读一趟、翻成一行四率印在单子上 ⇒ 生产调用点 1 处（门禁按同一口径重扫）。
+            callSites = 1,
             sink = "Metrics 四率（内存算，无落盘）",
             evidence = listOf(
-                "inspect/MetricsSources.kt:53 snapshot() 定义，全仓零调用",
-                "281 已并 main（1e60e55a），但没人调 ⇒ 读数算不出来",
+                "inspect/MetricsWiring.kt:read() 是唯一生产调用点（348 接上；体检每次读一趟）",
+                "inspect/HealthRun.kt:run() 把读数翻成一行印进体检单（只读，不触发动作）",
             ),
         ),
     )

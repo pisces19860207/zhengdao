@@ -577,10 +577,14 @@ internal object HealthCheck {
         rows: List<ToolRow>,
         signals: List<SignalVerdict>,
         blockers: List<BlockerVerdict>,
+        /** 读数层的一行人话（348 接线；判据层只排版，不碰取数与算法）。 */
+        readings: List<String> = emptyList(),
     ): HealthSheet {
         val body = buildList {
             add("御医体检 · ${TimeFormats.dayStamp(atMs)} · 窗 ${HealthLimits.SPAN_DAYS} 天 · 只读（不弹卡、不改业务状态）")
             add(organSummary(organs))
+            // 读数紧跟在部位总览后面：它属于"读数层"那个部位，且不许被后面的明细挤出页面。
+            readings.forEach { add("  $it") }
             addAll(organUnmeasured(organs))
             addAll(organDetail(organs))
             add(rowSummary(rows))

@@ -62,6 +62,12 @@ internal object HealthRun {
 
         val from = HealthLimits.fromOf(nowMs)
         val stats = HealthSources.traceStats(db, from)
+        // 第三百四十八批：读数层接进来（281 交付时全仓零调用 ⇒ "账在、没人算"）。
+        // 只取一行文字给单子看；**不拿读数做任何判断**（"四率低就降权"是政策，不是读数）。
+        val projectRoot: File = runCatching { BaopuRuntime.workspaceRoot(ctx) }.getOrDefault(root)
+        val reading = runCatching { MetricsWiring.read(db, projectRoot, root, nowMs) }
+            .onFailure { RunLog.log("御医体检：读数没算出来——${it.javaClass.simpleName}: ${it.message}") }
+            .getOrNull()
         val tools = HealthSources.probes(
             stats = stats,
             visible = visibleTools(),
@@ -80,7 +86,14 @@ internal object HealthRun {
         val rows = tools.map(HealthCheck::tool)
         val signals = HealthCheck.signals(SignalInput(toolRows = rows))
         val blockers = HealthCheck.blockers(organs, rows, SignalInput(toolRows = rows))
-        val sheet = HealthCheck.sheet(nowMs, organs, rows, signals, blockers)
+        val sheet = HealthCheck.sheet(
+            nowMs,
+            organs,
+            rows,
+            signals,
+            blockers,
+            readings = reading?.sheetLines.orEmpty(),
+        )
 
         val entry = entryOf(sheet, nowMs)
         val saved = HealthLedger.write(root, entry)
