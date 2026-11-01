@@ -49,11 +49,34 @@ jobs:
           # 脚本侧另有硬守卫：浅克隆直接 exit 2 并指名原因，不再刷 1774 行假发现。
           fetch-depth: 0
 
-      - name: 安装 JDK 21
+      # ── 352（2026-11-01）：CI 双 JDK ─────────────────────────────────────────────
+      # 仓库把 Gradle daemon 钉在 JDK 25（gradle/gradle-daemon-jvm.properties:
+      # toolchainVersion=25，附各平台 foojay 下载 URL）。runner 预装只有 8/11/17/21
+      # ⇒ 今天每次起 daemon 都匹配不上 criteria，走那条 URL "Downloading toolchain"。
+      # 下面两步显式安装，**顺序刻意 21 → 25**（setup-java 每次都覆写 JAVA_HOME，
+      # 后装者占 JAVA_HOME）：
+      #
+      # · JDK 21 —— detekt 子进程专用。detekt-cli 1.23.8 不认 JDK 25
+      #   （JavaVersion.parse("25.0.3") 直接抛），而插件任务与 daemon 同 JVM 绕不开，
+      #   所以 detekt 走 `JavaExec` + Java 21 toolchain 起子进程（见 app/build.gradle.kts
+      #   detekt 段的 detektLauncher）。setup-java 会把这份 21 登记在 JAVA_HOME_21_X64，
+      #   下面的 detekt 步骤用 `-Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64`
+      #   显式指给它，并关掉 auto-download：缺了就地响亮地红，不静默下载。
+      # · JDK 25.0.3（Temurin）—— Gradle daemon 用。钉 25.0.3 不钉 25.0.5：
+      #   本机实测 Temurin 25.0.5+8 有 7 例 ledger 写盘假红（根因 357 在查），
+      #   25.0.3 零假红，且与本机 Android Studio JBR 同版。criteria 只钉了 major 25
+      #   （无 vendor 锁），Temurin 25.0.3 直接匹配 ⇒ gradle-daemon-jvm.properties 无需改动。
+      - name: 安装 JDK 21（detekt 子进程专用）
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
+
+      - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25.0.3'
 
       - name: 授权 gradlew（CI 上无 local.properties，SDK 走 runner 预装）
         run: chmod +x gradlew
@@ -289,16 +312,60 @@ jobs:
       # 276a D1（2026-10-29）：**硬墙**先跑——上限取自 config/detekt/detekt.yml 的 `maxIssues`，
       #   交给 detekt 自己的 `--max-issues`；超一条就非 0（不经过下面的 python 脚本）。
       #   这道闸的意义：就算有人把预算脚本从流水线里删掉，上限还在 detekt 这边。
+      # 352：detekt 子进程用 JDK 21（见顶部「CI 双 JDK」注释）。
+      # fromEnv=JAVA_HOME_21_X64 把 setup-java 装的 21 指给 toolchain；
+      # auto-download=false ⇒ 万一指不上就地红，绝不静默下载（352 判据②）。
+      # 日志 tee 到 /tmp 供下面的「toolchain 零下载断言」扫描。
       - name: detekt 硬墙（发现条数 > maxIssues 即失败，不经脚本）
-        run: ./gradlew :app:detektWall --console=plain
+        run: |
+          set -o pipefail
+          ./gradlew :app:detektWall --console=plain \
+            -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64 \
+            -Dorg.gradle.java.installations.auto-download=false \
+            2>&1 | tee /tmp/detekt-wall.log
 
       - name: detekt 预算闸（与硬墙互锁：两处必须相等；存量不动，新增即红）
         run: |
-          ./gradlew :app:detektReport --console=plain
+          set -o pipefail
+          ./gradlew :app:detektReport --console=plain \
+            -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64 \
+            -Dorg.gradle.java.installations.auto-download=false \
+            2>&1 | tee /tmp/detekt-report.log
           python3 tools/check-detekt-budget.py
+
+      # ── 352（2026-11-01）：观察档——detekt 视野扩到 :policy/:core ──────────────────
+      # 主 lane（上面硬墙/预算闸）仍只扫 app、预算 402 一个字不动（354/359 的账）；
+      # 这条 lane 只把 :policy/:core 的读数**亮出来**：8 条存量列成注解（匿名可读），
+      # 存量不拦闸；但**只增即红**（上限=当前读数，tools/check-detekt-modules-observe.py）。
+      # 359 清完这 8 条（policy 5 ＋ core 3）复跑归 0 后，把 app/build.gradle.kts 的
+      # detektCommonArgs --input 切到全模块（strict，一开关）并退役本步。
+      - name: detekt 观察档（:policy/:core，report-only ＋ 只增即红）
+        run: |
+          set -o pipefail
+          ./gradlew :app:detektModulesReport --console=plain \
+            -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64 \
+            -Dorg.gradle.java.installations.auto-download=false \
+            2>&1 | tee /tmp/detekt-modules.log
+          python3 tools/check-detekt-modules-observe.py
 
       - name: detekt 门禁：build 脚本与 config 不许再现 baseline 参数（324）
         run: python3 tools/check-detekt-no-baseline.py
+
+      # 352 判据②：CI 日志里不许再出现 toolchain 下载。daemon（25.0.3）由 setup-java
+      # 显式安装、criteria 由本机安装满足；detekt 子进程（21）由 JAVA_HOME_21_X64 提供。
+      # 谁还在下载就红在这里——不用人肉翻日志。
+      - name: toolchain 零下载断言（352 判据②）＋ daemon JVM 读数
+        run: |
+          ./gradlew -q --version 2>&1 | tee /tmp/gradle-version.log
+          echo "---- Launcher JVM 读数（应为 25.0.3）----"
+          grep -iE "launcher jvm|jvm:" /tmp/gradle-version.log || true
+          echo "---- toolchain 下载痕迹扫描 ----"
+          if grep -inE "foojay|provision|downloading[^\n]*(toolchain|jdk)|toolchain[^\n]*(download|provision)" \
+              /tmp/detekt-wall.log /tmp/detekt-report.log /tmp/detekt-modules.log; then
+            echo "::error title=toolchain 零下载断言::Gradle 日志出现 toolchain 下载/供应痕迹（352 判据②）"
+            exit 1
+          fi
+          echo "未发现 toolchain 下载痕迹 ✔"
 
       - name: 归档 detekt 报告
         if: always()
@@ -308,6 +375,8 @@ jobs:
           path: |
             app/build/reports/detekt/detekt.html
             app/build/reports/detekt/detekt.xml
+            app/build/reports/detekt/detekt-modules.html
+            app/build/reports/detekt/detekt-modules.xml
           retention-days: 14
           if-no-files-found: warn
 
@@ -373,11 +442,14 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v7
 
-      - name: 安装 JDK 21
+      # 352：daemon 统一 JDK 25.0.3（gradle/gradle-daemon-jvm.properties 钉 major 25，
+      # runner 预装没有 25，不显式装就走 foojay "Downloading toolchain"——352 判据②
+      # 要求任何 job 都不再出现）。本 job 不跑 detekt，无需 JDK 21。
+      - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '25.0.3'
 
       - name: 授权 gradlew（CI 上无 local.properties，SDK 走 runner 预装）
         run: chmod +x gradlew

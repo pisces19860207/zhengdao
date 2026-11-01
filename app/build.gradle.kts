@@ -497,6 +497,39 @@ val detektCommonArgs = listOf(
     "--jvm-target", "17",
 )
 
+/*
+ * 352（2026-11-01）：**观察档**——把 detekt 的视野扩到 :policy 与 :core（主 lane 仍只扫 app）。
+ *
+ * 实测存量：policy 5 ＋ core 3 = 8 条（HarmonyMediator.observe 长方法＋复杂度、decay/decode、
+ * PatienceProfile.decode；DocxTextExtractor.unescapeXml、KnowledgeBaseSummaries.kindOf/keywords）。
+ * 预算 402 一个字不动（那是 354/359 的账）⇒ 不把这三处并进 detektCommonArgs（否则硬墙
+ * 402 对 410 直接红），单开本任务：
+ *   · 只扫 ../policy ＋ ../core（路径相对 app 模块目录；逗号分隔跨平台）；
+ *   · report-only（isIgnoreExitValue = true）——「先看得见，不让 main 变红」；
+ *   · 「只增即红」由 tools/check-detekt-modules-observe.py 把守（上限=352 实测读数）。
+ * 时序（用户 2026-11-01 定）：359 清完这 8 条、复跑归 0 后，把 detektCommonArgs 的
+ * --input 切到全模块（strict，同一棵树同一份输入只改松→紧一个开关），本任务退役。
+ * CI 接线见 .github/workflows/ci.yml「detekt 观察档」步骤（前置 test -d 防呆 +
+ * toolchain 零下载断言同样扫它的日志）。
+ */
+tasks.register<JavaExec>("detektModulesReport") {
+    group = "verification"
+    description = "Detekt 观察档（:policy/:core 视野，report-only；359 清债后切 strict 并退役）"
+    classpath = detektCli
+    mainClass.set("io.gitlab.arturbosch.detekt.cli.Main")
+    javaLauncher.set(detektLauncher)
+    workingDir = projectDir
+    args = listOf(
+        "--input", "../policy/src/main/java,../core/src/main/java",
+        "--config", rootProject.file("config/detekt/detekt.yml").absolutePath,
+        "--jvm-target", "17",
+        "--report", "html:build/reports/detekt/detekt-modules.html",
+        "--report", "xml:build/reports/detekt/detekt-modules.xml",
+    )
+    // report-only：发现问题也不让构建红（观察档的本意）。
+    isIgnoreExitValue = true
+}
+
 tasks.register<JavaExec>("detektReport") {
     group = "verification"
     description = "Detekt 报告（只跑 LongMethod / CyclomaticComplexMethod，report-only）"
