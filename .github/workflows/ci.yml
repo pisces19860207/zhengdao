@@ -235,6 +235,14 @@ jobs:
       - name: LocalContext 取资源门禁（第 133 批；2026-10-29 起跳过注释行）
         run: python3 tools/check-localcontext-res.py
 
+      # 352③（2026-11-01）：public 面清单闸。:policy/:core 的**顶层声明**必须登记在
+      # tools/public-surface.json（Kotlin 默认 public ⇒ 293 抽 :policy / 240 抽 :core 时
+      # 顶层整批放宽；谁放宽、为什么、能不能收紧见注册表 origin/verdict 字段）。
+      # 未登记的顶层 public 面 ⇒ 红——防模块面悄悄变成对外 API（342 交付注记：
+      # ":core 的保护不靠租约，改由本闸承担"）。成员级不在本闸，走 code review。
+      - name: public 面清单闸（:policy/:core 顶层声明，未登记即红）
+        run: python3 tools/check-public-surface.py
+
       - name: 重编比对 lane（第㊶刀 · B3+ 按主机基线：硬门禁）
         run: |
           python3 tools/rebuild-and-compare.py
