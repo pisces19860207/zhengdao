@@ -1,0 +1,46 @@
+{
+  "_说明": "352③ public 面注册表（2026-11-01）。范围＝:policy 与 :core 的**顶层声明**（Kotlin 默认 public，无修饰符也算）。谁放宽：:policy 整批归 293（ffdf911b 宰相抽模块，只搬不改行为）；:core 主体归 240（5a63c0f0 终端解耦第一刀），KnowledgeBaseSummaries 归 301（63e5589a 摘要链接线），IssueCenter 归终端抽核（361fd310）、PathGuard 归终端第四刀（79c998c9）搬入。verdict＝能不能收紧：public 必要＝:app/:core 之间确有引用；internal 候选＝外部零引用，收紧要动模块源码（不在 352 租约，另行派单）。成员级（类内部 public 成员）不在本闸，走 code review。",
+  "_闸": "tools/check-public-surface.py —— 扫描结果与本表逐条比对：未登记 ⇒ 红；登记已消失 ⇒ notice（顺手清表）。",
+  "policy": {
+    "origin": "293（ffdf911b）：宰相抽 :policy 模块，只搬不改行为，可见性按 Kotlin 默认未收",
+    "declarations": [
+      { "name": "DecisionKind", "kind": "enum class", "file": "DecisionDraft.kt", "external_refs": 95, "verdict": "public 必要（:app 重度在用）" },
+      { "name": "DecisionGroup", "kind": "enum class", "file": "DecisionDraft.kt", "external_refs": 20, "verdict": "public 必要（:app 在用）" },
+      { "name": "DecisionAudit", "kind": "enum class", "file": "DecisionDraft.kt", "external_refs": 6, "verdict": "public 必要（:app 在用）" },
+      { "name": "DecisionActor", "kind": "enum class", "file": "DecisionDraft.kt", "external_refs": 62, "verdict": "public 必要（:app 重度在用）" },
+      { "name": "DecisionDraft", "kind": "data class", "file": "DecisionDraft.kt", "external_refs": 50, "verdict": "public 必要（:app 重度在用）" },
+      { "name": "HarmonyMediator", "kind": "object", "file": "HarmonyMediator.kt", "external_refs": 1, "verdict": "public 必要（:app 接线点在用）" },
+      { "name": "HarmonyStateCodec", "kind": "object", "file": "HarmonyMediator.kt", "external_refs": 1, "verdict": "public 必要（:app 接线点在用）" },
+      { "name": "LedgerPort", "kind": "interface", "file": "LedgerPort.kt", "external_refs": 3, "verdict": "public 必要（:app 账本实现挂上来）" },
+      { "name": "LedgerPorts", "kind": "object", "file": "LedgerPort.kt", "external_refs": 2, "verdict": "public 必要（:app 在用）" },
+      { "name": "TaskMode", "kind": "enum class", "file": "MediatorJudge.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用；293 搬家时未收）" },
+      { "name": "TaskModeBoundary", "kind": "object", "file": "MediatorJudge.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "MediatorBan", "kind": "enum class", "file": "MediatorJudge.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "MediatorFlag", "kind": "data class", "file": "MediatorJudge.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "MediatorJudge", "kind": "object", "file": "MediatorJudge.kt", "external_refs": 0, "verdict": "internal 候选（只被 :policy 内部 MediatorWiring/HarmonyMediator 用）" },
+      { "name": "MediatorWiring", "kind": "object", "file": "MediatorWiring.kt", "external_refs": 13, "verdict": "public 必要（:app 装配在用）" },
+      { "name": "PatienceProfile", "kind": "data class", "file": "PatienceProfile.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "Familiarity", "kind": "data class", "file": "PatienceProfile.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "PatienceProfileCodec", "kind": "object", "file": "PatienceProfile.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "Side", "kind": "enum class", "file": "ReframeFilter.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" },
+      { "name": "ReframeFilter", "kind": "object", "file": "ReframeFilter.kt", "external_refs": 0, "verdict": "internal 候选（外部零引用）" }
+    ]
+  },
+  "core": {
+    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入",
+    "declarations": [
+      { "name": "AppPrefs", "kind": "object", "file": "AppPrefs.kt", "external_refs": 17, "verdict": "public 必要（:app 在用）" },
+      { "name": "DocxTextExtractor", "kind": "object", "file": "doc/DocxTextExtractor.kt", "external_refs": 28, "verdict": "public 必要（:app 在用）" },
+      { "name": "EnvironmentScope", "kind": "object", "file": "EnvironmentScope.kt", "external_refs": 6, "verdict": "public 必要（:app 在用）" },
+      { "name": "IssueCenter", "kind": "object", "file": "IssueCenter.kt", "external_refs": 10, "verdict": "public 必要（:app 在用）" },
+      { "name": "KnowledgeBase", "kind": "object", "file": "kb/KnowledgeBase.kt", "external_refs": 33, "verdict": "public 必要（:app 在用）" },
+      { "name": "KnowledgeBaseSummaries", "kind": "object", "file": "kb/KnowledgeBaseSummaries.kt", "external_refs": 0, "verdict": "internal 候选（:core 内部消费；301 批接线时未收）" },
+      { "name": "KnowledgeBaseSummarizer", "kind": "object", "file": "kb/KnowledgeBaseSummarizer.kt", "external_refs": 0, "verdict": "internal 候选（:core 内部消费）" },
+      { "name": "AppNotifications", "kind": "object", "file": "notify/AppNotifications.kt", "external_refs": 11, "verdict": "public 必要（:app 在用）" },
+      { "name": "PathGuard", "kind": "object", "file": "PathGuard.kt", "external_refs": 97, "verdict": "public 必要（:app 重度在用）" },
+      { "name": "RunLog", "kind": "object", "file": "RunLog.kt", "external_refs": 571, "verdict": "public 必要（:app 重度在用）" },
+      { "name": "TimeFormats", "kind": "object", "file": "TimeFormats.kt", "external_refs": 147, "verdict": "public 必要（:app 重度在用）" },
+      { "name": "ZhengdaoDirs", "kind": "object", "file": "ZhengdaoDirs.kt", "external_refs": 20, "verdict": "public 必要（:app 在用）" }
+    ]
+  }
+}
