@@ -86,69 +86,69 @@ internal object PlanTool {
                         "additionalProperties" to false,
                     ),
                 ),
-            ),
-            // 第二百四十二批（计划即契约）：契约是这份计划的**上限声明**，跟着计划一起给。
-            // 可选项（不进 required）：老口径的"只列计划不带契约"必须照样能用——没有契约
-            // 就没有上限，执行路径与今天逐字节相同（契约只封顶，从不放行，也从不强制）。
-            "contract" to jsonObjectOf(
-                "type" to "object",
-                "description" to "本次运行的契约（用户批准计划后生效）：{goal, steps, touches, " +
-                    "readonly, expected_asks, stop_if}。steps 与 items 按位置一一对齐，" +
-                    "每一步都要给 risk；缺字段会被拒（不是当成没契约）",
-                "properties" to jsonObjectOf(
-                    "goal" to jsonObjectOf(
-                        "type" to "string",
-                        "description" to "一句话说清这次要干成什么",
-                    ),
-                    "steps" to jsonObjectOf(
-                        "type" to "array",
-                        "description" to "与 items 同序的每一步约束：{\"may_touch\":[…],\"risk\":\"R0|R1|R2|R3\"}" +
-                            "（步骤文字以 items 为准，这里不重写）",
-                        "items" to jsonObjectOf(
-                            "type" to "object",
-                            "properties" to jsonObjectOf(
-                                "may_touch" to jsonObjectOf(
-                                    "type" to "array",
-                                    "description" to "这一步允许动到的目录或网址（相对工作区根写）",
-                                    "items" to jsonObjectOf("type" to "string"),
+                // 第二百四十二批（计划即契约）：契约是这份计划的**上限声明**，跟着计划一起给。
+                // 可选项（不进 required）：老口径的"只列计划不带契约"必须照样能用——没有契约
+                // 就没有上限，执行路径与今天逐字节相同（契约只封顶，从不放行，也从不强制）。
+                "contract" to jsonObjectOf(
+                    "type" to "object",
+                    "description" to "本次运行的契约（用户批准计划后生效）：{goal, steps, touches, " +
+                        "readonly, expected_asks, stop_if}。steps 与 items 按位置一一对齐，" +
+                        "每一步都要给 risk；缺字段会被拒（不是当成没契约）",
+                    "properties" to jsonObjectOf(
+                        "goal" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "一句话说清这次要干成什么",
+                        ),
+                        "steps" to jsonObjectOf(
+                            "type" to "array",
+                            "description" to "与 items 同序的每一步约束：{\"may_touch\":[…],\"risk\":\"R0|R1|R2|R3\"}" +
+                                "（步骤文字以 items 为准，这里不重写）",
+                            "items" to jsonObjectOf(
+                                "type" to "object",
+                                "properties" to jsonObjectOf(
+                                    "may_touch" to jsonObjectOf(
+                                        "type" to "array",
+                                        "description" to "这一步允许动到的目录或网址（相对工作区根写）",
+                                        "items" to jsonObjectOf("type" to "string"),
+                                    ),
+                                    "risk" to jsonObjectOf(
+                                        "type" to "string",
+                                        // enum 与四档同源（RiskClass）——两处各写一份必漂移
+                                        "enum" to jsonArrayOf(*RiskClass.entries.map { it.name }.toTypedArray()),
+                                        "description" to "这一步的预估上限：R0=只读 / R1=在工作区内产出 / " +
+                                            "R2=改工作区外或删改已有 / R3=花钱、外发、账号类",
+                                    ),
                                 ),
-                                "risk" to jsonObjectOf(
-                                    "type" to "string",
-                                    // enum 与四档同源（RiskClass）——两处各写一份必漂移
-                                    "enum" to jsonArrayOf(*RiskClass.entries.map { it.name }.toTypedArray()),
-                                    "description" to "这一步的预估上限：R0=只读 / R1=在工作区内产出 / " +
-                                        "R2=改工作区外或删改已有 / R3=花钱、外发、账号类",
-                                ),
+                                "required" to jsonArrayOf("risk"),
+                                "additionalProperties" to false,
                             ),
-                            "required" to jsonArrayOf("risk"),
-                            "additionalProperties" to false,
+                        ),
+                        "touches" to jsonObjectOf(
+                            "type" to "array",
+                            "description" to "整轮都可能动到的目标（目录/网址白名单）：动到这里的**以外**" +
+                                "就立刻停下来问人",
+                            "items" to jsonObjectOf("type" to "string"),
+                        ),
+                        "readonly" to jsonObjectOf(
+                            "type" to "array",
+                            "description" to "只读区（可以读、绝不可以写）：写进去即偏离",
+                            "items" to jsonObjectOf("type" to "string"),
+                        ),
+                        "expected_asks" to jsonObjectOf(
+                            "type" to "integer",
+                            "minimum" to 0,
+                            "maximum" to 20,
+                            "description" to "预估这次要问用户几次（可以是 0）：跑完按实际问的次数对账",
+                        ),
+                        "stop_if" to jsonObjectOf(
+                            "type" to "array",
+                            "description" to "出现什么情况就停（人话条件，随计划卡一起给用户看）",
+                            "items" to jsonObjectOf("type" to "string"),
                         ),
                     ),
-                    "touches" to jsonObjectOf(
-                        "type" to "array",
-                        "description" to "整轮都可能动到的目标（目录/网址白名单）：动到这里的**以外**" +
-                            "就立刻停下来问人",
-                        "items" to jsonObjectOf("type" to "string"),
-                    ),
-                    "readonly" to jsonObjectOf(
-                        "type" to "array",
-                        "description" to "只读区（可以读、绝不可以写）：写进去即偏离",
-                        "items" to jsonObjectOf("type" to "string"),
-                    ),
-                    "expected_asks" to jsonObjectOf(
-                        "type" to "integer",
-                        "minimum" to 0,
-                        "maximum" to 20,
-                        "description" to "预估这次要问用户几次（可以是 0）：跑完按实际问的次数对账",
-                    ),
-                    "stop_if" to jsonObjectOf(
-                        "type" to "array",
-                        "description" to "出现什么情况就停（人话条件，随计划卡一起给用户看）",
-                        "items" to jsonObjectOf("type" to "string"),
-                    ),
+                    "required" to jsonArrayOf("goal", "steps", "touches", "expected_asks"),
+                    "additionalProperties" to false,
                 ),
-                "required" to jsonArrayOf("goal", "steps", "touches", "expected_asks"),
-                "additionalProperties" to false,
             ),
             "required" to jsonArrayOf("items"),
             "additionalProperties" to false,

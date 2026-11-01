@@ -156,6 +156,29 @@ class ToolSchemaAllTest {
         assertTrue("未知字段这条一个工具都没验到", checked >= 25)
     }
 
+    /**
+     * 353 扫描门禁（兄弟位键的一次性扫完＋永久盯防）。
+     *
+     * `inputSchema` 顶层只许有标准四件（type/properties/required/additionalProperties）：
+     * 多出来的键不在 `properties` 里，模型看得见、SchemaCheck 却按「未知参数」拒收——
+     * 参数写了也进不了工具（353 的教训：contract 在兄弟位躺着，242 的契约在真实路径
+     * 上断了六天，直调 controller 的测试全绿也照断）。谁再写出一个兄弟位键，这里当场红。
+     */
+    @Test
+    fun `schema顶层只有标准四件_兄弟位键当场红_353扫描`() {
+        val reg = registryOf(newRoot())
+        val standard = setOf("type", "properties", "required", "additionalProperties")
+        val offenders = reg.all().mapNotNull { spec ->
+            val odd = spec.inputSchema.keys().asSequence().toList() - standard
+            if (odd.isEmpty()) null else "${spec.name}：$odd"
+        }
+        assertTrue(
+            "这些工具的 inputSchema 有 properties 兄弟位的键（模型看得见、注册表拒收）：\n" +
+                offenders.joinToString("\n") { "  $it" },
+            offenders.isEmpty(),
+        )
+    }
+
     // ── ③ 单一来源：两个协议、全部工具、逐字节 ────────────────────────────
 
     @Test

@@ -113,8 +113,8 @@ class PlanPledgeWiringTest {
         assertTrue("缺 closeout", props.has(PlanPledgeRules.ARG_CLOSEOUT))
         assertTrue("缺 resign", props.has(PlanPledgeRules.ARG_RESIGN))
         assertEquals(
-            "properties 里原有键不许少（基线形状：properties 只有 items）",
-            setOf("items"),
+            "properties 里原有键不许少（353 起 contract 也是 properties 的正式成员）",
+            setOf("items", "contract"),
             props.keys().asSequence().toSet() -
                 setOf(PlanPledgeRules.ARG_PLEDGE, PlanPledgeRules.ARG_CLOSEOUT, PlanPledgeRules.ARG_RESIGN),
         )
