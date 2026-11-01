@@ -109,3 +109,19 @@ python tools\zd.py preflight -k <功能关键词> `
 3. **降了就是降了**：合并后立即重记两处（`config/detekt/issue-budget.json` 的 total/zones ＋ `config/detekt/detekt.yml` 的 `# maxIssues`）；
 4. **任何人不得自行抬高预算**：你的新增必须同批清掉等价条数（净零）；确实需要上调 ⇒ **必须用户批准**并在 `raised_reason` 写清"口径修正/为什么"，否则视为违规（门禁会红）。
 **判据**：合并后 `total` == 当批实测 XML 条数（差 1 都不行）。
+
+## 交付前自检：胖代码自己处理完再来验收（2026-11-01 定）
+**规矩**：交付（提 PR/分支）之前，承接方必须自己做掉这三件，**否则验收直接退回，不谈判**：
+1. **新代码不带新债**：`check-detekt-budget` 的 total 不得高于当前预算（高 1 条就自己同批清 1 条）；
+2. **自己写的长函数/高复杂度自己拆**：新函数 **≤59 行 / 复杂度 ≤14**（阈值 60/15，卡在边缘也算超）；
+3. **漏掉硬墙 lint**：`check-lint-budget` 0 错 0 警（该批若引入新警告，同批清）。
+
+**两条口径**
+- **"我拆不动"**：写清为什么（举例：生命周期方法、Compose 巨型 Composable），交**未拆结论**，由验收方裁定；
+  **不许沉默地交一堆超限函数**，也不许 `@Suppress`；
+- **不许把债挪窝**：抽出来的新函数自己不许超限（`guardEditArgs`/`scanHits` 两次教训）。
+**自检命令（交付报告必须贴读数）**：
+```
+python ..\_zd-toolroom\01-gates\check-detekt-budget.py
+python ..\_zd-toolroom\01-gates\check-lint-budget.py
+```
