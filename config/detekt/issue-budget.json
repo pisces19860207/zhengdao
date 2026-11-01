@@ -1,8 +1,8 @@
 {
-  "total": 402,
+  "total": 392,
   "rules": {
-    "CyclomaticComplexMethod": 224,
-    "LongMethod": 178
+    "CyclomaticComplexMethod": 219,
+    "LongMethod": 173
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -54,8 +54,6 @@
     "CyclomaticComplexMethod|BrowserUrlPolicy.kt|hostLabel#1",
     "CyclomaticComplexMethod|CardAssetParser.kt|parse#1",
     "CyclomaticComplexMethod|CardCheck.kt|checkCardInfo#1",
-    "CyclomaticComplexMethod|CardCheck.kt|checkSt#1",
-    "CyclomaticComplexMethod|CardCheck.kt|checkWeb#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifySt#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifyTavo#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifyWeb#1",
@@ -202,7 +200,6 @@
     "CyclomaticComplexMethod|TeachBar.kt|TeachParamsSheet#1",
     "CyclomaticComplexMethod|TeachExecutor.kt|run#1",
     "CyclomaticComplexMethod|TeachExecutor.kt|verifyExpects#1",
-    "CyclomaticComplexMethod|TeachForm.kt|buildFields#1",
     "CyclomaticComplexMethod|TeachForm.kt|fillField#1",
     "CyclomaticComplexMethod|TeachForm.kt|fromJson#1",
     "CyclomaticComplexMethod|TeachLearner.kt|buildDraft#1",
@@ -210,9 +207,7 @@
     "CyclomaticComplexMethod|TeachLearner.kt|stepLine#1",
     "CyclomaticComplexMethod|TeachModels.kt|fromJson#1",
     "CyclomaticComplexMethod|TeachModels.kt|fromJson#2",
-    "CyclomaticComplexMethod|TeachParams.kt|collect#1",
     "CyclomaticComplexMethod|TeachParams.kt|dateExpressions#1",
-    "CyclomaticComplexMethod|TeachParams.kt|parameterize#1",
     "CyclomaticComplexMethod|TeachReplay.kt|ask#1",
     "CyclomaticComplexMethod|TeachReplay.kt|pickField#1",
     "CyclomaticComplexMethod|TeachReplayStore.kt|saveConfirmed#1",
@@ -292,8 +287,6 @@
     "LongMethod|BrowserScreen.kt|BrowserScreen#1",
     "LongMethod|BrowserStartPage.kt|BrowserStartPage#1",
     "LongMethod|CardCheck.kt|checkCardInfo#1",
-    "LongMethod|CardCheck.kt|checkSt#1",
-    "LongMethod|CardCheck.kt|checkWeb#1",
     "LongMethod|CardFormat.kt|judgePng#1",
     "LongMethod|CardFormat.kt|recognize#1",
     "LongMethod|ChannelSwitchFsm.kt|dispatch#1",
@@ -390,10 +383,7 @@
     "LongMethod|TasteSettingsScreen.kt|TasteSettingsScreen#1",
     "LongMethod|TeachBar.kt|TeachParamsSheet#1",
     "LongMethod|TeachExecutor.kt|run#1",
-    "LongMethod|TeachForm.kt|buildFields#1",
     "LongMethod|TeachLearner.kt|buildDraft#1",
-    "LongMethod|TeachParams.kt|collect#1",
-    "LongMethod|TeachParams.kt|parameterize#1",
     "LongMethod|TeachReplayStore.kt|applyDemotion#1",
     "LongMethod|TeachReplayStore.kt|saveConfirmed#1",
     "LongMethod|ToolFailureAdvisor.kt|advise#1",
@@ -408,14 +398,14 @@
     "LongMethod|ZipIndex.kt|read#1",
     "LongMethod|ZipPacker.kt|pack#1"
   ],
-  "recorded_from": "341 本机 JDK21 + detekt 1.23.8（与 324 交叉验证同源）",
-  "recorded_at": "2026-11-01T14:18:32+0800",
+  "recorded_from": "354 本机 JDK21 + detekt 1.23.8（与 324 交叉验证同源）",
+  "recorded_at": "2026-11-01T22:12:10+0800",
   "zones": {
     "engine": {
-      "total": 271,
+      "total": 261,
       "rules": {
-        "CyclomaticComplexMethod": 177,
-        "LongMethod": 94
+        "CyclomaticComplexMethod": 172,
+        "LongMethod": 89
       }
     },
     "frozen_ui": {
