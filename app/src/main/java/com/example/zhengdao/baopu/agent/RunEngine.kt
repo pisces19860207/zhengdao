@@ -24,6 +24,7 @@ import com.example.zhengdao.baopu.LlmClient
 import com.example.zhengdao.baopu.LlmEvent
 import com.example.zhengdao.baopu.LlmMessage
 import com.example.zhengdao.baopu.LlmUsage
+import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.MemoryRules
 import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
@@ -54,6 +55,9 @@ import com.example.zhengdao.baopu.plan.ContractDeviationRules
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
+import com.example.zhengdao.baopu.plan.PlanPledgeBoard
+import com.example.zhengdao.baopu.plan.PlanPledgeCards
+import com.example.zhengdao.baopu.plan.PlanPledgeRules
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.ChancellorWiring
 import com.example.zhengdao.baopu.verify.Finding
@@ -298,6 +302,17 @@ internal class RunEngine(
 
     /** 已经让模型「按自检报告修过一次」的次数（只给一次机会，修不好就如实说没通过）。 */
     private var verifyRepairs = 0
+
+    // ── 军令状收口（347）的 run 级读数 ──────────────────────────────────────
+
+    /** 收口未过已经回灌过几轮（一个 run 内；回灌上限认 PlanPledgeRules 的交人线）。 */
+    private var pledgeRepairs = 0
+
+    /** 上一轮回灌的缺口文案（一字不差 ⇒ 模型没动，不再空转）。 */
+    private var lastPledgeFeedback: String? = null
+
+    /** 收口给用户的一句实话（完成／未完成＋缺口数；贴在 notice 最外层，不许静默结项）。 */
+    private var pledgeCloseoutNotice: String? = null
 
     /**
      * 连续几轮「工具参数不是合法 JSON」（P1-2，2026-10-19 第五十四批）。
@@ -755,13 +770,25 @@ internal class RunEngine(
         // 第二百四十二批：契约里写的相对目标要按工作区根解析。根的取法与守卫/spill 同源
         // （[spillRoot] 就是 BaopuRuntime.workspaceRoot），不在这里另立一个真相源。
         workspaceRoot = { spillRoot().absolutePath },
+        // 第三百四十七批：军令状的立状线是「≥5 步**或**跨会话」——续跑的长计划照样
+        // 要过开工卡。resumed 是 runLoop 的局部，喂给内核只能走这个口（房型同 planSessionId）。
+        crossSession = { crossSessionRun },
     )
 
     /** 这一步有没有成功执行过 update_plan（软档计数用；每步开始时清零）。 */
     private var planUpdatedInStep = false
 
+    /** 本轮是不是续跑（军令状的跨会话线读它；runLoop 入口设，工具线程读 ⇒ Volatile）。 */
+    @Volatile
+    private var crossSessionRun = false
+
     init {
         PlanTool.sink = planController
+        // 第三百四十七批①：update_plan 的 schema 挂上军令状三键（pledge/closeout/resign）。
+        // 键的 schema 片段在 PlanPledgeSchemas（PlanController.kt 一侧）——agent/tools/ 是
+        // 341 的在飞租约，本批不碰 PlanTool.kt；注册表本来就支持同名覆盖（后注册的赢），
+        // 装配层全注册完引擎才构造 ⇒ 这里再注册的一定生效，注册期的 schema 体检重跑一遍。
+        registry.register(PlanPledgeSchemas.decorate(PlanTool.spec()))
     }
 
     /**
@@ -1461,6 +1488,11 @@ internal class RunEngine(
         // 150批 A：四个 run 级计数器在入口统一复位——必须在 channelBroken 判断**之前**调，
         // 否则上一轮熔断会把这一轮直接拦死；send/resume/approveRestoredPending/
         // rejectRestoredPending/drainQueue 全收敛到这里，一处复位全盖住。
+        // 第三百四十七批：军令状账的落点先接好（<工作区>/记忆/——与 决策记录/未办成单
+        // 同一棵记忆树）。引擎没有 Context，工作区这一份由 spillRoot 推得；attach 只设
+        // 落点不写盘。放在复位之前：channel-broken 的早退收尾也要过结项门（有状就对账），
+        // 而 150 批 A 的复位必须紧贴 channelBroken 判断（RunEngineConcurrencyGateTest 钉死）。
+        PlanPledgeBoard.attach(listOf(MemoryLayout.memoryDir(spillRoot())))
         resetRunScopedCounters(sessionId)
         if (channelBroken) {
             // 150批 G：早退也收尾——旧行为只切 ABORTED，run_log 没有 Aborted 行、
@@ -1473,6 +1505,8 @@ internal class RunEngine(
         }
         // 工作计划（第十七批）：update_plan 落到哪个会话，由这里喂给 PlanController
         planSessionId = sessionId
+        // 第三百四十七批：本轮是不是续跑——军令状立状线「跨会话」那一脚的读数。
+        crossSessionRun = resumed
         // 工具渐进披露（第五十九批 §1.4）：**同一处、同一个值**告诉注册表"这一轮是哪个会话"。
         // 为什么和 planSessionId 挤在一行下面：解锁状态按会话持久，而 capabilities 的
         // executor 拿不到 sessionId（它是工具层的 `JSONObject -> ToolOutcome`，签名不许改）⇒
@@ -1635,6 +1669,10 @@ internal class RunEngine(
         verifyTouched.clear()
         roundToolText.setLength(0)
         verifyRepairs = 0
+        // 军令状收口（347）的三个 run 级读数同口径重置（每项的轮数在板子上，跨 run 有效）
+        pledgeRepairs = 0
+        lastPledgeFeedback = null
+        pledgeCloseoutNotice = null
         // P1-2 / P1-3 的两个跨轮计数同样按 run 重置（续跑是新 run，不继承上一段的运气）
         badArgsRetries = 0
         reuseStep = false
@@ -1650,7 +1688,12 @@ internal class RunEngine(
         // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
         // 内存是空的；不回种的话模型重发计划时 sticky done 失效，done 会被打回
         // doing（用户看到「打完的勾又亮了」）。
-        if (resumed) planController.seedFromStore(sessionId)
+        if (resumed) {
+            planController.seedFromStore(sessionId)
+            // 第三百一十二批 §4.5：跨会话续跑——账上的军令状接回来（同版不写第二行），
+            // settle 行里记的轮数一并恢复（重签不清零幸存项——那是「对项」的记录）。
+            seedPledge(sessionId)
+        }
 
         while (!stopRequested) {
             // 189 §1.4.2：插话在「下一步开始前」这个安全点注入——FIFO 取空、按序进历史
@@ -1832,6 +1875,45 @@ internal class RunEngine(
                         // 先落的日志保持原样：未过项摘要只进 run_log，文案以裁决结果为准
                         log("抱朴引擎：收尾闸未通过（已修过 ${verifyRepairs} 次），${findingBrief(findings)}")
                     }
+                    // ── 第三百四十七批③：军令状收口（结项门禁）——有状才对账，漏项不装完成 ──
+                    // settle 一轮只结一次（板子幂等，重复调取回同一份不重写账）；未收口且有
+                    // 未升级的缺口 ⇒ 照收尾闸的修复环回灌一次、续一轮（补做，或如实申报
+                    // abandoned 带原因）；缺口全升级／回灌到线／文案没动 ⇒ 如实收官——
+                    // 任务记未完成（缺口与弃单在 settle 里已进未办成单），不许静默。
+                    val pledgeVerdict = PlanPledgeBoard.settle(planController.doneTexts(), System.currentTimeMillis())
+                    if (pledgeVerdict != null && !pledgeVerdict.complete) {
+                        val feed = PlanPledgeRules.gapFeedback(pledgeVerdict)
+                        if (feed != null && feed != lastPledgeFeedback && pledgeRepairs < PlanPledgeRules.ESCALATE_FAILURES) {
+                            pledgeRepairs++
+                            lastPledgeFeedback = feed
+                            log(
+                                "抱朴军令状：收口未过（${pledgeVerdict.ended.size}/${pledgeVerdict.total} 有结局）" +
+                                    "⇒ 回灌缺口，续一轮",
+                            )
+                            persistAssistantMessage(sessionId, outcome.text)
+                            history += HistoryMessage(
+                                "local-a-${System.nanoTime()}",
+                                HistoryMessage.ROLE_ASSISTANT,
+                                outcome.text,
+                            )
+                            history += HistoryMessage(
+                                "local-pledge-${System.nanoTime()}",
+                                HistoryMessage.ROLE_ASSISTANT,
+                                feed,
+                            )
+                            continue
+                        }
+                        log(
+                            "抱朴军令状：收口未过、不再回灌 ⇒ 任务记未完成" +
+                                "（${pledgeVerdict.ended.size}/${pledgeVerdict.total} 有结局，缺口 ${pledgeVerdict.gaps.size}）",
+                        )
+                        pledgeCloseoutNotice = "【军令状收口】任务记未完成：" +
+                            "${pledgeVerdict.ended.size}/${pledgeVerdict.total} 项有结局，" +
+                            "缺口 ${pledgeVerdict.gaps.size} 项（已进未办成单）。"
+                    } else if (pledgeVerdict != null) {
+                        pledgeCloseoutNotice =
+                            "【军令状收口】完成：${pledgeVerdict.ended.size}/${pledgeVerdict.total} 项全部有结局。"
+                    }
                     // 227 §0.5：产物闸之外，再对**回答本身**跑三条程序判据（纯问答轮也验收）。
                     // 只报可疑、只进 notice 与日志——**不进上面的修复回路**（不阻断、不判卷）。
                     // 工作/创作模式还没有设置项（173ac 只到设计，未实现），拿不准按工作模式。
@@ -1859,6 +1941,11 @@ internal class RunEngine(
                         // 后面的 settle 再拿只会取回同一份，不会重复写 208）。
                         contractRecon = PlanContractBoard.reconcile()?.let { PlanContractRules.reconBrief(it) },
                     )?.let { _notice.value = it }
+                    // 347：收口的一句实话贴在最外层（不许静默结项——几项/完成几项/漏几项；
+                    // 没立状 ⇒ 读数为 null，一个字不加）。
+                    pledgeCloseoutNotice?.let { p ->
+                        _notice.value = _notice.value?.let { cur -> "$cur $p" } ?: p
+                    }
 
                     persistAssistantMessage(sessionId, outcome.text)
                     history += HistoryMessage(
@@ -2843,6 +2930,10 @@ internal class RunEngine(
         // notice 时已经结过，这里只会取回同一份——板上"一轮只结一次"）。
         // 没契约 ⇒ reconcile() 立刻返 null，一个字不记、一句不说：这一层完全惰性。
         PlanContractBoard.reconcile()
+        // 第三百四十七批③：中止／停止这几条收尾路同样要过结项门（正常完成那条在贴
+        // notice 时结过，这里取回同一份——板上"一轮只结一次"）。没状 ⇒ null：
+        // 无状任务不设门，一行不记，完全惰性（不许事后补状掩盖漏项）。
+        PlanPledgeBoard.settle(planController.doneTexts(), System.currentTimeMillis())
         // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
         // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
         // 一轮 3 步正常完成后显示「上次中断于第 3 步」——就是这一瞬被 UI 读到了。
@@ -3587,6 +3678,11 @@ internal class RunEngine(
         call: ToolCall,
         history: MutableList<HistoryMessage>,
     ): ToolResultFlow {
+        // 第三百四十七批①：军令状参数的非法组合先拦（立状/结项/重签一次只许带一件）
+        // ——在本闸之前，连计划变更卡都不为一次注定被拒的调用弹。
+        pledgeComboGate(call)?.let { blocked ->
+            return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
+        }
         // 软档（140）：计划结构变更必须在真执行前过用户那张卡。被拒 ⇒ 本次调用
         // 不执行、不落库，失败原文回灌给模型；等人耗时不计进工具耗时（传 0）。
         planChangeGate(call)?.let { blocked ->
@@ -3603,6 +3699,10 @@ internal class RunEngine(
         if (switchForShot is ShotSwitch.Skip) {
             return handleSkippedScreenshot(sessionId, step, call, switchForShot.note, history)
         }
+        // 第三百四十七批②：军令状开工卡——长程任务（≥5 步或跨会话）开工**弹一次**，
+        // 确认计划快照（几项/每项验收方式全列在卡上）。照 242 批准卡房型：真执行之前、
+        // 只问没问过的；她点了「立状并冻结」⇒ submit 落库成功那一刻才冻结（不许自动立状）。
+        askPledgeCard(call)
         // 第二百四十二批 B 段：这一版计划带了新上限 ⇒ **执行之前**先请她批准。
         // 位置在 pipeline.execute 之前是判据 1/2 的本体：批准后由 submit 把契约装进板上，
         // 于是"契约内 R0/R1 不弹卡"从这一步之后才成立。不批准**不拦这次** update_plan：
@@ -4078,6 +4178,54 @@ internal class RunEngine(
             call = call,
             error = PlanGuardRules.changeBlocked(change),
         )
+    }
+
+    /**
+     * 军令状参数的非法组合闸（第三百四十七批①的引擎侧；工具层 [PlanPledgeSchemas.comboError]
+     * 是权威判，这里只是提前到出卡之前——不给一次注定被拒的调用弹任何卡）。
+     *
+     * @return null = 放行（不是 update_plan / 没带军令状键 / 组合合法）
+     */
+    private fun pledgeComboGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        if (call.name != PlanTool.NAME) return null
+        val err = PlanPledgeSchemas.comboError(call.arguments) ?: return null
+        log("抱朴军令状：拒绝（$err）")
+        return GuardPipeline.Result.Failed(call = call, error = err)
+    }
+
+    /**
+     * 军令状开工卡（第三百四十七批②；判据②的接线点）。
+     *
+     * 只在 `update_plan` **真执行之前**问一次：这一版是长程任务（≥5 步或跨会话）、
+     * 板上还没状、本轮没问过、同一版候选没被拒过，才弹（[PlanController.previewPledge]
+     * 把这些全挡了）。卡面是计划快照：几项、每项一句话＋验收方式，一次问清。
+     *
+     * 两条不让步的口径：
+     * - **不许自动立状**：只有她真点「立状并冻结」才算数；「先不立状」／超时／没点
+     *   ⇒ [PlanController.answerPledgeCard] 里 noteDeclined（同版不再问）——
+     *   没弹过卡就算无状任务，不设结项门（不许事后补状掩盖漏项）；
+     * - **弹一次**：同轮同版只问一次，进度更新不再打扰（pledged ⇒ Skip）。
+     */
+    private fun askPledgeCard(call: ToolCall) {
+        if (call.name != PlanTool.NAME) return
+        val candidate = planController.previewPledge(call.arguments) ?: return
+        log("抱朴军令状：长程任务开工卡（${candidate.entries.size} 项，候选 pledge:${candidate.id}）")
+        val picked = askUser(PlanPledgeCards.pledgeRequest(candidate))
+        val approved = PlanPledgeCards.approved(picked?.id)
+        planController.answerPledgeCard(candidate, approved)
+        if (!approved && picked == null) log("抱朴军令状：开工卡没人回答（超时）⇒ 不立状，本任务不设结项门")
+    }
+
+    /**
+     * 跨会话接回军令状（312 §4.5；第三百四十七批⑤号接线）。
+     *
+     * 读侧在 [PlanPledgeSeed]（JVM 直测）；这里只把读到的落进板子（同一版不写第二行）。
+     * 账读不到／没有本会话的行 ⇒ 静默不接：无状续跑，照既有口径走（不编一份状出来）。
+     */
+    private fun seedPledge(sessionId: Long) {
+        PlanPledgeSeed.read(sessionId, PlanPledgeBoard.ledgerFile())?.let { recovered ->
+            PlanPledgeBoard.seed(recovered.snapshot, recovered.failures)
+        }
     }
 
     /**

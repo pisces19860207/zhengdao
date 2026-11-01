@@ -89,9 +89,13 @@ class PlanControllerTest {
     @Test
     fun `超12条_截断到12_落库的就是12条`() {
         val r = rig()
-        // 2026-10-19：上限 8 → 12
+        // 2026-10-19：上限 8 → 12。347 军令状：13 条是长程任务 ⇒ 带 pledge（截断后 12 条
+        // 对 13 条 acceptance，多出来的按位置丢——判定层口径，不影响本条要验的截断行为）
         val thirteen = (1..13).map { "条目$it" to "todo" }.toTypedArray()
-        val out = r.controller.submit(planArgs(*thirteen))
+        val accepts = (1..13).map { "验收$it" }
+        val out = r.controller.submit(
+            planArgs(*thirteen).put("pledge", JSONObject().put("acceptance", JSONArray(accepts))),
+        )
         assertTrue("截断不是拒绝：$out", out is ToolOutcome.Ok)
         val stored = r.store.lastPlan()
         assertNotNull(stored)
@@ -113,7 +117,18 @@ class PlanControllerTest {
     @Test
     fun `先5条再3条_库里留两条_最后一条是3条版`() {
         val r = rig()
-        r.controller.submit(planArgs("一" to "todo", "二" to "todo", "三" to "todo", "四" to "todo", "五" to "todo"))
+        // 347 军令状：5 条是长程任务，开工要带 pledge（验收方式与条目按位对齐）；
+        // 直调路径没有开工卡 ⇒ 按无状处理落库（不许自动立状），后续行为与今天一致。
+        r.controller.submit(
+            planArgs("一" to "todo", "二" to "todo", "三" to "todo", "四" to "todo", "五" to "todo")
+                .put(
+                    "pledge",
+                    JSONObject().put(
+                        "acceptance",
+                        JSONArray(listOf("甲", "乙", "丙", "丁", "戊")),
+                    ),
+                ),
+        )
         // 140 软档：5 条缩成 3 条是结构变更，必须过用户的卡（这里模拟用户点了「更新计划」）
         r.controller.authorizeNextChange()
         val out = r.controller.submit(planArgs("一" to "done", "二" to "doing", "三" to "todo"))

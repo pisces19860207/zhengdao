@@ -34,6 +34,10 @@ class PlanToolTest {
 
     private fun catalogRegistry(): ToolRegistry = ToolRegistry().apply {
         BaopuToolCatalog.loadInto(this) { File(".") }
+        // 347 军令状接线：生产里 RunEngine 构造时以「同名覆盖再注册」把军令状三键挂进
+        // update_plan 的 schema（引擎 init 那一处）——本测试没有引擎，这里照做同一件事，
+        // 长计划带 pledge 才能走到工具层（管线集成测的就是真链路）。
+        register(PlanPledgeSchemas.decorate(PlanTool.spec()))
     }
 
     // ── J1：注册与开关 ─────────────────────────────────────────────────
@@ -221,7 +225,11 @@ class PlanToolTest {
         val reg = catalogRegistry()
         val pipeline = GuardPipeline(reg, { File(".") }, { null })
         val thirteen = (1..13).map { "条目$it" to "todo" }.toTypedArray()
-        val result = pipeline.execute(ToolCall("c1", PlanTool.NAME, planArgs(*thirteen))) { _, _ -> null }
+        // 347 军令状：13 条是长程任务 ⇒ 带 pledge（直调路径没有开工卡 ⇒ 按无状处理落库）
+        val accepts = (1..13).map { "验收$it" }
+        val result = pipeline.execute(
+            ToolCall("c1", PlanTool.NAME, planArgs(*thirteen).put("pledge", JSONObject().put("acceptance", JSONArray(accepts)))),
+        ) { _, _ -> null }
         assertTrue(result is GuardPipeline.Result.Done)
         val wrapped = (result as GuardPipeline.Result.Done).wrapped
         assertTrue("回灌带围栏（唯一出口）", wrapped.startsWith(DataFence.FENCE_OPEN))

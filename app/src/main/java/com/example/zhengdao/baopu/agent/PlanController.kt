@@ -11,6 +11,12 @@ import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.plan.PlanContract
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractRules
+import com.example.zhengdao.baopu.plan.PlanPledgeBoard
+import com.example.zhengdao.baopu.plan.PlanPledgeCards
+import com.example.zhengdao.baopu.plan.PlanPledgeRules
+import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeParse
+import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeSnapshot
+import org.json.JSONArray
 import org.json.JSONObject
 import com.example.zhengdao.core.RunLog
 
@@ -33,12 +39,15 @@ import com.example.zhengdao.core.RunLog
  * @param store 计划存取（接口；Android 侧实现 SessionPlanStore，单测用假件）
  * @param workspaceRoot 工作区根绝对路径（第二百四十二批：契约里相对写法的目标要按它解析）；
  *   缺省空串 ⇒ 目标按原样比较（存量调用点与单测一个字不改、行为不变）
+ * @param crossSession 是否跨会话续跑（第三百四十七批喂；军令状的立状线是「≥5 步
+ *   **或** 跨会话」——续跑中的长计划照样要过开工卡，缺省 false ⇒ 存量调用点不变）
  */
 internal class PlanController(
     private val sessionId: () -> Long,
     private val store: PlanStore,
     private val log: (String) -> Unit = { com.example.zhengdao.core.RunLog.log(it) },
     private val workspaceRoot: () -> String = { "" },
+    private val crossSession: () -> Boolean = { false },
 ) : PlanSink {
 
     /** 当前轮的计划（内存态；库里的真相是 kind='plan' 的 part）。 */
@@ -65,6 +74,29 @@ internal class PlanController(
     /** 她明确拒过的那一版契约（同一版重发不再打扰；改一版就重新问）。 */
     @Volatile
     private var rejectedContract: PlanContract? = null
+
+    // ── 军令状（312 判定层 ＋ 347 接线）：立状／结项／重签的工具层 ───────────
+    //
+    // 三条口径（347 派工单 §二）：
+    // - **不许自动立状**：冻结只认用户在开工卡上点过的那一次（引擎在真执行前弹卡，
+    //   [answerPledgeCard] 记裁决；[submit] 把这版计划**落库成功**那一刻才调
+    //   [PlanPledgeBoard.freeze]）——模型自己发一份长计划立不上状；
+    // - **没弹过卡＝无状**：无状任务的 closeout/resign 按无状处理（说明性忽略，
+    //   不许事后补状掩盖漏项）；
+    // - **resign 不等于 closeout**：弃约改的是计划（走 140 变更卡＋显式重签），
+    //   结项申报才算结局——两者连在一次调用里都算非法组合（工具层拒）。
+
+    /** 本轮已为立状弹过开工卡（一次问清；新轮清零）。 */
+    @Volatile
+    private var pledgeCardSettled = false
+
+    /** 用户刚点过「立状并冻结」⇒ 下一次成功落库的那版计划冻结成快照（消费掉即清）。 */
+    @Volatile
+    private var pledgeApprovedPending = false
+
+    /** 开工卡收场后留给 ack 的一句（declinedAck；submit 消费掉）。 */
+    @Volatile
+    private var pledgeAckLine: String? = null
 
     // ── 软档（140）：结构变更过卡 ＋ 连续 3 步偏离提示 ──────────────────────
     // 计数只统计「工具步」：一步跑完既没推进计划（update_plan 成功）也没更新计划
@@ -101,6 +133,12 @@ internal class PlanController(
      * 它下一版自己改（与其它工具的「可重试×1」同口径）。
      */
     override fun submit(args: JSONObject): ToolOutcome {
+        // 第三百四十七批①（工具层）：立状/结项/重签是**三个时刻**，一次调用只许带
+        // 一件——非法组合在这里先拒（引擎还在本闸之前再拦一道，卡都不为它弹）。
+        PlanPledgeSchemas.comboError(args)?.let {
+            log("抱朴军令状：拒绝（$it）")
+            return ToolOutcome.Failed(it)
+        }
         val parsed = PlanRules.parseItems(args)
         if (parsed is PlanRules.Parse.Error) {
             log("抱朴计划：拒绝（${parsed.message}）")
@@ -138,6 +176,38 @@ internal class PlanController(
             log("抱朴契约：拒绝（${contractParse.message}）")
             return ToolOutcome.Failed(contractParse.message)
         }
+        // ── 第三百四十七批：军令状三键的解析（全在落库**之前**——半张申报不落库）──
+        // 立状：长程任务（≥5 步或跨会话）缺 pledge 是 Error 不是 Skip（判定层口径：
+        // 静默当成没立状＝模型靠写长计划绕开结项门）。开工卡是引擎在真执行前弹的；
+        // 卡已问过（pledgeCardSettled）或板上已有状 ⇒ 本版走 Skip。
+        val pledgeParse = PlanPledgeRules.parsePledge(
+            args,
+            ok.items.size,
+            crossSession(),
+            pledged = PlanPledgeBoard.activeSnapshot() != null || pledgeCardSettled,
+        )
+        if (pledgeParse is PledgeParse.Error) {
+            log("抱朴军令状：拒绝（${pledgeParse.message}）")
+            return ToolOutcome.Failed(pledgeParse.message)
+        }
+        // 重签：立了状之后删项/加项必须显式重签（判据①；channel 只认 140 卡的人批——
+        // 结构变更能走到这里 ⇒ 一定过了上面那张卡。resign 缺原因在这里就拒，落库前）。
+        val resignGuard = PlanPledgeBoard.guardEdit(
+            ok.items,
+            args,
+            if (change.needsCard) PlanPledgeRules.ResignChannel.HUMAN else null,
+        )
+        if (resignGuard is PlanPledgeRules.EditGuard.Reject) {
+            log("抱朴军令状：拒绝（${resignGuard.message}）")
+            return ToolOutcome.Failed(resignGuard.message)
+        }
+        // 结项申报：abandoned 缺原因在这里就拒（判据⑤）；DONE 缺证据不在这里拒——
+        // 收口时按缺口回灌，模型知道补什么。
+        val closeoutParse = PlanPledgeRules.parseCloseout(args)
+        if (closeoutParse is PlanPledgeRules.CloseoutParse.Error) {
+            log("抱朴军令状：拒绝（${closeoutParse.message}）")
+            return ToolOutcome.Failed(closeoutParse.message)
+        }
         // 声明了但没批准 ⇒ 只落库不进上限；同一版被拒过还原样重发，不再重复弹卡。
         val declared = (contractParse as? PlanContractRules.ContractParse.Ok)?.contract
             ?: contract
@@ -173,6 +243,11 @@ internal class PlanController(
         stepsWithoutPlanUpdate = 0
         deviationPrompted = false
         deviationMuted = false
+        // ── 第三百四十七批：落库成功之后的军令状动作（冻结／重签／申报进板）——
+        // 冻结只在这时发生（人在卡上点过头＋这版计划真的落了库），账上不留没落地的状。
+        val pledgeNotes = pledgeAfterLanding(applied.items, args, change, pledgeParse, closeoutParse, sid)
+        val cardLine = pledgeAckLine
+        pledgeAckLine = null
         log(
             "抱朴计划：已更新（session=$sid，共 ${applied.items.size} 条、" +
                 "${PlanRules.doneCount(applied.items)} 完成" +
@@ -184,7 +259,9 @@ internal class PlanController(
         )
         return ToolOutcome.Ok(
             PlanRules.renderAck(applied.items, ok.notices + applied.stickyNotes) +
-                contractStateLine(declared, activated, PlanContractBoard.hasContract()),
+                contractStateLine(declared, activated, PlanContractBoard.hasContract()) +
+                (cardLine ?: "") +
+                pledgeNotes.joinToString(""),
         )
     }
 
@@ -385,6 +462,140 @@ internal class PlanController(
         return declared
     }
 
+    // ── 军令状 API（347；判据全在 PlanPledgeRules/Board，这里只管「问没问过人」）──
+    //
+    // 引擎在 update_plan **真执行之前**问 previewPledge、弹开工卡；她点了「立状并冻结」
+    // 才 answerPledgeCard(approved=true)，随后 submit 把落库成功的那版计划冻结进板。
+    // 这条链路与 242 契约卡同房型；差别只有一处——**冻结发生在落库之后**（账上不许
+    // 留一份没落地的状）。
+
+    /**
+     * 这次 update_plan 是不是该弹开工卡（**不落库、不动内存、不冻结**）。
+     *
+     * 非 null ＝ 长程任务的立状候选（引擎拿它出卡）；null ＝ 不弹：不是 update_plan、
+     * 解析不出来（错误原文由 [submit] 回灌，预览层不抢答）、短任务、板上已有状、
+     * 本轮已问过、同一版候选她明确拒过（[PlanPledgeBoard.isDeclined]）。
+     */
+    fun previewPledge(args: JSONObject): PledgeSnapshot? {
+        if (pledgeCardSettled || PlanPledgeBoard.activeSnapshot() != null) return null
+        val parsed = PlanRules.parseItems(args) as? PlanRules.Parse.Ok ?: return null
+        val parse = PlanPledgeRules.parsePledge(args, parsed.items.size, crossSession())
+        if (parse !is PledgeParse.Need) return null
+        val candidate = PlanPledgeRules.snapshotOf(
+            parsed.items,
+            parse.accepts,
+            1,
+            contractGoalOf(args, parsed.items),
+            System.currentTimeMillis(),
+            sessionId(),
+        )
+        return if (PlanPledgeBoard.isDeclined(candidate)) null else candidate
+    }
+
+    /**
+     * 开工卡收场（照 242 批准卡房型；「拒/超时 ⇒ noteDeclined＋declinedAck」照 312 §4）。
+     *
+     * 「立状并冻结」⇒ 只记批准票：冻结在 [submit] 落库成功那一刻发生。
+     * 「先不立状」／超时／没点 ⇒ [PlanPledgeBoard.noteDeclined]（同版候选本轮不再问；
+     * 军令状沉默＝不立——没弹过卡就算无状任务，不设结项门）。
+     */
+    fun answerPledgeCard(candidate: PledgeSnapshot, approved: Boolean) {
+        pledgeCardSettled = true
+        if (approved) {
+            pledgeApprovedPending = true
+            log("抱朴军令状：用户同意立状（${candidate.entries.size} 项）⇒ 这版计划落库后冻结")
+            return
+        }
+        PlanPledgeBoard.noteDeclined(candidate)
+        pledgeAckLine = PlanPledgeCards.declinedAck(candidate)
+        log("抱朴军令状：用户没立状（${candidate.entries.size} 项候选）⇒ 本任务不设结项门")
+    }
+
+    /** 计划卡上已打勾的条目原文（收口把缺口说得准一点；**打勾本身不构成结局**）。 */
+    fun doneTexts(): Set<String> = current
+        .filter { it.status == PlanRules.STATUS_DONE }
+        .map { it.text }
+        .toSet()
+
+    /**
+     * 落库成功之后的军令状三动作，按序：**冻结 → 重签 → 申报进板**。
+     *
+     * 冻结与重签互斥（有状才谈重签，没状才谈冻结）；申报与两者不同调用（工具层
+     * 非法组合先拦过了）。每一步都往 ack 里留一句实话，模型必须知道自己头上
+     * 有没有结项门。
+     */
+    private fun pledgeAfterLanding(
+        items: List<PlanItem>,
+        args: JSONObject,
+        change: PlanChange,
+        pledgeParse: PledgeParse,
+        closeout: PlanPledgeRules.CloseoutParse,
+        sid: Long,
+    ): List<String> {
+        val notes = mutableListOf<String>()
+        // 立状的票没被消费掉（这版不是落库成功的那版形状变了也要清），不许漏到下一次。
+        val approvedNow = pledgeApprovedPending
+        pledgeApprovedPending = false
+        val atMs = System.currentTimeMillis()
+        // ① 冻结：她点过头、板上还没状——accepts 从本版参数重读（卡后模型改了写法也照实冻结）。
+        if (approvedNow && PlanPledgeBoard.activeSnapshot() == null) {
+            val accepts = (PlanPledgeRules.parsePledge(args, items.size, crossSession(), pledged = false)
+                as? PledgeParse.Need)?.accepts ?: emptyList()
+            val snapshot = PlanPledgeRules.snapshotOf(
+                items, accepts, 1, contractGoalOf(args, items), atMs, sid,
+            )
+            PlanPledgeBoard.freeze(snapshot)
+            notes += PlanPledgeCards.frozenAck(snapshot)
+        }
+        // ② 重签：140 卡人批过的结构变更 ⇒ 旧版原样留账，新版成为现役（343 衔接口径：
+        // 之后按新版本快照结项）。验收方式没变的条目沿用旧条，新条以条目原文兜底。
+        if (change.needsCard && PlanPledgeBoard.activeSnapshot() != null) {
+            val reason = (PlanPledgeRules.parseResign(args)
+                as? PlanPledgeRules.ResignParse.Ok)?.reason.orEmpty()
+            if (reason.isNotEmpty()) {
+                val old = PlanPledgeBoard.activeSnapshot()!!
+                val oldAccept = old.entries.associate { it.text to it.accept }
+                PlanPledgeBoard.applyResign(
+                    items,
+                    items.map { oldAccept[it.text] ?: it.text },
+                    reason,
+                    PlanPledgeRules.ResignChannel.HUMAN,
+                    atMs,
+                )?.let { next ->
+                    notes += "【军令状重签】第 ${next.version} 版快照生效（${next.entries.size} 项）：" +
+                        "旧版原样留在账上，之后按新版结项。"
+                }
+            }
+        }
+        // ③ 结项申报进板：无状 ⇒ 说明性忽略（无状任务不设结项门，不许事后补状）。
+        if (pledgeParse is PledgeParse.Skip) notes += pledgeParse.notices
+        if (closeout is PlanPledgeRules.CloseoutParse.Ok) {
+            val active = PlanPledgeBoard.activeSnapshot()
+            if (active == null) {
+                notes += "【无状任务】未立军令状：closeout 申报已忽略，不设结项门（不许事后补状）。"
+            } else {
+                PlanPledgeBoard.noteCloseout(closeout.declarations)
+                val known = active.texts.toSet()
+                val unknown = closeout.declarations.map { it.text }.filter { it !in known }.distinct()
+                if (unknown.isNotEmpty()) {
+                    notes += "有 ${unknown.size} 条申报对不上快照（按条目原文逐字对齐）：" +
+                        "${unknown.take(2).joinToString("；")}——这些在收口时不计。"
+                }
+            }
+        }
+        // 开工卡没弹过的直调（非引擎路径）：如实说没立状，不许让模型以为状生效了。
+        if (pledgeParse is PledgeParse.Need) {
+            notes += "【军令状未立】长程任务要立状，但开工卡没有弹出（非引擎直调路径）：" +
+                "本次按无状处理——不冻结、不设结项门，该有的确认卡一张不少。"
+        }
+        return notes
+    }
+
+    /** 这版参数里契约声明的 goal（军令状快照的「目标」一行；没声明契约 ⇒ 空串）。 */
+    private fun contractGoalOf(args: JSONObject, items: List<PlanItem>): String =
+        (PlanContractRules.parse(args, items) as? PlanContractRules.ContractParse.Ok)
+            ?.contract?.goal.orEmpty()
+
     fun newRound() {
         current = emptyList()
         stepsWithoutPlanUpdate = 0
@@ -397,6 +608,12 @@ internal class PlanController(
         contractAuthorized = false
         rejectedContract = null
         PlanContractBoard.clear()
+        // 军令状（347）同一条生命周期：新请求＝新任务，旧状不带过来（收尾该记的
+        // 缺口在上一轮的收尾路径已经进了未办成单——这里只管「这一轮从零开始」）。
+        PlanPledgeBoard.clear()
+        pledgeCardSettled = false
+        pledgeApprovedPending = false
+        pledgeAckLine = null
     }
 
     /**
@@ -423,5 +640,175 @@ internal class PlanController(
         contractAuthorized = false
         rejectedContract = null
         PlanContractBoard.clear()
+        // 军令状（347）：进程重启后内存是空的，账上的状由引擎的 seed 从
+        // 计划军令状.jsonl 接回（seedFromStore 只清内存视图，不猜账里有什么）。
+        PlanPledgeBoard.clear()
+        pledgeCardSettled = false
+        pledgeApprovedPending = false
+        pledgeAckLine = null
+    }
+}
+
+/**
+ * 军令状三键的 schema 片段 ＋ 非法组合判（第三百四十七批①的工具层）。
+ *
+ * 为什么 schema 挂在这里而不动 `PlanTool`：`agent/tools/` 是 341 的在飞租约，
+ * `PlanPledgeRules.ARG_*` 的三个键从**这里**以「同名覆盖再注册」的方式并进
+ * update_plan 的 inputSchema——注册表本来就支持同名覆盖（后注册的赢），键名与
+ * 枚举取值只认 [PlanPledgeRules] 一处，两边各写一份必漂移。
+ */
+internal object PlanPledgeSchemas {
+
+    /** 把三个可选键并进 update_plan 的 inputSchema（深拷贝后再改，不动原件）。 */
+    fun decorate(base: ToolSpec): ToolSpec {
+        val schema = JSONObject(base.inputSchema.toString())
+        val props = schema.getJSONObject("properties")
+        props.put(PlanPledgeRules.ARG_PLEDGE, pledgeSchema())
+        props.put(PlanPledgeRules.ARG_CLOSEOUT, closeoutSchema())
+        props.put(PlanPledgeRules.ARG_RESIGN, resignSchema())
+        return base.copy(inputSchema = schema)
+    }
+
+    /**
+     * 非法组合（工具层拒）：立状／结项／重签是**三个时刻**——开工、收尾、改约，
+     * 一次调用只许带一件。每条拒绝都教正确拆法（不许只说「不行」）。
+     */
+    fun comboError(args: JSONObject): String? = when {
+        args.has(PlanPledgeRules.ARG_PLEDGE) && args.has(PlanPledgeRules.ARG_CLOSEOUT) ->
+            "「${PlanPledgeRules.ARG_PLEDGE}」与「${PlanPledgeRules.ARG_CLOSEOUT}」不能同一次调用：" +
+                "立状在开工、结项在收尾。先发计划＋pledge 把状立起来，收尾时再单独申报 closeout。"
+        args.has(PlanPledgeRules.ARG_PLEDGE) && args.has(PlanPledgeRules.ARG_RESIGN) ->
+            "「${PlanPledgeRules.ARG_PLEDGE}」与「${PlanPledgeRules.ARG_RESIGN}」不能同一次调用：" +
+                "还没立状就谈不上重签。先发计划＋pledge 立状，改约是之后的事（要经人批或自决单）。"
+        args.has(PlanPledgeRules.ARG_CLOSEOUT) && args.has(PlanPledgeRules.ARG_RESIGN) ->
+            "「${PlanPledgeRules.ARG_CLOSEOUT}」与「${PlanPledgeRules.ARG_RESIGN}」不能同一次调用：" +
+                "申报对的是现行快照，改约之后快照就换了版本——两次说不清哪版算数。" +
+                "先带 resign 重签（经人批或自决单），下一次再按新快照申报 closeout。" +
+                "弃约不等于完成：不许用 resign 代替 closeout。"
+        else -> null
+    }
+
+    private fun pledgeSchema() = jsonObjectOf(
+        "type" to "object",
+        "description" to "立状：长程任务（≥5 步或跨会话）开工必带。提交后 App 弹一次开工卡，" +
+            "用户点「立状并冻结」才生效；之后每一项都要有结局，收口时漏一项任务就记未完成",
+        "properties" to jsonObjectOf(
+            "acceptance" to jsonObjectOf(
+                "type" to "array",
+                "description" to "与 items 等长、按位对齐的验收方式数组：第 i 条说清第 i 项" +
+                    "「做完凭什么算做完」（每条 ≤60 字）",
+                "items" to jsonObjectOf("type" to "string"),
+            ),
+        ),
+        "required" to jsonArrayOf("acceptance"),
+        "additionalProperties" to false,
+    )
+
+    private fun closeoutSchema() = jsonObjectOf(
+        "type" to "object",
+        "description" to "结项申报：立了状的任务按快照条目**原文**逐条申报结局，可分多次给。" +
+            "done 必附 evidence（文件/输出/账行）；abandoned 必填 reason。" +
+            "漏报的项收口时按「没有结局」记，任务判未完成并进未办成单",
+        "properties" to jsonObjectOf(
+            "items" to jsonObjectOf(
+                "type" to "array",
+                "description" to "每条 {text, end, evidence?/reason?, detail?}",
+                "items" to jsonObjectOf(
+                    "type" to "object",
+                    "properties" to jsonObjectOf(
+                        "text" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "计划条目原文（逐字，改一个字都对不上账）",
+                        ),
+                        "end" to jsonObjectOf(
+                            "type" to "string",
+                            "enum" to jsonArrayOf(*PlanPledgeRules.EndKind.entries.map { it.wire }.toTypedArray()),
+                            "description" to "done=做完（附证据）/ abandoned=放弃（必填原因）",
+                        ),
+                        "evidence" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "done 的证据：文件路径／工具输出／账行引用（必附）",
+                        ),
+                        "reason" to jsonObjectOf(
+                            "type" to "string",
+                            "enum" to jsonArrayOf(*PlanPledgeRules.AbandonReason.entries.map { it.wire }.toTypedArray()),
+                            "description" to "abandoned 的原因：blocked/needs_human/unsupported 三选一（必填）",
+                        ),
+                        "detail" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "一句话补充（≤60 字）",
+                        ),
+                    ),
+                    "required" to jsonArrayOf("text", "end"),
+                    "additionalProperties" to false,
+                ),
+            ),
+        ),
+        "required" to jsonArrayOf("items"),
+        "additionalProperties" to false,
+    )
+
+    private fun resignSchema() = jsonObjectOf(
+        "type" to "object",
+        "description" to "重签：冻结后删项/加项必须显式重签并经人批（计划变更确认卡）或自决单；" +
+            "旧快照原样留在账上。不许用重签把没做的项悄悄删掉再宣布完成",
+        "properties" to jsonObjectOf(
+            "reason" to jsonObjectOf(
+                "type" to "string",
+                "description" to "删哪项、加哪项、为什么（必填，≤120 字）",
+            ),
+        ),
+        "required" to jsonArrayOf("reason"),
+        "additionalProperties" to false,
+    )
+}
+
+/**
+ * 军令状跨会话接回的**读侧**（347；312 §4.5）。账是权威：本对象只读不写，
+ * 落板归引擎调 [PlanPledgeBoard.seed]（同一版不写第二行）。账文件读不到／里面
+ * 没有该会话的任何行 ⇒ null——无状续跑，照既有口径走，不编一份状出来。
+ */
+internal object PlanPledgeSeed {
+
+    /** 接回的一份：快照 ＋ 各项此前收口未过的次数（只带快照里还幸存的项）。 */
+    data class Recovered(val snapshot: PledgeSnapshot, val failures: Map<String, Int>)
+
+    /**
+     * 从账里读**本会话**最近一版快照；settle 行里记的轮数一并恢复（各项收口未过
+     * 次数取最大——重签不清零幸存项，那是「对项」的记录）。
+     *
+     * 归属口径：settle 行**没有** session 字段（encodeSettle 的形状）——它记的是
+     * 「当时对哪一版快照」（id），轮数跟它前面最近那行快照的会话走；会话不同的
+     * 快照行会把「当前会话」翻过去，settle 行只跟着自己前面那一版走。
+     */
+    fun read(sessionId: Long, ledger: java.io.File?): Recovered? {
+        if (ledger == null) return null
+        val lines = runCatching { ledger.readLines() }.getOrDefault(emptyList())
+        var snapshot: PledgeSnapshot? = null
+        var currentSession = -1L
+        val failures = LinkedHashMap<String, Int>()
+        for (raw in lines) {
+            val obj = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: continue
+            if (obj.optString("event") == PlanPledgeRules.EVENT_SETTLE) {
+                if (currentSession == sessionId) mergeGapFailures(obj, failures)
+                continue
+            }
+            val decoded = PlanPledgeRules.decodeSnapshot(obj) ?: continue
+            currentSession = obj.optLong("session", -1L)
+            if (currentSession == sessionId) snapshot = decoded
+        }
+        val active = snapshot ?: return null
+        return Recovered(active, failures.filterKeys { it in active.texts.toSet() })
+    }
+
+    /** settle 行的 gaps 里取各项「第几次未过」的最大值（跨版本累计——幸存项不清零）。 */
+    private fun mergeGapFailures(row: org.json.JSONObject, failures: MutableMap<String, Int>) {
+        val gaps = row.optJSONArray("gaps") ?: return
+        for (i in 0 until gaps.length()) {
+            val g = gaps.optJSONObject(i) ?: continue
+            val text = g.optString("text")
+            val n = g.optInt("failures", 0)
+            if (text.isNotEmpty() && n > (failures[text] ?: 0)) failures[text] = n
+        }
     }
 }
