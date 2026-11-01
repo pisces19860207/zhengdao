@@ -9,6 +9,8 @@
 //   §3 硬规矩 2：外部执行体不许写我们的账本（禁夹带账本键／改单键、账行只许引用、契约层零 I/O）
 //   §4 严收与两遍校验：未知键／版本／类型 ⇒ 拒收；额度越界 ⇒ 收得下但判据红
 //   §5 六样各自的红法：空目标、无验收契约、写根越界、出口槽位越界、禁词、重复项
+//   §6 预设档（342-B，2026-11-01 裁定 Q2）：四档数值逐个钉、`long`＝标签不是配额、
+//      挂档不许改默认值、没挂档另判一条、`preset` 是必填键、同数不同档算出不同指纹
 package com.example.zhengdao.core
 
 import org.junit.Assert.assertEquals
@@ -40,7 +42,7 @@ class TaskContractTest {
             TaskDeliverable("d2", "output/weekly.md", listOf("含「结论」一节且引用了 d1")),
         ),
         authority = TaskAuthority(readRoots = listOf("input", "output"), writeRoots = listOf("output")),
-        budget = TaskBudget(maxWallMs = 600_000L, maxSteps = 40, maxInterruptions = 1),
+        budget = BudgetPreset.STANDARD.budget(),
         evidence = listOf(EvidenceKind.EXISTS, EvidenceKind.SHA256, EvidenceKind.LEDGER),
         exit = TaskExit(
             onPause = ExitAction.HOLD,
@@ -332,13 +334,21 @@ class TaskContractTest {
 
     @Test
     fun `额度越界收得下但判据红_拒收与不合格不混`() {
-        val c = sampleContract().copy(budget = TaskBudget(maxWallMs = 86_400_000L, maxSteps = 999, maxInterruptions = 1))
+        val c = sampleContract().copy(budget = TaskBudget(
+            maxWallMs = 86_400_000L,
+            maxSteps = 999,
+            maxInterruptions = 1,
+            preset = BudgetPreset.STANDARD,
+        ))
         val back = TaskContract.parse(c.jsonText())
         assertNotNull("形状是对的，parse 不该拒", back)
         val v = back!!.violations()
-        assertEquals(v.joinToString("｜"), 2, v.count { it.startsWith("budget.") })
+        // 三档里两档越界（墙钟、步数）＋挂档却改了默认值＝三条，各自点名，不合并成一条含糊的"预算不对"
+        assertEquals(v.joinToString("｜"), 3, v.count { it.startsWith("budget.") })
+        assertEquals(v.joinToString("｜"), 2, v.count { it.contains("越界") })
         assertTrue(v.any { it.contains("max_wall_ms") })
         assertTrue(v.any { it.contains("max_steps") })
+        assertTrue(v.any { it.contains("挂了档") })
     }
 
     @Test
@@ -357,6 +367,7 @@ class TaskContractTest {
         val c = sampleContract()
         val atCeil = c.copy(budget = TaskBudget(
             TaskBudget.MAX_WALL_MS, TaskBudget.MAX_STEPS, TaskBudget.MAX_INTERRUPTIONS,
+            preset = BudgetPreset.STANDARD,
         ))
         assertEquals(0, atCeil.violations().count { it.startsWith("budget.") })
         val overWall = c.copy(budget = TaskBudget(
@@ -371,6 +382,118 @@ class TaskContractTest {
             TaskBudget.MIN_WALL_MS, TaskBudget.MAX_STEPS, TaskBudget.MAX_INTERRUPTIONS + 1,
         ))
         assertTrue(overInter.violations().any { it.startsWith("budget.max_interruptions 越界") })
+    }
+
+    // ── §6 预设档（342-B：2026-11-01 裁定 Q2）────────────────────────────────
+
+    @Test
+    fun `四档预设是抄本_十二个数字逐个钉住`() {
+        assertEquals(listOf("probe", "standard", "long", "exec"), BudgetPreset.WIRES)
+        assertEquals(90_000L, BudgetPreset.PROBE.wallMs)
+        assertEquals(16L, BudgetPreset.PROBE.steps.toLong())
+        assertEquals(0L, BudgetPreset.PROBE.interruptions.toLong())
+        assertEquals(3_600_000L, BudgetPreset.STANDARD.wallMs)
+        assertEquals(300L, BudgetPreset.STANDARD.steps.toLong())
+        assertEquals(3L, BudgetPreset.STANDARD.interruptions.toLong())
+        assertEquals(3_600_000L, BudgetPreset.LONG.wallMs)
+        assertEquals(300L, BudgetPreset.LONG.steps.toLong())
+        assertEquals(3L, BudgetPreset.LONG.interruptions.toLong())
+        assertEquals(3_600_000L, BudgetPreset.EXEC.wallMs)
+        assertEquals(300L, BudgetPreset.EXEC.steps.toLong())
+        assertEquals(3L, BudgetPreset.EXEC.interruptions.toLong())
+        // 标准档的数值就是硬界值：顶格单＝标准档，不需要自定义
+        assertEquals(TaskBudget.MAX_WALL_MS, BudgetPreset.STANDARD.wallMs)
+        assertEquals(TaskBudget.MAX_STEPS.toLong(), BudgetPreset.STANDARD.steps.toLong())
+        assertEquals(TaskBudget.MAX_INTERRUPTIONS.toLong(), BudgetPreset.STANDARD.interruptions.toLong())
+        // 每个档位都得有个中文名（拒收理由与判据都要念它，空档名＝念了等于没说）
+        BudgetPreset.entries.forEach { assertTrue("${it.wire} 档没有中文名", it.cn.isNotBlank()) }
+    }
+
+    @Test
+    fun `long 是标签不是配额_数值与 standard 逐档相等`() {
+        // Q1 定了"单契约不许放宽"，所以 long 只能标"这单要拆"，不能多给一秒一步。
+        assertEquals(BudgetPreset.STANDARD.wallMs, BudgetPreset.LONG.wallMs)
+        assertEquals(BudgetPreset.STANDARD.steps.toLong(), BudgetPreset.LONG.steps.toLong())
+        assertEquals(BudgetPreset.STANDARD.interruptions.toLong(), BudgetPreset.LONG.interruptions.toLong())
+        BudgetPreset.entries.forEach { p ->
+            assertTrue("${p.wire} 的墙钟越界", p.wallMs in TaskBudget.MIN_WALL_MS..TaskBudget.MAX_WALL_MS)
+            assertTrue("${p.wire} 的步数越界", p.steps in TaskBudget.MIN_STEPS..TaskBudget.MAX_STEPS)
+            assertTrue(
+                "${p.wire} 的打扰越界",
+                p.interruptions in TaskBudget.MIN_INTERRUPTIONS..TaskBudget.MAX_INTERRUPTIONS,
+            )
+        }
+    }
+
+    @Test
+    fun `requiresSplit 只在 long 为真`() {
+        assertTrue(BudgetPreset.LONG.requiresSplit)
+        assertFalse(BudgetPreset.PROBE.requiresSplit)
+        assertFalse(BudgetPreset.STANDARD.requiresSplit)
+        assertFalse(BudgetPreset.EXEC.requiresSplit)
+    }
+
+    @Test
+    fun `挂档却改默认值_判据红点名档位`() {
+        val c = sampleContract()
+        val onShape = c.copy(budget = BudgetPreset.STANDARD.budget())
+        assertEquals(
+            onShape.violations().joinToString("｜"),
+            0,
+            onShape.violations().count { it.startsWith("budget.") },
+        )
+        val fudged = c.copy(budget = TaskBudget(
+            maxWallMs = BudgetPreset.STANDARD.wallMs,
+            maxSteps = BudgetPreset.STANDARD.steps,
+            maxInterruptions = 1,
+            preset = BudgetPreset.STANDARD,
+        ))
+        val v = fudged.violations().filter { it.startsWith("budget.") }
+        assertEquals(v.joinToString("｜"), 1, v.size)
+        assertTrue(v[0].contains("挂了档「standard」"))
+        assertTrue("拒因要说清档位是形状不是申请额度：" + v[0], v[0].contains("不是申请额度"))
+        assertFalse(fudged.isWellFormed())
+    }
+
+    @Test
+    fun `没挂档另判一条_与越界分开算`() {
+        val c = sampleContract().copy(budget = TaskBudget(600_000L, 40, 1))
+        val v = c.violations().filter { it.startsWith("budget.") }
+        assertEquals(v.joinToString("｜"), 1, v.size)
+        assertTrue(v[0].contains("budget.preset 缺失"))
+        assertTrue("拒因要把四档念出来，让人知道往哪挂：" + v[0], v[0].contains("probe"))
+        assertFalse(c.isWellFormed())
+    }
+
+    @Test
+    fun `档位是必填键_缺它拒收_档名不认识也拒收`() {
+        val c = sampleContract()
+        val noPreset = JSONObject(c.jsonText())
+        noPreset.getJSONObject("budget").remove("preset")
+        assertNull("budget 没有档位居然还收下了", TaskContract.parse(noPreset.toString()))
+        val badName = JSONObject(c.jsonText())
+        badName.getJSONObject("budget").put("preset", "turbo")
+        assertNull("四档之外不该有第五种形状", TaskContract.parse(badName.toString()))
+        assertEquals(
+            "形状不符（缺键、类型不对或版本不认识）",
+            TaskContract.rejectionReason(noPreset.toString()),
+        )
+    }
+
+    @Test
+    fun `同数不同档算出不同指纹_往返保住档位`() {
+        val c = sampleContract()
+        val std = c.copy(budget = BudgetPreset.STANDARD.budget())
+        val lon = c.copy(budget = BudgetPreset.LONG.budget())
+        val exe = c.copy(budget = BudgetPreset.EXEC.budget())
+        assertEquals(std.budget.maxWallMs, lon.budget.maxWallMs)
+        assertTrue("long 与 standard 数值相同、档名不同 ⇒ 指纹必须分开", std.sha256() != lon.sha256())
+        assertTrue("exec 与 long 也必须分开", lon.sha256() != exe.sha256())
+        val back = TaskContract.parse(lon.jsonText())
+        assertNotNull(back)
+        assertEquals(BudgetPreset.LONG, back!!.budget.preset)
+        assertEquals(lon.sha256(), back.sha256())
+        assertTrue(back.budget.preset!!.requiresSplit)
     }
 
     // ── §5 六样各自的红法 ───────────────────────────────────────────────────

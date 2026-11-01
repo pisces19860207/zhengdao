@@ -10,7 +10,7 @@
 //                      任务类型×契约表归 332，本层**只承载声明、不做判定**）
 //   · `authority`    ← 授权边界（`baopu/authz/TaskGrant.kt` 的对象面／动作面）
 //   · `budget`       ← 有界额度（墙钟照 `GrantLimits.MAX_LIFETIME_MONO_MS`、步数照 `BaopuKernel.MAX_STEPS`、
-//                      打扰次数照 `inspect/OpinionBudget.kt` 的 `perDayRoyalMax`）
+//                      打扰次数照 `inspect/OpinionBudget.kt` 的 `perDayRoyalMax`）＋**四档预设** `BudgetPreset`（probe／standard／long／exec）：形状只走档，不许每单自定义（2026-11-01 裁定 Q2）
 //   · `evidence`     ← 六类证据（`exists`／`sha256`／CI／测试 XML／账行／法条门禁，340 派工单前言点名的那套）
 //   · `exit`         ← 暂停／取消／超时／失败（失败四动作照 `agent/FailurePolicy.kt` 的 `FailureAction`，
 //                      回滚照 `law/RevocationSlip.kt`，超时交人照 `law/TimeoutFallback.kt`）
@@ -104,6 +104,50 @@ enum class ExitAction(val wire: String, val cn: String) {
         fun ofWire(raw: String): ExitAction? = entries.firstOrNull { it.wire == raw.trim().lowercase() }
     }
 }
+
+/**
+ * 预算的**四档预设**（2026-11-01 裁定 Q2：形状只走预设档，不许每单自定义）。
+ *
+ * 档与档的差别**只在数值默认值**，字段集完全一致 ⇒ 下游（343／347）只有一套解析，
+ * 不必为"执令／斥候"写四份读法——这是她点名要的效果。
+ *
+ * 数字仍是带出处的抄本（`:core` 不许 import `:app`，见文件头）：
+ * - [PROBE]    16 步 ← `agent/multiagent/SubAgentRules.kt:31`；90 秒墙 ← 同文件 `:34` `DEFAULT_TIMEOUT_MS`；
+ *              **打扰 0** ← 同文件 `:67`「子任务不弹卡、不问用户」＋ `:69` 的六只读工具里没有 `ask_user`
+ * - [STANDARD] 60 分钟 ← `authz/TaskGrant.kt:108`；300 步 ← `kernel/BaopuKernel.kt:161/164/180`（3×100）；
+ *              3 次打扰 ← `inspect/OpinionBudget.kt:5`（同文件 `:10` `require(0..3)`）
+ * - [LONG]     **数值与 [STANDARD] 逐档相等**——Q1 定了"单契约不许放宽"，所以 `long` 是**标签不是配额**；
+ *              唯一的差别是 [requiresSplit]＝true，语义＝这活一张单跑不完，必须拆成多张单各自验收
+ * - [EXEC]     与 [STANDARD] 同数（她原话：执令档同 standard）
+ *
+ * 四档数值全落在 [TaskBudget] 的硬界值内 ⇒ 挂档的单子必然不越界；越界只能来自自定义，
+ * 而自定义由 [TaskContract.violations] 的两条判据挡住（没挂档、挂档却改默认值）。
+ */
+enum class BudgetPreset(
+    val wire: String,
+    val cn: String,
+    val wallMs: Long,
+    val steps: Int,
+    val interruptions: Int,
+    val requiresSplit: Boolean,
+) {
+    PROBE("probe", "斥候（只读小循环）", 90_000L, 16, 0, false),
+    STANDARD("standard", "常单", 3_600_000L, 300, 3, false),
+    LONG("long", "长活（必须拆单）", 3_600_000L, 300, 3, true),
+    EXEC("exec", "执令", 3_600_000L, 300, 3, false),
+    ;
+
+    /** 按本档默认值造一份预算——**这是唯一的正路构造口**。 */
+    fun budget(): TaskBudget = TaskBudget(wallMs, steps, interruptions, this)
+
+    companion object {
+        fun ofWire(raw: String): BudgetPreset? = entries.firstOrNull { it.wire == raw.trim().lowercase() }
+
+        /** 四档之外没有第五种形状（判据与拒收理由都念这张表）。 */
+        val WIRES: List<String> = entries.map { it.wire }
+    }
+}
+
 
 // ── 六样之一：目标 ────────────────────────────────────────────────────────
 
@@ -280,23 +324,35 @@ data class TaskAuthority(
  * - [MAX_INTERRUPTIONS] ← `inspect/OpinionBudget.kt` 的 `perDayRoyalMax`（一天最多 3 次御批打扰）
  *
  * 设计稿第六行还写了"金额"，但代码里没有金额机制（只有 token 预算），本批按工单只做这三档。
+ *
+ * [preset] 是**形状**（四档之一）：三个数值必须逐档等于该档默认值，否则判红——
+ * "不许每单自定义"就落在这条＋"没挂档也判红"这两句上（见 [TaskContract.violations]）。
+ * 留成可空只为让负例能造出"没挂档／改了默认值"这两种不合法形状；正路一律走 [BudgetPreset.budget]。
  */
 data class TaskBudget(
     val maxWallMs: Long,
     val maxSteps: Int,
     val maxInterruptions: Int,
+    val preset: BudgetPreset? = null,
 ) {
+
+    /** 数值是否**逐档等于**所挂预设的默认值（没挂档 ⇒ 不相等，交给判据点名）。 */
+    fun matchesPreset(): Boolean = preset != null &&
+        maxWallMs == preset.wallMs && maxSteps == preset.steps &&
+        maxInterruptions == preset.interruptions
 
     fun toJson(): JSONObject = JSONObject()
         .put(KEY_MAX_WALL_MS, maxWallMs)
         .put(KEY_MAX_STEPS, maxSteps)
         .put(KEY_MAX_INTERRUPTIONS, maxInterruptions)
+        .also { o -> preset?.let { o.put(KEY_PRESET, it.wire) } }
 
     companion object {
         const val KEY_MAX_WALL_MS = "max_wall_ms"
         const val KEY_MAX_STEPS = "max_steps"
         const val KEY_MAX_INTERRUPTIONS = "max_interruptions"
-        val KEYS = setOf(KEY_MAX_WALL_MS, KEY_MAX_STEPS, KEY_MAX_INTERRUPTIONS)
+        const val KEY_PRESET = "preset"
+        val KEYS = setOf(KEY_MAX_WALL_MS, KEY_MAX_STEPS, KEY_MAX_INTERRUPTIONS, KEY_PRESET)
 
         const val MIN_WALL_MS = 10_000L
         const val MAX_WALL_MS = 3_600_000L
@@ -307,12 +363,24 @@ data class TaskBudget(
         const val MIN_INTERRUPTIONS = 0
         const val MAX_INTERRUPTIONS = 3
 
+        /**
+         * 档位是**必填键**：`budget` 段没有 `preset` ⇒ 整张单子拒收（不是判红）。
+         * 口径与 [TaskExit] 四槽必填同一句话——"没写是什么档"恰恰是最贵的那种没写；
+         * 档名不认识（如 `turbo`）同样拒收，与 [EvidenceKind] 的未知词同一个处理法。
+         */
         fun from(o: JSONObject): TaskBudget? {
             if (o.unknownKeysIn(KEYS).isNotEmpty()) return null
             val wall = o.needLong(KEY_MAX_WALL_MS) ?: return null
             val steps = o.needInt(KEY_MAX_STEPS) ?: return null
             val interrupts = o.needInt(KEY_MAX_INTERRUPTIONS) ?: return null
-            return TaskBudget(maxWallMs = wall, maxSteps = steps, maxInterruptions = interrupts)
+            if (!o.has(KEY_PRESET)) return null
+            val preset = BudgetPreset.ofWire(o.needString(KEY_PRESET) ?: return null) ?: return null
+            return TaskBudget(
+                maxWallMs = wall,
+                maxSteps = steps,
+                maxInterruptions = interrupts,
+                preset = preset,
+            )
         }
     }
 }
@@ -471,6 +539,14 @@ data class TaskContract(
         if (budget.maxInterruptions !in TaskBudget.MIN_INTERRUPTIONS..TaskBudget.MAX_INTERRUPTIONS) {
             v += "budget.max_interruptions 越界：${budget.maxInterruptions}" +
                 "（${TaskBudget.MIN_INTERRUPTIONS}–${TaskBudget.MAX_INTERRUPTIONS}）"
+        }
+        val preset = budget.preset
+        if (preset == null) {
+            v += "budget.preset 缺失：形状只认 ${BudgetPreset.WIRES.joinToString("／")}，不许每单自定义"
+        } else if (!budget.matchesPreset()) {
+            v += "budget.preset 挂了档「${preset.wire}」却改了默认值：" +
+                "${budget.maxWallMs}／${budget.maxSteps}／${budget.maxInterruptions} ≠ " +
+                "${preset.wallMs}／${preset.steps}／${preset.interruptions}（档位是形状，不是申请额度）"
         }
 
         if (evidence.isEmpty()) v += "evidence 至少一类（没有证据要求的单子无法验收）"
