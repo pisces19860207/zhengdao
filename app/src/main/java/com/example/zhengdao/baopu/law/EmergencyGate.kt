@@ -164,4 +164,35 @@ internal object EmergencyGate {
         truthConflict -> "真假冲突不许自决：两份证据打架只能并列上御案（各标真假），不许替人拍板"
         else -> null
     }
+
+    // ── 第三百一十九批：自决路径的能力闸——「没查能力」不许当「可以」 ──────────
+    //
+    // 315 交的是**意见侧**的闸：意见认成紧急卡 ⇒ 拒（[selfRulingRejection]）。
+    // 319 补的是**路径侧**的闸：一条自决路径在落自决单之前，必须先自证它**查过能力**——
+    // 读不读得到要读的状态、写不写得了账、预算口开不开，以及最重要的：拦不拦得住紧急卡。
+    // 没查过 ⇒ 一律拒（fail-closed）——不许把「没能力检查」当默认允许；
+    // 查过且撞上紧急卡 ⇒ 拒因仍唯一出自 [selfRulingRejection]，本层不写第二个拒因。
+    //
+    // 两处生产自决点（`agent/OpinionWiring.kt` 的 SKIP 落单、`agent/LearnWiring.kt` 的压下落单）
+    // 都在本单租约外（agent/ 禁区），行为面接线归持有该两文件的批次；接线那天要改的就一件事：
+    // 落单前先过本函数（拒因与资格只有这一个出处）。判定先立在这儿——
+    // 与 249-B 的 `openGrant` 同款（门禁反钉先例）：源级门禁
+    // `app/src/test/java/com/example/zhengdao/law/L33SelfRulingAdmissionGateTest.kt`
+    // 钉着两处自决点的能力账，谁接线谁按账销。
+
+    /**
+     * 自决路径的统一准入（L33 落账口）。
+     *
+     * @param capabilityChecked 这条路径落单前查没查能力（读状态／写账／预算口／必问集——
+     *   各路径的必查集查过了才许 true；**路径上没有这道检查** ⇒ false）
+     * @param requiresApproval 这条意见的人批位（`requiresApproval` 的结论；true ＝ 紧急卡，必须人批）
+     * @return null ＝ 准入，自决路照走（落单理由照旧由各路径自己给）；否则是拒因。
+     */
+    fun selfRulingAdmission(capabilityChecked: Boolean, requiresApproval: Boolean): String? = when {
+        !capabilityChecked ->
+            "自决路径没有能力检查：不许把「没查」当「可以」——先查能不能读、能不能改、" +
+                "预算剩多少、拦不拦得住紧急卡，再来落自决单"
+        requiresApproval -> selfRulingRejection(isEmergencyCard = true)
+        else -> null
+    }
 }

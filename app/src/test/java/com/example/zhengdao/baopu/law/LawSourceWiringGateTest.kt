@@ -28,6 +28,9 @@
 // （紧急闸：紧急卡必人批＋止损 0 秒＋24h 追认），WIRED 按点号调用数逐字登记。
 // OpinionWiring ×1，收敛归 298，见 REMAINING_L21_COPIES）——那是"新增接线"不顶替旧手抄的口径。
 // 剩下六条仍挂账。
+// 319 更账（基线 8061da8b）：L21 登记制从「一个数」升成「一张表」（L21_COPY_REGISTRY）——
+// 三条手抄各一行（文件:行＋登记了什么＋为什么不能清零＋谁来清），行号钉实、漂了即红；
+// 另在 EmergencyGate 添自决路径的统一准入口 selfRulingAdmission（不改接线数，门禁账不变）。
 package com.example.zhengdao.baopu.law
 
 import java.io.File
@@ -55,8 +58,56 @@ private fun codeOnly(src: String): String = src
     .filterNot { it.trim().startsWith("//") || it.trim().startsWith("*") || it.trim().startsWith("/*") }
     .joinToString("\n")
 
-/** 还留在生产里的 L21 手抄件数（315 改登记制：收敛归 298；收敛到 0 那天把它改成 0，本门禁收紧成清零口径）。 */
-private const val REMAINING_L21_COPIES = 3
+/**
+ * L21 手抄**登记制**（315 起「清零改登记制」；319 写死三格：登记了什么／谁登记／没登记会怎样）。
+ *
+ * 一条一行（[L21Copy]），三格缺一即红；行号是账的一部分——**行号漂了＝账没跟盘走 ⇒ 红**，
+ * 按红字把 `line` 改成实数再交（不许顺手删行）。收敛到 0 那天把表清空，
+ * 本门禁自动收紧回「接线后手抄必须清零」的原口径（见 [接线之后手抄的判据必须清零]）。
+ * 谁登记：315 立的账（数）；319 升的格（每条的内容/行号/清零条件）——此后谁动这三处，谁同步更账。
+ */
+private data class L21Copy(
+    /** 哪个文件（相对 `app/src/main/java`）。 */
+    val where: String,
+    /** 第几行（319 在基线 8061da8b 上取数；行号漂移必须同步更账，红字会点名）。 */
+    val line: Int,
+    /** 登记了什么：判据内容＋它在链路里的角色。 */
+    val what: String,
+    /** 为什么只能登记、不能清零（不许留「约等于清零」的模糊话）。 */
+    val whyRemain: String,
+    /** 谁来清：清零条件——收敛批次＋要同批改哪张白名单/租约。 */
+    val clearedBy: String,
+)
+
+private val L21_COPY_REGISTRY = listOf(
+    L21Copy(
+        where = "com/example/zhengdao/baopu/inspect/OpinionBudget.kt",
+        line = 14,
+        what = "Budget.exemptionFor 的资格闸：emergencyExempt && severity==CRITICAL && lawRef==L21 ⇒ " +
+            "EmergencyExemption——越预算豁免的**唯一资格闸**（OpinionWiring 预算判定调它）",
+        whyRemain = "本文件在 OpinionIsolationTest.newFiles 名单里，import 白名单只许 Normalizer/Locale；" +
+            "换 EmergencyGate.qualifiesForExemption 必须同批改那张白名单（298 验收期不许动）",
+        clearedBy = "298 之后的接线批：换 EmergencyGate.qualifiesForExemption，同批把 " +
+            "baopu.law.EmergencyGate 放进 OpinionIsolationTest 的 import 白名单",
+    ),
+    L21Copy(
+        where = "com/example/zhengdao/baopu/inspect/OpinionBudget.kt",
+        line = 26,
+        what = "EmergencyExemption 构造器 require(CRITICAL && L21)：同判据的**构造期防线**",
+        whyRemain = "同上：换判据必须同批改 OpinionIsolationTest 的 import 白名单",
+        clearedBy = "同上（与 :14 同批换，两条一起销）",
+    ),
+    L21Copy(
+        where = "com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+        line = 303,
+        what = "OpinionJudge.judge 第⑤格：CRITICAL && L21 ⇒ 缺理由 DEFER——**想越预算没资格**的判据",
+        whyRemain = "agent/OpinionWiring.kt 在 agent/ 禁区（315/319 两批租约都不含它），判据搬不动",
+        clearedBy = "持有 agent/OpinionWiring.kt 租约的接线批：第⑤格改调 EmergencyGate 判据后销行",
+    ),
+)
+
+/** 还留在生产里的 L21 手抄件数（登记制的总数：多一处/少一处都红，逼同步登记）。 */
+private val REMAINING_L21_COPIES: Int get() = L21_COPY_REGISTRY.size
 
 class LawSourceWiringGateTest {
 
@@ -281,8 +332,8 @@ class LawSourceWiringGateTest {
         if ("EmergencyGate" in WIRED.map { it.entry }) {
             val copies = mainSources.sumOf { l21Copies.findAll(it.code).count() }
             assertEquals(
-                "EmergencyGate 已登记为已接线，L21 的手抄件数与登记不符：多一处＝又散成两处；" +
-                    "少一处＝有人已开始收敛，请把 REMAINING_L21_COPIES 同步改成实数（收敛到 0 即清零）",
+                "EmergencyGate 已登记为已接线，L21 的手抄件数与登记不符：多一处＝又散成两处（先登记再交）；" +
+                    "少一处＝有人已开始收敛，请同步更 L21_COPY_REGISTRY（销行或改行号，收敛到 0 即清空整表）",
                 REMAINING_L21_COPIES,
                 copies,
             )
@@ -371,6 +422,38 @@ class LawSourceWiringGateTest {
         )
         mainSources.filter { it.name.startsWith(LAW_PATH) }.forEach {
             assertFalse("law/ 里出现了手抄的字面判据：${it.name}", l21Copies.containsMatchIn(it.code))
+        }
+    }
+
+    // ── 5.5 L21 登记制：三条各有一行、行号跟盘走（319：不许留「约等于清零」的模糊话） ──
+
+    @Test
+    fun L21登记制三条各有一行且行号与内容跟盘走() {
+        assertEquals(
+            "登记表条数与已知手抄实数不符：多一条＝新散一处（先查证再登记）；少一条＝收敛了（同步销行）",
+            3,
+            L21_COPY_REGISTRY.size,
+        )
+        L21_COPY_REGISTRY.forEach { c ->
+            listOf(
+                c.what to "登记了什么",
+                c.whyRemain to "为什么不能清零",
+                c.clearedBy to "谁来清",
+            ).forEach { (text, what) ->
+                assertTrue(
+                    "L21 手抄登记 ${c.where.substringAfterLast('/')}:${c.line} 的「$what」是空话：登记制三格缺一即红",
+                    text.isNotBlank(),
+                )
+            }
+            val raw = mainSources.firstOrNull { it.name == c.where }
+                ?: error("登记的文件不存在了：${c.where}（三处收敛完成了？把这张表同步清掉并收紧门禁）")
+            val line = raw.raw.split("\n").getOrNull(c.line - 1)
+                ?: error("登记的行号超出 ${c.where} 的行数：${c.line}（行号漂了＝账没跟盘走，把 line 改成实数再交）")
+            assertTrue(
+                "登记的行号与判据对不上：${c.where}:${c.line} 现在不是 L21 手抄那行" +
+                    "（行号漂了＝先更账：把 line 改成实数再交，不许顺手删行）",
+                l21Copies.containsMatchIn(line),
+            )
         }
     }
 
