@@ -228,20 +228,10 @@ internal object PlanPledgeAmendRules {
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i)
                 ?: return AmendParse.Error("amend 第 ${i + 1} 条不是对象：要 {kind, text, to?/accept?/reason?}。")
-            val kind = AmendKind.ofWire(o.optString("kind"))
-                ?: return AmendParse.Error(
-                    "amend 第 ${i + 1} 条 kind「${o.optString("kind")}」只认 add / revise / drop。",
-                )
-            val text = o.optString("text").trim().take(PlanRules.MAX_TEXT_CHARS)
-            if (text.isEmpty()) return AmendParse.Error("amend 第 ${i + 1} 条缺「text」：按计划条目原文写。")
-            val to = o.optString("to").trim().take(PlanRules.MAX_TEXT_CHARS)
-            val accept = o.optString("accept").trim().take(PlanPledgeRules.MAX_ACCEPT_CHARS)
-            if (kind == AmendKind.REVISE && to.isEmpty() && accept.isEmpty()) {
-                return AmendParse.Error(
-                    "amend 第 ${i + 1} 条是 revise 却没给 to 也没给 accept：改判据要写清改成什么。",
-                )
+            when (val parsed = parseOp(o, i + 1)) {
+                is OpParse.Ok -> ops += parsed.op
+                is OpParse.Bad -> return AmendParse.Error(parsed.why)
             }
-            ops += AmendOp(kind, text, to, accept, o.optString("reason").trim().take(PlanPledgeRules.MAX_WHY_CHARS))
         }
         val kinds = ops.map { it.kind }.distinct()
         if (kinds.size > 1) {
@@ -253,6 +243,26 @@ internal object PlanPledgeAmendRules {
             ops = ops,
             notices = notices,
         )
+    }
+
+    /** [parseAmend] 的一条 op。 */
+    private sealed interface OpParse {
+        data class Ok(val op: AmendOp) : OpParse
+        data class Bad(val why: String) : OpParse
+    }
+
+    /** 读一条 op：写法不合格就原文给理由（[parseAmend] 直接回灌，不静默丢条）。 */
+    private fun parseOp(o: JSONObject, index: Int): OpParse {
+        val kind = AmendKind.ofWire(o.optString("kind"))
+            ?: return OpParse.Bad("amend 第 $index 条 kind「${o.optString("kind")}」只认 add / revise / drop。")
+        val text = o.optString("text").trim().take(PlanRules.MAX_TEXT_CHARS)
+        if (text.isEmpty()) return OpParse.Bad("amend 第 $index 条缺「text」：按计划条目原文写。")
+        val to = o.optString("to").trim().take(PlanRules.MAX_TEXT_CHARS)
+        val accept = o.optString("accept").trim().take(PlanPledgeRules.MAX_ACCEPT_CHARS)
+        if (kind == AmendKind.REVISE && to.isEmpty() && accept.isEmpty()) {
+            return OpParse.Bad("amend 第 $index 条是 revise 却没给 to 也没给 accept：改判据要写清改成什么。")
+        }
+        return OpParse.Ok(AmendOp(kind, text, to, accept, o.optString("reason").trim().take(PlanPledgeRules.MAX_WHY_CHARS)))
     }
 
     // ── 判定（三条正路各走各的门）───────────────────────────────────────────
@@ -330,29 +340,38 @@ internal object PlanPledgeAmendRules {
         val dropped = ops.filter { it.kind == AmendKind.DROP }.map { it.text }.toSet()
         val both = revised.intersect(dropped)
         if (both.isNotEmpty()) return "「${both.first()}」既要改又要删：先定这一项到底还要不要。"
-        ops.forEach { op ->
-            when (op.kind) {
-                AmendKind.ADD -> if (op.text in onSheet || op.text in ctx.superseded) {
-                    return "「${op.text}」本来就在第 ${ctx.snapshot.version} 版上，不是追加。"
-                }
-                AmendKind.REVISE -> if (op.text !in onSheet) {
-                    return "要改的「${op.text}」不在第 ${ctx.snapshot.version} 版上：改判据要先说出改哪一项。"
-                }
-                AmendKind.DROP -> when {
-                    op.text in ctx.dropped -> return "「${op.text}」已经记过 DROPPED：不要了只记一次。"
-                    // 补记账：上一版被悄悄摘掉的项（312 的重签老路没有 DROPPED 这个概念），
-                    // 至今欠着那张凭据——补记它，表不动，只补「不要了＋原因＋从第几版起」
-                    op.text !in onSheet && op.text !in ctx.owed ->
-                        return "要删的「${op.text}」不在第 ${ctx.snapshot.version} 版上，也不在历版里：删不了没约过的事。"
-                    else -> Unit
-                }
-            }
-        }
+        ops.firstNotNullOfOrNull { opProblem(it, onSheet, ctx) }?.let { return it }
         // 改完之后重名 ⇒ 结项按原文寻址会串账
         val after = nextEntries(texts.map { PledgeEntry(it, it) }, ops).map { it.text }
         val clash = after.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
         if (clash.isNotEmpty()) return "变更后有两项同名（「${clash.first()}」）：结项按条目原文对账，会串。"
         return null
+    }
+
+    /** 单条 op 对不对得上这一版；对不上那一句就是回灌原文。 */
+    private fun opProblem(op: AmendOp, onSheet: Set<String>, ctx: AmendContext): String? = when (op.kind) {
+        AmendKind.ADD ->
+            if (op.text in onSheet || op.text in ctx.superseded) {
+                "「${op.text}」本来就在第 ${ctx.snapshot.version} 版上，不是追加。"
+            } else {
+                null
+            }
+        AmendKind.REVISE ->
+            if (op.text !in onSheet) {
+                "要改的「${op.text}」不在第 ${ctx.snapshot.version} 版上：改判据要先说出改哪一项。"
+            } else {
+                null
+            }
+        AmendKind.DROP -> dropProblem(op.text, onSheet, ctx)
+    }
+
+    private fun dropProblem(text: String, onSheet: Set<String>, ctx: AmendContext): String? = when {
+        text in ctx.dropped -> "「$text」已经记过 DROPPED：不要了只记一次。"
+        // 补记账：上一版被悄悄摘掉的项（312 的重签老路没有 DROPPED 这个概念），
+        // 至今欠着那张凭据——补记它，表不动，只补「不要了＋原因＋从第几版起」
+        text !in onSheet && text !in ctx.owed ->
+            "要删的「$text」不在第 ${ctx.snapshot.version} 版上，也不在历版里：删不了没约过的事。"
+        else -> null
     }
 
     /** 申报的变更与本版计划是否一致（接线把落库那张表一起给，这里只核口径）。 */
@@ -631,35 +650,44 @@ internal object PlanPledgeAmendRules {
         rows.forEach { row ->
             if (row.optString("event") != EVENT_AMEND) return@forEach
             if (row.optBoolean("asked", false)) asks++
-            val channel = ResignChannel.entries.firstOrNull { it.wire == row.optString("channel") } ?: ResignChannel.HUMAN
+            val channel = channelOf(row.optString("channel"), ResignChannel.HUMAN)
             val by = AmendBy.ofWire(row.optString("by")) ?: AmendBy.MODEL
             val version = row.optInt("version", 0)
             val at = row.optLong("at", 0L)
-            val arr = row.optJSONArray("dropped")
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    drops += DropRecord(
-                        text = o.optString("text"),
-                        reason = o.optString("reason"),
-                        version = o.optInt("version", version),
-                        by = AmendBy.ofWire(o.optString("by")) ?: by,
-                        channel = ResignChannel.entries.firstOrNull { it.wire == o.optString("channel") } ?: channel,
-                        atMs = o.optLong("at", at),
-                    )
-                }
-            }
-            val ops = row.optJSONArray("ops")
-            if (ops != null) {
-                for (i in 0 until ops.length()) {
-                    val o = ops.optJSONObject(i) ?: continue
-                    if (o.optString("kind") == AmendKind.REVISE.wire) {
-                        val to = o.optString("to")
-                        if (to.isNotEmpty()) superseded[o.optString("text")] = to
-                    }
-                }
-            }
+            drops += dropsOf(row, version, by, channel, at)
+            supersededOf(row).forEach { (from, to) -> superseded[from] = to }
         }
         return AmendSeed(drops, superseded, asks)
+    }
+
+    private fun channelOf(wire: String, fallback: ResignChannel): ResignChannel =
+        ResignChannel.entries.firstOrNull { it.wire == wire } ?: fallback
+
+    /** 一行的 DROPPED 清单（缺字段按本行兜底，与 [encodeChange] 的写法对上）。 */
+    private fun dropsOf(row: JSONObject, version: Int, by: AmendBy, channel: ResignChannel, at: Long): List<DropRecord> {
+        val arr = row.optJSONArray("dropped") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            DropRecord(
+                text = o.optString("text"),
+                reason = o.optString("reason"),
+                version = o.optInt("version", version),
+                by = AmendBy.ofWire(o.optString("by")) ?: by,
+                channel = channelOf(o.optString("channel"), channel),
+                atMs = o.optLong("at", at),
+            )
+        }
+    }
+
+    /** 一行的改判据顶替关系（原文 → 改成什么）。 */
+    private fun supersededOf(row: JSONObject): Map<String, String> {
+        val ops = row.optJSONArray("ops") ?: return emptyMap()
+        return (0 until ops.length()).mapNotNull { i ->
+            val o = ops.optJSONObject(i) ?: return@mapNotNull null
+            if (o.optString("kind") != AmendKind.REVISE.wire) return@mapNotNull null
+            val to = o.optString("to")
+            if (to.isEmpty()) return@mapNotNull null
+            o.optString("text") to to
+        }.toMap()
     }
 }
