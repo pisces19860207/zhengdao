@@ -127,6 +127,15 @@ internal object AnomalyFeed {
     /** 本连击段是否出现过不可逆动作。 */
     private var streakSawIrreversible = false
 
+    /** 361 批：同任务 FAIL 计数（任务锚 → 本任务段已攒的 FAIL 次数；发事件后该任务归零）。 */
+    private val taskStreaks = LinkedHashMap<String, Int>()
+
+    /** 361 批：本任务段含过不可逆动作的任务锚。 */
+    private val taskSawIrreversible = HashSet<String>()
+
+    /** 同任务计数的内存上界（长会话不许把这张表撑成无底洞；超了按最老的先出）。 */
+    private const val TASK_CAP = 256
+
     /**
      * 报一类事实（账实不符／越权越界这两类走这里）。
      *
@@ -207,6 +216,58 @@ internal object AnomalyFeed {
     }
 
     /**
+     * 361 批 · **同任务**口径的 FAIL 计数（CASCADE_FAILURE 的事件源接线）：
+     * 同一任务（[taskId]，＝账行 id 的 op 段／会话键）第 [FAIL_STREAK_LEN] 次 FAIL
+     * 且本任务段**含过不可逆动作** ⇒ 发 [AnomalyFactKind.FAIL_STREAK] 事件并发后该任务归零。
+     *
+     * 与 [observeExecutionFail] 的分工：那条数的是**全局连击**（成功打断）；这条数的是
+     * **同一个任务攒的失败**（别的任务的成功不替它打断—— CASCADE 的口径是"同一件事
+     * 一错再错"，不是"全流程最近三笔都不顺"）。同样**无出处不发**：出处过不了
+     * [provenanceAnchor] ⇒ 不计数；任务锚空白同样不计数（连"是哪个任务"都说不出的失败
+     * 攒不到 CASCADE 上）。
+     *
+     * @param taskId 任务锚（同任务计数与事件机器键 `task:` 的来源）
+     * @param irreversible 这一笔失败的动作是不是不可逆（本任务段出现过 true 即算"含不可逆"）
+     */
+    @Synchronized
+    fun observeTaskFail(
+        taskId: String,
+        irreversible: Boolean,
+        provenance: String,
+        nowMs: Long = System.currentTimeMillis(),
+        evidence: List<String> = emptyList(),
+    ): AnomalyFactEvent? {
+        val id = taskId.trim()
+        if (id.isEmpty()) {
+            RunLog.log("抱朴灾异：无任务锚的 FAIL 不计数（出处=「${provenance.take(40)}」）")
+            return null
+        }
+        val src = provenanceAnchor(provenance)
+        if (src == null) {
+            RunLog.log("抱朴灾异：无出处的 FAIL 不计数（出处=「${provenance.take(40)}」）")
+            return null
+        }
+        val streak = (taskStreaks[id] ?: 0) + 1
+        taskStreaks[id] = streak
+        if (taskStreaks.size > TASK_CAP) evictOldestTask()
+        if (irreversible) taskSawIrreversible.add(id)
+        if (streak < FAIL_STREAK_LEN || id !in taskSawIrreversible) return null
+        val event = emit(
+            AnomalyFactEvent(
+                id = "af:$nowMs:${nextSeq()}",
+                atMs = nowMs,
+                kind = AnomalyFactKind.FAIL_STREAK,
+                provenance = src,
+                gist = "任务 $id 第 $streak 次 FAIL，本任务段含不可逆动作（CASCADE_FAILURE 口径）",
+                evidence = evidence + listOf("task:$id", "streak:$streak", "irreversible:true"),
+            ),
+        )
+        taskStreaks.remove(id)
+        taskSawIrreversible.remove(id)
+        return event
+    }
+
+    /**
      * 出处锚的**可执行判据**：非空＋带冒号＋冒号后带数字。
      *
      * 账行 id（`op:…`／`em:…`／`sr:…`）与 文件:行（`agent/RunEngine.kt:1453`）都长这样；
@@ -243,6 +304,15 @@ internal object AnomalyFeed {
         seq = 0
         failStreak = 0
         streakSawIrreversible = false
+        taskStreaks.clear()
+        taskSawIrreversible.clear()
+    }
+
+    /** 同任务计数表超上界时按最老的先出（LinkedHashMap 迭代序＝插入序）。 */
+    private fun evictOldestTask() {
+        val eldest = taskStreaks.keys.firstOrNull() ?: return
+        taskStreaks.remove(eldest)
+        taskSawIrreversible.remove(eldest)
     }
 
     /** 落账（内存照记，落盘走 scout 的 [LedgerFanout]——与 EmergencyWiring 同一口径）。 */

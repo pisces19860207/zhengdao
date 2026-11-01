@@ -27,6 +27,11 @@
 // 七条判定源里**三条已接线**：315 把 EmergencyGate／EmergencyClocks 接进 inspect/EmergencyWiring.kt
 // （紧急闸：紧急卡必人批＋止损 0 秒＋24h 追认），WIRED 按点号调用数逐字登记。
 // OpinionWiring ×1，收敛归 298，见 REMAINING_L21_COPIES）——那是"新增接线"不顶替旧手抄的口径。
+// 361 更账：325/332 已把两处事件流的宿主并进 main，影子适配器（inspect/ShadowAdapter.kt）
+// 把事实喂进判定层——L29（AnomalyGate）两处 `classify`（账实 MISMATCH／同任务三连 FAIL）、
+// L32（AccountabilityGate）一处 `decide`（双盲 DISAGREEMENT 的认定），BOOKED 余四条；
+// 名册纪律测试改**双向合拢**：flow=false ⇒ 不许在 WIRED（339 原格），flow=true ⇒ 必须在 WIRED
+// （真接了流还赖在 BOOKED ＝ 挂账隐身，手改两边都红）。
 // 剩下六条仍挂账。
 // 319 更账（基线 8061da8b）：L21 登记制从「一个数」升成「一张表」（L21_COPY_REGISTRY）——
 // 三条手抄各一行（文件:行＋登记了什么＋为什么不能清零＋谁来清），行号钉实、漂了即红；
@@ -142,6 +147,18 @@ class LawSourceWiringGateTest {
             entry = "ProgressivePenalty",
             sites = listOf("com/example/zhengdao/baopu/verify/ThreeCourts.kt" to 1),
         ),
+        // 361：L29 灾异判定（AnomalyGate）由影子适配器接线——账实核对 MISMATCH 与同任务
+        // 三连 FAIL 两处事实各一处喂 `AnomalyGate.classify`（339 机检 flow=true 放行）。
+        Wired(
+            entry = "AnomalyGate",
+            sites = listOf("com/example/zhengdao/baopu/inspect/ShadowAdapter.kt" to 2),
+        ),
+        // 361：L32 追责收紧（AccountabilityGate）由双盲重做接线——影子 DISAGREEMENT 的认定
+        // 一处喂 `AccountabilityGate.decide`（提出位自动真、御批确认位留给人；机检放行）。
+        Wired(
+            entry = "AccountabilityGate",
+            sites = listOf("com/example/zhengdao/baopu/inspect/ShadowAdapter.kt" to 1),
+        ),
     )
 
     private val BOOKED = listOf(
@@ -177,23 +194,6 @@ class LawSourceWiringGateTest {
             owner = "306（步键，2026-10-31 批示：L22→306）",
             blockedBy = "撤销通道已存在但没有撤销单：judge 要五栏事实，现路径只带三元组；" +
                 "补五栏＝新落盘格式，与 208 写入格式那条红线撞在同一张卡上",
-        ),
-        Booked(
-            entry = "AnomalyGate",
-            law = "AnomalyGate 的 classify（L29 灾异四类定义：命中任一且不可局部回滚且有证据 ⇒ 必须进紧急通道）",
-            host = "灾异证据源的观测点（损毁计数／泄露留痕／失败连击——应落在 inspect/NocturnalPatrol.kt 的灾异通道与勘验层一带）",
-            owner = "323（判定＋门禁本批交；证据源接线另行立项）",
-            blockedBy = "灾异的证据源在生产里还不存在（NocturnalPatrol 只管巡检额度，没有损毁/泄露/不可用的计数器）；" +
-                "硬造一个调用点＝假接（271-补 治的就是这个病）。「进紧急通道」的另一半口径已接线：" +
-                "L29 门禁逐字复合 EmergencyGate.isEmergencyCard 与 EmergencyWiring 的 Opinion 投影",
-        ),
-        Booked(
-            entry = "AccountabilityGate",
-            law = "AccountabilityGate 的 decide（L32 追责收紧：第一次放行／同类第二次收紧两级／收紧后再犯永久须御批）",
-            host = "复盘与双盲复核的产出落点（认定应从 verify/ThreeCourts.kt 的会审产出落下来）",
-            owner = "323（判定＋门禁本批交；双盲复核接线另行立项）",
-            blockedBy = "认定需双盲复核任一方提出＋御批确认，这两步还没有生产调用方；" +
-                "现在接进去就是程序自定罪（L32 判据①的第一条负例）",
         ),
     )
 
@@ -316,8 +316,15 @@ class LawSourceWiringGateTest {
                         "BOOKED→WIRED 只能由本机检放行，不许手改名册硬接",
                     entry !in wired,
                 )
+            } else {
+                // 361 的反向格：机检 flow=true ⇒ 闸必须**自动**从 BOOKED 放到 WIRED——
+                // 真接了流还赖在 BOOKED ＝ 挂账隐身（接线明明活着，账上却说没人调）。
+                assertTrue(
+                    "名册纪律（361）：事件流已在生产里（机检 flow=true）⇒ $entry 必须已放行到 WIRED 并逐字登记调用点；" +
+                        "真接了流还赖在 BOOKED ＝ 挂账隐身（不许把已接线的闸按在未接线名册上装死）",
+                    entry in wired,
+                )
             }
-            // hasFlow==true 而还挂在 BOOKED ⇒ 「挂账不许隐身」当场红（判据已在，两向合拢）。
         }
     }
 
