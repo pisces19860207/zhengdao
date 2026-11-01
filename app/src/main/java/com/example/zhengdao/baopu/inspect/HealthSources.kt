@@ -14,6 +14,8 @@
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.BaopuDb
+import com.example.zhengdao.baopu.DecisionLedger
+import com.example.zhengdao.baopu.policy.SelfDecideLog
 import java.io.File
 
 /**
@@ -321,5 +323,50 @@ internal object HealthSources {
                 skipReason = if ((s?.skipped ?: 0) > 0) "SKIPPED ${s!!.skipped} 次" else null,
             )
         }
+    }
+
+    // ── 331：自决账的三读数（只读；分母全是外部事实）────────────────────────
+
+    /** 自决账文件名（331）：一行一张自决单／一条必须问／一条推翻。 */
+    const val SELF_LOG = "自决单.jsonl"
+
+    /**
+     * 读自决账原文（只读，带上限）。
+     *
+     * 三态：文件不在 ⇒ 空表（真的一笔没记，不是"看不见"）；读不动 ⇒ null（测不出来）；
+     * 否则原文行。**不解析、不猜**——解析归 [SelfDecideLog.parse]，本层只搬字节。
+     */
+    fun selfLines(root: File, cap: Int = OUTPUT_LINES): List<String>? {
+        val file = File(root, SELF_LOG)
+        if (!file.isFile) return emptyList()
+        return runCatching {
+            file.bufferedReader(Charsets.UTF_8).use { r ->
+                val out = ArrayList<String>()
+                while (out.size < cap) {
+                    out += r.readLine() ?: break
+                }
+                out
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * 三读数（自决率／误自决率／打扰比）＋ 跨账缺口，一行一条交给体检单。
+     *
+     * 分母全是**外部事实**：自决账的行数、208 决策账的行数。
+     * **不取意见条数**（`Opinion` 是判据自己的产物，拿它当分母等于自己量自己）。
+     *
+     * @param ledgerTotal 208 决策账行数；null ＝ 现数（[outputLines] 只读、带上限）
+     */
+    fun selfReadings(root: File, ledgerTotal: Int? = null): List<String> {
+        val lines = selfLines(root)
+            ?: return listOf("自决读数：自决账读不动（未取样），三率都不印")
+        val log = SelfDecideLog.parse(lines)
+        val total = ledgerTotal ?: outputLines(root, DecisionLedger.FILE_NAME)
+        val gaps = ArrayList<String>()
+        if (lines.size > log.size) {
+            gaps += "自决账有 ${lines.size - log.size} 行读不懂（按坏行丢弃，不进三率）"
+        }
+        return log.readings(total).lines() + gaps
     }
 }
