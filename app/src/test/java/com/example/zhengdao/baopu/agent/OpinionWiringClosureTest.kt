@@ -39,15 +39,16 @@ class OpinionWiringClosureTest {
     }
 
     @Test
-    fun `同事件重试_并入不重复消耗预算_计数加一`() {
+    fun `未处置的同事件再观察_照常判定_预算照挡_不算重试`() {
+        // 修订（收窄到终态）：未处置（OPEN/DEFERRED）的再次观察是**新的意见发生**，
+        // 照常过预算（同轮第二张被挡）——旧预算语义全保留；只有已处置后的重试才短路。
         val r1 = OpinionWiring.onOpinion(outside("risk:outside_workspace"), tool = "write_file", callId = "c1")
         assertEquals(OpinionDecision.POP, r1.decision)
-        assertEquals(1, OpinionWiring.state().second) // 御案额度只吃一张
-        val r2 = OpinionWiring.onOpinion(outside("risk:outside_workspace"), tool = "write_file", callId = "c2")
-        assertEquals(1, OpinionWiring.state().second) // 重试不再吃额度
-        assertEquals(1, OpinionWiring.eventRetryCount())
-        assertEquals(1, OpinionWiring.distinctEventCount())
-        assertEquals(r1.id, r2.id) // 并回首条
+        val r2 = OpinionWiring.onOpinion(outside("risk:outside_workspace"), tool = "write_file2", callId = "c2")
+        assertEquals("同轮第二张照旧被预算挡下", OpinionDecision.DEFER, r2.decision)
+        assertEquals("未处置的重试不算重试", 0, OpinionWiring.eventRetryCount())
+        assertEquals(2, OpinionWiring.replay().size) // 两次都落账
+        assertEquals(1, OpinionWiring.distinctEventCount()) // 但仍是同一事件
     }
 
     @Test

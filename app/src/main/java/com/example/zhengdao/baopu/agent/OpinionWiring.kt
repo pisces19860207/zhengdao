@@ -528,19 +528,22 @@ internal object OpinionWiring {
                 return merged
             }
         }
-        // 336 P2 · 事件键幂等（口径 §一）：同一**事件**的重试提交并入首条——
-        // 已处置/已结案的事件原样返回（不弹、不记新账）；未处置的并证据进首条（预算不重复消耗）。
+        // 336 P2（修订：收窄到终态）· 事件键幂等只拦**已处置/已结案**之后的重试——
+        // 用户已经说过"不允许"的动作，重试不再弹卡、不再记账、不再拦验收（282 D 组死循环本体）。
+        // OPEN/DEFERRED 的再次观察**照常走判定**：预算判据（同轮 ≤1／当日 ≤3）继续挡——
+        // OpinionWiringTest 的预算家族（fillDay／每日三张／急案豁免）钉的就是这条旧语义，
+        // 宽版幂等把它们全打红了（每次提交是新的意见发生，不是重试）。
         val eventKey = OpinionMerger.eventKeyOf(opinion)
         eventStates[eventKey]?.let { st ->
-            eventRetries += 1
-            val first = firstRulings[eventKey]!!
-            RunLog.log("抱朴意见：事件重试并入（$eventKey｜相位=${st.wire}）｜${opinion.evidence.firstOrNull()}")
-            if (OpinionLifecycle.blocksAcceptance(st)) {
-                val merged = first.copy(opinion = mergeOpinion(first.opinion, opinion))
-                firstRulings[eventKey] = merged
-                return merged
+            if (!OpinionLifecycle.blocksAcceptance(st)) {
+                eventRetries += 1
+                RunLog.log(
+                    "抱朴意见：事件重试（已处置，原样返回）($eventKey｜相位=${st.wire}）｜" +
+                        opinion.evidence.firstOrNull(),
+                )
+                return firstRulings[eventKey]!!
             }
-            return first
+            // OPEN/DEFERRED：不短路——往下走正常判定，生命周期随判定结果推进。
         }
         // 同轮同事件只判一次（同一条意见被两个工具撞出来不该记两笔）
         val key = "${opinion.source.name}:${opinion.gist}:$tool:${opinion.evidence.first()}"
