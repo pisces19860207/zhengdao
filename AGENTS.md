@@ -71,3 +71,10 @@ python tools\zd.py preflight -k <功能关键词> `
 | 终端 / rootfs 出问题怎么排查 | **终端已搬出** ⇒ 去 `zhengdao-term` 仓；历史排查记录在 `..\_zd-private\docs\milestones\证道-故障排查手册.md` |
 | 终端为什么只有一个会话 | 同上，属**新仓**话题；历史分析在 `..\_zd-private\docs\milestones\证道-终端单会话模型.md` |
 | 版本计划、里程碑、验收 | `..\_zd-private\docs\milestones\`、`..\_zd-private\docs\acceptance\` |
+
+## 工具去工具房拿（2026-11-01）
+本机所有 agent 共用一个工具房：`..\_zd-toolroom\`（索引 `_index.md` 同目录 `_索引.md`）。
+· 要工具先来这儿拿，**别在本仓再造一套**；
+· 本仓 `tools/` 里的脚本**跟代码走**（要过 review），不搬进工具房；
+· 一次性脚本用完归档，不要散落在项目根目录；
+· 构建锁：`powershell -ExecutionPolicy Bypass -File ..\_zd-toolroom\02-build\build-lock.ps1 -Run ":app:testDebugUnitTest"`。
