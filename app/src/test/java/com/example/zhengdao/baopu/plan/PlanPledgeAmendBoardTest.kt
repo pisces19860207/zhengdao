@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.plan.PlanPledgeRules.EndKind
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.EndingDeclaration
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.ResignChannel
 import com.example.zhengdao.baopu.scout.UnfinishedLedger
+import com.example.zhengdao.baopu.verify.GapFeedback
 import java.io.File
 import java.nio.file.Files
 import org.json.JSONArray
@@ -37,6 +38,7 @@ class PlanPledgeAmendBoardTest {
     @Before
     fun setUp() {
         PlanPledgeBoard.resetForTest()
+        GapFeedback.resetForTest()
         root = Files.createTempDirectory("pledge-amend").toFile()
         PlanPledgeBoard.attach(listOf(root))
     }
@@ -44,6 +46,7 @@ class PlanPledgeAmendBoardTest {
     @After
     fun tearDown() {
         PlanPledgeBoard.resetForTest()
+        GapFeedback.resetForTest()
         root.deleteRecursively()
     }
 
@@ -76,7 +79,8 @@ class PlanPledgeAmendBoardTest {
         incoming: List<PlanItem>? = null,
         atMs: Long = 2_000L,
         reason: String = "路上想清楚了",
-    ): AmendDecision = PlanPledgeBoard.amend(incoming, amendArgs(ops, reason = reason), channel, atMs)
+        by: String = "user",
+    ): AmendDecision = PlanPledgeBoard.amend(incoming, amendArgs(ops, by = by, reason = reason), channel, atMs)
 
     private fun add(text: String, accept: String = ""): JSONObject =
         if (accept.isEmpty()) opJson("add", text) else opJson("add", text, "accept" to accept)
@@ -153,6 +157,49 @@ class PlanPledgeAmendBoardTest {
         assertNotNull(PlanPledgeBoard.pendingAmend())
         amend(listOf(add("戊")), channel = null)
         assertEquals("换了申报才递第二张", 2, PlanPledgeBoard.cardsHandedOut())
+    }
+
+    @Test
+    fun `判据4_问满三轮_第4轮转检查点等待_不递卡`() {
+        PlanPledgeBoard.freeze(snap("甲", "乙", "丙", "丁", "戊"))
+        listOf("己", "庚", "辛").forEachIndexed { i, text ->
+            applied(amend(listOf(add(text)), channel = ResignChannel.HUMAN, atMs = 2_000L + i))
+        }
+        assertEquals("三轮都落到板上了", 3, PlanPledgeBoard.asksUsed())
+        assertEquals("这三轮直接人批，没递卡", 0, PlanPledgeBoard.cardsHandedOut())
+        val before = PlanPledgeBoard.activeSnapshot()!!.version
+
+        val d = amend(listOf(add("壬")), channel = null, atMs = 5_000L, by = "model")
+        assertTrue("第 4 轮不再递卡：$d", d is AmendDecision.CheckpointWait)
+        val wait = d as AmendDecision.CheckpointWait
+        assertEquals("板一个字节不改", before, PlanPledgeBoard.activeSnapshot()!!.version)
+        assertEquals("不数第 4 张卡", 0, PlanPledgeBoard.cardsHandedOut())
+        assertEquals("挂起的那份申报在板上", wait, PlanPledgeBoard.pendingCheckpoint())
+        assertTrue("缺口记进差距板", GapFeedback.pending().any { it.gapKey == wait.gap.gapKey })
+        assertEquals("缺口落在第 4 次（到线交人）", 4, wait.gap.attempts)
+        assertEquals("变更账只有前三行", 3, changeRows().size)
+
+        assertTrue(
+            "她自己提的变更照常出卡",
+            amend(listOf(add("癸")), channel = null, atMs = 6_000L, by = "user") is AmendDecision.NeedUser,
+        )
+        assertEquals("这一张才是卡", 1, PlanPledgeBoard.cardsHandedOut())
+    }
+
+    @Test
+    fun `判据4_被拒的卡也算一轮_递满三张后模型再提就转检查点`() {
+        PlanPledgeBoard.freeze(snap("甲", "乙", "丙", "丁", "戊"))
+        listOf("己", "庚", "辛").forEachIndexed { i, text ->
+            val d = amend(listOf(add(text)), channel = null, atMs = 2_000L + i, by = "model")
+            assertTrue("这三张都是问她的卡：$d", d is AmendDecision.NeedUser)
+        }
+        assertEquals("递了三张卡", 3, PlanPledgeBoard.cardsHandedOut())
+        assertEquals("一次也没批", 0, PlanPledgeBoard.asksUsed())
+
+        val d = amend(listOf(add("壬")), channel = null, atMs = 5_000L, by = "model")
+        assertTrue("三张都没批也算问满：$d", d is AmendDecision.CheckpointWait)
+        assertEquals("不递第 4 张", 3, PlanPledgeBoard.cardsHandedOut())
+        assertTrue("缺口说清问满三轮", (d as AmendDecision.CheckpointWait).gap.evidence.any { it.contains("3/3") })
     }
 
     @Test

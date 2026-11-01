@@ -16,6 +16,7 @@ package com.example.zhengdao.baopu.plan
 import com.example.zhengdao.baopu.agent.AskUserOption
 import com.example.zhengdao.baopu.agent.AskUserRequest
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendChange
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendDecision
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendKind
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendOp
 
@@ -136,6 +137,18 @@ internal object PlanPledgeAmendCards {
         "【变更未生效】用户没有批这次变更：计划与军令状都保持第 ${snapshot.version} 版" +
             "（${snapshot.entries.size} 项，结项门照旧）。请按现役那一版继续推进；" +
             "要变更先在对话里问清，不要重发同一份申报。"
+
+    /**
+     * 检查点等待的回灌（第 4 轮不再递卡）：问题挂在检查点，模型继续做不依赖它的部分。
+     * 文案只报事实与出路，不带价值判断词（同 `PlanPledgeRules.hasValueJudgment` 那把尺）。
+     */
+    fun checkpointAck(wait: AmendDecision.CheckpointWait): String = buildString {
+        append("【检查点等待】这份军令状的一轮变更已经问满 ")
+        append(wait.change.budget.maxAsks)
+        append(" 轮，这次不再递第 ")
+        append(wait.change.budget.maxAsks + 1)
+        append(" 张卡：变更挂在检查点上，问题等她回话。先推进不依赖这次变更的项，不要重发同一份申报。")
+    }
 
     /** 被本层拒掉的回灌（写法不对／通道不对／超预算想自己认）。 */
     fun rejectedAck(message: String): String = "【变更被拒】$message"

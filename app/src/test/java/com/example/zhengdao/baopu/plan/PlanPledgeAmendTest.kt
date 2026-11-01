@@ -70,11 +70,12 @@ class PlanPledgeAmendTest {
         superseded: Set<String> = emptySet(),
         owed: Set<String> = emptySet(),
         asksUsed: Int = 0,
+        cardsAsked: Int = 0,
         by: AmendBy = AmendBy.USER,
         reason: String = "路上想清楚了",
         atMs: Long = 2_000L,
     ): AmendDecision = PlanPledgeAmendRules.decide(
-        AmendContext(s, s.entries.size, asksUsed, endings, dropped, superseded, owed),
+        AmendContext(s, s.entries.size, asksUsed, endings, dropped, superseded, owed, cardsAsked),
         ops, by, reason, incoming, channel, atMs,
     )
 
@@ -86,6 +87,11 @@ class PlanPledgeAmendTest {
     private fun needUser(d: AmendDecision): AmendDecision.NeedUser {
         assertTrue("预期要她点头，实际 $d", d is AmendDecision.NeedUser)
         return d as AmendDecision.NeedUser
+    }
+
+    private fun checkpoint(d: AmendDecision): AmendDecision.CheckpointWait {
+        assertTrue("预期转检查点等待，实际 $d", d is AmendDecision.CheckpointWait)
+        return d as AmendDecision.CheckpointWait
     }
 
     private fun rejected(d: AmendDecision): String {
@@ -387,6 +393,50 @@ class PlanPledgeAmendTest {
         assertTrue(
             "用满之后再动计划只能当面问",
             judge(s, listOf(add("己")), asksUsed = 3, channel = ResignChannel.SELF) is AmendDecision.Reject,
+        )
+    }
+
+    @Test
+    fun `判据4_自追加余量两条_第三条被拒`() {
+        assertEquals("用户 2026-11-01 定的数", 2, PlanPledgeAmendRules.SELF_ADD_MARGIN)
+        val s = snap("甲", "乙", "丙", "丁", "戊") // 立状 5 项 ⇒ 最多 7 项
+        val two = applied(judge(s, listOf(add("己"), add("庚")), channel = ResignChannel.SELF))
+        assertEquals("余量内的两条自决可过", 7, two.outcome.snapshot.entries.size)
+        val msg = rejected(judge(s, listOf(add("己"), add("庚"), add("辛")), channel = ResignChannel.SELF))
+        assertTrue("第三条超出余量 ⇒ 拒：$msg", msg.contains("时间预算"))
+        assertTrue("要说清不许自己认下来：$msg", msg.contains("不许自己认下来"))
+    }
+
+    @Test
+    fun `判据4_第4轮不再问_转检查点等待`() {
+        assertEquals("用户 2026-11-01 定的数", 3, PlanPledgeAmendRules.MAX_CLARIFY_ROUNDS)
+        val s = snap("甲", "乙", "丙", "丁", "戊")
+        val d = judge(s, listOf(add("己")), asksUsed = 3, by = AmendBy.MODEL)
+        assertFalse("第 4 轮不许再递卡：$d", d is AmendDecision.NeedUser)
+        val wait = checkpoint(d)
+        assertEquals("挂起的就是这一份申报", listOf(AmendKind.ADD), wait.change.kinds)
+        assertTrue("缺口记下问满几轮：${wait.gap.evidence}", wait.gap.evidence.any { it.contains("3/3") })
+        assertEquals("attempts 落在第 4 次（到线交人）", PlanPledgeAmendRules.MAX_CLARIFY_ROUNDS + 1, wait.gap.attempts)
+        val ack = PlanPledgeAmendCards.checkpointAck(wait)
+        assertTrue("回灌要说清不再递第 4 张卡：$ack", ack.contains("不再递第 4 张卡"))
+        assertTrue("回灌要指出去做不依赖它的部分：$ack", ack.contains("不依赖这次变更的项"))
+        assertFalse("回灌不带价值判断词", PlanPledgeRules.hasValueJudgment(ack))
+
+        assertTrue(
+            "她自己提的变更照常出卡：确认不是磨她",
+            judge(s, listOf(add("己")), asksUsed = 3, by = AmendBy.USER) is AmendDecision.NeedUser,
+        )
+        assertTrue(
+            "问满之后自决单仍是拒",
+            judge(s, listOf(add("己")), asksUsed = 3, by = AmendBy.MODEL, channel = ResignChannel.SELF) is AmendDecision.Reject,
+        )
+        assertTrue(
+            "被拒的卡也算一轮：递了三张、一次没批 ⇒ 第 4 次也转等待",
+            judge(s, listOf(add("己")), asksUsed = 0, cardsAsked = 3, by = AmendBy.MODEL) is AmendDecision.CheckpointWait,
+        )
+        assertTrue(
+            "只递过两张 ⇒ 还没到线",
+            judge(s, listOf(add("己")), asksUsed = 0, cardsAsked = 2, by = AmendBy.MODEL) is AmendDecision.NeedUser,
         )
     }
 

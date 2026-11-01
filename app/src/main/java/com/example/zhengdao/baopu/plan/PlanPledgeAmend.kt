@@ -34,9 +34,10 @@
 //   今天的执行路径逐字节不变（与 312「军令状是封底不是门槛」同口径）；
 // - 本层只管**判定与账的形状**；弹卡与落账在 `PlanPledgeBoard` ＋ `PlanPledgeAmendCards`。
 //
-// 预算的两个刻度是**本层定的**（派工单没给数）：时间轴用项数（计划卡本身 12 条封顶，
-// 立状批准的项数 + 2 项余量算「补票」），打扰轴用「一个状累计问几次」（3，与御案
-// 每日 ≤3 张同档，见 `inspect/OpinionBudget.kt`）。两个数都在交付报告里请用户拍板。
+// 预算的两个刻度由用户 2026-11-01 拍板：时间轴用项数（计划卡本身 12 条封顶，
+// 自己追加的项 ≤ [SELF_ADD_MARGIN] 条算「补票」，超出必须走用户确认），打扰轴用
+// 「一个状累计问几次」（[MAX_CLARIFY_ROUNDS] 轮）。第 3 轮之后不再问，转检查点等待
+// （[AmendDecision.CheckpointWait]：记一条缺口、把问题挂起、其余部分照做）。
 package com.example.zhengdao.baopu.plan
 
 import com.example.zhengdao.baopu.PlanRules
@@ -46,6 +47,9 @@ import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeEntry
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeSnapshot
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.ResignChannel
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.SettleGap
+import com.example.zhengdao.baopu.verify.GapItem
+import com.example.zhengdao.baopu.verify.GapKind
+import com.example.zhengdao.baopu.verify.GapSource
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -63,11 +67,17 @@ internal object PlanPledgeAmendRules {
     /** 「不要了」的状态词。与 312 的 `abandoned`（做不完）分列，一个字不许混。 */
     const val STATE_DROPPED = "dropped"
 
-    /** 时间预算的余量：立状之后两项以内的追加算「补票」，可以在预算内自决。 */
-    const val SELF_ADD_HEADROOM = 2
+    /**
+     * 自决追加余量：agent 自己追加的项 ≤2 条；超出必须走用户确认（不许自己认下来）。
+     * 用户 2026-11-01 定。
+     */
+    const val SELF_ADD_MARGIN = 2
 
-    /** 打扰预算：一个状累计问她三次；用满之后再动计划就是超预算——超了不许自决，只能当面问。 */
-    const val MAX_ASK_ROUNDS = 3
+    /**
+     * 一个状最多问她 3 轮；第 3 轮之后不再问，转检查点等待（记一条缺口、把问题挂起、
+     * 继续做不依赖它的部分）——不许用第 4 轮把用户磨下来。用户 2026-11-01 定。
+     */
+    const val MAX_CLARIFY_ROUNDS = 3
 
     /** 三种变更（派工单 §一的三行；闭集，别的写法不收）。 */
     enum class AmendKind(val wire: String, val cn: String) {
@@ -131,6 +141,17 @@ internal object PlanPledgeAmendRules {
     ) {
         /** 这一轮要不要重签：修改判据＝重新立约，删除与追加要她点头——都要她签名。 */
         val needsResign: Boolean get() = kinds.any { it == AmendKind.REVISE || it == AmendKind.DROP }
+
+        /**
+         * 两份申报是不是同一件事（"同一份申报只递一张卡"的尺子）。
+         * 预算读数不参与比较：每次递卡都会让轮数变，但它不改变"问的是哪件事"。
+         */
+        fun sameDeclaration(other: AmendChange): Boolean =
+            kinds == other.kinds &&
+                by == other.by &&
+                reason == other.reason &&
+                ops == other.ops &&
+                fromVersion == other.fromVersion
     }
 
     /** 变更后每项状态的落点（规矩②⑤）。 */
@@ -164,12 +185,12 @@ internal object PlanPledgeAmendRules {
         }
     }
 
-    /** 预算从一个状的哪两个数算出来（立状项数＋已问次数）。 */
+    /** 预算从一个状的哪两个数算出来（立状项数＋已问轮次；轮次＝人批轮与递卡轮取大）。 */
     fun budgetOf(itemsAtFreeze: Int, asksUsed: Int): AmendBudget = AmendBudget(
         itemsAtFreeze = itemsAtFreeze,
-        maxItems = minOf(itemsAtFreeze + SELF_ADD_HEADROOM, PlanRules.MAX_ITEMS),
+        maxItems = minOf(itemsAtFreeze + SELF_ADD_MARGIN, PlanRules.MAX_ITEMS),
         asksUsed = asksUsed,
-        maxAsks = MAX_ASK_ROUNDS,
+        maxAsks = MAX_CLARIFY_ROUNDS,
     )
 
     /**
@@ -186,6 +207,8 @@ internal object PlanPledgeAmendRules {
         val dropped: Set<String>,
         val superseded: Set<String>,
         val owed: Set<String> = emptySet(),
+        /** 递出去过的变更卡张数（被拒的卡也算问过一轮：问她一次就是一轮）。 */
+        val cardsAsked: Int = 0,
     )
 
     // ── 解析（写法门：闭集、必填、按位说得清）───────────────────────────────
@@ -278,6 +301,12 @@ internal object PlanPledgeAmendRules {
         /** 批准到手（人批）或预算内的自决单 ⇒ 可以落板。 */
         data class Apply(val change: AmendChange, val outcome: Amended, val channel: ResignChannel) : AmendDecision
 
+        /**
+         * 第 4 轮不再问她：问询预算用满，变更挂在检查点（记一条 [GapItem]），
+         * 模型继续做不依赖它的部分，等她主动回话——不许用第 4 轮把用户磨下来。
+         */
+        data class CheckpointWait(val change: AmendChange, val gap: GapItem) : AmendDecision
+
         data class Reject(val message: String) : AmendDecision
     }
 
@@ -291,6 +320,8 @@ internal object PlanPledgeAmendRules {
      * 3. 还没拿到批准 ⇒ [AmendDecision.NeedUser]（三种变更默认都要问，规矩④超预算更要问）；
      * 4. 自决单只认预算内的追加：改判据＝重新立约、删项＝她的权利不是它的；
      *    超预算的追加「自己认了」正是负例⑤；
+     * 3′. 问询已满 [MAX_CLARIFY_ROUNDS] 轮、又是模型自己提的 ⇒ [AmendDecision.CheckpointWait]：
+     *    第 4 轮不再问，记一条缺口把问题挂起（她自己提的变更照常出卡——确认不是磨她）；
      * 5. 人批到手 ⇒ 落地：版本 +1、旧版留账、未变项保留结局、被改项回待做、删项记 DROPPED。
      */
     fun decide(
@@ -305,7 +336,7 @@ internal object PlanPledgeAmendRules {
         shapeCheck(ctx, ops)?.let { return AmendDecision.Reject(it) }
         val next = nextEntries(ctx.snapshot.entries, ops)
         val adds = ops.count { it.kind == AmendKind.ADD }
-        val budget = budgetOf(ctx.itemsAtFreeze, ctx.asksUsed)
+        val budget = budgetOf(ctx.itemsAtFreeze, maxOf(ctx.asksUsed, ctx.cardsAsked))
         val over = if (adds > 0) budget.overByAdd(adds, next.size) else emptyList()
         val change = AmendChange(
             kinds = ops.map { it.kind }.distinct(),
@@ -318,7 +349,13 @@ internal object PlanPledgeAmendRules {
         )
         incoming?.let { plan -> mismatchWithPlan(next, plan)?.let { return AmendDecision.Reject(it) } }
         val nextVersion = ctx.snapshot.version + 1
-        if (channel == null) return AmendDecision.NeedUser(change, why = whyAsk(change))
+        if (channel == null) {
+            // 第 4 轮不再问：挂着问题、记一条缺口，其余部分照做（用户 2026-11-01 定）。
+            if (clarifyExhausted(change, by)) {
+                return AmendDecision.CheckpointWait(change, checkpointGapOf(change))
+            }
+            return AmendDecision.NeedUser(change, why = whyAsk(change))
+        }
         if (channel == ResignChannel.SELF) {
             if (change.needsResign) return AmendDecision.Reject(selfReject(change))
             if (over.isNotEmpty()) return AmendDecision.Reject(overBudgetReject(over, nextVersion))
@@ -437,6 +474,37 @@ internal object PlanPledgeAmendRules {
     private fun overBudgetReject(over: List<String>, nextVersion: Int): String =
         "追加超出批准的预算（${over.joinToString("；")}），不许自己认下来：" +
             "把这几项走计划变更确认卡问她，她点头才进第 $nextVersion 版。"
+
+    /**
+     * 问询满轮之后还要不要再问：只拦模型自己提的变更——她自己要改的东西，
+     * 确认一张卡不算磨她，照常走 [AmendDecision.NeedUser]。
+     *
+     * 轮数取「人批过的变更轮」与「递出去的卡」两数的大者（递卡数由板子传进来）。
+     * 被拒的卡也占一轮——问她一次就是一轮，否则拒三次之后还能递第 4 张。
+     */
+    private fun clarifyExhausted(change: AmendChange, by: AmendBy): Boolean =
+        by == AmendBy.MODEL && change.budget.asksUsed >= MAX_CLARIFY_ROUNDS
+
+    /**
+     * 检查点缺口：问询满轮之后那一份没问出口的变更（记一条 [GapItem]，问题挂起）。
+     *
+     * 为什么借金吾卫的名义：313 的 [GapSource] 是闭集（金吾卫／右相／勘验），计划层
+     * 没有自己的来源——这条是过程面的事实（一个状问到第 4 轮），先挂在管过程的那家
+     * 名下；将来要独立来源，是给 313 加一家的活。`attempts` 落在第 4 次，到 313 的
+     * 交人线（≥3）后由差距板转「未办成单」，不再回灌问人。
+     */
+    private fun checkpointGapOf(change: AmendChange): GapItem = GapItem(
+        source = GapSource.JINWU,
+        kind = GapKind.GOAL_DRIFT,
+        target = "action:update_plan:amend-v${change.fromVersion}",
+        evidence = listOf(
+            "变更账:第 ${change.fromVersion} 版改约申报（${change.kinds.joinToString("、") { it.cn }}）",
+            "问询轮数:${change.budget.asksUsed}/${change.budget.maxAsks} 已用满，" +
+                "第 ${change.budget.maxAsks + 1} 轮转检查点等待",
+        ),
+        minimalFix = "变更挂在检查点，等她回一次话再动计划，其余项照常推进",
+        attempts = change.budget.maxAsks + 1,
+    )
 
     // ── 自决单的预算闸（规矩④的另一条腿，接在 312 的重签闸之后）──────────────
 

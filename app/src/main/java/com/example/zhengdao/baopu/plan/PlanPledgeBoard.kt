@@ -32,6 +32,7 @@ import com.example.zhengdao.baopu.plan.PlanPledgeRules.ResignChannel
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.ResignParse
 import com.example.zhengdao.baopu.scout.LedgerFanout
 import com.example.zhengdao.baopu.scout.UnfinishedLedger
+import com.example.zhengdao.baopu.verify.GapFeedback
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import org.json.JSONObject
@@ -76,6 +77,10 @@ internal object PlanPledgeBoard {
     /** 递出过几张变更卡（判据④「断言弹卡 1 次」量的是这个数，不是请求调用次数）。 */
     @Volatile
     private var cardsHandedOut = 0
+
+    /** 挂在检查点上的变更（问询满轮之后第 4 轮不再问；记过一条缺口，等她回话）。 */
+    @Volatile
+    private var pendingCheckpoint: AmendDecision.CheckpointWait? = null
 
     /** 人拒绝过的立状候选（同版不再重复问；「一次问清」的另一半）。 */
     @Volatile
@@ -212,7 +217,8 @@ internal object PlanPledgeBoard {
      * · 删除 ⇒ 必须人批，逐项记 DROPPED(原因)——与 ABANDONED 分列，两本账都留得清。
      *
      * @param incoming 这一版要落库的计划（接线给了就核「申报与表是否一致」；不给 ⇒ 只判申报本身）
-     * @param channel null ⇒ 只出卡（[AmendDecision.NeedUser]），板上一个字节不改
+     * @param channel null ⇒ 只出卡（[AmendDecision.NeedUser]），板上一个字节不改；
+     *   问询已满且是模型自提 ⇒ [AmendDecision.CheckpointWait]（记一条缺口、问题挂起，不递第 4 张卡）
      */
     fun amend(
         incoming: List<PlanItem>?,
@@ -229,6 +235,8 @@ internal object PlanPledgeBoard {
                     snapshot = s,
                     itemsAtFreeze = itemsAtFreeze(),
                     asksUsed = asksUsed,
+                    // 递出去的卡也算问过一轮（被拒的卡不让它白问）
+                    cardsAsked = cardsHandedOut,
                     endings = endings.toMap(),
                     dropped = dropped.keys.toSet(),
                     superseded = superseded.keys.toSet(),
@@ -244,12 +252,22 @@ internal object PlanPledgeBoard {
                 ) {
                     is AmendDecision.NeedUser -> {
                         // 同一份申报重发 ⇒ 退回同一张卡，不再数第二张（判据④「弹卡 1 次」）
-                        if (pendingAsk != decision.change) cardsHandedOut++
+                        if (pendingAsk?.sameDeclaration(decision.change) != true) cardsHandedOut++
                         pendingAsk = decision.change
                         decision
                     }
                     is AmendDecision.Apply -> {
                         commitAmend(s, decision, atMs)
+                        decision
+                    }
+                    is AmendDecision.CheckpointWait -> {
+                        // 第 4 轮不再递卡：记一条缺口、把问题挂在检查点，板上一个字节不改。
+                        pendingCheckpoint = decision
+                        GapFeedback.record(listOf(decision.gap))
+                        RunLog.log(
+                            "抱朴军令状：变更转检查点等待（第 ${decision.change.fromVersion} 版，" +
+                                "问询已用满 ${decision.change.budget.maxAsks} 轮，不再递卡）",
+                        )
                         decision
                     }
                     else -> decision
@@ -272,6 +290,7 @@ internal object PlanPledgeBoard {
             .forEach { superseded[it.text] = it.to }
         if (decision.channel == ResignChannel.HUMAN) asksUsed++
         pendingAsk = null
+        if (pendingCheckpoint?.change?.sameDeclaration(change) == true) pendingCheckpoint = null
         settled = false
         lastVerdict = null
         // 回灌轮数只清「有下落的」项：现役里的、DROPPED 的、被顶替的；被悄悄摘掉的仍欠着
@@ -305,6 +324,9 @@ internal object PlanPledgeBoard {
 
     /** 递出过几张变更卡（判据④的读数）。 */
     fun cardsHandedOut(): Int = cardsHandedOut
+
+    /** 挂在检查点上的那一份申报（null ⇒ 没有等待项；360 接线据此呈现，不弹卡）。 */
+    fun pendingCheckpoint(): AmendDecision.CheckpointWait? = pendingCheckpoint
 
     /** DROPPED 记录（与 [lastVerdict] 的缺口、endings 的弃单分列——判据③的底册）。 */
     fun droppedRecords(): List<DropRecord> = synchronized(this) { dropped.values.toList() }
@@ -441,6 +463,7 @@ internal object PlanPledgeBoard {
         superseded.clear()
         asksUsed = 0
         pendingAsk = null
+        pendingCheckpoint = null
         cardsHandedOut = 0
     }
 
