@@ -135,6 +135,28 @@ class ContractsTest {
         assertTrue(r.failed.contains(CheckId.NO_ESCAPE))
     }
 
+    // 跨平台回归（CI #1734 在 Linux 上红、Windows 上绿）：
+    // 根因是 measureCopy 先把清单归一化，`normPath` 吃掉前导 `/` ⇒ "/tmp/x/a.txt" 变成 "tmp/x/a.txt"
+    // ⇒ isSafeRel 只看到相对路径 ⇒ 逃逸判不出来。下面两条用**字面量**钉死两种绝对路径形状，
+    // 与本机是 Windows 还是 Linux 无关——两种形状都必须判 FAIL(NO_ESCAPE)。
+    @Test
+    fun `Windows形绝对路径_C盘_判FAIL`() {
+        write(src, "a.txt", "甲")
+        write(dst, "a.txt", "甲")
+        val ev = Contracts.measureCopy(src, dst, listOf("C:\\x\\a.txt"), emptyList())
+        val r = ContractSelector.evaluate(TaskType.FILE_ORGANIZE, ev)
+        assertTrue("C:\\x\\a.txt 必须判逃逸", r.failed.contains(CheckId.NO_ESCAPE))
+    }
+
+    @Test
+    fun `POSIX形绝对路径_斜杠开头_判FAIL`() {
+        write(src, "a.txt", "甲")
+        write(dst, "a.txt", "甲")
+        val ev = Contracts.measureCopy(src, dst, listOf("/tmp/x/a.txt"), emptyList())
+        val r = ContractSelector.evaluate(TaskType.FILE_ORGANIZE, ev)
+        assertTrue("/tmp/x/a.txt 必须判逃逸（CI #1734 抓的就是这条）", r.failed.contains(CheckId.NO_ESCAPE))
+    }
+
     @Test
     fun `账行少一行_账不齐_判FAIL`() {
         val one = listOf(row(FileOpKind.COPY, File(dst, "a.txt").absolutePath))

@@ -180,7 +180,8 @@ internal sealed class Evidence {
     )
 
     /**
-     * @param sourcePaths 源侧应有清单（相对 [sourceRoot]）
+     * @param sourcePaths 源侧应有清单（相对 [sourceRoot]；**必须是原始串、不许预先归一化**——
+     *   归一化会吃掉前导 `/`，绝对路径就看不出来了，逃逸判据当场失效，见 [measureCopy] 的注释）
      * @param targetPaths 目标侧**实际扫到**的清单（相对 [destRoot]，由 [measureCopy] 扫盘得到）
      * @param pairs       逐文件读数；缺哪个文件就没有哪条
      * @param canonicalEscapes 真实路径（解过符号链接）落在目标根之外的相对路径
@@ -610,9 +611,14 @@ internal object Contracts {
         sourcePaths: List<String>,
         ledger: List<FileOpEntry> = emptyList(),
     ): Evidence.FileCopy {
-        val src = sourcePaths.map(::normPath).filter { it.isNotEmpty() }
+        // ⚠️ 原始串**原样留着**，不在这里归一化：`normPath` 会把开头的 `/` 吃掉，
+        // 一旦在这里规整，"这是绝对路径"这条信息就没了 ⇒ 逃逸永远判不出来。
+        // 这正是 CI #1734 在 Linux 上红、Windows 上绿的那条：`/tmp/x/a.txt` 被规整成 `tmp/x/a.txt`，
+        // `isSafeRel` 只看到一个"相对路径"；而 Windows 的 `C:\…` 规整后首段 `C:` 还在，DRIVE 正则还能抓。
+        val raw = sourcePaths.map { it.trim() }.filter { it.isNotEmpty() }
         val dst = scanFiles(destRoot)
-        val pairs = src.map { rel ->
+        val pairs = raw.map { rawPath ->
+            val rel = normPath(rawPath)
             val s = File(sourceRoot, rel)
             val d = File(destRoot, rel)
             Evidence.CopyPair(
@@ -628,7 +634,7 @@ internal object Contracts {
         return Evidence.FileCopy(
             sourceRoot = sourceRoot.absolutePath,
             destRoot = destRoot.absolutePath,
-            sourcePaths = src,
+            sourcePaths = raw,
             targetPaths = dst,
             pairs = pairs,
             canonicalEscapes = escapes,
@@ -696,7 +702,12 @@ internal object Contracts {
 
     private fun missing(id: CheckId, detail: String) = CheckOutcome(id, ok = false, missing = true, detail = detail)
 
-    /** 相对路径口径：`\\`→`/`、去掉空段与 `.`；`..` **保留**（留给 [isSafeRel] 抓）。 */
+    /**
+     * 相对路径口径：`\\`→`/`、去掉空段与 `.`；`..` **保留**（留给 [isSafeRel] 抓）。
+     *
+     * ⚠️ 它**会吃掉前导 `/`**（`/tmp/a` → `tmp/a`）——这是刻意的「只做集合比对」的口径。
+     * 所以判绝对路径/出根时**必须喂原始串**给 [isSafeRel]，别拿这里的返回值去判。
+     */
     private fun normPath(raw: String): String = raw.trim()
         .replace('\\', '/')
         .split('/')
