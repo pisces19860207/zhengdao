@@ -57,6 +57,7 @@ import com.example.zhengdao.baopu.mcp.McpTokenVault
 import com.example.zhengdao.baopu.mcp.McpToolSource
 import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
+import com.example.zhengdao.baopu.policy.AnchorAsset
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 import com.example.zhengdao.baopu.profile.UserProfileBlackbox
@@ -113,6 +114,19 @@ internal object BaopuRuntime {
      */
     @Volatile
     private var engineRegistry: ToolRegistry? = null
+
+    /**
+     * 锚定集随包出厂快照（第三百二十七批）：[build] 启动装配时读 assets 一次。
+     *
+     * fail closed：校验失败（禁词/指纹/形态/规模任一不过）⇒ 拒收态，
+     * [AnchorAsset.Snapshot.forAdmission] 恒空 ⇒ 判据准入一律 REFUSED——
+     * 不是「跳过继续跑」。装配前给拒收态兜底，读它不会 NPE 也不会漏拒。
+     */
+    @Volatile
+    private var anchorAssetSnapshot: AnchorAsset.Snapshot = AnchorAsset.Snapshot.refuse("尚未启动装配")
+
+    /** 锚定集快照唯一读口（准入侧只许经 forAdmission 取集）。 */
+    val anchorSnapshot: AnchorAsset.Snapshot get() = anchorAssetSnapshot
 
     /** 数据库（进程级一份；SQLiteOpenHelper 自带线程安全）。 */
     fun db(context: Context): BaopuDb =
@@ -672,6 +686,10 @@ internal object BaopuRuntime {
         // 组闸 / 工具可见性 / 进化决策口都在本函数后半段构造；装晚了它们会拿到默认值。
         // fail closed 由 PolicyRuntime 负责：缺表回默认、坏表整张拒绝；这里只负责落审计行。
         RunLog.log(PolicyRuntime.install(PolicyAssets.load(appCtx)))
+        // 第三百二十七批：锚定集随包出厂——启动读一次转不可变快照；校验失败＝拒收态，
+        // 准入一律 REFUSED（fail closed）。读数落 RunLog，坏包在这里就能看出来。
+        anchorAssetSnapshot = AnchorAsset.fromAsset(appCtx.assets.open(AnchorAsset.PATH).readBytes())
+        RunLog.log("锚定集出厂校验：${anchorAssetSnapshot.summary()}")
         // 刀 3 B 段 C 段：预热思考深度的进程级缓存（SP ⇒ liveEffort）——
         // 设置页落盘时也会同刷（ModelParams.saveEffort），这里管的是「跨会话」
         // （上轮选过「低」，这轮直接进抱朴页也要生效，不必先去设置页逛一圈）。

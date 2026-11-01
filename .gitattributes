@@ -15,3 +15,7 @@ eval/report-*.json -text
 
 # 出厂人设的字节数与 sha256 被测试钉死：禁止行尾转换（2026-10-30）
 app/src/main/assets/persona/*.md -text
+
+# 第三百二十七批：锚定集随包出厂，sha256 被 AnchorAsset 常量钉死；-text 禁止
+# text=auto 的行尾转换（285 教训：CRLF 改一个字节指纹就废）。
+app/src/main/assets/policy/anchor-set.jsonl -text
