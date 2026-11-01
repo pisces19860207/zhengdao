@@ -64,10 +64,11 @@ internal object HealthRun {
         val stats = HealthSources.traceStats(db, from)
         // 第三百四十八批：读数层接进来（281 交付时全仓零调用 ⇒ "账在、没人算"）。
         // 只取一行文字给单子看；**不拿读数做任何判断**（"四率低就降权"是政策，不是读数）。
+        // 没跑起来也要留一行（三态里的「无数据」）——留白会被读成"没这回事"。
         val projectRoot: File = runCatching { BaopuRuntime.workspaceRoot(ctx) }.getOrDefault(root)
         val reading = runCatching { MetricsWiring.read(db, projectRoot, root, nowMs) }
             .onFailure { RunLog.log("御医体检：读数没算出来——${it.javaClass.simpleName}: ${it.message}") }
-            .getOrNull()
+            .getOrElse { MetricsWiring.noData(nowMs) }
         val tools = HealthSources.probes(
             stats = stats,
             visible = visibleTools(),
@@ -92,7 +93,7 @@ internal object HealthRun {
             rows,
             signals,
             blockers,
-            readings = reading?.sheetLines.orEmpty(),
+            readings = reading.sheetLines,
         )
 
         val entry = entryOf(sheet, nowMs)

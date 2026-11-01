@@ -428,15 +428,18 @@ class HealthCheckTest {
         )
         // 读数层有没有人调是**源码事实**（普查里查得到），所以"账在、没人算"这趟就能判，不必等数据。
         val readerWired = OrganCensus.of("读数层")?.let { it.callSites > 0 }
-        // 348：读数那行照实印——这趟一台新机、一条记录都没有 ⇒ 只写「样本不足」，一个 % 都不许有。
-        val reading = MetricsWiring.sheetLines(Metrics.compute(Metrics.Inputs(nowMs = FIRST_SHEET_AT_MS)))
+        // 348：读数那行照实印——这趟一台新机、一条记录都没有 ⇒ 走"现算"那一态，一个 % 都不许有。
+        val reading = MetricsWiring.of(
+            FIRST_SHEET_AT_MS,
+            Metrics.compute(Metrics.Inputs(nowMs = FIRST_SHEET_AT_MS)),
+        )
         val sheet = HealthCheck.sheet(
             FIRST_SHEET_AT_MS,
             organs,
             rows,
             signals,
             HealthCheck.blockers(organs, rows, SignalInput(ledgerReaderWired = readerWired)),
-            readings = reading,
+            readings = reading.sheetLines,
         )
 
         // 首次体检（无设备数据）的读数：能静态判的只有 NOT_WIRED，其余一律未取样。

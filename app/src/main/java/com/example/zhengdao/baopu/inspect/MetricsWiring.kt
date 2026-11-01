@@ -3,7 +3,7 @@
 // 第三百四十八批 · 读数层的**接线壳**。281 把"怎么算"定稿了（[Metrics] 纯函数、
 // [MetricsSources] 只读取数），但全仓零调用——算了没人看，等于没算。本文件只做两件事：
 // 1. **调**：一次快照（取数）＋一次计算（[Metrics.compute]），不自己算任何比例；
-// 2. **说**：把 [Ratio] 翻成人话，给体检单一行、给治理面板三行。
+// 2. **说**：把 [Ratio] 翻成人话，给体检单一行、给治理面板四行。
 //
 // 三条纪律（派工单 348 §二，逐条落在代码上）：
 // 1. **只读**：本文件不写盘、不改任何业务状态、**不因读数触发动作**——
@@ -13,6 +13,11 @@
 // 3. **空态不许写 0%**：分母不够时只写「样本不足」并把差多少条说出来。
 //    0% 是"查过、一次都没错"；没样本是"还不知道"——两者写成一样，读数就变成了安慰。
 //
+// **三态（2026-11-01 用户定的统一口径，不许混成一种）**：
+// `有数`（样本 ≥10，印得出比例）／`现算`（跑了，但样本不足 10，只印条数、不落账）／
+// `无数据`（压根没跑）。三句各说各的，谁都不许冒充谁——"没跑"最容易被读成"零发生"，
+// 所以它必须自己占一行，而不是干脆不出现。
+//
 // 对外文案的用词纪律：不出现内部字段名（`MetricsSources`／`snapshot`／`E1`／`wire` 值）。
 // 用户看到的是「违规率 3.1%（1/32）」，不是「violation=0.03125」。
 package com.example.zhengdao.baopu.inspect
@@ -21,16 +26,29 @@ import com.example.zhengdao.baopu.BaopuDb
 import java.io.File
 
 /**
+ * 读数三态（统一口径；`cn` 是单子上印的那个词，改字面量＝老单子对不上）。
+ *
+ * - [MEASURED] 有数：至少一项样本 ≥[Metrics.MIN_DENOM]，印得出比例；
+ * - [COMPUTED] 现算：这一趟真算了，但每项样本都不够，只印条数（数在内存里，不落账）；
+ * - [NO_DATA] 无数据：压根没跑（取数或计算失败）——**不是零，是不知道**。
+ */
+internal enum class ReadingState(val cn: String) {
+    MEASURED("有数"),
+    COMPUTED("现算"),
+    NO_DATA("无数据"),
+}
+
+/**
  * 一次读数的成品（体检单与治理面板共用**同一次**快照，不各算一遍）。
  *
- * @param fourRateLine 四率那一行（体检单直接印）
+ * @param state 三态（见 [ReadingState]）
  * @param sheetLines 体检单要渲染的行（现在只有四率一行；将来加行也走这里）
  * @param centerLines 治理面板（322 第四区）要的行：四率一行＋三项最有用的单项
  * @param lines 算好的原始行（点得开明细用；322 接线时按 [MetricKey] 取）
  */
 internal data class MetricsReading(
     val atMs: Long,
-    val fourRateLine: String,
+    val state: ReadingState,
     val sheetLines: List<String>,
     val centerLines: List<String>,
     val lines: List<MetricLine>,
@@ -64,16 +82,8 @@ internal object MetricsWiring {
         MetricKey.E1_IRREVERSIBLE,
     )
 
-    /** 四率那一行的抬头（体检单与面板共用；改字面量＝两处一起改）。 */
+    /** 读数那一行的抬头（体检单与面板共用；改字面量＝两处一起改）。 */
     const val FOUR_RATE_HEAD = "读数（四率）"
-
-    /**
-     * 体检单那一行的尾巴：说明四个数是**现算**的、没有落盘账。
-     *
-     * 为什么非要写这一句：单子上紧接着就有一行「未取样…读数层」——那是"产出条数测不出来"，
-     * 不是"没算"。不写清楚，两行看着像打架。
-     */
-    const val NO_LEDGER_TAIL = "（现算，无落账）"
 
     /**
      * 读一次：取数 → 计算 → 翻人话。**纯读**，跑一趟只多一份内存里的快照。
@@ -86,35 +96,61 @@ internal object MetricsWiring {
         memoryRoot: File,
         nowMs: Long,
         m9: List<M9Judgment> = emptyList(),
-    ): MetricsReading {
-        val lines = Metrics.compute(MetricsSources.snapshot(db, projectRoot, memoryRoot, nowMs, m9))
-        val four = fourRateLine(lines)
+    ): MetricsReading = of(nowMs, Metrics.compute(MetricsSources.snapshot(db, projectRoot, memoryRoot, nowMs, m9)))
+
+    /**
+     * 这一趟**没跑起来**（取数或计算抛了）：照样出一个读数，但三态记 [ReadingState.NO_DATA]。
+     *
+     * 为什么不留白：单子上"没有那一行"与"有那一行、写着无数据"读起来天差地别——
+     * 前者像"没这回事"，后者才是"这趟没跑"。三态里最容易被误读的就是这一态，必须自己占一行。
+     */
+    fun noData(atMs: Long): MetricsReading = of(atMs, emptyList())
+
+    /** 从算好的行拼出成品（纯函数；用例直接调它，与生产逐字一致）。 */
+    fun of(atMs: Long, lines: List<MetricLine>): MetricsReading {
+        val state = stateOf(lines)
+        // 四率那一行体检单与面板共用同一句（同一个对象，不各排一遍）。
+        val four = readingLine(state, FOUR_RATES, lines)
         return MetricsReading(
-            atMs = nowMs,
-            fourRateLine = four,
-            sheetLines = sheetLines(lines),
-            centerLines = centerLines(lines),
+            atMs = atMs,
+            state = state,
+            sheetLines = listOf(four),
+            centerLines = listOf(four) + CENTER_KEYS.mapNotNull { key ->
+                lines.firstOrNull { it.key == key }?.let { human(it) }
+            },
             lines = lines,
         )
     }
 
-    /** 体检单要印的行（纯函数：算好的行 → 单子文字；用例直接调它，与生产逐字一致）。 */
-    fun sheetLines(lines: List<MetricLine>): List<String> = listOf(fourRateLine(lines) + NO_LEDGER_TAIL)
-
-    /** 四率一行（人话；四项全算不出时只留一句"样本不足"，不铺四遍）。 */
-    fun fourRateLine(lines: List<MetricLine>): String {
+    /** 三态判据（只看"有没有一项样本够"，不看数值大小——数值低是结论，不是空态）。 */
+    fun stateOf(lines: List<MetricLine>): ReadingState {
         val picked = FOUR_RATES.mapNotNull { key -> lines.firstOrNull { it.key == key } }
-        if (picked.none { it.ratio.known }) {
-            return "$FOUR_RATE_HEAD：样本不足（这窗内四项都没有可算的记录）"
+        return when {
+            picked.isEmpty() -> ReadingState.NO_DATA
+            picked.any { it.ratio.known } -> ReadingState.MEASURED
+            else -> ReadingState.COMPUTED
         }
-        return "$FOUR_RATE_HEAD：" + picked.joinToString("｜") { human(it) }
     }
 
-    /** 治理面板三行＋四率一行（322 接线时直接用；本批不接界面）。 */
-    fun centerLines(lines: List<MetricLine>): List<String> =
-        listOf(fourRateLine(lines)) + CENTER_KEYS.mapNotNull { key ->
-            lines.firstOrNull { it.key == key }?.let { human(it) }
+    /**
+     * 读数那一行：**先报态，再报数**。三句互不冒充。
+     *
+     * - 有数：`读数（四率）·有数（样本 ≥10）：违规率 3.1%（1/32）｜…`
+     * - 现算：`读数（四率）·现算（不落账，样本不足 10 条）：违规率 32 条样本｜…`（**不印 %**）
+     * - 无数据：`读数（四率）·无数据（这一趟没跑起来）`（不印数、不印条数）
+     */
+    fun readingLine(state: ReadingState, keys: List<MetricKey>, lines: List<MetricLine>): String {
+        val head = "$FOUR_RATE_HEAD·${state.cn}"
+        val picked = keys.mapNotNull { key -> lines.firstOrNull { it.key == key } }
+        return when (state) {
+            ReadingState.MEASURED ->
+                "$head（样本 ≥${Metrics.MIN_DENOM}）：" + picked.joinToString("｜") { human(it) }
+            ReadingState.COMPUTED ->
+                "$head（不落账，样本不足 ${Metrics.MIN_DENOM} 条）：" +
+                    picked.joinToString("｜") { "${it.key.cn} ${it.ratio.denom} 条样本" }
+            ReadingState.NO_DATA -> "$head（这一趟没跑起来）"
         }
+    }
 
     /**
      * 一项读数翻成人话。
