@@ -14,6 +14,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -74,6 +75,49 @@ class PlanToolTest {
         val out = spec.executor(JSONObject().put("items", JSONArray()))
         assertTrue("被关 ⇒ 拒绝（桩）", out is ToolOutcome.Rejected)
         assertFalse("被关的不进 tools 数组", reg.isEnabled(PlanTool.NAME))
+    }
+
+    // ── 353：contract 键位（必须真走 SchemaCheck——直调 controller 等于没验） ──
+
+    /** 带 contract 的最小合法参数（1 条计划＋一份可过校验的契约声明）。 */
+    private fun planWithContract(): JSONObject =
+        planArgs("读文件" to "todo")
+            .put(
+                "contract",
+                JSONObject()
+                    .put("goal", "把读文件这件事做完")
+                    .put("steps", JSONArray().put(JSONObject().put("risk", "R0")))
+                    .put("touches", JSONArray().put("资料库"))
+                    .put("expected_asks", 1),
+            )
+
+    @Test
+    fun `contract参数过注册表SchemaCheck_不再报未知参数_真管线能跑通`() {
+        val store = RecordingStore()
+        PlanTool.sink = PlanController(sessionId = { 99L }, store = store)
+        val reg = catalogRegistry()
+        // SchemaCheck 的唯一生产入口（GuardPipeline 第①段与协议解码都走 validateCall）：
+        // 353 之前 contract 写在 properties 兄弟位 ⇒ 这里是"未知参数"，242 的契约功能在
+        // 真实路径上是断的（直调 controller 的测试全绿也照断）。
+        assertNull(
+            "带 contract 的参数在注册表被拒＝契约功能没上线：",
+            reg.validateCall(PlanTool.NAME, planWithContract()),
+        )
+        // 再走真管线到落库：contract 真进 controller（242 批准卡链路吃的就是它）
+        val pipeline = GuardPipeline(reg, { File(".") }, { null })
+        val result = pipeline.execute(ToolCall("c1", PlanTool.NAME, planWithContract())) { _, _ -> null }
+        assertTrue("带 contract 的 update_plan 必须真执行：$result", result is GuardPipeline.Result.Done)
+        assertEquals("落库一条", 1, store.inserts.size)
+    }
+
+    @Test
+    fun `contract类型错_被拒且报错可读_不带contract照旧可选`() {
+        val reg = catalogRegistry()
+        val err = reg.validateCall(PlanTool.NAME, planArgs("读文件" to "todo").put("contract", "不谈"))
+        assertNotNull("contract 不是对象必须被拒：$err", err)
+        assertTrue("报错要点名 contract：$err", err!!.contains("contract"))
+        assertTrue("报错要人话（期望/实到）：$err", err.contains("对象"))
+        assertNull("不带 contract 照旧可选（可选键，旧行为不变）", reg.validateCall(PlanTool.NAME, planArgs("读文件" to "todo")))
     }
 
     // ── 「写类但免确认」的口径 ─────────────────────────────────────────
