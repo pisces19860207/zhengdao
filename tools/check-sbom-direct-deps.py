@@ -187,6 +187,40 @@ def find_latest_sbom() -> Path | None:
     return Path(cands[-1]) if cands else None
 
 
+# 352④（2026-11-01）：first-party 模块专闸——:app 的模块内依赖必须作为组件进 SBOM。
+# 判据（用户 2026-11-01 定）：SBOM 含 :policy/:core。三查：组件在、release 主清单分节在、
+# 依赖图有 root 直连边。（:native-core 是人工构建入库的 .so，不是本仓源码模块，不在此列。）
+REQUIRED_PROJECT_MODULES = (":policy", ":core")
+
+
+def check_project_modules(sbom_path: Path) -> list[str]:
+    doc = json.loads(sbom_path.read_text(encoding="utf-8"))
+    module_sections: dict[str, set[str]] = {}
+    for comp in doc.get("components", []):
+        props = {p.get("name"): p.get("value") for p in comp.get("properties", []) or []}
+        if "zhengdao:module" in props:
+            module_sections.setdefault(props["zhengdao:module"], set()).add(
+                props.get("zhengdao:section", ""))
+    root_ref = (doc.get("metadata", {}).get("component") or {}).get("bom-ref", "")
+    root_children: set[str] = set()
+    for dep in doc.get("dependencies", []):
+        if dep.get("ref") == root_ref:
+            root_children = set(dep.get("dependsOn", []))
+    problems: list[str] = []
+    for mod in REQUIRED_PROJECT_MODULES:
+        where = module_sections.get(mod)
+        if not where:
+            problems.append("first-party 模块 %s 不在 SBOM components 里"
+                            "（zhengdao:module property，352④）" % mod)
+            continue
+        if "release" not in where:
+            problems.append("first-party 模块 %s 不在 release 主清单分节（只出现在 %s）"
+                            % (mod, sorted(where)))
+        if "zhengdao:module:%s" % mod.strip(":") not in root_children:
+            problems.append("依赖图缺 root → %s 直连边（352④）" % mod)
+    return problems
+
+
 def check_module(build_file: Path, sections: dict[str, set[str]], catalog: dict,
                  label: str, default_section: str) -> tuple[list[str], list[str], list[str]]:
     """返回 (缺失, 版本不符, 跳过说明)。default_section：本模块 implementation 类依赖归哪个分节。"""
@@ -200,11 +234,13 @@ def check_module(build_file: Path, sections: dict[str, set[str]], catalog: dict,
                 skipped.append("%s（构建期工具，不进运行时闭包，SBOM 不应含它）"
                                % ":".join(x for x in resolved if x))
             continue
-        # 2026-10-30：`project(":core")` / `project(":native-core")` 是**模块内**依赖，
-        # 不是外部构件，SBOM 里本来就不该有它 ⇒ 跳过，不算「表达式解析不了」。
-        # （此前这行被当错误报，CI 上每轮 4 条红注解；步骤本身 continue-on-error，不影响成败。）
+        # `project(":core")` 等是**模块内**依赖，不是外部 Maven 构件，不参与
+        # 「坐标必须出现在分节」的断言（此前这行被当错误报，CI 上每轮 4 条红注解）。
+        # 352④ 起 :policy/:core 作为 first-party 组件进 SBOM，由下面的
+        # check_project_modules() 专闸断言（组件存在 ＋ release 分节 ＋ root 直连边）；
+        # 本分支的「跳过」只豁免 Maven 坐标匹配，不豁免那条专闸。
         if expr.strip().startswith("project("):
-            skipped.append("%s（模块内项目依赖，不是外部构件）" % expr)
+            skipped.append("%s（模块内项目依赖，走 352④ first-party 专闸）" % expr)
             continue
         section = CONFIG_TO_SECTION.get(config)
         if section is None:
@@ -254,6 +290,9 @@ def main() -> int:
     problems: list[str] = []
     mismatches: list[str] = []
     skipped: list[str] = []
+
+    # 352④：first-party 模块专闸（:policy/:core 组件＋release 分节＋root 直连边）
+    problems += check_project_modules(sbom_path)
 
     for label, build_file, default_section in (
         (":app", args.app_build, "release"),
