@@ -579,6 +579,24 @@ internal object TeachFormRules {
      * 重复块识别：控件的 `name` 形如 `worldbook[0][title]` ⇒ 落到第 1 段；段内键 = `worldbook1_title`。
      */
     fun buildFields(candidates: List<FormCandidate>): FormScanResult {
+        val acc = FieldAcc()
+        candidates.forEachIndexed { i, c ->
+            when (val v = classify(c)) {
+                is Classified.Excluded -> acc.excluded += FormExcluded(
+                    c.labelText ?: c.ariaLabel ?: c.inputName ?: c.inputType ?: c.tag,
+                    v.reason,
+                )
+                is Classified.Accepted -> acceptCandidate(c, i, v.control, acc)
+            }
+        }
+        val blocks = acc.blockFields.toSortedMap().map { (idx, fs) ->
+            FormBlock(idx, acc.blockLabels[idx] ?: "第 $idx 段", fs)
+        }
+        return FormScanResult(acc.leaf, blocks, acc.excluded)
+    }
+
+    /** 扫描过程中的五本账：叶子字段／重复块字段／块名／排除项／已占用键。 */
+    private class FieldAcc {
         val leaf = mutableListOf<FormField>()
         val blockFields = mutableMapOf<Int, MutableList<FormField>>()
         val blockLabels = mutableMapOf<Int, String>()
@@ -586,70 +604,66 @@ internal object TeachFormRules {
         val taken = mutableSetOf<String>()
         // 单选是「一组选一个」：同 name 的多个 radio 只留第一个字段（选项表在它身上）
         val radioGroups = mutableSetOf<String>()
-        candidates.forEachIndexed { i, c ->
-            when (val v = classify(c)) {
-                is Classified.Excluded -> excluded += FormExcluded(
-                    c.labelText ?: c.ariaLabel ?: c.inputName ?: c.inputType ?: c.tag,
-                    v.reason,
-                )
-                is Classified.Accepted -> {
-                    if (v.control == FormControl.RADIO) {
-                        val group = c.inputName ?: c.elemId ?: c.labelText
-                        if (group != null && !radioGroups.add(group)) return@forEachIndexed
-                    }
-                    val block = parseBlockName(c.inputName)
-                    val key = when {
-                        block != null -> {
-                            val base = keyOf(block.first, i + 1)
-                            val sub = block.third
-                            uniqueKey(
-                                if (sub == null) "$base${block.second}" else "${base}${block.second}_${keyOf(sub, i + 1)}",
-                                taken,
-                            )
-                        }
-                        else -> uniqueKey(keyOf(c.inputName ?: c.labelText, i + 1), taken)
-                    }
-                    taken += key
-                    val info = TeachElementInfo(
-                        tag = c.tag,
-                        role = c.role,
-                        name = c.labelText ?: c.ariaLabel,
-                        text = c.text,
-                        ariaLabel = c.ariaLabel,
-                        testid = c.testid,
-                        elemId = c.elemId,
-                        inputName = c.inputName,
-                        placeholder = c.placeholder,
-                        inputType = c.inputType,
-                        formLabel = c.formLabel,
-                        classes = c.classes,
-                        xpath = c.xpath,
-                    )
-                    val field = FormField(
-                        key = key,
-                        label = c.labelText ?: c.ariaLabel ?: c.inputName ?: key,
-                        control = v.control,
-                        locators = TeachLearner.buildLocators(info),
-                        options = c.options,
-                        blockIndex = block?.second ?: 0,
-                        required = true,
-                        inputType = c.inputType,
-                        inputName = c.inputName,
-                        placeholder = c.placeholder,
-                    )
-                    if (block != null) {
-                        blockFields.getOrPut(block.second) { mutableListOf() } += field
-                        blockLabels.putIfAbsent(block.second, block.first)
-                    } else {
-                        leaf += field
-                    }
-                }
-            }
+    }
+
+    /** 一个被准入的控件：radio 去重 → 生成键 → 建字段 → 落到重复块或叶子。 */
+    private fun acceptCandidate(c: FormCandidate, i: Int, control: FormControl, acc: FieldAcc) {
+        if (control == FormControl.RADIO) {
+            val group = c.inputName ?: c.elemId ?: c.labelText
+            if (group != null && !acc.radioGroups.add(group)) return
         }
-        val blocks = blockFields.toSortedMap().map { (idx, fs) ->
-            FormBlock(idx, blockLabels[idx] ?: "第 $idx 段", fs)
+        val block = parseBlockName(c.inputName)
+        val key = keyFor(c, i, block, acc.taken)
+        acc.taken += key
+        val field = fieldOf(c, key, control, block?.second ?: 0)
+        if (block != null) {
+            acc.blockFields.getOrPut(block.second) { mutableListOf() } += field
+            acc.blockLabels.putIfAbsent(block.second, block.first)
+        } else {
+            acc.leaf += field
         }
-        return FormScanResult(leaf, blocks, excluded)
+    }
+
+    /** 字段键：块内键 = `base{段}_sub`，叶子 = 控件名；同模板内撞了就 `_2`/`_3`。 */
+    private fun keyFor(c: FormCandidate, i: Int, block: Triple<String, Int, String?>?, taken: Set<String>): String {
+        if (block == null) return uniqueKey(keyOf(c.inputName ?: c.labelText, i + 1), taken)
+        val base = keyOf(block.first, i + 1)
+        val sub = block.third
+        return uniqueKey(
+            if (sub == null) "$base${block.second}" else "${base}${block.second}_${keyOf(sub, i + 1)}",
+            taken,
+        )
+    }
+
+    /** 控件事实 → 字段（定位子由 [TeachLearner.buildLocators] 从同一份事实生成，不另存一份）。 */
+    private fun fieldOf(c: FormCandidate, key: String, control: FormControl, blockIndex: Int): FormField {
+        val info = TeachElementInfo(
+            tag = c.tag,
+            role = c.role,
+            name = c.labelText ?: c.ariaLabel,
+            text = c.text,
+            ariaLabel = c.ariaLabel,
+            testid = c.testid,
+            elemId = c.elemId,
+            inputName = c.inputName,
+            placeholder = c.placeholder,
+            inputType = c.inputType,
+            formLabel = c.formLabel,
+            classes = c.classes,
+            xpath = c.xpath,
+        )
+        return FormField(
+            key = key,
+            label = c.labelText ?: c.ariaLabel ?: c.inputName ?: key,
+            control = control,
+            locators = TeachLearner.buildLocators(info),
+            options = c.options,
+            blockIndex = blockIndex,
+            required = true,
+            inputType = c.inputType,
+            inputName = c.inputName,
+            placeholder = c.placeholder,
+        )
     }
 
     /** 从字段表推导参数声明（形状：有选项 ⇒ ENUM；number 型 ⇒ NUMBER；否则 TEXT）。 */

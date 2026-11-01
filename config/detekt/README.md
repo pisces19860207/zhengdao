@@ -36,9 +36,9 @@
 > 也不含测出来的数字（`too long (527)` / `complexity: 106` 只属于报告）。同名重载按行号顺序编号
 > （`fromJson#1` / `fromJson#2`），不会两条撞成一条。
 
-**当前读数**：**402 条**（2026-11-01 341 批清债后真读数；引擎 **271**／冻结 UI **131**）。
+**当前读数**：**392 条**（2026-11-01 354 批清债后真读数；引擎 **261**／冻结 UI **131**）。
 历史：324 用无 baseline 真读数重记为 435（引擎 304／冻结 131，被压的 101 条如实回账）；
-337 两批降到 427→418（引擎 296→287），340 合入后引擎再少 4 条（418→414）；341 批再降 12 条到 402。
+337 两批降到 427→418（引擎 296→287），340 合入后引擎再少 4 条（418→414）；341 批再降 12 条到 402；354 批降 10 条到 392。
 
 ## 324（2026-10-31）：删 baseline、真读数重记账——**口径修正，非放宽**
 
@@ -124,12 +124,12 @@ G7 点名的 5 个文件共 **16 条**：
 > 上限交给 detekt 自己（CLI `--max-issues`，1.23.8 官方文档：
 > 「return exit code 0 only when found issues count does not exceed specified issues count」）。
 
-**值放哪**：`config/detekt/detekt.yml` 末尾一行 **注释形态**的 `# maxIssues: 402`。
+**值放哪**：`config/detekt/detekt.yml` 末尾一行 **注释形态**的 `# maxIssues: 392`。
 它故意是注释——实测 detekt 1.23.8 把未注释的 `maxIssues:` 当**非法配置键**
 （`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）⇒ 值由 `detektWall` 与预算闸
 用正则读，再作为 CLI `--max-issues` 交给 detekt。
 
-**当前值**：`# maxIssues: 402` ＝ `issue-budget.json` 的 `total`（341 批真读数；
+**当前值**：`# maxIssues: 392` ＝ `issue-budget.json` 的 `total`（354 批真读数；
 只降不升自 435 起算，下一批至少降 5 条）。
 
 ### 降上限（唯一合法路径：两处同改）
@@ -184,7 +184,7 @@ Configuration cache problems found in this build.
 | `frozen_ui` | `app/src/main/java/com/example/zhengdao/ui/` | **超预算 ⇒ 红**（2026-10-31 用户追加：**冻结区也只降不升**——否则 UI 可以永远欠着新债） |
 | 总量 | 两本之和 | 超 `total` ⇒ 红；且必须等于 `detekt.yml` 的 `# maxIssues`（D1/D2 互锁不变） |
 
-**当前**：总量 402（引擎 **271** ／冻结 **131**）；`# maxIssues: 402`（341 批真读数；
+**当前**：总量 392（引擎 **261** ／冻结 **131**）；`# maxIssues: 392`（354 批真读数；
 旧账 334＝240＋94 少了被 baseline 压住的 101 条）。
 
 **负例（本机实做，2026-10-31 两条追加后重跑）**

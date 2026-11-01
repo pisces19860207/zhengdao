@@ -150,34 +150,49 @@ internal object TeachParams {
      * 会互相踩）。所以 `?direction=北京` 与输入框里的「北京」合成一条，落点相加。
      */
     fun collect(skill: TeachSkill): List<TeachParamCandidate> {
+        val acc = CandidateAccumulator()
+        collectStepValues(skill, acc)
+        collectUrlValues(skill, acc)
+        collectPageText(skill, acc)
+        return acc.out
+    }
+
+    /** 收集过程中的两本账：已入选的候选 ＋ 字面量→下标（同一个字面量只变成一个参数）。 */
+    private class CandidateAccumulator {
         val out = mutableListOf<TeachParamCandidate>()
         val byLiteral = LinkedHashMap<String, Int>()
+    }
 
-        fun put(c: TeachParamCandidate) {
-            if (c.example.isBlank()) return
-            val idx = byLiteral[c.example]
-            if (idx == null) {
-                if (out.size >= CANDIDATE_MAX) return
-                byLiteral[c.example] = out.size
-                out += c
+    /** 已占用的参数名（`uniqueName` 用）。 */
+    private fun takenNames(acc: CandidateAccumulator): Set<String> = acc.out.map { it.name }.toSet()
+
+    /** 收一条候选：同一个字面量只变成一个参数（占位替换按值拔，两个参数共用一个值会互相踩）。 */
+    private fun putCandidate(acc: CandidateAccumulator, c: TeachParamCandidate) {
+        if (c.example.isBlank()) return
+        val idx = acc.byLiteral[c.example]
+        if (idx == null) {
+            if (acc.out.size >= CANDIDATE_MAX) return
+            acc.byLiteral[c.example] = acc.out.size
+            acc.out += c
+        } else {
+            val prev = acc.out[idx]
+            // 输入/下拉是「值被亲手打过」的地方，比对 URL 更可信：换主来源
+            val promote = prev.source == TeachParamSource.URL_QUERY &&
+                (c.source == TeachParamSource.INPUT || c.source == TeachParamSource.SELECT)
+            val mergedSlots = (prev.slots + c.slots).distinctBy { it.step to it.field }
+            acc.out[idx] = if (promote) {
+                prev.copy(
+                    name = c.name, label = c.label, source = c.source, shape = c.shape,
+                    slots = mergedSlots, options = c.options, defaultSelected = c.defaultSelected,
+                )
             } else {
-                val prev = out[idx]
-                // 输入/下拉是「值被亲手打过」的地方，比对 URL 更可信：换主来源
-                val promote = prev.source == TeachParamSource.URL_QUERY &&
-                    (c.source == TeachParamSource.INPUT || c.source == TeachParamSource.SELECT)
-                val mergedSlots = (prev.slots + c.slots).distinctBy { it.step to it.field }
-                out[idx] = if (promote) {
-                    prev.copy(
-                        name = c.name, label = c.label, source = c.source, shape = c.shape,
-                        slots = mergedSlots, options = c.options, defaultSelected = c.defaultSelected,
-                    )
-                } else {
-                    prev.copy(slots = mergedSlots, options = prev.options.ifEmpty { c.options })
-                }
+                prev.copy(slots = mergedSlots, options = prev.options.ifEmpty { c.options })
             }
         }
+    }
 
-        // ① 输入/下拉（主来源）
+    /** ① 输入/下拉（主来源）。 */
+    private fun collectStepValues(skill: TeachSkill, acc: CandidateAccumulator) {
         skill.steps.forEach { s ->
             val v = s.value?.takeIf { it.isNotBlank() } ?: return@forEach
             val kind = when (s.action) {
@@ -189,9 +204,10 @@ internal object TeachParams {
             // 输入类的 expect 一般就是「输入框里出现了刚打的值」——参数化后这条断言也得跟着换，
             // 否则回放时会去等「北京」出现（而这次填的是天津）
             if (s.expect.any { it.value == v }) slots += TeachSlot(s.index, TeachSlotField.EXPECT)
-            put(
+            putCandidate(
+                acc,
                 TeachParamCandidate(
-                    name = uniqueName(suggestName(s, kind), out.map { it.name }.toSet(), kind),
+                    name = uniqueName(suggestName(s, kind), takenNames(acc), kind),
                     label = labelOf(s),
                     example = v,
                     source = kind,
@@ -202,36 +218,36 @@ internal object TeachParams {
                 ),
             )
         }
+    }
 
-        // ② URL 的 query / path（并入上面的字面量；新的另立）
+    /** ② URL 的 query / path（并入上面的字面量；新的另立）。 */
+    private fun collectUrlValues(skill: TeachSkill, acc: CandidateAccumulator) {
         if (skill.startUrl.isNotBlank()) {
             urlCandidates(skill.startUrl, stepIndex = 0) { name, label, example, source, slot ->
-                put(
-                    TeachParamCandidate(
-                        name = uniqueName(name, out.map { it.name }.toSet(), source),
-                        label = label, example = example, source = source,
-                        shape = shapeOf(example, emptyList()),
-                        slots = listOf(slot), defaultSelected = true,
-                    ),
-                )
+                putCandidate(acc, urlCandidate(name, label, example, source, slot, takenNames(acc)))
             }
         }
         skill.steps.forEach { s ->
             urlCandidates(s.url, stepIndex = s.index) { name, label, example, source, slot ->
-                put(
-                    TeachParamCandidate(
-                        name = uniqueName(name, out.map { it.name }.toSet(), source),
-                        label = label, example = example, source = source,
-                        shape = shapeOf(example, emptyList()),
-                        slots = listOf(slot), defaultSelected = true,
-                    ),
-                )
+                putCandidate(acc, urlCandidate(name, label, example, source, slot, takenNames(acc)))
             }
         }
+    }
 
-        // ③ 页面固定文本（列出来，但默认不勾、且不许勾）
-        // 只看**点击步**：按钮/链接/表头才是「结构锚」；输入框的无障碍名是标签，不该混进来
-        val claimed = byLiteral.keys
+    private fun urlCandidate(
+        name: String, label: String, example: String,
+        source: TeachParamSource, slot: TeachSlot, taken: Set<String>,
+    ): TeachParamCandidate = TeachParamCandidate(
+        name = uniqueName(name, taken, source),
+        label = label, example = example, source = source,
+        shape = shapeOf(example, emptyList()),
+        slots = listOf(slot), defaultSelected = true,
+    )
+
+    /** ③ 页面固定文本（列出来，但默认不勾、且不许勾）。 */
+    // 只看**点击步**：按钮/链接/表头才是「结构锚」；输入框的无障碍名是标签，不该混进来
+    private fun collectPageText(skill: TeachSkill, acc: CandidateAccumulator) {
+        val claimed = acc.byLiteral.keys
         val seenText = linkedSetOf<String>()
         for (s in skill.steps) {
             if (s.action != TeachAction.CLICK) continue
@@ -242,8 +258,8 @@ internal object TeachParams {
                 if (v.isBlank() || v in claimed || v in seenText) continue
                 if (seenText.size >= PAGE_TEXT_MAX) break
                 seenText += v
-                out += TeachParamCandidate(
-                    name = uniqueName("text${out.size + 1}", out.map { it.name }.toSet(), TeachParamSource.PAGE_TEXT),
+                acc.out += TeachParamCandidate(
+                    name = uniqueName("text${acc.out.size + 1}", takenNames(acc), TeachParamSource.PAGE_TEXT),
                     label = "页面文本",
                     example = v,
                     source = TeachParamSource.PAGE_TEXT,
@@ -255,7 +271,6 @@ internal object TeachParams {
                 )
             }
         }
-        return out
     }
 
     /** URL 里的 query 值 / path 数据段，逐个交给 [emit]（name/label/example/source/slot）。 */
@@ -341,12 +356,36 @@ internal object TeachParams {
      * 这一条正是负例 2「参数取错值」的最后一道闸。
      */
     fun parameterize(skill: TeachSkill, picks: List<TeachParamPick>): ParameterizeResult {
-        val errors = mutableListOf<String>()
         if (picks.isEmpty()) return ParameterizeResult(null, listOf("没有勾任何参数——要不就别参数化"))
 
+        val ordered = picks.sortedBy { it.name }
+        val errors = validatePicks(skill, ordered)
+        if (errors.isNotEmpty()) return ParameterizeResult(null, errors)
+
+        val (startUrl, steps) = applyPicks(skill, ordered, errors)
+        val interim = skill.copy(startUrl = startUrl, steps = steps)
+
+        // 拔干净自检：执行面里若还留着这个字面量 ⇒ 拒绝（宁可报错，不许「半参数化」）
+        for (p in ordered) {
+            val left = residualLiterals(interim, listOf(p.example))
+            if (left.isNotEmpty()) {
+                errors += "参数「${p.name}」没拔干净：${left.joinToString("；")}（这个值多半同时是定位文本）"
+            }
+        }
+        if (errors.isNotEmpty()) return ParameterizeResult(null, errors)
+
+        val out = interim.copy(params = skill.params + ordered.map { paramOfPick(it) })
+        // 序列化再解析一遍：形态合法才算数（免得把半截对象交给落盘层）
+        val round = TeachSkill.fromJson(out.toJsonText(), strict = true)
+            ?: return ParameterizeResult(null, listOf("参数化后的技能不符合 zl-teach/1 形态，已拒绝"))
+        return ParameterizeResult(round, emptyList(), ordered.map { it.name })
+    }
+
+    /** 勾选校验：名字合法且唯一、有示例值、示例值里不带占位符、有落点。 */
+    private fun validatePicks(skill: TeachSkill, ordered: List<TeachParamPick>): MutableList<String> {
+        val errors = mutableListOf<String>()
         val names = mutableSetOf<String>()
         skill.params.map { it.name }.forEach { names += it }
-        val ordered = picks.sortedBy { it.name }
         for (p in ordered) {
             if (!TeachParam.NAME_RE.matches(p.name)) {
                 errors += "参数名「${p.name}」不合法（英文小写开头，只能 [a-z0-9_]，最长 32）"
@@ -357,8 +396,15 @@ internal object TeachParams {
             if (p.example.contains("\${")) errors += "参数「${p.name}」的示例值里已经带占位符，先别参数化"
             if (p.slots.isEmpty()) errors += "参数「${p.name}」没有落点（不知道该替换哪一步）"
         }
-        if (errors.isNotEmpty()) return ParameterizeResult(null, errors)
+        return errors
+    }
 
+    /** 按落点改写执行面（起点 URL／每步 URL／步骤值／期望断言），返回改写后的两件。 */
+    private fun applyPicks(
+        skill: TeachSkill,
+        ordered: List<TeachParamPick>,
+        errors: MutableList<String>,
+    ): Pair<String, List<TeachStep>> {
         var startUrl = skill.startUrl
         var steps = skill.steps
 
@@ -368,21 +414,10 @@ internal object TeachParams {
                 when (slot.field) {
                     TeachSlotField.START_URL -> startUrl = rewriteUrl(startUrl, p.example, ph)
                     TeachSlotField.URL -> steps = steps.map { if (it.index == slot.step) it.copy(url = rewriteUrl(it.url, p.example, ph)) else it }
-                    TeachSlotField.VALUE -> {
-                        val target = steps.firstOrNull { it.index == slot.step }
-                        if (target == null) {
-                            errors += "参数「${p.name}」指向第 ${slot.step} 步，但技能里没有这一步"
-                        } else if (target.value == p.example) {
-                            steps = steps.map { if (it.index == slot.step) it.copy(value = ph) else it }
-                        } else if (target.value != ph) {
-                            errors += "参数「${p.name}」要替换第 ${slot.step} 步的值，但那里现在是「${target.value ?: "空"}」不是「${p.example}」"
-                        }
-                    }
-                    TeachSlotField.EXPECT -> {
-                        steps = steps.map { s ->
-                            if (s.index != slot.step) s
-                            else s.copy(expect = s.expect.map { e -> if (e.value == p.example) e.copy(value = ph) else e })
-                        }
+                    TeachSlotField.VALUE -> steps = applyValue(steps, slot, p, ph, errors)
+                    TeachSlotField.EXPECT -> steps = steps.map { s ->
+                        if (s.index != slot.step) s
+                        else s.copy(expect = s.expect.map { e -> if (e.value == p.example) e.copy(value = ph) else e })
                     }
                 }
             }
@@ -391,34 +426,41 @@ internal object TeachParams {
                 steps = steps.map { s -> if (p.slots.any { it.step == s.index }) s.copy(options = emptyList()) else s }
             }
         }
-
-        // 拔干净自检：执行面里若还留着这个字面量 ⇒ 拒绝（宁可报错，不许「半参数化」）
-        val interim = skill.copy(startUrl = startUrl, steps = steps)
-        for (p in ordered) {
-            val left = residualLiterals(interim, listOf(p.example))
-            if (left.isNotEmpty()) {
-                errors += "参数「${p.name}」没拔干净：${left.joinToString("；")}（这个值多半同时是定位文本）"
-            }
-        }
-        if (errors.isNotEmpty()) return ParameterizeResult(null, errors)
-
-        val newParams = skill.params + ordered.map { p ->
-            TeachParam(
-                name = p.name,
-                label = p.label,
-                source = p.source,
-                shape = p.shape,
-                slots = p.slots.distinctBy { it.step to it.field },
-                default = p.default?.takeIf { it.isNotBlank() },
-                options = p.options,
-            )
-        }
-        val out = interim.copy(params = newParams)
-        // 序列化再解析一遍：形态合法才算数（免得把半截对象交给落盘层）
-        val round = TeachSkill.fromJson(out.toJsonText(), strict = true)
-            ?: return ParameterizeResult(null, listOf("参数化后的技能不符合 zl-teach/1 形态，已拒绝"))
-        return ParameterizeResult(round, emptyList(), ordered.map { it.name })
+        return startUrl to steps
     }
+
+    /** 步骤值这一个落点：找不到步／值对不上都记一条原因，改不动就原样返回。 */
+    private fun applyValue(
+        steps: List<TeachStep>,
+        slot: TeachSlot,
+        p: TeachParamPick,
+        ph: String,
+        errors: MutableList<String>,
+    ): List<TeachStep> {
+        val target = steps.firstOrNull { it.index == slot.step }
+        return when {
+            target == null -> {
+                errors += "参数「${p.name}」指向第 ${slot.step} 步，但技能里没有这一步"
+                steps
+            }
+            target.value == p.example -> steps.map { if (it.index == slot.step) it.copy(value = ph) else it }
+            target.value != ph -> {
+                errors += "参数「${p.name}」要替换第 ${slot.step} 步的值，但那里现在是「${target.value ?: "空"}」不是「${p.example}」"
+                steps
+            }
+            else -> steps
+        }
+    }
+
+    private fun paramOfPick(p: TeachParamPick): TeachParam = TeachParam(
+        name = p.name,
+        label = p.label,
+        source = p.source,
+        shape = p.shape,
+        slots = p.slots.distinctBy { it.step to it.field },
+        default = p.default?.takeIf { it.isNotBlank() },
+        options = p.options,
+    )
 
     /**
      * 执行面里还剩哪些字面量（负例 1 的门禁入口；`单测`与「参数化自检」共用同一份口径）。
