@@ -356,11 +356,20 @@ internal class GuardPipeline(
     ): Result = finish(prepared.spec, prepared.call, runInline(prepared.spec, prepared.call.arguments), spillWriter)
 
     /**
-     * 第 ①②③ 段（**唯一实现**；[execute] / [executeInline] / [executeApproved] 共用）。
+     * 第 ①②③ 段（[execute] / [executeInline] / [executeApproved] 共用）。
      *
      * @param skipConfirm 批准后的路径传 true（只跳 ③ 权限判定，其余原样）
      */
     fun prepare(call: ToolCall, skipConfirm: Boolean = false): Prepared {
+        val p = prepareImpl(call, skipConfirm)
+        // 第三百二十八批：金吾卫喂入口——Settled 在这里收口（引擎并行车道直接吃 prepare
+        // 的 Settled，观测必须进 prepare 才全覆盖）；Ready 不在这里喂，执行完由 finish 喂。
+        if (p is Prepared.Settled) JinwuObserve.observe(p.result, call, registry)
+        return p
+    }
+
+    /** 第 ①②③ 段的唯一实现（观测收口在包装层 [prepare]）。 */
+    private fun prepareImpl(call: ToolCall, skipConfirm: Boolean = false): Prepared {
         // ① 注册表校验（含 Schema）
         val spec = registry.find(call.name)
             ?: return Prepared.Settled(
@@ -576,12 +585,12 @@ internal class GuardPipeline(
                 effectiveCall,
                 outcome.error,
                 contentHash = RunRules.sha256Hex(outcome.error),
-            )
+            ).also { JinwuObserve.observe(it, effectiveCall, registry) }
             is ToolOutcome.Rejected -> return Result.Rejected(
                 effectiveCall,
                 outcome.reason,
                 contentHash = RunRules.sha256Hex(outcome.reason),
-            )
+            ).also { JinwuObserve.observe(it, effectiveCall, registry) }
         }
         // 第二百零八批的通用账与第二百七十六批 P1 的授权账整块挪进 [writeLedgers]（照搬，一个字节没改）——
         // 拆它只为不新增 detekt LongMethod 条目：`finish` 在基线里没被咬过，本批不该把它推过 60 行（硬墙只准降）。
@@ -593,6 +602,7 @@ internal class GuardPipeline(
         // 第一百七十七批：工具产出的图片路径原样透传（围栏只管文本，图片走另一条通道）
         val images = (outcome as? ToolOutcome.Ok)?.imageRelPaths.orEmpty()
         return Result.Done(effectiveCall, wrapped, spilled, images, RunRules.sha256Hex(text))
+            .also { JinwuObserve.observe(it, effectiveCall, registry) }
     }
 
     /**
@@ -698,6 +708,7 @@ internal class GuardPipeline(
                     spillWriter,
                 )
             Result.Failed(p.call, "工具授权失败（${hookError.javaClass.simpleName}），这次不执行")
+                .also { JinwuObserve.observe(it, p.call, registry) }
         }
     }
 

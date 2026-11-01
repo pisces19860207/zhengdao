@@ -140,6 +140,11 @@ class L6BoundaryGateTest {
             "agent/PathCopyCore.kt" to setOf("mkdirs", "writeText", "appendText", "delete"),
             // 288 整理：范围/目标经管线守卫；mkdirs 只为配方目录，writeText 只写配方 json。
             "agent/OrganizeTool.kt" to setOf("mkdirs", "writeText"),
+            // 第三百二十八批：金吾卫喂入口的落盘（attempts 跨进程续跑＋装配账）——落点在
+            // 应用私有目录 filesDir/jinwu-patrol/，不是模型指的工作区路径；mkdirs 建自己的
+            // 账目录，appendText 是装配账一行一条（available/unavailable），writeText 是
+            // attempts 整表快照（重启不归零的判据面，GapFeedback 差值喂板读它）。
+            "agent/JinwuObserve.kt" to setOf("mkdirs", "writeText", "appendText"),
         )
     }
 
