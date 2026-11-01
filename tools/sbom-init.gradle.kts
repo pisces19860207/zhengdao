@@ -37,13 +37,24 @@
 //
 // 用法：`./gradlew -I tools/sbom-init.gradle.kts :sbomDump -PsbomOut=build/sbom/resolved.json`
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 
-/** 构件的稳定标识：Maven 构件 → group:name:version；工程依赖 → null（不进 SBOM）。 */
+/** 构件的稳定标识：Maven 构件 → group:name:version；工程依赖 → project:<路径>（352④）。 */
 fun gavOf(component: ResolvedComponentResult): String? {
     val id = component.id
     return if (id is ModuleComponentIdentifier) "${id.group}:${id.module}:${id.version}" else null
 }
+
+/**
+ * 工程依赖（:policy/:core 这类模块内构件）的稳定键。
+ * 352④ 起**进 SBOM**（first-party 组件）：它们打进同一个 APK，是「发了什么出去」的一部分。
+ * 键规整为 `project:` + 去掉首冒号的路径（":policy" → "project:policy"），与本文件内
+ * 边、tools/sbom.py 的 bom-ref 映射共用同一写法；本工程自身（每节的根构件）**不算**依赖，
+ * 由调用方以 `root` 键处理。
+ */
+fun projectKeyOf(component: ResolvedComponentResult): String? =
+    (component.id as? ProjectComponentIdentifier)?.let { "project:" + it.projectPath.trimStart(':') }
 
 /** 从请求边取值：ModuleComponentSelector 走 getGroup()/getModuleIdentifier().getName()/getVersion()。 */
 fun requestedGav(requested: Any): String? {
@@ -82,6 +93,14 @@ fun requestedGav(requested: Any): String? {
         }
     }
     return null
+}
+
+/** 请求边若是工程依赖（ProjectComponentSelector，Gradle 9 带 getProjectPath()），返回 project:<路径> 键。 */
+fun requestedProjectPath(requested: Any): String? = try {
+    (requested.javaClass.getMethod("getProjectPath").invoke(requested) as? String)
+        ?.let { "project:" + it.trimStart(':') }
+} catch (_: Exception) {
+    null // Maven 构件选择器没有这个方法，走 requestedGav 的候选
 }
 
 val sections = linkedMapOf(
@@ -128,15 +147,36 @@ gradle.projectsEvaluated {
                         "version" to parts.getOrElse(2) { "" },
                     )
                 }
+                // 352④：模块内工程依赖（first-party）。本工程自身是根构件，走 "root" 键，不进这里。
+                val projectComponents = linkedMapOf<String, Map<String, String>>()
+                for (component in result.allComponents) {
+                    val id = component.id as? ProjectComponentIdentifier ?: continue
+                    if (id.projectPath == projectPath) continue
+                    projectComponents["project:" + id.projectPath.trimStart(':')] = mapOf(
+                        // projectPath 用 Gradle 原样写法（带首冒号 ":policy"）；边键统一去首冒号
+                        "projectPath" to id.projectPath,
+                        "name" to id.projectPath.trimStart(':').substringAfterLast(':'),
+                    )
+                }
                 // group:name → gav（一次解析内唯一）
                 val byGaN = components.keys.associateBy { it.substringBeforeLast(":") }
                 val edgeSet = mutableSetOf<Pair<String, String>>()
                 for (component in result.allComponents) {
-                    val fromGav = gavOf(component) ?: "root" // 根构件（本工程自身）
+                    // 根构件（本工程自身）→ "root"；别的工程依赖 → project:<路径>；Maven 构件 → gav。
+                    // 352④ 前工程依赖统一落成 "root"（:policy→:core 的边被并进根），这里一并修正。
+                    val id = component.id
+                    val fromKey = when {
+                        id is ProjectComponentIdentifier ->
+                            if (id.projectPath == projectPath) "root" else "project:" + id.projectPath.trimStart(':')
+                        id is ModuleComponentIdentifier -> "${id.group}:${id.module}:${id.version}"
+                        else -> "root"
+                    }
                     for (dependency in component.dependencies) {
-                        val requestedGav = requestedGav(dependency.requested) ?: continue
-                        val toGav = byGaN[requestedGav.substringBeforeLast(":")] ?: requestedGav
-                        edgeSet += fromGav to toGav
+                        val toKey = requestedProjectPath(dependency.requested)
+                            ?: requestedGav(dependency.requested)
+                                ?.let { req -> byGaN[req.substringBeforeLast(":")] ?: req }
+                            ?: continue
+                        edgeSet += fromKey to toKey
                     }
                 }
                 val edgeList = edgeSet.sortedWith(compareBy({ it.first }, { it.second }))
@@ -147,6 +187,9 @@ gradle.projectsEvaluated {
                     "configuration" to configName,
                     "componentCount" to components.size,
                     "components" to components.keys.sorted().map { components.getValue(it) },
+                    // 352④：first-party 模块（:policy/:core…）单列，sbom.py 翻译成 CycloneDX 组件
+                    "projectComponents" to projectComponents.keys.sorted()
+                        .map { projectComponents.getValue(it) },
                     "edges" to edgeList,
                     "directFromRoot" to directFromRoot,
                 )

@@ -182,11 +182,33 @@ def build_cyclonedx(dump: dict, commit: str, timestamp: str) -> dict:
             "properties": [{"name": "zhengdao:section", "value": MAIN_SECTION}],
         })
 
+    # 352④：模块内工程依赖（:policy/:core…）作为 first-party 组件进主清单。
+    # 它们打进同一个 APK，是「发了什么出去」的一部分；不是 Maven 构件 ⇒ 不伪造
+    # pkg:maven purl（CycloneDX 1.5 允许组件无 purl），bom-ref 用 zhengdao:module:
+    # 前缀与 Maven 的 purl bom-ref 天然不冲突。bom-ref 键与 sbom-init 的
+    # "project:<路径>" 边键共用同一写法（去首冒号）。
+    main_project_comps = []
+    for pc in sections[MAIN_SECTION].get("projectComponents", []):
+        path = pc["projectPath"]  # Gradle 原样写法，带首冒号（":policy"）
+        main_project_comps.append({
+            "type": "application",
+            "bom-ref": "zhengdao:module:%s" % path.strip(":"),
+            "group": APP_GROUP,
+            "name": pc["name"],
+            "version": read_app_version(),
+            "scope": "required",
+            "properties": [
+                {"name": "zhengdao:module", "value": path},
+                {"name": "zhengdao:section", "value": MAIN_SECTION},
+            ],
+        })
+
     # 分区构件：每个坐标一条，#supp 后缀 bom-ref 与主清单 purl bom-ref 不冲突；
     # 用多个 zhengdao:section property 列全它出现的节（debug/test 等闭包高度重叠，
     # 每条坐标只写一次、节集合完整，人读与机读都不缺）。
     supp_sections_by_gav: dict[str, list[str]] = {}
     supp_comps_by_gav: dict[str, dict] = {}
+    supp_project_sections: dict[str, list[str]] = {}
     for section in SECTION_ORDER:
         if section == MAIN_SECTION:
             continue
@@ -197,6 +219,8 @@ def build_cyclonedx(dump: dict, commit: str, timestamp: str) -> dict:
             gav = "%s:%s:%s" % (comp["group"], comp["name"], comp["version"])
             supp_sections_by_gav.setdefault(gav, []).append(section)
             supp_comps_by_gav[gav] = comp
+        for pc in info.get("projectComponents", []):
+            supp_project_sections.setdefault(pc["projectPath"], []).append(section)
     supp_components = []
     for gav in sorted(supp_sections_by_gav):
         comp = supp_comps_by_gav[gav]
@@ -211,12 +235,28 @@ def build_cyclonedx(dump: dict, commit: str, timestamp: str) -> dict:
             "scope": "optional",
             "properties": [{"name": "zhengdao:section", "value": s} for s in section_list],
         })
+    # 352④：分区节里的 first-party 模块（bom-ref 加 #supp 后缀，与主清单同名组件不撞）。
+    for path in sorted(supp_project_sections):
+        supp_components.append({
+            "type": "application",
+            "bom-ref": "zhengdao:module:%s#supp" % path.strip(":"),
+            "group": APP_GROUP,
+            "name": path.strip(":").split(":")[-1],
+            "version": read_app_version(),
+            "scope": "optional",
+            "properties": [{"name": "zhengdao:module", "value": path}] + [
+                {"name": "zhengdao:section", "value": s} for s in supp_project_sections[path]
+            ],
+        })
 
     # 依赖图：只覆盖主清单（release 闭包）——分区的边不进主图，SBOM 里注明。
     ref_by_gav = {}
     for comp in main_components:
         gav = "%s:%s:%s" % (comp["group"], comp["name"], comp["version"])
         ref_by_gav[gav] = comp["bom-ref"]
+    # 352④：first-party 模块的边键（sbom-init 写法：project:<去首冒号路径>）
+    for comp in main_project_comps:
+        ref_by_gav["project:%s" % comp["properties"][0]["value"].strip(":")] = comp["bom-ref"]
     root_ref = "%s/%s@%s" % (APP_GROUP, APP_NAME, read_app_version())
     depends_on: dict[str, set[str]] = {root_ref: set()}
     for gav, ref in ref_by_gav.items():
@@ -283,9 +323,13 @@ def build_cyclonedx(dump: dict, commit: str, timestamp: str) -> dict:
                  "value": json.dumps(section_errors, ensure_ascii=False)},
                 {"name": "zhengdao:dependencies-scope",
                  "value": "dependencies 节只覆盖主清单（release 闭包）的依赖图"},
+                {"name": "zhengdao:first-party-modules",
+                 "value": json.dumps(
+                     [c["properties"][0]["value"] for c in main_project_comps],
+                     ensure_ascii=False)},
             ],
         },
-        "components": main_components + supp_components,
+        "components": main_components + main_project_comps + supp_components,
         "dependencies": dependencies,
     }
 
