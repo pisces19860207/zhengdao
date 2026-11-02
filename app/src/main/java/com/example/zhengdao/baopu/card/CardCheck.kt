@@ -923,118 +923,131 @@ internal object CardCheck {
     private fun checkCardInfo(raw: JSONObject, out: MutableList<Finding>, roster: CardRoster?) {
         val data = CardJson.objectOf(raw, "data") ?: raw
         val ext = CardJson.objectOf(data, "extensions")
+        checkCardWorldbook(CardJson.stringOf(ext, "world"), out, roster)
+        checkCardRegexScripts(ext?.opt("regex_scripts"), out, roster)
+        checkCardTheme(CardJson.objectOf(CardJson.objectOf(ext, "tavo"), "theme"), out, roster)
+        checkCardEmbeddedBook(CardJson.objectOf(data, "character_book"), out, roster)
+    }
 
-        val world = CardJson.stringOf(ext, "world")
-        if (!world.isNullOrEmpty()) {
-            if (roster == null) {
-                out += Finding(
-                    Level.INFO, "CARD_EXTERNAL_WORLDBOOK_UNJUDGED", Stage.SEMANTIC, null, "extensions.world",
-                    "引用了外部世界书『${truncate(world, 30)}』，无册可验（未判）。",
-                    "extensions.world",
-                )
-            } else if (!roster.hasWorldbook(world)) {
-                out += Finding(
-                    Level.ERROR, "CARD_WORLD_MISSING", Stage.SEMANTIC, null, "extensions.world",
-                    "引用的外部世界书『${truncate(world, 30)}』不在名册里（链接可能已失效）。",
-                    "extensions.world",
-                )
-            } else {
-                out += Finding(
-                    Level.INFO, "CARD_WORLD_OK", Stage.SEMANTIC, null, "extensions.world",
-                    "引用的外部世界书『${truncate(world, 30)}』在名册里。",
-                    "extensions.world",
-                )
-            }
+    /** extensions.world：名册在/不在/没有名册三种口径（无册时按 §16.1 只报「未判」）。 */
+    private fun checkCardWorldbook(world: String?, out: MutableList<Finding>, roster: CardRoster?) {
+        if (world.isNullOrEmpty()) return
+        if (roster == null) {
+            out += Finding(
+                Level.INFO, "CARD_EXTERNAL_WORLDBOOK_UNJUDGED", Stage.SEMANTIC, null, "extensions.world",
+                "引用了外部世界书『${truncate(world, 30)}』，无册可验（未判）。",
+                "extensions.world",
+            )
+        } else if (!roster.hasWorldbook(world)) {
+            out += Finding(
+                Level.ERROR, "CARD_WORLD_MISSING", Stage.SEMANTIC, null, "extensions.world",
+                "引用的外部世界书『${truncate(world, 30)}』不在名册里（链接可能已失效）。",
+                "extensions.world",
+            )
+        } else {
+            out += Finding(
+                Level.INFO, "CARD_WORLD_OK", Stage.SEMANTIC, null, "extensions.world",
+                "引用的外部世界书『${truncate(world, 30)}』在名册里。",
+                "extensions.world",
+            )
         }
+    }
 
-        val scripts = ext?.opt("regex_scripts")
+    /** extensions.regex_scripts：内嵌脚本条数＋与名册比对（重复的前三条逐条列，多余的汇总）。 */
+    private fun checkCardRegexScripts(scripts: Any?, out: MutableList<Finding>, roster: CardRoster?) {
         val scriptCount = when (scripts) {
             is JSONArray -> scripts.length()
             is JSONObject -> scripts.length()
             else -> 0
         }
-        if (scriptCount > 0) {
-            if (roster == null) {
-                out += Finding(
-                    Level.INFO, "CARD_EMBEDDED_REGEX_UNJUDGED", Stage.SEMANTIC, null, "extensions.regex_scripts",
-                    "内嵌 $scriptCount 条正则脚本（未与外部比对，未判）。",
-                    "extensions.regex_scripts",
-                )
-            } else {
-                var dupes = 0
-                val items = ArrayList<JSONObject>()
-                when (scripts) {
-                    is JSONArray -> for (i in 0 until scripts.length()) scripts.optJSONObject(i)?.let { items += it }
-                    is JSONObject -> items += scripts
-                }
-                for (it in items) {
-                    val fr = it.optString("findRegex")
-                    val rs = it.optString("replaceString")
-                    if (fr.isEmpty()) continue
-                    if (roster.hasRegex(fr, rs)) {
-                        dupes++
-                        if (dupes <= 3) {
-                            out += Finding(
-                                Level.WARN, "CARD_REGEX_DUPLICATE", Stage.SEMANTIC, null, "extensions.regex_scripts",
-                                "内嵌正则与独立正则资产重复：${truncate(fr, 40)}（同名不同体请核对）。",
-                                "extensions.regex_scripts",
-                            )
-                        }
-                    }
-                }
-                if (dupes == 0) {
+        if (scriptCount <= 0) return
+        if (roster == null) {
+            out += Finding(
+                Level.INFO, "CARD_EMBEDDED_REGEX_UNJUDGED", Stage.SEMANTIC, null, "extensions.regex_scripts",
+                "内嵌 $scriptCount 条正则脚本（未与外部比对，未判）。",
+                "extensions.regex_scripts",
+            )
+            return
+        }
+        val dupes = countRegexDupes(scripts, out, roster)
+        if (dupes == 0) {
+            out += Finding(
+                Level.INFO, "CARD_REGEX_NO_DUPLICATE", Stage.SEMANTIC, null, "extensions.regex_scripts",
+                "内嵌 $scriptCount 条正则脚本，与名册比对无重复。",
+                "extensions.regex_scripts",
+            )
+        } else if (dupes > 3) {
+            out += Finding(
+                Level.WARN, "CARD_REGEX_DUPLICATE_MORE", Stage.SEMANTIC, null, "extensions.regex_scripts",
+                "另有 ${dupes - 3} 条重复正则未逐条列出。",
+                "extensions.regex_scripts",
+            )
+        }
+    }
+
+    /** 内嵌脚本逐条与名册对：与独立正则资产重复的前 3 条就地报 WARN；返回重复总数。 */
+    private fun countRegexDupes(scripts: Any?, out: MutableList<Finding>, roster: CardRoster): Int {
+        var dupes = 0
+        val items = ArrayList<JSONObject>()
+        when (scripts) {
+            is JSONArray -> for (i in 0 until scripts.length()) scripts.optJSONObject(i)?.let { items += it }
+            is JSONObject -> items += scripts
+        }
+        for (it in items) {
+            val fr = it.optString("findRegex")
+            val rs = it.optString("replaceString")
+            if (fr.isEmpty()) continue
+            if (roster.hasRegex(fr, rs)) {
+                dupes++
+                if (dupes <= 3) {
                     out += Finding(
-                        Level.INFO, "CARD_REGEX_NO_DUPLICATE", Stage.SEMANTIC, null, "extensions.regex_scripts",
-                        "内嵌 $scriptCount 条正则脚本，与名册比对无重复。",
-                        "extensions.regex_scripts",
-                    )
-                } else if (dupes > 3) {
-                    out += Finding(
-                        Level.WARN, "CARD_REGEX_DUPLICATE_MORE", Stage.SEMANTIC, null, "extensions.regex_scripts",
-                        "另有 ${dupes - 3} 条重复正则未逐条列出。",
+                        Level.WARN, "CARD_REGEX_DUPLICATE", Stage.SEMANTIC, null, "extensions.regex_scripts",
+                        "内嵌正则与独立正则资产重复：${truncate(fr, 40)}（同名不同体请核对）。",
                         "extensions.regex_scripts",
                     )
                 }
             }
         }
+        return dupes
+    }
 
-        val theme = CardJson.objectOf(CardJson.objectOf(ext, "tavo"), "theme")
-        if (theme != null) {
-            val hasSpec = theme.has("spec") && CardJson.stringOf(theme, "spec")?.isNotEmpty() == true
-            // spec 缺失/认不出 ⇒ 忽略该子项、不报错（仍报「卡自带外观」这一层）
-            val themeName = CardJson.stringOf(theme, "name")
-            val current = roster?.currentThemeName
-            if (current != null && !themeName.isNullOrEmpty() && themeName != current) {
-                out += Finding(
-                    Level.INFO, "CARD_THEME_CONFLICT", Stage.SEMANTIC, null, "extensions.tavo.theme",
-                    "卡自带外观『${truncate(themeName, 20)}』与当前主题『${truncate(current, 20)}』不同（可能打架）。",
-                    "extensions.tavo.theme",
-                )
-            } else {
-                out += Finding(
-                    Level.INFO, "CARD_EMBEDDED_THEME_UNJUDGED", Stage.SEMANTIC, null, "extensions.tavo.theme",
-                    "卡自带外观（${theme.length()} 键，${if (hasSpec) "含" else "不含"} spec），未与当前主题比对（未判）。",
-                    "extensions.tavo.theme",
-                )
-            }
+    /** extensions.tavo.theme：卡自带外观与当前主题冲突与否（spec 认不出时忽略该子项）。 */
+    private fun checkCardTheme(theme: JSONObject?, out: MutableList<Finding>, roster: CardRoster?) {
+        if (theme == null) return
+        val hasSpec = theme.has("spec") && CardJson.stringOf(theme, "spec")?.isNotEmpty() == true
+        // spec 缺失/认不出 ⇒ 忽略该子项、不报错（仍报「卡自带外观」这一层）
+        val themeName = CardJson.stringOf(theme, "name")
+        val current = roster?.currentThemeName
+        if (current != null && !themeName.isNullOrEmpty() && themeName != current) {
+            out += Finding(
+                Level.INFO, "CARD_THEME_CONFLICT", Stage.SEMANTIC, null, "extensions.tavo.theme",
+                "卡自带外观『${truncate(themeName, 20)}』与当前主题『${truncate(current, 20)}』不同（可能打架）。",
+                "extensions.tavo.theme",
+            )
+        } else {
+            out += Finding(
+                Level.INFO, "CARD_EMBEDDED_THEME_UNJUDGED", Stage.SEMANTIC, null, "extensions.tavo.theme",
+                "卡自带外观（${theme.length()} 键，${if (hasSpec) "含" else "不含"} spec），未与当前主题比对（未判）。",
+                "extensions.tavo.theme",
+            )
         }
+    }
 
-        val book = CardJson.objectOf(data, "character_book")
-        val bookName = CardJson.stringOf(book, "name")
-        if (!bookName.isNullOrEmpty()) {
-            if (roster != null && roster.hasWorldbook(bookName)) {
-                out += Finding(
-                    Level.WARN, "CARD_EMBEDDED_BOOK_NAME_CLASH", Stage.SEMANTIC, null, "character_book.name",
-                    "内嵌世界书『${truncate(bookName, 30)}』与外部世界书同名（两本同名书会混淆）。",
-                    "character_book.name",
-                )
-            } else {
-                out += Finding(
-                    Level.INFO, "CARD_EMBEDDED_BOOK_UNJUDGED", Stage.SEMANTIC, null, "character_book.name",
-                    "内嵌世界书『${truncate(bookName, 30)}』，与外部同名未判。",
-                    "character_book.name",
-                )
-            }
+    /** character_book.name：内嵌世界书与外部同名＝混淆提醒；不同名或没名册按「未判」。 */
+    private fun checkCardEmbeddedBook(book: JSONObject?, out: MutableList<Finding>, roster: CardRoster?) {
+        val bookName = CardJson.stringOf(book, "name") ?: return
+        if (roster != null && roster.hasWorldbook(bookName)) {
+            out += Finding(
+                Level.WARN, "CARD_EMBEDDED_BOOK_NAME_CLASH", Stage.SEMANTIC, null, "character_book.name",
+                "内嵌世界书『${truncate(bookName, 30)}』与外部世界书同名（两本同名书会混淆）。",
+                "character_book.name",
+            )
+        } else {
+            out += Finding(
+                Level.INFO, "CARD_EMBEDDED_BOOK_UNJUDGED", Stage.SEMANTIC, null, "character_book.name",
+                "内嵌世界书『${truncate(bookName, 30)}』，与外部同名未判。",
+                "character_book.name",
+            )
         }
     }
 
