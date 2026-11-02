@@ -48,9 +48,6 @@ enum class LogisticsStatus(val label: String, val keywords: Set<String>) {
         private val INDEX: Map<String, LogisticsStatus> =
             entries.flatMap { s -> s.keywords.map { LogisticsContract.normalize(it) to s } }.toMap()
 
-        /** 表驱动测试钉这条：一个写法只许归一个档。 */
-        fun keywordCount(): Int = INDEX.size
-
         /**
          * 状态文字 → 档位（整段归一后相等才命中）。
          *

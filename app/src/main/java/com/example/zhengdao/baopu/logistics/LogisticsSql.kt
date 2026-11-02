@@ -251,6 +251,4 @@ object LogisticsSql {
             .map { "ALTER TABLE $TABLE ADD COLUMN $it ${COLUMNS.first { p -> p.first == it }.second}" }
     }
 
-    /** 一天有多少行（播报「打开抱朴时提示过一次就不再提示」的比对基准）。 */
-    val COUNT_DAY_SQL: String = "SELECT COUNT(*) FROM $TABLE WHERE $COL_DAY = ?"
 }

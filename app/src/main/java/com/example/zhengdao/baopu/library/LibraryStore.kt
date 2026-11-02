@@ -222,12 +222,6 @@ internal class LibraryStore(private val db: BaopuDb) {
         }
     }
 
-    fun logMove(op: String, path: String = "", sha256: String = "", status: String = "", now: Long = System.currentTimeMillis()): Future<Unit> =
-        db.write { d ->
-            val s = LibrarySql.insertMoveLog(op, path, sha256, status, now)
-            d.execSQL(s.sql, s.args)
-        }
-
     /** 一次性提示Flag（[key] 例：`first-move-notice`）。 */
     fun hasNotice(key: String): Boolean = db.read { d ->
         d.rawQuery(LibrarySql.hasNotice(key).sql, arrayOf(LibrarySql.NOTICE_PREFIX + key)).use { c ->

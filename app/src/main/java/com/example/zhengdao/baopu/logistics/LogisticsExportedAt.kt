@@ -63,9 +63,6 @@ object LogisticsExportedAt {
     /** 表里能被当成「导出时间」的标签字（只有这几个词，多一个都是放宽）。 */
     private val EXPORT_LABELS = listOf("导出时间", "导出日期", "打印时间", "生成时间", "报表时间")
 
-    /** 文件名里找（找不到返回 null）。 */
-    fun fromName(fileName: String, nowMillis: Long, zone: TimeZone): Long? = hitFromName(fileName, nowMillis, zone)?.millis
-
     /** 文件名里找，连「有没有钟点」一起给（[resolve] 用这条）。 */
     internal fun hitFromName(fileName: String, nowMillis: Long, zone: TimeZone): Hit? =
         firstCandidate(fileName, nowMillis, zone)

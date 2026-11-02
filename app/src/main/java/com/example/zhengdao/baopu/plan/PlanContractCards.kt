@@ -156,12 +156,6 @@ internal object ContractDeviationRules {
                 "需要什么、为什么需要，不要试探性地先动手。"
     }
 
-    /**
-     * 「发现契约外必要步骤」的回灌（C 段③：**只报不改**，负例④的靶心）。
-     *
-     * 引擎只调这一句，绝不代模型写进计划——加步骤必须走 `update_plan` ＋ 变更确认卡。
-     */
-    fun beyondPlanNotice(intent: String): String = PlanContractRules.newStepNotice(intent)
 }
 
 /**

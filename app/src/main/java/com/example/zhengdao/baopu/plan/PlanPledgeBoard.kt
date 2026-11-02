@@ -334,10 +334,6 @@ internal object PlanPledgeBoard {
     /** 顶替关系（旧项 → 新项）。 */
     fun supersededFrom(): Map<String, String> = synchronized(this) { superseded.toMap() }
 
-    /** 当前预算读数（卡面与观测面用）。 */
-    fun amendBudget(): PlanPledgeAmendRules.AmendBudget =
-        PlanPledgeAmendRules.budgetOf(itemsAtFreeze(), asksUsed)
-
     /** 变更账文件（测试与回查用；没接落点 ⇒ null）。 */
     fun changeLedgerFile(): File? = dirs.firstOrNull()?.let { File(it, CHANGE_LEDGER_FILE) }
 

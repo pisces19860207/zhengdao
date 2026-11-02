@@ -85,12 +85,6 @@ internal object McpJsonRpc {
         return out.toList()
     }
 
-    /** JSON-RPC 的响应（只用于「服务器主动请求我们」的拒绝；v1 不接服务器请求）。 */
-    fun errorResponse(id: Any?, code: Int, message: String): JSONObject = JSONObject()
-        .put("jsonrpc", VERSION)
-        .put("id", id ?: JSONObject.NULL)
-        .put("error", JSONObject().put("code", code).put("message", message))
-
     /** 服务器回来的消息分类。 */
     sealed interface Incoming {
         /** 对我们的请求的响应（id 对得上才有意义）。 */

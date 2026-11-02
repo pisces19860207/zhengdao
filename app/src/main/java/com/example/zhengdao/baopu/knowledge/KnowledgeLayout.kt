@@ -75,9 +75,6 @@ internal object KnowledgeLayout {
 
     fun organizeAuditFile(workspace: File): File = File(organizedDir(workspace), FILE_ORGANIZE_AUDIT)
 
-    fun organizeBackupDir(workspace: File, runId: String): File =
-        File(File(backupRoot(workspace), "整理"), runId)
-
     /** 旧共享原件区（157 前 `资料库/原始/`）——只作迁移来源，不新建、不写回。 */
     fun legacyRawDir(workspace: File): File = File(File(workspace, "资料库"), SUB_RAW)
 

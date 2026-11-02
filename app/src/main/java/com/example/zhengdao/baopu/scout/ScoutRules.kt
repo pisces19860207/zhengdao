@@ -130,15 +130,6 @@ internal object ScoutRules {
         revokedMentioned = false,
     )
 
-    /** 用户在系统设置里重新给了（或卡上改判为允许）：次数清零，态改 granted。 */
-    fun withGrant(record: ScoutRecord, atMs: Long): ScoutRecord = record.copy(
-        state = ScoutState.GRANTED,
-        denials = 0,
-        lastAtMs = atMs,
-        note = "",
-        revokedMentioned = false,
-    )
-
     /** 记一次"已提过 revoked"（判据⑤：提过就不再主动提）。只对 REVOKED 生效。 */
     fun withMention(record: ScoutRecord, atMs: Long): ScoutRecord =
         if (record.state == ScoutState.REVOKED) {
