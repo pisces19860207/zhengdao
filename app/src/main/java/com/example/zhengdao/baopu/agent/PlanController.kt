@@ -535,6 +535,55 @@ internal class PlanController(
      * 非法组合先拦过了）。每一步都往 ack 里留一句实话，模型必须知道自己头上
      * 有没有结项门。
      */
+    /**
+     * ② 重签：140 卡人批过的结构变更 ⇒ 旧版原样留账，新版成为现役（343 衔接口径：
+     * 之后按新版本快照结项）。验收方式没变的条目沿用旧条，新条以条目原文兜底。
+     */
+    private fun resignIfChanged(
+        change: PlanChange,
+        items: List<PlanItem>,
+        args: JSONObject,
+        atMs: Long,
+        notes: MutableList<String>,
+    ) {
+        if (!change.needsCard) return
+        val old = PlanPledgeBoard.activeSnapshot() ?: return
+        val reason = (PlanPledgeRules.parseResign(args)
+            as? PlanPledgeRules.ResignParse.Ok)?.reason.orEmpty()
+        if (reason.isEmpty()) return
+        val oldAccept = old.entries.associate { it.text to it.accept }
+        PlanPledgeBoard.applyResign(
+            items,
+            items.map { oldAccept[it.text] ?: it.text },
+            reason,
+            PlanPledgeRules.ResignChannel.HUMAN,
+            atMs,
+        )?.let { next ->
+            notes += "【军令状重签】第 ${next.version} 版快照生效（${next.entries.size} 项）：" +
+                "旧版原样留在账上，之后按新版结项。"
+        }
+    }
+
+    /** ③ 结项申报进板：无状 ⇒ 说明性忽略（无状任务不设结项门，不许事后补状）。 */
+    private fun closeoutIntoBoard(
+        closeout: PlanPledgeRules.CloseoutParse,
+        notes: MutableList<String>,
+    ) {
+        if (closeout !is PlanPledgeRules.CloseoutParse.Ok) return
+        val active = PlanPledgeBoard.activeSnapshot()
+        if (active == null) {
+            notes += "【无状任务】未立军令状：closeout 申报已忽略，不设结项门（不许事后补状）。"
+            return
+        }
+        PlanPledgeBoard.noteCloseout(closeout.declarations)
+        val known = active.texts.toSet()
+        val unknown = closeout.declarations.map { it.text }.filter { it !in known }.distinct()
+        if (unknown.isNotEmpty()) {
+            notes += "有 ${unknown.size} 条申报对不上快照（按条目原文逐字对齐）：" +
+                "${unknown.take(2).joinToString("；")}——这些在收口时不计。"
+        }
+    }
+
     private fun pledgeAfterLanding(
         items: List<PlanItem>,
         args: JSONObject,
@@ -559,42 +608,10 @@ internal class PlanController(
             PlanPledgeBoard.freeze(snapshot)
             notes += PlanPledgeCards.frozenAck(snapshot)
         }
-        // ② 重签：140 卡人批过的结构变更 ⇒ 旧版原样留账，新版成为现役（343 衔接口径：
-        // 之后按新版本快照结项）。验收方式没变的条目沿用旧条，新条以条目原文兜底。
-        if (change.needsCard && PlanPledgeBoard.activeSnapshot() != null) {
-            val reason = (PlanPledgeRules.parseResign(args)
-                as? PlanPledgeRules.ResignParse.Ok)?.reason.orEmpty()
-            if (reason.isNotEmpty()) {
-                val old = PlanPledgeBoard.activeSnapshot()!!
-                val oldAccept = old.entries.associate { it.text to it.accept }
-                PlanPledgeBoard.applyResign(
-                    items,
-                    items.map { oldAccept[it.text] ?: it.text },
-                    reason,
-                    PlanPledgeRules.ResignChannel.HUMAN,
-                    atMs,
-                )?.let { next ->
-                    notes += "【军令状重签】第 ${next.version} 版快照生效（${next.entries.size} 项）：" +
-                        "旧版原样留在账上，之后按新版结项。"
-                }
-            }
-        }
+        resignIfChanged(change, items, args, atMs, notes)
         // ③ 结项申报进板：无状 ⇒ 说明性忽略（无状任务不设结项门，不许事后补状）。
         if (pledgeParse is PledgeParse.Skip) notes += pledgeParse.notices
-        if (closeout is PlanPledgeRules.CloseoutParse.Ok) {
-            val active = PlanPledgeBoard.activeSnapshot()
-            if (active == null) {
-                notes += "【无状任务】未立军令状：closeout 申报已忽略，不设结项门（不许事后补状）。"
-            } else {
-                PlanPledgeBoard.noteCloseout(closeout.declarations)
-                val known = active.texts.toSet()
-                val unknown = closeout.declarations.map { it.text }.filter { it !in known }.distinct()
-                if (unknown.isNotEmpty()) {
-                    notes += "有 ${unknown.size} 条申报对不上快照（按条目原文逐字对齐）：" +
-                        "${unknown.take(2).joinToString("；")}——这些在收口时不计。"
-                }
-            }
-        }
+        closeoutIntoBoard(closeout, notes)
         // ④ 范围变更落板（343 尾巴①）：用户一句话改约（改一下／加一项／删一项）走 amend
         // 三条正路——**不新开单**（判断与记账在 [amendLandingNote]，这里只收那一句话）。
         if (amend is AmendParse.Ok) notes += amendLandingNote(items, change, amend, args, atMs)
