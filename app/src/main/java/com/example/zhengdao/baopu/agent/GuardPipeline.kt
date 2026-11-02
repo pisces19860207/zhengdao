@@ -18,6 +18,7 @@ import com.example.zhengdao.baopu.FilePolicy
 import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.RiskGate
+import com.example.zhengdao.baopu.RiskMatrix
 import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
 import com.example.zhengdao.baopu.RiskVerdict
@@ -35,6 +36,7 @@ import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
 import com.example.zhengdao.baopu.plan.TouchFace
+import com.example.zhengdao.baopu.scout.LedgerFanout
 import com.example.zhengdao.core.RunLog
 import org.json.JSONObject
 import java.io.File
@@ -44,6 +46,19 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+
+/** 偏差账的两格「哪个权限」（机器键；与 208/249 的 `wire` 同纪律——改它等于改历史账的读法）。 */
+private const val GATE_RISK_MATRIX = "risk_matrix"
+private const val GATE_TASK_GRANT = "task_grant"
+
+/** 三元组（L26）先拦下时六步还没跑：拒因码按这一格落，不冒充六步的结论码。 */
+private const val BINDING_MISMATCH = "binding_mismatch"
+
+/** 工具失败审计的 stage：工具自己拒（与降级梯子的 ①②③④ 分开记，抽检才分得清）。 */
+private const val STAGE_TOOL_REJECT = "工具自拒"
+
+/** 工具失败审计的拒因码：工具自己拒不是矩阵的拒绝，不冒充 RiskCode 的档。 */
+private const val REASON_TOOL_REJECT = "tool_reject"
 
 /**
  * **数据围栏（唯一出口）**——所有工具结果（含 read_file、检索记忆）统一走这里包裹，
@@ -169,18 +184,22 @@ data class SpillResult(val file: File, val chars: Int)
  *
  * 五段逐一落地（括号内是 §5 原文序号）：
  * 1. （①）注册表校验：名字存在？参数合 Schema？——[ToolRegistry.validateCall]；
- * 2. （②）路径守卫：arguments 里的 `path` 相对工作区根解析，[BaopuGuardCore.checkPath]
- *    （按路径组件比较，同前缀兄弟目录过不来）——越界即拒并 RunLog，同时发一条
- *    `OVER_SCOPE` **事实**事件（第三百四十六批 B；判决不在这里，见 [feedScopeEscape]）；
+ * 2. （②）路径守卫：arguments 里的路径按 [pathKeysFor] 口径表取出后解析（相对工作区根、
+ *    绝对路径原样）；**表外参数不当路径**：不改写、不判、不发事件（宁缺勿滥）。两道硬线
+ *    （[fileAccessCheck] 系统与凭据目录、P0-2 原件区只读）拦下即拒并 RunLog，**只有这一段**
+ *    发 `OVER_SCOPE` **事实**事件（第三百四十六批 B；判决不在这里，见 [feedScopeEscape]）；
  * 3. （③）权限判定（**第二百二十三批：风险矩阵是唯一口径**）：`RiskMatrix.classify` 一次定档——
  *    `R0` 直行；`R1` 按既有策略（[ToolPermission.CONFIRM] ⇒ [Result.NeedsConfirm]）；
  *    `R2` **必问**（**第二百四十九批改订**：任务级明确授权快照范围内的「新建/改正文」不再
  *    逐次问，六步见 `authz/TaskGrantGate`；快照之外、受保护对象、硬拒、R3 仍逐次问或直接拒，
  *    改订依据见 [ConfirmFlow] 类 KDoc）；`R3` **必问且不可自动**；`hardDeny` ⇒ [Result.Rejected]（终止本轮）；
  *    未分类 ⇒ 按 `R2` 必问并记一条 `unclassified_tool`（fail-closed）。批准后走
- *    [executeApproved]——只跳这一段，其余四段原样；
+ *    [executeApproved]——只跳这一段，其余四段原样。**授权闸拒绝不发灾异事件**（防线正常工作，
+ *    不是事故；2026-11-02 裁定 b）：只记一条偏差账事实行——谁／哪个权限／拒因（[noteDeviation]）；
  * 4. （④）执行：[ToolRunner] 带超时；**顺序由调度层给**（第九十二批）：写工具单飞、
- *    读工具成段有界并行（[ToolScheduling]）；并行读走 [executeInline]（同一个池，直跑）；
+ *    读工具成段有界并行（[ToolScheduling]）；并行读走 [executeInline]（同一个池，直跑）。
+ *    **工具内拒绝**（工具自己拒：格式不支持／路径不存在等）同样**不发灾异事件**（裁定 c），
+ *    记一条工具失败（`工具失败审计.jsonl`，见 [noteToolRejection]）；
  * 5. （⑤）输出处理：超 [SPILL_THRESHOLD_CHARS] ⇒ spill 落盘只回摘要；回灌必经
  *    [DataFence.wrap]（围栏统一，没有第二个出口）。
  */
@@ -447,6 +466,14 @@ internal class GuardPipeline(
                         "抱朴管线：矩阵硬拒 ${effectiveCall.name}（${verdict.reasonCode.id}）" +
                             "——${verdict.reasons.joinToString("；") { it.detail }}",
                     )
+                    // 2026-11-02 裁定 b：授权闸拒绝＝防线正常工作，**不发灾异事件**，记偏差账。
+                    noteDeviation(
+                        opId = effectiveCall.id,
+                        toolName = effectiveCall.name,
+                        gate = GATE_RISK_MATRIX,
+                        permission = verdict.reasonCode.id,
+                        reason = verdict.reasons.joinToString("；") { it.detail },
+                    )
                     return Prepared.Settled(Result.Rejected(effectiveCall, RiskTell.rejectText(verdict)))
                 }
                 // 未分类 ⇒ fail-closed：按 R2 必问，并留一条账（带工具名与矩阵版本）
@@ -541,6 +568,16 @@ internal class GuardPipeline(
             WiringDisposition.ALLOW -> return Prepared.Ready(effectiveCall, spec)
             WiringDisposition.REJECT -> {
                 log("抱朴授权：硬拒 ${effectiveCall.name}（${grantLane.note}）——这次动作不发生")
+                // 2026-11-02 裁定 b：同上一格——授权闸拒绝记偏差账，不发灾异事件。
+                // 判定码由 TaskGrantGate/ApprovalBindings 给；三元组先拦下时 decision 为空，
+                // 拒因就是 note（两种都照实落，不在管线里另造一个码）。
+                noteDeviation(
+                    opId = effectiveCall.id,
+                    toolName = effectiveCall.name,
+                    gate = GATE_TASK_GRANT,
+                    permission = grantLane.decision?.code ?: BINDING_MISMATCH,
+                    reason = grantLane.note.ifBlank { "任务级授权判为硬拒" },
+                )
                 return Prepared.Settled(
                     Result.Rejected(effectiveCall, "任务级授权判为硬拒，这次动作不做：${grantLane.note}"),
                 )
@@ -593,7 +630,11 @@ internal class GuardPipeline(
                 effectiveCall,
                 outcome.reason,
                 contentHash = RunRules.sha256Hex(outcome.reason),
-            ).also { JinwuObserve.observe(it, effectiveCall, registry) }
+            ).also {
+                // 2026-11-02 裁定 c：工具自己拒＝工具失败，**不发灾异事件**（不混进 SCOPE_ESCAPE）。
+                noteToolRejection(spec, effectiveCall, outcome.reason)
+                JinwuObserve.observe(it, effectiveCall, registry)
+            }
         }
         // 第二百零八批的通用账与第二百七十六批 P1 的授权账整块挪进 [writeLedgers]（照搬，一个字节没改）——
         // 拆它只为不新增 detekt LongMethod 条目：`finish` 在基线里没被咬过，本批不该把它推过 60 行（硬墙只准降）。
@@ -852,6 +893,70 @@ internal class GuardPipeline(
     }
 
     /**
+     * ③ 段授权闸拒绝时落的一条**偏差账**事实行（2026-11-02 裁定 b）。
+     *
+     * 为什么不是灾异：[裁定记录-2026-11]「哪种拒绝算灾异」——灾异是「防线被撞」，
+     * 授权闸拒绝是「防线正常工作」，记成灾异会让事件表噪音化。这一行只说三件事实：
+     * **谁**（[DecisionActor.MODEL]——发起这笔动作的那一方）、**哪个权限**（矩阵判据码／
+     * 授权链结论码）、**拒因**（守卫自己给的那句），外加出处 `src=gp:<opId>`；
+     * 不写"危险/越权"，判决归右相与中心模型。
+     *
+     * 落点：`偏差账.jsonl`（[DeviationFactLog]，与 208 同一棵私有目录）；363 的
+     * `DeviationLedger` 是这套账的正式主人，本批只种「授权闸拒绝」这一类。
+     * 没装配落点（纯 JVM 单测）⇒ 不落，也**不挡动作**（账是留痕，不是闸门）。
+     */
+    private fun noteDeviation(
+        opId: String,
+        toolName: String,
+        gate: String,
+        permission: String,
+        reason: String,
+    ) {
+        val now = System.currentTimeMillis()
+        val row = JSONObject()
+            .put("v", DeviationFactLog.VERSION)
+            .put("id", "dv-$now-$opId")
+            .put("at", now)
+            .put("who", DecisionActor.MODEL.wire)
+            .put("gate", gate)
+            .put("permission", permission)
+            .put("reason", reason.trim())
+            .put("tool", toolName)
+            .put("src", "gp:$opId")
+        DeviationFactLog.append(row, log)
+    }
+
+    /**
+     * ④ 段工具自己拒（[ToolOutcome.Rejected]）时落的一行**工具失败**（2026-11-02 裁定 c）。
+     *
+     * 与 [noteDeviation] 分开：那边是授权闸拒绝（没权限），这边是工具自己拒（格式不支持／
+     * 路径不存在…）——两者都**不发**灾异事件，但**不混成一笔**。落进 237 批的专业账
+     * `工具失败审计.jsonl`（[FailureAuditLog]，决策中心审计栏的唯一账），明细只进盘、不进上下文。
+     */
+    private fun noteToolRejection(spec: ToolSpec, call: ToolCall, reason: String) {
+        // 不在这里再调一次 RiskMatrix.classify：③ 段已经判过，这一行只需记「工具自己拒了」，
+        // 档位取表里的底档（未入档按 R2，与 RiskBrief 的 fail-closed 口径一致）。
+        val tier = RiskMatrix.baseOf(call.name, riskTable)?.name ?: RiskClass.R2.name
+        FailureAuditLog.append(
+            FailureAuditLog.row(
+                tool = call.name,
+                group = spec.group,
+                stage = STAGE_TOOL_REJECT,
+                risk = RiskBrief(
+                    tier = tier,
+                    reasonCode = REASON_TOOL_REJECT,
+                    hardDeny = false,
+                    why = "工具自己拒绝了这次调用",
+                ),
+                actor = DecisionActor.MODEL,
+                outcome = "拒",
+                evidence = reason,
+                atMs = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    /**
      * 全盘操作入账（287 判据⑤「每笔读写入账，30 天可回放」）。
      *
      * 为什么落在管线而不是各工具里：管线是带路径参数工具的**唯一入口**，
@@ -989,5 +1094,38 @@ internal class GuardPipeline(
 
         /** 「动作 × 目标」认领表的上限（292-P1 判据③；一轮几十笔，512 够跑很久且不攒内存）。 */
         const val FILE_OPS_CLAIM_CAP = 512
+    }
+}
+
+/**
+ * ③ 段授权闸拒绝的**偏差账**（2026-11-02 裁定 b：「防线正常工作，不是事故」）。
+ *
+ * 独立文件 `偏差账.jsonl`，落点＝208 已装配的那棵私有目录（[DecisionLedger.installedRoot]）；
+ * append-only、不覆盖不删除、不判决——与 274/277/298 那几本专业账同一纪律。
+ * 363（偏差静默记）是这套账的正式主人；本批只种「授权闸拒绝」一类，行里按它的规矩
+ * 带出处（`src`＝`gp:<opId>`）与三件事实（`who`／`permission`／`reason`），字段只增不改。
+ */
+internal object DeviationFactLog {
+
+    /** 文件名（与 208 同一棵目录、独立一本）。 */
+    const val FILE_NAME = "偏差账.jsonl"
+
+    /** 行格式版本（改字段必须 +1，否则老行读出来是错的）。 */
+    const val VERSION = 1
+
+    /** 落点文件（测试读盘用同一把口径）。 */
+    fun fileIn(globalRoot: File): File = File(globalRoot, FILE_NAME)
+
+    /**
+     * 追加一行。返回**有没有落上**；没装配落点（纯 JVM 单测）⇒ false。
+     * 写失败只留日志——账是留痕不是闸门，**不许**影响已经发生的拒绝判定。
+     */
+    @Synchronized
+    fun append(row: JSONObject, log: (String) -> Unit): Boolean {
+        val root = DecisionLedger.installedRoot() ?: return false
+        val ok = runCatching { LedgerFanout(listOf(root), FILE_NAME).appendLine(row.toString()) }
+            .getOrDefault(false)
+        if (!ok) log("抱朴偏差账：没落上（${row.optString("id")}）")
+        return ok
     }
 }

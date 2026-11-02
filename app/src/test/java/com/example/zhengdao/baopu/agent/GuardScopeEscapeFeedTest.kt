@@ -22,6 +22,14 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.FileOpLog
+import com.example.zhengdao.baopu.RiskClass
+import com.example.zhengdao.baopu.RiskTable
+import com.example.zhengdao.baopu.RiskVerdict
+import com.example.zhengdao.baopu.ToolRule
+import com.example.zhengdao.baopu.authz.GrantWiring
+import com.example.zhengdao.baopu.authz.ShadowSignal
+import com.example.zhengdao.baopu.authz.WiringDisposition
+import com.example.zhengdao.baopu.authz.WiringResult
 import com.example.zhengdao.baopu.inspect.AnomalyFactKind
 import com.example.zhengdao.baopu.inspect.AnomalyFeed
 import com.example.zhengdao.law.LawIo
@@ -165,6 +173,114 @@ class GuardScopeEscapeFeedTest {
         )
     }
 
+    // ── 2026-11-02 口径：③ 段拒绝记偏差账、④ 段工具自拒记工具失败，两处都不发灾异事件 ──
+
+    private fun deviationRows(): List<JSONObject> {
+        val f = DeviationFactLog.fileIn(ledgerRoot)
+        if (!f.isFile) return emptyList()
+        return f.readLines(Charsets.UTF_8).filter { it.isNotBlank() }.map { JSONObject(it) }
+    }
+
+    /** 假授权链：一律判硬拒（判据只打"管线怎么处置"，不测六步本身）。 */
+    private fun grantsRejecting(note: String = "三元组对不上（测试桩）"): GrantWiring =
+        object : GrantWiring {
+            override fun decide(
+                call: ToolCall,
+                targets: List<File>,
+                verdict: RiskVerdict?,
+                root: File,
+                isWrite: Boolean,
+                nowMonoMs: Long,
+                epoch: String,
+                shadow: ShadowSignal,
+                log: (String) -> Unit,
+            ): WiringResult = WiringResult(WiringDisposition.REJECT, note = note)
+        }
+
+    @Test
+    fun `授权闸硬拒_偏差账加一_灾异零条`() {
+        // raw=null ⇒ ② 段没有原件区可拦；这一笔落到 ③ 段原件区硬拒上。
+        val call = ToolCall(
+            "c-346-6",
+            "write_file",
+            JSONObject().put("path", "资料库/原始/甲.md").put("content", "改原件"),
+        )
+        val r = pipeline(raw = null).execute(call, { _, _ -> null })
+        assertTrue("原件区在 ③ 段仍是硬拒：$r", r is GuardPipeline.Result.Rejected)
+        assertTrue("走的是矩阵硬拒那一支：$lines", lines.any { it.contains("矩阵硬拒") })
+        assertTrue("授权闸拒绝不发灾异事件：${AnomalyFeed.replay()}", AnomalyFeed.replay().isEmpty())
+
+        val rows = deviationRows()
+        assertEquals("偏差账 +1", 1, rows.size)
+        val row = rows[0]
+        assertEquals("谁＝发起这笔动作的一方", "model", row.getString("who"))
+        assertEquals("哪一层拒的", "risk_matrix", row.getString("gate"))
+        assertEquals("哪个权限＝矩阵判据码", "raw_zone", row.getString("permission"))
+        assertTrue("拒因照实落（守卫自己那句）：${row.getString("reason")}", row.getString("reason").contains("原件区"))
+        assertEquals("出处＝这一笔动作自己的账键", "gp:c-346-6", row.getString("src"))
+        assertTrue("工具失败账不许混进这一笔：${FailureAuditLog.readAll()}", FailureAuditLog.readAll().isEmpty())
+    }
+
+    @Test
+    fun `授权链硬拒_偏差账加一_灾异零条`() {
+        File(root, "资料库").mkdirs()
+        File(root, "资料库/设定.md").writeText("工作区里的内容")
+        val p = GuardPipeline(
+            registry(),
+            { root },
+            { null },
+            directRunner(),
+            { lines += it },
+            grantWiring = grantsRejecting("快照里的对象对不上"),
+        )
+        val r = p.execute(readCall("c-346-7", "资料库/设定.md"), { _, _ -> null })
+        assertTrue("授权链判硬拒 ⇒ 这次动作不做：$r", r is GuardPipeline.Result.Rejected)
+        assertTrue("灾异事件 0：${AnomalyFeed.replay()}", AnomalyFeed.replay().isEmpty())
+
+        val rows = deviationRows()
+        assertEquals("偏差账 +1", 1, rows.size)
+        assertEquals("哪一层拒的", "task_grant", rows[0].getString("gate"))
+        assertEquals("三元组先拦下 ⇒ 拒因码按这一格落", "binding_mismatch", rows[0].getString("permission"))
+        assertTrue("拒因照实落：${rows[0].getString("reason")}", rows[0].getString("reason").contains("快照里的对象对不上"))
+        assertEquals("gp:c-346-7", rows[0].getString("src"))
+        assertTrue("工具失败账 0", FailureAuditLog.readAll().isEmpty())
+    }
+
+    @Test
+    fun `工具内拒绝_工具失败加一_灾异零条`() {
+        val reg = ToolRegistry().apply {
+            register(
+                ToolSpec(
+                    name = "reject_tool",
+                    description = "工具自己拒（测试桩）",
+                    inputSchema = JSONObject().put("type", "object").put("properties", JSONObject()),
+                    readOnly = true,
+                ) { ToolOutcome.Rejected("这个格式不支持") },
+            )
+        }
+        val p = GuardPipeline(
+            reg,
+            { root },
+            { null },
+            directRunner(),
+            { lines += it },
+            riskTable = RiskTable.DEFAULT.copy(
+                tools = RiskTable.DEFAULT.tools + ("reject_tool" to ToolRule(RiskClass.R0)),
+            ),
+        )
+        val r = p.execute(ToolCall("c-346-8", "reject_tool", JSONObject()), { _, _ -> null })
+        assertTrue("工具自己拒 ⇒ Rejected：$r", r is GuardPipeline.Result.Rejected)
+        assertTrue("工具内拒绝不发灾异事件：${AnomalyFeed.replay()}", AnomalyFeed.replay().isEmpty())
+        assertTrue("偏差账 0（那是授权闸的事）：${deviationRows()}", deviationRows().isEmpty())
+
+        val rows = FailureAuditLog.readAll()
+        assertEquals("工具失败 +1", 1, rows.size)
+        assertEquals("reject_tool", rows[0].tool)
+        assertEquals("与梯子 ①②③④ 分开记", "工具自拒", rows[0].stage)
+        assertEquals("拒", rows[0].outcome)
+        assertTrue("证据＝工具自己给的那句：${rows[0].evidence}", rows[0].evidence.contains("格式不支持"))
+    }
+
     // ── 源级：只喂采集器，零引用判定层（名册不许手改的前提） ─────────────────────
 
     @Test
@@ -183,6 +299,18 @@ class GuardScopeEscapeFeedTest {
             "两处红线各喂一次（多了＝第二个口径冒出来；少了＝有一段红线没接）",
             2,
             Regex("""feedScopeEscape\(\s*call\.id""").findAll(code).count(),
+        )
+        // 2026-11-02 口径：③ 段两处拒绝各记一行偏差（不许发事件、不许合成一处）；
+        // ④ 段工具自拒只记工具失败一处（不混进 SCOPE_ESCAPE，也不落偏差账）。
+        assertEquals(
+            "③ 段两处拒绝各记一行偏差账",
+            2,
+            Regex("""gate\s*=\s*GATE_""").findAll(code).count(),
+        )
+        assertEquals(
+            "④ 段工具自拒只记工具失败一处",
+            1,
+            Regex("""noteToolRejection\(\s*spec,\s*effectiveCall,\s*outcome\.reason\s*\)""").findAll(code).count(),
         )
         listOf("AnomalyGate", "AnomalyVerdict", "AccountabilityGate", "baopu.law.").forEach { bad ->
             assertFalse(
