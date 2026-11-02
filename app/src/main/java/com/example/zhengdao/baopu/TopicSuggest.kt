@@ -385,20 +385,39 @@ internal object TopicFlowRules {
     /**
      * 唯一迁移函数。**被忽略的事件返回原状态**（不回 null）——回 null 会被控制器
      * 当成「销卡」，点错相位上的按钮不该把整条流吹掉；null 只留给 [FlowEvent.Dismiss]。
+     *
+     * detekt 清债批（chore/detekt-debt-6，2026-11-02）：原 83 行／复杂度 42 的大 when
+     * 拆成「按事件分发 ＋ 一事件一小函数」（见下方 onXxx 系列），守卫条件与
+     * copy 字段逐字保留——reducer 的纯函数性质不变。
      */
     fun reduce(state: TopicFlowState?, ev: FlowEvent): TopicFlowState? = when (ev) {
         // 文字对三卡零副作用：卡不挡输入（164），打字只算聊天/备注——不选、不批、不开写。
         is FlowEvent.UserText -> state
+        is FlowEvent.Select -> onSelect(state, ev)
+        is FlowEvent.BatchSwapped -> onBatchSwapped(state, ev)
+        FlowEvent.ToStyle -> onToStyle(state)
+        is FlowEvent.PickStyle -> onPickStyle(state, ev)
+        FlowEvent.UseRecommended -> onUseRecommended(state)
+        FlowEvent.ShiftStyle -> onShiftStyle(state)
+        FlowEvent.BackToSuggest -> onBackToSuggest(state)
+        FlowEvent.BackToStyle -> onBackToStyle(state)
+        FlowEvent.ConfirmWrite -> onConfirmWrite(state)
+        is FlowEvent.ArticleDone -> onArticleDone(state, ev)
+        FlowEvent.StopWrite -> onStopWrite(state)
+        FlowEvent.Dismiss -> null
+    }
 
-        is FlowEvent.Select -> if (state != null && state.phase == TopicFlowPhase.SUGGEST) {
+    private fun onSelect(state: TopicFlowState?, ev: FlowEvent.Select): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.SUGGEST) {
             state.copy(selected = if (ev.seedId in state.selected) state.selected - ev.seedId else state.selected + ev.seedId)
         } else {
             state
         }
 
-        // 换一批＝同一流程的第 N 批：shownSeedIds 只增不减（与**所有**上批零重复，
-        // 比派工单「与上批零重复」更严），选中态重置为全选。
-        is FlowEvent.BatchSwapped -> if (state != null) {
+    // 换一批＝同一流程的第 N 批：shownSeedIds 只增不减（与**所有**上批零重复，
+    // 比派工单「与上批零重复」更严），选中态重置为全选。
+    private fun onBatchSwapped(state: TopicFlowState?, ev: FlowEvent.BatchSwapped): TopicFlowState? =
+        if (state != null) {
             state.copy(
                 batchNo = state.batchNo + 1,
                 shownSeedIds = state.shownSeedIds + ev.batch.candidates.map { it.seed.id }.toSet(),
@@ -413,25 +432,29 @@ internal object TopicFlowRules {
             start(ev.batch, TopicSuggest.STYLES.first().id, ev.poolOffset)
         }
 
-        FlowEvent.ToStyle -> if (state != null && state.phase == TopicFlowPhase.SUGGEST && state.selected.isNotEmpty()) {
+    private fun onToStyle(state: TopicFlowState?): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.SUGGEST && state.selected.isNotEmpty()) {
             state.copy(phase = TopicFlowPhase.STYLE)
         } else {
             state
         }
 
-        is FlowEvent.PickStyle -> if (state != null && state.phase == TopicFlowPhase.STYLE) {
+    private fun onPickStyle(state: TopicFlowState?, ev: FlowEvent.PickStyle): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.STYLE) {
             state.copy(styleId = ev.styleId)
         } else {
             state
         }
 
-        FlowEvent.UseRecommended -> if (state != null && state.phase == TopicFlowPhase.STYLE) {
+    private fun onUseRecommended(state: TopicFlowState?): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.STYLE) {
             state.copy(phase = TopicFlowPhase.CONFIRM)
         } else {
             state
         }
 
-        FlowEvent.ShiftStyle -> if (state != null && state.phase == TopicFlowPhase.STYLE) {
+    private fun onShiftStyle(state: TopicFlowState?): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.STYLE) {
             // 「改一档」＝就地切到下一套（末尾绕回第一套），随后进确认卡（派工单 §0.2）
             val next = TopicSuggest.STYLES.map { it.id }
                 .dropWhile { it != state.styleId }.drop(1).firstOrNull() ?: TopicSuggest.STYLES.first().id
@@ -440,7 +463,8 @@ internal object TopicFlowRules {
             state
         }
 
-        FlowEvent.BackToSuggest -> if (state != null &&
+    private fun onBackToSuggest(state: TopicFlowState?): TopicFlowState? =
+        if (state != null &&
             (state.phase == TopicFlowPhase.CONFIRM || state.phase == TopicFlowPhase.STYLE)
         ) {
             state.copy(phase = TopicFlowPhase.SUGGEST)
@@ -448,14 +472,16 @@ internal object TopicFlowRules {
             state
         }
 
-        FlowEvent.BackToStyle -> if (state != null && state.phase == TopicFlowPhase.CONFIRM) {
+    private fun onBackToStyle(state: TopicFlowState?): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.CONFIRM) {
             state.copy(phase = TopicFlowPhase.STYLE)
         } else {
             state
         }
 
-        // 唯一开写闸：CONFIRM 相位 + 用户点了按钮。文字到不了这里（见 UserText 分支）。
-        FlowEvent.ConfirmWrite -> if (state != null && state.phase == TopicFlowPhase.CONFIRM) {
+    // 唯一开写闸：CONFIRM 相位 + 用户点了按钮。文字到不了这里（见 UserText 分支）。
+    private fun onConfirmWrite(state: TopicFlowState?): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.CONFIRM) {
             val queue = state.candidates.filter { it.seed.id in state.selected }
             if (queue.isEmpty()) state else state.copy(
                 phase = TopicFlowPhase.WRITING,
@@ -465,7 +491,8 @@ internal object TopicFlowRules {
             state
         }
 
-        is FlowEvent.ArticleDone -> if (state != null && state.phase == TopicFlowPhase.WRITING && state.writing != null) {
+    private fun onArticleDone(state: TopicFlowState?, ev: FlowEvent.ArticleDone): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.WRITING && state.writing != null) {
             val w = state.writing
             val results = w.results + ev.result
             val done = w.done + 1
@@ -478,12 +505,10 @@ internal object TopicFlowRules {
             state
         }
 
-        FlowEvent.StopWrite -> if (state != null && state.phase == TopicFlowPhase.WRITING) {
+    private fun onStopWrite(state: TopicFlowState?): TopicFlowState? =
+        if (state != null && state.phase == TopicFlowPhase.WRITING) {
             state.copy(phase = TopicFlowPhase.DONE)
         } else {
             state
         }
-
-        FlowEvent.Dismiss -> null
-    }
 }
