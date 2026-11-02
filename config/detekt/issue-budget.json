@@ -1,8 +1,8 @@
 {
-  "total": 392,
+  "total": 382,
   "rules": {
-    "CyclomaticComplexMethod": 219,
-    "LongMethod": 173
+    "CyclomaticComplexMethod": 214,
+    "LongMethod": 168
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -60,7 +60,6 @@
     "CyclomaticComplexMethod|CardCheck.kt|collisions#1",
     "CyclomaticComplexMethod|CardCheck.kt|keysepProblems#1",
     "CyclomaticComplexMethod|CardFormat.kt|judgePng#1",
-    "CyclomaticComplexMethod|CardFormat.kt|recognize#1",
     "CyclomaticComplexMethod|CardJson.kt|skipValue#1",
     "CyclomaticComplexMethod|CardJson.kt|topLevelKeys#1",
     "CyclomaticComplexMethod|CardPng.kt|read#1",
@@ -158,7 +157,6 @@
     "CyclomaticComplexMethod|ReflectionRules.kt|mismatchCandidates#1",
     "CyclomaticComplexMethod|ReflectionRunner.kt|skillDirRefs#1",
     "CyclomaticComplexMethod|RiskGate.kt|hint#1",
-    "CyclomaticComplexMethod|RiskMatrix.kt|classify#1",
     "CyclomaticComplexMethod|RiskMatrix.kt|isInternalHost#1",
     "CyclomaticComplexMethod|RiskMatrix.kt|normalizePath#1",
     "CyclomaticComplexMethod|RunEngine.kt|askGroup#1",
@@ -168,11 +166,9 @@
     "CyclomaticComplexMethod|ScheduleTaskTool.kt|parse#1",
     "CyclomaticComplexMethod|ScheduleTasksActivity.kt|ScheduleEditorDialog#1",
     "CyclomaticComplexMethod|ScheduleTasksActivity.kt|ScheduleTasksPage#1",
-    "CyclomaticComplexMethod|SearchInFilesTool.kt|search#1",
     "CyclomaticComplexMethod|SeedSkills.kt|installOne#1",
     "CyclomaticComplexMethod|SettingsScreen.kt|SettingsScreen#1",
     "CyclomaticComplexMethod|SheetRead.kt|parse#1",
-    "CyclomaticComplexMethod|SheetRead.kt|read#1",
     "CyclomaticComplexMethod|SkillAcceptance.kt|entryGate#1",
     "CyclomaticComplexMethod|SkillContract.kt|checkCondition#1",
     "CyclomaticComplexMethod|SkillContract.kt|review#1",
@@ -218,7 +214,6 @@
     "CyclomaticComplexMethod|ToolRegistry.kt|typeMismatch#1",
     "CyclomaticComplexMethod|ToolScheduling.kt|runParallel#1",
     "CyclomaticComplexMethod|ToolSchemaRules.kt|audit#1",
-    "CyclomaticComplexMethod|TopicSuggest.kt|reduce#1",
     "CyclomaticComplexMethod|VisionFiles.kt|load#1",
     "CyclomaticComplexMethod|WriteFileTool.kt|write#1",
     "CyclomaticComplexMethod|ZipExtractor.kt|extract#1",
@@ -288,7 +283,6 @@
     "LongMethod|BrowserStartPage.kt|BrowserStartPage#1",
     "LongMethod|CardCheck.kt|checkCardInfo#1",
     "LongMethod|CardFormat.kt|judgePng#1",
-    "LongMethod|CardFormat.kt|recognize#1",
     "LongMethod|ChannelSwitchFsm.kt|dispatch#1",
     "LongMethod|CompressionRunner.kt|runOnce#1",
     "LongMethod|ConfirmFlow.kt|enter#1",
@@ -351,7 +345,6 @@
     "LongMethod|ProposalRules.kt|generate#1",
     "LongMethod|ReflectionRules.kt|mismatchCandidates#1",
     "LongMethod|ReflectionRunner.kt|skillDirRefs#1",
-    "LongMethod|RiskMatrix.kt|classify#1",
     "LongMethod|RunEngine.kt|executeWithSwitch#1",
     "LongMethod|RunEngine.kt|handleSerialCall#1",
     "LongMethod|RunEngine.kt|handleToolResult#1",
@@ -359,14 +352,12 @@
     "LongMethod|SchedulePass.kt|run#1",
     "LongMethod|ScheduleTasksActivity.kt|ScheduleEditorDialog#1",
     "LongMethod|ScheduleTasksActivity.kt|ScheduleTasksPage#1",
-    "LongMethod|SearchInFilesTool.kt|search#1",
     "LongMethod|SeedSkills.kt|installOne#1",
     "LongMethod|SettingsAboutActivity.kt|SettingsAboutPage#1",
     "LongMethod|SettingsCommon.kt|WorkspaceFolderPicker#1",
     "LongMethod|SettingsHelpActivity.kt|SettingsHelpPage#1",
     "LongMethod|SettingsPermissionCard.kt|SettingsPermissionCard#1",
     "LongMethod|SettingsScreen.kt|SettingsScreen#1",
-    "LongMethod|SheetRead.kt|read#1",
     "LongMethod|SkillAcceptance.kt|entryGate#1",
     "LongMethod|SkillCard.kt|BaopuSkillCard#1",
     "LongMethod|SkillLibraryScreen.kt|SkillLibraryDialog#1",
@@ -390,7 +381,6 @@
     "LongMethod|ToolRegistry.kt|handle#1",
     "LongMethod|ToolScheduling.kt|runParallel#1",
     "LongMethod|ToolSchemaRules.kt|audit#1",
-    "LongMethod|TopicSuggest.kt|reduce#1",
     "LongMethod|VisionFiles.kt|load#1",
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
     "LongMethod|WriteFileTool.kt|write#1",
@@ -398,14 +388,14 @@
     "LongMethod|ZipIndex.kt|read#1",
     "LongMethod|ZipPacker.kt|pack#1"
   ],
-  "recorded_from": "354 本机 JDK21 + detekt 1.23.8（与 324 交叉验证同源）",
-  "recorded_at": "2026-11-01T22:12:10+0800",
+  "recorded_from": "本机复验读数（chore/detekt-debt-6 zd6-1..zd6-5，detekt XML mtime 2026-11-02 19:44:39；CI 绿后验收会话可用 CI 读数覆写核对）",
+  "recorded_at": "2026-11-02T19:52:19+0800",
   "zones": {
     "engine": {
-      "total": 261,
+      "total": 251,
       "rules": {
-        "CyclomaticComplexMethod": 172,
-        "LongMethod": 89
+        "CyclomaticComplexMethod": 167,
+        "LongMethod": 84
       }
     },
     "frozen_ui": {
