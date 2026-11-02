@@ -68,26 +68,9 @@ object LogisticsXlsx {
                     "请在 Excel 里另存为 .xlsx，或直接「另存为 CSV」再放进 inbox。",
             )
         }
-        val parts = Parts()
-        val pass1 = runCatching {
-            ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
-                var entry = zin.nextEntry
-                while (entry != null) {
-                    when (entry.name) {
-                        "xl/workbook.xml" -> parts.workbookXml = readLimited(zin, MAX_ENTRY_BYTES)
-                        "xl/_rels/workbook.xml.rels" -> parts.relsXml = readLimited(zin, MAX_ENTRY_BYTES)
-                        "xl/sharedStrings.xml" -> parts.sharedXml = readLimited(zin, MAX_SHARED_BYTES)
-                        else -> if (entry.name.startsWith("xl/worksheets/") && entry.name.endsWith(".xml")) {
-                            parts.worksheetEntries += entry.name
-                        }
-                    }
-                    entry = zin.nextEntry
-                }
-            }
-        }
-        if (pass1.isFailure) {
+        val parts = collectParts(bytes).getOrElse {
             return ReadOutcome.Failed(
-                "这个文件打不开（不是合法的 xlsx 包）：${pass1.exceptionOrNull()?.javaClass?.simpleName}。" +
+                "这个文件打不开（不是合法的 xlsx 包）：${it.javaClass.simpleName}。" +
                     "请用 Excel「另存为 CSV」导一份。",
             )
         }
@@ -100,6 +83,38 @@ object LogisticsXlsx {
                 "认不出第一张表「${sheets.first().name}」的数据在包里的哪个位置（workbook 与 rels 对不上），" +
                     "整份不读，避免读到错的那一张。",
             )
+        val (sheetXml, oversize) = readFirstSheetEntry(bytes, target)
+        if (oversize) {
+            return ReadOutcome.Failed("第一张表解压后超过 ${MAX_ENTRY_BYTES / 1024 / 1024} MB 上限，先按天拆开再导。")
+        }
+        val xml = sheetXml
+            ?: return ReadOutcome.Failed("第一张表的数据（$target）在包里找不到，整份不读。")
+        val shared = parts.sharedXml?.let { sharedStrings(it) }.orEmpty()
+        return readSheet(xml, shared, sheets)
+    }
+
+    /** 第一遍扫包：把 workbook／rels／sharedStrings 和 worksheet 条目名捞出来（不解析）。 */
+    private fun collectParts(bytes: ByteArray): Result<Parts> = runCatching {
+        val parts = Parts()
+        ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
+            var entry = zin.nextEntry
+            while (entry != null) {
+                when (entry.name) {
+                    "xl/workbook.xml" -> parts.workbookXml = readLimited(zin, MAX_ENTRY_BYTES)
+                    "xl/_rels/workbook.xml.rels" -> parts.relsXml = readLimited(zin, MAX_ENTRY_BYTES)
+                    "xl/sharedStrings.xml" -> parts.sharedXml = readLimited(zin, MAX_SHARED_BYTES)
+                    else -> if (entry.name.startsWith("xl/worksheets/") && entry.name.endsWith(".xml")) {
+                        parts.worksheetEntries += entry.name
+                    }
+                }
+                entry = zin.nextEntry
+            }
+        }
+        parts
+    }
+
+    /** 第二遍扫包：只解第一张表的数据；返回（表 XML 或 null=没找到, 是否超单条上限）。 */
+    private fun readFirstSheetEntry(bytes: ByteArray, target: String): Pair<String?, Boolean> {
         var sheetXml: String? = null
         var oversize = false
         runCatching {
@@ -115,13 +130,7 @@ object LogisticsXlsx {
                 }
             }
         }
-        if (oversize) {
-            return ReadOutcome.Failed("第一张表解压后超过 ${MAX_ENTRY_BYTES / 1024 / 1024} MB 上限，先按天拆开再导。")
-        }
-        val xml = sheetXml
-            ?: return ReadOutcome.Failed("第一张表的数据（$target）在包里找不到，整份不读。")
-        val shared = parts.sharedXml?.let { sharedStrings(it) }.orEmpty()
-        return readSheet(xml, shared, sheets)
+        return sheetXml to oversize
     }
 
     /**
