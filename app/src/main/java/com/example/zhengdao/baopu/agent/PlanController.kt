@@ -11,6 +11,10 @@ import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.plan.PlanContract
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractRules
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendCards
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendDecision
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendParse
 import com.example.zhengdao.baopu.plan.PlanPledgeBoard
 import com.example.zhengdao.baopu.plan.PlanPledgeCards
 import com.example.zhengdao.baopu.plan.PlanPledgeRules
@@ -208,6 +212,13 @@ internal class PlanController(
             log("抱朴军令状：拒绝（${closeoutParse.message}）")
             return ToolOutcome.Failed(closeoutParse.message)
         }
+        // 343 尾巴①：范围变更的写法门（全在落库**之前**——半张申报不落库）。错误原文
+        // 回灌给模型，与 pledge/closeout/resign 同一口径。
+        val amendParse = PlanPledgeAmendRules.parseAmend(args)
+        if (amendParse is AmendParse.Error) {
+            log("抱朴军令状：拒绝（${amendParse.message}）")
+            return ToolOutcome.Failed(amendParse.message)
+        }
         // 声明了但没批准 ⇒ 只落库不进上限；同一版被拒过还原样重发，不再重复弹卡。
         val declared = (contractParse as? PlanContractRules.ContractParse.Ok)?.contract
             ?: contract
@@ -245,7 +256,7 @@ internal class PlanController(
         deviationMuted = false
         // ── 第三百四十七批：落库成功之后的军令状动作（冻结／重签／申报进板）——
         // 冻结只在这时发生（人在卡上点过头＋这版计划真的落了库），账上不留没落地的状。
-        val pledgeNotes = pledgeAfterLanding(applied.items, args, change, pledgeParse, closeoutParse, sid)
+        val pledgeNotes = pledgeAfterLanding(applied.items, args, change, pledgeParse, closeoutParse, amendParse, sid)
         val cardLine = pledgeAckLine
         pledgeAckLine = null
         log(
@@ -518,7 +529,7 @@ internal class PlanController(
         .toSet()
 
     /**
-     * 落库成功之后的军令状三动作，按序：**冻结 → 重签 → 申报进板**。
+     * 落库成功之后的军令状四动作，按序：**冻结 → 重签 → 申报进板 → 范围变更**。
      *
      * 冻结与重签互斥（有状才谈重签，没状才谈冻结）；申报与两者不同调用（工具层
      * 非法组合先拦过了）。每一步都往 ack 里留一句实话，模型必须知道自己头上
@@ -530,6 +541,7 @@ internal class PlanController(
         change: PlanChange,
         pledgeParse: PledgeParse,
         closeout: PlanPledgeRules.CloseoutParse,
+        amend: AmendParse,
         sid: Long,
     ): List<String> {
         val notes = mutableListOf<String>()
@@ -583,12 +595,42 @@ internal class PlanController(
                 }
             }
         }
+        // ④ 范围变更落板（343 尾巴①）：用户一句话改约（改一下／加一项／删一项）走 amend
+        // 三条正路——**不新开单**（判断与记账在 [amendLandingNote]，这里只收那一句话）。
+        if (amend is AmendParse.Ok) notes += amendLandingNote(items, change, amend, args, atMs)
         // 开工卡没弹过的直调（非引擎路径）：如实说没立状，不许让模型以为状生效了。
         if (pledgeParse is PledgeParse.Need) {
             notes += "【军令状未立】长程任务要立状，但开工卡没有弹出（非引擎直调路径）：" +
                 "本次按无状处理——不冻结、不设结项门，该有的确认卡一张不少。"
         }
         return notes
+    }
+
+    /**
+     * ④ 范围变更落板的那个回灌（343 尾巴①）。用户一句话改约（改一下／加一项／删一项）
+     * 走 amend 三条正路，**不新开单**：板上已有状 ⇒ 冻结不触发；resign 键不在场（组合闸
+     * 拒了同调）⇒ 重签老路不触发；版本、DROPPED 与两本账全由 [PlanPledgeBoard.amend]
+     * 一次记清。通道与重签同口径：结构变更能走到这里 ⇒ 一定过了卡（引擎的变更卡或
+     * 140 卡）⇒ 算人批；没立状 ⇒ 板子说明性忽略，计划改动照既有口径走。
+     */
+    private fun amendLandingNote(
+        items: List<PlanItem>,
+        change: PlanChange,
+        amend: AmendParse.Ok,
+        args: JSONObject,
+        atMs: Long,
+    ): String {
+        val channel = if (change.needsCard) PlanPledgeRules.ResignChannel.HUMAN else null
+        return when (val d = PlanPledgeBoard.amend(items, args, channel, atMs)) {
+            is AmendDecision.Apply -> PlanPledgeAmendCards.appliedAck(d.change, d.outcome)
+            is AmendDecision.CheckpointWait -> PlanPledgeAmendCards.checkpointAck(d)
+            is AmendDecision.Reject -> PlanPledgeAmendCards.rejectedAck(d.message) +
+                "计划表已按这一版落库，军令状保持原版：下一次 update_plan 先把表改回与状一致，" +
+                "或申报一笔能对上账的 amend。"
+            is AmendDecision.NeedUser -> "【变更未落】变更卡没有经引擎弹出（非引擎直调路径）：" +
+                "军令状保持第 ${d.change.fromVersion} 版，本次申报不生效。"
+            is AmendDecision.Ignored -> PlanPledgeAmendCards.ignoredAck()
+        }
     }
 
     /** 这版参数里契约声明的 goal（军令状快照的「目标」一行；没声明契约 ⇒ 空串）。 */
@@ -659,19 +701,20 @@ internal class PlanController(
  */
 internal object PlanPledgeSchemas {
 
-    /** 把三个可选键并进 update_plan 的 inputSchema（深拷贝后再改，不动原件）。 */
+    /** 把四个可选键并进 update_plan 的 inputSchema（深拷贝后再改，不动原件）。 */
     fun decorate(base: ToolSpec): ToolSpec {
         val schema = JSONObject(base.inputSchema.toString())
         val props = schema.getJSONObject("properties")
         props.put(PlanPledgeRules.ARG_PLEDGE, pledgeSchema())
         props.put(PlanPledgeRules.ARG_CLOSEOUT, closeoutSchema())
         props.put(PlanPledgeRules.ARG_RESIGN, resignSchema())
+        props.put(PlanPledgeAmendRules.ARG_AMEND, amendSchema())
         return base.copy(inputSchema = schema)
     }
 
     /**
-     * 非法组合（工具层拒）：立状／结项／重签是**三个时刻**——开工、收尾、改约，
-     * 一次调用只许带一件。每条拒绝都教正确拆法（不许只说「不行」）。
+     * 非法组合（工具层拒）：立状／结项／重签／范围变更是**四个时刻**——开工、收尾、
+     * 改约（老路）、改约（正路），一次调用只许带一件。每条拒绝都教正确拆法（不许只说「不行」）。
      */
     fun comboError(args: JSONObject): String? = when {
         args.has(PlanPledgeRules.ARG_PLEDGE) && args.has(PlanPledgeRules.ARG_CLOSEOUT) ->
@@ -685,6 +728,18 @@ internal object PlanPledgeSchemas {
                 "申报对的是现行快照，改约之后快照就换了版本——两次说不清哪版算数。" +
                 "先带 resign 重签（经人批或自决单），下一次再按新快照申报 closeout。" +
                 "弃约不等于完成：不许用 resign 代替 closeout。"
+        args.has(PlanPledgeAmendRules.ARG_AMEND) && args.has(PlanPledgeRules.ARG_PLEDGE) ->
+            "「${PlanPledgeAmendRules.ARG_AMEND}」与「${PlanPledgeRules.ARG_PLEDGE}」不能同一次调用：" +
+                "立状是开工那一刻的事，变更是立状之后的事——同一次调用等于「新开单＋改约」搅在一起。" +
+                "先发计划＋pledge 立状，用户要改的时候下一次单独带 amend。"
+        args.has(PlanPledgeAmendRules.ARG_AMEND) && args.has(PlanPledgeRules.ARG_CLOSEOUT) ->
+            "「${PlanPledgeAmendRules.ARG_AMEND}」与「${PlanPledgeRules.ARG_CLOSEOUT}」不能同一次调用：" +
+                "申报对的是现行快照，变更之后快照就换了版本——两次说不清哪版算数。" +
+                "先带 amend 完成变更（经变更卡人批），下一次再按新快照申报 closeout。"
+        args.has(PlanPledgeAmendRules.ARG_AMEND) && args.has(PlanPledgeRules.ARG_RESIGN) ->
+            "「${PlanPledgeAmendRules.ARG_AMEND}」与「${PlanPledgeRules.ARG_RESIGN}」不能同一次调用：" +
+                "amend 就是改约的正路（追加/修改/删除三条，经变更卡人批），不必再走 resign 重签老路。" +
+                "两条路各记各的账，一次只许走一条：只带 amend。"
         else -> null
     }
 
@@ -761,17 +816,75 @@ internal object PlanPledgeSchemas {
         "required" to jsonArrayOf("reason"),
         "additionalProperties" to false,
     )
+
+    private fun amendSchema() = jsonObjectOf(
+        "type" to "object",
+        "description" to "范围变更：用户说「改一下／加一项／删一项」时用——按申报逐项走" +
+            "add/revise/drop 三条正路，经变更卡人批（或预算内自决）后版本 +1、旧版留账，" +
+            "**不新开单**：不许为了改需求重发一份新计划另立新状，也不许用整表重发绕过变更卡",
+        "properties" to jsonObjectOf(
+            "by" to jsonObjectOf(
+                "type" to "string",
+                "enum" to jsonArrayOf("user", "model"),
+                "description" to "谁提的：user=用户原话要改；model=模型自己觉得要改（缺省按 model 记账）",
+            ),
+            "reason" to jsonObjectOf(
+                "type" to "string",
+                "description" to "为什么改（必填，≤120 字；卡面与变更账上都要这一句）",
+            ),
+            "ops" to jsonObjectOf(
+                "type" to "array",
+                "description" to "这次动哪几项，逐条列出（一项同一轮只动一次）",
+                "items" to jsonObjectOf(
+                    "type" to "object",
+                    "properties" to jsonObjectOf(
+                        "kind" to jsonObjectOf(
+                            "type" to "string",
+                            "enum" to jsonArrayOf("add", "revise", "drop"),
+                            "description" to "add=追加新项／revise=修改判据（等于重新立约）／drop=删除（记 DROPPED）",
+                        ),
+                        "text" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "add=新项原文；revise/drop=计划条目原文（逐字）",
+                        ),
+                        "to" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "revise 必填之一：这一项改成什么",
+                        ),
+                        "accept" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "revise 必填之一：验收方式改成什么（与 to 至少给一个）",
+                        ),
+                        "reason" to jsonObjectOf(
+                            "type" to "string",
+                            "description" to "这一项为什么要改/删（可省，缺省用外层 reason 兜底）",
+                        ),
+                    ),
+                    "required" to jsonArrayOf("kind", "text"),
+                    "additionalProperties" to false,
+                ),
+            ),
+        ),
+        "required" to jsonArrayOf("reason", "ops"),
+        "additionalProperties" to false,
+    )
 }
 
 /**
- * 军令状跨会话接回的**读侧**（347；312 §4.5）。账是权威：本对象只读不写，
- * 落板归引擎调 [PlanPledgeBoard.seed]（同一版不写第二行）。账文件读不到／里面
+ * 军令状跨会话接回的**读侧**（347；312 §4.5；343 尾巴②补变更账）。账是权威：
+ * 本对象只读不写，落板归引擎调 [PlanPledgeBoard.seed]（同一版不写第二行；变更账
+ * 只读回、不回写——账是只追加的，seed 不覆盖任何行）。账文件读不到／里面
  * 没有该会话的任何行 ⇒ null——无状续跑，照既有口径走，不编一份状出来。
  */
 internal object PlanPledgeSeed {
 
-    /** 接回的一份：快照 ＋ 各项此前收口未过的次数（只带快照里还幸存的项）。 */
-    data class Recovered(val snapshot: PledgeSnapshot, val failures: Map<String, Int>)
+    /** 接回的一份：快照 ＋ 各项此前收口未过的次数（只带快照里还幸存的项）＋ 变更账行。 */
+    data class Recovered(
+        val snapshot: PledgeSnapshot,
+        val failures: Map<String, Int>,
+        /** 本会话的变更账行（343 尾巴②：DROPPED／顶替关系／已问次数从它读回）。 */
+        val changes: List<JSONObject> = emptyList(),
+    )
 
     /**
      * 从账里读**本会话**最近一版快照；settle 行里记的轮数一并恢复（各项收口未过
@@ -780,8 +893,12 @@ internal object PlanPledgeSeed {
      * 归属口径：settle 行**没有** session 字段（encodeSettle 的形状）——它记的是
      * 「当时对哪一版快照」（id），轮数跟它前面最近那行快照的会话走；会话不同的
      * 快照行会把「当前会话」翻过去，settle 行只跟着自己前面那一版走。
+     *
+     * 343 尾巴②：变更账（`计划军令状变更.jsonl`）同口径读回——只接**本会话**的行
+     * （amend 行的 session 跟着快照的会话链走），别的会话／别的状的变更不串账。
+     * 账读不到 ⇒ 空表：老账没有变更行也照常接回快照（不因尾巴②坏 347 的路）。
      */
-    fun read(sessionId: Long, ledger: java.io.File?): Recovered? {
+    fun read(sessionId: Long, ledger: java.io.File?, changeLedger: java.io.File? = null): Recovered? {
         if (ledger == null) return null
         val lines = runCatching { ledger.readLines() }.getOrDefault(emptyList())
         var snapshot: PledgeSnapshot? = null
@@ -798,7 +915,12 @@ internal object PlanPledgeSeed {
             if (currentSession == sessionId) snapshot = decoded
         }
         val active = snapshot ?: return null
-        return Recovered(active, failures.filterKeys { it in active.texts.toSet() })
+        val changes = changeLedger?.let { file ->
+            runCatching { file.readLines() }.getOrDefault(emptyList())
+                .mapNotNull { raw -> runCatching { org.json.JSONObject(raw) }.getOrNull() }
+                .filter { it.optLong("session", -1L) == sessionId }
+        }.orEmpty()
+        return Recovered(active, failures.filterKeys { it in active.texts.toSet() }, changes)
     }
 
     /** settle 行的 gaps 里取各项「第几次未过」的最大值（跨版本累计——幸存项不清零）。 */

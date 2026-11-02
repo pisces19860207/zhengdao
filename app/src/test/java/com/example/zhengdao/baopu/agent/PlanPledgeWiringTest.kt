@@ -10,12 +10,15 @@
 // - C 组：closeout 与收口（判据③④：漏项判未完成进未办成单、closeout 有账行）；
 // - D 组：resign（判据⑤：缺原因拒；重签人批后按新版结项——343 衔接）；
 // - E 组：源级门禁（判据⑥：settle( 至少一个非测试调用点；不许自动立状的机器检查）；
-// - F 组：跨会话 seed（312 §4.5——账是权威，只读不编）。
+// - F 组：跨会话 seed（312 §4.5——账是权威，只读不编）；
+// - G 组：343 两处尾巴（①amend 接进对话入口：一句话改约走三条正路，不新开单；
+//   ②变更账进 seed：重启后删项记录仍在，只读回、不覆盖）。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanRules.PlanItem
 import com.example.zhengdao.baopu.PlanStore
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules
 import com.example.zhengdao.baopu.plan.PlanPledgeBoard
 import com.example.zhengdao.baopu.plan.PlanPledgeRules
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.EndKind
@@ -115,8 +118,10 @@ class PlanPledgeWiringTest {
         assertEquals(
             "properties 里原有键不许少（353 起 contract 也是 properties 的正式成员）",
             setOf("items", "contract"),
-            props.keys().asSequence().toSet() -
-                setOf(PlanPledgeRules.ARG_PLEDGE, PlanPledgeRules.ARG_CLOSEOUT, PlanPledgeRules.ARG_RESIGN),
+            props.keys().asSequence().toSet() - setOf(
+                PlanPledgeRules.ARG_PLEDGE, PlanPledgeRules.ARG_CLOSEOUT, PlanPledgeRules.ARG_RESIGN,
+                PlanPledgeAmendRules.ARG_AMEND,
+            ),
         )
         assertEquals("required 不变（items 仍是唯一顶层必填）", listOf("items"), (0 until decorated.inputSchema.getJSONArray("required").length())
             .map { decorated.inputSchema.getJSONArray("required").optString(it) })
@@ -483,5 +488,141 @@ class PlanPledgeWiringTest {
         assertEquals(2, recovered.snapshot.version)
         assertEquals(listOf("甲", "乙"), recovered.snapshot.texts)
         assertEquals("幸存项的轮数不清零", 1, recovered.failures["甲"])
+    }
+
+    // ── G 组 · 343 两处尾巴（①amend 接进对话入口；②变更账进 seed） ────────────
+
+    /** amend 的一条 op（drop 只需 kind+text；revise 要 to/accept 至少一个）。 */
+    private fun dropOp(text: String): JSONObject =
+        JSONObject().put("kind", "drop").put("text", text)
+
+    private fun amendOf(reason: String, by: String = "user", ops: List<JSONObject> = emptyList()): JSONObject =
+        JSONObject().put("by", by).put("reason", reason).put("ops", JSONArray(ops))
+
+    @Test
+    fun `⑦_schema挂第四键_amend三对新组合各拒`() {
+        val decorated = PlanPledgeSchemas.decorate(PlanTool.spec())
+        val props = decorated.inputSchema.getJSONObject("properties")
+        assertTrue("缺 amend（尾巴①没接上）", props.has(PlanPledgeAmendRules.ARG_AMEND))
+        val amend = amendOf("用户说不要丁了", ops = listOf(dropOp("丁")))
+        assertNull(
+            "只带 amend 要过 schema 校验",
+            SchemaCheck.validate(decorated.inputSchema, planArgs("甲" to "todo").put("amend", amend)),
+        )
+        val err = { a: JSONObject -> PlanPledgeSchemas.comboError(a) }
+        assertNotNull("amend＋pledge 拒（不许改约搅着新开单）", err(longPlan("甲").put("amend", amend)))
+        assertNotNull(
+            "amend＋closeout 拒（申报对的是现行快照）",
+            err(
+                planArgs("甲" to "todo").put("amend", amend)
+                    .put("closeout", closeoutOf(closeoutItem("甲", "done") { put("evidence", "e") })),
+            ),
+        )
+        assertNotNull(
+            "amend＋resign 拒（正路与老路一次只许走一条）",
+            err(planArgs("甲" to "todo").put("amend", amend).put("resign", JSONObject().put("reason", "r"))),
+        )
+        assertNull("只带 amend 组合合法", err(planArgs("甲" to "todo").put("amend", amend)))
+    }
+
+    @Test
+    fun `⑦_用户一句话改约_走amend删项落板_不新开单`() {
+        val store = CStore()
+        val c = controller(store)
+        pledgeViaCard(c, longPlan("甲凭", "乙凭", "丙凭", "丁凭", "戊凭"))
+        c.authorizeNextChange()
+        val out = c.submit(
+            planArgs("甲" to "todo", "乙" to "todo", "丙" to "todo", "戊" to "todo")
+                .put("amend", amendOf("用户说丁不要了", ops = listOf(dropOp("丁")))),
+        ) as ToolOutcome.Ok
+        assertTrue("ack 要说变更生效：${out.text}", out.text.contains("军令状已重签"))
+        assertTrue("ack 要说 DROPPED（与 abandoned 分列）：${out.text}", out.text.contains("DROPPED"))
+        val next = PlanPledgeBoard.activeSnapshot()!!
+        assertEquals("版本 +1（不新开单：新开单会是第 1 版）", 2, next.version)
+        assertEquals(listOf("甲", "乙", "丙", "戊"), next.texts)
+        assertEquals("删项记了 DROPPED", listOf("丁"), PlanPledgeBoard.droppedRecords().map { it.text })
+        assertEquals("历版并集两版都在（旧版原样留账）", 2, PlanPledgeBoard.history().size)
+        assertEquals("计划照常落库", 2, store.inserts.size)
+    }
+
+    @Test
+    fun `⑦_没立状带amend_说明性忽略_计划照落`() {
+        val store = CStore()
+        val c = controller(store)
+        c.submit(planArgs("甲" to "todo", "乙" to "todo", "丙" to "todo"))
+        val out = c.submit(
+            planArgs("甲" to "todo", "乙" to "todo", "丙" to "todo")
+                .put("amend", amendOf("模型想删丁", "model", listOf(dropOp("丁")))),
+        ) as ToolOutcome.Ok
+        assertTrue("无状 ⇒ amend 忽略、照既有口径走：${out.text}", out.text.contains("amend 参数本次忽略"))
+        assertNull("无状不许凭 amend 立状（不新开单）", PlanPledgeBoard.activeSnapshot())
+        assertEquals(2, store.inserts.size)
+    }
+
+    @Test
+    fun `⑦_seed接回变更账_DROPPED重启不丢_别会话不串`() {
+        val dir = tmpDir()
+        val ledger = File(dir, PlanPledgeBoard.LEDGER_FILE)
+        val changes = File(dir, PlanPledgeBoard.CHANGE_LEDGER_FILE)
+        val v1 = PlanPledgeRules.snapshotOf(
+            itemsOf(listOf("甲", "乙", "丙", "丁")), listOf("a", "b", "c", "d"), 1, "目标", 1L, 42L,
+        )
+        ledger.appendTextLn(PlanPledgeRules.encodeSnapshot(v1, PlanPledgeRules.EVENT_FREEZE).toString())
+        val v2 = PlanPledgeRules.snapshotOf(
+            itemsOf(listOf("甲", "乙", "丙")), listOf("a", "b", "c"), 2, "目标", 3L, 42L,
+        )
+        // 状态账同步落 v2（重签那条路本来就写状态账）：现役快照=甲乙丙，丁只活在变更账里
+        ledger.appendTextLn(
+            PlanPledgeRules.encodeSnapshot(
+                v2,
+                PlanPledgeRules.EVENT_RESIGN,
+                added = emptyList(),
+                removed = listOf("丁"),
+                why = "用户说不要了",
+                channel = PlanPledgeRules.ResignChannel.HUMAN,
+            ).toString(),
+        )
+        val drop = PlanPledgeAmendRules.DropRecord(
+            "丁", "用户说不要了", 2, PlanPledgeAmendRules.AmendBy.USER, PlanPledgeRules.ResignChannel.HUMAN, 3L,
+        )
+        changes.appendTextLn(
+            PlanPledgeAmendRules.encodeResignDrops(v1, v2, listOf(drop), "用户说不要了", PlanPledgeRules.ResignChannel.HUMAN, 3L)
+                .toString(),
+        )
+        // 别会话的变更行：不串账（read 按 session 过滤）
+        val other = PlanPledgeRules.snapshotOf(itemsOf(listOf("戊")), listOf("e"), 1, "目标", 1L, 99L)
+        changes.appendTextLn(
+            PlanPledgeAmendRules.encodeResignDrops(
+                other, other,
+                listOf(PlanPledgeAmendRules.DropRecord("戊", "x", 1, PlanPledgeAmendRules.AmendBy.USER, PlanPledgeRules.ResignChannel.HUMAN, 1L)),
+                "x", PlanPledgeRules.ResignChannel.HUMAN, 1L,
+            ).toString(),
+        )
+        val recovered = PlanPledgeSeed.read(42L, ledger, changes)!!
+        assertEquals("只接本会话的变更行", 1, recovered.changes.size)
+        PlanPledgeBoard.seed(recovered.snapshot, recovered.failures, priorChanges = recovered.changes)
+        assertEquals("重启后删项记录仍在", listOf("丁"), PlanPledgeBoard.droppedRecords().map { it.text })
+        // 收口不再把丁当静默缩表：缺口只有现役里的甲乙丙
+        val verdict = PlanPledgeBoard.settle(emptySet(), 9L)!!
+        assertFalse("丁有 DROPPED 凭据，不再是缺口", "丁" in verdict.gaps.map { it.text })
+        assertEquals(listOf("甲", "乙", "丙"), verdict.gaps.map { it.text })
+        assertNull("别会话无状可接（不编）", PlanPledgeSeed.read(99L, ledger, changes))
+        assertEquals("变更账只读回：文件里两行原样在（只追加不覆盖）", 2, changes.readLines().count { it.isNotBlank() })
+    }
+
+    @Test
+    fun `⑦_两处尾巴的接线齐全_摘掉任何一处门禁当场红`() {
+        val engine = source(ENGINE)
+        val ctrl = source(CTRL)
+        assertTrue("amend 卡要弹（amendGate）", engine.contains("amendGate(call)"))
+        assertTrue(
+            "变更卡必须在 140 计划变更卡之前（批了改约就不重复问）",
+            engine.indexOf("amendGate(call)") < engine.indexOf("planChangeGate(call)"),
+        )
+        assertTrue("卡面要用三行变更卡（照 343 §三）", engine.contains("PlanPledgeAmendCards.amendRequest("))
+        assertTrue("变更要走判定层的写法门（工具层解析）", ctrl.contains("PlanPledgeAmendRules.parseAmend(args)"))
+        assertTrue("对话入口要落板（board.amend）", ctrl.contains("PlanPledgeBoard.amend("))
+        assertTrue("变更账要进 seed（读侧指到变更账文件）", engine.contains("PlanPledgeBoard.changeLedgerFile()"))
+        assertTrue("变更账行要传给板子解", engine.contains("priorChanges = recovered.changes"))
     }
 }

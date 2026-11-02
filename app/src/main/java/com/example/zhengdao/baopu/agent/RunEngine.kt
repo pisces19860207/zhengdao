@@ -30,6 +30,7 @@ import com.example.zhengdao.baopu.MemoryStore
 import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaRules
+import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.ReflectionWiring
@@ -55,6 +56,9 @@ import com.example.zhengdao.baopu.plan.ContractDeviationRules
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendCards
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules
+import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules.AmendDecision
 import com.example.zhengdao.baopu.plan.PlanPledgeBoard
 import com.example.zhengdao.baopu.plan.PlanPledgeCards
 import com.example.zhengdao.baopu.plan.PlanPledgeRules
@@ -3683,6 +3687,12 @@ internal class RunEngine(
         pledgeComboGate(call)?.let { blocked ->
             return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
         }
+        // 第三百四十三批尾巴①：范围变更卡——立状之后用户一句话改约（改一下/加一项/
+        // 删一项）走 amend 三条正路，**不新开单**。位置在 140 计划变更卡之前：批了 ⇒
+        // authorizeNextChange 放行，140 卡不再为同一件事重复问；没批 ⇒ 本次不执行。
+        amendGate(call)?.let { blocked ->
+            return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
+        }
         // 软档（140）：计划结构变更必须在真执行前过用户那张卡。被拒 ⇒ 本次调用
         // 不执行、不落库，失败原文回灌给模型；等人耗时不计进工具耗时（传 0）。
         planChangeGate(call)?.let { blocked ->
@@ -4194,6 +4204,55 @@ internal class RunEngine(
     }
 
     /**
+     * 范围变更卡（343 尾巴①的接线点；判据全在 [PlanPledgeAmendRules] ＋ 板子）。
+     *
+     * 立状之后用户一句话改约 ⇒ 模型带 `amend` 调 update_plan，走三条正路（追加/修改/
+     * 删除），**不新开单**。本闸在 140 计划变更卡**之前**，三条口径：
+     * - 没立状 ⇒ amend 参数本次忽略（板子 [PlanPledgeBoard.amend] 自己会说明性忽略），
+     *   计划改动照 140 卡走——军令状是封底不是门槛，无状任务今天怎么走还怎么走；
+     * - 申报被拒／问询满轮 ⇒ 原文回灌失败、不为它弹任何卡（半张申报不进 140 卡）；
+     * - 要她点头 ⇒ 弹三行变更卡（加了什么/改了什么/要不要重签）；批 ⇒ 放行 submit
+     *   （[PlanController.authorizeNextChange]，140 卡不再重复问），落库成功那一刻板子
+     *   落版；没批／超时 ⇒ 本次 update_plan 不执行，计划与状都保持原版。
+     */
+    private fun amendGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        if (call.name != PlanTool.NAME) return null
+        if (PlanPledgeBoard.activeSnapshot() == null) return null
+        val items = (PlanRules.parseItems(call.arguments) as? PlanRules.Parse.Ok)?.items
+        when (val first = PlanPledgeBoard.amend(items, call.arguments, null, System.currentTimeMillis())) {
+            is AmendDecision.Reject -> {
+                log("抱朴军令状：变更被拒（${first.message}）")
+                return GuardPipeline.Result.Failed(
+                    call = call,
+                    error = PlanPledgeAmendCards.rejectedAck(first.message),
+                )
+            }
+            is AmendDecision.CheckpointWait -> {
+                // 第 4 轮不再递卡：缺口板子里已记，模型拿这句话去推进其余部分。
+                log("抱朴军令状：变更转检查点等待（不再递卡）")
+                return GuardPipeline.Result.Failed(
+                    call = call,
+                    error = PlanPledgeAmendCards.checkpointAck(first),
+                )
+            }
+            is AmendDecision.NeedUser -> {
+                log("抱朴军令状：范围变更卡（第 ${first.change.fromVersion} 版，${first.change.kinds.size} 类变更）")
+                val picked = askUser(PlanPledgeAmendCards.amendRequest(first.change))
+                if (PlanPledgeAmendCards.approved(picked?.id)) {
+                    planController.authorizeNextChange()
+                    return null
+                }
+                log("抱朴军令状：变更没批（${picked?.id ?: "timeout"}）⇒ 本次 update_plan 不执行")
+                return GuardPipeline.Result.Failed(
+                    call = call,
+                    error = PlanPledgeAmendCards.keptAck(PlanPledgeBoard.activeSnapshot()!!),
+                )
+            }
+            else -> return null
+        }
+    }
+
+    /**
      * 军令状开工卡（第三百四十七批②；判据②的接线点）。
      *
      * 只在 `update_plan` **真执行之前**问一次：这一版是长程任务（≥5 步或跨会话）、
@@ -4217,14 +4276,21 @@ internal class RunEngine(
     }
 
     /**
-     * 跨会话接回军令状（312 §4.5；第三百四十七批⑤号接线）。
+     * 跨会话接回军令状（312 §4.5；第三百四十七批⑤号接线；343 尾巴②补变更账）。
      *
      * 读侧在 [PlanPledgeSeed]（JVM 直测）；这里只把读到的落进板子（同一版不写第二行）。
-     * 账读不到／没有本会话的行 ⇒ 静默不接：无状续跑，照既有口径走（不编一份状出来）。
+     * 两本账都只读不写：状态账接快照与轮数，变更账接 DROPPED／顶替关系／已问次数
+     * （[PlanPledgeAmendRules.seedFrom] 解——重启后删项记录仍在；账是只追加的，seed
+     * 不覆盖任何行）。账读不到／没有本会话的行 ⇒ 静默不接：无状续跑，照既有口径走
+     * （不编一份状出来）。
      */
     private fun seedPledge(sessionId: Long) {
-        PlanPledgeSeed.read(sessionId, PlanPledgeBoard.ledgerFile())?.let { recovered ->
-            PlanPledgeBoard.seed(recovered.snapshot, recovered.failures)
+        PlanPledgeSeed.read(
+            sessionId,
+            PlanPledgeBoard.ledgerFile(),
+            PlanPledgeBoard.changeLedgerFile(),
+        )?.let { recovered ->
+            PlanPledgeBoard.seed(recovered.snapshot, recovered.failures, priorChanges = recovered.changes)
         }
     }
 
