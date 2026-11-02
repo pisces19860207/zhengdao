@@ -22,10 +22,30 @@
 // 2. **结构故障**（副本建不起／快照失败／沙盒没装配／沙盒没交回真盘字节对照）
 //    ⇒ `UNVERIFIABLE(reason=STRUCTURE)` 并**取消本次自动资格**——没有"仍然执行"那颗按钮：
 //    本层唯一能交回的结论就是这四态，而四态里只有 CONSISTENT 能被 249 第⑤步认。
+//
+// ## 361 批 · 双盲重做基底＋两处事件接线（2026-11-02 工单；GuardPipeline 一字不碰）
+// - **双盲重做**（[ShadowAdapter.redo]）：副本上真跑一遍关键步骤，产出产物集合＋每产物
+//   sha256＋结论，与主执行体**只比指纹与结论**（verify/BlindReview 的两枚 digest；
+//   不比过程、不看自我报告）；不一致 ⇒ DISAGREEMENT ⇒ L32 认定（提出位自动真、御批位留给人）
+//   喂进 [AccountabilityGate.decide]——喂闸的事实流就位，名册机检据此放行。
+// - **INTEGRITY_DAMAGED**（账实核对）：判 MISMATCH ⇒ 发 LEDGER_MISMATCH 事实事件（无出处不发）；
+// - **CASCADE_FAILURE**：工具回执 FAIL ⇒ [AnomalyFeed.observeTaskFail] 同任务计数，
+//   第 3 次且含不可逆 ⇒ 事件。两处都只喂事实进 [AnomalyGate.classify]，判决归判定层。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.RiskClass
+import com.example.zhengdao.baopu.law.AccountabilityFinding
+import com.example.zhengdao.baopu.law.AccountabilityGate
+import com.example.zhengdao.baopu.law.AccountabilityKind
+import com.example.zhengdao.baopu.law.AccountabilityVerdict
+import com.example.zhengdao.baopu.law.AnomalyFacts
+import com.example.zhengdao.baopu.law.AnomalyGate
+import com.example.zhengdao.baopu.verify.BlindReview
+import com.example.zhengdao.baopu.verify.BlindReviewInput
+import com.example.zhengdao.baopu.verify.BlindReviewOutcome
+import com.example.zhengdao.baopu.verify.BlindReviewVerdict
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * §2：能进副本真跑真验的工具（顺序即错误提示里的次序）。
@@ -167,6 +187,35 @@ internal data class ShadowRehearsalResult(
 )
 
 /**
+ * 361 批 · 双盲重做的**一个产物指纹**：相对路径（副本根下）＋副本内实测 sha256（小写 hex）。
+ * 路径与哈希都是机器键——「拿原文当指纹」过不了形状关，比对必须落在 hash 上。
+ */
+internal data class ShadowArtifactFingerprint(val path: String, val sha256: String)
+
+/**
+ * 361 批 · 一次双盲重做的报告：产物集合＋每产物指纹＋结论＋比对结论＋（不一致时的）L32 认定。
+ *
+ * 与主执行体**只比指纹与结论**（[BlindReview.compare] 的两枚 digest 各自都盖着
+ * 产物集合与结论键）：过程（谁先谁后、跑了几步）与自我报告都不进比对——
+ * [BlindReviewInput] 形状上就没有自我报告字段。
+ *
+ * @param review null ＝ 没跑到比对（影子没跑成／副本里没有可指纹的产物——缺位＝没做，不许读成一致）
+ * @param finding DISAGREEMENT ⇒ L32 认定（提出位自动真、御批确认位留给人）；CONCUR 恒 null
+ * @param standing [AccountabilityGate.decide] 对这条认定的判定（御批没到 ⇒ findingValid=false）
+ */
+internal data class ShadowRedoReport(
+    val stepId: String,
+    val artifacts: List<ShadowArtifactFingerprint>,
+    /** 结论键（四态的 wire；与产物一起盖进双方指纹）。 */
+    val conclusion: String,
+    val shadowDigest: String,
+    val review: BlindReviewVerdict? = null,
+    val finding: AccountabilityFinding? = null,
+    val standing: AccountabilityVerdict? = null,
+    val note: String = "",
+)
+
+/**
  * 影子适配器（编排：问沙盒 → 交给判据层 → 落账 → 按判定清/留副本）。
  *
  * 本层**不产生第二套判定**：四态一律由 [ShadowRehearsal.compare] 给；短路那几条只是
@@ -195,6 +244,97 @@ internal object ShadowAdapter {
     fun supported(tool: String): Boolean = tool in SHADOW_TOOLS || tool in NOT_APPLICABLE_TOOLS
 
     /**
+     * 361 批 · 双盲重做的执行基底：在副本上把关键步骤真跑一遍（[rehearse] 那条全量路径），
+     * 产出**产物集合＋每个产物的 sha256＋结论**，与主执行体**只比指纹与结论**——
+     * 比对走 [BlindReview.compare]（两枚 digest 各自都盖着产物与结论键）：
+     * 相等 ⇒ CONCUR；不等 ⇒ DISAGREEMENT ⇒ [BlindReview.asFinding] 造 L32 认定
+     * （**提出位自动真、御批确认位留给人**）⇒ [AccountabilityGate.decide]。
+     *
+     * 盲的形状：本函数的输入只有重做所需的事实（[ShadowInput]）与主执行体的**指纹**
+     * （[executorDigest]——由执行侧用 [digestOfArtifacts] 对自己的产物集合＋结论算），
+     * 没有自我报告这个字段；过程与辩解在类型上进不了比对。
+     *
+     * @param executorDigest 主执行体的指纹（[BlindReview.isDigest] 形状关；缺位＝没做 ⇒ 不比）
+     */
+    fun redo(
+        input: ShadowInput,
+        executorDigest: String,
+        override: ShadowSandbox? = port,
+        log: (String) -> Unit = { },
+    ): ShadowRedoReport {
+        val stepId = input.opId.ifBlank { "sr:${input.sessionId}:${input.step}" }
+        val (result, run) = rehearseFull(input, override, log)
+        if (run == null || result.reason.isNotBlank()) {
+            return ShadowRedoReport(
+                stepId = stepId,
+                artifacts = emptyList(),
+                conclusion = "",
+                shadowDigest = "",
+                note = "影子没跑成（reason=${result.reason.ifBlank { "STRUCTURE" }}）：没有重做就没有比对（缺位＝没做，不许读成一致）",
+            )
+        }
+        val artifacts = artifactsOf(run)
+        val conclusion = result.outcome.verdict.wire
+        if (artifacts.isEmpty()) {
+            return ShadowRedoReport(
+                stepId = stepId,
+                artifacts = emptyList(),
+                conclusion = conclusion,
+                shadowDigest = "",
+                note = "副本里没有落盘产物可指纹：没有材料就不比（缺位＝没做，不许读成一致）",
+            )
+        }
+        val shadowDigest = digestOfArtifacts(artifacts, conclusion)
+        val review = BlindReview.compare(
+            BlindReviewInput(stepId = stepId, stepFacts = listOf("tool=${input.tool}") + input.declaredPaths),
+            executorDigest = executorDigest,
+            shadowDigest = shadowDigest,
+        )
+        if (review.outcome != BlindReviewOutcome.DISAGREEMENT) {
+            log("抱朴双盲：CONCUR（step=$stepId 指纹一致，复核通过）")
+            return ShadowRedoReport(stepId, artifacts, conclusion, shadowDigest, review)
+        }
+        // DISAGREEMENT ⇒ L32 认定：提出位自动真（影子就是双盲任一方）、御批确认位留给人——
+        // decide 对没御批的认定判无效（不收紧、不记账），御批到场那天把 confirmedByThrone
+        // 置真再走 decide，累进照算。本层只把事实喂进判定层，不替御批批条子。
+        val finding = BlindReview.asFinding(
+            verdict = review,
+            kind = AccountabilityKind.OVER_WHITELIST,
+            category = input.tool.ifBlank { "unknown_tool" },
+            atMs = input.wallMs,
+        )
+        val standing = AccountabilityGate.decide(finding, priorSameCategory = emptyList(), nowMs = input.wallMs)
+        log(
+            "抱朴双盲：DISAGREEMENT（step=$stepId）⇒ L32 认定已喂闸" +
+                "（提出位自动真、御批确认位留给人）：${standing.reason}",
+        )
+        return ShadowRedoReport(stepId, artifacts, conclusion, shadowDigest, review, finding, standing)
+    }
+
+    /**
+     * 执行侧的指纹口：主执行体对自己的产物集合＋结论算**同一把**指纹（与影子同一形状才可比）。
+     * 影子侧的重做指纹也走这里（[redo] 内部）——一处一个口径，两边各算一套必打架。
+     */
+    fun digestOfArtifacts(artifacts: List<ShadowArtifactFingerprint>, conclusion: String): String =
+        BlindReview.digestOf(
+            artifacts.sortedBy { it.path }.map { "${it.path}:${it.sha256}" } + "conclusion=$conclusion",
+        )
+
+    /** 副本实测产物指纹：实测落点里**真的在盘上**的才算产物（缺的交给结论那一格去红）。 */
+    private fun artifactsOf(run: ShadowRun): List<ShadowArtifactFingerprint> {
+        val root = File(run.copyRoot)
+        return run.observedPaths.mapNotNull { p ->
+            val f = File(p)
+            if (!f.isFile) return@mapNotNull null
+            val rel = runCatching { f.relativeTo(root).path.replace('\\', '/') }.getOrDefault(f.name)
+            ShadowArtifactFingerprint(rel, sha256Hex(f.readBytes()))
+        }.sortedBy { it.path }
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    /**
      * 跑一次预演。
      *
      * @param override 测试/调用方直接塞沙盒（不依赖装配状态）；缺省取 [installed]。
@@ -203,14 +343,25 @@ internal object ShadowAdapter {
         input: ShadowInput,
         override: ShadowSandbox? = port,
         log: (String) -> Unit = { },
-    ): ShadowRehearsalResult {
+    ): ShadowRehearsalResult = rehearseFull(input, override, log).first
+
+    /**
+     * 全量路径（361 批拆出）：判读结果＋沙盒实测成对交回——
+     * 双盲重做要产物坐标（副本根＋实测落点）才算得出自己的指纹，普通预演只要结论；
+     * 短路那几条没有实测 ⇒ 第二格为 null（缺位＝没跑成，不许拿 null 冒充产物）。
+     */
+    private fun rehearseFull(
+        input: ShadowInput,
+        override: ShadowSandbox?,
+        log: (String) -> Unit,
+    ): Pair<ShadowRehearsalResult, ShadowRun?> {
         if (!supported(input.tool)) {
             return shortCircuit(
                 input,
                 ShadowUnverifiable.UNSUPPORTED,
                 "工具「${input.tool}」还没接影子适配器（已接 ${SHADOW_TOOLS.joinToString("／")}）⇒ 不开放自动档",
                 log,
-            )
+            ) to null
         }
         // 306 批：无文件副作用的工具在「说不出对象」**之前**判——它们本来就轮不到谈路径，
         // 落到 NO_TARGET 会把"这格不适用"谎报成"这次动作说不出对象"（原因码混用＝统计报废）。
@@ -220,7 +371,7 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.NOT_APPLICABLE,
                 "工具「${input.tool}」没有文件副作用 ⇒ 影子不适用（NOT_APPLICABLE；与「还没接」两回事，也没有可复刻的文件动作）",
                 log,
-            )
+            ) to null
         }
         if (input.declaredPaths.isEmpty() || input.workspaceRoot.isBlank()) {
             return shortCircuit(
@@ -228,7 +379,7 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.NO_TARGET,
                 "这次动作说不出声明对象或工作区根 ⇒ 没有可比的两份清单（不猜路径）",
                 log,
-            )
+            ) to null
         }
         val sandbox = override
             ?: return shortCircuit(
@@ -236,14 +387,14 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.NO_SANDBOX,
                 "装配层没装影子沙盒 ⇒ 一次预演都没跑（结构故障不放行）",
                 log,
-            )
+            ) to null
         val run = runCatching { sandbox.rehearse(input) }.getOrElse {
             return shortCircuit(
                 input,
                 ShadowUnverifiable.STRUCTURE,
                 "沙盒跑挂了：${it.javaClass.simpleName}: ${it.message}（本次自动资格取消）",
                 log,
-            )
+            ) to null
         }
         if (!run.built) {
             return shortCircuit(
@@ -251,7 +402,7 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.STRUCTURE,
                 "副本没建起来：${run.note.ifBlank { "沙盒没说原因" }}（本次自动资格取消）",
                 log,
-            )
+            ) to null
         }
         // §1④ 的第三条件必须有实测：拿不到就当"没验"，不许拿 null 冒充"真盘没动"。
         if (run.realUntouched == null) {
@@ -260,9 +411,9 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.STRUCTURE,
                 "沙盒没交回真盘 before/after 字节对照 ⇒ §1④ 的第三条件无从可验",
                 log,
-            )
+            ) to null
         }
-        return judge(input, run, sandbox, log)
+        return judge(input, run, sandbox, log) to run
     }
 
     /** 交齐了事实的那一条路径：判据层算，本层只落账与收尾。 */
@@ -286,8 +437,93 @@ internal object ShadowAdapter {
         val outcome = judged.copy(items = judged.items + sandboxItem(run, kept))
         if (!kept) runCatching { sandbox.discard(run.copyRoot) }
         val accounted = account(input, outcome)
+        // 361 批两处事件接线（只发事实、无出处不发、不判决——判决归 law/AnomalyGate）：
+        feedIntegrityDamaged(input, outcome, log)
+        feedCascadeFailure(input, run, log)
         log("抱朴影子：${outcome.verdict.wire}（op=${input.opId.take(12)} 副本=${tailOf(run.copyRoot)} 账=${if (accounted) "已落" else "未落"}）")
         return ShadowRehearsalResult(outcome, "", accounted)
+    }
+
+    /**
+     * 361 批 · INTEGRITY_DAMAGED 的接线（账实核对）：影子判 MISMATCH ＝ 所称与实测对不上，
+     * 这就是账实不符的现场 ⇒ 向 [AnomalyFeed] 发 [AnomalyFactKind.LEDGER_MISMATCH] 事实事件
+     * （出处＝影子账行锚；无出处 ⇒ 灾异源自己拒收，本层不发第二遍）。
+     *
+     * 只发事实、不判决：判定层的输入由本层投影（不可逆动作与所称对不上 ⇒ 最坏按一件可能
+     * 写坏/误删计——保守方向，与 convert_encoding 那格同一个口径），喂进 [AnomalyGate.classify]
+     * 后**只记日志**——是不是灾异、进不进紧急通道，归判定层与紧急闸（EmergencyWiring），本层不动。
+     */
+    private fun feedIntegrityDamaged(
+        input: ShadowInput,
+        outcome: ShadowOutcome,
+        log: (String) -> Unit,
+    ) {
+        if (outcome.verdict != ShadowVerdict.MISMATCH) return
+        val src = provenanceOf(input)
+        val evidence = listOf(
+            "claimed:${outcome.claimed.newFiles}+${outcome.claimed.overwriteTotal}-${outcome.claimed.deleteCount}",
+            "observed:${outcome.observed.newFiles}+${outcome.observed.overwriteTotal}-${outcome.observed.deleteCount}",
+            "paths:${(outcome.observed.touchedPaths - outcome.claimed.touchedPaths.toSet()).size}",
+        )
+        val event = AnomalyFeed.report(
+            kind = AnomalyFactKind.LEDGER_MISMATCH,
+            provenance = src,
+            gist = "影子账实核对：所称与实测不一致（verdict=mismatch，出处的影子账行见锚）",
+            nowMs = input.wallMs,
+            evidence = evidence,
+        )
+        val verdict = AnomalyGate.classify(
+            AnomalyFacts(
+                destroyedItems = if (input.reversible) 0 else 1,
+                locallyReversible = input.reversible,
+                evidenceLines = listOf(src) + evidence,
+            ),
+        )
+        log(
+            "抱朴影子：账实不符已发灾异源（${event?.id ?: "无出处不发"}）；" +
+                "L29 判定=${if (verdict.isAnomaly) "灾异" else "未达灾异"}（判决归 AnomalyGate，本层只喂事实）",
+        )
+    }
+
+    /**
+     * 361 批 · CASCADE_FAILURE 的接线（同任务第 3 次 FAIL 且含不可逆动作）：
+     * 工具在副本里这一趟跑挂了（[ShadowRun.trialOk]＝false）⇒ 交 [AnomalyFeed.observeTaskFail]
+     * 按同任务计数；第 3 次到线且本任务段含过不可逆 ⇒ 灾异源自己发 FAIL_STREAK 事件。
+     *
+     * 同样只喂事实：事件真发出来了才把失败连击投进 [AnomalyGate.classify]（不可逆 ⇒ 不算可局部
+     * 回滚），判定归 AnomalyGate，本层只记日志。
+     */
+    private fun feedCascadeFailure(
+        input: ShadowInput,
+        run: ShadowRun,
+        log: (String) -> Unit,
+    ) {
+        if (run.trialOk) return
+        val src = provenanceOf(input)
+        val event = AnomalyFeed.observeTaskFail(
+            taskId = input.opId.ifBlank { input.sessionId.toString() },
+            irreversible = !input.reversible,
+            provenance = src,
+            nowMs = input.wallMs,
+        )
+        if (event == null) return
+        val verdict = AnomalyGate.classify(
+            AnomalyFacts(
+                outageConsecutiveFails = AnomalyFeed.FAIL_STREAK_LEN,
+                locallyReversible = false,
+                evidenceLines = listOf(src) + event.evidence,
+            ),
+        )
+        log(
+            "抱朴影子：同任务三连 FAIL 已发灾异源（${event.id}）；" +
+                "L29 判定=${if (verdict.isAnomaly) "灾异" else "未达灾异"}（判决归 AnomalyGate，本层只喂事实）",
+        )
+    }
+
+    /** 影子账行的出处锚：有 opId 用影子账行 id（`sh:<opId>`），过不了锚判据就退回影子账的行键（`sr:<会话>:<步>`）——两样都是账行 id 形状，无出处不发的那一格交回灾异源自己拒。 */
+    private fun provenanceOf(input: ShadowInput): String {
+        val row = if (input.opId.isBlank()) "" else "sh:${input.opId}"
+        return AnomalyFeed.provenanceAnchor(row) ?: "sr:${input.sessionId}:${input.step}"
     }
 
     /** 短路与否都落这一行（判据①「账留路径与对比」——路径两侧都进账）。 */
