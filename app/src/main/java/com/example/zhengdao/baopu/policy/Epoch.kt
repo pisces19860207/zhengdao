@@ -227,27 +227,61 @@ internal data class CriteriaChange(
          */
         fun decode(line: String): CriteriaChange? {
             val cols = line.trim().split("|")
-            val legacy = cols.size == LEGACY_COLUMNS
-            if (cols.size != COLUMNS && !legacy) {
+            return when (cols.size) {
+                COLUMNS -> fromColumns(cols)
+                LEGACY_COLUMNS -> fromLegacyColumns(cols)
+                else -> null
+            }
+        }
+
+        /** 六列：机读列可以空着（＝没归属），但空了人读列必须写 [UNATTRIBUTED]，两列不许各说一套。 */
+        private fun fromColumns(cols: List<String>): CriteriaChange? {
+            val atMs = cols[5].toLongOrNull() ?: return null
+            val epochId = cols[1]
+            val givenLabel = cols[2]
+            if (epochId.isNotBlank() && givenLabel.isBlank()) {
                 return null
             }
-            val atMs = cols.last().toLongOrNull() ?: return null
-            val changeId = cols[0]
-            val epochId = if (legacy) null else cols[1]
-            val givenLabel = if (legacy) "" else cols[2]
-            val criterionId = if (legacy) cols[1] else cols[3]
-            val target = if (legacy) cols[2] else cols[4]
+            val unattributed = epochId.isBlank()
+            return build(
+                changeId = cols[0],
+                epochId = if (unattributed) null else epochId,
+                epochLabel = if (unattributed) UNATTRIBUTED else givenLabel,
+                criterionId = cols[3],
+                target = cols[4],
+                atMs = atMs,
+            )
+        }
+
+        /** 四列（本批之前的老账）：压根没有纪元列 ⇒ 归属追不到，明写 [UNATTRIBUTED]，不替它补纪。 */
+        private fun fromLegacyColumns(cols: List<String>): CriteriaChange? {
+            val atMs = cols[3].toLongOrNull() ?: return null
+            return build(
+                changeId = cols[0],
+                epochId = null,
+                epochLabel = UNATTRIBUTED,
+                criterionId = cols[1],
+                target = cols[2],
+                atMs = atMs,
+            )
+        }
+
+        /** 三个非空字段一起验（`changeId` 还要能判重）；空了就当坏行，不返回半截行。 */
+        private fun build(
+            changeId: String,
+            epochId: String?,
+            epochLabel: String,
+            criterionId: String,
+            target: String,
+            atMs: Long,
+        ): CriteriaChange? {
             if (changeId.isBlank() || criterionId.isBlank() || target.isBlank()) {
-                return null
-            }
-            // 有机读列必须有人读列；没归属（老行／空列）统一落成「未归属」，不许留一列空白。
-            if (epochId?.isNotBlank() == true && givenLabel.isBlank()) {
                 return null
             }
             return CriteriaChange(
                 changeId = changeId,
-                epochId = if (epochId.isNullOrBlank()) null else epochId,
-                epochLabel = if (epochId.isNullOrBlank()) UNATTRIBUTED else givenLabel,
+                epochId = epochId,
+                epochLabel = epochLabel,
                 criterionId = criterionId,
                 target = target,
                 atMs = atMs,
