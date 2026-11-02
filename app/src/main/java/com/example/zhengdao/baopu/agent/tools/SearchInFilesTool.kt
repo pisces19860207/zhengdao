@@ -94,6 +94,12 @@ internal object SearchInFilesTool {
      * @param caseSensitive 是否区分大小写
      * @return [ToolOutcome.Ok] = 命中清单 + 扫描统计；目录不存在/不是目录/越界分别报错
      */
+    /**
+     * 搜文件主入口。detekt 清债批（chore/detekt-debt-6，2026-11-02）：
+     * 原 102 行／复杂度 44 的大函数按「校验 → DFS 遍历 → 单文件匹配 → 拼回执」四段拆开
+     * （[walk]／[scanFile]／[report]），可变计数收进 [SearchState]——
+     * 遍历口径、跳过规则、命中块格式、回执文案一个字没动。
+     */
     fun search(
         root: File,
         dir: File,
@@ -112,100 +118,128 @@ internal object SearchInFilesTool {
         }
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
         fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
-        val needle = if (caseSensitive) q else q.lowercase()
+
+        val st = SearchState(needle = if (caseSensitive) q else q.lowercase())
+        walk(dir, root, caseSensitive, st)
+        return report(q, st)
+    }
+
+    /** DFS 期间共享的可变状态（计数与命中清单；一次 search 一份）。 */
+    private class SearchState(val needle: String) {
         var scanned = 0
         var skippedBig = 0
         var skippedBinary = 0
         var skippedError = 0
-        val hits = mutableListOf<String>()
         var hitCount = 0
         var truncated = false
-        // 栈式 DFS；同层「目录在前、名称序」——输出稳定（与 list_dir 同口径）
-        data class Item(val file: File, val level: Int)
-        val stack = ArrayDeque<Item>()
-        stack.addLast(Item(dir, 1))
-        while (stack.isNotEmpty() && hitCount < MAX_HITS) {
-            val (current, level) = stack.removeLast()
-            val children = runCatching { current.listFiles() }.getOrNull()
-            if (children == null) {
-                skippedError++
-                continue
-            }
-            val sorted = children.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-            for (f in sorted) {
-                if (hitCount >= MAX_HITS) {
-                    truncated = true
-                    break
-                }
-                if (isSymlink(f)) continue // 软链不跟随（跟出去就是工作区外的内容）
-                // 内部目录/文件不搜（.baopu-spill 等私有噪声）；`备份/`（改前快照区，模型只读）也不搜
-                if (f.name.startsWith(".") || f.name == BaopuKernel.Data.DIR_BACKUP) continue
-                if (f.isDirectory) {
-                    if (level < DEFAULT_DEPTH) stack.addLast(Item(f, level + 1))
-                    continue
-                }
-                if (f.length() > MAX_FILE_BYTES) {
-                    skippedBig++
-                    continue
-                }
-                val head = runCatching { readHead(f, SNIFF_BYTES) }.getOrNull()
-                if (head == null) {
-                    skippedError++
-                    continue
-                }
-                if (looksBinary(head)) {
-                    skippedBinary++
-                    continue
-                }
-                // 解码统一走 [TextDecode]（2026-10-17）：以前这里硬读 UTF-8，GBK 老书里的
-                // 关键词**静默搜不到**（不报错、只是假装没有），比读失败更坏。
-                val lines = runCatching {
-                    val bytes = f.readBytes()
-                    TextDecode.decode(f, bytes).text?.let { TextDecode.splitLines(it) }
-                }.getOrNull()
-                if (lines == null) {
-                    skippedError++
-                    continue
-                }
-                scanned++
-                val rel = relPath(root, f)
-                for (i in lines.indices) {
-                    if (hitCount >= MAX_HITS) {
-                        truncated = true
-                        break
-                    }
-                    val line = lines[i]
-                    val hay = if (caseSensitive) line else line.lowercase()
-                    if (!hay.contains(needle)) continue
-                    hitCount++
-                    // 命中块：上一行 + 命中行 + 下一行（行号从 1 起显示）
-                    if (i > 0) hits += "$rel:${i}:${lines[i - 1]}"
-                    hits += "$rel:${i + 1}:$line"
-                    if (i < lines.size - 1) hits += "$rel:${i + 2}:${lines[i + 1]}"
-                }
-            }
-            if (truncated) break
-        }
-        val stats = ScanStats(scanned, skippedBig, skippedBinary, skippedError)
+        val hits = mutableListOf<String>()
+    }
+
+    private data class Item(val file: File, val level: Int)
+
+    /** 扫描回执：命中清单＋统计（文案逐字保留）。 */
+    private fun report(q: String, st: SearchState): ToolOutcome {
+        val stats = ScanStats(st.scanned, st.skippedBig, st.skippedBinary, st.skippedError)
         val body = buildString {
-            if (hitCount == 0) {
+            if (st.hitCount == 0) {
                 append("（没有命中「$q」）")
             } else {
-                append(hits.joinToString("\n"))
+                append(st.hits.joinToString("\n"))
             }
-            append("\n（命中 $hitCount 条；已扫描 ${stats.scanned} 个文件 / 跳过 ${stats.skippedTotal} 个")
+            append("\n（命中 ${st.hitCount} 条；已扫描 ${stats.scanned} 个文件 / 跳过 ${stats.skippedTotal} 个")
             if (stats.skippedTotal > 0) {
                 append("（过大 ${stats.skippedBig} / 二进制 ${stats.skippedBinary}")
                 if (stats.skippedError > 0) append(" / 读失败 ${stats.skippedError}")
                 append("）")
             }
             append("；深度上限 $DEFAULT_DEPTH 层，软链与点开头文件不搜）")
-            if (truncated) {
+            if (st.truncated) {
                 append("；已触达命中上限 $MAX_HITS 条，把 path 指到更深的目录或换个更具体的词")
             }
             append("）")
         }
         return ToolOutcome.Ok(body.toString())
+    }
+
+    /** 栈式 DFS；同层「目录在前、名称序」——输出稳定（与 list_dir 同口径）。 */
+    private fun walk(start: File, root: File, caseSensitive: Boolean, st: SearchState) {
+        val stack = ArrayDeque<Item>()
+        stack.addLast(Item(start, 1))
+        while (stack.isNotEmpty() && st.hitCount < MAX_HITS) {
+            val (current, level) = stack.removeLast()
+            val children = runCatching { current.listFiles() }.getOrNull()
+            if (children == null) {
+                st.skippedError++
+                continue
+            }
+            val sorted = children.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+            for (f in sorted) {
+                if (st.hitCount >= MAX_HITS) {
+                    st.truncated = true
+                    break
+                }
+                if (admits(f, level, stack, st)) scanFile(f, root, caseSensitive, st)
+            }
+            if (st.truncated) break
+        }
+    }
+
+    /**
+     * 条目准入：目录入栈（深度未到）、该跳的跳（软链/点开头/备份区/过大），
+     * 返回 true ＝ 是要搜的文件，调用 [scanFile]。
+     */
+    private fun admits(f: File, level: Int, stack: ArrayDeque<Item>, st: SearchState): Boolean {
+        if (isSymlink(f)) return false // 软链不跟随（跟出去就是工作区外的内容）
+        // 内部目录/文件不搜（.baopu-spill 等私有噪声）；`备份/`（改前快照区，模型只读）也不搜
+        if (f.name.startsWith(".") || f.name == BaopuKernel.Data.DIR_BACKUP) return false
+        if (f.isDirectory) {
+            if (level < DEFAULT_DEPTH) stack.addLast(Item(f, level + 1))
+            return false
+        }
+        if (f.length() > MAX_FILE_BYTES) {
+            st.skippedBig++
+            return false
+        }
+        return true
+    }
+
+    /** 单个文件：嗅探 → 解码 → 逐行匹配。 */
+    private fun scanFile(f: File, root: File, caseSensitive: Boolean, st: SearchState) {
+        val head = runCatching { readHead(f, SNIFF_BYTES) }.getOrNull()
+        if (head == null) {
+            st.skippedError++
+            return
+        }
+        if (looksBinary(head)) {
+            st.skippedBinary++
+            return
+        }
+        // 解码统一走 [TextDecode]（2026-10-17）：以前这里硬读 UTF-8，GBK 老书里的
+        // 关键词**静默搜不到**（不报错、只是假装没有），比读失败更坏。
+        val lines = runCatching {
+            val bytes = f.readBytes()
+            TextDecode.decode(f, bytes).text?.let { TextDecode.splitLines(it) }
+        }.getOrNull()
+        if (lines == null) {
+            st.skippedError++
+            return
+        }
+        st.scanned++
+        val rel = relPath(root, f)
+        for (i in lines.indices) {
+            if (st.hitCount >= MAX_HITS) {
+                st.truncated = true
+                break
+            }
+            val line = lines[i]
+            val hay = if (caseSensitive) line else line.lowercase()
+            if (!hay.contains(st.needle)) continue
+            st.hitCount++
+            // 命中块：上一行 + 命中行 + 下一行（行号从 1 起显示）
+            if (i > 0) st.hits += "$rel:${i}:${lines[i - 1]}"
+            st.hits += "$rel:${i + 1}:$line"
+            if (i < lines.size - 1) st.hits += "$rel:${i + 2}:${lines[i + 1]}"
+        }
     }
 
     /** executor：arguments 里的 path 已是守卫过的绝对路径。 */
