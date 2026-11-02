@@ -37,6 +37,7 @@ class E166RegressionTest {
         val root = tmp.newFolder("ws2")
         assertEquals("a/b.txt", toWorkspaceRelative(root, "a/b.txt"))
         assertEquals("a/b.txt", toWorkspaceRelative(root, "./a/b.txt"))
+        // platform-gate: allow 理由：测的是「带盘符的路径必须在库外」，Windows 上必须长成 C: 形状；值是拿来比对的字符串，不落盘。
         val outside = if (System.getProperty("os.name").startsWith("Windows")) "/C:/外面/x.txt" else "/外面/x.txt"
         assertEquals(outside, toWorkspaceRelative(root, outside))
     }

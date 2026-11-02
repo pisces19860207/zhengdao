@@ -92,6 +92,7 @@ class GuardPipelineTest {
         //     且拒绝理由只能是「系统目录」（L287 的三条硬下限之一），**不是**「工作区越界」。
         //   · Windows：解析到别的目录，读不到 ⇒ Failed/Done 都行。
         // 本用例钉的是「287 起不再按工作区边界拒」；系统目录该拒就拒，别把它当回潮。
+        // platform-gate: allow 理由：这条判据要的就是「POSIX 上 chmod 真能拦」，只能按平台分流；路径本身用 File 拼，没带反斜杠。
         val onPosix = !System.getProperty("os.name").orEmpty().startsWith("Windows")
         if (onPosix) {
             // ← CI（ubuntu）走这条：/etc/passwd 是系统目录 ⇒ 必须拒，而且理由必须是「系统目录」。

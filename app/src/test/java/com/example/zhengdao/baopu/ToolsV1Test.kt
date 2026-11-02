@@ -433,6 +433,7 @@ class ToolsV1Test {
         )
         val entries = com.example.zhengdao.baopu.agent.BaopuToolCatalog.ENTRIES
         expected.forEach { (name, tier) ->
+            // platform-gate: allow 理由：/tmp 只是喂给假工厂的占位句柄，只验 factory 被调了一次，从不真的读写它。
             val spec = entries.first { it.name == name }.factory({ File("/tmp") })
             assertEquals("「$name」的档位", tier, spec.riskTier)
         }
