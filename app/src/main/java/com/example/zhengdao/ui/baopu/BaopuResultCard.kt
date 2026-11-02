@@ -505,47 +505,6 @@ internal fun copyAllTextOf(card: ResultCardSpec, res: android.content.res.Resour
 // ── 校验样式（§2.6；给输入类卡复用，答案卡一次都不调）────────────────────────
 
 /**
- * 红框 ＋ 一句人话 ＋ 点一下跳到那一项。
- *
- * 三件事分开给：**红框**由这张框负责（[isError]），**人话**由调用方从 `CardValidate.messageOf`
- * 取（永远是闭集里的一句，不会空白），**跳转**由 [onJump] 交给卡的滚动逻辑。
- */
-@Composable
-internal fun BaopuCardFieldFrame(
-    isError: Boolean,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    val shape = RoundedCornerShape(rChip)
-    Box(
-        modifier
-            .fillMaxWidth()
-            .then(
-                if (isError) {
-                    Modifier.border(1.dp, MaterialTheme.colorScheme.error, shape)
-                } else {
-                    Modifier
-                },
-            ),
-    ) { content() }
-}
-
-/** 红框下面那句人话（点它＝滚到这一项）。 */
-@Composable
-internal fun BaopuCardFieldError(message: String, onJump: () -> Unit) {
-    Text(
-        text = message,
-        style = MaterialTheme.typography.labelSmall,
-        // P2-11：error 色 3.55:1 不达正文 4.5:1，走专用的深一档
-        color = zhengdaoErrorText(),
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = RESULT_CARD_TOUCH_DP.dp)
-            .clickable(onClick = onJump),
-    )
-}
-
-/**
  * 提交条：**置灰 ＋ 顶部小计**（「还差 2 项」），点小计跳到第一处错。
  *
  * @param plan 由 `CardValidate.planOf(卡自己算的错)` 得来——校验逻辑不在这里（§2.6 归属）

@@ -98,9 +98,6 @@ object PreviewSlots {
         offlineReason = reason
     }
 
-    /** 当前 base（null＝未绑定）。给测试与回执看。 */
-    fun currentUrlBase(): String? = urlBase
-
     // ── 五个动作 ────────────────────────────────────────────────────────────
 
     /**

@@ -119,9 +119,6 @@ object BaopuIntents {
         if (uris.isNotEmpty()) imagesRequested.value = ImagesRequest(uris)
     }
 
-    /** 看一眼有没有待收的图（切 Tab 用，不清——真消费在输入框）。 */
-    fun peekImages(): ImagesRequest? = imagesRequested.value
-
     /** 输入框组合时消费（只消费一次；按引用比对，与 [consumePrompt] 同口径）。 */
     fun consumeImages(expected: ImagesRequest): Boolean {
         if (imagesRequested.value !== expected) return false

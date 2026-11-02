@@ -106,9 +106,6 @@ object BrowserTabManager {
     /** 上次渲染出来的恢复行（标签条用）。 */
     fun restored(): List<BrowserSnapshotPolicy.Row> = restoredRows.toList()
 
-    /** 还有没有没点开的恢复行（界面据此决定是否提示）。 */
-    fun hasRestored(): Boolean = restoredRows.isNotEmpty()
-
     /**
      * 用库里的行恢复标签（冷启首次进玄览时调，已由调用方在 IO 线程读完）。
      *
@@ -650,10 +647,6 @@ object BrowserTabManager {
         tab.engine.applySecurityConfig(LocalPreviewPolicy.configFor(enabled))
         tab.engine.loadLocalDocument(tab.state.previewDocument())
     }
-
-    /** 预览页签此刻是否允许脚本（UI 那一侧的开关初值；非预览页签回 false）。 */
-    fun previewJsSandboxOf(tabId: Int): Boolean =
-        tabs.firstOrNull { it.id == tabId }?.state?.previewJsSandbox == true
 
     /**
      * 回收用（第⑱刀 · D-4）：把**全部**标签从管理器摘下并返回它们的 WebView，交给
