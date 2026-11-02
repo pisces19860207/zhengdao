@@ -44,6 +44,7 @@ import com.example.zhengdao.baopu.agent.multiagent.SubAgentRules
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentRunner
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.baopu.inspect.ShadowAdapter
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryImport
@@ -847,6 +848,9 @@ internal object BaopuRuntime {
         // 只存 File 不存 Context（`StaticFieldLeak` 的教训）；各域的写口（技能/产物/日记/评测/
         // 守卫管线）都经 `DecisionLedger.record(...)` 落账，找不到落点就只留一行日志、不静默。
         DecisionLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        // 第三百六十三批：偏差账（`偏差账.jsonl`，五类事实只记不判）与决策记录同区挂载；
+        // 收工读数（RunEngine.settle）只认它自己的 installedRoot，不回头碰 208 主账。
+        DeviationLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
         // 第二百九十六批 §2：**影子预演**的沙盒在这里装配（这是全仓唯一一处 `ShadowAdapter.install`）。
         // 没装 ⇒ 第⑤步只能报 `NO_SANDBOX` ⇒ 六步停在 NO_DATA ⇒ 一张卡也不会少弹（保守方向）。
         // 只交引用、不交 Context：沙盒要的全部事实（工作区根／声明对象／内容）都由调用方给。

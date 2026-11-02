@@ -61,6 +61,8 @@ class InspectReadOnlyGateTest {
             "NocturnalPatrol.kt", "GoldenGuard.kt", "PatrolMutual.kt",
             // 291（第二刀）：体检自己那本账（体检记录.jsonl，一行一份单子）
             "HealthLedger.kt",
+            // 363：偏差账（偏差账.jsonl，五类事实只记不判；一处追加口＋自建父目录，同款形态）
+            "DeviationLedger.kt",
         )
         inspectFiles().forEach { f ->
             val text = code(f)
@@ -80,6 +82,8 @@ class InspectReadOnlyGateTest {
             "NocturnalPatrol.kt", "GoldenGuard.kt", "PatrolMutual.kt",
             // 291（第二刀）：体检自己那本账（体检记录.jsonl，一行一份单子）
             "HealthLedger.kt",
+            // 363：偏差账（偏差账.jsonl）同上款
+            "DeviationLedger.kt",
         )
         inspectFiles().forEach { f ->
             val hits = Regex("""mkdirs\(|mkdir\(""").findAll(code(f)).count()

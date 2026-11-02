@@ -42,6 +42,7 @@ import com.example.zhengdao.baopu.ScreenSwitch
 import com.example.zhengdao.baopu.ScreenSwitchDesk
 import com.example.zhengdao.baopu.SensitivePage
 import com.example.zhengdao.baopu.SessionCompressionStore
+import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SessionPlanStore
 import com.example.zhengdao.baopu.SkillRefine
@@ -2952,10 +2953,32 @@ internal class RunEngine(
         _state.value = state
         // 安全点 3（第六十四批）：本轮 Settled 之后——收尾后立刻切，不等下一轮。
         drainChannelSwitch(SafePoint.AfterSettled)
+        // 第三百六十三批：收工读偏差账（判据④「接口存在且被调用」）。静默只读——
+        // 一行日志，不弹卡、不改行为；放在 reflectOnSettled 之前是因为那边会把 roundRunId 摘空。
+        reportDeviationCount()
         // 第二百六十五批 R1：**收工后**调一次反思判定（全仓唯一调用点，`ReflectionWiringTest` 钉住）。
         // 放在最后是有意的：状态先切给 UI、通道先排空，反思读的才是刚 `.get()` 落完库的这一轮轨迹；
         // 也绝不在轮次**开始**时调——那时本轮一行轨迹都还没写，反思的是残缺状态（负例②）。
         reflectOnSettled()
+    }
+
+    /**
+     * 收工读偏差账（第三百六十三批判据④：接口存在且被调用）。
+     *
+     * · **静默只读**：只出这一行日志，不弹卡、不改行为、不进上下文（363 硬规矩 1＋4：账本只供数）；
+     * · **惰性**：没起 run 或没挂账（JVM 存量构造点、BaopuRuntime 没 install）＝一个字节不写；
+     * · **不连累收尾**：读数出错只出声，绝不把 settle() 带崩——与收工反思同一口径；
+     * · **不碰 208**：这里只认偏差账自己的挂载点，DecisionLedger 一个字不沾（C5 红线同款纪律）。
+     */
+    private fun reportDeviationCount() {
+        val runId = roundRunId
+        if (runId.isBlank()) return
+        val root = DeviationLedger.installedRoot() ?: return
+        runCatching {
+            log("抱朴引擎：收工${DeviationLedger.reportLine(root, runId)}（run $runId）")
+        }.onFailure {
+            log("抱朴引擎：偏差账读数没跑成 ${it.javaClass.simpleName}: ${it.message}")
+        }
     }
 
     /**
