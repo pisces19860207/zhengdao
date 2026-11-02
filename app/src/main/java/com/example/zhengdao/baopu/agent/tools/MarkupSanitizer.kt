@@ -163,61 +163,84 @@ internal object MarkupSanitizer {
         var s = COMMENT.replace(raw, "")
             .replace(XML_DECL, "")
             .replace(CONTROL, "")
+        val stripped = stripDangerousBlocks(s)
+        s = stripped.first
+        removed += stripped.second
+        val styled = sanitizeStyleBlocks(s)
+        s = styled.first
+        removed += styled.second
+        val rebuilt = rebuildWhitelisted(s, allowedTags, allowedAttrs)
+        removed += rebuilt.second
+        val text = rebuilt.first.trim()
+        if (text.isEmpty()) problems += "消毒后内容为空（上游给的是空串，或全是会被剥掉的标记）"
+        if (text.contains("<script", ignoreCase = true)) problems += "仍有 <script> 残留"
+        return SanitizedMarkup(text, removed, problems)
+    }
 
+    /** ①②③：危险元素连内容丢；还没闭合的危险开标签丢到文末；空元素只丢标记。 */
+    private fun stripDangerousBlocks(s: String): Pair<String, Int> {
+        var removed = 0
+        var cur = s
         // ① 危险元素连内容丢。
         for (tag in DANGEROUS_BLOCKS) {
             val re = Regex(
                 """<\s*$tag\b[^>]*>.*?<\s*/\s*$tag\s*>""",
                 setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
             )
-            removed += re.findAll(s).count()
-            s = re.replace(s, "")
+            removed += re.findAll(cur).count()
+            cur = re.replace(cur, "")
         }
-
         // ② 还没闭合的危险开标签：从它丢到文末。按 TAG 解析（不按裸字符串），
         //    免得把属性值里出现的 "<script" 当成开标签、把后面的正文全吞掉。
-        val strayBlock = TAG.findAll(s).firstOrNull { m ->
+        val strayBlock = TAG.findAll(cur).firstOrNull { m ->
             m.groupValues[1].isEmpty() && m.groupValues[2].lowercase() in DANGEROUS_BLOCKS
         }
         if (strayBlock != null) {
             removed++
-            s = s.substring(0, strayBlock.range.first)
+            cur = cur.substring(0, strayBlock.range.first)
         }
-
         // ③ 空元素只丢标记（不碰后面的内容）。
         for (tag in DROP_VOID) {
             val re = Regex(
                 """<\s*/?\s*$tag\b((?:[^>"']|"[^"]*"|'[^']*')*)/?\s*>""",
                 setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
             )
-            removed += re.findAll(s).count()
-            s = re.replace(s, "")
+            removed += re.findAll(cur).count()
+            cur = re.replace(cur, "")
         }
+        return cur to removed
+    }
 
-        // ④ `<style>` 内容先过 CSS 消毒（留着外壳，内容重写）。
+    /** ④ `<style>` 内容先过 CSS 消毒（留着外壳，内容重写）；没闭合的样式块从它丢到文末。 */
+    private fun sanitizeStyleBlocks(s: String): Pair<String, Int> {
+        var removed = 0
         val styleBlock = Regex(
             """<style\b[^>]*>(.*?)</style\s*>""",
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
         )
-        s = styleBlock.replace(s) { m ->
+        var cur = styleBlock.replace(s) { m ->
             val (css, dropped) = sanitizeCss(m.groupValues[1])
             removed += dropped
             "<style>$css</style>"
         }
-        val strayStyle = TAG.findAll(s).firstOrNull { m ->
+        val strayStyle = TAG.findAll(cur).firstOrNull { m ->
             m.groupValues[1].isEmpty() &&
                 m.groupValues[2].equals("style", ignoreCase = true) &&
                 // 只有「后面再也找不到 </style>」的才是没闭合的；已经闭合的样式块必须留。
                 !Regex("""</\s*style\s*>""", RegexOption.IGNORE_CASE)
-                    .containsMatchIn(s.substring(m.range.last + 1))
+                    .containsMatchIn(cur.substring(m.range.last + 1))
         }
         if (strayStyle != null) {
             // 没闭合的样式块：它后面的全部是 CSS 文本，留着只会被浏览器吞成空白。
             removed++
-            s = s.substring(0, strayStyle.range.first)
+            cur = cur.substring(0, strayStyle.range.first)
         }
+        return cur to removed
+    }
 
-        // ⑤ 白名单重建（标签与属性都只认表里的；属性名保持原大小写）。
+    /** ⑤ 白名单重建：标签与属性都只认表里的；属性名保持原大小写。返回重建文本与剥掉的处数。 */
+    private fun rebuildWhitelisted(s: String, allowedTags: Set<String>, allowedAttrs: Set<String>): Pair<String, Int> {
+        var removed = 0
         val out = StringBuilder(s.length)
         var last = 0
         for (m in TAG.findAll(s)) {
@@ -226,7 +249,6 @@ internal object MarkupSanitizer {
             val closing = m.groupValues[1].isNotEmpty()
             val rawName = m.groupValues[2]
             val name = rawName.lowercase()
-            val attrText = m.groupValues[3]
             if (name !in allowedTags) {
                 removed++
                 continue
@@ -235,50 +257,54 @@ internal object MarkupSanitizer {
                 out.append("</").append(rawName).append('>')
                 continue
             }
-            if (name == "meta" && Regex("""http-equiv""", RegexOption.IGNORE_CASE).containsMatchIn(attrText)) {
+            if (name == "meta" && Regex("""http-equiv""", RegexOption.IGNORE_CASE).containsMatchIn(m.groupValues[3])) {
                 removed++ // meta refresh 也是一条跳转通道
                 continue
             }
-            val selfClosing = attrText.trimEnd().endsWith("/")
-            val attrs = StringBuilder()
-            for (a in ATTR.findAll(attrText)) {
-                val rawAttr = a.groupValues[1]
-                val attr = rawAttr.lowercase()
-                val value = when {
-                    a.groupValues[2].isNotEmpty() -> a.groupValues[2]
-                    a.groupValues[3].isNotEmpty() -> a.groupValues[3]
-                    else -> a.groupValues[4]
-                }
-                when {
-                    attr.startsWith("on") -> removed++
-                    attr in LINK_ATTRS -> {
-                        if (!safeLink(attr, value)) removed++ else {
-                            attrs.append(' ').append(rawAttr)
-                                .append("=\"").append(xmlAttr(value)).append('"')
-                        }
-                    }
-                    attr == "style" -> {
-                        if (safeStyle(value)) {
-                            attrs.append(' ').append(rawAttr)
-                                .append("=\"").append(xmlAttr(value)).append('"')
-                        } else {
-                            removed++
-                        }
-                    }
-                    attr !in allowedAttrs -> removed++
-                    !safeValue(value) -> removed++
-                    else -> attrs.append(' ').append(rawAttr)
-                        .append("=\"").append(xmlAttr(value)).append('"')
-                }
-            }
+            val (attrs, dropped) = rebuildAttrs(m.groupValues[3], allowedAttrs)
+            removed += dropped
             out.append('<').append(rawName).append(attrs)
-            if (selfClosing) out.append("/>") else out.append('>')
+            if (m.groupValues[3].trimEnd().endsWith("/")) out.append("/>") else out.append('>')
         }
         out.append(s, last, s.length)
-        val text = out.toString().trim()
-        if (text.isEmpty()) problems += "消毒后内容为空（上游给的是空串，或全是会被剥掉的标记）"
-        if (text.contains("<script", ignoreCase = true)) problems += "仍有 <script> 残留"
-        return SanitizedMarkup(text, removed, problems)
+        return out.toString() to removed
+    }
+
+    /** 属性逐个过闸：on* 全剥、链接属性只放行本页锚点/内联图、style 只收静态样式、其余按白名单。 */
+    private fun rebuildAttrs(attrText: String, allowedAttrs: Set<String>): Pair<String, Int> {
+        var removed = 0
+        val attrs = StringBuilder()
+        for (a in ATTR.findAll(attrText)) {
+            val rawAttr = a.groupValues[1]
+            val attr = rawAttr.lowercase()
+            val value = when {
+                a.groupValues[2].isNotEmpty() -> a.groupValues[2]
+                a.groupValues[3].isNotEmpty() -> a.groupValues[3]
+                else -> a.groupValues[4]
+            }
+            when {
+                attr.startsWith("on") -> removed++
+                attr in LINK_ATTRS -> {
+                    if (!safeLink(attr, value)) removed++ else {
+                        attrs.append(' ').append(rawAttr)
+                            .append("=\"").append(xmlAttr(value)).append('"')
+                    }
+                }
+                attr == "style" -> {
+                    if (safeStyle(value)) {
+                        attrs.append(' ').append(rawAttr)
+                            .append("=\"").append(xmlAttr(value)).append('"')
+                    } else {
+                        removed++
+                    }
+                }
+                attr !in allowedAttrs -> removed++
+                !safeValue(value) -> removed++
+                else -> attrs.append(' ').append(rawAttr)
+                    .append("=\"").append(xmlAttr(value)).append('"')
+            }
+        }
+        return attrs.toString() to removed
     }
 
     /** 链接属性：`#锚点` 与内联图片（`data:image/…`）放行，其余一律算外链。 */
