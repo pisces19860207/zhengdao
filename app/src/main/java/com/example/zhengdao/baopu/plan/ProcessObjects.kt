@@ -1,6 +1,10 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 依据：派工单-2026-11-02-第三百七十四批-流程编排雏形 §一（三个对象＋最小闸）＋ §二（不做）＋ §三 判据 ①–④。
+// 依据：派工单-2026-11-02-第三百七十四批-流程编排雏形 §一（三个对象＋最小闸）＋ §二（不做）＋ §三 判据 ①–④，
+// 以及**同批用户裁定 Q1–Q5**（2026-11-02 晚）：Q1 消费归 366 不并本单·Q2 倒退闸加 reason 例外·
+// Q3 空白行算空但拒因点名第 N 行·Q4 其余六格本批不补闸·Q5 budget 与 342 TaskBudget 各留不并。
+// 工单 §一 的「进度」那行已按 Q2 补成「`done > total` ⇒ 拒；`done < 上次` 且无 reason ⇒ 拒」，
+// 所以本文件落的每一条都有单子原文，没有一条是我自己加的。
 //
 // 本文件是**判定层**：零 Android / 零 IO / 零时钟（时刻一律由调用方传入），
 // 与 `PlanContract.kt`（242）/ `PlanPledge.kt`（312）同一个房型，JVM 直测。
@@ -13,10 +17,12 @@
 // 三样东西的分工（字段照派工单点名）：
 // 1. **派工单 DispatchOrder**：id／title／criteria／lease／budget／base／assignedTo／at。
 //    闸：criteria 空 ⇒ 拒（无判据不派活）· lease 空 ⇒ 拒（没租约不许开工）。
+//    裁定 Q3：「有行但行里是空白」＝空（维持 313 严判），但拒因必须指名**第 N 行**，不许只说"空"。
 // 2. **回传 ReturnItem**：kind ∈ {PROBLEM, NEED_DECISION, FYI}／text／evidence。
-//    闸：PROBLEM 与 NEED_DECISION 必须带 evidence（空 ⇒ 拒）；FYI 可不带。
+//    闸：PROBLEM 与 NEED_DECISION 必须带 evidence（空 ⇒ 拒）；FYI 可不带。空白行同 Q3。
 // 3. **进度自报 ProgressNote**：orderId／done／total／etaMinutes／blockers。
-//    闸：done > total ⇒ 拒 · 连续两份比上一份倒退 ⇒ 拒 · 连续两次同进度 ⇒ StallState.STALLED。
+//    闸：done > total ⇒ 拒 · done < 上次**且无 reason** ⇒ 拒（裁定 Q2：带 reason 的显式重算放行并出一行）
+//    · 连续两次同进度 ⇒ StallState.STALLED（消费方是 366，**不并本单**＝裁定 Q1）。
 //
 // 四条边界（判据②：与军令状/缺口项不重复造，引用即可）：
 // - **判据不另造对象**：criteria 就是 `List<String>`，形状照 342 的 `TaskGoal.criteria`；
@@ -29,9 +35,12 @@
 //   （派工六步②「冲突预检」）。本层只判「有没有写租约」，不判「租约撞了谁」。
 //
 // §二 的三条「不做」原样不做：✗ 面板/UI（UI 冻结）✗ 自动派活（人是唯一派活者）✗ 消息队列。
-// 因此本文件**不存状态、不落盘、不排程**：进度比对要的「上一份读数」由调用方带进来，
-// 消费顺序是 `progressRejection` ⇒ `progressRegressionRejection` ⇒ `stallOf`
-// （被前两道拒掉的读数不进比对）——这就是 366 对接的口子（判据③）。
+// 裁定 Q4：除 §一 点名的这几条，**其余六格本批一律不补闸**（没需求就设闸＝过度约束）；
+// 「未来该设的闸」清单在交付报告 §6.1，逐条标「等真实用例」，不在代码里留半句 TODO。
+// 因此本文件**不存状态、不落盘、不排程**：进度比对要的「上一份读数」与「重算理由」都由调用方带进来，
+// 消费顺序是 `progressRejection` ⇒ `progressRegressionRejection(prev, cur, reason)` ⇒（放行且真倒退时）
+// `regressionAuditLine` 出一行给人记账 ⇒ `stallOf`
+// （被前两道拒掉的读数不进比对）——这就是 366 对接的口子（判据③；消费归 366，不并本单＝裁定 Q1）。
 package com.example.zhengdao.baopu.plan
 
 /**
@@ -41,10 +50,16 @@ package com.example.zhengdao.baopu.plan
  * @param id 单号。批次号由行政中心统一分配并写死在派工单里（在飞表「编号归口」）。
  * @param title 一句话说这单要办成什么（不是目标全文，全文在军令状里）。
  * @param criteria 判据——「怎么算做到了」，每条一句可机验的话。空 ⇒ 拒（无判据不派活）。
+ *   裁定 Q3：行里全是空白也算空，拒因点名**第 N 行**（假判据混进单子，收工时才发现没得验）。
  * @param lease 租约：本单要动的文件路径，**窄口径**（只列文件、不占目录）。空 ⇒ 拒（没租约不许开工）。
+ *   空白行同 Q3。相交判定不在这里（归 `tools/check-inflight.py`）。
  * @param budget 预估时间上界，单位**分钟**（与 [ProgressNote.etaMinutes] 同单位；
  *   协议-分片与接管 §一「预估」那条写的是「token/时间上界」，本机 token 查不到 ⇒ 只记时间）。
  *   null＝没预估——本批对它不设闸（§一只把「超预算」记进偏差账，不拦开工）。
+ *   **裁定 Q5：这是临时退化形状，与 342 的 `TaskBudget` 各留不并**。本列是给人看的**排程预估**，
+ *   `TaskBudget` 是给执行体卡的**配额**（墙钟毫秒／步数／打扰数＋四档预设，越界即断）。
+ *   342 接线时**由本列替换或适配**过去：分钟 × 60_000 ↔ `maxWallMs`；`total`/`blockers` 无对应列，
+ *   四档（斥候 90 秒＝**1.5 分钟**，`Int` 分钟装不下）⇒ 单位归一是那一批要拍的，逐档对照见报告 §6.2。
  * @param base 开工时的基线 commit（在飞表「基线」那格）。
  * @param assignedTo 承接方，按 **agent** 记不是按会话记（派工六步：agent 有共享记忆，会话是一次性容器）。
  * @param at 派发时刻（毫秒，与 312/242 的 `atMs` 同口径）。本层不读时钟，一律由调用方传入。
@@ -80,7 +95,7 @@ internal enum class ReturnKind(val cn: String) {
  * @param kind 三类之一。
  * @param text 一句话（协议-进度自报 §二「固定一行，不许写小作文」同口径；本批不给它设长度闸）。
  * @param evidence 证据（账行／路径＋hash／工具名＋参数摘要）。
- *   PROBLEM／NEED_DECISION 空 ⇒ 拒；FYI 可以空。带了就不许塞空行——空行是假据不是无据。
+ *   PROBLEM／NEED_DECISION 空 ⇒ 拒；FYI 可以空。带了就不许塞空行——空行是假据不是无据（裁定 Q3：拒因点名第 N 行）。
  */
 internal data class ReturnItem(
     val kind: ReturnKind,
@@ -98,6 +113,10 @@ internal data class ReturnItem(
  *   要的是「在超时前说」，估没估都得报，所以不设闸）。
  * @param blockers 卡住的东西，一行一个；空＝没卡。§三 那条「卡住不许沉默」要靠人读这个字段，
  *   本批不把「没报阻塞」判成违规（报没报是节奏问题，归 366 的心跳超时）。
+ *
+ * 裁定 Q2 要的「重算理由」**不加列**：工单 §一 那行把这一条写进的是**闸**（`done < 上次` 且无 reason ⇒ 拒），
+ * 不是对象；理由属于「这一次比对怎么裁」，不属于「干到哪儿了」这个事实。它跟着闸调用走
+ * （见 `progressRegressionRejection` 的 `recomputeReason`），落账由调用方在那一行里带。
  */
 internal data class ProgressNote(
     val orderId: String,
@@ -120,7 +139,8 @@ internal enum class StallState(val cn: String) {
 internal val StallState.stalled: Boolean get() = this == StallState.STALLED
 
 /**
- * 最小闸：派工单 §一「最小闸（纯规则）」那三行逐字落地，一条不加。
+ * 最小闸：派工单 §一「最小闸（纯规则）」那三行逐字落地，一条不加
+ * （含 2026-11-02 按裁定 Q2 补进 §一 的半句「`done < 上次` 且无 reason ⇒ 拒」）。
  *
  * 闸一律返回**拒因**（null＝放行），不用构造期 `require`：
  * 派工单被拒时人要看得见被拒的那份原文（照 `law/EmergencyGate.kt` 的 `admit(): String?` 房型）；
@@ -129,24 +149,41 @@ internal val StallState.stalled: Boolean get() = this == StallState.STALLED
 internal object ProcessObjectRules {
 
     /**
-     * 派工单闸：没判据不许派活，没租约不许开工（§一 点名那两条）。
-     * 空集**和**「有行但行里是空白」同一个拒法——口径照 313 的 `GapItem`（`isNotEmpty() && none { isBlank() }`）。
+     * 「第 N 行」的定位（裁定 Q3）：空白行算空，但拒因得说出是哪一行——
+     * 只说"criteria 空"，人还得自己数一遍；数错一次就是把假判据放进单子的机会。
+     * 只报**第一处**空白：一处已经够拒，列全部会让拒因变成小作文。
      */
-    fun dispatchRejection(order: DispatchOrder): String? = when {
-        order.criteria.isEmpty() -> "派工单 ${order.id} 没有判据——无判据不派活"
-        order.criteria.any { it.isBlank() } -> "派工单 ${order.id} 的判据里有空行（等于没判据）"
-        order.lease.isEmpty() -> "派工单 ${order.id} 没有租约——没租约不许开工"
-        order.lease.any { it.isBlank() } -> "派工单 ${order.id} 的租约里有空路径（撞不了也查不了）"
-        else -> null
+    private fun firstBlankLine(lines: List<String>): Int? {
+        val i = lines.indexOfFirst { it.isBlank() }
+        return if (i < 0) null else i + 1
     }
 
-    /** 回传闸：报问题／要人拍板的必须带据，只知会的可以不带。 */
-    fun returnRejection(item: ReturnItem): String? = when {
-        item.evidence.isNotEmpty() && item.evidence.any { it.isBlank() } ->
-            "回传「${item.kind.name}」的证据里有空行（空行不是证据）"
-        item.kind.requiresEvidence() && item.evidence.isEmpty() ->
-            "回传「${item.kind.name}」没带证据——没有证据的结论不进账（L14 同款）"
-        else -> null
+    /**
+     * 派工单闸：没判据不许派活，没租约不许开工（§一 点名那两条）。
+     * 空集**和**「有行但行里是空白」同一个拒法——口径照 313 的 `GapItem`（裁定 Q3 维持严判）。
+     */
+    fun dispatchRejection(order: DispatchOrder): String? {
+        val blankCriterion = firstBlankLine(order.criteria)
+        val blankLease = firstBlankLine(order.lease)
+        return when {
+            order.criteria.isEmpty() -> "派工单 ${order.id} 没有判据——无判据不派活"
+            blankCriterion != null -> "派工单 ${order.id} 的判据第 $blankCriterion 行为空白（空行等于没判据）"
+            order.lease.isEmpty() -> "派工单 ${order.id} 没有租约——没租约不许开工"
+            blankLease != null -> "派工单 ${order.id} 的租约第 $blankLease 行为空白（空路径撞不了也查不了）"
+            else -> null
+        }
+    }
+
+    /** 回传闸：报问题／要人拍板的必须带据，只知会的可以不带。空白证据行同样点名第 N 行（裁定 Q3）。 */
+    fun returnRejection(item: ReturnItem): String? {
+        val blankEvidence = firstBlankLine(item.evidence)
+        return when {
+            item.evidence.isNotEmpty() && blankEvidence != null ->
+                "回传「${item.kind.name}」的证据第 $blankEvidence 行为空白（空行不是证据）"
+            item.kind.requiresEvidence() && item.evidence.isEmpty() ->
+                "回传「${item.kind.name}」没带证据——没有证据的结论不进账（L14 同款）"
+            else -> null
+        }
     }
 
     /** 进度闸（单份读数）：做完的比总数还多＝自相矛盾，拒。 */
@@ -158,24 +195,48 @@ internal object ProcessObjectRules {
         }
 
     /**
-     * 进度闸（连续两份读数）：片数倒退 ⇒ 拒。
-     * 366 把「报完成但片不齐」判成 INCOMPLETE（谎报），倒退是同一条判据的另一半——
-     * 片不会自己消失，要么读数错、要么有人在改口径却不重签。
+     * 进度闸（连续两份读数）：片数倒退**且没给理由** ⇒ 拒（§一 那行按裁定 Q2 的原文）。
+     *
+     * 366 把「报完成但片不齐」判成 INCOMPLETE（谎报），倒退是同一条判据的另一半：
+     * 无声倒退要么读数错、要么有人在改口径却不重签——这两种都得拦。
+     * 但**一刀切会卡死**重试/回退（它们本来就会倒退），所以带 reason 的**显式重算放行**，
+     * 放行不等于无痕——由 [regressionAuditLine] 出一行人记账。
+     * 理由**全是空白＝没给**（与裁定 Q3 同一口径：空白不是一种内容）。
      * 跨单号不比对（返回 null）：两张单之间没有「倒退」可言。
      */
-    fun progressRegressionRejection(prev: ProgressNote, current: ProgressNote): String? = when {
+    fun progressRegressionRejection(
+        prev: ProgressNote,
+        current: ProgressNote,
+        recomputeReason: String?,
+    ): String? = when {
         prev.orderId != current.orderId -> null
-        current.done < prev.done ->
-            "单 ${current.orderId} 进度从 ${prev.done}/${prev.total} 退到 ${current.done}/${current.total}（片不会自己消失）"
+        current.done >= prev.done -> null
+        recomputeReason.isNullOrBlank() ->
+            "单 ${current.orderId} 进度从 ${prev.done}/${prev.total} 退到 ${current.done}/${current.total}" +
+                "——无声倒退拒（要重算就写清理由）"
         else -> null
     }
 
     /**
-     * 停滞标记（判据③：366 消费的就是这一个读数）。
+     * 裁定 Q2 的后半「并记一行」：显式重算放行之后，这一行是给人账上留的凭证。
+     *
+     * 只在**真倒退且带了理由**时给行——没倒退不记，跨单号不记，无因被拒的读数压根没进账也不记。
+     * 本层零 IO，所以这里**只出行文本不写盘**：落到哪张账由调用方（366）定。
+     */
+    fun regressionAuditLine(prev: ProgressNote, current: ProgressNote, recomputeReason: String?): String? {
+        if (prev.orderId != current.orderId || current.done >= prev.done) return null
+        val reason = recomputeReason?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return "单 ${current.orderId} 显式重算：进度从 ${prev.done}/${prev.total} 退到 " +
+            "${current.done}/${current.total}（理由：$reason）"
+    }
+
+    /**
+     * 停滞标记（判据③：366 消费的就是这一个读数；消费归 366，不并本单＝裁定 Q1）。
      *
      * 「上一份读数」由调用方带进来（本层不存状态、不读时钟）；首份读数（prev＝null）不判停滞，
      * 跨单号不比对。§一 那句「连续两次同进度」按**做完的片数**判：
      * 总数变了而片没多出来＝仍然没进展，把它算成「有进展」就是给拖延留口子。
+     * 裁定 Q2 的显式重算放行后，`prev` 传旧读数还是传重算后的基线，由 366 定——本层不替它存。
      */
     fun stallOf(prev: ProgressNote?, current: ProgressNote): StallState =
         if (prev != null && prev.orderId == current.orderId && current.done == prev.done) {
