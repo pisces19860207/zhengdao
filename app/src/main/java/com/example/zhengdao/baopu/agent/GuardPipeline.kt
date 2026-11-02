@@ -26,6 +26,8 @@ import com.example.zhengdao.baopu.authz.ProcessEpoch
 import com.example.zhengdao.baopu.authz.TaskGrantBoard
 import com.example.zhengdao.baopu.authz.TaskGrantWire
 import com.example.zhengdao.baopu.authz.WiringDisposition
+import com.example.zhengdao.baopu.inspect.AnomalyFactKind
+import com.example.zhengdao.baopu.inspect.AnomalyFeed
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.plan.ContractDeviation
 import com.example.zhengdao.baopu.plan.ContractSource
@@ -168,7 +170,8 @@ data class SpillResult(val file: File, val chars: Int)
  * 五段逐一落地（括号内是 §5 原文序号）：
  * 1. （①）注册表校验：名字存在？参数合 Schema？——[ToolRegistry.validateCall]；
  * 2. （②）路径守卫：arguments 里的 `path` 相对工作区根解析，[BaopuGuardCore.checkPath]
- *    （按路径组件比较，同前缀兄弟目录过不来）——越界即拒并 RunLog；
+ *    （按路径组件比较，同前缀兄弟目录过不来）——越界即拒并 RunLog，同时发一条
+ *    `OVER_SCOPE` **事实**事件（第三百四十六批 B；判决不在这里，见 [feedScopeEscape]）；
  * 3. （③）权限判定（**第二百二十三批：风险矩阵是唯一口径**）：`RiskMatrix.classify` 一次定档——
  *    `R0` 直行；`R1` 按既有策略（[ToolPermission.CONFIRM] ⇒ [Result.NeedsConfirm]）；
  *    `R2` **必问**（**第二百四十九批改订**：任务级明确授权快照范围内的「新建/改正文」不再
@@ -767,6 +770,8 @@ internal class GuardPipeline(
      * 1. **解析**：相对路径 / 不给路径 ⇒ 工作区根；绝对路径 ⇒ 原样（全盘）；
      * 2. **拒**：系统目录与凭据目录一律拒（[fileAccessCheck]，判据在 `FilePolicy`）——
      *    这是三道硬下限里唯一"不可商量"的一条；**不再有"越界问一次"**（工作区不是权限边界）；
+     *    两处红线（这一条 + 下面 P0-2）拦下的那一刻各发一条 `OVER_SCOPE` **事实**事件
+     *    （[feedScopeEscape]，第三百四十六批 B；只发事实，判决在 `law/AnomalyGate`）；
      * 3. **入账**：每笔文件操作落一行（路径＋用途，[FileOpLog]，30 天可回放）。
      *
      * 两处第四十八批的修正照旧（与权限模型无关，是**数据**红线）：
@@ -786,7 +791,10 @@ internal class GuardPipeline(
 
         // P0-2：先把该工具**会写盘的目标**判一遍原始区红线（读类工具不在此限）
         for (target in writeTargets(toolName, args, root)) {
-            rawRejection(target)?.let { return Guarded.No(it) }
+            rawRejection(target)?.let { reason ->
+                feedScopeEscape(call.id, toolName, target.absolutePath, reason, redline = "raw")
+                return Guarded.No(reason)
+            }
         }
 
         var newArgs = args
@@ -803,6 +811,7 @@ internal class GuardPipeline(
             // 287：唯一硬边界——系统与凭据目录一律拒（其余全盘可读写）
             fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
                 log("抱朴管线：拒绝 $toolName $raw（${FilePolicy.denyReason(target)}）")
+                feedScopeEscape(call.id, toolName, target.absolutePath, reason, redline = "policy")
                 return Guarded.No(reason)
             }
             newArgs = JSONObject(newArgs.toString()).put(key, target.absolutePath)
@@ -812,6 +821,34 @@ internal class GuardPipeline(
         }
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
+    }
+
+    /**
+     * ② 段判越界的那一刻，发一条**事实**事件（第三百四十六批 B：339 三类里的 OVER_SCOPE）。
+     *
+     * 三件事钉死在这里（口径住在 `inspect/AnomalyFeed`，本层不抄第二遍）：
+     * - **只发事实**：gist 说的是"守卫拦下了哪个目标"这一件发生过的事，动作**未发生**；
+     *   是不是灾异、要不要进紧急通道，归 `law/AnomalyGate`（本文件零引用判定层）；
+     * - **无出处不发**：出处＝这一笔动作自己的账键 `gp:<opId>`（与 208/249 用的同一个
+     *   `call.id`）。合不合"账行 id"的形状由 [AnomalyFeed.provenanceAnchor] 判、拒收由它落日志——
+     *   本层**不造第二把出处判据**，也不在没有它的时候塞一个假的进去；
+     * - **不发参数错**：`path` 为空是"没给路径"，不是越界（[guardPath] 那一支不喂这里）。
+     *
+     * @param redline 撞的是哪条硬边界（机器键 `redline:` 的档）：`raw`＝原件区只读／`policy`＝系统与凭据目录
+     */
+    private fun feedScopeEscape(
+        opId: String,
+        toolName: String,
+        target: String,
+        reason: String,
+        redline: String,
+    ) {
+        AnomalyFeed.report(
+            kind = AnomalyFactKind.OVER_SCOPE,
+            provenance = "gp:$opId",
+            gist = "② 段路径守卫拦下 $toolName：$reason（动作未发生）",
+            evidence = listOf("tool:$toolName", "path:$target", "redline:$redline"),
+        )
     }
 
     /**
