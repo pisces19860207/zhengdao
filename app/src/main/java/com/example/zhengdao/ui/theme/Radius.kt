@@ -80,11 +80,5 @@ val rSheet: Dp = 24.dp
 
 // ── shape 便捷别名（需要 RoundedCornerShape 实例时直接用）──
 
-val ShapeSwatch = RoundedCornerShape(rSwatch)
-val ShapeBadge = RoundedCornerShape(rBadge)
-val ShapeChip = RoundedCornerShape(rChip)
-val ShapePill = RoundedCornerShape(rPill)
-val ShapeButton = RoundedCornerShape(rButton)
-val ShapeDialog = RoundedCornerShape(rDialog)
 val ShapeCard = RoundedCornerShape(rCard)
-val ShapeSheet = RoundedCornerShape(rSheet)
+

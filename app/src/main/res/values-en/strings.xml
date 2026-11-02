@@ -111,7 +111,6 @@
     <!-- ── Shared components (top bar / log dialog / folder picker / KB help) ── -->
     <string name="help_log_title">Run log</string>
     <string name="help_log_copied">Copied the whole log</string>
-    <string name="help_log_missing">This run hasn\'t written a log yet. Log folder: %1$s (open it with a file manager)</string>
     <string name="ws_picker_title">Choose a workspace folder</string>
     <string name="ws_picker_root">/ (internal storage root)</string>
     <string name="ws_picker_up">← Up</string>

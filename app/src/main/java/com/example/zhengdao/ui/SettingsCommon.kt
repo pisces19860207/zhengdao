@@ -308,29 +308,6 @@ internal fun SettingsLogDialog(log: String?, onDismiss: () -> Unit) {
     }
 }
 
-/**
- * 取一次运行日志原文交给 [onLog]；一份都没有时给指向日志目录的 Toast（绝不静默）。
- * 取件顺序：本轮日志 → 最新归档 → 旧版 .prev 文件（与设置页原实现一致）。
- */
-internal fun openLogDialog(scope: CoroutineScope, ctx: Context, onLog: (String) -> Unit) {
-    scope.launch {
-        val text = withContext(Dispatchers.IO) {
-            runCatching {
-                (RunLog.file() ?: RunLog.latestArchive() ?: RunLog.prevFile())?.readText()
-            }.getOrNull()
-        }
-        if (text.isNullOrBlank()) {
-            Toast.makeText(
-                ctx,
-                ctx.getString(R.string.help_log_missing, RunLog.dirPath(ctx)),
-                Toast.LENGTH_LONG,
-            ).show()
-        } else {
-            onLog(text)
-        }
-    }
-}
-
 /** 新手指南：三步上手的单行（蓝色序号 + 说明）。 */
 @Composable
 internal fun GuideLine(number: String, text: String) {

@@ -104,7 +104,6 @@
     <!-- ── 共享组件（顶栏 / 日志弹窗 / 文件夹选择 / 资料库说明）── -->
     <string name="help_log_title">运行日志</string>
     <string name="help_log_copied">已复制全部日志</string>
-    <string name="help_log_missing">这次的日志还没写出来。日志目录：%1$s（用文件管理器打开）</string>
     <string name="ws_picker_title">选择工作区文件夹</string>
     <string name="ws_picker_root">/（内部存储根目录）</string>
     <string name="ws_picker_up">← 上一级</string>
