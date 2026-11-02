@@ -290,13 +290,35 @@ internal class ConfirmFlow(
             timedOut || abandoned -> CardDisposition.Choice.DISMISS
             else -> CardDisposition.Choice.REJECT
         }
-        CardDisposition.record(
+        recordDisposition(
             choice = choice,
-            face = CardDisposition.Face.CONFIRM,
             cardId = call.id,
             actor = if (timedOut) CardDisposition.Actor.CLOCK else CardDisposition.Actor.USER,
             subject = summary,
             why = note.orEmpty(),
+        )
+    }
+
+    /**
+     * 落一行处置（**本内核唯一的落笔形状**：脸永远是确认卡，理由永远是"这一格该有的那句话"）。
+     *
+     * 三条路都走它：在线批／驳／超时（[noteDisposition]）、恢复批准（[noteRestoredApproval]）、
+     * 恢复拒绝（[restoredReject]）——四格字段的写法只有一份，多一条路不会多出一种行格式。
+     */
+    private fun recordDisposition(
+        choice: CardDisposition.Choice,
+        cardId: String,
+        actor: CardDisposition.Actor,
+        subject: String,
+        why: String = "",
+    ) {
+        CardDisposition.record(
+            choice = choice,
+            face = CardDisposition.Face.CONFIRM,
+            cardId = cardId,
+            actor = actor,
+            subject = subject,
+            why = why,
         )
     }
 
@@ -390,7 +412,7 @@ internal class ConfirmFlow(
         spillWriter: (fileName: String, text: String) -> SpillResult?,
     ): GuardPipeline.Result {
         val args = runCatching { JSONObject(row.argsJson) }.getOrNull() ?: JSONObject()
-        val call = ToolCall("restored-${row.at}", row.tool, args)
+        val call = ToolCall(restoredCallId(row), row.tool, args)
         val picked = ConfirmScopeChoice.consume(call.id) ?: ConfirmScope.ONLY_ONCE
         val effective = if (ConfirmRisk.isHighRisk(row.tool)) {
             if (picked != ConfirmScope.ONLY_ONCE) {
@@ -429,15 +451,51 @@ internal class ConfirmFlow(
      * 账是留痕不是闸门，[CardDisposition.record] 自己吞异常并记日志）。
      */
     private fun noteRestoredApproval(call: ToolCall, summary: String) {
-        CardDisposition.record(
+        recordDisposition(
             choice = CardDisposition.Choice.APPROVE,
-            face = CardDisposition.Face.CONFIRM,
             cardId = call.id,
             actor = CardDisposition.Actor.USER,
             subject = summary,
-            why = "",
         )
     }
+
+    /**
+     * 恢复卡被**拒绝**时落一行处置（第三百二十六批 ③b；与 [noteRestoredApproval] 同一处、同一形状）。
+     *
+     * 为什么这一半也要记：拒绝同样是她对着重建出来的卡做的决定。只记批准的话，处置账上"重启后的卡"
+     * 只有批的一半，318 学到的就是"她不拒"——那是被账本形状造出来的假象。
+     *
+     * 与在线拒绝逐格对齐（[noteDisposition] 的拒绝分支）：`驳／确认卡／用户`，`why` 留空 ⇒
+     * 用类别句「用户驳了这张卡：这一步不做」。**注意不读 `note` 字段**：那个字段是"这张活卡上有没有留话"，
+     * 恢复路径上根本没经过 [enter] 设它，直接读会读到上一张卡的残留。
+     *
+     * @param row 落库那一行；**null（已经处理过／本来就没有）⇒ 不落账**——给没发生过的问答
+     *        留一行处置，就是编。调用方负责在 `pendingStore.clear` **之前**把它取出来。
+     * @param summary 卡面上那句话（拒绝回灌用的也是它）⇒ subject
+     * @return 有没有真落下这一行
+     */
+    fun restoredReject(row: PendingRow?, summary: String): Boolean {
+        if (row == null) {
+            log("抱朴确认：恢复拒绝时 pending 已经不在（处理过了），不落处置账")
+            return false
+        }
+        recordDisposition(
+            choice = CardDisposition.Choice.REJECT,
+            cardId = restoredCallId(row),
+            actor = CardDisposition.Actor.USER,
+            subject = summary,
+        )
+        return true
+    }
+
+    /**
+     * 恢复卡的稳定 id（`restored-<pending_at>`）。
+     *
+     * **只在本内核里合成**：卡面那边（[com.example.zhengdao.ui.baopu.BaopuConfirmRestore]）是另一个口径的
+     * 同名规则（UI 层），`BaopuConfirmRestoreTest` 钉着"控制器里不许自己拼"。本文件内凡是要这张卡的 id
+     * （出卡、批准记账、拒绝记账），都走这一个函数——三处各拼一次，迟早漂成三个 id。
+     */
+    private fun restoredCallId(row: PendingRow): String = "restored-${row.at}"
 
     /** 轮询等批准；@return true=批准 false=拒绝 null=超时（仅前台计时） */
     private suspend fun awaitApproval(): Boolean? {

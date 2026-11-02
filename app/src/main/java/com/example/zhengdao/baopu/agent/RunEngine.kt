@@ -1445,6 +1445,9 @@ internal class RunEngine(
     /**
      * 重启后拒绝落库的 pending：清 pending ＋ 回灌「用户拒绝」＋ 把这一轮继续
      * 跑完（与在线拒绝同口径：对话继续，模型知道这动作被拒了）。
+     *
+     * 第三百二十六批 ③b：**拒绝也落一行处置账**——先 `load` 再 `clear`（清完就取不到"哪张卡"了），
+     * `row == null`（已经处理过）则不落。走向一个字没动：清库、回灌、续跑全在原位。
      */
     fun rejectRestoredPending(sessionId: Long, summary: String) {
         acquireOrNotice(sessionId) ?: return
@@ -1452,6 +1455,9 @@ internal class RunEngine(
         adoptInterjectionsFor(sessionId)
         runExecutor.execute {
             try {
+                // ③b：必须在 clear 之前取（clear 之后 load 只能拿到 null，"哪张卡"就丢了）
+                val row = pendingStore.load(sessionId)
+                confirmFlow.restoredReject(row, summary)
                 pendingStore.clear(sessionId)
                 persistAssistantMessage(sessionId, RunRules.rejectNote(summary, null))
                 runLoop(sessionId, userText = null, resumed = true)

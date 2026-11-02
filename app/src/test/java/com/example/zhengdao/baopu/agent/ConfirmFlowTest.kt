@@ -368,6 +368,118 @@ class ConfirmFlowTest {
         }
     }
 
+    // ── 第三百二十六批 判据③b：恢复卡拒绝也要落一行处置 ─────────────────────
+
+    @Test
+    fun `判据③b_恢复卡拒绝落一行处置_与在线拒绝逐格一致`() = runBlocking {
+        val root = tmp("restore-rej")
+        val ledger = tmp("restore-rej-ledger")
+        DecisionLedger.install(ledger)
+        CardDisposition.resetForTest()
+        try {
+            val r = rig(root, projectRoot = { root })
+
+            // ① 在线拒绝：真挂一张卡、真点拒绝 —— 参照行
+            val onlinePath = File(root, "资料库/在线拒.txt").absolutePath
+            var outcome: ConfirmFlow.Outcome? = null
+            val job = launch {
+                outcome = r.flow.enter(1L, 1, writeCall("call-online-r", onlinePath, "甲")) { _, _ -> null }
+            }
+            awaitLive(r.flow, "call-online-r")
+            r.flow.resumeWithApproval("call-online-r", approved = false, note = null)
+            job.join()
+            assertTrue("在线路径得先真的拒绝：$outcome", outcome is ConfirmFlow.Outcome.Rejected)
+            val online = CardDisposition.rowsFor("call-online-r").single()
+
+            // ② 恢复拒绝：库里那一行（先 load 再记，清库之后就没有"哪张卡"了）
+            val restoredPath = File(root, "资料库/恢复拒.txt").absolutePath
+            val row = PendingRow(
+                tool = "write_file",
+                argsJson = JSONObject().put("path", restoredPath).put("content", "乙").toString(),
+                at = 5_252L,
+            )
+            val before = CardDisposition.replay().size
+            val noted = r.flow.restoredReject(row, BaopuConfirmRestore.card(row, root).summary)
+
+            // ③ 拒绝不执行、处置账 +1 行、与在线拒绝逐格一致
+            assertTrue("恢复拒绝要真的记下这一行", noted)
+            assertFalse("拒绝就是不执行", File(root, "资料库/恢复拒.txt").exists())
+            assertEquals("恢复卡拒绝必须 +1 行", before + 1, CardDisposition.replay().size)
+            val restored = CardDisposition.rowsFor("restored-5252").single()
+            assertEquals("选了哪个要一致", online.choice, restored.choice)
+            assertEquals("驳就是驳", CardDisposition.Choice.REJECT, restored.choice)
+            assertEquals("哪张卡要一致", online.face, restored.face)
+            assertEquals("谁驳的要一致（是她点的，不是时钟）", online.actor, restored.actor)
+            assertEquals("理由用同一句类别句兜底（两句都得是「人类驳了」而不是「没人表态」）", online.why, restored.why)
+            assertEquals(
+                "subject 必须与恢复卡面那句话同一个函数同一个根算出来",
+                BaopuConfirmRestore.card(row, root).summary,
+                restored.subject,
+            )
+
+            // ④ 真落盘：在线一条、恢复一条
+            val onDisk = CardDisposition.fileIn(ledger).readLines(Charsets.UTF_8).filter { it.isNotBlank() }
+            assertEquals("盘上就是这两行", 2, onDisk.size)
+            assertTrue(
+                "恢复拒绝那行要能被本账自己的解析器读回",
+                onDisk.any { CardDisposition.CardDispositionRow.parse(it)?.cardId == "restored-5252" },
+            )
+        } finally {
+            DecisionLedger.uninstallForTest()
+            CardDisposition.resetForTest()
+        }
+    }
+
+    @Test
+    fun `判据③b_pending已经不在了_不落账`() {
+        val root = tmp("restore-rej-null")
+        val ledger = tmp("restore-rej-null-ledger")
+        DecisionLedger.install(ledger)
+        CardDisposition.resetForTest()
+        try {
+            val r = rig(root)
+            // 已经处理过（库里没这行）⇒ 这条"问答"根本没发生，给它留一行处置就是编的
+            assertFalse("null 必须返回 false（没落）", r.flow.restoredReject(null, "删 资料库/x.md"))
+            assertEquals("一行都不许落", 0, CardDisposition.replay().size)
+            assertFalse("盘上也不许有这本账", CardDisposition.fileIn(ledger).exists())
+        } finally {
+            DecisionLedger.uninstallForTest()
+            CardDisposition.resetForTest()
+        }
+    }
+
+    /**
+     * ③b 的接线门禁：**引擎的拒绝分支真调了记账，而且是在清库之前**。
+     *
+     * 为什么这条只能扫源码：`rejectRestoredPending` 要真 SQLite（本仓无 Robolectric），
+     * JVM 面测不到"它到底调没调"；而"有实现、零调用点"正是 276 那类病的形状——
+     * 内核那三条测试全绿，引擎却没接，谁也不会发现。断言的是**顺序**（load → 记账 → clear），
+     * 不是"文件里出现过这几个字"：清库之后 `load` 只能拿到 null，"哪张卡"就丢了，
+     * 这个顺序本身就是判据。
+     */
+    @Test
+    fun `判据③b_引擎拒绝分支先load再记账_记账在clear之前`() {
+        val src = mainSource("baopu/agent/RunEngine.kt")
+        val start = src.indexOf("fun rejectRestoredPending(")
+        assertTrue("找不到 rejectRestoredPending（改名/挪走了？先改这条门禁）", start > 0)
+        val body = src.substring(start).substringBefore("\n    /**")
+        val iLoad = body.indexOf("pendingStore.load(")
+        val iNote = body.indexOf("confirmFlow.restoredReject(")
+        val iClear = body.indexOf("pendingStore.clear(")
+        assertTrue("恢复拒绝必须先 load 取出 row（否则 cardId 无处可取）", iLoad > 0)
+        assertTrue("必须真调记账——有实现零调用点＝没做", iNote > 0)
+        assertTrue("清库之后 load 只能拿到 null ⇒ 记账必须在 clear 之前", iClear > 0 && iLoad < iNote && iNote < iClear)
+    }
+
+    /** 生产源码（剥注释；与 HealthWiringGateTest 同一手法）。 */
+    private fun mainSource(rel: String): String {
+        val f = File("src/main/java/com/example/zhengdao", rel)
+        assertTrue("找不到 $rel（被挪走/改名了？先改这条门禁）", f.isFile)
+        return f.readText(Charsets.UTF_8)
+            .replace(Regex("""/\*[\s\S]*?\*/"""), " ")
+            .replace(Regex("(?m)//.*$"), " ")
+    }
+
     // ── 用户点停止 ⇒ 作废不执行、不回灌「用户拒绝」 ──────────────────────
 
     @Test
