@@ -47,6 +47,8 @@ import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SessionPlanStore
 import com.example.zhengdao.baopu.SkillRefine
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.TaskMode
+import com.example.zhengdao.baopu.TaskModeBoundary
 import com.example.zhengdao.baopu.VisionConsent
 import com.example.zhengdao.baopu.VisionFiles
 import com.example.zhengdao.baopu.VisionRouting
@@ -66,6 +68,7 @@ import com.example.zhengdao.baopu.plan.PlanPledgeRules
 import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.ChancellorWiring
 import com.example.zhengdao.baopu.verify.Finding
+import com.example.zhengdao.baopu.verify.RunContractWiring
 import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
 import com.example.zhengdao.core.RunLog
@@ -284,6 +287,17 @@ internal class RunEngine(
      * 上一轮的文件算进来（假红比不验更坏）。
      */
     private val verifyTouched = LinkedHashSet<String>()
+
+    /**
+     * 第三百七十八批：本轮用户的**原话**（起单那一刻定；弹卡闸与契约起单都读它）。
+     *
+     * 为什么是字段而不是 runLoop 的局部：读它的 [askModeGate] 在工具线程上跑
+     * （[handleSerialCall] 的执行路径），而"这一轮用户说了什么"只有 runLoop 入口知道——
+     * 与 [planSessionId]／`registry.currentSessionId` 同一个房型（引擎每轮入口喂一次）。
+     * 续跑/插话轮没有本轮原话 ⇒ 置 null，弹卡闸保守放行（宁可多问，不吞该问的）。
+     */
+    @Volatile
+    private var turnUserText: String? = null
 
     /**
      * 第二百六十五批 R1：本轮的 runId 与起点（收工后那一次反思按这个窗口认领证据）。
@@ -1820,6 +1834,19 @@ internal class RunEngine(
         roundStartedAtMs = System.currentTimeMillis()
         roundRunId = trace.newRun(sessionId, roundStartedAtMs)
 
+        // ── 第三百七十八批①：起单建契约（TaskContract 的生产接线点）─────────────
+        // 闲聊不立单：TaskModeBoundary 判闲聊 ⇒ 没有契约、收工也没有验收读数（闲聊不打扰）。
+        // 判任务态才立单；目标＝用户原话、范围＝产物目录、预算＝常单档（真值见 RunContractWiring）。
+        // 建完立刻"前置读"一次：目标/范围/预算拼进本轮上下文（模型真读得到），痕迹进运行日志。
+        turnUserText = if (!resumed) userText?.trim().takeUnless { it.isNullOrEmpty() } else null
+        val runOrder = turnUserText
+            ?.takeIf { TaskModeBoundary.classify(it) == TaskMode.TASK }
+            ?.let { RunContractWiring.startRun(roundRunId, it) }
+        runOrder?.let { order ->
+            log(order.startLine())
+            turnNotes = turnNotes + order.precheckLine()
+        }
+
         // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
         // 内存是空的；不回种的话模型重发计划时 sticky done 失效，done 会被打回
         // doing（用户看到「打完的勾又亮了」）。
@@ -2063,6 +2090,23 @@ internal class RunEngine(
                                 AnswerGate.brief(answerFindings),
                         )
                     }
+                    // ── 第三百七十八批②：收工按契约判（右相验收入口）─────────────────
+                    // PASS/FAIL/UNVERIFIABLE 真由 ContractSelector.evaluate 算
+                    // （verify/RunContractWiring → 332 判据表，判据一个字没改）；证据是本轮
+                    // 真落盘的文档产物，打勾的依据是上面收尾闸的既有读数——本层不新造判据、
+                    // 不判卷。只进日志与 notice（FAIL 才贴），不进修复回路、不拦收尾
+                    // （照 227 §0.5 答案自检同款纪律：报数不拦人）。
+                    var contractNotice: String? = null
+                    runOrder?.let { order ->
+                        val report = RunContractWiring.closeRun(
+                            order,
+                            spillRoot(),
+                            verifyTouched.toList(),
+                            findings,
+                        )
+                        log(RunContractWiring.reportLine(report))
+                        contractNotice = RunContractWiring.noticeLine(report)
+                    }
                     // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）。
                     // 覆盖顺序（改前源码的顺序，一级压一级）：截断 > 计划未勾 > 收尾闸摘要；
                     // 都不命中 ⇒ 不动 notice（保留本轮此前可能已贴的提示）。
@@ -2080,6 +2124,10 @@ internal class RunEngine(
                     // 没立状 ⇒ 读数为 null，一个字不加）。
                     pledgeCloseoutNotice?.let { p ->
                         _notice.value = _notice.value?.let { cur -> "$cur $p" } ?: p
+                    }
+                    // 378②：契约验收没过 ⇒ 同样贴在最外层（过了不贴——PASS 不打扰）。
+                    contractNotice?.let { c ->
+                        _notice.value = _notice.value?.let { cur -> "$cur $c" } ?: c
                     }
 
                     persistAssistantMessage(sessionId, outcome.text)
@@ -3835,9 +3883,13 @@ internal class RunEngine(
         call: ToolCall,
         history: MutableList<HistoryMessage>,
     ): ToolResultFlow {
-        // 第三百四十七批①：军令状参数的非法组合先拦（立状/结项/重签一次只许带一件）
-        // ——在本闸之前，连计划变更卡都不为一次注定被拒的调用弹。
-        pledgeComboGate(call)?.let { blocked ->
+        // 出卡前的第一道闸链（347① 军令状组合闸 ＋ 378③ 闲聊弹卡闸，判定域不相交、
+        // 短路求并；收进一个出口 dispatch，handleSerialCall 的复杂度不增——detekt 引擎区
+        // 预算只降不升）。378③ 的判态走 :policy 的 TaskModeBoundary.classify（本单只调
+        // 判定，词表一个字没动）；同意卡/军令状卡/求助卡走各自出口不经本闸，一张都不拦。
+        // 接线点报备 379：MediatorWiring 归 379，弹卡判态的生产位置在本闸（闸链首位）——
+        // 379 接免打扰时段闸时与本闸**串联**（先判态、再问时段），不是二选一。
+        preExecutionGate(call)?.let { blocked ->
             return handleResultAndTrace(sessionId, step, call, blocked, history, 0L)
         }
         // 第三百四十三批尾巴①：范围变更卡——立状之后用户一句话改约（改一下/加一项/
@@ -4343,6 +4395,36 @@ internal class RunEngine(
         return GuardPipeline.Result.Failed(
             call = call,
             error = PlanGuardRules.changeBlocked(change),
+        )
+    }
+
+    /**
+     * 出卡前的第一道闸链（短路求并）：347① 的军令状组合闸在前（它只认 update_plan），
+     * 378③ 的闲聊弹卡闸在后（它只认 ask_user）——判定域不相交，谁命中谁收场。
+     * 合在一个出口里 dispatch，[handleSerialCall] 的复杂度不增（detekt 引擎区预算只降不升）。
+     */
+    private fun preExecutionGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        pledgeComboGate(call)?.let { return it }
+        return askModeGate(call)
+    }
+
+    /**
+     * 闲聊态弹卡闸（第三百七十八批③的引擎侧）。
+     *
+     * 只拦 `ask_user` 工具自己的卡：闲聊轮里模型要弹问卡 ＝ 打扰，不弹、如实回"没答"，
+     * 模型接着聊它的天。任务轮照常弹（[askAllowedForTurn] 的判定与起单立单用的是
+     * **同一个** [TaskModeBoundary.classify]——判 TASK 才立单，也才弹卡，两边不打架）。
+     *
+     * @return null = 放行（不是 ask_user ／没有本轮原话的续跑轮／本轮是任务态）
+     */
+    private fun askModeGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        if (call.name != "ask_user") return null
+        val turnText = turnUserText ?: return null
+        if (askAllowedForTurn(turnText)) return null
+        log("抱朴引擎：闲聊态不打扰（ask_user 不弹卡，如实回没答）")
+        return GuardPipeline.Result.Failed(
+            call = call,
+            error = "没弹卡：这一轮是闲聊，不打扰用户——正常接着聊就行，别再调 ask_user。",
         )
     }
 
@@ -5054,3 +5136,21 @@ data class BaopuUsageStep(
     val usage: LlmUsage,
     val elapsedMs: Long,
 )
+
+/**
+ * 第三百七十八批③：这一轮该不该弹 ask_user 的卡（纯函数，JVM 直测）。
+ *
+ * 判定走 [TaskModeBoundary.classify]（:policy 的任务/闲聊判据，词表一字未动）：
+ * 任务态才问，闲聊态不打扰。保守方向写死一条：**没有本轮原话**（续跑、插话轮、
+ * 队列取出轮）一律放行——宁可多问一张，不把该问的吞了（与判态的"宁可漏判进不了
+ * 禁令、不把玩笑当办事"同一个方向：闸只在"确实是闲聊"时才拦）。
+ *
+ * 判据③的读数口：同一句话判 TASK ⇒ true（卡照弹）、判 CHAT ⇒ false（不弹）——
+ * 弹卡次数因此不同。生产接线点在 [RunEngine.askModeGate]（handleSerialCall 首位）；
+ * MediatorWiring 归 379，本单只调判定函数，接线点已在交付报告报备。
+ */
+internal fun askAllowedForTurn(userText: String?): Boolean {
+    val text = userText?.trim().orEmpty()
+    if (text.isEmpty()) return true
+    return TaskModeBoundary.classify(text) == TaskMode.TASK
+}
