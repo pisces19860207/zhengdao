@@ -4,7 +4,7 @@
 // 从人的回忆变成一个查得到的对象。
 //
 // **本文件持有什么**：历次纪元的身份证（[Epoch]）、跨纪元那一跳的账（[EpochTransition]）、
-// 每纪装过的快照（[EpochRegistry.snapshotsOf]）、归属到纪的判据变更账（[CriteriaChange] 与
+// 每纪装过的快照（[EpochRegistry.snapshotsOf]）、归属到纪的判据变更账（[EpochChangeRow] 与
 // [EpochRegistry.record]）。
 // **本文件不持有什么**：不持周历计算、不持换表判定、不持回滚判定、不持三态、**不持「此刻生效的是
 // 哪张表」的任何副本**。那几件全在 310 的 `CriteriaEpoch.kt`：[EpochId] 算纪、[CriteriaSnapshot]
@@ -23,14 +23,18 @@
 //     这里一条都不重定义；
 //   · **寻址同源**（裁定②）：机器那一列就是 [EpochId.ordinal] 的十进制（[Epoch.id]），
 //     人读那一列就是 [EpochId.label] 那句 `E1（周一 … 起）`（[Epoch.label]），两列并存；
-//     [CriteriaChange] 的纪列同源。账是给人看的，不许上面只有 2964 这种裸数字。
+//     [EpochChangeRow] 的纪列同源。账是给人看的，不许上面只有 2964 这种裸数字。
 //   · 接线（谁来调用本文件）归第三百八十批。本批照 310 的口径只出**对象＋闸＋测试＋账**，
 //     在线路径一个字不读这里——那条禁令由 310 的 `tools/check-criteria-gates.py` 尺一钉着
-//     （本批把 [EpochRegistry]／[CriteriaChange]／[EpochTransition] 三个符号也加进那张尺）。
+//     （本批把 [EpochRegistry]／[EpochChangeRow]／[EpochTransition] 三个符号也加进那张尺）。
 //
 // 零 Android／零 IO／零时钟：`startedAt` 与 `atMs` 都由调用方给（同 310——自己读一次时钟，
-// 同一张表就会在午夜前后给出两个纪元号）。[CriteriaChange.wire]／[CriteriaChange.rows] 只出与读
+// 同一张表就会在午夜前后给出两个纪元号）。[EpochChangeRow.wire]／[EpochChangeRow.rows] 只出与读
 // **文本形态**，落不落盘、落在哪个文件都不归本文件管。
+//
+// 真要落盘时**另起一名**（如 `docs/纪元变更账.jsonl`），不许写进 `docs/纪元账.jsonl`（2026-11-02
+// 用户裁定 B）：那张表是**五列三态**、这六列是**变更行**，两把尺子各判各的；六列混进五列那张表，
+// 红的不是本批，是那把尺子——要么它红，要么被改成「六列也过」＝把尺子改松。
 package com.example.zhengdao.baopu.policy
 
 import java.security.MessageDigest
@@ -66,6 +70,10 @@ internal data class Epoch(
             "纪元 id 必须是 310 日历纪的序号（非负十进制），实测「$id」——寻址同源，不许自己起一个"
         }
         require(label.isNotBlank()) { "纪元 label 不能空——机读用 ordinal、人读用 label，两列都得有" }
+        require(label != EpochChangeRow.UNATTRIBUTED) {
+            "纪元 label 不许叫「${EpochChangeRow.UNATTRIBUTED}」：那一列是「追不到纪」专用的闭集值，" +
+                "真纪元占了它，这个纪的变更行就再也读不回来（机读列有值、人读列却说没归属）"
+        }
         require(startedAt >= 0L) { "纪元起始时刻由调用方给（本包零时钟），且不许为负" }
         require(HASH_HEX.matches(criteriaHash)) {
             "criteriaHash 必须是 64 位小写十六进制 sha256，实测「$criteriaHash」——" +
@@ -82,7 +90,7 @@ internal data class Epoch(
         private val HASH_HEX = Regex("^[0-9a-f]{64}$")
 
         /** 日历纪序号的形态：非负十进制。负数与「E1」这种人名都不许当 id。 */
-        private val ORDINAL = Regex("^\\d+$")
+        internal val ORDINAL = Regex("^\\d+$")
 
         /** 同一个纪元号的机器面孔（变更账、身份证、快照三处都用它，出处只有一个）。 */
         fun idOf(epoch: EpochId): String = epoch.ordinal.toString()
@@ -178,6 +186,12 @@ internal data class EpochTransition(
 /**
  * 变更账的一行（判据④）：每行带纪元归属，老数据允许 `epochId = null` ＝未归属。
  *
+ * **与 310 的纪元账不是同一张表，也不共用校验**（2026-11-02 用户裁定 B）。那张表是**五列三态**
+ * （`epoch|候选|采纳|拒|状态`，`tools/check-criteria-gates.py` 的尺三按「不是五列就红」硬断言），
+ * 这张表是**六列变更行**：列数／必填／顺序／闭集各核各的，谁也不许把对方的口径吸收进来。
+ * 混表的下场不是本批红，是那把尺子红——要么它红，要么被人改成「六列也过」＝**把尺子改松**。
+ * 所以这张表若要落盘，另起一名（如 `docs/纪元变更账.jsonl`），不许写进 `docs/纪元账.jsonl`。
+ *
  * 写口只有一条：[EpochRegistry.record]（那里没写归属 ⇒ 拒）。
  * 本类型的 [decode]／[rows] 是**读口**：把已经落在账上的文本读回来。两条不许串——
  * 「读时允许 null」是给老数据的出路，不是给新数据开的逃逸口。
@@ -185,7 +199,7 @@ internal data class EpochTransition(
  * 纪元的两副面孔都在这一行上：`epochId`（机读＝ordinal 十进制）与 `epochLabel`（人读），
  * 与 [Epoch] 同源；追不到纪的老行，第二列空、第三列写 [UNATTRIBUTED]。
  */
-internal data class CriteriaChange(
+internal data class EpochChangeRow(
     val changeId: String,
     /** 归属的纪元（310 的日历纪序号）；`null` ＝这笔变更追不到纪元（老账行）。 */
     val epochId: String?,
@@ -225,7 +239,7 @@ internal data class CriteriaChange(
          *
          * 老行一律落成 [UNATTRIBUTED]：读侧不替它补纪（那是假账），也不许反过来给写口开洞。
          */
-        fun decode(line: String): CriteriaChange? {
+        fun decode(line: String): EpochChangeRow? {
             val cols = line.trim().split("|")
             return when (cols.size) {
                 COLUMNS -> fromColumns(cols)
@@ -234,19 +248,30 @@ internal data class CriteriaChange(
             }
         }
 
-        /** 六列：机读列可以空着（＝没归属），但空了人读列必须写 [UNATTRIBUTED]，两列不许各说一套。 */
-        private fun fromColumns(cols: List<String>): CriteriaChange? {
+        /**
+         * 六列：位置即语义（`变更id|纪元序号|纪元名|判据id|锚点|时刻`），机读与人读两列互相咬合才算一行。
+         *
+         * 合法组合是个闭集，只有两种（裁定 B 说的「自己一套校验」就在这道读口上）：
+         * - 机读列空 ⇒ 人读列必须**正好**是 [UNATTRIBUTED]（空白或别的名字都算两列各说一套）；
+         * - 机读列有值 ⇒ 必须是 [Epoch.ORDINAL] 那个形状，且人读列既不许空、也不许写 [UNATTRIBUTED]。
+         *
+         * 读不回就是坏行，条数由 [unreadable] 出——不猜、不补，也不替它把两列抹平成一种。
+         */
+        private fun fromColumns(cols: List<String>): EpochChangeRow? {
             val atMs = cols[5].toLongOrNull() ?: return null
             val epochId = cols[1]
             val givenLabel = cols[2]
-            if (epochId.isNotBlank() && givenLabel.isBlank()) {
+            if (epochId.isBlank()) {
+                if (givenLabel != UNATTRIBUTED) {
+                    return null
+                }
+            } else if (!Epoch.ORDINAL.matches(epochId) || givenLabel.isBlank() || givenLabel == UNATTRIBUTED) {
                 return null
             }
-            val unattributed = epochId.isBlank()
             return build(
                 changeId = cols[0],
-                epochId = if (unattributed) null else epochId,
-                epochLabel = if (unattributed) UNATTRIBUTED else givenLabel,
+                epochId = if (epochId.isBlank()) null else epochId,
+                epochLabel = givenLabel,
                 criterionId = cols[3],
                 target = cols[4],
                 atMs = atMs,
@@ -254,7 +279,7 @@ internal data class CriteriaChange(
         }
 
         /** 四列（本批之前的老账）：压根没有纪元列 ⇒ 归属追不到，明写 [UNATTRIBUTED]，不替它补纪。 */
-        private fun fromLegacyColumns(cols: List<String>): CriteriaChange? {
+        private fun fromLegacyColumns(cols: List<String>): EpochChangeRow? {
             val atMs = cols[3].toLongOrNull() ?: return null
             return build(
                 changeId = cols[0],
@@ -274,11 +299,11 @@ internal data class CriteriaChange(
             criterionId: String,
             target: String,
             atMs: Long,
-        ): CriteriaChange? {
+        ): EpochChangeRow? {
             if (changeId.isBlank() || criterionId.isBlank() || target.isBlank()) {
                 return null
             }
-            return CriteriaChange(
+            return EpochChangeRow(
                 changeId = changeId,
                 epochId = epochId,
                 epochLabel = epochLabel,
@@ -289,7 +314,7 @@ internal data class CriteriaChange(
         }
 
         /** 整本账（按文本顺序）。坏行跳过——但跳过的条数由 [unreadable] 出读数，不静默吞。 */
-        fun rows(text: String): List<CriteriaChange> =
+        fun rows(text: String): List<EpochChangeRow> =
             text.lineSequence().mapNotNull { decode(it) }.toList()
 
         /** 读不回的行数（账上有行、这里读不出＝格式变了，不许当成「没写过」）。 */
@@ -327,7 +352,7 @@ internal object EpochRegistry {
 
     private val transitions = ArrayList<EpochTransition>()
 
-    private val changes = ArrayList<CriteriaChange>()
+    private val changes = ArrayList<EpochChangeRow>()
 
     /** 历次纪元（落账顺序）。 */
     fun epochs(): List<Epoch> = epochs.values.toList()
@@ -337,8 +362,8 @@ internal object EpochRegistry {
     /** 跨纪元的事件序列（只增不改）。 */
     fun epochTransitions(): List<EpochTransition> = ArrayList(transitions)
 
-    /** 账上已归属的变更行（全部经 [record] 落进来；未归属的老行只在读口 [CriteriaChange.rows] 出现）。 */
-    fun changeRows(): List<CriteriaChange> = ArrayList(changes)
+    /** 账上已归属的变更行（全部经 [record] 落进来；未归属的老行只在读口 [EpochChangeRow.rows] 出现）。 */
+    fun changeRows(): List<EpochChangeRow> = ArrayList(changes)
 
     /**
      * 判据③：给定 epochId 列出该纪装过的快照。
@@ -349,7 +374,7 @@ internal object EpochRegistry {
     fun snapshotsOf(epochId: String): List<CriteriaSnapshot> = snapshots[epochId]?.toList() ?: emptyList()
 
     /** 这一纪改了哪几条（派工单开头那句「换了哪几条」的落点）。 */
-    fun changesOf(epochId: String): List<CriteriaChange> = changes.filter { it.epochId == epochId }
+    fun changesOf(epochId: String): List<EpochChangeRow> = changes.filter { it.epochId == epochId }
 
     /**
      * 落账：把 [epoch] 连同它装的 [snapshot] 记进纪元册（唯一的历史写口）。
@@ -401,7 +426,7 @@ internal object EpochRegistry {
      * ③ 归属（见 [attributionReject]）：必须有纪、必须是 310 此刻生效的那一纪、且那一纪已在册；
      * ④ id 重复即拒——同一笔记两遍就是有人在改账。
      */
-    fun record(change: CriteriaChange): EpochResult = synchronized(this) {
+    fun record(change: EpochChangeRow): EpochResult = synchronized(this) {
         if (change.target.isBlank()) {
             return@synchronized refused("变更 ${change.changeId} 没有锚点：空锚点就是不可进化清单的逃逸口")
         }
@@ -470,10 +495,10 @@ internal object EpochRegistry {
      * 「此刻是哪一纪」这里不自己算——读 [EpochRuntime.currentSnapshot] 的日历纪；
      * 起点只从在册的 [Epoch.startedAt] 拿（那是当初落账时调用方给的那个数，不是重算出来的边界）。
      */
-    private fun attributionReject(change: CriteriaChange): String? {
+    private fun attributionReject(change: EpochChangeRow): String? {
         if (!change.attributed()) {
             return "变更 ${change.changeId} 没写纪元归属：新行必须归属此刻生效的那一纪" +
-                "（「${CriteriaChange.UNATTRIBUTED}」是老数据在读口的标注，不是写口开的洞）"
+                "（「${EpochChangeRow.UNATTRIBUTED}」是老数据在读口的标注，不是写口开的洞）"
         }
         val effective = EpochRuntime.currentSnapshot()
             ?: return "310 还没有生效表：没有「此刻」，变更无处归属。先 EpochRuntime.swap，别在纪元册里存副本"

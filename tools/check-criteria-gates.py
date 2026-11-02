@@ -39,6 +39,9 @@ POLICY_MODULE_MAIN = ROOT / "policy" / "src" / "main" / "java" / "com" / "exampl
 PRIVATE = ROOT.parent / "_zd-private"
 
 SURFACE = ["ImmutableCriteria.kt", "CriteriaEvolution.kt", "AnchorSet.kt", "CriteriaEpoch.kt"]
+# 两张表分工不同（2026-11-02 用户裁定 A）：SURFACE 管「**哪几个文件是判据表**」（逐文件扫零浮点/零评分字样），
+# CRITERIA_SYMBOLS 管「**哪些符号碰不得判据**」（宰相在线路径只许查表，不许参与准入）。
+# `Epoch.kt` 因此**不进 SURFACE**——纪元账不是判据表，把六列变更行拉进五列三态那把尺子＝把尺子改松。
 FLOAT_EXEMPT = {"Policy.kt", "PolicyTable.kt"}
 IMMUTABLE_IDS = {
     "DELIVERABLE_ON_DISK": ("deliverable-on-disk", "L19"),
@@ -52,7 +55,8 @@ CRITERIA_SYMBOLS = (
     # 第三百六十四批（2026-11-02 用户裁定④）：纪元册那三件也算准入符号——380 接线时若把
     # 「落纪／记变更／切纪」搬进宰相的在线路径，这条尺要抓得到。
     # **不加裸 "Epoch"**：子串会把 310 自己的 `EpochId`／`EpochRuntime` 一起误伤（那是查表，不是准入）。
-    "EpochRegistry", "CriteriaChange", "EpochTransition",
+    # 变更行这名是 `EpochChangeRow`（裁定 B）：与纪元账五列那张表分行另起一名，名字也一并分开。
+    "EpochRegistry", "EpochChangeRow", "EpochTransition",
 )
 
 problems = []
@@ -457,7 +461,7 @@ def selftest():
     cases.append(("正例：宰相只查表", leak_in_code("val t = PolicyRuntime.current().table()", "agent/RunEngine.kt") == []))
     # 364 批追加的三个符号：每个都要有一条真会红的负例（裁定④）。
     cases.append(("负例：纪元册被塞进宰相路径", leak_in_code("val r = EpochRegistry.append(e, s, ref, t)", "agent/RunEngine.kt") != []))
-    cases.append(("负例：变更账被塞进宰相路径", leak_in_code("val c = CriteriaChange(id, null, label, k, a, t)", "agent/MediatorJudge.kt") != []))
+    cases.append(("负例：变更账被塞进宰相路径", leak_in_code("val c = EpochChangeRow(id, null, label, k, a, t)", "agent/MediatorJudge.kt") != []))
     cases.append(("负例：切纪事件被塞进宰相路径", leak_in_code("val h = EpochTransition(f, g, fl, gl, r, ref, t)", "agent/MediatorWiring.kt") != []))
     # 裸 "Epoch" 故意不在符号表里：310 的 EpochId／EpochRuntime 是查表，不是准入，误伤就是尺坏了。
     cases.append(("正例：裸 Epoch 字样不误伤（EpochId／EpochRuntime）",

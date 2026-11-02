@@ -5,7 +5,7 @@
 // 310 已经把四把尺钉在源级（`tools/check-criteria-gates.py` ＋ `ImmutableCriteriaGateTest`
 // ＋ `NoScalarScoreGateTest`）：清单被改写、被配置化、产物出现标量分、锚定集被静默改、
 // 纪元账没有三态。那些这里一条都不重做。本文件数的是**新长出来的两条写口与几个读口**：
-// `append`／`record` 会不会拦，`snapshotsOf`／`CriteriaChange.rows` 读不读得回。
+// `append`／`record` 会不会拦，`snapshotsOf`／`EpochChangeRow.rows` 读不读得回。
 //
 // **委托证据**（裁定③）：本批删掉的是第二套判定（`open`／`transition`／`currentId`——它们自己判
 // 周历、判边界、判回滚），留下的必须是「委托关系」的证据。所以原来那七例**一条也没删**，
@@ -95,9 +95,9 @@ class EpochTest {
         week: Long = 0L,
         target: String = HARMLESS,
         label: String? = null,
-    ): CriteriaChange {
+    ): EpochChangeRow {
         val epoch = EpochId.of(weekStart(week))
-        return CriteriaChange(
+        return EpochChangeRow(
             changeId = id,
             epochId = Epoch.idOf(epoch),
             epochLabel = label ?: epoch.label(),
@@ -302,7 +302,7 @@ class EpochTest {
             assertFalse("改硬闸 $anchor 必须拒", r.accepted)
             assertTrue("拒得要指到清单：" + r.reason, r.reason.contains("不可进化条"))
         }
-        assertEquals("一条也没落进变更账", emptyList<CriteriaChange>(), EpochRegistry.changeRows())
+        assertEquals("一条也没落进变更账", emptyList<EpochChangeRow>(), EpochRegistry.changeRows())
     }
 
     @Test
@@ -475,7 +475,7 @@ class EpochTest {
     @Test
     fun `负例_没写归属的新行被拒`() {
         firstEpoch()
-        val r = EpochRegistry.record(CriteriaChange("C1", null, CriteriaChange.UNATTRIBUTED, "K1", HARMLESS, weekStart(0)))
+        val r = EpochRegistry.record(EpochChangeRow("C1", null, EpochChangeRow.UNATTRIBUTED, "K1", HARMLESS, weekStart(0)))
         assertFalse("「未归属」只许从读口回来，不是写口开的洞", r.accepted)
         assertTrue(r.reason, r.reason.contains("没写纪元归属"))
     }
@@ -483,10 +483,10 @@ class EpochTest {
     @Test
     fun `负例_归属到别一纪的行被拒`() {
         firstEpoch()
-        val r = EpochRegistry.record(CriteriaChange("C1", "9", label1, "K1", HARMLESS, weekStart(0)))
+        val r = EpochRegistry.record(EpochChangeRow("C1", "9", label1, "K1", HARMLESS, weekStart(0)))
         assertFalse(r.accepted)
         assertTrue("拦它的必须是「此刻生效那一纪」：" + r.reason, r.reason.contains("此刻生效"))
-        assertEquals(emptyList<CriteriaChange>(), EpochRegistry.changeRows())
+        assertEquals(emptyList<EpochChangeRow>(), EpochRegistry.changeRows())
     }
 
     @Test
@@ -494,7 +494,7 @@ class EpochTest {
         val r = EpochRegistry.record(owned())
         assertFalse(r.accepted)
         assertTrue("归属的「此刻」也读 310，不自己存：" + r.reason, r.reason.contains("还没有生效表"))
-        assertEquals(emptyList<CriteriaChange>(), EpochRegistry.changeRows())
+        assertEquals(emptyList<EpochChangeRow>(), EpochRegistry.changeRows())
     }
 
     @Test
@@ -511,16 +511,16 @@ class EpochTest {
         val r = EpochRegistry.record(owned(label = "瞎写的纪名"))
         assertFalse(r.accepted)
         assertTrue(r.reason, r.reason.contains("各说一套"))
-        assertEquals(emptyList<CriteriaChange>(), EpochRegistry.changeRows())
+        assertEquals(emptyList<EpochChangeRow>(), EpochRegistry.changeRows())
     }
 
     @Test
     fun `负例_时刻早于本纪起点的变更挂不进本纪`() {
         firstEpoch()
-        val r = EpochRegistry.record(CriteriaChange("C9", id0, label0, "K1", HARMLESS, weekStart(0) - DAY_MS))
+        val r = EpochRegistry.record(EpochChangeRow("C9", id0, label0, "K1", HARMLESS, weekStart(0) - DAY_MS))
         assertFalse("老行挂进新纪＝假账", r.accepted)
         assertTrue(r.reason, r.reason.contains("早于"))
-        assertEquals(emptyList<CriteriaChange>(), EpochRegistry.changeRows())
+        assertEquals(emptyList<EpochChangeRow>(), EpochRegistry.changeRows())
     }
 
     @Test
@@ -543,7 +543,7 @@ class EpochTest {
         assertEquals(id0, rows[0].epochId)
         assertEquals(label0, rows[0].epochLabel)
         assertEquals(listOf(rows[0]), EpochRegistry.changesOf(id0))
-        assertEquals("别的纪一条也不该认领", emptyList<CriteriaChange>(), EpochRegistry.changesOf(id1))
+        assertEquals("别的纪一条也不该认领", emptyList<EpochChangeRow>(), EpochRegistry.changesOf(id1))
     }
 
     @Test
@@ -553,58 +553,63 @@ class EpochTest {
         val rows = EpochRegistry.changeRows()
         val text = rows.joinToString("\n") { it.wire() } + "\n"
         assertTrue("机读列与人读列都在文本上：" + text, text.contains("|$id0|") && text.contains(label0))
-        assertEquals(rows, CriteriaChange.rows(text))
-        assertTrue(CriteriaChange.rows(text).single().attributed())
+        assertEquals(rows, EpochChangeRow.rows(text))
+        assertTrue(EpochChangeRow.rows(text).single().attributed())
     }
 
     @Test
     fun `老格式四列读回null归属并标未归属`() {
-        val row = CriteriaChange.decode("C1|K1|$HARMLESS|${weekStart(0)}")
+        val row = EpochChangeRow.decode("C1|K1|$HARMLESS|${weekStart(0)}")
         assertNull("本批之前的行压根没有纪元列", row?.epochId)
-        assertEquals(CriteriaChange.UNATTRIBUTED, row?.epochLabel)
+        assertEquals(EpochChangeRow.UNATTRIBUTED, row?.epochLabel)
         assertFalse(row!!.attributed())
     }
 
     @Test
-    fun `第二列空也是未归属`() {
-        // 没归属 ⇒ 第三列是谁都不作数，统一落成「未归属」，不许留一句假人名。
-        assertEquals(CriteriaChange.UNATTRIBUTED, CriteriaChange.decode("C1||瞎写的名字|K1|$HARMLESS|${weekStart(0)}")?.epochLabel)
-        assertEquals(CriteriaChange.UNATTRIBUTED, CriteriaChange.decode("C1|||K1|$HARMLESS|${weekStart(0)}")?.epochLabel)
-        assertNull(CriteriaChange.decode("C1|||K1|$HARMLESS|${weekStart(0)}")?.epochId)
+    fun `负例_机读列空而人读列各说一套的行读不回`() {
+        // 裁定 B 的闭集：机读列空着＝追不到纪，此时人读列必须**正好**写「未归属」。
+        // 旧读口会替它抹平成未归属（＝给这行编一个说法）；现在两列不许各说一套，坏行交给 unreadable 计数。
+        assertNull("人读列写了别的名字＝它自称属于某一纪，可机读列没序号",
+            EpochChangeRow.decode("C1||瞎写的名字|K1|$HARMLESS|${weekStart(0)}"))
+        assertNull("两列都空着也不猜：本批的未归属是明写的，不是留白",
+            EpochChangeRow.decode("C1|||K1|$HARMLESS|${weekStart(0)}"))
+        assertEquals("闭集里合法那一支照样读得回：机读空＋人读明写未归属",
+            EpochChangeRow.UNATTRIBUTED,
+            EpochChangeRow.decode("C1||${EpochChangeRow.UNATTRIBUTED}|K1|$HARMLESS|${weekStart(0)}")?.epochLabel)
     }
 
     @Test
     fun `负例_有机读列却没人读列的行读不回`() {
-        assertNull("机读与人读两列必须都在：账不许只剩数字", CriteriaChange.decode("C1|$id0||K1|$HARMLESS|${weekStart(0)}"))
+        assertNull("机读与人读两列必须都在：账不许只剩数字", EpochChangeRow.decode("C1|$id0||K1|$HARMLESS|${weekStart(0)}"))
     }
 
     @Test
     fun `负例_读口的未归属不许反过来当写口的洞`() {
         firstEpoch()
-        val legacy = CriteriaChange.decode("C1|K1|$HARMLESS|${weekStart(0)}")
+        val legacy = EpochChangeRow.decode("C1|K1|$HARMLESS|${weekStart(0)}")
         assertTrue("读得回才算真的兼容老数据", legacy != null)
         assertFalse(EpochRegistry.record(legacy!!).accepted)
     }
 
     @Test
     fun `负例_列数不对的行读不回`() {
-        assertNull(CriteriaChange.decode("C1|K1|$HARMLESS|${weekStart(0)}|多一列"))
-        assertNull(CriteriaChange.decode("C1|$id0|$label0|K1|$HARMLESS"))
-        assertNull(CriteriaChange.decode("C1|$id0|$label0|K1|$HARMLESS|不是时刻"))
-        assertNull(CriteriaChange.decode("|$id0|$label0|K1|$HARMLESS|${weekStart(0)}"))
+        assertNull(EpochChangeRow.decode("C1|K1|$HARMLESS|${weekStart(0)}|多一列"))
+        assertNull(EpochChangeRow.decode("C1|$id0|$label0|K1|$HARMLESS"))
+        assertNull(EpochChangeRow.decode("C1|$id0|$label0|K1|$HARMLESS|不是时刻"))
+        assertNull(EpochChangeRow.decode("|$id0|$label0|K1|$HARMLESS|${weekStart(0)}"))
     }
 
     @Test
     fun `坏行跳过但条数不静默吞`() {
         val text = "C1|$id0|$label0|K1|$HARMLESS|${weekStart(0)}\n坏行\n还有一行|||\n"
-        assertEquals(1, CriteriaChange.rows(text).size)
-        assertEquals("账上有行、这里读不出＝格式变了，不许当成「没写过」", 2, CriteriaChange.unreadable(text))
+        assertEquals(1, EpochChangeRow.rows(text).size)
+        assertEquals("账上有行、这里读不出＝格式变了，不许当成「没写过」", 2, EpochChangeRow.unreadable(text))
     }
 
     @Test
     fun `空账读回零行且零坏行`() {
-        assertEquals(emptyList<CriteriaChange>(), CriteriaChange.rows(""))
-        assertEquals(0, CriteriaChange.unreadable(""))
+        assertEquals(emptyList<EpochChangeRow>(), EpochChangeRow.rows(""))
+        assertEquals(0, EpochChangeRow.unreadable(""))
     }
 
     @Test
@@ -613,7 +618,7 @@ class EpochTest {
         assertTrue(EpochRegistry.record(owned(id = "C1")).accepted)
         val second = install(1L, "K1", "K2", "K3")
         assertTrue("第二纪没落账：" + second.reason, second.accepted)
-        val row = CriteriaChange("C2", id1, label1, "K1", HARMLESS, weekStart(1))
+        val row = EpochChangeRow("C2", id1, label1, "K1", HARMLESS, weekStart(1))
         val recorded = EpochRegistry.record(row)
         assertTrue("第二纪的变更记不进：" + recorded.reason, recorded.accepted)
         val rows = EpochRegistry.changeRows()
@@ -661,12 +666,32 @@ class EpochTest {
         listOf(
             "internal data class Epoch(",
             "internal data class EpochTransition(",
-            "internal data class CriteriaChange(",
+            "internal data class EpochChangeRow(",
             "internal data class EpochResult(",
             "internal object EpochRegistry",
         ).forEach {
             assertTrue("缺了 $it", text.contains(it))
         }
         assertFalse("接线归 380：本文件不许引用 agent 的东西", text.contains("com.example.zhengdao.baopu.agent"))
+    }
+
+    // ── 裁定 A／B 补的例（2026-11-02 用户拍板两条；放在末尾，前面「例 N」的编号不动）──
+
+    @Test
+    fun `负例_纪元label不许占用未归属这个闭集值`() {
+        // 读口的闭集里「未归属」专表「追不到纪」。真纪元要是占了它，
+        // 这一纪的变更行 wire() 出去就再也读不回来（机读列有值、人读列写着未归属＝自相矛盾）。
+        val hash = Epoch.criteriaHashOf(listOf(entry("K1")))
+        assertThrows("闭集值不许被真纪元占用", IllegalArgumentException::class.java) {
+            Epoch(id = id0, label = EpochChangeRow.UNATTRIBUTED, startedAt = weekStart(0), criteriaHash = hash, reason = "把这类误判补上")
+        }
+    }
+
+    @Test
+    fun `负例_机读列有值时闭集另两支也读不回`() {
+        assertNull("机读列说属于第 $id0 纪、人读列却说没归属＝一行自相矛盾",
+            EpochChangeRow.decode("C1|$id0|${EpochChangeRow.UNATTRIBUTED}|K1|$HARMLESS|${weekStart(0)}"))
+        assertNull("机读列只认 310 的 ordinal 十进制；「E1」这种人名是坏行，不是另一纪",
+            EpochChangeRow.decode("C1|E1|$label0|K1|$HARMLESS|${weekStart(0)}"))
     }
 }
