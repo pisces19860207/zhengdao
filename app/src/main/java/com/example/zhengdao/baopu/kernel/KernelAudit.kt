@@ -24,10 +24,6 @@ object KernelAudit {
     fun workspace(newPath: String, oldPath: String): String =
         line("工作区", newPath, oldPath)
 
-    /** 压缩阈值变更（当前设置页不暴露这个数，留好口子等它上界面）。 */
-    fun compressThreshold(newValue: String, oldValue: String): String =
-        line("压缩阈值", newValue, oldValue)
-
     /** 通道（provider）变更。 */
     fun channel(newName: String, oldName: String): String =
         line("通道", newName, oldName)

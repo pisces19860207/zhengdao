@@ -58,11 +58,6 @@ internal object PersonaFactory {
         return text
     }
 
-    /** 清缓存（测试专用：改完假 assets 要能让下一次读到新的）。 */
-    fun resetCacheForTest() {
-        cached = null
-    }
-
     /** 出厂人设的原始字节（校验用；读不到 ⇒ null）。 */
     fun bytesOf(context: Context): ByteArray? = runCatching {
         context.applicationContext.assets.open(ASSET_PATH).use { it.readBytes() }

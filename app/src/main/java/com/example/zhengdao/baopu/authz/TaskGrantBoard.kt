@@ -96,11 +96,6 @@ internal object TaskGrantBoard {
 
     fun currentOffer(): GrantOffer? = offer
 
-    /** 挂上候选单（由 [TaskGrantWire.buildOffer] 算出；null＝这一轮不生成授权，照旧逐次问）。 */
-    fun offerCandidate(newOffer: GrantOffer?) {
-        offer = newOffer
-    }
-
     /**
      * 开单成交（点「开工」/debug 探针同一个口）。
      *

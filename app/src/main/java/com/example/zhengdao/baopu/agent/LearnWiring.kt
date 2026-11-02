@@ -399,13 +399,6 @@ internal object LearnWiring {
     fun shouldAsk(cardClass: String, now: Long = System.currentTimeMillis()): Boolean =
         !VerdictExperienceRuntime.current().suppresses(cardClass, now)
 
-    /** 延后队列按学到的次序重排（次序=学习的另一半；压着的类上游已拦，不会出现在这里）。 */
-    @Synchronized
-    fun orderDeferred(now: Long = System.currentTimeMillis()): List<Ruling> = LearnPolicy.orderRulings(
-        OpinionWiring.deferred(),
-        { VerdictExperienceRuntime.current().statsOf(it, now) },
-    )
-
     /** 意见的"类"：意见账上没有别的稳定键，gist 就是"这张卡讲什么"（≤8 字，单行）。 */
     fun classKeyOf(opinion: Opinion): String = opinion.gist
 

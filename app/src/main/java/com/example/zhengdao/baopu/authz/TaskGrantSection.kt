@@ -123,10 +123,6 @@ internal data class GrantSelection(
     /** 一个都没勾（＝照旧逐次问）。 */
     val empty: Boolean get() = objects.isEmpty() || actions.isEmpty()
 
-    /** 与卡上默认值完全相同（＝整单授权）。 */
-    fun coversAll(facts: TaskGrantFacts): Boolean =
-        objects.toSet() == facts.objects.map { it.handle }.toSet() &&
-            actions.toSet() == facts.actions.toSet()
 }
 
 /** 卡上默认：全勾（默认值＝「我都看过了，这一单照批准的范围做」）。 */

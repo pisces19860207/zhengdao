@@ -453,9 +453,6 @@ internal class PlanController(
     /** 当前声明的契约（内存态；null = 这一版计划没声明上限）。 */
     fun currentContract(): PlanContract? = contract
 
-    /** 上限是否真的装上了（板上有契约 ⇒ 引擎此刻正在按契约设限）。 */
-    fun isContractInForce(): Boolean = PlanContractBoard.hasContract()
-
     /**
      * 这次 update_plan 带的是不是一份「还没经她批准」的契约（**不落库、不动内存**）。
      *

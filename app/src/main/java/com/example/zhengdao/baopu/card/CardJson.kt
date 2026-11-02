@@ -118,9 +118,6 @@ internal object CardJson {
     fun isJsonNull(o: JSONObject?, key: String): Boolean =
         o != null && o.has(key) && o.opt(key) === JSONObject.NULL
 
-    fun hasNonNull(o: JSONObject?, key: String): Boolean =
-        o != null && o.has(key) && o.opt(key) !== JSONObject.NULL
-
     fun arrayOf(o: JSONObject?, key: String): JSONArray? = o?.opt(key) as? JSONArray
 
     fun objectOf(o: JSONObject?, key: String): JSONObject? = o?.opt(key) as? JSONObject

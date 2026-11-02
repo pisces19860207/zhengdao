@@ -33,10 +33,6 @@ internal object PersonaPackPrefs {
     fun hasPrevious(ctx: Context, workspace: File): Boolean =
         prefs(ctx).contains(PREFIX_PREVIOUS + keyOf(workspace))
 
-    /** 上一套的包目录；null＝上一套是抱朴默认。调用前先看 [hasPrevious]。 */
-    fun previousDir(ctx: Context, workspace: File): String? =
-        prefs(ctx).getString(PREFIX_PREVIOUS + keyOf(workspace), null)?.takeIf { it.isNotEmpty() }
-
     /**
      * 换一套。只有真的换了才更新「上一套」——反复点当前这套不该把回滚目标冲掉。
      * [dirName] null＝切回抱朴默认。

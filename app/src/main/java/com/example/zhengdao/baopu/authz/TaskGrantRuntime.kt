@@ -175,12 +175,6 @@ internal object TaskGrantRuntime {
         installed?.end(reason, nowMonoMs)
     }
 
-    /** 任务结束：只有同一张任务的那张授权才结束（别的任务不被误伤）。 */
-    fun endTask(taskId: String, nowMonoMs: Long) {
-        val s = installed ?: return
-        if (s.grant.taskId == taskId) s.end(GrantEndReason.TASK_ENDED, nowMonoMs)
-    }
-
     /** 直测收尾（生产不调；与 `ConfirmGrants.resetForTest` 同款纪律）。 */
     fun resetForTest() {
         installed = null

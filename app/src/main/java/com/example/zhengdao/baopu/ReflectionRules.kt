@@ -162,9 +162,6 @@ internal data class ReflectionScan(
     val candidates: List<ReflectionCandidate>,
     val logLine: String,
 ) {
-    /** 四源可得性小表（报告与日志共用一份拼法）。 */
-    fun availabilityText(): String =
-        availability.joinToString("；") { "${it.name.name}=${it.level.name}" + if (it.note.isNotBlank()) "（${it.note}）" else "" }
 }
 
 // ── 证据可点开（负例 2 的闸门在这：文件不在 ⇒ 证据不可点开 ⇒ 卡出不来）──────────

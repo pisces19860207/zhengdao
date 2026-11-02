@@ -311,14 +311,6 @@ internal class RunTraceStore(private val db: BaopuDb) {
         }
     }
 
-    /** 该会话最近一次有轨迹的 runId（没有 ⇒ null；日志页「看上一次」用）。 */
-    fun latestRunId(sessionId: Long): String? {
-        val stmt = BaopuSql.selectLatestRunTrace(sessionId)
-        return db.read { d ->
-            d.rawQuery(stmt.sql, stmt.args).use { c -> if (c.moveToFirst()) c.getString(0) else null }
-        }
-    }
-
     private fun readRow(c: android.database.Cursor): TraceRow = TraceRow(
         runId = c.getString(c.idx("run_id")),
         sessionId = c.getLong(c.idx("session_id")),

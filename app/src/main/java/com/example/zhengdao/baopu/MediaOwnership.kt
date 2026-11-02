@@ -228,10 +228,6 @@ internal object MediaOwnership {
     /** 按 `_id` 找记录（含墓碑——墓碑命中说明「删过了」，不能再当新条目）。 */
     fun findById(entries: List<Entry>, id: Long): Entry? = entries.firstOrNull { it.id == id }
 
-    /** 按文件名找活记录。 */
-    fun findLiveByName(entries: List<Entry>, name: String): Entry? =
-        entries.firstOrNull { it.isLive && it.name == name }
-
     /** 按相对路径找活记录（删除入口传进来的就是这让的路径）。 */
     fun findLiveByRelPath(entries: List<Entry>, relPath: String): Entry? =
         entries.firstOrNull { it.isLive && it.relPath.equals(relPath, ignoreCase = true) }
