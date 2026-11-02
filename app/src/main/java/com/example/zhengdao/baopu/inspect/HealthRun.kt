@@ -76,7 +76,7 @@ internal object HealthRun {
             allTools = BaopuToolCatalog.ENTRIES.map { it.name },
         )
         val prev = HealthLedger.previousStates(root)
-        val organs = OrganCensus.PROBES.map { p ->
+        val organs = OrganCensus.HEALTH_PARTS.map { p ->
             HealthCheck.organ(
                 p.copy(
                     outputs = SINK_FILES[p.name]?.let { HealthSources.outputLines(root, it) },

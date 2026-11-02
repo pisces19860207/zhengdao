@@ -379,6 +379,10 @@ internal class ConfirmFlow(
      *
      * 第一百七十一批：恢复卡上选的范围同样记账（旁路按同一个 callId 取；
      * 高风险摁回「仅这一次」）——否则重启后的第一张卡选了「本会话内」会白选。
+     *
+     * 第三百二十六批：**批准也落一行处置账**（[noteRestoredApproval]）。以前这条路上
+     * 只在执行后清库，处置账一格没有 ⇒ 318 学不到"重启后她批了什么"。恢复逻辑本身一字未动：
+     * 范围记账、强制「仅这一次」、`executeApproved` 五段、清库顺序全在原来的位置。
      */
     fun restoredExecute(
         sessionId: Long,
@@ -401,9 +405,38 @@ internal class ConfirmFlow(
             ConfirmGrants.grant(sessionId, ConfirmKeys.of(row.tool, args), row.tool, effective)
             log("抱朴确认：恢复卡授权「${effective.label}」（${row.tool}）")
         }
+        // 处置在这一刻已经定了（人点了批准），执行成不成是事实账那一侧后面自己记的事——
+        // 与在线路径同序：先落处置、再动盘。
+        noteRestoredApproval(call, RunRules.confirmSummary(row.tool, args, projectRoot()))
         val result = pipeline.executeApproved(call, spillWriter)
         store.clear(sessionId)
         return result
+    }
+
+    /**
+     * 恢复卡批准落一行处置（第三百二十六批；同一本账、同一个写入口 [CardDisposition.record]）。
+     *
+     * 为什么这一行不能省：恢复卡上的「批准」是**用户自己的决定**（她看着重建出来的卡点的），
+     * 与在线那一次批准在语义上是同一件事。以前只有在线路径落账 ⇒ 重启后批的那几张卡在
+     * 处置账上是空白，318 的"她怎么处置这类卡"就少一条真实信号（315 自报第③条）。
+     *
+     * 与在线路径逐格对齐（`noteDisposition` 的批准分支）：`批／确认卡／用户`，
+     * `cardId` 就是这张卡的 callId（`restored-<pending_at>`，与卡面、与范围授权的键同一个 id），
+     * `subject` 走 [RunRules.confirmSummary]（与重建卡面**同一个函数同一个根**，两处不会漂成两句话），
+     * `why` 留空 ⇒ 用该选项的类别句兜底（在线批准且没写理由时也是这一句）。
+     *
+     * **不改恢复逻辑**：这一行只是"记账"，不参与任何判定；它写失败也不拦执行（账本纪律：
+     * 账是留痕不是闸门，[CardDisposition.record] 自己吞异常并记日志）。
+     */
+    private fun noteRestoredApproval(call: ToolCall, summary: String) {
+        CardDisposition.record(
+            choice = CardDisposition.Choice.APPROVE,
+            face = CardDisposition.Face.CONFIRM,
+            cardId = call.id,
+            actor = CardDisposition.Actor.USER,
+            subject = summary,
+            why = "",
+        )
     }
 
     /** 轮询等批准；@return true=批准 false=拒绝 null=超时（仅前台计时） */

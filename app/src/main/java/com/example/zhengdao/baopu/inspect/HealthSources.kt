@@ -19,7 +19,7 @@ import com.example.zhengdao.baopu.policy.SelfDecideLog
 import java.io.File
 
 /**
- * 部位普查表（**源码事实**，第一版 15 条，覆盖派工单 291 §覆盖部位清单）。
+ * 部位普查表（**源码事实**；条目数不是本表的一部分，见下）。
  *
  * 每条的数字口径（`HealthCheckTest` 按同一口径重扫）：
  * **剥掉注释后，`entry` 在 `app/src/main/**/*.kt` 里出现、且不在 `declaredIn` 那个文件里的次数。**
@@ -28,13 +28,20 @@ import java.io.File
  * 体检表不许再写那个路径"的行才这么办，见反思器那条的注释）。
  *
  * 改接线的同时必须改这里（证据行一起改）；不改就红——"账实相符"这一条先用在体检自己身上。
+ *
+ * 第三百二十六批：表名从 `PROBES` 改成 **`HEALTH_PARTS`**（"清单"这件事要说在名字上），
+ * 并把原来钉在闸里的 `assertEquals(14, ...)` 拆掉——**条目数不是判据**。
+ * 加第 15 个部位的正确做法就是往这张表里加一项：闸只问 [evidenceGaps] 那一件事
+ * （非空 ＋ 每项有出处），不问有几项。数量唯一有意义的场合是"这张表空没空"
+ * ——空表会被读成"全都没问题"，那是最坏的一种谎。
  */
 internal object OrganCensus {
 
     /** 生产调用点最多只数到这么多就够判（起居注这种高频口不必精确到个位）。 */
     const val CALL_SITES_FLOOR_ONLY = 50
 
-    val PROBES: List<OrganProbe> = listOf(
+    /** 部位清单（唯一的清单；体检单就是照这张表一行一行问下来的）。 */
+    val HEALTH_PARTS: List<OrganProbe> = listOf(
         OrganProbe(
             name = "分类器",
             entry = "RiskMatrix.classify",
@@ -205,8 +212,49 @@ internal object OrganCensus {
         ),
     )
 
-    /** 按名字取一条（体检单只认这 15 个名字）。 */
-    fun of(name: String): OrganProbe? = PROBES.firstOrNull { it.name == name }
+    /** 按名字取一条（体检单只认这张表里的名字）。 */
+    fun of(name: String): OrganProbe? = HEALTH_PARTS.firstOrNull { it.name == name }
+
+    /**
+     * 表里"没有出处"的项（**闸唯一认的那条判据**；返回空 ＝ 这张表立得住）。
+     *
+     * 为什么只认这一条、不认数量：部位数是**数据**，不是判据。把它写成判据的那一天起，
+     * "加第 15 个部位"就变成"先改闸"，而闸一改就看不出是新增还是掩盖（315 自报的第②条
+     * 就是这个形状：`assertEquals(14, PROBES.size)`）。这里的每一条都能被单项数据违反：
+     *
+     * - 表空 ⇒ 一条（空单读起来像"全都没问题"，比少一行更坏）；
+     * - 没名字 / 重名 ⇒ 体检单按名字取数与去重，无名或重名会互相顶掉；
+     * - `evidence` 空或全是空白行 ⇒ 这一项的结论没有出处；
+     * - `present` 却没写 `entry` ⇒ 说它接线了，但没说接的是哪个口；
+     * - 记成"不存在"（`present = false`）却没说凭什么（`byDesign` 空）⇒ 缺席没有出处。
+     *
+     * @param parts 默认查真表；测试给一张坏表来证明这条判据真会红
+     */
+    fun evidenceGaps(parts: List<OrganProbe> = HEALTH_PARTS): List<String> {
+        if (parts.isEmpty()) return listOf("部位表是空的：体检单会变成一张空单，读起来像「全都没问题」")
+        val gaps = ArrayList<String>()
+        val seen = HashSet<String>()
+        parts.forEachIndexed { i, p ->
+            val tag = if (p.name.isBlank()) "第 ${i + 1} 项（无名）" else p.name
+            if (p.name.isBlank()) {
+                gaps += "$tag：没有名字（体检单按名字取数）"
+            } else if (!seen.add(p.name)) {
+                gaps += "$tag：重名（同名两项会互相顶掉，后一项说了算）"
+            }
+            if (p.evidence.none { it.isNotBlank() }) {
+                gaps += "$tag：没有出处（evidence 一条都没有）"
+            } else if (p.evidence.any { it.isBlank() }) {
+                gaps += "$tag：出处里有空白行（占位符不是出处）"
+            }
+            if (p.present && p.entry.isBlank()) {
+                gaps += "$tag：说它接线了，却没写 entry（接的是哪个口）"
+            }
+            if (!p.present && p.byDesign.isNullOrBlank()) {
+                gaps += "$tag：记成「不存在」，却没写 byDesign（凭什么说没有）"
+            }
+        }
+        return gaps
+    }
 }
 
 /** 轨迹里一行原始读数（只有这四个字段出库；正文类字段一概不取）。 */

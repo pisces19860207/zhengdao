@@ -4,6 +4,8 @@
 // 临时目录用真盘（房型照 DecisionLedgerTest）。
 package com.example.zhengdao.baopu.profile
 
+import com.example.zhengdao.baopu.CardDisposition
+import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.agent.RoyalDecision
 import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
 import com.example.zhengdao.baopu.agent.SelfRulingLedger
@@ -122,10 +124,90 @@ class VerdictExperienceStoreTest {
     }
 
     @Test
-    fun `三本账同名同文件名_与各自主对象钉死`() {
+    fun `四本账同名同文件名_与各自主对象钉死`() {
         assertEquals(
-            listOf(RoyalDecisionLedger.FILE_NAME, OpinionWiring.FILE_NAME, SelfRulingLedger.FILE_NAME),
+            // 第三百二十六批加第四本：卡处置账（318 学习信号的唯一来源）也必须跟着人走。
+            listOf(
+                RoyalDecisionLedger.FILE_NAME,
+                OpinionWiring.FILE_NAME,
+                SelfRulingLedger.FILE_NAME,
+                CardDisposition.FILE_NAME,
+            ),
             VerdictExperienceStore.MIRRORED,
+        )
+    }
+
+    // ── 第三百二十六批 判据①：处置账进备份名单，行数与内容一致 ─────────────
+
+    /** 造行：走真写入口（[CardDisposition.record]），落到 208 装配的那棵私有根。 */
+    private fun seedDispositions(mem: File, n: Int = 3): List<String> {
+        DecisionLedger.install(mem)
+        CardDisposition.resetForTest()
+        try {
+            val choices = listOf(
+                Triple(CardDisposition.Choice.APPROVE, CardDisposition.Actor.USER, "op-a"),
+                Triple(CardDisposition.Choice.REJECT, CardDisposition.Actor.USER, "op-b"),
+                Triple(CardDisposition.Choice.DISMISS, CardDisposition.Actor.CLOCK, "op-c"),
+            )
+            repeat(n) { i ->
+                val (choice, actor, card) = choices[i]
+                CardDisposition.record(
+                    choice = choice,
+                    face = CardDisposition.Face.CONFIRM,
+                    cardId = card,
+                    actor = actor,
+                    subject = "删 资料库/$card.md",
+                    atMs = 1_000L + i,
+                )
+            }
+        } finally {
+            DecisionLedger.uninstallForTest()
+            CardDisposition.resetForTest()
+        }
+        return lines(File(mem, CardDisposition.FILE_NAME))
+    }
+
+    @Test
+    fun `判据①_处置账造三行_备份恢复后行数与内容逐字一致`() {
+        val ws = tmp("ws326")
+        val mem = tmp("mem326")
+        val made = seedDispositions(mem, 3)
+        assertEquals("先得真造出 3 行（不然下面两条断言恒真）", 3, made.size)
+        assertTrue("造的行要能被本账自己的解析器读回", made.all { CardDisposition.CardDispositionRow.parse(it) != null })
+
+        // ① 备份（导出）：私有 → 公共副本
+        VerdictExperienceStore.install(ws, mem)
+        val backup = VerdictExperienceStore.sync()
+        assertEquals("3 行都该导出", 3, backup.exported)
+        val copied = lines(File(File(ws, VerdictExperienceStore.DIR_NAME), CardDisposition.FILE_NAME))
+        assertEquals("备份里行数一致", 3, copied.size)
+        assertEquals("备份里内容逐字一致", made, copied)
+
+        // ② 重装（私有目录整个清掉）→ 恢复（回灌）
+        mem.deleteRecursively()
+        mem.mkdirs()
+        VerdictExperienceStore.install(ws, mem)
+        val restored = VerdictExperienceStore.sync()
+        assertEquals("3 行都该回灌", 3, restored.restored)
+        val back = lines(File(mem, CardDisposition.FILE_NAME))
+        assertEquals("恢复后行数一致", 3, back.size)
+        assertEquals("恢复后内容逐字一致", made, back)
+
+        // ③ 回来的是**真能用的**学习信号：解析得出来、处置格没被搬丢
+        val parsed = back.mapNotNull(CardDisposition.CardDispositionRow::parse)
+        assertEquals(3, parsed.size)
+        assertEquals(
+            listOf("op-a", "op-b", "op-c"),
+            parsed.sortedBy { it.cardId }.map { it.cardId },
+        )
+    }
+
+    @Test
+    fun `判据①_处置账在备份名单里_不是顺手镜像的副产品`() {
+        // 负例靶心：把 `卡处置.jsonl` 从 MIRRORED 里拿掉 ⇒ 上面那条一致性闸与这条同时红。
+        assertTrue(
+            "卡处置账是 318 学习信号的唯一来源，丢了等于学习失忆",
+            CardDisposition.FILE_NAME in VerdictExperienceStore.MIRRORED,
         )
     }
 

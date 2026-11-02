@@ -5,8 +5,11 @@
 // 网络，本仓无 Robolectric ⇒ 整环归真机 T1–T4，见交付报告挂账清单）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.CardDisposition
+import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.PendingRow
 import com.example.zhengdao.baopu.PendingStore
+import com.example.zhengdao.ui.baopu.BaopuConfirmRestore
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -295,6 +298,74 @@ class ConfirmFlowTest {
         assertTrue("恢复后真的执行", result is GuardPipeline.Result.Done)
         assertEquals("恢复写的", File(root, "资料库/r.txt").readText())
         assertEquals("恢复执行后清 pending", 1, r.store.cleared)
+    }
+
+    // ── 第三百二十六批 判据③：恢复卡批准也要落一行处置 ─────────────────────
+
+    @Test
+    fun `判据③_恢复卡批准落一行处置_与在线批准逐格一致`() = runBlocking {
+        val root = tmp("restore-disp")
+        val ledger = tmp("restore-disp-ledger")
+        // 处置账的落点＝208 装配的那棵目录（与生产同源）；不装就只写内存，验不出"盘上真有那行"
+        DecisionLedger.install(ledger)
+        CardDisposition.resetForTest()
+        try {
+            val r = rig(root, projectRoot = { root })
+
+            // ① 在线路径：真挂一张卡、真点批准 —— 这就是"正常路径"的参照行
+            val onlinePath = File(root, "资料库/在线.txt").absolutePath
+            var outcome: ConfirmFlow.Outcome? = null
+            val job = launch {
+                outcome = r.flow.enter(1L, 1, writeCall("call-online", onlinePath, "甲")) { _, _ -> null }
+            }
+            awaitLive(r.flow, "call-online")
+            r.flow.resumeWithApproval("call-online", approved = true, note = null)
+            job.join()
+            assertTrue("在线路径得先真的批准执行：$outcome", outcome is ConfirmFlow.Outcome.Approved)
+            val online = CardDisposition.rowsFor("call-online").single()
+
+            // ② 重启恢复：库里那一行（同工具、同形状参数、另一个文件）
+            val restoredPath = File(root, "资料库/恢复.txt").absolutePath
+            val row = PendingRow(
+                tool = "write_file",
+                argsJson = JSONObject().put("path", restoredPath).put("content", "乙").toString(),
+                at = 4_242L,
+            )
+            val before = CardDisposition.replay().size
+            val clearedBefore = r.store.cleared
+
+            val result = r.flow.restoredExecute(7L, row) { _, _ -> null }
+
+            // ③ 恢复逻辑一字未动：还是真执行、还清库（负例靶心：不许"只为写账"动这条路）
+            assertTrue("恢复后仍要真的执行（恢复逻辑没改）：$result", result is GuardPipeline.Result.Done)
+            assertEquals("乙", File(root, "资料库/恢复.txt").readText())
+            assertEquals("清 pending 的时机没变", clearedBefore + 1, r.store.cleared)
+
+            // ④ 处置账 +1 行，且与在线批准逐格一致
+            assertEquals("恢复卡批准必须 +1 行", before + 1, CardDisposition.replay().size)
+            val restored = CardDisposition.rowsFor("restored-4242").single()
+            assertEquals("选了哪个要一致", online.choice, restored.choice)
+            assertEquals("哪张卡要一致", online.face, restored.face)
+            assertEquals("谁批的要一致（是她点的，不是时钟）", online.actor, restored.actor)
+            assertEquals("理由用同一句类别句兜底（批准路径两边都留空）", online.why, restored.why)
+            assertEquals(
+                "subject 必须与恢复卡面那句话同一个函数同一个根算出来",
+                BaopuConfirmRestore.card(row, root).summary,
+                restored.subject,
+            )
+            assertTrue("subject 要落在这张卡的路径上：${restored.subject}", restored.subject.contains("恢复.txt"))
+
+            // ⑤ 真落盘（不是只在内存里过了一遍）
+            val onDisk = CardDisposition.fileIn(ledger).readLines(Charsets.UTF_8).filter { it.isNotBlank() }
+            assertEquals("盘上就是这两行（在线一条、恢复一条）", 2, onDisk.size)
+            assertTrue(
+                "恢复那行要能被本账自己的解析器读回（读不回＝318 学不到）",
+                onDisk.any { CardDisposition.CardDispositionRow.parse(it)?.cardId == "restored-4242" },
+            )
+        } finally {
+            DecisionLedger.uninstallForTest()
+            CardDisposition.resetForTest()
+        }
     }
 
     // ── 用户点停止 ⇒ 作废不执行、不回灌「用户拒绝」 ──────────────────────

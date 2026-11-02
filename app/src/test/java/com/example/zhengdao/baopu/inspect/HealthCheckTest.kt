@@ -324,8 +324,10 @@ class HealthCheckTest {
 
     @Test
     fun `普查表与源码一致`() {
-        assertTrue("普查表空了？", OrganCensus.PROBES.size >= 14)
-        OrganCensus.PROBES.forEach { p ->
+        // 第三百二十六批：这里原来钉着 `size >= 14`。条目数不是判据（加第 15 个部位要能只改表），
+        // 只留"表不能空"——空表会让下面这个 forEach 空转成假绿。
+        assertTrue("普查表空了？", OrganCensus.HEALTH_PARTS.isNotEmpty())
+        OrganCensus.HEALTH_PARTS.forEach { p ->
             if (!p.present) return@forEach
             val actual = countCalls(p.entry, p.declaredIn)
             if (p.callSites >= OrganCensus.CALL_SITES_FLOOR_ONLY) {
@@ -338,7 +340,7 @@ class HealthCheckTest {
 
     @Test
     fun `普查覆盖派工单点名的部位`() {
-        val names = OrganCensus.PROBES.map { it.name }.toSet()
+        val names = OrganCensus.HEALTH_PARTS.map { it.name }.toSet()
         listOf(
             "分类器", "勘验", "计簿", "影子", "宰相", "学习器", "反思器", "斥候",
             "起居注", "不良人", "金吾卫", "中书舍人", "调度·夜巡",
@@ -408,7 +410,7 @@ class HealthCheckTest {
     fun `首次体检单可复现`() {
         val tools = toolCensus()
         assertEquals("工具表条数与派工单的 73 对不上（269 后 68＋288 五件）", 73, tools.size)
-        val organs = OrganCensus.PROBES.map { HealthCheck.organ(it) }
+        val organs = OrganCensus.HEALTH_PARTS.map { HealthCheck.organ(it) }
         val rows = tools.map { HealthCheck.tool(it) }
         val signals = HealthCheck.signals(
             SignalInput(

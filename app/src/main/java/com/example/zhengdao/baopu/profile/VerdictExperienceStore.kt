@@ -2,7 +2,7 @@
 //
 // 第二百八十批 · 判决经验跨重装副本（用户 2026-10-29：重装清了私有数据，判决历史全没了）。
 //
-// 判决历史住在 `<App私有>/抱朴记忆/` 的三本账里（御批/意见判定/追认队列）——都是
+// 判决历史住在 `<App私有>/抱朴记忆/` 的几本账里（御批/意见判定/追认队列，326 起加卡处置）——都是
 // **append-only**（"改了不覆盖"，回滚=追加一条 rollback 行），重装一次就全没了。
 // 本对象把它们**逐行镜像**到工作区 `<工作区>/判决经验/`（默认即 `Download/证道/判决经验/`，
 // `BaopuWorkspace` 的地盘）——那是用户自己的目录，跟着人走，不随卸载消失。
@@ -34,10 +34,15 @@ internal object VerdictExperienceStore {
     const val DIR_NAME = "判决经验"
 
     /**
-     * 要镜像的三本判决账（文件名与各自的主对象逐字一致，别处改了名这里要跟——
+     * 要镜像的判决账（文件名与各自的主对象逐字一致，别处改了名这里要跟——
      * 各自主对象都是 `const val FILE_NAME`，编译器盯不住跨文件字符串，测试里有一致性闸）。
+     *
+     * 第三百二十六批加入 `卡处置.jsonl`（＝[com.example.zhengdao.baopu.CardDisposition]）：
+     * 这本账是 318 学习信号的**唯一来源**（批／驳／搁／不用了／再说一遍），丢一行就少一条偏好，
+     * 而它和另三本落在同一棵 `抱朴记忆/` 里、一样 append-only ⇒ 同一套"逐行镜像"照搬，
+     * 不新增格式、不新增 parse（去重键仍按行内 `id`，它本就有 `cd:` 前缀，天然稳定）。
      */
-    val MIRRORED = listOf("御批.jsonl", "意见判定.jsonl", "追认队列.jsonl")
+    val MIRRORED = listOf("御批.jsonl", "意见判定.jsonl", "追认队列.jsonl", "卡处置.jsonl")
 
     @Volatile
     private var publicRoot: File? = null

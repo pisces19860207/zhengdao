@@ -126,12 +126,78 @@ class HealthWiringGateTest {
 
     @Test
     fun `普查里没有体检自己`() {
-        val self = OrganCensus.PROBES.filter { it.name.contains("体检") || it.entry.contains("HealthRun") }
+        val self = OrganCensus.HEALTH_PARTS.filter { it.name.contains("体检") || it.entry.contains("HealthRun") }
         assertTrue(
             "体检不能进自己的体检单：它永远拿不到自己的产出数 ⇒ 永远 NOT_WIRED，形成自指循环",
             self.isEmpty(),
         )
-        assertEquals("部位数变了要连着报告一起改", 14, OrganCensus.PROBES.size)
+    }
+
+    // ── ⑦ 部位表是**数据**，不是判据（第三百二十六批）──────────────────────
+    //
+    // 315 自报：这里原来写着 `assertEquals(14, OrganCensus.PROBES.size)`。
+    // 那条闸的病不在"14 这个数对不对"，而在**把条目数当成了判据**——加第 15 个部位时
+    // 动的第一件事是改闸，而闸一改，读提交的人就分不清是"新增了一条"还是"掩盖了一条"。
+    // 现在闸只问两件事：表非空、每项有出处。条目数交给表自己说。
+
+    @Test
+    fun `部位表非空_且每项都有出处`() {
+        val parts = OrganCensus.HEALTH_PARTS
+        assertTrue("部位表空了？空单读起来像「全都没问题」，那是最坏的一种谎", parts.isNotEmpty())
+        assertEquals(
+            "表里有项没有出处（出处＝证据行；记成「不存在」的要有 byDesign）——先补出处再交",
+            emptyList<String>(),
+            OrganCensus.evidenceGaps(parts),
+        )
+    }
+
+    @Test
+    fun `只加常量表就能加第15个部位_闸一个字不用改`() {
+        // 判据①的机械证明：拿真表 + 一项合成条目再跑一遍同一条判据——它照样成立。
+        // 闸里没有任何地方认识"14"这个数（下面同时钉住它也确实只多了 1）。
+        val fifteenth = OrganProbe(
+            name = "第十五处（判据样本）",
+            entry = "SampleWiring.on",
+            declaredIn = "app/src/main/java/com/example/zhengdao/baopu/SampleWiring.kt",
+            callSites = 1,
+            sink = "样本账.jsonl",
+            evidence = listOf("SampleWiring.kt:1 SampleWiring.on( 的唯一调用点"),
+        )
+        val widened = OrganCensus.HEALTH_PARTS + fifteenth
+        assertEquals("加了第 15 项之后判据仍成立（闸不认识数量）", emptyList<String>(), OrganCensus.evidenceGaps(widened))
+        assertEquals(
+            "表必须真的多了这一项——否则上面那条是空转",
+            OrganCensus.HEALTH_PARTS.size + 1,
+            widened.size,
+        )
+    }
+
+    @Test
+    fun `部位表里出现无出处的项_必红`() {
+        val ok = OrganProbe(
+            name = "基准项",
+            entry = "Base.entry",
+            declaredIn = "app/src/main/java/com/example/zhengdao/baopu/Base.kt",
+            callSites = 1,
+            sink = "账.jsonl",
+            evidence = listOf("Base.kt:1 Base.entry("),
+        )
+        assertEquals("基准项自己得是干净的，不然下面的负例不算数", emptyList<String>(), OrganCensus.evidenceGaps(listOf(ok)))
+        assertTrue("空表必须红", OrganCensus.evidenceGaps(emptyList()).isNotEmpty())
+
+        val bad = listOf(
+            "没有证据行" to listOf(ok.copy(evidence = emptyList())),
+            "证据是空白行（占位符不是出处）" to listOf(ok.copy(evidence = listOf("   "))),
+            "有证据有空白行混在一起" to listOf(ok.copy(evidence = listOf("Base.kt:1 Base.entry(", ""))),
+            "没有名字" to listOf(ok.copy(name = "")),
+            "重名（两项互相顶掉）" to listOf(ok, ok.copy(entry = "Other.entry")),
+            "说它接线了却没写 entry" to listOf(ok.copy(entry = "")),
+            "记成「不存在」却说不出凭什么" to listOf(ok.copy(present = false, entry = "", byDesign = null)),
+        )
+        bad.forEach { (why, parts) ->
+            val gaps = OrganCensus.evidenceGaps(parts)
+            assertTrue("【$why】这种项必须被抓出来（现在 gaps 是空的 ⇒ 闸是假绿）", gaps.isNotEmpty())
+        }
     }
 
     @Test
