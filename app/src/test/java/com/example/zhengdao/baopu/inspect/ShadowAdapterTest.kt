@@ -80,7 +80,7 @@ class ShadowAdapterTest {
         }
     }
 
-    private fun copyRootOf(ws: File): String = "${ws.absolutePath}\\.shadow\\op-296"
+    private fun copyRootOf(ws: File): String = File(ws, ".shadow/op-296").absolutePath   // 平台无关：别用反斜杠拼路径（CI 在 Linux）
 
     /** 一份"什么都对得上"的实测，只在指定的那一格上被动过手脚。 */
     private fun runIn(

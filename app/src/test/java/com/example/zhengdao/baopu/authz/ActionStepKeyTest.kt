@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.inspect.ShadowLedger
 import com.example.zhengdao.baopu.inspect.ShadowRun
 import com.example.zhengdao.baopu.inspect.ShadowSandbox
 import com.example.zhengdao.baopu.inspect.ShadowVerdict
+import java.io.File
 import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -28,7 +29,7 @@ import org.junit.Test
 class ActionStepKeyTest {
 
     private val ws = Files.createTempDirectory("zd-306-step-").toFile()
-    private val copyRoot = "${ws.absolutePath}\\.shadow\\op-step"
+    private val copyRoot = File(ws, ".shadow/op-step").absolutePath   // 平台无关：别用反斜杠拼路径（CI 在 Linux）
 
     @Before
     fun 开轮前先清钟() {
