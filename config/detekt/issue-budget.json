@@ -1,8 +1,8 @@
 {
-  "total": 382,
+  "total": 370,
   "rules": {
-    "CyclomaticComplexMethod": 214,
-    "LongMethod": 168
+    "CyclomaticComplexMethod": 208,
+    "LongMethod": 162
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -53,7 +53,6 @@
     "CyclomaticComplexMethod|BrowserScreen.kt|BrowserScreen#1",
     "CyclomaticComplexMethod|BrowserUrlPolicy.kt|hostLabel#1",
     "CyclomaticComplexMethod|CardAssetParser.kt|parse#1",
-    "CyclomaticComplexMethod|CardCheck.kt|checkCardInfo#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifySt#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifyTavo#1",
     "CyclomaticComplexMethod|CardCheck.kt|classifyWeb#1",
@@ -120,12 +119,10 @@
     "CyclomaticComplexMethod|LogisticsLedger.kt|cellOf#1",
     "CyclomaticComplexMethod|LogisticsQuery.kt|filter#1",
     "CyclomaticComplexMethod|LogisticsSheet.kt|LogisticsSheet#1",
-    "CyclomaticComplexMethod|LogisticsXlsx.kt|parseBytes#1",
     "CyclomaticComplexMethod|LogisticsXlsx.kt|readSheet#1",
     "CyclomaticComplexMethod|LogisticsXlsx.kt|sharedStrings#1",
     "CyclomaticComplexMethod|MainActivity.kt|HomeTabs#1",
     "CyclomaticComplexMethod|MainActivity.kt|dispatchIncomingIntent#1",
-    "CyclomaticComplexMethod|MarkupSanitizer.kt|sanitize#1",
     "CyclomaticComplexMethod|McpClient.kt|jsonRpcErrorDetail#1",
     "CyclomaticComplexMethod|McpJsonRpc.kt|toolContent#1",
     "CyclomaticComplexMethod|McpModels.kt|check#1",
@@ -177,7 +174,6 @@
     "CyclomaticComplexMethod|SkillLibraryScreen.kt|skillSourceBadges#1",
     "CyclomaticComplexMethod|SkillRefine.kt|decodeRecheck#1",
     "CyclomaticComplexMethod|SkillRefine.kt|readJsonString#1",
-    "CyclomaticComplexMethod|SkillSchemaPrecheck.kt|checkSchema#1",
     "CyclomaticComplexMethod|SkillStore.kt|apply#1",
     "CyclomaticComplexMethod|SkillTools.kt|lifecycle#1",
     "CyclomaticComplexMethod|SkillTools.kt|runAction#1",
@@ -215,8 +211,6 @@
     "CyclomaticComplexMethod|ToolScheduling.kt|runParallel#1",
     "CyclomaticComplexMethod|ToolSchemaRules.kt|audit#1",
     "CyclomaticComplexMethod|VisionFiles.kt|load#1",
-    "CyclomaticComplexMethod|WriteFileTool.kt|write#1",
-    "CyclomaticComplexMethod|ZipExtractor.kt|extract#1",
     "CyclomaticComplexMethod|ZipIndex.kt|read#1",
     "CyclomaticComplexMethod|ZipPacker.kt|pack#1",
     "LongMethod|AskUserTool.kt|spec#1",
@@ -281,7 +275,6 @@
     "LongMethod|BrowserBottomBar.kt|BrowserBottomBar#1",
     "LongMethod|BrowserScreen.kt|BrowserScreen#1",
     "LongMethod|BrowserStartPage.kt|BrowserStartPage#1",
-    "LongMethod|CardCheck.kt|checkCardInfo#1",
     "LongMethod|CardFormat.kt|judgePng#1",
     "LongMethod|ChannelSwitchFsm.kt|dispatch#1",
     "LongMethod|CompressionRunner.kt|runOnce#1",
@@ -320,12 +313,10 @@
     "LongMethod|LogisticsImport.kt|parse#1",
     "LongMethod|LogisticsRows.kt|build#1",
     "LongMethod|LogisticsSheet.kt|LogisticsSheet#1",
-    "LongMethod|LogisticsXlsx.kt|parseBytes#1",
     "LongMethod|LogisticsXlsx.kt|readSheet#1",
     "LongMethod|MainActivity.kt|HomeTabs#1",
     "LongMethod|MainActivity.kt|ZhengdaoApp#1",
     "LongMethod|MainActivity.kt|dispatchIncomingIntent#1",
-    "LongMethod|MarkupSanitizer.kt|sanitize#1",
     "LongMethod|McpOAuthClient.kt|discover#1",
     "LongMethod|McpSchema.kt|normalizeProperty#1",
     "LongMethod|McpServerScreen.kt|McpServerRow#1",
@@ -362,7 +353,6 @@
     "LongMethod|SkillCard.kt|BaopuSkillCard#1",
     "LongMethod|SkillLibraryScreen.kt|SkillLibraryDialog#1",
     "LongMethod|SkillLibraryScreen.kt|SkillRow#1",
-    "LongMethod|SkillSchemaPrecheck.kt|checkSchema#1",
     "LongMethod|SkillStore.kt|apply#1",
     "LongMethod|SkillTools.kt|runAction#1",
     "LongMethod|SubAgentCoordinator.kt|runAll#1",
@@ -383,19 +373,17 @@
     "LongMethod|ToolSchemaRules.kt|audit#1",
     "LongMethod|VisionFiles.kt|load#1",
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
-    "LongMethod|WriteFileTool.kt|write#1",
-    "LongMethod|ZipExtractor.kt|extract#1",
     "LongMethod|ZipIndex.kt|read#1",
     "LongMethod|ZipPacker.kt|pack#1"
   ],
-  "recorded_from": "本机复验读数（chore/detekt-debt-6 zd6-1..zd6-5，detekt XML mtime 2026-11-02 19:44:39；CI 绿后验收会话可用 CI 读数覆写核对）",
-  "recorded_at": "2026-11-02T19:52:19+0800",
+  "recorded_from": "本机复验读数（chore/detekt-debt-7 zd7-1..zd7-6，rebase origin/main 2c237e33 后 :app:detektWall 复跑读数，detekt-wall.xml mtime 2026-11-03 01:48；与 01:30 detektReport 读数指纹集逐条相同）；CI 绿后验收会话可用 CI 读数覆写核对",
+  "recorded_at": "2026-11-03T01:59:22+0800",
   "zones": {
     "engine": {
-      "total": 251,
+      "total": 239,
       "rules": {
-        "CyclomaticComplexMethod": 167,
-        "LongMethod": 84
+        "CyclomaticComplexMethod": 161,
+        "LongMethod": 78
       }
     },
     "frozen_ui": {
