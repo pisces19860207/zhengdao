@@ -242,6 +242,15 @@ jobs:
       # ":core 的保护不靠租约，改由本闸承担"）。成员级不在本闸，走 code review。
       - name: public 面清单闸（:policy/:core 顶层声明，未登记即红）
         run: python3 tools/check-public-surface.py
+      # 362（2026-11-02）：测试平台无关闸。CI 跑 Linux、本机是 Windows，测试里用反斜杠／盘符／
+      #   os.name 分支／写死 /tmp 拼路径 ⇒「本机绿、CI 红」——今天 ci #1747 就是这么红的（修于 b2ffe874）。
+      #   只扫各模块名含 test 的 sourceSet；四种形状命中即红；确实要留平台形状的写
+      #   `// platform-gate: allow 理由：……`（同行或紧邻上一行）。口径与已知放过见脚本头注释。
+      #   这一步先跑 --selftest：四条负例各命中一次，证明这扇门在 Linux 上也不是恒绿。
+      - name: 测试平台无关闸（T1 反斜杠／T2 盘符／T3 os.name／T4 写死路径，只扫测试源）
+        run: |
+          python3 tools/check-test-platform-gate.py --selftest
+          python3 tools/check-test-platform-gate.py
 
       - name: 重编比对 lane（第㊶刀 · B3+ 按主机基线：硬门禁）
         run: |

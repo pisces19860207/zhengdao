@@ -15,6 +15,7 @@
 
 preflight 第 5 段会顺带跑 tools/check-inflight.py（在飞表占用核对，表：docs/在飞.md，规矩：docs/协作规约.md §11）；
 第 6 段跑 tools/check-ledger-dupe.py（账本重复章节/行数异常 ⇒ 阻塞，防"合并时并列保留两份"）。
+第 7 段跑 tools/check-test-platform-gate.py（测试源码里的平台形状 ⇒ 阻塞，362 批：今天 ci #1747 那类「本机绿、CI 红」）。
 
 退出码
     preflight     0 = 未发现阻塞，可以开工 ／ 1 = 有阻塞项 ／ 2 = 不在仓库或找不到基准
@@ -265,7 +266,24 @@ def cmd_preflight(argv: list[str]) -> int:
         elif p.returncode != 0:
             say(f"  ！check-ledger-dupe.py 异常退出（exit {p.returncode}），本次按通过继续", "yellow")
 
-    sec("7. 结论")
+    sec("7. 测试平台无关闸（362：测试源码里的反斜杠／盘符／os.name／写死路径）")
+    tpg = Path(root) / "tools" / "check-test-platform-gate.py"
+    if not tpg.is_file():
+        say("  ！tools/check-test-platform-gate.py 不存在，跳过测试平台无关闸", "yellow")
+    else:
+        p = subprocess.run(
+            [sys.executable, str(tpg)],
+            cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if p.stdout and p.stdout.strip():
+            say(p.stdout.rstrip("\r\n"))
+        if p.returncode == 1:
+            blockers.append("测试源码里有平台形状的路径写法（T1–T4，见上方输出）——本机绿、CI 红；改成 `File(parent, \"a/b\")` 或写豁免理由")
+        elif p.returncode != 0:
+            say(f"  ！check-test-platform-gate.py 异常退出（exit {p.returncode}），本次按通过继续", "yellow")
+
+    sec("8. 结论")
     if not blockers:
         say("  ✓ 未发现阻塞项。开工前再去 docs/FEATURE-LEDGER.md 的 §2 扫一眼这个功能在不在。", "green")
         return 0
