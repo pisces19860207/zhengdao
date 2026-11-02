@@ -237,8 +237,28 @@ internal object SkillSchemaPrecheck {
         } else {
             ""
         }
+        val (type, typeFindings) = schemaTypeFindings(s, family, path, isRoot, lowerCaseNote)
+        f += typeFindings
+        f += schemaKeywordFindings(s, family, strict, path)
+        // ③ 结构：properties / required / items / additionalProperties / enum。
+        // strict 的两条硬规则（additionalProperties:false、required 列全）只压在
+        // **object 型 schema** 上——{"type":"string"} 这类标量层官方不要求（否则正例全灭）。
+        val isObjectSchema = type == "object" ||
+            (type == null && (s.has("properties") || s.has("required")))
+        f += schemaPropertiesFindings(s, family, strict, path, isObjectSchema)
+        f += schemaTailFindings(s, family, strict, path, isObjectSchema)
+        return f
+    }
 
-        // ① type：字符串且在标准小写集里；顶层必须是 object（三家参数表的共同口径）。
+    /** ① type：字符串且在标准小写集里；返回（解析出的 type, findings）。顶层必须是 object（三家参数表的共同口径）。 */
+    private fun schemaTypeFindings(
+        s: JSONObject,
+        family: Family,
+        path: String,
+        isRoot: Boolean,
+        lowerCaseNote: String,
+    ): Pair<String?, List<String>> {
+        val f = mutableListOf<String>()
         val typeVal = s.opt("type")
         val type: String? = when {
             typeVal == null -> {
@@ -269,8 +289,17 @@ internal object SkillSchemaPrecheck {
         if (isRoot && type != null && type != "object") {
             f += "$path：参数表顶层 type 必须是 \"object\"，现在是「$type」（函数参数描述的是一个对象）"
         }
+        return type to f
+    }
 
-        // ② 关键词白名单：Gemini 全程、OpenAI 仅 strict（非 strict 的未知键官方是忽略不是 400）。
+    /** ② 关键词白名单：Gemini 全程、OpenAI 仅 strict（非 strict 的未知键官方是忽略不是 400）。 */
+    private fun schemaKeywordFindings(
+        s: JSONObject,
+        family: Family,
+        strict: Boolean,
+        path: String,
+    ): List<String> {
+        val f = mutableListOf<String>()
         val whitelist = when {
             family == Family.GEMINI -> GEMINI_SCHEMA_KEYWORDS
             strict -> OPENAI_STRICT_KEYWORDS
@@ -288,12 +317,18 @@ internal object SkillSchemaPrecheck {
                 }
             }
         }
+        return f
+    }
 
-        // ③ 结构：properties / required / items / additionalProperties / enum。
-        // strict 的两条硬规则（additionalProperties:false、required 列全）只压在
-        // **object 型 schema** 上——{"type":"string"} 这类标量层官方不要求（否则正例全灭）。
-        val isObjectSchema = type == "object" ||
-            (type == null && (s.has("properties") || s.has("required")))
+    /** ③a properties／required：子字段逐个递归；required 的判定见 [schemaRequiredFindings]。 */
+    private fun schemaPropertiesFindings(
+        s: JSONObject,
+        family: Family,
+        strict: Boolean,
+        path: String,
+        isObjectSchema: Boolean,
+    ): List<String> {
+        val f = mutableListOf<String>()
         val props = s.optJSONObject("properties")
         s.opt("properties")?.let {
             if (props == null) f += "$path.properties：得是对象（字段名 → schema）"
@@ -308,6 +343,19 @@ internal object SkillSchemaPrecheck {
                 }
             }
         }
+        f += schemaRequiredFindings(s, props, strict, path, isObjectSchema)
+        return f
+    }
+
+    /** required：得是字符串数组、每项都要有对应字段；strict 且 object 型还要把字段列全（见 strict 版）。 */
+    private fun schemaRequiredFindings(
+        s: JSONObject,
+        props: JSONObject?,
+        strict: Boolean,
+        path: String,
+        isObjectSchema: Boolean,
+    ): List<String> {
+        val f = mutableListOf<String>()
         s.opt("required")?.let { req ->
             val names = mutableListOf<String>()
             if (req is JSONArray) {
@@ -328,13 +376,32 @@ internal object SkillSchemaPrecheck {
                 }
             }
             if (strict && isObjectSchema && props != null) {
-                for (k in props.keys()) {
-                    if (k !in names) {
-                        f += "$path：strict 模式 required 要列全所有字段（缺「$k」；可选字段用 [\"x\", \"null\"] 型表达）"
-                    }
-                }
+                f += schemaRequiredStrictFindings(props, names, path)
             }
         }
+        return f
+    }
+
+    /** strict：object 型的 required 要把字段列全（可选字段用 ["x","null"] 型表达，不进 required）。 */
+    private fun schemaRequiredStrictFindings(props: JSONObject, names: List<String>, path: String): List<String> {
+        val f = mutableListOf<String>()
+        for (k in props.keys()) {
+            if (k !in names) {
+                f += "$path：strict 模式 required 要列全所有字段（缺「$k」；可选字段用 [\"x\", \"null\"] 型表达）"
+            }
+        }
+        return f
+    }
+
+    /** ③b items／additionalProperties／enum：items 递归；additionalProperties 的 strict 硬规则只压 object 型。 */
+    private fun schemaTailFindings(
+        s: JSONObject,
+        family: Family,
+        strict: Boolean,
+        path: String,
+        isObjectSchema: Boolean,
+    ): List<String> {
+        val f = mutableListOf<String>()
         s.opt("items")?.let { items ->
             val o = items as? JSONObject
             if (o == null) {
@@ -344,22 +411,34 @@ internal object SkillSchemaPrecheck {
             }
         }
         if (isObjectSchema) {
-            s.opt("additionalProperties")?.let { ap ->
-                when {
-                    strict && ap is JSONObject ->
-                        f += "$path.additionalProperties：strict 模式只能是 false，不能是子 schema"
-                    strict && ap != false ->
-                        f += "$path：strict 模式每个 object 都要 \"additionalProperties\": false"
-                    ap is JSONObject ->
-                        f += checkSchema(ap, family, strict, path = "$path.additionalProperties", isRoot = false)
-                }
-            }
-            if (strict && !s.has("additionalProperties")) {
-                f += "$path：strict 模式每个 object 都要 \"additionalProperties\": false（缺）"
-            }
+            f += schemaAdditionalFindings(s, family, strict, path)
         }
         s.opt("enum")?.let { e ->
             if (e !is JSONArray || e.length() == 0) f += "$path.enum：得是非空数组"
+        }
+        return f
+    }
+
+    /** additionalProperties：strict 模式只许 false（不许子 schema、不许缺）；非 strict 的子 schema 递归。 */
+    private fun schemaAdditionalFindings(
+        s: JSONObject,
+        family: Family,
+        strict: Boolean,
+        path: String,
+    ): List<String> {
+        val f = mutableListOf<String>()
+        s.opt("additionalProperties")?.let { ap ->
+            when {
+                strict && ap is JSONObject ->
+                    f += "$path.additionalProperties：strict 模式只能是 false，不能是子 schema"
+                strict && ap != false ->
+                    f += "$path：strict 模式每个 object 都要 \"additionalProperties\": false"
+                ap is JSONObject ->
+                    f += checkSchema(ap, family, strict, path = "$path.additionalProperties", isRoot = false)
+            }
+        }
+        if (strict && !s.has("additionalProperties")) {
+            f += "$path：strict 模式每个 object 都要 \"additionalProperties\": false（缺）"
         }
         return f
     }
