@@ -27,6 +27,8 @@ import android.content.Context
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.core.RunLog
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.TimeZone
 
 /** 台账写的结局——没写成必须有一句能转述的话，不许静默。 */
@@ -174,6 +176,10 @@ object LogisticsLedger {
      * 覆盖式：一天一份，重新导入后再记一次就是最新的那份真相。
      * 目录建不出来／盘写不进去都只报一句，不重试、不删旧文件——旧台账至少是**上一版真相**。
      *
+     * 357：替换落盘用 `Files.move(REPLACE_EXISTING)`，不用 `File.renameTo`——后者的覆盖语义
+     * 平台相关（Temurin 25.0.5 目标已存在 ⇒ false）。不加 ATOMIC_MOVE（跨卷会抛
+     * AtomicMoveNotSupportedException）；REPLACE_EXISTING 跨文件系统时退化为「复制+删除」（非原子）。
+     *
      * @param rows 行数由调用方给（写成功的条数要和库里对上，不能靠数文本）
      */
     fun write(workspace: File, dayKey: String, text: String, rows: Int): LedgerWrite {
@@ -183,7 +189,7 @@ object LogisticsLedger {
         val out = runCatching {
             file.parentFile?.mkdirs()
             tmp.writeText(text, Charsets.UTF_8)
-            if (!tmp.renameTo(file)) error("rename 失败")
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }.exceptionOrNull()
         return if (out != null) {
             runCatching { if (tmp.isFile) tmp.delete() }

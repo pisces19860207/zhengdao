@@ -200,6 +200,27 @@ class LogisticsLedgerTest {
         assertEquals(listOf("$TODAY_KEY-发货台账.md"), dir.list()?.sorted())
     }
 
+    /**
+     * 357 的行为钉子：**目标已存在 ⇒ 落盘必须覆盖成功，盘上是新内容**。
+     * `File.renameTo` 的覆盖语义平台相关（Temurin 25.0.5 目标已存在 ⇒ false，jbr 25.0.3 ⇒ true），
+     * 落盘已改为 `Files.move(REPLACE_EXISTING)`——这条测试不依赖任何一版 JDK 的 rename 行为，
+     * 两套 JDK 上都必须绿。
+     */
+    @Test
+    fun `落盘原语_目标已存在必须覆盖成功`() {
+        val workspace = tmp.root
+        val file = LogisticsPaths.ledgerFileUnder(workspace, TODAY_KEY)
+        file.parentFile?.mkdirs()
+        file.writeText("# 上一版真相（旧内容，必须被换掉）", Charsets.UTF_8)
+
+        val w = LogisticsLedger.write(workspace, TODAY_KEY, render(), 3)
+
+        assertTrue("目标已存在必须覆盖成功：$w", w is LedgerWrite.Written)
+        val onDisk = file.readText(Charsets.UTF_8)
+        assertTrue("盘上必须是新内容", onDisk.contains("# 2026-10-25 发货台账"))
+        assertFalse("旧内容必须被换掉", onDisk.contains("上一版真相"))
+    }
+
     @Test
     fun `库里这一天没单子时不生成空台账`() {
         val workspace = tmp.root

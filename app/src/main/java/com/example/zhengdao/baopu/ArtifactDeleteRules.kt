@@ -4,6 +4,8 @@ package com.example.zhengdao.baopu
 import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * 第一百七十八批（§0.9 口径更正）· 自产稿件「清单勾选批量删」的**纯判据**。
@@ -279,7 +281,10 @@ internal object ArtifactDeleteRules {
             val written = runCatching {
                 tmp.writeText(result.text, Charsets.UTF_8)
                 ledger.copyTo(bak, overwrite = true)
-                if (!tmp.renameTo(ledger)) error("rename")
+                // 357：File.renameTo 的覆盖语义平台相关（Temurin 25.0.5 目标已存在 ⇒ false），
+                // 落盘改为明确的替换语义。不加 ATOMIC_MOVE：跨卷会抛 AtomicMoveNotSupportedException；
+                // REPLACE_EXISTING 在跨文件系统时退化为「复制+删除」（非原子，同卷仍是原子替换）。
+                Files.move(tmp.toPath(), ledger.toPath(), StandardCopyOption.REPLACE_EXISTING)
                 true
             }.getOrDefault(false)
             if (!written) {

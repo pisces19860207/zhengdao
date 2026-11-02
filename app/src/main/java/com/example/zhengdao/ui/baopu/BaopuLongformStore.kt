@@ -4,6 +4,8 @@ package com.example.zhengdao.ui.baopu
 import android.content.Context
 import com.example.zhengdao.baopu.BaopuRuntime
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Calendar
 
 /**
@@ -112,13 +114,15 @@ internal object BaopuLongformStore {
             if (!BaopuLongformPolicy.verifyAppend(oldText, merged)) {
                 return "台账合并校验未通过（不该发生，已停手保护原文件）"
             }
-            // ③ 临时文件 + rename 原子替换 + .bak
+            // ③ 临时文件 + 原子替换 + .bak（357：不用 File.renameTo——覆盖语义平台相关；
+            // Files.move(REPLACE_EXISTING) 同卷原子替换，跨文件系统退化为「复制+删除」非原子。
+            // 不加 ATOMIC_MOVE：跨卷会抛 AtomicMoveNotSupportedException，把落盘变成新故障。）
             val tmp = File(ledger.parentFile, ledger.name + ".tmp")
             val bak = File(ledger.parentFile, ledger.name + ".bak")
             runCatching {
                 tmp.writeText(merged, Charsets.UTF_8)
                 if (ledger.isFile) ledger.copyTo(bak, overwrite = true)
-                if (!tmp.renameTo(ledger)) error("rename 失败")
+                Files.move(tmp.toPath(), ledger.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }.getOrElse { return "台账写入失败：${it.message}" }
             // ④ 写后校验：重读落盘结果，老内容必须逐字未变
             val after = runCatching { ledger.readText() }.getOrElse { return "台账校验失败：${it.message}" }

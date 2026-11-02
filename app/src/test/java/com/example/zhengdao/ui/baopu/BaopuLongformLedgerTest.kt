@@ -8,6 +8,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * 第一百七十九批 §0.2/§0.3（20:4x 拍板）：知识库根落点、命名/序号、**台账 append 协议**。
@@ -130,7 +132,9 @@ class BaopuLongformLedgerTest {
         val tmpFile = File(product, "台账.md.tmp")
         tmpFile.writeText(merged)
         ledger.copyTo(bak, overwrite = true)
-        assertTrue(tmpFile.renameTo(ledger))
+        // 357：测试自己复刻的落盘协议与生产同改——File.renameTo 的覆盖语义平台相关（Temurin
+        // 25.0.5 目标已存在 ⇒ false），与生产一样走 Files.move(REPLACE_EXISTING)。
+        Files.move(tmpFile.toPath(), ledger.toPath(), StandardCopyOption.REPLACE_EXISTING)
 
         assertTrue("bak 保留老内容", bak.readText() == oldLedger)
         assertTrue("老行逐字未变", BaopuLongformPolicy.verifyAppend(oldLedger, ledger.readText()))
