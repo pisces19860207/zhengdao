@@ -98,61 +98,15 @@ internal object WriteFileTool {
         overwrite: Boolean,
         stamp: String = TimeFormats.fileStamp(),
     ): ToolOutcome {
-        val rel = path.trim()
-        if (rel.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
-        // 第三十七批 A 段：人设与技能索引只能走提案/设置页，工具不许直接写（动手之前就拒）
-        PersonaGuard.blocked(rel)?.let { return ToolOutcome.Rejected(it) }
-        if (content.isEmpty()) {
-            return ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写的内容；不想写就别调 write_file）")
-        }
-        val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
-        // 第二百八十七批：工作区不是权限边界——绝对路径可写全盘；只有系统/凭据目录一律拒。
-        fileAccessCheck(target, FilePaths.display(root, target))?.let { return ToolOutcome.Rejected(it) }
-        val backupDir = File(root, BACKUP_DIR_NAME)
-        if (PathGuard.isInside(backupDir, target)) {
-            return ToolOutcome.Failed(
-                "不能写进 $BACKUP_DIR_NAME/（那是旧版本备份区，写进去会互相覆盖）",
-            )
-        }
-        val lines = content.lines()
-        if (lines.size > MAX_WRITE_LINES) {
-            return ToolOutcome.Failed(
-                "一次最多写 $MAX_WRITE_LINES 行，这次有 ${lines.size} 行。" +
-                    "请分次写（比如先写前 100 行，再写剩下的），或改用 read_file 确认结构后精简。",
-            )
-        }
-        val exists = target.exists()
-        if (exists && !overwrite) {
-            return ToolOutcome.Failed(
-                "目标已存在：${target.name}。要覆盖它就把 overwrite 设为 true" +
-                    "（旧版本会先备份到 $BACKUP_DIR_NAME/），或者换个路径写。",
-            )
-        }
-        if (exists && target.isDirectory) {
-            return ToolOutcome.Failed("目标是个目录：${target.name}（write_file 只写文件）")
-        }
-        val parent = target.parentFile
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            return ToolOutcome.Failed("建不了目标目录：${parent.name}（权限或 IO 错误）")
+        // 前置闸：参数／越界／行数／已存在等一连串检查，过了才有「要写的目标」。
+        val (target, exists, lines) = when (val p = writePreflight(root, path.trim(), content, overwrite)) {
+            is WritePreflight.Stop -> return p.outcome
+            is WritePreflight.Ready -> p
         }
         // 覆盖前先备份（备份失败 ⇒ 拒绝写：宁可写不进去，也不能把旧内容弄丢）。
         // 287：旧文件 >5MB 不备份——**但要说出来**（回执与确认卡都写「未备份」）。
-        var backupNote = ""
-        if (exists && backupSkippedFor(target.length())) {
-            backupNote = "；旧版本 ${target.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（覆盖后不可恢复）"
-        } else if (exists) {
-            val backupName = FilePaths.backupName(root, target, stamp)
-            var cause = ""
-            val ok = runCatching {
-                backupDir.mkdirs()
-                target.copyTo(File(backupDir, backupName), overwrite = true)
-            }.onFailure { cause = "：${it.javaClass.simpleName}: ${it.message}" }.isSuccess
-            if (!ok) {
-                return ToolOutcome.Failed(
-                    "备份旧版本失败（${target.name}）$cause，已放弃本次写入。旧文件原样未动。",
-                )
-            }
-            backupNote = "；旧版本已备份到 $BACKUP_DIR_NAME/$backupName"
+        val backupNote = backupExisting(root, target, exists, stamp).getOrElse { cause ->
+            return ToolOutcome.Failed("备份旧版本失败（${target.name}）${cause.message}，已放弃本次写入。旧文件原样未动。")
         }
         // 原子写：先 .tmp 再 rename（与资料库导出口径一致——半截文件比不写更坏）
         val tmp = File(target.parentFile, target.name + ".write-tmp")
@@ -172,6 +126,86 @@ internal object WriteFileTool {
         return ToolOutcome.Ok(
             "$verb ${target.name}（${lines.size} 行，${content.length} 字符）$backupNote",
         )
+    }
+
+    /** 前置闸的结论：要么停在某条拒绝/失败上，要么给出「目标文件＋是否已存在＋行数」。 */
+    private sealed interface WritePreflight {
+        data class Ready(val target: File, val exists: Boolean, val lines: List<String>) : WritePreflight
+        data class Stop(val outcome: ToolOutcome) : WritePreflight
+    }
+
+    private fun writePreflight(root: File, rel: String, content: String, overwrite: Boolean): WritePreflight {
+        if (rel.isBlank()) return WritePreflight.Stop(ToolOutcome.Failed("缺少必填参数「$ARG_PATH」"))
+        // 第三十七批 A 段：人设与技能索引只能走提案/设置页，工具不许直接写（动手之前就拒）
+        PersonaGuard.blocked(rel)?.let { return WritePreflight.Stop(ToolOutcome.Rejected(it)) }
+        if (content.isEmpty()) {
+            return WritePreflight.Stop(
+                ToolOutcome.Failed("参数「$ARG_CONTENT」为空（没有要写的内容；不想写就别调 write_file）"),
+            )
+        }
+        val target = if (File(rel).isAbsolute) File(rel) else File(root, rel)
+        // 第二百八十七批：工作区不是权限边界——绝对路径可写全盘；只有系统/凭据目录一律拒。
+        fileAccessCheck(target, FilePaths.display(root, target))?.let {
+            return WritePreflight.Stop(ToolOutcome.Rejected(it))
+        }
+        val backupDir = File(root, BACKUP_DIR_NAME)
+        if (PathGuard.isInside(backupDir, target)) {
+            return WritePreflight.Stop(
+                ToolOutcome.Failed("不能写进 $BACKUP_DIR_NAME/（那是旧版本备份区，写进去会互相覆盖）"),
+            )
+        }
+        val lines = content.lines()
+        if (lines.size > MAX_WRITE_LINES) {
+            return WritePreflight.Stop(
+                ToolOutcome.Failed(
+                    "一次最多写 $MAX_WRITE_LINES 行，这次有 ${lines.size} 行。" +
+                        "请分次写（比如先写前 100 行，再写剩下的），或改用 read_file 确认结构后精简。",
+                ),
+            )
+        }
+        val exists = target.exists()
+        writeTargetChecks(target, exists, overwrite)?.let { return WritePreflight.Stop(it) }
+        return WritePreflight.Ready(target, exists, lines)
+    }
+
+    /** 目标侧三道闸：已存在而未允许覆盖／目标是目录／建不了父目录。返回拒绝原因，通过则 null。 */
+    private fun writeTargetChecks(target: File, exists: Boolean, overwrite: Boolean): ToolOutcome? {
+        if (exists && !overwrite) {
+            return ToolOutcome.Failed(
+                "目标已存在：${target.name}。要覆盖它就把 overwrite 设为 true" +
+                    "（旧版本会先备份到 $BACKUP_DIR_NAME/），或者换个路径写。",
+            )
+        }
+        if (exists && target.isDirectory) {
+            return ToolOutcome.Failed("目标是个目录：${target.name}（write_file 只写文件）")
+        }
+        val parent = target.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            return ToolOutcome.Failed("建不了目标目录：${parent.name}（权限或 IO 错误）")
+        }
+        return null
+    }
+
+    /**
+     * 覆盖前备份旧版本到 `备份/`。返回成功时给回执附言（没旧文件＝空串）；
+     * 失败时 Result.failure，理由以「：」开头（调用方拼进「备份旧版本失败（文件名）…」）。
+     */
+    private fun backupExisting(root: File, target: File, exists: Boolean, stamp: String): Result<String> {
+        if (!exists) return Result.success("")
+        if (backupSkippedFor(target.length())) {
+            return Result.success("；旧版本 ${target.length() / 1024 / 1024} MB 超过 5MB 上限，**没有备份**（覆盖后不可恢复）")
+        }
+        val backupName = FilePaths.backupName(root, target, stamp)
+        var cause = ""
+        val ok = runCatching {
+            File(root, BACKUP_DIR_NAME).mkdirs()
+            target.copyTo(File(root, BACKUP_DIR_NAME + "/" + backupName), overwrite = true)
+        }.onFailure { cause = "：${it.javaClass.simpleName}: ${it.message}" }.isSuccess
+        return if (ok) {
+            Result.success("；旧版本已备份到 $BACKUP_DIR_NAME/$backupName")
+        } else {
+            Result.failure(IllegalStateException(cause))
+        }
     }
 
     /** executor：arguments 里的 path 已是守卫过的绝对路径（无 path 参数时走原始值）。 */
