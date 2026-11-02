@@ -252,6 +252,28 @@ jobs:
           python3 tools/check-test-platform-gate.py --selftest
           python3 tools/check-test-platform-gate.py
 
+      # 373（2026-11-02）：入口覆盖清点——「有功能没入口」从人肉发现变成可重复清单
+      # （A 有定义无调用／B 只有测试在调／C 默认关无开启路径）。**只报不拦**：脚本默认
+      # 模式永远退出 0（--strict 才会因缺结论/陈旧注册红，交付前人工跑），先观察一版。
+      # 结论登记在 tools/entry-coverage-conclusions.json，报告进 docs/entry-coverage.*，
+      # NOT_WIRED（结论=接线）计数是接线欠账表，拿它排后续。产物上传 14 天供翻看。
+      - name: 入口覆盖清点（373 · 只报不拦）
+        if: always()
+        run: |
+          python3 tools/check-entry-coverage.py
+          python3 tools/check-entry-coverage.py --selftest
+          echo "NOT_WIRED（结论=接线）计数见上；详见 docs/entry-coverage.md"
+      - name: 上传入口覆盖报告（artifact · 14 天）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entry-coverage
+          path: |
+            docs/entry-coverage.md
+            docs/entry-coverage.json
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: 重编比对 lane（第㊶刀 · B3+ 按主机基线：硬门禁）
         run: |
           python3 tools/rebuild-and-compare.py

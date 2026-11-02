@@ -1,0 +1,604 @@
+{
+ "lists": {
+  "A": [
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 17,
+    "list": "A",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：准入「品行考」出题链——345 批③的题面件（四道坏题，与 335 cases 同源），判卷 ConductExam 就绪、现零生产调用，等准入接线批",
+    "package": "com.example.zhengdao.baopu.intake",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ExamTasks",
+    "test_refs": [],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProbes.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 14,
+    "list": "A",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：准入「探针层」出题链——345 批②的五枚探针题面＋判卷，同 ConductExam 一批接",
+    "package": "com.example.zhengdao.baopu.intake",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ProbeTasks",
+    "test_refs": [],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [
+     {
+      "file": "app/src/debug/java/com/example/zhengdao/browser/offscreen/OffscreenProbeActivity.kt",
+      "line": 21
+     },
+     {
+      "file": "app/src/debug/java/com/example/zhengdao/browser/offscreen/OffscreenProbeActivity.kt",
+      "line": 25
+     }
+    ],
+    "file": "app/src/main/java/com/example/zhengdao/browser/offscreen/OffscreenCaptureProbe.kt",
+    "file_mates_wired": false,
+    "kind": "class",
+    "line": 47,
+    "list": "A",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），仅 debug 变体引用；非生产功能，留作复现证据，暂不删",
+    "package": "com.example.zhengdao.browser.offscreen",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "OffscreenCaptureProbe",
+    "test_refs": [],
+    "verdict": "not_urgent",
+    "wrapper_scan": []
+   }
+  ],
+  "B": [
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/cards/ResultCardValidate.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 59,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它",
+    "package": "com.example.zhengdao.baopu.cards",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "CardValidate",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 33
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 42
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 50
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 56
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 68
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 72
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 84
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 95
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 97
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt",
+      "line": 102
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 26,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：准入「品行考」判卷链——345 批③判卷纯函数（BigDecimal 精确口径），与 ExamTasks 同一接线批",
+    "package": "com.example.zhengdao.baopu.intake",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ConductExam",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 28
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 34
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 43
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 49
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 65
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 73
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 86
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 88
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 93
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 95
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 103
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 105
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 110
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 110
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 117
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 118
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 123
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
+      "line": 125
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeModels.kt",
+    "file_mates_wired": true,
+    "kind": "class",
+    "line": 14,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：准入 intake 建档链（自报口径模型）——345 批准入件，现仅测试在调，与 IntakeProfile 同批",
+    "package": "com.example.zhengdao.baopu.intake",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "SelfReport",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 106
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 18,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核",
+    "package": "com.example.zhengdao.baopu.intake",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "IntakeProfile",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 26
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 28
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 33
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 35
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 36
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 44
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 51
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 52
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 55
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 60
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 61
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 62
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 63
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 71
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 72
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 73
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 74
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 80
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
+      "line": 83
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ValueCheck.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 38,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：收尾闸 ArtifactVerifier 之后挂「数对不对」对账——340 批八种自称机核（BigDecimal 精确算术），ArtifactVerifier 已接线（RunEngine）但本闸没挂上，现仅测试在跑",
+    "package": "com.example.zhengdao.baopu.verify",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ValueCheck",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 82
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 85
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 86
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 91
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 105
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 106
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 107
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 108
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 110
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 126
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 134
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 134
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 135
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 135
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
+      "line": 136
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 60,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：「浏览器桥」设置页开关→BrowserAgentBridge.start——设计注记明言「默认关、由设置页拉起」，开关未接线，整个 HTTP 桥生产不可达（仅测试在调）",
+    "package": "com.example.zhengdao.bridge",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "BrowserAgentBridge",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
+      "line": 95
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
+      "line": 133
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
+      "line": 134
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
+      "line": 160
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 68
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 80
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 82
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 87
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 89
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
+      "line": 101
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 234
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 235
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 237
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 238
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 240
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 241
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
+      "line": 243
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   }
+  ],
+  "C": [
+   {
+    "can_enable": false,
+    "key": "orchestrate_engine_on",
+    "key_expr": "PREF_KEY",
+    "note": "谁接：设置页「批量调用编排」开关调 OrchestrationSettings.set——214 批写口就绪但生产零调用方，闸默认关且永远拨不开（真欠账）",
+    "read_file": "app/src/main/java/com/example/zhengdao/baopu/agent/OrchestrationGate.kt",
+    "read_line": 37,
+    "snippet": "ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_KEY, PREF_DEFAULT)",
+    "verdict": "wired",
+    "write_sites": [
+     {
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OrchestrationSettings.kt",
+      "line": 19,
+      "snippet": ".edit { putBoolean(OrchestrationGate.PREF_KEY, on) }",
+      "writer": "OrchestrationSettings.set"
+     }
+    ]
+   },
+   {
+    "can_enable": false,
+    "key": "eval_selfcheck_on",
+    "key_expr": "PREF_KEY",
+    "note": "理由：84 批刻意设计——debug 构建 BuildConfig.DEBUG 并联开箱即跑，Release 无拨动口；pref 默认 false 是 Release 兜底而非漏接。要 Release 开关另立批",
+    "read_file": "app/src/main/java/com/example/zhengdao/baopu/eval/SelfCheckGate.kt",
+    "read_line": 42,
+    "snippet": "prefs(ctx).getBoolean(PREF_KEY, PREF_DEFAULT)",
+    "verdict": "not_urgent",
+    "write_sites": []
+   },
+   {
+    "can_enable": false,
+    "key": "search_phone_on",
+    "key_expr": "KEY_PHONE_ON",
+    "note": "理由：229 批停用的兼容读口——判定路径（phoneAccessOf/plan）已不调用，键名保留专为读老 prefs（删＝老账变哑键，文件头注明确）；无行为影响",
+    "read_file": "app/src/main/java/com/example/zhengdao/baopu/search/SearchScopeSettings.kt",
+    "read_line": 37,
+    "snippet": "runCatching { AppPrefs.prefs(ctx).getBoolean(KEY_PHONE_ON, false) }.getOrDefault(false)",
+    "verdict": "not_urgent",
+    "write_sites": []
+   }
+  ]
+ },
+ "summary": {
+  "A": 3,
+  "B": 6,
+  "C": 3,
+  "gates_with_write_path": 1,
+  "not_wired": 9,
+  "production_top_level_public": 361,
+  "wired": 352
+ }
+}
