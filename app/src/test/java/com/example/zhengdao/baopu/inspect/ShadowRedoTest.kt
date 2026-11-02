@@ -101,7 +101,7 @@ class ShadowRedoTest {
         trialOk: Boolean = true,
         existed: List<String> = listOf("notes/a.md"),
     ): ShadowRun {
-        val copy = "${ws.absolutePath}\\.shadow\\op-296"
+        val copy = File(ws, ".shadow/op-296").absolutePath   // 平台无关：别用反斜杠拼路径（CI 在 Linux）
         return ShadowRun(
             built = true,
             note = "副本 ${observedPaths.size} 个对象",
@@ -140,7 +140,7 @@ class ShadowRedoTest {
 
     /** 在副本里落一个真产物（重做的指纹从副本字节来，纸上谈兵不算重做）。 */
     private fun plantArtifact(ws: File, content: String): String {
-        val copy = "${ws.absolutePath}\\.shadow\\op-296"
+        val copy = File(ws, ".shadow/op-296").absolutePath   // 平台无关：别用反斜杠拼路径（CI 在 Linux）
         File(ws, ".shadow/op-296/notes").apply { mkdirs() }
         val f = File(copy, "notes/a.md")
         f.writeText(content, Charsets.UTF_8)
@@ -245,7 +245,7 @@ class ShadowRedoTest {
     @Test
     fun `判据②_INTEGRITY_DAMAGED_MISMATCH发LEDGER_MISMATCH事件_出处与机器键齐全`() {
         val ws = workspace()
-        val copy = "${ws.absolutePath}\\.shadow\\op-296"
+        val copy = File(ws, ".shadow/op-296").absolutePath   // 平台无关：别用反斜杠拼路径（CI 在 Linux）
         val fake = Fake(
             runIn(ws, listOf("$copy/notes/a.md", "$copy/notes/b.md"), existed = listOf("notes/a.md")),
         )
