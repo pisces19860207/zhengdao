@@ -13,6 +13,7 @@ package com.example.zhengdao.baopu.archive
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
 /** 单个 zip 的落盘计划（清单 + 目标路径），策略层判完才允许写。 */
@@ -37,38 +38,9 @@ internal object ZipExtractor {
         if (index.isEmpty()) return ExtractOutcome.Ok(0, 0L)
 
         // ── 第 1 段：清单级判定（一个字节都还没写） ──────────────────────────
-        val allowed = HashSet<String>(index.size * 2)
-        val targets = ArrayList<Pair<String, File>>(index.size)
-        var declaredTotal = 0L
-
-        for (m in index) {
-            if (m.encrypted) {
-                return ExtractOutcome.Rejected("拒绝解压：成员「${m.name}」是加密条目（需要密码），本工具不支持加密 zip。")
-            }
-            if (m.symlink) {
-                return ExtractOutcome.Rejected(
-                    "拒绝解压：成员「${m.name}」是符号链接。链接是 zip-slip 的常用载体" +
-                        "（先建一个指向外面的链接，再把文件写进链接里），本工具一律不解链接。",
-                )
-            }
-            val verdict = ArchiveRules.checkName(m.name)
-            if (verdict != ArchiveRules.NameVerdict.OK) {
-                return ExtractOutcome.Rejected(ArchiveRules.rejectReason(m.name, verdict))
-            }
-            val rel = m.name.replace('\\', '/').trimEnd('/')
-            if (!allowed.add(rel)) {
-                return ExtractOutcome.Rejected("拒绝解压：包里有重名成员「$rel」（同名条目会让部分解包器静默丢文件），整包不落盘。")
-            }
-            if (m.isDirectory) continue
-            val dest = ArchiveRules.resolveInside(target, rel)
-                ?: return ExtractOutcome.Rejected(
-                    "拒绝解压：成员「${m.name}」规范化后落在目标目录之外（zip-slip），整包不落盘。",
-                )
-            targets.add(rel to dest)
-            declaredTotal += m.declaredSize
-            if (declaredTotal > maxBytes) {
-                return ExtractOutcome.Rejected(tooBig(declaredTotal, maxBytes))
-            }
+        val (allowed, targets) = when (val plan = planExtraction(index, target, maxBytes)) {
+            is ManifestVerdict.Rejected -> return ExtractOutcome.Rejected(plan.reason)
+            is ManifestVerdict.Ready -> plan
         }
 
         // 同名判定：先看全部，命中第一个就整包拒（不写任何文件）。
@@ -86,55 +58,145 @@ internal object ZipExtractor {
         }
 
         // ── 第 2 段：落盘（边写边数，声明值撒谎时靠这一段兜住） ────────────────
+        return writeEntries(archive, target, index, allowed, maxBytes)
+    }
+
+    /** 第 1 段（清单级判定）的结论：要么给出「允许落盘的计划」，要么给出整包拒绝的理由。 */
+    private sealed interface ManifestVerdict {
+        data class Ready(val allowed: Set<String>, val targets: List<Pair<String, File>>) : ManifestVerdict
+        data class Rejected(val reason: String) : ManifestVerdict
+    }
+
+    /** 第 1 段：只看中央目录清单——加密／符号链接／越界／重名／声明总量超限，命中一条就整包拒（不落盘）。 */
+    private fun planExtraction(index: List<ZipMember>, target: File, maxBytes: Long): ManifestVerdict {
+        val allowed = HashSet<String>(index.size * 2)
+        val targets = ArrayList<Pair<String, File>>(index.size)
+        var declaredTotal = 0L
+
+        for (m in index) {
+            if (m.encrypted) {
+                return ManifestVerdict.Rejected("拒绝解压：成员「${m.name}」是加密条目（需要密码），本工具不支持加密 zip。")
+            }
+            if (m.symlink) {
+                return ManifestVerdict.Rejected(
+                    "拒绝解压：成员「${m.name}」是符号链接。链接是 zip-slip 的常用载体" +
+                        "（先建一个指向外面的链接，再把文件写进链接里），本工具一律不解链接。",
+                )
+            }
+            val verdict = ArchiveRules.checkName(m.name)
+            if (verdict != ArchiveRules.NameVerdict.OK) {
+                return ManifestVerdict.Rejected(ArchiveRules.rejectReason(m.name, verdict))
+            }
+            val rel = m.name.replace('\\', '/').trimEnd('/')
+            if (!allowed.add(rel)) {
+                return ManifestVerdict.Rejected("拒绝解压：包里有重名成员「$rel」（同名条目会让部分解包器静默丢文件），整包不落盘。")
+            }
+            if (m.isDirectory) continue
+            val dest = ArchiveRules.resolveInside(target, rel)
+                ?: return ManifestVerdict.Rejected(
+                    "拒绝解压：成员「${m.name}」规范化后落在目标目录之外（zip-slip），整包不落盘。",
+                )
+            targets.add(rel to dest)
+            declaredTotal += m.declaredSize
+            if (declaredTotal > maxBytes) {
+                return ManifestVerdict.Rejected(tooBig(declaredTotal, maxBytes))
+            }
+        }
+        return ManifestVerdict.Ready(allowed, targets)
+    }
+
+    /** 第 2 段：逐条落盘（边写边数，声明值撒谎时靠这一段兜住）；中途出事一律 rollback。 */
+    private fun writeEntries(
+        archive: File,
+        target: File,
+        index: List<ZipMember>,
+        allowed: Set<String>,
+        maxBytes: Long,
+    ): ExtractOutcome {
         val written = ArrayList<File>()
         val madeDirs = ArrayList<File>()
-        var bytes = 0L
-        var entries = 0
+        val progress = WriteProgress()
         val charset = pickCharset(index.map { it.rawName })
         try {
             ZipInputStream(archive.inputStream().buffered(BUF), charset).use { zin ->
                 while (true) {
                     val entry = zin.nextEntry ?: break
-                    val rel = entry.name.replace('\\', '/').trimEnd('/')
-                    if (entry.isDirectory) {
-                        val dir = ArchiveRules.resolveInside(target, rel)
-                            ?: return rollback(written, madeDirs, "成员「${entry.name}」落在目标目录之外（zip-slip）")
-                        if (!dir.exists() && dir.mkdirs()) madeDirs.add(dir)
-                        zin.closeEntry()
-                        continue
+                    writeOneEntry(zin, entry, target, allowed, maxBytes, progress, written, madeDirs)?.let { reason ->
+                        return rollback(written, madeDirs, reason)
                     }
-                    if (rel !in allowed) {
-                        return rollback(written, madeDirs, "包内条目「${entry.name}」不在目录清单里（中央目录与本地头不一致）")
-                    }
-                    val dest = ArchiveRules.resolveInside(target, rel)
-                        ?: return rollback(written, madeDirs, "成员「${entry.name}」落在目标目录之外（zip-slip）")
-                    dest.parentFile?.let { parent ->
-                        if (!parent.exists() && parent.mkdirs()) madeDirs.add(parent)
-                    }
-                    FileOutputStream(dest).use { out ->
-                        val buf = ByteArray(BUF)
-                        while (true) {
-                            val n = zin.read(buf)
-                            if (n < 0) break
-                            bytes += n
-                            if (bytes > maxBytes) {
-                                out.close()
-                                dest.delete()
-                                return rollback(written, madeDirs, tooBig(bytes, maxBytes))
-                            }
-                            out.write(buf, 0, n)
-                        }
-                    }
-                    written.add(dest)
-                    entries++
-                    zin.closeEntry()
                 }
             }
         } catch (e: IOException) {
             cleanup(written, madeDirs)
             return ExtractOutcome.Failed("解压中断（${e.javaClass.simpleName}: ${e.message ?: "无细节"}），已回滚本轮写出的文件")
         }
-        return ExtractOutcome.Ok(entries, bytes)
+        return ExtractOutcome.Ok(progress.entries, progress.bytes)
+    }
+
+    /** 落盘进度：实际写出的字节数与条目数（声明值撒谎时靠它兜住）。 */
+    private class WriteProgress {
+        var bytes = 0L
+        var entries = 0
+    }
+
+    /** 处理一个条目：目录条目建目录、文件条目校验后落盘并计入进度（目录不计条数）。返回 null＝成功；否则＝整包回滚的理由。 */
+    private fun writeOneEntry(
+        zin: ZipInputStream,
+        entry: ZipEntry,
+        target: File,
+        allowed: Set<String>,
+        maxBytes: Long,
+        progress: WriteProgress,
+        written: MutableList<File>,
+        madeDirs: MutableList<File>,
+    ): String? {
+        val rel = entry.name.replace('\\', '/').trimEnd('/')
+        if (entry.isDirectory) {
+            val dir = ArchiveRules.resolveInside(target, rel)
+                ?: return "成员「${entry.name}」落在目标目录之外（zip-slip）"
+            if (!dir.exists() && dir.mkdirs()) madeDirs.add(dir)
+            zin.closeEntry()
+            return null
+        }
+        if (rel !in allowed) {
+            return "包内条目「${entry.name}」不在目录清单里（中央目录与本地头不一致）"
+        }
+        val dest = ArchiveRules.resolveInside(target, rel)
+            ?: return "成员「${entry.name}」落在目标目录之外（zip-slip）"
+        dest.parentFile?.let { parent ->
+            if (!parent.exists() && parent.mkdirs()) madeDirs.add(parent)
+        }
+        FileOutputStream(dest).use { out ->
+            val end = copyLimited(zin, out, dest, maxBytes, progress.bytes)
+            if (end < 0) return tooBig(-end, maxBytes)
+            progress.bytes = end
+        }
+        written.add(dest)
+        progress.entries++ // 目录条目不计（与原实现一致：目录分支提前 return，不走到这里）
+        zin.closeEntry()
+        return null
+    }
+
+    /**
+     * 把当前文件条目从 [zin] 拷到 [out]，边写边数。
+     * 返回**累计**总字节数；超过 [maxBytes] 时关流、删掉半成品 [dest]，返回「-累计总字节数」
+     * （负值＝失败，调用方取负拿真实读数去拼 tooBig 文案）。
+     */
+    private fun copyLimited(zin: ZipInputStream, out: FileOutputStream, dest: File, maxBytes: Long, bytesSoFar: Long): Long {
+        val buf = ByteArray(BUF)
+        var total = bytesSoFar
+        while (true) {
+            val n = zin.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > maxBytes) {
+                out.close()
+                dest.delete()
+                return -total
+            }
+            out.write(buf, 0, n)
+        }
+        return total
     }
 
     private fun tooBig(total: Long, maxBytes: Long): String =
