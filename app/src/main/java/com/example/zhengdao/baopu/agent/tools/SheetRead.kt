@@ -105,6 +105,12 @@ internal object SheetReader {
  */
 internal object SheetWorkbook {
 
+    /**
+     * 读一个 xlsx。detekt 清债批（chore/detekt-debt-6，2026-11-02）：
+     * 原 92 行／复杂度 50 的大函数按「解 zip → 判加密 → 解析 workbook/rels → 选 sheet →
+     * 读行 → 组装网格」六段拆开（[unzipAll]／[sheetNames]／[sheetRels]／[resolveTarget]／
+     * [readRows]／[rowCells]），本函数只做编排——顺序、判据、报错话术一个字没动。
+     */
     fun read(
         file: File,
         sheet: String?,
@@ -112,6 +118,37 @@ internal object SheetWorkbook {
         hasHeader: Boolean,
         maxRows: Int,
     ): Result<SheetGrid> = runCatching {
+        val zip = unzipAll(file)
+        // 加密工作簿（OLE/EncryptedPackage）⇒ 未认领（负例：把加密件当空表糊弄）
+        if (zip.containsKey("EncryptedPackage") || zip.containsKey("EncryptionInfo")) {
+            throw SheetReadFailure.Encrypted
+        }
+        val factory = newFactory()
+        val sheets = sheetNames(zip, factory)
+        val rels = sheetRels(zip, factory)
+        val targetPath = resolveTarget(zip, sheet, sheets, rels)
+        val bytes = zip[targetPath] ?: throw SheetReadFailure.Unsupported("worksheet 条目缺失：$targetPath")
+        val shared = sharedStrings(zip, factory)
+        val doc = factory.parse(bytes.inputStream()).documentElement
+        val bounds = range?.let { SheetRange.parse(it) }
+        val (rowsRaw, nosRaw) = readRows(doc, shared, bounds)
+
+        val limited = rowsRaw.take(maxRows)
+        val limitedNos = nosRaw.take(maxRows)
+        val header = if (hasHeader) limited.firstOrNull() ?: emptyList() else emptyList()
+        val body = if (hasHeader) limited.drop(1) else limited
+        SheetGrid(
+            sheets = sheets,
+            header = header,
+            rows = body,
+            truncated = rowsRaw.size > maxRows,
+            skipped = emptyMap(),
+            rowNumbers = if (hasHeader) limitedNos.drop(1) else limitedNos,
+        )
+    }
+
+    /** 把整个 zip 读进内存（条目名 → 字节；目录条目跳过）。 */
+    private fun unzipAll(file: File): Map<String, ByteArray> {
         val zip = mutableMapOf<String, ByteArray>()
         ZipInputStream(file.inputStream().buffered()).use { z ->
             while (true) {
@@ -120,66 +157,72 @@ internal object SheetWorkbook {
                 z.closeEntry()
             }
         }
-        // 加密工作簿（OLE/EncryptedPackage）⇒ 未认领（负例：把加密件当空表糊弄）
-        if (zip.containsKey("EncryptedPackage") || zip.containsKey("EncryptionInfo")) {
-            throw SheetReadFailure.Encrypted
-        }
-        val factory = newFactory()
-        val sheets = mutableListOf<String>()
-        val rels = mutableMapOf<String, String>()
-        if (zip.containsKey("xl/workbook.xml")) {
-            val wb = factory.parse(zip["xl/workbook.xml"]!!.inputStream()).documentElement
-            wb.getElementsByTagName("sheet").let { list ->
-                for (i in 0 until list.length) {
-                    (list.item(i) as? Element)?.getAttribute("name")?.takeIf { it.isNotEmpty() }?.let { sheets += it }
-                }
-            }
-        }
-        if (zip.containsKey("xl/_rels/workbook.xml.rels")) {
-            val rel = factory.parse(zip["xl/_rels/workbook.xml.rels"]!!.inputStream()).documentElement
-            rel.getElementsByTagName("Relationship").let { list ->
-                for (i in 0 until list.length) {
-                    val e = list.item(i) as? Element ?: continue
-                    val id = e.getAttribute("Id")
-                    val target = e.getAttribute("Target").removePrefix("/xl/").removePrefix("xl/")
-                    if (id.isNotEmpty() && target.isNotEmpty()) rels[id] = "xl/$target".replace("xl/xl/", "xl/")
-                }
-            }
-        }
-        // 选中 sheet：名字精确匹配 → 序号（1 起）；没有就第一个
-        val targetPath: String = when {
-            zip.containsKey("xl/worksheets/sheet1.xml") && sheet == null -> "xl/worksheets/sheet1.xml"
-            sheet == null -> sheets.firstOrNull()?.let { pathOf(it, sheets, rels) }
-                ?: throw SheetReadFailure.Unsupported("zip 里没有 worksheet（不是 xlsx？）")
-            sheet.toIntOrNull() != null -> {
-                val idx = sheet.toInt()
-                sheets.getOrNull(idx - 1) ?: throw SheetReadFailure.Unsupported("第 $idx 个 sheet 不存在（共 ${sheets.size} 个）")
-                pathOf(sheets[idx - 1], sheets, rels)
-            }
-            else -> {
-                if (sheet !in sheets) throw SheetReadFailure.Unsupported("sheet「$sheet」不存在（有：${sheets.take(5).joinToString("、")}）")
-                pathOf(sheet, sheets, rels)
-            }
-        }
-        val bytes = zip[targetPath] ?: throw SheetReadFailure.Unsupported("worksheet 条目缺失：$targetPath")
-        val shared = sharedStrings(zip, factory)
+        return zip
+    }
+
+    /** `xl/workbook.xml` 里的 `<sheet name>` 清单（sheet 顺序＝展示顺序）。 */
+    private fun sheetNames(zip: Map<String, ByteArray>, factory: javax.xml.parsers.DocumentBuilder): List<String> {
+        val bytes = zip["xl/workbook.xml"] ?: return emptyList()
         val doc = factory.parse(bytes.inputStream()).documentElement
+        val sheets = mutableListOf<String>()
+        doc.getElementsByTagName("sheet").let { list ->
+            for (i in 0 until list.length) {
+                (list.item(i) as? Element)?.getAttribute("name")?.takeIf { it.isNotEmpty() }?.let { sheets += it }
+            }
+        }
+        return sheets
+    }
+
+    /** `xl/_rels/workbook.xml.rels`：`r:id → worksheets/sheetN.xml` 的映射。 */
+    private fun sheetRels(zip: Map<String, ByteArray>, factory: javax.xml.parsers.DocumentBuilder): Map<String, String> {
+        val bytes = zip["xl/_rels/workbook.xml.rels"] ?: return emptyMap()
+        val rel = factory.parse(bytes.inputStream()).documentElement
+        val rels = mutableMapOf<String, String>()
+        rel.getElementsByTagName("Relationship").let { list ->
+            for (i in 0 until list.length) {
+                val e = list.item(i) as? Element ?: continue
+                val id = e.getAttribute("Id")
+                val target = e.getAttribute("Target").removePrefix("/xl/").removePrefix("xl/")
+                if (id.isNotEmpty() && target.isNotEmpty()) rels[id] = "xl/$target".replace("xl/xl/", "xl/")
+            }
+        }
+        return rels
+    }
+
+    /** 选中 sheet：名字精确匹配 → 序号（1 起）；没有就第一个。 */
+    private fun resolveTarget(
+        zip: Map<String, ByteArray>,
+        sheet: String?,
+        sheets: List<String>,
+        rels: Map<String, String>,
+    ): String = when {
+        zip.containsKey("xl/worksheets/sheet1.xml") && sheet == null -> "xl/worksheets/sheet1.xml"
+        sheet == null -> sheets.firstOrNull()?.let { pathOf(it, sheets, rels) }
+            ?: throw SheetReadFailure.Unsupported("zip 里没有 worksheet（不是 xlsx？）")
+        sheet.toIntOrNull() != null -> {
+            val idx = sheet.toInt()
+            sheets.getOrNull(idx - 1) ?: throw SheetReadFailure.Unsupported("第 $idx 个 sheet 不存在（共 ${sheets.size} 个）")
+            pathOf(sheets[idx - 1], sheets, rels)
+        }
+        else -> {
+            if (sheet !in sheets) throw SheetReadFailure.Unsupported("sheet「$sheet」不存在（有：${sheets.take(5).joinToString("、")}）")
+            pathOf(sheet, sheets, rels)
+        }
+    }
+
+    /** 逐行取值：`<row r>` × 单元格，范围 [bounds] 内才收；与真实行号一一对应返回。 */
+    private fun readRows(
+        doc: Element,
+        shared: List<String>,
+        bounds: SheetRange?,
+    ): Pair<List<List<String?>>, List<Int>> {
         val rowsRaw = mutableListOf<List<String?>>()
         // 与 rowsRaw 一一对应的真实行号（`<row r>`；没有 r 属性就按已读行数 +1 兜底）
         val nosRaw = mutableListOf<Int>()
         val rowNodes = doc.getElementsByTagName("row")
-        val bounds = range?.let { SheetRange.parse(it) }
         for (i in 0 until rowNodes.length) {
             val row = rowNodes.item(i) as? Element ?: continue
-            val cells = mutableMapOf<Int, String?>()
-            val cellNodes = row.getElementsByTagName("c")
-            for (j in 0 until cellNodes.length) {
-                val c = cellNodes.item(j) as? Element ?: continue
-                val ref = c.getAttribute("r")
-                val col = SheetRange.colIndex(ref)
-                val v = cellText(c, shared)
-                cells[col] = v
-            }
+            val cells = rowCells(row, shared)
             val width = (cells.keys.maxOrNull() ?: -1) + 1
             val full = (0 until maxOf(width, bounds?.lastCol?.plus(1) ?: width)).map { cells[it] }
             val filtered = if (bounds != null) {
@@ -193,18 +236,18 @@ internal object SheetWorkbook {
             rowsRaw += filtered
             nosRaw += rowNo
         }
-        val limited = rowsRaw.take(maxRows)
-        val limitedNos = nosRaw.take(maxRows)
-        val header = if (hasHeader) limited.firstOrNull() ?: emptyList() else emptyList()
-        val body = if (hasHeader) limited.drop(1) else limited
-        SheetGrid(
-            sheets = sheets,
-            header = header,
-            rows = body,
-            truncated = rowsRaw.size > maxRows,
-            skipped = emptyMap(),
-            rowNumbers = if (hasHeader) limitedNos.drop(1) else limitedNos,
-        )
+        return rowsRaw to nosRaw
+    }
+
+    /** 一行里的单元格：列号（0 起）→ 值。 */
+    private fun rowCells(row: Element, shared: List<String>): Map<Int, String?> {
+        val cells = mutableMapOf<Int, String?>()
+        val cellNodes = row.getElementsByTagName("c")
+        for (j in 0 until cellNodes.length) {
+            val c = cellNodes.item(j) as? Element ?: continue
+            cells[SheetRange.colIndex(c.getAttribute("r"))] = cellText(c, shared)
+        }
+        return cells
     }
 
     private fun pathOf(name: String, sheets: List<String>, rels: Map<String, String>): String {
