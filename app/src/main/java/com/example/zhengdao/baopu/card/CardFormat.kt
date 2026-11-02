@@ -26,6 +26,12 @@ internal object CardFormat {
         byteArrayOf(0x50, 0x4B, 0x07, 0x08),
     )
 
+    /**
+     * 认脸主入口（§2.2 按顺序命中即停）。detekt 清债批（chore/detekt-debt-6，2026-11-02）：
+     * 原 178 行／复杂度 51 的大函数按识别步骤拆成四个「谁认出来归谁」的私有段
+     * （PNG 在 [judgePng]、网络平台话术在 [web]），本函数只做「解析成 JSON ＋ 按优先级逐段问」。
+     * 判据、顺序、话术一个字没动。
+     */
     fun recognize(bytes: ByteArray): FormatVerdict {
         // 第 0 步：PNG 先判（PNG 字节当文本解必失败）
         if (isPng(bytes)) return judgePng(bytes)
@@ -47,12 +53,28 @@ internal object CardFormat {
         val j = value
         val keys = CardJson.topLevelKeys(text)
 
-        // 第 2 步：P1 网络平台 —— 最高优先级（见了 world_book 就不再往下看）
-        val worldBook = CardJson.arrayOf(j, "world_book")
-        if (worldBook != null) return web(j, worldBook, keys, text)
+        // 第 2 步起：按优先级逐段认，段返回 null ＝ 不归它，继续往下
+        recognizeWeb(j, keys, text)?.let { return it }
+        recognizeCcv3Spec(j, keys, text)?.let { return it }
+        recognizeTavo(j, keys, text)?.let { return it }
+        recognizeEntriesOnly(j, keys, text)?.let { return it }
 
-        // 第 2.5 步：P2 CCv3 显式标记（比字段猜更可靠）
-        val spec = CardJson.stringOf(j, "spec")
+        // 第 5 步：什么都不是
+        val conflicts = if (looksLikeIdMap(j)) listOf("疑似 id 映射表，不是卡") else emptyList()
+        return unknown("NO_SIGNATURE_KEY", keys, text, CardText.unknownKeys(keys)).copy(conflicts = conflicts)
+    }
+
+    // ── 第 2 步：P1 网络平台（最高优先级，见了 world_book 就不再往下看） ──────
+
+    private fun recognizeWeb(j: JSONObject, keys: List<String>, text: String): FormatVerdict? {
+        val worldBook = CardJson.arrayOf(j, "world_book") ?: return null
+        return web(j, worldBook, keys, text)
+    }
+
+    // ── 第 2.5 步：P2 CCv3 显式标记（比字段猜更可靠） ────────────────────────
+
+    private fun recognizeCcv3Spec(j: JSONObject, keys: List<String>, text: String): FormatVerdict? {
+        val spec = CardJson.stringOf(j, "spec") ?: return null
         if (spec == "lorebook_v3") {
             val data = CardJson.objectOf(j, "data")
                 ?: return unknown("CCV3_SPEC_NO_DATA", keys, text, CardText.CCV3_SPEC_BUT_NO_ENTRIES)
@@ -69,157 +91,168 @@ internal object CardFormat {
         if (spec == "chara_card_v2" || spec == "chara_card_v3") {
             return unknown("CCV3_CARD_NOT_IN_SCOPE", keys, text, CardText.CCV3_CARD_NOT_IN_SCOPE)
         }
+        return null
+    }
 
-        // 第 3 步：P3/P4 Tavo 资产 —— 四件套比「entries 的形态」更专有
+    // ── 第 3 步：P3/P4 Tavo 资产（四件套比「entries 的形态」更专有） ──────────
+
+    private fun recognizeTavo(j: JSONObject, keys: List<String>, text: String): FormatVerdict? {
         val fourPieces = j.has("kind") && j.has("id") && j.has("name") && j.has("updatedAt")
-        if (fourPieces) {
-            val data = CardJson.objectOf(j, "data")
-            if (data != null) {
-                return FormatVerdict(
-                    format = FormatKind.TAVO_CHAR,
-                    confidence = Confidence.HIGH,
-                    evidence = listOf("Tavo 四件套 kind/id/name/updatedAt ＋ data 是对象（${data.length()} 个键）"),
-                    jsonText = text,
-                )
-            }
-            val entries = CardJson.arrayOf(j, "entries")
-            if (entries != null) {
-                val first = entries.optJSONObject(0)
-                if (entries.length() > 0 && first != null && first.has("findRegex")) {
-                    return FormatVerdict(
-                        format = FormatKind.TAVO_REGEX,
-                        confidence = Confidence.HIGH,
-                        evidence = listOf("Tavo 四件套 ＋ entries 元素含 findRegex（${entries.length()} 条）"),
-                        entryCount = entries.length(),
-                        jsonText = text,
-                    )
-                }
-                val presetish = j.has("basicPrompts") || j.has("active") ||
-                    (first != null && first.has("content") && first.has("role"))
-                // 元素明显是世界书（keywords/injectionPosition）⇒ 子类是 null（F1 对 J3 的期望）；
-                // 只有「四件套齐、但子类真判不出」才打 TAVO_ASSET_UNKNOWN 哨兵。
-                val tavolike = first != null && (first.has("keywords") || first.has("injectionPosition"))
-                if (tavolike && !presetish) {
-                    return FormatVerdict(
-                        format = FormatKind.TAVO_BOOK,
-                        subtype = null,
-                        confidence = Confidence.HIGH,
-                        evidence = listOf("Tavo 四件套 ＋ entries 是数组，元素含 keywords/injectionPosition（${entries.length()} 条）"),
-                        entryCount = entries.length(),
-                        jsonText = text,
-                    )
-                }
-                if (presetish) {
-                    return FormatVerdict(
-                        format = FormatKind.TAVO_PRESET,
-                        confidence = Confidence.HIGH,
-                        evidence = listOf(
-                            if (j.has("basicPrompts")) "Tavo 四件套 ＋ 顶层含 basicPrompts"
-                            else "Tavo 四件套 ＋ 顶层含 active / 元素含 content+role",
-                        ),
-                        entryCount = entries.length(),
-                        jsonText = text,
-                    )
-                }
-                return FormatVerdict(
-                    format = FormatKind.TAVO_BOOK,
-                    subtype = SUBTYPE_TAVO_ASSET_UNKNOWN,
-                    confidence = Confidence.LOW,
-                    evidence = listOf("Tavo 四件套 ＋ entries 是数组，但子类判不出（无 findRegex / 无 basicPrompts）"),
-                    entryCount = entries.length(),
-                    jsonText = text,
-                )
-            }
-            if (j.has("entries")) {
-                // C3：四件套 ＋ entries 是字典 ⇒ 仍是 Tavo 资产，但形态异常
-                return FormatVerdict(
-                    format = FormatKind.TAVO_BOOK,
-                    subtype = SUBTYPE_TAVO_ASSET_UNKNOWN,
-                    confidence = Confidence.LOW,
-                    evidence = listOf("Tavo 四件套 ＋ entries 是字典（形态异常）"),
-                    conflicts = listOf("Tavo 四件套与字典形态 entries 并存，形态异常"),
-                    jsonText = text,
-                )
-            }
-            return unknown("TAVO_SHAPE_INCOMPLETE", keys, text, CardText.unknownKeys(keys))
-        }
+        if (!fourPieces) return null
 
-        // 第 4 步：只有 entries —— 数组要按元素字段再分一次（Tavo vs CCv3）
+        CardJson.objectOf(j, "data")?.let { data ->
+            return FormatVerdict(
+                format = FormatKind.TAVO_CHAR,
+                confidence = Confidence.HIGH,
+                evidence = listOf("Tavo 四件套 kind/id/name/updatedAt ＋ data 是对象（${data.length()} 个键）"),
+                jsonText = text,
+            )
+        }
+        CardJson.arrayOf(j, "entries")?.let { entries ->
+            return tavoEntriesArray(j, entries, text)
+        }
         if (j.has("entries")) {
-            val arr = CardJson.arrayOf(j, "entries")
-            if (arr != null) {
-                if (arr.length() == 0) {
-                    return FormatVerdict(
-                        format = FormatKind.TAVO_BOOK,
-                        subtype = SUBTYPE_EMPTY_AMBIGUOUS,
-                        confidence = Confidence.LOW,
-                        evidence = listOf("entries 是空数组，无元素可交叉验证"),
-                        conflicts = listOf("entries 是空数组，Tavo 与 CCv3 无法区分，按 Tavo 处理"),
-                        entryCount = 0,
-                        jsonText = text,
-                    )
-                }
-                val first = arr.optJSONObject(0)
-                val ccv3ish = first != null && (first.has("keys") || first.has("insertion_order") || first.has("use_regex"))
-                if (ccv3ish) {
-                    return FormatVerdict(
-                        format = FormatKind.CCV3_LOREBOOK,
-                        confidence = Confidence.HIGH,
-                        evidence = listOf("entries 是数组，元素含 keys/insertion_order/use_regex"),
-                        entryCount = arr.length(),
-                        jsonText = text,
-                    )
-                }
-                val tavolike = first != null && (first.has("keywords") || first.has("injectionPosition"))
-                if (tavolike) {
-                    return FormatVerdict(
-                        format = FormatKind.TAVO_BOOK,
-                        confidence = Confidence.HIGH,
-                        evidence = listOf("entries 是数组，元素含 keywords/injectionPosition（${arr.length()} 条）"),
-                        entryCount = arr.length(),
-                        jsonText = text,
-                    )
-                }
-                val conflicts = if (first != null && first.has("findRegex")) {
-                    listOf("像正则但缺 Tavo 四件套，按 Tavo 世界书处理")
-                } else {
-                    listOf("entries 是数组但元素字段认不出，按 Tavo 世界书处理")
-                }
-                return FormatVerdict(
-                    format = FormatKind.TAVO_BOOK,
-                    subtype = SUBTYPE_ELEMENT_SHAPE_UNKNOWN,
-                    confidence = Confidence.LOW,
-                    evidence = listOf("entries 是数组，元素既非 keywords 也非 keys"),
-                    conflicts = conflicts,
-                    entryCount = arr.length(),
-                    jsonText = text,
-                )
-            }
-            val dict = CardJson.objectOf(j, "entries")
-            if (dict != null) {
-                val empty = dict.length() == 0
-                val first = dict.keys().asSequence().firstOrNull()?.let { dict.optJSONObject(it) }
-                // C5：只有 Tavo 专有的 keywords 才算「元素像 Tavo」；content 两边都有，不能当证据
-                val conflicts = if (first != null && first.has("keywords")) {
-                    listOf("元素字段像 Tavo，但 entries 是字典 ⇒ 键类型说了算")
-                } else emptyList()
-                return FormatVerdict(
-                    format = FormatKind.ST_WORLD,
-                    confidence = if (empty) Confidence.LOW else Confidence.HIGH,
-                    evidence = listOf(
-                        if (empty) "entries 是空字典，无元素可交叉验证" else "entries 是字典（键为整数 uid，${dict.length()} 条）",
-                    ),
-                    conflicts = conflicts,
-                    entryCount = dict.length(),
-                    jsonText = text,
-                )
-            }
-            return unknown("ENTRIES_NOT_COLLECTION", keys, text, CardText.ENTRIES_NOT_COLLECTION)
+            // C3：四件套 ＋ entries 是字典 ⇒ 仍是 Tavo 资产，但形态异常
+            return FormatVerdict(
+                format = FormatKind.TAVO_BOOK,
+                subtype = SUBTYPE_TAVO_ASSET_UNKNOWN,
+                confidence = Confidence.LOW,
+                evidence = listOf("Tavo 四件套 ＋ entries 是字典（形态异常）"),
+                conflicts = listOf("Tavo 四件套与字典形态 entries 并存，形态异常"),
+                jsonText = text,
+            )
         }
+        return unknown("TAVO_SHAPE_INCOMPLETE", keys, text, CardText.unknownKeys(keys))
+    }
 
-        // 第 5 步：什么都不是
-        val conflicts = if (looksLikeIdMap(j)) listOf("疑似 id 映射表，不是卡") else emptyList()
-        return unknown("NO_SIGNATURE_KEY", keys, text, CardText.unknownKeys(keys)).copy(conflicts = conflicts)
+    /** 四件套 ＋ entries 是数组：按首元素字段细分（正则 / 世界书 / 预设 / 认不出）。 */
+    private fun tavoEntriesArray(j: JSONObject, entries: JSONArray, text: String): FormatVerdict {
+        val first = entries.optJSONObject(0)
+        if (entries.length() > 0 && first != null && first.has("findRegex")) {
+            return FormatVerdict(
+                format = FormatKind.TAVO_REGEX,
+                confidence = Confidence.HIGH,
+                evidence = listOf("Tavo 四件套 ＋ entries 元素含 findRegex（${entries.length()} 条）"),
+                entryCount = entries.length(),
+                jsonText = text,
+            )
+        }
+        val presetish = presetishOf(j, first)
+        // 元素明显是世界书（keywords/injectionPosition）⇒ 子类是 null（F1 对 J3 的期望）；
+        // 只有「四件套齐、但子类真判不出」才打 TAVO_ASSET_UNKNOWN 哨兵。
+        val tavolike = first != null && (first.has("keywords") || first.has("injectionPosition"))
+        if (tavolike && !presetish) {
+            return FormatVerdict(
+                format = FormatKind.TAVO_BOOK,
+                subtype = null,
+                confidence = Confidence.HIGH,
+                evidence = listOf("Tavo 四件套 ＋ entries 是数组，元素含 keywords/injectionPosition（${entries.length()} 条）"),
+                entryCount = entries.length(),
+                jsonText = text,
+            )
+        }
+        if (presetish) {
+            return FormatVerdict(
+                format = FormatKind.TAVO_PRESET,
+                confidence = Confidence.HIGH,
+                evidence = listOf(
+                    if (j.has("basicPrompts")) "Tavo 四件套 ＋ 顶层含 basicPrompts"
+                    else "Tavo 四件套 ＋ 顶层含 active / 元素含 content+role",
+                ),
+                entryCount = entries.length(),
+                jsonText = text,
+            )
+        }
+        return FormatVerdict(
+            format = FormatKind.TAVO_BOOK,
+            subtype = SUBTYPE_TAVO_ASSET_UNKNOWN,
+            confidence = Confidence.LOW,
+            evidence = listOf("Tavo 四件套 ＋ entries 是数组，但子类判不出（无 findRegex / 无 basicPrompts）"),
+            entryCount = entries.length(),
+            jsonText = text,
+        )
+    }
+
+    /** 预设样：顶层含 basicPrompts / active，或首元素含 content+role。 */
+    private fun presetishOf(j: JSONObject, first: JSONObject?): Boolean =
+        j.has("basicPrompts") || j.has("active") ||
+            (first != null && first.has("content") && first.has("role"))
+
+    // ── 第 4 步：只有 entries —— 数组按元素字段再分（Tavo vs CCv3），字典是 ST ─
+
+    private fun recognizeEntriesOnly(j: JSONObject, keys: List<String>, text: String): FormatVerdict? {
+        if (!j.has("entries")) return null
+        CardJson.arrayOf(j, "entries")?.let { return entriesArrayVerdict(it, text) }
+        CardJson.objectOf(j, "entries")?.let { return entriesDictVerdict(it, text) }
+        return unknown("ENTRIES_NOT_COLLECTION", keys, text, CardText.ENTRIES_NOT_COLLECTION)
+    }
+
+    private fun entriesArrayVerdict(arr: JSONArray, text: String): FormatVerdict {
+        if (arr.length() == 0) {
+            return FormatVerdict(
+                format = FormatKind.TAVO_BOOK,
+                subtype = SUBTYPE_EMPTY_AMBIGUOUS,
+                confidence = Confidence.LOW,
+                evidence = listOf("entries 是空数组，无元素可交叉验证"),
+                conflicts = listOf("entries 是空数组，Tavo 与 CCv3 无法区分，按 Tavo 处理"),
+                entryCount = 0,
+                jsonText = text,
+            )
+        }
+        val first = arr.optJSONObject(0)
+        val ccv3ish = first != null && (first.has("keys") || first.has("insertion_order") || first.has("use_regex"))
+        if (ccv3ish) {
+            return FormatVerdict(
+                format = FormatKind.CCV3_LOREBOOK,
+                confidence = Confidence.HIGH,
+                evidence = listOf("entries 是数组，元素含 keys/insertion_order/use_regex"),
+                entryCount = arr.length(),
+                jsonText = text,
+            )
+        }
+        val tavolike = first != null && (first.has("keywords") || first.has("injectionPosition"))
+        if (tavolike) {
+            return FormatVerdict(
+                format = FormatKind.TAVO_BOOK,
+                confidence = Confidence.HIGH,
+                evidence = listOf("entries 是数组，元素含 keywords/injectionPosition（${arr.length()} 条）"),
+                entryCount = arr.length(),
+                jsonText = text,
+            )
+        }
+        val conflicts = if (first != null && first.has("findRegex")) {
+            listOf("像正则但缺 Tavo 四件套，按 Tavo 世界书处理")
+        } else {
+            listOf("entries 是数组但元素字段认不出，按 Tavo 世界书处理")
+        }
+        return FormatVerdict(
+            format = FormatKind.TAVO_BOOK,
+            subtype = SUBTYPE_ELEMENT_SHAPE_UNKNOWN,
+            confidence = Confidence.LOW,
+            evidence = listOf("entries 是数组，元素既非 keywords 也非 keys"),
+            conflicts = conflicts,
+            entryCount = arr.length(),
+            jsonText = text,
+        )
+    }
+
+    private fun entriesDictVerdict(dict: JSONObject, text: String): FormatVerdict {
+        val empty = dict.length() == 0
+        val first = dict.keys().asSequence().firstOrNull()?.let { dict.optJSONObject(it) }
+        // C5：只有 Tavo 专有的 keywords 才算「元素像 Tavo」；content 两边都有，不能当证据
+        val conflicts = if (first != null && first.has("keywords")) {
+            listOf("元素字段像 Tavo，但 entries 是字典 ⇒ 键类型说了算")
+        } else emptyList()
+        return FormatVerdict(
+            format = FormatKind.ST_WORLD,
+            confidence = if (empty) Confidence.LOW else Confidence.HIGH,
+            evidence = listOf(
+                if (empty) "entries 是空字典，无元素可交叉验证" else "entries 是字典（键为整数 uid，${dict.length()} 条）",
+            ),
+            conflicts = conflicts,
+            entryCount = dict.length(),
+            jsonText = text,
+        )
     }
 
     // ── 网络平台（P1） ───────────────────────────────────────────────────────
