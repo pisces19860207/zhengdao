@@ -165,6 +165,12 @@ SPEC_BANNER = "本文件是规范，不是门禁"
 # 共用探针设施（不是法条文件，允许不带法条号）
 INFRA_FILES = {"LawIo.kt", "GateIo.kt", "TaskModeBoundary.kt"}
 
+# 制度类门禁（**不是法条**，md 里没有对应的 L 号）——372 起。
+# 为什么需要：`baopu/law/DispositionGate.kt` 是「会话级三档处置」的**制度**实现（372 名册里亦称"非法条"），
+# 它的门禁测试同样碰生产、同样禁静默跳过，但**不能硬套 Lx 前缀冒充法条**——那会让 md↔门禁对账失真。
+# 口径：这类文件不进法条对账，但**照样跑**「不许静默跳过／不许自称规范／必须碰生产」三条。
+NON_LAW_GATES = {"DispositionGateTest.kt"}
+
 # 静默跳过的写法（一律不许）
 SILENT = [
     ("@Ignore", re.compile(r"@Ignore\b")),
@@ -299,10 +305,16 @@ def scan_file(path: Path, kind: str, strict: bool = True, law_id: str | None = N
         if not m:
             if path.name in INFRA_FILES:
                 return None, None, problems
-            problems.append(f"[{kind}] {path.name}: 文件名不合形制（门禁 L7…GateTest.kt／规范 L21…Spec.kt）")
-            return None, None, problems
-        law_no = int(m.group(1))
-        law_id = f"L{law_no}{m.group(2)}"  # "L30b" 这类带后缀的法条与 "L7" 同账（309）；描述不算 id
+            if path.name in NON_LAW_GATES:
+                # 制度门禁：不套 Lx 前缀（不是法条），但下面的「静默跳过/自称规范/碰生产」照查。
+                strict = False
+                law_no = 0
+            else:
+                problems.append(f"[{kind}] {path.name}: 文件名不合形制（门禁 L7…GateTest.kt／规范 L21…Spec.kt）")
+                return None, None, problems
+        if m:
+            law_no = int(m.group(1))
+            law_id = f"L{law_no}{m.group(2)}"  # "L30b" 这类带后缀的法条与 "L7" 同账（309）；描述不算 id
     else:
         law_no = int(LAW_ID_RE.match(law_id).group(1))
     raw = path.read_text(encoding="utf-8")
