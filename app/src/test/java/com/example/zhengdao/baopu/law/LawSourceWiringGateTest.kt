@@ -195,6 +195,18 @@ class LawSourceWiringGateTest {
             blockedBy = "撤销通道已存在但没有撤销单：judge 要五栏事实，现路径只带三元组；" +
                 "补五栏＝新落盘格式，与 208 写入格式那条红线撞在同一张卡上",
         ),
+        // 372：会话级三档处置（制度·三档处置，**非法条**；2026-11-02 批示：名册单批只加这一行）。
+        // 未接线（生产零调用）——挂账不是 WIRED，不许谎报接线。
+        Booked(
+            entry = "DispositionGate",
+            law = "DispositionGate 的 decide（制度·三档处置（非法条）：REPLY／FREEZE／SUPPRESS" +
+                "＋五条判定＋四类不可推翻边界）",
+            host = "尚未点定（候选：agent/GuardPipeline.kt 的拒绝分支——346-B 正在该文件上动工；" +
+                "接线批点名后逐字登记）",
+            owner = "372（2026-11-02 开工令：本批只交纯判定；接线另行立项）",
+            blockedBy = "本批租约禁改 GuardPipeline（346-B 在动）／RunEngine（326 在动），接线＝撞租约；" +
+                "且五条判定与四类边界还没有任何执行链喂事实，硬接＝假接（L29/L32 同款理由）",
+        ),
     )
 
     /** 批号 token：独立三位数字（日期 `2026-10-31` 里的 202 不算）。 */
