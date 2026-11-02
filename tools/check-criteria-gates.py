@@ -9,7 +9,7 @@ policy/ 里的 `ImmutableCriteria`／`CriteriaEvolution`／`AnchorSet`／`Criter
 
 四把尺：
 1. 不可进化清单：恰好三条，id／法典依据／止损白名单逐字固定；清单不许配置化；
-   `agent/` 在线路径不许出现这四个判定符号（宰相不参与准入）。
+   `agent/` 在线路径不许出现表里的判定符号（宰相不参与准入；364 批把纪元册三件也加进表）。
 2. 锚定集只增不删：与上一位（git HEAD 的私有一版）逐行比；删行、或改正文却不补签 ⇒ 红。
 3. 纪元账：一纪元一行、五列、三态闭集、计数自洽、不许重复。
 4. 禁标量分：判据产物层零浮点／零分数样字段／零小数字面量；全仓判据结论类型同理。
@@ -47,7 +47,13 @@ IMMUTABLE_IDS = {
 }
 STOP_LOSS_EXPECTED = {"stop_machine", "quarantine", "rollback", "freeze_writes"}
 EPOCH_STATES = {"APPLIED", "ROLLED_BACK", "NO_CHANGE"}
-CRITERIA_SYMBOLS = ("ImmutableCriteria", "CriteriaEvolution", "AnchorSet", "CriteriaEpoch")
+CRITERIA_SYMBOLS = (
+    "ImmutableCriteria", "CriteriaEvolution", "AnchorSet", "CriteriaEpoch",
+    # 第三百六十四批（2026-11-02 用户裁定④）：纪元册那三件也算准入符号——380 接线时若把
+    # 「落纪／记变更／切纪」搬进宰相的在线路径，这条尺要抓得到。
+    # **不加裸 "Epoch"**：子串会把 310 自己的 `EpochId`／`EpochRuntime` 一起误伤（那是查表，不是准入）。
+    "EpochRegistry", "CriteriaChange", "EpochTransition",
+)
 
 problems = []
 explicit = []
@@ -449,6 +455,13 @@ def selftest():
     cases.append(("正例：两侧都有", not any("一边倒" in p for p in anchor_schema_problems(mixed))))
     cases.append(("负例：准入被塞进宰相路径", leak_in_code("val a = CriteriaEvolution.admit(c, s)", "agent/RunEngine.kt") != []))
     cases.append(("正例：宰相只查表", leak_in_code("val t = PolicyRuntime.current().table()", "agent/RunEngine.kt") == []))
+    # 364 批追加的三个符号：每个都要有一条真会红的负例（裁定④）。
+    cases.append(("负例：纪元册被塞进宰相路径", leak_in_code("val r = EpochRegistry.append(e, s, ref, t)", "agent/RunEngine.kt") != []))
+    cases.append(("负例：变更账被塞进宰相路径", leak_in_code("val c = CriteriaChange(id, null, label, k, a, t)", "agent/MediatorJudge.kt") != []))
+    cases.append(("负例：切纪事件被塞进宰相路径", leak_in_code("val h = EpochTransition(f, g, fl, gl, r, ref, t)", "agent/MediatorWiring.kt") != []))
+    # 裸 "Epoch" 故意不在符号表里：310 的 EpochId／EpochRuntime 是查表，不是准入，误伤就是尺坏了。
+    cases.append(("正例：裸 Epoch 字样不误伤（EpochId／EpochRuntime）",
+                  leak_in_code("val e = EpochId.of(t); val r = EpochRuntime.currentSnapshot()", "agent/RunEngine.kt") == []))
 
     good_ledger = "2964|3|1|2|APPLIED\n2965|1|0|1|NO_CHANGE\n"
     cases.append(("正例：五列三态", epoch_problems(good_ledger) == []))
