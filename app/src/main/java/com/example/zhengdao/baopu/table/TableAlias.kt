@@ -93,8 +93,6 @@ sealed interface ColumnHit {
 
     data object None : ColumnHit
 
-    /** 便捷取值（唯一命中才给，其余 null——调用方必须自己处理 Many/None）。 */
-    fun columnOrNull(): TableColumn? = (this as? One)?.column
 }
 
 /** 问法 → 列的解析（判据次序写在 [resolve] 上）。 */

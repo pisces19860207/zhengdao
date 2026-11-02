@@ -76,9 +76,6 @@ internal object EvalAssets {
         context.assets.open(CASES_PATH).bufferedReader(Charsets.UTF_8).use { it.readText() }
     }.getOrNull()
 
-    fun baselineJson(context: Context): String? = runCatching {
-        context.assets.open(BASELINE_PATH).bufferedReader(Charsets.UTF_8).use { it.readText() }
-    }.getOrNull()
 }
 
 /**
@@ -204,12 +201,6 @@ internal object RuntimeEval {
         // ⇒ 没有可跑的自检：按「跑不了」处理，不拿空结果去回滚用户刚写的东西。
         if (run.results.isEmpty() && run.skipped.isNotEmpty()) return null
         return run
-    }
-
-    /** 自检能不能跑的原因（给 UI 用的那一句）。 */
-    fun notRunReason(context: Context, provider: Provider): String? {
-        unusableReason(provider)?.let { return it }
-        return if (EvalAssets.casesJson(context) == null) "自检未跑（APK 里没有 eval/cases.json）" else null
     }
 
     /** 运行时用的 provider（与聊天同一份真源）。 */

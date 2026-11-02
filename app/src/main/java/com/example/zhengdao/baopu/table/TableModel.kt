@@ -92,8 +92,6 @@ data class TableModel(
     /** 出处前缀：`表：成绩表.xlsx · sheet「Sheet1」`。 */
     val source: String get() = "表：$path · sheet「$sheet」"
 
-    fun columnAt(index: Int): TableColumn? = columns.firstOrNull { it.index == index }
-
     /** 按**原文**（归一后）找列；不做别名、不做包含——别名在 [TableAlias] 那一层。 */
     fun columnNamed(term: String): TableColumn? {
         val t = TableText.normalizeName(term)
