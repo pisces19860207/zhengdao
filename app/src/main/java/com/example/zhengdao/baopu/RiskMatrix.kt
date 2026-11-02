@@ -484,6 +484,15 @@ internal object RiskMatrix {
      * 叠加顺序：硬拒（原件区/密码框/URL）→ 越界/覆盖/批量/点击/语义/频率；
      * **升档取最高、硬拒优先**。全程只读入参，不产生任何副作用。
      */
+    /**
+     * 风险裁决主入口。detekt 清债批（chore/detekt-debt-6，2026-11-02）：
+     * 原 185 行／复杂度 58 的大函数按「免检/未分类早退 → 九段规则按序累积 → 裁决」拆开。
+     * 可变的 risk/reject/mustAsk/reasons 收进 [RiskAcc]，每段一个私有小函数
+     * （[netEscalation]／[originalZone]／[outsideWorkspace]／[collisions]／[batchLimits]／
+     * [clickWords]／[sensitiveFields]／[urlPolicy]／[sensitiveText]／[frequency]）。
+     * **段的执行顺序、段内判定顺序、reasons 文案逐字保留**——顺序一变 reason 排序就变，
+     * 那是行为变化。
+     */
     fun classify(
         call: ToolCall,
         ctx: RiskCtx = RiskCtx(),
@@ -496,182 +505,83 @@ internal object RiskMatrix {
                 matrixVersion = table.matrixVersion,
             )
         }
-        val rule = table.tools[call.name]
-            ?: return RiskVerdict(
-                risk = RiskClass.R2,
-                decision = RiskDecision.MUST_ASK,
-                reasons = listOf(
-                    RiskReason(
-                        RiskCode.UNCLASSIFIED_TOOL,
-                        "工具「${call.name}」没有风险档：按 R2 处理且必须问（fail-closed）",
-                    ),
-                ),
-                unclassified = true,
-                matrixVersion = table.matrixVersion,
-            )
+        val rule = table.tools[call.name] ?: return unclassifiedVerdict(call, table)
 
-        val args = call.arguments
+        val acc = RiskAcc(rule, ctx, call.arguments, table)
+        val targets = writeTargets(rule, call.arguments)
+        val roots = ctx.workspaceRoots.map(::normalizePath)
+        val existing = ctx.existingPaths.map(::normalizePath).toSet()
+
+        // 段序即语义：下面 10 个调用不许重排、不许插队。
+        acc.netEscalation()
+        originalZone(acc, targets, roots)
+        outsideWorkspace(acc, targets, roots)
+        collisions(acc, targets, existing)
+        batchLimits(acc, targets)
+        clickWords(acc)
+        sensitiveFields(acc)
+        urlPolicy(acc)
+        sensitiveText(acc)
+        acc.frequency(call)
+
+        if (rule.base == RiskClass.R3) {
+            acc.reasons += RiskReason(RiskCode.BASE_R3, "R3：花钱/外发/账号类工具")
+        }
+        if (rule.alwaysAsk) {
+            acc.reasons += RiskReason(RiskCode.ALWAYS_ASK, "工具表点名必须问（会产生无人值守的动作）")
+        }
+
+        val decision = when {
+            acc.reject -> RiskDecision.REJECT
+            acc.mustAsk || rule.alwaysAsk || acc.risk == RiskClass.R3 -> RiskDecision.MUST_ASK
+            else -> RiskDecision.PROCEED
+        }
+        return RiskVerdict(
+            risk = acc.risk,
+            decision = decision,
+            reasons = acc.reasons,
+            matrixVersion = table.matrixVersion,
+        )
+    }
+
+    /** 未登记工具：按 R2 处理且必须问（fail-closed）。 */
+    private fun unclassifiedVerdict(call: ToolCall, table: RiskTable): RiskVerdict = RiskVerdict(
+        risk = RiskClass.R2,
+        decision = RiskDecision.MUST_ASK,
+        reasons = listOf(
+            RiskReason(
+                RiskCode.UNCLASSIFIED_TOOL,
+                "工具「${call.name}」没有风险档：按 R2 处理且必须问（fail-closed）",
+            ),
+        ),
+        unclassified = true,
+        matrixVersion = table.matrixVersion,
+    )
+
+    /** 九段规则的共享累积器（mutable；段与段按序执行，段序即语义）。 */
+    private class RiskAcc(
+        val rule: ToolRule,
+        val ctx: RiskCtx,
+        val args: JSONObject,
+        val table: RiskTable,
+    ) {
         val reasons = mutableListOf<RiskReason>()
-        var risk = rule.base
+        var risk: RiskClass = rule.base
         var reject = false
         var mustAsk = false
+    }
 
-        // 243：本地只读工具一旦走联网 ⇒ R2 必问（事实由调用方注入）
+    /** 243：本地只读工具一旦走联网 ⇒ R2 必问（事实由调用方注入）。 */
+    private fun RiskAcc.netEscalation() {
         if (rule.networkEscalates && ctx.networkUsed) {
             risk = higherOf(risk, RiskClass.R2)
             mustAsk = true
             reasons += RiskReason(RiskCode.NETWORK_ESCALATED, "t上联网了：从只读升到 R2，必须问")
         }
+    }
 
-        val targets = writeTargets(rule, args)
-        val roots = ctx.workspaceRoots.map(::normalizePath)
-        val existing = ctx.existingPaths.map(::normalizePath).toSet()
-
-        // ① 原件区：不是升档，是硬拒（只判写目标；读原件区仍由既有只读红线放行）
-        for (raw in targets) {
-            val path = normalizePath(raw)
-            if (isOriginalZone(path, roots, table)) {
-                reject = true
-                reasons += RiskReason(
-                    RiskCode.PATH_ORIGINAL_RAW,
-                    "写目标落在原件区：$path（原件区只读，一个字节都不许碰）",
-                )
-            }
-        }
-
-        // ② 写工作区外 / album 写相册 ⇒ R2
-        for (raw in targets) {
-            val path = normalizePath(raw)
-            if (isOutsideWorkspace(path, roots)) {
-                risk = higherOf(risk, RiskClass.R2)
-                reasons += RiskReason(RiskCode.PATH_OUTSIDE_WORKSPACE, "写目标在工作区外：$path")
-            }
-        }
-        for (flag in rule.externalTargetFlags) {
-            if (args.optBoolean(flag, false)) {
-                risk = higherOf(risk, RiskClass.R2)
-                reasons += RiskReason(RiskCode.PATH_OUTSIDE_WORKSPACE, "参数 $flag=true 写到了工作区外")
-            }
-        }
-
-        // ③ 同名覆盖 ⇒ 至少 R2
-        if (rule.collisionSensitive) {
-            val willWrite = rule.collisionNeedsFlag?.let { args.optBoolean(it, false) } ?: true
-            if (willWrite) {
-                for (raw in targets) {
-                    val path = normalizePath(raw)
-                    if (path in existing) {
-                        risk = higherOf(risk, RiskClass.R2)
-                        reasons += RiskReason(RiskCode.OVERWRITE_EXISTING, "覆盖已有文件：$path")
-                    }
-                }
-            }
-        }
-
-        // ④ 批量：>20 个目标、删除 >10 个、清空回收站 ⇒ 必问
-        val batchScope = rule.deleteLike || targets.isNotEmpty() || rule.externalTargetFlags.isNotEmpty()
-        if (batchScope) {
-            var count = targets.size
-            for (key in table.batchListKeys) {
-                count += args.optJSONArray(key)?.length() ?: 0
-            }
-            val unknownBatch = rule.unknownBatchFlag?.let { args.optBoolean(it, false) } == true
-            if (unknownBatch) {
-                count = Int.MAX_VALUE
-                reasons += RiskReason(RiskCode.EMPTY_TRASH, "清空回收站：删除数量未知，必须问")
-            }
-            if (rule.deleteLike && count > table.maxDeleteTargetsPerCall) {
-                mustAsk = true
-                reasons += RiskReason(
-                    RiskCode.DELETE_OVER_10,
-                    "本次删除 $count 个目标（上限 ${table.maxDeleteTargetsPerCall}）——必须问",
-                )
-            }
-            if (count > table.maxTargetsPerCall) {
-                mustAsk = true
-                reasons += RiskReason(
-                    RiskCode.BATCH_OVER_20,
-                    "本次涉及 $count 个目标（上限 ${table.maxTargetsPerCall}）——必须问",
-                )
-            }
-        }
-
-        // ⑤ 网页目标文本命中提交/结算/支付… ⇒ R3
-        if (rule.clickLike) {
-            val words = table.dangerousClickWords + rule.extraClickWords
-            // 平铺参数（browser_click/tap 的 target/selector/text）＋ 本行声明的嵌套面
-            val texts = table.clickTextKeys.map { args.optString(it) }.filter { it.isNotEmpty() } +
-                rule.clickNestedKeys.flatMap { nestedFaces(args.opt(it)) }
-            val hit = words.firstOrNull { w -> texts.any { it.contains(w, ignoreCase = true) } }
-            if (hit != null) {
-                risk = higherOf(risk, RiskClass.R3)
-                reasons += RiskReason(RiskCode.SUBMIT_LIKE_BUTTON, "网页目标命中高危词「$hit」")
-            }
-        }
-
-        // ⑥ 密码框/验证码框 ⇒ 硬拒
-        if (rule.fieldKeys.isNotEmpty()) {
-            val markers = table.sensitiveFieldMarkers
-            var hit: String? = null
-            for (key in rule.fieldKeys) {
-                // 第二百二十四批：`fields` 是对象时，**键名就是要填的字段名**
-                // （`{"密码":"…"}` 与 `{"password":"…"}` 都必须在这里被拒）
-                val faces = when (val raw = args.opt(key)) {
-                    is JSONObject -> raw.keys().asSequence().toList()
-                    else -> listOf(args.optString(key)).filter { it.isNotEmpty() }
-                }
-                hit = faces.firstNotNullOfOrNull { face ->
-                    markers.firstOrNull { face.contains(it, ignoreCase = true) }
-                }
-                if (hit != null) break
-            }
-            if (hit != null) {
-                reject = true
-                reasons += RiskReason(RiskCode.PASSWORD_FIELD, "目标字段是密码/验证码框（命中「$hit」）")
-            }
-        }
-
-        // ⑦ URL：内网/本机 ⇒ 硬拒；配置了白名单时白名单外也拒
-        if (rule.urlKeys.isNotEmpty()) {
-            for (key in rule.urlKeys) {
-                val raw = args.optString(key).trim()
-                if (raw.isEmpty()) continue
-                val host = hostOf(raw) ?: continue
-                when {
-                    isInternalHost(host, table) -> {
-                        reject = true
-                        reasons += RiskReason(RiskCode.PRIVATE_URL, "目标是内网/本机地址：$host")
-                    }
-
-                    ctx.allowedUrlDomains != null -> {
-                        val ok = ctx.allowedUrlDomains.any { domainMatches(host, it) }
-                        if (!ok) {
-                            reject = true
-                            reasons += RiskReason(RiskCode.URL_NOT_WHITELISTED, "域名不在白名单：$host")
-                        }
-                    }
-                }
-            }
-        }
-
-        // ⑧ 外发/账号/金额语义 ⇒ R3（只扫对外通道；不回显原文）
-        if (rule.scanSensitiveText) {
-            val texts = stringLeaves(args)
-            val word = table.sensitiveTextKeywords.firstOrNull { kw ->
-                texts.any { it.contains(kw, ignoreCase = true) }
-            }
-            val patterned = table.sensitiveTextPatterns.any { pattern ->
-                val regex = Regex(pattern)
-                texts.any { regex.containsMatchIn(it) }
-            }
-            if (word != null || patterned) {
-                risk = higherOf(risk, RiskClass.R3)
-                val what = word?.let { "命中「$it」" } ?: "命中手机号样式"
-                reasons += RiskReason(RiskCode.SENSITIVE_SEMANTICS, "参数含外发/账号/金额语义（$what）")
-            }
-        }
-
-        // ⑨ 频率：同一工具一个窗口内超阈 ⇒ +1 档
+    /** ⑨ 频率：同一工具一个窗口内超阈 ⇒ +1 档。 */
+    private fun RiskAcc.frequency(call: ToolCall) {
         val windowStart = ctx.nowMs - table.rateWindowMs
         val recent = ctx.recentCalls[call.name].orEmpty().count { it in windowStart..ctx.nowMs }
         if (recent + 1 > table.maxCallsPerWindow) {
@@ -681,25 +591,159 @@ internal object RiskMatrix {
                 "同一工具 ${table.rateWindowMs / 1000} 秒内第 ${recent + 1} 次（上限 ${table.maxCallsPerWindow}）",
             )
         }
+    }
 
-        if (rule.base == RiskClass.R3) {
-            reasons += RiskReason(RiskCode.BASE_R3, "R3：花钱/外发/账号类工具")
+    /** ① 原件区：不是升档，是硬拒（只判写目标；读原件区仍由既有只读红线放行）。 */
+    private fun originalZone(acc: RiskAcc, targets: List<String>, roots: List<String>) {
+        for (raw in targets) {
+            val path = normalizePath(raw)
+            if (isOriginalZone(path, roots, acc.table)) {
+                acc.reject = true
+                acc.reasons += RiskReason(
+                    RiskCode.PATH_ORIGINAL_RAW,
+                    "写目标落在原件区：$path（原件区只读，一个字节都不许碰）",
+                )
+            }
         }
-        if (rule.alwaysAsk) {
-            reasons += RiskReason(RiskCode.ALWAYS_ASK, "工具表点名必须问（会产生无人值守的动作）")
-        }
+    }
 
-        val decision = when {
-            reject -> RiskDecision.REJECT
-            mustAsk || rule.alwaysAsk || risk == RiskClass.R3 -> RiskDecision.MUST_ASK
-            else -> RiskDecision.PROCEED
+    /** ② 写工作区外 / album 写相册 ⇒ R2。 */
+    private fun outsideWorkspace(acc: RiskAcc, targets: List<String>, roots: List<String>) {
+        for (raw in targets) {
+            val path = normalizePath(raw)
+            if (isOutsideWorkspace(path, roots)) {
+                acc.risk = higherOf(acc.risk, RiskClass.R2)
+                acc.reasons += RiskReason(RiskCode.PATH_OUTSIDE_WORKSPACE, "写目标在工作区外：$path")
+            }
         }
-        return RiskVerdict(
-            risk = risk,
-            decision = decision,
-            reasons = reasons,
-            matrixVersion = table.matrixVersion,
-        )
+        for (flag in acc.rule.externalTargetFlags) {
+            if (acc.args.optBoolean(flag, false)) {
+                acc.risk = higherOf(acc.risk, RiskClass.R2)
+                acc.reasons += RiskReason(RiskCode.PATH_OUTSIDE_WORKSPACE, "参数 $flag=true 写到了工作区外")
+            }
+        }
+    }
+
+    /** ③ 同名覆盖 ⇒ 至少 R2。 */
+    private fun collisions(acc: RiskAcc, targets: List<String>, existing: Set<String>) {
+        if (!acc.rule.collisionSensitive) return
+        val willWrite = acc.rule.collisionNeedsFlag?.let { acc.args.optBoolean(it, false) } ?: true
+        if (!willWrite) return
+        for (raw in targets) {
+            val path = normalizePath(raw)
+            if (path in existing) {
+                acc.risk = higherOf(acc.risk, RiskClass.R2)
+                acc.reasons += RiskReason(RiskCode.OVERWRITE_EXISTING, "覆盖已有文件：$path")
+            }
+        }
+    }
+
+    /** ④ 批量：>20 个目标、删除 >10 个、清空回收站 ⇒ 必问。 */
+    private fun batchLimits(acc: RiskAcc, targets: List<String>) {
+        val batchScope = acc.rule.deleteLike || targets.isNotEmpty() || acc.rule.externalTargetFlags.isNotEmpty()
+        if (!batchScope) return
+        var count = targets.size
+        for (key in acc.table.batchListKeys) {
+            count += acc.args.optJSONArray(key)?.length() ?: 0
+        }
+        val unknownBatch = acc.rule.unknownBatchFlag?.let { acc.args.optBoolean(it, false) } == true
+        if (unknownBatch) {
+            count = Int.MAX_VALUE
+            acc.reasons += RiskReason(RiskCode.EMPTY_TRASH, "清空回收站：删除数量未知，必须问")
+        }
+        if (acc.rule.deleteLike && count > acc.table.maxDeleteTargetsPerCall) {
+            acc.mustAsk = true
+            acc.reasons += RiskReason(
+                RiskCode.DELETE_OVER_10,
+                "本次删除 $count 个目标（上限 ${acc.table.maxDeleteTargetsPerCall}）——必须问",
+            )
+        }
+        if (count > acc.table.maxTargetsPerCall) {
+            acc.mustAsk = true
+            acc.reasons += RiskReason(
+                RiskCode.BATCH_OVER_20,
+                "本次涉及 $count 个目标（上限 ${acc.table.maxTargetsPerCall}）——必须问",
+            )
+        }
+    }
+
+    /** ⑤ 网页目标文本命中提交/结算/支付… ⇒ R3。 */
+    private fun clickWords(acc: RiskAcc) {
+        if (!acc.rule.clickLike) return
+        val words = acc.table.dangerousClickWords + acc.rule.extraClickWords
+        // 平铺参数（browser_click/tap 的 target/selector/text）＋ 本行声明的嵌套面
+        val texts = acc.table.clickTextKeys.map { acc.args.optString(it) }.filter { it.isNotEmpty() } +
+            acc.rule.clickNestedKeys.flatMap { nestedFaces(acc.args.opt(it)) }
+        val hit = words.firstOrNull { w -> texts.any { it.contains(w, ignoreCase = true) } }
+        if (hit != null) {
+            acc.risk = higherOf(acc.risk, RiskClass.R3)
+            acc.reasons += RiskReason(RiskCode.SUBMIT_LIKE_BUTTON, "网页目标命中高危词「$hit」")
+        }
+    }
+
+    /** ⑥ 密码框/验证码框 ⇒ 硬拒。 */
+    private fun sensitiveFields(acc: RiskAcc) {
+        if (acc.rule.fieldKeys.isEmpty()) return
+        val markers = acc.table.sensitiveFieldMarkers
+        var hit: String? = null
+        for (key in acc.rule.fieldKeys) {
+            // 第二百二十四批：`fields` 是对象时，**键名就是要填的字段名**
+            // （`{"密码":"…"}` 与 `{"password":"…"}` 都必须在这里被拒）
+            val faces = when (val raw = acc.args.opt(key)) {
+                is JSONObject -> raw.keys().asSequence().toList()
+                else -> listOf(acc.args.optString(key)).filter { it.isNotEmpty() }
+            }
+            hit = faces.firstNotNullOfOrNull { face ->
+                markers.firstOrNull { face.contains(it, ignoreCase = true) }
+            }
+            if (hit != null) break
+        }
+        if (hit != null) {
+            acc.reject = true
+            acc.reasons += RiskReason(RiskCode.PASSWORD_FIELD, "目标字段是密码/验证码框（命中「$hit」）")
+        }
+    }
+
+    /** ⑦ URL：内网/本机 ⇒ 硬拒；配置了白名单时白名单外也拒。 */
+    private fun urlPolicy(acc: RiskAcc) {
+        if (acc.rule.urlKeys.isEmpty()) return
+        for (key in acc.rule.urlKeys) {
+            val raw = acc.args.optString(key).trim()
+            if (raw.isEmpty()) continue
+            val host = hostOf(raw) ?: continue
+            when {
+                isInternalHost(host, acc.table) -> {
+                    acc.reject = true
+                    acc.reasons += RiskReason(RiskCode.PRIVATE_URL, "目标是内网/本机地址：$host")
+                }
+
+                acc.ctx.allowedUrlDomains != null -> {
+                    val ok = acc.ctx.allowedUrlDomains.any { domainMatches(host, it) }
+                    if (!ok) {
+                        acc.reject = true
+                        acc.reasons += RiskReason(RiskCode.URL_NOT_WHITELISTED, "域名不在白名单：$host")
+                    }
+                }
+            }
+        }
+    }
+
+    /** ⑧ 外发/账号/金额语义 ⇒ R3（只扫对外通道；不回显原文）。 */
+    private fun sensitiveText(acc: RiskAcc) {
+        if (!acc.rule.scanSensitiveText) return
+        val texts = stringLeaves(acc.args)
+        val word = acc.table.sensitiveTextKeywords.firstOrNull { kw ->
+            texts.any { it.contains(kw, ignoreCase = true) }
+        }
+        val patterned = acc.table.sensitiveTextPatterns.any { pattern ->
+            val regex = Regex(pattern)
+            texts.any { regex.containsMatchIn(it) }
+        }
+        if (word != null || patterned) {
+            acc.risk = higherOf(acc.risk, RiskClass.R3)
+            val what = word?.let { "命中「$it」" } ?: "命中手机号样式"
+            acc.reasons += RiskReason(RiskCode.SENSITIVE_SEMANTICS, "参数含外发/账号/金额语义（$what）")
+        }
     }
 
     // ── 纯工具函数（全部无 IO） ─────────────────────────────────────────────
