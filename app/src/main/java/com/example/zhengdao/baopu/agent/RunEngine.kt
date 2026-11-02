@@ -1183,6 +1183,25 @@ internal class RunEngine(
         _tailTruncated.value = false
     }
 
+    // ── 免打扰弹卡闸（330 接线：左相弹卡前先问 QuietMode）───────────────────
+    //
+    // `QuietMode` 自 330 定型起生产零引用，弹卡决策从没问过它。授权（[quietGrant]）与
+    // 补问队列（[quietGate]）的判定全在 [QuietCardGate]（纯逻辑），本层只供时钟、形状
+    // 与落账（[log]）：授权由轮次入口从用户原话开（[noteQuietGrant]——认不出触发词的
+    // 句子不开授权，也没资格关授权）；夜间／专注的形状每问现算（[quietShape]）。
+    // v1 单活跃会话（`RunConcurrency.maxParallelSessions = 1`），授权与队列在引擎内
+    // 各一份即可，任务号仍写进授权本体（"哪件事免打扰"可查的形状不省）。
+    private val quietGate = QuietCardGate()
+
+    /** 当前会话的免打扰授权（null ＝ 没开过；到期不是清掉，是 [QuietState.EXPIRED] 可查）。 */
+    @Volatile private var quietGrant: QuietGrant? = null
+
+    /** 上次看授权的时刻（[QuietMode.justExpired] 的边沿检测；轮次入口刷新）。 */
+    private var quietSeenMs: Long = 0L
+
+    /** 补问轮的互斥（[drainQuietQueue] 整轮握住；不与闸内部的锁嵌套，见其 KDoc）。 */
+    private val quietDrainLock = Object()
+
     private val choiceLock = Object()
     private var choiceResult: AskUserOption? = null
 
@@ -1193,8 +1212,18 @@ internal class RunEngine(
      * 阻塞有界（与确认卡同一超时），超时返回 null，由工具如实说「没人回答」。
      */
     fun askUser(req: AskUserRequest): AskUserOption? {
+        // 免打扰弹卡闸（330 接线）：左相弹卡前先问 QuietMode——静默中这张卡压进补问队列
+        // （记一条"因免打扰延后"），工具侧如实收"没人答"；放行则先按序补问积压，再出这张。
+        if (quietDefer(req)) return null
+        drainQuietQueue()
+        return askUserRaw(req)
+    }
+
+    /** [askUser] 的原始弹卡体（过闸放行之后才走这里；检查点补问也走这里，不再过闸）。 */
+    private fun askUserRaw(req: AskUserRequest): AskUserOption? {
         // 第二百四十二批 D 段第三项：每张"要人点"的卡都进问人账（对账的"实际"那一侧）。
-        // 没契约时板上自己短路 ⇒ 一次都不记，今天的执行路径逐字节不变。
+        // 没契约时板上自己短路 ⇒ 一次都不记。330 接线后挪到**真弹**那一刻：
+        // 被免打扰压下的卡没问过人，不许占"实际问了几次"的格（它记在免打扰延后账上）。
         PlanContractBoard.noteAsk()
         synchronized(choiceLock) {
             _choice.value = req
@@ -1247,6 +1276,17 @@ internal class RunEngine(
                 return stored
             }
         }
+        // 免打扰弹卡闸（330 接线）：整组一起判——压就整组压（补问时整组原样重递），不许拆一半。
+        if (quietDefer(req)) return null
+        drainQuietQueue()
+        return askGroupRaw(req)
+    }
+
+    /** [askGroup] 的原始出卡体（过闸放行之后才走这里；检查点补问也走这里，不再过闸）。 */
+    private fun askGroupRaw(req: AskUserRequest): Map<String, String>? {
+        val questions = req.questions
+        val sessionId = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        val batchKey = if (sessionId != null) AskBatchLedger.keyOf(questions) else null
         val chunks = AskGroupRules.split(questions)
         val merged = LinkedHashMap<String, String>()
         synchronized(groupLock) {
@@ -1283,6 +1323,84 @@ internal class RunEngine(
             groupResult = answers
             runCatching { groupLock.notifyAll() }
         }
+    }
+
+    // ── 免打扰弹卡闸（330 接线）：问闸、检查点补问、授权与形状 ───────────────
+
+    /**
+     * 弹卡前问闸（判据①）：静默中不弹、记一条"因免打扰延后"；延后堆满
+     * [QuietGateLimits.MAX_DEFERRED] 件之后来的记"转检查点等待"（判据④）。
+     *
+     * 返回 true ＝ 这张卡被压下了：调用方立即收手，把"没人答"照实往上报——
+     * 被压的卡没消失（在 [quietGate] 的队列里），只是这一轮不问。
+     */
+    private fun quietDefer(req: AskUserRequest): Boolean {
+        val now = System.currentTimeMillis()
+        val outcome = quietGate.onAsk(quietGrant, quietShape(now), now, req)
+        if (outcome.verdict == QuietCardVerdict.ASK) return false
+        log(outcome.line)
+        return true
+    }
+
+    /**
+     * 检查点补问（判据②"按序补问（不丢）"）：把压着的卡按**入队序**原样重递。
+     *
+     * 两个检查点都调它：她回话（轮次入口）与一张新卡已获准要弹（askUser/askGroup 放行后）。
+     * 补问走原始出口（[askUserRaw]／[askGroupRaw]，**不再过闸**——再过一次闸，检查点
+     * 那一格会被重新压回去，"必现"就落了空）。答案落日志账；不回灌模型——模型那一轮
+     * 早已带着"没人答"走完，这里只负责"她面前一件不落"。
+     *
+     * 整轮补问握 [quietDrainLock]：两个检查点同时到（轮次入口 vs 工具线程放行）也要
+     * 一先一后，队列顺序才不会在两线程手里穿插；它不碰闸本身的锁——补问挂着等她点卡
+     * 的那几分钟里，别的线程照常问闸、照常查状态。
+     */
+    private fun drainQuietQueue() {
+        synchronized(quietDrainLock) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                val item = quietGate.takeNext(quietGrant, quietShape(now), now) ?: return
+                log(quietGate.comebackLine(item, quietGrant, quietShape(now), now))
+                val picked = if (item.request.questions.isEmpty()) {
+                    askUserRaw(item.request)?.label
+                } else {
+                    askGroupRaw(item.request)?.keys?.joinToString("、")
+                }
+                log("补问收答｜${item.headline}｜她答=${picked ?: "没人答"}")
+            }
+        }
+    }
+
+    /**
+     * 本会话此刻的静默形状（330 补充页"时段与节奏"那格的读数）：
+     * 夜间读时钟（22 点起、7 点前）；专注期＝连发指令中（队列里还有没开跑的轮次）。
+     * 缺的格不硬造——会话号读不出来就当不忙（不据此降级，照 [SessionShape] 的纪律）。
+     */
+    private fun quietShape(nowMs: Long): SessionShape {
+        val hour = java.util.Calendar.getInstance()
+            .apply { timeInMillis = nowMs }.get(java.util.Calendar.HOUR_OF_DAY)
+        val sessionId = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        return SessionShape(hourOfDay = hour, busy = sessionId != null && runQueue.hasItems(sessionId))
+    }
+
+    /**
+     * 轮次入口过一遍免打扰授权（判据③"一句话进静默可查"）。
+     *
+     * 两件事：上一张授权**跨过到期线**就说一声（[QuietMode.justExpired] 只在边沿为真）；
+     * 这句话认得出触发词（不弹卡／别弹了／直接干／只要结果）就开一张新授权并落账
+     * （[QuietMode.authRecord]——哪件事、凭什么话、多久、到几点，一行全在）。
+     * 认不出 ⇒ 什么都不动：普通句子不开授权，也没资格关授权。
+     */
+    private fun noteQuietGrant(sessionId: Long, text: String) {
+        val now = System.currentTimeMillis()
+        if (QuietMode.justExpired(quietGrant, quietSeenMs, now)) {
+            log("免打扰：已自动退出（满 ${QuietLimits.MAX_MINUTES / 60} 小时）；" +
+                "延后的问题在下一个检查点按序补问")
+        }
+        quietSeenMs = now
+        val grant = QuietMode.grantFromText(text, taskId = "session:$sessionId", nowMs = now) ?: return
+        quietGrant = grant
+        log(QuietMode.authRecord(grant, now))
+        log(quietGate.stateLine(grant, now))
     }
 
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
@@ -1545,6 +1663,12 @@ internal class RunEngine(
         }
         // 用户明说「记住／记下来／以后都这样」⇒ 一条高置信信号（排卡时排最前）
         userText?.let { learnSignals += SkillRefine.learnMarkersIn(it) }
+        // 免打扰（330 接线·判据③）：这句话认得出触发词就开授权并落账；随后把轮次入口
+        // 当检查点过一遍（判据②）——她回来了，压着的卡在这里按序现身。
+        userText?.let {
+            noteQuietGrant(sessionId, it)
+            drainQuietQueue()
+        }
         val workspacePath = spillRoot().absolutePath
         val windowTokens = ContextAssembler.ContextBudgets.windowOf(provider)
         // 第一百六十五批 · 人设包：只叠在 C 段前面；没启用/读不了 ⇒ null，原 C 文本一字不差。
@@ -3791,6 +3915,9 @@ internal class RunEngine(
         // runBlocking 桥：循环跑在裸线程 zd-baopu-run 上（本来就常驻阻塞
         // 等网络），这里等的是人点按钮——同一颗线程，等什么不是等。
         // 第二百四十二批 D 段第三项：这张卡要进"实际问了几次人"的账（对账的"实际"那一侧）。
+        // 免打扰**不闸这条路**（330 接线的有意豁免）：确认卡是 CardClass.IRREVERSIBLE
+        // （必弹档，quietSuppresses=false）——[QuietMode.cardAllowed] 对它恒放行，
+        // 免打扰压不掉"什么必须问"；左相闸只管询问／过程确认／许可那五类（askUser/askGroup）。
         PlanContractBoard.noteAsk()
         val oc = runBlocking {
             // 第二百二十三批：把矩阵给的判定理由带进卡（卡面上那一行；null ⇒ 不摆）
