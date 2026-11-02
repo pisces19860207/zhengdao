@@ -201,11 +201,13 @@ class LawSourceWiringGateTest {
             entry = "DispositionGate",
             law = "DispositionGate 的 decide（制度·三档处置（非法条）：REPLY／FREEZE／SUPPRESS" +
                 "＋五条判定＋四类不可推翻边界）",
-            host = "尚未点定（候选：agent/GuardPipeline.kt 的拒绝分支——346-B 正在该文件上动工；" +
-                "接线批点名后逐字登记）",
+            host = "agent/GuardPipeline.kt:464 的 verdict.rejected 拒绝分支" +
+                "（③段授权闸拒绝处，346-B 已在此落偏差账；纵深格 WiringDisposition.REJECT 在 :569）",
             owner = "372（2026-11-02 开工令：本批只交纯判定；接线另行立项）",
-            blockedBy = "本批租约禁改 GuardPipeline（346-B 在动）／RunEngine（326 在动），接线＝撞租约；" +
-                "且五条判定与四类边界还没有任何执行链喂事实，硬接＝假接（L29/L32 同款理由）",
+            blockedBy = "待接线批：GuardPipeline 的拒绝分支需要把三档处置作为事实源接上——" +
+                "依赖代码位＝agent/GuardPipeline.kt:464 的 verdict.rejected 分支" +
+                "（授权闸拒绝那一刻，把被拒事实喂进 DispositionGate.decide）；" +
+                "本批只交纯判定，还没有任何执行链喂事实，硬接＝假接（L29/L32 同款理由）",
         ),
     )
 
