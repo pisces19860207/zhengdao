@@ -40,7 +40,19 @@
       { "name": "PathGuard", "kind": "object", "file": "PathGuard.kt", "external_refs": 97, "verdict": "public 必要（:app 重度在用）" },
       { "name": "RunLog", "kind": "object", "file": "RunLog.kt", "external_refs": 571, "verdict": "public 必要（:app 重度在用）" },
       { "name": "TimeFormats", "kind": "object", "file": "TimeFormats.kt", "external_refs": 147, "verdict": "public 必要（:app 重度在用）" },
-      { "name": "ZhengdaoDirs", "kind": "object", "file": "ZhengdaoDirs.kt", "external_refs": 20, "verdict": "public 必要（:app 在用）" }
+      { "name": "ZhengdaoDirs", "kind": "object", "file": "ZhengdaoDirs.kt", "external_refs": 20, "verdict": "public 必要（:app 在用）" },
+      { "name": "BudgetPreset", "kind": "enum class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "EvidenceKind", "kind": "enum class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "ExitAction", "kind": "enum class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "ReceiptEvidence", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "ReceiptState", "kind": "enum class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskAuthority", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskBudget", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskContract", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskDeliverable", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskExit", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskGoal", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" },
+      { "name": "TaskReceipt", "kind": "data class", "file": "TaskContract.kt", "external_refs": 0, "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）" }
     ]
   }
 }
