@@ -260,6 +260,27 @@ class PlanGuardTest {
         assertTrue(PlanGuardRules.repeatRejected(c).contains("已经明确拒过"))
     }
 
+    // ── 第四百零四批·缺陷A：确认卡超时不许静默降级 ──────────────────────────
+
+    @Test
+    fun `404判据②_超时两次的文案_明说计划未立_不把超时说成用户没同意`() {
+        val c = change(listOf("新"), listOf("旧"))
+        val text = PlanGuardRules.changeTimeoutNoPlan(c, pledgeCandidate = false)
+        assertTrue("要点名计划没有建立：$text", text.contains("计划没有建立"))
+        assertTrue("要教下一步（重发会再弹卡）：$text", text.contains("重发"))
+        assertFalse("超时不是她答过，不许说「用户没有同意」：$text", text.contains("用户没有同意"))
+        assertFalse("没带立状候选就不提军令状：$text", text.contains("军令状"))
+    }
+
+    @Test
+    fun `404判据①_带立状候选的超时_点名人令状未立_起单不弹状的静默链要说明`() {
+        val c = change(listOf("新"), listOf("旧"))
+        val text = PlanGuardRules.changeTimeoutNoPlan(c, pledgeCandidate = true)
+        assertTrue("长程任务被拦 ⇒ 要点名军令状未立：$text", text.contains("军令状"))
+        assertTrue("要说清为什么（计划落库才立状）：$text", text.contains("落库"))
+        assertTrue(text.contains("计划没有建立"))
+    }
+
     // ── 源码级：引擎接线（JVM 跑不起整条循环，判据压在文本上） ──────────
 
     private fun source(rel: String): String {
@@ -324,6 +345,30 @@ class PlanGuardTest {
         val recIdx = src.indexOf("planController.noteDecision(change, PlanChangeDecision.REJECTED)")
         assertTrue("记账只能发生在『明确点拒』判据之内（超时／别的 id 不许替她记）", rejectIdx in 0 until recIdx)
         assertTrue("卡面调用一字不动（两键结构是她要的）", askIdx > 0)
+    }
+
+    @Test
+    fun `404引擎接线_变更卡超时重问一次_两次才明示计划未立`() {
+        val src = source("baopu/agent/RunEngine.kt")
+        val gateStart = src.indexOf("private fun planChangeGate")
+        assertTrue("变更闸不在引擎里", gateStart > 0)
+        val gateEnd = src.indexOf("private fun settleChangeAnswer", gateStart)
+        assertTrue("收场函数不在（首问与重问必须共用一条收场路）", gateEnd > gateStart)
+        val gateBody = src.substring(gateStart, gateEnd)
+        assertTrue(
+            "一次超时就要重问（不许一次超时就悄悄放弃）",
+            gateBody.contains("重问一次"),
+        )
+        assertTrue("重问要真弹卡", gateBody.contains("askUser(PlanGuardCards.changeRequest(change))"))
+        assertTrue(
+            "两次超时要明示计划未立（走 changeTimeoutNoPlan，不是 changeBlocked 的「用户没同意」）",
+            gateBody.contains("PlanGuardRules.changeTimeoutNoPlan(change, withPledgeCandidate)"),
+        )
+        assertFalse("降级不许沿用「用户没同意」那句谎话", gateBody.contains("error = PlanGuardRules.changeBlocked(change)"))
+        assertTrue(
+            "降级要看这次带没带立状候选（≥5 步的计划被拦 ⇒ 话术点名军令状未立）",
+            gateBody.contains("planController.previewPledge(call.arguments) != null"),
+        )
     }
 
 

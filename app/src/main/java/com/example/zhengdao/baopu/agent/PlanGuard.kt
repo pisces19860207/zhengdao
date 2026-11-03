@@ -245,6 +245,29 @@ internal object PlanGuardRules {
         append("原样重发同一版不会有第二次确认机会。")
     }
 
+    /**
+     * 变更确认卡**两次都没人回答**时的回灌（第四百零四批·缺陷A：不许静默降级）。
+     *
+     * 为什么不能沿用 [changeBlocked]：那句说「用户没有同意」——超时/没点**不等于**她答过
+     * （161 纪律），把超时说成「用户没同意」就是在替用户表态（401 验机 M7 实锤：模型拿到
+     * 这句后果真放弃更新，计划没立、军令状没触发，全程「军令状」0 行）。
+     *
+     * 必须说清四件事：超时≠同意也≠拒绝、**计划没有建立**、（带立状候选时）**军令状也不会立**、
+     * 下一步怎么走（重发会再弹卡）。[pledgeCandidate] = 这次被拦的 update_plan 本该触发开工立状。
+     */
+    fun changeTimeoutNoPlan(change: PlanChange, pledgeCandidate: Boolean): String = buildString {
+        append("计划改动**没有生效**：确认卡两次都没人回答（超时）——这不算用户同意，也不算拒绝（")
+        append(describeChange(change))
+        append("）。**本轮计划没有建立**")
+        if (pledgeCandidate) {
+            append("，军令状也没有立：长程任务要计划落库成功才会开工立状，起单处不会补弹。")
+        } else {
+            append("。")
+        }
+        append("要立计划（及立状）就重发一次 update_plan——会再弹一次确认卡，用户看到就能点；")
+        append("不想等确认就按现状继续，但要如实知道：现在没有计划、没有结项门。")
+    }
+
     /** 变更的人话摘要（卡面与回灌共用）。 */
     fun describeChange(change: PlanChange): String {
         val parts = buildList {
