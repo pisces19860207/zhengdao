@@ -72,6 +72,7 @@ import com.example.zhengdao.baopu.verify.RunContractWiring
 import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TaskContract
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -309,6 +310,22 @@ internal class RunEngine(
      */
     private var roundRunId: String = ""
     private var roundStartedAtMs: Long = 0L
+
+    /**
+     * 第四百零四批：本轮起单建的那张任务契约（378① 建在 runLoop 起单处，这里把它
+     * 从"收尾验收才消费的一张纸"升级成**起单即挂账、跑的期间立即可查**的引擎状态）。
+     *
+     * 为什么是字段：起单发生在 runLoop 入口、消费方（闸/工具/验收）在别的线程与时机——
+     * 局部变量够不着；查询口 [currentTaskContract] 让"契约起单后立即可查"有真落点
+     * （404 判据③）。每个 run 开始先清、起单才挂：续跑/闲聊轮不背上一轮的单。
+     */
+    @Volatile
+    private var activeRunOrder: RunContractWiring.RunOrder? = null
+
+    /**
+     * 本轮的任务契约（404 判据③：起单即建、起单后立即可查——闲聊轮/续跑轮/收工后 ⇒ null）。
+     */
+    fun currentTaskContract(): TaskContract? = activeRunOrder?.contract
 
     /**
      * 227 §0.5：本轮**成功工具结果**的回灌原文（只在内存里攒）。
@@ -1888,6 +1905,8 @@ internal class RunEngine(
 
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
+        // 404 判据③：任务契约同口径按 run 挂账——先清（续跑/闲聊轮不背上一张），起单才挂。
+        activeRunOrder = null
         roundToolText.setLength(0)
         verifyRepairs = 0
         // 军令状收口（347）的三个 run 级读数同口径重置（每项的轮数在板子上，跨 run 有效）
@@ -1917,6 +1936,9 @@ internal class RunEngine(
             ?.takeIf { TaskModeBoundary.classify(it) == TaskMode.TASK }
             ?.let { RunContractWiring.startRun(roundRunId, it) }
         runOrder?.let { order ->
+            // 404 判据③：起单即挂账（跑的期间随时 currentTaskContract 可查），
+            // 不再只是一张"收尾验收才被消费"的纸。
+            activeRunOrder = order
             log(order.startLine())
             turnNotes = turnNotes + order.precheckLine()
         }
@@ -4467,19 +4489,50 @@ internal class RunEngine(
         }
         log("抱朴计划：结构变更待确认（新增 ${change.added.size} 条 / 删去 ${change.removed.size} 条）")
         val picked = askUser(PlanGuardCards.changeRequest(change))
+        settleChangeAnswer(call, change, picked)?.let { return it }
+        // 第四百零四批·缺陷A：超时 ≠ 她答过（161 纪律照旧），但**不许静默降级**——
+        // 401 验机 M7 实锤的成因链第一环：一次超时就回「用户没同意改动」，模型信以为真
+        // 放弃更新 ⇒ 计划没立 ⇒ 长程任务的军令状全程 0 行。先重问一次（第一次可能只是
+        // 没看见）；两次都没人 ⇒ 如实告知「计划未立」（连军令状也未立），见 changeTimeoutNoPlan。
+        log("抱朴计划：确认卡没人回答（timeout）⇒ 重问一次")
+        val again = askUser(PlanGuardCards.changeRequest(change))
+        settleChangeAnswer(call, change, again)?.let { return it }
+        // 这次被拦的调用带没带立状候选（长程任务本来要在这一版上开工立状）——降级话术要点名。
+        val withPledgeCandidate = planController.previewPledge(call.arguments) != null
+        log(
+            "抱朴计划：确认卡两次没人回答 ⇒ 计划未立" +
+                if (withPledgeCandidate) "、军令状未立（计划落库成功才会开工立状）" else "",
+        )
+        return GuardPipeline.Result.Failed(
+            call = call,
+            error = PlanGuardRules.changeTimeoutNoPlan(change, withPledgeCandidate),
+        )
+    }
+
+    /**
+     * 一张计划变更卡的答案收场（404 抽出：首问与重问共用同一条收场路，两处不漂移）。
+     *
+     * 批准 ⇒ 放行（返回 null）；明确点「不改」⇒ 记账（只有真点过按钮才记）＋拒；
+     * 超时/没点/别的 id ⇒ 返回 null 让调用方决定下一步（不替她记裁决）。
+     */
+    private fun settleChangeAnswer(
+        call: ToolCall,
+        change: PlanChange,
+        picked: AskUserOption?,
+    ): GuardPipeline.Result.Failed? {
         if (PlanGuardRules.changeAccepted(picked?.id)) {
             planController.authorizeNextChange()
             return null
         }
-        // 只有她真点了「不改，按原计划」才记账；超时／别的 id 一律不记（不替她做决定）。
         if (picked?.id == PlanGuardRules.OPT_CHANGE_REJECT) {
             planController.noteDecision(change, PlanChangeDecision.REJECTED)
+            log("抱朴计划：用户没同意改动（reject）⇒ 本次 update_plan 不执行")
+            return GuardPipeline.Result.Failed(
+                call = call,
+                error = PlanGuardRules.changeBlocked(change),
+            )
         }
-        log("抱朴计划：用户没同意改动（${picked?.id ?: "timeout"}）⇒ 本次 update_plan 不执行")
-        return GuardPipeline.Result.Failed(
-            call = call,
-            error = PlanGuardRules.changeBlocked(change),
-        )
+        return null
     }
 
     /**

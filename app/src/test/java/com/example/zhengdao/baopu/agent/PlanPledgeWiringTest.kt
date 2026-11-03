@@ -446,6 +446,36 @@ class PlanPledgeWiringTest {
         assertTrue(ctrl.substring(landStart, landEnd).contains("PlanPledgeBoard.freeze("))
     }
 
+    // ── 第四百零四批 · 判据①②：起单不弹状的静默链要断在引擎里 ────────────────
+    //
+    // 401 验机 M7 实锤：模型改计划 → 变更确认卡超时 → 一次超时就回「用户没同意改动」→
+    // 模型放弃更新 ⇒ 计划没落库 ⇒ ≥5 步任务的开工卡全程 0 行，静默降级到收尾。
+    // 判据②（不许静默）：超时重问一次、两次才明示「计划未立＋军令状未立」；
+    // 判据①（起单弹状）：≥5 步计划到达闸链时 askPledgeCard 在真执行之前弹（既有⑥钉住
+    // 位置），被变更卡拦下的那次要在降级话术里点名立状候选（previewPledge）。
+
+    @Test
+    fun `404判据②_变更卡超时不静默_重问一次并明示状未立`() {
+        val engine = source(ENGINE)
+        val gateStart = engine.indexOf("private fun planChangeGate")
+        val gateEnd = engine.indexOf("private fun settleChangeAnswer", gateStart)
+        assertTrue("变更闸不在引擎里", gateStart in 0 until gateEnd)
+        val gateBody = engine.substring(gateStart, gateEnd)
+        assertTrue("一次超时要重问（不许悄悄放弃）", gateBody.contains("重问一次"))
+        assertTrue(
+            "降级要看这次带没带立状候选（≥5 步的计划被拦 ⇒ 点名军令状未立）",
+            gateBody.contains("planController.previewPledge(call.arguments) != null"),
+        )
+        assertTrue(
+            "两次超时要走明示话术（changeTimeoutNoPlan）",
+            gateBody.contains("PlanGuardRules.changeTimeoutNoPlan("),
+        )
+        assertFalse(
+            "降级不许沿用「用户没同意」那句谎话（超时 ≠ 她答过）",
+            gateBody.contains("changeBlocked"),
+        )
+    }
+
     // ── F 组 · 跨会话 seed（312 §4.5） ────────────────────────────────────────
 
     @Test

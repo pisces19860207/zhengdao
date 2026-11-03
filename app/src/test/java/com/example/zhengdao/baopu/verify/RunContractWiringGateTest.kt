@@ -134,4 +134,35 @@ class RunContractWiringGateTest {
         assertTrue("授权范围不是产物目录真源（ZhengdaoDirs.PRODUCTS_DIR）", src.contains("ZhengdaoDirs.PRODUCTS_DIR"))
         assertTrue("目标不是用户原话（goal.text 没吃 userText）", src.contains("text = text.take(TaskGoal.MAX_TEXT_CHARS)"))
     }
+
+    // ── 第四百零四批·判据③：契约起单即建、起单后立即可查 ────────────────────
+
+    @Test
+    fun `G9_契约起单即挂账_查询口在_跑的期间立即可查`() {
+        val src = engine()
+        assertTrue(
+            "起单建的契约没挂进引擎状态（activeRunOrder）——起单与查询之间断了线",
+            src.contains("activeRunOrder = order"),
+        )
+        assertTrue(
+            "查询口不在（currentTaskContract）——「立即可查」没有落点",
+            src.contains("fun currentTaskContract(): TaskContract?"),
+        )
+        assertTrue(
+            "挂账字段要 @Volatile（runLoop 线程写、闸/工具线程读）",
+            Regex("""@Volatile\s*\n\s*private var activeRunOrder""").containsMatchIn(src),
+        )
+    }
+
+    @Test
+    fun `G10_每个run先清_起单才挂_续跑轮不背上一张`() {
+        val src = engine()
+        val clearIdx = src.indexOf("activeRunOrder = null")
+        val startIdx = src.indexOf("RunContractWiring.startRun(roundRunId")
+        assertTrue("run 开始没清挂账（clear 不在）", clearIdx >= 0)
+        assertTrue(
+            "清要在起单之前（续跑/闲聊轮不许背着上一轮的契约）",
+            clearIdx < startIdx,
+        )
+    }
 }
