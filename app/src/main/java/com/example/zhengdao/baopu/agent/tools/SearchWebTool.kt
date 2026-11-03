@@ -158,6 +158,7 @@ internal object SearchWebTool {
         name = "search_web",
         description = "联网检索（只读）：按关键词搜公开网页，返回标题、真实链接、摘要与时间。" +
             "只抓白名单里的公开站点（禁内网/本机地址），日志只记检索词的哈希不记原文。" +
+            "本地文件内容搜用 search_in_files、知识库用 kb_search，别拿本工具搜本机。" +
             "（这个工具在 WEBSEARCH 组：看不到就先 capabilities 解锁）",
         inputSchema = jsonObjectOf(
             "type" to "object",

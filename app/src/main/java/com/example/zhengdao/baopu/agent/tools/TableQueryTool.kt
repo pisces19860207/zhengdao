@@ -105,7 +105,7 @@ internal object TableQueryTool {
             "**PDF 不支持**（会直接说暂不支持）。问法两种：①question 一句话（「一共几个人」" +
             "「每科平均分」「最高分是谁」「几个人不及格」）；②op + column 等结构化参数。" +
             "答案必带出处（文件·sheet·行号）；表里没有就说「表里没有」，不推算、不补 0；" +
-            "多张候选表会先问一句，不猜。 " + UNLOCK_SENTENCE,
+            "多张候选表会先问一句，不猜。要原始行数据自己看用 sheet_read。 " + UNLOCK_SENTENCE,
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

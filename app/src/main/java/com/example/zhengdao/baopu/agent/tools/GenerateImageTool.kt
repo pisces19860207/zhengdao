@@ -83,7 +83,8 @@ internal object GenerateImageTool {
         description = "画图（文生图/图生图；每次执行前弹确认卡，会消耗 Gemini 额度）：" +
             "先拉 {base}/models 清单挑图模型（Nano Banana Pro 优先，其次 Nano Banana 2），" +
             "产物只落本机 `<工作区>/产物/`（157 收口后默认与自定义工作区同一口径），同名不覆盖。" +
-            "reference 给工作区里的一张图，就是「照着它改」。count 最多 ${GenerateImage.MAX_COUNT} 张。",
+            "reference 给工作区里的一张图，就是「照着它改」。count 最多 ${GenerateImage.MAX_COUNT} 张。" +
+            "只调整已有图片（缩放/裁剪/转格式/取主色）用 image_ops，不烧额度。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

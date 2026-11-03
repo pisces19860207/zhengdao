@@ -325,7 +325,8 @@ internal object BrowserTools {
         name = "browser_type",
         description = "往玄览当前页的一个输入框里写入文本（原生 setter，会触发 input/change 事件）。" +
             "target 传快照里的 ref 句柄（如 @e3）或 CSS 选择器。不自动回车：" +
-            "需要提交时再 browser_click 那个按钮，或 browser_key enter。",
+            "需要提交时再 browser_click 那个按钮，或 browser_key enter。" +
+            "整张表单要填多个字段用 form_fill，一次卡一次提交，别逐框连调。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

@@ -42,7 +42,8 @@ internal object ReadFileTool {
         description = "读一个文件的指定行范围（offset 从 0 起 = 第一行）。" +
             "**全盘可读**：相对路径相对工作区，绝对路径（如 /storage/emulated/0/小说/…）直接读；" +
             "自动识别 UTF-8（含 BOM）/UTF-16/GBK 并解码，GBK 老书不会读成乱码；" +
-            "二进制文件直接拒绝。大文件被 spill 后，用这个工具带 offset/limit 把需要的那几段读回来。",
+            "二进制文件直接拒绝。大文件被 spill 后，用这个工具带 offset/limit 把需要的那几段读回来。" +
+            "回显行号从 0 起；要拿它去 edit_file 改行要 +1（那边行号从 1 起）。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

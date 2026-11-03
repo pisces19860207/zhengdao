@@ -53,7 +53,8 @@ internal object WriteFileTool {
             "相对路径相对工作区；**绝对路径可以写全盘**（系统目录与凭据目录除外）。" +
             "单次最多 $MAX_WRITE_LINES 行，超了请分次写。" +
             "确认由 App 弹确认卡完成（用户点头才落盘，不点作废）——直接调用即可，" +
-            "不要在回复里先问一句「要我写吗」。本工具没有任何删除能力。",
+            "不要在回复里先问一句「要我写吗」。本工具没有任何删除能力。" +
+            "只改已有文件的一部分用 edit_file（按行改，不必整篇重写）。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

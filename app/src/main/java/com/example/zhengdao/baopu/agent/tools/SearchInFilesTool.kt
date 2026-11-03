@@ -49,7 +49,7 @@ internal object SearchInFilesTool {
         description = "在某个目录里搜一个词，回「路径:行号:命中行±1 行」。" +
             "**全盘可搜**：path 给绝对路径就搜整台机器；" +
             "单次最多 $MAX_HITS 条命中；大于 8 MB 与二进制文件会跳过并计数。" +
-            "默认大小写不敏感。",
+            "默认大小写不敏感。按文件名找文件用 find_files；列目录结构用 list_dir。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

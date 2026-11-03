@@ -31,6 +31,7 @@ internal object SheetReadTool {
         description = "读工作区里的表格文件（xlsx / csv）为结构化行。单元格原样" +
             "（不补 0、不猜类型），空单元格给 null；超过行数上限会标 truncated。" +
             "文件超过 20MB、加密、或不是表格格式会明确报未认领。" +
+            "只要答案（计数/合计/平均/最大/分组）用 table_query，不必先读原始行。" +
             "（这个工具在 DATA 组：看不到就先 capabilities 解锁）",
         inputSchema = jsonObjectOf(
             "type" to "object",

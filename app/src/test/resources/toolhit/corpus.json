@@ -1,0 +1,881 @@
+[
+{
+"id": "th-001",
+"intent": "读工作区里 a.md 的第 2 到第 3 行",
+"expectTool": "read_file",
+"call": {
+"tool": "read_file",
+"args": {
+"path": "a.md",
+"offset": 1,
+"limit": 2
+}
+},
+"expect": "ok",
+"source": "构造",
+"why": "offset 从 0 起（0=第一行），读第 2–3 行要 offset=1；描述已写明",
+"trap": false
+},
+{
+"id": "th-002",
+"intent": "看看工作区里有什么",
+"expectTool": "list_dir",
+"call": {
+"tool": "list_dir",
+"args": {}
+},
+"expect": "ok",
+"source": "真机",
+"why": "r1@1793670672150 step1：模型列工作区根没传 path，list_dir 允许省略（2026-10-23 已修的熔断点）",
+"trap": false
+},
+{
+"id": "th-003",
+"intent": "把 _401m2 里的 m3.txt 删掉",
+"expectTool": "delete_path",
+"call": {
+"tool": "delete_path",
+"args": {
+"path": "_401m2/m3.txt"
+}
+},
+"expect": "ok",
+"source": "真机",
+"why": "r1@1793671050325 step2：默认进回收站，真跑成功",
+"trap": false
+},
+{
+"id": "th-004",
+"intent": "把 n1.txt 挪进 归档/ 文件夹",
+"expectTool": "move_path",
+"call": {
+"tool": "move_path",
+"args": {
+"from": "_401m6/n1.txt",
+"to": "_401m6/归档/n1.txt"
+}
+},
+"expect": "ok",
+"source": "真机",
+"why": "r1@1793671959737 step3：rename 原子搬动，真跑成功",
+"trap": false
+},
+{
+"id": "th-005",
+"intent": "新建一个 笔记.md，写两行字",
+"expectTool": "write_file",
+"call": {
+"tool": "write_file",
+"args": {
+"path": "笔记.md",
+"content": "# 汇总\nm7a"
+}
+},
+"expect": "ok",
+"source": "真机",
+"why": "r1@1793671959737 step2：新建文件，真跑成功",
+"trap": false
+},
+{
+"id": "th-006",
+"intent": "在下载目录里找文件名带 pdf 的文件",
+"expectTool": "find_files",
+"call": {
+"tool": "find_files",
+"args": {
+"pattern": ".pdf",
+"path": "/storage/emulated/0/Download"
+}
+},
+"expect": "ok",
+"source": "真机",
+"why": "r1@1793670433200 step1：子串匹配，真跑成功（首调 depth=3）",
+"trap": false
+},
+{
+"id": "th-007",
+"intent": "同样的查找，但要把子目录翻到底",
+"expectTool": "find_files",
+"call": {
+"tool": "find_files",
+"args": {
+"pattern": ".pdf",
+"path": "/storage/emulated/0/Download",
+"max_depth": 12
+}
+},
+"expect": "ok",
+"source": "真机",
+"why": "r1@1793670433200 step2：上一调只给 depth=3，模型加深度重试（重试链起点=th-006）；schema max=12 放行",
+"retryOf": "th-006",
+"trap": false
+},
+{
+"id": "th-008",
+"intent": "把下载/杂乱 目录按类型整理归档",
+"expectTool": "organize",
+"call": {
+"tool": "organize",
+"args": {
+"dir": "下载/杂乱"
+}
+},
+"expect": "ok",
+"source": "构造",
+"why": "organize 描述已互指 organize_preview（✅ 现状），按描述先预览再执行后本调用合法",
+"trap": false
+},
+{
+"id": "th-009",
+"intent": "给知识库建一下索引",
+"expectTool": "kb_index",
+"call": {
+"tool": "kb_index",
+"args": {}
+},
+"expect": "ok",
+"source": "构造",
+"why": "kb_index 全可选（REQUIRED_EMPTY_OK 已登记：path 缺省=投递）",
+"trap": false
+},
+{
+"id": "th-010",
+"intent": "把 设定.md 里第 3 行改成新句子（其余不动）",
+"expectTool": "edit_file",
+"call": {
+"tool": "write_file",
+"args": {
+"path": "设定.md",
+"content": "（把全文重抄一遍，只改了第 3 行）"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "改一行该用 edit_file；write_file 描述不说 edit_file 的存在 ⇒ 模型倾向整篇重写，还会踩 200 行上限与覆盖确认",
+"trap": false
+},
+{
+"id": "th-011",
+"intent": "新建 人物卡.md 写一段自我介绍",
+"expectTool": "write_file",
+"call": {
+"tool": "edit_file",
+"args": {
+"path": "人物卡.md",
+"op": "append",
+"content": "姓名：…"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "文件不存在，edit_file 会拒；edit_file 描述不说「新建用 write_file」",
+"trap": false
+},
+{
+"id": "th-012",
+"intent": "找文件名里带「斗罗」的文件",
+"expectTool": "find_files",
+"call": {
+"tool": "search_in_files",
+"args": {
+"path": "/storage/emulated/0",
+"query": "斗罗"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "按文件名找是 find_files；search_in_files 描述（103 字）不反指 find_files",
+"trap": false
+},
+{
+"id": "th-013",
+"intent": "找哪个文件里出现过「唐三」这个词",
+"expectTool": "search_in_files",
+"call": {
+"tool": "find_files",
+"args": {
+"pattern": "唐三"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "搜内容是 search_in_files；find_files 虽写了「找文件内容用 search_in_files」，但模型只记得「找东西」时仍会选错（语料按此定格）",
+"trap": false
+},
+{
+"id": "th-014",
+"intent": "下载目录（含子目录）里有没有叫 报告.pdf 的文件",
+"expectTool": "find_files",
+"call": {
+"tool": "list_dir",
+"args": {
+"path": "/storage/emulated/0/Download"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "只列一层看不见子目录；list_dir 描述不指 find_files",
+"trap": false
+},
+{
+"id": "th-015",
+"intent": "把 _401m7 里 5 个 md 全挪进 明细/",
+"expectTool": "bulk_move",
+"call": {
+"tool": "move_path",
+"args": {
+"from": "_401m7/m7a.md",
+"to": "_401m7/明细/m7a.md"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "一批 5 个该用 bulk_move 一次成；move_path 描述不提 bulk_move ⇒ 模型会连调 5 次（真机 r1@…2290948 正是逐个 move_path×5）",
+"trap": false
+},
+{
+"id": "th-016",
+"intent": "把 a.txt 单个挪到 b/ 下",
+"expectTool": "move_path",
+"call": {
+"tool": "bulk_move",
+"args": {
+"dir": "_401m6",
+"dest": "_401m6/归档"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "单个文件用 move_path；bulk_move 不反指",
+"trap": false
+},
+{
+"id": "th-017",
+"intent": "把这 3 个文件各复制一份到 备份/",
+"expectTool": "bulk_copy",
+"call": {
+"tool": "copy_path",
+"args": {
+"from": "a.md",
+"to": "备份/a.md"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "一批 3 个该用 bulk_copy；copy_path 描述不提 bulk_copy",
+"trap": false
+},
+{
+"id": "th-018",
+"intent": "成绩表.xlsx 里平均分是多少",
+"expectTool": "table_query",
+"call": {
+"tool": "sheet_read",
+"args": {
+"path": "成绩表.xlsx"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "要答案不是要原始行；table_query 一步出数；sheet_read 描述不提 table_query",
+"trap": false
+},
+{
+"id": "th-019",
+"intent": "把 成绩表.xlsx 的原始行原样给我看",
+"expectTool": "sheet_read",
+"call": {
+"tool": "table_query",
+"args": {
+"question": "把所有行都列出来"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "要原始行该用 sheet_read；table_query 描述不反指 sheet_read",
+"trap": false
+},
+{
+"id": "th-020",
+"intent": "画一张赛博朋克风格的城市夜景图",
+"expectTool": "generate_image",
+"call": {
+"tool": "image_ops",
+"args": {
+"action": "resize",
+"path": "照片.jpg"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "从零生图是 generate_image；image_ops 只改已有图，但描述不说 generate_image",
+"trap": false
+},
+{
+"id": "th-021",
+"intent": "把 照片.jpg 转成黑白",
+"expectTool": "image_ops",
+"call": {
+"tool": "generate_image",
+"args": {
+"prompt": "把 照片.jpg 转成黑白照片"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "改已有图是 image_ops；generate_image 描述不反指 image_ops",
+"trap": false
+},
+{
+"id": "th-022",
+"intent": "把当前页表单的姓名、电话、地址三个字段都填上",
+"expectTool": "form_fill",
+"call": {
+"tool": "browser_type",
+"args": {
+"target": "#name",
+"text": "张三"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "多字段整表填写用 form_fill（一次卡一次提交）；browser_type 描述不提 form_fill",
+"trap": false
+},
+{
+"id": "th-023",
+"intent": "在页面顶部的搜索框里输入「证道」",
+"expectTool": "browser_type",
+"call": {
+"tool": "form_fill",
+"args": {
+"fields": {
+"搜索框": "证道"
+}
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "单框输入用 browser_type；form_fill 描述不反指 browser_type",
+"trap": false
+},
+{
+"id": "th-024",
+"intent": "在知识库里搜「调解器」相关笔记",
+"expectTool": "kb_search",
+"call": {
+"tool": "search_in_files",
+"args": {
+"path": "知识库",
+"query": "调解器"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "kb_search 走知识库索引（含同义/相关）；search_in_files 是文件内子串；kb_search 描述不反指",
+"trap": false
+},
+{
+"id": "th-025",
+"intent": "查一下今天的A股行情",
+"expectTool": "search_web",
+"call": {
+"tool": "search_in_files",
+"args": {
+"path": ".",
+"query": "A股 行情"
+}
+},
+"expect": "a",
+"source": "构造",
+"why": "联网查该用 search_web；search_in_files 只搜本地文件；search_web 描述不反指本地搜索",
+"trap": false
+},
+{
+"id": "th-026",
+"intent": "read_file 回显第 3 行是「第三行」，把那一行改成新句子",
+"expectTool": "edit_file",
+"call": {
+"tool": "edit_file",
+"args": {
+"path": "a.md",
+"op": "replace_lines",
+"from_line": 3,
+"to_line": 3,
+"content": "新句子"
+}
+},
+"expect": "sem",
+"source": "构造",
+"why": "⚠️ 行号口径冲突：read_file 回显行号从 0 起（真机回显「0\\tdraft a」为证），edit_file 从 1 起 ⇒ 照抄回显行号会改错一行，SchemaCheck 放行、执行体也放行，只有描述能救",
+"trap": true
+},
+{
+"id": "th-027",
+"intent": "（重试）把回显的第 3 行（即文件第 4 行）改掉",
+"expectTool": "edit_file",
+"call": {
+"tool": "edit_file",
+"args": {
+"path": "a.md",
+"op": "replace_lines",
+"from_line": 4,
+"to_line": 4,
+"content": "新句子"
+}
+},
+"expect": "ok",
+"source": "构造",
+"why": "描述修好后模型应 +1；重试链起点=th-026",
+"retryOf": "th-026",
+"trap": false
+},
+{
+"id": "th-028",
+"intent": "把 笔记.md 再写一遍新内容（文件已存在）",
+"expectTool": "write_file",
+"call": {
+"tool": "write_file",
+"args": {
+"path": "笔记.md",
+"content": "v2"
+}
+},
+"expect": "sem",
+"source": "构造",
+"why": "缺 overwrite=true：SchemaCheck 放行（可选参数），执行体拒「已存在」；schema 层拦不住，只能靠描述把 overwrite 讲透（已写，语料定格防回退）",
+"trap": true
+},
+{
+"id": "th-029",
+"intent": "（重试）覆盖写 笔记.md",
+"expectTool": "write_file",
+"call": {
+"tool": "write_file",
+"args": {
+"path": "笔记.md",
+"content": "v2",
+"overwrite": true
+}
+},
+"expect": "ok",
+"source": "构造",
+"why": "重试链起点=th-028",
+"retryOf": "th-028",
+"trap": false
+},
+{
+"id": "th-030",
+"intent": "（收工前）把计划表里那条的措辞改通顺一点",
+"expectTool": "update_plan",
+"call": {
+"tool": "update_plan",
+"args": {
+"items": [
+{
+"text": "在 _401m7 下建 m7a–m7e 五个文件，各写一行自己的名字；把五个文件合并成 汇总.md",
+"status": "done"
+}
+]
+}
+},
+"expect": "sem",
+"source": "真机",
+"why": "r1@1793672290948 step2 与 step6 两次 TOOL_ERROR：只改措辞也被判成「计划改动」弹确认卡、用户没批 ⇒ 失败。描述应写明已完成条目一字不改",
+"trap": true
+},
+{
+"id": "th-031",
+"intent": "（拿不准方向时）问用户「要继续吗？」",
+"expectTool": "ask_user",
+"call": {
+"tool": "ask_user",
+"args": {
+"question": "要继续吗？",
+"options": [
+{
+"id": "yes",
+"label": "继续"
+},
+{
+"id": "no",
+"label": "停"
+}
+]
+}
+},
+"expect": "sem",
+"source": "真机",
+"why": "r1@1793671171066 step1 TOOL_TIMEOUT：能按默认方案做的问题不该问；描述应写「能推出来就别问，没人答按失败算」",
+"trap": true
+},
+{
+"id": "th-032",
+"intent": "读 a.md 的「第 1 行」",
+"expectTool": "read_file",
+"call": {
+"tool": "read_file",
+"args": {
+"path": "a.md",
+"offset": 1
+}
+},
+"expect": "sem",
+"source": "构造",
+"why": "模型把「第 1 行」直译成 offset=1 ⇒ 实读到第 2 行，静默错位；SchemaCheck 与执行体都放行。与 th-001 同参不同义，校验层不可分",
+"trap": true
+},
+{
+"id": "th-033",
+"intent": "写一个 300 行的配置文件",
+"expectTool": "write_file",
+"call": {
+"tool": "write_file",
+"args": {
+"path": "config.txt",
+"content": "（300 行文本）"
+}
+},
+"expect": "sem",
+"source": "构造",
+"why": "超 200 行上限：SchemaCheck 放行（行数不在 schema 里），执行体拒并提示分次；描述已写上限，语料定格",
+"trap": true
+},
+{
+"id": "th-034",
+"intent": "改 a.md（忘了说怎么改）",
+"expectTool": "edit_file",
+"call": {
+"tool": "edit_file",
+"args": {
+"path": "a.md",
+"content": "x"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "缺必填 op ⇒ SchemaCheck 拒；重试链起点=th-027 落点前奏",
+"trap": false
+},
+{
+"id": "th-035",
+"intent": "在 a.md 某行后插入一段",
+"expectTool": "edit_file",
+"call": {
+"tool": "edit_file",
+"args": {
+"path": "a.md",
+"op": "insert",
+"from_line": 2,
+"content": "新段"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "枚举外取值：op 只有 replace/insert_after/append；模型爱写「insert」",
+"trap": false
+},
+{
+"id": "th-036",
+"intent": "替换 a.md 第 -1 行（模型把 0 当第一行又减一）",
+"expectTool": "edit_file",
+"call": {
+"tool": "edit_file",
+"args": {
+"path": "a.md",
+"op": "replace",
+"from_line": -1,
+"to_line": -1,
+"content": "x"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "from_line minimum=0 ⇒ SchemaCheck 拒",
+"trap": false
+},
+{
+"id": "th-037",
+"intent": "找 pdf，翻 13 层深",
+"expectTool": "find_files",
+"call": {
+"tool": "find_files",
+"args": {
+"pattern": "pdf",
+"max_depth": 13
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "max_depth 上限 12 ⇒ SchemaCheck 拒（真机模型要过 12，写 13 就白调一次）",
+"trap": false
+},
+{
+"id": "th-038",
+"intent": "找文件但 limit 给 0（想表达「不限」）",
+"expectTool": "find_files",
+"call": {
+"tool": "find_files",
+"args": {
+"pattern": "pdf",
+"limit": 0
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "limit minimum=1；「不限」的正确做法是不传",
+"trap": false
+},
+{
+"id": "th-039",
+"intent": "读文件但 limit 给 0",
+"expectTool": "read_file",
+"call": {
+"tool": "read_file",
+"args": {
+"path": "a.md",
+"limit": 0
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "limit minimum=1",
+"trap": false
+},
+{
+"id": "th-040",
+"intent": "写文件时顺手带上 delete 参数（幻觉）",
+"expectTool": "write_file",
+"call": {
+"tool": "write_file",
+"args": {
+"path": "a.md",
+"content": "x",
+"delete": true
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "additionalProperties=false ⇒ 幻觉参数被拒；write_file 描述明说「没有任何删除能力」",
+"trap": false
+},
+{
+"id": "th-041",
+"intent": "画个饼图",
+"expectTool": "draw_chart",
+"call": {
+"tool": "draw_chart",
+"args": {
+"kind": "pie",
+"data": {
+"categories": [
+"一",
+"二"
+],
+"series": [
+{
+"name": "s",
+"values": [
+1,
+2
+]
+}
+]
+}
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "kind 枚举只有 bar|line；描述已写明，模型仍爱给 pie ⇒ 拒后按描述改 bar",
+"trap": false
+},
+{
+"id": "th-042",
+"intent": "画柱状图但 data 给成裸数组",
+"expectTool": "draw_chart",
+"call": {
+"tool": "draw_chart",
+"args": {
+"kind": "bar",
+"data": [
+1,
+2,
+3
+]
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "data 要对象 {categories,series}，描述给了示例 ⇒ 类型拒",
+"trap": false
+},
+{
+"id": "th-043",
+"intent": "生成图片但不给画面描述",
+"expectTool": "generate_image",
+"call": {
+"tool": "generate_image",
+"args": {}
+},
+"expect": "b",
+"source": "构造",
+"why": "缺必填 prompt",
+"trap": false
+},
+{
+"id": "th-044",
+"intent": "往输入框打字但没给内容",
+"expectTool": "browser_type",
+"call": {
+"tool": "browser_type",
+"args": {
+"target": "#q"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "缺必填 text",
+"trap": false
+},
+{
+"id": "th-045",
+"intent": "点屏幕上 (100,?) 的位置（y 忘了）",
+"expectTool": "browser_tap",
+"call": {
+"tool": "browser_tap",
+"args": {
+"x": 100
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "缺必填 y",
+"trap": false
+},
+{
+"id": "th-046",
+"intent": "把照片放大一点",
+"expectTool": "image_ops",
+"call": {
+"tool": "image_ops",
+"args": {
+"action": "放大",
+"path": "照片.jpg"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "action 枚举外（中文动词）；枚举与执行体同源，描述未给中文对照 ⇒ 模型易填中文",
+"trap": false
+},
+{
+"id": "th-047",
+"intent": "读表格但要「全部行」",
+"expectTool": "sheet_read",
+"call": {
+"tool": "sheet_read",
+"args": {
+"path": "成绩表.xlsx",
+"maxRows": "全部"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "maxRows 是 integer；「不限」的正确做法是不传",
+"trap": false
+},
+{
+"id": "th-048",
+"intent": "报计划时 items 给单个对象不给数组",
+"expectTool": "update_plan",
+"call": {
+"tool": "update_plan",
+"args": {
+"items": {
+"text": "x",
+"status": "todo"
+}
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "items 是 array；单对象是模型高频形状（构造自真机 update_plan 连续调用的形状观察）",
+"trap": false
+},
+{
+"id": "th-049",
+"intent": "列目录时带上 recursive 参数（幻觉）",
+"expectTool": "list_dir",
+"call": {
+"tool": "list_dir",
+"args": {
+"recursive": true
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "additionalProperties=false；深度由 depth 参数管，没有 recursive",
+"trap": false
+},
+{
+"id": "th-050",
+"intent": "在当前目录搜内容但不给搜什么词",
+"expectTool": "search_in_files",
+"call": {
+"tool": "search_in_files",
+"args": {
+"path": "."
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "缺必填 query",
+"trap": false
+},
+{
+"id": "th-051",
+"intent": "把这几个文件打个压缩包但 sources 给单串",
+"expectTool": "archive_pack",
+"call": {
+"tool": "archive_pack",
+"args": {
+"dest": "打包.zip",
+"sources": "a.md"
+}
+},
+"expect": "b",
+"source": "构造",
+"why": "sources 是 array of string；单串是模型高频形状",
+"trap": false
+},
+{
+"id": "th-052",
+"intent": "（凭通用 Agent 经验）跑个 ls 命令",
+"expectTool": "bash",
+"call": {
+"tool": "bash",
+"args": {
+"command": "ls"
+}
+},
+"expect": "c",
+"source": "现场记载",
+"why": "工具不存在：本 App 不提供 shell（不跨 rootfs 硬边界），COMPAT 组的 bash 占位条目已随 248 批退役；免费通道整条 403（一号挂账）⇒ c 类，不归本单修",
+"trap": false
+},
+{
+"id": "th-053",
+"intent": "（以为接了外部 MCP 文件系统）用 mcp 工具读文件",
+"expectTool": "mcp_fs_read",
+"call": {
+"tool": "mcp_fs_read",
+"args": {
+"path": "a.md"
+}
+},
+"expect": "c",
+"source": "构造",
+"why": "没有这个工具：MCP 组要用户实际接入服务端才有 mcp_<srv>_<tool> 条目 ⇒ c 类，报接线批口径",
+"trap": false
+}
+]

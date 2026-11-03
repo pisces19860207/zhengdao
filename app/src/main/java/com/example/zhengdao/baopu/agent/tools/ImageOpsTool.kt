@@ -83,7 +83,8 @@ internal object ImageOpsTool {
             "convert＝转成 png/jpg/webp（jpg 无透明通道，透明区压白底）；" +
             "palette＝回这张图的主色（hex ＋ 占比，只回文本不落盘）；" +
             "icon＝一次生成 48/72/96/144/192 五档方图标 PNG。" +
-            "**原图永不覆盖**：默认另存 <名>-<动作>.<ext>，目标已存在就拒绝。",
+            "**原图永不覆盖**：默认另存 <名>-<动作>.<ext>，目标已存在就拒绝。" +
+            "从文字生成全新图片用 generate_image，本工具只改已有图。",
         inputSchema = imageOpsSchema(),
         permission = ToolPermission.CONFIRM,
         timeoutMs = ToolTimeout.FILE_MS,

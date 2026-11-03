@@ -55,6 +55,7 @@ internal object MovePathTool {
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "move_path",
         description = "搬动或改名一个文件（from → to；相对工作区，或全盘绝对路径），也可以顺带建目标目录。" +
+            "一批文件按规则批量搬用 bulk_move、批量复制用 bulk_copy，别逐个连调。" +
             "同分区用 rename（原子）；跨分区只复制、把源文件记进「$PENDING_LIST_REL」，" +
             "不会自动删源。绝不覆盖：撞名不同内容自动加 sha 后缀让路，内容相同则视为已搬。" +
             "只搬文件不搬目录；确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",

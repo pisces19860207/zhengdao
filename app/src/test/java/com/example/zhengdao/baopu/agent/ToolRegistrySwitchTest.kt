@@ -43,6 +43,20 @@ class ToolRegistrySwitchTest {
         return reg
     }
 
+    /**
+     * 412（2026-11-03）：断言量法从「整包 JSON 子串」升到「按 function 名册」。
+     * 412 起工具描述互指（edit_file 描述里写「新建用 write_file」、kb_search 描述里
+     * 写「原文搜用 search_in_files」），别的可见工具的描述里合法出现别的工具名，
+     * 子串断言会把「描述提到」误判成「模型看得见」。判据不变：关掉 ⇒ 不进名册。
+     */
+    private fun openAiNames(reg: ToolRegistry): Set<String> =
+        functionNames(reg.toolsJsonOpenAi()) { it.getJSONObject("function").optString("name") }
+
+    private fun anthropicNames(reg: ToolRegistry): Set<String> = functionNames(reg.toolsJsonAnthropic()) { it.optString("name") }
+
+    private fun functionNames(arr: org.json.JSONArray, nameOf: (org.json.JSONObject) -> String): Set<String> =
+        (0 until arr.length()).map { nameOf(arr.getJSONObject(it)) }.toSet()
+
     private fun setup() {
         root = tmp.newFolder("workspace")
     }
@@ -172,18 +186,18 @@ class ToolRegistrySwitchTest {
         setup()
         val prefs = InMemoryToolPrefs()
         val reg = registry(prefs)
-        assertTrue(reg.toolsJsonOpenAi().toString().contains("write_file"))
+        assertTrue("write_file" in openAiNames(reg))
 
         prefs.setDisabled("write_file", true)
 
         // OpenAI 与 Anthropic 两个协议侧都不含它
-        assertFalse(reg.toolsJsonOpenAi().toString().contains("write_file"))
-        assertFalse(reg.toolsJsonAnthropic().toString().contains("write_file"))
+        assertFalse("write_file" in openAiNames(reg))
+        assertFalse("write_file" in anthropicNames(reg))
         assertFalse(reg.enabledNames().contains("write_file"))
         // 但注册表里还在（幻觉调用要能拿到拒绝，而不是「未知工具」）
         assertNotNull(reg.find("write_file"))
         // 别的工具不受影响
-        assertTrue(reg.toolsJsonOpenAi().toString().contains("read_file"))
+        assertTrue("read_file" in openAiNames(reg))
     }
 
     @Test
@@ -233,11 +247,11 @@ class ToolRegistrySwitchTest {
         assertTrue(reg.isEnabled("search_in_files"))
         reg.setDisabled("search_in_files", true)
         assertFalse(reg.isEnabled("search_in_files"))
-        assertFalse(reg.toolsJsonOpenAi().toString().contains("search_in_files"))
+        assertFalse("search_in_files" in openAiNames(reg))
 
         reg.setDisabled("search_in_files", false) // 再打开
         assertTrue(reg.isEnabled("search_in_files"))
-        assertTrue(reg.toolsJsonOpenAi().toString().contains("search_in_files"))
+        assertTrue("search_in_files" in openAiNames(reg))
     }
 
     @Test

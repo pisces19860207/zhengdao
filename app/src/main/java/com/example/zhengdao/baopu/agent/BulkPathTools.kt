@@ -67,6 +67,7 @@ internal object BulkPathTools {
             "同分区改名（原子）；跨分区复制后源保留并记进 产物/_待删除清单.md——绝不自动删。" +
             "绝不覆盖：撞名不同内容自动加后缀让路，内容相同视为已搬。" +
             "先预览再动手：调 organize_preview（op=move）把计划给用户看，确认后再执行本件。" +
+            "只搬单个文件用 move_path。" +
             "确认由 App 弹确认卡完成。",
         inputSchema = bulkSchema(),
         permission = ToolPermission.CONFIRM,
@@ -81,6 +82,7 @@ internal object BulkPathTools {
             "规则可叠加：扩展名/类型/日期/大小（与 bulk_move 同款）。" +
             "绝不覆盖：撞名不同内容自动加后缀让路，内容相同视为已复制；保留原修改时间。" +
             "先预览再动手：调 organize_preview（op=copy）把计划给用户看，确认后再执行本件。" +
+            "只复制单个文件用 copy_path。" +
             "确认由 App 弹确认卡完成。",
         inputSchema = bulkSchema(),
         permission = ToolPermission.CONFIRM,

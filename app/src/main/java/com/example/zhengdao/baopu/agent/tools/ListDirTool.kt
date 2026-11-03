@@ -38,7 +38,8 @@ internal object ListDirTool {
         name = "list_dir",
         description = "列出一个目录的内容（软链不跟随；深度与条数有上限，触顶会明说）。" +
             "**全盘可列**：路径相对工作区根（如「资料库/原始」），也可以给绝对路径" +
-            "（如 /storage/emulated/0/小说和人物资料）；**path 可省略＝列工作区根**。",
+            "（如 /storage/emulated/0/小说和人物资料）；**path 可省略＝列工作区根**。" +
+            "按文件名找文件（含子目录深处）用 find_files。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

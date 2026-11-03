@@ -126,7 +126,8 @@ internal object KbTools {
         name = NAME_SEARCH,
         description = "在本地知识库索引里按关键词检索（只读，一个字节都不动）：返回最相关的片段，" +
             "每段带来源（文件＋行号）。没有索引或索引损坏时会告诉你要先 kb_index。" +
-            "默认返回 ${KbRetriever.DEFAULT_TOP_K} 段，最多 ${KbRetriever.MAX_TOP_K} 段。",
+            "默认返回 ${KbRetriever.DEFAULT_TOP_K} 段，最多 ${KbRetriever.MAX_TOP_K} 段。" +
+            "要文件内容原文逐行搜用 search_in_files；联网查用 search_web。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

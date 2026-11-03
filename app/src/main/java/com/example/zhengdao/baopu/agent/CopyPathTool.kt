@@ -32,6 +32,7 @@ internal object CopyPathTool {
             "流式复制，1GB 的大文件也不会撑爆内存，且保留原修改时间。" +
             "绝不覆盖：目标已有同名且内容不同 ⇒ 自动加后缀让路；内容相同 ⇒ 视为已复制。" +
             "复制目录时整棵子树落过去（备份/回收站/记忆这些 App 自管目录不进范围）。" +
+            "一批文件按规则批量复制用 bulk_copy。" +
             "确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
         inputSchema = jsonObjectOf(
             "type" to "object",
