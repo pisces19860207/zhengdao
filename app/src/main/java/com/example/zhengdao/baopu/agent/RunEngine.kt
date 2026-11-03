@@ -70,6 +70,7 @@ import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.ChancellorWiring
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.RunContractWiring
+import com.example.zhengdao.baopu.verify.ValueGateWiring
 import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
 import com.example.zhengdao.core.RunLog
@@ -2142,7 +2143,9 @@ internal class RunEngine(
                     val findings = if (verifyTouched.isEmpty()) {
                         emptyList()
                     } else {
-                        ArtifactVerifier.check(spillRoot(), verifyTouched)
+                        // 384-A：值级对账（340）挂收尾闸之后——FAIL 并进 findings，走既有「按清单修一次」
+                        ArtifactVerifier.check(spillRoot(), verifyTouched) +
+                            ValueGateWiring.findingsOf(outcome.text, spillRoot(), verifyTouched)
                     }
                     if (findings.isNotEmpty() && verifyRepairs < RunRules.MAX_VERIFY_REPAIRS) {
                         verifyRepairs++
