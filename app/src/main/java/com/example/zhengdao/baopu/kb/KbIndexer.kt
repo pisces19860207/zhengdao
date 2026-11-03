@@ -74,11 +74,56 @@ internal object KbIndexer {
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): BuildResult {
         val scan = LibraryPaths.scanTree(root)
-        val reusable = if (rebuild || previous == null || previous.root != root.absolutePath) {
+        val reusable = reusablePrevious(rebuild, previous, root)
+        val tally = BuildTally()
+        val total = scan.files.size
+        var seen = 0
+        for (f in scan.files) {
+            if (tally.docs.size >= maxFiles) {
+                tally.truncated = true
+                break
+            }
+            if (cancelled()) {
+                tally.wasCancelled = true
+                break
+            }
+            seen++
+            onProgress(seen, total)
+            indexOne(f, root, reusable, excludeRelPrefixes, tally)
+        }
+        val truncated = tally.truncated || scan.truncated
+        val stats = KbStats(
+            filesIndexed = tally.docs.size,
+            filesSkipped = tally.skippedBig + tally.skippedBinary + tally.skippedUnclaimed + tally.skippedExcluded,
+            chunksTotal = tally.docs.sumOf { it.chunks.size },
+            truncated = truncated,
+            skippedBig = tally.skippedBig,
+            skippedBinary = tally.skippedBinary,
+            skippedUnclaimed = tally.skippedUnclaimed,
+            skippedExcluded = tally.skippedExcluded,
+            reused = tally.reused,
+        )
+        val index = KbIndex(
+            root = root.absolutePath,
+            rootLabel = label,
+            updatedAt = now,
+            docs = tally.docs,
+            stats = stats,
+        )
+        val cancelledNote = if (tally.wasCancelled) "（已取消：这份索引不保存，保持上一版）" else ""
+        return BuildResult(index, report(index, stats, truncated, maxFiles) + cancelledNote, tally.wasCancelled)
+    }
+
+    /** 增量口径：重建／没有旧索引／root 不符 ⇒ 无可复用。 */
+    private fun reusablePrevious(rebuild: Boolean, previous: KbIndex?, root: File): Map<String, KbDoc> =
+        if (rebuild || previous == null || previous.root != root.absolutePath) {
             emptyMap()
         } else {
             previous.docs.associateBy { it.relPath }
         }
+
+    /** 一趟构建的累计账：原 build 的局部计数器，拆分后经这个对象共享。 */
+    private class BuildTally {
         val docs = ArrayList<KbDoc>()
         var skippedBig = 0
         var skippedBinary = 0
@@ -87,76 +132,46 @@ internal object KbIndexer {
         var reused = 0
         var truncated = false
         var wasCancelled = false
-        val total = scan.files.size
-        var seen = 0
+    }
 
-        for (f in scan.files) {
-            if (docs.size >= maxFiles) {
-                truncated = true
-                break
-            }
-            if (cancelled()) {
-                wasCancelled = true
-                break
-            }
-            seen++
-            onProgress(seen, total)
-            if (excludeRelPrefixes.any { f.relPath == it || f.relPath.startsWith("$it/") }) {
-                skippedExcluded++
-                continue
-            }
-            val kind = kindOf(f.name)
-            if (kind == null) {
-                skippedUnclaimed++
-                continue
-            }
-            if (f.size > MAX_FILE_BYTES) {
-                skippedBig++
-                continue
-            }
-            // 增量：指纹（relPath+size+mtime）没变 ⇒ chunks 整体留用，一个字节都不重读
-            val prev = reusable[f.relPath]
-            if (prev != null && prev.size == f.size && prev.mtime == f.mtime && prev.kind == kind) {
-                docs += prev
-                reused++
-                continue
-            }
-            val file = File(root, f.relPath)
-            val chunks = when (kind) {
-                "docx" -> chunkDocx(file, f.relPath)
-                else -> chunkTextFile(file, f.relPath, kind)
-            }
-            if (chunks == null) {
-                skippedBinary++ // 读不出/二进制/抽取失败：明账，不静默
-                continue
-            }
-            docs += KbDoc(relPath = f.relPath, size = f.size, mtime = f.mtime, kind = kind, chunks = chunks)
+    /** 单文件入账：排除→不认领→过大→增量复用→重切，五道分支全部计数，不静默。 */
+    private fun indexOne(
+        f: LibraryPaths.ScannedFile,
+        root: File,
+        reusable: Map<String, KbDoc>,
+        excludeRelPrefixes: Set<String>,
+        tally: BuildTally,
+    ) {
+        if (excludeRelPrefixes.any { f.relPath == it || f.relPath.startsWith("$it/") }) {
+            tally.skippedExcluded++
+            return
         }
-
-        val stats = KbStats(
-            filesIndexed = docs.size,
-            filesSkipped = skippedBig + skippedBinary + skippedUnclaimed + skippedExcluded,
-            chunksTotal = docs.sumOf { it.chunks.size },
-            truncated = truncated || scan.truncated,
-            skippedBig = skippedBig,
-            skippedBinary = skippedBinary,
-            skippedUnclaimed = skippedUnclaimed,
-            skippedExcluded = skippedExcluded,
-            reused = reused,
-        )
-        val index = KbIndex(
-            root = root.absolutePath,
-            rootLabel = label,
-            updatedAt = now,
-            docs = docs,
-            stats = stats,
-        )
-        return BuildResult(
-            index,
-            report(index, stats, truncated || scan.truncated, maxFiles) +
-                if (wasCancelled) "（已取消：这份索引不保存，保持上一版）" else "",
-            wasCancelled,
-        )
+        val kind = kindOf(f.name)
+        if (kind == null) {
+            tally.skippedUnclaimed++
+            return
+        }
+        if (f.size > MAX_FILE_BYTES) {
+            tally.skippedBig++
+            return
+        }
+        // 增量：指纹（relPath+size+mtime）没变 ⇒ chunks 整体留用，一个字节都不重读
+        val prev = reusable[f.relPath]
+        if (prev != null && prev.size == f.size && prev.mtime == f.mtime && prev.kind == kind) {
+            tally.docs += prev
+            tally.reused++
+            return
+        }
+        val file = File(root, f.relPath)
+        val chunks = when (kind) {
+            "docx" -> chunkDocx(file, f.relPath)
+            else -> chunkTextFile(file, f.relPath, kind)
+        }
+        if (chunks == null) {
+            tally.skippedBinary++ // 读不出/二进制/抽取失败：明账，不静默
+            return
+        }
+        tally.docs += KbDoc(relPath = f.relPath, size = f.size, mtime = f.mtime, kind = kind, chunks = chunks)
     }
 
     /** 纯文本/html：走 [TextDecode] 解码后切块；读不出 ⇒ null（调用方计数跳过）。 */
