@@ -1287,6 +1287,16 @@ internal class RunEngine(
      * 阻塞有界（与确认卡同一超时），超时返回 null，由工具如实说「没人回答」。
      */
     fun askUser(req: AskUserRequest): AskUserOption? {
+        // 调解器弹卡闸（406 接线）：左相弹卡前先问调解器——用户已暂停／已熔断／本回合追问
+        // 到耐心阈值 ⇒ 压（不弹也不排队：少问，不是延后问），工具侧如实收"没人答"。
+        // 走这里的都是模型自己的问卡（ask_user 工具）：必问的确认卡／御批卡／用户点名的
+        // ④路都不经过此口，所以调解器压不到任何必问（铁律：只少问，不压必问）。
+        // 免打扰闸在它后面：压下的卡不进补问队列——LOOP 的契约是"只给两条路"，不是过会儿再问。
+        val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk()
+        if (!mediatorAdvice.allowed) {
+            log(mediatorAdvice.line())
+            return null
+        }
         // 免打扰弹卡闸（330 接线）：左相弹卡前先问 QuietMode——静默中这张卡压进补问队列
         // （记一条"因免打扰延后"），工具侧如实收"没人答"；放行则先按序补问积压，再出这张。
         if (quietDefer(req)) return null
@@ -1339,9 +1349,13 @@ internal class RunEngine(
      *   「另有 N 项」提示）；任何一张超时/没人答 ⇒ **整组**如实回 null（半截
      *   答案回灌会误导模型，不许假装答过了）；
      * - 全部答完才并成一条 answers 记账（AskBatchLedger），下次同批免打扰。
+     *
+     * @param request 这一组问题
+     * @param viaUserChoice 用户点名要的这一组（失败帮扶卡④「告诉我该怎么做」）：
+     *   必问档——调解器无权过问（406 铁律的让步格；不占问卡预算）。
      */
-    fun askGroup(req: AskUserRequest): Map<String, String>? {
-        val questions = req.questions
+    fun askGroup(request: AskUserRequest, viaUserChoice: Boolean = false): Map<String, String>? {
+        val questions = request.questions
         if (questions.isEmpty()) return null
         val sessionId = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
         val batchKey = if (sessionId != null) AskBatchLedger.keyOf(questions) else null
@@ -1351,10 +1365,35 @@ internal class RunEngine(
                 return stored
             }
         }
+        // 调解器弹卡闸（406 接线）：与 [askUser] 同一把尺，整组一起判——压就整组压。
+        val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk(viaUserChoice)
+        if (!mediatorAdvice.allowed) {
+            log(mediatorAdvice.line())
+            return null
+        }
+        // 调解器的排序建议（406）：档位升起来时省力的问先弹（只给排序建议；CALM 恒照旧）。
+        // 重量按问题形状给（判据不读内容）：TEXT 要打字最重、NUMBER 次之、点一下的最轻。
+        // 采纳＝只把出卡的序换成建议的序（重排，不改卡不丢卡）；此后 req 就是出卡的那一份。
+        val order = com.example.zhengdao.baopu.MediatorWiring.orderAdvice(
+            questions.map { askEffortWeight(it.kind) },
+        )
+        val req = if (order.changed) {
+            log(order.line)
+            request.copy(questions = order.order.map { questions[it] })
+        } else {
+            request
+        }
         // 免打扰弹卡闸（330 接线）：整组一起判——压就整组压（补问时整组原样重递），不许拆一半。
         if (quietDefer(req)) return null
         drainQuietQueue()
         return askGroupRaw(req)
+    }
+
+    /** 问题形状 ⇒ 档感重量（406 排序建议的输入；只看形状不看内容）。 */
+    private fun askEffortWeight(kind: AskQuestionKind): Int = when (kind) {
+        AskQuestionKind.TEXT -> 2
+        AskQuestionKind.NUMBER -> 1
+        else -> 0
     }
 
     /** [askGroup] 的原始出卡体（过闸放行之后才走这里；检查点补问也走这里，不再过闸）。 */
@@ -3711,9 +3750,10 @@ internal class RunEngine(
                 history,
             )
         }
-        // ④告诉我该怎么做：203 的多问卡（≤3 问、每问带证据），答完原样交回模型
+        // ④告诉我该怎么做：203 的多问卡（≤3 问、每问带证据），答完原样交回模型。
+        // 这一组是用户在帮扶卡上亲自点的「问我」⇒ 必问档：调解器无权压（406 让步格）。
         picked.id == ToolFeedback.OPTION_ASK -> {
-            val answers = askGroup(card.questionCardRequest())
+            val answers = askGroup(card.questionCardRequest(), viaUserChoice = true)
             val line = ToolFeedback.helpFeedback(card, picked.label) + "\n" +
                 ToolFeedback.answersLine(answers ?: emptyMap())
             injectLadderNote(sessionId, line, history)

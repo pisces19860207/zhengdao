@@ -36,6 +36,8 @@ class MediatorPurityGateTest {
     private val mediatorFiles: List<Pair<String, File>> = listOf(
         PolicyPaths.rel("HarmonyMediator.kt") to PolicyPaths.file("HarmonyMediator.kt"),
         PolicyPaths.rel("MediatorWiring.kt") to PolicyPaths.file("MediatorWiring.kt"),
+        // 2026-11-03 · 406：决策级三权（shouldAsk/budgetFor/decide）同为宰相本体，一并入闸
+        PolicyPaths.rel("MediatorDecide.kt") to PolicyPaths.file("MediatorDecide.kt"),
         "src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt"
             to File("src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt"),
     )

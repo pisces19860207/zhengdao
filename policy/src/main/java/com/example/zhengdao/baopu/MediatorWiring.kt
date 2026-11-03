@@ -89,6 +89,12 @@ object MediatorWiring {
     private var note: String? = null
 
     /**
+     * 本回合已弹出的问卡数（406 弹卡闸的计数；「回合」＝两次用户输入之间，
+     * [turns] 变了就归零——耐心阈值的口径是一回合，不是一会话）。
+     */
+    private var askedThisTurn = 0
+
+    /**
      * 一轮用户输入（**唯一**接线点，控制器里只此一处）。
      *
      * @param userText 用户原话（界面那一份，不是 `reframe` 之后的那一份）
@@ -110,8 +116,10 @@ object MediatorWiring {
             memory = MediatorJudge.Memory()
             turns = 0
             note = null
+            askedThisTurn = 0
         }
         turns += 1
+        askedThisTurn = 0
 
         // W1：换档（一个调用点；`Outcome.None` 是因为"用户刚说完、活还没干"——成败由人话判）。
         state = HarmonyMediator.observe(
@@ -170,6 +178,40 @@ object MediatorWiring {
     @Synchronized
     fun turns(): Int = turns
 
+    // ── 第四百零六批：弹卡闸的咨询口（shouldAsk/budgetFor/decide 的生产读数）────
+
+    /**
+     * 左相弹卡前问调解器（[MediatorDecide.shouldAsk] 的进程内接线版）。
+     *
+     * · 计数归这里：放行且非必问 ⇒ 本回合问卡数 +1（压掉的不占耐心——它没问出去）；
+     * · 画像照 W1 同一份缺省（`PatienceProfile()`，画像接线归后续批）；
+     * · 铁律的让步格在判据里：[mustAsk]（法条必问／用户点名）恒放行，也不占预算；
+     * · **调解器只对它看过的会话发言**：一次用户输入都没进过（引擎直跑工具，没经过
+     *   [onUserTurn]）⇒ 不参与也不计数——行为与接线前逐字一致（同 400 的
+     *   `effective=false` 口径），进程内单例也不会漏账污染下一个会话。
+     *
+     * @param mustAsk 必问档（确认卡根本不走这里；走这里的必问只有「用户点名叫你问」一种）
+     */
+    @Synchronized
+    fun consultAsk(mustAsk: Boolean = false): MediatorDecide.AskAdvice {
+        if (boundSessionId == NO_SESSION) {
+            return MediatorDecide.shouldAsk(state, PatienceProfile(), 0, mustAsk)
+        }
+        val advice = MediatorDecide.shouldAsk(state, PatienceProfile(), askedThisTurn, mustAsk)
+        if (advice.allowed && !mustAsk) askedThisTurn += 1
+        return advice
+    }
+
+    /**
+     * 一组问卡的排序建议（[MediatorDecide.decide] 的进程内接线版）。
+     *
+     * [weights] 由调用方按问题形状给（0=点一下的，1=数字，2=要打字的）；
+     * 这里只搬运状态与判据，不碰问题内容。采纳与否归调用方（只给排序建议）。
+     */
+    @Synchronized
+    fun orderAdvice(weights: List<Int>): MediatorDecide.OrderAdvice =
+        MediatorDecide.decide(weights, state)
+
     /** 清空（测试专用：进程内单例会让用例互相污染，谁用谁还）。 */
     @Synchronized
     fun resetForTest() {
@@ -178,6 +220,7 @@ object MediatorWiring {
         memory = MediatorJudge.Memory()
         turns = 0
         note = null
+        askedThisTurn = 0
     }
 
     /**
