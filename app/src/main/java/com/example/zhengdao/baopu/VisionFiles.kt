@@ -121,74 +121,112 @@ object VisionFiles {
         val skipped = ArrayList<Skipped>(0)
         val shrunk = ArrayList<String>(0)
         for (rel in relPaths) {
-            if (rel.isBlank()) {
-                skipped += Skipped(rel, "路径是空的")
-                continue
-            }
-            // 先按工作区解析；不在工作区就再按 extraRoot 解析（只认这两个根）
-            val inBase = runCatching { File(base, rel).canonicalFile }.getOrNull()
-            val inExtra = if (extra != null) {
-                runCatching { File(extra, rel).canonicalFile }.getOrNull()
-            } else {
-                null
-            }
-            // 两个根都试试：**先取真存在的那一份**（截屏目录里的图，相对工作区解析往往
-            // 只是「同名路径不存在」）；都不存在才回落到根内候选，好报「文件不在了」。
-            val allowed = listOfNotNull(
-                inBase?.takeIf { it.path.startsWith(basePrefix) },
-                inExtra?.takeIf { extraPrefix != null && it.path.startsWith(extraPrefix) },
-            )
-            val file = allowed.firstOrNull { it.isFile } ?: allowed.firstOrNull()
-            if (file == null) {
-                // 越界判据：解析后的真实路径必须仍在工作区（或截屏目录）里
-                // （`../`、软链、绝对路径都是这一条挡）
-                skipped += Skipped(rel, "不在工作区里（越界）")
-                continue
-            }
-            if (!file.isFile) {
-                skipped += Skipped(rel, "文件不在了")
-                continue
-            }
-            val len = file.length()
-            if (len <= 0L) {
-                skipped += Skipped(rel, "是空文件")
-                continue
-            }
-            val declared = mimeOf(file.name)
-            // HEIC/BMP 这类系统能解码、接口不吃的格式：走重编码转 JPEG（不丢图）
-            val convertible = declared == null && isConvertible(file.name)
-            if (declared == null && !convertible) {
-                skipped += Skipped(rel, "扩展名认不出，不当图片发")
-                continue
-            }
-            if (len > cap || convertible) {
-                // 超限不丢：先缩（手机照片动辄 3 MB，2 MB 硬线会把它们全部吞掉）
-                if (shrink == null) {
-                    skipped += Skipped(rel, "超过单张 ${cap / 1024 / 1024} MB 上限，且没有缩图实现")
-                    continue
+            when (val r = readOne(rel, base, basePrefix, extra, extraPrefix, cap, shrink)) {
+                is Read.Kept -> {
+                    out.add(r.payload)
+                    if (r.shrunk) shrunk += rel
                 }
-                when (val r = runCatching { shrink(file) }.getOrNull()) {
-                    is ShrinkOutcome.Ok -> {
-                        if (r.bytes.isEmpty() || r.bytes.size > cap) {
-                            skipped += Skipped(rel, "缩完还是超过 ${cap / 1024 / 1024} MB")
-                            continue
-                        }
-                        shrunk += rel
-                        out.add(payloadOf(if (convertible) "image/jpeg" else declared!!, r.bytes))
-                    }
-                    is ShrinkOutcome.Failed -> skipped += Skipped(rel, r.reason)
-                    null -> skipped += Skipped(rel, "缩图时抛异常")
-                }
-                continue
+                is Read.Skip -> skipped += Skipped(rel, r.reason)
             }
-            val bytes = runCatching { file.readBytes() }.getOrNull()
-            if (bytes == null) {
-                skipped += Skipped(rel, "读盘失败")
-                continue
-            }
-            out.add(payloadOf(declared!!, bytes))
         }
         return Loaded(payloads = out, skipped = skipped, shrunk = shrunk)
+    }
+
+    /** 一条路径的读图结果：收（带「是不是缩过来的」）或跳（带人话原因，rel 由调用方补）。 */
+    private sealed interface Read {
+        data class Kept(val payload: VisionRules.ImagePayload, val shrunk: Boolean) : Read
+        data class Skip(val reason: String) : Read
+    }
+
+    /** 路径级判据的落点：Found 顺带把已经量过的 size 交出去（一次 length() 就够）。 */
+    private sealed interface Picked {
+        data class Found(val file: File, val size: Long) : Picked
+        data class Skip(val reason: String) : Picked
+    }
+
+    /** 单条路径：挑出真能读的文件（五个「读不了」的判据都收在这）。 */
+    private fun pickReadableFile(
+        rel: String,
+        base: File,
+        basePrefix: String,
+        extra: File?,
+        extraPrefix: String?,
+    ): Picked {
+        if (rel.isBlank()) return Picked.Skip("路径是空的")
+        // 先按工作区解析；不在工作区就再按 extraRoot 解析（只认这两个根）
+        val inBase = runCatching { File(base, rel).canonicalFile }.getOrNull()
+        val inExtra = if (extra != null) {
+            runCatching { File(extra, rel).canonicalFile }.getOrNull()
+        } else {
+            null
+        }
+        // 两个根都试试：**先取真存在的那一份**（截屏目录里的图，相对工作区解析往往
+        // 只是「同名路径不存在」）；都不存在才回落到根内候选，好报「文件不在了」。
+        val allowed = listOfNotNull(
+            inBase?.takeIf { it.path.startsWith(basePrefix) },
+            inExtra?.takeIf { extraPrefix != null && it.path.startsWith(extraPrefix) },
+        )
+        val file = allowed.firstOrNull { it.isFile } ?: allowed.firstOrNull()
+        if (file == null) {
+            // 越界判据：解析后的真实路径必须仍在工作区（或截屏目录）里
+            // （`../`、软链、绝对路径都是这一条挡）
+            return Picked.Skip("不在工作区里（越界）")
+        }
+        if (!file.isFile) return Picked.Skip("文件不在了")
+        val len = file.length()
+        if (len <= 0L) return Picked.Skip("是空文件")
+        return Picked.Found(file, len)
+    }
+
+    /** 单条路径：判格式 → 该缩就缩 → 读字节；顺序与跳过话术逐字照搬。 */
+    private fun readOne(
+        rel: String,
+        base: File,
+        basePrefix: String,
+        extra: File?,
+        extraPrefix: String?,
+        cap: Int,
+        shrink: ((File) -> ShrinkOutcome)?,
+    ): Read {
+        val picked = when (val p = pickReadableFile(rel, base, basePrefix, extra, extraPrefix)) {
+            is Picked.Found -> p
+            is Picked.Skip -> return Read.Skip(p.reason)
+        }
+        val file = picked.file
+        val declared = mimeOf(file.name)
+        // HEIC/BMP 这类系统能解码、接口不吃的格式：走重编码转 JPEG（不丢图）
+        val convertible = declared == null && isConvertible(file.name)
+        if (declared == null && !convertible) return Read.Skip("扩展名认不出，不当图片发")
+        if (picked.size > cap || convertible) {
+            return shrinkOne(file, cap, shrink, convertible, declared)
+        }
+        val bytes = runCatching { file.readBytes() }.getOrNull() ?: return Read.Skip("读盘失败")
+        return Read.Kept(payloadOf(declared!!, bytes), shrunk = false)
+    }
+
+    /** 超限或格式不吃 ⇒ 先缩；缩不出就记原因，缩出来才收（缩过的标 shrunk，好回执）。 */
+    private fun shrinkOne(
+        file: File,
+        cap: Int,
+        shrink: ((File) -> ShrinkOutcome)?,
+        convertible: Boolean,
+        declared: String?,
+    ): Read {
+        // 超限不丢：先缩（手机照片动辄 3 MB，2 MB 硬线会把它们全部吞掉）
+        if (shrink == null) {
+            return Read.Skip("超过单张 ${cap / 1024 / 1024} MB 上限，且没有缩图实现")
+        }
+        return when (val r = runCatching { shrink(file) }.getOrNull()) {
+            is ShrinkOutcome.Ok -> {
+                if (r.bytes.isEmpty() || r.bytes.size > cap) {
+                    Read.Skip("缩完还是超过 ${cap / 1024 / 1024} MB")
+                } else {
+                    Read.Kept(payloadOf(if (convertible) "image/jpeg" else declared!!, r.bytes), shrunk = true)
+                }
+            }
+            is ShrinkOutcome.Failed -> Read.Skip(r.reason)
+            null -> Read.Skip("缩图时抛异常")
+        }
     }
 
     /**
