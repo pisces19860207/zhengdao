@@ -184,29 +184,52 @@ internal val PHONE_ROWS: List<List<String?>> = listOf(
 
 // ── 252：旧版 `.xls`（BIFF）落盘夹具 ────────────────────────────────────────
 //
-// **用 jxl 自己写，不手搓字节**：手搓出来的「xls」只能骗过自己写的断言，骗不过真机——
-// 派工单点名「不许造假数据」，夹具本身也得是真的 BIFF（`Workbook.createWorkbook` 的产物）。
+// **用读库自己写，不手搓字节**：手搓出来的「xls」只能骗过自己写的断言，骗不过真机——
+// 派工单点名「不许造假数据」，夹具本身也得是真的 BIFF（`HSSFWorkbook` 的产物）。
+// 422 批换库后写夹具的也是 POI（同一个构件既读又写），jxl 已彻底离场。
 
 /** 一张工作表的填法（列、行都 0 起）。 */
 internal class XlsSheet(val name: String) {
 
-    internal val cells = ArrayList<jxl.write.WritableCell>()
+    internal val ops = ArrayList<(org.apache.poi.ss.usermodel.Sheet) -> Unit>()
 
     fun text(col: Int, row: Int, value: String): XlsSheet {
-        cells += jxl.write.Label(col, row, value)
+        ops += { s -> s.cellAt(col, row).setCellValue(value) }
         return this
     }
 
     fun number(col: Int, row: Int, value: Double): XlsSheet {
-        cells += jxl.write.Number(col, row, value)
+        ops += { s -> s.cellAt(col, row).setCellValue(value) }
         return this
     }
 
-    /** 一个真日期格（**不是**写着日期样子的字符串）。 */
+    /**
+     * 一个真日期格（**不是**写着日期样子的字符串）。
+     *
+     * ⚠️ 序列号**自己按 UTC 算**，不用 `cell.setCellValue(Date)`：POI 那个重载按**本地时区**
+     * 折算序列号（`DateUtil.getJavaDate(serial, false)` 的反向），测试机换个时区夹具就变了。
+     * 被测代码（[XlsCompat]）是把序列号当**墙上时间**读的，夹具必须按同一条口径写。
+     */
     fun date(col: Int, row: Int, value: java.util.Date): XlsSheet {
-        cells += jxl.write.DateTime(col, row, value)
+        ops += { s ->
+            val serial = (value.time - EXCEL_EPOCH_MILLIS).toDouble() / MILLIS_PER_DAY
+            val c = s.cellAt(col, row)
+            c.setCellValue(serial)
+            c.cellStyle = s.workbook.createCellStyle().apply {
+                dataFormat = s.workbook.creationHelper.createDataFormat().getFormat("yyyy-mm-dd hh:mm")
+            }
+        }
         return this
     }
+}
+
+private const val EXCEL_EPOCH_MILLIS = -2209161600000L // 1899-12-30T00:00:00Z
+private const val MILLIS_PER_DAY = 86_400_000.0
+
+/** 取（必要时创建）一个格：POI 不会替你建行建格，而夹具要能写到稀疏位置。 */
+private fun org.apache.poi.ss.usermodel.Sheet.cellAt(col: Int, row: Int): org.apache.poi.ss.usermodel.Cell {
+    val r = getRow(row) ?: createRow(row)
+    return r.getCell(col) ?: r.createCell(col)
 }
 
 internal fun xlsSheet(name: String): XlsSheet = XlsSheet(name)
@@ -215,13 +238,13 @@ internal fun xlsSheet(name: String): XlsSheet = XlsSheet(name)
 internal fun writeXls(dir: File, name: String, vararg sheets: XlsSheet): File {
     val f = File(dir, name)
     f.parentFile?.mkdirs()
-    val wb = jxl.Workbook.createWorkbook(f)
+    val wb = org.apache.poi.hssf.usermodel.HSSFWorkbook()
     try {
-        sheets.forEachIndexed { i, spec ->
-            val s = wb.createSheet(spec.name, i)
-            spec.cells.forEach { s.addCell(it) }
+        sheets.forEach { spec ->
+            val s = wb.createSheet(spec.name)
+            spec.ops.forEach { it(s) }
         }
-        wb.write()
+        f.outputStream().use { wb.write(it) }
     } finally {
         wb.close()
     }

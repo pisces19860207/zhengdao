@@ -635,18 +635,21 @@ dependencies {
     // 第二百六十六批（2026-10-28）：tukaani:xz 已删（源码零引用；它原本是 commons-compress 的
     // XZ 后端，用于释放 .pkg.tar.xz，那条流水线已随终端搬去 zhengdao-term）。
 
-    // 第二百五十二批 · 旧版 Excel（.xls / BIFF）只读转换：F9 物流系统的导出只肯出 .xls，
+    // 第四百二十二批 · 旧版 Excel（.xls / BIFF）只读转换：F9 物流系统的导出只肯出 .xls，
     // 抱朴的表格通道只认 xlsx / csv / tsv ⇒ 扫到 .xls 先转成 UTF-8 CSV 再走既有 CSV 通道。
     //
-    // ⚠️ 必须排除 log4j（jxl 的 POM 把它声明成 **compile** 作用域，不排除就会跟着进 APK）：
-    //  · jxl 运行时**一个字节都不用** log4j —— 实测把 jar 里全部 534 个 class 逐个字节扫过，
-    //    没有一处出现 "org/apache"、"log4j"；它自带的 jxl/common/log/SimpleLogger 只往
-    //    System.out / System.err 写（`jxl/common/log/` 下只有 LoggerName 与 SimpleLogger 两个类）。
-    //  · log4j 1.2.14 已 EOL（2015 年起无维护），带着 CVE-2019-17571（反序列化 RCE，critical）
-    //    与 CVE-2021-4104（JMSAppender JNDI，high）。为了一个「用不上」的传递依赖把它打进包，
-    //    等于主动给自己造一个 400KB 的高危面，第四十三批那条供应链口径不允许。
-    implementation(libs.jxl) {
-        exclude(group = "log4j", module = "log4j")
+    // 换库（252 的 jxl → 422 的 POI）：jxl 是随包依赖里唯一的 **LGPL-2.1**（弱传染，随附正文 +
+    // 源码可得性是硬义务），POI 是 **Apache-2.0**。功能面一个字不改 —— 判据是「同一夹具换前换后
+    // 逐格一致」，取证见 `422-JXL换POI-交付`（两份真表的 CSV 换前/换后 SHA-256 逐字节相同）。
+    //
+    // ⚠️ **只 HSSF，不引 poi-ooxml / xmlbeans**：.xlsx 走自研 `LogisticsXlsx`，那条路一行不碰；
+    //    引了 ooxml 等于为一条不走的分支拖进 10MB+ 的 XML 栈（xmlbeans + poi-ooxml-full）。
+    // ⚠️ **排除 log4j-core**：POI 的 POM 只声明 `log4j-api`（5.5.1 实测，`mvn dependency:tree` 口径
+    //    见交付报告 §1），core 不是它的传递依赖；这里仍然写死一条 exclude —— 理由是「防以后」：
+    //    log4j 1.x 已 EOL 且带 CVE-2019-17571/CVE-2021-4104，2.x 的 core 又有 JNDI 那一串历史，
+    //    一个只用来记日志的库没有任何理由跟着进 APK。exclude 是零成本，所以留着。
+    implementation(libs.poi) {
+        exclude(group = "org.apache.logging.log4j", module = "log4j-core")
     }
 
     implementation(libs.androidx.navigation.compose)
@@ -765,19 +768,20 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
          * **随包**的许可证正文（唯一真源，2026-10-28 第二百六十六批重定）。
          *
          * 判据只有一条：**当前 APK 里有这个组件吗**？有 ⇒ 必须随包；没有 ⇒ 不随包但留档。
-         *   · Apache-2.0 —— Compose / OkHttp / AndroidX / kotlinx 等一大片；
+         *   · Apache-2.0 —— Compose / OkHttp / AndroidX / kotlinx / **POI** 等一大片；
          *   · BSD-3-Clause-zstd —— `libzhengdao_core.so` 里**静态编进了 zstd 本体**
          *     （实测 .so 内含 `zstd-safe-7.3.0/src/lib.rs` 路径串、`ZSTD_trace_decompress_*` 符号、
          *     "bad error message from zstd" 错误串 ⇒ 不是"可能"，是真的在里面）；
-         *   · LGPL-2.1 —— jxl（第二百五十二批，旧版 .xls 只读），聚合分发的 LGPL 库必须随附正文；
          *   · NOTICES —— Apache-2.0 §4(d) 的归属声明（okhttp 内置 Public Suffix List 的 MPL-2.0 数据）；
          *   · README.md —— 上列每一份的来源 URL / 字节数 / SHA256 记录（用户自己可核）；
          *   · LICENSE-zhengdao.txt（来自仓库根 LICENSE）—— 第一方声明，见下方 `need`。
+         *
+         * ⚠️ 第四百二十二批：`LGPL-2.1.txt` 从这份清单**移到 ARCHIVED** —— 它唯一的对象是 jxl，
+         * 而 jxl 已换成 Apache-2.0 的 POI（422 批）。当前包内已无任何 LGPL 组件。
          */
         val PACKAGED = listOf(
             "Apache-2.0.txt",
             "BSD-3-Clause-zstd.txt",
-            "LGPL-2.1.txt",
             "NOTICES.txt",
             "README.md",
         )
@@ -785,7 +789,7 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
         /**
          * **仅历史留档**、**不再随包**的正文。
          *
-         * 这三份（＋ zstd-jni 包装代码的 BSD-2-Clause）服务的组件都已经不在当前 APK 里：
+         * 这几份服务的组件都已经不在当前 APK 里：
          *   · GPL-2.0 —— proot（Termux fork）：proot 与整个终端已搬去 `zhengdao-term`，
          *     `app/src/main/assets/` 现在只有 `baopu/`，没有任何 proot 二进制；
          *   · LGPL-3.0 —— libtalloc：同上，在 proot 进程内动态加载，proot 走了它也就走了；
@@ -796,9 +800,12 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
          *     LGPL-3.0 第 2 条「并入 GPL-3.0」所需。两件都已是历史：当前包内**没有任何 GPL 组件**，
          *     而拿到旧版本的人已从**那个版本的包**里得到正文（GPL 授权不可撤回，但也不是
          *     "每个新包都得再带一遍"）。
+         *   · **LGPL-2.1（422 批移入）** —— jxl（JExcelApi 2.6.12）：2026-11-03 换成 Apache-2.0 的
+         *     POI，当前包内已无 LGPL 组件。但 ≤ v2.2.2 的包**确实带着 jxl**，那些版本的 LGPL 义务
+         *     不因为新版本换库而消失 ⇒ 正文留档、不随新包（`tools/check-licenses.py` 会断言包里没有它）。
          *
          * ⚠️ **正文文件必须留在仓库里**：旧版本还在 GitHub Releases 可下载（≤ v2.2.1 的包内
-         * 带着 proot/talloc/shmem），合规义务不因为"新版本不再分发"而消失。
+         * 带着 proot/talloc/shmem，≤ v2.2.2 带着 jxl），合规义务不因为"新版本不再分发"而消失。
          * 它们只是**不随新包**（`tools/check-licenses.py` 会断言包里没有它们，多一份都红）。
          */
         val ARCHIVED = listOf(
@@ -806,6 +813,7 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
             "BSD-3-Clause.txt",
             "GPL-2.0.txt",
             "GPL-3.0.txt",
+            "LGPL-2.1.txt",
             "LGPL-3.0.txt",
         )
     }

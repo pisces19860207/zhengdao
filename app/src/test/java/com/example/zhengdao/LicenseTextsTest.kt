@@ -21,7 +21,8 @@ class LicenseTextsTest {
      * 与 `| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | … | 4,572 | 95 | `6728…` |`。
      * 取路径的规则：该行里**第一个**「像路径」的反引号片段（`*.txt` 或 `LICENSE`）。
      * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 9 条 =
-     * `licenses/` 九条（八份许可证正文 ＋ `NOTICES.txt` 汇总；其中 LGPL-2.1 是 252 加的）。
+     * `licenses/` 九条（八份许可证正文 ＋ `NOTICES.txt` 汇总）。
+     * 2026-11-03（422 批）：`LGPL-2.1` 从第一节搬到第二节（jxl→POI），**总数仍是 9**，只是换了半边。
      * 字体 `OFL.txt` 那一条**已不在本仓**：2026-10-28 终端连带字体搬去 `zhengdao-term`，
      * README 的 OFL 行同时删了（所以这里的 9 不是「加了一份又丢了一份」的巧合，是账真的平了）。
      */

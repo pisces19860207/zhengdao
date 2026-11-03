@@ -60,16 +60,17 @@ ASSET_PREFIX = "assets/licenses/"
 PACKAGED = [
     "Apache-2.0.txt",
     "BSD-3-Clause-zstd.txt",
-    "LGPL-2.1.txt",
     "NOTICES.txt",
     "README.md",
 ]
 # 仅历史留档、不随包（真源 = ARCHIVED）。
+# 422 批：LGPL-2.1.txt 从随包移到留档（jxl → Apache POI），旧版本（≤ v2.2.2）的义务不撤。
 ARCHIVED = [
     "BSD-2-Clause.txt",
     "BSD-3-Clause.txt",
     "GPL-2.0.txt",
     "GPL-3.0.txt",
+    "LGPL-2.1.txt",
     "LGPL-3.0.txt",
 ]
 

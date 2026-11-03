@@ -33,3 +33,36 @@
     public static void onProgress(java.lang.String, java.lang.String);
 }
 
+# ── Apache POI（第四百二十二批，2026-11-03 换掉 jxl 时引入）────────────────────
+# POI 是**桌面 Java 库**，jar 里有几处引用了 Android 上根本不存在的类。R8 在 release 变体
+# （`minifyReleaseWithR8`）会把「引用了缺失类」直接判红 ⇒ 不补这几条规则打不出正式包。
+#
+# 下面的清单**逐字来自 R8 自己生成的** `app/build/outputs/mapping/release/missing_rules.txt`，
+# 不是手写猜的。三族，来源各不相同：
+#
+#   ① `java.awt.**`（16 条）—— POI 的**格式化与图片**栈。
+#      `CellFormatPart` 的静态初始化块在造 `NAMED_COLORS`/`INDEXED_COLORS` 两个
+#      `java.awt.Color` 集合；`GenericRecordJsonWriter` 打印图片时用 `BufferedImage`；
+#      `EscherMetafileBlip` 用 `Dimension`/`Rectangle` 算图元尺寸。**我们一条都不走**：
+#      只读单元格的文本/数值，不读图片、不读图元记录。
+#      ⚠️ 但「不走」不等于「不会碰到」—— `XlsCompat.numericText` 里对 DataFormatter
+#      的调用做了 LinkageError 兜底（带颜色/条件 token 的格式串会触发类初始化失败，
+#      Android 上必炸，JVM 单测看不出来）。这条规则只是让**编译**过得去，兜底在代码里。
+#   ② `org.osgi.framework.**`（5 条）—— `log4j-api` 的 `OsgiServiceLocator`。
+#      只有真跑在 OSGi 容器里才会用到；Android 上这段代码永远不会被执行。
+#   ③ `aQute.bnd.annotation.**` / `edu.umd.cs.findbugs.annotations.**`（5 条）——
+#      上游打 jar 时用的**编译期注解**（bnd 的 SPI 标注、SpotBugs 的 `@Nullable`），
+#      `RetentionPolicy.CLASS`，运行时本来就不需要。
+#
+# ⚠️ 纪律：`-dontwarn` 只压「编译期找不到类」的告警，**不改变运行时行为**。
+#    它掩盖不了真正的 NoClassDefFoundError —— 所以①那族必须在代码里有兜底，
+#    不能靠这几行规则当挡箭牌。
+-dontwarn aQute.bnd.annotation.baseline.BaselineIgnore
+-dontwarn aQute.bnd.annotation.spi.ServiceConsumer
+-dontwarn aQute.bnd.annotation.spi.ServiceProvider
+-dontwarn edu.umd.cs.findbugs.annotations.Nullable
+-dontwarn edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+-dontwarn java.awt.**
+-dontwarn org.osgi.framework.**
+
+

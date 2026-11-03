@@ -99,7 +99,7 @@ class XlsCompatTest {
 
     @Test
     fun `空列不被挤掉（负例：转换后列错位）`() {
-        // 第 1 列整列为空：jxl 的 getRow() 只给到最后一个非空格，
+        // 第 1 列整列为空：POI 的 `Row.lastCellNum` 只给到最后一个有格的位置，
         // 谁按行长度写谁就把中间空列挤没了 —— 这条钉的就是那个 bug。
         val src = writeXls(
             ws,
@@ -355,8 +355,8 @@ class XlsCompatTest {
 
     @Test
     fun `行数超限报的是格式上限 让人另存 xlsx 而不是拆成几份`() {
-        // ⚠️ 造不出 65537 行的 `.xls`：**BIFF 一张表最多 65536 行**（jxl 的
-        // `RowsExceededException` 当场证明）。所以这条判据只能靠注入的小上限钉住。
+        // ⚠️ 造不出 65537 行的 `.xls`：**BIFF 一张表最多 65536 行**（`HSSFSheet` 也写不出来，
+        // 它自己的 `createRow` 就在 65536 处停）。所以这条判据只能靠注入的小上限钉住。
         // 关键不是「拦得住」（真文件根本到不了），而是**拦下来时说的是什么话**：
         // 拆成几份 `.xls` 是白费力气，唯一有用的动作是「另存为 .xlsx」。
         val sheet = xlsSheet("sheet")
@@ -521,4 +521,34 @@ class XlsCompatTest {
             answer.text().contains("已把「物流.xls」自动转成 CSV（95 行 × 28 列）"),
         )
     }
+
+    // ── 422：换库（jxl → POI）的判据①「同一夹具逐格一致」 ──────────────────
+    //
+    // 这两串摘要是**换库之前**用 jxl 2.6.12 那一版跑出来的（同一份夹具、同一条
+    // `XlsCompat.convert` 路径），换库后必须逐字节相同 —— 只要有一个格的值、列序或日期
+    // 格式变了，这里的 SHA-256 立刻对不上。
+    //
+    // 为什么不把金标准 CSV 本身入库：它是**用户的真实物流数据**（含姓名手机号），
+    // 进仓库就等于把私有样本复制一份到公开历史里。摘要只泄露"长度 + 哈希"，不泄露内容。
+
+    @Test
+    fun `真表 换库前后逐格一致（jxl 金标准摘要）`() {
+        val cases = listOf(
+            Triple("物流.xls", 15_612L, "722b064396f560113a7328ceb006624fcba84fdc9d794ec45faf55f9121c1956"),
+            Triple("到货库存.xls", 11_182L, "3d8d0ecc83bb061128e67467d6e79e289b2d2b86f99004ad5601dfae0ea4257a"),
+        )
+        for ((name, bytes, sha) in cases) {
+            val src = File(REAL_XLS_DIR, name)
+            Assume.assumeTrue("真表夹具不在，跳过（不造假数据顶替）：${src.absolutePath}", src.isFile)
+            val done = XlsCompat.convert(src, cacheDir()).getOrNull()
+            assertNotNull("转换失败：$name", done)
+            val raw = done!!.csv.readBytes()
+            assertEquals("$name：CSV 字节数变了 —— 换库改了输出（判据①）", bytes, raw.size.toLong())
+            assertEquals("$name：CSV 内容变了 —— 换库改了输出（判据①）", sha, sha256(raw))
+        }
+    }
+
+    private fun sha256(bytes: ByteArray): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
 }

@@ -2,28 +2,50 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 //
 // 第二百五十二批 · 旧版 Excel（`.xls` / BIFF）→ UTF-8 CSV —— **只加一条读取分支**。
+// 第四百二十二批 · 读库由 **jxl（LGPL-2.1）换成 Apache POI 的 HSSF（Apache-2.0）**。
 //
 // 起因：F9 物流系统的导出只肯出 `.xls`（BIFF），而抱朴的表格通道只认 `.xlsx / .csv / .tsv`
-// ⇒ 导出来的表在抱朴里**根本看不见**。派工单定的做法：**不许硬读** —— 用 jxl 读第一个工作表、
+// ⇒ 导出来的表在抱朴里**根本看不见**。派工单定的做法：**不许硬读** —— 用读库读第一个工作表、
 // 写成 UTF-8 CSV 落在工作区的缓存目录，再**走已经存在的那条 CSV 通道**。
 // 红线：xlsx / csv / tsv 的既有路径一个字都不改（本文件甚至不 import `SheetReader`）。
+//
+// ## 为什么 422 批换库（换的是许可，不是功能）
+//
+// jxl 是随包依赖里**唯一的 LGPL-2.1**（弱传染：动态链接即可用，但随附正文 + 源码可得性
+// 是硬义务）；POI 是 Apache-2.0（可商用、无版税、无源码要约）。功能面**一个字都不许变**：
+// 判据是「同一夹具、换前换后逐格一致」，不是「看起来差不多」。取证方式见
+// `422-JXL换POI-交付`：先用 jxl 版把两份真表（`物流.xls` / `到货库存.xls`）转成 CSV 存成
+// 金标准，再换 POI 重转、逐字节比 SHA-256。
+//
+// ## 只 HSSF，不引 ooxml
+//
+// · **不引** `poi-ooxml` / `xmlbeans`：`.xlsx` 走的是自研 `LogisticsXlsx`，那条路本批一行不碰；
+//   引了 ooxml 等于把一个 10MB+ 的 XML 栈拖进包，只为一条我们根本不走的分支。
+// · **只用 `HSSFWorkbook` 构造器**，不用 `WorkbookFactory`：后者会按文件魔数去试 XSSF
+//   （反射加载 `poi-ooxml` 的类），在「只有 poi 没有 poi-ooxml」的包里是条会炸的岔路。
+// · `log4j-core` 在依赖侧显式排除（POI 只声明 `log4j-api`，见 `app/build.gradle.kts` 的注释）。
 //
 // ## 四条硬口径（派工单 §1 / §2）
 //
 // 1. **只转第一张**：多工作表默认取第一张，提示里写「另有 K 个工作表未读」；
-// 2. **日期**：DateCell 一律格成 `yyyy-MM-dd HH:mm`，整点只写 `yyyy-MM-dd`。
+// 2. **日期**：日期格一律格成 `yyyy-MM-dd HH:mm`，整点只写 `yyyy-MM-dd`。
 //    ⚠️ 时区是这里唯一的坑，实测（真表 `到货库存.xls` r2c6）：
-//      `cell.getContents()` = `2026-10-24 09:36:00`
+//      jxl 的 `cell.getContents()` = `2026-10-24 09:36:00`
 //      `((DateCell) cell).getDate()` 按**本地时区**格式化 = `2026-10-24 17:36`（本机 Asia/Hong_Kong）
 //      `((DateCell) cell).getDate()` 按 **UTC** 格式化      = `2026-10-24 09:36` ✔
 //    ⇒ 必须按 **UTC** 格式化，才是 Excel 里那个墙上时间。按本地时区格式化比漏出 `46319.4`
 //    更糟：它看起来是个正常日期，只是悄悄偏了 8 小时，没人会发现。
+//    ⚠️ POI 侧同理且**更隐蔽**：`cell.dateCellValue` 返回 `java.util.Date`（毫秒数），
+//    而 `DateUtil.getJavaDate(serial)` 是按**本地时区**把序列号折算成毫秒的。
+//    本文件的做法是**不碰 `java.util.Date`**：直接拿 `cell.numericCellValue`（Excel 序列号）
+//    按 UTC 纪元换算成 `Instant`，再交给两个不可变的 formatter —— 墙上时间原样落地，
+//    与构建机 / 手机所在时区无关。
 // 3. **上限**：单文件 ≤ 50MB、第一张表 ≤ 65536 行（**BIFF 自己的格式上限**，不是我们另设的阀门）、
 //    转换后 CSV ≤ 50MB；超了**拒绝并给一句能动手的话**，不许 OOM、不许卡主线程。
 //    ⚠️ 这里曾经写过「20 万行上限」——那是**永远碰不到的假判据**：BIFF8 一张表最多 65536 行，
-//    jxl 连写都写不出来（`RowsExceededException` 当场证明）。假判据比没有判据更坏：它看着很严格，
-//    真出事时什么也拦不住，还会让人以为「20 万行以下都安全」。现在这条的真身份是**格式上限守卫**，
-//    真话是「这文件的行数超过了 .xls 能装下的行数 ⇒ 它不是一张正常的 .xls，另存为 .xlsx 再导」。
+//    真文件到不了。假判据比没有判据更坏：它看着很严格，真出事时什么也拦不住，还会让人以为
+//    「20 万行以下都安全」。现在这条的真身份是**格式上限守卫**，真话是「这文件的行数超过了
+//    .xls 能装下的行数 ⇒ 它不是一张正常的 .xls，另存为 .xlsx 再导」。
 // 4. **缓存**：源 `.xls` 的 mtime + size 一变就重转；没变就直接复用上一份 CSV。
 //
 // ## 缓存档位：**R1**（2026-10-28 蓝总管裁定，三条硬约束）
@@ -48,8 +70,8 @@
 //
 // - 「把 .xls 当已支持格式直接读 ⇒ 乱码」：`.xls` 只在**本文件**被认领；`SheetReader` 那条
 //   链子永远收不到它（扩展名不是 xlsx/csv/txt ⇒ Unsupported，不会被当文本灌进上下文）；
-// - 「转换后列错位」：每一行都按 **`sheet.columns` 这个统一宽度**补齐。jxl 的 `getRow()` 只
-//   给到该行最后一个非空格，谁按行长度写谁就把中间空列挤掉了 —— 那才是错位；
+// - 「转换后列错位」：每一行都按 **`columns` 这个统一宽度**补齐。POI 的 `Row.lastCellNum`
+//   只给到该行最后一个有格的位置，谁按行宽写谁就把中间空列挤掉了 —— 那才是错位；
 // - 「日期仍是序列号」：见上面第 2 条；
 // - 「失败静默」：**五种**失败各自一句能动手的话，见 [XlsFailure]；
 // - 「大文件 OOM」：转换是**流式写**（一行一行进 `BufferedWriter`，不拼一个大 String），
@@ -59,17 +81,24 @@
 // - 「改了既有通道」：本文件的产出只是「一个 UTF-8 的 .csv 文件」，下游照旧。
 package com.example.zhengdao.baopu.table
 
-import jxl.Cell
-import jxl.CellType
-import jxl.DateCell
-import jxl.Workbook
-import jxl.WorkbookSettings
-import jxl.read.biff.BiffException
+import org.apache.poi.EncryptedDocumentException
+import org.apache.poi.hssf.OldExcelFormatException
+import org.apache.poi.hssf.usermodel.HSSFWorkbook
+import org.apache.poi.poifs.filesystem.NotOLE2FileException
+import org.apache.poi.ss.usermodel.Cell
+import org.apache.poi.ss.usermodel.CellType
+import org.apache.poi.ss.usermodel.DataFormatter
+import org.apache.poi.ss.usermodel.DateUtil
+import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.ss.usermodel.Workbook
 import java.io.File
+import java.io.FileInputStream
 import java.security.MessageDigest
+import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 
 /** 一张 `.xls` 转出来的那一段说明（给用户看的那句话由 [sentence] 产出）。 */
 data class XlsNotice(
@@ -213,6 +242,18 @@ object XlsCompat {
     private const val META_SUFFIX = ".meta"
 
     /**
+     * Excel 的日期纪元：序列号 0 ＝ 1899-12-30T00:00:00Z（**含 1900 闰年 bug 的既定口径**）。
+     *
+     * 为什么自己算而不用 `DateUtil.getJavaDate`：后者返回 `java.util.Date`（毫秒），
+     * 而它内部按**本地时区**把序列号折算成毫秒（`getJavaDate(serial, false)`）。
+     * 我们全程只认「序列号 → UTC 墙上时间」，绕开 `java.util.Date` 就没有时区参与的机会。
+     * 见文件头第 2 条：这个坑曾经让日期悄悄偏 8 小时。
+     */
+    private const val EXCEL_EPOCH_MILLIS = -2209161600000L // 1899-12-30T00:00:00Z
+
+    private const val MILLIS_PER_DAY = 86_400_000L
+
+    /**
      * 日期两把格式（**UTC**：见文件头第 2 条）。
      *
      * 用 `java.time.DateTimeFormatter` 而不是 `SimpleDateFormat`：① 后者不是线程安全的，
@@ -226,6 +267,14 @@ object XlsCompat {
 
     private val DATE_ONLY: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US).withZone(ZoneOffset.UTC)
+
+    /**
+     * 有显式格式串的数字格用它格式化（**只在 `dataFormat != 0` 时用**）。
+     *
+     * `Locale.US` 是刻意的：小数点必须是 `.`，不能随手机语言变成 `,`——否则同一张表在
+     * 不同手机上转出来的 CSV 不一样，缓存与断言全部失去意义。
+     */
+    private val FORMATTER: DataFormatter = DataFormatter(Locale.US)
 
     /** 本次进程**真转**了几次（测试拿它钉「重跑命中缓存不重复转」）。 */
     @Volatile
@@ -313,7 +362,7 @@ object XlsCompat {
      * @param cacheDir 缓存目录（**固定** `<工作区>/抱朴记忆/表格/缓存/`；参数只为单测换临时目录，
      *   生产调用方 [TableRegistry.cacheDir] 只算这一个路径，不提供别的入口）
      * @param rowLimit 行数上限，默认 [BIFF_MAX_ROWS]（＝格式上限）。**这个参数只为让那条判据
-     *   能被单测到**——真 `.xls` 装不下 65537 行，jxl 写都写不出来，造不出超限夹具
+     *   能被单测到**——真 `.xls` 装不下 65537 行，造不出超限夹具
      * @return 成功给 [XlsConverted]；失败给 [XlsFailure]（**每一种都有一句能动手的话**）
      */
     fun convert(src: File, cacheDir: File, rowLimit: Int = BIFF_MAX_ROWS): Result<XlsConverted> = runCatching {
@@ -345,85 +394,101 @@ object XlsCompat {
     // ── 转换本体 ────────────────────────────────────────────────────────────
 
     /**
-     * jxl 的英文报错 → 中文。
+     * POI 的英文报错 → 中文。
      *
      * **只译它自己说过的那几种，不认得的照原样带出**——把「corrupt」翻成「文件是坏的」
-     * 是翻译，把它翻成「网络不好」就是猜。用户拿到的那句话里永远看得到 jxl 的原文。
+     * 是翻译，把它翻成「网络不好」就是猜。用户拿到的那句话里永远看得到 POI 的原文。
      */
-    private fun biffWhy(e: BiffException): String {
-        val m = e.message ?: return "不是能认的 .xls"
-        return when {
-            m.contains("corrupt", ignoreCase = true) -> "文件是坏的：导出中断或落盘不全；jxl 原话=$m"
-            m.contains("biff", ignoreCase = true) -> "不是 Excel 97–2003 那种 .xls；jxl 原话=$m"
-            m.contains("OLE", ignoreCase = true) -> "不是 OLE 复合文档，多半压根不是 .xls；jxl 原话=$m"
-            else -> m.take(80)
-        }
+    private fun poiWhy(m: String): String = when {
+        m.contains("corrupt", ignoreCase = true) -> "文件是坏的：导出中断或落盘不全；POI 原话=$m"
+        m.contains("BIFF", ignoreCase = true) -> "不是 Excel 97–2003 那种 .xls；POI 原话=$m"
+        m.contains("OLE2", ignoreCase = true) -> "不是 OLE 复合文档，多半压根不是 .xls；POI 原话=$m"
+        m.contains("header", ignoreCase = true) -> "文件头不完整（多半被截断）；POI 原话=$m"
+        else -> m.take(80)
     }
 
     private fun convertNow(src: File, out: File, rowLimit: Int): XlsConverted {
-        val settings = WorkbookSettings().apply {
-            // jxl 内存吃紧时会自己调 System.gc()：在 Android 上那一下会让整条线程停住。
-            // 我们宁可让它多吃点堆，也不要一次不可预测的停顿（真 OOM 由上面的上限挡住）。
-            setGCDisabled(true)
-            // jxl 自带的 SimpleLogger 默认往 System.out 写警告；转表这种高频动作不该刷屏。
-            setSuppressWarnings(true)
-        }
-        val wb = try {
-            Workbook.getWorkbook(src, settings)
-        } catch (e: jxl.read.biff.PasswordException) {
+        // 只 HSSF：不用 WorkbookFactory（它会按魔数去反射试 XSSF，而本包**没有** poi-ooxml）。
+        val wb: Workbook = try {
+            FileInputStream(src).use { HSSFWorkbook(it) }
+        } catch (e: EncryptedDocumentException) {
             throw XlsFailure.Encrypted
-        } catch (e: BiffException) {
-            throw XlsFailure.Broken(biffWhy(e))
+        } catch (e: OldExcelFormatException) {
+            // BIFF5/7（Excel 5.0/95）：jxl 当年也不支持，口径一致 —— 换格式才是出路
+            throw XlsFailure.Broken("这是 Excel 95 或更早的 .xls；POI 原话=" + (e.message ?: ""))
+        } catch (e: NotOLE2FileException) {
+            throw XlsFailure.Broken("不是 OLE 复合文档，多半压根不是 .xls；POI 原话=" + (e.message ?: ""))
         } catch (e: java.io.IOException) {
             throw XlsFailure.Broken("读不出来：" + (e.message?.take(80) ?: "IO 失败"))
         } catch (e: RuntimeException) {
-            // 解析**别人给过来的二进制**：jxl 对截断/畸形文件不保证都抛受检异常，
+            // 解析**别人给过来的二进制**：POI 对截断/畸形文件不保证都抛受检异常，
             // 越界与负长度这类 RuntimeException 在真机上一样会发生。吞掉它才是真静默，
-            // 这里把它翻译成一句用户能动手的话（负例：「失败只抛 Exception」）。
-            throw XlsFailure.Broken("文件结构不对：" + (e.message?.take(80) ?: e.javaClass.simpleName))
+            // 这里把它翻译成一句用户能动手的话（负例：「失败只抛异常」）。
+            throw XlsFailure.Broken(poiWhy(e.message ?: e.javaClass.simpleName))
         }
         try {
-            val names = wb.sheetNames.toList()
-            if (names.isEmpty()) throw XlsFailure.Broken("这个文件里没有工作表")
-            val first = wb.getSheet(0)
-            val rows = first.rows
-            val cols = first.columns
+            val count = wb.numberOfSheets
+            if (count <= 0) throw XlsFailure.Broken("这个文件里没有工作表")
+            val names = (0 until count).map { wb.getSheetName(it) }
+            val first: Sheet = wb.getSheetAt(0)
+            val rows = rowCountOf(first)
             if (rows > rowLimit) throw XlsFailure.AboveBiffLimit(rows, rowLimit)
+            val cols = columnCountOf(first, rows)
 
-            writeCsv(first, out)
-            writeMeta(out, Meta(src.lastModified(), src.length(), rows, cols, first.name, names))
+            writeCsv(first, rows, cols, out)
+            writeMeta(out, Meta(src.lastModified(), src.length(), rows, cols, names[0], names))
             convertCount++
             return XlsConverted(
                 source = src,
                 csv = out,
-                sheet = first.name,
+                sheet = names[0],
                 sheets = names,
                 rows = rows,
                 columns = cols,
                 cached = false,
             )
         } finally {
-            wb.close() // jxl 会开着 RandomAccessFile / 临时文件句柄，漏 close 就是漏 fd
+            wb.close() // POI 会开着底层输入流的句柄，漏 close 就是漏 fd
         }
+    }
+
+    /** 表有几行。空表＝0 行（不是 1 行空行）。 */
+    private fun rowCountOf(sheet: Sheet): Int {
+        if (sheet.physicalNumberOfRows == 0) return 0
+        return (sheet.lastRowNum + 1).coerceAtLeast(0)
+    }
+
+    /**
+     * 表有多宽：**逐行取最大** `lastCellNum`。
+     *
+     * 不能只看第 0 行：真表里常有「表头短、数据行更宽」（或反过来）的情形，
+     * 只看表头会把右边几列整片截掉——那是「列错位」的另一种形态。
+     */
+    private fun columnCountOf(sheet: Sheet, rows: Int): Int {
+        var max = 0
+        for (r in 0 until rows) {
+            val n = sheet.getRow(r)?.lastCellNum?.toInt() ?: continue
+            if (n > max) max = n
+        }
+        return max
     }
 
     /**
      * 流式写 CSV（**不拼一个大 String**：65536 行 × 43 列拼起来就是几十上百 MB，那是负例 6 本人）。
      *
      * 先写 `.tmp` 再改名：转一半崩了不会留下一个「看着新鲜、其实是半截」的 CSV。
-     *
-     * @return 写出去的字节数
      */
-    private fun writeCsv(sheet: jxl.Sheet, out: File) {
+    private fun writeCsv(sheet: Sheet, rows: Int, cols: Int, out: File) {
         out.parentFile?.mkdirs()
         val tmp = File(out.parentFile, out.name + ".tmp")
         var bytes = 0L
         tmp.bufferedWriter(Charsets.UTF_8).use { w ->
-            for (r in 0 until sheet.rows) {
+            for (r in 0 until rows) {
+                val row = sheet.getRow(r)
                 val line = StringBuilder()
-                for (c in 0 until sheet.columns) {
+                for (c in 0 until cols) {
                     if (c > 0) line.append(',')
-                    line.append(escape(textOf(sheet.getCell(c, r))))
+                    line.append(escape(textOf(row?.getCell(c))))
                 }
                 w.write(line.toString())
                 w.write("\r\n") // RFC 4180 §2.1：行结束是 CRLF
@@ -439,18 +504,78 @@ object XlsCompat {
     }
 
     /** 一个单元格 → 一段文本（**日期在这里落定**，别处不许再动它）。 */
-    private fun textOf(cell: Cell): String = when {
-        // 用 `is DateCell` 而不是比对 CellType.DATE：DATE_FORMULA（公式算出来的日期）
-        // 也实现 DateCell，按类型比会漏掉它 —— 漏掉就是「日期仍是序列号」。
-        cell is DateCell -> {
-            val t = cell.date.toInstant()
-            val s = DATE_TIME.format(t)
-            if (s.endsWith(" 00:00")) DATE_ONLY.format(t) else s
+    private fun textOf(cell: Cell?): String {
+        if (cell == null) return ""
+        // 公式格取**缓存结果**的类型：Excel 存的是上次算出来的值，jxl 当年也是这么给的
+        // （`NumberFormulaCell extends NumberCell`）。不取公式文本——那会把 `SUM(A1:A9)`
+        // 写进 CSV，下游当字符串算不动。
+        val type = if (cell.cellType == CellType.FORMULA) cell.cachedFormulaResultType else cell.cellType
+        return when (type) {
+            CellType.NUMERIC -> numericText(cell)
+            CellType.STRING -> cell.stringCellValue.orEmpty()
+            // jxl 的 BooleanCell 给的是小写 true/false；POI 的 DataFormatter 会给 TRUE/FALSE。
+            // 这一格没有夹具，但「换库不改行为」的判据在前，按 jxl 的写法落地。
+            CellType.BOOLEAN -> if (cell.booleanCellValue) "true" else "false"
+            // #DIV/0! 这类错误值：它不是数，写进 CSV 会被当成字符串，downstream 算不动
+            CellType.ERROR -> ""
+            CellType.BLANK, CellType._NONE -> ""
+            // 缓存结果类型仍是公式（极少见）：退回公式文本，与 jxl 的兜底一致
+            CellType.FORMULA -> cell.cellFormula.orEmpty()
         }
-        cell.type == CellType.EMPTY -> ""
-        // #DIV/0! 这类错误值：它不是数，写进 CSV 会被当成字符串， downstream 算不动
-        cell.type == CellType.ERROR || cell.type == CellType.FORMULA_ERROR -> ""
-        else -> cell.contents.orEmpty()
+    }
+
+    /** 数字格：日期按 UTC 格式化，其余按「Excel 里看到的那个数」写出去。 */
+    private fun numericText(cell: Cell): String {
+        val v = cell.numericCellValue
+        if (DateUtil.isCellDateFormatted(cell)) {
+            val millis = EXCEL_EPOCH_MILLIS + Math.round(v * MILLIS_PER_DAY)
+            val t = Instant.ofEpochMilli(millis)
+            val s = DATE_TIME.format(t)
+            return if (s.endsWith(" 00:00")) DATE_ONLY.format(t) else s
+        }
+        // 「General」＝没有格式串：按最短往返表示写（17.0 → "17"，3660.16 → "3660.16"）。
+        // ⚠️ 不能直接用 DataFormatter：它模仿 Excel 的**显示**，11 位以上会切成科学计数法
+        // （`1.23457E+12`），而 jxl 当年给的是完整数字——那就不是「逐格一致」了。
+        if (cell.cellStyle.dataFormat.toInt() == 0) return plainNumber(v)
+        // 有显式格式串（`0.00` / `#,##0` / `yyyy`…）：按格式串来，这才与 jxl 的格式化口径一致。
+        //
+        // ⚠️ **Android 上没有 `java.awt`，而 POI 的格式化栈里有一处硬依赖它**（第四百二十二批实测）：
+        //    `CellFormatPart` 的静态初始化块在造 `NAMED_COLORS` / `INDEXED_COLORS` 两个
+        //    `java.awt.Color` 集合 ⇒ 该类**一初始化就** NoClassDefFoundError。用拒绝加载
+        //    `java.awt.*` 的类加载器实跑（`_zd-private/tmp422/AwtProbe.java`）：
+        //      · `new CellFormatPart("0.00")` → ClassNotFoundException: java.awt.Color  ✗
+        //      · `DataFormatter.formatRawCellContents(1234.5678, 2, "0.00")` → `1234.57`  ✓
+        //    差别在 POI 对「简单格式串」有快路径，根本不构造 `CellFormatPart`；只有带
+        //    **颜色 `[Red]` / 条件 `[>100]` / 引号字面量**的格式串才会走进去。
+        //
+        //    这类格式串在 F9 导出里罕见，但**罕见不等于不会**：真出现时，JVM 上的单测全绿、
+        //    真机上一问这张表就整表转换失败 —— 那正是「换库」最不该付出的代价。
+        //    ⇒ 兜底：格式化成 LinkageError（缺类 / 初始化失败）时**降级成纯数字**，
+        //    并记下这件事，后续单元格不再反复撞同一个错。
+        if (awtMissing) return plainNumber(v)
+        return try {
+            FORMATTER.formatCellValue(cell)
+        } catch (e: LinkageError) {
+            // NoClassDefFoundError / ExceptionInInitializerError 都在 LinkageError 之下。
+            awtMissing = true
+            plainNumber(v)
+        }
+    }
+
+    /**
+     * 这台设备上 POI 的格式化栈能不能用（Android 无 `java.awt` ⇒ 带颜色的格式串会炸）。
+     *
+     * 一旦探到不能用就置真：失败是**类的静态初始化**失败，属进程级、不会自愈，
+     * 没必要每个格子再撞一次（那张表可能几千行）。
+     */
+    @Volatile
+    private var awtMissing: Boolean = false
+
+    /** 数字的最短往返表示：整数不带 `.0`，小数按 `Double.toString`（最短可往返）。 */
+    private fun plainNumber(v: Double): String = when {
+        v.isNaN() || v.isInfinite() -> ""
+        v == Math.rint(v) && abs(v) < 1e15 -> v.toLong().toString()
+        else -> v.toString()
     }
 
     /** RFC 4180 §2：含逗号/引号/CR/LF 的字段加引号，内部引号翻倍。 */

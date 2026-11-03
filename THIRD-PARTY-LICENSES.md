@@ -25,8 +25,8 @@
 > | libtalloc（§2） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt)（GPL-3.0 全文；LGPL-3.0 第 2 条并入 GPL-3.0。2026-10-11 前该正文放在仓库根 `LICENSE`） |
 > | libandroid-shmem（§3） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
 > | JetBrains Maple Mono（§6） | SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt`（随字体同目录，上游原文件） |
-> | **jxl（JExcelApi 2.6.12，§8）** | LGPL-2.1 | [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)（2026-10-28 补；用于第二百五十二批旧版 `.xls` 只读转换） |
-| Maven 运行时依赖（§8，**2026-10-28 起 138 个已解析模块**） | 绝大多数 Apache-2.0；zstd 本体＝**BSD 3-Clause**（静态编进 Rust 核）；`jxl`＝**LGPL-2.1** | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）、[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)（zstd-jni）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
+> | ~~**jxl（JExcelApi 2.6.12，§8）**~~ **（2026-11-03 第四百二十二批已换成 Apache POI）** | ~~LGPL-2.1~~ | 正文 [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt) **转为历史留档、不再随包**（≤ v2.2.2 的包里有 jxl，那些版本的义务不撤；见 `licenses/README.md` 第二节） |
+| Maven 运行时依赖（§8；**2026-11-03 第四百二十二批 jxl→POI：−1 jxl ＋7（poi 与 6 个传递依赖）＝ +6 个模块**） | 绝大多数 Apache-2.0（**POI 与它的 6 个传递依赖全是 Apache-2.0**）；zstd 本体＝**BSD 3-Clause**（静态编进 Rust 核） | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）、[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)（zstd-jni）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
 >
 > - 每份正文的**来源 URL、取回日期、字节数与 SHA256** 见 [`licenses/README.md`](licenses/README.md)。
 > - 这些正文**随分发物提供**：构建期（`app/build.gradle.kts` 的 `stageLicenseAssets`）把它们拷贝进
@@ -248,6 +248,10 @@
 
 ## 8. Maven 运行时依赖（136 个已解析模块 / 47 个 group）→ 声明许可证 → 覆盖方式（2026-10-11 补）
 
+> **2026-11-03 第四百二十二批**：`jxl`（LGPL-2.1）换成 `org.apache.poi:poi`（Apache-2.0，**只 HSSF**）。
+> 本节的模块数因此 **−1（jxl）＋7（poi 与 6 个传递依赖）＝ +6**；`LGPL-2.1` 这条许可证从随包清单里消失，
+> 当前 APK 内**已无任何 GPL/LGPL 组件**。换库的功能判据（同一夹具逐格一致）见交付报告 §2。
+
 这一节回答「随包的第三方 Maven 代码按什么许可证来的、正文在哪」。**只看运行时依赖**
 （`releaseRuntimeClasspath`）：`testImplementation` / `androidTestImplementation` 的构件不进安装包，
 不随分发物提供，因此没有 4(a)/4(d) 义务。
@@ -276,10 +280,11 @@
 | `com.google.guava:listenablefuture` | 1 | 自身 POM 没有 `<licenses>` 段；父 POM `com.google.guava:guava-parent:26.0-android` 声明 Apache-2.0 | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) |
 | ~~**`com.github.luben:zstd-jni`**~~ **（2026-10-27 随终端搬走时已删；zstd 本体随 Rust 核静态进包，见上一行的 BSD-3-Clause-zstd）** | 1 | **BSD 2-Clause**（包装代码）＋ 它编译进去的 zstd 本体为 **BSD 3-Clause**（<https://opensource.org/licenses/BSD-2-Clause>、（<https://github.com/facebook/zstd>） | **随包 [`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt) 与 [`licenses/BSD-3-Clause-zstd.txt`](licenses/BSD-3-Clause-zstd.txt)（2026-10-11 补；此前一直缺，且两份版权人不同不能互相顶替）** —— 该构件内**不带任何许可证文本**，而 APK 里确实有它的二进制 `lib/arm64-v8a/libzstd-jni-1.5.6-4.so`（600,064 B） |
 | ~~**`org.tukaani:xz`**~~ **（2026-10-28 第二百六十六批已删：commons-compress 的 XZ 后端，随它一起失去引入方）** | 1 | **Public Domain**（POM 原文 `<comments>You can do whatever you want with this package.</comments>`） | 无正文义务，仅登记 |
-| **`net.sourceforge.jexcelapi:jxl`**（第二百五十二批，旧版 `.xls` 只读） | 1 | **LGPL-2.1**（POM 只写 `GNU Lesser General Public License`；版本按上游与 Wikipedia/libraries.io 的 LGPL-2.1+ 定） | **随包 [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)（2026-10-28 补）** —— 该构件内**不带任何许可证文本**；⚠️ 其 POM 把 `log4j:log4j:1.2.14` 声明为 compile 作用域，**已在 `app/build.gradle.kts` 显式排除**（jxl 运行时不用它：jar 内 534 个 class 无一处引用 `org/apache`/`log4j`；log4j 1.x 已 EOL 且带 CVE-2019-17571/CVE-2021-4104） |
+| **`org.apache.poi:poi`**（第四百二十二批，旧版 `.xls` 只读；**只 HSSF，不引 poi-ooxml**） | 1 | **Apache-2.0**（POM `<licenses>` 原文 `Apache License, Version 2.0`） | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)。**它的 6 个传递依赖也都是 Apache-2.0**：`commons-codec`、`commons-collections4`、`commons-math3`、`commons-io`、`SparseBitSet`、`log4j-api`（POI 只声明 api，**不含 log4j-core**；构建侧仍显式 exclude core 防以后）。⚠️ 该构件**不带任何许可证正文**（APK 里 `META-INF/LICENSE*` 被 AGP 剥掉，见 E-105），所以必须自己随包 |
 
-> **判据**（解包 APK 全量扫，一条命令；期望至少看到 `assets/licenses/` 下八份 `.txt` ＋ README，
-> 以及 `META-INF/androidx/.../LICENSE.txt` × 5 与 `okhttp3/internal/publicsuffix/NOTICE`）：
+> **判据**（解包 APK 全量扫，一条命令；期望至少看到 `assets/licenses/` 下**四份 `.txt`**
+> ＋ README，以及 `META-INF/androidx/.../LICENSE.txt` × 5 与 `okhttp3/internal/publicsuffix/NOTICE`；
+> **不该**再出现 `LGPL-2.1.txt`——422 批起它只留档不随包）：
 > ```powershell
 > Add-Type -AssemblyName System.IO.Compression.FileSystem
 > $z = [IO.Compression.ZipFile]::OpenRead((Get-ChildItem app\build\outputs\apk\debug\*.apk | Select-Object -First 1).FullName)

@@ -123,17 +123,22 @@ private const val LINES_PER_CHUNK = 120
 private val ENTRIES = listOf(
     /*
      * 2026-10-28（第二百六十六批）：条目按「当前 APK 里真有这个组件吗」重排了一次 ——
-     * 随包的正文只剩四份（Apache-2.0 / BSD-3-Clause-zstd / LGPL-2.1 / NOTICES）＋ 第一方声明
+     * 随包的正文只剩三份（Apache-2.0 / BSD-3-Clause-zstd / NOTICES）＋ 第一方声明
      * ＋ 本记录页所读的 README。proot（GPL-2.0）、libtalloc（LGPL-3.0）、libandroid-shmem
      * （BSD-3-Clause）、zstd-jni（BSD-2-Clause）、旧版第一方 GPL-3.0 与字体 OFL 全部退出本页：
      * 它们的正文仍在仓库 `licenses/`（历史留档，旧版本 ≤ v2.2.1 的包里有），但**不随这个包**，
      * 列在这里就会变成"页面上说带、包里没有"——正是用户 2026-10-28 那句
      * 「别把那些许可证也带进去了」要治的病。判据与台账见 `licenses/README.md` 两张表。
+     *
+     * 2026-11-03（第四百二十二批）：`GNU LGPL v2.1` 那条也从本页删了 —— 它唯一的对象是 jxl，
+     * 而 jxl 已换成 Apache-2.0 的 POI（POI 与它的传递依赖都走上面那份 Apache-2.0）。
+     * 正文仍留在 `licenses/LGPL-2.1.txt`（≤ v2.2.2 的包里有 jxl，义务不撤），但不随新包。
      */
     LicenseEntry(
         title = "Apache-2.0",
         asset = "licenses/Apache-2.0.txt",
-        covers = "随包的 Apache-2.0 Maven 依赖：Compose / AndroidX / OkHttp / kotlinx / mikepenz 等" +
+        covers = "随包的 Apache-2.0 Maven 依赖：Compose / AndroidX / OkHttp / kotlinx / mikepenz /" +
+            " Apache POI（旧版 .xls 只读）等" +
             "（Termux 的三个组件已随终端搬去 zhengdao-term，本仓不再聚合）",
         obligation = "第 4(a) 条：随分发物给接收者许可证副本；第 4(b) 条：改过的文件逐个标注修改通知" +
             "（本项目 12 个衍生文件已在文件头标注，逐文件修改点见 PROVENANCE.md）；" +
@@ -145,13 +150,6 @@ private val ENTRIES = listOf(
         covers = "zstd 本体（facebook/zstd v1.5.6）—— 由 Rust 核静态编进随包的 libzhengdao_core.so",
         obligation = "二进制分发时须复现版权声明、条件列表与免责声明；无源码要约义务。" +
             "这一份与已删的 zstd-jni（Java 包装，BSD-2-Clause）**版权人不同**，不能互相顶替。",
-    ),
-    LicenseEntry(
-        title = "GNU LGPL v2.1",
-        asset = "licenses/LGPL-2.1.txt",
-        covers = "jxl（JExcelApi 2.6.12，旧版 .xls 只读转换）",
-        obligation = "LGPL-2.1 第 3 条：随附正文并给出源码获取途径（见 THIRD-PARTY-LICENSES.md 第 2 节）。" +
-            "该 jar 内一份许可证文本都没有（实测），所以必须我们自己随包。",
     ),
     LicenseEntry(
         title = "第三方 NOTICE 汇总",
