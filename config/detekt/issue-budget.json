@@ -1,8 +1,8 @@
 {
-  "total": 357,
+  "total": 345,
   "rules": {
-    "CyclomaticComplexMethod": 201,
-    "LongMethod": 156
+    "CyclomaticComplexMethod": 195,
+    "LongMethod": 150
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -97,7 +97,6 @@
     "CyclomaticComplexMethod|JsEmbed.kt|unescapeJsonString#1",
     "CyclomaticComplexMethod|KbChunker.kt|htmlToText#1",
     "CyclomaticComplexMethod|KbIndexCodec.kt|decode#1",
-    "CyclomaticComplexMethod|KbIndexer.kt|build#1",
     "CyclomaticComplexMethod|KeepaliveArchive.kt|reasonText#1",
     "CyclomaticComplexMethod|KnowledgeOrganize.kt|execute#1",
     "CyclomaticComplexMethod|KnowledgeRefreshCard.kt|KnowledgeRefreshCard#1",
@@ -117,7 +116,6 @@
     "CyclomaticComplexMethod|LogisticsLedger.kt|cellOf#1",
     "CyclomaticComplexMethod|LogisticsQuery.kt|filter#1",
     "CyclomaticComplexMethod|LogisticsSheet.kt|LogisticsSheet#1",
-    "CyclomaticComplexMethod|LogisticsXlsx.kt|readSheet#1",
     "CyclomaticComplexMethod|LogisticsXlsx.kt|sharedStrings#1",
     "CyclomaticComplexMethod|MainActivity.kt|HomeTabs#1",
     "CyclomaticComplexMethod|MainActivity.kt|dispatchIncomingIntent#1",
@@ -146,7 +144,6 @@
     "CyclomaticComplexMethod|PlanController.kt|submit#1",
     "CyclomaticComplexMethod|PostAdoption.kt|judgePostAdoption#1",
     "CyclomaticComplexMethod|PostAdoptionLog.kt|load#1",
-    "CyclomaticComplexMethod|ProposalRules.kt|generate#1",
     "CyclomaticComplexMethod|ReflectionRules.kt|availability#1",
     "CyclomaticComplexMethod|ReflectionRules.kt|mismatchCandidates#1",
     "CyclomaticComplexMethod|ReflectionRunner.kt|skillDirRefs#1",
@@ -155,7 +152,6 @@
     "CyclomaticComplexMethod|RiskMatrix.kt|normalizePath#1",
     "CyclomaticComplexMethod|RunEngine.kt|handleToolResult#1",
     "CyclomaticComplexMethod|RunEngine.kt|runLoop#1",
-    "CyclomaticComplexMethod|SchedulePass.kt|run#1",
     "CyclomaticComplexMethod|ScheduleTaskTool.kt|parse#1",
     "CyclomaticComplexMethod|ScheduleTasksActivity.kt|ScheduleEditorDialog#1",
     "CyclomaticComplexMethod|ScheduleTasksActivity.kt|ScheduleTasksPage#1",
@@ -173,7 +169,6 @@
     "CyclomaticComplexMethod|SkillStore.kt|apply#1",
     "CyclomaticComplexMethod|SkillTools.kt|lifecycle#1",
     "CyclomaticComplexMethod|SkillTools.kt|runAction#1",
-    "CyclomaticComplexMethod|SubAgentCoordinator.kt|runAll#1",
     "CyclomaticComplexMethod|SubAgentRules.kt|aggregate#1",
     "CyclomaticComplexMethod|SubAgentRunner.kt|run#1",
     "CyclomaticComplexMethod|SystemInfoProvider.kt|collect#1",
@@ -181,7 +176,6 @@
     "CyclomaticComplexMethod|TableQueryTool.kt|run#1",
     "CyclomaticComplexMethod|TableRegistry.kt|refresh#1",
     "CyclomaticComplexMethod|TaskGrant.kt|validate#1",
-    "CyclomaticComplexMethod|TaskGrantGate.kt|evaluate#1",
     "CyclomaticComplexMethod|TasteProfile.kt|injection#1",
     "CyclomaticComplexMethod|TasteProfile.kt|parse#1",
     "CyclomaticComplexMethod|TasteSettingsScreen.kt|TasteSettingsScreen#1",
@@ -293,7 +287,6 @@
     "LongMethod|GenerateImageTool.kt|run#1",
     "LongMethod|GuardPipeline.kt|prepareImpl#1",
     "LongMethod|HelpCard.kt|BaopuHelpCard#1",
-    "LongMethod|KbIndexer.kt|build#1",
     "LongMethod|KeepaliveLogActivity.kt|KeepaliveLogScreen#1",
     "LongMethod|KnowledgeLibraryScreen.kt|KnowledgeLibraryScreen#1",
     "LongMethod|KnowledgeRefresh.kt|doRefresh#1",
@@ -304,7 +297,6 @@
     "LongMethod|LogisticsImport.kt|parse#1",
     "LongMethod|LogisticsRows.kt|build#1",
     "LongMethod|LogisticsSheet.kt|LogisticsSheet#1",
-    "LongMethod|LogisticsXlsx.kt|readSheet#1",
     "LongMethod|MainActivity.kt|HomeTabs#1",
     "LongMethod|MainActivity.kt|ZhengdaoApp#1",
     "LongMethod|MainActivity.kt|dispatchIncomingIntent#1",
@@ -323,14 +315,12 @@
     "LongMethod|PlanTool.kt|spec#1",
     "LongMethod|PolicyTable.kt|parse#1",
     "LongMethod|PostAdoptionPort.kt|recheck#1",
-    "LongMethod|ProposalRules.kt|generate#1",
     "LongMethod|ReflectionRules.kt|mismatchCandidates#1",
     "LongMethod|ReflectionRunner.kt|skillDirRefs#1",
     "LongMethod|RunEngine.kt|executeWithSwitch#1",
     "LongMethod|RunEngine.kt|handleSerialCall#1",
     "LongMethod|RunEngine.kt|handleToolResult#1",
     "LongMethod|RunEngine.kt|runLoop#1",
-    "LongMethod|SchedulePass.kt|run#1",
     "LongMethod|ScheduleTasksActivity.kt|ScheduleEditorDialog#1",
     "LongMethod|ScheduleTasksActivity.kt|ScheduleTasksPage#1",
     "LongMethod|SeedSkills.kt|installOne#1",
@@ -345,10 +335,8 @@
     "LongMethod|SkillLibraryScreen.kt|SkillRow#1",
     "LongMethod|SkillStore.kt|apply#1",
     "LongMethod|SkillTools.kt|runAction#1",
-    "LongMethod|SubAgentCoordinator.kt|runAll#1",
     "LongMethod|SubAgentRunner.kt|run#1",
     "LongMethod|SystemInfoProvider.kt|collect#1",
-    "LongMethod|TaskGrantGate.kt|evaluate#1",
     "LongMethod|TaskGrantInspect.kt|inspect#1",
     "LongMethod|TaskGrantSection.kt|BaopuPlanGrantSection#1",
     "LongMethod|TasteSettingsScreen.kt|TasteSettingsScreen#1",
@@ -363,14 +351,14 @@
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
     "LongMethod|ZipIndex.kt|read#1"
   ],
-  "recorded_from": "本机复验读数：chore/detekt-debt-8 zd8-1..zd8-6（rebase origin/main 4be5c905 之后 :app:detektReport 复跑，detekt.xml mtime 2026-11-03 13:00:28；total 357／引擎 226／冻结 131，与 rebase 前 12:28:50 的逐笔读数同数）；CI 绿后验收会话可用 CI 读数覆写核对",
-  "recorded_at": "2026-11-03T13:01:12+0800",
+  "recorded_from": "本机复验读数：chore/detekt-debt-9 zd9-1..zd9-6（wt-410 @ ce3b19ad 锁内 :app:detektReport 复跑，detekt.xml mtime 2026-11-03 17:07:51；CI 绿后验收会话可用 CI 读数覆写核对）",
+  "recorded_at": "2026-11-03T17:10:14+0800",
   "zones": {
     "engine": {
-      "total": 226,
+      "total": 214,
       "rules": {
-        "CyclomaticComplexMethod": 154,
-        "LongMethod": 72
+        "CyclomaticComplexMethod": 148,
+        "LongMethod": 66
       }
     },
     "frozen_ui": {
