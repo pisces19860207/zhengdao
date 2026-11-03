@@ -299,6 +299,29 @@ internal object CardFormat {
             )
             is PngScan.Ok -> s.chunks
         }
+        val (textBlocks, textKeys) = collectPngTextBlocks(chunks)
+
+        val hasCcv3 = textBlocks.containsKey(CardPng.KEY_CCV3)
+        val hasChara = textBlocks.containsKey(CardPng.KEY_CHARA)
+        if (!hasCcv3 && !hasChara) {
+            return unknown("PNG_NO_CARD_BLOCK", message = CardText.PNG_NO_CARD_BLOCK).copy(pngTextKeys = textKeys)
+        }
+        return when (val p = decodePngCardBlock(hasCcv3, textBlocks, textKeys)) {
+            is PngDecode.Bad -> p.verdict
+            is PngDecode.Good -> pngCardVerdict(hasCcv3, hasChara, textBlocks, p, textKeys)
+        }
+    }
+
+    /** PNG 卡块的解码结果：Good 带 JSON 文本与对象，Bad 直接带结论（话术在解码处定稿）。 */
+    private sealed interface PngDecode {
+        data class Good(val json: String, val obj: JSONObject) : PngDecode
+        data class Bad(val verdict: FormatVerdict) : PngDecode
+    }
+
+    /** tEXt 进 blocks＋keys；iTXt／zTXt 只登记「未使用」的键名（原样照搬，不改采集口径）。 */
+    private fun collectPngTextBlocks(
+        chunks: List<PngChunk>,
+    ): Pair<LinkedHashMap<String, String>, ArrayList<String>> {
         val textBlocks = LinkedHashMap<String, String>()
         val textKeys = ArrayList<String>()
         for (c in chunks) {
@@ -317,33 +340,52 @@ internal object CardFormat {
                 }
             }
         }
+        return textBlocks to textKeys
+    }
 
-        val hasCcv3 = textBlocks.containsKey(CardPng.KEY_CCV3)
-        val hasChara = textBlocks.containsKey(CardPng.KEY_CHARA)
-        if (!hasCcv3 && !hasChara) {
-            return unknown("PNG_NO_CARD_BLOCK", message = CardText.PNG_NO_CARD_BLOCK).copy(pngTextKeys = textKeys)
-        }
+    /** base64 → 严格 UTF-8 → JSON 对象三关；每一关的坏消息都带上当时已见的 keys。 */
+    private fun decodePngCardBlock(
+        hasCcv3: Boolean,
+        textBlocks: Map<String, String>,
+        textKeys: ArrayList<String>,
+    ): PngDecode {
         val kw = if (hasCcv3) CardPng.KEY_CCV3 else CardPng.KEY_CHARA
         val raw = try {
             java.util.Base64.getDecoder().decode(textBlocks.getValue(kw))
         } catch (e: IllegalArgumentException) {
-            return unknown("BASE64_BAD", message = CardText.pngPayload("base64 解码失败"))
-                .copy(pngTextKeys = textKeys)
+            return PngDecode.Bad(
+                unknown("BASE64_BAD", message = CardText.pngPayload("base64 解码失败"))
+                    .copy(pngTextKeys = textKeys),
+            )
         }
         val s = CardJson.decodeUtf8Strict(raw)
-            ?: return unknown("PAYLOAD_NOT_UTF8", message = CardText.pngPayload("内容不是 UTF-8"))
-                .copy(pngTextKeys = textKeys)
+            ?: return PngDecode.Bad(
+                unknown("PAYLOAD_NOT_UTF8", message = CardText.pngPayload("内容不是 UTF-8"))
+                    .copy(pngTextKeys = textKeys),
+            )
         val obj = CardJson.parseObject(s)
         if (obj == null) {
             val t = CardJson.withoutBom(s).trimStart()
             val isJson = t.startsWith("{") || t.startsWith("[")
-            return unknown(
-                if (isJson) "PAYLOAD_NOT_OBJECT" else "PAYLOAD_NOT_JSON",
-                message = CardText.pngPayload(if (isJson) "JSON 最外层不是对象" else "内容不是 JSON"),
-            ).copy(pngTextKeys = textKeys)
+            return PngDecode.Bad(
+                unknown(
+                    if (isJson) "PAYLOAD_NOT_OBJECT" else "PAYLOAD_NOT_JSON",
+                    message = CardText.pngPayload(if (isJson) "JSON 最外层不是对象" else "内容不是 JSON"),
+                ).copy(pngTextKeys = textKeys),
+            )
         }
+        return PngDecode.Good(s, obj)
+    }
 
-        val spec = CardJson.stringOf(obj, "spec")
+    /** §2.5 冲突裁决 ＋ §2.6 置信度：ccv3 优先，v2／v3 子型看 spec 字段。 */
+    private fun pngCardVerdict(
+        hasCcv3: Boolean,
+        hasChara: Boolean,
+        textBlocks: Map<String, String>,
+        payload: PngDecode.Good,
+        textKeys: ArrayList<String>,
+    ): FormatVerdict {
+        val spec = CardJson.stringOf(payload.obj, "spec")
         val subtype = when {
             hasCcv3 -> SUBTYPE_PNG_V3
             spec == "chara_card_v3" -> SUBTYPE_PNG_V3
@@ -359,7 +401,7 @@ internal object CardFormat {
             confidence = Confidence.HIGH,
             evidence = listOf("PNG 签名 ＋ 文本块 ${if (hasCcv3) "ccv3" else "chara"}（base64 → JSON 对象）"),
             conflicts = conflicts,
-            embeddedJson = s,
+            embeddedJson = payload.json,
             pngTextKeys = textKeys,
         )
     }
