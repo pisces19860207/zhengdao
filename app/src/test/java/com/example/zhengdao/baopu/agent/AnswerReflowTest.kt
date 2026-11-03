@@ -324,6 +324,7 @@ class AnswerReflowTest {
         // 这条测的是「回灌走了 B 形态」的机械后果：收下一条答复之后，
         // 消息账没多一行、内存队列只多一条补丁——历史是模型那一轮的账，本通道不许碰。
         val ask = defer("quiet:1023#1")
+        assertEquals("登记的轮号是问的那一刻（不是答的那一刻）", 3, AnswerReflow.turnOf(ask.askId))
         val file = CardDisposition.fileIn(ledgerRoot)
         val ledgerBefore = if (file.isFile) file.readLines().size else 0
         accepted(submit(answer(ask.askId, ReflowKind.AUTH, scope = ReflowScope.ONCE.wire)))
@@ -331,7 +332,9 @@ class AnswerReflowTest {
         assertEquals("补丁队列 1 条", 1, AnswerReflow.notes(4).size)
         assertEquals("已收 1 条（其中授权 1）", 1, AnswerReflow.receivedSnapshot().size)
         assertEquals(ReflowKind.AUTH, AnswerReflow.receivedSnapshot().single().kind)
-        assertEquals("登记的轮号是问的那一刻（不是答的那一刻）", 3, AnswerReflow.turnOf(ask.askId))
+        assertEquals("出身跟着答复留档：收完这张牌已不在待答清单，但答复仍记着它是第 3 轮问的",
+            3, AnswerReflow.receivedSnapshot().single().turnId)
+        assertNull("答完了就不再是「正等她答」的牌（turnOf 只读待答侧）", AnswerReflow.turnOf(ask.askId))
     }
 
     @Test
