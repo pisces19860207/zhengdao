@@ -20,4 +20,7 @@
     <!-- §10③ (2026-10-27): the 7-day reminder is a line in the patrol panel, never a dialog.
          Wording note: digit-then-English-word form trips PluralsCandidate, hence the colon. -->
     <string name="decision_patrol_remind">Days since last patrol: %1$d — time to run one</string>
+    <!-- 409: the Guard\'s entry (279 §2 user-named full sweep; run records land in the guard ledger). -->
+    <string name="decision_guard_run">Guard sweep</string>
+    <string name="decision_guard_running">Guard sweeping…</string>
 </resources>

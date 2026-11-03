@@ -205,9 +205,13 @@ class HealthWiringGateTest {
         // 决策记录.jsonl 有十几个写者、进化档案有反思与学习两个写者 ⇒ 数它的行数不等于这个部位的产出
         val run = code("baopu/inspect/HealthRun.kt")
         assertFalse("决策记录.jsonl 是多写者账，不许拿来当某个部位的产出数", run.contains("决策记录.jsonl"))
-        assertTrue("单一写者的账要收（至少四本）", run.contains("PatrolLedger.FILE_NAME"))
-        assertTrue(run.contains("ShadowLedger.FILE_NAME"))
-        assertTrue(run.contains("NocturnalLedger.FILE_NAME"))
-        assertTrue(run.contains("GuardLedger.FILE_NAME"))
+        assertTrue("单一写者的账要收（勘验走 SINK_FILES 的行数）", run.contains("PatrolLedger.FILE_NAME"))
+        // 409：影子／不良人／金吾卫三个抽检件改按**运行记录**判（有没有跑 × 跑出了什么）——
+        // 账还是那三本单一写者的账，只是不再数行数；门禁跟着钉「运行记录真被读」：
+        assertTrue("影子的运行记录要被体检读", run.contains("ShadowLedger.read("))
+        assertTrue("暗卫的运行记录要被体检读", run.contains("NocturnalLedger.read("))
+        assertTrue("金吾卫的运行记录要被体检读", run.contains("GuardLedger.read("))
+        // 且「该跑没跑」要吃 I6 的同一把尺（compare 的结构化缺口，不开第二套口径）：
+        assertTrue("影子该跑没跑要吃 I6 的判据", run.contains("ShadowCheck.compare("))
     }
 }

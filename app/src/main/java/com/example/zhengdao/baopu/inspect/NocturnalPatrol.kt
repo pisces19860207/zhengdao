@@ -85,6 +85,12 @@ internal data class NightRound(
     /** 灾异通道那一趟：不占额度，也不受配额闸拦（但受一键停拦）。 */
     val emergency: Boolean,
     val evidence: List<String> = emptyList(),
+    /**
+     * 409：这一轮的耗时（毫秒）——运行记录格式 `{runId, 抽检对象, 假 PASS 数, 耗时, at}` 的一格。
+     * 0 ＝ 旧口径行没这一格；这一轮本身**就是**暗卫的运行记录（一行一轮，零命中也落），
+     * 体检按它判「有没有跑」（runs/上次抽检时间）与「抽到几条」（hits＝假 PASS 数），两个维度分开。
+     */
+    val elapsedMs: Long = 0,
 )
 
 /** 「这趟该不该跑」的判定（[why] 永远有字——不跑也要能一眼看出为什么不跑）。 */
@@ -335,6 +341,7 @@ internal object NocturnalLedger {
         .put("no_data", round.noData)
         .put("emergency", round.emergency)
         .put("evidence", JSONArray(round.evidence))
+        .put("ms", round.elapsedMs)
 
     fun parse(raw: String): NightRound? {
         val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
@@ -350,6 +357,8 @@ internal object NocturnalLedger {
             noData = o.optInt("no_data", 0),
             emergency = o.optBoolean("emergency", false),
             evidence = (0 until a.length()).mapNotNull { i -> a.optString(i).ifEmpty { null } },
+            // 老行没有 ms 格 ⇒ 0（旧口径原样收，不冒充量过）。
+            elapsedMs = o.optLong("ms", 0L),
         )
     }
 }

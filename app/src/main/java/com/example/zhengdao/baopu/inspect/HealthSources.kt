@@ -89,6 +89,9 @@ internal object OrganCensus {
             // 第二百九十六批 §2/§3 之前这里是 `callSites = 0`（239 交付的就是"只有判据、没有跑的人"）。
             callSites = 1,
             sink = "影子执行.jsonl",
+            // 409 裁定：影子降为**按需**触发（不可逆动作前预演／右相判 UNVERIFIABLE 时复核），
+            // 其余时候不跑——所以「窗内没跑」不是零产出，体检按运行记录判（两维度分开）。
+            byDesign = "按需触发（409 裁定：不可逆前／UNVERIFIABLE 复核才跑，不按周期）",
             evidence = listOf(
                 "inspect/ShadowAdapter.kt:229 judge() 里 compare() 的唯一调用点（296 §2 接上）",
                 "authz/TaskGrantGate.kt:231 shadowSignalFor() 向适配器要第⑤步的读数（296 §3）",
@@ -170,11 +173,13 @@ internal object OrganCensus {
             name = "金吾卫",
             entry = "GoldenGuard.sweep",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/GoldenGuard.kt",
-            callSites = 0,
+            // 第四百零九批：决策中心接上「金吾卫巡检」那颗按钮（279 §2 的"用户点名全量巡"），
+            // 0 改 1——从此金吾卫能真跑、运行记录（金吾卫报告.jsonl）能真落，体检才有得上读。
+            callSites = 1,
             sink = "金吾卫报告.jsonl",
             evidence = listOf(
-                "inspect/GoldenGuard.kt:114 sweep() 定义，全仓零调用",
-                "inspect/DecisionCenterScreen.kt:434 只接了 PatrolRunner.run(manual = true)，没接 sweep",
+                "ui/baopu/DecisionCenterScreen.kt 巡检栏「金吾卫巡检」按钮调 GoldenGuard.sweep（409 接上）",
+                "inspect/GoldenGuard.kt:114 sweep() 定义（279 §2：用户点名全量巡，运行记录一行一份）",
             ),
         ),
         OrganProbe(

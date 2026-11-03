@@ -447,9 +447,11 @@ class HealthCheckTest {
         // 首次体检（无设备数据）的读数：能静态判的只有 NOT_WIRED，其余一律未取样。
         // 第二百九十六批 §2/§3：影子有了生产调用点 ⇒ 从 NOT_WIRED 挪进"未取样"（6/8，原来是 7/7）。
         // 第三百四十八批：读数层接上了（0 ⇒ 1）⇒ 再挪一个进"未取样"（5/9）。
-        assertEquals(5, sheet.count(OrganState.NOT_WIRED))
+        // 第四百零九批：金吾卫接上「金吾卫巡检」按钮（0 ⇒ 1）⇒ 再挪一个进"未取样"（4/10）；
+        // 抽检读数（上次抽检时间＋假 PASS 数）由编排层附运行记录事实，首次体检没得读 ⇒ 照旧未取样。
+        assertEquals(4, sheet.count(OrganState.NOT_WIRED))
         assertEquals(0, sheet.count(OrganState.ACTIVE))
-        assertEquals(9, sheet.unmeasured())
+        assertEquals(10, sheet.unmeasured())
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.WIRING))
         // 348 起"账在、没人算"不再是事实（读数层有生产调用点了）⇒ 账卡退回未取样
         // （这一趟没做账实对拍），不许因此报"未发现信号"。

@@ -355,12 +355,30 @@ internal object ShadowAdapter {
         override: ShadowSandbox?,
         log: (String) -> Unit,
     ): Pair<ShadowRehearsalResult, ShadowRun?> {
+        // 409：运行记录的「耗时」一格——进适配器起量；短路也算一次运行（账照落，耗时照记）。
+        val t0 = System.currentTimeMillis()
+        preconditionOf(input, override, log, t0)?.let { return it }
+        val sandbox = requireNotNull(override)
+        return sandboxTrialOf(input, sandbox, log, t0)
+    }
+
+    /**
+     * 进门三道前置（409 批拆出，判据口径一字未动）：工具没接／这格不适用／说不出对象。
+     * 命中 ⇒ 短路（账照落）；全过 ⇒ null，往沙盒走。
+     */
+    private fun preconditionOf(
+        input: ShadowInput,
+        override: ShadowSandbox?,
+        log: (String) -> Unit,
+        t0: Long,
+    ): Pair<ShadowRehearsalResult, ShadowRun?>? {
         if (!supported(input.tool)) {
             return shortCircuit(
                 input,
                 ShadowUnverifiable.UNSUPPORTED,
                 "工具「${input.tool}」还没接影子适配器（已接 ${SHADOW_TOOLS.joinToString("／")}）⇒ 不开放自动档",
                 log,
+                t0,
             ) to null
         }
         // 306 批：无文件副作用的工具在「说不出对象」**之前**判——它们本来就轮不到谈路径，
@@ -371,6 +389,7 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.NOT_APPLICABLE,
                 "工具「${input.tool}」没有文件副作用 ⇒ 影子不适用（NOT_APPLICABLE；与「还没接」两回事，也没有可复刻的文件动作）",
                 log,
+                t0,
             ) to null
         }
         if (input.declaredPaths.isEmpty() || input.workspaceRoot.isBlank()) {
@@ -379,21 +398,38 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.NO_TARGET,
                 "这次动作说不出声明对象或工作区根 ⇒ 没有可比的两份清单（不猜路径）",
                 log,
+                t0,
             ) to null
         }
-        val sandbox = override
-            ?: return shortCircuit(
+        if (override == null) {
+            return shortCircuit(
                 input,
                 ShadowUnverifiable.NO_SANDBOX,
                 "装配层没装影子沙盒 ⇒ 一次预演都没跑（结构故障不放行）",
                 log,
+                t0,
             ) to null
+        }
+        return null
+    }
+
+    /**
+     * 沙盒那一段（409 批拆出）：副本建起没有、跑挂没有、真盘字节交了没有——
+     * 三处任一缺失都是结构故障 ⇒ 短路；全过 ⇒ 判读（[judge]）。
+     */
+    private fun sandboxTrialOf(
+        input: ShadowInput,
+        sandbox: ShadowSandbox,
+        log: (String) -> Unit,
+        t0: Long,
+    ): Pair<ShadowRehearsalResult, ShadowRun?> {
         val run = runCatching { sandbox.rehearse(input) }.getOrElse {
             return shortCircuit(
                 input,
                 ShadowUnverifiable.STRUCTURE,
                 "沙盒跑挂了：${it.javaClass.simpleName}: ${it.message}（本次自动资格取消）",
                 log,
+                t0,
             ) to null
         }
         if (!run.built) {
@@ -402,6 +438,7 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.STRUCTURE,
                 "副本没建起来：${run.note.ifBlank { "沙盒没说原因" }}（本次自动资格取消）",
                 log,
+                t0,
             ) to null
         }
         // §1④ 的第三条件必须有实测：拿不到就当"没验"，不许拿 null 冒充"真盘没动"。
@@ -411,9 +448,10 @@ internal object ShadowAdapter {
                 ShadowUnverifiable.STRUCTURE,
                 "沙盒没交回真盘 before/after 字节对照 ⇒ §1④ 的第三条件无从可验",
                 log,
+                t0,
             ) to null
         }
-        return judge(input, run, sandbox, log) to run
+        return judge(input, run, sandbox, log, t0) to run
     }
 
     /** 交齐了事实的那一条路径：判据层算，本层只落账与收尾。 */
@@ -422,6 +460,7 @@ internal object ShadowAdapter {
         run: ShadowRun,
         sandbox: ShadowSandbox,
         log: (String) -> Unit,
+        t0: Long,
     ): ShadowRehearsalResult {
         // §1①：跑成一致就清副本；任何不一致/接错/跑不出都**留着**当证据（账上写清留没留）。
         val judged = ShadowRehearsal.compare(
@@ -436,7 +475,7 @@ internal object ShadowAdapter {
         val kept = judged.verdict != ShadowVerdict.CONSISTENT
         val outcome = judged.copy(items = judged.items + sandboxItem(run, kept))
         if (!kept) runCatching { sandbox.discard(run.copyRoot) }
-        val accounted = account(input, outcome)
+        val accounted = account(input, outcome, elapsedMs(t0))
         // 361 批两处事件接线（只发事实、无出处不发、不判决——判决归 law/AnomalyGate）：
         feedIntegrityDamaged(input, outcome, log)
         feedCascadeFailure(input, run, log)
@@ -532,6 +571,7 @@ internal object ShadowAdapter {
         reason: String,
         note: String,
         log: (String) -> Unit,
+        t0: Long,
     ): ShadowRehearsalResult {
         val outcome = ShadowOutcome(
             verdict = ShadowVerdict.UNVERIFIABLE,
@@ -540,7 +580,7 @@ internal object ShadowAdapter {
             ),
             claimed = ImpactShape(touchedPaths = input.declaredPaths),
         )
-        val accounted = account(input, outcome)
+        val accounted = account(input, outcome, elapsedMs(t0))
         log("抱朴影子：unverifiable reason=$reason（op=${input.opId.take(12)} 账=${if (accounted) "已落" else "未落"}）")
         return ShadowRehearsalResult(outcome, reason, accounted)
     }
@@ -620,7 +660,7 @@ internal object ShadowAdapter {
     )
 
     /** 落一行影子账（[ShadowLedger] 那一本；落点没装配就只少一行账，不影响判定）。 */
-    private fun account(input: ShadowInput, outcome: ShadowOutcome): Boolean {
+    private fun account(input: ShadowInput, outcome: ShadowOutcome, elapsedMs: Long): Boolean {
         if (input.ledgerRoot.isBlank()) return false
         val entry = ShadowLedger.entryOf(
             outcome = outcome,
@@ -632,9 +672,13 @@ internal object ShadowAdapter {
             atMs = input.wallMs,
             id = if (input.opId.isBlank()) "" else "sh:${input.opId}",
             roundId = input.roundId,
+            elapsedMs = elapsedMs,
         )
         return ShadowLedger.append(File(input.ledgerRoot), entry)
     }
+
+    /** 运行记录的耗时格（毫秒；从进适配器那刻起量，负数钳成 0）。 */
+    private fun elapsedMs(t0: Long): Long = (System.currentTimeMillis() - t0).coerceAtLeast(0L)
 
     /** 相对写法归一（正斜杠＋大小写不敏感——与判据层同一个口径，两边各归一套必打架）。 */
     private fun relKey(p: String): String =

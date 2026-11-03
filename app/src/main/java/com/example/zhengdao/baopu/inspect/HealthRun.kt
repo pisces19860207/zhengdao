@@ -14,6 +14,7 @@
 package com.example.zhengdao.baopu.inspect
 
 import android.content.Context
+import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
@@ -38,13 +39,17 @@ internal object HealthRun {
      * **只收"单一写者"的账**：一本账只有一个部位往里写，行数才等于它的产出数。
      * 有歧义的（`决策记录.jsonl` 有十几个写者、`进化档案-承诺.md` 反思与学习都写）
      * 一律**不猜**——留空 ⇒ 那一路记"未取样"，比编一个数强。
+     *
+     * 409：影子／不良人／金吾卫三个抽检件**退出这张表**——它们的"账本行数"从此不进
+     * 判据（行数≠产出：一行一次运行，零差异也是一行），改由 [samplingFacts] 按运行记录
+     * 判「有没有跑」与「跑出了什么」两个维度。账还在，读法换了。
      */
     private val SINK_FILES: Map<String, String> = mapOf(
         "勘验" to PatrolLedger.FILE_NAME,
-        "影子" to ShadowLedger.FILE_NAME,
-        "不良人" to NocturnalLedger.FILE_NAME,
-        "金吾卫" to GuardLedger.FILE_NAME,
     )
+
+    /** 抽检件（409）：按运行记录判的三个部位（名字与 [OrganCensus.HEALTH_PARTS] 同一把键）。 */
+    private val SAMPLE_ORGANS: Set<String> = setOf("影子", "不良人", "金吾卫")
 
     /** 208 装配的那棵目录（体检账与 208 同目录，不同文件）。 */
     fun memoryRoot(): File? = DecisionLedger.installedRoot()
@@ -76,10 +81,15 @@ internal object HealthRun {
             allTools = BaopuToolCatalog.ENTRIES.map { it.name },
         )
         val prev = HealthLedger.previousStates(root)
+        // 409：三个抽检件的运行记录读数（有没有跑／跑出了什么），读不出来的那一路不附。
+        val sampling = runCatching { samplingFacts(root, db, from, nowMs) }
+            .onFailure { RunLog.log("御医体检：抽检运行记录没读出来——${it.javaClass.simpleName}: ${it.message}") }
+            .getOrElse { emptyMap<String, SampleFacts>() }
         val organs = OrganCensus.HEALTH_PARTS.map { p ->
             HealthCheck.organ(
                 p.copy(
-                    outputs = organOutputs(p, root, reading),
+                    outputs = if (p.name in SAMPLE_ORGANS) null else organOutputs(p, root, reading),
+                    sampling = sampling[p.name],
                     previous = prev[p.name]?.let(OrganState::ofWire),
                 ),
             )
@@ -94,6 +104,10 @@ internal object HealthRun {
             signals,
             blockers,
             readings = reading.sheetLines,
+            // 抽检读数块：上次抽检时间＋假 PASS 数，一行一件（判据层的行文，自带部位名；编排层只排版）。
+            sampling = SAMPLE_ORGANS
+                .filter { sampling.containsKey(it) }
+                .map { name -> HealthCheck.samplingLine(name, sampling.getValue(name)) },
         )
 
         val entry = entryOf(sheet, nowMs)
@@ -123,6 +137,64 @@ internal object HealthRun {
         } else {
             SINK_FILES[p.name]?.let { HealthSources.outputLines(root, it) }
         }
+
+    /**
+     * 409：三个抽检件的**运行记录读数**——判据的两个维度从这里来：
+     *
+     * - **有没有跑**（[SampleFacts.runs]／[SampleFacts.lastRunMs]）：影子＝影子执行.jsonl 一行
+     *   一次预演（零差异也是一行）；不良人＝暗卫记录.jsonl 一行一轮；金吾卫＝金吾卫报告.jsonl
+     *   一行一份。**没跑 ＝ 未取样**（不是零产出）；
+     * - **跑出了什么**（[SampleFacts.problems]）：影子＝差异数（MISMATCH/MISWIRED 条数）；
+     *   暗卫／金吾卫＝抽到假 PASS 数（命中数）。跑了零差异／零假 PASS ＝ 正常。
+     *
+     * 影子的「该跑没跑」借 I6 的同一把判据（[ShadowCheck.check]：窗内该预演的动作 × 影子账）
+     * ——巡按怎么算，体检就怎么算，不开第二套口径。
+     *
+     * 三本账的读口**读不动就回空表**（与各自 `read` 的既有口径一致）⇒ 按真没跑收；
+     * 「测不出来」那一路留给判据层（sampling 不附 ⇒ 走旧的未取样路）。
+     */
+    private fun samplingFacts(root: File, db: BaopuDb, from: Long, nowMs: Long): Map<String, SampleFacts> {
+        val facts = LinkedHashMap<String, SampleFacts>()
+        val shadowRows = ShadowLedger.read(root)
+        val shadowWin = shadowRows.filter { it.atMs >= from }
+        // 「该跑没跑」用 [ShadowCheck.compare] 的结构化缺口（I6 的判据本体）；
+        // `check()` 那个口回的是措辞级 finding，缺口数在这里拿不到。
+        val demand = runCatching { ShadowCheck.compare(PatrolSources.shadowTraces(db, from), shadowRows) }.getOrNull()
+        facts["影子"] = SampleFacts(
+            kind = SampleKind.SHADOW,
+            // 短路行（工具没接／没对象／没沙盒）不是一次预演——不进「有没有跑」，
+            // 单独记进 unverifiable（不许拿"跑不出结论"冒充"跑了零差异"）。
+            runs = shadowWin.count { it.verdict != ShadowVerdict.UNVERIFIABLE },
+            lastRunMs = shadowRows.maxOfOrNull { it.atMs },
+            problems = shadowWin.count { it.violated },
+            unverifiable = shadowWin.count { it.verdict == ShadowVerdict.UNVERIFIABLE },
+            shouldHaveRun = demand?.missing?.isNotEmpty() == true,
+        )
+        val nightRows = NocturnalLedger.read(root)
+        val nightWin = nightRows.filter { it.atMs >= from }
+        facts["不良人"] = SampleFacts(
+            kind = SampleKind.SAMPLER,
+            runs = nightWin.size,
+            lastRunMs = nightRows.maxOfOrNull { it.atMs },
+            problems = nightWin.sumOf { it.hits },
+            // 周期件（夜巡按晚抽）：整窗没抽检即超期 ⇒ 未取样（判据：暗卫超期 ⇒ 未取样）。
+            overdue = nightWin.isEmpty(),
+            overdueDays = nightRows.maxOfOrNull { it.atMs }?.let { (nowMs - it) / HealthLimits.DAY_MS },
+        )
+        val guardRows = GuardLedger.read(root)
+        val guardWin = guardRows.filter { it.atMs >= from }
+        facts["金吾卫"] = SampleFacts(
+            kind = SampleKind.SAMPLER,
+            runs = guardWin.size,
+            lastRunMs = guardRows.maxOfOrNull { it.atMs },
+            // 假 PASS 数吃结构化那一格（409 起新行才带；老行没有 ⇒ 0，金吾卫报告无存量行）。
+            problems = guardWin.sumOf { it.hits },
+            // 用户点名件，没有周期承诺 ⇒ 不判超期，没巡就照实说「窗内没跑」。
+            overdue = false,
+            overdueDays = guardRows.maxOfOrNull { it.atMs }?.let { (nowMs - it) / HealthLimits.DAY_MS },
+        )
+        return facts
+    }
 
     /**
      * 读数层的产出数（纯函数，用例直测；与直读同一个 [MetricsReading]，天然一致）。

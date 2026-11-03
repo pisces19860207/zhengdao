@@ -69,6 +69,7 @@ import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
 import com.example.zhengdao.baopu.agent.RoyalVerdict
 import com.example.zhengdao.baopu.agent.StubVerifier
 import com.example.zhengdao.baopu.agent.UserSignal
+import com.example.zhengdao.baopu.inspect.GoldenGuard
 import com.example.zhengdao.baopu.inspect.InspectFinding
 import com.example.zhengdao.baopu.inspect.InspectLimits
 import com.example.zhengdao.baopu.inspect.InspectVerdict
@@ -480,6 +481,30 @@ private fun HistoryTab(
         }
     }
 
+    // 第四百零九批：金吾卫的入口（279 §2「用户点名全量巡」的生产调用点，普查 0→1）。
+    // [GoldenGuard.sweep] 自己包一趟 PatrolRunner.run(manual = true) 并落运行记录
+    // （金吾卫报告.jsonl：假 PASS 数＋耗时）——体检的抽检读数从那本账读。
+    // 与巡按同一颗闸（manualGate）、同一个忙位（patrolBusy，两颗按钮互斥）；反馈只走栏内
+    // 一行字（[PatrolDigest.conclusion] 第一行），不开弹窗、不碰被纠的数据。
+    var guardNote by remember { mutableStateOf<String?>(null) }
+    val guardLauncher: () -> Unit = {
+        val gate = PatrolScheduler.manualGate(running = patrolBusy || controller.busy)
+        if (gate.run) {
+            guardNote = null
+            patrolBusy = true
+            patrolScope.launch {
+                val digest = withContext(Dispatchers.IO) {
+                    GoldenGuard.sweep(patrolCtx)
+                }
+                patrolBusy = false
+                guardNote = digest.conclusion.firstOrNull()
+                patrolTick += 1
+            }
+        } else {
+            patrolGateWhy = gate.why
+        }
+    }
+
     // 整页空态改成列表首行那句（§2.4）：这一栏的巡按入口不能被它盖住。
     DecisionTabBody(DecisionTab.HISTORY, empty = false) {
         Column(Modifier.fillMaxSize()) {
@@ -524,6 +549,8 @@ private fun HistoryTab(
                         onToggle = { patrolExpanded = !patrolExpanded },
                         onMore = { patrolLimit += InspectLimits.PAGE },
                         onPatrol = patrolLauncher,
+                        onGuardSweep = guardLauncher,
+                        guardNote = guardNote,
                     )
                 }
                 // 记录与审计都空时，空态那句改在这里给——不再整页盖住上面那一栏。
@@ -931,6 +958,10 @@ private fun PatrolSection(
     onToggle: () -> Unit,
     onMore: () -> Unit,
     onPatrol: () -> Unit,
+    // 第四百零九批：金吾卫那一颗（279 §2 用户点名全量巡）——同一栏、同一闸、同一忙位；
+    // 结论只落栏内一行字（不开弹窗），运行记录由 sweep 自己落账。
+    onGuardSweep: () -> Unit,
+    guardNote: String? = null,
 ) {
     val entries = remember(version, tick, limit) {
         PatrolSources.memoryRoot()?.let { PatrolLedger.read(it, limit) } ?: emptyList()
@@ -970,6 +1001,15 @@ private fun PatrolSection(
                 modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 Text(stringResource(if (busy) R.string.decision_patrol_running else R.string.decision_patrol_run))
+            }
+            // 409：金吾卫那颗——全量巡一遍并落运行记录（金吾卫报告.jsonl）；
+            // 与巡按共用一个忙位（两颗互斥），结论进 guardNote 那一行。
+            TextButton(
+                onClick = onGuardSweep,
+                enabled = !busy,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(if (busy) R.string.decision_guard_running else R.string.decision_guard_run))
             }
             if (latest != null) {
                 Text(
@@ -1013,6 +1053,14 @@ private fun PatrolSection(
                 text = stringResource(R.string.decision_patrol_failed, why),
                 style = MaterialTheme.typography.labelSmall,
                 color = zhengdaoErrorText(),
+            )
+        }
+        // 409：金吾卫那趟的结论（报告第一行；「巡 N 项：命中 M，查不了 K」）——栏内一行字。
+        guardNote?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (expanded && latest != null) {

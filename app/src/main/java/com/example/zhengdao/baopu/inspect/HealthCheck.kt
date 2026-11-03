@@ -139,6 +139,48 @@ internal enum class ScanOutcome(val wire: String, val cn: String) {
 }
 
 /**
+ * 409：抽检件的运行记录读的是哪一种语义——「差异数」（影子）还是「假 PASS 数」（暗卫／金吾卫）。
+ * 两类都是「抽检件」，判据同构（跑了≠零产出、没跑＝未取样）；差的只是第二维度叫什么。
+ */
+internal enum class SampleKind(val wire: String) {
+
+    /** 影子：一行一次预演，第二维度＝差异数（MISMATCH/MISWIRED 的条数）。 */
+    SHADOW("shadow"),
+
+    /** 暗卫／金吾卫：一行一轮抽检，第二维度＝抽到假 PASS 数（命中数）。 */
+    SAMPLER("sampler"),
+}
+
+/**
+ * 409：一个抽检件（影子／暗卫／金吾卫）的**运行记录读数**——体检判它两个维度分开：
+ *
+ * - **有没有跑**：[runs]（窗内运行记录条数）＋ [lastRunMs]（上次抽检时间）——
+ *   判据②「没跑 ⇒ 未取样」与暗卫的「超期 ⇒ 未取样」都从这两个数来；
+ * - **跑出了什么**：[problems]（影子＝差异数；暗卫／金吾卫＝抽到假 PASS 数）——
+ *   判据①「跑了零差异 ⇒ 已运行（零差异），不报零产出」从它来；0 假 PASS 要显出「正常」。
+ *
+ * 谁给：编排层（[HealthRun]）从三本运行账现读（影子执行／暗卫记录／金吾卫报告），
+ * 判据层不碰盘。**缺位语义**：[runs] ＝ 0 就是窗内没跑（真没跑，不是测不出）；
+ * 账读不动的那一路根本不进这张表（编排层不附 [OrganProbe.sampling] ⇒ 走旧的未取样路）。
+ *
+ * @param shouldHaveRun 该跑而没跑（影子按需：窗内有该预演的动作却零运行记录）⇒ 缺陷，
+ *   且「该合并/撤掉」的提示只从这条路上来（追加判据④；其余没跑一律不算零产出）。
+ * @param overdue 周期件超期（暗卫：上次抽检早于窗起点）⇒ 未取样（判据：暗卫超期 ⇒ 未取样）。
+ * @param overdueDays 超期天数（显示用；调用方算，判据层零时钟）。
+ */
+internal data class SampleFacts(
+    val kind: SampleKind,
+    val runs: Int,
+    val lastRunMs: Long? = null,
+    val problems: Int = 0,
+    /** 影子特有：窗内「跑不出结论」的条数（不是零差异，也不进差异数——不许互相冒充）。 */
+    val unverifiable: Int = 0,
+    val shouldHaveRun: Boolean = false,
+    val overdue: Boolean = false,
+    val overdueDays: Long? = null,
+)
+
+/**
  * 一个部位的**盘上事实**（谁给：源码普查 [OrganCensus] + 只读取数 [HealthSources]）。
  *
  * @param entry 干活入口的符号（人读；门禁按它重扫源码核数）
@@ -151,6 +193,7 @@ internal enum class ScanOutcome(val wire: String, val cn: String) {
  * @param previous 上一次体检的态（连续两次判"该撤掉"用）
  * @param orphan 全仓零引用（死件）
  * @param byDesign 非空 ⇒ 这个"没接线"是裁定的/未开工的，不是缺陷
+ * @param sampling 非空 ＝ 抽检件（409）：按运行记录判（两个维度分开），不按账本行数判
  */
 internal data class OrganProbe(
     val name: String,
@@ -165,6 +208,7 @@ internal data class OrganProbe(
     val orphan: Boolean = false,
     val byDesign: String? = null,
     val evidence: List<String> = emptyList(),
+    val sampling: SampleFacts? = null,
 )
 
 /** 一个部位的体检结论（[state] 为 null ＝ 未取样，不是第五态）。 */
@@ -290,10 +334,92 @@ internal object HealthCheck {
             p.orphan -> verdict(p, OrganState.UNUSED_OR_DEAD, null, Disposition.DEFECT, "全仓零引用（孤儿件）")
             !p.present -> verdict(p, OrganState.NOT_WIRED, NoOutputCause.NEVER_DISPATCHED, Disposition.BY_DESIGN, p.byDesign ?: "尚未实现")
             p.callSites <= 0 -> notWired(p)
+            // 409：抽检件（影子／暗卫／金吾卫）按**运行记录**判——「有没有跑」与「跑出了什么」
+            // 两个维度分开；账本行数那一套（SINK_FILES ⇒ outputs）对它们不再说话。
+            p.sampling != null -> sampled(p)
             p.sink == null -> verdict(p, OrganState.WIRED_NO_OUTPUT, NoOutputCause.NO_SINK, Disposition.DEFECT, "有调用点但没有产出落点（接线半截）")
             else -> measured(p)
         }
     }
+
+    /**
+     * 409：抽检件的判据（派工单 409 §判据，逐条落成可执行）：
+     *
+     * - **判据①** 跑了（哪怕零差异）＝ 已取样 ＝ [OrganState.ACTIVE]，第二维度照实报——
+     *   「已运行（零差异）」／「已抽检（0 假 PASS，正常）」，**不报零产出**；
+     * - **判据②** 没跑 ⇒ 未取样（state 留空，不是第五态）——影子按需没触发是裁定内的常态
+     *   （Disposition 跟着 [OrganProbe.byDesign] 走），**不报零产出、也不进「该撤掉」的账**；
+     * - **判据③** 「该合并/撤掉」的提示**只在「该跑没跑」时出现**：窗内有该预演的动作却零
+     *   运行记录 ⇒ 缺陷（[NoOutputCause.DISPATCHED_NO_EFFECT]）；连续两趟这样才到
+     *   [OrganState.UNUSED_OR_DEAD]（上一趟的 WIRED_NO_OUTPUT 现在只有这一条路能产生）。
+     * - **暗卫超期** ⇒ 未取样（周期件的上限就是窗：整窗没抽检就是超期，超期天数照实报）。
+     */
+    private fun sampled(p: OrganProbe): OrganVerdict {
+        val s = requireNotNull(p.sampling)
+        val evidence = evidenceWithRun(p, s).take(HealthLimits.MAX_EVIDENCE)
+        if (s.runs > 0) {
+            return OrganVerdict(
+                name = p.name,
+                state = OrganState.ACTIVE,
+                cause = null,
+                disposition = Disposition.NONE,
+                reason = samplingLine(p.name, s),
+                evidence = evidence,
+            )
+        }
+        if (s.shouldHaveRun) {
+            if (p.previous == OrganState.WIRED_NO_OUTPUT) {
+                return verdict(p, OrganState.UNUSED_OR_DEAD, null, Disposition.DEFECT, "连续两次该跑没跑 ⇒ 合并/撤掉（去留另议）")
+            }
+            return OrganVerdict(
+                name = p.name,
+                state = OrganState.WIRED_NO_OUTPUT,
+                cause = NoOutputCause.DISPATCHED_NO_EFFECT,
+                disposition = Disposition.DEFECT,
+                reason = samplingLine(p.name, s),
+                evidence = evidence,
+            )
+        }
+        return OrganVerdict(
+            name = p.name,
+            state = null,
+            cause = null,
+            disposition = if (p.byDesign != null) Disposition.BY_DESIGN else Disposition.NONE,
+            reason = samplingLine(p.name, s) + p.byDesign?.let { "（$it）" }.orEmpty(),
+            evidence = evidence,
+            missingToMeasure = p.sink,
+        )
+    }
+
+    /** 抽检结论的证据行：先给运行记录读数（在不在干活的凭据），再带普查给的调用点证据。 */
+    private fun evidenceWithRun(p: OrganProbe, s: SampleFacts): List<String> =
+        listOf("运行记录：窗内 ${s.runs} 条·假 PASS（差异）${s.problems}·上次 ${lastStamp(s.lastRunMs)}") +
+            p.evidence.take(HealthLimits.MAX_EVIDENCE)
+
+    /**
+     * 抽检件的一行结论（纯函数，编排层也拿它拼单子上的「抽检读数」块）。
+     *
+     * 「正常」二字只许在**真抽过且零命中**时出现（runs>0）——没跑的未取样不许写成正常
+     * （291 的「查过没问题」与「没查」分得开，同一口径）。
+     */
+    internal fun samplingLine(name: String, s: SampleFacts): String = when {
+        s.runs > 0 && s.kind == SampleKind.SHADOW -> name + "：已运行" +
+            when {
+                s.problems > 0 -> "（差异 ${s.problems} 处）"
+                s.unverifiable > 0 -> "（零差异，另有 ${s.unverifiable} 条跑不出结论）"
+                else -> "（零差异）"
+            } + "·上次 ${lastStamp(s.lastRunMs)}"
+        s.runs > 0 -> name + "：已抽检 ${s.runs} 轮（假 PASS ${s.problems}" +
+            (if (s.problems == 0) "，正常" else "") + "）·上次 ${lastStamp(s.lastRunMs)}"
+        s.shouldHaveRun -> "$name：该跑没跑——窗内有该预演的动作，运行记录 0 条·上次 ${lastStamp(s.lastRunMs)}"
+        s.unverifiable > 0 -> "$name：未取样（${s.unverifiable} 次都跑不出结论）·上次 ${lastStamp(s.lastRunMs)}"
+        s.overdue -> name + "：未取样（超期 ${s.overdueDays ?: 0} 天没抽检）·上次 ${lastStamp(s.lastRunMs)}"
+        else -> "$name：未取样（窗内没跑）·上次 ${lastStamp(s.lastRunMs)}"
+    }
+
+    /** 上次抽检时间的人话（null ＝ 从没跑过，照实说，不留空）。 */
+    private fun lastStamp(atMs: Long?): String =
+        if (atMs == null) "从没跑过" else "${TimeFormats.monthDay(atMs)} ${TimeFormats.hourMinute(atMs)}"
 
     private fun notWired(p: OrganProbe): OrganVerdict {
         val byDesign = p.byDesign
@@ -579,12 +705,20 @@ internal object HealthCheck {
         blockers: List<BlockerVerdict>,
         /** 读数层的一行人话（348 接线；判据层只排版，不碰取数与算法）。 */
         readings: List<String> = emptyList(),
+        /** 409：抽检读数块（影子／暗卫／金吾卫的上次抽检时间＋假 PASS 数；没跑＝未取样）。 */
+        sampling: List<String> = emptyList(),
     ): HealthSheet {
         val body = buildList {
             add("御医体检 · ${TimeFormats.dayStamp(atMs)} · 窗 ${HealthLimits.SPAN_DAYS} 天 · 只读（不弹卡、不改业务状态）")
             add(organSummary(organs))
             // 读数紧跟在部位总览后面：它属于"读数层"那个部位，且不许被后面的明细挤出页面。
             readings.forEach { add("  $it") }
+            // 409：抽检读数——「上次抽检时间＋抽到假 PASS 数」两个维度一行一件；
+            // 零差异／零假 PASS 在这里显出「正常」，没跑在这里显出「未取样」（不许写成零产出）。
+            if (sampling.isNotEmpty()) {
+                add("抽检读数（上次抽检时间＋假 PASS 数；没跑＝未取样，不是零产出）：")
+                sampling.forEach { add("  $it") }
+            }
             addAll(organUnmeasured(organs))
             addAll(organDetail(organs))
             add(rowSummary(rows))
@@ -609,7 +743,8 @@ internal object HealthCheck {
     private fun organUnmeasured(organs: List<OrganVerdict>): List<String> {
         val names = organs.filter { it.state == null }.map { it.name }
         if (names.isEmpty()) return emptyList()
-        return listOf("  未取样（有调用点、取不到产出数）：" + names.joinToString("、"))
+        // 409：未取样现在有两种来路——抽检件「没跑」（运行记录读出来的）与其余「取不到产出数」。
+        return listOf("  未取样（没跑，或取不到产出数）：" + names.joinToString("、"))
     }
 
     private fun organDetail(organs: List<OrganVerdict>): List<String> {

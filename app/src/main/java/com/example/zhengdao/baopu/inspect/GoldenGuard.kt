@@ -89,6 +89,14 @@ internal data class PatrolDigest(
     val counters: List<String>,
     val issues: List<DigestIssue>,
     val reviews: List<DigestReview> = emptyList(),
+    /**
+     * 409：这一份报告抽到的假 PASS 数（＝命中数，`HIT` 的那些；运行记录格式的结构化读数）。
+     * 0 ＝ 抽检零假 PASS（**正常**，不是零产出——体检按它显示「已抽检（0 假 PASS）」）。
+     * 旧口径账行没这一格 ⇒ 读回 0，与「巡过没发现」同形；金吾卫报告在真机上还没有存量行。
+     */
+    val hits: Int = 0,
+    /** 409：这一趟全量巡的耗时（毫秒；运行记录格式的「耗时」格，0＝旧口径行）。 */
+    val elapsedMs: Long = 0,
 ) {
     /** 默认显示的两块（结论＋计数表）。 */
     val visibleBlocks: List<String> get() = conclusion + counters
@@ -112,8 +120,11 @@ internal object GoldenGuard {
      * 与暗卫的抽样是两回事。这里不写业务状态、不弹卡、不占御案额度。
      */
     fun sweep(ctx: Context, nowMs: Long = System.currentTimeMillis()): PatrolDigest {
+        // 409：运行记录的「耗时」一格——从进 sweep 起量到落账前（这一趟本身就是一次运行）。
+        val t0 = System.currentTimeMillis()
         val result = PatrolRunner.run(ctx, manual = true, nowMs = nowMs)
         val digest = digest(result.report.findings, emptyList(), nowMs)
+            .copy(elapsedMs = (System.currentTimeMillis() - t0).coerceAtLeast(0L))
         PatrolSources.memoryRoot()?.let { GuardLedger.append(it, digest) }
         return digest
     }
@@ -140,6 +151,8 @@ internal object GoldenGuard {
             counters = countersOf(findings, kept, reviews, noEvidence),
             issues = kept,
             reviews = reviews,
+            // 409：假 PASS 数结构化进运行记录（拿结论行的字来数就是第二套口径，必漂）。
+            hits = hits.size,
         )
     }
 
@@ -253,6 +266,9 @@ internal object GuardLedger {
                 }
             },
         )
+        // 409：运行记录的结构化两格（假 PASS 数＋耗时；体检按它显示两个维度，不拆结论行的字）。
+        .put("hits", d.hits)
+        .put("ms", d.elapsedMs)
 
     fun parse(raw: String): PatrolDigest? {
         val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
@@ -284,6 +300,9 @@ internal object GuardLedger {
                     evidence = strings(r, "evidence"),
                 )
             },
+            // 老行没有这两格 ⇒ 0（旧口径原样收；金吾卫报告在真机上还没有存量行）。
+            hits = o.optInt("hits", 0),
+            elapsedMs = o.optLong("ms", 0L),
         )
     }
 

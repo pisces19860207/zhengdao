@@ -48,6 +48,11 @@ internal data class ShadowEntry(
     val verdict: ShadowVerdict,
     /** 当时给模型的那一句（原样存下来：审计栏要能证明「只给了一句」）。 */
     val modelLine: String,
+    /**
+     * 409：这次预演的耗时（毫秒）——运行记录格式 `{runId, 比对对象, 差异数, 耗时, at}` 的一格。
+     * 0 ＝ 旧口径行没这一格（追加式账本不回头改行，读侧按 0 收）。
+     */
+    val elapsedMs: Long = 0,
 ) {
     /** 会话×步骤——与 I1/I4 同一把联键（`persistToolExchange` 与 `enterAwaitConfirm` 共用它）。 */
     val key: String get() = ShadowLedger.keyOf(sessionId, step)
@@ -69,6 +74,7 @@ internal data class ShadowEntry(
         .put("items", JSONArray().apply { items.forEach { put(itemToJson(it)) } })
         .put("verdict", verdict.wire)
         .put("model_line", modelLine)
+        .put("ms", elapsedMs)
 
     private companion object {
         fun shapeToJson(s: ImpactShape): JSONObject = JSONObject()
@@ -115,6 +121,8 @@ internal object ShadowLedger {
         id: String = "",
         /** 306 批：轮号（缺省 0＝旧口径；新行由授权链从 [ActionStepClock] 盖章带真轮号）。 */
         roundId: Int = 0,
+        /** 409：预演耗时（毫秒；调用方量，本层不读时钟）。 */
+        elapsedMs: Long = 0,
     ): ShadowEntry = ShadowEntry(
         // id 缺省按「会话:步骤:时刻」推：够用，且不引入全局序号（208 的 seq 是它的进程级
         // 状态，影子账不需要再背一个）。
@@ -133,6 +141,7 @@ internal object ShadowLedger {
         items = outcome.items,
         verdict = outcome.verdict,
         modelLine = outcome.modelLine,
+        elapsedMs = elapsedMs,
     )
 
     /** 落点文件。 */
@@ -179,6 +188,8 @@ internal object ShadowLedger {
             items = itemsOf(o.optJSONArray("items")),
             verdict = verdict,
             modelLine = o.optString("model_line"),
+            // 老行没有 ms 格 ⇒ 0（旧口径原样收；409 起新行由适配器量出来）。
+            elapsedMs = o.optLong("ms", 0L),
         )
     }
 

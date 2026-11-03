@@ -19,4 +19,7 @@
     <string name="decision_patrol_failed">这一趟没巡成：%1$s</string>
     <!-- §10③（2026-10-27）：7 天提醒不弹窗，形态就是巡按栏里这一行 -->
     <string name="decision_patrol_remind">距上次巡按已 %1$d 天，该巡了</string>
+    <!-- 409：金吾卫的入口（279 §2 用户点名全量巡；运行记录落金吾卫报告.jsonl，体检按它读抽检读数） -->
+    <string name="decision_guard_run">金吾卫巡检</string>
+    <string name="decision_guard_running">金吾卫巡检中…</string>
 </resources>
