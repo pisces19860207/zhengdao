@@ -565,74 +565,81 @@ internal object LlmSse {
     fun toolCallDeltas(protocol: LlmProtocol, payload: String): List<ToolCallDelta> = runCatching {
         val json = JSONObject(payload)
         when (protocol) {
-            LlmProtocol.OPENAI_COMPAT -> {
-                val arr = json.optJSONArray("choices")?.optJSONObject(0)
-                    ?.optJSONObject("delta")?.optJSONArray("tool_calls")
-                if (arr == null) {
-                    emptyList()
-                } else {
-                    (0 until arr.length()).mapNotNull { i ->
-                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                        val fn = o.optJSONObject("function")
-                        ToolCallDelta(
-                            index = o.optInt("index", i),
-                            id = o.optString("id").takeIf { it.isNotEmpty() && it != "null" },
-                            name = fn?.optString("name")?.takeIf { it.isNotEmpty() && it != "null" },
-                            argumentsDelta = fn?.optString("arguments")?.takeIf { it.isNotEmpty() && it != "null" },
-                        )
-                    }
-                }
-            }
-
-            LlmProtocol.GEMINI_NATIVE -> {
-                val parts = geminiParts(json) ?: return@runCatching emptyList()
-                buildList {
-                    for (i in 0 until parts.length()) {
-                        val pt = parts.optJSONObject(i) ?: continue
-                        val fc = pt.optJSONObject("functionCall") ?: continue
-                        val name = fc.optString("name").takeIf { it.isNotEmpty() && it != "null" }
-                            ?: continue
-                        val args = fc.optJSONObject("args")?.toString() ?: "{}"
-                        add(
-                            ToolCallDelta(
-                                index = i,
-                                id = "gemini-" + i + "-" + name,
-                                name = name,
-                                argumentsDelta = args,
-                            ),
-                        )
-                    }
-                }
-            }
-
-            LlmProtocol.ANTHROPIC -> when (json.optString("type")) {
-                "content_block_start" -> {
-                    val b = json.optJSONObject("content_block") ?: return@runCatching emptyList()
-                    if (b.optString("type") != "tool_use") emptyList()
-                    else listOf(
-                        ToolCallDelta(
-                            index = json.optInt("index", 0),
-                            id = b.optString("id").takeIf { it.isNotEmpty() && it != "null" },
-                            name = b.optString("name").takeIf { it.isNotEmpty() && it != "null" },
-                        ),
-                    )
-                }
-
-                "content_block_delta" -> {
-                    val d = json.optJSONObject("delta") ?: return@runCatching emptyList()
-                    if (d.optString("type") != "input_json_delta") emptyList()
-                    else listOf(
-                        ToolCallDelta(
-                            index = json.optInt("index", 0),
-                            argumentsDelta = d.optString("partial_json").takeIf { it.isNotEmpty() && it != "null" },
-                        ),
-                    )
-                }
-
-                else -> emptyList()
-            }
+            LlmProtocol.OPENAI_COMPAT -> openaiToolCallDeltas(json)
+            LlmProtocol.GEMINI_NATIVE -> geminiToolCallDeltas(json)
+            LlmProtocol.ANTHROPIC -> anthropicToolCallDeltas(json)
         }
     }.getOrDefault(emptyList())
+
+    /** OpenAI 兼容帧：`choices[0].delta.tool_calls[]` 逐条取 index/id/name/arguments 增量。 */
+    private fun openaiToolCallDeltas(json: JSONObject): List<ToolCallDelta> {
+        val arr = json.optJSONArray("choices")?.optJSONObject(0)
+            ?.optJSONObject("delta")?.optJSONArray("tool_calls")
+        if (arr == null) {
+            return emptyList()
+        }
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val fn = o.optJSONObject("function")
+            ToolCallDelta(
+                index = o.optInt("index", i),
+                id = o.optString("id").takeIf { it.isNotEmpty() && it != "null" },
+                name = fn?.optString("name")?.takeIf { it.isNotEmpty() && it != "null" },
+                argumentsDelta = fn?.optString("arguments")?.takeIf { it.isNotEmpty() && it != "null" },
+            )
+        }
+    }
+
+    /** Gemini 原生帧：`candidates[0].content.parts[].functionCall`，args 整段当一个增量吐出。 */
+    private fun geminiToolCallDeltas(json: JSONObject): List<ToolCallDelta> {
+        val parts = geminiParts(json) ?: return emptyList()
+        return buildList {
+            for (i in 0 until parts.length()) {
+                val pt = parts.optJSONObject(i) ?: continue
+                val fc = pt.optJSONObject("functionCall") ?: continue
+                val name = fc.optString("name").takeIf { it.isNotEmpty() && it != "null" }
+                    ?: continue
+                val args = fc.optJSONObject("args")?.toString() ?: "{}"
+                add(
+                    ToolCallDelta(
+                        index = i,
+                        id = "gemini-" + i + "-" + name,
+                        name = name,
+                        argumentsDelta = args,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Anthropic 帧：`content_block_start`（tool_use 的 id/name）与 `content_block_delta`（partial_json）两形。 */
+    private fun anthropicToolCallDeltas(json: JSONObject): List<ToolCallDelta> =
+        when (json.optString("type")) {
+            "content_block_start" -> {
+                val b = json.optJSONObject("content_block") ?: return emptyList()
+                if (b.optString("type") != "tool_use") emptyList()
+                else listOf(
+                    ToolCallDelta(
+                        index = json.optInt("index", 0),
+                        id = b.optString("id").takeIf { it.isNotEmpty() && it != "null" },
+                        name = b.optString("name").takeIf { it.isNotEmpty() && it != "null" },
+                    ),
+                )
+            }
+
+            "content_block_delta" -> {
+                val d = json.optJSONObject("delta") ?: return emptyList()
+                if (d.optString("type") != "input_json_delta") emptyList()
+                else listOf(
+                    ToolCallDelta(
+                        index = json.optInt("index", 0),
+                        argumentsDelta = d.optString("partial_json").takeIf { it.isNotEmpty() && it != "null" },
+                    ),
+                )
+            }
+
+            else -> emptyList()
+        }
 
     /**
      * tool_call 累积器（流式）：按 index 把多帧增量合并，结束时 [finish] 出原始调用。
