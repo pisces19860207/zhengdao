@@ -45,6 +45,9 @@ import com.example.zhengdao.core.RunLog
  *   缺省空串 ⇒ 目标按原样比较（存量调用点与单测一个字不改、行为不变）
  * @param crossSession 是否跨会话续跑（第三百四十七批喂；军令状的立状线是「≥5 步
  *   **或** 跨会话」——续跑中的长计划照样要过开工卡，缺省 false ⇒ 存量调用点不变）
+ * @param onAmend 改约落地后的透传口（第三百六十批）：参数是「改后要求」一句话，
+ *   返回值是要拼进 ack 的一句实话。起单处在引擎侧（[RunContractWiring.amendRun]），
+ *   缺省空实现 ⇒ 存量调用点（含单测）一个字不改、行为逐字节不变。
  */
 internal class PlanController(
     private val sessionId: () -> Long,
@@ -52,6 +55,7 @@ internal class PlanController(
     private val log: (String) -> Unit = { com.example.zhengdao.core.RunLog.log(it) },
     private val workspaceRoot: () -> String = { "" },
     private val crossSession: () -> Boolean = { false },
+    private val onAmend: (String) -> String = { "" },
 ) : PlanSink {
 
     /** 当前轮的计划（内存态；库里的真相是 kind='plan' 的 part）。 */
@@ -636,7 +640,9 @@ internal class PlanController(
     ): String {
         val channel = if (change.needsCard) PlanPledgeRules.ResignChannel.HUMAN else null
         return when (val d = PlanPledgeBoard.amend(items, args, channel, atMs)) {
-            is AmendDecision.Apply -> PlanPledgeAmendCards.appliedAck(d.change, d.outcome)
+            is AmendDecision.Apply -> PlanPledgeAmendCards.appliedAck(d.change, d.outcome) +
+                retireContractForAmend() +
+                onAmend(amendRequirementOf(d.change))
             is AmendDecision.CheckpointWait -> PlanPledgeAmendCards.checkpointAck(d)
             is AmendDecision.Reject -> PlanPledgeAmendCards.rejectedAck(d.message) +
                 "计划表已按这一版落库，军令状保持原版：下一次 update_plan 先把表改回与状一致，" +
@@ -646,6 +652,37 @@ internal class PlanController(
             is AmendDecision.Ignored -> PlanPledgeAmendCards.ignoredAck()
         }
     }
+
+    /**
+     * 改约生效 ⇒ 旧上限退场（第三百六十批）。
+     *
+     * 为什么必须退：契约的 `steps` 是**按位置**绑计划条目的（[PlanContractBoard.activate]
+     * 用 `items[i]` 对齐），改约之后条目换了，旧格子还罩在**新**条目上——「删一个文件」
+     * 的 R1 上限会被「删整个目录」直接继承，那正是本单要堵的洞（判据①）。
+     *
+     * 为什么不是"改一格"而是"整张退场"：判据与档位归 [PlanContractRules]／风险矩阵，
+     * 本层不许替它算新上限；退场之后要封顶就得整表重发一份带 contract 的 update_plan，
+     * 她点头才生效——**该问的照问**（判据③）。
+     *
+     * @return 要拼进 ack 的一句；板上本来没上限 ⇒ 空串（不打扰）
+     */
+    private fun retireContractForAmend(): String {
+        if (!PlanContractBoard.hasContract()) return ""
+        PlanContractBoard.clear()
+        log("抱朴契约：改约生效 ⇒ 旧上限按旧要求绑的，退场（新要求要重新批准）")
+        return "【契约退场】这一版的要求变了，旧契约按位置绑的是旧条目 ⇒ 上限已退场：" +
+            "要重新封顶就整表重发一次带 contract 的 update_plan，她点头才生效（该有的确认卡一张不少）。"
+    }
+
+    /** 改后要求那一句（透传给起单处重开单；原文取自申报，不转述）。 */
+    private fun amendRequirementOf(change: PlanPledgeAmendRules.AmendChange): String =
+        change.ops.joinToString("；") { op ->
+            when (op.kind) {
+                PlanPledgeAmendRules.AmendKind.ADD -> "加「${op.text}」"
+                PlanPledgeAmendRules.AmendKind.REVISE -> "把「${op.text}」改成「${op.to.ifBlank { op.accept }}」"
+                PlanPledgeAmendRules.AmendKind.DROP -> "不要「${op.text}」"
+            }
+        }
 
     /** 这版参数里契约声明的 goal（军令状快照的「目标」一行；没声明契约 ⇒ 空串）。 */
     private fun contractGoalOf(args: JSONObject, items: List<PlanItem>): String =

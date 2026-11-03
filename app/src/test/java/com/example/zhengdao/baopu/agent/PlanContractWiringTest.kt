@@ -514,8 +514,8 @@ class PlanContractWiringTest {
         )
         assertEquals("activate 只许这一处", 1, pc.split("PlanContractBoard.activate(").size - 1)
         assertEquals(
-            "上限只跟轮/版走：newRound、续跑回种、换版未批",
-            3,
+            "上限只跟轮/版走：newRound、续跑回种、换版未批、改约退场（360）",
+            4,
             pc.split("PlanContractBoard.clear()").size - 1,
         )
         assertTrue("续跑回种：契约回卡面，上限不复活", pc.contains("contract = PlanRules.contractFromJson(payload)"))

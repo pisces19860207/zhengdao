@@ -329,6 +329,35 @@ internal class RunEngine(
     fun currentTaskContract(): TaskContract? = activeRunOrder?.contract
 
     /**
+     * 第三百六十批：改约透传到**起单处**——用新要求重开一张单，让守卫按新单再判一次。
+     *
+     * 修的是什么：amend（用户中途改要求）原先只落到计划/军令状，起单处那张
+     * [TaskContract] 还挂着**旧要求** ⇒ 改了要求却没重新过闸（判据①）。这里把改约
+     * 交给 [RunContractWiring.amendRun] 重开一版（revision +1，授权/预算逐字沿用），
+     * 再挂回 [activeRunOrder]——404 的"起单即挂账"因此立刻可查（判据②）。
+     *
+     * 三条边界：
+     * - **只加调用、不改判定**：风险仍归 `RiskMatrix`、授权仍归 `TaskGrantWire`、
+     *   契约判定仍归 `PlanContractRules`——本函数只决定"哪一版单子在场"；
+     * - 404 的起单块（`RunContractWiring.startRun(roundRunId, …)` 与 `activeRunOrder = order`）
+     *   一个字不动，这里只是它之上的**再开一版**；
+     * - 本轮没有已起的单（闲聊/续跑/短任务）⇒ 不新起单（起单仍归起单处），如实记一行。
+     *
+     * @return 拼进 update_plan ack 的一句；空串 = 没改单（没单可改 / 改约已单上 / 形状不合规）
+     */
+    private fun reissueOrderForAmend(requirement: String): String {
+        val current = activeRunOrder
+        if (current == null) {
+            log("抱朴契约：改约生效，但本轮没有已起的单（闲聊/续跑/短任务）⇒ 不新起单（起单仍归起单处）")
+            return ""
+        }
+        val next = RunContractWiring.amendRun(current, requirement) ?: return ""
+        activeRunOrder = next
+        log(next.amendLine(current.contract.revision))
+        return next.reissueAck(current.contract.revision)
+    }
+
+    /**
      * 227 §0.5：本轮**成功工具结果**的回灌原文（只在内存里攒）。
      *
      * 这是答案自检「数字必须来自表」的唯一依据：纯问答这轮 `verifyTouched` 为空，
@@ -820,6 +849,9 @@ internal class RunEngine(
         // 第三百四十七批：军令状的立状线是「≥5 步**或**跨会话」——续跑的长计划照样
         // 要过开工卡。resumed 是 runLoop 的局部，喂给内核只能走这个口（房型同 planSessionId）。
         crossSession = { crossSessionRun },
+        // 第三百六十批：改约落地 ⇒ 透传到起单处重开一张单（见 [reissueOrderForAmend]）。
+        // 只加调用：起单仍归 runLoop 的起单处，这里只是"改了要求就把单子按新要求再开一版"。
+        onAmend = { requirement -> reissueOrderForAmend(requirement) },
     )
 
     /** 这一步有没有成功执行过 update_plan（软档计数用；每步开始时清零）。 */

@@ -63,6 +63,15 @@ internal object RunContractWiring {
     private val DOC_EXTS = setOf("md", "markdown", "txt")
 
     /**
+     * 改约在目标里的分隔符（第三百六十批）。
+     *
+     * 为什么把改约**接在原话后面**而不是替换它：契约的目标是"这次要干成什么"，
+     * 用户中途改要求是**在原要求上改**，不是另起一件事——原话丢了就答不出
+     * "当初约的是什么"（与军令状「旧版一律不删」同一条纪律）。
+     */
+    const val AMEND_MARK = "｜改约："
+
+    /**
      * 一张已起的单：契约本体 ＋ 起单时写上的声明类型。
      *
      * 类型为什么不在 [TaskContract] 里：342 只承载声明、332 只管判定，两边靠词表对齐
@@ -91,6 +100,26 @@ internal object RunContractWiring {
                 "｜范围：${contract.authority.writeRoots.joinToString("、")}（读写）" +
                 "｜预算：${contract.budget.maxSteps}步/${contract.budget.maxWallMs / 60_000L}分钟" +
                 "｜收工按契约判据表验收"
+
+        /**
+         * 改单那行（进运行日志，第三百六十批）：版本从哪到哪、新目标是什么。
+         *
+         * 为什么把"授权/预算一格未动"写进日志：改约最容易夹带的就是这两样，
+         * 日志上留一句，事后抽检一眼能对上（判据③）。
+         */
+        fun amendLine(fromRevision: Int): String =
+            "$LOG_HEAD：改单 ${contract.contractId}｜第 $fromRevision 版 → 第 ${contract.revision} 版" +
+                "｜新目标=${brief(contract.goal.text, 40)}｜按新要求重过闸（授权/预算一格未动）"
+
+        /**
+         * 改单的回灌（进 update_plan 的 ack）：模型必须知道**旧单的批准不管用了**。
+         *
+         * 只说"已改"不够——模型会把"这次没弹卡"读成"用户已经授权"（242 负例②的同一条）。
+         */
+        fun reissueAck(fromRevision: Int): String =
+            "【任务契约重开】用户中途改了要求 ⇒ 本轮契约按新要求重开" +
+                "（第 $fromRevision 版 → 第 ${contract.revision} 版）：旧版上的批准与证据不再覆盖新要求，" +
+                "之后按新单推进；授权范围与预算一格没放宽，该问的确认卡照旧会问。"
     }
 
     /**
@@ -138,6 +167,47 @@ internal object RunContractWiring {
         if (contract.violations().isNotEmpty()) return null
         return RunOrder(runId = runId, contract = contract, declared = DECLARED)
     }
+
+    /**
+     * 改单（第三百六十批）：用户中途改要求 ⇒ **用新要求重开一张单**（revision +1）。
+     *
+     * 为什么必须重开而不是改字：契约的每一格都是**按上一版要求**算出来的（目标、
+     * 交付物、验收判据、预算、授权），改要求等于换了一件要干的事——旧版上的批准与
+     * 证据（回执按 [TaskContract.sha256] 绑版本）不能顺延到新要求上。重开一次，
+     * 新要求就**重新过一遍单子的形状闸**（[TaskContract.violations]：目标/判据/授权/
+     * 预算/证据/出口），旧批准自然作废。
+     *
+     * 三条边界（判据③「不给 amend 开新后门」的落点）：
+     * 1. **只动目标与交付物那一句**——授权、预算、证据、出口**逐字沿用**，改约不许
+     *    顺手放宽一格（放宽要另走授权，不在这条路上）；
+     * 2. 新单**自己也得合规**（violations 空）才交出去，否则 null：宁可不改，不带病上岗；
+     * 3. 空改约、或这条改约已经在单子上 ⇒ null（不空转、不白涨版本）。
+     *
+     * @return null = 不改单（没改约 / 改约已在单上 / 新单形状不合规）
+     */
+    fun amendRun(order: RunOrder, amendedRequirement: String): RunOrder? {
+        val amended = amendedRequirement.trim()
+        if (amended.isEmpty()) return null
+        if (order.contract.goal.text.contains(amended)) return null
+        val goal = composedGoal(order.contract.goal.text, amended)
+        val next = order.contract.copy(
+            revision = order.contract.revision + 1,
+            goal = order.contract.goal.copy(text = goal),
+            deliverables = order.contract.deliverables.map { it.copy(what = brief(goal, 60)) },
+        )
+        if (next.violations().isNotEmpty()) return null
+        return order.copy(contract = next)
+    }
+
+    /**
+     * 改后的目标串：原话在前、改约在后，超 [TaskGoal.MAX_TEXT_CHARS] 截断。
+     *
+     * 截断时留的是**原话的头**：原话是这件事的本体，改约的全文另有去处（变更账
+     * `计划军令状变更.jsonl` 的 `ops` 一行不落），不靠这里兜。
+     */
+    private fun composedGoal(original: String, amended: String): String =
+        (if (original.isBlank()) amended else original + AMEND_MARK + amended)
+            .take(TaskGoal.MAX_TEXT_CHARS)
 
     /**
      * 收工按契约判（引擎文本收尾调；**右相验收入口**——三态真由 [ContractSelector] 算）。
