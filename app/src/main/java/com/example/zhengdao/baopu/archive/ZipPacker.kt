@@ -52,14 +52,7 @@ internal object ZipPacker {
      * @param sources 源文件或目录（可以多个；目录递归）
      */
     fun pack(dest: File, sources: List<File>): PackResult {
-        if (dest.exists()) {
-            return PackResult.Failed("目标已存在：${dest.name}（不覆盖已有文件；换个名字再打，或先自己删掉它）")
-        }
-        if (sources.isEmpty()) return PackResult.Failed("没有要打包的东西：sources 是空的")
-        for (s in sources) {
-            if (!s.exists()) return PackResult.Failed("找不到：${s.path}")
-            if (s.canonicalFile == dest.canonicalFile) return PackResult.Failed("目标 zip 不能是源之一：${s.name}")
-        }
+        preflightFailure(dest, sources)?.let { return it }
 
         val plan = ArrayList<Planned>()
         val seen = HashSet<String>()
@@ -77,74 +70,109 @@ internal object ZipPacker {
 
         plan.sortBy { it.name }
 
-        dest.parentFile?.let { parent ->
-            if (!parent.exists() && !parent.mkdirs()) return PackResult.Failed("建不了目录：${parent.path}")
-        }
+        ensureParentDir(dest)?.let { return it }
 
-        var entries = 0
-        var stored = 0
-        var deflated = 0
-        var bytes = 0L
+        val progress = Progress()
         try {
             ZipOutputStream(BufferedOutputStream(FileOutputStream(dest), BUF), Charsets.UTF_8).use { zos ->
-                for (item in plan) {
-                    val entry = ZipEntry(item.name)
-                    entry.time = maxOf(item.file.lastModified(), MIN_DOS_TIME)
-                    if (item.name.endsWith("/")) {
-                        entry.method = ZipEntry.STORED
-                        entry.size = 0
-                        entry.compressedSize = 0
-                        entry.crc = 0
-                        zos.putNextEntry(entry)
-                        zos.closeEntry()
-                        entries++
-                        continue
-                    }
-                    val store = ArchiveRules.shouldStore(item.name)
-                    if (store) {
-                        // STORED 必须先知道 crc 与大小：第一遍只读不写。
-                        val crc = CRC32()
-                        var size = 0L
-                        item.file.inputStream().use { input ->
-                            val buf = ByteArray(BUF)
-                            while (true) {
-                                val n = input.read(buf)
-                                if (n < 0) break
-                                crc.update(buf, 0, n)
-                                size += n
-                            }
-                        }
-                        entry.method = ZipEntry.STORED
-                        entry.size = size
-                        entry.compressedSize = size
-                        entry.crc = crc.value
-                    } else {
-                        entry.method = ZipEntry.DEFLATED
-                    }
-                    zos.putNextEntry(entry)
-                    // 第二遍（DEFLATED 只有这一遍）：流式拷，不驻留内存。
-                    item.file.inputStream().use { input ->
-                        val buf = ByteArray(BUF)
-                        while (true) {
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            zos.write(buf, 0, n)
-                            bytes += n
-                        }
-                    }
-                    zos.closeEntry()
-                    entries++
-                    if (store) stored++ else deflated++
-                }
+                for (item in plan) writeOneEntry(zos, item, progress)
             }
         } catch (e: IOException) {
             runCatching { dest.delete() }
             return PackResult.Failed("写 zip 失败（${e.javaClass.simpleName}: ${e.message ?: "无细节"}）；已删掉半个包")
         }
-        return PackResult.Ok(entries, bytes, stored, deflated)
+        return PackResult.Ok(progress.entries, progress.bytes, progress.stored, progress.deflated)
+    }
+
+    /** 动手前的四条判据：目标不许已存在、清单不许空、源必须都在、目标不许是自己要打的源。 */
+    private fun preflightFailure(dest: File, sources: List<File>): PackResult.Failed? {
+        if (dest.exists()) {
+            return PackResult.Failed("目标已存在：${dest.name}（不覆盖已有文件；换个名字再打，或先自己删掉它）")
+        }
+        if (sources.isEmpty()) return PackResult.Failed("没有要打包的东西：sources 是空的")
+        for (s in sources) {
+            if (!s.exists()) return PackResult.Failed("找不到：${s.path}")
+            if (s.canonicalFile == dest.canonicalFile) return PackResult.Failed("目标 zip 不能是源之一：${s.name}")
+        }
+        return null
+    }
+
+    /** 目标 zip 的父目录：没有就建，建不出来直接失败（位置仍在清单判据之后，先后次序不变）。 */
+    private fun ensureParentDir(dest: File): PackResult.Failed? {
+        val parent = dest.parentFile ?: return null
+        if (!parent.exists() && !parent.mkdirs()) return PackResult.Failed("建不了目录：${parent.path}")
+        return null
     }
 
     private class Planned(val name: String, val file: File)
+
+    /** 一次打包的四个计数（条目数／写出的原始字节／不压条目数／压缩条目数）。 */
+    private class Progress {
+        var entries = 0
+        var bytes = 0L
+        var stored = 0
+        var deflated = 0
+    }
+
+    /**
+     * 写一个条目：目录 ⇒ STORED 空条目；jpg/mp4/zip 这类 ⇒ 先算 crc 再原样直写；其余 ⇒ deflate。
+     * 计数一律记在 [p] 上（pack 结束后一次性取回）。
+     */
+    private fun writeOneEntry(zos: ZipOutputStream, item: Planned, p: Progress) {
+        val entry = ZipEntry(item.name)
+        entry.time = maxOf(item.file.lastModified(), MIN_DOS_TIME)
+        if (item.name.endsWith("/")) {
+            entry.method = ZipEntry.STORED
+            entry.size = 0
+            entry.compressedSize = 0
+            entry.crc = 0
+            zos.putNextEntry(entry)
+            zos.closeEntry()
+            p.entries++
+            return
+        }
+        val store = ArchiveRules.shouldStore(item.name)
+        if (store) {
+            // STORED 必须先知道 crc 与大小：第一遍只读不写。
+            val (crc, size) = measureStored(item.file)
+            entry.method = ZipEntry.STORED
+            entry.size = size
+            entry.compressedSize = size
+            entry.crc = crc
+        } else {
+            entry.method = ZipEntry.DEFLATED
+        }
+        zos.putNextEntry(entry)
+        // 第二遍（DEFLATED 只有这一遍）：流式拷，不驻留内存。
+        item.file.inputStream().use { input ->
+            val buf = ByteArray(BUF)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                zos.write(buf, 0, n)
+                p.bytes += n
+            }
+        }
+        zos.closeEntry()
+        p.entries++
+        if (store) p.stored++ else p.deflated++
+    }
+
+    /** STORED 的第一遍：只顺序读盘算 crc ＋ 真实大小，一个字都不写。 */
+    private fun measureStored(file: File): Pair<Long, Long> {
+        val crc = CRC32()
+        var size = 0L
+        file.inputStream().use { input ->
+            val buf = ByteArray(BUF)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                crc.update(buf, 0, n)
+                size += n
+            }
+        }
+        return crc.value to size
+    }
 
     private fun collectDir(dir: File, entryName: String, out: MutableList<Planned>, seen: MutableSet<String>) {
         val prefix = if (entryName.endsWith("/")) entryName else "$entryName/"
