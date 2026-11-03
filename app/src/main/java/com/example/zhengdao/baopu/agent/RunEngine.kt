@@ -43,6 +43,7 @@ import com.example.zhengdao.baopu.ScreenSwitchDesk
 import com.example.zhengdao.baopu.SensitivePage
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.inspect.DeviationLedger
+import com.example.zhengdao.baopu.inspect.LoopTiming
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SessionPlanStore
 import com.example.zhengdao.baopu.SkillRefine
@@ -3251,7 +3252,9 @@ internal class RunEngine(
         if (runId.isBlank()) return
         val root = DeviationLedger.installedRoot() ?: return
         runCatching {
-            log("抱朴引擎：收工${DeviationLedger.reportLine(root, runId)}（run $runId）")
+            // 第三百七十五批：读数行换成 LoopTiming——「偏差 N 条」原样（363 口径不变），
+            // 后面接三段时延与缺失数（统计器纯读，不写任何账；见 LoopTiming.kt 文件头）。
+            log("抱朴引擎：收工${LoopTiming.reportLine(root, runId)}（run $runId）")
         }.onFailure {
             log("抱朴引擎：偏差账读数没跑成 ${it.javaClass.simpleName}: ${it.message}")
         }
