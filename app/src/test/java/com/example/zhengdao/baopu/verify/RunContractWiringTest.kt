@@ -180,6 +180,27 @@ class RunContractWiringTest {
         File(root, "产物/终稿.md").delete()
     }
 
+    @Test
+    fun `收工_主交付物在工作区外_287口径照样认_不误判缺证据`() {
+        // 401 验机 M7 的第二环：产物以绝对路径落在工作区外（写入侧 287 明文允许），
+        // 旧的 resolve 只认工作区内 ⇒ 挑不出主交付物 ⇒ 判「缺证据」。404 起按真实落点认。
+        val root = tmp("outside-ws")
+        val outside = Files.createTempDirectory("baopu-378-outside").toFile()
+        try {
+            File(outside, "汇总.md").writeText("# 汇总\n\n五步全有账。\n")
+            val order = orderOf("帮我做一个五步的汇总任务")
+            val report = RunContractWiring.closeRun(
+                order,
+                root,
+                listOf(File(outside, "汇总.md").absolutePath),
+                emptyList(),
+            )
+            assertEquals("文件在、结构好、收尾闸 0 未过 ⇒ PASS", Status.PASS, report.status)
+        } finally {
+            outside.deleteRecursively()
+        }
+    }
+
     // ── 判据③ 同一句话判 TASK/CHAT ⇒ 弹卡读数不同（纯判定函数） ─────────────
 
     @Test

@@ -105,10 +105,62 @@ class ArtifactVerifierTest {
     }
 
     @Test
-    fun `越界路径_报 escape 且不读盘`() {
-        val found = ArtifactVerifier.check(root, listOf("../外面的书.txt", "/etc/passwd", "C:/x.txt"))
+    fun `真越界_凭据目录与不可解析形态_报escape`() {
+        // 404 起「越界」与写入侧 287 同一把尺：写入侧本来就拒的（系统/凭据目录）与
+        // 不可解析形态（空串/scheme）才算 escape。凭据段在哪个测试宿主上都命中。
+        val found = ArtifactVerifier.check(root, listOf("/sdcard/.ssh/id_rsa", "https://example.com/a.txt", "  "))
         assertEquals(3, found.size)
         assertTrue(found.all { it.check == ArtifactVerifier.CHECK_ESCAPE })
+    }
+
+    @Test
+    fun `判据④_文件全部就位的盘面_不判越界`() {
+        // 401 验机 M7 的误判现场：产物写在工作区外（287 明文允许的绝对路径落盘），
+        // 旧收尾闸把它们全判「路径越界」——文件明明都在。新口径按真实落点机械验收。
+        val outside = Files.createTempDirectory("zd-verify-outside").toFile()
+        try {
+            val f1 = File(outside, "汇总.md")
+            val f2 = File(outside, "明细/m7a.txt")
+            f2.parentFile.mkdirs()
+            f1.writeText("# 汇总\n", StandardCharsets.UTF_8)
+            f2.writeText("明细a", StandardCharsets.UTF_8)
+            val results = ArtifactVerifier.check(
+                root,
+                listOf(f1.absolutePath, f2.absolutePath),
+            )
+            assertTrue("盘面全就位 ⇒ 0 项未过：$results", results.isEmpty())
+        } finally {
+            outside.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `判据④_相对路径写出工作区_按真实落点验_在就验_不在报missing`() {
+        // 287：相对路径含 .. 写出工作区也是写入侧放行的形态——验收按实报，不扣「越界」帽子。
+        val escaped = File(root.parentFile, "zd-verify-escape/外面的书.txt")
+        escaped.parentFile.mkdirs()
+        escaped.writeText("在的", StandardCharsets.UTF_8)
+        try {
+            assertTrue(ArtifactVerifier.check(root, listOf("../zd-verify-escape/外面的书.txt")).isEmpty())
+            val gone = ArtifactVerifier.check(root, listOf("../zd-verify-escape/没写.txt"))
+            assertEquals(1, gone.size)
+            assertEquals(ArtifactVerifier.CHECK_MISSING, gone[0].check)
+        } finally {
+            escaped.parentFile.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `判据④_工作区外真缺了_报missing不是escape`() {
+        val outside = Files.createTempDirectory("zd-verify-gone").toFile()
+        try {
+            val gone = File(outside, "没了.md").absolutePath
+            val found = ArtifactVerifier.check(root, listOf(gone))
+            assertEquals(1, found.size)
+            assertEquals(ArtifactVerifier.CHECK_MISSING, found[0].check)
+        } finally {
+            outside.deleteRecursively()
+        }
     }
 
     @Test
@@ -133,11 +185,31 @@ class ArtifactVerifierTest {
     }
 
     @Test
-    fun `工作区外的绝对路径_仍报越界`() {
-        val found = ArtifactVerifier.check(root, listOf("/etc/passwd"))
-        assertEquals(1, found.size)
-        assertEquals(ArtifactVerifier.CHECK_ESCAPE, found[0].check)
-        assertNull(ArtifactVerifier.resolve(root, "/etc/passwd"))
+    fun `resolve_仍只收工作区内的相对化_旧契约不变`() {
+        // 404 起 resolve 只服务展示与旧调用方；「工作区外 = 越界」的判定改由 resolveTarget
+        // 按 287 口径承担。这条钉 resolve 自己的旧契约不被顺手改掉。
+        assertNull(ArtifactVerifier.resolve(root, "/sdcard/.ssh/id_rsa"))
+        assertNull(ArtifactVerifier.resolve(root, "  "))
+    }
+
+    @Test
+    fun `resolveTarget_工作区外合法落点给真实落点_凭据与scheme拒`() {
+        val outside = Files.createTempDirectory("zd-verify-target").toFile()
+        try {
+            val f = File(outside, "a.md")
+            f.writeText("x", StandardCharsets.UTF_8)
+            assertEquals(f.absoluteFile, ArtifactVerifier.resolveTarget(root, f.absolutePath)?.absoluteFile)
+            assertEquals(
+                "相对路径按根解",
+                File(root, "产物/周报.md").absoluteFile,
+                ArtifactVerifier.resolveTarget(root, "产物/周报.md")!!.absoluteFile,
+            )
+            assertNull("凭据目录 = 真越界", ArtifactVerifier.resolveTarget(root, "/sdcard/.ssh/id_rsa"))
+            assertNull("scheme = 不可解析", ArtifactVerifier.resolveTarget(root, "content://x/y"))
+            assertNull("空串 = 不可解析", ArtifactVerifier.resolveTarget(root, " "))
+        } finally {
+            outside.deleteRecursively()
+        }
     }
 
     @Test

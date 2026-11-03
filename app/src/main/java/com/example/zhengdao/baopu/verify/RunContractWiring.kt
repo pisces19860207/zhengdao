@@ -152,15 +152,18 @@ internal object RunContractWiring {
         touched: List<String>,
         gateFindings: List<Finding>,
     ): ContractReport {
+        // 主交付物按 404 口径解析（resolveTarget：与写入侧 287 对齐）——工作区外的
+        // 合法落点（绝对路径写全盘）也算数，不再因为「不在工作区」被当没交卷
+        // （401 验机 M7：产物全在盘上却判 FAIL 缺证据的误判链第二环）。
         val primary = touched.asSequence()
-            .mapNotNull { ArtifactVerifier.resolve(workspace, it) }
-            .firstOrNull { it.substringAfterLast('.', "").lowercase() in DOC_EXTS }
+            .mapNotNull { ArtifactVerifier.resolveTarget(workspace, it) }
+            .firstOrNull { it.extension.lowercase() in DOC_EXTS }
         if (primary == null) {
             // 挑不出文档类主交付物：不硬凑证据——判据表自己判"缺证据"（硬规矩②）。
             return ContractSelector.evaluate(order.declared, evidence = null)
         }
         val evidence = Contracts.readDoc(
-            file = File(workspace, primary),
+            file = primary,
             declaredItems = listOf(STANDING_CRITERION),
             ticks = listOf(tick(gateFindings)),
         )

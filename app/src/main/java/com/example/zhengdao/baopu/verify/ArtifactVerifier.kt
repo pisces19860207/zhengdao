@@ -49,18 +49,46 @@ object ArtifactVerifier {
         val out = ArrayList<Finding>()
         val seen = LinkedHashSet<String>()
         for (raw in touched) {
-            val rel = resolve(root, raw)
-            if (rel == null) {
+            val target = resolveTarget(root, raw)
+            if (target == null) {
                 out += Finding(raw.trim(), CHECK_ESCAPE, "路径越界或不可解析，已拒绝")
                 continue
             }
-            if (seen.add(rel)) out += checkOne(root, rel)
+            // 展示名：工作区内的按相对路径（与历史读数同形）；工作区外的如实报原样。
+            val shown = resolve(root, raw) ?: raw.trim()
+            if (seen.add(target.absolutePath)) out += checkOneFile(target, shown)
         }
         return out
     }
 
     /**
-     * 先把调用方给的路径收成「工作区内相对路径」。
+     * 把记账路径解析成**真实落点**（第四百零四批：与写入侧 287 口径对齐）。
+     *
+     * 为什么改：287 起「工作区不是权限边界」——write_file 的绝对路径可写全盘
+     * （只拒系统/凭据目录）。收尾闸若仍把工作区外一律判「路径越界」，就是同一批
+     * 合法写入被写入侧放行、被验收侧判死（401 验机 M7 实锤：产物全在盘上，
+     * 收尾闸报「路径越界 11」⇒ 契约验收跟着误判 FAIL）。
+     *
+     * 新口径（判据④）：
+     * - 相对路径按工作区根解、绝对路径按原样解——都到 [FilePolicy] 过一遍；
+     * - **真越界** = 写入侧本来就拒的那批（系统/凭据目录）＋ 不可解析形态
+     *   （空串、带 scheme）⇒ null，调用方判 escape；
+     * - 其余（含工作区外的合法落点）⇒ 返回真实落点，机械验收照做——
+     *   文件在不在、空不空，按实报，不再拿「工作区」当越界线。
+     */
+    fun resolveTarget(root: File, raw: String): File? {
+        val t = raw.trim().replace('\\', '/')
+        if (t.isEmpty()) return null
+        if (t.contains("://")) return null
+        val isAbs = t.startsWith("/") || (t.length >= 2 && t[1] == ':')
+        val target = if (isAbs) File(t) else File(root, t)
+        if (com.example.zhengdao.baopu.FilePolicy.denyReason(target) != null) return null
+        return target
+    }
+
+    /**
+     * 先把调用方给的路径收成「工作区内相对路径」（404 起**只服务展示与旧调用方**；
+     * 收尾闸的判定走 [resolveTarget]——与写入侧 287 口径对齐，工作区外不再等于越界）。
      *
      * 为什么要认绝对路径：确认制的批准路径执行后 `GuardPipeline` 会把 arguments 里的
      * `path`/`to` **写回绝对路径**（第 ② 段解析的结果），引擎记账拿到的就是绝对路径。
@@ -94,19 +122,18 @@ object ArtifactVerifier {
         return parts.joinToString("/")
     }
 
-    private fun checkOne(root: File, rel: String): List<Finding> {
-        val f = File(root, rel)
-        if (!f.exists()) return listOf(Finding(rel, CHECK_MISSING, "本轮写过，收尾时找不到"))
-        if (!f.isFile) return listOf(Finding(rel, CHECK_NOT_FILE, "路径存在但不是文件"))
-        if (f.length() == 0L) return listOf(Finding(rel, CHECK_EMPTY, "文件是 0 字节"))
+    private fun checkOneFile(f: File, shown: String): List<Finding> {
+        if (!f.exists()) return listOf(Finding(shown, CHECK_MISSING, "本轮写过，收尾时找不到"))
+        if (!f.isFile) return listOf(Finding(shown, CHECK_NOT_FILE, "路径存在但不是文件"))
+        if (f.length() == 0L) return listOf(Finding(shown, CHECK_EMPTY, "文件是 0 字节"))
 
         val out = ArrayList<Finding>(2)
         val ext = f.extension.lowercase()
         if (ext in TEXT_EXTS) {
-            decodeFailure(f)?.let { out += Finding(rel, CHECK_BAD_ENCODING, it) }
+            decodeFailure(f)?.let { out += Finding(shown, CHECK_BAD_ENCODING, it) }
         }
         if (ext == "json") {
-            parseFailure(f)?.let { out += Finding(rel, CHECK_BAD_JSON, it) }
+            parseFailure(f)?.let { out += Finding(shown, CHECK_BAD_JSON, it) }
         }
         return out
     }
