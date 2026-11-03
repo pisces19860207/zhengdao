@@ -263,9 +263,11 @@ internal data class RehearsalReport(
     /** 降级成了纯计划层（配额不足或压根没配额）。 */
     val degraded: Boolean get() = mode == RehearsalMode.PLAN_ONLY && !blocked
 
-    private fun seconds(ms: Long): String = if (ms < 0L) "未测到" else String.format("%.1f", ms / 1000.0)
+    // 两格小数按 `Locale.ROOT` 定死：报告里"3.5 秒 / 12.00MB"是要对着实测核的数，
+    // 跟系统区域走会在用逗号做小数点的地区写成"3,5"（写法沿用本仓 ArchiveTools 等四处先例）。
+    private fun seconds(ms: Long): String = if (ms < 0L) "未测到" else String.format(java.util.Locale.ROOT, "%.1f", ms / 1000.0)
 
-    private fun mb(bytes: Long): String = String.format("%.2fMB", bytes / (1024.0 * 1024.0))
+    private fun mb(bytes: Long): String = String.format(java.util.Locale.ROOT, "%.2fMB", bytes / (1024.0 * 1024.0))
 
     /**
      * 报告正文，**最多 8 行**（派单 §一③的形制；判据测试逐条数行数）。
