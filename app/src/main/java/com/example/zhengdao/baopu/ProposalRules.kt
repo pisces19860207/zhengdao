@@ -77,29 +77,25 @@ internal object ProposalRules {
     fun idOf(target: String, payload: String): String = SkillRefine.dedupeKey(target, payload)
 
     fun generate(input: Input): Result {
+        val sink = CandidateSink(input)
+        learnCandidates(input, sink)
+        correctionCandidates(input, sink)
+        personaCandidates(input, sink)
+        failureCandidates(input, sink)
+        successCandidates(input, sink)
+        return Result(sink.out.values.toList(), sink.skipped, sink.dropped)
+    }
+
+    /** 候选收口：五道闸逐条挡（各有给人看的理由），过闸后超上限计 dropped。 */
+    private class CandidateSink(val input: Input) {
         val out = LinkedHashMap<String, ProposalCandidate>()
         val skipped = mutableListOf<Skip>()
         var dropped = 0
 
         fun offer(c: ProposalCandidate) {
-            if (c.payload.isBlank()) {
-                skipped += Skip(c.target, "正文为空，不生成")
-                return
-            }
-            if (c.id in input.rejectedIds) {
-                skipped += Skip(c.target, "同 hash 已被拒绝过")
-                return
-            }
-            if (c.id in input.pendingIds) {
-                skipped += Skip(c.target, "同 hash 已在 PENDING")
-                return
-            }
-            if (out.containsKey(c.id)) {
-                skipped += Skip(c.target, "本轮重复")
-                return
-            }
-            if (alreadyPresent(c, input)) {
-                skipped += Skip(c.target, "已有技能/人设已包含这条内容")
+            val why = rejectReason(c)
+            if (why != null) {
+                skipped += Skip(c.target, why)
                 return
             }
             if (out.size >= MAX_CANDIDATES_PER_RUN) {
@@ -109,18 +105,30 @@ internal object ProposalRules {
             out[c.id] = c
         }
 
-        // ① 学习卡 → 技能正文候选（payload 用卡上的 content；id 与丢弃留痕同一把尺）
+        /** 挡下的理由（null＝放行）：顺序即原 offer 的闸序，一条都不能挪。 */
+        private fun rejectReason(c: ProposalCandidate): String? {
+            if (c.payload.isBlank()) return "正文为空，不生成"
+            if (c.id in input.rejectedIds) return "同 hash 已被拒绝过"
+            if (c.id in input.pendingIds) return "同 hash 已在 PENDING"
+            if (out.containsKey(c.id)) return "本轮重复"
+            if (alreadyPresent(c, input)) return "已有技能/人设已包含这条内容"
+            return null
+        }
+    }
+
+    /** ① 学习卡 → 技能正文候选（payload 用卡上的 content；id 与丢弃留痕同一把尺）。 */
+    private fun learnCandidates(input: Input, sink: CandidateSink) {
         val sessionRunIds = input.toolRuns.takeLast(MAX_EVIDENCE_IDS / 2).map { it.id }
         val sessionEventIds = (input.skillUses.map { it.id } + input.decisions.map { it.id })
             .distinct()
             .takeLast(MAX_EVIDENCE_IDS - sessionRunIds.size)
+        val hasIds = sessionRunIds.isNotEmpty() || sessionEventIds.isNotEmpty()
         for (p in input.learn) {
-            val hasIds = sessionRunIds.isNotEmpty() || sessionEventIds.isNotEmpty()
             if (LEARN_MIN_EVIDENCE > 0 && !hasIds && !p.fromUser) {
-                skipped += Skip(SkillRefine.nameOf(p), "学习卡没有事件证据，也不是用户明说")
+                sink.skipped += Skip(SkillRefine.nameOf(p), "学习卡没有事件证据，也不是用户明说")
                 continue
             }
-            offer(
+            sink.offer(
                 ProposalCandidate(
                     id = SkillRefine.dedupeKeyOf(p),
                     kind = ProposalKind.SKILL_BODY,
@@ -135,14 +143,16 @@ internal object ProposalRules {
                 ),
             )
         }
+    }
 
-        // ② 用户纠正：同会话、同一技能名被明确否决 ≥ MIN_REPEATS 次 ⇒ 技能规则
+    /** ② 用户纠正：同会话、同一技能名被明确否决 ≥ MIN_REPEATS 次 ⇒ 技能规则。 */
+    private fun correctionCandidates(input: Input, sink: CandidateSink) {
         val rejected = input.decisions.filter { !it.ok }
         val byName = rejected.filter { it.name.isNotBlank() }.groupBy { it.name }
         for ((name, rows) in byName) {
-            if (rows.count { it.target != "memory" && it.target != "persona" } < MIN_REPEATS) continue
             val skillRows = rows.filter { it.target != "memory" && it.target != "persona" }
-            offer(
+            if (skillRows.size < MIN_REPEATS) continue
+            sink.offer(
                 ProposalCandidate(
                     id = idOf(name, correctionPayload(name)),
                     kind = ProposalKind.SKILL_BODY,
@@ -156,34 +166,40 @@ internal object ProposalRules {
                 ),
             )
         }
-        // ②b 跨对象的纠正 / 人设类决策 ⇒ 人设追加（同一会话里至少两条不同对象的否决）
-        val memoryRejects = rejected.filter { it.target == "memory" || it.target == "persona" }
-        val distinctSkillNames = byName.keys.filter { name ->
-            byName.getValue(name).count { it.target != "memory" && it.target != "persona" } >= MIN_REPEATS
-        }.size
-        if (memoryRejects.size >= MIN_REPEATS || distinctSkillNames >= MIN_REPEATS) {
-            val payload = personaCorrectionPayload()
-            offer(
-                ProposalCandidate(
-                    id = idOf(PERSONA_TARGET, payload),
-                    kind = ProposalKind.PERSONA_APPEND,
-                    target = PERSONA_TARGET,
-                    payload = payload,
-                    evidence = ProposalEvidence(
-                        skillEventIds = rejected.map { it.id }.takeLast(MAX_EVIDENCE_IDS),
-                        atMs = rejected.maxOfOrNull { it.atMs } ?: input.nowMs,
-                    ),
-                    createdAt = input.nowMs,
-                ),
-            )
-        }
+    }
 
-        // ③ 失败模式：同会话、同一工具重复失败 ≥ MIN_REPEATS 次 ⇒ 工具使用约束
+    /** ②b 跨对象的纠正 / 人设类决策 ⇒ 人设追加（同一会话里至少两条不同对象的否决）。 */
+    private fun personaCandidates(input: Input, sink: CandidateSink) {
+        val rejected = input.decisions.filter { !it.ok }
+        val memoryRejects = rejected.filter { it.target == "memory" || it.target == "persona" }
+        val byName = rejected.filter { it.name.isNotBlank() }.groupBy { it.name }
+        val distinctSkillNames = byName.keys.count { name ->
+            byName.getValue(name).count { it.target != "memory" && it.target != "persona" } >= MIN_REPEATS
+        }
+        if (memoryRejects.size < MIN_REPEATS && distinctSkillNames < MIN_REPEATS) return
+        val payload = personaCorrectionPayload()
+        sink.offer(
+            ProposalCandidate(
+                id = idOf(PERSONA_TARGET, payload),
+                kind = ProposalKind.PERSONA_APPEND,
+                target = PERSONA_TARGET,
+                payload = payload,
+                evidence = ProposalEvidence(
+                    skillEventIds = rejected.map { it.id }.takeLast(MAX_EVIDENCE_IDS),
+                    atMs = rejected.maxOfOrNull { it.atMs } ?: input.nowMs,
+                ),
+                createdAt = input.nowMs,
+            ),
+        )
+    }
+
+    /** ③ 失败模式：同会话、同一工具重复失败 ≥ MIN_REPEATS 次 ⇒ 工具使用约束。 */
+    private fun failureCandidates(input: Input, sink: CandidateSink) {
         val failures = input.toolRuns.filter { !it.ok && isRealTool(it.tool) }.groupBy { it.tool }
         for ((tool, rows) in failures) {
             if (rows.size < MIN_REPEATS) continue
             val payload = failurePayload(tool)
-            offer(
+            sink.offer(
                 ProposalCandidate(
                     id = idOf(tool, payload),
                     kind = ProposalKind.TOOL_RULE,
@@ -197,18 +213,20 @@ internal object ProposalRules {
                 ),
             )
         }
+    }
 
-        // ④ 成功模式：同会话、同一技能连续成功 ≥ MIN_REPEATS 次，且工具链也有成功 ⇒ 正文补充
+    /** ④ 成功模式：同会话、同一技能连续成功 ≥ MIN_REPEATS 次，且工具链也有成功 ⇒ 正文补充。 */
+    private fun successCandidates(input: Input, sink: CandidateSink) {
         val successfulToolIds = input.toolRuns.filter { it.ok && isRealTool(it.tool) }.map { it.id }
         for ((name, rows) in input.skillUses.filter { it.name.isNotBlank() }.groupBy { it.name }) {
             val streak = longestSuccessStreak(rows)
             if (streak.size < MIN_REPEATS) continue
             if (successfulToolIds.size < MIN_REPEATS) {
-                skipped += Skip(name, "技能连续成功，但同会话工具链证据不足")
+                sink.skipped += Skip(name, "技能连续成功，但同会话工具链证据不足")
                 continue
             }
             val payload = successPayload(name)
-            offer(
+            sink.offer(
                 ProposalCandidate(
                     id = idOf(name, payload),
                     kind = ProposalKind.SKILL_BODY,
@@ -225,8 +243,6 @@ internal object ProposalRules {
                 ),
             )
         }
-
-        return Result(out.values.toList(), skipped, dropped)
     }
 
     /** 人设追加的落点名（与技能名区分；本批不写盘）。 */
