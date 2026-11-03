@@ -49,11 +49,14 @@ internal object OrganCensus {
             name = "分类器",
             entry = "RiskMatrix.classify",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/RiskMatrix.kt",
-            callSites = 3,
+            // 第三百五十八批：军师（推演盘）判风险档时调的是矩阵本体，多出第 4 处 ⇒ 3 改 4。
+            // 它只取档位：不走 `RiskGate` 的时间窗、不写 208 账（派单【隔离】③「军师不写任何账」）。
+            callSites = 4,
             sink = "决策记录.jsonl（208 账行）",
             evidence = listOf(
                 "RiskGate.kt:69 RiskMatrix.classify(call, ctx, table)",
                 "RiskGate.kt:82 RiskMatrix.classify(call)",
+                "agent/RehearsalRunner.kt:281 军师取档位（358：读生产表、不落账）",
             ),
         ),
         OrganProbe(
