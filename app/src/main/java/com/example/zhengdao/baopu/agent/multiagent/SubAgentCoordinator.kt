@@ -51,6 +51,49 @@ internal class SubAgentCoordinator(
         // 存储是账本不是闸门：接口实现坏了只 log，流程照跑（子任务结果仍回给父）
         quietly { store.insertBatch(tasks, decomposition.sessionId, t0) }
 
+        val state = RunState(tasks)
+        val deadline = t0 + SubAgentRules.GLOBAL_DEADLINE_MS
+        try {
+            while (state.pending.isNotEmpty() || state.running.isNotEmpty()) {
+                if (isCancelled()) {
+                    state.stopReason = "父任务已停止"
+                    break
+                }
+                if (now() >= deadline) {
+                    state.stopReason = "全局截止（${SubAgentRules.GLOBAL_DEADLINE_MS / 1000}s）"
+                    break
+                }
+                state.startBatch()
+                if (state.running.isEmpty()) break // 理论上到不了（pending 空才可能；保险）
+                // 收一个（带超时 poll：这一圈没完成也回去重查取消/截止）
+                val finished = completion.poll(pollMs, TimeUnit.MILLISECONDS)
+                if (finished != null) state.ingest(finished)
+            }
+        } finally {
+            // 收口：在飞的一律取消并记 CANCELLED（用户停止/截止/异常出口都走这里）
+            state.cancelAll()
+            pool.shutdown()
+            runCatching { pool.awaitTermination(2, TimeUnit.SECONDS) }
+        }
+        return summarize(decomposition, tasks, state, t0)
+    }
+
+    /** 收口一行：按序号回结果，摘要日志与账同源。 */
+    private fun summarize(
+        decomposition: TaskDecomposition,
+        tasks: List<SubTask>,
+        state: RunState,
+        t0: Long,
+    ): List<SubTaskResult> {
+        val ordered = tasks.mapNotNull { state.results[it.id] }
+        val done = ordered.count { it.ok }
+        val reason = if (state.stopReason != null) "（${state.stopReason}）" else ""
+        log("子 Agent 分解 ${decomposition.parentId}：$done/${ordered.size} 成功，${now() - t0}ms$reason")
+        return ordered
+    }
+
+    /** 一笔分解的调度现场：原 runAll 的局部变量，拆分后经这个对象共享。 */
+    private inner class RunState(val tasks: List<SubTask>) {
         val pending = ArrayDeque(tasks.sortedBy { it.seq })
         val running = LinkedHashMap<String, Future<SubTaskResult>>()
         val attempts = tasks.associate { it.id to 1 }.toMutableMap()
@@ -59,124 +102,122 @@ internal class SubAgentCoordinator(
         val tokensInSum = LinkedHashMap<String, Long?>()
         val tokensOutSum = LinkedHashMap<String, Long?>()
         val results = LinkedHashMap<String, SubTaskResult>()
-        val deadline = t0 + SubAgentRules.GLOBAL_DEADLINE_MS
         var stopReason: String? = null
 
-        try {
-            while (pending.isNotEmpty() || running.isNotEmpty()) {
-                if (isCancelled()) {
-                    stopReason = "父任务已停止"
-                    break
-                }
-                if (now() >= deadline) {
-                    stopReason = "全局截止（${SubAgentRules.GLOBAL_DEADLINE_MS / 1000}s）"
-                    break
-                }
-                // 起一批（不超过并发上限；提交体自带 id ⇒ 结果永远认得出是哪条）
-                var startable = SubAgentRules.nextStartable(running.size, pending.size, maxParallel)
-                while (startable > 0 && pending.isNotEmpty()) {
-                    // pollFirst() 在 isNotEmpty 之内不可能空；`?: continue` 是给编译器看的
-                    val task = pending.pollFirst() ?: continue
-                    val runner = newRunner(task)
-                    quietly { store.markRunning(task, now()) }
-                    running[task.id] = completion.submit {
-                        runCatching { runner.run(task) }.getOrElse { e ->
-                            SubTaskResult(
-                                id = task.id,
-                                status = SubTaskStatus.FAILED,
-                                failureReason = "执行异常（${e.javaClass.simpleName}）",
-                                startedAt = now(),
-                                endedAt = now(),
-                            )
-                        }
-                    }
-                    startable--
-                }
-                if (running.isEmpty()) break // 理论上到不了（pending 空才可能；保险）
-                // 收一个（带超时 poll：这一圈没完成也回去重查取消/截止）
-                val finished = completion.poll(pollMs, TimeUnit.MILLISECONDS)
-                if (finished != null) {
-                    val raw = finished.get()
-                    val id = raw.id
-                    running.remove(id)
-                    val task = tasks.firstOrNull { it.id == id }
-                    if (task == null) {
-                        log("子 Agent 协调器：收到不认识的结果 id=$id（忽略）")
-                        continue
-                    }
-                    val acc = (stepSum[id] ?: 0) + raw.steps
-                    stepSum[id] = acc
-                    // 第一百八十一批 #5：重试的 token 也累进同一条（与步数同口径——
-                    // 审计要能看出「重试又烧了一遍」；汇总时每轮只计一次、无重复）。
-                    val inAcc = mergeTokens(tokensInSum[id], raw.tokensIn)
-                    val outAcc = mergeTokens(tokensOutSum[id], raw.tokensOut)
-                    tokensInSum[id] = inAcc
-                    tokensOutSum[id] = outAcc
-                    val merged = raw.copy(
-                        steps = acc,
-                        attempts = attempts[id] ?: 1,
-                        tokensIn = inAcc,
-                        tokensOut = outAcc,
-                    )
-                    if (SubAgentRules.shouldRetry(merged.status, merged.attempts) && !isCancelled()) {
-                        // 重试一次：attempts+1 重新入队（步数累计，不重置——审计要看得出
-                        // 「重试是不是又烧了一遍」；首战失败原因只进日志，行内状态回 PENDING
-                        // 由随后的 markRunning 覆盖）
-                        attempts[id] = merged.attempts + 1
-                        log(
-                            "子 Agent ${task.id} ${statusLabel(merged.status)}" +
-                                "（${merged.failureReason}），重试第 ${merged.attempts + 1} 次",
+        /** 起一批（不超过并发上限；提交体自带 id ⇒ 结果永远认得出是哪条）。 */
+        fun startBatch() {
+            var startable = SubAgentRules.nextStartable(running.size, pending.size, maxParallel)
+            while (startable > 0 && pending.isNotEmpty()) {
+                // pollFirst() 在 isNotEmpty 之内不可能空；`?: continue` 是给编译器看的
+                val task = pending.pollFirst() ?: continue
+                val runner = newRunner(task)
+                quietly { store.markRunning(task, now()) }
+                running[task.id] = completion.submit {
+                    runCatching { runner.run(task) }.getOrElse { e ->
+                        SubTaskResult(
+                            id = task.id,
+                            status = SubTaskStatus.FAILED,
+                            failureReason = "执行异常（${e.javaClass.simpleName}）",
+                            startedAt = now(),
+                            endedAt = now(),
                         )
-                        pending.addLast(task)
-                    } else {
-                        results[id] = merged
-                        quietly {
-                            store.markFinished(
-                                merged, task.goal, task.input, task.acceptance, task.tools, merged.attempts,
-                            )
-                        }
                     }
                 }
+                startable--
             }
-        } finally {
-            // 收口：在飞的一律取消并记 CANCELLED（用户停止/截止/异常出口都走这里）
-            running.values.forEach { it.cancel(true) }
-            running.keys.forEach { id ->
-                val task = tasks.firstOrNull { it.id == id } ?: return@forEach
-                val r = SubTaskResult(
-                    id = id,
-                    status = SubTaskStatus.CANCELLED,
-                    failureReason = stopReason ?: "协调器收口",
-                    steps = stepSum[id] ?: 0,
-                    attempts = attempts[id] ?: 1,
-                )
-                results[id] = r
-                quietly { store.markFinished(r, task.goal, task.input, task.acceptance, task.tools, r.attempts) }
-            }
-            pending.forEach { task ->
-                val r = SubTaskResult(
-                    id = task.id,
-                    status = SubTaskStatus.CANCELLED,
-                    failureReason = stopReason ?: "未开跑",
-                    steps = 0,
-                    attempts = attempts[task.id] ?: 1,
-                )
-                results[task.id] = r
-                quietly {
-                    store.markFinished(r, task.goal, task.input, task.acceptance, task.tools, r.attempts)
-                }
-            }
-            pool.shutdown()
-            runCatching { pool.awaitTermination(2, TimeUnit.SECONDS) }
         }
 
-        val ordered = tasks.mapNotNull { results[it.id] }
-        val done = ordered.count { it.ok }
-        log(
-            "子 Agent 分解 ${decomposition.parentId}：$done/${ordered.size} 成功，" +
-                "${now() - t0}ms${if (stopReason != null) "（$stopReason）" else ""}",
-        )
-        return ordered
+        /** 收一条完成的结果：累计并账，够格重试就回队，否则落账收口。 */
+        fun ingest(finished: Future<SubTaskResult>) {
+            val raw = finished.get()
+            val id = raw.id
+            running.remove(id)
+            val task = tasks.firstOrNull { it.id == id }
+            if (task == null) {
+                log("子 Agent 协调器：收到不认识的结果 id=$id（忽略）")
+                return
+            }
+            val merged = mergeResult(id, raw)
+            if (SubAgentRules.shouldRetry(merged.status, merged.attempts) && !isCancelled()) {
+                retry(task, merged)
+            } else {
+                finish(task, merged)
+            }
+        }
+
+        /**
+         * 步数/token/次数的并账（第一百八十一批 #5：重试的 token 也累进同一条，
+         * 与步数同口径——审计要能看出「重试又烧了一遍」；汇总时每轮只计一次、无重复）。
+         */
+        private fun mergeResult(id: String, raw: SubTaskResult): SubTaskResult {
+            val acc = (stepSum[id] ?: 0) + raw.steps
+            stepSum[id] = acc
+            val inAcc = mergeTokens(tokensInSum[id], raw.tokensIn)
+            val outAcc = mergeTokens(tokensOutSum[id], raw.tokensOut)
+            tokensInSum[id] = inAcc
+            tokensOutSum[id] = outAcc
+            return raw.copy(
+                steps = acc,
+                attempts = attempts[id] ?: 1,
+                tokensIn = inAcc,
+                tokensOut = outAcc,
+            )
+        }
+
+        // 重试一次：attempts+1 重新入队（步数累计，不重置——审计要看得出
+        // 「重试是不是又烧了一遍」；首战失败原因只进日志，行内状态回 PENDING
+        // 由随后的 markRunning 覆盖）
+        private fun retry(task: SubTask, merged: SubTaskResult) {
+            attempts[task.id] = merged.attempts + 1
+            log(
+                "子 Agent ${task.id} ${statusLabel(merged.status)}" +
+                    "（${merged.failureReason}），重试第 ${merged.attempts + 1} 次",
+            )
+            pending.addLast(task)
+        }
+
+        private fun finish(task: SubTask, merged: SubTaskResult) {
+            results[task.id] = merged
+            quietly {
+                store.markFinished(
+                    merged, task.goal, task.input, task.acceptance, task.tools, merged.attempts,
+                )
+            }
+        }
+
+        /** 收口：在飞的取消并记 CANCELLED，没开跑的也记 CANCELLED。 */
+        fun cancelAll() {
+            running.values.forEach { it.cancel(true) }
+            running.keys.forEach { id -> cancelRunning(id) }
+            pending.forEach { task -> cancelQueued(task) }
+        }
+
+        private fun cancelRunning(id: String) {
+            val task = tasks.firstOrNull { it.id == id } ?: return
+            val r = SubTaskResult(
+                id = id,
+                status = SubTaskStatus.CANCELLED,
+                failureReason = stopReason ?: "协调器收口",
+                steps = stepSum[id] ?: 0,
+                attempts = attempts[id] ?: 1,
+            )
+            results[id] = r
+            quietly { store.markFinished(r, task.goal, task.input, task.acceptance, task.tools, r.attempts) }
+        }
+
+        private fun cancelQueued(task: SubTask) {
+            val r = SubTaskResult(
+                id = task.id,
+                status = SubTaskStatus.CANCELLED,
+                failureReason = stopReason ?: "未开跑",
+                steps = 0,
+                attempts = attempts[task.id] ?: 1,
+            )
+            results[task.id] = r
+            quietly {
+                store.markFinished(r, task.goal, task.input, task.acceptance, task.tools, r.attempts)
+            }
+        }
     }
 
     /** 审计写失败只 log 不抛（账本卡住业务＝本末倒置，与轨迹/台账同口径）。 */
