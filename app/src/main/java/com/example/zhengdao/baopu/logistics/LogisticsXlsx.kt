@@ -239,8 +239,8 @@ object LogisticsXlsx {
         var unresolvedShared = 0
     }
 
-    private fun readSheet(xml: String, shared: List<String>, sheets: List<SheetRef>): ReadOutcome {
-        val cells = SheetCells()
+    /** 一格扫描中的现场：原 readSheet 的局部变量，拆成处理器后经这个对象共享。 */
+    private class CellScan(val cells: SheetCells) {
         var rowIndex = 0
         var lastCol = -1
         var inCell = false
@@ -257,52 +257,41 @@ object LogisticsXlsx {
             cellHasFormula = false
         }
 
-        var i = 0
-        while (i < xml.length) {
-            val lt = xml.indexOf('<', i)
-            if (lt < 0) break
-            val gt = xml.indexOf('>', lt)
-            if (gt < 0) break
-            val tag = xml.substring(lt + 1, gt)
-            val name = tagName(tag)
-            val closing = tag.startsWith("/")
-            val selfClosing = tag.endsWith("/")
-            when {
-                name == "row" && !closing -> {
-                    rowIndex = attr(tag, "r")?.toIntOrNull() ?: (rowIndex + 1).coerceAtLeast(1)
-                    lastCol = -1
-                    cells.rows.getOrPut(rowIndex) { LinkedHashMap() }
-                }
-                name == "row" && closing -> if (inCell) settleCell()
-                name == "c" && !closing -> {
-                    settleCell()
-                    inCell = true
-                    cellType = attr(tag, "t") ?: ""
-                    cellCol = columnIndexOf(attr(tag, "r"), lastCol)
-                    lastCol = cellCol
-                    if (selfClosing) settleCell() // `<c r="A1"/>`：空格，不写值（空 ≠ 0）
-                }
-                inCell && !closing && !selfClosing && (name == "v" || name == "t") -> {
-                    val closer = nextCloser(xml, gt, name)
-                    if (closer >= 0) {
-                        val text = xml.substring(gt + 1, closer)
-                        val raw = unescapeOf(text)
-                        val fromInline = name == "t" && cellType == "inlineStr"
-                        if (name == "v" || fromInline) {
-                            if (!setValue(cells, shared, cellType, cellCol, rowIndex, raw)) {
-                                cells.unresolvedShared++
-                            }
-                            cellHasValue = true
-                        }
-                        i = closer + "</$name>".length
-                        continue
-                    }
-                }
-                inCell && !closing && name == "f" -> cellHasFormula = true
-                name == "c" && closing -> settleCell()
-            }
-            i = gt + 1
+        fun openRow(tag: String) {
+            rowIndex = attr(tag, "r")?.toIntOrNull() ?: (rowIndex + 1).coerceAtLeast(1)
+            lastCol = -1
+            cells.rows.getOrPut(rowIndex) { LinkedHashMap() }
         }
+
+        fun closeRow() {
+            if (inCell) settleCell()
+        }
+
+        fun openCell(tag: String, selfClosing: Boolean) {
+            settleCell()
+            inCell = true
+            cellType = attr(tag, "t") ?: ""
+            cellCol = columnIndexOf(attr(tag, "r"), lastCol)
+            lastCol = cellCol
+            if (selfClosing) settleCell() // `<c r="A1"/>`：空格，不写值（空 ≠ 0）
+        }
+
+        /** `<v>`/`<t>` 的文本落格：inlineStr 只在 `t` 标签上算数；共享串下标落空要计数报出去。 */
+        fun takeValue(name: String, text: String, shared: List<String>) {
+            val raw = unescapeOf(text)
+            val fromInline = name == "t" && cellType == "inlineStr"
+            if (name == "v" || fromInline) {
+                if (!setValue(cells, shared, cellType, cellCol, rowIndex, raw)) {
+                    cells.unresolvedShared++
+                }
+                cellHasValue = true
+            }
+        }
+    }
+
+    private fun readSheet(xml: String, shared: List<String>, sheets: List<SheetRef>): ReadOutcome {
+        val cells = SheetCells()
+        scanCells(xml, shared, CellScan(cells))
         val nonEmpty = cells.rows.entries
             .filter { (_, cols) -> cols.values.any { it.isNotBlank() } }
             .sortedBy { it.key }
@@ -311,8 +300,7 @@ object LogisticsXlsx {
         if (widest > LogisticsGrid.MAX_COLS) {
             return ReadOutcome.Failed("这张表有 $widest 列，超过 ${LogisticsGrid.MAX_COLS} 列上限，不是当天配货单的形状。")
         }
-        fun line(cols: Map<Int, String>): List<String> = (0 until widest).map { LogisticsGrid.cell(cols[it] ?: "") }
-        val header = line(nonEmpty.first().value)
+        val header = lineOf(nonEmpty.first().value, widest)
         if (header.none { it.isNotEmpty() }) return ReadOutcome.Failed("这张 xlsx 的第一行没有列名，认不出表头。")
         val body = nonEmpty.drop(1)
         if (body.isEmpty()) return ReadOutcome.Failed("这张 xlsx 只有表头、没有数据行——当天这张单子是空的？")
@@ -320,19 +308,72 @@ object LogisticsXlsx {
             return ReadOutcome.Failed("这张表有 ${body.size} 行，超过单表 ${LogisticsGrid.MAX_ROWS} 行上限，先按天拆开再导。")
         }
         val bodyLines = body.map { it.key }
-        val (aligned, notes) = LogisticsGrid.align(header, body.map { line(it.value) }, bodyLines)
-        val all = ArrayList(notes)
+        val (aligned, notes) = LogisticsGrid.align(header, body.map { lineOf(it.value, widest) }, bodyLines)
+        return ReadOutcome.Ok(Grid(header, aligned, notes + extraNotes(cells, sheets), bodyLines))
+    }
+
+    /** 一行补齐到 widest 列（缺格走 [LogisticsGrid.cell] 归一）。 */
+    private fun lineOf(cols: Map<Int, String>, widest: Int): List<String> =
+        (0 until widest).map { LogisticsGrid.cell(cols[it] ?: "") }
+
+    /** 标签循环：整张 sheet XML 走一遍，每个标签交给 [handleSheetTag] 分流。 */
+    private fun scanCells(xml: String, shared: List<String>, scan: CellScan) {
+        var i = 0
+        while (i < xml.length) {
+            val lt = xml.indexOf('<', i)
+            if (lt < 0) break
+            val gt = xml.indexOf('>', lt)
+            if (gt < 0) break
+            i = handleSheetTag(xml, gt, xml.substring(lt + 1, gt), scan, shared)
+        }
+    }
+
+    /** 标签分流：返回继续扫描的位置（内容标签会跳过自己的闭合标签）。 */
+    private fun handleSheetTag(xml: String, gt: Int, tag: String, scan: CellScan, shared: List<String>): Int {
+        val name = tagName(tag)
+        val closing = tag.startsWith("/")
+        val selfClosing = tag.endsWith("/")
+        return when {
+            name == "row" -> {
+                if (closing) scan.closeRow() else scan.openRow(tag)
+                gt + 1
+            }
+            name == "c" -> {
+                if (closing) scan.settleCell() else scan.openCell(tag, selfClosing)
+                gt + 1
+            }
+            scan.inCell && !closing && !selfClosing && (name == "v" || name == "t") ->
+                takeValueTag(xml, gt, name, scan, shared)
+            scan.inCell && !closing && name == "f" -> {
+                scan.cellHasFormula = true
+                gt + 1
+            }
+            else -> gt + 1
+        }
+    }
+
+    /** 内容标签（`<v>`/`<t>`）：闭合标签紧跟才取文本（与 sharedStrings 同一条对齐规矩）。 */
+    private fun takeValueTag(xml: String, gt: Int, name: String, scan: CellScan, shared: List<String>): Int {
+        val closer = nextCloser(xml, gt, name)
+        if (closer < 0) return gt + 1
+        scan.takeValue(name, xml.substring(gt + 1, closer), shared)
+        return closer + "</$name>".length
+    }
+
+    /** 三类「顺带交代」注记：多 sheet 提示、公式不算、共享串下标落空。 */
+    private fun extraNotes(cells: SheetCells, sheets: List<SheetRef>): List<String> {
+        val out = ArrayList<String>()
         if (sheets.size > 1) {
-            all += "这个工作簿有 ${sheets.size} 张表，只读了第一张「${sheets.first().name}」；" +
+            out += "这个工作簿有 ${sheets.size} 张表，只读了第一张「${sheets.first().name}」；" +
                 "另外几张：${sheets.drop(1).joinToString("、") { it.name }}——要它们的内容请各自另存成单独的表再导。"
         }
         if (cells.formulaWithoutValue > 0) {
-            all += "有 ${cells.formulaWithoutValue} 格是公式且没有缓存值，本批不计算公式，这些格按「未填」记、不参与任何计算。"
+            out += "有 ${cells.formulaWithoutValue} 格是公式且没有缓存值，本批不计算公式，这些格按「未填」记、不参与任何计算。"
         }
         if (cells.unresolvedShared > 0) {
-            all += "有 ${cells.unresolvedShared} 格指向共享文字表里不存在的下标（文件可能被截断），这些格按「未填」记。"
+            out += "有 ${cells.unresolvedShared} 格指向共享文字表里不存在的下标（文件可能被截断），这些格按「未填」记。"
         }
-        return ReadOutcome.Ok(Grid(header, aligned, all, bodyLines))
+        return out
     }
 
     /**
