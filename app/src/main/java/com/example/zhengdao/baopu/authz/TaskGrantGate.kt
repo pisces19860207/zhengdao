@@ -316,8 +316,25 @@ internal object TaskGrantGate {
     fun evaluate(request: ActionRequest, state: GrantState?): GateDecision {
         // 第三百零六批：入口先领 (roundId, step)——同 opId 复用同一个号（确认卡第二遍、
         // 偏离卡重跑都是同一个动作）；免卡结论第⑥步引用它，影子账也落它。
-        val mark = ActionStepClock.stepFor(request.opId)
+        val run = GateRun(request, ActionStepClock.stepFor(request.opId))
+        checkObjectsPreamble(run, state)?.let { return it }
+        val live = requireNotNull(run.live)
+        val grant = requireNotNull(run.grant)
+        checkObjectsTarget(run, grant)?.let { return it }
+        checkActions(run, grant)?.let { return it }
+        checkLimits(run, live, grant)?.let { return it }
+        checkBoundary(run, grant)?.let { return it }
+        checkShadow(run)?.let { return it }
+        return checkRecord(run, live)
+    }
+
+    /** 六步现场：请求、步号读数、生效授权——拆分后各步处理器共享。
+     *  六步顺序与拒绝理由文案是 L21/权限链的判据，逐字未动。 */
+    private class GateRun(val request: ActionRequest, val mark: ActionStepClock.Mark) {
         val steps = mutableListOf<StepReading>()
+        var live: GrantState? = null
+        var grant: TaskGrant? = null
+
         fun decide(outcome: GateOutcome, code: String, delta: DeltaQuestion? = null): GateDecision =
             GateDecision(
                 outcome = outcome,
@@ -330,157 +347,185 @@ internal object TaskGrantGate {
                 roundId = mark.roundId,
                 step = mark.step,
             )
+    }
 
-        // ① 对象：先识破「整个工作区」，再核对清单、进程、任务、有效期、落点、版本
+    /** ① 对象（前半）：先识破「整个工作区」，再核对清单、进程、任务、有效期。 */
+    private fun checkObjectsPreamble(run: GateRun, state: GrantState?): GateDecision? {
+        val request = run.request
         if (TaskGrantRules.isWholeWorkspaceObject(request.objectId)) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.OBJECTS,
                 false,
                 "对象是「${request.objectId}」＝整个工作区，不是可点的文件清单",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_WHOLE_WORKSPACE)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_WHOLE_WORKSPACE)
         }
         val live = state?.takeIf { it.alive }
         val grant = live?.grant
+        run.live = live
+        run.grant = grant
         if (live == null || grant == null) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.OBJECTS,
                 false,
                 "没有生效的任务级授权（${state?.endReason?.wire ?: "none"}）",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_NO_GRANT)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_NO_GRANT)
         }
         // 进程重启 ⇒ 老快照作废（§2 第四要素；判定用的是**代号**，不是时长）。
         if (request.processEpoch != grant.processEpoch || live.epoch != request.processEpoch) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.OBJECTS,
                 false,
                 "进程代号对不上（快照 ${grant.processEpoch.take(8)}／当前 ${request.processEpoch.take(8)}）",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_PROCESS_CHANGED)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_PROCESS_CHANGED)
         }
         if (request.taskId != grant.taskId) {
-            steps += StepReading(GrantStep.OBJECTS, false, "这次是任务 ${request.taskId}，授权是 ${grant.taskId}")
-            return decide(GateOutcome.ASK_SINGLE, CODE_FOREIGN_TASK)
+            run.steps += StepReading(GrantStep.OBJECTS, false, "这次是任务 ${request.taskId}，授权是 ${grant.taskId}")
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_FOREIGN_TASK)
         }
         if (request.nowMonoMs >= grant.expiresMonoMs) {
-            steps += StepReading(GrantStep.OBJECTS, false, "授权已到期（${grant.expiresMonoMs} ≤ ${request.nowMonoMs}）")
-            return decide(GateOutcome.ASK_SINGLE, CODE_EXPIRED)
+            run.steps += StepReading(GrantStep.OBJECTS, false, "授权已到期（${grant.expiresMonoMs} ≤ ${request.nowMonoMs}）")
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_EXPIRED)
         }
+        return null
+    }
+
+    /** ① 对象（后半）：清单内、落点受控、现状与快照对得上。 */
+    private fun checkObjectsTarget(run: GateRun, grant: TaskGrant): GateDecision? {
+        val request = run.request
         val obj = grant.objectOf(request.objectId)
         if (obj == null) {
-            steps += StepReading(GrantStep.OBJECTS, false, "对象 ${request.objectId} 不在授权清单里")
-            return decide(GateOutcome.ASK_DELTA, CODE_OBJECT_OUT, deltaFor(request, grant))
+            run.steps += StepReading(GrantStep.OBJECTS, false, "对象 ${request.objectId} 不在授权清单里")
+            return run.decide(GateOutcome.ASK_DELTA, CODE_OBJECT_OUT, deltaFor(request, grant))
         }
         // 共享目录**不进** v1 支持域（§3）：授权只对受控任务仓里的对象有效。
         if (obj.location != ObjectLocation.CONTROLLED_TASK_STORE) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.OBJECTS,
                 false,
                 "对象 ${obj.objectId} 在${obj.location.cn}，v1 不支持",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_SHARED_FILE)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_SHARED_FILE)
         }
         if (request.before != obj.state) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.OBJECTS,
                 false,
                 "对象 ${obj.objectId} 的现状与快照对不上（快照 ${obj.state.wire}／现在 ${request.before.wire}）",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_STATE_CHANGED)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_STATE_CHANGED)
         }
-        steps += StepReading(
+        run.steps += StepReading(
             GrantStep.OBJECTS,
             true,
             "对象 ${obj.handle} 在清单内（${obj.location.cn}，${obj.state.wire}）",
         )
+        return null
+    }
 
-        // ② 动作：先看这类动作允不允许授权，再看这份授权里有没有
+    /** ② 动作：先看这类动作允不允许授权，再看这份授权里有没有。 */
+    private fun checkActions(run: GateRun, grant: TaskGrant): GateDecision? {
+        val request = run.request
         if (!request.action.grantable) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.ACTIONS,
                 false,
                 "${request.action.cn} 是 §2 点名的排除项，永远不可授权",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_ACTION_BANNED)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_ACTION_BANNED)
         }
         if (!grant.allowsAction(request.action)) {
-            steps += StepReading(GrantStep.ACTIONS, false, "这份授权里没有 ${request.action.cn}")
-            return decide(GateOutcome.ASK_DELTA, CODE_ACTION_OUT, deltaFor(request, grant))
+            run.steps += StepReading(GrantStep.ACTIONS, false, "这份授权里没有 ${request.action.cn}")
+            return run.decide(GateOutcome.ASK_DELTA, CODE_ACTION_OUT, deltaFor(request, grant))
         }
-        steps += StepReading(GrantStep.ACTIONS, true, "${request.action.cn} 在授权内")
+        run.steps += StepReading(GrantStep.ACTIONS, true, "${request.action.cn} 在授权内")
+        return null
+    }
 
-        // ③ 上限（§2 程度：超了就不算数，不再问、直接停）
+    /** ③ 上限（§2 程度：超了就不算数，不再问、直接停）。 */
+    private fun checkLimits(run: GateRun, live: GrantState, grant: TaskGrant): GateDecision? {
+        val request = run.request
         val budget = grant.budget.clamped()
         if (request.candidateBytes < 0L) {
-            steps += StepReading(GrantStep.LIMITS, false, "本次字节数为负（${request.candidateBytes}）")
-            return decide(GateOutcome.ASK_SINGLE, CODE_FILE_TOO_BIG)
+            run.steps += StepReading(GrantStep.LIMITS, false, "本次字节数为负（${request.candidateBytes}）")
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_FILE_TOO_BIG)
         }
         if (request.candidateBytes > budget.maxBytesPerFile) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.LIMITS,
                 false,
                 "本次 ${request.candidateBytes}B 超过单文件上限 ${budget.maxBytesPerFile}B",
             )
-            return decide(GateOutcome.STOPPED, CODE_FILE_TOO_BIG)
+            return run.decide(GateOutcome.STOPPED, CODE_FILE_TOO_BIG)
         }
         if (live.actionsUsed + 1 > budget.maxActions) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.LIMITS,
                 false,
                 "动作 ${live.actionsUsed + 1} 次超过上限 ${budget.maxActions}",
             )
-            return decide(GateOutcome.STOPPED, CODE_ACTION_LIMIT)
+            return run.decide(GateOutcome.STOPPED, CODE_ACTION_LIMIT)
         }
         if (live.bytesWritten + request.candidateBytes > budget.maxBytesTotal) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.LIMITS,
                 false,
                 "累计写入 ${live.bytesWritten + request.candidateBytes}B 超过上限 ${budget.maxBytesTotal}B",
             )
-            return decide(GateOutcome.STOPPED, CODE_TOTAL_TOO_BIG)
+            return run.decide(GateOutcome.STOPPED, CODE_TOTAL_TOO_BIG)
         }
         if (grant.objectCount > budget.maxObjects) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.LIMITS,
                 false,
                 "清单 ${grant.objectCount} 个对象超过上限 ${budget.maxObjects}",
             )
-            return decide(GateOutcome.STOPPED, CODE_ACTION_LIMIT)
+            return run.decide(GateOutcome.STOPPED, CODE_ACTION_LIMIT)
         }
-        steps += StepReading(
+        run.steps += StepReading(
             GrantStep.LIMITS,
             true,
             "动作 ${live.actionsUsed + 1}/${budget.maxActions}，本次 ${request.candidateBytes}B，" +
                 "累计 ${live.bytesWritten + request.candidateBytes}B/${budget.maxBytesTotal}B",
         )
+        return null
+    }
 
-        // ④ protected / hardDeny：授权在这两件事上**一格都不覆盖**
+    /** ④ protected / hardDeny：授权在这两件事上**一格都不覆盖**。 */
+    private fun checkBoundary(run: GateRun, grant: TaskGrant): GateDecision? {
+        val request = run.request
         if (request.boundary.hardDeny) {
-            steps += StepReading(GrantStep.BOUNDARY, false, "219 判了硬拒（原件区/密码框/私网 URL 之类）")
-            return decide(GateOutcome.REJECT, CODE_HARD_DENY)
+            run.steps += StepReading(GrantStep.BOUNDARY, false, "219 判了硬拒（原件区/密码框/私网 URL 之类）")
+            return run.decide(GateOutcome.REJECT, CODE_HARD_DENY)
         }
         if (request.boundary.protectedHit) {
-            steps += StepReading(GrantStep.BOUNDARY, false, "碰到受保护对象（原件区/密码框）")
-            return decide(GateOutcome.ASK_SINGLE, CODE_PROTECTED)
+            run.steps += StepReading(GrantStep.BOUNDARY, false, "碰到受保护对象（原件区/密码框）")
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_PROTECTED)
         }
         if (request.mustAskIndependently || request.risk == RiskClass.R3 ||
             request.risk.ordinal > grant.maxRisk
         ) {
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.BOUNDARY,
                 false,
                 "风险 ${request.risk} 必须逐次人批（授权最高覆盖 R${grant.maxRisk}）",
             )
-            return decide(GateOutcome.ASK_SINGLE, CODE_RISK_TOO_HIGH)
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_RISK_TOO_HIGH)
         }
-        steps += StepReading(
+        run.steps += StepReading(
             GrantStep.BOUNDARY,
             true,
             "无硬拒、未碰受保护对象、风险 ${request.risk} ≤ R${grant.maxRisk}",
         )
+        return null
+    }
 
-        // ⑤ 影子三态（每个动作都查；UNKNOWN 停下报 NO_DATA，不弹卡）
+    /** ⑤ 影子三态（每个动作都查；UNKNOWN 停下报 NO_DATA，不弹卡）。 */
+    private fun checkShadow(run: GateRun): GateDecision? {
+        val request = run.request
+
         // 第二百九十六批 §3：这一格**第一次真去问适配器**——249 交付时它是"全绿但零调用"，
         // 276 P1 接上六步之后它仍然恒 `None`（管线那一格不传影子）。现在只要构造层交了
         // [ActionRequest.shadowInput]，第⑤步就自己去跑一次预演拿结论；调用方已经交回结论的
@@ -489,12 +534,12 @@ internal object TaskGrantGate {
             ?: shadowSignalFor(request.shadowInput)
         val verdict = (signal as? ShadowSignal.Rehearsed)?.verdict
         if (verdict == null) {
-            steps += StepReading(GrantStep.SHADOW, null, "这个动作没跑影子预演")
-            return decide(GateOutcome.STOPPED, CODE_NO_DATA)
+            run.steps += StepReading(GrantStep.SHADOW, null, "这个动作没跑影子预演")
+            return run.decide(GateOutcome.STOPPED, CODE_NO_DATA)
         }
         if (!shadowAllows(verdict)) {
             val reason = (signal as ShadowSignal.Rehearsed).reason
-            steps += StepReading(
+            run.steps += StepReading(
                 GrantStep.SHADOW,
                 // 「跑不出结论」不是「对不上」：MISMATCH/MISWIRED 是实测交回了差，UNVERIFIABLE
                 // 是压根没有可比的东西（工具没接／沙盒没装／副本建不起）。记成"未验"才与
@@ -503,7 +548,7 @@ internal object TaskGrantGate {
                 detail = "影子结论是 ${verdict.cn}（${verdict.wire}" +
                     if (reason.isBlank()) "）" else "：reason=$reason）",
             )
-            return decide(
+            return run.decide(
                 GateOutcome.STOPPED,
                 when (verdict) {
                     ShadowVerdict.MISMATCH -> CODE_SHADOW_MISMATCH
@@ -512,24 +557,28 @@ internal object TaskGrantGate {
                 },
             )
         }
-        steps += StepReading(GrantStep.SHADOW, true, "影子 ${verdict.wire}（${verdict.cn}）")
+        run.steps += StepReading(GrantStep.SHADOW, true, "影子 ${verdict.wire}（${verdict.cn}）")
+        return null
+    }
 
-        // ⑥ 执行落 208：一个动作一条账，键稳定，落过的不再落
+    /** ⑥ 执行落 208：一个动作一条账，键稳定，落过的不再落。 */
+    private fun checkRecord(run: GateRun, live: GrantState): GateDecision {
+        val request = run.request
         if (request.opId.isBlank()) {
-            steps += StepReading(GrantStep.RECORD, false, "这个动作没有稳定的 opId")
-            return decide(GateOutcome.ASK_SINGLE, CODE_NO_OP_ID)
+            run.steps += StepReading(GrantStep.RECORD, false, "这个动作没有稳定的 opId")
+            return run.decide(GateOutcome.ASK_SINGLE, CODE_NO_OP_ID)
         }
         if (live.alreadyApplied(request.opId)) {
-            steps += StepReading(GrantStep.RECORD, false, "opId=${request.opId} 已经落过账（一个动作只许一条）")
-            return decide(GateOutcome.STOPPED, CODE_DUPLICATE_OP)
+            run.steps += StepReading(GrantStep.RECORD, false, "opId=${request.opId} 已经落过账（一个动作只许一条）")
+            return run.decide(GateOutcome.STOPPED, CODE_DUPLICATE_OP)
         }
-        steps += StepReading(
+        run.steps += StepReading(
             GrantStep.RECORD,
             true,
             "opId=${request.opId}，账键=${ledgerKeyOf(request.opId)}，尚未落过" +
-                "（轮 ${mark.roundId} 步 ${mark.step}）",
+                "（轮 ${run.mark.roundId} 步 ${run.mark.step}）",
         )
-        return decide(GateOutcome.ALLOW, CODE_ALLOW)
+        return run.decide(GateOutcome.ALLOW, CODE_ALLOW)
     }
 
     /** 组装「只问增量」的那一问。 */
