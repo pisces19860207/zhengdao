@@ -6,6 +6,8 @@
 // 另有三条源码级门禁：注册表里有它、权限是 CONFIRM、没有递归删除之类越界能力。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.R
+import com.example.zhengdao.ui.baopu.BaopuToolLabels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -156,9 +158,17 @@ class ImageOpsTest {
 
     @Test
     fun `G4_设置页两个语言都有标签与副标题`() {
-        val screen = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
-        assertTrue("baopuToolLabel 漏了 image_ops", screen.contains("\"image_ops\" -> R.string.baopu_tool_image_ops"))
-        assertTrue("baopuToolDesc 漏了 image_ops", screen.contains("\"image_ops\" -> R.string.baopu_tool_image_ops_desc"))
+        // 413：锚点从「源码含某行」改成「真调 BaopuToolLabels 取到值」，见 DeletePathToolTest G3。
+        assertEquals(
+            "baopuToolLabel 漏了 image_ops",
+            R.string.baopu_tool_image_ops,
+            BaopuToolLabels.label("image_ops"),
+        )
+        assertEquals(
+            "baopuToolDesc 漏了 image_ops",
+            R.string.baopu_tool_image_ops_desc,
+            BaopuToolLabels.desc("image_ops"),
+        )
         val zh = repoFile("src/main/res/values/strings.xml").readText()
         val en = repoFile("src/main/res/values-en/strings.xml").readText()
         listOf("baopu_tool_image_ops", "baopu_tool_image_ops_desc").forEach { key ->

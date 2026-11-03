@@ -317,6 +317,22 @@ internal object ToolGroupTable {
         "teach_site_trust" to ToolGroup.BROWSER,     // R1 授权类
     )
 
+    /**
+     * **可开关工具名**（第四百一十三批）——设置页文案表与「目录 ↔ 标签表不漂移」门禁的
+     * 唯一目录源。
+     *
+     * 为什么是这一句而不是 `ToolRegistry.all()`：`all()` 是**运行期实例**的方法（要装配层、
+     * 要 Context），设置页按第五十九批的裁定不造注册表（造了会把全局 `CapabilitiesTool.sink`
+     * 指到页面临时实例上）。静态口径的等价物就是本表：`ENTRIES` 的表序 ＋ 运行时单独注册
+     * 的那两条（`write_skill` / `append_persona`）——与 [checkCoverage] 用的是同一个集合，
+     * 所以「表齐全」与「文案齐全」两件事不会各算一套。
+     *
+     * 不含 MCP 动态工具：它们的名字要等用户连上某个 server 才存在，静态表里没有，
+     * 也就没有固定的文案可补（[ToolGroup.MCP] 的 `dynamic` 语义）。
+     */
+    fun switchableNames(): List<String> =
+        BaopuToolCatalog.ENTRIES.map { it.name } + RUNTIME_REGISTERED.sorted()
+
     /** 该组里的工具名（保持 ENTRIES 的表序，稳定 ⇒ tools 数组顺序不乱、缓存友好）。 */
     fun namesOf(group: ToolGroup): List<String> =
         BaopuToolCatalog.ENTRIES.map { it.name }

@@ -8,7 +8,10 @@
 // 3. 注册表里必须真的在、权限必须是 CONFIRM（源码级，防「写了但没接上」）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.R
+import com.example.zhengdao.ui.baopu.BaopuToolLabels
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -177,9 +180,18 @@ class DeletePathToolTest {
 
     @Test
     fun `G3_设置页两个语言都有标签与副标题`() {
-        val screen = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
-        assertTrue("baopuToolLabel 漏了 delete_path", screen.contains("\"delete_path\" -> R.string.baopu_tool_delete_path"))
-        assertTrue("baopuToolDesc 漏了 delete_path", screen.contains("\"delete_path\" -> R.string.baopu_tool_delete_path_desc"))
+        // 413：两张手写 when 已并入 BaopuToolLabels 数据表，锚点从「源码里含这一行字面量」
+        // 改成「真调表取到值」——断言更强（键拼错、重复键都抓得到），也不再钉缩进形状。
+        assertEquals(
+            "baopuToolLabel 漏了 delete_path",
+            R.string.baopu_tool_delete_path,
+            BaopuToolLabels.label("delete_path"),
+        )
+        assertEquals(
+            "baopuToolDesc 漏了 delete_path",
+            R.string.baopu_tool_delete_path_desc,
+            BaopuToolLabels.desc("delete_path"),
+        )
         val zh = repoFile("src/main/res/values/strings.xml").readText()
         val en = repoFile("src/main/res/values-en/strings.xml").readText()
         listOf("baopu_tool_delete_path", "baopu_tool_delete_path_desc").forEach { key ->

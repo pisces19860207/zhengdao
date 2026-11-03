@@ -1617,109 +1617,19 @@ private fun loadSkillReview(
 }
 
 /**
- * 抱朴工具的开关标签（自 SettingsDataActivity 原样搬入——本页是这些卡唯一的家）。
+ * 抱朴工具的开关标签（第四百一十三批：手写 `when` → [BaopuToolLabels] 数据表）。
  *
- * 为什么用 when 而不是从 catalog 里带名字：agent 包零 Android 依赖，R 引用
- * 不能进那里；标签是纯展示层的事，走 strings.xml 双语。
- * catalog 加新工具时这里同步加一行——漏了会直接抛 IllegalArgumentException（fail-fast），
- * 回归网见 BaopuSettingsGuardTest J8。
+ * 为什么不再是一张 75 行的 `when`：那张表与 `BaopuToolCatalog.ENTRIES` 之间没有机械约束，
+ * 加工具忘了补一行只能靠人记得去改测试；而 141 批把逐工具开关换成组摘要卡之后，这两个
+ * 函数在界面上已经没有调用点，只剩测试在钉它们存在（两份死代码）。现在键值仍在
+ * [BaopuToolLabels]，但**覆盖性由 `ToolGroupTable.switchableNames()` 派生核对**：
+ * 目录里多一个、少一个都会让 `BaopuToolLabelCoverageTest` 红并点名。
+ *
+ * 为什么这里还留一个同名 `private fun`：`BaopuSettingsSliceGateTest` 把「本页必须有
+ * `private fun baopuToolLabel`」钉成了门禁（81 批的抽取契约），保留它作为本页的唯一入口，
+ * 页面里仍然**不调用**它（成员名单不进 UI，141 批）。
  */
-private fun baopuToolLabel(name: String): Int = when (name) {
-    // 第二百一十八批：工具补齐 v1（六件）
-    "sheet_read" -> R.string.baopu_tool_sheet_read
-    // 第二百三十二批：通用表格问答
-    "table_query" -> R.string.baopu_tool_table_query
-    "search_web" -> R.string.baopu_tool_search_web
-    "schedule_task" -> R.string.baopu_tool_schedule_task
-    "clipboard_write" -> R.string.baopu_tool_clipboard_write
-    "notify" -> R.string.baopu_tool_notify
-    "phone_dial" -> R.string.baopu_tool_phone_dial
-    "card_inspect" -> R.string.baopu_tool_card_inspect
-    "card_export" -> R.string.baopu_tool_card_export
-    "card_build" -> R.string.baopu_tool_card_build
-    // 第二百八十八批：复制/批量/整理五件
-    "copy_path" -> R.string.baopu_tool_copy_path
-    "bulk_move" -> R.string.baopu_tool_bulk_move
-    "bulk_copy" -> R.string.baopu_tool_bulk_copy
-    "organize" -> R.string.baopu_tool_organize
-    "organize_preview" -> R.string.baopu_tool_organize_preview
-    "capabilities" -> R.string.baopu_tool_capabilities
-    "preview_local_file" -> R.string.baopu_tool_preview_local_file
-    "read_file" -> R.string.baopu_tool_read_file
-    "list_dir" -> R.string.baopu_tool_list_dir
-    "search_in_files" -> R.string.baopu_tool_search_in_files
-    "find_files" -> R.string.baopu_tool_find_files
-    "book_outline" -> R.string.baopu_tool_book_outline
-    "file_info" -> R.string.baopu_tool_file_info
-    "write_file" -> R.string.baopu_tool_write_file
-    "edit_file" -> R.string.baopu_tool_edit_file
-    "move_path" -> R.string.baopu_tool_move_path
-    "convert_encoding" -> R.string.baopu_tool_convert_encoding
-    "browser_open" -> R.string.baopu_tool_browser_open
-    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot
-    // 262 批：巡按取证快照（漏这行 ⇒ 设置页开工具卡直接抛，同 update_plan 教训）
-    "browser_evidence" -> R.string.baopu_tool_browser_evidence
-    "browser_click" -> R.string.baopu_tool_browser_click
-    "browser_type" -> R.string.baopu_tool_browser_type
-    "browser_scroll" -> R.string.baopu_tool_browser_scroll
-    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot
-    // 第一百七十七批：坐标四件＋等待（同批新增工具必须同步两张映射表，
-    // 否则真机进本页会 IllegalArgumentException —— 见下面 update_plan 那条教训）
-    "browser_tap" -> R.string.baopu_tool_browser_tap
-    "browser_swipe" -> R.string.baopu_tool_browser_swipe
-    "browser_long_press" -> R.string.baopu_tool_browser_long_press
-    "browser_key" -> R.string.baopu_tool_browser_key
-    "browser_wait" -> R.string.baopu_tool_browser_wait
-    // 228 批 B 片九件：导航三件/动作三件/标签三件（同批新增工具必须同步两张映射表，
-    // 否则真机进本页会 IllegalArgumentException —— 见下面 update_plan 那条教训）
-    "browser_back" -> R.string.baopu_tool_browser_back
-    "browser_forward" -> R.string.baopu_tool_browser_forward
-    "browser_reload" -> R.string.baopu_tool_browser_reload
-    "browser_select" -> R.string.baopu_tool_browser_select
-    "browser_hover" -> R.string.baopu_tool_browser_hover
-    "browser_scroll_into_view" -> R.string.baopu_tool_browser_scroll_into_view
-    "browser_tabs_list" -> R.string.baopu_tool_browser_tabs_list
-    "browser_tabs_switch" -> R.string.baopu_tool_browser_tabs_switch
-    "browser_tabs_close" -> R.string.baopu_tool_browser_tabs_close
-    // 第十七批 A+B 段加的 update_plan：当时没同步这张表 ⇒ 2026-10-18 真机开本页直接崩
-    // （IllegalArgumentException: 未知抱朴工具「update_plan」）。回归网见 BaopuSettingsGuardTest 的
-    // 「catalog 每个工具都有标签/副标题」那条。
-    "update_plan" -> R.string.baopu_tool_update_plan
-    "write_skill" -> R.string.baopu_tool_write_skill
-        "append_persona" -> R.string.baopu_tool_append_persona
-    "library_list" -> R.string.baopu_tool_library_list
-    "library_organize" -> R.string.baopu_tool_library_organize
-    "kb_index" -> R.string.baopu_tool_kb_index
-    "kb_search" -> R.string.baopu_tool_kb_search
-    "delete_path" -> R.string.baopu_tool_delete_path
-    "image_ops" -> R.string.baopu_tool_image_ops
-    "generate_image" -> R.string.baopu_tool_generate_image
-    // 第一百八十六批：画板/图表/表格。漏这三行 ⇒ 设置页开工具卡直接抛（同 update_plan 教训）
-    "render_artifact" -> R.string.baopu_tool_render_artifact
-    "draw_chart" -> R.string.baopu_tool_draw_chart
-    "draw_table" -> R.string.baopu_tool_draw_table
-    // 小说工程三件（第一百五十五批）：漏这两组分支 ⇒ 设置页开工具卡直接抛（同 update_plan 教训）
-    "novel_create" -> R.string.baopu_tool_novel_create
-    "novel_project" -> R.string.baopu_tool_novel_project
-    "novel_continue" -> R.string.baopu_tool_novel_continue
-    "ask_user" -> R.string.baopu_tool_ask_user
-    // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
-    "run_subtasks" -> R.string.baopu_tool_run_subtasks
-    // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolLabel 的 fail-fast）
-    "logistics_query" -> R.string.baopu_tool_logistics_query
-    // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
-    "form_fill" -> R.string.baopu_tool_form_fill
-    // 228 批 C 片：示教/回放五件。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
-    "teach_record_start" -> R.string.baopu_tool_teach_record_start
-    "teach_record_stop" -> R.string.baopu_tool_teach_record_stop
-    "teach_skill_save" -> R.string.baopu_tool_teach_skill_save
-    "browser_replay_skill" -> R.string.baopu_tool_browser_replay_skill
-    "teach_site_trust" -> R.string.baopu_tool_teach_site_trust
-    // 第二百六十九批：打包/解包。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
-    "archive_pack" -> R.string.baopu_tool_archive_pack
-    "archive_extract" -> R.string.baopu_tool_archive_extract
-    else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关标签映射漏了，请补 baopuToolLabel")
-}
+private fun baopuToolLabel(name: String): Int = BaopuToolLabels.label(name)
 
 /**
  * 思考深度四档的标签（自 SettingsDataActivity 原样搬入；与 ModelParams.EFFORT_LEVELS 一一对应）。
@@ -1733,94 +1643,8 @@ private fun effortLabel(level: String): Int = when (level) {
     else -> throw IllegalArgumentException("未知思考档位「$level」：四档映射漏了，请补 effortLabel")
 }
 
-/** 抱朴工具的开关副标题（同上，双语走 strings.xml）。 */
-private fun baopuToolDesc(name: String): Int = when (name) {
-    // 第二百一十八批：工具补齐 v1（六件）
-    "sheet_read" -> R.string.baopu_tool_sheet_read_desc
-    // 第二百三十二批：通用表格问答
-    "table_query" -> R.string.baopu_tool_table_query_desc
-    "search_web" -> R.string.baopu_tool_search_web_desc
-    "schedule_task" -> R.string.baopu_tool_schedule_task_desc
-    "clipboard_write" -> R.string.baopu_tool_clipboard_write_desc
-    "notify" -> R.string.baopu_tool_notify_desc
-    "phone_dial" -> R.string.baopu_tool_phone_dial_desc
-    "card_inspect" -> R.string.baopu_tool_card_inspect_desc
-    "card_export" -> R.string.baopu_tool_card_export_desc
-    "card_build" -> R.string.baopu_tool_card_build_desc
-    // 第二百八十八批：复制/批量/整理五件
-    "copy_path" -> R.string.baopu_tool_copy_path_desc
-    "bulk_move" -> R.string.baopu_tool_bulk_move_desc
-    "bulk_copy" -> R.string.baopu_tool_bulk_copy_desc
-    "organize" -> R.string.baopu_tool_organize_desc
-    "organize_preview" -> R.string.baopu_tool_organize_preview_desc
-    "capabilities" -> R.string.baopu_tool_capabilities_desc
-    "preview_local_file" -> R.string.baopu_tool_preview_local_file_desc
-    "read_file" -> R.string.baopu_tool_read_file_desc
-    "list_dir" -> R.string.baopu_tool_list_dir_desc
-    "search_in_files" -> R.string.baopu_tool_search_in_files_desc
-    "find_files" -> R.string.baopu_tool_find_files_desc
-    "book_outline" -> R.string.baopu_tool_book_outline_desc
-    "file_info" -> R.string.baopu_tool_file_info_desc
-    "write_file" -> R.string.baopu_tool_write_file_desc
-    "edit_file" -> R.string.baopu_tool_edit_file_desc
-    "move_path" -> R.string.baopu_tool_move_path_desc
-    "convert_encoding" -> R.string.baopu_tool_convert_encoding_desc
-    "browser_open" -> R.string.baopu_tool_browser_open_desc
-    "browser_snapshot" -> R.string.baopu_tool_browser_snapshot_desc
-    "browser_evidence" -> R.string.baopu_tool_browser_evidence_desc
-    "browser_click" -> R.string.baopu_tool_browser_click_desc
-    "browser_type" -> R.string.baopu_tool_browser_type_desc
-    "browser_scroll" -> R.string.baopu_tool_browser_scroll_desc
-    "browser_screenshot" -> R.string.baopu_tool_browser_screenshot_desc
-    "browser_tap" -> R.string.baopu_tool_browser_tap_desc
-    "browser_swipe" -> R.string.baopu_tool_browser_swipe_desc
-    "browser_long_press" -> R.string.baopu_tool_browser_long_press_desc
-    "browser_key" -> R.string.baopu_tool_browser_key_desc
-    "browser_wait" -> R.string.baopu_tool_browser_wait_desc
-    "browser_back" -> R.string.baopu_tool_browser_back_desc
-    "browser_forward" -> R.string.baopu_tool_browser_forward_desc
-    "browser_reload" -> R.string.baopu_tool_browser_reload_desc
-    "browser_select" -> R.string.baopu_tool_browser_select_desc
-    "browser_hover" -> R.string.baopu_tool_browser_hover_desc
-    "browser_scroll_into_view" -> R.string.baopu_tool_browser_scroll_into_view_desc
-    "browser_tabs_list" -> R.string.baopu_tool_browser_tabs_list_desc
-    "browser_tabs_switch" -> R.string.baopu_tool_browser_tabs_switch_desc
-    "browser_tabs_close" -> R.string.baopu_tool_browser_tabs_close_desc
-    "update_plan" -> R.string.baopu_tool_update_plan_desc
-    "write_skill" -> R.string.baopu_tool_write_skill_desc
-        "append_persona" -> R.string.baopu_tool_append_persona_desc
-    "library_list" -> R.string.baopu_tool_library_list_desc
-    "library_organize" -> R.string.baopu_tool_library_organize_desc
-    "kb_index" -> R.string.baopu_tool_kb_index_desc
-    "kb_search" -> R.string.baopu_tool_kb_search_desc
-    "delete_path" -> R.string.baopu_tool_delete_path_desc
-    "image_ops" -> R.string.baopu_tool_image_ops_desc
-    "generate_image" -> R.string.baopu_tool_generate_image_desc
-    // 第一百八十六批：画板/图表/表格
-    "render_artifact" -> R.string.baopu_tool_render_artifact_desc
-    "draw_chart" -> R.string.baopu_tool_draw_chart_desc
-    "draw_table" -> R.string.baopu_tool_draw_table_desc
-    // 小说工程三件（第一百五十五批）
-    "novel_create" -> R.string.baopu_tool_novel_create_desc
-    "novel_project" -> R.string.baopu_tool_novel_project_desc
-    "novel_continue" -> R.string.baopu_tool_novel_continue_desc
-    "ask_user" -> R.string.baopu_tool_ask_user_desc
-    "run_subtasks" -> R.string.baopu_tool_run_subtasks_desc
-    // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolDesc 的 fail-fast）
-    "logistics_query" -> R.string.baopu_tool_logistics_query_desc
-    // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页工具卡副标题直接抛
-    "form_fill" -> R.string.baopu_tool_form_fill_desc
-    // 228 批 C 片：示教/回放五件。漏这一行 ⇒ 设置页工具卡副标题直接抛（fail-fast）
-    "teach_record_start" -> R.string.baopu_tool_teach_record_start_desc
-    "teach_record_stop" -> R.string.baopu_tool_teach_record_stop_desc
-    "teach_skill_save" -> R.string.baopu_tool_teach_skill_save_desc
-    "browser_replay_skill" -> R.string.baopu_tool_browser_replay_skill_desc
-    "teach_site_trust" -> R.string.baopu_tool_teach_site_trust_desc
-    // 第二百六十九批：打包/解包（同上，漏了 fail-fast）
-    "archive_pack" -> R.string.baopu_tool_archive_pack_desc
-    "archive_extract" -> R.string.baopu_tool_archive_extract_desc
-    else -> throw IllegalArgumentException("未知抱朴工具「$name」：开关副标题映射漏了，请补 baopuToolDesc")
-}
+/** 抱朴工具的开关副标题（413 起同 [baopuToolLabel]：值在 [BaopuToolLabels].DESC，覆盖性由目录派生核对）。 */
+private fun baopuToolDesc(name: String): Int = BaopuToolLabels.desc(name)
 
 /** 第一百六十五批：人设包预览——正文逐字显示，外加一句「会改变什么」。 */
 @Composable

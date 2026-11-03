@@ -16,12 +16,14 @@
 //   - 工具面出去的东西（JSON 与 answer）不带司机姓名与手机号：那一面是给模型读的，等于出了本机。
 package com.example.zhengdao.baopu.logistics
 
+import com.example.zhengdao.R
 import com.example.zhengdao.baopu.agent.LogisticsQueryTool
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolSpec
+import com.example.zhengdao.ui.baopu.BaopuToolLabels
 import java.io.File
 import org.json.JSONObject
 import org.junit.After
@@ -366,11 +368,19 @@ class LogisticsToolTest {
 
     @Test
     fun `设置页四处映射与两份字符串都齐`() {
-        // 房型照 158/156 批（ImageOpsTest G4）：这两张 `when` 是 catalog 覆盖断言网，
+        // 房型照 158/156 批（ImageOpsTest G4）：这两张表是 catalog 覆盖断言网，
         // 漏一行 ⇒ 设置页构建工具卡时 `throw IllegalArgumentException`（不是「少个标签」那么轻）。
-        val screen = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt")
-        assertTrue("baopuToolLabel 漏了 logistics_query", screen.contains("\"logistics_query\" -> R.string.baopu_tool_logistics_query"))
-        assertTrue("baopuToolDesc 漏了 logistics_query", screen.contains("\"logistics_query\" -> R.string.baopu_tool_logistics_query_desc"))
+        // 413：工具名那两张已从手写 when 并入 BaopuToolLabels 数据表 ⇒ 锚点改「真调表取到值」。
+        assertEquals(
+            "baopuToolLabel 漏了 logistics_query",
+            R.string.baopu_tool_logistics_query,
+            BaopuToolLabels.label("logistics_query"),
+        )
+        assertEquals(
+            "baopuToolDesc 漏了 logistics_query",
+            R.string.baopu_tool_logistics_query_desc,
+            BaopuToolLabels.desc("logistics_query"),
+        )
         val rules = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsRules.kt")
         assertTrue("baopuGroupTitle 漏了 LOGISTICS 组", rules.contains("ToolGroup.LOGISTICS -> R.string.baopu_tools_group_logistics"))
         assertTrue("baopuGroupLine 漏了 LOGISTICS 组", rules.contains("ToolGroup.LOGISTICS -> R.string.baopu_group_line_logistics"))

@@ -123,7 +123,13 @@ object BaopuKernel {
 
     /** ③ 工具边界：工具集与 schema 只能人改（模型不许增删工具、不许改描述里的权限语义）。 */
     object Tools {
-        /** 工具名一律 `snake_case`；新工具必须同时进设置页文案表（`baopuToolLabel/Desc`）。 */
+        /**
+         * 工具名一律 `snake_case`；新工具必须同时进设置页文案表
+         * （`ui/baopu/BaopuToolLabels.kt` 的 LABEL / DESC 两张表）。
+         *
+         * 413 起这不是「记得补」的自律：`BaopuToolLabelCoverageTest` 按
+         * `ToolGroupTable.switchableNames()` 逐名字核对，漏一个就红并点名。
+         */
         const val TOOL_NAME_PATTERN = "^[a-z][a-z0-9_]*$"
 
         /** 工具结果回灌给模型时的单次上限（字符）。 */
