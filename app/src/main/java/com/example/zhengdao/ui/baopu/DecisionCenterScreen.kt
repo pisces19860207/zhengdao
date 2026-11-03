@@ -57,6 +57,8 @@ import com.example.zhengdao.baopu.DecisionFilter
 import com.example.zhengdao.baopu.DecisionGroup
 import com.example.zhengdao.baopu.DecisionGroupCard
 import com.example.zhengdao.baopu.DecisionRecord
+import com.example.zhengdao.baopu.LearnRead
+import com.example.zhengdao.baopu.LearnReadJudge
 import com.example.zhengdao.baopu.foldDecisionRecords
 import com.example.zhengdao.baopu.agent.FailureAuditLog
 import com.example.zhengdao.baopu.agent.FailureAuditRow
@@ -304,14 +306,40 @@ private fun RoyalTab() {
     }
 }
 
-/** 御案列表（读账 → 拟稿 → 核验 → 卡面自检；纯读，不写账）。 */
+/** 御案列表（读账 → 学习读侧三问 → 拟稿 → 核验 → 卡面自检；纯读，不写账）。 */
 private fun royalRows(s: DecisionStrRes): List<RoyalRow> {
-    val suppressed = RoyalDecisionLedger.suppressedIds(System.currentTimeMillis())
-    return OpinionWiring.replay()
+    val now = System.currentTimeMillis()
+    val suppressed = RoyalDecisionLedger.suppressedIds(now)
+    val rulings = OpinionWiring.replay()
         .filter { it.decision != OpinionDecision.SKIP && it.id !in suppressed }
-        .mapNotNull { RoyalQueueRules.prepare(it, s, StubVerifier) }
-        .sortedByDescending { it.atMs }
+    // 第四百批②：排序用 orderRulings/stats（样本 <5 不生效；没到地板＝接线前的 atMs 新→旧）
+    val rows = LearnRead.rows()
+    val ordered = LearnReadJudge.ordered(rows, rulings, now)
+    ordered.activatedLine?.let { RunLog.log(LearnRead.LOG_PREFIX + it) }
+    // 第四百批①：弹卡前问 shouldSuppress/mustAsk——压着的类不摆卡，法条必问集直通；
+    // 每个因经验而变的判定落一行依据（铁律③）。
+    val kept = ordered.rulings.filter { r ->
+        val c = LearnReadJudge.consult(rows, r.opinion.gist, r.opinion, now)
+        if (c.effective) {
+            val what = if (c.allowed) "摆卡" else "压卡"
+            RunLog.log("${LearnRead.LOG_PREFIX}$what｜${r.opinion.gist}｜${c.evidence}")
+        }
+        c.allowed
+    }
+    return kept.mapNotNull { RoyalQueueRules.prepare(it, s, StubVerifier) }
+        // 第四百批③：上下文（证据区）带最近同类经验——样本 <5 ⇒ 一行不带（薄样本不进上下文）
+        .map { row ->
+            val exp = LearnReadJudge.recent(rows, row.gist, LEARN_EXPERIENCE_LIMIT, now)
+            if (exp.isEmpty()) {
+                row
+            } else {
+                row.copy(card = row.card.copy(evidence = row.card.evidence + exp.map { "经验·${it.reason}" }))
+            }
+        }
 }
+
+/** 每张御案卡证据区最多带的同类经验行数（205「宁少不滥」同一口径）。 */
+private const val LEARN_EXPERIENCE_LIMIT = 3
 
 /** 没上御案的那些的理由（每条一行，进日志）。 */
 private fun royalRejects(s: DecisionStrRes): List<String> {

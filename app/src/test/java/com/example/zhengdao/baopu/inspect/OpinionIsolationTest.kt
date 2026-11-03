@@ -61,6 +61,10 @@ class OpinionIsolationTest {
         // （marker/severity/lawRef）交给 law/EmergencyGate 判，判据与自决拒因都出自 law/，
         // 本文件是接线宿主，真消费契约（不是顺手 import）。
         "com/example/zhengdao/baopu/inspect/EmergencyWiring.kt" to "315",
+        // 400 批：学习**读侧**接线——弹卡前问 shouldSuppress/mustAsk：consult 收 `Opinion?`
+        // 参数判必问集直通（mustAsk 消费 lawRef/severity，法条优先压过学习）；
+        // 纯读不写三态（源级门禁 LearnReadGateTest G1 钉死），判据在 LearnReadTest。
+        "com/example/zhengdao/baopu/LearnRead.kt" to "400",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",

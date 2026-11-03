@@ -24,6 +24,7 @@ import com.example.zhengdao.baopu.DiaryEntry
 import com.example.zhengdao.baopu.DiaryEvidence
 import com.example.zhengdao.baopu.DiaryIndexStore
 import com.example.zhengdao.baopu.DiaryRules
+import com.example.zhengdao.baopu.LearnRead
 import com.example.zhengdao.baopu.DiaryStore
 import com.example.zhengdao.baopu.EvolutionAuditLog
 import com.example.zhengdao.baopu.EvolutionDecision
@@ -384,7 +385,19 @@ internal class BaopuChatController(context: Context) {
     private fun reflectionRunInternal() {
         val runner = reflectionRunner()
         val (scan, cards) = runner.scanAndPresent()
-        if (cards.isNotEmpty()) reflectionCards = cards // 同日重跑被 7 天键压住；空手不清已有活卡
+        if (cards.isNotEmpty()) {
+            // 第四百批①：反思候选出卡前问学习（压着的类不摆卡；样本 <5 不生效）。
+            // 只改"摆不摆"，不改写侧——档案的「待定」行照落（读不许改三态）；
+            // 压下的留一行依据（铁律③）。全部压下 ⇒ 空手不清已有活卡（口径不变）。
+            val kept = cards.filter { c ->
+                val consult = LearnRead.cardAllowed("反思:${c.dedupKey}")
+                if (!consult.allowed) {
+                    RunLog.log("${LearnRead.LOG_PREFIX}反思卡压下｜反思:${c.dedupKey}｜${consult.evidence}")
+                }
+                consult.allowed
+            }
+            if (kept.isNotEmpty()) reflectionCards = kept
+        }
         reflectionNote = BaopuNote(
             if (cards.isNotEmpty()) {
                 appCtx.getString(R.string.reflection_note_cards, cards.size)
