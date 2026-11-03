@@ -683,6 +683,15 @@ internal class RunEngine(
     @Volatile private var interjectOwner: Long? = null
 
     /**
+     * 此刻的轮号（第三百九十六批：补问答案回灌要按轮记账，见 [AnswerReflow]）。
+     *
+     * 惟一的写点是 [resetRunScopedCounters] 里那次 `beginRound()`——与授权链（TaskGrantGate）
+     * 领 (roundId, step) 用的是**同一口钟**，别处不许自己臆造一个轮号出来。
+     * 0 ＝ 还没开过轮（进程刚起）：此时 [AnswerReflow.notes] 返回空，一条补丁也不会进上下文。
+     */
+    @Volatile private var currentRoundId: Int = 0
+
+    /**
      * 150批 A：四个 run 级计数器在新一轮入口统一复位（调用点在 [runLoop] 第一行）。
      *
      * 为什么收口成一个方法、且只在 runLoop 入口调：send/resume/approveRestoredPending/
@@ -701,6 +710,7 @@ internal class RunEngine(
         // runLoop ⇒ 这里是唯一的开轮点；授权链（TaskGrantGate）按 opId 从这口钟领
         // (roundId, step)，免卡结论与影子账从此引用得到具体第几步（旧口径恒 0 的断点闭合）。
         val roundMark = com.example.zhengdao.baopu.authz.ActionStepClock.beginRound()
+        currentRoundId = roundMark.roundId
         log("抱朴引擎：开轮 R${roundMark.roundId}（步号从 1 重记）")
         // 第二百三十七批：梯子三旗同批复位（续跑＝新 run，重新给一次「先换再问」）
         ladderCounters = LadderCounters()
@@ -1353,6 +1363,11 @@ internal class RunEngine(
         val outcome = quietGate.onAsk(quietGrant, quietShape(now), now, req)
         if (outcome.verdict == QuietCardVerdict.ASK) return false
         log(outcome.line)
+        // 第三百九十六批接线（判据⑤：压与放的判据一个字没改）：这张卡被压下的**这一刻**
+        // 把它登记进回灌通道，带的轮号是当下这一轮——她后来答的那一句才有地方挂。
+        // 为什么在这里而不是在补问时：补问发生在下一个检查点，那时轮号已经换过；
+        // 判据②「挂错轮次 ⇒ 拒」的对照面必须是**问的那一刻**，否则过期答复也能灌进去。
+        outcome.deferred?.let { AnswerReflow.register(it, currentRoundId) }
         return true
     }
 
@@ -1361,8 +1376,12 @@ internal class RunEngine(
      *
      * 两个检查点都调它：她回话（轮次入口）与一张新卡已获准要弹（askUser/askGroup 放行后）。
      * 补问走原始出口（[askUserRaw]／[askGroupRaw]，**不再过闸**——再过一次闸，检查点
-     * 那一格会被重新压回去，"必现"就落了空）。答案落日志账；不回灌模型——模型那一轮
-     * 早已带着"没人答"走完，这里只负责"她面前一件不落"。
+     * 那一格会被重新压回去，"必现"就落了空）。
+     *
+     * 379 的原话是「答案落日志账；不回灌模型——模型那一轮早已带着"没人答"走完，这里只负责
+     * "她面前一件不落"」。**后半句仍然成立，前半句由第三百九十六批接上**：答上了的话除日志账
+     * 之外还进 [AnswerReflow]（下一轮拼上下文时带过去），"她面前一件不落"与"模型那边一句不丢"
+     * 从此是两本账。没人答（超时）依旧只落日志——空话不回灌。
      *
      * 整轮补问握 [quietDrainLock]：两个检查点同时到（轮次入口 vs 工具线程放行）也要
      * 一先一后，队列顺序才不会在两线程手里穿插；它不碰闸本身的锁——补问挂着等她点卡
@@ -1374,13 +1393,66 @@ internal class RunEngine(
                 val now = System.currentTimeMillis()
                 val item = quietGate.takeNext(quietGrant, quietShape(now), now) ?: return
                 log(quietGate.comebackLine(item, quietGrant, quietShape(now), now))
-                val picked = if (item.request.questions.isEmpty()) {
-                    askUserRaw(item.request)?.label
-                } else {
-                    askGroupRaw(item.request)?.keys?.joinToString("、")
-                }
+                // 一次出卡、两本账各取所需：`picked` 是 379 原来的日志口径（单问＝选项 label，
+                // 问题组＝答完的题号），一个字没改；回灌要的是**她答的话**，问题组那份
+                // 从 answers 的值里取（题号不是答案，把 "q1、q2" 灌给模型等于没灌）。
+                val isGroup = item.request.questions.isNotEmpty()
+                val label = if (isGroup) null else askUserRaw(item.request)?.label
+                val answers = if (isGroup) askGroupRaw(item.request) else null
+                val picked = label ?: answers?.keys?.joinToString("、")
                 log("补问收答｜${item.headline}｜她答=${picked ?: "没人答"}")
+                reflowQuietAnswer(item, label, answers)
             }
+        }
+    }
+
+    /**
+     * 检查点补问答上之后把话带给模型（第三百九十六批；派工单 §2B 的自发那一路）。
+     *
+     * 种类只取 [ReflowKind.INFO]（**只补信息，不动可执行性**）：这张卡路收回来的是选项
+     * label 或问题组的答案文本，卡面上没有"我授权你这么做"那一格——算不算授权、授权多大范围，
+     * 得由答复自己声明，那是补问卡面（UI 批）的三选一，派工单 §4 明令本批「不做 UI」。
+     * 把"她点了 A"读成"她批了 A"，等于替她签收一张她没批过的授权（判据①的不对称守的就是这条）。
+     *
+     * 灌进去的正文是**她答的话**：单问＝选项 label，问题组＝逐问「标题＝答案」并列
+     * （题号不是答案，把 "q1、q2" 灌给模型等于没灌）。一个字没答 ⇒ 不灌（空话不回灌）。
+     *
+     * 轮号从 [AnswerReflow.turnOf] 回读登记那一刻：检查点补问答的正是那一轮问下的问题，
+     * 不该被自己的判据②拒掉。回读不到（没登记过）就照当下轮号送上去，由通道如实回一句
+     * "不在待答清单里"——拒因写进日志，不静默吞。
+     *
+     * 拒了/收了都只记一行日志：这条通道是留痕，不是闸门（[CardDisposition] 同一口径）。
+     */
+    private fun reflowQuietAnswer(item: DeferredAsk, label: String?, answers: Map<String, String>?) {
+        val text = if (item.request.questions.isEmpty()) {
+            label.orEmpty()
+        } else {
+            answers.orEmpty().entries.joinToString("；") { entry ->
+                val title = item.request.questions.firstOrNull { it.id == entry.key }?.title
+                    ?.takeIf { it.isNotBlank() } ?: entry.key
+                "$title＝${entry.value}"
+            }
+        }
+        if (text.isBlank()) return
+        val sessionId = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        val outcome = AnswerReflow.submit(
+            answer = ReflowAnswer(
+                askId = item.id,
+                turnId = AnswerReflow.turnOf(item.id) ?: currentRoundId,
+                kind = ReflowKind.INFO,
+                text = text,
+            ),
+            currentRoundId = currentRoundId,
+            // 会话号读不出来就当没有任务号（空串）：宁可被"等于无限"拒掉，不编一个 session:null。
+            // 本路的 INFO 不查这一格，写在这里是给 UI 批的 AUTH 留同一个口径。
+            currentTaskId = sessionId?.let { "session:$it" }.orEmpty(),
+            nowMs = System.currentTimeMillis(),
+        )
+        when (outcome) {
+            is ReflowOutcome.Accepted ->
+                log("补问回灌｜${item.headline}｜只补信息（动作不动），下一轮上下文带 1 条")
+
+            is ReflowOutcome.Rejected -> log("补问回灌｜${item.headline}｜没灌：${outcome.reason}")
         }
     }
 
@@ -2756,9 +2828,15 @@ internal class RunEngine(
         // 第二百五十八批 W3：调解器那句语气指令（≤60 字、零档位名/数字/画像词）。不加前缀
         // 不换行——"只把那一句拼进去"是判据；CALM 时返回空列表 ⇒ 与接线前逐字节一致。
         // 不消费（同一轮每一步同一句）：换批等于打破提示词前缀。
+        // 第三百九十六批：补问回灌的上下文补丁（派工单 §2B）。排在最后一段＝纯追加：
+        // 队列空时与接线前逐字节一致，非空时也不改动上面两段已有的顺序（前缀判据的另一半）。
+        // [AnswerReflow.notes] 同轮重复调用返回逐字相同、不消费不置标志位——拼提示词每一步
+        // 都会重算这里，中途换批等于打破前缀（与上面两段同一口径）。寿命写死在形状里：
+        // 到达轮＋下一轮，到点自己退场，不往历史里塞（选 B 不选 A 的理由见 AnswerReflow 文件头）。
         extraNotes = extraNotes +
             com.example.zhengdao.baopu.ImpactMailbox.drain() +
-            com.example.zhengdao.baopu.MediatorWiring.promptNotes(),
+            com.example.zhengdao.baopu.MediatorWiring.promptNotes() +
+            AnswerReflow.notes(currentRoundId),
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
         // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与

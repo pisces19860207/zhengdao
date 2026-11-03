@@ -14,6 +14,9 @@
 // 3. 所以这里**只留一张表结构＋一个写入口**：本批的写出点是 `agent/ConfirmFlow.kt`
 //    的确认卡（批／驳／不用了／超时），318 的卡面补入口（不用了／再说一遍）走同一个
 //    [CardDisposition.record]。除这一处之外别处要写，先改这张表的结构再说。
+//    ——396 批按这条办的：补问答案回灌要落账（派工单判据①「AUTH ⇒ 落处置账、REJECT ⇒ 取消并落账」），
+//    先在下文 [Face] 加一格「补问卡」，写出点才走 [CardDisposition.record]（`agent/AnswerReflow.kt`）；
+//    INFO 不落——她没对动作表态，把「补了一句信息」记成批或驳都是造假。
 //
 // 「谁」这一格只有两个值：用户、计时器。机器侧的结论（四器、宰相自身判断）**没有入口**
 // ——照 283 那条纪律（标签只能来自人）；超时不是有人表态，是时钟把卡收走了，
@@ -78,7 +81,7 @@ internal object CardDisposition {
         }
     }
 
-    /** 哪张卡（三样，闭集；本批只有 [CONFIRM] 有生产写出点）。 */
+    /** 哪张卡（四样，闭集；生产写出点＝[CONFIRM]（171/318）与 [REFLOW]（396））。 */
     enum class Face(val wire: String, val cn: String) {
         /** 确认卡：管线第③段弹的那张「要动盘了，点一下」（[Choice] 四格都用它）。 */
         CONFIRM("confirm", "确认卡"),
@@ -88,6 +91,14 @@ internal object CardDisposition {
 
         /** 偏离卡：242 契约偏离那一问。 */
         DEVIATION("deviation", "偏离卡"),
+
+        /**
+         * 补问卡：379 压下去、后来在检查点重新问的那张 `ask_user`（396 批加的格）。
+         *
+         * 只有两种下场进得来：她答**算授权**（[Choice.APPROVE]）或**算取消**（[Choice.REJECT]）；
+         * 「只补信息」不写账（判据①的不对称）。落点仍是这张卡的主键（askId）。
+         */
+        REFLOW("reflow", "补问卡"),
         ;
 
         companion object {
