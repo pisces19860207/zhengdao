@@ -166,6 +166,19 @@ internal object McpSchema {
     }
 
     private fun normalizeProperty(toolName: String, key: String, ps: JSONObject): JSONObject {
+        val type = checkPropertyShape(toolName, key, ps)
+        val out = JSONObject().put("type", type)
+        val desc = McpText.clip(McpText.flat(ps.optString("description")), 300)
+        if (desc.isNotEmpty()) out.put("description", desc)
+
+        putEnumIfPresent(toolName, key, type, ps, out)
+        putNumericBounds(toolName, key, type, ps, out)
+        putItemsIfArray(toolName, key, type, ps, out)
+        return out
+    }
+
+    /** 先看禁词、再看类型、最后看未登记关键字——三段顺序照搬，报错话术逐字不变。 */
+    private fun checkPropertyShape(toolName: String, key: String, ps: JSONObject): String {
         // 先扫禁词（含 items 内部）
         for (k in ps.keys()) {
             if (k in FORBIDDEN_KEYS) throw schemaError(toolName, "参数「$key」用了 v1 不支持的关键字「$k」")
@@ -182,11 +195,11 @@ internal object McpSchema {
                 throw schemaError(toolName, "参数「$key」用了 v1 不支持的关键字「$k」")
             }
         }
-        val out = JSONObject().put("type", type)
-        val desc = McpText.clip(McpText.flat(ps.optString("description")), 300)
-        if (desc.isNotEmpty()) out.put("description", desc)
+        return type
+    }
 
-        // enum：只对 string 开放（SchemaCheck 的 enum 分支只比字符串；别的类型等于没校验）
+    // enum：只对 string 开放（SchemaCheck 的 enum 分支只比字符串；别的类型等于没校验）
+    private fun putEnumIfPresent(toolName: String, key: String, type: String, ps: JSONObject, out: JSONObject) {
         ps.optJSONArray("enum")?.let { en ->
             if (type != "string") {
                 throw schemaError(toolName, "参数「$key」的 enum 只支持 string 类型")
@@ -200,8 +213,10 @@ internal object McpSchema {
             }
             out.put("enum", clean)
         }
+    }
 
-        // minimum/maximum：只对数字类型开放
+    // minimum/maximum：只对数字类型开放
+    private fun putNumericBounds(toolName: String, key: String, type: String, ps: JSONObject, out: JSONObject) {
         val hasMin = ps.has("minimum")
         val hasMax = ps.has("maximum")
         if ((hasMin || hasMax) && type != "integer" && type != "number") {
@@ -209,8 +224,10 @@ internal object McpSchema {
         }
         if (hasMin) out.put("minimum", numberOrFail(toolName, key, "minimum", ps.opt("minimum")))
         if (hasMax) out.put("maximum", numberOrFail(toolName, key, "maximum", ps.opt("maximum")))
+    }
 
-        // array：items 只允许标量（嵌套 object / 数组 / $ref 一律拒收）
+    // array：items 只允许标量（嵌套 object / 数组 / $ref 一律拒收）
+    private fun putItemsIfArray(toolName: String, key: String, type: String, ps: JSONObject, out: JSONObject) {
         if (type == "array") {
             val items = ps.optJSONObject("items")
                 ?: throw schemaError(toolName, "参数「$key」是 array，但 items 不是对象")
@@ -236,7 +253,6 @@ internal object McpSchema {
         } else if (ps.has("items")) {
             throw schemaError(toolName, "参数「$key」不是 array，却带了 items")
         }
-        return out
     }
 
     private fun numberOrFail(toolName: String, key: String, field: String, v: Any?): Number {
