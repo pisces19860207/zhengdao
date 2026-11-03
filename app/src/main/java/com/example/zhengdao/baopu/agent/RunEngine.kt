@@ -1910,6 +1910,11 @@ internal class RunEngine(
         } else {
             null
         }
+        // 第四百零五批：模型上下文读经验（400 的留白半）——轮开跑读一次判决经验账，把最近
+        // 同类经验折成一行「上次同类：<做法> ⇒ <结果>」。无经验／样本<5／读账失败 ⇒ null
+        // ⇒ prompt 与接线前逐字一致（铁律①「无经验一个字不加」）；续跑不带（原轮已注过，
+        // 同上面两项口径）；账只读不写（铁律②）。每轮算一次、全程同一份（前缀判据）。
+        turnLearnNote = com.example.zhengdao.baopu.LearnContextNote.roundNote(resumed)
         if (userText != null) {
             // 150批 F：能走到这里 ⇒ 这条已在 drain 的同锁闸上过了检查（取出那一刻 stop 还没立）。
             // 停止哪怕在闸后这一瞬到达：用户消息照落库（run_queue 行与消息同一事务——stop 的
@@ -2898,7 +2903,10 @@ internal class RunEngine(
         extraNotes = extraNotes +
             com.example.zhengdao.baopu.ImpactMailbox.drain() +
             com.example.zhengdao.baopu.MediatorWiring.promptNotes() +
-            AnswerReflow.notes(currentRoundId),
+            AnswerReflow.notes(currentRoundId) +
+            // 第四百零五批：最近同类经验一行（轮开跑算好的一份）。null ⇒ 空表 ⇒ 与接线前
+            // 逐字节一致（铁律①）；排最末＝纯追加，不动上面各段的顺序（前缀判据另一半）。
+            listOfNotNull(turnLearnNote),
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
         // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与
@@ -2957,6 +2965,17 @@ internal class RunEngine(
      * 下一轮的话重复出现，模型会以为用户这次也发了图。
      */
     private var turnNotes: List<String> = emptyList()
+
+    /**
+     * 本轮的「上次同类」经验行（第四百零五批：模型上下文读经验——400 的留白半）。
+     *
+     * 轮开跑读一次判决经验账，把最近同类经验折成一行（[com.example.zhengdao.baopu.LearnContextNote.roundNote]）；
+     * 无经验／样本 <5／读账失败 ⇒ null ⇒ [assemble] 的 extraNotes 一个字节不增
+     * （铁律①「无经验一个字不加」的机械形状）。与 [turnNotes] 同寿命：本轮开跑时赋值、
+     * 工具循环每步同一份（前缀判据）；续跑不带（原轮已注过，同 turnImages／kbNote 口径）。
+     * 账只读不写（铁律②）。
+     */
+    private var turnLearnNote: String? = null
 
     /** 本轮附件里图片的**相对路径**（[send] 写入，[runLoop] 开跑时消费并清空）。 */
     private var pendingImageRelPaths: List<String> = emptyList()
