@@ -539,6 +539,27 @@ jobs:
         continue-on-error: true
         run: python3 tools/license-report.py
 
+      # ── 任务 D（423）：许可政策门禁 —— 本 job 里唯一**会红**的一步 ────────────────
+      # 上面四步都是 report-only（看得见、不拦人）。这一步不同：许可政策是准入门槛，
+      # 红了就该合不进去，否则等于又写了一张纸。
+      #
+      # 政策（真源在脚本常量里）：Apache-2.0/MIT/BSD-2/3/ISC/Zlib/0BSD/Unlicense/MPL-2.0
+      # 允许；GPL/AGPL/LGPL/SSPL 按家族禁止；其余（EPL/CDDL/PublicDomain 这类）、POM 无声明、
+      # 本地缓存缺 POM —— 都要在 licenses/EXCEPTIONS.md 逐条登记才算过（坐标/许可/谁批/
+      # 为什么/复查时间，缺一格不算登记，过期即失效）。
+      #
+      # 为什么排在 SBOM 之后：脚本**不联网**，许可只从本地 Gradle 缓存的 POM 取；sbom.py
+      # 会跑 gradlew 解析依赖，等于顺带把 POM 落进 ~/.gradle/caches（上面 restore 的那份）。
+      # 排前面的话首次冷缓存会把所有条目判成「未取证」。
+      #
+      # 已知现状（2026-11-04）：main 上 jxl（LGPL-2.1）还在 ⇒ 这一步**会红**，这是正确行为
+      # ——门禁第一次跑就抓到了唯一一个真正的许可问题。422（jxl → Apache-2.0 的 POI）合入后
+      # 自然转绿，不需要在 EXCEPTIONS.md 里给 jxl 开后门。
+      - name: 许可政策门禁（423：禁止/未登记/未取证 ⇒ 红）
+        run: |
+          python3 tools/check-license-policy.py --selftest
+          python3 tools/check-license-policy.py
+
       - name: 归档 SBOM
         if: always()
         uses: actions/upload-artifact@v7
