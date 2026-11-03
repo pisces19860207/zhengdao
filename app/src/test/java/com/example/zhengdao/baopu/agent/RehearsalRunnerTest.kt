@@ -19,6 +19,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.RiskClass
+import com.example.zhengdao.baopu.inspect.RehearsalBaselineStore
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
@@ -47,11 +48,15 @@ class RehearsalRunnerTest {
         cache = Files.createTempDirectory("rh358-cache-").toFile()
         workspace = Files.createTempDirectory("rh358-ws-").toFile()
         RehearsalLane.resetForTest()
+        RehearsalSite.resetForTest()
+        RehearsalBaselineStore.resetForTest()
     }
 
     @After
     fun tearDown() {
         RehearsalLane.resetForTest()
+        RehearsalSite.resetForTest()
+        RehearsalBaselineStore.resetForTest()
         cache.deleteRecursively()
         workspace.deleteRecursively()
     }
@@ -387,6 +392,107 @@ class RehearsalRunnerTest {
         assertEquals(
             "抢不到道的那一位不许把持道者的道还掉",
             RehearsalLaneOwner.SHADOW, RehearsalLane.current("task-1"),
+        )
+    }
+
+    // ── 场地闸与勘验基线（御裁 2026-11-04 04:29 的 §一⑥／04:36 的「勘验」接线）────
+
+    @Test
+    fun `同场地已有两趟在跑_第三趟排队且报告点名那两位`() {
+        workspace.put("notes/a.md", "甲\n")
+        val site = workspace.absolutePath
+        assertTrue(RehearsalSite.tryEnter(site, "rh-甲趟"))
+        assertTrue(RehearsalSite.tryEnter(site, "rh-乙趟"))
+        val report = run(planOf(stepOf(1, "write_file", JSONObject().put("content", "乙"), "notes/a.md")))
+        assertEquals(StartBlock.BUSY, report.block)
+        assertTrue(report.blocked)
+        assertTrue(report.blockNote, report.blockNote.contains("rh-甲趟"))
+        assertTrue(report.blockNote, report.blockNote.contains("rh-乙趟"))
+        assertEquals("排队这一趟不许碰真盘", "甲\n", File(workspace, "notes/a.md").readText())
+        assertEquals(emptyList<File>(), leftoverFiles())
+        assertEquals("排队的这一位不许把别人的名额吞掉", 2, RehearsalSite.count(site))
+        assertNull("道占了一半就退，也得还干净", RehearsalLane.current("task-1"))
+    }
+
+    @Test
+    fun `跑完一趟场地名额就还回去_抛出去那条也还`() {
+        workspace.put("notes/a.md", "甲\n")
+        val site = workspace.absolutePath
+        run(planOf(stepOf(1, "write_file", JSONObject().put("content", "乙"), "notes/a.md")))
+        assertEquals("正常收工必须把名额交回场地", 0, RehearsalSite.count(site))
+        var asks = 0
+        runCatching {
+            run(
+                planOf(stepOf(1, "edit_file", JSONObject().put("op", "append").put("content", "补一段"), "notes/a.md")),
+                stop = {
+                    asks++
+                    if (asks == 1) throw IllegalStateException("测试用：这一趟探针抛了")
+                    false
+                },
+            )
+        }.also { assertTrue("异常照上抛这条前提没变：$it", it.isFailure) }
+        assertEquals("抛出去那条路径同样得把名额交回", 0, RehearsalSite.count(site))
+    }
+
+    @Test
+    fun `文件预演跑完_清单交给勘验当事后核验基线`() {
+        workspace.put("notes/a.md", "甲\n")
+        workspace.put("notes/b.md", "乙\n")
+        val report = run(
+            planOf(
+                stepOf(1, "edit_file", JSONObject().put("op", "append").put("content", "补一段"), "notes/a.md"),
+                stepOf(2, "write_file", JSONObject().put("content", "丙\n"), "notes/c.md"),
+            ),
+        )
+        assertTrue(RehearsalBaselineStore.has("rh-run1"))
+        assertEquals(
+            "勘验手里那份必须就是报告里这份（两处口径不许分叉）",
+            report.listedPaths, RehearsalBaselineStore.baseline("rh-run1"),
+        )
+        assertEquals(
+            "实际改的就是清单里这些 ⇒ 勘验判对得上",
+            "对得上：${report.listedPaths.size} 条一条不差",
+            RehearsalBaselineStore.verdict("rh-run1", report.listedPaths),
+        )
+    }
+
+    @Test
+    fun `降级那趟不交基线_它一步文件都没跑`() {
+        workspace.put("notes/a.md", "甲\n")
+        val report = run(
+            planOf(stepOf(1, "edit_file", JSONObject().put("op", "append").put("content", "补一段"), "notes/a.md")),
+            availableBytes = 1L,
+        )
+        assertEquals(RehearsalMode.PLAN_ONLY, report.mode)
+        assertFalse(
+            "纯计划层那份清单不是文件预演实测出来的，递过去就是把'少了/多了'判成假话",
+            RehearsalBaselineStore.has("rh-run1"),
+        )
+    }
+
+    @Test
+    fun `取消那趟不交基线_它的清单是半截的`() {
+        workspace.put("notes/a.md", "甲\n")
+        workspace.put("notes/b.md", "乙\n")
+        var asks = 0
+        val report = run(
+            planOf(
+                stepOf(1, "edit_file", JSONObject().put("op", "append").put("content", "补一段"), "notes/a.md"),
+                stepOf(2, "edit_file", JSONObject().put("op", "append").put("content", "再补一段"), "notes/b.md"),
+            ),
+            stop = {
+                asks++
+                asks > 1 // 第一步真跑过了（清单不是空的），第二步之前才取消 ⇒ 交过去的是半截清单
+            },
+        )
+        assertTrue("前提：这一趟确实是取消掉的", report.cancelled)
+        assertTrue(
+            "前提：影响面不是空的——空清单本来就被纪律 1 拦住，那样这条测的就不是取消这一档",
+            report.listedPaths.isNotEmpty(),
+        )
+        assertFalse(
+            "半截清单不能当事后核验基线",
+            RehearsalBaselineStore.has("rh-run1"),
         )
     }
 

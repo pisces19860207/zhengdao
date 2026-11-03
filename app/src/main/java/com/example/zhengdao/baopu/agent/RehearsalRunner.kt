@@ -25,12 +25,15 @@
 // ## 军师不写任何账
 // 派单【隔离】表里军师那一行的「账本」格子写的是**不写任何账**（报告只进报告区）：
 // 本文件没有 `DecisionLedger`／`*Jsonl` 任何一口的调用，报告交回调用方展示。
+// 唯一往别处递东西的那一口是 `RehearsalBaselineStore.register`（御裁 04:36 的勘验基线），
+// 那是勘验层进程内的一张内存表——不落盘、不进任何一本账，与"不写任何账"不冲突。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.RiskCtx
 import com.example.zhengdao.baopu.RiskMatrix
 import com.example.zhengdao.baopu.inspect.NOT_APPLICABLE_TOOLS
+import com.example.zhengdao.baopu.inspect.RehearsalBaselineStore
 import com.example.zhengdao.baopu.inspect.SHADOW_TOOLS
 import java.io.File
 
@@ -73,9 +76,20 @@ internal object RehearsalRunner {
         if (!RehearsalLane.tryBegin(plan.taskKey, RehearsalLaneOwner.REHEARSAL)) {
             return notStarted(plan, StartBlock.BUSY, RehearsalLane.waitNote(plan.taskKey), started)
         }
+        // 场地闸（派单 §一⑥／§四⑤，御裁 2026-11-04 04:29）：同一份工作区最多两趟在跑，
+        // 第 3 趟排队并在报告里点名挡道的那两位。抢不到名额要把刚占下的道还回去，
+        // 否则道被一个没在跑的人占着，同任务的影子就永久排在外头。
+        // 名额上的名号用 `rh-<runId>`（【隔离】②：报告与日志里一眼看得出是军师哪一趟）。
+        val site = plan.workspaceRoot.absolutePath
+        val holderId = RehearsalSandbox.RUN_ID_PREFIX + plan.runId
+        if (!RehearsalSite.tryEnter(site, holderId)) {
+            RehearsalLane.end(plan.taskKey, RehearsalLaneOwner.REHEARSAL)
+            return notStarted(plan, StartBlock.BUSY, RehearsalSite.waitNote(site), started)
+        }
         try {
             return rehearse(plan, cacheRoot, availableBytes, stop, started)
         } finally {
+            RehearsalSite.leave(site, holderId)
             RehearsalLane.end(plan.taskKey, RehearsalLaneOwner.REHEARSAL)
         }
     }
@@ -117,7 +131,15 @@ internal object RehearsalRunner {
             // 清理不放进 finally 就把副本留在机上等下一次 sweepStale 收尸。
             clean = sandbox.cleanup()
         }
-        return finish(plan, walk, clean, realUntouchedOf(plan.workspaceRoot, realBefore), started)
+        val report = finish(plan, walk, clean, realUntouchedOf(plan.workspaceRoot, realBefore), started)
+        // 御裁 2026-11-04 04:36：派单 §二「勘验」那一行——报告里"会改 N 个文件"的清单
+        // 就是勘验事后核验的基线，交收方（`inspect/`）而不是军师自存一份。
+        // 只交**真跑过文件且没被取消**的那一份：降级那趟一步没跑、取消那趟清单是半截的，
+        // 两种递给勘验都会把"少了/多了"判成假话。
+        if (walk.mode == RehearsalMode.FILE && !walk.cancelled) {
+            RehearsalBaselineStore.register(RehearsalSandbox.RUN_ID_PREFIX + plan.runId, report.listedPaths)
+        }
+        return report
     }
 
     /** 一趟的可变态（只有这几格会变，其余从计划里读）。 */

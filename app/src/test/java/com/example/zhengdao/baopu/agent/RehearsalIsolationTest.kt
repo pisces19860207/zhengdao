@@ -20,10 +20,16 @@ import org.junit.Assert.assertTrue
 class RehearsalIsolationTest {
 
     @Before
-    fun clearLane() = RehearsalLane.resetForTest()
+    fun clearLane() {
+        RehearsalLane.resetForTest()
+        RehearsalSite.resetForTest()
+    }
 
     @After
-    fun clearLaneAfter() = RehearsalLane.resetForTest()
+    fun clearLaneAfter() {
+        RehearsalLane.resetForTest()
+        RehearsalSite.resetForTest()
+    }
 
     @Test
     fun `空道给第一个抢到的_第二个一律排队`() {
@@ -88,5 +94,77 @@ class RehearsalIsolationTest {
             "两个根必须不同名，否则「互不读」等于自己防自己",
             RehearsalSandbox.ROOT_DIR_NAME != FileShadowSandbox.SHADOW_DIR_NAME,
         )
+    }
+
+    // ── 场地闸（派单 §一⑥／§四⑤；御裁 2026-11-04 04:29：本批实现、有牙，不移交）────────
+    //
+    // 与上面那根【隔离】④ 的道是两件事：道管"同一任务上军师与影子不许叠"，
+    // 场地闸管"同一份工作区上最多两趟推演在跑"。所以两边各有自己的表，测试也各钉各的。
+
+    @Test
+    fun `同场地前两个进得去_第三个排队`() {
+        assertTrue(RehearsalSite.tryEnter("C:/work/site-a", "rh-1"))
+        assertTrue(RehearsalSite.tryEnter("C:/work/site-a", "rh-2"))
+        assertFalse(
+            "上限就是派单点名的 2，第三个必须进不来",
+            RehearsalSite.tryEnter("C:/work/site-a", "rh-3"),
+        )
+        assertEquals("抢不进的第三位不许占名额", 2, RehearsalSite.count("C:/work/site-a"))
+        assertEquals(2, RehearsalSite.MAX_CONCURRENT)
+    }
+
+    @Test
+    fun `第三个排队那句点名挡道的那两位_不写成糊话系统忙`() {
+        RehearsalSite.tryEnter("C:/work/site-b", "rh-甲")
+        RehearsalSite.tryEnter("C:/work/site-b", "rh-乙")
+        val note = RehearsalSite.waitNote("C:/work/site-b")
+        assertTrue(note, note.contains("rh-甲"))
+        assertTrue(note, note.contains("rh-乙"))
+        assertTrue(note, note.contains("排队"))
+        assertTrue(note, note.contains("2"))
+        assertFalse(note, note.contains("系统忙"))
+    }
+
+    @Test
+    fun `还掉一个名额第三个才进得来_还的是自己的`() {
+        RehearsalSite.tryEnter("C:/work/site-c", "rh-1")
+        RehearsalSite.tryEnter("C:/work/site-c", "rh-2")
+        assertFalse(RehearsalSite.tryEnter("C:/work/site-c", "rh-3"))
+        assertFalse(
+            "别人的 runId 还不掉别人的名额＝把正在跑的那位的名额吞掉",
+            RehearsalSite.leave("C:/work/site-c", "rh-9"),
+        )
+        assertEquals(2, RehearsalSite.count("C:/work/site-c"))
+        assertTrue(RehearsalSite.leave("C:/work/site-c", "rh-1"))
+        assertTrue(RehearsalSite.tryEnter("C:/work/site-c", "rh-3"))
+    }
+
+    @Test
+    fun `同一个runId不许在同场地上占两个名额`() {
+        assertTrue(RehearsalSite.tryEnter("C:/work/site-d", "rh-same"))
+        assertFalse(
+            "自己叠自己＝两份副本树长在同一个 runId 上（副本混用）",
+            RehearsalSite.tryEnter("C:/work/site-d", "rh-same"),
+        )
+        assertEquals(1, RehearsalSite.count("C:/work/site-d"))
+    }
+
+    @Test
+    fun `不同场地各占各的额度_一份树满了不挡另一份`() {
+        assertTrue(RehearsalSite.tryEnter("C:/work/site-e", "rh-1"))
+        assertTrue(RehearsalSite.tryEnter("C:/work/site-e", "rh-2"))
+        assertTrue(RehearsalSite.tryEnter("D:/other/site-f", "rh-3"))
+        assertEquals(2, RehearsalSite.count("C:/work/site-e"))
+        assertEquals(1, RehearsalSite.count("D:/other/site-f"))
+    }
+
+    @Test
+    fun `空场地或空runId抢不进_没人还得起的名额不留`() {
+        assertFalse(RehearsalSite.tryEnter("   ", "rh-1"))
+        assertFalse(RehearsalSite.tryEnter("C:/work/site-g", "   "))
+        assertFalse(RehearsalSite.tryEnter("", ""))
+        assertEquals("拒掉的进场不许留下空表占位", 0, RehearsalSite.count("C:/work/site-g"))
+        assertFalse("场地上一个人都没有 ⇒ 退场只能报 false", RehearsalSite.leave("C:/work/site-g", "rh-1"))
+        assertEquals(0, RehearsalSite.count("C:/work/site-g"))
     }
 }
