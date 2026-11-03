@@ -65,149 +65,195 @@ class SchedulePass(
     fun run(nowMs: Long): PassResult {
         val rows = store.load().tasks.toMutableList()
         if (rows.isEmpty()) return PassResult(false, false, 0)
+        val tally = PassTally()
+        for (task in rows.toList().filter { it.enabled }.sortedBy { it.nextRunAtMs }) {
+            when (val reason = ScheduleRules.reasonOf(nowMs, task)) {
+                ScheduleRules.Reason.FIRE, ScheduleRules.Reason.FIRE_LATE ->
+                    fireDue(task, rows, reason, nowMs, tally)
+                ScheduleRules.Reason.ALREADY_FIRED -> alreadyFired(task, rows, nowMs, tally)
+                ScheduleRules.Reason.MISSED_EXPIRED -> missedExpired(task, rows, nowMs, tally)
+                ScheduleRules.Reason.RETRY_LIMIT -> retryLimit(task, rows, nowMs, tally)
+                else -> Unit // NOT_DUE / DISABLED / NO_ANCHOR：这一趟不动它
+            }
+        }
+        if (tally.changed && !store.save(rows)) {
+            // 账没落成 ⇒ 下一趟可能把同一个槽位再发一次。说出来，不当没事发生。
+            tally.moreRemain = true
+        }
+        return PassResult(tally.sent, tally.moreRemain, tally.handled)
+    }
+
+    /** 一趟 pass 的累计现场：原 run 的局部计数器，拆分后经这个对象共享。 */
+    private class PassTally {
         var sent = false
         var moreRemain = false
         var handled = 0
         var changed = false
+    }
 
-        for (task in rows.toList().filter { it.enabled }.sortedBy { it.nextRunAtMs }) {
-            when (val reason = ScheduleRules.reasonOf(nowMs, task)) {
-                ScheduleRules.Reason.FIRE, ScheduleRules.Reason.FIRE_LATE -> {
-                    if (sent) {
-                        moreRemain = true
-                        continue
-                    }
-                    val late = reason == ScheduleRules.Reason.FIRE_LATE
-                    handled++
-                    // 第二百二十九批：先说「要开始了」，再把 prompt 发进会话——顺序不许反
-                    // （响不响由装配层的开关与权限判，pass 只保证 starting 在 send 之前；
-                    // 与下面 notifier.fired 同一房型：口子不许抛，装配层自己兜）。
-                    notifier.starting(task)
-                    val result = runCatching { sender.send(task, nowMs) }
-                        .getOrElse { SendResult(ScheduleOutcome.FAILED, -1L, it.javaClass.simpleName) }
-                    when (result.outcome) {
-                        ScheduleOutcome.FIRED, ScheduleOutcome.FIRED_LATE, ScheduleOutcome.QUEUED -> {
-                            sent = true
-                            // 「补跑」是这一趟判出来的（发送出口只管发没发出去），别两处各判一次。
-                            val stored = if (late && result.outcome == ScheduleOutcome.FIRED) {
-                                ScheduleOutcome.FIRED_LATE
-                            } else {
-                                result.outcome
-                            }
-                            val next = ScheduleRules.afterHandled(
-                                task = task,
-                                nowMs = nowMs,
-                                outcome = stored,
-                                detail = result.detail,
-                                sessionId = result.sessionId,
-                                ran = true,
-                            )
-                            replace(rows, next)
-                            changed = true
-                            notifier.fired(next, result.sessionId, late)
-                        }
+    /** 到点真发：一趟只发一条（229 顺序：starting → send → fired/failed），按结果分流。 */
+    private fun fireDue(
+        task: ScheduleTask,
+        rows: MutableList<ScheduleTask>,
+        reason: ScheduleRules.Reason,
+        nowMs: Long,
+        tally: PassTally,
+    ) {
+        if (tally.sent) {
+            tally.moreRemain = true
+            return
+        }
+        val late = reason == ScheduleRules.Reason.FIRE_LATE
+        tally.handled++
+        // 第二百二十九批：先说「要开始了」，再把 prompt 发进会话——顺序不许反
+        // （响不响由装配层的开关与权限判，pass 只保证 starting 在 send 之前；
+        // 与下面 notifier.fired 同一房型：口子不许抛，装配层自己兜）。
+        notifier.starting(task)
+        val result = runCatching { sender.send(task, nowMs) }
+            .getOrElse { SendResult(ScheduleOutcome.FAILED, -1L, it.javaClass.simpleName) }
+        when (result.outcome) {
+            ScheduleOutcome.FIRED, ScheduleOutcome.FIRED_LATE, ScheduleOutcome.QUEUED ->
+                fireSucceeded(task, rows, nowMs, late, result, tally)
 
-                        ScheduleOutcome.FAILED, ScheduleOutcome.MISSED, ScheduleOutcome.NONE,
-                        -> {
-                            changed = true
-                            // 第二百一十八批：任务级连败计数先算（失败 +1；到 3 ⇒ 自动暂停并通知，
-                            // 不再无限重试——派工单 §1③）。167 的槽位重试封顶保持原样。
-                            val (streaked, pause) = ScheduleRules.afterFailure(task, result.detail)
-                            when {
-                                pause -> {
-                                    // 连败到顶：锚点照常推进（历史账不丢），任务自动暂停，说一声。
-                                    replace(
-                                        rows,
-                                        ScheduleRules.afterHandled(
-                                            streaked, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
-                                        ).copy(enabled = false),
-                                    )
-                                    notifier.pausedByFailStreak(streaked, result.outcome, result.detail)
-                                }
-                                task.attempts + 1 >= ScheduleRules.MAX_ATTEMPTS -> {
-                                    // 到上限：这一趟翻篇（写槽位＋推锚点），并说一声，不静默。
-                                    replace(
-                                        rows,
-                                        ScheduleRules.afterHandled(
-                                            streaked, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
-                                        ),
-                                    )
-                                    notifier.failed(task, result.outcome, result.detail)
-                                }
-                                else -> {
-                                    replace(rows, streaked)
-                                    moreRemain = true
-                                }
-                            }
-                        }
+            ScheduleOutcome.FAILED, ScheduleOutcome.MISSED, ScheduleOutcome.NONE ->
+                fireFailed(task, rows, nowMs, result, tally)
 
-                        ScheduleOutcome.REFUSED_BUSY -> {
-                            // 被别的会话挡住是**环境占用**，不是任务失败——不计连败（218），
-                            // 走 167 的原样：槽位重试封顶后翻篇并说一声。
-                            changed = true
-                            if (task.attempts + 1 >= ScheduleRules.MAX_ATTEMPTS) {
-                                replace(
-                                    rows,
-                                    ScheduleRules.afterHandled(
-                                        task, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
-                                    ),
-                                )
-                                notifier.failed(task, result.outcome, result.detail)
-                            } else {
-                                replace(rows, ScheduleRules.afterRetry(task, result.detail))
-                                moreRemain = true
-                            }
-                        }
-                    }
-                }
+            ScheduleOutcome.REFUSED_BUSY ->
+                fireRefusedBusy(task, rows, nowMs, result, tally)
+        }
+    }
 
-                ScheduleRules.Reason.ALREADY_FIRED -> {
-                    // 两条路径撞同一个槽位：后到的这条只推进锚点，绝不再发一遍。
-                    handled++
-                    changed = true
-                    replace(
-                        rows,
-                        ScheduleRules.afterHandled(
-                            task, nowMs, task.lastOutcome, task.lastDetail, task.sessionId, ran = false,
-                        ),
-                    )
-                }
+    /** 发出去：推锚点落账（补跑晚发记 FIRED_LATE——这一趟判的，别两处各判一次），说一声。 */
+    private fun fireSucceeded(
+        task: ScheduleTask,
+        rows: MutableList<ScheduleTask>,
+        nowMs: Long,
+        late: Boolean,
+        result: SendResult,
+        tally: PassTally,
+    ) {
+        tally.sent = true
+        // 「补跑」是这一趟判出来的（发送出口只管发没发出去），别两处各判一次。
+        val stored = if (late && result.outcome == ScheduleOutcome.FIRED) {
+            ScheduleOutcome.FIRED_LATE
+        } else {
+            result.outcome
+        }
+        val next = ScheduleRules.afterHandled(
+            task = task,
+            nowMs = nowMs,
+            outcome = stored,
+            detail = result.detail,
+            sessionId = result.sessionId,
+            ran = true,
+        )
+        replace(rows, next)
+        tally.changed = true
+        notifier.fired(next, result.sessionId, late)
+    }
 
-                ScheduleRules.Reason.MISSED_EXPIRED -> {
-                    handled++
-                    changed = true
-                    replace(
-                        rows,
-                        ScheduleRules.afterHandled(
-                            task, nowMs, ScheduleOutcome.MISSED,
-                            ScheduleRules.slotOf(task.nextRunAtMs, task.zone),
-                            task.sessionId, ran = false,
-                        ),
-                    )
-                }
-
-                ScheduleRules.Reason.RETRY_LIMIT -> {
-                    handled++
-                    changed = true
-                    replace(
-                        rows,
-                        ScheduleRules.afterHandled(
-                            task, nowMs, ScheduleOutcome.REFUSED_BUSY, "retry_limit",
-                            task.sessionId, ran = false,
-                        ),
-                    )
-                    notifier.failed(task, ScheduleOutcome.REFUSED_BUSY, "retry_limit")
-                }
-
-                else -> Unit // NOT_DUE / DISABLED / NO_ANCHOR：这一趟不动它
+    /** 没发出去（FAILED/MISSED/NONE）：连败计数（218）→ 到顶自动暂停；槽位重试封顶翻篇；否则回队。 */
+    private fun fireFailed(
+        task: ScheduleTask,
+        rows: MutableList<ScheduleTask>,
+        nowMs: Long,
+        result: SendResult,
+        tally: PassTally,
+    ) {
+        tally.changed = true
+        // 第二百一十八批：任务级连败计数先算（失败 +1；到 3 ⇒ 自动暂停并通知，
+        // 不再无限重试——派工单 §1③）。167 的槽位重试封顶保持原样。
+        val (streaked, pause) = ScheduleRules.afterFailure(task, result.detail)
+        when {
+            pause -> {
+                // 连败到顶：锚点照常推进（历史账不丢），任务自动暂停，说一声。
+                replace(
+                    rows,
+                    ScheduleRules.afterHandled(
+                        streaked, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
+                    ).copy(enabled = false),
+                )
+                notifier.pausedByFailStreak(streaked, result.outcome, result.detail)
+            }
+            task.attempts + 1 >= ScheduleRules.MAX_ATTEMPTS -> {
+                // 到上限：这一趟翻篇（写槽位＋推锚点），并说一声，不静默。
+                replace(
+                    rows,
+                    ScheduleRules.afterHandled(
+                        streaked, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
+                    ),
+                )
+                notifier.failed(task, result.outcome, result.detail)
+            }
+            else -> {
+                replace(rows, streaked)
+                tally.moreRemain = true
             }
         }
+    }
 
-        if (changed && !store.save(rows)) {
-            // 账没落成 ⇒ 下一趟可能把同一个槽位再发一次。说出来，不当没事发生。
-            moreRemain = true
+    /** 被别的会话挡住是**环境占用**，不是任务失败——不计连败（218），走 167 的原样。 */
+    private fun fireRefusedBusy(
+        task: ScheduleTask,
+        rows: MutableList<ScheduleTask>,
+        nowMs: Long,
+        result: SendResult,
+        tally: PassTally,
+    ) {
+        tally.changed = true
+        if (task.attempts + 1 >= ScheduleRules.MAX_ATTEMPTS) {
+            // 到上限：这一趟翻篇（写槽位＋推锚点），并说一声，不静默。
+            replace(
+                rows,
+                ScheduleRules.afterHandled(
+                    task, nowMs, result.outcome, result.detail, result.sessionId, ran = false,
+                ),
+            )
+            notifier.failed(task, result.outcome, result.detail)
+        } else {
+            replace(rows, ScheduleRules.afterRetry(task, result.detail))
+            tally.moreRemain = true
         }
-        return PassResult(sent, moreRemain, handled)
+    }
+
+    /** 两条路径撞同一个槽位：后到的这条只推进锚点，绝不再发一遍。 */
+    private fun alreadyFired(task: ScheduleTask, rows: MutableList<ScheduleTask>, nowMs: Long, tally: PassTally) {
+        tally.handled++
+        tally.changed = true
+        replace(
+            rows,
+            ScheduleRules.afterHandled(
+                task, nowMs, task.lastOutcome, task.lastDetail, task.sessionId, ran = false,
+            ),
+        )
+    }
+
+    /** 窗口外错过：标 MISSED 推锚点，不补发。 */
+    private fun missedExpired(task: ScheduleTask, rows: MutableList<ScheduleTask>, nowMs: Long, tally: PassTally) {
+        tally.handled++
+        tally.changed = true
+        replace(
+            rows,
+            ScheduleRules.afterHandled(
+                task, nowMs, ScheduleOutcome.MISSED,
+                ScheduleRules.slotOf(task.nextRunAtMs, task.zone),
+                task.sessionId, ran = false,
+            ),
+        )
+    }
+
+    /** 槽位重试封顶（reasonOf 已判）：推锚点落账并说一声，不静默。 */
+    private fun retryLimit(task: ScheduleTask, rows: MutableList<ScheduleTask>, nowMs: Long, tally: PassTally) {
+        tally.handled++
+        tally.changed = true
+        replace(
+            rows,
+            ScheduleRules.afterHandled(
+                task, nowMs, ScheduleOutcome.REFUSED_BUSY, "retry_limit",
+                task.sessionId, ran = false,
+            ),
+        )
+        notifier.failed(task, ScheduleOutcome.REFUSED_BUSY, "retry_limit")
     }
 
     private fun replace(rows: MutableList<ScheduleTask>, next: ScheduleTask) {
