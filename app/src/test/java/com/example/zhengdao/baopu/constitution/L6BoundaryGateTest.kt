@@ -145,6 +145,12 @@ class L6BoundaryGateTest {
             // 账目录，appendText 是装配账一行一条（available/unavailable），writeText 是
             // attempts 整表快照（重启不归零的判据面，GapFeedback 差值喂板读它）。
             "agent/JinwuObserve.kt" to setOf("mkdirs", "writeText", "appendText"),
+            // 第三百五十八批：推演盘（军师）的副本沙盒——**唯一碰盘处**，与 296 那格同一条理由。
+            // 目标不是模型指的工作区路径，而是 App 私有 `cacheDir/rehearsal/rh-<runId>/`：
+            // mkdirs 只建这棵副本根与其子目录；真盘声明对象只读（length/exists/canWrite/读字节）；
+            // deleteRecursively/delete 只用于清副本树自己，动手前四件事 assert 齐
+            // （是目录／父名＝rehearsal／名字带 rh-／在 cacheDir 里且不等于根），见 RehearsalSandbox.cleanupAt。
+            "agent/RehearsalSandbox.kt" to setOf("mkdirs", "deleteRecursively", "delete"),
         )
     }
 
