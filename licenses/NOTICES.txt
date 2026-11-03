@@ -19,6 +19,123 @@ It is subject to the terms of the Mozilla Public License, v. 2.0:
 https://mozilla.org/MPL/2.0/
 
 --------------------------------------------------------------------------------
+2) Rust 核 `lib/arm64-v8a/libzhengdao_core.so` 里静态链接的 crates（33 条）
+   许可证类型正文在同目录：`MIT.txt` / `BSD-3-Clause-generic.txt` / `Apache-2.0.txt`。
+   下面逐条复现各上游自己写明的版权行 —— MIT 正文要求「上述版权声明＋许可声明必须
+   出现在所有副本中」，BSD-3-Clause 第 1/2 条要求源码与二进制分发都复现版权声明，
+   所以这两类正文的 MIT/BSD 分支都必须有这份署名清单（Apache-2.0 第 4(a) 条同理）。
+   每条的下载包 SHA256 与 `rust/Cargo.lock` 的 checksum 逐一相等（绑定证据见仓库根
+   THIRD-PARTY-LICENSES.md §9）；坐标与引入方同样取自该锁文件。
+--------------------------------------------------------------------------------
+
+adler2 v2.0.1 — 0BSD OR MIT OR Apache-2.0
+    Copyright (C) Jonas Schievink <jonasschievink@gmail.com>
+
+block-buffer v0.10.4 — MIT OR Apache-2.0
+    Copyright (c) 2018-2019 The RustCrypto Project Developers
+
+bytes v1.12.1 — MIT
+    Copyright (c) 2018 Carl Lerche
+
+cesu8 v1.1.0 — Apache-2.0/MIT
+    （上游正文里未填版权行 → 按 `Cargo.toml` authors 登记：Eric Kidd <git@randomhacks.net>）
+
+cfg-if v1.0.5 — MIT OR Apache-2.0
+    Copyright (c) 2014 Alex Crichton
+
+combine v4.6.8 — MIT
+    Copyright (c) 2015 Markus Westerlind
+
+cpufeatures v0.2.17 — MIT OR Apache-2.0
+    Copyright (c) 2020-2025 The RustCrypto Project Developers
+
+crc32fast v1.5.2 — MIT OR Apache-2.0
+    Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors
+
+crypto-common v0.1.7 — MIT OR Apache-2.0
+    Copyright (c) 2021 RustCrypto Developers
+
+digest v0.10.7 — MIT OR Apache-2.0
+    Copyright (c) 2017 Artyom Pavlov
+
+filetime v0.2.29 — MIT/Apache-2.0
+    Copyright (c) 2014 Alex Crichton
+
+flate2 v1.1.10 — MIT OR Apache-2.0
+    Copyright (c) 2014-2026 Alex Crichton
+
+generic-array v0.14.7 — MIT
+    Copyright (c) 2015 Bartłomiej Kamiński
+
+hex v0.4.3 — MIT OR Apache-2.0
+    Copyright (c) 2013-2014 The Rust Project Developers.
+    Copyright (c) 2015-2020 The rust-hex Developers
+
+jni v0.21.1 — MIT/Apache-2.0
+    Copyright (c) 2016 Prevoty, Inc. and jni-rs contributors
+
+jni-sys v0.3.1 — MIT OR Apache-2.0
+    Copyright (c) 2015 The rust-jni-sys Developers
+
+jni-sys v0.4.1 — MIT OR Apache-2.0
+    Copyright (c) 2015 The rust-jni-sys Developers
+
+libc v0.2.190 — MIT OR Apache-2.0
+    Copyright (c) The Rust Project Developers
+
+log v0.4.34 — MIT OR Apache-2.0
+    Copyright (c) 2014 The Rust Project Developers
+
+memchr v2.8.3 — Unlicense OR MIT
+    Copyright (c) 2015 Andrew Gallant
+
+miniz_oxide v0.9.1 — MIT OR Zlib OR Apache-2.0
+    Copyright 2013-2014 RAD Game Tools and Valve Software
+    Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+    Copyright (c) 2017 Frommi
+    Copyright (c) 2017-2024 oyvindln
+
+num-bigint v0.4.8 — MIT OR Apache-2.0
+    Copyright (c) 2014 The Rust Project Developers
+
+num-integer v0.1.47 — MIT OR Apache-2.0
+    Copyright (c) 2014 The Rust Project Developers
+
+num-traits v0.2.19 — MIT OR Apache-2.0
+    Copyright (c) 2014 The Rust Project Developers
+
+sha2 v0.10.9 — MIT OR Apache-2.0
+    Copyright (c) 2006-2009 Graydon Hoare
+    Copyright (c) 2009-2013 Mozilla Foundation
+    Copyright (c) 2016 Artyom Pavlov
+
+sha2-asm v0.6.4 — MIT
+    Copyright (c) 2020 RustCrypto Developers
+    Copyright (c) 2017 Project Nayuki, Artyom Pavlov
+
+simd-adler32 v0.3.10 — MIT
+    Copyright (c) [2021] [Marvin Countryman]
+
+tar v0.4.46 — MIT OR Apache-2.0
+    Copyright (c) The tar-rs Project Contributors
+
+thiserror v1.0.69 — MIT OR Apache-2.0
+    （上游正文里未填版权行 → 按 `Cargo.toml` authors 登记：David Tolnay <dtolnay@gmail.com>）
+
+typenum v1.20.1 — MIT OR Apache-2.0
+    Copyright (c) 2014 Paho Lurie-Gregg
+
+zstd v0.13.3 — MIT
+    Copyright (c) 2016 Alexandre Bury
+
+zstd-safe v7.3.0 — BSD-3-Clause
+    Copyright (c) 2026, Alexandre Bury
+
+zstd-sys v2.1.0+zstd.1.5.7 — BSD-3-Clause
+    Copyright (c) 2026, Alexandre Bury
+    Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+--------------------------------------------------------------------------------
 维护：新增 / 升级带 NOTICE 的依赖时，照上面的格式把该构件的 NOTICE 原文追加进来，并同步
 licenses/README.md 的字节数 / 行数 / SHA256 与 THIRD-PARTY-LICENSES.md 末节的依赖表。
 

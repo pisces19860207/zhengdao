@@ -20,11 +20,11 @@ class LicenseTextsTest {
      * 表行形如：`| [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | … | 11,358 | 202 | `cfc7…` |`
      * 与 `| SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt` | … | 4,572 | 95 | `6728…` |`。
      * 取路径的规则：该行里**第一个**「像路径」的反引号片段（`*.txt` 或 `LICENSE`）。
-     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 9 条 =
-     * `licenses/` 九条（八份许可证正文 ＋ `NOTICES.txt` 汇总）。
-     * 2026-11-03（422 批）：`LGPL-2.1` 从第一节搬到第二节（jxl→POI），**总数仍是 9**，只是换了半边。
+     * 第一方声明 `LICENSE` 不进这两张表（它不是第三方正文），故当前两张表共 11 条 =
+     * `licenses/` 十一条（十份许可证正文 ＋ `NOTICES.txt` 汇总；LGPL-2.1 是 252 加的、422 批已随 jxl→POI 移到第二节留档，
+     * `MIT.txt` 与 `BSD-3-Clause-generic.txt` 是 421 为 Rust 核那 33 个静态链接的 crate 加的）。
      * 字体 `OFL.txt` 那一条**已不在本仓**：2026-10-28 终端连带字体搬去 `zhengdao-term`，
-     * README 的 OFL 行同时删了（所以这里的 9 不是「加了一份又丢了一份」的巧合，是账真的平了）。
+     * README 的 OFL 行同时删了（所以这里的 11 不含字体，是账真的平了）。
      */
     private fun parseRecords(): Map<String, Record> {
         val md = File(repo, "licenses/README.md")
@@ -46,7 +46,7 @@ class LicenseTextsTest {
                 val path = when {
                     token.contains('/') -> token          // app/src/main/assets/fonts/OFL.txt
                     token == "LICENSE" -> token           // 仓库根 LICENSE（历史形态；现已不进表）
-                    else -> "licenses/$token"             // licenses/ 下的九份正文（252 加了 LGPL-2.1）
+                    else -> "licenses/$token"             // licenses/ 下的十一份正文（252 加 LGPL-2.1，421 加 MIT 与 BSD-3 通用）
                 }
                 out[path] = Record(bytes, lines, sha)
             }
@@ -77,9 +77,10 @@ class LicenseTextsTest {
     fun `README 记的每一份正文都与仓库文件逐字节一致`() {
         val records = parseRecords()
         assertEquals(
-            "README 的两张表应记 9 条正文（licenses/ 九条 = 八份许可证正文 + NOTICES 汇总；" +
+            "README 的两张表应记 11 条正文（licenses/ 十一条 = 十份许可证正文 + NOTICES 汇总；" +
+                "421 批为 Rust 核的 33 个 crate 补了 MIT.txt 与 BSD-3-Clause-generic.txt；" +
                 "字体 OFL 正文已随终端搬去 zhengdao-term，本仓不再列）",
-            9,
+            11,
             records.size,
         )
         var stale = 0

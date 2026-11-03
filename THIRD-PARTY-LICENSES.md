@@ -14,24 +14,42 @@
 > 各节，待项目所有者定（256 批报告 Q 清单）。引用的 `docs/ERRATA.md`、`docs/闭源切换清单-2026-10-11.md`
 > 已移至私有侧 `..\_zd-private\docs\`。
 
-> ### 许可证正文随仓库与 APK 分发（2026-10-11 补齐）
+> ### 许可证正文随仓库与 APK 分发（2026-10-11 补齐；2026-11-04 第四百二十一批按实况重对）
 >
-> 各组件需要哪几份正文、正文在哪：
+> 各组件需要哪几份正文、正文在哪。**每行开头必须写「随包」或「留档不随包」** ——
+> `tools/check-licenses.py` 拿这一列去和 `app/build.gradle.kts` 的
+> `StageLicenseAssetsTask.PACKAGED / ARCHIVED` 逐条比（说「随包」却不在 PACKAGED 里、
+> 或说「留档」却不在 ARCHIVED 里，门禁直接红）。这就是第四百二十一批补的判据：
+> 此前这张表把四份**早已归档不随包**的正文写成「随附正文」，与构建期硬断言互相打脸（420 的 K2）。
 >
-> | 组件 | 许可证 | 随附正文 |
+> | 组件 | 许可证 | 正文（随包 / 留档不随包，逐行标注） |
 > |---|---|---|
-> | Termux `terminal-emulator` / `terminal-view`（本文末节） | Apache-2.0 | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（第 4(a) 条「给接收者一份副本」） |
-> | proot（§1） | GPL-2.0-or-later | [`licenses/GPL-2.0.txt`](licenses/GPL-2.0.txt) |
-> | libtalloc（§2） | LGPL-3.0-or-later | [`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt)（GPL-3.0 全文；LGPL-3.0 第 2 条并入 GPL-3.0。2026-10-11 前该正文放在仓库根 `LICENSE`） |
-> | libandroid-shmem（§3） | BSD-3-Clause | [`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) |
-> | JetBrains Maple Mono（§6） | SIL OFL 1.1 | `app/src/main/assets/fonts/OFL.txt`（随字体同目录，上游原文件） |
-> | ~~**jxl（JExcelApi 2.6.12，§8）**~~ **（2026-11-03 第四百二十二批已换成 Apache POI）** | ~~LGPL-2.1~~ | 正文 [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt) **转为历史留档、不再随包**（≤ v2.2.2 的包里有 jxl，那些版本的义务不撤；见 `licenses/README.md` 第二节） |
-| Maven 运行时依赖（§8；**2026-11-03 第四百二十二批 jxl→POI：−1 jxl ＋7（poi 与 6 个传递依赖）＝ +6 个模块**） | 绝大多数 Apache-2.0（**POI 与它的 6 个传递依赖全是 Apache-2.0**）；zstd 本体＝**BSD 3-Clause**（静态编进 Rust 核） | [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）、[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)（zstd-jni）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
+> | Maven 运行时依赖（§8；**2026-11-03 第四百二十二批 jxl→POI：−1 jxl ＋7（poi 与 6 个传递依赖）＝ +6 个模块**） | 绝大多数 Apache-2.0（**POI 与它的 6 个传递依赖全是 Apache-2.0**）；zstd 本体＝**BSD 3-Clause**（静态编进 Rust 核） | 随包：[`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）（zstd-jni 的 BSD-2 正文已随其退役移入第二节留档，不随包）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
+> | proot（§1） | GPL-2.0-or-later | 留档不随包：[`licenses/GPL-2.0.txt`](licenses/GPL-2.0.txt) —— proot 已迁出，当前包里**没有任何 GPL 组件**；旧版本（≤ v2.2.1）的包里带着它，正文在仓库留档、义务不撤（那一版的包自己已经带过正文） |
+> | libtalloc（§2） | LGPL-3.0-or-later | 留档不随包：[`licenses/LGPL-3.0.txt`](licenses/LGPL-3.0.txt) ＋ [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt)（GPL-3.0 全文；LGPL-3.0 第 2 条并入 GPL-3.0。2026-10-11 前该正文放在仓库根 `LICENSE`）—— 同上：随 proot 迁出，不再进包 |
+> | libandroid-shmem（§3） | BSD-3-Clause | 留档不随包：[`licenses/BSD-3-Clause.txt`](licenses/BSD-3-Clause.txt) —— 已随 proot 迁出。⚠️ 这份是 **libandroid-shmem 上游 `LICENSE` 的原文照录**（第三条里带它自己没填的 `{organization}` 占位符），**不是通用 BSD-3 模板**，别拿它去顶替 Rust 那两个 `zstd-safe` / `zstd-sys`（版权人不同 ⇒ 那是下面 §9 的 `BSD-3-Clause-generic.txt`） |
+> | JetBrains Maple Mono（§6） | SIL OFL 1.1 | 留档不随包：**字体已不在包内**，且**本仓没有 OFL 正文文件** —— `assets/fonts/OFL.txt` 与字体本体已于 2026-10-28 随终端搬去 `zhengdao-term`（本仓 `app/src/main/assets/` 现在只有 `baopu/`、`persona/`、`policy/`，实测无 `.ttf`）。历史版（≤ v2.2.1）随包时已经带过正文 ⇒ 义务由那一版的包履行。<br>📝 **TODO（待项目所有者定）**：若要给旧版接收者补一份可自查的 OFL 正文，需从上游取回入 `licenses/` 并登记进第二节留档表；本批**未擅自补文件** |
+> | ~~zstd-jni（Java 包装）~~（§8，2026-10-27 已删） | BSD-2-Clause | 留档不随包：[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt) —— 依赖已删，当前包内没有它 |
+> | ~~**jxl（JExcelApi 2.6.12，§8）**~~ **（2026-11-03 第四百二十二批已换成 Apache POI）** | ~~LGPL-2.1~~ | 留档不随包：正文 [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt) **转为历史留档**（≤ v2.2.2 的包里有 jxl，那些版本的义务不撤；见本目录 `README.md` 第二节） |
+> | Maven 运行时依赖（§8；**2026-11-03 第四百二十二批 jxl→POI：−1 jxl ＋7（poi 与 6 个传递依赖）＝ +6 个模块**） | 绝大多数 Apache-2.0（**POI 与它的 6 个传递依赖全是 Apache-2.0**）；zstd 本体＝**BSD 3-Clause**（静态编进 Rust 核） | 随包：[`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）（zstd-jni 的 BSD-2 正文已随其退役移入第二节留档，不随包）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
+> | **Rust 核 = 随包 `libzhengdao_core.so` 静态链接的 33 个 crate（§9，2026-11-04 新增）** | 31 条含 MIT 分支 ＋ 2 条 BSD-3-Clause（`zstd-safe` / `zstd-sys`）；zstd **C 本体**见 §5 | 随包：[`licenses/MIT.txt`](licenses/MIT.txt) ＋ [`licenses/BSD-3-Clause-generic.txt`](licenses/BSD-3-Clause-generic.txt) ＋ [`licenses/BSD-3-Clause-zstd.txt`](licenses/BSD-3-Clause-zstd.txt) ＋ [`licenses/NOTICES.txt`](licenses/NOTICES.txt) 第 2 段（33 条的**版权行**逐条复现——两份通用正文里的 `<year> <owner>` 是占位符，署名靠这里） |
+>
+> | Maven 运行时依赖（§8；**2026-11-03 第四百二十二批 jxl→POI：−1 jxl ＋7（poi 与 6 个传递依赖）＝ +6 个模块**） | 绝大多数 Apache-2.0（**POI 与它的 6 个传递依赖全是 Apache-2.0**）；zstd 本体＝**BSD 3-Clause**（静态编进 Rust 核） | 随包：[`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)（覆盖全部 Apache-2.0 模块）（zstd-jni 的 BSD-2 正文已随其退役移入第二节留档，不随包）、附带 [`licenses/NOTICES.txt`](licenses/NOTICES.txt)（Apache-2.0 §4(d) 的归属声明：Apache Commons Compress ＋ OkHttp 内置 Public Suffix List 数据） |
+> 「136 个已解析模块 / 47 个 group」—— 同一事实两个数，属文内自相矛盾（420 的 K3）。第四百二十一批
+> **没跑 Gradle**（本单禁改构建、且构建锁被别的批次占着），无法裁定哪个对 ⇒ 这里不再写数，
+> 以 §8 那张逐组表为准；两者的真实差要等一次 `:app:dependencies --configuration releaseRuntimeClasspath`
+> 实测（420 未验项 U1）。
 >
 > - 每份正文的**来源 URL、取回日期、字节数与 SHA256** 见 [`licenses/README.md`](licenses/README.md)。
-> - 这些正文**随分发物提供**：构建期（`app/build.gradle.kts` 的 `stageLicenseAssets`）把它们拷贝进
->   APK 的 `assets/licenses/`（**第一方代码声明 `LICENSE` 也在内**，包内名为 `LICENSE-zhengdao.txt`），
->   应用内入口 = 设置页「关于」→「**开源许可**」（离线可读全文，2026-10-11 晚起）。
+> - 标了「**随包**」的那几份**随分发物提供**：构建期（`app/build.gradle.kts` 的 `stageLicenseAssets`）
+>   按 `StageLicenseAssetsTask.PACKAGED` 白名单把它们拷贝进 APK 的 `assets/licenses/`（**第一方代码声明
+>   `LICENSE` 也在内**，包内名为 `LICENSE-zhengdao.txt`），应用内入口 = 设置页「关于」→「**开源许可**」
+>   （离线可读全文，2026-10-11 晚起）。标了「留档不随包」的**只在仓库里**，构建期装配末尾有断言
+>   「包里多一份都红」（`tools/check-licenses.py` 从产物侧再复核一遍）。
+>   ⚠️ 已知缺口（第四百二十一批**按边界未动代码**，交下次接线）：应用内那一页的条目写在
+>   `app/src/main/java/com/example/zhengdao/ui/OpenSourceLicensesActivity.kt` 的 `ENTRIES` 里，
+>   是**硬编码清单**，现在还只有四份正文的入口 ⇒ 新加的 `MIT.txt` / `BSD-3-Clause-generic.txt`
+>   **文件确实在包里、页面上没有入口**（接收者解包能拿到，点进去看不到）。补它要在 `ENTRIES` 加两条。
 > - Maven 依赖（OkHttp / Compose / AndroidX / zstd-jni 等）的许可证文本**不能指望「随构件分发」**：
 >   Android 打包**默认剥掉**构件顶层的 `META-INF/LICENSE*` / `NOTICE*`（2026-10-11 实测：
 >   `commons-compress` 构件里有的 `META-INF/LICENSE.txt` 与 `META-INF/NOTICE.txt`，APK 里一个都没有）。
@@ -103,16 +121,26 @@
 - 许可证：MIT
 - 来源：<https://github.com/xtermjs/xterm.js>
 
-## 5. zstd（zstd-jni 附带的原生库）
+## 5. zstd（C 本体，静态编进 Rust 核 `libzhengdao_core.so`）
 
-- 用途：RootFS 压缩包解压
-- 许可证：BSD-3-Clause（双许可中的 BSD 分支）
-- 来源：<https://github.com/facebook/zstd>（经 zstd-jni 官方 AAR 分发）
+- 用途：归档解压（`.tar.zst`）——Rust 核 `rust/core/src/extract.rs` 按魔数识别 zstd 帧解压，
+  由 `app/src/main/java/com/example/zhengdao/baopu/archive/NativeExtractor.kt` 调用。
+  ⚠️ 2026-11-04（第四百二十一批）改写过：这一行原来写「RootFS 压缩包解压」，那是 zstd-jni 时代的用途，
+  rootfs 与 zstd-jni 依赖已于 2026-10-27/28 随终端搬去 `zhengdao-term`。
+- 许可证：BSD-3-Clause（双许可中的 BSD 分支——上游 `zstd/COPYING` 并列写着 GPL-2.0，本项目取 BSD 分支；
+  这条取舍与「为什么没触发停手条件」记在下面 §9.3）
+- 来源：<https://github.com/facebook/zstd>，版本由 `rust/core/Cargo.lock` 锁死在
+  **`zstd-sys v2.1.0+zstd.1.5.7` 捆绑的 C 本体**（经 zstd-safe → zstd → zstd-sys 三层进 `.so`）。
 - 随附正文：[`licenses/BSD-3-Clause-zstd.txt`](licenses/BSD-3-Clause-zstd.txt)（zstd 本体的 BSD 3-Clause，
   `facebook/zstd` v1.5.6 的 `LICENSE` 原文，1,549 B / 30 行 / `70552664…`）。
+  ✅ 第四百二十一批核实：正文当年按 v1.5.6 取，锁文件现在指到 **v1.5.7**——取 `zstd-sys-2.1.0+zstd.1.5.7`
+  的 `.crate`（SHA256 与 `Cargo.lock` 的 `checksum` 一致）解出其中捆绑的 `zstd/LICENSE`，实测
+  **1,549 B、SHA256 `7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8`，与这份随包正文逐字节相同**
+  ⇒ 版本号只是正文的取证锚点，1.5.6→1.5.7 之间 zstd 的 BSD-3 文本没漂移，**随包正文不用换**。
   ⚠️ 2026-10-11 更正：此前写的是「随 AAR 构件内的 `META-INF` 分发，本项目不另行翻印」——
   **构件里根本没有这份正文**（实测见 `docs/ERRATA.md` E-105）；且它与 zstd-jni 包装代码的
-  BSD 2-Clause（[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)）**版权人不同、必须分两份**。
+  BSD 2-Clause（[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)）**版权人不同、必须分两份**
+  （那份现在只留档，见文首表）。
 
 ## 6. JetBrains Maple Mono（终端默认字体）
 
@@ -282,6 +310,7 @@
 | ~~**`org.tukaani:xz`**~~ **（2026-10-28 第二百六十六批已删：commons-compress 的 XZ 后端，随它一起失去引入方）** | 1 | **Public Domain**（POM 原文 `<comments>You can do whatever you want with this package.</comments>`） | 无正文义务，仅登记 |
 | **`org.apache.poi:poi`**（第四百二十二批，旧版 `.xls` 只读；**只 HSSF，不引 poi-ooxml**） | 1 | **Apache-2.0**（POM `<licenses>` 原文 `Apache License, Version 2.0`） | 随包 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)。**它的 6 个传递依赖也都是 Apache-2.0**：`commons-codec`、`commons-collections4`、`commons-math3`、`commons-io`、`SparseBitSet`、`log4j-api`（POI 只声明 api，**不含 log4j-core**；构建侧仍显式 exclude core 防以后）。⚠️ 该构件**不带任何许可证正文**（APK 里 `META-INF/LICENSE*` 被 AGP 剥掉，见 E-105），所以必须自己随包 |
 
+
 > **判据**（解包 APK 全量扫，一条命令；期望至少看到 `assets/licenses/` 下**四份 `.txt`**
 > ＋ README，以及 `META-INF/androidx/.../LICENSE.txt` × 5 与 `okhttp3/internal/publicsuffix/NOTICE`；
 > **不该**再出现 `LGPL-2.1.txt`——422 批起它只留档不随包）：
@@ -295,3 +324,163 @@
 > **为什么必须自己随包**：Android 打包默认剥掉构件顶层的 `META-INF/LICENSE*` / `NOTICE*`；
 > 活下来的只有带子目录的那些（AGP 合并的 `androidx` 5 条）与 okhttp 那个嵌套路径的。
 > 这是 2026-10-11 实测结论，完整取证见 `docs/ERRATA.md` **E-105**。
+
+## 9. Rust 核 `libzhengdao_core.so` 静态链接的 crates（33 条）→ 声明许可证 → 版权人 → 覆盖方式（2026-11-04 第四百二十一批补）
+
+> **为什么单开这一节**：第四百二十批对账的结论是「**漏 32 条，全在 Rust 侧**」。随包的**唯一** native
+> 二进制 `native-core/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` 静态链接了 crates.io 的包，而本文此前只在 §5 声明了「zstd 本体（C）」一条。
+> Maven 侧（§8）420 实测**无漏**，本节只补 Rust 侧。
+> ⚠️ 工单写的 `rust/core/Cargo.lock` 在本仓**不存在**：workspace 的锁文件是 **`rust/Cargo.lock`**
+> （`rust/Cargo.toml` 里 `members = ["core"]`，锁文件生成在 workspace 根）。本节的坐标／版本／依赖边都取自它。
+>
+> **这一节的三个字段各自的证据等级**：① 许可证与版权行 = **A 硬证据**（逐条下载 `.crate` 包，
+> 校验「下载包 SHA256 == `Cargo.lock` 的 checksum」后才读包内 `license` 字段与 `LICENSE*` 原文，
+> 33/33 全绑定；420 那版只能标 C 待查，因为本机 `~/.cargo/registry/` 的 `cache/`、`src/` 已被清理、
+> 而 crates.io 的 sparse index JSON 里**没有 license 字段**——实测字段只有
+> `name/vers/deps/cksum/features/yanked/pubtime`）；② 是否进 `.so` = **A**（见 9.1）；
+> ③ 来源（直接／传递＋引入方）= **A**（`Cargo.lock` 的 `[[package]]` 依赖边，两遍解析补全）。
+
+### 9.1 先定案：随包 `.so` 里**实际**链接了哪些 crate（工单判据⑤「cargo tree 或符号证据，二选一」）
+
+选的是**编译输入清单（dep-info）＋ 逐字节复现**这一条，比符号串硬；`cargo tree` 本机跑不动（下面一并记）。
+
+| # | 证据 | 实测读数（2026-11-04 本机复跑） |
+|---|---|---|
+| 1 | **随包件 = 本机构建产物，逐字节** | `native-core/src/main/jniLibs/arm64-v8a/libzhengdao_core.so` ＝ **963,128 B** ／ SHA256 `e5674dcadc98978bb5e19ae205ef7de8dcc3e22e424178a45822ceda6b6b6da9`（入库提交 `667037ef`，2026-10-28 17:16） |
+| 2 | **按 `rust/README.md` 第 88–91 行的工序复现它** | `llvm-strip --strip-unneeded` 作用于该次构建的原始产物 `rust/target/aarch64-linux-android/release/deps/libzhengdao_core.so`（1,285,400 B）⇒ 得到 **963,128 B / `e5674dc…` —— 与入库件字节全等**。⇒ 「编译单元＝分发物」不是推定：这一批 `.d` 文件列出的输入，就是那个正在 APK 里的 `.so` 的输入 |
+| 3 | **dep-info：谁真的参与了编译** | 扫同一目录 `deps/*.d` 里出现过的 `…\.cargo\registry\src\index.crates.io-*\<name>-<ver>\src\…` 路径 ⇒ **唯一名 33 个**（`jni-sys` 有 0.3.1／0.4.1 两个版本各算一条）。`Cargo.lock` 第三方 package 共 **63** 条 ⇒ 余下 **30** 条在编译输入里**一条都没有**（分组见 9.4） |
+| 4 | **捆绑的 C／asm 目标文件** | `release/build/zstd-sys-*/out/` ＝ `libzstd.a` ＋ 36 个 `.o`（zstd C 本体的确证）；`release/build/sha2-asm-*/out/` ＝ `libsha256.a` ＋ `sha256_aarch64.o`（`sha2` 的 `asm` feature 确证） |
+| 5 | **随包字节里的串（旁证，只作旁证）** | 在**已 strip 的随包件**里能直接搜到 `<name>-<version>` 串的 **8 / 33** 条：`cesu8-1.1.0`、`crc32fast-1.5.2`、`flate2-1.1.10`、`jni-0.21.1`、`miniz_oxide-0.9.1`、`num-bigint-0.4.8`、`tar-0.4.46`、`zstd-safe-7.3.0`。其余 25 条搜不到＝`[profile.release] opt-level=3 + lto=true` 再叠加 strip 把路径串内联／裁掉了 ⇒ **不能反推"没链进去"**，定案靠 2＋3。§5 与 `app/build.gradle.kts` 引用的 `ZSTD_trace_decompress_*` 符号属同一层旁证 |
+
+- ❌ **`cargo tree` 这条路本机走不通**（写下来免得后人重踩）：`cargo tree --offline` 报
+  `failed to download adler2 v2.0.1 … --offline was specified`，且 `~/.cargo/registry/cache/`、
+  `~/.cargo/registry/src/` 两个目录都已不存在（只剩 sparse index）。dep-info 是**更强**的证据
+  （它直接来自产出这个 `.so` 的那次编译），所以判据⑤不需要联网重跑。
+- ⚠️ **随包 `.so` 里还有第三类东西，不在这 33 条里**：Rust **标准库自己**的依赖。随包字节里有
+  `/rust/deps/addr2line-0.27.1/src/unit.rs`、`/rust/deps/gimli-0.34.0/src/read/line.rs`、
+  `/rust/deps/rustc-demangle-0.1.28/src/lib.rs` 这三条路径串，以及
+  `library/std/src/../../backtrace/src/symbolize/gimli.rs` ＋ `library/core/src/…`、`alloc/src/…`
+  共 46 处 panic 位置串和 47 处 `/rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/`（= 本机 rustc 1.99.0 的 commit）。
+  它们**不在 `rust/Cargo.lock` 里**（由工具链自带的 `rust-deps` 提供），所以 420 与本节两张表都不覆盖；
+  许可是 Rust 项目的 `MIT OR Apache-2.0`，已由随包的 `Apache-2.0.txt` 覆盖正文，**缺的是登记**。
+  ⇒ 口径要项目所有者定（要不要在本表下面单列一小节「工具链自带件」）；第四百二十四批若把这张表做成
+  自动生成的，就必须决定它扫的是「`Cargo.lock`」还是「`.so` 的真实链接闭包」——两者现在差这 3 条。
+
+### 9.2 登记表（33 条，逐条：坐标｜版本｜许可｜是否进 .so｜来源｜版权人／年份｜覆盖方式）
+
+「版权行」这一列是**上游正文里的那一行照录**（MIT 要求「上述版权声明＋许可声明须出现在所有副本中」、
+BSD-3-Clause 第 1／2 条要求源码与二进制分发都复现版权声明）。随包的两份正文是**通用模板**
+（第一行是 `<year> <owner>` 占位符），署名就落在 `licenses/MIT.txt` ＋ `licenses/NOTICES.txt` 第 2 段。
+
+| crate | 版本 | 许可证（`Cargo.toml` 的 `license` 字段原文） | 进 `.so` | 来源（谁引入） | 版权行（上游原文） | 覆盖正文 |
+|---|---|---|---|---|---|---|
+| `adler2` | `2.0.1` | `0BSD OR MIT OR Apache-2.0` | 是 | 传递（← miniz_oxide-0.9.1） | Copyright (C) Jonas Schievink `<jonasschievink@gmail.com>` | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `block-buffer` | `0.10.4` | `MIT OR Apache-2.0` | 是 | 传递（← digest-0.10.7） | Copyright (c) 2018-2019 The RustCrypto Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `bytes` | `1.12.1` | `MIT` | 是 | 传递（← combine-4.6.8） | Copyright (c) 2018 Carl Lerche | `MIT.txt` |
+| `cesu8` | `1.1.0` | `Apache-2.0/MIT` | 是 | 传递（← jni-0.21.1） | （上游正文里**未填**版权行 ⇒ 按 `Cargo.toml` authors 登记：Eric Kidd `<git@randomhacks.net>`） | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `cfg-if` | `1.0.5` | `MIT OR Apache-2.0` | 是 | 传递（← crc32fast-1.5.2, filetime-0.2.29, jni-0.21.1, sha2-0.10.9） | Copyright (c) 2014 Alex Crichton | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `combine` | `4.6.8` | `MIT` | 是 | 传递（← jni-0.21.1） | Copyright (c) 2015 Markus Westerlind | `MIT.txt` |
+| `cpufeatures` | `0.2.17` | `MIT OR Apache-2.0` | 是 | 传递（← sha2-0.10.9） | Copyright (c) 2020-2025 The RustCrypto Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `crc32fast` | `1.5.2` | `MIT OR Apache-2.0` | 是 | 传递（← flate2-1.1.10） | Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `crypto-common` | `0.1.7` | `MIT OR Apache-2.0` | 是 | 传递（← digest-0.10.7） | Copyright (c) 2021 RustCrypto Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `digest` | `0.10.7` | `MIT OR Apache-2.0` | 是 | 传递（← sha2-0.10.9） | Copyright (c) 2017 Artyom Pavlov | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `filetime` | `0.2.29` | `MIT/Apache-2.0` | 是 | 传递（← tar-0.4.46） | Copyright (c) 2014 Alex Crichton | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `flate2` | `1.1.10` | `MIT OR Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2014-2026 Alex Crichton | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `generic-array` | `0.14.7` | `MIT` | 是 | 传递（← block-buffer-0.10.4, crypto-common-0.1.7） | Copyright (c) 2015 Bartłomiej Kamiński | `MIT.txt` |
+| `hex` | `0.4.3` | `MIT OR Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2013-2014 The Rust Project Developers.／Copyright (c) 2015-2020 The rust-hex Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `jni` | `0.21.1` | `MIT/Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2016 Prevoty, Inc. and jni-rs contributors | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `jni-sys` | `0.3.1` | `MIT OR Apache-2.0` | 是 | 传递（← jni-0.21.1） | Copyright (c) 2015 The rust-jni-sys Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `jni-sys` | `0.4.1` | `MIT OR Apache-2.0` | 是 | 传递（← jni-sys-0.3.1） | Copyright (c) 2015 The rust-jni-sys Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `libc` | `0.2.190` | `MIT OR Apache-2.0` | 是 | 传递（← cpufeatures-0.2.17, filetime-0.2.29, tar-0.4.46） | Copyright (c) The Rust Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `log` | `0.4.34` | `MIT OR Apache-2.0` | 是 | 传递（← jni-0.21.1） | Copyright (c) 2014 The Rust Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `memchr` | `2.8.3` | `Unlicense OR MIT` | 是 | 传递（← combine-4.6.8） | Copyright (c) 2015 Andrew Gallant | `MIT.txt` |
+| `miniz_oxide` | `0.9.1` | `MIT OR Zlib OR Apache-2.0` | 是 | 传递（← flate2-1.1.10） | Copyright 2013-2014 RAD Game Tools and Valve Software／Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC／Copyright (c) 2017 Frommi／Copyright (c) 2017-2024 oyvindln | `MIT.txt` |
+| `num-bigint` | `0.4.8` | `MIT OR Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2014 The Rust Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `num-integer` | `0.1.47` | `MIT OR Apache-2.0` | 是 | 传递（← num-bigint-0.4.8） | Copyright (c) 2014 The Rust Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `num-traits` | `0.2.19` | `MIT OR Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2014 The Rust Project Developers | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `sha2` | `0.10.9` | `MIT OR Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2006-2009 Graydon Hoare／Copyright (c) 2009-2013 Mozilla Foundation／Copyright (c) 2016 Artyom Pavlov | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `sha2-asm` | `0.6.4` | `MIT` | 是 | 传递（← sha2-0.10.9） | Copyright (c) 2020 RustCrypto Developers／Copyright (c) 2017 Project Nayuki, Artyom Pavlov | `MIT.txt` |
+| `simd-adler32` | `0.3.10` | `MIT` | 是 | 传递（← miniz_oxide-0.9.1） | Copyright (c) [2021] [Marvin Countryman] | `MIT.txt` |
+| `tar` | `0.4.46` | `MIT OR Apache-2.0` | 是 | **直接**（`Cargo.toml`） | Copyright (c) The tar-rs Project Contributors | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `thiserror` | `1.0.69` | `MIT OR Apache-2.0` | 是 | 传递（← jni-0.21.1） | （上游正文里**未填**版权行 ⇒ 按 `Cargo.toml` authors 登记：David Tolnay `<dtolnay@gmail.com>`） | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `typenum` | `1.20.1` | `MIT OR Apache-2.0` | 是 | 传递（← crypto-common-0.1.7, generic-array-0.14.7） | Copyright (c) 2014 Paho Lurie-Gregg | `MIT.txt`（或 `Apache-2.0.txt`） |
+| `zstd` | `0.13.3` | `MIT` | 是 | **直接**（`Cargo.toml`） | Copyright (c) 2016 Alexandre Bury | `MIT.txt` |
+| `zstd-safe` | `7.3.0` | `BSD-3-Clause` | 是 | 传递（← zstd-0.13.3） | Copyright (c) 2026, Alexandre Bury | `BSD-3-Clause-generic.txt` |
+| `zstd-sys` | `2.1.0+zstd.1.5.7` | `BSD-3-Clause` | 是 | 传递（← zstd-safe-7.3.0） | Copyright (c) 2026, Alexandre Bury／Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved. | `BSD-3-Clause-generic.txt` |
+
+**合计 33 条 = 8 条直接声明 ＋ 25 条传递。** 直接声明的 8 条与 `rust/core/Cargo.toml` 的
+`[dependencies]`（`sha2`／`hex`／`zstd`／`tar`／`flate2`／`num-bigint`／`num-traits`）
+＋ `[target.'cfg(target_os = "android")'.dependencies]`（`sha2` 开 `asm`、`jni`）逐条对得上。
+`zstd-sys` 的 `2.1.0+zstd.1.5.7` 里那半截是**它捆绑的 zstd C 本体版本** ⇒ 见下一条。
+
+### 9.3 许可收敛（工单里「遇 GPL／AGPL 就停手」的条件**没有触发**）
+
+- 33 条全部是宽松许可，按 `license` 字段**原文**分组（数字由 `crates.json` 那 33 条逐条点数得来）：
+  **22 条**是 MIT／Apache 双许可的三种写法——`MIT OR Apache-2.0` 19 ＋ `MIT/Apache-2.0` 2 ＋ `Apache-2.0/MIT` 1；
+  **6 条**纯 `MIT`（`bytes`／`combine`／`generic-array`／`sha2-asm`／`simd-adler32`／`zstd`）；
+  **2 条**纯 `BSD-3-Clause`（`zstd-safe`／`zstd-sys`）；
+  **3 条**三分支各一——`0BSD OR MIT OR Apache-2.0`（`adler2`）、`MIT OR Zlib OR Apache-2.0`（`miniz_oxide`）、
+  `Unlicense OR MIT`（`memchr`）。22＋6＋2＋3 ＝ 33。
+  **零 GPL、零 LGPL、零 AGPL、零 MPL**（这里的「零」指这 33 条的 `license` 字段实测，不看下面的可选分支）
+  ⇒ 无传染，不需要换依赖，本批照补登记。
+- **双许可怎么取**：`MIT OR Apache-2.0` 这类按「择一分支即合规」处理，本项目**取 MIT 分支**
+  （随包 `MIT.txt`）；`Apache-2.0.txt` 同时在包里，取 Apache 分支也成立。取 MIT 就必须给版权行
+  ⇒ 那 33 行的署名逐条进了 `licenses/NOTICES.txt` 第 2 段。
+- ⚠️ **`zstd-sys` 里捆绑的 zstd C 本体**（v1.5.7，见 9.1 证据 4）：上游给了两个许可分支——
+  `zstd/LICENSE` = **BSD-3-Clause**（版权人 Meta Platforms）、`zstd/COPYING` = **GPL-2.0** 的另一分支。
+  本项目**取 BSD-3 分支**，随包正文是 §5 那份 `BSD-3-Clause-zstd.txt`；✅ 第四百二十一批顺手核实：
+  该包内 `zstd/LICENSE` 与随包那份正文 **SHA256 相同**（`7055266497633c90…`），即 420 的 K1／U4
+  「随包正文写 v1.5.6、链进的是 v1.5.7」**在文本层面没有漂移**，只是版本号锚点要对齐（本文 §5 已注）。
+- ⚠️ **两处"上游正文里没有版权行"**：`cesu8` 只给了 Rust 项目的模板 `COPYRIGHT-RUST.txt`
+  （里面是 Valgrind／LLVM／jemalloc／Hoedown 等历史罗列，**不含本 crate 署名**）；`thiserror` 的
+  `LICENSE-APACHE`／`LICENSE-MIT` 是空白模板。两条都改按各自 `Cargo.toml` 的 `authors` 登记
+  （`Eric Kidd`／`David Tolnay`）并在表里标明是这么来的——**不冒充成照录**。
+- 📌 **`r-efi` v6.0.0 的 `license` 字段是 `MIT OR Apache-2.0 OR LGPL-2.1-or-later`**（含 LGPL 分支）。
+  它**没编进 `.so`**（引入链 `getrandom`→`jobserver`→`cc` 全是构建期），所以现在不构成随包义务；
+  但第四百二十三批那道「政策门禁」要把这种**许可字段里含强传染分支**的包单列成一个未知区，
+  别让它哪天被 feature 一开就悄悄进包。
+
+### 9.4 `Cargo.lock` 里**没**编进 `.so` 的 30 条（边界；登记它们是为了"为什么不登记"也可核）
+
+依据 ＝ 9.1 证据 3：这 30 条在**产出随包 `.so` 的那次编译**的 dep-info 里一条都没出现。
+
+- **「声明形态是构建期／proc-macro／dev-dependencies」**（不参与最终链接，9 条）：`autocfg-1.5.1`、`cc-1.6.0`、`jni-sys-macros-0.4.1`、`pkg-config-0.3.34`、`proc-macro2-1.0.107`、`thiserror-impl-1.0.69`、`version_check-0.9.5`、`walkdir-2.5.0`、`zlib-rs-0.6.8`
+- **「引入方自己也没编进」**（构建期链条上的下游，跟着一起出局，8 条）：`find-msvc-tools-0.1.14`、`getrandom-0.4.3`、`jobserver-0.1.35`、`quote-1.0.47`、`same-file-1.0.6`、`shlex-2.0.1`、`syn-2.0.119`、`unicode-ident-1.0.26`
+- **「非 Android 目标」**（Windows／UEFI 专用，交叉编译时根本不选中，13 条）：`r-efi-6.0.0`、`winapi-util-0.1.11`、`windows-link-0.2.1`、`windows-sys-0.45.0`、`windows-sys-0.61.2`、`windows-targets-0.42.2`、`windows_aarch64_gnullvm-0.42.2`、`windows_aarch64_msvc-0.42.2`、`windows_i686_gnu-0.42.2`、`windows_i686_msvc-0.42.2`、`windows_x86_64_gnu-0.42.2`、`windows_x86_64_gnullvm-0.42.2`、`windows_x86_64_msvc-0.42.2`
+
+两条要点名的具体理由：`zlib-rs` 是 `flate2` 的**可选后端**，我们走默认的 `rust_backend`
+（＝ `miniz_oxide`，它自己在上面那 33 条里）；`windows-sys` v0.45.0 的引入方 `jni` **在包内**，
+它没编进去只是因为 `cfg(windows)` 门控 —— `Cargo.lock` 把两个平台的依赖都记着，
+dep-info 只记**这次编译真正吃进去的**，这正是本节拿它当判据的原因。
+
+⇒ 这 30 条**不产生随包义务**（不在分发物里），所以不进 9.2、也不进 `NOTICES.txt`。
+谁哪天把它们编进去了（换 feature／换后端／加 `rand` 一类依赖），9.5 的命令会当场把集合改变，
+这就是把"不进包"的一侧也写下来的原因。
+
+### 9.5 怎么复算这张表（离线；工单判据②要求的「待查项的查法」）
+
+```powershell
+# ① 进 .so 的集合（dep-info）——不需要联网，也不需要跑 Gradle
+python - <<'PY'
+import os, re
+D = r"rust/target/aarch64-linux-android/release/deps"
+P = re.compile(r"([A-Za-z0-9_+.\-]+-[0-9][A-Za-z0-9_.+\-]*)[/\\]src[/\\]")
+s = set()
+for f in os.listdir(D):
+    if f.endswith(".d"):
+        s |= set(P.findall(open(os.path.join(D, f), encoding="utf-8", errors="replace").read()))
+print(len(s), sorted(s))
+PY
+# ② 许可证与版权行：逐条下载 .crate ⇒ 校 SHA256 == Cargo.lock 的 checksum ⇒ 读包内 license 字段与 LICENSE 原文
+#    https://static.crates.io/crates/<name>/<name>-<version>.crate
+#    ⚠️ 必须先过校验再取正文：校验相等才说明"你读的那份就是锁文件钉住的那份"（33/33 全过）。
+#    crates.io 的 sparse index（~/.cargo/registry/index/）JSON 里**没有 license 字段**，指望它是取不到的。
+# ③ 随包件与本机构建同源（tools/ 里已有门禁，跑现成的）：
+python tools/check-so-provenance.py          # .so ↔ rust/core/src ↔ Cargo.lock ↔ 工具链指纹
+python tools/check-licenses.py               # 产物侧：assets/licenses/ ↔ PACKAGED 双向，外加文首表 ↔ PACKAGED
+```
+
+**本机取证脚本**（一次性，不进仓）：421 批的抓取／比对脚本在
+`%TEMP%\zd-421\fetch_licenses.py`（下载＋checksum 绑定＋抽正文）、`gen421.py`（生成 9.2 表行与
+NOTICES 段）、`recheck_so.py`（复算进 .so 集合）；中间产物 `crates.json`（33 条，含每条的
+`bound_to_lock=True`、`license_field`、`license_files[].sha256/text`）与 `sec9-rows.txt`。

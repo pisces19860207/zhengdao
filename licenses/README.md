@@ -12,14 +12,17 @@
 > **判据只有一条**：当前 APK 里有这个组件吗？有 ⇒ 必须随包；没有 ⇒ 不随包、但正文留档（见第二节）。
 > 2026-10-28 第二百六十六批按这条把随包清单从 8 份收到 **4 份**（proot / libtalloc / libandroid-shmem /
 > zstd-jni 的正文全部退出随包）。依据：终端已整体搬去 `zhengdao-term`，本仓 `assets/` 只剩 `baopu/`。
-> **2026-11-03 第四百二十二批**：`.xls` 读库由 **jxl（LGPL-2.1）** 换成 **Apache POI（Apache-2.0）**
-> ⇒ 随包清单再收到 **3 份**（`LGPL-2.1.txt` 移入第二节留档）。当前包内**已无任何 GPL/LGPL 组件**。
+> 2026-11-04 第四百二十一批再按同一判据**加回两份**（**3 → 5 份**）：随包 native 库
+> `libzhengdao_core.so` 里静态链接的 33 个 Rust crate，此前只登记了 zstd 本体（C），其余 32 个
+> 一条没记 ⇒ MIT / BSD-3-Clause 两类正文缺失（逐条见仓库根 [`THIRD-PARTY-LICENSES.md`](../THIRD-PARTY-LICENSES.md) **§9**）。
 
 | 文件 | 许可证 | 覆盖的组件 | 来源 | 取回日期 | 字节数 | 行数 | SHA256（小写） |
 |---|---|---|---|---|---|---|---|
-| [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | 随包的 Apache-2.0 Maven 依赖（Compose / AndroidX / OkHttp / kotlinx / mikepenz / jspecify / **Apache POI**（422 批，旧版 `.xls` 只读）等；逐组对照见仓库根 [`THIRD-PARTY-LICENSES.md`](../THIRD-PARTY-LICENSES.md) §8）。Termux 那三个组件（`terminal-emulator` / `terminal-view` / `libtermux`）已随终端搬去 `zhengdao-term`，本仓不再聚合 | <https://www.apache.org/licenses/LICENSE-2.0.txt> | 2026-10-11 | 11,358 | 202 | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
-| [`BSD-3-Clause-zstd.txt`](BSD-3-Clause-zstd.txt) | BSD 3-Clause | **zstd 本体**（`facebook/zstd` v1.5.6）—— 由 Rust 核**静态编进**随包 native 库 `lib/arm64-v8a/libzhengdao_core.so`（2026-10-28 实测 .so 内含 `zstd-safe-7.3.0/src/lib.rs` 路径串与 `ZSTD_trace_decompress_*` 符号 ⇒ 不是推断） | <https://github.com/facebook/zstd>（v1.5.6 的 `LICENSE` 原样照录） | 2026-10-11 | 1,549 | 30 | `7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8` |
-| [`NOTICES.txt`](NOTICES.txt) | 第三方 NOTICE 汇总（**不是**许可证全文） | OkHttp 内置 Public Suffix List 数据的 NOTICE（该数据为 **MPL-2.0**，APK 内 `okhttp3/internal/publicsuffix/publicsuffixes.gz`）。2026-10-28 起不再含 Apache Commons Compress 那段（依赖已删，包内没有该组件） | 照录构件内 `okhttp3/internal/publicsuffix/NOTICE` 原文 | 2026-10-11 | 2,114 | 29 | `8ddbf3e9ca39fb40cb269b2109d59ac76c6a5b0490af244be17804161074cc45` |
+| [`Apache-2.0.txt`](Apache-2.0.txt) | Apache License 2.0 | 随包的 Apache-2.0 Maven 依赖（Compose / AndroidX / OkHttp / kotlinx / mikepenz / jspecify 等；逐组对照见仓库根 [`THIRD-PARTY-LICENSES.md`](../THIRD-PARTY-LICENSES.md) §8）。Termux 那三个组件（`terminal-emulator` / `terminal-view` / `libtermux`）已随终端搬去 `zhengdao-term`，本仓不再聚合 | <https://www.apache.org/licenses/LICENSE-2.0.txt> | 2026-10-11 | 11,358 | 202 | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
+| [`MIT.txt`](MIT.txt) | MIT License | **Rust 核 `libzhengdao_core.so` 里静态链接的 31 个 crate**（`sha2` / `tar` / `flate2` / `num-bigint` / `jni` 等，逐条见 §9）——本目录**只有这一份 MIT 正文**，所以 31 条共用它；正文按 SPDX 的 MIT 模板原样取回，**第一行的版权人是占位符**（`<year> <copyright holders>`），具体署名逐条登记在下面 [`NOTICES.txt`](NOTICES.txt) 第 2 段与 §9 的「版权行」列 | <https://raw.githubusercontent.com/spdx/license-list-data/main/text/MIT.txt> | 2026-11-04 | 1,078 | 18 | `b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5` |
+| [`BSD-3-Clause-generic.txt`](BSD-3-Clause-generic.txt) | BSD 3-Clause | **Rust 核的两个 zstd 包装层**：`zstd-safe` v7.3.0、`zstd-sys` v2.1.0+zstd.1.5.7（版权人 Alexandre Bury／Meta Platforms，见 §9）。⚠️ **不能用第二节的 `BSD-3-Clause.txt` 顶替**——那一份是 `libandroid-shmem` 上游 `LICENSE` 的原文照录（第三条里带着它自己没填的 `{organization}` 占位符），版权人不同；zstd 本体的那一份 `BSD-3-Clause-zstd.txt` 同理（版权人是 Meta Platforms）。所以这里放 SPDX 的**通用**三条款正文，署名走 [`NOTICES.txt`](NOTICES.txt) | <https://raw.githubusercontent.com/spdx/license-list-data/main/text/BSD-3-Clause.txt> | 2026-11-04 | 1,460 | 11 | `5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d` |
+| [`BSD-3-Clause-zstd.txt`](BSD-3-Clause-zstd.txt) | BSD 3-Clause | **zstd 本体**（`facebook/zstd` v1.5.6 正文）—— 由 Rust 核**静态编进**随包 native 库 `lib/arm64-v8a/libzhengdao_core.so`（2026-10-28 实测 .so 内含 `zstd-safe-7.3.0/src/lib.rs` 路径串与 `ZSTD_trace_decompress_*` 符号 ⇒ 不是推断）。✅ 第四百二十一批核实：锁文件里 `zstd-sys v2.1.0+zstd.1.5.7` 捆绑的 C 本体是 **v1.5.7**，而该包内 `zstd/LICENSE` 与这份随包正文**逐字节相同**（同一 SHA256）⇒ 版本号写的是正文锚点，文本没有漂移 | <https://github.com/facebook/zstd>（v1.5.6 的 `LICENSE` 原样照录） | 2026-10-11 | 1,549 | 30 | `7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8` |
+| [`NOTICES.txt`](NOTICES.txt) | 第三方 NOTICE 汇总（**不是**许可证全文） | ① OkHttp 内置 Public Suffix List 数据的 NOTICE（该数据为 **MPL-2.0**，APK 内 `okhttp3/internal/publicsuffix/publicsuffixes.gz`）。2026-10-28 起不再含 Apache Commons Compress 那段（依赖已删，包内没有该组件）；② 2026-11-04 第四百二十一批追加第 2 段：**Rust 核静态链接的 33 个 crate 的版权行**（MIT／BSD-3-Clause 正文要求的正是这个署名，通用模板里没有 ⇒ 只能在这里逐条复现） | ① 照录构件内 `okhttp3/internal/publicsuffix/NOTICE` 原文；② 逐条照录各 crate 包内 `LICENSE*` 首行的版权声明（`cesu8`／`thiserror` 上游正文未填 ⇒ 按其 `Cargo.toml` 的 authors 登记并在段内标明） | 2026-11-04 | 6,297 | 146 | `c1137be21539b7a2ae2bf86ada18da8c44f0b29fda870eefc9fd411cb7568d2a` |
 
 ## 二、仅历史留档（**不再随包**；≤ v2.2.2 的包里有）
 
@@ -82,16 +85,24 @@
   `libzhengdao_core.so`）见 [`BSD-3-Clause-zstd.txt`](BSD-3-Clause-zstd.txt)；zstd-jni 那份
   **BSD 2-Clause** 已随该依赖删除而转为历史留档（第二节）；需要在分发物里复现的归属声明
   （Apache-2.0 第 4(d) 条）见 [`NOTICES.txt`](NOTICES.txt)；**jxl 的 LGPL-2.1**（第二百五十二批，
-  旧版 `.xls` 只读转换）已随 422 批换库转为**历史留档**（第二节）—— 它当年是**聚合分发**的
-  LGPL-2.1 库，第 3 条要求随附正文，而它自己的 jar 里一份许可证文本都没有（实测：`jxl-2.6.12.jar`
-  内只有 `META-INF/MANIFEST.MF` 与 class/资源），指望构件自带是不成立的（E-105 同款）。
+  旧版 `.xls` 只读转换）见 [`LGPL-2.1.txt`](LGPL-2.1.txt)——它是**聚合分发**的 LGPL-2.1 库，
+  第 3 条要求随附正文，而它自己的 jar 里一份许可证文本都没有（实测：`jxl-2.6.12.jar` 内
+  只有 `META-INF/MANIFEST.MF` 与 class/资源），指望构件自带是不成立的（E-105 同款）。
+- **Rust 核这边同样的教训要再走一遍，而且更容易漏**：crate 的许可证正文只躺在 `.crate` 包里，
+  编成 `libzhengdao_core.so` 之后 APK 里一个字节都不剩。第四百二十一批实测：静态链接进这个 `.so` 的
+  **33 个 crate 此前只登记了 zstd 本体（C）**，其余 32 条一字未提。现在的覆盖是——31 条含 MIT 分支
+  （纯 MIT 或 `MIT OR Apache-2.0` 双许可）⇒ [`MIT.txt`](MIT.txt)；2 条（`zstd-safe`、`zstd-sys`）
+  是 BSD-3-Clause ⇒ [`BSD-3-Clause-generic.txt`](BSD-3-Clause-generic.txt)；33 条的**版权行**逐条
+  复现在 [`NOTICES.txt`](NOTICES.txt) 第 2 段（两份通用正文都带 `<year> <owner>` 占位符，署名的义务落点在那里）。
+  对照表与取证方法见仓库根 [`THIRD-PARTY-LICENSES.md`](../THIRD-PARTY-LICENSES.md) **§9**。
 - 逐组「依赖 → 声明许可证 → 覆盖方式」对照表在仓库根
   [`THIRD-PARTY-LICENSES.md`](../THIRD-PARTY-LICENSES.md) **§8**（含重新生成它的命令与两个坑）。
 - 完整取证与教训：`docs/ERRATA.md` **E-105**。
 
 ### 这几份正文也随 APK 分发（2026-10-11 起）
 
-第一节表里 `licenses/` 的那几份（**三份**：Apache-2.0 / BSD-3-Clause-zstd / NOTICES ＋ 本 README），
+第一节表里 `licenses/` 的那几份（**六份**：Apache-2.0 / MIT / BSD-3-Clause-generic /
+BSD-3-Clause-zstd / LGPL-2.1 / NOTICES ＋ 本 README），
 再加上第一方声明 `LICENSE`（随包更名为 `LICENSE-zhengdao.txt`），构建期会被原样复制进 APK 的
 `assets/licenses/`（`app/build.gradle.kts` 的 `stageLicenseAssets` 任务，由 `preDebugBuild` /
 `preReleaseBuild` 拉起来；2026-10-28 起按 `StageLicenseAssetsTask.PACKAGED` 白名单装配，第二节那几份不进包）
@@ -109,7 +120,7 @@
 
 ```bash
 cd <仓库根>
-sha256sum licenses/*.txt                       # 与两张表逐一比对（随包 3 份 + 留档 6 份 = 9 份都在仓库里）
+sha256sum licenses/*.txt                       # 与两张表逐一比对（随包 6 份 + 留档 5 份 = 11 份都在仓库里）
 ```
 
 Windows PowerShell 等价：
@@ -138,8 +149,8 @@ $z.Entries | Where-Object FullName -like 'assets/licenses/*' |
 $z.Dispose()
 ```
 
-期望看到 `assets/licenses/` 下**四份 `.txt`**（Apache-2.0 / BSD-3-Clause-zstd / NOTICES /
-LICENSE-zhengdao.txt）与本 README，**且不该有别的**（GPL-2.0 / GPL-3.0 / LGPL-2.1 / LGPL-3.0 / BSD-2-Clause / BSD-3-Clause 一份都不许出现），
+期望看到 `assets/licenses/` 下**七份 `.txt`**（Apache-2.0 / MIT / BSD-3-Clause-generic /
+BSD-3-Clause-zstd / LGPL-2.1 / NOTICES / LICENSE-zhengdao.txt）与本 README，**且不该有别的**（GPL-2.0 / GPL-3.0 / LGPL-3.0 / BSD-2-Clause / BSD-3-Clause 一份都不许出现），
 其中第三方正文的字节数与上表一致；
 本仓 APK **不再含** `assets/fonts/OFL.txt`（字体与其 OFL 正文都已搬到 `zhengdao-term`）。
 **少一份、多一份都是构建期装配出了问题**：`stageLicenseAssets` 末尾有 `check` 断言（缺也红、多也红），
@@ -151,8 +162,9 @@ LICENSE-zhengdao.txt）与本 README，**且不该有别的**（GPL-2.0 / GPL-3.
    **同步更新第一节表**（来源 URL、取回日期、字节数、行数、SHA256），并回到 `THIRD-PARTY-LICENSES.md` 的对照表加一行、
    **§8 的依赖表加/改组**；同时把文件名补进 `app/build.gradle.kts` 的 `stageLicenseAssets` 断言。
    > 加表行后**必须同步改 `app/src/test/java/com/example/zhengdao/LicenseTextsTest.kt` 里的记录数**
-   > （它断言本文件两张表解析出的正文份数恰好等于实际份数，加一份就要 +1；当前 = **9** = 随包 3 + 留档 6：
-   > `licenses/` 九条（八份许可证正文 ＋ `NOTICES.txt` 汇总）。字体那份 `OFL.txt` 已于 2026-10-28
+   > （它断言本文件两张表解析出的正文份数恰好等于实际份数，加一份就要 +1；当前 = **11** = 随包 6 + 留档 5：
+   > `licenses/` 十一条（十份许可证正文 ＋ `NOTICES.txt` 汇总；`MIT.txt` 与 `BSD-3-Clause-generic.txt`
+   > 是第四百二十一批为 Rust 核的 33 个 crate 补的）。字体那份 `OFL.txt` 已于 2026-10-28
    > 随终端搬去 `zhengdao-term`，本仓不再分发该字体，也不在这两张表里 —— 那一行是随字体一起走的）。
    > 2026-11-03（422 批）`LGPL-2.1.txt` 从第一节搬到第二节：**总数不变（仍 9）**，只是换了半边。
 2. **正文一律取官方原文**，不自行排版、不改换行、不加 BOM（`Apache-2.0.txt` 首行是空行，

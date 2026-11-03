@@ -31,11 +31,18 @@ E-105 实测推翻了「第三方正文会随构件一起分发」这个想当�
    出现 `publicsuffixes.gz` ⇒ `NOTICES.txt` 必须存在且真的提到 `publicsuffix`；
    出现任何 `libzhengdao_core.so` ⇒ `BSD-3-Clause-zstd.txt` 必须在（Rust 核静态编了 zstd 本体，
    2026-10-28 实测 .so 内含 `zstd-safe-7.3.0/src/lib.rs` 路径串与 `ZSTD_trace_decompress_*` 符号）。
+5. **文首表 ↔ 两份清单**（第四百二十一批判据④，`_assert_head_table_matches_lists()`）：
+   `THIRD-PARTY-LICENSES.md` 开头那张「许可证正文随仓库与 APK 分发」表每行第三列以「随包：」或
+   「留档不随包：」开头，抽出的 `licenses/<正文>` 要分别落在 `PACKAGED` / `ARCHIVED` 里。
+   420 的 K2 就是这张表说「随附正文」而构建侧早已把它们归档 —— 文档与硬断言各说各话，
+   读者按文档办事就错，所以这条也要会红。
 
 两份清单与 `app/build.gradle.kts` 的 `StageLicenseAssetsTask.PACKAGED / ARCHIVED` 必须一致
 （那份是装配时的真源，这里是"产物侧"的复核；两边不一致就是账不平行，本脚本会红）。
 
-用法：`python3 tools/check-licenses.py [APK路径]`（不给路径就取 `app/build/outputs/apk/` 下最新的包）。
+用法：`python3 tools/check-licenses.py [APK路径]`（不给路径就取 `app/build/outputs/apk/` 下最新的包）；
+`python3 tools/check-licenses.py --docs-only` 只查上面第 5 条与两份清单的账面一致性、不开包
+——包是旧的（改了清单还没重新装配）时用这条自证「账平」，别把「旧包缺新正文」当成新的缺陷记。
 """
 
 import glob
@@ -59,7 +66,9 @@ ASSET_PREFIX = "assets/licenses/"
 # 两边不一致时由 _assert_lists_match_build() 判红）。
 PACKAGED = [
     "Apache-2.0.txt",
+    "BSD-3-Clause-generic.txt",
     "BSD-3-Clause-zstd.txt",
+    "MIT.txt",
     "NOTICES.txt",
     "README.md",
 ]
@@ -116,14 +125,93 @@ def _assert_lists_match_build():
     return problems
 
 
+def _assert_head_table_matches_lists():
+    """`THIRD-PARTY-LICENSES.md` 文首表 ↔ PACKAGED/ARCHIVED 逐条一致（第四百二十一批判据④）。
+
+    为什么要有：420 的 K2 实测到这张表把四份**早已归档不随包**的正文写成「随附正文」，
+    与 `app/build.gradle.kts` 的硬断言互相打脸 —— 文档说随附、构建说不随附，读者按文档办事就错。
+    所以这张表现在每行第三列**必须以「随包：」或「留档不随包：」开头**，本函数拿它去比两份清单。
+
+    只抽第三列里形如 `licenses/<文件>` 的链接（`assets/fonts/OFL.txt` 那类不带 `licenses/` 前缀的
+    历史路径不参与比对 —— 本仓确实没有那份正文，那是留档行里的 TODO，不是清单成员）。
+    """
+    path = os.path.join(ROOT, "THIRD-PARTY-LICENSES.md")
+    if not os.path.exists(path):
+        return ["THIRD-PARTY-LICENSES.md 不存在：文首表与两份清单的对照无从可查"]
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+
+    problems = []
+    packaged_in_table = set()
+    archived_in_table = set()
+    rows = 0
+    for line in lines:
+        if not line.startswith("> |"):
+            continue
+        cells = [c.strip() for c in line[3:].strip().strip("|").split("|")]
+        if len(cells) < 3 or cells[0] in ("组件", "") or set(cells[0]) <= {"-"}:
+            continue  # 表头 / 分隔行
+        rows += 1
+        col = cells[2]
+        kind = "留档不随包：" if col.startswith("留档不随包：") else ("随包：" if col.startswith("随包：") else None)
+        if kind is None:
+            problems.append(
+                "THIRD-PARTY-LICENSES.md 文首表「%s」那一行的第三列没写「随包：」或「留档不随包：」开头"
+                % cells[0][:28]
+            )
+            continue
+        names = set(re.findall(r"licenses/([A-Za-z0-9._\-]+\.[A-Za-z0-9]+)", col))
+        if not names:
+            # 唯一说得通的例外：留档行明写「本仓没有这份正文」（如字体 OFL —— 随终端搬走，
+            # 历史版的包自己带过正文）。这种行没有路径可抽，但也不能算账不平。
+            if kind.startswith("留档") and re.search(r"没有.{0,8}正文|无正文", col):
+                pass
+            else:
+                problems.append(
+                    "THIRD-PARTY-LICENSES.md 文首表「%s」那一行标了「%s」却没给出任何 licenses/ 正文路径"
+                    % (cells[0][:28], kind.rstrip("："))
+                )
+        (archived_in_table if kind.startswith("留档") else packaged_in_table).update(names)
+
+    if rows == 0:
+        problems.append("THIRD-PARTY-LICENSES.md 文首表一行都没解析到（表被改写 / 前缀变了？判据④落空）")
+    for name in sorted(packaged_in_table - set(PACKAGED)):
+        problems.append("文首表说 %s 随包，但它不在 StageLicenseAssetsTask.PACKAGED 里 —— 包内不会有它" % name)
+    for name in sorted(archived_in_table - set(ARCHIVED)):
+        problems.append(
+            "文首表说 %s 留档不随包，但它不在 ARCHIVED 里 —— 分类账没登记（装配任务会当场红）" % name
+        )
+    both = sorted(packaged_in_table & archived_in_table)
+    if both:
+        problems.append("文首表把同一份正文同时说成随包与留档：%s" % both)
+    return problems
+
+
 def main(argv):
+    docs_only = "--docs-only" in argv
+    problems = _assert_lists_match_build() + _assert_head_table_matches_lists()
+
+    if docs_only:
+        # 只查"账"（两份清单 ↔ 装配真源 ↔ 文首表），不开包：本批不能重建 APK 时用这条自证。
+        for p in problems:
+            print("::error title=许可证台账门禁::" + p)
+        if problems:
+            print("\n失败：台账 %d 处" % len(problems))
+            return 1
+        print(
+            "通过（--docs-only）：随包 %d 份 / 留档 %d 份与 build.gradle.kts 一致，"
+            "且 THIRD-PARTY-LICENSES.md 文首表逐行标注对得上"
+            % (len(PACKAGED), len(ARCHIVED))
+        )
+        return 0
+
     apk = pick_apk(argv)
     if not apk or not os.path.exists(apk):
         print("::error::找不到 APK（先跑 assembleDebug/assembleRelease，或把路径作为第一个参数传进来）")
+        for p in problems:
+            print("::error title=许可证正文门禁::" + p)
         return 1
     print("被验的产物: %s (%d 字节)" % (os.path.relpath(apk, ROOT).replace("\\", "/"), os.path.getsize(apk)))
-
-    problems = _assert_lists_match_build()
 
     expected = {}
     for name in PACKAGED:

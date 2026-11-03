@@ -769,10 +769,21 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
          *
          * 判据只有一条：**当前 APK 里有这个组件吗**？有 ⇒ 必须随包；没有 ⇒ 不随包但留档。
          *   · Apache-2.0 —— Compose / OkHttp / AndroidX / kotlinx / **POI** 等一大片；
+         *   · MIT —— `libzhengdao_core.so` 里静态链接的 31 个 Rust crate（33 条里除 zstd-safe /
+         *     zstd-sys 之外的全部；含 `MIT OR Apache-2.0` 双许可取 MIT 分支的那批）。
+         *     2026-11-04 第四百二十一批补：此前只登记了 zstd 本体（C），其余 32 条一字未提；
+         *   · BSD-3-Clause-generic —— 同一 `.so` 里的两个 zstd 包装层 `zstd-safe` v7.3.0、
+         *     `zstd-sys` v2.1.0+zstd.1.5.7（两个包的 `LICENSE` 原文里写的都是「Copyright (c) 2026,
+         *     Alexandre Bury」，zstd-sys 另带一行 Meta Platforms 的 C 本体声明 ⇒ 署名见 NOTICES）。
+         *     ⚠️ 不能用下面 `ARCHIVED` 里
+         *     那份 `BSD-3-Clause.txt`（libandroid-shmem 上游原文，版权人不同），也不能用
+         *     `BSD-3-Clause-zstd.txt`（zstd C 本体原文，版权人是 Meta Platforms）；
          *   · BSD-3-Clause-zstd —— `libzhengdao_core.so` 里**静态编进了 zstd 本体**
          *     （实测 .so 内含 `zstd-safe-7.3.0/src/lib.rs` 路径串、`ZSTD_trace_decompress_*` 符号、
          *     "bad error message from zstd" 错误串 ⇒ 不是"可能"，是真的在里面）；
-         *   · NOTICES —— Apache-2.0 §4(d) 的归属声明（okhttp 内置 Public Suffix List 的 MPL-2.0 数据）；
+                 *   · NOTICES —— Apache-2.0 §4(d) 的归属声明（okhttp 内置 Public Suffix List 的 MPL-2.0 数据）
+         *     ＋ 上面 Rust crate 的版权行（MIT / BSD-3 正文里的 `<year> <owner>` 是占位符，
+         *     真正的署名靠这份清单复现）；
          *   · README.md —— 上列每一份的来源 URL / 字节数 / SHA256 记录（用户自己可核）；
          *   · LICENSE-zhengdao.txt（来自仓库根 LICENSE）—— 第一方声明，见下方 `need`。
          *
@@ -781,7 +792,9 @@ abstract class StageLicenseAssetsTask : DefaultTask() {
          */
         val PACKAGED = listOf(
             "Apache-2.0.txt",
+            "BSD-3-Clause-generic.txt",
             "BSD-3-Clause-zstd.txt",
+            "MIT.txt",
             "NOTICES.txt",
             "README.md",
         )
