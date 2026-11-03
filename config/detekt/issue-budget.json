@@ -1,8 +1,8 @@
 {
-  "total": 370,
+  "total": 357,
   "rules": {
-    "CyclomaticComplexMethod": 208,
-    "LongMethod": 162
+    "CyclomaticComplexMethod": 201,
+    "LongMethod": 156
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -58,7 +58,6 @@
     "CyclomaticComplexMethod|CardCheck.kt|classifyWeb#1",
     "CyclomaticComplexMethod|CardCheck.kt|collisions#1",
     "CyclomaticComplexMethod|CardCheck.kt|keysepProblems#1",
-    "CyclomaticComplexMethod|CardFormat.kt|judgePng#1",
     "CyclomaticComplexMethod|CardJson.kt|skipValue#1",
     "CyclomaticComplexMethod|CardJson.kt|topLevelKeys#1",
     "CyclomaticComplexMethod|CardPng.kt|read#1",
@@ -110,7 +109,6 @@
     "CyclomaticComplexMethod|LibraryTools.kt|rename#1",
     "CyclomaticComplexMethod|LlmClient.kt|plainTextOf#1",
     "CyclomaticComplexMethod|LlmClient.kt|streamOnce#1",
-    "CyclomaticComplexMethod|LlmClient.kt|toolCallDeltas#1",
     "CyclomaticComplexMethod|LogisticsAnswer.kt|detailLine#1",
     "CyclomaticComplexMethod|LogisticsCsv.kt|parse#1",
     "CyclomaticComplexMethod|LogisticsExportedAt.kt|build#1",
@@ -130,7 +128,6 @@
     "CyclomaticComplexMethod|McpOAuthCallback.kt|parse#1",
     "CyclomaticComplexMethod|McpOAuthClient.kt|discover#1",
     "CyclomaticComplexMethod|McpOAuthDiscovery.kt|parseWwwAuthenticate#1",
-    "CyclomaticComplexMethod|McpSchema.kt|normalizeProperty#1",
     "CyclomaticComplexMethod|McpSchema.kt|normalizeSchema#1",
     "CyclomaticComplexMethod|McpServerScreen.kt|McpServerRow#1",
     "CyclomaticComplexMethod|McpServerScreen.kt|McpServerScreen#1",
@@ -156,7 +153,6 @@
     "CyclomaticComplexMethod|RiskGate.kt|hint#1",
     "CyclomaticComplexMethod|RiskMatrix.kt|isInternalHost#1",
     "CyclomaticComplexMethod|RiskMatrix.kt|normalizePath#1",
-    "CyclomaticComplexMethod|RunEngine.kt|askGroup#1",
     "CyclomaticComplexMethod|RunEngine.kt|handleToolResult#1",
     "CyclomaticComplexMethod|RunEngine.kt|runLoop#1",
     "CyclomaticComplexMethod|SchedulePass.kt|run#1",
@@ -209,10 +205,7 @@
     "CyclomaticComplexMethod|ToolRegistry.kt|handle#1",
     "CyclomaticComplexMethod|ToolRegistry.kt|typeMismatch#1",
     "CyclomaticComplexMethod|ToolScheduling.kt|runParallel#1",
-    "CyclomaticComplexMethod|ToolSchemaRules.kt|audit#1",
-    "CyclomaticComplexMethod|VisionFiles.kt|load#1",
     "CyclomaticComplexMethod|ZipIndex.kt|read#1",
-    "CyclomaticComplexMethod|ZipPacker.kt|pack#1",
     "LongMethod|AskUserTool.kt|spec#1",
     "LongMethod|AutonomySelfEdit.kt|skillPath#1",
     "LongMethod|BaopuArtifactPicker.kt|ArtifactPickerDialog#1",
@@ -275,7 +268,6 @@
     "LongMethod|BrowserBottomBar.kt|BrowserBottomBar#1",
     "LongMethod|BrowserScreen.kt|BrowserScreen#1",
     "LongMethod|BrowserStartPage.kt|BrowserStartPage#1",
-    "LongMethod|CardFormat.kt|judgePng#1",
     "LongMethod|ChannelSwitchFsm.kt|dispatch#1",
     "LongMethod|CompressionRunner.kt|runOnce#1",
     "LongMethod|ConfirmFlow.kt|enter#1",
@@ -308,7 +300,6 @@
     "LongMethod|KnowledgeRefreshCard.kt|KnowledgeRefreshCard#1",
     "LongMethod|LibraryImport.kt|execute#1",
     "LongMethod|LibraryPipeline.kt|run#1",
-    "LongMethod|LlmClient.kt|toolCallDeltas#1",
     "LongMethod|LogisticsCsv.kt|parse#1",
     "LongMethod|LogisticsImport.kt|parse#1",
     "LongMethod|LogisticsRows.kt|build#1",
@@ -318,7 +309,6 @@
     "LongMethod|MainActivity.kt|ZhengdaoApp#1",
     "LongMethod|MainActivity.kt|dispatchIncomingIntent#1",
     "LongMethod|McpOAuthClient.kt|discover#1",
-    "LongMethod|McpSchema.kt|normalizeProperty#1",
     "LongMethod|McpServerScreen.kt|McpServerRow#1",
     "LongMethod|McpServerScreen.kt|McpServerScreen#1",
     "LongMethod|McpToolSource.kt|connect#1",
@@ -370,20 +360,17 @@
     "LongMethod|ToolFailureAdvisor.kt|advise#1",
     "LongMethod|ToolRegistry.kt|handle#1",
     "LongMethod|ToolScheduling.kt|runParallel#1",
-    "LongMethod|ToolSchemaRules.kt|audit#1",
-    "LongMethod|VisionFiles.kt|load#1",
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
-    "LongMethod|ZipIndex.kt|read#1",
-    "LongMethod|ZipPacker.kt|pack#1"
+    "LongMethod|ZipIndex.kt|read#1"
   ],
-  "recorded_from": "本机复验读数（chore/detekt-debt-7 zd7-1..zd7-6，rebase origin/main 2c237e33 后 :app:detektWall 复跑读数，detekt-wall.xml mtime 2026-11-03 01:48；与 01:30 detektReport 读数指纹集逐条相同）；CI 绿后验收会话可用 CI 读数覆写核对",
-  "recorded_at": "2026-11-03T01:59:22+0800",
+  "recorded_from": "本机复验读数：chore/detekt-debt-8 zd8-1..zd8-6（rebase origin/main 4be5c905 之后 :app:detektReport 复跑，detekt.xml mtime 2026-11-03 13:00:28；total 357／引擎 226／冻结 131，与 rebase 前 12:28:50 的逐笔读数同数）；CI 绿后验收会话可用 CI 读数覆写核对",
+  "recorded_at": "2026-11-03T13:01:12+0800",
   "zones": {
     "engine": {
-      "total": 239,
+      "total": 226,
       "rules": {
-        "CyclomaticComplexMethod": 161,
-        "LongMethod": 78
+        "CyclomaticComplexMethod": 154,
+        "LongMethod": 72
       }
     },
     "frozen_ui": {
