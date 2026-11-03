@@ -163,7 +163,23 @@ internal object ToolSchemaRules {
         if (props == null) {
             out += Violation(S3_NO_PROPS, "「$name」没有 properties 段（哪怕全可选也要写成空对象）")
         }
-        // S4/S5/S6 required
+        out += requiredIssues(name, schema, props)
+        // S7 additionalProperties
+        if (schema.optBoolean("additionalProperties", true) && name !in ADDITIONAL_OPEN_OK) {
+            out += Violation(
+                S7_ADDITIONAL_OPEN,
+                "「$name」没关 additionalProperties —— 模型幻觉出的参数会被静默接受，" +
+                    "它会以为参数生效了（94 批负例演练①的靶子）",
+            )
+        }
+        out += propertyIssues(name, props)
+        out += descriptionIssues(name, description)
+        return out
+    }
+
+    /** S4/S5/S6 required（判据与话术逐字照搬，只把结果交回 audit 的顺序位）。 */
+    private fun requiredIssues(name: String, schema: JSONObject, props: JSONObject?): List<Violation> {
+        val out = mutableListOf<Violation>()
         val required = schema.optJSONArray("required")
         when {
             required == null -> out += Violation(
@@ -189,15 +205,12 @@ internal object ToolSchemaRules {
                 }
             }
         }
-        // S7 additionalProperties
-        if (schema.optBoolean("additionalProperties", true) && name !in ADDITIONAL_OPEN_OK) {
-            out += Violation(
-                S7_ADDITIONAL_OPEN,
-                "「$name」没关 additionalProperties —— 模型幻觉出的参数会被静默接受，" +
-                    "它会以为参数生效了（94 批负例演练①的靶子）",
-            )
-        }
-        // S8/S9/S10/S11 逐个属性
+        return out
+    }
+
+    /** S8/S9/S10/S11 逐个属性（定义／type／description／enum／上下界）。 */
+    private fun propertyIssues(name: String, props: JSONObject?): List<Violation> {
+        val out = mutableListOf<Violation>()
         props?.let { p ->
             for (key in p.keys()) {
                 val def = p.optJSONObject(key)
@@ -220,7 +233,12 @@ internal object ToolSchemaRules {
                 }
             }
         }
-        // S12 工具描述
+        return out
+    }
+
+    /** S12 工具描述：空与超长一起判。 */
+    private fun descriptionIssues(name: String, description: String): List<Violation> {
+        val out = mutableListOf<Violation>()
         when {
             description.isBlank() ->
                 out += Violation(S12_DESC, "「$name」的 description 是空的（模型看不见用途就不会调它）")
