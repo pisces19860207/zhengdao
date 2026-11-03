@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.ui.baopu
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,14 +63,37 @@ class BaopuLongformGateTest {
     }
 
     @Test
-    fun `红线-e 接线：长文走卡_短回复保底有手动入口`() {
+    fun `红线-e 接线：长文走卡_一条消息最多一张_手动文本卡入口已删`() {
         val list = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuMessageList.kt")
         // 209：长文卡带 messageId（折叠态按消息 id 记住）——调用形状变了，门禁跟着钉
         assertTrue(
             "长文助手消息必须渲染 BaopuLongformCard 且带上 msg.id（折叠态按 id 记）",
             list.contains("BaopuLongformCard(assistantText, messageId = msg.id.toString())"),
         )
-        assertTrue("普通短回复要有手动「文本卡」入口", list.contains("baopu_longform_open_as_card"))
+        // 407 判据⑤：「文本卡」按钮删掉（它与自动卡重复，且曾把同一条消息叠成两张卡）
+        assertFalse(
+            "「文本卡」手动入口必须删干净（源码与文案都不许再出现）",
+            list.contains("baopu_longform_open_as_card") || list.contains("manualCard"),
+        )
+        // 407 判据④：一条消息最多一张卡＝BaopuLongformCard 在列表里只装配一次（自动卡），
+        // 手动卡装配口已删——装两次就会叠两张。负例：改动前此处是 2。
+        val cardAssemblies = Regex("BaopuLongformCard\\(").findAll(list).count()
+        assertEquals("同一条消息只许有一个卡装配口", 1, cardAssemblies)
+        // 407 判据⑤负例护栏：朗读保留（删错行会把朗读一起删掉）
+        assertTrue("「朗读」按钮必须保留", list.contains("R.string.baopu_speak"))
         assertTrue("触发判据必须走 LongformPolicy（不许在列表里内联写触发条件）", list.contains("BaopuLongformPolicy.isLongform"))
+    }
+
+    @Test
+    fun `红线-f 407_文案与策略收紧自检_按钮文案删除_策略有负例`() {
+        val zh = src("src/main/res/values/strings.xml")
+        val en = src("src/main/res/values-en/strings.xml")
+        assertFalse("中文文案不许再有「文本卡」按钮", zh.contains("baopu_longform_open_as_card"))
+        assertFalse("英文文案不许再有 Text card 按钮", en.contains("baopu_longform_open_as_card"))
+        val policy = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuLongformPolicy.kt")
+        // 触发收紧的形状：isLongform 里不许再读字数阈值（字数只留给 isArticleLike 话题批收稿）
+        val longformBody = policy.substringAfter("fun isLongform(").substringBefore("fun isFileLike")
+        assertFalse("聊天卡入口不许再按字数触发", longformBody.contains("LENGTH_THRESHOLD"))
+        assertTrue("话题批收稿保留含字数旧口径（isArticleLike）", policy.contains("fun isArticleLike"))
     }
 }

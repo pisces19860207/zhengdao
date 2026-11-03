@@ -3706,7 +3706,9 @@ internal class BaopuChatController(context: Context) {
                 topicRecordArticle(TopicArticleResult(cur.seed.title, false, "这一轮被中止，没写成"))
             article.isBlank() ->
                 topicRecordArticle(TopicArticleResult(cur.seed.title, false, "这一轮没有产出正文"))
-            !BaopuLongformPolicy.isLongform(article) ->
+            // 407：话题批落库走含字数的旧口径（isArticleLike）——聊天卡入口取消字数触发
+            // 不影响这里（收的是「文章」，纯长文没有标题/围栏也该落）。
+            !BaopuLongformPolicy.isArticleLike(article) ->
                 topicRecordArticle(TopicArticleResult(cur.seed.title, false, "这轮回复不像一篇长文（太短/没结构），没落"))
             else -> scope.launch {
                 val out = withContext(Dispatchers.IO) { BaopuLongformStore.save(appCtx, article, "md") }

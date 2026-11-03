@@ -319,11 +319,16 @@ class BaopuLongformCollapseTest {
     }
 
     @Test
-    fun `接线-手动文本卡也按消息id记_派生id不撞自动卡`() {
+    fun `接线-手动文本卡入口已删_只剩自动卡一个装配口（407 判据④⑤）`() {
         val list = src(LIST_REL)
-        assertTrue(
-            "手动「文本卡」入口也要带 messageId（派生 id，与自动卡互不干扰）",
-            list.contains("messageId = \"\${msg.id}-manual\""),
+        assertFalse(
+            "407：手动「文本卡」入口已删（与自动卡重复，且曾把同一条消息叠成两张卡）",
+            list.contains("messageId = \"\${msg.id}-manual\"") || list.contains("manualCard"),
+        )
+        assertEquals(
+            "一条消息只有一个卡装配口（自动卡），折叠记忆不可能再撞派生 id",
+            1,
+            Regex("BaopuLongformCard\\(").findAll(list).count(),
         )
     }
 

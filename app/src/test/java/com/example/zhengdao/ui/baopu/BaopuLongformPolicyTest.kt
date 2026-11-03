@@ -29,9 +29,16 @@ class BaopuLongformPolicyTest {
     }
 
     @Test
-    fun `触发-b 超过 600 字_给卡`() {
+    fun `触发-b 字数过阈值_不再给卡（407 字数触发取消）`() {
         val long = "字".repeat(601)
-        assertTrue(BaopuLongformPolicy.isLongform(long))
+        assertFalse(
+            "字数不再是出卡理由（333 字实证出过卡，用户口径：卡只装文件与命令行）",
+            BaopuLongformPolicy.isLongform(long),
+        )
+        // 但话题批收稿保留含字数旧口径（isArticleLike），防既有落稿功能回退
+        assertTrue(BaopuLongformPolicy.isArticleLike(long))
+        // 用户点名要长文时，多短都给卡（另一条通道）
+        assertTrue(BaopuLongformPolicy.isLongform("就一句话。", userText = "帮我写篇文章"))
     }
 
     @Test
@@ -53,17 +60,79 @@ class BaopuLongformPolicyTest {
     }
 
     @Test
-    fun `触发-e 围栏代码块够 5 行_给卡；不足 5 行_不给`() {
-        val code5 = "```kotlin\nfun a() = 1\nfun b() = 2\nfun c() = 3\nfun d() = 4\n```"
-        val code2 = "```kotlin\nfun a() = 1\n```"
-        assertTrue(BaopuLongformPolicy.isLongform(code5))
-        assertFalse(BaopuLongformPolicy.isLongform(code2))
+    fun `触发-e 命令行系围栏_给卡；kotlin与无标签围栏_不给（407 收紧）`() {
+        val bash6 = "```bash\ncd _401m7\nls -la\ncat 汇总.md\nmv a.md 明细/\nrm b.md\npwd\n```"
+        assertTrue("6 行 bash ⇒ 给卡（判据②）", BaopuLongformPolicy.isLongform(bash6))
+        val bash2 = "```bash\nls\npwd\n```"
+        assertFalse("命令行不足 3 行不给卡", BaopuLongformPolicy.isLongform(bash2))
+        val kotlin5 = "```kotlin\nfun a() = 1\nfun b() = 2\nfun c() = 3\nfun d() = 4\n```"
+        assertFalse("kotlin 代码不是命令行（407：卡只装文件与命令行）", BaopuLongformPolicy.isLongform(kotlin5))
+        val tree = "```\nDownload/_401m7/\n  汇总.md 30 B\n  明细/\n    m7a.md 4 B\n    m7b.md 4 B\n```"
+        assertFalse(
+            "无标签目录树围栏不给卡（407 实证：333 字普通回复的真凶就是它）",
+            BaopuLongformPolicy.isLongform(tree),
+        )
     }
 
     @Test
     fun `触发-f 命令行教学三行以上_给卡`() {
         val shell = "\$ adb devices\n\$ adb install -r app.apk\n\$ adb shell am start -n x/y"
         assertTrue(BaopuLongformPolicy.isLongform(shell))
+    }
+
+    @Test
+    fun `触发-f2 引用与井号行首_不再算命令行（407 漏口②收口）`() {
+        val quoted = "> 引用一句\n> 再引一句\n> 第三句引用"
+        assertFalse("行首 > 是引用块不是命令行", BaopuLongformPolicy.isLongform(quoted))
+        val hashes = "# 标题一\n# 标题二\n# 标题三"
+        assertFalse(
+            "行首 # 是标题不是命令行（短文本不该因三行标题出卡）",
+            BaopuLongformPolicy.isLongform(hashes),
+        )
+    }
+
+    @Test
+    fun `触发-h 407 现场 333 字普通回复_不出卡（真机库 msg66 原文回归）`() {
+        val msg66 = """五项全部做完了：`_401m7` 现在有 `汇总.md` 和 `明细/`（里面装着 m7a–m7e）。
+
+```
+Download/_401m7/
+  汇总.md       30 B · 7 行
+  明细/
+    m7a.md      4 B
+    m7b.md      4 B
+    m7c.md      4 B
+    m7d.md      4 B
+    m7e.md      4 B
+```
+
+- 五个文件各写一行自己的名字（`m7a` 到 `m7e`），没有多余内容
+- `汇总.md` 是 `# 汇总` + 一个空行 + a 到 e 五行名字，顺序没错
+- 五个零散文件都进了 `明细/`，根目录下只剩合并稿和子文件夹
+
+清单的五个步骤现在都打上了勾。之前两次更新没能生效；这次只更新了勾选状态，条目文字没有改动，才最终通过。
+
+还有一件事等你决定：`_401m3` 那三份占位稿怎么合并。如果要合并，请回复「按 1，放原地，三份留着」这种格式即可，我立刻做。"""
+        assertEquals(333, BaopuLongformPolicy.wordCount(msg66))
+        assertFalse(
+            "判据①：333 字普通回复不出卡（无标签围栏曾误触发）",
+            BaopuLongformPolicy.isLongform(msg66),
+        )
+    }
+
+    @Test
+    fun `触发-i 文件式_标题必须在开头_中间夹标题不算（407 漏口①收口）`() {
+        val midHeading = "前面先说结论，这事办完了。\n\n" + "# 中间标题\n\n" + "字".repeat(320)
+        assertFalse(
+            "正文中间夹一行 # 的普通回复不是文件",
+            BaopuLongformPolicy.isLongform(midHeading),
+        )
+        assertTrue(
+            "开头就是标题＋够 300 字＝文件式（判据③）",
+            BaopuLongformPolicy.isLongform("# 标题\n\n" + "字".repeat(300)),
+        )
+        assertTrue(BaopuLongformPolicy.isFileLike("# 标题\n\n" + "字".repeat(300)))
+        assertFalse(BaopuLongformPolicy.isFileLike(midHeading))
     }
 
     @Test
@@ -96,6 +165,13 @@ class BaopuLongformPolicyTest {
         val t = BaopuLongformPolicy.cardTitle("这一行有三十个字以上的话就会被截断加省略号看看效果如何呢继续写")
         assertTrue(t.endsWith("…"))
         assertTrue(t.length <= 25)
+    }
+
+    @Test
+    fun `标题-c 纯命令行消息_标题取第一条命令_不是围栏标记（407 判据②）`() {
+        val bash6 = "```bash\ncd _401m7\nls -la\ncat 汇总.md\nmv a.md 明细/\nrm b.md\npwd\n```"
+        assertEquals("cd _401m7", BaopuLongformPolicy.cardTitle(bash6))
+        assertEquals("无标题", BaopuLongformPolicy.cardTitle("```\n```"))
     }
 
     // ── slug 与文件名 ─────────────────────────────────────────────────────

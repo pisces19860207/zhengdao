@@ -24,27 +24,49 @@ internal object BaopuLongformPolicy {
     /** 列表项（- 或 1. ）。 */
     private val LIST_ITEM = Regex("(?m)^(?:-|\\d+[.、])\\s+")
 
-    /** 围栏代码块（``` 或 ~~~ 包裹）——只认多行的。 */
-    private val FENCE = Regex("(?s)```[^\\n]*\\n.*?```|~~~[^\\n]*\\n.*?~~~")
-
-    /** 命令行行首（`$ ` / `# ` / `> ` 开头）——教人用命令行的典型形态。 */
-    private val SHELL_LINE = Regex("(?m)^\\s*(?:\\$|#|>)\\s+\\S")
-
-    /** 字数阈值：超过就值得一张卡（普通一两段聊天到不了）。 */
-    const val LENGTH_THRESHOLD = 600
+    /**
+     * 围栏代码块（``` 或 ~~~ 包裹）——第 1/3 组是语言标签行，第 2/4 组是内容。
+     *
+     * 407 实证（真机库 msg66，333 字普通回复出卡）：真凶是**不带语言标签的目录树
+     * 围栏**——旧规则「围栏 ≥5 行＝代码」把普通回复里的文件清单也当成了代码。
+     */
+    private val FENCE = Regex("(?s)```([^\\n]*)\\n(.*?)```|~~~([^\\n]*)\\n(.*?)~~~")
 
     /**
-     * 「文件式内容」的次级阈值：有 `#` 标题、且正文到这个字数 ⇒ 才给卡。
+     * 命令行系围栏的语言标签（bash/shell 之类）。
+     * 407 口径：围栏只有「命令行系标签」才给卡；kotlin/python/无标签一律不给。
+     */
+    private val SHELL_FENCE_TAG =
+        Regex("^\\s*(?:bash|sh|shell|zsh|console|terminal|powershell|pwsh|cmd|bat|batch|ps1)\\s*$", RegexOption.IGNORE_CASE)
+
+    /**
+     * 命令行行首（`$ ` 开头）——教人用命令行的典型形态。
+     * 407 收紧：删掉 `#` 与 `>` 两个行首——`#` 行首是 markdown 标题、`>` 行首是引用块，
+     * 都曾被误当命令行（派工单 407 漏口②）。
+     */
+    private val SHELL_LINE = Regex("(?m)^\\s*\\$\\s+\\S")
+
+    /**
+     * 「文件式内容」的次级阈值：**开头**就是 `#` 标题、且正文到这个字数 ⇒ 才给卡。
      *
      * 2026-10-26 用户口径：文本卡**只在长文本 / .md / .txt / 代码 / 命令行教学**时出现。
      * 原「有标题就给卡」「段落 ≥3 给卡」「列表 ≥3 给卡」是"几乎每条都出卡"的元凶，已删。
+     *
+     * 407 收紧（漏洞①）：标题必须落在**第一个非空行**——「文件式」是整篇长得像文件，
+     * 正文中间夹一行 `#` 的普通回复不算。
      */
     const val FILE_LIKE_THRESHOLD = 300
 
-    /** 代码块至少多少行才算"代码"（短片段不值得一张卡）。 */
-    const val CODE_BLOCK_MIN_LINES = 5
+    /**
+     * 字数阈值：**只在话题批收稿判据 [isArticleLike] 里用**。
+     *
+     * 407：聊天卡入口取消「字数过阈值就给卡」（333 字普通回复曾出两张卡，
+     * 用户口径「文本卡只能装文件与命令行」）；话题批自动落库是另一条通道，
+     * 保留旧口径（含字数）防既有功能回退。
+     */
+    const val LENGTH_THRESHOLD = 600
 
-    /** 命令行教学至少多少行命令。 */
+    /** 命令行教学至少多少行命令（围栏内容行数也用同一档）。 */
     const val SHELL_MIN_LINES = 3
 
     /** 文件名里 slug 的最大长度（字符）。 */
@@ -55,28 +77,45 @@ internal object BaopuLongformPolicy {
     /**
      * 这条回复要不要渲染成输出卡。
      *
-     * **只有五种情况给卡**（2026-10-26 用户口径）：
+     * **只有三种情况给卡**（407 用户口径「文本卡只装文件与命令行」）：
      * 1. **用户点名**：这轮用户输入里有 微头条/文章/文案/长文；
-     * 2. **长文本**：非空白字符 ≥ [LENGTH_THRESHOLD]；
-     * 3. **代码**：围栏代码块 ≥ [CODE_BLOCK_MIN_LINES] 行；
-     * 4. **命令行教学**：`$ `/`# `/`> ` 开头命令行 ≥ [SHELL_MIN_LINES] 行；
-     * 5. **文件式内容**（.md/.txt）：有 `#` 标题 **且** ≥ [FILE_LIKE_THRESHOLD] 字。
+     * 2. **命令行**：命令行系围栏（```bash 等）内容 ≥ [SHELL_MIN_LINES] 行，
+     *    或 `$ ` 开头的命令行 ≥ [SHELL_MIN_LINES] 行；
+     * 3. **文件式内容**（.md/.txt）：**开头**是 `#` 标题 **且** ≥ [FILE_LIKE_THRESHOLD] 字。
      *
-     * 已删除的两条（曾让几乎所有回答都出卡）：段落数 ≥3、列表项 ≥3。
+     * 407 删除的两条（曾让普通回复出卡）：字数 ≥ [LENGTH_THRESHOLD]（333 字实证出卡）、
+     * 围栏 ≥5 行＝代码（目录树围栏实证出卡）。
      */
     fun isLongform(text: String, userText: String = ""): Boolean {
         if (text.isBlank()) return false
         if (USER_KEYWORDS.containsMatchIn(userText)) return true
-        val chars = wordCount(text)
-        if (chars >= LENGTH_THRESHOLD) return true
-        if (hasCodeBlock(text)) return true
+        if (hasShellFence(text)) return true
         if (SHELL_LINE.findAll(text).count() >= SHELL_MIN_LINES) return true
-        return HEADING.containsMatchIn(text) && chars >= FILE_LIKE_THRESHOLD
+        return isFileLike(text)
     }
 
-    /** 有没有"够长"的围栏代码块。 */
-    private fun hasCodeBlock(text: String): Boolean = FENCE.findAll(text).any { m ->
-        m.value.count { it == '\n' } >= CODE_BLOCK_MIN_LINES
+    /**
+     * 文件式内容（.md/.txt）：**第一个非空行**就是 `#`/`##` 标题行、且全文 ≥ [FILE_LIKE_THRESHOLD] 字。
+     * 标题在正文中间的普通回复不算（407 漏口①的收口）。
+     */
+    fun isFileLike(text: String): Boolean {
+        val first = text.lineSequence().firstOrNull { it.isNotBlank() } ?: return false
+        return HEADING.containsMatchIn(first) && wordCount(text) >= FILE_LIKE_THRESHOLD
+    }
+
+    /**
+     * 话题批收稿判据（**旧口径**，含字数）：只给 [BaopuChatController] 话题批落库闸用，
+     * 聊天卡入口不看字数——两条通道分口（407），防止聊天收紧误伤自动落稿。
+     */
+    fun isArticleLike(text: String): Boolean =
+        isLongform(text) || wordCount(text) >= LENGTH_THRESHOLD
+
+    /** 有没有"命令行系"的围栏（```bash 等，内容 ≥ [SHELL_MIN_LINES] 行）；无标签/kotlin/python 不算。 */
+    private fun hasShellFence(text: String): Boolean = FENCE.findAll(text).any { m ->
+        val tag = m.groups[1]?.value ?: m.groups[3]?.value ?: ""
+        val content = m.groups[2]?.value ?: m.groups[4]?.value ?: ""
+        SHELL_FENCE_TAG.containsMatchIn(tag) &&
+            content.lineSequence().count { it.isNotBlank() } >= SHELL_MIN_LINES
     }
 
     /** 字数＝非空白字符数（中文场景比"词数"直觉）。 */
@@ -84,11 +123,17 @@ internal object BaopuLongformPolicy {
 
     // ── 标题 ──────────────────────────────────────────────────────────────
 
-    /** 卡头标题：优先 markdown 标题行；否则取第一个非空行；截 24 字。 */
+    /** 围栏标记行（```bash、```、~~~ 这类）——当标题没意义，跳过。 */
+    private val FENCE_MARK = Regex("^\\s*(?:```|~~~)")
+
+    /**
+     * 卡头标题：优先 markdown 标题行；否则取第一个非空行（407：围栏标记行不算，
+     * 纯命令行消息的标题是第一条命令而不是「```bash」）；截 24 字。
+     */
     fun cardTitle(text: String): String {
         val heading = HEADING.find(text)?.groupValues?.get(1)?.trim()
         val first = heading
-            ?: text.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
+            ?: text.lineSequence().firstOrNull { it.isNotBlank() && !FENCE_MARK.containsMatchIn(it) }?.trim()
             ?: return "无标题"
         val clean = first.removePrefix("#").trim()
         return if (clean.length > 24) clean.take(24) + "…" else clean.ifEmpty { "无标题" }

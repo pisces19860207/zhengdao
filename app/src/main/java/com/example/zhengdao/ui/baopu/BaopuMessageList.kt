@@ -33,8 +33,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -568,35 +566,18 @@ private fun BaopuMessageRow(
                             .joinToString("\n") { it.text }
                             .trim()
                         if (speakable.isNotEmpty()) {
-                            // 第一百七十九批：普通短回复不强制变卡，但给一个手动入口——
-                            // 「文本卡」点了就地展开输出卡（同样是大复制＋存 md/txt）。
-                            var manualCard by remember(msg.id) { mutableStateOf<String?>(null) }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(
-                                    onClick = { onSpeak(speakable) },
-                                    contentPadding = PaddingValues(0.dp),
-                                    modifier = Modifier.padding(top = 2.dp).height(28.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.baopu_speak),
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-                                }
-                                Spacer(Modifier.width(16.dp))
-                                TextButton(
-                                    onClick = { manualCard = speakable },
-                                    contentPadding = PaddingValues(0.dp),
-                                    modifier = Modifier.padding(top = 2.dp).height(28.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.baopu_longform_open_as_card),
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-                                }
-                            }
-                            // 209：手动开的卡也按消息 id 记折叠态（派生 id 与自动卡互不干扰）
-                            manualCard?.let {
-                                BaopuLongformCard(it, Modifier.padding(top = 4.dp), messageId = "${msg.id}-manual")
+                            // 407：删掉「文本卡」手动入口——它与自动卡是重复设计，且是
+                            // 「同一消息叠两张卡」的触发器；卡只由 isLongform 触发，
+                            // 一条消息最多一张（判据④/⑤的闸在这里收口）。
+                            TextButton(
+                                onClick = { onSpeak(speakable) },
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.padding(top = 2.dp).height(28.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.baopu_speak),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
                             }
                         }
                     }
