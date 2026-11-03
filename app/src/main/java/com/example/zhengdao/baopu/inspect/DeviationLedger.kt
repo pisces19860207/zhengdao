@@ -108,6 +108,13 @@ internal data class DeviationEntry(
         const val F_QUESTION = "question"
         const val F_PENDING = "pending"
 
+        /**
+         * 挂起的那次调用的 opId（第四百一十五批加的事实键；卡级映射键——卡处置账的
+         * `card` 列存的就是同一个 id，偏差→处置两行按键 join）。可缺：调用方给不出
+         * 就不进键（facts 是闭集但**不填空值**——空格没有信息，空键才是"没取证"）。
+         */
+        const val F_OP_ID = "op_id"
+
         /** 行的 id 拼法（与 TraceEdge.evidenceId 同风格；同刻两条同 run ⇒ id 同、行仍是两行）。 */
         fun idOf(runId: String, atMs: Long): String = "dev:$runId#$atMs"
 
@@ -176,7 +183,12 @@ internal data class DeviationEntry(
             ),
         )
 
-        /** 挂起超时：挂起时刻 / 问题摘要 / 仍挂起。 */
+        /**
+         * 挂起超时：挂起时刻 / 问题摘要 / 仍挂起。
+         *
+         * @param callId 挂起的那次调用的 opId（415；给得出才进 `op_id` 键，给不出留空串——
+         *        旧行没有这个键，读侧照常）
+         */
         fun suspendTimeout(
             runId: String,
             taskId: String,
@@ -184,14 +196,19 @@ internal data class DeviationEntry(
             suspendedAtMs: Long,
             question: String,
             stillPending: Boolean,
-        ): DeviationEntry = DeviationEntry(
-            id = idOf(runId, atMs), atMs = atMs, runId = runId, taskId = taskId,
-            kind = DeviationKind.SUSPEND_TIMEOUT,
-            facts = mapOf(
-                F_SUSPENDED_AT to "$suspendedAtMs", F_QUESTION to question,
-                F_PENDING to if (stillPending) "是" else "否",
-            ),
-        )
+            callId: String = "",
+        ): DeviationEntry {
+            val facts = buildMap {
+                put(F_SUSPENDED_AT, "$suspendedAtMs")
+                put(F_QUESTION, question)
+                put(F_PENDING, if (stillPending) "是" else "否")
+                if (callId.isNotBlank()) put(F_OP_ID, callId)
+            }
+            return DeviationEntry(
+                id = idOf(runId, atMs), atMs = atMs, runId = runId, taskId = taskId,
+                kind = DeviationKind.SUSPEND_TIMEOUT, facts = facts,
+            )
+        }
     }
 }
 
@@ -221,6 +238,7 @@ internal object DeviationLedger {
         DeviationEntry.F_SUSPENDED_AT to "挂起时刻",
         DeviationEntry.F_QUESTION to "问题摘要",
         DeviationEntry.F_PENDING to "仍挂起",
+        DeviationEntry.F_OP_ID to "调用 opId",
     )
 
     /**

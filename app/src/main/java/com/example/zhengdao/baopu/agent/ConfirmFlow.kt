@@ -245,7 +245,9 @@ internal class ConfirmFlow(
             null -> {
                 // 第三百八十六批：等到线＝挂起超时实锤，落一行账（386；静默——记账不改判定；
                 // suspendedAtMs＝上面落 pending 那一刻的 at，question＝卡面摘要，已清库⇒不再挂起）。
-                DeviationWiring.recordSuspendTimeout(at, summary, stillPending = false)
+                // 第四百一十五批：捎上这次调用的 opId（call.id）——处置账那行的 card 就是它，
+                // 偏差→处置两行之间从此有键可 join，不再靠 subject 文本硬凑。
+                DeviationWiring.recordSuspendTimeout(at, summary, stillPending = false, callId = call.id)
                 noteDisposition(call, summary, false, abandoned = false, timedOut = true)
                 store.clear(sessionId)
                 ConfirmScopeChoice.discard(call.id) // 超时收走 ⇒ 没消费的范围选择作废
@@ -286,6 +288,9 @@ internal class ConfirmFlow(
      *
      * 免卡直跑（范围授权命中）与重复请求被合并**都不调这里**：那两条路上根本没有卡，
      * 没有卡就没有处置——给没发生过的问答留一行，正是本批要清的病。
+     *
+     * 第四百一十五批：在线三路都从出处信箱取轮出处（主键 runId＋单号 taskId）——
+     * 挂起超时的时钟收卡行因此与偏差账那行同键，闭环时延才能按键串链。
      */
     private fun noteDisposition(call: ToolCall, summary: String, approved: Boolean, abandoned: Boolean, timedOut: Boolean) {
         val choice = when {
@@ -299,14 +304,21 @@ internal class ConfirmFlow(
             actor = if (timedOut) CardDisposition.Actor.CLOCK else CardDisposition.Actor.USER,
             subject = summary,
             why = note.orEmpty(),
+            runId = DeviationWiring.currentRunId(),
+            taskId = DeviationWiring.currentTaskId(),
         )
     }
 
     /**
      * 落一行处置（**本内核唯一的落笔形状**：脸永远是确认卡，理由永远是"这一格该有的那句话"）。
      *
-     * 三条路都走它：在线批／驳／超时（[noteDisposition]）、恢复批准（[noteRestoredApproval]）、
-     * 恢复拒绝（[restoredReject]）——四格字段的写法只有一份，多一条路不会多出一种行格式。
+     * 四条路都走它：在线批／驳／超时（[noteDisposition]，出处从信箱取真值）、
+     * 恢复批准（[noteRestoredApproval]）、恢复拒绝（[restoredReject]）——四格字段的写法
+     * 只有一份，多一条路不会多出一种行格式。
+     *
+     * 出处两格（415 加的列）默认**空串**：恢复两路显式不传——挂起那轮的 runId 没取证在
+     * pending 三列里，重启后的信箱装的也不是它（那是现轮的），宁空勿猜；链路靠
+     * `restored-<pending_at>` ↔ 偏差行 `suspended_at` 这一卡级键对齐。
      */
     private fun recordDisposition(
         choice: CardDisposition.Choice,
@@ -314,6 +326,8 @@ internal class ConfirmFlow(
         actor: CardDisposition.Actor,
         subject: String,
         why: String = "",
+        runId: String = "",
+        taskId: String = "",
     ) {
         CardDisposition.record(
             choice = choice,
@@ -322,6 +336,8 @@ internal class ConfirmFlow(
             actor = actor,
             subject = subject,
             why = why,
+            runId = runId,
+            taskId = taskId,
         )
     }
 

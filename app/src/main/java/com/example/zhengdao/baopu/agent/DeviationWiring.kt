@@ -75,13 +75,19 @@ internal object DeviationWiring {
         record(DeviationEntry.timeout(rid, currentTaskId(), nowMs(), elapsedMs, limitMs, tool))
     }
 
-    /** 挂起超时：确认卡等到线处（挂起时刻是 `enter` 落 pending 那一刻的真值）。 */
-    fun recordSuspendTimeout(suspendedAtMs: Long, question: String, stillPending: Boolean) {
+    /**
+     * 挂起超时：确认卡等到线处（挂起时刻是 `enter` 落 pending 那一刻的真值）。
+     *
+     * @param callId 挂起的那次调用的 opId（第四百一十五批加的出处：卡级映射键——
+     *        处置账时钟收卡行的 `card` 列就是同一个 id，偏差→处置两行按键 join；
+     *        调用方给不出就留空串，账行照落，只是那一格空着——宁空勿猜）
+     */
+    fun recordSuspendTimeout(suspendedAtMs: Long, question: String, stillPending: Boolean, callId: String = "") {
         val rid = currentRunId()
         if (rid.isBlank()) return
         record(
             DeviationEntry.suspendTimeout(
-                rid, currentTaskId(), nowMs(), suspendedAtMs, question, stillPending,
+                rid, currentTaskId(), nowMs(), suspendedAtMs, question, stillPending, callId,
             ),
         )
     }

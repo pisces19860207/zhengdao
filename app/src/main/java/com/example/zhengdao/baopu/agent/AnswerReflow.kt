@@ -408,6 +408,9 @@ internal object AnswerReflow {
             subject = ask.headline,
             why = whyOf(answer, grant),
             atMs = nowMs,
+            // 415：处置行带轮出处（主键 runId＋单号 taskId）；信箱空（没起 run）⇒ 空串照落
+            runId = DeviationWiring.currentRunId(),
+            taskId = DeviationWiring.currentTaskId(),
         )
     }
 

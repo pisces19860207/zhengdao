@@ -22,6 +22,13 @@
 // ——照 283 那条纪律（标签只能来自人）；超时不是有人表态，是时钟把卡收走了，
 // 所以它的形状是 `actor=时钟 + choice=不用了 + why=没人表态`，读的人一眼看得懂。
 //
+// 第四百一十五批（键×账本）加了两列出处 `runId`／`taskId`，只加字段不改语义：
+// 闭环时延（375）串「偏差→处置→恢复」时，本账与偏差账之间没有键可 join——
+// 在线处置行只能靠 subject 文本硬凑，恢复行靠 `restored-<at>` 凑合。加列之后在线行
+// 带主键 runId（出处信箱取真值），跨账用键串链才成立；老行没有这两列 ⇒ 读成空串照常入账，
+// 恢复行如实留空（挂起那轮的 runId 没进 pending 三列，宁空勿猜）。roundKey（意见判定/追认
+// 队列的轮源）与本账主键不同命名空间，照 375 的诚实区口径**不并轨**。
+//
 // 房型照 274/277/278/298（同一条链路上的另外几本账）：
 // · 落点＝208 已装配的那棵私有目录（`抱朴记忆/`，取自 [DecisionLedger.installedRoot]），
 //   **不是模型指的工作区路径**；文件名独立（`卡处置.jsonl`）；
@@ -126,6 +133,11 @@ internal object CardDisposition {
      *        它是"哪张卡"的一格，不是业务账的键——账与账之间不许拿它互相当对方的行。
      * @param subject 卡讲的是什么事的一句人话（确认卡＝摘要；只供审计阅读，不参与判定）
      * @param why 为什么这么处置（留空 ⇒ 用该选项的类别句；理由列不许空白）
+     * @param runId 轮出处（第四百一十五批加的列；键×账本矩阵的主键——跨账串
+     *        「偏差→处置→恢复」就靠它）。**老行没有这一列 ⇒ 读成空串，照常入账**；
+     *        恢复卡那两路（重启后批/驳）也如实留空——挂起那轮的 runId 没取证在
+     *        pending 三列里，宁空勿猜（填上现轮就是编造）。
+     * @param taskId 单出处（同批捎带的列；引擎还没把授权单号回填出处信箱 ⇒ 生产多为空串）
      */
     data class CardDispositionRow(
         val id: String,
@@ -136,6 +148,8 @@ internal object CardDisposition {
         val actor: Actor,
         val subject: String,
         val why: String,
+        val runId: String = "",
+        val taskId: String = "",
     ) {
         fun toJson(): JSONObject = JSONObject()
             .put("v", VERSION)
@@ -147,6 +161,8 @@ internal object CardDisposition {
             .put("actor", actor.wire)
             .put("subject", subject)
             .put("why", why)
+            .put("runId", runId)
+            .put("taskId", taskId)
 
         companion object {
             /**
@@ -174,6 +190,9 @@ internal object CardDisposition {
                     actor = actor,
                     subject = o.optString("subject"),
                     why = o.optString("why"),
+                    // 415 加的两列出处：老行没有这两个键 ⇒ optString 读成空串，行照认（旧行空值不报错）
+                    runId = o.optString("runId"),
+                    taskId = o.optString("taskId"),
                 )
             }
         }
@@ -185,6 +204,9 @@ internal object CardDisposition {
     /**
      * **唯一写入口**（本批裁定：表结构留好、写入口留一个）。
      *
+     * @param runId 轮出处（415：主键 runId；在线路径由调用方从出处信箱取真值，
+     *        恢复路径显式留空——宁空勿猜）；缺省空串 ⇒ 老调用点一行不改、行为不变
+     * @param taskId 单出处（415 捎带列；同上）
      * @return 落下的行；缺落点或写失败 ⇒ null（不抛：账是留痕不是闸门）
      */
     @Synchronized
@@ -196,6 +218,8 @@ internal object CardDisposition {
         subject: String = "",
         why: String = "",
         atMs: Long = System.currentTimeMillis(),
+        runId: String = "",
+        taskId: String = "",
     ): CardDispositionRow? {
         if (cardId.isBlank()) {
             RunLog.log("抱朴处置账：处置缺落点（哪张卡认不出），不落（$choice）")
@@ -210,6 +234,8 @@ internal object CardDisposition {
             actor = actor,
             subject = subject.trim(),
             why = why.trim().ifEmpty { defaultWhy(choice, actor) },
+            runId = runId.trim(),
+            taskId = taskId.trim(),
         )
         memory.add(row)
         if (memory.size > MEMORY_CAP) memory.removeAt(0)

@@ -9,6 +9,9 @@ import com.example.zhengdao.baopu.CardDisposition
 import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.PendingRow
 import com.example.zhengdao.baopu.PendingStore
+import com.example.zhengdao.baopu.inspect.DeviationEntry
+import com.example.zhengdao.baopu.inspect.DeviationKind
+import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.ui.baopu.BaopuConfirmRestore
 import java.io.File
 import java.nio.file.Files
@@ -428,6 +431,91 @@ class ConfirmFlowTest {
             DecisionLedger.uninstallForTest()
             CardDisposition.resetForTest()
         }
+    }
+
+    // ── 第四百一十五批 判据③：挂起超时三行账用键串成一条链（偏差→处置→恢复） ──
+
+    @Test
+    fun `判据415_挂起超时三行账按键串链_偏差到处置到恢复`() = runBlocking {
+        val root = tmp("chain-415")
+        val ledger = tmp("chain-415-ledger")
+        DecisionLedger.install(ledger)
+        DeviationLedger.install(ledger)
+        CardDisposition.resetForTest()
+        DeviationWiring.resetForTest()
+        try {
+            // ① 引擎开轮（RunEngine.newRun 处的同一口：出处信箱装本轮 runId）
+            DeviationWiring.installRun("r7@1000", "")
+            // ② 挂起超时：注入超时钟（前台已累计 16 分钟 > 15 分钟线）
+            val r = rig(root, projectRoot = { root }) { 16 * 60 * 1000L }
+            var outcome: ConfirmFlow.Outcome? = null
+            val job = launch {
+                outcome = r.flow.enter(1L, 1, writeCall("call-chain", "t.txt", "内容")) { _, _ -> null }
+            }
+            awaitCardOrDone(r, job)
+            job.join()
+            assertTrue("先真的超时：$outcome", outcome is ConfirmFlow.Outcome.TimedOut)
+
+            // ③ 偏差行：主键 runId ＋ 事实键 suspended_at／op_id
+            val dev = DeviationLedger.read(ledger).single { it.kind == DeviationKind.SUSPEND_TIMEOUT }
+            assertEquals("偏差行主键＝本轮 runId", "r7@1000", dev.runId)
+            val suspendedAt = checkNotNull(dev.facts[DeviationEntry.F_SUSPENDED_AT]?.toLongOrNull()) {
+                "挂起时刻必须是事实键：${dev.facts.keys}"
+            }
+            assertEquals("偏差行带卡级键 op_id＝挂起那次调用的 id", "call-chain", dev.facts[DeviationEntry.F_OP_ID])
+
+            // ④ 处置行（时钟收卡）：主键同轮 ＋ card 就是那个 op_id —— 偏差→处置按键 join
+            val dismiss = CardDisposition.rowsFor("call-chain").single()
+            assertEquals("处置行主键＝同一轮 runId", dev.runId, dismiss.runId)
+            assertEquals("处置行 card＝偏差行 op_id（不再靠 subject 文本硬凑）", dev.facts[DeviationEntry.F_OP_ID], dismiss.cardId)
+            assertEquals("没人表态是时钟收卡", CardDisposition.Actor.CLOCK, dismiss.actor)
+
+            // ⑤ 恢复行（重启后对恢复卡表态那半）：runId 宁空勿猜；card＝restored-<suspended_at>
+            DeviationWiring.clearRun() // 模拟重启：新进程的信箱里没有挂起那轮的 runId
+            val restoredArgs = JSONObject()
+                .put("path", File(root, "t.txt").absolutePath)
+                .put("content", "恢复写的")
+                .toString()
+            val result = r.flow.restoredExecute(
+                7L,
+                PendingRow(tool = "write_file", argsJson = restoredArgs, at = suspendedAt),
+            ) { _, _ -> null }
+            assertTrue("恢复要真的执行（链的第三行是恢复卡处置行的副产物）：$result", result is GuardPipeline.Result.Done)
+            val restored = CardDisposition.rowsFor("restored-$suspendedAt").single()
+            assertEquals("恢复行 runId 宁空勿猜（挂起那轮的出处没进 pending 三列）", "", restored.runId)
+            assertEquals("恢复行 card＝restored-<suspended_at>，与偏差行事实键同刻", "restored-$suspendedAt", restored.cardId)
+
+            // ⑥ 盘上都能被各自解析器读回：偏差 1 行、处置 2 行（新列与老行口径并存）
+            assertEquals(1, DeviationLedger.fileIn(ledger).readLines(Charsets.UTF_8).count { it.isNotBlank() })
+            val dispOnDisk = CardDisposition.fileIn(ledger).readLines(Charsets.UTF_8).filter { it.isNotBlank() }
+            assertEquals("处置账两行（时钟收卡＋恢复批准）", 2, dispOnDisk.size)
+            assertTrue("每行都要能被本账解析器读回", dispOnDisk.all { CardDisposition.CardDispositionRow.parse(it) != null })
+        } finally {
+            DecisionLedger.uninstallForTest()
+            CardDisposition.resetForTest()
+            DeviationWiring.resetForTest()
+            // 卸账＝挂一个空目录（本仓的既有口径：DeviationWiringSilentTest 同款）
+            DeviationLedger.install(Files.createTempDirectory("baopu-415-detach").toFile())
+        }
+    }
+
+    @Test
+    fun `判据415_处置账旧行没有出处两列_读成空串照认`() {
+        val legacy = JSONObject()
+            .put("v", 1)
+            .put("id", "cd:1000:1")
+            .put("at", 1_000L)
+            .put("face", "confirm")
+            .put("card", "call-old")
+            .put("choice", "dismiss")
+            .put("actor", "clock")
+            .put("subject", "旧摘要")
+            .put("why", "确认超时，没人表态 ⇒ 这张卡作废（既不算批也不算驳）")
+            .toString()
+        val row = checkNotNull(CardDisposition.CardDispositionRow.parse(legacy)) { "旧行不许被新列拒掉" }
+        assertEquals("call-old", row.cardId)
+        assertEquals("老行 runId 读成空串", "", row.runId)
+        assertEquals("老行 taskId 读成空串", "", row.taskId)
     }
 
     @Test

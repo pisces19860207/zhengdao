@@ -56,6 +56,38 @@ class DeviationLedgerTest {
         assertTrue(back.all { it.runId == "run-a" && it.taskId == "task-1" })
     }
 
+    // ── 第四百一十五批：挂起超时捎带调用号（卡级映射键 op_id） ─────────────
+
+    @Test
+    fun `挂起超时带调用号_op_id进键_带出入账往返`() {
+        assertTrue(
+            DeviationLedger.write(
+                root,
+                DeviationEntry.suspendTimeout(
+                    "run-415", "task-415", 6_000L, suspendedAtMs = 901_000L,
+                    question = "要动哪个目录", stillPending = false, callId = "call-415",
+                ),
+            ),
+        )
+        val back = DeviationLedger.read(root).first { it.kind == DeviationKind.SUSPEND_TIMEOUT }
+        assertEquals("call-415", back.facts[DeviationEntry.F_OP_ID])
+        assertEquals("901000", back.facts[DeviationEntry.F_SUSPENDED_AT])
+        // describe 走中文标签（不认得的键才照抄键名）
+        assertTrue("读数要带调用号的中文说法：${back.describe()}", back.describe().contains("调用 opId call-415"))
+    }
+
+    @Test
+    fun `挂起超时不带调用号_op_id不进键_旧行口径不变`() {
+        assertTrue(
+            DeviationLedger.write(
+                root,
+                DeviationEntry.suspendTimeout("run-415b", "", 7_000L, suspendedAtMs = 902_000L, question = "再等等", stillPending = true),
+            ),
+        )
+        val back = DeviationLedger.read(root).first { it.kind == DeviationKind.SUSPEND_TIMEOUT }
+        assertFalse("没取证就不许有空值键：${back.facts.keys}", back.facts.containsKey(DeviationEntry.F_OP_ID))
+    }
+
     @Test
     fun `造一次超步_一条账行_id按拼法`() {
         assertTrue(DeviationLedger.write(root, DeviationEntry.overSteps("run-x", "", 7_000L, steps = 17, limit = 16, atStep = 17)))
