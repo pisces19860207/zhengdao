@@ -136,7 +136,7 @@ internal object MetricsWiring {
      * 读数那一行：**先报态，再报数**。三句互不冒充。
      *
      * - 有数：`读数（四率）·有数（样本 ≥10）：违规率 3.1%（1/32）｜…`
-     * - 现算：`读数（四率）·现算（不落账，样本不足 10 条）：违规率 32 条样本｜…`（**不印 %**）
+     * - 现算：`读数（四率）·现算（不落账，样本不足 10 条）：违规率 n<10（5 条）｜…`（**不印 %、不印 0**）
      * - 无数据：`读数（四率）·无数据（这一趟没跑起来）`（不印数、不印条数）
      */
     fun readingLine(state: ReadingState, keys: List<MetricKey>, lines: List<MetricLine>): String {
@@ -147,16 +147,25 @@ internal object MetricsWiring {
                 "$head（样本 ≥${Metrics.MIN_DENOM}）：" + picked.joinToString("｜") { human(it) }
             ReadingState.COMPUTED ->
                 "$head（不落账，样本不足 ${Metrics.MIN_DENOM} 条）：" +
-                    picked.joinToString("｜") { "${it.key.cn} ${it.ratio.denom} 条样本" }
+                    picked.joinToString("｜") { samplePhrase(it) }
             ReadingState.NO_DATA -> "$head（这一趟没跑起来）"
         }
+    }
+
+    /**
+     * 现算态的单项（403 定的口径）：**样本不足只写 `n<10`**，不许把分母当条数印成"发生数"。
+     * `0 条样本` 会被读成"这窗一次都没发生"——0 是"有数且为 0"，账没记过是"无记录"，两回事。
+     */
+    private fun samplePhrase(line: MetricLine): String {
+        val d = line.ratio.denom
+        return if (d > 0) "${line.key.cn} n<10（$d 条）" else "${line.key.cn} n<10（无记录）"
     }
 
     /**
      * 一项读数翻成人话。
      *
      * 算得出：`违规率 3.1%（1/32）`——分子分母都亮出来，点得开明细。
-     * 算不出：`违规率 样本不足（只有 4 条，不到 10 条）`——**一个字都不出现 %**。
+     * 算不出：`违规率 样本不足（n<10，有 4 条）`——**一个字都不出现 %，也不出现 0**（403）。
      */
     fun human(line: MetricLine): String {
         val r = line.ratio
@@ -172,5 +181,5 @@ internal object MetricsWiring {
 
     /** 差多少条才够算（分母线只有一处：`Metrics.MIN_DENOM`，不在这里再写一个 10）。 */
     private fun shortfall(denom: Int): String =
-        if (denom <= 0) "这窗内没有可算的记录" else "只有 $denom 条，不到 ${Metrics.MIN_DENOM} 条"
+        if (denom <= 0) "n<10，窗内无记录" else "n<10，有 $denom 条"
 }

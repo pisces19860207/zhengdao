@@ -16,6 +16,7 @@ import com.example.zhengdao.baopu.DecisionRecord
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -121,14 +122,25 @@ class MetricsWiringTest {
     }
 
     @Test
-    fun `三态_跑了但样本不够是现算_只印条数不印比例`() {
+    fun `三态_跑了但样本不够是现算_只印n小于10不印比例不印零`() {
         val reading = MetricsWiring.of(now, Metrics.compute(inputsWith(5)))
         assertEquals(ReadingState.COMPUTED, reading.state)
         val line = reading.sheetLines.single()
         assertTrue("现算那一行没写态：$line", line.contains("·现算"))
         assertTrue("现算要说明不落账：$line", line.contains("不落账"))
-        assertTrue("现算要印样本条数：$line", line.contains("违规率 5 条样本"))
+        // 403 判据：样本不足显示 n<10（条数照亮），不许把分母印成"发生数"
+        assertTrue("现算没写 n<10：$line", line.contains("违规率 n<10（5 条）"))
         assertFalse("现算不许印比例：$line", line.contains("%"))
+        assertFalse("现算不许印 0 条样本（0 是「有数且为 0」）：$line", line.contains("0 条样本"))
+    }
+
+    @Test
+    fun `三态_分母为零写无记录_不写零`() {
+        // 第一次装机：账没记过 ⇒ "无记录"，不是"0 条"（0 会被读成零发生）。
+        val line = MetricsWiring.of(now, Metrics.compute(emptyInputs())).sheetLines.single()
+        assertTrue("零分母要写无记录：$line", line.contains("违规率 n<10（无记录）"))
+        // 抬头里"样本不足 10 条"的"10 条"不算数——盯的是单项那段不许出现"（0 条"。
+        assertFalse("零分母不许印成「（0 条」：$line", line.contains("（0 条"))
     }
 
     @Test
@@ -189,8 +201,13 @@ class MetricsWiringTest {
     fun `单项空态也带差多少条`() {
         val lines = Metrics.compute(inputsWith(5))
         val text = MetricsWiring.human(lines.first { it.key == MetricKey.VIOLATION })
-        assertTrue("没说差多少条：$text", text.contains("只有 5 条，不到 10 条"))
+        // 403 口径：样本不足必须带 n<10 这个记号＋真实条数。
+        assertTrue("没写 n<10：$text", text.contains("n<10"))
+        assertTrue("没说有几条：$text", text.contains("有 5 条"))
         assertFalse(text.contains("%"))
+        // n<10 里的"10"不算 0；禁的是把分母/发生数印成 0（403）。
+        assertFalse("样本不足不许把 0 当条数：$text", text.contains("有 0 条"))
+        assertFalse("样本不足不许印「（0」：$text", text.contains("（0"))
     }
 
     // ── ④ 对外文案无内部词 ─────────────────────────────────────────────────
@@ -244,10 +261,33 @@ class MetricsWiringTest {
     @Test
     fun `判据⑤_读数不喂给任何触发动作的入口`() {
         val run = code(File(mainRoot, "HealthRun.kt"))
-        // 读数只有"印成一行字"这一个去处：明细与面板三行都留给 322，不进判断。
-        assertFalse("读数明细进了体检判断", run.contains("reading.lines"))
+        // 403 起读数的**产出计数**接进部位档（readingOutputs，判"在干活"用）——
+        // 但明细行的**内容**仍然只许印成一行字：.size 之外任何用法都算把明细喂进了判断。
+        assertTrue("读数产出没接进部位档（403 的病根）", run.contains("readingOutputs(reading)"))
+        assertFalse("读数明细的内容进了判断（只许 .size 计数）", Regex("""reading\.lines\.(?!size)""").containsMatchIn(run))
         assertFalse("面板那三行进体检判断", run.contains("centerLines"))
         assertFalse("读数被当成「账在没人算」的判据喂了回去", run.contains("SignalInput(ledgerReaderWired"))
+    }
+
+    // ── 403：读数层的部位档（态线不许空串，产出与直读一致）────────────────────
+
+    @Test
+    fun `判据403_读数产出接进部位档_与直读同一份`() {
+        val computed = MetricsWiring.of(now, Metrics.compute(inputsWith(12)))
+        assertTrue("算出来的读数产出必须是正数（非空）", HealthRun.readingOutputs(computed) > 0)
+        assertEquals("产出数＝直读的指标行数，不是另算的一套", computed.lines.size, HealthRun.readingOutputs(computed))
+        assertEquals("没跑起来＝真零产出", 0, HealthRun.readingOutputs(MetricsWiring.noData(now)))
+    }
+
+    @Test
+    fun `判据403_读数层部位不再未取样_态线非空`() {
+        val p = OrganCensus.of(OrganCensus.READING_ORGAN)!!
+        val computed = MetricsWiring.of(now, Metrics.compute(inputsWith(12)))
+        val ok = HealthCheck.organ(p.copy(outputs = HealthRun.readingOutputs(computed)))
+        assertEquals("有产出 ⇒ 在干活，不许再挂「未取样」", OrganState.ACTIVE, ok.state)
+        assertNotNull("态线不许空串", ok.state?.wire)
+        val failed = HealthCheck.organ(p.copy(outputs = HealthRun.readingOutputs(MetricsWiring.noData(now))))
+        assertEquals("没跑起来是零产出（接线态），也不是未取样", OrganState.WIRED_NO_OUTPUT, failed.state)
     }
 
     @Test

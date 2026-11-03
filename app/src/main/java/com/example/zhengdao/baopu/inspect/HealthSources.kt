@@ -40,6 +40,9 @@ internal object OrganCensus {
     /** 生产调用点最多只数到这么多就够判（起居注这种高频口不必精确到个位）。 */
     const val CALL_SITES_FLOOR_ONLY = 50
 
+    /** 读数层的部位名（HealthRun.organOutputs 按它把读数产出接进部位档；改字面量＝两处一起改）。 */
+    const val READING_ORGAN = "读数层"
+
     /** 部位清单（唯一的清单；体检单就是照这张表一行一行问下来的）。 */
     val HEALTH_PARTS: List<OrganProbe> = listOf(
         OrganProbe(
@@ -198,16 +201,19 @@ internal object OrganCensus {
             ),
         ),
         OrganProbe(
-            name = "读数层",
+            name = READING_ORGAN,
             entry = "MetricsSources.snapshot",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/MetricsSources.kt",
             // 第三百四十八批：281 交付时这里是 0（"算了没人看"）。348 把取数口接进体检编排，
             // 每次体检读一趟、翻成一行四率印在单子上 ⇒ 生产调用点 1 处（门禁按同一口径重扫）。
+            // 第四百零三批：产出计数接进部位档（HealthRun.readingOutputs）——四率在内存里、
+            // 不落盘，SINK_FILES 测不出它 ⇒ 以前这里被判"未取样"、态线空串，如今按读数真判。
             callSites = 1,
             sink = "Metrics 四率（内存算，无落盘）",
             evidence = listOf(
                 "inspect/MetricsWiring.kt:read() 是唯一生产调用点（348 接上；体检每次读一趟）",
                 "inspect/HealthRun.kt:run() 把读数翻成一行印进体检单（只读，不触发动作）",
+                "inspect/HealthRun.kt:organOutputs() 把产出计数接进部位档（403；态线不再空串）",
             ),
         ),
     )

@@ -79,7 +79,7 @@ internal object HealthRun {
         val organs = OrganCensus.HEALTH_PARTS.map { p ->
             HealthCheck.organ(
                 p.copy(
-                    outputs = SINK_FILES[p.name]?.let { HealthSources.outputLines(root, it) },
+                    outputs = organOutputs(p, root, reading),
                     previous = prev[p.name]?.let(OrganState::ofWire),
                 ),
             )
@@ -105,6 +105,33 @@ internal object HealthRun {
         )
         return HealthResult(entry, enqueued, if (saved) null else "体检账没落上")
     }
+
+    /**
+     * 部位产出数（403 修正：读数层不再走 SINK_FILES）。
+     *
+     * 病根：读数层的产出在**内存**里（`Metrics 四率，无落盘`），而 SINK_FILES 只收
+     * "单一写者的账本文件"——它没份 ⇒ outputs=null ⇒ 判据层只能如实记"未取样"、
+     * 态线落成空串。可读数明明每次体检都算出来了（348 接线，[MetricsWiring.read]
+     * 就在本文件 run() 里）：**有产出而部位档没读**，就是这处断线。
+     *
+     * 修法：读数层直接吃这一趟读数的产出计数（算出了几行指标，见 [readingOutputs]）；
+     * 其余部位照旧走 SINK_FILES（那一路的口径一字不动）。
+     */
+    private fun organOutputs(p: OrganProbe, root: File, reading: MetricsReading): Int? =
+        if (p.name == OrganCensus.READING_ORGAN) {
+            readingOutputs(reading)
+        } else {
+            SINK_FILES[p.name]?.let { HealthSources.outputLines(root, it) }
+        }
+
+    /**
+     * 读数层的产出数（纯函数，用例直测；与直读同一个 [MetricsReading]，天然一致）。
+     *
+     * 算出来了（有数/现算）＝指标行数（13 项都算出了行，unknown 也是产出）；
+     * 没跑起来（无数据）＝0——**真零产出，不是未取样**：接线在、活派了、这趟没算出来。
+     */
+    internal fun readingOutputs(reading: MetricsReading): Int =
+        if (reading.state == ReadingState.NO_DATA) 0 else reading.lines.size
 
     /** 把单子压成一行账（计数＋各部位态＋命中键＋全文）。 */
     private fun entryOf(sheet: HealthSheet, nowMs: Long): HealthEntry {
