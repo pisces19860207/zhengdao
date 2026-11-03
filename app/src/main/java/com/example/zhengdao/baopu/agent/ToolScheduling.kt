@@ -278,6 +278,13 @@ internal class ToolBatchRunner(
                 // 分清是「工具自己超时」还是「被整批/本段的总时限掐掉」——回放时看得出是谁到点了。
                 slot.future.cancel(true)
                 val ownDeadline = slot.submittedAtMs + timeoutOf(slot.call).coerceAtLeast(1L)
+                // 第三百八十六批：到点未回＝超时实锤，落一行账（386；静默——记账不改判定；
+                // 自己的线掐的 limit＝该工具时限，总时限掐的 limit＝总时限的剩余额度）。
+                DeviationWiring.recordTimeout(
+                    clock() - slot.submittedAtMs,
+                    if (slot.deadlineAtMs < ownDeadline) slot.deadlineAtMs - slot.submittedAtMs else timeoutOf(slot.call),
+                    slot.call.name,
+                )
                 result = if (slot.deadlineAtMs < ownDeadline) {
                     GuardPipeline.Result.Failed(slot.call, batchTimeoutFailure(slot.call.name, timeoutOf(slot.call)))
                 } else {

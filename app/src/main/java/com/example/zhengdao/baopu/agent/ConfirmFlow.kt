@@ -243,6 +243,9 @@ internal class ConfirmFlow(
         // 执行成不成是事实账那一侧后面自己记的事。
         return when (verdict) {
             null -> {
+                // 第三百八十六批：等到线＝挂起超时实锤，落一行账（386；静默——记账不改判定；
+                // suspendedAtMs＝上面落 pending 那一刻的 at，question＝卡面摘要，已清库⇒不再挂起）。
+                DeviationWiring.recordSuspendTimeout(at, summary, stillPending = false)
                 noteDisposition(call, summary, false, abandoned = false, timedOut = true)
                 store.clear(sessionId)
                 ConfirmScopeChoice.discard(call.id) // 超时收走 ⇒ 没消费的范围选择作废

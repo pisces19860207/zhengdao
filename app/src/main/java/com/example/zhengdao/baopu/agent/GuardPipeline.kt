@@ -93,11 +93,16 @@ internal class ToolRunner(private val executor: ExecutorService) {
 
     fun run(spec: ToolSpec, args: JSONObject): ToolOutcome {
         // submit 有 Runnable/Callable 两个重载，lambda 会被推断成 Runnable ⇒ 显式 Callable
+        val startedAtMs = System.currentTimeMillis()
         val future: Future<ToolOutcome> = executor.submit(Callable { spec.executor(args) })
         return try {
             future.get(spec.timeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             future.cancel(true)
+            // 第三百八十六批：等满上限被掐＝工具超时实锤，落一行账（386；静默——记账不改判定）。
+            DeviationWiring.recordTimeout(
+                System.currentTimeMillis() - startedAtMs, spec.timeoutMs, spec.name,
+            )
             timeoutFailure(spec)
         } catch (e: Exception) {
             crashFailure(spec, e)

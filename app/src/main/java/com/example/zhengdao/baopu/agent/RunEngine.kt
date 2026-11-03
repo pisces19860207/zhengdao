@@ -1905,6 +1905,8 @@ internal class RunEngine(
         // 265 R1：runId 与起点一并留下来——收工后那一次反思要按 `[起点, 收工]` 认领本轮证据。
         roundStartedAtMs = System.currentTimeMillis()
         roundRunId = trace.newRun(sessionId, roundStartedAtMs)
+        // 第三百八十六批：本轮出处进接线信箱（工具/确认两条判定线落账时取；每轮覆盖）。
+        DeviationWiring.installRun(roundRunId)
 
         // ── 第三百七十八批①：起单建契约（TaskContract 的生产接线点）─────────────
         // 闲聊不立单：TaskModeBoundary 判闲聊 ⇒ 没有契约、收工也没有验收读数（闲聊不打扰）。
@@ -2578,6 +2580,8 @@ internal class RunEngine(
 
             // ── 步数刹车：RunRules.MAX_STEPS 步必停（现 300，3 段×100） ──
             if (RunRules.isStepExhausted(stepCount)) {
+                // 第三百八十六批：刹车落地即偏差实锤，落一行账（386；静默——记账不改判定）。
+                DeviationWiring.recordOverSteps(stepCount, RunRules.MAX_STEPS, stepCount)
                 val msg = "已到 ${RunRules.MAX_STEPS} 步上限，停下。继续说「继续」会重新计步。"
                 _notice.value = msg
                 emitLearnCardIfDue()
@@ -3246,6 +3250,8 @@ internal class RunEngine(
         val startedAt = roundStartedAtMs
         roundRunId = ""
         roundStartedAtMs = 0L
+        // 第三百八十六批：出处信箱同步摘空（偏差判定都发生在跑轮期间，收工后不许再记给旧轮）。
+        DeviationWiring.clearRun()
         if (runId.isBlank()) return
         runCatching {
             ReflectionWiring.of(spillRoot(), pf, db, log).onSettled(runId, startedAt)
