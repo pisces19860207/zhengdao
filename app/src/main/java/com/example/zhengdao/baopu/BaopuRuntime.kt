@@ -67,6 +67,8 @@ import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.ZhengdaoDirs
 import com.example.zhengdao.core.kb.KnowledgeBase
 import com.example.zhengdao.core.notify.AppNotifications
+import com.example.zhengdao.unattended.UnattendedRecorder
+import com.example.zhengdao.unattended.UnattendedStatus
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -682,6 +684,12 @@ internal object BaopuRuntime {
             engineInstance ?: build(context.applicationContext).also { engineInstance = it }
         }
 
+    /**
+     * 第三百八十八单：值守页取压着的卡（**不触发装配**——引擎没建过就给 null，
+     * 不为一眼读数把整个引擎拉起来）。
+     */
+    internal fun engineIfBuilt(): RunEngine? = engineInstance
+
     private fun build(appCtx: Context): RunEngine {
         // 第一百二十二批：**先装政策表，再装任何会读政策的零件**。
         // 组闸 / 工具可见性 / 进化决策口都在本函数后半段构造；装晚了它们会拿到默认值。
@@ -735,6 +743,13 @@ internal object BaopuRuntime {
             // 第二百一十四批：编排引擎开关（默认关；关掉＝今天行为一行不改）。
             // 只读闸门现读 SP，写口在 OrchestrationSettings——引擎不持 Context。
             orchestrationEnabled = { OrchestrationGate.enabledNow(appCtx) },
+            // 第三百八十八单（离场值守）：锁屏探针＋事件口——引擎不摸 SP/KeyguardManager，
+            // Context 只在装配层（与上面 orchestrationEnabled 同一条规矩）。不开值守时
+            // 探针恒 false、事件口不响，行为一行不改。
+            awayLocked = { UnattendedStatus.awayAndLocked() },
+            awayEvent = { headline ->
+                UnattendedRecorder.onDefer(appCtx, headline, System.currentTimeMillis())
+            },
             memoryStore = memoryStore(appCtx),
             spillRoot = { workspaceRoot(appCtx) },
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，

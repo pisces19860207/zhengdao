@@ -68,6 +68,14 @@ internal sealed interface IncomingRoute {
         val callback: com.example.zhengdao.baopu.mcp.McpOAuthCallback,
     ) : IncomingRoute
 
+    /**
+     * `zhengdao://unattended`：离场值守页（第三百八十八单）。
+     *
+     * 通知点击直达的落点（四类通知的 contentIntent 都指向这里）；不带 query、不带路径——
+     * 值守页只有一页，参数越少，能被别的 App 构造的花样越少。
+     */
+    data object OpenUnattended : IncomingRoute
+
     /** 外部输入被拒：原因进日志，界面不弹任何东西。 */
     data class Rejected(val reason: RejectReason) : IncomingRoute
 
@@ -178,7 +186,9 @@ private fun routeView(request: IncomingIntent): IncomingRoute {
 
     return when (request.host?.lowercase()) {
         "ask" -> routeAsk(request.rawQuery)
+        // terminal 的分支保留（248 批：路由表不动，落点只记账）——388 的 unattended 加在其后。
         "terminal" -> routeTerminal(request.rawQuery)
+        "unattended" -> IncomingRoute.OpenUnattended
         null -> IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
         else -> IncomingRoute.Rejected(RejectReason.UNKNOWN_HOST)
     }

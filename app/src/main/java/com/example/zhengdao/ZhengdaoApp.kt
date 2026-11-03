@@ -51,6 +51,11 @@ class ZhengdaoApp : Application() {
         // 必须**在 AppForeground.install 之后**（沿 Scout 的装配次序纪律）；装配失败 ⇒
         // wiring 账记 unavailable（「没巡查」和「巡查没问题」分得清），观测层不挡业务。
         com.example.zhengdao.baopu.agent.JinwuObserve.attach(this)
+        // 第三百八十八单：离场值守——状态仓（SP＋KeyguardManager）与看门狗。
+        // 必须在 RunEngine 装配之前：引擎的 awayLocked 闭包读它的问口，装配晚了
+        // 第一批卡就问不到"锁着没"。看门狗 KEEP 幂等（重复开 App 不重置周期）。
+        com.example.zhengdao.unattended.UnattendedStatus.install(this)
+        com.example.zhengdao.unattended.UnattendedWatchdog.ensureScheduled(this)
         // 262六格验收后补：玄览 WebView 远程调试（仅 debug 包）
         // 没有这一行，chrome://inspect 看不到 App 内任何 WebView；
         // 正式包 BuildConfig.DEBUG=false，行为逐字节不变。

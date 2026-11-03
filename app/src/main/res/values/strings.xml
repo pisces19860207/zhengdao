@@ -1605,4 +1605,24 @@
     <string name="settings_perm_collapse">收起</string>
     <string name="settings_perm_row_label">全部权限</string>
     <string name="nav_settings">律令</string>
+
+    <!-- 第三百八十八单：离场值守（无人值守·L2 有限值守） -->
+    <string name="unattended_page_title">离场值守</string>
+    <string name="unattended_notif_fgs_title">离场值守中</string>
+    <string name="unattended_notif_stop_title">红线停手</string>
+    <string name="unattended_notif_stop_text">拦下：%1$s（不做、不排队代做，详见值守页）</string>
+    <string name="unattended_notif_queue_title">圈外入队</string>
+    <string name="unattended_notif_queue_text">待你授权：%1$s</string>
+    <string name="unattended_notif_pause_title">值守已暂停</string>
+    <string name="unattended_notif_pause_text">%1$s；复工后自动继续</string>
+    <string name="unattended_notif_resume_title">值守已复工</string>
+    <string name="unattended_notif_resume_text">环境恢复，按序处置积压</string>
+    <string name="unattended_notif_degrade_title">值守降级停手</string>
+    <string name="unattended_notif_degrade_text">B级汇总 2 小时没出，自动权已收回；排队的事不丢</string>
+    <string name="unattended_notif_report_title">离场报告已生成</string>
+    <string name="unattended_notif_report_text">点开查看 A 级、B 级汇总与中断补报</string>
+    <string name="unattended_arm">开值守</string>
+    <string name="unattended_disarm">收值守并出报告</string>
+    <string name="unattended_scope_hint">托付范围（给谁干什么，人话即可）</string>
+    <string name="unattended_midterm">生成本期报告（值守中）</string>
 </resources>

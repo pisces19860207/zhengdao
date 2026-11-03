@@ -21,6 +21,11 @@
 //    它在下一个检查点（她回话／下一张卡）必现，与"按序补问"共用同一条出口。
 // 5. **本文件仍然一个写口都没有**：IO 与时钟归引擎（装配层），这里只有纯函数＋一个
 //    由调用方串行驱动的队列（引擎单活跃门内驱动，v1 一次只会话，见 `RunConcurrency`）。
+//
+// 第三百八十八单补一笔（2026-11-03）：静默多了一个源——**离场值守＋锁屏**（388 派工单：
+// "锁屏期间不弹卡（进队列）"）。实现只是给 [onAsk]／[takeNext]／[comebackLine] 加一个
+// 默认 false 的 [awayLocked] 参数：330 的三格判据一个字没改，330/379 的既有测试原样绿；
+// 凭据多写一行"离场值守·锁屏"。
 package com.example.zhengdao.baopu.agent
 
 /** 免打扰延后的容量上限。改这个数＝改"堆多少件必须升级成检查点等待"的制度，不许调用处各写一把。 */
@@ -110,7 +115,8 @@ internal class QuietCardGate {
     /**
      * 一张卡出之前问闸。
      *
-     * 静默＝[QuietMode.active]（授权）或 [SessionShape.hush]（夜间／专注）。
+     * 静默＝[QuietMode.active]（授权）或 [SessionShape.hush]（夜间／专注）或 [awayLocked]
+     * （388：离场值守＋锁屏 ⇒ 不弹卡，进队列）。
      * 满员与否只决定挂 [DeferredAsk.checkpoint] 与账行措辞——队列满了也**不拒**（纪律 4）。
      */
     fun onAsk(
@@ -118,10 +124,11 @@ internal class QuietCardGate {
         shape: SessionShape,
         nowMs: Long,
         request: AskUserRequest,
+        awayLocked: Boolean = false,
     ): QuietCardOutcome {
-        if (!hushed(grant, shape, nowMs)) return QuietCardOutcome(QuietCardVerdict.ASK, "", null)
+        if (!hushed(grant, shape, nowMs, awayLocked)) return QuietCardOutcome(QuietCardVerdict.ASK, "", null)
         val item = synchronized(this) {
-            enqueue(grant, shape, nowMs, request, queue.size >= QuietGateLimits.MAX_DEFERRED)
+            enqueue(grant, shape, nowMs, request, queue.size >= QuietGateLimits.MAX_DEFERRED, awayLocked)
         }
         val verdict = if (item.checkpoint) QuietCardVerdict.CHECKPOINT_WAIT else QuietCardVerdict.DEFER
         val line = if (item.checkpoint) {
@@ -140,18 +147,24 @@ internal class QuietCardGate {
      * 或这一件**已过静默上限**（天还没亮也得到点现身——纪律 3 的兜底格）。
      * 队首不可现身就停：后件的顺序不许越过前件（判据②"按序"的另一半）。
      */
-    fun takeNext(grant: QuietGrant?, shape: SessionShape, nowMs: Long): DeferredAsk? =
+    fun takeNext(grant: QuietGrant?, shape: SessionShape, nowMs: Long, awayLocked: Boolean = false): DeferredAsk? =
         synchronized(this) {
             val head = queue.firstOrNull() ?: return@synchronized null
             val due = nowMs >= head.dueMs
-            if (hushed(grant, shape, nowMs) && !head.checkpoint && !due) return@synchronized null
+            if (hushed(grant, shape, nowMs, awayLocked) && !head.checkpoint && !due) return@synchronized null
             queue.removeFirst()
         }
 
     /** 这一件是凭什么现身的（补问账行的开头；调用方在取出**之后**问，顺序天然对上）。 */
-    fun comebackLine(item: DeferredAsk, grant: QuietGrant?, shape: SessionShape, nowMs: Long): String {
+    fun comebackLine(
+        item: DeferredAsk,
+        grant: QuietGrant?,
+        shape: SessionShape,
+        nowMs: Long,
+        awayLocked: Boolean = false,
+    ): String {
         val reason = when {
-            !hushed(grant, shape, nowMs) -> "静默结束按序补问"
+            !hushed(grant, shape, nowMs, awayLocked) -> "静默结束按序补问"
             item.checkpoint -> "检查点补问（转等待的那件）"
             else -> "静默超上限，检查点补问"
         }
@@ -192,13 +205,14 @@ internal class QuietCardGate {
         nowMs: Long,
         request: AskUserRequest,
         checkpoint: Boolean,
+        awayLocked: Boolean = false,
     ): DeferredAsk {
         seq += 1
         val item = DeferredAsk(
             id = "quiet:$nowMs#$seq",
             atMs = nowMs,
             dueMs = nowMs + QuietLimits.MAX_MS,
-            why = quietWhy(grant, shape, nowMs),
+            why = quietWhy(grant, shape, nowMs, awayLocked),
             checkpoint = checkpoint,
             request = request,
         )
@@ -208,15 +222,17 @@ internal class QuietCardGate {
 
     companion object {
 
-        /** 凭什么压的（多源按"授权→夜间→专注"排，命中几个连几个；三格全空到不了这里）。 */
-        private fun quietWhy(grant: QuietGrant?, shape: SessionShape, nowMs: Long): String = buildList {
-            if (QuietMode.active(grant, nowMs)) add("免打扰授权中")
-            if (shape.atNight) add("夜间时段")
-            if (shape.busy) add("专注期（连发指令中）")
-        }.joinToString("＋")
+        /** 凭什么压的（多源按"离场→授权→夜间→专注"排，命中几个连几个；四格全空到不了这里）。 */
+        private fun quietWhy(grant: QuietGrant?, shape: SessionShape, nowMs: Long, awayLocked: Boolean = false): String =
+            buildList {
+                if (awayLocked) add("离场值守·锁屏")
+                if (QuietMode.active(grant, nowMs)) add("免打扰授权中")
+                if (shape.atNight) add("夜间时段")
+                if (shape.busy) add("专注期（连发指令中）")
+            }.joinToString("＋")
 
-        /** 此刻静默吗（授权或形状，任一为真即静默；[QuietMode.active] 是唯一授权判据）。 */
-        private fun hushed(grant: QuietGrant?, shape: SessionShape, nowMs: Long): Boolean =
-            QuietMode.active(grant, nowMs) || shape.hush
+        /** 此刻静默吗（离场锁屏／授权／形状，任一为真即静默；[QuietMode.active] 是唯一授权判据）。 */
+        private fun hushed(grant: QuietGrant?, shape: SessionShape, nowMs: Long, awayLocked: Boolean = false): Boolean =
+            awayLocked || QuietMode.active(grant, nowMs) || shape.hush
     }
 }

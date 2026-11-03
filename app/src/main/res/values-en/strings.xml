@@ -1652,4 +1652,24 @@
     <string name="settings_perm_collapse">Collapse</string>
     <string name="settings_perm_row_label">All permissions</string>
     <string name="nav_settings">Statutes</string>
+
+    <!-- 388: unattended (L2 limited-supervision away mode) -->
+    <string name="unattended_page_title">Away Duty</string>
+    <string name="unattended_notif_fgs_title">Away duty active</string>
+    <string name="unattended_notif_stop_title">Red line — hands off</string>
+    <string name="unattended_notif_stop_text">Blocked: %1$s (not done, not queued; see Away Duty)</string>
+    <string name="unattended_notif_queue_title">Out of circle — queued</string>
+    <string name="unattended_notif_queue_text">Awaiting your approval: %1$s</string>
+    <string name="unattended_notif_pause_title">Duty paused</string>
+    <string name="unattended_notif_pause_text">%1$s; resumes automatically when clear</string>
+    <string name="unattended_notif_resume_title">Duty resumed</string>
+    <string name="unattended_notif_resume_text">Environment recovered; backlog in order</string>
+    <string name="unattended_notif_degrade_title">Duty degraded — hands off</string>
+    <string name="unattended_notif_degrade_text">No B-level summary for 2 hours; autonomy revoked; queue kept</string>
+    <string name="unattended_notif_report_title">Away report ready</string>
+    <string name="unattended_notif_report_text">Tap to view grade-A items, B-level summaries and interruption backfill</string>
+    <string name="unattended_arm">Start away duty</string>
+    <string name="unattended_disarm">End duty &amp; produce report</string>
+    <string name="unattended_scope_hint">Entrusted scope (plain words: for whom, do what)</string>
+    <string name="unattended_midterm">Produce interim report (duty active)</string>
 </resources>

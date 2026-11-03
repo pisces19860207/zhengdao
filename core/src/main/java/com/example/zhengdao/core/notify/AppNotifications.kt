@@ -15,6 +15,15 @@ import android.content.Context
  * 类名改为 [AppNotifications]（派工单口径）。**四个渠道 id 一字未改**——
  * `session` / `install` / `agent` / `update` 是已发布值：系统按 id 记忆用户的通知设置，
  * 改 id 等于把用户的静音/重要性设置全部重置（负例②）。
+ *
+ * 第三百八十八单（2026-11-03 用户拍板）：**`agent` 渠道 IMPORTANCE 从 DEFAULT 升 HIGH**——
+ * 离场值守的"红线停手/圈外入队"要横幅（HIGH 档），不新增第五个渠道、也不动其余三渠道。
+ * 升级路径与代价（写在这里是因为只此一处）：
+ * - `NotificationChannel` 只创建一次，对已装用户**改 importance 不生效**；
+ *   ⇒ 必须同 ID **delete + recreate**（Android 允许按 channelId 删了重建）；
+ * - 首次重建会**重置该渠道的用户手动设置**（用户在系统设置里调过"agent"的静音/震动 ⇒ 归零）；
+ * - 所以只在"现存 importance **低于** HIGH"时重建；已经 HIGH 的（新装即 HIGH）一个字不碰；
+ * - "同一渠道不能分两档"：值守的低优先通知（降级/暂停/报告）走 `session`（LOW），不占 agent。
  */
 object AppNotifications {
 
@@ -24,7 +33,7 @@ object AppNotifications {
     /** 环境与 Agent 安装（下载进度等，LOW 静默） */
     const val INSTALL = "install"
 
-    /** Agent 执行（DEFAULT，锁屏可见） */
+    /** Agent 执行（388 起 HIGH：红线停手/圈外入队要横幅） */
     const val AGENT = "agent"
 
     /** 更新提示（DEFAULT） */
@@ -39,7 +48,27 @@ object AppNotifications {
         }
         channel(SESSION, "会话状态", NotificationManager.IMPORTANCE_LOW, "显示后台会话状态；关闭会导致会话无法保活")
         channel(INSTALL, "环境与安装", NotificationManager.IMPORTANCE_LOW, "环境与 Agent 的下载安装进度")
-        channel(AGENT, "Agent 执行", NotificationManager.IMPORTANCE_DEFAULT, "Agent 运行中的重要事件")
+        ensureAgentChannel(nm, ::channel)
         channel(UPDATE, "更新提示", NotificationManager.IMPORTANCE_DEFAULT, "App 与组件的版本更新提示")
+    }
+
+    /**
+     * agent 渠道的升档口（388，见类注释）：新装直接建 HIGH；
+     * 已存在但低于 HIGH ⇒ delete + recreate（同 ID 同名）；已是 HIGH ⇒ 不碰。
+     */
+    private fun ensureAgentChannel(
+        nm: NotificationManager,
+        channel: (String, String, Int, String) -> Unit,
+    ) {
+        val desc = "Agent 运行中的重要事件（红线停手/圈外入队为高优先横幅）"
+        val existing = nm.getNotificationChannel(AGENT)
+        if (existing == null) {
+            channel(AGENT, "Agent 执行", NotificationManager.IMPORTANCE_HIGH, desc)
+            return
+        }
+        if (existing.importance < NotificationManager.IMPORTANCE_HIGH) {
+            nm.deleteNotificationChannel(AGENT)
+            channel(AGENT, "Agent 执行", NotificationManager.IMPORTANCE_HIGH, desc)
+        }
     }
 }

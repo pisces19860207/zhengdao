@@ -266,6 +266,21 @@ internal class RunEngine(
      * `OrchestrationGate.enabledNow(appCtx)`。
      */
     private val orchestrationEnabled: () -> Boolean = { false },
+
+    /**
+     * 第三百八十八单（离场值守）的锁屏探针：**开值守且锁着屏** ⇒ 弹卡闸把卡压进队列
+     * （388 派工单：锁屏期间不弹卡，进队列）。默认 `{ false }` ⇒ 不开值守的行为一行不改；
+     * 生产由装配层接 `UnattendedStatus.awayAndLocked()`——引擎不摸 SharedPreferences、
+     * 不摸 KeyguardManager（与 orchestrationEnabled 同一条"Context 只在装配层"的老规矩）。
+     */
+    private val awayLocked: () -> Boolean = { false },
+
+    /**
+     * 388 离场值守的事件口：卡被**离场锁屏**这一格压进队列的那一刻调用（装配层据此
+     * 记值守账＋发高优先通知；免打扰/夜间压下的不归它管——那两路的账 330/379 已记）。
+     * 默认空操作 ⇒ 值守未接线时行为不变。
+     */
+    private val awayEvent: (String) -> Unit = {},
 ) {
 
     /** UI 观察用（Compose State）。 */
@@ -1450,9 +1465,13 @@ internal class RunEngine(
      */
     private fun quietDefer(req: AskUserRequest): Boolean {
         val now = System.currentTimeMillis()
-        val outcome = quietGate.onAsk(quietGrant, quietShape(now), now, req)
+        val locked = awayLocked()
+        val outcome = quietGate.onAsk(quietGrant, quietShape(now), now, req, locked)
         if (outcome.verdict == QuietCardVerdict.ASK) return false
         log(outcome.line)
+        // 388 接线：这一格是**离场锁屏**压下的 ⇒ 交值守装配层记账＋通知（圈外入队的高优先一声）。
+        // 免打扰/夜间压下的不响（330/379 的账已记），判据就是这一次问闸时锁没锁。
+        if (locked) awayEvent(outcome.deferred?.headline ?: req.question)
         // 第三百九十六批接线（判据⑤：压与放的判据一个字没改）：这张卡被压下的**这一刻**
         // 把它登记进回灌通道，带的轮号是当下这一轮——她后来答的那一句才有地方挂。
         // 为什么在这里而不是在补问时：补问发生在下一个检查点，那时轮号已经换过；
@@ -1481,8 +1500,9 @@ internal class RunEngine(
         synchronized(quietDrainLock) {
             while (true) {
                 val now = System.currentTimeMillis()
-                val item = quietGate.takeNext(quietGrant, quietShape(now), now) ?: return
-                log(quietGate.comebackLine(item, quietGrant, quietShape(now), now))
+                val locked = awayLocked()
+                val item = quietGate.takeNext(quietGrant, quietShape(now), now, locked) ?: return
+                log(quietGate.comebackLine(item, quietGrant, quietShape(now), now, locked))
                 // 一次出卡、两本账各取所需：`picked` 是 379 原来的日志口径（单问＝选项 label，
                 // 问题组＝答完的题号），一个字没改；回灌要的是**她答的话**，问题组那份
                 // 从 answers 的值里取（题号不是答案，把 "q1、q2" 灌给模型等于没灌）。
@@ -1551,6 +1571,12 @@ internal class RunEngine(
      * 夜间读时钟（22 点起、7 点前）；专注期＝连发指令中（队列里还有没开跑的轮次）。
      * 缺的格不硬造——会话号读不出来就当不忙（不据此降级，照 [SessionShape] 的纪律）。
      */
+    /**
+     * 值守页与离场报告取"现在还压着几件、都是什么"（388 未做项的来源；只读快照，
+     * 队列本体仍归 [quietGate]，别处不许借这条口改队列）。
+     */
+    internal fun awayDeferredHeadlines(): List<String> = quietGate.snapshot().map { it.headline }
+
     private fun quietShape(nowMs: Long): SessionShape {
         val hour = java.util.Calendar.getInstance()
             .apply { timeInMillis = nowMs }.get(java.util.Calendar.HOUR_OF_DAY)

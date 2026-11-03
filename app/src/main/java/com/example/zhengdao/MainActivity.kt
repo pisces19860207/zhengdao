@@ -207,6 +207,13 @@ class MainActivity : ComponentActivity() {
                 com.example.zhengdao.core.RunLog.log("MCP 授权回调：已投递（不记录 code/state）")
                 com.example.zhengdao.ui.baopu.McpAuthInbox.deliver(route.callback)
             }
+            is IncomingRoute.OpenUnattended -> {
+                // 第三百八十八单：值守深链（四类通知点按直达的落点）。
+                com.example.zhengdao.core.RunLog.log("深链值守：打开离场页")
+                startActivity(
+                    android.content.Intent(this, com.example.zhengdao.unattended.UnattendedActivity::class.java),
+                )
+            }
             is IncomingRoute.Rejected -> {
                 // 未知/畸形 URI 丢弃并记日志：不记正文，只记形态与长度，够定位即可。
                 com.example.zhengdao.core.RunLog.log(
@@ -230,6 +237,14 @@ class MainActivity : ComponentActivity() {
         // 生命周期自然失效，不需要手动清——`FLAG_KEEP_SCREEN_ON` 是窗口级标志，不是 WakeLock。
         // 与 TerminalActivity 同一行写法（终端页早就加了，主界面一直漏着）。
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // 第三百八十八单：值守补起——开着值守而前台服务不在（进程被杀后冷启等）⇒
+        // 回前台这一刻补起（前台起 FGS 不受 12+ 后台限制）；服务还在就什么都不做。
+        if (com.example.zhengdao.unattended.UnattendedStatus.armed() &&
+            !com.example.zhengdao.unattended.UnattendedDutyService.alive
+        ) {
+            com.example.zhengdao.unattended.UnattendedDutyService.start(this)
+        }
 
         // 玄览保活（第一百七十二批 S4）：给整个 App 挂前台跟踪 —— 判据是「还有没有 Activity
         // started」，不是本页的 ON_RESUME/ON_PAUSE（跳终端时本页也会 PAUSE，那是误判）。
