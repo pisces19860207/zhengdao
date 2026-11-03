@@ -137,7 +137,8 @@ internal object EpochRuntime {
      *
      * 为什么要单独记：`state = ROLLED_BACK` 只挂在「当前纪元」那一行上，
      * 下一个纪元开始后它就被覆盖了 —— 事后问「什么时候退回去的、从哪退到哪」会查不到。
-     * 这里记成**只增不改的事件序列**。
+     * 这里记成**只增不改的事件序列**（「只增」约束运维期间不许改写；
+     * 398：reset 是生命周期终点的全清，连它一并清空，见 [reset]）。
      */
     private val rollbackEvents = ArrayList<String>()
 
@@ -259,11 +260,22 @@ internal object EpochRuntime {
         )
     }
 
-    /** 测试／进程内重置用；生产不调用（照 `PolicyRuntime.reset` 的口径）。 */
+    /**
+     * 测试／进程内重置用；生产不调用（照 `PolicyRuntime.reset` 的口径）。
+     *
+     * 语义（398 裁定，A 案）：**重置＝回到「从没发生过」的干净态**——连同回滚账一并清空，
+     * 重置后 [rollbackLedger] 重新满足「空 = 从没回滚过」。备选的 B 案（保留事件、只记
+     * 一条 RESET 标记）被否，理由：`rollbackEvents` 是 Q3 裁定的**回滚账**，行格式只有
+     * 「旧纪→上一纪」一种，往里记 RESET 行会让账本混入非回滚语义；且「只增不改」的纪律
+     * 约束的是运维期间不许改写历史，reset 是生命周期终点的全清（reset 生产不调用，
+     * B 的「留痕」在生产没有触发场景），重置后残留旧账反而造成跨套件进程级污染
+     * ——此前回滚账不清，读账只能按「记条数比增量」，整表断言必假红。
+     */
     fun reset() = synchronized(this) {
         current = null
         previous = null
         counters.clear()
+        rollbackEvents.clear()
         state = EpochState.NO_CHANGE
         Unit
     }

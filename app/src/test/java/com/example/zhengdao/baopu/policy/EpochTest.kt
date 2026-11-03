@@ -185,9 +185,10 @@ class EpochTest {
         assertTrue("第二纪没落上：" + second.reason, second.accepted)
         val back = snap(weekStart(0), "K1", "K2")
         assertFalse("倒退着装由 310 拒", EpochRuntime.swap(back, weekStart(1)).swapped)
-        // 读法＝「先记条数、再比增量」，不是断言整张账：310 的 `reset()` 清 current／previous／counters／state，
-        // 独独不清 `rollbackEvents`（`CriteriaEpoch.kt:263`）⇒ 回滚账是跨套件累积的进程级状态，
-        // 与 `CriteriaEvolutionTest` 同 JVM 顺序撞上时整表断言必假红（它自己也是按增量读的）。
+        // 读法＝「先记条数、再比增量」，不是断言整张账：398 修复前 310 的 `reset()` 清
+        // current／previous／counters／state、独独不清 `rollbackEvents`，回滚账跨套件累积，
+        // 与 `CriteriaEvolutionTest` 同 JVM 顺序撞上时整表断言必假红；398 起 reset 连回滚账
+        // 一并清空，增量读法仍成立（对任何语义都真），保留不改。
         val rollbacksBefore = EpochRuntime.rollbackLedger().size
         assertTrue("回滚本身是允许的（即时、不走审批）", EpochRuntime.rollbackToPrevious().rolledBack)
         val r = EpochRegistry.append(epochOf(back, weekStart(1)), back, "御批 364-9", weekStart(1))
@@ -198,6 +199,21 @@ class EpochTest {
         val ledger = EpochRuntime.rollbackLedger()
         assertEquals("回滚的账由 310 自己记：这一跳只许添一条", rollbacksBefore + 1, ledger.size)
         assertEquals("添的那条就是倒退那一跳（旧纪→上一纪）", "$label1→$label0", ledger.last())
+    }
+
+    @Test
+    fun `重置连回滚账一并清_整账归零`() {
+        // 398（A 案）：reset 的语义＝回到「从没发生过」的干净态，回滚账不许残留。
+        // 修复前 reset 只清 current／previous／counters／state，回滚账跨套件累积成进程级状态；
+        // 清了之后 `rollbackLedger()` 重新满足「空 = 从没回滚过」（判据②：账行数关系＝归零）。
+        firstEpoch()
+        val second = nextEpoch()
+        assertTrue("第二纪没落上：" + second.reason, second.accepted)
+        assertTrue("现场要造出一次回滚", EpochRuntime.rollbackToPrevious().rolledBack)
+        assertTrue("现场：回滚账非空", EpochRuntime.rollbackLedger().isNotEmpty())
+        EpochRuntime.reset()
+        assertEquals("重置后回滚账必须归零", emptyList<String>(), EpochRuntime.rollbackLedger())
+        assertFalse("归零后回滚口回到初始态：没有快照可回", EpochRuntime.rollbackToPrevious().rolledBack)
     }
 
     @Test
