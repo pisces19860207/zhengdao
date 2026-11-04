@@ -282,7 +282,7 @@ class ModelPickerGateTest {
             area.contains("RoundedCornerShape(rPill)"))
         assertFalse("模型区不许自己写死圆角数字（10 只能来自 rPill）",
             Regex("RoundedCornerShape\\(\\s*[\\d.]+\\s*\\.dp").containsMatchIn(area))
-        assertEquals("两颗命中区各自独立（两颗都挂 zoneHit）", 2, Regex("modifier = zoneHit\\(").findAll(area).count())
+        assertEquals("两颗命中区各自独立（两颗都挂 zoneHit）", 2, Regex("modifier = Modifier\\.zoneHit\\(").findAll(area).count())
         assertTrue("命中区宽 ≥44dp 走常量", area.contains("widthIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)"))
         assertTrue("两段之间间距走常量", area.contains("Spacer(Modifier.width(BAO_TOPBAR_ZONE_GAP_DP.dp))"))
         assertFalse("不许占 48dp 图标位（顶栏图标只有 ☰／🛡 两颗）", area.contains("size(BAO_ICON_SLOT_DP.dp)"))

@@ -95,7 +95,7 @@ internal fun BaopuModelArea(
         ) {
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = zoneHit(
+                modifier = Modifier.zoneHit(
                     desc = if (configured) stringResource(R.string.baopu_topbar_badge_desc) else offDesc,
                     onClick = onBadgeClick,
                 ),
@@ -108,7 +108,7 @@ internal fun BaopuModelArea(
             Spacer(Modifier.width(BAO_TOPBAR_ZONE_GAP_DP.dp))
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = zoneHit(
+                modifier = Modifier.zoneHit(
                     desc = if (configured) stringResource(R.string.baopu_topbar_model_desc) else offDesc,
                     onClick = onModelClick,
                 ),
@@ -121,7 +121,7 @@ internal fun BaopuModelArea(
 }
 
 /** 一颗命中区的外壳：44dp 高 × ≥44dp 宽（派工单硬规矩），点谁由参数给。 */
-private fun zoneHit(desc: String, onClick: () -> Unit): Modifier = Modifier
+private fun Modifier.zoneHit(desc: String, onClick: () -> Unit): Modifier = this
     .height(BAO_TOPBAR_PILL_HEIGHT_DP.dp)
     .widthIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)
     .clip(RoundedCornerShape(rPill))
@@ -179,7 +179,7 @@ private fun ProviderSheet(
     val unconfigured = stringResource(R.string.baopu_topbar_unconfigured)
     val onlyOneHint = stringResource(R.string.baopu_topbar_only_one)
     DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        Column(sheetShell()) {
+        Column(Modifier.sheetShell()) {
             if (onlyOne) {
                 Text(
                     text = onlyOneHint,
@@ -204,7 +204,7 @@ private fun ModelSheet(
     onDismiss: () -> Unit,
 ) {
     DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        Column(sheetShell()) {
+        Column(Modifier.sheetShell()) {
             rows.forEach { row ->
                 SheetRow(letter = "", title = row.name, selected = row.selected, enabled = true, unconfigured = "") {
                     onPick(row.id)
@@ -216,7 +216,7 @@ private fun ModelSheet(
 
 /** 两张弹层共用的容器尺寸（与跑马灯详情同一口径：320×280 上限 ＋ 内部可滚，不推正文）。 */
 @Composable
-private fun sheetShell(): Modifier = Modifier
+private fun Modifier.sheetShell(): Modifier = this
     .widthIn(max = 320.dp)
     .heightIn(max = 280.dp)
     .verticalScroll(rememberScrollState())

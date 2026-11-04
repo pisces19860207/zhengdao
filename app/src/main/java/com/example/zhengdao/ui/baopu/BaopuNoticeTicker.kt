@@ -164,7 +164,7 @@ private fun TickerPill(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .then(pillShellModifier(pill = pill, confirm = confirm))
+            .pillShellModifier(pill = pill, confirm = confirm)
             .clickable(enabled = entry != null, onClick = onToggle)
             .semantics { contentDescription = a11yDesc },
         contentAlignment = Alignment.CenterStart,
@@ -199,8 +199,8 @@ private fun TickerPill(
 
 /** 容器的三层修饰：44dp 同高 ＋（有内容才）朱浅底/rPill 10/朱砂 1.5dp 描边 ＋（待确认才）琥珀强调。 */
 @Composable
-private fun pillShellModifier(pill: Boolean, confirm: Boolean): Modifier {
-    val shell = Modifier.heightIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)
+private fun Modifier.pillShellModifier(pill: Boolean, confirm: Boolean): Modifier {
+    val shell = this.heightIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)
     val zhu = if (!pill) {
         shell
     } else {
