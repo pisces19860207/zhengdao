@@ -4,7 +4,7 @@
    {
     "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt",
-    "file_mates_wired": false,
+    "file_mates_wired": true,
     "kind": "object",
     "line": 17,
     "list": "A",
@@ -131,128 +131,6 @@
    },
    {
     "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt",
-    "file_mates_wired": false,
-    "kind": "object",
-    "line": 26,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：准入「品行考」判卷链——345 批③判卷纯函数（BigDecimal 精确口径），与 ExamTasks 同一接线批",
-    "package": "com.example.zhengdao.baopu.intake",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "ConductExam",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 28
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 34
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 43
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 49
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 59
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 65
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 73
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 79
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 86
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 88
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 93
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 95
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 103
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 105
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 110
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 110
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 117
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 118
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 123
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt",
-      "line": 125
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeModels.kt",
-    "file_mates_wired": true,
-    "kind": "class",
-    "line": 14,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：准入 intake 建档链（自报口径模型）——345 批准入件，现仅测试在调，与 IntakeProfile 同批",
-    "package": "com.example.zhengdao.baopu.intake",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "SelfReport",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
-      "line": 106
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -345,105 +223,6 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt",
       "line": 83
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ValueCheck.kt",
-    "file_mates_wired": false,
-    "kind": "object",
-    "line": 38,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：收尾闸 ArtifactVerifier 之后挂「数对不对」对账——340 批八种自称机核（BigDecimal 精确算术），ArtifactVerifier 已接线（RunEngine）但本闸没挂上，现仅测试在跑",
-    "package": "com.example.zhengdao.baopu.verify",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "ValueCheck",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 82
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 85
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 86
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 91
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 92
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 105
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 106
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 107
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 108
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 110
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 124
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 126
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 134
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 134
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 135
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 135
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt",
-      "line": 136
      }
     ],
     "verdict": "wired",
@@ -594,11 +373,11 @@
  },
  "summary": {
   "A": 3,
-  "B": 6,
+  "B": 3,
   "C": 3,
   "gates_with_write_path": 1,
-  "not_wired": 9,
-  "production_top_level_public": 361,
-  "wired": 352
+  "not_wired": 6,
+  "production_top_level_public": 366,
+  "wired": 360
  }
 }

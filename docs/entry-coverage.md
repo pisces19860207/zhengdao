@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 361 |
-| 生产可达（有生产引用，含同文件） | 352 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 366 |
+| 生产可达（有生产引用，含同文件） | 360 |
 | A 有定义无调用 | 3 |
-| B 只有测试在调 | 6 |
+| B 只有测试在调 | 3 |
 | C 已接线默认关、无开启路径 | 3 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **9** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **6** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -34,10 +34,7 @@
 | 符号 | 文件:行 | 测试引用 | 结论 | 说明/证据 |
 |---|---|---|---|---|
 | `CardValidate` | `app/src/main/java/com/example/zhengdao/baopu/cards/ResultCardValidate.kt:59` | `app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:33`、`app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:42`、`app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:50` | 接线 | 谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它 |
-| `ConductExam` | `app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt:26` | `app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt:34`、`app/src/test/java/com/example/zhengdao/baopu/intake/ConductExamTest.kt:43` | 接线 | 谁接：准入「品行考」判卷链——345 批③判卷纯函数（BigDecimal 精确口径），与 ExamTasks 同一接线批 |
-| `SelfReport` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeModels.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:106` | 接线 | 谁接：准入 intake 建档链（自报口径模型）——345 批准入件，现仅测试在调，与 IntakeProfile 同批 |
 | `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 接线 | 谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核 |
-| `ValueCheck` | `app/src/main/java/com/example/zhengdao/baopu/verify/ValueCheck.kt:38` | `app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt:70`、`app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt:70`、`app/src/test/java/com/example/zhengdao/baopu/verify/ValueCheckTest.kt:70` | 接线 | 谁接：收尾闸 ArtifactVerifier 之后挂「数对不对」对账——340 批八种自称机核（BigDecimal 精确算术），ArtifactVerifier 已接线（RunEngine）但本闸没挂上，现仅测试在跑 |
 | `BrowserAgentBridge` | `app/src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt:60` | `app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt:95`、`app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt:133`、`app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt:134` | 接线 | 谁接：「浏览器桥」设置页开关→BrowserAgentBridge.start——设计注记明言「默认关、由设置页拉起」，开关未接线，整个 HTTP 桥生产不可达（仅测试在调） |
 
 ## C 已接线默认关、无开启路径
