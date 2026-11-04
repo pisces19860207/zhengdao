@@ -18,6 +18,11 @@ package com.example.zhengdao.baopu
  *   连文件 I/O 都不引入（源码门禁钉这条，见 BaopuPresetGuardTest）。
  *
  * ## 文案版本
+ * v16（2026-11-05 · 第四百三十六批 A）：**加前缀段**「## 环境与权限」——固定三句（你在哪／
+ * 你能干什么／被拒就换做法、不许照原样重试）＋一句硬规矩（判据与坑账是约束不是参考）。
+ * 房型抄外部执行体 ZCode 的 `# Harness` 段；**只加内容、不拦任何东西**（本批判据④：不动 GuardPipeline）。
+ * v15（2026-10-30 · 第二百八十七批，当时没在这里记行）：全盘可读写——工作区从「权限边界」
+ * 降级成「默认落点」，`## 三条边界` 与 `## 你的落点：工作区` 因此重写。
  * v14（2026-10-26 · 第二百一十三批）：答话纪律 v2「答案先行」——新增「## 输出纪律（答案先行）」一节。
  * 用户 2026-10-25：「不用看模型那一堆废话，还要在模型那堆废话里找答案」。口径收成一件事：
  * **第一句＝答案**（数字／结论／路径／是否），铺垫、复述问题、自我说明、推断词、免责堆叠都不许出现在首句；
@@ -52,7 +57,7 @@ package com.example.zhengdao.baopu
  */
 internal object BaopuPreset {
 
-    const val VERSION = 15
+    const val VERSION = 16
 
     /**
      * A 内核文案（纯函数；[workspacePath] 由调用方注入，便于单测锁措辞）。
@@ -63,11 +68,39 @@ internal object BaopuPreset {
      * - 拒绝必须给人话且绝不静默（本项目最反感「看着成功其实没有」）。
      */
     fun personaText(workspacePath: String): String =
-        personaSectionWhere(workspacePath) +
+        personaSectionHarness(workspacePath) +
+            personaSectionWhere(workspacePath) +
             personaSectionAbilities() +
             personaSectionPlan() +
             personaSectionDiscipline() +
             personaSectionOutput()
+
+    /**
+     * A 内核文案 · 前缀段「环境与权限」（第四百三十六批 A · 436-A ①）。
+     *
+     * 为什么单独一节、还排在最前：这一节是**每次首轮提示的第一屏**，说的是"你在什么处境里"，
+     * 不是"你是什么角色"。抄的是外部执行体 ZCode 的 `# Harness` 段房型（用户 2026-11-04
+     * 实证：它的"先读"不是模型自觉，是系统提示里恒定那一段）。三句＋一句硬规矩：
+     * ① 你在哪（工作区路径由调用方注入）② 你能干什么（工具，且工具是按需解锁的）
+     * ③ 被拒怎么办（**调整做法，不许照原样重试**）。
+     *
+     * ③ 是本节存在的理由：被拒文案本来只在**回灌里**出现（`RiskGate.rejectText`／
+     * `RunRules.rejectNote`／`ToolFailureAdvisor`），模型要撞一次才看见一次；
+     * 写进前缀段之后，第一轮就知道该怎么改路。本节只**说**，不拦任何东西——
+     * 拦截仍只在 App 的确认卡与守卫里（本批判据④：零拦截、不动 GuardPipeline）。
+     */
+    private fun personaSectionHarness(workspacePath: String): String = (
+        "\n## 环境与权限（固定三句，先看这个）\n" +
+            "1. **你在哪**：安卓手机上、证道 App 自己的进程里；默认落点是工作区 `$workspacePath`，\n" +
+            "   给绝对路径就能读写到全盘——工作区是默认落点，不是牢笼。\n" +
+            "2. **你能干什么**：一组工具（读／写／找／看图／做卡／写技能／浏览器…），\n" +
+            "   工具是**按需解锁**的：这一轮没出现的工具不等于没有，先用 `capabilities` 看名册、再申请。\n" +
+            "3. **被拒了怎么办**：被拒是**这一条路不通**，不是「这一轮不用做」——\n" +
+            "   照实说被拒，然后**换做法**（换工具／换范围／先问一句），**不许照原样重试**同一调用；\n" +
+            "   用户拒过一次之后，同一件事再问第二次就是骚扰。\n" +
+            "**判据与坑账是硬规矩，不是建议**：运行时包里的判据不许自行放宽，\n" +
+            "坑账里记过的错不许再踩第二次——它们是约束，不是参考。\n\n"
+        )
 
     /** A 内核文案 · 第一节（329 降债拆分：五节顺序拼接，结果与原单表达式逐字节相同）。 */
     private fun personaSectionWhere(workspacePath: String): String = (
