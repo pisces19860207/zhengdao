@@ -35,8 +35,8 @@
 // 剩下六条仍挂账。
 // 319 更账（基线 8061da8b）：L21 登记制从「一个数」升成「一张表」（L21_COPY_REGISTRY）——
 // 427 更账：372 挂账兑现——DispositionGate 由接线口 agent/DispositionWiring 喂事实
-// （管线 verdict.rejected 分支 → onMatrixReject → decide，REPLY 档记一行），
-// BOOKED→WIRED，BOOKED 余四条。
+// （管线 verdict.rejected 分支 → onMatrixReject → decide）；2026-11-04 批示改 decidedBy
+// =center_auto（接线口自带常量，判定①如实拒）⇒ 名册记 decide 一处点号，BOOKED 余四条。
 // 三条手抄各一行（文件:行＋登记了什么＋为什么不能清零＋谁来清），行号钉实、漂了即红；
 // 另在 EmergencyGate 添自决路径的统一准入口 selfRulingAdmission（不改接线数，门禁账不变）。
 package com.example.zhengdao.baopu.law
@@ -163,12 +163,12 @@ class LawSourceWiringGateTest {
             sites = listOf("com/example/zhengdao/baopu/inspect/ShadowAdapter.kt" to 1),
         ),
         // 427：三档处置（DispositionGate）由接线口 agent/DispositionWiring 喂事实——管线
-        // verdict.rejected 分支调 `DispositionWiring.onMatrixReject`（REPLY 档记一行），
-        // decide 与 DECIDER_USER 两处点号都在接线口里（372 挂账本批兑现；管线代码面仍
-        // 零引 `baopu.law.`，GuardScopeEscapeFeedTest 的口径原样保持）。
+        // verdict.rejected 分支调 `DispositionWiring.onMatrixReject`，decide 一处点号在
+        // 接线口里。2026-11-04 批示：decidedBy 报 center_auto（接线口自带常量）⇒ 判定①
+        // 如实拒，账上不出现"自动记成人裁"；管线代码面仍零引 `baopu.law.`。
         Wired(
             entry = "DispositionGate",
-            sites = listOf("com/example/zhengdao/baopu/agent/DispositionWiring.kt" to 2),
+            sites = listOf("com/example/zhengdao/baopu/agent/DispositionWiring.kt" to 1),
         ),
     )
 
