@@ -1621,6 +1621,8 @@
     <string name="unattended_notif_degrade_text">B级汇总 2 小时没出，自动权已收回；排队的事不丢</string>
     <string name="unattended_notif_report_title">离场报告已生成</string>
     <string name="unattended_notif_report_text">点开查看 A 级、B 级汇总与中断补报</string>
+    <string name="unattended_notif_armed_title">已进值守</string>
+    <string name="unattended_notif_armed_text">%1$s，按圈干活；说「我回来了」或回一句话即收值守</string>
     <string name="unattended_arm">开值守</string>
     <string name="unattended_disarm">收值守并出报告</string>
     <string name="unattended_scope_hint">托付范围（给谁干什么，人话即可）</string>

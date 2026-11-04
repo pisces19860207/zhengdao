@@ -417,6 +417,14 @@ internal class RunEngine(
     private val _notice = mutableStateOf<String?>(null)
     val notice: State<String?> get() = _notice
 
+    /**
+     * 装配层的一句话上屏口（第四百四十一单加法）：值守触发层要反问／要报收场，
+     * 走引擎同一格 notice 显示，不另造第二块上屏面。只写不读，不碰任何判定。
+     */
+    fun showNotice(text: String) {
+        _notice.value = text
+    }
+
     var onEvent: ((EngineEvent) -> Unit)? = null
 
     private val runExecutor = Executors.newSingleThreadExecutor { r ->

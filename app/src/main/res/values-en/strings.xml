@@ -1668,6 +1668,8 @@
     <string name="unattended_notif_degrade_text">No B-level summary for 2 hours; autonomy revoked; queue kept</string>
     <string name="unattended_notif_report_title">Away report ready</string>
     <string name="unattended_notif_report_text">Tap to view grade-A items, B-level summaries and interruption backfill</string>
+    <string name="unattended_notif_armed_title">Away duty started</string>
+    <string name="unattended_notif_armed_text">%1$s, working within the circle; say "I am back" or send any message to end duty</string>
     <string name="unattended_arm">Start away duty</string>
     <string name="unattended_disarm">End duty &amp; produce report</string>
     <string name="unattended_scope_hint">Entrusted scope (plain words: for whom, do what)</string>

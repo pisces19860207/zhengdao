@@ -18,23 +18,54 @@ internal object UnattendedRecorder {
 
     private const val DIR = "unattended"
 
-    /** 开值守：状态＋账＋起拍（心跳从这一刻起算；通知不必响——开关就在值守页上，人刚按过）。 */
-    fun arm(ctx: Context, scope: String, nowMs: Long) {
-        UnattendedStatus.arm(scope, nowMs)
+    /**
+     * 开值守：状态＋账＋起拍（心跳从这一刻起算；通知不必响——开关就在值守页上，人刚按过）。
+     *
+     * 441 加法：[autoDisarmAtMs] 是"到点自动收"的时刻（一句话值守带时长时接线层算好传入；
+     * null ＝ 不自动收）。判到期不在这里（归服务的节拍），这里只落值。
+     */
+    fun arm(ctx: Context, scope: String, nowMs: Long, autoDisarmAtMs: Long? = null) {
+        UnattendedStatus.arm(scope, nowMs, autoDisarmAtMs)
         UnattendedStatus.beat(nowMs)
         UnattendedLedger.append(ctx, UnattendedEvent(UnattendedEventKind.ARM, nowMs, scope.trim().ifEmpty { "范围未写" }))
     }
 
-    /** 收值守并出报告（落盘 → 记账 → 通知，顺序见文件头纪律 2）。 */
-    fun disarmAndReport(ctx: Context, nowMs: Long, queueLines: List<String>): UnattendedReportDoc {
+    /**
+     * 收值守并出报告（落盘 → 记账 → 通知，顺序见文件头纪律 2）。
+     *
+     * 441 加法：[closeReasonCn] 是收场理由的人话（如"因用户回话而解除，值守了 X 分钟"）——
+     * **先落账再出报告**：理由先进事件账（账上可查），再进报告头（回场第一眼可见）；
+     * null ＝ 388 老口径，报告头逐字节不变（值守页手动收走的走 null）。
+     */
+    fun disarmAndReport(
+        ctx: Context,
+        nowMs: Long,
+        queueLines: List<String>,
+        closeReasonCn: String? = null,
+    ): UnattendedReportDoc {
         val armedAt = UnattendedStatus.armedAtMs() ?: nowMs
+        if (closeReasonCn != null) {
+            UnattendedLedger.append(
+                ctx,
+                UnattendedEvent(UnattendedEventKind.DISARM, nowMs, closeReasonCn),
+            )
+        }
         UnattendedStatus.disarm()
         val events = UnattendedLedger.readSince(ctx, armedAt)
         val doc = UnattendedReport.build(
-            UnattendedReportInput(armedAtMs = armedAt, closedAtMs = nowMs, events = events, queueLines = queueLines),
+            UnattendedReportInput(
+                armedAtMs = armedAt,
+                closedAtMs = nowMs,
+                events = events,
+                queueLines = queueLines,
+                closedReasonCn = closeReasonCn,
+            ),
         )
         saveReport(ctx, doc, nowMs)
-        UnattendedLedger.append(ctx, UnattendedEvent(UnattendedEventKind.REPORT, nowMs, "收值守出报告"))
+        UnattendedLedger.append(
+            ctx,
+            UnattendedEvent(UnattendedEventKind.REPORT, nowMs, closeReasonCn ?: "收值守出报告"),
+        )
         UnattendedNotifier.reportReady(ctx)
         return doc
     }

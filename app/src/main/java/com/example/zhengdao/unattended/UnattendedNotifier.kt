@@ -38,6 +38,9 @@ internal object UnattendedNotifier {
     internal const val NOTIF_REPORT = 20261108
     internal const val NOTIF_DEGRADE = 20261109
 
+    /** 441 加法：进场回执（"已进值守，按圈干活"；第七个 id，与前六个错开）。 */
+    internal const val NOTIF_ARMED = 20261110
+
     /** PendingIntent 请求码六连（与 4101-4107、4201 都不同——RequestCode 账按源码钉）。 */
     internal const val REQ_FGS = 4108
     internal const val REQ_STOP = 4109
@@ -45,6 +48,9 @@ internal object UnattendedNotifier {
     internal const val REQ_PAUSE = 4111
     internal const val REQ_REPORT = 4112
     internal const val REQ_DEGRADE = 4113
+
+    /** 441 加法：进场回执的请求码（与上面六个错开）。 */
+    internal const val REQ_ARMED = 4114
 
     /** 深链（通知点击直达值守页；路由在 IncomingIntentRouter，落点 UnattendedActivity）。 */
     internal const val DEEP_LINK = "zhengdao://unattended"
@@ -91,6 +97,21 @@ internal object UnattendedNotifier {
         ctx.getString(R.string.unattended_notif_report_text),
     )
 
+    /**
+     * 进场回执（441 加法：派工单原话"进场后第一件事是通知：已进值守（预计 X 小时），
+     * 按圈干活"；普通档 SESSION/LOW——是回执，不是警报）。
+     *
+     * **唯一豁免前台抑制的一条**：用户刚在主界面说完"我出门了"，人就站在屏幕前，
+     * 说完就要锁屏走人——这条被前台抑制压掉就等于永远没人听见（判据①"发通知"落空）。
+     * 其余各条照旧抑制，一处豁免不许扩散（force 只此一个调用方，门禁钉住）。
+     */
+    fun armedNow(ctx: Context, planCn: String) = post(
+        ctx, NOTIF_ARMED, REQ_ARMED, AppNotifications.SESSION,
+        ctx.getString(R.string.unattended_notif_armed_title),
+        ctx.getString(R.string.unattended_notif_armed_text, planCn),
+        force = true,
+    )
+
     /** 前台服务常驻那条（SESSION/LOW，ongoing——划掉=值守失守，同保活口径）。 */
     internal fun ongoing(ctx: Context, text: String): Notification {
         AppNotifications.ensureAll(ctx)
@@ -107,8 +128,17 @@ internal object UnattendedNotifier {
     /**
      * 发送的唯一口：权限缺失只落日志（167 批口径，不崩不静默丢——账上可查）；
      * App 在前台就不弹（同 ScheduleNotifier／BaopuCompletionRules 的前台抑制口径）。
+     * [force] 只许 [armedNow] 用（进场回执必须响到，理由见那里的 KDoc）。
      */
-    private fun post(ctx: Context, notifId: Int, req: Int, channel: String, title: String, text: String) {
+    private fun post(
+        ctx: Context,
+        notifId: Int,
+        req: Int,
+        channel: String,
+        title: String,
+        text: String,
+        force: Boolean = false,
+    ) {
         val granted = ContextCompat.checkSelfPermission(
             ctx, android.Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
@@ -116,7 +146,7 @@ internal object UnattendedNotifier {
             RunLog.log("离场值守：通知权限没给，只落账不弹（$title）")
             return
         }
-        if (AppForeground.isForeground()) return
+        if (!force && AppForeground.isForeground()) return
         runCatching {
             AppNotifications.ensureAll(ctx)
             val n = Notification.Builder(ctx, channel)

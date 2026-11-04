@@ -26,6 +26,7 @@ object UnattendedStatus {
     private const val SP = "zhengdao-unattended"
     private const val KEY_ARMED = "armed"
     private const val KEY_ARMED_AT = "armed_at_ms"
+    private const val KEY_AUTO_DISARM_AT = "auto_disarm_at_ms"
     private const val KEY_SCOPE = "scope"
     private const val KEY_DEGRADED = "degraded"
     private const val KEY_LAST_SUMMARY = "last_summary_at_ms"
@@ -74,8 +75,14 @@ object UnattendedStatus {
     /** 开值守时写下的托付范围说明（自由文本；圈内/圈外的机器判据归接线批，这里只是账）。 */
     fun scopeNote(): String = runCatching { prefs(ctx())?.getString(KEY_SCOPE, "") }.getOrNull().orEmpty()
 
-    /** 开值守（幂等：已开着就原样保留最初的时刻与范围）。 */
-    fun arm(scope: String, nowMs: Long) {
+    /**
+     * 开值守（幂等：已开着就原样保留最初的时刻与范围）。
+     *
+     * 第四百四十一单加法：[autoDisarmAtMs] 是"到点自动收值守"的时刻（一句话值守带时长时
+     * 由接线层算好写进来；null ＝ 没带时长，不自动收）。只写值，到没到期**判不归这里**
+     * （归服务的节拍，见 UnattendedDutyService.autoDisarmPass——状态层不替判定层做主）。
+     */
+    fun arm(scope: String, nowMs: Long, autoDisarmAtMs: Long? = null) {
         if (armed()) return
         write {
             it.putBoolean(KEY_ARMED, true)
@@ -83,16 +90,25 @@ object UnattendedStatus {
                 .putString(KEY_SCOPE, scope.trim())
                 .putBoolean(KEY_DEGRADED, false)
                 .putLong(KEY_LAST_SUMMARY, 0L)
+                .putLong(KEY_AUTO_DISARM_AT, autoDisarmAtMs ?: 0L)
         }
         RunLog.log("离场值守：开（范围：${scope.trim().ifEmpty { "未写" }}）")
     }
 
-    /** 收值守（幂等）。 */
+    /** 收值守（幂等；自动到期时刻一并清——留着就是下次误收的雷）。 */
     fun disarm() {
         if (!armed()) return
-        write { it.putBoolean(KEY_ARMED, false) }
+        write {
+            it.putBoolean(KEY_ARMED, false)
+                .putLong(KEY_AUTO_DISARM_AT, 0L)
+        }
         RunLog.log("离场值守：收")
     }
+
+    // ── 自动到期（441 加法：一句话值守带时长 ⇒ 到点自动收） ───────────────
+
+    /** 自动收值守的时刻（没带时长 ⇒ null；已收 ⇒ null）。 */
+    fun autoDisarmAtMs(): Long? = if (armed()) readLong(KEY_AUTO_DISARM_AT) else null
 
     // ── 降级（B级汇总超时；单行道，复工＝收值守再开） ────────────────────
 

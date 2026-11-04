@@ -27,6 +27,7 @@ import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import android.content.pm.ServiceInfo
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.baopu.BaopuRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -87,17 +88,35 @@ class UnattendedDutyService : Service() {
         }
     }
 
-    /** 一拍：开没开、环境、心跳、汇总、降级——五步，顺序不许调（先停后干，先活着再干活）。 */
+    /** 一拍：开没开、到期、心跳、环境、汇总、降级——顺序不许调（先停后干，先活着再干活）。 */
     private fun tick() {
         val now = System.currentTimeMillis()
         if (!UnattendedStatus.armed()) {
             stopSelf()
             return
         }
+        if (autoDisarmPass(now)) return // 到点自动收了 ⇒ 收尾（服务随即自停，别再走下面的拍）
         refreshForeground()
         UnattendedStatus.beat(now)
         envPass(now)
         cadencePass(now)
+    }
+
+    /**
+     * 441 加法：一句话值守带时长 ⇒ 到点自动收值守并出报告。
+     * 留痕口径与隐式出场同格（DISARM 账＋报告头理由）；心跳早于这一拍的最后几秒差在
+     * 一拍（≤1 分钟）之内——派工单写的是"≈ now+时长"，不承诺秒级。
+     */
+    private fun autoDisarmPass(nowMs: Long): Boolean {
+        val dueAt = UnattendedStatus.autoDisarmAtMs() ?: return false
+        if (nowMs < dueAt) return false
+        val armedAt = UnattendedStatus.armedAtMs() ?: return false
+        val reason = "预计时长到了，自动收值守，值守了 ${UnattendedReport.formatSpan(nowMs - armedAt)}"
+        val queue = BaopuRuntime.engineIfBuilt()?.awayDeferredHeadlines().orEmpty()
+        UnattendedRecorder.disarmAndReport(this, nowMs, queue, closeReasonCn = reason)
+        RunLog.log("离场值守：$reason")
+        stopSelf()
+        return true
     }
 
     /** 常驻条随状态刷新（暂停中要说"暂停中"，不然锁屏上看不出值守已经停手）。 */

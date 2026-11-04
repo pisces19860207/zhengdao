@@ -2900,6 +2900,19 @@ internal class BaopuChatController(context: Context) {
             sessionId = sessionId ?: com.example.zhengdao.baopu.MediatorWiring.NO_SESSION,
             now = System.currentTimeMillis(),
         )
+        // 第四百四十一单：一句话值守触发（**唯一**接线点，与调解器同一道、同一理由：
+        // 点通知走深链、点问卡按钮走 engine.answerChoice——都不经过 send，天然不触发
+        // 隐式解除；网页内容/工具返回值根本没有一条道能进触发层）。放在所有分支之前：
+        // 插话、题材流都是用户亲口说的一句话，进场/出场/反问的判定不该被拦在门外。
+        // 判定与执行都在壳层 scope 里异步走（IO 落 Dispatchers.IO），不拦这句话进引擎。
+        scope.launch {
+            val plan = com.example.zhengdao.unattended.UnattendedChatTrigger.onUserSend(
+                ctx = appCtx,
+                text = text,
+                nowMs = System.currentTimeMillis(),
+            )
+            plan.noticeLine?.let { engine.showNotice(it) }
+        }
         // 第二百零五批：复盘话术 ⇒ 本地跑反思器（IO 单飞，不拦这句话进引擎——
         // 复盘结果以技能页候选卡＋便签给出，引擎照常聊天）。
         if (ReflectionTrigger.isReviewRequest(text)) runReflectionNow()

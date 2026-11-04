@@ -28,6 +28,13 @@ internal data class UnattendedReportInput(
 
     /** 收场时仍未授权的事（弹卡闸队列快照；期中报告也带上当前积压）。 */
     val queueLines: List<String> = emptyList(),
+
+    /**
+     * 收场理由的人话（441 加法；null ＝ 不写——388 老口径保持逐字节不变）。
+     * 隐式出场的留痕（"因用户回话而解除"）从这进报告头：报告是回场第一眼，
+     * "为什么收了值守"必须在头一行，不许翻账才查得到。
+     */
+    val closedReasonCn: String? = null,
 )
 
 /** 报告成品（[lines] 一行一项；装配层原样落盘／上屏，不再二次加工）。 */
@@ -61,7 +68,9 @@ internal object UnattendedReport {
         } else {
             "值守窗口 ${formatSpan(span)}"
         }
-        return "离场报告｜$window｜事件 ${input.events.size} 条"
+        val reason = input.closedReasonCn?.takeIf { it.isNotBlank() && end != null }
+        val tail = reason?.let { "｜$it" }.orEmpty()
+        return "离场报告｜$window$tail｜事件 ${input.events.size} 条"
     }
 
     /** A 级节：停手／降级／暂停／复工逐条，一条不少。 */
