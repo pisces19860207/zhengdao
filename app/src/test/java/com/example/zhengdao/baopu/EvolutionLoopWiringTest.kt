@@ -65,7 +65,7 @@ class EvolutionLoopWiringTest {
 
     @Test
     fun `eval证据有生产调用点_只认结果文件`() {
-        assertTrue(controller.contains("EvalResultFile.latest("))
+        assertTrue(controller.contains("val releaseEval = EvalResultFile.latest(appCtx)"))
         val refs = mainRefs("EvalResultFile", "baopu/eval/EvalResult.kt")
         assertTrue("EvalResultFile 必须有生产调用点：$refs", refs.isNotEmpty())
     }
@@ -83,13 +83,13 @@ class EvolutionLoopWiringTest {
         assertTrue("设置页「用一次」必须接上", settings.contains("recordSkillUseManual("))
         // 不新开写盘路径：复用 57 的 use 行与 85 的效果行拼装函数
         assertTrue("use 行仍是 57 那条", runtime.contains("BaopuSql.insertSkillUse(name, null, null, true, now)"))
-        assertTrue("效果行仍走 85 的闸门", runtime.contains("SkillEffects.toStmt(signal)"))
+        assertEquals("效果行两处都要走 85 的闸门（442批：少一处必须红）", 2, Regex("SkillEffects\\.toStmt\\(signal\\)").findAll(runtime).count())
     }
 
     @Test
     fun `状态接缝_候选加判定进可观察状态`() {
         assertTrue(controller.contains("var evolutionSuggestions by mutableStateOf"))
-        assertTrue(controller.contains("List<EvolutionSuggestion>"))
+        assertTrue(controller.contains("private fun judgeProposalCandidates(): List<EvolutionSuggestion>"))
         assertTrue(controller.contains("evolutionSuggestions = it"))
     }
 

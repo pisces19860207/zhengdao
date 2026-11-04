@@ -239,7 +239,7 @@ class SkillTitlePrecheckTest {
         val checkBody = bodyOf(src, "private fun skillBodySelfCheck(")
         assertTrue("自检输入必须去掉 SkillStore 机器头", checkBody.contains("contentWithoutMachineHeader("))
         // 收尾里要有一句人话原因（J8「给原因」的用户可见落点）
-        assertTrue("收尾必须提示坏候选原因", src.contains("noteFilteredLearn()"))
+        assertTrue("收尾必须提示坏候选原因", Regex("(?m)^\\s*noteFilteredLearn\\(\\)\\s*$").containsMatchIn(src))
     }
 
     // ── 工具 ────────────────────────────────────────────────────────────────

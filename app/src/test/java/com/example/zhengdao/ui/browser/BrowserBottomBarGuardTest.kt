@@ -78,7 +78,7 @@ class BrowserBottomBarGuardTest {
         assertTrue("键命中区必须 48×48dp", src.contains(".size(48.dp)"))
         assertTrue("键圆角必须 12dp", src.contains("RoundedCornerShape(12.dp)"))
         assertTrue("件间距必须 4dp", src.contains("Arrangement.spacedBy(4.dp)"))
-        assertTrue("水平内缩必须 12dp", src.contains(".padding(horizontal = 12.dp)"))
+        assertEquals("水平内缩必须 12dp（442批：两处各钉，少一处必须红）", 2, Regex("\\.padding\\(horizontal = 12\\.dp\\)").findAll(src).count())
         assertTrue("地址胶囊必须高 40dp", src.contains(".height(40.dp)"))
         assertTrue("地址胶囊必须全圆（圆角 20dp）", src.contains("RoundedCornerShape(20.dp)"))
         assertTrue("胶囊宽度必须自适应（weight），不许写死 195dp/143dp", src.contains(".weight(1f)"))
@@ -184,7 +184,7 @@ class BrowserBottomBarGuardTest {
         // `isEditing` 入参与回调。原先这里钉「`addressEditing = false` 恰好出现 2 处」，补了两条
         // 取消出口后变成 3 处 ⇒ 计数本身就脆，改成钉**归属**（谁有权改）而不是钉数量。
         assertFalse("底栏不许自己碰编辑态（isEditing 是入参，动作靠回调发出去）", bar.contains("addressEditing"))
-        assertTrue("切 Tab 必须关掉编辑态", src.contains("addressEditing = false"))
+        assertTrue("切 Tab 必须关掉编辑态（442批：钉切 Tab 那一处，另两处取消出口兜不了底）", src.contains("urlInput = active?.state?.url ?: \"\"\n        addressEditing = false"))
         assertTrue("取消出口必须是唯一实现并被复用", src.contains("val exitAddressEditing: () -> Unit = {"))
     }
 
@@ -218,7 +218,7 @@ class BrowserBottomBarGuardTest {
         val src = bar()
         assertTrue(
             "加载中必须走 stop 分支（StopGlyph + stopRed）",
-            src.contains("if (loading) {") && src.contains("StopGlyph(") && src.contains("palette.stopRed"),
+            src.contains("if (loading) {") && src.contains("StopGlyph(tint = tint") && src.contains("palette.stopRed"),
         )
     }
 }

@@ -379,7 +379,8 @@ class BaopuArtifactShelfTest {
         assertTrue("面板代码里不许出现中文字面量（中英不对称就是这么来的）：$hits", hits.isEmpty())
         // 判别器自证：硬编码那种形状必须被抓到
         assertTrue("判别器抓得住硬编码文案", Regex("\"[^\"]*[\\u4E00-\\u9FFF][^\"]*\"").containsMatchIn("Text(\"还没有产物\")"))
-        assertTrue("每一句都查键", src.contains("stringResource(R.string.baopu_artifact_shelf_none"))
+        assertEquals("空态句钉键（442批：闭合括号防 _hint 前缀兜底）", 1, Regex("stringResource\\(R\\.string\\.baopu_artifact_shelf_none\\)").findAll(src).count())
+        assertEquals("提示句钉键（442批：闭合括号防兜底）", 1, Regex("stringResource\\(R\\.string\\.baopu_artifact_shelf_none_hint\\)").findAll(src).count())
     }
 
     @Test

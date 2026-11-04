@@ -524,8 +524,8 @@ class PlanContractWiringTest {
     @Test
     fun `C7_计划卡把契约画出来_判据1的卡面侧`() {
         val card = codeOf("src/main/java/com/example/zhengdao/ui/baopu/BaopuPlanCard.kt")
-        assertTrue(card.contains("BaopuUiContract"))
-        assertTrue("每一步都要带上自己的预估档", card.contains("planStepRiskTag("))
+        assertEquals("BaopuUiContract( 恰两处（声明＋构造）：声明行也含钉串，少了构造必须红（442批）", 2, Regex("BaopuUiContract\\(").findAll(card).count())
+        assertTrue("每一步都要带上自己的预估档", card.contains("planStepRiskTag(contract, index)"))
         listOf("goal", "touches", "readonly", "asks", "stop_if", "note").forEach {
             assertTrue("契约行缺 $it 的字符串", card.contains("R.string.baopu_plan_contract_$it"))
         }

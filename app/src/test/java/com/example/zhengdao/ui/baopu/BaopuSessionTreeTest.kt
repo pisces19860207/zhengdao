@@ -834,8 +834,8 @@ class BaopuSessionTreeTest {
         assertTrue("抽屉要收长按回调", drawerCode.contains("onSessionLongPress"))
         assertTrue("页面要有删除确认卡", screenCode.contains("R.string.baopu_delete_session_title"))
         assertTrue("确认后真删", screenCode.contains("controller.deleteSession(id)"))
-        assertTrue("设置页不再有一条条删的入口", !settings.contains("R.string.skill_delete") || settings.contains("skill_delete"))
-        assertTrue("设置页要能打开会话库", settings.contains("onOpenSessionLibrary"))
+        assertFalse("设置页不再有一条条删的入口（删除口只在抽屉长按＋页面确认卡；442批：旧式 || 恒真）", settings.contains("deleteSession("))
+        assertTrue("设置页要能打开会话库（442批：钉调用行，参数声明兜不了底）", settings.contains("onClick = onOpenSessionLibrary"))
         val screen = screenCode
         assertTrue(
             "设置页的入口要真的把会话库打开（先关设置页，别两个 Dialog 叠着）",

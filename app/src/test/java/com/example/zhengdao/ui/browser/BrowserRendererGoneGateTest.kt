@@ -246,7 +246,7 @@ class BrowserRendererGoneGateTest {
         val s = screenSource()
         assertTrue(
             "BrowserScreen 必须识别 recycled 态并让卡片顶上来",
-            s.contains("BrowserRecycledCard(") && s.contains("recycled"),
+            Regex("(?m)^\\s*BrowserRecycledCard\\($").containsMatchIn(s) && s.contains("recycled"),
         )
         assertTrue(
             "卡片的重载动作必须走 BrowserTabManager.reloadRecycled（点了才加载的唯一入口）",

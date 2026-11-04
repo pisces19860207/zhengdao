@@ -137,7 +137,7 @@ class PersonaPackWiringTest {
     @Test
     fun `守卫_人设包正文也只许走设置页`() {
         val guard = code("src/main/java/com/example/zhengdao/baopu/PersonaGuard.kt")
-        assertTrue(guard.contains("isPersonaPackPath("))
+        assertTrue(guard.contains("if (isPersonaPackPath(segs)) return REJECT_PREFIX + raw"))
         assertTrue(guard.contains("\"persona.md\""))
     }
 }

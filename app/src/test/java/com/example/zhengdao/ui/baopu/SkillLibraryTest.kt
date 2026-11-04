@@ -184,7 +184,7 @@ class SkillLibraryTest {
     fun `负例1_不造第二套技能卡组件`() {
         val src = screen()
         assertFalse("不许自造行动卡容器（行动卡调用点白名单之外的都算第二套）", src.contains("BaopuActionContainer("))
-        assertTrue("每行必须复用 184 的 BaopuSkillCard", src.contains("BaopuSkillCard("))
+        assertEquals("每行必须复用 184 的 BaopuSkillCard（442批：两行各钉）", 2, Regex("BaopuSkillCard\\(").findAll(src).count())
     }
 
     @Test
@@ -192,11 +192,11 @@ class SkillLibraryTest {
         val src = screen()
         assertFalse("技能正文不许在页面里直写（唯一写口是 184 的 SkillCardWriter／32 批 commitSkillDraft）", src.contains(".writeText("))
         assertFalse("页面不许自己 rename/delete 技能文件", src.contains(".renameTo("))
-        assertTrue("候选保存必须走 184 卡宿主（host.remember ⇒ SkillCardWriter.save）", src.contains("host.remember()"))
+        assertEquals("候选保存两支都要走 184 卡宿主（442批：少一支必须红）", 2, Regex("host\\.remember\\(\\)").findAll(src).count())
         val c = controller()
-        assertTrue("行内转正必须走 commitSkillDraft（32 批唯一写口）", c.contains("commitSkillDraft("))
+        assertEquals("行内转正必须走 32 批唯一写口（442批：两处各钉）", 2, Regex("commitSkillDraft\\(").findAll(c).count())
         assertTrue("删除必须走 softDeleteSkill（SkillStore.archive＋索引去行）", c.contains("softDeleteSkill("))
-        assertTrue("恢复必须走 restoreArchived（34 批 B）", c.contains("restoreArchived("))
+        assertEquals("恢复必须走 34 批 B 口（442批：两处各钉）", 2, Regex("restoreArchived\\(").findAll(c).count())
     }
 
     @Test

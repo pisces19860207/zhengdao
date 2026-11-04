@@ -295,7 +295,7 @@ class RunTraceTest {
             assertFalse("加表不许顺手 ALTER 既有表（老库可读的前提）：$it", it.contains("ALTER TABLE"))
         }
         val dbSrc = read("src/main/java/com/example/zhengdao/baopu/BaopuDb.kt")
-        assertTrue("onCreate 必须走 v12 迁移（新装与升级同一条路）", dbSrc.contains("applyV12Migration(db)"))
+        assertTrue("onCreate 必须走 v12 迁移（新装与升级同一条路）", Regex("(?m)^\\s*applyV12Migration\\(db\\)\\s*$").containsMatchIn(dbSrc))
         assertTrue("onUpgrade 必须有 v12 分支", dbSrc.contains("if (oldVersion < 12) applyV12Migration(db)"))
         assertFalse("轨迹表是只增不改的账本：不许有 UPDATE", dbSrc.contains("UPDATE run_trace"))
         assertFalse("轨迹表是只增不改的账本：不许有 DELETE", dbSrc.contains("DELETE FROM run_trace"))

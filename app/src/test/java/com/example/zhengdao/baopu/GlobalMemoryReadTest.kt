@@ -147,6 +147,7 @@ class GlobalMemoryReadTest {
         val s = src("src/main/java/com/example/zhengdao/baopu/GlobalMemory.kt")
         assertTrue(s.contains("fun save(filesDir: File, text: String): Boolean"))
         assertTrue(s.contains("tmp.renameTo(f)"))
-        assertTrue(s.contains("f.isFile"))
+        assertTrue("读侧查存在（442批：钉整行）", s.contains("if (!f.isFile) return GlobalMemoryRead.Absent"))
+        assertTrue("写侧成功与否看文件真在（442批：钉 save 尾判定）", Regex("f\\.isFile\\s*\\n\\s*}\\.getOrDefault\\(false\\)").containsMatchIn(s))
     }
 }

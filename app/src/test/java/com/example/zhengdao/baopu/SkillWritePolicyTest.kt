@@ -324,7 +324,7 @@ class SkillWritePolicyTest {
         val src = File("src/main/java/com/example/zhengdao/baopu/SkillWritePolicy.kt")
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/SkillWritePolicy.kt") }
             .readText()
-        assertTrue("免批壳要走 C 层", src.contains("PersonaLayer.C_PROJECT"))
+        assertTrue("免批壳要走 C 层（442批：钉 apply 传参行，别处 C_PROJECT 兜不了底）", src.contains("SkillStore.apply(planned, personaFiles, personaFiles.read(PersonaLayer.C_PROJECT)"))
         assertFalse("免批壳不许提 A 层：", src.contains("A_KERNEL"))
         assertFalse("免批壳不许提 B 层", src.contains("B_GLOBAL"))
         assertFalse("免批壳不许自己写文件", src.contains("writeText("))

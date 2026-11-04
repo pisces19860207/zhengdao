@@ -59,9 +59,9 @@ class BaopuLearnCardGuardTest {
 
     @Test
     fun `引擎_收尾才出卡且只出一次`() {
-        assertTrue(engine.contains("emitLearnCardIfDue()"))
+        assertEquals("两处收尾都要调出卡入口（442批：定义行兜不了底，少一处必须红）", 2, Regex("(?m)^\\s*emitLearnCardIfDue\\(\\)\\s*$").findAll(engine).count())
         assertTrue("出卡要走 shouldEmit（含已出过就不再出的判据）", engine.contains("SkillRefine.shouldEmit"))
-        assertTrue("新一轮要清掉上一轮的卡与信号", engine.contains("learnShown = false"))
+        assertEquals("两处清卡都要在（442批：声明行兜不了底）", 2, Regex("(?m)^\\s*learnShown = false\\s*$").findAll(engine).count())
     }
 
     @Test
@@ -105,7 +105,7 @@ class BaopuLearnCardGuardTest {
 
     @Test
     fun `控制器_落盘前也过门禁_不是只把按钮变灰`() {
-        assertTrue("控制器要有门禁入口", controller.contains("reviewBeforeWrite("))
+        assertTrue("控制器要有门禁入口", controller.contains("val review = reviewBeforeWrite(p, root)"))
         val write = block(controller, "private fun writeLearnedSkill(", limit = 30)
         assertTrue("写之前必须查门禁：\n$write", write.contains("review.ok"))
         assertTrue("门禁不过要直接返回原因，不许继续走到 plan/apply：\n$write",

@@ -42,9 +42,9 @@ class BaopuAttachWiringTest {
         assertTrue("相机权限走后 RequestPermission", src.contains("ActivityResultContracts.RequestPermission()"))
         assertTrue("相册走系统照片选择器多选（不申请存储读权限）", src.contains("PickMultipleVisualMedia(MAX_ATTACH)"))
         assertTrue("选文件走 OpenMultipleDocuments（多选）", src.contains("ActivityResultContracts.OpenMultipleDocuments()"))
-        assertTrue("三个入口在同一个 sheet 里", src.contains("ModalBottomSheet"))
+        assertTrue("三个入口在同一个 sheet 里", src.contains("ModalBottomSheet(onDismissRequest"))
         // 入口图标：2026-10-18 用户「+号太大了，做个小回形针」⇒ 自绘回形针、无边框小键
-        assertTrue("入口应是自绘回形针", src.contains("PaperclipGlyph"))
+        assertTrue("入口应是自绘回形针", src.contains("PaperclipGlyph(tint = MaterialTheme"))
         assertTrue("回形针要有读屏名（自绘图形没有文字）", src.contains("contentDescription = attachDesc"))
         assertFalse("不许再回到一个大「＋」按钮", src.contains("\"＋\""))
         assertFalse("不许 import 图标库", src.contains("material.icons"))
@@ -79,7 +79,7 @@ class BaopuAttachWiringTest {
         assertTrue("用 Workspace.hostDir 解析工作区（单一真源）", a.contains("Workspace.hostDir(ctx)"))
         assertTrue("返回相对路径", a.contains("relPath = \"\$DIR/\${target.name}\""))
         val src = composer()
-        assertTrue("消息里拼的是相对路径 + 字节数", src.contains("withAttachmentHint"))
+        assertTrue("消息里拼的是相对路径 + 字节数", src.contains("onSend(withAttachmentHint(ctx, body, list), list)"))
         assertFalse("不许把绝对路径塞进对话", src.contains("absolutePath"))
         assertFalse("不许把图片 base64 塞进对话", src.contains("base64") || src.contains("Base64"))
     }
@@ -91,7 +91,7 @@ class BaopuAttachWiringTest {
         assertTrue("换掉 \\\\", a.contains(".replace('\\\\', '_')"))
         assertTrue("控制字符压平", a.contains("\\\\p{Cntrl}"))
         assertTrue("去前导点（不许隐藏文件）", a.contains(".removePrefix(\".\")"))
-        assertTrue("截 60 字", a.contains("60"))
+        assertTrue("截 60 字", a.contains("cleaned.take(60)"))
     }
 
     @Test
@@ -114,6 +114,6 @@ class BaopuAttachWiringTest {
         assertTrue("图片提示必须写明「看不见就明说、别假装看过」", zh.contains("别假装看过"))
         assertFalse("图片提示不许再硬写「当前通道不能看图」", zh.contains("当前通道不能看图"))
         assertFalse("英文提示同样不许硬写", en.contains("cannot see images"))
-        assertTrue("文件提示要指向 read_file", zh.contains("read_file"))
+        assertTrue("文件提示要指向 read_file", zh.contains("需要内容就用 read_file 读它们"))
     }
 }

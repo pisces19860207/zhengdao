@@ -298,7 +298,7 @@ class KernelGuardTest {
         // ④ 记忆布局层引用内核（路径唯一真源）
         val ml = repoFile("src/main/java/com/example/zhengdao/baopu/MemoryLayout.kt").readText()
         assertTrue("MemoryLayout 引内核", ml.contains("import com.example.zhengdao.baopu.kernel.BaopuKernel"))
-        assertTrue("MemoryLayout 记忆根委托内核", ml.contains("BaopuKernel.Data.DIR_MEMORY"))
+        assertTrue("MemoryLayout 记忆根委托内核（442批：闭合括号防 BACKUP 前缀兜底）", ml.contains("File(workspace, BaopuKernel.Data.DIR_MEMORY)"))
         // ⑤ 初始化接线：进抱朴＝建空日记目录＋跑一次迁移（用户「不弹卡、不写内容」）
         val rt = repoFile("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt").readText()
         assertTrue("BaopuRuntime 应建记忆目录", rt.contains("MemoryLayout.ensureDirs(wsRoot)"))

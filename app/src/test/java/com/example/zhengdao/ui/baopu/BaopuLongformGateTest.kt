@@ -48,7 +48,7 @@ class BaopuLongformGateTest {
         val card = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuLongformCard.kt")
         assertTrue(
             "复制全文大按钮必须 heightIn(min = 48.dp)",
-            card.contains("heightIn(min = 48.dp)"),
+            card.contains("Modifier.weight(1.4f).heightIn(min = 48.dp)"),
         )
     }
 

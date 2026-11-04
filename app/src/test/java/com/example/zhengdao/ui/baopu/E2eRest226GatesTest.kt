@@ -93,7 +93,7 @@ class E2eRest226GatesTest {
         val b = capture()
         assertTrue("桥本身要 addJavascriptInterface", b.contains("addJavascriptInterface("))
         assertTrue("停止录制要摘桥（不许一直挂着）", b.contains("removeJavascriptInterface("))
-        assertTrue("跨域导航后重新注入", b.contains("onDocumentStarted") && b.contains("inject()"))
+        assertTrue("跨域导航后重新注入", b.contains("onDocumentStarted = { url ->") && b.contains("{ inject() }"))
         assertTrue(
             "引擎必须把 onPageStarted 交给录制（不是改 delegate）",
             engine().contains("var onDocumentStarted") && engine().contains("onDocumentStarted?.invoke("),

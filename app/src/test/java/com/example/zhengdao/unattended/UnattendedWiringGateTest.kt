@@ -6,6 +6,7 @@
 // 渠道只许升档不许新增。行为测试拦不住"接线做多了/做漏了"，只能钉在源码上。
 package com.example.zhengdao.unattended
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -85,7 +86,7 @@ class UnattendedWiringGateTest {
     @Test
     fun `agent渠道升HIGH_带delete重建的升档口_不新增第五个渠道`() {
         val n = code("core/src/main/java/com/example/zhengdao/core/notify/AppNotifications.kt")
-        assertTrue("agent 渠道要升到 HIGH", n.contains("IMPORTANCE_HIGH"))
+        assertEquals("agent 渠道建与重建都要 HIGH（442批：少一处必须红）", 2, Regex("channel\\(AGENT, \\\"Agent 执行\\\", NotificationManager.IMPORTANCE_HIGH").findAll(n).count())
         assertTrue("已装用户的升级必须 delete+recreate（改 importance 不生效）", n.contains("deleteNotificationChannel"))
         val ids = Regex("const val (SESSION|INSTALL|AGENT|UPDATE) = \"(\\w+)\"").findAll(n).toList()
         assertTrue("渠道仍是四个，不许新增第五个：${ids.size}", ids.size == 4)
@@ -97,7 +98,7 @@ class UnattendedWiringGateTest {
         // 高优先（红线停手、圈外入队）→ AGENT；普通（暂停/复工/降级/报告）→ SESSION。
         assertTrue(n.contains("NOTIF_STOP, REQ_STOP, AppNotifications.AGENT,"))
         assertTrue(n.contains("NOTIF_QUEUE, REQ_QUEUE, AppNotifications.AGENT,"))
-        assertTrue(n.contains("NOTIF_PAUSE, REQ_PAUSE, AppNotifications.SESSION,"))
+        assertEquals("暂停/复工两处都走 SESSION 对（442批：少一处必须红）", 2, Regex("NOTIF_PAUSE, REQ_PAUSE, AppNotifications.SESSION,").findAll(n).count())
         assertTrue(n.contains("NOTIF_DEGRADE, REQ_DEGRADE, AppNotifications.SESSION,"))
         assertTrue(n.contains("NOTIF_REPORT, REQ_REPORT, AppNotifications.SESSION,"))
     }
@@ -109,7 +110,7 @@ class UnattendedWiringGateTest {
             .readText().replace("\r\n", "\n")
         assertTrue(raw.contains("zhengdao://unattended"))
         val n = code("src/main/java/com/example/zhengdao/unattended/UnattendedNotifier.kt")
-        assertTrue("每条通知都要挂 contentIntent", n.contains(".setContentIntent(deepLink(ctx, "))
+        assertEquals("每条通知都要挂 contentIntent（442批：两处各钉）", 2, Regex("\\.setContentIntent\\(deepLink\\(ctx, ").findAll(n).count())
     }
 
     // ── 服务与看门狗 ────────────────────────────────────────────────────
@@ -117,8 +118,8 @@ class UnattendedWiringGateTest {
     @Test
     fun `服务用ServiceCompat起前台_带specialUse类型_STICKY`() {
         val s = code("src/main/java/com/example/zhengdao/unattended/UnattendedDutyService.kt")
-        assertTrue(s.contains("ServiceCompat.startForeground"))
-        assertTrue(s.contains("FOREGROUND_SERVICE_TYPE_SPECIAL_USE"))
+        assertEquals("两处起前台都走 ServiceCompat（442批：少一处必须红）", 2, Regex("ServiceCompat\\.startForeground").findAll(s).count())
+        assertEquals("specialUse 类型两处都要带（442批：少一处必须红）", 2, Regex("FOREGROUND_SERVICE_TYPE_SPECIAL_USE\\b").findAll(s).count())
         assertTrue("进程被杀后系统尽量重建", s.contains("START_STICKY"))
     }
 
