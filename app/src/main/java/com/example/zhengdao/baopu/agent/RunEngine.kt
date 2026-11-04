@@ -53,6 +53,8 @@ import com.example.zhengdao.baopu.TaskModeBoundary
 import com.example.zhengdao.baopu.VisionConsent
 import com.example.zhengdao.baopu.VisionFiles
 import com.example.zhengdao.baopu.VisionRouting
+import com.example.zhengdao.baopu.plan.AmendRiskProbe
+import com.example.zhengdao.baopu.plan.AmendRiskRecheck
 import com.example.zhengdao.baopu.plan.ContractApprovalRules
 import com.example.zhengdao.baopu.plan.ContractDeviation
 import com.example.zhengdao.baopu.plan.ContractDeviationAction
@@ -339,6 +341,16 @@ internal class RunEngine(
     @Volatile
     private var activeRunOrder: RunContractWiring.RunOrder? = null
 
+    // 第四百一十七批：改约风险档重算的两个事实（本层只搬运，不判档）。
+    /** 改约前最后一次**真实动作**调用（`update_plan` 不算）；重算时当旧参数。 */
+    private var lastActionCall: ToolCall? = null
+
+    /** 改约落地后挂着的基线：下一次动作带着新参数进来时消费掉。 */
+    private var amendRiskBaseline: ToolCall? = null
+
+    /** 与基线同一份改约的「改后要求」原文（降档账行要用，不转述）。 */
+    private var amendRiskRequirement: String = ""
+
     /**
      * 本轮的任务契约（404 判据③：起单即建、起单后立即可查——闲聊轮/续跑轮/收工后 ⇒ null）。
      */
@@ -362,6 +374,10 @@ internal class RunEngine(
      * @return 拼进 update_plan ack 的一句；空串 = 没改单（没单可改 / 改约已单上 / 形状不合规）
      */
     private fun reissueOrderForAmend(requirement: String): String {
+        // 417：改约**落地**了 ⇒ 挂上旧参数基线，等下一次动作带新参数进来重算档位。
+        // 与 360 的重开单并行、互不替代：360 管透传，本单管档位跟着变。
+        amendRiskBaseline = lastActionCall
+        amendRiskRequirement = requirement
         val current = activeRunOrder
         if (current == null) {
             log("抱朴契约：改约生效，但本轮没有已起的单（闲聊/续跑/短任务）⇒ 不新起单（起单仍归起单处）")
@@ -4722,6 +4738,16 @@ internal class RunEngine(
      *   落版；没批／超时 ⇒ 本次 update_plan 不执行，计划与状都保持原版。
      */
     private fun amendGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        // 第四百一十七批：改约落地后的基线**在这道既有闸里**取用。
+        // 为什么不放 handleSerialCall：那条函数的圈复杂度基线正好压在 15 的阈值上，
+        // 多一个 `?.let` 就 16 ⇒ detekt 多一条（417 首轮实测 339→340）。挂在这里，
+        // 主链一个分支都不加；本闸每次串行调用都跑，且比「判是不是 update_plan」更早，
+        // 所以下一次带新参数的动作照样会被重算。
+        // 先快照再清空 ⇒ 本次 update_plan 里刚置的基线不会在同一次调用被消费。
+        val baseline = amendRiskBaseline
+        amendRiskBaseline = null
+        if (call.name != PlanTool.NAME) lastActionCall = call
+        amendRiskGate(call, baseline)?.let { return it }
         if (call.name != PlanTool.NAME) return null
         if (PlanPledgeBoard.activeSnapshot() == null) return null
         val items = (PlanRules.parseItems(call.arguments) as? PlanRules.Parse.Ok)?.items
@@ -4755,6 +4781,47 @@ internal class RunEngine(
                 )
             }
             else -> return null
+        }
+    }
+
+    /**
+     * 第四百一十七批：改约风险档重算闸（真执行之前）。
+     *
+     * [baseline] 是改约落地时挂上的旧参数；[call] 是改约之后**这一次**要执行的动作
+     * （新参数）。两者一起交给 [AmendRiskWiring.onAmendLanded]，判定全在 `plan/AmendRisk.kt`
+     * 里调 `RiskMatrix.classify`——本函数只搬运、只处置，不判档。
+     *
+     * 升档且她没重新点头 ⇒ 拦下本次动作；降档只落一行账、不拦；档位不变 ⇒ 一个字不回灌。
+     */
+    private fun amendRiskGate(call: ToolCall, baseline: ToolCall?): GuardPipeline.Result.Failed? {
+        if (baseline == null) return null
+        val outcome = AmendRiskWiring.onAmendLanded(
+            probe = AmendRiskProbe(baseline, call),
+            requirement = amendRiskRequirement,
+            gate = amendRiskGateImpl,
+        )
+        outcome.line?.let { log(it) }
+        if (!outcome.blocked) return null
+        return GuardPipeline.Result.Failed(
+            call = call,
+            error = "【重新授权未通过】改约后风险升档，旧确认不能沿用：本次动作不执行，" +
+                "下一次请按新要求重新申报。",
+        )
+    }
+
+    /** 三态的两个真执行口：真弹一张重新授权卡 ＋ 真往 `计划军令状变更.jsonl` 追加一行。 */
+    private val amendRiskGateImpl = object : AmendRiskGate {
+        override fun reauthorize(recheck: AmendRiskRecheck): Boolean {
+            log("抱朴授权：改约升档 ⇒ 重新过授权闸（${recheck.brief()}）")
+            val picked = askUser(AmendRiskCards.reauthorizeRequest(recheck))
+            return AmendRiskCards.approved(picked?.id)
+        }
+
+        override fun recordDowngrade(recheck: AmendRiskRecheck, requirement: String) {
+            log("抱朴军令状：改约降档 ⇒ 落变更账（${recheck.brief()}）")
+            PlanPledgeBoard.noteRiskDowngrade(
+                AmendRiskLedger.downgradeRow(recheck, requirement, System.currentTimeMillis()),
+            )
         }
     }
 

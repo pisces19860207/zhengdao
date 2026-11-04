@@ -500,6 +500,19 @@ internal object PlanPledgeBoard {
         if (!ok) RunLog.log("军令状账写失败（${LEDGER_FILE}）")
     }
 
+    /**
+     * 第四百一十七批：**改约降档留痕**（判据②「不许静默降」的落账口）。
+     *
+     * 复用 343 那本 `计划军令状变更.jsonl`（[appendChange]），不新开第三本账：
+     * 降档也是一次改约的事实，与 `event=amend` 行同表不同事件，[PlanPledgeAmendRules.seedFrom]
+     * 只认 `amend` 事件 ⇒ 这一行不会被误当成 DROPPED/问询轮数读进去。
+     * 账写失败只 log，不挡用户的事（与 [appendChange] 同口径）。
+     */
+    fun noteRiskDowngrade(row: JSONObject) {
+        appendChange(row)
+        RunLog.log("抱朴军令状：改约降档留痕（${row.optString("event")}，${row.optString("before")} → ${row.optString("after")}）")
+    }
+
     /** 变更账追加一行（另一本账、另一个文件：一本只管一件事，343 判据⑥）。 */
     private fun appendChange(line: JSONObject) {
         if (dirs.isEmpty()) return

@@ -51,12 +51,16 @@ internal object OrganCensus {
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/RiskMatrix.kt",
             // 第三百五十八批：军师（推演盘）判风险档时调的是矩阵本体，多出第 4 处 ⇒ 3 改 4。
             // 它只取档位：不走 `RiskGate` 的时间窗、不写 208 账（派单【隔离】③「军师不写任何账」）。
-            callSites = 4,
+            // 第四百一十七批：改约落地后用新参数重算风险档，判定层旧/新参数各调矩阵一次
+            // ⇒ 4 改 6。这两处**只调矩阵本体**，不另写第二套判定（派工单判据④）。
+            callSites = 6,
             sink = "决策记录.jsonl（208 账行）",
             evidence = listOf(
                 "RiskGate.kt:69 RiskMatrix.classify(call, ctx, table)",
                 "RiskGate.kt:82 RiskMatrix.classify(call)",
                 "agent/RehearsalRunner.kt:281 军师取档位（358：读生产表、不落账）",
+                "plan/AmendRisk.kt:84 RiskMatrix.classify(probe.before, ctx, table)（417：改约前旧参数）",
+                "plan/AmendRisk.kt:85 RiskMatrix.classify(probe.after, ctx, table)（417：改约后新参数）",
             ),
         ),
         OrganProbe(
