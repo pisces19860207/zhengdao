@@ -800,6 +800,9 @@ internal class RunEngine(
         val roundMark = com.example.zhengdao.baopu.authz.ActionStepClock.beginRound()
         currentRoundId = roundMark.roundId
         log("抱朴引擎：开轮 R${roundMark.roundId}（步号从 1 重记）")
+        // 431②：上一轮没验完的按需复核，排在这一轮开头消化（判据②「复核排到下一轮，
+        // 不在收尾重做」——settle/收尾闸不挂这一格，开轮点是唯一的消化口）。
+        com.example.zhengdao.baopu.inspect.ShadowOnDemand.drainDue(log)
         // 第二百三十七批：梯子三旗同批复位（续跑＝新 run，重新给一次「先换再问」）
         ladderCounters = LadderCounters()
         ladderAttempts.clear()

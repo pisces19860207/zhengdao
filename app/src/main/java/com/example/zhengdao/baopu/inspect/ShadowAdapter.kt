@@ -357,9 +357,15 @@ internal object ShadowAdapter {
     ): Pair<ShadowRehearsalResult, ShadowRun?> {
         // 409：运行记录的「耗时」一格——进适配器起量；短路也算一次运行（账照落，耗时照记）。
         val t0 = System.currentTimeMillis()
-        preconditionOf(input, override, log, t0)?.let { return it }
+        // 431①：不可逆动作**执行前**采基线（进门第一句——预演挂在授权闸第⑤步、真执行在闸后，
+        // 这一刻结构上早于真盘动第一根手指；比沙盒建副本还早，连 UNSUPPORTED／沙盒没装都不漏）。
+        val baseline = ShadowBaseline.capture(input, t0)
+        preconditionOf(input, override, log, t0)?.let {
+            ShadowOnDemand.completeBaseline(baseline, input, null)
+            return it
+        }
         val sandbox = requireNotNull(override)
-        return sandboxTrialOf(input, sandbox, log, t0)
+        return sandboxTrialOf(input, sandbox, log, t0, baseline)
     }
 
     /**
@@ -422,8 +428,10 @@ internal object ShadowAdapter {
         sandbox: ShadowSandbox,
         log: (String) -> Unit,
         t0: Long,
+        baseline: ShadowBaselineCapture?,
     ): Pair<ShadowRehearsalResult, ShadowRun?> {
         val run = runCatching { sandbox.rehearse(input) }.getOrElse {
+            ShadowOnDemand.completeBaseline(baseline, input, null)
             return shortCircuit(
                 input,
                 ShadowUnverifiable.STRUCTURE,
@@ -433,6 +441,7 @@ internal object ShadowAdapter {
             ) to null
         }
         if (!run.built) {
+            ShadowOnDemand.completeBaseline(baseline, input, null)
             return shortCircuit(
                 input,
                 ShadowUnverifiable.STRUCTURE,
@@ -443,6 +452,7 @@ internal object ShadowAdapter {
         }
         // §1④ 的第三条件必须有实测：拿不到就当"没验"，不许拿 null 冒充"真盘没动"。
         if (run.realUntouched == null) {
+            ShadowOnDemand.completeBaseline(baseline, input, null)
             return shortCircuit(
                 input,
                 ShadowUnverifiable.STRUCTURE,
@@ -451,6 +461,10 @@ internal object ShadowAdapter {
                 t0,
             ) to null
         }
+        // 431①：副本重做刚收手、判读还没清副本——这一刻读**预测后态**（判成一致会清副本，
+        // 清了就永远读不到）；基线＋预测一次成行，落影子自己的账。
+        val predicted = ShadowOnDemand.predictedOf(run.copyRoot, input.declaredPaths)
+        ShadowOnDemand.completeBaseline(baseline, input, predicted)
         return judge(input, run, sandbox, log, t0) to run
     }
 

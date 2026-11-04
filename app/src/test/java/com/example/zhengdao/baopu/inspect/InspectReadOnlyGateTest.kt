@@ -63,6 +63,9 @@ class InspectReadOnlyGateTest {
             "HealthLedger.kt",
             // 363：偏差账（偏差账.jsonl，五类事实只记不判；一处追加口＋自建父目录，同款形态）
             "DeviationLedger.kt",
+            // 431：影子按需三本（影子基线.jsonl＝执行前四格指纹；影子按需.jsonl＝DISAGREEMENT/收口；
+            // 影子复核.jsonl＝下一轮复核的排程单。各一处追加口＋自建父目录，同款形态）
+            "ShadowBaseline.kt", "ShadowOnDemand.kt", "ShadowRecheck.kt",
         )
         inspectFiles().forEach { f ->
             val text = code(f)
@@ -84,6 +87,8 @@ class InspectReadOnlyGateTest {
             "HealthLedger.kt",
             // 363：偏差账（偏差账.jsonl）同上款
             "DeviationLedger.kt",
+            // 431：影子按需三本（影子基线／影子按需／影子复核排队单；各一处自建父目录，同款形态）
+            "ShadowBaseline.kt", "ShadowOnDemand.kt", "ShadowRecheck.kt",
         )
         inspectFiles().forEach { f ->
             val hits = Regex("""mkdirs\(|mkdir\(""").findAll(code(f)).count()

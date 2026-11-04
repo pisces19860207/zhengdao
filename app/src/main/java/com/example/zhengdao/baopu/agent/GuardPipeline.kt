@@ -29,6 +29,8 @@ import com.example.zhengdao.baopu.authz.TaskGrantWire
 import com.example.zhengdao.baopu.authz.WiringDisposition
 import com.example.zhengdao.baopu.inspect.AnomalyFactKind
 import com.example.zhengdao.baopu.inspect.AnomalyFeed
+import com.example.zhengdao.baopu.inspect.SHADOW_TOOLS
+import com.example.zhengdao.baopu.inspect.ShadowOnDemand
 import com.example.zhengdao.baopu.intake.AdmissionWiring
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.plan.ContractDeviation
@@ -670,6 +672,19 @@ internal class GuardPipeline(
         // 287 文件操作账：**只在真的执行成功之后**落行（用户拒绝/被拒/失败都不记——
         // 账是"做过什么"的事实，不是"想过做什么"的意向书）。
         recordFileOps(spec, effectiveCall)
+        // 431①：不可逆动作真执行成功 ⇒ 按需对表（真盘现状 × 副本重做的预测后态；差异记一条
+        // DISAGREEMENT，不阻断）。没采过基线的动作在这一格安静返回——不补造基线，不猜。
+        // 失败/被拒的动作不会走到这里（上面已 return）＝没发生的事没有后态可比。
+        // 判定用影子链自己的工具名单（writeLedgers 那句 `if (!spec.readOnly)` 是 L4/L16 钉死的
+        // 字面，本批不许再现第二处）。
+        if (spec.name in SHADOW_TOOLS) {
+            ShadowOnDemand.onExecuted(
+                opId = effectiveCall.id,
+                tool = effectiveCall.name,
+                workspaceRoot = workspaceRoot().absolutePath,
+                log = log,
+            )
+        }
         val (wrapped, spilled) = fenceOutput(spec, text, spillWriter)
         // 第一百七十七批：工具产出的图片路径原样透传（围栏只管文本，图片走另一条通道）
         val images = (outcome as? ToolOutcome.Ok)?.imageRelPaths.orEmpty()
