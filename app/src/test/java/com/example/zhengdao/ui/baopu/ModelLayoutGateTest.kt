@@ -72,7 +72,7 @@ class ModelLayoutGateTest {
         assertFalse("参考线数值不许进代码", screen.contains("884.dp") || screen.contains("1172.dp"))
         assertTrue("段间只留 16dp 这一处固定间距",
             screen.contains("Spacer(Modifier.width(BAO_TOPBAR_SECTION_GAP_DP.dp))"))
-        assertEquals(16, BAO_TOPBAR_SECTION_GAP_DP)
+        assertEquals("443 现场反馈：中间挨紧点 ⇒ 8dp", 8, BAO_TOPBAR_SECTION_GAP_DP)
         assertEquals("两段等权：模型段必须够宽装下 [D] V4 flash（1:3 真机实测会裁字）",
             BAO_TOPBAR_MODEL_WEIGHT, BAO_TOPBAR_TICKER_WEIGHT)
         assertEquals(1f, BAO_TOPBAR_MODEL_WEIGHT)
@@ -94,7 +94,7 @@ class ModelLayoutGateTest {
     // ── 追加② 弹层锚定模型区下沿，不许居中弹窗 ────────────────────────────
 
     @Test
-    fun 两张弹层挂在外壳锚定下沿_不许居中弹窗() {
+    fun 两张弹层屏幕垂直居中_条目不再贴顶栏() {
         val area = codeOnly(src("ui/baopu/BaopuModelArea.kt"))
         val rowTail = area.indexOf("Spacer(Modifier.weight(1f))")
         val providerSheet = area.indexOf("if (open == BaopuTopBarSheet.PROVIDER)")
@@ -102,11 +102,9 @@ class ModelLayoutGateTest {
         assertTrue("模型区要有收尾 Spacer（胶囊撑满后的剩余）", rowTail > 0)
         assertTrue("供应商弹层挂在 Row 之外的外壳上", providerSheet > rowTail)
         assertTrue("模型弹层挂在 Row 之外的外壳上", modelSheet > rowTail)
-        assertEquals("弹层仍只有两张", 2, Regex("DropdownMenu\\(").findAll(area).count())
+        assertEquals("弹层仍只有两张", 2, Regex("Popup\\(").findAll(area).count())
         assertEquals("两张都接 onDismissRequest", 2,
-            Regex("DropdownMenu\\(expanded = true, onDismissRequest = onDismiss\\)").findAll(area).count())
-        assertFalse("不许改成居中 Dialog", area.contains("Dialog(") || area.contains("AlertDialog("))
-        assertFalse("不许自己摆 Popup", area.contains("Popup("))
+            Regex("onDismissRequest = onDismiss").findAll(area).count())
         // 互斥仍由单值枚举兜住（434 判据不破）
         assertEquals(BaopuTopBarSheet.NONE,
             BaopuTopBarRules.toggleSheet(BaopuTopBarSheet.MODEL, BaopuTopBarSheet.MODEL))

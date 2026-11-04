@@ -334,8 +334,9 @@ class BaopuShellP1GateTest {
     @Test
     fun `K2_跑马灯详情是浮层且限尺寸`() {
         val src = flat(ticker())
-        assertTrue("详情必须走 DropdownMenu（浮层，不占布局高度）", src.contains("DropdownMenu("))
-        assertTrue("详情宽度上限 320dp（v1.4 §3.9）", src.contains("widthIn(max = 320.dp)"))
+        assertTrue("详情必须走 Popup（浮层，与模型区小下拉同款）",
+            src.contains("Popup(alignment = Alignment.TopEnd"))
+        assertTrue("详情宽度＝跑马灯胶囊（同款小下拉）", src.contains(".width(width)"))
         assertTrue("详情高度上限 280dp，内部可滚", src.contains("heightIn(max = 280.dp)"))
         assertTrue("详情内部可滚", src.contains("verticalScroll(rememberScrollState())"))
     }

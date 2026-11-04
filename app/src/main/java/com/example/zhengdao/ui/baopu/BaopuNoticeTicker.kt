@@ -25,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,7 +38,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.ui.theme.rBadge
 import com.example.zhengdao.ui.theme.rPill
@@ -161,7 +164,7 @@ private fun TickerPill(
     val a11yDesc = stringResource(tickerA11yRes(mode, confirm))
     val lockedLabel = if (mode == TickerMode.LOCKED) stringResource(tickerLockedLabel(state)) else ""
     val body = entry?.let { inlineTickerText(it.body) }.orEmpty()
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .pillShellModifier(pill = pill, confirm = confirm)
@@ -169,6 +172,9 @@ private fun TickerPill(
             .semantics { contentDescription = a11yDesc },
         contentAlignment = Alignment.CenterStart,
     ) {
+        // 443：详情小下拉与模型区同款——宽度取跑马灯胶囊实测宽度，贴在它下沿、右边缘对齐
+        val detailWidth = maxWidth
+        val detailOffsetY = with(LocalDensity.current) { BAO_TOPBAR_PILL_HEIGHT_DP.dp.roundToPx() }
         if (lockedLabel.isNotEmpty() || body.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -195,7 +201,13 @@ private fun TickerPill(
                 )
             }
         }
-        TickerDetail(ordered = ordered, expandedIndex = detailIndex, onDismiss = onDismiss)
+        TickerDetail(
+            ordered = ordered,
+            expandedIndex = detailIndex,
+            onDismiss = onDismiss,
+            width = detailWidth,
+            offsetY = detailOffsetY,
+        )
     }
 }
 
@@ -257,35 +269,43 @@ private fun TickerBadge(text: String) {
     }
 }
 
-/** 详情浮层（K2 判据一行没动：DropdownMenu ＋ 320×280 上限 ＋ 内部可滚，不推正文）。 */
+/**
+ * 443：跑马灯详情**与模型区小下拉同款**——贴跑马灯下沿、右边缘对齐、等宽、rPill 圆角
+ * （不要方方正正），surface 底 + outlineVariant 描边；仍是浮层，不推正文（K2 判据不变）。
+ */
 @Composable
 private fun TickerDetail(
     ordered: List<NoticeItem>,
     expandedIndex: Int,
     onDismiss: () -> Unit,
+    width: Dp,
+    offsetY: Int,
 ) {
-    DropdownMenu(expanded = expandedIndex in ordered.indices, onDismissRequest = onDismiss) {
+    if (expandedIndex !in ordered.indices) return
+    val item = ordered[expandedIndex]
+    Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, offsetY), onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .widthIn(max = 320.dp)
+                .width(width)
+                .clip(RoundedCornerShape(rPill))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(BAO_TOPBAR_PILL_STROKE_DP.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(rPill))
                 .heightIn(max = 280.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            if (expandedIndex in ordered.indices) {
-                val item = ordered[expandedIndex]
-                Text(
-                    text = item.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = item.body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
+            Text(
+                text = item.label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = item.body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
+

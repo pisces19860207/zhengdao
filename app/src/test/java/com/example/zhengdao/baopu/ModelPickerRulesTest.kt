@@ -126,7 +126,9 @@ class ModelPickerRulesTest {
 
     @Test
     fun 第2级_assets表认识产品定名() {
-        assertEquals("V4 flash", ModelPickerRules.displayName("deepseek-v4-flash"))
+        // 443 现场裁定：真 ID = deepseek-flash（V4.1 Flash）；deepseek-v4-flash 只是别名，解析到同一个名字
+        assertEquals("V4.1 Flash", ModelPickerRules.displayName("deepseek-flash"))
+        assertEquals("V4.1 Flash", ModelPickerRules.displayName("deepseek-v4-flash"))
         assertEquals("GPT 6.1 Sol", ModelPickerRules.displayName("gpt-6.1-sol"))
         assertEquals("Opus 5.5", ModelPickerRules.displayName("claude-opus-5.5"))
         // 表是大小写不敏感查的（端点偶尔写全大写）

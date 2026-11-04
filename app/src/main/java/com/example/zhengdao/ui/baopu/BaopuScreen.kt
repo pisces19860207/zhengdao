@@ -723,7 +723,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         items = noticeItems,
                         modifier = Modifier.weight(BAO_TOPBAR_TICKER_WEIGHT),
                     )
-                    Spacer(Modifier.width(4.dp))
+                    // 443：左右各 48dp 图标 + 4dp 外边距已对称；删掉多出的 4dp Spacer ⇒
+                    // 两段 1:1 等宽后，中间的缝正好落在屏幕水平正中点。
                     // ── 第一百零四批：盾牌（决策中心）·第四百三十四批起是顶栏**第四件**──────
                     // 徽标＝前三页签待处理总数（记录页不计），0 不显示（顶栏全净）。
                     // 原来这里是「五件」的第四件，后面还跟着第五件「＋」；「＋」本批按设计稿删除，

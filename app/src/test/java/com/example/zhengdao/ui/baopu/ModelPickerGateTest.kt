@@ -287,12 +287,12 @@ class ModelPickerGateTest {
         assertTrue("两段之间间距走常量", area.contains("Spacer(Modifier.width(BAO_TOPBAR_ZONE_GAP_DP.dp))"))
         assertFalse("不许占 48dp 图标位（顶栏图标只有 ☰／🛡 两颗）", area.contains("size(BAO_ICON_SLOT_DP.dp)"))
         // ── 判据①：两张弹层互斥，同一时刻只许开一张 ──
-        assertEquals("弹层只两张", 2, Regex("DropdownMenu\\(").findAll(area).count())
+        assertEquals("弹层只两张", 2, Regex("Popup\\(").findAll(area).count())
         assertTrue("供应商那张按 open 判", area.contains("open == BaopuTopBarSheet.PROVIDER"))
         assertTrue("模型那张按 open 判", area.contains("open == BaopuTopBarSheet.MODEL"))
         // 点空白关闭：两张都把 DropdownMenu 自己的 onDismissRequest 交回同一个 setter（一个值 ⇒ 只会关一张）。
         assertEquals("两张弹层都接 onDismissRequest（不接就关不掉）",
-            2, Regex("DropdownMenu\\(expanded = true, onDismissRequest = onDismiss\\)").findAll(area).count())
+            2, Regex("onDismissRequest = onDismiss").findAll(area).count())
         assertTrue("页面那头的 setter 只写 topSheet = NONE",
             codeOnly(screenRaw).contains("onDismiss = { topSheet = BaopuTopBarSheet.NONE }"))
         // ── 判据②：整块不跳「换模型/设置」页，界面不自己判 ──

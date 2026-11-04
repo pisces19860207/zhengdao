@@ -65,8 +65,11 @@ internal const val BAO_TOPBAR_PILL_STROKE_DP = 1.5f
 /** 模型区内两个命中区之间的间隔（派工单硬规矩：≥8dp，防误触）。 */
 internal const val BAO_TOPBAR_ZONE_GAP_DP = 8
 
-/** 模型区整块与跑马灯之间的间隔（派工单参考线：≈16dp，走 4/8/12/16/24/32 尺度）。 */
-internal const val BAO_TOPBAR_SECTION_GAP_DP = 16
+/**
+ * 模型区整块与跑马灯之间的间隔。443 真机复验（用户「中间挨紧点」）⇒ 16dp 收到 8dp
+ * （4/8/12/16/24/32 尺度内）；两段仍按 1:1 权重对称分剩余宽度。
+ */
+internal const val BAO_TOPBAR_SECTION_GAP_DP = 8
 
 /** 字母徽标那颗的边长（自绘徽标替代公司全名，省横向空间；高随 44dp 容器收成 28）。 */
 internal const val BAO_LETTER_TILE_DP = 28

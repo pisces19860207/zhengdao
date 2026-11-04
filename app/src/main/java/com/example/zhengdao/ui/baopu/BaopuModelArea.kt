@@ -21,7 +21,9 @@ package com.example.zhengdao.ui.baopu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,23 +35,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import com.example.zhengdao.R
 import com.example.zhengdao.ui.theme.rBadge
 import com.example.zhengdao.ui.theme.rPill
@@ -81,9 +86,14 @@ internal fun BaopuModelArea(
     val shape = RoundedCornerShape(rPill)
     // 443/444：外层这一块就是「模型段」——宽度由调用方按权重给，胶囊 fillMaxWidth 撑满它，
     // 绿色胶囊右缘即模型段下一条参考线；Popup 挂在这一层 ⇒ 锚点是**整块下沿**，不是屏幕中央。
-    Box(
+    BoxWithConstraints(
         modifier.heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
+        // 443：44dp 胶囊在 48dp 命中盒内垂直居中 ⇒ 顶边与跑马灯胶囊对齐，两块看着一样高。
+        contentAlignment = Alignment.Center,
     ) {
+        // 443：小下拉的宽度取模型区胶囊实测宽度，不写死 dp
+        val menuWidth = maxWidth
+        val menuOffsetY = with(LocalDensity.current) { BAO_ROW_MIN_HEIGHT_DP.dp.roundToPx() }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -118,10 +128,10 @@ internal fun BaopuModelArea(
         // 443/444：两张弹层锚在模型区外壳下沿（DropdownMenu 的 Popup 取这一层的 bounds 作 anchor）。
         // 互斥仍由 open 单值兜住；绝不摆成居中弹窗。
         if (open == BaopuTopBarSheet.PROVIDER) {
-            ProviderSheet(providerRows, onlyOneProvider, onPickProvider, onDismiss)
+            ProviderSheet(providerRows, onlyOneProvider, onPickProvider, onDismiss, menuWidth, menuOffsetY)
         }
         if (open == BaopuTopBarSheet.MODEL) {
-            ModelSheet(modelRows, onPickModel, onDismiss)
+            ModelSheet(modelRows, onPickModel, onDismiss, menuWidth, menuOffsetY)
         }
     }
 }
@@ -137,7 +147,9 @@ private fun Modifier.zoneHit(desc: String, onClick: () -> Unit): Modifier = this
     .clip(RoundedCornerShape(rPill))
     .clickable(onClick = onClick)
     .semantics { contentDescription = desc }
-    .padding(horizontal = 4.dp)
+    // 443 真机复验：4dp 时模型名区内容宽正好卡在 "V4.1 Flash" 边界 ⇒ 被省略成
+    // "V4.1 Fla…"。收到 2dp（热区仍由 widthIn(min = 44dp) 保证），多让出 14px。
+    .padding(horizontal = 2.dp)
 
 /** 模型区那一段的字（选中区加一档 Medium，未配置态不加——它不是"当前项"）。 */
 @Composable
@@ -185,17 +197,21 @@ private fun ProviderSheet(
     onlyOne: Boolean,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    width: Dp,
+    offsetY: Int,
 ) {
     val unconfigured = stringResource(R.string.baopu_topbar_unconfigured)
     val onlyOneHint = stringResource(R.string.baopu_topbar_only_one)
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        Column(Modifier.sheetShell()) {
+    // 443：贴模型区下沿的小下拉；TopEnd ⇒ 右边缘与模型区右边缘对齐。
+    Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, offsetY), onDismissRequest = onDismiss) {
+        Column(Modifier.sheetShell(width)) {
             if (onlyOne) {
                 Text(
                     text = onlyOneHint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
                 )
             } else {
                 rows.forEach { row ->
@@ -206,15 +222,17 @@ private fun ProviderSheet(
     }
 }
 
-/** 弹层之二：同一家下的模型（模型名区点开）。条目显示名与顶栏同一条规则，不露原始 ID——除非表里没有。 */
+/** 弹层之二：同一家下的模型（模型名区点开）。条目显示名与顶栏同一条规则，不露原始 ID。 */
 @Composable
 private fun ModelSheet(
     rows: List<BaopuTopBarRules.ModelRow>,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    width: Dp,
+    offsetY: Int,
 ) {
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        Column(Modifier.sheetShell()) {
+    Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, offsetY), onDismissRequest = onDismiss) {
+        Column(Modifier.sheetShell(width)) {
             rows.forEach { row ->
                 SheetRow(letter = "", title = row.name, selected = row.selected, enabled = true, unconfigured = "") {
                     onPick(row.id)
@@ -224,13 +242,19 @@ private fun ModelSheet(
     }
 }
 
-/** 两张弹层共用的容器尺寸（与跑马灯详情同一口径：320×280 上限 ＋ 内部可滚，不推正文）。 */
+/**
+ * 443 小下拉的壳：宽度＝模型区背景色块（[width] 来自 BoxWithConstraints.maxWidth），
+ * 圆角 rPill ⇒ 不要方方正正；描边走既有 outlineVariant，零新增颜色 token。
+ */
 @Composable
-private fun Modifier.sheetShell(): Modifier = this
-    .widthIn(max = 320.dp)
+private fun Modifier.sheetShell(width: Dp): Modifier = this
+    .width(width)
+    .clip(RoundedCornerShape(rPill))
+    .background(MaterialTheme.colorScheme.surface)
+    .border(BAO_TOPBAR_PILL_STROKE_DP.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(rPill))
     .heightIn(max = 280.dp)
     .verticalScroll(rememberScrollState())
-    .padding(horizontal = 8.dp, vertical = 4.dp)
+    .padding(horizontal = 6.dp, vertical = 4.dp)
 
 /**
  * 弹层里的一行。选中态**只许**这一种样式（浅青底 `primaryContainer` ＋ 左侧 2dp `primary` 竖条，
@@ -254,6 +278,7 @@ private fun SheetRow(
             .clip(shape)
             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center,
     ) {
         if (selected) {
             Box(
@@ -265,7 +290,8 @@ private fun SheetRow(
         }
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 12.dp, end = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         ) {
             if (letter.isNotEmpty()) {
                 LetterTile(letter)
@@ -277,6 +303,7 @@ private fun SheetRow(
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f),
             )
             if (!enabled && unconfigured.isNotEmpty()) {
