@@ -26,6 +26,7 @@
 package com.example.zhengdao.baopu.agent
 
 import android.content.Context
+import com.example.zhengdao.baopu.evolution.EvolutionWiring
 import com.example.zhengdao.baopu.inspect.JinwuPatrol
 import com.example.zhengdao.baopu.inspect.StepResultCode
 import com.example.zhengdao.baopu.inspect.ToolStep
@@ -179,6 +180,8 @@ internal object JinwuObserve {
         val written = snapshot != null && runCatching { snapshot.writeText(json.toString()) }.isSuccess
         if (!written) RunLog.log("金吾卫 attempts 账写不了——跨进程续跑可能断档")
         GapFeedback.record(toFeed)
+        // 第四百二十八批：缺口累积触发处——到交人线 ⇒ 提进化（只开提案，不自动改判据）。
+        EvolutionWiring.onGapsRecorded(System.currentTimeMillis())
     }
 
     private fun readAttempts(file: File): Map<String, Int> {

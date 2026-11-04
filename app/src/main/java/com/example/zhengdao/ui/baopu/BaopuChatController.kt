@@ -1065,6 +1065,24 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 第四百二十八批：进化闭环接线 + 接管心跳扫（合并一行，避免 onEngineEvent 触发 LongMethod）。
+     *
+     * 与 [evalTriggerOnSettle] 的分工：那边是 304 的离线评测触发（零额度、限频）；
+     * 这边是 376/380 的进化闭环（判据进化）＋ 366 的接管心跳扫（STALLED/EXHAUSTED → 接管五步）。
+     * 崩了只记一行日志不阻塞对话（65/89 口径：记账不许挡住用户的事）。
+     */
+    private fun wireBOnSettle() {
+        runCatching {
+            com.example.zhengdao.baopu.evolution.EvolutionWiring.onRunSettled(System.currentTimeMillis())
+            com.example.zhengdao.baopu.agent.TakeoverWiring.sweepStalled(System.currentTimeMillis())
+        }.onFailure {
+            com.example.zhengdao.core.RunLog.log(
+                "[wire-b] 收工触发异常（不阻塞对话）：${it.javaClass.simpleName}: ${it.message}",
+            )
+        }
+    }
+
+    /**
      * 网络通不通（节流判据之一）。
      *
      * 与 [com.example.zhengdao.ui.EnvHealth] 的体检同款取法，但只做轻量判断：
@@ -3979,6 +3997,8 @@ internal class BaopuChatController(context: Context) {
                 // 成功率跌破阈值、手动预留；限频后跑离线机械评测，证据进账本与
                 // 未办成单/提案——不弹卡；IO 上跑，不阻塞聊天）。
                 evalTriggerOnSettle()
+                // 第四百二十八批：进化闭环接线 + 接管心跳扫（合并一行，给 onEngineEvent 留代码行余量）。
+                wireBOnSettle()
                 // 第一百零三批 §B②：被前置校验挡下的候选不出卡，但要给一句人话原因
                 // （审计行在采样处已落 `[skill-body-selfcheck]` 锚）。
                 noteFilteredLearn()
