@@ -66,27 +66,29 @@ class ModelCapabilityTableTest {
     }
 
     @Test
-    fun 实测过的预设有自己的行_没实测的新预设不许有行() {
-        // 第一百三十一批 ①：内置 zen 免费通道整条删除（连同它那 5 行 ② 台账）；
-        // 新加的 OpenRouter 两条预设只在 Provider 里声明形状，表里**不给行**——
-        // 没在这条端点发过 tools / 思考字段就写一行，等于给陌生端点冒领依据。
-        // 该走的路是 rowOrUnknown()：形状齐全、六列全 UNKNOWN，路由据此「不参与排序」。
-        listOf("deepseek", "openai-compat", "anthropic").forEach { id ->
+    fun 实测过的模型有自己的行_443新ID没实测不许冒领行() {
+        // 443（2026-11-04）：DeepSeek 预设回到实测真 ID deepseek-flash（能力表里有它自己的行）；
+        // 其余三家换成今年下半年的新 ID，本仓没在这些 ID 上发过 tools／思考字段
+        // ⇒ 沿用 131 批「不冒领依据」纪律，表里**不给精确行**，走 rowOrUnknown 全 UNKNOWN。
+        // 旧 ID 的实测行仍留着（用户已存的旧配置还可能落回来）。
+        listOf("deepseek", "openai-compat", "anthropic", "gemini", "openrouter-free").forEach { id ->
             val model = Providers.of(id)!!.model
             val r = ModelCapabilityTable.rowOf(id, model)
-            assertTrue("$id/$model 查不到精确行（退到兜底行就不算这一台模型的依据）", r != null)
-            assertEquals("$id/$model 命中的必须是它自己那一行", model, r?.model)
-            assertTrue("$id/$model 的 evidence 空着就是没依据", !r!!.evidence.isBlank())
+            if (id == "deepseek") {
+                assertTrue("$id/$model 是实测过的现役 ID，必须有精确行", r != null)
+                assertEquals("$id/$model 命中的必须是它自己那一行", model, r?.model)
+                assertTrue("$id/$model 的 evidence 空着就是没依据", !r!!.evidence.isBlank())
+            } else {
+                assertNull("$id/$model 未实测 ⇒ 表里不许有精确行", r)
+                val u = ModelCapabilityTable.rowOrUnknown(id, model)
+                assertEquals("$id 只能落到全 UNKNOWN 的空行", ModelCapabilityTable.Support.UNKNOWN, u.toolSchema)
+                assertEquals(ModelCapabilityTable.Support.UNKNOWN, u.thinking)
+                assertFalse("$id 没依据就不许参与成本排序", u.costKnown)
+            }
         }
-        listOf("gemini", "openrouter-free").forEach { id ->
-            val model = Providers.of(id)!!.model
-            assertNull("$id 本仓没实测过 ⇒ 表里不许有行", ModelCapabilityTable.rowOf(id, model))
-            val u = ModelCapabilityTable.rowOrUnknown(id, model)
-            assertEquals("$id 只能落到全 UNKNOWN 的空行", ModelCapabilityTable.Support.UNKNOWN, u.toolSchema)
-            assertEquals(ModelCapabilityTable.Support.UNKNOWN, u.thinking)
-            assertFalse("$id 没依据就不许参与成本排序", u.costKnown)
+        listOf("openai-compat" to "gpt-4o-mini", "anthropic" to "claude-sonnet-4-5").forEach { (ch, model) ->
+            assertTrue("$ch/$model 旧实测行不许被 443 删掉", ModelCapabilityTable.rowOf(ch, model) != null)
         }
-        // 自定义通道仍然只有 ANY_MODEL 那一张兜底行
         assertTrue(
             "自定义通道要有兜底行（用户自填端点只有这一种行）",
             ModelCapabilityTable.rowOf(ProviderPrefs.CHANNEL_CUSTOM, ModelCapabilityTable.ANY_MODEL) != null,

@@ -81,6 +81,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.ModelCatalogCache
+import com.example.zhengdao.baopu.ModelLabelAssets
 import com.example.zhengdao.baopu.ModelPickerRules
 import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.ProviderPrefs
@@ -132,6 +133,8 @@ import kotlinx.coroutines.withContext
 fun BaopuScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val res = LocalResources.current
+    // 443：模型名表随包读一次装进纯函数层（读盘只在 ModelLabelAssets，判据层零 Android）。
+    remember(context) { ModelLabelAssets.install(context) }
     // ── 第二百一十二批：答案浮卡（卡＝答案、正文＝详情）────────────────────────
     // 三态机与「不重查」全在 `ResultCards`／`ResultCardState`（纯函数，JVM 直测）；
     // 这一层只持有那一份内存状态，**不碰查询**。
@@ -631,6 +634,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         onDismiss = { topSheet = BaopuTopBarSheet.NONE },
                         onPickProvider = switchProviderFast,
                         onPickModel = switchModelFast,
+                        // 443/444：模型段按权重推导落位，坐标不写死 dp。
+                        modifier = Modifier.weight(BAO_TOPBAR_MODEL_WEIGHT),
                     )
                     // ── 第一百三十八批：状态行的第二出口已撤出 ──────────────────────
                     // 改前这里是「状态文案 ＋ 步号」的第二个 Text，紧挨着跑马灯 —— 同一时刻两个地方说两种话。
@@ -710,10 +715,14 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                             )
                         }
                     }
-                    // 模型区与跑马灯之间 16dp（派工单参考线；**坐标不写死**，这块只给间距，宽度让给跑马灯）。
+                    // 模型区与跑马灯之间 16dp（**唯一固定间距**）；两段宽度各按权重推，落点坐标不写死。
                     Spacer(Modifier.width(BAO_TOPBAR_SECTION_GAP_DP.dp))
                     // 两态的唯一开关是 state：运行中锁定只换字，空闲才逐条轮播。
-                    BaopuNoticeTicker(state = state, items = noticeItems, modifier = Modifier.weight(1f))
+                    BaopuNoticeTicker(
+                        state = state,
+                        items = noticeItems,
+                        modifier = Modifier.weight(BAO_TOPBAR_TICKER_WEIGHT),
+                    )
                     Spacer(Modifier.width(4.dp))
                     // ── 第一百零四批：盾牌（决策中心）·第四百三十四批起是顶栏**第四件**──────
                     // 徽标＝前三页签待处理总数（记录页不计），0 不显示（顶栏全净）。

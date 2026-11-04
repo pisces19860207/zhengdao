@@ -116,10 +116,10 @@ internal object ModelPickerRules {
      * 其余三家没动——本仓没有它们的 `/models` 实测，改了就是猜（派工单§模型名④「绝不猜」）。
      */
     fun presetModels(provider: Provider): List<String> = when (provider.id) {
-        "openai-compat" -> listOf("gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1")
+        "openai-compat" -> listOf("gpt-6.1-sol")
         "deepseek" -> listOf("deepseek-flash", "deepseek-v4-pro")
-        "anthropic" -> listOf("claude-sonnet-4-5", "claude-haiku-4-5")
-        "gemini" -> listOf("gemini-2.5-flash", "gemini-2.5-pro")
+        "anthropic" -> listOf("claude-opus-5.5", "claude-fable-5")
+        "gemini" -> listOf("gemini-3.5-flash")
         else -> emptyList()
     }
 
@@ -143,13 +143,9 @@ internal object ModelPickerRules {
      * 留着就是给一个已死的 ID 保产品名；换成实测现役的两条（名字逐字取探针的 `name` 字段，
      * `prettify` 造不出 `V4.1` 这种带点的版本号，所以必须进这张表）。
      */
-    val CURATED_NAMES: Map<String, String> = mapOf(
-        "claude-opus-4-5" to "Claude Opus 4.5",
-        "gpt-4o" to "GPT-4o",
-        "gemini-2.5-pro" to "Gemini 2.5 Pro",
-        "deepseek-flash" to "DeepSeek-V4.1-Flash",
-        "deepseek-v4-pro" to "DeepSeek-V4-Pro",
-    )
+    /** 443：第 2 级直接读同一张 assets 表，不再另立常量表（两处内容会漂）。 */
+    val CURATED_NAMES: Map<String, String>
+        get() = ModelLabels.current().associate { it.modelId.lowercase() to it.displayName }
 
     /** 第 3 级里的"已知提供商映射"（重构方案点名的四个）＋大小写固定的写法。 */
     private val PROVIDER_WORDS: Map<String, String> = mapOf(
@@ -219,18 +215,16 @@ internal object ModelPickerRules {
     }
 
     /**
-     * 显示名（四级按序取，取到即止）：
-     * 1. 端点给的人类名（OpenRouter `name`／Anthropic `display_name`／Gemini `displayName`）；
-     * 2. [CURATED_NAMES]；
-     * 3. [prettify]；
-     * 4. 原始 ID（**只有这一种情况允许 ID 露面**）。
+     * 显示名（443 三级按序取，取到即止）：
+     * 1. 端点给的人类名（OpenRouter `name`／Anthropic `display_name`／Gemini `displayName`）——这是事实，不是猜；
+     * 2. assets 表 [ModelLabels]（表外不许拿 [prettify] 顶上）；
+     * 3. 原始 ID（**表里没有 ⇒ 原样显示，绝不猜、绝不美化**）。
+     *
+     * [prettify] 保留为纯函数，但 443 起**不再参与显示名**；它只服务于 [vendorOf] 的厂商段美化。
      */
     fun displayName(id: String, catalogName: String? = null): String {
         catalogName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        CURATED_NAMES[id.trim().lowercase()]?.let { return it }
-        val pretty = prettify(id)
-        // 美化函数什么都没认出来（原样回吐）⇒ 走第 4 级，但仍然是同一个串，不必特判
-        return if (pretty.isBlank()) id else pretty
+        return ModelLabels.displayName(id)
     }
 
     /** 显示名（清单行形态：ModelEntry 直接进来）。 */

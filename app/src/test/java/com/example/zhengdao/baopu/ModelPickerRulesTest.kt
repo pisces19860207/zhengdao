@@ -120,56 +120,56 @@ class ModelPickerRulesTest {
             ),
         )
         // 空串与纯空白不算"端点给了名字"（③：端点没给就是没给，不许当成给了）
-        assertEquals("Kimi K2", ModelPickerRules.displayName("kimi-k2", "   "))
+        assertEquals("空的人类名不算给了名字 ⇒ 表外原样 ID（443）",
+            "kimi-k2", ModelPickerRules.displayName("kimi-k2", "   "))
     }
 
     @Test
-    fun 第2级_人工表认识产品定名() {
-        assertEquals("GPT-4o", ModelPickerRules.displayName("gpt-4o"))
-        // 这一条只有走第 2 级才可能是这个字：美化函数推不出 `V4.1`（它只会写 "DeepSeek Flash"）。
-        // 2026-11-04 用户裁定后换成现役 ID——原先钉的是官方 2026-07-24 停用的 `deepseek-reasoner`。
-        assertEquals("DeepSeek-V4.1-Flash", ModelPickerRules.displayName("deepseek-flash"))
-        assertEquals("Claude Opus 4.5", ModelPickerRules.displayName("claude-opus-4-5"))
-        // 表是大小写不敏感查的（端点偶尔写 GPT-4O）
-        assertEquals("GPT-4o", ModelPickerRules.displayName("GPT-4O"))
+    fun 第2级_assets表认识产品定名() {
+        assertEquals("V4 flash", ModelPickerRules.displayName("deepseek-v4-flash"))
+        assertEquals("GPT 6.1 Sol", ModelPickerRules.displayName("gpt-6.1-sol"))
+        assertEquals("Opus 5.5", ModelPickerRules.displayName("claude-opus-5.5"))
+        // 表是大小写不敏感查的（端点偶尔写全大写）
+        assertEquals("GPT 6.1 Sol", ModelPickerRules.displayName("GPT-6.1-SOL"))
+        // 端点给的人类名是事实，仍优先于表
+        assertEquals("厂商自己起的名字",
+            ModelPickerRules.displayName("gpt-6.1-sol", "厂商自己起的名字"))
     }
 
     @Test
-    fun 第3级_美化函数的确定规则() {
-        // 相邻纯数字段 ⇒ 点连（4 5 → 4.5）
-        assertEquals("Claude Sonnet 4.5", ModelPickerRules.displayName("claude-sonnet-4-5"))
-        // 不按点切：3.5 是一个版本号，切开就成了"3 5"
+    fun 美化函数保留为纯函数但443起不参与显示名() {
+        // prettify 仍逐条可测（vendorOf 还用它美化厂商段），只是不能再拿来造模型显示名
+        assertEquals("Claude Sonnet 4.5", ModelPickerRules.prettify("claude-sonnet-4-5"))
         assertEquals("Nvidia Nemotron 3.5 Super VL Free",
-            ModelPickerRules.displayName("nvidia/nemotron-3.5-super-vl:free"))
-        // 缩写整词全大写；提供商映射认得的按产品写法
-        assertEquals("GLM 5.3", ModelPickerRules.displayName("glm-5.3"))
-        // 连字符规则只在**首词是缩写、第二词是纯数字**时触发（KDoc 写死的这一种形态）
-        assertEquals("GPT-6 Astra", ModelPickerRules.displayName("gpt-6-astra"))
-        assertEquals("厂商段不是缩写 ⇒ 不触发连字符",
-            "OpenAI GPT 6 Astra", ModelPickerRules.displayName("openai/gpt-6-astra"))
-        // 8 位纯数字段＝发布日期，不配占显示名
+            ModelPickerRules.prettify("nvidia/nemotron-3.5-super-vl:free"))
+        assertEquals("GLM 5.3", ModelPickerRules.prettify("glm-5.3"))
+        assertEquals("GPT-6 Astra", ModelPickerRules.prettify("gpt-6-astra"))
+        assertEquals("OpenAI GPT 6 Astra", ModelPickerRules.prettify("openai/gpt-6-astra"))
         assertEquals("Kimi K2", ModelPickerRules.prettify("kimi-k2-20250929"))
+        // 表外 ID 原样，绝不美化
+        assertEquals("nvidia/nemotron-3.5-super-vl:free",
+            ModelPickerRules.displayName("nvidia/nemotron-3.5-super-vl:free"))
     }
 
     @Test
-    fun 第4级_实在认不出来才让ID露面() {
-        // 没有任何可美化的词 ⇒ 原样回吐（这是 ID 允许露面的唯一一级）
+    fun 表外一律原样ID_绝不猜绝不美化() {
         assertEquals("…§§…", ModelPickerRules.displayName("…§§…"))
+        assertEquals("gpt-9.9-unknown", ModelPickerRules.displayName("gpt-9.9-unknown"))
         assertEquals("", ModelPickerRules.prettify(""))
     }
 
     @Test
-    fun 人工表每条都比原样回吐更有人样() {
-        // 表是第 2 级，作用是把**产品定名**（GPT-4o）钉住；它只覆盖"叫什么"，
-        // 不覆盖能力/窗口——所以它不是第二真相，但表里也不许塞"原样回吐"的条目（那是白占位）。
-        assertTrue("表别长大：只收美化函数推不出来的产品定名",
-            ModelPickerRules.CURATED_NAMES.size <= 10)
-        ModelPickerRules.CURATED_NAMES.forEach { (id, human) ->
-            assertEquals("键一律小写（查表按小写比）", id.lowercase().trim(), id)
-            assertTrue("「$id」这条与 ID 一模一样 ⇒ 白占位，删掉", human != id)
-            assertTrue("「$id」的值要有实际美化（含空格或大小写变化）",
-                human.any { c -> c.isWhitespace() } || human != human.lowercase())
+    fun 映射表每条都有出处且不是白占位() {
+        val labels = ModelLabels.loadFromSource()
+        assertTrue("443 判据②：表要 ≥10 条（老规则「表别长大 ≤10」作废）", labels.size >= 10)
+        labels.forEach { l ->
+            assertEquals("键一律小写（查表按小写比）", l.modelId.lowercase().trim(), l.modelId)
+            assertTrue("${l.modelId} 与 ID 一模一样 ⇒ 白占位", l.displayName != l.modelId)
+            assertTrue("${l.modelId} 必带 source + asOf",
+                l.source.isNotBlank() && l.asOf.isNotBlank())
         }
+        assertTrue("CURATED_NAMES 只是同一张表的派生视图",
+            ModelPickerRules.CURATED_NAMES.size == labels.size)
     }
 
     // ── 4. 搜索框（输入即过滤；同时比 ID 与显示名） ───────────────────────────
@@ -191,7 +191,10 @@ class ModelPickerRulesTest {
     fun 搜显示名也能命中_因为界面上摆的就是名字() {
         val all = listOf(entry("nvidia/nemotron-3.5-super-vl:free"))
         assertTrue(ModelPickerRules.matches("Nemotron", all[0]))
-        assertTrue("大小写不敏感", ModelPickerRules.matches("NVIDIA nemotron 3.5", all[0]))
+        assertTrue("大小写不敏感（443 起表外显 ID，搜的是 ID 原串）",
+            ModelPickerRules.matches("NVIDIA/NEMOTRON", all[0]))
+        assertTrue("表外 ID 原样 ⇒ 搜显示名与搜 ID 同串",
+            ModelPickerRules.matches(ModelPickerRules.displayName(all[0].id).lowercase(), all[0]))
         assertFalse(ModelPickerRules.matches("sonnet", all[0]))
         assertEquals("空词＝全表", all, ModelPickerRules.filter("   ", all))
         assertTrue("搜不中就是空表 ⇒ 抽屉那句『没有匹配的模型，可手填模型名』",

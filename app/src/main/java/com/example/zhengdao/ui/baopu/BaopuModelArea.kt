@@ -79,14 +79,15 @@ internal fun BaopuModelArea(
     val unconfigured = stringResource(R.string.baopu_topbar_unconfigured)
     val offDesc = stringResource(R.string.baopu_topbar_unconfigured_desc)
     val shape = RoundedCornerShape(rPill)
+    // 443/444：外层这一块就是「模型段」——宽度由调用方按权重给，胶囊 fillMaxWidth 撑满它，
+    // 绿色胶囊右缘即模型段下一条参考线；Popup 挂在这一层 ⇒ 锚点是**整块下沿**，不是屏幕中央。
     Box(
-        modifier
-            .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)
-            .wrapContentSize(Alignment.Center),
+        modifier.heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
+                .fillMaxWidth()
                 .height(BAO_TOPBAR_PILL_HEIGHT_DP.dp)
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.primaryContainer, shape)
@@ -98,12 +99,9 @@ internal fun BaopuModelArea(
                 modifier = Modifier.zoneHit(
                     desc = if (configured) stringResource(R.string.baopu_topbar_badge_desc) else offDesc,
                     onClick = onBadgeClick,
-                ),
+                ).align(Alignment.CenterVertically).padding(vertical = BAO_TOPBAR_PILL_INSET_DP.dp),
             ) {
                 if (configured) LetterTile(letter) else ZoneText(unconfigured, emphasize = false)
-                if (open == BaopuTopBarSheet.PROVIDER) {
-                    ProviderSheet(providerRows, onlyOneProvider, onPickProvider, onDismiss)
-                }
             }
             Spacer(Modifier.width(BAO_TOPBAR_ZONE_GAP_DP.dp))
             Box(
@@ -111,16 +109,28 @@ internal fun BaopuModelArea(
                 modifier = Modifier.zoneHit(
                     desc = if (configured) stringResource(R.string.baopu_topbar_model_desc) else offDesc,
                     onClick = onModelClick,
-                ),
+                ).align(Alignment.CenterVertically).padding(vertical = BAO_TOPBAR_PILL_INSET_DP.dp),
             ) {
                 ZoneText(if (configured) modelName else unconfigured, emphasize = true)
-                if (open == BaopuTopBarSheet.MODEL) ModelSheet(modelRows, onPickModel, onDismiss)
             }
+            Spacer(Modifier.weight(1f))
+        }
+        // 443/444：两张弹层锚在模型区外壳下沿（DropdownMenu 的 Popup 取这一层的 bounds 作 anchor）。
+        // 互斥仍由 open 单值兜住；绝不摆成居中弹窗。
+        if (open == BaopuTopBarSheet.PROVIDER) {
+            ProviderSheet(providerRows, onlyOneProvider, onPickProvider, onDismiss)
+        }
+        if (open == BaopuTopBarSheet.MODEL) {
+            ModelSheet(modelRows, onPickModel, onDismiss)
         }
     }
 }
 
-/** 一颗命中区的外壳：44dp 高 × ≥44dp 宽（派工单硬规矩），点谁由参数给。 */
+/**
+ * 一颗命中区的外壳：44dp 高 × ≥44dp 宽（派工单硬规矩），点谁由参数给。
+ * 443：内容上下 padding 相等 + Row CenterVertically + 两颗各自 align(CenterVertically)
+ * ⇒ 徽标 D 与模型名在同一视觉中心，不再偏上。
+ */
 private fun Modifier.zoneHit(desc: String, onClick: () -> Unit): Modifier = this
     .height(BAO_TOPBAR_PILL_HEIGHT_DP.dp)
     .widthIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)

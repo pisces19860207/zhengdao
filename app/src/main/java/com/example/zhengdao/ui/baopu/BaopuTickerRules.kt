@@ -173,7 +173,7 @@ internal const val TICKER_TEXT_SP = 13
 internal const val TICKER_BADGE_TEXT_SP = 11
 
 /** 类目标那颗的最小宽（434：52dp——中文四字类目正好落在这条线上，长词自己撑开）。 */
-internal const val TICKER_BADGE_WIDTH_DP = 52
+internal const val TICKER_BADGE_WIDTH_DP = 60
 
 /** 类目标那颗的高（434：28dp）。 */
 internal const val TICKER_BADGE_HEIGHT_DP = 28

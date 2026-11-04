@@ -188,8 +188,10 @@ private fun TickerPill(
                     // 墨一（434）：朱浅底上比原线灰多一档余量；锁定态本来就是主角，同色。
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    // 443/444：正文独占剩余宽度（fill=true），标签固定宽 ⇒ 两者不许互挤。
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -228,18 +230,20 @@ private fun Modifier.pillShellModifier(pill: Boolean, confirm: Boolean): Modifie
 /**
  * 类目标那颗（434：实心朱砂白字 52×28、圆角 rBadge、11sp Medium）。
  *
- * 宽度写 `widthIn(min = …)` 而不是 `width = …`：中文类目最长四字（这次学到／本轮用量），
- * 4×11sp≈44dp ＋ 左右内距正好落在 52dp 上；换成更长的词（或大字体）自己撑开，不截字。
+ * 443/444：**标签固定宽**（`width(TICKER_BADGE_WIDTH_DP)`），正文 `weight(1f)` 独占剩余——
+ * 两者不许互挤。四字类目（这次学到／本轮用量）11sp≈44dp ＋ 左右 4dp 内距正好落在 52dp 内；
+ * 443 真机复验把固定宽从 52 提到 60：四字类目实测在 52 下会被截成「这次学…」。
+ * 万一更长就单行省略，绝不反过来挤正文。
  */
 @Composable
 private fun TickerBadge(text: String) {
     Box(
         modifier = Modifier
             .height(TICKER_BADGE_HEIGHT_DP.dp)
-            .widthIn(min = TICKER_BADGE_WIDTH_DP.dp)
+            .width(TICKER_BADGE_WIDTH_DP.dp)
             .clip(RoundedCornerShape(rBadge))
             .background(MaterialTheme.colorScheme.error, RoundedCornerShape(rBadge))
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -248,6 +252,7 @@ private fun TickerBadge(text: String) {
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onError,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

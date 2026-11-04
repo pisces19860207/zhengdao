@@ -230,8 +230,8 @@ class BaopuShellP1GateTest {
         assertFalse("顶栏不许有 TabRow（学到／型号都只许走跑马灯内容池）", bar.contains("TabRow("))
         assertFalse("顶栏不许有 Tab(selected", bar.contains("Tab(selected"))
         // 判据③后半「不挤占身份区」：跑马灯只吃 weight(1f) 那一段，不许把 ☰／模型区／🛡 挤出去。
-        assertTrue("跑马灯那颗必须 weight(1f)（自己那一格内滚，不撑破顶栏）",
-            bar.contains("BaopuNoticeTicker(state = state, items = noticeItems, modifier = Modifier.weight(1f))"))
+        assertTrue("跑马灯那颗必须按权重占自己那一格（443 起用具名常量，不撑破顶栏）",
+            bar.contains("modifier = Modifier.weight(BAO_TOPBAR_TICKER_WEIGHT)"))
     }
 
     /**

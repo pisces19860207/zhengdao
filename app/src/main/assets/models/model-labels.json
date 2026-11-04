@@ -1,0 +1,120 @@
+[
+  {
+    "modelId": "deepseek-flash",
+    "displayName": "V4.1 Flash",
+    "vendor": "DeepSeek",
+    "tier": "flash",
+    "source": "434 实测（2026-10-17 GET /models）= DeepSeek-V4.1-Flash；443 用户现场裁定（2026-11-04）「DeepSeek 没有 V4 flash 这个模型」⇒ 显示名钉在实测产品名上",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "deepseek-v4-pro",
+    "displayName": "V4 pro",
+    "vendor": "DeepSeek",
+    "tier": "pro",
+    "source": "443 派工单·用户给定映射（2026-11-04）：系列+版本+档位，不带公司名、不带构建号",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "gpt-6.1-sol",
+    "displayName": "GPT 6.1 Sol",
+    "vendor": "OpenAI",
+    "tier": "sol",
+    "source": "443 派工单·用户给定映射（2026-11-04）：系列+版本+档位，不带构建号",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "claude-opus-5.5",
+    "displayName": "Opus 5.5",
+    "vendor": "Anthropic",
+    "tier": "opus",
+    "source": "443 派工单·用户给定映射（2026-11-04）：系列+版本+档位，不带公司名",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "claude-fable-5",
+    "displayName": "Fable 5",
+    "vendor": "Anthropic",
+    "tier": "fable",
+    "source": "443 派工单·用户给定映射（2026-11-04）：系列+版本，不带公司名",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "gemini-3.5-flash",
+    "displayName": "Gemini 3.5 Flash",
+    "vendor": "Google",
+    "tier": "flash",
+    "source": "443 派工单·用户给定映射（2026-11-04）：Gemini 是系列名不是公司名，逐字保留",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "glm-5.2",
+    "displayName": "GLM 5.2",
+    "vendor": "Zhipu",
+    "tier": "standard",
+    "source": "443 派工单·用户给定映射（2026-11-04）：系列+版本",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "glm-5.3-coding",
+    "displayName": "GLM 5.3 coding",
+    "vendor": "Zhipu",
+    "tier": "coding",
+    "source": "443 派工单·用户给定映射（2026-11-04）：coding 是档位名，表内精确条目优先",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "qwen3.7-max",
+    "displayName": "Qwen3.7 Max",
+    "vendor": "Alibaba",
+    "tier": "max",
+    "source": "443 派工单·用户给定映射（2026-11-04）：系列+版本+档位",
+    "asOf": "2026-11-04",
+    "status": "active"
+  },
+  {
+    "modelId": "gpt-4o-mini",
+    "displayName": "GPT-4o mini",
+    "vendor": "OpenAI",
+    "tier": "mini",
+    "source": "443 派工单·死项清单（2026-11-04 用户已核：老代、多已下线）；仅用于已配置旧模型的显示，已移出可选列表",
+    "asOf": "2026-11-04",
+    "status": "legacy"
+  },
+  {
+    "modelId": "claude-sonnet-4-5",
+    "displayName": "Sonnet 4.5",
+    "vendor": "Anthropic",
+    "tier": "sonnet",
+    "source": "443 派工单·死项清单（2026-11-04 用户已核：老代、多已下线）；仅用于已配置旧模型的显示，已移出可选列表",
+    "asOf": "2026-11-04",
+    "status": "legacy"
+  },
+  {
+    "modelId": "gemini-2.5-flash",
+    "displayName": "2.5 Flash",
+    "vendor": "Google",
+    "tier": "flash",
+    "source": "443 派工单·死项清单（2026-11-04 用户已核：老代、多已下线）；仅用于已配置旧模型的显示，已移出可选列表",
+    "asOf": "2026-11-04",
+    "status": "legacy"
+  },
+  {
+    "modelId": "deepseek-v4-flash",
+    "displayName": "V4.1 Flash",
+    "vendor": "DeepSeek",
+    "tier": "alias",
+    "source": "alias of deepseek-flash；443 用户现场裁定（2026-11-04）：DeepSeek 没有 V4 flash 这个模型，此 ID 仅用于解析已存旧配置，不许单独作 preset.model",
+    "asOf": "2026-11-04",
+    "status": "active",
+    "aliasOf": "deepseek-flash"
+  }
+]

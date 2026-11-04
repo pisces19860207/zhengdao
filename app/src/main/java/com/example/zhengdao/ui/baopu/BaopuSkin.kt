@@ -71,6 +71,21 @@ internal const val BAO_TOPBAR_SECTION_GAP_DP = 16
 /** 字母徽标那颗的边长（自绘徽标替代公司全名，省横向空间；高随 44dp 容器收成 28）。 */
 internal const val BAO_LETTER_TILE_DP = 28
 
+/**
+ * 顶栏两段的横向权重（443/444 追加）：设计稿 368/384/884/1172 是**宽画布参考线**，
+ * 一条都不进代码；段间只留 [BAO_TOPBAR_SECTION_GAP_DP] 这一处固定间距，绝不写死落点坐标。
+ *
+ * ⚠️ 为什么是 1:1 而不是「模型段三成」：真机 1312px@560dpi 实测，1:3 会把模型段压到
+ * ~219px，模型名区只剩 23px ⇒ `[D] V4 flash` 被裁到几乎看不见（2026-11-04 用户现场反馈）。
+ * 模型段至少要有 44dp 徽标 + 8dp 区间距 + 13sp 模型名 ≈ 439px，两段各占一半才装得下。
+ * 换设备/换字号仍按同一比例推，不写死坐标。
+ */
+internal const val BAO_TOPBAR_MODEL_WEIGHT = 1f
+internal const val BAO_TOPBAR_TICKER_WEIGHT = 1f
+
+/** 胶囊内容上下对称内距（443 追加：徽标 D 与模型名同一视觉中心，不许偏上）。 */
+internal const val BAO_TOPBAR_PILL_INSET_DP = 8
+
 internal val BaoButtonShape = RoundedCornerShape(BAO_BUTTON_RADIUS_DP.dp)
 
 internal val BaoChipShape = RoundedCornerShape(BAO_CHIP_RADIUS_DP.dp)

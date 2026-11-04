@@ -274,7 +274,7 @@ object Providers {
 
         baseUrl = "https://api.openai.com/v1",
 
-        model = "gpt-4o-mini",
+        model = "gpt-6.1-sol",
 
         // vision = false（默认值，显式写出以免被当成"漏配就默认支持"）：
 
@@ -302,7 +302,7 @@ object Providers {
 
         baseUrl = "https://api.anthropic.com/v1",
 
-        model = "claude-sonnet-4-5",
+        model = "claude-opus-5.5",
 
         // vision = true（同上口径）：Claude 3/4 系列本来就是多模态，
 
@@ -329,7 +329,7 @@ object Providers {
         label = "Google Gemini",
         protocol = LlmProtocol.GEMINI_NATIVE,
         baseUrl = "https://generativelanguage.googleapis.com/v1beta",
-        model = "gemini-2.5-flash",
+        model = "gemini-3.5-flash",
         // Gemini 2.5 Flash：输入窗口约 1M token（Google 文档）；与 OpenRouter 预设同一存档口径。
         contextWindow = 1_048_576,
         vision = true,
@@ -458,6 +458,9 @@ object Providers {
      *
 
      * **不带 key**：用户自己的 key 是一等公民（[withUserKey]），预设只给形状。
+     * 443（2026-11-04 现场裁定）：DeepSeek **没有 V4 flash 这个模型**。真 ID 就是 `deepseek-flash`
+     * （434 实测 `GET /models` = `DeepSeek-V4.1-Flash`），显示名 `V4.1 Flash`；
+     * `deepseek-v4-flash` 只作 `alias of deepseek-flash`，用于解析已存的旧配置。
 
      */
 

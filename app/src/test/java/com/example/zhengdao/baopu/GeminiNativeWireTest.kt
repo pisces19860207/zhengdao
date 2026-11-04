@@ -20,12 +20,13 @@ class GeminiNativeWireTest {
 
     @Test
     fun `端点_stream 与非流式`() {
+        val base = "https://generativelanguage.googleapis.com/v1beta/models/" + provider.model
         assertEquals(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+            "$base:streamGenerateContent?alt=sse",
             LlmWire.endpoint(LlmProtocol.GEMINI_NATIVE, providersBase(), provider.model, stream = true),
         )
         assertEquals(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+            "$base:generateContent",
             LlmWire.endpoint(LlmProtocol.GEMINI_NATIVE, providersBase(), provider.model, stream = false),
         )
     }

@@ -18,6 +18,7 @@
 // 落盘留在 `ProviderPrefs`，换引擎留在 `BaopuRuntime.switchChannel`——这里只回答「该显示什么、该弹哪一个」。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.baopu.ModelLabels
 import com.example.zhengdao.baopu.ModelPickerRules
 import com.example.zhengdao.baopu.Provider
 
@@ -48,9 +49,10 @@ internal object BaopuTopBarRules {
      * **落点二选一的选边理由**（工单允许 `Provider` 增 `modelLabel` 或一张常量表）：
      * `Provider` 是 data class，出生处有三拨（[Provider] 的预设常量、`Providers.withUserKey`、
      * `ProviderPrefs.resolve` 的自定义回退），加字段等于把改动铺到顶栏之外——434 的边界是
-     * 「只碰顶栏相关文件，动了别处停手报」。常量表 closed 在本文件里，且天然满足「表里没有 ⇒ 显 ID」。
+     * 「只碰顶栏相关文件，动了别处停手报」。443 起常量表搬到 assets（见 [ModelLabels]），
+     * 这里只留派生视图；「表里没有 ⇒ 显 ID」这条不变。
      *
-     * 表里的值三条口径（派工单§模型名）：
+     * 表里的值三条口径（443 规则；值逐字取表，本文件不再加工）：
      * · **不带公司名**（公司由徽标那一颗代表，A 案：`[D] V4.1 flash`，不是 `[D] DeepSeek V4.1 flash`）；
      * · **带档位**（`flash` / `mini` / `Pro` 这类网上通行的叫法）；
      * · **不带内部构建号**（`v4.1-flash-1017` 的 `1017` 不上屏）。
@@ -67,24 +69,9 @@ internal object BaopuTopBarRules {
      * 停用的一对别名）也删了——不替死别名包装产品名，真在机器上剩这条存储时按判据 1 显 ID，
      * 她看得见、也就知道要重选。
      */
-    val TOP_BAR_NAMES: Map<String, String> = mapOf(
-        // 派工单逐字例子（判据③拿它对截图）——挂在实测现役 ID 上
-        "deepseek-flash" to "V4.1 flash",
-        "deepseek-v4-pro" to "V4 Pro",
-        "gpt-6.1-sol" to "GPT 6.1 Sol",
-        // 本仓预设的默认模型（Provider.model）
-        "gpt-4o-mini" to "GPT-4o mini",
-        "claude-sonnet-4-5" to "Sonnet 4.5",
-        "gemini-2.5-flash" to "2.5 Flash",
-        // 131 批已审的常见表（CURATED_NAMES），按 A 案摘掉公司那一截
-        "claude-opus-4-5" to "Opus 4.5",
-        "gpt-4o" to "GPT-4o",
-        "gemini-2.5-pro" to "2.5 Pro",
-        // presetModels 里剩下的那几个预设 ID（131 批③「预设也能选模型」的名单）
-        "gpt-4.1-mini" to "GPT 4.1 mini",
-        "gpt-4.1" to "GPT 4.1",
-        "claude-haiku-4-5" to "Haiku 4.5",
-    )
+    /** 443：表在 assets，这里只是 [ModelLabels] 的只读派生视图（不是第二张表）。 */
+    val TOP_BAR_NAMES: Map<String, String>
+        get() = ModelLabels.current().associate { it.modelId.lowercase() to it.displayName }
 
     /**
      * 顶栏那颗模型名（判据 1）。
@@ -95,20 +82,9 @@ internal object BaopuTopBarRules {
      * 按 A 案再摘一次头词；摘完会变空 ⇒ 不摘（宁可重复公司，也不给一个空名字）。
      */
     fun topBarModelName(modelId: String, company: String): String {
-        val id = modelId.trim()
-        val named = TOP_BAR_NAMES[id.lowercase()] ?: return id
-        return dropCompanyWord(named, company)
-    }
-
-    /** 摘掉头部的公司词（大小写与标点无关；只摘一次，不递归）。 */
-    private fun dropCompanyWord(name: String, company: String): String {
-        val parts = name.split(" ")
-        if (parts.size <= 1) return name
-        val head = parts.first().trim('.', ',', '-', '_').lowercase()
-        if (head.isEmpty()) return name
-        val words = company.lowercase().split(' ', '-', '_', '.', ',').map { it.trim() }.filter { it.isNotEmpty() }
-        if (head !in words) return name
-        return parts.drop(1).joinToString(" ").ifBlank { name }
+        val resolved = ModelLabels.resolve(modelId)
+        val text = if (resolved.inTable) resolved.displayName else resolved.requestId
+        return if (resolved.legacy) text + ModelLabels.LEGACY_MARK else text
     }
 
     // ── ② 徽标：自绘字母 ──────────────────────────────────────────────────
@@ -133,6 +109,13 @@ internal object BaopuTopBarRules {
         "阿里" to "Q",
         "通义" to "Q",
         "custom" to "C",
+        "kimi" to "K",
+        "moonshot" to "K",
+        "豆包" to "豆",
+        "doubao" to "豆",
+        "bytedance" to "豆",
+        "字节" to "豆",
+        "alibaba" to "Q",
     )
 
     /** 字母徽标（永不返回两句解释，只回一个字符；空公司名 ⇒ 空串＝徽标不摆）。 */
