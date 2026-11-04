@@ -422,6 +422,13 @@ internal data class RiskTable(
                     scanSensitiveText = true,
                     alwaysAsk = true,
                 ),
+                // 399 事件触发：与 schedule_task 同族同档——建的是"无人值守的自己"，必问；
+                // prompt 扫敏感词同款。
+                "event_trigger" to ToolRule(
+                    RiskClass.R2,
+                    scanSensitiveText = true,
+                    alwaysAsk = true,
+                ),
                 "clipboard_write" to ToolRule(RiskClass.R1, scanSensitiveText = true),
                 "notify" to ToolRule(RiskClass.R1, scanSensitiveText = true),
                 // 218：拨号只打开系统界面、不呼出 ⇒ R1；号码是它的本职工作，不按账号语义升档

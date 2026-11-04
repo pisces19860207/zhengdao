@@ -521,6 +521,8 @@
     <string name="baopu_tool_search_web_desc">搜公开网页拿标题/链接/摘要（只抓白名单站点，禁内网，日志只记检索词哈希）。</string>
     <string name="baopu_tool_schedule_task">定时任务</string>
     <string name="baopu_tool_schedule_task_desc">建/改/停到点自动跑的事（每次改动都要你确认；连败 3 次自动暂停）。</string>
+    <string name="baopu_tool_event_trigger">事件触发</string>
+    <string name="baopu_tool_event_trigger_desc">建/改/停事件触发规则：到点或日历开始前 N 分钟叫醒抱朴（每次改动都要你确认；两个源在设置里默认全关）。</string>
     <string name="baopu_tool_clipboard_write">写剪贴板</string>
     <string name="baopu_tool_clipboard_write_desc">把结果放进系统剪贴板（≤100KB，含敏感号会提示）。</string>
     <string name="baopu_tool_notify">发通知</string>
@@ -1225,6 +1227,12 @@
     <string name="baopu_tool_novel_continue_desc">接哪章哪段、人物与设定、一致性提示；续写用 edit_file 追加或 write_file 新开一章，不覆盖正文。</string>
     <!-- 第一百六十八批：生产评测开关（eval_prod_on 写入口；默认关） -->
     <string name="baopu_eval_prod_card">生产评测</string>
+    <string name="trigger_settings_card">事件触发</string>
+    <string name="trigger_settings_note">两个源默认全关：不拨开关，抱朴不会因任何事件自己醒来。触发的活儿走与手打消息同一套确认制，不可逆动作照旧排队等人。</string>
+    <string name="trigger_sched_title">定时源（到点）</string>
+    <string name="trigger_sched_desc">到点把事件触发规则里的那句话发进抱朴会话。规则的建/停用 event_trigger 工具，都要过确认卡。</string>
+    <string name="trigger_cal_title">日程源（开始前 N 分钟）</string>
+    <string name="trigger_cal_desc">读本机日历，事件开始前 N 分钟叫醒抱朴。需要下面的日历权限；读不到就当没有日程，不会瞎猜。</string>
     <string name="baopu_eval_prod_title">周期性生产评测</string>
     <string name="baopu_eval_prod_desc">打开后，每次会话收尾时若距上次已超过 24 小时，会用你当前设置的通道跑一轮 10 条用例的迷你评测（会消耗模型额度、发网络请求，大约几分钱），结果只写进这台手机的私有目录，作为进化建议的证据；不阻塞聊天、不改人设与技能。默认关闭，只有你在这里拨动才算数。</string>
     <!-- 第二百八十七批：文件操作记录（全盘可读写之后的审计入口；30 天可回放） -->
@@ -1491,6 +1499,9 @@
     <string name="sched_delete_desc">「%1$s」会一起删掉，之后不再触发。</string>
     <string name="sched_delete_action">删除</string>
     <string name="sched_session_title">定时 · %1$s</string>
+    <string name="trigger_perm_calendar">日历</string>
+    <string name="trigger_perm_calendar_desc">事件触发的日程源用：读本机日历事件的开始时刻，好在事件开始前 N 分钟叫醒抱朴。不给 ⇒ 日程源当没有日程（fail-closed），其它源不受影响。</string>
+    <string name="trigger_session_title">事件触发 · %1$s</string>
     <string name="sched_notif_fired_title">定时任务「%1$s」已经发出</string>
     <string name="sched_notif_late_title">定时任务「%1$s」补跑了一次（已过点）</string>
     <string name="sched_notif_fired_text">到点那句话已经进抱朴会话，点开看</string>

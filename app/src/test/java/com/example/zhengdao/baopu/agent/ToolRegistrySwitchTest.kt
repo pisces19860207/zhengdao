@@ -73,8 +73,10 @@ class ToolRegistrySwitchTest {
         assertEquals(
             listOf(
                 // 218：工具补齐 v1 六件（ENTRIES 最前；组默认不可见但默认启用）
-                "sheet_read", "table_query", "search_web", "schedule_task", "clipboard_write",
-                "notify", "phone_dial",
+                "sheet_read", "table_query", "search_web", "schedule_task",
+                // 399：事件触发（表序即注册序，schedule_task 之后）
+                "event_trigger",
+                "clipboard_write", "notify", "phone_dial",
                 "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 第二百六十九批：打包/解包（表序即注册序，convert_encoding 之后）

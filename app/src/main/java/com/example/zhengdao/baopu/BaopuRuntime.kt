@@ -308,6 +308,7 @@ internal object BaopuRuntime {
                 )
             }
         }
+        installTriggerToolHost(appCtx)
         DeviceTools.host = object : com.example.zhengdao.baopu.agent.DeviceHost {
             override fun copyToClipboard(text: String): Boolean = runCatching {
                 val cm = appCtx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
@@ -649,6 +650,29 @@ internal object BaopuRuntime {
      *
      * 全程 `runCatching`：迁移是顺手活，**绝不许**因为一个只读文件把引擎装不起来。
      */
+    /**
+     * 第三百九十九批 · 事件触发源的宿主注入（房型照 ScheduleToolSink：工具层不认识 Context）。
+     * 库、排程、环境现状（源开关与日历权限——工具结果里要如实说）三件，抽成独立函数
+     * 让 [registry] 保持原长（LongMethod 阈值 60，本批不许添新债）。
+     */
+    private fun installTriggerToolHost(appCtx: Context) {
+        com.example.zhengdao.trigger.TriggerTool.storeProvider = {
+            com.example.zhengdao.trigger.TriggerRunner.ruleStore(appCtx)
+        }
+        com.example.zhengdao.trigger.TriggerTool.sink = object : com.example.zhengdao.trigger.TriggerToolSink {
+            override fun reschedule() {
+                com.example.zhengdao.trigger.TriggerRunner.rescheduleAll(appCtx)
+            }
+        }
+        com.example.zhengdao.trigger.TriggerTool.envProvider = {
+            com.example.zhengdao.trigger.TriggerToolEnv(
+                schedOn = com.example.zhengdao.trigger.TriggerSwitch.schedOn(appCtx),
+                calendarOn = com.example.zhengdao.trigger.TriggerSwitch.calendarOn(appCtx),
+                calendarGranted = com.example.zhengdao.trigger.TriggerCalendarProbe.granted(appCtx),
+            )
+        }
+    }
+
     private fun installMedia(appCtx: Context, ws: File) {
         MediaPublisher.env = MediaPublisher.Env(
             // 晚绑定：用户在设置页换工作区后，账本跟着新工作区走（不是装配那一刻的快照）

@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.trigger.TriggerTool
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 import org.json.JSONArray
 import org.json.JSONObject
@@ -301,6 +302,7 @@ internal object ToolGroupTable {
         "table_query" to ToolGroup.DATA,
         "search_web" to ToolGroup.WEBSEARCH,  // R0 只读（走网络，日志只记哈希）
         "schedule_task" to ToolGroup.SCHEDULE, // R2 无人值守必确认
+        "event_trigger" to ToolGroup.SCHEDULE, // R2 无人值守必确认（399 事件触发源）
         "clipboard_write" to ToolGroup.DEVICE, // R1
         "notify" to ToolGroup.DEVICE,          // R1
         "phone_dial" to ToolGroup.DEVICE,      // R1 只开拨号盘
@@ -1263,7 +1265,7 @@ internal object BaopuToolCatalog {
      */
     val DEFAULT_ENABLED: Set<String> = setOf(
         // 第二百一十八批：六件默认「启用」（组仍默认不可见——解锁即用，与 IMAGE/DRAW 同款口径）
-        "sheet_read", "search_web", "schedule_task", "clipboard_write", "notify", "phone_dial",
+        "sheet_read", "search_web", "schedule_task", "event_trigger", "clipboard_write", "notify", "phone_dial",
         // 第二百三十二批：通用表格问答默认「启用」（组仍默认不可见——解锁即用，同上口径）
         "table_query",
         "read_file",
@@ -1383,6 +1385,8 @@ internal object BaopuToolCatalog {
         Entry("table_query") { TableQueryTool.spec(it) },
         Entry("search_web") { SearchWebTool.spec() },
         Entry("schedule_task") { ScheduleTaskTool.spec() },
+        // 第三百九十九批：事件触发源（定时/日程）；必过确认卡，与 schedule_task 同组同风险档。
+        Entry("event_trigger") { TriggerTool.spec() },
         Entry("clipboard_write") { ClipboardWriteTool.spec() },
         Entry("notify") { NotifyTool.spec() },
         Entry("phone_dial") { PhoneDialTool.spec() },

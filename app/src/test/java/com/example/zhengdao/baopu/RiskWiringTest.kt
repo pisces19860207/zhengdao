@@ -387,7 +387,8 @@ class RiskWiringTest {
         // 288 复制/批量/整理五件进表 ⇒ 8/75。
         // 谁再动表，先对账再改这两行）。
         assertEquals("矩阵版本与表不配套（改表必 +1）", 8, RiskTable.DEFAULT_VERSION)
-        assertEquals("表行数变了：先对账再改（75 个注册工具 = 75 行（COMPAT 退役后无豁免行））", 75, RiskTable.DEFAULT.tools.size)
+        // 399 event_trigger 进表（与 schedule_task 同族同档 R2/必问）＝ 8/76（版本没动：没加新风险维度）
+        assertEquals("表行数变了：先对账再改（76 个注册工具 = 76 行（COMPAT 退役后无豁免行））", 76, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)

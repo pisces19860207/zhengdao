@@ -98,6 +98,9 @@ import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.eval.ProdEvalSettings
+import com.example.zhengdao.trigger.TriggerRunner
+import com.example.zhengdao.trigger.TriggerSource
+import com.example.zhengdao.trigger.TriggerSwitch
 import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.TimeFormats
@@ -466,6 +469,78 @@ internal fun BaopuSettingsScreen(
                             ImpactPrefs.set(ctx, want)
                             impactOn = want
                             RunLog.log("抱朴设置：显示影响提示 = $want")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 事件触发（第三百九十九批：手机侧"自己接活"）──
+            // 定位：**源级开关**（派工单 §二①「每个触发源必须显式开启（默认全关），且可随时关」）。
+            // 写口只有 TriggerSwitch.set 一处；关掉的源在 TriggerPass 里整个不存在——
+            // 不是"不触发"，是连事件都不看。规则的建/停走 event_trigger 工具（必过确认卡）。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.trigger_settings_card)) {
+                Text(
+                    text = stringResource(R.string.trigger_settings_note),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                var schedOn by rememberSaveable { mutableStateOf(TriggerSwitch.schedOn(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.trigger_sched_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.trigger_sched_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = schedOn,
+                        onCheckedChange = { want ->
+                            TriggerSwitch.set(ctx, TriggerSource.SCHED, want)
+                            schedOn = want
+                            runCatching { TriggerRunner.rescheduleAll(ctx) }
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+                var calOn by rememberSaveable { mutableStateOf(TriggerSwitch.calendarOn(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.trigger_cal_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.trigger_cal_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = calOn,
+                        onCheckedChange = { want ->
+                            TriggerSwitch.set(ctx, TriggerSource.CALENDAR, want)
+                            calOn = want
+                            runCatching { TriggerRunner.rescheduleAll(ctx) }
                         },
                         colors = zhengdaoSwitchColors(),
                     )

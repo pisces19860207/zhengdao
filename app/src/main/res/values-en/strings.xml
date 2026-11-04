@@ -540,7 +540,9 @@
     <string name="baopu_tool_search_web">Web search</string>
     <string name="baopu_tool_search_web_desc">Search public pages for title/link/snippet (allowlist only, no intranet; logs hash only).</string>
     <string name="baopu_tool_schedule_task">Scheduled task</string>
+    <string name="baopu_tool_event_trigger">Event trigger</string>
     <string name="baopu_tool_schedule_task_desc">Create/change/pause things that run unattended (every change needs approval; auto-pauses after 3 failures).</string>
+    <string name="baopu_tool_event_trigger_desc">Create/update/pause event-trigger rules: wake Baopu at a set time or N minutes before a calendar event (every change needs your confirmation; both sources are off by default in Settings).</string>
     <string name="baopu_tool_clipboard_write">Copy to clipboard</string>
     <string name="baopu_tool_clipboard_write_desc">Put results on the system clipboard (up to 100KB; warns on sensitive numbers).</string>
     <string name="baopu_tool_notify">Notify</string>
@@ -1273,6 +1275,12 @@
     <string name="baopu_tool_novel_continue_desc">Where to continue (chapter and paragraph), characters and notes, consistency hints; append via edit_file or start a new chapter via write_file, never overwrite.</string>
     <!-- Batch 168: production eval switch (eval_prod_on write entry; off by default) -->
     <string name="baopu_eval_prod_card">Production eval</string>
+    <string name="trigger_settings_card">Event triggers</string>
+    <string name="trigger_settings_note">Both sources are off by default: without switching them on, Baopu never wakes by itself for any event. Triggered jobs go through the same confirmation flow as typed messages; irreversible actions still queue for a human.</string>
+    <string name="trigger_sched_title">Timer source (at a set time)</string>
+    <string name="trigger_sched_desc">Sends the rule\'s prompt into a Baopu session at the appointed time. Create/stop rules with the event_trigger tool; each change needs a confirmation card.</string>
+    <string name="trigger_cal_title">Calendar source (N minutes before)</string>
+    <string name="trigger_cal_desc">Reads the on-device calendar and wakes Baopu N minutes before an event starts. Needs the calendar permission below; if unreadable it assumes no events instead of guessing.</string>
     <string name="baopu_eval_prod_title">Periodic production eval</string>
     <string name="baopu_eval_prod_desc">When on, after a session settles (at most once every 24 hours) Baopu runs a 10-case mini eval on your configured channel. It spends a small amount of your model quota and makes network requests. Results are written only to this device\'s private storage and serve as evidence for evolution suggestions; chat is never blocked and personas/skills are never changed. Off by default — only your explicit switch turns it on.</string>
     <!-- Batch 287: file operation ledger (audit entry after full-disk read/write; 30-day replay) -->
@@ -1536,6 +1544,9 @@
     <string name="sched_delete_desc">“%1$s” will be removed and will never fire again.</string>
     <string name="sched_delete_action">Delete</string>
     <string name="sched_session_title">Scheduled · %1$s</string>
+    <string name="trigger_session_title">Event trigger · %1$s</string>
+    <string name="trigger_perm_calendar">Calendar</string>
+    <string name="trigger_perm_calendar_desc">Used by the event-trigger calendar source: reads on-device calendar event start times so Baopu can be woken N minutes before. Denied ⇒ the calendar source assumes no events (fail-closed); other sources are unaffected.</string>
     <string name="sched_notif_fired_title">Scheduled task “%1$s” was sent</string>
     <string name="sched_notif_late_title">Scheduled task “%1$s” caught up (past its time)</string>
     <string name="sched_notif_fired_text">Its prompt is now in a Baopu session — tap to open it</string>

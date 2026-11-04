@@ -455,6 +455,8 @@ class ToolSchemaAllTest {
             "table_query" to JSONObject().put("question", "一共几个人"),
             "search_web" to JSONObject().put("query", "word"),
             "schedule_task" to JSONObject().put("action", "list"),
+            // 第三百九十九批：事件触发（最小合法参数 = list；create 的完整校验在 TriggerToolTest）
+            "event_trigger" to JSONObject().put("action", "list"),
             "clipboard_write" to JSONObject().put("text", "text"),
             "notify" to JSONObject().put("title", "t").put("body", "b"),
             "phone_dial" to JSONObject().put("number", "13800138000"),

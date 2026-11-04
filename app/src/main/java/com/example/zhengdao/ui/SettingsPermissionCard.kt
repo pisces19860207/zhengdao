@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
@@ -30,6 +31,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.zhengdao.R
 import com.example.zhengdao.schedule.SchedulePermissions
+import com.example.zhengdao.trigger.TriggerCalendarProbe
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.ui.theme.zhengdaoReady
 import com.example.zhengdao.util.HumanizeError
@@ -82,17 +84,25 @@ fun SettingsPermissionCard() {
     var notifyOk by remember { mutableStateOf(PermissionSetup.notificationsGranted(ctx)) }
     var exactOk by remember { mutableStateOf(SchedulePermissions.canScheduleExactAlarms(ctx)) }
     var batteryOk by remember { mutableStateOf(SchedulePermissions.isIgnoringBatteryOptimizations(ctx)) }
+    // 事件触发源②「日程/提醒」（第三百九十九批）：READ_CALENDAR 运行时权限，判定委托探针唯一源。
+    var calendarOk by remember { mutableStateOf(TriggerCalendarProbe.granted(ctx)) }
 
     fun refresh() {
         allFilesOk = PermissionSetup.manageAllFilesGranted()
         notifyOk = PermissionSetup.notificationsGranted(ctx)
         exactOk = SchedulePermissions.canScheduleExactAlarms(ctx)
         batteryOk = SchedulePermissions.isIgnoringBatteryOptimizations(ctx)
+        calendarOk = TriggerCalendarProbe.granted(ctx)
     }
 
     // 通知：单个运行时权限用 RequestPermission 契约；回执里重新读系统状态，
     // 不信 result——部分 ROM 会把弹窗静默掉，result 只在"弹过了"时才有值。
     val notifyLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { refresh() }
+
+    // 日历：与通知同款契约（单一运行时权限；回执里重读系统状态）。
+    val calendarLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { refresh() }
 
@@ -261,6 +271,37 @@ fun SettingsPermissionCard() {
     )
     Text(
         text = stringResource(R.string.sched_perm_battery_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Spacer(Modifier.height(10.dp))
+    SettingsDivider()
+    Spacer(Modifier.height(10.dp))
+
+    // ── 行 5：日历（事件触发的日程源；399 批）──
+    CalendarPermRow(
+        ok = calendarOk,
+        onGrant = { calendarLauncher.launch(Manifest.permission.READ_CALENDAR) },
+        onOpenDetails = openAppDetails,
+    )
+}
+
+/** 行 5 的本体（399 批）：行 + 说明 + 去路。独立成函数让权限卡本身保持原复杂度。 */
+@Composable
+private fun CalendarPermRow(ok: Boolean, onGrant: () -> Unit, onOpenDetails: () -> Unit) {
+    SettingRow(
+        label = stringResource(R.string.trigger_perm_calendar),
+        value = if (ok) stringResource(R.string.data_perm_granted)
+        else stringResource(R.string.data_perm_not_granted),
+        valueColor = if (ok) zhengdaoReady() else zhengdaoErrorText(),
+        onClick = {
+            // 已给 ⇒ 去系统应用详情看/撤；未给 ⇒ 就地拉起运行时请求（本 App 唯一的日历申请点）。
+            if (ok) onOpenDetails() else onGrant()
+        },
+    )
+    Text(
+        text = stringResource(R.string.trigger_perm_calendar_desc),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

@@ -66,6 +66,11 @@
          页面上那行「精确闹钟」把这条降级说在人话里（ui/SettingsDataActivity 的权限卡）。 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- 事件触发源②「日程/提醒」（第三百九十九批）：读系统日历的事件开始时刻。
+         运行时权限，默认拒绝；申请入口只有设置页权限卡那一行（PermissionEntryGateTest 钉的
+         唯一口），没给 ⇒ 探针 fail-closed 返回空表，日历源静默不取件，其余源不受影响。 -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
     <!-- 第 129 批 lint 清债：CAMERA 权限要配一条 required=false 的 uses-feature，否则 lint 报
          PermissionImpliesUnsupportedChromeOsHardware（原意就是这个：没摄像头也能装，只是拍照按钮不可用）。 -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -288,6 +293,14 @@
              接收器本身不发消息，只把进程叫醒后交给与 WorkManager 同一趟 pass。 -->
         <receiver
             android:name=".schedule.ScheduleAlarmReceiver"
+            android:exported="false" />
+
+        <!-- 事件触发源的闹钟落点（第三百九十九批）：与定时任务同款——必须是清单里的静态组件
+             （AlarmManager 的 PendingIntent 要跨进程重启生效），接收器只把进程叫醒后交给
+             WorkManager 同一趟 pass。exported=false：Intent 显式指向本类
+             （trigger/TriggerAlarmReceiver.kt），没有外部 App 需要能调它。 -->
+        <receiver
+            android:name=".trigger.TriggerAlarmReceiver"
             android:exported="false" />
 
         <!-- 抱朴附件（第二十二批 A 段）：相机要一个可写 Uri，安卓 7+ 只能是 content://，
