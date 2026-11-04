@@ -190,6 +190,8 @@ internal object HealthRun {
             runs = nightWin.size,
             lastRunMs = nightRows.maxOfOrNull { it.atMs },
             problems = nightWin.sumOf { it.hits },
+            // 432：最近一轮抽了几条（样本不足 n<5 的判读数；灾异轮不是自动档的账，不冒充样本）。
+            lastSampled = nightWin.filter { !it.emergency }.maxByOrNull { it.atMs }?.inspected,
             // 周期件（夜巡按晚抽）：整窗没抽检即超期 ⇒ 未取样（判据：暗卫超期 ⇒ 未取样）。
             overdue = nightWin.isEmpty(),
             overdueDays = nightRows.maxOfOrNull { it.atMs }?.let { (nowMs - it) / HealthLimits.DAY_MS },

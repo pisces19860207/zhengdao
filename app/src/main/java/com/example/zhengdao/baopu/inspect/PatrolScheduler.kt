@@ -16,6 +16,7 @@ package com.example.zhengdao.baopu.inspect
 
 import java.time.Instant
 import java.time.ZoneId
+import java.time.temporal.IsoFields
 import java.util.Locale
 
 /** 巡按的发起判据。 */
@@ -166,4 +167,75 @@ internal object PatrolScheduler {
 
     /** 上次巡按的时刻（台账新→旧排好，取第一条 ⇒ 最新一次）。 */
     fun lastPatrolAtMs(entries: List<PatrolEntry>): Long? = entries.maxOfOrNull { it.atMs }
+
+    // ── 周位（第四百三十二批：暗卫自动档，2026-11-04 用户拍板 A「开」） ─────────
+    //
+    // §10③ 关掉的是"每晚低峰自动夜跑"那一档（[autoGate]，仍关着）；432 拍板开的是
+    // **另一个节奏**：每周 1 次，条件只有 §二② 的三件（充电中＋WiFi＋非值守）——
+    // 不回到夜间低峰窗、不要求设备空闲。判据照月位同一条纪律**只住这一层**：
+    // 装配侧（`NocturnalAuto`）只做读数与排程，不许自己再写一遍周键算法。
+    //
+    // 首跑时机（拍板补充①）：开启后**不立即跑**。周期作业的首跑本来就在排上之后一个周期
+    // （≥7 天）且要等约束放行——"等第一个满足条件的窗口"由这个形状保证，不靠判据记时刻。
+
+    /** 周位的周期（天）：WorkManager 的周期只是"大致这么频繁"，真正的周位由 [weeklyKey] 判。 */
+    const val WEEKLY_PERIOD_DAYS: Long = 7L
+
+    /** 周位的缺省开关（432 拍板 A＝开；关＝装配层读开关拨 false，判据只收参数）。 */
+    const val WEEKLY_ENABLED: Boolean = true
+
+    /** 一轮的样本下限：最近一轮抽不到这个数 ⇒ 记「样本不足」，**不许**报"零假 PASS"（拍板补充②）。 */
+    const val WEEKLY_MIN_SAMPLE: Int = NocturnalLimits.NIGHTLY_MAX
+
+    const val WHY_WEEKLY_RUN: String = "本周还没抽检、条件齐（充电＋WiFi＋非值守）"
+    const val WHY_WEEKLY_DONE: String = "本周已抽检过（同周只跑一次）"
+    const val WHY_WEEKLY_WIFI: String = "没在 WiFi（432 §二②：只在 WiFi 时跑）"
+    const val WHY_WEEKLY_ON_DUTY: String = "L2 值守期间不跑（432 §二②：避免抢资源）"
+    const val WHY_WEEKLY_OFF: String = "暗卫自动档已关（读开关，432 §二④）"
+
+    /**
+     * 自然周键（本地时区、ISO 周；`2026-W45` 这种）——与 [monthlyKey] 同一款：周换了就该跑。
+     */
+    fun weeklyKey(atMs: Long): String {
+        val d = Instant.ofEpochMilli(atMs).atZone(ZoneId.systemDefault()).toLocalDate()
+        return String.format(
+            Locale.ROOT,
+            "%04d-W%02d",
+            d.get(IsoFields.WEEK_BASED_YEAR),
+            d.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR),
+        )
+    }
+
+    /** 该不该跑：从没抽过，或上一趟不在本周。 */
+    fun weeklyDue(lastRoundAtMs: Long?, nowMs: Long): Boolean =
+        lastRoundAtMs == null || weeklyKey(lastRoundAtMs) != weeklyKey(nowMs)
+
+    /** 「今晚」的桶（本地日的 epoch-day；日历口径同月位一样只住这一层，调用方拿去填 [NightRound.bucket]）。 */
+    fun dayBucket(atMs: Long): Long =
+        Instant.ofEpochMilli(atMs).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()
+
+    /** 最近一轮**自动档**抽检的时刻（灾异那几趟不是周位的账，不算）。 */
+    fun lastAutoRoundAtMs(rounds: List<NightRound>): Long? =
+        rounds.filter { !it.emergency }.maxOfOrNull { it.atMs }
+
+    /**
+     * 周位的闸门：开关 > 值守 > 周位 > WiFi。
+     *
+     * 充电与配额由 [NocturnalPatrol.gate] 在下一道再验（两道闸谁也不能单独放行）；
+     * 充电那一半同样有两截：WorkManager `setRequiresCharging(true)`（排队时约束）＋
+     * 装配层真开跑前再读一次电池。
+     */
+    fun autoWeeklyGate(
+        lastRoundAtMs: Long?,
+        nowMs: Long,
+        wifi: Boolean,
+        onDuty: Boolean,
+        enabled: Boolean = WEEKLY_ENABLED,
+    ): Gate = when {
+        !enabled -> Gate(false, WHY_WEEKLY_OFF)
+        onDuty -> Gate(false, WHY_WEEKLY_ON_DUTY)
+        !weeklyDue(lastRoundAtMs, nowMs) -> Gate(false, WHY_WEEKLY_DONE)
+        !wifi -> Gate(false, WHY_WEEKLY_WIFI)
+        else -> Gate(true, WHY_WEEKLY_RUN)
+    }
 }

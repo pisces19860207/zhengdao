@@ -449,9 +449,11 @@ class HealthCheckTest {
         // 第三百四十八批：读数层接上了（0 ⇒ 1）⇒ 再挪一个进"未取样"（5/9）。
         // 第四百零九批：金吾卫接上「金吾卫巡检」按钮（0 ⇒ 1）⇒ 再挪一个进"未取样"（4/10）；
         // 抽检读数（上次抽检时间＋假 PASS 数）由编排层附运行记录事实，首次体检没得读 ⇒ 照旧未取样。
-        assertEquals(4, sheet.count(OrganState.NOT_WIRED))
+        // 第四百三十二批：暗卫自动档接上周位（不良人 gate 与调度·夜巡各 0 ⇒ 1）⇒ 再挪两个
+        // 进"未取样"（2/12）——这两个部位档的 sink 都在，只是首次体检没有运行记录可读。
+        assertEquals(2, sheet.count(OrganState.NOT_WIRED))
         assertEquals(0, sheet.count(OrganState.ACTIVE))
-        assertEquals(10, sheet.unmeasured())
+        assertEquals(12, sheet.unmeasured())
         assertEquals(ScanOutcome.HIT, sheet.outcomeOf(Blocker.WIRING))
         // 348 起"账在、没人算"不再是事实（读数层有生产调用点了）⇒ 账卡退回未取样
         // （这一趟没做账实对拍），不许因此报"未发现信号"。

@@ -168,12 +168,14 @@ internal object OrganCensus {
             name = "不良人",
             entry = "NocturnalPatrol.gate",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/NocturnalPatrol.kt",
-            callSites = 0,
+            // 第四百三十二批：自动档接上（2026-11-04 用户拍板 A）——0 改 1，运行器（NocturnalAuto）
+            // 每周抽一轮、运行记录落暗卫记录.jsonl，体检「抽检读数」块有得上读。
+            callSites = 1,
             sink = "暗卫记录.jsonl",
-            byDesign = "夜巡自动档按 §10③ 裁定关着（PatrolScheduler.AUTO_ENABLED = false）",
+            byDesign = "432 拍板 A：每周自动抽检 1 次（充电+WiFi+非值守；可关·只做读开关）",
             evidence = listOf(
-                "inspect/PatrolScheduler.kt:28 AUTO_ENABLED = false",
-                "inspect/NocturnalPatrol.kt:148 gate() 定义，全仓零调用",
+                "inspect/NocturnalAuto.kt:111 NocturnalPatrol.gate( 生产调用点（432 接上；配额与充电闸）",
+                "inspect/NocturnalPatrol.kt:154 gate() 定义（一键停/四前提/双闸配额，一字未动）",
             ),
         ),
         OrganProbe(
@@ -202,14 +204,17 @@ internal object OrganCensus {
         ),
         OrganProbe(
             name = "调度·夜巡",
-            entry = "PatrolScheduler.autoGate",
+            entry = "PatrolScheduler.autoWeeklyGate",
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/PatrolScheduler.kt",
-            callSites = 0,
-            sink = "巡按记录.jsonl",
-            byDesign = "自动夜跑按 §10③ 默认关（AUTO_ENABLED = false）；手动档接通",
+            // 第四百三十二批：周位（每周 1 次自动抽检）接上——判据仍在夜巡调度器这一层
+            // （月位同款纪律），装配侧 NocturnalAuto 只做读数与排程。§10③ 的"每晚低峰自动
+            // 夜跑"（autoGate）仍按裁定关着，手动档照旧。
+            callSites = 1,
+            sink = "暗卫记录.jsonl（自动档一行一轮）",
+            byDesign = "自动夜跑按 §10③ 默认关（AUTO_ENABLED = false）；432 周位自动档开着；手动档接通",
             evidence = listOf(
-                "inspect/PatrolScheduler.kt:62 autoGate() 定义，全仓零调用",
-                "ui/baopu/DecisionCenterScreen.kt:427 只用了 manualGate()",
+                "inspect/NocturnalAuto.kt:99 PatrolScheduler.autoWeeklyGate( 生产调用点（432 接上）",
+                "ui/baopu/DecisionCenterScreen.kt:427 只用了 manualGate()（手动档）",
             ),
         ),
         OrganProbe(

@@ -175,6 +175,12 @@ internal data class SampleFacts(
     val problems: Int = 0,
     /** 影子特有：窗内「跑不出结论」的条数（不是零差异，也不进差异数——不许互相冒充）。 */
     val unverifiable: Int = 0,
+    /**
+     * 432：最近一轮抽了几条（暗卫＝最新一行 [NightRound.inspected]；null ＝ 没跑或旧口径行）。
+     * 抽不到 [NocturnalLimits.NIGHTLY_MAX] 条 ⇒ 那行显「样本不足」，**不许**显"零假 PASS"——
+     * 样本太少时"没查出问题"说明不了什么（拍板补充②：这两件事必须分开）。
+     */
+    val lastSampled: Int? = null,
     val shouldHaveRun: Boolean = false,
     val overdue: Boolean = false,
     val overdueDays: Long? = null,
@@ -401,21 +407,39 @@ internal object HealthCheck {
      *
      * 「正常」二字只许在**真抽过且零命中**时出现（runs>0）——没跑的未取样不许写成正常
      * （291 的「查过没问题」与「没查」分得开，同一口径）。
+     *
+     * 432 拍板补充②：最近一轮抽不到 5 条 ⇒ 显「样本不足」，**不许**显"假 PASS 0，正常"
+     * ——样本太少时零命中说明不了清白；真抽到了命中照实报数字（报问题不受样本数拦）。
      */
     internal fun samplingLine(name: String, s: SampleFacts): String = when {
-        s.runs > 0 && s.kind == SampleKind.SHADOW -> name + "：已运行" +
-            when {
-                s.problems > 0 -> "（差异 ${s.problems} 处）"
-                s.unverifiable > 0 -> "（零差异，另有 ${s.unverifiable} 条跑不出结论）"
-                else -> "（零差异）"
-            } + "·上次 ${lastStamp(s.lastRunMs)}"
-        s.runs > 0 -> name + "：已抽检 ${s.runs} 轮（假 PASS ${s.problems}" +
-            (if (s.problems == 0) "，正常" else "") + "）·上次 ${lastStamp(s.lastRunMs)}"
+        s.runs > 0 && s.kind == SampleKind.SHADOW -> name + shadowRunSuffix(s) + "·上次 ${lastStamp(s.lastRunMs)}"
+        // 432：样本不足在前——它拦的是「零假 PASS＝正常」那句话，不是拦"跑过"这件事本身。
+        s.runs > 0 && s.lastSampled != null && s.lastSampled < NocturnalLimits.NIGHTLY_MAX ->
+            name + insufficientSampleSuffix(s) + "·上次 ${lastStamp(s.lastRunMs)}"
+        s.runs > 0 && s.lastSampled != null ->
+            name + samplerRoundSuffix(s) + "·抽了 ${s.lastSampled} 条·上次 ${lastStamp(s.lastRunMs)}"
+        s.runs > 0 -> name + samplerRoundSuffix(s) + "·上次 ${lastStamp(s.lastRunMs)}"
         s.shouldHaveRun -> "$name：该跑没跑——窗内有该预演的动作，运行记录 0 条·上次 ${lastStamp(s.lastRunMs)}"
         s.unverifiable > 0 -> "$name：未取样（${s.unverifiable} 次都跑不出结论）·上次 ${lastStamp(s.lastRunMs)}"
         s.overdue -> name + "：未取样（超期 ${s.overdueDays ?: 0} 天没抽检）·上次 ${lastStamp(s.lastRunMs)}"
         else -> "$name：未取样（窗内没跑）·上次 ${lastStamp(s.lastRunMs)}"
     }
+
+    /** 影子跑过那一截（409 的行文，一字不动）。 */
+    private fun shadowRunSuffix(s: SampleFacts): String = "：已运行" + when {
+        s.problems > 0 -> "（差异 ${s.problems} 处）"
+        s.unverifiable > 0 -> "（零差异，另有 ${s.unverifiable} 条跑不出结论）"
+        else -> "（零差异）"
+    }
+
+    /** 抽检件抽过那一截（409 的行文：「正常」只在零命中时出现）。 */
+    private fun samplerRoundSuffix(s: SampleFacts): String =
+        "：已抽检 ${s.runs} 轮（假 PASS ${s.problems}" + (if (s.problems == 0) "，正常" else "") + "）"
+
+    /** 432：样本不足那一截——零命中在这里说不了清白，真有命中照实报。 */
+    private fun insufficientSampleSuffix(s: SampleFacts): String =
+        "：已抽检 ${s.runs} 轮（样本不足，只抽到 ${s.lastSampled} 条·n<${NocturnalLimits.NIGHTLY_MAX}" +
+            (if (s.problems > 0) "；假 PASS ${s.problems} 照实报" else "") + "）"
 
     /** 上次抽检时间的人话（null ＝ 从没跑过，照实说，不留空）。 */
     private fun lastStamp(atMs: Long?): String =
