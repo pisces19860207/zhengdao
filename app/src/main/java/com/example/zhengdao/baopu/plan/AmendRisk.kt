@@ -22,6 +22,7 @@ import com.example.zhengdao.baopu.RiskCtx
 import com.example.zhengdao.baopu.RiskMatrix
 import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskVerdict
+import com.example.zhengdao.baopu.agent.PlanTool
 import com.example.zhengdao.baopu.agent.ToolCall
 
 /**
@@ -102,4 +103,33 @@ internal object AmendRiskRules {
         (v.risk?.ordinal ?: -1) * TIER_WEIGHT +
             (if (v.mustAsk) ASK_BONUS else 0) +
             (if (v.rejected) REJECT_BONUS else 0)
+}
+
+/**
+ * 第四百一十七批 · 验收接管补的**测试缝**：改约基线「何时被消费」的状态转移。
+ *
+ * 为什么单独出来：这段原先写在 `RunEngine.amendGate` 里，靠引擎私有字段做判断，
+ * JVM 单测够不着 ⇒ 只能拿源级 grep 钉形状（既不严谨，又会误红/误绿）。抽成纯函数后，
+ * 「改约后先来一次 update_plan、再来那次动作」这条序列可以直接喂名字钉住。
+ *
+ * 语义（与 417 交付方的三态一致，本函数不判档、不看参数）：
+ * - **改约后的 `update_plan` 不消费基线**：它只是「计划本身再写一遍」，不是带新参数的动作；
+ *   若让它消费，会拿基线去和 R0 比出假降档、并把基线吃掉 ⇒ 真正那次动作不再重算。
+ * - **任何非 `update_plan` 的调用消费基线**（无论本次是否真的重算出升/降/不变）：
+ *   基线代表的「上一次动作」由此被这次动作取代。
+ * - 每次非 `update_plan` 调用都刷新 [Outcome.lastAction]（留给下一次改约做旧参数）。
+ */
+internal object AmendRiskBaseline {
+
+    /** 一次调用的转移结果：本次拿来重算的基线、调用后仍留存的基线、新的「最后一次动作」。 */
+    data class Outcome(
+        val taken: ToolCall?,
+        val nextBaseline: ToolCall?,
+        val lastAction: ToolCall?,
+    )
+
+    fun step(call: ToolCall, stored: ToolCall?): Outcome {
+        if (call.name == PlanTool.NAME) return Outcome(taken = null, nextBaseline = stored, lastAction = null)
+        return Outcome(taken = stored, nextBaseline = null, lastAction = call)
+    }
 }

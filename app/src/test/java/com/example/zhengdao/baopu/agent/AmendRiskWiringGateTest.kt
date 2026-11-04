@@ -97,14 +97,13 @@ class AmendRiskWiringGateTest {
         )
         val gate = bodyOf(src, "private fun amendGate(")
         assertTrue(
-            "新参数没在下一次动作开头被取成基线",
-            gate.contains("val baseline = amendRiskBaseline"),
+            "基线「何时被消费」没走纯函数（改回内联字段判断就退回不可测的 private 状态机）",
+            gate.contains("AmendRiskBaseline.step(call, amendRiskBaseline)"),
         )
         assertTrue(
-            "基线没在开头清掉 ⇒ 同一次 update_plan 会把新参数当旧参数误判",
-            gate.contains("amendRiskBaseline = null"),
+            "重算闸没接进串行调用链",
+            gate.contains("amendRiskGate(call, riskStep.taken)"),
         )
-        assertTrue("重算闸没接进串行调用链", gate.contains("amendRiskGate(call, baseline)"))
         assertFalse(
             "handleSerialCall 不许为本单多一个分支：它圈复杂度基线 15，多一个 ?.let 就顶破阈值（detekt +1）",
             bodyOf(src, "private fun handleSerialCall(").contains("amendRiskGate"),
@@ -146,18 +145,4 @@ class AmendRiskWiringGateTest {
         assertTrue("360 的旧上限退场仍在", controller().contains("retireContractForAmend() +"))
     }
 
-    @Test
-    fun `G8_改约基线只许真实动作消费_改约后的update_plan不许吃掉它（验收接管修正）`() {
-        val gate = bodyOf(engine(), "private fun amendGate(")
-        assertTrue("amendGate 不见了", gate.isNotEmpty())
-        assertTrue(
-            "基线没有按「不是 update_plan」过滤（改约后先发一次 update_plan 会吃掉基线：既落假降档账，又让真正那次动作不重算）",
-            gate.contains("amendRiskBaseline.takeUnless { call.name == PlanTool.NAME }"),
-        )
-        assertTrue(
-            "清空基线的那一步必须落在 `call.name != PlanTool.NAME` 的分支里",
-            Regex("""if \(call\.name != PlanTool\.NAME\) \{\s*amendRiskBaseline = null""")
-                .containsMatchIn(gate),
-        )
-    }
 }

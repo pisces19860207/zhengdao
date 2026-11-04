@@ -53,6 +53,7 @@ import com.example.zhengdao.baopu.TaskModeBoundary
 import com.example.zhengdao.baopu.VisionConsent
 import com.example.zhengdao.baopu.VisionFiles
 import com.example.zhengdao.baopu.VisionRouting
+import com.example.zhengdao.baopu.plan.AmendRiskBaseline
 import com.example.zhengdao.baopu.plan.AmendRiskProbe
 import com.example.zhengdao.baopu.plan.AmendRiskRecheck
 import com.example.zhengdao.baopu.plan.ContractApprovalRules
@@ -4744,16 +4745,14 @@ internal class RunEngine(
         // 主链一个分支都不加；本闸每次串行调用都跑，且比「判是不是 update_plan」更早，
         // 所以下一次带新参数的动作照样会被重算。
         // 先快照再清空 ⇒ 本次 update_plan 里刚置的基线不会在同一次调用被消费。
-        // 蓝总管验收接管（2026-11-04）：基线只许被**真实动作**消费。
-        // 原实现无条件 `amendRiskBaseline = null` ⇒ 改约后模型若先发一次 update_plan（矩阵里是 R0），
-        // 会把基线拿去和 update_plan 比出「降档」（假账行），同时把基线吃掉 ⇒ 真正那次高风险动作
-        // 再也不重算、不重新授权。改约后的 update_plan 不消费基线、也不进重算闸。
-        val baseline = amendRiskBaseline.takeUnless { call.name == PlanTool.NAME }
-        if (call.name != PlanTool.NAME) {
-            amendRiskBaseline = null
-            lastActionCall = call
-        }
-        amendRiskGate(call, baseline)?.let { return it }
+        // 第四百一十七批（验收接管补缝）：基线「何时被消费」的判定挪进纯函数
+        // [com.example.zhengdao.baopu.plan.AmendRiskBaseline.step]，本处只搬字段。
+        // 语义：改约后的 update_plan 不消费基线（否则拿 R0 比出假降档、还把基线吃掉）；
+        // 其余调用消费基线并刷新「最后一次动作」。
+        val riskStep = AmendRiskBaseline.step(call, amendRiskBaseline)
+        amendRiskBaseline = riskStep.nextBaseline
+        riskStep.lastAction?.let { lastActionCall = it }
+        amendRiskGate(call, riskStep.taken)?.let { return it }
         if (call.name != PlanTool.NAME) return null
         if (PlanPledgeBoard.activeSnapshot() == null) return null
         val items = (PlanRules.parseItems(call.arguments) as? PlanRules.Parse.Ok)?.items
