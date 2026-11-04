@@ -64,6 +64,19 @@
     python3 tools/check-license-policy.py --verbose     # 逐条列出每条直接依赖的判定
     python3 tools/check-license-policy.py --selftest    # 自检
     python3 tools/check-license-policy.py --gradle-home D:/gd   # 换缓存位置（本机排查用）
+    python3 tools/check-license-policy.py --assets      # 资产登记与漏登检查（不读 Gradle 缓存）
+    python3 tools/check-license-policy.py --assets --selftest   # 资产模式的独立自检
+
+资产口径（第四百三十三批）
+------------------------
+读 licenses/ASSETS.md 六列表：资产名 | 版本 | 许可 | 随包？ | 署名要求 | 来源。
+资产名用相对 app/src/main/assets/ 的精确 POSIX 文件路径（可用反引号包裹），
+一文件一行，不认目录或通配；随包？只填「是/否」。六格不得为空，明确无署名要求填「无」。
+登记不是豁免：所有登记行都用同一套 ALLOWED / DENY_FAMILIES / classify 判定，
+未知许可也红；不把 Maven 坐标豁免套到资产。许可允许只代表政策通过，不代表义务已履行。
+递归核对目录内所有文件，不按后缀猜第三方、不暗中排除第一方文件；未登记即红。
+初始空表合法，无文件则绿，有既存未登记文件则红；不替用户编造登记或许可。
+本模式仅检查源码 assets 目录，构建生成资产、其它 source set 和 APK 内容不在此取证范围。
 """
 
 from __future__ import annotations
@@ -75,7 +88,7 @@ import os
 import re
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import xml.etree.ElementTree as ET
 
 
@@ -608,6 +621,214 @@ def _entry_matches(entry: dict, ids: list[str]) -> bool:
     return False
 
 
+# ── 资产类第三方：登记表与漏登检查 ──────────────────────────────────────────────
+ASSETS_REL = "licenses/ASSETS.md"
+ASSET_DIR_REL = "app/src/main/assets"
+ASSET_COLUMNS = ("资产名", "版本", "许可", "随包？", "署名要求", "来源")
+ASSET_YES = ("是", "yes", "y", "true")
+ASSET_NO = ("否", "no", "n", "false")
+
+
+def asset_cells(line: str) -> list[str]:
+    """切六列表格的一行：只去掉边界管道符，保留末尾空字段（空格子必须能被看见）。"""
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|") and not body.endswith("\\|"):
+        body = body[:-1]
+    return [c.replace("\\|", "|").strip().strip("`").strip()
+            for c in re.split(r"(?<!\\)\|", body)]
+
+
+def asset_name_error(name: str) -> str:
+    """资产名必须是相对 assets/ 的精确 POSIX 文件路径（一文件一行，不认目录/通配）。"""
+    if not name:
+        return "资产名为空"
+    if "\\" in name:
+        return "资产名要用正斜杠（%s）" % name
+    if name.startswith("/") or PurePosixPath(name).is_absolute():
+        return "资产名要相对 assets/，不许绝对路径（%s）" % name
+    if ".." in PurePosixPath(name).parts:
+        return "资产名不许越出 assets/（%s）" % name
+    if any(ch in name for ch in "*?[]"):
+        return "资产名不许用通配（%s）—— 登记是逐文件的" % name
+    if name.endswith("/"):
+        return "资产名要指到文件，不能是目录（%s）" % name
+    return ""
+
+
+def asset_license_id(token: str) -> str:
+    """资产表里的许可写法 → SPDX id：先认 SPDX 原样，再查 423 那张唯一的归一表。"""
+    t = canon(token)
+    if is_allowed_id(t) or family_of(t) in DENY_FAMILIES:
+        return t
+    key = " ".join(t.lower().replace("(", " ").replace(")", " ").split())
+    hit = shared().LICENSE_NAME_TO_SPDX.get(key, "") or EXTRA_LICENSE_NAMES.get(_loose_key(t), "")
+    if not hit and "/" in t:
+        hit = url_hint(t)
+    return hit or t
+
+
+def parse_assets(path: Path) -> tuple[list[dict], list[str]]:
+    """`licenses/ASSETS.md` → ([资产行], [不合格说明])。
+
+    六列缺一不可（空格子不算登记），资产名不成形 / 重复也记红。表头或分隔行缺失是
+    解析错误(2) —— 没有表头的表等于没登记，静默按空表放行就是假绿。
+    """
+    if not path.is_file():
+        raise GateError("找不到资产登记表 %s（资产类第三方必须逐条登记）" % path)
+    rows: list[dict] = []
+    problems: list[str] = []
+    seen: dict[str, int] = {}
+    header = separator = False
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if not raw.strip().startswith("|"):
+            continue
+        cells = asset_cells(raw)
+        if tuple(cells) == ASSET_COLUMNS:
+            if header:
+                problems.append("第 %d 行：表头重复" % lineno)
+            header = True
+            continue
+        if not header:
+            continue  # 表头之前的说明性小表（政策表、列说明表），不是登记行
+        if len(cells) == len(ASSET_COLUMNS) and all(set(c) <= set("-: ") for c in cells):
+            separator = True
+            continue
+        if not separator:
+            raise GateError("%s 第 %d 行：表头后缺分隔行（| --- | …）" % (path.name, lineno))
+        row, bad = _asset_row(dict(zip(ASSET_COLUMNS, cells)), lineno, seen)
+        if bad:
+            problems.extend(bad)
+        else:
+            rows.append(row)
+    if not header:
+        raise GateError("%s 里没有六列表头（%s）—— 没有表头的表等于没登记"
+                        % (path.name, " | ".join(ASSET_COLUMNS)))
+    return rows, problems
+
+
+def _asset_row(row: dict, lineno: int, seen: dict) -> tuple[dict, list[str]]:
+    """校验一行；返回 (行, 问题列表)。问题非空时这一行不算登记。"""
+    name = row["资产名"]
+    bad = asset_name_error(name)
+    if bad:
+        return {}, ["第 %d 行：%s" % (lineno, bad)]
+    if name in seen:
+        return {}, ["第 %d 行（%s）：与第 %d 行重复 —— 同一资产只许登记一次"
+                    % (lineno, name, seen[name])]
+    tokens = [t for t in re.split(r"[,，、/;；\s]+", row["许可"]) if t]
+    problems = []
+    if not tokens:
+        problems.append("第 %d 行（%s）：许可为空 —— 缺字段不算登记" % (lineno, name))
+    if not row["署名要求"]:
+        problems.append("第 %d 行（%s）：署名要求为空（确实没有就填「无」）" % (lineno, name))
+    if row["随包？"].lower() not in ASSET_YES + ASSET_NO:
+        problems.append("第 %d 行（%s）：随包？只能填「是」或「否」，现在是「%s」"
+                        % (lineno, name, row["随包？"]))
+    for col in ("版本", "来源"):
+        if not row[col]:
+            problems.append("第 %d 行（%s）：%s为空（查不到就填「—」并说明）" % (lineno, name, col))
+    if problems:
+        return {}, problems
+    seen[name] = lineno
+    ids = [asset_license_id(t) for t in tokens]
+    return {
+        "name": name,
+        "version": row["版本"],
+        "raw": row["许可"],
+        "ids": ids,
+        "shipped": row["随包？"].lower() in ASSET_YES,
+        "attribution": row["署名要求"],
+        "source": row["来源"],
+        "line": lineno,
+        "status": classify(ids),
+    }, []
+
+
+def asset_files(assets_dir: Path) -> list[str]:
+    """assets/ 下全部文件（相对 POSIX 路径，排序）。目录不存在 ⇒ 空列表，不是错误。"""
+    if not assets_dir.is_dir():
+        return []
+    return sorted(p.relative_to(assets_dir).as_posix()
+                  for p in assets_dir.rglob("*") if p.is_file())
+
+
+def collect_assets(root: Path) -> dict:
+    rows, problems = parse_assets(root / ASSETS_REL)
+    on_disk = asset_files(root / ASSET_DIR_REL)
+    registered = {r["name"] for r in rows}
+    return {
+        "rows": rows,
+        "problems": problems,
+        "on_disk": on_disk,
+        "missing": [p for p in on_disk if p not in registered],
+        "stale": [r["name"] for r in rows if r["name"] not in on_disk],
+    }
+
+
+def render_assets(result: dict) -> tuple[str, int]:
+    """→ (文本, 退出码)。纯函数、幂等；红 = 禁止 + 未登记 + 表不合格 + 漏登记。"""
+    rows = result["rows"]
+    counts = {k: 0 for k in ("allowed", "denied", "unlisted")}
+    for row in rows:
+        counts[row["status"]] += 1
+    out: list[str] = []
+    ap = out.append
+    ap("[license-policy/assets] 登记 %d 行（assets/ 下 %d 个文件）｜允许 %d｜禁止 %d｜未登记 %d"
+       "｜表不合格 %d｜漏登记 %d"
+       % (len(rows), len(result["on_disk"]), counts["allowed"], counts["denied"],
+          counts["unlisted"], len(result["problems"]), len(result["missing"])))
+
+    for row in rows:
+        if row["status"] == "allowed":
+            continue
+        ap("[license-policy/assets] ✗ %s %s —— %s（第 %d 行，随包：%s）"
+           % (STATUS_ZH[row["status"]], row["name"], "/".join(row["ids"]), row["line"],
+              "是" if row["shipped"] else "否"))
+        ap("                  表里写的是：%s" % row["raw"])
+        ap("                  来源：%s" % row["source"])
+
+    if result["problems"]:
+        ap("[license-policy/assets] 登记表不合格 %d 条（这些行不算登记）：" % len(result["problems"]))
+        for p in result["problems"]:
+            ap("                  · %s" % p)
+    if result["missing"]:
+        ap("[license-policy/assets] 漏登记 %d 个（在 %s/ 里，但 %s 没有它）："
+           % (len(result["missing"]), ASSET_DIR_REL, ASSETS_REL))
+        for p in result["missing"]:
+            ap("                  · %s" % p)
+    if result["stale"]:
+        ap("[license-policy/assets] 提醒：%d 行登记了但 assets/ 里没有对应文件（不影响判定）：%s"
+           % (len(result["stale"]), "、".join(result["stale"])))
+
+    for row in rows:
+        if row["status"] == "denied":
+            ap("::error title=资产许可门禁::%s 为 %s（禁止类）" % (row["name"], "/".join(row["ids"])))
+        elif row["status"] == "unlisted":
+            ap("::warning title=资产许可门禁::%s 的许可 %s 不在允许表内（未登记 ⇒ 判红）"
+               % (row["name"], "/".join(row["ids"])))
+    for p in result["missing"]:
+        ap("::warning title=资产漏登::%s/%s 没在 %s 登记" % (ASSET_DIR_REL, p, ASSETS_REL))
+
+    red = counts["denied"] + counts["unlisted"] + len(result["problems"]) + len(result["missing"])
+    if red:
+        ap("[license-policy/assets] 结论：红 —— 禁止 %d、未登记 %d、表不合格 %d、漏登记 %d；"
+           "换资产，或在 %s 逐条登记（六列缺一不可）"
+           % (counts["denied"], counts["unlisted"], len(result["problems"]),
+              len(result["missing"]), ASSETS_REL))
+        return "\n".join(out), 1
+    ap("[license-policy/assets] 结论：绿 —— assets/ 下的文件都已登记，登记的许可都在允许表内")
+    return "\n".join(out), 0
+
+
+def run_assets(root: Path = ROOT) -> tuple[str, int]:
+    try:
+        return render_assets(collect_assets(root))
+    except GateError as exc:
+        return "[license-policy/assets] 环境错误：%s" % exc, 2
+
+
 # ── 汇总与输出 ────────────────────────────────────────────────────────────────
 def collect(root: Path, gradle_home: Path) -> dict:
     catalog_path = root / "gradle" / "libs.versions.toml"
@@ -1126,17 +1347,155 @@ def selftest() -> int:
     return 0 if failures == 0 else 1
 
 
+def _asset_tree(tmp: Path, files: list[str], rows: list[list[str]], header: bool = True) -> Path:
+    """造最小树：assets/ 下的文件 ＋ licenses/ASSETS.md（可无表头，给解析错误用）。"""
+    root = Path(tmp)
+    for rel in files:
+        p = root / ASSET_DIR_REL / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("stub", encoding="utf-8")
+    md = root / ASSETS_REL
+    md.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    if header:
+        lines.append("| " + " | ".join(ASSET_COLUMNS) + " |")
+        lines.append("| --- | --- | --- | --- | --- | --- |")
+    lines += ["| " + " | ".join(r) + " |" for r in rows]
+    md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return root
+
+
+def assets_selftest() -> int:
+    """`--assets --selftest`：三类必测（允许/禁止/漏登记）＋ 缺字段与解析边界。"""
+    print("[license-policy/assets] 自检（不联网、临时目录里造最小树）")
+    failures = 0
+    ok_row = ["models/tiny.onnx", "1.0", "Apache-2.0", "是", "无", "https://example.org/tiny"]
+
+    def case_allow():
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row])
+            text, code = run_assets(root)
+            return code == 0 and "结论：绿" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_deny():
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["fonts/Bad.ttf", "2.0", "GPL-3.0", "是", "见 LICENSE", "https://example.org"]
+            root = _asset_tree(Path(tmp), ["fonts/Bad.ttf"], [row])
+            text, code = run_assets(root)
+            # 断言必须打在**条目行**上：「禁止」在汇总行里也会出现，只查它会假绿（变异 M3 抓到过）
+            return code == 1 and "✗ 禁止 fonts/Bad.ttf" in text and "GPL-3.0" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_unregistered():
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/ghost.onnx"], [])
+            text, code = run_assets(root)
+            return code == 1 and "漏登记" in text and "models/ghost.onnx" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_empty_table():
+        """初始空表头 ＋ assets/ 为空 ⇒ 绿（新批次解冻前的合法状态）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), [], [])
+            text, code = run_assets(root)
+            return code == 0 and "登记 0 行" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_no_attribution():
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["models/tiny.onnx", "1.0", "Apache-2.0", "是", "", "https://example.org"]
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [row])
+            text, code = run_assets(root)
+            return code == 1 and "署名要求为空" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_no_license():
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["models/tiny.onnx", "1.0", "", "是", "无", "https://example.org"]
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [row])
+            text, code = run_assets(root)
+            return code == 1 and "许可为空" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_unlisted():
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["fonts/Open.ttf", "1.1", "OFL-1.1", "是", "随包附 OFL.txt", "https://example.org"]
+            root = _asset_tree(Path(tmp), ["fonts/Open.ttf"], [row])
+            text, code = run_assets(root)
+            return code == 1 and "✗ 未登记 fonts/Open.ttf" in text and "OFL-1.1" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_bad_name():
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["models/*.onnx", "1.0", "Apache-2.0", "是", "无", "https://example.org"]
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [row])
+            text, code = run_assets(root)
+            return code == 1 and "通配" in text and "漏登记" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_no_header():
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row], header=False)
+            text, code = run_assets(root)
+            return code == 2 and "六列表头" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_duplicate():
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row, ok_row])
+            text, code = run_assets(root)
+            return code == 1 and "重复" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_idempotent():
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row])
+            a = run_assets(root)
+            b = run_assets(root)
+            return a == b, "两次结果不同"
+
+    def case_missing_table():
+        """登记表被删/改名 ⇒ 环境错误(2)，不是「0 条登记所以绿」。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row])
+            (root / ASSETS_REL).unlink()
+            text, code = run_assets(root)
+            return code == 2 and "找不到资产登记表" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    cases = [
+        ("允许资产：Apache-2.0 模型 ⇒ 绿", case_allow),
+        ("禁止资产：GPL-3.0 字体 ⇒ 红", case_deny),
+        ("漏登记：assets/ 里有文件、表里没有 ⇒ 红", case_unregistered),
+        ("空表头 ＋ 空 assets/ ⇒ 绿（初始合法状态）", case_empty_table),
+        ("缺字段：署名要求为空 ⇒ 红", case_no_attribution),
+        ("缺字段：许可为空 ⇒ 红", case_no_license),
+        ("未登记许可：OFL-1.1 不在允许表 ⇒ 红", case_unlisted),
+        ("资产名通配 ⇒ 红（且通配不算登记 ⇒ 漏登记）", case_bad_name),
+        ("表头缺失 ⇒ 环境错误(2)，不按空表放行", case_no_header),
+        ("登记表被删 ⇒ 环境错误(2)，不按空表放行", case_missing_table),
+        ("同一资产两行 ⇒ 红", case_duplicate),
+        ("幂等：同一棵树跑两次，文本与退出码全同", case_idempotent),
+    ]
+    for name, fn in cases:
+        if not _case(name, fn):
+            failures += 1
+    total = len(cases)
+    print("[license-policy/assets] 自检 %d/%d 通过" % (total - failures, total))
+    return 0 if failures == 0 else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="许可政策门禁（离线；政策见脚本 docstring）")
     ap.add_argument("--verbose", action="store_true", help="逐条列出全部直接依赖的判定")
     ap.add_argument("--all-scopes", action="store_true",
                     help="连测试/编译期/构建工具的依赖一起判（默认只判进分发物的）")
+    ap.add_argument("--assets", action="store_true",
+                    help="资产类模式：读 licenses/ASSETS.md，并核对 assets/ 下的文件是否漏登")
     ap.add_argument("--selftest", action="store_true", help="自检（不联网、不需真缓存）")
     ap.add_argument("--gradle-home", type=Path, default=None, help="Gradle 用户目录（默认取环境变量或 ~/.gradle）")
     args = ap.parse_args()
     if args.selftest:
-        return selftest()
-    text, code = run(ROOT, args.gradle_home, args.verbose, args.all_scopes)
+        return assets_selftest() if args.assets else selftest()
+    if args.assets:
+        text, code = run_assets(ROOT)
+    else:
+        text, code = run(ROOT, args.gradle_home, args.verbose, args.all_scopes)
     print(text)
     return code
 
