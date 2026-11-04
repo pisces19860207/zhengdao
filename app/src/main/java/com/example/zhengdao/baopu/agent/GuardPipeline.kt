@@ -29,7 +29,9 @@ import com.example.zhengdao.baopu.authz.TaskGrantWire
 import com.example.zhengdao.baopu.authz.WiringDisposition
 import com.example.zhengdao.baopu.inspect.AnomalyFactKind
 import com.example.zhengdao.baopu.inspect.AnomalyFeed
+import com.example.zhengdao.baopu.intake.AdmissionWiring
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.baopu.law.DispositionWiring
 import com.example.zhengdao.baopu.plan.ContractDeviation
 import com.example.zhengdao.baopu.plan.ContractSource
 import com.example.zhengdao.baopu.plan.PlanContractBoard
@@ -409,6 +411,19 @@ internal class GuardPipeline(
             return Prepared.Settled(Result.Failed(call, err)) // Schema 错是可重试（回灌原文）
         }
 
+        // 第四百二十七批：外部执行体准入——MCP 组的工具来自**外部**服务器，它第一次调工具
+        // 时未登记才走准入四步（384-A 造好的门在这里第一次有人敲门）；App 自身内部调用
+        // （非 MCP 组）视为已认证，不进准入。只登记不拦人：结论只落盘＋一行日志，
+        // 下面的 ②③④⑤ 一行没动（派工单 427 判据②③；接线口见 intake/AdmissionWiring）。
+        if (spec.group == ToolGroup.MCP) {
+            AdmissionWiring.onExternalToolCall(
+                wireName = spec.name,
+                readOnly = spec.readOnly,
+                currentNames = registry.names(),
+                log = log,
+            )
+        }
+
         // ② 路径守卫（只对有 path 参数的工具；解析后写回绝对路径）
         // 第一百二十三批：外部 MCP 工具的 `path` 是**服务端**的路径语义，不是本地工作区
         // 路径——按本地规则改写/越界判定会把参数改坏（远端看到一个绝对路径）。MCP 组整组
@@ -478,6 +493,15 @@ internal class GuardPipeline(
                         gate = GATE_RISK_MATRIX,
                         permission = verdict.reasonCode.id,
                         reason = verdict.reasons.joinToString("；") { it.detail },
+                    )
+                    // 第四百二十七批：硬拒事实喂进三档处置门（只加调用不改判定——REPLY 档
+                    // 记"本轮回了一句拒话"，管线拒绝行为/返回值/文案一个字节没动；接线口
+                    // 见 law/DispositionWiring，缝点即 372 名册钉的这里）。
+                    DispositionWiring.onMatrixReject(
+                        toolName = effectiveCall.name,
+                        reasonCode = verdict.reasonCode.id,
+                        detail = verdict.reasons.joinToString("；") { it.detail },
+                        log = log,
                     )
                     return Prepared.Settled(Result.Rejected(effectiveCall, RiskTell.rejectText(verdict)))
                 }

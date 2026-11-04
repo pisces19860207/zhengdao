@@ -46,6 +46,7 @@ import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.baopu.inspect.ShadowAdapter
+import com.example.zhengdao.baopu.intake.AdmissionWiring
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryImport
 import com.example.zhengdao.baopu.library.LibraryPaths
@@ -866,6 +867,10 @@ internal object BaopuRuntime {
         // 第三百六十三批：偏差账（`偏差账.jsonl`，五类事实只记不判）与决策记录同区挂载；
         // 收工读数（RunEngine.settle）只认它自己的 installedRoot，不回头碰 208 主账。
         DeviationLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        // 第四百二十七批：外部执行体准入（`准入画像-*.json` ＋ `准入账.jsonl`，同区挂载）——
+        // MCP 外部执行体第一次调工具时未登记才走 384-A 的四步链（App 内部调用不进准入）；
+        // 只登记不拦人，没挂载时管线侧静默（intake/AdmissionWiring 的纪律）。
+        AdmissionWiring.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
         // 第二百九十六批 §2：**影子预演**的沙盒在这里装配（这是全仓唯一一处 `ShadowAdapter.install`）。
         // 没装 ⇒ 第⑤步只能报 `NO_SANDBOX` ⇒ 六步停在 NO_DATA ⇒ 一张卡也不会少弹（保守方向）。
         // 只交引用、不交 Context：沙盒要的全部事实（工作区根／声明对象／内容）都由调用方给。
