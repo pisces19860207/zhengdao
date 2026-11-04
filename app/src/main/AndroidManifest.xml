@@ -191,6 +191,31 @@
         <!-- 输入法回归页（ImeRegressionActivity）随终端搬走：它测的是 TerminalView 的 IME 桥，
              主仓已没有那套 View。 -->
 
+        <!-- 保活记录（被杀留档）二级页（2026-10-11）：原来这段内容内联在设置页的一张卡里，
+             用户嫌"太多太长"，拆成独立页，设置页只留一行入口。
+             exported=false（与输入回归页的有意区别）：只有本 App 设置页会拉起它，不需要
+             `adb am start` 那种外部入口；而这一页会显示私有目录绝对路径与 logcat 片段，
+             没有理由让别的 App 能直接把它调起来。
+             configChanges 与终端页/输入回归页同款：转屏不重建，正在看的留档列表不会被重置。
+             不写 windowSoftInputMode —— 本页没有任何输入控件（主题里已有 adjustResize）。 -->
+        <activity
+            android:name=".ui.KeepaliveLogActivity"
+            android:exported="false"
+            android:label="保活记录"
+            android:theme="@style/Theme.Zhengdao"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
+        <!-- 开源许可（随包分发的第三方许可证正文）二级页（2026-10-11）：正文在 assets/licenses/，
+             由 app/build.gradle.kts 的 stageLicenseAssets 在构建期从仓库根 licenses/ 与 LICENSE 装配。
+             exported=false —— 只有设置页「关于」会拉起；本页只读 assets，不碰任何私有数据。
+             configChanges 与保活记录页同款：转屏不重建，正在读的那份正文不会被重置。 -->
+        <activity
+            android:name=".ui.OpenSourceLicensesActivity"
+            android:exported="false"
+            android:label="开源许可"
+            android:theme="@style/Theme.Zhengdao"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
                 <activity
             android:name=".ui.SettingsKeepaliveActivity"
             android:exported="false"
