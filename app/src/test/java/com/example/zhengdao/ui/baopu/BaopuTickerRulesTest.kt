@@ -257,27 +257,72 @@ class BaopuTickerRulesTest {
     // ── 房型（记录条档 ＋ 13sp ＋ 待你确认琥珀）────────────────────────────
 
     /**
-     * 设计约束（派工单 §设计约束）：记录条档 / 13sp / 待你确认琥珀 / 无圆角。
+     * 设计约束（派工单 §设计约束 → 第四百三十四批改为**朱系胶囊档**）。
      *
-     * 红＝有人给跑马灯加回底色或圆角（与四档容器纪律冲突），或把字号改成 10/15sp。
+     * 第一百三十八批原口径＝记录条档（无底、无圆角、下边一条发丝线）。第四百三十四批派工单
+     * 逐字给了新形态：「朱系胶囊 高44 / r10 / 底 #F7E5E0 / 描边 #A8402B 1.5dp」⇒
+     * 这条判据的**形状方向整个反过来**（胶囊必须有底、必须有圆角、不许再自己画发丝线——
+     * 分隔线由顶栏那一条 [androidx.compose.material3.HorizontalDivider] 承担，全栏只画一次）。
+     * 颜色仍不许新增：#F7E5E0 走 `errorContainer` 槽、#A8402B 走 `error`、白字走 `onError`。
+     *
+     * 红＝有人把胶囊改回裸记录条（底/圆角没了）、写死了色值或半径、把字号改成 10/15sp，
+     * 或在顶栏里再画一条只有跑马灯用的发丝线。
      */
     @Test
-    fun `J14_房型_记录条档_13sp_琥珀只在待你确认`() {
+    fun `J14_房型_朱系胶囊档_13sp_琥珀只在待你确认`() {
         val tk = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeTicker.kt")
         assertEquals("字号 13sp（§3 脚注档）", 13, TICKER_TEXT_SP)
         assertEquals("「待你确认」描边 1dp", 1, TICKER_CONFIRM_STROKE_DP)
-        assertTrue("下边必须画 1dp 发丝线", tk.contains("drawLine("))
-        assertFalse("记录条档不许有圆角（RoundedCornerShape）", tk.contains("RoundedCornerShape"))
-        assertFalse("记录条档不许用 Surface 填底色", tk.contains("Surface("))
+        // ── 434 逐字尺寸：高 44 / 描边 1.5dp / 半径 rPill(10) ──
+        assertEquals("胶囊容器高 44dp（434 与模型名区同高）", 44, BAO_TOPBAR_PILL_HEIGHT_DP)
+        assertEquals("朱砂描边 1.5dp（434 逐字）", 1.5f, BAO_TOPBAR_PILL_STROKE_DP, 0.0001f)
+        // rPill=10dp / rBadge=6dp 由 `ui/theme/Radius.kt` 自己钉着（本仓口径：数值在令牌文件里，
+        // 用处只认令牌名，所以这里断的是"用处不许写死数字"，见下面两条 assertFalse）。
+        assertTrue("容器底走 errorContainer 槽（#F7E5E0 不写死）", tk.contains("colorScheme.errorContainer"))
+        assertTrue("描边走 error 槽（#A8402B 不写死）", tk.contains("MaterialTheme.colorScheme.error,"))
+        assertTrue("圆角只许走 rPill 令牌", tk.contains("RoundedCornerShape(rPill)"))
+        assertTrue("类目标那颗只许走 rBadge 令牌", tk.contains("RoundedCornerShape(rBadge)"))
+        assertFalse("半径不许写死数字（圆角一律走令牌）",
+            Regex("RoundedCornerShape\\(\\s*\\d+(\\.\\d+)?\\.dp\\s*\\)").containsMatchIn(tk))
+        assertFalse("色值不许写死（一律走 colorScheme 槽）",
+            Regex("Color\\s*\\(\\s*0[xX][0-9a-fA-F]+\\s*\\)").containsMatchIn(tk))
+        // 记录条档的三样遗留：本批起**不许**再出现在跑马灯里。
+        assertFalse("跑马灯不再自己画发丝线（顶栏那条 HorizontalDivider 承担）", tk.contains("drawLine("))
+        assertTrue("顶栏仍要有一条分隔线（只是不在跑马灯文件里画）",
+            code("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").contains("HorizontalDivider("))
+        assertFalse("记录条档不许有圆角这件事已作废：现在必须是胶囊（不许 RectangleShape）",
+            tk.contains("RectangleShape"))
+        assertFalse("不许再用 Surface 起容器（胶囊是 Modifier 三层修饰）", tk.contains("Surface("))
         assertTrue("琥珀底只在 confirm 分支", tk.contains("if (confirm)"))
         assertTrue("待你确认用 surfaceVariant 加深一档", tk.contains("surfaceVariant"))
         assertTrue("描边取主题琥珀槽 tertiary", tk.contains("colorScheme.tertiary"))
         assertTrue("字重 500 只在待你确认", tk.contains("FontWeight.Medium"))
-        // 两态的**文字**颜色也不同：锁定态用墨（主角），空闲态用次墨（背景信息）。
+        // 两态的**文字**颜色也不同：锁定态用墨（主角），空闲态详情仍用次墨。
         assertTrue(
             "锁定态文字取 onSurface（用词边界防止误中 onSurfaceVariant）",
             Regex("colorScheme\\.onSurface\\b").containsMatchIn(tk),
         )
-        assertTrue("空闲态文字 onSurfaceVariant", tk.contains("colorScheme.onSurfaceVariant"))
+        assertTrue("空闲态详情文字 onSurfaceVariant", tk.contains("colorScheme.onSurfaceVariant"))
+    }
+
+    /**
+     * 第四百三十四批判据⑤：「型号」退出轮播池。
+     *
+     * 顶栏第二件变成 `[徽标] 模型名` 之后，跑马灯再滚一遍型号＝同一时刻两处说同一件事
+     * （正是第一百三十八批判据 2 要防的）。红＝有人把那条 NoticeItem 加回空闲池。
+     * 资源键 `baopu_ticker_model_label` 本批**不删**（删资源是另一张单），所以这里查的是**池子**，
+     * 不是键的存在性。
+     */
+    @Test
+    fun `J15_型号已退出轮播池_两处不说同一件事`() {
+        assertFalse("型号不许再进空闲池", TICKER_IDLE_LABELS.contains(R.string.baopu_ticker_model_label))
+        assertFalse("型号也不许进锁定池", TICKER_LOCKED_LABELS.contains(R.string.baopu_ticker_model_label))
+        assertFalse(
+            "跑马灯文件里不许再画型号那颗",
+            code("src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeTicker.kt")
+                .contains("baopu_ticker_model_label"),
+        )
+        // 两池零交集这条老判据（J12）在删了一项之后仍然成立——这里重断一次，防"删错行"。
+        assertEquals("两池交集必须为空", emptySet<Int>(), TICKER_LOCKED_LABELS intersect TICKER_IDLE_LABELS)
     }
 }

@@ -466,6 +466,12 @@
     <string name="baopu_process_toggle_close">Collapse process details</string>
     <string name="baopu_process_detail_title">What happened this round</string>
   <string name="baopu_channel_button">Pick a model</string>
+    <!-- ── Batch 434 · top bar model area: two tap zones (badge = switch provider, name = switch model in this family) ── -->
+    <string name="baopu_topbar_badge_desc">Switch provider or gateway</string>
+    <string name="baopu_topbar_model_desc">Switch to another model from this provider</string>
+    <string name="baopu_topbar_unconfigured">Not set up</string>
+    <string name="baopu_topbar_unconfigured_desc">Not set up — tap to open settings and add a key</string>
+    <string name="baopu_topbar_only_one">Only one provider — nothing to switch to</string>
     <!-- ── Baopu ask_user card (task 2, part C) ── -->
     <string name="baopu_ask_recommended">Suggested options</string>
     <string name="baopu_ask_free_submit">Answer with this</string>

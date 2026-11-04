@@ -83,11 +83,16 @@ internal val TICKER_LOCKED_LABELS: Set<Int> = TICKER_LOCKED_STATES.map { tickerL
  * ② 的条目文案资源集合（判据 9 的另一半）。
  *
  * 条目按类别分三档（排序用），这里列的是**会出现在轮播里的所有标题**：
- * 当前型号 / 这次学到 / 已压缩 / 待办（临时文件剩余）/ 玄览在干什么 / 本轮用量。
+ * 这次学到 / 已压缩 / 待办（临时文件剩余）/ 玄览在干什么 / 本轮用量。
  * `TICKER_LOCKED_LABELS ∩ TICKER_IDLE_LABELS` 必须为空 —— 见 `BaopuTickerRulesTest`。
+ *
+ * ⚠️ 第四百三十四批：原第一项「型号」（`baopu_ticker_model_label`）**已退出轮播池**——
+ * 型号有了自己的家（顶栏第二件＝`[徽标] 模型名`，两段可点），再在跑马灯里滚一遍
+ * 就是「同一时刻两处说同一件事」，正是 138 批判据 2 要防的。工单判据③那句
+ * 「不挤占身份区」说的是同一件事。资源键 `baopu_ticker_model_label` 本批不删（中英两份都留着）——
+ * 删资源是另一张单的事，写在交付报告「遗留」里，不在顶栏单里顺手做。
  */
 internal val TICKER_IDLE_LABELS: Set<Int> = setOf(
-    R.string.baopu_ticker_model_label,
     R.string.baopu_introspection_label,
     R.string.baopu_notice_compressed_label,
     R.string.baopu_scratch_left_label,
@@ -151,10 +156,27 @@ internal fun tickerA11yRes(mode: TickerMode, confirm: Boolean): Int = when {
     else -> R.string.baopu_ticker_a11y_idle
 }
 
-/** 孔位高度（§6.1 记录条之外的**专用**占位）：40dp，空态与运行态同高。 */internal const val TICKER_SLOT_DP = 40
+/** 孔位高度（§6.1 记录条之外的**专用**占位）：40dp，空态与运行态同高。 */
+internal const val TICKER_SLOT_DP = 40
 
 /** 正文字号：13sp（《纸墨黛青》§3 脚注档，不许 10sp 也不许 15sp）。 */
 internal const val TICKER_TEXT_SP = 13
+
+/**
+ * 类目标那颗的字号：11sp（第四百三十四批逐字「白字 11sp Medium」）。
+ *
+ * ⚠️ 这一档**不在** `ui/theme/Type.kt` 的六级梯子里（34/22/17/15/13/10），也不在 labelSmall(10) 上——
+ * 派工单给的是实心徽标里的字，与 `TICKER_TEXT_SP` 同一手法做成具名常量（`TypeScaleGuardTest`
+ * 只查 Type.kt 的槽位，不查这里）。**这是一处越梯子的偏离**，已写进交付报告待她裁：
+ * 要么认它（徽标专用档），要么并回 10sp。
+ */
+internal const val TICKER_BADGE_TEXT_SP = 11
+
+/** 类目标那颗的最小宽（434：52dp——中文四字类目正好落在这条线上，长词自己撑开）。 */
+internal const val TICKER_BADGE_WIDTH_DP = 52
+
+/** 类目标那颗的高（434：28dp）。 */
+internal const val TICKER_BADGE_HEIGHT_DP = 28
 
 /** 13sp 的行高（`ui/theme/Type.kt`：bodySmall 13sp / 18sp 行高）。 */
 internal const val TICKER_LINE_DP = 18
@@ -208,3 +230,23 @@ internal fun tickerShouldCycle(
  * 此时轮到降级为「只显最新一条、不轮播」（v1.4 §3.9 末条；不新增设置项）。
  */
 internal fun reduceMotionFrom(animatorScale: Float): Boolean = animatorScale == 0f
+
+/**
+ * 朱胶囊该不该画出来（第四百三十四批判据③「没学到时不显示该段」）。
+ *
+ * 运行中（锁定态）有状态字 ⇒ 画；空闲且有任意一条 ⇒ 画；两者都空 ⇒ **不画底也不画边**。
+ * 注意这里只决定「容器画不画」，**不决定占多高**——孔位恒高由 [tickerSlotDp] 与
+ * `BAO_TOPBAR_PILL_HEIGHT_DP` 给，与有没有内容无关（138 批 K1「三态同高」不能因为容器化而破，
+ * 否则事件一来顶栏就跳一下，那是真机复验过的缺陷）。
+ */
+internal fun marqueePillVisible(mode: TickerMode, hasEntries: Boolean): Boolean =
+    mode == TickerMode.LOCKED || hasEntries
+
+/**
+ * 胶囊里那一行显示的字（第四百三十四批：滚的是**正文**，不是标题）。
+ *
+ * 正文常带换行（「已压缩」那条是 `计数\n摘要`，「本轮用量」是逐步一行）——单行容器里
+ * 只取**第一行**，其余仍在详情浮层里全文可见。空行不算内容 ⇒ 返回空串，调用方据此不摆文字。
+ */
+internal fun inlineTickerText(body: String): String =
+    body.lineSequence().firstOrNull()?.trim().orEmpty()

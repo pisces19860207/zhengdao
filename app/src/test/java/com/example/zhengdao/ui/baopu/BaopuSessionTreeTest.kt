@@ -79,6 +79,7 @@ class BaopuSessionTreeTest {
     private val drawerRel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuDrawer.kt"
     private val screenRel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt"
     private val controllerRel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt"
+    private val newSessionRel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuNewSession.kt"
     private val zhRel = "src/main/res/values/strings.xml"
     private val enRel = "src/main/res/values-en/strings.xml"
 
@@ -86,6 +87,7 @@ class BaopuSessionTreeTest {
     private val drawerCode: String by lazy { stripComments(raw(drawerRel)) }
     private val screenCode: String by lazy { stripComments(raw(screenRel)) }
     private val controllerCode: String by lazy { stripComments(raw(controllerRel)) }
+    private val newSessionCode: String by lazy { stripComments(raw(newSessionRel)) }
 
     private fun valueOf(rel: String, key: String): String =
         Regex("name=\"$key\">([^<]*)<").find(raw(rel))?.groupValues?.get(1)
@@ -655,23 +657,86 @@ class BaopuSessionTreeTest {
         // 2026-10-18 用户口径：默认工作区就是 Download/证道 那个真文件夹 ⇒ 它也有这个＋。
         assertTrue("默认工作区也有", drawerCode.contains("run {"))
         // 页面：当前工作区直接开；别的文件夹**必须先问人**（切工作区是全局动作）
+        // 第四百三十四批（用户追加指令）：开新会话收进**单一入口** `BaopuNewSession.open`，
+        // 工作区三条腿（当前行 / 确认卡 / 选文件夹）共用页面上那一个 `openInWorkspace`。
         val runHere = bodyOf(screenCode, "onWorkspaceRunHere = { node ->")
-        assertTrue("当前工作区直接开新会话", runHere.contains("controller.newSession()"))
+        assertTrue("当前工作区直接开新会话（走单入口）", runHere.contains("openInWorkspace(NewSessionWhere.Stay)"))
         assertTrue("别的文件夹先挂起问人", runHere.contains("runHereNode = node"))
         assertFalse("不许在这一支里直接改工作区", runHere.contains("Workspace.setCustom"))
+        assertFalse("也不许在这一支里自己开新会话（只许走入口）", runHere.contains("controller.newSession()"))
     }
 
     @Test
     fun `A9_切工作区要确认_并且留痕`() {
         val confirm = bodyOf(screenCode, "runHereNode?.let { node ->")
-        assertTrue("确认后才切", confirm.contains("Workspace.setCustom(context, node.fullPath)"))
-        assertTrue("内核项变更要留痕（26-B）", confirm.contains("RunLog.log(KernelAudit.workspace(after, before))"))
-        assertTrue("切完才开新会话", confirm.contains("controller.newSession()"))
-        assertTrue("失败要说", confirm.contains("baopu_switch_ws_failed"))
-        // 选文件夹那条路同样：切 ＋ 留痕 ＋ 开新会话
+        assertTrue("确认后才切（走单入口）", confirm.contains("openInWorkspace("))
+        assertTrue("默认工作区那一行走 setDefault 分支", confirm.contains("NewSessionWhere.DefaultWorkspace"))
+        assertTrue("真文件夹那一行走 Folder 分支", confirm.contains("NewSessionWhere.Folder(node.fullPath)"))
+        assertFalse("确认卡里不许再自己抄一遍切工作区", confirm.contains("Workspace.setCustom"))
+        assertFalse("确认卡里不许再自己抄一遍开新会话", confirm.contains("controller.newSession()"))
+        // 切不成要开不成、并且要说（这一段是单入口在页面上的唯一一段壳）
+        val gate = bodyOf(screenCode, "val openInWorkspace: (NewSessionWhere) -> Unit = { where ->")
+        assertTrue("入口返回 false 要说", gate.contains("baopu_switch_ws_failed"))
+        assertTrue("入口就是单入口的调用点", gate.contains("BaopuNewSession.open(context, controller, where)"))
+        // 留痕（26-B）跟着「切」这件事一起搬进了 BaopuNewSession：三条腿共用一个入口。
+        // 口径（全量第一跑就靠这条抓出自己写错了）：`RunLog.log(...)` 在**私有函数
+        // `auditWorkspaceMove` 体内**，`open` 里那两条换工作区的腿各自**调用**它——
+        // 所以留痕断言分三段：本体在文件里 / 调用点恰两处 / 「路径没动就不记」那道闸在体内。
+        assertTrue(
+            "内核项变更要留痕（26-B，一处本体）",
+            newSessionCode.contains("RunLog.log(KernelAudit.workspace(after, before))"),
+        )
+        val open = bodyOf(newSessionCode, "fun open(context: Context, controller: BaopuChatController, where: NewSessionWhere): Boolean {")
+        assertEquals(
+            "两条换工作区的腿各自调用同一个留痕函数（Folder / DefaultWorkspace）",
+            2, Regex("auditWorkspaceMove\\(context, before\\)").findAll(open).count(),
+        )
+        val audit = bodyOf(newSessionCode, "private fun auditWorkspaceMove(context: Context, before: String) {")
+        assertTrue("路径真没动就不记（记了是假账）", audit.contains("if (after != before)"))
+        assertTrue("默认工作区走 setDefault", open.contains("BaopuWorkspace.setDefault(context)"))
+        assertTrue("真文件夹走 setCustom", open.contains("BaopuWorkspace.setCustom(context, where.path)"))
+        assertTrue("切不成就不开新会话", open.contains("if (!BaopuWorkspace.setCustom(context, where.path)) return false"))
+        assertTrue("开成了才 newSession", open.contains("controller.newSession()"))
+        // 选文件夹那条路同样走单入口（它不再是第四份抄本）
         val picker = bodyOf(screenCode, "if (addWorkspaceOpen) {")
         assertTrue("选择器要接上", picker.contains("WorkspaceFolderPicker("))
-        assertTrue("选中后要留痕", picker.contains("RunLog.log(KernelAudit.workspace(after, before))"))
+        assertTrue("选中后走单入口（留痕在入口里）", picker.contains("openInWorkspace(NewSessionWhere.Folder(path))"))
+        assertFalse("选择器里不许自己抄一遍留痕", picker.contains("KernelAudit.workspace("))
+    }
+
+    @Test
+    fun `A9b_newSession_全仓只有一个调用点_两处入口`() {
+        // 第四百三十四批用户判据，逐字：「全仓 `newSession` 调用点只有这两个（grep 为证）」。
+        // 这条测的就是那把 grep：主源码里 `controller.newSession()` 必须**恰 1 处**、
+        // 且落在 BaopuNewSession.kt；`BaopuNewSession.open(` 必须**恰 2 处**调用点，
+        // 分别是①抽屉「新会话」行 ②工作区入口共享的 openInWorkspace。顶栏不许有第三处。
+        val mainDir = File("src/main").let { if (it.isDirectory) it else File("app/src/main") }
+        assertTrue("找不到主源码目录（工作目录变了？）", mainDir.isDirectory)
+        val sources = mainDir.walk().filter { it.isFile && it.extension == "kt" }.toList()
+        assertTrue("主源码一个 .kt 都没扫到＝零读数", sources.isNotEmpty())
+        val callSites = sources.filter { it.name != "BaopuChatController.kt" }
+            .flatMap { f -> stripComments(f.readText().replace("\r\n", "\n"))
+                .split('\n').map { f.name to it }.filter { it.second.contains("controller.newSession()") } }
+        assertEquals("controller.newSession() 调用点必须恰 1 处：\n" +
+            callSites.joinToString("\n") { "${it.first}:${it.second.trim()}" }, 1, callSites.size)
+        assertEquals("那一处必须在单入口文件里", "BaopuNewSession.kt", callSites.first().first)
+        val entrySites = sources.filter { it.name != "BaopuNewSession.kt" }
+            .flatMap { f -> stripComments(f.readText().replace("\r\n", "\n"))
+                .split('\n').map { f.name to it }.filter { it.second.contains("BaopuNewSession.open(") } }
+        assertEquals("BaopuNewSession.open 调用点必须恰 2 处：\n" +
+            entrySites.joinToString("\n") { "${it.first}:${it.second.trim()}" }, 2, entrySites.size)
+        assertTrue("两处＝抽屉行＋工作区入口，都在 BaopuScreen.kt",
+            entrySites.all { it.first == "BaopuScreen.kt" })
+        // 顶栏那一段（四件版式）里一个 newSession 都不许有：「＋」已整颗删除。
+        // 用法＝两处入口的落点都必须在顶栏第一件之前；再加上上面「恰 2 处」，顶栏就不可能有第三处。
+        val topBarStart = screenCode.indexOf("BaopuModelArea(")
+        assertTrue("顶栏模型区那颗没找到（锚点变了？）", topBarStart >= 0)
+        assertTrue(
+            "两处入口都在顶栏之前（顶栏里没有第三处）",
+            screenCode.lastIndexOf("BaopuNewSession.open(") < topBarStart,
+        )
+        assertFalse("顶栏之后到文件末尾也不许再冒出一处 newSession 调用",
+            screenCode.substring(topBarStart).contains("controller.newSession()"))
     }
 
     @Test

@@ -52,16 +52,18 @@ class BaopuShellP1GateTest {
         code("src/main/res/$lang/strings.xml")
 
     /**
-     * 顶栏那一段源码（五件注释 → 通知位注释）；五件顺序的判据只在这一段里查。
+     * 顶栏那一段源码（顶条注释 → 通知位注释）；五件顺序的判据只在这一段里查。
      *
-     * ⚠️ 这里读**原文**（不剥注释）：定位锚点是注释里的「顶栏五件（v1.4 W9a）」，
+     * ⚠️ 这里读**原文**（不剥注释）：定位锚点是注释里的「顶条（刀 3 瘦身）」，
      * 剥了注释就找不到块边界了（首跑就踩这个，写在里免得下一个人重踩）。
+     * 第四百三十四批：原来的锚点「顶栏五件（v1.4 W9a）」随五件一起退场（顶栏现在是四件），
+     * 换成这句不数件数的老实话——它跟件数无关，下次改版式不用再动这里。
      */
     private fun topBarBlock(): String {
         val src = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt")
             .readText()
             .replace("\r\n", "\n")
-        val start = src.indexOf("顶栏五件（v1.4 W9a）")
+        val start = src.indexOf("顶条（刀 3 瘦身）")
         assertTrue("顶栏注释块不见了（被重写？判据需要它定位）", start >= 0)
         val end = src.indexOf("// ── 第六十三批", start)
         assertTrue("顶栏结束位置找不到（通知位注释块被改了？）", end > start)
@@ -197,53 +199,68 @@ class BaopuShellP1GateTest {
     // ── ② 顶栏五件（v1.4 §3.9 / §4）─────────────────────────────────────
 
     /**
-     * T1 顶栏四件顺序：☰ → 跑马灯 → 🛡 → ＋（公司名插在 ☰ 之后，另由 131 的门禁守）。
+     * T1 顶栏四件顺序：☰ → 模型区 → 跑马灯 → 🛡。
      *
      * 第一百三十八批改判据：**状态行已撤出**（设计 §5「状态单一出口」）⇒ 原来的「五件」
      * 变成「四件」，并且这一段里**不许再出现第二处状态文案**。
-     * 红＝有人把盾牌挪到跑马灯前面、把 ＋ 挤到中间，或给顶栏加回状态行。
+     * 第四百三十四批（用户派工单逐字「去掉顶栏『＋』」＋判据⑤）：第二件由「公司名(+角标)」
+     * 换成 `[徽标] 模型名` 那颗（`BaopuModelArea`），第五件「＋」整颗删除、逻辑不丢
+     * （开新会话只剩 `BaopuNewSession` 一处实现，见 [BaopuSessionTreeTest] 的 A9b）。
+     * 红＝有人把盾牌挪到跑马灯前面、把「＋」加回顶栏、在顶栏里自己开新会话，或给顶栏加回状态行。
      */
     @Test
-    fun `T1_顶栏四件顺序固定_状态行不许回来`() {
+    fun `T1_顶栏四件顺序固定_状态行与加号都不许回来`() {
         val bar = flat(topBarBlock())
         val order = listOf(
             "Text(text = \"☰\"",
+            "BaopuModelArea(",
             "BaopuNoticeTicker(",
             "Text(text = \"🛡\"",
-            "Text(text = \"＋\"",
         )
         val idx = order.map { bar.indexOf(it) }
         idx.forEachIndexed { i, at ->
             assertTrue("顶栏第 ${i + 1} 件 ${order[i]} 不见了（四件缺一即不合格）", at >= 0)
         }
-        assertEquals("顶栏四件必须按 ☰·跑马灯·🛡·＋ 排（138），实得 $idx", idx.sorted(), idx)
+        assertEquals("顶栏四件必须按 ☰·模型区·跑马灯·🛡 排（434），实得 $idx", idx.sorted(), idx)
         assertFalse("状态行的第二出口不许回来（状态只走跑马灯）", bar.contains("statusLineWithStep("))
         assertFalse("顶栏不许再直接渲染 stateLabel", bar.contains("stateLabel("))
+        assertFalse("第四百三十四批删掉的「＋」不许回顶栏", bar.contains("Text(text = \"＋\""))
+        assertFalse("顶栏不许自己开新会话（单入口在 BaopuNewSession）", bar.contains("controller.newSession()"))
     }
 
     /**
-     * T2 三图标位各 48dp，360dp 下不缩不裁。
+     * T2 图标位各 48dp，360dp 下不缩不裁。
      *
      * 红＝有人把 IconButton 的 size 改成 40/44（触控红线），或改走 MinWidth（大字体下会被文字挤小）。
+     * 第四百三十四批：「＋」删除 ⇒ 顶栏只剩 ☰／🛡 两颗 IconButton；模型区那两段的 ≥44dp
+     * 不在这颗 IconButon 上，由 [BaopuTopBarGeometryGateTest] 的 434 判据④钉。
      */
     @Test
-    fun `T2_三图标位各48dp`() {
+    fun `T2_图标位各48dp`() {
         assertEquals("图标位常量必须是 48dp（v1.4 §4）", 48, BAO_ICON_SLOT_DP)
         val bar = flat(topBarBlock())
         val slots = Regex("size\\(BAO_ICON_SLOT_DP\\.dp\\)").findAll(bar).count()
-        assertEquals("☰／🛡／＋ 三处都要 48dp 图标位（实得 $slots 处）", 3, slots)
+        assertEquals("☰／🛡 两处都要 48dp 图标位（434 之后「＋」没了，实得 $slots 处）", 2, slots)
         assertFalse("图标位不许残留写死的 40/44dp", bar.contains("size(40.dp)") || bar.contains("size(44.dp)"))
     }
 
     /**
      * T3 设置入口**不在**顶栏（v1.4 §0 决策 #5：守「刀 3 瘦身」）。
      *
-     * 红＝有人给顶栏加第四颗图标（设置）——负例「设置入口另加顶栏图标」。
+     * 第二百五十一批的原判据：不许给顶栏加第四颗图标（设置）——负例「设置入口另加顶栏图标」。
+     * 第四百三十四批派工单开了一条**唯一的例外**，逐字：「未填 key ⇒ 显示"未配置"，点它才引导
+     * 去设置（唯一允许跳设置的情况）」。所以这条从「顶栏一个 showSettings 都不许有」改成
+     * 「顶栏的 showSettings 只许出现在未配置那一个分支里，且没有设置图标／文案」。
+     * 红＝顶栏长出常驻的设置入口。
      */
     @Test
-    fun `T3_顶栏不加设置图标_入口在律令抱朴组`() {
+    fun `T3_顶栏不加设置图标_只有未配置那一次例外`() {
         val bar = topBarBlock()
-        assertFalse("顶栏不许出现设置入口（showSettings）", bar.contains("showSettings"))
+        assertEquals(
+            "顶栏跳设置只许一次，且必须是「这家没配 Key」那一支（434 判据②）",
+            1, Regex("showSettings").findAll(bar).count(),
+        )
+        assertTrue("唯一那一次必须挂在未配置上", bar.contains("if (!topConfigured) showSettings = true"))
         assertFalse("顶栏不许出现「抱朴设置」文案", bar.contains("baopu_drawer_settings"))
         // 第二百五十一批：入口从抽屉搬去**律令的「抱朴」组**（用户 2026-10-27：抱朴的事回抱朴，
         // 但这一项属于"装 App 时配一次"，跟 MCP／选模型 一起归律令）。两处都钉住：

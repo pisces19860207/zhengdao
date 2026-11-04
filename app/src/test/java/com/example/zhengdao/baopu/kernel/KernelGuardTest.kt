@@ -175,10 +175,18 @@ class KernelGuardTest {
         assertFalse("留痕必须单行", KernelAudit.workspace("a\nb", "c").contains("\n"))
         // ② 接线：**抽屉里**切工作区（＋ 选文件夹 / ⊕ 在这里干）时必须写这一行。
         // 2026-10-18：设置页那张「工作区」卡已删（与左侧栏重复），留痕落点随迁到 BaopuScreen。
+        // 第四百三十四批（用户追加指令「抽单一入口」）：开新会话那三处抄本收进 `BaopuNewSession`，
+        // 留痕跟着一起搬——**改一处不会漏两处**才是这条判据想要的东西，所以钉新落点，
+        // 老落点（BaopuScreen）改为「不许再自己抄一遍」。
         val ui = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt").readText()
+        val entry = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuNewSession.kt").readText()
         assertTrue(
-            "抽屉切工作区要留痕",
-            ui.contains("RunLog.log(KernelAudit.workspace(after, before))"),
+            "单入口里要留痕",
+            entry.contains("RunLog.log(KernelAudit.workspace(after, before))"),
+        )
+        assertFalse(
+            "页面不许再自己抄一遍留痕（抄第二遍＝漏第三遍的开始）",
+            ui.contains("RunLog.log(KernelAudit.workspace("),
         )
         assertFalse(
             "设置页里那张重复的工作区卡已经删掉（留痕不再走那儿）",

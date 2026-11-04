@@ -72,6 +72,8 @@ class ModelPickerGateTest {
     private val sheet = codeOnly(sheetRaw)
     private val draftRaw = src("ui/baopu/ModelSheetDraft.kt")
     private val screenRaw = src("ui/baopu/BaopuScreen.kt")
+    private val modelAreaRaw = src("ui/baopu/BaopuModelArea.kt")
+    private val topBarRulesRaw = src("ui/baopu/BaopuTopBarRules.kt")
     private val provider = src("baopu/Provider.kt")
     private val prefsRaw = src("baopu/ProviderPrefs.kt")
     private val keyPoolRaw = src("baopu/KeyPool.kt")
@@ -200,10 +202,15 @@ class ModelPickerGateTest {
             setOf("titleSmall", "bodyMedium", "bodySmall"),
             roles,
         )
-        val chip = between(screenRaw, "// ── 第一百三十一批 · 顶栏第二件：公司名", "// 当前型号（§5 空闲条目池第一项）")
-        assertEquals("顶栏那颗用的正是 13sp＋10sp 两档",
-            setOf("bodySmall", "labelSmall"),
-            Regex("typography\\.([a-zA-Z]+)").findAll(chip).map { it.groupValues[1] }.toSet(),
+        // 第一百三十一批那一颗「公司名＋上下文角标」由第四百三十四批换成 `BaopuModelArea`
+        // （两颗命中区＋两张弹层），所以这条纪律跟着挪到新文件上测：**一个 .sp 字面都不许有**，
+        // 用到的槽位必须全在《纸墨黛青》梯子上（bodySmall 13 / bodyMedium 15 / labelSmall 10 /
+        // labelLarge 15——徽标那颗字母用 labelLarge，不在梯外）。
+        assertFalse("顶栏模型区也不许出现 .sp 字面", modelAreaRaw.contains(".sp"))
+        assertEquals(
+            "模型区用的四个槽位全在梯子上（15/13/10），不许新增一档",
+            setOf("bodySmall", "bodyMedium", "labelSmall", "labelLarge"),
+            Regex("typography\\.([a-zA-Z]+)").findAll(modelAreaRaw).map { it.groupValues[1] }.toSet(),
         )
     }
 
@@ -244,26 +251,113 @@ class ModelPickerGateTest {
         assertTrue(cut.endsWith("/v1beta"))
     }
 
+    /**
+     * 顶栏第二件（第四百三十四批：`[徽标] 模型名` 两颗命中区）逐条对上派工单。
+     *
+     * 第一百三十一批原案＝一颗「公司名＋上下文角标」，配色点名「不用黛青」。第四百三十四批
+     * 把它换成模型区，并逐字要求「模型名用青系（浅青 #E3EDE7 ＋ 黛青 #2C5F54），与跑马灯朱系不混」
+     * ⇒ **「不用黛青」这一条在本件上作废**（下面显式反钉，防下一个人照抄旧案把青系改回去）。
+     * 其余老纪律原样保留：13sp 墨、≥48dp 热区高、不占 48dp 图标位、无下划线／无箭头、
+     * 判定全在 rules 文件里（界面不自己算）。
+     */
     @Test
-    fun 顶栏公司名那颗逐条对上补充节() {
-        val chip = between(screenRaw, "// ── 第一百三十一批 · 顶栏第二件：公司名", "// 当前型号（§5 空闲条目池第一项）")
-        val chipCode = codeOnly(chip)
-        assertTrue("13sp 墨", chipCode.contains("typography.bodySmall") && chipCode.contains("colorScheme.onSurface"))
-        assertTrue("角标 10sp 次墨", chipCode.contains("typography.labelSmall") && chipCode.contains("onSurfaceVariant"))
-        assertFalse("不用黛青（补充节点名了）", chip.contains("colorScheme.primary"))
-        assertFalse("不加下划线", chipCode.contains("TextDecoration"))
-        assertFalse("不加箭头字形", Regex("▾|→|↓|[aA]rrow").containsMatchIn(chip))
-        assertTrue("热区高 ≥48dp", chipCode.contains("heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)"))
-        assertTrue("热区宽 ≥44dp", chipCode.contains("widthIn(min = 44.dp"))
-        assertFalse("不许占第四处 48dp 图标位（BaopuShellP1GateTest T2 只许三处）",
-            chipCode.contains("size(BAO_ICON_SLOT_DP.dp)"))
-        assertTrue("公司名与角标都算在 ModelPickerRules（界面不自己判）",
-            chipCode.contains("ModelPickerRules.companyOf(") && chipCode.contains("ModelPickerRules.contextBadge("))
-        assertTrue("无障碍名走 strings（对用户说的是『选模型』）",
-            screenRaw.contains("val companyLabel = stringResource(R.string.baopu_channel_button)") &&
-                chip.contains("contentDescription = companyLabel"))
+    fun 顶栏模型区两颗逐条对上434() {
+        val area = codeOnly(modelAreaRaw)
+        // ── 版式：13sp 墨 ＋ 自绘字母徽标（青系实心块）──
+        assertTrue("正文 13sp 墨", area.contains("typography.bodySmall") && area.contains("colorScheme.onSurface"))
+        assertTrue("徽标那颗走青系实心＋白字（434 逐字：浅青/黛青，不用官方 logo）",
+            area.contains("colorScheme.primary, shape)"))
+        assertTrue("徽标字母取 onPrimary", area.contains("colorScheme.onPrimary"))
+        // 434 把 131 的「不用黛青」反过来了：这颗必须是青系，不许蹭朱系的 error 槽。
+        assertFalse("模型区不许用朱系槽（那是跑马灯的）", area.contains("colorScheme.error"))
+        assertFalse("不加下划线", area.contains("TextDecoration"))
+        assertFalse("不加箭头字形（也不引图标库）", Regex("▾|→|↓|[aA]rrow").containsMatchIn(area))
+        // ── 判据④：两块命中区各自 ≥44dp，中间 ≥8dp ──
+        assertTrue("热区高 ≥48dp（老 138 门禁）＋容器视觉 44dp（434）两档分离",
+            area.contains("heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)"))
+        assertEquals("两颗命中区各自独立（两颗都挂 zoneHit）", 2, Regex("modifier = zoneHit\\(").findAll(area).count())
+        assertTrue("命中区宽 ≥44dp 走常量", area.contains("widthIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)"))
+        assertTrue("两段之间间距走常量", area.contains("Spacer(Modifier.width(BAO_TOPBAR_ZONE_GAP_DP.dp))"))
+        assertFalse("不许占 48dp 图标位（顶栏图标只有 ☰／🛡 两颗）", area.contains("size(BAO_ICON_SLOT_DP.dp)"))
+        // ── 判据①：两张弹层互斥，同一时刻只许开一张 ──
+        assertEquals("弹层只两张", 2, Regex("DropdownMenu\\(").findAll(area).count())
+        assertTrue("供应商那张按 open 判", area.contains("open == BaopuTopBarSheet.PROVIDER"))
+        assertTrue("模型那张按 open 判", area.contains("open == BaopuTopBarSheet.MODEL"))
+        // ── 判据②：整块不跳「换模型/设置」页，界面不自己判 ──
+        assertFalse("模型区文件里不许有跳设置的口子", area.contains("showSettings"))
+        assertTrue("公司名算在 ModelPickerRules（界面不自己算）",
+            screenRaw.contains("ModelPickerRules.companyOf(companyProvider)"))
+        assertTrue("显示名算在 BaopuTopBarRules（表里没有显 ID）",
+            screenRaw.contains("BaopuTopBarRules.topBarModelName("))
+        // ── 无障碍名走 strings（138 批口径：不硬编码在 .kt 里）──
+        listOf("baopu_topbar_badge_desc", "baopu_topbar_model_desc", "baopu_topbar_unconfigured",
+            "baopu_topbar_unconfigured_desc", "baopu_topbar_only_one",
+        ).forEach { key ->
+            assertTrue("中文缺 $key", res("values/strings.xml").contains("name=\"$key\""))
+            assertTrue("英文缺 $key", res("values-en/strings.xml").contains("name=\"$key\""))
+        }
+        // 131 的「选模型」那颗键还在（设置页/抽屉入口名），术语不许回退成「换通道」。
         assertTrue("strings 里这颗键的中文值＝选模型（④ 术语：不说『换通道』）",
             res("values/strings.xml").contains("<string name=\"baopu_channel_button\">选模型</string>"))
+    }
+
+    /**
+     * 第四百三十四批判据③：档位必须有、内部构建号不上屏、表里没有 ⇒ 显 ID（绝不猜绝不编）。
+     *
+     * 红＝有人往映射表里塞了一条没出处的名字，或让界面自己拼公司名（那就会显成
+     * 「DeepSeek V4.1 flash」——派工单点名的错例），或把 `…-1017` 这种构建号原样带上屏。
+     */
+    @Test
+    fun 显示名三条_档位有_构建号不上屏_表外显ID() {
+        val rules = codeOnly(topBarRulesRaw)
+        // 派工单逐字的两例
+        assertEquals("V4.1 flash", BaopuTopBarRules.topBarModelName("deepseek-v4.1-flash-1017", "DeepSeek"))
+        assertEquals("GPT 6.1 Sol", BaopuTopBarRules.topBarModelName("gpt-6.1-sol", "OpenAI"))
+        // 表里没有 ⇒ 原样回吐 ID，绝不猜、绝不编（去掉构建号那截＝编）。
+        assertEquals("mystery-model-9901", BaopuTopBarRules.topBarModelName("mystery-model-9901", "DeepSeek"))
+        // 公司名不重复：徽标那颗代表公司，正文再写一遍就是「两处说同一件事」（A 案）。
+        assertEquals("2.5 Pro", BaopuTopBarRules.topBarModelName("gemini-2.5-pro", "Google Gemini"))
+        assertFalse(
+            "表里每一条都不许以公司词开头（摘词算式真在跑）",
+            BaopuTopBarRules.TOP_BAR_NAMES.values.any { name ->
+                val head = name.split(" ").first().trim('.', ',', '-', '_').lowercase()
+                setOf("deepseek", "openai", "gemini", "google", "anthropic", "claude").contains(head)
+            },
+        )
+        // 徽标＝自绘字母，官方 logo 属商标，不走那条路。
+        assertEquals(
+            "D/O/G/Z/Q 五颗照派工单逐字",
+            mapOf("DeepSeek" to "D", "OpenAI" to "O", "Gemini" to "G", "Zhipu" to "Z", "Qwen" to "Q"),
+            listOf("DeepSeek", "OpenAI", "Gemini", "Zhipu", "Qwen").associateWith { BaopuTopBarRules.badgeLetterOf(it) },
+        )
+        assertEquals("表里没有的公司 ⇒ 取首字母（是首字母，不是猜公司）", "自", BaopuTopBarRules.badgeLetterOf("自定义"))
+        // 弹层两张互斥：算式只回**一个值**（双布尔才是上一版两个同时开着的根因）。
+        val open = setOf(
+            BaopuTopBarRules.toggleSheet(BaopuTopBarSheet.NONE, BaopuTopBarSheet.PROVIDER),
+            BaopuTopBarRules.toggleSheet(BaopuTopBarSheet.PROVIDER, BaopuTopBarSheet.PROVIDER),
+            BaopuTopBarRules.toggleSheet(BaopuTopBarSheet.PROVIDER, BaopuTopBarSheet.MODEL),
+            BaopuTopBarRules.toggleSheet(BaopuTopBarSheet.MODEL, BaopuTopBarSheet.PROVIDER),
+        )
+        assertEquals("四步算式的值域＝NONE/PROVIDER/MODEL 三选一", setOf(
+            BaopuTopBarSheet.NONE, BaopuTopBarSheet.PROVIDER, BaopuTopBarSheet.MODEL,
+        ), open)
+        assertEquals("点正开着的那颗＝收起", BaopuTopBarSheet.NONE,
+            BaopuTopBarRules.toggleSheet(BaopuTopBarSheet.MODEL, BaopuTopBarSheet.MODEL))
+        // 未配置 ⇒ 两张都不开（点它只许引导去设置，不弹空列表）。
+        assertEquals(BaopuTopBarSheet.NONE,
+            BaopuTopBarRules.sheetForClick(false, BaopuTopBarSheet.NONE, BaopuTopBarSheet.PROVIDER))
+        assertEquals(BaopuTopBarSheet.NONE,
+            BaopuTopBarRules.sheetForClick(false, BaopuTopBarSheet.MODEL, BaopuTopBarSheet.PROVIDER))
+        // 只配了一家 ⇒ 「仅此一家」这句话，而不是弹一张只有一行的空列表。
+        assertTrue("只有一家时给话术", BaopuTopBarRules.onlyOneProviderHint(
+            listOf(BaopuTopBarRules.ProviderRow("deepseek", "DeepSeek", "D", true, true)),
+        ))
+        assertFalse("两家以上不许再喊仅此一家", BaopuTopBarRules.onlyOneProviderHint(
+            listOf(
+                BaopuTopBarRules.ProviderRow("deepseek", "DeepSeek", "D", true, true),
+                BaopuTopBarRules.ProviderRow("openai", "OpenAI", "O", false, true),
+            ),
+        ))
     }
 
     @Test

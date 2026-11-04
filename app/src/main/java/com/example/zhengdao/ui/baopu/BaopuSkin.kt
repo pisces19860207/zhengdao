@@ -52,6 +52,25 @@ internal const val BAO_LIST_INSET_DP = 16
 /** 会话行在文件夹行下面的缩进（视觉从属关系，不是命中区）。 */
 internal const val BAO_SESSION_INDENT_DP = 40
 
+// 2026-11-04 第四百三十四批（顶栏对齐设计稿）：顶栏那四件的尺寸全部落在这里，
+// **派工单里的坐标（368/384/884/1172dp）一条都不许进代码**——那些是参考线，
+// 实际位置由「权重 + 间距」推出来，换设备/换字号都不破版式。
+
+/** 顶栏两段的容器高（设计稿：模型区与跑马灯同高 44dp；命中层另按 BAO_ROW_MIN_HEIGHT_DP 48dp 走）。 */
+internal const val BAO_TOPBAR_PILL_HEIGHT_DP = 44
+
+/** 顶栏容器描边宽（设计稿：朱砂 1.5dp；只在既有 token 之上加线宽，不加颜色）。 */
+internal const val BAO_TOPBAR_PILL_STROKE_DP = 1.5f
+
+/** 模型区内两个命中区之间的间隔（派工单硬规矩：≥8dp，防误触）。 */
+internal const val BAO_TOPBAR_ZONE_GAP_DP = 8
+
+/** 模型区整块与跑马灯之间的间隔（派工单参考线：≈16dp，走 4/8/12/16/24/32 尺度）。 */
+internal const val BAO_TOPBAR_SECTION_GAP_DP = 16
+
+/** 字母徽标那颗的边长（自绘徽标替代公司全名，省横向空间；高随 44dp 容器收成 28）。 */
+internal const val BAO_LETTER_TILE_DP = 28
+
 internal val BaoButtonShape = RoundedCornerShape(BAO_BUTTON_RADIUS_DP.dp)
 
 internal val BaoChipShape = RoundedCornerShape(BAO_CHIP_RADIUS_DP.dp)

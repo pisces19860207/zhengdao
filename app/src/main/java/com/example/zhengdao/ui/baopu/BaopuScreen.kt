@@ -80,8 +80,11 @@ import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuWorkspace
+import com.example.zhengdao.baopu.ModelCatalogCache
 import com.example.zhengdao.baopu.ModelPickerRules
+import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.ProviderPrefs
+import com.example.zhengdao.baopu.Providers
 import com.example.zhengdao.baopu.TasteProfile
 import com.example.zhengdao.baopu.TopBarSlot
 import com.example.zhengdao.baopu.TopicFlowPhase
@@ -93,7 +96,6 @@ import com.example.zhengdao.baopu.cards.ResultCardLogistics
 import com.example.zhengdao.baopu.cards.ResultCardRegistry
 import com.example.zhengdao.baopu.cards.ResultCardState
 import com.example.zhengdao.baopu.cards.ResultCards
-import com.example.zhengdao.baopu.kernel.KernelAudit
 import com.example.zhengdao.baopu.library.BackupRules
 import com.example.zhengdao.baopu.shouldShowUsageNotice
 import com.example.zhengdao.baopu.toggleTopBarExpanded
@@ -166,6 +168,41 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     // 第一百三十一批：初值读进程级草稿——跳玄览会把本页整个带出组合，回来时
     // 「抽屉还在」这句话只有草稿能兑现（补充节 §三末句）。
     var showChannel by remember { mutableStateOf(ModelSheetDraft.showing) }
+    // ── 第四百三十四批 · 顶栏「模型区」的两张弹层 ────────────────────────────
+    // **一个值**管两张弹层（不是两个布尔）：`BaopuTopBarSheet` 里没有「都开着」这一项，
+    // 所以「同一时刻只许开一个」由类型兜住——上一版截图两个同时展开，就是记成了两个布尔。
+    var topSheet by remember { mutableStateOf(BaopuTopBarSheet.NONE) }
+    // 徽标区点一条：只翻**当前通道选择位**，一个 Key 都不写（派工单：顶栏不许顺带改 key）。
+    // apiKey 传空串＝"这把不加"（`ProviderPrefs.save` 明确空串不清池）；自定义三件原样带回，
+    // 否则这一次点击就把设置页存好的 base/model 抹了（`save()` 对那两格是无条件覆盖）。
+    val switchProviderFast: (String) -> Unit = { id ->
+        val (customBase, customModel) = ProviderPrefs.storedCustom(context)
+        BaopuRuntime.switchChannel(
+            context, id, "", customBase, customModel, ProviderPrefs.storedCustomProtocol(context)
+        )
+        topSheet = BaopuTopBarSheet.NONE
+        channelEpoch++ // 换引擎（provider 是构造期注入；旧引擎线程闲着无害）
+    }
+    // 模型名区点一条：预设落 `user_model_$id`（连同**那一刻清单里拿到的**元数据）；自定义落 `custom_model`。
+    // 只写名字、留着**上一个模型**的窗口数＝假数据（ContextBudget 会照那个数裁上下文），
+    // 所以清单里查得到就带上、查不到就 null ⇒ 上层按「未声明」走，与设置页同一口径。
+    val switchModelFast: (String) -> Unit = { id ->
+        val now = ProviderPrefs.current(context)
+        if (now.id == ProviderPrefs.CHANNEL_CUSTOM) {
+            val (customBase, _) = ProviderPrefs.storedCustom(context)
+            BaopuRuntime.switchChannel(
+                context, now.id, "", customBase, id, ProviderPrefs.storedCustomProtocol(context)
+            )
+        } else {
+            val hit = ModelCatalogCache.cached(now.baseUrl, neverCache = now.builtinFree)
+                .firstOrNull { entry -> entry.id == id }
+            ProviderPrefs.saveModelOverride(
+                context, now.id, ModelPickerRules.ModelOverride(id, hit?.contextWindow, hit?.maxOutput)
+            )
+        }
+        topSheet = BaopuTopBarSheet.NONE
+        channelEpoch++
+    }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
     // 2026-10-23：小说工程的抽屉入口（之前只有工具、没有落点）。
@@ -376,6 +413,15 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // ── 第四百三十四批（用户追加指令）：「新会话」的**第二处**入口＝工作区的「＋」──────
+    // 三条腿（当前文件夹直接开 / 别的文件夹确认卡切过去 / 选新文件夹加进来）共用这一个函数，
+    // 所以 `BaopuNewSession.open` 全仓只有两处调用：这里 ＋ 抽屉「新会话」那一行；
+    // 顶栏那颗「＋」整颗删除（逻辑没丢，只是不再在第三个地方重复一遍）。
+    val openInWorkspace: (NewSessionWhere) -> Unit = { where ->
+        if (!BaopuNewSession.open(context, controller, where)) {
+            Toast.makeText(context, res.getString(R.string.baopu_switch_ws_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
     // ── 第一百三十一批 · UI-D4：抽屉内容先存成 lambda，等顶栏画完再挂 ────────────
     // 真机证据（qa-2026-10-21-all/02-关闭3-再点☰.png）：抽屉面板覆盖 x=0..1050 全高，
     // 把顶栏的 ☰ 整个盖住 ⇒「再点 ☰ 关」这条路径物理上不存在，点下去落在抽屉标题区。
@@ -392,7 +438,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     workspaceLoading = drawerTreeLoading,
                     onNewSession = {
                         scope.launch { drawerState.close() }
-                        controller.newSession()
+                        // 第四百三十四批：「新会话」两处入口之一（另一处＝工作区的「＋」）。
+                        BaopuNewSession.open(context, controller, NewSessionWhere.Stay)
                     },
                     // 抽屉里**不再有**「历史会话」行（会话已归到各工作区下面）；
                     // 平铺列表（含删除）改成低频入口：抱朴设置 → 会话记录。
@@ -413,10 +460,12 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         deleteRowWs = ws
                     },
                     // 文件夹行右侧的「圆里加号」＝在这个工作区里干活（开新会话）。
+                    // 第四百三十四批：这一支与下面两条腿（确认卡 / 选文件夹）同属**一个入口**
+                    // ＝`openInWorkspace`，落点在 `BaopuNewSession`，不再各抄一遍。
                     onWorkspaceRunHere = { node ->
                         scope.launch { drawerState.close() }
                         if (node.isCurrent) {
-                            controller.newSession()
+                            openInWorkspace(NewSessionWhere.Stay)
                         } else {
                             runHereNode = node   // 别的文件夹：先问人，别默默把人挪到别处
                         }
@@ -508,13 +557,14 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
         // （MainActivity setDecorFitsSystemWindows(false)）窗口不 resize，必须自己消费 ime insets。
         // 放在根 Column：卡片区与输入框一起上移，卡片仍压在输入框上方（J10）。
         Column(Modifier.fillMaxSize().imePadding()) {
-            // 顶条（刀 3 瘦身）：☰ 开抽屉 · 状态 · ＋新会话。
+            // 顶条（刀 3 瘦身）：☰ 开抽屉 · 模型区 · 跑马灯 · 🛡。
             // 「章节抽取／备份原件／换通道」已进抽屉；中断提示与续跑仍由 BaopuSessionBar 承担。
-            // 顶栏五件（v1.4 W9a）：☰ · 状态行 · 跑马灯 · 🛡 · ＋。设置入口不在这里（在抽屉）。
-            // 第一百三十一批补充节 §三：五件顺序固定＝☰ · **公司名(+角标)** · 状态/跑马灯位 · 🛡 · ＋，
-            // 一个不多一个不少——公司名插在 ☰ 之后、状态行之前，状态行与跑马灯仍共占中间那一「位」。
-            // 高度＝48dp 图标位（三处 IconButton 各 48），跑马灯窗口只有 16dp ⇒ **零额外高度**；
-            // 底下补一条发丝线把顶栏和正文分开——旧版靠 tonalElevation 1dp，深色主题里几乎看不见。
+            // ── 第四百三十四批对齐设计稿：顶栏**四件**（左→右）＝☰ ｜ 模型区（两段可点）｜ 跑马灯 ｜ 🛡。
+            // 原来这里数的是「五件：☰·状态行·跑马灯·🛡·＋」——状态行 138 批已并进跑马灯，
+            // 「＋」本批按设计稿删掉（开新会话的统一在两处入口，见 `BaopuNewSession`）；
+            // 「公司名(+角标)」那第二件换成了「`[徽标] 模型名`」两段。设置入口仍不在这里（在设置页/抽屉）。
+            // 高度＝48dp 图标位（☰ 与 🛡 各一颗）；底下补一条发丝线把顶栏和正文分开——
+            // 旧版靠 tonalElevation 1dp，深色主题里几乎看不见。
             Surface(color = MaterialTheme.colorScheme.surface) {
                 Row(
                     Modifier
@@ -523,9 +573,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val openLabel = stringResource(R.string.baopu_drawer_open)
-                    val newSessionLabel = stringResource(R.string.baopu_new_session)
-                    // ④ 术语：这颗键对用户说的是「选模型」（strings.xml 里同一个 key，值已换过）。
-                    val companyLabel = stringResource(R.string.baopu_channel_button)
                     IconButton(
                         // 2026-10-21 真机复验（蓝总管）：131 把抽屉挪到顶栏下面之后，☰ 确实点得到了，
                         // 但这里当时仍只调 `open()` ⇒ 抽屉开着再点 ☰ 是空操作，「再点 ☰ 关」不成立。
@@ -542,64 +589,59 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         // 本项目没引 material-icons 依赖，用字形够了（☰），不为一个图标多打一个包。
                         Text(text = "☰", style = MaterialTheme.typography.titleMedium)
                     }
-                    // ── 第一百三十一批 · 顶栏第二件：公司名（点它开选模型浮层）──────────
-                    // 补充节 §三逐条：13sp 墨、后面跟 10sp 次墨的上下文角标、**不用黛青**、
-                    // 不加下划线、不加箭头；热区 ≥48dp 高 × ≥44dp 宽。热区用 heightIn/widthIn 给，
-                    // 不占那三处 48dp 图标位（BaopuShellP1GateTest T2 数的正是它们、只许三处），
-                    // 宽度上限 96dp 是为了**不挤掉跑马灯**——公司名一长就让位给省略号，不抢中间那一格。
+                    // ── 第四百三十四批 · 顶栏第二件：模型区（**两个独立命中区、两张互斥弹层**）──────
+                    // 版式＝`[徽标] 模型名`（A 案：**不重复公司名**，公司由徽标那颗字母代表；
+                    // 档位必须有；内部构建号不上屏；映射表里没有 ⇒ 显 ID，绝不猜绝不编）。
+                    // 点徽标 ⇒ 供应商/网关那张；点模型名 ⇒ 本家模型那张。**整块不跳「换模型/设置」页**——
+                    // 第一百三十一批那一颗「公司名 + 上下文角标」到此结束：完整的选模型/Key 池仍在设置页
+                    // （SettingsScreen 那一行 `baopu_channel_button`），顶栏只做快速切换，不顺带改 Key。
                     val companyProvider = remember(channelEpoch) { ProviderPrefs.current(context) }
-                    val companyBadge = ModelPickerRules.contextBadge(companyProvider.contextWindow)
-                    Box(
-                        contentAlignment = Alignment.CenterStart,
-                        modifier = Modifier
-                            .widthIn(min = 44.dp, max = 96.dp)
-                            .heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)
-                            .clip(RoundedCornerShape(BAO_CHIP_RADIUS_DP.dp))
-                            .clickable { showChannel = true }
-                            .padding(horizontal = 8.dp)
-                            .semantics { contentDescription = companyLabel },
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                ModelPickerRules.companyOf(companyProvider),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            // 角标：上下文没声明就**不摆**（不编数，与设置页那句「未声明」同一口径）。
-                            if (companyBadge.isNotEmpty()) {
-                                Text(
-                                    companyBadge,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(start = 4.dp),
-                                )
-                            }
-                        }
+                    val company = ModelPickerRules.companyOf(companyProvider)
+                    // 「未配置」只看这一家此刻**有没有能发请求的 Key**（预设看池子、自定义看三件齐）。
+                    val topConfigured = companyProvider.apiKey.isNotBlank()
+                    val topModelName = BaopuTopBarRules.topBarModelName(companyProvider.model, company)
+                    val providerRows = BaopuTopBarRules.providerRows(
+                        all = Providers.all(),
+                        currentId = companyProvider.id,
+                        configuredIds = configuredProviderIds(context),
+                        customName = customChannelLabel(context),
+                        customId = ProviderPrefs.CHANNEL_CUSTOM,
+                    )
+                    val modelRows = BaopuTopBarRules.modelRows(
+                        ids = topBarModelIds(companyProvider),
+                        currentId = companyProvider.model,
+                        company = company,
+                    )
+                    // 一颗命中区被点了：配好了 ⇒ 在两张之间互斥地开/收（`sheetForClick` 只回一个值）；
+                    // 没配 ⇒ 派工单唯一放行的一次跳设置（去那一页填 Key，顶栏不代填）。
+                    val clickTopZone: (BaopuTopBarSheet) -> Unit = { target ->
+                        topSheet = BaopuTopBarRules.sheetForClick(topConfigured, topSheet, target)
+                        if (!topConfigured) showSettings = true
                     }
+                    BaopuModelArea(
+                        letter = BaopuTopBarRules.badgeLetterOf(company),
+                        modelName = topModelName,
+                        configured = topConfigured,
+                        open = topSheet,
+                        providerRows = providerRows,
+                        modelRows = modelRows,
+                        onlyOneProvider = BaopuTopBarRules.onlyOneProviderHint(providerRows),
+                        onBadgeClick = { clickTopZone(BaopuTopBarSheet.PROVIDER) },
+                        onModelClick = { clickTopZone(BaopuTopBarSheet.MODEL) },
+                        onDismiss = { topSheet = BaopuTopBarSheet.NONE },
+                        onPickProvider = switchProviderFast,
+                        onPickModel = switchModelFast,
+                    )
                     // ── 第一百三十八批：状态行的第二出口已撤出 ──────────────────────
                     // 改前这里是「状态文案 ＋ 步号」的第二个 Text，紧挨着跑马灯 —— 同一时刻两个地方说两种话。
                     // 按设计 §5「状态单一出口」的裁决：**状态只由跑马灯说话**，那一行已删。
                     // 引擎步数仍在活动面板里（`BaopuActivityPanel` 那一行），不是被删掉。
-                    // 「这次学到 / 已压缩」跑马灯（2026-10-18 用户：位置在状态和「＋」
-                    // 那一栏里）——顶栏中间剩余宽度全给它，恒定 40dp 占位。
-                    // 当前型号（§5 空闲条目池第一项）：只写人类可读的显示名
-                    // （「Claude Opus 5.5」），不写 `deepseek-chat` 这种原始 ID。
-                    val modelLabel = remember(companyProvider.model) {
-                        ModelPickerRules.displayName(companyProvider.model)
-                    }
+                    // ── 第四百三十四批：「当前型号」也退出了这个池子 ────────────────────
+                    // 型号属「配置」，归左边的模型区（那里还能点着换）；跑马灯只留「提醒」。
+                    // 第一百三十八批那条「型号是空闲池第一项」的安排到此作废（`baopu_ticker_model_label`
+                    // 这个键本批不删，删它属另一件事，见交付报告「遗留」）。
+                    // 「这次学到 / 已压缩」跑马灯——顶栏中间剩余宽度全给它，没学到就整段不显示。
                     val noticeItems = buildList {
-                        if (modelLabel.isNotBlank()) {
-                            add(
-                                NoticeItem(
-                                    stringResource(R.string.baopu_ticker_model_label),
-                                    modelLabel,
-                                    NoticeKind.INFO,
-                                ),
-                            )
-                        }
                         controller.introspectionNote?.takeIf { it.isNotBlank() }?.let {
                             add(
                                 NoticeItem(
@@ -668,13 +710,15 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                             )
                         }
                     }
-                    Spacer(Modifier.width(8.dp))
+                    // 模型区与跑马灯之间 16dp（派工单参考线；**坐标不写死**，这块只给间距，宽度让给跑马灯）。
+                    Spacer(Modifier.width(BAO_TOPBAR_SECTION_GAP_DP.dp))
                     // 两态的唯一开关是 state：运行中锁定只换字，空闲才逐条轮播。
                     BaopuNoticeTicker(state = state, items = noticeItems, modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(4.dp))
-                    // ── 第一百零四批：顶栏第五件·盾牌（决策中心）──────────────────
-                    // v1.4 与真机对齐后定稿的五件＝☰·状态·跑马灯·🛡·＋；徽标＝前三页签
-                    // 待处理总数（记录页不计），0 不显示（顶栏全净）。设置入口仍留抽屉。
+                    // ── 第一百零四批：盾牌（决策中心）·第四百三十四批起是顶栏**第四件**──────
+                    // 徽标＝前三页签待处理总数（记录页不计），0 不显示（顶栏全净）。
+                    // 原来这里是「五件」的第四件，后面还跟着第五件「＋」；「＋」本批按设计稿删除，
+                    // 盾牌因此顶到末位。设置入口仍在设置页/抽屉，不在这里。
                     val decisionBadge = controller.decisionBadge
                     val shieldDesc = if (decisionBadge > 0) {
                         pluralStringResource(R.plurals.decision_shield_badge_desc, decisionBadge, decisionBadge)
@@ -706,15 +750,10 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                             }
                         }
                     }
-                    IconButton(
-                        onClick = { controller.newSession() },
-                        enabled = !controller.busy,
-                        modifier = Modifier
-                            .size(BAO_ICON_SLOT_DP.dp)
-                            .semantics { contentDescription = newSessionLabel },
-                    ) {
-                        Text(text = "＋", style = MaterialTheme.typography.titleMedium)
-                    }
+                    // ── 第四百三十四批：顶栏那颗「＋」整颗删除 ──────────────────────
+                    // 设计稿四件里没有它（☰｜模型区｜跑马灯｜🛡）。**逻辑一行没丢**：
+                    // 开新会话统一走两处入口——抽屉「新会话」那一行 ＋ 工作区的「＋」，
+                    // 落点在 `BaopuNewSession`（一处实现、两处调用；原来这里有第三次）。
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
@@ -1529,27 +1568,13 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         TextButton(
                             onClick = {
                                 runHereNode = null
-                                val before = BaopuWorkspace.hostDir(context).absolutePath
-                                // 默认工作区那一行不是「自定义路径」，走 setDefault（mode=default）；
-                                // 其余文件夹走 setCustom。两条都要留痕。
-                                val switched = if (node.unknown) {
-                                    BaopuWorkspace.setDefault(context)
-                                    true
-                                } else {
-                                    BaopuWorkspace.setCustom(context, node.fullPath)
-                                }
-                                if (switched) {
-                                    val after = BaopuWorkspace.hostDir(context).absolutePath
-                                    // 内核项（工作区）变更要留痕——与设置页同一条规则（26-B）
-                                    if (after != before) RunLog.log(KernelAudit.workspace(after, before))
-                                    controller.newSession()
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        res.getString(R.string.baopu_switch_ws_failed),
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                }
+                                // 第四百三十四批：切工作区＋留痕＋开新会话那一串收进 `BaopuNewSession`
+                                // （默认工作区那一行不是「自定义路径」⇒ 走 mode=default，其余走 setCustom，
+                                // 两条都要留痕——原来这三行在三个地方各抄一遍）。
+                                openInWorkspace(
+                                    if (node.unknown) NewSessionWhere.DefaultWorkspace
+                                    else NewSessionWhere.Folder(node.fullPath)
+                                )
                             },
                         ) { Text(stringResource(R.string.baopu_switch_ws_confirm)) }
                     },
@@ -1566,12 +1591,7 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     onDismiss = { addWorkspaceOpen = false },
                     onPick = { path ->
                         addWorkspaceOpen = false
-                        val before = BaopuWorkspace.hostDir(context).absolutePath
-                        if (BaopuWorkspace.setCustom(context, path)) {
-                            val after = BaopuWorkspace.hostDir(context).absolutePath
-                            if (after != before) RunLog.log(KernelAudit.workspace(after, before))
-                            controller.newSession()
-                        }
+                        openInWorkspace(NewSessionWhere.Folder(path))
                     },
                 )
             }
@@ -1636,6 +1656,51 @@ private fun LazyListState.isAtBottom(): Boolean {
  * 3. **不给「取消压缩」「删除原始消息」**（本单不做回滚；原始消息仍在库里，
  *    用户点开这里能回看的只是摘要）。
  */
+/**
+ * 顶栏徽标区那张名单里，哪些家**此刻真有 Key**（第四百三十四批）。
+ *
+ * 预设看 Key 池（[ProviderPrefs.storedKey] 空或坏池都回 null ⇒ 就是没配）；自定义看
+ * `resolve` 的那三条——base、model、Key 三件齐才算配上（缺任一件，[ProviderPrefs.current]
+ * 根本不会落在 custom 上，把它列成"能切"就是骗人）。
+ * 这里只读不写；Key 只在 `isNullOrBlank` 那一判里过一下，**不进任何日志、不进 state**。
+ */
+private fun configuredProviderIds(context: Context): Set<String> {
+    val presets = Providers.all().mapNotNull { preset ->
+        if (ProviderPrefs.storedKey(context, preset.id).isNullOrBlank()) null else preset.id
+    }.toSet()
+    val (customBase, customModel) = ProviderPrefs.storedCustom(context)
+    val customReady = !ProviderPrefs.storedKey(context, ProviderPrefs.CHANNEL_CUSTOM).isNullOrBlank() &&
+        !customBase.isNullOrBlank() && !customModel.isNullOrBlank()
+    return if (customReady) presets + ProviderPrefs.CHANNEL_CUSTOM else presets
+}
+
+/**
+ * 顶栏模型名区那张名单：**已经知道的**那些模型，一个都不联网拉。
+ *
+ * 两格来源＋正在用的那一条（[BaopuTopBarRules.modelRows] 里补齐并去重）：
+ * 预设自带的短名单（[ModelPickerRules.presetModels]）＋ 第一百三十一批那份**进程内**清单缓存
+ * （开过一次设置页的「选模型」就有，没开就是空）。
+ * 顶栏不发网络请求——「顺手拉一次全量」就是把设置页搬上来，派工单明令不许；
+ * 所以这张名单可能只有一条，那也是**真的**那一条，不是一条编出来的。
+ */
+private fun topBarModelIds(provider: Provider): List<String> {
+    val cached = ModelCatalogCache.cached(provider.baseUrl, neverCache = provider.builtinFree)
+        .map { entry -> entry.id }
+    return ModelPickerRules.presetModels(provider) + cached
+}
+
+/**
+ * 自定义网关在顶栏名单上的那一行叫什么（第四百三十四批）。
+ *
+ * 没填接口地址 ⇒ null ⇒ 名单里**不摆这一家**（摆一个连地址都没有的网关就是骗人）；
+ * 有地址 ⇒ 走设置页同一个美化口径（`companyOfHost`：`api.deepseek.com` → DeepSeek）。
+ * 顶栏不摆整串地址——那是地址，不是名字。
+ */
+private fun customChannelLabel(context: Context): String? {
+    val base = ProviderPrefs.storedCustom(context).first?.trim().orEmpty()
+    return base.takeIf { it.isNotEmpty() }?.let(ModelPickerRules::companyOfHost)
+}
+
 @Composable
 internal fun BaopuCompressedBar(note: BaopuChatController.CompressionNote) {
     var expanded by remember { mutableStateOf(false) }

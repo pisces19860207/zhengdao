@@ -6,6 +6,19 @@
 //   ① 运行中（THINKING/ACTING/COMPRESSING/AWAIT_CONFIRM）＝锁定孔位，只换字，永不滚动；
 //   ② 空闲（IDLE/DONE/ABORTED）＝逐条轮播，每条停 3 秒；展开任一条 ⇒ **持续暂停**。
 // 判据全在 `BaopuTickerRules.kt`（纯函数），本文件只负责画。
+//
+// 第四百三十四批（2026-11-04，派工单《顶栏对齐设计稿》§跑马灯视觉规范）：**房型从「记录条」升级为「朱胶囊」**。
+//   · 整段包进一个容器：朱浅底 errorContainer ＋ 朱砂描边 error 1.5dp ＋ 圆角 rPill 10；
+//   · 类目标（「这次学到」）由原来的小浅标签升级为**实心朱砂白字** 52×28 / 圆角 rBadge 6 / 11sp Medium；
+//   · 滚动文字换成**正文**（真学到的那句话），色走墨一 onSurface（原线灰 onSurfaceVariant）；
+//   · 与左边模型名那颗**同高（44dp）、同圆角（10dp）、都有容器**；没内容时容器整段不画（判据③），
+//     但**空位照旧占高**——138 批「三态同高、事件到来顶栏不跳」这条一行没动；
+//   · 唯一的边界位置＝四边描边，原来那条下缘发丝线撤掉（`BaopuContainers` 硬规则 1：边界位置四选一，不许叠加）。
+//   派工单红线「仅在既有色板内做容器化，不新增任何颜色 token」：朱砂/朱浅都是 `ui/theme/Color.kt`
+//   既有常量（`error` / `errorContainer` 槽位），这里一枚新色都没造。
+//
+// 434 判据⑤：本文件的每个 @Composable 都 ≤59 行（detekt LongMethod 60 阈值同一口径），
+// 所以画容器／画条目标／画详情各拆成一小块，主函数只管两态机与游标。
 package com.example.zhengdao.ui.baopu
 
 import androidx.compose.foundation.background
@@ -13,12 +26,16 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
@@ -31,9 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -44,17 +59,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zhengdao.baopu.agent.RunState
+import com.example.zhengdao.ui.theme.rBadge
+import com.example.zhengdao.ui.theme.rPill
 import kotlinx.coroutines.delay
 
 /**
  * 跑马灯：顶栏那一「位」的唯一内容（第一百三十八批起，状态行已从这里撤出）。
  *
- * 房型（《纸墨黛青》§6.1 记录条档 ＋ 派工单 §设计约束）：
- * - **恒定占位 40dp**：空态、空闲轮播态、运行锁定态三者同高，事件到来时顶栏不跳；
- * - **无左右边框、无底色、无圆角**，只有下边 1dp 发丝线（`outlineVariant` = `#DCD7C9`）；
- * - 正文字号 13sp（脚注档）；
- * - **只有「待你确认」带视觉区分**：浅琥珀底 ＋ 1dp 琥珀描边 ＋ 字重 500（靠对比，不靠换色相）；
- * - 详情仍是**浮层**（`DropdownMenu`），不占布局高度、不推正文（K2 判据延续）。
+ * 两态的唯一开关是 `state`；本函数只管游标与节拍，画出来的东西在 [TickerPill]。
+ * 空态（没学到、也没有别的事）＝**容器不画、孔位照占**：判据③要的是「整段不显示」，
+ * 不是「顶栏缩一下」（138 批 K1「三态同高」延续）。
  */
 @Composable
 internal fun BaopuNoticeTicker(
@@ -62,17 +76,6 @@ internal fun BaopuNoticeTicker(
     items: List<NoticeItem>,
     modifier: Modifier = Modifier,
 ) {
-    val ctx = LocalContext.current
-    val fontScale = LocalDensity.current.fontScale
-    // 系统动画缩放读一次就够（改它要回系统设置，页内不会变）。默认值 1f＝动画开着。
-    val animatorScale = remember(ctx) {
-        android.provider.Settings.Global.getFloat(
-            ctx.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f,
-        )
-    }
-    val reduceMotion = reduceMotionFrom(animatorScale)
     val mode = tickerModeOf(state)
     // 排序（判据 7）：待用户拍板 ＞ 待知晓 ＞ informational，同档保持原顺序。
     val ordered = remember(items) { sortedForTicker(items) }
@@ -80,6 +83,7 @@ internal fun BaopuNoticeTicker(
     var cursor by remember(items) { mutableIntStateOf(0) }
     var expandedIndex by remember(items) { mutableIntStateOf(-1) }
     val expanded = expandedIndex >= 0
+    val reduceMotion = rememberTickerReduceMotion()
 
     // 切进运行态：收起详情、游标归零（锁定孔位只换字，不许留旧条目的展开态）。
     LaunchedEffect(mode) {
@@ -105,92 +109,177 @@ internal fun BaopuNoticeTicker(
     }
 
     val entryIndex = if (mode == TickerMode.LOCKED) -1 else tickerEntryIndex(ordered.size, cursor, reduceMotion)
+    val entry = if (entryIndex in ordered.indices) ordered[entryIndex] else null
+    // 详情只在「展开的就是正在显示的这一条」时打开（展开态由 [TickerPill] 那颗点击切换）。
+    val detailIndex = if (expanded && entryIndex in ordered.indices) entryIndex else -1
+    TickerPill(
+        state = state,
+        mode = mode,
+        entry = entry,
+        ordered = ordered,
+        detailIndex = detailIndex,
+        onToggle = { expandedIndex = if (expandedIndex == entryIndex) -1 else entryIndex },
+        onDismiss = { expandedIndex = -1 },
+        modifier = modifier,
+    )
+}
+
+/** 系统「动画缩放＝0 ⇒ 不轮播」的读取位（读一次就够：改它要回系统设置，页内不会变）。 */
+@Composable
+private fun rememberTickerReduceMotion(): Boolean {
+    val ctx = LocalContext.current
+    val animatorScale = remember(ctx) {
+        android.provider.Settings.Global.getFloat(
+            ctx.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        )
+    }
+    return reduceMotionFrom(animatorScale)
+}
+
+/**
+ * 朱胶囊本体：容器 ＋ 一行内容（锁定态＝状态字，空闲态＝类目标＋正文）。
+ *
+ * 孔位高＝max(44dp, 138 批那一行)：44 是 434 与模型名区对齐的容器高，
+ * 里面那一行仍按 [tickerSlotDp] 走 ⇒ 2.0× 字体不撑高、3.0× 只许长高防裁字。
+ */
+@Composable
+private fun TickerPill(
+    state: RunState,
+    mode: TickerMode,
+    entry: NoticeItem?,
+    ordered: List<NoticeItem>,
+    detailIndex: Int,
+    onToggle: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier,
+) {
     val confirm = state == RunState.AWAIT_CONFIRM
-    val hairline = MaterialTheme.colorScheme.outlineVariant
+    val pill = marqueePillVisible(mode, ordered.isNotEmpty())
     // 读屏描述先求值：`semantics {}` 的 lambda 不是 @Composable，里面不能调 stringResource。
     val a11yDesc = stringResource(tickerA11yRes(mode, confirm))
-
+    val lockedLabel = if (mode == TickerMode.LOCKED) stringResource(tickerLockedLabel(state)) else ""
+    val body = entry?.let { inlineTickerText(it.body) }.orEmpty()
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(tickerSlotDp(fontScale).dp)
-            // 记录条档：只下边一条发丝线，左右无框、不填底、不画圆角。
-            .drawBehind {
-                val y = size.height - (1.dp.toPx() / 2f)
-                drawLine(
-                    color = hairline,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            }
-            // 「待你确认」唯一的视觉区分：同色系加深一档填充 ＋ 1dp 琥珀描边（无圆角）。
-            .then(
-                if (confirm) {
-                    Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .border(
-                            TICKER_CONFIRM_STROKE_DP.dp,
-                            MaterialTheme.colorScheme.tertiary,
-                            RectangleShape,
-                        )
-                } else {
-                    Modifier
-                },
-            )
-            .clickable(enabled = mode == TickerMode.IDLE && entryIndex >= 0) {
-                expandedIndex = if (expandedIndex == entryIndex) -1 else entryIndex
-            }
+            .then(pillShellModifier(pill = pill, confirm = confirm))
+            .clickable(enabled = entry != null, onClick = onToggle)
             .semantics { contentDescription = a11yDesc },
         contentAlignment = Alignment.CenterStart,
     ) {
-        // 空态（判据 4）：标签是空串，但**孔位照旧 40dp** —— 不 return、不零高、不推挤顶栏。
-        val label = when {
-            mode == TickerMode.LOCKED -> stringResource(tickerLockedLabel(state))
-            entryIndex >= 0 -> ordered[entryIndex].label
-            else -> ""
-        }
-        if (label.isNotEmpty()) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = TICKER_TEXT_SP.sp),
-                fontWeight = if (confirm) FontWeight.Medium else FontWeight.Normal,
-                color = if (mode == TickerMode.LOCKED) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 2.dp),
-            )
-        }
-        // 详情仍是浮层：不占布局高度、不推正文；点外面空白处即收回。
-        DropdownMenu(
-            expanded = expanded && entryIndex >= 0 && entryIndex < ordered.size,
-            onDismissRequest = { expandedIndex = -1 },
-        ) {
-            Column(
-                Modifier
-                    .widthIn(max = 320.dp)
-                    .heightIn(max = 280.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+        if (lockedLabel.isNotEmpty() || body.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(tickerSlotDp(LocalDensity.current.fontScale).dp)
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (expandedIndex >= 0 && expandedIndex < ordered.size) {
-                    val item = ordered[expandedIndex]
-                    Text(
-                        text = item.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = item.body,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
+                if (entry != null) {
+                    TickerBadge(text = entry.label)
+                    Spacer(Modifier.width(6.dp))
                 }
+                Text(
+                    text = if (entry != null) body else lockedLabel,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = TICKER_TEXT_SP.sp),
+                    fontWeight = if (confirm) FontWeight.Medium else FontWeight.Normal,
+                    // 墨一（434）：朱浅底上比原线灰多一档余量；锁定态本来就是主角，同色。
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+        TickerDetail(ordered = ordered, expandedIndex = detailIndex, onDismiss = onDismiss)
+    }
+}
+
+/** 容器的三层修饰：44dp 同高 ＋（有内容才）朱浅底/rPill 10/朱砂 1.5dp 描边 ＋（待确认才）琥珀强调。 */
+@Composable
+private fun pillShellModifier(pill: Boolean, confirm: Boolean): Modifier {
+    val shell = Modifier.heightIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)
+    val zhu = if (!pill) {
+        shell
+    } else {
+        shell
+            .clip(RoundedCornerShape(rPill))
+            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(rPill))
+            .border(
+                BAO_TOPBAR_PILL_STROKE_DP.dp,
+                MaterialTheme.colorScheme.error,
+                RoundedCornerShape(rPill),
+            )
+    }
+    // 「待你确认」在朱胶囊之上再加它自己那一档强调（浅底加深一档 ＋ 1dp 琥珀描边）。
+    // 描边跟着胶囊走 rPill：第四百三十四批之前这里是 RectangleShape——那会儿跑马灯是**记录条档**
+    // （无底无圆角），方框对；现在是朱胶囊，方框压在圆角上会画出四个尖角。
+    return if (!confirm) {
+        zhu
+    } else {
+        zhu
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(TICKER_CONFIRM_STROKE_DP.dp, MaterialTheme.colorScheme.tertiary, RoundedCornerShape(rPill))
+    }
+}
+
+/**
+ * 类目标那颗（434：实心朱砂白字 52×28、圆角 rBadge、11sp Medium）。
+ *
+ * 宽度写 `widthIn(min = …)` 而不是 `width = …`：中文类目最长四字（这次学到／本轮用量），
+ * 4×11sp≈44dp ＋ 左右内距正好落在 52dp 上；换成更长的词（或大字体）自己撑开，不截字。
+ */
+@Composable
+private fun TickerBadge(text: String) {
+    Box(
+        modifier = Modifier
+            .height(TICKER_BADGE_HEIGHT_DP.dp)
+            .widthIn(min = TICKER_BADGE_WIDTH_DP.dp)
+            .clip(RoundedCornerShape(rBadge))
+            .background(MaterialTheme.colorScheme.error, RoundedCornerShape(rBadge))
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = TICKER_BADGE_TEXT_SP.sp),
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onError,
+            maxLines = 1,
+        )
+    }
+}
+
+/** 详情浮层（K2 判据一行没动：DropdownMenu ＋ 320×280 上限 ＋ 内部可滚，不推正文）。 */
+@Composable
+private fun TickerDetail(
+    ordered: List<NoticeItem>,
+    expandedIndex: Int,
+    onDismiss: () -> Unit,
+) {
+    DropdownMenu(expanded = expandedIndex in ordered.indices, onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .widthIn(max = 320.dp)
+                .heightIn(max = 280.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            if (expandedIndex in ordered.indices) {
+                val item = ordered[expandedIndex]
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = item.body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }

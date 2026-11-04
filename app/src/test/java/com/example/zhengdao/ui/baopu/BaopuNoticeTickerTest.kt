@@ -56,13 +56,25 @@ class BaopuNoticeTickerTest {
      * R3 空闲才可点：锁定态点不出详情（那里没有条目，只有当下状态）。
      *
      * 红＝有人把 clickable 的 enabled 写死 true（锁定态点一下弹空浮层）。
+     * 第四百三十四批：跑马灯进了朱胶囊容器，可点条件从「mode == IDLE ∧ entryIndex ≥ 0」
+     * 换成等价的「entry != null」——锁定态在上一行就把 `entryIndex` 钉成 −1，
+     * `entry` 因此恒为 null，两条算式同一个含义（这里连那条赋值一起钉，防只改一边）。
      */
     @Test
     fun `R3_只有空闲态可点开详情`() {
         val src = tickerSource()
         assertTrue(
-            "可点条件必须绑在「空闲 ∧ 有条目」上",
-            src.contains("clickable(enabled = mode == TickerMode.IDLE && entryIndex >= 0)"),
+            "可点条件必须绑在「有这一条」上",
+            src.contains("clickable(enabled = entry != null, onClick = onToggle)"),
         )
+        assertTrue(
+            "锁定态不取条目（entryIndex 恒 −1 ⇒ entry 恒 null）",
+            src.contains("if (mode == TickerMode.LOCKED) -1 else tickerEntryIndex("),
+        )
+        assertTrue(
+            "详情只在展开的就是正在显示这一条时才打开",
+            src.contains("if (expanded && entryIndex in ordered.indices) entryIndex else -1"),
+        )
+        assertFalse("不许写死 enabled = true", src.contains("clickable(enabled = true"))
     }
 }

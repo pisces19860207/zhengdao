@@ -451,6 +451,12 @@
     <string name="baopu_process_toggle_close">收起过程明细</string>
     <string name="baopu_process_detail_title">这轮的过程</string>
   <string name="baopu_channel_button">选模型</string>
+    <!-- ── 第四百三十四批 · 顶栏模型区两颗命中区（徽标＝换供应商，模型名＝换本家模型）── -->
+    <string name="baopu_topbar_badge_desc">切换供应商或网关</string>
+    <string name="baopu_topbar_model_desc">切换本供应商下的模型</string>
+    <string name="baopu_topbar_unconfigured">未配置</string>
+    <string name="baopu_topbar_unconfigured_desc">未配置，点它去设置里填密钥</string>
+    <string name="baopu_topbar_only_one">仅此一家，没得切</string>
     <!-- ── 抱朴 ask_user 提问卡（刀 2 · C 段；RunEngine 停下问用户的唯一形态）── -->
     <string name="baopu_ask_recommended">推荐选项</string>
     <string name="baopu_ask_free_submit">按这个回答</string>
