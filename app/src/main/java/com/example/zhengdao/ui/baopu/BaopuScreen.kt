@@ -134,7 +134,10 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val res = LocalResources.current
     // 443：模型名表随包读一次装进纯函数层（读盘只在 ModelLabelAssets，判据层零 Android）。
-    remember(context) { ModelLabelAssets.install(context) }
+    // 蓝总管验收接管（2026-11-04）：原写法 `remember(context) { install(context) }` 返回 Unit，
+    // lint RememberReturnType 判 Error（全仓 lint 硬闸 0 错 0 警，本项目不许压制）。
+    // 以「装好了」这个事实当返回值：语义不变（同一 context 只跑一次），lint 清。
+    val labelsReady = remember(context) { ModelLabelAssets.install(context); true }
     // ── 第二百一十二批：答案浮卡（卡＝答案、正文＝详情）────────────────────────
     // 三态机与「不重查」全在 `ResultCards`／`ResultCardState`（纯函数，JVM 直测）；
     // 这一层只持有那一份内存状态，**不碰查询**。

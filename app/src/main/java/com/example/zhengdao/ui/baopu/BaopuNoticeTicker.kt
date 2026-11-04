@@ -25,7 +25,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -163,7 +162,9 @@ private fun TickerPill(
     val a11yDesc = stringResource(tickerA11yRes(mode, confirm))
     val lockedLabel = if (mode == TickerMode.LOCKED) stringResource(tickerLockedLabel(state)) else ""
     val body = entry?.let { inlineTickerText(it.body) }.orEmpty()
-    BoxWithConstraints(
+    // 蓝总管验收接管（2026-11-04）：443 把详情小下拉改成「左右铺满」后不再读 constraints，
+    // BoxWithConstraints 的 scope 变空用 ⇒ lint UnusedBoxWithConstraintsScope 判 Error。改成普通 Box。
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .pillShellModifier(pill = pill, confirm = confirm)
