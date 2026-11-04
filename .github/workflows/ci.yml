@@ -570,6 +570,20 @@ jobs:
           python3 tools/check-license-policy.py --selftest
           python3 tools/check-license-policy.py
 
+      # ── 任务 E（424）：第三方声明自动生成门禁 ──────────────────────────────
+      # THIRD-PARTY-LICENSES.md 的「依赖各节」由 tools/gen-notices.py 从依赖真源
+      # （gradle/libs.versions.toml ＋ 模块 build.gradle.kts ＋ rust/Cargo.lock）生成；
+      # 这一步只判一致，依赖变了没重生成 ⇒ 红（420 实测手写清单必漂移：漏 32 / 陈旧 7）。
+      # 与 423 分工：423 判「能不能用」，本步管「写清楚」。
+      # 为什么排在 SBOM 之后（同 423）：许可取证读本地 Gradle 缓存 POM；缓存不全时由
+      # tools/notices-evidence.json 的离线登记表兜底（带 POM 原文 / .crate checksum 绑定），
+      # 两者都缺证据的坐标写「未取证」，不猜。生成器只替换两对 HTML 标记之间，
+      # 资产类 / 说明文字 / 文末历史节（7 节已迁出）人工维护，不会被覆盖。
+      - name: 第三方声明生成门禁（424：清单与依赖不一致 ⇒ 红）
+        run: |
+          python3 tools/gen-notices.py --selftest
+          python3 tools/gen-notices.py --check
+
       - name: 归档 SBOM
         if: always()
         uses: actions/upload-artifact@v7

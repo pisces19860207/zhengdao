@@ -57,69 +57,15 @@
 > - 本文件与 `PROVENANCE.md`、`docs/闭源切换清单-2026-10-11.md` 三份文件如有冲突，
 >   **以本文件与 `PROVENANCE.md` 为准**（它们是取证现场）。
 
-## 1. proot（Termux fork 发行版）
 
-- 用途：免 root 用户空间环境（guest Linux 的加载器）
-- 版本：5.1.107.96（Termux 官方仓库 aarch64 构建产物）
-- 许可证：GPL-2.0-or-later（含其内嵌 loader 组件）
-- 来源：<https://github.com/termux/proot>（源码即该仓库）
-- **随附正文**：`licenses/GPL-2.0.txt`
-- **官方产物摘要（可复现锚点，2026-10-11 取自 Termux 官方 apt 索引
-  <https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages>，
-  索引快照 1,863,706 B）**：`proot_5.1.107.96_aarch64.deb`
-  SHA256 = `8199dca06dccb693ec09fb1759e3e1ad08b4863f0c11c612f89c20bd9ecdc1a0`
-- 源码可得性：本仓库分发其二进制的同时，以指向上述官方源码仓库的方式满足
-  GPL 第 3 条的源码提供要求；官方 `.deb` 摘要见上（可唯一确定取的是哪一份官方产物）；
-  若对二进制有任何修改，将一并公开对应源码。
-- ⚠️ **构建 commit 仍缺（已知开放项）**：Termux 官方 apt 索引**不发布构建 commit**
-  （官方产物由 `termux/termux-packages` 的 CI 产出），按 `packages/proot/build.sh` 版本号
-  回查历史尚未做。当前可复现锚点 = **版本号 + 官方 `.deb` SHA256 + 索引快照日期
-  （2026-10-11）**；见 `docs/闭源切换清单-2026-10-11.md` 第四节。
-- 本项目对它的使用方式：仅作为独立可执行文件调用（execve），未链接、未修改。
+> **2026-11-04 第四百二十四批 · 声明自动生成**
+> `THIRD-PARTY-LICENSES.md` 的**依赖各节**改由 `tools/gen-notices.py` 从依赖真源生成
+> （`gradle/libs.versions.toml` ＋ 各模块 `build.gradle.kts` ＋ `rust/Cargo.lock`），
+> CI 跑 `gen-notices.py --check`：清单与依赖不一致就红。生成器**只替换两对 HTML 注释标记之间**的内容；
+> 资产类、说明文字、以及 420 指出的 7 节（标 `[已迁出：zhengdao-term]` 归档到文末）
+> 全部人工维护、生成器不许碰。编号沿用历史（§1–§9），文末历史节保留原文以保追溯。
 
-## 2. libtalloc（Termux 发行版）
-
-- 用途：上述 proot 的运行时依赖
-- 版本：2.5.0（Termux 官方仓库 aarch64 构建产物）
-- 许可证：**LGPL-3.0-or-later**（talloc 上游）
-- 来源：上游 <https://www.samba.org/ftp/talloc/>（本项目取的是 Termux 官方构建产物，
-  包元数据主页 <https://talloc.samba.org/talloc/doc/html/index.html>）
-- **随附正文**：`licenses/LGPL-3.0.txt` ＋ `licenses/GPL-3.0.txt`（GPL-3.0 全文；2026-10-11 前该正文放在仓库根 `LICENSE`）
-- **官方产物摘要**：`libtalloc_2.5.0_aarch64.deb`
-  SHA256 = `556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7`
-- ⚠️ **使用形态（2026-10-11 核实，此前只写了「动态库方式独立分发」）**：
-  `app/src/main/assets/proot/` 里它是**独立的 ELF 动态库**（`libtalloc.so` 33,592 B，
-  运行时释放为 `files/termux-proot/libtalloc.so.2`），**由 proot 进程在进程内动态加载**
-  ⇒ 符合 LGPL「以共享库方式链接、接收者可自行替换该 `.so`」的形态，但它确实运行在
-  proot 进程之内，**不受「聚合不传染」那条判据保护**，LGPL 的随附义务必须履行。
-- **源码可得性**：① 上游 samba.org 公开发布 talloc 源码；② Termux 官方源提供对应源码包
-  （`apt-get source libtalloc`，或 packages.termux.dev 的 `pool/main/libt/libtalloc/`）。
-  若需本项目随分发物直接提供源码副本，依 GPL/LGPL 第 3 条向仓库维护者索取。
-
-## 3. libandroid-shmem（Termux 发行版）
-
-- 用途：上述 proot 的运行时依赖（System V 共享内存的 Android 适配层）
-- 版本：0.7（Termux 官方仓库 aarch64 构建产物）
-- 许可证：**BSD-3-Clause**（2026-10-11 起钉死；此前写作「见 Termux 仓库对应包元数据
-  （Apache-2.0 / BSD 类宽松许可）」——不精确）。上游
-  <https://github.com/termux/libandroid-shmem> 的 `LICENSE`：Copyright (c) 2013,
-  Sergii Pylypenko；Copyright (c) 2017, Fredrik Fornwall；第三条为
-  「Neither the name of the {organization} nor the names of its contributors…」
-  （`{organization}` 占位符为上游原文照录）。
-- 来源：<https://github.com/termux/libandroid-shmem>（本项目取的是 Termux 官方构建产物）
-- **随附正文**：`licenses/BSD-3-Clause.txt`
-- **官方产物摘要**：`libandroid-shmem_0.7_aarch64.deb`
-  SHA256 = `0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6`
-- 使用形态：同样是**独立的 ELF 动态库**（`libandroid-shmem.so` 14,432 B → 运行时释放为
-  `files/termux-proot/libandroid-shmem.so`），在 proot 进程内加载。
-- 义务：BSD-3-Clause 只要求在二进制分发物中**复现版权声明、条件列表与免责声明**，
-  **没有源码要约义务**（已由 `licenses/BSD-3-Clause.txt` 履行）。
-
-## 4. xterm.js / @xterm/addon-fit
-
-- 用途：内嵌终端渲染（assets/terminal/ 下为其官方发行文件）
-- 许可证：MIT
-- 来源：<https://github.com/xtermjs/xterm.js>
+---
 
 ## 5. zstd（C 本体，静态编进 Rust 核 `libzhengdao_core.so`）
 
@@ -142,103 +88,6 @@
   BSD 2-Clause（[`licenses/BSD-2-Clause.txt`](licenses/BSD-2-Clause.txt)）**版权人不同、必须分两份**
   （那份现在只留档，见文首表）。
 
-## 6. JetBrains Maple Mono（终端默认字体）
-
-- 用途：终端默认正文字体（`app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf`，
-  运行时由 `TerminalPrefs.typeface()` 经 `Typeface.createFromAsset` 载入）
-- 许可证：**SIL Open Font License 1.1**；OFL 全文随字体同目录分发
-  （`app/src/main/assets/fonts/OFL.txt`，即上游 zip 内的 `LICENSE.txt`）
-- 来源：<https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono> release `1.2304.79`
-  的 `JetBrainsMapleMono-NF-XX-XX-XX.zip`（NF = Nerd Font 图标、XX = 不窄保 2:1、
-  保留连字、未 hint）
-- 改动情况（**2026-10-11 更正**）：**已由本项目子集化**（工具 `tools/subset-terminal-font.py`，
-  范围 = GB2312 常用汉字 6,763 字 ＋ 终端必备区 ＋ Nerd Font 图标区），随包字体因此**不是**上游整包
-  （现 6,773,564 B）。**OFL 1.1 允许修改与再分发，子集化产物仍受 OFL 1.1 约束**：本项目保留
-  `OFL.txt` 全文与版权行、未改为暗示上游背书的字体名。入库时文件名也改为带 `NF` 的形式
-  （上游 zip 内平铺文件名为 `JetBrainsMapleMono-Regular.ttf`，NF 是整包变体）
-- 版权（`OFL.txt` 首三行）：JetBrains Mono Project Authors（2020）、Maple Mono Project
-  Authors（2022）、Space Time（2025）
-- SHA256：字体（子集化后）`10c8ea51ab6bb2df9a615424df1054ad6b3c08ad60a47e8bb3368039b92b5089`、
-  OFL 文本 `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533`（4,572 B，仓库内 LF 形态 = 上游原文件；Windows 检出为 4,666 B，见 `docs/ERRATA.md` E-104 补记）
-  （来源包与完整清单见 PROVENANCE.md「字体」小节）
-
-## 7. Debian GNU/Linux 13.7 base（guest 系统层 rootfs）
-
-- 用途：PRoot 加载的 guest 用户空间**系统层**（终端里那个 rootfs）
-- 版本：Debian GNU/Linux **13.7（trixie）**，aarch64
-  （2026-10-11 真机核对：`/etc/os-release` = `PRETTY_NAME="Debian GNU/Linux 13 (trixie)"`、
-  `VERSION_ID="13"`、`VERSION_CODENAME=trixie`；`/etc/debian_version` = `13.7`）
-- **构建来源（2026-10-11 补记）**：本仓库 `rootfs/build-rootfs.sh`
-  （`DEBIAN_RELEASE="trixie"`、`DEBIAN_VERSION="13.7"`；`debootstrap` 主动构建，
-  x86_64 构建机走 `qemu-user-static` 两阶段交叉；构建期删减见该脚本 `:363`）⇒ 发布为
-  Release 资产 `debian-13.7-base-arm64.tar.zst`（约 229 MB，zstd；另有增量补丁与
-  Ed25519 签名索引）。镜像内包清单与逐文件摘要由 `tools/rootfs-manifest.py` 写入
-  `rootfs-manifest.txt`（每行 `type` / `mode(%04o)` / `size` / `digest` / `path`）。
-  **Release 资产摘要（2026-10-11 入册）**：`debian-13.7-base-arm64.tar.zst` = 201,632,517 B /
-  `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02`，
-  `rootfs-manifest.txt` = 2,117,653 B /
-  `82fa3f4e84a7963d399cf5f63a3bb8a41d5af183ee7f5812a6a8e84eeecdf16c`，
-  `rootfs-index.json` = 469 B /
-  `50f10326d9e68a4c1fdd03154e317c9d6068a0d6fa2c71a4c5e73f3b073b78ff`
-  （含两份 `.sha256` 共五项；**v2.0.14 ~ v2.0.17 四版逐字节相同**）。
-  判据 = 从公开地址回读 GitHub REST 的 `assets[].digest`，完整表与真机交叉核对见
-  根 `PROVENANCE.md`「官方发布资产摘要」一节。
-- 许可证：**Debian 是数百个独立软件包的聚合发行版，各包许可互不相同**
-  （GPL-2.0/3.0、LGPL、BSD、MIT、Apache-2.0、Artistic 等）。镜像内实测装了 **353 个包**
-  （2026-10-11 真机 `grep -c '^Package:' /var/lib/dpkg/status`）。
-  2026-10-12 细化：**镜像内**（`var/lib/dpkg/status`，即真正的分发物）是 **348** 个
-  （313 `arm64` + 35 `all`）；真机那 353 个里多出的 `libgpm2`/`vim`/`vim-common`/`vim-runtime`
-  等是构建之后在客服端装的，不属于分发物 —— 见 `docs/ERRATA.md` E-097 补记
-- ⚠️ **本环境为控制体积，在构建时删除了 `/usr/share/doc`、`/usr/share/man`、`/usr/share/info`
-  （`rootfs/build-rootfs.sh` 的 §2.10 清理段）** ⇒ 镜像里没有逐包版权**目录树**。
-  **但版权文本本身随包分发**（2026-10-12 结 ERRATA E-097，用户拍板「随包分发」）：
-  构建脚本在删除之前，把每包的 `copyright` 收成一个归档留在镜像里 ——
-  `/usr/share/zhengdao-copyright.tar.zst`（路径刻意放在 `/usr/share` 顶层，避开被删的
-  `/usr/share/doc/*`；归档内另附 `README.txt` 说明来源与查法）。镜像内展开即可查证：
-
-  ```bash
-  tar --zstd -xf /usr/share/zhengdao-copyright.tar.zst -C /tmp/zd-copyright
-  dpkg -S /usr/bin/node          # 查某文件属于哪个包
-  dpkg-query -W -f='${Package} ${Version}\n'   # 已装包与版本
-  ```
-
-  ⚠️ **版本边界（诚实标注）**：镜像**内**那份归档是「本次改动之后重建的镜像」才自带。
-  v2.0.14 ~ v2.0.17 用的那份镜像（`debian-13.7-base-arm64.tar.zst`，摘要见上）构建于改动之前，
-  镜像里**不含**它。✅ **已用独立资产补上（2026-10-13）**：同一份归档另发为独立的 Release 资产，
-  只有 0.49 MiB —— 不必为了查版权再下 200 MB 整包：
-
-  - 滚动版：<https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-copyright.tar.zst>
-    （同名 `.sha256` = `512515f34c562c4f12f7d858266e1ad4fefb6141a4896204d7456fc3a053e816`，517,471 B）
-  - 也已补挂到 **v2.0.13 ~ v2.0.17 五个正式 Release**：这五版与滚动版用的都是**同一份镜像**
-    （`d80639e7…74f02`，判据 = 从 GitHub REST 回读 `assets[].digest`）⇒ 版权文本逐字相同，
-    同一份归档对它们都成立。
-  - 构建侧从此自动带上：`rootfs/build-rootfs.sh` 在打包镜像之后把镜像内那份**再导出**到输出目录
-    （`debian-13.7-copyright.tar.zst` + 裸摘要 `.sha256`），CI 的
-    `gh release upload latest rootfs-files/*` 与 tag job 搬运 rootfs 资产时的 `debian-*.tar.zst` /
-    `debian-*.tar.zst.sha256` glob 都会一并带上 ⇒ **不需要改 `.github/workflows/build.yml`**。
-  - 归档内容 = 镜像内那 348 个包的 `copyright` 全文（未压缩 4.78 MiB → zstd-19 后 0.49 MiB），
-    逐份 SHA-256 与来源 URL 见 `docs/ERRATA.md` E-097 补记。
-
-  对**更早**的版本（v2.0.12 及以前，Release 里没有镜像副本；它们的镜像指纹未经核对），
-  替代获取途径（任一即可）：
-  1. `http://deb.debian.org/debian`（镜像内 `sources.list` 即指向此处的 `trixie main`）
-     取同版本包，包内自带 `usr/share/doc/<包>/copyright`；
-  2. `apt-get source <包>`，读源码包里的 `debian/copyright`；
-  3. 历史/已下架版本用 <https://snapshot.debian.org/>。
-- **待核（诚实标注，不是缺陷）**：*Debian rootfs 所含各包的完整许可证清单及源码获取方式，
-  待逐包核查后补充。* 2026-10-12 起**文本层面已随包分发**（上一条），仍是欠账的是
-  **逐包许可证标识的汇总表**（哪个包 = 哪个 SPDX 标识）——那需要解析每份 `copyright` 的
-  `License:` 字段（多数包是 DEP-5 机读格式，但有相当一部分是自由文本，只能半自动 + 人工核）。
-  **原文已经没有障碍**：2026-10-12 已把镜像内 348 个包的 `copyright` 逐份取齐（含 SHA-256，
-  见 `docs/ERRATA.md` E-097 补记），缺的只是这份汇总表本身 —— 本项目**未逐包点数**。
-  当前口径：各包许可证以随包归档 / Debian 官方仓库同版本包内的 `debian/copyright` 为准。
-- 源码要约：本仓库对**自己分发**的 GPL 组件（proot 等，见 §1）以指向官方源码仓库的方式满足
-  GPL 第 3 条；系统层里各 GPL/AGPL 组件的源码，由 Debian 官方源按上一条途径提供。
-- 改动情况：构建脚本对系统层只做**删减**（文档 / man / info / 多余 locale / 构建残留）与少量
-  **配置文件写入**（`/etc/resolv.conf`、`/etc/hosts`、`/etc/uv/uv.toml`、
-  `/etc/profile.d/zhengdao-uv.sh`、`/etc/localtime`、apt 源），**未修改任何包的二进制**；
-  各包功能与上游同版本一致，卸载/升级仍走 `apt`。
-
 ---
 
 ## 红线声明（对协作者与 AI 的约束）
@@ -249,30 +98,6 @@
 2. 若未来需要修改上述 GPL 组件的行为，必须 fork 其源码单独修改并公开，
    保持其独立分发，而不是把补丁合入本项目源码。
 3. 本文件与 PROVENANCE.md 共同构成项目的原创性合规基线，改动需经项目所有者确认。
-
-## Termux terminal-emulator / terminal-view / libtermux JNI
-
-- 来源：https://github.com/termux/termux-app （v0.119.0-beta.3，模块 terminal-emulator 与 terminal-view）
-- 许可证：**Apache-2.0**（源码级聚合，随本仓库分发，版权头保留）
-  > ⚠️ **2026-10-05 勘误**：此前此处误标为 GPL-3.0。上游 `termux/termux-app` 仓库**整体**是
-  > GPLv3-only，但其 `LICENSE.md` 明确列出例外：**`terminal-view` 与 `terminal-emulator` 两个库
-  > 为 Apache-2.0**（源自 jackpal/Android-Terminal-Emulator）。本项目聚合的正是这两个库，
-  > **并未聚合 GPL 的主应用本体**。GPL 会传染、Apache-2.0 不会——这条直接决定第一方代码能否闭源，
-  > 属不可出错项。完整依据见 `docs/ERRATA.md` **E-001** 与 `PROVENANCE.md`。
-- 用途：终端模拟引擎（VT-100/xterm 状态机）与原生终端视图（替代 WebView/xterm.js 架构）
-- 修改：包内 R 引用改为宿主应用 R；textselection 把手资源并入宿主 res；其余未改动
-- **Apache-2.0 义务逐条对照（2026-10-11 补）**：
-  - **4(a) 给接收者一份许可证副本** ⇒ [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)。
-    本次补齐前，**仓库内没有任何 Apache-2.0 正文**（唯一另一个许可证文件是字体的 OFL）。
-  - **4(b) 修改须显著标注** ⇒ 12 个衍生文件逐个带文件头修改通知
-    （逐文件修改点见 `PROVENANCE.md`「Apache-2.0 修改通知」一节、`docs/ERRATA.md` E-100）。
-  - **4(c) 保留版权、专利、商标与归属声明** ⇒ 未移除上游文件内的任何声明
-    （这 12 个上游文件原本就没有许可证头，故「保留」体现为不移除、并新增我们的修改通知）。
-  - **4(d) NOTICE 文件** ⇒ **不适用**：上游 `termux-app` 的 v0.119.0-beta.3 快照里只有根
-    `LICENSE.md` 与 `termux-shared/LICENSE.md`，**没有 NOTICE 文件**（2026-10-11 核对）。
-  - 上游例外依据原文（`termux-app/LICENSE.md`）：「Terminal Emulator for Android code is used
-    which is released under Apache 2.0 license. Check `terminal-view` and `terminal-emulator`
-    libraries.」
 
 ## 8. Maven 运行时依赖（136 个已解析模块 / 47 个 group）→ 声明许可证 → 覆盖方式（2026-10-11 补）
 
@@ -294,6 +119,63 @@
 #    ~/.gradle/caches/modules-2/files-2.1/<组>/<名>/<版本>/<sha1>/<名>-<版本>.pom
 #    —— 注意中间那个 <sha1> 子目录，Get-ChildItem 必须带 -Recurse（否则整片报「POM 缺失」）。
 ```
+
+<!-- gen-notices:begin:maven -->
+> **本节由 `tools/gen-notices.py` 生成**（标记 `gen-notices:maven` 之间），
+> 人工请勿改这一段；依赖变了跑一次生成，或让 CI 的 `--check` 把它判红。
+> 许可优先从**本地 Gradle 缓存 POM** 取（含 `<parent>` 上溯）；冷缓存时由
+> `tools/notices-evidence.json` 的离线登记表兜底（带 POM 原文与 sha256）。全程不联网；
+> 两处都没有证据的坐标 ⇒ 写「未取证」，不按 group 猜。
+
+**表 8-A · 直接声明的 Maven 依赖**（28 条；随包 16 / 不随包 12 / 许可未取证 0）
+
+| 坐标 | 版本 | 许可 | 随包？ | 来源 | 许可取证 |
+|---|---|---|---|---|---|
+| `androidx.activity:activity-compose:1.13.0` | `1.13.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:657（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.benchmark:benchmark-macro-junit4:1.5.0` | `1.5.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts:51（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.material3:material3:1.4.0` | `1.4.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:658（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.runtime:runtime:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | core/build.gradle.kts:56（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-graphics:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:660（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-test-junit4:1.12.1` | `1.12.1` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts:692（androidTestImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-test-manifest:1.12.1` | `1.12.1` | Apache-2.0 | 否（debugImplementation） | app/build.gradle.kts:695（debugImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-tooling-preview:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:661（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-tooling:1.12.1` | `1.12.1` | Apache-2.0 | 否（debugImplementation） | app/build.gradle.kts:696（debugImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:659（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.core:core-ktx:1.19.1` | `1.19.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:662（implementation）；core/build.gradle.kts:51（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.lifecycle:lifecycle-runtime-compose:2.11.0` | `2.11.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:669（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.lifecycle:lifecycle-runtime-ktx:2.11.0` | `2.11.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:663（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.navigation:navigation-compose:2.10.2` | `2.10.2` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:655（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.profileinstaller:profileinstaller:1.4.1` | `1.4.1` | Apache-2.0 | 否（benchmarkImplementation） | app/build.gradle.kts:678（benchmarkImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.test.espresso:espresso-core:3.7.0` | `3.7.0` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts:693（androidTestImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.test.ext:junit:1.3.0` | `1.3.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块/androidTestImplementation） | app/build.gradle.kts:694（androidTestImplementation）；macrobenchmark/build.gradle.kts:53（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.test.uiautomator:uiautomator:2.4.0` | `2.4.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts:52（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.work:work-runtime:2.12.0` | `2.12.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:667（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.mikepenz:multiplatform-markdown-renderer-code:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:685（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.mikepenz:multiplatform-markdown-renderer-m3:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:684（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.mikepenz:multiplatform-markdown-renderer:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:683（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.squareup.okhttp3:mockwebserver3:5.5.1` | `5.5.1` | Apache-2.0 | 否（testImplementation） | app/build.gradle.kts:633（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.squareup.okhttp3:okhttp:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:628（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `io.gitlab.arturbosch.detekt:detekt-cli:1.23.8` | `1.23.8` | Apache-2.0 | 否（detektCli） | app/build.gradle.kts:626（detektCli）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `junit:junit:4.13.2` | `4.13.2` | EPL-1.0 | 否（testImplementation） | app/build.gradle.kts:686（testImplementation）；core/build.gradle.kts:58（testImplementation）；native-core/build.gradle.kts:49（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `org.apache.poi:poi:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:651（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `org.json:json:20240303` | `20240303` | PublicDomain | 否（testImplementation） | app/build.gradle.kts:690（testImplementation）；core/build.gradle.kts:60（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+
+**表 8-B · 版本托管（BOM，platform() 声明，本身不进分发物）**
+
+| 坐标 | 版本 | 用途 | 来源 |
+|---|---|---|---|
+| `androidx.compose:compose-bom:2026.09.00` | `2026.09.00` | 只给别的坐标供版本，不产生 4(a)/4(d) 义务 | app/build.gradle.kts:656（platform）；app/build.gradle.kts:691（platform）；core/build.gradle.kts:55（platform） |
+
+> 口径说明：`test*` / `androidTest*` / `debug*` / `benchmark*` / `detektCli` 的构件，
+> 以及 `:macrobenchmark`（`com.android.test` 模块，独立测试 APK）的全部依赖，
+> 都不进主 app 的 release 分发物，随包？列写「否」；其余按「进分发物」保守登记。
+> 传递闭包不在本节登记范围——
+> 它由 Gradle 冲突解析决定，离线按 POM 递归只能得到**推定**集合（420 批标 B 级），
+> 那张逐组表与正文覆盖方式见上面 §8 的人工说明；本节只登记构建脚本里**硬证明**的直接声明。
+<!-- gen-notices:end:maven -->
+
+> **下方逐组表 = 2026-10-11 的人工快照（已冻结）**：当前依赖逐条登记以生成块「表 8-A / 8-B」为准；
+> 旧表保留的是「按组聚合的覆盖方式」取证与已删依赖的删除线记录，不是当前依赖清单。
 
 | 组 | 已解析模块数 | POM 里声明的许可证 | 覆盖方式 |
 |---|---|---|---|
@@ -371,6 +253,88 @@
 「版权行」这一列是**上游正文里的那一行照录**（MIT 要求「上述版权声明＋许可声明须出现在所有副本中」、
 BSD-3-Clause 第 1／2 条要求源码与二进制分发都复现版权声明）。随包的两份正文是**通用模板**
 （第一行是 `<year> <owner>` 占位符），署名就落在 `licenses/MIT.txt` ＋ `licenses/NOTICES.txt` 第 2 段。
+
+<!-- gen-notices:begin:rust -->
+> **本节由 `tools/gen-notices.py` 生成**（标记 `gen-notices:rust` 之间）。
+> 坐标 / 版本 / 来源来自 `Cargo.lock`（workspace 根；派工单写的 `rust/core/Cargo.lock` 不存在）；
+> 「是否随包」取 421 批 dep-info 取证集合，许可取带 checksum 绑定的离线登记表；
+> 本机 `~/.cargo/registry/{cache,src}` 已清理、sparse index JSON 无 license 字段 ⇒
+> 登记表缺该包（或 checksum 与锁文件不符）一律「未取证」，不按 crate 名字猜许可。
+
+**表 9-A · `Cargo.lock` 第三方 package**（63 条；进 .so 33 / 不进 30 / 许可未取证 30；锁文件总 package 64）
+
+| 坐标 | 版本 | 许可 | 随包？ | 来源 | 许可取证 |
+|---|---|---|---|---|---|
+| `adler2@2.0.1` | `2.0.1` | 0BSD OR MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← miniz_oxide-0.9.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `autocfg@1.5.1` | `1.5.1` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← num-traits-0.2.19；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `block-buffer@0.10.4` | `0.10.4` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← digest-0.10.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `bytes@1.12.1` | `1.12.1` | MIT | 是（进 .so，dep-info） | 传递（← combine-4.6.8；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `cc@1.6.0` | `1.6.0` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← sha2-asm-0.6.4, zstd-sys-2.1.0+zstd.1.5.7；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `cesu8@1.1.0` | `1.1.0` | Apache-2.0/MIT | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `cfg-if@1.0.5` | `1.0.5` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← crc32fast-1.5.2, filetime-0.2.29, getrandom-0.4.3 ＋2；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `combine@4.6.8` | `4.6.8` | MIT | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `cpufeatures@0.2.17` | `0.2.17` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← sha2-0.10.9；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `crc32fast@1.5.2` | `1.5.2` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← flate2-1.1.10；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `crypto-common@0.1.7` | `0.1.7` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← digest-0.10.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `digest@0.10.7` | `0.10.7` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← sha2-0.10.9；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `filetime@0.2.29` | `0.2.29` | MIT/Apache-2.0 | 是（进 .so，dep-info） | 传递（← tar-0.4.46；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `find-msvc-tools@0.1.14` | `0.1.14` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← cc-1.6.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `flate2@1.1.10` | `1.1.10` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `generic-array@0.14.7` | `0.14.7` | MIT | 是（进 .so，dep-info） | 传递（← block-buffer-0.10.4, crypto-common-0.1.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `getrandom@0.4.3` | `0.4.3` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jobserver-0.1.35；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `hex@0.4.3` | `0.4.3` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `jni-sys-macros@0.4.1` | `0.4.1` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jni-sys-0.4.1；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `jni-sys@0.3.1` | `0.3.1` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `jni-sys@0.4.1` | `0.4.1` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（Cargo.lock 依赖边，引入方未取证） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `jni@0.21.1` | `0.21.1` | MIT/Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `jobserver@0.1.35` | `0.1.35` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← cc-1.6.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `libc@0.2.190` | `0.2.190` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← cc-1.6.0, cpufeatures-0.2.17, filetime-0.2.29 ＋3；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `log@0.4.34` | `0.4.34` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `memchr@2.8.3` | `2.8.3` | Unlicense OR MIT | 是（进 .so，dep-info） | 传递（← combine-4.6.8；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `miniz_oxide@0.9.1` | `0.9.1` | MIT OR Zlib OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← flate2-1.1.10；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `num-bigint@0.4.8` | `0.4.8` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `num-integer@0.1.47` | `0.1.47` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← num-bigint-0.4.8；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `num-traits@0.2.19` | `0.2.19` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `pkg-config@0.3.34` | `0.3.34` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← zstd-sys-2.1.0+zstd.1.5.7；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `proc-macro2@1.0.107` | `1.0.107` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← quote-1.0.47, syn-2.0.119, thiserror-impl-1.0.69；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `quote@1.0.47` | `1.0.47` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jni-sys-macros-0.4.1, syn-2.0.119, thiserror-impl-1.0.69；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `r-efi@6.0.0` | `6.0.0` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← getrandom-0.4.3；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `same-file@1.0.6` | `1.0.6` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← walkdir-2.5.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `sha2-asm@0.6.4` | `0.6.4` | MIT | 是（进 .so，dep-info） | 传递（← sha2-0.10.9；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `sha2@0.10.9` | `0.10.9` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `shlex@2.0.1` | `2.0.1` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← cc-1.6.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `simd-adler32@0.3.10` | `0.3.10` | MIT | 是（进 .so，dep-info） | 传递（← miniz_oxide-0.9.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `syn@2.0.119` | `2.0.119` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jni-sys-macros-0.4.1, thiserror-impl-1.0.69；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `tar@0.4.46` | `0.4.46` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `thiserror-impl@1.0.69` | `1.0.69` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← thiserror-1.0.69；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `thiserror@1.0.69` | `1.0.69` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `typenum@1.20.1` | `1.20.1` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← crypto-common-0.1.7, generic-array-0.14.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `unicode-ident@1.0.26` | `1.0.26` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← proc-macro2-1.0.107, syn-2.0.119；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `version_check@0.9.5` | `0.9.5` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← generic-array-0.14.7；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `walkdir@2.5.0` | `2.5.0` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `winapi-util@0.1.11` | `0.1.11` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← same-file-1.0.6, walkdir-2.5.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows-link@0.2.1` | `0.2.1` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-sys-0.61.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows-sys@0.45.0` | `0.45.0` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows-sys@0.61.2` | `0.61.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← winapi-util-0.1.11；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows-targets@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-sys-0.45.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_aarch64_gnullvm@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_aarch64_msvc@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_i686_gnu@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_i686_msvc@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_x86_64_gnu@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_x86_64_gnullvm@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `windows_x86_64_msvc@0.42.2` | `0.42.2` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← windows-targets-0.42.2；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `zlib-rs@0.6.8` | `0.6.8` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← flate2-1.1.10；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
+| `zstd-safe@7.3.0` | `7.3.0` | BSD-3-Clause | 是（进 .so，dep-info） | 传递（← zstd-0.13.3；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `zstd-sys@2.1.0+zstd.1.5.7` | `2.1.0+zstd.1.5.7` | BSD-3-Clause | 是（进 .so，dep-info） | 传递（← zstd-safe-7.3.0；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `zstd@0.13.3` | `0.13.3` | MIT | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+
+> 边界：Rust 标准库自带的 `rust-deps`（addr2line / gimli / rustc-demangle 等）
+> **不在 `Cargo.lock` 里**，本表不覆盖；逐条理由见上面 §9.1 的人工取证说明。
+<!-- gen-notices:end:rust -->
+
+> **下方 9.2 表 = 第四百二十一批的 33 条人工取证快照（已冻结）**：逐条版权行与覆盖正文在此；
+> 当前 `Cargo.lock` 的全量登记以生成块「表 9-A」为准（含不进 `.so` 的 30 条边界）。
 
 | crate | 版本 | 许可证（`Cargo.toml` 的 `license` 字段原文） | 进 `.so` | 来源（谁引入） | 版权行（上游原文） | 覆盖正文 |
 |---|---|---|---|---|---|---|
@@ -484,3 +448,200 @@ python tools/check-licenses.py               # 产物侧：assets/licenses/ ↔ 
 `%TEMP%\zd-421\fetch_licenses.py`（下载＋checksum 绑定＋抽正文）、`gen421.py`（生成 9.2 表行与
 NOTICES 段）、`recheck_so.py`（复算进 .so 集合）；中间产物 `crates.json`（33 条，含每条的
 `bound_to_lock=True`、`license_field`、`license_files[].sha256/text`）与 `sec9-rows.txt`。
+
+---
+
+## 历史节（420 指出的陈旧 7 节：[已迁出：zhengdao-term]）
+
+> 第四百二十批 §2.3 判定：这 7 节**不是写错了**，是「描述的对象已不在当前分发物里」——
+> 终端已于 2026-10-27 整仓拆出到 `zhengdao-term`，`assets/proot/`、终端字体 TTF、`rootfs/` 等路径均不存在。
+> 第四百二十四批按派工单把它们标 `[已迁出：zhengdao-term]` 归档到文末，**不直接删**
+> （旧版 ≤ v2.2.1 的 APK 确实带过这些组件，正文与义务履行记录保留以保追溯）。
+> 每节原文逐字未改；当前分发物的依赖请看 §8 生成块「表 8-A」与 §9 生成块「表 9-A」。
+
+### [已迁出：zhengdao-term] 1. proot（Termux fork 发行版）
+
+- 用途：免 root 用户空间环境（guest Linux 的加载器）
+- 版本：5.1.107.96（Termux 官方仓库 aarch64 构建产物）
+- 许可证：GPL-2.0-or-later（含其内嵌 loader 组件）
+- 来源：<https://github.com/termux/proot>（源码即该仓库）
+- **随附正文**：`licenses/GPL-2.0.txt`
+- **官方产物摘要（可复现锚点，2026-10-11 取自 Termux 官方 apt 索引
+  <https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages>，
+  索引快照 1,863,706 B）**：`proot_5.1.107.96_aarch64.deb`
+  SHA256 = `8199dca06dccb693ec09fb1759e3e1ad08b4863f0c11c612f89c20bd9ecdc1a0`
+- 源码可得性：本仓库分发其二进制的同时，以指向上述官方源码仓库的方式满足
+  GPL 第 3 条的源码提供要求；官方 `.deb` 摘要见上（可唯一确定取的是哪一份官方产物）；
+  若对二进制有任何修改，将一并公开对应源码。
+- ⚠️ **构建 commit 仍缺（已知开放项）**：Termux 官方 apt 索引**不发布构建 commit**
+  （官方产物由 `termux/termux-packages` 的 CI 产出），按 `packages/proot/build.sh` 版本号
+  回查历史尚未做。当前可复现锚点 = **版本号 + 官方 `.deb` SHA256 + 索引快照日期
+  （2026-10-11）**；见 `docs/闭源切换清单-2026-10-11.md` 第四节。
+- 本项目对它的使用方式：仅作为独立可执行文件调用（execve），未链接、未修改。
+
+### [已迁出：zhengdao-term] 2. libtalloc（Termux 发行版）
+
+- 用途：上述 proot 的运行时依赖
+- 版本：2.5.0（Termux 官方仓库 aarch64 构建产物）
+- 许可证：**LGPL-3.0-or-later**（talloc 上游）
+- 来源：上游 <https://www.samba.org/ftp/talloc/>（本项目取的是 Termux 官方构建产物，
+  包元数据主页 <https://talloc.samba.org/talloc/doc/html/index.html>）
+- **随附正文**：`licenses/LGPL-3.0.txt` ＋ `licenses/GPL-3.0.txt`（GPL-3.0 全文；2026-10-11 前该正文放在仓库根 `LICENSE`）
+- **官方产物摘要**：`libtalloc_2.5.0_aarch64.deb`
+  SHA256 = `556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7`
+- ⚠️ **使用形态（2026-10-11 核实，此前只写了「动态库方式独立分发」）**：
+  `app/src/main/assets/proot/` 里它是**独立的 ELF 动态库**（`libtalloc.so` 33,592 B，
+  运行时释放为 `files/termux-proot/libtalloc.so.2`），**由 proot 进程在进程内动态加载**
+  ⇒ 符合 LGPL「以共享库方式链接、接收者可自行替换该 `.so`」的形态，但它确实运行在
+  proot 进程之内，**不受「聚合不传染」那条判据保护**，LGPL 的随附义务必须履行。
+- **源码可得性**：① 上游 samba.org 公开发布 talloc 源码；② Termux 官方源提供对应源码包
+  （`apt-get source libtalloc`，或 packages.termux.dev 的 `pool/main/libt/libtalloc/`）。
+  若需本项目随分发物直接提供源码副本，依 GPL/LGPL 第 3 条向仓库维护者索取。
+
+### [已迁出：zhengdao-term] 3. libandroid-shmem（Termux 发行版）
+
+- 用途：上述 proot 的运行时依赖（System V 共享内存的 Android 适配层）
+- 版本：0.7（Termux 官方仓库 aarch64 构建产物）
+- 许可证：**BSD-3-Clause**（2026-10-11 起钉死；此前写作「见 Termux 仓库对应包元数据
+  （Apache-2.0 / BSD 类宽松许可）」——不精确）。上游
+  <https://github.com/termux/libandroid-shmem> 的 `LICENSE`：Copyright (c) 2013,
+  Sergii Pylypenko；Copyright (c) 2017, Fredrik Fornwall；第三条为
+  「Neither the name of the {organization} nor the names of its contributors…」
+  （`{organization}` 占位符为上游原文照录）。
+- 来源：<https://github.com/termux/libandroid-shmem>（本项目取的是 Termux 官方构建产物）
+- **随附正文**：`licenses/BSD-3-Clause.txt`
+- **官方产物摘要**：`libandroid-shmem_0.7_aarch64.deb`
+  SHA256 = `0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6`
+- 使用形态：同样是**独立的 ELF 动态库**（`libandroid-shmem.so` 14,432 B → 运行时释放为
+  `files/termux-proot/libandroid-shmem.so`），在 proot 进程内加载。
+- 义务：BSD-3-Clause 只要求在二进制分发物中**复现版权声明、条件列表与免责声明**，
+  **没有源码要约义务**（已由 `licenses/BSD-3-Clause.txt` 履行）。
+
+### [已迁出：zhengdao-term] 4. xterm.js / @xterm/addon-fit
+
+- 用途：内嵌终端渲染（assets/terminal/ 下为其官方发行文件）
+- 许可证：MIT
+- 来源：<https://github.com/xtermjs/xterm.js>
+
+
+### [已迁出：zhengdao-term] 6. JetBrains Maple Mono（终端默认字体）
+
+- 用途：终端默认正文字体（`app/src/main/assets/fonts/JetBrainsMapleMono-NF-Regular.ttf`，
+  运行时由 `TerminalPrefs.typeface()` 经 `Typeface.createFromAsset` 载入）
+- 许可证：**SIL Open Font License 1.1**；OFL 全文随字体同目录分发
+  （`app/src/main/assets/fonts/OFL.txt`，即上游 zip 内的 `LICENSE.txt`）
+- 来源：<https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono> release `1.2304.79`
+  的 `JetBrainsMapleMono-NF-XX-XX-XX.zip`（NF = Nerd Font 图标、XX = 不窄保 2:1、
+  保留连字、未 hint）
+- 改动情况（**2026-10-11 更正**）：**已由本项目子集化**（工具 `tools/subset-terminal-font.py`，
+  范围 = GB2312 常用汉字 6,763 字 ＋ 终端必备区 ＋ Nerd Font 图标区），随包字体因此**不是**上游整包
+  （现 6,773,564 B）。**OFL 1.1 允许修改与再分发，子集化产物仍受 OFL 1.1 约束**：本项目保留
+  `OFL.txt` 全文与版权行、未改为暗示上游背书的字体名。入库时文件名也改为带 `NF` 的形式
+  （上游 zip 内平铺文件名为 `JetBrainsMapleMono-Regular.ttf`，NF 是整包变体）
+- 版权（`OFL.txt` 首三行）：JetBrains Mono Project Authors（2020）、Maple Mono Project
+  Authors（2022）、Space Time（2025）
+- SHA256：字体（子集化后）`10c8ea51ab6bb2df9a615424df1054ad6b3c08ad60a47e8bb3368039b92b5089`、
+  OFL 文本 `6728aae70e0be6316b28681c5a806827b4d7daafe45fb767b932c790216c2533`（4,572 B，仓库内 LF 形态 = 上游原文件；Windows 检出为 4,666 B，见 `docs/ERRATA.md` E-104 补记）
+  （来源包与完整清单见 PROVENANCE.md「字体」小节）
+
+### [已迁出：zhengdao-term] 7. Debian GNU/Linux 13.7 base（guest 系统层 rootfs）
+
+- 用途：PRoot 加载的 guest 用户空间**系统层**（终端里那个 rootfs）
+- 版本：Debian GNU/Linux **13.7（trixie）**，aarch64
+  （2026-10-11 真机核对：`/etc/os-release` = `PRETTY_NAME="Debian GNU/Linux 13 (trixie)"`、
+  `VERSION_ID="13"`、`VERSION_CODENAME=trixie`；`/etc/debian_version` = `13.7`）
+- **构建来源（2026-10-11 补记）**：本仓库 `rootfs/build-rootfs.sh`
+  （`DEBIAN_RELEASE="trixie"`、`DEBIAN_VERSION="13.7"`；`debootstrap` 主动构建，
+  x86_64 构建机走 `qemu-user-static` 两阶段交叉；构建期删减见该脚本 `:363`）⇒ 发布为
+  Release 资产 `debian-13.7-base-arm64.tar.zst`（约 229 MB，zstd；另有增量补丁与
+  Ed25519 签名索引）。镜像内包清单与逐文件摘要由 `tools/rootfs-manifest.py` 写入
+  `rootfs-manifest.txt`（每行 `type` / `mode(%04o)` / `size` / `digest` / `path`）。
+  **Release 资产摘要（2026-10-11 入册）**：`debian-13.7-base-arm64.tar.zst` = 201,632,517 B /
+  `d80639e7dc5c055fb731e5af62b6789d6ac4d00d07dafe9717f6aed726174f02`，
+  `rootfs-manifest.txt` = 2,117,653 B /
+  `82fa3f4e84a7963d399cf5f63a3bb8a41d5af183ee7f5812a6a8e84eeecdf16c`，
+  `rootfs-index.json` = 469 B /
+  `50f10326d9e68a4c1fdd03154e317c9d6068a0d6fa2c71a4c5e73f3b073b78ff`
+  （含两份 `.sha256` 共五项；**v2.0.14 ~ v2.0.17 四版逐字节相同**）。
+  判据 = 从公开地址回读 GitHub REST 的 `assets[].digest`，完整表与真机交叉核对见
+  根 `PROVENANCE.md`「官方发布资产摘要」一节。
+- 许可证：**Debian 是数百个独立软件包的聚合发行版，各包许可互不相同**
+  （GPL-2.0/3.0、LGPL、BSD、MIT、Apache-2.0、Artistic 等）。镜像内实测装了 **353 个包**
+  （2026-10-11 真机 `grep -c '^Package:' /var/lib/dpkg/status`）。
+  2026-10-12 细化：**镜像内**（`var/lib/dpkg/status`，即真正的分发物）是 **348** 个
+  （313 `arm64` + 35 `all`）；真机那 353 个里多出的 `libgpm2`/`vim`/`vim-common`/`vim-runtime`
+  等是构建之后在客服端装的，不属于分发物 —— 见 `docs/ERRATA.md` E-097 补记
+- ⚠️ **本环境为控制体积，在构建时删除了 `/usr/share/doc`、`/usr/share/man`、`/usr/share/info`
+  （`rootfs/build-rootfs.sh` 的 §2.10 清理段）** ⇒ 镜像里没有逐包版权**目录树**。
+  **但版权文本本身随包分发**（2026-10-12 结 ERRATA E-097，用户拍板「随包分发」）：
+  构建脚本在删除之前，把每包的 `copyright` 收成一个归档留在镜像里 ——
+  `/usr/share/zhengdao-copyright.tar.zst`（路径刻意放在 `/usr/share` 顶层，避开被删的
+  `/usr/share/doc/*`；归档内另附 `README.txt` 说明来源与查法）。镜像内展开即可查证：
+
+  ```bash
+  tar --zstd -xf /usr/share/zhengdao-copyright.tar.zst -C /tmp/zd-copyright
+  dpkg -S /usr/bin/node          # 查某文件属于哪个包
+  dpkg-query -W -f='${Package} ${Version}\n'   # 已装包与版本
+  ```
+
+  ⚠️ **版本边界（诚实标注）**：镜像**内**那份归档是「本次改动之后重建的镜像」才自带。
+  v2.0.14 ~ v2.0.17 用的那份镜像（`debian-13.7-base-arm64.tar.zst`，摘要见上）构建于改动之前，
+  镜像里**不含**它。✅ **已用独立资产补上（2026-10-13）**：同一份归档另发为独立的 Release 资产，
+  只有 0.49 MiB —— 不必为了查版权再下 200 MB 整包：
+
+  - 滚动版：<https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-copyright.tar.zst>
+    （同名 `.sha256` = `512515f34c562c4f12f7d858266e1ad4fefb6141a4896204d7456fc3a053e816`，517,471 B）
+  - 也已补挂到 **v2.0.13 ~ v2.0.17 五个正式 Release**：这五版与滚动版用的都是**同一份镜像**
+    （`d80639e7…74f02`，判据 = 从 GitHub REST 回读 `assets[].digest`）⇒ 版权文本逐字相同，
+    同一份归档对它们都成立。
+  - 构建侧从此自动带上：`rootfs/build-rootfs.sh` 在打包镜像之后把镜像内那份**再导出**到输出目录
+    （`debian-13.7-copyright.tar.zst` + 裸摘要 `.sha256`），CI 的
+    `gh release upload latest rootfs-files/*` 与 tag job 搬运 rootfs 资产时的 `debian-*.tar.zst` /
+    `debian-*.tar.zst.sha256` glob 都会一并带上 ⇒ **不需要改 `.github/workflows/build.yml`**。
+  - 归档内容 = 镜像内那 348 个包的 `copyright` 全文（未压缩 4.78 MiB → zstd-19 后 0.49 MiB），
+    逐份 SHA-256 与来源 URL 见 `docs/ERRATA.md` E-097 补记。
+
+  对**更早**的版本（v2.0.12 及以前，Release 里没有镜像副本；它们的镜像指纹未经核对），
+  替代获取途径（任一即可）：
+  1. `http://deb.debian.org/debian`（镜像内 `sources.list` 即指向此处的 `trixie main`）
+     取同版本包，包内自带 `usr/share/doc/<包>/copyright`；
+  2. `apt-get source <包>`，读源码包里的 `debian/copyright`；
+  3. 历史/已下架版本用 <https://snapshot.debian.org/>。
+- **待核（诚实标注，不是缺陷）**：*Debian rootfs 所含各包的完整许可证清单及源码获取方式，
+  待逐包核查后补充。* 2026-10-12 起**文本层面已随包分发**（上一条），仍是欠账的是
+  **逐包许可证标识的汇总表**（哪个包 = 哪个 SPDX 标识）——那需要解析每份 `copyright` 的
+  `License:` 字段（多数包是 DEP-5 机读格式，但有相当一部分是自由文本，只能半自动 + 人工核）。
+  **原文已经没有障碍**：2026-10-12 已把镜像内 348 个包的 `copyright` 逐份取齐（含 SHA-256，
+  见 `docs/ERRATA.md` E-097 补记），缺的只是这份汇总表本身 —— 本项目**未逐包点数**。
+  当前口径：各包许可证以随包归档 / Debian 官方仓库同版本包内的 `debian/copyright` 为准。
+- 源码要约：本仓库对**自己分发**的 GPL 组件（proot 等，见 §1）以指向官方源码仓库的方式满足
+  GPL 第 3 条；系统层里各 GPL/AGPL 组件的源码，由 Debian 官方源按上一条途径提供。
+- 改动情况：构建脚本对系统层只做**删减**（文档 / man / info / 多余 locale / 构建残留）与少量
+  **配置文件写入**（`/etc/resolv.conf`、`/etc/hosts`、`/etc/uv/uv.toml`、
+  `/etc/profile.d/zhengdao-uv.sh`、`/etc/localtime`、apt 源），**未修改任何包的二进制**；
+  各包功能与上游同版本一致，卸载/升级仍走 `apt`。
+
+### [已迁出：zhengdao-term] Termux terminal-emulator / terminal-view / libtermux JNI
+
+- 来源：https://github.com/termux/termux-app （v0.119.0-beta.3，模块 terminal-emulator 与 terminal-view）
+- 许可证：**Apache-2.0**（源码级聚合，随本仓库分发，版权头保留）
+  > ⚠️ **2026-10-05 勘误**：此前此处误标为 GPL-3.0。上游 `termux/termux-app` 仓库**整体**是
+  > GPLv3-only，但其 `LICENSE.md` 明确列出例外：**`terminal-view` 与 `terminal-emulator` 两个库
+  > 为 Apache-2.0**（源自 jackpal/Android-Terminal-Emulator）。本项目聚合的正是这两个库，
+  > **并未聚合 GPL 的主应用本体**。GPL 会传染、Apache-2.0 不会——这条直接决定第一方代码能否闭源，
+  > 属不可出错项。完整依据见 `docs/ERRATA.md` **E-001** 与 `PROVENANCE.md`。
+- 用途：终端模拟引擎（VT-100/xterm 状态机）与原生终端视图（替代 WebView/xterm.js 架构）
+- 修改：包内 R 引用改为宿主应用 R；textselection 把手资源并入宿主 res；其余未改动
+- **Apache-2.0 义务逐条对照（2026-10-11 补）**：
+  - **4(a) 给接收者一份许可证副本** ⇒ [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)。
+    本次补齐前，**仓库内没有任何 Apache-2.0 正文**（唯一另一个许可证文件是字体的 OFL）。
+  - **4(b) 修改须显著标注** ⇒ 12 个衍生文件逐个带文件头修改通知
+    （逐文件修改点见 `PROVENANCE.md`「Apache-2.0 修改通知」一节、`docs/ERRATA.md` E-100）。
+  - **4(c) 保留版权、专利、商标与归属声明** ⇒ 未移除上游文件内的任何声明
+    （这 12 个上游文件原本就没有许可证头，故「保留」体现为不移除、并新增我们的修改通知）。
+  - **4(d) NOTICE 文件** ⇒ **不适用**：上游 `termux-app` 的 v0.119.0-beta.3 快照里只有根
+    `LICENSE.md` 与 `termux-shared/LICENSE.md`，**没有 NOTICE 文件**（2026-10-11 核对）。
+  - 上游例外依据原文（`termux-app/LICENSE.md`）：「Terminal Emulator for Android code is used
+    which is released under Apache 2.0 license. Check `terminal-view` and `terminal-emulator`
+    libraries.」
+

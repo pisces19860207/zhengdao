@@ -1,0 +1,693 @@
+{
+  "bom_versions": {
+    "androidx.compose.animation:animation": "1.12.1",
+    "androidx.compose.animation:animation-android": "1.12.1",
+    "androidx.compose.animation:animation-core": "1.12.1",
+    "androidx.compose.animation:animation-core-android": "1.12.1",
+    "androidx.compose.animation:animation-core-desktop": "1.7.0",
+    "androidx.compose.animation:animation-core-jvmstubs": "1.12.1",
+    "androidx.compose.animation:animation-core-lint": "1.12.1",
+    "androidx.compose.animation:animation-core-linuxx64stubs": "1.12.1",
+    "androidx.compose.animation:animation-desktop": "1.7.0",
+    "androidx.compose.animation:animation-graphics": "1.12.1",
+    "androidx.compose.animation:animation-graphics-android": "1.12.1",
+    "androidx.compose.animation:animation-graphics-desktop": "1.7.1",
+    "androidx.compose.animation:animation-graphics-jvmstubs": "1.12.1",
+    "androidx.compose.animation:animation-graphics-linuxx64stubs": "1.12.1",
+    "androidx.compose.animation:animation-jvmstubs": "1.12.1",
+    "androidx.compose.animation:animation-lint": "1.12.1",
+    "androidx.compose.animation:animation-linuxx64stubs": "1.12.1",
+    "androidx.compose.animation:animation-tooling-internal": "1.12.1",
+    "androidx.compose.foundation:foundation": "1.12.1",
+    "androidx.compose.foundation:foundation-android": "1.12.1",
+    "androidx.compose.foundation:foundation-desktop": "1.7.0",
+    "androidx.compose.foundation:foundation-jvmstubs": "1.12.1",
+    "androidx.compose.foundation:foundation-layout": "1.12.1",
+    "androidx.compose.foundation:foundation-layout-android": "1.12.1",
+    "androidx.compose.foundation:foundation-layout-desktop": "1.7.0",
+    "androidx.compose.foundation:foundation-layout-jvmstubs": "1.12.1",
+    "androidx.compose.foundation:foundation-layout-linuxx64stubs": "1.12.1",
+    "androidx.compose.foundation:foundation-lint": "1.12.1",
+    "androidx.compose.foundation:foundation-linuxx64stubs": "1.12.1",
+    "androidx.compose.material3.adaptive:adaptive": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-android": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-desktop": "1.0.0",
+    "androidx.compose.material3.adaptive:adaptive-jvmstubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-layout": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-layout-android": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-layout-desktop": "1.0.0",
+    "androidx.compose.material3.adaptive:adaptive-layout-jvmstubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-layout-linuxx64stubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-linuxx64stubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation-android": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation-desktop": "1.0.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation-jvmstubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation-linuxx64stubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation3": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation3-android": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation3-jvmstubs": "1.3.0",
+    "androidx.compose.material3.adaptive:adaptive-navigation3-linuxx64stubs": "1.3.0",
+    "androidx.compose.material3:material3": "1.4.0",
+    "androidx.compose.material3:material3-adaptive-navigation-suite": "1.4.0",
+    "androidx.compose.material3:material3-adaptive-navigation-suite-android": "1.4.0",
+    "androidx.compose.material3:material3-adaptive-navigation-suite-desktop": "1.3.2",
+    "androidx.compose.material3:material3-adaptive-navigation-suite-jvmstubs": "1.4.0",
+    "androidx.compose.material3:material3-android": "1.4.0",
+    "androidx.compose.material3:material3-desktop": "1.3.2",
+    "androidx.compose.material3:material3-jvmstubs": "1.4.0",
+    "androidx.compose.material3:material3-lint": "1.4.0",
+    "androidx.compose.material3:material3-linuxx64stubs": "1.4.0",
+    "androidx.compose.material3:material3-window-size-class": "1.4.0",
+    "androidx.compose.material3:material3-window-size-class-android": "1.4.0",
+    "androidx.compose.material3:material3-window-size-class-desktop": "1.3.2",
+    "androidx.compose.material3:material3-window-size-class-jvmstubs": "1.4.0",
+    "androidx.compose.material3:material3-window-size-class-linuxx64stubs": "1.4.0",
+    "androidx.compose.material:material": "1.12.1",
+    "androidx.compose.material:material-android": "1.12.1",
+    "androidx.compose.material:material-desktop": "1.7.0",
+    "androidx.compose.material:material-icons-core": "1.7.8",
+    "androidx.compose.material:material-icons-core-android": "1.7.8",
+    "androidx.compose.material:material-icons-core-desktop": "1.7.8",
+    "androidx.compose.material:material-icons-extended": "1.7.8",
+    "androidx.compose.material:material-icons-extended-android": "1.7.8",
+    "androidx.compose.material:material-icons-extended-desktop": "1.7.8",
+    "androidx.compose.material:material-jvmstubs": "1.12.1",
+    "androidx.compose.material:material-lint": "1.10.0",
+    "androidx.compose.material:material-linuxx64stubs": "1.12.1",
+    "androidx.compose.material:material-navigation": "1.12.1",
+    "androidx.compose.material:material-navigation-android": "1.12.1",
+    "androidx.compose.material:material-navigation-jvmstubs": "1.12.1",
+    "androidx.compose.material:material-navigation-linuxx64stubs": "1.12.1",
+    "androidx.compose.material:material-ripple": "1.12.1",
+    "androidx.compose.material:material-ripple-android": "1.12.1",
+    "androidx.compose.material:material-ripple-desktop": "1.7.0",
+    "androidx.compose.material:material-ripple-jvmstubs": "1.12.1",
+    "androidx.compose.material:material-ripple-linuxx64stubs": "1.12.1",
+    "androidx.compose.runtime:runtime": "1.12.1",
+    "androidx.compose.runtime:runtime-android": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-android": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-iosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-iossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-iosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-annotation-js": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-jvm": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-linuxarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-linuxx64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-macosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-macosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-annotation-mingwx64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-tvosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-tvossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-tvosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-annotation-wasm-js": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-watchosarm32": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-watchosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-watchosdevicearm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-watchossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-annotation-watchosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-desktop": "1.12.1",
+    "androidx.compose.runtime:runtime-iosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-iossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-iosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-js": "1.12.1",
+    "androidx.compose.runtime:runtime-jvmstubs": "1.8.3",
+    "androidx.compose.runtime:runtime-lint": "1.12.1",
+    "androidx.compose.runtime:runtime-linuxarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-linuxx64": "1.12.1",
+    "androidx.compose.runtime:runtime-linuxx64stubs": "1.8.3",
+    "androidx.compose.runtime:runtime-livedata": "1.12.1",
+    "androidx.compose.runtime:runtime-macosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-macosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-mingwx64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-android": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-desktop": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-iosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-iossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-iosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-retain-js": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-lint": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-linuxarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-linuxx64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-macosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-macosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-retain-mingwx64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-tvosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-tvossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-tvosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-retain-wasm-js": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-watchosarm32": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-watchosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-watchosdevicearm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-watchossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-retain-watchosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-rxjava2": "1.12.1",
+    "androidx.compose.runtime:runtime-rxjava2-android": "1.12.1",
+    "androidx.compose.runtime:runtime-rxjava2-desktop": "1.12.1",
+    "androidx.compose.runtime:runtime-rxjava3": "1.12.1",
+    "androidx.compose.runtime:runtime-rxjava3-android": "1.12.1",
+    "androidx.compose.runtime:runtime-rxjava3-desktop": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-android": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-desktop": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-iosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-iossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-iosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-saveable-js": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-jvmstubs": "1.9.1",
+    "androidx.compose.runtime:runtime-saveable-lint": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-linuxarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-linuxx64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-linuxx64stubs": "1.9.1",
+    "androidx.compose.runtime:runtime-saveable-macosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-macosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-saveable-mingwx64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-tvosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-tvossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-tvosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-saveable-wasm-js": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-watchosarm32": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-watchosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-watchosdevicearm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-watchossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-saveable-watchosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-tracing": "1.12.1",
+    "androidx.compose.runtime:runtime-tvosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-tvossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-tvosx64": "1.10.6",
+    "androidx.compose.runtime:runtime-wasm-js": "1.12.1",
+    "androidx.compose.runtime:runtime-watchosarm32": "1.12.1",
+    "androidx.compose.runtime:runtime-watchosarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-watchosdevicearm64": "1.12.1",
+    "androidx.compose.runtime:runtime-watchossimulatorarm64": "1.12.1",
+    "androidx.compose.runtime:runtime-watchosx64": "1.10.6",
+    "androidx.compose.ui:ui": "1.12.1",
+    "androidx.compose.ui:ui-android": "1.12.1",
+    "androidx.compose.ui:ui-android-stubs": "1.12.1",
+    "androidx.compose.ui:ui-desktop": "1.7.0",
+    "androidx.compose.ui:ui-geometry": "1.12.1",
+    "androidx.compose.ui:ui-geometry-android": "1.12.1",
+    "androidx.compose.ui:ui-geometry-desktop": "1.7.0",
+    "androidx.compose.ui:ui-geometry-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-geometry-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-graphics": "1.12.1",
+    "androidx.compose.ui:ui-graphics-android": "1.12.1",
+    "androidx.compose.ui:ui-graphics-desktop": "1.7.0",
+    "androidx.compose.ui:ui-graphics-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-graphics-lint": "1.12.1",
+    "androidx.compose.ui:ui-graphics-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-lint": "1.12.1",
+    "androidx.compose.ui:ui-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-test": "1.12.1",
+    "androidx.compose.ui:ui-test-accessibility": "1.12.1",
+    "androidx.compose.ui:ui-test-accessibility-android": "1.12.1",
+    "androidx.compose.ui:ui-test-android": "1.12.1",
+    "androidx.compose.ui:ui-test-desktop": "1.7.0",
+    "androidx.compose.ui:ui-test-junit4": "1.12.1",
+    "androidx.compose.ui:ui-test-junit4-accessibility": "1.12.1",
+    "androidx.compose.ui:ui-test-junit4-accessibility-android": "1.12.1",
+    "androidx.compose.ui:ui-test-junit4-android": "1.12.1",
+    "androidx.compose.ui:ui-test-junit4-desktop": "1.7.0",
+    "androidx.compose.ui:ui-test-junit4-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-test-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-test-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-test-manifest": "1.12.1",
+    "androidx.compose.ui:ui-test-manifest-lint": "1.12.1",
+    "androidx.compose.ui:ui-text": "1.12.1",
+    "androidx.compose.ui:ui-text-android": "1.12.1",
+    "androidx.compose.ui:ui-text-desktop": "1.7.0",
+    "androidx.compose.ui:ui-text-google-fonts": "1.12.1",
+    "androidx.compose.ui:ui-text-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-text-lint": "1.12.1",
+    "androidx.compose.ui:ui-text-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-tooling": "1.12.1",
+    "androidx.compose.ui:ui-tooling-android": "1.12.1",
+    "androidx.compose.ui:ui-tooling-data": "1.12.1",
+    "androidx.compose.ui:ui-tooling-data-android": "1.12.1",
+    "androidx.compose.ui:ui-tooling-data-desktop": "1.7.0",
+    "androidx.compose.ui:ui-tooling-data-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-tooling-desktop": "1.7.0",
+    "androidx.compose.ui:ui-tooling-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-tooling-preview": "1.12.1",
+    "androidx.compose.ui:ui-tooling-preview-android": "1.12.1",
+    "androidx.compose.ui:ui-tooling-preview-desktop": "1.7.0",
+    "androidx.compose.ui:ui-tooling-preview-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-tooling-preview-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-unit": "1.12.1",
+    "androidx.compose.ui:ui-unit-android": "1.12.1",
+    "androidx.compose.ui:ui-unit-desktop": "1.7.0",
+    "androidx.compose.ui:ui-unit-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-unit-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-util": "1.12.1",
+    "androidx.compose.ui:ui-util-android": "1.12.1",
+    "androidx.compose.ui:ui-util-desktop": "1.7.0",
+    "androidx.compose.ui:ui-util-jvmstubs": "1.12.1",
+    "androidx.compose.ui:ui-util-linuxx64stubs": "1.12.1",
+    "androidx.compose.ui:ui-viewbinding": "1.12.1"
+  },
+  "maven": {
+    "androidx.activity:activity-compose:1.13.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.activity/activity-compose/1.13.0/56f3de5e267648bc08ecc86a1789cc752f6fbd3a/activity-compose-1.13.0.pom",
+      "pom_sha256": "cb6a8ff89ffb7f107f214050e9fb32b0d0b0f665d8de7c9e4e2a4d5fea9951e9",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.benchmark:benchmark-macro-junit4:1.5.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.benchmark/benchmark-macro-junit4/1.5.0/c4d06a4d7ee618fcd098d82723ffbb77aba24d11/benchmark-macro-junit4-1.5.0.pom",
+      "pom_sha256": "f4f46307018cdc041b51012a8fb772e573a621dbe5598a489d63d91420cd5f6f",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.material3:material3:1.4.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.material3/material3/1.4.0/a28c516473aff070508271220514abbf1d3dd0b2/material3-1.4.0.pom",
+      "pom_sha256": "672b431f59c8e0a8522690b2f46f1b7966710638893c60c31c5f19f8472d62cc",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.runtime:runtime:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.runtime/runtime/1.12.1/3716cf81bc3ecccd3572b7d32b1b7682a5fe2707/runtime-1.12.1.pom",
+      "pom_sha256": "0bcb66c1b123a7421fd088d2620ee04d2e56213bb5d2c9c427a6b1a41a687fcb",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.ui:ui-graphics:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.ui/ui-graphics/1.12.1/88e17c882450d0f3b455d6936ec1a10a54f170c5/ui-graphics-1.12.1.pom",
+      "pom_sha256": "41b804f94842fe837ac84720cd7f8ab77f4b61b0dbb1964b647fa60be990ab43",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.ui:ui-test-junit4:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.ui/ui-test-junit4/1.12.1/e0c804439725d28b0efd7f8924ad9f7fa6d4765c/ui-test-junit4-1.12.1.pom",
+      "pom_sha256": "de466ca2084d38991c67dfdb760fc8c917f89ea513dcf3c5458416d747e1a778",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.ui:ui-test-manifest:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.ui/ui-test-manifest/1.12.1/c13f6a9ae9d08307c4a97c6262e7eade0b538a53/ui-test-manifest-1.12.1.pom",
+      "pom_sha256": "d7e5a31377ee6bb198e72140726d1bc8f851c00128188d47ab78d1102687ada2",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.ui:ui-tooling-preview:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.ui/ui-tooling-preview/1.12.1/de45399df41630a6b2ca77fef3e35b03692e9d9d/ui-tooling-preview-1.12.1.pom",
+      "pom_sha256": "e9af8869db40b67102b66299b1cebcc0b5ffb1e8361b12ec9a0ce26d553090fa",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.ui:ui-tooling:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.ui/ui-tooling/1.12.1/908fa0f51d1b76e28aa0340360a35f5e3d03da87/ui-tooling-1.12.1.pom",
+      "pom_sha256": "144fa69123cecab215163c29debe4e4d98cf5acf86d04e23d3c51b0536908baa",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.compose.ui:ui:1.12.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.compose.ui/ui/1.12.1/41b00cd71ba873a7d67751ba83e0607bfb446783/ui-1.12.1.pom",
+      "pom_sha256": "9e026fe4bcd75595b11bb2330568887c323c7559718c5b75847f627bf654f393",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.core:core-ktx:1.19.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.core/core-ktx/1.19.1/3bfb1e5b4abb6fca14b841bb7d84bfcf097a8da4/core-ktx-1.19.1.pom",
+      "pom_sha256": "df7efd0c621fa87d23e02b4354fc40e82935ae3b746b5aa246cc74a84472a3ba",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.lifecycle:lifecycle-runtime-compose:2.11.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.lifecycle/lifecycle-runtime-compose/2.11.0/109e5a452da556678a4793c3d4993830527be87b/lifecycle-runtime-compose-2.11.0.pom",
+      "pom_sha256": "2bdb87ffb1d80110d1154b6e827b41872686614406d920c7a10135beb8817960",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.lifecycle:lifecycle-runtime-ktx:2.11.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.lifecycle/lifecycle-runtime-ktx/2.11.0/b81e93ad3e0c65a704bbb1b8a5444cb7748d3153/lifecycle-runtime-ktx-2.11.0.pom",
+      "pom_sha256": "8b8eb011e4a58873823406fb45220e50f39058fc9abfb2c0806735af65edf79a",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.navigation:navigation-compose:2.10.2": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.navigation/navigation-compose/2.10.2/ebbeacee3531c403746852180223b2851bb9d1c0/navigation-compose-2.10.2.pom",
+      "pom_sha256": "ff11066a19a9e4a272e51adda378c34dd6c1e5f6b02d06356e2257eea370646b",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.profileinstaller:profileinstaller:1.4.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.profileinstaller/profileinstaller/1.4.1/9958cf0e27167a18bcfe4f2c208c3fcaef78a10a/profileinstaller-1.4.1.pom",
+      "pom_sha256": "6dde43827b40535e4053d1c52d4b227a411556c289e65400c9a1cc61e2b41ce3",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.test.espresso:espresso-core:3.7.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.test.espresso/espresso-core/3.7.0/21e7bfdb5e10db344b6572253fdc6a81893a8a97/espresso-core-3.7.0.pom",
+      "pom_sha256": "b6e7f43cb396b89a4ce329a7e5acef79d375203a87a11a7639d18c0e6de50b56",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.test.ext:junit:1.3.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.test.ext/junit/1.3.0/e3539beed5f67f696dc68374ad02677732f5597c/junit-1.3.0.pom",
+      "pom_sha256": "92af7f253e5eabe2caec5c56f308312653d123042b22754d6ff664e1752dcf3f",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.test.uiautomator:uiautomator:2.4.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.test.uiautomator/uiautomator/2.4.0/379f5715a6060aca4663cf50e06956a898e586aa/uiautomator-2.4.0.pom",
+      "pom_sha256": "00c70e90a3d1c367b51c905794d840b4c53adc7ad48b730307c752a3e7666d17",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "androidx.work:work-runtime:2.12.0": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/androidx.work/work-runtime/2.12.0/23b775c9e73e1375d409d56424216cf782d395e8/work-runtime-2.12.0.pom",
+      "pom_sha256": "68544d4ed7062252edc5cbc2540b3e071a31ab045baea017c6684c150d357379",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "com.mikepenz:multiplatform-markdown-renderer-code:0.38.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/com.mikepenz/multiplatform-markdown-renderer-code/0.38.1/65538b36a9360e43c3b5c7fe17c1f3899ac44965/multiplatform-markdown-renderer-code-0.38.1.pom",
+      "pom_sha256": "9aa690809e59ed9b35360791f1b5554ee2974b78ace0289c55b7f8303275dab5",
+      "raw": "Apache-2.0"
+    },
+    "com.mikepenz:multiplatform-markdown-renderer-m3:0.38.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/com.mikepenz/multiplatform-markdown-renderer-m3/0.38.1/77b1a17389967ee389cac7488e0b54ed3320a55f/multiplatform-markdown-renderer-m3-0.38.1.pom",
+      "pom_sha256": "ef5fd852de83aefea130d40388780d6d1a6fcc74165b3b2034c700a90299f8cc",
+      "raw": "Apache-2.0"
+    },
+    "com.mikepenz:multiplatform-markdown-renderer:0.38.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/com.mikepenz/multiplatform-markdown-renderer/0.38.1/2f289707aa9c8b2331cbbcb0052dde5540df755f/multiplatform-markdown-renderer-0.38.1.pom",
+      "pom_sha256": "af93047c4920345829e7bf573b5cb68d5c0aa36bda711316be5e47115e852550",
+      "raw": "Apache-2.0"
+    },
+    "com.squareup.okhttp3:mockwebserver3:5.5.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/com.squareup.okhttp3/mockwebserver3/5.5.1/18da4299ee6d7a3452ccd0edf2c8f517daef9b2e/mockwebserver3-5.5.1.pom",
+      "pom_sha256": "c37e2d3701e917d929d969e65850c414d95f981bdf0d1c5ed05475ccec1cd146",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "com.squareup.okhttp3:okhttp:5.5.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/5.5.1/8c3c3aaee0dc592f9a9200f89e42f08540efc23f/okhttp-5.5.1.pom",
+      "pom_sha256": "a834a8f02cbcaaf6a3968b439596e14d528a32160d4b235d95f2ab51163bbf2f",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "io.gitlab.arturbosch.detekt:detekt-cli:1.23.8": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/io.gitlab.arturbosch.detekt/detekt-cli/1.23.8/fae3d6fa5617cbf7e86a699e773df74d7eb8886d/detekt-cli-1.23.8.pom",
+      "pom_sha256": "45e437150eb60e29749ac96b91a990e092523b295e13b8e5348fe7e41bc0da2c",
+      "raw": "The Apache Software License, Version 2.0"
+    },
+    "junit:junit:4.13.2": {
+      "license": "EPL-1.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/junit/junit/4.13.2/73bc5be628edeb297a1caf421a5a2e494798b92f/junit-4.13.2.pom",
+      "pom_sha256": "569b6977ee4603c965c1c46c3058fa6e969291b0160eb6964dd092cd89eadd94",
+      "raw": "Eclipse Public License 1.0"
+    },
+    "org.apache.poi:poi:5.5.1": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/org.apache.poi/poi/5.5.1/3d7a4c8f6c8c24574b744b45d83c80daa98844a1/poi-5.5.1.pom",
+      "pom_sha256": "9dd23488a3eecd2cc0837a75e9e96bbdfece8591ce1322a56a53b7c997283263",
+      "raw": "Apache License, Version 2.0"
+    },
+    "org.json:json:20240303": {
+      "license": "PublicDomain",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/org.json/json/20240303/78c0fa2a26888461731e26603ef4b19cc53239ca/json-20240303.pom",
+      "pom_sha256": "994baf5d89bf4caa5ce968e4c4eab135c8f9783ecf4d2b7b0e9d1c8a4ddf1e4f",
+      "raw": "Public Domain"
+    }
+  },
+  "origin": "第四百二十四批：离线取证登记表。Maven 半张由 gen-notices.py --refresh 从本地 Gradle 缓存 POM 重建；Rust 半张来自第四百二十一批 .crate 校验绑定取证（本机 ~/.cargo/registry/cache,src 已清理）。",
+  "rust": {
+    "in_so": [
+      "adler2-2.0.1",
+      "block-buffer-0.10.4",
+      "bytes-1.12.1",
+      "cesu8-1.1.0",
+      "cfg-if-1.0.5",
+      "combine-4.6.8",
+      "cpufeatures-0.2.17",
+      "crc32fast-1.5.2",
+      "crypto-common-0.1.7",
+      "digest-0.10.7",
+      "filetime-0.2.29",
+      "flate2-1.1.10",
+      "generic-array-0.14.7",
+      "hex-0.4.3",
+      "jni-0.21.1",
+      "jni-sys-0.3.1",
+      "jni-sys-0.4.1",
+      "libc-0.2.190",
+      "log-0.4.34",
+      "memchr-2.8.3",
+      "miniz_oxide-0.9.1",
+      "num-bigint-0.4.8",
+      "num-integer-0.1.47",
+      "num-traits-0.2.19",
+      "sha2-0.10.9",
+      "sha2-asm-0.6.4",
+      "simd-adler32-0.3.10",
+      "tar-0.4.46",
+      "thiserror-1.0.69",
+      "typenum-1.20.1",
+      "zstd-0.13.3",
+      "zstd-safe-7.3.0",
+      "zstd-sys-2.1.0+zstd.1.5.7"
+    ],
+    "licenses": {
+      "adler2@2.0.1": {
+        "checksum": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
+        "license": "0BSD OR MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "0BSD OR MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "block-buffer@0.10.4": {
+        "checksum": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "bytes@1.12.1": {
+        "checksum": "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04",
+        "license": "MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT（Cargo.toml license 字段原文）"
+      },
+      "cesu8@1.1.0": {
+        "checksum": "6d43a04d8753f35258c91f8ec639f792891f748a1edbd759cf1dcea3382ad83c",
+        "license": "Apache-2.0/MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "Apache-2.0/MIT（Cargo.toml license 字段原文）"
+      },
+      "cfg-if@1.0.5": {
+        "checksum": "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "combine@4.6.8": {
+        "checksum": "cfc320937d09e6de266b31b9afb480f197d7a861be86be7cb2ea7e5d1bfffc5e",
+        "license": "MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT（Cargo.toml license 字段原文）"
+      },
+      "cpufeatures@0.2.17": {
+        "checksum": "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "crc32fast@1.5.2": {
+        "checksum": "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "crypto-common@0.1.7": {
+        "checksum": "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "digest@0.10.7": {
+        "checksum": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "filetime@0.2.29": {
+        "checksum": "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759",
+        "license": "MIT/Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT/Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "flate2@1.1.10": {
+        "checksum": "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "generic-array@0.14.7": {
+        "checksum": "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a",
+        "license": "MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT（Cargo.toml license 字段原文）"
+      },
+      "hex@0.4.3": {
+        "checksum": "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "jni-sys@0.3.1": {
+        "checksum": "41a652e1f9b6e0275df1f15b32661cf0d4b78d4d87ddec5e0c3c20f097433258",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "jni-sys@0.4.1": {
+        "checksum": "c6377a88cb3910bee9b0fa88d4f42e1d2da8e79915598f65fb0c7ee14c878af2",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "jni@0.21.1": {
+        "checksum": "1a87aa2bb7d2af34197c04845522473242e1aa17c12f4935d5856491a7fb8c97",
+        "license": "MIT/Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT/Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "libc@0.2.190": {
+        "checksum": "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "log@0.4.34": {
+        "checksum": "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "memchr@2.8.3": {
+        "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+        "license": "Unlicense OR MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "Unlicense OR MIT（Cargo.toml license 字段原文）"
+      },
+      "miniz_oxide@0.9.1": {
+        "checksum": "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c",
+        "license": "MIT OR Zlib OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Zlib OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "num-bigint@0.4.8": {
+        "checksum": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "num-integer@0.1.47": {
+        "checksum": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "num-traits@0.2.19": {
+        "checksum": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "sha2-asm@0.6.4": {
+        "checksum": "b845214d6175804686b2bd482bcffe96651bb2d1200742b712003504a2dac1ab",
+        "license": "MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT（Cargo.toml license 字段原文）"
+      },
+      "sha2@0.10.9": {
+        "checksum": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "simd-adler32@0.3.10": {
+        "checksum": "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea",
+        "license": "MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT（Cargo.toml license 字段原文）"
+      },
+      "tar@0.4.46": {
+        "checksum": "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "thiserror@1.0.69": {
+        "checksum": "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "typenum@1.20.1": {
+        "checksum": "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20",
+        "license": "MIT OR Apache-2.0",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT OR Apache-2.0（Cargo.toml license 字段原文）"
+      },
+      "zstd-safe@7.3.0": {
+        "checksum": "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882",
+        "license": "BSD-3-Clause",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "BSD-3-Clause（Cargo.toml license 字段原文）"
+      },
+      "zstd-sys@2.1.0+zstd.1.5.7": {
+        "checksum": "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0",
+        "license": "BSD-3-Clause",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "BSD-3-Clause（Cargo.toml license 字段原文）"
+      },
+      "zstd@0.13.3": {
+        "checksum": "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a",
+        "license": "MIT",
+        "origin": "第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段",
+        "raw": "MIT（Cargo.toml license 字段原文）"
+      }
+    },
+    "not_in_so": [
+      "autocfg-1.5.1",
+      "cc-1.6.0",
+      "find-msvc-tools-0.1.14",
+      "getrandom-0.4.3",
+      "jni-sys-macros-0.4.1",
+      "jobserver-0.1.35",
+      "pkg-config-0.3.34",
+      "proc-macro2-1.0.107",
+      "quote-1.0.47",
+      "r-efi-6.0.0",
+      "same-file-1.0.6",
+      "shlex-2.0.1",
+      "syn-2.0.119",
+      "thiserror-impl-1.0.69",
+      "unicode-ident-1.0.26",
+      "version_check-0.9.5",
+      "walkdir-2.5.0",
+      "winapi-util-0.1.11",
+      "windows-link-0.2.1",
+      "windows-sys-0.45.0",
+      "windows-sys-0.61.2",
+      "windows-targets-0.42.2",
+      "windows_aarch64_gnullvm-0.42.2",
+      "windows_aarch64_msvc-0.42.2",
+      "windows_i686_gnu-0.42.2",
+      "windows_i686_msvc-0.42.2",
+      "windows_x86_64_gnu-0.42.2",
+      "windows_x86_64_gnullvm-0.42.2",
+      "windows_x86_64_msvc-0.42.2",
+      "zlib-rs-0.6.8"
+    ],
+    "origin": "in_so/not_in_so = 421 批 dep-info（rust/target/aarch64-linux-android/release/deps/*.d）复算；licenses = 33 条 .crate 校验绑定取证。"
+  },
+  "schema": 1
+}
