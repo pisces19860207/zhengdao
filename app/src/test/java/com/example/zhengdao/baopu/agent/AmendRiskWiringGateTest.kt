@@ -145,4 +145,19 @@ class AmendRiskWiringGateTest {
         )
         assertTrue("360 的旧上限退场仍在", controller().contains("retireContractForAmend() +"))
     }
+
+    @Test
+    fun `G8_改约基线只许真实动作消费_改约后的update_plan不许吃掉它（验收接管修正）`() {
+        val gate = bodyOf(engine(), "private fun amendGate(")
+        assertTrue("amendGate 不见了", gate.isNotEmpty())
+        assertTrue(
+            "基线没有按「不是 update_plan」过滤（改约后先发一次 update_plan 会吃掉基线：既落假降档账，又让真正那次动作不重算）",
+            gate.contains("amendRiskBaseline.takeUnless { call.name == PlanTool.NAME }"),
+        )
+        assertTrue(
+            "清空基线的那一步必须落在 `call.name != PlanTool.NAME` 的分支里",
+            Regex("""if \(call\.name != PlanTool\.NAME\) \{\s*amendRiskBaseline = null""")
+                .containsMatchIn(gate),
+        )
+    }
 }
