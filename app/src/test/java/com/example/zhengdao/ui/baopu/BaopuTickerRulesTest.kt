@@ -297,12 +297,13 @@ class BaopuTickerRulesTest {
         assertTrue("待你确认用 surfaceVariant 加深一档", tk.contains("surfaceVariant"))
         assertTrue("描边取主题琥珀槽 tertiary", tk.contains("colorScheme.tertiary"))
         assertTrue("字重 500 只在待你确认", tk.contains("FontWeight.Medium"))
-        // 两态的**文字**颜色也不同：锁定态用墨（主角），空闲态详情仍用次墨。
+        // 两态文字颜色不同：锁定态用墨；443 详情改跑马灯同色底 ⇒ 文字配 onErrorContainer。
         assertTrue(
             "锁定态文字取 onSurface（用词边界防止误中 onSurfaceVariant）",
             Regex("colorScheme\\.onSurface\\b").containsMatchIn(tk),
         )
-        assertTrue("空闲态详情文字 onSurfaceVariant", tk.contains("colorScheme.onSurfaceVariant"))
+        assertTrue("443 详情文字取 onErrorContainer（配 errorContainer 底）",
+            tk.contains("colorScheme.onErrorContainer"))
     }
 
     /**
