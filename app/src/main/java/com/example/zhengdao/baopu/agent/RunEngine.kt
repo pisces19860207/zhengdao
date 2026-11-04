@@ -2166,7 +2166,11 @@ internal class RunEngine(
             val systemFinal = if (prefix.isBlank()) {
                 systemText
             } else {
-                systemText + "\n\n" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT
+                // 第四百三十六批 A ③：判据与坑账的**运行时包摘要**接在 258 那句契约之后
+                // （尾巴追加 ⇒ 前面字节不动）。恒常追加、同版本字节相同——
+                // 见 CriteriaPitPack 的裁定三条（摘要／哈希去重／不混 438 的记忆分层）。
+                systemText + "\n\n" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT +
+                    com.example.zhengdao.baopu.CriteriaPitPack.systemSuffix()
             }
             val messages = buildList {
                 if (systemFinal.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemFinal))
