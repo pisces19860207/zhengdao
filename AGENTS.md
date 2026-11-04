@@ -147,7 +147,8 @@ python ..\_zd-toolroom\01-gates\check-lint-budget.py
 
 ## 第一方标识 GZAG（2026-11-04 用户定）
 
-`GZAG` = G（用户姓首字母）＋ Z（其先生姓首字母）＋ AG（AI agents）——**来源标识**，不是产品名。
+`GZ-AG`（也写作 `GZAG`）= G（用户姓首字母）＋ Z（其先生姓首字母）＋ AG（AI agents）——**来源标识**，不是产品名。
+**只有一个记号，不搞变体暗号**（用户 2026-11-04：变体记不住，只要一个）。
 
 - 代码文件头（只加 `:policy` / `:core` 的顶层件，别全仓加）：
   `// GZAG · 抱朴 · :policy · 第XXX批（YYYY-MM-DD）`
