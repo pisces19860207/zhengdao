@@ -113,9 +113,11 @@ internal class RehearsalSandbox(
      */
     fun stage(workspace: File, rel: String): Staged {
         val root = runDir ?: return Staged(Stage.REFUSED, "副本根没开", null)
+        // 2026-11-04：越界判据必须看**原始声明**——先 trim 斜杠会把 POSIX 绝对路径变成"相对"，
+        // 于是 `/abs/a.md` 这样写能绕过 refuse（同一 bug 的另一半，test 只钉了 refuse 那半）。
+        refuse(rel)?.let { return Staged(Stage.REFUSED, it, null) }
         val clean = rel.trim().replace('\\', '/').trim('/')
         if (clean.isEmpty()) return Staged(Stage.REFUSED, "声明路径是空的", null)
-        refuse(clean)?.let { return Staged(Stage.REFUSED, it, null) }
         val src = File(workspace, clean)
         if (!src.exists()) return Staged(Stage.ABSENT, "$clean（真实跑时新建）", metaOf(src, clean))
         return if (src.isDirectory) stageDir(src, root, clean) else stageFile(src, root, clean)
@@ -369,9 +371,18 @@ internal class RehearsalSandbox(
      * 判据不能看宿主机的脸色——所以盘符写法在这里显式拒。
      */
     fun refuse(raw: String): String? {
-        val rel = raw.trim().replace('\\', '/').trim('/')
+        // ⚠️ 2026-11-04 修 Linux 真红：**先判绝对、再 trim 斜杠**。
+        // 旧写法 `raw.trim().replace('\\','/').trim('/')` 先把开头的 "/" 吃掉了，
+        // 于是 POSIX 绝对路径（/tmp/.../a.md）被归一成 "tmp/.../a.md"，绝对判据永远不命中 ⇒
+        // 声明里给绝对路径被当相对路径放过去（Linux 上这条 test 红；Windows 上因 `C:` 命中盘符判据而绿）。
+        val text = raw.trim()
+        if (text.isEmpty()) return "声明路径是空的"
+        val asSlash = text.replace('\\', '/')
+        if (asSlash.startsWith("/") || text.matches(Regex("[A-Za-z]:.*"))) {
+            return "声明路径是绝对写法：$asSlash"
+        }
+        val rel = asSlash.trim('/')
         if (rel.isEmpty()) return "声明路径是空的"
-        if (rel.startsWith("/") || rel.matches(Regex("[A-Za-z]:.*"))) return "声明路径是绝对写法：$rel"
         val parts = rel.split('/')
         if (parts.contains("..")) return "声明路径越出工作区：$rel"
         if (parts.any { it.equals(FileShadowSandbox.SHADOW_DIR_NAME, ignoreCase = true) }) {
