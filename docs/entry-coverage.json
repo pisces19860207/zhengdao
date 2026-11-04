@@ -227,105 +227,6 @@
     ],
     "verdict": "wired",
     "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt",
-    "file_mates_wired": false,
-    "kind": "object",
-    "line": 60,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：「浏览器桥」设置页开关→BrowserAgentBridge.start——设计注记明言「默认关、由设置页拉起」，开关未接线，整个 HTTP 桥生产不可达（仅测试在调）",
-    "package": "com.example.zhengdao.bridge",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "BrowserAgentBridge",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
-      "line": 95
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
-      "line": 133
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
-      "line": 134
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt",
-      "line": 160
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 59
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 68
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 79
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 80
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 81
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 82
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 87
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 89
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BridgeHttpBodyTest.kt",
-      "line": 101
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 234
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 235
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 237
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 238
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 240
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 241
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/bridge/BrowserBridgeGateTest.kt",
-      "line": 243
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
    }
   ],
   "C": [
@@ -373,11 +274,11 @@
  },
  "summary": {
   "A": 3,
-  "B": 3,
+  "B": 2,
   "C": 3,
   "gates_with_write_path": 1,
-  "not_wired": 6,
-  "production_top_level_public": 366,
-  "wired": 360
+  "not_wired": 5,
+  "production_top_level_public": 369,
+  "wired": 364
  }
 }

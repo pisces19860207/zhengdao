@@ -146,6 +146,19 @@ class StatutesSlimGateTest {
         assertFalse("bridge_* 文案还在（en）", Regex("<string name=\"bridge_").containsMatchIn(en))
     }
 
+    /**
+     * 中英文案键数相等（原桥门禁 `BrowserBridgeGateTest` ⑧前半，383 批迁入——
+     * 该文件随桥删除，这条**全仓**判据不该陪葬；红线③「中英成对」的本营在这里）。
+     */
+    @Test
+    fun `中英文案键数必须相等`() {
+        fun keys(rel: String): Set<String> =
+            Regex("<string name=\"([^\"]+)\"").findAll(text(rel)).map { it.groupValues[1] }.toSet()
+        val zh = keys("src/main/res/values/strings.xml")
+        val en = keys("src/main/res/values-en/strings.xml")
+        assertEquals("中英键数必须相等（红线③）", zh.size, en.size)
+    }
+
     // ── ④ 抱朴抽屉「设置」组：第二百八十六批整组删除 ─────────────────────────
 
     @Test

@@ -3,23 +3,23 @@ package com.example.zhengdao.bridge
 
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 桥命令 `tabId` 路由门禁（㊽-C ＝ §B 78，2026-10-16）。
+ * 命令层 `tabId` 路由门禁（㊽-C ＝ §B 78，2026-10-16）。
  *
  * 背景（workbuddy 第㉟刀真机验收报告 §7 N4，P3）：`status` / `snapshot` / `execJS` / `click` /
- * `type` / `scroll` / `navigate` 七条命令**一律操作活跃标签** —— body 里带的 `tabId` 被静默
- * 忽略，实测 `tabId=1` 的 `click` 点在了 tab2 上，agent 从回执里看不出任何异常。
+ * `type` / `scroll` / `navigate` 七条命令**一律操作活跃标签** —— 传入的 `tabId` 被静默
+ * 忽略，实测 `tabId=1` 的 `click` 点在了 tab2 上，调用方从回执里看不出任何异常。
  *
  * 修复口径：`tabId` 缺省/空白 → 活跃标签（老调用方零改动，靠默认参数保证）；给了 `tabId` →
  * 按 id 精确路由；不是数字、或找不到该标签 → **明确回错误 JSON**（不许再静默落到活跃标签）。
  *
  * 本文件是**源码级门禁**（`BrowserCommands` 依赖 WebView/Compose 状态，JVM 里起不来）：
- * 读源码剥注释后断言，口径与 [BrowserBridgeGateTest] / `LargeFontWrapGuardTest` 一致 ——
- * 注释里写一句"我支持 tabId"不算数。
+ * 读源码剥注释后断言 —— 注释里写一句"我支持 tabId"不算数。
+ * （383 批：原读 HTTP 桥 dispatch 透传的两条判据随桥删除移除；路由本体在
+ * BrowserCommands 默认参数与 target() 里，判据照旧。）
  */
 class BridgeTabIdRoutingGuardTest {
 
@@ -41,18 +41,7 @@ class BridgeTabIdRoutingGuardTest {
     private fun original(rel: String): String = repoFile(rel).readText().replace("\r\n", "\n")
 
     private val commandsRel = "src/main/java/com/example/zhengdao/bridge/BrowserCommands.kt"
-    private val bridgeRel = "src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt"
     private val managerRel = "src/main/java/com/example/zhengdao/ui/browser/BrowserTabManager.kt"
-
-    /** dispatch 里某个命令分支的调用文本（到下一个分支为止）。 */
-    private fun dispatchBranch(cmd: String): String {
-        val src = code(bridgeRel)
-        val start = src.indexOf("BridgePolicy.Command.$cmd ->")
-        if (start < 0) return ""
-        val rest = src.substring(start)
-        val next = rest.indexOf("BridgePolicy.Command.", 1)
-        return if (next > 0) rest.substring(0, next) else rest
-    }
 
     /** 抽出某个函数的正文（按花括号配平，从签名起）。 */
     private fun functionBody(signature: String): String {
@@ -97,24 +86,6 @@ class BridgeTabIdRoutingGuardTest {
         )
         signatures.forEach { sig ->
             assertTrue("签名缺 tabId 或缺默认值：$sig", src.contains(sig))
-        }
-    }
-
-    // ② dispatch 里带 tabId 的命令都透传 body 里的 tabId（吞掉 tabId 的旧形态就是 N4 本身）
-    // 228 批 B：BACK/FORWARD/RELOAD 同规（TABS 列全部标签、不带 tabId，不在本清单）
-    @Test
-    fun `门禁_B补78_dispatch 带 tabId 的命令都透传 param_body_tabId`() {
-        val wire = listOf(
-            "STATUS", "SNAPSHOT", "EXEC_JS", "CLICK", "TYPE", "SCROLL", "NAVIGATE",
-            "BACK", "FORWARD", "RELOAD",
-        )
-        wire.forEach { cmd ->
-            val branch = dispatchBranch(cmd)
-            assertTrue("dispatch 里找不到 $cmd 分支", branch.isNotEmpty())
-            assertTrue(
-                "$cmd 分支没有透传 param(body, \"tabId\") —— tabId 会被静默忽略（N4）",
-                branch.contains("param(body, \"tabId\")"),
-            )
         }
     }
 
@@ -200,16 +171,10 @@ class BridgeTabIdRoutingGuardTest {
         )
     }
 
-    // ⑥ 旧形态不许回潮 ＋ 立账可追溯
+    // ⑥ 命令侧立账可追溯（383 批：原「dispatch 旧形态不许回潮」半条随桥删除；
+    // 这里保留命令侧的取证来源注释钉，防有人把这段历史连注释一起抹掉）
     @Test
-    fun `门禁_B补78_无参旧形态不许回潮且立账可追溯`() {
-        val src = code(bridgeRel)
-        listOf("status()", "execJs(param(body, \"code\"))", "click(param(body, \"selector\"))").forEach {
-            assertFalse(
-                "dispatch 回到无 tabId 的旧形态：$it",
-                src.contains("-> BrowserCommands.$it"),
-            )
-        }
+    fun `门禁_B补78_命令侧立账可追溯`() {
         val raw = original(commandsRel)
         assertTrue("命令侧缺 ㊽-C 立账注释", raw.contains("㊽-C ＝ §B 78"))
         assertTrue("命令侧缺 N4 取证来源", raw.contains("N4"))

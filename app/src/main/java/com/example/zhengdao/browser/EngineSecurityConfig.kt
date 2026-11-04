@@ -32,9 +32,9 @@ data class EngineSecurityConfig(
     val thirdPartyCookiesEnabled: Boolean = false,
     /**
      * JS 接口白名单。
-     * 注意（§4.4「Bridge 通信」行）：浏览器桥**完全不用 addJavascriptInterface**，
-     * 走 postWebMessage / WebMessagePort（结构化、可验源）。此字段仅为
-     * 未来页面侧需求预留，默认空；非空时只暴露列名（红线④：agent 不得重绑，§4.3）。
+     * 注意（§4.4「Bridge 通信」行）：原浏览器桥（已于 383 批删除）与命令层都**完全不用
+     * addJavascriptInterface**，走 postWebMessage / WebMessagePort（结构化、可验源）。
+     * 此字段仅为未来页面侧需求预留，默认空；非空时只暴露列名（红线④：不得重绑，§4.3）。
      */
     val allowedJsInterfaces: Set<String> = emptySet(),
     /**

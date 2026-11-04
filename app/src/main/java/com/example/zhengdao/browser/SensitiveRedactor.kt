@@ -14,10 +14,11 @@ package com.example.zhengdao.browser
  * 铁律：
  * 1. 覆盖**所有离开浏览器、流向 agent/AI 上下文的数据**：快照文本/DOM、execJS 返回值、
  *    cookie/localStorage 读取结果（§4.4）。
- * 2. 在**桥边界**强制执行，与 agent 权限高低无关（§4.3）。
+ * 2. 在**命令层出口**强制执行，与调用方权限高低无关（§4.3；原「桥边界」随桥退役改为出口口径）。
  * 3. agent/AI **无任何手段关闭或绕过**：不能改脱敏规则、不能借 execJS 读原始值、
  *    不能借其他命令偷读。
- * 4. 仅人类所有者可在 App「浏览器桥」设置里手动、知情风险后关闭（用户自主权，非 agent 能力）。
+ * 4. 原「人类所有者可在浏览器桥设置页关闭」的口子随桥一起消失（383 批）：全仓构造点
+ *    一律走默认 `enabled = true`，App 内**没有任何写入口**能把脱敏关掉——比原口径更严。
  *
  * 状态：第㊵刀起 URL/键值对出口齐备——[redactUrl]（status/navigate 的 url）、
  * [redactPairs]（execJS 的 cookie/localStorage 返回）均为真实调用点；第48刀A 起
@@ -28,7 +29,7 @@ class SensitiveRedactor(
 
     /**
      * 人类所有者开关（默认 true = 强制脱敏）。
-     * 只有 App 设置项能改它；桥与 agent 侧无任何写入口（红线⑦，§4.3）。
+     * App 内没有任何写入口能改它（原桥设置页随桥删除，383 批）；agent/AI 侧同样无门（红线⑦，§4.3）。
      */
     private var enabled: Boolean = true,
 ) {

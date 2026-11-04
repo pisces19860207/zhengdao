@@ -22,11 +22,9 @@
     <exclude domain="file" path="oc" />
     <!-- 「仅私有模式」的工作区落在 App 的外部私有目录，同样不进云备份 -->
     <exclude domain="external" path="workspace" />
-    <!-- 浏览器桥 token（2026-10-15，ERRATA E-129 的坑）：上一个骨架把随机口令明文存进
-         sharedpref，而两份备份规则都没排这个 domain ⇒ 口令跟着云备份走。
-         现在只按文件名排这一个文件（独立 prefs，见 bridge/BridgeToken.kt），
-         不影响设置项等其他 sharedpref。 -->
-    <exclude domain="sharedpref" path="bridge_token.xml" />
+    <!-- （原「浏览器桥 token」的 bridge_token.xml 排除项随桥删除清出，383 批——
+         E-129 立下的另一半判据「sharedpref 只许按文件名排、不许排整域」仍在
+         BackupRulesGuardTest 里钉着。） -->
     <!-- MCP OAuth token（2026-10-26，第二百一十六批）：值本身已用 AndroidKeyStore 的
          AES-GCM 加密，但密文跟着云备份走去另一台设备也解不开、还会变成"看似已授权"的
          脏状态；按文件名整份排除（见 baopu/mcp/McpTokenStoreAndroid.kt）。 -->

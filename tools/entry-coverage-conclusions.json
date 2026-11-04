@@ -22,10 +22,6 @@
     "IntakeProfile": {
       "verdict": "wired",
       "note": "谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核"
-    },
-    "BrowserAgentBridge": {
-      "verdict": "wired",
-      "note": "谁接：「浏览器桥」设置页开关→BrowserAgentBridge.start——设计注记明言「默认关、由设置页拉起」，开关未接线，整个 HTTP 桥生产不可达（仅测试在调）"
     }
   },
   "C": {

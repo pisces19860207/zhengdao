@@ -199,8 +199,9 @@ class BridgeTitleRedactTest {
         // 旧钉「白名单没有 tabs 命令」在其注释里写明：将来新增 tabs 必须先补类 KDoc
         // 脱敏边界表，红就是因为加了却没补——228 批 B-4 落了 tabs，钉子按说明兑现成新形：
         // 命令在场 ＋「tab 元数据第一次成列表出口」的那行边界表必须在场。
+        // （383 批：命令白名单随 HTTP 桥删除；"命令在场"改钉 BrowserCommands 的 tabsList 本体。）
         val raw = commandsSource()
-        assertTrue("tabs 应已在白名单（228 批 B-4）", BridgePolicy.ALL.any { it.wireName == "tabs" })
+        assertTrue("tabsList 命令本体应已在 BrowserCommands（228 批 B-4）", raw.contains("fun tabsList("))
         assertTrue(
             "tabs 列表的 url/title 必须已补进类 KDoc 脱敏边界表",
             raw.contains("`tabs` 列表的 `url` / `title`"),

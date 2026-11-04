@@ -1,8 +1,8 @@
 {
-  "total": 345,
+  "total": 337,
   "rules": {
-    "CyclomaticComplexMethod": 195,
-    "LongMethod": 150
+    "CyclomaticComplexMethod": 190,
+    "LongMethod": 147
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -29,7 +29,6 @@
     "CyclomaticComplexMethod|BaopuLongformCard.kt|BaopuLongformCard#1",
     "CyclomaticComplexMethod|BaopuMessageList.kt|BaopuMessageRow#1",
     "CyclomaticComplexMethod|BaopuNoticeSlot.kt|BaopuNoticeSlot#1",
-    "CyclomaticComplexMethod|BaopuNoticeTicker.kt|BaopuNoticeTicker#1",
     "CyclomaticComplexMethod|BaopuPhoneSearchCard.kt|BaopuPhoneSearchCard#1",
     "CyclomaticComplexMethod|BaopuPlanCard.kt|BaopuPlanCard#1",
     "CyclomaticComplexMethod|BaopuPreview.kt|renderBody#1",
@@ -38,14 +37,10 @@
     "CyclomaticComplexMethod|BaopuSettingsRules.kt|baopuGroupLine#1",
     "CyclomaticComplexMethod|BaopuSettingsRules.kt|baopuGroupTitle#1",
     "CyclomaticComplexMethod|BaopuSettingsScreen.kt|BaopuSettingsScreen#1",
-    "CyclomaticComplexMethod|BaopuSettingsScreen.kt|baopuToolDesc#1",
-    "CyclomaticComplexMethod|BaopuSettingsScreen.kt|baopuToolLabel#1",
     "CyclomaticComplexMethod|BaopuSkillCard.kt|restoreArchived#1",
     "CyclomaticComplexMethod|BaopuSkillCategory.kt|readJsonString#1",
     "CyclomaticComplexMethod|BaopuTrashBin.kt|TrashDialog#1",
     "CyclomaticComplexMethod|BrowserActivityText.kt|browserActivityLine#1",
-    "CyclomaticComplexMethod|BrowserAgentBridge.kt|dispatch#1",
-    "CyclomaticComplexMethod|BrowserAgentBridge.kt|handle#1",
     "CyclomaticComplexMethod|BrowserCommands.kt|grabShot#1",
     "CyclomaticComplexMethod|BrowserCommands.kt|parseGeometry#1",
     "CyclomaticComplexMethod|BrowserCommands.kt|snapshot#1",
@@ -229,7 +224,6 @@
     "LongMethod|BaopuMessageList.kt|BaopuImageCell#1",
     "LongMethod|BaopuMessageList.kt|BaopuMessageRow#1",
     "LongMethod|BaopuNoticeSlot.kt|BaopuNoticeSlot#1",
-    "LongMethod|BaopuNoticeTicker.kt|BaopuNoticeTicker#1",
     "LongMethod|BaopuNovelSheet.kt|BaopuNovelSheet#1",
     "LongMethod|BaopuPhoneSearchCard.kt|BaopuPhoneSearchCard#1",
     "LongMethod|BaopuPlanArea.kt|BaopuPlanArea#1",
@@ -247,8 +241,6 @@
     "LongMethod|BaopuSessionLibraryScreen.kt|BaopuSessionLibraryScreen#1",
     "LongMethod|BaopuSettingsScreen.kt|BaopuSettingsScreen#1",
     "LongMethod|BaopuSettingsScreen.kt|PersonaPackEditorDialog#1",
-    "LongMethod|BaopuSettingsScreen.kt|baopuToolDesc#1",
-    "LongMethod|BaopuSettingsScreen.kt|baopuToolLabel#1",
     "LongMethod|BaopuSkillCard.kt|BaopuSkillProposalCard#1",
     "LongMethod|BaopuSkillCard.kt|SkillArchivedDialog#1",
     "LongMethod|BaopuSkillCard.kt|SkillDetailDialog#1",
@@ -351,21 +343,21 @@
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
     "LongMethod|ZipIndex.kt|read#1"
   ],
-  "recorded_from": "本机复验读数：chore/detekt-debt-9 zd9-1..zd9-6（wt-410 @ ce3b19ad 锁内 :app:detektReport 复跑，detekt.xml mtime 2026-11-03 17:07:51；CI 绿后验收会话可用 CI 读数覆写核对）",
-  "recorded_at": "2026-11-03T17:10:14+0800",
+  "recorded_from": "383 local run @ feat/settings-entry-a",
+  "recorded_at": "2026-11-05T03:11:19+0800",
   "zones": {
     "engine": {
-      "total": 214,
+      "total": 212,
       "rules": {
-        "CyclomaticComplexMethod": 148,
+        "CyclomaticComplexMethod": 146,
         "LongMethod": 66
       }
     },
     "frozen_ui": {
-      "total": 131,
+      "total": 125,
       "rules": {
-        "CyclomaticComplexMethod": 47,
-        "LongMethod": 84
+        "CyclomaticComplexMethod": 44,
+        "LongMethod": 81
       }
     }
   },

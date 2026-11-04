@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 366 |
-| 生产可达（有生产引用，含同文件） | 360 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 369 |
+| 生产可达（有生产引用，含同文件） | 364 |
 | A 有定义无调用 | 3 |
-| B 只有测试在调 | 3 |
+| B 只有测试在调 | 2 |
 | C 已接线默认关、无开启路径 | 3 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **6** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **5** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -35,7 +35,6 @@
 |---|---|---|---|---|
 | `CardValidate` | `app/src/main/java/com/example/zhengdao/baopu/cards/ResultCardValidate.kt:59` | `app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:33`、`app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:42`、`app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:50` | 接线 | 谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它 |
 | `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 接线 | 谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核 |
-| `BrowserAgentBridge` | `app/src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt:60` | `app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt:95`、`app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt:133`、`app/src/test/java/com/example/zhengdao/bridge/BridgeContractGuardTest.kt:134` | 接线 | 谁接：「浏览器桥」设置页开关→BrowserAgentBridge.start——设计注记明言「默认关、由设置页拉起」，开关未接线，整个 HTTP 桥生产不可达（仅测试在调） |
 
 ## C 已接线默认关、无开启路径
 

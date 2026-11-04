@@ -5,7 +5,7 @@
 //
 // 为什么不直接 `androidx.security:security-crypto` 的 EncryptedSharedPreferences：
 //   · 本批负例⑦明令「不引新加密库」；
-//   · 那个库已进入维护模式（README 自述），而仓里 BridgeToken 已有先例
+//   · 那个库已进入维护模式（README 自述），而仓里已有的自研加密存储先例可循
 //     （E-129 的教训：不引依赖、但必须排云备份）。
 // 所以这里**自己实现等价的加密 prefs**：AndroidKeyStore 里一把不可导出的 AES-256 密钥，
 // 每条值 AES/GCM 加密（随机 IV，认证加密）后再写进私有 prefs —— 语义与

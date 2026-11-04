@@ -10,16 +10,18 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 刀 4 §2.2–§2.4 的桥侧门禁（派工单 **J6／J7／J8／J10／J11／J12**）。
+ * 刀 4 §2.2–§2.4 的命令层门禁（派工单 **J6／J7／J8／J11／J12**）。
  *
  * ## 为什么一半靠源码、一半靠纯函数
  * `BrowserCommands.snapshot/screenshot` 的**执行**要 WebView ＋ 主线程，JVM 里起不来；
  * 但判据里"会不会又变成收了不用"这类事，其实就写在源码的形状上（第㉓刀、㊽-C 都这么做）。
  * 所以本文件两件事分开钉：
- * - **源码级**（J6 分支在场、J7 报错口径、J8 selector 被真用、J10 路由只一处、J11a 不再
+ * - **源码级**（J6 分支在场、J7 报错口径、J8 selector 被真用、J11a 不再
  *   1×1 冒充、J12 矩形算法）：读源码、剥注释、按花括号配平取函数体再断言；
  * - **行为级**（`shotMode`/`fitScale`/`cropOf`/`ShotBounds.parse`/`screenshotJson`）：
  *   这些是第48刀A `statusJson` 同款的"无 Android 内核"，JVM 直接喂值断言。
+ *
+ * （383 批：原 J10 两条「路由层透传」判据读的是 HTTP 桥 dispatch 源码，随桥删除移除。）
  *
  * 每条 absence 断言都配一条**负例自证**（把源码改回坏形状，判别器必须报警）——
  * 「不红＝没真测」。
@@ -39,9 +41,7 @@ class BridgeBlade4GuardTest {
         .replace(Regex("(?m)^[ \\t]*//.*$"), "")
 
     private val commandsRel = "src/main/java/com/example/zhengdao/bridge/BrowserCommands.kt"
-    private val bridgeRel = "src/main/java/com/example/zhengdao/bridge/BrowserAgentBridge.kt"
     private val commands by lazy { strip(raw(commandsRel)) }
-    private val bridge by lazy { strip(raw(bridgeRel)) }
 
     /** 从签名起按花括号配平取函数体（含签名后的第一个块）。 */
     private fun bodyOf(src: String, signature: String): String {
@@ -72,15 +72,6 @@ class BridgeBlade4GuardTest {
     // 门禁把两段都收进来——断言照样钉在实现原文上。
     private val screenshotBody by lazy {
         bodyOf(commands, "internal fun captureShotRef(") + bodyOf(commands, "private fun grabShot(")
-    }
-
-    /** dispatch 里某一条命令分支的调用文本。 */
-    private fun dispatchBranch(src: String, cmd: String): String {
-        val start = src.indexOf("BridgePolicy.Command.$cmd ->")
-        assertTrue("dispatch 里找不到 $cmd 分支", start >= 0)
-        val rest = src.substring(start)
-        val next = rest.indexOf("BridgePolicy.Command.", 1)
-        return if (next > 0) rest.substring(0, next) else rest
     }
 
     // ── J8：snapshot 的 selector 不许再静默 ─────────────────────────────────
@@ -208,7 +199,8 @@ class BridgeBlade4GuardTest {
 
     @Test
     fun `J11a_旧 1×1 假成功的根因写法必须从代码里清零`() {
-        // 剥注释再断言（仓库口径：BrowserBridgeGateTest 的「凡断言某字样不出现先剥注释」，
+        // 剥注释再断言（仓库口径「凡断言某字样不出现先剥注释」，出自原桥门禁
+        // BrowserBridgeGateTest——该文件随桥删除（383），口径仍是全仓的；
         // 台账坑「门禁被自己注释里的同名字面量带偏」）。本刀的 KDoc 要**解释**旧根因，
         // 那里留着 `coerceAtLeast(1)` 是文档；代码里必须一个都没有 ⇒ 用 commands（已剥注释）判。
         assertFalse("J11a：代码里不许再有 coerceAtLeast(1)（把未布局兜成 1×1 的根因）", commands.contains("coerceAtLeast(1)"))
@@ -251,28 +243,7 @@ class BridgeBlade4GuardTest {
         assertTrue(degraded.contains("\"scale\":\"1.000\""))
     }
 
-    // ── J10：路由层只透传一处 ──────────────────────────────────────────────
-
-    @Test
-    fun `J10_SCREENSHOT 分支把 selector 原样交给执行层`() {
-        val branch = dispatchBranch(bridge, "SCREENSHOT")
-        assertTrue("分支必须透传 selector：$branch", branch.contains("param(body, \"selector\")"))
-        assertTrue("参数顺序必须是 app, tabId, fullPage, selector：$branch", branch.indexOf("app,") < branch.indexOf("param(body, \"tabId\")"))
-        assertTrue(branch.indexOf("param(body, \"fullPage\")") < branch.indexOf("param(body, \"selector\")"))
-        // 路由层只搬运：不许在 BrowserAgentBridge 里自造 selector 校验
-        assertFalse("路由层不许自造第二套校验", bridge.contains("checkSelector"))
-        assertEquals(
-            "全 dispatch 里 selector 透传恰 5 处（snapshot/click/type/scroll 原有 4 处 + screenshot 1 处）",
-            5,
-            Regex("param\\(body, \"selector\"\\)").findAll(bridge).count(),
-        )
-    }
-
-    @Test
-    fun `J10_其余十条分支一个字没动`() {
-        listOf("STATUS", "EXEC_JS", "NAVIGATE", "NEW_TAB", "ACTIVE_TAB", "CLOSE_TAB").forEach { cmd ->
-            val branch = dispatchBranch(bridge, cmd)
-            assertFalse("$cmd 分支不许被顺手改动（本刀只许动 SCREENSHOT）", branch.contains("selector"))
-        }
-    }
+    // 383 批：原 J10 两条（SCREENSHOT 分支透传 selector ＋ 其余十条分支不动）读的是
+    // HTTP 桥的 dispatch 源码，随桥整体删除——selector 透传与参数顺序的判定由
+    // 抱朴侧调用点（BaopuBrowserWiring）与 BrowserCommands 签名判据承担。
 }

@@ -141,7 +141,7 @@ internal object McpPkce {
      *
      * 回调是外部可投递的（任何 App 都能发 `zhengdao://mcp/oauth?...`），state 是唯一
      * 能证明「这次回调是我发起的那次」的东西。用 `==` 会在第一个不同字符处返回，
-     * 给本地恶意 App 逐字符试的空间；恒定时间比较是零成本的好习惯（同 BridgeToken）。
+     * 给本地恶意 App 逐字符试的空间；恒定时间比较是零成本的好习惯。
      */
     fun stateMatches(expected: String, actual: String?): Boolean {
         if (actual == null || expected.isEmpty()) return false

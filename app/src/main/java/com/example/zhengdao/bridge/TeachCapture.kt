@@ -4,13 +4,13 @@
 // 第二百二十六批 G2 · 示教录制的「点击即回传」桥（222 验收：录制跨导航丢事件）。
 //
 // 与红线④的关系（先把话说清楚，免得后来人以为这里破了规矩）：
-//   ④「addJavascriptInterface 重绑」禁的是 **agent 侧的浏览器桥** ——BridgePolicy 的 11 条命令
-//   仍走 postWebMessage / WebMessagePort，本批一个字节没改；agent 也够不到下面这个对象
-//   （它不在命令白名单里，参数面也没有任何入口）。
-//   本对象是 **App 自己的录制探针**，三条约束钉住攻击面：
+//   ④「addJavascriptInterface 重绑」当年禁的是 **agent 侧的浏览器桥**（该桥已于 383 批
+//   整体删除，外部 agent 的参数面不复存在）；命令层与页面之间仍走
+//   postWebMessage / WebMessagePort，本批一个字节没改。
+//   本对象是 **App 自己的录制探针**，与任何 agent 通道无关，三条约束钉住攻击面：
 //     ① 只在录制期间挂（start → attach），停止立即 removeJavascriptInterface；
 //     ② **只写**：页面能做的只有往录制缓冲塞一条 JSON，取不到任何东西（没有读方法）；
-//     ③ 载荷限长：超长/空串直接丢，不让页面拿桥当内存放大器。
+//     ③ 载荷限长：超长/空串直接丢，不让页面拿它当内存放大器。
 package com.example.zhengdao.bridge
 
 import android.os.Handler

@@ -39,30 +39,30 @@ import com.example.zhengdao.ui.browser.BrowserTabManager
  * ## 分层
  *
  * ```
- * BrowserAgentBridge（HTTP：验 token + 解析 body + 路由）
- *        │  解析 body → (命令名, 参数串)
- *        ▼
- * BridgePolicy（白名单 + 参数校验）   ← 纯函数，已单测
+ * 调用方（抱朴 BaopuBrowserWiring / 玄览 / 示教 Teach*，同进程直连）
+ *        │  (命令, 参数串)
  *        ▼
  * BrowserCommands（本类：把参数变成 WebView / 标签操作，返回 JSON 字符串）
  *        ▼
  * BrowserTabManager / WebViewEngine / PageSnapshot / SensitiveRedactor
  * ```
  *
+ * （原 HTTP 桥一层已于 383 批整体删除——它验 token、解析 body、按白名单路由；
+ * 桥退役后参数校验只留 [BridgePolicy] 这份纯函数内核，调用方各自在入口把关。）
+ *
  * ## 为什么参数全是 String、返回全是 String
  *
  * ① **不引 org.json**：它在 `android.jar` 里是 stub，JVM 单测一碰就抛 `Stub!`
- *    （ERRATA E-130 同款坑）。body 的 JSON 解析放在 HTTP 层（要 Context 的那侧），
- *    本类只吃"已经取出来的字符串"。
+ *    （ERRATA E-130 同款坑）。本类只吃"已经取出来的字符串"，不自己解 JSON。
  * ② 返回手写 JSON 而不是序列化库：字段就那几个，手写 + [PageSnapshot.jsonEscape]
  *    比引一个依赖划算（项目零新增依赖纪律）。
  *
- * ## 两条安全纪律（红线⑦，agent 不可绕）
+ * ## 两条安全纪律（AI/外部调用方不可绕）
  *
- * 1. **离开桥的数据一律过 [SensitiveRedactor]**：`execJS` 的返回值、`snapshot` 的正文与
- *    DOM、`status`/`navigate` 的 url、`status`/`snapshot` 的 title 都要过一遍才进响应体。
- *    PII（手机号/卡号/身份证/密码框/敏感键值）被打成星号 —— agent 权限再高也拿不到
- *    原始隐私值（设计文档 §4.5 硬红线⑦）。
+ * 1. **离开命令层、流向 AI 上下文的数据一律过 [SensitiveRedactor]**：`execJS` 的返回值、
+ *    `snapshot` 的正文与 DOM、`status`/`navigate` 的 url、`status`/`snapshot` 的 title
+ *    都要过一遍才进响应体。PII（手机号/卡号/身份证/密码框/敏感键值）被打成星号 ——
+ *    调用方权限再高也拿不到原始隐私值（设计文档 §4.5 硬红线⑦）。
  * 2. **超长必截**：结果串截到 [BridgePolicy.MAX_RESULT_CHARS]，防 agent 一次拉爆内存。
  *
  * ## 脱敏边界（第48刀A 逐字段核定，2026-10-16）
