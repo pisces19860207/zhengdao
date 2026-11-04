@@ -88,7 +88,7 @@ class SkillEffectSignalTest {
             2,
             Regex("applyV12Migration\\(db\\)").findAll(body).count(),
         )
-        assertEquals("v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 20, BaopuDb.VERSION)
+        assertEquals("v21 = 430 pending 出处两列（挂起那张卡属于哪一轮）；v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 21, BaopuDb.VERSION)
     }
 
     @Test

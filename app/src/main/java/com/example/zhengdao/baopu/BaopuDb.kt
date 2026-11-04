@@ -270,21 +270,74 @@ internal object BaopuSql {
             .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
             .map { (col, type) -> Stmt("ALTER TABLE session ADD COLUMN $col $type", emptyArray()) }
 
-    /** 进 AWAIT_CONFIRM 时写 pending 三列（与 run_log 的 AwaitConfirm 行同事务——引擎侧拼）。 */
-    fun savePending(sessionId: Long, tool: String, argsJson: String, at: Long): Stmt = Stmt(
-        "UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ? WHERE id = ?",
-        arrayOf<String?>(tool, argsJson, at.toString(), sessionId.toString()),
+    // ── 第四百三十批：pending 出处两列（v21）───────────────────────────────
+    //
+    // 挂起那张卡**属于哪一轮**（runId）——415 给处置账加了 runId/taskId 两列，但恢复路径
+    // 上取不到（挂起那轮的出处没落库），只能「宁空勿猜」⇒ 恢复行永远是空键，375 的
+    // 「偏差→处置→恢复」串到第三段就断。这两列把那轮的出处**存进 pending 本身**，
+    // 重启后照样取得真值。
+    //
+    // 列名带 `pending_` 前缀而不就叫 run_id/task_id：`session` 表上一行＝一个会话，
+    // 裸 `run_id` 会被读成「这个会话的 runId」（一个会话跨很多轮），而它只属于**这张挂起的卡**。
+    //
+    // 为什么单开一档迁移而不并进 [SESSION_PENDING_COLUMNS]：v5 那三列只在 `oldVersion < 5`
+    // 补，已经升到 v20 的库不会回头跑它 ⇒ 并进 v5 就是「新装的有列、升级的没列」，
+    // 老库读 pending 直接 "no such column"。新列必须有自己那一档（v21）。
+    //
+    // NULL 有两种来路，都不是编出来的：①升级前就挂着的旧行（当时没取证）；
+    // ②taskId 至今没有真值来源（`agent/DeviationWiring.kt` 那一侧的出处信箱只装了 runId，
+    // 引擎还没把授权单号回填进去）——取不到就落 NULL，不许拿现轮或别的号顶上。
+
+    /** session 表 v21 新增两列（挂起那张卡的出处；NULL = 没取证，一眼可判）。 */
+    val SESSION_PENDING_KEY_COLUMNS: List<Pair<String, String>> = listOf(
+        "pending_run_id" to "TEXT",
+        "pending_task_id" to "TEXT",
     )
 
-    /** 批准/拒绝/超时后清空（绑 SQL NULL，不是空串——「没有」与「空工具名」两回事）。 */
+    /**
+     * pending 出处两列的加列语句（**纯函数**：缺哪列给哪条 ALTER，幂等；
+     * 同 [sessionPendingColumnsStmt] 房型——SQLite 没有 ADD COLUMN IF NOT EXISTS）。
+     */
+    fun sessionPendingKeyColumnsStmt(existingColumns: List<String>): List<Stmt> =
+        SESSION_PENDING_KEY_COLUMNS
+            .filterNot { (col, _) -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { (col, type) -> Stmt("ALTER TABLE session ADD COLUMN $col $type", emptyArray()) }
+
+    /**
+     * 进 AWAIT_CONFIRM 时写 pending 三列 ＋ 出处两列（第四百三十批；与 run_log 的
+     * AwaitConfirm 行同事务——引擎侧拼）。
+     *
+     * 出处两格**空白绑 SQL NULL**：没出处就是没出处，不写一个空串进去让读的人以为
+     * 「这轮有个号，是空的」——与 [clearPending] 同一条纪律。
+     */
+    fun savePending(
+        sessionId: Long,
+        tool: String,
+        argsJson: String,
+        at: Long,
+        runId: String?,
+        taskId: String?,
+    ): Stmt = Stmt(
+        "UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ?, " +
+            "pending_run_id = ?, pending_task_id = ? WHERE id = ?",
+        arrayOf<String?>(
+            tool, argsJson, at.toString(),
+            runId?.takeIf { it.isNotBlank() }, taskId?.takeIf { it.isNotBlank() },
+            sessionId.toString(),
+        ),
+    )
+
+    /** 批准/拒绝/超时后清空（绑 SQL NULL，不是空串；出处两列一起清——留着会让下一张卡接上这一轮的号）。 */
     fun clearPending(sessionId: Long): Stmt = Stmt(
-        "UPDATE session SET pending_tool = NULL, pending_args = NULL, pending_at = NULL WHERE id = ?",
+        "UPDATE session SET pending_tool = NULL, pending_args = NULL, pending_at = NULL, " +
+            "pending_run_id = NULL, pending_task_id = NULL WHERE id = ?",
         arrayOf<String?>(sessionId.toString()),
     )
 
     /** 读 pending（控制器重建确认卡 / 引擎恢复执行；工具名为空或 NULL ⇒ 没有 pending）。 */
     fun loadPending(sessionId: Long): Stmt = Stmt(
-        "SELECT pending_tool, pending_args, pending_at FROM session WHERE id = ?",
+        "SELECT pending_tool, pending_args, pending_at, pending_run_id, pending_task_id " +
+            "FROM session WHERE id = ?",
         arrayOf<String?>(sessionId.toString()),
     )
 
@@ -1417,6 +1470,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV18Migration(db)
         applyV19Migration(db)
         applyV20Migration(db)
+        applyV21Migration(db)
     }
 
     /**
@@ -1455,6 +1509,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 18) applyV18Migration(db)
         if (oldVersion < 19) applyV19Migration(db)
         if (oldVersion < 20) applyV20Migration(db)
+        if (oldVersion < 21) applyV21Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1700,6 +1755,20 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     )
 
     /**
+     * v21（第四百三十批）：session 加 pending 出处两列 `pending_run_id` / `pending_task_id`
+     * （挂起那张卡属于哪一轮、哪一单——恢复卡落处置账时从这里取真值，不再空键）。
+     *
+     * 加列走「先看列况再动」的纯函数 ⇒ 幂等，重复跑不炸；v20 库升级与新安装走同一条路径
+     * （onCreate 也调它）。**旧行这一列是 NULL**（当时没取证），读侧当空处理，不回填、不报错。
+     */
+    private fun applyV21Migration(db: SQLiteDatabase) {
+        val sessionCols = tableColumns(db, "session")
+        BaopuSql.sessionPendingKeyColumnsStmt(sessionCols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
+    /**
      * v20（第二百八十七批）：`file_op` 文件操作账（全盘操作入账，30 天可回放）。
      *
      * DDL 在 [FileOpSql] 一份字面量里，与 `onCreate` 共用——新装与升级不会分叉。
@@ -1758,8 +1827,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v18 = 157 补充（`workspace_grant` 会话级放行 ＋ `workspace_audit` 越界审计：
          *  工作区外授权从「一次运行问一次」改成「一次会话问一次」，按 sessionId 落库）。
          *  v20 = 第二百八十七批（`file_op` 文件操作账：全盘可读写之后每笔文件操作入账，
-         *  路径＋用途，30 天可回放；v18 那两张表随授权模型退役，只留老库兼容）。 */
-        const val VERSION = 20
+         *  路径＋用途，30 天可回放；v18 那两张表随授权模型退役，只留老库兼容）。
+         *  v21 = 第四百三十批（session 加 pending 出处两列 `pending_run_id`／`pending_task_id`：
+         *  挂起那张卡属于哪一轮／哪一单，重启后恢复卡落处置账才取得到真值；旧行 NULL 不回填）。 */
+        const val VERSION = 21
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
@@ -1815,8 +1886,21 @@ internal interface PendingStore {
     fun load(sessionId: Long): PendingRow?
 }
 
-/** pending 一行（[PendingRow.tool] 空 = 没有 pending）。 */
-internal data class PendingRow(val tool: String, val argsJson: String, val at: Long)
+/**
+ * pending 一行（[PendingRow.tool] 空 = 没有 pending）。
+ *
+ * [runId]／[taskId]（第四百三十批）＝这张挂起的卡属于哪一轮、哪一单。**null = 库里那一格是
+ * NULL**，两种来路都如实留着：升级前就挂着的旧行（当时没取出处），以及 taskId 还没有真值来源。
+ * 读侧不许拿空串冒充「有出处但空」，也不许在这儿现造一个号——恢复卡落处置账时照原样带走。
+ * 带缺省 ⇒ 存量构造点（含测试）一个字不改。
+ */
+internal data class PendingRow(
+    val tool: String,
+    val argsJson: String,
+    val at: Long,
+    val runId: String? = null,
+    val taskId: String? = null,
+)
 
 /**
  * [CompressionStore] 的 BaopuDb 实现（第十三批 · 薄壳，照 [SessionPendingStore] 房型）。
@@ -1945,6 +2029,10 @@ internal class SessionPendingStore(private val db: BaopuDb) : PendingStore {
                     tool = c.getString(0),
                     argsJson = if (c.isNull(1)) "" else c.getString(1),
                     at = if (c.isNull(2)) 0L else c.getLong(2),
+                    // 出处两列（第四百三十批）：NULL 就带 NULL 出去——旧库升级上来的 pending 行
+                    // 本来就没有出处，恢复账那一格如实空着，不许在这儿填一个「现在的」号。
+                    runId = if (c.isNull(3)) null else c.getString(3)?.takeIf { it.isNotBlank() },
+                    taskId = if (c.isNull(4)) null else c.getString(4)?.takeIf { it.isNotBlank() },
                 )
             } else {
                 null

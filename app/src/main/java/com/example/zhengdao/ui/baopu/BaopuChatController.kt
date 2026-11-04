@@ -263,7 +263,7 @@ internal class BaopuChatController(context: Context) {
     private val engine = BaopuRuntime.engine(appCtx)
     private val store: MemoryStore = BaopuRuntime.memoryStore(appCtx)
 
-    /** pending 三列的存取（控制器重建确认卡与销卡都经它；清库由引擎负责）。 */
+    /** pending 列（430 起含出处两列）的存取（控制器重建确认卡与销卡都经它；清库由引擎负责）。 */
     private val pendingStore: PendingStore = SessionPendingStore(db)
 
     /**
@@ -2039,7 +2039,7 @@ internal class BaopuChatController(context: Context) {
      * 文件改动确认卡（要动文件时出；批准/拒绝后清）。
      *
      * 两个来源：① 引擎的 [ConfirmRequest] 事件（在线挂起——活的卡）；
-     * ② 构造时从 session 的 pending 三列重建（进程被杀后重进——恢复的卡，
+     * ② 构造时从 session 的 pending 列重建（430 起该组还带出处两列；进程被杀后重进——恢复的卡，
      * 见 [restoreConfirmCard]）。[confirmRestored] 记是哪一种，批准/拒绝
      * 据此走不同的引擎入口（活的等挂起苏醒；恢复的直接执行）。
      */
@@ -2826,7 +2826,7 @@ internal class BaopuChatController(context: Context) {
 
 
     /**
-     * 进程重启后重建确认卡（T3 的第一半）：session 的 pending 三列非空 ⇒ 造一张卡。
+     * 进程重启后重建确认卡（T3 的第一半）：session 的 pending 列（工具名）非空 ⇒ 造一张卡。
      *
      * 三格的合成判据在 [BaopuConfirmRestore]（第七十二批抽出的纯函数）：
      * summary 由工具名＋参数**重新生成**（与在线出卡同一个函数，不落库；

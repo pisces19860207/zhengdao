@@ -161,7 +161,7 @@ class DeviationDetectJourneyTest {
             store = store,
             // 超时钟（J3 同款）：前台已累计 16 分钟 > 15 分钟线。
             foregroundElapsedMs = { 16 * 60 * 1000L },
-            onPersistPending = { _, _, _, _, at -> persistedAt += at },
+            onPersistPending = { _, _, _, _, at, _, _ -> persistedAt += at },
             onRequestCard = { },
         )
         val call = ToolCall("call-t", "write_file", JSONObject().put("path", "t.txt").put("content", "内容"))

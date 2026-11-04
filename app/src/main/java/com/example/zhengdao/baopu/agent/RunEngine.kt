@@ -828,7 +828,7 @@ internal class RunEngine(
 
     // ── 确认制（刀 3 A 段） ──────────────────────────────────────────────
 
-    /** pending 三列的存取（清与读；"进 AWAIT_CONFIRM"的写在引擎事务里，见 [enterAwaitConfirm]）。 */
+    /** pending 列的存取（清与读；"进 AWAIT_CONFIRM"的写在引擎事务里，见 [enterAwaitConfirm]）。 */
     private val pendingStore: PendingStore = SessionPendingStore(db)
 
     // ── 压缩（第十三批：桩换成真跑） ──────────────────────────────────────
@@ -916,7 +916,7 @@ internal class RunEngine(
 
     /**
      * 确认制内核。回调全是引擎侧接线：
-     * - [enterAwaitConfirm]：run_log 的 AwaitConfirm 行 + session pending 三列**同事务**；
+     * - [enterAwaitConfirm]：run_log 的 AwaitConfirm 行 + session pending 列**同事务**；
      * - 出卡事件直接转 [onEvent]（UI 从事件拿卡，不轮询）；
      * - 前台计时见 [confirmForegroundMs]（屏幕生命周期经 [noteConfirmBackground] 喂）。
      */
@@ -928,8 +928,8 @@ internal class RunEngine(
                 RunRules.confirmElapsedMs(confirmForegroundMs, confirmResumeAt, System.currentTimeMillis())
             }
         },
-        onPersistPending = { sid, step, tool, argsJson, at ->
-            enterAwaitConfirm(sid, step, tool, argsJson, at)
+        onPersistPending = { sid, step, tool, argsJson, at, runId, taskId ->
+            enterAwaitConfirm(sid, step, tool, argsJson, at, runId, taskId)
             // 前台计时从进确认这一刻起算（进后台再由 noteConfirmBackground 暂停累计）
             synchronized(confirmTimingLock) {
                 confirmForegroundMs = 0L
@@ -3492,14 +3492,26 @@ internal class RunEngine(
 
     /**
      * 进 AWAIT_CONFIRM：**一个事务**里写 run_log 的 AwaitConfirm 行 ＋ session 的
-     * pending 三列 ＋ interrupted_step（派工单 §3.3「同事务写」）。
+     * pending 列（含第四百三十批的出处两列）＋ interrupted_step（派工单 §3.3「同事务写」）。
      *
      * 为什么必须同事务：分成两次写，进程死在中间就会留下「run_log 说在等确认、
      * 却没有 pending 行」的半边状态 ⇒ 重启后卡丢了，那一轮永远等不到人。
      *
+     * 出处两格（[runId]／[taskId]，第四百三十批）由内核从出处信箱取好传进来：这一行是
+     * 挂起那张卡重启后**唯一还剩的真相**，此刻不落库，恢复卡的处置行就永远拿不到号。
+     * 空串 ⇒ 库里落 NULL（没出处就是没出处，不写空串占位）。
+     *
      * 先落库、再切状态（[settle] 的同一条纪律：反了会让 UI 闪到旧状态）。
      */
-    private fun enterAwaitConfirm(sessionId: Long, step: Int, tool: String, argsJson: String, at: Long) {
+    private fun enterAwaitConfirm(
+        sessionId: Long,
+        step: Int,
+        tool: String,
+        argsJson: String,
+        at: Long,
+        runId: String,
+        taskId: String,
+    ) {
         val rl = BaopuSql.insertRunLog(
             sessionId = sessionId,
             step = step,
@@ -3516,16 +3528,21 @@ internal class RunEngine(
             createdAt = at,
         )
         // 2026-11-05（L1）：此处原为 `val pend = …`，全函数无引用（死变量）；保留副作用调用。
-        BaopuSql.savePending(sessionId, tool, argsJson, at)
+        // 430：签名加出处两列（空白由 savePending 内部绑 NULL）。
+        BaopuSql.savePending(sessionId, tool, argsJson, at, runId, taskId)
         runCatching {
             db.write { d ->
                 d.beginTransaction()
                 try {
                     d.execSQL(
                         "UPDATE session SET updated_at = ?, interrupted_step = ?, " +
-                            "pending_tool = ?, pending_args = ?, pending_at = ? WHERE id = ?",
+                            "pending_tool = ?, pending_args = ?, pending_at = ?, " +
+                            "pending_run_id = ?, pending_task_id = ? WHERE id = ?",
                         arrayOf<Any?>(
                             at.toString(), step.toString(), tool, argsJson, at.toString(),
+                            // 出处两格：空白绑 NULL（与 [BaopuSql.savePending]／clearPending 同一
+                            // 条纪律——没出处就是没出处，不许留一个空串让读的人以为有号是空的）。
+                            runId.takeIf { it.isNotBlank() }, taskId.takeIf { it.isNotBlank() },
                             sessionId.toString(),
                         ),
                     )

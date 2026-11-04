@@ -88,7 +88,9 @@ class ConfirmScopeFlowTest {
         val flow = ConfirmFlow(
             pipeline = GuardPipeline(reg, { root }, { null }, ToolRunner(Executors.newSingleThreadExecutor())),
             store = store,
-            onPersistPending = { sid, step, tool, args, at -> persisted += arrayOf(sid, step, tool, args, at) },
+            onPersistPending = { sid, step, tool, args, at, runId, taskId ->
+                persisted += arrayOf(sid, step, tool, args, at, runId, taskId)
+            },
             onRequestCard = { cards += it },
         )
         return Rig(flow, store, persisted, cards, clicks, root)

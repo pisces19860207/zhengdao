@@ -63,7 +63,7 @@ data class ConfirmRequest(
  * 2. 批准 ⇒ [GuardPipeline.executeApproved]（只跳权限段，其余四段原样）；
  * 3. 拒绝 ⇒ 不执行，回灌「用户拒绝：<summary>」，对话继续；
  * 4. 超时（**仅前台计时**）⇒ 回灌人话、清 pending、交引擎收尾 ABORTED；
- * 5. 进程被杀 ⇒ pending 三列还在库里 ⇒ 控制器重建卡、[restoredExecute] 续上（T3）。
+ * 5. 进程被杀 ⇒ pending 列（含第四百三十批的出处两列）还在库里 ⇒ 控制器重建卡、[restoredExecute] 续上（T3）。
  *
  * 为什么等待是**轮询**而不是派工单 §3.2 写的 `withTimeoutOrNull`：超时口径是
  * 「仅前台计时」（[RunRules.confirmExpired] 的 KDoc），withTimeoutOrNull 只认
@@ -96,7 +96,17 @@ internal class ConfirmFlow(
     private val pipeline: GuardPipeline,
     private val store: PendingStore,
     private val foregroundElapsedMs: () -> Long = { 0L },
-    private val onPersistPending: (sessionId: Long, step: Int, tool: String, argsJson: String, at: Long) -> Unit = { _, _, _, _, _ -> },
+    /**
+     * 落库 pending 的回调（引擎侧一个事务写 run_log 的 AwaitConfirm 行 ＋ session 的 pending 列）。
+     *
+     * 第四百三十批在尾上多给两格出处（[runId]／[taskId]）：**挂起那一刻这一轮**的号，
+     * 由内核从出处信箱取（与 [noteDisposition] 落的处置行同源，两处不会漂成两个号）。
+     * 信箱是空的 ⇒ 传空串进去 ⇒ 库里落 NULL——没出处就是没出处，不许在这一层现造一个。
+     * 这两格是重启后恢复卡唯一能拿到的出处（新进程的信箱装的是现轮，不是挂起那轮）。
+     */
+    private val onPersistPending:
+        (sessionId: Long, step: Int, tool: String, argsJson: String, at: Long, runId: String, taskId: String) -> Unit =
+        { _, _, _, _, _, _, _ -> },
     private val onRequestCard: (ConfirmRequest) -> Unit = {},
     private val log: (String) -> Unit = { RunLog.log(it) },
     /**
@@ -217,8 +227,12 @@ internal class ConfirmFlow(
         note = null
         abandoned = false
         val at = System.currentTimeMillis()
-        // ① 落库（引擎回调：run_log 的 AwaitConfirm 行 + session pending 三列**同事务**）
-        onPersistPending(sessionId, step, call.name, argsJson, at)
+        val runId = DeviationWiring.currentRunId()
+        val taskId = DeviationWiring.currentTaskId()
+        // ① 落库（引擎回调：run_log 的 AwaitConfirm 行 + session pending 列**同事务**）。
+        //    第四百三十批：出处两格跟着一起落——这张卡重启后只剩库里这一行，
+        //    新进程的信箱装的已经不是挂起这一轮（386 那条早退纪律同理），不在这儿存就永远取不回来。
+        onPersistPending(sessionId, step, call.name, argsJson, at, runId, taskId)
         // ② 出卡（UI 事件；顺序在落库后——卡可见时库里必有行，refresh 才不会误销卡）
         onRequestCard(
             ConfirmRequest(
@@ -316,9 +330,11 @@ internal class ConfirmFlow(
      * 恢复批准（[noteRestoredApproval]）、恢复拒绝（[restoredReject]）——四格字段的写法
      * 只有一份，多一条路不会多出一种行格式。
      *
-     * 出处两格（415 加的列）默认**空串**：恢复两路显式不传——挂起那轮的 runId 没取证在
-     * pending 三列里，重启后的信箱装的也不是它（那是现轮的），宁空勿猜；链路靠
-     * `restored-<pending_at>` ↔ 偏差行 `suspended_at` 这一卡级键对齐。
+     * 出处两格的来路（第四百三十批改的就是这里）：**在线**从出处信箱取现轮的号，**恢复**从
+     * pending 那两列取**挂起那轮**的号——415 当时只能让恢复行留空（挂起那轮的出处没落库，
+     * 宁空勿猜），本批把它存进 pending，恢复行因此与偏差行同键，375 的
+     * 「偏差→处置→恢复」第三段接得上。取不到（升级前的旧行／taskId 还没有真值来源）⇒
+     * 库里就是 NULL、账上就是空串，**不许拿重启后现轮的号冒充**（那是编造）。
      */
     private fun recordDisposition(
         choice: CardDisposition.Choice,
@@ -448,7 +464,7 @@ internal class ConfirmFlow(
         }
         // 处置在这一刻已经定了（人点了批准），执行成不成是事实账那一侧后面自己记的事——
         // 与在线路径同序：先落处置、再动盘。
-        noteRestoredApproval(call, RunRules.confirmSummary(row.tool, args, projectRoot()))
+        noteRestoredApproval(call, row, RunRules.confirmSummary(row.tool, args, projectRoot()))
         val result = pipeline.executeApproved(call, spillWriter)
         store.clear(sessionId)
         return result
@@ -466,15 +482,20 @@ internal class ConfirmFlow(
      * `subject` 走 [RunRules.confirmSummary]（与重建卡面**同一个函数同一个根**，两处不会漂成两句话），
      * `why` 留空 ⇒ 用该选项的类别句兜底（在线批准且没写理由时也是这一句）。
      *
+     * 出处两格（第四百三十批）：从 [row] 的 `pending_run_id`／`pending_task_id` 取**挂起那轮**的号
+     * ——不是重启后现轮的号（信箱那时候装的是别的轮），拿不到就是空串。
+     *
      * **不改恢复逻辑**：这一行只是"记账"，不参与任何判定；它写失败也不拦执行（账本纪律：
      * 账是留痕不是闸门，[CardDisposition.record] 自己吞异常并记日志）。
      */
-    private fun noteRestoredApproval(call: ToolCall, summary: String) {
+    private fun noteRestoredApproval(call: ToolCall, row: PendingRow, summary: String) {
         recordDisposition(
             choice = CardDisposition.Choice.APPROVE,
             cardId = call.id,
             actor = CardDisposition.Actor.USER,
             subject = summary,
+            runId = row.runId.orEmpty(),
+            taskId = row.taskId.orEmpty(),
         )
     }
 
@@ -490,6 +511,7 @@ internal class ConfirmFlow(
      *
      * @param row 落库那一行；**null（已经处理过／本来就没有）⇒ 不落账**——给没发生过的问答
      *        留一行处置，就是编。调用方负责在 `pendingStore.clear` **之前**把它取出来。
+     *        出处两格也从这一行取（第四百三十批，与 [noteRestoredApproval] 同一口径）。
      * @param summary 卡面上那句话（拒绝回灌用的也是它）⇒ subject
      * @return 有没有真落下这一行
      */
@@ -503,6 +525,8 @@ internal class ConfirmFlow(
             cardId = restoredCallId(row),
             actor = CardDisposition.Actor.USER,
             subject = summary,
+            runId = row.runId.orEmpty(),
+            taskId = row.taskId.orEmpty(),
         )
         return true
     }

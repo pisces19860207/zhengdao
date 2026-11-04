@@ -59,7 +59,7 @@ class ConfirmFlowTest {
     private class Rig(
         val flow: ConfirmFlow,
         val store: FakeStore,
-        /** onPersistPending 的实参流水（sessionId, step, tool, argsJson, at）——「落库」的账。 */
+        /** onPersistPending 的实参流水（sessionId, step, tool, argsJson, at, runId, taskId）——「落库」的账。 */
         val persisted: MutableList<Array<Any?>>,
         val cards: MutableList<ConfirmRequest>,
         val root: File,
@@ -92,7 +92,9 @@ class ConfirmFlowTest {
             pipeline = GuardPipeline(reg, { root }, { null }, ToolRunner(Executors.newSingleThreadExecutor())),
             store = store,
             foregroundElapsedMs = foreground,
-            onPersistPending = { sid, step, tool, args, at -> persisted += arrayOf(sid, step, tool, args, at) },
+            onPersistPending = { sid, step, tool, args, at, runId, taskId ->
+                persisted += arrayOf(sid, step, tool, args, at, runId, taskId)
+            },
             onRequestCard = { cards += it },
             projectRoot = projectRoot,
         )
@@ -286,6 +288,97 @@ class ConfirmFlowTest {
         job.join()
     }
 
+    /**
+     * 第四百三十批·判据①：起单写 pending 必带**挂起那一轮**的 runId。
+     *
+     * 为什么钉在内核这一层：引擎把这两格搬进 session 的 `pending_run_id`／`pending_task_id`
+     * 没有判断可做，真正会错的是**取哪一轮的号**——取成重启后的现轮，号码格式合法、
+     * 账上看不出来，但 375 串「偏差→处置→恢复」串到第三段就串错了轮。
+     */
+    @Test
+    fun `落pending必带挂起那轮runId_判据1`() = runBlocking {
+        val root = tmp("pend-430")
+        val r = rig(root)
+        DeviationWiring.resetForTest()
+        // 引擎 newRun 处的同一口信箱：装本轮 runId；taskId 生产没有真值来源 ⇒ 空串
+        DeviationWiring.installRun("r-430@1000", "")
+        try {
+            val job = launch {
+                r.flow.enter(1L, 2, writeCall("call-430", "资料库/b.txt", "内容")) { _, _ -> null }
+            }
+            awaitLive(r.flow, "call-430")
+            val args = r.persisted.single()
+            assertEquals("挂起那轮的 runId 必须跟着 pending 落库", "r-430@1000", args[5])
+            assertEquals("taskId 取不到 ⇒ 交空串（引擎侧绑 NULL），编一个就是造假", "", args[6])
+            r.flow.resumeWithApproval("call-430", approved = false, note = null)
+            job.join()
+        } finally {
+            DeviationWiring.resetForTest()
+        }
+    }
+
+    /**
+     * 第四百三十批·负例：出处信箱是空的（收工后／测试摘过）⇒ 落库两格都留空。
+     *
+     * 打的是「拿别的号顶上」这一类变异：把 sessionId、`"unknown"`、现轮号写进出处都红。
+     * 宁空勿猜是 415 定下的纪律，本批只是把真值存进了 pending，没把它换成「总得有值」。
+     */
+    @Test
+    fun `信箱空时出处如实留空_不许编`() = runBlocking {
+        val root = tmp("pend-430-none")
+        val r = rig(root)
+        DeviationWiring.resetForTest()
+        try {
+            val job = launch {
+                r.flow.enter(1L, 1, writeCall("call-none", "资料库/c.txt", "内容")) { _, _ -> null }
+            }
+            awaitLive(r.flow, "call-none")
+            val args = r.persisted.single()
+            assertEquals("信箱空 ⇒ runId 不带任何编出来的号", "", args[5])
+            assertEquals("taskId 同上", "", args[6])
+            r.flow.resumeWithApproval("call-none", approved = false, note = null)
+            job.join()
+        } finally {
+            DeviationWiring.resetForTest()
+        }
+    }
+
+    /**
+     * 第四百三十批·判据①（引擎侧）：引擎那条手写 UPDATE 必须**带着出处两格**，
+     * 且值只许来自内核传进来的形参。
+     *
+     * 引擎整环要真 SQLite（无 Robolectric ⇒ 归真机），所以这一条钉在源码形状上（房型照
+     * RunEngineConcurrencyGateTest：去注释、可 grep）。打的两类变异：
+     * ① UPDATE 里漏掉两列 ⇒ 列加了、库里永远 NULL，恢复行照旧是空键（判据②静默失效）；
+     * ② 落库这一刻现取出处信箱 ⇒ 恢复路径上没有信箱（重启后的现轮），拿到的号是**别的轮**，
+     *    号码格式合法、账上看不出来——比留空更坏。
+     */
+    @Test
+    fun `引擎落pending的UPDATE必带出处两格_值取自内核不许现取信箱`() {
+        val rel = "src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt"
+        val src = File(rel).let { if (it.isFile) it else File("app/$it") }
+            .readText()
+            .replace("\r\n", "\n")
+            .lines()
+            .filterNot { l ->
+                val t = l.trimStart()
+                t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")
+            }
+            .joinToString("\n")
+        val head = "private fun enterAwaitConfirm("
+        val i = src.indexOf(head)
+        assertTrue("找不到 enterAwaitConfirm", i >= 0)
+        // 注释已在上面剥掉 ⇒ 函数体的尽头就是下一个 `private fun`（取本体，不把邻居拖进来）
+        val end = src.indexOf("\n    private fun", i + head.length)
+        assertTrue("enterAwaitConfirm 之后找不到函数边界（形状变了，这一条得跟着改）", end > i)
+        val body = src.substring(i, end)
+        assertTrue("签名要收出处两格（内核传的）", body.contains("runId: String,") && body.contains("taskId: String,"))
+        assertTrue("手写 UPDATE 必带两列", body.contains("pending_run_id = ?, pending_task_id = ? WHERE id = ?"))
+        assertTrue("空白绑 NULL 不写空串", body.contains("runId.takeIf { it.isNotBlank() }, taskId.takeIf { it.isNotBlank() },"))
+        assertFalse("不许在落库这一刻现取出处信箱（取到的是别的轮）", body.contains("DeviationWiring.currentRunId()"))
+        assertFalse("taskId 同上", body.contains("DeviationWiring.currentTaskId()"))
+    }
+
     // ── 恢复执行（T3 的 JVM 面：从库里参数直接跑，不等活人） ──────────────
 
     @Test
@@ -327,12 +420,15 @@ class ConfirmFlowTest {
             assertTrue("在线路径得先真的批准执行：$outcome", outcome is ConfirmFlow.Outcome.Approved)
             val online = CardDisposition.rowsFor("call-online").single()
 
-            // ② 重启恢复：库里那一行（同工具、同形状参数、另一个文件）
+            // ② 重启恢复：库里那一行（同工具、同形状参数、另一个文件）。
+            //    runId 这一格是第四百三十批新加的列——挂起那轮的号跟着 pending 一起落库，
+            //    重启后由它把恢复行的出处填上；taskId 还没有真值来源，库里就是 NULL。
             val restoredPath = File(root, "资料库/恢复.txt").absolutePath
             val row = PendingRow(
                 tool = "write_file",
                 argsJson = JSONObject().put("path", restoredPath).put("content", "乙").toString(),
                 at = 4_242L,
+                runId = "r-326@1000",
             )
             val before = CardDisposition.replay().size
             val clearedBefore = r.store.cleared
@@ -347,6 +443,9 @@ class ConfirmFlowTest {
             // ④ 处置账 +1 行，且与在线批准逐格一致
             assertEquals("恢复卡批准必须 +1 行", before + 1, CardDisposition.replay().size)
             val restored = CardDisposition.rowsFor("restored-4242").single()
+            // 第四百三十批判据②：恢复行不再是空键——出处从 pending 那两列取（415 只能留空）
+            assertEquals("恢复行带挂起那轮的 runId", "r-326@1000", restored.runId)
+            assertEquals("taskId 无真值来源 ⇒ 库里 NULL、账上空串，不许编", "", restored.taskId)
             assertEquals("选了哪个要一致", online.choice, restored.choice)
             assertEquals("哪张卡要一致", online.face, restored.face)
             assertEquals("谁批的要一致（是她点的，不是时钟）", online.actor, restored.actor)
@@ -395,11 +494,13 @@ class ConfirmFlowTest {
             val online = CardDisposition.rowsFor("call-online-r").single()
 
             // ② 恢复拒绝：库里那一行（先 load 再记，清库之后就没有"哪张卡"了）
+            //    出处一格同批准路径：第四百三十批起由 pending 带着走（判据②两路都要有键）
             val restoredPath = File(root, "资料库/恢复拒.txt").absolutePath
             val row = PendingRow(
                 tool = "write_file",
                 argsJson = JSONObject().put("path", restoredPath).put("content", "乙").toString(),
                 at = 5_252L,
+                runId = "r-326@2000",
             )
             val before = CardDisposition.replay().size
             val noted = r.flow.restoredReject(row, BaopuConfirmRestore.card(row, root).summary)
@@ -409,6 +510,8 @@ class ConfirmFlowTest {
             assertFalse("拒绝就是不执行", File(root, "资料库/恢复拒.txt").exists())
             assertEquals("恢复卡拒绝必须 +1 行", before + 1, CardDisposition.replay().size)
             val restored = CardDisposition.rowsFor("restored-5252").single()
+            assertEquals("恢复行带挂起那轮的 runId", "r-326@2000", restored.runId)
+            assertEquals("taskId 无真值来源 ⇒ 库里 NULL、账上空串，不许编", "", restored.taskId)
             assertEquals("选了哪个要一致", online.choice, restored.choice)
             assertEquals("驳就是驳", CardDisposition.Choice.REJECT, restored.choice)
             assertEquals("哪张卡要一致", online.face, restored.face)
@@ -470,7 +573,17 @@ class ConfirmFlowTest {
             assertEquals("处置行 card＝偏差行 op_id（不再靠 subject 文本硬凑）", dev.facts[DeviationEntry.F_OP_ID], dismiss.cardId)
             assertEquals("没人表态是时钟收卡", CardDisposition.Actor.CLOCK, dismiss.actor)
 
-            // ⑤ 恢复行（重启后对恢复卡表态那半）：runId 宁空勿猜；card＝restored-<suspended_at>
+            // ④' 挂起那轮的出处跟着 pending 一起落库（第四百三十批判据①）——与偏差行同键
+            val persistedRunId = r.persisted.single()[5] as String
+            assertEquals(
+                "pending 落库带的就是挂起那轮的 runId（与偏差行主键同值，重启后才取得回来）",
+                dev.runId,
+                persistedRunId,
+            )
+
+            // ⑤ 恢复行（重启后对恢复卡表态那半）：出处从 pending 那两列取。
+            //    第四百三十批改的就是这一格——415 当时只能留空（挂起那轮的号没落库），
+            //    现在库里带着它，恢复行因此与偏差行同键，链的第三段接得上。
             DeviationWiring.clearRun() // 模拟重启：新进程的信箱里没有挂起那轮的 runId
             val restoredArgs = JSONObject()
                 .put("path", File(root, "t.txt").absolutePath)
@@ -478,11 +591,21 @@ class ConfirmFlowTest {
                 .toString()
             val result = r.flow.restoredExecute(
                 7L,
-                PendingRow(tool = "write_file", argsJson = restoredArgs, at = suspendedAt),
+                PendingRow(
+                    tool = "write_file",
+                    argsJson = restoredArgs,
+                    at = suspendedAt,
+                    runId = persistedRunId, // 库里那一列读回来的样子
+                ),
             ) { _, _ -> null }
             assertTrue("恢复要真的执行（链的第三行是恢复卡处置行的副产物）：$result", result is GuardPipeline.Result.Done)
             val restored = CardDisposition.rowsFor("restored-$suspendedAt").single()
-            assertEquals("恢复行 runId 宁空勿猜（挂起那轮的出处没进 pending 三列）", "", restored.runId)
+            assertEquals(
+                "恢复行带挂起那轮的 runId（取代 415 的「留空」——出处已存进 pending，拿现轮才是编）",
+                dev.runId,
+                restored.runId,
+            )
+            assertEquals("taskId 还没有真值来源 ⇒ 恢复行那一格如实空", "", restored.taskId)
             assertEquals("恢复行 card＝restored-<suspended_at>，与偏差行事实键同刻", "restored-$suspendedAt", restored.cardId)
 
             // ⑥ 盘上都能被各自解析器读回：偏差 1 行、处置 2 行（新列与老行口径并存）
