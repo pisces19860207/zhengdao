@@ -237,4 +237,12 @@ class MemoryTest {
         assertTrue(text.contains("（标签：称呼、用户）"))
         assertTrue(text.contains("用户希望被称呼为老师"))
     }
+
+    @Test
+    fun `规矩_新kind的标签与渲染_第四百三十八批`() {
+        assertEquals("规矩", MemoryRules.kindLabel(MemoryKind.RULE))
+        val rule = entry(kind = MemoryKind.RULE, title = "在飞行不许删行", body = "在飞行不许删，只能销行")
+        val text = MemoryRules.renderForContext(rule)
+        assertTrue("规矩照常用 kind 标签渲染：$text", text.contains("【规矩】在飞行不许删行"))
+    }
 }

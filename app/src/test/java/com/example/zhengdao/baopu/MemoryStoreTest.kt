@@ -216,12 +216,61 @@ class MemoryStoreTest {
     @Test
     fun `recall只召 confirmed 且按上界裁`() {
         setup()
-        store.write(confirmed(id = "1-a", body = "用户希望被称呼为老师"))
-        store.write(confirmed(id = "2-b", body = "另一条关于称呼的完全不同的话"))
+        // 第四百三十八批：两条标题给不同键——同键偏好会在视图里塌成最新一条（覆盖语义），
+        // 这条用例钉的是「召回只认已确认」，不是覆盖判据（那在 MemoryTiersTest／QualityTest）。
+        store.write(confirmed(id = "1-a", title = "称呼偏好", body = "用户希望被称呼为老师"))
+        store.write(confirmed(id = "2-b", title = "称呼与语气", body = "另一条关于称呼的完全不同的话"))
         // 手工塞一条未确认的（不经 write——write 会拒）
         val pending = confirmed(id = "3-c", body = "未确认的那一条").copy(status = MemoryStatus.PENDING)
         File(store.projectDir(), "3-c.md").writeText(EntryCodec.render(pending))
         val r = store.recall("称呼", budgetTokens = 10_000)
         assertEquals(listOf("1-a", "2-b"), r.picked.map { it.id })
+    }
+
+    // ── 分层（第四百三十八批：as_of 往返 / 事实收录闸 / 规矩 kind） ─────────
+
+    @Test
+    fun `前后置码_asOf与规矩kind往返_逐字段一致`() {
+        val e = confirmed(id = "1729000000000-禁止在飞表删行", title = "禁止在飞表删行", body = "在飞行不许删，只能销行")
+            .copy(kind = MemoryKind.RULE, asOf = 1_729_000_123_000L)
+        val parsed = EntryCodec.parse(EntryCodec.render(e))
+        assertNotNull(parsed)
+        parsed!!
+        assertEquals("规矩 kind 往返不丢", MemoryKind.RULE, parsed.kind)
+        assertEquals("事实的核实时刻往返不丢", 1_729_000_123_000L, parsed.asOf)
+        assertTrue("人读的文件要看得见 as_of：", EntryCodec.render(e).contains("as_of: 1729000123000"))
+    }
+
+    @Test
+    fun `前后置码_老文件没有as_of解析回0`() {
+        val text = EntryCodec.render(confirmed().copy(asOf = 1_729_000_123_000L))
+        val legacy = text.lines().filterNot { it.startsWith("as_of:") }.joinToString("\n")
+        val parsed = EntryCodec.parse(legacy)
+        assertNotNull("老文件缺 as_of 不许整条解析失败", parsed)
+        assertEquals(0L, parsed!!.asOf)
+    }
+
+    @Test
+    fun `落盘_事实没有asOf不收_理由说清`() {
+        setup()
+        val fact = confirmed(id = "1729000000000-模型X支持长文", title = "模型X支持长文", body = "模型X于核实日支持长文")
+            .copy(kind = MemoryKind.FACT, asOf = 0L)
+        val r = store.write(fact)
+        assertFalse("事实无 source＋asOf 不收（438 判据）", r.ok)
+        assertTrue("理由要指认缺什么：${r.reason}", r.reason.contains("asOf"))
+        assertNull("没收就不许有文件", store.findFile(fact.id))
+        assertTrue("拒掉的那条不许混进库里", store.loadAll().isEmpty())
+    }
+
+    @Test
+    fun `落盘_事实带asOf照收_读回asOf不丢`() {
+        setup()
+        val fact = confirmed(id = "1729000000000-模型X支持长文", title = "模型X支持长文", body = "模型X于核实日支持长文")
+            .copy(kind = MemoryKind.FACT, asOf = 1_729_000_123_000L)
+        val r = store.write(fact)
+        assertTrue("带 source＋asOf 的事实照收：${r.reason}", r.ok)
+        val back = store.loadAll().first { it.id == fact.id }
+        assertEquals(1_729_000_123_000L, back.asOf)
+        assertEquals(MemoryKind.FACT, back.kind)
     }
 }

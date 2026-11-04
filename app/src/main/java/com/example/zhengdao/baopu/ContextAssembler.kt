@@ -311,33 +311,19 @@ internal object ContextAssembler {
          * 而 `current` 是每步重算的（工具循环里会变），不能在引擎侧一次性拼死。
          */
         extraNotes: List<String> = emptyList(),
+        /**
+         * 第四百三十八批：当前时刻（毫秒）——记忆分层判「过期」用。调用方**每轮算一次**
+         * 传进来（引擎侧与本轮其他转级状态同处算好），不许在这里现提（同会话前缀要稳）。
+         * 默认 0 ⇒ 按不过期渲染，本参数存在之前的行为逐字不变（单测确定性靠它）。
+         */
+        nowMillis: Long = 0L,
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
     ): AssembledPrompt {
         // ── 记忆段：sticky 恒前，new 追加；预算 = 按窗口取的召回预算 − sticky 已占 ──
         // （第一百八十一批 #2：预算从常量换成 recallBudgetFor(windowTokens)——
         //   调用方不传窗口时回退 1M ⇒ 预算仍封顶 2k，与旧口径逐字相同。）
-        val recallBudget = recallBudgetFor(windowTokens)
-        val stickyRendered = stickyMemories.map { MemoryRules.renderForContext(it) }
-        val stickyCost = stickyRendered.sumOf { tokensOf(it) }
-        val remaining = (recallBudget - stickyCost).coerceAtLeast(0)
-        val pickedNew: List<MemoryEntry>
-        val recallTruncated: Boolean
-        val recallNote: String
-        if (remaining == 0) {
-            pickedNew = emptyList()
-            recallTruncated = newMemories.isNotEmpty()
-            recallNote = if (newMemories.isNotEmpty()) {
-                "记忆召回预算已被本会话已注入条目占满（${recallBudget} tokens），本轮新召回 ${newMemories.size} 条全部未注入"
-            } else {
-                ""
-            }
-        } else {
-            val r = MemoryRules.trimToBudget(newMemories, remaining, tokensOf)
-            pickedNew = r.picked
-            recallTruncated = r.truncated
-            recallNote = r.note
-        }
-        val memoryLines = stickyRendered + pickedNew.map { MemoryRules.renderForContext(it) }
+        // 第四百三十八批：挑选/塌覆盖/渲染/过期标注收进 [memorySection]（判据在那边写全）。
+        val memory = memorySection(stickyMemories, newMemories, windowTokens, nowMillis, tokensOf)
 
         // ── 段装配（顺序 = 枚举序） ──
         val segments = mutableListOf<PromptSegment>()
@@ -350,11 +336,14 @@ internal object ContextAssembler {
                 "【项目记忆】（`" + ProjectMemory.FILE_NAME + "`，每轮自动读）\n" + projectMemory,
             )
         }
-        if (memoryLines.isNotEmpty()) {
-            val note = if (recallTruncated) "\n$recallNote" else ""
-            segments += PromptSegment(SegmentKind.MEMORY, memoryLines.joinToString("\n") + note)
-        } else if (recallNote.isNotEmpty()) {
-            segments += PromptSegment(SegmentKind.MEMORY, recallNote)
+        if (memory.lines.isNotEmpty()) {
+            // 说明行的接法与老口径逐字相同：有正文时前头接一个换行；段里只剩说明时单放。
+            segments += PromptSegment(
+                SegmentKind.MEMORY,
+                memory.lines.joinToString("\n") + (if (memory.note.isEmpty()) "" else "\n${memory.note}"),
+            )
+        } else if (memory.note.isNotEmpty()) {
+            segments += PromptSegment(SegmentKind.MEMORY, memory.note)
         }
         // ── 情景记忆（日记）段（147 ②＋157）：预算内挑选＋证据档标注；只是不注入，文件一条不删（判据 5） ──
         // 157：带查询时检索命中的条目在预算内提前（月度摘要仍恒最前）；预算与段序不动。
@@ -413,8 +402,8 @@ internal object ContextAssembler {
             needsCompressing = false,
             windowTokens = windowTokens,
             estimatedTokens = 0,
-            recallTruncated = recallTruncated,
-            recallNote = recallNote,
+            recallTruncated = memory.truncated,
+            recallNote = memory.note,
             compressedIds = compressedIds,
             images = vision.images,
         )
@@ -423,6 +412,60 @@ internal object ContextAssembler {
             needsCompressing = needsCompressing(estimated, windowTokens, oldMessageCount),
             estimatedTokens = estimated,
         )
+    }
+
+    /** 记忆段的产出：注入行、截断说明（含过期标注，接在正文后）。 */
+    private data class MemorySection(val lines: List<String>, val truncated: Boolean, val note: String)
+
+    /**
+     * 记忆段（第四百三十八批从 [assemble] 拆出；预算口径不变）。
+     *
+     * 四件判据（顺序固定，全部确定性）：
+     * 1. **生命周期闸**：只有 [MemoryTiers.injectable]（= CONFIRMED，有效）能当提示——
+     *    候选不可用于判断、被拒的不是记忆（生产路径本就只有已确认的会到这，闸是防第二份真相）；
+     * 2. **偏好塌覆盖**：同键偏好只留最新说法（[MemoryTiers.collapseOverrides]），
+     *    旧说法不再顶在上下文里与最新一句打架；规矩与事实的同键多条原样保留（冲突等人裁）；
+     * 3. **过期降格**：过期事实照样进（不许默默藏掉），但渲染成「仅供参考」并附去向行；
+     * 4. **预算**：sticky 恒前，新召回按剩余 token 裁（[MemoryRules.trimToBudget]，截断明说）。
+     *
+     * @param nowMillis 0＝调用方没给时刻 ⇒ 第 3 条不 bite（旧口径逐字不变）。
+     */
+    private fun memorySection(
+        stickyMemories: List<MemoryEntry>,
+        newMemories: List<MemoryEntry>,
+        windowTokens: Int,
+        nowMillis: Long,
+        tokensOf: (String) -> Int,
+    ): MemorySection {
+        val recallBudget = recallBudgetFor(windowTokens)
+        val sticky = MemoryTiers.collapseOverrides(stickyMemories.filter { MemoryTiers.injectable(it) })
+        val fresh = MemoryTiers.collapseOverrides(newMemories.filter { MemoryTiers.injectable(it) })
+        val stickyRendered = sticky.map { MemoryTiers.renderForContext(it, nowMillis) }
+        val stickyCost = stickyRendered.sumOf { tokensOf(it) }
+        val remaining = (recallBudget - stickyCost).coerceAtLeast(0)
+        val pickedNew: List<MemoryEntry>
+        val truncated: Boolean
+        var note = ""
+        if (remaining == 0) {
+            pickedNew = emptyList()
+            truncated = fresh.isNotEmpty()
+            if (truncated) {
+                note = "记忆召回预算已被本会话已注入条目占满（$recallBudget tokens），本轮新召回 ${fresh.size} 条全部未注入"
+            }
+        } else {
+            val r = MemoryRules.trimToBudget(fresh, remaining, tokensOf)
+            pickedNew = r.picked
+            truncated = r.truncated
+            note = r.note
+        }
+        val lines = stickyRendered + pickedNew.map { MemoryTiers.renderForContext(it, nowMillis) }
+        val expired = (sticky + pickedNew).count { MemoryTiers.isExpired(it, nowMillis) }
+        if (expired > 0) {
+            val line = "（其中 $expired 条事实已过 90 天保质期，按「仅供参考」注入；文件一条没删，" +
+                "要续用请人工复核后改 as_of）"
+            note = if (note.isEmpty()) line else "$note\n$line"
+        }
+        return MemorySection(lines, truncated, note)
     }
 
     private fun personaKind(layer: PersonaLayer): SegmentKind = when (layer) {

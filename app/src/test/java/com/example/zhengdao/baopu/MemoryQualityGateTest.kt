@@ -154,7 +154,9 @@ class MemoryQualityGateTest {
 
     @Test
     fun `门禁_冲突不许自动选边`() {
-        val body = funBody(code(QUALITY), "fun pass(entries: List<MemoryEntry>, now: Long): Pass")
+        // 第四百三十八批：多簇的出路从 pass() 拆进 resolveClusters（偏好类一句话覆盖取最新，
+        // 规矩/事实照旧两侧保留）——门禁跟着切到新家，红线本身不变。
+        val body = funBody(code(QUALITY), "fun resolveClusters(")
         assertTrue("冲突分支只许「两组都出视图」：\n$body", conflictKeepsBothSides(body))
         // 负例（派工单 §3 点名：把冲突自动选边 ⇒ 门禁红）——只留第一组
         assertFalse("负例：冲突只留一条（自动选边）⇒ 门禁必须红",

@@ -53,10 +53,11 @@ class MemoryQualityStoreTest {
         updatedAt: Long = NOW,
         useCount: Int = 0,
         qualityScore: Int = MemoryQuality.DEFAULT_SCORE,
+        /** 第四百三十八批：冲突语义的用例改走事实类（偏好类同键不同值已是一句话覆盖）。 */
+        kind: MemoryKind = MemoryKind.PREFERENCE,
     ) = MemoryEntry(
         id = id,
         scope = scope,
-        kind = MemoryKind.PREFERENCE,
         title = title,
         body = body,
         tags = tags,
@@ -67,6 +68,8 @@ class MemoryQualityStoreTest {
         updatedAt = updatedAt,
         useCount = useCount,
         qualityScore = qualityScore,
+        asOf = createdAt,
+        kind = kind,
     )
 
     /** 不经闸门直接铺文件（造重复、造老库形态要用——闸门会把重复拒掉，铺不出来）。 */
@@ -145,12 +148,14 @@ class MemoryQualityStoreTest {
 
     @Test
     fun `冲突标记_同键不同值放行且既有那条一个字节没动`() {
+        // 第四百三十八批改用事实类：偏好类同键不同值已改成「一句话覆盖」（另有用例），
+        // 「冲突两侧保留」的语义现在由事实/规矩类承担——判据本身一字未改。
         setup()
-        val first = store.write(entry(id = "1-a", title = "积分口径", body = "每发一条扣十积分"))
+        val first = store.write(entry(id = "1-a", kind = MemoryKind.FACT, title = "积分口径", body = "每发一条扣十积分"))
         assertTrue(first.ok)
         val before = fileBytes("1-a") // 写完第一条就取字节快照，第二条写完再比
 
-        val second = store.write(entry(id = "2-b", title = "积分口径", body = "每发一条扣二十积分"))
+        val second = store.write(entry(id = "2-b", kind = MemoryKind.FACT, title = "积分口径", body = "每发一条扣二十积分"))
         assertTrue("同键不同值不许拒（拒了＝替用户判哪条对）：${second.reason}", second.ok)
         assertNotNull(second.entry)
         assertTrue("要明说不覆盖：${second.reason}", second.reason.contains("不覆盖"))
@@ -168,6 +173,34 @@ class MemoryQualityStoreTest {
             p.merged.all { it.qualityFlags.contains(MemoryQuality.FLAG_CONFLICT) })
         assertEquals(listOf(listOf("1-a", "2-b")), p.conflicts)
         assertTrue("冲突要留审计账：${p.audits}", p.audits.any { it.action == MemoryQuality.ACT_CONFLICT })
+    }
+
+    // ── 3b) 偏好的一句话覆盖（第四百三十八批）────────────────────────────
+
+    @Test
+    fun `偏好覆盖_同键新句放行_旧条留盘没删`() {
+        setup()
+        val first = store.write(entry(id = "1-a", body = "用户希望被称呼为老师", createdAt = NOW - 2 * DAY))
+        assertTrue(first.ok)
+        val before = fileBytes("1-a")
+
+        val second = store.write(entry(id = "2-b", body = "用户希望被称呼为老板", createdAt = NOW - DAY))
+        assertTrue("偏好同键不同值照旧放行：${second.reason}", second.ok)
+        assertNotNull(second.entry)
+        assertFalse("新句不打冲突标记（覆盖是用户后说的算）：${second.entry!!.qualityFlags}",
+            second.entry!!.qualityFlags.contains(MemoryQuality.FLAG_CONFLICT))
+        assertTrue("要说清覆盖了谁：${second.reason}", second.reason.contains("覆盖") && second.reason.contains("1-a"))
+        assertEquals("覆盖要留账", MemoryQuality.ACT_OVERRIDE, second.audits.first().action)
+
+        assertArrayEquals("旧偏好文件字节级不变（留盘不删＝红线）", before, fileBytes("1-a"))
+        assertEquals("两条文件都在盘上", 2, store.loadAll().size)
+
+        val p = store.qualityPass(NOW)
+        assertEquals("视图塌成一条（新句为准）", 1, p.merged.size)
+        assertEquals("视图里是最新那条", "2-b", p.merged.single().id)
+        assertTrue("覆盖不进冲突账", p.conflicts.isEmpty())
+        assertTrue("视图里不带 CONFLICT：${p.merged.single().qualityFlags}",
+            !p.merged.single().qualityFlags.contains(MemoryQuality.FLAG_CONFLICT))
     }
 
     // ── 4) 合并：读时塌一条，原件一条不动 ─────────────────────────────────

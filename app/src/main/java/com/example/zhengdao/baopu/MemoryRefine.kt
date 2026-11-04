@@ -159,6 +159,9 @@ internal object MemoryRefine {
             body = sentence,
             tags = listOf("会话提炼"),
             sourceSession = facts.sessionId.toString(),
+            // 第四百三十八批：核实时刻 = 提炼时刻（这句话是用户本次会话说的——
+            // 会话那天就是「哪天核实的」；事实类的收录判据要求 asOf，非事实类带上无害）。
+            asOf = facts.now,
             status = MemoryStatus.PENDING,
             createdAt = facts.now,
             updatedAt = facts.now,

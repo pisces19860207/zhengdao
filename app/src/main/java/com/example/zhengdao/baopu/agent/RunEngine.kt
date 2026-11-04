@@ -1921,6 +1921,9 @@ internal class RunEngine(
             ?.let { MemoryRules.trimToBudget(it.loadAll(), ContextAssembler.recallBudgetFor(windowTokens)) }
             ?.picked ?: emptyList()
         recalledCache = recalled
+        // 第四百三十八批：本轮时刻随召回一起定（记忆「过期→仅供参考」的判定基准；
+        // 与 recalledCache 同一转级口径——循环内不变，前缀稳定）。
+        turnNowMillis = System.currentTimeMillis()
         // 第二百五十九批 #7（A-P2-17）：坏掉的记忆文件不许无声消失——只报事实（几个文件、
         // 前三个文件名），不删文件、不改判据、不打扰用户（日志而已）。为什么多扫一遍：
         // 上面 `trimToBudget(it.loadAll(), …)` 那行是 MemoryQualityGateTest 钉住的口径，不许
@@ -2965,6 +2968,11 @@ internal class RunEngine(
          * 每步同一份——同会话内 EPISODE 段只增不改是提示词缓存判据）。
          */
         diaryQuery: com.example.zhengdao.baopu.DiaryRecall.DiaryQuery? = turnDiaryQuery,
+        /**
+         * 第四百三十八批：记忆分层的「过期」判定时刻。默认取 [turnNowMillis]
+         * （本轮开跑算好一份，工具循环里每步同一份——同轮内记忆段只随跨 90 天边界变）。
+         */
+        nowMillis: Long = turnNowMillis,
     ) = ContextAssembler.assemble(
         persona = persona,
         facts = facts,
@@ -2977,6 +2985,8 @@ internal class RunEngine(
         compressedIds = compressedIds,
         skipIds = skipIds,
         oldMessageCount = oldMessageCount,
+        // 第四百三十八批：记忆「过期→仅供参考」的时刻判据（转级一份，循环内不变）。
+        nowMillis = nowMillis,
         // 2026-10-19 最小版项目记忆：157 起落 `记忆/项目记忆.md`（旧根只读回退），每轮开工自动读（见 ProjectMemory）；
         // 文件缺失 ⇒ 注入 missingHint（提示抱朴收尾自己写），不是静默跳过。
         projectMemory = com.example.zhengdao.baopu.ProjectMemory.load(spillRoot())
@@ -3099,6 +3109,13 @@ internal class RunEngine(
 
     /** 本轮召回到的记忆（循环内不变 ⇒ 每轮前缀一致，缓存友好）。 */
     private var recalledCache: List<com.example.zhengdao.baopu.MemoryEntry> = emptyList()
+
+    /**
+     * 本轮的时刻（第四百三十八批）：记忆分层判「过期」用。**每轮开工算一次**，
+     * 工具循环里每步同一份——同轮内记忆段的「仅供参考」标注不许抖（前缀稳定判据）。
+     * 0＝还没开工（此时组装器按不过期渲染，与 438 之前逐字相同）。
+     */
+    private var turnNowMillis: Long = 0L
 
     // ── 流式一轮 ──────────────────────────────────────────────────────────
 

@@ -58,6 +58,8 @@ class ContextAssemblerTest {
         skipIds: Set<String> = emptySet(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
         diary: List<DiaryEntry> = emptyList(),
+        /** 第四百三十八批：记忆分层「过期」判定时刻；0＝旧口径（不过期）。 */
+        nowMillis: Long = 0L,
     ) = ContextAssembler.assemble(
         persona = persona(),
         facts = facts,
@@ -71,6 +73,7 @@ class ContextAssemblerTest {
         skipIds = skipIds,
         tokensOf = tokensOf,
         diaryEntries = diary,
+        nowMillis = nowMillis,
     )
 
     // ── 147 ②：EPISODE 段（判据 4/5/12） ─────────────────────────────
@@ -445,5 +448,82 @@ class ContextAssemblerTest {
         assertTrue(prefix.contains("记忆a"))
         assertFalse("本轮输入不进前缀", prefix.contains("本轮"))
         assertFalse("历史不进前缀", prefix.contains("消息m1"))
+    }
+
+    // ── 记忆分层（第四百三十八批：生命周期闸／仅供参考／偏好塌覆盖） ─────
+
+    private companion object {
+        const val NOW = 1_730_000_000_000L
+        const val DAY = MemoryQuality.DAY_MILLIS
+        const val TTL = MemoryTiers.FACT_TTL_MILLIS
+    }
+
+    /** 事实类记忆（带 asOf；分层用例料）。 */
+    private fun fact(id: String, asOf: Long = NOW) = mem(id).copy(
+        kind = MemoryKind.FACT, asOf = asOf, createdAt = asOf, updatedAt = asOf,
+        title = "t$id",
+    )
+
+    private fun memSegment(p: AssembledPrompt) = p.segments.first { it.kind == SegmentKind.MEMORY }.text
+
+    @Test
+    fun `分层_过期事实按仅供参考注入并带说明行`() {
+        val old = fact("old", asOf = NOW - TTL - DAY) // 过期线已过一天
+        val p = assemble(newMemories = listOf(old), nowMillis = NOW)
+        val seg = memSegment(p)
+        assertTrue("过期事实仍在上下文里（不许默默藏掉）：$seg", seg.contains("told"))
+        assertTrue("降格记号要看得见：$seg", seg.contains("【事实·仅供参考】"))
+        assertTrue("段尾要带去向说明：$seg", seg.contains("已过 90 天保质期") && seg.contains("仅供参考"))
+    }
+
+    @Test
+    fun `分层_没过期的事实照常注入不降格`() {
+        val fresh = fact("fresh", asOf = NOW - DAY)
+        val p = assemble(newMemories = listOf(fresh), nowMillis = NOW)
+        val seg = memSegment(p)
+        assertTrue(seg.contains("tfresh"))
+        assertFalse("没过期不许贴仅供参考：$seg", seg.contains("仅供参考"))
+    }
+
+    @Test
+    fun `分层_不传时刻走旧口径_过期事实照常注入不降格`() {
+        val old = fact("old", asOf = NOW - 365 * DAY)
+        val p = assemble(newMemories = listOf(old))
+        val seg = memSegment(p)
+        assertTrue("nowMillis 缺省 0 ⇒ 与 438 之前逐字同行为：$seg", seg.contains("told"))
+        assertFalse(seg.contains("仅供参考"))
+    }
+
+    @Test
+    fun `分层_候选与复核中的不进上下文`() {
+        val pending = mem("p1").copy(status = MemoryStatus.PENDING)
+        val candidate = mem("p2").copy(status = MemoryStatus.CANDIDATE)
+        val rejected = mem("p3").copy(status = MemoryStatus.REJECTED)
+        val ok = mem("ok1")
+        val p = assemble(newMemories = listOf(pending, candidate, rejected, ok), nowMillis = NOW)
+        val seg = memSegment(p)
+        assertTrue("有效的那条照常进：$seg", seg.contains("记忆ok1"))
+        for (bad in listOf("记忆p1", "记忆p2", "记忆p3")) {
+            assertFalse("候选/复核/被拒不可用于判断：$seg", seg.contains(bad))
+        }
+    }
+
+    @Test
+    fun `分层_同键偏好塌覆盖_上下文只留新句`() {
+        val old = mem("m-old").copy(title = "称呼偏好", body = "叫我老师", createdAt = NOW - 2 * DAY, updatedAt = NOW - 2 * DAY)
+        val new = mem("m-new").copy(title = "称呼偏好", body = "改叫老板", createdAt = NOW - DAY, updatedAt = NOW - DAY)
+        val p = assemble(newMemories = listOf(old, new), nowMillis = NOW)
+        val seg = memSegment(p)
+        assertTrue("新句要进：$seg", seg.contains("改叫老板"))
+        assertFalse("旧说法不与新句同屏打架：$seg", seg.contains("叫我老师"))
+    }
+
+    @Test
+    fun `分层_规矩与事实的同键多条不塌_冲突等人裁`() {
+        val a = mem("f1").copy(kind = MemoryKind.FACT, title = "积分口径", body = "每发一条扣十", createdAt = NOW, updatedAt = NOW)
+        val b = mem("f2").copy(kind = MemoryKind.FACT, title = "积分口径", body = "每发一条扣二十", createdAt = NOW, updatedAt = NOW)
+        val p = assemble(newMemories = listOf(a, b), nowMillis = NOW)
+        val seg = memSegment(p)
+        assertTrue("事实两侧都留：$seg", seg.contains("扣十") && seg.contains("扣二十"))
     }
 }

@@ -11,14 +11,23 @@ enum class MemoryScope { GLOBAL, PROJECT }
 /**
  * 记忆种类（方案 §9「写」一环点名的四类 ＋ 用户画像）：
  * 偏好 / 事实 / 术语 / 踩过的坑 / 用户画像。
+ *
+ * 第四百三十八批追加 `RULE`（规矩）：用户亲手立的规矩（只能人改、不自动过期）。
+ * 五个老 kind 原样保留（只加不改）；kind 与「三类」（[MemoryTier]）的映射是
+ * [MemoryTiers.tierOf] 一处说了算，别处不许再判一遍。
  */
-enum class MemoryKind { PREFERENCE, FACT, TERM, LESSON, PROFILE }
+enum class MemoryKind { PREFERENCE, FACT, TERM, LESSON, PROFILE, RULE }
 
 /**
  * 记忆状态机：候选 → 待确认 → 落盘 / 不记。
  *
  * **没有确认就不落盘**（判据 3）：CANDIDATE 是刚提炼出的形态，PENDING 是挂在
  * 引擎里等用户审的形态，只有 CONFIRMED 才允许进 [MemoryStore]。
+ *
+ * 第四百三十八批把四个状态对进**生命周期四态**（用户 2026-11-04 定）：
+ * CANDIDATE＝候选（不可用于判断）、PENDING＝复核、CONFIRMED＝有效（可作提示）；
+ * **「过期」不是 status**——事实类读时判（[MemoryTiers.lifecycleOf]，零写入、可逆），
+ * REJECTED 在四态之外（人不肯记＝没有这条）。
  */
 enum class MemoryStatus { CANDIDATE, PENDING, CONFIRMED, REJECTED }
 
@@ -49,6 +58,14 @@ data class MemoryEntry(
     val mergedFrom: List<String> = emptyList(),
     /** 分数计算时刻（毫秒，0＝从没算过）。只用于审计，不参与内容判据。 */
     val scoredAt: Long = 0L,
+    // ── 第四百三十八批「记忆分层」追加的一项（只加不改；老文件读回来默认 0）──
+    /**
+     * 事实的「核实时刻」（毫秒，0＝没记）：事实类（[MemoryTier.FACT]）落盘必须带它
+     * （判据：事实无 source＋asOf 不收；source 那半由 [MemoryRules.validate] 的既有判据管）。
+     * 90 天保质期从它起算（[MemoryTiers.FACT_TTL_DAYS]）；老文件没有这行 ⇒ 读回来 0，
+     * 过期判定按 createdAt 兜底（[MemoryTiers.asOfOrFallback]），**不追溯拒收**。
+     */
+    val asOf: Long = 0L,
 )
 
 /** 召回结果： picked + **是否截断（截断必须明说，不许静默）**。 */
@@ -325,6 +342,7 @@ internal object MemoryRules {
         MemoryKind.TERM -> "术语"
         MemoryKind.LESSON -> "教训"
         MemoryKind.PROFILE -> "画像"
+        MemoryKind.RULE -> "规矩"
     }
 
     fun scopeLabel(scope: MemoryScope): String = when (scope) {

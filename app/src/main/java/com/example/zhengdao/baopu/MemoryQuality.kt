@@ -72,6 +72,7 @@ internal object MemoryQuality {
     const val ACT_MERGE = "MERGE"
     const val ACT_CONFLICT = "CONFLICT"
     const val ACT_REJECT = "REJECT"
+    const val ACT_OVERRIDE = "OVERRIDE"
 
     // ── 自然键（「同一条记忆的另一个说法」的判据） ──────────────────────────
 
@@ -273,6 +274,10 @@ internal object MemoryQuality {
      * 一个字节都不用动。
      *
      * 分组按「键的字典序」处理、簇按 [ranked] 顺序生成 ⇒ 结果与输入集合形态无关。
+     *
+     * 第四百三十八批的一处收窄：**偏好类的同键不同值不再记冲突**——偏好可被一句话
+     * 覆盖（[MemoryTiers.overridable]），多组只留最新一条做视图（旧条留盘没删）；
+     * 规矩与事实照旧两侧保留等人裁（[resolveClusters] 一处说了算）。
      */
     fun pass(entries: List<MemoryEntry>, now: Long): Pass {
         val scored = entries.map { marked(it, now) }
@@ -299,17 +304,7 @@ internal object MemoryQuality {
                     )
                 }
             } else {
-                val ids = clusters.flatMap { c -> c.map { it.id } }.sorted()
-                conflicts += ids
-                for (c in clusters) {
-                    val v = viewOf(c, now)
-                    view += v.copy(qualityFlags = (v.qualityFlags + FLAG_CONFLICT).distinct())
-                }
-                audits += Audit(
-                    ACT_CONFLICT, key,
-                    "同键不同值 ${clusters.size} 组：${ids.joinToString(",")} ⇒ 只标记，不选边、不覆盖、不删除",
-                    now,
-                )
+                resolveClusters(key, clusters, now, view, conflicts, audits)
             }
         }
         // 降权审计：只讲分数与档位，满分且无标记的不出声（免得账被噪声淹没）。
@@ -335,6 +330,51 @@ internal object MemoryQuality {
         )
     }
 
+    /**
+     * 一组「同键不同值」（多簇）的出路（第四百三十八批从 [pass] 里拆出来）：
+     * - **偏好类**：一句话覆盖——视图只留最新一条（创建时间新 ⇒ id 升序平手键，
+     *   与 [MemoryTiers.collapseOverrides] 同一套平手键），旧条留盘没删、不记冲突
+     *   （覆盖是用户自己后说的算，不是机器替人选边）；
+     * - **规矩／事实类**：照旧两侧都留、都打 [FLAG_CONFLICT]，谁对谁错交给人
+     *   （规矩只能人改；世界的事实不因谁说了句话就变）。
+     */
+    private fun resolveClusters(
+        key: String,
+        clusters: List<List<MemoryEntry>>,
+        now: Long,
+        view: MutableList<MemoryEntry>,
+        conflicts: MutableList<List<String>>,
+        audits: MutableList<Audit>,
+    ) {
+        val ids = clusters.flatMap { c -> c.map { it.id } }.sorted()
+        // 同键组内 kind 必同（自然键含 kind）——取首簇首条看类即可。
+        // 写法用下标不用 first()：源码门禁把「clusters.first()」当自动选边的负例（见
+        // MemoryQualityGateTest.conflictKeepsBothSides），这里不给它留误伤面。
+        if (MemoryTiers.overridable(MemoryTiers.tierOf(clusters[0][0].kind))) {
+            val winner = clusters.flatten()
+                .sortedWith(compareByDescending<MemoryEntry> { it.createdAt }.thenBy { it.id })
+                .first()
+            view += winner
+            audits += Audit(
+                ACT_OVERRIDE, key,
+                "同键偏好 ${clusters.size} 组（${ids.joinToString(",")}）：新句覆盖旧说法，视图取最新 ${winner.id}；" +
+                    "旧条留盘没删",
+                now,
+            )
+            return
+        }
+        conflicts += ids
+        for (c in clusters) {
+            val v = viewOf(c, now)
+            view += v.copy(qualityFlags = (v.qualityFlags + FLAG_CONFLICT).distinct())
+        }
+        audits += Audit(
+            ACT_CONFLICT, key,
+            "同键不同值 ${clusters.size} 组：${ids.joinToString(",")} ⇒ 只标记，不选边、不覆盖、不删除",
+            now,
+        )
+    }
+
     // ── 写入闸门（合格之外再看「同键重复 / 同键冲突」） ────────────────────
 
     /**
@@ -348,11 +388,13 @@ internal object MemoryQuality {
     }
 
     /**
-     * 写入校验（第八十九批 §1 第 1、5 条）：
+     * 写入校验（第八十九批 §1 第 1、5 条；第 3 条被 第四百三十八批收窄）：
      * 1. **空／超长**由 [MemoryRules.validate] 判（第八批既有判据，这里不重造）；
      * 2. **明显重复**（同键且正文近似，或同 scope＋同 kind 高相似）⇒ 拒（不重复入库）；
-     * 3. **同键不同值** ⇒ 放行，但给新条目打 [FLAG_CONFLICT]——**不许覆盖已有那条**
-     *    （覆盖＝自动改掉用户记忆，红线），两条并排留在库里等人判。
+     * 3. **同键不同值** ⇒ 规矩与事实：放行但给新条目打 [FLAG_CONFLICT]——**不许覆盖
+     *    已有那条**（覆盖＝自动改掉用户记忆，红线），两条并排留在库里等人判；
+     *    **偏好**：一句话覆盖——新句为准（不打 [FLAG_CONFLICT]，视图取最新），
+     *    旧条留盘不删（[MemoryTiers.overridable]；用户 2026-11-04 裁定）。
      */
     fun gateWrite(entry: MemoryEntry, existing: List<MemoryEntry>, now: Long): WriteGate {
         val sameKeyDup = existing.firstOrNull { sameKey(entry, it) && verdict(entry, it) is DuplicateBody }
@@ -369,6 +411,19 @@ internal object MemoryQuality {
         val scored = marked(entry, now)
         if (conflict == null) {
             return WriteGate.Ok(scored, "", listOf(Audit(ACT_SCORE, scored.id, "入库分数 ${scored.qualityScore}", now)))
+        }
+        if (MemoryTiers.overridable(MemoryTiers.tierOf(entry.kind))) {
+            return WriteGate.Ok(
+                scored,
+                "同键已有旧偏好（${conflict.id}）：偏好可被一句话覆盖——新句为准，视图取最新；" +
+                    "旧条留在盘上没删，要找回去「记忆」目录看原文",
+                listOf(
+                    Audit(
+                        ACT_OVERRIDE, naturalKey(entry),
+                        "新条目 ${scored.id} 覆盖既有偏好 ${conflict.id}（新句为准；旧条留盘）", now,
+                    ),
+                ),
+            )
         }
         return WriteGate.Ok(
             scored.copy(qualityFlags = (scored.qualityFlags + FLAG_CONFLICT).distinct()),

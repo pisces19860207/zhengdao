@@ -22,6 +22,7 @@ import java.io.File
  * status: confirmed
  * source_session: 3
  * source_file: 资料库/原始/设定.md
+ * as_of: 1729000000000
  * created_at: 1729000000000
  * updated_at: 1729000000000
  * use_count: 0
@@ -47,6 +48,8 @@ internal object EntryCodec {
         append("status: ").append(e.status.name.lowercase()).append('\n')
         append("source_session: ").append(e.sourceSession.replace('\n', ' ')).append('\n')
         append("source_file: ").append(e.sourceFile.replace('\n', ' ')).append('\n')
+        // 第四百三十八批：事实的核实时刻（0 也写出来——人看得见「没记」，比整行消失诚实）。
+        append("as_of: ").append(e.asOf).append('\n')
         append("created_at: ").append(e.createdAt).append('\n')
         append("updated_at: ").append(e.updatedAt).append('\n')
         append("use_count: ").append(e.useCount).append('\n')
@@ -94,6 +97,9 @@ internal object EntryCodec {
             tags = tags,
             sourceSession = fields["source_session"].orEmpty(),
             sourceFile = fields["source_file"].orEmpty(),
+            // 第四百三十八批：老文件没有这行 ⇒ 0（asOf 缺失按 createdAt 兜底算过期线，
+            // 不追溯拒收；见 MemoryTiers.asOfOrFallback）。
+            asOf = fields["as_of"]?.toLongOrNull() ?: 0L,
             status = enumOf<MemoryStatus>(fields["status"]) ?: MemoryStatus.CANDIDATE,
             createdAt = fields["created_at"]?.toLongOrNull() ?: 0L,
             updatedAt = fields["updated_at"]?.toLongOrNull() ?: 0L,
@@ -169,6 +175,12 @@ internal class MemoryStore(
             return WriteResult(false, null, "候选不合格：${v.reason}")
         }
         val ok = (v as MemoryRules.Validation.Ok).normalized
+        // 第四百三十八批：分层收录闸——事实无 source＋asOf 不收（source 那半在上面
+        // validate 的既有判据里；这里管 asOf 那一半）。不自动补、不追溯老条目。
+        val tierGate = MemoryTiers.acceptance(ok)
+        if (tierGate is MemoryTiers.Acceptance.Bad) {
+            return WriteResult(false, null, tierGate.reason)
+        }
         val existing = loadAll()
         // 第八十九批：去重那一步升级成**质量闸门**（判据全在纯函数
         // [MemoryQuality.gateWrite]，这里只负责落盘与不静默）：

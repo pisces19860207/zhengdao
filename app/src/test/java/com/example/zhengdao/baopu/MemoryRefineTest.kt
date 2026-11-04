@@ -58,6 +58,21 @@ class MemoryRefineTest {
     }
 
     @Test
+    fun `候选_带核实时刻_三类映射不出第四类`() {
+        // 第四百三十八批：核实时刻 = 提炼时刻（这句话是用户本次会话说的）；
+        // 分层映射下候选只可能落在偏好／规矩两类，事实类的收录判据不在提炼路上。
+        val r = MemoryRefine.refine(facts(listOf("以后请叫我老师。不对，别这样写。"), now = 7_777L))
+        assertTrue(r.candidates.isNotEmpty())
+        r.candidates.forEach { e ->
+            assertEquals("提炼时刻就是核实时刻", 7_777L, e.asOf)
+            assertTrue(
+                "kind=${e.kind} 的三类必须是偏好或规矩",
+                MemoryTiers.tierOf(e.kind) in listOf(MemoryTier.PREFERENCE, MemoryTier.RULE),
+            )
+        }
+    }
+
+    @Test
     fun `候选_没有标记的句子不提炼`() {
         val r = MemoryRefine.refine(facts(listOf("今天天气不错。帮我看看这个文件。")))
         assertTrue(r.candidates.isEmpty())

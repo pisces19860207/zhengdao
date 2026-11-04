@@ -234,8 +234,10 @@ class MemoryQualityTest {
 
     // ── 一次质量扫描 ──────────────────────────────────────────────────────
 
-    private val conflictA = entry(id = "1-积分口径", title = "积分口径", body = "每发一条扣十积分")
-    private val conflictB = entry(id = "2-积分口径", title = "积分口径", body = "每发一条扣二十积分")
+    // 第四百三十八批起，同键不同值「两侧保留」的判据只管事实与规矩（偏好走一句话覆盖）——
+    // 所以这组钉冲突语义的料改用事实类，原 kind（PREFERENCE）留给覆盖语义的新用例。
+    private val conflictA = entry(id = "1-积分口径", kind = MemoryKind.FACT, title = "积分口径", body = "每发一条扣十积分")
+    private val conflictB = entry(id = "2-积分口径", kind = MemoryKind.FACT, title = "积分口径", body = "每发一条扣二十积分")
 
     @Test
     fun `扫描_条数一条不少`() {
@@ -405,6 +407,65 @@ class MemoryQualityTest {
     fun `闸门_空与超长仍由validate拒_本层不重造判据`() {
         for (bad in listOf(entry(id = "e1", body = "   "), entry(id = "e2", body = "x".repeat(501)))) {
             assertTrue("空/超长必须不合格（§1 第 1 条）", MemoryRules.validate(bad) is MemoryRules.Validation.Bad)
+        }
+    }
+
+    // ── 偏好的一句话覆盖（第四百三十八批：同键不同值在偏好类不再记冲突） ──
+
+    /** 同键的偏好对：旧说法在前，新说法后说（一句话覆盖的用例料）。 */
+    private val prefOld = entry(
+        id = "1-称呼偏好", body = "用户希望被称呼为老师",
+        createdAt = NOW - 2 * DAY, updatedAt = NOW - 2 * DAY,
+    )
+    private val prefNew = entry(
+        id = "2-称呼偏好", body = "用户希望被称呼为老板",
+        createdAt = NOW - 1 * DAY, updatedAt = NOW - 1 * DAY,
+    )
+
+    @Test
+    fun `扫描_同键偏好被新句覆盖_视图只留最新_旧条出视图不落盘`() {
+        val p = MemoryQuality.pass(listOf(prefOld, prefNew), NOW)
+        val view = p.merged.groupBy { MemoryQuality.naturalKey(it) }
+            .getValue(MemoryQuality.naturalKey(prefOld))
+        assertEquals("同键偏好塌成一条视图", 1, view.size)
+        assertEquals("留的是最新那条（新句为准）", prefNew.id, view.single().id)
+        assertTrue("覆盖不是冲突，不进冲突账：${p.conflicts}", p.conflicts.isEmpty())
+        assertEquals("原样清单一条不少（旧条只是不进视图，盘上还在）", 2, p.scored.size)
+        val actions = p.audits.map { it.action }
+        assertTrue("覆盖要留账：${p.audits}", actions.contains(MemoryQuality.ACT_OVERRIDE))
+        assertFalse("覆盖账不许记成冲突", actions.contains(MemoryQuality.ACT_CONFLICT))
+    }
+
+    @Test
+    fun `扫描_事实同键不同值照旧两侧保留_438只收窄偏好`() {
+        val p = MemoryQuality.pass(listOf(conflictA, conflictB), NOW)
+        assertEquals("事实的冲突两侧都在视图里", 2, p.merged.size)
+        assertEquals(listOf(listOf(conflictA.id, conflictB.id).sorted()), p.conflicts)
+    }
+
+    @Test
+    fun `闸门_同键偏好放行_新句覆盖_不打冲突标记`() {
+        val g = MemoryQuality.gateWrite(prefNew, listOf(prefOld), NOW)
+        assertTrue("偏好同键不同值照旧放行：$g", g is MemoryQuality.WriteGate.Ok)
+        val ok = g as MemoryQuality.WriteGate.Ok
+        assertFalse("新句不打 CONFLICT（覆盖是用户后说的算）：${ok.entry.qualityFlags}",
+            ok.entry.qualityFlags.contains(MemoryQuality.FLAG_CONFLICT))
+        assertTrue("要说清覆盖了谁：${ok.note}", ok.note.contains(prefOld.id) && ok.note.contains("覆盖"))
+        assertEquals(MemoryQuality.ACT_OVERRIDE, ok.audits.first().action)
+        assertEquals("进来的那条正文一个字没动", prefNew.body, ok.entry.body)
+    }
+
+    @Test
+    fun `闸门_事实与规矩的同键不同值照旧标记冲突`() {
+        for (kind in listOf(MemoryKind.FACT, MemoryKind.TERM, MemoryKind.RULE, MemoryKind.LESSON)) {
+            val incoming = entry(id = "x", kind = kind, title = "口径", body = "每发一条扣二十积分")
+            val existing = entry(id = "y", kind = kind, title = "口径", body = "每发一条扣十积分")
+            val g = MemoryQuality.gateWrite(incoming, listOf(existing), NOW)
+            assertTrue("kind=$kind 照旧放行不拒：$g", g is MemoryQuality.WriteGate.Ok)
+            assertTrue(
+                "kind=$kind 新条带 CONFLICT（不选边，等人裁）：$g",
+                (g as MemoryQuality.WriteGate.Ok).entry.qualityFlags.contains(MemoryQuality.FLAG_CONFLICT),
+            )
         }
     }
 }
