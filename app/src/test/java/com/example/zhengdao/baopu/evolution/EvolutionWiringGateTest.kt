@@ -156,4 +156,26 @@ class EvolutionWiringGateTest {
             .any { it.contains("wireBOnSettle()") && !it.contains("fun wireBOnSettle(") }
         assertFalse("只剩定义、没有调用 ⇒ 判据必须红", callLine)
     }
+
+    // ── ④ 第三百八十批（380）真验证臂的钉缝：收工 sweep 必须真调读数臂 ─────────
+
+    @Test
+    fun `判据⑤_sweep 必须真调 ProofReading_pick`() {
+        // pick 的定义在 ProofReading.kt——EvolutionWiring.kt 里出现即调用行（NEG-428-N2 同款口径）。
+        val src = strip(read("src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt"))
+        assertTrue(
+            "sweepApprovedProposals 必须调 ProofReading.pick（真验证臂：读数与新表从收件箱来）",
+            src.contains("ProofReading.pick("),
+        )
+    }
+
+    @Test
+    fun `判据④_体检单必须有进化读数通道一格`() {
+        val src = strip(read("src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt"))
+        val callLine = src.lineSequence().any { it.contains("ProofReading.channelLine(") }
+        assertTrue(
+            "HealthRun 必须把 ProofReading.channelLine 拼进体检单（release 下通道不可用要显出来，不许沉默）",
+            callLine,
+        )
+    }
 }

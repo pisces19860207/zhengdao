@@ -26,6 +26,8 @@
 //
 // 落盘两本（与 274/277/298/278 同房型）：`<App私有>/抱朴记忆/进化提案.jsonl` 与
 // `进化尝试.jsonl`，追加-only、写失败只 [RunLog] 不抛；账根没挂 ⇒ 只落内存，读数照给。
+// 第三百八十批另加真验证臂：读数收件箱与新表走 [ProofReading]（`进化读数.jsonl` 只读、
+// `进化读数-已用.refs` 是它的 ref 账）——四条验证读数不再恒"没跑"。
 package com.example.zhengdao.baopu.evolution
 
 import com.example.zhengdao.baopu.BaopuRuntime
@@ -189,7 +191,20 @@ internal object EvolutionWiring {
             .toSet()
         proposals.values
             .filter { it.status == ProposalStatus.OPEN && it.id in approved }
-            .forEach { runEvolutionChain(it.toTrigger(), it.toCandidate(), null, it.id, anchorsForAdmission(), { defaultProof() }, nowMs) }
+            .forEach { p ->
+                // 第三百八十批：真验证臂——读数与新表从收件箱来（[ProofReading.pick]）；
+                // 没有合格读数 ⇒ next=null，链停在准入后（428 的诚实停法，不自动改判据）。
+                val reading = ProofReading.pick(p.id, p.atMs, nowMs)
+                runEvolutionChain(
+                    p.toTrigger(),
+                    p.toCandidate(),
+                    reading?.snapshot,
+                    p.id,
+                    anchorsForAdmission(),
+                    reading?.runner ?: { defaultProof() },
+                    nowMs,
+                )
+            }
     }
 
     // ── ③ 完整链（判据①：每步可断言被调） ───────────────────────────────────
@@ -363,7 +378,8 @@ internal object EvolutionWiring {
      * 所以生产扫到御批后的诚实收场是"验证失败 ⇒ 自动回滚＋尝试账写明哪条没跑"；
      * 真验证臂（CI 读数）归后续批接入，换的是 proofRunner 这一个参数，链本身不动。
      */
-    private fun defaultProof(): EvolutionProof = EvolutionProof(
+    /** 收工 sweep 没拿到读数时的兜底臂（380 起放宽为 internal：[ProofReading] 也引用它当诚实空读数，不复制第二份）。 */
+    internal fun defaultProof(): EvolutionProof = EvolutionProof(
         unitTests = GateRun(ran = false, total = 0, failed = 0),
         regressionSet = GateRun(ran = false, total = 0, failed = 0),
         anchorSet = AnchorHold(total = 0, mismatched = 0),

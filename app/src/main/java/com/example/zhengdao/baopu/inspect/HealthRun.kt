@@ -21,6 +21,7 @@ import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.OpinionWiring
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupTable
+import com.example.zhengdao.baopu.evolution.ProofReading
 import com.example.zhengdao.core.RunLog
 import java.io.File
 
@@ -103,7 +104,11 @@ internal object HealthRun {
             rows,
             signals,
             blockers,
-            readings = reading.sheetLines,
+            // 第三百八十批：进化读数通道一格（判据④）——release 私有目录没有 run-as 推送口，
+            // 通道不可用必须显在单子上，免得"链停在准入等读数"被读成"进化总在失败"。
+            readings = reading.sheetLines + ProofReading.channelLine(
+                com.example.zhengdao.BuildConfig.DEBUG,
+            ),
             // 抽检读数块：上次抽检时间＋假 PASS 数，一行一件（判据层的行文，自带部位名；编排层只排版）。
             sampling = SAMPLE_ORGANS
                 .filter { sampling.containsKey(it) }
