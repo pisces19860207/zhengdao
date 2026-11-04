@@ -122,9 +122,14 @@ class MovePathToolTest {
         assertTrue("应成功：$r", r is ToolOutcome.Ok)
         assertEquals("整理版本", dst.readText(Charsets.UTF_8))
         val siblings = dst.parentFile!!.listFiles()!!.map { it.name }
-        assertTrue("应出现带 sha 后缀的新文件：$siblings", siblings.any { it.startsWith("书.") && it.endsWith(".txt") })
-        val kept = dst.parentFile!!.listFiles()!!.first { it.name.startsWith("书.") }
-        assertEquals("投递版本", kept.readText(Charsets.UTF_8))
+        // ⚠️ 2026-11-04 修 flaky：原来 `first { it.name.startsWith("书.") }` 会把**原文件** `书.txt` 也匹配上
+        // （"书.txt" 本身就以 "书." 开头），取到谁是**目录列举顺序**说了算——Windows(NTFS) 恰好先给后缀文件，
+        // Linux(ext4) 先给原文件 ⇒ CI 红、本机绿。判据要排除原文件名本身。
+        val extras = dst.parentFile!!.listFiles()!!
+            .filter { it.name != dst.name && it.name.startsWith("书.") && it.name.endsWith(".txt") }
+        assertEquals("应恰好一个带 sha 后缀的新文件：$siblings → $extras", 1, extras.size)
+        assertTrue("后缀文件不该同名原文件", extras.single().name != dst.name)
+        assertEquals("投递版本", extras.single().readText(Charsets.UTF_8))
     }
 
     @Test
