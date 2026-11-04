@@ -328,7 +328,7 @@ class FormFillToolTest {
             .lines().filterNot { it.trimStart().startsWith("//") }.joinToString("\n")
         assertTrue("必须用 201 的填表器", src.contains("FormFiller("))
         assertTrue("必须用 201 的分类/预检", src.contains("TeachFormRules."))
-        assertTrue("必须用 201 的端口", src.contains("FormDom"))
+        assertTrue("必须用 201 的端口（442批：import 行兜不了底，须见 dom. 实调）", Regex("dom\\.").findAll(src).count() >= 3 && src.contains("private val dom: FormDom"))
         assertTrue("拒填判据必须复用 196 的名单", src.contains("TeachSafety.refuseTypeReason"))
         // 不许自己写 JS、不许自己写 DOM 操作（那是第二套实现的样子）
         for (bad in listOf("document.querySelector", "document.querySelectorAll", "innerHTML", "el.value =", "getElementsByName")) {

@@ -251,7 +251,7 @@ class BaopuImageGridTest {
     fun `G6_缺失走独立文案且仍在该格`() {
         val src = list()
         assertTrue("缺一格用短文案（格子放不下长句）", src.contains("R.string.baopu_image_missing_short"))
-        assertTrue("读屏仍给带路径的整句（B4 那条没丢）", src.contains("R.string.baopu_image_missing"))
+        assertTrue("读屏仍给带路径的整句（B4 那条没丢）", src.contains("R.string.baopu_image_missing,"))
         assertTrue("缺失分支看的是该格的 present", src.contains("if (!exists)"))
         assertEquals("「文件在不在」只有一份实现", 1, Regex(Regex.escape("file.isFile && file.length() > 0")).findAll(src).count())
     }
@@ -261,7 +261,7 @@ class BaopuImageGridTest {
     @Test
     fun `G7_附件条横排且放不下横向滚动`() {
         val src = composer()
-        assertTrue("一行放不下要横向滚动（判据点名不许换行）", src.contains("horizontalScroll(rememberScrollState())"))
+        assertEquals("两行输入都要横向滚动（442批：少一处必须红）", 2, Regex("horizontalScroll\\(rememberScrollState\\(\\)\\)").findAll(src).count())
         assertFalse("不许用换行FlowRow 顶高输入区", src.contains("FlowRow("))
         assertFalse("旧版每条附件占一整行的写法要没了", src.contains("Modifier.fillMaxWidth().padding(horizontal = 16.dp),\n                verticalAlignment"))
         // 判别器：滚动前还有一道裁边，chip 不许糊出可视区

@@ -111,10 +111,7 @@ class DecisionCardGateTest {
     @Test
     fun `N5_组头订阅同一个刷新源`() {
         // 103 批修法：组头 remember(toolTick) 与展开后的成员行同一个 tick
-        assertTrue(
-            "组头必须挂 toolTick（否则同屏不刷新，要退出重进）",
-            settings.contains("remember(toolTick)"),
-        )
+        assertEquals("组头三张表都要挂 toolTick（442批：少一张必须红）", 3, Regex("remember\\(toolTick\\)").findAll(settings).count())
     }
 
     // ── 正门禁：触控目标 ────────────────────────────────────────────────────
@@ -123,11 +120,8 @@ class DecisionCardGateTest {
     fun `P1_决策卡按钮行不低于48dp`() {
         // 第一百零五批：卡 20 / 钮 14 / 标题 48 的**值**收进 BaopuSkin.kt（卡与外壳共用一份），
         // 本判据跟着改从"文件里有个 48.dp"变成"引用共享常量且常量 ≥48"——判的是同一个事实。
-        assertTrue(
-            "按钮必须 heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp) 且该常量 ≥48",
-            decisionCard.contains("heightIn(min = BAO_BUTTON_MIN_HEIGHT_DP.dp)") &&
-                BAO_BUTTON_MIN_HEIGHT_DP >= 48,
-        )
+        assertEquals("按钮必须 heightIn（442批：两处各钉）", 2, Regex("heightIn\\(min = BAO_BUTTON_MIN_HEIGHT_DP\\.dp\\)").findAll(decisionCard).count())
+        assertTrue("按钮高度常量本身 ≥48", BAO_BUTTON_MIN_HEIGHT_DP >= 48)
     }
 
     @Test

@@ -273,7 +273,7 @@ class BaopuShellP1GateTest {
         // 但这一项属于"装 App 时配一次"，跟 MCP／选模型 一起归律令）。两处都钉住：
         // ① 律令里真的有这个入口且进的是原页面；② 抽屉里不许再留一个（重复入口）。
         val statutes = repoFile("src/main/java/com/example/zhengdao/ui/SettingsScreen.kt").readText()
-        assertTrue("律令里要有「抱朴设置」入口", statutes.contains("R.string.baopu_drawer_settings"))
+        assertTrue("律令里要有「抱朴设置」入口", statutes.contains("R.string.baopu_drawer_settings)"))
         assertTrue("律令里要真的打开抱朴设置页", statutes.contains("BaopuSettingsScreen("))
         assertFalse("抽屉里不该再有它（重复入口）", drawer().contains("R.string.baopu_drawer_settings"))
     }
@@ -434,6 +434,6 @@ class BaopuShellP1GateTest {
         )
         assertTrue("失败必须同因聚合（aggregateSkillFailures 接在页上）", src.contains("aggregateSkillFailures("))
         assertTrue("顶部要有读数行（技能 N · 失败 M · 待转正 K）", src.contains("R.string.skill_fail_summary"))
-        assertTrue("分母是数据层的 PROMOTE_USES，UI 不自己数", src.contains("SkillStore.PROMOTE_USES"))
+        assertTrue("分母是数据层的 PROMOTE_USES，UI 不自己数（442批：钉读数行，全限定引用兜不了底）", src.contains("row.uses, SkillStore.PROMOTE_USES)"))
     }
 }

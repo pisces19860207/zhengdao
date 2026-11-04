@@ -102,7 +102,7 @@ class BaopuCollapseAffordanceTest {
         val src = bar()
         assertTrue("整行点击交给记录条容器", src.contains("BaopuRecordRow("))
         assertTrue("同一入口翻转展开态", src.contains("onClick = { open = !open }"))
-        assertTrue("明细必须是 Popup（不进布局流）", src.contains("Popup("))
+        assertTrue("明细必须是 Popup（不进布局流）", Regex("(?m)^\\s*Popup\\($").containsMatchIn(src))
         assertTrue("点外面收回", src.contains("dismissOnClickOutside = true"))
         assertTrue("返回键收回", src.contains("dismissOnBackPress = true"))
         assertFalse("不许退回行内展开", src.contains("AnimatedVisibility"))

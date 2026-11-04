@@ -104,8 +104,8 @@ class BaopuPreviewDrawerTest {
     @Test
     fun `P9_抽屉里真有两行_且都有回调`() {
         val drawer = read("src/main/java/com/example/zhengdao/ui/baopu/BaopuDrawer.kt")
-        assertTrue("抽屉要有「预览这条回复」", drawer.contains("R.string.baopu_drawer_preview_last"))
-        assertTrue("抽屉要有「清空预览缓存」", drawer.contains("R.string.baopu_drawer_preview_clear"))
+        assertTrue("抽屉要有「预览这条回复」", drawer.contains("R.string.baopu_drawer_preview_last)"))
+        assertTrue("抽屉要有「清空预览缓存」", drawer.contains("R.string.baopu_drawer_preview_clear)"))
         assertTrue("分组标题", drawer.contains("R.string.baopu_drawer_group_preview"))
         assertTrue("回调形参", drawer.contains("onPreviewLastReply: () -> Unit"))
         assertTrue("回调形参", drawer.contains("onPreviewClear: () -> Unit"))

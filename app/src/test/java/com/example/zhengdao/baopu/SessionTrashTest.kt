@@ -69,6 +69,6 @@ class SessionTrashTest {
         ).forEach { assertTrue("缺文案 $it", zh.contains("name=\"$it\"")) }
         val panel = repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuTrashBin.kt").readText()
         assertTrue(panel.contains("listDeletedSessions"))
-        assertTrue(panel.contains("confirmingSession"))
+        assertTrue(panel.contains("if (confirmingSession != id)") && panel.contains("confirmingSession = id"))
     }
 }

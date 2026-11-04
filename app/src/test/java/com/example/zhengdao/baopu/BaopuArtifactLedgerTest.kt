@@ -190,7 +190,7 @@ class BaopuArtifactLedgerTest {
             "版本号必须 ≥ 10（v9 归本批 artifact；v11 起归第五十七批 skill_event）",
             Regex("const val VERSION = (1[0-9]|[2-9][0-9])").containsMatchIn(src),
         )
-        assertTrue("onCreate 里要建表", src.contains("applyV9Migration(db)"))
+        assertTrue("onCreate 里要建表", Regex("(?m)^\\s*applyV9Migration\\(db\\)\\s*$").containsMatchIn(src))
         assertTrue("老库升级也要建表", src.contains("if (oldVersion < 9) applyV9Migration(db)"))
         val body = src.substringAfter("private fun applyV9Migration(db: SQLiteDatabase)")
         assertTrue("迁移体就是逐条 execDDL：" + body.take(160), body.contains("BaopuSql.ARTIFACT_DDL.forEach { db.execSQL(it) }"))

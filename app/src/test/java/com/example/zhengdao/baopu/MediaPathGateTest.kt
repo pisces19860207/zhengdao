@@ -125,7 +125,7 @@ class MediaPathGateTest {
         // 268 起它只服务存量迁移（MediaMigration 的目标），常量不许删
         assertTrue("存量迁移目标（SHOT_DIR）不许搬走", bridge.contains("internal const val SHOT_DIR = \"截屏\""))
         val vision = repoFile("src/main/java/com/example/zhengdao/baopu/VisionFiles.kt").readText()
-        assertTrue("VisionFiles.load 必须保留 extraRoot（截屏夹是第二个读根）", vision.contains("extraRoot"))
+        assertTrue("VisionFiles.load 必须保留 extraRoot（截屏夹是第二个读根）", vision.contains("extraRoot?.canonicalFile"))
         val engine = repoFile("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt").readText()
         assertTrue("引擎读图时仍要把 shotRoot 传进去", engine.contains("extraRoot = shotRoot()"))
     }

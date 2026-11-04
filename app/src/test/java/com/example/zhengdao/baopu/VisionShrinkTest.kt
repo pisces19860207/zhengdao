@@ -244,7 +244,7 @@ class VisionShrinkTest {
             engine.contains("VisionFiles.payloadsOf("),
         )
         assertTrue("引擎要用 VisionFiles.load", engine.contains("VisionFiles.load("))
-        assertTrue("引擎要把跳过原因带进本轮输入", engine.contains("turnNotes"))
+        assertEquals("两类跳过原因都要写进 turnNotes（442批：少一处必须红）", 2, Regex("turnNotes = listOf\\(").findAll(engine).count())
     }
 
     @Test
@@ -257,7 +257,7 @@ class VisionShrinkTest {
     @Test
     fun `G3_组装层要把额外说明拼进本轮输入`() {
         val assembler = code("src/main/java/com/example/zhengdao/baopu/ContextAssembler.kt")
-        assertTrue("ContextAssembler 没有 extraNotes 参数", assembler.contains("extraNotes"))
-        assertTrue("额外说明没被拼进 currentText", assembler.contains("notes.joinToString"))
+        assertTrue("ContextAssembler 没有 extraNotes 拼装（442批：后缀锚防前缀兜底）", assembler.contains("extraNotes.forEach {"))
+        assertEquals("两处拼接都要在（442批：少一处必须红）", 2, Regex("notes\\.joinToString\\(").findAll(assembler).count())
     }
 }

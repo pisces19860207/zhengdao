@@ -291,7 +291,7 @@ class SkillCardRulesTest {
     @Test
     fun `卡片源码_落盘只走SkillStore_不自己写文件`() {
         val card = raw("src/main/java/com/example/zhengdao/ui/baopu/SkillCard.kt")
-        assertTrue("必须经 SkillStore.plan", card.contains("SkillStore.plan("))
+        assertTrue("必须经 SkillStore.plan（442批：钉两条写路径赋值行，probe 判别器兜不了底）", card.contains("val plan = SkillStore.plan(") && card.contains("val planned = SkillStore.plan("))
         assertTrue("必须经 SkillStore.apply", card.contains("SkillStore.apply("))
         assertFalse("卡片不许自己写 SKILL.md", card.contains("writeText(Charsets.UTF_8)"))
         assertFalse("本单没有删除入口", card.contains("fun delete("))

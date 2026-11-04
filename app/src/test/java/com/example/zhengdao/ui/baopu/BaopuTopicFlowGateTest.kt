@@ -96,7 +96,7 @@ class BaopuTopicFlowGateTest {
     fun `红线-e 收尾对账接线与本地偏好不联网`() {
         val c = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt")
         // Settled 钩子：批量产出必须挂在权威收尾信号上
-        assertTrue("Settled 段必须调 topicBatchOnSettled()", c.contains("topicBatchOnSettled()"))
+        assertTrue("Settled 段必须调 topicBatchOnSettled()", Regex("(?m)^\\s*topicBatchOnSettled\\(\\)\\s*$").containsMatchIn(c))
         // 写法偏好记在本地 SharedPreferences（不联网、不进台账）
         assertTrue("上次成功那套必须记本地偏好", c.contains("getSharedPreferences(\"baopu-topic\""))
         assertTrue("整批有成功才写偏好", c.contains("putString(\"style_last\""))

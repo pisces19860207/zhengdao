@@ -429,7 +429,7 @@ class BaopuSkillInspectUiTest {
         assertEquals("deleteArchived 只有一个调用点", 1, src.split("deleteArchived(").size - 1)
         assertTrue("判别器正例：确认位由 confirmingDelete 比对得出，不是写死 true", src.contains("confirmingDelete?.absolutePath == row.file.absolutePath"))
         assertFalse("不许出现无条件删除的写法", src.contains("deleteArchived(row, true)"))
-        assertTrue("关掉面板要清掉确认态", src.contains("confirmingDelete = null"))
+        assertEquals("关面板与删成后都要清确认态（442批：少一处必须红）", 2, Regex("confirmingDelete = null").findAll(src).count())
     }
 
     // ── U4：写盘唯一走 SkillStore.apply；名字锁定────────────────────────────

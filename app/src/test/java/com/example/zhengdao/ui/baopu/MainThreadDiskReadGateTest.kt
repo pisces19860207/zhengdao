@@ -3,6 +3,7 @@
 
 package com.example.zhengdao.ui.baopu
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -176,7 +177,7 @@ class MainThreadDiskReadGateTest {
         val src = settings()
         // 262 合入后重放 264 的 ④ 补丁（git apply --check rc=0）：技能卡改走异步快照，
         // 读数在 Dispatchers.IO 里算完才交付；本测钉住「已重放」而不是「不许出现」。
-        assertTrue("④ 应已重放：设置页要出现 loadSkillReview", src.contains("loadSkillReview"))
+        assertTrue("④ 应已重放：设置页要出现 loadSkillReview", Regex("(?m)^\\s*loadSkillReview\\($").containsMatchIn(src))
     }
 
     @Test
@@ -211,9 +212,9 @@ class MainThreadDiskReadGateTest {
 
         val logBody = src.substringAfter("fun log(line: String)").substringBefore("private fun appendLine")
         assertTrue("善后未完成 ⇒ 先进内存队列", logBody.contains("pending.addLast(at to safe)"))
-        assertTrue("队列补写走同一条 appendLine", src.contains("appendLine(d, at, safe)"))
+        assertEquals("两处补写都走同一条 appendLine（442批：少一处必须红）", 2, Regex("appendLine\\(d, at, safe\\)").findAll(src).count())
         assertTrue("补写结束才放开直接落盘", src.contains("prepared = true"))
-        assertTrue("启动那几行拿不到 Context 也不许丢（只靠 init 记下的目录）", src.contains("filesDirForRedact"))
+        assertTrue("启动那几行拿不到 Context 也不许丢（只靠 init 记下的目录；442批：钉读取行）", src.contains("filesDirForRedact ?:"))
     }
 
     // ── 证据装置：debug 包的主线程读盘探针 ──────────────────────────────

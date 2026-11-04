@@ -244,13 +244,13 @@ class SkillStoreTest {
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt") }
             .readText()
         assertTrue("要有「新建技能」入口", settings.contains("R.string.skill_new_button"))
-        assertTrue("要弹编辑器", settings.contains("SkillEditorDialog("))
+        assertEquals("编辑器两个入口都得在（442批：少一个必须红）", 2, Regex("SkillEditorDialog\\(").findAll(settings).count())
         // 对话框在 BaopuSkillCard.kt 里（设置页只负责弹它）——两处合起来看
         val uiText = settings + "\n" + File("src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCard.kt")
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSkillCard.kt") }
             .readText()
         assertTrue("保存走 SkillStore.apply（不是自己写文件）", uiText.contains("SkillStore.apply(plan, personaFiles, indexText)"))
-        assertTrue("每行要有「恢复到上一版」", settings.contains("R.string.skill_restore_last"))
+        assertEquals("每行要有「恢复到上一版」（442批：两行各一处，少一处必须红）", 2, Regex("R\\.string\\.skill_restore_last").findAll(settings).count())
         assertTrue("回滚要真调 SkillStore.restore", settings.contains("SkillStore.restore(file,"))
         assertTrue("没有备份时不出按钮", settings.contains("SkillStore.backupsOf(skillFileOf("))
         // 确认卡五项都在文案里

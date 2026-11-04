@@ -45,7 +45,7 @@ class AmendContractWiringGateTest {
     @Test
     fun `G1_改约落地分支_退旧上限且调透传口`() {
         val src = controller()
-        assertTrue("amend 落地分支没退旧上限（retireContractForAmend 不在）", src.contains("retireContractForAmend()"))
+        assertTrue("amend 落地分支没退旧上限（retireContractForAmend 不在）", src.contains("retireContractForAmend() +"))
         assertTrue("amend 落地分支没调透传口（onAmend 不在）", src.contains("onAmend(amendRequirementOf(d.change))"))
         val retire = bodyOf(src, "private fun retireContractForAmend")
         assertTrue("退上限那个函数不见了", retire.isNotEmpty())

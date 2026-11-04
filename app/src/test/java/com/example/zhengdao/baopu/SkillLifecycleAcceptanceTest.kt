@@ -143,7 +143,7 @@ class SkillLifecycleAcceptanceTest {
         val reg = File("src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt")
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt") }
             .readText()
-        assertTrue("要进默认启用集", reg.contains("\"write_skill\""))
+        assertTrue("要进默认启用集", reg.contains("val RUNTIME_REGISTERED: Set<String> = setOf(\"write_skill\", \"append_persona\")"))  // 442批：钉默认启用集那一行（其余 write_skill 命中兜不了底）
         val rt = File("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt")
             .let { if (it.exists()) it else File("app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt") }
             .readText()

@@ -9,6 +9,7 @@
 // 引擎侧的每个接线点按字面钉死，谁把线拔了谁红）。
 package com.example.zhengdao.baopu.verify
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -64,10 +65,8 @@ class RunContractWiringGateTest {
     @Test
     fun `G4_三态由判据表算_接线件真调ContractSelector_evaluate`() {
         val src = wiring()
-        assertTrue(
-            "PASS/FAIL/UNVERIFIABLE 不是 ContractSelector 算的（evaluate 不在接线件里）",
-            src.contains("ContractSelector.evaluate(order.declared"),
-        )
+        assertEquals("两处 evaluate 调用都要在（442批：少一处必须红）", 2, Regex("ContractSelector\\.evaluate\\(order\\.declared").findAll(src).count())
+
         assertTrue(
             "证据不是 Contracts 亲读的（readDoc 不在接线件里——调用方自己填数就是没验）",
             src.contains("Contracts.readDoc("),
@@ -131,7 +130,7 @@ class RunContractWiringGateTest {
     fun `G8_传真数据_契约构造口只认真源不认编造值`() {
         val src = wiring()
         assertTrue("预算不是走档位的正路构造口（BudgetPreset.budget）", src.contains("BudgetPreset.STANDARD.budget()"))
-        assertTrue("授权范围不是产物目录真源（ZhengdaoDirs.PRODUCTS_DIR）", src.contains("ZhengdaoDirs.PRODUCTS_DIR"))
+        assertEquals("readRoots/writeRoots 都要真源（442批：少一处必须红）", 2, Regex("ZhengdaoDirs\\.PRODUCTS_DIR").findAll(src).count())
         assertTrue("目标不是用户原话（goal.text 没吃 userText）", src.contains("text = text.take(TaskGoal.MAX_TEXT_CHARS)"))
     }
 

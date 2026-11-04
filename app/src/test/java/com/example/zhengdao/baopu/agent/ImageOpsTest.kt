@@ -150,8 +150,8 @@ class ImageOpsTest {
     @Test
     fun `G3_永不覆盖原图_也没有越界能力`() {
         val src = code("src/main/java/com/example/zhengdao/baopu/agent/tools/ImageOpsTool.kt")
-        assertTrue("输出路径必须过文件边界判据（287 起统一走 fileAccessCheck）", src.contains("fileAccessCheck"))
-        assertTrue("必须拒绝覆盖已存在的目标", src.contains("目标已存在，不做覆盖"))
+        assertEquals("三类操作都要过文件边界判据（442批：import 行兜不了底）", 3, Regex("fileAccessCheck\\(").findAll(src).count())
+        assertEquals("缩放与裁剪都要拒覆盖已存在目标（442批：少一处必须红）", 2, Regex("目标已存在，不做覆盖").findAll(src).count())
         assertTrue("必须拒绝和原图同路径", src.contains("image_ops 永不覆盖原图"))
         assertTrue("不存在递归删除", !src.contains("deleteRecursively"))
     }

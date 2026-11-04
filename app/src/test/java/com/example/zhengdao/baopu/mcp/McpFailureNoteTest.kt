@@ -277,7 +277,7 @@ class McpFailureNoteTest {
     fun `接线_两个客户端都把线索交给调用方`() {
         val client = File("src/main/java/com/example/zhengdao/baopu/mcp/McpClient.kt").readText()
         val oauthSrc = File("src/main/java/com/example/zhengdao/baopu/mcp/McpOAuthClient.kt").readText()
-        assertTrue("MCP 客户端读数要返回分类线索", client.contains("Pair<String?, McpFailureNote?>"))
+        assertTrue("MCP 客户端读数要返回分类线索（442批：钉函数签名行，miss 辅助函数兜不了底）", client.contains("): Pair<String?, McpFailureNote?> {"))
         assertTrue("调用方拿线索记日志", client.contains("withheld?.let { log(it.logLine(config.id)) }"))
         assertTrue("调用方拿线索补文案", client.contains("detail = usable ?: withheld?.hint"))
         assertFalse("改前那种一律 return null 的收口不许回来", client.contains("if (text.isBlank()) return null"))

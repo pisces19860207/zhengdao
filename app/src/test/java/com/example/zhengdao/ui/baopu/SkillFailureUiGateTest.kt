@@ -168,10 +168,10 @@ class SkillFailureUiGateTest {
             1,
             Regex("SkillFailureGroupRow\\(").findAll(page).count(),
         )
-        assertTrue("行内失败短状态要接上", page.contains("R.string.skill_row_failed_at"))
+        assertEquals("行内失败短状态两处都要接（442批：少一处必须红）", 2, Regex("R\\.string\\.skill_row_failed_at\\b").findAll(page).count())
         assertTrue("读数行要接上（技能 N · 失败 M · 待转正 K）", page.contains("R.string.skill_fail_summary"))
         val fail = failureFile()
-        assertTrue("详情要有复制全文的口", fail.contains("skillFailureCopyText("))
+        assertTrue("详情要有复制全文的口", fail.contains("val text = skillFailureCopyText("))
         assertTrue("判语原文要出现在详情（skill_recheck_badge 整句）", fail.contains("skill_recheck_badge"))
     }
 }

@@ -1141,7 +1141,8 @@ def selftest() -> int:
                         {"mit-lib": ("org.example", "mit", "1.0")},
                         {("org.example", "mit", "1.0"): MIT})
             text, code = run(root, root / "gh")
-            return code == 0 and "绿" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：断言打在条目行上——单查「绿」跟退出码同义反复，没有独立信息
+            return code == 0 and "结论：绿" in text, "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_deny():
         with tempfile.TemporaryDirectory() as tmp:
@@ -1149,7 +1150,9 @@ def selftest() -> int:
                         {"gpl-lib": ("org.example", "gpl", "1.0")},
                         {("org.example", "gpl", "1.0"): GPL3})
             text, code = run(root, root / "gh")
-            return code == 1 and "GPL-3.0" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：钉条目行——只查许可 id，被误判成「未登记」时 ::warning 行里也有 id，咬不住判级
+            return code == 1 and "✗ 禁止 org.example:gpl" in text and "GPL-3.0" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_deny_lgpl():
         with tempfile.TemporaryDirectory() as tmp:
@@ -1157,14 +1160,17 @@ def selftest() -> int:
                         {"jxl": ("net.sourceforge.jexcelapi", "jxl", "2.6.12")},
                         {("net.sourceforge.jexcelapi", "jxl", "2.6.12"): LGPL21})
             text, code = run(root, root / "gh")
-            return code == 1 and "LGPL-2.1" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：同上——钉「✗ 禁止」条目行，不许只查许可 id
+            return code == 1 and "✗ 禁止 net.sourceforge.jexcelapi:jxl" in text and "LGPL-2.1" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_missing_pom():
         with tempfile.TemporaryDirectory() as tmp:
             root = tree(tmp, ["implementation(libs.ghost)"],
                         {"ghost": ("org.example", "ghost", "9.9")}, {})
             text, code = run(root, root / "gh")
-            return code == 1 and "未取证" in text and "缓存缺" in text, \
+            # 442 批：「未取证」三字在表头（未取证 N）里恒在——钉「✗ 未取证」条目行才咬得住
+            return code == 1 and "✗ 未取证" in text and "缓存缺" in text, \
                 "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_no_declaration():
@@ -1181,7 +1187,9 @@ def selftest() -> int:
                         {"epl": ("org.example", "epl", "1.0")},
                         {("org.example", "epl", "1.0"): EPL})
             text, code = run(root, root / "gh")
-            return code == 1 and "未登记" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：「未登记」在表头恒在——钉「✗ 未登记 + 坐标」条目行
+            return code == 1 and "✗ 未登记 org.example:epl" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_exempt_ok():
         with tempfile.TemporaryDirectory() as tmp:
@@ -1190,7 +1198,9 @@ def selftest() -> int:
                         {"gpl-lib": ("org.example", "gpl", "1.0")},
                         {("org.example", "gpl", "1.0"): GPL3}, exc)
             text, code = run(root, root / "gh")
-            return code == 0 and "已豁免" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：「已豁免」在表头恒在——钉「✓ 已豁免 + 坐标」条目行（豁免列出被删时咬得住）
+            return code == 0 and "已豁免 org.example:gpl" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_exempt_incomplete():
         with tempfile.TemporaryDirectory() as tmp:
@@ -1268,7 +1278,10 @@ def selftest() -> int:
                 'managed = { group = "org.example", name = "managed" }')
             (root / "gradle" / "libs.versions.toml").write_text(toml, encoding="utf-8")
             text, code = run(root, root / "gh", verbose=True)
-            return code == 0 and "1.5" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：钉「解析出的版本落在 managed 那一条的条目行里」，别拿裸 1.5 满篇碰
+            return code == 0 and any("org.example:managed" in l and "1.5" in l
+                                     for l in text.splitlines()), \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_parent_inherit():
         with tempfile.TemporaryDirectory() as tmp:
@@ -1305,7 +1318,10 @@ def selftest() -> int:
                         {"gpl-lib": ("org.example", "gpl", "1.0")},
                         {("org.example", "gpl", "1.0"): GPL3})
             text, code = run(root, root / "gh", all_scopes=True)
-            return code == 1 and "禁止" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批（工单病灶样本）：「禁止」二字在表头「禁止 N」里恒在 ⇒ 断言恒真；
+            # 必须钉「✗ 禁止 + 坐标」条目行，误判成未登记时才咬得住
+            return code == 1 and "✗ 禁止 org.example:gpl" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_mixed_scope():
         """同一个坐标同时出现在 test 与 implementation ⇒ 只要有一条进分发物就判。"""
@@ -1315,7 +1331,9 @@ def selftest() -> int:
                         {"gpl-lib": ("org.example", "gpl", "1.0")},
                         {("org.example", "gpl", "1.0"): GPL3})
             text, code = run(root, root / "gh")
-            return code == 1 and "禁止" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：同上，钉条目行
+            return code == 1 and "✗ 禁止 org.example:gpl" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     cases = [
         ("允许类：MIT ⇒ 绿", case_allow),
@@ -1390,7 +1408,8 @@ def assets_selftest() -> int:
         with tempfile.TemporaryDirectory() as tmp:
             root = _asset_tree(Path(tmp), ["models/ghost.onnx"], [])
             text, code = run_assets(root)
-            return code == 1 and "漏登记" in text and "models/ghost.onnx" in text, \
+            # 442 批：名字只可能出现在漏登记条目行（· name）或 ::warning 漏登行——钉条目行
+            return code == 1 and "· models/ghost.onnx" in text, \
                 "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_empty_table():
@@ -1427,7 +1446,8 @@ def assets_selftest() -> int:
             row = ["models/*.onnx", "1.0", "Apache-2.0", "是", "无", "https://example.org"]
             root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [row])
             text, code = run_assets(root)
-            return code == 1 and "通配" in text and "漏登记" in text, \
+            # 442 批：「漏登记」在表头恒在——钉通配说明行＋漏登记条目行
+            return code == 1 and "资产名不许用通配" in text and "· models/tiny.onnx" in text, \
                 "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_no_header():
@@ -1440,7 +1460,9 @@ def assets_selftest() -> int:
         with tempfile.TemporaryDirectory() as tmp:
             root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row, ok_row])
             text, code = run_assets(root)
-            return code == 1 and "重复" in text, "code=%d %s" % (code, text.splitlines()[-1])
+            # 442 批：「重复」太宽（表头重复也含它）——钉完整说明句
+            return code == 1 and "同一资产只许登记一次" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
 
     def case_idempotent():
         with tempfile.TemporaryDirectory() as tmp:

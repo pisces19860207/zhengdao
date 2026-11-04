@@ -154,7 +154,7 @@ class SkillExpiryTest {
         assertTrue("写盘只落 RECHECK_FILE（落点唯一）", layer.contains("SkillRefine.RECHECK_FILE"))
         assertTrue("判据必须走纯函数 expiryVerdict（不许 UI 自己数）", layer.contains("SkillRefine.expiryVerdict"))
         assertTrue("编码必须走 encodeRecheck（不许自己拼 JSON）", layer.contains("SkillRefine.encodeRecheck"))
-        assertTrue("写失败只吞（提示不依赖它）", layer.contains("runCatching {"))
+        assertTrue("写失败只吞（提示不依赖它）", layer.contains("val written = runCatching {"))
     }
 
     @Test

@@ -26,17 +26,17 @@ class KnowledgeRefreshGateTest {
         assertFalse("刷新正确性不许押在 FileObserver 上", refresh.contains("FileObserver"))
         assertTrue("观察者走唯一 MediaStore 出口（可选加速）", refresh.contains("MediaStoreSink.registerFilesObserver"))
         assertFalse("别处不许直接碰 MediaStore（MediaPathGateTest G3）", refresh.contains("MediaStore."))
-        assertTrue("必须有周期兜底", refresh.contains("PERIODIC"))
-        assertTrue("必须有前台增量", refresh.contains("Trigger.FOREGROUND"))
+        assertTrue("必须有周期兜底（442批：钉周期判断行）", refresh.contains("Trigger.PERIODIC) lastPeriodAt"))
+        assertTrue("必须有前台增量（442批：钉前台增量调用行）", refresh.contains("getAndSet(false)) request(ctx, Trigger.FOREGROUND)"))
         val sink = src("src/main/java/com/example/zhengdao/baopu/MediaStoreSink.kt")
         assertTrue("观察者的 MediaStore 实现在唯一出口里", sink.contains("MediaStore.Files"))
-        assertTrue(sink.contains("ContentObserver"))
+        assertTrue(sink.contains("registerContentObserver(uri, true, obs)"))
     }
 
     @Test
     fun `负例_后台无脑扫_只有启动与手动可越过前台闸`() {
         val rules = src("src/main/java/com/example/zhengdao/baopu/knowledge/KnowledgeRefreshRules.kt")
-        assertTrue("门控必须看前台", rules.contains("foreground"))
+        assertTrue("门控必须看前台（442批：钉前台判断行，枚举值兜不了底）", rules.contains("if (foreground) Gate(true"))
         assertTrue("启动一次性放行", rules.contains("Trigger.START -> Gate(true"))
         assertTrue("周期必须要求前台", rules.contains("!foreground -> Gate(false"))
     }

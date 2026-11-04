@@ -43,7 +43,7 @@ class BaopuInterjectWiringTest {
     fun `待生效行有状态句与chip_且可读屏`() {
         val src = composer()
         assertTrue("状态句用复数串（中英都由资源出）", src.contains("R.plurals.baopu_interject_pending"))
-        assertTrue("点 chip 文本 ＝ 撤回输入框（「可编辑」那一半）", src.contains("onEdit"))
+        assertTrue("点 chip 文本 ＝ 撤回输入框（「可编辑」那一半）", src.contains("onEdit = {"))
         assertTrue("× 有读屏名", src.contains("baopu_interject_revoke"))
         assertTrue("点 chip 有读屏名", src.contains("baopu_interject_edit"))
     }

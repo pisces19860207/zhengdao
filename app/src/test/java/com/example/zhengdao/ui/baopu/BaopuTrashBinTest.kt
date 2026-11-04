@@ -182,7 +182,7 @@ class BaopuTrashBinTest {
     @Test
     fun `T1_入口常驻_N等于零只关 enabled 不许整条消失`() {
         val src = drawer()
-        assertTrue("抽屉要有这一行", src.contains("R.string.trash_drawer_entry"))
+        assertTrue("抽屉要有这一行", src.contains("R.string.trash_drawer_entry,"))
         assertTrue("常驻的形状＝只把 enabled 关掉", src.contains("enabled = trashCount > 0"))
         assertFalse("不许用 if 把整行包起来（那就是消失）", Regex("if \\(trashCount > 0\\)").containsMatchIn(src))
         // 判别器自证：那种"消失"的坏形状必须被同一条正则抓到
@@ -195,7 +195,7 @@ class BaopuTrashBinTest {
         // E-163（真机 2026-10-19 抓到）：`ModalNavigationDrawer` 的 drawerContent 一直处于组合中，
         // 光靠 remember(tick) 不会因为「把抽屉拉开」而重算 ⇒ 抱朴刚删完文件，抽屉里仍显示旧 N；
         // 而旧 N=0 又把整行 enabled 关掉，连面板都打不开（只能重启 App）。
-        assertTrue("打开抽屉要重数一次", src.contains("LaunchedEffect(drawerOpen)"))
+        assertTrue("打开抽屉要重数一次", src.contains("if (drawerOpen) trashTick++"))
         assertTrue("抽屉自己要看得到打开状态", src.contains("drawerOpen: Boolean"))
         assertTrue("页面必须把 drawerState.isOpen 传进来", screen().contains("drawerOpen = drawerState.isOpen"))
     }
@@ -359,7 +359,10 @@ class BaopuTrashBinTest {
         // ② 清空仍是两击：第一击只出确认（`return@empty`），第二击才删。
         // 第一击的账目改取面板快照（total/totalBytes），不再自己全量扫一遍。
         assertTrue("第一击按快照出确认卡", src.contains("val needs = TrashOutcome.NeedsConfirm("))
-        assertTrue("第一击说完就 return", src.contains("sayBatch(needs)") && src.contains("return@empty"))
+        assertTrue(
+            "第一击说完就 return（442批：sayBatch 与第二击之间必须出现 return@empty，别处兜不了底）",
+            src.substringAfter("sayBatch(needs)").substringBefore("emptyTrash(dir, true)").contains("return@empty"),
+        )
         val firstBranch = src.substringAfter("if (!confirmingEmpty) {").substringBefore("return@empty")
         assertFalse("第一击那段里一个字都不许删：$firstBranch", firstBranch.contains("emptyTrash("))
         assertTrue("第二击才真删", src.contains("emptyTrash(dir, true)"))
@@ -379,8 +382,8 @@ class BaopuTrashBinTest {
         val src = bin()
         assertTrue("单条那句红字只在确认态出现", src.contains("if (isConfirming) {"))
         assertTrue("确认态是这一行自己的", src.contains("val isConfirming = confirmingFile == row.file.absolutePath"))
-        assertTrue("单条那句查的是单条文案", src.contains("R.string.trash_confirm_one"))
-        assertTrue("清空那句查的是批量文案", src.contains("R.plurals.trash_confirm_empty") || src.contains("R.string.trash_confirm_empty"))
+        assertTrue("单条那句查的是单条文案", src.contains("getString(R.string.trash_confirm_one, o.target"))
+        assertTrue("清空那句查的是批量文案（442批：钉取词调用行，plurals 声明行兜不了底）", src.contains("getQuantityString(R.plurals.trash_confirm_empty") || src.contains("getString(R.string.trash_confirm_empty"))
         val zhEmpty = value(zh(), "trash_confirm_empty")
         assertTrue("清空那句要数量", zhEmpty.contains("%1\$d"))
         assertTrue("清空那句要体积", zhEmpty.contains("%2\$s"))

@@ -314,7 +314,7 @@ class ToolRegistrySwitchTest {
         }
 
         // 硬约束三：默认进回收站（能反悔），`permanent` 才真删
-        assertTrue("delete_path 必须支持默认进回收站", src.contains("TRASH_DIR"))
+        assertEquals("两条进回收站路径都要真建目录（442批：少一处必须红）", 2, Regex("File\\(root, TRASH_DIR\\)").findAll(src).count())
         assertTrue("默认值必须是「不彻底删」", src.contains("optBoolean(ARG_PERMANENT, false)"))
     }
     @Test

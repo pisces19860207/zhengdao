@@ -301,7 +301,7 @@ class RiskWiringTest {
         assertFalse("旧表的破坏清单还在", line.contains("DESTRUCTIVE"))
         // ③ 档位只有一个出口：`RiskGate.tierOf` 转调矩阵，自己不带任何工具名表
         val gate = File("src/main/java/com/example/zhengdao/baopu/RiskGate.kt").readText()
-        assertTrue("tierOf 必须转调矩阵", gate.contains("RiskMatrix.classify"))
+        assertTrue("tierOf 必须转调矩阵", gate.contains("RiskMatrix.classify(call)"))
         listOf("read_file", "delete_path", "browser_", "write_file").forEach { sym ->
             assertFalse("接线层不许自带工具名表（$sym）", gate.contains("\"$sym"))
         }

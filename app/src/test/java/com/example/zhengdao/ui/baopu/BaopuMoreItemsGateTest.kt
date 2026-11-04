@@ -167,8 +167,11 @@ class BaopuMoreItemsGateTest {
         val key = "name=\"baopu_more_items\""
         assertEquals("中文只能有一条", 1, Regex(key).findAll(zh).count())
         assertEquals("英文只能有一条", 1, Regex(key).findAll(en).count())
-        assertTrue("中文口径要写「还有 N 条」（N 是占位符）", zh.contains("还有 %1\$d 条"))
-        assertTrue("英文口径 \"%1\$d more\"", en.contains("%1\$d more"))
+        // 442批：钉进本键的 plurals 块——「还有 N 条」在别的键里也可能出现，全文件查会兜底假绿
+        val zhBlock = zh.substringAfter("<plurals name=\"baopu_more_items\">").substringBefore("</plurals>")
+        val enBlock = en.substringAfter("<plurals name=\"baopu_more_items\">").substringBefore("</plurals>")
+        assertTrue("中文口径要写「还有 N 条」（N 是占位符）", zhBlock.contains("还有 %1\$d 条"))
+        assertTrue("英文口径 \"%1\$d more\"", enBlock.contains("%1\$d more"))
         assertEquals(
             "两个文件的键集合必须对称（本批只加这一个键）",
             Regex("name=\"([A-Za-z0-9_]+)\"").findAll(zh).map { it.groupValues[1] }.toSet(),

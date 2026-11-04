@@ -224,9 +224,9 @@ class EvolutionDecisionWiringTest {
         for (token in listOf("EvolutionDecision", "EvolutionPolicy", "EvolutionAudit")) {
             assertFalse("RunEngine 不许接线：$token", engine.contains(token))
         }
-        assertTrue("控制器必须接上决策口", controller.contains("EvolutionDecisionPort"))
-        assertTrue("判定链必须用 EvolutionDecision", controller.contains("EvolutionDecision"))
-        assertTrue("审计落点必须接上", controller.contains("EvolutionAuditLog"))
+        assertTrue("控制器必须接上决策口", controller.contains("val port = EvolutionDecisionPort(audit = audit)"))
+        assertTrue("判定链必须用 EvolutionDecision", controller.contains("EvolutionDecisionPort(audit = audit)"))
+        assertTrue("审计落点必须接上", controller.contains("EvolutionAuditLog.under(globalRoot)"))
     }
 
     @Test
