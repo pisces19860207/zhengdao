@@ -55,16 +55,24 @@ internal object BaopuTopBarRules {
      * · **带档位**（`flash` / `mini` / `Pro` 这类网上通行的叫法）；
      * · **不带内部构建号**（`v4.1-flash-1017` 的 `1017` 不上屏）。
      *
-     * 来源可查：两条是派工单逐字点名的例子；其余是**本仓自带**的预设 ID
-     * （`Provider.model` 与 `ModelPickerRules.presetModels`）和 131 批已审的
-     * `ModelPickerRules.CURATED_NAMES`，只把公司那一截按 A 案摘掉——没往表里塞任何一个猜出来的名字。
+     * 来源可查（2026-11-04 用户裁定「死别名直接删掉，按照最新的来」之后重过一遍）：
+     * · DeepSeek 两条 = 本仓**实测**的现役 ID 对上官方产品名
+     *   （`D:\zd-tools\ds-probe.txt`，2026-10-17 `GET /models`：`deepseek-flash` → `DeepSeek-V4.1-Flash`、
+     *   `deepseek-v4-pro` → `DeepSeek-V4-Pro`），按 A 案摘掉公司那一截 ⇒ 顶栏正是派工单逐字要的 `V4.1 flash`；
+     * · 其余是本仓预设的默认模型（`Provider.model`）、`ModelPickerRules.presetModels` 短名单，
+     *   以及 131 批已审的 `ModelPickerRules.CURATED_NAMES`，同样只摘公司词——
+     *   **没往表里塞任何一个猜出来的名字，也没留一条已经查不到出处的 ID**。
+     * 原来那条 `deepseek-v4.1-flash-1017`（派工单举例用的假 ID）删了：显示字照旧是 `V4.1 flash`，
+     * 但它现在钉在**机上真存在**的那条 ID 上；`deepseek-chat` / `deepseek-reasoner`（官方 2026-07-24
+     * 停用的一对别名）也删了——不替死别名包装产品名，真在机器上剩这条存储时按判据 1 显 ID，
+     * 她看得见、也就知道要重选。
      */
     val TOP_BAR_NAMES: Map<String, String> = mapOf(
-        // 派工单逐字例子（判据③拿它对截图）
-        "deepseek-v4.1-flash-1017" to "V4.1 flash",
+        // 派工单逐字例子（判据③拿它对截图）——挂在实测现役 ID 上
+        "deepseek-flash" to "V4.1 flash",
+        "deepseek-v4-pro" to "V4 Pro",
         "gpt-6.1-sol" to "GPT 6.1 Sol",
         // 本仓预设的默认模型（Provider.model）
-        "deepseek-flash" to "Flash",
         "gpt-4o-mini" to "GPT-4o mini",
         "claude-sonnet-4-5" to "Sonnet 4.5",
         "gemini-2.5-flash" to "2.5 Flash",
@@ -72,8 +80,6 @@ internal object BaopuTopBarRules {
         "claude-opus-4-5" to "Opus 4.5",
         "gpt-4o" to "GPT-4o",
         "gemini-2.5-pro" to "2.5 Pro",
-        "deepseek-chat" to "Chat",
-        "deepseek-reasoner" to "Reasoner",
         // presetModels 里剩下的那几个预设 ID（131 批③「预设也能选模型」的名单）
         "gpt-4.1-mini" to "GPT 4.1 mini",
         "gpt-4.1" to "GPT 4.1",

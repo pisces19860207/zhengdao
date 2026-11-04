@@ -120,13 +120,15 @@ class ModelPickerRulesTest {
             ),
         )
         // 空串与纯空白不算"端点给了名字"（③：端点没给就是没给，不许当成给了）
-        assertEquals("DeepSeek Chat", ModelPickerRules.displayName("deepseek-chat", "   "))
+        assertEquals("Kimi K2", ModelPickerRules.displayName("kimi-k2", "   "))
     }
 
     @Test
     fun 第2级_人工表认识产品定名() {
         assertEquals("GPT-4o", ModelPickerRules.displayName("gpt-4o"))
-        assertEquals("DeepSeek Reasoner", ModelPickerRules.displayName("deepseek-reasoner"))
+        // 这一条只有走第 2 级才可能是这个字：美化函数推不出 `V4.1`（它只会写 "DeepSeek Flash"）。
+        // 2026-11-04 用户裁定后换成现役 ID——原先钉的是官方 2026-07-24 停用的 `deepseek-reasoner`。
+        assertEquals("DeepSeek-V4.1-Flash", ModelPickerRules.displayName("deepseek-flash"))
         assertEquals("Claude Opus 4.5", ModelPickerRules.displayName("claude-opus-4-5"))
         // 表是大小写不敏感查的（端点偶尔写 GPT-4O）
         assertEquals("GPT-4o", ModelPickerRules.displayName("GPT-4O"))
@@ -222,12 +224,12 @@ class ModelPickerRulesTest {
     fun 副行是公司加上下文_ID不上这一行() {
         val withVendor = entry("nvidia/nemotron-3.5-super-vl:free", window = 1_000_000)
         assertEquals("Nvidia · 上下文 1M", ModelPickerRules.modelSubLine(withVendor, "OpenRouter"))
-        val noVendor = entry("deepseek-chat", window = 128_000)
+        val noVendor = entry("deepseek-flash", window = 1_048_576)
         assertEquals("自家端点没写厂商前缀 ⇒ 回退提供商名",
-            "DeepSeek · 上下文 128K", ModelPickerRules.modelSubLine(noVendor, "DeepSeek"))
+            "DeepSeek · 上下文 1M", ModelPickerRules.modelSubLine(noVendor, "DeepSeek"))
         assertFalse(ModelPickerRules.modelSubLine(withVendor, "OpenRouter").contains("nemotron"))
         assertEquals("Nvidia", ModelPickerRules.vendorOf("nvidia/nemotron-3.5-super-vl:free"))
-        assertNull(ModelPickerRules.vendorOf("deepseek-chat"))
+        assertNull(ModelPickerRules.vendorOf("deepseek-flash"))
         assertNull("斜杠打头没有厂商段", ModelPickerRules.vendorOf("/x"))
     }
 

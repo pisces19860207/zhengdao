@@ -108,10 +108,16 @@ internal object ModelPickerRules {
     /**
      * 预设公司的**内置短名单**（2026-10-23 用户：没 Key 时预设也要能点选，不该逼人手填）。
      * 只放官方常用款，填了 Key 会再拉全量覆盖。
+     *
+     * DeepSeek 那两条按 2026-11-04 用户裁定重写（第四百三十四批「选模型不该是 chat 这种」）：
+     * 原来这里是 `deepseek-chat` / `deepseek-reasoner`，官方 2026-07-24 公告已停用这两个别名，
+     * 现役 ID 以**本仓实测**为准（`D:\zd-tools\ds-probe.txt`，2026-10-17 `GET /models` 只有两条：
+     * `deepseek-flash` = `DeepSeek-V4.1-Flash`、`deepseek-v4-pro` = `DeepSeek-V4-Pro`）。
+     * 其余三家没动——本仓没有它们的 `/models` 实测，改了就是猜（派工单§模型名④「绝不猜」）。
      */
     fun presetModels(provider: Provider): List<String> = when (provider.id) {
         "openai-compat" -> listOf("gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1")
-        "deepseek" -> listOf("deepseek-chat", "deepseek-reasoner")
+        "deepseek" -> listOf("deepseek-flash", "deepseek-v4-pro")
         "anthropic" -> listOf("claude-sonnet-4-5", "claude-haiku-4-5")
         "gemini" -> listOf("gemini-2.5-flash", "gemini-2.5-pro")
         else -> emptyList()
@@ -130,14 +136,19 @@ internal object ModelPickerRules {
      *
      * 为什么要有它：美化函数造不出 `GPT-4o` 这种**产品定名**（它会写 "GPT 4o"），
      * 而这几条是用户张口就来的名字，维护成本几乎为零。
-     * 只收"美化函数推不出来"的那些，别把能推的也塞进来（那会变成第二真相表）。
+     * 只收"美化函数推不出来"的那些，别把能推的塞进来（那会变成第二真相表）。
+     *
+     * 2026-11-04（第四百三十四批，用户裁定「死别名直接删掉，按照最新的来」）：
+     * `deepseek-chat` / `deepseek-reasoner` 两条**删除**——官方 2026-07-24 停用的一对别名，
+     * 留着就是给一个已死的 ID 保产品名；换成实测现役的两条（名字逐字取探针的 `name` 字段，
+     * `prettify` 造不出 `V4.1` 这种带点的版本号，所以必须进这张表）。
      */
     val CURATED_NAMES: Map<String, String> = mapOf(
         "claude-opus-4-5" to "Claude Opus 4.5",
         "gpt-4o" to "GPT-4o",
         "gemini-2.5-pro" to "Gemini 2.5 Pro",
-        "deepseek-chat" to "DeepSeek Chat",
-        "deepseek-reasoner" to "DeepSeek Reasoner",
+        "deepseek-flash" to "DeepSeek-V4.1-Flash",
+        "deepseek-v4-pro" to "DeepSeek-V4-Pro",
     )
 
     /** 第 3 级里的"已知提供商映射"（重构方案点名的四个）＋大小写固定的写法。 */

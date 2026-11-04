@@ -453,7 +453,7 @@ internal fun BaopuChannelSheet(
                 label = {
                     Text(
                         if (manualModelOnly) "模型名（必填，如 claude-sonnet-4-5）"
-                        else if (isCustom) "模型名（必填，如 deepseek-chat）"
+                        else if (isCustom) "模型名（必填，如 deepseek-v4-pro）"
                         else "模型名（手填，覆盖上面选的那条）",
                     )
                 },

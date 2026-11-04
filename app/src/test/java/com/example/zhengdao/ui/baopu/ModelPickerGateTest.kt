@@ -164,8 +164,8 @@ class ModelPickerGateTest {
         assertTrue("副行走「公司 · 上下文」", rows.contains("sub = ModelPickerRules.modelSubLine(e, company)"))
         assertFalse("标题不许是 ID", rows.contains("title = e.id"))
         assertFalse("副行不许拼 ID", Regex("sub = .*\\.id").containsMatchIn(rows))
-        // 行为侧：四级规则认得出就不许退回 ID
-        assertEquals("DeepSeek Chat", ModelPickerRules.displayName("deepseek-chat"))
+        // 行为侧：四级规则认得出就不许退回 ID（这条是 2026-11-04 换上的现役 ID）
+        assertEquals("DeepSeek-V4.1-Flash", ModelPickerRules.displayName("deepseek-flash"))
         assertFalse(
             "副行里没有 ID",
             ModelPickerRules.modelSubLine(
@@ -318,15 +318,22 @@ class ModelPickerGateTest {
      *
      * 红＝有人往映射表里塞了一条没出处的名字，或让界面自己拼公司名（那就会显成
      * 「DeepSeek V4.1 flash」——派工单点名的错例），或把 `…-1017` 这种构建号原样带上屏。
+     *
+     * 2026-11-04 用户裁定（「选模型不应该是 V4 Pro 或者 V4.1 flash 这种吗？怎么会是 chat 之类的」
+     * ＋「死别名直接删掉，按照最新的来」）追加下半段：**表里的 DeepSeek 两条必须钉在机上真存在的
+     * ID 上**，且三张表（顶栏名表／131 人工表／预设短名单）都不许再留官方 2026-07-24 停用的一对别名。
+     * 出处＝本仓实测探针 `D:\zd-tools\ds-probe.txt`（2026-10-17 `GET /models` 只有这两条）。
      */
     @Test
     fun 显示名三条_档位有_构建号不上屏_表外显ID() {
-        val rules = codeOnly(topBarRulesRaw)
-        // 派工单逐字的两例
-        assertEquals("V4.1 flash", BaopuTopBarRules.topBarModelName("deepseek-v4.1-flash-1017", "DeepSeek"))
+        // 派工单逐字要的显示字，钉在**实测现役 ID**上（原先钉的是假 ID `deepseek-v4.1-flash-1017`）
+        assertEquals("V4.1 flash", BaopuTopBarRules.topBarModelName("deepseek-flash", "DeepSeek"))
+        assertEquals("V4 Pro", BaopuTopBarRules.topBarModelName("deepseek-v4-pro", "DeepSeek"))
         assertEquals("GPT 6.1 Sol", BaopuTopBarRules.topBarModelName("gpt-6.1-sol", "OpenAI"))
         // 表里没有 ⇒ 原样回吐 ID，绝不猜、绝不编（去掉构建号那截＝编）。
         assertEquals("mystery-model-9901", BaopuTopBarRules.topBarModelName("mystery-model-9901", "DeepSeek"))
+        // 停用别名不再有人包装：机器上真剩这条存储时，顶栏显的就是这个死串（看得见才知道要重选）。
+        assertEquals("deepseek-chat", BaopuTopBarRules.topBarModelName("deepseek-chat", "DeepSeek"))
         // 公司名不重复：徽标那颗代表公司，正文再写一遍就是「两处说同一件事」（A 案）。
         assertEquals("2.5 Pro", BaopuTopBarRules.topBarModelName("gemini-2.5-pro", "Google Gemini"))
         assertFalse(
@@ -336,6 +343,18 @@ class ModelPickerGateTest {
                 setOf("deepseek", "openai", "gemini", "google", "anthropic", "claude").contains(head)
             },
         )
+        // ── 三张表都不许留那对死别名（2026-11-04 用户裁定；红＝有人又把它塞回去）──
+        val deadAliases = setOf("deepseek-chat", "deepseek-reasoner")
+        assertTrue("顶栏名表不许留停用别名：${BaopuTopBarRules.TOP_BAR_NAMES.keys.filter { it in deadAliases }}",
+            BaopuTopBarRules.TOP_BAR_NAMES.keys.none { it in deadAliases })
+        assertTrue("131 人工表不许留停用别名：${ModelPickerRules.CURATED_NAMES.keys.filter { it in deadAliases }}",
+            ModelPickerRules.CURATED_NAMES.keys.none { it in deadAliases })
+        val deepseek = Providers.all().first { it.id == "deepseek" }
+        assertEquals("DeepSeek 预设短名单＝实测现役那两条（顺序照探针）",
+            listOf("deepseek-flash", "deepseek-v4-pro"), ModelPickerRules.presetModels(deepseek))
+        // 顶栏名单的来源仍是那张 preset 短名单（一处真相）——它现在给的就是实测现役那两条
+        assertTrue("顶栏名单仍从 presetModels 取（不另起一张表）",
+            screenRaw.contains("ModelPickerRules.presetModels(provider)"))
         // 徽标＝自绘字母，官方 logo 属商标，不走那条路。
         assertEquals(
             "D/O/G/Z/Q 五颗照派工单逐字",
