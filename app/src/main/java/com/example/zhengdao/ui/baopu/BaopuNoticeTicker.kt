@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -172,8 +171,7 @@ private fun TickerPill(
             .semantics { contentDescription = a11yDesc },
         contentAlignment = Alignment.CenterStart,
     ) {
-        // 443：详情小下拉与模型区同款——宽度取跑马灯胶囊实测宽度，贴在它下沿、右边缘对齐
-        val detailWidth = maxWidth
+        // 443：详情小下拉贴跑马灯下沿；左右铺满（用户 22:29 反馈），垂直位置不动
         val detailOffsetY = with(LocalDensity.current) { BAO_TOPBAR_PILL_HEIGHT_DP.dp.roundToPx() }
         if (lockedLabel.isNotEmpty() || body.isNotEmpty()) {
             Row(
@@ -205,7 +203,6 @@ private fun TickerPill(
             ordered = ordered,
             expandedIndex = detailIndex,
             onDismiss = onDismiss,
-            width = detailWidth,
             offsetY = detailOffsetY,
         )
     }
@@ -270,26 +267,27 @@ private fun TickerBadge(text: String) {
 }
 
 /**
- * 443：跑马灯详情**与模型区小下拉同款**——贴跑马灯下沿、右边缘对齐、等宽、rPill 圆角
- * （不要方方正正），surface 底 + outlineVariant 描边；仍是浮层，不推正文（K2 判据不变）。
+ * 443：跑马灯详情——左右铺满、rPill 圆角（不要方方正正）、与跑马灯胶囊同色系
+ * （errorContainer 底 + error 描边），仍是浮层不推正文（K2 判据不变）。
  */
 @Composable
 private fun TickerDetail(
     ordered: List<NoticeItem>,
     expandedIndex: Int,
     onDismiss: () -> Unit,
-    width: Dp,
     offsetY: Int,
 ) {
     if (expandedIndex !in ordered.indices) return
     val item = ordered[expandedIndex]
-    Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, offsetY), onDismissRequest = onDismiss) {
+    val shape = RoundedCornerShape(rPill)
+    Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, offsetY), onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .width(width)
-                .clip(RoundedCornerShape(rPill))
-                .background(MaterialTheme.colorScheme.surface)
-                .border(BAO_TOPBAR_PILL_STROKE_DP.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(rPill))
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.errorContainer, shape)
+                .border(BAO_TOPBAR_PILL_STROKE_DP.dp, MaterialTheme.colorScheme.error, shape)
                 .heightIn(max = 280.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -298,14 +296,16 @@ private fun TickerDetail(
                 text = item.label,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Text(
                 text = item.body,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
 }
+
 
