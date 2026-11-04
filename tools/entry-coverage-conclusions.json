@@ -1,5 +1,5 @@
 {
-  "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。",
+  "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。",
   "A": {
     "ExamTasks": {
       "verdict": "wired",
@@ -19,21 +19,9 @@
       "verdict": "wired",
       "note": "谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它"
     },
-    "ConductExam": {
-      "verdict": "wired",
-      "note": "谁接：准入「品行考」判卷链——345 批③判卷纯函数（BigDecimal 精确口径），与 ExamTasks 同一接线批"
-    },
-    "SelfReport": {
-      "verdict": "wired",
-      "note": "谁接：准入 intake 建档链（自报口径模型）——345 批准入件，现仅测试在调，与 IntakeProfile 同批"
-    },
     "IntakeProfile": {
       "verdict": "wired",
       "note": "谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核"
-    },
-    "ValueCheck": {
-      "verdict": "wired",
-      "note": "谁接：收尾闸 ArtifactVerifier 之后挂「数对不对」对账——340 批八种自称机核（BigDecimal 精确算术），ArtifactVerifier 已接线（RunEngine）但本闸没挂上，现仅测试在跑"
     },
     "BrowserAgentBridge": {
       "verdict": "wired",
@@ -52,6 +40,26 @@
     "search_phone_on": {
       "verdict": "not_urgent",
       "note": "理由：229 批停用的兼容读口——判定路径（phoneAccessOf/plan）已不调用，键名保留专为读老 prefs（删＝老账变哑键，文件头注明确）；无行为影响"
+    }
+  },
+  "已接线存档": {
+    "ValueCheck": {
+      "left_ledger_at": "426（2026-11-04 重跑；scan 判定已有生产引用，不再进 B）",
+      "wired_at": "verify/ValueGateWiring.kt:46 调 ValueCheck.verifyAnswer ← agent/RunEngine.kt:2148 收尾链（384-A 落地）",
+      "fact": "真接线，生产可达（引擎路径 RunEngine → ValueGateWiring）",
+      "note": "原 B 区 note 照留：谁接：收尾闸 ArtifactVerifier 之后挂「数对不对」对账——340 批八种自称机核（BigDecimal 精确算术），ArtifactVerifier 已接线（RunEngine）但本闸没挂上，现仅测试在跑"
+    },
+    "ConductExam": {
+      "left_ledger_at": "426（2026-11-04 重跑；scan 判定已有生产引用，不再进 B）",
+      "wired_at": "policy/CapabilityProfile.kt:29 导入、:137 与 :190 两处 ConductExam.runAll(...)",
+      "fact": "有生产文件引用，但引用链顶端不可达：CapabilityProfile ← intake/AdmissionFlow.kt（该文件生产侧零外部调用方）与 intake/AdmissionGate.kt（唯一生产调用者是同一零外调的 AdmissionFlow）；EmergencyGate 对 AdmissionGate 仅注释提及 ⇒ 事实仍不可达，接线债仍在（另立单）",
+      "note": "原 B 区 note 照留：谁接：准入「品行考」判卷链——345 批③判卷纯函数（BigDecimal 精确口径），与 ExamTasks 同一接线批"
+    },
+    "SelfReport": {
+      "left_ledger_at": "426（2026-11-04 重跑；scan 判定已有生产引用，不再进 B）",
+      "wired_at": "intake/AdmissionFlow.kt:40 作参数类型；policy/CapabilityProfile.kt:35 导入、:101 字段、:129 declare、:259/:264 JSON 往返",
+      "fact": "同上，引用链顶端 AdmissionFlow 零外部调用方 ⇒ 事实仍不可达，接线债仍在（与 ConductExam 同一条链，另立单）",
+      "note": "原 B 区 note 照留：谁接：准入 intake 建档链（自报口径模型）——345 批准入件，现仅测试在调，与 IntakeProfile 同批"
     }
   }
 }
