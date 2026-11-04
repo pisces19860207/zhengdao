@@ -275,6 +275,13 @@ class ModelPickerGateTest {
         // ── 判据④：两块命中区各自 ≥44dp，中间 ≥8dp ──
         assertTrue("热区高 ≥48dp（老 138 门禁）＋容器视觉 44dp（434）两档分离",
             area.contains("heightIn(min = BAO_ROW_MIN_HEIGHT_DP.dp)"))
+        // 判据⑦「跑马灯与模型名区同高（44dp）、同圆角（10dp）」：两颗都从同一个常量/令牌取，不许各写一个数。
+        assertTrue("模型区容器高走 44dp 常量（与跑马灯同一把）",
+            area.contains(".height(BAO_TOPBAR_PILL_HEIGHT_DP.dp)"))
+        assertTrue("模型区圆角走 rPill 令牌（与跑马灯同一个 10dp）",
+            area.contains("RoundedCornerShape(rPill)"))
+        assertFalse("模型区不许自己写死圆角数字（10 只能来自 rPill）",
+            Regex("RoundedCornerShape\\(\\s*[\\d.]+\\s*\\.dp").containsMatchIn(area))
         assertEquals("两颗命中区各自独立（两颗都挂 zoneHit）", 2, Regex("modifier = zoneHit\\(").findAll(area).count())
         assertTrue("命中区宽 ≥44dp 走常量", area.contains("widthIn(min = BAO_TOPBAR_PILL_HEIGHT_DP.dp)"))
         assertTrue("两段之间间距走常量", area.contains("Spacer(Modifier.width(BAO_TOPBAR_ZONE_GAP_DP.dp))"))
@@ -283,6 +290,11 @@ class ModelPickerGateTest {
         assertEquals("弹层只两张", 2, Regex("DropdownMenu\\(").findAll(area).count())
         assertTrue("供应商那张按 open 判", area.contains("open == BaopuTopBarSheet.PROVIDER"))
         assertTrue("模型那张按 open 判", area.contains("open == BaopuTopBarSheet.MODEL"))
+        // 点空白关闭：两张都把 DropdownMenu 自己的 onDismissRequest 交回同一个 setter（一个值 ⇒ 只会关一张）。
+        assertEquals("两张弹层都接 onDismissRequest（不接就关不掉）",
+            2, Regex("DropdownMenu\\(expanded = true, onDismissRequest = onDismiss\\)").findAll(area).count())
+        assertTrue("页面那头的 setter 只写 topSheet = NONE",
+            codeOnly(screenRaw).contains("onDismiss = { topSheet = BaopuTopBarSheet.NONE }"))
         // ── 判据②：整块不跳「换模型/设置」页，界面不自己判 ──
         assertFalse("模型区文件里不许有跳设置的口子", area.contains("showSettings"))
         assertTrue("公司名算在 ModelPickerRules（界面不自己算）",

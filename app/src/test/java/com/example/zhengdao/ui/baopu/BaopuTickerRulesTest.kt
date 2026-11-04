@@ -325,4 +325,26 @@ class BaopuTickerRulesTest {
         // 两池零交集这条老判据（J12）在删了一项之后仍然成立——这里重断一次，防"删错行"。
         assertEquals("两池交集必须为空", emptySet<Int>(), TICKER_LOCKED_LABELS intersect TICKER_IDLE_LABELS)
     }
+
+    /**
+     * 判据③逐字：「跑马灯：没学到时**不显示**该段；有学时显示，且不挤占身份区」。
+     *
+     * 为什么现在补：写负例清单时逐条回看判据，发现这条**原先一条测试都没有**——
+     * `marqueePillVisible` 全仓只有实现、没有一处断言（J5 钉的是「空态不塌、孔位照占」＝高度，
+     * 不是「容器画不画」）。红＝有人把算式改成恒 `true`（没学到也飘一只空胶囊在顶栏），
+     * 或改成 `mode == IDLE && hasEntries`（运行态那颗状态字被吃掉＝138 批的锁定孔位作废）。
+     */
+    @Test
+    fun `J16_没学到整段不显示_运行态锁定字照旧画`() {
+        assertFalse("空闲＋条目池空 ⇒ 容器不画（判据③那一半）",
+            marqueePillVisible(TickerMode.IDLE, hasEntries = false))
+        assertTrue("空闲＋有条目 ⇒ 画", marqueePillVisible(TickerMode.IDLE, hasEntries = true))
+        assertTrue("运行态：一条都没学到也画（那是状态字那颗，不是「学到」那颗）",
+            marqueePillVisible(TickerMode.LOCKED, hasEntries = false))
+        // 界面不许自己另算一套可见性：只许调这条纯函数，入参就是「条目池非空」。
+        val ticker = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuNoticeTicker.kt")
+        assertTrue("那颗可见性走纯函数", ticker.contains("marqueePillVisible(mode, ordered.isNotEmpty())"))
+        assertEquals("全界面只此一处调用（别处再算一份就是两份口径）",
+            1, Regex("marqueePillVisible\\(").findAll(ticker).count())
+    }
 }

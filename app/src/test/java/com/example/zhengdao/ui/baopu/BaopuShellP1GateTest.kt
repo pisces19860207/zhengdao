@@ -226,6 +226,12 @@ class BaopuShellP1GateTest {
         assertFalse("顶栏不许再直接渲染 stateLabel", bar.contains("stateLabel("))
         assertFalse("第四百三十四批删掉的「＋」不许回顶栏", bar.contains("Text(text = \"＋\""))
         assertFalse("顶栏不许自己开新会话（单入口在 BaopuNewSession）", bar.contains("controller.newSession()"))
+        // 判据④「这次学到不该是页签」：页签那套组件整个不许回顶栏（改前那颗「型号」就是页签样）。
+        assertFalse("顶栏不许有 TabRow（学到／型号都只许走跑马灯内容池）", bar.contains("TabRow("))
+        assertFalse("顶栏不许有 Tab(selected", bar.contains("Tab(selected"))
+        // 判据③后半「不挤占身份区」：跑马灯只吃 weight(1f) 那一段，不许把 ☰／模型区／🛡 挤出去。
+        assertTrue("跑马灯那颗必须 weight(1f)（自己那一格内滚，不撑破顶栏）",
+            bar.contains("BaopuNoticeTicker(state = state, items = noticeItems, modifier = Modifier.weight(1f))"))
     }
 
     /**
@@ -233,7 +239,8 @@ class BaopuShellP1GateTest {
      *
      * 红＝有人把 IconButton 的 size 改成 40/44（触控红线），或改走 MinWidth（大字体下会被文字挤小）。
      * 第四百三十四批：「＋」删除 ⇒ 顶栏只剩 ☰／🛡 两颗 IconButton；模型区那两段的 ≥44dp
-     * 不在这颗 IconButon 上，由 [BaopuTopBarGeometryGateTest] 的 434 判据④钉。
+     * 不在这颗 IconButton 上，由 `ModelPickerGateTest.顶栏模型区两颗逐条对上434` 的 434 判据④钉
+     * （`zoneHit` 两颗各自 ≥44dp ＋ 中间 `BAO_TOPBAR_ZONE_GAP_DP`＝8dp）。
      */
     @Test
     fun `T2_图标位各48dp`() {
