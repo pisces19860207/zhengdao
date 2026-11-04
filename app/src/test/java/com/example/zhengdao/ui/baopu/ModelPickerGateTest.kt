@@ -446,4 +446,40 @@ class ModelPickerGateTest {
         assertFalse("引擎不自己解禁（401 那把只能用户点）", runtime.contains("setKeyDisabled"))
         assertEquals("custom", ProviderPrefs.CHANNEL_CUSTOM)
     }
+
+    /**
+     * 派工单硬规矩逐字：「顶栏的快速切换**不许**顺带改 key、不许把设置页搬上来」。
+     *
+     * 为什么这条要单独钉：`BaopuRuntime.switchChannel` 的第 3 个位置参数就是 `apiKey`，
+     * 它一路走到 `ProviderPrefs.save()`——那里第 276 行 `if (key.isEmpty()) pool else KeyPool.add(pool, key)`
+     * 是「空串＝这把不加、也不清池」的唯一依据。顶栏传空串就一个 Key 都不写；哪天有人把这里
+     * 改成 `ProviderPrefs.storedKey(...)` 或直接调 `save(`，顶栏一点就动密钥池了（那是设置页的活）。
+     * 同一条也算式还必须把**自定义 base/model 原样带回**：`save()` 对那两格是无条件覆盖
+     * （第 280-281 行），不带回＝点一下顶栏就把设置页存好的值抹了。
+     */
+    @Test
+    fun 顶栏快速切换一个Key都不写也不跳设置页() {
+        val screen = codeOnly(screenRaw)
+        val providerFast = between(screen, "val switchProviderFast: (String) -> Unit = { id ->", "val switchModelFast")
+        val modelFast = between(screen, "val switchModelFast: (String) -> Unit = { id ->", "var showBackup")
+        assertTrue("两段都在（找不到锚点＝顶栏那两把算式被人搬走或改名）",
+            providerFast.isNotBlank() && modelFast.isNotBlank())
+        listOf(
+            "供应商那颗" to providerFast,
+            "模型名那颗" to modelFast,
+        ).forEach { (where, body) ->
+            // 第 3 个位置参数＝apiKey；这里必须是空串字面量。
+            assertTrue("$where 换通道必须传空串密钥（空串＝这把不加也不清池，见 ProviderPrefs.save 第 276 行）",
+                Regex("context, [\\w.]+, \"\"").containsMatchIn(body))
+            assertFalse("$where 不许直接写密钥池", body.contains("ProviderPrefs.save("))
+            assertFalse("$where 不许读已存的 Key 再写回去", body.contains("storedKey("))
+            assertFalse("$where 不许跳设置页（那是另一个入口）", body.contains("showSettings"))
+        }
+        assertTrue("供应商那颗要把自定义 base/model 原样带回（save() 对那两格是无条件覆盖）",
+            providerFast.contains("ProviderPrefs.storedCustom(context)") &&
+                providerFast.contains("customBase, customModel"))
+        assertTrue("模型名那颗同样带回自定义 base", modelFast.contains("ProviderPrefs.storedCustom(context)"))
+        assertTrue("预设那颗换模型只落名字＋清单里拿到的元数据（查不到就 null，不许留上一个模型的窗口数）",
+            modelFast.contains("ProviderPrefs.saveModelOverride(") && modelFast.contains("hit?.contextWindow"))
+    }
 }
