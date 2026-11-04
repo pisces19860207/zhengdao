@@ -77,6 +77,23 @@
 递归核对目录内所有文件，不按后缀猜第三方、不暗中排除第一方文件；未登记即红。
 初始空表合法，无文件则绿，有既存未登记文件则红；不替用户编造登记或许可。
 本模式仅检查源码 assets 目录，构建生成资产、其它 source set 和 APK 内容不在此取证范围。
+
+第一方名册（第四百四十批）
+------------------------
+`--assets` 同时读 `licenses/FIRST-PARTY.md`（三列：资产路径 | 来源标识 | 说明）。
+来源标识是**唯一记号 GZ-AG**（AGENTS.md「第一方标识 GZAG」；连字符可有可无、大小写
+不论，归一后必须恰为 GZAG，不认任何变体写法）。判据：
+
+* **名册内跳过**：名册命中的文件是第一方，不判许可、不要求 ASSETS.md 登记 —— 但
+  **文件必须真在**：名册有、磁盘无 ⇒ 红（名册过期，删了文件就删行）。名册行的唯一
+  校验就是「文件真在」，过期＝台账撒谎且无兜底，所以是红，不像 ASSETS 的过期行只提醒。
+* **名册外按第三方判**：磁盘文件不在名册 ⇒ 必须登记在 ASSETS.md 且许可在允许表内，
+  否则照旧红（漏登记/禁止/未登记）。
+* **双向校验**：上两条合起来 —— 磁盘上每个文件要么在名册（第一方）要么在 ASSETS.md
+  （第三方且判定通过），两本账都没有 ⇒ 红。
+* **两表冲突 ⇒ 红**：同一文件不许同时在 FIRST-PARTY.md 与 ASSETS.md。
+* **防假绿**：名册缺表头、名册被删 ⇒ exit 2，与 ASSETS.md 同一防线；记号写错、
+  路径不合法、说明空着的行不算签字，其文件落在磁盘上就会同时吃到漏登记红。
 """
 
 from __future__ import annotations
@@ -621,10 +638,16 @@ def _entry_matches(entry: dict, ids: list[str]) -> bool:
     return False
 
 
-# ── 资产类第三方：登记表与漏登检查 ──────────────────────────────────────────────
+# ── 资产类：第一方名册（440）＋ 第三方登记表与漏登检查（433）────────────────────
 ASSETS_REL = "licenses/ASSETS.md"
+FIRST_PARTY_REL = "licenses/FIRST-PARTY.md"
 ASSET_DIR_REL = "app/src/main/assets"
 ASSET_COLUMNS = ("资产名", "版本", "许可", "随包？", "署名要求", "来源")
+FIRST_PARTY_COLUMNS = ("资产路径", "来源标识", "说明")
+# 唯一记号（AGENTS.md「第一方标识 GZAG」）：GZ-AG 与 GZAG 同义，归一后必须恰为 GZAG，
+# 不认任何变体——名册里没标对记号的行不算第一方签字。
+FP_MARK = "GZAG"
+FP_MARK_DISPLAY = "GZ-AG"
 ASSET_YES = ("是", "yes", "y", "true")
 ASSET_NO = ("否", "no", "n", "false")
 
@@ -654,6 +677,20 @@ def asset_name_error(name: str) -> str:
         return "资产名不许用通配（%s）—— 登记是逐文件的" % name
     if name.endswith("/"):
         return "资产名要指到文件，不能是目录（%s）" % name
+    return ""
+
+
+def fp_mark_error(mark: str) -> str:
+    """名册来源标识必须是唯一记号 GZ-AG（连字符可有可无、大小写不论 ⇒ 归一为 GZAG）。
+
+    只认这一个记号：别的写法（变体、空着、写成了许可名）都不算第一方签字，
+    那一行不进名册 ⇒ 它指的文件若是磁盘上有，就会同时吃到「漏登记」红。
+    """
+    if not mark:
+        return "来源标识为空 —— 每条名册必须标 %s" % FP_MARK_DISPLAY
+    if re.sub(r"[^A-Za-z0-9]", "", mark).upper() != FP_MARK:
+        return "来源标识必须是 %s（现在是「%s」）—— 只认这一个记号，不搞变体暗号" % (
+            FP_MARK_DISPLAY, mark)
     return ""
 
 
@@ -746,6 +783,64 @@ def _asset_row(row: dict, lineno: int, seen: dict) -> tuple[dict, list[str]]:
     }, []
 
 
+def parse_first_party(path: Path) -> tuple[list[dict], list[str]]:
+    """`licenses/FIRST-PARTY.md` → ([名册行], [不合格说明])。
+
+    三列缺一不可；来源标识归一后必须恰为 GZAG（fp_mark_error）；资产路径复用
+    asset_name_error（同样不认目录/通配/..）。表头或分隔行缺失、文件被删是
+    解析错误(2) —— 没有表头的名册等于什么都没签字，静默按空名册放行就是假绿。
+    """
+    if not path.is_file():
+        raise GateError("找不到第一方名册 %s（第一方文件要逐条签字，GZ-AG）" % path)
+    rows: list[dict] = []
+    problems: list[str] = []
+    seen: dict[str, int] = {}
+    header = separator = False
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if not raw.strip().startswith("|"):
+            continue
+        cells = asset_cells(raw)
+        if tuple(cells) == FIRST_PARTY_COLUMNS:
+            if header:
+                problems.append("第 %d 行：表头重复" % lineno)
+            header = True
+            continue
+        if not header:
+            continue  # 表头之前的说明性小表（列说明表），不是名册行
+        if len(cells) == len(FIRST_PARTY_COLUMNS) and all(set(c) <= set("-: ") for c in cells):
+            separator = True
+            continue
+        if not separator:
+            raise GateError("%s 第 %d 行：表头后缺分隔行（| --- | …）" % (path.name, lineno))
+        row, bad = _fp_row(dict(zip(FIRST_PARTY_COLUMNS, cells)), lineno, seen)
+        if bad:
+            problems.extend(bad)
+        else:
+            rows.append(row)
+    if not header:
+        raise GateError("%s 里没有三列表头（%s）—— 没有表头的名册等于没签字"
+                        % (path.name, " | ".join(FIRST_PARTY_COLUMNS)))
+    return rows, problems
+
+
+def _fp_row(row: dict, lineno: int, seen: dict) -> tuple[dict, list[str]]:
+    """校验一行名册；返回 (行, 问题列表)。问题非空时这一行不算第一方签字。"""
+    name = row["资产路径"]
+    bad = asset_name_error(name)
+    if bad:
+        return {}, ["第 %d 行：名册路径不合法 —— %s" % (lineno, bad)]
+    if name in seen:
+        return {}, ["第 %d 行（%s）：与第 %d 行重复 —— 同一文件只许一条名册"
+                    % (lineno, name, seen[name])]
+    mark_bad = fp_mark_error(row["来源标识"])
+    if mark_bad:
+        return {}, ["第 %d 行（%s）：%s" % (lineno, name, mark_bad)]
+    if not row["说明"]:
+        return {}, ["第 %d 行（%s）：说明为空（没有可写的就填「—」）" % (lineno, name)]
+    seen[name] = lineno
+    return {"name": name, "mark": row["来源标识"], "note": row["说明"], "line": lineno}, []
+
+
 def asset_files(assets_dir: Path) -> list[str]:
     """assets/ 下全部文件（相对 POSIX 路径，排序）。目录不存在 ⇒ 空列表，不是错误。"""
     if not assets_dir.is_dir():
@@ -755,30 +850,50 @@ def asset_files(assets_dir: Path) -> list[str]:
 
 
 def collect_assets(root: Path) -> dict:
+    """两本账（第一方名册 + 第三方登记表）× 磁盘，一次对齐（440 双向校验）。
+
+    * first_party：名册命中且文件真在 ⇒ 跳过第三方判定；
+    * missing：磁盘有、两本账都没有 ⇒ 红（漏登记）；
+    * fp_stale：名册有、磁盘无 ⇒ 红（名册过期。比 ASSETS 的过期提醒严，理由见
+      render 输出——第一方行的唯一校验就是「文件真在」，过期＝台账撒谎且无兜底）；
+    * conflict：两本账同时有 ⇒ 红（一个文件不能既是自己的又是别人的）；
+    * stale：ASSETS 有、磁盘无 ⇒ 只提醒（433 原样：删第三方资产是合法动作）。
+    """
     rows, problems = parse_assets(root / ASSETS_REL)
+    fp_rows, fp_problems = parse_first_party(root / FIRST_PARTY_REL)
     on_disk = asset_files(root / ASSET_DIR_REL)
+    fp_names = {r["name"] for r in fp_rows}
     registered = {r["name"] for r in rows}
     return {
         "rows": rows,
         "problems": problems,
+        "fp_rows": fp_rows,
+        "fp_problems": fp_problems,
         "on_disk": on_disk,
-        "missing": [p for p in on_disk if p not in registered],
+        "first_party": [p for p in on_disk if p in fp_names],
+        "missing": [p for p in on_disk if p not in fp_names and p not in registered],
+        "conflict": sorted(fp_names & registered),
+        "fp_stale": [r["name"] for r in fp_rows if r["name"] not in on_disk],
         "stale": [r["name"] for r in rows if r["name"] not in on_disk],
     }
 
 
 def render_assets(result: dict) -> tuple[str, int]:
-    """→ (文本, 退出码)。纯函数、幂等；红 = 禁止 + 未登记 + 表不合格 + 漏登记。"""
+    """→ (文本, 退出码)。纯函数、幂等。
+
+    红 = 禁止 + 未登记 + 表不合格 + 漏登记 + 名册不合格 + 名册过期 + 两表冲突。
+    """
     rows = result["rows"]
     counts = {k: 0 for k in ("allowed", "denied", "unlisted")}
     for row in rows:
         counts[row["status"]] += 1
     out: list[str] = []
     ap = out.append
-    ap("[license-policy/assets] 登记 %d 行（assets/ 下 %d 个文件）｜允许 %d｜禁止 %d｜未登记 %d"
-       "｜表不合格 %d｜漏登记 %d"
-       % (len(rows), len(result["on_disk"]), counts["allowed"], counts["denied"],
-          counts["unlisted"], len(result["problems"]), len(result["missing"])))
+    ap("[license-policy/assets] 第一方 %d｜登记 %d 行（assets/ 下 %d 个文件）｜允许 %d｜禁止 %d｜"
+       "未登记 %d｜表不合格 %d｜漏登记 %d｜名册不合格 %d｜名册过期 %d｜两表冲突 %d"
+       % (len(result["first_party"]), len(rows), len(result["on_disk"]), counts["allowed"],
+          counts["denied"], counts["unlisted"], len(result["problems"]), len(result["missing"]),
+          len(result["fp_problems"]), len(result["fp_stale"]), len(result["conflict"])))
 
     for row in rows:
         if row["status"] == "allowed":
@@ -793,11 +908,28 @@ def render_assets(result: dict) -> tuple[str, int]:
         ap("[license-policy/assets] 登记表不合格 %d 条（这些行不算登记）：" % len(result["problems"]))
         for p in result["problems"]:
             ap("                  · %s" % p)
+    if result["fp_problems"]:
+        ap("[license-policy/assets] 名册不合格 %d 条（这些行不算第一方签字）：" % len(result["fp_problems"]))
+        for p in result["fp_problems"]:
+            ap("                  · %s" % p)
     if result["missing"]:
-        ap("[license-policy/assets] 漏登记 %d 个（在 %s/ 里，但 %s 没有它）："
-           % (len(result["missing"]), ASSET_DIR_REL, ASSETS_REL))
+        ap("[license-policy/assets] 漏登记 %d 个（在 %s/ 里，但 %s 与 %s 都没有它）："
+           % (len(result["missing"]), ASSET_DIR_REL, FIRST_PARTY_REL, ASSETS_REL))
         for p in result["missing"]:
             ap("                  · %s" % p)
+    if result["fp_stale"]:
+        ap("[license-policy/assets] 名册过期 %d 条（%s 有、%s/ 里没有 ⇒ 红，删了文件就删行）："
+           % (len(result["fp_stale"]), FIRST_PARTY_REL, ASSET_DIR_REL))
+        for r in result["fp_rows"]:
+            if r["name"] in result["fp_stale"]:
+                ap("                  ✗ 名册过期 %s —— 第 %d 行签了字（%s），assets/ 里没有这个文件"
+                   % (r["name"], r["line"], r["note"]))
+    if result["conflict"]:
+        ap("[license-policy/assets] 两表冲突 %d 条（同一文件不能既第一方又第三方，留一张）："
+           % len(result["conflict"]))
+        for p in result["conflict"]:
+            ap("                  ✗ 两表冲突 %s —— %s 与 %s 同时有它"
+               % (p, FIRST_PARTY_REL, ASSETS_REL))
     if result["stale"]:
         ap("[license-policy/assets] 提醒：%d 行登记了但 assets/ 里没有对应文件（不影响判定）：%s"
            % (len(result["stale"]), "、".join(result["stale"])))
@@ -809,16 +941,27 @@ def render_assets(result: dict) -> tuple[str, int]:
             ap("::warning title=资产许可门禁::%s 的许可 %s 不在允许表内（未登记 ⇒ 判红）"
                % (row["name"], "/".join(row["ids"])))
     for p in result["missing"]:
-        ap("::warning title=资产漏登::%s/%s 没在 %s 登记" % (ASSET_DIR_REL, p, ASSETS_REL))
+        ap("::warning title=资产漏登::%s/%s 不在 %s 也不在 %s"
+           % (ASSET_DIR_REL, p, FIRST_PARTY_REL, ASSETS_REL))
+    for p in result["fp_stale"]:
+        ap("::error title=第一方名册::%s 在 %s 里，但 %s/ 下没有这个文件"
+           % (p, FIRST_PARTY_REL, ASSET_DIR_REL))
+    for p in result["conflict"]:
+        ap("::error title=两表冲突::%s 同时登记在 %s 与 %s" % (p, FIRST_PARTY_REL, ASSETS_REL))
 
-    red = counts["denied"] + counts["unlisted"] + len(result["problems"]) + len(result["missing"])
+    red = (counts["denied"] + counts["unlisted"] + len(result["problems"]) + len(result["missing"])
+           + len(result["fp_problems"]) + len(result["fp_stale"]) + len(result["conflict"]))
     if red:
-        ap("[license-policy/assets] 结论：红 —— 禁止 %d、未登记 %d、表不合格 %d、漏登记 %d；"
-           "换资产，或在 %s 逐条登记（六列缺一不可）"
-           % (counts["denied"], counts["unlisted"], len(result["problems"]),
-              len(result["missing"]), ASSETS_REL))
+        ap("[license-policy/assets] 结论：红 —— 禁止 %d、未登记 %d、表不合格 %d、漏登记 %d、"
+           "名册不合格 %d、名册过期 %d、两表冲突 %d；"
+           "第一方进 %s（每条标 GZ-AG），第三方在 %s 逐条登记（六列缺一不可）"
+           % (counts["denied"], counts["unlisted"], len(result["problems"]), len(result["missing"]),
+              len(result["fp_problems"]), len(result["fp_stale"]), len(result["conflict"]),
+              FIRST_PARTY_REL, ASSETS_REL))
         return "\n".join(out), 1
-    ap("[license-policy/assets] 结论：绿 —— assets/ 下的文件都已登记，登记的许可都在允许表内")
+    ap("[license-policy/assets] 结论：绿 —— 第一方 %d 条在名册（GZ-AG），第三方 %d 行已登记且许可"
+       "都在允许表内，assets/ 下没有漏网文件"
+       % (len(result["first_party"]), len(rows)))
     return "\n".join(out), 0
 
 
@@ -1365,8 +1508,14 @@ def selftest() -> int:
     return 0 if failures == 0 else 1
 
 
-def _asset_tree(tmp: Path, files: list[str], rows: list[list[str]], header: bool = True) -> Path:
-    """造最小树：assets/ 下的文件 ＋ licenses/ASSETS.md（可无表头，给解析错误用）。"""
+def _asset_tree(tmp: Path, files: list[str], rows: list[list[str]], header: bool = True,
+                fp_rows: list[list[str]] | None = None,
+                fp_header: bool = True) -> Path:
+    """造最小树：assets/ 下的文件 ＋ licenses/ASSETS.md ＋ licenses/FIRST-PARTY.md。
+
+    440 起两本账都是门禁必需件，所以两份都默认给合法空表头；fp_rows / fp_header
+    控制名册内容（fp_rows=None 即空名册，老用例语义不变）。
+    """
     root = Path(tmp)
     for rel in files:
         p = root / ASSET_DIR_REL / rel
@@ -1380,11 +1529,20 @@ def _asset_tree(tmp: Path, files: list[str], rows: list[list[str]], header: bool
         lines.append("| --- | --- | --- | --- | --- | --- |")
     lines += ["| " + " | ".join(r) + " |" for r in rows]
     md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    fp = root / FIRST_PARTY_REL
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    if fp_header:
+        lines.append("| " + " | ".join(FIRST_PARTY_COLUMNS) + " |")
+        lines.append("| --- | --- | --- |")
+    lines += ["| " + " | ".join(r) + " |" for r in (fp_rows or [])]
+    fp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return root
 
 
 def assets_selftest() -> int:
-    """`--assets --selftest`：三类必测（允许/禁止/漏登记）＋ 缺字段与解析边界。"""
+    """`--assets --selftest`：三类必测（允许/禁止/漏登记）＋ 缺字段与解析边界
+    ＋ 440 名册双向校验（名册命中跳过/名册过期红/记号与说明字段/两表冲突/防假绿）。"""
     print("[license-policy/assets] 自检（不联网、临时目录里造最小树）")
     failures = 0
     ok_row = ["models/tiny.onnx", "1.0", "Apache-2.0", "是", "无", "https://example.org/tiny"]
@@ -1480,6 +1638,81 @@ def assets_selftest() -> int:
             return code == 2 and "找不到资产登记表" in text, \
                 "code=%d %s" % (code, text.splitlines()[-1])
 
+    # ── 440：第一方名册（双向校验）───────────────────────────────────────────────
+    fp_ok = ["models/tiny.onnx", "GZ-AG", "本仓自产"]
+
+    def case_fp_skip():
+        """名册命中且文件真在 ⇒ 跳过第三方判定：ASSETS 空表也绿，算第一方。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [], fp_rows=[fp_ok])
+            text, code = run_assets(root)
+            return code == 0 and "第一方 1" in text and "结论：绿" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_out_third_party():
+        """名册外按第三方判：不在名册、但在 ASSETS.md 登记且许可允许 ⇒ 绿。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row])
+            text, code = run_assets(root)
+            return code == 0 and "第一方 0" in text and "登记 1 行" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_stale():
+        """双向①：名册有、磁盘无 ⇒ 红（断言打在条目行，442 教训）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), [], [], fp_rows=[fp_ok])
+            text, code = run_assets(root)
+            return code == 1 and "✗ 名册过期 models/tiny.onnx" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_bad_mark():
+        """来源标识不是 GZ-AG ⇒ 名册不合格，且该文件不算登记 ⇒ 同时漏登记红。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["models/tiny.onnx", "自有", "本仓自产"]
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [], fp_rows=[row])
+            text, code = run_assets(root)
+            return code == 1 and "来源标识必须是 GZ-AG" in text and "· models/tiny.onnx" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_empty_note():
+        """说明为空 ⇒ 名册不合格（没有可写就填「—」，空着不算签字）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            row = ["models/tiny.onnx", "GZ-AG", ""]
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [], fp_rows=[row])
+            text, code = run_assets(root)
+            return code == 1 and "说明为空" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_duplicate():
+        """同一文件两条名册 ⇒ 红。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [], fp_rows=[fp_ok, fp_ok])
+            text, code = run_assets(root)
+            return code == 1 and "只许一条名册" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_no_header():
+        """名册缺表头 ⇒ 环境错误(2)，不按空名册放行。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [], fp_header=False)
+            text, code = run_assets(root)
+            return code == 2 and "三列表头" in text, "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_missing_table():
+        """名册被删 ⇒ 环境错误(2)，不是「没有名册所以不用查」。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [], fp_rows=[fp_ok])
+            (root / FIRST_PARTY_REL).unlink()
+            text, code = run_assets(root)
+            return code == 2 and "找不到第一方名册" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
+    def case_fp_conflict():
+        """两表冲突：同一文件在名册又在 ASSETS.md ⇒ 红（一个文件不能两头算）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _asset_tree(Path(tmp), ["models/tiny.onnx"], [ok_row], fp_rows=[fp_ok])
+            text, code = run_assets(root)
+            return code == 1 and "✗ 两表冲突 models/tiny.onnx" in text, \
+                "code=%d %s" % (code, text.splitlines()[-1])
+
     cases = [
         ("允许资产：Apache-2.0 模型 ⇒ 绿", case_allow),
         ("禁止资产：GPL-3.0 字体 ⇒ 红", case_deny),
@@ -1493,6 +1726,15 @@ def assets_selftest() -> int:
         ("登记表被删 ⇒ 环境错误(2)，不按空表放行", case_missing_table),
         ("同一资产两行 ⇒ 红", case_duplicate),
         ("幂等：同一棵树跑两次，文本与退出码全同", case_idempotent),
+        ("440 名册命中 ⇒ 跳过第三方判定（ASSETS 空表也绿）", case_fp_skip),
+        ("440 名册外按第三方判（登记且许可允许 ⇒ 绿）", case_fp_out_third_party),
+        ("440 双向①：名册有、磁盘无 ⇒ 红", case_fp_stale),
+        ("440 来源标识不是 GZ-AG ⇒ 红（且不算登记 ⇒ 漏登记）", case_fp_bad_mark),
+        ("440 说明为空 ⇒ 红", case_fp_empty_note),
+        ("440 同一文件两条名册 ⇒ 红", case_fp_duplicate),
+        ("440 名册缺表头 ⇒ 环境错误(2)", case_fp_no_header),
+        ("440 名册被删 ⇒ 环境错误(2)", case_fp_missing_table),
+        ("440 两表冲突 ⇒ 红", case_fp_conflict),
     ]
     for name, fn in cases:
         if not _case(name, fn):
@@ -1508,7 +1750,8 @@ def main() -> int:
     ap.add_argument("--all-scopes", action="store_true",
                     help="连测试/编译期/构建工具的依赖一起判（默认只判进分发物的）")
     ap.add_argument("--assets", action="store_true",
-                    help="资产类模式：读 licenses/ASSETS.md，并核对 assets/ 下的文件是否漏登")
+                    help="资产类模式：第一方名册（FIRST-PARTY.md，GZ-AG）＋第三方登记（ASSETS.md）"
+                         "双向核对 assets/ 下的文件（不读 Gradle 缓存）")
     ap.add_argument("--selftest", action="store_true", help="自检（不联网、不需真缓存）")
     ap.add_argument("--gradle-home", type=Path, default=None, help="Gradle 用户目录（默认取环境变量或 ~/.gradle）")
     args = ap.parse_args()

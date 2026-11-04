@@ -584,6 +584,19 @@ jobs:
           python3 tools/gen-notices.py --selftest
           python3 tools/gen-notices.py --check
 
+      # ── 任务 F（440）：资产许可门禁 —— 第一方名册 GZ-AG ＋ 第三方 ASSETS.md 双向校验 ──
+      # 与任务 D/E 同级：**会红、会拦 CI**（不许 continue-on-error）。判据：
+      #   · 名册（licenses/FIRST-PARTY.md，每条标 GZ-AG）命中 ⇒ 第一方，跳过许可判定，
+      #     但文件必须真在 —— 名册有、assets/ 没有 ⇒ 红（名册过期，删了文件就删行）；
+      #   · 名册外按第三方判：必须登记在 licenses/ASSETS.md 六列表且许可在允许表内，
+      #     磁盘有、两本账都没有 ⇒ 红（漏登记）；
+      #   · 同一文件不许同时在两表（两表冲突 ⇒ 红）；名册缺表头/被删 ⇒ 环境错误(2)。
+      # 脚本不联网、不读 Gradle 缓存，排在任务 D/E 之后只是让同一类门禁挨在一起。
+      - name: 资产许可门禁（440：第一方名册＋第三方登记，双向校验）
+        run: |
+          python3 tools/check-license-policy.py --assets --selftest
+          python3 tools/check-license-policy.py --assets
+
       - name: 归档 SBOM
         if: always()
         uses: actions/upload-artifact@v7
