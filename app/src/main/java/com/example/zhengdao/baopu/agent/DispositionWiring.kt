@@ -16,7 +16,16 @@
 //     （判定①的源级钉一个字没改）。
 //   * **只加调用不改判定**：管线的拒绝行为、返回值、文案一个字节不动；本文件的产物只有
 //     一行日志（门放行了记一行、门拒了也如实记一行——判什么记什么，不加工）。
-package com.example.zhengdao.baopu.law
+//
+// 为什么住 agent/ 不住 law/：法典接线名册的口径是「law/ 互引不算接线」（LawSourceWiringGateTest
+// 扫生产时排除 law/ 自身），且管线代码面禁引 `baopu.law.`（346-B 的 GuardScopeEscapeFeedTest）——
+// 315 的 EmergencyWiring 同款：**接线口住判定层外面**，判定本体一个字不动。
+package com.example.zhengdao.baopu.agent
+
+import com.example.zhengdao.baopu.law.DispositionGate
+import com.example.zhengdao.baopu.law.DispositionOutcome
+import com.example.zhengdao.baopu.law.DispositionRequest
+import com.example.zhengdao.baopu.law.DispositionTier
 
 internal object DispositionWiring {
 

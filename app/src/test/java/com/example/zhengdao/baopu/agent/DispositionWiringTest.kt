@@ -3,9 +3,7 @@
 // 第四百二十七批 ①的行为判据（派工单判据①「造真实场景 ⇒ 目标能力被调用」）：
 // 硬拒事实真的进了 DispositionGate.decide——门放行出 REPLY 档处置、门拒了如实记门拒，
 // 两头都是**门给的结论**，本文件不加工。
-package com.example.zhengdao.baopu.law
-
-import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
+package com.example.zhengdao.baopu.agent
 import org.junit.Assert.assertTrue
 import org.junit.Test
 

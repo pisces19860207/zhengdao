@@ -7,7 +7,7 @@
 //   ① 硬拒分支真调 `DispositionWiring.onMatrixReject(...)`（不是只 import）；
 //   ② 调用点**紧跟 noteDeviation、在 return Rejected 之前**（372 名册钉的缝点位置）；
 //   ③ 管线原有的拒绝行为没被顶掉（noteDeviation 与拒绝返回逐字还在，本批只加不减）。
-package com.example.zhengdao.baopu.law
+package com.example.zhengdao.baopu.agent
 
 import java.io.File
 import org.junit.Assert.assertTrue

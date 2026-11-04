@@ -34,6 +34,9 @@
 // （真接了流还赖在 BOOKED ＝ 挂账隐身，手改两边都红）。
 // 剩下六条仍挂账。
 // 319 更账（基线 8061da8b）：L21 登记制从「一个数」升成「一张表」（L21_COPY_REGISTRY）——
+// 427 更账：372 挂账兑现——DispositionGate 由接线口 agent/DispositionWiring 喂事实
+// （管线 verdict.rejected 分支 → onMatrixReject → decide，REPLY 档记一行），
+// BOOKED→WIRED，BOOKED 余四条。
 // 三条手抄各一行（文件:行＋登记了什么＋为什么不能清零＋谁来清），行号钉实、漂了即红；
 // 另在 EmergencyGate 添自决路径的统一准入口 selfRulingAdmission（不改接线数，门禁账不变）。
 package com.example.zhengdao.baopu.law
@@ -159,6 +162,14 @@ class LawSourceWiringGateTest {
             entry = "AccountabilityGate",
             sites = listOf("com/example/zhengdao/baopu/inspect/ShadowAdapter.kt" to 1),
         ),
+        // 427：三档处置（DispositionGate）由接线口 agent/DispositionWiring 喂事实——管线
+        // verdict.rejected 分支调 `DispositionWiring.onMatrixReject`（REPLY 档记一行），
+        // decide 与 DECIDER_USER 两处点号都在接线口里（372 挂账本批兑现；管线代码面仍
+        // 零引 `baopu.law.`，GuardScopeEscapeFeedTest 的口径原样保持）。
+        Wired(
+            entry = "DispositionGate",
+            sites = listOf("com/example/zhengdao/baopu/agent/DispositionWiring.kt" to 2),
+        ),
     )
 
     private val BOOKED = listOf(
@@ -194,20 +205,6 @@ class LawSourceWiringGateTest {
             owner = "306（步键，2026-10-31 批示：L22→306）",
             blockedBy = "撤销通道已存在但没有撤销单：judge 要五栏事实，现路径只带三元组；" +
                 "补五栏＝新落盘格式，与 208 写入格式那条红线撞在同一张卡上",
-        ),
-        // 372：会话级三档处置（制度·三档处置，**非法条**；2026-11-02 批示：名册单批只加这一行）。
-        // 未接线（生产零调用）——挂账不是 WIRED，不许谎报接线。
-        Booked(
-            entry = "DispositionGate",
-            law = "DispositionGate 的 decide（制度·三档处置（非法条）：REPLY／FREEZE／SUPPRESS" +
-                "＋五条判定＋四类不可推翻边界）",
-            host = "agent/GuardPipeline.kt:464 的 verdict.rejected 拒绝分支" +
-                "（③段授权闸拒绝处，346-B 已在此落偏差账；纵深格 WiringDisposition.REJECT 在 :569）",
-            owner = "372（2026-11-02 开工令：本批只交纯判定；接线另行立项）",
-            blockedBy = "待接线批：GuardPipeline 的拒绝分支需要把三档处置作为事实源接上——" +
-                "依赖代码位＝agent/GuardPipeline.kt:464 的 verdict.rejected 分支" +
-                "（授权闸拒绝那一刻，把被拒事实喂进 DispositionGate.decide）；" +
-                "本批只交纯判定，还没有任何执行链喂事实，硬接＝假接（L29/L32 同款理由）",
         ),
     )
 

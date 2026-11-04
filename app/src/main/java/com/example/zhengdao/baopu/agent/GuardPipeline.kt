@@ -31,7 +31,6 @@ import com.example.zhengdao.baopu.inspect.AnomalyFactKind
 import com.example.zhengdao.baopu.inspect.AnomalyFeed
 import com.example.zhengdao.baopu.intake.AdmissionWiring
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.baopu.law.DispositionWiring
 import com.example.zhengdao.baopu.plan.ContractDeviation
 import com.example.zhengdao.baopu.plan.ContractSource
 import com.example.zhengdao.baopu.plan.PlanContractBoard
