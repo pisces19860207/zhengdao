@@ -354,6 +354,94 @@ class OrchestrationBatchTest {
         )
     }
 
+    // ── ③ 383-B（2026-11-05）：读开关 ⇒ 真生效，端到端链路钉 ────────────────
+    //
+    // 418 复核对 orchestrate_engine_on 的判定是「读侧活着、写口零调用方 ⇒ 拨不开」。
+    // 开关 UI 归 UI 批（383-A 段只删桥）；本组把「读出来真生效」这件事钉成三格：
+    //  a) 写口与读口同键同文件（SP 值是唯一真相，不存在第二份读法）；
+    //  b) 引擎内**恰一次**现读，产出单一旗标 `orchestrated`，三个消费点同吃它
+    //     —— 不许出现「system 说编排开、批处理走 native」这类半开半关；
+    //  c) 读的是 SP 现值而非构造期快照（enabledNow = enabled(prefOn(ctx)) 每次现读，
+    //     引擎每步重读一次 ⇒ 用户拨了开关，下一步就生效）。
+
+    @Test
+    fun `开关_写口与读口同键同文件_键名即协议名`() {
+        assertEquals(
+            "键名必须是 orchestrate_engine_on（418 复核与名册都按这个键记账）",
+            "orchestrate_engine_on",
+            OrchestrationGate.PREF_KEY,
+        )
+        assertFalse("默认必须关（0 回归的锚）", OrchestrationGate.PREF_DEFAULT)
+        val settings = code("src/main/java/com/example/zhengdao/baopu/agent/OrchestrationSettings.kt")
+        assertTrue(
+            "写口必须写进闸门的同一个 SP 文件（OrchestrationGate.PREFS_NAME）——两份文件=两套开关",
+            settings.contains("getSharedPreferences(OrchestrationGate.PREFS_NAME"),
+        )
+        val gate = code("src/main/java/com/example/zhengdao/baopu/agent/OrchestrationGate.kt")
+        assertTrue(
+            "读口必须读同一个键（PREF_KEY）且缺省回落 PREF_DEFAULT",
+            gate.contains("getBoolean(PREF_KEY, PREF_DEFAULT)"),
+        )
+    }
+
+    @Test
+    fun `开关_引擎内恰一次现读_三分支同吃一个旗标`() {
+        val src = code(engine)
+        val reads = Regex("orchestrationEnabled\\(\\)").findAll(src).count()
+        assertEquals(
+            "引擎里 orchestrationEnabled() 必须恰一次：第二处读法 = 开关出现两套真相",
+            1,
+            reads,
+        )
+        assertTrue(
+            "唯一读点必须长成 val orchestrated = orchestrationEnabled()（单旗标）",
+            src.contains("val orchestrated = orchestrationEnabled()"),
+        )
+        // 三个消费点同吃同一旗标——少一个 = 那一路不听开关（半开半关）：
+        assertTrue(
+            "消费点① system 前缀：开才追加指引，关逐字节原样",
+            src.contains("val systemText = if (orchestrated) BatchRules.systemPrefix(prefix) else prefix"),
+        )
+        assertTrue(
+            "消费点② 超批裁剪：关掉时 batchCalls 就是 outcome.calls 本身",
+            src.contains("val batchCalls = if (orchestrated) {"),
+        )
+        assertTrue(
+            "消费点③ 批收集器：关掉时没有编号回灌那一条",
+            src.contains("val collector = if (orchestrated) {"),
+        )
+    }
+
+    @Test
+    fun `开关_读的是现值_每步重读_拨了下一步就生效`() {
+        val gate = code("src/main/java/com/example/zhengdao/baopu/agent/OrchestrationGate.kt")
+        assertTrue(
+            "enabledNow 必须每次现读 SP（enabled(prefOn(ctx))），不许缓存",
+            gate.contains("fun enabledNow(ctx: Context): Boolean = enabled(prefOn(ctx))"),
+        )
+        assertTrue(
+            "prefOn 必须每次 getSharedPreferences(...).getBoolean（现值，不是构造期快照）",
+            gate.contains("getBoolean(PREF_KEY, PREF_DEFAULT)"),
+        )
+        val src = code(engine)
+        // 现读点在 runLoop 的步循环内（每步取一次），不在构造函数/字段初始化里（那会是进程级快照）：
+        val loopAt = src.indexOf("while (!stopRequested) {")
+        val readAt = src.indexOf("val orchestrated = orchestrationEnabled()")
+        assertTrue("引擎找不到步循环入口", loopAt >= 0)
+        assertTrue(
+            "orchestrationEnabled() 的唯一读点必须在步循环之后（每步现读）——放构造期=拨了不生效",
+            loopAt in 0 until readAt,
+        )
+        assertTrue(
+            "开：闸门纯判定放行（enabled(true)）——JVM 可证的那半段",
+            OrchestrationGate.enabled(true),
+        )
+        assertFalse(
+            "关：闸门纯判定拦下（enabled(false)）——关掉＝今天行为",
+            OrchestrationGate.enabled(false),
+        )
+    }
+
     // ── 负例的机器证明：把 1.5k 预算调小 ⇒ 截断必然发生 ────────────────────
 
     @Test
