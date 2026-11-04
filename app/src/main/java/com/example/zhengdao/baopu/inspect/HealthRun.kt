@@ -9,6 +9,9 @@
 //
 // 三条纪律：
 // 1. **只读业务**：不写技能、不改账本、不动工作区文件；只追加自己那本 `体检记录.jsonl`；
+//    （419 修订：体检**本体**照旧只读；收尾后多一行自修 [DataDoctor.afterHealthRun]——
+//    动手范围＝白名单内超 7 天残留、动作＝搬回收站、账落在 repair/ 的 `修复记录.jsonl`，
+//    体检自己的账没多一个写口）
 // 2. **不弹卡**：不碰 UI、不 Toast、不 Dialog（源码门禁见 `HealthWiringGateTest`）；
 // 3. **失败了要说出来**：库打不开／账落不上 ⇒ [Result.failReason]，由调度器决定要不要重试。
 package com.example.zhengdao.baopu.inspect
@@ -22,6 +25,7 @@ import com.example.zhengdao.baopu.agent.OpinionWiring
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.evolution.ProofReading
+import com.example.zhengdao.baopu.repair.DataDoctor
 import com.example.zhengdao.core.RunLog
 import java.io.File
 
@@ -122,6 +126,10 @@ internal object HealthRun {
             "御医体检：${entry.headline}｜${if (manual) "手动" else "月位"}｜" +
                 "${if (saved) "已落账" else "账没落上"}｜${if (enqueued) "已进队列" else "不进队列"}",
         )
+        // 第四百一十九批：御医自修——体检收尾之后的一行。白名单（2026-11-04 用户已定）
+        // 内超 7 天的残留搬回收站；白名单外只报需人处理并列出看到的东西；空集永不清理；
+        // 主账挡死。动手与账都在 repair/ 层（修复记录.jsonl），体检本体照旧只读。
+        RunLog.log("御医自修：${DataDoctor.afterHealthRun(projectRoot, root, nowMs)}")
         return HealthResult(entry, enqueued, if (saved) null else "体检账没落上")
     }
 

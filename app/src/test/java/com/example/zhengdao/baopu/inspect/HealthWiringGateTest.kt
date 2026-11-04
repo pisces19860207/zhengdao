@@ -133,6 +133,21 @@ class HealthWiringGateTest {
         )
     }
 
+    // ── ⑧ 御医自修接在收尾之后（419）──────────────────────────────────────
+
+    @Test
+    fun `自修接在体检收尾之后一行`() {
+        val run = code("baopu/inspect/HealthRun.kt")
+        assertTrue("体检收尾后要有自修那一行（删了这行残留就没人清了）", run.contains("DataDoctor.afterHealthRun("))
+        val tail = run.indexOf("御医体检：")
+        val sweep = run.indexOf("DataDoctor.afterHealthRun(")
+        assertTrue("自修必须排在体检收尾日志之后（收尾之后一行）", tail in 0 until sweep)
+        assertTrue(
+            "自修的结果只许走 RunLog 一行（不弹卡、不给体检账加写口）",
+            run.contains("RunLog.log(\"御医自修："),
+        )
+    }
+
     // ── ⑦ 部位表是**数据**，不是判据（第三百二十六批）──────────────────────
     //
     // 315 自报：这里原来写着 `assertEquals(14, OrganCensus.PROBES.size)`。

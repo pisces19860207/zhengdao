@@ -16,12 +16,14 @@
 // 3. **一轮只修一类**：本文件三个入口各只对应一个 [RepairKind]，
 //    没有"传一组类目全修一遍"的口（铁律⑤）。
 //
-// 一处刻意的不做：**本批不接线**。接线要改既有文件（体检编排或界面），与铁律①
-// "不改源码"冲突；接法是下一单的一行（`HealthRun.run` 之后调 `DataDoctor.repairXxx`）。
+// 一处刻意的分工（419 修订）：**残留清点**（`sweepResidue`/`repairResidue`）已由 419 接进
+// 体检收尾（`HealthRun.run` 之后一行，[afterHealthRun]）；索引与账本两路仍只在测试里被引用，
+// 接不接（重建索引每月跑一趟值不值）留给人裁，不许顺手带上。
 package com.example.zhengdao.baopu.repair
 
 import com.example.zhengdao.baopu.TempScratch
 import com.example.zhengdao.baopu.inspect.DataRepair
+import com.example.zhengdao.baopu.inspect.DataRepair.SweepWhitelist
 import com.example.zhengdao.baopu.inspect.IndexReading
 import com.example.zhengdao.baopu.inspect.RepairKind
 import com.example.zhengdao.baopu.inspect.RepairPlan
@@ -86,6 +88,91 @@ internal object DataDoctor {
         }
         return DataRepair.tempPlan(items, prefixes, nowMs, evidence(RepairKind.TEMP, nowMs))
     }
+
+    // ── 419：工作区残留清点（体检收尾后的自修）─────────────────────────────
+
+    /** 一趟清点看见的东西：白名单内的文件（带 mtime）＋ 白名单外的**顶层入口**名字。 */
+    data class SweepFinding(val files: List<TempItem>, val outside: List<String>)
+
+    /**
+     * 扫工作区（**只读**）：白名单内的文件逐个列出；白名单外的只记顶层入口。
+     *
+     * 两处刻意的不扫：
+     * - [TRASH_DIR] 整棵不进——回收站是终点不是对象，搬 trash 里的东西等于把
+     *   "等人发落"的账搬乱；清不清回收站是用户的动作，不是御医的；
+     * - 白名单外的目录不逐个列深处的文件——顶层入口一行就够人对账，
+     *   把用户家底逐个抄进账是另一种打扰。
+     */
+    fun sweepResidue(
+        workspace: File,
+        whitelist: SweepWhitelist = SweepWhitelist.USER_2026_11_04,
+    ): SweepFinding {
+        if (!workspace.isDirectory) return SweepFinding(emptyList(), emptyList())
+        val files = ArrayList<TempItem>()
+        val outside = sortedSetOf<String>()
+        workspace.walkTopDown()
+            .onEnter { it == workspace || it.name != TRASH_DIR }
+            .filter { it.isFile }
+            .forEach { f ->
+                val rel = relativePath(workspace, f)
+                if (DataRepair.isSweepWhitelisted(rel, whitelist)) {
+                    files += TempItem(relPath = rel, lastModifiedMs = f.lastModified())
+                } else {
+                    outside += rel.substringBefore('/')
+                }
+            }
+        return SweepFinding(files, outside.toList())
+    }
+
+    /** 体检发现（只读）：工作区残留 → 计划（白名单 2026-11-04 用户已定，判据在 [DataRepair]）。 */
+    fun diagnoseResidue(
+        workspace: File,
+        nowMs: Long,
+        whitelist: SweepWhitelist = SweepWhitelist.USER_2026_11_04,
+    ): RepairPlan {
+        val found = sweepResidue(workspace, whitelist)
+        return DataRepair.tempSweepPlan(
+            found.files,
+            found.outside,
+            whitelist,
+            nowMs,
+            evidence(RepairKind.TEMP, nowMs),
+        )
+    }
+
+    /**
+     * 修（先记后修）：把计划内那几个搬进 `回收站/`（同 [repairTemp] 的房型；可恢复）。
+     *
+     * 主账那一道在判据层就挡死了（[DataRepair.isMainLedgerPath]），这里的目标表
+     * 里不可能出现主账；回收站整棵不在扫描范围，也不会被再搬一遍。
+     */
+    fun repairResidue(
+        workspace: File,
+        nowMs: Long,
+        ledgerRoot: File = workspace,
+        whitelist: SweepWhitelist = SweepWhitelist.USER_2026_11_04,
+    ): RepairOutcome {
+        val plan = diagnoseResidue(workspace, nowMs, whitelist)
+        val blocked = blockReason(ledgerRoot, plan)
+        if (blocked != null) return RepairOutcome(plan, false, blocked)
+        if (!writeIntent(ledgerRoot, plan, nowMs)) return RepairOutcome(plan, false, INTENT_NOT_WRITTEN)
+
+        val moved = moveToTrash(workspace, plan.targets, nowMs)
+        val note = "搬进回收站 $moved/${plan.targets.size} 个（可恢复，没真删）"
+        return finish(ledgerRoot, plan, nowMs, note, moved == plan.targets.size)
+    }
+
+    /**
+     * 体检收尾后的那一行（419 的接线口）：跑一趟残留自修，把结果压成一行 note。
+     *
+     * 自修出了任何异常都不许连累体检的收尾——体检已经落账，自修的失败要有自己的话
+     * （这行 note 进 RunLog），不能把整趟体检报成失败。
+     */
+    fun afterHealthRun(workspace: File, ledgerRoot: File, nowMs: Long): String =
+        runCatching {
+            val out = repairResidue(workspace, nowMs, ledgerRoot)
+            if (out.done) "${out.note}｜判据：${out.plan.reason}" else out.note
+        }.getOrElse { "自修没跑成——${it.javaClass.simpleName}: ${it.message}" }
 
     // ── 修（先记后修） ───────────────────────────────────────────────────────
 

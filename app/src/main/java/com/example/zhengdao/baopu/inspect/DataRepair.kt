@@ -15,6 +15,8 @@
 //    没有出处的计划不许构造——与 `HealthCheck` 的 L14 同一条口径。
 package com.example.zhengdao.baopu.inspect
 
+import com.example.zhengdao.baopu.DecisionLedger
+
 /**
  * 可自修的数据类目（**闭集**；`wire` 是账行的稳定键，改字面量＝老账对不上）。
  *
@@ -233,6 +235,130 @@ internal object DataRepair {
         val name = relPath.substringAfterLast('/')
         return prefixes.any { it.isNotEmpty() && name.startsWith(it) }
     }
+
+    // ── ③b 419：工作区残留清点（白名单已定）────────────────────────────────
+
+    /**
+     * 419 清残留的白名单（**2026-11-04 用户已定**——判据出处落在这里，不再是"等一张表"）：
+     *
+     * - **目录**：`rehearsal/`、`shadow/`、`cache/`、`baopu-tmp/`——路径上任一层目录叫
+     *   这个名字，它底下的文件就算抱朴自己的残留；
+     * - **后缀**：`.tmp`、`.part`、`.crdownload`——半截活（中断的写／下载），落在哪儿都算。
+     *
+     * 两把尺是**或**关系（命中任意一把就算白名单内）；清不清还要另过"超 7 天"那把尺
+     * （[isSweepStale]），与 408 前缀那一路的合取口径互不混用。
+     */
+    data class SweepWhitelist(val dirs: Set<String>, val suffixes: Set<String>) {
+        companion object {
+            val USER_2026_11_04: SweepWhitelist = SweepWhitelist(
+                dirs = setOf("rehearsal", "shadow", "cache", "baopu-tmp"),
+                suffixes = setOf(".tmp", ".part", ".crdownload"),
+            )
+        }
+    }
+
+    /**
+     * 白名单两把尺：**在白名单目录里**（父链上任一层）∨ **文件名带白名单后缀**。
+     *
+     * 后缀照字面小写匹配（用户写的就是小写；`.TMP` 不算——往宽里配就是替人放宽判据）。
+     * `shadow/` 不吃 `.shadow`：名字差一个点就是差一个点，影子的沙盒残留走"需人处理"
+     * 报出来让人定，判据不替用户拐弯。
+     */
+    fun isSweepWhitelisted(relPath: String, whitelist: SweepWhitelist): Boolean {
+        val segs = relPath.split('/')
+        if (segs.dropLast(1).any { it in whitelist.dirs }) return true
+        val name = segs.last()
+        return whitelist.suffixes.any { it.isNotEmpty() && name.endsWith(it) }
+    }
+
+    /**
+     * 208 主账挡板（[DecisionLedger.FILE_NAME]）：白名单再怎么匹配，主账与它的
+     * 变体（`决策记录.jsonl.tmp` 这类半截写）一个都不许动——判据层先挡一道，
+     * 执行层 [com.example.zhengdao.baopu.repair.DataDoctor] 的搬移口再挡一道。
+     */
+    fun isMainLedgerPath(relPath: String): Boolean {
+        val name = relPath.substringAfterLast('/')
+        return name == DecisionLedger.FILE_NAME || name.startsWith("${DecisionLedger.FILE_NAME}.")
+    }
+
+    /**
+     * 清点口径的单件超龄：白名单 ∧ mtime 读得出 ∧ 超 [TEMP_MAX_AGE_DAYS] 天。
+     *
+     * `lastModifiedMs <= 0` 不算超龄（同 [isStale] 的判据：测不出来不许冒充超龄）；
+     * 正好 7 天不算超（多一毫秒才算）。
+     */
+    fun isSweepStale(item: TempItem, whitelist: SweepWhitelist, nowMs: Long): Boolean =
+        item.lastModifiedMs > 0 &&
+            isSweepWhitelisted(item.relPath, whitelist) &&
+            nowMs - item.lastModifiedMs > TEMP_MAX_AGE_DAYS * DAY_MS
+
+    /**
+     * 工作区残留该怎么清（判据逐条对 2026-11-04 用户口令）：
+     *
+     * - **白名单内 ∧ 超 7 天 ⇒ 清**（搬回收站，可恢复）——主账变体除外（[isMainLedgerPath]）；
+     * - **白名单外 ⇒ 不动手**，报"需人处理"并**列出看到的东西**（只列顶层入口的名字，
+     *   不把用户家底逐个抄进账）；
+     * - **空集（什么都没看到）⇒ 永不清理**——连账都不留（408 的老规矩：没动手不写账）；
+     * - 白名单内都还新鲜（≤7 天）⇒ 无需修，不是"清过了"。
+     *
+     * @param items 白名单内的文件（取数层扫好递进来，判据层不碰盘）
+     * @param outside 白名单外的**顶层入口**名字（看到但没动手的东西，要列给人对账）
+     */
+    fun tempSweepPlan(
+        items: List<TempItem>,
+        outside: List<String>,
+        whitelist: SweepWhitelist,
+        nowMs: Long,
+        evidence: String,
+    ): RepairPlan {
+        if (items.isEmpty() && outside.isEmpty()) {
+            return RepairPlan(
+                kind = RepairKind.TEMP,
+                verdict = RepairVerdict.NOTHING,
+                reason = "空集：工作区里什么都没看到——空集永不清理",
+                evidence = evidence,
+            )
+        }
+        val stale = items.filter { isSweepStale(it, whitelist, nowMs) }
+        val vetoed = stale.filter { isMainLedgerPath(it.relPath) }
+        val clean = stale.filterNot { isMainLedgerPath(it.relPath) }.map { it.relPath }.sorted()
+        val outsiders = outside.filter { it.isNotEmpty() }.distinct().sorted()
+        val outsideNote =
+            if (outsiders.isEmpty()) "" else "；白名单外 ${outsiders.size} 项没动（需人处理）：${sweepNames(outsiders)}"
+        val vetoNote = if (vetoed.isEmpty()) "" else "；主账挡下 ${vetoed.size} 个（不许删主账）：${sweepNames(vetoed.map { it.relPath }.sorted())}"
+        return when {
+            clean.isNotEmpty() -> RepairPlan(
+                kind = RepairKind.TEMP,
+                verdict = RepairVerdict.FIXABLE,
+                reason = "白名单内超 $TEMP_MAX_AGE_DAYS 天 ${clean.size} 个（搬回收站可恢复）$outsideNote$vetoNote",
+                targets = clean,
+                evidence = evidence,
+            )
+            outsiders.isNotEmpty() || vetoed.isNotEmpty() -> RepairPlan(
+                kind = RepairKind.TEMP,
+                verdict = RepairVerdict.NEED_HUMAN,
+                reason = "白名单内没有超 $TEMP_MAX_AGE_DAYS 天的残留（共 ${items.size} 个文件）$outsideNote$vetoNote",
+                evidence = evidence,
+            )
+            else -> RepairPlan(
+                kind = RepairKind.TEMP,
+                verdict = RepairVerdict.NOTHING,
+                reason = "白名单内 ${items.size} 个都还在 $TEMP_MAX_AGE_DAYS 天内，没动",
+                evidence = evidence,
+            )
+        }
+    }
+
+    /** 列名字的小口（账行与日志都要能读：超过 [SWEEP_LIST_CAP] 个就收口成计数）。 */
+    internal fun sweepNames(paths: List<String>): String =
+        if (paths.size <= SWEEP_LIST_CAP) {
+            paths.joinToString("、")
+        } else {
+            paths.take(SWEEP_LIST_CAP).joinToString("、") + "…等 ${paths.size} 项"
+        }
+
+    /** 列名单的收口（全列会把日志撑成流水账；10 个够人对账，余下的给计数）。 */
+    const val SWEEP_LIST_CAP = 10
 
     // ── 铁律⑤：一轮只修一类 ─────────────────────────────────────────────────
 
