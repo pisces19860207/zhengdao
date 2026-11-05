@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanRules.PlanItem
 import com.example.zhengdao.baopu.PlanStore
+import com.example.zhengdao.baopu.authz.TaskGrantWire
 import com.example.zhengdao.baopu.plan.PlanContract
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractRules
@@ -246,6 +247,17 @@ internal class PlanController(
         if (activated) {
             PlanContractBoard.activate(declared, applied.items, workspaceRoot(), sid)
             log("抱朴契约：用户已批准 ⇒ 进上限（${declared.steps.size} 步）")
+            // ── 第四百五十批：taskId 回填（"起单 → installRun → pending"链的第一格）──
+            // 任务身份＝276-Q5 的判型：taskId 就是这份已批准契约的规范化摘要
+            // （contractDigest）⇒ 直接传，不造第二套解析。只在契约入效这一格喂；
+            // 信箱里没轮 id 就不喂（宁空勿猜）。闲聊/续跑/短任务都不进这个分支，
+            // 且每轮开跑 installRun(roundRunId) 只带 runId ⇒ taskId 自然归零回 NULL。
+            val rid = DeviationWiring.currentRunId()
+            if (rid.isNotBlank()) {
+                val taskId = TaskGrantWire.contractDigest(declared)
+                DeviationWiring.installRun(rid, taskId)
+                log("抱朴出处：taskId=$taskId｜来源=已批准计划契约的规范化摘要（contractDigest）｜轮=$rid")
+            }
         } else if (inForce) {
             PlanContractBoard.notePlan(applied.items)
         } else if (freshContract) {
