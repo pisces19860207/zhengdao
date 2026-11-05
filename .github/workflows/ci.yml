@@ -239,6 +239,11 @@ jobs:
       - name: 账本重复检查（同段重复行、重复章节）
         run: python3 tools/check-ledger-dupe.py
 
+      # 451（2026-11-05）：memory.as_of 旧库升级的**真跑**自检——本仓无 Robolectric，
+      # JVM 单测只能钉语句层；这里用 sqlite3 真建 v20 老库、真跑迁移、真查待复核。
+      - name: 记忆 as_of 迁移真跑（451 批：旧库 NULL 可读／复核边界／变异负例）
+        run: python3 tools/check-memory-asof-migration.py --selftest
+
       - name: 圆角令牌门禁自测（第七十批：钉住"门禁自己会不会误杀/放水"）
         run: python3 tools/check-radius-tokens-selftest.py
 

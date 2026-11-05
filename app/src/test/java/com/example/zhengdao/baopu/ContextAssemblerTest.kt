@@ -58,7 +58,7 @@ class ContextAssemblerTest {
         skipIds: Set<String> = emptySet(),
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
         diary: List<DiaryEntry> = emptyList(),
-        /** 第四百三十八批：记忆分层「过期」判定时刻；0＝旧口径（不过期）。 */
+        /** 第四百三十八批：记忆分层「待复核」判定时刻；0＝旧口径（未到复核周期）。 */
         nowMillis: Long = 0L,
     ) = ContextAssembler.assemble(
         persona = persona(),
@@ -455,7 +455,7 @@ class ContextAssemblerTest {
     private companion object {
         const val NOW = 1_730_000_000_000L
         const val DAY = MemoryQuality.DAY_MILLIS
-        const val TTL = MemoryTiers.FACT_TTL_MILLIS
+        const val REVIEW_PERIOD = MemoryTiers.REVIEW_PERIOD_MILLIS
     }
 
     /** 事实类记忆（带 asOf；分层用例料）。 */
@@ -467,26 +467,26 @@ class ContextAssemblerTest {
     private fun memSegment(p: AssembledPrompt) = p.segments.first { it.kind == SegmentKind.MEMORY }.text
 
     @Test
-    fun `分层_过期事实按仅供参考注入并带说明行`() {
-        val old = fact("old", asOf = NOW - TTL - DAY) // 过期线已过一天
+    fun `分层_待复核事实按仅供参考注入并带说明行`() {
+        val old = fact("old", asOf = NOW - REVIEW_PERIOD - DAY) // 复核到期已过一天
         val p = assemble(newMemories = listOf(old), nowMillis = NOW)
         val seg = memSegment(p)
-        assertTrue("过期事实仍在上下文里（不许默默藏掉）：$seg", seg.contains("told"))
+        assertTrue("待复核事实仍在上下文里（不许默默藏掉）：$seg", seg.contains("told"))
         assertTrue("降格记号要看得见：$seg", seg.contains("【事实·仅供参考】"))
-        assertTrue("段尾要带去向说明：$seg", seg.contains("已过 90 天保质期") && seg.contains("仅供参考"))
+        assertTrue("段尾要带去向说明：$seg", seg.contains("已到 90 天复核周期") && seg.contains("仅供参考"))
     }
 
     @Test
-    fun `分层_没过期的事实照常注入不降格`() {
+    fun `分层_未到复核周期的事实照常注入不降格`() {
         val fresh = fact("fresh", asOf = NOW - DAY)
         val p = assemble(newMemories = listOf(fresh), nowMillis = NOW)
         val seg = memSegment(p)
         assertTrue(seg.contains("tfresh"))
-        assertFalse("没过期不许贴仅供参考：$seg", seg.contains("仅供参考"))
+        assertFalse("未到复核周期不许贴仅供参考：$seg", seg.contains("仅供参考"))
     }
 
     @Test
-    fun `分层_不传时刻走旧口径_过期事实照常注入不降格`() {
+    fun `分层_不传时刻走旧口径_待复核事实照常注入不降格`() {
         val old = fact("old", asOf = NOW - 365 * DAY)
         val p = assemble(newMemories = listOf(old))
         val seg = memSegment(p)

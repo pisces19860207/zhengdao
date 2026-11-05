@@ -55,7 +55,7 @@ internal object MemoryQuality {
     /** 每次使用加分（与 [USE_BONUS_CAP] 一起构成「常用＝有用」的补偿）。 */
     private const val USE_BONUS_PER = 2
 
-    /** 使用加分上限（20 分封顶：用得多能续命，但不能把过期记忆顶回满分）。 */
+    /** 使用加分上限（20 分封顶：用得多能续命，但不能把久未复核的记忆顶回满分）。 */
     private const val USE_BONUS_CAP = 20
 
     /** 低于这个分打 [FLAG_STALE]（标记不是删除，也不从召回里剔除）。 */
@@ -308,7 +308,7 @@ internal object MemoryQuality {
             }
         }
         // 降权审计：只讲分数与档位，满分且无标记的不出声（免得账被噪声淹没）。
-        // 过期出 ACT_STALE、其余分数变化出 ACT_SCORE——两类账分开记，检索侧一眼能分。
+        // 久未复核出 ACT_STALE、其余分数变化出 ACT_SCORE——两类账分开记，检索侧一眼能分。
         for (e in ranked(scored)) {
             if (e.qualityScore < DEFAULT_SCORE || e.qualityFlags.isNotEmpty()) {
                 val stale = e.qualityFlags.contains(FLAG_STALE)

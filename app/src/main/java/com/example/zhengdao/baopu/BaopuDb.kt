@@ -754,8 +754,8 @@ internal object BaopuSql {
         "INSERT OR REPLACE INTO memory " +
             "(id, scope, kind, title, body, tags, source_session, source_file, status, " +
             "created_at, updated_at, use_count, last_used_at, " +
-            "score, quality_flags, merged_from, scored_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "score, quality_flags, merged_from, scored_at, as_of) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         arrayOf<String?>(
             e.id,
             e.scope.name.lowercase(),
@@ -774,6 +774,8 @@ internal object BaopuSql {
             e.qualityFlags.joinToString(","),
             e.mergedFrom.joinToString(","),
             e.scoredAt.toString(),
+            // 451：asOf 是「这条是哪天查的」，缺就绑 NULL（旧行／待补），不许拿 0 或当前时刻编造。
+            if (e.asOf > 0L) e.asOf.toString() else null,
         ),
     )
 
@@ -833,7 +835,7 @@ internal object BaopuSql {
     fun allMemoriesRanked(): Stmt = Stmt(
         "SELECT id, scope, kind, title, body, tags, source_session, source_file, status, " +
             "created_at, updated_at, use_count, last_used_at, " +
-            "score, quality_flags, merged_from, scored_at FROM memory " +
+            "score, quality_flags, merged_from, scored_at, as_of FROM memory " +
             "ORDER BY score DESC, created_at ASC, id ASC",
         emptyArray(),
     )
@@ -1471,6 +1473,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV19Migration(db)
         applyV20Migration(db)
         applyV21Migration(db)
+        applyV22Migration(db)
     }
 
     /**
@@ -1510,6 +1513,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 19) applyV19Migration(db)
         if (oldVersion < 20) applyV20Migration(db)
         if (oldVersion < 21) applyV21Migration(db)
+        if (oldVersion < 22) applyV22Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1778,6 +1782,23 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     }
 
     /**
+     * v22（第四百五十一批 · 记忆落地；v21 归 430 `fix/pending-keys` 在飞分支）：
+     * `memory` 加可空 `as_of` 列（**看列再动** ⇒ 幂等）。
+     *
+     * 语句放在冻结点之下的 [MemoryAsOfSql]（零位移纪律，照 v17／v18 同款手法）。
+     * 列可空且无 DEFAULT ⇒ 老行升级后是 **NULL**（＝没标哪天查的），不回填、不编造。
+     * `asOf` ＝「这条是哪天查的」；90 天复核周期 ＝「我们愿意多久重看一次」
+     * （2026-11-04 裁定，见 [MemoryTiers.REVIEW_PERIOD_DAYS]），两者不是一回事。
+     * 新装（[onCreate] 也调它）与 v20 及更早的库升级走**同一条**路径。
+     */
+    private fun applyV22Migration(db: SQLiteDatabase) {
+        val cols = tableColumns(db, "memory")
+        MemoryAsOfSql.columnStmt(cols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
+    /**
      * v19（第一百七十二批 L4 · 玄览页签快照）：`browser_tab` 表 ＋ LRU 索引。
      *
      * DDL 放在 `BrowserTabSql` 一份字面量里，与 `onCreate` 共用 —— 新装与升级不会分叉。
@@ -1829,8 +1850,11 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v20 = 第二百八十七批（`file_op` 文件操作账：全盘可读写之后每笔文件操作入账，
          *  路径＋用途，30 天可回放；v18 那两张表随授权模型退役，只留老库兼容）。
          *  v21 = 第四百三十批（session 加 pending 出处两列 `pending_run_id`／`pending_task_id`：
-         *  挂起那张卡属于哪一轮／哪一单，重启后恢复卡落处置账才取得到真值；旧行 NULL 不回填）。 */
-        const val VERSION = 21
+         *  挂起那张卡属于哪一轮／哪一单，重启后恢复卡落处置账才取得到真值；旧行 NULL 不回填）。
+         *  v22 = 第四百五十一批（`memory` 加可空 `as_of` 列：旧行 NULL 不回填、不编造；
+         *  90 天只是内部复核周期，不是事实有效期）。v21 归 430，451 顺位接 v22——同号会让
+         *  已升到 430 的设备不重跑迁移，`as_of` 永远不存在。 */
+        const val VERSION = 22
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
@@ -2155,4 +2179,53 @@ internal class DiaryIndexStore(private val db: BaopuDb) {
             }
         }.get()
     }
+}
+
+/**
+ * 第四百五十一批：`memory.as_of` 列的语句与「是否该复核」的查询。
+ *
+ * 为什么单独放文件末尾：`zd-baopu-db` 裸线程创建点是行号对账单的冻结点，
+ * `BaopuSql`（文件头）在它之上——新 DDL／新查询放这里（冻结点之下）加行零位移
+ * （v17／v18 同款手法）。`BaopuSql` 里只改 `upsertMemory` 与 `allMemoriesRanked`
+ * 两处既有函数，用来写入／读出这一列。
+ *
+ * 口径（2026-11-04 裁定，2026-11-05 澄清；裁定记录 `裁定记录-2026-11.md`）：
+ * - `as_of` ＝「这条是哪天查的」（外部事实自带的时间戳）；缺 ⇒ **NULL／待补**，不许编造；
+ * - 90 天 ＝「我们愿意多久重看一次」（内部复核周期，`MemoryTiers.REVIEW_PERIOD_DAYS`），
+ *   **不是事实有效期**；到线只标「待复核」，不删条目、不改状态、不作废事实。
+ */
+internal object MemoryAsOfSql {
+
+    /** 列名（SQLite 侧 snake_case，与 `.md` front-matter 的 `as_of` 同名）。 */
+    const val COLUMN = "as_of"
+
+    /** 可空 INTEGER：**不许**带 `NOT NULL DEFAULT 0`——那会把老行伪造成「0 时刻核实过」。 */
+    const val ALTER = "ALTER TABLE memory ADD COLUMN as_of INTEGER"
+
+    /** 看列再动（SQLite 没有 ADD COLUMN IF NOT EXISTS）：缺列才给一条 ALTER，重跑给空。 */
+    fun columnStmt(existingColumns: List<String>): List<BaopuSql.Stmt> =
+        if (existingColumns.any { it.equals(COLUMN, ignoreCase = true) }) emptyList()
+        else listOf(BaopuSql.Stmt(ALTER, emptyArray<String?>()))
+
+    /**
+     * 按 asOf 判「是否该复核」：核实时刻早于（或等于）`now − 90 天` 的行。
+     * `as_of IS NULL`（旧行／待补）不进这张表——**没标时刻就不判**，另走 [missingAsOf]。
+     * 只对事实类（`fact`／`term`）判：偏好与规矩没有复核到期，不该混进待补清单。
+     * 与 `MemoryTiers.reviewDue` 是同一条不等式（`asOf <= now − REVIEW_PERIOD_MILLIS`），
+     * 90 天只在 `MemoryTiers.REVIEW_PERIOD_DAYS` 一处，改天数走裁定。
+     */
+    fun needingReview(now: Long): BaopuSql.Stmt = BaopuSql.Stmt(
+        "SELECT id, title, as_of FROM memory " +
+            "WHERE as_of IS NOT NULL AND as_of > 0 AND as_of <= ? " +
+            "AND kind IN ('fact', 'term') " +
+            "ORDER BY as_of ASC, id ASC",
+        arrayOf<String?>((now - MemoryTiers.REVIEW_PERIOD_MILLIS).toString()),
+    )
+
+    /** 缺 asOf 的**事实类**行（旧库升级后的 NULL，或收编时标「待补」的条目）——只列出来，不编造时刻。 */
+    fun missingAsOf(): BaopuSql.Stmt = BaopuSql.Stmt(
+        "SELECT id, title FROM memory WHERE (as_of IS NULL OR as_of <= 0) " +
+            "AND kind IN ('fact', 'term') ORDER BY id ASC",
+        emptyArray<String?>(),
+    )
 }

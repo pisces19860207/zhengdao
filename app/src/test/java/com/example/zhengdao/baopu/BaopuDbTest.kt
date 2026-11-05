@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(21, BaopuDb.VERSION) // v21 = 第四百三十批 pending 出处两列；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+        assertEquals(22, BaopuDb.VERSION) // v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(21, BaopuDb.VERSION) // v21 = 第四百三十批 pending 出处两列；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+        assertEquals(22, BaopuDb.VERSION) // v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -248,76 +248,15 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `pending列的写清读语句_出处两格同行`() {
-        val save = BaopuSql.savePending(7L, "write_file", "{\"path\":\"a.txt\"}", 123L, "r-430@1", "t-430")
+    fun `pending三列的写清读语句`() {
+        val save = BaopuSql.savePending(7L, "write_file", "{\"path\":\"a.txt\"}", 123L)
         assertTrue(save.sql.startsWith("UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ?"))
-        assertTrue("出处两格在同一条 UPDATE 里（分两条就会有「卡写进去了、出处没写」的半行）",
-            save.sql.contains("pending_run_id = ?, pending_task_id = ? WHERE id = ?"))
-        assertEquals(
-            listOf("write_file", "{\"path\":\"a.txt\"}", "123", "r-430@1", "t-430", "7"),
-            save.args.toList(),
-        )
-        // 取不到 ⇒ 绑 NULL 不是空串（判据边界「不许编」：SQL 里不许冒出「这轮有个号，是空的」）
-        val noSource = BaopuSql.savePending(7L, "write_file", "{}", 123L, "", null)
-        assertNull("runId 空白 ⇒ NULL", noSource.args[3])
-        assertNull("taskId 没有真值来源 ⇒ NULL（等授权单号回填出处信箱那一侧补）", noSource.args[4])
-        assertEquals("sessionId 仍在最后一格", "7", noSource.args[5])
+        assertEquals(listOf("write_file", "{\"path\":\"a.txt\"}", "123", "7"), save.args.toList())
         val clear = BaopuSql.clearPending(7L)
         assertTrue("清空绑 NULL 不是空串", clear.sql.contains("pending_tool = NULL"))
-        assertTrue("出处两列一起清（留着下一张卡会接上这一轮的号）",
-            clear.sql.contains("pending_run_id = NULL, pending_task_id = NULL"))
         assertEquals(listOf("7"), clear.args.toList())
         val load = BaopuSql.loadPending(7L)
-        assertTrue(
-            load.sql.startsWith(
-                "SELECT pending_tool, pending_args, pending_at, pending_run_id, pending_task_id " +
-                    "FROM session WHERE id = ?",
-            ),
-        )
-    }
-
-    /**
-     * v21（第四百三十批）：pending 出处两列。
-     *
-     * 判据③「旧库升级后老数据可读」在 JVM 侧能钉的部分＝**列况驱动的 ALTER**：
-     * 已升到 v20 的老库（没有这两列）拿到两条 ALTER，升级前的旧行由 SQLite 填 NULL；
-     * 列已存在 ⇒ 一条不给（重复迁移不炸，与 v5 那三列同房型）。
-     * 真库上「ALTER 后老行 NULL 读得出来」归真机/集成（本仓无 Robolectric）。
-     */
-    @Test
-    fun `v21 迁移_session加pending出处两列_缺列才给ALTER_幂等`() {
-        val none = BaopuSql.sessionPendingKeyColumnsStmt(listOf("id", "title", "pending_tool", "pending_at"))
-        assertEquals("两列全缺 ⇒ 两条 ALTER", 2, none.size)
-        assertTrue(none[0].sql.contains("ALTER TABLE session ADD COLUMN pending_run_id TEXT"))
-        assertTrue(none[1].sql.contains("ALTER TABLE session ADD COLUMN pending_task_id TEXT"))
-        // 全有 ⇒ 一条不给（v21 重跑不炸）
-        assertTrue(
-            BaopuSql.sessionPendingKeyColumnsStmt(
-                listOf("pending_run_id", "pending_task_id"),
-            ).isEmpty(),
-        )
-        // 只缺一列 ⇒ 只给一条（老库半升级态也不会重复加列）
-        val partial = BaopuSql.sessionPendingKeyColumnsStmt(listOf("pending_tool", "pending_run_id"))
-        assertEquals(1, partial.size)
-        assertTrue(partial[0].sql.contains("pending_task_id"))
-        // 列名大小写不敏感（table_info 拿回来的可能是大写）
-        assertTrue(BaopuSql.sessionPendingKeyColumnsStmt(listOf("PENDING_RUN_ID", "Pending_Task_Id")).isEmpty())
-        // 新建库走 onCreate 时也调同一个迁移体 ⇒ DDL 常量里不许有裸 ALTER（加列必须看列况）
-        assertTrue(BaopuSql.DDL.none { it.contains("pending_run_id") || it.contains("pending_task_id") })
-    }
-
-    /**
-     * 旧行（升级前挂起、没有出处两列）读出来是 NULL ⇒ [PendingRow] 的两格为 null，
-     * 不报错也不当成空串（判据③「NULL 当空」的形状侧）。
-     */
-    @Test
-    fun `旧pending行_出处两格默认null_不许静默变成空串键`() {
-        val oldRow = PendingRow(tool = "write_file", argsJson = "{}", at = 123L)
-        assertNull(oldRow.runId)
-        assertNull(oldRow.taskId)
-        val newRow = PendingRow("write_file", "{}", 123L, "r-430@1", "")
-        assertEquals("r-430@1", newRow.runId)
-        assertEquals("", newRow.taskId)
+        assertTrue(load.sql.startsWith("SELECT pending_tool, pending_args, pending_at FROM session WHERE id = ?"))
     }
 
     // ── memory 表语句（v2 · 刀 0b） ───────────────────────────────────────
@@ -332,8 +271,8 @@ class BaopuDbTest {
         )
         val s = BaopuSql.upsertMemory(e)
         assertTrue(s.sql.startsWith("INSERT OR REPLACE INTO memory"))
-        // 13 → 17：第八十九批加了 score / quality_flags / merged_from / scored_at
-        assertEquals(17, s.args.size)
+        // 13 → 17（89 批质量四列）→ 18（451 批 as_of）
+        assertEquals(18, s.args.size)
         assertEquals("1729000000000-称呼偏好", s.args[0])
         assertEquals("project", s.args[1])
         assertEquals("preference", s.args[2])

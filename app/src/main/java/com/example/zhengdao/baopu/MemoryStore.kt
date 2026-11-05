@@ -97,8 +97,7 @@ internal object EntryCodec {
             tags = tags,
             sourceSession = fields["source_session"].orEmpty(),
             sourceFile = fields["source_file"].orEmpty(),
-            // 第四百三十八批：老文件没有这行 ⇒ 0（asOf 缺失按 createdAt 兜底算过期线，
-            // 不追溯拒收；见 MemoryTiers.asOfOrFallback）。
+            // 451：老文件没有这行 ⇒ 0（asOf 缺失 ⇒ 不判复核、标「待补」，不拿录入日冒充核实日）。
             asOf = fields["as_of"]?.toLongOrNull() ?: 0L,
             status = enumOf<MemoryStatus>(fields["status"]) ?: MemoryStatus.CANDIDATE,
             createdAt = fields["created_at"]?.toLongOrNull() ?: 0L,
@@ -316,7 +315,7 @@ internal class MemoryStore(
     fun qualityPass(now: Long): MemoryQuality.Pass =
         MemoryQuality.pass(loadAll().filter { it.status == MemoryStatus.CONFIRMED }, now)
 
-    /** 按质量序读全部（合并视图；**条数只可能因「同键重复并成一条」而减，绝不因过期而减**）。 */
+    /** 按质量序读全部（合并视图；**条数只可能因「同键重复并成一条」而减，绝不因待复核而减**）。 */
     fun ranked(now: Long = System.currentTimeMillis()): List<MemoryEntry> = qualityPass(now).merged
 
     /** 按 id 找文件（两个目录都找）。 */

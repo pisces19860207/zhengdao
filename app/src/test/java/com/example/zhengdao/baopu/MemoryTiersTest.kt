@@ -8,9 +8,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 记忆分层纯判据单测（第四百三十八批）：三类映射／生命周期四态／事实 asOf 收录判据／
- * 90 天过期／偏好一句话覆盖／仅供参考渲染。
+ * 记忆分层纯判据单测（第四百三十八批；第四百五十一批按「90 天＝内部复核周期」裁定改语义与命名）：
+ * 三类映射／生命周期四态／事实 asOf 收录判据／90 天复核周期／偏好一句话覆盖／仅供参考渲染。
  *
+ * 451 批只改名字与文案，**断言逻辑一字未动**（数值 90 不变、边界不变、布尔结论不变）。
  * 全部打在 [MemoryTiers] 纯函数上——落盘闸另有 [MemoryStoreTest]，注入行为另有
  * [ContextAssemblerTest]，三态红线另有 [MemoryTriStateGateTest]。
  */
@@ -20,7 +21,7 @@ class MemoryTiersTest {
         /** 任意固定时刻（判据只看差值，掺真实时钟就没法钉边界）。 */
         const val NOW = 1_730_000_000_000L
         const val DAY = MemoryQuality.DAY_MILLIS
-        const val TTL = MemoryTiers.FACT_TTL_MILLIS
+        const val REVIEW_PERIOD = MemoryTiers.REVIEW_PERIOD_MILLIS
     }
 
     private fun e(
@@ -72,47 +73,49 @@ class MemoryTiersTest {
         assertEquals("候选", MemoryTiers.lifecycleLabel(MemoryLifecycle.CANDIDATE))
         assertEquals("复核", MemoryTiers.lifecycleLabel(MemoryLifecycle.REVIEW))
         assertEquals("有效", MemoryTiers.lifecycleLabel(MemoryLifecycle.ACTIVE))
-        assertTrue("过期的标签要说清去向，别让读者以为是删了：",
-            MemoryTiers.lifecycleLabel(MemoryLifecycle.EXPIRED).contains("仅供参考"))
+        assertTrue("待复核的标签要说清去向，别让读者以为是删了：",
+            MemoryTiers.lifecycleLabel(MemoryLifecycle.REVIEW_DUE).contains("仅供参考"))
     }
 
-    // ── 事实的 90 天保质期（判据：满 90 天整才过期） ──────────────────────
+    // ── 事实的 90 天复核周期（判据：满 90 天整才到线） ─────────────────────
 
     @Test
-    fun `过期线_事实按asOf起算_满90天整才过期`() {
+    fun `复核到期_事实按asOf起算_满90天整才待复核`() {
         val fact = e(asOf = NOW)
-        assertFalse("第 89 天还活着", MemoryTiers.isExpired(fact, NOW + 89 * DAY))
-        assertTrue("满 90 天整就过期（≥ 判据）", MemoryTiers.isExpired(fact, NOW + TTL))
-        assertEquals(NOW + TTL, MemoryTiers.expiresAt(fact))
+        assertFalse("第 89 天还活着", MemoryTiers.reviewDue(fact, NOW + 89 * DAY))
+        assertTrue("满 90 天整就待复核（≥ 判据）", MemoryTiers.reviewDue(fact, NOW + REVIEW_PERIOD))
+        assertEquals(NOW + REVIEW_PERIOD, MemoryTiers.reviewDueAt(fact))
     }
 
     @Test
-    fun `过期线_老条目没有asOf按createdAt兜底`() {
+    fun `复核到期_asOf缺失不判_标待补不编造`() {
         val old = e(asOf = 0L, createdAt = NOW)
-        assertEquals("asOf 缺失不追溯拒收，过期线照算：", NOW + TTL, MemoryTiers.expiresAt(old))
-        assertTrue(MemoryTiers.isExpired(old, NOW + TTL))
+        assertEquals("asOf 缺失 ⇒ 0：不拿录入日冒充核实日", 0L, MemoryTiers.reviewDueAt(old))
+        assertFalse(MemoryTiers.reviewDue(old, NOW + REVIEW_PERIOD))
+        assertEquals("asOf 缺失不是「到期待复核」（那由 missingAsOf 单列待补）",
+            MemoryLifecycle.ACTIVE, MemoryTiers.lifecycleOf(old, NOW + 365 * DAY))
     }
 
     @Test
-    fun `过期线_偏好与规矩不过期`() {
+    fun `复核到期_偏好与规矩不设复核到期`() {
         for (kind in listOf(MemoryKind.PREFERENCE, MemoryKind.PROFILE, MemoryKind.RULE, MemoryKind.LESSON)) {
             val old = e(kind = kind, asOf = NOW - 365 * DAY, createdAt = NOW - 365 * DAY)
-            assertEquals("kind=$kind 没有过期线", 0L, MemoryTiers.expiresAt(old))
-            assertFalse("kind=$kind 一年后也不过期", MemoryTiers.isExpired(old, NOW))
+            assertEquals("kind=$kind 没有复核到期", 0L, MemoryTiers.reviewDueAt(old))
+            assertFalse("kind=$kind 一年后也不待复核", MemoryTiers.reviewDue(old, NOW))
         }
     }
 
     @Test
-    fun `过期线_时间线都拿不到就不判过期`() {
+    fun `复核到期_时间线都拿不到就不判待复核`() {
         val timeless = e(asOf = 0L, createdAt = 0L)
-        assertEquals("没有时间线就不发明时间线", 0L, MemoryTiers.expiresAt(timeless))
-        assertFalse(MemoryTiers.isExpired(timeless, NOW))
+        assertEquals("没有时间线就不发明时间线", 0L, MemoryTiers.reviewDueAt(timeless))
+        assertFalse(MemoryTiers.reviewDue(timeless, NOW))
     }
 
     @Test
-    fun `过期_调用方没给时刻恒不过期`() {
+    fun `待复核_调用方没给时刻恒不到线`() {
         val fact = e(asOf = NOW - 365 * DAY)
-        assertFalse("now=0 是旧口径（组装器不传时刻＝行为不变）", MemoryTiers.isExpired(fact, 0L))
+        assertFalse("now=0 是旧口径（组装器不传时刻＝行为不变）", MemoryTiers.reviewDue(fact, 0L))
     }
 
     // ── 收录判据（事实无 source＋asOf 不收） ──────────────────────────────
@@ -153,9 +156,9 @@ class MemoryTiersTest {
         assertEquals(MemoryLifecycle.REVIEW, MemoryTiers.lifecycleOf(e(status = MemoryStatus.PENDING), NOW))
         assertEquals(MemoryLifecycle.ACTIVE, MemoryTiers.lifecycleOf(e(status = MemoryStatus.CONFIRMED), NOW))
         assertEquals(
-            "确认过的事实过了保质期 ⇒ 过期（读时判，不落盘改状态）",
-            MemoryLifecycle.EXPIRED,
-            MemoryTiers.lifecycleOf(e(asOf = NOW - TTL), NOW),
+            "确认过的事实到了复核周期 ⇒ 待复核（读时判，不落盘改状态）",
+            MemoryLifecycle.REVIEW_DUE,
+            MemoryTiers.lifecycleOf(e(asOf = NOW - REVIEW_PERIOD), NOW),
         )
         assertEquals("被拒不进四态（null＝当没有这条）",
             null, MemoryTiers.lifecycleOf(e(status = MemoryStatus.REJECTED), NOW))
@@ -175,7 +178,7 @@ class MemoryTiersTest {
         for (s in listOf(MemoryStatus.CANDIDATE, MemoryStatus.PENDING, MemoryStatus.REJECTED)) {
             assertFalse("status=$s 不可用于判断（生命周期判据）", MemoryTiers.injectable(e(status = s)))
         }
-        assertTrue("过期事实仍可进（仅供参考形态，标注而不隐藏）", MemoryTiers.injectable(e(asOf = NOW - TTL)))
+        assertTrue("待复核事实仍可进（仅供参考形态，标注而不隐藏）", MemoryTiers.injectable(e(asOf = NOW - REVIEW_PERIOD)))
     }
 
     // ── 偏好的一句话覆盖 ──────────────────────────────────────────────────
@@ -240,25 +243,25 @@ class MemoryTiersTest {
         assertEquals(setOf("2-称呼偏好", "f1", "f2"), MemoryTiers.collapseOverrides(input).map { it.id }.toSet())
     }
 
-    // ── 注入渲染（过期 ⇒ 仅供参考） ──────────────────────────────────────
+    // ── 注入渲染（待复核 ⇒ 仅供参考） ──────────────────────────────────────
 
     @Test
-    fun `渲染_未过期与老口径逐字相同`() {
+    fun `渲染_未到复核周期与老口径逐字相同`() {
         val fresh = e()
         assertEquals(MemoryRules.renderForContext(fresh), MemoryTiers.renderForContext(fresh, NOW))
         assertEquals("now=0（旧口径）也逐字相同", MemoryRules.renderForContext(fresh), MemoryTiers.renderForContext(fresh, 0L))
     }
 
     @Test
-    fun `渲染_过期降格仅供参考_带核实日期与复核指引`() {
-        val expired = e(asOf = NOW - TTL)
-        val rendered = MemoryTiers.renderForContext(expired, NOW)
+    fun `渲染_待复核降格仅供参考_带核实日期与复核指引`() {
+        val reviewDue = e(asOf = NOW - REVIEW_PERIOD)
+        val rendered = MemoryTiers.renderForContext(reviewDue, NOW)
         assertTrue("类型标签带降格记号：$rendered", rendered.contains("【事实·仅供参考】"))
-        assertTrue("正文一个字不少：$rendered", rendered.contains(expired.body))
-        assertTrue("说清哪天核实的：$rendered", rendered.contains(TimeFormats.dayStamp(NOW - TTL)))
-        assertTrue("说清超了多少天：$rendered", rendered.contains("90 天保质期"))
+        assertTrue("正文一个字不少：$rendered", rendered.contains(reviewDue.body))
+        assertTrue("说清哪天核实的：$rendered", rendered.contains(TimeFormats.dayStamp(NOW - REVIEW_PERIOD)))
+        assertTrue("说清超了多少天：$rendered", rendered.contains("90 天复核周期"))
         assertTrue("给出续用路径：$rendered", rendered.contains("复核"))
-        assertFalse("不许把过期条目冒充现行事实：$rendered", rendered.contains("【事实】"))
+        assertFalse("不许把待复核条目冒充现行事实：$rendered", rendered.contains("【事实】"))
     }
 
     @Test

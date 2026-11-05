@@ -330,11 +330,9 @@ class OrchestrationBatchTest {
     @Test
     fun `门禁_DB版本与新表未动`() {
         val db = repoRel("src/main/java/com/example/zhengdao/baopu/BaopuDb.kt").readText()
-        // 这一行自己说的：动了 VERSION 就要回来改并说明。第四百三十批动了（v21＝session
-        // pending 出处两列 pending_run_id/pending_task_id，缺列才给 ALTER 的幂等迁移）⇒ 按说明改成 21。
         assertTrue(
             "本批不动 BaopuDb.VERSION（动了就是迁移，必须回来改这一行并说明）",
-            db.contains("const val VERSION = 21"),
+            db.contains("const val VERSION = 22"),
         )
         val mainRoot = repoRel("src/main/java")
         val offenders = mainRoot.walkTopDown()

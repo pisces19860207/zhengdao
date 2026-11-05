@@ -12,7 +12,7 @@ enum class MemoryScope { GLOBAL, PROJECT }
  * 记忆种类（方案 §9「写」一环点名的四类 ＋ 用户画像）：
  * 偏好 / 事实 / 术语 / 踩过的坑 / 用户画像。
  *
- * 第四百三十八批追加 `RULE`（规矩）：用户亲手立的规矩（只能人改、不自动过期）。
+ * 第四百三十八批追加 `RULE`（规矩）：用户亲手立的规矩（只能人改、不设复核到期）。
  * 五个老 kind 原样保留（只加不改）；kind 与「三类」（[MemoryTier]）的映射是
  * [MemoryTiers.tierOf] 一处说了算，别处不许再判一遍。
  */
@@ -26,7 +26,7 @@ enum class MemoryKind { PREFERENCE, FACT, TERM, LESSON, PROFILE, RULE }
  *
  * 第四百三十八批把四个状态对进**生命周期四态**（用户 2026-11-04 定）：
  * CANDIDATE＝候选（不可用于判断）、PENDING＝复核、CONFIRMED＝有效（可作提示）；
- * **「过期」不是 status**——事实类读时判（[MemoryTiers.lifecycleOf]，零写入、可逆），
+ * **「待复核」不是 status**——事实类读时判（[MemoryTiers.lifecycleOf]，零写入、可逆），
  * REJECTED 在四态之外（人不肯记＝没有这条）。
  */
 enum class MemoryStatus { CANDIDATE, PENDING, CONFIRMED, REJECTED }
@@ -62,8 +62,8 @@ data class MemoryEntry(
     /**
      * 事实的「核实时刻」（毫秒，0＝没记）：事实类（[MemoryTier.FACT]）落盘必须带它
      * （判据：事实无 source＋asOf 不收；source 那半由 [MemoryRules.validate] 的既有判据管）。
-     * 90 天保质期从它起算（[MemoryTiers.FACT_TTL_DAYS]）；老文件没有这行 ⇒ 读回来 0，
-     * 过期判定按 createdAt 兜底（[MemoryTiers.asOfOrFallback]），**不追溯拒收**。
+     * 90 天复核周期从它起算（[MemoryTiers.REVIEW_PERIOD_DAYS]）；老文件没有这行 ⇒ 读回来 0，
+     * 复核到期只认 asOf：缺失（0／NULL）⇒ 不判、标「待补」，不拿 createdAt 冒充核实时刻。
      */
     val asOf: Long = 0L,
 )

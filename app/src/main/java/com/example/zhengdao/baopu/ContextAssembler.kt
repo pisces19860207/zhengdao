@@ -312,9 +312,9 @@ internal object ContextAssembler {
          */
         extraNotes: List<String> = emptyList(),
         /**
-         * 第四百三十八批：当前时刻（毫秒）——记忆分层判「过期」用。调用方**每轮算一次**
+         * 第四百三十八批：当前时刻（毫秒）——记忆分层判「待复核」用。调用方**每轮算一次**
          * 传进来（引擎侧与本轮其他转级状态同处算好），不许在这里现提（同会话前缀要稳）。
-         * 默认 0 ⇒ 按不过期渲染，本参数存在之前的行为逐字不变（单测确定性靠它）。
+         * 默认 0 ⇒ 按未到复核周期渲染，本参数存在之前的行为逐字不变（单测确定性靠它）。
          */
         nowMillis: Long = 0L,
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
@@ -322,7 +322,7 @@ internal object ContextAssembler {
         // ── 记忆段：sticky 恒前，new 追加；预算 = 按窗口取的召回预算 − sticky 已占 ──
         // （第一百八十一批 #2：预算从常量换成 recallBudgetFor(windowTokens)——
         //   调用方不传窗口时回退 1M ⇒ 预算仍封顶 2k，与旧口径逐字相同。）
-        // 第四百三十八批：挑选/塌覆盖/渲染/过期标注收进 [memorySection]（判据在那边写全）。
+        // 第四百三十八批：挑选/塌覆盖/渲染/待复核标注收进 [memorySection]（判据在那边写全）。
         val memory = memorySection(stickyMemories, newMemories, windowTokens, nowMillis, tokensOf)
 
         // ── 段装配（顺序 = 枚举序） ──
@@ -414,7 +414,7 @@ internal object ContextAssembler {
         )
     }
 
-    /** 记忆段的产出：注入行、截断说明（含过期标注，接在正文后）。 */
+    /** 记忆段的产出：注入行、截断说明（含待复核标注，接在正文后）。 */
     private data class MemorySection(val lines: List<String>, val truncated: Boolean, val note: String)
 
     /**
@@ -425,7 +425,7 @@ internal object ContextAssembler {
      *    候选不可用于判断、被拒的不是记忆（生产路径本就只有已确认的会到这，闸是防第二份真相）；
      * 2. **偏好塌覆盖**：同键偏好只留最新说法（[MemoryTiers.collapseOverrides]），
      *    旧说法不再顶在上下文里与最新一句打架；规矩与事实的同键多条原样保留（冲突等人裁）；
-     * 3. **过期降格**：过期事实照样进（不许默默藏掉），但渲染成「仅供参考」并附去向行；
+     * 3. **待复核降格**：待复核事实照样进（不许默默藏掉），但渲染成「仅供参考」并附去向行；
      * 4. **预算**：sticky 恒前，新召回按剩余 token 裁（[MemoryRules.trimToBudget]，截断明说）。
      *
      * @param nowMillis 0＝调用方没给时刻 ⇒ 第 3 条不 bite（旧口径逐字不变）。
@@ -459,9 +459,9 @@ internal object ContextAssembler {
             note = r.note
         }
         val lines = stickyRendered + pickedNew.map { MemoryTiers.renderForContext(it, nowMillis) }
-        val expired = (sticky + pickedNew).count { MemoryTiers.isExpired(it, nowMillis) }
-        if (expired > 0) {
-            val line = "（其中 $expired 条事实已过 90 天保质期，按「仅供参考」注入；文件一条没删，" +
+        val reviewDueCount = (sticky + pickedNew).count { MemoryTiers.reviewDue(it, nowMillis) }
+        if (reviewDueCount > 0) {
+            val line = "（其中 $reviewDueCount 条事实已到 ${MemoryTiers.REVIEW_PERIOD_DAYS} 天复核周期，按「仅供参考」注入；文件一条没删，" +
                 "要续用请人工复核后改 as_of）"
             note = if (note.isEmpty()) line else "$note\n$line"
         }
