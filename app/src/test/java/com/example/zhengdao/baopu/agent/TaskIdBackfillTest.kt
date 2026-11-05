@@ -8,10 +8,12 @@
 // 2. 闲聊／续跑／短任务 ⇒ 不喂、不报错：新轮 installRun 只带 runId ⇒ taskId 归零回
 //    NULL；无契约声明、契约没批准、信箱没轮 id，都是"不喂"的正路（宁空勿猜）；
 // 3. 出处可追：起单落一行「taskId 来源」账（抱朴出处）；处置账行带起单的 taskId
-//    （430 的 pending 行联测随其并册补——列还没进 main，本单钉住信箱这一格）。
+//    （430 的两列已并 main ⇒ pending 行真联测见判据3b，整链不 mock）。
 // 判据④"解析只用既有实现"的 grep 证据在本文件活体化（源级闸）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.PendingRow
+import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.authz.TaskGrantWire
@@ -21,6 +23,10 @@ import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanPledgeBoard
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.Executors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -214,7 +220,7 @@ class TaskIdBackfillTest {
         val rig = rig()
         val declared = standingWithContract(rig.controller)
 
-        // 430 的 pending 列还没进 main ⇒ pending 行联测随它并册补；这里钉住账行
+        // 430 的 pending 列已进 main ⇒ 真联测见判据3b（挂起落库带起单 taskId）；
         // 这一跳：记账口的取数（currentTaskId）必须拿到起单喂进去的真值。
         DeviationWiring.recordOverSteps(4, 3, 3)
         val e = DeviationLedger.read(ledgerRoot).single()
@@ -261,4 +267,71 @@ class TaskIdBackfillTest {
         // PlanController＝本批回填的唯一起单侧调用。多出第三处＝造了第二套解析。
         assertEquals(listOf("PlanController.kt", "TaskGrantWire.kt"), hits)
     }
+    // ── 判据③联测：pending 行带起单 taskId（430 两列已进 main ⇒ 不再是信箱作证）──
+
+    /** 内存假件（本联测只验落库的两个出处格，不做恢复）。 */
+    private class FakePending : PendingStore {
+        override fun clear(sessionId: Long) {}
+        override fun load(sessionId: Long): PendingRow? = null
+    }
+
+    private fun writeCall(id: String, path: String, content: String): ToolCall =
+        ToolCall(id, "write_file", JSONObject().put("path", path).put("content", content).put("overwrite", false))
+
+    /** 等确认卡挂上（liveCallId 出现）；超 2 秒算失败（房型照 ConfirmFlowTest）。 */
+    private suspend fun awaitLive(flow: ConfirmFlow, callId: String) {
+        repeat(200) {
+            if (flow.liveCallId() == callId) return
+            delay(10)
+        }
+        throw AssertionError("确认卡没挂上（liveCallId=${flow.liveCallId()}）")
+    }
+
+    /**
+     * 第四百五十批·判据③联测：真起单喂了信箱之后，确认卡挂起的 pending 落库
+     * 必须带**起单那轮**的 runId ＋ 已批准契约的 taskId。
+     *
+     * 430 的两列已并 main ⇒ 这条从「引 430 的信箱测试作证」升成真联测：整链不 mock——
+     * 真起单链（立状→批准→入效）喂信箱，真 ConfirmFlow 落 pending（onPersistPending
+     * 是内核唯一的落库出口），落库的两个出处格必须就是起单喂进去的那对。
+     */
+    @Test
+    fun `判据3b_pending行联测_真起单喂信箱_挂起落库带起单runId和taskId`() = runBlocking {
+        DeviationWiring.installRun("run-450-11")
+        val rig = rig()
+        val declared = standingWithContract(rig.controller)
+
+        val execRoot = Files.createTempDirectory("taskid-450-exec").toFile()
+        val reg = ToolRegistry().apply { register(WriteFileTool.spec { execRoot }) }
+        val persisted = mutableListOf<Array<Any?>>()
+        val flow = ConfirmFlow(
+            pipeline = GuardPipeline(reg, { execRoot }, { null }, ToolRunner(Executors.newSingleThreadExecutor())),
+            store = FakePending(),
+            foregroundElapsedMs = { 0L },
+            onPersistPending = { sid, step, tool, args, at, runId, taskId ->
+                persisted += arrayOf(sid, step, tool, args, at, runId, taskId)
+            },
+            onRequestCard = { },
+            projectRoot = { null },
+        )
+        try {
+            val job = launch {
+                flow.enter(1L, 2, writeCall("call-450", "资料库/x.txt", "内容")) { _, _ -> null }
+            }
+            awaitLive(flow, "call-450")
+            val args = persisted.single()
+            assertEquals("挂起落库的 runId＝起单那轮", "run-450-11", args[5])
+            assertEquals(
+                "挂起落库的 taskId＝已批准契约的摘要（430 列从此有生产真值）",
+                TaskGrantWire.contractDigest(declared),
+                args[6],
+            )
+            flow.resumeWithApproval("call-450", approved = false, note = null)
+            job.join()
+        } finally {
+            DeviationWiring.resetForTest()
+            runCatching { execRoot.deleteRecursively() }
+        }
+    }
+
 }
