@@ -87,4 +87,15 @@
     <string name="baopu_card_write_words">目标字数</string>
     <string name="baopu_card_write_duration">预计时长</string>
     <string name="baopu_card_write_risk">主要风险</string>
+    <!-- ── 465 产出引依据 ─────────────────────────────────────────── -->
+    <string name="baopu_citation_prefix">依据：</string>
+    <string name="baopu_citation_open">看原文</string>
+    <string name="baopu_citation_close">收起</string>
+    <string name="baopu_citation_open_desc">点开看依据原文</string>
+    <string name="baopu_citation_source">来源：%1$s</string>
+    <string name="baopu_citation_empty_hint">先读人设/知识库</string>
+    <string name="baopu_citation_ledger_hint">台账只用于查重，不能当依据</string>
+    <string name="baopu_citation_bad_ref_hint">依据来源要写文件:行 或 URL+日期</string>
+    <string name="baopu_citation_dangling_hint">依据指向的条目不存在：%1$s</string>
+
 </resources>

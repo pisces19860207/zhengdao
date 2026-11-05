@@ -111,5 +111,16 @@ internal fun baopuCardString(key: String, res: Resources): String = when (key) {
     "baopu_card_write_duration" -> res.getString(R.string.baopu_card_write_duration)
     "baopu_card_write_risk" -> res.getString(R.string.baopu_card_write_risk)
 
+    // 465 产出引依据（界面组件直接取 R.string；这一行只为三处键集合对账）
+    "baopu_citation_prefix" -> res.getString(R.string.baopu_citation_prefix)
+    "baopu_citation_open" -> res.getString(R.string.baopu_citation_open)
+    "baopu_citation_close" -> res.getString(R.string.baopu_citation_close)
+    "baopu_citation_open_desc" -> res.getString(R.string.baopu_citation_open_desc)
+    "baopu_citation_source" -> res.getString(R.string.baopu_citation_source)
+    "baopu_citation_empty_hint" -> res.getString(R.string.baopu_citation_empty_hint)
+    "baopu_citation_ledger_hint" -> res.getString(R.string.baopu_citation_ledger_hint)
+    "baopu_citation_bad_ref_hint" -> res.getString(R.string.baopu_citation_bad_ref_hint)
+    "baopu_citation_dangling_hint" -> res.getString(R.string.baopu_citation_dangling_hint)
+
     else -> key
 }

@@ -361,6 +361,8 @@ private fun ResultSheetBody(
                 modifier = Modifier.heightIn(min = RESULT_CARD_TOUCH_DP.dp),
             ) { Text(stringResource(R.string.baopu_card_collapse)) }
         }
+        // 465：产出类卡的依据行（卡面顶部一行；查询类没有 citations ⇒ 不画）
+        BaopuCitationBar(card.citations, card.citationLine)
 
         Column(Modifier.padding(horizontal = 16.dp)) {
             folded.card.groups.forEach { group ->

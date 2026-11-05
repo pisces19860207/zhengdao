@@ -15,6 +15,8 @@
 // 失败/无结果 ⇒ 明说（负例：失败静默返回空）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.cards.CitationHitCache
+import com.example.zhengdao.baopu.cards.CitationWebHit
 import com.example.zhengdao.core.RunLog
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -215,6 +217,8 @@ internal object SearchWebTool {
         if (hits.isEmpty()) {
             return ToolOutcome.Failed("检索页抓到了但没有可解析的结果（页面形状变了或词太生僻）——如实说，不编链接")
         }
+        // 465：本轮真搜到的结果登记给「产出引依据」的 WEB 通道（纯数据；检索原文不进日志）
+        CitationHitCache.record(hits.map { CitationWebHit(it.url, it.title, it.snippet, it.fetchedAt) })
         val arr = JSONArray()
         hits.forEach { h ->
             arr.put(

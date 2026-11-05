@@ -71,6 +71,10 @@ data class ResultCardSpec(
      * 空身份退回全字段比（严格），总比两张一模一样的卡强。
      */
     val identity: String = "",
+    /** 465：产出类卡带的依据（查询类为空）；点开看原文的那一组。 */
+    val citations: List<Citation> = emptyList(),
+    /** 465：卡面顶部一行「依据：…」；null ＝ 这张卡不是产出类，不摆依据行。 */
+    val citationLine: String? = null,
 ) {
     /** 所有行（按渲染顺序）——正文复述判据、复制全部、条数预算都从这一处取。 */
     val rows: List<CardRow> get() = groups.flatMap { it.rows }
@@ -268,6 +272,8 @@ object ResultCardBinder {
         lookup: (String) -> String,
         dials: Map<String, String> = emptyMap(),
         itemCount: Int = 0,
+        citations: List<Citation> = emptyList(),
+        citationLine: String? = null,
     ): ResultCardSpec {
         val empty = lookup(template.emptyTextKey)
         val groups = template.groups.map { g ->
@@ -298,6 +304,8 @@ object ResultCardBinder {
             groups = groups,
             actions = template.actions.map { CardAction(it.id, lookup(it.labelKey)) },
             itemCount = itemCount,
+            citations = citations,
+            citationLine = citationLine,
         )
     }
 }

@@ -35,6 +35,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.TopicCandidate
 import com.example.zhengdao.baopu.TopicStyle
 import com.example.zhengdao.baopu.TopicWritingState
+import com.example.zhengdao.baopu.cards.Citation
 
 /**
  * 建议卡（题材候选，可换可多选）。
@@ -55,11 +56,17 @@ internal fun BaopuTopicSuggestCard(
     onAccept: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 465：这一批题材的依据（人设／知识库／搜索）；出卡前已过闸。 */
+    citations: List<Citation> = emptyList(),
+    /** 465：卡面顶部「依据：…」那一行。 */
+    citationLine: String? = null,
 ) {
     BaopuActionContainer(
         title = stringResource(R.string.baopu_topic_title_suggest),
         badge = stringResource(R.string.baopu_topic_badge),
         modifier = modifier,
+        citations = citations,
+        citationLine = citationLine,
     ) {
         candidates.forEach { c ->
             val checked = c.seed.id in selected
@@ -160,12 +167,17 @@ internal fun BaopuTopicConfirmCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     tasteNote: String? = null,
+    /** 465：与建议卡同一组依据，换卡不断线。 */
+    citations: List<Citation> = emptyList(),
+    citationLine: String? = null,
 ) {
     val confirmDesc = stringResource(R.string.baopu_topic_confirm_write)
     BaopuActionContainer(
         title = stringResource(R.string.baopu_topic_title_confirm),
         badge = stringResource(R.string.baopu_topic_badge),
         modifier = modifier,
+        citations = citations,
+        citationLine = citationLine,
     ) {
         topics.forEach { c ->
             Text(

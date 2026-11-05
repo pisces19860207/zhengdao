@@ -1325,6 +1325,17 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
             // 之上，键盘弹出随 imePadding 一起顶起；不采纳也能直接打字发送）。
             // 确认前零落盘：这里的回调没有一个直接写盘，落盘只在控制器的
             // topicConfirmWrite 之后、走 179 的 BaopuLongformStore。
+            // 465：依据闸拒时只留这一句人话，一张卡都不摆
+            controller.topicCitationNote?.let { hint ->
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
             controller.topicFlow?.let { flow ->
                 Column(
                     Modifier
@@ -1342,6 +1353,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                             onChangeBatch = { controller.topicChangeBatch() },
                             onAccept = { controller.topicToStyle() },
                             onDismiss = { controller.topicDismiss() },
+                            citations = controller.topicCitations,
+                            citationLine = controller.topicCitationLine,
                         )
 
                         TopicFlowPhase.STYLE -> BaopuStyleCard(
@@ -1369,6 +1382,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                                 onDismiss = { controller.topicDismiss() },
                                 // 第二百零二批：本轮会参考/避开哪几篇（控制器已按当前选中篇算好）
                                 tasteNote = TasteProfile.cardNote(controller.tastePreview),
+                                citations = controller.topicCitations,
+                                citationLine = controller.topicCitationLine,
                             )
                         }
 

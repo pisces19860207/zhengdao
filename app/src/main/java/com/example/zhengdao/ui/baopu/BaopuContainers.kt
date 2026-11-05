@@ -51,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.zhengdao.baopu.cards.Citation
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rChip
 
@@ -127,6 +128,10 @@ internal fun BaopuActionContainer(
     onHeaderClick: (() -> Unit)? = null,
     onHeaderClickLabel: String? = null,
     headerTrailing: String? = null,
+    /** 465：产出类卡带的依据（查询类不传 ⇒ 顶部一行都不画）。 */
+    citations: List<Citation> = emptyList(),
+    /** 465：卡面顶部「依据：…」这一行；不传就不画。 */
+    citationLine: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val headerClickable = onHeaderClick != null
@@ -191,6 +196,8 @@ internal fun BaopuActionContainer(
                 )
             }
         }
+        // 465：依据行紧跟通栏标题条（卡面顶部一行）；不传 citations 就是旧形状
+        BaopuCitationBar(citations, citationLine)
         Column(Modifier.padding(BAO_ACTION_INSET_DP.dp), content = content)
     }
 }

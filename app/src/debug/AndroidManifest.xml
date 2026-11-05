@@ -21,6 +21,13 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- 产出引依据预览（465 批）：同 249，不挂 LAUNCHER，只能显式 am start。 -->
+        <activity
+            android:name="com.example.zhengdao.baopu.cards.OutputCitationPreviewActivity"
+            android:exported="true"
+            android:label="@string/baopu_card_write_title"
+            android:theme="@style/Theme.Zhengdao" />
+
         <!-- 开工卡预览（249 批）：不挂 LAUNCHER，桌面不出现图标。 -->
         <activity
             android:name="com.example.zhengdao.baopu.authz.TaskGrantCardPreviewActivity"

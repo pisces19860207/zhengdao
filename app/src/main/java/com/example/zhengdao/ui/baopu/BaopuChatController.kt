@@ -81,6 +81,14 @@ import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.agent.SendAcceptance
 import com.example.zhengdao.baopu.agreementShadow
+import com.example.zhengdao.baopu.cards.Citation
+import com.example.zhengdao.baopu.cards.CitationHitCache
+import com.example.zhengdao.baopu.cards.CitationMessages
+import com.example.zhengdao.baopu.cards.CitationSourceDoc
+import com.example.zhengdao.baopu.cards.CitationSourceView
+import com.example.zhengdao.baopu.cards.CitationVerdict
+import com.example.zhengdao.baopu.cards.OutputCitationGate
+import com.example.zhengdao.baopu.cards.OutputCitationSources
 import com.example.zhengdao.baopu.emptyRoundUsage
 import com.example.zhengdao.baopu.eval.EvalAttempt
 import com.example.zhengdao.baopu.eval.EvalEvidenceSource
@@ -2178,6 +2186,18 @@ internal class BaopuChatController(context: Context) {
     var topicDirRel by mutableStateOf("产物")
         private set
 
+    /** 465：这一批题材的依据（人设／知识库／搜索）；只有过闸之后才有值。 */
+    var topicCitations by mutableStateOf<List<Citation>>(emptyList())
+        private set
+
+    /** 465：卡面顶部「依据：…」那一行。 */
+    var topicCitationLine by mutableStateOf<String?>(null)
+        private set
+
+    /** 465：闸拒时的提示（如「先读人设/知识库」）；非 null ⇒ 本次一张卡都不出。 */
+    var topicCitationNote by mutableStateOf<String?>(null)
+        private set
+
     /** 本地偏好（不联网）：上次成功落盘那套写法的 id。 */
     private val topicPrefs = appCtx.getSharedPreferences("baopu-topic", android.content.Context.MODE_PRIVATE)
 
@@ -3497,6 +3517,49 @@ internal class BaopuChatController(context: Context) {
     // ── 题材与写法三卡（第一百九十批）的方法段 ─────────────────────────────
 
     /**
+     * 465：收依据的只读视图。**不读台账**——台账只在 [topicScan] 给
+     * [TopicSuggest.nextBatch] 查重用，两条数据在这里连字段都不相交。
+     *
+     * 人设取「项目层优先、全局层次之」的那份实际文件；知识库只认工作区
+     * `知识库/整理|原始` 下登记过的 md；搜索结果取本轮 [CitationHitCache]。
+     */
+    private fun citationView(): CitationSourceView {
+        val docs = ArrayList<CitationSourceDoc>(4)
+        val pf = BaopuRuntime.personaFiles(appCtx)
+        val project = pf.projectFile()
+        val global = pf.globalFile()
+        var personaRel: String? = null
+        if (project.isFile) {
+            personaRel = "抱朴记忆/人设-本项目.md"
+            docs += CitationSourceDoc(personaRel, project)
+        } else if (global.isFile) {
+            personaRel = "抱朴记忆/全局/人设.md"
+            docs += CitationSourceDoc(personaRel, global)
+        }
+        val kbRoot = java.io.File(workspaceRoot, "知识库")
+        listOf("整理", "原始").forEach { sub ->
+            val dir = java.io.File(kbRoot, sub)
+            (dir.listFiles()?.filter { it.isFile && it.name.endsWith(".md") } ?: emptyList())
+                .sortedBy { it.name }
+                .forEach { f -> docs += CitationSourceDoc("知识库/$sub/${f.name}", f) }
+        }
+        return CitationSourceView(
+            docs = docs,
+            personaRel = personaRel,
+            webHits = CitationHitCache.snapshot(),
+        )
+    }
+
+    /** 465：闸文案从 strings 取（判据层不写中文字面量；中英随系统语言走）。 */
+    private fun citationMessages(): CitationMessages = CitationMessages(
+        prefix = appCtx.getString(R.string.baopu_citation_prefix),
+        emptyHint = appCtx.getString(R.string.baopu_citation_empty_hint),
+        ledgerHint = appCtx.getString(R.string.baopu_citation_ledger_hint),
+        badRefHint = appCtx.getString(R.string.baopu_citation_bad_ref_hint),
+        danglingHint = appCtx.getString(R.string.baopu_citation_dangling_hint),
+    )
+
+    /**
      * 台账＋产物目录扫描（IO；落点与台账选择**原样复用 179**：
      * [BaopuLongformStore.vaultRoot]/[BaopuLongformPolicy.pickLedger]，不另找路径）。
      * 只读不写——确认前的「零落盘」从这里开始保证。
@@ -3518,6 +3581,26 @@ internal class BaopuChatController(context: Context) {
     private fun topicStart() {
         scope.launch {
             val scan = topicScan()
+            // 465 出卡前的依据闸：依据只来自人设／知识库／本轮搜索；台账只给上面查重用。
+            // 闸不过 ⇒ 一张卡都不出，只留一句人话（先读人设/知识库 …）。
+            val view = withContext(Dispatchers.IO) { citationView() }
+            val citations = OutputCitationSources.collect(view)
+            val verdict = OutputCitationGate.check(
+                citations,
+                OutputCitationSources.exists(view),
+                citationMessages(),
+            )
+            if (verdict is CitationVerdict.Reject) {
+                topicCitations = emptyList()
+                topicCitationLine = null
+                topicCitationNote = verdict.detail
+                topicFlow = null
+                return@launch
+            }
+            val pass = verdict as CitationVerdict.Pass
+            topicCitations = pass.citations
+            topicCitationLine = pass.line
+            topicCitationNote = null
             val last = runCatching { topicPrefs.getString("style_last", null) }.getOrNull()
             val style = TopicSuggest.defaultStyle(last)
             topicRecommendedStyleId = style.id
