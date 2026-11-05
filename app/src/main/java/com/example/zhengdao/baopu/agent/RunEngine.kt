@@ -3498,7 +3498,8 @@ internal class RunEngine(
             err = "",
             createdAt = at,
         )
-        val pend = BaopuSql.savePending(sessionId, tool, argsJson, at)
+        // 2026-11-05（L1）：此处原为 `val pend = …`，全函数无引用（死变量）；保留副作用调用。
+        BaopuSql.savePending(sessionId, tool, argsJson, at)
         runCatching {
             db.write { d ->
                 d.beginTransaction()
