@@ -245,6 +245,15 @@ internal class RunEngine(
      * `KbTools.store` 提供（Context 只出现在 BaopuRuntime）。
      */
     private val kbRecall: ((String) -> String?)? = null,
+    /**
+     * 提示词抓取口（第四百五十九批）：入参＝(这一步拼好的 system 段原文, 当前通道)。
+     *
+     * 为什么是注入的闭包而不是持 Context：引擎不持 Context（与 [kbRecall]／
+     * [channelFallback] 同一条纪律），落盘与开关都在装配层（`BaopuRuntime`）。
+     * **默认 null ⇒ 行为与今天逐字节相同**（JVM 测试与所有既有调用点一个字都不用改）。
+     * 它只收不还：返回 Unit，没有任何回写提示词的通道（派工单边界「只读复制」）。
+     */
+    private val promptTap: ((String, Provider) -> Unit)? = null,
     private val log: (String) -> Unit = { RunLog.log(it) },
     /**
      * 会话任务队列（152批 F 可注入缝）：生产默认 [DefaultSessionRunQueue]（117批原实现）；
@@ -2172,6 +2181,10 @@ internal class RunEngine(
                 systemText + "\n\n" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT +
                     com.example.zhengdao.baopu.CriteriaPitPack.systemSuffix()
             }
+            // 第四百五十九批：把**这一步真正要发出去的** system 段只读抄一份（debug 默认开）。
+            // 位置刻意放在拼装完成之后、发请求之前：抄到的就是这一次请求的原文；
+            // 它不参与任何判断——promptTap 默认 null 时这一行什么都不做。
+            promptTap?.invoke(systemFinal, provider)
             val messages = buildList {
                 if (systemFinal.isNotBlank()) add(LlmMessage(LlmMessage.ROLE_SYSTEM, systemFinal))
                 // 图片必须挂在这一条 user 上（第二十四批 A 段的本意）。

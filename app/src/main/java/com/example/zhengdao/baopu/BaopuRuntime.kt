@@ -46,6 +46,7 @@ import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.baopu.inspect.ShadowAdapter
+import com.example.zhengdao.baopu.promptexport.PromptExport
 import com.example.zhengdao.baopu.intake.AdmissionWiring
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.LibraryImport
@@ -789,6 +790,12 @@ internal object BaopuRuntime {
             // 本轮输入；索引不在 ⇒ null，静默跳过不阻塞）。真实存储在 KbTools.store
             // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。
             kbRecall = { text -> KbTools.autoInjectNote(text) },
+            // 第四百五十九批：提示词导出（debug 默认开、release 默认关；SP 可拨）。
+            // 只把**这一步拼好的** system 段递出去，落盘／脱敏／开关全在 PromptExport 里；
+            // 闭包返回 Unit ⇒ 引擎没有任何回写提示词的通道（派工单边界「只读复制」）。
+            promptTap = { sys, prov ->
+                PromptExport.capture(appCtx, sys, prov.model, prov.id, prov.protocol.name)
+            },
             log = { RunLog.log(it) },
             // 熔断自动降级 ＋ 第一百三十一批 ② 多 Key 轮询：引擎只问"下一步是谁"，
             // 怎么挑通道、罚哪把 Key 全在这一个闭包里（Key 不进引擎、不进日志）。

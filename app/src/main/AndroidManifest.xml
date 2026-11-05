@@ -303,6 +303,19 @@
             android:name=".trigger.TriggerAlarmReceiver"
             android:exported="false" />
 
+        <!-- 提示词导出的一次性触发（第四百五十九批）：「导出上一次」的可执行入口，UI 归 U 批。
+             exported=true ＋ permission=DUMP：普通 App 拿不到 DUMP（signature|privileged），
+             `adb shell` 恰好有 ⇒ 验收方一条 am broadcast 能跑、别的 App 跑不了。
+             App 自身要触发请**直接调 PromptExport.exportLast**（自身也没有 DUMP，绕广播会失败）。 -->
+        <receiver
+            android:name=".baopu.promptexport.PromptExportReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.example.zhengdao.action.EXPORT_LAST_PROMPT" />
+            </intent-filter>
+        </receiver>
+
         <!-- 抱朴附件（第二十二批 A 段）：相机要一个可写 Uri，安卓 7+ 只能是 content://，
              故用 FileProvider **只**暴露缓存里的 `baopu-camera/`（见 res/xml/baopu_file_paths.xml）。
              exported=false + grantUriPermissions=true：只有我们临时授权的那个 Uri 能被相机写，
