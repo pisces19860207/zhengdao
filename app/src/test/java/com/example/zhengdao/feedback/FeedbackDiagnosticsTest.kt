@@ -121,4 +121,24 @@ class FeedbackDiagnosticsTest {
         assertEquals("a-b_c.d~e", FeedbackLinks.encode("a-b_c.d~e"))
         assertNotEquals("编码不能是恒等映射", "a b", FeedbackLinks.encode("a b"))
     }
+
+    @Test
+    fun `第二道兜底_白名单字段里混进密钥形状_也被抹成占位`() {
+        // 蓝总管验收补（2026-11-05）：第一道是「只认白名单键」（上面那条负例钉着）。
+        // 这里是第二道：**白名单内的字段本身**（机型／系统／账摘要的 kind·group）若被上游塞进
+        // 密钥形状，靠 `line()` 里的形状抹除挡。原测试只喂了白名单外的键，所以把这道兜底
+        // 删掉也没有一条会红——补这一条把第二道钉住。
+        val poisoned = LinkedHashMap<String, Any?>()
+        poisoned[FeedbackDiagnostics.KEY_VERSION] = "2.2.2"
+        poisoned[FeedbackDiagnostics.KEY_MODEL] = "sk-FAKEKEY-IN-MODEL-452"
+        poisoned[FeedbackDiagnostics.KEY_SYSTEM] = "Bearer FAKE_BEARER_IN_SYSTEM_452"
+        poisoned[FeedbackDiagnostics.KEY_LEDGER] = listOf(
+            LedgerDigest(1_000L, "token=FAKE_TOKEN_IN_KIND_452", "SKILL", true, false),
+        )
+        val diagnostic = FeedbackDiagnostics.build(FeedbackDiagnostics.project(poisoned))
+        assertFalse("机型里的密钥形状没被抹掉", diagnostic.contains("sk-FAKEKEY-IN-MODEL-452"))
+        assertFalse("系统串里的 Bearer 没被抹掉", diagnostic.contains("FAKE_BEARER_IN_SYSTEM_452"))
+        assertFalse("账摘要里的 token= 没被抹掉", diagnostic.contains("FAKE_TOKEN_IN_KIND_452"))
+        assertTrue("抹掉后应留下占位标记", diagnostic.contains("<隐去>"))
+    }
 }
