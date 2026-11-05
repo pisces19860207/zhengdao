@@ -28,7 +28,7 @@
 
 **门槛**：Android 16（API 36）＋ arm64 手机。不符合装不上。
 
-**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.2.2（versionCode 40）。
+**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.2.3（versionCode 41）。
 
 **不用装**：Termux、Shizuku，不需要 ADB，也不用连电脑。
 
