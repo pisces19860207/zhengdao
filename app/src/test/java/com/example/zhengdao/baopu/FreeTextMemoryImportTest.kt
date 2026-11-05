@@ -69,14 +69,14 @@ class FreeTextMemoryImportTest {
     @Test
     fun `不丢行_总行数等于条目加未解析加空白`() {
         val r = FreeTextMemoryImport.parse(global, project)
-        // lines() 不把收尾换行数成一行：global 6 ＋ project 2 = 8
-        assertEquals(8, r.sourceLineCount)
+        // 按文件实际行算（含末尾换行后的空段）：global 7 ＋ project 3 = 10
+        assertEquals(10, r.sourceLineCount)
         assertEquals(
             "一条都不许吞：${r.sourceLineCount} = ${r.entries.size} + ${r.unresolvedCount} + ${r.blankCount}",
             r.sourceLineCount,
             r.entries.size + r.unresolvedCount + r.blankCount,
         )
-        assertEquals("4 条 ＋ 3 行未解析 ＋ 1 行空白", listOf(4, 3, 1),
+        assertEquals("4 条 ＋ 3 行未解析 ＋ 3 行空白", listOf(4, 3, 3),
             listOf(r.entries.size, r.unresolvedCount, r.blankCount))
     }
 
@@ -131,8 +131,9 @@ class FreeTextMemoryImportTest {
     @Test
     fun `两份文件分作用域_标题与kind按键表映射`() {
         val r = FreeTextMemoryImport.parse(global, project)
-        assertEquals(2, r.entries.count { it.scope == MemoryScope.GLOBAL })
-        assertEquals(2, r.entries.count { it.scope == MemoryScope.PROJECT })
+        // global：偏好／规矩／事实 3 条；project：口径 1 条
+        assertEquals(3, r.entries.count { it.scope == MemoryScope.GLOBAL })
+        assertEquals(1, r.entries.count { it.scope == MemoryScope.PROJECT })
         assertTrue(r.entries.any { it.kind == MemoryKind.PREFERENCE })
         assertTrue(r.entries.any { it.kind == MemoryKind.RULE })
         assertTrue(r.entries.any { it.kind == MemoryKind.FACT })
