@@ -338,6 +338,24 @@ class ShadowOnDemandTest {
     }
 
     @Test
+    fun `判据2号补_同一毫秒入队与收口_必须取文件最后一行`() {
+        // 回归（2026-11-05 Linux 真红）：入队 pending 与收口 concluded 可能落在**同一毫秒**
+        // （CI 上 mkdir/delete/plant 都在一毫秒内完成）。台账是追加式的 ⇒ 当前态＝**最后一行**；
+        // 旧实现按 `maxByOrNull { atMs }` 取"最新"，并列时返回第一行（入队那行）⇒ pending 永远清不掉。
+        val t = 1_700_000_000_000L
+        ShadowRecheck.enqueue(ledger, "op-same-ms", "write_file", ws.absolutePath, 1, "现场读不动", t)
+        val queued = ShadowRecheck.pendingRows(ledger).single()
+        assertEquals(ShadowRecheck.STATE_PENDING, queued.state)
+        ShadowRecheck.conclude(ledger, queued, ShadowRecheck.STATE_CONCLUDED, "一致", t) // ← 刻意用同一毫秒
+        assertEquals(
+            "同一毫秒里收口，读侧必须按追加顺序取最后一行（不是按 at 并列取第一行）",
+            ShadowRecheck.STATE_CONCLUDED,
+            ShadowRecheck.rowOf(ledger, "op-same-ms")!!.state,
+        )
+        assertTrue("收口后不许再出现在 pending 里", ShadowRecheck.pendingRows(ledger).isEmpty())
+    }
+
+    @Test
     fun `判据2号_下一轮仍读不动_两试到顶收口一条unverifiable_不再重试`() {
         plantReal("执行前的旧内容\n")
         rehearseOnce()

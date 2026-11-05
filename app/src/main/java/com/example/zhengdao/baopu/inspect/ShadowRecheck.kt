@@ -78,19 +78,26 @@ internal object ShadowRecheck {
         append(root, pending.copy(atMs = nowMs, state = state, reason = reason))
     }
 
-    /** 某 opId 的**最新**一行（没有 ⇒ null）。 */
+    /** 某 opId 的**最新**一行（没有 ⇒ null）。
+     *
+     * ⚠️ 2026-11-05 修 Linux 真红：取"最新"不能用 `maxByOrNull { atMs }`——
+     * 台账是**追加式**的，同一毫秒里可能连写「入队 pending」与「收口 concluded」两行
+     * （CI 上 mkdir/delete/plant 都在同一毫秒内完成），`maxByOrNull` 在并列时返回**第一个**，
+     * 于是"最新一行"取到了入队那行 ⇒ pendingRows 永远不为空（Windows 上因 I/O 慢些、毫秒不同而绿）。
+     * 正确口径：**文件里最后出现的那一行才是当前态**（append-only 的语义）。
+     */
     fun rowOf(root: File, opId: String): ShadowRecheckRow? = runCatching {
         fileIn(root).takeIf { it.isFile }
             ?.readLines(Charsets.UTF_8)?.mapNotNull { parseLine(it) }
-            ?.filter { it.opId == opId }?.maxByOrNull { it.atMs }
+            ?.lastOrNull { it.opId == opId }
     }.getOrDefault(null)
 
-    /** 仍 pending 的那些（同 opId 取最新一行再过滤终态；按入队顺序消化）。 */
+    /** 仍 pending 的那些（同 opId 取**最后一行**再过滤终态；按入队顺序消化）。 */
     fun pendingRows(root: File): List<ShadowRecheckRow> = runCatching {
         val f = fileIn(root)
         if (!f.isFile) return@runCatching emptyList()
         f.readLines(Charsets.UTF_8).mapNotNull { parseLine(it) }
-            .groupBy { it.opId }.mapValues { rows -> rows.value.maxByOrNull { it.atMs }!! }
+            .groupBy { it.opId }.mapValues { rows -> rows.value.last() }
             .values.filter { it.state == STATE_PENDING }
             .sortedBy { it.atMs }
     }.getOrDefault(emptyList())
