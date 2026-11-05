@@ -4,9 +4,14 @@
 //
 // 一条一个用例，红的方式各不相同：
 // - 一轮只修一类 ⇒ 传两类必须整单拒；
-// - 不许修判定类 ⇒ 类④ 不在闭集里；判不了就是需人处理（见 Temp 用例）；
+// - 不许修判定类 ⇒ 判不了就是需人处理（见 Temp 用例），类目里永远没有"谁该弹卡"这一行；
 // - 先记后修 ⇒ intent 落不上时盘上必须一字未动；
 // - 可回滚 ⇒ 上次只落 intent 的那一趟，不许被第二趟盖过去。
+//
+// 第四百四十七批（2026-11-05 用户批准）把**类④ 配置漂移**做了进来，这条用例跟着改口：
+// 它钉的从来不是"3"这个数，而是**闭集**——清单写死到名字，加第五类必须先过这条闸（就是
+// 派工单那句"类④之外不加新类别"的落点）；315 批同一条教训：把条目数当判据，加一项时
+// 第一件事是改闸，闸一改就分不清"新增"与"掩盖"。所以这里钉的是**名单**，不是长度。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.knowledge.KnowledgeLayout
@@ -35,10 +40,27 @@ class DataRepairRulesTest {
     }
 
     @Test
-    fun `类四配置漂移是裁定的先不做_闭集里不许占位`() {
-        assertEquals("本批只做三类", 3, RepairKind.entries.size)
-        assertEquals(listOf("index", "ledger", "temp"), RepairKind.entries.map { it.wire })
-        assertNull("类④ 用户 2026-11-03 裁定先不做，不许偷偷留个空位", RepairKind.ofWire("config"))
+    fun `闭集就是这四路的名字_第五类与判定类都不许进来`() {
+        assertEquals(
+            "类目名单写死到名字（派工单边界：类④之外不加新类别）。名单一变就要人来对，" +
+                "不是把数字改大一寸就放行",
+            listOf("index", "ledger", "temp", "config"),
+            RepairKind.entries.map { it.wire },
+        )
+        assertEquals("447 §三批准的一路：配置改回判据表", RepairKind.CONFIG, RepairKind.ofWire("config"))
+        listOf("judge", "opinion", "policy", "model").forEach { wire ->
+            assertNull("判定类（谁该弹卡、政策怎么裁、模型怎么答）永远不在类目里——铁律②：$wire", RepairKind.ofWire(wire))
+        }
+    }
+
+    @Test
+    fun `三态一个字没改_加路不许顺手多造一个态`() {
+        // 派工单通用条款：**不改三态**。三态多一格，"修不了"就有地方被写成"没事"。
+        assertEquals(
+            "三态名单（可自修／无需修／需人处理）——多一格就是替『修不了』找了个藏身处",
+            listOf("fixable", "nothing", "need_human"),
+            RepairVerdict.entries.map { it.wire },
+        )
     }
 
     @Test

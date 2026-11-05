@@ -108,4 +108,108 @@ class DataRepairIndexTest {
         assertTrue(KnowledgeIndexStore.save(ws, index, built.snapshot))
         assertNotNull("重建后仍读得动", KnowledgeIndexStore.loadRead(ws).valueOrNull())
     }
+
+    // ── 447 §一①：不一致的对象是**索引↔清单这一对** ─────────────────────────
+    //
+    // 408 只认"索引自己读不动"。447 把判据扩到这一对，依据是源码里唯一的那处写口
+    // （`KnowledgeIndexStore.save`：索引写成才写快照 ⇒ 这一对天然成对，缺一条就是半截）。
+    // 依旧**不比篇数**——最后那条用例就是钉"没把 408 拒掉的假阳捡回来"。
+
+    /** 先修出一份健康的成对文件（走既有接口，不手搓 JSON）。 */
+    private fun seedPair() {
+        KnowledgeLayout.ensureDirs(ws)
+        val built = KnowledgeIndexStore.build(ws, filesDir, null, null, now = now)
+        assertTrue("成对落盘：${built.report}", KnowledgeIndexStore.save(ws, requireNotNull(built.index), built.snapshot))
+    }
+
+    @Test
+    fun `清单读坏了_索引读得动_也算不一致`() {
+        seedPair()
+        assertEquals("起手该是健康的成对", RepairVerdict.NOTHING, DataDoctor.diagnoseIndex(ws, now).verdict)
+
+        KnowledgeLayout.snapshotFile(ws).writeText("{ not json", Charsets.UTF_8)
+        val found = DataDoctor.diagnoseIndex(ws, now)
+        assertEquals(RepairVerdict.FIXABLE, found.verdict)
+        assertTrue("要说清坏的是清单：${found.reason}", found.reason.startsWith("清单读坏了"))
+        assertTrue("两条目标都要进账：${found.targets}",
+            found.targets.contains("知识库/索引/知识库索引.json") && found.targets.contains("知识库/索引/快照.json"))
+
+        assertTrue(DataDoctor.repairIndex(ws, filesDir, now).done)
+        assertNotNull("清单回来了", KnowledgeIndexStore.loadSnapshotRead(ws).valueOrNull())
+        assertEquals(RepairVerdict.NOTHING, DataDoctor.diagnoseIndex(ws, now).verdict)
+    }
+
+    @Test
+    fun `成对文件只剩一条_说得出只剩哪条`() {
+        seedPair()
+        assertTrue(KnowledgeLayout.snapshotFile(ws).delete())
+
+        val found = DataDoctor.diagnoseIndex(ws, now)
+        assertEquals(RepairVerdict.FIXABLE, found.verdict)
+        assertTrue("要说「只剩一条」：${found.reason}", found.reason.contains("成对文件只剩一条"))
+        assertTrue("要点名缺的那条：${found.reason}", found.reason.contains("快照.json 不在"))
+
+        assertTrue(DataDoctor.repairIndex(ws, filesDir, now).done)
+        assertTrue("两条都该在", KnowledgeLayout.indexFile(ws).isFile && KnowledgeLayout.snapshotFile(ws).isFile)
+        assertEquals(RepairVerdict.NOTHING, DataDoctor.diagnoseIndex(ws, now).verdict)
+    }
+
+    @Test
+    fun `两条都没建过是「从没建过」不是不一致`() {
+        val fresh = File("build/tmp/repair447-index-pair-fresh").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val plan = DataDoctor.diagnoseIndex(fresh, now)
+        assertEquals(RepairVerdict.NOTHING, plan.verdict)
+        assertTrue("要说的是这一对，不是单独一条：${plan.reason}", plan.reason.contains("索引与清单都还没建过"))
+    }
+
+    @Test
+    fun `不比篇数_408 拒掉的假阳一个都没捡回来`() {
+        // 索引里说 0 篇（空工作区），盘上也确实没有文档 ⇒ 这条一路是"读得动"，不是"对不上"。
+        // 判据层压根没有拿 filesIndexed／entries.size 比大小的口：`indexPairPlan` 的
+        // 两个 Ok 分支只把篇数写进措辞，不改结论——所以"盘上多一个文件就触发重建"这种假阳
+        // 在结构上就长不出来（用例把结论钉死，措辞随它变）。
+        seedPair()
+        val docs = File(ws, "知识库/整理/新文档.md").apply {
+            parentFile?.mkdirs()
+            writeText("# 新文档\n内容\n", Charsets.UTF_8)
+        }
+        val plan = DataDoctor.diagnoseIndex(ws, now)
+        assertEquals(
+            "刚多了一个文件、索引还没更新 ⇒ 不许判成不一致（那是 408 §二拒过的假阳）",
+            RepairVerdict.NOTHING,
+            plan.verdict,
+        )
+        assertTrue(docs.delete())
+    }
+
+    // ── 447 §一①「只调既有接口（grep 为证）」的源码门禁 ────────────────────
+
+    @Test
+    fun `索引这一路没有新写一套逻辑_只调既有读写口`() {
+        val f = File("src/main/java/com/example/zhengdao/baopu/repair/DataDoctor.kt")
+        assertTrue("找不到执行层：$f", f.isFile)
+        val text = f.readText(Charsets.UTF_8)
+            .replace(Regex("""/\*[\s\S]*?\*/"""), " ")
+            .replace(Regex("(?m)//.*$"), " ")
+
+        // 既有接口四件套：两条读口＋一条建＋一条成对写口
+        listOf(
+            "KnowledgeIndexStore.loadRead(",
+            "KnowledgeIndexStore.loadSnapshotRead(",
+            "KnowledgeIndexStore.build(",
+            "KnowledgeIndexStore.save(",
+        ).forEach { word ->
+            assertTrue("既有索引接口没被调用（$word）⇒ 这一路是自己另写了一套", text.contains(word))
+        }
+        // 这些一律不许出现在执行层：出现了就是"新写了一套索引"
+        listOf(
+            "KbIndexer", "KbIndexCodec", "KnowledgeSnapshot.encode", "KnowledgeSnapshot.capture",
+            "LibraryPaths.atomicWrite", "writeText",
+        ).forEach { word ->
+            assertFalse("执行层出现了 $word（索引的逻辑只许住在 knowledge/ 那层）", text.contains(word))
+        }
+    }
 }

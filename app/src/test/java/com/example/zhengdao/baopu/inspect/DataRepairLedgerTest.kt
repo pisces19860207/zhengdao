@@ -92,4 +92,35 @@ class DataRepairLedgerTest {
         val plan = DataDoctor.diagnoseLedger(root, ledgerName, now)
         assertEquals(RepairVerdict.NOTHING, plan.verdict)
     }
+
+    // ── 447 派工单判据②：「坏行前后字节不变 ＋ 新增一行」──两半分开钉 ────────
+    //
+    // "新增一行"新增在**哪一本**上最容易被读歪：往被修的那本账里补一行，下一轮体检就会
+    // 把这条"记录"也算成损坏（越修越多，408 §② 说的自毒）。所以这里把两半分开钉：
+    // 那本账连字节数都不许变；新增的那条损坏记录落在**修复账**上。
+
+    @Test
+    fun `被修的账一个字节都不变_新增的那条记录在修复账上`() {
+        seed(bad = 3)
+        val ledger = File(root, ledgerName)
+        val linesBefore = ledger.readLines(Charsets.UTF_8).size
+        val bytesBefore = ledger.length()
+
+        val out = DataDoctor.repairLedger(root, ledgerName, now)
+        assertTrue("该修成：${out.note}", out.done)
+        assertTrue("给人的一句话要说清记了几行损坏：${out.note}", out.note.contains("已记损坏行 3"))
+        assertTrue("还要说清原行没动：${out.note}", out.note.contains("原行一字未动"))
+        assertFalse("第二趟不许重复记：${out.note}", DataDoctor.repairLedger(root, ledgerName, now).done)
+
+        assertEquals("被修的账不许多一行", linesBefore, ledger.readLines(Charsets.UTF_8).size)
+        assertEquals("连字节数都不许变（多了就是往里写了东西）", bytesBefore, ledger.length())
+
+        val rows = RepairLedger.read(root)
+        assertEquals("损坏记录＝修复账上的一次记账（intent＋result，408 的先记后修）", 2, rows.size)
+        assertEquals(RepairKind.LEDGER.wire, rows[0].kind)
+        assertEquals("指向被记的那本账", ledgerName, rows[0].target)
+        assertEquals(RepairLedger.OUTCOME_DONE, rows[0].outcome)
+        // 账行里的"凭什么"是判据层那句（含坏行数）；动手后的结果在 note 里，两样各归各。
+        assertTrue("intent 行要带坏行计数：${rows[1].reason}", rows[1].reason.contains("3 行读不懂"))
+    }
 }

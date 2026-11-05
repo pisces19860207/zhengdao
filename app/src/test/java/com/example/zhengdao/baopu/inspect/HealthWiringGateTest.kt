@@ -148,6 +148,71 @@ class HealthWiringGateTest {
         )
     }
 
+    // ── ⑨ 第四百四十七批：同一个口接满四路 ─────────────────────────────────
+    //
+    // 这一组的要害不是"四路在不在"，而是**它们共用 419 那一个收尾口**：派工单写"与 419 同一
+    // 修复器，别重造"。所以钉三件事——① 四路都在 afterHealthRun 里各一次；② 体检侧只递一次
+    // （不许一路一行日志、一路一套账）；③ 配置那一路的真源只有判据表，执行层连键名都不认。
+
+    @Test
+    fun `四路自修接在同一个收尾口_一路一类`() {
+        val doctor = code("baopu/repair/DataDoctor.kt")
+        listOf(
+            "残留" to "repairResidue(",
+            "索引" to "repairIndex(",
+            "账本" to "repairLedger(",
+            "配置" to "repairConfig(",
+        ).forEach { (label, call) ->
+            assertTrue("afterHealthRun 里没有 $label 那一路（没找到 route(\"$label\") { $call）", doctor.contains("route(\"$label\") { $call"))
+        }
+
+        val run = code("baopu/inspect/HealthRun.kt")
+        assertEquals(
+            "体检收尾只许递一次自修（一路一行的写法会把『御医自修』撑成流水账）",
+            1,
+            Regex("""DataDoctor\.afterHealthRun\(""").findAll(run).count(),
+        )
+        assertTrue("重建索引要用的 filesDir 要递进去", run.contains("ctx.filesDir"))
+        assertTrue("配置那一路的读口要递进去", run.contains("NightWatchConfig(ctx)"))
+    }
+
+    @Test
+    fun `少给输入要显式说没跑_不许静默跳过`() {
+        val doctor = code("baopu/repair/DataDoctor.kt")
+        assertTrue("没给 filesDir／读口时那一路要自己说「这路没跑」", doctor.contains("这路没跑"))
+        assertTrue("账本那一路扫的是体检自己那本账", doctor.contains("HealthLedger.FILE_NAME"))
+    }
+
+    @Test
+    fun `配置那一路的真源只有判据表_执行层不认键名也不认缺省值`() {
+        val doctor = code("baopu/repair/DataDoctor.kt")
+        listOf("getSharedPreferences", "SharedPreferences", "zhengdao-inspect", "nightwatch_auto").forEach { word ->
+            assertFalse("执行层出现了 $word（键名／文件名／缺省只许住在属主模块，抄一份就是两套读法）", doctor.contains(word))
+        }
+        assertTrue("改回去的目标值取自判据表", doctor.contains("ConfigCriteria.ROWS.associate"))
+        assertTrue("表外的键在执行层再挡一道", doctor.contains("expected[key] ?: continue"))
+
+        val adapter = code("baopu/repair/NightWatchConfig.kt")
+        assertTrue("生效值要走属主的既有读口", adapter.contains("NocturnalAuto.switchOn("))
+        assertTrue("文件名与键名引用属主常量", adapter.contains("NocturnalAuto.SWITCH_FILE"))
+        assertTrue("键名引用属主常量", adapter.contains("NocturnalAuto.SWITCH_KEY"))
+        listOf("\"zhengdao-inspect\"", "\"nightwatch_auto\"", "WEEKLY_ENABLED").forEach { lit ->
+            assertFalse("适配器里出现了字面量 $lit（该引常量）", adapter.contains(lit))
+        }
+        assertTrue("写只用 KTX 的 edit{}（lint 预算 0，不许涨）", adapter.contains(".edit {"))
+        assertFalse("不许出现 .edit().put…（UseKtx 会记一条）", adapter.contains(".edit().put"))
+        assertTrue("只认自己那一个键：别的键读不出", adapter.contains("key != NocturnalAuto.SWITCH_KEY"))
+    }
+
+    @Test
+    fun `勘验层没有因为配置这一路多一个写口`() {
+        // 408 分层的那条理由在 447 之后仍然成立：写盘一律住在 repair/，inspect/ 只出判据。
+        val gate = code("baopu/inspect/DataRepair.kt")
+        listOf("getSharedPreferences", "SharedPreferences", "writeText", "appendText", "mkdirs", "edit {").forEach { word ->
+            assertFalse("判据层出现了 $word（配置路把写口带进勘验层了）", gate.contains(word))
+        }
+    }
+
     // ── ⑦ 部位表是**数据**，不是判据（第三百二十六批）──────────────────────
     //
     // 315 自报：这里原来写着 `assertEquals(14, OrganCensus.PROBES.size)`。
