@@ -248,15 +248,30 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `pending三列的写清读语句`() {
-        val save = BaopuSql.savePending(7L, "write_file", "{\"path\":\"a.txt\"}", 123L)
-        assertTrue(save.sql.startsWith("UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ?"))
-        assertEquals(listOf("write_file", "{\"path\":\"a.txt\"}", "123", "7"), save.args.toList())
+    fun `pending五列的写清读语句`() {
+        // 430 加到 v21 的出处两列（pending_run_id／pending_task_id）与本批 v22 合流后，
+        // 写语句是五列绑定：三列正文 ＋ 出处两列 ＋ WHERE id。
+        val save = BaopuSql.savePending(7L, "write_file", "{\"path\":\"a.txt\"}", 123L, "run-1", "task-1")
+        assertTrue(
+            save.sql.startsWith(
+                "UPDATE session SET pending_tool = ?, pending_args = ?, pending_at = ?, " +
+                    "pending_run_id = ?, pending_task_id = ?",
+            ),
+        )
+        assertEquals(
+            listOf("write_file", "{\"path\":\"a.txt\"}", "123", "run-1", "task-1", "7"),
+            save.args.toList(),
+        )
         val clear = BaopuSql.clearPending(7L)
         assertTrue("清空绑 NULL 不是空串", clear.sql.contains("pending_tool = NULL"))
         assertEquals(listOf("7"), clear.args.toList())
         val load = BaopuSql.loadPending(7L)
-        assertTrue(load.sql.startsWith("SELECT pending_tool, pending_args, pending_at FROM session WHERE id = ?"))
+        assertTrue(
+            load.sql.startsWith(
+                "SELECT pending_tool, pending_args, pending_at, pending_run_id, pending_task_id " +
+                    "FROM session WHERE id = ?",
+            ),
+        )
     }
 
     // ── memory 表语句（v2 · 刀 0b） ───────────────────────────────────────
