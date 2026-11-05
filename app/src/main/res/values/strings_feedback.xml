@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第四百五十二批：反馈入口文案。单独成文件（照 291 批体检那本）：共享 strings.xml
+     每批都有人碰，抽出来少一处冲突点；键与 values-en/strings_feedback.xml 一一对应。 -->
+<resources>
+    <string name="settings_feedback_title">反馈</string>
+    <string name="settings_feedback_copy">复制诊断</string>
+    <string name="settings_feedback_copy_desc">只含版本、机型、系统与账摘要</string>
+    <string name="settings_feedback_copied">已复制诊断块</string>
+    <string name="settings_feedback_copy_failed">复制没成功，请再点一次</string>
+    <string name="settings_feedback_github">在 GitHub 反馈</string>
+    <string name="settings_feedback_github_desc">打开新建问题页；没自动带入就粘贴诊断块</string>
+    <string name="settings_feedback_email">发邮件</string>
+    <string name="settings_feedback_email_desc">预填同一块诊断</string>
+    <string name="settings_feedback_issue_title">[问题] 证道反馈</string>
+    <string name="settings_feedback_mail_subject">证道反馈</string>
+    <string name="settings_feedback_open_failed">没找到能打开的应用</string>
+    <string name="settings_feedback_no_upload">不点就不会发：没有后台收集，也没有自动上传</string>
+</resources>

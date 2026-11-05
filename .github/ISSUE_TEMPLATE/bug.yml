@@ -1,0 +1,76 @@
+name: 报问题
+description: 崩了、卡住了、结果不对——按下面八栏填，能复现的我们才修得动。
+title: "[问题] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先谢谢反馈。两件事请留意：
+
+        - **不要贴密钥、API token、聊天正文或文件原文**。日志片段只放报错那几行，其余用「…」代替。
+        - App 里「设置 → 反馈 → 复制诊断」会把版本、机型、系统与账摘要拼好，可直接粘进下面「日志片段」一栏；那一块不含任何敏感内容，也不会自动上传。
+  - type: input
+    id: device
+    attributes:
+      label: 机型
+      description: 手机型号，例如 荣耀 Magic5 Pro
+      placeholder: 机型
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系统版本
+      description: Android 版本与 API 等级，例如 Android 16 (API 36)
+      placeholder: Android 16 (API 36)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 抱朴版本
+      description: 设置页「关于」里那一行；诊断块的第一行也是它
+      placeholder: 2.2.2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 操作步骤
+      description: 从打开 App 到出问题，按 1 / 2 / 3 写清楚
+      placeholder: |
+        1. 打开抱朴
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望
+      description: 你以为会发生什么
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际
+      description: 实际发生了什么；有报错就写报错的那句话
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志片段
+      description: 粘贴「复制诊断」那一块，或出错前后几行日志。请勿贴入密钥、token、聊天正文、文件原文
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图
+      description: 把截图直接拖进这个框即可（GitHub 会生成图片链接）。没有截图就写「无」
+    validations:
+      required: false

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 452: feedback section wording. Mirrors values/strings_feedback.xml key by key. -->
+<resources>
+    <string name="settings_feedback_title">Feedback</string>
+    <string name="settings_feedback_copy">Copy diagnostics</string>
+    <string name="settings_feedback_copy_desc">Version, device, system and ledger summary only</string>
+    <string name="settings_feedback_copied">Diagnostics copied</string>
+    <string name="settings_feedback_copy_failed">Copy failed, please try again</string>
+    <string name="settings_feedback_github">Report on GitHub</string>
+    <string name="settings_feedback_github_desc">Opens a new issue; paste the block if not filled in</string>
+    <string name="settings_feedback_email">Send email</string>
+    <string name="settings_feedback_email_desc">Prefills the same diagnostics block</string>
+    <string name="settings_feedback_issue_title">[Bug] Zhengdao feedback</string>
+    <string name="settings_feedback_mail_subject">Zhengdao feedback</string>
+    <string name="settings_feedback_open_failed">No app available to open this</string>
+    <string name="settings_feedback_no_upload">Nothing is sent unless you tap: no background collection, no auto upload</string>
+</resources>

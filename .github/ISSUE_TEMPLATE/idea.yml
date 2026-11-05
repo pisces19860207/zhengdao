@@ -1,0 +1,35 @@
+name: 提想法
+description: 想要什么能力、现在怎么凑合、为什么不够——三栏说完就够了。
+title: "[想法] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        写想法不用写技术方案，说清「想干什么」和「现在卡在哪」就行。
+
+        请勿贴入密钥、API token、聊天正文或文件原文。
+  - type: textarea
+    id: want
+    attributes:
+      label: 想做什么
+      description: 一句话说清你想让抱朴替你做成哪件事
+      placeholder: 例如：想把一整个文件夹里的截图按日期归好
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 现在怎么凑合
+      description: 现在是用什么办法绕过去的（手动做、别的工具、还是干脆没做）
+      placeholder: 例如：一个一个点开看日期，再手动改名
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 为什么不够
+      description: 现在这个办法哪里别扭、慢、容易错；有多少次会遇到
+      placeholder: 例如：一次几十张就要十几分钟，还容易漏
+    validations:
+      required: true

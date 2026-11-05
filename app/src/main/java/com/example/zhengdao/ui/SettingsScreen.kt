@@ -280,6 +280,9 @@ fun SettingsScreen() {
                 }
             }
 
+            // 第四百五十二批：反馈入口独立成块，本页只挂这一行。
+            FeedbackSection()
+
             Spacer(Modifier.height(8.dp))
         }
 

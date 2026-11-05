@@ -115,6 +115,12 @@ If you use a proxy app (Clash, v2rayNG, etc.): switch it to VPN mode; if per-app
 
 Android may kill backgrounded apps. For long tasks, keep Zhengdao in the foreground, lock it in Recents, or disable battery optimisation. If it is killed anyway, for Baopu, messages sent while a run is in progress are queued, and runs continue when you switch tabs or leave the app.
 
+## How to give feedback
+
+- Report a bug: open [Issues → New issue](https://github.com/pisces19860207/zhengdao/issues/new/choose), pick "Report a bug", and paste the block from Settings → Feedback → Copy diagnostics into the log field.
+- Suggest an idea: pick "Suggest an idea" at the same place and say what you want, how you cope today, and why that is not enough.
+- No GitHub? Settings → Feedback → Send email prefills the same diagnostics block; **nothing leaves the device unless you tap**.
+
 ## Privacy
 
 - Keys are stored on-device and never uploaded.
