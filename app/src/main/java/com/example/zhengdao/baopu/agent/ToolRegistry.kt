@@ -257,6 +257,9 @@ internal object ToolGroupTable {
         "browser_tabs_close" to ToolGroup.BROWSER,
         "file_info" to ToolGroup.FILES,
         "find_files" to ToolGroup.FILES,
+        // 492 B②：索引浏览/检索归 FILES（默认不可见，capabilities 解锁——B1 硬卡不破）。
+        "index_browse" to ToolGroup.FILES,
+        "index_search" to ToolGroup.FILES,
         "move_path" to ToolGroup.FILES,
         "convert_encoding" to ToolGroup.FILES,
         "delete_path" to ToolGroup.FILES,
@@ -1272,6 +1275,9 @@ internal object BaopuToolCatalog {
         "list_dir",
         "search_in_files",
         "find_files",
+        // 492 B②：索引两件默认「启用」（组归 FILES 仍默认不可见——解锁即用，同 find_files 口径）
+        "index_browse",
+        "index_search",
         "book_outline",
         "file_info",
         "write_file",
@@ -1394,6 +1400,10 @@ internal object BaopuToolCatalog {
         Entry("list_dir") { ListDirTool.spec(it) },
         Entry("search_in_files") { SearchInFilesTool.spec(it) },
         Entry("find_files") { FindFilesTool.spec(it) },
+        // 492 B②：索引浏览/检索两件（读 search.db 的账，FREE 只读；FILES 组默认不可见，
+        // capabilities 解锁——默认可见 ≤12 的硬卡不破）。index_search 复用既有检索。
+        Entry("index_browse") { IndexTools.browseSpec(it) },
+        Entry("index_search") { IndexTools.searchSpec(it) },
         Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },

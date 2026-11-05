@@ -15,6 +15,8 @@ import com.example.zhengdao.baopu.FileOpLog
 import com.example.zhengdao.baopu.FileOpRules
 import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.FilePolicy
+import com.example.zhengdao.baopu.WsRoot
+import com.example.zhengdao.baopu.WorkspaceRootRules
 import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.RiskGate
@@ -258,6 +260,15 @@ internal class GuardPipeline(
      * 管线这一格**仍然不喂影子**（`TaskGrantWiringGateTest` 的 `P1生产不传影子` 钉的就是这一条）。
      */
     private val grantWiring: GrantWiring = TaskGrantWire,
+    /**
+     * 492 A 段：多根工作区的**附加根**（`[{path, mode, label}]`，主根由 [workspaceRoot] 给）。
+     *
+     * 为什么是注入而不是在这里读单例：管线零 Android，Context 只许到装配层（本仓铁律）；
+     * 生产唯一注入点 `BaopuRuntime` 传 `{ WorkspaceRoots.extras(appCtx) }`。排在参数表**最后**
+     * 且缺省空表 ⇒ 存量调用点（含测试）一个字不改、行为逐字节不变：清单只有主根一条，
+     * ② 段每条出口折回 `File(主根, raw)`——A④「单根 0 回归」由此结构保证。
+     */
+    private val extraRoots: () -> List<WsRoot> = { emptyList() },
 ) {
 
     sealed interface Result {
@@ -438,6 +449,7 @@ internal class GuardPipeline(
             guardPath(call, spec.name)
         }
         if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
+        if (guarded is Guarded.Fail) return Prepared.Settled(Result.Failed(call, guarded.reason))
         val effectiveCall = (guarded as Guarded.Yes).call
 
         // ③ 判定（**风险矩阵唯一口径**，第二百二十三批；批准路径跳过）
@@ -466,7 +478,7 @@ internal class GuardPipeline(
                 val root = workspaceRoot()
                 // 覆盖判定要的事实：这次会写到的目标里，哪些**已经在盘上**。
                 // 只查这几个目标（≤3 个 stat），不做目录遍历；查不到 ⇒ 当不存在（矩阵那边是纯函数）。
-                val existing = writeTargets(effectiveCall.name, effectiveCall.arguments, root)
+                val existing = writeTargets(effectiveCall.name, effectiveCall.arguments, ::resolveLoose)
                     .filter { it.exists() }
                     .map { it.absolutePath }
                     .toSet()
@@ -587,7 +599,7 @@ internal class GuardPipeline(
         val laneRoot = workspaceRoot()
         val grantLane = grantWiring.decide(
             call = effectiveCall,
-            targets = writeTargets(effectiveCall.name, effectiveCall.arguments, laneRoot),
+            targets = writeTargets(effectiveCall.name, effectiveCall.arguments, ::resolveLoose),
             verdict = localVerdict,
             root = laneRoot,
             isWrite = !spec.readOnly,
@@ -739,7 +751,7 @@ internal class GuardPipeline(
         // 落不上**只 log、不回滚、也不补通用账**——动作已经发生，208 是留痕不是闸门（71 批① 口径）；
         // 补通用账会让同一个 opId 在账上变成两件事，那正是 N7 要拦的。
         if (grantPending != null) {
-            val writtenTo = writeTargets(spec.name, effectiveCall.arguments, workspaceRoot()).firstOrNull()
+            val writtenTo = writeTargets(spec.name, effectiveCall.arguments, ::resolveLoose).firstOrNull()
             val laid = writtenTo != null && TaskGrantWire.recordApplied(
                 grantPending,
                 writtenTo,
@@ -843,8 +855,14 @@ internal class GuardPipeline(
         /** 通过（[call] 的路径参数已改写成绝对路径）。 */
         data class Yes(val call: ToolCall) : Guarded
 
-        /** 拒绝（系统/凭据目录，或原件区红线）——终止本轮，回灌原文。 */
+        /** 拒绝（系统/凭据目录，或原件区红线，或 RO 根写拒）——终止本轮，回灌原文。 */
         data class No(val reason: String) : Guarded
+
+        /**
+         * 492 A②：同名歧义——**可重试**的失败（候选列给模型，回灌原文让它换路），
+         * 不许猜、也不该当越界终止本轮：路径是真的，只是「哪一根」没说清。
+         */
+        data class Fail(val reason: String) : Guarded
     }
 
     /**
@@ -876,15 +894,16 @@ internal class GuardPipeline(
         if (keys.isEmpty() && arrayPathKeysFor(toolName).none { args.optJSONArray(it) != null }) {
             return Guarded.Yes(call)
         }
+        val roots = rootList()
         val root = workspaceRoot()
 
-        // P0-2：先把该工具**会写盘的目标**判一遍原始区红线（读类工具不在此限）
-        for (target in writeTargets(toolName, args, root)) {
-            rawRejection(target)?.let { reason ->
-                feedScopeEscape(call.id, toolName, target.absolutePath, reason, redline = "raw")
-                return Guarded.No(reason)
-            }
-        }
+        // 492 A②：同名歧义先拦（keys ∪ 批量 ∪ image_ops out 收一遍 raw）——命中多个根
+        // ⇒ Fail（可重试，候选列给模型），不许猜；这一步先于一切写/读判定。
+        ambiguityOf(roots, toolName, args)?.let { return Guarded.Fail(it) }
+        val resolveStrict: (String) -> File = { raw -> resolveVia(roots, raw) }
+
+        // P0-2 ＋ 492 RO：写类目标的红线（原件区 / 只读根）各判一遍，命中即拒整条。
+        writeRedLines(roots, toolName, call.id, args, resolveStrict)?.let { return Guarded.No(it) }
 
         var newArgs = args
         for (key in keys) {
@@ -896,7 +915,7 @@ internal class GuardPipeline(
                 }
                 continue
             }
-            val target = resolve(root, raw)
+            val target = resolveStrict(raw)
             // 287：唯一硬边界——系统与凭据目录一律拒（其余全盘可读写）
             fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
                 log("抱朴管线：拒绝 $toolName $raw（${FilePolicy.denyReason(target)}）")
@@ -908,11 +927,38 @@ internal class GuardPipeline(
             // 用户点了拒绝也照样会走到这里，账上就会出现"删过"而文件其实没动（看着做过、其实没做）。
             // 记账挪到 [finish] 的 Ok 分支：真的执行成功才落一行。
         }
-        val batch = guardBatchPaths(root, toolName, call.id, args, newArgs)
+        val batch = guardBatchPaths(roots, toolName, call.id, args, newArgs)
         batch.second?.let { reason -> return Guarded.No(reason) }
         newArgs = batch.first
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
+    }
+
+    /**
+     * 写类目标的红线（[guardPath] 的 P0-2 ＋ 492 RO，拆出来让守卫主干只留顺序语义）：
+     * 该工具**会写盘的真实目标**（严格解析后，含批量与 image_ops out）逐个判
+     * 原件区（`rawRejection`）与只读根（[WorkspaceRootRules.writeDenial]），
+     * 命中即发 OVER_SCOPE 事实事件并返回拒绝原文；null = 都不涉及。
+     */
+    private fun writeRedLines(
+        roots: List<WsRoot>,
+        toolName: String,
+        callId: String,
+        args: JSONObject,
+        resolve: (String) -> File,
+    ): String? {
+        for (target in writeTargets(toolName, args, resolve)) {
+            rawRejection(target)?.let { reason ->
+                feedScopeEscape(callId, toolName, target.absolutePath, reason, redline = "raw")
+                return reason
+            }
+            WorkspaceRootRules.writeDenial(roots, target)?.let { reason ->
+                log("抱朴管线：拒绝 $toolName 写只读根 ${target.absolutePath}")
+                feedScopeEscape(callId, toolName, target.absolutePath, reason, redline = "ro")
+                return reason
+            }
+        }
+        return null
     }
 
     /**
@@ -926,7 +972,7 @@ internal class GuardPipeline(
      *   本层**不造第二把出处判据**，也不在没有它的时候塞一个假的进去；
      * - **不发参数错**：`path` 为空是"没给路径"，不是越界（[guardPath] 那一支不喂这里）。
      *
-     * @param redline 撞的是哪条硬边界（机器键 `redline:` 的档）：`raw`＝原件区只读／`policy`＝系统与凭据目录
+     * @param redline 撞的是哪条硬边界（机器键 `redline:` 的档）：`raw`＝原件区只读／`policy`＝系统与凭据目录／`ro`＝只读根
      */
     private fun feedScopeEscape(
         opId: String,
@@ -1032,7 +1078,7 @@ internal class GuardPipeline(
         }
         // 466：批量形参里的每一条都入账（「每笔读写入账」不许有黑洞：删 10 个就是 10 行）
         for (raw in PathBatch.of(args)) targets += File(raw)
-        targets += writeTargets(spec.name, args, workspaceRoot())
+        targets += writeTargets(spec.name, args, ::resolveLoose)
         val purpose = FileOpRules.purposeOf(spec.name, args)
         for (target in targets) {
             val normalized = FilePolicy.normalize(target)
@@ -1061,8 +1107,55 @@ internal class GuardPipeline(
         return true
     }
 
-    private fun resolve(root: File, raw: String): File =
-        if (File(raw).isAbsolute) File(raw) else File(root, raw)
+    /**
+     * ③/finish 两处的解析器（宽口径）：那两处的 arguments 已被 ② 改写成绝对路径，
+     * 绝对原样、相对落主根——与旧的单根解析逐字同算式，只是不再传 root 形参。
+     */
+    private fun resolveLoose(raw: String): File =
+        if (File(raw).isAbsolute) File(raw) else File(workspaceRoot(), raw)
+
+    /**
+     * 492 A①：多根清单（主根恒在第 0 位，[WorkspaceRootRules.manifest] 拨）。
+     * 每次现算：主根跟着 `workspaceRoot()` 走、附加根文件可被当场改（mtime 缓存在壳里）。
+     */
+    private fun rootList(): List<WsRoot> = WorkspaceRootRules.manifest(workspaceRoot(), extraRoots())
+
+    /**
+     * 492 A②：多根**严格**解析。歧义必须在 [ambiguityOf] 就拦下；真走到这里还歧义
+     * （理论不可达）回落主根——保守方向是「落到用户自己的工作区」，不是猜任何一个根。
+     */
+    private fun resolveVia(roots: List<WsRoot>, raw: String): File =
+        when (val r = WorkspaceRootRules.resolve(roots, raw)) {
+            is WorkspaceRootRules.Resolution.Absolute -> r.file
+            is WorkspaceRootRules.Resolution.Single -> r.file
+            is WorkspaceRootRules.Resolution.Fallback -> r.file
+            is WorkspaceRootRules.Resolution.Ambiguous -> File(roots.first().dir, raw)
+        }
+
+    /**
+     * 492 A②：这条调用要解析的 raw 全收一遍（单数键 ∪ 批量 ∪ image_ops 的 out），
+     * 遇到同名歧义即给原文——先于一切写/读判定，「不许猜」从这一层生效。
+     */
+    private fun ambiguityOf(roots: List<WsRoot>, toolName: String, args: JSONObject): String? {
+        val raws = buildList {
+            pathKeysFor(toolName, args).forEach { k ->
+                args.optString(k).trim().takeIf { it.isNotEmpty() }?.let(::add)
+            }
+            arrayPathKeysFor(toolName).forEach { k ->
+                args.optJSONArray(k)?.let { arr ->
+                    for (i in 0 until arr.length()) arr.optString(i).trim().takeIf { it.isNotEmpty() }?.let(::add)
+                }
+            }
+            if (toolName == "image_ops") args.optString("out").trim().takeIf { it.isNotEmpty() }?.let(::add)
+        }.distinct()
+        raws.forEach { raw ->
+            val r = WorkspaceRootRules.resolve(roots, raw)
+            if (r is WorkspaceRootRules.Resolution.Ambiguous) {
+                return WorkspaceRootRules.ambiguityMessage(r, roots)
+            }
+        }
+        return null
+    }
 
     /**
      * 该工具需要解析的路径参数名（按工具的**真实**参数名，不是一律 `path`）。
@@ -1096,9 +1189,9 @@ internal class GuardPipeline(
         else -> emptyList()
     }
 
-    /** 批量形参里的每一项解析成 File（未改写前的相对路径也认，与 [resolve] 同一口径）。 */
-    private fun batchTargets(root: File, args: JSONObject): List<File> =
-        PathBatch.of(args).map { resolve(root, it) }
+    /** 批量形参里的每一项解析成 File（未改写前的相对路径也认，与传入的解析器同一口径）。 */
+    private fun batchTargets(resolve: (String) -> File, args: JSONObject): List<File> =
+        PathBatch.of(args).map(resolve)
 
     /**
      * 批量形参的第 ② 段（第四百六十六批）：逐项解析 ＋ 逐项拒系统/凭据目录，通过后
@@ -1114,13 +1207,14 @@ internal class GuardPipeline(
      * @return (改写后的参数, 拒绝原文)；拒绝原文非 null ⇒ 第一个值不要用
      */
     private fun guardBatchPaths(
-        root: File,
+        roots: List<WsRoot>,
         toolName: String,
         callId: String,
         args: JSONObject,
         newArgs: JSONObject,
     ): Pair<JSONObject, String?> {
         var out = newArgs
+        val root = workspaceRoot()
         for (key in arrayPathKeysFor(toolName)) {
             val arr = args.optJSONArray(key) ?: continue
             if (arr.length() == 0) continue
@@ -1128,10 +1222,16 @@ internal class GuardPipeline(
             for (i in 0 until arr.length()) {
                 val raw = arr.optString(i).trim()
                 if (raw.isEmpty()) continue
-                val target = resolve(root, raw)
+                val target = resolveVia(roots, raw)
                 fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
                     log("抱朴管线：拒绝 $toolName $key[$i] $raw（${FilePolicy.denyReason(target)}）")
                     feedScopeEscape(callId, toolName, target.absolutePath, reason, redline = "policy")
+                    return newArgs to reason
+                }
+                // 492 RO：批量工具（delete/move/copy）的每一条都是写目标，RO 根同样拒。
+                WorkspaceRootRules.writeDenial(roots, target)?.let { reason ->
+                    log("抱朴管线：拒绝 $toolName $key[$i] 写只读根 ${target.absolutePath}")
+                    feedScopeEscape(callId, toolName, target.absolutePath, reason, redline = "ro")
                     return newArgs to reason
                 }
                 rewritten.put(target.absolutePath)
@@ -1151,9 +1251,9 @@ internal class GuardPipeline(
      *   （`ImageOpsTool.writeOne`：`File(src.parentFile, …)`）——所以缺省时要判源图路径，
      *   显式 `out` 时源图只读不写（`read_file` 也能读原件区，读不改字节）。
      */
-    private fun writeTargets(toolName: String, args: JSONObject, root: File): List<File> {
+    private fun writeTargets(toolName: String, args: JSONObject, resolve: (String) -> File): List<File> {
         fun resolved(key: String): File? =
-            args.optString(key).trim().takeIf { it.isNotEmpty() }?.let { resolve(root, it) }
+            args.optString(key).trim().takeIf { it.isNotEmpty() }?.let(resolve)
 
         return when (toolName) {
             "write_file", "edit_file", "convert_encoding" ->
@@ -1161,14 +1261,14 @@ internal class GuardPipeline(
 
             // 466：批量形参里每一条都是写目标——原件区红线、任务级授权的对象清单、
             // 覆盖判定都按这几个列表判，漏掉 `paths` 就等于给批量开了一条「不判红线」的旁路。
-            "delete_path" -> listOfNotNull(resolved(ReadFileTool.ARG_PATH)) + batchTargets(root, args)
+            "delete_path" -> listOfNotNull(resolved(ReadFileTool.ARG_PATH)) + batchTargets(resolve, args)
 
-            "move_path" -> listOfNotNull(resolved("from"), resolved("to")) + batchTargets(root, args)
+            "move_path" -> listOfNotNull(resolved("from"), resolved("to")) + batchTargets(resolve, args)
             // 288：写目标口径与 RiskTable 同源（copy 只写 to；move/organize 的源会消失，
             // 范围目录也算写面，dest 在前——授权账取 firstOrNull 当「写到了哪」）。
             // 原件区红线按这些判：dest/dir 落进原件区直接拒（范围目录**包含**原件区时
             // 由工具内部的禁区跳过兜第二层——collect() 不把 原始/ 当原料）。
-            "copy_path" -> listOfNotNull(resolved("to")) + batchTargets(root, args)
+            "copy_path" -> listOfNotNull(resolved("to")) + batchTargets(resolve, args)
             "bulk_move", "bulk_copy", "organize" ->
                 listOfNotNull(resolved("dest"), resolved("dir"))
             "image_ops" -> {

@@ -464,6 +464,9 @@ class ToolSchemaAllTest {
             "list_dir" to JSONObject().put("path", "资料库"),
             "search_in_files" to JSONObject().put("path", "资料库").put("query", "词"),
             "find_files" to JSONObject().put("pattern", "斗罗"),
+            // 492 B②：index_browse 全可选（REQUIRED_EMPTY_OK 有签字）；index_search 必填 query
+            "index_browse" to JSONObject(),
+            "index_search" to JSONObject().put("query", "灵潮"),
             "book_outline" to JSONObject().put("path", "书.txt"),
             "file_info" to JSONObject().put("path", "a.md"),
             "write_file" to JSONObject().put("path", "o.md").put("content", "甲乙\n丙"),

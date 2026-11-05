@@ -53,6 +53,9 @@ internal object BaopuToolLabels {
         "list_dir" to R.string.baopu_tool_list_dir,
         "search_in_files" to R.string.baopu_tool_search_in_files,
         "find_files" to R.string.baopu_tool_find_files,
+        // 492 B②：索引浏览/检索（FILES 组）
+        "index_browse" to R.string.baopu_tool_index_browse,
+        "index_search" to R.string.baopu_tool_index_search,
         "book_outline" to R.string.baopu_tool_book_outline,
         "file_info" to R.string.baopu_tool_file_info,
         "write_file" to R.string.baopu_tool_write_file,
@@ -151,6 +154,9 @@ internal object BaopuToolLabels {
         "list_dir" to R.string.baopu_tool_list_dir_desc,
         "search_in_files" to R.string.baopu_tool_search_in_files_desc,
         "find_files" to R.string.baopu_tool_find_files_desc,
+        // 492 B②：索引浏览/检索（FILES 组）
+        "index_browse" to R.string.baopu_tool_index_browse_desc,
+        "index_search" to R.string.baopu_tool_index_search_desc,
         "book_outline" to R.string.baopu_tool_book_outline_desc,
         "file_info" to R.string.baopu_tool_file_info_desc,
         "write_file" to R.string.baopu_tool_write_file_desc,

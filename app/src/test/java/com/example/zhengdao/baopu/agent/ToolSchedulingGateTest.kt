@@ -52,6 +52,8 @@ class ToolSchedulingGateTest {
         "book_outline", "file_info", "library_list", "card_inspect",
         // 第一百二十八批：kb_search 只读索引文件（不碰工作区、不写盘），与别的读可并行
         "kb_search",
+        // 492 B②：index_browse/index_search 都是 search.db 只读（WAL 连接、不碰盘），与别的读可并行
+        "index_browse", "index_search",
         // 第一百五十五批：novel_project/novel_continue 都是纯文件读（FREE 只读、parallelSafe），
         // novel_create 会写盘（CONFIRM）**不在此列**
         "novel_project", "novel_continue",

@@ -385,6 +385,9 @@ internal object BaopuRuntime {
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
         // AskUserTool.sink／PlanTool.sink：Context 只到装配层这一处。
         KbTools.store = com.example.zhengdao.baopu.kb.KbIndexStore(appCtx.filesDir)
+        // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
+        // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
+        com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }
         // 第一百九十五批：查询工具的存储壳（App 私有 filesDir/物流/logistics.db，与主库无关）。
         // 同一房型：Context 只到装配层这一处，工具与面板都从这里拿同一份壳 ⇒ 两处读到的数才是一个。
         com.example.zhengdao.baopu.agent.LogisticsQueryTool.store = logisticsStore(appCtx)
@@ -752,6 +755,9 @@ internal object BaopuRuntime {
             // rawDir 即 App 私有原件区（filesDir/baopu/library/原始/）——天然在工作区外，
             // PathGuard 与 rawRejection 两道都成立。不在这里拼 "资料库/原始" 字符串。
             { KnowledgeBase.rawDir(appCtx) },
+            // 492 A 段：多根工作区的附加根清单（`<filesDir>/baopu/workspace_roots.json`）。
+            // 主根就是上面那行 workspaceRoot，恒第 0 条；附加根缺省空表 ⇒ 单根行为逐字不变。
+            extraRoots = { WorkspaceRoots.extras(appCtx) },
         )
         val db = db(appCtx)
         // 第二百八十七批：文件操作账本落库（v20 的 file_op 表）——全盘操作入账，30 天可回放。

@@ -93,12 +93,15 @@ internal class SearchDb(context: Context) : SQLiteOpenHelper(
         /**
          * 壳自己的版本：`search.db` 里没有迁移阶梯（见类注释第 2 条），这个数只用来让
          * `SQLiteOpenHelper` 认表结构的存在与否——结构变了就**加一版**，走 [onUpgrade] 整包重建。
+         * 492 B 段加了 `doc_summary`（v2）：老库升上来整包丢弃重建，索引由下一次扫描重铺
+         * （缓存库可整包丢弃重建是这张库的立库前提，报告里写明这一代价）。
          */
-        const val VERSION = 1
+        const val VERSION = 2
 
-        /** 整包重建时先摘掉的四张表（顺序：叶子先走，级联不会被自己的外键挡住）。 */
+        /** 整包重建时先摘掉的五张表（顺序：叶子先走，级联不会被自己的外键挡住）。 */
         val DROP_ALL: List<String> = listOf(
             "DROP TABLE IF EXISTS tok",
+            "DROP TABLE IF EXISTS doc_summary",
             "DROP TABLE IF EXISTS doc",
             "DROP TABLE IF EXISTS watermark",
             "DROP TABLE IF EXISTS scope",

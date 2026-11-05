@@ -81,9 +81,10 @@ class SearchSqlTest {
     ).find(sql.substringBefore(" ON CONFLICT"))?.groupValues?.get(1)
 
     @Test
-    fun `四张表_表名与设计62逐字对上`() {
+    fun `五张表_表名与设计62逐字对上`() {
         val found = Regex("CREATE TABLE IF NOT EXISTS (\\w+)").findAll(ddl).map { it.groupValues[1] }.toSet()
-        assertEquals(setOf("scope", "doc", "tok", "watermark"), found)
+        // 492 B 段加了 doc_summary（挂在 doc 下的摘要层，不是第二套索引）
+        assertEquals(setOf("scope", "doc", "tok", "watermark", "doc_summary"), found)
         assertEquals("常量表名与 DDL 必须一致", found, SearchSql.TABLES)
     }
 
@@ -124,9 +125,11 @@ class SearchSqlTest {
     }
 
     @Test
-    fun `三张明细表都挂着级联_撤销不会留半截索引`() {
+    fun `四张明细表都挂着级联_撤销不会留半截索引`() {
         assertTrue(tableBlock("tok").contains("REFERENCES doc(doc_id) ON DELETE CASCADE"))
         assertTrue(tableBlock("watermark").contains("REFERENCES scope(root_id) ON DELETE CASCADE"))
+        // 492 B 段：摘要跟 doc 同生灭——「删掉的文件还能 browse 出来」这条假账从结构上不存在
+        assertTrue(tableBlock("doc_summary").contains("REFERENCES doc(doc_id) ON DELETE CASCADE"))
     }
 
     @Test
@@ -156,12 +159,14 @@ class SearchSqlTest {
     // ── 红线②：没有能存查询词的列 ────────────────────────────────────────────
 
     @Test
-    fun `列名逐字对账_四张表一共这些列`() {
+    fun `列名逐字对账_五张表一共这些列`() {
         val expected = mapOf(
             "scope" to listOf("root_id", "abs_root", "kind", "granted_at", "revoked_at"),
             "doc" to listOf("doc_id", "root_id", "rel_path", "kind", "size", "mtime", "title", "sha256_head", "indexed_at", "status"),
             "tok" to listOf("token", "doc_id", "cnt"),
             "watermark" to listOf("root_id", "last_scan_at", "last_full_at", "files_seen", "files_skipped", "bytes_read"),
+            // 492 B 段：摘要只有两段编码文本（前 N 行／结构块），标题不抄第二份（doc.title 已有）
+            "doc_summary" to listOf("doc_id", "first_lines", "blocks"),
         )
         expected.forEach { (t, cols) -> assertEquals("$t 的列对不上（加列必须连这条一起改，因为它决定能不能存查询词）", cols, columnsOf(t)) }
     }
@@ -179,14 +184,14 @@ class SearchSqlTest {
     // ── 红线③：语句面只碰这四张表、检索只读 ──────────────────────────────────
 
     @Test
-    fun `写语句只碰四张表`() {
+    fun `写语句只碰这五张表`() {
         val writes = writeStatements()
         assertTrue("没扫到任何写语句＝反射口坏了，不许假绿", writes.isNotEmpty())
         writes.forEach { (name, sql) ->
             val t = writtenTable(sql)
             assertNotNull("$name 认不出目标表：$sql", t)
             assertTrue(
-                "$name 写的是 `$t`，不在这四张表里——search.db 之外一律不许碰（尤其不许碰 run_log：那里是日志，写进去就留了痕）：$sql",
+                "$name 写的是 `$t`，不在这五张表里——search.db 之外一律不许碰（尤其不许碰 run_log：那里是日志，写进去就留了痕）：$sql",
                 SearchSql.TABLES.contains(t),
             )
         }

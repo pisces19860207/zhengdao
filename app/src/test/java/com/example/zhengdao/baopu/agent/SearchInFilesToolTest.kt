@@ -198,12 +198,12 @@ class SearchInFilesToolTest {
     }
 
     @Test
-    fun `权限FREE且Schema三参`() {
+    fun `权限FREE且Schema四参`() {
         val spec = SearchInFilesTool.spec { root }
         assertEquals("search_in_files", spec.name)
         assertEquals(ToolPermission.FREE, spec.permission)
         val props = spec.inputSchema.getJSONObject("properties")
-        assertEquals(3, props.length())
+        assertEquals(4, props.length())
         assertFalse(spec.inputSchema.optBoolean("additionalProperties"))
     }
 

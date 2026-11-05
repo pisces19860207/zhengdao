@@ -43,6 +43,8 @@ class PhoneIndexArgsTest {
             Case(SearchSql.UPSERT_TOK, "tok", listOf("token", "doc_id", "cnt"), 3),
             Case(SearchSql.UPSERT_WATERMARK, "watermark", listOf("root_id", "last_scan_at", "last_full_at", "files_seen", "files_skipped", "bytes_read"), 6),
             Case(SearchSql.UPSERT_SCOPE, "scope", listOf("abs_root", "kind", "granted_at", "revoked_at"), 3),
+            // 492 B 段：摘要 UPSERT（主键即 doc_id，级联挂在 doc 上）
+            Case(SearchSql.UPSERT_SUMMARY, "doc_summary", listOf("doc_id", "first_lines", "blocks"), 3),
         )
         cases.forEach { (sql, table, wantColumns, questionMarks) ->
             val cols = insertColumns(sql)
@@ -61,10 +63,15 @@ class PhoneIndexArgsTest {
         // 这几条是 PhoneIndex 真正发的那几条；列序一改，壳里所有下标都要跟着改——本条逼着人来改对。
         assertEquals(listOf("doc_id", "rel_path", "size", "mtime", "status"), selectColumns(SearchSql.SELECT_DOCS_OF_ROOT))
         assertEquals(listOf("size", "mtime"), selectColumns(SearchSql.SELECT_DOC_STAT))
-        assertEquals(listOf("root_id", "rel_path", "score"), selectColumns(SearchSql.selectSearch(2)))
+        // 492 B②：命中多带一列 d.title（第 4 列，index_search 的读数）
+        assertEquals(listOf("root_id", "rel_path", "score", "title"), selectColumns(SearchSql.selectSearch(2)))
         assertEquals(listOf("last_scan_at", "last_full_at", "files_seen", "files_skipped", "bytes_read"), selectColumns(SearchSql.SELECT_WATERMARK))
         assertEquals(listOf("root_id", "abs_root", "kind"), selectColumns(SearchSql.SELECT_ACTIVE_ROOTS))
         assertEquals(listOf("doc_id"), selectColumns(SearchSql.SELECT_DOC_ID))
+        // 492 B②：浏览面的三条读数（列序＝壳里游标下标）
+        assertEquals(listOf("doc_id", "title", "mtime", "status", "indexed_at"), selectColumns(SearchSql.SELECT_DOC_CARD))
+        assertEquals(listOf("first_lines", "blocks"), selectColumns(SearchSql.SELECT_SUMMARY))
+        assertEquals(listOf("rel_path", "title", "status"), selectColumns(SearchSql.SELECT_DOCS_UNDER_DIR))
     }
 
     @Test
@@ -76,7 +83,11 @@ class PhoneIndexArgsTest {
         val cases = listOf(
             Triple("DocLedgerRow", SearchSql.SELECT_DOCS_OF_ROOT, 4),
             Triple("MarkRow", SearchSql.SELECT_WATERMARK, 5),
-            Triple("TermHit", SearchSql.selectSearch(2), 3),
+            Triple("TermHit", SearchSql.selectSearch(2), 4),
+            // 492 B②：浏览面的三个读数（列序与游标下标逐位对上）
+            Triple("DocCardRow", SearchSql.SELECT_DOC_CARD, 5),
+            Triple("SummaryText", SearchSql.SELECT_SUMMARY, 2),
+            Triple("DirDocRow", SearchSql.SELECT_DOCS_UNDER_DIR, 3),
         )
         cases.forEach { (ctor, sql, wantReads) ->
             val reads = cursorReads(src, ctor)
@@ -168,7 +179,10 @@ class PhoneIndexArgsTest {
     fun `结构_一片一个事务`() {
         // 派工单 §1①「边扫边入库」的落点：刷盘单位是片，不是整根、也不是单文件。
         val src = code(sourceOf("PhoneIndex.kt"))
-        assertTrue("putShard 必须走 transact（一片一个事务）", src.contains("fun putShard(rootId: Long, docs: List<IndexedDoc>, now: Long): Boolean"))
+        assertTrue(
+            "putShard 必须走 transact（一片一个事务；492 B 段的 summarize 缺省 false＝全盘档与旧调用点零改）",
+            src.contains("fun putShard(rootId: Long, docs: List<IndexedDoc>, now: Long, summarize: Boolean = false): Boolean"),
+        )
         assertTrue("事务由写的那一侧包（仓内形状：谁写谁开事务，OpenHelper 本体只给句柄）", src.contains("private fun transact(block: (SQLiteDatabase) -> Unit): Boolean"))
         assertTrue(
             "三件套必须挂在 db.write 的 lambda 里（UseKtx 只在「带 SQLiteDatabase 形参的私有方法」形状下点名 beginTransaction，lambda 形状全绿是仓内九处现数）",

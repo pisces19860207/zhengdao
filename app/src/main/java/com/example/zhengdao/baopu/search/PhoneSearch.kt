@@ -54,6 +54,8 @@ internal data class HitRow(
     val relPath: String,
     val score: Int,
     val rootIsWorkspace: Boolean,
+    /** 492 B②：命中篇的标题（库里 `doc.title`；模型拿它挑该读哪篇）。 */
+    val title: String = "",
 )
 
 /** 一次检索的读数（[termsTruncated] 为真 ⇒ 界面必须明说「只按前 N 个词查的」）。 */
@@ -190,11 +192,16 @@ internal object PhoneSearch {
                 }
                 val mark = index.markOf(root.rootId)
                 val plan = PhoneScanRules.planRoot(scopeRowOf(root, mark), mark, forceFull)
+                // 492 B 段：摘要只给 HOME 档根建（多根工作区清单里的根）——全盘档（PHONE）
+                // 一篇都不写 `doc_summary`（工单「别把『读得到』做成全盘扫描」的落点）。
+                val summarize = root.kind == ScopeKind.HOME
                 val seenBefore = c.seen
                 val skippedBefore = c.skipped
                 val bytesBefore = c.bytesRead
-                if (plan.verifyDocs) stop = sweepLedger(index, rootFile, root.rootId, terms, cancelled, startedAt, c)
-                if (stop == StopReason.DONE) stop = walkRoot(index, root.rootId, rootFile, mark, plan.full, !forceFull, terms, topK, cancelled, startedAt, c)
+                if (plan.verifyDocs) stop = sweepLedger(index, rootFile, root.rootId, terms, cancelled, startedAt, c, summarize)
+                if (stop == StopReason.DONE) {
+                    stop = walkRoot(index, root.rootId, rootFile, mark, plan.full, !forceFull, terms, topK, cancelled, startedAt, c, summarize)
+                }
                 val completed = stop == StopReason.DONE
                 val mw = PhoneScanRules.rollUpMark(
                     rootId = plan.rootId,
@@ -272,6 +279,7 @@ internal object PhoneSearch {
                     relPath = h.relPath,
                     score = h.score,
                     rootIsWorkspace = PhoneJump.isWorkspaceRoot(r.absRoot, workspaceKey),
+                    title = h.title,
                 )
             }
             QueryResult(hits, terms.tokens.size, terms.truncated)
@@ -298,6 +306,7 @@ internal object PhoneSearch {
         cancelled: () -> Boolean,
         startedAt: Long,
         c: ScanCounters,
+        summarize: Boolean,
     ): StopReason {
         var stop = StopReason.DONE
         index.eachDoc(rootId, PhoneScanRules.CHUNK_FILES) { batch ->
@@ -321,7 +330,7 @@ internal object PhoneSearch {
                     // 由遍历段按账对上后计入 `reused`（两处都记就是同一个文件算两遍）。
                     val doc = readDoc(f, ref.relPath, LibraryPaths.classify(f.name).first.name, stat.size, stat.mtime, terms, c)
                     val ok = if (doc != null) {
-                        val wrote = index.putShard(rootId, listOf(doc), System.currentTimeMillis())
+                        val wrote = index.putShard(rootId, listOf(doc), System.currentTimeMillis(), summarize)
                         if (wrote) c.docsWritten++
                         wrote
                     } else {
@@ -357,6 +366,7 @@ internal object PhoneSearch {
         cancelled: () -> Boolean,
         startedAt: Long,
         c: ScanCounters,
+        summarize: Boolean,
     ): StopReason {
         val queue = ArrayDeque<File>()
         queue.addLast(rootFile)
@@ -378,7 +388,7 @@ internal object PhoneSearch {
                 // `shardPages` 给的是 `IntRange`（**last 含端点**）⇒ 取片必须用闭区间的 `slice`。
                 // 写成 `subList(page.first, page.last)` 每片会悄悄丢掉最后一个文件：2001 条丢第 2001 条，
                 // 单文件目录（`0 until 1`）直接整个目录不入库。`PhoneScanTest.负例_片是闭区间_薄壳取片不许丢末位` 钉这条。
-                hits += indexPage(index, rootFile, rootId, relDir, entries.slice(page), terms, reuse, c)
+                hits += indexPage(index, rootFile, rootId, relDir, entries.slice(page), terms, reuse, c, summarize)
                 val stop = PhoneScanRules.stopReason(hits, topK, System.currentTimeMillis() - startedAt, cancelled())
                 if (stop != StopReason.DONE) return stop
             }
@@ -404,6 +414,7 @@ internal object PhoneSearch {
         terms: List<String>,
         reuse: Boolean,
         c: ScanCounters,
+        summarize: Boolean,
     ): Int {
         val now = System.currentTimeMillis()
         val docs = ArrayList<IndexedDoc>(slice.size)
@@ -429,7 +440,7 @@ internal object PhoneSearch {
         val keep = plan.rows.map { it.relPath }.toSet()
         val rows = docs.filter { it.relPath in keep } // 探针没进 rows ⇒ 对应的词表也一起丢（两份账不许对不上）
         if (rows.isEmpty()) return 0
-        if (!index.putShard(rootId, rows, now)) {
+        if (!index.putShard(rootId, rows, now, summarize)) {
             c.failedShards++
             return 0 // 这一片没进库 ⇒ 一个命中都不算（算了就是「够一屏」提前停，屏幕上却是空的）
         }
@@ -482,7 +493,13 @@ internal object PhoneSearch {
         val title = PhoneText.titleOf(body.text)
         val counts = PhoneRank.tokenCounts(title, body.text)
         if (counts.truncated) c.cappedDocs++
-        return IndexedDoc(rel, kindTag, size, mtime, title, PhoneText.sha256Head(PhoneText.headOf(head)), status, counts.counts)
+        // 492 B①：摘要与切词共用**同一次**读文的 body.text（不许为摘要再读一遍盘——
+        // 折叠判据在 [DocSummaryRules.of]，这里只是接线）。
+        val summary = DocSummaryRules.of(body.text)
+        return IndexedDoc(
+            rel, kindTag, size, mtime, title,
+            PhoneText.sha256Head(PhoneText.headOf(head)), status, counts.counts, summary,
+        )
     }
 
     /** 前 [PhoneText.HEAD_BYTES]（读不满就给读到的那些；失败给空表 ⇒ 判成「解不出编码」，不猜内容）。 */

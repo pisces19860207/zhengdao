@@ -33,8 +33,8 @@ class PhoneSearchWiringTest {
         val walk = body(SHELL, "walkRoot")
         val page = body(SHELL, "indexPage")
         // 落库发生在片里（indexPage），且由遍历段的片循环逐片调用
-        assertTrue("indexPage 必须自己 putShard（一片一次事务）", page.contains("index.putShard(rootId, rows, now)"))
-        assertTrue("walkRoot 的片循环必须调 indexPage", walk.contains("indexPage(index, rootFile, rootId, relDir, entries.slice(page), terms, reuse, c)"))
+        assertTrue("indexPage 必须自己 putShard（一片一次事务）", page.contains("index.putShard(rootId, rows, now, summarize)"))
+        assertTrue("walkRoot 的片循环必须调 indexPage", walk.contains("indexPage(index, rootFile, rootId, relDir, entries.slice(page), terms, reuse, c, summarize)"))
         // 扫描主干（scan）一张都不许写：根尾统一入库就是派工单 §2 点名的「全扫完才写」
         assertFalse("scan 本体不许直接 putShard：刷盘单位是片，攒到根尾就是「全扫完才写」", scan.contains("putShard"))
         // 顺序：先落库，再判停（反过来就是「算够了才写」——停下的那一片永远进不了库）
@@ -59,7 +59,7 @@ class PhoneSearchWiringTest {
     @Test
     fun `结构_片失败不算命中也不算扫过`() {
         val page = body(SHELL, "indexPage")
-        val at = page.indexOf("if (!index.putShard(rootId, rows, now))")
+        val at = page.indexOf("if (!index.putShard(rootId, rows, now, summarize))")
         assertTrue("indexPage 必须接住 putShard 的 false", at >= 0)
         val branch = page.substring(at, at + 160)
         assertTrue("失败片必须记进 failedShards", branch.contains("c.failedShards++"))
@@ -104,7 +104,7 @@ class PhoneSearchWiringTest {
     fun `结构_核对段先于遍历段_停下就不再走`() {
         val scan = body(SHELL, "scan")
         val sweepIdx = scan.indexOf("if (plan.verifyDocs) stop = sweepLedger")
-        val walkIdx = scan.indexOf("if (stop == StopReason.DONE) stop = walkRoot")
+        val walkIdx = scan.indexOf("stop = walkRoot(index, root.rootId")
         assertTrue("先按账核对（删没了的、重索引改了的），再遍历（补新增的）", sweepIdx in 0 until walkIdx)
         assertTrue("核对段没扫完 ⇒ 遍历段根本不走（两段共用一个时间预算）", walkIdx >= 0)
         // 核对段的三条出口都在（gone 删行 / reindex 重读 / 没变的不计数）

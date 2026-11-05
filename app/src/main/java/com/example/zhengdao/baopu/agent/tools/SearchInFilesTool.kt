@@ -31,6 +31,13 @@ internal object SearchInFilesTool {
     const val ARG_QUERY = "query"
     const val ARG_CASE_SENSITIVE = "case_sensitive"
 
+    /**
+     * 492 A③：点开头的目录/文件（`.obsidian` 这类）要不要搜——默认 false＝既有行为
+     * （不搜，也不计数）；true 才进去。`备份/` 是另一条判据（改前快照区，模型只读），
+     * 两态都不搜。
+     */
+    const val ARG_INCLUDE_HIDDEN = "include_hidden"
+
     /** 单文件大小上限（超过直接跳过，不硬读）。 */
     const val MAX_FILE_BYTES = 8L * 1024 * 1024
 
@@ -64,6 +71,10 @@ internal object SearchInFilesTool {
                 ARG_CASE_SENSITIVE to jsonObjectOf(
                     "type" to "boolean",
                     "description" to "是否区分大小写（默认 false）",
+                ),
+                ARG_INCLUDE_HIDDEN to jsonObjectOf(
+                    "type" to "boolean",
+                    "description" to "要不要搜点开头的目录/文件（如 .obsidian；默认 false 不搜）",
                 ),
             ),
             "required" to jsonArrayOf(ARG_PATH, ARG_QUERY),
@@ -105,6 +116,7 @@ internal object SearchInFilesTool {
         dir: File,
         query: String,
         caseSensitive: Boolean = false,
+        includeHidden: Boolean = false,
     ): ToolOutcome {
         val q = query.trim()
         if (q.isEmpty()) return ToolOutcome.Failed("参数「$ARG_QUERY」为空（要一个非空关键词）")
@@ -119,13 +131,13 @@ internal object SearchInFilesTool {
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
         fileAccessCheck(dir, FilePaths.display(root, dir))?.let { return ToolOutcome.Rejected(it) }
 
-        val st = SearchState(needle = if (caseSensitive) q else q.lowercase())
+        val st = SearchState(needle = if (caseSensitive) q else q.lowercase(), includeHidden = includeHidden)
         walk(dir, root, caseSensitive, st)
-        return report(q, st)
+        return report(q, st, includeHidden)
     }
 
     /** DFS 期间共享的可变状态（计数与命中清单；一次 search 一份）。 */
-    private class SearchState(val needle: String) {
+    private class SearchState(val needle: String, val includeHidden: Boolean) {
         var scanned = 0
         var skippedBig = 0
         var skippedBinary = 0
@@ -137,9 +149,10 @@ internal object SearchInFilesTool {
 
     private data class Item(val file: File, val level: Int)
 
-    /** 扫描回执：命中清单＋统计（文案逐字保留）。 */
-    private fun report(q: String, st: SearchState): ToolOutcome {
+    /** 扫描回执：命中清单＋统计（文案逐字保留；隐藏那半句跟 include_hidden 两态走）。 */
+    private fun report(q: String, st: SearchState, includeHidden: Boolean): ToolOutcome {
         val stats = ScanStats(st.scanned, st.skippedBig, st.skippedBinary, st.skippedError)
+        val hiddenNote = if (includeHidden) "软链不搜" else "软链与点开头文件不搜"
         val body = buildString {
             if (st.hitCount == 0) {
                 append("（没有命中「$q」）")
@@ -152,7 +165,7 @@ internal object SearchInFilesTool {
                 if (stats.skippedError > 0) append(" / 读失败 ${stats.skippedError}")
                 append("）")
             }
-            append("；深度上限 $DEFAULT_DEPTH 层，软链与点开头文件不搜）")
+            append("；深度上限 $DEFAULT_DEPTH 层，$hiddenNote）")
             if (st.truncated) {
                 append("；已触达命中上限 $MAX_HITS 条，把 path 指到更深的目录或换个更具体的词")
             }
@@ -190,8 +203,10 @@ internal object SearchInFilesTool {
      */
     private fun admits(f: File, level: Int, stack: ArrayDeque<Item>, st: SearchState): Boolean {
         if (isSymlink(f)) return false // 软链不跟随（跟出去就是工作区外的内容）
-        // 内部目录/文件不搜（.baopu-spill 等私有噪声）；`备份/`（改前快照区，模型只读）也不搜
-        if (f.name.startsWith(".") || f.name == BaopuKernel.Data.DIR_BACKUP) return false
+        // 内部目录/文件不搜（.baopu-spill 等私有噪声）；`备份/`（改前快照区，模型只读）也不搜。
+        // 492 A③：点开头那半条由 include_hidden 开（默认 false＝既有行为；备份区两态都不搜）。
+        if (f.name.startsWith(".") && !st.includeHidden) return false
+        if (f.name == BaopuKernel.Data.DIR_BACKUP) return false
         if (f.isDirectory) {
             if (level < DEFAULT_DEPTH) stack.addLast(Item(f, level + 1))
             return false
@@ -252,6 +267,7 @@ internal object SearchInFilesTool {
             dir = File(path),
             query = query,
             caseSensitive = args.optBoolean(ARG_CASE_SENSITIVE, false),
+            includeHidden = args.optBoolean(ARG_INCLUDE_HIDDEN, false),
         )
     }
 

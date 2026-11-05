@@ -302,6 +302,9 @@ internal data class RiskTable(
                 // 文件管理组的两件只读：按名字找、看详情（FILES 组默认不可见）
                 "find_files" to ToolRule(RiskClass.R0),
                 "file_info" to ToolRule(RiskClass.R0),
+                // 492 B②：索引浏览/检索（读 search.db 账行，不碰盘）——FILES 组默认不可见
+                "index_browse" to ToolRule(RiskClass.R0),
+                "index_search" to ToolRule(RiskClass.R0),
                 "book_outline" to ToolRule(RiskClass.R0),
                 // 浏览器只读面：读快照/滚动/等待不改变页面状态；打开网址是读，URL 规则另判。
                 // 173 派工单只点名了 snapshot，另外三件按「读页面」口径补齐（报告 §1 逐条说明）。

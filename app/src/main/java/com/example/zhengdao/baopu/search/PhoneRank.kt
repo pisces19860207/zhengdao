@@ -37,11 +37,16 @@ package com.example.zhengdao.baopu.search
 
 import com.example.zhengdao.baopu.MemoryRules
 
-/** 一条检索命中（`SUM(cnt)` 的分数由库里算出来，本文件只负责排序口径）。 */
+/** 一条检索命中（`SUM(cnt)` 的分数由库里算出来，本文件只负责排序口径）。
+ *
+ * 492 B②：`index_search` 复用检索，命中多带 `title`（库里的 `doc.title`）——
+ * 模型拿标题就能挑该读哪篇；排序不认它（同分仍按 relPath 定序）。
+ */
 internal data class TermHit(
     val rootId: Long,
     val relPath: String,
     val score: Int,
+    val title: String = "",
 )
 
 /**

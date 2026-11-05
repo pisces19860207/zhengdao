@@ -77,7 +77,10 @@ class ToolRegistrySwitchTest {
                 // 399：事件触发（表序即注册序，schedule_task 之后）
                 "event_trigger",
                 "clipboard_write", "notify", "phone_dial",
-                "read_file", "list_dir", "search_in_files", "find_files", "book_outline",
+                "read_file", "list_dir", "search_in_files", "find_files",
+                // 492 B②：索引浏览/检索两件（FILES 组，默认不可见但默认启用；表序即注册序）
+                "index_browse", "index_search",
+                "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 第二百六十九批：打包/解包（表序即注册序，convert_encoding 之后）
                 "archive_pack", "archive_extract",

@@ -156,7 +156,8 @@ internal object FileOpRules {
     fun kindOf(tool: String): FileOpKind? = when (tool) {
         "read_file", "file_info", "book_outline", "sheet_read", "convert_encoding" -> FileOpKind.READ
         "list_dir" -> FileOpKind.LIST
-        "find_files", "search_in_files" -> FileOpKind.SEARCH
+        "find_files", "search_in_files", "index_search" -> FileOpKind.SEARCH
+        "index_browse" -> FileOpKind.READ
         "write_file", "edit_file", "archive_pack", "archive_extract", "image_ops" -> FileOpKind.WRITE
         "delete_path" -> FileOpKind.DELETE
         "move_path" -> FileOpKind.MOVE
@@ -186,6 +187,8 @@ internal object FileOpRules {
         "list_dir" -> "列目录"
         "find_files" -> "按名找「${brief(args.optString("pattern"))}」"
         "search_in_files" -> "搜「${brief(args.optString("query"))}」"
+        "index_browse" -> "看索引摘要"
+        "index_search" -> "索引搜「${brief(args.optString("query"))}」"
         "write_file" -> if (args.optBoolean("overwrite", false)) "覆盖写" else "新建写"
         "edit_file" -> "按行改（${args.optString("op").ifBlank { "?" }}）"
         "delete_path" ->

@@ -30,6 +30,12 @@ internal object FindFilesTool {
     const val ARG_LIMIT = "limit"
     const val ARG_MAX_DEPTH = "max_depth"
 
+    /**
+     * 492 A③：点开头的目录/文件（`.obsidian` 这类）要不要找——默认 false＝既有行为；
+     * true 才进去。`备份/` 是另一条判据（改前快照区，模型只读），两态都不列。
+     */
+    const val ARG_INCLUDE_HIDDEN = "include_hidden"
+
     /** 默认命中上限；触顶会明说「还有更多」。 */
     const val DEFAULT_LIMIT = 50
     const val MAX_LIMIT = 200
@@ -71,6 +77,10 @@ internal object FindFilesTool {
                     "minimum" to 1,
                     "maximum" to MAX_DEPTH,
                 ),
+                ARG_INCLUDE_HIDDEN to jsonObjectOf(
+                    "type" to "boolean",
+                    "description" to "要不要找点开头的目录/文件（如 .obsidian；默认 false 不找）",
+                ),
             ),
             "required" to jsonArrayOf(ARG_PATTERN),
             "additionalProperties" to false,
@@ -94,12 +104,13 @@ internal object FindFilesTool {
         pattern: String,
         limit: Int = DEFAULT_LIMIT,
         maxDepth: Int = DEFAULT_DEPTH,
+        includeHidden: Boolean = false,
     ): ToolOutcome {
         val needle = pattern.trim()
         guardFind(dir, needle, root)?.let { return it }
         val cap = limit.coerceIn(1, MAX_LIMIT)
         val depthCap = maxDepth.coerceIn(1, MAX_DEPTH)
-        val scan = scanHits(dir, needle.lowercase(), cap, depthCap)
+        val scan = scanHits(dir, needle.lowercase(), cap, depthCap, includeHidden)
         val hits = scan.hits
         val scanned = scan.scanned
         val truncatedByLimit = scan.truncatedByLimit
@@ -147,7 +158,7 @@ internal object FindFilesTool {
     )
 
     /** 337 拆出：跨 child 的扫描内部状态。 */
-    private class ScanState(val lowered: String, val cap: Int) {
+    private class ScanState(val lowered: String, val cap: Int, val includeHidden: Boolean) {
         var scanned = 0
         var truncatedByLimit = false
         var truncatedByScan = false
@@ -158,8 +169,8 @@ internal object FindFilesTool {
     private data class ScanItem(val file: File, val level: Int)
 
     /** 337 拆出：栈式扫描（内部目录/隐藏文件不找，`备份/` 不列；扫描上限与命中上限语义原样）。 */
-    private fun scanHits(startDir: File, lowered: String, cap: Int, depthCap: Int): FindScan {
-        val st = ScanState(lowered, cap)
+    private fun scanHits(startDir: File, lowered: String, cap: Int, depthCap: Int, includeHidden: Boolean): FindScan {
+        val st = ScanState(lowered, cap, includeHidden)
         val stack = ArrayDeque<ScanItem>()
         stack.addLast(ScanItem(startDir, 1))
         while (stack.isNotEmpty()) {
@@ -176,8 +187,10 @@ internal object FindFilesTool {
 
     /** 337 拆出：单 child 处理（隐藏/备份过滤、目录压栈、文件计数与命中；语义与原内联版逐字相同）。 */
     private fun scanChild(st: ScanState, child: File, level: Int, depthCap: Int, stack: ArrayDeque<ScanItem>) {
-        // 内部目录/隐藏文件不找；`备份/`（改前快照区，模型只读）也不列
-        if (child.name.startsWith(".") || child.name == BaopuKernel.Data.DIR_BACKUP) return
+        // 内部目录/隐藏文件不找；`备份/`（改前快照区，模型只读）也不列。
+        // 492 A③：点开头那半条由 include_hidden 开（默认 false＝既有行为；备份区两态都不列）。
+        if (child.name.startsWith(".") && !st.includeHidden) return
+        if (child.name == BaopuKernel.Data.DIR_BACKUP) return
         if (child.isDirectory) {
             if (level < depthCap) stack.addLast(ScanItem(child, level + 1))
             return
@@ -203,6 +216,7 @@ internal object FindFilesTool {
             pattern = args.optString(ARG_PATTERN),
             limit = args.optInt(ARG_LIMIT, DEFAULT_LIMIT),
             maxDepth = args.optInt(ARG_MAX_DEPTH, DEFAULT_DEPTH),
+            includeHidden = args.optBoolean(ARG_INCLUDE_HIDDEN, false),
         )
     }
 

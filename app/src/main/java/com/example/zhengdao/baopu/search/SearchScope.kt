@@ -37,6 +37,7 @@ import android.content.Context
 import android.os.Environment
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.FilePolicy
+import com.example.zhengdao.baopu.WorkspaceRoots
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.Collections
@@ -132,15 +133,27 @@ internal object SearchScopeRules {
     /**
      * 账本计划：HOME 恒有一条（默认范围＝证道＋当前工作区，设计 §11.4），
      * PHONE 只在 [PhoneAccess.GRANTED] 时有——**顺序固定**（HOME 在前），单测与界面都要确定序。
+     *
+     * 492 A 段：多根工作区清单里的**附加根**按 HOME 档入账（排 HOME 之后、PHONE 之前，
+     * 清单序即账序）——它们是用户点名给抱朴的可及根，与「当前工作区」同档：恒在搜索范围内、
+     * 摘要层只给它们建（[PhoneSearch] 里 `kind == HOME` 才写 `doc_summary`）。
+     * 与 HOME/PHONE 同一个物理根的附加条目丢弃（UNIQUE(abs_root) 之下重复入账没有意义）。
      */
-    fun plan(access: PhoneAccess, homeRoot: String, phoneRoot: String): List<ScopeDraft> {
+    fun plan(
+        access: PhoneAccess,
+        homeRoot: String,
+        phoneRoot: String,
+        extras: List<ScopeDraft> = emptyList(),
+    ): List<ScopeDraft> {
         val home = homeRoot.trim()
         require(home.isNotEmpty()) { "HOME 根不能是空串（空串会被 UNIQUE 当成一个合法根）" }
         val drafts = mutableListOf(ScopeDraft(home, ScopeKind.HOME))
+        val extra = extras.filter { it.absRoot != home }
+        drafts += extra
         if (access == PhoneAccess.GRANTED) {
             val phone = phoneRoot.trim().trimEnd('/')
             require(phone.isNotEmpty()) { "手机根不能是空串（甲档已授予却拿不到根路径＝判据断了，不许静默不落账）" }
-            if (phone != home) drafts += ScopeDraft(phone, ScopeKind.PHONE)
+            if (phone != home && extra.none { it.absRoot == phone }) drafts += ScopeDraft(phone, ScopeKind.PHONE)
         }
         return drafts
     }
@@ -408,7 +421,12 @@ internal object SearchScope {
      */
     fun sync(ctx: Context): SyncReport = runCatching {
         val st = status(ctx)
-        val plan = SearchScopeRules.plan(st.access, st.homeRoot, st.phoneRoot)
+        // 492 A 段：多根工作区清单的附加根按 HOME 档随账本一起入账（主根就是 homeRoot，
+        // 不重复；清单里读不懂的条目在 [WorkspaceRoots.parse] 已经丢掉，这里只管入账）。
+        val extras = WorkspaceRoots.extras(ctx).map { r ->
+            ScopeDraft(SearchScopeRules.rootKey(r.dir), ScopeKind.HOME)
+        }
+        val plan = SearchScopeRules.plan(st.access, st.homeRoot, st.phoneRoot, extras)
         val db = SearchDb(ctx)
         try {
             val store: SearchScopeStore = SqlSearchScopeStore(db)

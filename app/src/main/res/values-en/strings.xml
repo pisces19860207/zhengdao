@@ -605,6 +605,10 @@
     <string name="baopu_params_undeclared">Not declared</string>
     <string name="baopu_tool_find_files">Find files</string>
     <string name="baopu_tool_find_files_desc">Find files by a name fragment, walking down the tree (case-insensitive; also finds books without an extension). Cheaper than listing directories. 6 levels deep by default.</string>
+    <string name="baopu_tool_index_browse">Index summary</string>
+    <string name="baopu_tool_index_browse_desc">Read the model-facing summary of an indexed file/folder: title, first lines, structure blocks. Build the index from the search card first.</string>
+    <string name="baopu_tool_index_search">Index search</string>
+    <string name="baopu_tool_index_search_desc">Search the built index by words (returns path, score, title); use "search in files" for literal on-disk grep.</string>
     <string name="baopu_tool_book_outline">Book outline</string>
     <string name="baopu_tool_book_outline_desc">See a book’s chapter list first (title, line range, length, first line), then read just the chapters you need; the start line is the read_file offset as-is.</string>
     <string name="baopu_tool_convert_encoding">Convert encoding</string>

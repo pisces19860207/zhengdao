@@ -36,7 +36,7 @@ class RiskMatrixTest {
     fun `注册表70个工具_每个都有档或显式豁免`() {
         val names = newRegistry().names()
         // 第二百六十九批：+archive_pack/+archive_extract（68 → 70）；288 复制/批量/整理五件（70 → 75）；399 事件触发（75 → 76）
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 76, names.size)
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 78, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),

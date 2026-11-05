@@ -41,6 +41,9 @@ internal data class ActiveRoot(val rootId: Long, val absRoot: String, val kind: 
  * 一篇已经读完、切好词的文档（`doc` 行 ＋ 它的倒排行）。
  *
  * [counts] 为空 ⇔ 这篇不认领（`TOO_BIG`／`UNCLAIMED`）或解不出编码：建行、不建词。
+ *
+ * 492 B 段：[summary] 是「给模型读的摘要」（[DocSummaryRules.of] 在 `readDoc` 的同一次
+ * 读文里折出来）；非文本/读不出正文 ⇒ null（`doc_summary` 一行都不建）。
  */
 internal data class IndexedDoc(
     val relPath: String,
@@ -51,6 +54,7 @@ internal data class IndexedDoc(
     val sha256Head: String,
     val status: DocStatus,
     val counts: Map<String, Int>,
+    val summary: DocSummaryRules.SummaryText? = null,
 )
 
 /**
@@ -174,10 +178,16 @@ internal class PhoneIndex(private val db: SearchDb) {
     /**
      * 写一片（一次事务）。返回是否整片写成——false 时这片**一行都没落**（回滚），
      * 由调用方记进 `failedShards` 并继续；不许把「失败」折算成「扫过了」。
+     *
+     * 492 B 段：[summarize] ＝ 这片属于 HOME 档根（多根工作区清单里的根）⇒ 带摘要的篇
+     * 顺带写 `doc_summary`（工单 B③：与 doc 行同一个事务，「增删改只更新该条」）。
+     * 行数硬顶 [DocSummaryRules.MAX_ROWS]：**新**摘要要有空位才建；顶满后老摘要照样覆盖
+     * ——改过的文件不许因为顶满就丢掉更新（丢了就是「部分索引」标着 N/M 还偷偷说谎）。
      */
-    fun putShard(rootId: Long, docs: List<IndexedDoc>, now: Long): Boolean {
+    fun putShard(rootId: Long, docs: List<IndexedDoc>, now: Long, summarize: Boolean = false): Boolean {
         if (docs.isEmpty()) return true
         return transact { d ->
+            var room = if (summarize) (DocSummaryRules.MAX_ROWS - countSummaryRows(d)).coerceAtLeast(0) else 0
             docs.forEach { doc ->
                 d.execSQL(
                     SearchSql.UPSERT_DOC,
@@ -196,9 +206,35 @@ internal class PhoneIndex(private val db: SearchDb) {
                         d.execSQL(SearchSql.UPSERT_TOK, arrayOf<Any?>(token, docId, cnt))
                     }
                 }
+                if (docId > 0L && summarize) room = writeOneSummary(d, docId, doc, room)
             }
         }
     }
+
+    /**
+     * 写一篇的摘要（[putShard] 事务内的一步），返回扣掉本篇后的剩余空位。
+     * 顶上的老行**永远可以覆盖**（改过的文件不许因为顶满就丢更新）；只有**新**摘要才占空位。
+     */
+    private fun writeOneSummary(
+        d: android.database.sqlite.SQLiteDatabase,
+        docId: Long,
+        doc: IndexedDoc,
+        room: Int,
+    ): Int {
+        val summary = doc.summary ?: return room
+        val hasOld = d.rawQuery(SearchSql.SELECT_SUMMARY, arrayOf(docId.toString())).use { it.moveToNext() }
+        if (!hasOld && room <= 0) return room
+        d.execSQL(
+            SearchSql.UPSERT_SUMMARY,
+            arrayOf<Any?>(docId, summary.firstLines, summary.blocks),
+        )
+        return if (hasOld) room else room - 1
+    }
+
+    /** 摘要表现有行数（事务内用；读不出按 0——顶满判错的方向是「多让一行」，不是「少建」。） */
+    private fun countSummaryRows(d: android.database.sqlite.SQLiteDatabase): Int = runCatching {
+        d.rawQuery(SearchSql.COUNT_SUMMARY, null).use { c -> if (c.moveToFirst()) c.getLong(0).toInt() else 0 }
+    }.getOrDefault(0)
 
     /** 删掉盘上已经没有的那几篇（`tok` 顺 `ON DELETE CASCADE` 一起走，不写第二条 DELETE）。 */
     fun deleteDocs(docIds: List<Long>): Boolean {
@@ -228,7 +264,10 @@ internal class PhoneIndex(private val db: SearchDb) {
             db.readable().rawQuery(SearchSql.selectSearch(n, limit), args).use { c ->
                 buildList {
                     while (c.moveToNext()) {
-                        add(TermHit(rootId = c.long(0), relPath = c.string(1), score = c.long(2).toInt()))
+                        add(
+                            // 第 4 列是 492 B② 加的 d.title（index_search 的命中要带标题）。
+                            TermHit(rootId = c.long(0), relPath = c.string(1), score = c.long(2).toInt(), title = c.string(3)),
+                        )
                     }
                 }
             }
@@ -238,7 +277,72 @@ internal class PhoneIndex(private val db: SearchDb) {
             emptyList()
         }
     }
+
+    // ── 492 B 段：给模型读的摘要（浏览面） ──────────────────────────────────
+
+    /** `doc` 里某根某相对路径的一行（[SearchSql.SELECT_DOC_CARD] 的五列；没有 ⇒ null）。 */
+    fun docCard(rootId: Long, relPath: String): DocCardRow? = runCatching {
+        db.readable().rawQuery(SearchSql.SELECT_DOC_CARD, arrayOf(rootId.toString(), relPath)).use { c ->
+            if (!c.moveToNext()) null else DocCardRow(
+                docId = c.long(0),
+                title = c.string(1),
+                mtime = c.long(2),
+                status = c.string(3),
+                indexedAt = c.long(4),
+            )
+        }
+    }.getOrDefault(null)
+
+    /** 一篇的摘要（没建过 ⇒ null——全盘档/顶满/非文本三种原因调用方分不清也不必分）。 */
+    fun summaryOf(docId: Long): DocSummaryRules.SummaryText? = runCatching {
+        db.readable().rawQuery(SearchSql.SELECT_SUMMARY, arrayOf(docId.toString())).use { c ->
+            if (!c.moveToNext()) null else DocSummaryRules.SummaryText(firstLines = c.string(0), blocks = c.string(1))
+        }
+    }.getOrDefault(null)
+
+    /** 摘要行数（「部分索引 N/M」的 N）。 */
+    fun summaryCount(): Int = runCatching {
+        db.readable().rawQuery(SearchSql.COUNT_SUMMARY, null).use { c ->
+            if (c.moveToFirst()) c.getLong(0).toInt() else 0
+        }
+    }.getOrDefault(0)
+
+    /** HOME 档根上 OK 状态的账上行数（「部分索引 N/M」的 M）。 */
+    fun homeTextDocCount(): Int = runCatching {
+        db.readable().rawQuery(SearchSql.COUNT_HOME_TEXT_DOCS, null).use { c ->
+            if (c.moveToFirst()) c.getLong(0).toInt() else 0
+        }
+    }.getOrDefault(0)
+
+    /**
+     * 目录浏览的原料：某根上 `relDir`（含子目录）下的账上行，至多 [cap] 行（浏览不是导出）。
+     * [likePattern] 由调用方按 [SearchSql.SELECT_DOCS_UNDER_DIR] 的 ESCAPE 口径拼好。
+     */
+    fun docsUnderDir(rootId: Long, likePattern: String, cap: Int): List<DirDocRow> = runCatching {
+        db.readable().rawQuery(
+            SearchSql.SELECT_DOCS_UNDER_DIR,
+            arrayOf(rootId.toString(), likePattern, cap.toString()),
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    add(DirDocRow(relPath = c.string(0), title = c.string(1), status = c.string(2)))
+                }
+            }
+        }
+    }.getOrDefault(emptyList())
 }
+
+/** `doc` 里一篇的读数（[SearchSql.SELECT_DOC_CARD] 的列序）。 */
+internal data class DocCardRow(
+    val docId: Long,
+    val title: String,
+    val mtime: Long,
+    val status: String,
+    val indexedAt: Long,
+)
+
+/** 目录浏览的一行（[SearchSql.SELECT_DOCS_UNDER_DIR] 的列序）。 */
+internal data class DirDocRow(val relPath: String, val title: String, val status: String)
 
 /** 游标取值的小工具（列下标写死在调用处，读错列就是测试红，不靠运行时异常）。 */
 private fun Cursor.string(i: Int): String = getString(i) ?: ""

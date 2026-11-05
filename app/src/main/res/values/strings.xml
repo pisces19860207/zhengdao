@@ -583,6 +583,10 @@
     <string name="baopu_params_undeclared">未声明</string>
     <string name="baopu_tool_find_files">找文件</string>
     <string name="baopu_tool_find_files_desc">按文件名片段在目录里逐层找（大小写不敏感，也能找没有扩展名的书），比列目录省事。默认往下找 6 层。</string>
+    <string name="baopu_tool_index_browse">索引摘要</string>
+    <string name="baopu_tool_index_browse_desc">看索引里某个文件/目录的「给模型读的摘要」：标题、前几行、结构块。先在搜索卡扫描建索引。</string>
+    <string name="baopu_tool_index_search">索引搜索</string>
+    <string name="baopu_tool_index_search_desc">在已建的索引里按词找文件（回路径、分数、标题）；要逐字搜盘上的原文用「搜文件内容」。</string>
     <string name="baopu_tool_book_outline">看目录</string>
     <string name="baopu_tool_book_outline_desc">先看一本书的章节目录（章名、起止行、字数、首句），再决定读哪几章；拿到起始行直接当 read_file 的 offset 用。</string>
     <string name="baopu_tool_convert_encoding">转编码</string>

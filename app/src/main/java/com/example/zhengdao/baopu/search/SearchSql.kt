@@ -44,8 +44,16 @@ internal object SearchSql {
     const val TABLE_TOK = "tok"
     const val TABLE_WATERMARK = "watermark"
 
-    /** 本批允许出现的表名全集（隐私门禁：任何写语句只能碰这四张表）。 */
-    val TABLES: Set<String> = setOf(TABLE_SCOPE, TABLE_DOC, TABLE_TOK, TABLE_WATERMARK)
+    /**
+     * 492 B 段：「给模型读的摘要」——`doc_summary`，**挂在 doc 下的一层视图**，不是第二套索引：
+     * 每行只带 `doc_id`（级联删）＋两段编码文本（前 N 行／结构块名），由既有扫描入库的同一个
+     * 事务写（[DocSummaryRules]），文件没了顺级联走。工单 B③「不另建索引、不许新写扫描器」
+     * 的落点就是这一张表只随 `doc` 生灭。
+     */
+    const val TABLE_DOC_SUMMARY = "doc_summary"
+
+    /** 本批允许出现的表名全集（隐私门禁：任何写语句只能碰这五张表）。 */
+    val TABLES: Set<String> = setOf(TABLE_SCOPE, TABLE_DOC, TABLE_TOK, TABLE_WATERMARK, TABLE_DOC_SUMMARY)
 
     /** 外键每个连接都要开（PRAGMA 不持久化）——`scope → doc → tok` 的级联删除靠它。 */
     const val PRAGMA_FK_ON = "PRAGMA foreign_keys = ON"
@@ -110,6 +118,18 @@ internal object SearchSql {
           files_seen INTEGER NOT NULL DEFAULT 0,
           files_skipped INTEGER NOT NULL DEFAULT 0,
           bytes_read INTEGER NOT NULL DEFAULT 0
+        )
+        """.trimIndent(),
+        // ── 5. doc_summary：给模型读的摘要（492 B 段） ──────────────────────
+        // 主键即 doc_id（一篇最多一条摘要）；级联挂在 doc 上——文件删了摘要跟着走，
+        // 「删掉的文件还能被 browse 出来」这条假账从结构上不存在。行数硬顶在
+        // [DocSummaryRules.MAX_ROWS]（写死），顶满后的「部分索引 N/M」由读侧标。
+        // 只给 HOME 档根写（全盘档不进摘要——工单「别把『读得到』做成全盘扫描」）。
+        """
+        CREATE TABLE IF NOT EXISTS doc_summary(
+          doc_id INTEGER PRIMARY KEY REFERENCES doc(doc_id) ON DELETE CASCADE,
+          first_lines TEXT NOT NULL DEFAULT '',
+          blocks TEXT NOT NULL DEFAULT ''
         )
         """.trimIndent(),
     )
@@ -198,13 +218,16 @@ internal object SearchSql {
      * 打分只做「命中词频求和」：设计 §9 的「标题 ×3／正文 ×1」是 S3 检索件的活（它复用
      * `KbRetriever` 的算式），本批不在这儿预先长出一个没人调的权重参数。
      *
+     * 492 B②：`index_search` 复用这条检索，命中多带一列 `d.title`（第 4 列）——模型拿着
+     * 标题就能挑该读哪篇，不必每条命中再 read_file 一次。
+     *
      * `ORDER BY score DESC, rel_path`：同分必按路径定序，不靠 rowid 的偶然顺序——
      * 单测要能断言第 1 名是谁。
      */
     fun selectSearch(tokenCount: Int, limit: Int = SEARCH_LIMIT): String {
         require(tokenCount in 1..MAX_TOKENS) { "tokenCount 要在 1..$MAX_TOKENS，实传 $tokenCount" }
         require(limit in 1..MAX_LIMIT) { "limit 要在 1..$MAX_LIMIT，实传 $limit" }
-        return "SELECT d.root_id, d.rel_path, SUM(t.cnt) AS score " +
+        return "SELECT d.root_id, d.rel_path, SUM(t.cnt) AS score, d.title " +
             "FROM tok t JOIN doc d ON d.doc_id = t.doc_id " +
             "WHERE t.token IN (" + placeholders(tokenCount) + ") " +
             "AND d.status = 'OK' " +
@@ -230,6 +253,40 @@ internal object SearchSql {
     const val SELECT_WATERMARK =
         "SELECT last_scan_at, last_full_at, files_seen, files_skipped, bytes_read " +
             "FROM watermark WHERE root_id = ?"
+
+    // ── doc_summary：给模型读的摘要（492 B 段） ─────────────────────────────
+
+    /**
+     * 写一条摘要（幂等）。冲突 `DO UPDATE` 而不是 `INSERT OR REPLACE`：后者在主键冲突时是
+     * 「删旧行＋插新行」——摘要虽无子表，但「重索引一遍就该只刷这一行」（工单 B③「增删改只
+     * 更新该条」）用 UPSERT 说得最直白。是否顶 [DocSummaryRules.MAX_ROWS] 的硬顶由
+     * [PhoneIndex.putShard] 判（顶上的老行**永远可以覆盖**——改过的文件不许因为顶满就丢摘要）。
+     */
+    const val UPSERT_SUMMARY =
+        "INSERT INTO doc_summary(doc_id, first_lines, blocks) VALUES(?, ?, ?) " +
+            "ON CONFLICT(doc_id) DO UPDATE SET first_lines = excluded.first_lines, " +
+            "blocks = excluded.blocks"
+
+    const val SELECT_SUMMARY = "SELECT first_lines, blocks FROM doc_summary WHERE doc_id = ?"
+
+    const val COUNT_SUMMARY = "SELECT COUNT(*) FROM doc_summary"
+
+    /** 「部分索引 N/M」的 M：HOME 档根上、正文真的进得了摘要的那批（OK 状态）行数。 */
+    const val COUNT_HOME_TEXT_DOCS =
+        "SELECT COUNT(*) FROM doc d JOIN scope s ON s.root_id = d.root_id " +
+            "WHERE s.revoked_at IS NULL AND s.kind = 'HOME' AND d.status = 'OK'"
+
+    /** `index_browse` 的单篇卡：账上的读数（摘要另查，别把两件事并成一条语句）。 */
+    const val SELECT_DOC_CARD =
+        "SELECT doc_id, title, mtime, status, indexed_at FROM doc WHERE root_id = ? AND rel_path = ?"
+
+    /**
+     * 目录浏览：某根某目录（含子目录）下的全部账上行。`dir` 由调用方做 LIKE 转义后拼
+     * `dir/%`（根目录给 `%`）；**LIMIT 必给**（浏览是「看懂结构」，不是全量导出）。
+     */
+    const val SELECT_DOCS_UNDER_DIR =
+        "SELECT rel_path, title, status FROM doc WHERE root_id = ? AND rel_path LIKE ? ESCAPE '\\' " +
+            "ORDER BY rel_path LIMIT ?"
 
     // ── 常量 ────────────────────────────────────────────────────────────────
 
