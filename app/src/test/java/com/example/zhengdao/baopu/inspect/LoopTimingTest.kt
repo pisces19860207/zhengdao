@@ -7,6 +7,9 @@
 //   ② 某段缺失 ⇒ 不计入、报「缺 N 条」（不许当 0）→ `判据②_缺失段不计入_报缺失条数`；
 //   ③ 振荡：同 kind 24h 内 ≥3 次＋冻结→解除→再冻结 ⇒ OSCILLATION（只标不处置）→ 判据③三件；
 //   ④ 只读：不写任何账（字节级对拍＋源级零写口，源级带正例防恒真）。
+//
+// 第四百二十九批（C 域③）补钉：runId join——单号时间线只收同号行
+// （跨号不串场、旧处置行出处不明宁缺勿猜、空白单号空时间线、整本账口径不动）。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.CardDisposition
@@ -40,10 +43,11 @@ class LoopTimingTest {
         subject: String,
         choice: CardDisposition.Choice = CardDisposition.Choice.DISMISS,
         actor: CardDisposition.Actor = CardDisposition.Actor.CLOCK,
+        runId: String = "",
     ) {
         val row = CardDispositionRow(
             id = "cd:$atMs:1", atMs = atMs, face = CardDisposition.Face.CONFIRM, cardId = cardId,
-            choice = choice, actor = actor, subject = subject, why = "测试造行",
+            choice = choice, actor = actor, subject = subject, why = "测试造行", runId = runId,
         )
         CardDisposition.fileIn(root).parentFile?.mkdirs()
         CardDisposition.fileIn(root).appendText(row.toJson().toString() + "\n", Charsets.UTF_8)
@@ -221,5 +225,60 @@ class LoopTimingTest {
         // 正例：确确实实在读两本账——没有这两行，上面的黑名单就是扫了个空文件
         assertTrue(code.contains("DeviationLedger.read("))
         assertTrue(code.contains("CardDisposition.fileIn("))
+    }
+
+    // ── 第四百二十九批③：runId join——单号时间线（join 能按 runId 取时间线） ──
+
+    @Test
+    fun `四百二十九③_runId join_时间线只收同号行_跨号与旧行不串场`() {
+        // run-a：挂起超时一条；处置行＋恢复行同号 ⇒ 三段全对上
+        val suspendA = base
+        writeDeviation(
+            DeviationEntry.suspendTimeout("run-a", "task-a", suspendA + min, suspendA, "甲的事", stillPending = false),
+        )
+        writeDisposal(suspendA + 5 * min, cardId = "call-a", subject = "甲的事", runId = "run-a")
+        writeDisposal(
+            suspendA + 9 * min, cardId = "restored-$suspendA", subject = "甲的事",
+            choice = CardDisposition.Choice.APPROVE, actor = CardDisposition.Actor.USER, runId = "run-a",
+        )
+        // run-b：另一单、**同 subject** 的处置行——不同号 ⇒ 不许 join 进 run-a 的时间线
+        writeDeviation(
+            DeviationEntry.suspendTimeout("run-b", "task-b", base + 60 * min, base + 59 * min, "甲的事", stillPending = false),
+        )
+        writeDisposal(base + 61 * min, cardId = "call-b", subject = "甲的事", runId = "run-b")
+
+        val timeline = LoopTiming.timelineForRun(root, "run-a")
+        assertEquals("run-a 的时间线只有 run-a 的一条", 1, timeline.size)
+        val row = timeline.single()
+        assertEquals("处置行按同号 join 进来（时刻＝同号处置行那一刻）", suspendA + 5 * min, row.handledAtMs)
+        assertEquals("恢复行同理", suspendA + 9 * min, row.recoveredAtMs)
+
+        val s = LoopTiming.computeForRun(root, "run-a")
+        assertEquals(1, s.total)
+        assertEquals(1, s.discover.samples)
+        assertEquals(1, s.handle.samples)
+        assertEquals(1, s.recover.samples)
+        assertEquals("单号口径照样分桶", 1, s.perKind.first { it.kind == DeviationKind.SUSPEND_TIMEOUT }.total)
+
+        assertEquals("run-b 的时间线不含 run-a 的行", 1, LoopTiming.computeForRun(root, "run-b").total)
+        assertEquals("没这单 ⇒ 空时间线（不是拿 0 冒充，是压根没有行）", 0, LoopTiming.computeForRun(root, "run-x").total)
+        assertTrue("空白单号 ⇒ 空时间线", LoopTiming.timelineForRun(root, "").isEmpty())
+        assertEquals("整本账口径不动：两条偏差都在", 2, LoopTiming.compute(root).total)
+    }
+
+    @Test
+    fun `四百二十九③_旧行没带runId_单号线里诚实缺失_整本账仍对得上`() {
+        // 处置行是 415 前的形状（runId 空串）＝出处不明：单号时间线不许猜它属于哪一单
+        writeDeviation(
+            DeviationEntry.suspendTimeout("run-c", "t", base + min, base, "丙的事", stillPending = false),
+        )
+        writeDisposal(base + 6 * min, cardId = "call-c", subject = "丙的事")
+
+        val s = LoopTiming.computeForRun(root, "run-c")
+        assertEquals(1, s.total)
+        assertEquals("处置行出处不明 ⇒ 单号时间线里缺（宁缺勿猜）", 0, s.handle.samples)
+        assertEquals(1, s.handle.missing)
+        assertNull(s.handle.p50Min)
+        assertEquals("同一本账整本口径照旧对得上（老行为一个字没动）", 1, LoopTiming.compute(root).handle.samples)
     }
 }

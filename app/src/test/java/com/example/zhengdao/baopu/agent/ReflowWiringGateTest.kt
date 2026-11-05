@@ -11,6 +11,12 @@
 //   W5 轮号只有一个来源（beginRound 那一口钟），别处不许自造；
 //   W6 通道本体零 IO、不自己取时钟（文件头纪律 4）；
 //   W7 处置账的不对称写在形状里（INFO 不落账；引擎不直接写处置账）。
+//
+// 第四百二十九批（C 域①②）补钉：
+//   W8 executable 的调用点进了检查点（处置卡 AUTH 收下后、原卡补问执行前恰好一处），
+//      取用（useAuthorization）依旧零消费——重试是下一次决策的事；
+//   W9 AUTH 档接线：处置卡授权选项带 ONCE 范围提交（AUTH 必带范围，判据③）；
+//   W10 REJECT 档接线：取消不带范围、收下即止不再重递原卡。
 package com.example.zhengdao.baopu.agent
 
 import java.io.File
@@ -170,15 +176,45 @@ class ReflowWiringGateTest {
     }
 
     @Test
-    fun `W8_可执行性判定在生产侧零消费_本批不做自动重试`() {
-        // 派工单 §4「不做自动重试原动作（重试是另一次决策）」的机械形状：
-        // 通道把「她批没批、范围多大」做成**可查的问句**（executable／useAuthorization），
-        // 但没有一行生产代码拿它去重发原动作——消费它的得是下一次决策（UI 批的卡面，
-        // 或她重新下令那一轮）。本批接线只到「把话带到」为止。
+    fun `W8_可执行性判定进了检查点_判据本体仍在通道_取用依旧零消费`() {
+        // 396 把 executable 做成「可查的问句」但没人问；429② 把问句接进检查点：处置卡 AUTH
+        // 收下后、原卡补问执行前，引擎问一次通道「她批的授权此刻活着吗」，真才落定
+        // 「原卡不再补问」。取用（useAuthorization）依旧零消费——派工单 §4
+        // 「不做自动重试原动作（重试是另一次决策）」一个字没松。
         val code = engineCode()
-        assertFalse("引擎不许读可执行性来自己重试：", code.contains("AnswerReflow.executable("))
-        assertFalse("引擎不许取用授权来自己重试：", code.contains("AnswerReflow.useAuthorization("))
-        assertTrue("问句做在通道里（判据①的落点在通道，不在引擎）：",
+        assertEquals("引擎里 executable( 恰好一处（429② 的调用点，grep 判据）：",
+            1, count(code, "AnswerReflow.executable("))
+        val disposition = slice(code, "private fun reflowDisposition(", "private fun reflowQuietAnswer(")
+        assertTrue("调用点在处置卡里（AUTH 收下之后、原卡补问执行之前）：$disposition",
+            disposition.contains("AnswerReflow.executable("))
+        assertFalse("取用依旧零消费（不做自动重试）：", code.contains("AnswerReflow.useAuthorization("))
+        assertTrue("判据本体仍在通道（引擎只认问句不自己推）：",
             reflowCode().contains("fun executable(askId: String, currentTaskId: String, nowMs: Long): Boolean"))
+    }
+
+    // ── 429①：AUTH／REJECT 两档接上（处置卡；桥随 383-A 删了，三选一拼在检查点补问前） ──
+
+    @Test
+    fun `W9_AUTH 档接线_处置卡授权选项带ONCE范围提交_收下才落定`() {
+        val drain = slice(engineCode(), "private fun drainQuietQueue(", "private fun reflowQuietAnswer(")
+        assertTrue("补问前先递处置卡（收下 AUTH／REJECT 即止，不再重递原卡）：$drain",
+            drain.contains("if (reflowDisposition(item)) continue"))
+        assertTrue("AUTH 由她点的档自己声明（引擎不自作主张判授权，W2 的负面断言对自发路仍成立）：",
+            drain.contains("\"reflow:auth\" -> ReflowKind.AUTH to ReflowScope.ONCE.wire"))
+        assertTrue("AUTH 提交必带范围（判据③不许默认无限；卡面只摆「就这一次」一档，宁窄勿宽）：",
+            drain.contains("ReflowScope.ONCE.wire"))
+        assertTrue("收下 AUTH 要问通道可执行性才落定（429② 同一调用点）：",
+            drain.contains("AnswerReflow.executable("))
+    }
+
+    @Test
+    fun `W10_REJECT 档接线_取消不带范围_拒收落回原卡补问路`() {
+        val drain = slice(engineCode(), "private fun drainQuietQueue(", "private fun reflowQuietAnswer(")
+        assertTrue("REJECT 由她点的档自己声明，scopeWire 是空串（非 AUTH 不许带范围）：$drain",
+            drain.contains("\"reflow:reject\" -> ReflowKind.REJECT to \"\""))
+        assertTrue("处置卡提交走同一个 submit 口（引擎不碰处置账，W7 原样）：",
+            drain.contains("AnswerReflow.submit("))
+        assertTrue("拒收不落定——落回 396 的原卡补问路，拒因落日志不静默吞：",
+            drain.contains("没灌：\${outcome.reason}"))
     }
 }

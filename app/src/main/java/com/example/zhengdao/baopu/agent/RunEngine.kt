@@ -1540,6 +1540,10 @@ internal class RunEngine(
                 val locked = awayLocked()
                 val item = quietGate.takeNext(quietGrant, quietShape(now), now, locked) ?: return
                 log(quietGate.comebackLine(item, quietGrant, quietShape(now), now, locked))
+                // 第四百二十九批①（AUTH／REJECT 两档接上）：补问前先递处置卡——她点的档自己
+                // 声明算不算授权（AUTH／REJECT 收下即止，不再重递原卡）；选「只补信息」／没人答
+                // ＝false，落回下面 396 的原路（原卡补问＋INFO 回灌），一个字没改。
+                if (reflowDisposition(item)) continue
                 // 一次出卡、两本账各取所需：`picked` 是 379 原来的日志口径（单问＝选项 label，
                 // 问题组＝答完的题号），一个字没改；回灌要的是**她答的话**，问题组那份
                 // 从 answers 的值里取（题号不是答案，把 "q1、q2" 灌给模型等于没灌）。
@@ -1554,12 +1558,89 @@ internal class RunEngine(
     }
 
     /**
+     * 429① 的补问处置卡（普通 [AskUserRequest]，通用选择卡原样渲染，零 composable 改动）。
+     *
+     * BrowserAgentBridge 随 383-A 删了（用户裁定：不补不接），她能对"被压的卡"表态的引擎
+     * 自有面只剩检查点补问——三选一就拼在这里：授权／只补信息／取消，选项 id 带稳定前缀
+     * `reflow:`（与模型自己起的选项 id 撞不了车）。
+     */
+    private fun reflowCardOf(item: DeferredAsk): AskUserRequest = AskUserRequest(
+        question = item.headline,
+        note = "这是免打扰时压下的补问——先定它怎么算；选「只补信息」才接着递原卡。",
+        options = listOf(
+            AskUserOption("reflow:auth", "授权（就这一次）"),
+            AskUserOption("reflow:info", "只补信息（接着答原卡）"),
+            AskUserOption("reflow:reject", "取消，这件事不用做了"),
+        ),
+    )
+
+    /**
+     * 处置卡收答并回灌（第四百二十九批①：AUTH／REJECT 两档接上）。
+     *
+     * 三档由**她点的选项自己声明**（396 的纪律原样成立：引擎不把"她点了 A"读成
+     * "她批了 A"——AUTH 档的卡面上写的就是授权）：
+     * - 授权（就这一次）→ [ReflowKind.AUTH]＋[ReflowScope.ONCE]：处置卡面上摆不出范围族，
+     *   宁窄勿宽；范围更长的授权等有真卡面再接；
+     * - 取消 → [ReflowKind.REJECT]：动作作废，处置账由通道自己落（引擎不碰账，W7 原样）；
+     * - 只补信息／没人答／拒收 ⇒ 返回 false：落回 [reflowQuietAnswer] 的原路（重递原卡、
+     *   答上的话按 INFO 灌），拒因落日志不静默吞。
+     *
+     * 收下 AUTH／REJECT ⇒ 返回 true（待答清单里那张牌已被 submit 摘掉，原卡再重递等于
+     * 同一问问两遍）。AUTH 收下后原卡是否真可省，**问通道**（第四百二十九批②的调用点：
+     * [AnswerReflow.executable]——可执行性判据本体在通道里，引擎只认问句不自己推）：
+     * 在账却判不可执行（异常态）⇒ 如实记一行，仍走原卡补问，宁多问一遍，不把没生效的
+     * 授权当生效。取用（useAuthorization）本批照旧零消费——重试是模型下一次决策的事。
+     */
+    private fun reflowDisposition(item: DeferredAsk): Boolean {
+        val now = System.currentTimeMillis()
+        val card = reflowCardOf(item)
+        val picked = askUserRaw(card) ?: return false
+        val (kind, scopeWire) = when (picked.id) {
+            "reflow:auth" -> ReflowKind.AUTH to ReflowScope.ONCE.wire
+            "reflow:reject" -> ReflowKind.REJECT to ""
+            else -> return false
+        }
+        val sessionId = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        val taskId = sessionId?.let { "session:$it" }.orEmpty()
+        val outcome = AnswerReflow.submit(
+            answer = ReflowAnswer(
+                askId = item.id,
+                turnId = AnswerReflow.turnOf(item.id) ?: currentRoundId,
+                kind = kind,
+                scopeWire = scopeWire,
+                text = picked.label,
+            ),
+            currentRoundId = currentRoundId,
+            currentTaskId = taskId,
+            nowMs = now,
+        )
+        when (outcome) {
+            is ReflowOutcome.Rejected -> {
+                log("补问回灌｜${item.headline}｜没灌：${outcome.reason}")
+                return false
+            }
+
+            is ReflowOutcome.Accepted -> if (kind == ReflowKind.AUTH) {
+                if (AnswerReflow.executable(item.id, taskId, now)) {
+                    log("补问回灌｜${item.headline}｜她授权（范围=一次）｜原卡不再补问，下一轮上下文带 1 条补丁")
+                    return true
+                }
+                log("补问回灌｜${item.headline}｜授权在账但可执行性为假（异常态），按未处置走原卡补问")
+                return false
+            } else {
+                log("补问回灌｜${item.headline}｜她取消了，动作作废（处置账 1 行）｜原卡不再补问")
+                return true
+            }
+        }
+    }
+
+    /**
      * 检查点补问答上之后把话带给模型（第三百九十六批；派工单 §2B 的自发那一路）。
      *
-     * 种类只取 [ReflowKind.INFO]（**只补信息，不动可执行性**）：这张卡路收回来的是选项
-     * label 或问题组的答案文本，卡面上没有"我授权你这么做"那一格——算不算授权、授权多大范围，
-     * 得由答复自己声明，那是补问卡面（UI 批）的三选一，派工单 §4 明令本批「不做 UI」。
-     * 把"她点了 A"读成"她批了 A"，等于替她签收一张她没批过的授权（判据①的不对称守的就是这条）。
+     * 种类只取 [ReflowKind.INFO]（**只补信息，不动可执行性**）：这是**原卡**收答的那条路，
+     * 卡面上没有"我授权你这么做"那一格；算不算授权由处置卡（[reflowDisposition]，429①）
+     * 的三选一自己声明，不经这里。把"她点了 A"读成"她批了 A"，等于替她签收一张她没批过的
+     * 授权（判据①的不对称守的就是这条）。
      *
      * 灌进去的正文是**她答的话**：单问＝选项 label，问题组＝逐问「标题＝答案」并列
      * （题号不是答案，把 "q1、q2" 灌给模型等于没灌）。一个字没答 ⇒ 不灌（空话不回灌）。

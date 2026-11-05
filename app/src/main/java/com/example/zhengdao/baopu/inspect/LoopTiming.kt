@@ -30,6 +30,11 @@
 //   2. 只读：不写任何账、不建目录、不改 DeviationLedger/CardDisposition 一行；
 //   3. 只算不判：输出只有数字与 OSCILLATION 标记，零判决词；
 //   4. 缺就是缺：匹配不到记"缺失"，不许拿 0 冒充——0 分钟和没对上是两回事。
+//
+// 第四百二十九批（C 域③）· runId join：单号时间线——偏差行的 runId（必填列）× 处置行的
+// runId（415 加的出处列）**同号才算同一场**（[timelineForRun]／[computeForRun]）。出处不明
+// 的处置行（升级前挂着的旧行没有这两列）进不了任何单号的时间线——宁缺勿猜，纪律 4 的
+// join 版；它们仍活在整本账口径 [compute] 里（那里不按 runId 筛，老行为一个字没动）。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.CardDisposition
@@ -105,18 +110,47 @@ internal object LoopTiming {
     fun compute(root: File): LoopTimingStats {
         val deviations = DeviationLedger.read(root, Int.MAX_VALUE).sortedBy { it.atMs }
         val disposals = readDisposals(root)
-        val rows = deviations.map { resolve(it, disposals) }
-        return LoopTimingStats(
-            total = rows.size,
-            discover = segment(rows) { it.discoverMs },
-            handle = segment(rows) { it.handleMs },
-            recover = segment(rows) { it.recoverMs },
-            perKind = DeviationKind.entries.map { kind ->
-                bucket(kind, rows)
-            },
-            oscillations = findOscillations(rows),
-        )
+        return statsOf(deviations.map { resolve(it, disposals) })
     }
+
+    /**
+     * 单号时间线（429③）：按 runId 把两本账 join 成行——偏差行带 [DeviationEntry.runId]
+     * （必填），处置行带 415 加的 runId 出处列，**同号才算同一场**。
+     *
+     * · runId 只管「哪些行进场」，行与行的对位仍走 subject/cardId 事实键
+     *   （一场 run 里可能有多张卡，靠键挑行；[resolve] 原样复用）；
+     * · 处置行没带 runId（升级前挂着的旧行）＝出处不明 ⇒ 进不了**任何**单号的时间线
+     *   （把它算给 runId 等于猜，纪律 4）；整本账口径 [compute] 不受影响；
+     * · 空白单号 ⇒ 空时间线（[DeviationLedger.countForRun] 同一守门）；
+     * · 只读：与 [compute] 同一条纪律，一行账不写。
+     */
+    fun timelineForRun(root: File, runId: String): List<ResolvedRow> {
+        if (runId.isBlank()) return emptyList()
+        val deviations = DeviationLedger.read(root, Int.MAX_VALUE)
+            .filter { it.runId == runId }
+            .sortedBy { it.atMs }
+        if (deviations.isEmpty()) return emptyList()
+        val disposals = readDisposals(root).filter { it.runId == runId }
+        return deviations.map { resolve(it, disposals) }
+    }
+
+    /**
+     * 单号闭环时延（429③）：[timelineForRun] 的时间线上算同款三段＋五类分桶＋振荡。
+     * 整本账口径的 [compute] 与收工读数行 [reportLine] 一个字没动（拍板 2）。
+     */
+    fun computeForRun(root: File, runId: String): LoopTimingStats = statsOf(timelineForRun(root, runId))
+
+    /** 三段＋分桶＋振荡都从行出发（整本账与单号两条路共用的收口；判据只此一份）。 */
+    private fun statsOf(rows: List<ResolvedRow>): LoopTimingStats = LoopTimingStats(
+        total = rows.size,
+        discover = segment(rows) { it.discoverMs },
+        handle = segment(rows) { it.handleMs },
+        recover = segment(rows) { it.recoverMs },
+        perKind = DeviationKind.entries.map { kind ->
+            bucket(kind, rows)
+        },
+        oscillations = findOscillations(rows),
+    )
 
     /**
      * 收工读数一行（拍板 2 钉死的格式）：
@@ -135,7 +169,11 @@ internal object LoopTiming {
 
     // ── 四段时刻的解析（私有；一条偏差 ⇒ 三段时延的毫秒值，对不上就是 null） ──
 
-    private data class ResolvedRow(
+    /**
+     * 时间线的一行（429③起 internal：[timelineForRun] 的返回形状）——
+     * 一条偏差在三本账里对出的四段时刻；三个 ms 任意一个都可能是 null（缺失就是缺失）。
+     */
+    internal data class ResolvedRow(
         val entry: DeviationEntry,
         val occurredMs: Long?,
         val handledAtMs: Long?,
