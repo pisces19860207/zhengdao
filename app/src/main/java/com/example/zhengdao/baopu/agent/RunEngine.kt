@@ -1995,15 +1995,41 @@ internal class RunEngine(
         val activePack = runCatching { personaPack?.invoke() }.onFailure {
             log("人设包读取失败，按抱朴默认人设继续：${it.message}")
         }.getOrNull()
+        val projectRaw = personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT)
+        // 第四百六十四批 ③ · 按需注入：**每轮算一次**（步循环复用同一个值 ⇒ 前缀稳定），
+        // 常驻＝A 内核＋B/C 前三条，其余按这句话检索，没命中只留一行索引。
+        // 算在 `assemble` **之前**：assemble 与 `ContextAssembler` 一个字没改，
+        // 没超预算的层原样通过，本批之前那套前缀不变式不会被 464 碰到。
+        // 人设包**不参与**降级：它是这一轮用户显式选的，整包恒在（所以注入先算文件正文）。
+        val turnQuery = userText.orEmpty()
+        // 索引行里的路径要**真的能打开**：`read_file` 的相对路径按工作区根算，B 层却在 App 私有目录，
+        // 所以这里给绝对路径（拿不到文件对象时退回裸名，由 [PersonaInjection.indexNote] 兜底）。
+        val globalInjected = com.example.zhengdao.baopu.PersonaInjection.prepare(
+            personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL),
+            com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL,
+            turnQuery,
+            pathHint = personaFiles?.fileOf(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL)
+                ?.takeIf { it.isFile }?.absolutePath,
+        )
+        val projectInjected = com.example.zhengdao.baopu.PersonaInjection.prepare(
+            projectRaw,
+            com.example.zhengdao.baopu.PersonaLayer.C_PROJECT,
+            turnQuery,
+            // C 层新位置没有时读的是旧落点（199 的只读回落）⇒ 索引行也得指那一份
+            pathHint = personaFiles?.fileOf(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT)
+                ?.takeIf { it.isFile }?.absolutePath
+                ?: personaFiles?.legacyProjectFile()?.absolutePath,
+        )
         val projectPersona = com.example.zhengdao.baopu.PersonaPackRules.composeProjectPersona(
-            personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT),
+            projectInjected.text,
             activePack,
         )
         val persona = PersonaRules.assemble(
             BaopuPreset.personaText(workspacePath),
-            personaFiles?.read(com.example.zhengdao.baopu.PersonaLayer.B_GLOBAL),
+            globalInjected.text,
             projectPersona,
         )
+        log(com.example.zhengdao.baopu.PersonaInjection.report(listOf(globalInjected, projectInjected)))
         activePack?.let { log("人设包：本轮套用「${it.name}」") }
         val facts = HardFacts(workspacePath = workspacePath, model = provider.model)
         // 第一百八十一批 #2：召回预算按本通道模型窗口取（recallBudgetOf 判据；大窗口仍封顶 2k）。

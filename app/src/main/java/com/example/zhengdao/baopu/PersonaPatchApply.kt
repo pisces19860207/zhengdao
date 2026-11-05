@@ -42,6 +42,19 @@ sealed interface PersonaImportResult {
 }
 
 /**
+ * 一次**分段写入**的结果（第四百六十四批 ①）。
+ *
+ * @param segments 真正落进文件的每一个「## 类别」块（一条超长条款 ⇒ 多个块）；
+ *   **拒了就是空表**（回执不出口"写成 0 段"这种糊弄话）
+ * @param outcome 与 [PersonaPatchApply.apply] 同一套结论（原因、备份都在里面）
+ */
+internal data class PersonaSegmentedResult(val outcome: PersonaApplyResult, val segments: List<String>) {
+
+    /** 给人看的回执：`写成 N 段，共 M 字`（M ＝ 非空白字符数，与切分「不丢字」同一把尺）。 */
+    fun receipt(): String = PersonaCapacity.receipt(segments)
+}
+
+/**
  * 人设补丁的落盘壳（薄 I/O；判据在 [PersonaPatchRules]，文件读写走 [PersonaFiles]）。
  */
 internal object PersonaPatchApply {
@@ -81,7 +94,103 @@ internal object PersonaPatchApply {
             applied = result is PersonaApplyResult.Applied,
             source = source,
         )
+        afterWrite(files, result)
         return result
+    }
+
+    /**
+     * 写口之后的**自整理**触发（第四百六十四批 ②：B/C 层超预算 80% 才动手）。
+     *
+     * 为什么挂在这里而不是 [PersonaFiles.applyProposal]：那个唯一写口是整理**自己**也要用的
+     * 落盘通道，挂在那里等于「整理 ⇒ 再整理」的死循环。这里的语义是「一次人设写入完成了」，
+     * 才是工单说的那个触发点。整理的所有失败都吞成结论（[PersonaOrganize.maybeOrganizeAfterWrite]），
+     * 绝不让刚写进去的人设因为整理没跑成而被报成失败。
+     */
+    private fun afterWrite(files: PersonaFiles, result: PersonaApplyResult) {
+        if (result is PersonaApplyResult.Applied) PersonaOrganize.maybeOrganizeAfterWrite(files, result.layer)
+    }
+
+    /**
+     * 超长条款**分段写入**（第四百六十四批 ①：不丢字，回执说清段数）。
+     *
+     * 四条判据：
+     * 1. **没东西要切 ⇒ 原样走 [apply]**——464 之前的行为（含审计与账本那两行）逐字节不变；
+     * 2. 要切 ⇒ 每段仍按「一条条款」复核（`validate` 的单条上限与「同一类别只能有一条」
+     *    都没动，切的是**写入**，不是把判据放宽）；
+     * 3. 切完**先在内存里整链模拟追加、全通过才落盘一次** ⇒ 不留「写了 2 段、第 3 段失败」
+     *    的半批状态（纪律照 [importTyped]：一次调用里全验完、一起切换）；
+     * 4. 超出段数封顶 ⇒ 明说拒收，**不静默截断**（「不丢」不等于「不筛」）。
+     */
+    fun applySegmented(
+        patch: PersonaPatch,
+        consent: PersonaConsent,
+        currentWorkspaceId: String?,
+        files: PersonaFiles,
+        source: String = "卡片",
+    ): PersonaSegmentedResult {
+        if (patch.sections.none { it.text.trim().length > PersonaCapacity.maxSectionChars() }) {
+            val r = apply(patch, consent, currentWorkspaceId, files, source)
+            val segs = if (r is PersonaApplyResult.Applied) patch.sections.map { it.text.trim() } else emptyList()
+            return PersonaSegmentedResult(r, segs)
+        }
+        val (result, segs) = segmentedInner(patch, consent, currentWorkspaceId, files, source)
+        // 账记**一行**：用户要记的是这条人设，分段是落盘形态，不是 N 条新规矩
+        PersonaChangeLedger.record(
+            who = whoOf(source),
+            layer = (result as? PersonaApplyResult.Applied)?.layer
+                ?: if (patch.scope == PersonaPatchScope.B_GLOBAL) PersonaLayer.B_GLOBAL else PersonaLayer.C_PROJECT,
+            text = patch.sections.joinToString("\n") { it.text.trim() },
+            reason = (result as? PersonaApplyResult.Rejected)?.reason
+                ?: "${patch.reason}（${PersonaCapacity.receipt(segs)}）",
+            applied = result is PersonaApplyResult.Applied,
+            source = source,
+        )
+        afterWrite(files, result)
+        return PersonaSegmentedResult(result, segs)
+    }
+
+    /** [applySegmented] 的判据＋落盘部分（账本在外层记，与 [apply]/[applyInner] 同一分工）。 */
+    private fun segmentedInner(
+        patch: PersonaPatch,
+        consent: PersonaConsent,
+        currentWorkspaceId: String?,
+        files: PersonaFiles,
+        source: String,
+    ): Pair<PersonaApplyResult, List<String>> {
+        fun no(why: String): Pair<PersonaApplyResult, List<String>> {
+            PersonaAudit.rejected(why, source)
+            return PersonaApplyResult.Rejected(why) to emptyList()
+        }
+        val max = PersonaCapacity.maxSectionChars()
+        val chunks = mutableListOf<PersonaSection>()
+        for (s in patch.sections) {
+            val parts = PersonaCapacity.splitWithinLimit(s.text, max)
+                ?: return no("「${s.kind.heading}」这条太长（超过 ${PersonaCapacity.MAX_SEGMENTS} 段上限）：没有写入，请分几次记")
+            for (p in parts) {
+                val sec = PersonaSection(s.kind, p)
+                PersonaPatchRules.validate(patch.copy(sections = listOf(sec)))?.let { return no(it) }
+                chunks += sec
+            }
+        }
+        if (consent == PersonaConsent.DECLINED) return no("用户没有同意（没有写任何人设）")
+        resolveLayer(consent, patch, currentWorkspaceId)?.let { return no(it) }
+        val layer = layerOf(consent, patch)
+        val base = files.read(layer).orEmpty()
+        var simulated = base
+        for (sec in chunks) {
+            val next = PersonaPatchRules.render(simulated, listOf(sec))
+            if (!PersonaRules.appendOnly(simulated, next)) {
+                return no("${layer.name} 人设只能追加：分段结果不是「原有正文 + 末尾新条款」")
+            }
+            simulated = next
+        }
+        val proposal = PersonaRules.propose(layer, base, simulated, patch.reason)
+            ?: return no("A 内核不可提案改写（${layer.name}）")
+        if (!files.applyProposal(proposal)) return no("写盘失败（人设文件没写进去）")
+        val label = if (layer == PersonaLayer.B_GLOBAL) "全局" else "工作区"
+        PersonaAudit.applied(layer, label, source, chunks)
+        val backup = PersonaBackup.latestOf(files.fileOf(layer))
+        return PersonaApplyResult.Applied(layer, simulated, backup) to chunks.map { it.text }
     }
 
     /**
@@ -95,6 +204,42 @@ internal object PersonaPatchApply {
         source.contains("导入") -> PersonaWho.IMPORT
         source.contains("工具") || source.contains("模型") -> PersonaWho.MODEL
         else -> PersonaWho.CARD
+    }
+
+    /**
+     * 同意范围 ⇒ 能落到哪一层（第四百六十四批 ① 把这段从 [applyInner] 里抽出来）。
+     *
+     * 为什么抽出来：范围判据必须有**一份**——单条写入和分段写入各留一份 `when`，
+     * 早晚会有一份漏掉「C 层不跨区」。96 批那四条硬判据的顺序就是优先级，没调换。
+     *
+     * @return null ⇒ 范围合法；非 null ⇒ 拒绝原因（**逐字与 96 批一致**，测试钉着）
+     */
+    private fun resolveLayer(
+        consent: PersonaConsent,
+        patch: PersonaPatch,
+        currentWorkspaceId: String?,
+    ): String? = when (consent) {
+        PersonaConsent.WORKSPACE -> when {
+            patch.scope != PersonaPatchScope.C_PROJECT ->
+                "全局人设（B 层）必须明确选「全局」并同意；不能按本工作区写入"
+            patch.workspaceId != currentWorkspaceId || currentWorkspaceId.isNullOrBlank() ->
+                "这条补丁属于别的工作区，不能写进当前工作区（C 层不跨区）"
+            else -> null
+        }
+        PersonaConsent.GLOBAL ->
+            if (patch.scope != PersonaPatchScope.B_GLOBAL) {
+                "只有 B 层（全局人设）能写到全局；C 层补丁只能写本工作区"
+            } else {
+                null
+            }
+        PersonaConsent.DECLINED -> null
+    }
+
+    /** 范围合法时的落点层（DECLINED 到不了这里——调用方在前面已经拦掉）。 */
+    private fun layerOf(consent: PersonaConsent, patch: PersonaPatch): PersonaLayer = when (consent) {
+        PersonaConsent.WORKSPACE -> PersonaLayer.C_PROJECT
+        PersonaConsent.GLOBAL -> PersonaLayer.B_GLOBAL
+        PersonaConsent.DECLINED -> error("前面已处理")
     }
 
     private fun applyInner(
@@ -112,30 +257,11 @@ internal object PersonaPatchApply {
             PersonaAudit.rejected("用户没有同意", source)
             return PersonaApplyResult.Rejected("用户没有同意（没有写任何人设）")
         }
-        val layer = when (consent) {
-            PersonaConsent.WORKSPACE -> {
-                if (patch.scope != PersonaPatchScope.C_PROJECT) {
-                    val why = "全局人设（B 层）必须明确选「全局」并同意；不能按本工作区写入"
-                    PersonaAudit.rejected(why, source)
-                    return PersonaApplyResult.Rejected(why)
-                }
-                if (patch.workspaceId != currentWorkspaceId || currentWorkspaceId.isNullOrBlank()) {
-                    val why = "这条补丁属于别的工作区，不能写进当前工作区（C 层不跨区）"
-                    PersonaAudit.rejected(why, source)
-                    return PersonaApplyResult.Rejected(why)
-                }
-                PersonaLayer.C_PROJECT
-            }
-            PersonaConsent.GLOBAL -> {
-                if (patch.scope != PersonaPatchScope.B_GLOBAL) {
-                    val why = "只有 B 层（全局人设）能写到全局；C 层补丁只能写本工作区"
-                    PersonaAudit.rejected(why, source)
-                    return PersonaApplyResult.Rejected(why)
-                }
-                PersonaLayer.B_GLOBAL
-            }
-            PersonaConsent.DECLINED -> error("前面已处理")
+        resolveLayer(consent, patch, currentWorkspaceId)?.let { why ->
+            PersonaAudit.rejected(why, source)
+            return PersonaApplyResult.Rejected(why)
         }
+        val layer = layerOf(consent, patch)
         val current = files.read(layer).orEmpty()
         val next = PersonaPatchRules.render(current, patch.sections)
         if (!PersonaRules.appendOnly(current, next)) {

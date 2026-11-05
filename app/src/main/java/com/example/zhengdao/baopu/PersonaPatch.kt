@@ -11,6 +11,12 @@
 //    JSON 在 [PersonaPatchRules.parsePatches] 里直接判非法。
 // 3. **只许追加**：渲染结果必须满足 [PersonaRules.appendOnly]（改/删既有条款一律拒）。
 //
+// 第四百六十四批 ① 改了第 2 条里的「长度」口径：**单条上限不再是 800，而是可配**
+// （默认 4000，旋钮在 [PersonaCapacity]）。本文件因此**不再自带任何长度数字**——
+// [MAX_SECTION_CHARS] / [MAX_PATCH_CHARS] 只是转读那个旋钮的别名，
+// 留着这两个名字是为了让四个老调用点（工具/设置页/候选桥/测试）跟着配置一起动，
+// 不必各自再写一个数。条款**条数**上限（4 条）没动，它不是长度旋钮。
+//
 // 本文件零 Android 依赖、零 I/O（纯判据 + 审计文本），JVM 单测直接断言。
 package com.example.zhengdao.baopu
 
@@ -71,13 +77,18 @@ sealed interface PersonaPatchParse {
 /**
  * typed patch 的纯判据：校验、渲染、解析（含「拒角色卡」）。
  *
- * 数字都写死在这里（报告里同口径）：单条 ≤800 字符、整补丁 ≤2000 字符、条款 ≤4 条。
- * 上限的意义：人设是**约束文件**，不是第二个聊天记录；一次塞太多等于把缰绳换成绳子。
+ * 长度口径**不在这里写死**（464 ①）：单条与整补丁上限转读 [PersonaCapacity]
+ * （默认单条 4000、整补丁随它放大）；条款**条数**仍是恒 [MAX_SECTIONS]＝4，
+ * 上限的意义没变：人设是**约束文件**，不是第二个聊天记录。
  */
 internal object PersonaPatchRules {
 
-    const val MAX_SECTION_CHARS = 800
-    const val MAX_PATCH_CHARS = 2_000
+    /** 单条条款上限（＝当前配置的 [PersonaCapacity.maxSectionChars]，默认 4000）。 */
+    val MAX_SECTION_CHARS: Int get() = PersonaCapacity.maxSectionChars()
+
+    /** 整条补丁上限（跟着单条上限放大，464 前是恒 2000）。 */
+    val MAX_PATCH_CHARS: Int get() = PersonaCapacity.maxPatchChars()
+
     const val MAX_SECTIONS = 4
 
     /** 允许出现在补丁 JSON 里的键（**多一个就拒**——角色卡整卡就是这么被挡住的）。 */
@@ -242,6 +253,18 @@ internal object PersonaAudit {
      * 「重置」= 先备份再清空（可回滚），「恢复出厂」= 直接回到出厂（用户明确不要备份）。
      */
     fun restored(layer: PersonaLayer): String = "$TAG 恢复出厂 ${layer.name}（不备份）".also { emit(it) }
+
+    /**
+     * 自整理落盘（464 ②）。
+     *
+     * 与 [applied] 分开一行，是因为这两件事的**可追回路径**不同：应用是追加新条款，
+     * 整理是把旧正文整体换形、原文另存归档 —— 排查时得一眼看出「这一行之后正文不是原样了」。
+     */
+    fun organized(layer: PersonaLayer, savedTokens: Int, archive: String): String =
+        "$TAG 自整理 ${layer.name} 省$savedTokens token 归档=$archive".also { emit(it) }
+
+    /** 自整理被拒（收益不足/保全不过）——同样**不许静默**。 */
+    fun organizeRejected(reason: String): String = "$TAG 自整理未应用 原因=$reason".also { emit(it) }
 
     private fun emit(line: String) {
         sink?.invoke(line)

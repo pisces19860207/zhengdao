@@ -37,11 +37,77 @@ data class PersonaProposal(
     val status: PersonaProposalStatus = PersonaProposalStatus.PENDING,
 )
 
+/** 人设正文按小标题切出的一节（464 ②③ 共用）。[heading] 为空串＝没有小标题的散行。 */
+data class PersonaClauseBlock(
+    val heading: String,
+    /** 节内条款：`1 起绝对行号 → 原文行`（行号用来做原文指针）。 */
+    val clauses: List<Pair<Int, String>>,
+)
+
 /** 人设的**纯判据**（无 I/O，可 JVM 单测）。 */
 internal object PersonaRules {
 
     /** 单层人设 token 上限（程枢版 §17.7：人设不该比对话还长）。 */
     const val PERSONA_TOKEN_LIMIT = 8_000
+
+    /**
+     * 「前几条」是同一批（464）：② 整理时它们**不可进化**（锁头三条），
+     * ③ 注入时它们**每轮必到**（常驻三条）。同一个数、同一个「什么算一条」，
+     * 所以两个口径都从这里出——两处各写一份，早晚会一份把小标题算进条数。
+     */
+    const val LOCKED_HEAD_LINES = 3
+
+    /**
+     * 「一条」的口径：非空、非 markdown 注释、**非小标题**。
+     *
+     * 小标题不算一条是刻意的：出厂那份 C 层第一行是 `# 出厂项目人设`，
+     * 若把标题算进锁头，锁头就只剩两条规矩了。
+     */
+    fun isClause(line: String): Boolean =
+        line.isNotBlank() && !line.trimStart().startsWith("<!--") && !line.trimStart().startsWith("#")
+
+    /** 前 [n] 条的下标（按行序，0 起；不够 n 条就有几条给几条）。 */
+    fun clauseIndexes(text: String, n: Int = LOCKED_HEAD_LINES): List<Int> {
+        val out = mutableListOf<Int>()
+        text.split("\n").forEachIndexed { i, line ->
+            if (out.size < n && isClause(line)) out += i
+        }
+        return out
+    }
+
+    /**
+     * 正文按「常驻 / 按需」切两半（**逐字节**：合起来仍是原正文的连续两段）。
+     *
+     * @return first＝前 [n] 条连同中间的小标题（可能为空），second＝之后的正文
+     */
+    fun splitResident(text: String, n: Int = LOCKED_HEAD_LINES): Pair<String, String> {
+        val lines = text.split("\n")
+        val end = clauseIndexes(text, n).lastOrNull() ?: return "" to text
+        return lines.take(end + 1).joinToString("\n").trimEnd() to lines.drop(end + 1).joinToString("\n")
+    }
+
+    /**
+     * 之后那段正文按小标题分节（同名小标题**不再合并**——这里是「按原文顺序切」，
+     * 合并同类是 ② 整理的事，两件事共用一个切法就迟早共用一个判据）。
+     *
+     * @param skippedLines 这段正文在原文件里跳过了多少行，用来把行号还原成**绝对**行号
+     */
+    fun blocksOf(text: String, skippedLines: Int = 0): List<PersonaClauseBlock> {
+        val out = mutableListOf<PersonaClauseBlock>()
+        var heading = ""
+        var cur = mutableListOf<Pair<Int, String>>()
+        text.split("\n").forEachIndexed { i, line ->
+            if (line.trimStart().startsWith("#")) {
+                if (cur.isNotEmpty()) out += PersonaClauseBlock(heading, cur)
+                heading = line.trim()
+                cur = mutableListOf()
+            } else if (isClause(line)) {
+                cur += (skippedLines + i + 1) to line.trimEnd()
+            }
+        }
+        if (cur.isNotEmpty()) out += PersonaClauseBlock(heading, cur)
+        return out
+    }
 
     /**
      * 哪一层允许被提案改写。A 内核恒 false —— **任何代码路径都不能改它**

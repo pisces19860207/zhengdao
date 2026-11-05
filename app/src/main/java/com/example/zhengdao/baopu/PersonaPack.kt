@@ -50,6 +50,24 @@ internal object PersonaPackRules {
     const val FILE_MANIFEST = "pack.json"
 
     /**
+     * 保留目录名「归档」（第四百六十四批 ②）：自整理把**整理前的原文**逐字节存进
+     * `<…>/抱朴记忆/人设/归档/<时间>.md`（工单给的字面路径），而这里正是人设包的根目录。
+     *
+     * 名字不叫 [com.example.zhengdao.baopu.kernel.BaopuKernel.Data.DIR_ARCHIVE] 那份：
+     * 内核那个是 `<工作区>/记忆/归档/`（月度摘要／过期条目），这个在人设包根目录下，
+     * 两者根不同、内容不同、被谁删掉的后果也不同。K12「目录常量唯一来源」按
+     * 「常量名＝值」精确匹配，只禁再抄一份内核常量名，这里换个名字并写明差别
+     * （与 147 的 `DIR_ENTRIES = "记忆"` 同一口径：另一概念，不并进内核名单）。
+     *
+     * 名字归包层自己保留，判据才只有一份：
+     * - [normalizeName] 拒绝它 ⇒ 「新建/导入一个叫归档的包」这条路直接关死；
+     * - `PersonaPackStore.list()` 跳过它 ⇒ 设置页不会凭空多出一套「缺 persona.md 的坏包」；
+     * - `load/delete` 走同一个 `packDir()` ⇒ 包管理器永远碰不到归档目录（归档不是包，
+     *   而且**删了它就等于删掉唯一一份原文**）。
+     */
+    const val DIR_ORGANIZE_ARCHIVE = "归档"
+
+    /**
      * SAF 选文件用的 MIME 通配。放在数据层常量里，是因为设置页的源码门禁
      * （剥注释用的是朴素正则）会把字符串里的通配符当成块注释开头，吞掉后半个文件。
      */
@@ -76,6 +94,8 @@ internal object PersonaPackRules {
         if (name.isEmpty() || name.length > MAX_NAME_CHARS) return null
         if (name == "." || name == "..") return null
         if (name.startsWith('.')) return null
+        // 「归档」是 464 ② 自整理原文的保留目录（见 [DIR_ORGANIZE_ARCHIVE]）——不是包名
+        if (name == DIR_ORGANIZE_ARCHIVE) return null
         if (ILLEGAL_NAME.containsMatchIn(name)) return null
         return name
     }

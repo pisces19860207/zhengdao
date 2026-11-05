@@ -7,13 +7,16 @@
 // 58 批那条「调了就写」的直写通道作废。现在这条工具会把条款包成**typed patch**，
 // 弹一张御批卡（本工作区 / 拒绝），用户点同意才走 [PersonaPatchApply] 落盘。
 // 依 96 单红线：工具权限级仍是 FREE（它不自己改可见性），`ToolPermission` 一个字没动。
+//
+// 第四百六十四批 ①（2026-11-06）：[spec] 里**不再按长度拒收**条款——超长的那条交给
+// [PersonaPatchApply.applySegmented] 切成几段写进 C 层（非空白字符逐字不丢），回执写清
+// 「写成 N 段，共 M 字」；长度上限本身可配（[PersonaCapacity]，工单把它从 800 放到默认 4000）。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.PersonaConsent
 import com.example.zhengdao.baopu.PersonaFiles
 import com.example.zhengdao.baopu.PersonaPatch
 import com.example.zhengdao.baopu.PersonaPatchApply
-import com.example.zhengdao.baopu.PersonaPatchRules
 import com.example.zhengdao.baopu.PersonaPatchScope
 import com.example.zhengdao.baopu.PersonaSection
 import com.example.zhengdao.baopu.PersonaSectionKind
@@ -54,8 +57,6 @@ internal object AppendPersonaTool {
             val clause = args.optString("text").trim()
             if (clause.isEmpty()) {
                 ToolOutcome.Failed("text 不能为空")
-            } else if (clause.length > PersonaPatchRules.MAX_SECTION_CHARS) {
-                ToolOutcome.Failed("条款太长（≤${PersonaPatchRules.MAX_SECTION_CHARS} 字符）：请拆成一条一句")
             } else {
                 val pf = personaFiles()
                 val wsId = PersonaPatchApply.workspaceIdOf(pf)
@@ -72,6 +73,7 @@ internal object AppendPersonaTool {
                             "等用户在的时候再试，或请用户去设置页改人设。",
                     )
                 } else {
+                    // 分段只是落盘形态：卡面 detailText 就是条款全文，用户点的正是这一整段。
                     val picked = responder(PersonaApprovalCard.request(patch))
                         ?: return@ToolSpec ToolOutcome.Rejected(
                             "用户没有回应（超时或取消了）：人设没有写入，别当作已记住。",
@@ -81,9 +83,11 @@ internal object AppendPersonaTool {
                         PersonaApprovalCard.ID_GLOBAL -> PersonaConsent.GLOBAL
                         else -> PersonaConsent.DECLINED
                     }
-                    when (val r = PersonaPatchApply.apply(patch, consent, wsId, pf)) {
-                        is com.example.zhengdao.baopu.PersonaApplyResult.Applied ->
-                            ToolOutcome.Ok("已记进本项目人设（写前自动备份）：${clause.take(60)}")
+                    val seg = PersonaPatchApply.applySegmented(patch, consent, wsId, pf, source = "工具")
+                    when (val r = seg.outcome) {
+                        is com.example.zhengdao.baopu.PersonaApplyResult.Applied -> ToolOutcome.Ok(
+                            "已记进本项目人设（写前自动备份，可回滚）：${seg.receipt()}；开头：${clause.take(60)}",
+                        )
                         is com.example.zhengdao.baopu.PersonaApplyResult.Rejected ->
                             ToolOutcome.Rejected(r.reason)
                     }

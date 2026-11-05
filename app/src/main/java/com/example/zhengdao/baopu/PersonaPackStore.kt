@@ -24,7 +24,10 @@ internal class PersonaPackStore(private val workspace: File) {
     /** 列出所有可读目录（坏说明文件照列，只是带一句原因）。 */
     fun list(): List<PersonaPackSummary> {
         val base = runCatching { root().canonicalFile }.getOrNull() ?: return emptyList()
-        val dirs = base.listFiles { f -> f.isDirectory && inside(base, f) } ?: return emptyList()
+        val dirs = base.listFiles { f ->
+            // 「归档」是保留目录（464 ② 的整理前原文住在这儿），不是包 ⇒ 不许列出来
+            f.isDirectory && f.name != PersonaPackRules.DIR_ORGANIZE_ARCHIVE && inside(base, f)
+        } ?: return emptyList()
         return dirs.mapNotNull { dir ->
             val manifestText = readTextLimited(File(dir, PersonaPackRules.FILE_MANIFEST), PersonaPackRules.MAX_MANIFEST_BYTES)
             val manifest = PersonaPackRules.parseManifest(manifestText)

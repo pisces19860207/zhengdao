@@ -72,6 +72,7 @@ import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaApplyResult
 import com.example.zhengdao.baopu.PersonaBackup
 import com.example.zhengdao.baopu.PersonaBackupResult
+import com.example.zhengdao.baopu.PersonaCapacity
 import com.example.zhengdao.baopu.PersonaChangeLedger
 import com.example.zhengdao.baopu.PersonaConsent
 import com.example.zhengdao.baopu.PersonaFiles
@@ -85,7 +86,6 @@ import com.example.zhengdao.baopu.PersonaPackStore
 import com.example.zhengdao.baopu.PersonaPackSummary
 import com.example.zhengdao.baopu.PersonaPatch
 import com.example.zhengdao.baopu.PersonaPatchApply
-import com.example.zhengdao.baopu.PersonaPatchRules
 import com.example.zhengdao.baopu.PersonaPatchScope
 import com.example.zhengdao.baopu.PersonaSection
 import com.example.zhengdao.baopu.PersonaSectionKind
@@ -1931,9 +1931,15 @@ private fun PersonaAddSection(ctx: Context, res: Resources) {
             sections = listOf(PersonaSection(PersonaSectionKind.RULES, text)),
             reason = res.getString(R.string.persona_add_reason),
         )
-        val r = PersonaPatchApply.apply(patch, consent, wsId, pfr, source = "设置页手写")
+        // 第四百六十四批 ①：输入框不再按单条上限砍字（砍掉就是**静默丢字**），
+        // 放行到「一条条款最多能有多长」；真超长交给 [PersonaPatchApply.applySegmented]
+        // 分段落盘，回执里写清段数（464 前要在这里被 `validate` 拒成「条款太长」）。
+        val seg = PersonaPatchApply.applySegmented(patch, consent, wsId, pfr, source = "设置页手写")
+        val r = seg.outcome
         val msg = when (r) {
-            is PersonaApplyResult.Applied -> res.getString(R.string.persona_add_done)
+            is PersonaApplyResult.Applied ->
+                res.getString(R.string.persona_add_done) +
+                    if (seg.segments.size > 1) "，${seg.receipt()}" else ""
             is PersonaApplyResult.Rejected -> r.reason
         }
         Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
@@ -1950,7 +1956,7 @@ private fun PersonaAddSection(ctx: Context, res: Resources) {
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(
             value = draft,
-            onValueChange = { draft = it.take(PersonaPatchRules.MAX_SECTION_CHARS) },
+            onValueChange = { draft = it.take(PersonaCapacity.maxClauseChars()) },
             singleLine = true,
             label = { Text(res.getString(R.string.persona_add_hint)) },
             modifier = Modifier.fillMaxWidth(),

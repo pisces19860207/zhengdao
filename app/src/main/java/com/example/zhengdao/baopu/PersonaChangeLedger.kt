@@ -17,12 +17,22 @@ import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONObject
 
-/** 这条人设是**谁**加的（用户手写／模型工具／卡片确认／导入）。 */
+/**
+ * 这条人设是**谁**加的（用户手写／模型工具／卡片确认／导入／自整理）。
+ *
+ * 464「追加·可进化边界」④ ＋ `裁定记录-2026-11.md`§人设 B/C 层可自进化 的「制度层 vs 个人人设层」
+ * 区分（工单点名要写在账上）：
+ * 438 的「规矩只能人改」管的是**制度层**（法典、判据、工具权限），
+ * 人设 B/C 层是**用户自己的**那一层。所以这里出现 [ORGANIZE] 不是破 438：
+ * 它只重排组织形态（分节/去重/指针化），
+ * **锁头三条**与 A 内核由代码路径保证碰不到，原文永远在归档里可追。
+ */
 internal enum class PersonaWho(val wire: String, val cn: String) {
     USER("user", "你自己"),
     MODEL("model", "模型"),
     CARD("card", "卡片确认"),
     IMPORT("import", "导入"),
+    ORGANIZE("organize", "自整理"),
     ;
 
     companion object {
