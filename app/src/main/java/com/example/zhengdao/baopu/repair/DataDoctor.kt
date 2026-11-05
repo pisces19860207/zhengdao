@@ -13,17 +13,28 @@
 //    本文件**不新写**任何解析器、不碰 `execSQL`、不改既有源码一行（铁律①）。
 // 2. **先记后修**：动手前先把 `intent` 落进 [RepairLedger]；**落不上就不动手**（铁律②）。
 //    修完（成功或失败）都落 `result`——失败也要留痕，否则"没修"与"修了没成"分不清。
-// 3. **一轮只修一类**：本文件三个入口各只对应一个 [RepairKind]，
-//    没有"传一组类目全修一遍"的口（铁律⑤）。
+// 3. **一轮只修一类**：本文件每个入口各只对应一个 [RepairKind]（447 加路后入口变多，
+//    仍然是一个入口一类、一桩 intent→result），没有"传一组类目全修一遍"的口（铁律⑤）。
 //
 // 一处刻意的分工（419 修订）：**残留清点**（`sweepResidue`/`repairResidue`）已由 419 接进
-// 体检收尾（`HealthRun.run` 之后一行，[afterHealthRun]）；索引与账本两路仍只在测试里被引用，
-// 接不接（重建索引每月跑一趟值不值）留给人裁，不许顺手带上。
+// 体检收尾（`HealthRun.run` 之后一行，[afterHealthRun]）。
+//
+// 第四百四十七批（2026-11-05 用户批准）：408 欠着的**索引／账本**两路，加上**配置漂移**
+// 新一路，一并接进同一个入口（[afterHealthRun] 一行），本文件仍不新写任何索引逻辑：
+// 1. 索引路读的是 `KnowledgeIndexStore.loadRead` ＋ `loadSnapshotRead` 两条**既有**读口，
+//    修的动作还是 408 那一句 `build(...)` ＋ `save(...)`；
+// 2. 账本路一字未改（只补了一条"旧行字节不变＋新增一行"的断言）；
+// 3. 配置路只吃 [ConfigAccess] 这个口（生产实现＝本包 [NightWatchConfig]，它对读口的
+//    转发与写口都只引用属主模块的常量），本文件里没有 SP 文件名、没有键名字面量、
+//    没有"默认值"——真源在判据表 `ConfigCriteria`。
 package com.example.zhengdao.baopu.repair
 
 import com.example.zhengdao.baopu.TempScratch
 import com.example.zhengdao.baopu.inspect.DataRepair
+import com.example.zhengdao.baopu.inspect.DataRepair.ConfigCriteria
+import com.example.zhengdao.baopu.inspect.DataRepair.ConfigItem
 import com.example.zhengdao.baopu.inspect.DataRepair.SweepWhitelist
+import com.example.zhengdao.baopu.inspect.HealthLedger
 import com.example.zhengdao.baopu.inspect.IndexReading
 import com.example.zhengdao.baopu.inspect.RepairKind
 import com.example.zhengdao.baopu.inspect.RepairPlan
@@ -42,6 +53,31 @@ internal data class RepairOutcome(
     val note: String,
 )
 
+/**
+ * 配置项的**唯一出入口气**（447 §三；本文件与 [DataDoctor] 都不碰 SharedPreferences）。
+ *
+ * 谁实现它：这个配置域的**适配器**（生产＝本包 [NightWatchConfig]，测试＝假表）。
+ * 为什么适配器在 `repair/` 而不在 `inspect/`：写 SP 是写盘，而 `InspectReadOnlyGateTest`
+ * 把勘验层整层钉成"只查不改"（负例①那句"唯一允许落盘的是它自己那几本 JSONL 的追加"）。
+ * 适配器仍然**不自己认键**：读走 [com.example.zhengdao.baopu.inspect.NocturnalAuto.switchOn]
+ * 这个既有读口，文件名与键名引用它的常量——键名、缺省值、类型三样都只住在属主模块，
+ * 御医再抄一份就是同一个配置两套读法（那正是"漂移"的出生地）。
+ *
+ * 三态口径（与判据层一致，不许拿 null 冒充"没这个键"以外的任何意思）：
+ * - [read] 回 null ＝ **这趟读不出**（未取样）⇒ 判据层落成"需人处理"，绝不猜；
+ * - [read] 回字符串 ＝ 这一项**现在生效**的值（没落盘但有缺省也算"生效值"，不算读不出）；
+ * - [observed] ＝ 这个配置域里看到的全部项（表外的也要给，判据层才有东西可"只报不修"）。
+ */
+internal interface ConfigAccess {
+
+    fun read(key: String): String?
+
+    fun observed(): List<ConfigItem>
+
+    /** 写回一个值；**只有判据表里的键会走到这里**（表外的在判据层就被拦成需人处理）。 */
+    fun write(key: String, value: String): Boolean
+}
+
 internal object DataDoctor {
 
     /** 回收站目录名（与 `TempScratch.reap` 同一个落点；那边是字面量，这里跟着）。 */
@@ -55,17 +91,28 @@ internal object DataDoctor {
 
     // ── 体检发现（只读） ─────────────────────────────────────────────────────
 
-    /** ① 索引：读三态 → 计划（`FileRead` 的三态翻成 [IndexReading]，判据层不认实现）。 */
-    fun diagnoseIndex(workspace: File, nowMs: Long): RepairPlan {
-        val target = relativePath(workspace, KnowledgeLayout.indexFile(workspace))
-        val read = KnowledgeIndexStore.loadRead(workspace)
-        val reading = when (read) {
+    /**
+     * ① 索引↔清单：读**两条既有读口** → 成对计划（447 §一①）。
+     *
+     * 本文件不新写任何索引逻辑：`loadRead`／`loadSnapshotRead` 是 259-08 交付的三态读数，
+     * `save` 是唯一的成对写口（先索引、索引写成才写快照——"只剩一条"就是这么来的），
+     * 这里的动作仍然是 408 那一句 `build(...) ＋ save(...)`。
+     */
+    fun diagnoseIndex(workspace: File, nowMs: Long): RepairPlan = DataRepair.indexPairPlan(
+        index = readingOf(KnowledgeIndexStore.loadRead(workspace)) { it.docs.size },
+        manifest = readingOf(KnowledgeIndexStore.loadSnapshotRead(workspace)) { it.entries.size },
+        indexTarget = relativePath(workspace, KnowledgeLayout.indexFile(workspace)),
+        manifestTarget = relativePath(workspace, KnowledgeLayout.snapshotFile(workspace)),
+        evidence = evidence(RepairKind.INDEX, nowMs),
+    )
+
+    /** `FileRead` 的三态翻成 [IndexReading]（判据层不认实现，只认「没有／坏了／读得动」）。 */
+    private fun <T> readingOf(read: KnowledgeIndexStore.FileRead<T>, docs: (T) -> Int): IndexReading =
+        when (read) {
             is KnowledgeIndexStore.FileRead.Missing -> IndexReading.Missing
             is KnowledgeIndexStore.FileRead.Corrupt -> IndexReading.Corrupt(read.why, read.bytes, read.digest8)
-            else -> IndexReading.Ok(read.valueOrNull()?.docs?.size ?: 0)
+            is KnowledgeIndexStore.FileRead.Value -> IndexReading.Ok(docs(read.value))
         }
-        return DataRepair.indexPlan(reading, target, evidence(RepairKind.INDEX, nowMs))
-    }
 
     /** ② 账本：数坏行 → 计划（读不动 ⇒ 需人处理，**不许拿 0 顶替**）。 */
     fun diagnoseLedger(root: File, ledgerName: String, nowMs: Long): RepairPlan {
@@ -87,6 +134,25 @@ internal object DataDoctor {
             TempItem(relPath = relativePath(workspace, it), lastModifiedMs = it.lastModified())
         }
         return DataRepair.tempPlan(items, prefixes, nowMs, evidence(RepairKind.TEMP, nowMs))
+    }
+
+    /**
+     * ④ 配置：按判据表逐行取值 → 计划（447 §三；真源只有 [ConfigCriteria] 这一张表）。
+     *
+     * 三样东西分开喂，判据层才分得清"对位／漂移／没读出来"：
+     * - 表里每一行的**生效值**（[ConfigAccess.read] 回 null ⇒ 这行按未取样，落成需人处理）；
+     * - 这个配置域里**表外**的项（[ConfigAccess.observed] 去掉表里的键）⇒ 只报不修；
+     * - 表本体可注入（测试递假表），房型照 [diagnoseTemp] 的 `prefixes`——本层不替谁记表。
+     */
+    fun diagnoseConfig(
+        config: ConfigAccess,
+        nowMs: Long,
+        rows: List<DataRepair.ConfigRow> = ConfigCriteria.ROWS,
+    ): RepairPlan {
+        val readings = rows.mapNotNull { row -> config.read(row.key)?.let { ConfigItem(row.key, it) } }
+        val inRows = rows.map { it.key }.toSet()
+        val outside = config.observed().filter { it.key !in inRows }
+        return DataRepair.configPlan(readings, outside, rows, evidence(RepairKind.CONFIG, nowMs))
     }
 
     // ── 419：工作区残留清点（体检收尾后的自修）─────────────────────────────
@@ -163,16 +229,45 @@ internal object DataDoctor {
     }
 
     /**
-     * 体检收尾后的那一行（419 的接线口）：跑一趟残留自修，把结果压成一行 note。
+     * 体检收尾后的那一行（419 开的口，447 把四路接满）：残留 → 索引 → 账本 → 配置，
+     * 每路各一趟 [RepairKind]、各两条账（intent→result），压成一行 note 进 RunLog。
      *
-     * 自修出了任何异常都不许连累体检的收尾——体检已经落账，自修的失败要有自己的话
-     * （这行 note 进 RunLog），不能把整趟体检报成失败。
+     * 三条口径：
+     * 1. **一路失败不连累别的路**：每路自带 `runCatching`，抛了只说"这一路没跑成"，
+     *    体检已经落账，不许把整趟体检报成失败；
+     * 2. **少给输入就说少给**：`filesDir`/`config` 没递 ⇒ 那一路显式写"没跑"，
+     *    不静默跳过（静默跳过会被读成"这路跑了、没事"）；
+     * 3. **不动手的不留账**：无需修／需人处理都在 [blockReason] 就返回，账上一行都不写
+     *    （408 的老规矩：留了就像修过）。
      */
-    fun afterHealthRun(workspace: File, ledgerRoot: File, nowMs: Long): String =
-        runCatching {
-            val out = repairResidue(workspace, nowMs, ledgerRoot)
-            if (out.done) "${out.note}｜判据：${out.plan.reason}" else out.note
-        }.getOrElse { "自修没跑成——${it.javaClass.simpleName}: ${it.message}" }
+    fun afterHealthRun(
+        workspace: File,
+        ledgerRoot: File,
+        nowMs: Long,
+        filesDir: File? = null,
+        config: ConfigAccess? = null,
+    ): String {
+        val notes = ArrayList<String>()
+        notes += route("残留") { repairResidue(workspace, nowMs, ledgerRoot) }
+        notes += if (filesDir == null) {
+            "索引：没给 filesDir ⇒ 这路没跑（重建要用它，不是跳过）"
+        } else {
+            route("索引") { repairIndex(workspace, filesDir, nowMs, ledgerRoot) }
+        }
+        notes += route("账本") { repairLedger(ledgerRoot, HealthLedger.FILE_NAME, nowMs) }
+        notes += if (config == null) {
+            "配置：没给 ConfigAccess ⇒ 这路没跑（没读口就没判据）"
+        } else {
+            route("配置") { repairConfig(config, ledgerRoot, nowMs) }
+        }
+        return notes.joinToString("｜")
+    }
+
+    /** 一路的跑法（名字进 note，异常也只认领到这一路）。 */
+    private fun route(label: String, block: () -> RepairOutcome): String = runCatching {
+        val out = block()
+        if (out.done) "$label：${out.note}｜判据：${out.plan.reason}" else "$label：${out.note}"
+    }.getOrElse { "$label：没跑成——${it.javaClass.simpleName}: ${it.message}" }
 
     // ── 修（先记后修） ───────────────────────────────────────────────────────
 
@@ -240,6 +335,31 @@ internal object DataDoctor {
         val moved = moveToTrash(workspace, plan.targets, nowMs)
         val note = "搬进回收站 $moved/${plan.targets.size} 个（可恢复，没真删）"
         return finish(ledgerRoot, plan, nowMs, note, moved == plan.targets.size)
+    }
+
+    /**
+     * ④ 配置：把计划内那几项**改回判据表的值**（447 §三；先记后修）。
+     *
+     * `intent` 行吃的就是判据层那句「哪项 原值=… → 判据表值=…（依据：…）」——
+     * 动手前账上已经写清了"改哪项、从几改到几、依据哪一行"，撤回时照着这行就能改回去。
+     *
+     * 两道不猜：`plan.targets` 里出现表外键（不该发生，判据层就拦了）就**跳过不动**；
+     * [ConfigAccess.write] 回 false ＝ 没改成，落成 `failed` 留痕，不冒充"修好了"。
+     */
+    fun repairConfig(config: ConfigAccess, ledgerRoot: File, nowMs: Long): RepairOutcome {
+        val plan = diagnoseConfig(config, nowMs)
+        val blocked = blockReason(ledgerRoot, plan)
+        if (blocked != null) return RepairOutcome(plan, false, blocked)
+        if (!writeIntent(ledgerRoot, plan, nowMs)) return RepairOutcome(plan, false, INTENT_NOT_WRITTEN)
+
+        val expected = ConfigCriteria.ROWS.associate { it.key to it.expected }
+        var written = 0
+        for (key in plan.targets) {
+            val to = expected[key] ?: continue
+            if (config.write(key, to)) written++
+        }
+        val note = "改回判据表 $written/${plan.targets.size} 项（只动表里有的键）"
+        return finish(ledgerRoot, plan, nowMs, note, written == plan.targets.size)
     }
 
     // ── 内部 ────────────────────────────────────────────────────────────────

@@ -12,6 +12,9 @@
 //    （419 修订：体检**本体**照旧只读；收尾后多一行自修 [DataDoctor.afterHealthRun]——
 //    动手范围＝白名单内超 7 天残留、动作＝搬回收站、账落在 repair/ 的 `修复记录.jsonl`，
 //    体检自己的账没多一个写口）
+//    （447 修订：同一个口接满**四路**——残留／索引↔清单／体检账损坏行／配置漂移，
+//    动手与账仍全在 repair/ 层；本文件只多递两个入参（`ctx.filesDir` 与配置读口），
+//    没多一个写口，`InspectReadOnlyGateTest` 那条"勘验层没有写口"照旧成立）
 // 2. **不弹卡**：不碰 UI、不 Toast、不 Dialog（源码门禁见 `HealthWiringGateTest`）；
 // 3. **失败了要说出来**：库打不开／账落不上 ⇒ [Result.failReason]，由调度器决定要不要重试。
 package com.example.zhengdao.baopu.inspect
@@ -26,6 +29,7 @@ import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.evolution.ProofReading
 import com.example.zhengdao.baopu.repair.DataDoctor
+import com.example.zhengdao.baopu.repair.NightWatchConfig
 import com.example.zhengdao.core.RunLog
 import java.io.File
 
@@ -129,7 +133,11 @@ internal object HealthRun {
         // 第四百一十九批：御医自修——体检收尾之后的一行。白名单（2026-11-04 用户已定）
         // 内超 7 天的残留搬回收站；白名单外只报需人处理并列出看到的东西；空集永不清理；
         // 主账挡死。动手与账都在 repair/ 层（修复记录.jsonl），体检本体照旧只读。
-        RunLog.log("御医自修：${DataDoctor.afterHealthRun(projectRoot, root, nowMs)}")
+        // 第四百四十七批（2026-11-05 用户批准）：**同一个口接满四路**（残留＋索引/清单＋
+        // 账本损坏＋配置漂移），一路一类、先记后修、修不了只报需人处理；配置那一路的
+        // 真源是判据表 `ConfigCriteria`，表里没有的键一个都不动。
+        val repair = DataDoctor.afterHealthRun(projectRoot, root, nowMs, ctx.filesDir, NightWatchConfig(ctx))
+        RunLog.log("御医自修：$repair")
         return HealthResult(entry, enqueued, if (saved) null else "体检账没落上")
     }
 
