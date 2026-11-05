@@ -8,11 +8,17 @@
 //    出现第二个就整单拒（[batchGuard]），**一个字节都不动**。
 // 2. **不许修判定类**：修不了就 [RepairVerdict.NEED_HUMAN]，不许硬修、不许替它造数。
 //    "没有判据出处"本身就是需人处理——例如清理前缀，本层**不替它定**（前缀由调用方传）。
-// 3. **只修数据**：四类里本批只做三类（①索引 ②账本 ③缓存/临时）；类④配置漂移
-//    用户 2026-11-03 裁定"先不做"，故 [RepairKind] 里**没有** CONFIG 这一项——
-//    不占位、不留半截枚举（留个空位会让人以为"只是没实现"）。
+// 3. **只修数据**：四类各一条路（①索引/清单 ②账本 ③缓存/临时 ④配置漂移）；
+//    判定类（谁该弹卡、三态怎么落）**不在类目里**，永远修不了——铁律②。
 // 4. **判据要说得出证据**：每个 [RepairPlan] 都带 `evidence`（依据哪一次体检），
 //    没有出处的计划不许构造——与 `HealthCheck` 的 L14 同一条口径。
+//
+// 第四百四十七批修订（2026-11-05 用户批准「这个有用，做」）：**只加路，不改房**。
+// - 类④ 配置漂移进闭集（408 那次"先不做"的裁定被这张新单子推翻，见 [RepairKind.CONFIG]）；
+// - 类① 从"只认索引读不动"扩到**索引↔清单（快照）这一对**——判据仍是"硬不一致"，
+//   没有扩到"篇数对不对得上"（408 拒过的假阳一个都没捡回来）；
+// - 配置那一路的**唯一真源是判据表** [ConfigCriteria]：表里没有的键一律只报不修，
+//   不许取"默认值"（猜错比不改更坏）。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.DecisionLedger
@@ -20,12 +26,14 @@ import com.example.zhengdao.baopu.DecisionLedger
 /**
  * 可自修的数据类目（**闭集**；`wire` 是账行的稳定键，改字面量＝老账对不上）。
  *
- * 类④（配置漂移／判据表）**不在这个枚举里**：用户 2026-11-03 裁定"先不做"。
+ * 类④（配置漂移）2026-11-03 裁定"先不做"，2026-11-05 用户批准本单（447 §三）做了进来。
+ * 除此之外**不再加类别**（派工单边界：类④之外不加新类别）。
  */
 internal enum class RepairKind(val wire: String, val cn: String) {
     INDEX("index", "索引重建"),
     LEDGER("ledger", "账本补损坏行"),
     TEMP("temp", "缓存残留清理"),
+    CONFIG("config", "配置改回判据表"),
     ;
 
     companion object {
@@ -127,6 +135,64 @@ internal object DataRepair {
             kind = RepairKind.INDEX,
             verdict = RepairVerdict.NOTHING,
             reason = "索引读得动（${reading.docs} 篇）",
+            evidence = evidence,
+        )
+    }
+
+    /**
+     * 索引 ↔ 清单（快照）**这一对**该不该重建（447 §一①：索引/清单不一致 ⇒ 重建索引）。
+     *
+     * 收的还是"硬不一致"这一种，一条都不往外扩：
+     * - `KnowledgeIndexStore.save()` 是**先写索引、索引写成才写快照**（源码里就这一处写口），
+     *   所以"只剩一条"必然是半截落盘／手工删过一条 ⇒ 这一对天然成对，缺一条就是不一致；
+     * - 清单读坏了同样是不一致：它是下一轮增量 diff 的基准，基准读不出⇒下一轮只会拿
+     *   "没有上一版"当基准，索引里的条目与盘上的对不上却没人记账；
+     * - **依旧不比篇数**（408 §二那条拒绝原封不动搬过来）：`filesIndexed` 与盘上文件数
+     *   天然不等（过大/读不出/不认领的会被跳过），硬比必假阳，假阳就触发无谓重建。
+     *
+     * 索引自己读坏了那一档**整条交给 [indexPlan]**——措辞、targets、sha 线索都是 408 钉过的，
+     * 不在这里重写第二遍（同一件事两处各写一份必漂移）。
+     */
+    fun indexPairPlan(
+        index: IndexReading,
+        manifest: IndexReading,
+        indexTarget: String,
+        manifestTarget: String,
+        evidence: String,
+    ): RepairPlan {
+        if (index is IndexReading.Corrupt) return indexPlan(index, indexTarget, evidence)
+        val pair = listOf(indexTarget, manifestTarget)
+        fun fix(why: String): RepairPlan =
+            RepairPlan(
+                kind = RepairKind.INDEX,
+                verdict = RepairVerdict.FIXABLE,
+                reason = why,
+                targets = pair,
+                evidence = evidence,
+            )
+        if (manifest is IndexReading.Corrupt) {
+            return fix("清单读坏了：${manifest.why}（bytes=${manifest.bytes}，sha=${manifest.digest8}）")
+        }
+        val indexMissing = index is IndexReading.Missing
+        val manifestMissing = manifest is IndexReading.Missing
+        if (indexMissing != manifestMissing) {
+            val left = if (indexMissing) manifestTarget else indexTarget
+            val gone = if (indexMissing) indexTarget else manifestTarget
+            return fix("成对文件只剩一条（$left 在、$gone 不在）")
+        }
+        if (indexMissing) {
+            return RepairPlan(
+                kind = RepairKind.INDEX,
+                verdict = RepairVerdict.NOTHING,
+                reason = "索引与清单都还没建过（从没建过，不是坏了）",
+                evidence = evidence,
+            )
+        }
+        val docs = (index as IndexReading.Ok).docs
+        return RepairPlan(
+            kind = RepairKind.INDEX,
+            verdict = RepairVerdict.NOTHING,
+            reason = "索引与清单都在、都读得动（索引 $docs 篇）",
             evidence = evidence,
         )
     }
@@ -359,6 +425,126 @@ internal object DataRepair {
 
     /** 列名单的收口（全列会把日志撑成流水账；10 个够人对账，余下的给计数）。 */
     const val SWEEP_LIST_CAP = 10
+
+    // ── ④ 447：配置漂移（判据表＝唯一真源）────────────────────────────────
+
+    /**
+     * 配置判据表的一行。
+     *
+     * @param key 配置键的**稳定字面量**（与 owning 模块同一个串；改它＝老账对不上）
+     * @param expected 判据表认定该生效的值（字符串形态，布尔写 `"true"`/`"false"`）
+     * @param basis **依据判据表哪一行**——用户口令／派工单编号＋日期，账行与日志都念它；
+     *              没有出处的行不许进表（铁律④在这一路的落点：值不是我们猜的默认值，
+     *              是人拍过的判据）。
+     */
+    data class ConfigRow(val key: String, val expected: String, val basis: String)
+
+    /**
+     * 一个配置项的读数（[value] 是**现在生效**的值，不是"用户拨过没拨过"）。
+     *
+     * 键没落盘但读侧有缺省 ⇒ owning 模块照样给出一个值，这里照收（"没拨过"不等于"没读到"）。
+     */
+    data class ConfigItem(val key: String, val value: String)
+
+    /**
+     * 配置判据表（**唯一真源**；派工单 447 §三：改回判据表的值，不许取"默认值"）。
+     *
+     * 装什么：**用户拍过、且当前没有用户写口**的那几项。判据是"代价不对称"——
+     * 一项若能被用户在设置页拨动，御医把它改回去就是盖掉她的选择（那是最坏的一种"修"）；
+     * 反过来，一项只有判据、没有写口，那么盘上出现别的值只可能是漂移，改回判据值不会碰人。
+     *
+     * 表里现在只有一行，是照着这条判据挑的：
+     * - `nightwatch_auto`＝开（432 拍板 A，2026-11-04 用户「开」；2026-11-05 记下的开关口径
+     *   「缺省＝开」「写侧：本批不做（UI 批 U8）」⇒ 今天没有任何用户写口）。
+     *
+     * **U8 上线时必须把这一行撤掉或改判**（御医不许把用户按下去的「关」改回「开」）——
+     * 这条写在 447 交付报告的移交项里，也写在这里，下一个改代码的人一眼能看到。
+     */
+    object ConfigCriteria {
+
+        /** 暗卫自动档开关（键名与 [com.example.zhengdao.baopu.inspect.NocturnalAuto.SWITCH_KEY] 同串）。 */
+        const val NIGHTWATCH_AUTO: String = "nightwatch_auto"
+
+        /** 表本体（闭集；加一行＝用户立法，不走进化通道，也不许"顺手加一项"）。 */
+        val ROWS: List<ConfigRow> = listOf(
+            ConfigRow(
+                key = NIGHTWATCH_AUTO,
+                expected = "true",
+                basis = "432 派工单拍板 A（2026-11-04 用户「开」）＋开关口径「缺省＝开」（2026-11-05 记）",
+            ),
+        )
+
+        /** 按键找行（表外 ⇒ null，一路的"需人处理"就靠它判）。 */
+        fun rowOf(key: String): ConfigRow? = ROWS.firstOrNull { it.key == key }
+    }
+
+    /**
+     * 配置漂移该怎么修（派工单 447 §三）。
+     *
+     * 三种输入、三种结论：
+     * - [readings] 里能对上表且**值不等** ⇒ [RepairVerdict.FIXABLE]，reason 逐条写清
+     *   「哪项 原值=… → 判据表值=…（依据：…）」——先记后修要吃的就是这句话；
+     * - [outside]（看到、但判据表里没有的键）∨ 表里某项**没读出来**（未取样）⇒
+     *   [RepairVerdict.NEED_HUMAN]：只把看到的值列出来，一个键都不动。
+     *   **绝不替它猜默认值**——猜错比不改更坏，且猜出来的值会伪装成"人定过的判据"；
+     * - 表里的项全对位、表外也没有东西 ⇒ [RepairVerdict.NOTHING]（不是"修好了"）。
+     *
+     * @param rows 判据表（默认唯一真源 [ConfigCriteria.ROWS]；测试可递一张假表，
+     *             房型照 [tempPlan] 的 `prefixes`——判据层不替调用方记表）
+     */
+    fun configPlan(
+        readings: List<ConfigItem>,
+        outside: List<ConfigItem>,
+        rows: List<ConfigRow> = ConfigCriteria.ROWS,
+        evidence: String,
+    ): RepairPlan {
+        val byKey = readings.associateBy { it.key }
+        val inRows = rows.map { it.key }.toSet()
+        val drift = ArrayList<Pair<String, String>>()
+        val unreadable = ArrayList<String>()
+        for (row in rows.sortedBy { it.key }) {
+            val got = byKey[row.key]
+            when {
+                got == null -> unreadable += row.key
+                got.value == row.expected -> Unit
+                else -> drift += row.key to
+                    "${row.key} 原值=${got.value} → 判据表值=${row.expected}（依据：${row.basis}）"
+            }
+        }
+        val outsiders = outside.filter { it.key.isNotBlank() && it.key !in inRows }
+            .map { "${it.key}=${it.value}" }
+            .distinct()
+            .sorted()
+        val outsideNote =
+            if (outsiders.isEmpty()) "" else "；判据表外 ${outsiders.size} 项没动（表里没有这一行）：${sweepNames(outsiders)}"
+        val unreadNote =
+            if (unreadable.isEmpty()) "" else "；表里 ${unreadable.size} 项这趟没读出来（未取样，不猜）：${sweepNames(unreadable.sorted())}"
+        return when {
+            drift.isNotEmpty() -> RepairPlan(
+                kind = RepairKind.CONFIG,
+                verdict = RepairVerdict.FIXABLE,
+                reason = "配置漂移 ${drift.size} 项：${drift.joinToString("；") { it.second }}$outsideNote$unreadNote",
+                targets = drift.map { it.first }.sorted(),
+                evidence = evidence,
+            )
+            outsiders.isNotEmpty() || unreadable.isNotEmpty() -> RepairPlan(
+                kind = RepairKind.CONFIG,
+                verdict = RepairVerdict.NEED_HUMAN,
+                reason = "判据表 ${rows.size} 项这趟没一个该改$outsideNote$unreadNote",
+                evidence = evidence,
+            )
+            else -> RepairPlan(
+                kind = RepairKind.CONFIG,
+                verdict = RepairVerdict.NOTHING,
+                reason = if (rows.isEmpty()) {
+                    "空集：判据表没一项可核，也没看到任何配置项"
+                } else {
+                    "判据表 ${rows.size} 项全对位（值与依据行一致），没动"
+                },
+                evidence = evidence,
+            )
+        }
+    }
 
     // ── 铁律⑤：一轮只修一类 ─────────────────────────────────────────────────
 
