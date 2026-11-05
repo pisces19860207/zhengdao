@@ -90,7 +90,9 @@ python tools\zd.py preflight -k <功能关键词> `
 
 **两条配套（当天验证有效）**
 - **构建排队**：同一时刻只跑一个 Gradle 构建（`_zd-toolroom/02-build/build-lock.ps1`）；不排队就出现 12 个 java 抢内存；
-- **别让 Gradle 自己下 JDK**：本机已装 Temurin 25（`~/.jdks/jdk-25.0.5+8`），构建前指 `JAVA_HOME` 过去。
+- **别让 Gradle 自己下 JDK**：构建前把 `JAVA_HOME` 指到 **Android Studio 的 jbr 25.0.3**
+  （`D:\Program Files\Android\Android Studio\jbr`）——**pin 是它，不是 Temurin**。
+  `~/.jdks/jdk-25.0.5+8` 只是留作 357 复现（`renameTo` 不覆盖那个平台差异），**不进 pin**。
 
 **一句话**：**顺不是运气，是"先冻结、租约窄、判据硬、收工净"这四件同时做到。**
 
