@@ -316,6 +316,20 @@
             </intent-filter>
         </receiver>
 
+        <!-- 记忆收编的一次性触发（第四百五十五批）：451 的 importFromFiles 的可执行入口（②），
+             UI 归 U 批。exported=true ＋ permission=DUMP：同上 459 的口径——普通 App 拿不到
+             DUMP，adb shell 恰好有 ⇒ 验收方一条 am broadcast 能跑、别的 App 跑不了。
+             收编幂等，连发无害；不看冷启日闸（手动就是想跑）。
+             App 自身要触发请**直接调 FreeTextMemoryWiring.runNow**（自身也没有 DUMP）。 -->
+        <receiver
+            android:name=".baopu.memoryimport.MemoryImportReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.example.zhengdao.action.IMPORT_MEMORY_NOW" />
+            </intent-filter>
+        </receiver>
+
         <!-- 抱朴附件（第二十二批 A 段）：相机要一个可写 Uri，安卓 7+ 只能是 content://，
              故用 FileProvider **只**暴露缓存里的 `baopu-camera/`（见 res/xml/baopu_file_paths.xml）。
              exported=false + grantUriPermissions=true：只有我们临时授权的那个 Uri 能被相机写，

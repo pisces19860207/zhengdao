@@ -47,6 +47,11 @@ class ZhengdaoApp : Application() {
         // 结果只进体检单＋账本，不弹卡不起通知。这里只**排**（KEEP 幂等）；首跑等第一个
         // 满足条件的周窗（拍板补充①：开启后不立即跑），跑不跑由 Worker 里的周位闸判。
         com.example.zhengdao.baopu.inspect.NocturnalAuto.ensureScheduled(this)
+        // 第四百五十五批：记忆收编接线——451 交付的唯一入口 FreeTextMemoryStore.importFromFiles
+        // 从此有生产调用方。冷启首读：上次导入早于今天 ⇒ 后台静默扫运行时目录一次；
+        // 失败只落日志，不弹卡、不阻断（内部再隔 2 秒起跑，不跟冷启动抢 IO）。
+        // 可执行入口＝同包 MemoryImportReceiver（DUMP 权限保护的广播），UI 归 U 批。
+        com.example.zhengdao.baopu.memoryimport.FreeTextMemoryWiring.install(this)
         // 第二百九十批：斥候——首启/版本变化/回前台（权限变更）后台探一遍"本机能干什么"，
         // 产 `Opinion(source=SCOUT)` ＋ 一页能力清单（`<工作区>/记忆/能力清单.md`）。
         // 必须**在 AppForeground.install 之后**：它要挂前/后台边沿监听（回前台＝用户可能刚改过权限）。
