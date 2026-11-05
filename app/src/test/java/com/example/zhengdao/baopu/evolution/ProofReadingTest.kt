@@ -248,13 +248,15 @@ class ProofReadingTest {
     // ── 判据④ 体检格 ────────────────────────────────────────────────────────
 
     @Test
-    fun `判据④_channelLine 两态_debug 可用_release 不可用要显出来`() {
+    fun `判据④_channelLine 两态_debug_release 都显自动送达_手送只剩debug`() {
         val debug = ProofReading.channelLine(true)
         val release = ProofReading.channelLine(false)
         assertTrue("debug 要说可用", debug.contains("可用"))
         assertFalse("debug 不许说不可用", debug.contains("不可用"))
-        assertTrue("release 必须显出不可用", release.contains("不可用（release）"))
-        assertTrue("release 行要说明去哪了（停在准入等读数）", release.contains("停在准入"))
+        // 461 起 release 也走远端自动送达（判据"release 也能用"落在体检格上）。
+        assertTrue("release 要说自动送达可用", release.contains("可用（release）"))
+        assertTrue("release 行要写明是远端自动送达", release.contains("自动送达"))
+        assertTrue("release 行要说明缺网/缺分支时的语义（等下一轮，不是进化总在失败）", release.contains("等下一轮"))
     }
 
     // ── 辅助 ────────────────────────────────────────────────────────────────

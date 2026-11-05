@@ -171,12 +171,16 @@ internal object ProofReading {
         return Reading(chosen, root)
     }
 
-    /** 体检单上的一格（判据④）：读数通道在什么构建下可用，release 的不可用要显出来。 */
+    /**
+     * 体检单上的一格（380 判据④；461 更新口径）：读数通道在什么构建下可用。
+     * 461 起远端自动送达 debug/release 同一条路（零 Android，无 run-as 依赖），
+     * 手送（run-as）仍是 debug 独有——release 的缺口收窄成"没有手送"，不再是"没有通道"。
+     */
     internal fun channelLine(debuggable: Boolean): String =
         if (debuggable) {
-            "进化读数通道：可用（debug：读数与新表可经 run-as 送进 抱朴记忆/）"
+            "进化读数通道：可用（debug：远端 ci/readings 自动送达＋run-as 手送均可）"
         } else {
-            "进化读数通道：不可用（release）：私有目录无推送口——御批后链停在准入等读数，不是进化总在失败"
+            "进化读数通道：可用（release）：远端 ci/readings 自动送达（私有目录无手送口；断网/分支未建则等下一轮，不是进化总在失败）"
         }
 
     /** 一场进化的选中读数：新表给链当 `next`，读数在 verify 那一刻经 [runner] 进闸。 */

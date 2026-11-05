@@ -159,8 +159,11 @@ internal object EvolutionWiring {
      * 一轮收工：误判累积开提案（偏差账换算）＋扫御批（批了的 OPEN 提案跑链）。
      *
      * 账根没挂 ⇒ 误判半边跳过并明说（不静默）；御批没到 ⇒ 提案留在 OPEN（不硬跑）。
+     * 第四百六十一批：收工先试一次读数送达（[ReadingDelivery.onRoundStart]）——后台线程、
+     * 失败退避、绝不阻断本轮；本轮 sweep 赶不上就在途，下一轮收工用（诚实异步，不装同步）。
      */
     fun onRunSettled(nowMs: Long) {
+        ReadingDelivery.onRoundStart(nowMs)
         openMisjudgmentProposal(nowMs)
         sweepApprovedProposals(nowMs)
     }

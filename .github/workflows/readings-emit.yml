@@ -1,0 +1,222 @@
+# 证道（Zhengdao）读数送达流水线（第四百六十一批）
+# 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+#
+# 与 ci.yml / build.yml 的分工：
+#   - ci.yml          = 质量验证（红绿闸）；
+#   - build.yml       = 产物流水线（APK/Release）；
+#   - readings-emit   = **进化读数出厂**：把四条验证读数（全量单测／回归集／锚定／detekt 债）
+#                       连同基线表快照写一行 JSON，追加到**专用分支 `ci/readings`** 的
+#                       `readings/进化读数.jsonl`。main 一字不动——本分支只有读数文件。
+#   App 侧（ReadingDelivery）每轮收工匿名 GET 该分支的 raw URL 取走新行；
+#   选行与判定仍归 380 的 ProofReading.pick / 376 的链，本流水线零判定。
+#
+# 四条读数的口径（与 policy/EvolutionLoop.kt 的构造器一一对应，读数本身必须能建出对象）：
+#   unit       = :app:testDebugUnitTest 的 JUnit XML 实数（ran/total/failed）
+#   regression = :core:test 的 JUnit XML 实数（core 问题回归集）
+#   anchor     = {"total":0,"mismatched":0} —— 诚实写"没跑"：锚定集随包出厂（327），
+#                判定在设备侧准入（310），CI 没有可跑的锚定臂；谁补锚定谁立单
+#   detekt     = HEAD~1 → HEAD 的 <error> 实数（check-detekt-budget.py 同口径：error 节点数）
+#
+# 触发：推送到 main、手动（手动可传 proposal_id，给某个在飞提案盖上"CI 已验"的戳；
+# 默认 ci-main——App 侧 pick 按 proposal 配行，配不上的行安静等在收件箱里）。
+# ref = 本轮 run id（App 侧按 ref 防重放与去重；重跑同一轮不会重复落行）。
+
+name: readings-emit
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      proposal_id:
+        description: '读数行盖的提案 id（默认 ci-main；要与 App 侧进化提案 id 一致才会被 pick 选中）'
+        required: false
+        default: 'ci-main'
+
+# 排队跑完，不取消：每轮读数都算数（ci.yml 同款口径，2026-10-26 实测教训）。
+concurrency:
+  group: readings-emit
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 只为推 ci/readings 分支；main 由分支保护把守，本流水线不碰。
+
+jobs:
+  emit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # detekt 的 before 要在 HEAD~1 上现跑
+
+      # 双 JDK 与 ci.yml 同款（352）：21 给 detekt 子进程，25.0.3 给 Gradle daemon。
+      # 为什么不照抄注释：细账见 ci.yml 顶部「CI 双 JDK」一段，此处只留结论。
+      - name: 安装 JDK 21（detekt 子进程专用）
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25.0.3'
+
+      - name: 授权 gradlew
+        run: chmod +x gradlew
+
+      - name: 缓存 Gradle（依赖 + wrapper）
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-readings-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-readings-${{ runner.os }}-
+
+      # ── 四条读数之一：全量单测（unit） ──────────────────────────────────────
+      - name: 全量单测（unit 读数）
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: 归拢 unit 读数（JUnit XML 实数）
+        run: |
+          mkdir -p /tmp/readings
+          python3 - <<'PY'
+          import glob, json, xml.etree.ElementTree as ET
+          tests = failed = 0
+          for f in glob.glob("app/build/test-results/testDebugUnitTest/TEST-*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0))
+              failed += int(r.get("failures", 0)) + int(r.get("errors", 0))
+          json.dump({"ran": tests > 0, "total": tests, "failed": failed}, open("/tmp/readings/unit.json", "w"))
+          print("unit:", tests, "failed:", failed)
+          PY
+
+      # ── 四条读数之二：问题回归集（regression，:core:test） ──────────────────
+      - name: 回归集（core 读数）
+        run: ./gradlew :core:test --console=plain
+
+      - name: 归拢 regression 读数
+        run: |
+          python3 - <<'PY'
+          import glob, json, xml.etree.ElementTree as ET
+          tests = failed = 0
+          for f in glob.glob("core/build/test-results/test*/TEST-*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0))
+              failed += int(r.get("failures", 0)) + int(r.get("errors", 0))
+          json.dump({"ran": tests > 0, "total": tests, "failed": failed}, open("/tmp/readings/regression.json", "w"))
+          print("regression:", tests, "failed:", failed)
+          PY
+
+      # ── 四条读数之三：detekt 债（HEAD~1 → HEAD） ────────────────────────────
+      # 口径 = check-detekt-budget.py：只数 detekt.xml 的 <error> 节点。
+      - name: detekt 当前（HEAD）
+        run: |
+          ./gradlew :app:detektReport --console=plain \
+            -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64 \
+            -Dorg.gradle.java.installations.auto-download=false
+          python3 - <<'PY'
+          import json, xml.etree.ElementTree as ET
+          root = ET.parse("app/build/reports/detekt/detekt.xml").getroot()
+          after = sum(1 for e in root.iter("error"))
+          json.dump({"after": after}, open("/tmp/readings/detekt-after.json", "w"))
+          print("detekt after:", after)
+          PY
+
+      - name: detekt 开工（HEAD~1，before）
+        run: |
+          git worktree add /tmp/prev HEAD~1
+          ( cd /tmp/prev && ./gradlew :app:detektReport --console=plain \
+              -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64 \
+              -Dorg.gradle.java.installations.auto-download=false )
+          python3 - <<'PY'
+          import json, xml.etree.ElementTree as ET
+          root = ET.parse("/tmp/prev/app/build/reports/detekt/detekt.xml").getroot()
+          before = sum(1 for e in root.iter("error"))
+          json.dump({"before": before}, open("/tmp/readings/detekt-before.json", "w"))
+          print("detekt before:", before)
+          PY
+
+      # ── 四条读数之四：锚定（诚实写"没跑"，理由见文件头） ─────────────────────
+
+      # ── 合行＋落专用分支 ────────────────────────────────────────────────────
+      - name: 合读数行并推 ci/readings
+        env:
+          REF: ${{ github.run_id }}
+          PROPOSAL: ${{ github.event.inputs.proposal_id || 'ci-main' }}
+        run: |
+          git config user.name "readings-emit"
+          git config user.email "actions@users.noreply.github.com"
+          # 先切/建专用分支（只带读数文件，main 一字不动），再合行——顺序不能反，
+          # 反了写好的行会被 orphan 检出的 git clean 删掉。
+          if git fetch origin ci/readings && git rev-parse --verify origin/ci/readings >/dev/null 2>&1; then
+            git checkout -B ci/readings origin/ci/readings
+          else
+            git checkout --orphan ci/readings
+            git rm -rf --cached . >/dev/null 2>&1 || true
+            git clean -fdx >/dev/null 2>&1 || true
+          fi
+          # 合行：seq 接着分支上最后一行递增；同 ref 不重复落（重跑/重试安全）。
+          python3 - <<'PY'
+          import json, os, time
+          DAY_MS = 86_400_000
+          days = int(time.time() * 1000) // DAY_MS
+          ordinal = (days - 4) // 7            # 与 policy/CriteriaEpoch.kt EpochId.of 同式（2026 年全为正）
+          epoch_ms = (ordinal * 7 + 4) * DAY_MS
+          unit = json.load(open("/tmp/readings/unit.json"))
+          reg = json.load(open("/tmp/readings/regression.json"))
+          after = json.load(open("/tmp/readings/detekt-after.json"))["after"]
+          before = json.load(open("/tmp/readings/detekt-before.json"))["before"]
+          path = "readings/进化读数.jsonl"
+          old_lines = open(path, encoding="utf-8").read().splitlines() if os.path.exists(path) else []
+          seq, ref_dupe = 0, False
+          for line in old_lines:
+              try:
+                  row = json.loads(line)
+                  seq = max(seq, int(row.get("snapshot", {}).get("seq", 0)))
+                  ref_dupe = ref_dupe or str(row.get("ref")) == os.environ["REF"]
+              except Exception:
+                  pass
+          if ref_dupe:
+              print("ref 已在分支上（重跑），不重复落行")
+          else:
+              row = {
+                  "v": 1,
+                  "proposal": os.environ["PROPOSAL"],
+                  "ref": os.environ["REF"],
+                  "at": int(time.time() * 1000),
+                  "unit": unit,
+                  "regression": reg,
+                  "anchor": {"total": 0, "mismatched": 0},
+                  "detekt": {"before": before, "after": after},
+                  "snapshot": {
+                      "epochMs": epoch_ms,
+                      "seq": seq + 1,
+                      "criteria": [{
+                          "id": "ci-baseline",
+                          "description": "CI 全量验证基线（读数随行；换不换表仍归 App 侧 310/376 的闸）",
+                          "target": "repo://main",
+                          "admittedInEpoch": ordinal,
+                      }],
+                  },
+              }
+              old_lines.append(json.dumps(row, ensure_ascii=False))
+          os.makedirs("readings", exist_ok=True)
+          # 上限 200 行：pick 按时刻取最新，更老的行是死重（ref 账在 App 侧，不受裁剪影响）。
+          open(path, "w", encoding="utf-8").write("\n".join(old_lines[-200:]) + "\n")
+          json.dump({"total": unit["total"], "reg": reg["total"], "before": before, "after": after},
+                    open("/tmp/readings/summary.json", "w"))
+          PY
+          git add "readings/进化读数.jsonl"
+          if git diff --cached --quiet; then
+            echo "读数无变化（ref 已在分支上），不空提交"
+          else
+            SUMMARY=$(python3 -c "import json;s=json.load(open('/tmp/readings/summary.json'));print(f\"unit={s['total']}例 regression={s['reg']}例 detekt {s['before']}→{s['after']}\")")
+            git commit -m "读数送达 ref=${{ github.run_id }}（$SUMMARY）"
+            git push origin ci/readings
+          fi
