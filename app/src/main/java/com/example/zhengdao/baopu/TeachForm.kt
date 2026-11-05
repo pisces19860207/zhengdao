@@ -27,9 +27,18 @@
 //   4 多段只填第一段 ⇒ [TeachFormRules.precheck] 先查缺段，填完再查每段回读；
 //   5 回读不一致却报填好 ⇒ [FieldOutcome.ok] 只由回读校验决定，填成功不算数；
 //   6 批量重名覆盖 ⇒ [TeachFormRules.uniqueName]（`-2`/`-3`）+ 证据目录不覆盖。
+//
+// 表单卡提交路径的校验（CardValidate 批 2026-11-06）：
+//   [TeachFormRules.precheck] 逐字段算出每一处拦（必填/形状/长度上限/疑似凭证/多余键/缺段），
+//   「还差几项、先修哪一项」交给 212 那张壳 `cards/CardValidate.planOf`——**判据不在壳里重写一套**，
+//   壳也不懂业务字段。拦下的每条原话都进 `CardOutcome.stopReason`，回灌给模型；
+//   没有一条理由是只写不说的（判据「不许静默丢弃」的靶子）。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.agent.BaopuBrowser
+import com.example.zhengdao.baopu.cards.CardErrorKind
+import com.example.zhengdao.baopu.cards.CardFieldError
+import com.example.zhengdao.baopu.cards.CardValidate
 import com.example.zhengdao.bridge.BrowserCommands
 import com.example.zhengdao.bridge.jsStringLiteral
 import org.json.JSONArray
@@ -707,43 +716,77 @@ internal object TeachFormRules {
     data class FormOp(val field: FormField, val value: String, val optionValue: String?)
 
     /**
-     * 预检（**不动页面**）。四类拒：
+     * 一处拦下：给**壳**的错误 ＋ 给**模型**的那句话（两样分开存，理由见 [Reject]）。
+     *
+     * 为什么不把句子塞进 [CardFieldError.detail] 就完事：212 那份契约写死了
+     * `TOO_MANY.detail` 装的是**上限数**（界面 [CardValidate.messageOf] 拿它 format
+     * 「最多选 %1$d 项」），只有 `CUSTOM` 的 detail 才是句子。长度超限这句整塞进 detail，
+     * U 批接界面时就会 format 出一个「最多选 3 项」——所以错误只管「哪一项、哪种错」，
+     * 句子由卡这一侧说业务话（壳不知道「角色名」是什么）。
+     */
+    private data class Reject(val error: CardFieldError, val label: String, val line: String)
+
+    /**
+     * 预检（**不动页面**）。六类拒：
      * 1. 卡里有多余字段（模板没有）——防手滑把别的卡的值糊进来；
      * 2. 必填字段缺值；
      * 3. 重复块某段缺字段（负例 4 的前半：先查段，再动手）；
-     * 4. 参数形状不符（日期/数字/选项表）。
+     * 4. 参数形状不符（日期/数字/选项表）；
+     * 5. 值超出字段录下来的长度上限 `maxLen`（原先只在动手那一步才拦，越界的值要碰过页面才知道不行）；
+     * 6. 值长得像明文凭证（196 的 [TeachSafety] 名单，一条不新增）。
+     *
+     * CardValidate 批：这六条算出的错误统一交给 212 的 [CardValidate.planOf] 计数并定首错——
+     * **判据还在各处自己算，壳只回答「还差几项、先修哪一项」**（212 那句「谁算错谁负责，
+     * 壳只负责说人话」原样成立）。回给模型的第一行是合计（项数按**字段键**去重，段按段算一项，
+     * 「先修」按模板字段序取第一处），后面每一处的原话逐条跟出，**一条都不咽**（不许静默丢弃）。
      */
     fun precheck(template: FormTemplate, card: FormCard): Precheck {
-        val reasons = mutableListOf<String>()
+        val rejects = mutableListOf<Reject>()
         val known = template.allFields.associateBy { it.key }
-        val extra = card.values.keys.filter { it !in known }
-        if (extra.isNotEmpty()) {
-            reasons += "卡里有模板没有的字段：${extra.joinToString("、")}（是不是拿错了卡？）"
-        }
+        extraKeyReject(known, card)?.let { rejects += it }
         val shapes = template.params.associateBy { it.name }
-        val ops = leafOps(template.fields, card.values, shapes, reasons)
-        val blockResult = blockOps(template.blocks, card.values, shapes)
-        ops += blockResult.first
-        reasons += blockResult.second
-        return if (reasons.isEmpty()) Precheck.Ok(ops) else Precheck.Rejected(reasons)
+        val ops = leafOps(template.fields, card.values, shapes, rejects)
+        ops += blockOps(template.blocks, card.values, shapes, rejects)
+        if (rejects.isEmpty()) return Precheck.Ok(ops)
+        return Precheck.Rejected(modelLines(template, rejects))
     }
 
-    /** 叶子字段 → 填表指令；缺必填 / 形状不合规的写进 [reasons]。 */
+    /** 卡里有模板没有的字段 ⇒ 整条算一项（键取第一个多余键，句子把多余的都列出来）。 */
+    private fun extraKeyReject(known: Map<String, FormField>, card: FormCard): Reject? {
+        val extra = card.values.keys.filter { it !in known }
+        if (extra.isEmpty()) return null
+        val line = "卡里有模板没有的字段：${extra.joinToString("、")}（是不是拿错了卡？）"
+        return Reject(CardFieldError(extra.first(), CardErrorKind.CUSTOM, line), extra.first(), line)
+    }
+
+    /** 拦下的清单 → 给模型的话（合计行由 [CardValidate.planOf] 定，句子逐条原样跟出）。 */
+    private fun modelLines(template: FormTemplate, rejects: List<Reject>): List<String> {
+        val plan = CardValidate.planOf(rejects.map { it.error }, template.allFields.map { it.key })
+        val head = plan.firstErrorKey?.let { key ->
+            val label = rejects.firstOrNull { it.error.fieldKey == key }?.label ?: key
+            "还差 ${plan.needed} 项，先修「$label」"
+        } ?: "还差 ${plan.needed} 项"
+        return listOf(head) + rejects.map { it.line }
+    }
+
+    /** 叶子字段 → 填表指令；缺必填 / 值不合规的都进 [rejects]（只有全对的值才进 ops）。 */
     private fun leafOps(
         fields: List<FormField>,
         values: Map<String, String>,
         shapes: Map<String, FormParamDecl>,
-        reasons: MutableList<String>,
+        rejects: MutableList<Reject>,
     ): MutableList<FormOp> {
         val ops = mutableListOf<FormOp>()
         fields.forEach { f ->
             val v = values[f.key].orEmpty()
             if (v.isBlank()) {
-                if (f.required) reasons += "缺「${f.label}」（${f.key}）"
+                if (f.required) rejects += requiredReject(f)
                 return@forEach
             }
-            shapeProblem(f, v, shapes)?.let { reasons += it; return@forEach }
-            resolveOp(f, v)?.let { ops += it } ?: reasons.add(shapeReason(f, v))
+            shapeReject(f, v, shapes)?.let { rejects += it; return@forEach }
+            val op = resolveOp(f, v) ?: run { rejects += customReject(f, shapeReason(f, v)); return@forEach }
+            writeReject(f, op)?.let { rejects += it; return@forEach }
+            ops += op
         }
         return ops
     }
@@ -753,9 +796,9 @@ internal object TeachFormRules {
         blocks: List<FormBlock>,
         values: Map<String, String>,
         shapes: Map<String, FormParamDecl>,
-    ): Pair<MutableList<FormOp>, List<String>> {
+        rejects: MutableList<Reject>,
+    ): List<FormOp> {
         val ops = mutableListOf<FormOp>()
-        val reasons = mutableListOf<String>()
         blocks.sortedBy { it.index }.forEach { b ->
             val missingHere = mutableListOf<String>()
             val here = mutableListOf<FormOp>()
@@ -765,26 +808,77 @@ internal object TeachFormRules {
                     if (f.required) missingHere += f.label
                     return@forEach
                 }
-                shapeProblem(f, v, shapes)?.let { missingHere += f.label; return@forEach }
-                resolveOp(f, v)?.let { here += it } ?: missingHere.add(shapeReason(f, v))
+                // 段里的值不合规：「第 N 段没填全」照旧（那段确实不能整段动手），
+                // 但**为什么**不行另起一句——原先只剩一个字段名，会把「超长度」糊成「没填全」，
+                // 照着这句话去补空正好补错地方。
+                shapeReject(f, v, shapes)?.let { rejects += it; missingHere += f.label; return@forEach }
+                val op = resolveOp(f, v) ?: run { missingHere += shapeReason(f, v); return@forEach }
+                writeReject(f, op)?.let { rejects += it; missingHere += f.label; return@forEach }
+                here += op
             }
             if (missingHere.isNotEmpty()) {
-                reasons += "第 ${b.index} 段（${b.label}）没填全：${missingHere.joinToString("、")}"
+                rejects += segmentReject(b, missingHere)
             } else {
                 ops += here
             }
         }
-        return ops to reasons
+        return ops
+    }
+
+    /** 要写进页面的那个值过不过最后两道：长度上限 → 疑似明文凭证（叶子与段共用这一份）。 */
+    private fun writeReject(f: FormField, op: FormOp): Reject? =
+        lengthReject(f, op.value) ?: credentialReject(f, op.value)
+
+    private fun requiredReject(f: FormField): Reject = Reject(
+        error = CardFieldError(f.key, CardErrorKind.REQUIRED),
+        label = f.label.ifBlank { f.key },
+        line = "缺「${f.label}」（${f.key}）",
+    )
+
+    private fun customReject(f: FormField, line: String): Reject = Reject(
+        error = CardFieldError(f.key, CardErrorKind.CUSTOM, line),
+        label = f.label.ifBlank { f.key },
+        line = line,
+    )
+
+    /** 声明的形状（日期/数字/编码/选项表）不过：数字那档落 NOT_NUMBER，其余 CUSTOM。 */
+    private fun shapeReject(f: FormField, v: String, shapes: Map<String, FormParamDecl>): Reject? {
+        val decl = shapes[f.key] ?: return null
+        if (shapeOk(decl.shape, v, f.options)) return null
+        val kind = if (decl.shape == TeachParamShape.NUMBER) CardErrorKind.NOT_NUMBER else CardErrorKind.CUSTOM
+        val line = "「${f.label}」的值形状不对（要求 ${decl.shape.wire}）：$v"
+        return Reject(CardFieldError(f.key, kind), f.label.ifBlank { f.key }, line)
+    }
+
+    /** 长度上限（`maxLen` 是录制时从页面 maxlength 读下来的，不是这里猜的）。 */
+    private fun lengthReject(f: FormField, v: String): Reject? {
+        val max = f.maxLen ?: return null
+        if (v.length <= max) return null
+        val line = "「${f.label}」超过长度上限 $max（现在 ${v.length} 字）"
+        return Reject(
+            CardFieldError(f.key, CardErrorKind.TOO_MANY, max.toString()),
+            f.label.ifBlank { f.key },
+            line,
+        )
+    }
+
+    /** 值长得像明文凭证 ⇒ 不填（196 那条只认输入框的面，一串 JWT 填进「备注」它看不见）。 */
+    private fun credentialReject(f: FormField, v: String): Reject? {
+        val why = TeachSafety.credentialShapeReason(v) ?: return null
+        return customReject(f, "「${f.label}」$why——表单卡不写明文凭证")
+    }
+
+    /** 整段没填全（负例 4 的那句，一个字不改）：一段算一项，键按段号，不与字段键撞。 */
+    private fun segmentReject(b: FormBlock, missing: List<String>): Reject {
+        val line = "第 ${b.index} 段（${b.label}）没填全：${missing.joinToString("、")}"
+        return Reject(
+            CardFieldError("block-${b.index}", CardErrorKind.CUSTOM, line),
+            "第 ${b.index} 段",
+            line,
+        )
     }
 
     private fun shapeReason(f: FormField, v: String): String = "「${f.label}」的值不合要求（$v）"
-
-    /** 声明的形状校验（日期/数字/编码/选项表）：不合要求就说清要什么形状。 */
-    private fun shapeProblem(f: FormField, v: String, shapes: Map<String, FormParamDecl>): String? {
-        val decl = shapes[f.key] ?: return null
-        if (shapeOk(decl.shape, v, f.options)) return null
-        return "「${f.label}」的值形状不对（要求 ${decl.shape.wire}）：$v"
-    }
 
     /** 一个字段 + 一个值 → 一条填表指令（下拉/单选把中文文案映射回页面要的 value）。 */
     fun resolveOp(f: FormField, raw: String): FormOp? {
@@ -1126,6 +1220,7 @@ internal class FormFiller(private val dom: FormDom) {
             FieldOutcome(f.key, f.label, f.control, f.blockIndex, false, op.value, actual, reason)
 
         if (op.value.isBlank()) return fail("值是空的，不填")
+        // 预检也拦这条，这里照旧再量一次：动手前这一道是给不经预检的调用方兜底的
         f.maxLen?.let { if (op.value.length > it) return fail("超过长度上限 $it（现在 ${op.value.length} 字）") }
         if (f.locators.isEmpty()) return fail("模板里没有这个字段的定位器")
 

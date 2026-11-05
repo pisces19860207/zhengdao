@@ -144,6 +144,22 @@ internal object TeachSafety {
         Regex("^[A-Za-z0-9+/]{28,}={0,2}$"), // Base64 块（≥28 字符才是密钥量级）
     )
 
+    /**
+     * 值层面的凭证形状判定（CardValidate 批：表单卡提交预检用，名单一个字不新增）。
+     *
+     * 为什么 [refuseTypeReason] 拦过还要拦值：那条认的是**输入框的面**（type/name/id/
+     * placeholder/autocomplete）。一串 JWT 填进一个叫「备注」的框它一个字都看不见——
+     * 明文凭证照样上页面。这里补的是**值这一面**，判据仍是 [CREDENTIAL_LITERAL] 那四条
+     * 有明确结构的字面量，不做「字母+数字=口令」的启发（查货单号就是字母+数字）。
+     *
+     * 返回的话只带脱敏后的样子（[mask]），报告与回灌给模型的正文里不许出现完整凭证。
+     */
+    fun credentialShapeReason(value: String): String? {
+        if (value.isBlank()) return null
+        CREDENTIAL_LITERAL.firstOrNull { it.containsMatchIn(value) } ?: return null
+        return "值疑似明文凭证（${mask(value)}）"
+    }
+
     /** 值字段里明显是凭证键名的（用户手改技能时塞进去的）。 */
     private val CREDENTIAL_KEY: Regex =
         Regex("(?i)^\"?(password|passwd|pwd|secret|token|api_?key|apikey|authorization|cookie|session_?id)\"?$")
