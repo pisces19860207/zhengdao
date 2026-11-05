@@ -44,13 +44,20 @@ C  **已接线可断电**：布尔开关默认关（SharedPreferences getBoolean
 
 用法
 ----
-    python3 tools/check-entry-coverage.py               # 清点，写 docs/ 两份产物
-    python3 tools/check-entry-coverage.py --strict      # 交付自证：缺结论/陈旧注册即红
+    python3 tools/check-entry-coverage.py               # 刷新：按现码重算并写 docs/ 两份产物（唯一写盘路径）
+    python3 tools/check-entry-coverage.py --strict      # 只读自证：缺结论/陈旧注册/计数漂移即红（不写盘）
     python3 tools/check-entry-coverage.py --selftest    # 负例自测（临时目录，不动仓库）
-    python3 tools/check-entry-coverage.py --check       # 校验已生成的 docs 产物与现扫描一致
+    python3 tools/check-entry-coverage.py --check       # 只读：逐字节核对 docs 产物与现扫描一致
 
-退出码：0 = 完成（默认模式永远 0，CI 只报不拦）；1 = --strict 有未裁决/陈旧；
-        2 = 环境/用法错误。
+454 计数锁（2026-11-05）：`--strict` 拿**磁盘上** md/json 的四个计数（顶层公开面／
+生产可达）逐个与**当场重算值**对账，不等即红并打印「盘中＝X／重算＝Y」；且
+`--strict` 不写盘，跑完工作树必须干净。只读的原因：原实现先 write_text 覆盖两份
+产物再判 problems，人手改过的计数当场被洗成正确值 ⇒ 既检不出、又不留证据，还
+把工作树改脏（454 实测：旧名册 369/364 下 --strict 绿，却把产物写成 389/384）。
+**刷新请走默认模式**（CI 亦走这条）。
+
+退出码：0 = 完成（默认模式永远 0，CI 只报不拦）；1 = --check 不一致，或
+        --strict 有未裁决/陈旧/计数漂移；2 = 环境/用法错误。
 """
 
 from __future__ import annotations
@@ -517,13 +524,88 @@ def classify_c(corp: Corpus) -> tuple[list[dict], int]:
     return out, excluded
 
 
+# ---------------------------------------------------------------- 计数锁（454）
+
+# 只认汇总表里这两行的整数；按行首口径定位，不会误吃 NOT_WIRED 等别的行。
+MD_PUBLIC_RE = re.compile(r"^\|\s*顶层公开面[^\n|]*\|\s*(\d+)\s*\|", re.MULTILINE)
+MD_WIRED_RE = re.compile(r"^\|\s*生产可达[^\n|]*\|\s*(\d+)\s*\|", re.MULTILINE)
+
+
+def read_counts_from_disk(root: Path) -> tuple[dict[str, int | None], list[str]]:
+    """只读解析**磁盘上**两份产物的四个计数。
+
+    铁律：绝不拿本次 render 出来的内存字符串自证——那是「自己验自己」，恒绿。
+    解析不出一律记 error，不许静默跳过（验证方式缺失的约束等于没有约束）。
+    """
+    errors: list[str] = []
+    counts: dict[str, int | None] = {
+        "md_public": None, "md_wired": None,
+        "js_public": None, "js_wired": None,
+    }
+    md_path = root / "docs" / "entry-coverage.md"
+    if not md_path.is_file():
+        errors.append("docs/entry-coverage.md 不存在（无法对账）")
+    else:
+        text = md_path.read_text(encoding="utf-8")
+        for key, label, rx in (("md_public", "顶层公开面", MD_PUBLIC_RE),
+                               ("md_wired", "生产可达", MD_WIRED_RE)):
+            m = rx.search(text)
+            if m is None:
+                errors.append("md 汇总表「%s」计数行缺失/不可解析" % label)
+            else:
+                counts[key] = int(m.group(1))
+    js_path = root / "docs" / "entry-coverage.json"
+    if not js_path.is_file():
+        errors.append("docs/entry-coverage.json 不存在（无法对账）")
+    else:
+        try:
+            summary = json.loads(js_path.read_text(encoding="utf-8"))["summary"]
+            counts["js_public"] = summary["production_top_level_public"]
+            counts["js_wired"] = summary["wired"]
+            for key in ("js_public", "js_wired"):
+                if not isinstance(counts[key], int) or isinstance(counts[key], bool):
+                    errors.append("json summary 计数非整数：%s=%r" % (key, counts[key]))
+                    counts[key] = None
+        except (ValueError, KeyError, TypeError) as exc:
+            errors.append("docs/entry-coverage.json 解析失败：%s" % exc)
+    return counts, errors
+
+
+def lock_counts(root: Path, recomputed_public: int, recomputed_wired: int) -> list[str]:
+    """两条断言（md 一组／json 一组）＋ 交叉一致性；只读，绝不写盘。
+
+    md 的「顶层公开面／生产可达」与 json 的 production_top_level_public／wired
+    四个落盘位置，逐个与当场重算值对账；不等即红，并打印「盘中＝X／重算＝Y」两数。
+    """
+    counts, problems = read_counts_from_disk(root)
+    for key, label, expected in (
+        ("md_public", "md 顶层公开面", recomputed_public),
+        ("md_wired", "md 生产可达", recomputed_wired),
+        ("js_public", "json production_top_level_public", recomputed_public),
+        ("js_wired", "json wired", recomputed_wired),
+    ):
+        got = counts.get(key)
+        if got is None:
+            continue  # 解析阶段已记 error，不重复报
+        if got != expected:
+            problems.append("[计数锁] %s：盘中=%d / 重算=%d ⇒ 不一致" % (label, got, expected))
+    for a, b, label in (("md_public", "js_public", "顶层公开面"),
+                        ("md_wired", "js_wired", "生产可达")):
+        x, y = counts.get(a), counts.get(b)
+        if x is not None and y is not None and x != y:
+            problems.append("[计数锁] %s：md=%d / json=%d ⇒ 两份产物互相不一致"
+                            % (label, x, y))
+    return problems
+
+
 # ---------------------------------------------------------------- 主流程
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=None)
-    ap.add_argument("--strict", action="store_true", help="缺结论/陈旧注册即退出 1")
+    ap.add_argument("--strict", action="store_true",
+                    help="只读自证：缺结论/陈旧注册/计数漂移即退出 1（不写盘）")
     ap.add_argument("--check", action="store_true", help="核对 docs/ 产物与现扫描一致")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -593,6 +675,7 @@ def main() -> int:
     js = json.dumps(report, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
 
     if args.check:
+        # 只读：逐字节核对已生成产物与现扫描（原行为不变）
         docs_md = (root / "docs" / "entry-coverage.md")
         docs_js = (root / "docs" / "entry-coverage.json")
         ok = (docs_md.read_text(encoding="utf-8") == md if docs_md.is_file() else False) and \
@@ -600,6 +683,23 @@ def main() -> int:
         print("[entry-coverage] --check：%s" % ("一致" if ok else "不一致（重新生成）"))
         return 0 if ok else 1
 
+    if args.strict:
+        # 454：只读自证。先按现码重算，再拿**磁盘上**的四个计数对账；绝不 write_text。
+        # 原实现先写盘再判 problems ⇒ 手改过的计数被当场洗成正确值，既检不出、
+        # 又不留证据，还把工作树改脏。故这里是唯一不落盘的自证路径。
+        s = report["summary"]
+        problems += lock_counts(root, s["production_top_level_public"], s["wired"])
+        print("[entry-coverage] --strict（只读）：当场重算 顶层公开面 %d ／ 生产可达 %d"
+              % (s["production_top_level_public"], s["wired"]))
+        for p in problems:
+            print("[entry-coverage] 问题：%s" % p)
+        if problems:
+            print("[entry-coverage] --strict：%d 条未决，退出 1（未写任何文件）" % len(problems))
+            return 1
+        print("[entry-coverage] --strict：绿（计数锁 4/4 命中 ＋ 结论/注册全齐），未写任何文件")
+        return 0
+
+    # 默认模式＝刷新：唯一写盘路径（CI 走这条），按现码重算并覆盖两份产物。
     (root / "docs" / "entry-coverage.md").write_text(md, encoding="utf-8")
     (root / "docs" / "entry-coverage.json").write_text(js, encoding="utf-8")
 
@@ -608,9 +708,6 @@ def main() -> int:
           % (s["production_top_level_public"], s["wired"], s["A"], s["B"], s["C"], s["not_wired"]))
     for p in problems:
         print("[entry-coverage] 问题：%s" % p)
-    if args.strict and problems:
-        print("[entry-coverage] --strict：%d 条未决，退出 1" % len(problems))
-        return 1
     return 0
 
 
