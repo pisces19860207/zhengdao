@@ -1632,6 +1632,9 @@
     <!-- Batch 207: seed skill pack (first-launch install note + decision-center promote/revert rows) -->
     <string name="skill_seed_installed_note">Starter skills installed (drafts): %1$d. View, edit or remove them on the Skills page</string>
     <string name="skill_seed_install_failed">Starter skills that failed to install: %1$d. See the log for reasons</string>
+    <!-- Batch 490: seed skill version migration (upgrade note + "edited skill, not overwritten" hint) -->
+    <string name="seed_skill_upgraded_note">%1$d built-in skills upgraded; previous versions archived for rollback</string>
+    <string name="seed_skill_new_version">Built-in version v%1$d→v%2$d is available. View the diff?</string>
     <string name="decision_history_skill_promoted">Skill promoted: %1$s (%2$s)</string>
     <string name="decision_history_skill_reverted">Reverted to draft: %1$s</string>
     <string name="skill_promote_reverted">Reverted to draft: %1$s</string>

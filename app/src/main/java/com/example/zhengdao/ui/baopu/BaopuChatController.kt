@@ -303,30 +303,70 @@ internal class BaopuChatController(context: Context) {
     init {
         // 第二百零七批 · 首启种子安装（幂等：已装/已拒绝/被用户改过 ⇒ 各自跳过，不覆盖）。
         // IO 上跑、绝不拦着进抱朴；装成了几条说一句便签（**不弹卡**），失败只落 RunLog（不静默）。
+        // 第四百九十批 · 同一个机会窗口里先跑版本迁移：老手机上「未被人改过的旧种子」升到内置新版，
+        // 改过的/自建的一律不覆盖（自建连提示都不出）。升级整体异常也只落日志，不许影响首屏。
         scope.launch {
-            val report = withContext(Dispatchers.IO) {
+            val window = withContext(Dispatchers.IO) {
                 val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
-                com.example.zhengdao.baopu.SeedSkills.install(
-                    readAsset = { path ->
-                        runCatching {
-                            appCtx.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }
-                        }.getOrNull()
-                    },
-                    globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, ""),
-                    projectRoot = workspaceRoot,
-                    personaFiles = pf,
-                    backupStamp = com.example.zhengdao.core.TimeFormats.fileStamp(),
-                )
+                val readAsset: (String) -> String? = { path ->
+                    runCatching {
+                        appCtx.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    }.getOrNull()
+                }
+                val globalRoot = java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "")
+                val stamp = com.example.zhengdao.core.TimeFormats.fileStamp()
+                // 先升级后首装：upgrade 见过旧版就换成新版，install 随后看到的是最新版（幂等跳过）。
+                val up = runCatching {
+                    com.example.zhengdao.baopu.SeedSkillUpgrade.upgrade(
+                        readAsset = readAsset,
+                        globalRoot = globalRoot,
+                        projectRoot = workspaceRoot,
+                        personaFiles = pf,
+                        backupStamp = stamp,
+                    )
+                }.getOrElse { t ->
+                    com.example.zhengdao.core.RunLog.log(
+                        "种子技能升级窗口异常（不影响启动）：${t.javaClass.simpleName}",
+                    )
+                    null
+                }
+                val report = runCatching {
+                    com.example.zhengdao.baopu.SeedSkills.install(
+                        readAsset = readAsset,
+                        globalRoot = globalRoot,
+                        projectRoot = workspaceRoot,
+                        personaFiles = pf,
+                        backupStamp = stamp,
+                    )
+                }.getOrElse { t ->
+                    com.example.zhengdao.core.RunLog.log(
+                        "种子技能首装窗口异常（不影响启动）：${t.javaClass.simpleName}",
+                    )
+                    null
+                }
+                Pair(up, report)
             }
+            val (up, report) = window
+            val newer = up?.modified?.firstOrNull()
             when {
-                report.installed.isNotEmpty() ->
+                newer != null ->
                     skillNote = BaopuNote(
-                        appCtx.getString(R.string.skill_seed_installed_note, report.installed.size),
+                        appCtx.getString(R.string.seed_skill_new_version, newer.from, newer.to),
                         BaopuNoteLevel.Info,
                     )
-                report.failed.isNotEmpty() ->
+                up?.upgraded?.isNotEmpty() == true ->
                     skillNote = BaopuNote(
-                        appCtx.getString(R.string.skill_seed_install_failed, report.failed.size),
+                        appCtx.getString(R.string.seed_skill_upgraded_note, up.upgraded.size),
+                        BaopuNoteLevel.Info,
+                    )
+                report?.installed?.isNotEmpty() == true ->
+                    skillNote = BaopuNote(
+                        appCtx.getString(R.string.skill_seed_installed_note, report?.installed?.size ?: 0),
+                        BaopuNoteLevel.Info,
+                    )
+                report?.failed?.isNotEmpty() == true ->
+                    skillNote = BaopuNote(
+                        appCtx.getString(R.string.skill_seed_install_failed, report?.failed?.size ?: 0),
                         BaopuNoteLevel.Error,
                     )
             }

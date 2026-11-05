@@ -1586,6 +1586,9 @@
     <!-- 第二百零七批 · 种子技能包（首启安装便签＋决策中心转正/回退行） -->
     <string name="skill_seed_installed_note">给你装了 %1$d 条起步技能（草稿），可在技能页看/改/删</string>
     <string name="skill_seed_install_failed">起步技能有 %1$d 条没装成，原因见日志</string>
+    <!-- 第四百九十批 · 种子技能版本迁移（升级便签＋「改过的不覆盖」提示） -->
+    <string name="seed_skill_upgraded_note">内置技能有 %1$d 条升到了新版，旧版已归档可回滚</string>
+    <string name="seed_skill_new_version">内置有新版 v%1$d→v%2$d，看差异吗</string>
     <string name="decision_history_skill_promoted">技能转正：%1$s（%2$s）</string>
     <string name="decision_history_skill_reverted">已回退为草稿：%1$s</string>
     <string name="skill_promote_reverted">已回退为草稿：%1$s</string>
