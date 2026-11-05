@@ -18,6 +18,8 @@ One APK, no root, no commands. Baopu reads and writes files, can search the whol
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
 **Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.3 (versionCode 41).
+> **New in 2.2.3**: night-watch inspection · memory tiers · decision center · doctor self-repair; plus event triggers (scheduled / calendar), on-demand shadow rehearsal (fingerprint before irreversible actions), and real CI readings for the evolution loop. Per-commit changelog: [release notes v2.2.3](https://github.com/pisces19860207/zhengdao/blob/v2.2.3/.github/release-notes/v2.2.3.md).
+
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
