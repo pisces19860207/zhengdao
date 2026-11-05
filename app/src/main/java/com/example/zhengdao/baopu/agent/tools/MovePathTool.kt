@@ -24,7 +24,7 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * `move_path`：在工作区内搬动/改名**一个文件**。
+ * `move_path`：在工作区内搬动/改名**一个或一批**文件。
  *
  * 为什么 rename 优先：同分区 rename 是原子的——要么搬完，要么原样；复制＋删除中间失败会
  * 留下「两边都有」或「两边都没有」，后者是资料丢失。
@@ -54,8 +54,10 @@ internal object MovePathTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "move_path",
-        description = "搬动或改名一个文件（from → to；相对工作区，或全盘绝对路径），也可以顺带建目标目录。" +
-            "一批文件按规则批量搬用 bulk_move、批量复制用 bulk_copy，别逐个连调。" +
+        description = "搬动或改名文件（from → to；相对工作区，或全盘绝对路径），也可以顺带建目标目录。" +
+            "搬一个用 from+to；**搬一批**用 paths+to（to 写成目标**目录**）——一批只弹一张确认卡、" +
+            "批准后一次做完，所以用户说「把这些都搬到某目录」时用 paths，**别逐个连调**。" +
+            "一批文件按规则批量搬用 bulk_move、批量复制用 bulk_copy。" +
             "同分区用 rename（原子）；跨分区只复制、把源文件记进「$PENDING_LIST_REL」，" +
             "不会自动删源。绝不覆盖：撞名不同内容自动加 sha 后缀让路，内容相同则视为已搬。" +
             "只搬文件不搬目录；确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
@@ -64,28 +66,44 @@ internal object MovePathTool {
             "properties" to jsonObjectOf(
                 ARG_FROM to jsonObjectOf(
                     "type" to "string",
-                    "description" to "源文件：相对工作区根（如 投递/某书.txt），或全盘绝对路径",
+                    "description" to "源文件（单个）：相对工作区根（如 投递/某书.txt），或全盘绝对路径。" +
+                        "搬一批时改用 paths，别同时给",
+                ),
+                PathBatch.ARG_PATHS to jsonObjectOf(
+                    "type" to "array",
+                    "items" to jsonObjectOf("type" to "string"),
+                    "description" to "源文件（一批，与 from 二选一）：一次调用只弹一张确认卡，批准后逐个搬、" +
+                        "任意一项失败不影响其余。每项都搬到 $ARG_TO 目录下、保持原文件名",
                 ),
                 ARG_TO to jsonObjectOf(
                     "type" to "string",
-                    "description" to "目标路径（相对工作区根，或全盘绝对路径；末段就是新文件名，如 产物/武侠/某书.txt）",
+                    "description" to "目标路径（相对工作区根，或全盘绝对路径；末段就是新文件名，如 产物/武侠/某书.txt）。" +
+                        "给 paths 时 to 是目标**目录**（多个文件都搬进去，各自保留原名）",
                 ),
                 ARG_CREATE_DIRS to jsonObjectOf(
                     "type" to "boolean",
                     "description" to "目标目录不存在时是否自动建（默认 true）",
                 ),
             ),
-            "required" to jsonArrayOf(ARG_FROM, ARG_TO),
+            "required" to jsonArrayOf(ARG_TO),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.CONFIRM,
-        timeoutMs = ToolTimeout.FILE_MS,
+        timeoutMs = ToolTimeout.COPY_MS,
     ) { args ->
-        run(
-            args = args,
-            root = workspaceRoot(),
-            createDirs = args.optBoolean(ARG_CREATE_DIRS, true),
-        )
+        PathBatch.bothGiven(args, ARG_FROM)?.let { return@ToolSpec ToolOutcome.Failed(it) }
+        val root = workspaceRoot()
+        val createDirs = args.optBoolean(ARG_CREATE_DIRS, true)
+        val batch = PathBatch.of(args)
+        if (batch.isNotEmpty()) {
+            return@ToolSpec moveBatch(
+                root = root,
+                paths = batch,
+                toDir = args.optString(ARG_TO).trim(),
+                createDirs = createDirs,
+            )
+        }
+        run(args = args, root = root, createDirs = createDirs)
     }
 
     /**
@@ -143,6 +161,45 @@ internal object MovePathTool {
                     "（待删除清单写不进去，请自己留意这个源文件）"
                 },
         )
+    }
+
+    /**
+     * 搬一批文件（第四百六十六批）：**一次调用、一张确认卡、逐项照做**。
+     *
+     * 语义只有一种（不猜）：`to` 是目标**目录**，每个源文件搬进去、各自保留原名。
+     * 为什么不支持「一批各自改名的配对表」：那种形状模型要写 N 组 from/to，
+     * 参数体积与出错面都翻倍，而用户说「把这些搬到某目录」时真正想要的正是这一种。
+     *
+     * 逐项调 [move] 而不是另写一套搬动：不覆盖/跨分区不删源/待删除清单/备份区禁区
+     * 这些判据只写一份——批量搬的就是单搬，单文件行为 0 回归。
+     *
+     * 拒绝批准 ⇒ 一个都不动（管线不执行，见 `ConfirmFlow`）；批准 ⇒ 逐项做，失败不中断。
+     */
+    fun moveBatch(
+        root: File,
+        paths: List<String>,
+        toDir: String,
+        createDirs: Boolean = true,
+        stamp: String = TimeFormats.fileStamp(),
+    ): ToolOutcome {
+        if (toDir.isBlank()) {
+            return ToolOutcome.Failed("批量搬动要给目标目录「$ARG_TO」（相对工作区根，或全盘绝对路径）")
+        }
+        if (paths.isEmpty()) {
+            return ToolOutcome.Failed("缺少必填参数「$ARG_FROM」或「${PathBatch.ARG_PATHS}」（至少给一个）")
+        }
+        val dstDir = resolve(root, toDir)
+        if (dstDir.exists() && !dstDir.isDirectory) {
+            return ToolOutcome.Failed(
+                "批量搬动时「$ARG_TO」要写成目录：${relOf(root, dstDir)} 已经是个文件。" +
+                    "搬一个文件请用 $ARG_FROM + $ARG_TO，搬一批请把 $ARG_TO 给到目录。",
+            )
+        }
+        val items = paths.map { one ->
+            val name = File(one).name
+            PathBatch.item(move(root, one, File(dstDir, name).absolutePath, createDirs, stamp))
+        }
+        return PathBatch.outcome("搬动", items)
     }
 
     /**

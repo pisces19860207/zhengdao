@@ -42,6 +42,7 @@ import com.example.zhengdao.baopu.ConfirmScope
 import com.example.zhengdao.baopu.ConfirmScopeChoice
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.KbTools
+import com.example.zhengdao.baopu.agent.PathBatch
 import com.example.zhengdao.baopu.agent.RunRules
 import java.io.File
 import org.json.JSONObject
@@ -252,8 +253,10 @@ internal fun confirmCardTitlePath(request: ConfirmRequest, projectRoot: File?): 
     val raw = runCatching {
         val obj = JSONObject(request.argsJson)
         val explicit = obj.optString("path").trim()
+        val batch = batchTitle(obj, projectRoot)
         when {
             explicit.isNotBlank() -> explicit
+            batch != null -> batch
             // UI-D12：kb_index 的 path 有缺省值，卡面要写「将来要索引哪儿」，
             // 不许只回显 `{}`（2026-10-22 真机）。
             request.tool == KbTools.NAME_INDEX -> KbTools.effectiveTarget(obj)
@@ -261,4 +264,17 @@ internal fun confirmCardTitlePath(request: ConfirmRequest, projectRoot: File?): 
         }
     }.getOrNull()
     return if (raw == null || projectRoot == null) raw else RunRules.relativizePath(raw, projectRoot)
+}
+
+/**
+ * 批量形参的标题（第四百六十六批）：`第一项 等 N 项`；只有一项就只写那一项。
+ *
+ * 为什么在这里拼而不在摘要里：标题回答「动的是谁」，摘要回答「动多少、能不能回」。
+ * 两处都写一遍数量，用户会读成两件事。
+ */
+private fun batchTitle(obj: JSONObject, projectRoot: File?): String? {
+    val paths = PathBatch.of(obj)
+    if (paths.isEmpty()) return null
+    val head = if (projectRoot == null) paths[0] else RunRules.relativizePath(paths[0], projectRoot)
+    return if (paths.size == 1) head else "$head 等 ${paths.size} 项"
 }

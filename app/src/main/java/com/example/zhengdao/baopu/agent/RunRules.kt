@@ -283,14 +283,13 @@ internal object RunRules {
             }
 
             // 第二百八十七批：改文件前必留旧版（>5MB 除外）——卡上要说清"能不能回"。
+            // 第二百八十七批：改文件前必留旧版（>5MB 除外）——卡上要说清"能不能回"。
             "edit_file" -> "编辑 ${path ?: "（未给路径）"}${overwriteTail(args)}"
-            "move_path" -> "移动 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
-                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
-                "（搬走后原件不在原处）"
+            "move_path" -> batchOrSingleMove(args, projectRoot)
             // 第二百八十八批：复制/批量/整理——卡面说清「动哪个范围、源保不保留、能不能退回」。
             "copy_path", "bulk_move", "bulk_copy", "organize" -> copyGroupSummary(tool, args, projectRoot)
             // 第二百八十七批：删/移必确认，卡面第一句就要说清「删什么、能不能回」。
-            "delete_path" -> deleteSummary(args, path)
+            "delete_path" -> deleteSummary(args, path, projectRoot)
             // 第一百五十八批：生图会烧 Gemini 额度，卡面第一句就把「几张、什么比例」说清；
             // 提示词只摘 40 字（卡面是标题，不是日志）。
             "generate_image" -> {
@@ -325,8 +324,19 @@ internal object RunRules {
     }
 
     /** 删除卡摘要（287）：删什么、进回收站还是彻底删、能不能回——一句话说全。 */
-    private fun deleteSummary(args: JSONObject, path: String?): String {        if (args.optBoolean("empty_trash", false)) {
+    private fun deleteSummary(args: JSONObject, path: String?, projectRoot: File?): String {
+        if (args.optBoolean("empty_trash", false)) {
             return "清空回收站（里面的文件彻底删除，不可恢复）"
+        }
+        // 第四百六十六批：批量形参——一条一句「几个、多大、能不能回」，再逐项一行。
+        val batch = PathBatch.of(args)
+        if (batch.isNotEmpty()) {
+            val recover = if (args.optBoolean("permanent", false)) {
+                "彻底删、不进回收站（删了就没了）"
+            } else {
+                "先进回收站，可以捞回来（可恢复）"
+            }
+            return batchSummary("删除", null, recover, batch, projectRoot)
         }
         val shown = path ?: "（未给路径）"
         return if (args.optBoolean("permanent", false)) {
@@ -336,11 +346,58 @@ internal object RunRules {
         }
     }
 
+    /**
+     * 搬文件的卡面（466 拆出）：单搬仍是原来那句（逐字不变），批量走 [batchSummary]。
+     *
+     * 为什么单搬那句要原样保留：一句话卡面是「用户一眼能不能决定」的唯一依据，
+     * 466 只加批量这一条路，既有单文件行为的卡面一个字都不该变（判据⑥ 0 回归）。
+     */
+    private fun batchOrSingleMove(args: JSONObject, projectRoot: File?): String {
+        val to = showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot)
+        val batch = PathBatch.of(args)
+        if (batch.isNotEmpty()) {
+            return batchSummary("搬动", to, "搬走后原件不在原处（跨分区只复制，源记进待删除清单）", batch, projectRoot)
+        }
+        val from = showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)
+        return "移动 $from → $to（搬走后原件不在原处）"
+    }
+
+    /**
+     * 批量卡面（第四百六十六批，判据②）：**数量 ＋ 总大小 ＋ 能不能回 ＋ 每项一行**。
+     *
+     * 三件工具（删/搬/复制）共用这一处，卡面形状就不会各不相同——用户看惯了「第一句是账、
+     * 后面是清单」之后，换哪件工具都读得懂。超过 [PathBatch.PREVIEW_MAX] 项由
+     * [PathBatch.linesOf] 折叠成一行（卡面是标题，不是日志）。
+     *
+     * @param target 目标位置（搬/复制有；删没有 ⇒ null）
+     * @param recover 「能不能回」这一句（删=回收站／搬=原件不在原处／复制=源还在）
+     */
+    private fun batchSummary(
+        verb: String,
+        target: String?,
+        recover: String,
+        paths: List<String>,
+        root: File?,
+    ): String {
+        val size = PathBatch.sizeText(PathBatch.totalOf(paths, root))
+        val to = if (target == null) "" else " → $target"
+        return "$verb ${paths.size} 个文件（共 $size）$to：$recover\n" + PathBatch.linesOf(paths, root)
+    }
+
     /** 288 四件的卡面摘要（复制/批量搬/批量复制/整理——每件一句话，见各自分支）。 */
     private fun copyGroupSummary(tool: String, args: JSONObject, projectRoot: File?): String = when (tool) {
-        "copy_path" -> "复制 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
+        // 第四百六十六批：批量形参优先——一条一句账 ＋ 逐项一行（单件的原句在批量之外逐字不变）
+        "copy_path" -> PathBatch.of(args).takeIf { it.isNotEmpty() }?.let { batch ->
+            batchSummary(
+                "复制",
+                showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot),
+                "源文件原地保留，重名不覆盖",
+                batch,
+                projectRoot,
+            )
+        } ?: ("复制 ${showPath(args.optString("from").trim().ifBlank { "?" }, projectRoot)} → " +
             showPath(args.optString("to").trim().ifBlank { "?" }, projectRoot) +
-            "（源文件原地保留，重名不覆盖）"
+            "（源文件原地保留，重名不覆盖）")
 
         "bulk_move" -> "批量搬动 ${args.optString("dir").ifBlank { "?" }} 里命中规则的文件 → " +
             showPath(args.optString("dest").trim().ifBlank { "?" }, projectRoot) +

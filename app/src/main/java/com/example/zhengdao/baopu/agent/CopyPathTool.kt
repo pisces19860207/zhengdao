@@ -29,6 +29,8 @@ internal object CopyPathTool {
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "copy_path",
         description = "复制一个文件或整个目录（from → to；相对工作区，或全盘绝对路径），源文件原地不动。" +
+            "**复制一批**用 paths + to（to 写成目标**目录**）——一批只弹一张确认卡、批准后一次做完，" +
+            "所以用户说「把这些都复制一份」时用 paths，**别逐个连调**。" +
             "流式复制，1GB 的大文件也不会撑爆内存，且保留原修改时间。" +
             "绝不覆盖：目标已有同名且内容不同 ⇒ 自动加后缀让路；内容相同 ⇒ 视为已复制。" +
             "复制目录时整棵子树落过去（备份/回收站/记忆这些 App 自管目录不进范围）。" +
@@ -39,29 +41,82 @@ internal object CopyPathTool {
             "properties" to jsonObjectOf(
                 ARG_FROM to jsonObjectOf(
                     "type" to "string",
-                    "description" to "源：文件或目录，相对工作区根（如 投递/某书.txt），或全盘绝对路径",
+                    "description" to "源（单个）：文件或目录，相对工作区根（如 投递/某书.txt），或全盘绝对路径。" +
+                        "复制一批时改用 paths，别同时给",
+                ),
+                PathBatch.ARG_PATHS to jsonObjectOf(
+                    "type" to "array",
+                    "items" to jsonObjectOf("type" to "string"),
+                    "description" to "源（一批文件，与 from 二选一）：一次调用只弹一张确认卡，批准后逐个复制、" +
+                        "任意一项失败不影响其余。每项都复制到 $ARG_TO 目录下、保持原文件名",
                 ),
                 ARG_TO to jsonObjectOf(
                     "type" to "string",
-                    "description" to "目标路径（相对工作区根，或全盘绝对路径）；源是目录时 to 就是新目录的位置",
+                    "description" to "目标路径（相对工作区根，或全盘绝对路径）；源是目录时 to 就是新目录的位置。" +
+                        "给 paths 时 to 是目标**目录**",
                 ),
                 ARG_CREATE_DIRS to jsonObjectOf(
                     "type" to "boolean",
                     "description" to "目标目录不存在时是否自动建（默认 true）",
                 ),
             ),
-            "required" to jsonArrayOf(ARG_FROM, ARG_TO),
+            "required" to jsonArrayOf(ARG_TO),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.CONFIRM,
         timeoutMs = ToolTimeout.COPY_MS,
     ) { args ->
+        PathBatch.bothGiven(args, ARG_FROM)?.let { return@ToolSpec ToolOutcome.Failed(it) }
+        val root = workspaceRoot()
+        val createDirs = args.optBoolean(ARG_CREATE_DIRS, true)
+        val batch = PathBatch.of(args)
+        if (batch.isNotEmpty()) {
+            return@ToolSpec copyBatch(
+                root = root,
+                paths = batch,
+                toDir = args.optString(ARG_TO).trim(),
+                createDirs = createDirs,
+            )
+        }
         run(
-            root = workspaceRoot(),
+            root = root,
             from = args.optString(ARG_FROM).trim(),
             to = args.optString(ARG_TO).trim(),
-            createDirs = args.optBoolean(ARG_CREATE_DIRS, true),
+            createDirs = createDirs,
         )
+    }
+
+    /**
+     * 复制一批文件（第四百六十六批）：**一次调用、一张确认卡、逐项照做**。
+     *
+     * 语义与 `move_path` 的批量同款（不各自造）：`to` 是目标**目录**，每个源复制进去、
+     * 各自保留原名。逐项调 [run] —— 不覆盖/幂等/流式复制这些判据只有一份。
+     *
+     * 拒绝批准 ⇒ 一个都不动（管线不执行）；批准 ⇒ 逐项做，失败不中断。
+     */
+    fun copyBatch(
+        root: File,
+        paths: List<String>,
+        toDir: String,
+        createDirs: Boolean = true,
+    ): ToolOutcome {
+        if (toDir.isBlank()) {
+            return ToolOutcome.Failed("批量复制要给目标目录「$ARG_TO」（相对工作区根，或全盘绝对路径）")
+        }
+        if (paths.isEmpty()) {
+            return ToolOutcome.Failed("缺少必填参数「$ARG_FROM」或「${PathBatch.ARG_PATHS}」（至少给一个）")
+        }
+        val dstDir = PathCopyCore.resolve(root, toDir)
+        if (dstDir.exists() && !dstDir.isDirectory) {
+            return ToolOutcome.Failed(
+                "批量复制时「$ARG_TO」要写成目录：${PathCopyCore.relOf(root, dstDir)} 已经是个文件。",
+            )
+        }
+        val items = paths.map { one ->
+            val name = File(one).name
+            PathBatch.item(run(root, one, File(dstDir, name).absolutePath, createDirs))
+        }
+        return PathBatch.outcome("复制", items)
     }
 
     /** 复制（纯函数：root 已定、无 Android 依赖，JVM 直测）。 */

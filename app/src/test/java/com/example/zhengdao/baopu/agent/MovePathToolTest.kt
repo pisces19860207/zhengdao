@@ -214,11 +214,17 @@ class MovePathToolTest {
     }
 
     @Test
-    fun `Schema_只有三个参数且禁止额外参数`() {
+    fun `Schema_四个参数且禁止额外参数`() {
         setup()
         val spec = MovePathTool.spec { root }
         val props = spec.inputSchema.getJSONObject("properties")
-        assertEquals(3, props.length())
+        // 466 改口径：3 → 4（新增批量形参 paths）。同一批把 `from` 从 required 里撤下——
+        // 批量调用不带 from，它若仍是必填，SchemaCheck 会在工具本体之前就把批量整条拒掉。
+        assertEquals(4, props.length())
+        assertTrue("批量形参必须在 properties 里：${props.keys().asSequence().toList()}", props.has("paths"))
+        val required = spec.inputSchema.getJSONArray("required")
+        assertEquals("批量与单个共用 to，必填只剩它一个", 1, required.length())
+        assertEquals("to", required.optString(0))
         assertFalse(spec.inputSchema.getBoolean("additionalProperties"))
         assertTrue(spec.description.length <= ToolSpec.MAX_DESC)
     }

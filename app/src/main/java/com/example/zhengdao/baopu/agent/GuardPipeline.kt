@@ -41,6 +41,7 @@ import com.example.zhengdao.baopu.plan.PlanContractRules
 import com.example.zhengdao.baopu.plan.TouchFace
 import com.example.zhengdao.baopu.scout.LedgerFanout
 import com.example.zhengdao.core.RunLog
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Callable
@@ -628,7 +629,7 @@ internal class GuardPipeline(
     private fun contractFaces(call: ToolCall): List<TouchFace> = TouchFace.facesOf(
         pathKeysFor(call.name, call.arguments).mapNotNull { key ->
             call.arguments.optString(key).trim().takeIf { it.isNotEmpty() }
-        },
+        } + PathBatch.of(call.arguments),
         call.arguments,
     )
 
@@ -870,7 +871,11 @@ internal class GuardPipeline(
 
         val args = call.arguments
         val keys = pathKeysFor(toolName, args)
-        if (keys.isEmpty()) return Guarded.Yes(call)
+        // 第四百六十六批：批量形参（`paths`）与单数键走同一段，但它值里是一串路径——
+        // 逐项解析/逐项拒，任何一项越线就拒**整条**调用（原子，不做一半）。
+        if (keys.isEmpty() && arrayPathKeysFor(toolName).none { args.optJSONArray(it) != null }) {
+            return Guarded.Yes(call)
+        }
         val root = workspaceRoot()
 
         // P0-2：先把该工具**会写盘的目标**判一遍原始区红线（读类工具不在此限）
@@ -903,6 +908,9 @@ internal class GuardPipeline(
             // 用户点了拒绝也照样会走到这里，账上就会出现"删过"而文件其实没动（看着做过、其实没做）。
             // 记账挪到 [finish] 的 Ok 分支：真的执行成功才落一行。
         }
+        val batch = guardBatchPaths(root, toolName, call.id, args, newArgs)
+        batch.second?.let { reason -> return Guarded.No(reason) }
+        newArgs = batch.first
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
     }
@@ -1022,6 +1030,8 @@ internal class GuardPipeline(
             val raw = args.optString(key).trim()
             if (raw.isNotEmpty()) targets += File(raw)
         }
+        // 466：批量形参里的每一条都入账（「每笔读写入账」不许有黑洞：删 10 个就是 10 行）
+        for (raw in PathBatch.of(args)) targets += File(raw)
         targets += writeTargets(spec.name, args, workspaceRoot())
         val purpose = FileOpRules.purposeOf(spec.name, args)
         for (target in targets) {
@@ -1075,6 +1085,64 @@ internal class GuardPipeline(
     }
 
     /**
+     * 该工具的**数组形**路径参数名（第四百六十六批：批量形参 `paths`）。
+     *
+     * 为什么单开一张表：`pathKeysFor` 返回的是「值是字符串」的键，而 `paths` 的值是数组，
+     * 混进同一张表会让 `optString` 取出 `["a","b"]` 这种假路径去判越界（假红或假绿）。
+     * 谁是数组形，只有这张表说了算。
+     */
+    private fun arrayPathKeysFor(toolName: String): List<String> = when (toolName) {
+        "delete_path", "move_path", "copy_path" -> listOf(PathBatch.ARG_PATHS)
+        else -> emptyList()
+    }
+
+    /** 批量形参里的每一项解析成 File（未改写前的相对路径也认，与 [resolve] 同一口径）。 */
+    private fun batchTargets(root: File, args: JSONObject): List<File> =
+        PathBatch.of(args).map { resolve(root, it) }
+
+    /**
+     * 批量形参的第 ② 段（第四百六十六批）：逐项解析 ＋ 逐项拒系统/凭据目录，通过后
+     * **改写回绝对路径**（与单数键同一形状，executor 只认绝对路径）。
+     *
+     * 为什么任何一项越线就拒整条调用：这就是批量的「原子」——不让它删一半再死在第七个上。
+     * 用户点「拒绝」的原子性由 [ConfirmFlow] 白拿（不执行），这里管的是「执行了但只做了一半」。
+     *
+     * 为什么返回值是 `Pair` 而不是原地 put：只有 `paths` 时调用方传进来的 `newArgs`
+     * **就是** [call] 自己那份参数，原地 put 会把「改写」写回调用方的对象里
+     * （别处拿到的同一个 JSONObject 会突然变成绝对路径）。有数组就复制一份再改。
+     *
+     * @return (改写后的参数, 拒绝原文)；拒绝原文非 null ⇒ 第一个值不要用
+     */
+    private fun guardBatchPaths(
+        root: File,
+        toolName: String,
+        callId: String,
+        args: JSONObject,
+        newArgs: JSONObject,
+    ): Pair<JSONObject, String?> {
+        var out = newArgs
+        for (key in arrayPathKeysFor(toolName)) {
+            val arr = args.optJSONArray(key) ?: continue
+            if (arr.length() == 0) continue
+            val rewritten = JSONArray()
+            for (i in 0 until arr.length()) {
+                val raw = arr.optString(i).trim()
+                if (raw.isEmpty()) continue
+                val target = resolve(root, raw)
+                fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
+                    log("抱朴管线：拒绝 $toolName $key[$i] $raw（${FilePolicy.denyReason(target)}）")
+                    feedScopeEscape(callId, toolName, target.absolutePath, reason, redline = "policy")
+                    return newArgs to reason
+                }
+                rewritten.put(target.absolutePath)
+            }
+            if (out === args) out = JSONObject(args.toString())
+            out.put(key, rewritten)
+        }
+        return out to null
+    }
+
+    /**
      * 该工具**会写盘的真实目标**（P0-2 红线按这些判）。
      *
      * 为什么不是"有 path 就判 path"：
@@ -1088,15 +1156,19 @@ internal class GuardPipeline(
             args.optString(key).trim().takeIf { it.isNotEmpty() }?.let { resolve(root, it) }
 
         return when (toolName) {
-            "write_file", "edit_file", "delete_path", "convert_encoding" ->
+            "write_file", "edit_file", "convert_encoding" ->
                 listOfNotNull(resolved(ReadFileTool.ARG_PATH))
 
-            "move_path" -> listOfNotNull(resolved("from"), resolved("to"))
+            // 466：批量形参里每一条都是写目标——原件区红线、任务级授权的对象清单、
+            // 覆盖判定都按这几个列表判，漏掉 `paths` 就等于给批量开了一条「不判红线」的旁路。
+            "delete_path" -> listOfNotNull(resolved(ReadFileTool.ARG_PATH)) + batchTargets(root, args)
+
+            "move_path" -> listOfNotNull(resolved("from"), resolved("to")) + batchTargets(root, args)
             // 288：写目标口径与 RiskTable 同源（copy 只写 to；move/organize 的源会消失，
             // 范围目录也算写面，dest 在前——授权账取 firstOrNull 当「写到了哪」）。
             // 原件区红线按这些判：dest/dir 落进原件区直接拒（范围目录**包含**原件区时
             // 由工具内部的禁区跳过兜第二层——collect() 不把 原始/ 当原料）。
-            "copy_path" -> listOfNotNull(resolved("to"))
+            "copy_path" -> listOfNotNull(resolved("to")) + batchTargets(root, args)
             "bulk_move", "bulk_copy", "organize" ->
                 listOfNotNull(resolved("dest"), resolved("dir"))
             "image_ops" -> {

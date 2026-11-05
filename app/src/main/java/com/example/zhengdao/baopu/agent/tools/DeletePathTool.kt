@@ -11,7 +11,9 @@
 //    全盘的文件都能删，但「删」永远要过确认卡（本工具 permission = CONFIRM）；
 //    禁区（备份/、回收站/、原件区）仍用 PathGuard 硬拒；
 // 2. **默认进回收站**（`回收站/<时间戳>-<原名>`，同分区 rename 原子），`permanent=true` 才真删；
-// 3. 只删**单个文件**：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
+// 3. 只删**文件**（不删目录）：目录一律拒（删目录一步能毁半个资料库，等真有需求再单开一刀）；
+//    第四百六十六批起可以**一次删一批**（`paths`）——仍是逐项按同一套判据做，
+//    **一张确认卡列全部**，批准后一次做完（用户口径「一次问清，不要逐项问」）；
 // 4. 禁区一律拒并说清：`备份/`（157 起可见化，原 `.baopu-bak`，旧版本备份）、`回收站/`（回收站本身）、
 //    `资料库/原始/`（157 前的旧原件区形态；现已迁 App 私有，此形态只可能是存量残留或用户自建——
 //    拦住它靠 GuardPipeline 的原始区只读红线（第四十八批 P0-2）与本工具的字符串保险，两层都在）；
@@ -33,16 +35,18 @@ import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.TimeFormats
 import java.io.File
+import org.json.JSONObject
 
 /**
- * `delete_path`：删工作区里的**一个文件**——默认进回收站，`permanent=true` 才彻底删。
+ * `delete_path`：删**一个或一批**文件——默认进回收站，`permanent=true` 才彻底删。
  *
  * 为什么默认回收站：删错了还能捞回来，而真删是不可逆的。用户要清截图、清废稿是常态，
  * 每次都得先想清楚「这一步之后真的没了」并不现实；先扔回收站，回收站满了自己清，
  * 比"让模型保证不删错"可靠得多。
  *
  * 为什么只删文件不删目录：目录删除是递归的，一次误判能带走整批资料；真需要批量清理时
- * 让模型逐个文件来，用户每个都能在确认卡上看见。
+ * 给 `paths`（第四百六十六批）——每一条都过同一套判据，确认卡上一张列全，
+ * 用户看一次就能决定「删还是不删」，而不是点十次。
  */
 internal object DeletePathTool {
 
@@ -69,12 +73,14 @@ internal object DeletePathTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "delete_path",
-        description = "删一个文件（相对工作区，或全盘绝对路径）。**默认进回收站**（工作区/回收站/时间戳-原名），" +
-            "说一声就能捞回来；permanent=true 才是彻底删（确认卡上会写明「删了就没了」）。" +
-            "只删单个文件：目录、备份区 $BACKUP_DIR_NAME/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
-            "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡，不用逐个删）。" +
-            "本 App 生成的相册图也走这条：截屏在系统截屏夹（Pictures/Screenshots/，与你手机自己截的图同一目录）、" +
-            "生图在 Pictures/证道/图片/（存量条目还可能在旧目录 Pictures/证道/截屏/）。" +
+        description = "删文件（相对工作区，或全盘绝对路径）。**默认进回收站**（工作区/回收站/时间戳-原名），" +
+            "说一声就能捞回来；permanent=true 才是彻底删。" +
+            "删一个给 path，删一批给 paths（二选一）——一批只弹**一张**确认卡列全部、批准后一次做完；" +
+            "用户说「这些都删掉」时用 paths 一次给全，**别逐个连调**。" +
+            "只删文件：目录、备份区 $BACKUP_DIR_NAME/、回收站本身、资料库/原始/ 一律拒绝并说清原因。" +
+            "用户说「清空回收站」时用 empty_trash=true 一次清完（一张确认卡）。" +
+            "本 App 生成的相册图也走这条：截屏在 Pictures/Screenshots/（与你手机截的同一目录）、" +
+            "生图在 Pictures/证道/图片/（存量还可能在旧目录 Pictures/证道/截屏/）。" +
             "path 给相册相对路径（如 Pictures/Screenshots/证道截屏-20261028-083000.png）；" +
             "只有**归属清单里登记为本 App 写的**才删，你自己的截图和别人的照片一律拒绝。" +
             "确认由 App 弹确认卡完成，直接调用即可，不要在回复里先问一句。",
@@ -83,7 +89,14 @@ internal object DeletePathTool {
             "properties" to jsonObjectOf(
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
-                    "description" to "要删的文件：相对工作区根（如 附件/20261018-231057-shot.jpg），或全盘绝对路径",
+                    "description" to "要删的那**一个**文件：相对工作区根（如 附件/20261018-231057-shot.jpg），" +
+                        "或全盘绝对路径（与 paths 二选一）",
+                ),
+                PathBatch.ARG_PATHS to jsonObjectOf(
+                    "type" to "array",
+                    "items" to jsonObjectOf("type" to "string"),
+                    "description" to "要删的**一批**文件（与 path 二选一，别同时给）：一次调用只弹一张确认卡、" +
+                        "批准后一项一项照做，任意一项失败不影响其余。用户说「这些都删了」时用它",
                 ),
                 ARG_PERMANENT to jsonObjectOf(
                     "type" to "boolean",
@@ -94,24 +107,67 @@ internal object DeletePathTool {
                     "description" to "true = 一次清空整个回收站（不需要 path；只清文件，子目录留着）",
                 ),
             ),
-            // path 不是必填：empty_trash=true 时不需要（清空整个回收站）
+            // path 不是必填：empty_trash=true 时不需要（清空整个回收站），批量时给 paths
             "required" to jsonArrayOf(),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.CONFIRM,
         timeoutMs = ToolTimeout.FILE_MS,
-    ) { args ->
-        val root = workspaceRoot()
+    ) { args -> dispatch(args, workspaceRoot()) }
+
+    /**
+     * executor 的实身（第四百六十六批从 `spec` 里拆出）。
+     *
+     * 为什么拆：三个入口（清空回收站／删一个／删一批）互斥的判定就三四行，但都堆在
+     * `spec` 的尾随 lambda 里会让那个函数越过 detekt 的 60 行硬线（实测 68）。
+     * 声明与判定分开之后，`spec` 只负责「这个工具长什么样」，这里负责「这次要干哪一种」。
+     */
+    private fun dispatch(args: JSONObject, root: File): ToolOutcome {
         if (args.optBoolean(ARG_EMPTY_TRASH, false)) {
-            return@ToolSpec emptyTrash(root)
+            // 466：三个入口（清空/单个/一批）互斥——两个一起给就拒，不猜谁优先
+            if (PathBatch.of(args).isNotEmpty()) {
+                return ToolOutcome.Failed(
+                    "empty_trash 与 ${PathBatch.ARG_PATHS} 二选一：清空整个回收站不用给路径。",
+                )
+            }
+            return emptyTrash(root)
         }
-        run(
-            path = args.optString(ARG_PATH).trim(),
-            permanent = args.optBoolean(ARG_PERMANENT, false),
-            root = root,
-            // 199：相册条目经 MediaPublisher（唯一 ContentResolver 出口）
-            albumDelete = { relPath -> MediaPublisher.deleteByRelPath(relPath) },
-        )
+        PathBatch.bothGiven(args, ARG_PATH)?.let { return ToolOutcome.Failed(it) }
+        val permanent = args.optBoolean(ARG_PERMANENT, false)
+        // 199：相册条目经 MediaPublisher（唯一 ContentResolver 出口）
+        val album: ((String) -> MediaDelete) = { relPath -> MediaPublisher.deleteByRelPath(relPath) }
+        val batch = PathBatch.of(args)
+        if (batch.isNotEmpty()) return runBatch(batch, permanent, root, albumDelete = album)
+        return run(args.optString(ARG_PATH).trim(), permanent, root, albumDelete = album)
+    }
+
+    /**
+     * 删一批文件（第四百六十六批）：**一次调用、一张确认卡、逐项照做**。
+     *
+     * 为什么逐项调 [run] 而不是另写一套删除：删除的判据（相册归属/人设/系统目录/备份区/
+     * 原件区/目录拒/回收站撞名）只写一份，批量就不会慢慢漂成第二套语义——
+     * 这既是「单文件 0 回归」的结构性保证，也是「批量删的就是单删」的结构性保证。
+     *
+     * **拒绝那一侧的原子性不在这里**：用户点「拒绝」⇒ 管线根本不会执行这个工具
+     * （见 `ConfirmFlow.enter` 的 false 分支），所以「一个都不动」是免费的，
+     * 不靠本函数自觉。批准这一侧是「逐项做、失败不中断」——判据③要的就是它。
+     *
+     * @param stamp 整批共用一个时间戳（回收站里一眼看得出是同一批）——仍逐个 uniqueTrashName 让路
+     */
+    fun runBatch(
+        paths: List<String>,
+        permanent: Boolean = false,
+        root: File,
+        stamp: String = TimeFormats.fileStamp(),
+        albumDelete: ((relPath: String) -> MediaDelete)? = null,
+    ): ToolOutcome {
+        if (paths.isEmpty()) {
+            return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」或「${PathBatch.ARG_PATHS}」（至少给一个）")
+        }
+        val items = paths.map { one ->
+            PathBatch.item(run(one, permanent, root, stamp, albumDelete))
+        }
+        return PathBatch.outcome("删除", items)
     }
 
     /**
