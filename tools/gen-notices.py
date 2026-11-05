@@ -182,7 +182,10 @@ def maven_rows(root: Path, gradle_home: Path, evidence: dict) -> tuple[list[dict
             if kind == "bom" and v:
                 module_boms.append((g, n, v))
                 key = "%s:%s:%s" % (g, n, v)
-                site = "%s/build.gradle.kts:%d（platform）" % (mod, lineno)
+                # 来源只写「文件（配置）」，**不写行号**（2026-11-05 用户定）：
+                # 行号没有合规价值，且天然会衰减——`build.gradle.kts` 里改一行注释就整体位移，
+                # 26 条来源全对不上 ⇒ 424 门禁必红（#1839/#1840 就是这么连红两轮的）。
+                site = "%s/build.gradle.kts（platform）" % mod
                 item = boms.setdefault(key, {"coord": key, "g": g, "n": n, "v": v, "sites": []})
                 item["sites"].append(site)
                 continue
@@ -198,7 +201,7 @@ def maven_rows(root: Path, gradle_home: Path, evidence: dict) -> tuple[list[dict
                 version = managed.get((g, n)) or fallback_bom.get("%s:%s" % (g, n), "")
                 version_src = "BOM 托管" if version else "未解析"
             key = "%s:%s:%s" % (g, n, version or "?")
-            site = "%s/build.gradle.kts:%d（%s）" % (mod, lineno, config)
+            site = "%s/build.gradle.kts（%s）" % (mod, config)  # 同上：不写行号，见上一条注释
             item = rows.setdefault(key, {
                 "coord": key, "g": g, "n": n, "v": version or "",
                 "configs": [], "pairs": [], "sites": [], "version_src": version_src,
@@ -807,6 +810,13 @@ def selftest() -> int:
 
         # ② --check 基线绿
         case("--check 在一致时返回 0", run(root, gh, ev, doc, check=True, stats_only=False) == 0)
+
+        # ②·补 来源列不许带行号（2026-11-05 用户定）：`build.gradle.kts:NNN` 会被注释位移带崩，
+        # #1839/#1840 就是这么连红两轮的；产物里只留「文件（配置）」。
+        text_first = first.decode("utf-8")
+        case("来源列不带行号（不许出现 build.gradle.kts:数字）",
+             "build.gradle.kts:" not in text_first and "build.gradle.kts（" in text_first,
+             "带冒号行号的来源数：%d" % text_first.count("build.gradle.kts:"))
 
         # ③ 手改说明文字 / 资产类 / 历史节 ⇒ 再生成仍在，且生成块逐字节不变
         text = doc.read_text(encoding="utf-8")

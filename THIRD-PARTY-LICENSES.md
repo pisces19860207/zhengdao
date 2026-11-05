@@ -131,40 +131,40 @@
 
 | 坐标 | 版本 | 许可 | 随包？ | 来源 | 许可取证 |
 |---|---|---|---|---|---|
-| `androidx.activity:activity-compose:1.13.0` | `1.13.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:660（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.benchmark:benchmark-macro-junit4:1.5.0` | `1.5.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts:51（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.material3:material3:1.4.0` | `1.4.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:661（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.runtime:runtime:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | core/build.gradle.kts:56（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.ui:ui-graphics:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:663（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.ui:ui-test-junit4:1.12.1` | `1.12.1` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts:695（androidTestImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.ui:ui-test-manifest:1.12.1` | `1.12.1` | Apache-2.0 | 否（debugImplementation） | app/build.gradle.kts:698（debugImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.ui:ui-tooling-preview:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:664（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.ui:ui-tooling:1.12.1` | `1.12.1` | Apache-2.0 | 否（debugImplementation） | app/build.gradle.kts:699（debugImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.compose.ui:ui:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:662（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.core:core-ktx:1.19.1` | `1.19.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:665（implementation）；core/build.gradle.kts:51（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.lifecycle:lifecycle-runtime-compose:2.11.0` | `2.11.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:672（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.lifecycle:lifecycle-runtime-ktx:2.11.0` | `2.11.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:666（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.navigation:navigation-compose:2.10.2` | `2.10.2` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:658（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.profileinstaller:profileinstaller:1.4.1` | `1.4.1` | Apache-2.0 | 否（benchmarkImplementation） | app/build.gradle.kts:681（benchmarkImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.test.espresso:espresso-core:3.7.0` | `3.7.0` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts:696（androidTestImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.test.ext:junit:1.3.0` | `1.3.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块/androidTestImplementation） | app/build.gradle.kts:697（androidTestImplementation）；macrobenchmark/build.gradle.kts:53（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.test.uiautomator:uiautomator:2.4.0` | `2.4.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts:52（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `androidx.work:work-runtime:2.12.0` | `2.12.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:670（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `com.mikepenz:multiplatform-markdown-renderer-code:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:688（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `com.mikepenz:multiplatform-markdown-renderer-m3:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:687（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `com.mikepenz:multiplatform-markdown-renderer:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:686（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `com.squareup.okhttp3:mockwebserver3:5.5.1` | `5.5.1` | Apache-2.0 | 否（testImplementation） | app/build.gradle.kts:636（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `com.squareup.okhttp3:okhttp:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:631（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `io.gitlab.arturbosch.detekt:detekt-cli:1.23.8` | `1.23.8` | Apache-2.0 | 否（detektCli） | app/build.gradle.kts:629（detektCli）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `junit:junit:4.13.2` | `4.13.2` | EPL-1.0 | 否（testImplementation） | app/build.gradle.kts:689（testImplementation）；core/build.gradle.kts:58（testImplementation）；native-core/build.gradle.kts:49（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `org.apache.poi:poi:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts:654（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
-| `org.json:json:20240303` | `20240303` | PublicDomain | 否（testImplementation） | app/build.gradle.kts:693（testImplementation）；core/build.gradle.kts:60（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.activity:activity-compose:1.13.0` | `1.13.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.benchmark:benchmark-macro-junit4:1.5.0` | `1.5.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.material3:material3:1.4.0` | `1.4.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.runtime:runtime:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | core/build.gradle.kts（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-graphics:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-test-junit4:1.12.1` | `1.12.1` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts（androidTestImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-test-manifest:1.12.1` | `1.12.1` | Apache-2.0 | 否（debugImplementation） | app/build.gradle.kts（debugImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-tooling-preview:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui-tooling:1.12.1` | `1.12.1` | Apache-2.0 | 否（debugImplementation） | app/build.gradle.kts（debugImplementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.compose.ui:ui:1.12.1` | `1.12.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=BOM 托管 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.core:core-ktx:1.19.1` | `1.19.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；core/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.lifecycle:lifecycle-runtime-compose:2.11.0` | `2.11.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.lifecycle:lifecycle-runtime-ktx:2.11.0` | `2.11.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.navigation:navigation-compose:2.10.2` | `2.10.2` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.profileinstaller:profileinstaller:1.4.1` | `1.4.1` | Apache-2.0 | 否（benchmarkImplementation） | app/build.gradle.kts（benchmarkImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.test.espresso:espresso-core:3.7.0` | `3.7.0` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts（androidTestImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.test.ext:junit:1.3.0` | `1.3.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块/androidTestImplementation） | app/build.gradle.kts（androidTestImplementation）；macrobenchmark/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.test.uiautomator:uiautomator:2.4.0` | `2.4.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.work:work-runtime:2.12.0` | `2.12.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.mikepenz:multiplatform-markdown-renderer-code:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.mikepenz:multiplatform-markdown-renderer-m3:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.mikepenz:multiplatform-markdown-renderer:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.squareup.okhttp3:mockwebserver3:5.5.1` | `5.5.1` | Apache-2.0 | 否（testImplementation） | app/build.gradle.kts（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `com.squareup.okhttp3:okhttp:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `io.gitlab.arturbosch.detekt:detekt-cli:1.23.8` | `1.23.8` | Apache-2.0 | 否（detektCli） | app/build.gradle.kts（detektCli）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `junit:junit:4.13.2` | `4.13.2` | EPL-1.0 | 否（testImplementation） | app/build.gradle.kts（testImplementation）；core/build.gradle.kts（testImplementation）；native-core/build.gradle.kts（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `org.apache.poi:poi:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `org.json:json:20240303` | `20240303` | PublicDomain | 否（testImplementation） | app/build.gradle.kts（testImplementation）；core/build.gradle.kts（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 
 **表 8-B · 版本托管（BOM，platform() 声明，本身不进分发物）**
 
 | 坐标 | 版本 | 用途 | 来源 |
 |---|---|---|---|
-| `androidx.compose:compose-bom:2026.09.00` | `2026.09.00` | 只给别的坐标供版本，不产生 4(a)/4(d) 义务 | app/build.gradle.kts:659（platform）；app/build.gradle.kts:694（platform）；core/build.gradle.kts:55（platform） |
+| `androidx.compose:compose-bom:2026.09.00` | `2026.09.00` | 只给别的坐标供版本，不产生 4(a)/4(d) 义务 | app/build.gradle.kts（platform）；core/build.gradle.kts（platform） |
 
 > 口径说明：`test*` / `androidTest*` / `debug*` / `benchmark*` / `detektCli` 的构件，
 > 以及 `:macrobenchmark`（`com.android.test` 模块，独立测试 APK）的全部依赖，

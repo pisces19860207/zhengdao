@@ -1014,7 +1014,9 @@ def collect(root: Path, gradle_home: Path) -> dict:
             if v is None:
                 v = managed.get((g, n), "")
             coord = "%s:%s:%s" % (g, n, v or "?")
-            site = "%s/build.gradle.kts:%d（%s）" % (mod, lineno, config)
+            # 来源不带行号（2026-11-05 与 gen-notices 同口径）：行号会被注释位移带崩，
+            # 且对许可判定没有价值——比的是坐标/版本/许可，不是它在 build 文件的第几行。
+            site = "%s/build.gradle.kts（%s）" % (mod, config)
             if coord not in findings:
                 findings[coord] = {"coord": coord, "g": g, "n": n, "v": v or "",
                                    "kind": kind, "sites": [site], "configs": [config]}
