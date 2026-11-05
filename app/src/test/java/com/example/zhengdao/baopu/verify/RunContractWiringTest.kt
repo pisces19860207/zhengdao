@@ -93,6 +93,31 @@ class RunContractWiringTest {
         assertTrue("注入行没带预算（来自契约预算段）", pre.contains("300步/60分钟"))
     }
 
+    // ── 457 判据：三行的内容必须是契约要素（谁授权/边界/验收口径）────────────
+
+    @Test
+    fun `三行内容_契约要素齐全_谁授权_边界_验收口径`() {
+        val order = orderOf("帮我把产物目录的周报改成两页")
+        val start = order.startLine()
+        val pre = order.precheckLine()
+        // 谁授权：目标＝用户原话（原话即授权凭据，行里可查可对）
+        assertTrue("起单行没带用户原话（授权凭据）", start.contains("帮我把产物目录的周报改成两页"))
+        assertTrue("前置读行没带用户原话（授权凭据）", pre.contains("帮我把产物目录的周报改成两页"))
+        // 边界：授权读/写范围来自契约本体的授权段
+        assertTrue("起单行没带授权边界（读）", start.contains("授权=读["))
+        assertTrue("起单行没带授权边界（写）", start.contains("写["))
+        assertTrue("前置读行没带范围边界", pre.contains("范围："))
+        // 验收口径：起单与前置读两行都写明收工按判据表验收
+        assertTrue("起单行没带验收口径", start.contains("收工按判据表验收"))
+        assertTrue("前置读行没带验收口径", pre.contains("收工按契约判据表验收"))
+        // 收工行：同一口径的三态判定行（不是"收工"流水——顶替必红）
+        val report = RunContractWiring.closeRun(order, tmp("contract-lines"), emptyList(), emptyList())
+        assertTrue(
+            "收工行不是验收口径行（须以'抱朴契约：收工验收'起头）",
+            RunContractWiring.reportLine(report).startsWith("抱朴契约：收工验收"),
+        )
+    }
+
     // ── 判据① 收工按契约判：真产物真读数，三态由判据表算 ────────────────────
 
     @Test

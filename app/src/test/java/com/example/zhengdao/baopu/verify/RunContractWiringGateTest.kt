@@ -49,8 +49,75 @@ class RunContractWiringGateTest {
     fun `G2_前置读契约_契约行真拼进本轮上下文`() {
         assertTrue(
             "契约没进本轮上下文（前置读了没算数）",
-            engine().contains("turnNotes = turnNotes + order.precheckLine()"),
+            engine().contains("turnNotes = turnNotes + precheck"),
         )
+    }
+
+    // ── 457：三行三处（logcat／日志分文件／run_log 表）——少一行、少一路即红 ──
+    //
+    // 456 A11 真机空 grep 的两个断点：①三行只有两行进过运行日志（前置读行只拼了
+    // prompt，三个出口全看不见）；②三行谁都没进过 run_log 表。457 的修法是统一窄口
+    // [RunEngine.contractLine]（一行两路：log + persistContractLine）。本组门禁钉：
+    // 窄口自身两路全落（G9），三行各自真走窄口（G10–G12），run_log 行形状合规
+    // （G13：原文进 state、tool 空、ok 恒 1——谁拔任何一路/任何一行，谁红）。
+
+    @Test
+    fun `G9_契约窄口_自身两路全落`() {
+        val src = engine()
+        assertTrue(
+            "契约窄口 contractLine 不在引擎里（三行没有统一出口）",
+            src.contains("private fun contractLine(sessionId: Long, step: Int, line: String)"),
+        )
+        val body = src.substringAfter("private fun contractLine(sessionId: Long, step: Int, line: String)")
+            .substringBefore("private fun persistContractLine")
+        assertTrue(
+            "窄口没进运行日志（logcat／日志分文件少一路）",
+            body.contains("log(line)"),
+        )
+        assertTrue(
+            "窄口没进 run_log 表（表少一路）",
+            body.contains("persistContractLine(sessionId, step, line)"),
+        )
+    }
+
+    @Test
+    fun `G10_起单行_真走窄口两路落`() {
+        assertTrue(
+            "起单行没走窄口（少一行：起单行从三处消失）",
+            engine().contains("contractLine(sessionId, stepCount, order.startLine())"),
+        )
+    }
+
+    @Test
+    fun `G11_前置读行_prompt之外真走窄口`() {
+        val src = engine()
+        assertTrue(
+            "前置读行没拼进本轮上下文（模型读不到契约）",
+            src.contains("turnNotes = turnNotes + precheck"),
+        )
+        assertTrue(
+            "前置读行没走窄口（少一行：前置读行从三处消失——456 A11 的断点之一）",
+            src.contains("contractLine(sessionId, stepCount, precheck)"),
+        )
+    }
+
+    @Test
+    fun `G12_收工行_真走窄口两路落`() {
+        assertTrue(
+            "收工行没走窄口（少一行：收工行从三处消失）",
+            engine().contains("contractLine(sessionId, stepCount, RunContractWiring.reportLine(report))"),
+        )
+    }
+
+    @Test
+    fun `G13_run_log契约行_state原文_tool空_ok恒1`() {
+        val body = engine().substringAfter("private fun persistContractLine")
+            .substringBefore("private fun persistStep")
+        assertTrue("契约行没落 run_log 表（insertRunLog 不在 persistContractLine 里）", body.contains("BaopuSql.insertRunLog("))
+        assertTrue("state 列没带行文原文（表里贴不出原文）", body.contains("state = line,"))
+        assertTrue("tool 列不为空（契约行会混进步骤卡 UI）", body.contains("tool = \"\","))
+        assertTrue("ok 不恒 1（契约行会混进反思失败账）", body.contains("ok = true,"))
+        assertTrue("err 不为空（契约行会被当失败行）", body.contains("err = \"\","))
     }
 
     // ── ② 收工按契约判：三态真由 ContractSelector 算 ─────────────────────────

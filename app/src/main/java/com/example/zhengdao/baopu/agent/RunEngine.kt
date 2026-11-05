@@ -2164,8 +2164,14 @@ internal class RunEngine(
             // 404 判据③：起单即挂账（跑的期间随时 currentTaskContract 可查），
             // 不再只是一张"收尾验收才被消费"的纸。
             activeRunOrder = order
-            log(order.startLine())
-            turnNotes = turnNotes + order.precheckLine()
+            // 457：起单行——运行日志＋run_log 表两路全落（见 [contractLine]）。
+            contractLine(sessionId, stepCount, order.startLine())
+            // 457：前置读行。378 报告 §3 本来写的就是"运行日志三行"，实现却只把它
+            // 拼进了 prompt——真机上这一行因此在三个出口都看不见（456 A11 的空 grep
+            // 有它一份）。prompt 照旧拼（模型真读），缺的两路在这里补齐。
+            val precheck = order.precheckLine()
+            turnNotes = turnNotes + precheck
+            contractLine(sessionId, stepCount, precheck)
         }
 
         // 工作计划（第十七批）：续跑＝同一轮的继续 ⇒ 计划态从库回种。进程被杀过
@@ -2435,7 +2441,8 @@ internal class RunEngine(
                             verifyTouched.toList(),
                             findings,
                         )
-                        log(RunContractWiring.reportLine(report))
+                        // 457：收工行同样两路全落（起单/前置读/收工三行 × 三处对齐）。
+                        contractLine(sessionId, stepCount, RunContractWiring.reportLine(report))
                         contractNotice = RunContractWiring.noticeLine(report)
                     }
                     // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）。
@@ -3545,6 +3552,48 @@ internal class RunEngine(
         }.onFailure {
             log("抱朴引擎：收工反思没跑成 ${it.javaClass.simpleName}: ${it.message}（这不等于「本轮没得反思」）")
         }
+    }
+
+    // ── 457：契约三行三处（logcat／日志分文件／run_log 表）────────────────────
+
+    /**
+     * 契约一行落两路：运行日志（[log]＝RunLog.log，logcat 镜像＋`filesDir/logs/`
+     * 分文件同源）＋ run_log 表一行（[persistContractLine]）。
+     * 起单／前置读／收工三行都走这里——少任何一行、少任何一路，457 的门禁都会红。
+     */
+    private fun contractLine(sessionId: Long, step: Int, line: String) {
+        log(line)
+        persistContractLine(sessionId, step, line)
+    }
+
+    /**
+     * run_log 表的契约行（457 判据"三行同进 run_log 表"的落点）：
+     * - **state 列＝行文原文**——表里 grep/贴原文都按它（456 A11 就是拿表文 grep `抱朴契约`）；
+     * - **tool 恒空串**——步骤卡只读 tool 非空的行（`RUN_LOG_STEPS_SELECT`），契约行不进 UI；
+     * - **ok 恒 1、err 恒空**——收工反思的失败账只读 ok=0 的行（ReflectionRunner），契约行不进；
+     * - state 的既有消费方（续跑 interruptedStep／AwaitConfirm／BatchCheckpoint）全是精确匹配
+     *   或 else 兜底，未知串安全；契约行永远不冒充那些状态字面量。
+     */
+    private fun persistContractLine(sessionId: Long, step: Int, line: String) {
+        val stmt = BaopuSql.insertRunLog(
+            sessionId = sessionId,
+            step = step,
+            state = line,
+            model = "",
+            tokensIn = 0,
+            tokensOut = 0,
+            tokensInEst = 0,
+            tokensOutEst = 0,
+            tool = "",
+            ok = true,
+            latencyMs = 0,
+            err = "",
+            createdAt = System.currentTimeMillis(),
+        )
+        runCatching { db.write { d -> d.execSQL(stmt.sql, stmt.args) }.get() }
+            .onFailure {
+                log("抱朴契约：run_log 留痕失败 ${it.javaClass.simpleName}: ${it.message}")
+            }
     }
 
     /** 步迁移 = 一次事务（session.interrupted_step + updated_at + run_log）。返回落库 Future。 */
