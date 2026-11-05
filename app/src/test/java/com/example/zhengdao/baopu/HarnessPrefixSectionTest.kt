@@ -168,6 +168,7 @@ class HarnessPrefixSectionTest {
                 append("渲染链路：PersonaRules.assemble → ContextAssembler.assemble → prefixText → systemFinal\n")
                 append("测试值（非真机）：model=gemini-2.5-flash、编排关（systemText==prefix）、\n")
                 append("            首轮无 B/C 层人设、无记忆召回、坑账清成 0 行（真机上这里是 抱朴记忆/判决经验账.jsonl 的行数）\n")
+                append("            运行时包「全文」那一行的路径＝本机测试装配根（JUnit 临时目录）；真机上是 /data/user/0/com.example.zhengdao/files/抱朴记忆/判决经验账.jsonl\n")
                 append("生产真值：A 内核文案（含本次新加的前缀段）、workspacePath、判据三条（ImmutableCriteria.ALL）\n\n")
                 append("──── ROLE_SYSTEM（首轮）开始 ────\n")
                 append(systemFinal)
