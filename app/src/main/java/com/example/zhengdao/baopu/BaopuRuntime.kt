@@ -13,6 +13,9 @@ import android.os.Environment
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.ArtifactRaster
+import com.example.zhengdao.baopu.agent.AskGovernance
+import com.example.zhengdao.baopu.agent.AskIntakeGate
+import com.example.zhengdao.baopu.agent.AskTier
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.DeviceTools
@@ -870,6 +873,13 @@ internal object BaopuRuntime {
         // 第二百零三批：问题组（一卡多问、一次提交）走 engine.askGroup——阻塞到整组
         // 答完并成一条 answers；同会话同批只问一次（账本在引擎里，与 171 同口径）
         AskUserTool.groupSink = { req -> engine.askGroup(req) }
+        // 第四百九十九批：打扰治理的装配三件（Context 只到装配层这一只手的延续）。
+        // ① 授权档：SP 回填（新装无值 ⇒ 标准，判据⑥）；切档写 SP（档位只能人改，写口在这）。
+        // ② 先自查钩子：文件位置类问题列工作区根当答案，不弹卡（B 段判据⑦的生产落点）。
+        // ③ 画像读数口不挂（画像接线归后续批——今天行为与接线前逐字一致；边界判据在 ProfileBoundary）。
+        AskGovernance.restore(askTierStored(appCtx) ?: AskTier.DEFAULT)
+        AskGovernance.tierSink = { t -> askTierStore(appCtx, t) }
+        AskIntakeGate.selfCheck = { _ -> selfCheckListing(workspaceRoot(appCtx)) }
         // 第二百八十七批：每轮入口喂会话身份（文件操作账按会话分账，回放时看得清是哪一轮）。
         engine.onSessionEnter = { FileOpLog.enterSession(it) }
         // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。
@@ -1283,3 +1293,37 @@ internal object BaopuRuntime {
         }
     }
 }
+
+// ── 第四百九十九批：授权档的 SP 两格＋先自查的列目录（Context 只在这里摸）──────
+
+private const val ASK_TIER_SP_FILE = "baopu_ask_governance"
+private const val ASK_TIER_SP_KEY = "tier"
+
+/** 读存的档位（认不出/没存过 ⇒ null，调用方落回 [AskTier.DEFAULT]）。 */
+private fun askTierStored(ctx: Context): AskTier? = runCatching {
+    AskTier.ofWire(
+        ctx.applicationContext.getSharedPreferences(ASK_TIER_SP_FILE, Context.MODE_PRIVATE)
+            .getString(ASK_TIER_SP_KEY, "").orEmpty(),
+    )
+}.getOrNull()
+
+/** 切档落 SP（进程重启后 [askTierStored] 读回同档——"放权"不许悄悄漂回缺省）。 */
+private fun askTierStore(ctx: Context, tier: AskTier) {
+    runCatching {
+        ctx.applicationContext.getSharedPreferences(ASK_TIER_SP_FILE, Context.MODE_PRIVATE)
+            .edit().putString(ASK_TIER_SP_KEY, tier.wire).apply()
+    }
+}
+
+/**
+ * 文件位置类问题的自查（B 段判据⑦的生产落点）：列工作区根一层（目录带斜杠标记）。
+ * 返回的文本就是"已查"的答案——模型拿它自己定位，不再弹卡。
+ */
+private fun selfCheckListing(root: File): String? = runCatching {
+    val entries = root.listFiles()?.take(30).orEmpty()
+    if (entries.isEmpty()) return null
+    val names = entries.sortedBy { it.name.lowercase() }
+        .joinToString("、") { if (it.isDirectory) "${it.name}/" else it.name }
+    "已查：列了工作区根（${root.name}）这 ${entries.size} 项：$names。" +
+        "仍不确定是哪一份时，把具体文件名放进问题里再问。"
+}.getOrNull()

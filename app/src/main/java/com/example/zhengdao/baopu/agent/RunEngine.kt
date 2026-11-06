@@ -1347,6 +1347,12 @@ internal class RunEngine(
         val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk()
         if (!mediatorAdvice.allowed) {
             log(mediatorAdvice.line())
+            // 第四百九十九批 D 段③：压卡落账（who=LEFT、依据＝档位＋预算）——压下的卡
+            // 没问过人，处置账上没有它的行，只有这本治理账记得"为什么没弹"。
+            com.example.zhengdao.baopu.agent.AskGovernance.noteSuppressLeft(
+                reason = mediatorAdvice.reason,
+                budgetBasis = mediatorAdvice.budget.basis,
+            )
             return null
         }
         // 免打扰弹卡闸（330 接线）：左相弹卡前先问 QuietMode——静默中这张卡压进补问队列
@@ -1421,6 +1427,11 @@ internal class RunEngine(
         val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk(viaUserChoice)
         if (!mediatorAdvice.allowed) {
             log(mediatorAdvice.line())
+            // 第四百九十九批 D 段③：与 [askUser] 同一本治理账（who=LEFT、依据＝档位＋预算）。
+            com.example.zhengdao.baopu.agent.AskGovernance.noteSuppressLeft(
+                reason = mediatorAdvice.reason,
+                budgetBasis = mediatorAdvice.budget.basis,
+            )
             return null
         }
         // 调解器的排序建议（406）：档位升起来时省力的问先弹（只给排序建议；CALM 恒照旧）。

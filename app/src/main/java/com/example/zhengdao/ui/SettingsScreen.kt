@@ -48,6 +48,8 @@ import com.example.zhengdao.ChevronRight
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
+import com.example.zhengdao.baopu.agent.AskGovernance
+import com.example.zhengdao.baopu.agent.AskTier
 import com.example.zhengdao.baopu.inspect.HealthScheduler
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.baopu.BaopuChannelSheet
@@ -204,6 +206,24 @@ fun SettingsScreen() {
                             healthBusy = false
                         }
                     }
+                }
+                SettingsDivider()
+                // 第四百九十九批：授权档（严格/标准/放权）的**人改入口**——档位只能人改
+                // （487 弹卡权归属），点一行循环切档；切档落治理账（AskGovernance.setTier），
+                // 管线闸与体检行读的是同一份。SP 持久化在装配层（tierSink）。
+                var askTierNote by remember { mutableStateOf(AskGovernance.currentTier.cn) }
+                SettingRow(
+                    label = stringResource(R.string.ask_governance_tier_row),
+                    value = stringResource(R.string.ask_governance_tier_desc, askTierNote),
+                    valueMaxLines = 2,
+                ) {
+                    val next = when (AskGovernance.currentTier) {
+                        AskTier.STRICT -> AskTier.STANDARD
+                        AskTier.STANDARD -> AskTier.DELEGATED
+                        AskTier.DELEGATED -> AskTier.STRICT
+                    }
+                    AskGovernance.setTier(next)
+                    askTierNote = next.cn
                 }
             }
 

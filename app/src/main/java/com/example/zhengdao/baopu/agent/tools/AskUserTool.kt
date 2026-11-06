@@ -270,12 +270,23 @@ internal object AskUserTool {
             )
         val sink = sink
             ?: return ToolOutcome.Failed("现在没有界面能弹选项卡（后台运行时不支持），请直接在正文里问")
-        val picked = sink(AskUserRequest(question, options))
-            ?: return ToolOutcome.Failed("用户没有选（超时或取消了）：先按最保守的方案做，或停下来再问")
-        val detail = picked.detail.trim()
-        return ToolOutcome.Ok(
-            "用户选了：${picked.label}" + if (detail.isEmpty()) "" else "（$detail）",
-        )
+        // 第四百九十九批 B/C 段进门闸：先自查（文件在哪类不弹卡）→ 不重复 → 日预算；
+        // 完整性与内部词只记账不拦卡。放行的卡带上三行自解释（⑬）。
+        when (val intake = AskIntakeGate.beforeAsk(
+            title = question,
+            taskId = com.example.zhengdao.baopu.agent.DeviationWiring.currentTaskId(),
+            dayKey = com.example.zhengdao.baopu.agent.AskGovernance.dayKey(System.currentTimeMillis()),
+        )) {
+            is com.example.zhengdao.baopu.agent.AskIntakeOutcome.Answered -> return ToolOutcome.Ok(intake.text)
+            is com.example.zhengdao.baopu.agent.AskIntakeOutcome.Proceed -> {
+                val picked = sink(AskUserRequest(question, options, note = intake.note))
+                    ?: return ToolOutcome.Failed("用户没有选（超时或取消了）：先按最保守的方案做，或停下来再问")
+                val detail = picked.detail.trim()
+                return ToolOutcome.Ok(
+                    "用户选了：${picked.label}" + if (detail.isEmpty()) "" else "（$detail）",
+                )
+            }
+        }
     }
 
     /** 问题组形状（第二百零三批）：N 项一次答完，回 `{"answers": {"id": value}}` 一条。 */
@@ -296,7 +307,21 @@ internal object AskUserTool {
         }
         val groupSink = groupSink
             ?: return ToolOutcome.Failed("现在没有界面能弹提问卡（后台运行时不支持），请直接在正文里问")
-        val answers = groupSink(AskUserRequest(question = "", options = emptyList(), questions = questions))
+        // 第四百九十九批：进门闸**整组一起判**（与拆卡同口径——压就整组压，不拆一半）：
+        // 主题键取全组标题的拼接（组内拆题去重会把 answers 的键弄丢，那是答案串位的源头）。
+        val intake = AskIntakeGate.beforeAsk(
+            title = questions.joinToString("；") { it.title },
+            detailText = questions.map { it.title }.joinToString("\n"),
+            taskId = com.example.zhengdao.baopu.agent.DeviationWiring.currentTaskId(),
+            dayKey = com.example.zhengdao.baopu.agent.AskGovernance.dayKey(System.currentTimeMillis()),
+        )
+        val note = when (val gate = intake) {
+            is com.example.zhengdao.baopu.agent.AskIntakeOutcome.Answered -> return ToolOutcome.Ok(gate.text)
+            is com.example.zhengdao.baopu.agent.AskIntakeOutcome.Proceed -> gate.note
+        }
+        val answers = groupSink(
+            AskUserRequest(question = "", options = emptyList(), questions = questions, note = note),
+        )
             ?: return ToolOutcome.Failed("用户没有答（超时或取消了）：先按默认方案做，或停下来再问")
         return ToolOutcome.Ok(JSONObject().put("answers", JSONObject(answers)).toString())
     }

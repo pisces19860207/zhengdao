@@ -119,7 +119,10 @@ internal object HealthRun {
             // 通道说得清"数从哪来"，结论说得清"上一场到底算哪种没成"。
             readings = reading.sheetLines + ProofReading.channelLine(
                 com.example.zhengdao.BuildConfig.DEBUG,
-            ) + EvolutionWiring.sheetLines(),
+            ) + EvolutionWiring.sheetLines() +
+                // 第四百九十九批：授权档与误拦读数一行进体检单（487 §三②：放权不是黑箱——
+                // 今日自动放过几次、误拦申诉几单、误拦率分场景，全在这一行里可看）。
+                listOf(com.example.zhengdao.baopu.agent.AskGovernance.healthLine(nowMs)),
             // 抽检读数块：上次抽检时间＋假 PASS 数，一行一件（判据层的行文，自带部位名；编排层只排版）。
             sampling = SAMPLE_ORGANS
                 .filter { sampling.containsKey(it) }

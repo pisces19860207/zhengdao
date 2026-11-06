@@ -37,6 +37,9 @@ class ToolSchemaAllTest {
         roots.forEach { it.deleteRecursively() }
         AskUserTool.sink = null
         PlanTool.sink = null
+        // 第四百九十九批：ask_user 现在过进门闸（先自查/去重/日预算）——单例状态谁用谁还
+        AskIntakeGate.resetForTest()
+        AskGovLedger.resetForTest()
     }
 
     // ── ① 全量：31 个工具一条不漏，S1–S12 全过 ─────────────────────────────

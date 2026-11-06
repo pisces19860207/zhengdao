@@ -155,6 +155,10 @@ class L6BoundaryGateTest {
             // deleteRecursively/delete 只用于清副本树自己，动手前四件事 assert 齐
             // （是目录／父名＝rehearsal／名字带 rh-／在 cacheDir 里且不等于根），见 RehearsalSandbox.cleanupAt。
             "agent/RehearsalSandbox.kt" to setOf("mkdirs", "deleteRecursively", "delete"),
+            // 第四百九十九批：打扰治理账（`打扰治理.jsonl`）——落点由 208 已装配的那棵私有目录给
+            // （DecisionLedger.installedRoot），append-only 一行一条问不问的决定/放过/申诉/切档；
+            // 与 274/277/298/278 同一条理由：这本账记"该不该打扰"，不是模型指的工作区路径。
+            "agent/AskGovernance.kt" to setOf("mkdirs", "appendText"),
         )
     }
 
