@@ -43,6 +43,20 @@ object TaskModeBoundary {
         "跑一下", "跑起来", "执行", "生成", "导出", "导入", "上传", "下载", "打开", "关掉",
         "修复", "修一下", "部署", "提交", "保存", "重命名", "替换", "压缩", "解压",
         "照这个改", "按这个改", "按这个做", "照着做", "试试看能不能", "重新",
+        // 第四百九十三批：英文动作词。`classify` 用的是区分大小写的**子串** `contains`，
+        // 故每个动词登记「小写＋后随空格」与「句首大写＋后随空格」两形：后随空格是在
+        // 纯数据层近似词边界，裸 "run" 会把 "running late"、裸 "search" 会把 "research"
+        // 判成任务态，与「宁可漏判、不把玩笑当办事」的保守方向相反。真正的词边界判定
+        // 需要改 classify 的结构（词边界正则／大小写归一），按本单边界停手不改造。
+        "create ", "Create ", "delete ", "Delete ", "write ", "Write ",
+        "run ", "Run ", "fix ", "Fix ", "check ", "Check ",
+        "translate ", "Translate ", "summarize ", "Summarize ",
+        "search ", "Search ", "open ", "Open ", "send ", "Send ",
+        "rename ", "Rename ", "export ", "Export ", "import ", "Import ",
+        "upload ", "Upload ", "download ", "Download ", "deploy ", "Deploy ",
+        "commit ", "Commit ", "save ", "Save ", "replace ", "Replace ",
+        "install ", "Install ", "copy ", "Copy ", "move ", "Move ",
+        "convert ", "Convert ", "generate ", "Generate ", "build ", "Build ",
     )
 
     // ── ② 事实主张：数字 / 路径 / 引用 / 对错结论 / 执行结果 ──────────────────
@@ -52,6 +66,13 @@ object TaskModeBoundary {
         "数据显示", "事实证明", "结论是", "结果是", "失败", "成功", "报错", "超时", "找不到",
         "打不开", "崩溃", "日志", "合计", "总共", "一共", "版本", "文件里", "表里", "官网",
         "文档说",
+        // 493 英文事实主张：**只收多词短语与结果态名词**，不收裸短动词，也不收 "was wrong"——
+        // 英文 "I was wrong" 是**自责客套**，与中文 `claimScope` 抹掉的「我错了」同一类；
+        // 收了它就会把闲聊拉进任务态（493 静态自查实测命中，故剔除）。
+        "is wrong", "are wrong", "is correct", "in fact",
+        "the result is", "failed", "succeeded", "error", "Error",
+        "crash", "timeout", "not found", "according to", "the data shows",
+        "the docs say", "the conclusion is", "the version",
     )
     private val CLAIM_RE = listOf(
         Regex("""第\s*\d+\s*(?:步|行|条|章|页|个|次|版)"""),
@@ -60,12 +81,21 @@ object TaskModeBoundary {
     )
 
     // ── ③ 收尾已开工的活 ────────────────────────────────────────────────────
-    private val WRAPUP = listOf("收尾", "收工", "搞定了", "完成了", "完工", "交差", "交付")
+    private val WRAPUP = listOf(
+        "收尾", "收工", "搞定了", "完成了", "完工", "交差", "交付",
+        // 493 英文收尾：这里用**裸词**（不加后随空格），因为收尾词常落在句尾或紧跟标点，
+        // "It's done." 若按 INTENT 的带空格形态会整条放跑。
+        "done", "Done", "finished", "Finished", "shipped", "Shipped",
+    )
 
     // ── 闲聊的形态词（只用于钉边界；判闲聊靠的是"没命中任务态"，不靠命中闲聊词）──
     private val PURE_EMOTION = listOf(
         "哈哈", "笑死", "开心", "难过", "气死", "无语", "绝了", "太逗了", "好烦", "麻了",
         "爱你", "想你", "晚安", "早安", "晚上好", "在吗", "无聊",
+        // 493 英文闲聊形态词：**只作回归对照**。`classify` 从不读这张表（判闲聊靠的是
+        // "没命中任务态"），命中它们不会短路成 CHAT；测试经 emotionLexicon() 取它们，
+        // 并配负例证明「闲聊形态词＋任务动词」仍判 TASK。
+        "thanks", "Thanks", "lol", "LOL", "good night", "Good night", "nvm", "Nvm",
     )
 
     /** 一段话落在哪个态：命中①②③任一 ⇒ 任务态；否则闲聊态（保守方向）。 */
