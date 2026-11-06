@@ -136,11 +136,12 @@ class ContainerTierGuardTest {
 
     @Test
     fun `门禁_消息流卡不再自带底色自造容器`() {
-        // 这 6 个文件里的卡必须整体走容器：不许再出现自己 new 的 Surface 当卡壳。
-        // （DecisionCard 例外：它的 Surface 只用来画警示带 / 证据 chip / 徽标，不是卡壳。）
+        // 这 5 个文件里的卡必须整体走容器：不许再出现自己 new 的 Surface 当卡壳。
+        // （DecisionCard 例外：它的 Surface 只用来画警示带 / 证据 chip / 徽标，不是卡壳。
+        //   BaopuPostAdoptionCard.kt 已随 509 删除，摘出名单。）
         listOf(
             "BaopuAskUserCard.kt", "BaopuChoiceCard.kt", "BaopuConfirmCard.kt",
-            "BaopuLearnCard.kt", "BaopuPostAdoptionCard.kt", "BaopuMemoryCard.kt",
+            "BaopuLearnCard.kt", "BaopuMemoryCard.kt",
         ).forEach { f ->
             val src = repoFile("$BAOPU_DIR/$f").readText()
             assertTrue("$f 仍在自造 Surface 卡壳（应改用四档容器）", !src.contains("Surface("))
