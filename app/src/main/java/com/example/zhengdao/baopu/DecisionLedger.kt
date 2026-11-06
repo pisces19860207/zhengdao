@@ -81,6 +81,18 @@ internal data class DecisionRecord(
      * `rolledBack=true` 且 `reversible` 降级为 false（只降级，不改写历史）。
      */
     val rolledBack: Boolean = false,
+    /**
+     * 干这件事的**本机执行体身份 id**（476③「每条账行带 actor=身份id」的落点）。
+     *
+     * 为什么不复用上面那个 `actor`：那个字段是 208 定的**角色**（user/model/auto），
+     * 键名已被 `DecisionLedgerTest.L9` 钉成稳定 JSONL 键，老账全按它读；把「哪台执行体」
+     * 塞进「谁发起的」那一格，历史行里的 `user` 就全成了身份 id——那是改写历史账。
+     * 所以这是**第二个正交字段**：角色问「人还是模型点的」，身份问「点的东西落在哪个执行体名下」。
+     *
+     * 空串＝这一行落在身份机制之前（老账本读回来就是这个值 ⇒「撤销后历史账照读」的读侧依据），
+     * **不是**「这一行没有身份所以不算」。写侧由 [DecisionLedger.build] 中央盖章，调用方递不进来。
+     */
+    val executor: String = "",
 ) {
     /** 写进 JSONL 的一行。 */
     fun toJson(): JSONObject = JSONObject()
@@ -98,6 +110,7 @@ internal data class DecisionRecord(
         .put("reversible", reversible)
         .put("rollback_ref", rollbackRef)
         .put("rollback_of", rollbackOf ?: JSONObject.NULL)
+        .put("executor", executor)
 
     companion object {
         /** 行格式版本（与 `BaopuDb.VERSION` 无关：这是文件格式，不是库结构）。 */
@@ -147,6 +160,23 @@ internal object DecisionLedger : LedgerPort {
     fun installedRoot(): File? = root
 
     /**
+     * 本机执行体身份的**读口**（装配层注入，476③）。
+     *
+     * 为什么是函数而不是直接引用那个身份库：`:app` 的 `baopu` 根包不许反过头依赖
+     * `baopu.consequence`（依赖方向单向，边界闸扫 import），而盖章这件事又**必须**发生在
+     * 根包里唯一的写口 [build] 上——留一个注入点，两边都不破。
+     *
+     * 为什么调用方递不进来：这一格不在 [DecisionDraft] 上。`draft.executor` 那种写法
+     * 等于给每个调用方一个自报身份的口子，模型只要能构造 draft 就能把自己写成 `user`
+     * 或写成别人的 id。中央盖章＝只有这一处，且**没人能少写它**。
+     *
+     * 默认 `{ "" }`＝没装配身份机制（测试、早期启动）⇒ 行落得成，身份格是空，
+     * 读侧按「老行」处理（见 [DecisionRecord.executor]）。
+     */
+    @Volatile
+    var executorId: () -> String = { "" }
+
+    /**
      * 卸掉落点（**只有测试会调**；装配层不调）。
      *
      * 为什么需要：落点是**进程级全局**。某个用例 [install] 之后如果不还原，同 JVM 里
@@ -156,11 +186,14 @@ internal object DecisionLedger : LedgerPort {
      *
      * 293 ③：账本端口跟着落点一起摘——同一句"谁装谁还"，否则上一个用例装的端口会带着
      * 它的临时目录被下一个用例写进去。
+     * 506 ③：身份读口 [executorId] 同理跟着摘——它是进程级全局，装过不还会让下一个用例
+     * 盖着别人的身份落账。
      */
     internal fun uninstallForTest() {
         root = null
         seq = 0
         LedgerPorts.ledger = null
+        executorId = { "" }
     }
 
     /** 落点文件。 */
@@ -339,7 +372,13 @@ internal object DecisionLedger : LedgerPort {
         return if (recordTo(globalRoot, draft) != null) DecisionAppend.APPENDED else DecisionAppend.FAILED
     }
 
-    /** 校验＋组装（纯函数：给定 draft，要么给一条合法记录，要么 null 并留 [lastError]）。 */
+    /**
+     * 校验＋组装（纯函数：给定 draft，要么给一条合法记录，要么 null 并留 [lastError]）。
+     *
+     * 506 起有**一处**例外：[executor] 那格读的是中央身份口，不是 draft。
+     * 例外是判据③要的（每条账行带身份），也正是它必须留在这一处的原因——
+     * 全仓落账只走这一个写口，盖章在这里就等于"没有行能没有章"。
+     */
     @Synchronized
     fun build(draft: DecisionDraft): DecisionRecord? {
         // ① reason／evidence 缺一不落（负例②）
@@ -382,6 +421,8 @@ internal object DecisionLedger : LedgerPort {
             reversible = reversible,
             rollbackRef = if (reversible) draft.rollbackRef else "",
             rollbackOf = draft.rollbackOf,
+            // 476③ 中央盖章：身份不在 draft 上，所以没有「调用方忘了填」这一种失败。
+            executor = runCatching { executorId() }.getOrDefault("").trim(),
         )
     }
 
@@ -439,6 +480,8 @@ internal object DecisionLedger : LedgerPort {
             reversible = o.optBoolean("reversible", kind.reversible),
             rollbackRef = o.optString("rollback_ref"),
             rollbackOf = if (o.has("rollback_of") && !o.isNull("rollback_of")) o.optString("rollback_of") else null,
+            // 老行没这个键 ⇒ 空串（不是"读失败"：506 之前的账本来就没有身份）。
+            executor = o.optString("executor"),
         )
     }
 

@@ -220,6 +220,8 @@ class DecisionLedgerTest {
         listOf(
             "v", "id", "kind", "group_if_known", "actor", "reason", "evidence",
             "before", "after", "at", "session", "reversible", "rollback_ref", "rollback_of",
+            // 506 ③：执行体身份（老行没这个键读成空串；新行由 build 中央盖章）。
+            "executor",
         ).forEach { key -> assertTrue("缺键 $key", o.has(key)) }
         assertEquals(DecisionRecord.VERSION, o.getInt("v"))
         assertEquals(rec.id, o.getString("id"))
