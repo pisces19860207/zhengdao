@@ -1311,7 +1311,7 @@ private fun askTierStored(ctx: Context): AskTier? = runCatching {
 private fun askTierStore(ctx: Context, tier: AskTier) {
     runCatching {
         ctx.applicationContext.getSharedPreferences(ASK_TIER_SP_FILE, Context.MODE_PRIVATE)
-            .edit().putString(ASK_TIER_SP_KEY, tier.wire).apply()
+            .edit { putString(ASK_TIER_SP_KEY, tier.wire) }
     }
 }
 
