@@ -32,7 +32,8 @@ internal object FreeTextMemoryImport {
 
     /**
      * 回执文件名。**故意用 `.txt`**：条目目录里 `.md` 会被 `MemoryStore.scan()` 当条目解析，
-     * 回执不是条目，用 `.md` 会每轮报「记忆读侧：1 个文件解析失败」。
+     * 回执不是条目，用 `.md` 会被扫成「未结构化 1」——494 起这类合法 .md 只标
+     * 「未结构化」，不再叫「解析失败」（原样保留，不进坏文件计数）。
      */
     const val RECEIPT_NAME = "_451_收编回执.txt"
 

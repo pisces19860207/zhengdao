@@ -157,13 +157,17 @@ class MemoryStoreTest {
     }
 
     @Test
-    fun `reindex_坏文件报出来不静默`() {
+    fun `reindex_未结构化文件报出来不静默`() {
         setup()
         store.write(confirmed(id = "1-a"))
         File(store.projectDir(), "坏文件.md").writeText("这不是一条合法记忆")
         val r = store.reindex()
         assertEquals(1, r.entries.size)
-        assertEquals(listOf("坏文件.md"), r.brokenFiles)
+        // 494：没 front-matter 的合法 markdown 不是「坏」，原样保留只标未结构化。
+        // 259 要的「不静默」仍在：文件名在 unstructuredFiles 里报得出来。
+        assertTrue("合法 .md 永不进坏文件计数", r.brokenFiles.isEmpty())
+        assertEquals(listOf("坏文件.md"), r.unstructuredFiles)
+        assertEquals(ScanSkipKind.FORMAT_MISMATCH, r.sheet.rows.single().kind)
     }
 
     @Test

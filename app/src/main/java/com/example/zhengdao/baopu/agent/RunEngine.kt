@@ -2040,15 +2040,17 @@ internal class RunEngine(
         // 第四百三十八批：本轮时刻随召回一起定（记忆「待复核→仅供参考」的判定基准；
         // 与 recalledCache 同一转级口径——循环内不变，前缀稳定）。
         turnNowMillis = System.currentTimeMillis()
-        // 第二百五十九批 #7（A-P2-17）：坏掉的记忆文件不许无声消失——只报事实（几个文件、
-        // 前三个文件名），不删文件、不改判据、不打扰用户（日志而已）。为什么多扫一遍：
-        // 上面 `trimToBudget(it.loadAll(), …)` 那行是 MemoryQualityGateTest 钉住的口径，不许
-        // 改成走新 API；记忆目录只有几个人到几十个 .md，一次回合多扫一遍换「失败可见」。
-        memoryStore?.loadAllWithBroken()?.brokenFiles?.let { broken ->
-            if (broken.isNotEmpty()) {
-                val shown = broken.take(3).joinToString("、") + if (broken.size > 3) "…" else ""
-                log("记忆读侧：${broken.size} 个文件解析失败（$shown），本轮没进上下文；" +
-                    "修法是把 记忆/ 里那几个文件的 front-matter 改回来，或让抱朴重建索引")
+        // 第二百五十九批 #7（A-P2-17）＋第四百九十四批：扫描结论按四类分列。
+        // 259 只报「N 个文件解析失败」，把「合法 markdown 但没有 front-matter」也并进「坏」
+        // ⇒ `项目记忆.md` 天天被报「解析失败」，用户以为记忆坏了。494 起合法 .md 永不进坏，
+        // 至多标「未结构化」；三类真坏各带名字与原因，原样保留、不删不改、不弹卡。
+        // 为什么多扫一遍：上面 `trimToBudget(it.loadAll(), …)` 是 MemoryQualityGateTest
+        // 钉住的口径，不许改成走新 API；记忆目录只有几个到几十个 .md，换「失败可见」值。
+        memoryStore?.loadAllWithBroken()?.let { read ->
+            if (read.sheet.hasFindings()) {
+                log("记忆读侧：" + read.sheet.line())
+                read.sheet.detailLines().forEach { log("记忆读侧明细：$it") }
+                log("记忆读侧：这些文件原样保留，一个字节没动；要收编请补 front-matter／改回 UTF-8／缩小体积")
             }
         }
         // tools 数组**不在这里算**——它在下面步循环里、每次请求前算一次（第五十九批 §1.3）。

@@ -148,6 +148,8 @@ internal object EntryCodec {
 internal class MemoryStore(
     private val globalRoot: File,
     private val projectRoot: File,
+    /** 494：读盘口可注入，让「无权限／IO 失败」在 JVM 上也能稳定直测（生产走 `readBytes`）。 */
+    private val reader: (File) -> ByteArray = { it.readBytes() },
 ) {
 
     /** 项目记忆目录（跟工作区）。 */
@@ -255,22 +257,22 @@ internal class MemoryStore(
     fun loadAll(): List<MemoryEntry> = scan().entries
 
     /**
-     * 同一次扫描的**完整读数**：条目 ＋ 读坏了的文件名（**259-07 / A-P2-17**）。
+     * 同一次扫描的**完整读数**：条目 ＋ 按四类分好的文件清单（**259-07 / A-P2-17；494 分类**）。
      *
      * 改前：[loadAll] 里 `EntryCodec.parse(...).getOrNull()` 之后 `if (entry != null)` 就完了——
      * 坏文件被**静默跳过**，而同文件 [reindex] 反而有 `brokenFiles`，两条读路一个报一个不报。
-     * 于是用户手改坏 front-matter 之后，召回路径上的表现是「这条记忆凭空没了」：界面看不到、
-     * 模型也不知道自己丢了一件事（派工单原话：记忆条目不许无声消失）。
+     * 于是用户手改坏 front-matter 之后，召回路径上的表现是「这条记忆凭空没了」。
      *
-     * 现在两条路共用同一份 [scan]（口径不可能再漂），[loadAll] 的返回类型一字未动
-     * （MemoryQualityGateTest 钉住了 `loadAll＋trimToBudget` 那道口径），报错的口子由调用方接：
-     * 引擎侧见 `agent/RunEngine.kt`，界面侧（BaopuChatController）按 259 批裁定待 258 合入后补。
+     * 494：原来那句「读坏了的文件」把**没有 front-matter 的合法 markdown** 也算成坏
+     * （`项目记忆.md` 天天被报「解析失败」）。现在只把 unreadable／badEncoding／tooBig
+     * 三类算坏；能读但没结构化的归 [ReindexResult.unstructuredFiles]，**原样保留**、
+     * 只标「未结构化」，一个字节不动。三条读路仍共用同一份 [scan]（口径不可能再漂）。
      */
     fun loadAllWithBroken(): ReindexResult = scan()
 
     /**
-     * 重建索引：与 [loadAll] 同源（文件即真相），额外返回**解析失败的文件名**——
-     * 坏文件要报出来，不静默跳过（用户可能刚手改过 front-matter）。
+     * 重建索引：与 [loadAll] 同源（文件即真相），额外返回按四类分好的文件清单——
+     * 坏文件要报出来，不静默跳过；**合法 .md 永不进「坏」**（494）。
      */
     fun reindex(): ReindexResult = scan()
 
@@ -283,16 +285,24 @@ internal class MemoryStore(
      */
     private fun scan(): ReindexResult {
         val entries = mutableListOf<MemoryEntry>()
-        val broken = mutableListOf<String>()
+        val rows = mutableListOf<ScanSkipRow>()
         for (dir in listOf(globalDir(), projectDir())) {
             val files = runCatching { dir.listFiles() }.getOrNull() ?: continue
             for (f in files) {
                 if (!f.isFile || f.extension != "md") continue
-                val entry = runCatching { EntryCodec.parse(f.readText(Charsets.UTF_8)) }.getOrNull()
-                if (entry != null) entries += entry else broken += f.name
+                when (val verdict = MemoryScanRules.classify(f, reader)) {
+                    is ScanVerdict.Ok -> entries += verdict.entry
+                    is ScanVerdict.Skip -> rows += verdict.row
+                }
             }
         }
-        return ReindexResult(entries.sortedWith(MemoryQuality.rankComparator()), broken)
+        val sheet = ScanSheet(rows)
+        return ReindexResult(
+            entries = entries.sortedWith(MemoryQuality.rankComparator()),
+            brokenFiles = sheet.badNames,
+            unstructuredFiles = sheet.unstructuredNames,
+            sheet = sheet,
+        )
     }
 
     /**
@@ -343,7 +353,22 @@ internal class MemoryStore(
         val audits: List<MemoryQuality.Audit> = emptyList(),
     )
 
-    data class ReindexResult(val entries: List<MemoryEntry>, val brokenFiles: List<String>)
+    /**
+     * 一次读盘的完整读数（494 分类）。
+     *
+     * - [brokenFiles]：**只**含 unreadable／badEncoding／tooBig 三类真坏；
+     * - [unstructuredFiles]：能读但没结构化的合法 markdown，原样保留、只标「未结构化」；
+     * - [sheet]：四类分别计数、每条带 reason 的体检单（展示与统计都从它出）。
+     *
+     * 259 的「坏文件不许无声消失」由三者共同保证：真坏的报名字，没结构化的报名字，
+     * 谁都不许悄悄蒸发；`entries` 与 [loadAll] 同源同序，口径一字未动。
+     */
+    data class ReindexResult(
+        val entries: List<MemoryEntry>,
+        val brokenFiles: List<String>,
+        val unstructuredFiles: List<String>,
+        val sheet: ScanSheet,
+    )
 
     companion object {
         const val DIR_ENTRIES = "记忆"
