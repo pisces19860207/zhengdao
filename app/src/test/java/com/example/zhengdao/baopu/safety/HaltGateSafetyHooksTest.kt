@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 504 判据⑦的 JVM 钉子：**模型调解除 ⇒ 拒**。
@@ -56,4 +57,45 @@ class HaltGateSafetyHooksTest {
     fun `档位单向加档的语义在枚举序上_硬停严于软停`() {
         assertTrue(HaltLevel.HARD.ordinal > HaltLevel.SOFT.ordinal)
     }
+
+    // ── 蓝总管验收补（2026-11-07）：停机期拦工具的那一句话 ──────────────────────
+
+    @Test
+    fun `停机期拦工具的拒因_带档位与人_且点名工具未执行`() {
+        val rec = HaltRecord(
+            level = HaltLevel.HARD,
+            by = "人工（安全台）",
+            atMs = 1L,
+            where = "设置页",
+        )
+        val line = haltInterceptLine("write_file", halted = true, rec = rec)
+        assertNotNull("停机了必须给拒因（否则工具照跑）", line)
+        val l = line!!
+        assertTrue("要说明档位", l.contains(HaltLevel.HARD.cn))
+        assertTrue("要说明谁停的", l.contains("人工（安全台）"))
+        assertTrue("要留证出处", l.contains("设置页"))
+        assertTrue("要点名哪个工具没执行", l.contains("write_file"))
+        assertTrue("要有「人工解除前不执行」这句", l.contains("人工解除前不执行任何新动作"))
+    }
+
+    @Test
+    fun `没停机就不给拒因_且记录缺省也能出句`() {
+        assertNull(haltInterceptLine("write_file", halted = false, rec = null))
+        val l = haltInterceptLine("write_file", halted = true, rec = null)
+        assertNotNull("记录缺省也要拦（不猜、不放过）", l)
+        assertTrue(l!!.contains("未知"))
+    }
+
+    @Test
+    fun `拦截口必须真的用那句纯函数_不是就地返回null`() {
+        // 形态闸：intercept 的 halted 分支整段删掉时纯函数测试仍绿，只有这一条会红。
+        val src = File("src/main/java/com/example/zhengdao/baopu/safety/SafetyWiring.kt")
+            .let { if (it.isFile) it else File("app/src/main/java/com/example/zhengdao/baopu/safety/SafetyWiring.kt") }
+            .readText()
+        val from = src.indexOf("override fun intercept(toolName: String): String? {")
+        assertTrue("找不到 intercept", from >= 0)
+        val body = src.substring(from, src.indexOf("override fun bigFileNote", from))
+        assertTrue("intercept 必须调 haltInterceptLine", body.contains("haltInterceptLine("))
+    }
 }
+

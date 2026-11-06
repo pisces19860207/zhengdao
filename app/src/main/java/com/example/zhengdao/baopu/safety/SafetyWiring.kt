@@ -85,10 +85,7 @@ object SafetyWiring {
             if (toolName.contains("lift_halt") || toolName.contains("解除停机")) {
                 return HaltGate.LIFT_REFUSED_LINE
             }
-            if (!HaltGate.halted()) return null
-            val rec = HaltGate.record()
-            return "已停机（${rec?.level?.cn ?: "停机"}，${rec?.by ?: "未知"} 停的；停机留证：${rec?.where ?: "未记"}）。" +
-                "人工解除前不执行任何新动作：$toolName 未执行"
+            return haltInterceptLine(toolName, HaltGate.halted(), HaltGate.record())
         }
 
         override fun bigFileNote(tool: String, paths: List<String>): String? {
@@ -218,4 +215,19 @@ object SafetyWiring {
         )
         return true
     }
+}
+
+/**
+ * 蓝总管验收补（2026-11-07）：停机期拦工具的**那一句话**抽成纯函数。
+ *
+ * 为什么抽：`intercept` 里「halted ⇒ 返回拒因」这一跳原先没有任何 JVM 测试能钉——
+ * 它靠 `HaltGate.halted()`（SharedPreferences，需要 Context），而本仓没有 Robolectric。
+ * 于是「把 halted 分支整段删掉」这种破坏在 JVM 层**全绿**（我实测变异不咬）。
+ * 抽出来之后：纯函数可在 JVM 直测，`intercept` 只剩「取态 + 交给它」，
+ * 再用一条形态闸钉住「intercept 必须调它」。
+ */
+internal fun haltInterceptLine(toolName: String, halted: Boolean, rec: HaltRecord?): String? {
+    if (!halted) return null
+    return "已停机（${rec?.level?.cn ?: "停机"}，${rec?.by ?: "未知"} 停的；停机留证：${rec?.where ?: "未记"}）。" +
+        "人工解除前不执行任何新动作：$toolName 未执行"
 }
