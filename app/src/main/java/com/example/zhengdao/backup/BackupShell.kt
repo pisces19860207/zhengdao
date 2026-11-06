@@ -15,6 +15,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.baopu.BaopuDb
+import com.example.zhengdao.baopu.MemoryStore
+import com.example.zhengdao.baopu.search.PhoneSearch
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.core.TimeFormats
@@ -32,13 +34,23 @@ internal data class ExportReport(
     val reason: String?,
 )
 
-/** 导入的读数（[reason] 非空＝没做成，[rolledBack] 说"改没改"）。 */
-internal data class ImportReport(
-    val ok: Boolean,
+/**
+ * 一次完整导入的读数（工具入口与界面共用；`renderImportReport` 在工具层把它翻成人话）。
+ *
+ * @param conflicts 本机已有且**没被覆盖**的条目路径（一条都不许悄悄替换）
+ * @param written 实际写进去的条目路径
+ */
+internal data class ImportRun(
+    val source: String,
     val applied: Int,
     val unchanged: Int,
+    val conflicts: List<String>,
+    val written: List<String>,
+    val settingsInPackage: Boolean,
     val settingsApplied: Int,
-    val reason: String?,
+    val reload: ReloadReport?,
+    val ok: Boolean = true,
+    val reason: String? = null,
     val rolledBack: Boolean = true,
 )
 
@@ -70,6 +82,9 @@ internal object BackupShell {
      * 逐键的 [BackupRules.isSecretPrefKey] 是第二道。
      */
     private val SETTING_FILES = listOf(AppPrefs.FILE_NAME, "zhengdao-appearance")
+
+    /** 冲突清单进日志的最多条数（日志是文本文件，几百行会淹掉别的东西）。 */
+    private const val LOG_CONFLICT_LINES = 200
 
     /** 聊天库快照的体积上限：整份读进内存再写 zip，超过这个数就不塞（记跳过原因，不静默）。 */
     private const val CHAT_SNAPSHOT_MAX = 64L * 1024 * 1024
@@ -173,17 +188,74 @@ internal object BackupShell {
     fun open(ctx: Context, zip: File): OpenResult =
         BackupImporter.open(zip, mounts(ctx), File(ctx.cacheDir, "backup"))
 
-    /** 用户点了"导入"之后才落盘；[overwrite] 是他勾选覆盖的条目路径。 */
-    fun apply(ctx: Context, preview: ImportPreview, overwrite: Set<String>, applySettings: Boolean): ImportReport {
-        val r = BackupImporter.apply(preview, overwrite)
+    /**
+     * 一步到位的导入（**工具入口用**：校验已在 [open] 做完，这里落盘 + 热加载 + 出读数）。
+     *
+     * 顺序有讲究：先落文件、再写设置、最后热加载。倒过来会出现"索引里已经有、文件还没写"的
+     * 中间态——那正是"同一会话内查得到却打不开"的来源。
+     */
+    fun importNow(
+        ctx: Context,
+        preview: ImportPreview,
+        overwrite: Set<String>,
+        applySettings: Boolean,
+        source: String = "",
+    ): ImportRun {
+        // 冲突 = 本机已有且内容不同**且这次没被点名覆盖**的那几条。
+        // 点了名要覆盖的就不该再挂"未覆盖"的标签——回执说的必须与实际发生的逐条对得上。
+        val conflicts = preview.conflicts.map { it.entry.path }.filter { it !in overwrite }
+        val hasSettings = preview.settingsJson != null
+        val result = BackupImporter.apply(preview, overwrite)
         preview.cleanup()
-        return when (r) {
-            is ApplyOutcome.Failed -> ImportReport(false, 0, 0, 0, r.reason, r.rolledBack)
-            is ApplyOutcome.Ok -> {
-                val written = if (applySettings) writeSettings(ctx, r.settingsJson) else 0
-                RunLog.log("备份导入：写入 ${r.applied} 条，设置 $written 项")
-                ImportReport(true, r.applied, r.unchanged, written, null)
-            }
+        if (result is ApplyOutcome.Failed) {
+            return ImportRun(
+                source = source, applied = 0, unchanged = 0, conflicts = conflicts, written = emptyList(),
+                settingsInPackage = hasSettings, settingsApplied = 0, reload = null,
+                ok = false, reason = result.reason, rolledBack = result.rolledBack,
+            )
+        }
+        val ok = result as ApplyOutcome.Ok
+        val settingsWritten = if (applySettings) writeSettings(ctx, ok.settingsJson) else 0
+        val touched = preview.manifest.entries.mapTo(HashSet()) { it.group }
+        val reload = BackupHotReload.afterImport(touched, reloadPorts(ctx))
+        // 冲突清单**逐条落日志**（派工单四②：清单落日志，UI 卡归 U 批）。
+        // 只写条数不够——用户事后要查"到底哪几条没导进去"，日志得答得上来。
+        logConflicts(source, conflicts)
+        return ImportRun(
+            source = source, applied = ok.applied, unchanged = preview.same.size, conflicts = conflicts,
+            written = ok.written, settingsInPackage = hasSettings, settingsApplied = settingsWritten,
+            reload = reload,
+        )
+    }
+
+    /** 冲突逐条进日志（条数从几十条到几百条都可能，只截头 200 条并注明总数）。 */
+    private fun logConflicts(source: String, conflicts: List<String>) {
+        if (conflicts.isEmpty()) return
+        RunLog.log("备份导入：冲突未覆盖 ${conflicts.size} 条（来源 ${source.ifBlank { "未知" }}）")
+        conflicts.take(LOG_CONFLICT_LINES).forEach { RunLog.log("  冲突：$it") }
+        if (conflicts.size > LOG_CONFLICT_LINES) {
+            RunLog.log("  …另有 ${conflicts.size - LOG_CONFLICT_LINES} 条未列出")
+        }
+    }
+
+    /**
+     * 两本派生索引的对齐端口（导入完**当场**刷新，同一会话立刻查得到）。
+     *
+     * 记忆那一路复用 [MemoryReloadPort]（真 [MemoryStore]，JVM 也能跑）；
+     * 检索那一路只做**增量**同步，且**不建库**——建库是用户在搜索卡点「扫描本机」的事，
+     * 这里替用户建一个空库，会让"我明明没开搜索"变成一句假话。
+     */
+    fun reloadPorts(ctx: Context): ReloadPorts = object : ReloadPorts {
+        private val memory = MemoryReloadPort(
+            MemoryStore(File(ctx.filesDir, DIR_MEMORY), File(ZhengdaoDirs.hostDir(ctx), DIR_MEMORY)),
+        )
+
+        override fun reindexMemory(): Int = memory.reindexMemory()
+
+        override fun resyncSearch(): Boolean {
+            if (!PhoneSearch.dbExists(ctx)) return false
+            PhoneSearch.scan(ctx)
+            return true
         }
     }
 

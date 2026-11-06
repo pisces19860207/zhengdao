@@ -123,6 +123,9 @@ internal object BaopuToolLabels {
         "browser_replay_skill" to R.string.baopu_tool_browser_replay_skill,
         "teach_site_trust" to R.string.baopu_tool_teach_site_trust,
         // 第二百六十九批：打包/解包。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
+        // 第四百九十一批：备份/还原（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
+        "export_data" to R.string.baopu_tool_export_data,
+        "import_data" to R.string.baopu_tool_import_data,
         "archive_pack" to R.string.baopu_tool_archive_pack,
         "archive_extract" to R.string.baopu_tool_archive_extract,
     )
@@ -215,6 +218,8 @@ internal object BaopuToolLabels {
         "browser_replay_skill" to R.string.baopu_tool_browser_replay_skill_desc,
         "teach_site_trust" to R.string.baopu_tool_teach_site_trust_desc,
         // 第二百六十九批：打包/解包（同上，漏了 fail-fast）
+        "export_data" to R.string.baopu_tool_export_data_desc,
+        "import_data" to R.string.baopu_tool_import_data_desc,
         "archive_pack" to R.string.baopu_tool_archive_pack_desc,
         "archive_extract" to R.string.baopu_tool_archive_extract_desc,
     )

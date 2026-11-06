@@ -201,9 +201,12 @@ private suspend fun importNote(
     overwrite: Set<String>,
     withSettings: Boolean,
 ): String = withContext(Dispatchers.IO) {
-    val r = BackupShell.apply(ctx, preview, overwrite, withSettings)
+    val r = BackupShell.importNow(ctx, preview, overwrite, withSettings)
+    if (!r.ok) return@withContext res.getString(R.string.backup_import_failed, r.reason.orEmpty())
     val touched = r.applied + if (r.settingsApplied > 0) 1 else 0
-    if (r.ok) res.getString(R.string.backup_import_done, touched) else res.getString(R.string.backup_import_failed, r.reason.orEmpty())
+    val done = res.getString(R.string.backup_import_done, touched)
+    // 冲突没覆盖这件事必须写在结果里，不能只在弹窗里说过就算
+    if (r.conflicts.isEmpty()) done else done + res.getString(R.string.backup_import_conflicts, r.conflicts.size)
 }
 
 /** 把 `content://` 复制进缓存再校验；任何一步不成就变成一句人话（不抛到界面上）。 */

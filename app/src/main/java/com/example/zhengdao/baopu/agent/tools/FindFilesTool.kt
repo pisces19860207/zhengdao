@@ -12,6 +12,7 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.core.TimeFormats
 import java.io.File
 
 /**
@@ -36,6 +37,15 @@ internal object FindFilesTool {
      */
     const val ARG_INCLUDE_HIDDEN = "include_hidden"
 
+    /**
+     * 第四百九十一批（设计修订）：结果排序。`name`（默认）＝按路径（既有行为）；
+     * `recent` ＝**按修改时间倒序**，且每行带时间——用户说"把刚下载那个 zip 导进来"时，
+     * 模型靠这一档定位，而不是猜文件名。
+     */
+    const val ARG_ORDER = "order"
+    const val ORDER_NAME = "name"
+    const val ORDER_RECENT = "recent"
+
     /** 默认命中上限；触顶会明说「还有更多」。 */
     const val DEFAULT_LIMIT = 50
     const val MAX_LIMIT = 200
@@ -53,7 +63,8 @@ internal object FindFilesTool {
         description = "在某个目录里按文件名找文件（子串匹配，大小写不敏感），回「路径 + 大小」。" +
             "**全盘可找**：path 给绝对路径就能搜整台机器（如 /storage/emulated/0 找 Obsidian 库）；" +
             "默认深度 $DEFAULT_DEPTH 层、最多 $DEFAULT_LIMIT 个命中，触顶会明说。" +
-            "找文件内容用 search_in_files。",
+            "找文件内容用 search_in_files。" +
+            "用户说「刚下载的」「最新的那个」时用 order=recent（按修改时间倒序，每行带时间）。",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
@@ -81,6 +92,11 @@ internal object FindFilesTool {
                     "type" to "boolean",
                     "description" to "要不要找点开头的目录/文件（如 .obsidian；默认 false 不找）",
                 ),
+                ARG_ORDER to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf(ORDER_NAME, ORDER_RECENT),
+                    "description" to "排序：name=按路径（默认）；recent=按修改时间倒序（「刚下载/最新」用这个）",
+                ),
             ),
             "required" to jsonArrayOf(ARG_PATTERN),
             "additionalProperties" to false,
@@ -105,6 +121,7 @@ internal object FindFilesTool {
         limit: Int = DEFAULT_LIMIT,
         maxDepth: Int = DEFAULT_DEPTH,
         includeHidden: Boolean = false,
+        order: String = ORDER_NAME,
     ): ToolOutcome {
         val needle = pattern.trim()
         guardFind(dir, needle, root)?.let { return it }
@@ -121,13 +138,29 @@ internal object FindFilesTool {
                     "换一个更短的片段再试，或用 list_dir 看目录结构。",
             )
         }
-        val sortedHits = hits.sortedBy { FilePaths.display(root, it) }
+        val byRecent = order.trim().lowercase() == ORDER_RECENT
+        val sortedHits = if (byRecent) {
+            hits.sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { FilePaths.display(root, it) })
+        } else {
+            hits.sortedBy { FilePaths.display(root, it) }
+        }
         val body = buildString {
             append("在 ")
             append(if (dir == root) "工作区" else FilePaths.display(root, dir))
-            append(" 里找到 ${sortedHits.size} 个文件名含「$needle」的文件（扫了 $scanned 个，深度上限 $depthCap 层）：\n")
+            append(" 里找到 ${sortedHits.size} 个文件名含「$needle」的文件")
+            // order=recent 时要说清"这是按时间排的"：不然模型没法解释为什么顺序变了
+            append(
+                if (byRecent) {
+                    "（按修改时间倒序；扫了 $scanned 个）：\n"
+                } else {
+                    "（扫了 $scanned 个，深度上限 $depthCap 层）：\n"
+                },
+            )
             sortedHits.forEach { f ->
-                append(FilePaths.display(root, f)).append('\t').append(f.length()).append(" B\n")
+                append(FilePaths.display(root, f)).append('\t').append(f.length()).append(" B")
+                // 「最近那个」要能看出多近：不带时间，模型只能靠顺序猜——那正是"猜文件名"的变种
+                if (byRecent) append('\t').append(TimeFormats.minuteStamp(f.lastModified()))
+                append('\n')
             }
             if (truncatedByLimit) append("（已到 $cap 个上限，还有更多没列；把 limit 调大或换更具体的片段）")
             if (truncatedByScan) append("（扫到 $MAX_SCANNED 个文件就停了；把 path 指到更窄的目录再找）")
@@ -217,6 +250,7 @@ internal object FindFilesTool {
             limit = args.optInt(ARG_LIMIT, DEFAULT_LIMIT),
             maxDepth = args.optInt(ARG_MAX_DEPTH, DEFAULT_DEPTH),
             includeHidden = args.optBoolean(ARG_INCLUDE_HIDDEN, false),
+            order = args.optString(ARG_ORDER, ORDER_NAME),
         )
     }
 

@@ -97,6 +97,10 @@ internal object ToolSchemaRules {
      * 新增空 required 的工具 ⇒ 必须在这里加一行，否则 [S5_REQUIRED_EMPTY] 直接红。
      */
     val REQUIRED_EMPTY_OK: Map<String, String> = mapOf(
+        // 第四百九十一批：备份/还原两件全可选——
+        "export_data" to "唯一参数 include_chat 可选：默认 false＝不带聊天原文（BackupTools.exportSpec）",
+        "import_data" to "三个参数全可选：path 省略＝用导入目录里最近那个；overwrite 空＝一条都不覆盖；" +
+            "apply_settings 默认 false＝不动设置（BackupTools.importSpec）",
         "browser_snapshot" to "唯一参数 selector 可选：省略即整页快照（BrowserTools.snapshotSpec）",
         "browser_evidence" to "无参数：证据作用于当前页整体，没有可填的东西（BrowserTools.evidenceSpec，262 批）",
         "browser_screenshot" to "唯一参数 full_page 可选：默认当前视口（BrowserTools.screenshotSpec）",

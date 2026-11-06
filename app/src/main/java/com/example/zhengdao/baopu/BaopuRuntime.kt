@@ -388,6 +388,9 @@ internal object BaopuRuntime {
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }
+        // 第四百九十一批（设计修订）：备份/还原两件工具（export_data/import_data）的 Context 注入口。
+        // 同一房型：工具层不认识 Context，装配层注入一次 ⇒ JVM 单测可以拿假件直接打纯函数。
+        com.example.zhengdao.baopu.agent.BackupTools.ctx = { appCtx }
         // 第一百九十五批：查询工具的存储壳（App 私有 filesDir/物流/logistics.db，与主库无关）。
         // 同一房型：Context 只到装配层这一处，工具与面板都从这里拿同一份壳 ⇒ 两处读到的数才是一个。
         com.example.zhengdao.baopu.agent.LogisticsQueryTool.store = logisticsStore(appCtx)

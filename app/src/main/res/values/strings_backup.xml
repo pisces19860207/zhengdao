@@ -24,6 +24,7 @@
     <string name="backup_dialog_settings">设置：改 %1$d 项，新增 %2$d 项</string>
     <string name="backup_dialog_confirm">导入</string>
     <string name="backup_import_done">导入完成（%1$d 条）</string>
+    <string name="backup_import_conflicts">；%1$d 项冲突未覆盖</string>
     <string name="backup_import_failed">导入失败：%1$s（本机文件未改动）</string>
     <string name="backup_note">导出里不含任何 API Key 与聊天原文（勾了才含）。导入失败不留半状态。</string>
 </resources>

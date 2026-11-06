@@ -26,6 +26,9 @@ class BackupSourceGateTest {
     private val shell: String by lazy { projectFile("src/main/java/com/example/zhengdao/backup/BackupShell.kt").readText() }
     private val section: String by lazy { projectFile("src/main/java/com/example/zhengdao/ui/BackupSection.kt").readText() }
     private val settings: String by lazy { projectFile("src/main/java/com/example/zhengdao/ui/SettingsScreen.kt").readText() }
+    private val registry: String by lazy { projectFile("src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt").readText() }
+    private val risk: String by lazy { projectFile("src/main/java/com/example/zhengdao/baopu/RiskMatrix.kt").readText() }
+    private val app: String by lazy { projectFile("src/main/java/com/example/zhengdao/ZhengdaoApp.kt").readText() }
 
     /** 只删整行注释与块注释（字符串里的英文单词要保留）。 */
     private fun stripComments(src: String): String = src
@@ -114,5 +117,63 @@ class BackupSourceGateTest {
         val chatAt = body.indexOf("InMemoryFile(\"chat/")
         assertTrue("必须存在 includeChat 分支", guardAt >= 0)
         assertTrue("chat 条目必须写在 includeChat 分支里（位置 $chatAt vs $guardAt）", chatAt > guardAt)
+    }
+
+    // ── ⑥ 模型入口：两件工具必须四张表全登记（组／表／默认开／风险档）──────────────
+
+    /** 判别器：某个工具名在源码里"表登记行"是否齐全；缺哪条给哪条。 */
+    private fun registrationGaps(src: String, name: String): List<String> {
+        val body = stripComments(src)
+        val gaps = ArrayList<String>()
+        if (!body.contains("\"$name\" to ToolGroup.")) gaps += "GROUP_OF"
+        if (!body.contains("Entry(\"$name\")")) gaps += "ENTRIES"
+        if (!body.contains("\"$name\",")) gaps += "DEFAULT_ENABLED"
+        if (!body.contains("\"$name\" to ToolRule(")) gaps += "RISK_TABLE"
+        return gaps
+    }
+
+    @Test
+    fun 判别器咬得住漏登记的工具体() {
+        val fake = "val x = listOf(\"ghost\")"
+        assertTrue("判别器必须能咬住未登记的名字", registrationGaps(fake, "ghost").isNotEmpty())
+    }
+
+    @Test
+    fun 备份还原两件四张表全登记() {
+        val all = registry + risk
+        for (name in listOf("export_data", "import_data")) {
+            val gaps = registrationGaps(all, name)
+            assertTrue("$name 漏登记：$gaps", gaps.isEmpty())
+        }
+    }
+
+    // ── ⑦ 启动自动发现：只发现、不自动合并 ───────────────────────────────────
+
+    @Test
+    fun 启动会扫导入目录且只提示不合并() {
+        assertTrue("Application 起来必须扫一次导入目录", stripComments(app).contains("BackupWiring.install(this)"))
+        val wiring = stripComments(projectFile("src/main/java/com/example/zhengdao/backup/BackupWiring.kt").readText())
+        assertTrue("扫描入口是 BackupInbox.refresh", wiring.contains("BackupInbox.refresh("))
+        assertFalse("自动发现**不许**自己合并：$wiring", wiring.contains("importNow("))
+        assertFalse("自动发现**不许**自己落盘：$wiring", wiring.contains("BackupImporter.apply("))
+    }
+
+    // ── ⑧ 热加载必须真接线（不是只有端口没有实现）──────────────────────────────
+
+    /** 派工单四②：冲突"列清单"要真的落到日志里（只写条数不算列清单）。 */
+    @Test
+    fun 冲突清单逐条落日志() {
+        val body = stripComments(shell)
+        assertTrue("必须有逐条写日志的出口", body.contains("logConflicts("))
+        assertTrue("每条冲突要真的写进 RunLog", body.contains("RunLog.log(\"  冲突："))
+    }
+
+    @Test
+    fun 导入后热加载真接在壳层里() {
+        val body = stripComments(shell)
+        assertTrue("导入完必须调热加载", body.contains("BackupHotReload.afterImport("))
+        assertTrue("记忆索引走真 MemoryStore", body.contains("MemoryReloadPort("))
+        assertTrue("检索索引走真 PhoneSearch 增量同步", body.contains("PhoneSearch.scan("))
+        assertTrue("没有索引库时不许替用户建库（先判 dbExists）", body.contains("PhoneSearch.dbExists("))
     }
 }

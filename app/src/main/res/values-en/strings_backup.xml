@@ -21,6 +21,7 @@
     <string name="backup_dialog_settings">Settings — changed: %1$d · new: %2$d</string>
     <string name="backup_dialog_confirm">Import</string>
     <string name="backup_import_done">Import finished (%1$d)</string>
+    <string name="backup_import_conflicts">; kept conflicts: %1$d</string>
     <string name="backup_import_failed">Import failed: %1$s (nothing was changed)</string>
     <string name="backup_note">Exports never contain API keys or chat transcripts (unless enabled). A failed import changes nothing.</string>
 </resources>

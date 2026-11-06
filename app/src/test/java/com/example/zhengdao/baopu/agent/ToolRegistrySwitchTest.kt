@@ -78,6 +78,8 @@ class ToolRegistrySwitchTest {
                 "event_trigger",
                 "clipboard_write", "notify", "phone_dial",
                 "read_file", "list_dir", "search_in_files", "find_files",
+                // 第四百九十一批：备份/还原两件（表序即注册序）
+                "export_data", "import_data",
                 // 492 B②：索引浏览/检索两件（FILES 组，默认不可见但默认启用；表序即注册序）
                 "index_browse", "index_search",
                 "book_outline",

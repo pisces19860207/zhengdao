@@ -60,6 +60,9 @@ class ZhengdaoApp : Application() {
         // 必须**在 AppForeground.install 之后**（沿 Scout 的装配次序纪律）；装配失败 ⇒
         // wiring 账记 unavailable（「没巡查」和「巡查没问题」分得清），观测层不挡业务。
         com.example.zhengdao.baopu.agent.JinwuObserve.attach(this)
+        // 第四百九十一批（设计修订）：备份收件箱——启动时扫一眼 `Download/证道/导入/`，
+        // 发现 zip 就校验并提示一句（**不自动合并**：最保守档；499 授权档落地后改那一处分支）。
+        com.example.zhengdao.backup.BackupWiring.install(this)
         // 第三百八十八单：离场值守——状态仓（SP＋KeyguardManager）与看门狗。
         // 必须在 RunEngine 装配之前：引擎的 awayLocked 闭包读它的问口，装配晚了
         // 第一批卡就问不到"锁着没"。看门狗 KEEP 幂等（重复开 App 不重置周期）。

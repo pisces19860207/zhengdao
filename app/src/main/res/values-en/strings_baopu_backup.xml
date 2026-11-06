@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 491: backup tool strings kept in their own file (same layout as strings_baopu_archive.xml). -->
+<resources>
+    <string name="baopu_tool_export_data">Back up data</string>
+    <string name="baopu_tool_export_data_desc">Zip the ledgers, persona &amp; memory, skills and settings into Download/证道/backups/ together with a manifest (version, time, entry count, sha256 of every file). API keys and chat transcripts are excluded by default; transcripts are included only when explicitly asked for, and they are export-only. A confirmation card appears before each run; an existing file name is suffixed with -2 instead of overwriting the previous backup.</string>
+    <string name="baopu_tool_import_data">Restore backup</string>
+    <string name="baopu_tool_import_data_desc">Restore from a backup zip (a confirmation card appears before each run). Nothing is overwritten by default: entries that already exist locally with different content are listed and left untouched, and only entries the user explicitly names are replaced. The archive is first unpacked into a temp folder and every sha256 is verified; a missing or mismatching manifest rejects the whole package with zero files written, and a mid-way failure rolls back to the pre-import state. Right after a successful import the memory index is rebuilt and the search index resynced, so the new data is searchable in the same session without restarting.</string>
+</resources>

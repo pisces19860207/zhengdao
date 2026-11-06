@@ -474,6 +474,9 @@ class ToolSchemaAllTest {
             "move_path" to JSONObject().put("from", "a.md").put("to", "b.md"),
             "convert_encoding" to JSONObject().put("path", "a.md"),
             // 第二百六十九批：打包/解包（sources 是字符串数组，最小合法给一个文件）
+            // 第四百九十一批：备份/还原（参数全可选 ⇒ 最小合法就是空对象）
+            "export_data" to JSONObject(),
+            "import_data" to JSONObject(),
             "archive_pack" to JSONObject().put("dest", "包.zip").put("sources", JSONArray().put("a.md")),
             "archive_extract" to JSONObject().put("archive", "包.zip"),
             // 288：复制/批量/整理五件（copy 必填 from/to；bulk 必填 dir/dest；

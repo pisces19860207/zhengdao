@@ -282,11 +282,13 @@ internal data class RiskTable(
          * v8（第二百八十八批）：复制/批量/整理五件入表——copy_path R1（只写新文件）；
          * bulk_copy R1；bulk_move R2（源会消失）；organize R2（源会消失）；
          * organize_preview R0（纯只读预览）。
+         * v9（第四百九十一批）：备份/还原两件入表——export_data R1（只写一个新 zip，目标是固定目录、
+         * 永不覆盖）；import_data R2（批量写回用户数据，源会覆盖目标 ⇒ 与 bulk_move 同档）。
          */
-        const val DEFAULT_VERSION: Int = 8
+        const val DEFAULT_VERSION: Int = 9
 
         /**
-         * 唯一一张默认表（68 行 = 注册工具 68 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
+         * 唯一一张默认表（70 行 = 注册工具 70 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
          *
          * 68 = `BaopuToolCatalog.ENTRIES` 64 条 ＋ 运行时注册 4 条（write_skill /
          * append_persona / read / bash）；218 的六件、224 的 form_fill 与 228 批 B/C 两片
@@ -372,6 +374,10 @@ internal data class RiskTable(
                 // 一堆解开的文件）；`dest` 是写路径，落到工作区外时由 writePathKeys 自动升 R2。
                 // 解包**永不覆盖**同名文件、也永不写工作区外（zip-slip 整包拒），所以不给 R2。
                 "archive_pack" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
+                // 第四百九十一批：备份导出（写一个新 zip，目标目录固定、永不覆盖同名）
+                "export_data" to ToolRule(RiskClass.R1),
+                // 还原：批量写回（账本/人设/技能），默认不覆盖但用户可点名覆盖 ⇒ R2，与 bulk_move 同档
+                "import_data" to ToolRule(RiskClass.R2),
                 "archive_extract" to ToolRule(RiskClass.R1, writePathKeys = setOf("dest")),
                 // ── 288 复制/批量/整理（ToolRule.writePathKeys 的口径：copy 只写新文件，
                 //    move/organize 的源会消失 ⇒ 范围目录也算写面；dest 在前，授权账

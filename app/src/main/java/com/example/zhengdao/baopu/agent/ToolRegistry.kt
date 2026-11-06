@@ -257,6 +257,9 @@ internal object ToolGroupTable {
         "browser_tabs_close" to ToolGroup.BROWSER,
         "file_info" to ToolGroup.FILES,
         "find_files" to ToolGroup.FILES,
+        // 第四百九十一批：备份/还原两件（写盘，CONFIRM；FILES 组默认不可见，capabilities 解锁）
+        "export_data" to ToolGroup.FILES,
+        "import_data" to ToolGroup.FILES,
         // 492 B②：索引浏览/检索归 FILES（默认不可见，capabilities 解锁——B1 硬卡不破）。
         "index_browse" to ToolGroup.FILES,
         "index_search" to ToolGroup.FILES,
@@ -1275,6 +1278,10 @@ internal object BaopuToolCatalog {
         "list_dir",
         "search_in_files",
         "find_files",
+        // 第四百九十一批：备份/还原默认「启用」（组归 FILES 仍默认不可见——解锁即用，同 find_files 口径）。
+        // 默认开≠能静默动手：两件都是 CONFIRM，每次一张卡。
+        "export_data",
+        "import_data",
         // 492 B②：索引两件默认「启用」（组归 FILES 仍默认不可见——解锁即用，同 find_files 口径）
         "index_browse",
         "index_search",
@@ -1400,6 +1407,10 @@ internal object BaopuToolCatalog {
         Entry("list_dir") { ListDirTool.spec(it) },
         Entry("search_in_files") { SearchInFilesTool.spec(it) },
         Entry("find_files") { FindFilesTool.spec(it) },
+        // 第四百九十一批（设计修订）：备份/还原的**模型入口**——用户把 zip 丢进手机后说一句话，
+        // 抱朴自己定位、自己导。UI 那一块（设置页）只是第三入口。
+        Entry("export_data") { BackupTools.exportSpec() },
+        Entry("import_data") { BackupTools.importSpec() },
         // 492 B②：索引浏览/检索两件（读 search.db 的账，FREE 只读；FILES 组默认不可见，
         // capabilities 解锁——默认可见 ≤12 的硬卡不破）。index_search 复用既有检索。
         Entry("index_browse") { IndexTools.browseSpec(it) },

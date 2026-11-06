@@ -59,7 +59,13 @@ internal class ImportPreview(
 
 /** 落盘结果：成功给读数，失败明确说"改了没有"（好让界面照实说，不糊弄）。 */
 internal sealed interface ApplyOutcome {
-    data class Ok(val applied: Int, val unchanged: Int, val settingsJson: String?) : ApplyOutcome
+    data class Ok(
+        val applied: Int,
+        val unchanged: Int,
+        val settingsJson: String?,
+        /** 实际写进去的条目路径（回执要能点名，不许只说"写了几项"）。 */
+        val written: List<String>,
+    ) : ApplyOutcome
     data class Failed(val reason: String, val rolledBack: Boolean) : ApplyOutcome
 }
 
@@ -196,7 +202,7 @@ internal object BackupImporter {
         val chosen = preview.items.filter { it.state == BackupRules.ItemState.NEW || it.state == BackupRules.ItemState.CONFLICT }
             .filter { it.state == BackupRules.ItemState.NEW || it.entry.path in overwrite }
         if (chosen.isEmpty()) {
-            return ApplyOutcome.Ok(0, preview.items.size, preview.settingsJson)
+            return ApplyOutcome.Ok(0, preview.items.size, preview.settingsJson, emptyList())
         }
         val staged = stageAll(chosen)
         if (staged is StageResult.Failed) {
@@ -208,7 +214,12 @@ internal object BackupImporter {
             return ApplyOutcome.Failed(done.reason, rolledBack = done.rolledBack)
         }
         val appliedCount = plans.size
-        return ApplyOutcome.Ok(appliedCount, preview.items.size - appliedCount, preview.settingsJson)
+        return ApplyOutcome.Ok(
+            applied = appliedCount,
+            unchanged = preview.items.size - appliedCount,
+            settingsJson = preview.settingsJson,
+            written = chosen.map { it.entry.path },
+        )
     }
 
     // ── 第一步：全部暂存并核对 ──────────────────────────────────────────────
