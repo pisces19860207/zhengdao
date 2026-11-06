@@ -19,6 +19,8 @@ import com.example.zhengdao.baopu.eval.RollbackVia
 import com.example.zhengdao.baopu.eval.SkillBodyInput
 import com.example.zhengdao.baopu.eval.SkillBodySelfCheck
 import com.example.zhengdao.baopu.eval.SkillBodyVerdict
+import com.example.zhengdao.baopu.eval.EvalEvidenceSource
+import com.example.zhengdao.baopu.evolution.trigger.TriggerRow
 import java.io.File
 
 /**
@@ -58,15 +60,75 @@ internal fun Map<SkillOutcome, Int>.toEffectSnapshot(signalIds: List<String> = e
  * 技能正文 ⇒ 中风险）。候选正文、target、createdAt 一个都不进来——决策与审计只认 id 与计数。
  */
 internal fun inputFor(candidate: ProposalCandidate, evidence: EvolutionEvidence): EvolutionDecisionInput =
-    toDecisionInput(
-        candidate,
-        EvolutionAssessment(
-            riskCategory = EvolutionRiskCategory.defaultFor(candidate.kind),
-            selfCheck = evidence.selfCheck,
-            eval = evidence.eval,
-            effect = evidence.effect.toEffectSnapshot(evidence.effectSignalIds),
-        ),
+    toDecisionInput(candidate, evidence.toAssessment(candidate.kind))
+
+/**
+ * 证据包 ⇒ 评估输入（[inputFor] 的组装步，第五百零七批抽出来给生产装配点复用）。
+ *
+ * 为什么抽：99 批之后生产的证据装配在控制器里（`judgeProposalCandidates`），
+ * 一直没走 [inputFor]——本批把"触发账本读数喂进 eval 槽"接上时，装配处与桥
+ * 必须是**同一把尺**，所以把这一步抽成显式函数，两边共用，不许长出第二套字段映射。
+ */
+internal fun EvolutionEvidence.toAssessment(kind: ProposalKind): EvolutionAssessment =
+    EvolutionAssessment(
+        riskCategory = EvolutionRiskCategory.defaultFor(kind),
+        selfCheck = selfCheck,
+        eval = eval,
+        effect = effect.toEffectSnapshot(effectSignalIds),
     )
+
+/** 汇总触发账本读数时最多取多少条**有读数**的真触发行（507；与 304 的月度上限同数）。 */
+internal const val TRIGGER_EVAL_MAX_ROWS = 20
+
+/** 失败场景 id 进原因链的上限（20 行 × 13 场景的最坏情形不许整段灌进审计）。 */
+internal const val TRIGGER_EVAL_MAX_CASE_IDS = 32
+
+/**
+ * 触发账本最近 N 条读数 ⇒ 一份 eval 证据（507 主件；**纯函数**，行由调用方读好传入）。
+ *
+ * 与 304 账本字段对齐：只收 `triggered=true` 且带读数的行（[TriggerRow.evalPassRate] 非 null
+ * ——「评了但没跑出读数」的行带 [TriggerRow.evalError]，不许按 0 分冒充"全挂"），
+ * 汇总四样：run（[TriggerRow.evalRan] 求和）、passed（[TriggerRow.evalPassed] 求和）、
+ * passRate（passed/run）、时间窗（最新一条的 [TriggerRow.atMs] 当 ranAt，保鲜期由
+ * `selectEvalEvidence` 按同一把尺判）。**没有这样的行 ⇒ null ⇒ 决策口 DEFER（UNVERIFIABLE，
+ * 不得当通过）**——账本空＝从没在本机评过，不许编一个分数。
+ *
+ * 为什么落进 [EvolutionEval]：`EvolutionEvidence.eval` 这一格不许新增字段（507 派工单），
+ * 触发读数与发版/个人生产证据同形（0–1 的通过率＋失败场景 id＋来源＋时刻），
+ * 差别只在 [EvalEvidenceSource.TRIGGER] 这个来源标——卡与审计必须看得出来路。
+ */
+internal fun triggerEvalOf(
+    rows: List<TriggerRow>,
+    maxRows: Int = TRIGGER_EVAL_MAX_ROWS,
+): EvolutionEval? {
+    val readings = rows
+        .filter { it.triggered && it.evalPassRate != null }
+        .takeLast(maxRows)
+    if (readings.isEmpty()) return null
+    val run = readings.sumOf { it.evalRan }
+    val passed = readings.sumOf { it.evalPassed }
+    val score = if (run > 0) {
+        passed.toDouble() / run.toDouble()
+    } else {
+        // run 求和为 0 而行里带 passRate：账面自洽性破了（304 的行不该长这样）——
+        // 退回各行通过率的均值，宁可粗也不丢"有读数"这个事实。
+        readings.mapNotNull { it.evalPassRate }.average()
+    }
+    val failedCases = buildList {
+        for (row in readings) {
+            for (id in row.evalFailedCases) {
+                if (id.isNotBlank() && id !in this) add(id)
+                if (size >= TRIGGER_EVAL_MAX_CASE_IDS) return@buildList
+            }
+        }
+    }
+    return EvolutionEval(
+        score = score.coerceIn(0.0, 1.0),
+        caseIds = failedCases,
+        source = EvalEvidenceSource.TRIGGER,
+        ranAt = readings.maxOf { it.atMs },
+    )
+}
 
 /**
  * 候选证据 id 的统一形状（与 88 的 [toDecisionInput] 同一把尺：`run_log:N` / `skill_event:N`）。

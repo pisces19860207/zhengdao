@@ -157,11 +157,13 @@ internal object DecisionSpecs {
      */
     private fun evidenceFooter(sug: EvolutionSuggestion, s: DecisionStrRes): String {
         val src = sug.evalSource ?: return s.get(R.string.decision_suggest_evidence_none)
+        // 第五百零七批：触发账本读数有了自己的来源标（不许把本机读数标成"发版证据"——
+        // 168 的「来源和日期必须标」对第三来源同样成立）。仍走既有这一行证据栏，零新 UI。
         val label = s.get(
-            if (src == EvalEvidenceSource.PERSONAL_PROD) {
-                R.string.decision_evidence_personal
-            } else {
-                R.string.decision_evidence_release
+            when (src) {
+                EvalEvidenceSource.PERSONAL_PROD -> R.string.decision_evidence_personal
+                EvalEvidenceSource.TRIGGER -> R.string.decision_evidence_trigger
+                EvalEvidenceSource.RELEASE -> R.string.decision_evidence_release
             },
         )
         val date = sug.evalRanAt?.let { TimeFormats.minuteStamp(it) }

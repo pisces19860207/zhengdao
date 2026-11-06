@@ -253,7 +253,9 @@ class EvolutionShadowGateTest {
         assertTrue("四类证据一个字没改", judgeRegion.contains("SkillEffects.outcomesFor(db, c.target)"))
         assertTrue("自检 dry-run 没动", judgeRegion.contains("dryRunSelfCheck("))
         assertTrue("eval 仍只认结果文件", judgeRegion.contains("EvalResultFile.latest(appCtx)"))
-        assertTrue("组装仍走证据桥", judgeRegion.contains("toDecisionInput(c,"))
+        // 507：证据桥本尊（EvolutionEvidence → toAssessment → toDecisionInput），影子重放走 inputFor 同一把尺
+        assertTrue("组装仍走证据桥", judgeRegion.contains("EvolutionEvidence(") && judgeRegion.contains("toAssessment(c.kind)"))
+        assertTrue("影子重放走 inputFor（与决策口同一把尺）", judgeRegion.contains("inputFor(c, evidences[c.id]!!)"))
         assertTrue("影子账本接在收尾判定链上", judgeRegion.contains("EvolutionShadowLog.under(globalRoot)"))
         assertTrue("影子判定逐条接上", judgeRegion.contains("shadowRows += shadowVerdictOf(input, decision, shadowAt)"))
         assertTrue("操作者仍是 settle，影子没有冒充人批", judgeRegion.contains("operatorId = \"settle\""))

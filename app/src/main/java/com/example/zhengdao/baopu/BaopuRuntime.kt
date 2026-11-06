@@ -788,6 +788,12 @@ internal object BaopuRuntime {
             awayEvent = { headline ->
                 UnattendedRecorder.onDefer(appCtx, headline, System.currentTimeMillis())
             },
+            // 第五百零七批：停机记录落 App 私有 `filesDir/baopu/`（与 workspace_roots.json
+            // 同一机器状态目录）——不在任何 workspace root 里，模型文件工具够不着，
+            // 「解除只能人做」连改文件这条路都不存在。Context 只在这一层（引擎不摸盘路径）。
+            stopState = com.example.zhengdao.baopu.agent.StopStateStore(
+                File(File(appCtx.filesDir, "baopu"), "run-stop-state.json"),
+            ),
             memoryStore = memoryStore(appCtx),
             spillRoot = { workspaceRoot(appCtx) },
             // 第二十四批 C 段追加：超 2 MB 的图先缩再发。手机照片 3 MB 起步，

@@ -306,7 +306,7 @@ class PlanGuardTest {
         )
         assertTrue(
             "变更卡走 askUser（与视觉授权卡同一条路）",
-            src.contains("askUser(PlanGuardCards.changeRequest(change))"),
+            src.contains("askUser(PlanGuardCards.changeRequest(change), mustAsk = true)"),
         )
         assertTrue(
             "偏离卡走 askUser",
@@ -336,7 +336,7 @@ class PlanGuardTest {
     @Test
     fun `引擎接线_已拒的同一版不弹卡_只有明确点拒才记账`() {
         val src = source("baopu/agent/RunEngine.kt")
-        val askIdx = src.indexOf("askUser(PlanGuardCards.changeRequest(change))")
+        val askIdx = src.indexOf("askUser(PlanGuardCards.changeRequest(change), mustAsk = true)")
         val checkIdx = src.indexOf("planController.decisionFor(change) == PlanChangeDecision.REJECTED")
         assertTrue("闸口要查决定登记", checkIdx > 0)
         assertTrue("查登记必须在弹卡之前（否则已被拒的同一版还要再问一次）", checkIdx < askIdx)
@@ -359,7 +359,7 @@ class PlanGuardTest {
             "一次超时就要重问（不许一次超时就悄悄放弃）",
             gateBody.contains("重问一次"),
         )
-        assertTrue("重问要真弹卡", gateBody.contains("askUser(PlanGuardCards.changeRequest(change))"))
+        assertTrue("重问要真弹卡", gateBody.contains("askUser(PlanGuardCards.changeRequest(change), mustAsk = true)"))
         assertTrue(
             "两次超时要明示计划未立（走 changeTimeoutNoPlan，不是 changeBlocked 的「用户没同意」）",
             gateBody.contains("PlanGuardRules.changeTimeoutNoPlan(change, withPledgeCandidate)"),

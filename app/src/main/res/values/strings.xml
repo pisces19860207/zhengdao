@@ -1067,6 +1067,8 @@
     <!-- 第一百六十八批：建议卡证据来源行（派工单 §2「UI 必须标个人生产证据/发版证据」） -->
     <string name="decision_evidence_personal">个人生产证据</string>
     <string name="decision_evidence_release">发版证据</string>
+    <!-- 第五百零七批：触发账本读数的来源标（同一行证据栏的第三来源，零新 UI 元素） -->
+    <string name="decision_evidence_trigger">本机触发评测</string>
     <string name="decision_evidence_date_unknown">日期不详</string>
     <string name="decision_suggest_evidence">证据来源：%1$s（%2$s）</string>
     <string name="decision_suggest_evidence_none">证据来源：无（缺或已过期，本次判搁置）</string>

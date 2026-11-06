@@ -20,6 +20,9 @@ internal enum class EvalEvidenceSource {
 
     /** 个人生产证据：本机 ProdEval 产物 ⇒ filesDir/eval/prod-result.json。 */
     PERSONAL_PROD,
+
+    /** 本机触发评测（507）：触发账本 `filesDir/evolution/trigger-ledger.jsonl` 最近 N 条读数的汇总。 */
+    TRIGGER,
 }
 
 /** 生产证据保鲜期：7 天（派工单 §2「优先读 7 天内 prod-result」）。 */
@@ -28,20 +31,29 @@ const val PROD_EVAL_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
 /**
  * 选一份证据（**纯函数**；负例靶子：过期生产证据冒充可用、缺证据返非 null）。
  *
+ * 第五百零七批加 [trigger]（本机触发评测读数的汇总，`triggerEvalOf` 产）：
+ * 优先级 prod ＞ trigger ＞ release——发版证据是**构建期**那份快照，触发账本里的
+ * 是这台设备上真跑出来的读数（同一套离线场景、同一把 0–1 尺），比随包快照新；
+ * 但它同样受保鲜期约束（过期 ⇒ 回退 release，不许旧读数冒充）。
+ * 仍是一份证据一个来源，**不许两套分数混用**（168 口径）。
+ *
  * @param prod 个人生产证据（本机；拿不到 ⇒ null）
  * @param release 发版证据（随包；拿不到 ⇒ null）
  * @param now 当前时刻（调用方传，JVM 直测）
- * @param maxAgeMs 生产证据保鲜期（默认 [PROD_EVAL_MAX_AGE_MS]）
- * @return 优先**新鲜**的 prod；prod 缺/过期 ⇒ release；都没有 ⇒ null（DEFER，不是通过）
+ * @param maxAgeMs 生产证据保鲜期（默认 [PROD_EVAL_MAX_AGE_MS]；trigger 同用这一把尺）
+ * @param trigger 本机触发评测汇总（507；拿不到 ⇒ null）
+ * @return 优先**新鲜**的 prod；prod 缺/过期 ⇒ trigger（同样保鲜）；再缺 ⇒ release；都没有 ⇒ null（DEFER，不是通过）
  */
 internal fun selectEvalEvidence(
     prod: EvolutionEval?,
     release: EvolutionEval?,
     now: Long,
     maxAgeMs: Long = PROD_EVAL_MAX_AGE_MS,
+    trigger: EvolutionEval? = null,
 ): EvolutionEval? {
     // 保鲜期判据是 ranAt：没有 ranAt 的生产证据判不了新鲜程度 ⇒ 按没有处理（不猜）。
     // 时钟拨快／未来时间戳（差为负）同样按不新鲜——宁可回退，也不拿它当过线依据。
     if (prod != null && prod.ranAt != null && now - prod.ranAt in 0..maxAgeMs) return prod
+    if (trigger != null && trigger.ranAt != null && now - trigger.ranAt in 0..maxAgeMs) return trigger
     return release
 }

@@ -108,6 +108,11 @@ class L6BoundaryGateTest {
             // 引擎 spill：输出过长时的暂存落盘，落点 = spillRoot()/.baopu-spill（应用私有目录），
             // 不是模型指的工作区路径；失败时降级为截断回灌并明说（不静默）。
             "agent/RunEngine.kt" to setOf("mkdirs", "writeText"),
+            // 第五百零七批：停机记录（叫停 → 重启仍停 的落盘壳）。落点＝装配层注入的
+            // App 私有 `filesDir/baopu/run-stop-state.json`——不在任何 workspace root 里，
+            // 模型文件工具够不着（「解除只能人做」连改文件这条路都不存在）；
+            // 一覆盖一读，delete 只用于人做的解除（删文件＝没有叫停记录）。
+            "agent/StopStateStore.kt" to setOf("mkdirs", "writeText", "delete"),
             // 第二百九十六批：影子沙盒（预演唯一碰盘处）——建副本/拍快照全在 `.shadow/<opId>/`
             // 副本根里，真盘声明对象只读；deleteRecursively/delete 只用于清副本根自己
             // （判据层说 CONSISTENT 才清，违规副本留着当证据）。

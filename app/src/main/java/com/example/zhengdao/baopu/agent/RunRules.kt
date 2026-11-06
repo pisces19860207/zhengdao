@@ -637,4 +637,18 @@ internal object RunRules {
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
+    /**
+     * 停机闸（第五百零七批，**纯函数**）：叫停态下这次续跑/恢复该不该被拒。
+     *
+     * 口径（507 派工单 §三：叫停后续跑仍停，解除只能人做）：
+     * - 停的就是**这个会话**（或叫停时根本没记住会话——保守按全停算）⇒ 闸：
+     *   「继续排队/一键续跑/恢复确认」都是**续**，不是解除；人要解除就发一条新消息；
+     * - 停的是**别的会话** ⇒ 放行：人把活跃点切到另一个会话，正是 176 §2 写明的
+     *   「停了别的会话来续这个」——这次人工切换本身就当解除。
+     *
+     * 前置 `stopRequested == true` 由调用方保证（不叫停时根本没有闸）。
+     */
+    fun resumeBlockedWhileStopped(stoppedSessionId: Long?, sessionId: Long): Boolean =
+        stoppedSessionId == null || stoppedSessionId == sessionId
+
 }

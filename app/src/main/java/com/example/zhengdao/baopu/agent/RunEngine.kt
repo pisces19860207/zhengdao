@@ -293,6 +293,13 @@ internal class RunEngine(
      * 默认空操作 ⇒ 值守未接线时行为不变。
      */
     private val awayEvent: (String) -> Unit = {},
+    /**
+     * 停机记录的落盘壳（第五百零七批）：人手叫停 ⇒ 落盘；重启 App/重启手机 ⇒ 引擎
+     * 构造时读回，「仍是停的」。**默认 null ⇒ 纯内存行为**（既有 JVM 用例一个字不用改）；
+     * 生产由装配层接 App 私有目录的文件（模型工具够不着 ⇒ 没有改掉停机记录的通道，
+     * 解除只能人做——发一条新消息，或把活跃点切到别的会话）。
+     */
+    private val stopState: StopStateStore? = null,
 ) {
 
     /** UI 观察用（Compose State）。 */
@@ -490,6 +497,14 @@ internal class RunEngine(
 
 
     init {
+        // 第五百零七批：重启仍停——叫停记录先读回（[stopState] 落的那份），再恢复队列。
+        // 读不动/没有记录 ＝ 没有叫停（不猜）；有记录 ⇒ stopRequested 与 stoppedSessionId
+        // 一起恢复，续跑/恢复闸在 [stopGateForResume] 里照常拦，解除只能人做。
+        runCatching { stopState?.load() }.getOrNull()?.let { saved ->
+            stopRequested = true
+            stoppedSessionId = saved.sessionId
+            log("抱朴引擎：恢复叫停记录（会话 ${saved.sessionId ?: "?"}，at=${saved.atMs}）——仍是停的，发新消息解除")
+        }
         // 冷启动把上次没开跑的排队条读回内存；**不自动开跑**（避免背地里烧 token）。
         // 提交在 runExecutor 最前面：之后任何 send 的 drain 都排在它后面，恢复与入队不抢。
         runExecutor.execute { restoreQueuedTurns() }
@@ -672,6 +687,16 @@ internal class RunEngine(
 
     @Volatile
     private var stopRequested = false
+
+    /**
+     * 叫停时正在跑的会话 id（第五百零七批；null ＝ 叫停时没记住会话——保守按全停算）。
+     *
+     * 为什么记它：507 的口径是「被停的那个会话，续跑/恢复一律仍停；人把活跃点切到
+     * 别的会话再续，按 176 §2 的既有口径放行」。与 [stopRequested] 同步写，落盘由
+     * [stopState] 带（重启后两个字段一起恢复）。
+     */
+    @Volatile
+    private var stoppedSessionId: Long? = null
 
     /**
      * 当前这一轮流式调用的句柄（P2-5，2026-10-19 第五十六批）。
@@ -1006,7 +1031,13 @@ internal class RunEngine(
                 return SendAcceptance.REFUSED_BUSY_OTHER_SESSION
             }
             _sessionKey.value = key
+            // 507 判定①（:1009）：**新一轮该清**——STARTED 只能由 send 进来，人手发新消息
+            // 正是「解除只能人做」里那个人做的解除；清内存标志＋删叫停记录（重启后仍停的
+            // 停机态在这里第一次被人工解开）。
             stopRequested = false
+            stoppedSessionId = null
+            runCatching { stopState?.clear() }
+                .onFailure { log("抱朴引擎：停机记录清除失败 ${it.javaClass.simpleName}: ${it.message}") }
             _notice.value = null
             // 176 §2：插话队列按会话过户（同会话带着走；上会话的积压不跟进）
             adoptInterjectionsFor(sessionId)
@@ -1114,6 +1145,10 @@ internal class RunEngine(
 
     /** 用户点「继续排队」（恢复出来的队列不会自己跑）。 */
     fun resumeQueue(sessionId: Long): Boolean {
+        // 507 判定②（:1127）：**续跑不该清**——「继续排队」是续，不是解除；叫停后这里
+        // 原样清掉 stopRequested，正是「叫停 → 续跑 ⇒ 仍停」要堵的洞。闸在 [stopGateForResume]：
+        // 被停的会话被拒（发新消息解除）；停的是别的会话才按 176 §2 口径解除放行。
+        if (stopGateForResume(sessionId)) return false
         if (!runQueue.hasItems(sessionId)) {
             _notice.value = "没有排队的消息"
             return false
@@ -1124,7 +1159,6 @@ internal class RunEngine(
             return false
         }
         _sessionKey.value = key
-        stopRequested = false
         _notice.value = null
         _tailTruncated.value = false
         startDrain(sessionId)
@@ -1337,14 +1371,21 @@ internal class RunEngine(
      *
      * 为什么阻塞：选项是**同一步**里的决定，拆成两轮等于让模型带着半截上下文重来。
      * 阻塞有界（与确认卡同一超时），超时返回 null，由工具如实说「没人回答」。
+     *
+     * @param mustAsk 必问让步格（第五百零七批）：法条必问的人批闸（发图/截屏许可、计划
+     *   结构变更、军令状立状/改约、契约批准）**也**从这一口弹卡，但调解器无权过问——
+     *   恒放行、不占问卡预算（[MediatorDecide.shouldAsk] 的让步格）。507 之前这些卡走
+     *   普通档，档位一升就被压掉＝「consultAsk 压得到必问卡」，违背 406 铁律「只少问，
+     *   不压必问」；铁律要求的是：可省的问卡才受压，必问卡不受。
      */
-    fun askUser(req: AskUserRequest): AskUserOption? {
+    fun askUser(req: AskUserRequest, mustAsk: Boolean = false): AskUserOption? {
         // 调解器弹卡闸（406 接线）：左相弹卡前先问调解器——用户已暂停／已熔断／本回合追问
         // 到耐心阈值 ⇒ 压（不弹也不排队：少问，不是延后问），工具侧如实收"没人答"。
-        // 走这里的都是模型自己的问卡（ask_user 工具）：必问的确认卡／御批卡／用户点名的
-        // ④路都不经过此口，所以调解器压不到任何必问（铁律：只少问，不压必问）。
+        // 走这里压得掉的只有**可省**的问卡：模型自己的 ask_user／求助卡③／计划偏离卡；
+        // 必问的确认卡／御批卡根本不经过此口（自有面），从这口进来的法条必问卡带
+        // mustAsk=true 过让步格——所以调解器压不到任何必问（铁律：只少问，不压必问）。
         // 免打扰闸在它后面：压下的卡不进补问队列——LOOP 的契约是"只给两条路"，不是过会儿再问。
-        val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk()
+        val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk(mustAsk)
         if (!mediatorAdvice.allowed) {
             log(mediatorAdvice.line())
             // 第四百九十九批 D 段③：压卡落账（who=LEFT、依据＝档位＋预算）——压下的卡
@@ -1761,6 +1802,40 @@ internal class RunEngine(
             }
         }
         log("抱朴引擎：用户点停止（会话 ${_sessionKey.value}）")
+        // 第五百零七批：叫停落盘（在门外写——临界区纪律「全是非阻塞调用」，几十字节的
+        // 文件不进锁）。记下停的是哪个会话，重启后 [stopGateForResume] 靠它分「续的是
+        // 被停的会话（闸）」还是「停了别的会话来续这个（放行，176 §2 同口径）」。
+        val stoppedSid = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
+        stoppedSessionId = stoppedSid
+        runCatching { stopState?.mark(stoppedSid, System.currentTimeMillis()) }
+            .onFailure { log("抱朴引擎：停机记录落盘失败 ${it.javaClass.simpleName}: ${it.message}") }
+    }
+
+    /**
+     * 叫停态下的续跑/恢复闸（第五百零七批；判据本体在 [RunRules.resumeBlockedWhileStopped]）。
+     *
+     * - 没叫停 ⇒ 放行（行为与接线前逐字一致）；
+     * - 叫停的是**别的会话** ⇒ 这次人工切换本身就是解除（176 §2「停了别的会话来续这个」）：
+     *   清内存标志＋删落盘记录，放行；
+     * - 叫停的就是**这个会话**（或叫停时没记住会话）⇒ 闸：只出提示不动任何状态——
+     *   「继续排队/一键续跑/恢复确认」都是**续**，不是解除；人要解除就发一条新消息。
+     *
+     * @return true ＝ 这次续跑被闸住（调用方直接返回，不再走开跑路径）
+     */
+    private fun stopGateForResume(sessionId: Long): Boolean {
+        if (!stopRequested) return false
+        if (!RunRules.resumeBlockedWhileStopped(stoppedSessionId, sessionId)) {
+            val wasStopped = stoppedSessionId
+            stoppedSessionId = null
+            stopRequested = false
+            runCatching { stopState?.clear() }
+                .onFailure { log("抱朴引擎：停机记录清除失败 ${it.javaClass.simpleName}: ${it.message}") }
+            log("抱朴引擎：会话切换续跑（停的是 ${wasStopped ?: "?"}，续的是 $sessionId）⇒ 解除停机")
+            return false
+        }
+        _notice.value = "已叫停，仍是停的：发一条新消息才会解除（解除只能人工）"
+        log("抱朴引擎：续跑被闸（会话 $sessionId 处于叫停态）——继续排队/一键续跑/恢复确认都不解停")
+        return true
     }
 
     /**
@@ -1788,9 +1863,13 @@ internal class RunEngine(
      * @param interruptedStepValue 该会话落库的 interrupted_step（-1 = 其实没中断）
      */
     fun resume(sessionId: Long, interruptedStepValue: Int) {
+        // 507 判定③（:1781）：**恢复不该清**——一键续跑（进程被杀后重进）是续，不是解除。
+        // 原来这里先抢门再清 stopRequested：叫停后重启，点一下续跑就把「仍是停的」解掉了。
+        // 现在闸在抢门**之前**（被拒时不碰活跃门）；跨会话的解除语义在 [stopGateForResume]。
+        if (stopGateForResume(sessionId)) return
         acquireOrNotice(sessionId) ?: return
-        stopRequested = false
         // 176 §2：与 send 的 STARTED 同口径——续跑也可能是「停了别的会话来续这个」
+        // （507 起「停别的会话」的解除动作在 stopGateForResume 里做，这里不再清标志）。
         adoptInterjectionsFor(sessionId)
         // 续跑也要清：上一轮的截断提示不许跟着这一轮（第四十批）
         _tailTruncated.value = false
@@ -1857,9 +1936,13 @@ internal class RunEngine(
      * 模型要看见工具结果才接着往下说，C 段回灌保证它看得见）。
      */
     fun approveRestoredPending(sessionId: Long) {
+        // 507 判定④（:1850）：**恢复不该清**——重启后批准落库的确认并继续跑完，是恢复，
+        // 不是解除；叫停后重启，批一张旧卡不该把「仍是停的」顺手解掉。闸在抢门**之前**
+        // （被拒时不碰活跃门）；跨会话的解除语义在 [stopGateForResume]。
+        if (stopGateForResume(sessionId)) return
         acquireOrNotice(sessionId) ?: return
-        stopRequested = false
         // 176 §2：与 send/resume 同口径——恢复确认也可能是「停了别的会话来恢复这个」
+        // （507 起「停别的会话」的解除动作在 stopGateForResume 里做，这里不再清标志）。
         adoptInterjectionsFor(sessionId)
         runExecutor.execute {
             try {
@@ -3476,7 +3559,8 @@ internal class RunEngine(
             .getOrNull()
             .orEmpty()
         log("抱朴引擎：发图同意闸开（本轮 $imageCount 张；${VisionRouting.describe(verified)}）")
-        val picked = askUser(VisionConsent.request(verified, imageCount))
+        // 507：发图许可是法条必问（124 派工单口径）——走让步格，调解器压不掉。
+        val picked = askUser(VisionConsent.request(verified, imageCount), mustAsk = true)
         return when (VisionConsent.decide(picked?.id)) {
             VisionConsent.Decision.SEND -> {
                 turnVisionAuthorized = true
@@ -4561,7 +4645,8 @@ internal class RunEngine(
         val sensitive = info != null && SensitivePage.isSensitive(info.url, info.title)
         if (!sensitive && shotAuthorizedSessions.contains(sessionId)) return null
         log("抱朴截图：需用户确认（session=$sessionId，sensitive=$sensitive）")
-        val picked = askUser(ScreenshotConsent.request(hostOf(info?.url), info?.title, sensitive))
+        // 507：截屏上送许可也是法条必问——走让步格，调解器压不掉。
+        val picked = askUser(ScreenshotConsent.request(hostOf(info?.url), info?.title, sensitive), mustAsk = true)
         val url = redactedUrl(info?.url)
         val title = info?.title.orEmpty()
         return when (ScreenshotConsent.decide(picked?.id)) {
@@ -4650,7 +4735,8 @@ internal class RunEngine(
             ShotTier.ASK_TO_FOREGROUND -> Unit
         }
         log("抱朴截图：玄览不在屏上，征询是否切屏（session=$sessionId）")
-        val picked = askUser(ScreenshotSwitchConsent.request(hostOf(info?.url), info?.title))
+        // 507：截屏开关许可——法条必问，走让步格。
+        val picked = askUser(ScreenshotSwitchConsent.request(hostOf(info?.url), info?.title), mustAsk = true)
         return when (ScreenshotSwitchConsent.decide(picked?.id)) {
             ScreenshotSwitchConsent.Decision.AGREE -> {
                 log(ScreenshotConsent.auditLine("切屏征询=同意", url, title, null, null))
@@ -4860,14 +4946,15 @@ internal class RunEngine(
             )
         }
         log("抱朴计划：结构变更待确认（新增 ${change.added.size} 条 / 删去 ${change.removed.size} 条）")
-        val picked = askUser(PlanGuardCards.changeRequest(change))
+        // 507：计划结构变更是人批闸——必问，走让步格（档位升起来也压不掉）。
+        val picked = askUser(PlanGuardCards.changeRequest(change), mustAsk = true)
         settleChangeAnswer(call, change, picked)?.let { return it }
         // 第四百零四批·缺陷A：超时 ≠ 她答过（161 纪律照旧），但**不许静默降级**——
         // 401 验机 M7 实锤的成因链第一环：一次超时就回「用户没同意改动」，模型信以为真
         // 放弃更新 ⇒ 计划没立 ⇒ 长程任务的军令状全程 0 行。先重问一次（第一次可能只是
         // 没看见）；两次都没人 ⇒ 如实告知「计划未立」（连军令状也未立），见 changeTimeoutNoPlan。
         log("抱朴计划：确认卡没人回答（timeout）⇒ 重问一次")
-        val again = askUser(PlanGuardCards.changeRequest(change))
+        val again = askUser(PlanGuardCards.changeRequest(change), mustAsk = true)
         settleChangeAnswer(call, change, again)?.let { return it }
         // 这次被拦的调用带没带立状候选（长程任务本来要在这一版上开工立状）——降级话术要点名。
         val withPledgeCandidate = planController.previewPledge(call.arguments) != null
@@ -4998,7 +5085,8 @@ internal class RunEngine(
             }
             is AmendDecision.NeedUser -> {
                 log("抱朴军令状：范围变更卡（第 ${first.change.fromVersion} 版，${first.change.kinds.size} 类变更）")
-                val picked = askUser(PlanPledgeAmendCards.amendRequest(first.change))
+                // 507：军令状范围变更是人批闸——必问，走让步格。
+                val picked = askUser(PlanPledgeAmendCards.amendRequest(first.change), mustAsk = true)
                 if (PlanPledgeAmendCards.approved(picked?.id)) {
                     planController.authorizeNextChange()
                     return null
@@ -5042,7 +5130,8 @@ internal class RunEngine(
     private val amendRiskGateImpl = object : AmendRiskGate {
         override fun reauthorize(recheck: AmendRiskRecheck): Boolean {
             log("抱朴授权：改约升档 ⇒ 重新过授权闸（${recheck.brief()}）")
-            val picked = askUser(AmendRiskCards.reauthorizeRequest(recheck))
+            // 507：改约升档的重新授权——法条必问，走让步格。
+            val picked = askUser(AmendRiskCards.reauthorizeRequest(recheck), mustAsk = true)
             return AmendRiskCards.approved(picked?.id)
         }
 
@@ -5071,7 +5160,8 @@ internal class RunEngine(
         if (call.name != PlanTool.NAME) return
         val candidate = planController.previewPledge(call.arguments) ?: return
         log("抱朴军令状：长程任务开工卡（${candidate.entries.size} 项，候选 pledge:${candidate.id}）")
-        val picked = askUser(PlanPledgeCards.pledgeRequest(candidate))
+        // 507：开工立状是人批闸——必问，走让步格（压掉＝无声地把长程任务打成无状）。
+        val picked = askUser(PlanPledgeCards.pledgeRequest(candidate), mustAsk = true)
         val approved = PlanPledgeCards.approved(picked?.id)
         planController.answerPledgeCard(candidate, approved)
         if (!approved && picked == null) log("抱朴军令状：开工卡没人回答（超时）⇒ 不立状，本任务不设结项门")
@@ -5145,7 +5235,8 @@ internal class RunEngine(
             "抱朴契约：新上限声明待批准（${declared.steps.size} 步／白名单 ${declared.touches.size} 项／" +
                 "只读 ${declared.readonly.size} 项／预估问 ${declared.expectedAsks} 次）",
         )
-        val picked = askUser(PlanContractCards.approvalRequest(declared))
+        // 507：契约上限批准——人批闸，必问，走让步格。
+        val picked = askUser(PlanContractCards.approvalRequest(declared), mustAsk = true)
         val accepted = ContractApprovalRules.approved(picked?.id)
         // 只有真点了「批准」才算数；点了「不批准」记这一版（同版不再问）；超时两者都不记。
         planController.answerContractCard(declared.takeIf { accepted }, accepted)
@@ -5190,7 +5281,8 @@ internal class RunEngine(
      *   非 null = 回灌给模型的那句实话（取消／换做法／这一条扩不动）。
      */
     private fun contractDeviationCard(call: ToolCall, dev: ContractDeviation): String? {
-        val picked = askUser(dev.request)
+        // 507：契约偏离卡截在动作发生之前（fail-closed）——必问，走让步格。
+        val picked = askUser(dev.request, mustAsk = true)
         val action = ContractDeviationRules.actionFor(picked?.id)
         log("抱朴契约：偏离卡回答 $action（违约 ${dev.check.breach}，工具 ${call.name}）")
         if (action == ContractDeviationAction.EXTEND_CONTRACT) {

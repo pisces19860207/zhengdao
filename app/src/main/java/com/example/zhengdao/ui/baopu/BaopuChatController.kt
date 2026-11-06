@@ -30,6 +30,7 @@ import com.example.zhengdao.baopu.EvolutionAuditLog
 import com.example.zhengdao.baopu.EvolutionDecision
 import com.example.zhengdao.baopu.EvolutionDecisionPort
 import com.example.zhengdao.baopu.EvolutionEvidence
+import com.example.zhengdao.baopu.toAssessment
 import com.example.zhengdao.baopu.EvolutionShadowHuman
 import com.example.zhengdao.baopu.EvolutionShadowLog
 import com.example.zhengdao.baopu.ExampleBank
@@ -4413,8 +4414,7 @@ internal class BaopuChatController(context: Context) {
      *   效果   ← [com.example.zhengdao.baopu.SkillEffects.outcomesFor]（85 的按技能聚合）；
      *   自检   ← [com.example.zhengdao.baopu.dryRunSelfCheck]（84 判据层事前试跑，只读）；
      *   eval   ← [com.example.zhengdao.baopu.eval.selectEvalEvidence]（第一百六十八批：
-     *            优先 7 天内的个人生产证据 files/eval/prod-result.json，否则回退发版证据
-     *            assets/eval/eval-result.json；两者都没有 ⇒ null ⇒ DEFER，不许默认过线；
+     *            prod → 触发账本读数（507）→ 发版证据 的次序；都没有 ⇒ null ⇒ DEFER；
      *            来源与日期随证据带进审计与建议卡，不许两套分数混用）；
      *   决策   ← [EvolutionDecisionPort.decide]（88 决策口，每次调用恰好落一条审计）。
      *
@@ -4439,20 +4439,8 @@ internal class BaopuChatController(context: Context) {
         // 优先 7 天内的个人生产证据（本机 files/eval/prod-result.json），
         // 否则回退发版证据（assets/eval/eval-result.json）；
         // 两者都没有 ⇒ null ⇒ policy 判 DEFER（不许默认过线）。
-        val prodEval = ProdEvalResultFile.latest(appCtx)
-        val releaseEval = EvalResultFile.latest(appCtx)
-        val evalResult = com.example.zhengdao.baopu.eval.selectEvalEvidence(
-            prod = prodEval,
-            release = releaseEval,
-            now = System.currentTimeMillis(),
-        )
-        if (prodEval != null && evalResult !== prodEval) {
-            // 有生产证据但已过期：回退到发版证据可以，但要留一行账——
-            // 不许安静地换来源（派工单「来源和日期必须标」在日志这一侧的同款要求）。
-            com.example.zhengdao.core.RunLog.log(
-                "[baopu-eval] 个人生产证据已过期（ranAt=${prodEval.ranAt}），本次判定按发版证据",
-            )
-        }
+        // 507：第三来源＝触发账本读数的汇总（装配细节在 [selectEvalEvidenceForJudge]）。
+        val evalResult = selectEvalEvidenceForJudge()
         // 第一百零九批：L3-lite **影子**。同一轮判定顺带问一句「若把低风险自动批准那条闸
         // 开起来，这条会批／会拒／会搁置」，只往 进化影子.jsonl 追加账。红线三条：
         //   不改候选状态、不自批、不碰开关（L3_AUTO_LOW_RISK 仍是 false，本类也不实例化策略）。
@@ -4464,23 +4452,27 @@ internal class BaopuChatController(context: Context) {
         // 65/89「只记录不阻塞」，与旧手写循环同口径），决策本体改走 88 批的
         // `decidePending`（此前控制器手写逐条 `port.decide`，把批量读口晾成生产零调用）。
         // 被拒留痕（rejected 上面已滤）与装配失败的候选都不进决策口：不判、不落审计。
-        val assessments = LinkedHashMap<String, com.example.zhengdao.baopu.EvolutionAssessment>(pending.size)
+        //
+        // 第五百零七批：装配改走 **EvolutionEvidence → inputFor** 这条桥（99 批立的原装形状）
+        // ——先装证据包，再经 `toAssessment`/`inputFor` 进决策口。装配点与桥从此是同一把尺
+        // （不许长出第二套字段映射），触发账本喂进 eval 槽的读数也随同一个口进审计与影子。
+        val evidences = LinkedHashMap<String, com.example.zhengdao.baopu.EvolutionEvidence>(pending.size)
         for (c in pending) {
             runCatching {
-                assessments[c.id] = com.example.zhengdao.baopu.EvolutionAssessment(
-                    riskCategory = com.example.zhengdao.baopu.EvolutionRiskCategory.defaultFor(c.kind),
-                    selfCheck = com.example.zhengdao.baopu.dryRunSelfCheck(
-                        c,
-                        skillFileOf(c.target, projectRoot, globalRoot),
-                    ),
-                    eval = evalResult,
+                evidences[c.id] = com.example.zhengdao.baopu.EvolutionEvidence(
                     effect = (
                         if (c.target.isNotBlank()) {
                             com.example.zhengdao.baopu.SkillEffects.outcomesFor(db, c.target)
                         } else {
                             emptyMap()
                         }
-                        ).toEffectSnapshot(com.example.zhengdao.baopu.evidenceIdsOf(c)),
+                        ),
+                    effectSignalIds = com.example.zhengdao.baopu.evidenceIdsOf(c),
+                    selfCheck = com.example.zhengdao.baopu.dryRunSelfCheck(
+                        c,
+                        skillFileOf(c.target, projectRoot, globalRoot),
+                    ),
+                    eval = evalResult,
                 )
             }.onFailure {
                 com.example.zhengdao.core.RunLog.log(
@@ -4492,18 +4484,19 @@ internal class BaopuChatController(context: Context) {
             .decidePending(
                 store,
                 com.example.zhengdao.baopu.EvolutionAssessmentSource { c ->
-                    assessments[c.id] ?: com.example.zhengdao.baopu.EvolutionAssessment()
+                    evidences[c.id]?.toAssessment(c.kind) ?: com.example.zhengdao.baopu.EvolutionAssessment()
                 },
                 operatorId = "settle",
-            ) { c -> assessments.containsKey(c.id) }
+            ) { c -> evidences.containsKey(c.id) }
             .associateBy { it.candidateId }
 
-        val out = ArrayList<EvolutionSuggestion>(assessments.size)
+        val out = ArrayList<EvolutionSuggestion>(evidences.size)
         for (c in pending) {
             val suggestion = runCatching {
                 val decision = decisions[c.id] ?: return@runCatching null
-                // 影子要的 input 与 decidePending 内部喂决策口的是同一把尺（纯函数重放）。
-                val input = com.example.zhengdao.baopu.toDecisionInput(c, assessments[c.id]!!)
+                // 影子要的 input 与 decidePending 内部喂决策口的是同一把尺（纯函数重放，
+                // 507 起真走 inputFor——与决策口同一个组装函数，不是第二份手写映射）。
+                val input = com.example.zhengdao.baopu.inputFor(c, evidences[c.id]!!)
                 // 影子单独兜：账记不上**不许**把真判定一起带走——人是决定，影子只是数。
                 runCatching {
                     shadowRows += shadowVerdictOf(input, decision, shadowAt)
@@ -4536,7 +4529,7 @@ internal class BaopuChatController(context: Context) {
             if (suggestion != null) {
                 // 第二百二十六批 G5：自检没过的候选不出卡（降级为一行日志）。
                 // 判定与影子照常落账（上面已写），这里只决定"给不给用户看这张卡"。
-                val selfCheck = assessments[c.id]?.selfCheck
+                val selfCheck = evidences[c.id]?.selfCheck
                 if (com.example.zhengdao.baopu.shouldPresentSuggestion(selfCheck)) {
                     out += suggestion
                 } else {
@@ -4570,6 +4563,47 @@ internal class BaopuChatController(context: Context) {
             }
         }
         return out
+    }
+
+    /**
+     * eval 证据的**生产读法**（168 的消费点 B ＋ 507 的第三来源；从判定流程里抽出来
+     * 是为了让「次序与记账」只有一个家，判定函数只拿结果）：
+     *
+     *   ① 7 天内的个人生产证据（files/eval/prod-result.json）；
+     *   ② 第五百零七批：触发账本最近 N 条读数的汇总（files/evolution/trigger-ledger.jsonl，
+     *      此前这本账的唯一读者是限频预算——评了也白评）；同一天平上的**本机读数**，
+     *      比随包的构建期快照新，插在 prod 与发版之间；同样受保鲜期约束（旧读数不冒充）；
+     *   ③ 发版证据（assets/eval/eval-result.json）；
+     *   都没有 ⇒ null ⇒ policy 判 DEFER（UNVERIFIABLE，不得当通过——不猜、不编分数）。
+     *
+     * 有生产证据但落到了更低优先级 ⇒ 留一行账（不许安静地换来源，按真落点记账）。
+     */
+    private fun selectEvalEvidenceForJudge(): com.example.zhengdao.baopu.EvolutionEval? {
+        val prodEval = ProdEvalResultFile.latest(appCtx)
+        val releaseEval = EvalResultFile.latest(appCtx)
+        val triggerRows = runCatching {
+            com.example.zhengdao.baopu.evolution.trigger.TriggerLedgerStore(
+                com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring.ledgerFile(appCtx),
+            ).read()
+        }.getOrDefault(emptyList())
+        val triggerEval = com.example.zhengdao.baopu.triggerEvalOf(triggerRows)
+        val evalResult = com.example.zhengdao.baopu.eval.selectEvalEvidence(
+            prod = prodEval,
+            release = releaseEval,
+            now = System.currentTimeMillis(),
+            trigger = triggerEval,
+        )
+        if (prodEval != null && evalResult !== prodEval) {
+            val fellTo = when (evalResult?.source) {
+                com.example.zhengdao.baopu.eval.EvalEvidenceSource.TRIGGER -> "本机触发评测读数"
+                com.example.zhengdao.baopu.eval.EvalEvidenceSource.RELEASE -> "发版证据"
+                else -> "无证据（按 DEFER 判）"
+            }
+            com.example.zhengdao.core.RunLog.log(
+                "[baopu-eval] 个人生产证据已过期（ranAt=${prodEval.ranAt}），本次判定按$fellTo",
+            )
+        }
+        return evalResult
     }
 
     /**

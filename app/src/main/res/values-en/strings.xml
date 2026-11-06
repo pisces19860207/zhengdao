@@ -1106,6 +1106,8 @@
     <!-- Batch 168: evidence source line on suggestion cards -->
     <string name="decision_evidence_personal">Personal production evidence</string>
     <string name="decision_evidence_release">Release evidence</string>
+    <!-- Batch 507: on-device trigger-eval readings (third evidence source, same footer line) -->
+    <string name="decision_evidence_trigger">On-device trigger eval</string>
     <string name="decision_evidence_date_unknown">date unknown</string>
     <string name="decision_suggest_evidence">Evidence: %1$s (%2$s)</string>
     <string name="decision_suggest_evidence_none">Evidence: none (missing or expired — deferred this round)</string>
