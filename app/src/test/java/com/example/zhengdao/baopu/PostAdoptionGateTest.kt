@@ -3,6 +3,11 @@
 // 第一百批 §6 E1–E6：**源码门禁**。每条门禁都指向一条会出人命的红线：
 // 自动回滚（文件被换掉）、L3 开关被打开（绕过人批）、后台定时器（偷偷干活）、
 // 新样式（视觉漂移）。门禁本身必须能红——负例见交付报告。
+//
+// 509（2026-11-07）：BaopuPostAdoptionCard.kt 已删——采纳后效果卡由 104 批决策卡家族
+// 接棒（DecisionCardSpecs.effect）。原钉这张卡的两条门禁随卡退役：
+// E6（不引新视觉常量/动效）、E7（RETIRE 不给可点回滚，改由 effect 规格里
+// retire ⇒ tosettings、非 retire 才挂 rollback 实现）；E4 扫描名单同步摘卡。
 package com.example.zhengdao.baopu
 
 import org.junit.Assert.assertEquals
@@ -25,7 +30,6 @@ class PostAdoptionGateTest {
     private val model = raw("$mainRoot/baopu/PostAdoption.kt")
     private val port = raw("$mainRoot/baopu/PostAdoptionPort.kt")
     private val log = raw("$mainRoot/baopu/PostAdoptionLog.kt")
-    private val card = raw("$mainRoot/ui/baopu/BaopuPostAdoptionCard.kt")
     private val controller = raw("$mainRoot/ui/baopu/BaopuChatController.kt")
 
     /** 整个 main 源码树（门禁要扫全仓，不能只看新文件）。 */
@@ -76,7 +80,7 @@ class PostAdoptionGateTest {
     @Test
     fun `E4_没有后台定时器也没有新权限`() {
         val banned = listOf("WorkManager", "AlarmManager", "JobScheduler", "setRepeating", "PeriodicWorkRequest")
-        (listOf(model, port, log, card) + controller).forEachIndexed { i, text ->
+        (listOf(model, port, log) + controller).forEachIndexed { i, text ->
             banned.forEach { word ->
                 assertFalse("第 $i 份文件里出现了 $word（本批不许偷偷定时跑）", text.contains(word))
             }
@@ -88,25 +92,6 @@ class PostAdoptionGateTest {
         assertTrue(
             "复测必须真的读 85 的效果聚合（不是自己再算一份）",
             controller.contains("SkillEffects.outcomesFor(db"),
-        )
-    }
-
-    @Test
-    fun `E6_新卡不引新视觉常量与动效`() {
-        assertFalse("不许自造颜色", card.contains("Color("))
-        assertFalse("不许加动效", card.contains("animate") || card.contains("tween("))
-        assertFalse("不许加渐变/画笔", card.contains("Brush."))
-        // 2026-10-22 第一百三十七批：原断言钉的是「与学习卡同内距（12/10）+ tonalElevation 3」——
-        // 换四档容器后内距由信息卡统一给（12dp），同一性改由**同一个容器函数**保证，
-        // 比"两处巧合相同的内距数字"更强。
-        assertTrue("必须走四档容器的信息卡档", card.contains("BaopuInfoContainer"))
-    }
-
-    @Test
-    fun `E7_卡上的回滚按钮只在有回滚路时可用`() {
-        assertTrue(
-            "RETIRE（没备份）不许给可点的回滚按钮",
-            card.contains("enabled = notice.verdict == PostAdoptionVerdict.ROLLBACK"),
         )
     }
 }
