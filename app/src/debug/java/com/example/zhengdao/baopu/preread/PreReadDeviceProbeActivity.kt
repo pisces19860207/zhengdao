@@ -105,7 +105,7 @@ class PreReadDeviceProbeActivity : Activity() {
             ReadFirstOrder(
                 taskKey = task,
                 items = listOf(
-                    ReadFirstItem("GuardPipeline.kt:441", ReadFirstKind.FILE_LINE, "闸的落点：② 之后 ③ 之前"),
+                    ReadFirstItem("GuardPipeline.kt:465", ReadFirstKind.FILE_LINE, "闸的落点：② 之后 ③ 之前"),
                     ReadFirstItem("判据①（未交回执调写工具⇒报错拦住）", ReadFirstKind.CRITERION),
                     ReadFirstItem("E-173（长门禁后先 fetch 再 commit）", ReadFirstKind.PITFALL),
                 ),
@@ -144,7 +144,7 @@ class PreReadDeviceProbeActivity : Activity() {
         val submitGaps = PreReadWiring.submitReceipt(
             PreReadReceipt(
                 taskKey = task,
-                readLines = listOf("GuardPipeline.kt:441", "判据①", "E-173"),
+                readLines = listOf("GuardPipeline.kt:465", "判据①", "E-173"),
                 understanding = "闸落在路径守卫之后、判定之前：被拦的调用不进 RiskGate，也不碰 W3；只拦写不拦读。",
                 plannedFiles = listOf("被写的文件.txt"),
             ),
@@ -156,7 +156,7 @@ class PreReadDeviceProbeActivity : Activity() {
 
         // E：可回看（判据④）＋ 账在盘上（判据③的原件由 run-as 拉，这里只证明它存在）
         val screen = PreReadWiring.review(listOf("被写的文件.txt"))
-        val perItem = listOf("GuardPipeline.kt:441", "判据①", "E-173").count { t -> screen.any { it.contains(t) } }
+        val perItem = listOf("GuardPipeline.kt:465", "判据①", "E-173").count { t -> screen.any { it.contains(t) } }
         record("E", "回看一屏（清单↔回执逐条）", verdict(perItem == 3), "清单 3 条里回执对到 $perItem 条｜行数=${screen.size}")
         // 判据④要的是**这一屏的原文**（"它当时怎么理解的"），不是"3/3"这个结论 ⇒ 逐行落读数，
         // logcat／屏上／结果文件三处都能看到同样这 11 行。
