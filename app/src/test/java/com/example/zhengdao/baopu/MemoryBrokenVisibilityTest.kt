@@ -56,17 +56,23 @@ class MemoryBrokenVisibilityTest {
     }
 
     /**
-     * 「读坏了」表达得出来（第一步：MemoryStore 自己）。
+     * 「判不了」表达得出来（第一步：MemoryStore 自己）。
      *
      * **改前表现**：`loadAll()` 只给得出「还剩几条」，坏文件的名字在整条读路上没有任何出口
      * （`reindex()` 有 `brokenFiles`，但那是另一把口子，召回路径不经过它）⇒ 本条红。
+     *
+     * **494 修正**：这份样本是「没有 front-matter 的合法 markdown」，不是坏文件——
+     * 它进 `unstructuredFiles`（原样保留、只标未结构化），**不许**再进 `brokenFiles`。
+     * 「不静默」的要求没变，出口换了更诚实的一个。
      */
     @Test
     fun `坏文件有出口_loadAllWithBroken报得出名字`() {
         val bad = seedOneGoodOneBroken()
         val read = store.loadAllWithBroken()
         assertEquals("好记忆照常在内", 1, read.entries.size)
-        assertEquals("坏文件必须报出文件名", listOf(bad.name), read.brokenFiles)
+        assertEquals("未结构化文件必须报出文件名", listOf(bad.name), read.unstructuredFiles)
+        assertTrue("合法 .md 不许进坏文件计数", read.brokenFiles.isEmpty())
+        assertEquals("四类里只落 formatMismatch 一类", 1, read.sheet.count(ScanSkipKind.FORMAT_MISMATCH))
     }
 
     /** loadAll 的既有口径不许动（返回类型、条目集合、与 reindex 同源）。 */
@@ -132,8 +138,15 @@ class MemoryBrokenVisibilityTest {
     @Test
     fun `接线_引擎把坏文件说出去`() {
         val src = code("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt")
-        assertTrue("引擎必须问坏文件：RunEngine 没接 loadAllWithBroken()",
-            src.contains("memoryStore?.loadAllWithBroken()?.brokenFiles"))
+        // 494：展示从「只数 brokenFiles」升级成「四类分列的体检单」，链式字面量随之放宽到
+        // 「仍调 loadAllWithBroken()」。259 的两条硬要求（引擎问这个口、日志含「记忆读侧」）
+        // 一条没松；另加两条钉住新展示：汇总行与逐条原因都必须在引擎里出得来。
+        assertTrue("引擎必须问扫描读数：RunEngine 没接 loadAllWithBroken()",
+            src.contains("memoryStore?.loadAllWithBroken()"))
+        assertTrue("494：体检单按四类分列（sheet.line() 是唯一汇总写法）",
+            src.contains("read.sheet.line()"))
+        assertTrue("494：每条原因可查（detailLines 要接进日志）",
+            src.contains("read.sheet.detailLines()"))
         assertTrue("坏文件要进日志（只报事实，不改判据）",
             src.lineSequence().any { it.contains("log(") && it.contains("记忆读侧") })
         // 闸钉的口径仍在（本批不许换掉它）
