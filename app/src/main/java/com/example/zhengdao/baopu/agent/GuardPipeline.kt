@@ -42,6 +42,7 @@ import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
 import com.example.zhengdao.baopu.plan.TouchFace
 import com.example.zhengdao.baopu.preread.PreReadWiring
+import com.example.zhengdao.baopu.safety.SafetyHooks
 import com.example.zhengdao.baopu.scout.LedgerFanout
 import com.example.zhengdao.core.RunLog
 import org.json.JSONArray
@@ -279,6 +280,15 @@ internal class GuardPipeline(
      * 档位闸的三个档各自行为（判据①）只有从这里喂档位才抓得住。
      */
     private val askTier: () -> AskTier = { AskGovernance.currentTier },
+    /**
+     * 第五百零四单（安全三件）：**监督缝**——471 停机闸（intercept）、470 回滚保险箱
+     * （beforeRun 入库）、469 起居注＋关键通知（afterRun）的生产缝点。
+     *
+     * 为什么是注入而不是直接摸单例：照 contracts/grantWiring 同一条老规矩——管线是
+     * 执行层，"偷偷读世界"就没法在闸上直接测。排在参数表**最后**且缺省 [SafetyHooks.NONE]
+     * ⇒ 存量调用点（含测试）一个字不改、行为逐字节不变；NONE 三口全静默。
+     */
+    private val supervision: SafetyHooks = SafetyHooks.NONE,
 ) {
 
     sealed interface Result {
@@ -421,7 +431,14 @@ internal class GuardPipeline(
     }
 
     /** 第 ①②③ 段的唯一实现（观测收口在包装层 [prepare]）。 */
-    private fun prepareImpl(call: ToolCall, skipConfirm: Boolean = false): Prepared {
+    private fun prepareImpl(call: ToolCall, skipConfirm: Boolean): Prepared {
+        // 第五百零四单（471）：监督缝的最前一格——停机期（软停/硬停）与"解除停机"形状的
+        // 调用在这里就拒（不碰注册表、不碰判定；拒因原话回灌给模型）。放在 ① 之前：
+        // 停机时连"查一次注册表"都是多余的动作。
+        supervision.intercept(call.name)?.let { reason ->
+            log("抱朴监督：拦下 ${call.name}（停机期/解除拒）")
+            return Prepared.Settled(Result.Rejected(call, reason))
+        }
         // ① 注册表校验（含 Schema）
         val spec = registry.find(call.name)
             ?: return Prepared.Settled(
@@ -650,7 +667,8 @@ internal class GuardPipeline(
             log = log,
         )
         when (grantLane.disposition) {
-            WiringDisposition.ALLOW -> return Prepared.Ready(effectiveCall, spec)
+            // 第五百零四单（470）：放行先入库——动作还没发生，此刻的字节就是"最后一次已知好状态"。
+            WiringDisposition.ALLOW -> return Prepared.Ready(effectiveCall.also { safetyStash(spec, it) }, spec)
             WiringDisposition.REJECT -> {
                 log("抱朴授权：硬拒 ${effectiveCall.name}（${grantLane.note}）——这次动作不发生")
                 // 2026-11-02 裁定 b：同上一格——授权闸拒绝记偏差账，不发灾异事件。
@@ -669,8 +687,52 @@ internal class GuardPipeline(
             }
             else -> Unit
         }
+        if (mustAsk) {
+            // 第五百零四单（470①）：>10MB 原件"不整份备份"的说明钉在卡上（派工单原话
+            // "并在卡上说明"）——并进 riskAsk，卡面那一行照旧由 NeedsConfirm 携带。
+            riskAsk = listOfNotNull(riskAsk, supervision.bigFileNote(spec.name, safetyPathsOf(effectiveCall)))
+                .joinToString("")
+                .ifBlank { null }
+        }
         if (mustAsk) return Prepared.Settled(Result.NeedsConfirm(effectiveCall, riskAsk))
+        // 第五百零四单（470）：真要执行了——先入库（此刻的字节＝"最后一次已知好状态"）。
+        safetyStash(spec, effectiveCall)
         return Prepared.Ready(effectiveCall, spec)
+    }
+
+    /** 470① 的动作前入库（只对写类、只对有路径目标的调用；一笔一个 opId 一炉）。 */
+    private fun safetyStash(spec: ToolSpec, effectiveCall: ToolCall) {
+        if (spec.readOnly) return
+        val paths = safetyPathsOf(effectiveCall)
+        if (paths.isEmpty()) return
+        supervision.beforeRun(spec.name, effectiveCall.id, paths)
+    }
+
+    /** 这次调用要碰的路径目标（与 [contractFaces] 同一口径：pathKeysFor＋PathBatch）。 */
+    private fun safetyPathsOf(call: ToolCall): List<String> =
+        (pathKeysFor(call.name, call.arguments).mapNotNull { key ->
+            call.arguments.optString(key).trim().takeIf { it.isNotEmpty() }
+        } + PathBatch.of(call.arguments)).distinct()
+
+    /** 469 的执行收口（唯一写起居注 ACTION 行的地方——判据①的行数对账靠它唯一）。 */
+    private fun safetyAfterRun(spec: ToolSpec, call: ToolCall, outcome: ToolOutcome) {
+        val ok = outcome is ToolOutcome.Ok
+        val toolRejected = outcome is ToolOutcome.Rejected
+        val brief = when (outcome) {
+            is ToolOutcome.Ok -> outcome.text
+            is ToolOutcome.Failed -> outcome.error
+            is ToolOutcome.Rejected -> outcome.reason
+        }
+        supervision.afterRun(
+            tool = spec.name,
+            readOnly = spec.readOnly,
+            riskTier = spec.riskTier,
+            opId = call.id,
+            paths = safetyPathsOf(call),
+            ok = ok,
+            toolRejected = toolRejected,
+            brief = brief.take(120),
+        )
     }
 
     /**
@@ -700,6 +762,9 @@ internal class GuardPipeline(
         outcome: ToolOutcome,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
     ): Result {
+        // 第五百零四单（469）：执行收口——起居注一行＋关键通知＋硬停在飞自动回滚。
+        // 细节全在监督缝实现里；这里一行，不动 ④⑤ 的任何既有逻辑。
+        safetyAfterRun(spec, effectiveCall, outcome)
         val text = when (outcome) {
             // 第二百八十七批：越界不再有"授权说明"要回灌（工作区不是权限边界，
             // 读全盘不弹卡）；工具自己的回执里会写清"备份/没备份"与"能不能回"。

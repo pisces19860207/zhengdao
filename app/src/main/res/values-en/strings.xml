@@ -1700,4 +1700,23 @@
     <string name="unattended_disarm">End duty &amp; produce report</string>
     <string name="unattended_scope_hint">Entrusted scope (plain words: for whom, do what)</string>
     <string name="unattended_midterm">Produce interim report (duty active)</string>
+
+    <!-- 504: safety trio (external supervision / strong rollback / halt-in-loop) -->
+    <string name="safety_page_title">Safety Console</string>
+    <string name="safety_stop_action">Stop</string>
+    <string name="safety_hard_stop_action">Hard stop</string>
+    <string name="safety_lift_action">Lift halt (human)</string>
+    <string name="safety_rollback_card">Strong rollback (originals stashed before actions; self-verified after)</string>
+    <string name="safety_rollback_session">Roll this session back to last known good state</string>
+    <string name="safety_rollback_task">Roll this task back to last known good state</string>
+    <string name="safety_diary_card">Action diary (when / basis / what / result)</string>
+    <string name="safety_notify_card">Key action notifications</string>
+    <string name="safety_notif_key_title">Key action: %1$s</string>
+    <string name="safety_notif_key_text">%1$s (for your awareness only, no action needed)</string>
+    <string name="safety_notif_halt_title">%1$s engaged</string>
+    <string name="safety_notif_halt_text">Stopped by: %1$s; no new actions until a human lifts the halt (open Safety Console)</string>
+    <string name="safety_settings_card">Safety &amp; supervision (halt / rollback / action diary)</string>
+    <string name="safety_settings_running">Running (no halt; stop / rollback / notification rules live in the Safety Console)</string>
+    <string name="safety_settings_halted">%1$s engaged (halt persists across app/phone restarts; only a human can lift it)</string>
+    <string name="safety_settings_open">Open Safety Console</string>
 </resources>

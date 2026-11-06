@@ -285,6 +285,22 @@
             android:theme="@style/Theme.Zhengdao"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
 
+        <!-- 安全台（504）：叫停/硬停/解除/回滚/起居注一页。解除停机只有这页的人工按钮一个入口
+             （唯一保留的人工点）。exported=false：外部入口只有 zhengdao://safety 深链一条
+             （经 MainActivity 路由）。 -->
+        <activity
+            android:name=".baopu.safety.SafetyActivity"
+            android:exported="false"
+            android:label="@string/safety_page_title"
+            android:theme="@style/Theme.Zhengdao"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
+        <!-- 通知栏"叫停/硬停"按钮的落点（504，471①）：只收本 App 自己的 PendingIntent
+             （Intent 显式指向本类），exported=false——外部没有入口。 -->
+        <receiver
+            android:name=".baopu.safety.SafetyNotificationReceiver"
+            android:exported="false" />
+
         <!-- 精确闹钟的落点（第一百六十七批 §3）：**必须是清单里的静态组件**，不能
              Context.registerReceiver —— AlarmManager 登记的 PendingIntent 要跨进程重启生效，
              动态注册的接收器在重启后不存在，打到的闹钟会因为找不到组件而静默丢掉。

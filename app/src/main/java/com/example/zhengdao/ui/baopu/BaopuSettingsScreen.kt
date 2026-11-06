@@ -480,6 +480,25 @@ internal fun BaopuSettingsScreen(
             // 写口只有 TriggerSwitch.set 一处；关掉的源在 TriggerPass 里整个不存在——
             // 不是"不触发"，是连事件都不看。规则的建/停走 event_trigger 工具（必过确认卡）。
             Spacer(Modifier.height(12.dp))
+            // 第五百零四单（安全三件）：安全台入口——叫停/解除/回滚/起居注都在那一页；
+            // 这里只给状态一行与开门按钮（页面纪律：卡片不做判定，避免两处说了不一样的话）。
+            SectionCard(stringResource(R.string.safety_settings_card)) {
+                val haltTick = com.example.zhengdao.baopu.safety.HaltGate.changeTick.intValue
+                val haltLevel = remember(haltTick) { com.example.zhengdao.baopu.safety.HaltGate.level() }
+                Text(
+                    text = if (haltLevel == com.example.zhengdao.baopu.safety.HaltLevel.NONE) {
+                        stringResource(R.string.safety_settings_running)
+                    } else {
+                        stringResource(R.string.safety_settings_halted, haltLevel.cn)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(6.dp))
+                Button(onClick = {
+                    ctx.startActivity(android.content.Intent(ctx, com.example.zhengdao.baopu.safety.SafetyActivity::class.java))
+                }) { Text(stringResource(R.string.safety_settings_open)) }
+            }
             SectionCard(stringResource(R.string.trigger_settings_card)) {
                 Text(
                     text = stringResource(R.string.trigger_settings_note),

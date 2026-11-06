@@ -764,6 +764,9 @@ internal object BaopuRuntime {
             // 492 A 段：多根工作区的附加根清单（`<filesDir>/baopu/workspace_roots.json`）。
             // 主根就是上面那行 workspaceRoot，恒第 0 条；附加根缺省空表 ⇒ 单根行为逐字不变。
             extraRoots = { WorkspaceRoots.extras(appCtx) },
+            // 第五百零四单（安全三件）：生产监督缝——停机闸/回滚保险箱/起居注。
+            // 不传＝不监督（单测与旧调用点维持 NONE 缺省）；生产从这里接上。
+            supervision = com.example.zhengdao.baopu.safety.SafetyWiring.hooks,
         )
         val db = db(appCtx)
         // 第二百八十七批：文件操作账本落库（v20 的 file_op 表）——全盘操作入账，30 天可回放。

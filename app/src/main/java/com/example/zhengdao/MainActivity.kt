@@ -214,6 +214,13 @@ class MainActivity : ComponentActivity() {
                     android.content.Intent(this, com.example.zhengdao.unattended.UnattendedActivity::class.java),
                 )
             }
+            is IncomingRoute.OpenSafety -> {
+                // 第五百零四单：安全台深链（关键动作通知点按直达的落点）。
+                com.example.zhengdao.core.RunLog.log("深链安全台：打开安全页")
+                startActivity(
+                    android.content.Intent(this, com.example.zhengdao.baopu.safety.SafetyActivity::class.java),
+                )
+            }
             is IncomingRoute.Rejected -> {
                 // 未知/畸形 URI 丢弃并记日志：不记正文，只记形态与长度，够定位即可。
                 com.example.zhengdao.core.RunLog.log(

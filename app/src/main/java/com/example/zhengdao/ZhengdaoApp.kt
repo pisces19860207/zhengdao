@@ -68,6 +68,12 @@ class ZhengdaoApp : Application() {
         // 第一批卡就问不到"锁着没"。看门狗 KEEP 幂等（重复开 App 不重置周期）。
         com.example.zhengdao.unattended.UnattendedStatus.install(this)
         com.example.zhengdao.unattended.UnattendedWatchdog.ensureScheduled(this)
+        // 第五百零四单（安全三件）：停机闸＋通知开关＋生产装配（回滚保险箱落点）。
+        // 必须在 RunEngine 装配之前：管线第一条工具调用就要问"停机没"，装配晚了
+        // 第一批动作就漏监——与 UnattendedStatus 同一条次序纪律。
+        com.example.zhengdao.baopu.safety.HaltGate.install(this)
+        com.example.zhengdao.baopu.safety.SafetyPrefs.install(this)
+        com.example.zhengdao.baopu.safety.SafetyWiring.install(this)
         // 262六格验收后补：玄览 WebView 远程调试（仅 debug 包）
         // 没有这一行，chrome://inspect 看不到 App 内任何 WebView；
         // 正式包 BuildConfig.DEBUG=false，行为逐字节不变。

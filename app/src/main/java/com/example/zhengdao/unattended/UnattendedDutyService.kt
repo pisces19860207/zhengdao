@@ -163,6 +163,10 @@ class UnattendedDutyService : Service() {
 
         /** 起服务（开值守 / 看门狗补起 / 回前台补起共用；后台起 FGS 受限时落账不崩）。 */
         internal fun start(ctx: Context) {
+            // 第五百零四单（471③）：停机到人工解除前，值守一律不启动（拦下落 BLOCK 一行）。
+            if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted("离场值守")) {
+                return
+            }
             runCatching {
                 ctx.startForegroundService(Intent(ctx, UnattendedDutyService::class.java))
             }.onFailure {

@@ -76,6 +76,14 @@ internal sealed interface IncomingRoute {
      */
     data object OpenUnattended : IncomingRoute
 
+    /**
+     * `zhengdao://safety`：安全台（第五百零四单）。
+     *
+     * 关键动作通知点按直达的落点；不带 query、不带路径——参数越少，
+     * 能被别的 App 构造的花样越少（与 OpenUnattended 同一条法）。
+     */
+    data object OpenSafety : IncomingRoute
+
     /** 外部输入被拒：原因进日志，界面不弹任何东西。 */
     data class Rejected(val reason: RejectReason) : IncomingRoute
 
@@ -184,14 +192,21 @@ private fun routeView(request: IncomingIntent): IncomingRoute {
     if (request.host?.lowercase() == "mcp") return routeMcpOAuth(path, request.rawQuery)
     if (path.isNotEmpty() && path != "/") return IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
 
-    return when (request.host?.lowercase()) {
-        "ask" -> routeAsk(request.rawQuery)
-        // terminal 的分支保留（248 批：路由表不动，落点只记账）——388 的 unattended 加在其后。
-        "terminal" -> routeTerminal(request.rawQuery)
-        "unattended" -> IncomingRoute.OpenUnattended
-        null -> IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
-        else -> IncomingRoute.Rejected(RejectReason.UNKNOWN_HOST)
-    }
+    return routeDeepLinkHost(request)
+}
+
+/**
+ * host 分流（第五百零四单抽出：routeView 加进 safety 之后撞了复杂度墙；
+ * 只搬家不改语义——ask/terminal/unattended/safety 四条加两格拒绝，逐字照旧）。
+ */
+private fun routeDeepLinkHost(request: IncomingIntent): IncomingRoute = when (request.host?.lowercase()) {
+    "ask" -> routeAsk(request.rawQuery)
+    // terminal 的分支保留（248 批：路由表不动，落点只记账）——388 的 unattended 加在其后。
+    "terminal" -> routeTerminal(request.rawQuery)
+    "unattended" -> IncomingRoute.OpenUnattended
+    "safety" -> IncomingRoute.OpenSafety
+    null -> IncomingRoute.Rejected(RejectReason.MALFORMED_URI)
+    else -> IncomingRoute.Rejected(RejectReason.UNKNOWN_HOST)
 }
 
 /**

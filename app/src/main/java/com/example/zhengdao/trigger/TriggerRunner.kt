@@ -33,6 +33,10 @@ object TriggerRunner {
 
     /** 跑一趟「该叫醒的叫醒」。@return 这趟发了几条、还有没有剩下的（Worker 据此 retry）。 */
     fun runDue(context: Context, nowMs: Long = System.currentTimeMillis()): TriggerPassResult {
+        // 第五百零四单（471③）：停机到人工解除前，事件触发一律不启动（拦下落 BLOCK 一行）。
+        if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted("事件触发")) {
+            return TriggerPassResult(sent = false, moreRemain = false, handled = 0)
+        }
         val app = context.applicationContext
         val result = synchronized(LOCK) {
             val pass = TriggerPass(
