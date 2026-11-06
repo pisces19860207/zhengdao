@@ -299,7 +299,13 @@ data class TaskAuthority(
             // 分隔符开头一律拒：`Path.isAbsolute` 在 Windows JVM 上对 "/etc/passwd" 给 false
             // （它要求盘符＋根同时存在），只信它会让同一条判据在真机与单测上两种口径。
             if (s.startsWith("/")) return null
-            if (DRIVE_PREFIX.matches(s)) return null
+            // ⚠️ 2026-11-06 修 Linux 真红：这里原来用 `DRIVE_PREFIX.matches(s)`，
+            // 而 `Regex.matches` 要求**整串**匹配 `^[A-Za-z]:` ⇒ "C:/Windows" 永远不命中，
+            // 落到 `Paths.get("C:/Windows")`：Linux 上它是**相对路径**（名为 "C:" 的目录）⇒ 放过去；
+            // Windows 上它是绝对路径 ⇒ 被下面 `p.isAbsolute` 拦住。于是同一条判据两平台两种结果
+            // （ci #1849/#1850/#1851 readings-emit 第 9 步就红在 TaskContractTest:559）。
+            // 判据不能看宿主机脸色 ⇒ 用 `find`（前缀命中即拒），不依赖 Path.
+            if (DRIVE_PREFIX.find(s) != null) return null
             val p = runCatching { Paths.get(s).normalize() }.getOrNull() ?: return null
             if (p.isAbsolute) return null
             if (p.nameCount == 0) return null

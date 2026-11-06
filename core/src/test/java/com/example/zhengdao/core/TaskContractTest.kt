@@ -554,7 +554,9 @@ class TaskContractTest {
     @Test
     fun `授权根声明必须是相对路径_绝对与盘符不收`() {
         val c = sampleContract()
-        listOf("/etc/passwd", "C:/Windows", "a\\b", "..", "  ").forEach { bad ->
+        // `C:relative` 是**盘符相对**写法：Windows 上 Paths.get 判它不是绝对路径、Linux 上更只是普通相对名，
+        // 只有「盘符前缀命中即拒」才拦得住——补这一条，判据在两平台都能复现（2026-11-06 readings-emit 红）。
+        listOf("/etc/passwd", "C:/Windows", "C:relative", "z:/x", "a\\b", "..", "  ").forEach { bad ->
             val dirty = c.copy(authority = TaskAuthority(readRoots = listOf(bad)))
             assertTrue("非法声明「$bad」没被判红", dirty.violations().any { it.contains("不是合法声明") })
         }
