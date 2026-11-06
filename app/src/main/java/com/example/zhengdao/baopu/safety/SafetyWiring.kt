@@ -29,16 +29,19 @@ object SafetyWiring {
     private val failStreak = java.util.concurrent.atomic.AtomicInteger(0)
 
     @Volatile
-    private var appCtx: Context? = null
+    private var appCtx: java.lang.ref.WeakReference<Context>? = null
 
     /** 装配口（ZhengdaoApp onCreate 调一次）。 */
     fun install(ctx: Context) {
-        appCtx = ctx.applicationContext
+        // 蓝总管验收接管（2026-11-07）：静态字段里直接攥 Context 会触发 lint StaticFieldLeak
+        // （本批新增 2 条告警，闸红）。改持 WeakReference——Application Context 本就与进程同寿，
+        // 语义不变，但不再把「静态 Context」这个模式留在代码里。
+        appCtx = java.lang.ref.WeakReference(ctx.applicationContext)
         RollbackVault.install(File(ctx.filesDir, ""))
         RunLog.log("安全台：装配完成（停机闸/起居注/回滚保险箱就位）")
     }
 
-    private fun ctx(): Context? = appCtx
+    private fun ctx(): Context? = appCtx?.get()
 
     private fun diary(
         kind: DiaryKind,
