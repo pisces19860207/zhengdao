@@ -107,6 +107,18 @@ def parse_table(md: Path) -> list[dict]:
     return parse_lines(md.read_text(encoding="utf-8-sig", errors="replace").splitlines())
 
 
+def stray_bullets(lines: list[str]) -> list[int]:
+    """夹在表格两行之间的 `- ` 列表行（1 起行号）——销行脚本按「第一处含批次的行」替换时，
+    会把表格行误替成列表行塞进表里；表因此少一行、列表多一行，事后无从对账。"""
+    out: list[int] = []
+    for i, raw in enumerate(lines):
+        if not raw.startswith("- "):
+            continue
+        if 0 < i < len(lines) - 1 and lines[i - 1].startswith("|") and lines[i + 1].startswith("|"):
+            out.append(i + 1)
+    return out
+
+
 def active_rows(rows: list[dict]) -> list[dict]:
     return [r for r in rows if "已收" not in r["status"]]
 
@@ -225,6 +237,14 @@ def main(argv: list[str]) -> int:
 
     table = Path(args.table).resolve() if args.table else DEFAULT_TABLE
     rows = parse_table(table)
+
+    if table.is_file():
+        raw_lines = table.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+        stray = stray_bullets(raw_lines)
+        if stray:
+            print(f"✗ 在飞表里夹着 {len(stray)} 条列表行（表格结构被销行脚本打断）：行号 {stray}")
+            print("  多半是「按第一处含批次的行」替换所致；请把表格行恢复、列表行另置。")
+            return 1
 
     paths: list[str] = []
     for chunk in args.paths:
