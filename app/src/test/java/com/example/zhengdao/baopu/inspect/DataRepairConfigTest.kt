@@ -12,6 +12,8 @@
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.inspect.DataRepair.ConfigCriteria
+import com.example.zhengdao.baopu.inspect.DataRepair.ConfigRow
+import com.example.zhengdao.baopu.maintenance.AutoMaintenance
 import com.example.zhengdao.baopu.inspect.DataRepair.ConfigItem
 import com.example.zhengdao.baopu.repair.ConfigAccess
 import com.example.zhengdao.baopu.repair.DataDoctor
@@ -34,6 +36,10 @@ class DataRepairConfigTest {
     }
 
     private val now = 1_790_000_000_000L
+
+    /** 用例自己的判据表（447 的判据收表作参数，表是数据不是判据；511 起生产表是空的）。 */
+    private val TEST_KEY = "cfg.test"
+    private val TEST_ROWS = listOf(ConfigRow(TEST_KEY, "true", "测试依据行：447 用例自己的表"))
 
     /** 一个配置域的样子：值表、读不出的键、整个域读不动、写不回去（失败路径各有用例走）。 */
     private class FakeConfig(
@@ -67,32 +73,32 @@ class DataRepairConfigTest {
 
     @Test
     fun `造漂移_体检发现_改回判据表_再体检变好`() {
-        val config = FakeConfig(mutableMapOf(ConfigCriteria.NIGHTWATCH_AUTO to "false"))
+        val config = FakeConfig(mutableMapOf(TEST_KEY to "false"))
 
         // ① 发现：说得出「哪项、从几改到几、依据哪一行」
-        val found = DataDoctor.diagnoseConfig(config, now)
+        val found = DataDoctor.diagnoseConfig(config, now, TEST_ROWS)
         assertEquals(RepairKind.CONFIG, found.kind)
         assertEquals(RepairVerdict.FIXABLE, found.verdict)
         assertTrue("要说原值：${found.reason}", found.reason.contains("原值=false"))
         assertTrue("要说判据表值：${found.reason}", found.reason.contains("判据表值=true"))
-        assertTrue("要说出处的行号内容：${found.reason}", found.reason.contains("432"))
-        assertEquals(listOf(ConfigCriteria.NIGHTWATCH_AUTO), found.targets)
+        assertTrue("要说出处的行号内容：${found.reason}", found.reason.contains(TEST_ROWS[0].basis))
+        assertEquals(listOf(TEST_KEY), found.targets)
 
         // ② 自修
-        val out = DataDoctor.repairConfig(config, root, now)
+        val out = DataDoctor.repairConfig(config, root, now, TEST_ROWS)
         assertTrue("该修成：${out.note}", out.done)
-        assertEquals("写回的正是判据表的值", listOf(ConfigCriteria.NIGHTWATCH_AUTO to "true"), config.writes)
+        assertEquals("写回的正是判据表的值", listOf(TEST_KEY to "true"), config.writes)
 
         // ③ 再体检变好（不是"修好了"，是"对位"）
-        val again = DataDoctor.diagnoseConfig(config, now)
+        val again = DataDoctor.diagnoseConfig(config, now, TEST_ROWS)
         assertEquals(RepairVerdict.NOTHING, again.verdict)
         assertTrue("要说全对位：${again.reason}", again.reason.contains("全对位"))
     }
 
     @Test
     fun `先记后修_账行里有哪项_原值_目标值_依据行`() {
-        val config = FakeConfig(mutableMapOf(ConfigCriteria.NIGHTWATCH_AUTO to "false"))
-        assertTrue(DataDoctor.repairConfig(config, root, now).done)
+        val config = FakeConfig(mutableMapOf(TEST_KEY to "false"))
+        assertTrue(DataDoctor.repairConfig(config, root, now, TEST_ROWS).done)
 
         // 账上原样两行：intent 在 result 之前（读口回的是新→旧，所以这里直接看盘上的行序）
         val raw = RepairLedger.fileIn(root).readLines(Charsets.UTF_8).filter { it.isNotBlank() }
@@ -101,12 +107,12 @@ class DataRepairConfigTest {
         val result = requireNotNull(RepairEntry.parse(raw[1])) { "第二行该是能解开的 result：${raw[1]}" }
         assertEquals(RepairLedger.PHASE_INTENT, intent.phase)
         assertEquals(RepairLedger.PHASE_RESULT, result.phase)
-        assertEquals("动手前先写清改哪项", ConfigCriteria.NIGHTWATCH_AUTO, intent.target)
+        assertEquals("动手前先写清改哪项", TEST_KEY, intent.target)
         assertTrue(
             "intent 要带原值与目标值：${intent.reason}",
             intent.reason.contains("原值=false") && intent.reason.contains("判据表值=true"),
         )
-        assertTrue("intent 要带依据哪一行：${intent.reason}", intent.reason.contains(ConfigCriteria.ROWS[0].basis))
+        assertTrue("intent 要带依据哪一行：${intent.reason}", intent.reason.contains(TEST_ROWS[0].basis))
         assertTrue("依据能反查这趟体检：${intent.evidence}", intent.evidence.endsWith(":config"))
         assertEquals("修成了", RepairLedger.OUTCOME_DONE, result.outcome)
         assertEquals(RepairKind.CONFIG.wire, result.kind)
@@ -118,16 +124,16 @@ class DataRepairConfigTest {
     fun `表外的项只报不修_且把它看到的值列进账`() {
         val config = FakeConfig(
             mutableMapOf(
-                ConfigCriteria.NIGHTWATCH_AUTO to "true",
+                TEST_KEY to "true",
                 "某个人为的键" to "别的值",
             ),
         )
-        val plan = DataDoctor.diagnoseConfig(config, now)
+        val plan = DataDoctor.diagnoseConfig(config, now, TEST_ROWS)
         assertEquals("表外项存在 ⇒ 只报，不动手", RepairVerdict.NEED_HUMAN, plan.verdict)
         assertTrue("要说「表里没有这一行」：${plan.reason}", plan.reason.contains("表里没有这一行"))
         assertTrue("要把看到的值列出来：${plan.reason}", plan.reason.contains("某个人为的键=别的值"))
 
-        val out = DataDoctor.repairConfig(config, root, now)
+        val out = DataDoctor.repairConfig(config, root, now, TEST_ROWS)
         assertFalse("需人处理不许硬修", out.done)
         assertTrue("要说清卡在需人处理：${out.note}", out.note.startsWith("需人处理："))
         assertEquals("一个键都没写", emptyList<Pair<String, String>>(), config.writes)
@@ -137,24 +143,24 @@ class DataRepairConfigTest {
     @Test
     fun `读不出按未取样_绝不猜默认值`() {
         val config = FakeConfig(
-            mutableMapOf(ConfigCriteria.NIGHTWATCH_AUTO to "false"),
-            unreadable = mutableSetOf(ConfigCriteria.NIGHTWATCH_AUTO),
+            mutableMapOf(TEST_KEY to "false"),
+            unreadable = mutableSetOf(TEST_KEY),
         )
-        val plan = DataDoctor.diagnoseConfig(config, now)
+        val plan = DataDoctor.diagnoseConfig(config, now, TEST_ROWS)
         assertEquals(RepairVerdict.NEED_HUMAN, plan.verdict)
         assertTrue("要说「未取样，不猜」：${plan.reason}", plan.reason.contains("未取样"))
-        assertTrue("要指名哪一行没读出来：${plan.reason}", plan.reason.contains(ConfigCriteria.NIGHTWATCH_AUTO))
-        assertFalse(DataDoctor.repairConfig(config, root, now).done)
+        assertTrue("要指名哪一行没读出来：${plan.reason}", plan.reason.contains(TEST_KEY))
+        assertFalse(DataDoctor.repairConfig(config, root, now, TEST_ROWS).done)
         assertEquals("读不出就一个键都不写", emptyList<Pair<String, String>>(), config.writes)
         assertFalse(RepairLedger.fileIn(root).exists())
     }
 
     @Test
     fun `写不回去就是没改成_失败也留一行痕`() {
-        val config = FakeConfig(mutableMapOf(ConfigCriteria.NIGHTWATCH_AUTO to "false"))
+        val config = FakeConfig(mutableMapOf(TEST_KEY to "false"))
         config.refuseWrites = true
 
-        val out = DataDoctor.repairConfig(config, root, now)
+        val out = DataDoctor.repairConfig(config, root, now, TEST_ROWS)
         assertFalse("写不回去不算修成", out.done)
         assertTrue("要说改成几比几：${out.note}", out.note.contains("0/1"))
 
@@ -165,18 +171,18 @@ class DataRepairConfigTest {
 
     @Test
     fun `整个配置域读不动_不许被读成没有表外项`() {
-        val config = FakeConfig(mutableMapOf(ConfigCriteria.NIGHTWATCH_AUTO to "true"))
+        val config = FakeConfig(mutableMapOf(TEST_KEY to "true"))
         config.domainDown = true
-        val plan = DataDoctor.diagnoseConfig(config, now)
+        val plan = DataDoctor.diagnoseConfig(config, now, TEST_ROWS)
         assertEquals("没看见≠没有：域读不动也要成为一条需人处理", RepairVerdict.NEED_HUMAN, plan.verdict)
         assertTrue("要让人看得见「是读不动，不是干净」：${plan.reason}", plan.reason.contains("配置域读不动"))
     }
 
     @Test
     fun `全对位时不动手也不留账`() {
-        val config = FakeConfig(mutableMapOf(ConfigCriteria.NIGHTWATCH_AUTO to "true"))
-        assertEquals(RepairVerdict.NOTHING, DataDoctor.diagnoseConfig(config, now).verdict)
-        assertFalse(DataDoctor.repairConfig(config, root, now).done)
+        val config = FakeConfig(mutableMapOf(TEST_KEY to "true"))
+        assertEquals(RepairVerdict.NOTHING, DataDoctor.diagnoseConfig(config, now, TEST_ROWS).verdict)
+        assertFalse(DataDoctor.repairConfig(config, root, now, TEST_ROWS).done)
         assertEquals(emptyList<Pair<String, String>>(), config.writes)
         assertFalse("留了就像修过", RepairLedger.fileIn(root).exists())
     }
@@ -184,21 +190,34 @@ class DataRepairConfigTest {
     // ── 判据表本体 ───────────────────────────────────────────────────────────
 
     @Test
-    fun `判据表里每一行都得有出处_名单一变就是用户立法`() {
+    fun `判据表511起是空的_开关交给用户_加行必须说得出谁拍的板`() {
         assertEquals(
-            "表里的键的名单（加一行＝用户立法：这一行必须说得出谁在什么时候拍的板）。" +
-                "名单一变先人来对账，不是把数字改大一寸就放行",
-            listOf(ConfigCriteria.NIGHTWATCH_AUTO),
+            "511 给了用户真写口（设置页那个「后台自动维护」开关）⇒ 判据表必须清空：" +
+                "御医把用户按下去的「关」改回「开」就是盖掉她的选择（447 自己写过的移交项）",
+            emptyList<String>(),
             ConfigCriteria.ROWS.map { it.key },
         )
-        ConfigCriteria.ROWS.forEach { row ->
+        assertNull("表外键一律没有判据行", ConfigCriteria.rowOf(AutoMaintenance.KEY))
+        // 表是数据：递一张有出处的表它照样能用，每一行都得说得出依据（铁律④）
+        TEST_ROWS.forEach { row ->
             assertTrue("${row.key} 这行没有依据出处（铁律④）", row.basis.isNotBlank())
             assertTrue("expected 是字符串口径：${row.expected}", row.expected.isNotBlank())
         }
-        // 432 的写侧裁定：今天没有用户写口 ⇒ 御医改回判据值不会盖掉人的选择。
-        // U8（设置页开关）上线时这一条要跟着改判——它红了就是提醒：别再让御医改这一项。
-        val basis = ConfigCriteria.ROWS.first { it.key == ConfigCriteria.NIGHTWATCH_AUTO }.basis
-        assertTrue("依据要能查到拍板：$basis", basis.contains("432") && basis.contains("用户"))
+    }
+
+    @Test
+    fun `空表就是没有可对位的项_不许把域里每个键都报成需人处理`() {
+        // 511 之后生产表是空的：那个开关本来就是用户在设置页自己拨的，
+        // 这时把域里看到的每个键都算"表外需人处理"是纯噪声（体检月月报一条没用的）。
+        val plan = DataRepair.configPlan(
+            readings = emptyList(),
+            outside = listOf(ConfigItem(AutoMaintenance.KEY, "false")),
+            rows = emptyList(),
+            evidence = "diagnose:$now:config",
+        )
+        assertEquals(RepairVerdict.NOTHING, plan.verdict)
+        assertTrue("要说清是表空：${plan.reason}", plan.reason.contains("判据表为空"))
+        assertFalse("表空时不许出现表外噪声：${plan.reason}", plan.reason.contains("判据表外"))
     }
 
     @Test
@@ -207,7 +226,7 @@ class DataRepairConfigTest {
         // 这条用例就是证判据层没偷偷去查全局那张表（查了就会把它当"对位的行"漏掉）。
         val plan = DataRepair.configPlan(
             readings = listOf(ConfigItem("假键", "跑偏的值")),
-            outside = listOf(ConfigItem(ConfigCriteria.NIGHTWATCH_AUTO, "true")),
+            outside = listOf(ConfigItem(TEST_KEY, "true")),
             rows = listOf(DataRepair.ConfigRow("假键", "判据值", "测试用的依据行")),
             evidence = "diagnose:$now:config",
         )
@@ -216,7 +235,7 @@ class DataRepairConfigTest {
         assertEquals(listOf("假键"), plan.targets)
         assertTrue(
             "表外的 nightwatch_auto 要作为表外项报出来（判据层没偷偷查全局表）：${plan.reason}",
-            plan.reason.contains("判据表外 1 项") && plan.reason.contains("${ConfigCriteria.NIGHTWATCH_AUTO}=true"),
+            plan.reason.contains("判据表外 1 项") && plan.reason.contains("${TEST_KEY}=true"),
         )
     }
 

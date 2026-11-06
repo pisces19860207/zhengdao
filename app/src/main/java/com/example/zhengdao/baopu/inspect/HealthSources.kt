@@ -207,16 +207,17 @@ internal object OrganCensus {
         ),
         OrganProbe(
             name = "调度·夜巡",
-            entry = "PatrolScheduler.autoWeeklyGate",
-            declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/PatrolScheduler.kt",
-            // 第四百三十二批：周位（每周 1 次自动抽检）接上——判据仍在夜巡调度器这一层
-            // （月位同款纪律），装配侧 NocturnalAuto 只做读数与排程。§10③ 的"每晚低峰自动
-            // 夜跑"（autoGate）仍按裁定关着，手动档照旧。
-            callSites = 1,
-            sink = "暗卫记录.jsonl（自动档一行一轮）",
-            byDesign = "自动夜跑按 §10③ 默认关（AUTO_ENABLED = false）；432 周位自动档开着；手动档接通",
+            entry = "Opportunistic.decide",
+            declaredIn = "app/src/main/java/com/example/zhengdao/baopu/inspect/Opportunistic.kt",
+            // 第四百三十二批：周位（每周 1 次自动抽检）接上；第五百一十一批把**触发**换成机会式，
+            // 判据搬到 `Opportunistic`（手动／负载／7 天下限＋机会条件＋冷却），两件装配各一处调用：
+            // 暗卫 `NocturnalAuto`、巡按 `PatrolAuto`。§10③ 的"每晚低峰自动夜跑"（autoGate）仍按裁定关着。
+            callSites = 2,
+            sink = "暗卫记录.jsonl／巡按记录.jsonl（自动档一行一轮/一趟）",
+            byDesign = "自动夜跑按 §10③ 默认关（AUTO_ENABLED = false）；511 机会式触发开着；手动档接通",
             evidence = listOf(
-                "inspect/NocturnalAuto.kt:99 PatrolScheduler.autoWeeklyGate( 生产调用点（432 接上）",
+                "inspect/NocturnalAuto.kt:runDue Opportunistic.decide( 生产调用点（511 接上）",
+                "inspect/PatrolAuto.kt:runDue Opportunistic.decide( 生产调用点（511 接上）",
                 "ui/baopu/DecisionCenterScreen.kt:427 只用了 manualGate()（手动档）",
             ),
         ),

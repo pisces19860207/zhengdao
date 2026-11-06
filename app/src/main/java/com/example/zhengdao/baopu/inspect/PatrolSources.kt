@@ -123,6 +123,47 @@ internal object PatrolSources {
         }
     }.getOrDefault(0)
 
+    /**
+     * 第五百一十一批：**负载读数**——自 [fromMs] 起干完了多少活。
+     *
+     * 两把尺都取**既有口径**，不另立一套：任务数＝`run_trace` 的 distinct run_id
+     * （与 I4 确认密度的分母同一个算法），工具调用数＝`run_log` 的 `Acting` 行
+     * （与写侧痕迹同一张表、同一个成功口径之外的全量计数——负载问的是"干了多少"，
+     * 不是"改没改盘"，所以这里不按工具名册过滤）。
+     *
+     * 读不动 ⇒ [Load.NONE]：当没负载，等着就是——**不许**把"读不出来"算成"够数了"。
+     */
+    fun loadSince(db: BaopuDb, fromMs: Long, limit: Int = PatrolBudget.LOG_ROWS): Load = Load(
+        tasks = taskCount(db, fromMs, limit),
+        toolCalls = actingCount(db, fromMs, limit),
+    )
+
+    /** 工具调用数（`run_log.state = 'Acting'` 的行；带 `?` 绑定与 LIMIT 上界，同全层口径）。 */
+    private fun actingCount(db: BaopuDb, fromMs: Long, limit: Int): Int = runCatching {
+        db.read { d ->
+            var n = 0
+            d.rawQuery(
+                "SELECT COUNT(*) FROM (SELECT id FROM run_log " +
+                    "WHERE state = 'Acting' AND created_at >= ? ORDER BY id DESC LIMIT ?)",
+                arrayOf(fromMs.toString(), limit.toString()),
+            ).use { c -> if (c.moveToNext()) n = c.getInt(0) }
+            n
+        }
+    }.getOrDefault(0)
+
+    /**
+     * 上一次**后台自动动作**是哪一刻（机会条件"最近 30 分钟无自动动作"的读数）。
+     *
+     * 只认后台维护那三本账（暗卫／巡按／体检）：影子推演、"金吾卫"点名巡都不算——
+     * 影子的预演跟着每一轮会话走，把它算进来等于"人一说话就 30 分钟不许后台动手"，
+     * 那正好把负载触发卡死在最该跑的时候。
+     */
+    fun lastAutoActionAtMs(root: File): Long? = listOfNotNull(
+        NocturnalLedger.read(root, limit = 1).maxOfOrNull { it.atMs },
+        PatrolLedger.read(root, limit = 1).maxOfOrNull { it.atMs },
+        HealthLedger.lastAt(root),
+    ).maxOrNull()
+
     /** I5 的失败痕迹：`skill_event` 里 `kind='use' AND ok=0`（正文的 uses 计数不动，取事件账）。 */
     fun failures(db: BaopuDb, fromMs: Long, limit: Int = PatrolBudget.LOG_ROWS): List<SkillFailure> =
         runCatching {

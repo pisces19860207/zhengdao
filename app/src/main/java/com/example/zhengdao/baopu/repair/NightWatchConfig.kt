@@ -1,13 +1,13 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第四百四十七批 · 暗卫自动档那**一个配置域**的 [ConfigAccess] 生产适配器（447 §三的执行侧）。
+// 第四百四十七批 · 「后台自动维护」那**一个配置域**的 [ConfigAccess] 生产适配器（447 §三的执行侧）。
+//
+// 第五百一十一批：判据表已清空（用户有了真写口，御医不再对位这个开关）——本适配器留着，
+// 因为它是"配置路"唯一的读/写转发口：将来判据表加回一行，插件式生效，判据与执行两段不用改。
+// 属主换了：键名、缺省值、读法全部搬到 [AutoMaintenance]（511 的唯一开关），这里没有字面量。
 //
 // 为什么在 `repair/` 而不在 `inspect/`：写 SharedPreferences 是写盘，而 `InspectReadOnlyGateTest`
-// 把勘验层整层钉成"只查不改"（唯一允许落盘的是那几本 JSONL 的追加）。这一层因此只做适配器，
-// 而且**不自己认键**：
-// - 读走属主既有读口 [NocturnalAuto.switchOn]（不另开一条读法——同一个配置两套读法就是漂移的出生地）；
-// - 文件名与键名一律引用 [NocturnalAuto.SWITCH_FILE]／[NocturnalAuto.SWITCH_KEY]，这里没有字面量；
-// - 缺省值也不在这里：[NocturnalAuto.switchOn] 自己带（拍板 A＝开），本类不写"默认应该是 true"。
+// 把勘验层整层钉成"只查不改"（唯一允许落盘的是那几本 JSONL 的追加）。这一层因此只做适配器。
 //
 // 三条纪律：
 // 1. **只认自己那一个键**：[read]/[write] 收到别的键就回 null/false——判据表要是长出了
@@ -21,25 +21,24 @@ package com.example.zhengdao.baopu.repair
 import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.inspect.DataRepair.ConfigItem
-import com.example.zhengdao.baopu.inspect.NocturnalAuto
+import com.example.zhengdao.baopu.maintenance.AutoMaintenance
 
 /**
- * 暗卫自动档（SP `NocturnalAuto.SWITCH_FILE` / key `NocturnalAuto.SWITCH_KEY`）的读与写。
+ * 后台自动维护开关（SP `AutoMaintenance.SP` / key `AutoMaintenance.KEY`）的读与写。
  *
- * 生效值 vs 盘上原样：本类判的是**生效值**——`switchOn` 在 SP 坏了／没建过时回缺省，
+ * 生效值 vs 盘上原样：本类判的是**生效值**——[AutoMaintenance.on] 在 SP 坏了／没建过时回缺省，
  * 而调度器吃的也正是那个缺省值，所以"生效值对位"就是"这趟 app 真按判据表在跑"。
- * 盘上有没有那一行、原样是什么，只进 [observed] 的表外名单，不参与判漂移。
  */
 internal class NightWatchConfig(private val ctx: Context) : ConfigAccess {
 
     private fun prefs() = ctx.applicationContext
-        .getSharedPreferences(NocturnalAuto.SWITCH_FILE, Context.MODE_PRIVATE)
+        .getSharedPreferences(AutoMaintenance.SP, Context.MODE_PRIVATE)
 
     override fun read(key: String): String? =
-        if (key != NocturnalAuto.SWITCH_KEY) {
+        if (key != AutoMaintenance.KEY) {
             null
         } else {
-            runCatching { NocturnalAuto.switchOn(ctx).toString() }.getOrNull()
+            runCatching { AutoMaintenance.on(ctx).toString() }.getOrNull()
         }
 
     /**
@@ -53,10 +52,10 @@ internal class NightWatchConfig(private val ctx: Context) : ConfigAccess {
     }.getOrElse { listOf(ConfigItem(UNREADABLE, it.javaClass.simpleName)) }
 
     override fun write(key: String, value: String): Boolean {
-        if (key != NocturnalAuto.SWITCH_KEY) return false
+        if (key != AutoMaintenance.KEY) return false
         val on = value.toBooleanStrictOrNull() ?: return false
         return runCatching {
-            prefs().edit { putBoolean(NocturnalAuto.SWITCH_KEY, on) }
+            prefs().edit { putBoolean(AutoMaintenance.KEY, on) }
             true
         }.getOrDefault(false)
     }

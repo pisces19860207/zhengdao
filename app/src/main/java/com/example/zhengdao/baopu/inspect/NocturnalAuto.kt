@@ -1,129 +1,119 @@
 // 独立开发声明：本文件为本项目原创，不含第三方源码拷贝。
 //
-// 第四百三十二批 · 暗卫**自动档**的装配与执行：409 交付时暗卫的运行器没接（"格式补齐等
-// 运行器那批来填"的就是本批）；2026-11-04 用户对派工单 432 拍板 A「开」——每周 1 次、
-// 仅充电＋WiFi＋非值守（L2 期间不跑），结果只进体检单＋账本，不弹卡。
+// 第四百三十二批开出「暗卫自动档」，第五百一十一批把**触发**换成机会式（与巡按共用一套）：
+// 手动 · 按负载（N=20 任务／M=200 次工具调用）· 7 天下限，三条都过同一套机会条件
+// （非值守 · 电量≥30% 或充电中 · 30 分钟无自动动作 · 没在跑重活）与各自 6h 冷却。
+// 432 的"每周一次"从此只是**下限**那一格，不再是唯一节奏；"充电＋WiFi"那两条由 511 §一②
+// 取代（电量够就不必插着电，也不再要求 WiFi）。
 //
-// 形状照 [HealthScheduler]（月位）那套：这里只做装配（排作业、读探针）＋把判据层的
-// 结论落账；**判据一行不落在本文件**——周位闸在 [PatrolScheduler.autoWeeklyGate]，
-// 配额与充电闸在 [NocturnalPatrol.gate]（409 钉过它"一字未动"，本批首次给它生产调用点）。
+// 形状照旧：本文件只做装配（排作业、读机器读数、把判据的结论落账），
+// **判据一行不落在本文件**——触发判据在 [Opportunistic]，配额与本轮抽几条在 [NocturnalPatrol]
+// （409 钉过它"一字未动"，两条闸谁也不能单独放行）。
 //
-// 四条纪律（派工单 §二③/边界）：
+// 四条纪律（派工单 511 §一③/§二）：
 // 1. **只进体检单＋账本**：一轮的运行记录只有 `暗卫记录.jsonl` 一行（零命中也落）；
-//    不递意见（不碰 `OpinionWiring`）、不弹卡、不起通知——体检的「抽检读数」块自己会来读。
-// 2. **零模型调用、不联网**：抽检走的是 279 的纯判据（I1／I6 投回抽中的那几条），
-//    WiFi 只是"该不该跑"的机器条件（§二②），不是这条链路的依赖。
-// 3. **抽检不是全检**：一轮最多 [PatrolScheduler.WEEKLY_MIN_SAMPLE] 条（单次闸 [NocturnalLimits.NIGHTLY_MAX]），
-//    随机起点不重复（[NocturnalPatrol.pick]）；抽不到 5 条 ⇒ 运行记录照落，
-//    体检那行显「样本不足」——**不许**显"假 PASS 0，正常"（拍板补充②，判据在
-//    `HealthCheck.samplingLine`）。
-// 4. **可关（只做读开关）**：开关的真源在 SP（[SWITCH_FILE]），本批只做**读**口；
-//    设置页的开关 UI 是 UI 批的活（§二④）。
-//
-// 首跑时机（拍板补充①）：开启后**不立即跑**——周期作业首跑在排上之后一个周期（≥7 天）
-// 且要等约束放行，到了窗口还要过判据两道闸。"等第一个满足条件的窗口"由这个形状保证。
+//    不递意见（不碰 `OpinionWiring`）、不弹卡、不起通知。
+// 2. **零模型调用、不联网**：抽检走 279 的纯判据（I1／I6 投回抽中的那几条）。
+// 3. **抽检不是全检**：一轮最多 [NocturnalLimits.NIGHTLY_MAX] 条；抽不到 5 条 ⇒ 运行记录照落，
+//    体检那行显「样本不足」——**不许**显"假 PASS 0，正常"（判据在 `HealthCheck.samplingLine`）。
+// 4. **不做常驻轮询**：负载那一截由会话收工事件驱动（[TriggerWiring]），周期作业只是
+//    7 天下限的兜底（每 [PERIOD_HOURS] 小时醒一次看账，条件不齐一句话都不做）。
 package com.example.zhengdao.baopu.inspect
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.maintenance.AutoMaintenance
+import com.example.zhengdao.baopu.maintenance.Opportunity
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.Random
 import java.util.concurrent.TimeUnit
 
-/** 暗卫自动档的装配口（周位判据在 [PatrolScheduler]，配额闸在 [NocturnalPatrol]，本文件不持算法）。 */
+/** 暗卫自动档的装配口（触发判据在 [Opportunistic]，配额闸在 [NocturnalPatrol]，本文件不持算法）。 */
 internal object NocturnalAuto {
 
-    /** 周期（天）：与周位判据同一个数，不另立一个。 */
-    const val PERIOD_DAYS: Long = PatrolScheduler.WEEKLY_PERIOD_DAYS
+    /** 周期（小时）：与判据层同一个数，不另立一个（下限的兜底节拍）。 */
+    const val PERIOD_HOURS: Long = Opportunistic.CHECK_PERIOD_HOURS
 
     /** 周期作业的唯一名（`KEEP` 策略靠它幂等：重复开 App 不会把周期清零）。 */
-    const val WORK_NAME: String = "zd-nightwatch-weekly"
+    const val WORK_NAME: String = "zd-nightwatch-opportunistic"
 
     /** 诊断标签（`WorkManager.getWorkInfosByTag` 能一把捞出来）。 */
     const val TAG: String = "zd-nightwatch"
 
-    /** 开关的 SP（项目惯例：`zhengdao-*` 一个用途一个文件；写侧留给 UI 批，本批只读）。 */
-    const val SWITCH_FILE: String = "zhengdao-inspect"
-    const val SWITCH_KEY: String = "nightwatch_auto"
-
     /**
-     * 读开关（432 §二④：本批只做读）。读不到（SP 没建/异常）⇒ 缺省值，
-     * 缺省值就是 [PatrolScheduler.WEEKLY_ENABLED]（拍板 A＝开）——判据只收参数，不替谁记开关。
-     */
-    fun switchOn(ctx: Context): Boolean = runCatching {
-        ctx.applicationContext
-            .getSharedPreferences(SWITCH_FILE, Context.MODE_PRIVATE)
-            .getBoolean(SWITCH_KEY, PatrolScheduler.WEEKLY_ENABLED)
-    }.getOrDefault(PatrolScheduler.WEEKLY_ENABLED)
-
-    /** 现在在不在充电（读不到电池服务 ⇒ 当没充电，fail-closed；与月位同一只探针）。 */
-    fun charging(ctx: Context): Boolean = HealthScheduler.charging(ctx)
-
-    /**
-     * 现在走的是不是不按流量计费的网络（§二② "WiFi" 的机器判法，与 WorkManager 的
-     * `NetworkType.UNMETERED` 同一口径；读不到 ⇒ 当没有，fail-closed）。
-     */
-    fun wifiNow(ctx: Context): Boolean = runCatching {
-        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return false
-        val net = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(net) ?: return false
-        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-    }.getOrDefault(false)
-
-    /** L2 值守中吗（§二②：值守期间不跑，避免抢资源；问口是 388 的状态仓，本层不摸 SP/钥匙串）。 */
-    fun onDuty(): Boolean = com.example.zhengdao.unattended.UnattendedStatus.armed()
-
-    /**
-     * 自动档那一趟（[NocturnalAutoWorker] 调它）：周位闸 → 配额闸 → 抽一轮、落账。
+     * 432 那一版的作业名（`zd-nightwatch-weekly`）。
      *
-     * @return null ＝ 这趟不该跑（已记日志，首跑等的就是这种窗口）；非 null ＝ 真抽了一轮
+     * 511 换了形制（周位 → 每天看账的机会式），名字一变，老机器队列里那条旧作业还留着——
+     * 它还会按"每周＋充电＋WiFi"自己醒一次。不撤掉就是两条周期位同时存在（判据⑥那关
+     * 也会有人问"这两个周期是哪来的"）。所以排新位时顺手撤旧位：一次性迁移，撤完就不再有。
      */
-    fun runDue(ctx: Context, nowMs: Long = System.currentTimeMillis()): NightRound? {
+    const val LEGACY_WORK_NAME: String = "zd-nightwatch-weekly"
+
+    /** 这一件的身份（互斥锁与落账都用它）。 */
+    private val JOB: MaintJob = MaintJob.NIGHTWATCH
+
+    /**
+     * 自动档那一趟：[NocturnalAutoWorker]（周期兜底）与 [TriggerWiring]（会话收工事件）都走它。
+     *
+     * @param source 这趟是谁在问：周期作业只认"到没到 7 天下限"，事件那条看"负载够不够"
+     * @return null ＝ 这趟不该跑（已记日志，条件不齐等下一次机会）；非 null ＝ 真抽了一轮
+     */
+    fun runDue(
+        ctx: Context,
+        nowMs: Long = System.currentTimeMillis(),
+        source: AskSource = AskSource.SCHEDULED,
+    ): NightRound? {
         val root = PatrolSources.memoryRoot()
         if (root == null) {
             RunLog.log("暗卫自动档：这趟不跑（208 没装配落点，抽检没处落账）")
             return null
         }
-        val rounds = NocturnalLedger.read(root)
-        val gate = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = PatrolScheduler.lastAutoRoundAtMs(rounds),
+        val opp = readingsOf(ctx, root, nowMs)
+        val gate = Opportunistic.decide(
+            job = JOB,
+            source = source,
             nowMs = nowMs,
-            wifi = wifiNow(ctx),
-            onDuty = onDuty(),
-            enabled = switchOn(ctx),
+            lastRunAtMs = NocturnalLedger.lastAutoAt(root),
+            load = loadOf(ctx, root),
+            opp = opp,
+            enabled = AutoMaintenance.on(ctx),
         )
-        if (!gate.run) {
+        val trigger = gate.trigger
+        if (!gate.run || trigger == null) {
             RunLog.log("暗卫自动档：这趟不跑（${gate.why}）")
             return null
         }
-        val bucket = PatrolScheduler.dayBucket(nowMs)
-        val quota = NocturnalPatrol.gate(
-            nowMs = nowMs,
-            bucket = bucket,
-            rounds = rounds,
-            charging = charging(ctx),
-            // 一键停/在跑/灾异三条是夜间与手动档的闸（调用方给得出才给）：自动档按 432 §二②
-            // 的条件执行，进程里没有可读的"引擎在跑"问口——读不到就不冒充读过。
-            stopped = false,
-            running = false,
-            emergency = false,
-        )
-        if (!quota.run) {
-            RunLog.log("暗卫自动档：这趟不跑（${quota.why}）")
+        if (!HeavyWork.tryEnter(JOB.wire)) {
+            RunLog.log("暗卫自动档：这趟不跑（${Opportunistic.WHY_HEAVY}）")
             return null
         }
-        return runRound(ctx, root, nowMs, bucket, quota.allowance)
+        return try {
+            runRound(ctx, root, nowMs, trigger, Opportunistic.readout(opp))
+        } finally {
+            HeavyWork.exit(JOB.wire)
+        }
+    }
+
+    /** 机器读数（机会条件那五格；"有没有重活在跑"只认进程内互斥锁）。 */
+    private fun readingsOf(ctx: Context, root: File, nowMs: Long): Opportunity =
+        AutoMaintenance.readings(
+            ctx = ctx,
+            nowMs = nowMs,
+            lastAutoActionAtMs = PatrolSources.lastAutoActionAtMs(root),
+            heavyBusy = HeavyWork.heldBy() != null,
+        )
+
+    /** 负载读数（自上一次自动档那一轮起；读不动 ⇒ 0，当没负载：等着就是）。 */
+    private fun loadOf(ctx: Context, root: File): Load {
+        val since = NocturnalLedger.lastAutoAt(root) ?: return Load.NONE
+        return runCatching { PatrolSources.loadSince(BaopuRuntime.db(ctx), since) }.getOrDefault(Load.NONE)
     }
 
     /**
@@ -134,9 +124,28 @@ internal object NocturnalAuto {
         ctx: Context,
         root: File,
         nowMs: Long,
-        bucket: Long,
-        allowance: Int,
+        trigger: TriggerReason,
+        readout: String,
     ): NightRound? {
+        val rounds = NocturnalLedger.read(root)
+        val quota = NocturnalPatrol.gate(
+            nowMs = nowMs,
+            bucket = PatrolScheduler.dayBucket(nowMs),
+            rounds = rounds,
+            // 511 §一② 把"必须充电"放宽成"电量≥30% 或充电中"：`gate` 这一格问的是
+            // **电源条件成立不成立**（它自己的话术还是 409 那句"不在充电：顺延"）。
+            // 口径只在这里换算一次，判据本体一字未动（409 的抽几条/额度窗照旧）。
+            charging = powerOkNow(ctx, root, nowMs),
+            // 一键停/在跑/灾异三条是夜间与手动档的闸（调用方给得出才给）：自动档按 511 §一②
+            // 的条件执行，进程里没有可读的"引擎在跑"问口——读不到就不冒充读过。
+            stopped = false,
+            running = false,
+            emergency = false,
+        )
+        if (!quota.run) {
+            RunLog.log("暗卫自动档：这趟不跑（${quota.why}）")
+            return null
+        }
         val db = runCatching { BaopuRuntime.db(ctx) }.getOrNull()
         if (db == null) {
             RunLog.log("暗卫自动档：这趟没跑成（库打不开，取不到痕迹）")
@@ -147,30 +156,39 @@ internal object NocturnalAuto {
         val ledger = PatrolSources.ledger(root)
         val acts = PatrolSources.writeTraces(db, from)
         val pool = NocturnalPatrol.poolOf(ledger, acts)
-        val picked = NocturnalPatrol.pick(pool, allowance, Random(nowMs))
+        val picked = NocturnalPatrol.pick(pool, quota.allowance, Random(nowMs))
         val scoped = NocturnalPatrol.scopeTo(picked, ledger, acts)
-        // I6 的痕迹侧同样缩到抽中的那几条（裁定②）；影子台账是"对手"，照旧给全量。
+        val findings = findingsOf(db, root, from, scoped)
+        val round = NocturnalPatrol.roundOf(nowMs, PatrolScheduler.dayBucket(nowMs), picked.map { it.record }, findings)
+        val stamped = round.copy(
+            elapsedMs = (System.currentTimeMillis() - t0).coerceAtLeast(0L),
+            trigger = trigger.wire,
+            opportunity = readout,
+            conclusion = conclusionOf(round.inspected, round.hits),
+        )
+        val saved = NocturnalLedger.append(root, stamped)
+        RunLog.log(
+            "暗卫自动档：${stamped.conclusion}（${trigger.cn}触发）" + if (saved) "" else "，账没落上",
+        )
+        // 第五百零八批在 main 上接的互查写口（511 从更早基线切出，rebase 时补回）：
+        // 暗卫本轮认定 × 金吾卫上次巡按 ⇒ 有冲突才写行。
+        mutualConflicts(root, findings, nowMs)
+        return stamped
+    }
+
+    /** 电源条件（511 §一② 的新口径；与判据层同一把尺，不另写一份）。 */
+    private fun powerOkNow(ctx: Context, root: File, nowMs: Long): Boolean =
+        Opportunistic.powerOk(readingsOf(ctx, root, nowMs))
+
+    /** I1／I6 两条判据（抽中的那几条投回输入侧；影子台账是"对手"，照旧给全量）。 */
+    private fun findingsOf(db: BaopuDb, root: File, from: Long, scoped: PatrolScoped): List<InspectFinding> {
         val pickedKeys = scoped.acts.map { it.sessionId to it.step }.toSet()
         val scopedShadows = PatrolSources.shadowTraces(db, from)
             .filter { (it.sessionId to it.step) in pickedKeys }
-        val findings = listOf(
-            AuditGapCheck.check(scoped.acts, ledger),
+        return listOf(
+            AuditGapCheck.check(scoped.acts, PatrolSources.ledger(root)),
             ShadowCheck.check(scopedShadows, PatrolSources.shadows(root)),
         )
-        val round = NocturnalPatrol.roundOf(nowMs, bucket, picked.map { it.record }, findings)
-            .copy(elapsedMs = (System.currentTimeMillis() - t0).coerceAtLeast(0L))
-        val saved = NocturnalLedger.append(root, round)
-        RunLog.log(
-            "暗卫自动档：抽了 ${round.inspected} 条，假 PASS ${round.hits} 条" +
-                (if (round.inspected < PatrolScheduler.WEEKLY_MIN_SAMPLE) {
-                    "（样本不足 n<${PatrolScheduler.WEEKLY_MIN_SAMPLE}）"
-                } else {
-                    ""
-                }) +
-                (if (saved) "" else "，账没落上"),
-        )
-        mutualConflicts(root, findings, nowMs)
-        return round
     }
 
     /**
@@ -194,39 +212,45 @@ internal object NocturnalAuto {
         )
     }
 
+    /** 结论一行（§一⑤第四格）：零命中也要有字，样本不足照写。 */
+    private fun conclusionOf(sampled: Int, hits: Int): String {
+        val tail = if (sampled < NocturnalLimits.MIN_SAMPLE) {
+            "（样本不足 n<${NocturnalLimits.MIN_SAMPLE}）"
+        } else {
+            ""
+        }
+        return "抽了 $sampled 条，假 PASS $hits 条$tail"
+    }
+
     /**
-     * 排上周位（开 App 时调一次就够；`KEEP` 保证不会把已在排的周期清零）。
      *
-     * 约束是 §二② 的系统侧那一半：作业在队列里等到"充电＋不按流量计费"才被放行，
-     * 不靠我们自己轮询；放行后 [NocturnalAutoWorker] 里还有判据在等（两道闸谁也不能单独放行）。
+     * 为什么不带约束：511 §一② 的机会条件是"电量 ≥30% **或** 充电中"，WorkManager 的
+     * `setRequiresCharging` 只能表达"且"——那样没插电但电量 80% 的机器就永远等不到下限那一趟。
+     * 所以约束一句话不设，条件全在 [Opportunistic] 里当场验（醒来先看账，不满足就什么都不做）。
      */
     fun ensureScheduled(ctx: Context) {
         val app = ctx.applicationContext
         runCatching {
-            val request = PeriodicWorkRequestBuilder<NocturnalAutoWorker>(PERIOD_DAYS, TimeUnit.DAYS)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiresCharging(true)
-                        .setRequiredNetworkType(NetworkType.UNMETERED)
-                        .build(),
-                )
+            val request = PeriodicWorkRequestBuilder<NocturnalAutoWorker>(PERIOD_HOURS, TimeUnit.HOURS)
                 .addTag(TAG)
                 .build()
             WorkManager.getInstance(app)
                 .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
-            RunLog.log("暗卫自动档：周位已排（$WORK_NAME，每 $PERIOD_DAYS 天，仅充电＋WiFi）")
+            // 老机器队列里 432 那条旧周期位（每周＋充电＋WiFi）撤掉：否则两条周期位并存。
+            WorkManager.getInstance(app).cancelUniqueWork(LEGACY_WORK_NAME)
+            RunLog.log("暗卫自动档：周期位已排（$WORK_NAME，每 $PERIOD_HOURS 小时看一次账，条件齐才跑）")
         }.onFailure {
             // 排不上不是事故（还有手动档与月位体检），但要留一行——否则"从不抽检"只能靠猜。
-            RunLog.log("暗卫自动档：周位没排上——${it.javaClass.simpleName}: ${it.message}")
+            RunLog.log("暗卫自动档：周期位没排上——${it.javaClass.simpleName}: ${it.message}")
         }
     }
 }
 
 /**
- * 周位的执行体：WorkManager 到点（且插着电、走着不按流量计费的网络）时跑这一趟。
+ * 周期位的执行体：WorkManager 到点（每天一次）时看账这一趟。
  *
  * `Result.retry()` 只接"抛了异常"的可恢复失败；判据说"这趟不跑"（null）不是失败——
- * 重试改变不了判据的结论，下一周窗自然再来（同 [HealthWorker] 的口径）。
+ * 重试改变不了判据的结论，下一个窗口自然再来（同 [HealthWorker] 的口径）。
  */
 class NocturnalAutoWorker(
     context: Context,

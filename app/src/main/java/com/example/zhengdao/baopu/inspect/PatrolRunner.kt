@@ -56,13 +56,17 @@ internal object PatrolRunner {
     /**
      * 巡一遍。
      *
-     * @param manual true = 用户点的「巡一遍」；false = 夜间低峰自己跑的那一趟
+     * @param manual true = 用户点的「巡一遍」；false = 自动档自己跑的那一趟
+     * @param trigger 谁触发的（511 §一⑤：manual／load／floor；旧调用方按 [manual] 推）
+     * @param opportunity 触发时的机会读数（511 §一⑤ 第二格；手动那条没有机会读数 ⇒ 空串）
      * @return 报告与读数（**不抛**：取数失败出 [PatrolResult.failReason]，界面照旧有字）
      */
     fun run(
         ctx: Context,
         manual: Boolean,
         nowMs: Long = System.currentTimeMillis(),
+        trigger: String = if (manual) TriggerReason.MANUAL.wire else "",
+        opportunity: String = "",
     ): PatrolResult {
         val t0 = System.currentTimeMillis()
         val root = PatrolSources.memoryRoot()
@@ -162,7 +166,7 @@ internal object PatrolRunner {
 
         val report = Inspector.report(findings, nowMs, rate)
         val elapsed = System.currentTimeMillis() - t0
-        val entry = PatrolLedger.entryOf(report, manual, elapsed, readout)
+        val entry = PatrolLedger.entryOf(report, manual, elapsed, readout, trigger, opportunity)
         val saved = PatrolLedger.append(root, entry)
         if (!saved) RunLog.log("勘验：巡按记录没落盘（${PatrolLedger.FILE_NAME}）")
         return PatrolResult(

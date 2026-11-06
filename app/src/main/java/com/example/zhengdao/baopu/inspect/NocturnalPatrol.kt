@@ -34,6 +34,12 @@ internal object NocturnalLimits {
     /** 单次闸：任何一轮最多 5 条。 */
     const val NIGHTLY_MAX = 5
 
+    /**
+     * 一轮的**样本下限**：抽不到这么多条 ⇒ 体检那行记「样本不足」，**不许**报"零假 PASS"
+     * （432 拍板补充②）。与单次闸同一个数：一轮抽不满单次闸，就说明池子本身就小。
+     */
+    const val MIN_SAMPLE: Int = NIGHTLY_MAX
+
     /** 硬总闸：滚动 7 天内最多 30 条，满即停（不是日历周）。 */
     const val WEEKLY_MAX = 30
 
@@ -91,6 +97,15 @@ internal data class NightRound(
      * 体检按它判「有没有跑」（runs/上次抽检时间）与「抽到几条」（hits＝假 PASS 数），两个维度分开。
      */
     val elapsedMs: Long = 0,
+    /**
+     * 第五百一十一批：谁触发这一轮（`manual`／`load`／`floor`；旧口径行没有 ⇒ 空串，不冒充）。
+     * 派工单 §一⑤：落账第一格。
+     */
+    val trigger: String = "",
+    /** 触发时的机会读数（§一⑤第二格；[Opportunistic.readout] 那一行）。 */
+    val opportunity: String = "",
+    /** 结论一行（§一⑤第四格；"抽了 N 条，假 PASS M 条"这一句，零命中也照写）。 */
+    val conclusion: String = "",
 )
 
 /** 「这趟该不该跑」的判定（[why] 永远有字——不跑也要能一眼看出为什么不跑）。 */
@@ -332,6 +347,13 @@ internal object NocturnalLedger {
             .toList()
     }.getOrDefault(emptyList())
 
+    /**
+     * 最近一轮**自动档**的时刻（灾异轮不算：灾异是"漏了会出事"的另一条路，
+     * 不该把 6h 冷却与 7 天下限算在它头上——与额度窗跳过灾异同一口径，432 §四⑦）。
+     */
+    fun lastAutoAt(globalRoot: File): Long? =
+        read(globalRoot).filter { !it.emergency }.maxOfOrNull { it.atMs }
+
     fun toJson(round: NightRound): JSONObject = JSONObject()
         .put("id", round.id)
         .put("at", round.atMs)
@@ -342,6 +364,10 @@ internal object NocturnalLedger {
         .put("emergency", round.emergency)
         .put("evidence", JSONArray(round.evidence))
         .put("ms", round.elapsedMs)
+        // 511：三格新账（旧行没有 ⇒ 读侧给空串，不冒充哪一趟是负载/下限触发的）
+        .put("trigger", round.trigger)
+        .put("opp", round.opportunity)
+        .put("conclusion", round.conclusion)
 
     fun parse(raw: String): NightRound? {
         val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
@@ -359,6 +385,9 @@ internal object NocturnalLedger {
             evidence = (0 until a.length()).mapNotNull { i -> a.optString(i).ifEmpty { null } },
             // 老行没有 ms 格 ⇒ 0（旧口径原样收，不冒充量过）。
             elapsedMs = o.optLong("ms", 0L),
+            trigger = o.optString("trigger", ""),
+            opportunity = o.optString("opp", ""),
+            conclusion = o.optString("conclusion", ""),
         )
     }
 }

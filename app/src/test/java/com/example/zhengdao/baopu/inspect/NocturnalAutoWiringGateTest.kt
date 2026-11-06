@@ -1,18 +1,20 @@
 // 独立开发声明：本文件为本项目原创，不含第三方源码拷贝。
 //
-// 第四百三十二批 · 暗卫自动档的**接线门禁**（照 291 体检接线门禁的做法）：
+// 第四百三十二批 · 暗卫自动档的**接线门禁**；第五百一十一批按新触发规则重钉。
 // 自动档不许再变成"有实现、零调用点"——409 之后暗卫挂了三个批次的原因就是运行器没接。
-// "删掉 ZhengdaoApp 里那行""Worker 改成空壳""开关被写成常写口"这类事只有扫源码才验得到。
+// "删掉 ZhengdaoApp 里那行""Worker 改成空壳""装配侧自己另写一套判据"这类事只有扫源码才验得到。
 //
-// 七条（对应派工单 432 §二）：
-// 1. 生产调用点：开 App 就排周位；
-// 2. 周位形制：周期作业＋仅充电＋不按流量计费（WiFi）＋KEEP；
-// 2b. 周位判据的来源：只许住在 `PatrolScheduler`（夜巡那层），装配侧只做装配；
-// 3. 执行体真跑：Worker 调 `runDue`，判据两道闸（周位＋配额）都在装配侧被真调；
-// 4. 结果只进体检单＋账本：不递意见、不弹卡、**不起通知**（派工单 §二③／判据）；
-// 5. 抽检不是全检：随机抽（pick）＋投回判据输入侧（scopeTo，裁定②）；
-// 6. 开关只读（§二④：写侧是 UI 批的活，本批不做写口）；
-// 7. 普查账实相符：不良人／调度·夜巡两条部位档跟着接线改（callSites 0→1）。
+// 本文件只管**暗卫这一件**的接线；两件共用的那套（唯一开关、无轮询、重活互斥、落账四格、
+// 收工事件）在 `OpportunisticWiringGateTest`。
+//
+// 六条：
+// 1. 生产调用点：开 App 就排周期位；
+// 2. 周期位形制：周期作业＋KEEP＋**不带充电／WiFi 约束**（511 §一② 是"电量够**或**充电中"的"或"，
+//    WorkManager 约束只能表达"且"，带了就把没插电但电量够的机器永久挡在下限之外）；
+// 3. 判据的来源：只许住在 `Opportunistic`（装配侧不许自己读时区、写到期判定、抄阈值）；
+// 4. 执行体真跑：Worker 调 `runDue`，抽检仍是"随机抽＋投回判据输入侧"＋落自己的账；
+// 5. 结果只进体检单＋账本：不递意见、不弹卡、不起通知（511 §二）；
+// 6. 普查账实相符：调度那条部位档跟着判据搬家改（entry／callSites）。
 package com.example.zhengdao.baopu.inspect
 
 import java.io.File
@@ -39,54 +41,57 @@ class NocturnalAutoWiringGateTest {
     fun `开 App 就排周位_删了这行自动档就退回没接线`() {
         val app = code("ZhengdaoApp.kt")
         assertTrue(
-            "ZhengdaoApp.onCreate 里必须排暗卫周位（这是自动档唯一的生产调用点）",
+            "ZhengdaoApp.onCreate 里必须排暗卫周期位（这是自动档唯一的生产排程点）",
             app.contains("NocturnalAuto.ensureScheduled("),
         )
     }
 
-    // ── ② 周位形制：周期＋充电＋WiFi＋KEEP ──────────────────────────────────
+    // ── ② 周期位形制：周期＋KEEP＋不带约束 ──────────────────────────────────
 
     @Test
-    fun `周位是周期作业且只在充电与WiFi时跑`() {
+    fun `周期位是周期作业_且不拿充电约束把电量够的机器挡在外面`() {
         val s = code("baopu/inspect/NocturnalAuto.kt")
         assertTrue("要用周期作业（非精确）", s.contains("PeriodicWorkRequestBuilder"))
-        assertTrue("系统侧那一半：仅充电（§二②）", s.contains("setRequiresCharging(true)"))
-        assertTrue("系统侧那一半：不按流量计费＝WiFi（§二②）", s.contains("NetworkType.UNMETERED"))
         assertTrue("重复开 App 不许把周期清零", s.contains("ExistingPeriodicWorkPolicy.KEEP"))
-        assertTrue("周期只许有一个数（判据层的）", s.contains("PERIOD_DAYS: Long = PatrolScheduler.WEEKLY_PERIOD_DAYS"))
+        assertFalse(
+            "511 §一② 是'电量≥30% 或充电中'：约束只能表达'且'，带了就挡死电量够的机器",
+            s.contains("setRequiresCharging(true)"),
+        )
+        assertFalse("也不再要求 WiFi（511 §一② 没有这一条）", s.contains("NetworkType.UNMETERED"))
+        assertTrue("周期只许有一个数（判据层的）", s.contains("PERIOD_HOURS: Long = Opportunistic.CHECK_PERIOD_HOURS"))
     }
 
-    // ── ②b 周位判据的来源：只许住在夜巡那层 ─────────────────────────────────
+    // ── ③ 判据的来源：只许住在 Opportunistic ────────────────────────────────
 
     @Test
-    fun `周位判据只许来自夜巡调度器_装配侧只做装配`() {
+    fun `触发判据只许来自Opportunistic_装配侧只做装配`() {
         val s = code("baopu/inspect/NocturnalAuto.kt")
-        assertTrue("周位要真的调到夜巡那层", s.contains("PatrolScheduler.autoWeeklyGate("))
-        assertTrue("充电与配额要过暗卫自己的闸（409 钉过它一字未动）", s.contains("NocturnalPatrol.gate("))
-        assertFalse("装配侧不许自己读时区算周（周键只许有一份实现）", s.contains("ZoneId"))
-        assertFalse("也不许自己写到期判定", s.contains("weeklyKey("))
+        assertTrue("触发要真的问到判据层", s.contains("Opportunistic.decide("))
+        assertTrue("抽几条与额度窗要过暗卫自己的闸（409 钉过它一字未动）", s.contains("NocturnalPatrol.gate("))
+        assertFalse("装配侧不许自己读时区算周期（日历口径只许一份）", s.contains("ZoneId"))
+        assertFalse("也不许自己写到期判定", s.contains("floorDue("))
 
-        val p = code("baopu/inspect/PatrolScheduler.kt")
-        assertTrue("周位判据要住在夜巡那层", p.contains("fun autoWeeklyGate("))
-        assertTrue("缺省开关要住在判据层（拍板 A＝开）", p.contains("WEEKLY_ENABLED"))
-        assertTrue("周期只许有一个数", p.contains("WEEKLY_PERIOD_DAYS"))
-        assertTrue("样本下限只许有一个数（拍板补充②的 n<5）", p.contains("WEEKLY_MIN_SAMPLE"))
+        val p = code("baopu/inspect/Opportunistic.kt")
+        assertTrue("判据要住在这里", p.contains("fun decide("))
+        assertTrue("三条触发都在", p.contains("MANUAL") && p.contains("LOAD") && p.contains("FLOOR"))
+        assertTrue("6h 冷却只许一个数", p.contains("COOLDOWN_MS"))
+        assertTrue("30 分钟静默只许一个数", p.contains("QUIET_MS"))
+        assertTrue("7 天下限只许一个数", p.contains("FLOOR_MS"))
     }
 
-    // ── ③ 执行体真跑 ───────────────────────────────────────────────────────
+    // ── ④ 执行体真跑 ───────────────────────────────────────────────────────
 
     @Test
-    fun `Worker 调的是真执行体_判据两道闸都在`() {
+    fun `Worker 调的是真执行体_抽检还是抽不是全检`() {
         val s = code("baopu/inspect/NocturnalAuto.kt")
-        assertTrue("Worker 里必须调 runDue（判周位与配额）", s.contains("NocturnalAuto.runDue("))
+        assertTrue("Worker 里必须调 runDue（判据全部在那一趟里）", s.contains("NocturnalAuto.runDue("))
         assertTrue("Worker 要能注册进 WorkManager（类名出现在周期作业里）", s.contains("NocturnalAutoWorker"))
-        // 抽检不是全检：随机抽＋投回判据输入侧（裁定②），运行记录落自己的账
-        assertTrue(s.contains("NocturnalPatrol.pick("))
-        assertTrue(s.contains("NocturnalPatrol.scopeTo("))
-        assertTrue(s.contains("NocturnalLedger.append("))
+        assertTrue("抽检不是全检：随机抽", s.contains("NocturnalPatrol.pick("))
+        assertTrue("抽中的要投回判据输入侧（裁定②）", s.contains("NocturnalPatrol.scopeTo("))
+        assertTrue("运行记录落自己的账", s.contains("NocturnalLedger.append("))
     }
 
-    // ── ④ 结果只进体检单＋账本：不递意见、不弹卡、不起通知 ──────────────────
+    // ── ⑤ 结果只进体检单＋账本：不递意见、不弹卡、不起通知 ──────────────────
 
     @Test
     fun `自动档三件不许弹卡_不起通知_不递意见`() {
@@ -97,35 +102,30 @@ class NocturnalAutoWiringGateTest {
         )
         listOf(
             "baopu/inspect/NocturnalAuto.kt",
-            "baopu/inspect/PatrolScheduler.kt",
+            "baopu/inspect/PatrolAuto.kt",
+            "baopu/inspect/Opportunistic.kt",
+            "baopu/inspect/TriggerWiring.kt",
         ).forEach { rel ->
             val text = code(rel)
             banned.forEach { word ->
-                assertFalse("$rel 里出现了 $word（结果只进体检单＋账本，432 §二③）", text.contains(word))
+                assertFalse("$rel 里出现了 $word（结果只进体检单＋账本）", text.contains(word))
             }
         }
     }
 
-    // ── ⑥ 开关只读 ─────────────────────────────────────────────────────────
+    // ── ⑥ 普查账实相符 ─────────────────────────────────────────────────────
 
     @Test
-    fun `开关只读_写侧留给UI批`() {
-        val s = code("baopu/inspect/NocturnalAuto.kt")
-        assertTrue("读口要有（SP：${NocturnalAuto.SWITCH_FILE}）", s.contains("getSharedPreferences"))
-        assertTrue("键要能认出来", s.contains(NocturnalAuto.SWITCH_KEY))
-        assertFalse("本批只做读开关（§二④）：不许出现写口", s.contains("putBoolean("))
-        assertFalse("本批只做读开关（§二④）：不许出现 SP 编辑器", s.contains(".edit"))
-    }
-
-    // ── ⑦ 普查账实相符 ─────────────────────────────────────────────────────
-
-    @Test
-    fun `普查跟着接线改_不良人与调度夜巡都真接上了`() {
+    fun `普查跟着判据搬家改_两件装配都算在生产调用点上`() {
         val night = OrganCensus.HEALTH_PARTS.first { it.name == "不良人" }
         assertEquals("运行器 432 接上，普查不许再记零调用", 1, night.callSites)
         assertEquals("NocturnalPatrol.gate", night.entry)
         val scheduler = OrganCensus.HEALTH_PARTS.first { it.name == "调度·夜巡" }
-        assertEquals("周位判据 432 接上，普查不许再记零调用", 1, scheduler.callSites)
-        assertEquals("PatrolScheduler.autoWeeklyGate", scheduler.entry)
+        assertEquals("判据搬到 Opportunistic 之后两件装配各一处调用", 2, scheduler.callSites)
+        assertEquals("Opportunistic.decide", scheduler.entry)
+        assertTrue(
+            "出处要指向新判据（旧的那条 autoWeeklyGate 已经退役）",
+            scheduler.evidence.any { it.contains("Opportunistic.decide(") },
+        )
     }
 }

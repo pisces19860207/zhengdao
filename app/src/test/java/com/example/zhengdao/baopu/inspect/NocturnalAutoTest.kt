@@ -1,8 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含第三方源码拷贝。
 //
-// 第四百三十二批 · 暗卫自动档的判据靶：周位闸（开关 > 值守 > 周位 > WiFi）、
-// 「样本不足（n<5）不许报零假 PASS」（拍板补充②）、灾异轮不当周位的账。
-// 判据住在 `PatrolScheduler`（月位同款纪律），这里测的就是那层；装配侧只做读数与排程。
+// 第四百三十二批开的题，第五百一十一批改判：**触发节奏**（周位闸）搬去 `Opportunistic`，
+// 本文件只剩"抽检这条口径"自己那几条——样本不足（n<5）不许报零假 PASS（432 拍板补充②）
+// 与"灾异轮不当自动档的账"。触发判据的靶在 `OpportunisticTest`，不在这里重复第二套。
 package com.example.zhengdao.baopu.inspect
 
 import org.junit.Assert.assertEquals
@@ -13,107 +13,29 @@ import org.junit.Test
 
 class NocturnalAutoTest {
 
-    /** 2026-10-30 00:00 +08:00（周五；任何时区下都是 ISO 周 2026-W44，跟月位用同一个锚点）。 */
-    private val now = 1_793_289_600_000L
-
-    private val day = 86_400_000L
-
-    // ── 周位闸（开关 > 值守 > 周位 > WiFi）────────────────────────────────
+    // ── 周位的账：灾异轮不算（触发节奏本身在 OpportunisticTest）──────────────
 
     @Test
-    fun `判据1_开关关_不跑_别拿条件当借口`() {
-        val g = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = null,
-            nowMs = now,
-            wifi = true,
-            onDuty = false,
-            enabled = false,
+    fun `灾异轮不当自动档的账_6h冷却与7天下限都看它以外的最后一轮`() {
+        val root = java.io.File("build/tmp/511-night-ledger").absoluteFile.apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        fun round(at: Long, emergency: Boolean) = NightRound(
+            id = "night:$at", atMs = at, bucket = 0L, inspected = 5, hits = 0, noData = 0, emergency = emergency,
         )
-        assertFalse("关了就是关了，别拿条件当借口", g.run)
-        assertEquals(PatrolScheduler.WHY_WEEKLY_OFF, g.why)
-    }
-
-    @Test
-    fun `判据2_L2值守期间不跑`() {
-        val g = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = null,
-            nowMs = now,
-            wifi = true,
-            onDuty = true,
-        )
-        assertFalse(g.run)
-        assertEquals(PatrolScheduler.WHY_WEEKLY_ON_DUTY, g.why)
-    }
-
-    @Test
-    fun `判据1_没在WiFi不跑`() {
-        val g = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = null,
-            nowMs = now,
-            wifi = false,
-            onDuty = false,
-        )
-        assertFalse(g.run)
-        assertEquals(PatrolScheduler.WHY_WEEKLY_WIFI, g.why)
-    }
-
-    @Test
-    fun `判据3_本周没抽且条件齐_该跑`() {
-        val g = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = now - 40 * day,
-            nowMs = now,
-            wifi = true,
-            onDuty = false,
-        )
-        assertTrue("条件齐、周位到：${g.why}", g.run)
-        assertEquals(PatrolScheduler.WHY_WEEKLY_RUN, g.why)
-    }
-
-    @Test
-    fun `判据3_本周已抽_不跑_每周一次不许更密`() {
-        val g = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = now,
-            nowMs = now,
-            wifi = true,
-            onDuty = false,
-        )
-        assertFalse(g.run)
-        assertEquals(PatrolScheduler.WHY_WEEKLY_DONE, g.why)
-    }
-
-    @Test
-    fun `首跑_从没抽过_周位不拦_条件齐才放行`() {
-        // 拍板补充①：开启后不立即跑——判据不认"刚开启"，只认条件；周期作业的首跑
-        // 在排上之后一个周期（≥7 天）且要等约束放行，等的就是第一个满足条件的窗口。
-        val g = PatrolScheduler.autoWeeklyGate(
-            lastRoundAtMs = null,
-            nowMs = now,
-            wifi = true,
-            onDuty = false,
-        )
-        assertTrue(g.run)
-        // 条件缺一条照样拒——首跑也不打折
-        val noWifi = PatrolScheduler.autoWeeklyGate(null, now, wifi = false, onDuty = false)
-        assertFalse(noWifi.run)
-        val onDuty = PatrolScheduler.autoWeeklyGate(null, now, wifi = true, onDuty = true)
-        assertFalse(onDuty.run)
-    }
-
-    @Test
-    fun `周键按自然周_周日抽过下一周就该跑`() {
-        val sat = now + 2 * day // 2026-11-01（周日，2026-W44）
-        val wed = now + 5 * day // 2026-11-04（周三，2026-W45）
-        assertEquals("2026-W44", PatrolScheduler.weeklyKey(now))
-        assertEquals("同一周内键不变", PatrolScheduler.weeklyKey(now), PatrolScheduler.weeklyKey(sat))
-        assertEquals("2026-W45", PatrolScheduler.weeklyKey(wed))
-        assertTrue("周日抽过、进了下周就该跑（不是'再等 7 天'）", PatrolScheduler.weeklyDue(sat, wed))
-        assertFalse("同一周不重复", PatrolScheduler.weeklyDue(now, sat))
-    }
-
-    @Test
-    fun `装配的周期与周位判据同一个数`() {
-        // 两处各写一个 7 迟早会有一个被改：这里钉死"只有一份"（月位同款）
-        assertEquals(PatrolScheduler.WEEKLY_PERIOD_DAYS, NocturnalAuto.PERIOD_DAYS)
+        NocturnalLedger.append(root, round(10L, false))
+        NocturnalLedger.append(root, round(20L, true))
+        assertEquals("最新的是灾异轮也不算：自动档看的是自己那一轮", 10L, NocturnalLedger.lastAutoAt(root))
+        NocturnalLedger.append(root, round(30L, false))
+        assertEquals("后来的自动档那一轮才是账", 30L, NocturnalLedger.lastAutoAt(root))
+        val onlyEmergency = java.io.File("build/tmp/511-night-ledger-only").absoluteFile.apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        NocturnalLedger.append(onlyEmergency, round(40L, true))
+        assertNull("全是灾异 ⇒ 当没跑过（首趟不欠着）", NocturnalLedger.lastAutoAt(onlyEmergency))
+        assertNull(NocturnalLedger.lastAutoAt(java.io.File("build/tmp/511-night-ledger-none").absoluteFile))
     }
 
     // ── 拍板补充②：样本不足（n<5）不许报"零假 PASS" ─────────────────────────
@@ -175,21 +97,6 @@ class NocturnalAutoTest {
         )
         assertTrue(line.contains("已抽检 2 轮（假 PASS 3）"))
         assertFalse("没有样本读数就不显那一格（金吾卫报告没记抽了几条）：$line", line.contains("抽了"))
-    }
-
-    // ── 周位的账：灾异轮不算 ────────────────────────────────────────────────
-
-    @Test
-    fun `灾异轮不当周位的账`() {
-        val auto = NightRound(id = "night:1", atMs = 10L, bucket = 1L, inspected = 5, hits = 0, noData = 0, emergency = false)
-        val emergency = NightRound(id = "night:2", atMs = 20L, bucket = 1L, inspected = 5, hits = 0, noData = 0, emergency = true)
-        assertEquals(
-            "最新的是灾异轮也不算：周位看的是自动档自己",
-            10L,
-            PatrolScheduler.lastAutoRoundAtMs(listOf(auto, emergency)),
-        )
-        assertNull("全是灾异 ⇒ 周位照等到期", PatrolScheduler.lastAutoRoundAtMs(listOf(emergency)))
-        assertNull(PatrolScheduler.lastAutoRoundAtMs(emptyList()))
     }
 
     private companion object {

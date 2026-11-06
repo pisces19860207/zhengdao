@@ -1124,6 +1124,11 @@ internal class BaopuChatController(context: Context) {
         runCatching {
             com.example.zhengdao.baopu.evolution.EvolutionWiring.onRunSettled(System.currentTimeMillis())
             com.example.zhengdao.baopu.agent.TakeoverWiring.sweepStalled(System.currentTimeMillis())
+            // 第五百一十一批：后台维护的机会式触发（负载那一截）——收工是"又干完一批活"的唯一
+            // 权威信号；巡按是重活，所以放到 IO 上跑（判据不满足时它只读两本小账就返回）。
+            scope.launch(Dispatchers.IO) {
+                com.example.zhengdao.baopu.inspect.TriggerWiring.onRunSettled(appCtx)
+            }
         }.onFailure {
             com.example.zhengdao.core.RunLog.log(
                 "[wire-b] 收工触发异常（不阻塞对话）：${it.javaClass.simpleName}: ${it.message}",

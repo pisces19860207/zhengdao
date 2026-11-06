@@ -453,26 +453,17 @@ internal object DataRepair {
      * 一项若能被用户在设置页拨动，御医把它改回去就是盖掉她的选择（那是最坏的一种"修"）；
      * 反过来，一项只有判据、没有写口，那么盘上出现别的值只可能是漂移，改回判据值不会碰人。
      *
-     * 表里现在只有一行，是照着这条判据挑的：
-     * - `nightwatch_auto`＝开（432 拍板 A，2026-11-04 用户「开」；2026-11-05 记下的开关口径
-     *   「缺省＝开」「写侧：本批不做（UI 批 U8）」⇒ 今天没有任何用户写口）。
-     *
-     * **U8 上线时必须把这一行撤掉或改判**（御医不许把用户按下去的「关」改回「开」）——
-     * 这条写在 447 交付报告的移交项里，也写在这里，下一个改代码的人一眼能看到。
+     * 表里现在**一行都没有**——第五百一十一批照着上面那条判据把它清空了：
+     * - 432 那一行（`nightwatch_auto`＝开）撤掉，因为 511 给了用户**真写口**
+     *   （设置页那个「后台自动维护」开关）。御医再把用户按下去的「关」改回「开」，
+     *   就是盖掉她的选择——447 自己写下过这句话（"U8 上线时必须把这一行撤掉或改判"）。
+     * - 表空不等于这一路失灵：表是**数据**，将来出现"用户拍过、又没有写口"的项，
+     *   加一行就生效，判据与执行两段一个字不用改（[configPlan] 收表作参数就是为这个）。
      */
     object ConfigCriteria {
 
-        /** 暗卫自动档开关（键名与 [com.example.zhengdao.baopu.inspect.NocturnalAuto.SWITCH_KEY] 同串）。 */
-        const val NIGHTWATCH_AUTO: String = "nightwatch_auto"
-
         /** 表本体（闭集；加一行＝用户立法，不走进化通道，也不许"顺手加一项"）。 */
-        val ROWS: List<ConfigRow> = listOf(
-            ConfigRow(
-                key = NIGHTWATCH_AUTO,
-                expected = "true",
-                basis = "432 派工单拍板 A（2026-11-04 用户「开」）＋开关口径「缺省＝开」（2026-11-05 记）",
-            ),
-        )
+        val ROWS: List<ConfigRow> = emptyList()
 
         /** 按键找行（表外 ⇒ null，一路的"需人处理"就靠它判）。 */
         fun rowOf(key: String): ConfigRow? = ROWS.firstOrNull { it.key == key }
@@ -489,6 +480,10 @@ internal object DataRepair {
      *   **绝不替它猜默认值**——猜错比不改更坏，且猜出来的值会伪装成"人定过的判据"；
      * - 表里的项全对位、表外也没有东西 ⇒ [RepairVerdict.NOTHING]（不是"修好了"）。
      *
+     * **表空（511 起就是常态）⇒ 直接 [RepairVerdict.NOTHING]**：没有一行可对位，
+     * 就不存在"漂移"这回事；这时把域里看到的每个键都当成"表外需人处理"是纯噪声
+     * （511 起那个键本来就是用户在设置页自己拨的）。
+     *
      * @param rows 判据表（默认唯一真源 [ConfigCriteria.ROWS]；测试可递一张假表，
      *             房型照 [tempPlan] 的 `prefixes`——判据层不替调用方记表）
      */
@@ -498,6 +493,14 @@ internal object DataRepair {
         rows: List<ConfigRow> = ConfigCriteria.ROWS,
         evidence: String,
     ): RepairPlan {
+        if (rows.isEmpty()) {
+            return RepairPlan(
+                kind = RepairKind.CONFIG,
+                verdict = RepairVerdict.NOTHING,
+                reason = "判据表为空（开关交给用户，御医没有可对位的项，一个键都没动）",
+                evidence = evidence,
+            )
+        }
         val byKey = readings.associateBy { it.key }
         val inRows = rows.map { it.key }.toSet()
         val drift = ArrayList<Pair<String, String>>()

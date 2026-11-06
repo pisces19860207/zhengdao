@@ -14,4 +14,8 @@
          不可逆无回收站照样问，被放过的动作仍记账。 -->
     <string name="ask_governance_tier_row">打扰治理档位</string>
     <string name="ask_governance_tier_desc">当前：%1$s（点击切换 严格→标准→放权；硬红线任何档都拒，被放过的动作仍记账）</string>
+    <!-- 第五百一十一批：「后台自动维护」总开关（派工单 §三：设置里**只留这一个**，
+         不再有"每日／每周／夜间"这类各自的小开关）。 -->
+    <string name="settings_auto_maintenance">后台自动维护</string>
+    <string name="settings_auto_maintenance_desc">开：抽检与巡按自己找时机跑｜关：两件都不启动（手动仍可以点）</string>
 </resources>
