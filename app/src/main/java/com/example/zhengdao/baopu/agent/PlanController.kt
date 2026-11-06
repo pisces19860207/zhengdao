@@ -21,6 +21,7 @@ import com.example.zhengdao.baopu.plan.PlanPledgeCards
 import com.example.zhengdao.baopu.plan.PlanPledgeRules
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeParse
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeSnapshot
+import com.example.zhengdao.baopu.preread.PreReadWiring
 import org.json.JSONArray
 import org.json.JSONObject
 import com.example.zhengdao.core.RunLog
@@ -257,6 +258,13 @@ internal class PlanController(
                 val taskId = TaskGrantWire.contractDigest(declared)
                 DeviationWiring.installRun(rid, taskId)
                 log("抱朴出处：taskId=$taskId｜来源=已批准计划契约的规范化摘要（contractDigest）｜轮=$rid")
+                // ── 第四百三十六批 B：预读回执闸的**自动**那一格 ──
+                // 裁定：长程或跨会话 ⇒ 自动要求回执，且**与军令状同一判定点**（274 的
+                // `PlanPledgeRules.isLongTask`，:195/:506 用的就是它）——这里只把同一个
+                // (步数, 跨会话) 递给预读，不造第二套长程判定，也不改那一条的线。
+                // 没附必读清单时它只是把"要求"记住（清单后附上也生效），闸照旧不启用。
+                val armed = PreReadWiring.armByLongTask(applied.items.size, crossSession())
+                if (armed) log("抱朴预读：本任务要求回执（自动：${applied.items.size} 步${if (crossSession()) "，跨会话" else ""}）")
             }
         } else if (inForce) {
             PlanContractBoard.notePlan(applied.items)

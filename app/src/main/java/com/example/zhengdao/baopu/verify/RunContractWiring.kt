@@ -27,6 +27,7 @@
 // 也有的一张验收读数。两行都进运行日志，互不替代。
 package com.example.zhengdao.baopu.verify
 
+import com.example.zhengdao.baopu.preread.PreReadWiring
 import com.example.zhengdao.core.BudgetPreset
 import com.example.zhengdao.core.EvidenceKind
 import com.example.zhengdao.core.ExitAction
@@ -222,6 +223,12 @@ internal object RunContractWiring {
         touched: List<String>,
         gateFindings: List<Finding>,
     ): ContractReport {
+        // 第四百三十六批 B：收工对照（判据③「回执说改的文件 vs 实际改的」）。
+        // 挂在这一格而不是引擎里：这里已经是"本轮真写过哪些文件"的**唯一口径**
+        // （touched ＝ verifyTouched，与 242 契约验收同一份清单），另起一处清单就是两套真相。
+        // 只落账与提出，**不参与**下面那个三态结论：预读越界不是验收失败（裁定「不阻断」），
+        // 掺进 ContractReport 等于给 242 的判据表加一格——那是另一批的事。
+        PreReadWiring.closeout(touched)
         // 主交付物按 404 口径解析（resolveTarget：与写入侧 287 对齐）——工作区外的
         // 合法落点（绝对路径写全盘）也算数，不再因为「不在工作区」被当没交卷
         // （401 验机 M7：产物全在盘上却判 FAIL 缺证据的误判链第二环）。

@@ -41,6 +41,7 @@ import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
 import com.example.zhengdao.baopu.plan.TouchFace
+import com.example.zhengdao.baopu.preread.PreReadWiring
 import com.example.zhengdao.baopu.scout.LedgerFanout
 import com.example.zhengdao.core.RunLog
 import org.json.JSONArray
@@ -451,6 +452,19 @@ internal class GuardPipeline(
         if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
         if (guarded is Guarded.Fail) return Prepared.Settled(Result.Failed(call, guarded.reason))
         val effectiveCall = (guarded as Guarded.Yes).call
+
+        // 第四百三十六批 B：预读回执闸（**位置是判据**：② 之后、③ 之前，源级测试钉着）。
+        // 为什么不能更早：② 段对系统/凭据目录给的是 Rejected（终止本轮），这条硬拒比本批早，
+        // 本批不许把它放软成可重试——所以被 ② 拒掉的调用必须仍然先撞上 ②。
+        // 为什么不能更晚：③ 一进去就调 `OpinionWiring.onVerdict`（W3 压/放闸语义，派工单红线
+        // 零改写）与 `RiskGate.judge`（带 20 次/60 秒计频，多调一次就是自己给自己加账）。
+        // 被拦的调用**根本不进判定**，两个都不许多碰。
+        // 只拦写不拦读：真值取 `!spec.readOnly`——与 287 围栏、⑤ 段入账用的是同一个口径。
+        // 拦住给的是 Failed（可重试、原文回灌），不是 Rejected：裁定要的是"报错拦住"，
+        // 模型收到那句可操作提示后交回执，同一笔还能再走一次。
+        PreReadWiring.beforeToolCall(spec.name, isWrite = !spec.readOnly)?.let { blocked ->
+            return Prepared.Settled(Result.Failed(effectiveCall, blocked))
+        }
 
         // ③ 判定（**风险矩阵唯一口径**，第二百二十三批；批准路径跳过）
         // 第二百四十二批：这一档要交给契约层比"预估"（[localRisk]），但契约**不重判**——

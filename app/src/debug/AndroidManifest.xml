@@ -10,6 +10,7 @@
       adb shell am start -n com.example.zhengdao/com.example.zhengdao.baopu.authz.TaskGrantCardPreviewActivity
       adb shell am start -n com.example.zhengdao/com.example.zhengdao.browser.offscreen.OffscreenProbeActivity
       adb shell am start -n com.example.zhengdao/com.example.zhengdao.patrol.EvidenceDeviceProbeActivity
+      adb shell am start -n com.example.zhengdao/com.example.zhengdao.baopu.preread.PreReadDeviceProbeActivity
 
   `exported=true` 保留：Honor Android 16 上 shell 拉不起非导出组件（249/263 两批都踩到），
   这几个页面都只在 debug 包内、且不解析任何外部 intent 参数。
@@ -18,6 +19,9 @@
 
   第二百六十二批（2026-10-28）并一行：巡按取证据的真机验收探针
   EvidenceDeviceProbeActivity（无界面、跑完自动 finish、只能显式 am start）。
+
+  第四百三十六批 B（2026-11-06）并一行：预读回执闸真机探针
+  PreReadDeviceProbeActivity（屏上列五相读数、跑完自动 finish；logcat tag=PrereadProbe）。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
@@ -51,5 +55,15 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 第四百三十六批 B：预读回执闸真机探针。刻意用**不透明**主题——判据①②要的
+             是截图上看得见那五行读数（Translucent 截出来是空的）。同样不挂 LAUNCHER，
+             桌面不许出现第二个图标（2026-10-28 用户定）。 -->
+        <activity
+            android:name="com.example.zhengdao.baopu.preread.PreReadDeviceProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Material.Light" />
     </application>
 </manifest>
