@@ -92,7 +92,7 @@ internal fun BackupSection() {
                 busy = true
                 note = null
                 scope.launch {
-                    note = exportNote(ctx, includeChat)
+                    note = exportNote(ctx, res, includeChat)
                     busy = false
                 }
             }
@@ -181,18 +181,19 @@ private fun SimpleNoteDialog(text: String, onDismiss: () -> Unit) {
 
 // ── 三个副作用（都在 IO 线程上；界面只管把结果贴出来）───────────────────────────
 
-private suspend fun exportNote(ctx: Context, includeChat: Boolean): String = withContext(Dispatchers.IO) {
-    val r = BackupShell.export(ctx, includeChat)
-    when {
-        !r.ok -> ctx.getString(R.string.backup_export_failed, r.reason.orEmpty())
-        // 跳过必须说出来：一个 30 MiB 的日志被悄悄漏掉，用户拿到的"完整还原"就是假的
-        r.skipped > 0 ->
-            ctx.getString(R.string.backup_export_done, r.file?.absolutePath.orEmpty()) +
-                ctx.getString(R.string.backup_export_partial, r.skipped)
+private suspend fun exportNote(ctx: Context, res: Resources, includeChat: Boolean): String =
+    withContext(Dispatchers.IO) {
+        val r = BackupShell.export(ctx, includeChat)
+        when {
+            !r.ok -> res.getString(R.string.backup_export_failed, r.reason.orEmpty())
+            // 跳过必须说出来：一个 30 MiB 的日志被悄悄漏掉，用户拿到的"完整还原"就是假的
+            r.skipped > 0 ->
+                res.getString(R.string.backup_export_done, r.file?.absolutePath.orEmpty()) +
+                    res.getString(R.string.backup_export_partial, r.skipped)
 
-        else -> ctx.getString(R.string.backup_export_done, r.file?.absolutePath.orEmpty())
+            else -> res.getString(R.string.backup_export_done, r.file?.absolutePath.orEmpty())
+        }
     }
-}
 
 private suspend fun importNote(
     ctx: Context,
