@@ -58,7 +58,41 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _find_repo_root() -> str:
+    """定位 zhengdao 仓库根（2026-11-06 修：工具房副本在 worktree 里空转）。
+
+    为什么不能只看 __file__：本脚本会被复制到工具房（`_zd-toolroom/01-gates/`）直接调用，
+    此时 `__file__` 的父父目录是工具房而不是仓库 ⇒ 两个默认路径全落空。
+
+    查找顺序：① 环境变量 `ZHENGDAO_ROOT` ② 当前工作目录向上 ③ 脚本所在目录向上 ④ 兜底父父目录。
+    markers：`config/detekt/issue-budget.json` 或 `settings.gradle.kts`（worktree 里同样具备）。
+    """
+    env = os.environ.get("ZHENGDAO_ROOT")
+    if env and os.path.isdir(env):
+        return os.path.abspath(env)
+
+    def _walk(start: str):
+        cur = os.path.abspath(start)
+        while True:
+            if os.path.isfile(os.path.join(cur, "config", "detekt", "issue-budget.json")) or \
+               os.path.isfile(os.path.join(cur, "settings.gradle.kts")):
+                return cur
+            # 工具房场景：脚本在 _zd-toolroom/01-gates/，而仓库就在兄弟目录 zhengdao/
+            nested = os.path.join(cur, "zhengdao")
+            if os.path.isfile(os.path.join(nested, "settings.gradle.kts")):
+                return nested
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return None
+            cur = parent
+
+    for start in (os.getcwd(), os.path.dirname(os.path.abspath(__file__))):
+        hit = _walk(start)
+        if hit:
+            return hit
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+ROOT = _find_repo_root()
 DEFAULT_XML = os.path.join(ROOT, "app", "build", "reports", "detekt", "detekt.xml")
 DEFAULT_BUDGET = os.path.join(ROOT, "config", "detekt", "issue-budget.json")
 DEFAULT_DETEKT_YML = os.path.join(ROOT, "config", "detekt", "detekt.yml")
