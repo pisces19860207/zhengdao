@@ -92,7 +92,8 @@ class VisionConsentWiringTest {
 
     @Test
     fun `G2_三条分支各就各位`() {
-        assertTrue(consentFn.contains("askUser(VisionConsent.request(verified, imageCount))"))
+        // 507：发图许可改走必问让步格（调解器压不掉）；卡面与三条分支一个字没动。
+        assertTrue(consentFn.contains("askUser(VisionConsent.request(verified, imageCount), mustAsk = true)"))
         assertTrue(consentFn.contains("VisionConsent.decide(picked?.id)"))
         // 仍要发送：只举旗，别的一个都不许多改（旗是唯一传给组装层的东西）
         assertEquals("举旗只能有一处", 1, Regex("turnVisionAuthorized = true").findAll(consentFn).count())

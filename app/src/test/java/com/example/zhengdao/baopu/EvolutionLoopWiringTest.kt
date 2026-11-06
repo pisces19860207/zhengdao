@@ -172,8 +172,14 @@ class EvolutionLoopWiringTest {
         assertTrue("eval：结果文件", judge.contains("EvalResultFile.latest(appCtx)"))
         assertTrue("回滚：dry-run 内部判（84 rollbackVia）", judge.contains("dryRunSelfCheck("))
         assertTrue("候选：listPending", judge.contains("store.listPending()"))
-        // 第一百八十一批 #1：组装与决策改走 decidePending 批量口（同一把尺 toDecisionInput）
-        assertTrue("组装：证据桥仍走 toDecisionInput", judge.contains("toDecisionInput(c,"))
+        // 第一百八十一批 #1：组装与决策改走 decidePending 批量口（同一把尺 toDecisionInput）。
+        // 第五百零七批：装配改走证据桥本尊——先装 EvolutionEvidence，再经 toAssessment/
+        // inputFor 进决策口（inputFor 内部就是 toDecisionInput，桥没有第二套字段映射）。
+        assertTrue(
+            "组装：证据桥（EvolutionEvidence → toAssessment）",
+            judge.contains("EvolutionEvidence(") && judge.contains("toAssessment(c.kind)"),
+        )
+        assertTrue("影子重放与决策口同一把尺（inputFor）", judge.contains("inputFor(c, evidences[c.id]!!)"))
         assertTrue("决策：port.decidePending", judge.contains(".decidePending("))
     }
 
