@@ -110,7 +110,7 @@ internal fun homeReinstallItemVisible(hasInstallCmd: Boolean, envReady: Boolean)
 // ═══ 首页入口白名单（第一百四十二批 · 2026-10-22） ═══
 
 /**
- * 首页 Agent 入口白名单：Claude Code / Hermes Agent / AGY CLI / Codex CLI 四件。
+ * 首页 Agent 入口白名单：Claude Code / Hermes Agent / AGY CLI 三件（Codex 于 2026-11-06 移出：用户确认 App 内已无 Codex 入口）。
  *
  * **决策链（覆盖记录，别当冗余注释）**：
  * - 2026-10-18 第十八批 B 段旧定稿：filter 只认 `id == "hermes"`，其余三件从首页收起
@@ -126,7 +126,7 @@ internal fun homeReinstallItemVisible(hasInstallCmd: Boolean, envReady: Boolean)
  * OpenCode 不在内：它已内置为抱朴的模型通道，本来就不作为终端 agent 展示（旧注释口径不变）。
  */
 internal val HOME_AGENT_ENTRY_IDS: List<String> =
-    listOf("claude-code", "hermes", "antigravity", "codex")
+    listOf("claude-code", "hermes", "antigravity")
 
 /**
  * 首页 Agent 入口是否可见（白名单判据）。
