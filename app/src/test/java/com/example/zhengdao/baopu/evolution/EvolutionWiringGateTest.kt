@@ -6,6 +6,9 @@
 //   ① 生产调用点必须存在（JinwuObserve 喂板后一行 + BaopuChatController Settled 家族两行）；
 //   ② seam 入口只开提案不调 apply（不自动改判据）；
 //   ③ agent/TakeoverWiring.kt 里不许出现宰相准入符号（宰相在线路径只查表，不参与准入）。
+//
+// 第三百八十批追加④⑤（读数臂 + 通道格），第四百九十五批追加三态的钉缝：分流口必须接进 sweep、
+// 缺读数那一支不许碰 376、结论三态必须显在体检单上、376 的 verdict 闭集不许被挤成四态。
 package com.example.zhengdao.baopu.evolution
 
 import java.io.File
@@ -177,5 +180,60 @@ class EvolutionWiringGateTest {
             "HealthRun 必须把 ProofReading.channelLine 拼进体检单（release 下通道不可用要显出来，不许沉默）",
             callLine,
         )
+    }
+
+    // ── ⑤ 第四百九十五批：三态分流挂进链与体检单的钉缝（判据①④⑤） ────────────
+
+    @Test
+    fun `495判据⑤_sweep 必须问取数层要分流结果`() {
+        val src = strip(read("src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt"))
+        assertTrue(
+            "sweep 必须调 ProofReading.gapFor——「没送到」与「不合格」不许混成同一个 null",
+            src.contains("ProofReading.gapFor("),
+        )
+    }
+
+    @Test
+    fun `495负例_gapFor 不接进链时判据必须红`() {
+        val fake = "val reading = ProofReading.pick(id, at, now) // gapFor 没调"
+        assertFalse("少了分流口 ⇒ 判据必须红（防恒真）", fake.contains("ProofReading.gapFor("))
+    }
+
+    @Test
+    fun `495判据⑤_缺读数收尾不碰 376（stopWithoutReading 体内无 apply）`() {
+        val src = strip(read("src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt"))
+        val body = src.substringAfter("private fun stopWithoutReading(").substringBefore("fun proposals()")
+        assertFalse("没法验那一支不许换表（apply 只发生在有读数的链上）", body.contains("EvolutionLoop.apply("))
+        assertFalse("没 verify 就没回滚（376 的判定本体一字不动）", body.contains("EvolutionLoop.verify("))
+    }
+
+    @Test
+    fun `495负例_缺读数收尾偷偷换表时判据必须红`() {
+        val fake = "private fun stopWithoutReading(a: Int) { EvolutionLoop.apply(t, n, r, ms) } fun proposals() {}"
+        val body = fake.substringAfter("private fun stopWithoutReading(").substringBefore("fun proposals()")
+        assertTrue("塞进 apply ⇒ 上面那条判据必须抓到", body.contains("EvolutionLoop.apply("))
+    }
+
+    @Test
+    fun `495判据⑤_376 的 verdict 闭集没被三态挤进去`() {
+        // 三态落在接线层与提案账的 reason；376 的尝试账仍只有 通过/失败 两态。
+        val src = strip(read("src/main/java/com/example/zhengdao/baopu/policy/EvolutionLoop.kt"))
+        assertFalse("495 没给尝试账开第四态", src.contains("UNVERIFIABLE"))
+    }
+
+    @Test
+    fun `495判据④_体检单必须接进化结论三态那一格`() {
+        val src = strip(read("src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt"))
+        val callLine = src.lineSequence().any { it.contains("EvolutionWiring.sheetLines()") }
+        assertTrue(
+            "HealthRun 必须把 EvolutionWiring.sheetLines 拼进读数格——三态（通过／失败（读数不合格）／没法验（缺读数））要显在单子上",
+            callLine,
+        )
+    }
+
+    @Test
+    fun `495负例_体检单不接三态那一格时判据必须红`() {
+        val fake = "readings = reading.sheetLines + ProofReading.channelLine(true),"
+        assertFalse("只剩通道格没有结论格 ⇒ 判据必须红", fake.lineSequence().any { it.contains("EvolutionWiring.sheetLines()") })
     }
 }

@@ -259,6 +259,72 @@ class ProofReadingTest {
         assertTrue("release 行要说明缺网/缺分支时的语义（等下一轮，不是进化总在失败）", release.contains("等下一轮"))
     }
 
+    // ── 第四百九十五批：取数层分流（没送到 ≠ 不合格） ──────────────────────────
+
+    @Test
+    fun `495判据①_gapFor_收件箱没行_Missing`() {
+        val gap = ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW)
+        assertTrue("一行都没有是没送到：$gap", gap is ProofGap.Missing)
+        assertTrue("缺因要说出口：$gap", (gap as ProofGap.Missing).why.contains("收件箱"))
+    }
+
+    @Test
+    fun `495判据①_gapFor_整箱都是别场的行也算_Missing`() {
+        writeInbox(rowJson(at = NOW - 1_000L, ref = "ci-other", proposal = "gap:other"))
+        assertTrue("别场的行不归本场，不算本场不合格", ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW) is ProofGap.Missing)
+    }
+
+    @Test
+    fun `495_垃圾行不判死别人_归属只认读得出的 proposal 字段`() {
+        writeInbox("{ 不是 json")
+        assertTrue(
+            "整行连 JSON 都不是 ⇒ 谁也不归 ⇒ 仍算没送到（380「一次笔误不烧 CI run」同款豁免）",
+            ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW) is ProofGap.Missing,
+        )
+    }
+
+    @Test
+    fun `495判据②_gapFor_本场行时间窗不符_Invalid_且带得出新表`() {
+        writeInbox(rowJson(at = OPENED_AT - 10L * 60_000L, ref = "ci-stale"))
+        val gap = ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW)
+        assertTrue("本场的行被弃 ⇒ 不合格：$gap", gap is ProofGap.Invalid)
+        assertNotNull("建得出表 ⇒ 链能换表再判红（②的回滚就从这里来）", (gap as ProofGap.Invalid).snapshot)
+        assertTrue("弃因要说出口：${gap.why}", gap.why.contains("早于提案"))
+    }
+
+    @Test
+    fun `495判据②_gapFor_本场行格式建不出_Invalid_却没表`() {
+        writeInbox(rowJson(at = NOW - 1_000L, ref = "ci-broken", unitRan = true, unitTotal = 0))
+        val gap = ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW)
+        assertTrue(gap is ProofGap.Invalid)
+        assertNull("构造器连表都拒 ⇒ 没得换，链不许假称回滚", (gap as ProofGap.Invalid).snapshot)
+        assertTrue("弃因要说「格式」：${gap.why}", gap.why.contains("格式建不出"))
+    }
+
+    @Test
+    fun `495判据③_gapFor_有合格行_Available`() {
+        writeInbox(rowJson(at = NOW - 1_000L, ref = "ci-good"))
+        assertTrue(ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW) is ProofGap.Available)
+    }
+
+    @Test
+    fun `495_gapFor 安静分类_不重复落时钟可疑账`() {
+        writeInbox(rowJson(at = NOW + 10L * 60_000L, ref = "ci-clock"))
+        assertNull("pick 先喊过并落过一行", ProofReading.pick(PROPOSAL, OPENED_AT, NOW))
+        val before = refsFile().readText().trim().lines().size
+        assertTrue(ProofReading.gapFor(PROPOSAL, OPENED_AT, NOW) is ProofGap.Invalid)
+        assertEquals("分流只分类，不第二遍落账", before, refsFile().readText().trim().lines().size)
+    }
+
+    @Test
+    fun `495_待验队列的闸_只有拿得出能换的表才值得再过准入`() {
+        val snapshot = ProofRow.parse(rowJson(at = NOW - 1_000L, ref = "ci-table"))!!.snapshot
+        assertFalse("没送到 ⇒ 原地等", ProofGap.Missing("收件箱没有一行").actionable())
+        assertFalse("坏到建不出表 ⇒ 原地等", ProofGap.Invalid("格式建不出", null).actionable())
+        assertTrue("弃行带得出表 ⇒ 这一轮能判（495②）", ProofGap.Invalid("ref 已用", snapshot).actionable())
+        assertTrue("合格读数 ⇒ 照走", ProofGap.Available.actionable())
+    }
+
     // ── 辅助 ────────────────────────────────────────────────────────────────
 
     private val PROPOSAL = "misjudgment:TIMEOUT"

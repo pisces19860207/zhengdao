@@ -7,6 +7,8 @@
 // 判据③ 门拒绝时不许静默（落账＋说明理由）
 package com.example.zhengdao.baopu.evolution
 
+import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
+import com.example.zhengdao.baopu.agent.RoyalVerdict
 import com.example.zhengdao.baopu.inspect.DeviationEntry
 import com.example.zhengdao.baopu.inspect.DeviationKind
 import com.example.zhengdao.baopu.inspect.DeviationLedger
@@ -285,7 +287,167 @@ class EvolutionWiringTest {
         assertNull("24h 内不足 3 次 ⇒ 提案不开", p)
     }
 
+    // ── 第四百九十五批：取不到读数时的三态（判据①②③④） ─────────────────────
+
+    @Test
+    fun `判据①_缺读数_结论没法验_不换表不回滚_账记reading_missing`() {
+        val now = 1_700_000_000_000L
+        val id = openGapProposal(now)
+        val outcome = EvolutionWiring.runEvolutionChain(
+            trigger = GapTrigger(listOf(gapItem("x", attempts = GapFeedback.HAND_OVER_ATTEMPTS))),
+            candidate = candidateWithReplay(id),
+            next = null,
+            rulingRef = "御批-495-missing",
+            anchors = signedAnchors(),
+            proofRunner = { EvolutionWiring.defaultProof() },
+            nowMs = now,
+            gap = ProofGap.Missing("收件箱没有一行（进化读数.jsonl 缺失）"),
+        )
+        assertEquals(EvolutionConclusion.UNVERIFIABLE, outcome.conclusion)
+        assertFalse("缺读数不许换表", outcome.applied)
+        assertNull("缺读数不许调 verify（判据⑤：376 不接这一场）", outcome.verify)
+        assertFalse("没换过表 ⇒ 不许假称回滚", outcome.rolledBack())
+        assertNull("当前表一行没动", EpochRuntime.currentSnapshot())
+        assertTrue("尝试账一行不加——没数可验不是失败", EvolutionWiring.attempts().isEmpty())
+        val row = EvolutionWiring.proposals().first { it.id == id }
+        assertEquals("提案停在待验队列", ProposalStatus.ADMITTED, row.status)
+        assertTrue("提案账要点明缺的是读数：${row.reason}", row.reason.contains("reading_missing"))
+    }
+
+    @Test
+    fun `判据②_读数不合格却带得出新表_换表后判红_自动回滚_账记reading_invalid`() {
+        val now = 1_700_000_000_000L
+        val id = openGapProposal(now)
+        val next = nextSnapshot()
+        val outcome = EvolutionWiring.runEvolutionChain(
+            trigger = GapTrigger(listOf(gapItem("x", attempts = GapFeedback.HAND_OVER_ATTEMPTS))),
+            candidate = candidateWithReplay(id),
+            next = next,
+            rulingRef = "御批-495-invalid",
+            anchors = signedAnchors(),
+            proofRunner = { EvolutionWiring.defaultProof() },
+            nowMs = now,
+            gap = ProofGap.Invalid("没有可用读数（弃因：ref 已用 1 行）", next),
+        )
+        assertEquals(EvolutionConclusion.FAILED, outcome.conclusion)
+        assertTrue("②要真换表才谈得上回滚", outcome.applied)
+        assertTrue("②⇒ 376 自动回滚", outcome.rolledBack())
+        assertNull("回滚后回到无表", EpochRuntime.currentSnapshot())
+        assertTrue("失败的纪不进册", EpochRegistry.epochs().isEmpty())
+        val last = EvolutionWiring.attempts().last()
+        assertEquals(EvolutionAttemptRow.VERDICT_FAIL, last.verdict)
+        assertTrue("尝试账记「失败·已回滚」", last.rolledBack)
+        val row = EvolutionWiring.proposals().first { it.id == id }
+        assertEquals(ProposalStatus.ROLLED_BACK, row.status)
+        assertTrue("提案账要点明是不合格：${row.reason}", row.reason.contains("reading_invalid"))
+    }
+
+    @Test
+    fun `判据②_读数不合格连表都建不出_判失败但不假称回滚`() {
+        val now = 1_700_000_000_000L
+        val id = openGapProposal(now)
+        val outcome = EvolutionWiring.runEvolutionChain(
+            trigger = GapTrigger(listOf(gapItem("x", attempts = GapFeedback.HAND_OVER_ATTEMPTS))),
+            candidate = candidateWithReplay(id),
+            next = null,
+            rulingRef = "御批-495-broken",
+            anchors = signedAnchors(),
+            proofRunner = { EvolutionWiring.defaultProof() },
+            nowMs = now,
+            gap = ProofGap.Invalid("没有可用读数（弃因：格式建不出 1 行）", null),
+        )
+        assertEquals(EvolutionConclusion.FAILED, outcome.conclusion)
+        assertFalse("连表都建不出来 ⇒ 没换表", outcome.applied)
+        assertFalse("没换表 ⇒ 不许说回滚了", outcome.rolledBack())
+        val last = EvolutionWiring.attempts().last()
+        assertEquals("门拒绝不许静默：尝试账要有这一行", EvolutionAttemptRow.VERDICT_FAIL, last.verdict)
+        assertFalse("诚实写未回滚", last.rolledBack)
+        assertTrue("拒行也要带口径：${last.reason}", last.reason.contains("reading_invalid"))
+        val row = EvolutionWiring.proposals().first { it.id == id }
+        assertEquals("留在待验：下一轮好行来了还能判", ProposalStatus.ADMITTED, row.status)
+        assertTrue(row.reason.contains("reading_invalid"))
+    }
+
+    @Test
+    fun `判据③_读数合格_照旧走链_结论通过`() {
+        val now = 1_700_000_000_000L
+        val id = openGapProposal(now)
+        val outcome = EvolutionWiring.runEvolutionChain(
+            trigger = GapTrigger(listOf(gapItem("x", attempts = GapFeedback.HAND_OVER_ATTEMPTS))),
+            candidate = candidateWithReplay(id),
+            next = nextSnapshot(),
+            rulingRef = "御批-495-ok",
+            anchors = signedAnchors(),
+            proofRunner = { allGreenProof() },
+            nowMs = now,
+            gap = ProofGap.Available,
+        )
+        assertEquals(EvolutionConclusion.LANDED, outcome.conclusion)
+        assertTrue(outcome.landed())
+        val row = EvolutionWiring.proposals().first { it.id == id }
+        assertEquals(ProposalStatus.LANDED, row.status)
+        assertFalse("合格读数不许带缺/不合格的口径：${row.reason}", row.reason.contains("reading_"))
+    }
+
+    @Test
+    fun `判据①_待验队列_仍缺读数就一步不走_准入计数与拒行不涨`() {
+        val now = 1_700_000_000_000L
+        val id = openGapProposal(now)
+        EvolutionWiring.runEvolutionChain(
+            trigger = GapTrigger(listOf(gapItem("x", attempts = GapFeedback.HAND_OVER_ATTEMPTS))),
+            candidate = candidateWithReplay(id),
+            next = null,
+            rulingRef = "御批-495-queue",
+            anchors = signedAnchors(),
+            proofRunner = { EvolutionWiring.defaultProof() },
+            nowMs = now,
+            gap = ProofGap.Missing("收件箱没有一行"),
+        )
+        assertEquals(ProposalStatus.ADMITTED, EvolutionWiring.proposals().first { it.id == id }.status)
+        val attemptsBefore = EvolutionWiring.attempts().size
+        RoyalDecisionLedger.record(id, RoyalVerdict.APPROVE, now)
+        // 下一轮收工：御批到了、读数还是没到 ⇒ 队列原地等，一行都不许多落。
+        EvolutionWiring.onRunSettled(now + 1_000L)
+        assertEquals("缺读数的那轮不重复过准入", attemptsBefore, EvolutionWiring.attempts().size)
+        assertEquals("仍停在待验", ProposalStatus.ADMITTED, EvolutionWiring.proposals().first { it.id == id }.status)
+    }
+
+    @Test
+    fun `判据④_体检单三态区分显示`() {
+        val now = 1_700_000_000_000L
+        seedProposal("gap:a", ProposalStatus.LANDED, "进化成立：四条验证全绿", now)
+        seedProposal(
+            "gap:b",
+            ProposalStatus.ADMITTED,
+            "没有可用读数（收件箱没有一行）（reason=reading_missing）",
+            now,
+        )
+        seedProposal("gap:c", ProposalStatus.ROLLED_BACK, "单测没跑过（reason=reading_invalid）", now)
+        val sheet = EvolutionWiring.sheetLines().joinToString("\n")
+        assertTrue("通过要单列：$sheet", sheet.contains("通过 1"))
+        assertTrue("不合格要说「失败（读数不合格）」：$sheet", sheet.contains("失败（读数不合格） 1"))
+        assertTrue("缺读数要说「没法验（缺读数）」：$sheet", sheet.contains("没法验（缺读数） 1"))
+    }
+
+    @Test
+    fun `判据④_一场都没进链时不许被读成进化总在失败`() {
+        val line = EvolutionWiring.sheetLines().single()
+        assertTrue("要说清是没进链不是失败：$line", line.contains("不是进化在失败"))
+    }
+
     // ── 辅助 ────────────────────────────────────────────────────────────────
+
+    /** 开一单缺口提案（三态用例都要先在账上有这一单，setProposalStatus 才落得下去）。 */
+    private fun openGapProposal(nowMs: Long): String {
+        GapFeedback.record(listOf(gapItem("x", attempts = GapFeedback.HAND_OVER_ATTEMPTS)))
+        return EvolutionWiring.onGapsRecorded(nowMs) ?: error("缺口到线却没开提案")
+    }
+
+    /** 直接往提案账落一行（体检单那两测钉的是"显示"，不必为此跑一整条链）。 */
+    private fun seedProposal(id: String, status: ProposalStatus, reason: String, atMs: Long) {
+        val row = EvolutionProposal(id, EvolutionAttemptRow.TRIGGER_MISJUDGMENT, "种子", status, reason, atMs)
+        File(root, EvolutionWiring.PROPOSAL_FILE).appendText(row.toJson().toString() + "\n", Charsets.UTF_8)
+    }
 
     private fun gapItem(target: String, attempts: Int): GapItem = GapItem(
         source = GapSource.JINWU,

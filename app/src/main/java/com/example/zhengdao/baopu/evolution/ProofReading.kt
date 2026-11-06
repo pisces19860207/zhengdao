@@ -32,6 +32,15 @@
 // 消耗时机＝verify 真正拿读数那一刻（[Reading.runner] 被链调用时）：准入拒／换表拒／
 //   没有新表，链都到不了 verify ⇒ ref 不许被烧。
 //
+// 第四百九十五批加**分流口** [gapFor]（判据⑤：只在取数层分流，判定本体一字不动）：
+// [pick] 答"有没有可用读数"，拿不到时它把两种"没拿到"混成一件事——
+//   · 收件箱里没有一行属于本场（没文件／没行／整行都不是它的）= **没送到**（Missing）；
+//   · 有本场的行但全被弃（格式建不出来／时间窗不符／ref 已用或时钟可疑）= **不合格**（Invalid）。
+// 前者是"CI 还没跑"，后者是"跑了但不算数"——376 的口径不一样：没跑没资格判失败，
+// 不合格才是真失败。本件只报"哪一种缺、缺在哪"，过没过仍归 376。
+// 归属口径（495 实测决定）：坏行只有**读得出 `proposal` 字段**才算这一场的——整行不是 JSON
+// 就连"是谁的"都不知道，那种垃圾行不许判死别人的进化（380"一次笔误不烧 CI run"的豁免留着）。
+//
 // 零 Android：`root` 由 [DecisionLedger.installedRoot] 给，`nowMs` 由调用方给。
 package com.example.zhengdao.baopu.evolution
 
@@ -99,7 +108,42 @@ internal data class ProofRow(
             )
             ProofRow(proposal, ref, at, proof, snapshot)
         }.getOrNull()
+
+        /**
+         * 坏行归属探测（495）：这行建不出来，但它是不是这一场的？
+         * 只认 JSON 里读得出的 `proposal` 字段——整行连 JSON 都不是，谁也不沾，不许算成某场的"不合格"。
+         */
+        fun belongsTo(raw: String, proposalId: String): Boolean = runCatching {
+            JSONObject(raw).optString("proposal") == proposalId
+        }.getOrDefault(false)
     }
+}
+
+/**
+ * 取数层分流的结果（第四百九十五批；判据⑤：只分流，不判定）。
+ *
+ * 三态与结论的对应写在 [EvolutionWiring] 那一侧（没法验／失败／通过），本件只说"数是怎么缺的"。
+ */
+internal sealed class ProofGap {
+    /** 有可用读数：链照 380 的原路走，495 不改它任何一笔。 */
+    object Available : ProofGap()
+
+    /** 没有一行属于本场的读数（收件箱缺／空／全是别场）⇒ 没送到，不是做错。 */
+    data class Missing(val why: String) : ProofGap()
+
+    /**
+     * 本场的行全被弃⇒ 不合格（真失败）。
+     *
+     * [snapshot] 是"被弃那行想换上的新表"：时间窗／ref 不合格的行建得出表（只是不能作证），
+     * 格式坏到构造器都拒的行连表都没有——有表时链会照 376 换表再判失败，才算真回滚。
+     */
+    data class Invalid(val why: String, val snapshot: CriteriaSnapshot?) : ProofGap()
+
+    /**
+     * 这一轮的取数结果值不值得让提案**再过一次准入**（第四百九十五批·待验队列的闸）：
+     * 拿不出能换的表（没送到／坏到连表都建不出来）就原地等，别把纪元计数与拒行按轮刷。
+     */
+    fun actionable(): Boolean = this is Available || (this as? Invalid)?.snapshot != null
 }
 
 /** 读数收件箱（380 真验证臂的取数件；判定仍在 376 的闸里，本件零判法）。 */
@@ -120,55 +164,141 @@ internal object ProofReading {
     /**
      * 给一场进化选一行合格读数（**不消耗 ref**——消耗在 [Reading.runner] 被链调用那一刻）。
      *
-     * 返回 null ＝ 本场没有能用的读数：链拿着 next=null 停在准入之后（不自动改判据），
-     * 提案状态由链自己写明白，本件只把弃因逐行说给 RunLog。
+     * 返回 null ＝ 本场没有能用的读数：**为什么没有**由 [gapFor] 答（第四百九十五批——
+     * "没送到"与"不合格"是两回事，不许再混成同一个 null）。
      */
     fun pick(proposalId: String, openedAtMs: Long, nowMs: Long): Reading? {
+        val eval = evaluate(proposalId, openedAtMs, nowMs, announce = true)
+        val row = eval.chosen ?: return null
+        val root = eval.root ?: return null
+        return Reading(row, root)
+    }
+
+    /**
+     * 取数分流口（第四百九十五批判据①②，判据⑤要的"只在取数层分流"就是这一函数）：
+     * 这一场是**没送到**（[ProofGap.Missing]）还是**送到了但不合格**（[ProofGap.Invalid]）。
+     *
+     * 安静分类：不重复刷 RunLog、不重复落时钟可疑账——同一轮里 [pick] 已经喊过也落过，
+     * 这里只把它判过的东西说给接线层听。判定零改写：过没过仍归 376。
+     */
+    fun gapFor(proposalId: String, openedAtMs: Long, nowMs: Long): ProofGap {
+        val eval = evaluate(proposalId, openedAtMs, nowMs, announce = false)
+        if (eval.chosen != null) return ProofGap.Available
+        if (eval.invalid) {
+            return ProofGap.Invalid(eval.invalidWhy(), eval.rejected.firstOrNull()?.snapshot)
+        }
+        return ProofGap.Missing(eval.missingWhy())
+    }
+
+    /** 一场的取数评估（[pick] 与 [gapFor] 共用；本件零内存态，每次从盘上现读）。 */
+    private class Eval(
+        val root: File?,
+        val chosen: ProofRow?,
+        val rejected: List<ProofRow>,
+        val rejectKinds: List<String>,
+        val brokenForProposal: Int,
+        val inboxRows: Int,
+        val noRoot: Boolean,
+    ) {
+        /** 有本场的行被弃过（含建不出来的）＝不合格；一行都不归本场＝没送到。 */
+        val invalid: Boolean get() = rejected.isNotEmpty() || brokenForProposal > 0
+
+        fun invalidWhy(): String {
+            val parts = ArrayList<String>()
+            if (brokenForProposal > 0) parts += "格式建不出 $brokenForProposal 行"
+            rejectKinds.groupingBy { it }.eachCount().forEach { (kind, n) -> parts += "$kind $n 行" }
+            return "没有可用读数（弃因：${parts.joinToString("／")}）"
+        }
+
+        fun missingWhy(): String = when {
+            noRoot -> "账根没挂——读数通道不可用"
+            inboxRows == 0 -> "收件箱没有一行（$READINGS_FILE 缺失）"
+            else -> "收件箱 $inboxRows 行，没有一行属于本场"
+        }
+    }
+
+    /** 弃因（闭集四种，与既有闸一一对应；495 只是把弃因说出去，不改一条判）。 */
+    private enum class RejectKind(val cn: String) {
+        REF_USED("ref 已用"),
+        CLOCK_SUSPECT("时钟可疑"),
+        TOO_LATE("晚于此刻"),
+        TOO_EARLY("早于提案"),
+    }
+
+    private fun evaluate(proposalId: String, openedAtMs: Long, nowMs: Long, announce: Boolean): Eval {
         val root = DecisionLedger.installedRoot()
         if (root == null) {
-            RunLog.log("抱朴读数臂：账根没挂——读数通道不可用（链只能停在准入后）")
-            return null
+            if (announce) RunLog.log("抱朴读数臂：账根没挂——读数通道不可用（链只能停在准入后）")
+            return Eval(null, null, emptyList(), emptyList(), 0, 0, noRoot = true)
         }
-        val rows = readRows(root)
-        if (rows.isEmpty()) {
+        val scan = scanInbox(root, proposalId, announce)
+        val mine = scan.rows.filter { it.proposal == proposalId }
+        if (announce && scan.rows.isEmpty()) {
             RunLog.log("抱朴读数臂：收件箱没有合格行（$READINGS_FILE 缺失或全坏）——链停在准入后等读数与新表")
-            return null
-        }
-        val mine = rows.filter { it.proposal == proposalId }
-        if (mine.isEmpty()) {
-            RunLog.log("抱朴读数臂：收件箱有 ${rows.size} 行，没有一行是本场提案（$proposalId）的——链停在准入后")
-            return null
+        } else if (announce && mine.isEmpty()) {
+            RunLog.log(
+                "抱朴读数臂：收件箱有 ${scan.rows.size} 行，没有一行是本场提案（$proposalId）的——链停在准入后",
+            )
         }
         val used = usedRefs(root)
         val suspected = suspectedRefs(root)
         val usable = ArrayList<ProofRow>()
+        val rejected = ArrayList<ProofRow>()
+        val kinds = ArrayList<String>()
         for (row in mine.sortedByDescending { it.atMs }) {
-            when {
-                row.ref in used ->
-                    RunLog.log("抱朴读数臂：读数被拒（ref=${row.ref}）——一票一用，已用过（防重放）")
-                row.ref in suspected ->
-                    RunLog.log("抱朴读数臂：读数被拒（ref=${row.ref}）——此前已判时钟可疑，不再采用")
-                row.atMs > nowMs + CLOCK_TOLERANCE_MS -> {
-                    RunLog.log(
-                        "抱朴读数臂：时钟可疑（ref=${row.ref}）——读数时刻 ${row.atMs} 晚于此刻 $nowMs 超容差，" +
-                            "弃读数；理由已落 ref 账",
-                    )
-                    markClockSuspect(root, row, nowMs)
-                }
-                row.atMs < openedAtMs - CLOCK_TOLERANCE_MS ->
-                    RunLog.log(
-                        "抱朴读数臂：读数早于提案（ref=${row.ref}）——时刻 ${row.atMs} 早于提案开出 " +
-                            "$openedAtMs 减容差，弃读数（证据不能先于它要辩护的提议）",
-                    )
-                else -> usable += row
+            val kind = rejectKindOf(row, used, suspected, openedAtMs, nowMs)
+            if (kind == null) usable += row else {
+                rejected += row
+                kinds += kind.cn
+                rejectNote(root, row, kind, openedAtMs, nowMs, announce)
             }
         }
         val chosen = usable.firstOrNull()
-        if (chosen == null) {
+        if (announce && chosen == null && mine.isNotEmpty()) {
             RunLog.log("抱朴读数臂：本场提案（$proposalId）没有一条合格读数——链停在准入后")
-            return null
         }
-        return Reading(chosen, root)
+        return Eval(root, chosen, rejected, kinds, scan.brokenForProposal, scan.rows.size, noRoot = false)
+    }
+
+    private fun rejectKindOf(
+        row: ProofRow,
+        used: Set<String>,
+        suspected: Set<String>,
+        openedAtMs: Long,
+        nowMs: Long,
+    ): RejectKind? = when {
+        row.ref in used -> RejectKind.REF_USED
+        row.ref in suspected -> RejectKind.CLOCK_SUSPECT
+        row.atMs > nowMs + CLOCK_TOLERANCE_MS -> RejectKind.TOO_LATE
+        row.atMs < openedAtMs - CLOCK_TOLERANCE_MS -> RejectKind.TOO_EARLY
+        else -> null
+    }
+
+    /** 弃行怎么喊：announce=false 时全静默（时钟可疑的 ref 账也只由 pick 落，一次就够）。 */
+    private fun rejectNote(
+        root: File,
+        row: ProofRow,
+        kind: RejectKind,
+        openedAtMs: Long,
+        nowMs: Long,
+        announce: Boolean,
+    ) {
+        if (!announce) return
+        when (kind) {
+            RejectKind.REF_USED -> RunLog.log("抱朴读数臂：读数被拒（ref=${row.ref}）——一票一用，已用过（防重放）")
+            RejectKind.CLOCK_SUSPECT -> RunLog.log("抱朴读数臂：读数被拒（ref=${row.ref}）——此前已判时钟可疑，不再采用")
+            RejectKind.TOO_LATE -> {
+                RunLog.log(
+                    "抱朴读数臂：时钟可疑（ref=${row.ref}）——读数时刻 ${row.atMs} 晚于此刻 $nowMs 超容差，" +
+                        "弃读数；理由已落 ref 账",
+                )
+                markClockSuspect(root, row, nowMs)
+            }
+            RejectKind.TOO_EARLY -> RunLog.log(
+                "抱朴读数臂：读数早于提案（ref=${row.ref}）——时刻 ${row.atMs} 早于提案开出 " +
+                    "$openedAtMs 减容差，弃读数（证据不能先于它要辩护的提议）",
+            )
+        }
     }
 
     /**
@@ -222,17 +352,27 @@ internal object ProofReading {
             .toSet()
     }
 
-    private fun readRows(root: File): List<ProofRow> {
+    /** 收件箱一趟扫的收尾：建得出来的行 ＋ 归本场但建不出来的行数。 */
+    private class Scan(val rows: List<ProofRow>, val brokenForProposal: Int)
+
+    /** 逐行扫收件箱（announce=false 只数不喊；行号口径与非空行过滤照 380 原样）。 */
+    private fun scanInbox(root: File, proposalId: String, announce: Boolean): Scan {
         val f = File(root, READINGS_FILE)
-        if (!f.isFile) return emptyList()
-        return f.readLines(Charsets.UTF_8)
-            .filter { it.isNotBlank() }
-            .mapIndexedNotNull { idx, raw ->
-                ProofRow.parse(raw) ?: run {
+        if (!f.isFile) return Scan(emptyList(), 0)
+        val rows = ArrayList<ProofRow>()
+        var broken = 0
+        f.readLines(Charsets.UTF_8).filter { it.isNotBlank() }.forEachIndexed { idx, raw ->
+            val row = ProofRow.parse(raw)
+            if (row != null) {
+                rows += row
+            } else {
+                if (ProofRow.belongsTo(raw, proposalId)) broken++
+                if (announce) {
                     RunLog.log("抱朴读数臂：坏行跳过（$READINGS_FILE 第 ${idx + 1} 行，parse/构造器拒）——不消耗 ref")
-                    null
                 }
             }
+        }
+        return Scan(rows, broken)
     }
 
     // ── 写侧（追加-only；只写 ref 账这一本，收件箱本体是 CI 的，一字不碰） ──────
