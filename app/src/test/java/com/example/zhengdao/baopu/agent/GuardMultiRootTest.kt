@@ -31,6 +31,9 @@ class GuardMultiRootTest {
         extraRoots = { extras },
         runner = ToolRunner(Executors.newSingleThreadExecutor()),
         log = { },
+        // 本文件钉的是 492 的 RO/多根语义＝**现状**行为；499 的档位闸按严格档钉住，
+        // 免得标准档（缺省）的「根内 R1 不问」把"走到确认卡"那条断言改写掉。
+        askTier = { AskTier.STRICT },
     )
 
     private fun call(name: String, args: JSONObject): ToolCall = ToolCall("c1", name, args)

@@ -281,6 +281,9 @@ internal object Eval282Ablation {
         FileOpLog.resetForTest()
         FileOpLog.enterSession(EVAL282_SESSION)
         OpinionWiring.resetForTest()
+        // 第四百九十九批：ask_user 过进门闸——预算/去重的单例状态按用例还
+        com.example.zhengdao.baopu.agent.AskIntakeGate.resetForTest()
+        com.example.zhengdao.baopu.agent.AskGovLedger.resetForTest()
     }
 
     // ── 主入口：一条用例在给定开关下跑一遍 ─────────────────────────────────

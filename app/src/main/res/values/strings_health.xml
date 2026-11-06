@@ -9,4 +9,9 @@
          「上次体检：4 处没接线、6 处未取样」，不是「上次体检：体检：…」 -->
     <string name="settings_health_done">上次%1$s</string>
     <string name="settings_health_failed">没跑成：%1$s</string>
+    <!-- 第四百九十九批：授权档（严格/标准/放权）的人改入口。档位只能人改（点一行循环切），
+         切档落治理账；体检行与管线闸读同一份。放权档不等于没人管：硬红线照样拒、
+         不可逆无回收站照样问，被放过的动作仍记账。 -->
+    <string name="ask_governance_tier_row">打扰治理档位</string>
+    <string name="ask_governance_tier_desc">当前：%1$s（点击切换 严格→标准→放权；硬红线任何档都拒，被放过的动作仍记账）</string>
 </resources>

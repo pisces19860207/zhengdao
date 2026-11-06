@@ -6,13 +6,29 @@ package com.example.zhengdao.baopu.agent
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 
 class AskUserToolTest {
+
+    /** 第四百九十九批：弹卡走进门闸（先自查/去重/日预算）——单例状态谁用谁还。 */
+    @Before
+    fun resetAskGate() {
+        AskIntakeGate.resetForTest()
+        AskGovLedger.resetForTest()
+    }
+
+    /** 同上（用完也还：本类弹过卡，别把预算/去重表污染给下一个类）。 */
+    @After
+    fun restoreAskGate() {
+        AskIntakeGate.resetForTest()
+        AskGovLedger.resetForTest()
+    }
 
     private fun opts(vararg items: JSONObject): JSONArray = JSONArray().also { arr ->
         items.forEach { arr.put(it) }

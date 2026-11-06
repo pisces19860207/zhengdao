@@ -126,6 +126,18 @@ internal fun BaopuQuestionGroupCard(
                 Text(stringResource(R.string.baopu_group_submit))
             }
         }
+        // 第四百九十九批 C 段：误拦一键申诉（同单问卡；只落治理账——申诉不自动改规则）。
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = {
+                com.example.zhengdao.baopu.agent.AskGovernance.appeal(
+                    subject = questions.joinToString("；") { it.title }.take(80),
+                    scene = com.example.zhengdao.baopu.agent.AskIntakeRules
+                        .classify(questions.firstOrNull()?.title ?: "").scene,
+                )
+            }) {
+                Text("这问打扰了——记一次误拦")
+            }
+        }
     }
 }
 

@@ -5,4 +5,8 @@
     <string name="settings_health_run_desc">Read-only, no popups; the sheet lands in the decision center (also runs monthly)</string>
     <string name="settings_health_done">Last: %1$s</string>
     <string name="settings_health_failed">Did not run: %1$s</string>
+    <!-- 499: authority tier switch (human-only). Hard red lines are refused at every tier;
+         tier-passed actions are still recorded. -->
+    <string name="ask_governance_tier_row">Interruption governance tier</string>
+    <string name="ask_governance_tier_desc">Current: %1$s (tap to cycle Strict→Standard→Delegated; hard red lines refused at every tier, tier-passed actions still recorded)</string>
 </resources>

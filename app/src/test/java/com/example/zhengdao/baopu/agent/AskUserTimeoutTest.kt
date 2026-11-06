@@ -33,6 +33,9 @@ class AskUserTimeoutTest {
     @After
     fun tearDown() {
         AskUserTool.sink = null
+        // 第四百九十九批：ask_user 过进门闸——预算/去重的单例状态谁用谁还
+        AskIntakeGate.resetForTest()
+        AskGovLedger.resetForTest()
     }
 
     private fun tmp(name: String): File =

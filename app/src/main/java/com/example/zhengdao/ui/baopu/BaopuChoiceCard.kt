@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -50,6 +51,16 @@ internal fun BaopuChoiceCard(
             text = request.question,
             style = MaterialTheme.typography.bodyMedium,
         )
+        // 第四百九十九批：进门闸的三行自解释（我要做什么/为什么问/不答会怎样）——
+        // ⑬「每张卡必须自解释」的显示面；不渲染它，闸拼的三行就没人看得见。
+        if (request.note.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = request.note,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(8.dp))
         request.options.forEach { option ->
             Column(Modifier.fillMaxWidth()) {
@@ -77,6 +88,17 @@ internal fun BaopuChoiceCard(
                 } else {
                     Spacer(Modifier.height(6.dp))
                 }
+            }
+        }
+        // 第四百九十九批 C 段：误拦一键申诉（只落治理账——申诉不自动改规则/档位/预算）。
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = {
+                com.example.zhengdao.baopu.agent.AskGovernance.appeal(
+                    subject = request.question.take(80),
+                    scene = com.example.zhengdao.baopu.agent.AskIntakeRules.classify(request.question).scene,
+                )
+            }) {
+                Text("这问打扰了——记一次误拦")
             }
         }
     }

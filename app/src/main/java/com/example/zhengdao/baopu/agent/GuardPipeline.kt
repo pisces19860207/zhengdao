@@ -270,6 +270,15 @@ internal class GuardPipeline(
      * ② 段每条出口折回 `File(主根, raw)`——A④「单根 0 回归」由此结构保证。
      */
     private val extraRoots: () -> List<WsRoot> = { emptyList() },
+    /**
+     * 第四百九十九批 A 段：授权档（严格/标准/放权）的**读口**。排在参数表**最后**且缺省
+     * 读进程内单例 ⇒ 存量调用点（含测试）一个字不改、行为随档位走；要钉住"现状"的
+     * 用例传 `{ AskTier.STRICT }`（与 riskTable/grantWiring 同一条注入纪律）。
+     *
+     * 为什么是注入而不是在这里读单例：与 [contracts] 同一条理由——判定要能打在参数上，
+     * 档位闸的三个档各自行为（判据①）只有从这里喂档位才抓得住。
+     */
+    private val askTier: () -> AskTier = { AskGovernance.currentTier },
 ) {
 
     sealed interface Result {
@@ -514,6 +523,13 @@ internal class GuardPipeline(
                         "抱朴管线：矩阵硬拒 ${effectiveCall.name}（${verdict.reasonCode.id}）" +
                             "——${verdict.reasons.joinToString("；") { it.detail }}",
                     )
+                    // 第四百九十九批 C 段：硬拒也进治理账（一句话原因 ≤80 字，体检行数它）。
+                    AskGovLedger.append(
+                        kind = AskGovLedger.KIND_REFUSE,
+                        who = "matrix",
+                        basis = AskGovernance.hardRejectLine(verdict),
+                        tool = effectiveCall.name,
+                    )
                     // 2026-11-02 裁定 b：授权闸拒绝＝防线正常工作，**不发灾异事件**，记偏差账。
                     noteDeviation(
                         opId = effectiveCall.id,
@@ -549,8 +565,20 @@ internal class GuardPipeline(
                 verdict.mustAsk || (verdict.risk?.ordinal ?: -1) >= RiskClass.R2.ordinal
                 )
             if (riskMustAsk || spec.permission == ToolPermission.CONFIRM) {
-                mustAsk = true
-                riskAsk = verdict?.let { RiskTell.cardHint(it) }
+                // 第四百九十九批 A 段：档位闸（**纯函数**，判据⑩的判定段：零 IO 不跨轮）。
+                // 顺序即法条：硬线（必问/未分类/R3）与根外、不可逆先拦——任何档位都不许跳；
+                // 剩下"根内＋可回滚"的 R1/R2 才轮到档位说话（标准=根内 R1，放权=根内 R1/R2）。
+                // 放行也留一行账（判据⑤：被放过的动作仍记账——"先做后审"的审靠它）。
+                val tierDecision = AskTierRules.decide(askTierFacts(spec, verdict, effectiveCall))
+                if (tierDecision.pass) {
+                    mustAsk = false
+                    log("抱朴治理：档位放行 ${effectiveCall.name}（${tierDecision.basis}）——先做后审，账上留痕")
+                    AskGovernance.notePass(spec.name, tierDecision, effectiveCall.id)
+                } else {
+                    mustAsk = true
+                    riskAsk = verdict?.let { RiskTell.cardHint(it) }
+                    AskGovernance.noteAsk(spec.name, tierDecision, effectiveCall.id)
+                }
             }
         }
         // 第二百四十二批 C 段：**动作派发之前**比契约（判据 3「立刻停」就落在这儿，
@@ -1127,6 +1155,27 @@ internal class GuardPipeline(
      */
     private fun resolveLoose(raw: String): File =
         if (File(raw).isAbsolute) File(raw) else File(workspaceRoot(), raw)
+
+    /**
+     * 档位闸要的事实（第四百九十九批 A 段；判定本身在 [AskTierRules.decide]，这里只采集）。
+     *
+     * 采集口径：根内性按**写目标**判（与 P0-2 红线同一份 [writeTargets]，不另列表）；
+     * 可回滚性按工具自己的回执语义判（[AskReversibility]：回收站/备份/纯新建三类）。
+     * 表外工具（verdict=null）risk=null：档位不豁免，照旧问。
+     */
+    private fun askTierFacts(spec: ToolSpec, verdict: RiskVerdict?, call: ToolCall): AskTierFacts {
+        val root = workspaceRoot()
+        val targets = writeTargets(call.name, call.arguments, ::resolveLoose)
+        val rev = AskReversibility.of(call.name, call.arguments, targets)
+        return AskTierFacts(
+            tier = askTier(),
+            risk = verdict?.risk,
+            mustAsk = verdict?.mustAsk ?: false,
+            unclassified = verdict?.unclassified ?: false,
+            inRoot = targets.all { PathGuard.isInside(root, it) },
+            reversible = rev.reversible,
+        )
+    }
 
     /**
      * 492 A①：多根清单（主根恒在第 0 位，[WorkspaceRootRules.manifest] 拨）。
