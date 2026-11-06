@@ -9,4 +9,8 @@
          「上次体检：4 处没接线、6 处未取样」，不是「上次体检：体检：…」 -->
     <string name="settings_health_done">上次%1$s</string>
     <string name="settings_health_failed">没跑成：%1$s</string>
+    <!-- 第五百一十一批：「后台自动维护」总开关（派工单 §三：设置里**只留这一个**，
+         不再有"每日／每周／夜间"这类各自的小开关）。 -->
+    <string name="settings_auto_maintenance">后台自动维护</string>
+    <string name="settings_auto_maintenance_desc">开：抽检与巡按自己找时机跑｜关：两件都不启动（手动仍可以点）</string>
 </resources>

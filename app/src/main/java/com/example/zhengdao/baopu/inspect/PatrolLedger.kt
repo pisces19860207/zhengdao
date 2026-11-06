@@ -39,6 +39,13 @@ internal data class PatrolEntry(
     val allowanceLine: String = "",
     /** 六项明细（渲染用；**不交给模型**——负例③由源码门禁钉，不是靠这里不写）。 */
     val findings: List<InspectFinding>,
+    /**
+     * 第五百一十一批：谁触发这一趟（`manual`／`load`／`floor`；旧账没有 ⇒ 空串）。
+     * 派工单 §一⑤ 的第一格；[manual] 那一格留着（旧行与界面都还在读它）。
+     */
+    val trigger: String = "",
+    /** 触发时的机会读数（§一⑤ 第二格）；旧账没有 ⇒ 空串。 */
+    val opportunity: String = "",
 )
 
 /** 巡按台账。 */
@@ -55,6 +62,8 @@ internal object PatrolLedger {
         manual: Boolean,
         elapsedMs: Long,
         allowanceLine: String = "",
+        trigger: String = if (manual) TriggerReason.MANUAL.wire else "",
+        opportunity: String = "",
     ): PatrolEntry = PatrolEntry(
         id = report.id,
         atMs = report.atMs,
@@ -66,6 +75,8 @@ internal object PatrolLedger {
         elapsedMs = elapsedMs,
         allowanceLine = allowanceLine,
         findings = report.findings,
+        trigger = trigger,
+        opportunity = opportunity,
     )
 
     /** 追加一条（失败返回 false：巡按的账丢一条不是事故，调用方 log 一句就够）。 */
@@ -129,6 +140,8 @@ internal object PatrolLedger {
             elapsedMs = o.optLong("elapsed", 0L),
             allowanceLine = o.optString("allowance"),
             findings = findings,
+            trigger = o.optString("trigger", ""),
+            opportunity = o.optString("opp", ""),
         )
     }
 
@@ -149,6 +162,9 @@ internal object PatrolLedger {
         .put("manual", manual)
         .put("elapsed", elapsedMs)
         .put("allowance", allowanceLine)
+        // 511：触发来源与机会读数（旧行没有 ⇒ 读侧空串；manual 那一格照旧写，界面还在读它）
+        .put("trigger", trigger)
+        .put("opp", opportunity)
         .put(
             "findings",
             JSONArray().apply {

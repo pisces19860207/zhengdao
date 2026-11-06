@@ -25,6 +25,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.example.zhengdao.baopu.maintenance.AutoMaintenance
 import com.example.zhengdao.core.RunLog
 import java.util.concurrent.TimeUnit
 
@@ -41,6 +42,9 @@ internal object HealthScheduler {
 
     /** 诊断标签（`WorkManager.getWorkInfosByTag` 能一把捞出来）。 */
     const val TAG: String = "zd-health"
+
+    /** 重活锁里的身份（判据⑦：同一时刻只许一件后台重活）。 */
+    private const val OWNER: String = "health"
 
     /** 现在在不在充电（读不到电池服务 ⇒ 当没充电，fail-closed）。 */
     fun charging(ctx: Context): Boolean = runCatching {
@@ -85,12 +89,27 @@ internal object HealthScheduler {
             RunLog.log("御医体检：这趟不跑（208 没装配落点）")
             return null
         }
+        // 第五百一十一批：体检是同一类"后台自动维护"，一并受**那一个**总开关管——
+        // 关掉后台维护却还月月跑体检，就是把"关"写成假的（派工单 §三：关 ⇒ 都不启动）。
+        if (!AutoMaintenance.on(ctx)) {
+            RunLog.log("御医体检：这趟不跑（${Opportunistic.WHY_OFF}）")
+            return null
+        }
         val g = PatrolScheduler.monthlyGate(HealthLedger.lastAt(root), nowMs, charging(ctx))
         if (!g.run) {
             RunLog.log("御医体检：这趟不跑（${g.why}）")
             return null
         }
-        return HealthRun.run(ctx, manual = false, nowMs = nowMs)
+        // 判据⑦：同一时刻只允许一件后台重活（体检是重活之一，与暗卫/巡按共用一把锁）。
+        if (!HeavyWork.tryEnter(OWNER)) {
+            RunLog.log("御医体检：这趟不跑（${Opportunistic.WHY_HEAVY}）")
+            return null
+        }
+        return try {
+            HealthRun.run(ctx, manual = false, nowMs = nowMs)
+        } finally {
+            HeavyWork.exit(OWNER)
+        }
     }
 
     /**

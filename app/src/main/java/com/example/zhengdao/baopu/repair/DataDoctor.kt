@@ -59,9 +59,8 @@ internal data class RepairOutcome(
  * 谁实现它：这个配置域的**适配器**（生产＝本包 [NightWatchConfig]，测试＝假表）。
  * 为什么适配器在 `repair/` 而不在 `inspect/`：写 SP 是写盘，而 `InspectReadOnlyGateTest`
  * 把勘验层整层钉成"只查不改"（负例①那句"唯一允许落盘的是它自己那几本 JSONL 的追加"）。
- * 适配器仍然**不自己认键**：读走 [com.example.zhengdao.baopu.inspect.NocturnalAuto.switchOn]
- * 这个既有读口，文件名与键名引用它的常量——键名、缺省值、类型三样都只住在属主模块，
- * 御医再抄一份就是同一个配置两套读法（那正是"漂移"的出生地）。
+ * 适配器仍然**不自己认键**：读走 [com.example.zhengdao.baopu.maintenance.AutoMaintenance] 那个读口,
+ * 文件名、键名与缺省值都住在属主模块——御医再抄一份就是同一个配置两套读法（那正是"漂移"的出生地）。
  *
  * 三态口径（与判据层一致，不许拿 null 冒充"没这个键"以外的任何意思）：
  * - [read] 回 null ＝ **这趟读不出**（未取样）⇒ 判据层落成"需人处理"，绝不猜；
@@ -346,13 +345,18 @@ internal object DataDoctor {
      * 两道不猜：`plan.targets` 里出现表外键（不该发生，判据层就拦了）就**跳过不动**；
      * [ConfigAccess.write] 回 false ＝ 没改成，落成 `failed` 留痕，不冒充"修好了"。
      */
-    fun repairConfig(config: ConfigAccess, ledgerRoot: File, nowMs: Long): RepairOutcome {
-        val plan = diagnoseConfig(config, nowMs)
+    fun repairConfig(
+        config: ConfigAccess,
+        ledgerRoot: File,
+        nowMs: Long,
+        rows: List<DataRepair.ConfigRow> = ConfigCriteria.ROWS,
+    ): RepairOutcome {
+        val plan = diagnoseConfig(config, nowMs, rows)
         val blocked = blockReason(ledgerRoot, plan)
         if (blocked != null) return RepairOutcome(plan, false, blocked)
         if (!writeIntent(ledgerRoot, plan, nowMs)) return RepairOutcome(plan, false, INTENT_NOT_WRITTEN)
 
-        val expected = ConfigCriteria.ROWS.associate { it.key to it.expected }
+        val expected = rows.associate { it.key to it.expected }
         var written = 0
         for (key in plan.targets) {
             val to = expected[key] ?: continue

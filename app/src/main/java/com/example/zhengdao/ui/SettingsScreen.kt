@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +50,8 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.ProviderPrefs
 import com.example.zhengdao.baopu.inspect.HealthScheduler
+import com.example.zhengdao.baopu.maintenance.AutoMaintenance
+import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.baopu.BaopuChannelSheet
 import com.example.zhengdao.ui.baopu.BaopuIntents
@@ -59,6 +62,7 @@ import com.example.zhengdao.ui.baopu.TasteSettingsScreen
 import com.example.zhengdao.ui.theme.AppearancePrefs
 import com.example.zhengdao.ui.theme.rCard
 import com.example.zhengdao.ui.theme.rDialog
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import com.example.zhengdao.ui.util.pressClickable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -238,6 +242,12 @@ fun SettingsScreen() {
             // 以及索引状态＋重建那一页），律令里不再重复第二遍。
 
             SectionCard(stringResource(R.string.settings_group_background)) {
+                // 第五百一十一批：**唯一出口**——「后台自动维护」一个开关（派工单 §三）。
+                // 关 ⇒ 暗卫抽检与巡按六项都不启动（体检月位也一并停，它同属后台维护）；
+                // 开 ⇒ 两件各按"手动／负载／7 天下限"三条触发自己找时机跑。
+                // 这里不再出现"每日／每周／夜间"这类小开关——那正是本批要收敛掉的东西。
+                AutoMaintenanceRow()
+                SettingsDivider()
                 SettingRow(
                     label = stringResource(R.string.settings_keepalive),
                     value = stringResource(R.string.settings_status_guide),
@@ -584,10 +594,54 @@ internal fun SettingRow(
     }
 }
 
+/**
+ * 第五百一十一批：**后台自动维护**的总开关（派工单 §三：设置里只留这一个）。
+ *
+ * 关 ⇒ 暗卫抽检、巡按六项、体检月位都不启动；开 ⇒ 各按"手动／负载／7 天下限"自己找时机跑。
+ * 行与开关都可点（和别的设置行同一种手感），整行最小热区仍是 48dp。
+ *
+ * 写失败按没写处理：拨完**重读盘上的值**再落屏——不自我安慰（同 `ProdEvalSettings` 的口径）。
+ */
+@Composable
+private fun AutoMaintenanceRow() {
+    val ctx = LocalContext.current
+    var on by remember { mutableStateOf(AutoMaintenance.on(ctx)) }
+    fun toggle(want: Boolean) {
+        AutoMaintenance.set(ctx, want)
+        on = AutoMaintenance.on(ctx)
+        RunLog.log("设置：后台自动维护 = $on（暗卫抽检＋巡按六项＋体检月位）")
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pressClickable { toggle(!on) }
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.settings_auto_maintenance),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(R.string.settings_auto_maintenance_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = on,
+            onCheckedChange = { want -> toggle(want) },
+            colors = zhengdaoSwitchColors(),
+        )
+    }
+}
+
 /** 轻量选择芯片（避免引入额外依赖）：选中＝淡蓝底 + 主色描边。 */
 @Composable
-fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {
-    OutlinedButton(
+fun FilterChip2(label: String, selected: Boolean, onClick: () -> Unit) {    OutlinedButton(
         onClick = onClick,
         shape = RoundedCornerShape(50),
         border = BorderStroke(

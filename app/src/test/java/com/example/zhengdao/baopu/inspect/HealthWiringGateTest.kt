@@ -189,19 +189,19 @@ class HealthWiringGateTest {
         listOf("getSharedPreferences", "SharedPreferences", "zhengdao-inspect", "nightwatch_auto").forEach { word ->
             assertFalse("执行层出现了 $word（键名／文件名／缺省只许住在属主模块，抄一份就是两套读法）", doctor.contains(word))
         }
-        assertTrue("改回去的目标值取自判据表", doctor.contains("ConfigCriteria.ROWS.associate"))
+        assertTrue("改回去的目标值取自判据表", doctor.contains("rows.associate { it.key to it.expected }"))
         assertTrue("表外的键在执行层再挡一道", doctor.contains("expected[key] ?: continue"))
 
         val adapter = code("baopu/repair/NightWatchConfig.kt")
-        assertTrue("生效值要走属主的既有读口", adapter.contains("NocturnalAuto.switchOn("))
-        assertTrue("文件名与键名引用属主常量", adapter.contains("NocturnalAuto.SWITCH_FILE"))
-        assertTrue("键名引用属主常量", adapter.contains("NocturnalAuto.SWITCH_KEY"))
-        listOf("\"zhengdao-inspect\"", "\"nightwatch_auto\"", "WEEKLY_ENABLED").forEach { lit ->
+        assertTrue("生效值要走属主的既有读口", adapter.contains("AutoMaintenance.on("))
+        assertTrue("文件名引用属主常量", adapter.contains("AutoMaintenance.SP"))
+        assertTrue("键名引用属主常量", adapter.contains("AutoMaintenance.KEY"))
+        listOf("\"zhengdao-inspect\"", "\"nightwatch_auto\"", "\"auto_maintenance\"", "WEEKLY_ENABLED").forEach { lit ->
             assertFalse("适配器里出现了字面量 $lit（该引常量）", adapter.contains(lit))
         }
         assertTrue("写只用 KTX 的 edit{}（lint 预算 0，不许涨）", adapter.contains(".edit {"))
         assertFalse("不许出现 .edit().put…（UseKtx 会记一条）", adapter.contains(".edit().put"))
-        assertTrue("只认自己那一个键：别的键读不出", adapter.contains("key != NocturnalAuto.SWITCH_KEY"))
+        assertTrue("只认自己那一个键：别的键读不出", adapter.contains("key != AutoMaintenance.KEY"))
     }
 
     @Test

@@ -43,10 +43,13 @@ class ZhengdaoApp : Application() {
         // 第二百九十一批（第二刀）：御医体检的月位——一个月一次、非精确、只在充电时跑。
         // 这里只**排**（KEEP 幂等，重复开 App 不会把周期清零）；跑不跑由 Worker 里的月位闸判。
         com.example.zhengdao.baopu.inspect.HealthScheduler.ensureScheduled(this)
-        // 第四百三十二批：暗卫自动档——每周 1 次、仅充电+WiFi+非值守（L2 期间不跑），
-        // 结果只进体检单＋账本，不弹卡不起通知。这里只**排**（KEEP 幂等）；首跑等第一个
-        // 满足条件的周窗（拍板补充①：开启后不立即跑），跑不跑由 Worker 里的周位闸判。
+        // 第四百三十二批：暗卫自动档；第五百一十一批把触发换成机会式（手动／负载／7 天下限，
+        // 与巡按共用一套条件与各自 6h 冷却）。这里只**排**周期位（KEEP 幂等）：它只是
+        // 7 天下限的兜底——醒来先看账，条件不齐一句话都不做；负载那一截由收工事件驱动。
         com.example.zhengdao.baopu.inspect.NocturnalAuto.ensureScheduled(this)
+        // 第五百一十一批：巡按自动档（478 的落点）——同款周期位，六项判据与三行报告一字未改，
+        // 改的只是"什么时候跑"。放在暗卫后面：先轻后重，两件共用一把重活锁（判据⑦）。
+        com.example.zhengdao.baopu.inspect.PatrolAuto.ensureScheduled(this)
         // 第四百五十五批：记忆收编接线——451 交付的唯一入口 FreeTextMemoryStore.importFromFiles
         // 从此有生产调用方。冷启首读：上次导入早于今天 ⇒ 后台静默扫运行时目录一次；
         // 失败只落日志，不弹卡、不阻断（内部再隔 2 秒起跑，不跟冷启动抢 IO）。
