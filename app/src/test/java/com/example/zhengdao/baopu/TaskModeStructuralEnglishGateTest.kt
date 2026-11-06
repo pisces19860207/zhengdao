@@ -10,6 +10,13 @@
 //   ③ 同源层：253 探针副本已改成转发，逐条与生产同结论，且源码里不再留第二份词表。
 //
 // 语料沿用 493 的样本集（英文任务 10／同形对照 10／英文闲聊 10），这样两批可比。
+//
+// 2026-11-06 用户拍板后补的两条口径（Q1／Q2／Q5 都钉在这个文件里）：
+//   · Q1 句首裸动词＝祈使，仍判 TASK（派工单④「裸 create 不算任务」那句由用户作废）；
+//   · Q2 习语白名单在同句有请求标记时**让位**给词表：`sounds good`→CHAT，
+//     `sounds good, but please delete it`→TASK；
+//   · Q5 自责按主语不按词面：`I was wrong`／`I'm wrong`→CHAT，
+//     `the data was wrong`→TASK，且 is／are／was／were wrong 同口径（不按时态区分）。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.agent.askAllowedForTurn
@@ -98,6 +105,8 @@ class TaskModeStructuralEnglishGateTest {
 
     @Test
     fun `判据2_请求形态正例判TASK`() {
+        // Q1 拍板（2026-11-06）：裸动词／句首祈使就是提要求，这条按判据② 认，
+        // 派工单④「裸 create 不算任务」那句作废（用户原话：是我写岔了，不是判据错）。
         listOf("Please create a folder", "create", "Create").forEach { s ->
             assertEquals("裸动词／请求标记该把任务态立起来：$s", TaskMode.TASK, TaskModeBoundary.classify(s))
         }
@@ -154,14 +163,46 @@ class TaskModeStructuralEnglishGateTest {
     }
 
     @Test
-    fun `负例_习语白名单优先级高于词表`() {
-        // 派工单③原文「命中即 CHAT，不再走词表」——白名单排在英文词表之前，
-        // 所以「习语＋请求／收尾」同现时按白名单落闲聊（宁可漏判，不把玩笑当办事）。
-        listOf("sounds good, but please delete it", "no worries, the deploy is done").forEach { s ->
+    fun `负例_习语白名单在无请求标记时仍是第一优先`() {
+        // 派工单③原文「命中即 CHAT，不再走词表」——白名单排在英文词表之前；
+        // Q2 拍板只开了一个口子（同句有请求标记才让位），没标记时照旧短路。
+        listOf(
+            "sounds good", "no worries", "no worries, the deploy is done", "research papers are good to go",
+        ).forEach { s ->
             assertEquals("白名单没排在词表前面：$s", TaskMode.CHAT, TaskModeBoundary.classify(s))
         }
         // 但中文侧的执行意图在英文层之前：混合句里「帮我」照样立任务态。
         assertEquals("中文意图被英文白名单吞掉了", TaskMode.TASK, TaskModeBoundary.classify("帮我看看，I am open to ideas"))
+    }
+
+    @Test
+    fun `拍板Q2_请求标记一出现白名单就让位`() {
+        // 用户 2026-11-06 Q2：习语里混着真请求时，习语只是客套的壳。正反成对，
+        // 反面那条不许删——只测「有标记⇒TASK」是恒绿温床（白名单整个失效也照样绿）。
+        listOf(
+            "sounds good, but please delete it",
+            "open to ideas, please open the settings",
+            "I need research papers",
+        ).forEach { s ->
+            assertEquals("白名单把真请求吞掉了：$s", TaskMode.TASK, TaskModeBoundary.classify(s))
+        }
+        listOf("sounds good", "I am open to ideas", "I love research papers").forEach { s ->
+            assertEquals("去掉标记后白名单该照常生效：$s", TaskMode.CHAT, TaskModeBoundary.classify(s))
+        }
+    }
+
+    @Test
+    fun `拍板Q5_自责客套按主语分不按时态分`() {
+        // 用户 2026-11-06 Q5：主语是"我"的自责不收（与中文侧抹「我错了」同口径），
+        // 其余主语的 was wrong 是事实主张，照收。时态不再参与判定。
+        listOf("I was wrong", "I'm wrong", "I am wrong", "I was wrong, sorry").forEach { s ->
+            assertEquals("自责被判成事实主张：$s", TaskMode.CHAT, TaskModeBoundary.classify(s))
+        }
+        listOf("the data was wrong", "that answer was wrong", "the results were wrong").forEach { s ->
+            assertEquals("非自责的 was/were wrong 漏判：$s", TaskMode.TASK, TaskModeBoundary.classify(s))
+        }
+        // 抹掉自责不等于抹掉整句：后半句真有主张，照样立任务态。
+        assertEquals("自责把后半句的事实主张也带走了", TaskMode.TASK, TaskModeBoundary.classify("I was wrong, the data shows it"))
     }
 
     // ── 判据⑤：493 样本集两表全过 ──────────────────────────────────────────
@@ -238,12 +279,38 @@ class TaskModeStructuralEnglishGateTest {
         assertFalse("英文动词表里不该再登记首字母大写两形", src.contains("\"Create \""))
     }
 
+    @Test
+    fun `结构_Q2让位与Q5抹自责都接在源码上`() {
+        val src = PolicyPaths.read("MediatorJudge.kt")
+        val en = src.substringAfter("private fun classifyEnglish(text: String): TaskMode {")
+            .substringBefore("\n    }")
+        // Q2：白名单那一跳必须带着"没有请求标记"这个前置条件；谁把它改回无条件短路，这里先红。
+        val idiomLine = en.lines().firstOrNull { it.contains("EN_IDIOM_RES.any") } ?: "（白名单那一跳不见了）"
+        assertTrue("Q2 的让位条件不见了：$idiomLine", idiomLine.contains("!hasRequestMarker(en)"))
+        // Q5：主张那一跳读的是抹掉自责后的 scope，不是原文（读回原文＝把 Q5 抹掉）。
+        val claimLine = en.lines().firstOrNull { it.contains("EN_CLAIM_RES.any") } ?: "（主张那一跳不见了）"
+        assertTrue("Q5 的抹除没接到主张表上：$claimLine", claimLine.contains("claimScope"))
+        assertTrue("自责形态表不见了", src.contains("private val EN_SELF_BLAME = listOf("))
+        // Q5「不按时态区分」：四个时态形都在表里，少一个就是又拿时态当判据。
+        val claimBlock = src.substringAfter("private val EN_CLAIM_RES = listOf(").substringBefore(")")
+        listOf("is wrong", "are wrong", "was wrong", "were wrong").forEach { p ->
+            assertTrue("主张表少了 $p（时态口径被改）：$claimBlock", claimBlock.contains("\"$p\""))
+        }
+        // 请求标记只有一处定义：白名单让位与共现判定共用它（两份条件迟早分叉）。
+        val shape = src.substringAfter("private fun hasRequestShape(en: String): Boolean =")
+            .substringBefore("private fun isImperativeHead")
+        assertTrue("请求形态不再复用请求标记表：$shape", shape.contains("hasRequestMarker(en)"))
+    }
+
     // ── 同源层：253 探针副本＝转发（派工单「连带」）──────────────────────────
 
     @Test
     fun `同源_253探针与生产逐条同结论`() {
         (englishTasks + taskControls + englishChats +
-            listOf("I love research papers", "I am open to ideas", "good to go", "Please create a folder"))
+            listOf(
+                "I love research papers", "I am open to ideas", "good to go", "Please create a folder",
+                "sounds good, but please delete it", "sounds good", "the data was wrong", "I was wrong",
+            ))
             .forEach { s ->
                 assertEquals(
                     "探针与生产判出两个结论（两表已分叉）：$s",

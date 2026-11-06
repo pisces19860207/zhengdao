@@ -117,8 +117,9 @@ class TaskModeEnglishGateTest {
 
     @Test
     fun `负例_英文自责客套不进任务态`() {
-        // 493 自查：词表若收 "was wrong"，"I was wrong" 会被当成事实主张，
-        // 与中文侧 claimScope 抹掉「我错了」的保守方向相悖；这几条必须落 CHAT。
+        // 500 之前这条靠的是「词表里干脆不收 was wrong」。**Q5 拍板（2026-11-06）**把口径改成
+        // 按主语：was／were wrong 进了主张表（与 is／are wrong 同时态不分），但主语是"我"的自责
+        // 先抹掉再判——这三条落 CHAT 的理由换了，断言一个字没动，中文侧「哎呀我错了」同口径。
         listOf("I was wrong, sorry", "Sorry, I was wrong", "my bad, I was wrong").forEach { s ->
             assertEquals("自责客套被判成任务态：$s", TaskMode.CHAT, TaskModeBoundary.classify(s))
         }
@@ -186,8 +187,9 @@ class TaskModeEnglishGateTest {
         }
         assertEquals("classify 分支顺序被改动", positions.sorted(), positions)
         // 500 之前这里钉的是「classify 末尾必须裸返回 CHAT」——那是 493「本单不动结构」的围栏。
-        // 500 正是被授权动结构的那一批：中文四步判不出来才进英文层，所以这一跳改成钉
-        // 「末尾是英文层」，保守方向没丢（英文层判不出来照样落 CHAT，见 TaskModeStructuralEnglishGateTest）。
+        // 改动授权来自 **2026-11-06 用户 Q3 拍板**（500 交付报告 §三）：500 正是被授权动结构的那一批，
+        // 中文四步判不出来才进英文层，所以这一跳改成钉「末尾是英文层」，保守方向没丢
+        // （英文层判不出来照样落 CHAT，见 TaskModeStructuralEnglishGateTest）。本文件其余十条行为判据一条没减。
         assertTrue("classify 末尾少了『进英文层』这一跳", body.trim().endsWith("return classifyEnglish(s)"))
         assertFalse("不许加长度阈值", body.contains(".length"))
     }

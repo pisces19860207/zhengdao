@@ -36,6 +36,14 @@
 // 搜索词是「research papers」的子串，中文表先命中，判据① 立刻红。故本批**取代**那批字面量：
 // 四张中文表回到纯中文，英文词汇整体搬进英文层；493 点名的四条闲聊形态词移到
 // EN_CHAT_SHAPES，emotionLexicon() 照样端出去，493 的行为门禁一条不减。
+// 493 测试里那根「classify 末尾必须裸返回 CHAT」的结构围栏已改成钉「跳英文层」，
+// 授权来自 500 的 Q3 拍板（2026-11-06）；它的 11 条行为语料一条没减。
+//
+// 同批拍板落实（用户 2026-11-06，六条里的 Q1／Q2／Q4／Q5 都改在这一层）：
+//   · Q1 句首裸动词＝祈使，算请求形态（`isImperativeHead` 保留，工单④那句作废）；
+//   · Q2 习语白名单遇到请求标记**让位**给词表（`sounds good` 仍闲聊，`sounds good, but please delete it` 是任务）；
+//   · Q4 `kindly` 留在请求标记表里；
+//   · Q5 自责按**主语**分：I was wrong／I'm wrong 不收，the data was wrong 收，且不按时态区分。
 package com.example.zhengdao.baopu
 
 /** 一段话落在哪个态（法典 L1/L3 的第一道门）。 */
@@ -62,8 +70,8 @@ object TaskModeBoundary {
 
     // ── ② 事实主张：数字 / 路径 / 引用 / 对错结论 / 执行结果 ──────────────────
     // 「第N步/行/条/章」用正则，不用裸「第」——「你是第一个让我这么生气的小笨蛋」不是事实主张。
-    // 500：493 的英文事实主张短语同样移进英文层（词边界版）；「不收自责客套『was wrong』」
-    // 这条取舍在英文层里照旧成立。
+    // 500：493 的英文事实主张短语同样移进英文层（词边界版）。自责客套的口径在 Q5 拍板后
+    // 改成**按主语**：主语是"我"的自责不收，其余主语的 was wrong 照收（见 EN_SELF_BLAME）。
     private val CLAIM = listOf(
         "就是错的", "是对的", "没错", "不对", "错了", "正确的", "应该是", "其实是", "我查过",
         "数据显示", "事实证明", "结论是", "结果是", "失败", "成功", "报错", "超时", "找不到",
@@ -96,6 +104,8 @@ object TaskModeBoundary {
     //   ① 词边界 —— `\bresearch\b` 不许在 `research` 里再命中 `search`；
     //   ② 大小写归一 —— 先 lowercase()，动词只登记小写原形，不必再配「首字母大写」两形；
     //   ③ 习语白名单优先 —— 命中即闲聊，不再走词表（`open to ideas` 不是在「打开」）；
+    //      但同句里出现请求标记时白名单**让位**给词表（Q2 拍板：`sounds good, but please delete it`
+    //      是在提要求，不是在敷衍）。
     //   ④ 请求形态共现 —— 动词命中后**还要**有请求形态（please／could you／句首祈使）才算任务。
     // 中文一律不进这一层（`\b` 按 ASCII 词类算边界，中文全是「非词」，套上去只会误伤）。
 
@@ -115,7 +125,12 @@ object TaskModeBoundary {
     )
     private val EN_IDIOM_RES = EN_IDIOMS.map { enWordRe(it) }
 
-    /** ④ 请求形态标记（与动词命中**共现**才算任务；小写，配词边界）。 */
+    /**
+     * ④ 请求形态标记（与动词命中**共现**才算任务；小写，配词边界）。
+     *
+     * 同一个表还管 Q2 的白名单让位：句子里出现这些标记，说明说话的人在**提要求**，
+     * 习语白名单就不再短路（`kindly` 按 Q4 拍板留在表里，祈使礼貌词）。
+     */
     private val EN_REQUEST_MARKERS = listOf(
         "please", "pls", "kindly", "could you", "can you", "would you", "will you",
         "i need", "i want to", "help me",
@@ -125,12 +140,19 @@ object TaskModeBoundary {
     /** 英文收尾（③ 类）／英文事实主张（② 类）：命中即任务态，不要求请求形态。 */
     private val EN_WRAPUP_RES = listOf("done", "finished", "shipped").map { enWordRe(it) }
 
-    // 与中文侧同一口径：自责客套「was wrong」不收（收了就把闲聊拉进任务态）。
+    // 主张短语按 Q5 拍板**不分时态**：is／are／was／were wrong 同口径（中文「就是错的」本来也没时态）。
     private val EN_CLAIM_RES = listOf(
-        "is wrong", "are wrong", "is correct", "in fact", "the result is", "the data shows",
-        "the docs say", "the conclusion is", "according to", "not found", "failed",
-        "succeeded", "error", "crash", "timeout", "the version",
+        "is wrong", "are wrong", "was wrong", "were wrong", "is correct", "in fact",
+        "the result is", "the data shows", "the docs say", "the conclusion is", "according to",
+        "not found", "failed", "succeeded", "error", "crash", "timeout", "the version",
     ).map { enWordRe(it) }
+
+    /**
+     * Q5 自责形态：**主语是"我"** 的认错不进事实主张——与中文侧 `claimScope`
+     * 抹掉「我错了／我的错」同一手法（抹掉后再走主张表，所以「I was wrong, the data shows it」
+     * 仍靠后半句立任务态）。其余主语的 was wrong（the data was wrong）照收。
+     */
+    private val EN_SELF_BLAME = listOf("i was wrong", "i am wrong", "i'm wrong")
 
     /**
      * 英文闲聊形态词（493 点名四条，小写登记＝大小写归一后一形管两形）。
@@ -158,23 +180,32 @@ object TaskModeBoundary {
      *
      * 顺序即判据：③ 习语白名单先看（命中即闲聊）→ 英文收尾／事实主张命中即任务 →
      * ① 动词按词边界命中后，还须 ④ 请求形态共现才算任务。
-     * 「习语＋事实主张」的混合句按白名单优先落闲聊＝宁可漏判、不把玩笑当办事（文件头方向）。
+     * 两处「先看但要让位」：白名单在请求标记同现时让位（Q2），事实主张在自责形态同现时让位（Q5）。
+     * 剩下的混合句按保守方向落闲聊——宁可漏判、不把玩笑当办事（文件头方向）。
      */
     private fun classifyEnglish(text: String): TaskMode {
         val en = text.lowercase() // ② 大小写归一
-        if (EN_IDIOM_RES.any { it.containsMatchIn(en) }) return TaskMode.CHAT
+        if (!hasRequestMarker(en) && EN_IDIOM_RES.any { it.containsMatchIn(en) }) return TaskMode.CHAT
         if (EN_WRAPUP_RES.any { it.containsMatchIn(en) }) return TaskMode.TASK
-        if (EN_CLAIM_RES.any { it.containsMatchIn(en) }) return TaskMode.TASK
+        val claimScope = EN_SELF_BLAME.fold(en) { scope, phrase -> scope.replace(phrase, "　") }
+        if (EN_CLAIM_RES.any { it.containsMatchIn(claimScope) }) return TaskMode.TASK
         if (EN_VERB_RES.none { it.containsMatchIn(en) }) return TaskMode.CHAT
         return if (hasRequestShape(en)) TaskMode.TASK else TaskMode.CHAT
     }
 
-    /** ④ 请求形态：显式标记（please／could you…），或剥掉语气词后的句首就是动作词原形。 */
-    private fun hasRequestShape(en: String): Boolean =
-        EN_MARKER_RES.any { it.containsMatchIn(en) } ||
-            EN_CLAUSE_SEP.split(en).any { isImperativeHead(it) }
+    /** ④ 请求标记（please／could you／kindly…）：也是 Q2 里让白名单让位的那个条件。 */
+    private fun hasRequestMarker(en: String): Boolean = EN_MARKER_RES.any { it.containsMatchIn(en) }
 
-    /** ④ 祈使句首：小句首（跳过语气词）是英文动作词原形 ⇒ 「Create a folder」这类算任务。 */
+    /** ④ 请求形态：显式标记，或剥掉语气词后的句首就是动作词原形。 */
+    private fun hasRequestShape(en: String): Boolean =
+        hasRequestMarker(en) || EN_CLAUSE_SEP.split(en).any { isImperativeHead(it) }
+
+    /**
+     * ④ 祈使句首：小句首（跳过语气词）是英文动作词原形 ⇒ 「Create a folder」这类算任务。
+     *
+     * Q1 拍板（2026-11-06）：句首裸动词就是「在提要求」，这条保留不删；
+     * 派工单④原文那句「裸 create 不算任务」由用户同批作废（写岔了，不是判据错）。
+     */
     private fun isImperativeHead(clause: String): Boolean {
         val head = EN_WORD.findAll(clause)
             .map { it.value }
