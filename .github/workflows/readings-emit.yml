@@ -131,6 +131,10 @@ jobs:
       - name: detekt 开工（HEAD~1，before）
         run: |
           git worktree add /tmp/prev HEAD~1
+          # 2026-11-06：仓里 gradlew 记的是 100644（不可执行），新 worktree 检出后没有 +x，
+          # 直接 `./gradlew` 会 Permission denied（readings-emit #3 第 12 步就这么红的）。
+          # 这里显式补 chmod（本步自足）；仓里的 mode 同批改成 100755（根治，任何检出都带 +x）。
+          chmod +x /tmp/prev/gradlew
           ( cd /tmp/prev && ./gradlew :app:detektReport --console=plain \
               -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64 \
               -Dorg.gradle.java.installations.auto-download=false )
