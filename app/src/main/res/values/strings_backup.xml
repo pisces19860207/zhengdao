@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  备份与还原（第四百九十一批）。中文默认；英文对照见 res/values-en/strings_backup.xml。
+  数字一律放在片段末尾或标点前——避免 lint 的 PluralCandidate（英文 "%1$d items" 会被要求复数化）。
+-->
+<resources>
+    <string name="backup_title">备份与还原</string>
+    <string name="backup_export">一键导出</string>
+    <string name="backup_export_desc">账本、人设与记忆、技能、设置打成 zip 放到 Download/证道/backups</string>
+    <string name="backup_export_busy">正在导出…</string>
+    <string name="backup_export_done">已导出：%1$s</string>
+    <string name="backup_export_failed">导出失败：%1$s</string>
+    <string name="backup_export_partial">；另有 %1$d 项没进包（原因见 manifest.json）</string>
+    <string name="backup_include_chat">含聊天原文</string>
+    <string name="backup_include_chat_on">已包含（体积大，且不还原）</string>
+    <string name="backup_include_chat_off">不含（默认）</string>
+    <string name="backup_import">一键导入</string>
+    <string name="backup_import_desc">选一个备份 zip；已有文件默认不覆盖，导入前先校验清单</string>
+    <string name="backup_pick_failed">读不了这个文件（选中的可能不是本地文件）</string>
+    <string name="backup_import_bad">这个包不能用：%1$s</string>
+    <string name="backup_dialog_title">导入预览</string>
+    <string name="backup_dialog_body">新增：%1$d 项　冲突：%2$d 项　相同：%3$d 项</string>
+    <string name="backup_dialog_conflicts">下面这些本机已有且内容不同——勾选才会覆盖</string>
+    <string name="backup_dialog_settings">设置：改 %1$d 项，新增 %2$d 项</string>
+    <string name="backup_dialog_confirm">导入</string>
+    <string name="backup_import_done">导入完成（%1$d 条）</string>
+    <string name="backup_import_failed">导入失败：%1$s（本机文件未改动）</string>
+    <string name="backup_note">导出里不含任何 API Key 与聊天原文（勾了才含）。导入失败不留半状态。</string>
+</resources>

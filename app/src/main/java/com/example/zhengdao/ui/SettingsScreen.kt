@@ -267,6 +267,10 @@ fun SettingsScreen() {
                 ) { langDialog = true }
             }
 
+            // 第四百九十一批：备份与还原（一键导出 zip / 一键导入，默认不覆盖）。
+            // 整块自成一个 SectionCard，本页其余结构一行未动。
+            BackupSection()
+
             SectionCard(stringResource(R.string.settings_group_support)) {
                 SettingRow(
                     label = stringResource(R.string.settings_help),
