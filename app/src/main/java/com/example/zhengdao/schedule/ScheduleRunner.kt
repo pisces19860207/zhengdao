@@ -37,6 +37,11 @@ object ScheduleRunner {
      * @return 这趟发了几条、还有没有剩下的（Worker 据此 success / retry）
      */
     fun runDueTasks(context: Context, nowMs: Long = System.currentTimeMillis()): PassResult {
+        // 第五百零四单（471③）：停机到人工解除前，定时任务一律不启动。
+        // 拦下的每一笔都落起居注 BLOCK 一行（不静默）；锚点不动 ⇒ 解除后照常补跑。
+        if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted("定时任务")) {
+            return PassResult(sent = false, moreRemain = false, handled = 0)
+        }
         val app = context.applicationContext
         val result = synchronized(LOCK) {
             SchedulePass(ScheduleStore.of(app), engineSender(app), notifier(app)).run(nowMs)

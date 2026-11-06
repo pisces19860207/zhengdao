@@ -52,6 +52,10 @@ class UnattendedWatchdogWorker(ctx: Context, params: WorkerParameters) : Worker(
 
     override fun doWork(): Result {
         val app = applicationContext
+        // 第五百零四单（471③）：停机期看门狗自己也不补起值守（防自启是连看门狗一起管的）。
+        if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted("值守看门狗")) {
+            return Result.success()
+        }
         if (!UnattendedStatus.armed()) return Result.success()
         val now = System.currentTimeMillis()
         watchdogPass(app, now)

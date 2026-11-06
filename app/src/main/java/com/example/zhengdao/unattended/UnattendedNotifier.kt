@@ -115,11 +115,34 @@ internal object UnattendedNotifier {
     /** 前台服务常驻那条（SESSION/LOW，ongoing——划掉=值守失守，同保活口径）。 */
     internal fun ongoing(ctx: Context, text: String): Notification {
         AppNotifications.ensureAll(ctx)
+        // 第五百零四单（471①）：常驻条上钉"叫停/硬停"两只按钮——任何时刻可叫停，
+        // 不用解锁进 App（停机闸的"通知栏可达"就落在这）。
+        val icon = android.graphics.drawable.Icon.createWithResource(ctx, R.drawable.ic_terminal)
+        val soft = com.example.zhengdao.baopu.safety.SafetyNotifier.stopPendingIntent(
+            ctx, com.example.zhengdao.baopu.safety.SafetyNotifier.ACTION_SOFT_STOP, 4117,
+        )
+        val hard = com.example.zhengdao.baopu.safety.SafetyNotifier.stopPendingIntent(
+            ctx, com.example.zhengdao.baopu.safety.SafetyNotifier.ACTION_HARD_STOP, 4118,
+        )
         return Notification.Builder(ctx, AppNotifications.SESSION)
             .setSmallIcon(R.drawable.ic_terminal)
             .setContentTitle(ctx.getString(R.string.unattended_notif_fgs_title))
             .setContentText(text)
             .setContentIntent(deepLink(ctx, REQ_FGS))
+            .addAction(
+                Notification.Action.Builder(
+                    icon,
+                    ctx.getString(R.string.safety_stop_action),
+                    soft,
+                ).build(),
+            )
+            .addAction(
+                Notification.Action.Builder(
+                    icon,
+                    ctx.getString(R.string.safety_hard_stop_action),
+                    hard,
+                ).build(),
+            )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()

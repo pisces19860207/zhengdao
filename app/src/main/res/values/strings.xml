@@ -1651,4 +1651,23 @@
     <string name="unattended_disarm">收值守并出报告</string>
     <string name="unattended_scope_hint">托付范围（给谁干什么，人话即可）</string>
     <string name="unattended_midterm">生成本期报告（值守中）</string>
+
+    <!-- 第五百零四单：安全三件（外部监督/强回滚/停机在环） -->
+    <string name="safety_page_title">安全台</string>
+    <string name="safety_stop_action">叫停</string>
+    <string name="safety_hard_stop_action">硬停</string>
+    <string name="safety_lift_action">解除停机（人工）</string>
+    <string name="safety_rollback_card">强回滚（动作前已记原件，回滚后自校验）</string>
+    <string name="safety_rollback_session">回滚本会话到最后已知好状态</string>
+    <string name="safety_rollback_task">回滚本任务到最后已知好状态</string>
+    <string name="safety_diary_card">起居注（何时／依据／做了什么／结果）</string>
+    <string name="safety_notify_card">关键动作通知</string>
+    <string name="safety_notif_key_title">关键动作：%1$s</string>
+    <string name="safety_notif_key_text">%1$s（通知只是让你知道，不需要你处理）</string>
+    <string name="safety_notif_halt_title">已%1$s</string>
+    <string name="safety_notif_halt_text">谁停的：%1$s；人工解除前不再发起新动作（解除请进安全台）</string>
+    <string name="safety_settings_card">安全与监督（停机／回滚／起居注）</string>
+    <string name="safety_settings_running">运行中（没有停机；叫停/回滚/通知规则都在安全台）</string>
+    <string name="safety_settings_halted">已%1$s（停机持久化：重启 App／手机仍是停的；解除只能人工）</string>
+    <string name="safety_settings_open">打开安全台</string>
 </resources>
