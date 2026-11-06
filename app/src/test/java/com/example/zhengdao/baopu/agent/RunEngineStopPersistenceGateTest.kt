@@ -48,6 +48,20 @@ class RunEngineStopPersistenceGateTest {
         assertTrue("续跑必须先过停机闸", body.contains("if (stopGateForResume(sessionId)) return false"))
     }
 
+    /**
+     * 蓝总管验收补（2026-11-07）：闸内那半句原先没人钉——把 `resumeBlockedWhileStopped(...)`
+     * 整段换成常量也全绿（我实测变异未被咬）。纯判据与「调用点」都各有人钉，
+     * 唯独「闸真的用了那个判据」这一跳是空的；补在这里。
+     */
+    @Test
+    fun `闸内必须真的用纯判据判定_不是常量短路`() {
+        val gate = slice(engine, "private fun stopGateForResume(sessionId: Long): Boolean {", "停止标志的**只读观测口**")
+        assertTrue(
+            "停机闸必须调 RunRules.resumeBlockedWhileStopped（否则续跑闸形同虚设）",
+            gate.contains("RunRules.resumeBlockedWhileStopped(stoppedSessionId, sessionId)"),
+        )
+    }
+
     @Test
     fun `判定3_resume是恢复_不再清_先过闸`() {
         val body = slice(engine, "fun resume(sessionId: Long, interruptedStepValue: Int) {", "fun resumeWithApproval(")
