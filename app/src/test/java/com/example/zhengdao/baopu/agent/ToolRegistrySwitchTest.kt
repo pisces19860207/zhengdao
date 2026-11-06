@@ -119,6 +119,8 @@ class ToolRegistrySwitchTest {
                 // replay/trust 恒 CONFIRM；表序即注册序，接在 form_fill 之后）
                 "teach_record_start", "teach_record_stop", "teach_skill_save",
                 "browser_replay_skill", "teach_site_trust",
+                // 502：MCP 自配五件（CORE 组，默认可见——模型自己配服务器的本体）
+                "mcp_list", "mcp_add_server", "mcp_connect", "mcp_disconnect", "mcp_set_token",
             ),
             reg.names(),
         )

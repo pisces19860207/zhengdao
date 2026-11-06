@@ -67,6 +67,8 @@ class ToolSchedulingGateTest {
         "table_query",
         // 288: organize_preview 只读预览（纯文件 stat/读，不写盘），与别的读可并行
         "organize_preview",
+        // 502: mcp_list 只读进程内 MCP 清单快照（内存 map + 锁，不联网不写盘），与别的读可并行
+        "mcp_list",
     )
 
     // ── ① 分类自洽 ────────────────────────────────────────────────────────

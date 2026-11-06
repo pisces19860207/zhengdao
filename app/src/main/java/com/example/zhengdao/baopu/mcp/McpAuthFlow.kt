@@ -158,10 +158,15 @@ internal class McpAuthFlow(
                 McpAuthFailure.AUTHORIZATION_DENIED,
                 "授权被拒绝：${callback.error}" +
                     (callback.errorDescription?.let { "（${McpText.clip(McpText.flat(it), 120)}）" } ?: ""),
+                serverId = one.serverId,
             )
         }
         val code = callback.code
-            ?: throw McpAuthException(McpAuthFailure.TOKEN_EXCHANGE_FAILED, "回调里没有授权码")
+            ?: throw McpAuthException(
+                McpAuthFailure.TOKEN_EXCHANGE_FAILED,
+                "回调里没有授权码",
+                serverId = one.serverId,
+            )
         val tokens = try {
             oauth.exchangeCode(
                 metadata = one.metadata,
@@ -206,6 +211,40 @@ internal class McpAuthFlow(
         } catch (e: McpAuthException) {
             null
         }
+    }
+
+    /**
+     * 第五百零二批 · 模型通道的**手动令牌导入**（`mcp_set_token` 的唯一落点）。
+     *
+     * 与 OAuth 授权码流程的差别只有"token 从哪来"：进来之后待遇完全一样——
+     * 走 [McpTokenVault.save] 进加密存储（AndroidKeyStore AES-GCM），按 serverId 分键，
+     * resource 受众绑定照写（[McpResource.canonical]）。三条纪律原样生效：
+     * ① 内容**不回显、不进日志**（vault 只记"存了"）；
+     * ② 模型侧只许写不许读（读通道只有 [tokenFor]，且只喂传输层）；
+     * ③ 导入即清「刷新失败/不支持」的旧标记（与 [complete] 同口径）。
+     *
+     * @return true = 已入库；false = 形状不合法（空串/超长/控制字符/resource 无法规范化）
+     */
+    fun importToken(config: McpServerConfig, accessToken: String): Boolean = synchronized(lock) {
+        val token = accessToken.trim()
+        if (token.isEmpty() || token.length > MAX_IMPORTED_TOKEN) return false
+        if (token.any { it.code < 0x20 || it.code == 0x7f }) return false
+        val resource = McpResource.canonical(config.url) ?: return false
+        vault.save(
+            config.id,
+            McpTokenSet(
+                accessToken = token,
+                refreshToken = null,
+                tokenType = "Bearer",
+                scope = null,
+                expiresAtMs = null,
+                resource = resource,
+            ),
+        )
+        refreshFailed.remove(config.id)
+        unsupported.remove(config.id)
+        log("[mcp] server=${config.id} 已导入手动令牌（进保险柜；内容不落日志）")
+        true
     }
 
     /**
@@ -357,6 +396,9 @@ internal class McpAuthFlow(
 
         /** 一次授权的有效期：10 分钟（超过就当这次授权作废，用户重新点一次）。 */
         const val PENDING_TTL_MS = 10 * 60 * 1000L
+
+        /** 手动导入令牌的长度上限（PAT 常见 ≤ 512；8 KB 是宽裕的天花板，防整段粘贴误入）。 */
+        const val MAX_IMPORTED_TOKEN = 8192
     }
 }
 

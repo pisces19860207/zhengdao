@@ -38,4 +38,17 @@
     <string name="baopu_mcp_probe_refused">\"%1$s\" unreachable: connection refused (port closed or blocked).</string>
     <string name="baopu_mcp_probe_network">\"%1$s\" unreachable: network error.</string>
     <string name="baopu_mcp_probe_unknown">\"%1$s\" is not in the list; nothing to test.</string>
+
+    <!-- 502: English labels/subtitles for the five MCP self-service tools. -->
+    <string name="baopu_mcp_paste_hint">Recognized MCP server URL: name will be "%1$s" · %2$s</string>
+    <string name="baopu_tool_mcp_list">MCP server list</string>
+    <string name="baopu_tool_mcp_list_desc">Lists registered external MCP servers: connection status, authorization state (only whether a token exists, never its value), tool counts and the latest issue. Read-only, no network.</string>
+    <string name="baopu_tool_mcp_add_server">Register MCP server</string>
+    <string name="baopu_tool_mcp_add_server_desc">Registers and connects an external MCP server by URL (outbound connection, always asks once): name auto-derived, OAuth and transport probed; opens the authorization page automatically when needed, once only. Name is optional.</string>
+    <string name="baopu_tool_mcp_connect">Connect MCP server</string>
+    <string name="baopu_tool_mcp_connect_desc">Connects / reconnects / refreshes a registered MCP server: while connected it re-pulls the tool list and reports additions/removals; opens the authorization page once if required.</string>
+    <string name="baopu_tool_mcp_disconnect">Disconnect MCP server</string>
+    <string name="baopu_tool_mcp_disconnect_desc">Disconnects a MCP server: unregisters its tools, deletes the local token from the vault and disables startup auto-connect. Config is kept; it can be reconnected later. Asks every time.</string>
+    <string name="baopu_tool_mcp_set_token">Store MCP token</string>
+    <string name="baopu_tool_mcp_set_token_desc">Stores a user-provided access token into the token vault (Keystore-encrypted). The token is never echoed, logged or backed up; for pre-issued (PAT) servers. Asks every time.</string>
 </resources>

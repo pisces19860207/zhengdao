@@ -31,6 +31,8 @@ internal data class McpServerView(
     val toolCount: Int,
     /** 最后一次连接成功的时刻（毫秒）；null = 本次进程还没连过。 */
     val lastConnectedAtMs: Long?,
+    /** 第五百零二批：在不在启动自动连名单上（配置级布尔；与连接状态无关）。 */
+    val autoConnect: Boolean = false,
 )
 
 /**
@@ -67,7 +69,7 @@ internal class McpToolSource(
 ) {
 
     private class ServerState(
-        val config: McpServerConfig,
+        var config: McpServerConfig,
         var client: McpSession? = null,
         var tools: List<McpConvertedTool> = emptyList(),
         var status: McpServerStatus = McpServerStatus.OFFLINE,
@@ -151,11 +153,14 @@ internal class McpToolSource(
      *
      * 失败时：不注册任何工具、清掉本次客户端、状态标 [McpServerStatus.ERROR]；
      * 读原文不含 URL/请求头/响应体。
+     *
+     * 第五百零二批：对**已连接**的 server 不再短路返回——重拉 `tools/list` 按差集增删
+     * （自动⑤「连上后自动刷新工具清单」）；刷新失败保留旧清单，不半拆。
      */
     fun connect(id: String): McpConnectOutcome = synchronized(lock) {
         val state = servers[id]
             ?: return McpConnectOutcome.Failed("没有这个 MCP server（$id）")
-        state.client?.let { return McpConnectOutcome.Ok(state.tools.size) }
+        if (state.client != null) return refreshConnectedLocked(state)
 
         // 216：没有可用 token 就先走授权——**不发匿名请求**（省一次必然 401 的往返，
         // 也让"点连接"这件事在 UI 上直接变成"去授权"，不会先报一次错再让用户点第二次）。
@@ -175,13 +180,28 @@ internal class McpToolSource(
             }
         }
 
+        val handshake = handshakeLocked(state)
+        if (handshake is Handshake.NeedsAuth) return handshake.outcome
+        if (handshake is Handshake.Fail) return McpConnectOutcome.Failed(handshake.message)
+        finishConnectLocked(state, handshake as Handshake.Done)
+    }
+
+    /** 握手的一次结果（[connect] 专用；刷新路径不重新握手）。 */
+    private sealed interface Handshake {
+        /** 已握上的 client（尚未登记进 state）＋ 原始描述符（尚未做名字避让转换）。 */
+        data class Done(val client: McpSession, val descriptors: List<McpToolDescriptor>) : Handshake
+        data class NeedsAuth(val outcome: McpConnectOutcome.NeedsAuth) : Handshake
+        data class Fail(val message: String) : Handshake
+    }
+
+    /** 建 client → initialize → tools/list。失败分支在这里收口（状态置 ERROR、关 client）。 */
+    private fun handshakeLocked(state: ServerState): Handshake {
         val client = try {
             clientFactory(state.config)
         } catch (e: Exception) {
             state.status = McpServerStatus.ERROR
-            return McpConnectOutcome.Failed("MCP 服务器「${state.config.name}」配置不可用（${e.javaClass.simpleName}）")
+            return Handshake.Fail("MCP 服务器「${state.config.name}」配置不可用（${e.javaClass.simpleName}）")
         }
-
         val descriptors = try {
             client.connect()
             client.listTools()
@@ -189,44 +209,56 @@ internal class McpToolSource(
             runCatching { client.close() }
             state.status = McpServerStatus.ERROR
             state.lastError = e.userMessage
-            log("[mcp] server=$id 连接失败：${e.failure}")
+            log("[mcp] server=${state.config.id} 连接失败：${e.failure}")
             // 401 / 权限不足 ⇒ 转授权流程（正常一步，不是"失败"）。
             auth?.let { flow ->
                 if (e.failure == McpFailure.AUTH_REQUIRED || e.failure == McpFailure.INSUFFICIENT_SCOPE) {
                     val begin = flow.begin(state.config, scope = e.missingScope)
                     if (begin is McpAuthBegin.Ready) {
-                        return McpConnectOutcome.NeedsAuth(
-                            authorizationUrl = begin.authorizationUrl,
-                            message = e.userMessage,
-                            missingScope = e.missingScope,
+                        return Handshake.NeedsAuth(
+                            McpConnectOutcome.NeedsAuth(
+                                authorizationUrl = begin.authorizationUrl,
+                                message = e.userMessage,
+                                missingScope = e.missingScope,
+                            ),
                         )
                     }
                 }
             }
-            return McpConnectOutcome.Failed(e.userMessage)
+            return Handshake.Fail(e.userMessage)
         } catch (e: Exception) {
             runCatching { client.close() }
             state.status = McpServerStatus.ERROR
             state.lastError = "MCP 服务器「${state.config.name}」连接失败（${e.javaClass.simpleName}）"
-            return McpConnectOutcome.Failed(state.lastError!!)
+            return Handshake.Fail(state.lastError!!)
         }
+        return Handshake.Done(client, descriptors)
+    }
 
+    /** 名字避让规则统一在这（新连与刷新同口径）：本 server 旧名字不算撞名，本地工具名不行。 */
+    private fun convertedForLocked(
+        state: ServerState,
+        descriptors: List<McpToolDescriptor>,
+    ): List<McpConvertedTool> {
+        val existing = registry.names().toSet() - state.wireNames
+        val mcpOwned = servers.values
+            .filter { it !== state }
+            .flatMap { it.wireNames }
+            .toSet()
+        return McpSchema.convertAll(descriptors, existing, mcpOwned)
+    }
+
+    /** 握手成功后的收尾：转换 → 登记 → 状态与组同意。 */
+    private fun finishConnectLocked(state: ServerState, done: Handshake.Done): McpConnectOutcome {
         val converted = try {
-            // 本 server 上一次注册的名字不算撞名（重连是自己的位子）；其它 MCP server 的
-            // 名字可以哈希避让，本地工具名不行（McpSchema 会整 server 拒收）。
-            val existing = registry.names().toSet() - state.wireNames
-            val mcpOwned = servers.values
-                .filter { it !== state }
-                .flatMap { it.wireNames }
-                .toSet()
-            McpSchema.convertAll(descriptors, existing, mcpOwned)
+            convertedForLocked(state, done.descriptors)
         } catch (e: McpException) {
-            runCatching { client.close() }
+            runCatching { done.client.close() }
             state.status = McpServerStatus.ERROR
             return McpConnectOutcome.Failed(e.userMessage)
         }
-
-        state.client = client
+        state.client = done.client
+        val mode = done.client.mode
         state.tools = converted
         state.status = McpServerStatus.CONNECTED
         state.lastConnectedAtMs = now()
@@ -241,22 +273,79 @@ internal class McpToolSource(
             registry.setGroupApproved(ToolGroup.MCP, true)
         }
         if (converted.isEmpty()) warnings += "服务器没有公布任何工具"
-        log("[mcp] server=$id 已连接：注册 ${converted.size} 个工具（${client.mode}）")
-        McpConnectOutcome.Ok(converted.size, warnings)
+        log("[mcp] server=${state.config.id} 已连接：注册 ${converted.size} 个工具（${mode ?: "?"}）")
+        return McpConnectOutcome.Ok(
+            toolCount = converted.size,
+            warnings = warnings,
+            mode = mode,
+            added = converted.size,
+            removed = 0,
+        )
+    }
+
+    /**
+     * 第五百零二批：对已连接的 server 重拉 `tools/list`，按差集增删注册。
+     *
+     * 刷新失败**保留旧清单**（半拆比旧清单更糟）；成功后 `lastError` 清零、状态保持连接。
+     */
+    private fun refreshConnectedLocked(state: ServerState): McpConnectOutcome {
+        val client = state.client
+            ?: return McpConnectOutcome.Failed("没有这个 MCP server（${state.config.id}）")
+        val descriptors = try {
+            client.listTools()
+        } catch (e: McpException) {
+            log("[mcp] server=${state.config.id} 工具清单刷新失败：${e.failure}（保留旧清单 ${state.tools.size} 个）")
+            return McpConnectOutcome.Failed(e.userMessage)
+        } catch (e: Exception) {
+            log("[mcp] server=${state.config.id} 工具清单刷新失败（${e.javaClass.simpleName}）（保留旧清单 ${state.tools.size} 个）")
+            return McpConnectOutcome.Failed("MCP 服务器「${state.config.name}」刷新失败（${e.javaClass.simpleName}）")
+        }
+        val converted = try {
+            convertedForLocked(state, descriptors)
+        } catch (e: McpException) {
+            log("[mcp] server=${state.config.id} 刷新到的工具形状不合法：${e.failure}（保留旧清单）")
+            return McpConnectOutcome.Failed(e.userMessage)
+        }
+        val before = state.wireNames
+        val after = converted.map { it.wireName }.toSet()
+        val gone = before - after
+        val added = (after - before).size
+        gone.forEach { registry.unregister(it) }
+        state.tools = converted
+        state.status = McpServerStatus.CONNECTED
+        state.lastError = null
+        converted.forEach { registry.register(specFor(state, it)) }
+        log(
+            "[mcp] server=${state.config.id} 工具清单已刷新：新增 $added 个、移除 ${gone.size} 个" +
+                "（现 ${converted.size} 个，${client.mode}）",
+        )
+        return McpConnectOutcome.Ok(
+            toolCount = converted.size,
+            mode = client.mode,
+            added = added,
+            removed = gone.size,
+        )
     }
 
     /**
      * 断开：注销工具、清工具授权、**清 token**（派工单 §2.5「断开＝清本机 token」）、关传输。
      * 配置留着，可重新授权再连。
+     *
+     * 第五百零二批：显式断开同时把 `autoConnect` 关掉——用户收起来的服务器不许在
+     * 下次启动时自己爬回来（自动 A 只连「还在名单上」的）。
      */
     fun disconnect(id: String) {
         synchronized(lock) {
             val state = servers[id] ?: return
             releaseLocked(state)
             auth?.wipe(id)
+            if (state.config.autoConnect) {
+                state.config = state.config.copy(autoConnect = false)
+                persistLocked()
+            }
             state.status = McpServerStatus.OFFLINE
             state.lastError = null
-            log("[mcp] server=$id 已断开（token 已清）")
+            log("[mcp] server=$id 已断开（token 已清；启动自动连已关）")
         }
     }
 
@@ -287,6 +376,7 @@ internal class McpToolSource(
                 auth = authStatusOf(state.config),
                 toolCount = state.tools.size,
                 lastConnectedAtMs = state.lastConnectedAtMs,
+                autoConnect = state.config.autoConnect,
             )
         }
     }
@@ -317,6 +407,12 @@ internal class McpToolSource(
     fun registeredNames(id: String): Set<String> = synchronized(lock) { servers[id]?.wireNames ?: emptySet() }
 
     fun serverIds(): List<String> = synchronized(lock) { servers.keys.toList() }
+
+    /**
+     * 第五百零二批：按 id 取配置副本（`mcp_set_token` / 自动连要用它找 resource 与名字）。
+     * 配置里没有凭据字段（headers 恒空、token 永不在配置里），副本随便传。
+     */
+    fun config(id: String): McpServerConfig? = synchronized(lock) { servers[id]?.config }
 
     /** 只给门禁/单测看（断连后应清空）。 */
     fun grantSnapshot(): Map<String, Set<String>> = grants.snapshot()

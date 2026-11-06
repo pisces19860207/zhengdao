@@ -570,6 +570,12 @@ class ToolSchemaAllTest {
             "teach_skill_save" to JSONObject(),
             "browser_replay_skill" to JSONObject().put("name", "查货"),
             "teach_site_trust" to JSONObject().put("action", "list"),
+            // 502：MCP 自配五件（list 全可选且有 REQUIRED_EMPTY_OK 签字；其余各有必填）
+            "mcp_list" to JSONObject(),
+            "mcp_add_server" to JSONObject().put("url", "https://m.example.com/mcp"),
+            "mcp_connect" to JSONObject().put("id", "s0a1b2c"),
+            "mcp_disconnect" to JSONObject().put("id", "s0a1b2c"),
+            "mcp_set_token" to JSONObject().put("id", "s0a1b2c").put("token", "sample"),
         )
 
         /** 数组成员的参数（按「工具名.参数名」索引）：自动造不出有意义的元素，手写。 */

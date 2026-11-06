@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,8 +65,10 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.mcp.McpAuthStatus
 import com.example.zhengdao.baopu.mcp.McpConnectOutcome
+import com.example.zhengdao.baopu.mcp.McpPasteRule
 import com.example.zhengdao.baopu.mcp.McpProbeFailure
 import com.example.zhengdao.baopu.mcp.McpProbeResult
+import com.example.zhengdao.baopu.mcp.McpSelfService
 import com.example.zhengdao.baopu.mcp.McpServerDraft
 import com.example.zhengdao.baopu.mcp.McpServerStatus
 import com.example.zhengdao.baopu.mcp.McpServerView
@@ -84,6 +87,8 @@ private data class McpConnectResult(
     val rows: List<McpServerView>,
     /** false ＝ 这个地址之前就登记过（addServer 拒收重复）。 */
     val isNew: Boolean,
+    /** 第五百零二批：这一下动的是哪台（自动 B 的弹窗台账按它记账）。 */
+    val serverId: String,
 )
 
 @Composable
@@ -102,9 +107,17 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
     var pendingDisconnect by remember { mutableStateOf<McpServerView?>(null) }
     var viewingTools by remember { mutableStateOf<McpServerView?>(null) }
     var toolNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    /** 502 自动 C：URL 框里一旦是合法地址就提示「名称/传输」（纯文本，不是新入口）。 */
+    var parseHint by remember { mutableStateOf<String?>(null) }
 
     /** 授权回调（浏览器回来时投递到这里；null ＝ 没有待处理的）。 */
     val callback by McpAuthInbox.pendingState
+
+    // 502：面板在组合里 ⇒ 回调归面板（见 McpAuthInbox.panelActive 的路由注释）。
+    DisposableEffect(Unit) {
+        McpAuthInbox.panelActive = true
+        onDispose { McpAuthInbox.panelActive = false }
+    }
 
     // 打开面板：把盘里存下的配置登记回来（**只登记、不联网**）；幂等，重开不会重复。
     LaunchedEffect(Unit) {
@@ -134,6 +147,8 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                 val source = BaopuRuntime.mcp(context)
                 runCatching {
                     val done = flow.complete(cb)
+                    // 502：授权闭环 ⇒ 自动 B 的本 episode 结束（下次过期重授还能再弹）。
+                    McpSelfService.popupLedger.forget(done.serverId)
                     // 授权完成 ≠ 连上：还要 initialize + tools/list 才算可用。
                     done.serverId to source.connect(done.serverId)
                 }
@@ -155,13 +170,17 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                     }
                 },
                 onFailure = { e ->
+                    // 502：浏览器里明确拒绝 ⇒ 记台账（自动 B 从此不再为这台弹页）。
+                    val authEx = e as? com.example.zhengdao.baopu.mcp.McpAuthException
+                    if (authEx?.failure == com.example.zhengdao.baopu.mcp.McpAuthFailure.AUTHORIZATION_DENIED) {
+                        authEx.serverId?.let { McpSelfService.popupLedger.markDenied(it) }
+                    }
                     // 失败一律**明说**（state 不匹配 / 换 token 失败），不静默。
                     McpNotice(
                         false,
                         res.getString(
                             R.string.baopu_mcp_oauth_auth_failed,
-                            (e as? com.example.zhengdao.baopu.mcp.McpAuthException)?.userMessage
-                                ?: e.javaClass.simpleName,
+                            authEx?.userMessage ?: e.javaClass.simpleName,
                         ),
                     )
                 },
@@ -189,9 +208,12 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
         busyId = null
         notice = when (val outcome = result.outcome) {
             is McpConnectOutcome.Ok -> {
+                // 502：连接成功 ⇒ 自动 B 的本 episode 闭环（过期重授还能再弹）。
+                McpSelfService.popupLedger.forget(result.serverId)
                 if (clearInput) {
                     url = ""
                     clientId = ""
+                    parseHint = null
                 }
                 val head = if (outcome.toolCount > 0) {
                     res.getQuantityString(
@@ -209,9 +231,12 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
             }
             is McpConnectOutcome.NeedsAuth -> {
                 // 不是失败：这是 OAuth 的正常一步。配置已经登记好了（addServer 在前）。
+                // 502：这次弹页记进台账（自动 B「只弹一次」的 episode 开始）。
+                McpSelfService.popupLedger.markShown(result.serverId)
                 if (clearInput) {
                     url = ""
                     clientId = ""
+                    parseHint = null
                 }
                 openAuthorization(outcome.authorizationUrl)
                 // step-up（insufficient_scope）时把"缺哪个权限"单独说一句——用户才知道要批什么。
@@ -278,7 +303,8 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                 notice = McpNotice(false, res.getString(R.string.baopu_mcp_url_invalid, draft.message))
 
             is McpServerDraft.Result.Ok -> {
-                val config = draft.config
+                // 502：用户点「添加并授权」＝显式要连 ⇒ 进启动自动连名单（下次开机自动回）。
+                val config = draft.config.copy(autoConnect = true)
                 busyId = config.id
                 notice = null
                 scope.launch {
@@ -289,6 +315,7 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                             outcome = source.connect(config.id),
                             rows = source.snapshot(),
                             isNew = added,
+                            serverId = config.id,
                         )
                     }
                     finish(result, clearInput = true)
@@ -309,6 +336,7 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                     outcome = source.connect(target.id),
                     rows = source.snapshot(),
                     isNew = true,
+                    serverId = target.id,
                 )
             }
             finish(result, clearInput = false)
@@ -401,11 +429,26 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                 )
                 OutlinedTextField(
                     value = url,
-                    onValueChange = { url = it },
+                    onValueChange = {
+                        url = it
+                        // 502 自动 C「粘贴即解析」：地址一成形就报名称与候选传输（零网络、
+                        // 纯形状判断；真相连接时实测）。复用现有提示位，不加新控件。
+                        parseHint = McpPasteRule.singleUrl(it)
+                            ?.takeIf { p -> p.invalid == null }
+                            ?.let { p -> res.getString(R.string.baopu_mcp_paste_hint, p.name, p.transportHint) }
+                    },
                     label = { Text(stringResource(R.string.baopu_mcp_url)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                parseHint?.let { hint ->
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = clientId,
                     onValueChange = { clientId = it },

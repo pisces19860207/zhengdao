@@ -284,8 +284,12 @@ internal data class RiskTable(
          * organize_preview R0（纯只读预览）。
          * v9（第四百九十一批）：备份/还原两件入表——export_data R1（只写一个新 zip，目标是固定目录、
          * 永不覆盖）；import_data R2（批量写回用户数据，源会覆盖目标 ⇒ 与 bulk_move 同档）。
+         * v10（第五百零二批）：MCP 自配五件入表——mcp_list R0（读本地清单）；
+         * mcp_add_server R3（对外连接：登记即要联系外部服务器，必问一次）；
+         * mcp_connect R1（对外动作，但端点在登记时已批过）；mcp_disconnect R1（清本机令牌，
+         * 重连可恢复）；mcp_set_token R3（账号语义：写入的是凭据，永远必问）。
          */
-        const val DEFAULT_VERSION: Int = 9
+        const val DEFAULT_VERSION: Int = 10
 
         /**
          * 唯一一张默认表（70 行 = 注册工具 70 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
@@ -463,6 +467,12 @@ internal data class RiskTable(
                 "teach_skill_save" to ToolRule(RiskClass.R1),
                 "browser_replay_skill" to ToolRule(RiskClass.R2, alwaysAsk = true),
                 "teach_site_trust" to ToolRule(RiskClass.R1, alwaysAsk = true),
+                // ── 502 MCP 自配五件（CORE 组；add/set_token 是 R3 必问——对外连接与凭据）──
+                "mcp_list" to ToolRule(RiskClass.R0),
+                "mcp_add_server" to ToolRule(RiskClass.R3),
+                "mcp_connect" to ToolRule(RiskClass.R1),
+                "mcp_disconnect" to ToolRule(RiskClass.R1),
+                "mcp_set_token" to ToolRule(RiskClass.R3),
             ),
             // 173 口径：终端不参与分级——bash 不查档、不叠规则，原样交回终端那条路。
             // 注意它必须**显式豁免**：若只返回 null，fail-closed 会把它当未分类判 R2＋必问，

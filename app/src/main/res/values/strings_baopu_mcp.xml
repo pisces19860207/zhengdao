@@ -39,4 +39,17 @@
     <string name="baopu_mcp_probe_refused">「%1$s」连不通：连接被拒绝（端口没开或被防火墙拦了）。</string>
     <string name="baopu_mcp_probe_network">「%1$s」连不通：网络错误。</string>
     <string name="baopu_mcp_probe_unknown">「%1$s」不在清单里，测不了。</string>
+
+    <!-- 502：MCP 自配五件的设置页标签/副标题（BaopuToolLabelCoverageTest 的目录↔标签门禁）。 -->
+    <string name="baopu_mcp_paste_hint">已识别 MCP 服务器地址：名称将取为「%1$s」· %2$s</string>
+    <string name="baopu_tool_mcp_list">MCP 服务器清单</string>
+    <string name="baopu_tool_mcp_list_desc">列出已登记的外部 MCP 服务器：连接状态、授权状态（只报有没有令牌，永不显示内容）、工具数与最近一次问题。只读，不联网。</string>
+    <string name="baopu_tool_mcp_add_server">登记 MCP 服务器</string>
+    <string name="baopu_tool_mcp_add_server_desc">按地址登记并接上一台外部 MCP 服务器（对外连接，每次必弹确认卡）：自动取名称、探测授权与传输类型；需要授权时自动打开授权页，且只弹一次。名称可省略。</string>
+    <string name="baopu_tool_mcp_connect">接上 MCP 服务器</string>
+    <string name="baopu_tool_mcp_connect_desc">连接/重连/刷新一台已登记的 MCP 服务器：已连接时重拉工具清单并报新增/移除数；需要授权时自动打开授权页（只弹一次）。</string>
+    <string name="baopu_tool_mcp_disconnect">断开 MCP 服务器</string>
+    <string name="baopu_tool_mcp_disconnect_desc">断开一台 MCP 服务器：注销它的工具、从保险柜删除本机令牌、关闭启动自动连。配置保留，可再接上。每次弹确认卡。</string>
+    <string name="baopu_tool_mcp_set_token">写入 MCP 令牌</string>
+    <string name="baopu_tool_mcp_set_token_desc">把用户提供的访问令牌写进某台服务器的令牌保险柜（Keystore 加密）。令牌不回显、不进日志、不进备份；适用于预置令牌（PAT）场景。每次必弹确认卡。</string>
 </resources>

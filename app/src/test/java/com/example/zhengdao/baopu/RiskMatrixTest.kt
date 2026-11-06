@@ -36,7 +36,8 @@ class RiskMatrixTest {
     fun `注册表70个工具_每个都有档或显式豁免`() {
         val names = newRegistry().names()
         // 第二百六十九批：+archive_pack/+archive_extract（68 → 70）；288 复制/批量/整理五件（70 → 75）；399 事件触发（75 → 76）
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 80, names.size)
+        // 491 备份/还原（76 → 80）；502 MCP 自配五件（80 → 85）
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 85, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),
@@ -339,7 +340,7 @@ class RiskMatrixTest {
         assertTrue(v.unclassified)
         assertEquals("unclassified_tool", v.auditTag)
         assertEquals(RiskCode.UNCLASSIFIED_TOOL, v.reasonCode)
-        assertEquals("未分类也要带矩阵版本", 9, v.matrixVersion)
+        assertEquals("未分类也要带矩阵版本", 10, v.matrixVersion)
         assertFalse("必问不是硬拒", v.hardDeny)
         assertFalse("未分类绝不能被当 R0 放行", v.risk == RiskClass.R0)
     }
@@ -369,9 +370,10 @@ class RiskMatrixTest {
     @Test
     fun `matrixVersion_表里带版本且原样回填`() {
         // 228 B 片九行＋224 form_fill＋228 C 片示教/回放五件 ⇒ 4；232 table_query ⇒ 5；262 browser_evidence ⇒ 6；
-        // 269 archive_pack/archive_extract ⇒ 7；288 复制/批量/整理五件 ⇒ 8
-        assertEquals(9, RiskTable.DEFAULT.matrixVersion)
-        assertEquals(9, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
+        // 269 archive_pack/archive_extract ⇒ 7；288 复制/批量/整理五件 ⇒ 8；491 备份/还原 ⇒ 9；
+        // 502 MCP 自配五件 ⇒ 10
+        assertEquals(10, RiskTable.DEFAULT.matrixVersion)
+        assertEquals(10, verdict("read_file", mapOf("path" to "产物/a.md")).matrixVersion)
 
         val bumped = RiskTable.DEFAULT_VERSION + 1
         val v2 = RiskTable.DEFAULT.copy(matrixVersion = bumped)

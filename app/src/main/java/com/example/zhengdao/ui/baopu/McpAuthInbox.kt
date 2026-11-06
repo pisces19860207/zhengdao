@@ -23,8 +23,25 @@ internal object McpAuthInbox {
     /** 面板观察这个（热启动时回调是后到的，必须能订阅到）。 */
     internal val pendingState: State<McpOAuthCallback?> get() = pending
 
+    /**
+     * 第五百零二批：面板在不在组合里（[McpServerScreen] 进/出组合时置位）。
+     *
+     * 在 ⇒ 回调照旧投状态（面板消费）；不在 ⇒ 交给 [backgroundConsumer]（自配通道的
+     * 后台兜底：换 token → 自动续连）。**单一归宿**：同一条回调不会被两边各处理一次。
+     */
+    @Volatile
+    internal var panelActive: Boolean = false
+
+    /** 后台消费者（返回 true = 已接管）；由 McpSelfServiceWiring 装配，测试可注入。 */
+    @Volatile
+    internal var backgroundConsumer: ((McpOAuthCallback) -> Boolean)? = null
+
     /** Activity 侧投递（深链路由通过后调用）。 */
     fun deliver(callback: McpOAuthCallback) {
+        if (!panelActive) {
+            val bg = backgroundConsumer
+            if (bg != null && bg.invoke(callback)) return
+        }
         pending.value = callback
     }
 

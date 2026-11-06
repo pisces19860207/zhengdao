@@ -39,6 +39,14 @@ internal data class McpServerConfig(
      * 真正装不住的 client_secret 本仓**没有也不收**（负例⑨：硬编码密钥进 APK）。
      */
     val clientId: String? = null,
+    /**
+     * 第五百零二批：**启动自动连**的名单标记（配置级布尔，随 [McpServerStore] 落盘）。
+     *
+     * 语义：登记（用户在面板点「添加并授权」/ 模型 `mcp_add_server` 得到批准）即为 true；
+     * 显式断开（面板按钮 / 模型 `mcp_disconnect`）即为 false——用户收起来的服务器不该
+     * 在下次启动时自己爬回来。它**不是**连接状态：只决定「启动/回前台时要不要试」。
+     */
+    val autoConnect: Boolean = false,
 ) {
     init {
         require(ID.matches(id)) { "MCP server id 只能是小写字母/数字/下划线/连字符（1–32 位）：$id" }
@@ -270,7 +278,22 @@ internal data class McpCallResult(
 
 /** 连接结果（UI 不抛异常；失败也给一句人话）。 */
 internal sealed interface McpConnectOutcome {
-    data class Ok(val toolCount: Int, val warnings: List<String> = emptyList()) : McpConnectOutcome
+    /**
+     * 连接/刷新成功。
+     *
+     * @param toolCount 现在挂在这台服务器上的工具总数
+     * @param warnings 需要人知道的旁注（组被关/零工具）
+     * @param mode 传输模式（`streamable-http` / `legacy-sse`）；502 起带上，给自配回执用
+     * @param added 502：本次**新增**注册的工具数（全新连接 = 全部；刷新 = 差集）
+     * @param removed 502：刷新时服务器上消失、已注销的工具数
+     */
+    data class Ok(
+        val toolCount: Int,
+        val warnings: List<String> = emptyList(),
+        val mode: String? = null,
+        val added: Int = -1,
+        val removed: Int = 0,
+    ) : McpConnectOutcome
 
     /**
      * 需要授权：把 [authorizationUrl] 交给系统浏览器。

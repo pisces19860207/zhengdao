@@ -224,8 +224,8 @@ class KbToolsTest {
             // 分组：资料库组（组级默认不可见；kb_search 走 157 的默认可见名单，见下）
             assertEquals(ToolGroup.LIBRARY, spec.group)
         }
-        // 默认可见 14 条（原 12 ＋ 157 默认可见两件：library_list / kb_search）
-        assertEquals(14, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
+        // 默认可见 19 条（14 ＋ 502 的 MCP 自配五件：CORE 组，模型自配服务器的本体）
+        assertEquals(19, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
     }
 
     @Test

@@ -63,6 +63,10 @@ class ZhengdaoApp : Application() {
         // 第四百九十一批（设计修订）：备份收件箱——启动时扫一眼 `Download/证道/导入/`，
         // 发现 zip 就校验并提示一句（**不自动合并**：最保守档；499 授权档落地后改那一处分支）。
         com.example.zhengdao.backup.BackupWiring.install(this)
+        // 第五百零二批：MCP 自配通道——五件模型工具（mcp_list/add_server/connect/disconnect/
+        // set_token）＋自动 A 启动自动连（守护线程 3s 后试一次，失败一行诊断、机会式重试）
+        // ＋自动 B 授权回调后台兜底。必须**在 AppForeground.install 之后**（要挂前台边沿监听）。
+        com.example.zhengdao.baopu.mcp.McpSelfServiceWiring.install(this)
         // 第三百八十八单：离场值守——状态仓（SP＋KeyguardManager）与看门狗。
         // 必须在 RunEngine 装配之前：引擎的 awayLocked 闭包读它的问口，装配晚了
         // 第一批卡就问不到"锁着没"。看门狗 KEEP 幂等（重复开 App 不重置周期）。

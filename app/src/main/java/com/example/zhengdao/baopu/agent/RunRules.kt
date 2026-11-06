@@ -301,6 +301,22 @@ internal object RunRules {
                 val refText = if (ref == null) "" else "（参考图：${showPath(ref, projectRoot)}）"
                 "用 Gemini 画 $count 张 $size 的图（会烧额度）：「$brief」$refText"
             }
+            // 502 MCP 自配五件：确认卡一个字都不带令牌（token 参数**永不**进摘要/卡面/日志）；
+            // 地址过 McpUrlRules.redact（去 query/fragment，与日志同一口径）。
+            // 用词注意：全仓门禁禁六个字的旧假入口文案（McpEntryWiringTest 负例，
+            // "连接"+"MCP 服务"两词相邻即红）——这里统一用「接上 / 断开」。
+            "mcp_list" -> "查看 MCP 服务器清单（只读）"
+            "mcp_add_server" -> {
+                val shown = args.optString("url").trim()
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { com.example.zhengdao.baopu.mcp.McpUrlRules.redact(it) }
+                    ?: "（未给地址）"
+                "登记并接上 MCP 服务器：$shown（对外连接）"
+            }
+            "mcp_connect" -> "接上 MCP 服务器 id=${args.optString("id").trim().ifBlank { "？" }}（对外动作）"
+            "mcp_disconnect" -> "断开 MCP 服务器 id=${args.optString("id").trim().ifBlank { "？" }}（将清除本机令牌）"
+            "mcp_set_token" ->
+                "把访问令牌写入 MCP 服务器 id=${args.optString("id").trim().ifBlank { "？" }} 的保险柜（内容不回显）"
             else -> "$tool（${args.toString().take(60)}）"
         }
     }

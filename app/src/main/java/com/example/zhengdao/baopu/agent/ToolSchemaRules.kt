@@ -127,6 +127,7 @@ internal object ToolSchemaRules {
         "teach_skill_save" to "name 可省略：省略即用示教时自动起的名字（TeachTools.skillSaveSpec，228 批 C）",
         "table_query" to "两条入口二选一：question（一句话）或 op（结构化运算）；两个都不给就是" +
             "「念一遍能问什么」的名册——必填在哪条路上由执行体点名报错（TableQueryTool.run，232 批）",
+        "mcp_list" to "无参数：列清单本身不需要输入（McpSelfService.listSpec，502 批）",
     )
 
     /**

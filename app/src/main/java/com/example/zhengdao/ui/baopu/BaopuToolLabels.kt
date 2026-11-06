@@ -128,6 +128,12 @@ internal object BaopuToolLabels {
         "import_data" to R.string.baopu_tool_import_data,
         "archive_pack" to R.string.baopu_tool_archive_pack,
         "archive_extract" to R.string.baopu_tool_archive_extract,
+        // 502：MCP 自配五件（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
+        "mcp_list" to R.string.baopu_tool_mcp_list,
+        "mcp_add_server" to R.string.baopu_tool_mcp_add_server,
+        "mcp_connect" to R.string.baopu_tool_mcp_connect,
+        "mcp_disconnect" to R.string.baopu_tool_mcp_disconnect,
+        "mcp_set_token" to R.string.baopu_tool_mcp_set_token,
     )
 
     /** 工具名 → 开关副标题。键集必须与 [LABEL] 完全一致（同一张目录，缺一即红）。 */
@@ -222,6 +228,12 @@ internal object BaopuToolLabels {
         "import_data" to R.string.baopu_tool_import_data_desc,
         "archive_pack" to R.string.baopu_tool_archive_pack_desc,
         "archive_extract" to R.string.baopu_tool_archive_extract_desc,
+        // 502：MCP 自配五件（同上，漏了 fail-fast）
+        "mcp_list" to R.string.baopu_tool_mcp_list_desc,
+        "mcp_add_server" to R.string.baopu_tool_mcp_add_server_desc,
+        "mcp_connect" to R.string.baopu_tool_mcp_connect_desc,
+        "mcp_disconnect" to R.string.baopu_tool_mcp_disconnect_desc,
+        "mcp_set_token" to R.string.baopu_tool_mcp_set_token_desc,
     )
 
     /** 取标签；没有就是配置错误（调用方只有设置页，漏了立即炸而不是显示空串）。 */

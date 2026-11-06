@@ -233,10 +233,22 @@ internal enum class McpAuthFailure {
     NO_PENDING,
 }
 
+/**
+ * 授权侧异常（[McpAuthFlow] 抛；文案已清洗，**不含 token / code / verifier**）。
+ *
+ * 第五百零二批加 [serverId]：自动 B 要按服务器记「授权被拒过」的台账（只弹一次），
+ * 回调路径的异常只有这里能带出"是哪台"。
+ */
 internal class McpAuthException(
     val failure: McpAuthFailure,
     val userMessage: String,
     cause: Throwable? = null,
+    /**
+     * 哪台服务器（能定位就带；发现/注册阶段的失败可能没有）。
+     * 第五百零二批加：自动 B 按「这台被拒过」记台账（只弹一次）用。排在 cause 之后，
+     * 旧的 `McpAuthException(failure, message, cause)` 位置调用一个字不用改。
+     */
+    val serverId: String? = null,
 ) : Exception(userMessage, cause)
 
 /** 授权服务器公布的能力（RFC 8414 / OIDC discovery 的子集，只取用得上的）。 */

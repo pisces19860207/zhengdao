@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.mcp.McpSelfService
 import com.example.zhengdao.trigger.TriggerTool
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 import org.json.JSONArray
@@ -46,8 +47,8 @@ enum class ToolPermission {
  * card_build 在 core/edit，而网页的**交互**四件在 browser）。交付报告里逐字记了这条取法。
  */
 enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean = false) {
-    /** 默认就看得见：抱朴干活的最小闭环（§6 点名项）。 */
-    CORE("core", "核心：读文件、列目录、搜内容、问用户、列计划，以及打开网页并读它"),
+    /** 默认就看得见：抱朴干活的最小闭环（§6 点名项）＋ 502 的 MCP 自配五件。 */
+    CORE("core", "核心：读文件、列目录、搜内容、问用户、列计划、打开网页读它，以及配置外部 MCP 服务器"),
 
     /** 默认就看得见：写产物的最小闭环（§6 点名项）。 */
     EDIT("edit", "写与改：写文件、改文件、处理图片、写卡"),
@@ -323,6 +324,14 @@ internal object ToolGroupTable {
         "teach_skill_save" to ToolGroup.BROWSER,     // R1 写技能库
         "browser_replay_skill" to ToolGroup.BROWSER, // R2 自动执行＋拒点提交
         "teach_site_trust" to ToolGroup.BROWSER,     // R1 授权类
+        // ── 502：MCP 自配五件（CORE，默认可见）——「零新增 UI 入口」的本体。
+        // 不放 MCP 动态组的原因：动态组要等第一台连上才可见，模型拿不到 mcp_add_server
+        // 就是死锁；写类进 defaultVisibleTools 又被 register() 的 fail-closed 只读闸拦死。
+        "mcp_list" to ToolGroup.CORE,           // R0 只读
+        "mcp_add_server" to ToolGroup.CORE,     // R3 对外连接（必问一次）
+        "mcp_connect" to ToolGroup.CORE,        // R1 对外动作
+        "mcp_disconnect" to ToolGroup.CORE,     // R1 清令牌
+        "mcp_set_token" to ToolGroup.CORE,      // R3 账号语义
     )
 
     /**
@@ -1387,6 +1396,14 @@ internal object BaopuToolCatalog {
         "teach_skill_save",
         "browser_replay_skill",
         "teach_site_trust",
+        // 第五百零二批：MCP 自配五件——默认开、默认可见（CORE 组）。这是「零新增 UI 入口」
+        // 的本体：模型自己配 MCP 服务器，不加设置页不加按钮。list 只读 FREE；
+        // add/connect/disconnect/set_token 全 CONFIRM，add 是对外连接（矩阵 R3）必问一次。
+        "mcp_list",
+        "mcp_add_server",
+        "mcp_connect",
+        "mcp_disconnect",
+        "mcp_set_token",
     )
 
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
@@ -1518,6 +1535,13 @@ internal object BaopuToolCatalog {
         Entry("teach_skill_save") { TeachTools.skillSaveSpec() },
         Entry("browser_replay_skill") { TeachTools.replaySpec() },
         Entry("teach_site_trust") { TeachTools.siteTrustSpec() },
+        // 第五百零二批：MCP 自配五件（CORE 组，默认可见）——「零新增 UI 入口」的本体：
+        // 模型自己列/登记/连/断/写令牌。运行环境由 BaopuRuntime 注入（McpSelfService.env）。
+        Entry("mcp_list") { McpSelfService.listSpec() },
+        Entry("mcp_add_server") { McpSelfService.addSpec() },
+        Entry("mcp_connect") { McpSelfService.connectSpec() },
+        Entry("mcp_disconnect") { McpSelfService.disconnectSpec() },
+        Entry("mcp_set_token") { McpSelfService.setTokenSpec() },
     )
 
     /**

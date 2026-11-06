@@ -118,6 +118,8 @@ internal class McpServerStore(
         .put("connect_timeout_ms", config.connectTimeoutMs)
         // client_id 是**公开信息**（授权页地址栏里就有），可以落盘；secret 本仓没有。
         .put("client_id", config.clientId ?: JSONObject.NULL)
+        // 502：启动自动连的名单标记（布尔，非凭据；decode 侧缺省 false 兼容旧数据）。
+        .put("auto_connect", config.autoConnect)
 
     /** 单条解码；不合法返回 null（[McpServerConfig] 的 require 是唯一的形状闸）。 */
     private fun decode(raw: JSONObject, index: Int): McpServerConfig? {
@@ -134,6 +136,7 @@ internal class McpServerStore(
                 callTimeoutMs = timeout(raw, "call_timeout_ms", McpServerConfig.DEFAULT_CALL_TIMEOUT_MS),
                 connectTimeoutMs = timeout(raw, "connect_timeout_ms", McpServerConfig.DEFAULT_CONNECT_TIMEOUT_MS),
                 clientId = if (raw.isNull("client_id")) null else raw.optString("client_id").takeIf { it.isNotBlank() },
+                autoConnect = raw.optBoolean("auto_connect", false),
             )
         } catch (e: IllegalArgumentException) {
             // 不打印 e.message：McpServerConfig 的 require 文案里带 url / 头名。

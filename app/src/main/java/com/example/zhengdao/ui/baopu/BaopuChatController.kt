@@ -2951,6 +2951,18 @@ internal class BaopuChatController(context: Context) {
      */
     fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()): Boolean {
         if (text.isBlank()) return false
+        // 第五百零二批 · 自动 C「粘贴即解析」：整句话恰好是一个地址 ⇒ 落一行解析账
+        // （名称/传输候选）。**零网络、零拦截**：消息照常进引擎，模型看到的是原话——
+        // 五件 mcp_* 工具在工具表里，它自己会决定要不要 mcp_add_server（对外连接必过确认卡）。
+        com.example.zhengdao.baopu.mcp.McpPasteRule.singleUrl(text)?.let { parsed ->
+            com.example.zhengdao.core.RunLog.log(
+                if (parsed.invalid == null) {
+                    "[mcp] 粘贴即解析：单个地址（${parsed.url.length} 字）→ 名称「${parsed.name}」· ${parsed.transportHint}"
+                } else {
+                    "[mcp] 粘贴即解析：形状像地址但不许可（${parsed.url.length} 字），不自动处理"
+                },
+            )
+        }
         // 第二百五十八批 W1：调解器的**唯一**接线点——每轮用户输入在这里过一道。
         // 放在所有分支之前（含插话与题材流）：插话也是用户说的一句话，档位该跟着换；
         // 别在 resume/retry/editUser 上再补一次——两处换档会让档位乱跳（派工单负例⑥）。
