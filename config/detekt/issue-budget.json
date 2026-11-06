@@ -1,7 +1,7 @@
 {
-  "total": 337,
+  "total": 336,
   "rules": {
-    "CyclomaticComplexMethod": 190,
+    "CyclomaticComplexMethod": 189,
     "LongMethod": 147
   },
   "issues": [
@@ -134,7 +134,6 @@
     "CyclomaticComplexMethod|PageSnapshot.kt|parseAttrs#1",
     "CyclomaticComplexMethod|PageSnapshot.kt|walk#1",
     "CyclomaticComplexMethod|PersonaPatch.kt|parsePatches#1",
-    "CyclomaticComplexMethod|PersonaPatchApply.kt|applyInner#1",
     "CyclomaticComplexMethod|PlanContract.kt|normalizePath#1",
     "CyclomaticComplexMethod|PlanController.kt|submit#1",
     "CyclomaticComplexMethod|PostAdoption.kt|judgePostAdoption#1",
@@ -343,13 +342,13 @@
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
     "LongMethod|ZipIndex.kt|read#1"
   ],
-  "recorded_from": "383 local run @ feat/settings-entry-a",
-  "recorded_at": "2026-11-05T03:11:19+0800",
+  "recorded_from": "464 local run @ feat/persona-budget（验收方按实测降预算 337→336）",
+  "recorded_at": "2026-11-06T11:54:34",
   "zones": {
     "engine": {
-      "total": 212,
+      "total": 211,
       "rules": {
-        "CyclomaticComplexMethod": 146,
+        "CyclomaticComplexMethod": 145,
         "LongMethod": 66
       }
     },

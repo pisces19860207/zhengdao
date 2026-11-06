@@ -177,6 +177,20 @@ class PersonaOrganizeTest {
     }
 
     @Test
+    fun `负例_锁头三条被改_保全校验必抓`() {
+        // 蓝总管验收补（2026-11-06）：单独钉住 lockedHead 分支——原测试无一条打到它，短路也全绿。
+        val before = bigPersona()
+        val plan = PersonaOrganize.planOf(PersonaLayer.B_GLOBAL, before, "甲.md")
+        val head = plan.lockedHead.trim()
+        assertTrue("这份方案应该有锁头三条", head.isNotEmpty())
+        val broken = plan.copy(after = plan.after.replaceFirst(head, "改过的第一条"))
+        assertTrue(
+            "锁头被改必须被抓到（前三条是基本规矩，不可进化）",
+            PersonaOrganize.preserveProblems(broken, before.lines()).any { it.contains("锁头三条被改了") },
+        )
+    }
+
+    @Test
     fun `负例_指针指向别的归档_不算解出`() {
         val before = bigPersona()
         val plan = PersonaOrganize.planOf(PersonaLayer.B_GLOBAL, before, "甲.md")
