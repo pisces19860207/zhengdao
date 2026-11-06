@@ -11,75 +11,36 @@
 //
 // 为什么这条边界必须先钉（派工单 253 L3 的硬要求）：三条禁令只管任务态；
 // **态判错，禁令全废**——把闲聊误判成任务态，禁令就会"满屏误报"（派工单负例⑥）。
-// 本探针是**词表级**的保守实现：任务态只在命中①②③之一时才成立，命中不了就归闲聊态
-// （宁可漏判进不了禁令，不可把玩笑当办事——误伤的方向一律不判）。
+//
+// ── 第五百批（2026-11-06）：本文件不再是副本，而是一层**转发** ──────────────────
+// 253 起这里是词表与判定的**第二份拷贝**（文件头旧版写着「词表逐字照抄 253 探针，改一个词
+// 就是改判据」）。493 只补词表补不动英文（子串／大小写／习语／请求形态四处缺口），于是同一
+// 判据有了两套结构：生产走 :policy，探针停在 253 的老结构上——两套都会绿，但绿的不是同一件事。
+// 本批按派工单「253 探针副本与生产词表同源」把拷贝删干净：词表与 classify 全部转发给
+// `com.example.zhengdao.baopu.TaskModeBoundary`（:policy 生产判据），**一处改两处生效**。
+// L1／L3 的调用面（TaskMode／classify／classifySentences／isMixed／emotionLexicon）一字没改，
+// 所以那两个门禁测试文件本次没被碰。
 package com.example.zhengdao.baopu.constitution
 
-/** 一段话落在哪个态。 */
-internal enum class TaskMode { TASK, CHAT }
+/** 判态结论＝生产口径（:policy），本文件不再自带第二份枚举。 */
+internal typealias TaskMode = com.example.zhengdao.baopu.TaskMode
 
+/** 253 探针：判据的**转发口**（口径见文件头，实现在 :policy 的 MediatorJudge.kt）。 */
 internal object TaskModeBoundary {
 
-    // ── ① 执行意图 / 工具调用形态（"帮我改/查/装"）───────────────────────────
-    private val INTENT = listOf(
-        "帮我", "替我", "给我查", "给我改", "给我删", "改一下", "改掉", "换掉", "查一下", "查查",
-        "搜一下", "搜个", "写一个", "写一份", "写个", "删掉", "删除", "卸载", "安装", "装一下",
-        "跑一下", "跑起来", "执行", "生成", "导出", "导入", "上传", "下载", "打开", "关掉",
-        "修复", "修一下", "部署", "提交", "保存", "重命名", "替换", "压缩", "解压",
-        "照这个改", "按这个改", "按这个做", "照着做", "试试看能不能", "重新",
-    )
+    fun classify(text: String): TaskMode =
+        com.example.zhengdao.baopu.TaskModeBoundary.classify(text)
 
-    // ── ② 事实主张：数字 / 路径 / 引用 / 对错结论 / 执行结果 ──────────────────
-    // 「第N步/行/条/章」用正则，不用裸「第」——「你是第一个让我这么生气的小笨蛋」不是事实主张。
-    private val CLAIM = listOf(
-        "就是错的", "是对的", "没错", "不对", "错了", "正确的", "应该是", "其实是", "我查过",
-        "数据显示", "事实证明", "结论是", "结果是", "失败", "成功", "报错", "超时", "找不到",
-        "打不开", "崩溃", "日志", "合计", "总共", "一共", "版本", "文件里", "表里", "官网",
-        "文档说",
-    )
-    private val CLAIM_RE = listOf(
-        Regex("""第\s*\d+\s*(?:步|行|条|章|页|个|次|版)"""),
-        Regex("""\d"""), // 出现数字即算事实主张（闲聊里报数字的罕见；报了就该按事实态对待）
-        Regex("""[\w\-]+\.(?:kt|java|md|txt|json|xml|csv|png|jpg)"""),
-    )
-
-    // ── ③ 收尾已开工的活 ────────────────────────────────────────────────────
-    private val WRAPUP = listOf("收尾", "收工", "搞定了", "完成了", "完工", "交差", "交付")
-
-    // ── 闲聊的形态词（只用于测试钉边界；探针判闲聊靠的是"没命中任务态"，不靠命中闲聊词）──
-    private val PURE_EMOTION = listOf(
-        "哈哈", "笑死", "开心", "难过", "气死", "无语", "绝了", "太逗了", "好烦", "麻了",
-        "爱你", "想你", "晚安", "早安", "晚上好", "在吗", "无聊",
-    )
-
-    /** 一段话落在哪个态：命中①②③任一 ⇒ 任务态；否则闲聊态（238 §3.9.0 的保守方向）。 */
-    fun classify(text: String): TaskMode {
-        val s = text.trim()
-        if (s.isEmpty()) return TaskMode.CHAT
-        if (INTENT.any { s.contains(it) }) return TaskMode.TASK
-        if (WRAPUP.any { s.contains(it) }) return TaskMode.TASK
-        // 自责客套（「我错了」「我的错」）不是对世界的事实主张——闲聊里的道歉不许因此进任务态。
-        val claimScope = s.replace("我错了", "　").replace("我的错", "　")
-        if (CLAIM.any { claimScope.contains(it) }) return TaskMode.TASK
-        if (CLAIM_RE.any { it.containsMatchIn(claimScope) }) return TaskMode.TASK
-        return TaskMode.CHAT
-    }
-
-    /** 按中文句界切开（句末标点归前句；空白丢弃）。混合态的"那一句"就是这里的一句。 */
     fun splitSentences(text: String): List<String> =
-        text.split('。', '！', '？', '?', '!', '\n', '；', ';')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        com.example.zhengdao.baopu.TaskModeBoundary.splitSentences(text)
 
-    /** 逐句判态（混合：只对带事实主张的那句进事实态）。 */
     fun classifySentences(text: String): List<Pair<String, TaskMode>> =
-        splitSentences(text).map { it to classify(it) }
+        com.example.zhengdao.baopu.TaskModeBoundary.classifySentences(text)
 
-    /** 这段话是不是「闲聊里夹了一句事实主张」（至少一句 TASK，且整体有闲聊语气词）。 */
     fun isMixed(text: String): Boolean =
-        classifySentences(text).any { it.second == TaskMode.TASK } &&
-            PURE_EMOTION.any { text.contains(it) }
+        com.example.zhengdao.baopu.TaskModeBoundary.isMixed(text)
 
-    /** 测试钉边界用的闲聊词表（只暴露给断言，不参与判定）。 */
-    fun emotionLexicon(): List<String> = PURE_EMOTION
+    /** 闲聊词表（只用于测试钉边界；判闲聊靠的是"没命中任务态"）。 */
+    fun emotionLexicon(): List<String> =
+        com.example.zhengdao.baopu.TaskModeBoundary.emotionLexicon()
 }

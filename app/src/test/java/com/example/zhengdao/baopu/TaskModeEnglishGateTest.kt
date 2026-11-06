@@ -168,7 +168,7 @@ class TaskModeEnglishGateTest {
         assertTrue("弹卡闸没走同一个判定函数", src.contains("askAllowedForTurn(turnText)"))
     }
 
-    // ── ⑤ 结构边界：classify 一字未改 ──────────────────────────────────────
+    // ── ⑤ 结构边界：中文四步一字未改 ────────────────────────────────────────
 
     @Test
     fun `边界_classify分支顺序未改且没有长度阈值`() {
@@ -185,7 +185,10 @@ class TaskModeEnglishGateTest {
             p
         }
         assertEquals("classify 分支顺序被改动", positions.sorted(), positions)
-        assertTrue("classify 末尾的保守返回不见了", body.trim().endsWith("return TaskMode.CHAT"))
+        // 500 之前这里钉的是「classify 末尾必须裸返回 CHAT」——那是 493「本单不动结构」的围栏。
+        // 500 正是被授权动结构的那一批：中文四步判不出来才进英文层，所以这一跳改成钉
+        // 「末尾是英文层」，保守方向没丢（英文层判不出来照样落 CHAT，见 TaskModeStructuralEnglishGateTest）。
+        assertTrue("classify 末尾少了『进英文层』这一跳", body.trim().endsWith("return classifyEnglish(s)"))
         assertFalse("不许加长度阈值", body.contains(".length"))
     }
 

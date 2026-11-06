@@ -24,6 +24,18 @@
 // 一起搬进来的还有可见性——Kotlin 的 internal 以编译单元为界，:app 看不见 :policy 的
 // internal，故顶层声明由 internal 放宽为公开。**只放宽可见性，判据一个字没动**
 // （搬前搬后的逐行对照与放宽清单见交付报告）。
+//
+// 第五百批（2026-11-06）：判态的**英文层结构性改造**（493 补词表补不完的四处缺口）。
+// 中文四步（INTENT／WRAPUP／CLAIM／CLAIM_RE）逐字保留，判定顺序也没动——只是在它们
+// 都判不出来之后，多走一段英文专用路径（词边界＋大小写归一＋习语白名单优先＋请求形态共现）。
+// 同一批把测试侧的 253 探针副本改成指向这里（一处改两处生效，见 constitution/TaskModeBoundary.kt）。
+//
+// 合并时与 493 的取舍（493 已在 main，`18a2bd7a`）：493 把英文当作中文表的**数据**来补
+// （动词写成「小写＋尾随空格」两形，收尾／主张／闲聊词写成裸词与首字母大写两形，直接进
+// INTENT／WRAPUP／CLAIM／PURE_EMOTION）。本批动的是结构，两套并存会互相抵消——带尾随空格的
+// 搜索词是「research papers」的子串，中文表先命中，判据① 立刻红。故本批**取代**那批字面量：
+// 四张中文表回到纯中文，英文词汇整体搬进英文层；493 点名的四条闲聊形态词移到
+// EN_CHAT_SHAPES，emotionLexicon() 照样端出去，493 的行为门禁一条不减。
 package com.example.zhengdao.baopu
 
 /** 一段话落在哪个态（法典 L1/L3 的第一道门）。 */
@@ -37,42 +49,26 @@ enum class TaskMode { TASK, CHAT }
 object TaskModeBoundary {
 
     // ── ① 执行意图 / 工具调用形态（"帮我改/查/装"）───────────────────────────
+    // 第五百批：493 曾在这里登记英文动词（「小写＋后随空格」两形），本批整批移进下面的
+    // 英文层并加词边界。留在中文表里会照旧误伤——带尾空格的搜索词是「research papers」的
+    // 子串，判据① 就红在这儿；补词补不完，所以才动结构。中文表回到纯中文（门禁钉住）。
     private val INTENT = listOf(
         "帮我", "替我", "给我查", "给我改", "给我删", "改一下", "改掉", "换掉", "查一下", "查查",
         "搜一下", "搜个", "写一个", "写一份", "写个", "删掉", "删除", "卸载", "安装", "装一下",
         "跑一下", "跑起来", "执行", "生成", "导出", "导入", "上传", "下载", "打开", "关掉",
         "修复", "修一下", "部署", "提交", "保存", "重命名", "替换", "压缩", "解压",
         "照这个改", "按这个改", "按这个做", "照着做", "试试看能不能", "重新",
-        // 第四百九十三批：英文动作词。`classify` 用的是区分大小写的**子串** `contains`，
-        // 故每个动词登记「小写＋后随空格」与「句首大写＋后随空格」两形：后随空格是在
-        // 纯数据层近似词边界，裸 "run" 会把 "running late"、裸 "search" 会把 "research"
-        // 判成任务态，与「宁可漏判、不把玩笑当办事」的保守方向相反。真正的词边界判定
-        // 需要改 classify 的结构（词边界正则／大小写归一），按本单边界停手不改造。
-        "create ", "Create ", "delete ", "Delete ", "write ", "Write ",
-        "run ", "Run ", "fix ", "Fix ", "check ", "Check ",
-        "translate ", "Translate ", "summarize ", "Summarize ",
-        "search ", "Search ", "open ", "Open ", "send ", "Send ",
-        "rename ", "Rename ", "export ", "Export ", "import ", "Import ",
-        "upload ", "Upload ", "download ", "Download ", "deploy ", "Deploy ",
-        "commit ", "Commit ", "save ", "Save ", "replace ", "Replace ",
-        "install ", "Install ", "copy ", "Copy ", "move ", "Move ",
-        "convert ", "Convert ", "generate ", "Generate ", "build ", "Build ",
     )
 
     // ── ② 事实主张：数字 / 路径 / 引用 / 对错结论 / 执行结果 ──────────────────
     // 「第N步/行/条/章」用正则，不用裸「第」——「你是第一个让我这么生气的小笨蛋」不是事实主张。
+    // 500：493 的英文事实主张短语同样移进英文层（词边界版）；「不收自责客套『was wrong』」
+    // 这条取舍在英文层里照旧成立。
     private val CLAIM = listOf(
         "就是错的", "是对的", "没错", "不对", "错了", "正确的", "应该是", "其实是", "我查过",
         "数据显示", "事实证明", "结论是", "结果是", "失败", "成功", "报错", "超时", "找不到",
         "打不开", "崩溃", "日志", "合计", "总共", "一共", "版本", "文件里", "表里", "官网",
         "文档说",
-        // 493 英文事实主张：**只收多词短语与结果态名词**，不收裸短动词，也不收 "was wrong"——
-        // 英文 "I was wrong" 是**自责客套**，与中文 `claimScope` 抹掉的「我错了」同一类；
-        // 收了它就会把闲聊拉进任务态（493 静态自查实测命中，故剔除）。
-        "is wrong", "are wrong", "is correct", "in fact",
-        "the result is", "failed", "succeeded", "error", "Error",
-        "crash", "timeout", "not found", "according to", "the data shows",
-        "the docs say", "the conclusion is", "the version",
     )
     private val CLAIM_RE = listOf(
         Regex("""第\s*\d+\s*(?:步|行|条|章|页|个|次|版)"""),
@@ -81,22 +77,111 @@ object TaskModeBoundary {
     )
 
     // ── ③ 收尾已开工的活 ────────────────────────────────────────────────────
-    private val WRAPUP = listOf(
-        "收尾", "收工", "搞定了", "完成了", "完工", "交差", "交付",
-        // 493 英文收尾：这里用**裸词**（不加后随空格），因为收尾词常落在句尾或紧跟标点，
-        // "It's done." 若按 INTENT 的带空格形态会整条放跑。
-        "done", "Done", "finished", "Finished", "shipped", "Shipped",
-    )
+    // 500：493 的英文收尾词移进英文层（EN_WRAPUP_RES）；中文表回到纯中文。
+    private val WRAPUP = listOf("收尾", "收工", "搞定了", "完成了", "完工", "交差", "交付")
 
     // ── 闲聊的形态词（只用于钉边界；判闲聊靠的是"没命中任务态"，不靠命中闲聊词）──
+    // 500：493 的英文闲聊形态词移到英文层的对照表里（同样不参与判定），emotionLexicon()
+    // 把两张表并排端出去，493 的门禁照旧有效。中文表回到纯中文。
     private val PURE_EMOTION = listOf(
         "哈哈", "笑死", "开心", "难过", "气死", "无语", "绝了", "太逗了", "好烦", "麻了",
         "爱你", "想你", "晚安", "早安", "晚上好", "在吗", "无聊",
-        // 493 英文闲聊形态词：**只作回归对照**。`classify` 从不读这张表（判闲聊靠的是
-        // "没命中任务态"），命中它们不会短路成 CHAT；测试经 emotionLexicon() 取它们，
-        // 并配负例证明「闲聊形态词＋任务动词」仍判 TASK。
-        "thanks", "Thanks", "lol", "LOL", "good night", "Good night", "nvm", "Nvm",
     )
+
+    // ── ④ 英文层（第五百批 · 结构性改造）────────────────────────────────────
+    //
+    // 上面①②③是**中文**表，一个字节没动；英文按词表级补词补不完（493 停手报告四处缺口），
+    // 根因是 `String.contains` 既不看词边界、也不看大小写、更不问「这是不是在提要求」。
+    // 这四条一起才成立，缺一条就还剩一类误判：
+    //   ① 词边界 —— `\bresearch\b` 不许在 `research` 里再命中 `search`；
+    //   ② 大小写归一 —— 先 lowercase()，动词只登记小写原形，不必再配「首字母大写」两形；
+    //   ③ 习语白名单优先 —— 命中即闲聊，不再走词表（`open to ideas` 不是在「打开」）；
+    //   ④ 请求形态共现 —— 动词命中后**还要**有请求形态（please／could you／句首祈使）才算任务。
+    // 中文一律不进这一层（`\b` 按 ASCII 词类算边界，中文全是「非词」，套上去只会误伤）。
+
+    /** ② 英文动作词：**只登记小写原形**，配 ① 的词边界与 ④ 的请求形态一起用。 */
+    private val EN_VERBS = listOf(
+        "create", "delete", "write", "run", "fix", "check", "translate", "summarize",
+        "research", "search", "open", "send", "rename", "export", "import", "upload",
+        "download", "deploy", "commit", "save", "replace", "install", "copy", "move",
+        "convert", "generate", "build",
+    )
+    private val EN_VERB_SET = EN_VERBS.toSet()
+    private val EN_VERB_RES = EN_VERBS.map { enWordRe(it) }
+
+    /** ③ 习语白名单：里面的动词不是执行意图 ⇒ 命中即闲聊，不再走词表。 */
+    private val EN_IDIOMS = listOf(
+        "open to ideas", "research papers", "good to go", "sounds good", "no worries",
+    )
+    private val EN_IDIOM_RES = EN_IDIOMS.map { enWordRe(it) }
+
+    /** ④ 请求形态标记（与动词命中**共现**才算任务；小写，配词边界）。 */
+    private val EN_REQUEST_MARKERS = listOf(
+        "please", "pls", "kindly", "could you", "can you", "would you", "will you",
+        "i need", "i want to", "help me",
+    )
+    private val EN_MARKER_RES = EN_REQUEST_MARKERS.map { enWordRe(it) }
+
+    /** 英文收尾（③ 类）／英文事实主张（② 类）：命中即任务态，不要求请求形态。 */
+    private val EN_WRAPUP_RES = listOf("done", "finished", "shipped").map { enWordRe(it) }
+
+    // 与中文侧同一口径：自责客套「was wrong」不收（收了就把闲聊拉进任务态）。
+    private val EN_CLAIM_RES = listOf(
+        "is wrong", "are wrong", "is correct", "in fact", "the result is", "the data shows",
+        "the docs say", "the conclusion is", "according to", "not found", "failed",
+        "succeeded", "error", "crash", "timeout", "the version",
+    ).map { enWordRe(it) }
+
+    /**
+     * 英文闲聊形态词（493 点名四条，小写登记＝大小写归一后一形管两形）。
+     *
+     * 与 PURE_EMOTION 同一身份：**只作回归对照，classify 从不读它**，命中不会短路成 CHAT；
+     * 经 emotionLexicon() 端给测试，证明「闲聊形态词＋任务动词」仍判 TASK。
+     */
+    private val EN_CHAT_SHAPES = listOf("thanks", "lol", "good night", "nvm")
+
+    /** ④ 祈使句首前允许的语气／连接词：剥掉之后句首若是动作词原形，就是祈使句。 */
+    private val EN_HEAD_FILLERS = setOf(
+        "and", "but", "then", "so", "also", "just", "now", "please", "kindly", "pls",
+        "ok", "okay", "hey", "hi", "hello", "oh", "well", "yes", "no", "yeah", "sure",
+        "um", "hmm", "lol", "nvm", "btw", "thanks", "thank", "sorry", "haha",
+    )
+
+    private val EN_CLAUSE_SEP = Regex("[,;]")
+    private val EN_WORD = Regex("[a-z']+")
+
+    /** ① 词边界：只在 `\b` 上命中；中文侧不走这里。 */
+    private fun enWordRe(word: String) = Regex("""\b${Regex.escape(word)}\b""")
+
+    /**
+     * 英文层判定（走到这里说明中文①②③都没命中）。
+     *
+     * 顺序即判据：③ 习语白名单先看（命中即闲聊）→ 英文收尾／事实主张命中即任务 →
+     * ① 动词按词边界命中后，还须 ④ 请求形态共现才算任务。
+     * 「习语＋事实主张」的混合句按白名单优先落闲聊＝宁可漏判、不把玩笑当办事（文件头方向）。
+     */
+    private fun classifyEnglish(text: String): TaskMode {
+        val en = text.lowercase() // ② 大小写归一
+        if (EN_IDIOM_RES.any { it.containsMatchIn(en) }) return TaskMode.CHAT
+        if (EN_WRAPUP_RES.any { it.containsMatchIn(en) }) return TaskMode.TASK
+        if (EN_CLAIM_RES.any { it.containsMatchIn(en) }) return TaskMode.TASK
+        if (EN_VERB_RES.none { it.containsMatchIn(en) }) return TaskMode.CHAT
+        return if (hasRequestShape(en)) TaskMode.TASK else TaskMode.CHAT
+    }
+
+    /** ④ 请求形态：显式标记（please／could you…），或剥掉语气词后的句首就是动作词原形。 */
+    private fun hasRequestShape(en: String): Boolean =
+        EN_MARKER_RES.any { it.containsMatchIn(en) } ||
+            EN_CLAUSE_SEP.split(en).any { isImperativeHead(it) }
+
+    /** ④ 祈使句首：小句首（跳过语气词）是英文动作词原形 ⇒ 「Create a folder」这类算任务。 */
+    private fun isImperativeHead(clause: String): Boolean {
+        val head = EN_WORD.findAll(clause)
+            .map { it.value }
+            .dropWhile { it in EN_HEAD_FILLERS }
+            .firstOrNull()
+        return head != null && head in EN_VERB_SET
+    }
 
     /** 一段话落在哪个态：命中①②③任一 ⇒ 任务态；否则闲聊态（保守方向）。 */
     fun classify(text: String): TaskMode {
@@ -108,7 +193,8 @@ object TaskModeBoundary {
         val claimScope = s.replace("我错了", "　").replace("我的错", "　")
         if (CLAIM.any { claimScope.contains(it) }) return TaskMode.TASK
         if (CLAIM_RE.any { it.containsMatchIn(claimScope) }) return TaskMode.TASK
-        return TaskMode.CHAT
+        // ④ 第五百批：中文四步一字未动，判不出来才进英文层。
+        return classifyEnglish(s)
     }
 
     /** 按中文句界切开（句末标点归前句；空白丢弃）。混合态的"那一句"就是这里的一句。 */
@@ -126,8 +212,8 @@ object TaskModeBoundary {
         classifySentences(text).any { it.second == TaskMode.TASK } &&
             PURE_EMOTION.any { text.contains(it) }
 
-    /** 闲聊词表（只暴露给断言，不参与判定）。 */
-    fun emotionLexicon(): List<String> = PURE_EMOTION
+    /** 闲聊词表（只暴露给断言，不参与判定；中英两张对照表并在此处）。 */
+    fun emotionLexicon(): List<String> = PURE_EMOTION + EN_CHAT_SHAPES
 }
 
 /**
