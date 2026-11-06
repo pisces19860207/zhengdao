@@ -29,8 +29,10 @@ import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.evolution.EvolutionWiring
 import com.example.zhengdao.baopu.evolution.ProofReading
+import com.example.zhengdao.baopu.escalate.Escalation
 import com.example.zhengdao.baopu.repair.DataDoctor
 import com.example.zhengdao.baopu.repair.NightWatchConfig
+import com.example.zhengdao.baopu.trace.TraceBlackbox
 import com.example.zhengdao.core.RunLog
 import java.io.File
 
@@ -117,12 +119,16 @@ internal object HealthRun {
             // 通道不可用必须显在单子上，免得"链停在准入等读数"被读成"进化总在失败"。
             // 第四百九十五批：同一格里再加三态结论（通过／失败（读数不合格）／没法验（缺读数））——
             // 通道说得清"数从哪来"，结论说得清"上一场到底算哪种没成"。
+            // 第五百零五批：同一格再添两行——474 的「本轮轨迹 N 步 / 异常 M」与 475 的「在等人的升级」。
+            // 这两行都是**只读拼接**（本文件没多一个写口）；升级那一行的渲染本身就是「被看到」的落账时刻，
+            // 单子没渲染它 ⇒ 账上就只有「到达」没有「被看到」，"升级丢了"就分不开（判据⑤）。
             readings = reading.sheetLines + ProofReading.channelLine(
                 com.example.zhengdao.BuildConfig.DEBUG,
             ) + EvolutionWiring.sheetLines() +
                 // 第四百九十九批：授权档与误拦读数一行进体检单（487 §三②：放权不是黑箱——
                 // 今日自动放过几次、误拦申诉几单、误拦率分场景，全在这一行里可看）。
-                listOf(com.example.zhengdao.baopu.agent.AskGovernance.healthLine(nowMs)),
+                listOf(com.example.zhengdao.baopu.agent.AskGovernance.healthLine(nowMs)) +
+                TraceBlackbox.sheetLines() + Escalation.sheetLines(),
             // 抽检读数块：上次抽检时间＋假 PASS 数，一行一件（判据层的行文，自带部位名；编排层只排版）。
             sampling = SAMPLE_ORGANS
                 .filter { sampling.containsKey(it) }

@@ -29,6 +29,8 @@ import com.example.zhengdao.baopu.authz.ProcessEpoch
 import com.example.zhengdao.baopu.authz.TaskGrantBoard
 import com.example.zhengdao.baopu.authz.TaskGrantWire
 import com.example.zhengdao.baopu.authz.WiringDisposition
+import com.example.zhengdao.baopu.escalate.CapabilityKind
+import com.example.zhengdao.baopu.escalate.Escalation
 import com.example.zhengdao.baopu.inspect.AnomalyFactKind
 import com.example.zhengdao.baopu.inspect.AnomalyFeed
 import com.example.zhengdao.baopu.inspect.SHADOW_TOOLS
@@ -325,11 +327,19 @@ internal class GuardPipeline(
         /**
          * 越界/权限被拒 ⇒ **终止本轮**（程枢版 §8）并 RunLog。
          * [contentHash] 同 [Failed]（189 §1.3）。
+         *
+         * [scopeEscape]（第五百零五批 · 474/475 的转手口）：这一笔是不是**第②段红线当越界拦下**的。
+         * 它是管线已经做过的那个判定的**事实转手**，不是第二判据——赋值点与 [feedScopeEscape]
+         * 逐一对齐（原件区／只读根／系统凭据目录／批量四项＝true），其余拒绝（未知工具、
+         * 参数为空、同名歧义、工具自己拒、授权闸硬拒）一律 false。
+         * 505 之前这格信息只活在 `AnomalyFeed` 的事件里，观察侧要拿它只能去反推文案或整本读账
+         * ——两条都不许，所以把事实带在结论形状上。
          */
         data class Rejected(
             val call: ToolCall?,
             val reason: String,
             val contentHash: String = "",
+            val scopeEscape: Boolean = false,
         ) : Result
 
         /**
@@ -450,6 +460,15 @@ internal class GuardPipeline(
         registry.validateCall(call.name, call.arguments)?.let { err ->
             return Prepared.Settled(Result.Failed(call, err)) // Schema 错是可重试（回灌原文）
         }
+        // 第五百零五批 · 475 判据⑤：这一轮被明确拒绝过的**能力类**，本轮不再试它。
+        // 禁的是「这一类能力这一轮」，不是这台机器（[Escalation.endRun] 收工即清）；
+        // 没有人答过 ⇒ 这张表恒空 ⇒ 执行路径与基线逐字相同（负例 M7 咬「拒绝也放行」）。
+        val capability = CapabilityKind.ofTool(spec.group.key, spec.readOnly)
+        if (Escalation.isDisabled(DeviationWiring.currentRunId(), capability.wire)) {
+            return Prepared.Settled(
+                Result.Rejected(call, "「${capability.cn}」这一轮已被拒绝，这次动作不做（换路或等下一轮）"),
+            )
+        }
 
         // 第四百二十七批：外部执行体准入——MCP 组的工具来自**外部**服务器，它第一次调工具
         // 时未登记才走准入四步（384-A 造好的门在这里第一次有人敲门）；App 自身内部调用
@@ -475,7 +494,9 @@ internal class GuardPipeline(
         } else {
             guardPath(call, spec.name)
         }
-        if (guarded is Guarded.No) return Prepared.Settled(Result.Rejected(call, guarded.reason))
+        if (guarded is Guarded.No) return Prepared.Settled(
+            Result.Rejected(call, guarded.reason, scopeEscape = guarded.scopeEscape),
+        )
         if (guarded is Guarded.Fail) return Prepared.Settled(Result.Failed(call, guarded.reason))
         val effectiveCall = (guarded as Guarded.Yes).call
 
@@ -962,8 +983,13 @@ internal class GuardPipeline(
         /** 通过（[call] 的路径参数已改写成绝对路径）。 */
         data class Yes(val call: ToolCall) : Guarded
 
-        /** 拒绝（系统/凭据目录，或原件区红线，或 RO 根写拒）——终止本轮，回灌原文。 */
-        data class No(val reason: String) : Guarded
+        /**
+         * 拒绝（系统/凭据目录，或原件区红线，或 RO 根写拒）——终止本轮，回灌原文。
+         *
+         * [scopeEscape]＝这一笔是不是**越界**（与同一处 [feedScopeEscape] 一一对齐；
+         * 「参数为空」这类拒绝不是越界，505 批不许把含糊当越界）。
+         */
+        data class No(val reason: String, val scopeEscape: Boolean = false) : Guarded
 
         /**
          * 492 A②：同名歧义——**可重试**的失败（候选列给模型，回灌原文让它换路），
@@ -1010,7 +1036,10 @@ internal class GuardPipeline(
         val resolveStrict: (String) -> File = { raw -> resolveVia(roots, raw) }
 
         // P0-2 ＋ 492 RO：写类目标的红线（原件区 / 只读根）各判一遍，命中即拒整条。
-        writeRedLines(roots, toolName, call.id, args, resolveStrict)?.let { return Guarded.No(it) }
+        // 505：这一支拦下的都是「声明边界之外」（原件区／只读根）——越界那一格如实带上
+        writeRedLines(roots, toolName, call.id, args, resolveStrict)?.let {
+            return Guarded.No(it, scopeEscape = true)
+        }
 
         var newArgs = args
         for (key in keys) {
@@ -1018,6 +1047,7 @@ internal class GuardPipeline(
             if (raw.isBlank()) {
                 // 保持既有语义：path 为空是管线级拒绝（不走工具，避免把"没给路径"当可重试错误）
                 if (key == ReadFileTool.ARG_PATH) {
+                    // 505：「没给路径」不是越界（派工单 §二②）——这一格必须留 false
                     return Guarded.No("参数「$key」为空（要给一个路径：相对工作区根，或全盘的绝对路径）")
                 }
                 continue
@@ -1027,7 +1057,7 @@ internal class GuardPipeline(
             fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
                 log("抱朴管线：拒绝 $toolName $raw（${FilePolicy.denyReason(target)}）")
                 feedScopeEscape(call.id, toolName, target.absolutePath, reason, redline = "policy")
-                return Guarded.No(reason)
+                return Guarded.No(reason, scopeEscape = true)
             }
             newArgs = JSONObject(newArgs.toString()).put(key, target.absolutePath)
             // 287 修正（真机验收抓到）：**不在这里记账**——这一段在"出卡之前"跑，
@@ -1035,7 +1065,8 @@ internal class GuardPipeline(
             // 记账挪到 [finish] 的 Ok 分支：真的执行成功才落一行。
         }
         val batch = guardBatchPaths(roots, toolName, call.id, args, newArgs)
-        batch.second?.let { reason -> return Guarded.No(reason) }
+        // 505：批量那一路的拒因只在「有一项越线」时产生（见 guardBatchPaths）
+        batch.second?.let { reason -> return Guarded.No(reason, scopeEscape = true) }
         newArgs = batch.first
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
