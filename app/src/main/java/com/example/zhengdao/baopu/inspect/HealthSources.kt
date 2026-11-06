@@ -134,10 +134,13 @@ internal object OrganCensus {
             // 这一行**不写定义文件的路径**：265 的门禁钉着"全仓只许两个文件出现那个名字"，
             // 体检表再写一次就成了第三个 ⇒ 干脆不排除，数字按"全仓出现次数"记（含声明那一处）。
             declaredIn = "",
-            callSites = 2,
+            // 508：收工链多了归因这一句（AttributionWiring.onSettled），全仓 2→4（两处定义＋两处调用）。
+            callSites = 4,
             sink = "进化档案-承诺.md",
             evidence = listOf(
-                "agent/RunEngine.kt:2861 收工后调一次（reflectOnSettled 的最后一句，265 R1）",
+                "agent/RunEngine.kt:3590 收工后调一次（reflectOnSettled 的最后一句，265 R1）",
+                "agent/AttributionWiring.kt:33 onSettled 定义（508 归因装配壳）",
+                "agent/RunEngine.kt:3598 收工归因同列调一次（508 接线）",
             ),
         ),
         OrganProbe(

@@ -7,6 +7,7 @@ package com.example.zhengdao.baopu.inspect
 import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionKind
 import java.io.File
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -222,6 +223,30 @@ class PatrolMutualTest {
         assertEquals(MutualLedger.KIND_ALLOWANCE, json.optString("kind"))
         assertTrue("拒的理由要进账", json.optString("refused").isNotEmpty())
         assertEquals("patrol:1", json.optString("basis_patrol_id"))
+    }
+
+    @Test
+    fun `读侧_allowanceRowOf把账行认回来_别的行不冒领`() {
+        val row = PatrolMutual.allowanceAudit(change(actor = DecisionActor.MODEL.wire))
+        val back = MutualLedger.allowanceRowOf(MutualLedger.allowanceJson(row))
+        assertNotNull(back)
+        assertEquals(row.id, back!!.id)
+        assertEquals(row.atMs, back.atMs)
+        assertEquals(row.basisPatrolId, back.basisPatrolId)
+        assertEquals(row.before, back.before)
+        assertEquals(row.after, back.after)
+        assertEquals(row.samples, back.samples)
+        assertEquals(row.passRatePct, back.passRatePct, 0.0)
+        assertEquals(row.refused, back.refused)
+        assertEquals(row.rollbackRef, back.rollbackRef)
+        // 冲突行不是额度行；缺 id 的行也不要（认不出就不冒充，照台账解析的老纪律）
+        val conflict = PatrolMutual.conflicts(
+            shadow = listOf(side(MutualSide.SHADOW, InspectVerdict.HIT)),
+            guard = listOf(side(MutualSide.GUARD, InspectVerdict.CLEAR)),
+            nowMs = 5L,
+        ).first()
+        assertNull(MutualLedger.allowanceRowOf(MutualLedger.conflictJson(conflict)))
+        assertNull(MutualLedger.allowanceRowOf(JSONObject().put("kind", MutualLedger.KIND_ALLOWANCE)))
     }
 
     @Test

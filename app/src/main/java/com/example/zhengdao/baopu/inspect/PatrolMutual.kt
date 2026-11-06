@@ -284,6 +284,30 @@ internal object MutualLedger {
         .put("refused", row.refused ?: "")
         .put("rollback_ref", row.rollbackRef)
 
+    /**
+     * 账上一行 ⇒ 额度审计行（`allowanceJson` 的读侧配对，第五百零八批补齐）。
+     *
+     * 生产里喂回 [PatrolMutual.allowanceAudit] 的 `earlier`（「同一勘验依据只许调一次」
+     * 的查重全靠它）。只认 `kind=allowance` 且带 id 的行：认不出 ⇒ null，
+     * 不冒充别的行（与 [NocturnalLedger.parse] 同一条解析纪律）。
+     */
+    fun allowanceRowOf(o: JSONObject): AllowanceAuditRow? {
+        if (o.optString("kind") != KIND_ALLOWANCE) return null
+        val id = o.optString("id")
+        if (id.isEmpty()) return null
+        return AllowanceAuditRow(
+            id = id,
+            atMs = o.optLong("at", 0L),
+            basisPatrolId = o.optString("basis_patrol_id"),
+            before = o.optString("before"),
+            after = o.optString("after"),
+            samples = o.optInt("samples", 0),
+            passRatePct = o.optDouble("pass_rate", 0.0),
+            refused = o.optString("refused").ifEmpty { null },
+            rollbackRef = o.optString("rollback_ref"),
+        )
+    }
+
     fun read(globalRoot: File, limit: Int = 500): List<JSONObject> = runCatching {
         val f = fileIn(globalRoot)
         if (!f.isFile) return@runCatching emptyList()

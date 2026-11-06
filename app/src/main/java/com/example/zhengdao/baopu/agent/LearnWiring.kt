@@ -63,7 +63,7 @@ internal enum class ExperienceKind(val wire: String) {
     /** 学习撞法条记的违规（判据②）。 */
     VIOLATION("violation"),
 
-    /** 反思归因（判错的"为什么"，[ReflectAttribution] 落的）。 */
+    /** 反思归因（判错的"为什么"，[ReflectionAttributor] 落的）。 */
     ATTRIBUTION("attribution"),
 
     /** 事后重复问：压错了的回执（撤销压制）。 */

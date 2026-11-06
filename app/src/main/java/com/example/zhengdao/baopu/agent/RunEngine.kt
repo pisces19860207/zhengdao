@@ -3591,6 +3591,14 @@ internal class RunEngine(
         }.onFailure {
             log("抱朴引擎：收工反思没跑成 ${it.javaClass.simpleName}: ${it.message}（这不等于「本轮没得反思」）")
         }
+        // 第五百零八批：收工归因（503 §3.4 的「接上」——落点就在收工反思同列，读同一份进化档案）：
+        // 「提出→否决」的配对进判决经验账（与学习器同一本账），同一配对由装配壳去重不重记；
+        // 档案不存在 ⇒ 空结果，一个字节不写。出错只出声，绝不把 settle() 带崩——与上一段同一口径。
+        runCatching {
+            AttributionWiring.onSettled(spillRoot())
+        }.onFailure {
+            log("抱朴引擎：收工归因没跑成 ${it.javaClass.simpleName}: ${it.message}")
+        }
     }
 
     // ── 457：契约三行三处（logcat／日志分文件／run_log 表）────────────────────

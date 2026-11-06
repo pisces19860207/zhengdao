@@ -48,6 +48,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.core.kb.KnowledgeBase
+import com.example.zhengdao.ui.KnowledgeRefreshCard
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.InfoRow
 import com.example.zhengdao.ui.SettingsDivider
@@ -144,6 +145,13 @@ internal fun KnowledgeLibraryScreen(onDismiss: () -> Unit) {
                 ) {
                     Text(stringResource(R.string.baopu_kb_rebuild))
                 }
+
+                Spacer(Modifier.height(12.dp))
+                // 第五百零八批：知识库刷新控制卡在此接回（503 §3.3 的「接上」——`79c998c9`
+                // 删掉唯一调用点 `ui/SettingsDataActivity.kt:427` 后悬空，后端一直在跑、控制面没了）。
+                // 自动开关／立即刷新／整理知识库随卡复活；本页是既有入口，零新增 UI；
+                // 判据与 IO 全在卡与 `baopu/` 侧，这里只挂一行调用。
+                KnowledgeRefreshCard()
             }
         }
     }
