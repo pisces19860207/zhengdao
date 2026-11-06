@@ -131,6 +131,46 @@ enum class DecisionKind(
      * 由 [DecisionLedger] 自己在第一笔新口径的账落进这本账时标一次（不是各调用方各标）。
      */
     LEDGER_POLICY("ledger_policy", DecisionGroup.EVAL, false, DecisionAudit.NONE),
+
+    /**
+     * 第五百零六批（472）：**赔付结论**——一次损坏的还原判定＋≤5 行说明＋永久损失清单＋防再发条目。
+     *
+     * 为什么不复用 [AUTO_ACT]／[EVAL_VERDICT]：AUTO_ACT 记的是「模型动过手」，
+     * EVAL_VERDICT 记的是「两个实现谁对谁错」；这一条记的是**已经造成的损害怎么收场**。
+     * 塞进那两类，抽检就筛不出「哪一类动作老是要赔付」——而那正是这一账唯一的用处。
+     *
+     * `reversible=false`：赔付这一行本身不是动作、没有反方向可走；
+     * 真正的还原动作由 [ROLLBACK_OF] 那一路记（`DecisionRollbacks.run`），两行分开才看得出
+     * 「判了什么」与「做了什么」不是一回事。
+     * `ALWAYS`：判了「赔不了」的行必须 100% 有人看过——这条的严重性与 147 的真删同级。
+     */
+    COMPENSATION("compensation", DecisionGroup.EVAL, false, DecisionAudit.ALWAYS),
+
+    /**
+     * 第五百零六批（476）：**身份状态变更**（生成／撤销／解除撤销／轮换）。
+     *
+     * 为什么不复用 [TOOL_GRANT]：授权行记的是「某批动作被放行」，这一行记的是
+     * 「**谁**还能放行」——它是授权的主语，不是授权的一条。挂在 tool_grant 里，
+     * 撤销一个身份就会在账上长得像「收回一批额度」，而那两件事的后果完全不同。
+     *
+     * **`reversible=false` 是语义要求，不是偷懒**（派工单 §三·②／判据⑤）：
+     * 决策中心那颗通用撤销钮走的是 `DecisionRollbacks`，只碰 `reversible=true` 的行。
+     * 如果身份撤销行也可撤销，那「解除撤销」就有了第二条路——而 476 要求
+     * 「解除撤销只许本人、且必须明写」。多一条暗路＝那条路没人守。
+     */
+    IDENTITY_STATE("identity_state", DecisionGroup.GRANT, false, DecisionAudit.ALWAYS),
+
+    /**
+     * 第五百零六批（追加口径）：**模型参谋的意见**（建议通过／不通过＋理由＋风险点）。
+     *
+     * 为什么不复用 [EVAL_VERDICT]：右相的三态是**结论**，参谋的意见是**输入之一**——
+     * 「不许覆盖右相三态」这一条要能在账上分开，混进同一个 kind 就分不开了
+     * （派工单「追加」节：验收结论＝规则层判据＋人；模型意见只是输入之一）。
+     *
+     * `reversible=false`（意见没有反方向）；`WEEKLY`（意见量大，100% 抽检会把配额吃光）。
+     * **被拦下来的意见也记这一类**：不记就等于没人知道模型试过一次给自己发票。
+     */
+    ADVISOR_OPINION("advisor_opinion", DecisionGroup.EVAL, false, DecisionAudit.WEEKLY),
     ;
 
     companion object {

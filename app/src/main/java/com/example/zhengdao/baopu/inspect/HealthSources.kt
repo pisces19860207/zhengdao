@@ -80,13 +80,16 @@ internal object OrganCensus {
             declaredIn = "app/src/main/java/com/example/zhengdao/baopu/DecisionLedger.kt",
             // 第二百九十三批：宰相接线层搬进 `:policy`，它那处 `DecisionLedger.record(` 出了
             // 本口径的扫描根（普查只数 `app/src/main`，见上面的口径注释）⇒ 22 改 21，不是有人删了接线。
-            callSites = 21,
+            // 第五百零六批：后果治理的落账口 `ConsequenceWiring.stamp()` 新增一处（它是本族唯一的落账口，
+            // 判据层拒了就不产草稿，所以这一处之后没有第二处）⇒ 21 改 22。
+            callSites = 22,
             sink = "决策记录.jsonl",
             evidence = listOf(
                 "agent/GuardPipeline.kt:634 入账点（DecisionLedger.record）",
                 "AutonomySelfEdit.kt:304 入账点（同上）",
                 // 第二百九十八批判据③：草稿被法典判据否掉时补一笔 208（供修正阈值）。
                 "agent/LearnWiring.kt:502 入账点（同上，草稿被否）",
+                "consequence/ConsequenceWiring.kt:247 后果治理的落账口（506，五族共用一处）",
             ),
         ),
         OrganProbe(
