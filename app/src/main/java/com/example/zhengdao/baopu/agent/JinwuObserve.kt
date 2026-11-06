@@ -27,11 +27,14 @@ package com.example.zhengdao.baopu.agent
 
 import android.content.Context
 import com.example.zhengdao.baopu.evolution.EvolutionWiring
+import com.example.zhengdao.baopu.escalate.CapabilityKind
 import com.example.zhengdao.baopu.inspect.JinwuPatrol
 import com.example.zhengdao.baopu.inspect.StepResultCode
 import com.example.zhengdao.baopu.inspect.ToolStep
 import com.example.zhengdao.baopu.verify.GapFeedback
 import com.example.zhengdao.baopu.verify.GapItem
+import com.example.zhengdao.baopu.trace.ObservedStep
+import com.example.zhengdao.baopu.trace.TraceBlackbox
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import org.json.JSONObject
@@ -113,7 +116,12 @@ internal object JinwuObserve {
     // ── 喂入口（①：GuardPipeline 收口处各调一行） ────────────────────────────
 
     /**
-     * 每次工具定论后喂一步：映射成结果码 → 金吾卫触发采样 → 差距喂板（差值续跑）。
+     * 每次工具定论后喂一步：映射成结果码 → 金吾卫触发采样 → 差距喂板（差值续跑）→
+     * **第五百零五批 474：同一步再走一路落盘（轨迹黑匣子）**。
+     *
+     * 派工单 §一④「复用金吾卫喂入口，加一路落盘，不许另造第三个观察器」落在这里：
+     * 喂入口还是这一个（管线五处收口），多出来的只是**去向**——一路采样（313）、一路轨迹（474）。
+     * 摘要也复用同一个 [JinwuPatrol.argsDigestOf]，匣子拿的是 digest 不是参数对象。
      * 未装配 ⇒ no-op（观测层不挡业务；「没巡查」由 wiring 账的缺席承载）。
      */
     @Synchronized
@@ -125,11 +133,12 @@ internal object JinwuObserve {
         val schemaInvalid = result is GuardPipeline.Result.Failed &&
             registry.validateCall(effective.name, effective.arguments) != null
         val spec = registry.find(effective.name)
+        val digest = JinwuPatrol.argsDigestOf(effective.arguments)
         val step = ToolStep(
             atMs = System.currentTimeMillis(),
             callId = effective.id,
             tool = effective.name,
-            argsDigest = JinwuPatrol.argsDigestOf(effective.arguments),
+            argsDigest = digest,
             resultCode = resultCodeOf(result, schemaInvalid),
             // planStep／taskReadOnly 的真值在引擎与任务层（不在本批租约）——留白：
             // 布尔缺省时 T3/T4 不会虚报（没有事实就不产条目），接线归后续批次。
@@ -137,7 +146,29 @@ internal object JinwuObserve {
         )
         val gaps = JinwuPatrol.observe(step)
         if (gaps.isNotEmpty()) feedBoard(gaps)
+        // 474 那一路：越界与计划外都是**管线已经判过的事实**的转手，本层不重判（判据②的口径）。
+        TraceBlackbox.observe(
+            ObservedStep(
+                atMs = step.atMs,
+                callId = step.callId,
+                tool = step.tool,
+                argsDigest = digest,
+                result = step.resultCode,
+                capability = (capabilityOf(effective.name, registry) ?: CapabilityKind.OTHER).wire,
+                escape = result is GuardPipeline.Result.Rejected && result.scopeEscape,
+                offPlan = result is GuardPipeline.Result.NeedsConfirm && result.deviation != null,
+            ),
+        )
     }
+
+    /**
+     * 工具 → 能力类（475 的声明表主键；口径＝分组＋工具自己的 readOnly）。
+     *
+     * 管线（判据⑤的「本轮禁用」查表）与本文件（474 的升级件身份）共用这一个口——
+     * 两处各算一套就会让"被禁的是哪一类"和"升级的是哪一类"对不上。没注册的工具 ⇒ null。
+     */
+    fun capabilityOf(toolName: String, registry: ToolRegistry): CapabilityKind? =
+        registry.find(toolName)?.let { CapabilityKind.ofTool(it.group.key, it.readOnly) }
 
     /** Result 自带的 call（Failed/Rejected 形状上可空——收口处用入参 call 兜底）。 */
     private fun resultCallOf(result: GuardPipeline.Result): ToolCall? = when (result) {
