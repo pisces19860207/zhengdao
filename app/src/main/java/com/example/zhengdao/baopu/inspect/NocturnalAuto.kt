@@ -169,7 +169,29 @@ internal object NocturnalAuto {
                 }) +
                 (if (saved) "" else "，账没落上"),
         )
+        mutualConflicts(root, findings, nowMs)
         return round
+    }
+
+    /**
+     * 互查判定＋写口一起接（279 §3 的生产调用点；503 §3.2 指的「接上」）。
+     *
+     * 暗卫这轮刚判出的认定（抽样口径，[findings] 就是投回判据的那两条），对上金吾卫最近一次
+     * 巡按留在 `巡按记录.jsonl` 的六项明细——同检查项＋共享证据而认定不同 ⇒ 冲突，两行并列
+     * 进 `互查记录.jsonl`（各带对侧证据，标待回放）。**没冲突不写行**：空文件不该被造出来。
+     * 只读对方账本、只写互查自己的账——勘验层「只查不改」的纪律原样适用。
+     */
+    private fun mutualConflicts(root: File, findings: List<InspectFinding>, nowMs: Long) {
+        val last = PatrolLedger.latest(root) ?: return
+        val shadow = findings.map { MutualFinding(MutualSide.SHADOW, it.check, it.verdict, it.evidence) }
+        val guard = last.findings.map { MutualFinding(MutualSide.GUARD, it.check, it.verdict, it.evidence) }
+        val conflicts = PatrolMutual.conflicts(shadow, guard, nowMs)
+        if (conflicts.isEmpty()) return
+        val landed = conflicts.count { MutualLedger.append(root, MutualLedger.conflictJson(it)) }
+        RunLog.log(
+            "互查台账：暗卫本轮 × 金吾卫上次巡按（${last.id}）冲突入账 $landed/${conflicts.size} 行" +
+                "（读回共 ${MutualLedger.read(root).size} 行）",
+        )
     }
 
     /**

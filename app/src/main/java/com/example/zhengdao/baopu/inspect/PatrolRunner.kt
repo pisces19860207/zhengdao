@@ -140,6 +140,26 @@ internal object PatrolRunner {
                 after = next,
             )
         }
+        // 第五百零八批：额度变动的审计行（279 §5「每次调整要入账、拒了的也留痕」的写口；
+        // 503 §3.2 点名「连写口一起接，否则互查记录.jsonl 永远是空」）。判据全在
+        // [PatrolMutual.allowanceAudit]／[AllowanceLadder]：这里只把判出的行落进互查台账，
+        // `earlier` 就从同一本账读回（「同一勘验依据只许调一次」的查重靠它——read 的生产调用点）。
+        // 执行侧照旧只认 [PatrolResult.pendingChange]，这一行不改它的语义。
+        change?.let { c ->
+            val earlier = MutualLedger.read(root).mapNotNull { MutualLedger.allowanceRowOf(it) }
+            val audit = PatrolMutual.allowanceAudit(c, earlier)
+            val landed = MutualLedger.append(root, MutualLedger.allowanceJson(audit))
+            RunLog.log(
+                if (landed) {
+                    "互查台账：额度审计一行（${audit.before}→${audit.after}" +
+                        (audit.refused?.let { "；拒：$it" } ?: "；可落") +
+                        "；读回共 ${MutualLedger.read(root).size} 行）"
+                } else {
+                    "互查台账：额度审计行没落盘（${MutualLedger.FILE_NAME}）"
+                },
+            )
+        }
+
         val report = Inspector.report(findings, nowMs, rate)
         val elapsed = System.currentTimeMillis() - t0
         val entry = PatrolLedger.entryOf(report, manual, elapsed, readout)
