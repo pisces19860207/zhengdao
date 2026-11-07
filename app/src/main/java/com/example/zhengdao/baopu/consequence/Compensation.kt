@@ -11,16 +11,19 @@
 // 「四件缺一不算」不是一句口号：[Compensation.defects] 会逐件回答哪一件不合规，
 // 装配层拿到非空清单就**不许**把这次赔付报成完成（判据口径：缺项＝未完成，不是扣分）。
 //
-// 关于「复用 470」（2026-11-07 实测，别照抄这句的旧版本）：470 的按次快照库
-// `baopu/safety/RollbackVault` **在 origin/feat/safety-trio（`2fdb73e3`）上，还没进 main**
-// ——`git ls-tree -r origin/main` 里查不到 `baopu/safety/`。本分支按协作铁律①基于 main，
-// 不拿别人未合并的分支当基线，所以这里**不 import** 它，而是接 main 里**已经存在**的那道缝：
-//   · `DecisionRollbacks.run(target, root, handler, atMs, actor)`（`DecisionLedger.kt`「回滚执行＋留痕」那段）
-//     ——通用回滚口，处理器由装配层注入；470 的那座库将来就是插进来的那个 handler，插进来时**本文件一行不改**；
+// 关于「复用 470」（2026-11-07 两次实测，别照抄这一段的旧版本）：
+// **开工时**基线 `9ffd9227` 上 `git ls-tree -r --name-only origin/main` 查不到 `baopu/safety/`
+// ——那座按次快照库当时还挂在 504 的 `feat/safety-trio`（`2fdb73e3`）上，没进 main；
+// **交付时**基线已推进到 `b866aa2f`（504 的三件连同验收接管已并入），
+// `baopu/safety/RollbackVault.kt` 现在**在 main 里**了（`stash(...)` 存、`rollback(RollbackScope, nowMs)` 取）。
+// 即便如此本文件仍**不 import** 它：工单没给装配租约，且 472 只判「有没有路、试没试过、赔不赔得起」，
+// **动手还原的仍是 470 那一路**——注入点是 main 已有的那道通用回滚口，装配批一行 lambda 就能接：
+//   · `DecisionRollbacks.run(target, root, handler, atMs, actor)`（`DecisionLedger.kt:515`「回滚执行＋留痕」那段），
+//     handler 的形状是 `DecisionRollbackHandler.rollback(DecisionRecord): Boolean`（`DecisionLedger.kt:509`）
+//     ⇒ 把 `RollbackVault.rollback(RollbackScope.ByOp(opId), nowMs)` 的结果折成 Boolean 注进来，**本文件一行不改**；
 //   · 各族现成的还原路由：`PersonaBackup.restore`／`SkillStore.restore`／回收站（`DeletePathTool`）／
 //     `备份/` 里的 .bak 原件（`WriteFileTool`、`EditFileTool`）。
-// 也就是说：472 判「有没有路、试没试过、赔不赔得起」，**动手还原的仍是 470 那一路**。
-// 这条依赖与「470 此刻不在 main」都写在交付报告 §0，并在制度总账登记为 **T-43**。
+// 这条依赖（工单引用了当时未合并的件）写在交付报告 §〇，并在制度总账登记为 **T-43**。
 //
 // 房型同本包其余文件：零 IO、零时钟、零 Android。时刻与路径由调用方给。
 package com.example.zhengdao.baopu.consequence
