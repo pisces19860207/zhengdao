@@ -88,6 +88,12 @@ internal enum class CanaryCapability(
 
     /** 290 斥候：未完事项清点。 */
     SCOUT("scout", "斥候清点", CanaryBand.OFF, "scout", "只记不判"),
+
+    /**
+     * 516 许愿流水线：一句话进六步流水（草稿→沙盒试跑→机械自检→灰度）。
+     * 缺省灰度档：能进，但每一步都落账（`许愿/_流水线.jsonl`）；转正仍走 SkillStore 那把闸。
+     */
+    WISH_PIPELINE("wish", "许愿流水线", CanaryBand.CANARY, "wish", "只写副本与草稿；转正走 SkillStore 闸"),
     ;
 
     companion object {

@@ -117,6 +117,13 @@ class L6BoundaryGateTest {
             // 副本根里，真盘声明对象只读；deleteRecursively/delete 只用于清副本根自己
             // （判据层说 CONSISTENT 才清，违规副本留着当证据）。
             "agent/ShadowSandbox.kt" to setOf("mkdirs", "deleteRecursively", "delete"),
+            // 第五百一十六批：许愿流水线的三类取数 IO 接线（CARD/CONTENT/NOVEL 的 WishPorts
+            // 真端口）。写只有三样：草稿落 `许愿/<wishId>/草稿/`（装配层传进来的工作区内路径）、
+            // 试跑写军师副本（RehearsalSandbox 的 runDir，358 批判据管的）、转正把草稿搬进
+            // 真落点（产物／成品／正文；CardBuild 自带不覆盖闸、appendLedger 走 179 多写者协议）。
+            // 试跑期真项目只读（前后 hashTree 各称一次）；510 的 WishSideEffectGateTest 钉
+            // 「许愿包除技能写口外没有生产写口」，所以本件住在 agent/（被扫的域）登记进场。
+            "agent/WishIOWiring.kt" to setOf("mkdirs", "writeText"),
             // 工具失败审计 JSONL（208 之外的专业账）：落点由装配层注入的私有目录，追加-only。
             "agent/ToolFallback.kt" to setOf("mkdirs", "appendText"),
             // 产物栅格化：目标在守卫过的产物目录内；delete 只用于 tmp 清理。

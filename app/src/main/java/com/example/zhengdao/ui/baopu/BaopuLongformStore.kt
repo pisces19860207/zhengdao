@@ -95,9 +95,12 @@ internal object BaopuLongformStore {
     /**
      * 台账追加（**多写者 append 协议**，派工单 §0.3）。
      *
+     * 第五百一十六批起 `internal`：许愿流水线的转正口（WishIOWiring.promoteContent）把内容稿
+     * 送去 `产物/` 时记的是**同一本**业务台账——不另造第二份追加协议。
+     *
      * @return null＝台账已记；非 null＝给用户看的说明（文件已保存、台账没记成的原因）。
      */
-    private fun appendLedger(root: File, productDir: File, now: Calendar, files: List<Pair<String, Int>>): String? {
+    internal fun appendLedger(root: File, productDir: File, now: Calendar, files: List<Pair<String, Int>>): String? {
         val y = now.get(Calendar.YEAR); val m = now.get(Calendar.MONTH) + 1
         val d = now.get(Calendar.DAY_OF_MONTH)
         val h = now.get(Calendar.HOUR_OF_DAY); val min = now.get(Calendar.MINUTE)
