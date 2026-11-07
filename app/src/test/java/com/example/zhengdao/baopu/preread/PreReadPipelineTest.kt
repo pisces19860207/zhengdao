@@ -180,7 +180,8 @@ class PreReadPipelineTest {
     @Test
     fun `源级闸_预读在路径守卫之后_判定与W3之前`() {
         val src = source("com/example/zhengdao/baopu/agent/GuardPipeline.kt")
-        val pathGuard = src.indexOf("guardPath(call, spec.name)")
+        // 517：guardPath 带上能力类（声明边界闸要按能力类查表）——形状改了，次序闸的口径不变。
+        val pathGuard = src.indexOf("guardPath(call, spec.name, capability)")
         val preread = src.indexOf("PreReadWiring.beforeToolCall(")
         val judge = src.indexOf("RiskGate.judge(")
         val w3 = src.indexOf("OpinionWiring.onVerdict(")

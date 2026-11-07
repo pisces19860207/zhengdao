@@ -29,6 +29,7 @@ import com.example.zhengdao.baopu.authz.ProcessEpoch
 import com.example.zhengdao.baopu.authz.TaskGrantBoard
 import com.example.zhengdao.baopu.authz.TaskGrantWire
 import com.example.zhengdao.baopu.authz.WiringDisposition
+import com.example.zhengdao.baopu.escalate.BoundaryTable
 import com.example.zhengdao.baopu.escalate.CapabilityKind
 import com.example.zhengdao.baopu.escalate.Escalation
 import com.example.zhengdao.baopu.inspect.AnomalyFactKind
@@ -492,7 +493,7 @@ internal class GuardPipeline(
         val guarded = if (spec.group == ToolGroup.MCP) {
             Guarded.Yes(call)
         } else {
-            guardPath(call, spec.name)
+            guardPath(call, spec.name, capability)
         }
         if (guarded is Guarded.No) return Prepared.Settled(
             Result.Rejected(call, guarded.reason, scopeEscape = guarded.scopeEscape),
@@ -1016,7 +1017,7 @@ internal class GuardPipeline(
      * - **P0-4**：`library_organize` 的 `path` 是「相对 投递/整理」的口径，**不改写**成
      *   绝对路径（改写后 `LibraryTools.normalizeRel` 见 `/` 直接拒 ⇒ promote/rename 必败）。
      */
-    private fun guardPath(call: ToolCall, toolName: String): Guarded {
+    private fun guardPath(call: ToolCall, toolName: String, capability: CapabilityKind): Guarded {
         // P0-4：相对路径工具白名单——path 保持相对，改写会把它变成必然被拒的绝对路径
         if (toolName == LibraryTools.NAME) return Guarded.Yes(call)
 
@@ -1037,7 +1038,7 @@ internal class GuardPipeline(
 
         // P0-2 ＋ 492 RO：写类目标的红线（原件区 / 只读根）各判一遍，命中即拒整条。
         // 505：这一支拦下的都是「声明边界之外」（原件区／只读根）——越界那一格如实带上
-        writeRedLines(roots, toolName, call.id, args, resolveStrict)?.let {
+        writeRedLines(roots, toolName, call.id, args, resolveStrict, capability)?.let {
             return Guarded.No(it, scopeEscape = true)
         }
 
@@ -1084,6 +1085,7 @@ internal class GuardPipeline(
         callId: String,
         args: JSONObject,
         resolve: (String) -> File,
+        capability: CapabilityKind,
     ): String? {
         for (target in writeTargets(toolName, args, resolve)) {
             rawRejection(target)?.let { reason ->
@@ -1094,6 +1096,16 @@ internal class GuardPipeline(
                 log("抱朴管线：拒绝 $toolName 写只读根 ${target.absolutePath}")
                 feedScopeEscape(callId, toolName, target.absolutePath, reason, redline = "ro")
                 return reason
+            }
+            // 第五百一十七批：声明边界闸——写不写由**边界声明表**说了算（唯一数据源）。
+            // 缺行/声明为空 ⇒ 按最严拒（判据③④）；拒绝原因原句回灌，越界事实照发
+            // （`redline=declared`，与 raw/policy/ro 同一条 [AnomalyFeed] 事实通道）。
+            BoundaryTable.checkWrite(capability, target, System.currentTimeMillis()).let { ruling ->
+                if (!ruling.allowed) {
+                    log("抱朴管线：拒绝 $toolName ${target.absolutePath}（${ruling.reason}）")
+                    feedScopeEscape(callId, toolName, target.absolutePath, ruling.reason, redline = "declared")
+                    return ruling.reason
+                }
             }
         }
         return null
@@ -1110,7 +1122,7 @@ internal class GuardPipeline(
      *   本层**不造第二把出处判据**，也不在没有它的时候塞一个假的进去；
      * - **不发参数错**：`path` 为空是"没给路径"，不是越界（[guardPath] 那一支不喂这里）。
      *
-     * @param redline 撞的是哪条硬边界（机器键 `redline:` 的档）：`raw`＝原件区只读／`policy`＝系统与凭据目录／`ro`＝只读根
+     * @param redline 撞的是哪条硬边界（机器键 `redline:` 的档）：`raw`＝原件区只读／`policy`＝系统与凭据目录／`ro`＝只读根／`declared`＝边界声明表（517，缺行按最严）
      */
     private fun feedScopeEscape(
         opId: String,

@@ -38,6 +38,7 @@ import com.example.zhengdao.baopu.RiskMatrix
 import com.example.zhengdao.baopu.agent.DeviationWiring
 import com.example.zhengdao.baopu.escalate.BoundaryFacts
 import com.example.zhengdao.baopu.escalate.BoundaryRules
+import com.example.zhengdao.baopu.escalate.BoundaryTable
 import com.example.zhengdao.baopu.escalate.BoundaryVerdict
 import com.example.zhengdao.baopu.escalate.CapabilityBoundaries
 import com.example.zhengdao.baopu.escalate.CapabilityKind
@@ -356,8 +357,11 @@ internal object TraceBlackbox {
     private fun handOff(row: BlackboxRow?, step: ObservedStep) {
         if (row == null || row.runId.isBlank()) return
         val kind = CapabilityKind.ofWire(step.capability) ?: CapabilityKind.OTHER
+        // 第五百一十七批：边界对象**唯一来源换声明表**（§二②「越界判定读它」）；
+        // 表没装配（纯 JVM 单测/早期启动）⇒ 回落 505 的代码内声明，行为逐字不变。
+        // 判定本体 [BoundaryRules] 一字未动（§四：只提供边界来源，不改 475 三要素）。
         val verdict = BoundaryRules.verdictOf(
-            CapabilityBoundaries.of(kind),
+            BoundaryTable.boundaryOf(kind) ?: CapabilityBoundaries.of(kind),
             BoundaryFacts(tool = step.tool, scopeEscapeDenied = step.escape),
         )
         if (verdict == BoundaryVerdict.OUT_OF_SCOPE) {

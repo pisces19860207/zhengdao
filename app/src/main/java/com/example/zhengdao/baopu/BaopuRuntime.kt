@@ -13,6 +13,8 @@ import android.os.Environment
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.ArtifactRaster
+import com.example.zhengdao.baopu.agent.AskDailyBudget
+import com.example.zhengdao.baopu.agent.AskGovLedger
 import com.example.zhengdao.baopu.agent.AskGovernance
 import com.example.zhengdao.baopu.agent.AskIntakeGate
 import com.example.zhengdao.baopu.agent.AskTier
@@ -47,6 +49,11 @@ import com.example.zhengdao.baopu.agent.multiagent.SubAgentRules
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentRunner
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.consequence.CanaryBand
+import com.example.zhengdao.baopu.consequence.ConsequenceWiring
+import com.example.zhengdao.baopu.escalate.BoundaryTable
+import com.example.zhengdao.baopu.evolution.DepthFactsWiring
+import com.example.zhengdao.baopu.evolution.DepthSideReadings
 import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.baopu.inspect.ShadowAdapter
 import com.example.zhengdao.baopu.promptexport.PromptExport
@@ -88,6 +95,12 @@ import com.example.zhengdao.schedule.ScheduleStore
  * 全局单活跃会话由 [ActiveSessionGate] 把关（引擎内部），双保险不冲突。
  */
 internal object BaopuRuntime {
+
+    /** 深度读数"昨日窗"的宽度（误拦申诉较昨日上升＝拿这一格算；只作读数，不作判据）。 */
+    private const val DAY_MS_FOR_FACTS: Long = 24L * 3_600_000L
+
+    /** 灰度档在后果治理账里的能力名（深度裁定的灰度读数从这一档读）。 */
+    private const val CANARY_CAPABILITY: String = "evolution"
 
     @Volatile
     private var dbInstance: BaopuDb? = null
@@ -930,6 +943,41 @@ internal object BaopuRuntime {
         // MCP 外部执行体第一次调工具时未登记才走 384-A 的四步链（App 内部调用不进准入）；
         // 只登记不拦人，没挂载时管线侧静默（intake/AdmissionWiring 的纪律）。
         AdmissionWiring.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        // 第五百一十七批：**身份/凭据装配**（506 缝的接线位，承诺写在 ConsequenceWiring 头上）——
+        // 顺序在账本落点之后：身份自己也要落一行「首启生成」的账。真首装 ⇒ 生成；
+        // 恢复后缺身份（U4）⇒ 不生成，体检格与日志提示「需铸新身份」（人工铸新才恢复）。
+        ConsequenceWiring.install(appCtx.filesDir, System.currentTimeMillis())
+        // 第五百一十七批：**边界声明表**（唯一数据源）装配——越界判定/执行闸/体检展示都读它。
+        // 可写根类展开表在这里给：workspace＝RW 工作区根，private＝应用私有树。
+        BoundaryTable.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)) {
+            val primary = workspaceRoot(appCtx)
+            val extras = WorkspaceRoots.extras(appCtx)
+            mapOf(
+                "workspace" to (listOf(primary) + extras.filter { it.mode == RootMode.RW }.map { it.dir }),
+                "private" to listOf(appCtx.filesDir),
+            )
+        }
+        // 第五百一十七批：**深度裁定的左相读数源**（evolution 不许反 import agent，缝在这里接）。
+        // 缺哪格就留默认（保守 ⇒ 浅档）：画像置信今天没有生产读数口，给 0＝升不了档——
+        // 这是「读数为空 ⇒ 浅档」判据的生产形状，不是遗漏。
+        DepthFactsWiring.sideReadings = {
+            val now = System.currentTimeMillis()
+            val day = AskGovernance.dayKey(now)
+            val todayRows = AskGovLedger.replay().filter { AskGovernance.dayOf(it.atMs) == AskGovernance.dayOf(now) }
+            val appealsToday = todayRows.count { it.kind == AskGovLedger.KIND_APPEAL }
+            val appealsYesterday = AskGovLedger.replay().count {
+                it.kind == AskGovLedger.KIND_APPEAL &&
+                    AskGovernance.dayOf(it.atMs) == AskGovernance.dayOf(now - DAY_MS_FOR_FACTS)
+            }
+            DepthSideReadings(
+                cardBudgetLeft = AskDailyBudget.LIMIT - AskDailyBudget.usedToday(day),
+                profileConfidence = 0.0,
+                interruptedToday = todayRows.count { it.kind == AskGovLedger.KIND_CARD },
+                authTier = if (AskGovernance.currentTier == AskTier.DELEGATED) 2 else 1,
+                falseBlockRising = appealsToday > appealsYesterday,
+                canaryAvailable = ConsequenceWiring.currentCanaryBand(CANARY_CAPABILITY) == CanaryBand.FULL,
+            )
+        }
         // 第二百九十六批 §2：**影子预演**的沙盒在这里装配（这是全仓唯一一处 `ShadowAdapter.install`）。
         // 没装 ⇒ 第⑤步只能报 `NO_SANDBOX` ⇒ 六步停在 NO_DATA ⇒ 一张卡也不会少弹（保守方向）。
         // 只交引用、不交 Context：沙盒要的全部事实（工作区根／声明对象／内容）都由调用方给。

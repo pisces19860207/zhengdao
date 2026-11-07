@@ -296,8 +296,9 @@ class GuardScopeEscapeFeedTest {
             Regex("""AnomalyFeed\s*\.\s*report\s*\(""").findAll(code).count(),
         )
         assertEquals(
-            "五处红线各喂一次（单数键系统目录/原件区/只读根/批量系统目录/批量只读根；492 起 RO 是第三条口径，多了＝第二个口径冒出来，少了＝有一段红线没接）",
-            5,
+            "六处红线各喂一次（单数键系统目录/原件区/只读根/批量系统目录/批量只读根；492 起 RO 是第三条口径；"
+                + "517 起加「声明边界」第六条——缺行按最严的那道闸；多了＝第二个口径冒出来，少了＝有一段红线没接）",
+            6,
             Regex("""(?<!fun )feedScopeEscape\(\s*call""").findAll(code).count(),
         )
         // 2026-11-02 口径：③ 段两处拒绝各记一行偏差（不许发事件、不许合成一处）；

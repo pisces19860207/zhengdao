@@ -243,6 +243,7 @@ internal object EvolutionWiring {
         // 待验队列（上一轮已判过"没法验"的那些）：这轮仍拿不出能换的表就一步都不走——
         // 准入计数与拒行不许按轮涨，结论上一轮已写明，等的只是读数。
         if (p.status == ProposalStatus.ADMITTED && !gap.actionable()) return
+        // 深度裁定两拍在 [runEvolutionChain]（判定入口本体）里：进判定前定档＋同轮 FAIL 降档。
         runEvolutionChain(
             p.toTrigger(),
             p.toCandidate(),
@@ -256,6 +257,77 @@ internal object EvolutionWiring {
             gap,
         )
     }
+
+    /**
+     * 定一次档并落账（517①；本文件是深度裁定的**生产调用方**——
+     * 左相成本位＝装配缝读数 [DepthFactsWiring.readings]，右相证据位＝本文件自己的账：
+     * 上一场结论出自尝试账、没法验增多出自待验队列积压、连续成功与回滚已验证也出自尝试账）。
+     */
+    private fun adjudicateDepth(evidenceEnough: Boolean, nowMs: Long): DepthDecision {
+        val side = DepthFactsWiring.readings()
+        val evidence = EvidenceFacts(
+            last = lastAttemptConclusion(),
+            evidenceEnough = evidenceEnough,
+            unverifiableRising = unverifiableQueueRising(nowMs),
+            falseBlockRising = side.falseBlockRising,
+            sameKindSuccessStreak = sameKindSuccessStreak(),
+            rollbackVerified = rollbackVerifiedOnce(),
+            canary = side.toCanaryStatus(),
+        )
+        return EvolutionDepth.adjudicate(side.toCostFacts(), evidence, nowMs)
+    }
+
+    /** 同轮失败的那次降档：右相只带 FAIL 这一格（其余维持现场读数），合成规则必降一档。 */
+    private fun downgradeAfterFailure(nowMs: Long) {
+        val side = DepthFactsWiring.readings()
+        val evidence = EvidenceFacts(
+            last = EvolutionConclusion.FAILED,
+            evidenceEnough = false,
+            unverifiableRising = unverifiableQueueRising(nowMs),
+            falseBlockRising = side.falseBlockRising,
+            sameKindSuccessStreak = 0,
+            rollbackVerified = rollbackVerifiedOnce(),
+            canary = side.toCanaryStatus(),
+        )
+        EvolutionDepth.adjudicate(side.toCostFacts(), evidence, nowMs)
+    }
+
+    /** 上一场结论（尝试账最末一行：fail ⇒ 失败、pass ⇒ 通过；没有账 ⇒ 没法验＝保守）。 */
+    private fun lastAttemptConclusion(): EvolutionConclusion {
+        val last = attempts().lastOrNull() ?: return EvolutionConclusion.UNVERIFIABLE
+        return if (last.verdict == EvolutionAttemptRow.VERDICT_FAIL) {
+            EvolutionConclusion.FAILED
+        } else {
+            EvolutionConclusion.LANDED
+        }
+    }
+
+    /**
+     * "没法验在涨"的生产代理（诚实声明：尝试账只有过/败两态，"没法验"的场次落在
+     * 待验队列——ADMITTED 而超过一天没等到读数的提案数 ≥2 视为增多）。
+     * 专用的无法验读数口若后续批次落地，把本函数换掉即可，合成规则不动。
+     */
+    private fun unverifiableQueueRising(nowMs: Long): Boolean {
+        val stuck = proposals.values.count { it.status == ProposalStatus.ADMITTED && it.atMs < nowMs - DAY_MS }
+        return stuck >= 2
+    }
+
+    /** 连续成功计数：从最末一行往回数同一触发名的 pass（一败即断）。 */
+    private fun sameKindSuccessStreak(): Int {
+        val rows = attempts()
+        val last = rows.lastOrNull() ?: return 0
+        if (last.verdict != EvolutionAttemptRow.VERDICT_PASS) return 0
+        var n = 0
+        for (row in rows.asReversed()) {
+            if (row.triggerKind != last.triggerKind) break
+            if (row.verdict != EvolutionAttemptRow.VERDICT_PASS) break
+            n += 1
+        }
+        return n
+    }
+
+    /** 可回滚**已验证**＝回滚这条路真跑过一次（尝试账里有带 rolledBack 的行）。 */
+    private fun rollbackVerifiedOnce(): Boolean = attempts().any { it.rolledBack }
 
     // ── ③ 完整链（判据①：每步可断言被调） ───────────────────────────────────
 
@@ -285,6 +357,28 @@ internal object EvolutionWiring {
         proofRunner: (CriteriaSnapshot) -> EvolutionProof,
         nowMs: Long,
         gap: ProofGap = ProofGap.Available,
+    ): ChainOutcome {
+        // 第五百一十七批①：**进化提案进入判定前定一次档**（深度裁定的生产调用点——
+        // 左相成本读数由装配缝 [DepthFactsWiring] 给，右相证据读数从本文件自己的账算；
+        // 读数缺 ⇒ 全默认 ⇒ 浅档，判据②的字面）。落账＝[EvolutionDepth.adjudicate]（谁定/依据/读数）。
+        adjudicateDepth(evidenceEnough = gap is ProofGap.Available, nowMs = nowMs)
+        val outcome = chainBody(trigger, candidate, next, rulingRef, anchors, proofRunner, nowMs, gap)
+        // 第五百一十七批③：**同轮 FAIL ⇒ 立刻降一档**（不等下一轮周期）——
+        // 链的结论当场喂回裁定，账上能查到"这一轮败了、当场降了档"。
+        if (outcome.conclusion == EvolutionConclusion.FAILED) downgradeAfterFailure(nowMs)
+        return outcome
+    }
+
+    /** 链的本体（428 原文原样搬进来，一行未改——深度裁定只在它的外壳上挂前后两拍）。 */
+    private fun chainBody(
+        trigger: EvolutionTrigger,
+        candidate: CriteriaCandidate,
+        next: CriteriaSnapshot?,
+        rulingRef: String,
+        anchors: List<AnchorCase>,
+        proofRunner: (CriteriaSnapshot) -> EvolutionProof,
+        nowMs: Long,
+        gap: ProofGap,
     ): ChainOutcome {
         val admit = CriteriaEvolution.admit(candidate, anchors)
         if (admit.state != AdmissionState.ADMIT) {

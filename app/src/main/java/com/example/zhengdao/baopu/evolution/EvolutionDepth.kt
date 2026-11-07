@@ -185,7 +185,10 @@ internal object DepthLedger {
         val rows = runCatching {
             File(root, FILE_NAME).readLines(Charsets.UTF_8).mapNotNull(DepthLedger::parse)
         }.getOrDefault(emptyList())
-        return (rows + memory).distinctBy { it.atMs }
+        // 517 改按**整行内容**去重（原来按 atMs）：同轮"定档＋FAIL 降档"是两行、可以同毫秒——
+        // 按时刻去重会把降档行吞掉，回放里看着"没降"。按内容去重既保住同毫秒两行，又仍能把
+        // 盘账与内存里**同一行**的两份并成一份（这个去重原本的目的）。
+        return (rows + memory).distinctBy { it.toJson() }
     }
 
     fun parse(raw: String): DepthDecision? = runCatching {

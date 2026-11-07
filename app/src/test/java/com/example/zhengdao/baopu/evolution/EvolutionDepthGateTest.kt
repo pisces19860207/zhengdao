@@ -378,12 +378,15 @@ class EvolutionDepthGateTest {
         // 第五百零六批（后果治理）正是那个接线批：`consequence/` 两件开始读深度裁定
         // ⇒ 按 505 自己的话「接线批一旦接上，这格红着提醒改名册」，这里改名册，
         // 而不是把断言删掉（删了就等于以后谁都能悄悄接）。
-        // 蓝总管验收接管（2026-11-07）：只改名册，语义仍是「新增调用方必须先改这格」。
+        // 蓝总管验收接管（2026-11-07）：只改名册，语义仍是「新增调用方必须先改这格再合」。
+        // 第五百一十七批（生产调用点）：`evolution/EvolutionWiring.kt` 在提案进入判定前调
+        // [EvolutionDepth.adjudicate]（§一①），同轮 FAIL 当场降档（§一③）——进名册。
         assertEquals(
-            "深度裁定的生产调用方名册（506 起接线：后果治理读深度；新增必须先改这格再合）",
+            "深度裁定的生产调用方名册（517 起进化链接线：EvolutionWiring 定档；新增必须先改这格再合）",
             listOf(
                 "baopu/consequence/ConsequenceLedger.kt",
                 "baopu/consequence/EvolutionDepth.kt",
+                "baopu/evolution/EvolutionWiring.kt",
             ),
             callers.sorted(),
         )

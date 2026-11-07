@@ -253,12 +253,19 @@ internal data class CanaryObservation(
     val permanentLoss: Boolean = false,
 )
 
-/** 身份动作的账用名（线值与 [IdentityRules] 的三个 op 一一对应，不另造）。 */
+/**
+ * 身份动作的账用名（线值与 [IdentityRules] 的动词一一对应，不另造）。
+ *
+ * 517（U2）：`UNREVOKE` 从动作集里除名——判据层已无这条路，账名保留是为了**读老账**：
+ * 506 期间若落过解除撤销行，读侧还能按线值认出它是什么，不至于渲染成乱码。
+ * 新行永远不会带这个线值（写侧 [IdentityRules.MUTATING_OPS] 已不含它）。
+ */
 internal enum class IdentityOp(val wire: String, val cn: String) {
     ISSUE("issue", "生成"),
     REVOKE("revoke", "撤销"),
     UNREVOKE("unrevoke", "解除撤销"),
     ROTATE("rotate", "轮换"),
+    MINT("mint", "铸新"),
     ;
 
     companion object {

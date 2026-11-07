@@ -90,7 +90,10 @@ class MetricsWiringTest {
     fun `判据①_体检编排每次都读一趟`() {
         val run = code(File(mainRoot, "HealthRun.kt"))
         assertTrue("体检编排里没有读数这一步", run.contains("MetricsWiring.read("))
-        assertTrue("读数那一行没印进单子", run.contains("readings = reading.sheetLines"))
+        // 517：readings 块抽成 extraReadings（LongMethod 预算）——「读数那一行印进单子」
+        // 的口径改为：编排递 reading、拼接函数里第一段仍是 reading.sheetLines。
+        assertTrue("读数那行要递进单子（extraReadings）", run.contains("readings = extraReadings(reading, nowMs)"))
+        assertTrue("拼接函数第一段仍是读数本身", run.contains("reading.sheetLines"))
     }
 
     // ── ② 有样本 ⇒ 真实条数 ─────────────────────────────────────────────────

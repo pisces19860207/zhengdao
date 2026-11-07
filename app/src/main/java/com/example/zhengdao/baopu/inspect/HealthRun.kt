@@ -115,20 +115,7 @@ internal object HealthRun {
             rows,
             signals,
             blockers,
-            // 第三百八十批：进化读数通道一格（判据④）——release 私有目录没有 run-as 推送口，
-            // 通道不可用必须显在单子上，免得"链停在准入等读数"被读成"进化总在失败"。
-            // 第四百九十五批：同一格里再加三态结论（通过／失败（读数不合格）／没法验（缺读数））——
-            // 通道说得清"数从哪来"，结论说得清"上一场到底算哪种没成"。
-            // 第五百零五批：同一格再添两行——474 的「本轮轨迹 N 步 / 异常 M」与 475 的「在等人的升级」。
-            // 这两行都是**只读拼接**（本文件没多一个写口）；升级那一行的渲染本身就是「被看到」的落账时刻，
-            // 单子没渲染它 ⇒ 账上就只有「到达」没有「被看到」，"升级丢了"就分不开（判据⑤）。
-            readings = reading.sheetLines + ProofReading.channelLine(
-                com.example.zhengdao.BuildConfig.DEBUG,
-            ) + EvolutionWiring.sheetLines() +
-                // 第四百九十九批：授权档与误拦读数一行进体检单（487 §三②：放权不是黑箱——
-                // 今日自动放过几次、误拦申诉几单、误拦率分场景，全在这一行里可看）。
-                listOf(com.example.zhengdao.baopu.agent.AskGovernance.healthLine(nowMs)) +
-                TraceBlackbox.sheetLines() + Escalation.sheetLines(),
+            readings = extraReadings(reading, nowMs),
             // 抽检读数块：上次抽检时间＋假 PASS 数，一行一件（判据层的行文，自带部位名；编排层只排版）。
             sampling = SAMPLE_ORGANS
                 .filter { sampling.containsKey(it) }
@@ -239,6 +226,27 @@ internal object HealthRun {
      */
     internal fun readingOutputs(reading: MetricsReading): Int =
         if (reading.state == ReadingState.NO_DATA) 0 else reading.lines.size
+
+    /**
+     * 体检单 readings 块的**只读拼接**（本文件没多一个写口）：
+     *   · 进化读数通道一格（380 判据④）——release 私有目录没有 run-as 推送口，通道不可用必须显在
+     *     单子上，免得"链停在准入等读数"被读成"进化总在失败"；495 同格再加三态结论；
+     *   · 505 同格再添两行——474 的「本轮轨迹 N 步 / 异常 M」与 475 的「在等人的升级」；
+     *     升级那一行的渲染本身就是「被看到」的落账时刻（475 判据⑤）；
+     *   · 499 授权档与误拦读数一行（487 §三②：放权不是黑箱）；
+     *   · 517 两行——「执行体」一格（U1：`执行体：<id 前8> · 凭据 N 条 · 最近撤销 <绝对时刻>`，
+     *     恢复后缺身份 ⇒ 这一行就是"需铸新身份"的常驻提示面，U4 不许静默生成）＋
+     *     「边界声明」一行（声明表是唯一数据源，体检展示是它点名的三个读口之一）；时刻全走绝对时刻（U5）。
+     */
+    private fun extraReadings(reading: MetricsReading, nowMs: Long): List<String> =
+        reading.sheetLines + ProofReading.channelLine(com.example.zhengdao.BuildConfig.DEBUG) +
+            EvolutionWiring.sheetLines() +
+            listOf(com.example.zhengdao.baopu.agent.AskGovernance.healthLine(nowMs)) +
+            listOf(
+                com.example.zhengdao.baopu.consequence.ConsequenceWiring.executorSheetLine(nowMs),
+                com.example.zhengdao.baopu.escalate.BoundaryTable.sheetLine(),
+            ) +
+            TraceBlackbox.sheetLines() + Escalation.sheetLines()
 
     /** 把单子压成一行账（计数＋各部位态＋命中键＋全文）。 */
     private fun entryOf(sheet: HealthSheet, nowMs: Long): HealthEntry {

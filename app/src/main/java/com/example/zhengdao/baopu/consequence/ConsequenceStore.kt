@@ -126,7 +126,7 @@ internal object IdentityStore {
         val step = when (m.op) {
             IdentityRules.OP_ROTATE -> rotateStep(rows, m, current, nowMs, entropy)
             IdentityRules.OP_REVOKE -> revokeStep(rows, m, current, nowMs)
-            else -> unrevokeStep(rows, m)
+            else -> mintStep(rows, m, nowMs, entropy)
         }
         step.refused?.let { return IdentityOutcome.Refused(it) }
         if (!save(filesDir, step.rows)) return IdentityOutcome.Refused("身份表写盘失败，这次改动没生效")
@@ -169,11 +169,14 @@ internal object IdentityStore {
         return Step(next, refuse, current, current, IdentityOp.REVOKE)
     }
 
-    private fun unrevokeStep(rows: List<IdentityRow>, m: IdentityMutation): Step {
-        val target = rows.lastOrNull { it.state == IdentityState.REVOKED }
-        val (next, refuse) = IdentityRules.unrevokeRows(rows, m)
-        return Step(next, refuse, "", target?.id ?: "", IdentityOp.UNREVOKE)
-    }
+    /** 铸新（U3）：previousId 恒空串——铸新不是从谁换下来的，是被撤销的那条留在原地。 */
+    private fun mintStep(rows: List<IdentityRow>, m: IdentityMutation, nowMs: Long, entropy: () -> String): Step =
+        when (
+            val r = IdentityRules.mintOutcome(rows, m, m.targetId.ifBlank { entropy() }, nowMs)
+        ) {
+            is IdentityRules.Rotation.Rejected -> Step(rows, r.reason, "", "", IdentityOp.MINT)
+            is IdentityRules.Rotation.Accepted -> Step(r.rows, null, r.previousId, r.newId, IdentityOp.MINT)
+        }
 
     // ── 序列化（固定键；半条行**跳过**而不是补默认值）───────────────────────
 
@@ -243,7 +246,15 @@ internal object CredentialStore {
                 val kind = CredentialKind.ofWire(c.optString("kind")) ?: continue
                 val handle = c.optString("handle")
                 if (handle.isBlank()) continue
-                out += Credential(kind, handle, c.optString("owner"), c.optLong("at", 0L))
+                out += Credential(
+                    kind = kind,
+                    handle = handle,
+                    owner = c.optString("owner"),
+                    issuedAtMs = c.optLong("at", 0L),
+                    // Q1（517）：迁移标记与绝对到期日（老文件没有这两格 ⇒ false/0，照旧读）。
+                    legacy = c.optBoolean("legacy", false),
+                    expiresAtMs = c.optLong("expiresAt", 0L),
+                )
             }
             out
         }.getOrDefault(emptyList())
@@ -264,11 +275,14 @@ internal object CredentialStore {
                                 put("handle", c.handle)
                                 put("owner", c.owner)
                                 put("at", c.issuedAtMs)
+                                if (c.legacy) put("legacy", true)
+                                if (c.expiresAtMs > 0L) put("expiresAt", c.expiresAtMs)
                             },
                         )
                     }
                 },
             )
+            legacyNoticeAtMs(filesDir)?.takeIf { it > 0L }?.let { put("legacyNoticeAt", it) }
         }.toString()
         val tmp = File(f.parentFile, "${ConsequenceDirs.CREDENTIAL_FILE}.tmp")
         tmp.writeText(body, Charsets.UTF_8)
@@ -279,7 +293,18 @@ internal object CredentialStore {
         false
     }
 
-    /** 闸口（读身份表＋读绑定表，再问判据；装配层只要一个布尔时用这个）。 */
-    fun permitted(filesDir: File, cred: Credential): Boolean =
-        CredentialBinding.permitted(cred, IdentityStore.load(filesDir))
+    /**
+     * 「legacy 到期已提示过」的那笔时刻（Q1：提示**一次**，落没落过由表自己记账）。
+     * 读的是**盘上现文件**（不是要写的那份）：save 时原样带回去，别把标记写丢。
+     */
+    fun legacyNoticeAtMs(filesDir: File): Long {
+        val f = ConsequenceDirs.credentialFile(filesDir)
+        if (!f.isFile) return 0L
+        return runCatching { JSONObject(f.readText(Charsets.UTF_8)).optLong("legacyNoticeAt", 0L) }
+            .getOrDefault(0L)
+    }
+
+    /** 闸口（读身份表＋读绑定表，再问判据；装配层只要一个布尔时用这个；时刻由调用方传）。 */
+    fun permitted(filesDir: File, cred: Credential, nowMs: Long): Boolean =
+        CredentialBinding.permitted(cred, IdentityStore.load(filesDir), nowMs)
 }

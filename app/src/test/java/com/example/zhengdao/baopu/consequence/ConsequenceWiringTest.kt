@@ -166,21 +166,22 @@ class ConsequenceWiringTest {
     fun `判据4e_撤销即名下凭据全失效_且不是靠删表`() {
         val cred = Credential(CredentialKind.SITE_TRUST, "example.com", idA, now)
         CredentialStore.save(files, listOf(cred))
-        assertTrue(CredentialStore.permitted(files, cred))
+        assertTrue(CredentialStore.permitted(files, cred, now))
         ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_REVOKE), now + 2)
-        assertFalse("身份撤销后名下凭据必须一条也不放行", CredentialStore.permitted(files, cred))
+        assertFalse("身份撤销后名下凭据必须一条也不放行", CredentialStore.permitted(files, cred, now + 2))
         assertEquals("失效≠删除：凭据行必须还在表上", 1, CredentialStore.load(files).size)
-        assertTrue(ConsequenceWiring.revocationNote().contains("1 条凭据全失效"))
+        assertTrue(ConsequenceWiring.revocationNote(now + 2).contains("1 条凭据全失效"))
     }
 
     @Test
     fun `判据4f_轮换记已轮换_老凭据不跟着换新主人`() {
         val cred = Credential(CredentialKind.MCP_TOKEN, "srv-1", idA, now)
         CredentialStore.save(files, listOf(cred))
-        val note = ConsequenceWiring.mutateIdentity(IdentityMutation("auto", IdentityRules.OP_ROTATE, idB), now + 2)
+        // 517 U3：轮换只认人工——actor 改用 user（506 测的 auto 路已被判据拒）。
+        val note = ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_ROTATE, idB), now + 2)
         assertTrue(note, note.startsWith("已改"))
         assertEquals(idB, ConsequenceWiring.executorId())
-        assertFalse("老主人的凭据不许自动过户", CredentialStore.permitted(files, cred))
+        assertFalse("老主人的凭据不许自动过户", CredentialStore.permitted(files, cred, now + 2))
         val table = IdentityStore.load(files)
         assertTrue("旧 id 必须留一行「已轮换」", table.any { it.id == idA && it.state == IdentityState.ROTATED_OUT })
         val rotateRow = rows().first { it.evidence.startsWith("${ConsequenceEvidence.IDENTITY}rotate") }
@@ -190,26 +191,42 @@ class ConsequenceWiringTest {
     }
 
     /**
-     * 口径 U3（派工单没写、实现必然写出来的一条，所以钉成测试）。
+     * 口径 U2（517 拍板，替换 506 的「撤销后重启自动铸新」——那条口径正式废止）。
      *
-     * 撤销之后重启：表里没有「在用」行了 ⇒ 首启那一支会**铸一条新身份**。
-     * 不铸的代价更大——从此整机再没有身份可盖章，每条账行的 `executor` 都是空。
-     * 铸的后果也必须在账上说清：新身份**名下什么都没有**（老凭据照旧拒），
-     * 而「解除撤销」这条路在有新身份时走不通（撤销从此是不可逆的，要恢复请重新签发凭据）。
+     * 撤销之后重启：表里有历史（已撤销行）但没有「在用」行 ⇒ **不许**静默长出新身份，
+     * 在用 id 就是空串，账行的章照实空着；名下凭据照旧全失效。
+     * 恢复的唯一入口是**人工铸新**（`op=mint`，`actor=user`）：
+     * 模型与装配层调进来都被 [IdentityRules.refusalOf] 拒（U3），铸完旧 id 仍停在「已撤销」。
      */
     @Test
-    fun `口径U3_撤销后重启铸新身份_老身份不可借重启复活`() {
+    fun `口径U2_撤销后重启仍失效_恢复只能人工铸新`() {
         val cred = Credential(CredentialKind.TASK_GRANT, "task-506", idA, now)
         CredentialStore.save(files, listOf(cred))
         ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_REVOKE), now + 2)
         restart(entropyB)
-        assertEquals("撤销后重启＝铸新身份，不然此后每条账行都没章可盖", idB, ConsequenceWiring.executorId())
-        assertFalse("新身份不继承老身份名下的凭据（撤销那句仍然算数）", CredentialStore.permitted(files, cred))
-        val r = ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_UNREVOKE), now + 3)
-        assertTrue(r, r.startsWith("被拒："))
-        assertEquals("两条身份行＝铸过两次，第二次正是重启这一支", 2, rows().count { it.evidence.startsWith("${ConsequenceEvidence.IDENTITY}issue") })
-        assertTrue("被拒的解除撤销不落一行账", rows().none { it.evidence.startsWith("${ConsequenceEvidence.IDENTITY}unrevoke") })
+        // 重启**没有**长出新身份：撤销的分量就在它回不来（U2）
+        assertEquals("撤销后重启不许静默再铸（U2）", "", ConsequenceWiring.executorId())
+        assertFalse("老身份名下的凭据重启后照样失效", CredentialStore.permitted(files, cred, now + 600_000L))
         assertTrue("老 id 仍在表里（历史账照读）", IdentityRules.wasKnown(IdentityStore.load(files), idA))
+        // 铸新的口只对人工开：装配层（auto）调 ⇒ 拒，盘上不落行
+        val autoTry = ConsequenceWiring.mutateIdentity(IdentityMutation("auto", IdentityRules.OP_MINT, idB), now + 3)
+        assertTrue(autoTry, autoTry.startsWith("被拒："))
+        assertTrue(autoTry.contains("只许人工"))
+        // 人工铸新 ⇒ 成；旧 id 停在已撤销，新身份开始盖章
+        val mint = ConsequenceWiring.mutateIdentity(
+            IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_MINT, idB),
+            now + 4,
+        )
+        assertTrue(mint, mint.startsWith("已改"))
+        assertEquals(idB, ConsequenceWiring.executorId())
+        val table = IdentityStore.load(files)
+        assertTrue(table.any { it.id == idA && it.state == IdentityState.REVOKED })
+        assertFalse("新身份不继承老身份名下的凭据", CredentialStore.permitted(files, cred, now + 4))
+        // 解除撤销这个动词已经不存在：任何 actor 调都被拒（U2）
+        assertTrue(
+            ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_UNREVOKE), now + 5)
+                .startsWith("被拒："),
+        )
     }
 
     // ── 判据③·指标从账本算＋达标自动转 ─────────────────────────────────────
@@ -400,7 +417,7 @@ class ConsequenceWiringTest {
         CredentialStore.save(files, listOf(cred))
         ConsequenceDirs.identityFile(files).writeText("{ \"schema\": \"zd-executor/1\", \"rows\": [", Charsets.UTF_8)
         assertEquals("半条表 ⇒ 整表作废，不猜", emptyList<IdentityRow>(), IdentityStore.load(files))
-        assertFalse("读不出不许被洗成「全都还有效」", CredentialStore.permitted(files, cred))
+        assertFalse("读不出不许被洗成「全都还有效」", CredentialStore.permitted(files, cred, now))
         assertEquals("", IdentityStore.activeId(files))
     }
 
@@ -422,7 +439,7 @@ class ConsequenceWiringTest {
         ConsequenceWiring.uninstallForTest()
         val r = ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_REVOKE), now + 2)
         assertEquals("身份机制没装配，这次改动没做", r)
-        assertEquals("身份机制没装配", ConsequenceWiring.revocationNote())
+        assertEquals("身份机制没装配", ConsequenceWiring.revocationNote(now))
     }
 
     @Test
@@ -471,5 +488,71 @@ class ConsequenceWiringTest {
         assertTrue(row.reason.contains("永久损失 1 项"))
         assertFalse("赔付行不留回滚通道（还原不是撤销这笔账）", row.reversible)
         assertEquals(idA, row.executor)
+    }
+
+    // ── 517 追加：U4 恢复后缺身份＋U1 体检格＋Q1 装配 sweep ─────────────────
+
+    /**
+     * U4（517）：恢复后缺身份 ⇒ **不许静默生成**。
+     * 盘面＝机器上有恢复进来的记忆树＋一枚恢复标记，身份表不在备份里 ⇒ 缺。
+     * 装配时表必须仍是空的（没长出新身份），提示面（体检格）点名"需铸新身份"，
+     * 恢复的唯一路是人工铸新（U3：模型/装配层调 ⇒ 拒）。
+     */
+    @Test
+    fun `口径U4_恢复标记后缺身份_不许静默生成_铸新后解除`() {
+        ConsequenceWiring.uninstallForTest()
+        // 模拟"恢复"：身份树整棵不在（U4 的前提——身份/凭据不进备份包，
+        // 恢复是按挂载表放回记忆/技能，执行体树从包里来不了）；
+        // setUp 那次首启留下的身份行也一并清掉，盘面回到"有记忆、没身份"。
+        ConsequenceDirs.root(files).deleteRecursively()
+        memory.mkdirs() // 恢复进来的记忆树
+        assertTrue(ConsequenceWiring.markRestored(files, now + 10))
+        val id = ConsequenceWiring.install(files, now + 11) { entropyA }
+        assertEquals("恢复后缺身份不许静默生成（U4）", "", id)
+        assertTrue(ConsequenceWiring.needsIdentityMint())
+        assertFalse("身份表不许被静默写出", ConsequenceDirs.identityFile(files).isFile)
+        val line = ConsequenceWiring.executorSheetLine(now + 12)
+        assertTrue("体检格要提示需铸新身份：$line", line.contains("需铸新身份"))
+        // 人工铸新 ⇒ 恢复；标记还在（幂等），但表里有了在用行就不再拦
+        val mint = ConsequenceWiring.mutateIdentity(
+            IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_MINT, idB),
+            now + 13,
+        )
+        assertTrue(mint, mint.startsWith("已改"))
+        assertEquals(idB, ConsequenceWiring.executorId())
+        assertFalse(ConsequenceWiring.needsIdentityMint())
+        val again = ConsequenceWiring.install(files, now + 14) { entropyA }
+        assertEquals("重启读回的是铸出来的那个 id", idB, again)
+    }
+
+    /** U1（517）：体检单「执行体」一格——在用/撤销两种说法，时刻全是绝对时刻（U5）。 */
+    @Test
+    fun `体检格U1_执行体一行_撤销后给绝对时刻`() {
+        val line0 = ConsequenceWiring.executorSheetLine(now)
+        assertTrue("在用 ⇒ id 前 8 位：$line0", line0.contains(idA.removePrefix(IdentityFormat.PREFIX).take(8)))
+        assertTrue(line0, line0.contains("凭据 0 条"))
+        assertTrue(line0, line0.contains("最近撤销 无"))
+        // 撤销 ⇒ 这一行明说不可逆＋给出**绝对时刻**（U5：不许"刚刚/明天"）
+        ConsequenceWiring.mutateIdentity(IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_REVOKE), now + 2)
+        val line1 = ConsequenceWiring.executorSheetLine(now + 3)
+        assertTrue(line1, line1.contains("已撤销"))
+        assertTrue(line1, line1.contains("最近撤销 "))
+        assertTrue(
+            "时刻必须是 ISO 绝对时刻：$line1",
+            Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}:\d{2}""").containsMatchIn(line1),
+        )
+    }
+
+    /** Q1 装配侧：install 时的 sweep 给老凭据打标（判据⑪的装配半边；到期判定在判据层测）。 */
+    @Test
+    fun `判据Q1_装配sweep给老凭据打迁移标_到期日是绝对时刻`() {
+        val legacy = Credential(CredentialKind.SITE_TRUST, "example.com", CredentialBinding.UNBOUND, now)
+        CredentialStore.save(files, listOf(legacy))
+        ConsequenceWiring.uninstallForTest()
+        ConsequenceWiring.install(files, now + 100) { entropyA }
+        val stamped = CredentialStore.load(files).first()
+        assertTrue("进了迁移期", stamped.isLegacy)
+        assertEquals("到期日＝sweep 时刻＋默认 30 天", now + 100 + LegacyCredentials.DEFAULT_TTL_MS, stamped.expiresAtMs)
+        assertTrue("账上要有一笔迁移记账", rows().any { it.evidence.startsWith("${ConsequenceEvidence.IDENTITY}legacy:") })
     }
 }

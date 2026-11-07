@@ -8,6 +8,15 @@
 //   ④ 轮换＝新 id 落账 ＋ 旧 id 标「已轮换」，**不许静默覆盖**；
 //   ⑤ 模型调「改身份／解除撤销」⇒ 拒。
 //
+// 第五百一十七批改两条口径（Q2 并入本单的追加节，原话为准）：
+//   · **U2 撤销持久不可逆**：506 的「解除撤销」整条路拆掉——撤销后重启仍失效，
+//     恢复只能**铸新身份**（人工），旧身份的行与历史账原样保留、**永不复用**。
+//     「解除撤销只许本人做」是 506 的旧答案；517 的答案是「本人也不行」：
+//     能被撤销再复活的身份不是稳定身份，撤销的分量就在它回不来。
+//   · **U3 铸新身份仅人工**：轮换与铸新两个动词都收成 `actor=user` 才放行——
+//     装配层（auto）不再有铸新口。首启生成不受这条管：那是**制度性首装**，
+//     不是「铸新」（表里一条都没有时才允许，见 [IdentityRules.firstRunRow] 的新前提）。
+//
 // 房型照 `AllowanceLadder`／`ReflectionAutonomy`：**本文件是纯判据层**——零 IO、零时钟、
 // 零随机、零 Android。id 的熵由调用方（[ConsequenceStore]）拿，时刻由调用方传。
 // 这样判据可以拿手搓的行直测，不必造一台文件系统在测试里。
@@ -111,23 +120,36 @@ internal object IdentityRules {
 
     const val OP_ROTATE: String = "rotate"
     const val OP_REVOKE: String = "revoke"
+
+    /**
+     * 铸新身份（U3）：**没有在用身份时**（被撤销／表被清）由**人**开一个新的。
+     *
+     * 与 [OP_ROTATE] 的分界：轮换的前提是有一个在用身份可换（旧 id 记「已轮换」）；
+     * 铸新的前提是**没有**在用身份（旧 id 保持「已撤销」原样，历史保留不可用）。
+     * 两个动词都只认人工（[refusalOf]），模型与装配层都调不动。
+     */
+    const val OP_MINT: String = "mint"
+
+    /** 撤销后**不得再认**的老动词（U2：留着常量是为了拒因说得清，不是说它还通）。 */
     const val OP_UNREVOKE: String = "unrevoke"
 
     /** 认得的改身份动作（闭集；不在表里的动作一律拒，不认自造动词）。 */
-    val MUTATING_OPS: Set<String> = setOf(OP_ROTATE, OP_REVOKE, OP_UNREVOKE)
+    val MUTATING_OPS: Set<String> = setOf(OP_ROTATE, OP_REVOKE, OP_MINT)
 
     /**
      * 这次改身份的请求该不该拒（null＝放行）。
      *
-     * 派工单判据⑤：模型调「改身份／解除撤销」⇒ 拒。
-     * 这里把**所有**改身份动作一并挡在 `actor=model` 外面，不只是那两条点名——
-     * 点名的是「改 id」和「解除撤销」，但「撤销」本身同样能作废掉一切授权；
-     * 只钉两条等于给第三条留门。
+     * 517 两条新牙：
+     *   · U3——轮换与铸新都是**人工动词**：`actor != user` 一律拒（模型拒、装配层也拒）；
+     *   · U2——撤销不可逆：`unrevoke` 不在 [MUTATING_OPS] 里，落到这里就是一句明话拒因，
+     *     不再存在「本人可以解除」的那条路。
      */
     fun refusalOf(m: IdentityMutation): String? = when {
         m.actor == ACTOR_MODEL -> "身份只能由人或系统装配层改，模型不许改（actor=model／op=${m.op}）"
+        m.op == OP_UNREVOKE -> "撤销不可逆（U2）：解除撤销这条路已拆，恢复只能铸新身份（人工）"
+        (m.op == OP_ROTATE || m.op == OP_MINT) && m.actor != ACTOR_USER ->
+            "铸新身份只许人工（U3）：actor=${m.actor} 不行，op=${m.op}"
         m.op !in MUTATING_OPS -> "不认识的改身份动作：${m.op}"
-        m.op == OP_UNREVOKE && m.actor != ACTOR_USER -> "解除撤销只许本人做（actor=${m.actor}）"
         else -> null
     }
 
@@ -138,17 +160,19 @@ internal object IdentityRules {
     const val ACTOR_USER: String = "user"
 
     /**
-     * 首启生成（派工单 ①）：表里一条都没有 ⇒ 用调用方给的熵生成一行 [ACTIVE]。
+     * 首启生成（派工单 ①）：表里**一条都没有** ⇒ 用调用方给的熵生成一行 [ACTIVE]。
      *
-     * 已经有在用行就**原样返回 null**——「首启生成」不是「每次启动都生成」，
-     * 后者会把身份变成每次重启都换的进程代号（那正是 476 要替掉的旧样）。
+     * 517 收紧前提（U2 的另一面）：506 的条件是「没有在用行就生成」——那意味着
+     * 撤销后下一次重启会**静默长出一个新身份**，撤销的「不可逆」当场失效。
+     * 新前提是**整张表为空**（真·首装／清数据）；有历史（撤销／已轮换）但没在用行
+     * ⇒ 不许生成，恢复只有人工铸新（[mintOutcome]）那一条路。
      *
      * @param entropy 调用方取的一次随机串（本层零随机）
      * @param nowMs 调用方给的时钟
      * @return 新生成的行；不该再生成 ⇒ null
      */
     fun firstRunRow(rows: List<IdentityRow>, entropy: String, nowMs: Long): IdentityRow? {
-        if (rows.any { it.state == IdentityState.ACTIVE }) return null
+        if (rows.isNotEmpty()) return null
         val id = IdentityFormat.normalize(entropy) ?: return null
         return IdentityRow(id = id, state = IdentityState.ACTIVE, createdAtMs = nowMs)
     }
@@ -201,24 +225,27 @@ internal object IdentityRules {
     }
 
     /**
-     * 解除撤销（只有本人能做，见 [refusalOf]）。
+     * 铸新身份（U3，517）：没有在用身份时由**人**开一个新的。
      *
-     * 撤销过的行改回 [ACTIVE] 之前必须仍是**同一行**（同一个 id），不许借这条路塞一个新 id 进来——
-     * 「解除撤销」变成「换个身份」就是判据⑤点名的那个洞。
+     * 三条牙：
+     *   · 前提是**没有**在用身份——有在用行就该走轮换（[rotateOutcome]），铸新不越过它；
+     *   · 新 id 必须形状合格，且**不是这张表里任何一条曾存在过的 id**——复用旧 id
+     *     ＝把撤销过的身份借壳复活，U2 在这里补第二道闩；
+     *   · 旧行**原样保留**：撤销的还标撤销（不改成已轮换——它不是被换下去的，是被废掉的），
+     *     [wasKnown] 查历史照常，只是再也不会有 [ACTIVE] 指向它们。
      */
-    fun unrevokeRows(rows: List<IdentityRow>, m: IdentityMutation): Pair<List<IdentityRow>, String?> {
-        val refuse = refusalOf(m)
-        if (refuse != null) return rows to refuse
-        val target = rows.lastOrNull { it.state == IdentityState.REVOKED }
-            ?: return rows to "没有被撤销的身份"
-        if (m.targetId.isNotBlank() && m.targetId != target.id) {
-            return rows to "解除撤销不许换成别的 id（要新身份请走轮换）"
-        }
+    fun mintOutcome(rows: List<IdentityRow>, m: IdentityMutation, newId: String, nowMs: Long): Rotation {
+        refusalOf(m)?.let { return Rotation.Rejected(it) }
         if (rows.any { it.state == IdentityState.ACTIVE }) {
-            return rows to "已经有一个在用的身份，先轮换再谈解除"
+            return Rotation.Rejected("已有在用的身份——换身份请走轮换，铸新只在没有在用身份时可用")
         }
-        val updated = target.copy(state = IdentityState.ACTIVE, revokedAtMs = 0L)
-        return rows.filterNot { it.id == target.id } + updated to null
+        val fresh = IdentityFormat.normalize(newId)
+            ?: return Rotation.Rejected("新身份 id 形状不合格")
+        if (wasKnown(rows, fresh)) {
+            return Rotation.Rejected("新 id 与历史身份重合——撤销过的身份不许复用（U2）")
+        }
+        val news = IdentityRow(id = fresh, state = IdentityState.ACTIVE, createdAtMs = nowMs)
+        return Rotation.Accepted(rows = rows + news, previousId = "", newId = fresh)
     }
 
     /** 当前在用的 id（没有 ⇒ 空串；撤销／已轮换都读不出来）。 */

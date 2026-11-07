@@ -16,6 +16,7 @@ import android.net.Uri
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.MemoryStore
+import com.example.zhengdao.baopu.consequence.ConsequenceWiring
 import com.example.zhengdao.baopu.search.PhoneSearch
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.RunLog
@@ -217,6 +218,12 @@ internal object BackupShell {
         val ok = result as ApplyOutcome.Ok
         val settingsWritten = if (applySettings) writeSettings(ctx, ok.settingsJson) else 0
         val touched = preview.manifest.entries.mapTo(HashSet()) { it.group }
+        // 第五百一十七批（U4）：导入了**记忆/账本**类的包 ⇒ 打一枚带绝对时刻的恢复标记。
+        // 身份/凭据不进备份包（U4 的另一半），恢复过的机器下一次装配时表可能是空的——
+        // 标记把"恢复后缺身份"从"真首装"里分出来：前者提示需铸新身份，不许静默生成。
+        if (BackupGroup.MEMORY in touched || BackupGroup.LEDGER in touched) {
+            ConsequenceWiring.markRestored(ctx.filesDir, System.currentTimeMillis())
+        }
         val reload = BackupHotReload.afterImport(touched, reloadPorts(ctx))
         // 冲突清单**逐条落日志**（派工单四②：清单落日志，UI 卡归 U 批）。
         // 只写条数不够——用户事后要查"到底哪几条没导进去"，日志得答得上来。
