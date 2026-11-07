@@ -194,3 +194,13 @@
 ---
 
 **动手前会问你，动完手有账可查，查不到就说查不到。**
+
+## 使用反馈（手感 / 使用感 / 不足 / BUG）
+
+- **手感、使用感、不足** ⇒ [GitHub Discussions · 使用反馈](https://github.com/pisces19860207/zhengdao/discussions/22)（直接回帖，不用写漂亮）
+- **能复现的 BUG** ⇒ [新建 Issue（bug 表单）](https://github.com/pisces19860207/zhengdao/issues/new?template=bug.yml)
+- **功能建议** ⇒ [新建 Issue（idea 表单）](https://github.com/pisces19860207/zhengdao/issues/new?template=idea.yml)
+
+三条注意：① 别贴令牌/聊天正文/完整日志；② 要数据请用 App 内「诊断复制」（已脱敏）；
+③ 说清"当时你在干什么"，一句话就够。
+
