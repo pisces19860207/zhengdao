@@ -151,8 +151,15 @@ class AskTierPipelineTest {
         assertTrue("找不到 askUser 切片", start >= 0 && end > start)
         val askUserBody = body.substring(start, end)
         assertTrue(
-            "askUser 压卡分支必须落治理账（D 段③：who=LEFT）",
-            askUserBody.contains("noteSuppressLeft"),
+            "askUser 压卡必须过唯一闸（落账在 AskGovernance.askViaMediator 里，D 段③：who=LEFT）",
+            askUserBody.contains("AskGovernance.askViaMediator("),
+        )
+        val gov = java.io.File("src/main/java/com/example/zhengdao/baopu/agent/AskGovernance.kt")
+            .takeIf { it.isFile }
+            ?: java.io.File("app/src/main/java/com/example/zhengdao/baopu/agent/AskGovernance.kt")
+        assertTrue(
+            "闸内必须真落治理账（D 段③：who=LEFT）",
+            gov.readText().contains("noteSuppressLeft"),
         )
     }
 
@@ -162,11 +169,14 @@ class AskTierPipelineTest {
         val row = AskGovernance.noteSuppressLeft(
             reason = "已熔断：不再弹问卡",
             budgetBasis = "耐心阈值 0（画像 askTolerance 2、LOOP 清零）—本回合已问 2",
+            card = "ask_user",
             atMs = 50_000L,
         )
         assertEquals(AskGovLedger.KIND_SUPPRESS, row.kind)
         assertEquals("who=LEFT 是 D 段判据的字面", "LEFT", row.who)
         assertTrue("依据带档位＋预算的那一句", row.basis.contains("耐心阈值"))
+        assertEquals("卡类型进 detail（507 §二）", "card=ask_user", row.detail)
+        assertEquals("时间随行（507 §二）", 50_000L, row.atMs)
         AskGovLedger.resetForTest()
     }
 

@@ -2987,6 +2987,9 @@ internal class BaopuChatController(context: Context) {
             sessionId = sessionId ?: com.example.zhengdao.baopu.MediatorWiring.NO_SESSION,
             now = System.currentTimeMillis(),
         )
+        // 第五百零七批收口 §二：本轮三数（问卡 N／被压 M／必问 K）跟调解器的回合同源同清——
+        // send 是 onUserTurn 的唯一调用点，beginTurn 只许在这里调（别处清会让守恒对不上）。
+        com.example.zhengdao.baopu.agent.AskGovernance.beginTurn()
         // 第四百四十一单：一句话值守触发（**唯一**接线点，与调解器同一道、同一理由：
         // 点通知走深链、点问卡按钮走 engine.answerChoice——都不经过 send，天然不触发
         // 隐式解除；网页内容/工具返回值根本没有一条道能进触发层）。放在所有分支之前：

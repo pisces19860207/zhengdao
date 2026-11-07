@@ -374,15 +374,98 @@ internal object AskGovernance {
         atMs = atMs,
     )
 
-    /** 左相压卡落账（D 段③：who=LEFT、依据＝档位＋预算）。 */
-    fun noteSuppressLeft(reason: String, budgetBasis: String, atMs: Long = System.currentTimeMillis()): AskGovRow =
+    /**
+     * 左相压卡落账（D 段③：who=LEFT、依据＝档位＋预算、卡类型与时间齐备）。
+     *
+     * 第五百零七批收口：生产调用只许 [askViaMediator] 一处（闸的内部），
+     * 别处不许再手写这份判断。卡类型进 `detail`（`card=…`），行结构不扩列。
+     */
+    fun noteSuppressLeft(
+        reason: String,
+        budgetBasis: String,
+        card: String = "",
+        atMs: Long = System.currentTimeMillis(),
+    ): AskGovRow =
         AskGovLedger.append(
             kind = AskGovLedger.KIND_SUPPRESS,
             who = AskGovLedger.WHO_LEFT,
             basis = "$reason｜$budgetBasis",
             tool = "ask_user",
+            detail = if (card.isBlank()) "" else "card=$card",
             atMs = atMs,
         )
+
+    // ── 第五百零七批 · 弹卡收口：唯一的左相闸薄封装 ─────────────────────────
+    //
+    // 为什么在这里而不在 MediatorWiring（policy）：压卡要落的是这本治理账
+    // （AskGovLedger/DecisionLedger，app 侧），policy 不能反向依赖 app；
+    // 为什么不在 GuardPipeline：管线判的是**动作**的风险，问卡不是动作——
+    // 可省问卡的唯一出口在引擎的 askUser/askGroup，闸贴着出口放。
+    //
+    // 铁律（406，判据原话）：**只少问，不压必问**——mustAsk=true 走让步格
+    // （MediatorDecide.shouldAsk：恒放行、不占预算），所以这里压掉的只有可省的
+    // 问卡；必问卡（确认卡／御批人批闸／许可门禁）根本不经这口，或带 mustAsk 进来。
+
+    /** 本轮三数（§二 可观测）：问卡 N ／ 被压 M ／ 必问 K。守恒：N = M + K + 可省弹出。 */
+    data class TurnTally(val attempts: Int, val suppressed: Int, val mustAsk: Int) {
+        /** 过闸放行的卡（必问 K 张恒在其中；余下就是"实际弹出"的可省卡）。 */
+        val popped: Int get() = attempts - suppressed
+    }
+
+    @Volatile
+    private var turn = TurnTally(0, 0, 0)
+
+    /** 新的一轮（与 `MediatorWiring.onUserTurn` 同一道：BaopuChatController.send 里紧挨着调）。 */
+    fun beginTurn() {
+        turn = TurnTally(0, 0, 0)
+    }
+
+    /** 本轮三数读数（体检单与测试用）。 */
+    fun turnTally(): TurnTally = turn
+
+    /**
+     * 体检单里本轮三数那一行（507 §二判据的形状）：
+     * `本轮问卡 N｜被压 M｜必问 K｜弹出 P（N = M + K + 可省 P）`
+     *
+     * 口径：计入的是**到过闸的卡**。被免打扰延后的卡已在本轮放行过闸（它"过会儿再问"
+     * 走原始出口补问，不过闸、不重复计数），所以守恒恒在闸上成立；
+     * "她面前真出卡"另有 PlanContractBoard.noteAsk 那本问人账，两本各对各的。
+     */
+    fun turnTallyLine(): String {
+        val t = turn
+        return "本轮问卡 ${t.attempts}｜被压 ${t.suppressed}｜必问 ${t.mustAsk}" +
+            "｜弹出 ${t.popped}（N = M + K + 可省 ${t.popped - t.mustAsk}）"
+    }
+
+    /**
+     * 弹卡前问左相——**全部可省问卡的唯一闸口**（507 收口：不许每处各写一遍判断）。
+     *
+     * · 放行 ⇒ 原样返回建议，调用方照常出卡（记一行"过闸"的 N 已含它）；
+     * · 压下 ⇒ 落账（who=LEFT、依据＝档位＋预算、卡类型、时间）＋ RunLog 一行，
+     *   返回 null：调用方立即收手，把"没人答"照实往上报——不弹、不进补问队列
+     *   （LOOP 的契约是"只给两条路"，不是过会儿再问）；
+     * · 必问（mustAsk=true）⇒ 让步格恒放行：调解器压不到任何必问（铁律）。
+     *
+     * @param card 卡类型（落账用：ask_user／求助卡／组授权御批卡／人设提案卡／多问卡…）
+     */
+    fun askViaMediator(
+        mustAsk: Boolean,
+        card: String,
+        atMs: Long = System.currentTimeMillis(),
+    ): com.example.zhengdao.baopu.MediatorDecide.AskAdvice? {
+        turn = TurnTally(turn.attempts + 1, turn.suppressed, turn.mustAsk + if (mustAsk) 1 else 0)
+        val advice = com.example.zhengdao.baopu.MediatorWiring.consultAsk(mustAsk)
+        if (advice.allowed) return advice
+        turn = TurnTally(turn.attempts, turn.suppressed + 1, turn.mustAsk)
+        noteSuppressLeft(
+            reason = advice.reason,
+            budgetBasis = advice.budget.basis,
+            card = card,
+            atMs = atMs,
+        )
+        RunLog.log(advice.line() + "｜card=$card")
+        return null
+    }
 
     /** 误拦申诉（C 段：一键申诉 ⇒ 落误拦账；申诉不自动改规则——只记账，不动档位/预算/矩阵）。 */
     fun appeal(subject: String, scene: String, atMs: Long = System.currentTimeMillis()): AskGovRow =
@@ -443,10 +526,11 @@ internal object AskGovernance {
     /** 日预算的换日键（本地日历天；换日即归零）。 */
     internal fun dayKey(nowMs: Long): Int = dayOf(nowMs).toEpochDay().toInt()
 
-    /** 清空（测试专用：单例状态＋账＋档位一起还）。 */
+    /** 清空（测试专用：单例状态＋账＋档位＋本轮三数一起还）。 */
     @Synchronized
     fun resetForTest() {
         currentTier = AskTier.DEFAULT
+        turn = TurnTally(0, 0, 0)
         AskGovLedger.resetForTest()
     }
 }

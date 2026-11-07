@@ -16,10 +16,22 @@ class AskGateMustAskTest {
     private fun src(rel: String): String =
         File(rel).let { if (it.isFile) it else File("app/$rel") }.readText()
 
+    private fun dir(rel: String): File =
+        File(rel).takeIf { it.isDirectory } ?: File("app/$rel")
+
     private val engine: String
         get() = src("src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt")
     private val wiring: String
         get() = src("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt")
+    private val governance: String
+        get() = src("src/main/java/com/example/zhengdao/baopu/agent/AskGovernance.kt")
+
+    /** 全部生产 Kotlin 源（app ＋ policy）：单收口的全仓清点用。 */
+    private val prodSources: List<File>
+        get() = listOf(
+            dir("src/main/java"),
+            File("../policy/src/main/java").takeIf { it.isDirectory } ?: File("policy/src/main/java"),
+        )
 
     private fun slice(text: String, from: String, to: String): String {
         val a = text.indexOf(from)
@@ -29,15 +41,26 @@ class AskGateMustAskTest {
         return text.substring(a, b)
     }
 
-    // ── 收口形状：闸只有一个口 ────────────────────────────────────────────
+    // ── 收口形状：闸只有一个口（507 收口：薄封装 askViaMediator）──────────
 
     @Test
-    fun `consultAsk生产只有两处_askUser与askGroup_单收口`() {
-        // 左相闸的真身只在 askUser / askGroup 两个执行体里——所有该过闸的入口
-        // 都经由这两个函数，不存在第三个直连调解器的弹卡口。
-        assertEquals(2, Regex("MediatorWiring\\.consultAsk\\(").findAll(engine).count())
-        assertTrue("askUser 必须把必问档递给闸", engine.contains("MediatorWiring.consultAsk(mustAsk)"))
-        assertTrue("askGroup 的④路让步格原样", engine.contains("MediatorWiring.consultAsk(viaUserChoice)"))
+    fun `consultAsk生产只有一处_在askViaMediator闸内_单收口`() {
+        // 507 收口：左相闸只剩一个薄封装（AskGovernance.askViaMediator）——问调解器、
+        // 压卡落账（who=LEFT／依据／卡类型／时间）都在闸里；askUser/askGroup 经它过闸，
+        // 不存在第二个直连调解器的弹卡口，也不许每处各写一遍判断。
+        assertEquals(
+            "MediatorWiring.consultAsk( 生产恰 1 处＝闸内",
+            1,
+            prodSources.sumOf { root ->
+                root.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }
+                    .sumOf { Regex("MediatorWiring\\.consultAsk\\(").findAll(it.readText()).count() }
+            },
+        )
+        assertTrue("闸本体在 AskGovernance", governance.contains("fun askViaMediator("))
+        assertTrue("askUser 必须经闸", engine.contains("AskGovernance.askViaMediator(mustAsk = mustAsk, card = cardLabelOf(req))"))
+        assertTrue("askGroup 必须经闸（④路让步格原样）", Regex("AskGovernance\\.askViaMediator\\(\\s*mustAsk = viaUserChoice").containsMatchIn(engine))
+        assertEquals("askUser/askGroup 之外不许再有直连闸的调用", 2, Regex("AskGovernance\\.askViaMediator\\(").findAll(engine).count())
+        assertTrue("铁律写在闸的注释里：只少问，不压必问", governance.contains("只少问，不压必问"))
     }
 
     @Test
