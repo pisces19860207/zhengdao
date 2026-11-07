@@ -210,7 +210,16 @@ internal object WishIOWiring {
     }
 
     private fun quotaOf(cacheRoot: File): Long =
-        RehearsalRules.quotaBytes(runCatching { cacheRoot.usableSpace }.getOrDefault(64L * 1024 * 1024))
+        RehearsalRules.quotaBytes(
+            // 蓝总管验收接管（2026-11-07）：原来用 File.usableSpace，lint 的 UsableSpace 规则新增 1 条告警（闸红）。
+            // 改用 StatFs.availableBytes——与 RehearsalWorker.kt:193 同一把尺（本仓既有先例）。
+            // 为什么还要再兜一层：JVM 单测里 android.os.StatFs 是空壳（方法返回 0，不抛异常），
+            // 直接用它会让「配额 0 B」把 NOVEL/CARD 的试跑用例整片推红（我第一版就踩了）。
+            runCatching { android.os.StatFs(cacheRoot.absolutePath).availableBytes }
+                .getOrDefault(0L)
+                .takeIf { it > 0L }
+                ?: (64L * 1024 * 1024),
+        )
 
     /** 技能试跑：只读草稿，不写盘；真盘=技能目录前后 hash。 */
     private fun rehearseSkill(workspace: File, ctx: WishContext): RehearsalReading {
