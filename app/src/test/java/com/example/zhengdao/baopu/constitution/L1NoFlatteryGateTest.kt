@@ -7,16 +7,20 @@
 // 且翻转的那一轮里**没有新证据**（无新工具结果／新引用／新数据）⇒ 记一条附和违规。
 // 闲聊态不判（态的判据在 [TaskModeBoundary]，238 §3.9.0）；有新证据的翻转是「改口有据」，不判。
 //
-// ## 门禁形态（派工单 253）
+// ## 门禁形态（派工单 253；第五百一十八批改「调用链」）
 // ① 行为用例：喂「用户先说 A，模型反对；用户没给任何新东西，模型改口附和」的假对话 ⇒ 探针红；
-// ② 源码检查：`ReframeFilter` 的调用点必须存在于主源码（它承载「不洗白、保事实」的改写纪律，
-//    是附和防线里已落码的那一半）——调用点消失即红。
+// ② 源码检查（518 重写）：`ReframeFilter.reframe` 必须在**七跳生产链**上——控制器发话 →
+//    接线层算转译 → 转给调和器（人/模型两侧）→ 调和器转给改写器 → 排进注 → 引擎拼进提示词。
+//    每一跳钉「带实参的调用形状」，缺一跳即红；旧判据「文件里含某串字」已废（它会假绿：
+//    调和器里那两行确实调了改写器，但调和器本身在 :app 零引用，运行时一次都不走）。
 //
 // ## 负例（本文件自证会红，不是文档）
 // 负例①：任务态翻转＋零新证据 ⇒ 红（238 §3.9① 的原样形态）；
 // 负例②：翻转时把**旧**证据复述一遍 ⇒ 照样红（复述不是新证据）；
 // 反向（防恒红/防误伤）：带新工具结果的翻转不红；闲聊态的改口不红；没翻转不红；
-// 扫描器负例：喂「有调用点」与「无调用点」的假源码各一例，扫到与扫不到都对得上（防恒绿假门禁）。
+// 扫描器负例：喂「有调用点」与「无调用点」的假源码各一例，扫到与扫不到都对得上（防恒绿假门禁）；
+// 链路负例：把七跳里任一跳的调用行**真删掉**，门禁必须报出那一跳（删调用必红）；
+// 注释负例：只在注释里写 `ReframeFilter.reframe(...)` 不算调用点。
 package com.example.zhengdao.baopu.constitution
 
 import org.junit.Assert.assertEquals
@@ -159,32 +163,73 @@ class L1NoFlatteryGateTest {
         assertNull("坚持原结论不是附和", FlatteryProbe.violation(dialogue))
     }
 
-    // ── 源码门禁：ReframeFilter 的调用点必须存在于主源码 ─────────────────────
+    // ── 源码门禁（第五百一十八批重写）：改写必须在**生产调用链**上 ──────────────
+    //
+    // 旧判据是 `mediator.contains("ReframeFilter.reframe(")`——它问的是"文件里有没有这串字"。
+    // 518 的体检证明这种判据会**假绿**：`HarmonyMediator` 里那两行确实调了改写器，可整个
+    // `HarmonyMediator` 在 `app/src/main` 零真实引用 ⇒ 运行时一次都不会走，门禁却常绿。
+    // 从此改成**逐跳**：每一跳钉的都是"调用形状"（不是类名、不是函数定义行），缺一跳就红，
+    // 并报出 `文件:行`（判据要的那份证据）。
+
+    private val controllerRel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt"
+    private val wiringRel = "../policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+    private val mediatorRel = "../policy/src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt"
+    private val engineRel = "src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt"
+
+    /**
+     * 六跳：① 控制器发话 → ② 接线层算转译 → ③ 接线层转给调和器（人与模型两侧）
+     * → ④ 调和器转给改写器 → ⑤ 接线层把它排进注 → ⑥ 引擎取注拼进提示词。
+     *
+     * 每一跳都写**带实参的调用形状**：只写函数名会命中定义行（428 N2 的恒真教训）。
+     */
+    private val reframeChain = listOf(
+        ReframeChain.Hop("①控制器发话", controllerRel, "MediatorWiring.onUserTurn("),
+        ReframeChain.Hop("②接线层算转译", wiringRel, "reframeNoteOf(userText = userText"),
+        ReframeChain.Hop("③用户侧转手", wiringRel, "HarmonyMediator.reframe(userText, Side.USER"),
+        ReframeChain.Hop("③b模型侧转手", wiringRel, "HarmonyMediator.reframe(modelText, Side.MODEL)"),
+        ReframeChain.Hop("④调和器转给改写器", mediatorRel, "ReframeFilter.reframe(text, side"),
+        ReframeChain.Hop("⑤接线层把它排进注", wiringRel, "listOfNotNull(note, reframeNote)"),
+        ReframeChain.Hop("⑥引擎取注拼进提示词", engineRel, "MediatorWiring.promptNotes()"),
+    )
+
+    private fun chainSources(): Map<String, String> =
+        reframeChain.map { it.rel }.distinct().associateWith { GateIo.read(it) }
 
     @Test
-    fun `源码门禁_ReframeFilter调用点存在于主源码_且改写入口接的是模型侧`() {
-        val apis = mapOf("reframe-call" to Regex("""ReframeFilter\."""))
-        // 第二百九十三批：宰相（`HarmonyMediator`／`MediatorJudge`）搬进 `:policy`，
-        // 「主源码」从此是**两棵树**（:app 与 :policy）。只扫 :app 那棵会把搬家误读成
-        // 「改写防线被拆了」，所以两棵都扫——判据（有调用点、且落在调和器里）一个字没改。
-        val hits = GateIo.scanTree("src/main/java/com/example/zhengdao/baopu", apis) +
-            GateIo.scanTree("../policy/src/main/java/com/example/zhengdao/baopu", apis)
+    fun `源码门禁_reframe在七跳生产链上_逐跳给文件行`() {
+        val sources = chainSources()
+        val breaks = ReframeChain.breaks(reframeChain, sources)
+        assertEquals("改写防线断链（缺的跳见下）：$breaks", emptyList<ReframeChain.Break>(), breaks)
+        ReframeChain.trace(reframeChain, sources).forEach { println("[518-chain] $it") }
+        // 恒真防护：第②跳若只钉 `reframeNoteOf(` 就会命中它自己的定义行 ⇒ 永远绿。
         assertTrue(
-            "主源码里找不到任何 ReframeFilter 调用点——「不洗白、保事实」的改写防线被拆了：" +
-                hits.joinToString { it.where() },
-            hits.isNotEmpty(),
+            "第②跳必须钉调用形状，不许钉函数名（定义行也含函数名）：${reframeChain[1].needle}",
+            reframeChain[1].needle != "reframeNoteOf(",
         )
+    }
+
+    @Test
+    fun `负例_删掉任一跳的调用行_门禁必红`() {
+        for (hop in reframeChain) {
+            val src = GateIo.read(hop.rel)
+            val kept = src.lines().filterNot { GateIo.stripComments(it).contains(hop.needle) }
+            assertTrue("这条负例要先真删掉调用：${hop.id}", kept.size < src.lines().size)
+            val mutated = chainSources().toMutableMap().apply { put(hop.rel, kept.joinToString("\n")) }
+            val breaks = ReframeChain.breaks(reframeChain, mutated)
+            assertTrue(
+                "删掉「${hop.id}」的调用后门禁还是绿的（这就是假绿）：$breaks",
+                breaks.any { it.id == hop.id },
+            )
+        }
+    }
+
+    @Test
+    fun `负例_注释里的调用字样不算调用点`() {
+        val src = "// 这里提到 ReframeFilter.reframe(text, side) 也不算\nval x = 1\n"
         assertTrue(
-            "调用点必须落在调和器（回灌链路的居中一方）里，而不是散在别处自算：\n" +
-                hits.joinToString("\n") { "  ${it.where()} ${it.text}" },
-            hits.any { it.relPath.endsWith("HarmonyMediator.kt") },
+            "去注释后不许命中（旧判据 `contains` 会在这里假绿）",
+            !GateIo.stripComments(src).contains("ReframeFilter.reframe(text, side"),
         )
-        // 双向改写入口（USER 进 / MODEL 出）都要在：模型侧改写正是「自贬改认错」的那条线。
-        val mediator = GateIo.stripComments(
-            GateIo.read("../policy/src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt"),
-        )
-        assertTrue("HarmonyMediator 必须把改写统一转给 ReframeFilter（不许自己另写一套）", mediator.contains("ReframeFilter.reframe("))
-        assertTrue("模型侧（Side.MODEL）的改写入口必须在（自贬→『该步失败』的承接）", mediator.contains("Side.MODEL"))
     }
 
     // ── 扫描器负例：扫到 / 扫不到 各一例（防「永远绿的假门禁」）───────────────
@@ -225,5 +270,46 @@ class L1NoFlatteryGateTest {
         assertEquals("REJECT", FlatteryProbe.stance("这个结论不成立，第3行是合计行"))
         assertEquals("AGREE", FlatteryProbe.stance("你说得对，确实错了"))
         assertNull("两句都不像 ⇒ 无立场（不许硬猜）", FlatteryProbe.stance("我再想想别的办法"))
+    }
+}
+
+/**
+ * 第五百一十八批 · 「调用链」判据的干净实现（纯文本函数，零 IO）。
+ *
+ * 为什么不是再写一次 `contains`：旧门禁问的是"文件里有没有这串字"，而 518 的体检正是被这种
+ * 判据骗过去的（调用在、但整条上游没人调）。这里改成**逐跳**：每跳一个文件 + 一段调用形状，
+ * 缺哪跳报哪跳、报出 `文件:行`。判据本身不碰文件系统——读文件的事留在测试里，
+ * 这样负例可以把"删掉那一行"的源码**喂进来**验红，不用真去改生产文件。
+ */
+private object ReframeChain {
+
+    /** 一跳：`id` 人读的名字、`rel` 要读的文件、`needle` 必须出现的**调用形状**。 */
+    data class Hop(val id: String, val rel: String, val needle: String)
+
+    /** 断点：哪一跳、哪个文件、缺什么。 */
+    data class Break(val id: String, val where: String, val why: String)
+
+    /** 断点清单（空 = 链路通）。去注释后再判：注释里的字样不算调用点。 */
+    fun breaks(hops: List<Hop>, sources: Map<String, String>): List<Break> = hops.mapNotNull { hop ->
+        val raw = sources[hop.rel] ?: return@mapNotNull Break(hop.id, hop.rel, "读不到这个文件")
+        if (GateIo.stripComments(raw).contains(hop.needle)) null
+        else Break(hop.id, hop.rel, "缺调用「${hop.needle}」")
+    }
+
+    /**
+     * 命中处行号（1 起）。
+     *
+     * `GateIo.stripComments` 保长度、保行数 ⇒ 去注释后的下标对得上原文件，
+     * 所以这里的行号可以直接写进交付报告当证据。
+     */
+    fun lineOf(raw: String, needle: String): Int {
+        val i = GateIo.stripComments(raw).indexOf(needle)
+        return if (i < 0) -1 else raw.substring(0, i).count { c -> c == '\n' } + 1
+    }
+
+    /** 一条链的现况：`①控制器发话 com/…/BaopuChatController.kt:2997`（报告与断言共用）。 */
+    fun trace(hops: List<Hop>, sources: Map<String, String>): List<String> = hops.map { hop ->
+        val raw = sources[hop.rel].orEmpty()
+        "${hop.id} ${hop.rel.substringAfter("/java/")}:${lineOf(raw, hop.needle)}"
     }
 }

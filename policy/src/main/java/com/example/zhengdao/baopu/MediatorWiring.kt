@@ -80,6 +80,24 @@ object MediatorWiring {
      */
     const val PROMPT_CONTRACT = "每轮末尾可能附一行《调解指令》，按它调整语气，不要复述它。"
 
+    /**
+     * 第五百一十八批 · 转译那一段的**固定标记**（与 [PROMPT_MARK] 并列，排在它之后）。
+     *
+     * 为什么要单开一个标记而不是并进 [PROMPT_MARK]：两者性质不同——[PROMPT_MARK] 是
+     * 「语气怎么调」，本标记是「原话被改写过、按改写版理解」。日志分流、将来换通道的抽取
+     * 都需要分开捞，混成一个键就分不出来了。
+     */
+    const val REFRAME_MARK = "[转译]"
+
+    /**
+     * 转译段的字数上限（含事实抽取后的结果）。
+     *
+     * 用户原话已经在本轮消息里一遍了，这一段是**第二份**；不设上限就等于给每次请求
+     * 挂一条随输入线性增长的尾巴。超限按字符截断并加省略号——判据只要「保住事实」，
+     * 不要求把整段原话复述一遍。
+     */
+    const val MAX_REFRAME_NOTE_CHARS = 120
+
     private var boundSessionId: Long = NO_SESSION
     private var state = HarmonyMediator.State()
     private var memory = MediatorJudge.Memory()
@@ -87,6 +105,14 @@ object MediatorWiring {
 
     /** 本轮要拼进上下文的那一句；`null`＝这一轮没有话要说（CALM 且未暂停）。 */
     private var note: String? = null
+
+    /**
+     * 本轮要拼进上下文的**转译段**（第五百一十八批）；`null`＝原话不用改写（逐字节不变）。
+     *
+     * 排位：恒在 [note] 之后（尾部追加）。两段都是「这一轮新增的行」——前缀（人设/system）
+     * 一个字节都不动，提示词缓存的键因此不变。
+     */
+    private var reframeNote: String? = null
 
     /**
      * 本回合已弹出的问卡数（406 弹卡闸的计数；「回合」＝两次用户输入之间，
@@ -116,6 +142,7 @@ object MediatorWiring {
             memory = MediatorJudge.Memory()
             turns = 0
             note = null
+            reframeNote = null
             askedThisTurn = 0
         }
         turns += 1
@@ -138,6 +165,11 @@ object MediatorWiring {
         // W3：这一轮要不要带那句语气指令（CALM 且未暂停 ⇒ 不带，与接线前逐字节一致）。
         note = noteOf(state)
 
+        // W4（第五百一十八批）：原话的双向改写真接进生产。这一批之前 `ReframeFilter.reframe`
+        // 只在 `HarmonyMediator` 里有个转手，而它在 `app/src/main` 零真实引用 ⇒ 防线运行时不存在。
+        // 产出只走尾部（[promptNotes]），不替换消息本体：替换历史字节＝破前缀缓存。
+        reframeNote = reframeNoteOf(userText = userText, modelText = modelText, repeats = state.taskFailures)
+
         RunLog.log(logLine(state, step.flags, turns))
 
         step.flags.forEach { flag -> write(flag, now) }
@@ -159,12 +191,10 @@ object MediatorWiring {
                 "｜判出 ${flags.size} 条：" + flags.joinToString("、") { it.ban.wire }
             })
 
-    /**
-     * 引擎每次拼提示词时取的那一句（**不消费**：同一轮的工具循环里每一步都该看到同一句，
-     * 换批等于打破前缀；下一轮用户输入时才更新）。
-     */
+    /** 引擎每次拼提示词时取的那几句（**不消费**：同一轮的工具循环里每一步都该看到同一份，
+     * 换批等于打破前缀；下一轮用户输入时才更新）。顺序恒定：语气指令在前，转译段在后。 */
     @Synchronized
-    fun promptNotes(): List<String> = listOfNotNull(note)
+    fun promptNotes(): List<String> = listOfNotNull(note, reframeNote)
 
     /** 当前档位（日志与测试用；界面不显示数值，也不显示档位名）。 */
     @Synchronized
@@ -220,8 +250,42 @@ object MediatorWiring {
         memory = MediatorJudge.Memory()
         turns = 0
         note = null
+        reframeNote = null
         askedThisTurn = 0
     }
+
+    /**
+     * 第五百一十八批 · 转译段（**纯函数**；两边都不需要改写时返回 `null`，与接线前逐字节一致）。
+     *
+     * 判据全在 238，本文件只搬运：
+     *   · 要不要改写 → [ReframeFilter.needsReframe]（同一份词表，不另立第二套）；
+     *   · 怎么改写 → [HarmonyMediator.reframe]（不许自己写一套"洗白规则"）。
+     *
+     * 两段并成**一行**输出（用户侧在前、模型侧在后，用「｜」分隔）：一行 = 一条 `extraNotes`，
+     * 行数恒定，模型也不会把它当成两条互相冲突的指令。事实抽取的结果可能很长，按
+     * [MAX_REFRAME_NOTE_CHARS] 截断——这一段的判据是「保住事实」，不是「复述原话」。
+     */
+    private fun reframeNoteOf(userText: String, modelText: String, repeats: Int): String? {
+        val user = if (ReframeFilter.needsReframe(userText, Side.USER)) {
+            "用户原话按「保事实、去人格评价」改写：" +
+                clip(HarmonyMediator.reframe(userText, Side.USER, repeats.coerceAtLeast(1)))
+        } else {
+            null
+        }
+        val model = if (ReframeFilter.needsReframe(modelText, Side.MODEL)) {
+            "上一轮回复里的自贬按「认这一步没做成」改写：" +
+                clip(HarmonyMediator.reframe(modelText, Side.MODEL))
+        } else {
+            null
+        }
+        val body = listOfNotNull(user, model).joinToString("｜")
+        if (body.isEmpty()) return null
+        return "$REFRAME_MARK $body（按改写版理解，不要复述本行）"
+    }
+
+    /** 超过 [MAX_REFRAME_NOTE_CHARS] 就截断加省略号（判据只要事实在，不要求全文）。 */
+    private fun clip(text: String): String =
+        if (text.length <= MAX_REFRAME_NOTE_CHARS) text else text.take(MAX_REFRAME_NOTE_CHARS) + "…"
 
     /**
      * 这一轮该不该带话。

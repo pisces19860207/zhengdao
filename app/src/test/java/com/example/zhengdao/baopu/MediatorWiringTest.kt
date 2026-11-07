@@ -501,6 +501,44 @@ class MediatorWiringTest {
         assertTrue("自贬词表仍可数", ReframeFilter.selfDeprecationCount("我太笨了") == 1)
     }
 
+    // ── W4（第五百一十八批）：改写产出真的进上下文，而且只进尾部 ──────────────
+
+    @Test
+    fun `W4_原话要改写时多一段带标记的转译_不要改写时逐字节不变`() {
+        // ① 不需要改写：普通纠错不许多出一段（"与接线前逐字节一致"的另一半）
+        MediatorWiring.onUserTurn("这表第3行不对", "", sessionId = 11L, now = now)
+        assertTrue(
+            "不需要改写时不许凭空多一段：${MediatorWiring.promptNotes()}",
+            MediatorWiring.promptNotes().none { it.startsWith(MediatorWiring.REFRAME_MARK) },
+        )
+
+        // ② 需要改写：攻击词 + 事实 ⇒ 转译段必须出现，事实在、人格评价不在
+        MediatorWiring.resetForTest()
+        MediatorWiring.onUserTurn("你个废物，第3步点「查询」没找到元素", "", sessionId = 11L, now = now)
+        val notes = MediatorWiring.promptNotes()
+        assertEquals("语气指令 + 转译段 = 两段：$notes", 2, notes.size)
+        assertTrue("转译段必须排在最后（尾部追加，前缀字节不动）", notes.last().startsWith(MediatorWiring.REFRAME_MARK))
+        val tail = notes.last()
+        assertTrue("事实必须保住：$tail", tail.contains("第3步"))
+        assertTrue("人格评价不许回灌：$tail", !tail.contains("废物"))
+        assertEquals("固定标记就是 [转译]", "[转译]", MediatorWiring.REFRAME_MARK)
+        assertTrue("要有字数上限（尾巴不许随输入线性长）：${tail.length}", tail.length <= 260)
+    }
+
+    @Test
+    fun `W4_模型自贬也改写_下一轮按该步失败承接`() {
+        MediatorWiring.onUserTurn(
+            userText = "继续",
+            modelText = "我太笨了，第3步没找到元素",
+            sessionId = 11L,
+            now = now,
+        )
+        val tail = MediatorWiring.promptNotes().last()
+        assertTrue("模型侧自贬要转成「该步失败：原因 …」：$tail", tail.contains("该步失败"))
+        assertTrue("原因要从原句保下来：$tail", tail.contains("第3步"))
+        assertTrue("自贬原文不许回灌：$tail", !tail.contains("我太笨了"))
+    }
+
     private companion object {
         const val CONTROLLER = "src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt"
         // 接线层本体 293 起住在 `:policy`，取它的源码走 `PolicyPaths`（两棵源码树的路径口径）。
