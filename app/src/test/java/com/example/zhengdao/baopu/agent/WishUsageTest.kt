@@ -117,6 +117,13 @@ class WishUsageTest {
         assertTrue("账上要写明这是手动的", line.manual)
         assertEquals(WishUseVerdict.MANUAL, line.verdict)
         assertEquals("手动事件不进凭据", 0, WishUsageLedger.countedKeys(root).size)
+        // 纯判据本身也要咬住这一条（不只靠调用点那个 if）
+        assertFalse("countsAsReal 对 manual 事件必须 false", com.example.zhengdao.baopu.wish.WishUsageRules.countsAsReal(
+            WishUseEvent(WishUseSource.TOOL_HIT, wishId, manual = true),
+        ))
+        assertTrue("真实事件才是 true", com.example.zhengdao.baopu.wish.WishUsageRules.countsAsReal(
+            WishUseEvent(WishUseSource.TOOL_HIT, wishId),
+        ))
     }
 
     // ── ③ 三类来源 ──────────────────────────────────────────────────────
