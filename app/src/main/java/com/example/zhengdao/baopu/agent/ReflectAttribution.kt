@@ -148,18 +148,41 @@ internal object ReflectionMisjudgeJudge {
         )
 }
 
-/** 归因结果：落了账的与因 L17 闸没过的（负例要能点名）。 */
+/**
+ * 归因结果：落了账的与因 L17 闸没过的（负例要能点名）。
+ *
+ * @param judged **本次真正送进判据**的「否决」行数（N）——增量生效时远小于档案里否决行的总数
+ * @param fromLine 本次的起点行号（游标行；0＝全本）
+ * @param fullRebuild 本次是否走了全本重建（显式要求／游标缺失或作废）
+ * @param cursorNote 游标不可用时的一句话（用于日志；可用时为空串）
+ */
 internal data class AttributionResult(
     val persisted: List<ReflectionMisjudge>,
     val skipped: List<SkippedMisjudge>,
+    val judged: Int = 0,
+    val fromLine: Int = 0,
+    val fullRebuild: Boolean = false,
+    val cursorNote: String = "",
 )
 
 internal data class SkippedMisjudge(val dedupKey: String, val lineNo: Int, val reason: String)
+
+/** 显式全本重建时的那句日志口径（游标缺失/损坏走 [CursorLoad.note]，两种都记一行）。 */
+private const val FULL_REBUILD_NOTE = "全本重建（调用方显式要求）"
 
 /**
  * 归因的 IO 壳：读 265 落的进化档案（**只读**），产出归因行进判决经验账。
  *
  * 没装配工作区／档案不存在／读失败 ⇒ 空结果（归因是下游消费，源坏了不许把调用方带死）。
+ *
+ * **第 512 批：判哪些行**（判据一个字没动）——
+ * 每次调用都从头重判整本是浪费：判得 N 条、新增可能只有 1 条。改成游标增量：
+ *   · 游标记「上次判到哪一行」＋该行指纹，落在 `产物/进化档案.游标.json`（[AttributionCursorFile]）；
+ *   · 本次只把 `lineNo > 游标行` 的「否决」行送进判据，游标之前的行**不再重判**；
+ *   · 读盘仍是全本（判据要 `history`：同键前科决定「为什么判错」，这一条不许偷懒），
+ *     省掉的是逐条 judge／建证据／落账／账本全读——这些才是随历史线性涨的那部分；
+ *   · `full = true` ＝全本重建口（游标坏了／首次跑／换判据后复核都用它）；
+ *   · 游标缺失/损坏/作废 ⇒ **自动退化全本重建一次**，并记一行（[CursorLoad.note]）。
  */
 internal class ReflectionAttributor(
     private val wsRoot: File,
@@ -170,19 +193,51 @@ internal class ReflectionAttributor(
 
     private var seq = 0
 
-    fun attribute(): AttributionResult {
+    /** 一次增量扫的产物（三个数分开记：[judged] 旧口径看不到）。 */
+    private class Sweep(
+        var judged: Int = 0,
+        val persisted: MutableList<ReflectionMisjudge> = mutableListOf(),
+        val skipped: MutableList<SkippedMisjudge> = mutableListOf(),
+    )
+
+    /**
+     * 归因（默认增量；[full] = true 走全本重建口）。
+     *
+     * @param full 显式全本重建：不看游标、把每一对「提出→否决」重新判一遍
+     */
+    fun attribute(full: Boolean = false): AttributionResult {
         val file = ReflectionRunner.archiveFile(wsRoot)
         if (!file.isFile) return AttributionResult(emptyList(), emptyList())
         val text = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return AttributionResult(emptyList(), emptyList())
-        val rows = rowsWithLineNo(text)
+        val lines = text.lines()
+        val rows = rowsWithLineNo(lines)
+        if (rows.isEmpty()) return AttributionResult(emptyList(), emptyList())
+        val load = if (full) CursorLoad(null, FULL_REBUILD_NOTE) else AttributionCursorFile.load(wsRoot, lines)
+        val fromLine = load.cursor?.lastLineNo ?: 0
+        if (load.cursor == null) log("抱朴归因：${load.note}，本次全本重建（档案 ${rows.size} 行逐条重判）")
+        val sweep = sweep(rows, fromLine, file)
+        if (!saveCursor(rows, lines)) log("抱朴归因：游标没落上（下次自动退化为全本重建，不漏判）")
+        return AttributionResult(
+            persisted = sweep.persisted,
+            skipped = sweep.skipped,
+            judged = sweep.judged,
+            fromLine = fromLine,
+            fullRebuild = load.cursor == null,
+            cursorNote = load.note,
+        )
+    }
+
+    /** 只判 `lineNo > fromLine` 的「否决」行；配对与判据照旧（`rows.subList(0, idx)` 找提出行）。 */
+    private fun sweep(rows: List<ReflectionMisjudgeJudge.ArchiveRow>, fromLine: Int, file: File): Sweep {
         val openable = rows.isNotEmpty()
-        val persisted = mutableListOf<ReflectionMisjudge>()
-        val skipped = mutableListOf<SkippedMisjudge>()
+        val out = Sweep()
         rows.forEachIndexed { idx, reject ->
+            if (reject.lineNo <= fromLine) return@forEachIndexed
             if (reject.row.decision != ReflectionArchive.DECISION_REJECTED) return@forEachIndexed
             val proposal = rows.subList(0, idx)
                 .lastOrNull { it.row.key == reject.row.key && it.row.decision != ReflectionArchive.DECISION_REJECTED }
                 ?: return@forEachIndexed
+            out.judged += 1
             val now = clock()
             val misjudge = ReflectionMisjudgeJudge.judge(
                 proposal = proposal,
@@ -194,7 +249,7 @@ internal class ReflectionAttributor(
                 id = newId(now),
             )
             if (!AttributionGate.passes(misjudge.evidence, misjudge.reason)) {
-                skipped += SkippedMisjudge(misjudge.dedupKey, reject.lineNo, "证据不足或点不开（L17：无证据不落盘）")
+                out.skipped += SkippedMisjudge(misjudge.dedupKey, reject.lineNo, "证据不足或点不开（L17：无证据不落盘）")
                 log("抱朴归因：缺证据，不落盘（L17）${misjudge.dedupKey}｜档案 L${reject.lineNo}")
                 return@forEachIndexed
             }
@@ -210,15 +265,22 @@ internal class ReflectionAttributor(
                 ),
             )
             log("抱朴归因：${misjudge.why.cn}（${misjudge.why.wire}）${misjudge.dedupKey}｜${misjudge.reason}")
-            persisted += misjudge
+            out.persisted += misjudge
         }
-        return AttributionResult(persisted, skipped)
+        return out
     }
 
-    /** 档案文本 ⇒ 带行号的档案行（坏行跳过：回放是读历史，不许一行脏数据整本读不出）。 */
-    private fun rowsWithLineNo(text: String): List<ReflectionMisjudgeJudge.ArchiveRow> {
+    /** 游标推到「最后一条解析出来的档案行」（该行指纹一起记，下次靠它对不上来自证作废）。 */
+    private fun saveCursor(rows: List<ReflectionMisjudgeJudge.ArchiveRow>, lines: List<String>): Boolean {
+        val last = rows.last()
+        val raw = lines.getOrNull(last.lineNo - 1) ?: return false
+        return AttributionCursorFile.save(wsRoot, AttributionCursor(last.lineNo, archiveLineHash(raw)))
+    }
+
+    /** 档案行 ⇒ 带行号的档案行（坏行跳过：回放是读历史，不许一行脏数据整本读不出）。 */
+    private fun rowsWithLineNo(lines: List<String>): List<ReflectionMisjudgeJudge.ArchiveRow> {
         val out = mutableListOf<ReflectionMisjudgeJudge.ArchiveRow>()
-        text.lines().forEachIndexed { i, raw ->
+        lines.forEachIndexed { i, raw ->
             val line = raw.trim()
             if (!line.startsWith("|")) return@forEachIndexed
             val row = ReflectionArchive.parse(line).firstOrNull() ?: return@forEachIndexed
