@@ -12,10 +12,12 @@
 // 装配层拿到非空清单就**不许**把这次赔付报成完成（判据口径：缺项＝未完成，不是扣分）。
 //
 // 关于「复用 470」（2026-11-07 两次实测，别照抄这一段的旧版本）：
-// **开工时**基线 `9ffd9227` 上 `git ls-tree -r --name-only origin/main` 查不到 `baopu/safety/`
-// ——那座按次快照库当时还挂在 504 的 `feat/safety-trio`（`2fdb73e3`）上，没进 main；
-// **交付时**基线已推进到 `b866aa2f`（504 的三件连同验收接管已并入），
-// `baopu/safety/RollbackVault.kt` 现在**在 main 里**了（`stash(...)` 存、`rollback(RollbackScope, nowMs)` 取）。
+// 可重跑的命令是 `git ls-tree -r --name-only origin/main | grep baopu/safety/RollbackVault.kt`，
+// **同一个命令在夜里给出过两个相反的答案**，所以这里记的是那两次读数而不是任何一个结论：
+//   · **开工时**（基线 `9ffd9227`）：查不到——那座按次快照库当时还挂在 504 的 `feat/safety-trio`（`2fdb73e3`）上；
+//   · **交付时**（本分支 rebase 到的 main tip，第一趟是 `b866aa2f`、写这段时已是 `8a7eea13`）：查得到，
+//     `baopu/safety/RollbackVault.kt` 已在 main（`stash(...)` 存、`rollback(RollbackScope, nowMs)` 取）。
+// ⇒ 读这条注释的人请自己跑一遍那句命令，别信这里抄的 sha——这正是制度总账 **T-43** 补的那句「交付前要再核一次」。
 // 即便如此本文件仍**不 import** 它：工单没给装配租约，且 472 只判「有没有路、试没试过、赔不赔得起」，
 // **动手还原的仍是 470 那一路**——注入点是 main 已有的那道通用回滚口，装配批一行 lambda 就能接：
 //   · `DecisionRollbacks.run(target, root, handler, atMs, actor)`（`DecisionLedger.kt:515`「回滚执行＋留痕」那段），
