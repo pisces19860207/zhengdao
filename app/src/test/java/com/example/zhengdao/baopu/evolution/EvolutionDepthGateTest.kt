@@ -367,17 +367,25 @@ class EvolutionDepthGateTest {
     }
 
     @Test
-    fun `源级_深度裁定今天还没有生产调用方_接线归后续批`() {
+    fun `源级_深度裁定的生产调用方必须在本格登记`() {
         val callers = LawIo.sources(LawIo.MAIN_ROOT)
             .filter { (rel, raw) ->
                 !rel.endsWith("evolution/EvolutionDepth.kt") &&
                     LawIo.stripComments(raw).contains("EvolutionDepth.")
             }
             .map { it.first }
+        // 第五百零五批原文：本批只做判定与账，接线归后续批——那一格当时断言 emptyList()。
+        // 第五百零六批（后果治理）正是那个接线批：`consequence/` 两件开始读深度裁定
+        // ⇒ 按 505 自己的话「接线批一旦接上，这格红着提醒改名册」，这里改名册，
+        // 而不是把断言删掉（删了就等于以后谁都能悄悄接）。
+        // 蓝总管验收接管（2026-11-07）：只改名册，语义仍是「新增调用方必须先改这格」。
         assertEquals(
-            "本批只做判定与账（与 236／330 同一口径：判据没齐不硬接）；接线批一旦接上，这格红着提醒改名册",
-            emptyList<String>(),
-            callers,
+            "深度裁定的生产调用方名册（506 起接线：后果治理读深度；新增必须先改这格再合）",
+            listOf(
+                "baopu/consequence/ConsequenceLedger.kt",
+                "baopu/consequence/EvolutionDepth.kt",
+            ),
+            callers.sorted(),
         )
     }
 }
