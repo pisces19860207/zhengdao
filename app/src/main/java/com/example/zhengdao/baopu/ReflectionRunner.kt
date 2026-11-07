@@ -170,7 +170,8 @@ internal class ReflectionRunner(
     private fun productPart(): Triple<File?, String?, List<File>> {
         val dir = MemoryLayout.productsDir(wsRoot)
         val files = if (dir.isDirectory) {
-            dir.listFiles { f -> f.isFile }?.sortedBy { it.name } ?: emptyList()
+            // 512：读数只数**真产物**——点号隐藏件与归因游标（`*.游标.json`）不参与（见 isCountedProduct）
+            dir.listFiles { f -> isCountedProduct(f) }?.sortedBy { it.name } ?: emptyList()
         } else {
             emptyList()
         }
@@ -324,5 +325,18 @@ internal class ReflectionRunner(
         /** 进化档案落点：`<工作区>/产物/进化档案.md`。 */
         fun archiveFile(wsRoot: File): File =
             File(MemoryLayout.productsDir(wsRoot), ReflectionArchive.FILE_NAME)
+
+        /** 归因游标的后缀（`产物/进化档案.游标.json`，512 起落在档案同屋）。 */
+        const val CURSOR_SUFFIX = ".游标.json"
+
+        /**
+         * 512：产物清单的**读数口径**——点号开头的隐藏件与 `*.游标.json` 都不算产物。
+         *
+         * 为什么不能靠"候选正则 `^\d{8}_` 不命中"豁免：正则只决定候选提不提，而「产物 N 件」
+         * 是体检/审计的**读数**——盘上多一件读数就多一件，那是账不实，跟候选无关。
+         * 两种都排（点号＋后缀）：以后游标改名成点号件、或别的东西用同一后缀，都漏不进来。
+         */
+        fun isCountedProduct(f: File): Boolean =
+            f.isFile && !f.name.startsWith(".") && !f.name.endsWith(CURSOR_SUFFIX)
     }
 }
