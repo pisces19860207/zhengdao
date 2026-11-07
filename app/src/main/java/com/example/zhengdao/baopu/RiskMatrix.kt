@@ -425,6 +425,8 @@ internal data class RiskTable(
 
                 // ── 195 物流查询：本机当日表只读，不联网不调模型 ──────────────
                 "logistics_query" to ToolRule(RiskClass.R0),
+                // ── 527 治理出口：只读本机账本出六段读数（FREE、零写、零网络）──────
+                "governance_state" to ToolRule(RiskClass.R0),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
                 // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────

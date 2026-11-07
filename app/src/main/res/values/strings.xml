@@ -587,6 +587,9 @@
     <string name="baopu_tool_index_browse_desc">看索引里某个文件/目录的「给模型读的摘要」：标题、前几行、结构块。先在搜索卡扫描建索引。</string>
     <string name="baopu_tool_index_search">索引搜索</string>
     <string name="baopu_tool_index_search_desc">在已建的索引里按词找文件（回路径、分数、标题）；要逐字搜盘上的原文用「搜文件内容」。</string>
+    <!-- 527：治理出口（governance_state，只读 R0；FILES 组默认不可见，capabilities 解锁） -->
+    <string name="baopu_tool_governance_state">治理出口</string>
+    <string name="baopu_tool_governance_state_desc">一把读出本机治理六段：四率（当日）、弹卡三数、灰度档、冲突队列、执行体身份、未闭环承诺。只读，不写任何账。</string>
     <string name="baopu_tool_book_outline">看目录</string>
     <string name="baopu_tool_book_outline_desc">先看一本书的章节目录（章名、起止行、字数、首句），再决定读哪几章；拿到起始行直接当 read_file 的 offset 用。</string>
     <string name="baopu_tool_convert_encoding">转编码</string>

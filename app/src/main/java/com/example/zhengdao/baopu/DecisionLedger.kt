@@ -160,6 +160,18 @@ internal object DecisionLedger : LedgerPort {
     fun installedRoot(): File? = root
 
     /**
+     * 清空（**测试专用**：根与流水号一起还，同 [com.example.zhengdao.baopu.agent.AskGovLedger.resetForTest]
+     * 的房型）。为什么需要它：JVM 单测一个进程跑全套，这本账是进程级单例——上一个测试
+     * 装的根会漏进下一个「没装账本根」的用例，读不到就该 unknown 的语义就测不出来了。
+     * 生产不许调（根只在装配时装一次）。
+     */
+    @Synchronized
+    fun resetForTest() {
+        root = null
+        seq = 0
+    }
+
+    /**
      * 本机执行体身份的**读口**（装配层注入，476③）。
      *
      * 为什么是函数而不是直接引用那个身份库：`:app` 的 `baopu` 根包不许反过头依赖

@@ -609,6 +609,8 @@
     <string name="baopu_tool_index_browse_desc">Read the model-facing summary of an indexed file/folder: title, first lines, structure blocks. Build the index from the search card first.</string>
     <string name="baopu_tool_index_search">Index search</string>
     <string name="baopu_tool_index_search_desc">Search the built index by words (returns path, score, title); use "search in files" for literal on-disk grep.</string>
+    <string name="baopu_tool_governance_state">Governance outlet</string>
+    <string name="baopu_tool_governance_state_desc">One-shot read of six governance readouts: four rates (today), card tallies, gray bands, conflict queue, executor identity, open commitments. Read-only, writes nothing.</string>
     <string name="baopu_tool_book_outline">Book outline</string>
     <string name="baopu_tool_book_outline_desc">See a book’s chapter list first (title, line range, length, first line), then read just the chapters you need; the start line is the read_file offset as-is.</string>
     <string name="baopu_tool_convert_encoding">Convert encoding</string>

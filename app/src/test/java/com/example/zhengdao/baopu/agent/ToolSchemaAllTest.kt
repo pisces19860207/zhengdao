@@ -572,6 +572,8 @@ class ToolSchemaAllTest {
             "teach_site_trust" to JSONObject().put("action", "list"),
             // 502：MCP 自配五件（list 全可选且有 REQUIRED_EMPTY_OK 签字；其余各有必填）
             "mcp_list" to JSONObject(),
+            // 527：治理出口无参数（REQUIRED_EMPTY_OK 已签字）
+            "governance_state" to JSONObject(),
             "mcp_add_server" to JSONObject().put("url", "https://m.example.com/mcp"),
             "mcp_connect" to JSONObject().put("id", "s0a1b2c"),
             "mcp_disconnect" to JSONObject().put("id", "s0a1b2c"),

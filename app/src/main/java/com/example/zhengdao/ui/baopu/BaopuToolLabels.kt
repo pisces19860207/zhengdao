@@ -56,6 +56,8 @@ internal object BaopuToolLabels {
         // 492 B②：索引浏览/检索（FILES 组）
         "index_browse" to R.string.baopu_tool_index_browse,
         "index_search" to R.string.baopu_tool_index_search,
+        // 527：治理出口（只读 R0，FILES 组）
+        "governance_state" to R.string.baopu_tool_governance_state,
         "book_outline" to R.string.baopu_tool_book_outline,
         "file_info" to R.string.baopu_tool_file_info,
         "write_file" to R.string.baopu_tool_write_file,
@@ -166,6 +168,7 @@ internal object BaopuToolLabels {
         // 492 B②：索引浏览/检索（FILES 组）
         "index_browse" to R.string.baopu_tool_index_browse_desc,
         "index_search" to R.string.baopu_tool_index_search_desc,
+        "governance_state" to R.string.baopu_tool_governance_state_desc,
         "book_outline" to R.string.baopu_tool_book_outline_desc,
         "file_info" to R.string.baopu_tool_file_info_desc,
         "write_file" to R.string.baopu_tool_write_file_desc,

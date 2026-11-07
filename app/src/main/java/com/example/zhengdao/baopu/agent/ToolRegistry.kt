@@ -264,6 +264,9 @@ internal object ToolGroupTable {
         // 492 B②：索引浏览/检索归 FILES（默认不可见，capabilities 解锁——B1 硬卡不破）。
         "index_browse" to ToolGroup.FILES,
         "index_search" to ToolGroup.FILES,
+        // 527：治理出口（governance_state，只读 R0）——读的是本机自己的账本（与索引两件
+        // 「读 search.db 的账」同一房型），归 FILES 默认不可见（B1「默认可见 ≤12」硬卡不破）。
+        "governance_state" to ToolGroup.FILES,
         "move_path" to ToolGroup.FILES,
         "convert_encoding" to ToolGroup.FILES,
         "delete_path" to ToolGroup.FILES,
@@ -1294,6 +1297,9 @@ internal object BaopuToolCatalog {
         // 492 B②：索引两件默认「启用」（组归 FILES 仍默认不可见——解锁即用，同 find_files 口径）
         "index_browse",
         "index_search",
+        // 527：治理出口默认「启用」（组归 FILES 仍默认不可见——解锁即用，同索引两件口径；
+        // FREE 只读，读的是本机自己的账本，漏了这行 ⇒ 注册了但默认关，模型永远看不见）
+        "governance_state",
         "book_outline",
         "file_info",
         "write_file",
@@ -1432,6 +1438,9 @@ internal object BaopuToolCatalog {
         // capabilities 解锁——默认可见 ≤12 的硬卡不破）。index_search 复用既有检索。
         Entry("index_browse") { IndexTools.browseSpec(it) },
         Entry("index_search") { IndexTools.searchSpec(it) },
+        // 527：治理出口（只读 R0，一把出六段 JSON：四率/弹卡三数/灰度/冲突队列/执行体/未闭环）。
+        // 口径唯一真相在 docs/metrics-registry.md；运行环境由 BaopuRuntime 注入（GovernanceStateTool.env）。
+        Entry("governance_state") { GovernanceStateTool.spec(it) },
         Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },

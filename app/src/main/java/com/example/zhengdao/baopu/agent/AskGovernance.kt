@@ -479,26 +479,64 @@ internal object AskGovernance {
         )
 
     /**
+     * 今日体检数（弹卡三数＝自动放过/问卡/压卡）＋分场景误拦的分子分母。
+     *
+     * 第五百二十七批从 [healthLine] 提出的**同源数据函数**：机器口 `governance_state` 的
+     * cards 段与体检话行读同一份（metrics-registry.md：弹卡三数已有，不许再造第二遍）。
+     * [healthLine] 自己也改调它——话行一字不变，有既有用例钉着。
+     *
+     * @param pass 今日自动放过（严格档恒 0——不是没数，是严格档从不放过）
+     * @param cards 今日问卡张数；@param compress 今日汇总压卡次数；@param appeals 今日误拦申诉
+     */
+    data class HealthCounts(
+        val pass: Int,
+        val cards: Int,
+        val compress: Int,
+        val appeals: Int,
+        /** 分场景申诉数（误拦率分子，键＝AskGovLedger.SCENE_*）。 */
+        val appealsByScene: Map<String, Int>,
+        /** 分场景问卡数（误拦率分母）。 */
+        val cardsByScene: Map<String, Int>,
+    )
+
+    /** 弹卡三数＋分场景读数（当日；账本 replay，见 metrics-registry.md §2）。 */
+    fun healthCounts(nowMs: Long = System.currentTimeMillis()): HealthCounts {
+        val today = dayOf(nowMs)
+        val rows = AskGovLedger.replay().filter { dayOf(it.atMs) == today }
+        val cards = rows.filter { it.kind == AskGovLedger.KIND_CARD }
+        val appeals = rows.filter { it.kind == AskGovLedger.KIND_APPEAL }
+        return HealthCounts(
+            pass = if (currentTier == AskTier.STRICT) 0 else rows.count { it.kind == AskGovLedger.KIND_PASS },
+            cards = cards.size,
+            compress = rows.count { it.kind == AskGovLedger.KIND_COMPRESS },
+            appeals = appeals.size,
+            appealsByScene = mapOf(
+                AskGovLedger.SCENE_OBJECTIVE to appeals.count { it.scene == AskGovLedger.SCENE_OBJECTIVE },
+                AskGovLedger.SCENE_SUBJECTIVE to appeals.count { it.scene == AskGovLedger.SCENE_SUBJECTIVE },
+            ),
+            cardsByScene = mapOf(
+                AskGovLedger.SCENE_OBJECTIVE to cards.count { it.scene == AskGovLedger.SCENE_OBJECTIVE },
+                AskGovLedger.SCENE_SUBJECTIVE to cards.count { it.scene == AskGovLedger.SCENE_SUBJECTIVE },
+            ),
+        )
+    }
+
+    /**
      * 体检那一行（487 §三②的形状，加上 499 的分场景误拦率）：
      * `授权档：标准 · 今日自动放过 n · 今日问卡 N · 汇总压卡 c · 误拦申诉 a（客观 x/y · 主观 x/y）`
      */
     fun healthLine(nowMs: Long = System.currentTimeMillis()): String {
-        val today = dayOf(nowMs)
-        val rows = AskGovLedger.replay().filter { dayOf(it.atMs) == today }
-        val passes = rows.filter { it.kind == AskGovLedger.KIND_PASS }
-        val cards = rows.filter { it.kind == AskGovLedger.KIND_CARD }
-        val appeals = rows.filter { it.kind == AskGovLedger.KIND_APPEAL }
-        val passCount = if (currentTier == AskTier.STRICT) 0 else passes.size
-        return "授权档：${currentTier.cn} · 今日自动放过 $passCount 次 · 今日问卡 ${cards.size} 张" +
-            " · 汇总压卡 ${rows.count { it.kind == AskGovLedger.KIND_COMPRESS }} 次" +
-            " · 误拦申诉 ${appeals.size} 次（${rateOf(cards, appeals, AskGovLedger.SCENE_OBJECTIVE)}" +
-            " · ${rateOf(cards, appeals, AskGovLedger.SCENE_SUBJECTIVE)}）"
+        val c = healthCounts(nowMs)
+        return "授权档：${currentTier.cn} · 今日自动放过 ${c.pass} 次 · 今日问卡 ${c.cards} 张" +
+            " · 汇总压卡 ${c.compress} 次" +
+            " · 误拦申诉 ${c.appeals} 次（${rateOf(c, AskGovLedger.SCENE_OBJECTIVE)}" +
+            " · ${rateOf(c, AskGovLedger.SCENE_SUBJECTIVE)}）"
     }
 
     /** 分场景误拦率（目标 <5%）：申诉数 / 问卡数（同场景、同日）；分母 0 ⇒ "无样本"。 */
-    private fun rateOf(cards: List<AskGovRow>, appeals: List<AskGovRow>, scene: String): String {
-        val denominator = cards.count { it.scene == scene }
-        val numerator = appeals.count { it.scene == scene }
+    private fun rateOf(c: HealthCounts, scene: String): String {
+        val denominator = c.cardsByScene[scene] ?: 0
+        val numerator = c.appealsByScene[scene] ?: 0
         if (denominator == 0) return "场景=${sceneName(scene)} 无样本"
         val pct = numerator * 100.0 / denominator
         return "场景=${sceneName(scene)} ${"%.1f".format(pct)}% ($numerator/$denominator)"

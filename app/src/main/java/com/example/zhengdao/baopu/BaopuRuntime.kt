@@ -410,6 +410,8 @@ internal object BaopuRuntime {
         // 第一百九十五批：查询工具的存储壳（App 私有 filesDir/物流/logistics.db，与主库无关）。
         // 同一房型：Context 只到装配层这一处，工具与面板都从这里拿同一份壳 ⇒ 两处读到的数才是一个。
         com.example.zhengdao.baopu.agent.LogisticsQueryTool.store = logisticsStore(appCtx)
+        // 第五百二十七批：治理出口（governance_state）的运行环境（注入口见 [wireGovernanceState]）
+        wireGovernanceState(appCtx)
         // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
         reg.register(
             com.example.zhengdao.baopu.agent.SkillTools.spec(
@@ -437,6 +439,23 @@ internal object BaopuRuntime {
         // 第一百七十批 B：记下引擎真正要用的表（MCP 面板要靠它把工具注册进对的表）。
         engineRegistry = reg
         return reg
+    }
+
+    /**
+     * 第五百二十七批：治理出口（governance_state）的运行环境注入口——执行体的 filesDir
+     * 与 run_log 取数壳（`MetricsSources.logSteps`，METRICS.md §1.3 的唯一真相源；SQLite
+     * 没有 jsonl 副本，所以这一路是注入的**只读查询**，不是另造一套）。房型同 IndexTools.ctx：
+     * Context 只到装配层这一处，JVM 单测拿假件直接打六段对拍；logSteps 惰性取 db
+     * （首次调用才建库壳）。
+     */
+    private fun wireGovernanceState(appCtx: Context) {
+        com.example.zhengdao.baopu.agent.GovernanceStateTool.env =
+            com.example.zhengdao.baopu.agent.GovernanceStateTool.Env(
+                identityDir = { appCtx.filesDir },
+                logSteps = { fromMs ->
+                    com.example.zhengdao.baopu.inspect.MetricsSources.logSteps(db(appCtx), fromMs)
+                },
+            )
     }
 
     /**

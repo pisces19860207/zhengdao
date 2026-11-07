@@ -63,6 +63,8 @@ class ToolSchedulingGateTest {
         // 218: sheet_read (streaming sheet read) / search_web (plain GET) are pure reads
         // with no shared mutable state - intentional extension of this expectation table.
         "sheet_read", "search_web",
+        // 527：governance_state 只读各本账（不写盘、不联网），与别的读可并行
+        "governance_state",
         // 232: table_query 只读用户的表（唯一落盘是 App 自己的登记簿），与别的读可并行
         "table_query",
         // 288: organize_preview 只读预览（纯文件 stat/读，不写盘），与别的读可并行
