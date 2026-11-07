@@ -1372,35 +1372,31 @@ internal class RunEngine(
      * 为什么阻塞：选项是**同一步**里的决定，拆成两轮等于让模型带着半截上下文重来。
      * 阻塞有界（与确认卡同一超时），超时返回 null，由工具如实说「没人回答」。
      *
-     * @param mustAsk 必问让步格（第五百零七批）：法条必问的人批闸（发图/截屏许可、计划
-     *   结构变更、军令状立状/改约、契约批准）**也**从这一口弹卡，但调解器无权过问——
-     *   恒放行、不占问卡预算（[MediatorDecide.shouldAsk] 的让步格）。507 之前这些卡走
-     *   普通档，档位一升就被压掉＝「consultAsk 压得到必问卡」，违背 406 铁律「只少问，
-     *   不压必问」；铁律要求的是：可省的问卡才受压，必问卡不受。
+     * 第五百零七批收口：左相闸只有一个薄封装（[AskGovernance.askViaMediator]）——
+     * 问调解器、压卡落账（who=LEFT、依据＝档位＋预算、卡类型、时间）全在闸里，
+     * 这里不再各写一遍判断。铁律（406）：**只少问，不压必问**——[mustAsk]=true
+     * 走让步格恒放行（法条必问的人批闸：发图/截屏许可、计划结构变更、军令状
+     * 立状/改约、契约批准），压得掉的只有可省的问卡。
+     *
+     * @param mustAsk 必问让步格：调解器无权过问——恒放行、不占问卡预算
+     *   （[MediatorDecide.shouldAsk] 的让步格）。
      */
     fun askUser(req: AskUserRequest, mustAsk: Boolean = false): AskUserOption? {
-        // 调解器弹卡闸（406 接线）：左相弹卡前先问调解器——用户已暂停／已熔断／本回合追问
-        // 到耐心阈值 ⇒ 压（不弹也不排队：少问，不是延后问），工具侧如实收"没人答"。
-        // 走这里压得掉的只有**可省**的问卡：模型自己的 ask_user／求助卡③／计划偏离卡；
-        // 必问的确认卡／御批卡根本不经过此口（自有面），从这口进来的法条必问卡带
-        // mustAsk=true 过让步格——所以调解器压不到任何必问（铁律：只少问，不压必问）。
-        // 免打扰闸在它后面：压下的卡不进补问队列——LOOP 的契约是"只给两条路"，不是过会儿再问。
-        val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk(mustAsk)
-        if (!mediatorAdvice.allowed) {
-            log(mediatorAdvice.line())
-            // 第四百九十九批 D 段③：压卡落账（who=LEFT、依据＝档位＋预算）——压下的卡
-            // 没问过人，处置账上没有它的行，只有这本治理账记得"为什么没弹"。
-            com.example.zhengdao.baopu.agent.AskGovernance.noteSuppressLeft(
-                reason = mediatorAdvice.reason,
-                budgetBasis = mediatorAdvice.budget.basis,
-            )
-            return null
-        }
-        // 免打扰弹卡闸（330 接线）：左相弹卡前先问 QuietMode——静默中这张卡压进补问队列
-        // （记一条"因免打扰延后"），工具侧如实收"没人答"；放行则先按序补问积压，再出这张。
+        // 调解器弹卡闸（406 接线、507 收口成一道薄封装）：压下的卡不弹也不排队
+        // （少问，不是延后问），工具侧如实收"没人答"。免打扰闸在它后面。
+        AskGovernance.askViaMediator(mustAsk = mustAsk, card = cardLabelOf(req)) ?: return null
+        // 免打扰弹卡闸（330 接线）：左相放行后再问 QuietMode——静默中这张卡压进补问队列
+        // （记一条"因免打扰延后"）；放行则先按序补问积压，再出这张。
         if (quietDefer(req)) return null
         drainQuietQueue()
         return askUserRaw(req)
+    }
+
+    /** 这张卡在治理账上的类型名（§二 落账判据：压卡行要带卡类型）。 */
+    private fun cardLabelOf(req: AskUserRequest): String = when (req.kind) {
+        AskKind.GROUP_AUTHORIZATION -> "组授权御批卡"
+        AskKind.PERSONA_PROPOSAL -> "人设提案卡"
+        AskKind.QUESTION -> if (req.subject.startsWith("help:")) "求助卡" else "ask_user"
     }
 
     /** [askUser] 的原始弹卡体（过闸放行之后才走这里；检查点补问也走这里，不再过闸）。 */
@@ -1464,17 +1460,12 @@ internal class RunEngine(
                 return stored
             }
         }
-        // 调解器弹卡闸（406 接线）：与 [askUser] 同一把尺，整组一起判——压就整组压。
-        val mediatorAdvice = com.example.zhengdao.baopu.MediatorWiring.consultAsk(viaUserChoice)
-        if (!mediatorAdvice.allowed) {
-            log(mediatorAdvice.line())
-            // 第四百九十九批 D 段③：与 [askUser] 同一本治理账（who=LEFT、依据＝档位＋预算）。
-            com.example.zhengdao.baopu.agent.AskGovernance.noteSuppressLeft(
-                reason = mediatorAdvice.reason,
-                budgetBasis = mediatorAdvice.budget.basis,
-            )
-            return null
-        }
+        // 调解器弹卡闸（406 接线、507 收口）：与 [askUser] 同一道薄封装，整组一起判——
+        // 压就整组压（落账带卡类型＝多问卡；④路让步格带 mustAsk，压不掉）。
+        AskGovernance.askViaMediator(
+            mustAsk = viaUserChoice,
+            card = if (viaUserChoice) "多问卡·用户点名" else "多问卡",
+        ) ?: return null
         // 调解器的排序建议（406）：档位升起来时省力的问先弹（只给排序建议；CALM 恒照旧）。
         // 重量按问题形状给（判据不读内容）：TEXT 要打字最重、NUMBER 次之、点一下的最轻。
         // 采纳＝只把出卡的序换成建议的序（重排，不改卡不丢卡）；此后 req 就是出卡的那一份。

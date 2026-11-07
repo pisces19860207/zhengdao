@@ -48,17 +48,27 @@ class MediatorDecideGateTest {
     @Test
     fun `G1_askUser先问调解器再问免打扰`() {
         val body = slice(engineCode(), "fun askUser(", "private fun askUserRaw(")
-        val consult = body.indexOf("MediatorWiring.consultAsk(")
+        // 507 收口：引擎体内不许再直呼 consultAsk——问调解器收进唯一薄封装
+        // （AskGovernance.askViaMediator），这里钉"先过左相闸、再问免打扰"的次序。
+        val consult = body.indexOf("AskGovernance.askViaMediator(")
         val quiet = body.indexOf("quietDefer(")
-        assertTrue("askUser 里没问调解器（406 接线丢了）", consult >= 0)
+        assertTrue("askUser 里没过左相闸（406 接线丢了）", consult >= 0)
         assertTrue("调解器闸必须在免打扰闸之前：压下的卡不进补问队列", consult < quiet)
+        // 闸内必须真问调解器，且压了才落账（判据在闸里，不在调用方）。
+        val gov = codeOnly(read("src/main/java/com/example/zhengdao/baopu/agent/AskGovernance.kt"))
+        val gate = slice(gov, "fun askViaMediator(", "fun appeal(")
+        val gateConsult = gate.indexOf("MediatorWiring.consultAsk(mustAsk)")
+        val gateLedger = gate.indexOf("noteSuppressLeft(")
+        assertTrue("闸内没问调解器", gateConsult >= 0)
+        assertTrue("闸内压卡分支必须落治理账（who=LEFT）", gateLedger >= 0)
+        assertTrue("先问调解器、压了才落账", gateConsult < gateLedger)
     }
 
     @Test
     fun `G2_askGroup账本短路口仍在调解器闸之前`() {
         val body = slice(engineCode(), "fun askGroup(", "private fun askGroupRaw(")
         val ledger = body.indexOf("AskBatchLedger.answers(")
-        val consult = body.indexOf("MediatorWiring.consultAsk(")
+        val consult = body.indexOf("AskGovernance.askViaMediator(")
         val quiet = body.indexOf("quietDefer(")
         assertTrue(ledger >= 0)
         assertTrue(consult >= 0)
@@ -69,7 +79,7 @@ class MediatorDecideGateTest {
     @Test
     fun `G3_排序建议在闸之后拆卡之前_采纳只许重排`() {
         val body = slice(engineCode(), "fun askGroup(", "fun answerGroup(")
-        val consult = body.indexOf("MediatorWiring.consultAsk(")
+        val consult = body.indexOf("AskGovernance.askViaMediator(")
         val order = body.indexOf("MediatorWiring.orderAdvice(")
         val split = body.indexOf("AskGroupRules.split(")
         assertTrue(order >= 0)
