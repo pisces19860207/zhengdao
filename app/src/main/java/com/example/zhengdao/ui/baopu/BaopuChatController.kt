@@ -5129,6 +5129,11 @@ internal class BaopuChatController(context: Context) {
             )
             db.write { d -> d.execSQL(stmt.sql, stmt.args) }
                 .get(3, java.util.concurrent.TimeUnit.SECONDS)
+            // 第五百二十五批：卡片被采纳 ⇒ 许愿灰度的一次真实使用（幂等键＝卡片 id；
+            // 不在灰度期 ⇒ 只留痕不计数）。只加这一行调用，上面的记录逻辑一个字没动。
+            if (adopted) runCatching {
+                com.example.zhengdao.baopu.agent.WishUsageWiring.onCardAdopted(appCtx, name)
+            }
         }.onFailure {
             com.example.zhengdao.core.RunLog.log(
                 "抱朴：skill_decision 记录失败（不影响本轮）${it.javaClass.simpleName}: ${it.message}",

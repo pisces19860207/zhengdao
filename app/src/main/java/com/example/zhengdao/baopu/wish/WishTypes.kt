@@ -12,6 +12,12 @@ enum class WishProduct { SKILL, CARD, CONTENT, NOVEL }
 enum class WishStage {
     WISH, SPEC_PENDING, DRAFTING, REHEARSAL, SELF_CHECK, GRAY,
     PROMOTED, ROLLED_BACK, REJECTED, HALTED,
+
+    /** 第五百二十六批：转正写盘失败（**不是** PROMOTED——盘上还是草稿）。 */
+    PROMOTE_FAILED,
+
+    /** 第五百二十六批：回滚写盘失败（半截回滚，只能报人）。 */
+    ROLLBACK_FAILED,
 }
 
 /** 一条候选验收判据（用户不会写验收 ⇒ 给 2–3 条让他挑，不许让用户写）。 */
@@ -56,4 +62,12 @@ sealed interface WishOutcome {
     data class RolledBack(val wishId: String, val reason: String) : WishOutcome
     data class Rejected(val reason: String) : WishOutcome
     data class Halted(val wishId: String, val failures: Int) : WishOutcome
+
+    /** 第五百二十六批：转正没写成（**不是** Promoted——盘上还是草稿，要说实话）。 */
+    data class PromoteFailed(val wishId: String, val product: WishProduct, val reason: String) : WishOutcome
+
+    /** 第五百二十六批：回滚没写成，半截态只能报人（[needsHuman] 恒 true，留在类型上防被当"已回滚"）。 */
+    data class RollbackFailed(val wishId: String, val reason: String) : WishOutcome {
+        val needsHuman: Boolean get() = true
+    }
 }

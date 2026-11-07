@@ -1161,6 +1161,11 @@ internal object BaopuRuntime {
             val now = System.currentTimeMillis()
             val stmt = BaopuSql.insertSkillUse(name, sid, step, ok, now)
             d.write { x -> x.execSQL(stmt.sql, stmt.args) }.get(3, java.util.concurrent.TimeUnit.SECONDS)
+            // 第五百二十五批：工具真跑成 ⇒ 许愿灰度的一次真实使用（幂等键＝来源＋技能名；
+            // 不在灰度期 / 对不上归属 ⇒ 只留痕不计数。写失败只出声，不影响本函数原返回值）。
+            if (ok) runCatching {
+                com.example.zhengdao.baopu.agent.WishUsageWiring.onToolHit(appCtx, name)
+            }
             // §1.2：提醒。查不到/判不了 ⇒ null（没提醒），同样只读不拦。
             val oks = d.read { x ->
                 val s2 = BaopuSql.recentUseOks(name, SkillRefine.SkillExpiry.FAIL_WINDOW)

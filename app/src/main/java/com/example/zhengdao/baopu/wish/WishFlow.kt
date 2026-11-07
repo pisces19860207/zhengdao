@@ -90,6 +90,11 @@ internal object WishFlow {
         is WishOutcome.Rejected -> "许愿被拒：${outcome.reason}"
         is WishOutcome.Halted ->
             "许愿 ${outcome.wishId} 试跑连续失败 ${outcome.failures} 次，已停并落账；草稿未转正"
+        // 第五百二十六批：两态的通知文案（入口判定与三类取数一行未动——这里只是 when 多两支）
+        is WishOutcome.PromoteFailed ->
+            "许愿 ${outcome.wishId} 转正没写成（${outcome.reason}）：草稿还在灰度，账上没记转正，下次使用再试"
+        is WishOutcome.RollbackFailed ->
+            "许愿 ${outcome.wishId} 回滚也没写成（${outcome.reason}）：半截态需人工处理，别当已回滚"
     }
 
     /** 待确认通知：把候选验收摆出来，回「许愿确认 <编号>」挑 1–3 条。 */
