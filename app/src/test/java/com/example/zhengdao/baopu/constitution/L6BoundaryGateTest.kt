@@ -124,6 +124,11 @@ class L6BoundaryGateTest {
             // 试跑期真项目只读（前后 hashTree 各称一次）；510 的 WishSideEffectGateTest 钉
             // 「许愿包除技能写口外没有生产写口」，所以本件住在 agent/（被扫的域）登记进场。
             "agent/WishIOWiring.kt" to setOf("mkdirs", "writeText"),
+            // 第五百一十二批：归因增量游标的落盘点（`AttributionCursor`）。写只有三样：
+            // 游标文件本身（`<档案目录>/.归因游标.json`，点号开头＝不进产物读数）；
+            // 落盘先写 tmp 再 rename（**renameTo 失败才 delete 旧件重试**，所以 delete 要登记）；
+            // 目标目录由装配层注入的私有档案目录给出，不经模型参数。
+            "agent/AttributionCursor.kt" to setOf("mkdirs", "writeText", "delete", "renameTo"),
             // 工具失败审计 JSONL（208 之外的专业账）：落点由装配层注入的私有目录，追加-only。
             "agent/ToolFallback.kt" to setOf("mkdirs", "appendText"),
             // 产物栅格化：目标在守卫过的产物目录内；delete 只用于 tmp 清理。
