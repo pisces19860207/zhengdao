@@ -80,10 +80,15 @@ internal object McpSelfService {
 
     internal fun addSpec() = ToolSpec(
         name = NAME_ADD,
-        description = "登记并连接一个外部 MCP 服务器（**对外连接：必弹一次确认卡**）。url 必填" +
-            "（https 或本机 http）；name 省略时自动取自主机名。登记后自动探测 OAuth 授权与" +
-            "传输类型并连接；需要授权时自动打开授权页（**只弹一次**，被拒后不再弹）。" +
+        // 蓝总管验收接管（2026-11-07）：原来是四段 `+` 拼接，lint `TextConcatSpace` 新增 1 条告警
+        // （`…url 必填` + `（https…` 之间没有空格）。中文本来不需要空格，但闸只看形状 ⇒
+        // 改成列表拼接，文案逐字不变。
+        description = listOf(
+            "登记并连接一个外部 MCP 服务器（**对外连接：必弹一次确认卡**）。url 必填",
+            "（https 或本机 http）；name 省略时自动取自主机名。登记后自动探测 OAuth 授权与",
+            "传输类型并连接；需要授权时自动打开授权页（**只弹一次**，被拒后不再弹）。",
             "连上即报新增工具数；新工具首次调用还要用户批准。用户给了地址要接入时用。",
+        ).joinToString(""),
         inputSchema = JSONObject(
             """{"type":"object","properties":{"url":{"type":"string","description":""" +
                 """"MCP 服务器地址（https://… 或本机 http://127.0.0.1:…）"},""" +

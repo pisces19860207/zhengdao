@@ -1,8 +1,8 @@
 {
-  "total": 336,
+  "total": 335,
   "rules": {
     "CyclomaticComplexMethod": 189,
-    "LongMethod": 147
+    "LongMethod": 146
   },
   "issues": [
     "CyclomaticComplexMethod|AllowanceLadder.kt|verdictOf#1",
@@ -342,11 +342,11 @@
     "LongMethod|WelcomeScreen.kt|WelcomeScreen#1",
     "LongMethod|ZipIndex.kt|read#1"
   ],
-  "recorded_from": "464 local run @ feat/persona-budget（验收方按实测降预算 337→336）",
-  "recorded_at": "2026-11-06T11:54:34",
+  "recorded_from": "502 local run @ feat/mcp-selfservice（验收接管：抽 logPasteParse 后实测降 1 条，按「合并后预算＝实测」下调）",
+  "recorded_at": "2026-11-07T13:05:04",
   "zones": {
     "engine": {
-      "total": 211,
+      "total": 210,
       "rules": {
         "CyclomaticComplexMethod": 145,
         "LongMethod": 66

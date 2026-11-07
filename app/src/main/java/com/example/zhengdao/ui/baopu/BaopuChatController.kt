@@ -2938,6 +2938,22 @@ internal class BaopuChatController(context: Context) {
     // 事件处理直接按 messageId 补 part（线程纪律不变：apply 恒在主线程）。
 
     /**
+     * 第五百零二批 · 自动 C「粘贴即解析」的落账口（从 ``send()`` 抽出来，见下方接管说明）。
+     * 纯读文本、零网络、零拦截：只决定要不要在日志里记一行解析结果。
+     */
+    private fun logPasteParse(text: String) {
+        com.example.zhengdao.baopu.mcp.McpPasteRule.singleUrl(text)?.let { parsed ->
+            com.example.zhengdao.core.RunLog.log(
+                if (parsed.invalid == null) {
+                    "[mcp] 粘贴即解析：单个地址（${parsed.url.length} 字）→ 名称「${parsed.name}」· ${parsed.transportHint}"
+                } else {
+                    "[mcp] 粘贴即解析：形状像地址但不许可（${parsed.url.length} 字），不自动处理"
+                },
+            )
+        }
+    }
+
+    /**
      * 发送（首次自动建会话）。
      *
      * 第一百一十七批起**不再「忙就丢」**：本会话跑着 ⇒ 进该会话 FIFO 队列；
@@ -2952,17 +2968,10 @@ internal class BaopuChatController(context: Context) {
     fun send(text: String, attachments: List<BaopuAttachments.Saved> = emptyList()): Boolean {
         if (text.isBlank()) return false
         // 第五百零二批 · 自动 C「粘贴即解析」：整句话恰好是一个地址 ⇒ 落一行解析账
-        // （名称/传输候选）。**零网络、零拦截**：消息照常进引擎，模型看到的是原话——
-        // 五件 mcp_* 工具在工具表里，它自己会决定要不要 mcp_add_server（对外连接必过确认卡）。
-        com.example.zhengdao.baopu.mcp.McpPasteRule.singleUrl(text)?.let { parsed ->
-            com.example.zhengdao.core.RunLog.log(
-                if (parsed.invalid == null) {
-                    "[mcp] 粘贴即解析：单个地址（${parsed.url.length} 字）→ 名称「${parsed.name}」· ${parsed.transportHint}"
-                } else {
-                    "[mcp] 粘贴即解析：形状像地址但不许可（${parsed.url.length} 字），不自动处理"
-                },
-            )
-        }
+        // （名称/传输候选）。**零网络、零拦截**：消息照常进引擎，模型看到的是原话。
+        // 蓝总管验收接管（2026-11-07）：原样内联把 send() 的圈复杂度顶过 15，落进**冻结 UI 区**
+        // 多出 1 条（126 > 125，闸红）。抽成小函数——本批只许「不往 UI 区加债」。
+        logPasteParse(text)
         // 第二百五十八批 W1：调解器的**唯一**接线点——每轮用户输入在这里过一道。
         // 放在所有分支之前（含插话与题材流）：插话也是用户说的一句话，档位该跟着换；
         // 别在 resume/retry/editUser 上再补一次——两处换档会让档位乱跳（派工单负例⑥）。
