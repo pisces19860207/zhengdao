@@ -325,34 +325,48 @@ internal object DepthRules {
         cost: CostFacts,
         evidence: EvidenceFacts,
     ): List<String> = when {
-        target == base -> when {
-            base == DepthTier.DEEP ->
-                listOf("维持深档：灰度可用、回滚已验证、连续 ${evidence.sameKindSuccessStreak} 次同类成功")
-            canGoMedium(cost, evidence) -> listOf("维持：中档条件在、深档条件不够——不跨格升")
-            else -> listOf("维持：升档的三条没同时满足，降档的即时条件也没命中")
-        }
-        evidence.mustDowngrade() -> buildList {
-            add("降一档：即时降档条件命中")
-            if (evidence.last == EvolutionConclusion.FAILED) add("上一场 FAIL")
-            if (evidence.unverifiableRising) add("没法验增多")
-            if (evidence.falseBlockRising) add("误拦率上升")
-            if (evidence.userAskedLower) add("用户明确降档")
-        }
+        target == base -> holdReasons(base, cost, evidence)
+        evidence.mustDowngrade() -> downgradeReasons(evidence)
         target == DepthTier.MEDIUM && base == DepthTier.DEEP ->
             listOf("深档站不住：灰度可用／可回滚已验证／连续成功，这一场有格没成立")
-        target == DepthTier.DEEP -> listOf(
-            "升两格挣来的：PASS＋预算有余＋画像高置信",
-            "连续 ${evidence.sameKindSuccessStreak} 次同类成功",
-            "灰度可用",
-            "可回滚已验证",
-        )
-        else -> listOf("升到中档：上一场 PASS", "证据足且无反证", "预算有余", "画像置信高").filter {
-            when (it) {
-                "预算有余" -> cost.budgetSpares()
-                "画像置信高" -> cost.profileConfident()
-                else -> true
-            }
-        }
+        target == DepthTier.DEEP -> deepReasons(evidence)
+        else -> mediumReasons(cost)
+    }
+
+    /** 维持那一格要说清维持在哪一档、为什么没往上走。 */
+    private fun holdReasons(
+        base: DepthTier,
+        cost: CostFacts,
+        evidence: EvidenceFacts,
+    ): List<String> = when {
+        base == DepthTier.DEEP ->
+            listOf("维持深档：灰度可用、回滚已验证、连续 ${evidence.sameKindSuccessStreak} 次同类成功")
+        canGoMedium(cost, evidence) -> listOf("维持：中档条件在、深档条件不够——不跨格升")
+        else -> listOf("维持：升档的三条没同时满足，降档的即时条件也没命中")
+    }
+
+    /** 降档那条：总因之外还要点名是哪几格触的（判据④「立刻降一档」要看得懂降在哪）。 */
+    private fun downgradeReasons(evidence: EvidenceFacts): List<String> = buildList {
+        add("降一档：即时降档条件命中")
+        if (evidence.last == EvolutionConclusion.FAILED) add("上一场 FAIL")
+        if (evidence.unverifiableRising) add("没法验增多")
+        if (evidence.falseBlockRising) add("误拦率上升")
+        if (evidence.userAskedLower) add("用户明确降档")
+    }
+
+    private fun deepReasons(evidence: EvidenceFacts): List<String> = listOf(
+        "升两格挣来的：PASS＋预算有余＋画像高置信",
+        "连续 ${evidence.sameKindSuccessStreak} 次同类成功",
+        "灰度可用",
+        "可回滚已验证",
+    )
+
+    /** 进中档那四格：后两格是左相的，只在真有余量／真置信时才写（不拿没成立的格子冒充依据）。 */
+    private fun mediumReasons(cost: CostFacts): List<String> = buildList {
+        add("升到中档：上一场 PASS")
+        add("证据足且无反证")
+        if (cost.budgetSpares()) add("预算有余")
+        if (cost.profileConfident()) add("画像置信高")
     }
 
     /** 当时的读数全量进账（判据①「当时读数」那一格；不拿事后解释冒充现场）。 */
