@@ -2959,6 +2959,19 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 第五百一十六批：许愿回合（拦截命中后的整段抽出来——send() 的圈复杂度顶着 15，
+     * 本批只许「不往 UI 区加债」，与 502 抽 logPasteParse 同一口径）。
+     * IO 在 WishFlow 内部落 Dispatchers.IO；通知回主线程贴（scope 是 Main）。
+     */
+    private fun wishTurn(text: String) {
+        scope.launch {
+            com.example.zhengdao.baopu.wish.WishFlow.onUserSend(appCtx, text)?.let {
+                engine.showNotice(it)
+            }
+        }
+    }
+
+    /**
      * 发送（首次自动建会话）。
      *
      * 第一百一十七批起**不再「忙就丢」**：本会话跑着 ⇒ 进该会话 FIFO 队列；
@@ -3009,6 +3022,13 @@ internal class BaopuChatController(context: Context) {
         if (TopicSuggest.isTopicRequest(text) && topicFlow?.phase != TopicFlowPhase.WRITING) {
             topicStart()
             return true
+        }
+        // 第五百一十六批：许愿触发词 ⇒ 本地进许愿流水线（与题材流同一房型：判定在壳层、
+        // 不进引擎；规格候选经通知上屏，回「许愿确认 <编号>」挑验收——零新增 UI）。
+        // 灰度并轨 506：登记档（CanaryCapability.WISH_PIPELINE）是关闭档时不拦，当普通聊天放行。
+        if (com.example.zhengdao.baopu.wish.WishFlow.intercepts(text)) {
+            wishTurn(text)
+            return true
         }        // 第二十四批 C 段：同一批判据喂给引擎——**只传相对路径**，读盘在引擎线程里做
         // 第一百七十六批：运行中发送 ＝ 插话（下一安全点生效，不停止、不进回合队列）。
         // 只走**纯文字**：带附件的消息照旧进回合队列——图要随消息落 image part，
@@ -3034,11 +3054,17 @@ internal class BaopuChatController(context: Context) {
             resetRoundUsage()
         }
         // 第一百九十批：FIFO 轮次记账（题材批量写作的收尾对账用，见 topicRoundQueue）。
-        if (verdict.accepted) {
-            topicRoundQueue.addLast(text)
-            while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
-        }
+        // 第五百一十六批：抽成小函数——send() 的圈复杂度要给许愿那一个 if 让一格
+        // （与 502 抽 logPasteParse 同一口径：只许「不往 UI 区加债」）。
+        recordTopicRound(verdict.accepted, text)
         return verdict.accepted
+    }
+
+    /** 题材批量的 FIFO 轮次账（从 send() 抽出来；语义一行没动）。 */
+    private fun recordTopicRound(accepted: Boolean, text: String) {
+        if (!accepted) return
+        topicRoundQueue.addLast(text)
+        while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
     }
 
     /**
