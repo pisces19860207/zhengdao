@@ -118,7 +118,7 @@ class AbsoluteTimeGateTest {
         Escalation.respond(req.id, EscalationAnswer.REJECT, now + 1)
         // 边界执行账：装表（缺行）＋拒一笔
         BoundaryTable.install(root) { emptyMap() }
-        BoundaryTable.checkWrite(CapabilityKind.FILE_WRITE, File("/tmp/nowhere/x"), now + 2)
+        BoundaryTable.checkWrite(CapabilityKind.FILE_WRITE, File(root, "nowhere/x"), now + 2)
         // 身份表＋凭据表＋决策记录：撤销一次（身份行、legacy 不涉；决策记录落身份行）
         ConsequenceWiring.mutateIdentity(
             IdentityMutation(IdentityRules.ACTOR_USER, IdentityRules.OP_REVOKE),
