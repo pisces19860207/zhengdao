@@ -1,41 +1,45 @@
 {
-  "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。",
+  "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删（只列不删）。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。543（2026-11-08）刷新：旧账 389 是 473 批以前的时点，当场重算 458（A3／B2／C4），逐条按落地事实重裁，证据行号以 origin/main@5c845ee6 为准。",
   "A": {
     "ExamTasks": {
       "verdict": "wired",
-      "note": "谁接：准入「品行考」出题链——345 批③的题面件（四道坏题，与 335 cases 同源），判卷 ConductExam 就绪、现零生产调用，等准入接线批"
+      "note": "谁接：准入「品行考」出题链——345 批③的四道坏题题面。判卷 ConductExam 已随 427 进生产（agent/GuardPipeline.kt:479 → intake/AdmissionWiring.kt:91 → AdmissionFlow.run:133-136 → policy/CapabilityProfile.kt:137），但喂的是空卷（AdmissionWiring.kt:96-98 probeTraces／conductTraces 都是 emptyMap，按 345「未考＝没过」只登记不拦人）⇒ 缺的是「出题＋取证」那一半，题面至今零引用。接在出题链落地那批（未立项）"
     },
     "ProbeTasks": {
       "verdict": "wired",
-      "note": "谁接：准入「探针层」出题链——345 批②的五枚探针题面＋判卷，同 ConductExam 一批接"
+      "note": "谁接：准入「探针层」出题链——345 批②的五枚探针题面。判卷 IntakeProbes 同样随 427 可达（CapabilityProfile.kt:133 examine 调 runAll），实跑的也是空集（AdmissionWiring.kt:96 emptyMap）⇒ 题面零引用；与 ExamTasks 同一批出题链落地后一并复核"
     },
     "OffscreenCaptureProbe": {
       "verdict": "not_urgent",
-      "note": "理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），仅 debug 变体引用；非生产功能，留作复现证据，暂不删"
+      "note": "理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），只有 app/src/debug/.../OffscreenProbeActivity.kt:21／:25 引用，release 不可达；属复现证据不是生产功能，留作对照不删（503 悬空清单同一件，508／509 未处置）"
     }
   },
   "B": {
-    "CardValidate": {
+    "OutputCards": {
       "verdict": "wired",
-      "note": "谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它"
+      "note": "谁接：产出类出卡链——465 批定的唯一出卡入口（依据闸 OutputCitationGate 在它里面）。生产至今只有一处 push，且是**查询类**物流卡（ui/baopu/BaopuScreen.kt:165 ResultCards.push），产出卡（写作／选题／做卡／报告）没有生产出口 ⇒ 这道闸从未在真实路径上生效过。503 悬空清单挂着「产物卡 push 入口是否被别处替代」，508／509 未处置。产出卡落地那一批必须走 OutputCards.push，否则 465 形同虚设"
     },
     "IntakeProfile": {
-      "verdict": "wired",
-      "note": "谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核"
+      "verdict": "delete",
+      "note": "该删：345 批画像层（AgentProfile＋四条硬规矩）已被 365 的 policy/CapabilityProfile.kt 整套取代——365 文件头自述「把 345 批立下的四层设计做成 policy 侧的真对象」、三条硬规矩同口径；427 接进生产的准入链走的正是 365 那套（AdmissionWiring.kt:91 → AdmissionFlow.run → CapabilityProfile），345 这件的 intake／canAccept／needsReprobe／onTaskResult／reprobe／reinstate／portrait 全仓零外部引用（只有 IntakeProfileTest 在调）。只列不删：另立清理批删 intake/IntakeProfile.kt 整件＋intake/IntakeModels.kt:103 的 AgentProfile 与 :124 的 ViolationRecord 及连带测试"
     }
   },
   "C": {
     "orchestrate_engine_on": {
       "verdict": "wired",
-      "note": "谁接：设置页「批量调用编排」开关调 OrchestrationSettings.set——214 批写口就绪但生产零调用方，闸默认关且永远拨不开（真欠账）"
+      "note": "谁接：设置页「批量调用编排」开关调 agent/OrchestrationSettings.kt:19 的 set——214 批写口就绪，但该 object 是 internal 且生产零调用方，设置页也没有这个开关（全仓只有 agent/OrchestrationGate.kt:23 的注释与 agent/BatchRules.kt:51 的提示文本）⇒ 闸默认关且永远拨不开（真欠账）"
     },
     "eval_selfcheck_on": {
       "verdict": "not_urgent",
-      "note": "理由：84 批刻意设计——debug 构建 BuildConfig.DEBUG 并联开箱即跑，Release 无拨动口；pref 默认 false 是 Release 兜底而非漏接。要 Release 开关另立批"
+      "note": "理由：84 批刻意设计——调试构建 BuildConfig.DEBUG 并联开箱即跑（ui/baopu/BaopuChatController.kt:2583 调 SelfCheckGate.enabledNow(BuildConfig.DEBUG, …)），Release 无拨动口；pref 默认 false 是 Release 兜底而非漏接。要 Release 开关另立批"
+    },
+    "prompt_export": {
+      "verdict": "not_urgent",
+      "note": "理由：459 批诊断件（导出「上一次请求的 system 段」做取证）——缺省跟构建类型（promptexport/PromptExport.kt:16），Release 默认关；App 内没有写口，唯一开启路径是 adb run-as 改 SP（459 报告 §五原文），广播口 PromptExportReceiver 受 DUMP 保护且只导出、不负责开关。属 debug 取证工具，Release 兜底默认关不是漏接；U 批要做设置页开关另立批"
     },
     "search_phone_on": {
       "verdict": "not_urgent",
-      "note": "理由：229 批停用的兼容读口——判定路径（phoneAccessOf/plan）已不调用，键名保留专为读老 prefs（删＝老账变哑键，文件头注明确）；无行为影响"
+      "note": "理由：229 批停用的兼容读口——判定路径（SearchScopeRules.phoneAccessOf／plan）已不调用它（search/SearchScope.kt:27），键名保留专为读老 prefs（删＝老账变哑键，search/SearchScopeSettings.kt:4-10 文件头写明）；无行为影响"
     }
   },
   "已接线存档": {
@@ -48,14 +52,20 @@
     "ConductExam": {
       "left_ledger_at": "426（2026-11-04 重跑；scan 判定已有生产引用，不再进 B）",
       "wired_at": "policy/CapabilityProfile.kt:29 导入、:137 与 :190 两处 ConductExam.runAll(...)",
-      "fact": "有生产文件引用，但引用链顶端不可达：CapabilityProfile ← intake/AdmissionFlow.kt（该文件生产侧零外部调用方）与 intake/AdmissionGate.kt（唯一生产调用者是同一零外调的 AdmissionFlow）；EmergencyGate 对 AdmissionGate 仅注释提及 ⇒ 事实仍不可达，接线债仍在（另立单）",
+      "fact": "426 时记的是「引用链顶端 AdmissionFlow 零外部调用方 ⇒ 事实仍不可达」；543 更正：427 已把这条链接进生产（agent/GuardPipeline.kt:479 → intake/AdmissionWiring.kt:91 onExternalToolCall → AdmissionFlow.run:133-136），本件现真可达；但喂的是空卷（AdmissionWiring.kt:96-98 两个 trace 参数均 emptyMap），判卷实跑的是空集。欠的那一半是出题／取证，已记在 A 区题面件（ExamTasks／ProbeTasks）",
       "note": "原 B 区 note 照留：谁接：准入「品行考」判卷链——345 批③判卷纯函数（BigDecimal 精确口径），与 ExamTasks 同一接线批"
     },
     "SelfReport": {
       "left_ledger_at": "426（2026-11-04 重跑；scan 判定已有生产引用，不再进 B）",
-      "wired_at": "intake/AdmissionFlow.kt:40 作参数类型；policy/CapabilityProfile.kt:35 导入、:101 字段、:129 declare、:259/:264 JSON 往返",
-      "fact": "同上，引用链顶端 AdmissionFlow 零外部调用方 ⇒ 事实仍不可达，接线债仍在（与 ConductExam 同一条链，另立单）",
+      "wired_at": "intake/AdmissionFlow.kt:40 作参数类型；policy/CapabilityProfile.kt:35 导入、:101 字段、:129 declare、:259／:264 JSON 往返",
+      "fact": "同上：543 更正——427 接通后引用链顶端可达（GuardPipeline.kt:479），但 AdmissionWiring.kt:97 传的 selfReport 是「只有 agentId＋version、claimedCapabilities 空」的占位自报；按 345 口径自报本来就不参与放行判定，故无行为缺口，只是简历栏永远空着",
       "note": "原 B 区 note 照留：谁接：准入 intake 建档链（自报口径模型）——345 批准入件，现仅测试在调，与 IntakeProfile 同批"
+    },
+    "CardValidate": {
+      "left_ledger_at": "543（2026-11-08 重跑；scan 判定已有生产引用，不再进 B）",
+      "wired_at": "baopu/TeachForm.kt:764 调 CardValidate.planOf(...)（TeachFormRules.modelLines）← TeachFormRules.fillCard:1277 ← agent/tools/FormFillTool.kt（Entry(\"form_fill\")，agent/ToolRegistry.kt:1548）；接线提交 7520b65b7「CardValidate: 表单卡提交预检接上 212 的校验壳」",
+      "fact": "真接线，生产可达（工具注册 form_fill → FormFillTool → TeachFormRules.fillCard → precheck → modelLines）；卡面四类错（必填／形状／长度上限／疑似凭证）的合计与首错由本壳定",
+      "note": "原 B 区 note 照留：谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它"
     }
   }
 }
