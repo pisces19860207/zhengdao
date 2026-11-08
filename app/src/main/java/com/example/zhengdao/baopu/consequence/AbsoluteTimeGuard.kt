@@ -63,8 +63,14 @@ internal object AbsoluteTimeGuard {
      * 半程不换时区）。输出形如 `2026-11-07T22:41:00+08:00`——有日期、有偏移，
      * 过一年读仍然知道是哪一刻。
      */
-    fun iso(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
-        DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(Instant.ofEpochMilli(epochMs).atZone(zone))
+    fun iso(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+        val text = DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(Instant.ofEpochMilli(epochMs).atZone(zone))
+        // ⚠️ 2026-11-08 修 CI（Linux/TZ=UTC）真红：`ISO_OFFSET_DATE_TIME` 在**零偏移**时渲染成 `…Z`
+        // （Z 是合法的 ISO-8601 绝对时刻），但 U5 的渲染口判据与 App 侧展示都要求**数字偏移** `[+-]hh:mm`。
+        // 本机（+08:00）永远看不到 Z，CI 的 runner 是 UTC ⇒ ConsequenceWiring/AbsoluteTimeGate 三个用例红。
+        // 口径：零偏移也写成 `+00:00`——绝对时刻的语义不变，形状统一（谁读都知道是 UTC）。
+        return if (text.endsWith("Z")) text.dropLast(1) + "+00:00" else text
+    }
 
     /**
      * 渲染「<时刻>」格子的统一口：0/负数＝这一格没有时刻（没撤销过／没到期过）⇒ 空串。

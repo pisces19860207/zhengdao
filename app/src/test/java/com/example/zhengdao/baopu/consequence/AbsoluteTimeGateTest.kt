@@ -25,6 +25,7 @@ import com.example.zhengdao.baopu.evolution.EvidenceFacts
 import com.example.zhengdao.baopu.evolution.EvolutionDepth
 import com.example.zhengdao.law.LawIo
 import java.io.File
+import java.time.ZoneId
 import java.nio.file.Files
 import org.json.JSONObject
 import org.junit.After
@@ -72,6 +73,13 @@ class AbsoluteTimeGateTest {
         // 渲染口：0/负数 ⇒ 空串（不渲染假时刻）；有值 ⇒ ISO 带时区偏移
         assertEquals("", AbsoluteTimeGuard.absoluteOrBlank(0L))
         assertTrue(Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}""").matches(AbsoluteTimeGuard.iso(now)))
+        // 2026-11-08 钉平台无关：CI（TZ=UTC）下 ISO_OFFSET_DATE_TIME 会渲染成 `…Z`，
+        // 本机（+08:00）看不到 Z ⇒ 三个用例只在 CI 红。零偏移也必须写成数字偏移 `+00:00`。
+        assertEquals(
+            "零偏移也得是数字偏移（不许 Z）",
+            "2023-11-14T22:13:20+00:00",
+            AbsoluteTimeGuard.iso(now, ZoneId.of("UTC")),
+        )
     }
 
     // ── 门禁①：源码 0 命中 ─────────────────────────────────────────────────
