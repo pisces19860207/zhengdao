@@ -1168,7 +1168,7 @@
         <item quantity="one">%1$d items waiting</item>
         <item quantity="other">%1$d items waiting</item>
     </plurals>
-    <string name="decision_center_hint">Everything waiting lives here; session grants can be undone in History.</string>
+    <string name="decision_center_hint">Only you decide</string>
     <string name="decision_history_grant_session">Allowed “%1$s” for this session</string>
     <string name="decision_history_grant_always">Allowed “%1$s” for good</string>
     <string name="decision_history_undone_row">Undone the grant for “%1$s”</string>

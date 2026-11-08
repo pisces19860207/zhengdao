@@ -1129,7 +1129,7 @@
     <plurals name="decision_shield_badge_desc">
         <item quantity="other">有 %1$d 件待处理</item>
     </plurals>
-    <string name="decision_center_hint">待处理集中在这里；记录页里能撤销本会话的授权。</string>
+    <string name="decision_center_hint">唯君可决</string>
     <string name="decision_history_grant_session">本会话已允许「%1$s」</string>
     <string name="decision_history_grant_always">已长期允许「%1$s」</string>
     <string name="decision_history_undone_row">已撤销「%1$s」的允许</string>

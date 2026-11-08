@@ -115,6 +115,8 @@ private val BaoTierShape = RoundedCornerShape(rCard)
  * 不传（其余九张卡）与改造前逐像素一致：不点的卡头不长高、不换行、不多箭头。
  *
  * @param title 标题条文字（「提问 · 需要你选」这类；走 strings.xml）
+ * @param titleIcon 标题条左侧的装饰标（第五百五十五批：御案卡那枚 16dp 御印；
+ *        不传 ⇒ 与改造前逐像素一致，其余十二张行动卡一个像素不动）
  * @param badge 右上角标（通常「待你操作」；null ⇒ 不显示）
  * @param onHeaderClick 点卡头的动作（null ⇒ 卡头不可点，保持旧行为）
  * @param onHeaderClickLabel 读屏播报的动作名（「点卡头展开这张卡」；null ⇒ 用 Compose 默认）
@@ -124,6 +126,7 @@ private val BaoTierShape = RoundedCornerShape(rCard)
 internal fun BaopuActionContainer(
     title: String,
     modifier: Modifier = Modifier, // 首个可选参数必须是 modifier（lint ModifierParameter）
+    titleIcon: (@Composable () -> Unit)? = null,
     badge: String? = null,
     onHeaderClick: (() -> Unit)? = null,
     onHeaderClickLabel: String? = null,
@@ -160,6 +163,10 @@ internal fun BaopuActionContainer(
                 .padding(horizontal = BAO_ACTION_INSET_DP.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (titleIcon != null) {
+                titleIcon()
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,

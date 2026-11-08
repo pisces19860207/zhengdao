@@ -22,12 +22,15 @@
     <string name="royal_why_l9">Those are not mine to change, so I ask first</string>
     <string name="royal_impact_l9">Not one of them was touched; I wait for your yes</string>
 
-    <string name="royal_opt_approve">Go ahead</string>
+    <string name="royal_opt_approve">Approve</string>
     <string name="royal_opt_approve_consequence">Follow this; the result is recorded</string>
-    <string name="royal_opt_reject">No</string>
+    <string name="royal_opt_reject">Deny</string>
     <string name="royal_opt_reject_consequence">Skip that step; I find another way</string>
-    <string name="royal_opt_hold">Park it</string>
-    <string name="royal_opt_hold_consequence">Look again tomorrow, no rush</string>
+    <string name="royal_opt_hold">Hold</string>
+    <string name="royal_opt_hold_consequence">Watch first: look again tomorrow, no rush</string>
+
+    <string name="royal_seal_icon">御</string>
+    <string name="royal_seal_stamp">批</string>
 
     <string name="royal_conflict_group">Conflicts</string>
     <string name="royal_conflict_what">Two versions of one event: %1$s / %2$s</string>

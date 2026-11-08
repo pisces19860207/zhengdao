@@ -27,12 +27,16 @@
     <string name="royal_impact_l9">那些文件一个没动，你说行我才动</string>
 
     <!-- 三选项＋各自后果（后果必须写，不让人猜） -->
-    <string name="royal_opt_approve">准了</string>
+    <string name="royal_opt_approve">准</string>
     <string name="royal_opt_approve_consequence">按这条办，结果记进账</string>
-    <string name="royal_opt_reject">不行</string>
+    <string name="royal_opt_reject">驳</string>
     <string name="royal_opt_reject_consequence">这一步不做，我另想法子</string>
-    <string name="royal_opt_hold">搁一搁</string>
-    <string name="royal_opt_hold_consequence">留到明天再看，不急</string>
+    <string name="royal_opt_hold">搁置</string>
+    <string name="royal_opt_hold_consequence">先观察：留到明天再看，不急</string>
+
+    <!-- 第五百五十五批 · 御案卡美化（御印／朱印角戳两枚字，仍是资源文案） -->
+    <string name="royal_seal_icon">御</string>
+    <string name="royal_seal_stamp">批</string>
 
     <!-- 第五百三十七批：冲突分组（三行式：是什么／为什么冲突／不理会怎样；≤30 字） -->
     <string name="royal_conflict_group">冲突</string>

@@ -11,14 +11,22 @@
 // 纪律：文案全走 `R.string`（`strings_baopu_royal.xml` 中英双份），本文件不发明字符串。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -32,13 +40,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.zhengdao.R
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.ui.theme.ZhuSha
+import com.example.zhengdao.ui.theme.ZhuTint
+import com.example.zhengdao.ui.theme.rCard
 
 /**
  * 一张御案卡。
@@ -61,15 +76,72 @@ internal fun BaopuRoyalCard(
     val markText = stringResource(royalMarkRes(card.mark))
     val desc = stringResource(R.string.royal_card_desc, markText)
 
-    BaopuActionContainer(
-        title = stringResource(R.string.royal_card_title),
-        modifier = modifier.semantics { contentDescription = desc },
-        badge = markText,
+    // 第五百五十五批：左朱条（4dp，随卡高）＋右上朱印角戳（装饰，不拦点击）。
+    // 容器本体一个判据不动：壳仍是 BaopuActionContainer，只是多一枚 16dp 御印。
+    Box(modifier) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            Box(
+                Modifier
+                    .width(ROYAL_SPINE_DP.dp)
+                    .fillMaxHeight()
+                    .background(
+                        ZhuSha,
+                        RoundedCornerShape(topStart = rCard, bottomStart = rCard),
+                    ),
+            )
+            BaopuActionContainer(
+                title = stringResource(R.string.royal_card_title),
+                modifier = Modifier.weight(1f).semantics { contentDescription = desc },
+                titleIcon = { RoyalSeal() },
+                badge = markText,
+            ) {
+                card.lines.forEach { RoyalLineRow(it) }
+                Spacer(Modifier.heightIn(min = 10.dp))
+                RoyalOptionRow(card.options, onPick)
+                RoyalEvidence(card.evidence)
+            }
+        }
+        // 角戳压在正文右上（避开标题条上的真假徽标）；无 clickable ⇒ 不吞点击。
+        RoyalStamp(Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 6.dp))
+    }
+}
+
+/** 御印（标题条左侧 16dp 方印：底 ZhuTint、字 ZhuSha）。 */
+@Composable
+private fun RoyalSeal() {
+    Box(
+        Modifier
+            .size(ROYAL_SEAL_DP.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(ZhuTint),
+        contentAlignment = Alignment.Center,
     ) {
-        card.lines.forEach { RoyalLineRow(it) }
-        Spacer(Modifier.heightIn(min = 10.dp))
-        RoyalOptionRow(card.options, onPick)
-        RoyalEvidence(card.evidence)
+        Text(
+            text = stringResource(R.string.royal_seal_icon),
+            color = ZhuSha,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/** 朱印角戳（48dp、「批」、ZhuSha 50% 透明、轻旋 -12°）。 */
+@Composable
+private fun RoyalStamp(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(ROYAL_STAMP_DP.dp)
+            .rotate(ROYAL_STAMP_ROTATION)
+            .alpha(0.5f)
+            .border(2.dp, ZhuSha, RoundedCornerShape(6.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.royal_seal_stamp),
+            color = ZhuSha,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -167,6 +239,20 @@ private fun RoyalEvidence(evidence: List<String>) {
 
 /** 行标签列宽（三行标签对齐，正文才不参差）。 */
 private const val ROYAL_LINE_LABEL_WIDTH_DP = 62
+
+// ── 第五百五十五批 · 御案卡美化（四个尺寸；全部取既有 token，不加字号档） ──────
+
+/** 御印边长（标题条左侧 16dp 方印）。 */
+private const val ROYAL_SEAL_DP = 16
+
+/** 左侧朱封条宽度（4dp，整卡高度）。 */
+private const val ROYAL_SPINE_DP = 4
+
+/** 朱印角戳边长（48dp）。 */
+private const val ROYAL_STAMP_DP = 48
+
+/** 朱印角戳旋转角（轻旋 -12°）。 */
+private const val ROYAL_STAMP_ROTATION = -12f
 
 /** 真假标注 → 文案（"未核实"不许被写成"真"：这层映射是唯一出口）。 */
 private fun royalMarkRes(mark: RoyalTruth): Int = when (mark) {
