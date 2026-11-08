@@ -40,6 +40,14 @@ def first_line(text: str, limit: int = 300) -> str:
     return line if len(line) <= limit else line[: limit - 1] + "…"
 
 
+def brief(text: str, limit: int = 600, max_lines: int = 6) -> str:
+    """失败消息的多行摘要（2026-11-08）：只取首行时，断言里第二行的关键读数会被吞掉
+    （AttributionIncrementalTest 的"实际新增落账 N 条"就在第二行）。
+    换行折成 ⏎，最多 6 行 / 600 字符，避免一条注解刷屏。"""
+    lines = [ln.strip() for ln in (text or '').splitlines() if ln.strip()]
+    return " ⏎ ".join(lines[:max_lines])[:limit]
+
+
 def collect(dir_path: str) -> dict:
     suites = []
     for path in sorted(glob.glob(os.path.join(dir_path, "*.xml"))):
@@ -58,7 +66,7 @@ def collect(dir_path: str) -> dict:
                     "time": tc.get("time"),
                     "skipped": tc.find("skipped") is not None,
                     "failures": [
-                        {"kind": f.tag, "message": first_line(f.get("message") or (f.text or ""))}
+                        {"kind": f.tag, "message": brief(f.get("message") or (f.text or ""))}
                         for f in failures
                     ],
                 }
