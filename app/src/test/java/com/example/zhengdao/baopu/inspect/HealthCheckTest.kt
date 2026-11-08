@@ -8,6 +8,7 @@
 // 所以这里钉的不是"有结论"，而是三种结果各自的话术（命中／未发现信号／未取样）不许互相冒充。
 package com.example.zhengdao.baopu.inspect
 
+import com.example.zhengdao.baopu.agent.ToolGroup
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -473,10 +474,42 @@ class HealthCheckTest {
         File(out, "health291-sheet.md").writeText(sheet.lines.joinToString("\n"), Charsets.UTF_8)
     }
 
+    // ── 542：体检单的「默认可见」口径要认免解锁那条通路 ────────────────────────
+
+    @Test
+    fun `体检单默认可见口径_免解锁三件算可见_同组写类不算`() {
+        val byName = toolCensus().associateBy { it.name }
+        listOf("board_read", "board_write", "governance_state").forEach { name ->
+            val probe = byName[name] ?: throw AssertionError("普查里没有 $name（分组表/工具表脱节？）")
+            assertTrue(
+                "$name 免解锁 ⇒ 体检单必须按「默认可见」计；" +
+                    "否则窗内零选择会被写成「默认不可见（要 capabilities 解锁）」，那是假话",
+                probe.visibleByDefault,
+            )
+        }
+        // 负例：同一个 FILES 组里没进免解锁名单的工具，组没解锁就仍不是默认可见
+        // （否则这条判据退化成「整组可见」，红了也看不出是哪一边）
+        val other = byName["delete_path"] ?: throw AssertionError("普查里没有 delete_path")
+        assertFalse(
+            "delete_path 组未解锁 ⇒ 不许跟着算成默认可见",
+            other.visibleByDefault,
+        )
+    }
+
     /** 首次体检单的日期（写死：单子要能逐字复现，不许随跑的时间漂）。 */
     private val FIRST_SHEET_AT_MS = 1_793_289_600_000L // 2026-10-30 00:00 +08:00
 
-    /** 从注册表源码里数工具（68 条）＋分组＋默认可见（CORE/EDIT 两组，策略表钉着）。 */
+    /**
+     * 从注册表源码里数工具（86 条）＋分组＋默认可见。
+     *
+     * 「默认可见」的口径有三条来源，少一条体检单就会说假话：
+     * 1. 组默认可见（CORE / EDIT，策略表钉着——下面那条断言就是钉它）；
+     * 2. 工具级默认可见名单（157：`library_list` / `kb_search`，只读件）；
+     * 3. **542：免解锁名单**（`ToolGroup.UNLOCK_FREE_SILENT`：`board_read` / `board_write` /
+     *    `governance_state`）——它们组仍锁着却**一直在 tools 数组里**。漏了这一条，体检单会把
+     *    「窗内零选择」写成"默认不可见（要 capabilities 解锁）⇒ 不是描述问题"，
+     *    而它其实一直可见 ⇒ 那正该按"可改描述"查（`HealthCheck.toolNote` 的两个分支之差）。
+     */
     private fun toolCensus(): List<ToolProbe> {
         val registry = File("src/main/java/com/example/zhengdao/baopu/agent/ToolRegistry.kt")
         val text = code(registry)
@@ -495,7 +528,13 @@ class HealthCheckTest {
         val visible = setOf("CORE", "EDIT")
         return names.map { n ->
             val g = group[n] ?: "?"
-            ToolProbe(name = n, group = g, visibleByDefault = g in visible, calls = null)
+            ToolProbe(
+                name = n,
+                group = g,
+                // 542：免解锁那三件组仍锁、却一直在 tools 数组里 ⇒ 体检单要按"可见"算
+                visibleByDefault = g in visible || n in ToolGroup.UNLOCK_FREE_SILENT,
+                calls = null,
+            )
         }
     }
 }

@@ -169,7 +169,11 @@ internal fun BaopuSettingsScreen(
                     disabled = group in disabledGroupSet,
                 )
             }
-            val toolMembersOf: (ToolGroup) -> List<String> = { ToolGroupTable.namesOf(it) }
+            // 542：这里改读 displayNamesOf（＝那张表去掉免解锁那几件）——
+            // 用户口径「设置页工具组里移掉 board_read/board_write 两行」。仍是**同一次**从
+            // 唯一那张分组表读、仍是页面里唯一那处读取点，只是念名字时少念两件
+            // （注册、分组、RiskMatrix 行全都在，`ToolGroupTable.namesOf` 的真值没动）。
+            val toolMembersOf: (ToolGroup) -> List<String> = { ToolGroupTable.displayNamesOf(it) }
             val toolIsDisabled: (String) -> Boolean = { it in disabledNameSet }
             val toolSummary = BaopuToolArea.summarize(toolGroups, toolStateOf, toolMembersOf, toolIsDisabled)
             val toolRows = BaopuToolArea.rowsOf(toolGroups, toolStateOf, toolMembersOf, toolIsDisabled)

@@ -187,7 +187,8 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
          *
          * 语义只有一句：**这三件永远在手边，所以没有「要不要开」可谈**——
          * 1. 可见性上**不受组级解锁门槛约束**（组仍锁着也看得见、调得动）；
-         * 2. 名册上**不出现**（`capabilities` 的组清单与「当前可见工具」两处都不念名字）。
+         * 2. 名册与清单上**不出现**：`capabilities` 的组清单／「当前可见工具」两处不念名字，
+         *    设置页那张工具组清单也不出现（走 [ToolGroupTable.displayNamesOf]）。
          *
          * 三条**没有**因此松掉：
          * - 用户的两道开关照旧压得住它（[ToolUserSettings.disabledNames] / `disabledGroups`）：
@@ -391,6 +392,23 @@ internal object ToolGroupTable {
         BaopuToolCatalog.ENTRIES.map { it.name }
             .filter { GROUP_OF[it] == group }
             .plus(RUNTIME_REGISTERED.filter { GROUP_OF[it] == group }.sorted())
+
+    /**
+     * **给人看的那份组内名单**（542）——[namesOf] 去掉免解锁那几件。
+     *
+     * 用户口径（2026-11-08）：「设置页工具组里**移掉** `board_read`/`board_write` 两行
+     * （工具组不出现；注册和 `RiskMatrix` 行保留）」。
+     *
+     * 为什么要单开一个函数、而不是直接把 [namesOf] 过滤掉：那张是**组成员表**，注册、
+     * 可见性、`ToolFallback` 的"换一个同组工具"、风险矩阵分档都按它算真值——把名字从
+     * [namesOf] 里删掉，等于让"这件的组是谁"变成另一套口径。这里只在**展示口径**上少念名：
+     * 「设置页那张工具组清单里看不见它」，但它仍是 FILES 的成员、仍注册、矩阵仍有它的行。
+     *
+     * 谁在用：设置页（`BaopuSettingsScreen` 的 `toolMembersOf`）。`capabilities` 名册不用它——
+     * 那边是另一处过滤（同样按 [ToolGroup.UNLOCK_FREE_SILENT] 摘），两处各自只影响自己的文案。
+     */
+    fun displayNamesOf(group: ToolGroup): List<String> =
+        namesOf(group).filter { it !in ToolGroup.UNLOCK_FREE_SILENT }
 
     /**
      * 覆盖率自检（§6 孤儿工具直接红）：表里列的名字必须**恰好**等于

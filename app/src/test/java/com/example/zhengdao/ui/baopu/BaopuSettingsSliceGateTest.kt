@@ -151,7 +151,11 @@ class BaopuSettingsSliceGateTest {
             Regex("listOf\\(\\s*\"(read_file|list_dir|write_file|delete_path)\"").containsMatchIn(rules))
         assertFalse("不许碰可见性判据（那是第二条链）", Regex("visibleTools\\(|isVisibleTool\\(").containsMatchIn(rules))
         assertFalse("不许自己列成员表", rules.contains("ToolGroupTable.ENTRIES"))
-        assertEquals("成员名单只许在页面里从那张表读一次", 1, page.split("ToolGroupTable.namesOf(it)").size - 1)
+        // 542：页面取成员改走 displayNamesOf（那张表的**展示口径**：抹掉免解锁的
+        // board_read/board_write/governance_state）——判据不变：仍只许读一次、仍只从那张表读、
+        // 仍不许另立名单。锚点跟着改，是因为读取点的函数名变了，不是判据松了。
+        assertEquals("成员名单只许在页面里从那张表读一次", 1, page.split("ToolGroupTable.displayNamesOf(it)").size - 1)
+        assertEquals("旧读取点（namesOf）不许再在页面里出现第二处", 0, page.split("ToolGroupTable.namesOf(it)").size - 1)
     }
 
     // ── 4. 搬走的是判据，不是文案：句子与读取点都得还在 ─────────────────────────

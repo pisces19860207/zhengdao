@@ -350,9 +350,12 @@ class ToolRegistrySwitchTest {
 
         // 一、第二张组表必须没有（§1.1 原话级：UI 从那张唯一的表读）
         assertFalse("设置页不许再有第二张分组表（BaopuToolGroups 已删）", screenCode.contains("BaopuToolGroups"))
+        // 542：读取点从 namesOf 换成 displayNamesOf（那张表的**展示口径**：抹掉免解锁那几件）。
+        // 判据没松——仍必须是"从那张唯一的表读"，两个函数都在 ToolGroupTable 里；
+        // 放行两者是因为"成员真值"（namesOf）与"给人看的清单"（displayNamesOf）本就该分开。
         assertTrue(
-            "设置页的组成员必须从 ToolGroupTable 读（namesOf），不是自己列名单",
-            Regex("ToolGroupTable\\.namesOf").containsMatchIn(screenCode),
+            "设置页的组成员必须从 ToolGroupTable 读（namesOf / displayNamesOf），不是自己列名单",
+            Regex("ToolGroupTable\\.(displayNamesOf|namesOf)").containsMatchIn(screenCode),
         )
 
         // 二、设置页不许再装配注册表。装配会把全局 CapabilitiesTool.sink 抢到自己身上，

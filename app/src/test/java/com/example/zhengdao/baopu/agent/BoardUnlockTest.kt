@@ -136,4 +136,25 @@ class BoardUnlockTest {
         assertFalse("board_write 被单独关掉后不许露面", "board_write" in names)
         assertTrue("board_read 不受影响（单件开关只压一件）", "board_read" in names)
     }
+
+    // ── ① 设置页那张工具组清单里不出现（542 收尾口径）──────────────────────────
+
+    @Test
+    fun `设置页显示名单不含两件_注册与矩阵行都还在`() {
+        val shown = ToolGroupTable.displayNamesOf(ToolGroup.FILES)
+        listOf("board_read", "board_write").forEach {
+            assertFalse("设置页那张工具组清单里不许出现 $it", it in shown)
+        }
+        // 同组别的工具照旧在（证明不是把整组摘空、也不是整段消失）
+        assertTrue("delete_path 照旧出现在设置页清单里", "delete_path" in shown)
+        // 注册与分组仍是真值：成员表里还在——可见性、回退建议、矩阵分档都按这张表算
+        val real = ToolGroupTable.namesOf(ToolGroup.FILES)
+        listOf("board_read", "board_write").forEach {
+            assertTrue("$it 仍是 FILES 的成员（注册与分组行不许动）", it in real)
+        }
+        // 风险档两行也还在（R0 / R1；抽检与统计看得见这两件动作）
+        val root = ws()
+        assertEquals("board_read 的风险档仍应是 R0", "R0", BoardReadTool.spec { root }.riskTier)
+        assertEquals("board_write 的风险档仍应是 R1", "R1", BoardWriteTool.spec { root }.riskTier)
+    }
 }
