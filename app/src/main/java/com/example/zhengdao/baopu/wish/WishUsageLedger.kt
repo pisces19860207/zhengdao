@@ -15,7 +15,12 @@ import com.example.zhengdao.core.RunLog
 import org.json.JSONObject
 import java.io.File
 
-/** 使用账的一行（键名固定，加字段不算改形状）。 */
+/**
+ * 使用账的一行（键名固定，加字段不算改形状）。
+ *
+ * @param key 幂等键（**落盘的凭据**）：默认 `来源|归属键`，内容进台账那条腿是 `来源|content:<摘要>`
+ *   ——去重必须按它，不能按 [target]（同一篇稿两次记台账的文件名不同）。
+ */
 data class WishUsageEntry(
     val atMs: Long,
     val source: WishUseSource,
@@ -25,6 +30,7 @@ data class WishUsageEntry(
     val verdict: WishUseVerdict,
     val uses: Int,
     val note: String,
+    val key: String = WishUsageRules.keyOf(source, target),
 )
 
 /** 使用账落盘口（append-only；坏行读时跳过——读历史不许被一行脏数据整本堵死）。 */
@@ -43,6 +49,7 @@ internal object WishUsageLedger {
             .put("at", entry.atMs)
             .put("src", entry.source.name)
             .put("target", entry.target)
+            .put("key", entry.key)
             .put("wish", entry.wishId ?: "")
             .put("manual", entry.manual)
             .put("verdict", entry.verdict.name)
@@ -69,7 +76,7 @@ internal object WishUsageLedger {
     fun countedKeys(workspaceRoot: File): Set<String> =
         readAll(workspaceRoot)
             .filter { it.verdict == WishUseVerdict.COUNTED }
-            .map { WishUsageRules.keyOf(it.source, it.target) }
+            .map { it.key }
             .toSet()
 
     private fun parse(raw: String): WishUsageEntry? {
@@ -87,6 +94,8 @@ internal object WishUsageLedger {
             verdict = verdict,
             uses = o.optInt("uses", 0),
             note = o.optString("note"),
+            // 老行没有 key 字段 ⇒ 退回「来源|归属键」（与当时的拼法一致，不会串）
+            key = o.optString("key").ifBlank { WishUsageRules.keyOf(source, target) },
         )
     }
 }

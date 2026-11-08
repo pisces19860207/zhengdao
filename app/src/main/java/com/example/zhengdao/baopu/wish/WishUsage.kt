@@ -30,10 +30,13 @@ enum class WishUseSource(val cn: String) {
 /**
  * 一次使用事件（受理层的唯一输入）。
  *
- * @param target 归属键：技能名／候选卡 id／台账文件名；幂等去重就按「来源＋它」算
+ * @param target 归属键：技能名／候选卡 id／台账文件名；默认也拿它当幂等键
  * @param wishId 显式归属（调用方知道是哪条许愿时给）；null ⇒ 由流水线按 [target] 在灰度里认领
  * @param manual 手动补记 ⇒ **不计真实**（只落痕）
  * @param detail 一句人话（进账用；空也照落，账上另有来源与归属键）
+ * @param dedupeKey 幂等键的**覆盖**：内容进台账这条腿要按"同一篇内容"去重，
+ *   而不是按文件名——同一篇稿连点两次「记台账」会落两个文件名（序号+1），
+ *   拿文件名当键就变成两次使用、直接把转正顶上去。null ⇒ 用 [target]。
  */
 data class WishUseEvent(
     val source: WishUseSource,
@@ -41,9 +44,10 @@ data class WishUseEvent(
     val wishId: String? = null,
     val manual: Boolean = false,
     val detail: String = "",
+    val dedupeKey: String? = null,
 ) {
-    /** 幂等键（同源同归属键＝同一件事）。 */
-    val useKey: String get() = WishUsageRules.keyOf(source, target)
+    /** 幂等键（同源同归属键＝同一件事；内容进台账按内容去重）。 */
+    val useKey: String get() = WishUsageRules.keyOf(source, dedupeKey ?: target)
 }
 
 /** 受理结论（五种，闭集；账上照它写一行）。 */

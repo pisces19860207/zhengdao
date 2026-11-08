@@ -32,9 +32,6 @@ import java.io.File
 /** 灰度真实使用的装配（三类来源 + 手动口；全部过同一道去重与计数）。 */
 internal object WishUsageWiring {
 
-    /** 最近一次绑定的流水线（给没有 Context 的调用点用，见 [onContentLedger]）。 */
-    @Volatile private var bound: Pair<File, WishPipeline>? = null
-
     /** 工具命中（技能被工具调用真跑成一次）。 */
     fun onToolHit(context: Context, skillName: String, detail: String = ""): WishUsageOutcome =
         recordVia(context, WishUseEvent(WishUseSource.TOOL_HIT, skillName, detail = detail))
@@ -48,43 +45,47 @@ internal object WishUsageWiring {
         recordVia(context, WishUseEvent(WishUseSource.TOOL_HIT, wishId, wishId = wishId, manual = true, detail = detail))
 
     /**
-     * 内容进台账（**没有 Context 的那条路**：台账写入在 UI store 里）。
+     * 内容进台账（用户点「记台账」那一下，**UI 动作处调**）。
      *
-     * 绑定过流水线（同一工作区）⇒ 照常认领＋计数；没绑过 ⇒ 落一行 `UNWIRED`（只留痕不计数）。
-     * 为什么不在这里现造流水线：`WishFlow.pipeline` 要 Context，本层拿不到；硬传假 Context
-     * 就是给测试开后门，宁可如实记"未装配"。
+     * 幂等按**内容**去重（[content] 的摘要），不按文件名：同一篇稿连点两次会落两个文件名
+     * （序号+1），拿文件名当键就变成两次使用、把转正顶上去。
+     *
+     * @param fileName 刚落进 `产物/` 的那个文件名（认领归属用：`YYYYMMDD_许愿_N_slug.md` 含技能名）
      */
-    fun onContentLedger(workspace: File, fileName: String, detail: String = ""): WishUsageOutcome {
-        val pipeline = bound?.takeIf { it.first == workspace }?.second
-        return handle(workspace, pipeline, WishUseEvent(WishUseSource.CONTENT_LEDGER, fileName, detail = detail), install = false)
+    fun onContentLedger(context: Context, fileName: String, content: String, detail: String = ""): WishUsageOutcome =
+        recordVia(
+            context,
+            WishUseEvent(
+                source = WishUseSource.CONTENT_LEDGER,
+                target = fileName,
+                detail = detail,
+                dedupeKey = "content:" + shortHash(content),
+            ),
+        )
+
+    /** 内容摘要（跨进程稳定：同一篇稿两次点「记台账」必同键）。 */
+    private fun shortHash(text: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(Charsets.UTF_8))
+        return (0 until 8).joinToString("") { "%02x".format(digest[it]) }
     }
 
-    /** 有 Context 的入口：绑一次流水线（与 WishFlow 同一个单例），再走同一条受理。 */
+    /** 有 Context 的入口：问一次流水线（与 WishFlow 同一个单例），再走同一条受理。 */
     private fun recordVia(context: Context, event: WishUseEvent): WishUsageOutcome {
         val appCtx = context.applicationContext
         val workspace = BaopuRuntime.workspaceRoot(appCtx)
-        val pipeline = WishFlow.pipeline(appCtx)
-        bound = workspace to pipeline
-        return handle(workspace, pipeline, event, install = true)
+        return handle(workspace, WishFlow.pipeline(appCtx), event)
     }
 
-    /**
-     * 受理核心（**测试直接调这个**，不碰 Android Context）。
-     *
-     * @param install false ⇒ 不覆盖已绑定的流水线（无 Context 那条路用）
-     */
-    internal fun recordInto(workspace: File, pipeline: WishPipeline?, event: WishUseEvent): WishUsageOutcome {
-        if (pipeline != null) bound = workspace to pipeline
-        return handle(workspace, pipeline, event, install = true)
-    }
+    /** 受理核心（**测试直接调这个**，不碰 Android Context）。 */
+    internal fun recordInto(workspace: File, pipeline: WishPipeline?, event: WishUseEvent): WishUsageOutcome =
+        handle(workspace, pipeline, event)
 
     private fun handle(
         workspace: File,
         pipeline: WishPipeline?,
         event: WishUseEvent,
-        install: Boolean,
     ): WishUsageOutcome {
-        if (install && pipeline != null) bound = workspace to pipeline
         val seen = WishUsageLedger.countedKeys(workspace)
         val wishId = event.wishId ?: pipeline?.grayWishFor(event.target)
         val outcome = judge(pipeline, event, wishId, seen)
@@ -133,5 +134,7 @@ internal object WishUsageWiring {
             verdict = outcome.verdict,
             uses = outcome.uses,
             note = if (event.detail.isBlank()) outcome.note else "${outcome.note}｜${event.detail}",
+            // 凭据就是这一键：内容进台账那条腿按内容、其余按归属键（见 WishUseEvent.dedupeKey）
+            key = event.useKey,
         )
 }

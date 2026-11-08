@@ -95,7 +95,17 @@ internal fun BaopuLongformCard(
 
     fun save(ext: String) {
         // 落库出口自己给可读原因（成功带路径；台账冲突也会说明，不静默）
-        status = BaopuLongformStore.save(context, draft, ext).message
+        val out = BaopuLongformStore.save(context, draft, ext)
+        status = out.message
+        // 第五百二十五批：用户点「记台账」这一下＝灰度期的一次真实使用（幂等按**内容**，不按文件名）。
+        // 接在 UI 动作处、**不接在 store 层**：`appendLedger` 同时被 516 的转正口共用，
+        // 在那一层接会把「转正写台账」误记成一次使用（重复计数、还会二次触发转正）。
+        if (out.ok) out.path?.let { path ->
+            runCatching {
+                com.example.zhengdao.baopu.agent.WishUsageWiring
+                    .onContentLedger(context, path.substringAfterLast('/'), draft)
+            }
+        }
     }
 
     fun toggleCollapse() {
