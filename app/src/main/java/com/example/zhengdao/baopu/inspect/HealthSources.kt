@@ -82,7 +82,9 @@ internal object OrganCensus {
             // 本口径的扫描根（普查只数 `app/src/main`，见上面的口径注释）⇒ 22 改 21，不是有人删了接线。
             // 第五百零六批：后果治理的落账口 `ConsequenceWiring.stamp()` 新增一处（它是本族唯一的落账口，
             // 判据层拒了就不产草稿，所以这一处之后没有第二处）⇒ 21 改 22。
-            callSites = 22,
+            // 第五百二十八批：决策中心主屏的裁定行（批/驳/留各落一行，actor=USER 带理由）新增一处
+            // ——它是主屏唯一的落账口（判据层 rulingDraft 拒空摘要就不产稿）⇒ 22 改 23。
+            callSites = 23,
             sink = "决策记录.jsonl",
             evidence = listOf(
                 "agent/GuardPipeline.kt:634 入账点（DecisionLedger.record）",
@@ -90,6 +92,7 @@ internal object OrganCensus {
                 // 第二百九十八批判据③：草稿被法典判据否掉时补一笔 208（供修正阈值）。
                 "agent/LearnWiring.kt:502 入账点（同上，草稿被否）",
                 "consequence/ConsequenceWiring.kt:247 后果治理的落账口（506，五族共用一处）",
+                "ui/baopu/BaopuChatController.kt:1500 主屏裁定行落账口（528，同上）",
             ),
         ),
         OrganProbe(

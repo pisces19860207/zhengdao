@@ -442,6 +442,8 @@ internal fun BaopuDrawer(
     drawerOpen: Boolean,
     nodes: List<DrawerWorkspaceNode>,
     onNewSession: () -> Unit,
+    /** 第五百二十八批：决策中心主屏（待批/已办/可回滚三区；排在「新会话」**之上**——它是主屏）。 */
+    onDecisionCenter: () -> Unit,
     onOpenSession: (Long) -> Unit,
     /** 长按会话行：删除确认（不再有设置页那套平铺列表）。 */
     onSessionLongPress: (DrawerSessionRow, String) -> Unit,
@@ -526,6 +528,13 @@ internal fun BaopuDrawer(
         )
 
         DrawerGroup(stringResource(R.string.baopu_drawer_group_session))
+        // ── 第五百二十八批：决策中心主屏（派工单 §一①：排在「新会话」之上——它是主屏）。
+        // 只转发开屏：三区取数与批/驳/留全在控制器数据口与 `DecisionZoneRules`，抽屉不判。
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_decision_center),
+            description = stringResource(R.string.baopu_drawer_decision_center_desc),
+            onClick = onDecisionCenter,
+        )
         DrawerItem(
             title = stringResource(R.string.baopu_new_session),
             // A2 段：文案要说实话——新会话落在**当前工作区**，记忆（那套跨会话的东西）不动。
