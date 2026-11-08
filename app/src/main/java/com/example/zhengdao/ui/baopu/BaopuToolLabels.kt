@@ -58,6 +58,9 @@ internal object BaopuToolLabels {
         "index_search" to R.string.baopu_tool_index_search,
         // 527：治理出口（只读 R0，FILES 组）
         "governance_state" to R.string.baopu_tool_governance_state,
+        // 322：模型小黑板两件（FILES 组；漏一行 ⇒ 设置页开工具卡直接抛，fail-fast）
+        "board_read" to R.string.baopu_tool_board_read,
+        "board_write" to R.string.baopu_tool_board_write,
         "book_outline" to R.string.baopu_tool_book_outline,
         "file_info" to R.string.baopu_tool_file_info,
         "write_file" to R.string.baopu_tool_write_file,
@@ -169,6 +172,9 @@ internal object BaopuToolLabels {
         "index_browse" to R.string.baopu_tool_index_browse_desc,
         "index_search" to R.string.baopu_tool_index_search_desc,
         "governance_state" to R.string.baopu_tool_governance_state_desc,
+        // 322：模型小黑板两件（读一件、写一件，同一份上限口径）
+        "board_read" to R.string.baopu_tool_board_read_desc,
+        "board_write" to R.string.baopu_tool_board_write_desc,
         "book_outline" to R.string.baopu_tool_book_outline_desc,
         "file_info" to R.string.baopu_tool_file_info_desc,
         "write_file" to R.string.baopu_tool_write_file_desc,

@@ -574,6 +574,9 @@ class ToolSchemaAllTest {
             "mcp_list" to JSONObject(),
             // 527：治理出口无参数（REQUIRED_EMPTY_OK 已签字）
             "governance_state" to JSONObject(),
+            // 322：小黑板读无参数（REQUIRED_EMPTY_OK 已签字）；写唯一必填是整篇 text
+            "board_read" to JSONObject(),
+            "board_write" to JSONObject().put("text", "下一步：查 527 出口的第四段"),
             "mcp_add_server" to JSONObject().put("url", "https://m.example.com/mcp"),
             "mcp_connect" to JSONObject().put("id", "s0a1b2c"),
             "mcp_disconnect" to JSONObject().put("id", "s0a1b2c"),

@@ -427,6 +427,11 @@ internal data class RiskTable(
                 "logistics_query" to ToolRule(RiskClass.R0),
                 // ── 527 治理出口：只读本机账本出六段读数（FREE、零写、零网络）──────
                 "governance_state" to ToolRule(RiskClass.R0),
+                // ── 322 模型小黑板：读 R0（只读一件文本）；写 R1（只写工作区 `产物/.board.md`，
+                // 不动用户文件、不联网）。R1 不触发矩阵的必问——便签每次一张卡等于把"记一笔"变成打扰；
+                // 档位照记（R1），所以抽检/统计仍看得见这条动作。
+                "board_read" to ToolRule(RiskClass.R0),
+                "board_write" to ToolRule(RiskClass.R1),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
                 // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────

@@ -453,6 +453,14 @@ internal fun BaopuDrawer(
     onAddWorkspace: () -> Unit,
     /** 第二百一十批：「定时任务」行（点开进 ScheduleTasksActivity）。 */
     onScheduleTasks: () -> Unit,
+    /**
+     * 第三百二十二批：**治理中心**（只读一屏：读数／执行体／模型小黑板）。
+     *
+     * 位置由用户两次口述定死（2026-11-07/08）：「排在**定时任务**的下面」——
+     * 它是「看状态」的屏，不是办事的屏：办事在顶栏盾牌那套决策中心（104 批五页签）；
+     * 536 起抽屉里不再有「决策中心」行（528 主屏已整体回退），本行是会话组之后唯一的只读屏。
+     */
+    onGovernanceCenter: () -> Unit,
     // 第二百八十六批（2026-10-30 用户裁定）：`onLibrary`（资料库）随入口搬去律令，参数删除；
     // 同时把 `onMcp`（外部工具）接回来 —— 它从律令「抱朴」组搬到这里，排在「技能」下面。
     /** 第二百零五批：技能列表页（三组＋反思器候选卡；184 技能卡的生产渲染点）。 */
@@ -552,6 +560,16 @@ internal fun BaopuDrawer(
             schedStatus = scheduleDrawerStatus(tasks, System.currentTimeMillis())
         }
         ScheduleDrawerRow(status = schedStatus, onClick = onScheduleTasks)
+        // ── 第三百二十二批：治理中心（用户定：排在「定时任务」的**下面**）────────────
+        // 为什么在这个位置而不是设置组：它与定时任务同属「抱朴自己的运转状态」，
+        // 用户两次口述都点名"定时任务的下面"；且它**只看**——办事在顶栏盾牌的决策中心，不在这里。
+        // 本行只转发开屏：三块内容的取数与格式全在 `GovernanceCenterScreen` ＋
+        // `GovernanceCenterRules`（读数只走 527 出口），抽屉不判、不算、不读账。
+        DrawerItem(
+            title = stringResource(R.string.baopu_drawer_governance_center),
+            description = stringResource(R.string.baopu_drawer_governance_center_desc),
+            onClick = onGovernanceCenter,
+        )
         // ⛔ 「历史会话」这一行**已删掉**（2026-10-18 用户口径：会话都归在各自工作区下面了，
         // 再留一个「全部会话（平铺看）」就是同一批东西两个入口，抽屉还比 DSH 多一截）。
         // 那一页没消失，只是挪成低频入口：抱朴设置 → 会话记录（删除仍在那儿做）。

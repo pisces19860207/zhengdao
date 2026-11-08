@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 322 (2026-11-08): Governance Center + model scratchboard. See the zh file for why this is a separate file. -->
+<resources>
+    <string name="baopu_drawer_governance_center">Governance</string>
+    <string name="baopu_drawer_governance_center_desc">Status only: rates, cards, gray bands, executor, scratchboard</string>
+
+    <string name="gc_title">Governance</string>
+    <string name="gc_subtitle">Status only — decisions are made in Decision Center</string>
+    <string name="gc_section_reading">Readings</string>
+    <string name="gc_reading_hint">Same numbers as the governance outlet; nothing is recomputed here</string>
+    <string name="gc_reading_day">Day %1$s · same numbers as the governance outlet</string>
+
+    <string name="gc_ratio_violation">Violation rate</string>
+    <string name="gc_ratio_misjudge">Misjudge rate</string>
+    <string name="gc_ratio_intervention">Intervention rate</string>
+    <string name="gc_ratio_skip">Skipped rate</string>
+
+    <string name="gc_card_pass">Auto-passed</string>
+    <string name="gc_card_card">Asked</string>
+    <string name="gc_card_compress">Compressed</string>
+
+    <string name="gc_section_executor">Executor</string>
+    <string name="gc_executor_id">id (first 8)</string>
+    <string name="gc_executor_creds">Credentials</string>
+    <string name="gc_executor_revoke">Last revoke</string>
+    <string name="gc_executor_none">None</string>
+    <string name="gc_state_active">active</string>
+    <string name="gc_state_revoked">revoked</string>
+    <string name="gc_state_rotated">rotated out</string>
+
+    <string name="gc_section_board">Model scratchboard</string>
+    <string name="gc_board_hint">Baopu\'s own note (dot-file: not counted as a product; not memory, not a decision input)</string>
+    <string name="gc_board_empty">The board is empty — nothing written yet</string>
+    <string name="gc_board_unreadable">Cannot read the board (not a text file)</string>
+    <string name="gc_board_capacity">Limit %1$d / %2$d (KB · lines)</string>
+    <string name="gc_board_clear">Clear</string>
+    <string name="gc_board_clear_title">Clear the board?</string>
+    <string name="gc_board_clear_body">This is Baopu\'s own note. Clearing it is permanent (no trash bin, no undo). Whatever it wants to keep it writes into the products folder first.</string>
+    <string name="gc_cancel">Cancel</string>
+
+    <string name="baopu_tool_board_read">Read board</string>
+    <string name="baopu_tool_board_read_desc">Read the model\'s own working note (products/.board.md, max 4KB/20 lines). Read-only: no writes, no memory.</string>
+    <string name="baopu_tool_board_write">Write board</string>
+    <string name="baopu_tool_board_write_desc">Replace the model\'s own working note (whole text, not append); refuses past 4KB/20 lines and asks to trim first; empty string clears it.</string>
+</resources>

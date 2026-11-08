@@ -226,6 +226,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     // （SettingsScreen 原样调用 TasteSettingsScreen），抱朴页不再承载这一页。
     // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
     var showDecisionCenter by remember { mutableStateOf(false) }
+    // 第三百二十二批：治理中心（抽屉「定时任务」下面那一行进的只读浮层：读数／执行体／小黑板）。
+    var showGovernanceCenter by remember { mutableStateOf(false) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
     // 引擎是异步就绪的，首次点击由 BaopuSpeaker 自己排队（见该类 KDoc 第 1 条）。
     val speaker = remember { BaopuSpeaker(context) }
@@ -257,6 +259,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = showSettings) { showSettings = false }
     // 第一百零四批：决策中心浮层的返回键（Dialog 自己也会收，这里与设置同口径）。
     BackHandler(enabled = showDecisionCenter) { showDecisionCenter = false }
+    // 第三百二十二批：治理中心同口径（Dialog 自己也会收，与设置浮层一致）。
+    BackHandler(enabled = showGovernanceCenter) { showGovernanceCenter = false }
     // 会话库浮层同口径（第二十批）。
     BackHandler(enabled = showSessionLibrary) { showSessionLibrary = false }
 
@@ -493,6 +497,11 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                                 )
                             )
                         }
+                    },
+                    // 第三百二十二批：治理中心（只读一屏；与 528 决策中心分工＝这里只看、那里办事）。
+                    onGovernanceCenter = {
+                        scope.launch { drawerState.close() }
+                        showGovernanceCenter = true
                     },
                     // 点文件夹行＝临时提示完整路径 ＋ 落点抱朴设置页（那张「工作区」卡在这一页里）。
                     onWorkspaceTap = { path ->
@@ -1487,6 +1496,13 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         showDecisionCenter = false
                         scope.launch { drawerState.open() }
                     },
+                )
+            }
+            // ── 第三百二十二批：治理中心（抽屉入口；只读三块）──
+            if (showGovernanceCenter) {
+                GovernanceCenterScreen(
+                    controller = controller,
+                    onDismiss = { showGovernanceCenter = false },
                 )
             }
             // 高风险采纳的二次确认层（验收 #8：无确认不可采纳；完整前后对比）

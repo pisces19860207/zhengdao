@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第三百二十二批（2026-11-08）· 治理中心 ＋ 模型小黑板 的文案。
+
+  为什么单开一个文件（照 528 的 `strings_baopu_decision_zone.xml` 先例）：
+  本批与 536（回退 528 抽屉入口）在同一条链路上动 `BaopuDrawer.kt` / `BaopuScreen.kt`，
+  把文案塞进 4,000 行的 `strings.xml` 只会让两个人的 diff 在同一片行号上打架。
+  工具标签（`baopu_tool_board_*`）也放这里：`BaopuToolLabelCoverageTest` 只认键，
+  不认文件位置（413 批的口径是"目录 ↔ 标签表不漂移"，与文件无关）。
+-->
+<resources>
+    <!-- 抽屉入口（「定时任务」下面那一行） -->
+    <string name="baopu_drawer_governance_center">治理中心</string>
+    <string name="baopu_drawer_governance_center_desc">只看状态：四率、弹卡、灰度、执行体、模型小黑板</string>
+
+    <!-- 屏幕本体 -->
+    <string name="gc_title">治理中心</string>
+    <string name="gc_subtitle">只看状态的一屏，办事请去决策中心</string>
+    <string name="gc_section_reading">读数</string>
+    <string name="gc_reading_hint">与治理出口同一份数，本页不另算</string>
+    <string name="gc_reading_day">当日 %1$s · 与治理出口同一份数</string>
+
+    <!-- 四率 -->
+    <string name="gc_ratio_violation">违规率</string>
+    <string name="gc_ratio_misjudge">误判率</string>
+    <string name="gc_ratio_intervention">干预率</string>
+    <string name="gc_ratio_skip">跳过率</string>
+
+    <!-- 弹卡三数 -->
+    <string name="gc_card_pass">自动放过</string>
+    <string name="gc_card_card">问卡</string>
+    <string name="gc_card_compress">压卡</string>
+
+    <!-- 执行体 -->
+    <string name="gc_section_executor">执行体</string>
+    <string name="gc_executor_id">id（前 8 位）</string>
+    <string name="gc_executor_creds">凭据条数</string>
+    <string name="gc_executor_revoke">最近撤销</string>
+    <string name="gc_executor_none">没有</string>
+    <string name="gc_state_active">在用</string>
+    <string name="gc_state_revoked">已撤销</string>
+    <string name="gc_state_rotated">已轮换</string>
+
+    <!-- 模型小黑板 -->
+    <string name="gc_section_board">模型小黑板</string>
+    <string name="gc_board_hint">抱朴自己的便签（点号文件，不计入产物数；不进记忆、不参与判定）</string>
+    <string name="gc_board_empty">小黑板是空的——它还没记东西</string>
+    <string name="gc_board_unreadable">小黑板读不出（盘上那份不是文本）</string>
+    <string name="gc_board_capacity">上限 %1$d / %2$d（KB · 行）</string>
+    <string name="gc_board_clear">清空</string>
+    <string name="gc_board_clear_title">清空小黑板？</string>
+    <string name="gc_board_clear_body">这是抱朴自己的便签，清掉就没了（不进回收站、找不回）。要留的内容它会先写进产物目录。</string>
+    <string name="gc_cancel">取消</string>
+
+    <!-- 工具标签（设置页/能力名册的必填格，413 批口径：漏一格即红） -->
+    <string name="baopu_tool_board_read">读小黑板</string>
+    <string name="baopu_tool_board_read_desc">读模型自己的工作便签（产物/.board.md，最多 4KB/20 行）。只读，不改盘、不进记忆。</string>
+    <string name="baopu_tool_board_write">写小黑板</string>
+    <string name="baopu_tool_board_write_desc">整篇替换模型自己的工作便签（不是追加）；超 4KB/20 行拒写并提示先删旧；空串＝清空。</string>
+</resources>

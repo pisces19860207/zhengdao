@@ -264,6 +264,11 @@ internal object ToolGroupTable {
         // 492 B②：索引浏览/检索归 FILES（默认不可见，capabilities 解锁——B1 硬卡不破）。
         "index_browse" to ToolGroup.FILES,
         "index_search" to ToolGroup.FILES,
+        // 第三百二十二批：模型小黑板两件（`产物/.board.md` 的读写）。归 FILES——
+        // 它动的就是工作区里的一件文本。默认**不可见**（B1「默认可见 ≤12」的硬卡不许破；
+        // 策略层 ALLOWED 只放 CORE/EDIT/COMPAT，FILES 进不了默认面），默认**启用**（解锁即用）。
+        "board_read" to ToolGroup.FILES,
+        "board_write" to ToolGroup.FILES,
         // 527：治理出口（governance_state，只读 R0）——读的是本机自己的账本（与索引两件
         // 「读 search.db 的账」同一房型），归 FILES 默认不可见（B1「默认可见 ≤12」硬卡不破）。
         "governance_state" to ToolGroup.FILES,
@@ -1300,6 +1305,10 @@ internal object BaopuToolCatalog {
         // 527：治理出口默认「启用」（组归 FILES 仍默认不可见——解锁即用，同索引两件口径；
         // FREE 只读，读的是本机自己的账本，漏了这行 ⇒ 注册了但默认关，模型永远看不见）
         "governance_state",
+        // 322：模型小黑板两件默认「启用」（组归 FILES 仍默认不可见——解锁即用，同上口径）。
+        // 读 FREE、写 R1（便签：每次一张确认卡会把"记一笔"变成打扰）；漏了这两行 ⇒ 模型永远看不见便签。
+        "board_read",
+        "board_write",
         "book_outline",
         "file_info",
         "write_file",
@@ -1441,6 +1450,11 @@ internal object BaopuToolCatalog {
         // 527：治理出口（只读 R0，一把出六段 JSON：四率/弹卡三数/灰度/冲突队列/执行体/未闭环）。
         // 口径唯一真相在 docs/metrics-registry.md；运行环境由 BaopuRuntime 注入（GovernanceStateTool.env）。
         Entry("governance_state") { GovernanceStateTool.spec(it) },
+        // 322（原 538）：模型小黑板两件——`产物/.board.md` 的读与整篇替换（4KB/20 行硬上限）。
+        // 便签不是产物（点号开头不计入"产物 N 件"，512 口径）、不进记忆、不参与判定；
+        // 落账只记长度与行数，不记正文。治理中心只做只读镜像（GovernanceCenterScreen）。
+        Entry("board_read") { BoardReadTool.spec(it) },
+        Entry("board_write") { BoardWriteTool.spec(it) },
         Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },

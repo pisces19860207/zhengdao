@@ -65,6 +65,9 @@ class ToolSchedulingGateTest {
         "sheet_read", "search_web",
         // 527：governance_state 只读各本账（不写盘、不联网），与别的读可并行
         "governance_state",
+        // 322：board_read 只读工作区里一件便签（不写盘、不联网），与别的读可并行
+        // （board_write 是写，故意**不**进这张表：并行读表只收只读件）
+        "board_read",
         // 232: table_query 只读用户的表（唯一落盘是 App 自己的登记簿），与别的读可并行
         "table_query",
         // 288: organize_preview 只读预览（纯文件 stat/读，不写盘），与别的读可并行

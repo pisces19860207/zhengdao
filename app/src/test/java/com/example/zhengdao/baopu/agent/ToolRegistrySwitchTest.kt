@@ -84,6 +84,8 @@ class ToolRegistrySwitchTest {
                 "index_browse", "index_search",
                 // 527：治理出口（FILES 组，默认不可见但默认启用；表序即注册序）
                 "governance_state",
+                // 322：模型小黑板两件（FILES 组，默认不可见但默认启用；表序即注册序）
+                "board_read", "board_write",
                 "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 第二百六十九批：打包/解包（表序即注册序，convert_encoding 之后）

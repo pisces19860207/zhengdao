@@ -176,6 +176,13 @@ class L6BoundaryGateTest {
             // （DecisionLedger.installedRoot），append-only 一行一条问不问的决定/放过/申诉/切档；
             // 与 274/277/298/278 同一条理由：这本账记"该不该打扰"，不是模型指的工作区路径。
             "agent/AskGovernance.kt" to setOf("mkdirs", "appendText"),
+            // 第三百二十二批：模型小黑板（`产物/.board.md`）。**路径不是模型指的**——
+            // 落点由 `MemoryLayout.productsDir(工作区根)` 定死，文件名是常量 `.board.md`，
+            // 工具参数只有内容（`text`）没有路径 ⇒ 没有"自己挑路径写"的面，因此不需要 PathGuard。
+            // mkdirs 只建 `产物/`（工作区根那一层由 App 保证）；writeText 写 `.board.md.tmp` 再改名
+            // （原子替换，半条便签比没有更糟）；delete 只删自己那件 tmp/旧文件（改名前那一下）。
+            // 点号开头 ⇒ 512 的 `isCountedProduct` 不计入「产物 N 件」；不写任何记忆树/账本。
+            "agent/tools/BoardTools.kt" to setOf("mkdirs", "writeText", "delete"),
         )
     }
 
