@@ -1,8 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第五百一十三批 · 令牌剪贴板通道的门禁（派工单 §判据①–⑤）。
-// ①走通道后全文 grep 无明文（回执对象＋全部日志）；②空剪贴板不写；③非令牌形拒；
-// ④读后清空（UI 侧结构钉：清的动作只挂在 Saved 分支，真机复核在交付报告）；
+// ①走通道后全文 grep 无明文（回执对象＋全部日志）；②空剪贴板不写；③非令牌形拒：先判原形、
+// 再 trim 首尾判一次（中间空白仍拒）；④读后清空（UI 侧结构钉：清的动作只挂在 Saved 分支，真机复核在交付报告）；
 // ⑤对话侧只提示不落库（源码反钉：提示函数体内没有任何写库调用）。
 package com.example.zhengdao.baopu.mcp
 
@@ -79,19 +79,44 @@ class McpClipboardTokenTest {
         assertFalse(logs.any { it.contains("已导入手动令牌") })
     }
 
-    // ── 判据③：非令牌形拒（含空白即拒，不 trim） ─────────────────────────
+    // ── 判据③：非令牌形拒（先判原形，再 trim 首尾判一次） ──────────────────
 
     @Test
-    fun `判据③_含空白即拒_首尾也不例外`() {
+    fun `判据③_中间空白即拒_trim也救不回`() {
         val (flow, vault) = wire()
-        // importToken 本口会 trim 放行首尾空白；本通道按判据③字面口径更严：一律拒。
-        for (clip in listOf(" $token", "$token ", "a b", "a\nb", "a\tb", "　")) {
+        // 这里钉的是「trim 削不掉的」：句中空白、整串只有空白、全角空格（trim 也不动 U+3000）。
+        for (clip in listOf("a b", "a\nb", "a\tb", "　", " $token 中间空一格 ", "   \t\n ")) {
             assertFalse("looksLikeToken 应拒：[$clip]", McpClipboardToken.looksLikeToken(clip))
             val outcome = McpClipboardToken.importText(flow, config(), clip)
             assertEquals(McpClipboardToken.Reason.SHAPE, (outcome as McpClipboardToken.Outcome.Rejected).reason)
         }
         assertNull(vault.load("srv513", "https://mcp.example.com/mcp"))
         assertFalse(logs.any { it.contains("已导入手动令牌") })
+    }
+
+    @Test
+    fun `判据③补_首尾空白_trim判一次后放行_落库是不带空白的形`() {
+        val (flow, vault) = wire()
+        for (clip in listOf(" $token", "$token ", "\n$token", "$token\r\n", "  \t$token\t  ")) {
+            assertTrue("首尾空白该收：[$clip]", McpClipboardToken.looksLikeToken(clip))
+            assertEquals(McpClipboardToken.Outcome.Saved, McpClipboardToken.importText(flow, config(), clip))
+            val stored = vault.load("srv513", "https://mcp.example.com/mcp")
+            assertNotNull("真的进了保险柜", stored)
+            assertEquals("交给写口的必须是不带空白的形", token, stored!!.accessToken)
+        }
+    }
+
+    @Test
+    fun `判据③补_两判各自独立_原形与trim后各判一道`() {
+        val src = code("src/main/java/com/example/zhengdao/baopu/mcp/McpClipboardToken.kt")
+            .replace("\r\n", "\n")
+        val shape = src.substringAfter("private fun acceptedShape(text: String): String? = when {")
+            .substringBefore("\n    }")
+        assertTrue("第一判：原形 [$shape]", shape.contains("visibleAsciiRun(text) -> text"))
+        assertTrue("第二判：trim 首尾后再判一次 [$shape]", shape.contains("visibleAsciiRun(text.trim()) -> text.trim()"))
+        val body = src.substringAfter("fun importText(").substringBefore("\n    }")
+        assertTrue("落库交出去的是闸判出的形：[$body]", body.contains("auth.importToken(config, token)"))
+        assertFalse("不许把剪贴板原文递给写口", body.contains("importToken(config, clipboardText)"))
     }
 
     @Test

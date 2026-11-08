@@ -6,7 +6,7 @@
 // 本对象是**纯通道**（JVM 直测）：形状闸＋落库编排。读/清剪贴板在 util/Clipboard.kt
 // （Android 侧，只在用户点按钮的当下读一次——不读历史、不做后台监听）。
 // 落库复用 McpAuthFlow.importToken（502 的唯一手动写口：加密存储、受众绑定、日志只记事件）；
-// 本通道比它多一道更严的形状闸（判据③：含空白/超长即拒——任何空白都不行，首尾也不例外）。
+// 形状闸见 [looksLikeToken]：先判原形，再 trim 首尾判一次——中间空白/控制字符/非 ASCII 一律拒。
 //
 // 对话侧只「提示一次」（shouldHintChatToken），绝不自动落库（判据⑤：mcp_set_token 保留，
 // 但「从对话里读到的令牌自动进 Vault」这条路不存在——本对象没有任何从对话文本落库的函数）。
@@ -28,7 +28,7 @@ internal object McpClipboardToken {
         /** 剪贴板为空/读不到文本。 */
         EMPTY,
 
-        /** 非令牌形（含空白/控制字符/非 ASCII/超长）。 */
+        /** 非令牌形（中间含空白/控制字符/非 ASCII/超长；整串只有空白也算）。 */
         SHAPE,
 
         /** 形状过了但写入失败（如地址无法规范化为 resource）。 */
@@ -36,11 +36,21 @@ internal object McpClipboardToken {
     }
 
     /**
-     * 令牌形（判据③的闸）：非空、≤[McpAuthFlow.MAX_IMPORTED_TOKEN]、每个字符都是可见 ASCII
-     * （0x21–0x7E）——空白（含空格/换行/首尾空白）、控制字符、中文散文一律拒。
-     * 不 trim：判据③的字面口径就是「含空白 ⇒ 拒」。
+     * 令牌形（判据③的闸）：**先判原形，原形不过再把首尾空白 trim 掉判一次**（只判一次，
+     * 不循环、不递归）。两判要的形都一样：非空、≤[McpAuthFlow.MAX_IMPORTED_TOKEN]、
+     * 每个字符都是可见 ASCII（0x21–0x7E）⇒ 中间空白（空格/句中换行/制表）与控制字符、
+     * 非 ASCII 在第二判里照样过不了；整串只有空白 ⇒ trim 成空串也拒。
      */
-    fun looksLikeToken(text: String): Boolean =
+    fun looksLikeToken(text: String): Boolean = acceptedShape(text) != null
+
+    /** 两判的落点：原形过 ⇒ 交原形；只有 trim 后过 ⇒ 交 trim 后的形（带空白的原文不交给写口）。 */
+    private fun acceptedShape(text: String): String? = when {
+        visibleAsciiRun(text) -> text
+        visibleAsciiRun(text.trim()) -> text.trim()
+        else -> null
+    }
+
+    private fun visibleAsciiRun(text: String): Boolean =
         text.isNotEmpty() &&
             text.length <= McpAuthFlow.MAX_IMPORTED_TOKEN &&
             text.all { it.code in 0x21..0x7E }
@@ -51,8 +61,8 @@ internal object McpClipboardToken {
      */
     fun importText(auth: McpAuthFlow, config: McpServerConfig, clipboardText: String?): Outcome {
         if (clipboardText.isNullOrEmpty()) return Outcome.Rejected(Reason.EMPTY)
-        if (!looksLikeToken(clipboardText)) return Outcome.Rejected(Reason.SHAPE)
-        return if (auth.importToken(config, clipboardText)) Outcome.Saved else Outcome.Rejected(Reason.IMPORT)
+        val token = acceptedShape(clipboardText) ?: return Outcome.Rejected(Reason.SHAPE)
+        return if (auth.importToken(config, token)) Outcome.Saved else Outcome.Rejected(Reason.IMPORT)
     }
 
     /**
