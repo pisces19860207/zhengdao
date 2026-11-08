@@ -51,4 +51,13 @@
     <string name="baopu_tool_mcp_disconnect_desc">Disconnects a MCP server: unregisters its tools, deletes the local token from the vault and disables startup auto-connect. Config is kept; it can be reconnected later. Asks every time.</string>
     <string name="baopu_tool_mcp_set_token">Store MCP token</string>
     <string name="baopu_tool_mcp_set_token_desc">Stores a user-provided access token into the token vault (Keystore-encrypted). The token is never echoed, logged or backed up; for pre-issued (PAT) servers. Asks every time.</string>
+    <!-- 513: clipboard token channel (reuses the MCP auth row, no new page; notices never contain the token). -->
+    <string name="baopu_mcp_clipboard">Read from clipboard</string>
+    <string name="baopu_mcp_clipboard_empty">Clipboard is empty: copy the token first, then tap Read on the "%1$s" row.</string>
+    <string name="baopu_mcp_clipboard_shape">Clipboard does not look like a token (too long, or contains spaces/newlines); the vault for "%1$s" was not touched.</string>
+    <string name="baopu_mcp_clipboard_import_failed">Token for "%1$s" was not stored: retry, or use the authorization page.</string>
+    <string name="baopu_mcp_clipboard_no_server">"%1$s" is no longer in the list; clipboard was not read.</string>
+    <string name="baopu_mcp_clipboard_saved">Token for "%1$s" is in the vault; clipboard cleared.</string>
+    <string name="baopu_mcp_clipboard_saved_not_cleared">Token for "%1$s" is in the vault; clipboard could not be cleared — please clear it manually.</string>
+    <string name="baopu_mcp_clipboard_chat_hint">This message may contain a token: it will stay in the chat history. Prefer "Read from clipboard" on the MCP server row.</string>
 </resources>

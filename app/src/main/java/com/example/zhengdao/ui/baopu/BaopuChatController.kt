@@ -2959,6 +2959,16 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 第五百一十三批：对话里带着令牌形单词 ⇒ 提示一次「这会留在对话记录里」。
+     * 不拦截、不落库、不记内容（判定在 McpClipboardToken，进程内只提示一次）；
+     * 抽成小函数与 502 同一口径——send() 的圈复杂度一格不加。
+     */
+    private fun hintTokenInChat(text: String) {
+        if (!com.example.zhengdao.baopu.mcp.McpClipboardToken.shouldHintChatToken(text)) return
+        engine.showNotice(appCtx.getString(R.string.baopu_mcp_clipboard_chat_hint))
+    }
+
+    /**
      * 第五百一十六批：许愿回合（拦截命中后的整段抽出来——send() 的圈复杂度顶着 15，
      * 本批只许「不往 UI 区加债」，与 502 抽 logPasteParse 同一口径）。
      * IO 在 WishFlow 内部落 Dispatchers.IO；通知回主线程贴（scope 是 Main）。
@@ -2990,6 +3000,8 @@ internal class BaopuChatController(context: Context) {
         // 蓝总管验收接管（2026-11-07）：原样内联把 send() 的圈复杂度顶过 15，落进**冻结 UI 区**
         // 多出 1 条（126 > 125，闸红）。抽成小函数——本批只许「不往 UI 区加债」。
         logPasteParse(text)
+        // 第五百一十三批：这句话里若带令牌形，提示一次「会留在对话记录里」（纯提示，不拦不存）。
+        hintTokenInChat(text)
         // 第二百五十八批 W1：调解器的**唯一**接线点——每轮用户输入在这里过一道。
         // 放在所有分支之前（含插话与题材流）：插话也是用户说的一句话，档位该跟着换；
         // 别在 resume/retry/editUser 上再补一次——两处换档会让档位乱跳（派工单负例⑥）。

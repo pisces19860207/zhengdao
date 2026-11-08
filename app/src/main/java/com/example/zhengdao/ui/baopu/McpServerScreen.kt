@@ -64,6 +64,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.mcp.McpAuthStatus
+import com.example.zhengdao.baopu.mcp.McpClipboardToken
 import com.example.zhengdao.baopu.mcp.McpConnectOutcome
 import com.example.zhengdao.baopu.mcp.McpPasteRule
 import com.example.zhengdao.baopu.mcp.McpProbeFailure
@@ -77,6 +78,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.util.clearPrimaryClip
+import com.example.zhengdao.util.readPrimaryClip
 
 /** 面板上的一条提示（成功＝青、失败＝朱；两色都取主题，不新增色板）。 */
 private data class McpNotice(val ok: Boolean, val text: String)
@@ -292,6 +295,52 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
             }
             busyId = null
             notice = probeNotice(target.name, result)
+        }
+    }
+
+    /**
+     * 513「从剪贴板读取」：读一次剪贴板 → 形状闸 → 直接进保险柜 → 尽力清空剪贴板。
+     * 令牌不进对话/日志/回执（提示语只有结果，没有内容）；拒收时剪贴板原样不动。
+     * 读与清都在主线程当下做（Android 10+ 只许前台读；面板开着就是前台），落库在 IO。
+     */
+    fun importFromClipboard(target: McpServerView) {
+        if (busyId != null) return
+        val clip = readPrimaryClip(context)
+        busyId = target.id
+        notice = null
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                val cfg = BaopuRuntime.mcp(context).config(target.id)
+                if (cfg == null) null else McpClipboardToken.importText(BaopuRuntime.mcpAuth(context), cfg, clip)
+            }
+            busyId = null
+            when (outcome) {
+                null -> notice = McpNotice(false, res.getString(R.string.baopu_mcp_clipboard_no_server, target.name))
+                is McpClipboardToken.Outcome.Rejected -> notice = McpNotice(
+                    false,
+                    res.getString(
+                        when (outcome.reason) {
+                            McpClipboardToken.Reason.EMPTY -> R.string.baopu_mcp_clipboard_empty
+                            McpClipboardToken.Reason.SHAPE -> R.string.baopu_mcp_clipboard_shape
+                            McpClipboardToken.Reason.IMPORT -> R.string.baopu_mcp_clipboard_import_failed
+                        },
+                        target.name,
+                    ),
+                )
+                is McpClipboardToken.Outcome.Saved -> {
+                    // 判据④：清完再读一次复核；清不掉就明说（不假成功）。
+                    val cleared = clearPrimaryClip(context) && readPrimaryClip(context).isNullOrEmpty()
+                    notice = McpNotice(
+                        true,
+                        res.getString(
+                            if (cleared) R.string.baopu_mcp_clipboard_saved
+                            else R.string.baopu_mcp_clipboard_saved_not_cleared,
+                            target.name,
+                        ),
+                    )
+                    rows = withContext(Dispatchers.IO) { BaopuRuntime.mcp(context).snapshot() }
+                }
+            }
         }
     }
 
@@ -526,6 +575,7 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                             onDelete = { pendingDelete = view },
                             onViewTools = { viewTools(view) },
                             onProbe = { probeServer(view) },
+                            onClipboard = { importFromClipboard(view) },
                         )
                     }
                 }
@@ -610,7 +660,7 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
     }
 }
 
-/** 一行：名字 / 主机 / 状态 / 授权状态 / 工具数 / 最后连接 / 五个动作（245 加「测试连接」）。 */
+/** 一行：名字 / 主机 / 状态 / 授权状态 / 工具数 / 最后连接 / 动作簇（245 加「测试连接」，513 加「从剪贴板读取」）。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun McpServerRow(
@@ -621,6 +671,7 @@ private fun McpServerRow(
     onDelete: () -> Unit,
     onViewTools: () -> Unit,
     onProbe: () -> Unit,
+    onClipboard: () -> Unit,
 ) {
     val statusText = when (view.status) {
         McpServerStatus.CONNECTED -> stringResource(R.string.baopu_mcp_status_online)
@@ -738,6 +789,10 @@ private fun McpServerRow(
                         }
                         Text(stringResource(label))
                     }
+                }
+                // 513：令牌不经对话——复制后点这颗，直接进保险柜（连没连上都能用）。
+                TextButton(onClick = onClipboard, enabled = !busy) {
+                    Text(stringResource(R.string.baopu_mcp_clipboard))
                 }
                 TextButton(onClick = onProbe, enabled = !busy) {
                     Text(stringResource(R.string.baopu_mcp_probe))

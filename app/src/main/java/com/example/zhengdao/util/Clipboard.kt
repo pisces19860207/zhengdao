@@ -32,3 +32,29 @@ fun copyPlainText(context: Context, label: String, text: String): Boolean {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
     return runCatching { cm.setPrimaryClip(ClipData.newPlainText(label, text)) }.isSuccess
 }
+
+/**
+ * 读系统剪贴板的第一条纯文本（513 批：令牌剪贴板通道的读口）。
+ *
+ * null ＝ 剪贴板空／第一条不是文本／读不到。**只在用户点按钮的当下读一次**：
+ * 不读历史、不注册监听（Android 10+ 只允许前台且有焦点的应用读剪贴板——
+ * 调用点必须在前台界面里，见 McpServerScreen 的「从剪贴板读取」）。
+ * 非文本 clip（URI/Intent）不强转成字符串——令牌一定是文本，别的形状一律当「读不到」。
+ */
+fun readPrimaryClip(context: Context): String? {
+    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+    return runCatching {
+        cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+    }.getOrNull()
+}
+
+/**
+ * 尽力清空剪贴板（513 批：令牌入库后立刻清）。返回 true ＝ 系统接受了清空。
+ *
+ * 失败不抛（调用方据此提示「请手动覆盖剪贴板」）；清空后再 [readPrimaryClip] 复核
+ * 是调用方的事（判据④：读后为空或提示失败）。
+ */
+fun clearPrimaryClip(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+    return runCatching { cm.clearPrimaryClip() }.isSuccess
+}

@@ -52,4 +52,13 @@
     <string name="baopu_tool_mcp_disconnect_desc">断开一台 MCP 服务器：注销它的工具、从保险柜删除本机令牌、关闭启动自动连。配置保留，可再接上。每次弹确认卡。</string>
     <string name="baopu_tool_mcp_set_token">写入 MCP 令牌</string>
     <string name="baopu_tool_mcp_set_token_desc">把用户提供的访问令牌写进某台服务器的令牌保险柜（Keystore 加密）。令牌不回显、不进日志、不进备份；适用于预置令牌（PAT）场景。每次必弹确认卡。</string>
+    <!-- 第五百一十三批 · 令牌剪贴板通道（复用 MCP 授权处，零新页面；提示语永远不含令牌内容）。 -->
+    <string name="baopu_mcp_clipboard">从剪贴板读取</string>
+    <string name="baopu_mcp_clipboard_empty">剪贴板是空的：先复制令牌，再来「%1$s」这行点读取。</string>
+    <string name="baopu_mcp_clipboard_shape">剪贴板里不像令牌（太长或含空白/换行）：没动「%1$s」的保险柜。</string>
+    <string name="baopu_mcp_clipboard_import_failed">「%1$s」令牌没写进去：请重试，或改用授权页。</string>
+    <string name="baopu_mcp_clipboard_no_server">「%1$s」已不在清单里，没读剪贴板。</string>
+    <string name="baopu_mcp_clipboard_saved">「%1$s」令牌已进保险柜，剪贴板已清空。</string>
+    <string name="baopu_mcp_clipboard_saved_not_cleared">「%1$s」令牌已进保险柜；剪贴板没清成，请手动清一下。</string>
+    <string name="baopu_mcp_clipboard_chat_hint">这句话里可能有令牌：它会留在对话记录里。建议改用 MCP 服务器行的「从剪贴板读取」。</string>
 </resources>
