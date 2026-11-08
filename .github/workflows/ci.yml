@@ -72,7 +72,17 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # GitHub CDN 偶发 504（2026-11-08 实测三次）：首试失败再试一次，两次都失败才判红。
       - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
+        id: jdk25
+        uses: actions/setup-java@v6
+        continue-on-error: true
+        with:
+          distribution: temurin
+          java-version: '25.0.3'
+
+      - name: 重试安装 JDK 25（仅首试失败时）
+        if: steps.jdk25.outcome == 'failure'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -499,7 +509,17 @@ jobs:
       # 352：daemon 统一 JDK 25.0.3（gradle/gradle-daemon-jvm.properties 钉 major 25，
       # runner 预装没有 25，不显式装就走 foojay "Downloading toolchain"——352 判据②
       # 要求任何 job 都不再出现）。本 job 不跑 detekt，无需 JDK 21。
+      # GitHub CDN 偶发 504（2026-11-08 实测三次）：首试失败再试一次，两次都失败才判红。
       - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
+        id: jdk25
+        uses: actions/setup-java@v6
+        continue-on-error: true
+        with:
+          distribution: temurin
+          java-version: '25.0.3'
+
+      - name: 重试安装 JDK 25（仅首试失败时）
+        if: steps.jdk25.outcome == 'failure'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
