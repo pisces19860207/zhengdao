@@ -232,7 +232,7 @@ internal object ProfileBoundary {
     /** 低置信闸：置信度下限（JEV：q≥0.9 与大模型差 0.1 点）。 */
     const val MIN_CONFIDENCE = 0.9
 
-    /** 一次画像读数（调用方从画像引擎取；**这里只认机器键与计数，不收原文**）。 */
+    /** 画像答复的 sampleCount 仅表示样本下限（lowerBound），不许当测量值；分不清时也按下限。 */
     data class ProfileAnswer(
         val entryKey: String,
         val conclusion: String,
@@ -269,7 +269,7 @@ internal object ProfileBoundary {
             kind = AskGovLedger.KIND_PROFILE,
             who = "profile",
             basis = d.basis,
-            detail = "entry=${p.entryKey} conf=${p.confidence} n=${p.sampleCount}｜$subject",
+            detail = "entry=${p.entryKey} conf=${p.confidence} n>=${p.sampleCount}｜$subject",
             scene = AskGovLedger.SCENE_SUBJECTIVE,
             atMs = atMs,
         )
@@ -400,6 +400,7 @@ internal object AskIntakeGate {
      */
     private fun profileAnswer(cls: AskClass, title: String, nowMs: Long): AskIntakeOutcome? {
         val p = profileProvider?.invoke(cls) ?: return null
+        // sampleCount 分不清时按下限传递，不许当测量值用于统计或展示。
         val d = ProfileBoundary.decide(cls, p)
         if (cls == AskClass.AUTHORIZATION) {
             AskGovLedger.append(

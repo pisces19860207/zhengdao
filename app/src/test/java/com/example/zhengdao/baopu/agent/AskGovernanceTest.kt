@@ -9,6 +9,7 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.RiskClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -290,6 +291,19 @@ class AskGovernanceTest {
         assertTrue(row != null)
         assertTrue("账行带画像键", row!!.detail.contains("entry=how_to_naming"))
         assertTrue("账行带置信度", row.detail.contains("conf=0.95"))
+        assertTrue("样本数只标下限", row.detail.contains(" n>=25｜"))
+        assertFalse("下限不许标成实测计数", row.detail.contains(" n="))
+        AskGovLedger.resetForTest()
+    }
+
+    @Test
+    fun `样本下限20与置信度边界仍自决且账行标下限`() {
+        AskGovLedger.resetForTest()
+        val d = ProfileBoundary.decide(AskClass.PREFERENCE, profileOf(n = 20, conf = 0.9))
+        assertEquals(ProfileBoundary.Verdict.SELF_DECIDE, d.verdict)
+        val row = ProfileBoundary.noteSelfDecide(d, "命名习惯", 40_001L)
+        assertNotNull(row)
+        assertEquals("entry=how_to_naming conf=0.9 n>=20｜命名习惯", row!!.detail)
         AskGovLedger.resetForTest()
     }
 
