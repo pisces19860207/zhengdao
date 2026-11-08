@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+      "contains": "n=${p.sampleCount}",
+      "reason": "535 A 段已交付（分支 fix/metric-semantics 4a2d2752f）待合；合入后本行自动消失，须删除此条",
+      "expires": "2026-11-15"
+    },
+    {
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/LogisticsQueryTool.kt",
+      "contains": "count=几件几车",
+      "reason": "工具 schema 里「查询类型名→中文含义」的解释串，不是计数读数",
+      "expires": "2027-05-01"
+    },
+    {
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/TableQueryTool.kt",
+      "contains": "count=几行",
+      "reason": "表格运算名的中文说明串（schema 文案），不输出数值",
+      "expires": "2027-05-01"
+    },
+    {
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/SearchWebTool.kt",
+      "contains": "} n=$n",
+      "reason": "n 是请求上限 maxResults（1..10），不是返回条数；535 已列为移交、本批不改",
+      "expires": "2027-05-01"
+    }
+  ]
+}
