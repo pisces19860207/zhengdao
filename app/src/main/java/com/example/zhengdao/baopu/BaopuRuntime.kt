@@ -16,6 +16,7 @@ import com.example.zhengdao.baopu.agent.ArtifactRaster
 import com.example.zhengdao.baopu.agent.AskDailyBudget
 import com.example.zhengdao.baopu.agent.AskGovLedger
 import com.example.zhengdao.baopu.agent.AskGovernance
+import com.example.zhengdao.baopu.agent.AskHabitSwitch
 import com.example.zhengdao.baopu.agent.AskIntakeGate
 import com.example.zhengdao.baopu.agent.AskTier
 import com.example.zhengdao.baopu.agent.AskUserTool
@@ -73,6 +74,7 @@ import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.policy.AnchorAsset
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
+import com.example.zhengdao.baopu.profile.ProfileIntakeWiring
 import com.example.zhengdao.baopu.profile.UserProfileBlackbox
 import com.example.zhengdao.baopu.profile.VerdictExperienceStore
 import com.example.zhengdao.core.RunLog
@@ -917,10 +919,12 @@ internal object BaopuRuntime {
         // 第四百九十九批：打扰治理的装配三件（Context 只到装配层这一只手的延续）。
         // ① 授权档：SP 回填（新装无值 ⇒ 标准，判据⑥）；切档写 SP（档位只能人改，写口在这）。
         // ② 先自查钩子：文件位置类问题列工作区根当答案，不弹卡（B 段判据⑦的生产落点）。
-        // ③ 画像读数口不挂（画像接线归后续批——今天行为与接线前逐字一致；边界判据在 ProfileBoundary）。
+        // ③ 画像读数口（529 批接上）：查询本体在 ProfileIntakeWiring（profile 包），这里只挂
+        //    一行；开关默认开、关掉即回 null 行为；画像为空/样本不足一律 null（不造数）。
         AskGovernance.restore(askTierStored(appCtx) ?: AskTier.DEFAULT)
         AskGovernance.tierSink = { t -> askTierStore(appCtx, t) }
         AskIntakeGate.selfCheck = { _ -> selfCheckListing(workspaceRoot(appCtx)) }
+        ProfileIntakeWiring.install(enabled = { AskHabitSwitch.on(appCtx) })
         // 第二百八十七批：每轮入口喂会话身份（文件操作账按会话分账，回放时看得清是哪一轮）。
         engine.onSessionEnter = { FileOpLog.enterSession(it) }
         // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。

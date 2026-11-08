@@ -93,6 +93,7 @@ import com.example.zhengdao.baopu.PersonaRules
 import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
+import com.example.zhengdao.baopu.agent.AskHabitSwitch
 import com.example.zhengdao.baopu.agent.PersonaApprovalCard
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
@@ -469,6 +470,42 @@ internal fun BaopuSettingsScreen(
                             ImpactPrefs.set(ctx, want)
                             impactOn = want
                             RunLog.log("抱朴设置：显示影响提示 = $want")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 按习惯免问（第五百二十九批：画像装配接线的开关，默认开）──
+            // 定位：关掉 ⇒ 弹卡前不查习惯记录，行为与接线前逐字一致。它不改任何
+            // 确认/权限判据：授权类本来就永远问真人，这张开关管不到那一类。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_intake_card)) {
+                var habitOn by rememberSaveable { mutableStateOf(AskHabitSwitch.on(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_intake_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_intake_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = habitOn,
+                        onCheckedChange = { want ->
+                            AskHabitSwitch.set(ctx, want)
+                            habitOn = want
+                            RunLog.log("抱朴设置：按习惯免问 = $want")
                         },
                         colors = zhengdaoSwitchColors(),
                     )
