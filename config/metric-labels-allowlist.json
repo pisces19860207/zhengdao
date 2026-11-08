@@ -1,12 +1,6 @@
 {
   "entries": [
     {
-      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
-      "contains": "n=${p.sampleCount}",
-      "reason": "535 A 段已交付（分支 fix/metric-semantics 4a2d2752f）待合；合入后本行自动消失，须删除此条",
-      "expires": "2026-11-15"
-    },
-    {
       "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/LogisticsQueryTool.kt",
       "contains": "count=几件几车",
       "reason": "工具 schema 里「查询类型名→中文含义」的解释串，不是计数读数",
