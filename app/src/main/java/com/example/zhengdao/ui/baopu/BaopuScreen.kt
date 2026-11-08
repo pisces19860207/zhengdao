@@ -226,8 +226,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     // （SettingsScreen 原样调用 TasteSettingsScreen），抱朴页不再承载这一页。
     // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
     var showDecisionCenter by remember { mutableStateOf(false) }
-    // 第五百二十八批：决策中心**主屏**（抽屉「新会话」之上那一行进的三区浮层）。
-    var showDecisionZone by remember { mutableStateOf(false) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
     // 引擎是异步就绪的，首次点击由 BaopuSpeaker 自己排队（见该类 KDoc 第 1 条）。
     val speaker = remember { BaopuSpeaker(context) }
@@ -259,8 +257,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = showSettings) { showSettings = false }
     // 第一百零四批：决策中心浮层的返回键（Dialog 自己也会收，这里与设置同口径）。
     BackHandler(enabled = showDecisionCenter) { showDecisionCenter = false }
-    // 第五百二十八批：决策中心主屏同口径。
-    BackHandler(enabled = showDecisionZone) { showDecisionZone = false }
     // 会话库浮层同口径（第二十批）。
     BackHandler(enabled = showSessionLibrary) { showSessionLibrary = false }
 
@@ -450,11 +446,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         scope.launch { drawerState.close() }
                         // 第四百三十四批：「新会话」两处入口之一（另一处＝工作区的「＋」）。
                         BaopuNewSession.open(context, controller, NewSessionWhere.Stay)
-                    },
-                    // 第五百二十八批：决策中心主屏（排在「新会话」之上——它是主屏）。
-                    onDecisionCenter = {
-                        scope.launch { drawerState.close() }
-                        showDecisionZone = true
                     },
                     // 抽屉里**不再有**「历史会话」行（会话已归到各工作区下面）；
                     // 平铺列表（含删除）改成低频入口：抱朴设置 → 会话记录。
@@ -1496,13 +1487,6 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         showDecisionCenter = false
                         scope.launch { drawerState.open() }
                     },
-                )
-            }
-            // ── 第五百二十八批：决策中心**主屏**（抽屉入口；待批/已办/可回滚三区）──
-            if (showDecisionZone) {
-                DecisionZoneScreen(
-                    controller = controller,
-                    onDismiss = { showDecisionZone = false },
                 )
             }
             // 高风险采纳的二次确认层（验收 #8：无确认不可采纳；完整前后对比）

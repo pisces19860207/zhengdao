@@ -307,13 +307,8 @@ private fun RoyalTab() {
     }
 }
 
-/**
- * 御案列表（读账 → 学习读侧三问 → 拟稿 → 核验 → 卡面自检；纯读，不写账）。
- *
- * 第五百二十八批起为 `internal`：主屏（`DecisionZoneScreen`）的数据口共用这一份算法——
- * 两屏不许各算一套数（判据层与 G3 钉的三处接线都还留在本文件，一个字节没搬）。
- */
-internal fun royalRows(s: DecisionStrRes): List<RoyalRow> {
+/** 御案列表（读账 → 学习读侧三问 → 拟稿 → 核验 → 卡面自检；纯读，不写账）。 */
+private fun royalRows(s: DecisionStrRes): List<RoyalRow> {
     val now = System.currentTimeMillis()
     val suppressed = RoyalDecisionLedger.suppressedIds(now)
     val rulings = OpinionWiring.replay()
