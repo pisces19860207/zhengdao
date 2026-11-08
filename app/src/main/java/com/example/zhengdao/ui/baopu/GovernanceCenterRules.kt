@@ -52,6 +52,25 @@ internal data class GovExecutor(
     val lastRevokeClock: String,
 )
 
+/**
+ * 小黑板的四格显示态（542；纯判据，渲染在 `BoardSection`）。
+ *
+ * 为什么把「空 / 读不出 / 有没有时刻 / 清空能不能按」拆成四格而不是让界面 `when` 一把：
+ * 这四条各自有独立判据（`GovernanceCenterRulesTest` 逐格断言），而 Compose 树在 JVM 直测不了
+ * ——本仓既有口径是「能搬进纯函数的判断都搬出来」。
+ *
+ * @param unreadable 盘上有这件文件但读不出（不是空的：空便签是合法状态）
+ * @param empty 空板（没写过，或写过一串空串）⇒ 界面显示占位「（还没写过）」
+ * @param updatedClock 上次写盘的时刻 `HH:mm`；没有这件文件 ⇒ 空串（界面不显示「最近更新」）
+ * @param clearEnabled 「清空」能不能按：板上有字才按得动（空板时按钮仍在，只是不可点）
+ */
+internal data class GovBoard(
+    val unreadable: Boolean,
+    val empty: Boolean,
+    val updatedClock: String,
+    val clearEnabled: Boolean,
+)
+
 internal object GovernanceCenterRules {
 
     /** 四率的固定顺序（屏幕顺序＝这个顺序；缺哪格就少哪格，不补 0）。 */
@@ -65,6 +84,9 @@ internal object GovernanceCenterRules {
 
     /** 撤销时刻的显示形状（本地时区；与时间词口径同族——显示的是"那一刻"，不是"多久以前"）。 */
     private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.US)
+
+    /** 小黑板「最近更新」的形状（542：只到分——板上记的是"刚才/今早"，不需要秒与日期）。 */
+    private val CLOCK_HM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
     /**
      * 解析一把出口 JSON（**失败也只回空表**：屏幕画「读不到」，不抛、不编）。
@@ -139,6 +161,32 @@ internal object GovernanceCenterRules {
     /** 撤销时刻的显示（纯：给毫秒与时区，回一串字）。 */
     fun clock(atMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
         CLOCK.format(Instant.ofEpochMilli(atMs).atZone(zone))
+
+    /**
+     * 小黑板「最近更新」的时刻（542）：只到分（`HH:mm`），与 [clock] 是两个形状不是两套口径
+     * ——同一把 `DateTimeFormatter` 家族、同一份时区入参，本层仍不算任何数。
+     */
+    fun clockHm(atMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
+        CLOCK_HM.format(Instant.ofEpochMilli(atMs).atZone(zone))
+
+    /**
+     * 小黑板四格（542：判据②「空板占位／最近更新／清空三样齐」的纯层那一半）。
+     *
+     * @param text `BoardStore.read` 的结果：null ＝读不出；""＝空板；其余＝正文
+     * @param updatedAtMs `BoardStore.updatedAt` 的结果：0 ＝盘上没有这件文件
+     * @param zone 显示用到的时区（测试传固定时区，生产传系统时区）
+     */
+    fun boardView(
+        text: String?,
+        updatedAtMs: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): GovBoard = GovBoard(
+        unreadable = text == null,
+        // 读不出时**不**说"空"：那两件事在界面上要分开（同 322 的口径）
+        empty = text != null && text.isEmpty(),
+        updatedClock = if (updatedAtMs > 0L) clockHm(updatedAtMs, zone) else "",
+        clearEnabled = !text.isNullOrEmpty(),
+    )
 
     /**
      * 最近一次撤销的时刻（0 ＝没撤销过）。

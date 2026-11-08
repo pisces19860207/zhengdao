@@ -174,6 +174,34 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
             get() = PolicyRuntime.current().toolGroups.defaultVisibleTools
 
         /**
+         * 第五百四十二批：**免解锁、也不进 capabilities 名册**的工具名单（唯一定义处）。
+         *
+         * 用户 2026-11-08 原话：「`board_read`/`board_write` 免解锁、默认可用；**不在
+         * `capabilities` 工具组清单里显示**」＋「`governance_state` 等自治理中心工具同样处理」。
+         *
+         * 为什么必须单开一条，而不是塞进上一条 [DEFAULT_VISIBLE_TOOLS]：
+         * - 那条是**读策略**的，且被 [register] 的 fail-closed 只读闸钉死（写类进去装配期就抛）
+         *   —— `board_write` 是写，塞进去当场炸；
+         * - 塞进 [DEFAULT_VISIBLE] 的某个组（如 CORE）又会破「默认可见 ≤12」那张硬卡，且会让
+         *   名册把这三件念成 CORE 的成员（判据④要的正好相反）。
+         *
+         * 语义只有一句：**这三件永远在手边，所以没有「要不要开」可谈**——
+         * 1. 可见性上**不受组级解锁门槛约束**（组仍锁着也看得见、调得动）；
+         * 2. 名册上**不出现**（`capabilities` 的组清单与「当前可见工具」两处都不念名字）。
+         *
+         * 三条**没有**因此松掉：
+         * - 用户的两道开关照旧压得住它（[ToolUserSettings.disabledNames] / `disabledGroups`）：
+         *   用户在设置里关掉 FILES 组，这三件一起消失——「用户开关优先」一个字没改；
+         * - 注册仍在 FILES 组、`RiskMatrix` 两行照留（抽检/统计看得见这两件动作）；
+         * - 写盘仍只落在 `<工作区>/产物/.board.md` 一件上（`BoardStore` 是唯一碰盘处）。
+         *
+         * 判据（`BoardUnlockTest` 五例）：冷启首轮 board_write 真写成功 ／ tools 数组里有它 ／
+         * 名册两处都没有 `board_*` 与 `governance_state` ／ 关掉 FILES 组后一起消失 ／
+         * 名单里的名字必须真注册（写错名字＝静默失效，装配期直接抛）。
+         */
+        val UNLOCK_FREE_SILENT: Set<String> = setOf("board_read", "board_write", "governance_state")
+
+        /**
          * 成员在 [ToolGroupTable] 里有静态名单的组（设置页 / capabilities 名册 /
          * enable 名单的枚举口径）。
          *
@@ -373,9 +401,13 @@ internal object ToolGroupTable {
         val declared = BaopuToolCatalog.ENTRIES.map { it.name }.toSet() + RUNTIME_REGISTERED
         val missing = declared - GROUP_OF.keys
         val stale = GROUP_OF.keys - declared
+        // 542：免解锁名单里的名字必须真在这一张分组表里——写错一个字母就是「静默失效」
+        // （那件工具既不会默认可见、也不会报错），所以在这一处 fail closed。
+        val ghost = ToolGroup.UNLOCK_FREE_SILENT - GROUP_OF.keys
         return when {
             missing.isNotEmpty() -> "这些工具没有分组（孤儿工具）：${missing.sorted()}"
             stale.isNotEmpty() -> "分组表里这些名字根本没注册（过期条目）：${stale.sorted()}"
+            ghost.isNotEmpty() -> "免解锁名单里的名字没有分组（写错了？）：${ghost.sorted()}"
             else -> null
         }
     }
@@ -468,6 +500,10 @@ internal class InMemoryGroupUnlocks(
  *
  * 可见 = 组没被用户关掉 ∧ 工具没被用户关掉 ∧（组默认可见 ∪ 组已在本会话解锁）。
  *
+ * 542：第四条通路是**工具级免解锁**（[ToolGroup.UNLOCK_FREE_SILENT]：小黑板两件与治理出口）——
+ * 它们不靠组解锁、也不进名册，所以那条并集一个字没动，只在最后多一个 `||`。
+ * 用户两道开关排在它**前面**判：关掉 FILES 组，免解锁这几件也一起消失（用户开关优先）。
+ *
  * 纯函数：吃三样输入（表、用户开关、本会话解锁），零 Android、零 IO ⇒ JVM 直测
  * §2 要求的三组用例（默认 / 解锁 / 用户关闭）。
  *
@@ -484,11 +520,16 @@ internal fun isVisibleTool(
     // 第九十七批：可见 = 默认可见 ∪ 长期同意 ∪ 本会话已解锁（三种授权同一档）；
     // 组开关与单工具开关仍各自能否决——那两条判据在下面两行，一个字没动。
     // 157：再加**工具级默认可见**第三条件（library_list/kb_search；组仍锁）。
+    // 542：再加**工具级免解锁**第四条件（board_read/board_write/governance_state）。
     // 用户的两道开关照旧压得住它：disabledNames / disabledGroups 先判。
     val visibleGroups = ToolGroup.DEFAULT_VISIBLE + settings.approvedGroups + unlockedGroups
     return spec.name !in settings.disabledNames &&
         spec.group !in settings.disabledGroups &&
-        (spec.group in visibleGroups || spec.name in ToolGroup.DEFAULT_VISIBLE_TOOLS)
+        (
+            spec.group in visibleGroups ||
+                spec.name in ToolGroup.DEFAULT_VISIBLE_TOOLS ||
+                spec.name in ToolGroup.UNLOCK_FREE_SILENT
+            )
 }
 
 /** 整表版（[isVisibleTool] 的 filter；tools 数组由它产出，顺序 = 表顺序）。 */
@@ -518,7 +559,8 @@ internal fun filteredReasonOf(
     spec.group !in (
         ToolGroup.DEFAULT_VISIBLE + settings.approvedGroups + unlockedGroups
         ) &&
-        spec.name !in ToolGroup.DEFAULT_VISIBLE_TOOLS -> "组未解锁"
+        spec.name !in ToolGroup.DEFAULT_VISIBLE_TOOLS &&
+        spec.name !in ToolGroup.UNLOCK_FREE_SILENT -> "组未解锁"
 
     else -> null
 }
@@ -1177,7 +1219,11 @@ internal class ToolRegistry(
                     .joinToString("、") { it.key })
                 .append("\n")
         }
-        val visible = visibleSpecs(sessionId).map { it.name }.toSet()
+        // 542：免解锁那几件**不念名字**（判据④）——它们在手边，报出来只会让模型以为
+        // "这是解锁拿到的"，下一轮去精简/申请一个根本不必申请的组。
+        val visible = visibleSpecs(sessionId).map { it.name }
+            .filter { it !in ToolGroup.UNLOCK_FREE_SILENT }
+            .toSet()
         sb.append("当前可见工具（").append(visible.size).append(" 个）：")
             .append(visible.joinToString("、")).append("\n")
         sb.append("全量名册（组 → 状态 → 组内工具）：\n")
@@ -1189,7 +1235,10 @@ internal class ToolRegistry(
             // 名册列的是**此刻真注册着的**工具（[ToolGroupTable] 是分组表，不是注册表）：
             // COMPAT 那两条只有免费通道会注册，普通通道列出来就是骗模型「解锁了就能用」。
             // 这不是第二条过滤链——可见性判据仍只有 [visibleTools] 一处，这里只影响名册文案。
-            val registered = names.filter { specs.containsKey(it) }
+            // 542：组内名单里也摘掉免解锁那几件（判据④：`capabilities` 输出不含 `board_*`／
+            // `governance_state`）。这不是第二条可见性判据——可见与否仍只有 [visibleTools] 一处，
+            // 这里只决定"念不念名字"。
+            val registered = names.filter { specs.containsKey(it) && it !in ToolGroup.UNLOCK_FREE_SILENT }
             val state = when {
                 group in settings.disabledGroups -> "已被用户关闭（解不开）"
                 group in ToolGroup.DEFAULT_VISIBLE -> "默认可见"

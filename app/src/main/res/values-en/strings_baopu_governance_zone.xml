@@ -29,8 +29,8 @@
     <string name="gc_state_rotated">rotated out</string>
 
     <string name="gc_section_board">Model scratchboard</string>
-    <string name="gc_board_hint">Baopu\'s own note (dot-file: not counted as a product; not memory, not a decision input)</string>
-    <string name="gc_board_empty">The board is empty — nothing written yet</string>
+    <string name="gc_board_header">%1$s · updated %2$s</string>
+    <string name="gc_board_empty">(nothing written yet)</string>
     <string name="gc_board_unreadable">Cannot read the board (not a text file)</string>
     <string name="gc_board_capacity">Limit %1$d / %2$d (KB · lines)</string>
     <string name="gc_board_clear">Clear</string>

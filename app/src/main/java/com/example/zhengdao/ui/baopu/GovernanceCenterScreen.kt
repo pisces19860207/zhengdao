@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,8 +48,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -59,6 +64,7 @@ import com.example.zhengdao.baopu.consequence.CredentialStore
 import com.example.zhengdao.baopu.consequence.IdentityStore
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.SectionCard
+import com.example.zhengdao.ui.theme.ShapeCard
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,6 +84,8 @@ private data class GovSnapshot(
     val credentialCount: Int = 0,
     val revokedAtMs: Long = 0L,
     val board: String? = null,
+    /** 小黑板上次写盘的时刻（0 ＝盘上没有这件文件；542 起用于顶上那行「最近更新」）。 */
+    val boardUpdatedAtMs: Long = 0L,
     /** 首次读盘还没回来：与"读出来是空的"分开（同抽屉那批 264 的口径）。 */
     val ready: Boolean = false,
 )
@@ -121,7 +129,7 @@ internal fun GovernanceCenterScreen(
                     item { Spacer(Modifier.height(14.dp)) }
                     item {
                         BoardSection(
-                            board = snapshot.board,
+                            snapshot = snapshot,
                             onClear = { confirmingClear = true },
                         )
                     }
@@ -159,13 +167,15 @@ private fun readSnapshot(filesDir: File, wsRoot: File): GovSnapshot {
     val revokedAt = runCatching {
         GovernanceCenterRules.lastRevokeAtMs(IdentityStore.load(filesDir))
     }.getOrDefault(0L)
-    // ③ 小黑板：只读镜像
+    // ③ 小黑板：只读镜像 ＋ 上次写盘时刻（542：顶上那行「最近更新 HH:mm」只认这两样）
     val board = BoardStore.read(wsRoot)
+    val boardUpdatedAtMs = BoardStore.updatedAt(wsRoot)
     return GovSnapshot(
         root = root,
         credentialCount = creds,
         revokedAtMs = revokedAt,
         board = board,
+        boardUpdatedAtMs = boardUpdatedAtMs,
         ready = true,
     )
 }
@@ -252,47 +262,124 @@ private fun ExecutorSection(snapshot: GovSnapshot) {
     }
 }
 
-/** ③ 模型小黑板（只读镜像 ＋ 人工清空）。 */
+/**
+ * ③ 模型小黑板（只读镜像 ＋ 人工清空）。
+ *
+ * 第五百四十二批：**A 案板面**（深绿底 `#1F3B2F` / 白字 `#F2F1E6`）。四条样式口径逐条落地：
+ * 1. **顶上只有一行**「模型小黑板 · 最近更新 HH:mm」——板名与时刻同一行，不再另起一个小标题；
+ *    没写过（盘上没这件文件）时**不显示**「最近更新」，不编一个时间；
+ * 2. **空板占位**「（还没写过）」：与"读不出"分开（后者如实说读不出）；
+ * 3. **右下「清空」**：文字按钮，板上有字才按得动（空板时按钮仍在，只是不可点——
+ *    "三样齐"要的是**看得见**，不是"处处可点"）；
+ * 4. **不做主题切换**：板面色住在 `BoardPalette`，不读 `isZhengdaoDark()`（一块板不随深浅模式变色）。
+ *
+ * 尺寸/形状一律用律令既有 token：卡片 `ShapeCard`（16dp 圆角）、内距 16dp（同 `SectionCard`）、
+ * 正文 `bodyMedium`（15sp）、小字 `labelMedium`（13sp）/ `labelSmall`（10sp）、
+ * 按钮 `heightIn(min = 48.dp)`（触摸目标下限，同本仓顶栏口径）。**没有新增字号/圆角/内距档位。**
+ */
 @Composable
-private fun BoardSection(board: String?, onClear: () -> Unit) {
-    SectionCard(title = stringResource(R.string.gc_section_board)) {
-        Text(
-            text = stringResource(R.string.gc_board_hint),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 6.dp),
-        )
-        when {
-            board == null -> Text(
-                text = stringResource(R.string.gc_board_unreadable),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            board.isEmpty() -> Text(
-                text = stringResource(R.string.gc_board_empty),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            else -> Text(
-                text = board,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-        if (!board.isNullOrEmpty()) {
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = stringResource(R.string.gc_board_capacity, BoardRules.MAX_KB, BoardRules.MAX_LINES),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = onClear, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.gc_board_clear))
-                }
-            }
+private fun BoardSection(snapshot: GovSnapshot, onClear: () -> Unit) {
+    val view = remember(snapshot) {
+        GovernanceCenterRules.boardView(snapshot.board, snapshot.boardUpdatedAtMs)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ShapeCard,
+        colors = CardDefaults.cardColors(containerColor = BoardPalette.ground),
+    ) {
+        // 三段各自一个函数：一段一件事（板名行 / 正文 / 底部那一行），
+        // 也免得整块超 detekt 的 60 行（542 首跑就是 70 行红的）。
+        Column(Modifier.padding(16.dp)) {
+            BoardTitleLine(view)
+            Spacer(Modifier.height(8.dp))
+            BoardBodyLine(snapshot.board, view)
+            BoardFooterLine(view, onClear)
         }
     }
+}
+
+/** 板面顶上一行：「模型小黑板」＋（有这件文件时）「 · 最近更新 HH:mm」。 */
+@Composable
+private fun BoardTitleLine(view: GovBoard) {
+    BoardText(
+        text = if (view.updatedClock.isEmpty()) {
+            stringResource(R.string.gc_section_board)
+        } else {
+            stringResource(
+                R.string.gc_board_header,
+                stringResource(R.string.gc_section_board),
+                view.updatedClock,
+            )
+        },
+        style = MaterialTheme.typography.labelMedium,
+        color = BoardPalette.chalkDim,
+    )
+}
+
+/** 板面正文：读不出／空板（占位）／有字，三态分开（空与读不出是两件事）。 */
+@Composable
+private fun BoardBodyLine(board: String?, view: GovBoard) {
+    when {
+        view.unreadable -> BoardText(
+            text = stringResource(R.string.gc_board_unreadable),
+            style = MaterialTheme.typography.bodyMedium,
+            color = BoardPalette.chalkDim,
+        )
+        view.empty -> BoardText(
+            text = stringResource(R.string.gc_board_empty),
+            style = MaterialTheme.typography.bodyMedium,
+            color = BoardPalette.chalkDim,
+        )
+        else -> BoardText(
+            text = board.orEmpty(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = BoardPalette.chalk,
+        )
+    }
+}
+
+/** 板面底下一行：左边上限读数（小字），右下「清空」（文字按钮，空板时不可点但仍在）。 */
+@Composable
+private fun BoardFooterLine(view: GovBoard, onClear: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BoardText(
+            text = stringResource(
+                R.string.gc_board_capacity,
+                BoardRules.MAX_KB,
+                BoardRules.MAX_LINES,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = BoardPalette.chalkDim,
+        )
+        Spacer(Modifier.weight(1f))
+        TextButton(
+            onClick = onClear,
+            enabled = view.clearEnabled,
+            modifier = Modifier.heightIn(min = 48.dp),
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = BoardPalette.chalk,
+                // 不可点时压暗到"看得出不可点"：板面底色上不靠系统主题色（那个青在绿上说不清）
+                disabledContentColor = BoardPalette.chalkDim.copy(alpha = 0.45f),
+            ),
+        ) {
+            Text(stringResource(R.string.gc_board_clear))
+        }
+    }
+}
+
+/**
+ * 板面上的一行字（单一出口：三处文案共用同一套换行/顺序口径，防止有人单独改行高）。
+ *
+ * ⚠️ **不许给它加 `fillMaxWidth()`**（542 真机截图上踩过）：这一行也用在底部那个 `Row` 里，
+ * 一填满宽度就把 `Spacer(weight)` 与「清空」按钮挤到可视区之外——`uiautomator dump` 里
+ * 连节点都没有，看着像"按钮没做"。正文的换行不需要它：`Text` 本来就按父约束换行。
+ */
+@Composable
+private fun BoardText(text: String, style: TextStyle, color: Color) {
+    Text(text = text, style = style, color = color)
 }
 
 @Composable

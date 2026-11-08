@@ -22,6 +22,13 @@
 //
 // 落账只记**长度与行数**，不记正文（判据⑥）：便签里可能有"下一步查哪个文件"这类半成品线索，
 // 全量进 run_log 等于把一份草稿抄进审计台账。
+//
+// ── 第五百四十二批（2026-11-08）追加两条，其余一个字没动 ──
+//   4. **免解锁**：`board_read` / `board_write` 与 `governance_state` 一起进了
+//      `ToolGroup.UNLOCK_FREE_SILENT`（组仍锁着也看得见、调得动），且**不进 `capabilities` 名册**
+//      ——用户口径「免解锁、默认可用；不在工具组清单里显示」。上限/格式/落点全不变。
+//   5. **写盘时刻**由 [BoardStore.updatedAt] 一处给出：治理中心顶上那行「最近更新 HH:mm」
+//      只认它，界面不自己拼路径去 `lastModified()`（那会破掉"全仓唯一碰这个文件的地方"）。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.MemoryLayout
@@ -123,6 +130,20 @@ internal object BoardStore {
         val f = fileOf(wsRoot)
         !f.exists() || f.delete()
     }.getOrDefault(false)
+
+    /**
+     * 上次写盘的时刻（542：治理中心顶上那行「最近更新 HH:mm」的唯一取数路）。
+     *
+     * 为什么放在这里而不是让界面自己 `File(...).lastModified()`：本文件是**全仓唯一碰这个
+     * 文件的地方**（判据锚），界面自己拼路径去摸一次就是把那条唯一性破掉。
+     *
+     * 0 ＝ 盘上没有这件文件（没写过，或被人工清空过）⇒ 界面不显示时刻，只显示占位。
+     * 读不出（权限/异常）也回 0：那和"盘上暂时没有"对界面而言是同一件事，不编一个假时间。
+     */
+    fun updatedAt(wsRoot: File): Long = runCatching {
+        val f = fileOf(wsRoot)
+        if (f.isFile) f.lastModified() else 0L
+    }.getOrDefault(0L)
 }
 
 // ── board_read ──────────────────────────────────────────────────────────────
@@ -144,7 +165,7 @@ internal object BoardReadTool {
         description = "读你自己的小黑板（`产物/.board.md`，整篇）。" +
             "用来放**工作中间态**：待办、当前假设、下一步要查什么；跨轮次还在。" +
             "上限 4KB / 20 行，超了得自己删旧。它不进记忆、不参与任何判定，别把用户原话或隐私写进去。" +
-            "（这个工具在 FILES 组：看不到就先 capabilities 解锁）",
+            "（542 起这件**免解锁**：组锁着也照样可调，不用 capabilities 申请）",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(),
@@ -195,7 +216,7 @@ internal object BoardWriteTool {
             "你要留的旧内容自己带上，没带进来的就没了。" +
             "上限 4KB / 20 行：超了会被**拒写**并让你先删旧（不会静默截断）。" +
             "放工作中间态（待办/假设/下一步），不写用户原文、不写隐私；它不进记忆、不参与判定。" +
-            "空串＝清空。（这个工具在 FILES 组：看不到就先 capabilities 解锁）",
+            "空串＝清空。（542 起这件**免解锁**：组锁着也照样可调，不用 capabilities 申请）",
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(

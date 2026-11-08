@@ -214,4 +214,39 @@ class GovernanceCenterRulesTest {
         val grayKeys = if (gray == null || gray.has("unknown")) 1 else gray.length()
         assertEquals("灰度行数必须等于出口键数", grayKeys, GovernanceCenterRules.grays(exit).size)
     }
+
+    // ── 542：小黑板四格（判据②「空板占位／最近更新／清空三样齐」的纯层那一半）──────
+
+    @Test
+    fun `黑板_没写过_空且没有时刻且清空不可点`() {
+        val view = GovernanceCenterRules.boardView(text = "", updatedAtMs = 0L)
+        assertTrue("没写过应当是空板（显示占位）", view.empty)
+        assertTrue("空板不许被说成读不出", !view.unreadable)
+        assertEquals("没有这件文件就没有时刻（不编一个 00:00）", "", view.updatedClock)
+        assertTrue("空板按不动清空", !view.clearEnabled)
+    }
+
+    @Test
+    fun `黑板_有字_带HHmm时刻且清空可按`() {
+        // 2026-11-08 21:07 UTC+8 ⇒ 21:07（固定时区，不受跑测机器时区影响）
+        val at = java.time.ZonedDateTime.of(2026, 11, 8, 21, 7, 0, 0, ZoneId.of("Asia/Shanghai"))
+            .toInstant().toEpochMilli()
+        val view = GovernanceCenterRules.boardView(
+            text = "待办：先看 BoardTools",
+            updatedAtMs = at,
+            zone = ZoneId.of("Asia/Shanghai"),
+        )
+        assertTrue("有字就不是空板", !view.empty)
+        assertEquals("时刻只到分", "21:07", view.updatedClock)
+        assertTrue("有字才按得动清空", view.clearEnabled)
+    }
+
+    @Test
+    fun `黑板_读不出与空是两件事`() {
+        val view = GovernanceCenterRules.boardView(text = null, updatedAtMs = 1_760_000_000_000L)
+        assertTrue("读不出要如实标", view.unreadable)
+        assertTrue("读不出不许被当成空板（那样会说'还没写过'，是假话）", !view.empty)
+        assertTrue("读不出时清空也不该乱按", !view.clearEnabled)
+        assertTrue("盘上有这件文件就有时刻（读不出内容不等于没写过）", view.updatedClock.isNotEmpty())
+    }
 }

@@ -41,10 +41,10 @@
     <string name="gc_state_revoked">已撤销</string>
     <string name="gc_state_rotated">已轮换</string>
 
-    <!-- 模型小黑板 -->
+    <!-- 模型小黑板（542：A 案板面。顶上只有一行「模型小黑板 · 最近更新 HH:mm」） -->
     <string name="gc_section_board">模型小黑板</string>
-    <string name="gc_board_hint">抱朴自己的便签（点号文件，不计入产物数；不进记忆、不参与判定）</string>
-    <string name="gc_board_empty">小黑板是空的——它还没记东西</string>
+    <string name="gc_board_header">%1$s · 最近更新 %2$s</string>
+    <string name="gc_board_empty">（还没写过）</string>
     <string name="gc_board_unreadable">小黑板读不出（盘上那份不是文本）</string>
     <string name="gc_board_capacity">上限 %1$d / %2$d（KB · 行）</string>
     <string name="gc_board_clear">清空</string>
