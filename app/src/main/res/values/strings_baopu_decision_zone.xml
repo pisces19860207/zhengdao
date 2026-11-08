@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第五百二十八批 · 决策中心主屏（三区＋批/驳/留）的文案；中英双份在 values-en。 -->
+<resources>
+    <!-- 抽屉入口（「新会话」之上——它是主屏） -->
+    <string name="baopu_drawer_decision_center">决策中心</string>
+    <string name="baopu_drawer_decision_center_desc">待批的拍板、办过的账、能撤回的事——都在这屏办</string>
+
+    <!-- 屏头与三区 -->
+    <string name="dz_subtitle">批 · 驳 · 留——只办这三件事</string>
+    <string name="dz_zone_pending">待批</string>
+    <string name="dz_zone_done">已办</string>
+    <string name="dz_zone_rollback">可回滚</string>
+    <string name="dz_empty_pending">没有等你拍板的事</string>
+    <string name="dz_empty_done">账上还空着</string>
+    <string name="dz_empty_rollback">没有标了可回滚的条目</string>
+
+    <!-- 三种动作 -->
+    <string name="dz_action_approve">批</string>
+    <string name="dz_action_reject">驳</string>
+    <string name="dz_action_hold">留</string>
+
+    <!-- 每条三行的第三行「不答会怎样」（各来路的既有语义，不发明新后果） -->
+    <string name="dz_stay_engine">不答：引擎正等这张卡，这一步不会走</string>
+    <string name="dz_stay_suggestion">不答：建议留在队列，下一轮收尾再问</string>
+    <string name="dz_stay_effect">不答：事件不结案，下次收尾还会提起</string>
+    <string name="dz_stay_review">不答：这条一直留在待抽检</string>
+    <string name="dz_time_engine">引擎正在等这张卡</string>
+
+    <!-- 已办点开看证据 -->
+    <string name="dz_evidence_title">这条账的证据</string>
+    <string name="dz_evidence_open">看证据</string>
+    <string name="dz_field_reason">理由</string>
+    <string name="dz_field_actor">谁做的</string>
+    <string name="dz_field_kind">类别</string>
+    <string name="dz_field_change">改动</string>
+    <string name="dz_field_evidence">证据</string>
+    <string name="dz_field_time">时刻</string>
+</resources>

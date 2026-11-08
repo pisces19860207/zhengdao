@@ -1418,6 +1418,134 @@ internal class BaopuChatController(context: Context) {
         else -> null
     }
 
+    // ── 决策中心主屏（第五百二十八批）的数据口（屏幕层只渲染＋转发） ────────────
+
+    /**
+     * 三区快照（待批／已办／可回滚，判据层全在 [DecisionZoneRules]）。
+     *
+     * **必须跑在 IO 上**：现读账本＋意见回放＋学习折表——读盘全走既有读口，
+     * 账一次读、三区共用（同一屏不许各读各的，更不许和页签屏各算一套数）。
+     */
+    fun decisionZoneSnapshot(): ZoneSnapshot {
+        val records = decisionRecordList()
+        return DecisionZoneRules.snapshot(
+            s = decisionStr,
+            nowMs = System.currentTimeMillis(),
+            royal = royalRows(decisionStr),
+            authSpec = pendingAuthorizationSpec(),
+            personaSpec = pendingProposalSpec(),
+            suggestions = evolutionSuggestions,
+            effects = postAdoptionQueue,
+            records = records,
+            judgedIds = decisionRecordJudgedIds(),
+        )
+    }
+
+    /**
+     * 主屏三动作（批/驳/留）：**先过既有通道**（授权闸在通道那一侧，这里不新造判定），
+     * 落定了再给 208 留一行裁定（actor=USER、带理由——判据②；形状复用既有的
+     * `DecisionKind.TOOL_GRANT` 行，`evidence` 走 `zone:` 前缀，`reversible=false` 只降档——
+     * 裁定行不吃通用撤销钮）。
+     *
+     * 御案卡不走这里：卡上三裁的选项 id 由 [onZoneRoyalPick] 交给既有 `RoyalVerdict` 解释。
+     */
+    fun onZonePendingAction(row: ZonePendingRow, action: DecisionZoneAction) {
+        val ruled = when (row.source) {
+            DecisionZoneSource.SUGGESTION -> zoneSuggestion(row.key, action)
+            DecisionZoneSource.EFFECT -> zoneEffect(row.key, action)
+            DecisionZoneSource.REVIEW -> zoneReview(row, action)
+            DecisionZoneSource.AUTHORIZATION, DecisionZoneSource.PERSONA -> zoneEngine(row.key, action)
+            DecisionZoneSource.ROYAL -> false
+        }
+        if (ruled) zoneRecordRuling(row, action)
+    }
+
+    /** 御案卡的批/驳/搁置：选项 id 原样进既有 `RoyalVerdict`，落定留裁定行＋喂学习器（298 同一口径）。 */
+    fun onZoneRoyalPick(row: ZonePendingRow, optionId: String) {
+        val verdict = com.example.zhengdao.baopu.agent.RoyalVerdict.ofOptionId(optionId) ?: return
+        val royal = row.royal ?: return
+        if (com.example.zhengdao.baopu.agent.RoyalDecisionLedger.record(royal.id, verdict) == null) return
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                com.example.zhengdao.baopu.agent.LearnWiring.onUserSignal(
+                    com.example.zhengdao.baopu.agent.UserSignal.ofRoyal(verdict),
+                    royal.gist,
+                    royal.id,
+                )
+            }
+        }
+        zoneRecordRuling(
+            row,
+            when (verdict) {
+                com.example.zhengdao.baopu.agent.RoyalVerdict.APPROVE -> DecisionZoneAction.APPROVE
+                com.example.zhengdao.baopu.agent.RoyalVerdict.REJECT -> DecisionZoneAction.REJECT
+                com.example.zhengdao.baopu.agent.RoyalVerdict.HOLD -> DecisionZoneAction.HOLD
+            },
+        )
+    }
+
+    /** 裁定落账（IO）＋版本号两跳（待批立刻少一条，已办随后多一条——不许静默）。 */
+    private fun zoneRecordRuling(row: ZonePendingRow, action: DecisionZoneAction) {
+        val summary = row.lines.firstOrNull().orEmpty().ifBlank { row.key }
+        val draft = DecisionZoneRules.rulingDraft(
+            key = row.key,
+            action = action,
+            itemSummary = summary,
+            nowMs = System.currentTimeMillis(),
+            sessionId = sessionId ?: -1L,
+        ) ?: return
+        decisionRecordVersion += 1
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                com.example.zhengdao.baopu.DecisionLedger.record(draft)
+            }
+            decisionRecordVersion += 1
+        }
+    }
+
+    private fun zoneSuggestion(key: String, action: DecisionZoneAction): Boolean {
+        val cid = key.removePrefix("suggestion:")
+        if (evolutionSuggestions.none { it.candidateId == cid }) return false
+        decideSuggestion(
+            cid,
+            when (action) {
+                DecisionZoneAction.APPROVE -> SuggestionDecision.ADOPT
+                DecisionZoneAction.REJECT -> SuggestionDecision.REJECT
+                DecisionZoneAction.HOLD -> SuggestionDecision.DEFER
+            },
+        )
+        return true
+    }
+
+    private fun zoneEffect(key: String, action: DecisionZoneAction): Boolean {
+        val eventId = key.removePrefix("effect:")
+        if (postAdoptionQueue.none { it.eventId == eventId }) return false
+        when (action) {
+            DecisionZoneAction.APPROVE -> keepPostAdoption(eventId)
+            DecisionZoneAction.REJECT -> rollbackPostAdoption(eventId)
+            DecisionZoneAction.HOLD -> laterPostAdoption(eventId)
+        }
+        return true
+    }
+
+    /** 抽检行：批＝确认无误、驳＝判错了（§2.7 的两个既有结论）；**留没有既有口，不新造**。 */
+    private fun zoneReview(row: ZonePendingRow, action: DecisionZoneAction): Boolean {
+        val record = row.record ?: return false
+        if (action == DecisionZoneAction.HOLD) return false
+        onDecisionRecordJudge(record, wrong = action == DecisionZoneAction.REJECT)
+        return true
+    }
+
+    /** 引擎单槽卡：批/驳＝卡自己的确认位/否定位（选项 id 从规格里取）；**留没有既有口，不新造**。 */
+    private fun zoneEngine(key: String, action: DecisionZoneAction): Boolean {
+        if (action == DecisionZoneAction.HOLD) return false
+        val spec = decisionCardSpecFor(key) ?: return false
+        val optionId = DecisionZoneRules.engineOptionId(spec, approve = action == DecisionZoneAction.APPROVE)
+            ?: return false
+        answerChoice(optionId)
+        return true
+    }
+
     // ── 建议卡三决策（99 批报告 §6：采纳只走现有落盘通道） ─────────────────────
 
     /** 建议卡上人的三个动作（卡上永远三钮俱全，建议只是建议）。 */
