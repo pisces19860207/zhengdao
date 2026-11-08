@@ -82,6 +82,12 @@ jobs:
       - name: 全量单测（unit 读数）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      # 2026-11-08：本流水线的单测步骤失败时，此前只给一句 `exit code 1`（没有失败用例名），
+      # 排查只能靠 ci 那轮对照。这里复用 ci 同一支注解脚本：失败用例「类名#用例名 + 首行消息」直接进注解。
+      - name: 单测失败清单（注解：类名#用例名 + 首行消息）
+        if: always()
+        run: python3 tools/ci-test-annotations.py
+
       - name: 归拢 unit 读数（JUnit XML 实数）
         run: |
           mkdir -p /tmp/readings
