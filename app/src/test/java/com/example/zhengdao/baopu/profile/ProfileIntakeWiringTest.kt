@@ -3,18 +3,21 @@
 // 第五百二十九批 · 画像装配接线的判据测试（派工单 §二①–⑤）：
 //   ① 生产赋值点不再是 null（源码 grep）；② 有稳定习惯 ⇒ 同类问题不弹卡；
 //   ③ 画像为空 ⇒ 与接线前逐字一致；④ 开关关 ⇒ 回 null；⑤ 采样原文不进代答文本。
-// 造画像只走 UserProfileBlackbox.feed（唯一写口）；「≥2 条事实」按引擎闸口径落地——
-// 稳定闸要求 ≥20 有效样本＋连续 14 天，所以正例造 40 条（≥2 ✓），另钉 2 条仍问（不造数）。
+// 造画像只走 UserProfileBlackbox.feed（唯一写口）。两道闸分开钉：「≥2 来源」是写入闸（feed 侧
+// 记不记），「≥20 有效样本＋连续 14 天」是免问闸——所以正例造 40 条（两道都过），另钉 2 条
+// 仍问（写入过了、免问不过 ⇒ 回 null，不造数）。
 package com.example.zhengdao.baopu.profile
 
 import com.example.zhengdao.baopu.agent.AskClass
 import com.example.zhengdao.baopu.agent.AskGovLedger
 import com.example.zhengdao.baopu.agent.AskIntakeGate
 import com.example.zhengdao.baopu.agent.AskIntakeOutcome
+import com.example.zhengdao.baopu.agent.ProfileBoundary
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -104,6 +107,7 @@ class ProfileIntakeWiringTest {
     fun `判据②反钉_只有两条事实_仍问且不造数`() {
         freshInstall("few")
         val now = t0 + 15 * day
+        // 两条只过写入闸（记下了），过不了免问闸（<20 有效样本）⇒ 本口必为 null。
         repeat(2) {
             UserProfileBlackbox.feed("preference", 1, true, now, screenOn = true, foreground = true)
         }
@@ -212,5 +216,27 @@ class ProfileIntakeWiringTest {
             .lines().first { it.isNotBlank() && !it.trim().startsWith("//") }.trim()
         assertTrue("授权类短路必须是函数第一句：[$firstStmt]",
             firstStmt == "if (cls == AskClass.AUTHORIZATION) return null")
+    }
+
+    // ── Q2：样本字段是下限声明，置信度只取后验份额（不参与比率） ────────────
+
+    @Test
+    fun `Q2_样本字段报免问闸下限_置信度只来自后验份额`() {
+        freshInstall("floor")
+        val now = t0 + 15 * day
+        stablePreference(now)
+        ProfileIntakeWiring.install(now = { now })
+        val ans = ProfileIntakeWiring.answerFor(AskClass.PREFERENCE)
+        assertNotNull("这份画像是免问档（本条前提）", ans)
+        assertEquals("样本字段报的是免问闸下限，不是测量值", ProfileBoundary.MIN_SAMPLES, ans!!.sampleCount)
+        val kinds = AskClass.values().filter { it != AskClass.AUTHORIZATION }.map { it.wire }
+        val share = UserProfileBlackbox.distribution(now, kinds).getValue("preference")
+        assertEquals("置信度＝后验份额（与样本字段无关）", share, ans.confidence, 1e-9)
+        // 结构钉：置信那行只许写 share；样本下限那两处不许出现在任何除法/乘法里。
+        val src = code("src/main/java/com/example/zhengdao/baopu/profile/ProfileIntakeWiring.kt")
+        assertTrue("置信赋值行要就是 confidence = share", src.lines().any { it.trim() == "confidence = share," })
+        val floorLines = src.lines().filter { it.contains("SAMPLE_COUNT_FLOOR") }
+        assertEquals("下限只许出现在声明与赋值两处：$floorLines", 2, floorLines.size)
+        assertTrue("下限不许进任何比率算式：$floorLines", floorLines.none { it.contains("/") || it.contains("*") })
     }
 }

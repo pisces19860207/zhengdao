@@ -47,8 +47,10 @@ internal object ProfileIntakeWiring {
      * 查一次（判据②③④⑤的落点）。
      *
      * 返回 null 的全部情形：授权类／开关关／黑箱未装配／该类未成稳定偏好／置信不足。
-     * 「≥2 条事实」按引擎闸口径落地：稳定闸本身要求 ≥20 有效样本（弱先验 <20 一律等分），
-     * 所以不足 20 条时这里必为 null——闸不放宽（派工单边界：两层结构不动）。
+     * 画像两道闸别混：「≥2 来源」是**写入闸**（feed 侧，管一条事实记不记），
+     * 「≥20 有效样本」是**免问闸**（[UserProfileBlackbox.isStableKind]，管这类问题要不要问人；
+     * 弱先验 <20 一律等分）。本口只走免问闸：不足 20 条有效样本时必为 null——闸不放宽、
+     * 也不新造（派工单边界：两层结构不动）。
      */
     fun answerFor(cls: AskClass): ProfileBoundary.ProfileAnswer? {
         if (cls == AskClass.AUTHORIZATION) return null
@@ -62,9 +64,7 @@ internal object ProfileIntakeWiring {
         return ProfileBoundary.ProfileAnswer(
             entryKey = kind,
             conclusion = CONCLUSION,
-            // 黑箱读口不出精确样本数（面积钉死）；isStableKind 成立即引擎已证 ≥20，
-            // 这里报的是闸下限（保守方向），不是测量值——只用于过边界闸与落账。
-            sampleCount = ProfileBoundary.MIN_SAMPLES,
+            sampleCount = SAMPLE_COUNT_FLOOR,
             confidence = share,
         )
     }
@@ -83,4 +83,12 @@ internal object ProfileIntakeWiring {
 
     /** 代答话（机器组织的通用结论；引擎里没有原文，这句话就是全部「内容」）。 */
     private const val CONCLUSION = "这类事沿用你的长期做法"
+
+    /**
+     * 样本数字段的口径：这是**免问闸的下限声明**，不是测量值——黑箱读口不出精确样本数
+     * （面积钉死），[UserProfileBlackbox.isStableKind] 成立即引擎已证 ≥20。它只喂
+     * [ProfileBoundary] 的样本闸与自决落账行，**不参与任何比率**：置信度只来自
+     * [UserProfileBlackbox.distribution] 的后验份额，与本常量无关。
+     */
+    private const val SAMPLE_COUNT_FLOOR = ProfileBoundary.MIN_SAMPLES
 }
