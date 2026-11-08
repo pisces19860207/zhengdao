@@ -33,7 +33,11 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 2026-11-08：30 → 45。ci #1912（356aa427）在**冷缓存**那轮被 30 分钟上限掐死：
+    # 编译 Debug APK 13.6 分 + 全量单测 10.4 分 + 其余静态门禁 ⇒ 到 lint 那步刚好到点，
+    # GitHub 把超时作业记成 **cancelled**（不是 failure）；而取消的 run 不会存 cache ⇒ 下一轮又是冷缓存。
+    # 暖缓存一轮约 13 分钟，45 分钟足够覆盖冷缓存，且不影响正常排队。
+    timeout-minutes: 45
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
