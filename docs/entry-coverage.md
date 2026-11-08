@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 389 |
-| 生产可达（有生产引用，含同文件） | 384 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 458 |
+| 生产可达（有生产引用，含同文件） | 453 |
 | A 有定义无调用 | 3 |
 | B 只有测试在调 | 2 |
-| C 已接线默认关、无开启路径 | 3 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **5** |
+| C 已接线默认关、无开启路径 | 4 |
+| **NOT_WIRED（结论=接线，接线欠账）** | **4** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -25,16 +25,16 @@
 
 | 符号 | 文件:行 | 结论 | 说明/证据 |
 |---|---|---|---|
-| `ExamTasks` | `app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt:17` | 接线 | 谁接：准入「品行考」出题链——345 批③的题面件（四道坏题，与 335 cases 同源），判卷 ConductExam 就绪、现零生产调用，等准入接线批 |
-| `ProbeTasks` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProbes.kt:14` | 接线 | 谁接：准入「探针层」出题链——345 批②的五枚探针题面＋判卷，同 ConductExam 一批接 |
-| `OffscreenCaptureProbe` | `app/src/main/java/com/example/zhengdao/browser/offscreen/OffscreenCaptureProbe.kt:47` | 不急 | 理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），仅 debug 变体引用；非生产功能，留作复现证据，暂不删 |
+| `ExamTasks` | `app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt:17` | 接线 | 谁接：准入「品行考」出题链——345 批③的四道坏题题面。判卷 ConductExam 已随 427 进生产（agent/GuardPipeline.kt:479 → intake/AdmissionWiring.kt:91 → AdmissionFlow.run:133-136 → policy/CapabilityProfile.kt:137），但喂的是空卷（AdmissionWiring.kt:96-98 probeTraces／conductTraces 都是 emptyMap，按 345「未考＝没过」只登记不拦人）⇒ 缺的是「出题＋取证」那一半，题面至今零引用。接在出题链落地那批（未立项） |
+| `ProbeTasks` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProbes.kt:14` | 接线 | 谁接：准入「探针层」出题链——345 批②的五枚探针题面。判卷 IntakeProbes 同样随 427 可达（CapabilityProfile.kt:133 examine 调 runAll），实跑的也是空集（AdmissionWiring.kt:96 emptyMap）⇒ 题面零引用；与 ExamTasks 同一批出题链落地后一并复核 |
+| `OffscreenCaptureProbe` | `app/src/main/java/com/example/zhengdao/browser/offscreen/OffscreenCaptureProbe.kt:47` | 不急 | 理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），只有 app/src/debug/.../OffscreenProbeActivity.kt:21／:25 引用，release 不可达；属复现证据不是生产功能，留作对照不删（503 悬空清单同一件，508／509 未处置） |
 
 ## B 只有测试在调（生产不可达）
 
 | 符号 | 文件:行 | 测试引用 | 结论 | 说明/证据 |
 |---|---|---|---|---|
-| `CardValidate` | `app/src/main/java/com/example/zhengdao/baopu/cards/ResultCardValidate.kt:59` | `app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:33`、`app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:42`、`app/src/test/java/com/example/zhengdao/baopu/cards/ResultCardValidateTest.kt:50` | 接线 | 谁接：各表单卡把算好的 CardFieldError 喂给本壳——212 批「校验样式」交付件（红框＋人话＋置灰小计），现仅测试在调，生产没有卡接它 |
-| `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 接线 | 谁接：准入 intake 建档链——345 批准入件（TaskResult 同文件、经类型推断被同文件使用），建档接线批落地后复核 |
+| `OutputCards` | `app/src/main/java/com/example/zhengdao/baopu/cards/OutputCards.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt:91`、`app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt:99`、`app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt:213` | 接线 | 谁接：产出类出卡链——465 批定的唯一出卡入口（依据闸 OutputCitationGate 在它里面）。生产至今只有一处 push，且是**查询类**物流卡（ui/baopu/BaopuScreen.kt:165 ResultCards.push），产出卡（写作／选题／做卡／报告）没有生产出口 ⇒ 这道闸从未在真实路径上生效过。503 悬空清单挂着「产物卡 push 入口是否被别处替代」，508／509 未处置。产出卡落地那一批必须走 OutputCards.push，否则 465 形同虚设 |
+| `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 该删 | 该删：345 批画像层（AgentProfile＋四条硬规矩）已被 365 的 policy/CapabilityProfile.kt 整套取代——365 文件头自述「把 345 批立下的四层设计做成 policy 侧的真对象」、三条硬规矩同口径；427 接进生产的准入链走的正是 365 那套（AdmissionWiring.kt:91 → AdmissionFlow.run → CapabilityProfile），345 这件的 intake／canAccept／needsReprobe／onTaskResult／reprobe／reinstate／portrait 全仓零外部引用（只有 IntakeProfileTest 在调）。只列不删：另立清理批删 intake/IntakeProfile.kt 整件＋intake/IntakeModels.kt:103 的 AgentProfile 与 :124 的 ViolationRecord 及连带测试 |
 
 ## C 已接线默认关、无开启路径
 
@@ -44,9 +44,10 @@
 
 | 开关 key | 读点 | 开启路径 | 结论 | 说明/证据 |
 |---|---|---|---|---|
-| `orchestrate_engine_on` | `app/src/main/java/com/example/zhengdao/baopu/agent/OrchestrationGate.kt:37` | 写口 `OrchestrationSettings.set`（`app/src/main/java/com/example/zhengdao/baopu/agent/OrchestrationSettings.kt:19`）零调用方 | 接线 | 谁接：设置页「批量调用编排」开关调 OrchestrationSettings.set——214 批写口就绪但生产零调用方，闸默认关且永远拨不开（真欠账） |
-| `eval_selfcheck_on` | `app/src/main/java/com/example/zhengdao/baopu/eval/SelfCheckGate.kt:42` | 无写点 | 不急 | 理由：84 批刻意设计——debug 构建 BuildConfig.DEBUG 并联开箱即跑，Release 无拨动口；pref 默认 false 是 Release 兜底而非漏接。要 Release 开关另立批 |
-| `search_phone_on` | `app/src/main/java/com/example/zhengdao/baopu/search/SearchScopeSettings.kt:37` | 无写点 | 不急 | 理由：229 批停用的兼容读口——判定路径（phoneAccessOf/plan）已不调用，键名保留专为读老 prefs（删＝老账变哑键，文件头注明确）；无行为影响 |
+| `orchestrate_engine_on` | `app/src/main/java/com/example/zhengdao/baopu/agent/OrchestrationGate.kt:37` | 写口 `OrchestrationSettings.set`（`app/src/main/java/com/example/zhengdao/baopu/agent/OrchestrationSettings.kt:19`）零调用方 | 接线 | 谁接：设置页「批量调用编排」开关调 agent/OrchestrationSettings.kt:19 的 set——214 批写口就绪，但该 object 是 internal 且生产零调用方，设置页也没有这个开关（全仓只有 agent/OrchestrationGate.kt:23 的注释与 agent/BatchRules.kt:51 的提示文本）⇒ 闸默认关且永远拨不开（真欠账） |
+| `eval_selfcheck_on` | `app/src/main/java/com/example/zhengdao/baopu/eval/SelfCheckGate.kt:42` | 无写点 | 不急 | 理由：84 批刻意设计——调试构建 BuildConfig.DEBUG 并联开箱即跑（ui/baopu/BaopuChatController.kt:2583 调 SelfCheckGate.enabledNow(BuildConfig.DEBUG, …)），Release 无拨动口；pref 默认 false 是 Release 兜底而非漏接。要 Release 开关另立批 |
+| `prompt_export` | `app/src/main/java/com/example/zhengdao/baopu/promptexport/PromptExport.kt:170` | 无写点 | 不急 | 理由：459 批诊断件（导出「上一次请求的 system 段」做取证）——缺省跟构建类型（promptexport/PromptExport.kt:16），Release 默认关；App 内没有写口，唯一开启路径是 adb run-as 改 SP（459 报告 §五原文），广播口 PromptExportReceiver 受 DUMP 保护且只导出、不负责开关。属 debug 取证工具，Release 兜底默认关不是漏接；U 批要做设置页开关另立批 |
+| `search_phone_on` | `app/src/main/java/com/example/zhengdao/baopu/search/SearchScopeSettings.kt:37` | 无写点 | 不急 | 理由：229 批停用的兼容读口——判定路径（SearchScopeRules.phoneAccessOf／plan）已不调用它（search/SearchScope.kt:27），键名保留专为读老 prefs（删＝老账变哑键，search/SearchScopeSettings.kt:4-10 文件头写明）；无行为影响 |
 
 ## 口径与边界
 
