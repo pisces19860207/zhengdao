@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.MemoryLayout
 import com.example.zhengdao.baopu.safety.HaltGate
 import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionFilter
@@ -61,9 +62,11 @@ import com.example.zhengdao.baopu.DecisionRecord
 import com.example.zhengdao.baopu.LearnRead
 import com.example.zhengdao.baopu.LearnReadJudge
 import com.example.zhengdao.baopu.foldDecisionRecords
+import com.example.zhengdao.baopu.agent.ConflictRoyalWiring
 import com.example.zhengdao.baopu.agent.FailureAuditLog
 import com.example.zhengdao.baopu.agent.FailureAuditRow
 import com.example.zhengdao.baopu.agent.LearnWiring
+import com.example.zhengdao.baopu.agent.OpinionConflicts
 import com.example.zhengdao.baopu.agent.OpinionDecision
 import com.example.zhengdao.baopu.agent.OpinionWiring
 import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
@@ -163,7 +166,7 @@ internal fun DecisionCenterScreen(
                     }
                 }
                 when (tab) {
-                    DecisionTab.ROYAL -> RoyalTab()
+                    DecisionTab.ROYAL -> RoyalTab(controller)
                     DecisionTab.TO_AUTHORIZE -> AuthorizeTab(controller)
                     DecisionTab.SUGGESTIONS -> SuggestionsTab(controller, openCardKey) { openCardKey = it }
                     DecisionTab.PROPOSALS -> ProposalsTab(controller)
@@ -261,7 +264,7 @@ private fun DecisionTabBody(tab: DecisionTab, empty: Boolean, content: @Composab
  * 但要留一行日志——否则"为什么这条没出现"只能靠猜。
  */
 @Composable
-private fun RoyalTab() {
+private fun RoyalTab(controller: BaopuChatController) {
     // 用 LocalResources 而不是 LocalContext.current.getString：后者不随配置变更刷新
     // （lint LocalContextGetResourceValueCall 会报 error，且切语言后卡面会停在旧语言）
     val res = LocalResources.current
@@ -273,12 +276,23 @@ private fun RoyalTab() {
     val rows by produceState(initialValue = emptyList<RoyalRow>(), tick) {
         value = withContext(Dispatchers.IO) { royalRows(s) }
     }
+    // 第五百三十七批：冲突旁证（`<工作区>/产物/.conflicts.jsonl`）——空列表 ⇒ 组不渲染
+    val conflictRows by produceState(initialValue = emptyList<RoyalConflictRow>(), tick) {
+        value = withContext(Dispatchers.IO) { royalConflictRows(controller, s) }
+    }
     val rejects by produceState(initialValue = emptyList<String>(), tick) {
         value = withContext(Dispatchers.IO) { royalRejects(s) }
     }
     LaunchedEffect(rejects) { rejects.forEach { RunLog.log(it) } }
-    DecisionTabBody(DecisionTab.ROYAL, empty = rows.isEmpty()) {
+    DecisionTabBody(DecisionTab.ROYAL, empty = rows.isEmpty() && conflictRows.isEmpty()) {
         LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+            // 冲突组（537）：有才画，空组不留占位
+            if (conflictRows.isNotEmpty()) {
+                item(key = "conflict-group") { ConflictGroupHead() }
+                items(conflictRows, key = { "conflict:${it.id}" }) { row ->
+                    RoyalConflictCard(row) { tick += 1 }
+                }
+            }
             item {
                 Text(
                     text = stringResource(R.string.royal_tab_hint),
@@ -306,6 +320,32 @@ private fun RoyalTab() {
             }
         }
     }
+}
+
+/** 冲突组头（只有非空时才被调用）。 */
+@Composable
+private fun ConflictGroupHead() {
+    Text(
+        text = stringResource(R.string.royal_conflict_group),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(bottom = 6.dp),
+    )
+}
+
+/** 一张冲突卡：渲染复用 [BaopuRoyalCard]；动作复用御案通道（御批账＋208）。 */
+@Composable
+private fun RoyalConflictCard(row: RoyalConflictRow, onPicked: () -> Unit) {
+    BaopuRoyalCard(
+        card = row.card,
+        onPick = { optionId ->
+            RoyalVerdict.ofOptionId(optionId)?.let {
+                ConflictRoyalWiring.record(row.conflict, it)
+                onPicked()
+            }
+        },
+        modifier = Modifier.padding(bottom = 12.dp),
+    )
 }
 
 /** 御案列表（读账 → 学习读侧三问 → 拟稿 → 核验 → 卡面自检；纯读，不写账）。 */
@@ -342,6 +382,22 @@ private fun royalRows(s: DecisionStrRes): List<RoyalRow> {
 
 /** 每张御案卡证据区最多带的同类经验行数（205「宁少不滥」同一口径）。 */
 private const val LEARN_EXPERIENCE_LIMIT = 3
+
+/**
+ * 冲突组（537）：读 `<工作区>/产物/.conflicts.jsonl` → 去掉已裁的 → 拟成既有御案卡。
+ *
+ * 纯读：不写账、不改 `.conflicts.jsonl`（裁完只落御批账与 208，旁证原样留着）。
+ */
+private fun royalConflictRows(
+    controller: BaopuChatController,
+    s: DecisionStrRes,
+): List<RoyalConflictRow> {
+    val products = MemoryLayout.productsDir(controller.workspaceRoot)
+    val conflicts = OpinionConflicts.readAll(products)
+    if (conflicts.isEmpty()) return emptyList()
+    val suppressed = RoyalDecisionLedger.suppressedIds(System.currentTimeMillis())
+    return RoyalConflictRules.rows(conflicts, suppressed, s)
+}
 
 /** 没上御案的那些的理由（每条一行，进日志）。 */
 private fun royalRejects(s: DecisionStrRes): List<String> {

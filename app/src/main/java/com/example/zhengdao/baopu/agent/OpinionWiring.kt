@@ -36,6 +36,7 @@ import com.example.zhengdao.baopu.inspect.Budget
 import com.example.zhengdao.baopu.inspect.LawRef
 import com.example.zhengdao.baopu.inspect.Opinion
 import com.example.zhengdao.baopu.inspect.OpinionAdapter
+import com.example.zhengdao.baopu.inspect.OpinionConflict
 import com.example.zhengdao.baopu.inspect.OpinionLifecycle
 import com.example.zhengdao.baopu.inspect.OpinionMerger
 import com.example.zhengdao.baopu.inspect.Severity
@@ -402,6 +403,13 @@ internal object OpinionWiring {
     /** 本进程写过的（没装配落点时的兜底；装配了就与盘上那份合并去重）。 */
     private val memory = ArrayList<Ruling>()
 
+    /** 冲突旁证的落点（`<工作区>/产物/`；由装配层注入，未装 ⇒ 只记一行日志）。 */
+    @Volatile
+    private var conflictProducts: (() -> File?)? = null
+
+    /** 落点未装配的那行日志只打一次（与 [processNoteLogged] 同一口径）。 */
+    private var conflictNoteLogged = false
+
     // ── W1 分类器结论 → Opinion ──────────────────────────────────────────
 
     /**
@@ -548,6 +556,10 @@ internal object OpinionWiring {
         // 同轮同事件只判一次（同一条意见被两个工具撞出来不该记两笔）
         val key = "${opinion.source.name}:${opinion.gist}:$tool:${opinion.evidence.first()}"
         seen[key]?.let { return it }
+
+        // 第五百三十七批：同一事件又来了一条**不同看法** ⇒ 先落一行冲突旁证。
+        // 只是旁证：下面的判定与合并选择一个字都不动。
+        recordConflictWithPrior(eventKey, opinion, now)
 
         seedDay(now)
         val (verdict, drafted) = verdictWithDraft(opinion, now, mark.second, queueOnly, alreadyRefused, exemptionReason)
@@ -852,6 +864,59 @@ internal object OpinionWiring {
     }
 
     /**
+     * 第五百三十七批 · 冲突旁证的落点（`<工作区>/产物/`；装配层注入）。
+     *
+     * 没装 ⇒ 不写盘、不抛：装配点只在 [com.example.zhengdao.baopu.BaopuRuntime] 一处，
+     * 纯 JVM 单测照旧只测内存口径（与 208 的 `install` 同一房型）。
+     */
+    fun installConflictProducts(source: () -> File?) {
+        conflictProducts = source
+    }
+
+    /**
+     * 把一次合并/观察到的分歧追加进 `.conflicts.jsonl`（**一行一条**）。
+     *
+     * 为什么落在这里而不是 `OpinionMerger`：合并是纯函数（不许碰盘、不许读时钟），
+     * 落盘归接线层——与 `意见判定.jsonl`／`御批.jsonl` 的房型一致。
+     *
+     * @return 真写下的行数；空列表 ⇒ 0，且**不创建文件**（判据③的负例）
+     */
+    @Synchronized
+    fun recordConflicts(conflicts: List<OpinionConflict>, now: Long = System.currentTimeMillis()): Int {
+        if (conflicts.isEmpty()) return 0
+        val root = runCatching { conflictProducts?.invoke() }.getOrNull()
+        if (root == null) {
+            if (!conflictNoteLogged) {
+                conflictNoteLogged = true
+                RunLog.log("抱朴冲突：落点未装配（${OpinionConflicts.FILE_NAME} 这次没写）")
+            }
+            return 0
+        }
+        var written = 0
+        conflicts.forEach { conflict ->
+            runCatching {
+                val f = OpinionConflicts.fileIn(root)
+                f.parentFile?.mkdirs()
+                f.appendText(
+                    OpinionConflicts.lineOf(conflict.copy(at = now)) + "\n",
+                    Charsets.UTF_8,
+                )
+            }.onSuccess {
+                written += 1
+            }.onFailure {
+                RunLog.log("抱朴冲突：没落上（${conflict.id}）——${it.javaClass.simpleName}: ${it.message}")
+            }
+        }
+        return written
+    }
+
+    /** 同事件的第二条（不同看法）⇒ 追加一行；同一条重试（gist 相同）不会产冲突。 */
+    private fun recordConflictWithPrior(eventKey: String, opinion: Opinion, now: Long) {
+        val prior = firstRulings[eventKey]?.opinion ?: return
+        recordConflicts(OpinionMerger.conflictsOf(listOf(prior, opinion), now), now)
+    }
+
+    /**
      * 进程级那行可见日志（验收 grep `轮来源=process`）。
      *
      * 抽成纯函数：格式本身是判据，埋在 `RunLog.log(...)` 里就只能靠真机日志抓。
@@ -913,6 +978,9 @@ internal object OpinionWiring {
         firstRulings.clear()
         eventRetries = 0
         roundSource = null
+        // 537：冲突落点与"未装配"日志同属这条链路，谁用谁还
+        conflictProducts = null
+        conflictNoteLogged = false
         // 自决单是同一条链路的下游账本：清账必须一起清，否则用例之间互相污染
         SelfRulingLedger.resetForTest()
         // 298：表快照/计数/经验账同属这一条链路，一样"谁用谁还"

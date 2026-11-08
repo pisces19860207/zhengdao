@@ -29,6 +29,16 @@
     <string name="royal_opt_hold">Park it</string>
     <string name="royal_opt_hold_consequence">Look again tomorrow, no rush</string>
 
+    <string name="royal_conflict_group">Conflicts</string>
+    <string name="royal_conflict_what">Two versions of one event: %1$s / %2$s</string>
+    <string name="royal_conflict_why">Different sources (%1$s vs %2$s) disagree</string>
+    <string name="royal_conflict_impact">Ignoring it follows one and silently drops the other</string>
+    <string name="royal_conflict_src_classifier">classifier</string>
+    <string name="royal_conflict_src_patrol">patrol</string>
+    <string name="royal_conflict_src_audit">audit</string>
+    <string name="royal_conflict_src_shadow">shadow</string>
+    <string name="royal_conflict_src_scout">scout</string>
+
     <string name="royal_evidence_title">Evidence (tap to open)</string>
 
     <string name="decision_tab_royal">Royal desk</string>

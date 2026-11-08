@@ -32,6 +32,7 @@ import com.example.zhengdao.baopu.agent.JudgmentExperienceLedger
 import com.example.zhengdao.baopu.agent.KbTools
 import com.example.zhengdao.baopu.agent.LearnWiring
 import com.example.zhengdao.baopu.agent.ListDirTool
+import com.example.zhengdao.baopu.agent.OpinionWiring
 import com.example.zhengdao.baopu.agent.OrchestrationGate
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.RunRules
@@ -970,6 +971,9 @@ internal object BaopuRuntime {
         // 只存 File 不存 Context（`StaticFieldLeak` 的教训）；各域的写口（技能/产物/日记/评测/
         // 守卫管线）都经 `DecisionLedger.record(...)` 落账，找不到落点就只留一行日志、不静默。
         DecisionLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))
+        // 第五百三十七批：意见冲突旁证落 `<工作区>/产物/.conflicts.jsonl`（点号开头、不计产物数）。
+        // 落点随工作区走（多区天然隔离），不塞进全局 `抱朴记忆/`。
+        OpinionWiring.installConflictProducts { MemoryLayout.productsDir(workspaceRoot(appCtx)) }
         // 第三百六十三批：偏差账（`偏差账.jsonl`，五类事实只记不判）与决策记录同区挂载；
         // 收工读数（RunEngine.settle）只认它自己的 installedRoot，不回头碰 208 主账。
         DeviationLedger.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))

@@ -34,6 +34,17 @@
     <string name="royal_opt_hold">搁一搁</string>
     <string name="royal_opt_hold_consequence">留到明天再看，不急</string>
 
+    <!-- 第五百三十七批：冲突分组（三行式：是什么／为什么冲突／不理会怎样；≤30 字） -->
+    <string name="royal_conflict_group">冲突</string>
+    <string name="royal_conflict_what">同一件事有两种说法：%1$s／%2$s</string>
+    <string name="royal_conflict_why">来源不同（%1$s 与 %2$s），结论对不上</string>
+    <string name="royal_conflict_impact">不理会就按其中一条办，另一条被静默吞掉</string>
+    <string name="royal_conflict_src_classifier">分类器</string>
+    <string name="royal_conflict_src_patrol">巡按</string>
+    <string name="royal_conflict_src_audit">审计</string>
+    <string name="royal_conflict_src_shadow">影子</string>
+    <string name="royal_conflict_src_scout">斥候</string>
+
     <!-- 证据区（技术字段只许活在这里） -->
     <string name="royal_evidence_title">证据（点开看）</string>
 

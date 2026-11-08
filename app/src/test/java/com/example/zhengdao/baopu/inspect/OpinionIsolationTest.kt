@@ -65,6 +65,10 @@ class OpinionIsolationTest {
         // 参数判必问集直通（mustAsk 消费 lawRef/severity，法条优先压过学习）；
         // 纯读不写三态（源级门禁 LearnReadGateTest G1 钉死），判据在 LearnReadTest。
         "com/example/zhengdao/baopu/LearnRead.kt" to "400",
+        // 537 批：冲突旁证的落盘/读回——两侧各要 gist/severity/source 才写得出 `.conflicts.jsonl`
+        // （纯数据搬运，不构造意见、不参与判定）；御案「冲突」组的拟卡也要按来源写人话。
+        "com/example/zhengdao/baopu/agent/OpinionConflicts.kt" to "537",
+        "com/example/zhengdao/ui/baopu/RoyalConflictRules.kt" to "537",
     )
     private val uniqueTypes = listOf(
         "Opinion", "OpinionAdapter", "OpinionMerger", "OpinionMergeResult", "OpinionVotes",
