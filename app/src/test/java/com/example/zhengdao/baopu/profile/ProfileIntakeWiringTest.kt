@@ -205,5 +205,12 @@ class ProfileIntakeWiringTest {
         assertNull("授权类没有画像读数", ProfileIntakeWiring.answerFor(AskClass.AUTHORIZATION))
         val out = AskIntakeGate.beforeAsk(title = "可以删除这个目录里的旧备份吗", taskId = "t-authz", dayKey = 52_905, nowMs = now)
         assertTrue("授权类卡照弹（真人给）：$out", out is AskIntakeOutcome.Proceed)
+        // 行为这层是「双保险」（候选类里本来就没有授权档），所以还要把**短路那句**钉在源码上：
+        // 以后有人把候选扩到授权档时，第一行这道闸不许先没（变异演练 M5 验它咬得住）。
+        val src = code("src/main/java/com/example/zhengdao/baopu/profile/ProfileIntakeWiring.kt")
+        val firstStmt = src.substringAfter("fun answerFor(cls: AskClass): ProfileBoundary.ProfileAnswer? {")
+            .lines().first { it.isNotBlank() && !it.trim().startsWith("//") }.trim()
+        assertTrue("授权类短路必须是函数第一句：[$firstStmt]",
+            firstStmt == "if (cls == AskClass.AUTHORIZATION) return null")
     }
 }
