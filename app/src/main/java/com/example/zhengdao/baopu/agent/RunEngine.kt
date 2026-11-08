@@ -4534,7 +4534,8 @@ internal class RunEngine(
         PlanContractBoard.noteAsk()
         val oc = runBlocking {
             // 第二百二十三批：把矩阵给的判定理由带进卡（卡面上那一行；null ⇒ 不摆）
-            confirmFlow.enter(sessionId, step, settled.call, settled.reasonLine) { name, text ->
+            // 第四百六十七批：卡上那一句「同类都允许」的报价跟着卡一起走（null ⇒ 卡面不变）
+            confirmFlow.enter(sessionId, step, settled.call, settled.reasonLine, settled.leaseOffer) { name, text ->
                 writeSpill(sessionId, name, text)
             }
         }

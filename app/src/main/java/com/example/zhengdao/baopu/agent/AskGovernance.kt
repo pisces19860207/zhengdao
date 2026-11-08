@@ -54,6 +54,21 @@ enum class AskTier(val wire: String, val cn: String) {
     }
 }
 
+/**
+ * 499 硬线②的**唯一布尔式**（第四百六十七批从 [AskTierFacts.hardAsk] 抽出来的）。
+ *
+ * 为什么抽：租约（467）也要问同一个问题「这一笔是不是任何档位都不许跳」。复制一个
+ * `||` 到 [`com.example.zhengdao.baopu.authz.LeaseRules`] 里就是第二份归一化，
+ * 499 将来加一条硬线，两处必然漂——所以布尔式只留这一份，[AskTierFacts.hardAsk] 改成委托它。
+ * 行为逐字节不变（同一表达式，只是换了落点）。
+ */
+internal object AskHardLines {
+
+    /** 硬线②：R3（外发/花钱/账号）、矩阵必问、未分类——任何档位都问。 */
+    fun hardAsk(mustAsk: Boolean, unclassified: Boolean, risk: RiskClass?): Boolean =
+        mustAsk || unclassified || risk == RiskClass.R3
+}
+
 /** 档位判定的一次事实（全部由调用方给：判定零 IO）。 */
 data class AskTierFacts(
     val tier: AskTier,
@@ -69,7 +84,7 @@ data class AskTierFacts(
     val reversible: Boolean,
 ) {
     /** 硬线②：R3（外发/花钱/账号）、矩阵必问、未分类——任何档位都问。 */
-    val hardAsk: Boolean get() = mustAsk || unclassified || risk == RiskClass.R3
+    val hardAsk: Boolean get() = AskHardLines.hardAsk(mustAsk, unclassified, risk)
 }
 
 /** 档位判定的结论（[basis] 是落账依据那一列）。 */

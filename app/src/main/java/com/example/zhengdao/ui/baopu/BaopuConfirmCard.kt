@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.ConfirmScope
 import com.example.zhengdao.baopu.ConfirmScopeChoice
+import com.example.zhengdao.baopu.authz.LeaseOfferChoice
 import com.example.zhengdao.baopu.agent.ConfirmRequest
 import com.example.zhengdao.baopu.agent.KbTools
 import com.example.zhengdao.baopu.agent.PathBatch
@@ -212,6 +213,33 @@ internal fun BaopuConfirmCard(
                         )
                     }
                 }
+            }
+        }
+        // 第四百六十七批 · 租约：卡上多**一句可点的话**，不加设置项、不新增卡片。
+        // 点它 = 批准这一次 ＋ 授予"同类/同范围/限时限次"的通行证；之后同类动作在第 ③ 段
+        // 末尾就被租约接住（不弹卡），直到过期/用尽/越界/撤销/进程重启。
+        // 摆不摆这件事由内核定（报价为 null ⇒ 这里整块不渲染：R3/原件区/外发/账号/改制度
+        // 一律不给报价，卡面因此不会出现一个点了也没用的按钮）。
+        request.leaseOffer?.let { offer ->
+            val hours = (offer.ttlMs / 3_600_000L).coerceAtLeast(1L).toInt()
+            OutlinedButton(
+                onClick = {
+                    busy = true
+                    LeaseOfferChoice.record(request.callId, offer)
+                    onApprove()
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.baopu_confirm_lease_line,
+                        offer.cap.toString(),
+                        hours.toString(),
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 2,
+                )
             }
         }
     }

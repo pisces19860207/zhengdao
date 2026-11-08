@@ -13,6 +13,10 @@ import com.example.zhengdao.baopu.ConfirmRisk
 import com.example.zhengdao.baopu.ConfirmScope
 import com.example.zhengdao.baopu.ConfirmScopeChoice
 import com.example.zhengdao.baopu.PendingRow
+import com.example.zhengdao.baopu.authz.LeaseLedger
+import com.example.zhengdao.baopu.authz.LeaseOffer
+import com.example.zhengdao.baopu.authz.LeaseOfferChoice
+import com.example.zhengdao.baopu.authz.LeaseStore
 import com.example.zhengdao.baopu.PendingStore
 import com.example.zhengdao.core.RunLog
 import java.io.File
@@ -51,6 +55,13 @@ data class ConfirmRequest(
      * 不许现编一句。
      */
     val reasonLine: String? = null,
+    /**
+     * 第四百六十七批：这张卡的**租约报价**（null ⇒ 卡面不变）。
+     *
+     * 它与 [scopeOptions] 是两件东西：范围授权按「工具＋全部参数」精确匹配（171），
+     * 租约按「类目＋范围」粗匹配（467）。两者各走各的账、各点各的按钮，互不替代。
+     */
+    val leaseOffer: LeaseOffer? = null,
 ) : EngineEvent
 
 /**
@@ -92,6 +103,9 @@ data class ConfirmRequest(
  * 判定不在本文件里做：六步在 [com.example.zhengdao.baopu.authz.TaskGrantGate]，
  * 本流程拿到的仍是「问／不问」这一个结论。
  */
+/** 一小时的毫秒数（租约日志里换算小时用；只在本文件用）。 */
+private const val HOUR_MS = 3_600_000L
+
 internal class ConfirmFlow(
     private val pipeline: GuardPipeline,
     private val store: PendingStore,
@@ -187,6 +201,7 @@ internal class ConfirmFlow(
         step: Int,
         call: ToolCall,
         reasonLine: String? = null,
+        leaseOffer: LeaseOffer? = null,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
     ): Outcome {
         val key = ConfirmKeys.of(call.name, call.arguments)
@@ -212,6 +227,7 @@ internal class ConfirmFlow(
                         scopeOptions = ConfirmRisk.scopesFor(waiting.call.name),
                         highRisk = ConfirmRisk.isHighRisk(waiting.call.name),
                         reasonLine = reasonLine,
+                        leaseOffer = leaseOffer,
                     ),
                 )
                 log("抱朴确认：同 key 等待中（${call.name}），合并显示第 $merged 次，不重复弹卡")
@@ -244,6 +260,7 @@ internal class ConfirmFlow(
                 scopeOptions = ConfirmRisk.scopesFor(call.name),
                 highRisk = ConfirmRisk.isHighRisk(call.name),
                 reasonLine = reasonLine,
+                leaseOffer = leaseOffer,
             ),
         )
         // ③ 挂起等（仅前台计时；见类 KDoc 为什么不用 withTimeoutOrNull）
@@ -265,6 +282,7 @@ internal class ConfirmFlow(
                 noteDisposition(call, summary, false, abandoned = false, timedOut = true)
                 store.clear(sessionId)
                 ConfirmScopeChoice.discard(call.id) // 超时收走 ⇒ 没消费的范围选择作废
+                LeaseOfferChoice.discard(call.id) // 467 同款：没点的租约报价作废
                 Outcome.TimedOut(RunRules.CONFIRM_TIMEOUT_NOTE)
             }
 
@@ -272,6 +290,7 @@ internal class ConfirmFlow(
                 noteDisposition(call, summary, false, abandoned, timedOut = false)
                 store.clear(sessionId)
                 ConfirmScopeChoice.discard(call.id) // 拒绝同理（批准才会消费）
+                LeaseOfferChoice.discard(call.id) // 467 同款
                 // 用户点「停止」导致的作废不回灌「用户拒绝」（那是误述）⇒ 单独结局
                 if (abandoned) {
                     Outcome.Abandoned
@@ -396,6 +415,16 @@ internal class ConfirmFlow(
                 )
                 log("抱朴确认：用户授权「${effective.label}」（${p.call.name}），同 key 在本作用域内不再询问")
             }
+            // 第四百六十七批：她点的是卡上那一句「同类都允许」⇒ 授一张租约（与上面的范围授权
+            // 各走各的：那个按全部参数精确匹配，这个按类目+范围；高风险摁回"仅这一次"不影响租约，
+            // 因为租约的可授性早在报价时按 499 三条硬线判过了）。
+            LeaseOfferChoice.consume(callId)?.let { offer ->
+                LeaseLedger.rememberRoot(projectRoot())
+                val lease = LeaseStore.grant(offer, p.sessionId, p.call.id)
+                log("抱朴租约：授予「${offer.cls}」≤${offer.cap} 次/≤${offer.ttlMs / HOUR_MS} 小时（id=${lease.id}）")
+            }
+        } else {
+            LeaseOfferChoice.discard(callId)
         }
         this.note = note
         deferred?.complete(approved)
@@ -417,8 +446,15 @@ internal class ConfirmFlow(
     /** 会话结束/切换 ⇒ 清这个会话的全部授权（控制器切会话处调）。 */
     fun endSession(sessionId: Long) = ConfirmGrants.endSession(sessionId)
 
-    /** 撤销授权（[key] 为空 ⇒ 全撤）；返回撤掉条数（设置页一键撤销用）。 */
-    fun revokeGrants(sessionId: Long, key: String? = null): Int = ConfirmGrants.revoke(sessionId, key)
+    /**
+     * 撤销授权（[key] 为空 ⇒ 全撤）；返回撤掉条数（设置页一键撤销用）。
+     *
+     * 第四百六十七批：**全撤时连租约一起撤**——不新增第二个撤销入口（"入口净增 0"），
+     * 一次"全撤"就该把她给出去的自动通行一张不剩；按 key 撤仍只撤那一条范围授权
+     * （租约按类目分账，没有"这一个 key"的概念）。
+     */
+    fun revokeGrants(sessionId: Long, key: String? = null): Int =
+        ConfirmGrants.revoke(sessionId, key) + if (key == null) LeaseStore.revoke(sessionId, null, "user") else 0
 
     /** 当前生效的授权清单（设置页/测试读数）。 */
     fun activeGrants(sessionId: Long): List<ConfirmAuditEntry> =

@@ -562,6 +562,8 @@
     <string name="baopu_confirm_scope_skill">本技能内</string>
     <string name="baopu_confirm_scope_run_desc">按本次运行内批准：本轮结束前，同一个动作不再询问</string>
     <string name="baopu_confirm_scope_session_desc">按本会话内批准：本会话结束前，同一个动作不再询问</string>
+    <!-- 第四百六十七批：租约（一次批准覆盖「同类＋范围＋时间窗＋次数」）。点它＝批准这次＋授予同类 -->
+    <string name="baopu_confirm_lease_line">本会话内同类都允许（≤%1$s 次/≤%2$s 小时）</string>
     <string name="baopu_confirm_scope_skill_desc">按本技能内批准：本技能重复调用同一个动作时不再询问</string>
     <plurals name="baopu_confirm_merged">
         <item quantity="other">已合并 %1$d 次相同请求（同一张卡，不重复弹）</item>

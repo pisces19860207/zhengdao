@@ -580,6 +580,7 @@
     <!-- ── Batch 171: confirm-card scope approval (four tiers; high-risk gets no scope row) ── -->
     <string name="baopu_confirm_scope_run">This run</string>
     <string name="baopu_confirm_scope_session">This session</string>
+    <string name="baopu_confirm_lease_line">Allow all of this kind this session (≤%1$s / ≤%2$s h)</string>
     <string name="baopu_confirm_scope_skill">This skill</string>
     <string name="baopu_confirm_scope_run_desc">Approve for this run: the same action is not asked again until the run ends</string>
     <string name="baopu_confirm_scope_session_desc">Approve for this session: the same action is not asked again until the session ends</string>

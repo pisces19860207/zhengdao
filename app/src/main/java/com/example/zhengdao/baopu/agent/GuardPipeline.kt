@@ -25,6 +25,10 @@ import com.example.zhengdao.baopu.RiskTable
 import com.example.zhengdao.baopu.RiskTell
 import com.example.zhengdao.baopu.RiskVerdict
 import com.example.zhengdao.baopu.authz.GrantWiring
+import com.example.zhengdao.baopu.authz.LeaseAskOutcome
+import com.example.zhengdao.baopu.authz.LeaseAskRequest
+import com.example.zhengdao.baopu.authz.LeaseGate
+import com.example.zhengdao.baopu.authz.LeaseOffer
 import com.example.zhengdao.baopu.authz.ProcessEpoch
 import com.example.zhengdao.baopu.authz.TaskGrantBoard
 import com.example.zhengdao.baopu.authz.TaskGrantWire
@@ -61,6 +65,9 @@ import java.util.concurrent.TimeoutException
 /** 偏差账的两格「哪个权限」（机器键；与 208/249 的 `wire` 同纪律——改它等于改历史账的读法）。 */
 private const val GATE_RISK_MATRIX = "risk_matrix"
 private const val GATE_TASK_GRANT = "task_grant"
+
+/** 第四百六十七批：第 ② 段红线拒的（原件区/只读根/系统凭据/批上限）。 */
+private const val GATE_PATH = "path"
 
 /** 三元组（L26）先拦下时六步还没跑：拒因码按这一格落，不冒充六步的结论码。 */
 private const val BINDING_MISMATCH = "binding_mismatch"
@@ -292,6 +299,15 @@ internal class GuardPipeline(
      * ⇒ 存量调用点（含测试）一个字不改、行为逐字节不变；NONE 三口全静默。
      */
     private val supervision: SafetyHooks = SafetyHooks.NONE,
+    /**
+     * 第四百六十七批：租约闸的**接线口**。排在参数表**最后**且缺省＝生产实现 ⇒
+     * 存量调用点（含测试）一个字不改、行为逐字节不变（不主动传就永远是 [LeaseGate.LIVE]，
+     * 而 LIVE 在没有任何租约时只做一次查表，结论必然是"未命中"）。
+     *
+     * 为什么做成注入接口而不是在管线里读单例：与 [contracts]/[grantWiring] 同一条老规矩——
+     * 过期/用尽/越界/会话不等四条负例，只有从这里喂假件才抓得住。
+     */
+    private val leaseGate: LeaseGate = LeaseGate.LIVE,
 ) {
 
     sealed interface Result {
@@ -361,6 +377,13 @@ internal class GuardPipeline(
             val call: ToolCall,
             val reasonLine: String? = null,
             val deviation: ContractDeviation? = null,
+            /**
+             * 第四百六十七批：这张卡能不能给租约（null＝不摆）。
+             *
+             * 它与 [reasonLine] 摆在同一格位置，**不新增卡片**、不加按钮页；卡面那一句
+             * 的「≤N 次/≤T 小时」直接读这个对象（报价与真授予同一份，两处不会漂）。
+             */
+            val leaseOffer: LeaseOffer? = null,
         ) : Result
     }
 
@@ -495,9 +518,14 @@ internal class GuardPipeline(
         } else {
             guardPath(call, spec.name, capability)
         }
-        if (guarded is Guarded.No) return Prepared.Settled(
-            Result.Rejected(call, guarded.reason, scopeEscape = guarded.scopeEscape),
-        )
+        if (guarded is Guarded.No) {
+            // 第四百六十七批：这道闸拒掉的这笔，若她给过同类租约 ⇒ 记一次越权（归因按闸名，
+            // 不按文案猜）。**位置在拒绝之前**：拒绝本身一个字节没动。
+            leaseGate.onRejected(spec, registry.currentSessionId, call, GATE_PATH)
+            return Prepared.Settled(
+                Result.Rejected(call, guarded.reason, scopeEscape = guarded.scopeEscape),
+            )
+        }
         if (guarded is Guarded.Fail) return Prepared.Settled(Result.Failed(call, guarded.reason))
         val effectiveCall = (guarded as Guarded.Yes).call
 
@@ -586,6 +614,7 @@ internal class GuardPipeline(
                         detail = verdict.reasons.joinToString("；") { it.detail },
                         log = log,
                     )
+                    leaseGate.onRejected(spec, registry.currentSessionId, effectiveCall, GATE_RISK_MATRIX)
                     return Prepared.Settled(Result.Rejected(effectiveCall, RiskTell.rejectText(verdict)))
                 }
                 // 未分类 ⇒ fail-closed：按 R2 必问，并留一条账（带工具名与矩阵版本）
@@ -703,6 +732,7 @@ internal class GuardPipeline(
                     permission = grantLane.decision?.code ?: BINDING_MISMATCH,
                     reason = grantLane.note.ifBlank { "任务级授权判为硬拒" },
                 )
+                leaseGate.onRejected(spec, registry.currentSessionId, effectiveCall, GATE_TASK_GRANT)
                 return Prepared.Settled(
                     Result.Rejected(effectiveCall, "任务级授权判为硬拒，这次动作不做：${grantLane.note}"),
                 )
@@ -715,6 +745,25 @@ internal class GuardPipeline(
             riskAsk = listOfNotNull(riskAsk, supervision.bigFileNote(spec.name, safetyPathsOf(effectiveCall)))
                 .joinToString("")
                 .ifBlank { null }
+        }
+        // 第四百六十七批 · 租约闸（**位置是判据**：第 ③ 段末尾、出卡前最后一格）。
+        // 为什么必须在这儿：② 段红线早已跑完（越界路径根本到不了这里）、242 偏离卡早已优先
+        // （计划外动作不会被租约盖掉）、249 授权链的 ALLOW/REJECT 也早有结论（硬拒不受影响）。
+        // 命中 ⇒ 收回 mustAsk，控制流落到下面的 safetyStash + Ready——与"人点批准"**同一条
+        // 下半段**（④⑤ 与 470 入库一个都不少），不另开快车道。
+        var leaseOffer: LeaseOffer? = null
+        if (mustAsk) {
+            when (val lease = leaseGate.onRiskCardBeforeAsk(leaseAskRequest(effectiveCall, spec, localVerdict))) {
+                is LeaseAskOutcome.Hit -> {
+                    mustAsk = false
+                    log("抱朴租约：${lease.leaseId} 命中，免卡放行（余 ${lease.remaining} 次）")
+                }
+
+                is LeaseAskOutcome.Miss -> leaseOffer = lease.offer
+            }
+        }
+        if (mustAsk && leaseOffer != null) {
+            return Prepared.Settled(Result.NeedsConfirm(effectiveCall, riskAsk, leaseOffer = leaseOffer))
         }
         if (mustAsk) return Prepared.Settled(Result.NeedsConfirm(effectiveCall, riskAsk))
         // 第五百零四单（470）：真要执行了——先入库（此刻的字节＝"最后一次已知好状态"）。
@@ -787,6 +836,9 @@ internal class GuardPipeline(
         // 第五百零四单（469）：执行收口——起居注一行＋关键通知＋硬停在飞自动回滚。
         // 细节全在监督缝实现里；这里一行，不动 ④⑤ 的任何既有逻辑。
         safetyAfterRun(spec, effectiveCall, outcome)
+        // 第四百六十七批：租约放行的这一笔在这里落"用一次"的账（判定点只扣内存次数、
+        // 零 IO；"用了一次"这句话只有执行完了才是事实——287/292 的「问过≠做过」同款）。
+        leaseGate.onFinished(effectiveCall, outcome)
         val text = when (outcome) {
             // 第二百八十七批：越界不再有"授权说明"要回灌（工作区不是权限边界，
             // 读全盘不弹卡）；工具自己的回执里会写清"备份/没备份"与"能不能回"。
@@ -1283,6 +1335,42 @@ internal class GuardPipeline(
             inRoot = targets.all { PathGuard.isInside(root, it) },
             reversible = rev.reversible,
         )
+    }
+
+    /**
+     * 第四百六十七批：租约闸要的事实（**采集而判**——判定全在 `authz/LeaseRules`）。
+     *
+     * 三件事只在管线侧能拿到：会话号（`registry.currentSessionId`）、原件区（`rawDir()`）、
+     * 以及 499 那三格硬线事实（[askTierFacts] 同一采集点，两处不会漂）。
+     *
+     * `mustAsk` 这里取的是**矩阵点名的必问**（`verdict.mustAsk`），不是本函数外层那个
+     * 「这次要不要弹卡」的 mustAsk——后者被档位闸改成 true 时是"问"，不是"硬线"，
+     * 拿它当硬线会把标准档下的每一次 R2 都拒成"不可租"（那是把租约废掉）。
+     */
+    private fun leaseAskRequest(call: ToolCall, spec: ToolSpec, verdict: RiskVerdict?): LeaseAskRequest {
+        val facts = askTierFacts(spec, verdict, call)
+        val targets = writeTargets(call.name, call.arguments, ::resolveLoose)
+        return LeaseAskRequest(
+            sessionId = registry.currentSessionId,
+            call = call,
+            spec = spec,
+            risk = facts.risk,
+            unclassified = facts.unclassified,
+            mustAsk = verdict?.mustAsk ?: false,
+            inRoot = facts.inRoot,
+            reversible = facts.reversible,
+            targets = targets,
+            args = call.arguments,
+            root = workspaceRoot(),
+            nowMs = System.currentTimeMillis(),
+            targetsInRawZone = inRawZone(targets),
+        )
+    }
+
+    /** 任一写目标落在原件区（第四十八批 P0-2 那条红线的同一份原真区路径）。 */
+    private fun inRawZone(targets: List<File>): Boolean {
+        val raw = rawDir() ?: return false
+        return targets.any { PathGuard.isInside(raw, it) }
     }
 
     /**

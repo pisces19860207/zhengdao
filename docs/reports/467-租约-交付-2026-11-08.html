@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交付报告</title><style>
+:root{--fg:#1a1a1a;--muted:#5b6470;--bg:#ffffff;--line:#e3e7ec;--accent:#0b63c5;
+--code-bg:#f5f7fa;--warn-bg:#fff8e6;--warn-line:#e6b445;--ok:#177245;--bad:#b3261e;}
+*{box-sizing:border-box}
+body{margin:0;padding:0;background:#eef1f5;color:var(--fg);
+font:15px/1.75 -apple-system,"Segoe UI","Noto Sans SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1040px;margin:0 auto;background:var(--bg);padding:48px 56px 72px;
+box-shadow:0 1px 3px rgba(16,24,40,.08),0 12px 32px rgba(16,24,40,.06)}
+h1{font-size:27px;line-height:1.35;margin:0 0 18px;padding-bottom:14px;border-bottom:3px solid var(--accent)}
+h2{font-size:21px;margin:38px 0 14px;padding-left:11px;border-left:4px solid var(--accent)}
+h3{font-size:17px;margin:26px 0 10px;color:#243447}
+h4{font-size:15px;margin:20px 0 8px}
+p{margin:10px 0}
+hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(11,99,197,.3)}
+code{font-family:"Cascadia Mono",Consolas,"SF Mono",Menlo,monospace;font-size:13px;
+background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+pre{background:#0f1720;color:#dbe4ee;padding:16px 18px;border-radius:8px;overflow:auto;
+font-size:12.5px;line-height:1.6;margin:14px 0}
+pre code{background:none;border:0;padding:0;color:inherit;font-size:inherit}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+th{background:#f2f5f9;font-weight:600;white-space:nowrap}
+tbody tr:nth-child(even){background:#fbfcfd}
+blockquote{margin:16px 0;padding:12px 16px;background:var(--warn-bg);
+border-left:4px solid var(--warn-line);border-radius:0 6px 6px 0}
+blockquote p{margin:6px 0}
+ul,ol{margin:10px 0;padding-left:26px}
+li{margin:5px 0}
+del{color:var(--muted)}
+.meta{color:var(--muted);font-size:13.5px}
+@media print{body{background:#fff}.wrap{box-shadow:none;max-width:none;padding:0}}
+</style></head><body><div class="wrap"><h1>467 · 租约（Lease）交付报告</h1>
+<blockquote><p>交付状态：<strong>DONE</strong>（证据见 §4；未做项见 §7） 批次：第四百六十七批 · 2026-11-08 分支：<code>feat/authz-lease</code>（本地，<strong>未推远端</strong>）· 工作树 <code>wt-467</code> 基线：<code>origin/main</code> = <code>356aa4272</code>（<code>git rev-list --left-right --count main...origin/main</code> = <code>0 / 0</code>，开工前 fetch 过） 设计稿：<code>zhengdao/证道设计报告/467-租约-设计-2026-11-08.{md,html}</code>（蓝总管已审；本报告按五条定点改后交付）</p></blockquote>
+<hr>
+<h2>1. 结论</h2>
+<p>一次批准换来一张<strong>受四条边约束的通行证</strong>：同类目、同范围、限时、限次。命中就在第 ③ 段末尾 （<code>GuardPipeline.kt</code> 出卡前最后一格）直接免卡，走与&quot;人点批准&quot;<strong>完全相同</strong>的下半段； 过期/用尽/越界/撤销/进程重启五种情形一到，<strong>代码里没有续命分支</strong>，自然回到弹卡。</p>
+<p><strong>租约免的是弹卡，不是守卫</strong>：② 段红线（原件区/只读根/系统凭据/边界声明）早在它之前跑完， 242 契约偏离卡在它之前优先，249 授权链的硬拒在它之前定论，499 的档位闸在它之前放行或拦。 它对既有三条判定链<strong>一个字节都没改</strong>（499 只多抽出一个纯布尔式 <code>AskHardLines</code>，行为逐字节不变）。</p>
+<hr>
+<h2>2. 五条定点逐条落实</h2>
+<table><thead><tr><th>定点</th><th>落实</th><th>证据</th></tr></thead><tbody><tr><td><strong>D5</strong> 带 <code>sessionId</code>，命中要求相等</td><td><code>LeaseGrant.sessionId</code> ＋ <code>LeaseStore.hit</code> 先按会话过滤；来源 <code>registry.currentSessionId</code>（引擎 <code>RunEngine</code> 每轮写入的那个信箱，管线里本来就有）</td><td><code>LeaseRulesTest</code>/<code>LeaseStoreTest.判据①</code>；<code>LeasePipelineTest.别会话不继承</code></td></tr><tr><td><strong>U1</strong> 换会话<strong>不清</strong>；淘汰先别的会话</td><td><code>LeaseStore.revoke</code> 只由人撤/降权/过期触发，会话切换不动它；<code>evictFor</code> 先挑 <code>sessionId != 当前</code> 的最老，再挑自己的最老</td><td><code>LeaseStoreTest.判据②（两条）</code></td></tr><tr><td><strong>D9</strong> 默认 10 次/4 小时，天花 15 次/12 小时；单次最多扣 2</td><td><code>LeaseLimits.DEFAULT_CAP=10</code>、<code>DEFAULT_TTL_MS=4h</code>、<code>MAX_CAP=15</code>、<code>MAX_TTL_MS=12h</code>、<code>MAX_COST_PER_USE=2</code>；<code>costOf = min(2, max(1, 目标数))</code></td><td><code>LeaseRulesTest.判据③_10个目标只扣2次</code>；<code>LeaseStoreTest.判据③</code></td></tr><tr><td><strong>D10</strong> 满 3 次降一档、再 3 次撤销；<strong>落账且治理账本可见</strong></td><td><code>noteRejected</code> 满 3 ⇒ <code>cap = used + max(1, 剩余/2)</code> 并落 <code>downgrade</code>；满 6 ⇒ 全部 <code>revoke/why=downgrade</code>；同时镜像一行进 <code>打扰治理.jsonl</code>（<code>kind=violation</code>、<code>who=lease</code>）</td><td><code>LeaseStoreTest.P6</code>；<code>LeaseGovernanceMirrorTest</code>（3 例）</td></tr><tr><td><strong>U5</strong> 建议不自动跑、窗口近 30 天、只读本机账</td><td><code>LeaseAdviceRules.suggest/note</code> 只能被显式调用；<code>WINDOW_DAYS=30</code>、<code>MIN_SAMPLE=10</code>；<strong>不持 LeaseStore</strong>（源级门禁钉住）</td><td><code>LeaseAdviceTest</code>（4 例）＋<code>LeaseEntryGuardTest.建议层不持 Store</code></td></tr></tbody></table>
+<h3>三条新判据（各有测试）</h3>
+<table><thead><tr><th>#</th><th>判据</th><th>测试</th><th>结果</th></tr></thead><tbody><tr><td>①</td><td>两个会话各一张租约：A 的在 B <strong>不命中</strong></td><td><code>LeaseStoreTest.判据①_会话隔离_A的租约在B不命中</code> ＋ <code>LeasePipelineTest.别会话不继承_同一张租约在另一个会话照样弹卡</code></td><td>通过（B 走自己的租约、陌生会话 <code>NOT_GRANTED</code>）</td></tr><tr><td>②</td><td>MAX_LIVE 打满时淘汰<strong>其它会话</strong>的，本会话最新的还在</td><td><code>LeaseStoreTest.判据②_打满先淘汰其它会话_本会话最新的还在</code> ＋ <code>判据②_别的会话先被淘汰_不先动自己的</code></td><td>通过（其它会话先走、自己的 32 张一张不少）</td></tr><tr><td>③</td><td>10 个 target 的 bulk 调用只扣 2</td><td><code>LeaseRulesTest.判据③_10个目标只扣2次</code> ＋ <code>LeaseStoreTest.判据③</code>（<code>used == 2</code>、<code>remaining == 8</code>）</td><td>通过</td></tr></tbody></table>
+<hr>
+<h2>3. 改动清单</h2>
+<p><strong>新增 5 个生产文件</strong>（<code>app/src/main/java/com/example/zhengdao/baopu/authz/</code>）</p>
+<table><thead><tr><th>文件</th><th>行数</th><th>职责</th></tr></thead><tbody><tr><td><code>LeaseRules.kt</code></td><td>约 330</td><td>类目/范围/拒授/报价（纯函数，零 IO）＋<code>LeaseLimits</code> 天花板 ＋<code>LeaseScope</code></td></tr><tr><td><code>LeaseStore.kt</code></td><td>约 300</td><td>内存账：授予/命中/撤销/降级/越权 ＋<code>LeaseOfferChoice</code> 旁路</td></tr><tr><td><code>LeaseLedger.kt</code></td><td>约 110</td><td><code>产物/.leases.jsonl</code>：append/replay/按 id 与 op 回放</td></tr><tr><td><code>LeaseAdvice.kt</code></td><td>约 95</td><td>自进化：只出建议、不授租约</td></tr><tr><td><code>LeaseGate.kt</code></td><td>约 150</td><td>管线接缝（三个口）＋降权镜像进治理账本</td></tr></tbody></table>
+<p><strong>改动 5 个既有文件</strong></p>
+<table><thead><tr><th>文件</th><th>改动</th></tr></thead><tbody><tr><td><code>agent/GuardPipeline.kt</code></td><td>注入口 1 个（参数表最后、带缺省）＋第 ③ 段末尾租约块（出卡前）＋<code>prepare</code> 收口越权归因 ＋<code>finish</code> 收口落账 ＋<code>NeedsConfirm.leaseOffer</code> ＋<code>Rejected.gate</code>（三处赋值，常量 <code>path</code> 新增）</td></tr><tr><td><code>agent/ConfirmFlow.kt</code></td><td><code>ConfirmRequest.leaseOffer</code> ＋<code>enter(leaseOffer)</code> 透传 ＋批准时授予 ＋拒绝/超时作废报价 ＋全撤时一并撤租约</td></tr><tr><td><code>agent/RunEngine.kt</code></td><td>出卡那一行把报价带上（+1 行）</td></tr><tr><td><code>agent/AskGovernance.kt</code></td><td>把 499 硬线布尔式抽成 <code>AskHardLines</code>（<code>AskTierFacts.hardAsk</code> 改成委托它，行为逐字节不变）</td></tr><tr><td><code>ui/baopu/BaopuConfirmCard.kt</code></td><td>卡上多一句可点的字（<code>leaseOffer != null</code> 才摆）</td></tr></tbody></table>
+<p><code>res/values/strings.xml</code>、<code>res/values-en/strings.xml</code>：各 +1 条 <code>baopu_confirm_lease_line</code>（<strong>只有卡面文案</strong>）。</p>
+<p><strong>新增 7 个测试文件</strong>（49 例）：<code>LeaseRulesTest</code>(19)、<code>LeaseStoreTest</code>(16)、<code>LeaseLedgerTest</code>(5)、 <code>LeaseAdviceTest</code>(4)、<code>LeasePipelineTest</code>(8)、<code>LeaseGovernanceMirrorTest</code>(3)、<code>LeaseEntryGuardTest</code>(6)。 （数字以 §4 的 XML 读数为准。）</p>
+<hr>
+<h2>4. 门禁读数（DONE 的证据）</h2>
+<table><thead><tr><th>门禁</th><th>读数</th><th>判据</th></tr></thead><tbody><tr><td><code>:app:testDebugUnitTest</code>（全量）</td><td>见 §4.1</td><td><strong>0 失败</strong></td></tr><tr><td>租约相关 7 个测试类</td><td>见 §4.1</td><td>全绿</td></tr><tr><td><code>:app:detektWall</code></td><td><strong>333 ≤ 335</strong></td><td>本批<strong>零新增</strong>（报告里 <code>Lease</code> 命中 0 处）</td></tr><tr><td>新函数 ≤59 行 / 复杂度 ≤14</td><td>见 §4.2</td><td>逐个核</td></tr><tr><td><code>:app:lintDebug</code></td><td>见 §4.3</td><td>0 error</td></tr><tr><td>入口净增 0</td><td>设置项 0、工具数 0、strings +2（中英各一）、碰租约的生产文件恰 10 个</td><td><code>LeaseEntryGuardTest</code> 4 例</td></tr></tbody></table>
+<h3>4.1 单测读数（<code>build/test-results/testDebugUnitTest/*.xml</code>）</h3>
+<p>读自 <code>app/build/test-results/testDebugUnitTest/*.xml</code>（全量跑，不是 <code>--tests</code> 过滤后的残片）：</p>
+<pre><code>全量：套件 892 · 用例 10323 · 失败 0 · 错误 0 · 跳过 8（存量 8 skip）
+  LeaseRulesTest              19 例  失败 0
+  LeaseStoreTest              16 例  失败 0
+  LeasePipelineTest            8 例  失败 0
+  LeaseEntryGuardTest          6 例  失败 0
+  LeaseLedgerTest              5 例  失败 0
+  LeaseAdviceTest              4 例  失败 0
+  LeaseGovernanceMirrorTest    3 例  失败 0
+  ─────────────────────────────────────────
+  租约合计                     61 例  失败 0</code></pre>
+<p>期间抓到并修掉的一处<strong>真 bug</strong>：<code>LeaseStore.evictFor</code> 当初用 <code>grants.size &gt;= MAX_LIVE</code> 当循环条件，而撤掉的那张仍留在表里（<code>hit</code> 要能回&quot;已撤销&quot;）⇒ 表大小永不下降 ⇒ 一旦打满就<strong>原地死循环</strong>（第一次全量跑挂在这里，等了 49 分钟才发现）。改成数&quot;活着&quot;的租约后正常， <code>判据②</code> 两例正是钉这条的。</p>
+<h3>4.2 新函数规模自查</h3>
+<p>本批新增 45 个函数（5 个新文件）。量法：按花括号配平取函数体行数；复杂度按分支关键字 + <code>&amp;&amp;</code>/<code>||</code>/<code>?:</code> 粗估（<strong>粗估只会高不会低</strong>，真值由 detekt 判）。</p>
+<table><thead><tr><th>项</th><th>实测</th><th>判据</th></tr></thead><tbody><tr><td>最长函数</td><td><code>LeaseStore.hit</code> <strong>33 行</strong></td><td>≤59 ✓</td></tr><tr><td>次长</td><td><code>LeaseStore.grant</code> 28 行 / <code>noteRejected</code> 24 行</td><td>✓</td></tr><tr><td>复杂度最高（粗估）</td><td><code>noteRejected</code> <strong>9</strong> / <code>hit</code> 7 / <code>commonDir</code> 6</td><td>≤14 ✓</td></tr><tr><td>超 59 行的函数</td><td><strong>0 个</strong></td><td>✓</td></tr><tr><td><code>:app:detektWall</code></td><td><strong>333 = 333</strong>（基线也是 333）</td><td>零新增；报告里 <code>Lease</code> 命中 <strong>0 处</strong>（本批没有任何一条 new finding）</td></tr></tbody></table>
+<blockquote><p><code>detektWall</code> 是权威读数：新函数只要超 60 行或复杂度 &gt;15 就会多一条，总数必然 334+。 现读数与基线逐字相等 ⇒ 新代码零新增。</p></blockquote>
+<h3>4.3 lint</h3>
+<p><code>:app:lintDebug</code> → <strong>BUILD SUCCESSFUL</strong>，<strong>0 error · 8 warning</strong>。</p>
+<p>8 条<strong>全是存量</strong>，位置逐条核过（都不在本批文件里）：</p>
+<pre><code>app/build.gradle.kts:319  OldTargetApi
+app/build.gradle.kts:352  ChromeOsAbiSupport
+gradle/libs.versions.toml:14 / :29×3 / :43 / :60   NewerVersionAvailable（依赖有新版）</code></pre>
+<blockquote><p>中途我自己引入过<strong>一条</strong>：卡面文案 <code>≤%1$d times</code> 触发 <code>PluralsCandidate</code>（第 9 条，位置在 <code>values-en/strings.xml</code>）。改成 <code>%1$s</code> 传数字后复跑，回到 8 条 ⇒ <strong>本批 lint 新增 0 error / 0 warning</strong>。 这就是&quot;改完再交付&quot;与&quot;跑完就交付&quot;的区别：9 条也能 BUILD SUCCESSFUL。</p></blockquote>
+<hr>
+<h2>5. 判据对账（派工单 → 落地 → 用例）</h2>
+<table><thead><tr><th>派工单判据</th><th>落地</th><th>用例</th></tr></thead><tbody><tr><td>R0/R1 可租；<strong>R3/原件区/外发/账号/改制度 一律拒绝授予</strong></td><td><code>LeaseRules.denyReason</code> 九道拒（硬线→R3→联网→制度面组→按名点杀→放大类→原件区→空目标）</td><td><code>LeaseRulesTest.N1–N9</code>（9 例，逐类）</td></tr><tr><td>命中不弹</td><td><code>GuardPipeline</code> 第 ③ 段末尾</td><td><code>LeasePipelineTest.命中_…真执行</code>（假 runner 真跑 1 次、返回 <code>Done</code>）</td></tr><tr><td>用尽/过期/越界 ⇒ 恢复弹卡</td><td>状态机顺序：<code>REVOKED &gt; EXPIRED &gt; EXHAUSTED &gt; CATEGORY_MISMATCH &gt; OUT_OF_SCOPE</code></td><td><code>LeaseStoreTest.M1–M3</code>、<code>LeasePipelineTest.未命中_越界</code>、<code>用尽_恢复弹卡</code></td></tr><tr><td>撤销立即失效</td><td><code>revoke</code> 立刻改内存上的 <code>revokedAtMs</code></td><td><code>LeaseStoreTest.M4</code></td></tr><tr><td>重启不复活</td><td>启动<strong>不读盘</strong>（没有那条代码路径）</td><td><code>LeaseStoreTest.M5</code>（盘上 grant 行还在，内存空 ⇒ 未命中）</td></tr><tr><td>账：用一次一行（lease id·类目·动作·结果）；授予/撤销各一行；可按 lease id 回放</td><td>扣次在判定点（内存、零 IO）＋<code>use</code>/<code>outcome</code> 在 <code>finish</code> 落（带真实结果），按 <code>op</code> 可 join</td><td><code>LeaseStoreTest.账_用一次两行…</code>、<code>LeaseLedgerTest.按 id 与按 op 都回放得出</code></td></tr><tr><td>入口净增 0</td><td>无设置项、无新工具、无新页面</td><td><code>LeaseEntryGuardTest</code>（文件白名单/设置页/C 层/工具目录/文案中英/建议层不持 Store）</td></tr><tr><td><code>detektWall ≤ 预算</code></td><td>见 §4</td><td><code>:app:detektWall</code></td></tr><tr><td>自进化只出建议</td><td><code>LeaseAdviceRules</code> 不调 <code>LeaseStore</code></td><td><code>LeaseAdviceTest.出建议不落租约</code>、<code>LeaseEntryGuardTest.建议层不持 Store</code></td></tr><tr><td>越权 3 次自动降权并记账</td><td>见 §2 D10</td><td><code>LeaseStoreTest.P6</code>、<code>P5（两条去重/非三闸）</code>、<code>LeaseGovernanceMirrorTest</code></td></tr></tbody></table>
+<hr>
+<h2>6. 边界自检（派工单「边界」三条）</h2>
+<table><thead><tr><th>边界</th><th>有没有碰</th></tr></thead><tbody><tr><td>不改 499 授权档分类/必问清单</td><td><strong>没改</strong>。唯一动作是把 <code>hardAsk</code> 那个布尔式抽成 <code>AskHardLines.hardAsk</code> 供租约同调，<code>AskTierFacts.hardAsk</code> 改成委托它——表达式逐字一致，<code>AskTierRules.decide</code> 一个字没动。租约的可授性<strong>以 499 的三条硬线为最外一层否决</strong>（硬线、根外、不可逆三条任一命中就拒绝授予），所以它结构上不可能推翻 499</td></tr><tr><td>不改 471 停机语义</td><td><strong>没改</strong>。<code>SafetyHooks.intercept</code> 仍在 <code>prepareImpl</code> 最前一格；停机期的调用走不到租约那一格</td></tr><tr><td>不推远端</td><td><strong>没推</strong>。分支只在本地工作树</td></tr></tbody></table>
+<hr>
+<h2>7. 未做 / 已知风险（诚实标注）</h2>
+<table><thead><tr><th>#</th><th>项</th><th>状态</th><th>影响</th></tr></thead><tbody><tr><td>1</td><td><strong>体检行/<code>governance_state</code> 里看不到租约读数</strong></td><td>未做（有意）：<code>governance_state</code> 是只读 R0、六段口径在 <code>docs/metrics-registry.md</code> 登记，加段等于改口径</td><td>租约省了几张卡，只在 <code>产物/.leases.jsonl</code> 与 RunLog 里；体检行「今日自动放过」不含它。要进体检须另立单</td></tr><tr><td>2</td><td>降权只在<strong>治理账本</strong>（<code>打扰治理.jsonl</code>，<code>who=lease</code>）可见，治理中心<strong>界面</strong>没加块</td><td>未做（&quot;入口净增 0&quot;）</td><td>账能查（<code>AskGovLedger.replay()</code> 过滤 <code>who==&quot;lease&quot;</code>），屏上没有专门一块</td></tr><tr><td>3</td><td><code>edit/write</code> 类目偏粗（<code>write_file</code>/<code>edit_file</code>/<code>image_ops</code> 同槽）</td><td>已知取舍</td><td>她会觉得&quot;写文件&quot;这一类的租约比以前粗；要窄就按 §设计 U7 拆</td></tr><tr><td>4</td><td>换会话<strong>不自动清</strong>旧会话租约（定点 U1 定的）</td><td>按令执行</td><td>旧会话的租约留在内存里到过期；<code>MAX_LIVE</code> 淘汰时优先清它们</td></tr><tr><td>5</td><td>真机未跑</td><td>未做</td><td>卡面那句在窄屏上的换行只用 <code>maxLines=2</code> 兜着；逻辑层有单测钉</td></tr><tr><td>6</td><td><code>LeaseAdviceRules</code> 的窗口统计把&quot;历史授予行&quot;也算进均值</td><td>已知</td><td>它只出建议，不自动改任何值，错了也只是那句话不准</td></tr></tbody></table>
+<hr>
+<h2>8. 回滚</h2>
+<p>一处开关都不用（没有 <code>if (flag)</code>）：把 <code>leaseGate</code> 参数<strong>不传</strong>就是 <code>LeaseGate.LIVE</code>， 而 <code>LIVE</code> 在没有任何租约时只做一次查表、结论必然&quot;未命中&quot; ⇒ 行为等于本批之前。 要整批回滚：<code>git revert</code> 本提交即可，5 个新文件与 5 处改动都是独立的。</p></div></body></html>
