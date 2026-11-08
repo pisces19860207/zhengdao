@@ -72,21 +72,48 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # GitHub CDN 偶发 504（2026-11-08 实测三次）：首试失败再试一次，两次都失败才判红。
+      # GitHub CDN 偶发 504（2026-11-08 实测连红：setup-java 下载 Temurin 25.0.3 三次 504）。
+      # 兜底三层：①缓存命中直接复用 ②setup-java 首试 ③失败则直连 Adoptium API 下载（自带 5 次退避）。
+      - name: 缓存 JDK 25（Temurin 25.0.3）
+        id: jdk25cache
+        uses: actions/cache@v6
+        with:
+          path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.3-9
+          key: temurin25-25.0.3-9-linux-x64-v1
+
+      - name: 缓存命中：直接用（免下载）
+        if: steps.jdk25cache.outputs.cache-hit == 'true'
+        run: |
+          DEST=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.3-9/x64
+          test -x "$DEST/bin/java"
+          echo "JAVA_HOME=$DEST" >> "$GITHUB_ENV"
+          echo "$DEST/bin" >> "$GITHUB_PATH"
+
       - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
         id: jdk25
+        if: steps.jdk25cache.outputs.cache-hit != 'true'
         uses: actions/setup-java@v6
         continue-on-error: true
         with:
           distribution: temurin
           java-version: '25.0.3'
 
-      - name: 重试安装 JDK 25（仅首试失败时）
-        if: steps.jdk25.outcome == 'failure'
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '25.0.3'
+      - name: 直连 Adoptium 兜底（setup-java 被 504 挡住时）
+        if: steps.jdk25cache.outputs.cache-hit != 'true' && steps.jdk25.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          DEST=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.3-9/x64
+          mkdir -p "$DEST"
+          URL="https://api.adoptium.net/v3/binary/version/jdk-25.0.3%2B9/linux/x64/jdk/hotspot/normal/eclipse"
+          for i in 1 2 3 4 5; do
+            if curl -fsSL --retry 3 --retry-delay 5 -o /tmp/jdk25.tgz "$URL"; then break; fi
+            echo "Adoptium 下载失败（第 $i 次），退避 $((i*10))s"; sleep $((i*10))
+          done
+          test -s /tmp/jdk25.tgz
+          tar -xzf /tmp/jdk25.tgz -C "$DEST" --strip-components=1
+          "$DEST/bin/java" -version
+          echo "JAVA_HOME=$DEST" >> "$GITHUB_ENV"
+          echo "$DEST/bin" >> "$GITHUB_PATH"
 
       - name: 授权 gradlew（CI 上无 local.properties，SDK 走 runner 预装）
         run: chmod +x gradlew
@@ -515,21 +542,48 @@ jobs:
       # 352：daemon 统一 JDK 25.0.3（gradle/gradle-daemon-jvm.properties 钉 major 25，
       # runner 预装没有 25，不显式装就走 foojay "Downloading toolchain"——352 判据②
       # 要求任何 job 都不再出现）。本 job 不跑 detekt，无需 JDK 21。
-      # GitHub CDN 偶发 504（2026-11-08 实测三次）：首试失败再试一次，两次都失败才判红。
+      # GitHub CDN 偶发 504（2026-11-08 实测连红：setup-java 下载 Temurin 25.0.3 三次 504）。
+      # 兜底三层：①缓存命中直接复用 ②setup-java 首试 ③失败则直连 Adoptium API 下载（自带 5 次退避）。
+      - name: 缓存 JDK 25（Temurin 25.0.3）
+        id: jdk25cache
+        uses: actions/cache@v6
+        with:
+          path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.3-9
+          key: temurin25-25.0.3-9-linux-x64-v1
+
+      - name: 缓存命中：直接用（免下载）
+        if: steps.jdk25cache.outputs.cache-hit == 'true'
+        run: |
+          DEST=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.3-9/x64
+          test -x "$DEST/bin/java"
+          echo "JAVA_HOME=$DEST" >> "$GITHUB_ENV"
+          echo "$DEST/bin" >> "$GITHUB_PATH"
+
       - name: 安装 JDK 25（Temurin 25.0.3，Gradle daemon 用）
         id: jdk25
+        if: steps.jdk25cache.outputs.cache-hit != 'true'
         uses: actions/setup-java@v6
         continue-on-error: true
         with:
           distribution: temurin
           java-version: '25.0.3'
 
-      - name: 重试安装 JDK 25（仅首试失败时）
-        if: steps.jdk25.outcome == 'failure'
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '25.0.3'
+      - name: 直连 Adoptium 兜底（setup-java 被 504 挡住时）
+        if: steps.jdk25cache.outputs.cache-hit != 'true' && steps.jdk25.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          DEST=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.3-9/x64
+          mkdir -p "$DEST"
+          URL="https://api.adoptium.net/v3/binary/version/jdk-25.0.3%2B9/linux/x64/jdk/hotspot/normal/eclipse"
+          for i in 1 2 3 4 5; do
+            if curl -fsSL --retry 3 --retry-delay 5 -o /tmp/jdk25.tgz "$URL"; then break; fi
+            echo "Adoptium 下载失败（第 $i 次），退避 $((i*10))s"; sleep $((i*10))
+          done
+          test -s /tmp/jdk25.tgz
+          tar -xzf /tmp/jdk25.tgz -C "$DEST" --strip-components=1
+          "$DEST/bin/java" -version
+          echo "JAVA_HOME=$DEST" >> "$GITHUB_ENV"
+          echo "$DEST/bin" >> "$GITHUB_PATH"
 
       - name: 授权 gradlew（CI 上无 local.properties，SDK 走 runner 预装）
         run: chmod +x gradlew
