@@ -191,7 +191,13 @@ internal class ReflectionAttributor(
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
 
-    private var seq = 0
+    // 2026-11-08：seq 原先是**实例字段**——每次收工都新建一个 ReflectionAttributor，
+    // 于是两次收工落在同一毫秒时（CI 上常见）会生成相同的 id（`att:<ms>:1`），
+    // 而 JudgmentExperienceLedger.readAll() 用 distinctBy{id} 去重 ⇒ 后一行被当重复吞掉
+    // （症状：本次判定 1 条／实际新增落账 0 条／账上仍 3 行）。改成**进程级**自增，跨实例不撞。
+    private companion object {
+        private var seq = 0L
+    }
 
     /** 一次增量扫的产物（三个数分开记：[judged] 旧口径看不到）。 */
     private class Sweep(

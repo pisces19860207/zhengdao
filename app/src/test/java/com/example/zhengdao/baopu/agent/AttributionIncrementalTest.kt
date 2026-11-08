@@ -92,6 +92,27 @@ class AttributionIncrementalTest {
         assertTrue("只新增一条，实际：$second", second.contains("实际新增落账 1 条"))
     }
 
+    @Test
+    fun `判据②补_同一毫秒两次收工_行 id 不许撞（撞了 distinctBy 会吞行）`() {
+        // 2026-11-08 回归：ReflectionAttributor 的 seq 曾是实例字段，每次收工从 0 开始；
+        // 同一毫秒两次收工 ⇒ id 都是 `att:<ms>:1` ⇒ readAll 的 distinctBy{id} 吞掉后一行，
+        // 症状正是 CI 上间歇红的「本次判定 1 条／实际新增落账 0 条」。
+        val ws = tmp.newFolder("ws-512-e")
+        plantArchive(ws, pairs = 1)
+        val rows = mutableListOf<ExperienceRow>()
+        val store = object : JudgmentExperienceStore {
+            override fun append(row: ExperienceRow) { rows += row }
+            override fun readAll(): List<ExperienceRow> = rows.toList()
+        }
+        val fixedClock = { 1_700_000_000_000L }
+        ReflectionAttributor(ws, store, log = {}, clock = fixedClock).attribute(full = true)
+        appendPair(ws, idx = 2)
+        ReflectionAttributor(ws, store, log = {}, clock = fixedClock).attribute(full = false)
+        assertEquals("两对都该落一行", 2, rows.size)
+        assertEquals("同一毫秒的两次收工，行 id 必须唯一（否则 distinctBy 会吞行）",
+            rows.size, rows.map { it.id }.distinct().size)
+    }
+
     // ── ③ 日志同时含「判定 N／新增 M」两个数 ─────────────────────────────────
 
     @Test
