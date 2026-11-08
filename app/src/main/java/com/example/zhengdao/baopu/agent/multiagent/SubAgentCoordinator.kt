@@ -27,6 +27,12 @@ internal class SubAgentCoordinator(
     private val isCancelled: () -> Boolean,
     private val now: () -> Long,
     private val log: (String) -> Unit,
+    /**
+     * 写守卫（第五百三十一批 ④）：子任务终态时按条结算——
+     * 成功保留产物，失败/超时/取消按该子任务的 opId 撤回它的写。
+     * 缺省空实现（v1 只读路径与不关心写的单测同形）。
+     */
+    private val writeGuard: SubTaskWriteGuard = SubTaskWriteGuard.NONE,
 ) {
 
     /** 完成队列（提交顺序即提交，完成顺序由队列给）。 */
@@ -168,6 +174,10 @@ internal class SubAgentCoordinator(
         // 「重试是不是又烧了一遍」；首战失败原因只进日志，行内状态回 PENDING
         // 由随后的 markRunning 覆盖）
         private fun retry(task: SubTask, merged: SubTaskResult) {
+            // 第五百三十一批 ④：**重试前先把这次尝试的写撤掉**。
+            // 不撤的话，第二次尝试入库的「原件」就是第一次改坏后的字节——
+            // 最后再回滚只会回到「第一次的坏状态」，等于没回滚（真跑出来的坑）。
+            quietly { writeGuard.afterTerminal(task, merged) }
             attempts[task.id] = merged.attempts + 1
             log(
                 "子 Agent ${task.id} ${statusLabel(merged.status)}" +
@@ -178,6 +188,9 @@ internal class SubAgentCoordinator(
 
         private fun finish(task: SubTask, merged: SubTaskResult) {
             results[task.id] = merged
+            // 第五百三十一批 ④：先结算写（不成功就撤回），再落账——
+            // 顺序反了会让审计看到「已成功落账、文件却没了」。
+            quietly { writeGuard.afterTerminal(task, merged) }
             quietly {
                 store.markFinished(
                     merged, task.goal, task.input, task.acceptance, task.tools, merged.attempts,
@@ -202,6 +215,7 @@ internal class SubAgentCoordinator(
                 attempts = attempts[id] ?: 1,
             )
             results[id] = r
+            quietly { writeGuard.afterTerminal(task, r) }
             quietly { store.markFinished(r, task.goal, task.input, task.acceptance, task.tools, r.attempts) }
         }
 
@@ -214,6 +228,7 @@ internal class SubAgentCoordinator(
                 attempts = attempts[task.id] ?: 1,
             )
             results[task.id] = r
+            quietly { writeGuard.afterTerminal(task, r) }
             quietly {
                 store.markFinished(r, task.goal, task.input, task.acceptance, task.tools, r.attempts)
             }

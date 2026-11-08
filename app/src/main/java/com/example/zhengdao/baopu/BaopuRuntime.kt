@@ -36,20 +36,31 @@ import com.example.zhengdao.baopu.agent.OrchestrationGate
 import com.example.zhengdao.baopu.agent.RunEngine
 import com.example.zhengdao.baopu.agent.RunRules
 import com.example.zhengdao.baopu.agent.ScheduleTaskTool
+import com.example.zhengdao.baopu.agent.ToolCall
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPrefs
 import com.example.zhengdao.baopu.agent.ToolRegistry
 import com.example.zhengdao.baopu.agent.ToolRunner
+import com.example.zhengdao.baopu.agent.multiagent.BaopuSubAgentLedger
 import com.example.zhengdao.baopu.agent.multiagent.BaopuSubTaskStore
 import com.example.zhengdao.baopu.agent.multiagent.LlmSubAgentTurn
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentCoordinator
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentEnv
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentLedger
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentLedgerRow
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentLedgerSink
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentRules
 import com.example.zhengdao.baopu.agent.multiagent.SubAgentRunner
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentWhitelist
+import com.example.zhengdao.baopu.agent.multiagent.SubAgentWrites
+import com.example.zhengdao.baopu.agent.multiagent.SubTask
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskSink
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
+import com.example.zhengdao.baopu.agent.multiagent.SubTaskWriteGuard
+import com.example.zhengdao.baopu.agent.multiagent.TaskDecomposition
+import com.example.zhengdao.baopu.agent.multiagent.VaultSubTaskWriteGuard
 import com.example.zhengdao.baopu.consequence.CanaryBand
 import com.example.zhengdao.baopu.consequence.ConsequenceWiring
 import com.example.zhengdao.baopu.escalate.BoundaryTable
@@ -1027,21 +1038,25 @@ internal object BaopuRuntime {
     }
 
     /**
-     * 第一百二十七批：`run_subtasks` 的生产落点（解析 ⇒ 协调 ⇒ 聚合）。
+     * 第一百二十七批：`run_subtasks` 的生产落点（解析 ⇒ 协调 ⇒ 聚合）；
+     * 第五百三十一批 v2 加四件：上下文按父预算收、写类要父显式授予、账按子任务归、
+     * 子任务不成功就按它自己的 opId 撤回写。
      *
      * 三件生产件为什么在这层拼：LLM 一轮要 [com.example.zhengdao.baopu.Provider]、
      * 工具执行要注册表与工作区根、审计存储要 [BaopuDb]——全都带 Context 或进程态，
      * 按「Context 依赖装配成一台机器」的纪律只能出现在本文件。
      *
-     * 安全口径（协作模型 §3）：白名单天花板在 [SubAgentRules]（只读六件），
-     * 执行层再按**每条子任务自己的**生效白名单拦一次；通道用引擎此刻的
-     * （[RunEngine.currentProviderNow]）——熔断兜底时子 Agent 与父同一条。
+     * 安全口径：读名单天花板在 [SubAgentRules]（六件只读），写名单要父在
+     * `grant_writes` 里逐件点名（[SubAgentWhitelist]）；执行层再按**每条子任务自己的**
+     * 名单拦一次（双保险）；写只许落在工作区根内，写前入库、失败整条撤回（470 保险箱）。
+     * 通道用引擎此刻的（[RunEngine.currentProviderNow]）——熔断兜底时子 Agent 与父同一条。
      */
     private fun runSubtasks(appCtx: Context, engine: RunEngine, reg: ToolRegistry, args: JSONObject): ToolOutcome {
         val sessionId = ActiveSessionGate.current()?.removePrefix("id:")?.toLongOrNull()
             ?: return ToolOutcome.Rejected("当前没有活跃会话：run_subtasks 只能在抱朴干活时调。")
         // 可用集 = 父会话此刻看得见的（组解锁 ∩ 用户开关）——子 Agent 够不着父够不着的东西
         val available = reg.visibleSpecs(sessionId).map { it.name }.toSet()
+        val isWrite = writeClassOf(reg)
         val seq = subTaskSeq.incrementAndGet().toInt()
         return when (
             val parsed = SubAgentRules.parseDecomposition(
@@ -1050,90 +1065,138 @@ internal object BaopuRuntime {
                 sessionId = sessionId,
                 now = System.currentTimeMillis(),
                 attemptSeq = seq,
+                isWrite = isWrite,
             )
         ) {
             is SubAgentRules.ParseResult.Rejected -> ToolOutcome.Rejected(parsed.reason)
-            is SubAgentRules.ParseResult.Ok -> {
-                val d = parsed.decomposition
-                val root = workspaceRoot(appCtx)
-                val provider = engine.currentProviderNow()
-                val results = SubAgentCoordinator(
-                    newRunner = { task ->
-                        val whitelist = task.tools.toSet()
-                        val toolsJson = if (whitelist.isEmpty()) {
-                            null
-                        } else {
-                            JSONArray().also { arr ->
-                                whitelist.forEach { name ->
-                                    reg.find(name)?.let { s ->
-                                        arr.put(
-                                            JSONObject()
-                                                .put("type", "function")
-                                                .put(
-                                                    "function",
-                                                    JSONObject()
-                                                        .put("name", s.name)
-                                                        .put("description", s.description)
-                                                        .put("parameters", s.inputSchema),
-                                                ),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        SubAgentRunner(
-                            SubAgentEnv(
-                                turn = LlmSubAgentTurn(provider, reg) { RunLog.log(it) },
-                                toolExec = { call ->
-                                    when {
-                                        call.name !in whitelist -> ToolOutcome.Rejected(
-                                            "${call.name} 不在这条子任务的白名单里" +
-                                                "（可用：${whitelist.joinToString("、").ifEmpty { "无" }}）",
-                                        )
+            is SubAgentRules.ParseResult.Ok ->
+                runDecomposition(appCtx, engine, reg, parsed.decomposition, isWrite)
+        }
+    }
 
-                                        else -> {
-                                            val spec = reg.find(call.name)
-                                            if (spec == null) {
-                                                ToolOutcome.Rejected("工具 ${call.name} 当前不可用（被关闭或组未解锁）")
-                                            } else {
-                                                spec.executor(resolveSubTaskPaths(call.arguments, root))
-                                            }
-                                        }
-                                    }
-                                },
-                                toolsJson = toolsJson,
-                                isCancelled = { engine.stopRequestedNow() },
-                                log = { RunLog.log(it) },
+    /** 一笔分解的跑法：造守卫/账/每条执行器，交给协调器，收成聚合文本。 */
+    private fun runDecomposition(
+        appCtx: Context,
+        engine: RunEngine,
+        reg: ToolRegistry,
+        d: TaskDecomposition,
+        isWrite: (String) -> Boolean,
+    ): ToolOutcome {
+        val root = workspaceRoot(appCtx)
+        val provider = engine.currentProviderNow()
+        // 账双写：落库（持久、可分组查）＋内存一份（收尾那行摘要当场就有真数字，
+        // 不等单写者线程刷盘——否则日志会写出「0 行」这种假读数）。
+        val rows = java.util.Collections.synchronizedList(mutableListOf<SubAgentLedgerRow>())
+        val dbLedger = BaopuSubAgentLedger(db(appCtx), d.sessionId) { RunLog.log(it) }
+        val ledger = SubAgentLedgerSink { row -> rows += row; dbLedger.append(row) }
+        val guard = VaultSubTaskWriteGuard(d.sessionId.toString(), root, isWrite, ledger, log = { RunLog.log(it) })
+        val parentTokens = parentTokensNow(appCtx, d.sessionId)
+        val results = SubAgentCoordinator(
+            newRunner = { task ->
+                subAgentRunner(task, reg, root, provider, engine, isWrite, guard, ledger, parentTokens)
+            },
+            store = BaopuSubTaskStore(db(appCtx)) { RunLog.log(it) },
+            isCancelled = { engine.stopRequestedNow() },
+            now = { System.currentTimeMillis() },
+            log = { RunLog.log(it) },
+            writeGuard = guard,
+        ).runAll(d)
+        // 第一百八十一批 #5：子任务 token 记账一行进 run_log（判据 WiringKnife2.subAgentUsageLine）。
+        subAgentUsageLine(d.parentId, subAgentUsageOf(results))?.let { RunLog.log(it) }
+        // 第五百三十一批 ③：账也留一行摘要（明细在 sub_agent_ledger，可按子任务分组）。
+        runCatching { RunLog.log(SubAgentLedger.summaryLine(rows.toList())) }
+        return ToolOutcome.Ok(
+            SubAgentRules.aggregate(results) { id -> d.subtasks.firstOrNull { it.id == id }?.goal },
+        )
+    }
+
+    /** 一条子任务的执行器（白名单序列化＋执行＋账＋写前入库）。 */
+    private fun subAgentRunner(
+        task: SubTask,
+        reg: ToolRegistry,
+        root: File,
+        provider: Provider,
+        engine: RunEngine,
+        isWrite: (String) -> Boolean,
+        guard: SubTaskWriteGuard,
+        ledger: SubAgentLedgerSink,
+        parentTokens: Int,
+    ): SubAgentRunner = SubAgentRunner(
+        SubAgentEnv(
+            turn = LlmSubAgentTurn(provider, reg) { RunLog.log(it) },
+            toolExec = { call -> execSubAgentTool(call, task, reg, root, isWrite) },
+            toolsJson = subAgentToolsJson(task, reg),
+            isCancelled = { engine.stopRequestedNow() },
+            log = { RunLog.log(it) },
+            parentTokens = parentTokens,
+            isWrite = isWrite,
+            beforeWrite = { call -> guard.beforeWrite(task, call) },
+            ledger = { row -> ledger.append(row) },
+        ),
+    )
+
+    /** 子 Agent 一条子任务能用哪些工具（读名单＋写名单；空 ⇒ 不发 tools 数组）。 */
+    private fun subAgentToolsJson(task: SubTask, reg: ToolRegistry): JSONArray? {
+        val allowed = SubAgentWhitelist.allowed(task)
+        if (allowed.isEmpty()) return null
+        return JSONArray().also { arr ->
+            allowed.forEach { name ->
+                reg.find(name)?.let { s ->
+                    arr.put(
+                        JSONObject()
+                            .put("type", "function")
+                            .put(
+                                "function",
+                                JSONObject()
+                                    .put("name", s.name)
+                                    .put("description", s.description)
+                                    .put("parameters", s.inputSchema),
                             ),
-                        )
-                    },
-                    store = BaopuSubTaskStore(db(appCtx)) { RunLog.log(it) },
-                    isCancelled = { engine.stopRequestedNow() },
-                    now = { System.currentTimeMillis() },
-                    log = { RunLog.log(it) },
-                ).runAll(d)
-                // 第一百八十一批 #5：子任务 token 记账一行进 run_log（判据 WiringKnife2.subAgentUsageLine）。
-                subAgentUsageLine(d.parentId, subAgentUsageOf(results))?.let { RunLog.log(it) }
-                ToolOutcome.Ok(
-                    SubAgentRules.aggregate(results) { id -> d.subtasks.firstOrNull { it.id == id }?.goal },
-                )
+                    )
+                }
             }
         }
     }
 
-    /**
-     * 只读工具的相对路径 ⇒ 工作区根下绝对路径（与 [GuardPipeline] 读类同一口径）。
-     *
-     * 只解析 `path` 一个键：白名单里六件只读工具的参数名都是它（逐把核过）。
-     * 写类工具不进白名单 ⇒ 不需要 P0-2 那套「解析后真实目标判原件区」——子 Agent
-     * 结构上就没有写通路（协作模型 §3）。
-     */
-    private fun resolveSubTaskPaths(args: JSONObject, root: File): JSONObject {
-        val raw = args.optString("path").trim()
-        if (raw.isEmpty() || File(raw).isAbsolute) return args
-        val out = JSONObject(args.toString())
-        return out.put("path", File(root, raw).absolutePath)
+    /** 执行一件子任务调用：名单双保险＋写只许落工作区根内（越界不写）。 */
+    private fun execSubAgentTool(
+        call: ToolCall,
+        task: SubTask,
+        reg: ToolRegistry,
+        root: File,
+        isWrite: (String) -> Boolean,
+    ): ToolOutcome {
+        val spec = reg.find(call.name)
+            ?: return ToolOutcome.Rejected("工具 ${call.name} 当前不可用（被关闭或组未解锁）")
+        val allowed = SubAgentWhitelist.allowed(task)
+        if (allowed.isNotEmpty() && call.name !in allowed) {
+            return ToolOutcome.Rejected("${call.name} 不在这条子任务的白名单里（可用：${allowed.joinToString("、")}）")
+        }
+        if (isWrite(call.name)) {
+            val outside = SubAgentWrites.targetsOf(call, root).firstOrNull { !SubAgentWrites.insideRoot(it, root) }
+            if (outside != null) {
+                return ToolOutcome.Rejected("子任务只允许写工作区内：$outside 在工作区外，这次不写。")
+            }
+        }
+        return spec.executor(SubAgentWrites.absolutize(call.arguments, root))
     }
+
+    /**
+     * 注册表的写类判定（v2 ②：写名单靠它，不靠另抄一张工具表）。
+     *
+     * 注册表里没有的名字按**写**处理（保守：宁可不给），与 [ToolSpec.readOnly]
+     * 「忘了标＝按写处理」同一立场。
+     */
+    private fun writeClassOf(reg: ToolRegistry): (String) -> Boolean =
+        { name -> reg.find(name)?.let { !it.readOnly } ?: true }
+
+    /** 父上下文此刻的 token（最近一步的 `tokens_in`；读不到 ⇒ 0，子上下文只吃地板）。 */
+    private fun parentTokensNow(appCtx: Context, sessionId: Long): Int = runCatching {
+        val stmt = BaopuSql.lastRunTokensIn(sessionId)
+        db(appCtx).read { d ->
+            d.rawQuery(stmt.sql, stmt.args).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        }
+    }.getOrDefault(0)
 
     /** 同会话内第几笔 run_subtasks（分解 id 用它防同毫秒相撞；进程级计数）。 */
     private val subTaskSeq = AtomicLong(0L)

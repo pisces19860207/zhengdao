@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(22, BaopuDb.VERSION) // v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+        assertEquals(23, BaopuDb.VERSION) // v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -174,7 +174,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(22, BaopuDb.VERSION) // v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+        assertEquals(23, BaopuDb.VERSION) // v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -522,8 +522,12 @@ class BaopuDbTest {
             }
         }
         assertEquals(
-            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact/run_trace/run_queue/sub_task 八张引用 session 的表，实际 $refs",
-            setOf("message", "run_log", "plan_batch", "compression", "artifact", "run_trace", "run_queue", "sub_task"),
+            "DDL 里应当找到 message/run_log/plan_batch/compression/artifact/run_trace/run_queue/sub_task/" +
+                "sub_agent_ledger 九张引用 session 的表，实际 $refs",
+            setOf(
+                "message", "run_log", "plan_batch", "compression", "artifact", "run_trace", "run_queue",
+                "sub_task", "sub_agent_ledger",
+            ),
             refs.keys,
         )
         val deleted = BaopuSql.deleteSessionStatements(1L).joinToString("\n") { it.sql }
@@ -540,10 +544,14 @@ class BaopuDbTest {
         assertTrue("run_trace 必须带 ON DELETE CASCADE（v13 第八十七批：删会话时轨迹跟着走）", refs["run_trace"] == true)
         assertTrue("run_queue 必须带 ON DELETE CASCADE（v15 第一百一十七批：删会话时排队条跟着走）", refs["run_queue"] == true)
         assertTrue("sub_task 必须带 ON DELETE CASCADE（v16 第一百二十七批：删会话时子任务账跟着走）", refs["sub_task"] == true)
+        assertTrue(
+            "sub_agent_ledger 必须带 ON DELETE CASCADE（v23 第五百三十一批：删会话时子 Agent 账跟着走）",
+            refs["sub_agent_ledger"] == true,
+        )
         assertFalse(
             "带级联的表不许在删会话语句里重复删（part / artifact / run_queue 都靠 SQLite 联动）",
             deleted.contains("DELETE FROM artifact") || deleted.contains("DELETE FROM part") ||
-                deleted.contains("DELETE FROM run_queue"),
+                deleted.contains("DELETE FROM run_queue") || deleted.contains("DELETE FROM sub_agent_ledger"),
         )
     }
 
@@ -579,6 +587,8 @@ class BaopuDbTest {
             "tools TEXT NOT NULL", "status TEXT NOT NULL", "attempts INTEGER NOT NULL",
             "steps INTEGER NOT NULL", "started_at INTEGER NOT NULL", "ended_at INTEGER NOT NULL",
             "failure_reason TEXT NOT NULL", "result_text TEXT NOT NULL", "created_at INTEGER NOT NULL",
+            // v23：父显式授予的写类（空串＝只读研究工）
+            "writes TEXT NOT NULL DEFAULT ''",
         ).forEach { assertTrue("缺列：$it（$table）", table.contains(it)) }
         assertTrue("按父子取账要有索引", BaopuSql.SUB_TASK_DDL.any {
             it.contains("idx_sub_task_parent ON sub_task (parent_id, seq)")
@@ -589,10 +599,10 @@ class BaopuDbTest {
 
         val ins = BaopuSql.insertSubTask(
             "sg-1-aa-1-1", "sg-1-aa-1", 7L, 1, "读a", "a.md", "200字",
-            "read_file,list_dir", "PENDING", 1, 0, 0L, 0L, "", "", 123L,
+            "read_file,list_dir", "PENDING", 1, 0, 0L, 0L, "", "", 123L, "",
         )
         assertTrue("插入语句指向 sub_task：${ins.sql}", ins.sql.contains("INSERT INTO sub_task"))
-        assertEquals("插入 16 个问号对 16 个值", 16, ins.args.size)
+        assertEquals("插入 17 个问号对 17 个值", 17, ins.args.size)
         assertEquals("第一个参数是 task_id", "sg-1-aa-1-1", ins.args[0])
 
         val run = BaopuSql.updateSubTaskRunning("sg-1-aa-1-1", 9L)
@@ -605,7 +615,38 @@ class BaopuDbTest {
         assertTrue("按父子取账按 seq 升序：${byParent.sql}", byParent.sql.contains("WHERE parent_id = ? ORDER BY seq ASC"))
         val bySession = BaopuSql.selectSubTasksOfSession(7L)
         assertTrue("按会话查账：${bySession.sql}", bySession.sql.contains("WHERE session_id = ? ORDER BY id ASC"))
-        assertEquals("列序唯一一份（15 列）", 15, BaopuSql.SUB_TASK_COLUMNS.size)
+        assertEquals("列序唯一一份（16 列；v23 加 writes）", 16, BaopuSql.SUB_TASK_COLUMNS.size)
+    }
+
+    /**
+     * v23（第五百三十一批 · 子智能体 v2）：子 Agent 账表。
+     *
+     * 钉四件：幂等建表／引用 session 且级联（删会话时账跟着走）／
+     * agent_id＋parent_id 两列必在（判据③的落库形状）／按分解取账按落账顺序。
+     */
+    @Test
+    fun `v23_sub_agent_ledger_幂等建表_级联_按父子取账`() {
+        assertTrue(
+            "v23 DDL 必须 IF NOT EXISTS（幂等真迁移）",
+            BaopuSql.SUB_AGENT_LEDGER_DDL.all { it.contains("IF NOT EXISTS") },
+        )
+        val table = BaopuSql.SUB_AGENT_LEDGER_DDL.first { it.contains("CREATE TABLE IF NOT EXISTS sub_agent_ledger") }
+        assertTrue("sub_agent_ledger 必须引用 session 并级联删除：$table", table.contains("REFERENCES session(id) ON DELETE CASCADE"))
+        assertTrue(
+            "账行必须带 agent_id 与 parent_id 两列：$table",
+            table.contains("agent_id TEXT NOT NULL") && table.contains("parent_id TEXT NOT NULL"),
+        )
+        assertTrue("按分解取账要有索引", BaopuSql.SUB_AGENT_LEDGER_DDL.any {
+            it.contains("idx_sub_agent_ledger_parent ON sub_agent_ledger (parent_id, id)")
+        })
+        val ins = BaopuSql.insertSubAgentLedger("sg-1-aa-1-1", "sg-1-aa-1", 7L, "REJECT", "write_file", false, "白名单外", 9L)
+        assertTrue("插入语句指向账表：${ins.sql}", ins.sql.contains("INSERT INTO sub_agent_ledger"))
+        assertEquals("插入 8 个问号对 8 个值", 8, ins.args.size)
+        assertEquals("agent_id 绑在第一位", "sg-1-aa-1-1", ins.args[0])
+        assertEquals("ok=false 落 0（不写 true/false 字面）", "0", ins.args[5])
+        val sel = BaopuSql.selectSubAgentLedgerOfParent("sg-1-aa-1")
+        assertTrue("按分解取账按落账顺序：${sel.sql}", sel.sql.contains("WHERE parent_id = ? ORDER BY id ASC"))
+        assertEquals("列序唯一一份（7 列）", 7, BaopuSql.SUB_AGENT_LEDGER_COLUMNS.size)
     }
 
     @Test

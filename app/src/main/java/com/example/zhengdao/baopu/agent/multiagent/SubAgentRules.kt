@@ -59,12 +59,14 @@ internal object SubAgentRules {
     const val AGGREGATE_CAP = 4000
 
     /**
-     * 子 Agent 工具**硬天花板**（协作模型 §3）：六只读工具。
+     * 子 Agent **读**工具的硬天花板（协作模型 §3）：六只读工具。
      *
-     * 为什么只有这六个：v1 子 Agent 是「只读研究工」——写类/浏览器交互/资料库整理/
-     * 技能人设/卡片/删除一律够不着。「不共享未提交的工作区写入」这条红线用
-     * **结构上没有写通路**保证，比隔离目录更强（隔离目录还要防 `..` 折叠）。
-     * `ask_user` 也不在：子任务不弹卡、不问用户（它要么自己读完给结论，要么失败报因）。
+     * 为什么只有这六个：默认的子 Agent 是「只读研究工」——写类/浏览器交互/资料库整理/
+     * 技能人设/卡片/删除一律够不着。第五百三十一批 v2 起，**写类**可以由父在
+     * `grant_writes` 里逐件点名授予（[SubAgentWhitelist.effectiveWrites]），
+     * 但读这一侧的口径没放宽：仍是这六件（只能收窄，不能扩）。
+     * `ask_user` 不在：子任务不弹卡、不问用户（它要么自己读完给结论，要么失败报因）。
+     * `run_subtasks` 也不在：子任务不能再拆（v2 禁递归）。
      */
     val DEFAULT_SUBAGENT_TOOLS: List<String> = listOf(
         "read_file",
@@ -94,6 +96,8 @@ internal object SubAgentRules {
      * @param sessionId 父会话 id（审计归属）
      * @param now 当前时刻（分解 id 用）
      * @param attemptSeq 同会话内第几笔分解（同毫秒两笔也能区分）
+     * @param isWrite 真写类判定（第五百三十一批 ②：生产由注册表 `readOnly` 反推；
+     *   缺省 `false` ＝没有任何工具算写类 ⇒ 写授权恒空，等价于 v1 的只读口径）
      */
     fun parseDecomposition(
         args: JSONObject,
@@ -101,6 +105,7 @@ internal object SubAgentRules {
         sessionId: Long,
         now: Long,
         attemptSeq: Int,
+        isWrite: (String) -> Boolean = { false },
     ): ParseResult {
         val raw = args.optJSONArray("subtasks")
             ?: return ParseResult.Rejected("缺少 subtasks 数组（要 1-$MAX_SUBTASKS 条子任务）")
@@ -133,6 +138,9 @@ internal object SubAgentRules {
                 return ParseResult.Rejected("第 ${i + 1} 条的 acceptance 超过 $MAX_ACCEPTANCE_CHARS 字")
             }
             val requested = toStringList(item.optJSONArray("tools"))
+            // 第五百三十一批 ②：写类要**父显式授予**（单独一列）。写在 tools 里的
+            // 写工具不算授权——那条路仍是「只收窄」的读名单口径，混不进来。
+            val granted = toStringList(item.optJSONArray("grant_writes"))
             val timeoutMs = clampTimeoutMs(item.optInt("timeout_seconds", 0))
             tasks += SubTask(
                 id = subTaskId(parentId, i + 1),
@@ -142,6 +150,7 @@ internal object SubAgentRules {
                 input = input,
                 acceptance = acceptance,
                 tools = effectiveWhitelist(requested, available),
+                writes = SubAgentWhitelist.effectiveWrites(granted, available, isWrite),
                 timeoutMs = timeoutMs,
                 maxSteps = MAX_STEPS,
             )
@@ -292,7 +301,14 @@ internal object SubAgentRules {
         val system = buildString {
             append("你是抱朴派出的子 Agent，只负责完成交给你的一个子任务。\n")
             append("纪律：\n")
-            append("1. 你只能使用发给你的这几个只读工具（读文件/列目录/搜内容）；没有写工具，不要试图写任何文件。\n")
+            if (task.writes.isEmpty()) {
+                append("1. 你只能使用发给你的这几个只读工具（读文件/列目录/搜内容）；没有写工具，不要试图写任何文件。\n")
+            } else {
+                append("1. 你可以用发给你的只读工具查证；写类工具只有这几把：")
+                append(task.writes.joinToString("、"))
+                append("。写之前先读清楚，只改这条任务要改的东西——")
+                append("这条子任务不成功时，你的写会被整体撤回，所以不要顺手多改。\n")
+            }
             append("2. 你不认识用户、也没有对话历史——判断只凭下面给的目标与输入。\n")
             append("3. 工具连续报错就换路径或换说法，别硬试；确实做不到就明说做不到。\n")
             append("4. 完成后用一段话给出结论（事实+出处路径），不要客套，不要复述任务。\n")

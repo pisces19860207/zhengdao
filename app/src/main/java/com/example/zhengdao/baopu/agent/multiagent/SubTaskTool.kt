@@ -39,11 +39,56 @@ internal object SubTaskTool {
     /** 写进系统提示的工具描述（≤ [ToolSpec.MAX_DESC] 字符；工具描述是注入面）。 */
     const val DESCRIPTION: String =
         "把当前任务拆成 1-5 个子任务，交给至多 2 个子 Agent 并行或串行执行，收回汇总结果。" +
-            "子 Agent 是只读研究工：只能读文件、列目录、搜内容，不能写文件、不能问用户、" +
-            "也看不到你和用户的对话历史——每条子任务的 goal 必须自含（要做什么、依据什么）。" +
+            "子 Agent 默认是只读研究工：只能读文件、列目录、搜内容，看不到你和用户的对话历史——" +
+            "每条子任务的 goal 必须自含（要做什么、依据什么）。" +
+            "确实要它写文件，才在该条 subtask 的 grant_writes 里逐件点名写类工具（默认一件都不给）；" +
+            "子任务失败或超时，它写的东西会被整体撤回（成功的那些保留）。" +
+            "子任务不能再调 run_subtasks（禁递归）。" +
             "可选 input（材料/背景）与 acceptance（验收标准）；timeout_seconds 可给 10-300。" +
-            "适合「读很多处再综合」的大任务；单文件的小事别拆，自己直接做。" +
-            "子结果不会自动写进任何文件——要不要落产物、落什么，由你决定。"
+            "适合「读很多处再综合」的大任务；单文件的小事别拆，自己直接做。"
+
+    /**
+     * 一条子任务的入参形状（第五百三十一批 ②：多一格 `grant_writes`）。
+     *
+     * 为什么单独一个函数：`spec()` 本来就在 detekt 的 60 行边沿上，v2 加格子会把它
+     * 顶成一条**新** LongMethod（预算零新增的红线）；拆出来只挪位置，不改契约。
+     */
+    private fun itemSchema(): JSONObject = jsonObjectOf(
+        "type" to "object",
+        "properties" to jsonObjectOf(
+            "goal" to jsonObjectOf(
+                "type" to "string",
+                "description" to "这条子任务要做什么（必填，自含，≤200 字）",
+            ),
+            "input" to jsonObjectOf(
+                "type" to "string",
+                "description" to "给这条子任务的材料/背景（≤2000 字；路径清单也行）",
+            ),
+            "acceptance" to jsonObjectOf(
+                "type" to "string",
+                "description" to "这条子任务怎样算完成（≤200 字）",
+            ),
+            "tools" to jsonObjectOf(
+                "type" to "array",
+                "description" to "想用的只读工具名（可选；不给＝默认全配，给＝只能收窄）",
+                "items" to jsonObjectOf("type" to "string"),
+            ),
+            "grant_writes" to jsonObjectOf(
+                "type" to "array",
+                "description" to "显式授予这条子任务的写类工具名（可选；不给＝一件都不给）。" +
+                    "只在确实要它改文件时给；失败/超时会被整体撤回。",
+                "items" to jsonObjectOf("type" to "string"),
+            ),
+            "timeout_seconds" to jsonObjectOf(
+                "type" to "integer",
+                "description" to "这条子任务的墙钟上限（秒，10-300，默认 90）",
+                "minimum" to 10,
+                "maximum" to 300,
+            ),
+        ),
+        "required" to jsonArrayOf("goal"),
+        "additionalProperties" to false,
+    )
 
     fun spec(): ToolSpec = ToolSpec(
         name = NAME,
@@ -58,43 +103,14 @@ internal object SubTaskTool {
                 "subtasks" to jsonObjectOf(
                     "type" to "array",
                     "description" to "1-5 条子任务；执行顺序即数组顺序（并发上限 2）",
-                    "items" to jsonObjectOf(
-                        "type" to "object",
-                        "properties" to jsonObjectOf(
-                            "goal" to jsonObjectOf(
-                                "type" to "string",
-                                "description" to "这条子任务要做什么（必填，自含，≤200 字）",
-                            ),
-                            "input" to jsonObjectOf(
-                                "type" to "string",
-                                "description" to "给这条子任务的材料/背景（≤2000 字；路径清单也行）",
-                            ),
-                            "acceptance" to jsonObjectOf(
-                                "type" to "string",
-                                "description" to "这条子任务怎样算完成（≤200 字）",
-                            ),
-                            "tools" to jsonObjectOf(
-                                "type" to "array",
-                                "description" to "想用的只读工具名（可选；不给＝默认全配，给＝只能收窄）",
-                                "items" to jsonObjectOf("type" to "string"),
-                            ),
-                            "timeout_seconds" to jsonObjectOf(
-                                "type" to "integer",
-                                "description" to "这条子任务的墙钟上限（秒，10-300，默认 90）",
-                                "minimum" to 10,
-                                "maximum" to 300,
-                            ),
-                        ),
-                        "required" to jsonArrayOf("goal"),
-                        "additionalProperties" to false,
-                    ),
+                    "items" to itemSchema(),
                 ),
             ),
             "required" to jsonArrayOf("subtasks"),
             "additionalProperties" to false,
         ),
-        // 免确认：本工具自己不碰用户任何文件（子任务是只读研究工）——与 update_plan
-        // 同理，逼它走确认卡等于每次分工都弹一次框。
+        // 免确认：本工具自己不碰用户任何文件（真正动盘的是子任务，且写类要父显式授予）
+        // ——与 update_plan 同理，逼它走确认卡等于每次分工都弹一次框。
         permission = ToolPermission.FREE,
         // 只读盘但**不许并行**：它是会阻塞一整段时间的元调用（整个分解跑完才返回），
         // 与 ask_user 同立场——标 readOnly 让它进「读」的账，parallelSafe=false

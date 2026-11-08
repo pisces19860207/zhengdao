@@ -73,9 +73,9 @@ class BaopuDbAsOfTest {
     }
 
     @Test
-    fun `判据1_v21迁移挂onCreate与onUpgrade两处_VERSION22`() {
+    fun `判据1_v21迁移挂onCreate与onUpgrade两处_VERSION23`() {
         val db = src(DB)
-        assertEquals(22, BaopuDb.VERSION)
+        assertEquals(23, BaopuDb.VERSION)
         assertTrue("新装路径", db.contains("applyV22Migration(db)"))
         assertTrue("升级路径", db.contains("if (oldVersion < 22) applyV22Migration(db)"))
         assertTrue("迁移体定义", db.contains("private fun applyV22Migration(db: SQLiteDatabase)"))

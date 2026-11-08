@@ -28,8 +28,12 @@ internal enum class SubTaskStatus {
 /**
  * 一条子任务（分解里的一条）。
  *
- * [tools] 是**生效白名单**（已经过 [SubAgentRules.effectiveWhitelist] 收敛），
+ * [tools] 是**生效读名单**（已经过 [SubAgentRules.effectiveWhitelist] 收敛），
  * 不是模型原始申请——模型申请只进解析器，不进这里。
+ *
+ * [writes]（第五百三十一批 ②）是父**显式授予**的写类工具（`grant_writes`），
+ * 默认空＝只读研究工。两列都是数据（落 `sub_task` 表两列），不是代码里的白名单：
+ * 「这条子任务能用什么」在起跑前就定了，跑起来只看数据。
  */
 internal data class SubTask(
     val id: String,
@@ -39,6 +43,7 @@ internal data class SubTask(
     val input: String = "",
     val acceptance: String = "",
     val tools: List<String> = emptyList(),
+    val writes: List<String> = emptyList(),
     val timeoutMs: Long = SubAgentRules.DEFAULT_TIMEOUT_MS,
     val maxSteps: Int = SubAgentRules.MAX_STEPS,
 )
@@ -101,4 +106,7 @@ internal data class SubTaskRecord(
     val endedAt: Long,
     val failureReason: String,
     val resultText: String,
+    /** 父显式授予的写类（逗号分隔；空串＝只读研究工）。第五百三十一批 ②。 */
+    val writes: String = "",
 )
+

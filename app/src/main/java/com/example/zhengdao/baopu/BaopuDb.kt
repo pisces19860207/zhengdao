@@ -1290,6 +1290,18 @@ internal object BaopuSql {
         emptyArray(),
     )
 
+    /**
+     * 最近一步的**入向真实 token**（第五百三十一批 ①：子上下文预算的父读数）。
+     *
+     * 为什么不用估算：父上下文此刻多长，只有服务端回的 `usage.prompt_tokens` 是真的；
+     * 估算值只该在没有读数时兜底（[com.example.zhengdao.baopu.TokenEstimator] 不是父读数）。
+     * 一步都没读到 ⇒ 0 行 ⇒ 子上下文只吃地板（[SubAgentIsolation.MIN_CHILD_TOKENS]）。
+     */
+    fun lastRunTokensIn(sessionId: Long): Stmt = Stmt(
+        "SELECT tokens_in FROM run_log WHERE session_id = ? AND tokens_in > 0 ORDER BY id DESC LIMIT 1",
+        arrayOf<String?>(sessionId.toString()),
+    )
+
     // ── v16（第一百二十七批）：多 Agent 协作 sub_task 审计表 ───────────────
     //
     // 为什么单独一张表：父子关系（parent_id 一串同分解的子任务）、逐条状态机
@@ -1319,7 +1331,8 @@ internal object BaopuSql {
           ended_at INTEGER NOT NULL DEFAULT 0,
           failure_reason TEXT NOT NULL DEFAULT '',
           result_text TEXT NOT NULL DEFAULT '',
-          created_at INTEGER NOT NULL
+          created_at INTEGER NOT NULL,
+          writes TEXT NOT NULL DEFAULT ''
         )
         """.trimIndent(),
         // 「这笔分解有哪些子任务」按 parent 取、按 seq 排 ⇒ 复合索引。
@@ -1332,7 +1345,64 @@ internal object BaopuSql {
     val SUB_TASK_COLUMNS: List<String> = listOf(
         "task_id", "parent_id", "session_id", "seq", "goal", "input", "acceptance", "tools",
         "status", "attempts", "steps", "started_at", "ended_at", "failure_reason",
-        "result_text",
+        "result_text", "writes",
+    )
+
+    // ── v23（第五百三十一批）：子 Agent 账（agent_id＋parent_id 每行都带） ──────
+    //
+    // 为什么不塞进 run_log：run_log 是**父会话**的步账（一步一行），子 Agent 的
+    // 一轮/一次调用不是父的一步（并发＋重试＋多条并行），混进去「第几步」会出现
+    // 两种答法。这张表只记子 Agent 的事实：谁（agent_id）、属于哪笔分解
+    // （parent_id）、哪种行（round/tool/reject/write/rollback）、成没成、一句摘要。
+    // 删会话时跟着走（ON DELETE CASCADE，与 sub_task 同处理）。
+    val SUB_AGENT_LEDGER_DDL: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS sub_agent_ledger (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_id TEXT NOT NULL,
+          parent_id TEXT NOT NULL,
+          session_id INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          tool TEXT NOT NULL DEFAULT '',
+          ok INTEGER NOT NULL DEFAULT 1,
+          detail TEXT NOT NULL DEFAULT '',
+          at_ms INTEGER NOT NULL DEFAULT 0
+        )
+        """.trimIndent(),
+        // 「这笔分解的账」按 parent 取、按 id 排（落账顺序＝发生顺序）。
+        "CREATE INDEX IF NOT EXISTS idx_sub_agent_ledger_parent ON sub_agent_ledger (parent_id, id)",
+        // 「这条子任务干了什么」按 agent 分组取。
+        "CREATE INDEX IF NOT EXISTS idx_sub_agent_ledger_agent ON sub_agent_ledger (agent_id, id)",
+    )
+
+    /** 子 Agent 账行的列序（唯一一份：SELECT 与游标映射都读它）。 */
+    val SUB_AGENT_LEDGER_COLUMNS: List<String> = listOf(
+        "agent_id", "parent_id", "kind", "tool", "ok", "detail", "at_ms",
+    )
+
+    /** 落一条子 Agent 账。 */
+    fun insertSubAgentLedger(
+        agentId: String,
+        parentId: String,
+        sessionId: Long,
+        kind: String,
+        tool: String,
+        ok: Boolean,
+        detail: String,
+        atMs: Long,
+    ): Stmt = Stmt(
+        "INSERT INTO sub_agent_ledger (agent_id, parent_id, session_id, kind, tool, ok, detail, at_ms) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        arrayOf<String?>(
+            agentId, parentId, sessionId.toString(), kind, tool, if (ok) "1" else "0", detail, atMs.toString(),
+        ),
+    )
+
+    /** 按分解取账（落账顺序）。 */
+    fun selectSubAgentLedgerOfParent(parentId: String): Stmt = Stmt(
+        "SELECT " + SUB_AGENT_LEDGER_COLUMNS.joinToString(", ") + " FROM sub_agent_ledger " +
+            "WHERE parent_id = ? ORDER BY id ASC",
+        arrayOf<String?>(parentId),
     )
 
     /** 分解落账：整批 PENDING（一行一条）。 */
@@ -1353,14 +1423,15 @@ internal object BaopuSql {
         failureReason: String,
         resultText: String,
         createdAt: Long,
+        writes: String,
     ): Stmt = Stmt(
         "INSERT INTO sub_task (task_id, parent_id, session_id, seq, goal, input, acceptance, " +
             "tools, status, attempts, steps, started_at, ended_at, failure_reason, result_text, " +
-            "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "created_at, writes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         arrayOf<String?>(
             taskId, parentId, sessionId.toString(), seq.toString(), goal, input, acceptance, tools,
             status, attempts.toString(), steps.toString(), startedAt.toString(), endedAt.toString(),
-            failureReason, resultText, createdAt.toString(),
+            failureReason, resultText, createdAt.toString(), writes,
         ),
     )
 
@@ -1474,6 +1545,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV20Migration(db)
         applyV21Migration(db)
         applyV22Migration(db)
+        applyV23Migration(db)
     }
 
     /**
@@ -1514,6 +1586,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 20) applyV20Migration(db)
         if (oldVersion < 21) applyV21Migration(db)
         if (oldVersion < 22) applyV22Migration(db)
+        if (oldVersion < 23) applyV23Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1799,6 +1872,22 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     }
 
     /**
+     * v22 → v23 迁移体（第五百三十一批 · 子智能体 v2）：`sub_agent_ledger` 账表 ＋
+     * `sub_task.writes` 一列（父显式授予的写类，空串＝只读研究工）。
+     *
+     * 两头都幂等：列用 `PRAGMA table_info` 先看再加（新装走 v16 建表后也吃这一手，
+     * 与升级同一条路径）；表/索引全 `IF NOT EXISTS`。老库升上来只是多一张空表＋
+     * 一个默认空串的列 ⇒ 老子任务照读（`writes=''`＝当时本就只读，事实如此）。
+     */
+    private fun applyV23Migration(db: SQLiteDatabase) {
+        val cols = tableColumns(db, "sub_task")
+        if (cols.isNotEmpty() && "writes" !in cols) {
+            db.execSQL("ALTER TABLE sub_task ADD COLUMN writes TEXT NOT NULL DEFAULT ''")
+        }
+        BaopuSql.SUB_AGENT_LEDGER_DDL.forEach { db.execSQL(it) }
+    }
+
+    /**
      * v19（第一百七十二批 L4 · 玄览页签快照）：`browser_tab` 表 ＋ LRU 索引。
      *
      * DDL 放在 `BrowserTabSql` 一份字面量里，与 `onCreate` 共用 —— 新装与升级不会分叉。
@@ -1853,8 +1942,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  挂起那张卡属于哪一轮／哪一单，重启后恢复卡落处置账才取得到真值；旧行 NULL 不回填）。
          *  v22 = 第四百五十一批（`memory` 加可空 `as_of` 列：旧行 NULL 不回填、不编造；
          *  90 天只是内部复核周期，不是事实有效期）。v21 归 430，451 顺位接 v22——同号会让
-         *  已升到 430 的设备不重跑迁移，`as_of` 永远不存在。 */
-        const val VERSION = 22
+         *  已升到 430 的设备不重跑迁移，`as_of` 永远不存在。
+         *  v23 = 第五百三十一批（子智能体 v2：`sub_agent_ledger` 子 Agent 账表 ＋
+         *  `sub_task.writes` 一列＝父显式授予的写类；老行回填空串＝当时本就只读）。 */
+        const val VERSION = 23
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

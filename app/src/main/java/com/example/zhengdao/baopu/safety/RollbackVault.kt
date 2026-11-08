@@ -135,6 +135,14 @@ object RollbackVault {
         baseDir = root
     }
 
+    /**
+     * 装了没有（第五百三十一批 ④：子任务守卫要先问一句再谈撤回）。
+     *
+     * 为什么需要它：`stash/rollback` 内部是 `runCatching`（账本不拦执行），
+     * 没装时只会静默返回空——守卫若照着「空结果是撤过了」报账，就是假绿。
+     */
+    fun isInstalled(): Boolean = baseDir != null
+
     private fun dir(): File = File(baseDir!!, DIR)
     private fun indexFile(): File = File(dir(), INDEX)
 

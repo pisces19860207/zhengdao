@@ -61,6 +61,7 @@ internal class BaopuSubTaskStore(
                         failureReason = "",
                         resultText = "",
                         createdAt = now,
+                        writes = t.writes.joinToString(","),
                     )
                     d.execSQL(stmt.sql, stmt.args)
                 }
@@ -137,6 +138,7 @@ internal class BaopuSubTaskStore(
                         endedAt = c.getLong(12),
                         failureReason = c.getString(13),
                         resultText = c.getString(14),
+                        writes = c.getString(15),
                     )
                 }
                 out
@@ -147,3 +149,62 @@ internal class BaopuSubTaskStore(
         emptyList()
     }
 }
+
+/**
+ * 子 Agent 账的 BaopuDb 实现（v23 `sub_agent_ledger`）。
+ *
+ * 与 [BaopuSubTaskStore] 同一纪律：写走 [BaopuDb.write] 的 Future 但**不 `.get()`**
+ * （账本不拦执行），读走 [BaopuDb.read]。写失败只 log，不抛。
+ */
+internal class BaopuSubAgentLedger(
+    private val db: BaopuDb,
+    private val sessionId: Long,
+    private val log: (String) -> Unit = {},
+) : SubAgentLedgerStore {
+
+    override fun append(row: SubAgentLedgerRow) {
+        runCatching {
+            db.write { d ->
+                val stmt = BaopuSql.insertSubAgentLedger(
+                    agentId = row.agentId,
+                    parentId = row.parentId,
+                    sessionId = sessionId,
+                    kind = row.kind.name,
+                    tool = row.tool,
+                    ok = row.ok,
+                    detail = row.detail,
+                    atMs = row.atMs,
+                )
+                d.execSQL(stmt.sql, stmt.args)
+            }
+        }.onFailure {
+            log("子 Agent 账：写失败 ${row.agentId}/${row.kind}（不影响执行）${it.javaClass.simpleName}")
+        }
+    }
+
+    override fun rowsOf(parentId: String): List<SubAgentLedgerRow> = runCatching {
+        val stmt = BaopuSql.selectSubAgentLedgerOfParent(parentId)
+        db.read { d ->
+            d.rawQuery(stmt.sql, stmt.args).use { c ->
+                val out = mutableListOf<SubAgentLedgerRow>()
+                while (c.moveToNext()) {
+                    out += SubAgentLedgerRow(
+                        agentId = c.getString(0),
+                        parentId = c.getString(1),
+                        kind = SubAgentLedgerKind.entries.firstOrNull { it.name == c.getString(2) }
+                            ?: SubAgentLedgerKind.ROUND,
+                        tool = c.getString(3),
+                        ok = c.getInt(4) == 1,
+                        detail = c.getString(5),
+                        atMs = c.getLong(6),
+                    )
+                }
+                out
+            }
+        }
+    }.getOrElse {
+        log("子 Agent 账：读失败（${it.javaClass.simpleName}）")
+        emptyList()
+    }
+}
+
