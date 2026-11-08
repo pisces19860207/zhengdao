@@ -13,7 +13,6 @@ package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.inspect.DataRepair.ConfigCriteria
 import com.example.zhengdao.baopu.inspect.DataRepair.ConfigRow
-import com.example.zhengdao.baopu.maintenance.AutoMaintenance
 import com.example.zhengdao.baopu.inspect.DataRepair.ConfigItem
 import com.example.zhengdao.baopu.repair.ConfigAccess
 import com.example.zhengdao.baopu.repair.DataDoctor
@@ -189,6 +188,9 @@ class DataRepairConfigTest {
 
     // ── 判据表本体 ───────────────────────────────────────────────────────────
 
+    /** 479 把那个开关删了，键名只在用例里当"表外键"的样本（生产侧零引用）。 */
+    private val LEGACY_SWITCH_KEY = "auto_maintenance"
+
     @Test
     fun `判据表511起是空的_开关交给用户_加行必须说得出谁拍的板`() {
         assertEquals(
@@ -197,7 +199,7 @@ class DataRepairConfigTest {
             emptyList<String>(),
             ConfigCriteria.ROWS.map { it.key },
         )
-        assertNull("表外键一律没有判据行", ConfigCriteria.rowOf(AutoMaintenance.KEY))
+        assertNull("表外键一律没有判据行", ConfigCriteria.rowOf(LEGACY_SWITCH_KEY))
         // 表是数据：递一张有出处的表它照样能用，每一行都得说得出依据（铁律④）
         TEST_ROWS.forEach { row ->
             assertTrue("${row.key} 这行没有依据出处（铁律④）", row.basis.isNotBlank())
@@ -211,7 +213,7 @@ class DataRepairConfigTest {
         // 这时把域里看到的每个键都算"表外需人处理"是纯噪声（体检月月报一条没用的）。
         val plan = DataRepair.configPlan(
             readings = emptyList(),
-            outside = listOf(ConfigItem(AutoMaintenance.KEY, "false")),
+            outside = listOf(ConfigItem(LEGACY_SWITCH_KEY, "false")),
             rows = emptyList(),
             evidence = "diagnose:$now:config",
         )

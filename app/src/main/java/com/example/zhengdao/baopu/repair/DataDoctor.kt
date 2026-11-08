@@ -24,7 +24,7 @@
 // 1. 索引路读的是 `KnowledgeIndexStore.loadRead` ＋ `loadSnapshotRead` 两条**既有**读口，
 //    修的动作还是 408 那一句 `build(...)` ＋ `save(...)`；
 // 2. 账本路一字未改（只补了一条"旧行字节不变＋新增一行"的断言）；
-// 3. 配置路只吃 [ConfigAccess] 这个口（生产实现＝本包 [NightWatchConfig]，它对读口的
+// 3. 配置路只吃 [ConfigAccess] 这个口（生产实现＝本包 [MaintPauseConfig]，它对读口的
 //    转发与写口都只引用属主模块的常量），本文件里没有 SP 文件名、没有键名字面量、
 //    没有"默认值"——真源在判据表 `ConfigCriteria`。
 package com.example.zhengdao.baopu.repair
@@ -56,10 +56,10 @@ internal data class RepairOutcome(
 /**
  * 配置项的**唯一出入口气**（447 §三；本文件与 [DataDoctor] 都不碰 SharedPreferences）。
  *
- * 谁实现它：这个配置域的**适配器**（生产＝本包 [NightWatchConfig]，测试＝假表）。
+ * 谁实现它：这个配置域的**适配器**（生产＝本包 [MaintPauseConfig]，测试＝假表）。
  * 为什么适配器在 `repair/` 而不在 `inspect/`：写 SP 是写盘，而 `InspectReadOnlyGateTest`
  * 把勘验层整层钉成"只查不改"（负例①那句"唯一允许落盘的是它自己那几本 JSONL 的追加"）。
- * 适配器仍然**不自己认键**：读走 [com.example.zhengdao.baopu.maintenance.AutoMaintenance] 那个读口,
+ * 适配器仍然**不自己认键**：读走 [com.example.zhengdao.baopu.maintenance.MaintPause] 那个读口,
  * 文件名、键名与缺省值都住在属主模块——御医再抄一份就是同一个配置两套读法（那正是"漂移"的出生地）。
  *
  * 三态口径（与判据层一致，不许拿 null 冒充"没这个键"以外的任何意思）：

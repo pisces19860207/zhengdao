@@ -7,8 +7,13 @@
 //   ① 手动（人当场点，随时）；
 //   ② 按负载（累计够 N 个任务或 M 次工具调用）；
 //   ③ 7 天下限（一直没负载也要跑一次，保底）。
-// 三条都要过同一套**机会条件**（非值守 · 电量 ≥30% 或充电中 · 30 分钟无自动动作 · 没在跑重活），
+// 三条都要过同一套**机会条件**（非值守 · 电量 ≥20% 或充电中 · 不发烫 · 前台不在会话 ·
+// 30 分钟无自动动作 · 没在跑重活），
 // 再加各 6h 冷却（手动不受限，两件冷却互相独立）。
+//
+// 第四百七十九批：**总开关那一层删了**（用户 2026-11-08「别弄太多入口或者开关」）——
+// 后台维护恒自动，管的只有两级刹车（`MaintBrake`）与单件暂停；本文件只负责"什么时候该跑"，
+// 一句"关不关"都不问了。同批把电量线从 30% 收到 20%，并新增两条机会条件（发烫／前台会话）。
 //
 // 本文件零 Android、零时钟、零读写：时刻、负载、机会读数全由调用方给，用例才钉得住。
 // 装配（排作业、读电池、落账）在 `NocturnalAuto`／`PatrolAuto`，这里只说"该不该跑、为什么"。
@@ -64,8 +69,8 @@ internal data class AutoGate(val run: Boolean, val why: String, val trigger: Tri
 /** 机会式触发的判据（纯函数；两件共用同一套）。 */
 internal object Opportunistic {
 
-    /** 机会条件之一：电量下限（低于它且没充电就不跑；等于线也够）。 */
-    const val MIN_BATTERY_PCT: Int = 30
+    /** 机会条件之一：电量下限（低于它且没充电就不跑；等于线也够）。479 由 30% 收到 20%。 */
+    const val MIN_BATTERY_PCT: Int = 20
 
     /** 机会条件之二：距上一次后台自动动作至少这么久（别刚跑完马上又跑）。 */
     const val QUIET_MS: Long = 30L * 60_000L
@@ -84,15 +89,19 @@ internal object Opportunistic {
      */
     const val CHECK_PERIOD_HOURS: Long = 24L
 
-    const val WHY_OFF: String = "后台自动维护已关（设置里那一个开关）"
     const val WHY_HEAVY: String = "已有一件后台重活在跑（同一时刻只许一件）"
     const val WHY_ON_DUTY: String = "值守中（非值守才跑）"
+    const val WHY_HOT: String = "设备发烫（热档已到限流那一档：先让开，凉了再说）"
+    const val WHY_TALKING: String = "前台正在会话（人在跟模型说话：不抢它的资源）"
 
     /**
      * 该不该跑这一趟。
      *
-     * 顺序与派工单一致：**手动的例外 → 总开关 → 重活互斥 → 机会条件 → 冷却 → 到期**。
+     * 顺序与派工单一致：**手动的例外 → 重活互斥 → 机会条件 → 冷却 → 到期**。
      * 手动只受互斥约束（人当场点的，别把两件重活叠在一起）；其余一条不满足就不跑。
+     *
+     * 479 起没有"总开关"这一格：`enabled` 参数与 `WHY_OFF` 一并删了——恒自动，
+     * 拦它的是 [MaintBrake]（急停／单件暂停）和下面这几条机会条件。
      */
     fun decide(
         job: MaintJob,
@@ -101,10 +110,8 @@ internal object Opportunistic {
         lastRunAtMs: Long?,
         load: Load,
         opp: Opportunity,
-        enabled: Boolean,
     ): AutoGate {
         if (source == AskSource.MANUAL) return manualGate(opp)
-        if (!enabled) return AutoGate(false, WHY_OFF)
         blockedBy(opp)?.let { return AutoGate(false, it) }
         cooling(job, lastRunAtMs, nowMs)?.let { return AutoGate(false, it) }
         return due(job, source, nowMs, lastRunAtMs, load)
@@ -119,13 +126,18 @@ internal object Opportunistic {
         }
 
     /**
-     * 机会条件四条（派工单 §一②，同时满足才跑）。
+     * 机会条件六条（派工单 §一②，同时满足才跑）。
+     *
+     * 479 新增两条：**发烫**（热档到限流那一档就让开）与**前台正在会话**（别跟人抢）。
+     * 两条都是"延后"而不是"取消"——凉了、人退出会话，下一次机会照跑。
      *
      * @return null ＝ 全齐；非 null ＝ 第一条不满足的人话（只说拦下来的那一条，不列清单）
      */
     fun blockedBy(opp: Opportunity): String? = when {
         opp.heavyBusy -> WHY_HEAVY
         opp.onDuty -> WHY_ON_DUTY
+        opp.hot -> WHY_HOT
+        opp.talking -> WHY_TALKING
         !powerOk(opp) -> if (opp.batteryPct < 0) {
             "电量读不出来且没在充电（读不到就当不够）"
         } else {
@@ -198,7 +210,17 @@ internal object Opportunistic {
         } else {
             "静默 ${minutesCn(opp.quietForMs)}"
         }
-        return listOf(duty, power, quiet, if (opp.heavyBusy) "有重活在跑" else "无重活").joinToString("·")
+        // 479：发烫／前台会话两格也进读数——"这趟为什么没跑"要能照着这一行复现。
+        val heat = if (opp.hot) "发烫" else "温度正常"
+        val talk = if (opp.talking) "前台会话中" else "无会话"
+        return listOf(
+            duty,
+            power,
+            heat,
+            talk,
+            quiet,
+            if (opp.heavyBusy) "有重活在跑" else "无重活",
+        ).joinToString("·")
     }
 
     /** 「N 天」那句（首趟如实说，不编一个 0）。 */

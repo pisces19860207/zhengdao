@@ -26,6 +26,9 @@ import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import com.example.zhengdao.baopu.maintenance.AutoMaintenance
+import com.example.zhengdao.baopu.maintenance.MaintDevice
+import com.example.zhengdao.baopu.maintenance.MaintPause
+import com.example.zhengdao.baopu.safety.HaltGate
 import com.example.zhengdao.core.RunLog
 import java.util.concurrent.TimeUnit
 
@@ -45,6 +48,9 @@ internal object HealthScheduler {
 
     /** 重活锁里的身份（判据⑦：同一时刻只许一件后台重活）。 */
     private const val OWNER: String = "health"
+
+    /** 四器名单里的那一只（479 的暂停键与落账行都按它说话）。 */
+    private val DEVICE: MaintDevice = MaintDevice.DOCTOR
 
     /** 现在在不在充电（读不到电池服务 ⇒ 当没充电，fail-closed）。 */
     fun charging(ctx: Context): Boolean = runCatching {
@@ -89,24 +95,40 @@ internal object HealthScheduler {
             RunLog.log("御医体检：这趟不跑（208 没装配落点）")
             return null
         }
-        // 第五百一十一批：体检是同一类"后台自动维护"，一并受**那一个**总开关管——
-        // 关掉后台维护却还月月跑体检，就是把"关"写成假的（派工单 §三：关 ⇒ 都不启动）。
-        if (!AutoMaintenance.on(ctx)) {
-            RunLog.log("御医体检：这趟不跑（${Opportunistic.WHY_OFF}）")
+        // 第四百七十九批：体检是四器之一，走**同一套两级刹车**——先急停（471 的软停/硬停）、
+        // 再单件暂停、最后机会条件（降频）。511 那个总开关已经没有了：后台维护恒自动，
+        // 拦它的只有刹车，不是"人记不记得去开"。
+        val opp = AutoMaintenance.readings(
+            ctx = ctx,
+            nowMs = nowMs,
+            lastAutoActionAtMs = PatrolSources.lastAutoActionAtMs(root),
+            heavyBusy = HeavyWork.heldBy() != null,
+        )
+        val readout = Opportunistic.readout(opp)
+        MaintBrake.blocked(DEVICE, HaltGate.halted(), MaintPause.untilMs(ctx, DEVICE), nowMs)?.let {
+            RunLog.log(MaintBrake.deferredLine(DEVICE, AskSource.SCHEDULED, it, readout))
+            return null
+        }
+        Opportunistic.blockedBy(opp)?.let {
+            RunLog.log(MaintBrake.deferredLine(DEVICE, AskSource.SCHEDULED, it, readout))
             return null
         }
         val g = PatrolScheduler.monthlyGate(HealthLedger.lastAt(root), nowMs, charging(ctx))
         if (!g.run) {
-            RunLog.log("御医体检：这趟不跑（${g.why}）")
+            RunLog.log(MaintBrake.deferredLine(DEVICE, AskSource.SCHEDULED, g.why, readout))
             return null
         }
         // 判据⑦：同一时刻只允许一件后台重活（体检是重活之一，与暗卫/巡按共用一把锁）。
         if (!HeavyWork.tryEnter(OWNER)) {
-            RunLog.log("御医体检：这趟不跑（${Opportunistic.WHY_HEAVY}）")
+            RunLog.log(MaintBrake.deferredLine(DEVICE, AskSource.SCHEDULED, Opportunistic.WHY_HEAVY, readout))
             return null
         }
         return try {
-            HealthRun.run(ctx, manual = false, nowMs = nowMs)
+            val result = HealthRun.run(ctx, manual = false, nowMs = nowMs)
+            // 判据⑤：谁触发（月位那一趟）· 机会读数 · 结果一行，三格同一行。
+            val tail = result.entry?.headline ?: (result.failReason ?: "没出单子")
+            RunLog.log(MaintBrake.runningLine(DEVICE, "7天下限", readout, tail))
+            result
         } finally {
             HeavyWork.exit(OWNER)
         }

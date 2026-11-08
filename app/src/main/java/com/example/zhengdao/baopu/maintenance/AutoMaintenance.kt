@@ -1,24 +1,29 @@
 // 独立开发声明：本文件为本项目原创，不含第三方源码拷贝。
 //
-// 第五百一十一批 · **后台自动维护**的唯一开关与机会读数（暗卫与巡按共用一套）。
+// 第四百七十九批 · **机器读数**的交出口（暗卫／巡按／御医／金吾卫共用一套）。
 //
-// 为什么这个文件不在 `baopu/inspect/`：勘验层被 `InspectReadOnlyGateTest` 整层钉成
-// "只查不改"（写口一律住在装配层）。开关要有**写口**（设置页那一行是唯一写点），
-// 所以属主住这里；判据（什么时候该跑）仍然只在 `inspect/Opportunistic.kt`，
+// 第五百一十一批那个「后台自动维护」总开关在 479 被**删掉**了：用户 2026-11-08 说
+// 「能全自动的尽量全自动，别弄太多入口或者开关」⇒ 后台维护改成「默认自动 ＋ 两级刹车 ＋
+// 单件可停」。所以本文件从现在起**一个 SP 都不碰**：
+//   · 没有文件名、没有键名、没有缺省值、没有读写口——`on()`／`set()` 连同 `KEY`／`SP` 一起删；
+//   · 只剩"进程里读得到什么就交什么"：电量、充电、值守、发烫、前台会话、静默时长、重活。
+// 判据（什么时候该跑）仍然只在 `inspect/Opportunistic.kt` 与 `inspect/MaintBrake.kt`，
 // 本文件一句"该不该跑"都不判，只把机器读数交出去。
 //
-// 键名口径（派工单 479 §一①）：SP `zhengdao-inspect` ／ `auto_maintenance`，**缺省开**。
-// 432 的旧键 `nightwatch_auto` 只做**只读回退**：那一版从来没有写口（432 §二④ 明说写侧未做），
-// 所以真机上几乎不可能存在；存在时照它读，缺省仍是开——不迁移、不双写。
+// 读数三条纪律（511 原样保留）：
+// 1. **读不到不冒充**：电量读不出 ⇒ -1（判据层 fail-closed，当不够）；发烫读不出 ⇒ false
+//    （不冤枉设备）；会话状态只有"引擎建过"才读得到，没建过 ⇒ 没在会话（不把冷启动算成忙）。
+// 2. **只读**：这里的每一格都是查询系统状态，不改设备、不写盘。
+// 3. **单件暂停不在这里**：那是有写口的配置，住 `maintenance/MaintPause.kt`。
 package com.example.zhengdao.baopu.maintenance
 
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
-import androidx.core.content.edit
+import android.os.PowerManager
 
-/** 一次「机会读数」——判据只看这五个数，进程里读不到的一律不冒充（见 [AutoMaintenance.readings]）。 */
+/** 一次「机会读数」——判据只看这七个数，进程里读不到的一律不冒充（见 [AutoMaintenance.readings]）。 */
 internal data class Opportunity(
     /** L2 值守中（值守期间不跑，避免抢资源）。 */
     val onDuty: Boolean,
@@ -30,55 +35,29 @@ internal data class Opportunity(
     val quietForMs: Long,
     /** 同一时刻只允许一件后台重活：别人的重活正在跑吗。 */
     val heavyBusy: Boolean,
+    /** 设备发烫吗（系统热档 ≥ [AutoMaintenance.THERMAL_HOT]；读不出 ⇒ false）。 */
+    val hot: Boolean = false,
+    /** 前台正在会话吗（App 可见 ∧ 引擎这一轮在跑；见 [AutoMaintenance.talking]）。 */
+    val talking: Boolean = false,
 )
 
 /**
- * 后台自动维护的总开关＋机器读数。
+ * 机器读数（**没有开关**——479 起后台维护恒自动，管它的是两级刹车）。
  *
- * 三条纪律：
- * 1. **开关只有一个**：设置页只留「后台自动维护」一行，关 ⇒ 暗卫与巡按都不启动
- *    （派工单 511 §三：不再暴露"每日／每周／夜间"这类开关）。
- * 2. **缺省开**：读不到（SP 没建过／坏了）也按开——后台维护是默认行为，不是需要人去开的彩蛋。
- * 3. **读数 fail-closed**：电量读不出来就当不够（宁可少跑一趟，不许在低电时抽检/巡检）。
+ * 为什么还留着这个文件：读数要有**唯一**一处来源。四个器各自摸一遍电池／热档／引擎状态，
+ * 迟早会量出两种"发烫"；判据层只认这里交出去的那一份。
  */
 internal object AutoMaintenance {
 
-    /** SP 文件名（与体检那套同域：一个用途一个文件）。 */
-    const val SP: String = "zhengdao-inspect"
-
-    /** 总开关的键（511 §三唯一出口）。 */
-    const val KEY: String = "auto_maintenance"
-
-    /** 432 的旧键：只读回退，不写。 */
-    const val LEGACY_KEY: String = "nightwatch_auto"
-
-    /** 缺省＝开（派工单 §三）。 */
-    const val DEFAULT_ON: Boolean = true
-
-    /** 现在开着吗（新键 > 旧键 > 缺省开）。 */
-    fun on(ctx: Context): Boolean = runCatching {
-        val p = prefs(ctx)
-        when {
-            p.contains(KEY) -> p.getBoolean(KEY, DEFAULT_ON)
-            p.contains(LEGACY_KEY) -> p.getBoolean(LEGACY_KEY, DEFAULT_ON)
-            else -> DEFAULT_ON
-        }
-    }.getOrDefault(DEFAULT_ON)
-
     /**
-     * 唯一的写口（设置页那一行调它）。
+     * 发烫的门槛：系统热档 ≥ 这一档就算"发烫"。
      *
-     * 写失败按没写处理：读侧下次读到的还是旧值，屏上状态跟着回正，不会出现
-     * "界面说关了、其实还开着"的假象。
+     * `THERMAL_STATUS_MODERATE` 是系统**开始限流**的那一档（SEVERE 之后已经是被迫降频）——
+     * 后台维护是"可以晚点做"的事，等它到 SEVERE 再让开就已经在跟系统抢了。
      */
-    fun set(ctx: Context, on: Boolean) {
-        runCatching { prefs(ctx).edit { putBoolean(KEY, on) } }
-    }
+    val THERMAL_HOT: Int = PowerManager.THERMAL_STATUS_MODERATE
 
-    private fun prefs(ctx: Context) =
-        ctx.applicationContext.getSharedPreferences(SP, Context.MODE_PRIVATE)
-
-    /** 现在在不在充电（与体检同一只探针：读不到电池服务 ⇒ 当没充电）。 */
+    /** 现在在不在充电（读不到电池服务 ⇒ 当没充电，fail-closed）。 */
     fun charging(ctx: Context): Boolean = runCatching {
         val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return false
         bm.isCharging
@@ -103,6 +82,40 @@ internal object AutoMaintenance {
         if (level >= 0 && scale > 0) level * 100 / scale else -1
     }.getOrDefault(-1)
 
+    /**
+     * 设备发烫吗（系统热档 ≥ [THERMAL_HOT]）。
+     *
+     * 读不到（没这个服务／取数抛）⇒ **false**：宁可多跑一趟，也不拿"读不出"当"发烫"把
+     * 四器永久停摆（与电量那格的 fail-closed 相反方向，理由不对称：低电是危险的，
+     * "读不出热档"不是）。
+     */
+    fun hot(ctx: Context): Boolean = runCatching {
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+        pm.currentThermalStatus >= THERMAL_HOT
+    }.getOrDefault(false)
+
+    /**
+     * 前台正在会话吗：**App 可见** ∧ **引擎这一轮在跑**。
+     *
+     * 为什么两半都要：只看"引擎在跑"会把后台续跑算成"前台"；只看"App 可见"会把"人正开着
+     * 设置页翻看"算成"正在会话"——那样收工那一刻（App 明明在前台）负载触发就永远被拦。
+     * 引擎没建过（[com.example.zhengdao.baopu.BaopuRuntime.engineIfBuilt] 为 null）⇒ 没在会话，
+     * **不为一眼读数把整个引擎拉起来**（388 那条纪律）。
+     */
+    fun talking(): Boolean = runCatching {
+        if (!com.example.zhengdao.AppForeground.isForeground()) return false
+        val st = com.example.zhengdao.baopu.BaopuRuntime.engineIfBuilt()?.state?.value ?: return false
+        st in TALKING_STATES
+    }.getOrDefault(false)
+
+    /** 算"在会话"的引擎状态（与 `BaopuChatController.busy` 同一组，不另立口径）。 */
+    private val TALKING_STATES = setOf(
+        com.example.zhengdao.baopu.agent.RunState.THINKING,
+        com.example.zhengdao.baopu.agent.RunState.ACTING,
+        com.example.zhengdao.baopu.agent.RunState.COMPRESSING,
+        com.example.zhengdao.baopu.agent.RunState.AWAIT_CONFIRM,
+    )
+
     /** L2 值守中吗（问口是 388 的状态仓，本层不摸 SP／钥匙串）。 */
     fun onDuty(): Boolean = com.example.zhengdao.unattended.UnattendedStatus.armed()
 
@@ -112,9 +125,7 @@ internal object AutoMaintenance {
      * [lastAutoActionAtMs] 由调用方从三本账（暗卫／巡按／体检）里取最新那条——
      * 本层不读文件，读盘的事仍归装配侧。
      *
-     * **"没在跑重活"只认得出进程内的互斥锁**（[com.example.zhengdao.baopu.inspect.HeavyWork]）：
-     * 引擎有没有会话在跑，进程里没有可读的问口（432 §四⑥ 同一句诚实），读不到就不冒充读过——
-     * 抽检/巡检本身是只读取数＋小账追加，与会话并发不冲突。
+     * **"没在跑重活"只认得出进程内的互斥锁**（[com.example.zhengdao.baopu.inspect.HeavyWork]）。
      */
     fun readings(
         ctx: Context,
@@ -127,5 +138,7 @@ internal object AutoMaintenance {
         charging = charging(ctx),
         quietForMs = lastAutoActionAtMs?.let { (nowMs - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE,
         heavyBusy = heavyBusy,
+        hot = hot(ctx),
+        talking = talking(),
     )
 }

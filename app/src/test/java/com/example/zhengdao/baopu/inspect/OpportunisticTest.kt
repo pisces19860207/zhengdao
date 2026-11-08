@@ -1,7 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含第三方源码拷贝。
 //
 // 第五百一十一批 · 机会式触发的**判据靶**（暗卫＋巡按共用一套）：三条触发（手动／负载／7 天下限）、
-// 四条机会条件、各自 6h 冷却、重活互斥。判据全是纯函数，时刻与读数由用例给——假时钟钉得住。
+// 六条机会条件、各自 6h 冷却、重活互斥。判据全是纯函数，时刻与读数由用例给——假时钟钉得住。
+// 第四百七十九批：总开关删了（判据①那一条用例随开关一起退役）、电量线 30%→20%、
+// 新增发烫与前台会话两条机会条件——本文件跟着改口径，断言没放松。
 package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.maintenance.Opportunity
@@ -20,19 +22,23 @@ class OpportunisticTest {
     private val hour = 3_600_000L
     private val day = 86_400_000L
 
-    /** 条件齐的机会读数（默认：非值守、电量 80%、不充电、静默 2 小时、无重活）。 */
+    /** 条件齐的机会读数（默认：非值守、电量 80%、不充电、静默 2 小时、无重活、不烫、无会话）。 */
     private fun opp(
         battery: Int = 80,
         charging: Boolean = false,
         onDuty: Boolean = false,
         quietMin: Long = 120,
         heavy: Boolean = false,
+        hot: Boolean = false,
+        talking: Boolean = false,
     ) = Opportunity(
         onDuty = onDuty,
         batteryPct = battery,
         charging = charging,
         quietForMs = if (quietMin == Long.MAX_VALUE) Long.MAX_VALUE else quietMin * minute,
         heavyBusy = heavy,
+        hot = hot,
+        talking = talking,
     )
 
     private fun decide(
@@ -41,23 +47,7 @@ class OpportunisticTest {
         last: Long? = null,
         load: Load = Load.NONE,
         o: Opportunity = opp(),
-        enabled: Boolean = true,
-    ): AutoGate = Opportunistic.decide(job, source, now, last, load, o, enabled)
-
-    // ── 判据①：关总开关 ⇒ 两件都不启动 ────────────────────────────────────
-
-    @Test
-    fun `判据1_关总开关_两件都不跑`() {
-        MaintJob.entries.forEach { job ->
-            val g = decide(job, AskSource.EVENT, load = Load(999, 9_999), enabled = false)
-            assertFalse("${job.cn} 关了还跑？", g.run)
-            assertEquals(Opportunistic.WHY_OFF, g.why)
-        }
-        // 周期作业那条也拦（关就是关，别拿"到下限了"当借口）
-        assertFalse(decide(MaintJob.PATROL, AskSource.SCHEDULED, last = now - 30 * day, enabled = false).run)
-        // 手动不是"启动"：人当场点的那一下照跑（关的是后台自动，不是人的手）
-        assertTrue("手动不受总开关限制", decide(source = AskSource.MANUAL, enabled = false).run)
-    }
+    ): AutoGate = Opportunistic.decide(job, source, now, last, load, o)
 
     // ── 判据②：达阈值且条件满足 ⇒ 自动跑一次 ──────────────────────────────
 
@@ -77,15 +67,15 @@ class OpportunisticTest {
     // ── 判据③：机会条件不满足 ⇒ 不跑，等下一次机会 ────────────────────────
 
     @Test
-    fun `判据3_四条机会条件各拦一次_边界在等号上`() {
+    fun `判据3_六条机会条件各拦一次_边界在等号上`() {
         val heavyLoad = Load(50, 0)
         // 非值守
         val duty = decide(load = heavyLoad, o = opp(onDuty = true))
         assertFalse(duty.run)
         assertTrue("要说清是值守：${duty.why}", duty.why.contains("值守"))
-        // 电量／充电：30 就够，29 不够；没电但插着电也算
-        assertFalse(decide(load = heavyLoad, o = opp(battery = 29)).run)
-        assertTrue("等于 30 就够", decide(load = heavyLoad, o = opp(battery = 30)).run)
+        // 电量／充电：479 起 20 就够，19 不够；没电但插着电也算
+        assertFalse(decide(load = heavyLoad, o = opp(battery = 19)).run)
+        assertTrue("等于 20 就够", decide(load = heavyLoad, o = opp(battery = 20)).run)
         assertTrue("充电中不看电量", decide(load = heavyLoad, o = opp(battery = 10, charging = true)).run)
         assertFalse("电量读不出又不充电 ⇒ fail-closed", decide(load = heavyLoad, o = opp(battery = -1)).run)
         // 最近 30 分钟无自动动作：29 分不够，30 分够
@@ -93,6 +83,13 @@ class OpportunisticTest {
         assertTrue("满 30 分钟就放行", decide(load = heavyLoad, o = opp(quietMin = 30)).run)
         // 没在跑重活
         assertFalse(decide(load = heavyLoad, o = opp(heavy = true)).run)
+        // 479 新增两条：不发烫、前台不在会话
+        val hotGate = decide(load = heavyLoad, o = opp(hot = true))
+        assertFalse(hotGate.run)
+        assertTrue("要说清是发烫：${hotGate.why}", hotGate.why.contains("发烫"))
+        val talkGate = decide(load = heavyLoad, o = opp(talking = true))
+        assertFalse(talkGate.run)
+        assertTrue("要说清是前台会话：${talkGate.why}", talkGate.why.contains("会话"))
         // 条件齐 + 负载够 ⇒ 跑
         assertTrue(decide(load = heavyLoad).run)
     }
@@ -155,7 +152,7 @@ class OpportunisticTest {
         assertEquals("load", TriggerReason.LOAD.wire)
         assertEquals("floor", TriggerReason.FLOOR.wire)
         assertNotNull(decide(source = AskSource.MANUAL).trigger)
-        assertNull("不跑就没有触发来源", decide(load = Load(50, 0), enabled = false).trigger)
+        assertNull("不跑就没有触发来源", decide(load = Load(50, 0), o = opp(hot = true)).trigger)
     }
 
     @Test
@@ -166,6 +163,12 @@ class OpportunisticTest {
         assertTrue(line, line.contains("未充电"))
         assertTrue(line, line.contains("静默 41 分钟"))
         assertTrue(line, line.contains("无重活"))
+        // 479：发烫／前台会话两格也进读数（"这趟为什么没跑"要能照着复现）
+        assertTrue(line, line.contains("温度正常"))
+        assertTrue(line, line.contains("无会话"))
+        val hotLine = Opportunistic.readout(opp(hot = true, talking = true))
+        assertTrue(hotLine, hotLine.contains("发烫"))
+        assertTrue(hotLine, hotLine.contains("前台会话中"))
         // 没有读数也不许空着（读不出就照实说）
         val blind = Opportunistic.readout(opp(battery = -1, quietMin = Long.MAX_VALUE, onDuty = true, heavy = true))
         assertTrue(blind, blind.contains("电量读不出"))

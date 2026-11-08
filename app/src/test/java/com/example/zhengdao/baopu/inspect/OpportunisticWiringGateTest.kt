@@ -2,10 +2,10 @@
 //
 // 第五百一十一批 · 机会式触发的**接线门禁**（两件共用那一套）。
 //
-// 判据里"跑得对不对"在 `OpportunisticTest`；这里钉的是**源码层**那几条——它们运行时
-// 没有可观察的下场（"没有 5 分钟以内的定时"只有扫源码才验得到），删一行也不会红：
-// 1. 唯一出口：设置里只有「后台自动维护」一个开关，写口全仓只此一处；
-// 2. 关总开关两件都不启动：两件装配都读同一个读口，且都不自己摸 SharedPreferences；
+// 判据里"跑得对不对"在 `OpportunisticTest`／`MaintBrakeTest`；这里钉的是**源码层**那几条——
+// 它们运行时没有可观察的下场（"没有 5 分钟以内的定时"只有扫源码才验得到），删一行也不会红：
+// 1. 总开关已删（479）：设置页没有那一行、属主没有 SP 读写、两条文案中英都退役；
+// 2. 四器都进同一套两级刹车（急停／单件暂停），单件暂停只住既有 SP、不进设置页；
 // 3. 判据⑥：没有 5 分钟以内的定时、没有常驻轮询（定时器／Handler 循环／精确闹钟）；
 // 4. 判据⑦：两件都抢同一把重活锁，且成对放；
 // 5. 判据⑤：落账四格（谁触发·机会读数·跑了什么·结论一行）都写进各自的账；
@@ -37,63 +37,85 @@ class OpportunisticWiringGateTest {
         .map { it.relativeTo(root).path.replace('\\', '/') to it.readText(Charsets.UTF_8) }
         .toList()
 
-    // ── ① 唯一出口 ─────────────────────────────────────────────────────────
+    // ── ① 总开关已删（479）─────────────────────────────────────────────────
 
     @Test
-    fun `设置里只有这一个开关_写口全仓只此一处`() {
+    fun `判据①设置页不再有后台自动维护那个开关_入口净增不为正`() {
         val settings = code("ui/SettingsScreen.kt")
-        assertTrue("设置页要有「后台自动维护」这个开关", settings.contains("AutoMaintenance.set("))
+        assertFalse("设置页还在引用 AutoMaintenance（那一行没删干净）", settings.contains("AutoMaintenance"))
+        assertFalse("设置页还在认那个开关的文案键", settings.contains("settings_auto_maintenance"))
+        // 入口数：基线（511）设置页有**一个** Switch（后台自动维护那一行）；479 删掉它、不加新的。
         assertEquals(
-            "写口只许一处（多处写同一个键，就会有两套「谁说了算」）",
-            1,
-            Regex("""AutoMaintenance\.set\(""").findAll(settings).count(),
+            "设置页的开关数必须是 0（基线 1，本次净删 1、不新增任何一行）",
+            0,
+            Regex("""(?<![A-Za-z])Switch\(""").findAll(settings).count(),
         )
-        val writers = mainFiles().filter { it.second.contains("AutoMaintenance.set(") }.map { it.first }
-        assertEquals("全仓只有设置页那一个写口", listOf("ui/SettingsScreen.kt"), writers)
-        // 不再暴露"每日/每周/夜间"这类小开关（511 §三）：连键名都不许出现在界面层
-        listOf("nightwatch_auto", "auto_maintenance", "patrol_weekly", "nightly_auto").forEach { key ->
-            assertFalse("设置页认了键名字面量 $key（该走属主读口，别在界面里认键）", settings.contains("\"$key\""))
-        }
+        assertEquals(
+            "写口随开关一起删了（全仓零处）",
+            emptyList<String>(),
+            mainFiles().filter { it.second.contains("AutoMaintenance.set(") }.map { it.first },
+        )
     }
 
     @Test
-    fun `开关文案中英都有_缺一条就是半拉子`() {
-        val zh = code("../../../../res/values/strings_health.xml")
-        val en = code("../../../../res/values-en/strings_health.xml")
+    fun `判据①属主没有SP读写_只剩机器读数`() {
+        val owner = code("baopu/maintenance/AutoMaintenance.kt")
+        listOf("getSharedPreferences", "putBoolean", "getBoolean", "putLong", "edit {", "DEFAULT_ON", "LEGACY_KEY")
+            .forEach { assertFalse("属主里还有 $it：总开关没删干净", owner.contains(it)) }
+        // 读数口一个都不许跟着丢（删的是开关，不是读数）
+        listOf("fun charging(", "fun batteryPct(", "fun hot(", "fun talking(", "fun readings(")
+            .forEach { assertTrue("读数口 $it 丢了", owner.contains(it)) }
+        // 判据②那两条新读数要有出处（不是常量糊出来的）
+        assertTrue("发烫要问系统热档", owner.contains("currentThermalStatus"))
+        assertTrue("会话要看引擎状态", owner.contains("engineIfBuilt()"))
+    }
+
+    @Test
+    fun `判据①那两条文案随开关一起退役_中英都删干净`() {
         listOf(
-            "settings_auto_maintenance",
-            "settings_auto_maintenance_desc",
-        ).forEach { key ->
-            assertTrue("中文缺 $key", zh.contains("name=\"$key\""))
-            assertTrue("英文缺 $key（切英文那一行会空着）", en.contains("name=\"$key\""))
+            "../../../../res/values/strings_health.xml",
+            "../../../../res/values-en/strings_health.xml",
+        ).forEach { rel ->
+            assertFalse("$rel 还留着 settings_auto_maintenance", code(rel).contains("settings_auto_maintenance"))
         }
     }
 
-    // ── ② 关总开关两件都不启动 ─────────────────────────────────────────────
+    // ── ② 四器都进同一套刹车（判据③④）──────────────────────────────────────
 
     @Test
-    fun `两件都读同一个读口_装配侧谁也不自己摸SP`() {
-        val night = code("baopu/inspect/NocturnalAuto.kt")
-        val patrol = code("baopu/inspect/PatrolAuto.kt")
-        assertTrue("暗卫要读总开关", night.contains("AutoMaintenance.on(ctx)"))
-        assertTrue("巡按要读总开关", patrol.contains("AutoMaintenance.on(ctx)"))
-        // 装配侧只许拿"生效值"，不许自己认键／自己摸 SP（两套读法＝漂移的出生地）
+    fun `判据③四器都进同一套两级刹车_急停与单件暂停各一口`() {
         listOf(
             "baopu/inspect/NocturnalAuto.kt",
             "baopu/inspect/PatrolAuto.kt",
-            "baopu/inspect/Opportunistic.kt",
-            "baopu/inspect/TriggerWiring.kt",
             "baopu/inspect/HealthScheduler.kt",
         ).forEach { rel ->
             val s = code(rel)
-            assertFalse("$rel 自己摸了 SharedPreferences（该走 AutoMaintenance）", s.contains("getSharedPreferences"))
-            assertFalse("$rel 自己认了键名", s.contains("auto_maintenance"))
+            assertTrue("$rel 没过刹车", s.contains("MaintBrake.blocked("))
+            assertTrue("$rel 没读停机态", s.contains("HaltGate.halted()"))
+            assertTrue("$rel 没读单件暂停", s.contains("MaintPause.untilMs(ctx, DEVICE)"))
+            assertEquals("$rel 只许问一次刹车（多处问＝多套顺序）", 1, Regex("""MaintBrake\.blocked\(""").findAll(s).count())
         }
-        // 属主本身带缺省开与写口
-        val owner = code("baopu/maintenance/AutoMaintenance.kt")
-        assertTrue("缺省必须是开", owner.contains("DEFAULT_ON: Boolean = true"))
-        assertTrue("写口只用 KTX 的 edit{}（lint 预算 0，不许涨）", owner.contains(".edit {"))
-        assertFalse("不许出现 .edit().put…（UseKtx 会记一条）", owner.contains(".edit().put"))
+        // 金吾卫与「巡一遍」共用同一颗手动闸：停机期间人点的也不启动（471 的语义）
+        val scheduler = code("baopu/inspect/PatrolScheduler.kt")
+        assertTrue("手动闸要能收到停机态", scheduler.contains("halted: Boolean = false"))
+        assertTrue("手动闸停机时说同一句话", scheduler.contains("MaintBrake.WHY_HALT"))
+        val screen = code("ui/baopu/DecisionCenterScreen.kt")
+        assertEquals(
+            "两颗手动按钮（巡一遍／金吾卫）都要把停机态递进去",
+            2,
+            Regex("""halted = HaltGate\.halted\(\)""").findAll(screen).count(),
+        )
+    }
+
+    @Test
+    fun `判据④单件暂停只住既有SP_不新表_也不进设置页`() {
+        val pause = code("baopu/maintenance/MaintPause.kt")
+        assertTrue("SP 复用既有文件", pause.contains("\"zhengdao-inspect\""))
+        assertEquals("只碰一本 SP（不新表）", 1, Regex("""getSharedPreferences\(""").findAll(pause).count())
+        assertFalse("键拼法只许在 keyOf 里拼一次", pause.contains("\"pause_until_nightwatch\""))
+        assertTrue("默认 24h", pause.contains("DEFAULT_HOURS: Long = 24L"))
+        // 设置页没有"暂停这个器"这类新行（判据⑤：入口净增 ≤0）
+        assertFalse("单件暂停不进设置页", code("ui/SettingsScreen.kt").contains("pause_until_"))
     }
 
     // ── ③ 判据⑥：没有 5 分钟以内的定时、没有常驻轮询 ────────────────────────
@@ -153,7 +175,7 @@ class OpportunisticWiringGateTest {
         assertTrue("暗卫要写结论一行", night.contains("conclusion = conclusionOf("))
         val patrol = code("baopu/inspect/PatrolAuto.kt")
         assertTrue("巡按要写谁触发", patrol.contains("trigger = trigger.wire"))
-        assertTrue("巡按要写机会读数", patrol.contains("opportunity = Opportunistic.readout("))
+        assertTrue("巡按要写机会读数", patrol.contains("opportunity = readout"))
         // 账本结构（读侧要认得，否则写了也白写）
         val nightLedger = code("baopu/inspect/NocturnalPatrol.kt")
         assertTrue(nightLedger.contains("\"trigger\""))

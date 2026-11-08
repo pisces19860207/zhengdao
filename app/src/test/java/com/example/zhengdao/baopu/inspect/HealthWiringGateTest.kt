@@ -173,7 +173,7 @@ class HealthWiringGateTest {
             Regex("""DataDoctor\.afterHealthRun\(""").findAll(run).count(),
         )
         assertTrue("重建索引要用的 filesDir 要递进去", run.contains("ctx.filesDir"))
-        assertTrue("配置那一路的读口要递进去", run.contains("NightWatchConfig(ctx)"))
+        assertTrue("配置那一路的读口要递进去", run.contains("MaintPauseConfig(ctx)"))
     }
 
     @Test
@@ -192,16 +192,17 @@ class HealthWiringGateTest {
         assertTrue("改回去的目标值取自判据表", doctor.contains("rows.associate { it.key to it.expected }"))
         assertTrue("表外的键在执行层再挡一道", doctor.contains("expected[key] ?: continue"))
 
-        val adapter = code("baopu/repair/NightWatchConfig.kt")
-        assertTrue("生效值要走属主的既有读口", adapter.contains("AutoMaintenance.on("))
-        assertTrue("文件名引用属主常量", adapter.contains("AutoMaintenance.SP"))
-        assertTrue("键名引用属主常量", adapter.contains("AutoMaintenance.KEY"))
-        listOf("\"zhengdao-inspect\"", "\"nightwatch_auto\"", "\"auto_maintenance\"", "WEEKLY_ENABLED").forEach { lit ->
+        // 第四百七十九批：配置域的属主从「一个总开关」换成「四把单件锁」——适配器跟着换人。
+        val adapter = code("baopu/repair/MaintPauseConfig.kt")
+        assertTrue("生效值要走属主的既有读口", adapter.contains("MaintPause.untilMs("))
+        assertTrue("文件名引用属主常量", adapter.contains("MaintPause.SP"))
+        assertTrue("写口也只经属主（不自己动 SP 值）", adapter.contains("MaintPause.setUntil("))
+        listOf("\"zhengdao-inspect\"", "\"pause_until_\"", "\"nightwatch_auto\"", "\"auto_maintenance\"").forEach { lit ->
             assertFalse("适配器里出现了字面量 $lit（该引常量）", adapter.contains(lit))
         }
-        assertTrue("写只用 KTX 的 edit{}（lint 预算 0，不许涨）", adapter.contains(".edit {"))
-        assertFalse("不许出现 .edit().put…（UseKtx 会记一条）", adapter.contains(".edit().put"))
-        assertTrue("只认自己那一个键：别的键读不出", adapter.contains("key != AutoMaintenance.KEY"))
+        // 适配器自己不再动 SP：写全交给属主（edit{} 只活在 MaintPause 那一处，lint 预算不涨）
+        assertFalse("适配器自己写了 SP（该只经属主）", adapter.contains(".edit") )
+        assertTrue("只认自己那几个键：别的键读不出", adapter.contains("MaintPause.deviceOfKey(key) ?: return null"))
     }
 
     @Test

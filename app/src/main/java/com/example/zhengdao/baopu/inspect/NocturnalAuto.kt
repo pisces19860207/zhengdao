@@ -2,7 +2,7 @@
 //
 // 第四百三十二批开出「暗卫自动档」，第五百一十一批把**触发**换成机会式（与巡按共用一套）：
 // 手动 · 按负载（N=20 任务／M=200 次工具调用）· 7 天下限，三条都过同一套机会条件
-// （非值守 · 电量≥30% 或充电中 · 30 分钟无自动动作 · 没在跑重活）与各自 6h 冷却。
+// （非值守 · 电量≥20% 或充电中 · 不发烫 · 前台不在会话 · 30 分钟无自动动作 · 没在跑重活）与各自 6h 冷却。
 // 432 的"每周一次"从此只是**下限**那一格，不再是唯一节奏；"充电＋WiFi"那两条由 511 §一②
 // 取代（电量够就不必插着电，也不再要求 WiFi）。
 //
@@ -29,7 +29,10 @@ import androidx.work.WorkerParameters
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.maintenance.AutoMaintenance
+import com.example.zhengdao.baopu.maintenance.MaintDevice
+import com.example.zhengdao.baopu.maintenance.MaintPause
 import com.example.zhengdao.baopu.maintenance.Opportunity
+import com.example.zhengdao.baopu.safety.HaltGate
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.Random
@@ -59,6 +62,9 @@ internal object NocturnalAuto {
     /** 这一件的身份（互斥锁与落账都用它）。 */
     private val JOB: MaintJob = MaintJob.NIGHTWATCH
 
+    /** 四器名单里的那一只（479 的暂停键与落账行都按它说话）。 */
+    private val DEVICE: MaintDevice = MaintDevice.NIGHTWATCH
+
     /**
      * 自动档那一趟：[NocturnalAutoWorker]（周期兜底）与 [TriggerWiring]（会话收工事件）都走它。
      *
@@ -76,6 +82,12 @@ internal object NocturnalAuto {
             return null
         }
         val opp = readingsOf(ctx, root, nowMs)
+        val readout = Opportunistic.readout(opp)
+        // 479 两级刹车：急停（471 的软停/硬停）→ 单件暂停 → 才轮到机会条件。
+        MaintBrake.blocked(DEVICE, HaltGate.halted(), MaintPause.untilMs(ctx, DEVICE), nowMs)?.let {
+            RunLog.log(MaintBrake.deferredLine(DEVICE, source, it, readout))
+            return null
+        }
         val gate = Opportunistic.decide(
             job = JOB,
             source = source,
@@ -83,19 +95,18 @@ internal object NocturnalAuto {
             lastRunAtMs = NocturnalLedger.lastAutoAt(root),
             load = loadOf(ctx, root),
             opp = opp,
-            enabled = AutoMaintenance.on(ctx),
         )
         val trigger = gate.trigger
         if (!gate.run || trigger == null) {
-            RunLog.log("暗卫自动档：这趟不跑（${gate.why}）")
+            RunLog.log(MaintBrake.deferredLine(DEVICE, source, gate.why, readout))
             return null
         }
         if (!HeavyWork.tryEnter(JOB.wire)) {
-            RunLog.log("暗卫自动档：这趟不跑（${Opportunistic.WHY_HEAVY}）")
+            RunLog.log(MaintBrake.deferredLine(DEVICE, source, Opportunistic.WHY_HEAVY, readout))
             return null
         }
         return try {
-            runRound(ctx, root, nowMs, trigger, Opportunistic.readout(opp))
+            runRound(ctx, root, nowMs, trigger, readout)
         } finally {
             HeavyWork.exit(JOB.wire)
         }
@@ -167,8 +178,10 @@ internal object NocturnalAuto {
             conclusion = conclusionOf(round.inspected, round.hits),
         )
         val saved = NocturnalLedger.append(root, stamped)
+        // 判据⑤：谁触发 · 机会读数 · 结果一行，同一行里三格齐全（账本里另有结构化的那三格）。
         RunLog.log(
-            "暗卫自动档：${stamped.conclusion}（${trigger.cn}触发）" + if (saved) "" else "，账没落上",
+            MaintBrake.runningLine(DEVICE, trigger.cn, readout, stamped.conclusion) +
+                if (saved) "" else "（账没落上）",
         )
         // 第五百零八批在 main 上接的互查写口（511 从更早基线切出，rebase 时补回）：
         // 暗卫本轮认定 × 金吾卫上次巡按 ⇒ 有冲突才写行。

@@ -23,7 +23,10 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.maintenance.AutoMaintenance
+import com.example.zhengdao.baopu.maintenance.MaintDevice
+import com.example.zhengdao.baopu.maintenance.MaintPause
 import com.example.zhengdao.baopu.maintenance.Opportunity
+import com.example.zhengdao.baopu.safety.HaltGate
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -43,6 +46,9 @@ internal object PatrolAuto {
     /** 这一件的身份（互斥锁与落账都用它）。 */
     private val JOB: MaintJob = MaintJob.PATROL
 
+    /** 四器名单里的那一只（479 的暂停键与落账行都按它说话）。 */
+    private val DEVICE: MaintDevice = MaintDevice.PATROL
+
     /**
      * 自动档那一趟：[PatrolAutoWorker]（周期兜底）与 [TriggerWiring]（会话收工事件）都走它。
      *
@@ -60,6 +66,12 @@ internal object PatrolAuto {
             return null
         }
         val opp = readingsOf(ctx, root, nowMs)
+        val readout = Opportunistic.readout(opp)
+        // 479 两级刹车：急停（471 的软停/硬停）→ 单件暂停 → 才轮到机会条件。
+        MaintBrake.blocked(DEVICE, HaltGate.halted(), MaintPause.untilMs(ctx, DEVICE), nowMs)?.let {
+            RunLog.log(MaintBrake.deferredLine(DEVICE, source, it, readout))
+            return null
+        }
         val gate = Opportunistic.decide(
             job = JOB,
             source = source,
@@ -67,15 +79,14 @@ internal object PatrolAuto {
             lastRunAtMs = PatrolLedger.latest(root)?.atMs,
             load = loadOf(ctx, root),
             opp = opp,
-            enabled = AutoMaintenance.on(ctx),
         )
         val trigger = gate.trigger
         if (!gate.run || trigger == null) {
-            RunLog.log("巡按自动档：这趟不跑（${gate.why}）")
+            RunLog.log(MaintBrake.deferredLine(DEVICE, source, gate.why, readout))
             return null
         }
         if (!HeavyWork.tryEnter(JOB.wire)) {
-            RunLog.log("巡按自动档：这趟不跑（${Opportunistic.WHY_HEAVY}）")
+            RunLog.log(MaintBrake.deferredLine(DEVICE, source, Opportunistic.WHY_HEAVY, readout))
             return null
         }
         val result = try {
@@ -84,12 +95,12 @@ internal object PatrolAuto {
                 manual = false,
                 nowMs = nowMs,
                 trigger = trigger.wire,
-                opportunity = Opportunistic.readout(opp),
+                opportunity = readout,
             )
         } finally {
             HeavyWork.exit(JOB.wire)
         }
-        RunLog.log("巡按自动档：${result.report.headline}（${trigger.cn}触发）")
+        RunLog.log(MaintBrake.runningLine(DEVICE, trigger.cn, readout, result.report.headline))
         return result
     }
 

@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.safety.HaltGate
 import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionFilter
 import com.example.zhengdao.baopu.DecisionGroup
@@ -462,7 +463,10 @@ private fun HistoryTab(
     // 为什么协程起在界面而不是控制器——本批占用范围只有 inspect/ 与这一页，控制器不在范围内；
     // 「界面只渲染＋转发」那条房型让给了批次边界，偏差如实记进交付报告。
     val patrolLauncher: () -> Unit = {
-        val gate = PatrolScheduler.manualGate(running = patrolBusy || controller.busy)
+        val gate = PatrolScheduler.manualGate(
+            running = patrolBusy || controller.busy,
+            halted = HaltGate.halted(),
+        )
         if (gate.run) {
             patrolGateWhy = null
             patrolFailWhy = null
@@ -488,7 +492,10 @@ private fun HistoryTab(
     // 一行字（[PatrolDigest.conclusion] 第一行），不开弹窗、不碰被纠的数据。
     var guardNote by remember { mutableStateOf<String?>(null) }
     val guardLauncher: () -> Unit = {
-        val gate = PatrolScheduler.manualGate(running = patrolBusy || controller.busy)
+        val gate = PatrolScheduler.manualGate(
+            running = patrolBusy || controller.busy,
+            halted = HaltGate.halted(),
+        )
         if (gate.run) {
             guardNote = null
             patrolBusy = true

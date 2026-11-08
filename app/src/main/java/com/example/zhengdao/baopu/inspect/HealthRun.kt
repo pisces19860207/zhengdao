@@ -31,7 +31,7 @@ import com.example.zhengdao.baopu.evolution.EvolutionWiring
 import com.example.zhengdao.baopu.evolution.ProofReading
 import com.example.zhengdao.baopu.escalate.Escalation
 import com.example.zhengdao.baopu.repair.DataDoctor
-import com.example.zhengdao.baopu.repair.NightWatchConfig
+import com.example.zhengdao.baopu.repair.MaintPauseConfig
 import com.example.zhengdao.baopu.trace.TraceBlackbox
 import com.example.zhengdao.core.RunLog
 import java.io.File
@@ -135,7 +135,8 @@ internal object HealthRun {
         // 第四百四十七批（2026-11-05 用户批准）：**同一个口接满四路**（残留＋索引/清单＋
         // 账本损坏＋配置漂移），一路一类、先记后修、修不了只报需人处理；配置那一路的
         // 真源是判据表 `ConfigCriteria`，表里没有的键一个都不动。
-        val repair = DataDoctor.afterHealthRun(projectRoot, root, nowMs, ctx.filesDir, NightWatchConfig(ctx))
+        // 第四百七十九批：配置域的属主换了——总开关删了，现在是四把单件锁（`MaintPauseConfig`）。
+        val repair = DataDoctor.afterHealthRun(projectRoot, root, nowMs, ctx.filesDir, MaintPauseConfig(ctx))
         RunLog.log("御医自修：$repair")
         return HealthResult(entry, enqueued, if (saved) null else "体检账没落上")
     }

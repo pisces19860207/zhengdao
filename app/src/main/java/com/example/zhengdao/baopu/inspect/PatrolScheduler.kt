@@ -93,8 +93,12 @@ internal object PatrolScheduler {
     }
 
     /** 手动那一趟只有一条限制：别跟正在跑的会话抢手机。 */
-    fun manualGate(running: Boolean = false): Gate =
-        if (running) Gate(false, "有任务在跑，稍后再巡") else Gate(true, "手动巡一遍")
+    fun manualGate(running: Boolean = false, halted: Boolean = false): Gate = when {
+        // 479：急停期间**四器一律不启动**（471 的软停/硬停）——人点的那两颗按钮走同一句话。
+        halted -> Gate(false, MaintBrake.WHY_HALT)
+        running -> Gate(false, "有任务在跑，稍后再巡")
+        else -> Gate(true, "手动巡一遍")
+    }
 
     /**
      * §10③：7 天提醒（**不弹窗**——她已裁定，形态就是巡按栏那一句）。

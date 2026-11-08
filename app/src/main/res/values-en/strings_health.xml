@@ -9,7 +9,6 @@
          tier-passed actions are still recorded. -->
     <string name="ask_governance_tier_row">Interruption governance tier</string>
     <string name="ask_governance_tier_desc">Current: %1$s (tap to cycle Strict→Standard→Delegated; hard red lines refused at every tier, tier-passed actions still recorded)</string>
-    <!-- Batch 511: the single background-maintenance switch (work order §3). -->
-    <string name="settings_auto_maintenance">Background maintenance</string>
-    <string name="settings_auto_maintenance_desc">On: spot checks and inspections pick their own moment | Off: neither starts (manual still works)</string>
+    <!-- Batch 479: that single row is gone (2026-11-08: fewer entries and switches).
+         Background maintenance is always on; the brakes and the per-device pause govern it. -->
 </resources>
