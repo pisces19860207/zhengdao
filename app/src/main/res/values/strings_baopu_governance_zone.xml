@@ -20,6 +20,10 @@
     <string name="gc_reading_hint">与治理出口同一份数，本页不另算</string>
     <string name="gc_reading_day">当日 %1$s · 与治理出口同一份数</string>
 
+    <!-- 目标（第四百八十二批） -->
+    <string name="gc_section_goal">目标</string>
+    <string name="gc_goal_hint">这个任务要换来什么（与治理出口同一份字，本页不另算）</string>
+
     <!-- 四率 -->
     <string name="gc_ratio_violation">违规率</string>
     <string name="gc_ratio_misjudge">误判率</string>

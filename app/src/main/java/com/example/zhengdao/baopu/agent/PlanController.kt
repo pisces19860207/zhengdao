@@ -9,6 +9,9 @@ import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanRules.PlanItem
 import com.example.zhengdao.baopu.PlanStore
 import com.example.zhengdao.baopu.authz.TaskGrantWire
+import com.example.zhengdao.baopu.plan.GoalBoard
+import com.example.zhengdao.baopu.plan.GoalRules
+import com.example.zhengdao.baopu.plan.GoalRules.GoalParse
 import com.example.zhengdao.baopu.plan.PlanContract
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractRules
@@ -200,6 +203,17 @@ internal class PlanController(
             log("抱朴军令状：拒绝（${pledgeParse.message}）")
             return ToolOutcome.Failed(pledgeParse.message)
         }
+        // ── 第四百八十二批：目标的写法门（同样在落库**之前**——半份目标不落库）──
+        // 「有状」认两条：本次正要冻结（她刚在开工卡上点了头），或板上已有现役的状。
+        // 没状的 goal 一律拒：目标挂在状上，步骤数与进度都走那一份，不另开第二份清单。
+        val goalParse = GoalRules.parse(
+            args,
+            hasPledge = pledgeApprovedPending || PlanPledgeBoard.activeSnapshot() != null,
+        )
+        if (goalParse is GoalParse.Error) {
+            log("抱朴目标：拒绝（${goalParse.message}）")
+            return ToolOutcome.Failed(goalParse.message)
+        }
         // 重签：立了状之后删项/加项必须显式重签（判据①；channel 只认 140 卡的人批——
         // 结构变更能走到这里 ⇒ 一定过了上面那张卡。resign 缺原因在这里就拒，落库前）。
         val resignGuard = PlanPledgeBoard.guardEdit(
@@ -280,9 +294,14 @@ internal class PlanController(
         deviationMuted = false
         // ── 第三百四十七批：落库成功之后的军令状动作（冻结／重签／申报进板）——
         // 冻结只在这时发生（人在卡上点过头＋这版计划真的落了库），账上不留没落地的状。
-        val pledgeNotes = pledgeAfterLanding(applied.items, args, change, pledgeParse, closeoutParse, amendParse, sid)
+        val pledgeNotes = pledgeAfterLanding(
+            applied.items, args, change, pledgeParse, goalParse, closeoutParse, amendParse, sid,
+        )
         val cardLine = pledgeAckLine
         pledgeAckLine = null
+        // 482 续跑：这一版计划落库成功 ⇒ 目标账的进度与已用步数当场刷新（盘上是续跑的唯一
+        // 依据；不写就等于重启后「进度归零、预算重新计」）。没目标时本句是空操作。
+        GoalBoard.noteProgress(PlanRules.doneCount(applied.items))
         log(
             "抱朴计划：已更新（session=$sid，共 ${applied.items.size} 条、" +
                 "${PlanRules.doneCount(applied.items)} 完成" +
@@ -434,17 +453,29 @@ internal class PlanController(
      * 下一版计划必须看见这句话，否则同一份错估算每轮重来一遍（派工单 D 段后半句）。
      */
     fun reminderLine(): String? {
-        if (current.isEmpty()) return null
+        // 482 ③：目标在管着的时候，每次工具回灌都带一句「主线在哪」——偏题时这就是那根绳。
+        val goalLine = GoalBoard.active()
+            ?.takeIf { it.state == GoalRules.GoalState.ACTIVE }
+            ?.let { GoalRules.remindLine(it) }
+            .orEmpty()
+        if (current.isEmpty()) return goalLine.ifEmpty { null }
         val hint = PlanContractBoard.estimateHint()
         val todo = current.filter { it.status != PlanRules.STATUS_DONE }
-        if (todo.isEmpty()) return hint
+        if (todo.isEmpty()) return ((hint ?: "") + goalLine).ifEmpty { null }
         val names = todo.take(2).joinToString("；") { it.text }
         val more = if (todo.size > 2) "…" else ""
+        // 482 ②：长任务（≥5 步：线用 347 的 LONG_TASK_STEPS，不另立一条）还没目标 ⇒ 提示补。
+        // 只在「还有没勾的」这一段说：全勾完再说「去立目标」就是废话。
+        val missing = if (goalLine.isNotEmpty() || current.size < PlanPledgeRules.LONG_TASK_STEPS) {
+            ""
+        } else {
+            GoalRules.GOAL_MISSING_NOTE
+        }
         return "【计划提醒】还有 ${todo.size} 条没勾（$names$more）。" +
             "打勾是干活的一部分：一步开始时先标 doing，做完那一刻立刻再调一次 update_plan、整表重发标 done；" +
             "卡住就留在 doing 并说明。" +
             "不许攒到最后批量补、不许偷偷划掉、不许假装做完——不标就等于没做（用户看到的是没打勾）。" +
-            (hint ?: "")
+            (hint ?: "") + goalLine + missing
     }
 
     // ── 契约 API（242；判据全在 PlanContractRules，这里只管「批没批」这一票）────
@@ -610,6 +641,7 @@ internal class PlanController(
         args: JSONObject,
         change: PlanChange,
         pledgeParse: PledgeParse,
+        goalParse: GoalParse,
         closeout: PlanPledgeRules.CloseoutParse,
         amend: AmendParse,
         sid: Long,
@@ -629,6 +661,9 @@ internal class PlanController(
             PlanPledgeBoard.freeze(snapshot)
             notes += PlanPledgeCards.frozenAck(snapshot)
         }
+        // 482 ①：目标与状**同批**立（一次调用里 pledge＋goal 各一份话，不新开单）。
+        // 状刚冻结 ⇒ 现役快照就在板上；没状 ⇒ [GoalBoard.freeze] 返 null，这里如实说没立。
+        if (goalParse is GoalParse.Ok) notes += goalLandingNote(goalParse.draft, atMs, sid)
         resignIfChanged(change, items, args, atMs, notes)
         // ③ 结项申报进板：无状 ⇒ 说明性忽略（无状任务不设结项门，不许事后补状）。
         if (pledgeParse is PledgeParse.Skip) notes += pledgeParse.notices
@@ -642,6 +677,24 @@ internal class PlanController(
                 "本次按无状处理——不冻结、不设结项门，该有的确认卡一张不少。"
         }
         return notes
+    }
+
+    /**
+     * 482 ①：目标落板的那一句回灌。
+     *
+     * 一个任务只挂一份目标：已有目标还带一份新的 ⇒ 不覆盖、如实说「目标不变」
+     * （覆盖就等于「跑到一半换个目标」，完成度读数会当场失真）。要改目标就明说，
+     * 那是用户拍板的事，不是模型自己换一句。
+     */
+    private fun goalLandingNote(draft: GoalRules.Draft, atMs: Long, sid: Long): String {
+        GoalBoard.active()?.let { existing ->
+            return "【目标不变】这个任务已经有目标：「${existing.sentence}」。一份任务只挂一份目标——" +
+                "这次带的目标没有生效；确实要换，先跟用户说清为什么换。"
+        }
+        val goal = GoalBoard.freeze(draft, PlanPledgeBoard.activeSnapshot(), atMs, sid)
+            ?: return "【目标未立】这次没有军令状：目标是挂在状上的（步骤数与进度都走那一份）——" +
+                "先按长程任务立状，再带 goal。"
+        return GoalRules.frozenAck(goal)
     }
 
     /**
@@ -724,6 +777,8 @@ internal class PlanController(
         // 军令状（347）同一条生命周期：新请求＝新任务，旧状不带过来（收尾该记的
         // 缺口在上一轮的收尾路径已经进了未办成单——这里只管「这一轮从零开始」）。
         PlanPledgeBoard.clear()
+        // 482：目标与计划同生命周期（旧目标不许带到新请求上——那是上一件事的完成度）。
+        GoalBoard.clear()
         pledgeCardSettled = false
         pledgeApprovedPending = false
         pledgeAckLine = null
@@ -756,6 +811,9 @@ internal class PlanController(
         // 军令状（347）：进程重启后内存是空的，账上的状由引擎的 seed 从
         // 计划军令状.jsonl 接回（seedFromStore 只清内存视图，不猜账里有什么）。
         PlanPledgeBoard.clear()
+        // 482 续跑：目标**不清**——它是这次任务自己的账（`产物/.goal.json`），
+        // 清掉等于重启后「完成度归零、预算重新计」，那是本单要治的「说不清完成没完成」。
+        // 盘上那份由引擎在续跑分支里 [GoalBoard.attach] 接回来（不在这一层猜账里有什么）。
         pledgeCardSettled = false
         pledgeApprovedPending = false
         pledgeAckLine = null
@@ -780,6 +838,8 @@ internal object PlanPledgeSchemas {
         props.put(PlanPledgeRules.ARG_CLOSEOUT, closeoutSchema())
         props.put(PlanPledgeRules.ARG_RESIGN, resignSchema())
         props.put(PlanPledgeAmendRules.ARG_AMEND, amendSchema())
+        // 第四百八十二批：目标模式挂同一个 update_plan（不新开工具 ⇒ 入口净增 0）。
+        props.put(GoalRules.ARG_GOAL, goalSchema())
         return base.copy(inputSchema = schema)
     }
 
@@ -811,7 +871,30 @@ internal object PlanPledgeSchemas {
             "「${PlanPledgeAmendRules.ARG_AMEND}」与「${PlanPledgeRules.ARG_RESIGN}」不能同一次调用：" +
                 "amend 就是改约的正路（追加/修改/删除三条，经变更卡人批），不必再走 resign 重签老路。" +
                 "两条路各记各的账，一次只许走一条：只带 amend。"
-        else -> null
+        else -> goalCombo(args)
+    }
+
+    /**
+     * 482 的目标组合闸：目标是**开工那一刻**的事，与「收尾／改约」不能同一次说。
+     *
+     * 与 `pledge` 同调是**允许**的（派工单 §做②「与 347 军令状同批」）——一份话说完
+     * 「要做什么、凭什么算做完」，不拆成两次调用。
+     */
+    private fun goalCombo(args: JSONObject): String? {
+        if (!args.has(GoalRules.ARG_GOAL)) return null
+        return when {
+            args.has(PlanPledgeRules.ARG_CLOSEOUT) ->
+                "「${GoalRules.ARG_GOAL}」与「${PlanPledgeRules.ARG_CLOSEOUT}」不能同一次调用：" +
+                    "目标是开工时立的，结项是收尾时申报的——目标完成没完成由右相按判据判，" +
+                    "不收自己申报的结论。先立目标，收尾那次单独带 closeout。"
+            args.has(PlanPledgeRules.ARG_RESIGN) ->
+                "「${GoalRules.ARG_GOAL}」与「${PlanPledgeRules.ARG_RESIGN}」不能同一次调用：" +
+                    "立目标在开工，重签是立状之后改计划的事。"
+            args.has(PlanPledgeAmendRules.ARG_AMEND) ->
+                "「${GoalRules.ARG_GOAL}」与「${PlanPledgeAmendRules.ARG_AMEND}」不能同一次调用：" +
+                    "立目标与改约是两件事，一次只带一件。"
+            else -> null
+        }
     }
 
     private fun pledgeSchema() = jsonObjectOf(
@@ -885,6 +968,92 @@ internal object PlanPledgeSchemas {
             ),
         ),
         "required" to jsonArrayOf("reason"),
+        "additionalProperties" to false,
+    )
+
+    private fun goalSchema() = jsonObjectOf(
+        "type" to "object",
+        "description" to "目标模式（长任务或用户说「目标模式」时带）：一句话目标 ＋ 可机械验证的" +
+            "成功判据 ＋ 不做清单 ＋ 预算。与 pledge 同一次调用立起来（挂在军令状上，不另开清单）；" +
+            "之后每步前对照（越界停下问、超预算停下报），收尾由右相按判据判三态",
+        "properties" to jsonObjectOf(
+            "sentence" to jsonObjectOf(
+                "type" to "string",
+                "description" to "一句话说清这个任务要换来什么（≤160 字）",
+            ),
+            "criteria" to criteriaSchema(),
+            "boundaries" to boundarySchema(),
+            "budget" to goalBudgetSchema(),
+        ),
+        "required" to jsonArrayOf("sentence", "criteria", "budget"),
+        "additionalProperties" to false,
+    )
+
+    /** 成功判据的 schema 片段（482；拆出来是为了不把 [goalSchema] 撑成 detekt 的长函数）。 */
+    private fun criteriaSchema() = jsonObjectOf(
+        "type" to "array",
+        "description" to "成功判据。至少 1 条要能机械验证：kind=file ＋ path（收尾时机器去查它在不在）；" +
+            "kind=human 的只能人来判，会让结论停在「待验收」",
+        "items" to jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                "text" to jsonObjectOf("type" to "string", "description" to "满足什么算达成（≤60 字）"),
+                "kind" to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("file", "human"),
+                    "description" to "file=机器查（要 path）／human=人判",
+                ),
+                "path" to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "kind=file 必填：工作区内相对路径（例 产物/报告.md）",
+                ),
+            ),
+            "required" to jsonArrayOf("text", "kind"),
+            "additionalProperties" to false,
+        ),
+    )
+
+    /** 不做清单的 schema 片段（482）：一句话必填，点名 denyTools／denyPaths 才机械可比。 */
+    private fun boundarySchema() = jsonObjectOf(
+        "type" to "array",
+        "description" to "不做清单（这次明确不碰的事）。要机械拦就在条目里点名 denyTools／denyPaths；" +
+            "只写一句话也行，那种只靠模型自律",
+        "items" to jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                "text" to jsonObjectOf("type" to "string", "description" to "一句话（≤60 字）"),
+                "denyTools" to jsonObjectOf(
+                    "type" to "array",
+                    "description" to "点名不许调的工具",
+                    "items" to jsonObjectOf("type" to "string"),
+                ),
+                "denyPaths" to jsonObjectOf(
+                    "type" to "array",
+                    "description" to "点名不许碰的路径前缀（工作区相对）",
+                    "items" to jsonObjectOf("type" to "string"),
+                ),
+            ),
+            "required" to jsonArrayOf("text"),
+            "additionalProperties" to false,
+        ),
+    )
+
+    /** 预算的 schema 片段（482）：步数必填（没有分母就说不清「预算用了多少」）。 */
+    private fun goalBudgetSchema() = jsonObjectOf(
+        "type" to "object",
+        "properties" to jsonObjectOf(
+            "maxSteps" to jsonObjectOf(
+                "type" to "integer",
+                "minimum" to 1,
+                "description" to "步数上限（必填）：超过就停下报数",
+            ),
+            "maxMinutes" to jsonObjectOf(
+                "type" to "integer",
+                "minimum" to 0,
+                "description" to "时长上限（分钟，可省；0＝不限时）",
+            ),
+        ),
+        "required" to jsonArrayOf("maxSteps"),
         "additionalProperties" to false,
     )
 

@@ -136,6 +136,23 @@ internal object GovernanceCenterRules {
     fun dayOf(root: JSONObject?): String = root?.optString("day").orEmpty()
 
     /**
+     * 目标那一行（第四百八十二批）：`目标：… / 进度 3/5 步 / 预算用 40%`。
+     *
+     * **原样抄**出口给的 `line`——百分数是 [com.example.zhengdao.baopu.plan.GoalRules]
+     * 算好的（本层与屏幕都不许再算一次，322 判据②）。没有目标 ⇒ 出口说 unknown，
+     * 这里把那句原因原样带出来，不补「暂无」。
+     */
+    fun goal(root: JSONObject?): GovReading {
+        val sec = root?.optJSONObject("goal") ?: return GovReading("goal", UNKNOWN, "目标段没出来")
+        sec.optString("unknown").takeIf { it.isNotEmpty() }?.let { why ->
+            return GovReading("goal", UNKNOWN, why)
+        }
+        val line = sec.optString("line")
+        if (line.isEmpty()) return GovReading("goal", UNKNOWN, "出口没给这一格")
+        return GovReading("goal", line, sec.optString("stateCn"))
+    }
+
+    /**
      * 执行体三格。
      *
      * @param revokedAtMs 最近一次撤销的时刻（0 ＝没撤销过）

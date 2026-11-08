@@ -78,22 +78,35 @@ JSON 形状：`{"id": "<zdx-…>", "state": "active|revoked|rotated_out"}`；身
 
 JSON 形状：`{"total": <n>, "items": [{"key": "…", "since": "yyyy-MM-dd", "stage": "承诺|改了没|有没有变好|问过人了"}, …]}`；工作区根不可用 ⇒ `{"unknown": "<原因>"}`。档案文件不存在 ⇒ `{"total": 0, "items": []}`（没写过的档案是真零，不是读不到）。
 
+### 7. `goal` 目标（第四百八十二批新增，2026-11-08）
+
+| 名称 | 定义 | 来源 文件:函数 | 窗口 | 分母 0 怎么说 |
+|---|---|---|---|---|
+| `goal.sentence` | 这个任务的一句话目标（开工时立的原话，不转述、不改写） | `app/src/main/java/com/example/zhengdao/baopu/plan/GoalMode.kt`:`GoalStore.readGoal`（落点 `<工作区>/产物/.goal.json`） | 不适用（这次任务的状态） | 不适用 |
+| `goal.progress` | `已达成项数/状里的项数`（**分子分母都来自军令状**：`done` 是收口读数里有结局的项数，`total` 是冻结那一刻快照的项数；目标自己不存清单） | 同上；收口写入口 `GoalBoard.settle`（引擎收尾调） | 不适用 | 分母 0（没立状/没项）⇒ 不出现这一格：整段回 `unknown` |
+| `goal.budget` | 预算用量：`已用工具步数 ÷ 预算步数`，取整到整数百分比串（`40%`）。**算在 `GoalRules.percentText` 一处**，出口与屏幕都只抄字 | `GoalRules.percentText`；步数由 `GoalBoard.tickAndCheck` 数 | 不适用 | 预算步数为 0 ⇒ `未设`（**不编 0%**） |
+| `goal.line` | 屏幕上那一行：`目标：… / 进度 3/5 步 / 预算用 40%`（由 `GoalRules.progressLine` 一次拼好，逐字给屏幕抄） | `GoalRules.progressLine` | 不适用 | 同上 |
+| `goal.state` / `goal.stateCn` | 五值闭集：`active` 进行中／`achieved` 已达成／`failed` 未达成／`pending_review` 待验收／`stopped` 已停下。**`achieved` 只由 PASS 换来**（三态判据是 332 的 `Contracts.Status`，不另立一套） | `GoalRules.stateOf` | 不适用 | 不适用 |
+
+JSON 形状：`{"sentence":"…","state":"active","stateCn":"进行中","progress":"3/5","budget":"40%","pledge":"<状 id>","line":"目标：… / 进度 3/5 步 / 预算用 40%"}`；没立目标 ⇒ `{"unknown":"这次会话还没有立目标"}`（**不补一行「暂无」**：那会被读成一个读数）。
+
 ---
 
-## 二、工具出口形状（`governance_state` 返回的六段 JSON）
+## 二、工具出口形状（`governance_state` 返回的七段 JSON）
 
 ```
 {
-  "v": 1,
+  "v": 2,                          // 482 加 goal 段 ⇒ 形状版本 1 → 2
   "day": "yyyy-MM-dd",            // 当日（本地时区）＝ W1 窗口的那一天，读数与它对账
   "ratios":   { "violation": {…}, "misjudge": {…}, "intervention": {…}, "skip": {…} },
   "cards":    { "pass": 0, "card": 0, "compress": 0 },
   "gray":     { "<capability>": { "band": "…", "cn": "…" }, … },
   "conflicts":{ "pending_replay": 0 },
   "identity": { "id": "zdx-…", "state": "active" },
-  "openLoops":{ "total": 0, "items": [ … ] }
+  "openLoops":{ "total": 0, "items": [ … ] },
+  "goal":     { "sentence": "…", "state": "active", "progress": "3/5", "budget": "40%", "line": "目标：…" }
 }
 ```
 
-- `v` ＝ 本口径版本（1）；改口径先改本文件再升 `v`。
+- `v` ＝ 本口径版本（**2**）；改口径先改本文件再升 `v`。
 - **对拍判据**（527）：脚本（独立从账本原文重算）与工具出口**逐项相等**——`GovernanceStateToolTest` 是它的牙。

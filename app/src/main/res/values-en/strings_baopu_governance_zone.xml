@@ -10,6 +10,8 @@
     <string name="gc_reading_hint">Same numbers as the governance outlet; nothing is recomputed here</string>
     <string name="gc_reading_day">Day %1$s · same numbers as the governance outlet</string>
 
+    <string name="gc_section_goal">Goal</string>
+    <string name="gc_goal_hint">What this task is meant to deliver (same text as the governance port; not recomputed here)</string>
     <string name="gc_ratio_violation">Violation rate</string>
     <string name="gc_ratio_misjudge">Misjudge rate</string>
     <string name="gc_ratio_intervention">Intervention rate</string>

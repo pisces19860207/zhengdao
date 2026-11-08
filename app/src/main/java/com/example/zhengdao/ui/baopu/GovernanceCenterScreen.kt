@@ -125,6 +125,8 @@ internal fun GovernanceCenterScreen(
                 LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                     item { ReadingSection(snapshot) }
                     item { Spacer(Modifier.height(14.dp)) }
+                    item { GoalSection(snapshot) }
+                    item { Spacer(Modifier.height(14.dp)) }
                     item { ExecutorSection(snapshot) }
                     item { Spacer(Modifier.height(14.dp)) }
                     item {
@@ -230,6 +232,41 @@ private fun ReadingSection(snapshot: GovSnapshot) {
             modifier = Modifier.padding(bottom = 6.dp),
         )
         readings.forEach { r -> ReadingLine(labelOf(r.key), r.value, r.detail) }
+    }
+}
+
+/**
+ * ①′ 目标（第四百八十二批）：一行 —— `目标：… / 进度 3/5 步 / 预算用 40%`。
+ *
+ * 整行是出口给的字，本屏不拼、不算（322 判据②）；没有目标就显示「读不到」＋原因。
+ */
+@Composable
+private fun GoalSection(snapshot: GovSnapshot) {
+    val reading = remember(snapshot) { GovernanceCenterRules.goal(snapshot.root) }
+    SectionCard(title = stringResource(R.string.gc_section_goal)) {
+        if (!snapshot.ready) {
+            LoadingLine()
+            return@SectionCard
+        }
+        Text(
+            text = stringResource(R.string.gc_goal_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+        Text(
+            text = reading.value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (reading.detail.isNotEmpty()) {
+            Text(
+                text = reading.detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
     }
 }
 

@@ -18,6 +18,7 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.PlanRules.PlanItem
 import com.example.zhengdao.baopu.PlanStore
+import com.example.zhengdao.baopu.plan.GoalRules
 import com.example.zhengdao.baopu.plan.PlanPledgeAmendRules
 import com.example.zhengdao.baopu.plan.PlanPledgeBoard
 import com.example.zhengdao.baopu.plan.PlanPledgeRules
@@ -115,12 +116,14 @@ class PlanPledgeWiringTest {
         assertTrue("缺 pledge", props.has(PlanPledgeRules.ARG_PLEDGE))
         assertTrue("缺 closeout", props.has(PlanPledgeRules.ARG_CLOSEOUT))
         assertTrue("缺 resign", props.has(PlanPledgeRules.ARG_RESIGN))
+        // 482：目标模式挂同一个工具（不新开工具 ⇒ 入口净增 0）
+        assertTrue("缺 goal", props.has(GoalRules.ARG_GOAL))
         assertEquals(
             "properties 里原有键不许少（353 起 contract 也是 properties 的正式成员）",
             setOf("items", "contract"),
             props.keys().asSequence().toSet() - setOf(
                 PlanPledgeRules.ARG_PLEDGE, PlanPledgeRules.ARG_CLOSEOUT, PlanPledgeRules.ARG_RESIGN,
-                PlanPledgeAmendRules.ARG_AMEND,
+                PlanPledgeAmendRules.ARG_AMEND, GoalRules.ARG_GOAL,
             ),
         )
         assertEquals("required 不变（items 仍是唯一顶层必填）", listOf("items"), (0 until decorated.inputSchema.getJSONArray("required").length())

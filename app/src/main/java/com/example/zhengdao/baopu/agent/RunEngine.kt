@@ -60,6 +60,8 @@ import com.example.zhengdao.baopu.plan.ContractApprovalRules
 import com.example.zhengdao.baopu.plan.ContractDeviation
 import com.example.zhengdao.baopu.plan.ContractDeviationAction
 import com.example.zhengdao.baopu.plan.ContractDeviationRules
+import com.example.zhengdao.baopu.plan.GoalBoard
+import com.example.zhengdao.baopu.plan.GoalRules
 import com.example.zhengdao.baopu.plan.PlanContractBoard
 import com.example.zhengdao.baopu.plan.PlanContractCards
 import com.example.zhengdao.baopu.plan.PlanContractRules
@@ -2027,6 +2029,9 @@ internal class RunEngine(
         // 落点不写盘。放在复位之前：channel-broken 的早退收尾也要过结项门（有状就对账），
         // 而 150 批 A 的复位必须紧贴 channelBroken 判断（RunEngineConcurrencyGateTest 钉死）。
         PlanPledgeBoard.attach(listOf(MemoryLayout.memoryDir(spillRoot())))
+        // 第四百八十二批：目标账的落点（`<工作区>/产物/.goal.json`）同一处接好。
+        // attach 只设落点并把盘上那份目标接回来（跨轮续跑认账），不写盘。
+        GoalBoard.attach(spillRoot())
         resetRunScopedCounters(sessionId)
         if (channelBroken) {
             // 150批 G：早退也收尾——旧行为只切 ABORTED，run_log 没有 Aborted 行、
@@ -2270,6 +2275,13 @@ internal class RunEngine(
         // 判任务态才立单；目标＝用户原话、范围＝产物目录、预算＝常单档（真值见 RunContractWiring）。
         // 建完立刻"前置读"一次：目标/范围/预算拼进本轮上下文（模型真读得到），痕迹进运行日志。
         turnUserText = if (!resumed) userText?.trim().takeUnless { it.isNullOrEmpty() } else null
+        // 第四百八十二批②：用户说「目标模式」⇒ 本轮第一件事是立目标。
+        // 只加一句**提示**，不动 347 的立状线（长任务照 347 问开工卡，目标在同一份话里带上）；
+        // 短任务说这三个字也照样提示——模型会如实说清「得先立状」。
+        if (turnUserText?.contains(GoalRules.GOAL_MODE_WORD) == true) {
+            turnNotes = turnNotes + GoalRules.GOAL_MODE_NOTE
+            log("抱朴目标：用户开了目标模式（本轮要求先立 goal）")
+        }
         val runOrder = turnUserText
             ?.takeIf { TaskModeBoundary.classify(it) == TaskMode.TASK }
             ?.let { RunContractWiring.startRun(roundRunId, it) }
@@ -2526,6 +2538,17 @@ internal class RunEngine(
                         pledgeCloseoutNotice =
                             "【军令状收口】完成：${pledgeVerdict.ended.size}/${pledgeVerdict.total} 项全部有结局。"
                     }
+                    // ── 第四百八十二批④：目标收尾（右相按判据判三态）─────────────────
+                    // 判据是开工时立的那些：文件类由机器真去查（工作区里在不在），
+                    // 三态直接复用 332 的 Contracts.Status —— 不写第二套 PASS/FAIL。
+                    // PASS 才「已达成」，判不了就停在「待验收」；只出 notice 与账行，
+                    // 不进上面的修复回路（报数不拦人，与 227 §0.5 同一条纪律）。
+                    val goalNotice = GoalBoard.settle(
+                        pledgeVerdict?.ended?.size ?: 0,
+                        pledgeVerdict?.total ?: 0,
+                        { rel -> File(spillRoot(), rel).exists() },
+                        System.currentTimeMillis(),
+                    )?.notice
                     // 227 §0.5：产物闸之外，再对**回答本身**跑三条程序判据（纯问答轮也验收）。
                     // 只报可疑、只进 notice 与日志——**不进上面的修复回路**（不阻断、不判卷）。
                     // 工作/创作模式还没有设置项（173ac 只到设计，未实现），拿不准按工作模式。
@@ -2575,6 +2598,10 @@ internal class RunEngine(
                     // 没立状 ⇒ 读数为 null，一个字不加）。
                     pledgeCloseoutNotice?.let { p ->
                         _notice.value = _notice.value?.let { cur -> "$cur $p" } ?: p
+                    }
+                    // 482：目标那一句贴在同一层（「已达成」才说达成，判不了就说待验收）。
+                    goalNotice?.let { g ->
+                        _notice.value = _notice.value?.let { cur -> "$cur $g" } ?: g
                     }
                     // 378②：契约验收没过 ⇒ 同样贴在最外层（过了不贴——PASS 不打扰）。
                     contractNotice?.let { c ->
@@ -5001,7 +5028,32 @@ internal class RunEngine(
      */
     private fun preExecutionGate(call: ToolCall): GuardPipeline.Result.Failed? {
         pledgeComboGate(call)?.let { return it }
+        goalStepGate(call)?.let { return it }
         return askModeGate(call)
+    }
+
+    /**
+     * 目标模式的每步对照（第四百八十二批③的引擎侧；判据全在 [GoalRules.stepCheck]）。
+     *
+     * 三种结局，两种停：
+     * - **越界**（这一步落在目标的不做清单里）⇒ 停并**问**：不执行、原话回灌让模型先问用户；
+     * - **超预算**（步数或时长过了）⇒ 停并**报**：不执行、原话回灌让模型把进度报上来；
+     * - 其余 ⇒ 放行（没目标时本闸一个字都不说，今天的路径逐字节不变）。
+     *
+     * `ask_user`／`update_plan` 任何时刻放行（[GoalRules.ALWAYS_ALLOWED]）：把它们也拦掉，
+     * 「停并问」「停并报」就变成了哑掉。
+     */
+    private fun goalStepGate(call: ToolCall): GuardPipeline.Result.Failed? {
+        val goal = GoalBoard.active() ?: return null
+        val check = GoalBoard.tickAndCheck(
+            goal,
+            call.name,
+            GoalRules.pathsOf(call.arguments),
+            System.currentTimeMillis(),
+        )
+        if (check !is GoalRules.StepCheck.Stop) return null
+        log("抱朴目标：${check.kind.cn} ⇒ 这一步不执行（${call.name}）")
+        return GuardPipeline.Result.Failed(call = call, error = check.message)
     }
 
     /**
@@ -5184,6 +5236,10 @@ internal class RunEngine(
         )?.let { recovered ->
             PlanPledgeBoard.seed(recovered.snapshot, recovered.failures, priorChanges = recovered.changes)
         }
+        // 482 续跑：目标账（`产物/.goal.json`）在同一处接回——盘上是权威，读不到就是没目标
+        // （不编一份）。[GoalBoard.attach] 只读不写；接回来的是「进度/预算已用」的实数，
+        // 重启后不许把完成度归零。
+        GoalBoard.attach(spillRoot())
     }
 
     /**

@@ -34,6 +34,8 @@ import com.example.zhengdao.baopu.inspect.Metrics
 import com.example.zhengdao.baopu.inspect.MutualLedger
 import com.example.zhengdao.baopu.inspect.PatrolEntry
 import com.example.zhengdao.baopu.inspect.PatrolLedger
+import com.example.zhengdao.baopu.plan.GoalRules
+import com.example.zhengdao.baopu.plan.GoalStore
 import java.io.File
 import java.time.ZoneId
 import org.json.JSONArray
@@ -50,8 +52,8 @@ internal object GovernanceStateTool {
 
     const val NAME = "governance_state"
 
-    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升）。 */
-    const val VERSION = 1
+    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2）。 */
+    const val VERSION = 2
 
     /** 未闭环 top-N（metrics-registry.md §6：挂账最久的前 N 条；写死不参数化）。 */
     const val OPEN_LOOP_TOP = 10
@@ -73,10 +75,11 @@ internal object GovernanceStateTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
-        description = "读本机治理出口的六段只读读数（不改任何东西）：ratios 四率" +
+        description = "读本机治理出口的七段只读读数（不改任何东西）：ratios 四率" +
             "（违规/误判/干预/跳过，当日窗）、cards 弹卡三数（今日自动放过/问卡/压卡）、" +
             "gray 灰度档（逐能力当前档）、conflicts 冲突队列条数（待回放）、identity 执行体身份、" +
-            "openLoops 未闭环承诺 top-10。口径唯一真相在 docs/metrics-registry.md：分母 0 回 " +
+            "openLoops 未闭环承诺 top-10、goal 目标（一句话目标/进度/预算用量）。" +
+            "口径唯一真相在 docs/metrics-registry.md：分母 0 回 " +
             "no_sample，不编 0%；读不到的段回 unknown 加原因，不抛异常。（这个工具在 FILES 组：" +
             "看不到就先 capabilities 解锁）",
         inputSchema = jsonObjectOf(
@@ -103,6 +106,7 @@ internal object GovernanceStateTool {
             .put("conflicts", conflictsSection())
             .put("identity", identitySection())
             .put("openLoops", openLoopsSection(workspaceRoot))
+            .put("goal", goalSection(workspaceRoot))
         return ToolOutcome.Ok(json.toString())
     }
 
@@ -269,6 +273,25 @@ internal object GovernanceStateTool {
 
     /** 段降级（527 判据：读不到 ⇒ unknown＋原因，不抛异常）。 */
     private fun unknown(reason: String): JSONObject = JSONObject().put("unknown", reason)
+
+    /**
+     * 第七段：目标（第四百八十二批）。
+     *
+     * 「目标：… / 进度 3/5 步 / 预算用 40%」这一行的**唯一来源**：百分数由
+     * [GoalRules.percentText] 算好，本工具与屏幕都不再算（322 判据：判据层没有算术）。
+     * 没有立目标 ⇒ `{"unknown": …}`，不补一行「暂无」冒充读数。
+     */
+    private fun goalSection(workspace: File): JSONObject {
+        val goal = GoalStore.readGoal(workspace) ?: return unknown("这次会话还没有立目标")
+        return JSONObject()
+            .put("sentence", goal.sentence)
+            .put("state", goal.state.wire)
+            .put("stateCn", goal.state.cn)
+            .put("progress", "${goal.done}/${goal.total}")
+            .put("budget", GoalRules.percentText(goal.stepsUsed, goal.budget.maxSteps))
+            .put("pledge", goal.pledgeId)
+            .put("line", GoalRules.progressLine(goal))
+    }
 
     /** 当日归属（本地日历天；与体检/账本同一把尺）。 */
     private fun isToday(atMs: Long, nowMs: Long): Boolean =
