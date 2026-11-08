@@ -405,4 +405,32 @@ class GoalModeTest {
             ws.deleteRecursively()
         }
     }
+
+    // ── 接线缝：并行段不许绕过同一道闸（482 自查抓到的真洞）────────────────────
+
+    @Test
+    fun `并行段也过同一道出卡前闸_换个写法绕不过去`() {
+        val src = runEngineSource()
+        val at = src.indexOf("private fun runParallelStage(")
+        assertTrue("runParallelStage 不见了（引擎结构变了要回来重钉）", at >= 0)
+        val body = src.substring(at, minOf(src.length, at + 4_000))
+        assertTrue(
+            "并行段必须调 preExecutionGate：只在 handleSerialCall 里判 ⇒ 模型一次发多个并行读" +
+                "就能绕过越界与预算（482 修的就是这个洞）",
+            body.contains("preExecutionGate(call)"),
+        )
+        assertEquals(
+            "闸在并行段只许挂一处（两处＝同一个调用数两次预算）",
+            1,
+            Regex("""preExecutionGate\(""").findAll(body).count(),
+        )
+    }
+
+    /** 引擎源码（源级门禁照 `GovernanceCenterGateTest` 的找法：三候选路径）。 */
+    private fun runEngineSource(): String {
+        val suffix = "src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt"
+        val candidates = listOf(suffix, "../app/$suffix", "app/$suffix")
+        return candidates.map(::File).firstOrNull(File::isFile)?.readText(Charsets.UTF_8)
+            ?: throw AssertionError("找不到 RunEngine.kt（工作目录 ${File(".").absolutePath}）")
+    }
 }

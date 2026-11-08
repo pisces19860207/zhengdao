@@ -5402,6 +5402,16 @@ internal class RunEngine(
         val ready = ArrayList<GuardPipeline.Prepared.Ready>(stage.calls.size)
         for (call in stage.calls) {
             val before = System.currentTimeMillis()
+            // 第四百八十二批（接线缝）：**并行段也过同一道出卡前闸**。
+            // 三条判据（347 军令状组合／482 目标越界与预算／378 闲聊弹卡）只认工具名与参数，
+            // 与"串行还是并行"无关；只在 handleSerialCall 里判＝换个写法（模型一次发多个并行读）
+            // 就能绕过越界与预算。被挡的调用与串行走**同一条**收口（handleResultAndTrace），
+            // 失败原话照样回灌。
+            preExecutionGate(call)?.let { blocked ->
+                val flow = handleResultAndTrace(sessionId, step, call, blocked, history, before)
+                if (flow != ToolResultFlow.CONTINUE) return flow
+                continue
+            }
             // 第二百四十二批：读动作同样受契约上限管（判据 3 不区分读写——
             // 「读计划外的目录」也是计划外动作，不能因为不改盘就事后追报）。
             when (val p = contractDeviationInLane(call, pipeline.prepare(call))) {
