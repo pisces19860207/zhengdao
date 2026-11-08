@@ -404,6 +404,16 @@ internal object GoalRules {
         Status.UNVERIFIABLE -> "【目标】待验收：${verdict.reasons.joinToString("；")}——停下等你看"
     }
 
+    /**
+     * 被打断的那条收尾路（中止／停止／熔断）：说「已停下」而不是「未达成」。
+     *
+     * 两件事不一样：判据没兑现是事实，但「没跑完」不等于「判了不过」。中止时照样把
+     * 未兑现的条目列全，读数一个不少。
+     */
+    fun stoppedNotice(goal: Goal, verdict: Verdict): String =
+        "【目标】已停下：进度 ${goal.done}/${goal.total} 步" +
+            (if (verdict.reasons.isEmpty()) "（判据全兑现）" else "；未兑现：${verdict.reasons.joinToString("；")}")
+
     /** 立起来时回灌的一句（模型必须知道头上有一个目标在管着）。 */
     fun frozenAck(goal: Goal): String =
         "【目标已立】${goal.sentence}｜判据 ${goal.criteria.size} 条（可机械验证 " +
@@ -658,14 +668,33 @@ internal object GoalBoard {
     /**
      * 收尾：右相按判据判三态、落盘、回一句要贴的 notice。
      *
+     * **每条收尾路都要过这里**（正常完成／中止／停止／熔断）：只在「模型不再调工具」那条路结，
+     * 被打断的任务就会永远挂在「进行中」——那正是「说不清完成没完成」的另一种形态。
+     *
+     * 一轮**只结一次**：已结过（状态不是进行中）⇒ 返 null，不重写账、不重复贴话
+     * （军令状板子「一轮只结一次」同一条口径）。
+     *
      * @param done 收口读数里有结局的项数（军令状给的；没有状 ⇒ 传 0）
-     * @return null ＝本来就没目标（不编读数）
+     * @param stopped 这次收尾是被打断的（中止/停止/熔断）⇒ 判据没全兑现时记「已停下」而不是「未达成」
+     * @return null ＝本来就没目标／已经结过（不编读数）
      */
-    fun settle(done: Int, total: Int, exists: (String) -> Boolean, atMs: Long): GoalRules.Outcome? {
+    fun settle(
+        done: Int,
+        total: Int,
+        exists: (String) -> Boolean,
+        atMs: Long,
+        stopped: Boolean = false,
+    ): GoalRules.Outcome? {
         val current = active ?: return null
+        if (current.state != GoalRules.GoalState.ACTIVE) return null
         val verdict = GoalRules.judge(current, exists)
+        val state = when {
+            verdict.status == Status.PASS -> GoalRules.GoalState.ACHIEVED
+            stopped -> GoalRules.GoalState.STOPPED
+            else -> GoalRules.stateOf(verdict.status)
+        }
         val next = current.copy(
-            state = GoalRules.stateOf(verdict.status),
+            state = state,
             done = done.coerceIn(0, if (total > 0) total else done),
             total = if (total > 0) total else current.total,
             stepsUsed = used,
@@ -677,7 +706,12 @@ internal object GoalBoard {
             "抱朴目标：收尾 ${next.state.cn}（判据 ${next.criteria.size} 条，进度 ${next.done}/${next.total} 步，" +
                 "预算用 ${GoalRules.percentText(next.stepsUsed, next.budget.maxSteps)}）",
         )
-        return GoalRules.Outcome(next, verdict, GoalRules.settleNotice(next, verdict))
+        val notice = if (state == GoalRules.GoalState.STOPPED) {
+            GoalRules.stoppedNotice(next, verdict)
+        } else {
+            GoalRules.settleNotice(next, verdict)
+        }
+        return GoalRules.Outcome(next, verdict, notice)
     }
 
     /**

@@ -3623,8 +3623,7 @@ internal class RunEngine(
         }
     }
 
-    private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {
-        // 第二百四十二批 D 段：中止／熔断／停止这几条收尾路也要结账（正常完成那条在贴
+    private fun settle(sessionId: Long, step: Int, state: RunState, runLogState: String, err: String = "") {        // 第二百四十二批 D 段：中止／熔断／停止这几条收尾路也要结账（正常完成那条在贴
         // notice 时已经结过，这里只会取回同一份——板上"一轮只结一次"）。
         // 没契约 ⇒ reconcile() 立刻返 null，一个字不记、一句不说：这一层完全惰性。
         PlanContractBoard.reconcile()
@@ -3632,6 +3631,10 @@ internal class RunEngine(
         // notice 时结过，这里取回同一份——板上"一轮只结一次"）。没状 ⇒ null：
         // 无状任务不设门，一行不记，完全惰性（不许事后补状掩盖漏项）。
         PlanPledgeBoard.settle(planController.doneTexts(), System.currentTimeMillis())
+        // 第四百八十二批④（收口那条链的最后一格）：目标在**每条**收尾路上都要结——
+        // 中止／停止／熔断同样过（正常完成那条在贴 notice 时结过，板子「一轮只结一次」⇒
+        // 这里返 null，不重写账、不重复贴话）。判据照判；被打断的记「已停下」而不是「未达成」。
+        closeGoalOnSettle(stopped = state != RunState.DONE)
         // **必须等落库真的完成**：db.write 返回的是 Future（单写者线程 submit 排队），
         // 只调用不 get 就等于"先切状态、收尾行稍后才落"。2026-10-17 真机复现：
         // 一轮 3 步正常完成后显示「上次中断于第 3 步」——就是这一瞬被 UI 读到了。
@@ -3647,6 +3650,27 @@ internal class RunEngine(
         // 放在最后是有意的：状态先切给 UI、通道先排空，反思读的才是刚 `.get()` 落完库的这一轮轨迹；
         // 也绝不在轮次**开始**时调——那时本轮一行轨迹都还没写，反思的是残缺状态（负例②）。
         reflectOnSettled()
+    }
+
+    /**
+     * 收尾路上的目标结项（第四百八十二批④）。
+     *
+     * 为什么单列一个函数：`settle()` 已经有九件事（读偏差账、反思、切状态…），再塞一段判定
+     * 会把它的圈复杂度顶过 detekt 的线；而且这段与「收口」这一个语义绑在一起，读起来也该独立。
+     *
+     * 惰性：没目标／已经结过 ⇒ [GoalBoard.settle] 返 null，这里一个字节不写、一句不说。
+     */
+    private fun closeGoalOnSettle(stopped: Boolean) {
+        val verdict = PlanPledgeBoard.lastVerdict()
+        val outcome = GoalBoard.settle(
+            verdict?.ended?.size ?: 0,
+            verdict?.total ?: 0,
+            { rel -> File(spillRoot(), rel).exists() },
+            System.currentTimeMillis(),
+            stopped = stopped,
+        ) ?: return
+        log("抱朴目标（收尾路）：${outcome.goal.state.cn}（进度 ${outcome.goal.done}/${outcome.goal.total}）")
+        _notice.value = _notice.value?.let { cur -> "$cur ${outcome.notice}" } ?: outcome.notice
     }
 
     /**

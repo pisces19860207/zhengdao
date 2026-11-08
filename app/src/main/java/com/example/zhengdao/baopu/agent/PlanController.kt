@@ -973,8 +973,8 @@ internal object PlanPledgeSchemas {
 
     private fun goalSchema() = jsonObjectOf(
         "type" to "object",
-        "description" to "目标模式（长任务或用户说「目标模式」时带）：一句话目标 ＋ 可机械验证的" +
-            "成功判据 ＋ 不做清单 ＋ 预算。与 pledge 同一次调用立起来（挂在军令状上，不另开清单）；" +
+        "description" to "目标模式（长任务或用户说「目标模式」时带）：一句话目标，" +
+            "可机械验证的成功判据，不做清单，预算。与 pledge 同一次调用立起来（挂在军令状上，不另开清单）；" +
             "之后每步前对照（越界停下问、超预算停下报），收尾由右相按判据判三态",
         "properties" to jsonObjectOf(
             "sentence" to jsonObjectOf(

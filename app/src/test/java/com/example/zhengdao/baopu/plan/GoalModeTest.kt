@@ -433,4 +433,72 @@ class GoalModeTest {
         return candidates.map(::File).firstOrNull(File::isFile)?.readText(Charsets.UTF_8)
             ?: throw AssertionError("找不到 RunEngine.kt（工作目录 ${File(".").absolutePath}）")
     }
+
+    // ── 收口那条链：每条收尾路都要结、且一轮只结一次（482 ④ 的后半）────────────
+
+    @Test
+    fun `一轮只结一次_结过再结返null且不重写账`() {
+        val ws = Files.createTempDirectory("goal-482-once").toFile()
+        try {
+            GoalBoard.attach(ws)
+            val draft = (GoalRules.parse(args(), hasPledge = true) as GoalRules.GoalParse.Ok).draft
+            GoalBoard.freeze(draft, pledge(), 1_000L, 7L)
+            val first = GoalBoard.settle(5, 5, { true }, 2_000L)!!
+            assertEquals(GoalRules.GoalState.ACHIEVED, first.goal.state)
+            val firstAt = GoalStore.readGoal(ws)!!.atMs
+            // 正常完成那条路先结过，收尾函数（中止/停止/熔断那条）还会再调一次
+            assertNull("已经结过就不许再结（否则同一轮写两次账、贴两遍话）", GoalBoard.settle(5, 5, { true }, 9_999L))
+            assertEquals("账上的时刻不许被第二次调改写", firstAt, GoalStore.readGoal(ws)!!.atMs)
+        } finally {
+            ws.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `被打断的收尾记已停下_不写成未达成`() {
+        val ws = Files.createTempDirectory("goal-482-stop").toFile()
+        try {
+            GoalBoard.attach(ws)
+            val draft = (GoalRules.parse(args(), hasPledge = true) as GoalRules.GoalParse.Ok).draft
+            GoalBoard.freeze(draft, pledge(), 1_000L, 7L)
+            val outcome = GoalBoard.settle(2, 5, { false }, 2_000L, stopped = true)!!
+            assertEquals("中止不是「判了不过」，是「没跑完」", GoalRules.GoalState.STOPPED, outcome.goal.state)
+            assertTrue("话要说是停下：${outcome.notice}", outcome.notice.contains("已停下"))
+            assertFalse("也不许冒充达成：${outcome.notice}", outcome.notice.contains("已达成"))
+            assertEquals(GoalRules.GoalState.STOPPED, GoalStore.readGoal(ws)!!.state)
+        } finally {
+            ws.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `没跑完但判据全兑现时_停下也说判据全兑现`() {
+        val goal = goalOf()
+        val text = GoalRules.stoppedNotice(goal, GoalRules.judge(goal) { true })
+        assertTrue(text, text.contains("已停下"))
+        assertTrue(text, text.contains("判据全兑现"))
+    }
+
+    // ── 467 合入后的顺序回归（用户令：租约先、目标后）──────────────────────────
+
+    @Test
+    fun `落库顺序_契约与taskId回填在目标落板之前`() {
+        val src = planControllerSource()
+        val taskId = src.indexOf("TaskGrantWire.contractDigest")
+        val goalLanding = src.indexOf("goalLandingNote(goalParse.draft")
+        assertTrue("契约那段或目标落板那一段不见了：$taskId/$goalLanding", taskId >= 0 && goalLanding >= 0)
+        assertTrue(
+            "顺序必须是「租约/契约（taskId 回填）先、目标落板后」——目标挂在状上，" +
+                "状没冻结就立不起来；把目标挪到契约之前会让它拿到一份还没入效的状",
+            taskId < goalLanding,
+        )
+    }
+
+    /** `PlanController` 源码（同 [runEngineSource] 的找法）。 */
+    private fun planControllerSource(): String {
+        val suffix = "src/main/java/com/example/zhengdao/baopu/agent/PlanController.kt"
+        val candidates = listOf(suffix, "../app/$suffix", "app/$suffix")
+        return candidates.map(::File).firstOrNull(File::isFile)?.readText(Charsets.UTF_8)
+            ?: throw AssertionError("找不到 PlanController.kt（工作目录 ${File(".").absolutePath}）")
+    }
 }
