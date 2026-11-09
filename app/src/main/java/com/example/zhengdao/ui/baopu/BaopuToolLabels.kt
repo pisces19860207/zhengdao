@@ -65,6 +65,10 @@ internal object BaopuToolLabels {
         "todo_add" to R.string.baopu_tool_todo_add,
         "todo_list" to R.string.baopu_tool_todo_list,
         "todo_mark_done" to R.string.baopu_tool_todo_mark_done,
+        // 544：项目账本三件（FILES 组，同 541 免解锁口径；漏一行 ⇒ 设置页开工具卡直接抛）
+        "ledger_add" to R.string.baopu_tool_ledger_add,
+        "ledger_status" to R.string.baopu_tool_ledger_status,
+        "ledger_list" to R.string.baopu_tool_ledger_list,
         "book_outline" to R.string.baopu_tool_book_outline,
         "file_info" to R.string.baopu_tool_file_info,
         "write_file" to R.string.baopu_tool_write_file,
@@ -183,6 +187,10 @@ internal object BaopuToolLabels {
         "todo_add" to R.string.baopu_tool_todo_add_desc,
         "todo_list" to R.string.baopu_tool_todo_list_desc,
         "todo_mark_done" to R.string.baopu_tool_todo_mark_done_desc,
+        // 544：项目账本三件（读一件、立/改各一件；"已收只认右相 PASS"的口径写进第二句）
+        "ledger_add" to R.string.baopu_tool_ledger_add_desc,
+        "ledger_status" to R.string.baopu_tool_ledger_status_desc,
+        "ledger_list" to R.string.baopu_tool_ledger_list_desc,
         "book_outline" to R.string.baopu_tool_book_outline_desc,
         "file_info" to R.string.baopu_tool_file_info_desc,
         "write_file" to R.string.baopu_tool_write_file_desc,

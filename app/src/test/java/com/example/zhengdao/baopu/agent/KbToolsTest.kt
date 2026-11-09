@@ -224,10 +224,11 @@ class KbToolsTest {
             // 分组：资料库组（组级默认不可见；kb_search 走 157 的默认可见名单，见下）
             assertEquals(ToolGroup.LIBRARY, spec.group)
         }
-        // 默认可见 25 条（19 ＋ 542 的三件免解锁：board_read / board_write / governance_state
-        // ＋ 541 待办中心三件：todo_add / todo_list / todo_mark_done——
+        // 默认可见 28 条（19 ＋ 542 的三件免解锁：board_read / board_write / governance_state
+        // ＋ 541 待办中心三件：todo_add / todo_list / todo_mark_done
+        // ＋ 544 项目账本三件：ledger_add / ledger_status / ledger_list——
         // 它们不进组级默认可见，但走 UNLOCK_FREE_SILENT 那条免解锁通路，所以确实在 tools 数组里）
-        assertEquals(25, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
+        assertEquals(28, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
     }
 
     @Test

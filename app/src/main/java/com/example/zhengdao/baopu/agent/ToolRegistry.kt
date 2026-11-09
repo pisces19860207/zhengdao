@@ -8,6 +8,9 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.mcp.McpSelfService
+import com.example.zhengdao.baopu.ledger.LedgerAddTool
+import com.example.zhengdao.baopu.ledger.LedgerListTool
+import com.example.zhengdao.baopu.ledger.LedgerStatusTool
 import com.example.zhengdao.baopu.todo.TodoAddTool
 import com.example.zhengdao.baopu.todo.TodoListTool
 import com.example.zhengdao.baopu.todo.TodoMarkDoneTool
@@ -212,6 +215,8 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
         val UNLOCK_FREE_SILENT: Set<String> = setOf(
             "board_read", "board_write", "governance_state",
             "todo_add", "todo_list", "todo_mark_done",
+            // 544：项目账本三件同理（用户 2026-11-09 派工单「三工具免解锁、不在 capabilities 清单」）
+            "ledger_add", "ledger_status", "ledger_list",
         )
 
         /**
@@ -321,6 +326,13 @@ internal object ToolGroupTable {
         "todo_add" to ToolGroup.FILES,
         "todo_list" to ToolGroup.FILES,
         "todo_mark_done" to ToolGroup.FILES,
+        // 544：项目账本三件（`.zd-ledger.jsonl` 的工作账）——同 FILES、同「免解锁不进名册」口径。
+        // ⚠️ `ledger_archive` **故意两处都不登记**（ENTRIES 与这张表）：它不是工具，只由界面调
+        // `LedgerStore.archive(actor = USER)`。哪天有人把它当工具加进来，`LedgerCenterTest`
+        // 那条「注册表里没有 ledger_archive」当场红——「归档只有用户能点」不靠注释守。
+        "ledger_add" to ToolGroup.FILES,
+        "ledger_status" to ToolGroup.FILES,
+        "ledger_list" to ToolGroup.FILES,
         "move_path" to ToolGroup.FILES,
         "convert_encoding" to ToolGroup.FILES,
         "delete_path" to ToolGroup.FILES,
@@ -1402,6 +1414,11 @@ internal object BaopuToolCatalog {
         "todo_add",
         "todo_list",
         "todo_mark_done",
+        // 544：项目账本三件默认「启用」（组归 FILES；同 541 口径——免解锁、锁着也可调）。
+        // 漏了这三行 ⇒ 注册了但默认关，模型永远看不见账本。
+        "ledger_add",
+        "ledger_status",
+        "ledger_list",
         "book_outline",
         "file_info",
         "write_file",
@@ -1554,6 +1571,12 @@ internal object BaopuToolCatalog {
         Entry("todo_add") { TodoAddTool.spec(it) },
         Entry("todo_list") { TodoListTool.spec(it) },
         Entry("todo_mark_done") { TodoMarkDoneTool.spec(it) },
+        // 544：项目账本三件（`<工作区>/.zd-ledger.jsonl`；点号开头 ⇒ 不计入「产物 N 件」，同 512/541 口径）。
+        // 五态（在飞/待验收/已收/冻结/撤）与"已收只认右相 PASS"的闸都在 ledger 包：
+        // 标「已收」即送右相（LedgerVerify），PASS 才落已收；归档只由界面调 LedgerStore.archive 追加一行。
+        Entry("ledger_add") { LedgerAddTool.spec(it) },
+        Entry("ledger_status") { LedgerStatusTool.spec(it) },
+        Entry("ledger_list") { LedgerListTool.spec(it) },
         Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },

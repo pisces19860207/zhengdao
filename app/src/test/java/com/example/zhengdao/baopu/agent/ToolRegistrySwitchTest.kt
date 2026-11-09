@@ -88,6 +88,8 @@ class ToolRegistrySwitchTest {
                 "board_read", "board_write",
                 // 541：待办中心三件（同 322 口径：默认不可见但默认启用，表序即注册序）
                 "todo_add", "todo_list", "todo_mark_done",
+                // 544：项目账本三件（同 541 口径：默认不可见但默认启用，表序即注册序）
+                "ledger_add", "ledger_status", "ledger_list",
                 "book_outline",
                 "file_info", "write_file", "edit_file", "move_path", "convert_encoding",
                 // 第二百六十九批：打包/解包（表序即注册序，convert_encoding 之后）

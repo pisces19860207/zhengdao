@@ -437,6 +437,11 @@ internal data class RiskTable(
                 "todo_list" to ToolRule(RiskClass.R0),
                 "todo_add" to ToolRule(RiskClass.R1),
                 "todo_mark_done" to ToolRule(RiskClass.R1),
+                // ── 544 项目账本三件：看 R0（只读账）；立/改 写 R1（只写工作区 `.zd-ledger.jsonl`，
+                // 不动用户文件、不联网）。标「已收」时右相只读两本账，不产生新的外部后果 ⇒ 仍 R1。
+                "ledger_list" to ToolRule(RiskClass.R0),
+                "ledger_add" to ToolRule(RiskClass.R1),
+                "ledger_status" to ToolRule(RiskClass.R1),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
                 // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────
