@@ -2,42 +2,6 @@
  "lists": {
   "A": [
    {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 17,
-    "list": "A",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：准入「品行考」出题链——345 批③的四道坏题题面。判卷 ConductExam 已随 427 进生产（agent/GuardPipeline.kt:479 → intake/AdmissionWiring.kt:91 → AdmissionFlow.run:133-136 → policy/CapabilityProfile.kt:137），但喂的是空卷（AdmissionWiring.kt:96-98 probeTraces／conductTraces 都是 emptyMap，按 345「未考＝没过」只登记不拦人）⇒ 缺的是「出题＋取证」那一半，题面至今零引用。接在出题链落地那批（未立项）",
-    "package": "com.example.zhengdao.baopu.intake",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "ExamTasks",
-    "test_refs": [],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProbes.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 14,
-    "list": "A",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：准入「探针层」出题链——345 批②的五枚探针题面。判卷 IntakeProbes 同样随 427 可达（CapabilityProfile.kt:133 examine 调 runAll），实跑的也是空集（AdmissionWiring.kt:96 emptyMap）⇒ 题面零引用；与 ExamTasks 同一批出题链落地后一并复核",
-    "package": "com.example.zhengdao.baopu.intake",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "ProbeTasks",
-    "test_refs": [],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
     "debug_only_refs": [
      {
       "file": "app/src/debug/java/com/example/zhengdao/browser/offscreen/OffscreenProbeActivity.kt",
@@ -256,12 +220,12 @@
   ]
  },
  "summary": {
-  "A": 3,
+  "A": 1,
   "B": 2,
   "C": 4,
   "gates_with_write_path": 1,
-  "not_wired": 4,
+  "not_wired": 2,
   "production_top_level_public": 460,
-  "wired": 455
+  "wired": 457
  }
 }

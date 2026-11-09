@@ -1,14 +1,6 @@
 {
   "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删（只列不删）。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。543（2026-11-08）刷新：旧账 389 是 473 批以前的时点，当场重算 458（A3／B2／C4），逐条按落地事实重裁，证据行号以 origin/main@5c845ee6 为准。",
   "A": {
-    "ExamTasks": {
-      "verdict": "wired",
-      "note": "谁接：准入「品行考」出题链——345 批③的四道坏题题面。判卷 ConductExam 已随 427 进生产（agent/GuardPipeline.kt:479 → intake/AdmissionWiring.kt:91 → AdmissionFlow.run:133-136 → policy/CapabilityProfile.kt:137），但喂的是空卷（AdmissionWiring.kt:96-98 probeTraces／conductTraces 都是 emptyMap，按 345「未考＝没过」只登记不拦人）⇒ 缺的是「出题＋取证」那一半，题面至今零引用。接在出题链落地那批（未立项）"
-    },
-    "ProbeTasks": {
-      "verdict": "wired",
-      "note": "谁接：准入「探针层」出题链——345 批②的五枚探针题面。判卷 IntakeProbes 同样随 427 可达（CapabilityProfile.kt:133 examine 调 runAll），实跑的也是空集（AdmissionWiring.kt:96 emptyMap）⇒ 题面零引用；与 ExamTasks 同一批出题链落地后一并复核"
-    },
     "OffscreenCaptureProbe": {
       "verdict": "not_urgent",
       "note": "理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），只有 app/src/debug/.../OffscreenProbeActivity.kt:21／:25 引用，release 不可达；属复现证据不是生产功能，留作对照不删（503 悬空清单同一件，508／509 未处置）"
