@@ -267,11 +267,21 @@ internal object EvolutionWiring {
      * 四条验证读数在（[proofReady]）**且**本机真评过（[eval] 非空且出了读数），
      * 缺任一本都按"证据不足"走。只收紧不放松：505 判据②的老话是"不知道就不升档"。
      */
+    /**
+     * 「证据足」的两本取合（567-C）：**四条验证读数在** 且 **495 账真出读数**，缺任一本都算不足。
+     *
+     * 为什么单独抽出来：判据本体原来只写在 [adjudicateDepth] 里，而那条链（sweepOne → adjudicateDepth）
+     * 全是 private、进不去单测 ⇒ 蓝总管验收时两刀变异（去掉 proofReady / 放宽 evidenceEnough）都跑绿，
+     * 说明这一格**没有测试钉住**。抽成纯函数后行为逐字不变，但能被两条用例钉死（只收紧不放松）。
+     */
+    internal fun depthEvidenceEnough(proofReady: Boolean, eval: DepthEvalReading?): Boolean =
+        proofReady && eval?.evidenceEnough() == true
+
     private fun adjudicateDepth(proofReady: Boolean, eval: DepthEvalReading?, nowMs: Long): DepthDecision {
         val side = DepthFactsWiring.readings()
         val evidence = EvidenceFacts(
             last = lastAttemptConclusion(),
-            evidenceEnough = proofReady && eval?.evidenceEnough() == true,
+            evidenceEnough = depthEvidenceEnough(proofReady, eval),
             unverifiableRising = unverifiableQueueRising(nowMs),
             falseBlockRising = side.falseBlockRising,
             sameKindSuccessStreak = sameKindSuccessStreak(),
