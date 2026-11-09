@@ -39,7 +39,7 @@
 3. **新增第一方文件当天就登记**。文件先落 `assets/`、后进名册的窗口期门禁就是红的，
    这是设计好的：红点必须有人看见并签字，不许静默放行。
 
-## 当前名册（10 条 · 2026-11-05 · 第 440 批＋验收补 1 条）
+## 当前名册（11 条 · 2026-11-09 · 第 440 批＋验收补 1 条＋547 产出卡 1 条）
 
 （起步即全量：433 建资产门禁时 `assets/` 下只有这 9 个第一方文件，当时按「不编条目」
 判了漏登记红；本批把它们逐条签字入册，`ASSETS.md` 保持空表头，等 414 解冻登记真第三方。）
@@ -49,6 +49,7 @@
 | baopu/cards/logistics.waybill.json | GZ-AG | 抱朴卡片：物流面单查询卡（212 批，模板 JSON） |
 | baopu/cards/study.knowledge.json | GZ-AG | 抱朴卡片：学生知识点卡（演示样例，默认折答案） |
 | baopu/cards/write.topic.json | GZ-AG | 抱朴卡片：选题方案卡（只借 190 的方案字段做样例） |
+| baopu/cards/output.produce.json | GZ-AG | 抱朴卡片：产出卡（547 批 OutputCards 首次进生产；依据闸对产出卡生效） |
 | baopu/policy_v1.json | GZ-AG | 证道政策表 v1（只读随包发布，只装可调参数） |
 | baopu/skills/T9取数/SKILL.md | GZ-AG | 抱朴技能：T9 导入建当日本地表再答（查今天的车） |
 | baopu/skills/产物清理/SKILL.md | GZ-AG | 抱朴技能：列清单勾选后移回收站（清发完的） |
