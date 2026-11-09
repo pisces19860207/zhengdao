@@ -106,8 +106,10 @@ private val L21_COPY_REGISTRY = listOf(
         clearedBy = "同上（与 :14 同批换，两条一起销）",
     ),
     L21Copy(
+        // 第五百三十七批（2026-11-09 验收接管）：上方加了注释行，手抄行 303→304。
+        // 行号漂了＝先更账（不删行、不放松判据本体）。
         where = "com/example/zhengdao/baopu/agent/OpinionWiring.kt",
-        line = 303,
+        line = 304,
         what = "OpinionJudge.judge 第⑤格：CRITICAL && L21 ⇒ 缺理由 DEFER——**想越预算没资格**的判据",
         whyRemain = "agent/OpinionWiring.kt 在 agent/ 禁区（315/319 两批租约都不含它），判据搬不动",
         clearedBy = "持有 agent/OpinionWiring.kt 租约的接线批：第⑤格改调 EmergencyGate 判据后销行",

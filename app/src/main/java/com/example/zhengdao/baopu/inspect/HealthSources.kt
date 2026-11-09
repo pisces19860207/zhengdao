@@ -82,7 +82,9 @@ internal object OrganCensus {
             // 本口径的扫描根（普查只数 `app/src/main`，见上面的口径注释）⇒ 22 改 21，不是有人删了接线。
             // 第五百零六批：后果治理的落账口 `ConsequenceWiring.stamp()` 新增一处（它是本族唯一的落账口，
             // 判据层拒了就不产草稿，所以这一处之后没有第二处）⇒ 21 改 22。
-            callSites = 22,
+            // 第五百三十七批（2026-11-09 验收接管）：冲突入御案的裁定行由 `ConflictRoyalWiring`
+            // 落一处 `DecisionLedger.record`（同事件分歧的显式化，只加事实不改合并选择）⇒ 22 改 23。
+            callSites = 23,
             sink = "决策记录.jsonl",
             evidence = listOf(
                 "agent/GuardPipeline.kt:634 入账点（DecisionLedger.record）",
