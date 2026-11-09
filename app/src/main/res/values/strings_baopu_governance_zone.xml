@@ -11,7 +11,7 @@
 <resources>
     <!-- 抽屉入口（「定时任务」下面那一行） -->
     <string name="baopu_drawer_governance_center">治理中心</string>
-    <string name="baopu_drawer_governance_center_desc">只看状态：四率、弹卡、灰度、执行体、模型小黑板</string>
+    <string name="baopu_drawer_governance_center_desc">只看状态：四率、弹卡、灰度、执行体、模型小黑板、今天干过什么</string>
 
     <!-- 屏幕本体 -->
     <string name="gc_title">治理中心</string>
@@ -55,6 +55,28 @@
     <string name="gc_board_clear_title">清空小黑板？</string>
     <string name="gc_board_clear_body">这是抱朴自己的便签，清掉就没了（不进回收站、找不回）。要留的内容它会先写进产物目录。</string>
     <string name="gc_cancel">取消</string>
+
+    <!-- 今天干过什么（第五百三十九批）：三本账里**已执行且有结果**的行，四列 -->
+    <string name="gc_section_activity">今天干过什么</string>
+    <string name="gc_activity_hint">只列已执行且出结果的（计划未执行、被压、被拒的不上这一屏）</string>
+    <string name="gc_activity_cleared">已清过一次：%1$s 之前的不再显示（账本没动）</string>
+    <string name="gc_activity_col_time">时间</string>
+    <string name="gc_activity_col_who">谁</string>
+    <string name="gc_activity_col_what">做了什么</string>
+    <string name="gc_activity_col_result">结果</string>
+    <string name="gc_activity_empty">（今天还没有执行过的条目）</string>
+    <string name="gc_activity_capacity">最多只列最近的一段（更早的请在账本里看）</string>
+    <string name="gc_activity_clear">清空</string>
+    <string name="gc_activity_clear_title">清空这一屏？</string>
+    <string name="gc_activity_clear_body">只清这一屏（本地水位）：账本原文一条都不动。清掉之后回不来——水位只往前走。</string>
+    <string name="gc_activity_who_model">模型</string>
+    <string name="gc_activity_who_mediator">调解器</string>
+    <string name="gc_activity_who_repairer">御医</string>
+    <string name="gc_activity_who_evolver">进化器</string>
+    <string name="gc_activity_result_done">成功</string>
+    <string name="gc_activity_result_failed">失败</string>
+    <string name="gc_activity_result_skipped">跳过</string>
+    <string name="gc_activity_result_rolled_back">已回滚</string>
 
     <!-- 工具标签（设置页/能力名册的必填格，413 批口径：漏一格即红） -->
     <string name="baopu_tool_board_read">读小黑板</string>

@@ -2,7 +2,7 @@
 <!-- Batch 322 (2026-11-08): Governance Center + model scratchboard. See the zh file for why this is a separate file. -->
 <resources>
     <string name="baopu_drawer_governance_center">Governance</string>
-    <string name="baopu_drawer_governance_center_desc">Status only: rates, cards, gray bands, executor, scratchboard</string>
+    <string name="baopu_drawer_governance_center_desc">Status only: rates, cards, gray bands, executor, scratchboard, what happened today</string>
 
     <string name="gc_title">Governance</string>
     <string name="gc_subtitle">Status only — decisions are made in Decision Center</string>
@@ -39,6 +39,27 @@
     <string name="gc_board_clear_title">Clear the board?</string>
     <string name="gc_board_clear_body">This is Baopu\'s own note. Clearing it is permanent (no trash bin, no undo). Whatever it wants to keep it writes into the products folder first.</string>
     <string name="gc_cancel">Cancel</string>
+
+    <string name="gc_section_activity">What happened today</string>
+    <string name="gc_activity_hint">Only executed rows that carry a result (planned / suppressed / refused stay off this screen)</string>
+    <string name="gc_activity_cleared">Cleared once: rows before %1$s are hidden (ledger untouched)</string>
+    <string name="gc_activity_col_time">Time</string>
+    <string name="gc_activity_col_who">Who</string>
+    <string name="gc_activity_col_what">What</string>
+    <string name="gc_activity_col_result">Result</string>
+    <string name="gc_activity_empty">(nothing executed today yet)</string>
+    <string name="gc_activity_capacity">Only the newest entries are shown; older ones live in the ledger.</string>
+    <string name="gc_activity_clear">Clear</string>
+    <string name="gc_activity_clear_title">Clear this screen?</string>
+    <string name="gc_activity_clear_body">Clears this screen only (a local watermark): the ledger keeps every original row. Once cleared it cannot be undone — the watermark only moves forward.</string>
+    <string name="gc_activity_who_model">model</string>
+    <string name="gc_activity_who_mediator">mediator</string>
+    <string name="gc_activity_who_repairer">repairer</string>
+    <string name="gc_activity_who_evolver">evolver</string>
+    <string name="gc_activity_result_done">done</string>
+    <string name="gc_activity_result_failed">failed</string>
+    <string name="gc_activity_result_skipped">skipped</string>
+    <string name="gc_activity_result_rolled_back">rolled back</string>
 
     <string name="baopu_tool_board_read">Read board</string>
     <string name="baopu_tool_board_read_desc">Read the model\'s own working note (products/.board.md, max 4KB/20 lines). Read-only: no writes, no memory.</string>

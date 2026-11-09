@@ -11,17 +11,24 @@
 //   1. **读数只走 527**：本屏调 `GovernanceStateTool.run` 拿那一把 JSON，再由
 //      `GovernanceCenterRules` 原样抄成行。本文件里没有第二个取数路，也没有任何算术
 //      （判据②；源级门禁 `GovernanceCenterGateTest` 扫的就是这条）。
-//   2. **只读**：除"清空小黑板"这一个由**人**按的动作，本屏没有任何写口
+//   2. **只读**：除"清空小黑板"与"清空今天干过什么"这两个由**人**按的动作，本屏没有任何写口
 //      （不碰账本、不碰队列、不碰 `DecisionTab` / `royalRows`——判据⑤）。
+//      539 的"清空"只抬本地水位，账本一个字节都不动（`ActivityBoardStore`）。
 //   3. **不新增导航栈**：全屏 Dialog（与本仓既有浮层同形态），返回键/关闭键一起收，页面栈不变。
+//
+// 第五百三十九批（2026-11-09）追加第 4 块「今天干过什么」：三本账的已执行行，四列
+// （时间·谁·做了什么·结果）。本屏在这一块里**只画不算**——取数在 `ActivityBoardSource`，
+// 过滤/四列/倒序在 `ActivityBoardRules`，这里只把行照着画出来（判据⑥）。
 //
 // 承载路子照本仓既有的全屏浮层（`Surface` ＋ 返回键一并收）：换个 Activity 要动 Manifest，
 // 也会把"抽屉里点进去"变成另一套返回栈——本屏不另开一条。
 // （2026-11-08 追加：536 已把 528 那屏整体回退掉，本屏的"同形态"参照物只剩 104 那套设置浮层。）
 package com.example.zhengdao.ui.baopu
 
+import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,6 +93,13 @@ private data class GovSnapshot(
     val board: String? = null,
     /** 小黑板上次写盘的时刻（0 ＝盘上没有这件文件；542 起用于顶上那行「最近更新」）。 */
     val boardUpdatedAtMs: Long = 0L,
+    /**
+     * 「今天干过什么」的行（539）：**已经过判据层的四列行**（排序/过滤都在
+     * [ActivityBoardRules] 里做完了）。本屏不再从账本取第二遍，也不在这里筛。
+     */
+    val activity: List<ActivityRow> = emptyList(),
+    /** 上次「清空」的时刻（`HH:mm`；空串＝没清过）。只清投影，账本原文不动。 */
+    val activityClearedClock: String = "",
     /** 首次读盘还没回来：与"读出来是空的"分开（同抽屉那批 264 的口径）。 */
     val ready: Boolean = false,
 )
@@ -107,14 +121,53 @@ internal fun GovernanceCenterScreen(
     var tick by remember { mutableIntStateOf(0) }
     var snapshot by remember { mutableStateOf(GovSnapshot()) }
     var confirmingClear by remember { mutableStateOf(false) }
+    var confirmingActivityClear by remember { mutableStateOf(false) }
 
     // 读盘全在 IO 上（264 的口径：抽屉/面板首帧不许占主线程），读回来再一次性换快照。
     LaunchedEffect(tick) {
         snapshot = withContext(Dispatchers.IO) {
-            readSnapshot(context.filesDir, controller.workspaceRoot)
+            readSnapshot(context, controller.workspaceRoot)
         }
     }
 
+    GovFrame(
+        snapshot = snapshot,
+        onDismiss = onDismiss,
+        onClearBoard = { confirmingClear = true },
+        onClearActivity = { confirmingActivityClear = true },
+    )
+
+    GovClearDialogs(
+        board = confirmingClear,
+        activity = confirmingActivityClear,
+        onDismissBoard = { confirmingClear = false },
+        onConfirmBoard = {
+            confirmingClear = false
+            scope.launch {
+                withContext(Dispatchers.IO) { BoardStore.clear(controller.workspaceRoot) }
+                tick++ // 重读：清完当场变空，不留旧字
+            }
+        },
+        onDismissActivity = { confirmingActivityClear = false },
+        onConfirmActivity = {
+            confirmingActivityClear = false
+            scope.launch {
+                // 只抬水位（本地投影），账本原文一条都不动（判据②）
+                withContext(Dispatchers.IO) { ActivityBoardStore.clear(context.filesDir) }
+                tick++ // 重读：清完当场变空
+            }
+        },
+    )
+}
+
+/** 整屏骨架（浮层 ＋ 顶栏 ＋ 四块滚动区）：只是排版，不取数、不判断。 */
+@Composable
+private fun GovFrame(
+    snapshot: GovSnapshot,
+    onDismiss: () -> Unit,
+    onClearBoard: () -> Unit,
+    onClearActivity: () -> Unit,
+) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = true),
@@ -129,55 +182,67 @@ internal fun GovernanceCenterScreen(
                     item { Spacer(Modifier.height(14.dp)) }
                     item { ExecutorSection(snapshot) }
                     item { Spacer(Modifier.height(14.dp)) }
-                    item {
-                        BoardSection(
-                            snapshot = snapshot,
-                            onClear = { confirmingClear = true },
-                        )
-                    }
+                    item { BoardSection(snapshot = snapshot, onClear = onClearBoard) }
+                    item { Spacer(Modifier.height(14.dp)) }
+                    item { ActivitySection(snapshot = snapshot, onClear = onClearActivity) }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
     }
+}
 
-    if (confirmingClear) {
-        BoardClearDialog(
-            onDismiss = { confirmingClear = false },
-            onConfirm = {
-                confirmingClear = false
-                scope.launch {
-                    withContext(Dispatchers.IO) { BoardStore.clear(controller.workspaceRoot) }
-                    tick++ // 重读：清完当场变空，不留旧字
-                }
-            },
-        )
-    }
+/** 两个「清空」的确认框（小黑板一份、看板水位一份）；只在按下时出现，不占版面。 */
+@Composable
+private fun GovClearDialogs(
+    board: Boolean,
+    activity: Boolean,
+    onDismissBoard: () -> Unit,
+    onConfirmBoard: () -> Unit,
+    onDismissActivity: () -> Unit,
+    onConfirmActivity: () -> Unit,
+) {
+    if (board) BoardClearDialog(onDismiss = onDismissBoard, onConfirm = onConfirmBoard)
+    if (activity) ActivityClearDialog(onDismiss = onDismissActivity, onConfirm = onConfirmActivity)
 }
 
 /** 一次读全（IO 上跑；每一路都自己兜住，缺哪路由界面如实说读不到）。 */
-private fun readSnapshot(filesDir: File, wsRoot: File): GovSnapshot {
+private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
+    val nowMs = System.currentTimeMillis()
     // ① 读数：**唯一取数路**——527 出口。不在这里算第二遍（判据②）。
     val root = runCatching {
-        val outcome = GovernanceStateTool.run(wsRoot, System.currentTimeMillis())
+        val outcome = GovernanceStateTool.run(wsRoot, nowMs)
         (outcome as? com.example.zhengdao.baopu.agent.ToolOutcome.Ok)?.let {
             GovernanceCenterRules.parse(it.text)
         }
     }.getOrNull()
     // ② 执行体另外两格：凭据条数、最近撤销（527 只给 id/state 两格）
-    val creds = runCatching { CredentialStore.load(filesDir).size }.getOrDefault(0)
+    val creds = runCatching { CredentialStore.load(context.filesDir).size }.getOrDefault(0)
     val revokedAt = runCatching {
-        GovernanceCenterRules.lastRevokeAtMs(IdentityStore.load(filesDir))
+        GovernanceCenterRules.lastRevokeAtMs(IdentityStore.load(context.filesDir))
     }.getOrDefault(0L)
     // ③ 小黑板：只读镜像 ＋ 上次写盘时刻（542：顶上那行「最近更新 HH:mm」只认这两样）
     val board = BoardStore.read(wsRoot)
     val boardUpdatedAtMs = BoardStore.updatedAt(wsRoot)
+    // ④ 今天干过什么（539）：账本 → 候选（取数层）→ 四列行（判据层）。本屏不筛、不算。
+    val activityClearedAtMs = ActivityBoardStore.readClearedAt(context.filesDir)
+    val activity = ActivityBoardRules.rows(
+        candidates = ActivityBoardSource.candidates(context.applicationContext, nowMs),
+        nowMs = nowMs,
+        clearedAtMs = activityClearedAtMs,
+    )
     return GovSnapshot(
         root = root,
         credentialCount = creds,
         revokedAtMs = revokedAt,
         board = board,
         boardUpdatedAtMs = boardUpdatedAtMs,
+        activity = activity,
+        activityClearedClock = if (activityClearedAtMs > 0L) {
+            GovernanceCenterRules.clockHm(activityClearedAtMs)
+        } else {
+            ""
+        },
         ready = true,
     )
 }
@@ -432,6 +497,163 @@ private fun BoardClearDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.gc_cancel)) }
         },
     )
+}
+
+/**
+ * ④ 今天干过什么（第五百三十九批）：三本账里**已执行且有结果**的行，四列一张表。
+ *
+ * 三条口径写死在这里（判据建在上面）：
+ * 1. **只画不算**：行是 [ActivityBoardRules.rows] 给的四列字（时间已格式化、顺序已倒序、
+ *    该丢的已丢），本函数一个判断都不加——判据⑥要的就是"页面没有第二套口径"；
+ * 2. **没有批/驳/搁置**：这一屏只显示发生过什么，需要拍板的条目一个都不进（那是决策中心）；
+ * 3. **清空只清这一屏**：抬本地水位（[ActivityBoardStore]），账本原文一条都不动（判据②）。
+ */
+@Composable
+private fun ActivitySection(snapshot: GovSnapshot, onClear: () -> Unit) {
+    SectionCard(title = stringResource(R.string.gc_section_activity)) {
+        if (!snapshot.ready) {
+            LoadingLine()
+            return@SectionCard
+        }
+        Text(
+            text = stringResource(R.string.gc_activity_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+        if (snapshot.activityClearedClock.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.gc_activity_cleared, snapshot.activityClearedClock),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
+        ActivityTitles()
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        ActivityBody(snapshot)
+        ActivityFooter(onClear)
+    }
+}
+
+/** 四列的列名（与 [ActivityLine] 同一套宽度比例：表头和数据列必须对齐）。 */
+@Composable
+private fun ActivityTitles() {
+    Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+        ActivityCell(stringResource(R.string.gc_activity_col_time), W_TIME, dimStyle())
+        ActivityCell(stringResource(R.string.gc_activity_col_who), W_WHO, dimStyle())
+        ActivityCell(stringResource(R.string.gc_activity_col_what), W_WHAT, dimStyle())
+        ActivityCell(stringResource(R.string.gc_activity_col_result), W_RESULT, dimStyle())
+    }
+}
+
+/** 表体：有行照抄四列，没行如实说"今天还没有"。 */
+@Composable
+private fun ActivityBody(snapshot: GovSnapshot) {
+    if (snapshot.activity.isEmpty()) {
+        Text(
+            text = stringResource(R.string.gc_activity_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 8.dp),
+        )
+        return
+    }
+    snapshot.activity.forEach { row -> ActivityLine(row) }
+}
+
+/** 一行四列（时间 · 谁 · 做了什么 · 结果）。 */
+@Composable
+private fun ActivityLine(row: ActivityRow) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        ActivityCell(row.clock, W_TIME, dimStyle())
+        ActivityCell(activityWhoLabel(row.who), W_WHO, dimStyle())
+        ActivityCell(row.what, W_WHAT, MaterialTheme.typography.bodySmall)
+        ActivityCell(activityResultLabel(row.result), W_RESULT, dimStyle(), activityResultColor(row.result))
+    }
+}
+
+/** 一格里的一行字（四个权重常量只在这里用，表头与数据列共用 ⇒ 不会各走各的）。 */
+@Composable
+private fun RowScope.ActivityCell(
+    text: String,
+    weight: Float,
+    style: TextStyle,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Text(
+        text = text,
+        style = style,
+        color = color,
+        modifier = Modifier.weight(weight).padding(end = 6.dp),
+    )
+}
+
+/** 底下那行：左上限读数（小字），右「清空」。 */
+@Composable
+private fun ActivityFooter(onClear: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.gc_activity_capacity),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = onClear, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(stringResource(R.string.gc_activity_clear))
+        }
+    }
+}
+
+@Composable
+private fun ActivityClearDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.gc_activity_clear_title)) },
+        text = { Text(stringResource(R.string.gc_activity_clear_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.gc_activity_clear)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.gc_cancel)) }
+        },
+    )
+}
+
+/** 四列的宽度比例（和＝1.0；时间与结果各占一格窄的，正文吃剩下的）。 */
+private const val W_TIME = 0.18f
+private const val W_WHO = 0.16f
+private const val W_WHAT = 0.48f
+private const val W_RESULT = 0.18f
+
+@Composable
+private fun dimStyle(): TextStyle = MaterialTheme.typography.labelSmall
+
+@Composable
+private fun activityWhoLabel(who: ActivityWho): String = when (who) {
+    ActivityWho.MODEL -> stringResource(R.string.gc_activity_who_model)
+    ActivityWho.MEDIATOR -> stringResource(R.string.gc_activity_who_mediator)
+    ActivityWho.REPAIRER -> stringResource(R.string.gc_activity_who_repairer)
+    ActivityWho.EVOLVER -> stringResource(R.string.gc_activity_who_evolver)
+}
+
+@Composable
+private fun activityResultLabel(result: ActivityResult): String = when (result) {
+    ActivityResult.DONE -> stringResource(R.string.gc_activity_result_done)
+    ActivityResult.FAILED -> stringResource(R.string.gc_activity_result_failed)
+    ActivityResult.SKIPPED -> stringResource(R.string.gc_activity_result_skipped)
+    ActivityResult.ROLLED_BACK -> stringResource(R.string.gc_activity_result_rolled_back)
+}
+
+/** 结果列的颜色：失败用 `error`（要一眼看见），其余用主色（不做第四套配色）。 */
+@Composable
+private fun activityResultColor(result: ActivityResult): Color = when (result) {
+    ActivityResult.FAILED -> MaterialTheme.colorScheme.error
+    ActivityResult.DONE, ActivityResult.SKIPPED, ActivityResult.ROLLED_BACK ->
+        MaterialTheme.colorScheme.onSurface
 }
 
 @Composable
