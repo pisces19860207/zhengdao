@@ -79,4 +79,13 @@
     <string name="gc_todo_state_todo">To do</string>
     <string name="gc_todo_state_done">Done</string>
     <string name="gc_todo_state_complete">Completed</string>
+    <!-- 561 governance center "Dev audit" block (in-page, no drawer entry; export is the 4th human-pressed write port) -->
+    <string name="gc_audit_title">Dev audit</string>
+    <string name="gc_audit_hint">Which commit this build is and which scaffolds are on — read-only collection, exported into the workspace products dir (dot-prefixed, not counted as products, never overwrites). No user content.</string>
+    <string name="gc_audit_export">Export audit pack</string>
+    <string name="gc_audit_exporting">Exporting…</string>
+    <string name="gc_audit_done">Exported: %1$s (existing files are never overwritten)</string>
+    <string name="gc_audit_fail">Export failed: %1$s</string>
+    <string name="gc_audit_ablation_unset">Ablation registry: not established (559)</string>
+    <string name="gc_audit_ablation_set">Ablation registry: established (details in the .json)</string>
 </resources>

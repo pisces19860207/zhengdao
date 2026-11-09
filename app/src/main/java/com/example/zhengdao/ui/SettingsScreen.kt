@@ -484,9 +484,16 @@ private const val LARGE_FONT_SCALE = 1.3f
 
 /** 名称—数值行：数值右对齐成一列，扫一眼就能比大小（旧版固定 150dp 标签宽 + 左对齐，读着像表格）。
  *  [onClick] 非空时整行可点（用于「关于」页版本行连点进隐藏入口）。
- *  **大字体（≥ 1.3×）改上下堆叠**：标签一行、数值一行右对齐。 */
+ *  **大字体（≥ 1.3×）改上下堆叠**：标签一行、数值一行右对齐。
+ *  561（2026-11-09）加 [valueColor]：构建 commit 异常态（`local`／带 `-dirty`）要在关于页红显
+ *  （用户 2026-11-09：「dirty 必须显形」）。默认 Unspecified＝沿用主题色，既有调用一字不动。 */
 @Composable
-internal fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null) {
+internal fun InfoRow(
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+    valueColor: Color = Color.Unspecified,
+) {
     val rowModifier = Modifier
         .fillMaxWidth()
         .then(if (onClick != null) Modifier.pressClickable(onClick = onClick) else Modifier)
@@ -503,6 +510,7 @@ internal fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
+                color = valueColor,
                 textAlign = TextAlign.End,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -526,6 +534,7 @@ internal fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
+                color = valueColor,
                 textAlign = TextAlign.End,
                 modifier = Modifier.weight(1f),
             )

@@ -1,4 +1,9 @@
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Base64
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
 
@@ -284,6 +289,84 @@ if (releaseTaskNames.isNotEmpty() && zdKeystorePath == null &&
     )
 }
 
+// ── 构建身份（561，2026-11-09）：commit 短号＋dirty 后缀＋构建时刻＋ABI ──────────
+// 为什么在 gradle 里做：BuildConfig 是唯一进包的构建事实源；关于页与开发核对包
+// （BuildAuditPack）都只读它，三处（关于页 · build.gitSha · Release 说明）才对得上同一号。
+//
+// 短号优先级（派工单 561 追加段）：
+//   ① `-Pzhengdao.gitSha=<值>`：显式覆盖。负例测试（`-Pzhengdao.gitSha=local` ⇒ release
+//      构建必须红）与事故复现用；也给"从 tarball 构建、没有 git"的场合一个手工报名号的路。
+//   ② 环境变量 GITHUB_SHA（CI 检出即有）——取前 8 位。
+//   ③ 本机 `git rev-parse HEAD`——工作树/分支都随本树 HEAD，取前 8 位。
+//   ④ 都取不到 ⇒ `local`：**release 闸直接拒**（见下），debug 照常（能跑，只是没号）。
+//
+// dirty 后缀：`git status --porcelain` 非空 ⇒ 号后追加 `-dirty`。CI 检出天然干净，本机
+// 改着代码构建是常态——号必须诚实到「这份产物对应这份工作区」，-dirty 就是那句实话。
+// 规矩（用户 2026-11-09）：**带 -dirty 的包不许对外发布**；CI 在 release job 加闸。
+val zdAbiFilters = listOf("arm64-v8a")
+
+// 短号的唯一实现：ValueSource。为什么必须是 ValueSource 而不是配置期直接算或执行期 Provider：
+//   · 本仓开了 configuration-cache——DefaultConfig/BuildConfigField 的值都是配置期定死的 String，
+//     缓存复用会搬旧号；而 ValueSource 的值参与缓存漂移检测：提交变化/脏区变化 ⇒ 值变 ⇒
+//     缓存自动失效重算 ⇒ 号永远对得上「这份产物对应这份工作区」（配置期 .get() 即注册漂移追踪）。
+//   · AGP 9.4 的 BuildConfigField.value 只收 Serializable（Provider 重载已删）⇒ 执行期求值
+//     在 BuildConfig 这条路上没有落点，ValueSource 是唯一兼顾"新鲜"与"缓存正确"的口。
+interface ZdBuildShaParams : ValueSourceParameters {
+    /** 仓库根（工作树根）：git 在这里跑，工作树/分支随本树 HEAD。 */
+    val dir: DirectoryProperty
+
+    /** `-Pzhengdao.gitSha=…` 显式覆盖（561 负例测试与事故复现用）；空串＝无覆盖。 */
+    val shaOverride: org.gradle.api.provider.Property<String>
+}
+
+abstract class ZdBuildShaSource : ValueSource<String, ZdBuildShaParams> {
+    override fun obtain(): String {
+        val dir = parameters.dir.get().asFile
+        val override = parameters.shaOverride.orNull?.trim()?.takeIf { it.isNotEmpty() }
+        val head = override
+            ?: System.getenv("GITHUB_SHA")?.trim()?.takeIf { it.length >= 8 }
+            ?: gitLine(dir, "rev-parse", "HEAD")?.takeIf { it.length >= 8 }
+            ?: return "local"
+        // local（git 不可用/负例覆盖）不带 dirty 后缀：没有号就谈不上"脏"，闸按 == "local" 拦它
+        if (head == "local") return "local"
+        val dirty = gitLine(dir, "status", "--porcelain")?.isNotBlank() == true
+        return head.take(8) + if (dirty) "-dirty" else ""
+    }
+
+    /** 跑一条 git 只读命令；git 不在 PATH／不在仓库里 ⇒ null（调用方兜底）。 */
+    private fun gitLine(dir: File, vararg args: String): String? = runCatching {
+        val proc = ProcessBuilder("git", *args)
+            .directory(dir)
+            .redirectErrorStream(true)
+            .start()
+        val out = proc.inputStream.bufferedReader().readText().trim()
+        proc.waitFor()
+        out.takeIf { proc.exitValue() == 0 }
+    }.getOrNull()
+}
+
+val zdBuildSha = providers.of(ZdBuildShaSource::class) {
+    parameters.dir.set(rootDir)
+    parameters.shaOverride.set((findProperty("zhengdao.gitSha") as String?) ?: "")
+}
+
+// 发版闸（561）：正式包必须带真短号。本机没 git／没有 CI 号 ⇒ GIT_SHA 只能是 local，
+// 这种包对不上仓库里的任何提交，打出去就是"对不上号的包"——直接失败，不是警告。
+// 两道（各管一半场合）：
+//   ① 配置期断言（这里）：缓存未命中/CI 全新检出时先红，失败发生在一分钱编译之前；
+//   ② 执行期闸任务 zdReleaseIdentityGate（挂到 assembleRelease/bundleRelease 的依赖上）：
+//      配置缓存**复用**时脚本顶层代码不再执行 ⇒ ①会静默跳过，②保证每次真构建都过闸。
+// 负例验收（561 追加判据①）：`gradlew :app:assembleRelease -Pzhengdao.gitSha=local` 必须红。
+val zdReleaseTaskNames = gradle.startParameter.taskNames.filter { it.contains("Release") }
+if (zdReleaseTaskNames.isNotEmpty() && zdBuildSha.get() == "local") {
+    throw GradleException(
+        "拒绝打没有 commit 号的正式包：本次任务 ${zdReleaseTaskNames.joinToString(" ")}，" +
+            "但 GIT_SHA 只能算出 local（没有 GITHUB_SHA、git 也不可用/未覆盖）。" +
+            "local 的包对不上仓库里的任何提交，不允许发版（561 追加判据①）。" +
+            "请从 git 检出（工作树/CI）构建，或用 -Pzhengdao.gitSha=<8位短号> 显式报名号。"
+    )
+}
+
 android {
     namespace = "com.example.zhengdao"
     compileSdk {
@@ -333,14 +416,25 @@ android {
         manifestPlaceholders["appLabel"] = "证道"
 
         versionName = appVersionName
-        // 2026-10-23：构建指纹（只进 BuildConfig，不进日志/上报）。
-        // 为什么需要：同一天多次构建 versionName 全是 2.2.0，用户在手机上无法分辨装的是哪一版
-        // （当天真机复验就卡在这上面）。CI 里 GITHUB_SHA 就是提交哈希；本机构建写 local。
-        buildConfigField(
-            "String",
-            "GIT_SHA",
-            "\"" + (System.getenv("GITHUB_SHA")?.take(8) ?: "local") + "\"",
-        )
+        // 构建指纹（2026-10-23 建，561 批 2026-11-09 改）：同一天多次构建 versionName 全同名，
+        // 这一族字段用来分辨「手机里装的是哪一次构建」——只进 BuildConfig，不进日志/上报。
+        //
+        // 561 为什么改：原来 GIT_SHA = GITHUB_SHA?.take(8) ?: "local"——
+        //   ① 本机构建永远写 local，关于页与核对包对不上号（用户 2026-11-09：
+        //      「要核对手机里的 apk 和 github 上的代码」⇒ 号必须是真的）；
+        //   ② 工作区脏（有未提交改动）时 SHA 仍指向已提交的号，但产物里含未提交改动
+        //      ⇒ 「带编号」不等于「编号对应产物」，必须让 dirty 显形。
+        // 现口径（zdBuildSha 的优先级，见文件「构建身份」段）：
+        //   -Pzhengdao.gitSha=…（复现/负例用）＞ GITHUB_SHA（CI）＞ `git rev-parse HEAD`（本机）＞ local
+        //   且 git 干净检查不过时给 GIT_SHA 追加 `-dirty` 后缀。
+        // 落点：GIT_SHA/BUILD_TIME 走执行期求值，必须经文件尾 androidComponents.onVariants 的
+        //   `variant.buildConfigFields`（Provider 重载在那边）——本仓开了 configuration-cache，
+        //   DefaultConfig.buildConfigField(String) 是配置期定死，缓存复用会变「陈旧假号」。
+        //   ABI 是常量，配置期定死没有陈旧问题，放这里。
+        // 构建时刻（561）：ISO-8601 带时区偏移；ABI：与 ndk.abiFilters 单点同源（zdAbiFilters）。
+        // 常量与注释统一挂到文件尾的 androidComponents.onVariants（561 段）——
+        // DefaultConfig.buildConfigField 只收 String（配置期定死），执行期字段必须走 Variant API。
+        buildConfigField("String", "ABI", "\"" + zdAbiFilters.joinToString("|") + "\"")
 
         ndk {
             // 只编真机 arm64 单架构（2026-10-06 用户定案，见设计文档 §4）：
@@ -349,7 +443,9 @@ android {
             //      ③ 将来若引 Rust（cargo-ndk）只需交叉编译一个目标，工作量减半。
             // 注意：删的是 APK 的 x86_64 ABI，与 CI 构建机架构（ubuntu-latest）无关——
             //      .github/workflows/build.yml 里的 x86_64 指的是 qemu 交叉编译 rootfs 的 runner。
-            abiFilters += listOf("arm64-v8a")
+            // 561（2026-11-09）：清单从字面改成单点 zdAbiFilters——BuildConfig.ABI 与它共用，
+            //      不然「关于页/核对包报的 ABI」与「实际打包的 ABI」是两处各写各的。
+            abiFilters += zdAbiFilters
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -390,10 +486,11 @@ android {
     buildTypes {
         // 2026-10-27：开发版桌面名带版本号（用户：「预览版也有版本号那种」）——
         // 桌面上直接显示 `证道·开发版 v2.2.1 (a1b2c3d4)`；正式版不受影响（走 @string/app_name）。
+        // 561：短号不再各写一份（原来又是 GITHUB_SHA ?: local 的重复），统一走 zdBuildSha——
+        //      关于页/核对包/桌面名四处同号；dirty 后缀也一起显形（本地改着代码构建是常态）。
         debug {
             manifestPlaceholders["appLabel"] =
-                "证道·开发版 v$appVersionName (" +
-                    (System.getenv("GITHUB_SHA")?.take(8) ?: "local") + ")"
+                "证道·开发版 v$appVersionName (" + zdBuildSha.get() + ")"
         }
         release {
             optimization {
@@ -938,6 +1035,30 @@ val stageLicenseAssets = tasks.register<StageLicenseAssetsTask>("stageLicenseAss
 // 每个变体（debug / release / benchmark）的 assets 里都生成一份，任务依赖由 AGP 负责携带。
 androidComponents {
     onVariants { variant ->
+        // ── 构建身份字段（561，2026-11-09）────────────────────────────────────
+        // GIT_SHA：ValueSource 的值在这里 .get()——配置期取值＋注册缓存漂移追踪：
+        //   提交/脏区变化 ⇒ 值变 ⇒ 缓存失效重算 ⇒ 字段永远对得上当前工作区（见文件头 561 段）。
+        // BUILD_TIME：配置期时刻（缓存复用期间不变——同一条目的产物本就是同一份内容；
+        //   CI 全新配置必然新鲜）。核对以 GIT_SHA 为准，这一行只是"哪一刻构建的"的参照。
+        // ABI 是常量，已在 defaultConfig 用 String 落。
+        // AGP 9.4 形状：buildConfigFields 是 MapProperty<String, BuildConfigField<out Serializable>>?，
+        // BuildConfigField.value 只收 Serializable 本体（Provider 重载已删）⇒ 配置期 String。
+        variant.buildConfigFields?.put(
+            "GIT_SHA",
+            com.android.build.api.variant.BuildConfigField(
+                "String",
+                "\"" + zdBuildSha.get() + "\"",
+                "commit 短号；-dirty=工作区有未提交改动（561）",
+            ),
+        )
+        variant.buildConfigFields?.put(
+            "BUILD_TIME",
+            com.android.build.api.variant.BuildConfigField(
+                "String",
+                "\"" + OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "\"",
+                "构建时刻（配置期；同缓存条目复用期间不变）",
+            ),
+        )
         // assets 源集在 AGP 里声明为可空 → 用安全调用。真漏挂的兜底不是这里的编译期，
         // 而是「解包 APK 逐份核 SHA256」那一步（装配目录照样生成，但不进包会被当场看见）。
         variant.sources.assets?.addGeneratedSourceDirectory(
@@ -950,6 +1071,38 @@ androidComponents {
             StageEvalAssetsTask::outDir,
         )
     }
+}
+
+// 执行期发版闸（561，2026-11-09）：每次 release 构建**真跑**的一道闸——
+// 配置缓存复用时脚本顶层的配置期断言（文件头「构建身份」段）不会重新执行，
+// 这道闸挂进 assembleRelease/bundleRelease 的依赖图，逃不掉。GIT_SHA=local ⇒ 红。
+// ⚠️ 必须是独立任务类＋Property 注入：doLast 闭包里直接引用脚本对象（zdBuildSha/logger）
+//    会被 configuration-cache 拒收（"cannot serialize Gradle script object references"，
+//    2026-11-10 负例测试实测红过一次）——抽象类由 Gradle 自己序列化，Property.set(Provider)
+//    把 ValueSource 的求值推迟到执行期。
+abstract class ZdReleaseIdentityGateTask : DefaultTask() {
+    /** GIT_SHA（ValueSource provider 注入，执行期求值）。 */
+    @get:org.gradle.api.tasks.Input
+    abstract val gitSha: org.gradle.api.provider.Property<String>
+
+    @org.gradle.api.tasks.TaskAction
+    fun check() {
+        val sha = gitSha.get()
+        check(sha != "local") {
+            "正式包 GIT_SHA=local：对不上仓库里的任何提交，不允许发版（561 追加判据①）。" +
+                "请从 git 检出构建，或 -Pzhengdao.gitSha=<8位短号> 显式报名号。"
+        }
+        logger.lifecycle("[zdReleaseIdentityGate] GIT_SHA=$sha")
+    }
+}
+
+val zdReleaseIdentityGate = tasks.register<ZdReleaseIdentityGateTask>("zdReleaseIdentityGate") {
+    group = "verification"
+    description = "561：正式包必须带真 commit 短号（GIT_SHA=local ⇒ 失败）"
+    gitSha.set(zdBuildSha)
+}
+listOf("assembleRelease", "bundleRelease").forEach { name ->
+    tasks.matching { it.name == name }.configureEach { dependsOn(zdReleaseIdentityGate) }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

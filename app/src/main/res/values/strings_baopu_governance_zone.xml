@@ -100,4 +100,13 @@
     <string name="gc_todo_state_todo">待做</string>
     <string name="gc_todo_state_done">已做</string>
     <string name="gc_todo_state_complete">已完成</string>
+    <!-- 561 治理中心「开发核对」块（页内，不加抽屉入口；导出核对包是第 4 个人按写口） -->
+    <string name="gc_audit_title">开发核对</string>
+    <string name="gc_audit_hint">这台包是仓库里哪一版、开了哪些脚手架——只读采集，导出到工作区产物目录（点号开头不计产物数，不覆盖旧文件）。不含用户正文。</string>
+    <string name="gc_audit_export">导出核对包</string>
+    <string name="gc_audit_exporting">正在导出…</string>
+    <string name="gc_audit_done">已导出：%1$s（同名旧文件不会被覆盖）</string>
+    <string name="gc_audit_fail">导出失败：%1$s</string>
+    <string name="gc_audit_ablation_unset">消融登记：未建立（559）</string>
+    <string name="gc_audit_ablation_set">消融登记：已建立（明细在同名 .json）</string>
 </resources>

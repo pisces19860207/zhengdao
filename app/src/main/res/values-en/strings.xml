@@ -138,6 +138,11 @@
 
     <!-- ── About page ── -->
     <string name="about_version">Version</string>
+    <!-- 561 (2026-11-09): build identity rows — commit short sha, build time, ABI.
+         Values come straight from BuildConfig. -->
+    <string name="about_build_commit">Build commit</string>
+    <string name="about_build_time">Build time</string>
+    <string name="about_build_abi">ABI</string>
     <string name="about_author">Author</string>
     <string name="about_root_mode">Root mode</string>
     <string name="about_root_mode_value">Not implemented yet — Zhengdao runs Debian without root</string>

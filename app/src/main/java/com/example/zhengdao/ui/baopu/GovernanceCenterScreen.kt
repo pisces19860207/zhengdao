@@ -31,6 +31,15 @@
 // 于是本屏的人按写口从两个变成**三个**：清空小黑板 / 清空今天干过什么 / 确认删一条待办。
 // 三个都由**人**按，模型一个都够不着（541 判据⑤：`todo_confirm` 不是工具）。
 //
+// 第五百六十一批（2026-11-09）追加第 7 块「开发核对」：一行摘要 ＋「导出核对包」。
+// 块本体在 `GovernanceCenterAudit.kt`（544/558/561 三单同屏在飞，块放独立文件把合并面压到最小）；
+// 屏里只补快照一个字段＋LazyColumn 一行。三条口径落在判据层：
+//   · **不加抽屉入口**（判据⑥：入口净增 0）——这块只活在屏内，抽屉一行不动；
+//   · 「导出核对包」是本屏第 4 个**人按**写口，采集/组包/防覆盖全在 `BuildAuditPack`，
+//     模型一个都够不着（它不在任何工具 spec 里）；
+//   · 导出＝只读采集＋写 `<工作区>/产物/.zd-audit-*.json/.md`：点号开头不计产物数（512 口径），
+//     同名不覆盖旧文件；readings 只抄 527 出口的 day/ratios/cards/gray 白名单四键（判据④）。
+//
 // 承载路子照本仓既有的全屏浮层（`Surface` ＋ 返回键一并收）：换个 Activity 要动 Manifest，
 // 也会把"抽屉里点进去"变成另一套返回栈——本屏不另开一条。
 // （2026-11-08 追加：536 已把 528 那屏整体回退掉，本屏的"同形态"参照物只剩 104 那套设置浮层。）
@@ -77,6 +86,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.zhengdao.R
+import com.example.zhengdao.BuildConfig
+import com.example.zhengdao.baopu.BuildAuditPack
 import com.example.zhengdao.baopu.agent.BoardRules
 import com.example.zhengdao.baopu.agent.BoardStore
 import com.example.zhengdao.baopu.agent.GovernanceStateTool
@@ -128,6 +139,11 @@ private data class GovSnapshot(
     val todoCounts: TodoCounts = TodoCounts(todo = 0, doing = 0, complete = 0),
     /** 首次读盘还没回来：与"读出来是空的"分开（同抽屉那批 264 的口径）。 */
     val ready: Boolean = false,
+    /**
+     * 「开发核对」块那一行摘要（561）：`构建 … · 开关 … · 可删候选 …`。
+     * 拼装在 `BuildAuditPack.summaryLine`（数据层），本屏只照着画（565"只画不算"同款）。
+     */
+    val auditSummary: String? = null,
 )
 
 /**
@@ -160,6 +176,7 @@ internal fun GovernanceCenterScreen(
 
     GovFrame(
         snapshot = snapshot,
+        wsRoot = controller.workspaceRoot,
         expandedBlock = expandedBlock,
         onDismiss = onDismiss,
         onClearBoard = { confirmingClear = true },
@@ -195,10 +212,11 @@ internal fun GovernanceCenterScreen(
     )
 }
 
-/** 整屏骨架（浮层 ＋ 顶栏 ＋ 六块滚动区）：只是排版，不取数、不判断。 */
+/** 整屏骨架（浮层 ＋ 顶栏 ＋ 七块滚动区）：只是排版，不取数、不判断。 */
 @Composable
 private fun GovFrame(
     snapshot: GovSnapshot,
+    wsRoot: File,
     expandedBlock: String?,
     onDismiss: () -> Unit,
     onClearBoard: () -> Unit,
@@ -232,6 +250,8 @@ private fun GovFrame(
                             onConfirm = onConfirmTodo,
                         )
                     }
+                    // 「开发核对」（561）：块本体在 GovernanceCenterAudit.kt；屏内块、无抽屉入口。
+                    item { AuditSection(summary = snapshot.auditSummary, wsRoot = wsRoot) }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
@@ -301,6 +321,15 @@ private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
     // ⑤ 待办（565）：读不出 ⇒ 空列表（"没有待办"与"读不出"在界面上是同一句"现在没有待办"，
     // 不做第三种文案——待办不是读数，读不出时它不是"账不实"，是本来就可能还没立过）。
     val todoItems = runCatching { TodoStore.items(wsRoot) }.getOrDefault(emptyList())
+    // ⑥ 开发核对摘要（561）：开关现值＋短号＋可删候选数，拼装在 BuildAuditPack（数据层）。
+    //    注意它**不是第二套读数**——率/弹卡/灰度仍只走上面那条 527 出口；这里只有开关布尔。
+    val auditSummary = runCatching {
+        BuildAuditPack.summaryLine(
+            BuildConfig.GIT_SHA,
+            BuildAuditPack.collectSwitches(context),
+            BuildAuditPack.deadCandidateCount(),
+        )
+    }.getOrNull()
     return GovSnapshot(
         root = root,
         credentialCount = creds,
@@ -316,6 +345,7 @@ private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
         // ⑤ 待办（565）：账本 → 三字段行（判据层）＋ 收起态两个数。本屏不筛、不拼。
         todoRows = TodoBoardRules.rows(todoItems),
         todoCounts = TodoRules.counts(todoItems),
+        auditSummary = auditSummary,
         ready = true,
     )
 }

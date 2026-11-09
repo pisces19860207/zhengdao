@@ -303,6 +303,22 @@ jobs:
           cp app/build/outputs/apk/release/zhengdao-*-release.apk apk-release/
           ls -la apk-release/
 
+      - name: 记构建身份边车（561：短号＋apk sha256，release job 拿它对拍）
+        # 为什么是边车：APK 里读不出 BuildConfig（不解 dex），release job 与 build job
+        # 又不在同一个 runner——把「这份产物是哪个号、sha256 多少」随 artifact 传过去，
+        # release job 三对拍（边车号 = tag 检出号；边车 sha256 = 附件实测 sha256；号必须干净）。
+        run: |
+          set -euo pipefail
+          SHA8="${GITHUB_SHA:0:8}"
+          if [ -n "$(git status --porcelain)" ]; then
+            SHA8="$SHA8-dirty"
+            echo "::warning::工作区有未提交改动：边车短号带 -dirty，release job 的闸会拒绝发布（561）"
+          fi
+          APK=$(ls apk-release/zhengdao-*-release.apk | head -n1)
+          APK_SHA=$(sha256sum "$APK" | awk '{print $1}')
+          printf '{"gitSha":"%s","apkSha256":"%s"}\n' "$SHA8" "$APK_SHA" > build-identity.json
+          cat build-identity.json
+
       - name: 发布 APK 到 Releases（最终用户从这里下载，和太墟一样的姿势）
         # ⚠️ E-029：这一步**刻意排在 RootFS 构建之前**。它以前排在 30–90 分钟的 qemu
         #    构建后面，于是任何一次新推送都会被 concurrency.cancel-in-progress 掐死在
@@ -351,6 +367,7 @@ jobs:
             apk-debug/
             apk-release/
             rootfs-files/
+            build-identity.json
           retention-days: 14
           if-no-files-found: error
 
@@ -421,6 +438,36 @@ jobs:
           echo "file=$APK" >> "$GITHUB_OUTPUT"
           echo "以 $(basename "$APK") 发布"
 
+      - name: 闸（561）：包必须对得上干净 commit，附件 sha256 必须与边车对拍
+        # 用户 2026-11-09：「带编号」还不够，「编号必须对应产物」；local/-dirty 的包
+        # 不得出现在 Release 附件（561 追加判据⑤）。三对拍：
+        #   ① 边车短号 = 本次 tag 检出的 GITHUB_SHA 前 8 位（产物与提交同号）；
+        #   ② 短号干净（不许 local / -dirty）；
+        #   ③ 边车里的 apk sha256 = 附件实测 sha256（附件没被换过）。
+        id: identity
+        run: |
+          set -euo pipefail
+          test -f dist/build-identity.json || {
+            echo "::error::没有构建身份边车 build-identity.json（build job 版本太旧或 artifact 不完整）"; exit 1
+          }
+          SHA8="${GITHUB_SHA:0:8}"
+          SIDE_SHA=$(python3 -c "import json;print(json.load(open('dist/build-identity.json'))['gitSha'])")
+          SIDE_APK=$(python3 -c "import json;print(json.load(open('dist/build-identity.json'))['apkSha256'])")
+          if [ "$SIDE_SHA" != "$SHA8" ]; then
+            echo "::error::边车短号 $SIDE_SHA ≠ 本次 tag 检出 $SHA8——产物与提交对不上号（561 追加判据③）"; exit 1
+          fi
+          case "$SIDE_SHA" in
+            local|*-dirty)
+              echo "::error::短号 $SIDE_SHA 不干净：local/-dirty 的包不许发 Release（561 追加判据⑤）"; exit 1 ;;
+          esac
+          APK_SHA=$(sha256sum "${{ steps.apk.outputs.file }}" | awk '{print $1}')
+          if [ "$APK_SHA" != "$SIDE_APK" ]; then
+            echo "::error::APK sha256 对不上（边车 $SIDE_APK ≠ 实测 $APK_SHA）——附件与构建身份不一致"; exit 1
+          fi
+          echo "sha8=$SHA8" >> "$GITHUB_OUTPUT"
+          echo "apkSha256=$APK_SHA" >> "$GITHUB_OUTPUT"
+          echo "✅ 三对拍全过：commit=$SHA8 apkSha256=$APK_SHA"
+
       - name: 选 Release 正文（按 tag 找专属正文）
         # E-068：以前 body_path 钉死在 `.github/release-notes.md` 这一份文件上，
         #      于是 v2.0.1~v2.0.5 的 Release 正文**全都一模一样**（都写着"证道 v2.0.0"、
@@ -437,6 +484,24 @@ jobs:
           else
             echo "file=.github/release-notes.md" >> "$GITHUB_OUTPUT"
             echo "::warning::没有 .github/release-notes/$TAG.md，退回通用正文 .github/release-notes.md（见 docs/ERRATA.md E-068）"
+          fi
+
+      - name: Release 正文补 commit 短号与 apk sha256（561：三处同号）
+        # 三处同号（561 追加③）：关于页 · 核对包 build.gitSha · **Release 说明**。
+        # 正文里没有就补两行（有就不动——不重写发版人写的正文）；apk sha256 与
+        # 核对包/边车同一算法（小写十六进制），用户拿 sha256sum 就能对上。
+        run: |
+          set -euo pipefail
+          NOTES="${{ steps.notes.outputs.file }}"
+          SHA8="${{ steps.identity.outputs.sha8 }}"
+          APK_SHA="${{ steps.identity.outputs.apkSha256 }}"
+          if ! grep -q "$SHA8" "$NOTES"; then
+            printf '\n**commit**: `%s`\n' "$SHA8" >> "$NOTES"
+            echo "正文补了 commit 短号 $SHA8"
+          fi
+          if ! grep -qi "$APK_SHA" "$NOTES"; then
+            printf '\n**apk sha256**: `%s`\n' "$APK_SHA" >> "$NOTES"
+            echo "正文补了 apk sha256"
           fi
 
       - name: 创建正式 Release 并上传 APK

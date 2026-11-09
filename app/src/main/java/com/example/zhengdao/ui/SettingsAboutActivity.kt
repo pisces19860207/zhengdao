@@ -120,9 +120,26 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
                 },
             )
             Spacer(Modifier.height(4.dp))
-            // 构建指纹（2026-10-23）：同一天多个包都可能叫 2.2.0，这一行用来分辨
-            // 「手机里装的是哪一次构建」——CI 包显示提交哈希前 8 位，本机构建显示 local。
-            InfoRow("构建 commit", BuildConfig.GIT_SHA)
+            // 构建指纹（2026-10-23 建；561 批 2026-11-09 扩成三行）：同一天多个包都可能叫
+            // 2.2.3，这一族行用来分辨「手机里装的是哪一次构建」。值只读 BuildConfig，
+            // 与包内一字不差（561 判据①：关于页与 BuildConfig 一致）：
+            //   · commit：CI 报 GITHUB_SHA 前 8 位；本机报 git HEAD 前 8 位；git 不可用才 local。
+            //   · **-dirty 红显**：工作区有未提交改动 ⇒ 号对不上仓库里任何干净提交，按
+            //     用户 2026-11-09 的规矩这种包不许当正式包外发——App 只报不拦，红字即显形。
+            val commitSha = BuildConfig.GIT_SHA
+            InfoRow(
+                stringResource(R.string.about_build_commit),
+                commitSha,
+                valueColor = if (commitSha == "local" || commitSha.endsWith("-dirty")) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    Color.Unspecified
+                },
+            )
+            Spacer(Modifier.height(4.dp))
+            InfoRow(stringResource(R.string.about_build_time), BuildConfig.BUILD_TIME)
+            Spacer(Modifier.height(4.dp))
+            InfoRow(stringResource(R.string.about_build_abi), BuildConfig.ABI)
             Spacer(Modifier.height(4.dp))
             // 定位文案（第十八批 C 段）：抱朴 = 自研 harness。中英走 strings.xml（baopu_positioning_*），
             // 与首页顶栏那句同一对字符串。

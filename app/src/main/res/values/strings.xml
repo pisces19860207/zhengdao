@@ -130,6 +130,11 @@
 
     <!-- ── 关于页 ── -->
     <string name="about_version">版本</string>
+    <!-- 561（2026-11-09）：构建指纹三行——commit 短号（原"构建 commit"硬编码收编进资源）、
+         构建时刻、ABI。值全部只读 BuildConfig，与包内一字不差。 -->
+    <string name="about_build_commit">构建 commit</string>
+    <string name="about_build_time">构建时间</string>
+    <string name="about_build_abi">ABI</string>
     <string name="about_author">作者</string>
     <string name="about_root_mode">Root 增强模式</string>
     <string name="about_root_mode_value">未实现 · 计划以后加（证道现在免 Root 就能跑 Debian）</string>
