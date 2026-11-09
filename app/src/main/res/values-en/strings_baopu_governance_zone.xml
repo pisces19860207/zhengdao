@@ -96,4 +96,16 @@
     <string name="baopu_tool_ledger_status_desc">Move an entry to flying/pending/frozen/withdrawn. Asking for accepted sends it to the right minister: only PASS sets it to accepted, otherwise it stays pending. Only the user can archive.</string>
     <string name="baopu_tool_ledger_list">Read the ledger</string>
     <string name="baopu_tool_ledger_list_desc">Read the model\'s own project ledger (one-line title + state + the right minister\'s verdict). Read-only; archived entries are hidden by default.</string>
+    <string name="gc_ledger_hint">Each entry is one line. States are changed by the model and the right minister; this view only shows them. Entries with a source jump back to the original message.</string>
+    <string name="gc_ledger_empty">No entries yet</string>
+    <string name="gc_ledger_scope_live">Active</string>
+    <string name="gc_ledger_scope_all">All</string>
+    <string name="gc_ledger_jump">Open source ›</string>
+    <string name="gc_ledger_jump_busy">A session is still running. Jump once it stops.</string>
+    <string name="gc_ledger_group_flying">In flight</string>
+    <string name="gc_ledger_group_pending">To verify</string>
+    <string name="gc_ledger_group_accepted">Accepted</string>
+    <string name="gc_ledger_group_frozen">Frozen</string>
+    <string name="gc_ledger_group_withdrawn">Withdrawn</string>
+    <string name="gc_ledger_group_archived">Archived</string>
 </resources>
