@@ -17,8 +17,8 @@
 // ## 代码里不许写死一句中文
 // 派工单前置②「文案走 strings，判据钉 key」要在**代码这一头**也成立：只要这里出现一句
 // 硬编码中文，「换措辞不红门禁」就成了假话。连顿号（[VerifyPhrase.JOIN_OR]）与行分隔符
-// （[VerifyPhrase.LINE_SEP]）都从 strings 取；浮层限高**复用** 139 批那把尺
-// （`PROCESS_DETAIL_MAX_DP`），不另立一个数字。
+// （[VerifyPhrase.LINE_SEP]）都从 strings 取；浮层限高与圆角**复用** 139 批那两把尺
+// （`PROCESS_DETAIL_MAX_DP`／`rSheet`），不另立数字——`check-radius-tokens.py` 也不放行裸写。
 package com.example.zhengdao.ui.baopu
 
 import android.content.res.Resources
@@ -55,6 +55,7 @@ import com.example.zhengdao.baopu.verify.VerifyAction
 import com.example.zhengdao.baopu.verify.VerifyLine
 import com.example.zhengdao.baopu.verify.VerifyNarrative
 import com.example.zhengdao.baopu.verify.VerifyPhrase
+import com.example.zhengdao.ui.theme.rSheet
 
 // ── 键名 → 资源（唯一映射处；门禁按这张表钉判据①「三态各用哪个 key」）────────
 
@@ -247,13 +248,13 @@ internal fun BaopuVerifyLineRow(
     }
 }
 
-/** 证据浮层：文件路径/账行逐条摆，标题与脚注都来自 strings（限高复用 139 批那把尺）。 */
+/** 证据浮层：文件路径/账行逐条摆，标题与脚注都来自 strings（限高与圆角同 139 批那一族）。 */
 @Composable
 private fun VerifyEvidenceSheet(line: VerifyLine, res: Resources, onDismiss: () -> Unit) {
     DropdownMenu(
         expanded = true,
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(rSheet),
         modifier = Modifier.widthIn(min = 220.dp),
     ) {
         Column(
