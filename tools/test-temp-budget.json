@@ -1,0 +1,10 @@
+{
+ "budget": 1000,
+ "measured": 908,
+ "measuredAt": "2026-11-09",
+ "measuredHow": "wt-567（已 rebase 到 origin/main a8523ea4b）：一轮 testDebugUnitTest（909 套件 / 10,495 例 / 0 失败 / 8 跳过）跑完后的 app/build/**/tmp* 目录总数。测试任务开跑前会清空自己的临时区（app/build.gradle.kts 的 tasks.withType<Test>），所以这是**一轮**的量，不是连跑多轮的累加。",
+ "perRunResidue": 908,
+ "osTempGrowthPerRun": 0,
+ "goal": 50,
+ "note": "存量 136 个测试文件还没迁到 testkit/TempSandbox（清单见 check-test-temp.py --scan-tests）：一轮单测仍留下 908 个目录。系统临时区增量为 0（java.io.tmpdir 已钉进 app/build，且开跑前清空）。迁移一批就把本值往下压一次：只降不升，最终收口 50。"
+}

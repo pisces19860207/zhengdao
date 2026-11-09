@@ -1051,6 +1051,27 @@ tasks.withType<Test>().configureEach {
         isIncludeNoLocationClasses = true
         excludes = listOf("jdk.internal.*")
     }
+
+    // 564（2026-11-09）：把测试 JVM 的 java.io.tmpdir **钉进构建目录**。
+    //
+    // 不钉的后果（本机实测）：`Files.createTempDirectory` / `createTempFile` 全落到系统临时目录
+    // （Windows `%TEMP%`），单测跑完不删的那些每轮留一堆——2026-11-09 清理时那里攒了
+    // **9 万多个**目录（都是 `baopu-*`／`zd-*`／`opinion-*` 这类本仓测试前缀），磁盘被吃到 0 字节；
+    // 而 CI 只看 `app/build`，一个都数不到 ⇒ 「临时目录闸」等于没装。
+    //
+    // 钉了以后：临时目录全部落在 `app/build/tmp/testDebugUnitTest`，由
+    // `tools/check-test-temp.py` 数得到（> 50 即红），`./gradlew clean` 也能一次收干净。
+    // 这不是"把问题挪个地方"：配 `testkit/TempSandbox` 用{} 收口，增量才会真的降到 0；
+    // 闸只负责让"没降"这件事看得见。
+    val testTmpDir = layout.buildDirectory.dir("tmp/testDebugUnitTest").get().asFile
+    doFirst {
+        // 每轮开跑前先清掉自己上一轮的残留：让「目录数」代表**一轮**的量，而不是本地连跑 N 轮的累加。
+        // 不清的后果很具体：连跑三轮会从 2,590 涨到 3,434，闸红了却只会教人去 `clean`，
+        // 教不出「把测试迁到 TempSandbox」这件事——闸的读数得是干净的、可比的。
+        testTmpDir.deleteRecursively()
+        testTmpDir.mkdirs()
+    }
+    systemProperty("java.io.tmpdir", testTmpDir.absolutePath)
 }
 
 tasks.register<org.gradle.testing.jacoco.tasks.JacocoReport>("jacocoUnitTestReport") {

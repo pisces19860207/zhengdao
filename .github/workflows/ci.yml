@@ -211,6 +211,24 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      # 564（2026-11-09）：**测试临时目录不许无限攒**。
+      # app/src/test 里有 299 个文件建临时目录（526 处调用），其中 136 个跑完不删；本机实测
+      # 系统临时区曾攒到 84,594 个本仓测试目录（磁盘被吃到 0 字节），而编译/单测/detekt/lint
+      # 全绿——没有任何断言盯着它。同批把 java.io.tmpdir 钉进 app/build（build.gradle.kts 的
+      # tasks.withType<Test>），这些目录才落进本闸的视野。
+      # 判据：`app/build/**/tmp*` 目录区的目录总数 > 水位 ⇒ 红。水位取自
+      # tools/test-temp-budget.json（实测 **908/轮**，判据线 1,000，**只降不升**）：不是 50，
+      # 因为存量 136 个测试文件还没迁到 testkit/TempSandbox；降到 50 是迁移批的收口目标。
+      # 测试任务开跑前会清空自己的临时区（build.gradle.kts），所以这个数是「一轮」的量，
+      # 连跑多轮不会累加——闸红了就只能是「这一轮真变多了」，不会教人去 `clean`。
+      # --selftest 用合成树自证「=预算绿、预算+1 红」，防这条闸自己悄悄失效。
+      # 位置在单测之后、注解之前：红了这一条，注解步骤仍要跑（if: always()）。
+      - name: 测试临时目录闸（564 · 超水位即红，水位见 tools/test-temp-budget.json）
+        if: always()
+        run: |
+          python3 tools/check-test-temp.py --selftest
+          python3 tools/check-test-temp.py
+
       # 2026-10-30：这一步不判成败，只**把失败的用例变成注解**。
       # 起因：CI 红在测试步时，注解里只有一句 `Process completed with exit code 1.`，
       # 日志要登录才看得到 ⇒「红了但查不动」。现在匿名打开 Actions 页就能看到 类名#用例名 + 首行消息。
