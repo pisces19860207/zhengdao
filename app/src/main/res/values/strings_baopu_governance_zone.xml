@@ -11,7 +11,7 @@
 <resources>
     <!-- 抽屉入口（「定时任务」下面那一行） -->
     <string name="baopu_drawer_governance_center">治理中心</string>
-    <string name="baopu_drawer_governance_center_desc">只看状态：四率、弹卡、灰度、执行体、模型小黑板、今天干过什么</string>
+    <string name="baopu_drawer_governance_center_desc">只看状态：四率、弹卡、灰度、执行体、模型小黑板、今天干过什么、待办</string>
 
     <!-- 屏幕本体 -->
     <string name="gc_title">治理中心</string>
@@ -90,4 +90,14 @@
     <string name="baopu_tool_todo_list_desc">读模型自己的待办清单（摘要＋状态＋右相结论）。只读，不改盘。</string>
     <string name="baopu_tool_todo_mark_done">标已做</string>
     <string name="baopu_tool_todo_mark_done_desc">把待办标成「已做」，随即由右相验收：判 PASS 才进「已完成」，判不了就留在「已做」。删除只有用户能点。</string>
+
+    <!-- 565 治理中心「待办」块（收起态一行 / 行 / 状态签 / 确认） -->
+    <string name="gc_todo_expand">展开</string>
+    <string name="gc_todo_collapse">收回</string>
+    <string name="gc_todo_hint">右相判过 PASS 才到「已完成」；点「确认」才从看板移除——账本那几行一条不少。</string>
+    <string name="gc_todo_empty">现在没有待办</string>
+    <string name="gc_todo_confirm">确认</string>
+    <string name="gc_todo_state_todo">待做</string>
+    <string name="gc_todo_state_done">已做</string>
+    <string name="gc_todo_state_complete">已完成</string>
 </resources>

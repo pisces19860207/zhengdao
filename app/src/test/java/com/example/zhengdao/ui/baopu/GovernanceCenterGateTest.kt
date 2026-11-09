@@ -108,7 +108,8 @@ class GovernanceCenterGateTest {
 
     @Test
     fun `本屏只有一个小黑板清空是写口_别的一律只读`() {
-        // 唯一允许的写：人工清空小黑板
+        // 唯一允许的写（565 起共三处，都是**人**按的）：清空小黑板 / 清空今天干过什么 /
+        // 确认删一条待办（`TodoStore.confirm`）。后两个在 539/565 各自的判据里另钉。
         assertTrue("清空要走 BoardStore.clear", screen.contains("BoardStore.clear"))
         // 账本/队列/记忆的写口一律不许出现
         listOf(

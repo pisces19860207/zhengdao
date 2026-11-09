@@ -11,14 +11,25 @@
 //   1. **读数只走 527**：本屏调 `GovernanceStateTool.run` 拿那一把 JSON，再由
 //      `GovernanceCenterRules` 原样抄成行。本文件里没有第二个取数路，也没有任何算术
 //      （判据②；源级门禁 `GovernanceCenterGateTest` 扫的就是这条）。
-//   2. **只读**：除"清空小黑板"与"清空今天干过什么"这两个由**人**按的动作，本屏没有任何写口
-//      （不碰账本、不碰队列、不碰 `DecisionTab` / `royalRows`——判据⑤）。
-//      539 的"清空"只抬本地水位，账本一个字节都不动（`ActivityBoardStore`）。
+//   2. **只读**：除下面这三个由**人**按的动作，本屏没有任何写口
+//      （不碰队列、不碰 `DecisionTab` / `royalRows`——判据⑤）：
+//      · 清空小黑板（322）；· 清空今天干过什么（539，只抬本地水位，账本一个字节都不动）；
+//      · 确认删一条待办（565 → 541 的 `TodoStore.confirm(actor = 用户)`，追加一行 confirm）。
+//      三个都够不着模型：`todo_confirm` 根本不是工具（541 判据⑤）。
 //   3. **不新增导航栈**：全屏 Dialog（与本仓既有浮层同形态），返回键/关闭键一起收，页面栈不变。
 //
 // 第五百三十九批（2026-11-09）追加第 4 块「今天干过什么」：三本账的已执行行，四列
 // （时间·谁·做了什么·结果）。本屏在这一块里**只画不算**——取数在 `ActivityBoardSource`，
 // 过滤/四列/倒序在 `ActivityBoardRules`，这里只把行照着画出来（判据⑥）。
+//
+// 第五百六十五批（2026-11-09）追加第 6 块「待办」：收起态一行 `待办 N · 在做 M`，点开列列表、
+// 再点收回（**一次只展开一块**，状态机在 `TodoBoardRules.toggle`）。三条口径落在判据层：
+//   · 行里只有摘要 + 状态签（`TodoRowView` 就三个字段，想多画也拿不到——判据③）；
+//   · 「确认」只出现在「已完成」上（`canConfirm`），而「已完成」只有右相 PASS 一个入口（判据④）；
+//   · 点「确认」＝调 541 的 `TodoStore.confirm(actor = 用户)`：**追加**一行 confirm，
+//     看板由账本回放得出 ⇒ 该条消失、账本历史一行不少。
+// 于是本屏的人按写口从两个变成**三个**：清空小黑板 / 清空今天干过什么 / 确认删一条待办。
+// 三个都由**人**按，模型一个都够不着（541 判据⑤：`todo_confirm` 不是工具）。
 //
 // 承载路子照本仓既有的全屏浮层（`Surface` ＋ 返回键一并收）：换个 Activity 要动 Manifest，
 // 也会把"抽屉里点进去"变成另一套返回栈——本屏不另开一条。
@@ -26,6 +37,8 @@
 package com.example.zhengdao.ui.baopu
 
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -69,10 +82,16 @@ import com.example.zhengdao.baopu.agent.BoardStore
 import com.example.zhengdao.baopu.agent.GovernanceStateTool
 import com.example.zhengdao.baopu.consequence.CredentialStore
 import com.example.zhengdao.baopu.consequence.IdentityStore
+import com.example.zhengdao.baopu.todo.TodoActor
+import com.example.zhengdao.baopu.todo.TodoCounts
+import com.example.zhengdao.baopu.todo.TodoRules
+import com.example.zhengdao.baopu.todo.TodoState
+import com.example.zhengdao.baopu.todo.TodoStore
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.theme.ShapeCard
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,6 +119,13 @@ private data class GovSnapshot(
     val activity: List<ActivityRow> = emptyList(),
     /** 上次「清空」的时刻（`HH:mm`；空串＝没清过）。只清投影，账本原文不动。 */
     val activityClearedClock: String = "",
+    /**
+     * 待办块的行（565）：**已经过判据层的三字段行**（只有 id/摘要/状态，看板口径在
+     * [TodoBoardRules.rows]）。本屏不筛、不拼字、不算数。
+     */
+    val todoRows: List<TodoRowView> = emptyList(),
+    /** 收起态那一行要的两个数（[TodoBoardRules.header] 是唯一渲染口）。 */
+    val todoCounts: TodoCounts = TodoCounts(todo = 0, doing = 0, complete = 0),
     /** 首次读盘还没回来：与"读出来是空的"分开（同抽屉那批 264 的口径）。 */
     val ready: Boolean = false,
 )
@@ -122,6 +148,8 @@ internal fun GovernanceCenterScreen(
     var snapshot by remember { mutableStateOf(GovSnapshot()) }
     var confirmingClear by remember { mutableStateOf(false) }
     var confirmingActivityClear by remember { mutableStateOf(false) }
+    // 565：哪一块是展开的（null＝全收起）。状态机在判据层（TodoBoardRules.toggle），这里只存返回值。
+    var expandedBlock by remember { mutableStateOf<String?>(null) }
 
     // 读盘全在 IO 上（264 的口径：抽屉/面板首帧不许占主线程），读回来再一次性换快照。
     LaunchedEffect(tick) {
@@ -132,9 +160,16 @@ internal fun GovernanceCenterScreen(
 
     GovFrame(
         snapshot = snapshot,
+        expandedBlock = expandedBlock,
         onDismiss = onDismiss,
         onClearBoard = { confirmingClear = true },
         onClearActivity = { confirmingActivityClear = true },
+        onToggleTodo = {
+            expandedBlock = TodoBoardRules.toggle(expandedBlock, TodoBoardRules.BLOCK_TODO)
+        },
+        onConfirmTodo = { id ->
+            launchTodoConfirm(scope, controller.workspaceRoot, id) { tick++ }
+        },
     )
 
     GovClearDialogs(
@@ -160,13 +195,16 @@ internal fun GovernanceCenterScreen(
     )
 }
 
-/** 整屏骨架（浮层 ＋ 顶栏 ＋ 四块滚动区）：只是排版，不取数、不判断。 */
+/** 整屏骨架（浮层 ＋ 顶栏 ＋ 六块滚动区）：只是排版，不取数、不判断。 */
 @Composable
 private fun GovFrame(
     snapshot: GovSnapshot,
+    expandedBlock: String?,
     onDismiss: () -> Unit,
     onClearBoard: () -> Unit,
     onClearActivity: () -> Unit,
+    onToggleTodo: () -> Unit,
+    onConfirmTodo: (String) -> Unit,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -185,10 +223,39 @@ private fun GovFrame(
                     item { BoardSection(snapshot = snapshot, onClear = onClearBoard) }
                     item { Spacer(Modifier.height(14.dp)) }
                     item { ActivitySection(snapshot = snapshot, onClear = onClearActivity) }
+                    item { Spacer(Modifier.height(14.dp)) }
+                    item {
+                        TodoSection(
+                            snapshot = snapshot,
+                            expanded = expandedBlock == TodoBoardRules.BLOCK_TODO,
+                            onToggle = onToggleTodo,
+                            onConfirm = onConfirmTodo,
+                        )
+                    }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
+    }
+}
+
+/**
+ * 人按「确认」那一下（565）：IO 上追加一行 confirm，回主线程重读 ⇒ 那一条当场从看板消失。
+ *
+ * 写口只有一个（541 的 `TodoStore.confirm`）；它自己会再拒一次非用户角色（判据⑤第二道闸），
+ * 所以这里即使被谁误调也不会把条目删掉。
+ */
+private fun launchTodoConfirm(
+    scope: CoroutineScope,
+    wsRoot: File,
+    id: String,
+    onChanged: () -> Unit,
+) {
+    scope.launch {
+        withContext(Dispatchers.IO) {
+            TodoStore.confirm(wsRoot, id, TodoActor.USER, System.currentTimeMillis())
+        }
+        onChanged()
     }
 }
 
@@ -231,6 +298,9 @@ private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
         nowMs = nowMs,
         clearedAtMs = activityClearedAtMs,
     )
+    // ⑤ 待办（565）：读不出 ⇒ 空列表（"没有待办"与"读不出"在界面上是同一句"现在没有待办"，
+    // 不做第三种文案——待办不是读数，读不出时它不是"账不实"，是本来就可能还没立过）。
+    val todoItems = runCatching { TodoStore.items(wsRoot) }.getOrDefault(emptyList())
     return GovSnapshot(
         root = root,
         credentialCount = creds,
@@ -243,6 +313,9 @@ private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
         } else {
             ""
         },
+        // ⑤ 待办（565）：账本 → 三字段行（判据层）＋ 收起态两个数。本屏不筛、不拼。
+        todoRows = TodoBoardRules.rows(todoItems),
+        todoCounts = TodoRules.counts(todoItems),
         ready = true,
     )
 }
@@ -654,6 +727,122 @@ private fun activityResultColor(result: ActivityResult): Color = when (result) {
     ActivityResult.FAILED -> MaterialTheme.colorScheme.error
     ActivityResult.DONE, ActivityResult.SKIPPED, ActivityResult.ROLLED_BACK ->
         MaterialTheme.colorScheme.onSurface
+}
+
+/**
+ * ⑤ 待办（第五百六十五批）：收起态一行 `待办 N · 在做 M`，点开列列表、再点收回。
+ *
+ * 三条口径（判据建在上面）：
+ * 1. **只画不算**：那一行来自 [TodoBoardRules.header]，行来自 [TodoBoardRules.rows]
+ *    （三字段：摘要 / 状态 / 能不能点确认）。本屏一个判断都不加——判据③要的就是"没有第二套口径"；
+ * 2. **确认按钮只由人按**：点了走 [launchTodoConfirm]（IO 上追加一行 confirm），
+ *    账本历史一行不少；模型够不着这个口（541 判据⑤）；
+ * 3. **一次只展开一块**：展开状态是屏幕层的一个 `String?`，切换规则在 [TodoBoardRules.toggle]。
+ */
+@Composable
+private fun TodoSection(
+    snapshot: GovSnapshot,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ShapeCard,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            TodoHeaderLine(counts = snapshot.todoCounts, expanded = expanded, onToggle = onToggle)
+            if (expanded) TodoBody(snapshot, onConfirm)
+        }
+    }
+}
+
+/**
+ * 收起态那一行（整行可点：点开 / 再点收回）。
+ *
+ * ⚠️ 高度下限 48dp（本仓触摸目标口径）——这一行就是这块的"入口"，不能做成一句小字。
+ */
+@Composable
+private fun TodoHeaderLine(counts: TodoCounts, expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = TodoBoardRules.header(counts),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = stringResource(
+                if (expanded) R.string.gc_todo_collapse else R.string.gc_todo_expand,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 展开态：一条说明（为什么有的点不了确认）＋ 列表；没有条目就如实说"现在没有待办"。 */
+@Composable
+private fun TodoBody(snapshot: GovSnapshot, onConfirm: (String) -> Unit) {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Text(
+        text = stringResource(R.string.gc_todo_hint),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
+    )
+    if (snapshot.todoRows.isEmpty()) {
+        Text(
+            text = stringResource(R.string.gc_todo_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 8.dp),
+        )
+        return
+    }
+    snapshot.todoRows.forEach { row -> TodoLine(row, onConfirm) }
+}
+
+/** 一行：摘要（吃剩下的宽度）＋状态签＋（只在「已完成」上）「确认」。 */
+@Composable
+private fun TodoLine(row: TodoRowView, onConfirm: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = row.summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f).padding(end = 6.dp),
+        )
+        Text(
+            text = todoStateLabel(row.state),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (row.canConfirm) {
+            TextButton(
+                onClick = { onConfirm(row.id) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(R.string.gc_todo_confirm))
+            }
+        }
+    }
+}
+
+/** 状态签 → 文案（**只查资源，不做判断**：状态在 541 的账本回放里定，本屏只翻译）。 */
+@Composable
+private fun todoStateLabel(state: TodoState): String = when (state) {
+    TodoState.TODO -> stringResource(R.string.gc_todo_state_todo)
+    TodoState.MODEL_DONE -> stringResource(R.string.gc_todo_state_done)
+    TodoState.COMPLETE -> stringResource(R.string.gc_todo_state_complete)
 }
 
 @Composable
