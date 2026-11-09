@@ -1,7 +1,8 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第四百六十七批 · **入口净增 0** 的源级门禁（这类判据只能靠"谁碰了租约"这张账单钉住）：
-//   · 生产代码里提到租约的文件**必须**就是那 9 个（4 新 + 5 改），一个也不许多；
+//   · 生产代码里提到租约的文件**必须**就是登记在册的那些（558 登记后共 12 个：
+//     6 新 ＋ 6 改），一个也不许多——扩面必须回来改这张名册，不许静默长；
 //   · 设置页/偏好/提示词/工具目录里**一个提都不许有**（不加设置项、不加工具、不进前缀）；
 //   · 建议层不许持 Store（自进化只能出建议，不能自己授租约）。
 package com.example.zhengdao.baopu.agent
@@ -15,24 +16,30 @@ class LeaseEntryGuardTest {
 
     private val mainJava = File("src/main/java")
 
-    /** 允许碰租约的**全部**文件（相对 `src/main/java/`，斜杠归一）：5 新 ＋ 5 改。 */
+    /** 允许碰租约的**全部**文件（相对 `src/main/java/`，斜杠归一）：6 新 ＋ 6 改。 */
     private val allowed = setOf(
         "com/example/zhengdao/baopu/authz/LeaseRules.kt",
         "com/example/zhengdao/baopu/authz/LeaseStore.kt",
         "com/example/zhengdao/baopu/authz/LeaseLedger.kt",
         "com/example/zhengdao/baopu/authz/LeaseAdvice.kt",
         "com/example/zhengdao/baopu/authz/LeaseGate.kt",
+        // 558：租约读数的唯一取数口（LeaseStore.liveCount 只读访问器＋账本 replay），判定零改动
+        "com/example/zhengdao/baopu/authz/LeaseReadings.kt",
         "com/example/zhengdao/baopu/agent/GuardPipeline.kt",
         "com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
         "com/example/zhengdao/baopu/agent/RunEngine.kt",
         // 499 的硬线布尔式抽成 AskHardLines（行为逐字节不变）：租约借它，不复制第二份
         "com/example/zhengdao/baopu/agent/AskGovernance.kt",
+        // 558：出口 lease 段（只读 [LeaseReadings]）。⚠️ 上面的 marker 认不出 "LeaseReadings"
+        // （不在 Lease(X) 词族里），没有这条登记它就会静默漏账——名册以这里为准。
+        "com/example/zhengdao/baopu/agent/tools/GovernanceStateTool.kt",
         "com/example/zhengdao/ui/baopu/BaopuConfirmCard.kt",
     )
 
     /** 只认本批的**标识符**：仓里"租约"一词另有旧含义（派工单的文件租约），不能按中文扫。 */
     private val marker = Regex(
-        "Lease(Store|Rules|Gate|Ledger|Offer|Advice|Limits|Scope|Grant|Verdict|Facts|Kinds)|leaseOffer",
+        // 558 加 Readings：读数口是新词族，不进 marker 就抓不住谁在读租约
+        "Lease(Store|Rules|Gate|Ledger|Offer|Advice|Limits|Scope|Grant|Verdict|Facts|Kinds|Readings)|leaseOffer",
     )
 
     private fun rel(f: File): String = f.relativeTo(mainJava).invariantSeparatorsPath
@@ -45,7 +52,7 @@ class LeaseEntryGuardTest {
             .toSet()
 
     @Test
-    fun `入口净增0_碰租约的文件只有那十个`() {
+    fun `入口净增0_碰租约的文件只有登记在册的那些`() {
         val actual = mentioned()
         assertEquals("多一个文件就是多一个入口（或不许碰的地方碰了）", allowed, actual)
     }

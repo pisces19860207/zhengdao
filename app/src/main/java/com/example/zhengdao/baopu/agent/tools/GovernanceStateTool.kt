@@ -2,18 +2,22 @@
 //
 // 第五百二十七批（2026-11-07）· 治理出口的机器口：`governance_state`（只读 R0）。
 //
-// 一把出六段 JSON（口径唯一真相在 `docs/metrics-registry.md`，本文件只按它取数，不另算）：
+// 一把出八段 JSON（口径唯一真相在 `docs/metrics-registry.md`，本文件只按它取数，不另算）：
 //   ratios 四率（违规/误判/干预/跳过，当日窗）／cards 弹卡三数（healthLine 同源，本批
 //   从 healthLine 提出 [AskGovernance.healthCounts] 共用，没造第二遍）／gray 灰度档
 //   （506 登记表逐能力当前档，从 208 账读回）／conflicts 冲突队列条数（互查账待回放行）
-//   ／identity 执行体（476 身份账）／openLoops 未闭环 top-N（236 欠账）。
+//   ／identity 执行体（476 身份账）／openLoops 未闭环 top-N（236 欠账）／goal 目标（482）
+//   ／lease 租约（558：活/今日授予/命中/免卡/撤销/降权/过期，同源数据函数 [LeaseReadings]）。
 //
 // 三条写死（metrics-registry.md 〇节，代码里不许参数化）：
 //   · 窗口＝当日 00:00 起（本地日历天，[AskGovernance.dayOf] 同一把尺）；状态读数不切窗；
 //   · 分母 0 ⇒ "no_sample"（不编 0%）；0<分母<10 ⇒ "unknown"（METRICS.md R1）；
-//   · 计数只来自账本 replay——每段的「来源」列点名的函数就是取数路。
+//   · 计数只来自账本 replay——每段的「来源」列点名的函数就是取数路（558 的 lease.live
+//     走内存权威，是 registry 明文的例外，理由在 §8）。
 //
-// 判据：读不到 ⇒ 该段 {"unknown":"原因"}，**不抛异常**；六段永远一起返回。
+// 判据：读不到 ⇒ 该段 {"unknown":"原因"}，**不抛异常**；八段永远一起返回。
+// 558 的铁律：**旧七段的键序与字节一个不动**（金样例钉在 GovernanceStateLeaseSectionTest），
+// lease 只许追加在最后。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.ClosureRules
@@ -23,6 +27,7 @@ import com.example.zhengdao.baopu.DecisionKind
 import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.DecisionRecord
 import com.example.zhengdao.baopu.DecisionReview
+import com.example.zhengdao.baopu.authz.LeaseReadings
 import com.example.zhengdao.baopu.consequence.CanaryBand
 import com.example.zhengdao.baopu.consequence.CanaryCapability
 import com.example.zhengdao.baopu.consequence.ConsequenceLedger
@@ -52,8 +57,8 @@ internal object GovernanceStateTool {
 
     const val NAME = "governance_state"
 
-    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2）。 */
-    const val VERSION = 2
+    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2，558 加 `lease` 段 ⇒ 3）。 */
+    const val VERSION = 3
 
     /** 未闭环 top-N（metrics-registry.md §6：挂账最久的前 N 条；写死不参数化）。 */
     const val OPEN_LOOP_TOP = 10
@@ -75,10 +80,11 @@ internal object GovernanceStateTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
-        description = "读本机治理出口的七段只读读数（不改任何东西）：ratios 四率" +
+        description = "读本机治理出口的八段只读读数（不改任何东西）：ratios 四率" +
             "（违规/误判/干预/跳过，当日窗）、cards 弹卡三数（今日自动放过/问卡/压卡）、" +
             "gray 灰度档（逐能力当前档）、conflicts 冲突队列条数（待回放）、identity 执行体身份、" +
-            "openLoops 未闭环承诺 top-10、goal 目标（一句话目标/进度/预算用量）。" +
+            "openLoops 未闭环承诺 top-10、goal 目标（一句话目标/进度/预算用量）、" +
+            "lease 租约（活/今日授予/命中/免卡/撤销/降权/过期）。" +
             "口径唯一真相在 docs/metrics-registry.md：分母 0 回 " +
             "no_sample，不编 0%；读不到的段回 unknown 加原因，不抛异常。（这个工具在 FILES 组：" +
             "看不到就先 capabilities 解锁）",
@@ -95,7 +101,7 @@ internal object GovernanceStateTool {
         timeoutMs = ToolTimeout.FILE_MS,
     ) { _ -> run(workspaceRoot(), System.currentTimeMillis()) }
 
-    /** 六段一起出（[nowMs] 由调用方给：单测传常量钉边界，生产传当前时刻）。 */
+    /** 八段一起出（[nowMs] 由调用方给：单测传常量钉边界，生产传当前时刻）。 */
     fun run(workspaceRoot: File, nowMs: Long): ToolOutcome {
         val json = JSONObject()
             .put("v", VERSION)
@@ -107,6 +113,7 @@ internal object GovernanceStateTool {
             .put("identity", identitySection())
             .put("openLoops", openLoopsSection(workspaceRoot))
             .put("goal", goalSection(workspaceRoot))
+            .put("lease", leaseSection(nowMs))
         return ToolOutcome.Ok(json.toString())
     }
 
@@ -291,6 +298,25 @@ internal object GovernanceStateTool {
             .put("budget", GoalRules.percentText(goal.stepsUsed, goal.budget.maxSteps))
             .put("pledge", goal.pledgeId)
             .put("line", GoalRules.progressLine(goal))
+    }
+
+    /**
+     * 第八段：租约（第五百五十八批；排在最后——旧七段的键序与字节一个不动）。
+     *
+     * 七格全从 [LeaseReadings.counts] 一处来（registry §8：出口段、体检尾句、屏幕行
+     * 三个读口读同一份）。`live` 是内存权威（W3 的明文例外，理由见 registry §8），
+     * 其余六格走 467 租约账 replay。落点未装配（首启没跑过管线动作）⇒ 整段 unknown。
+     */
+    private fun leaseSection(nowMs: Long): JSONObject {
+        val c = LeaseReadings.counts(nowMs) ?: return unknown("租约账落点未装配")
+        return JSONObject()
+            .put("live", c.live)
+            .put("grantedToday", c.grantedToday)
+            .put("hits", c.hits)
+            .put("savedCards", c.savedCards)
+            .put("revoked", c.revoked)
+            .put("downgraded", c.downgraded)
+            .put("expired", c.expired)
     }
 
     /** 当日归属（本地日历天；与体检/账本同一把尺）。 */

@@ -35,6 +35,9 @@
     <string name="gc_card_card">问卡</string>
     <string name="gc_card_compress">压卡</string>
 
+    <!-- 租约（558：读数区那一行的标签） -->
+    <string name="gc_lease">租约</string>
+
     <!-- 执行体 -->
     <string name="gc_section_executor">执行体</string>
     <string name="gc_executor_id">id（前 8 位）</string>

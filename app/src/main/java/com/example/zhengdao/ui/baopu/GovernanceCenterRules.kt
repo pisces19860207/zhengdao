@@ -12,7 +12,8 @@
 //     「不另算」在这里是结构保证：**本文件里没有任何算术**（`GovernanceCenterGateTest` 钉）。
 //
 // 与决策中心的零重叠（判据⑤）也在这层落地：本层没有账本、没有队列、没有待批条目——
-// 它只认识 527 出口那六段 JSON 里的三段（ratios / cards / gray）＋ identity 两格。
+// 它只认识 527 出口那六段 JSON 里的三段（ratios / cards / gray）＋ identity 两格
+// ＋ 482 的 goal 行 ＋ 558 的 lease 行（同一条「原样抄出口」的规矩，没有第二条取数路）。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.consequence.IdentityRow
@@ -150,6 +151,31 @@ internal object GovernanceCenterRules {
         val line = sec.optString("line")
         if (line.isEmpty()) return GovReading("goal", UNKNOWN, "出口没给这一格")
         return GovReading("goal", line, sec.optString("stateCn"))
+    }
+
+    /**
+     * 租约那一行（第五百五十八批）：`租约 · 活 N · 今日免卡 M · 降权 K`。
+     *
+     * 出口给七个数，本层只把它们**抄成行**——没有加减、没有换算（322 判据②的
+     * 「零算术」门禁照旧绿）。两条显示规则，都写在 metrics-registry.md §8：
+     *   · 整行显示条件＝`live>0 或 grantedToday>0`（体检话行同一条）——无租约 ⇒
+     *     **null＝整行不出现**（读数区的老规矩：缺哪格少哪格，不补 0；出口没给
+     *     `lease` 段或段是 `unknown` 同样整行不出现，不说"读不到"冒充一行读数）；
+     *   · `K=0` ⇒ 只省第三段（`降权 K`），行仍在。
+     *
+     * @return 行读数；null＝这一行不显示
+     */
+    fun lease(root: JSONObject?): GovReading? {
+        val sec = root?.optJSONObject("lease") ?: return null
+        if (sec.optString("unknown").isNotEmpty()) return null
+        val live = sec.optInt("live")
+        val grantedToday = sec.optInt("grantedToday")
+        if (live <= 0 && grantedToday <= 0) return null
+        val savedCards = sec.optInt("savedCards")
+        val downgraded = sec.optInt("downgraded")
+        val parts = mutableListOf("活 $live", "今日免卡 $savedCards")
+        if (downgraded > 0) parts.add("降权 $downgraded")
+        return GovReading("lease", parts.joinToString(" · "), "")
     }
 
     /**

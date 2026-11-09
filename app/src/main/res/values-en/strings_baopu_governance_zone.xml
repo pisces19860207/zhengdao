@@ -21,6 +21,8 @@
     <string name="gc_card_card">Asked</string>
     <string name="gc_card_compress">Compressed</string>
 
+    <string name="gc_lease">Lease</string>
+
     <string name="gc_section_executor">Executor</string>
     <string name="gc_executor_id">id (first 8)</string>
     <string name="gc_executor_creds">Credentials</string>

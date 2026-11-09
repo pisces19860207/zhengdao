@@ -25,6 +25,7 @@ import com.example.zhengdao.baopu.FilePolicy
 import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.RiskVerdict
 import com.example.zhengdao.baopu.backupSkippedFor
+import com.example.zhengdao.baopu.authz.LeaseReadings
 import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.core.RunLog
 import org.json.JSONArray
@@ -539,13 +540,24 @@ internal object AskGovernance {
     /**
      * 体检那一行（487 §三②的形状，加上 499 的分场景误拦率）：
      * `授权档：标准 · 今日自动放过 n · 今日问卡 N · 汇总压卡 c · 误拦申诉 a（客观 x/y · 主观 x/y）`
+     *
+     * 第五百五十八批追加**尾句** ` · 租约 · 活 N/今日免卡 M`：与 `governance_state` 的
+     * lease 段同源（[com.example.zhengdao.baopu.authz.LeaseReadings.counts] 一处取数，
+     * metrics-registry.md §8 的三个读口）。**显示条件：今天授过（grantedToday>0）或手里
+     * 还有活租约（live>0）**；无租约 ⇒ 整句不出现——话行与旧版逐字节相同（有金样例钉着），
+     * 不是显示「租约 · 活 0」冒充读数。
      */
     fun healthLine(nowMs: Long = System.currentTimeMillis()): String {
         val c = healthCounts(nowMs)
+        val lease = LeaseReadings.counts(nowMs)
+            ?.takeIf { it.visible }
+            ?.let { " · 租约 · 活 ${it.live}/今日免卡 ${it.savedCards}" }
+            ?: ""
         return "授权档：${currentTier.cn} · 今日自动放过 ${c.pass} 次 · 今日问卡 ${c.cards} 张" +
             " · 汇总压卡 ${c.compress} 次" +
             " · 误拦申诉 ${c.appeals} 次（${rateOf(c, AskGovLedger.SCENE_OBJECTIVE)}" +
-            " · ${rateOf(c, AskGovLedger.SCENE_SUBJECTIVE)}）"
+            " · ${rateOf(c, AskGovLedger.SCENE_SUBJECTIVE)}）" +
+            lease
     }
 
     /** 分场景误拦率（目标 <5%）：申诉数 / 问卡数（同场景、同日）；分母 0 ⇒ "无样本"。 */

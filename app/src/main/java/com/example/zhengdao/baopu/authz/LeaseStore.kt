@@ -238,6 +238,17 @@ internal object LeaseStore {
             grants.values.filter { it.sessionId == sessionId && it.revokedAtMs == null }.sortedByDescending { it.grantedAtMs }
         }
 
+    /**
+     * **当下活着**几张（跨会话；未撤销且未过期——第五百五十八批读数用的只读访问器）。
+     *
+     * 为什么必须有这一口（而不是让读数侧逐会话数 [active]）：读数是**全机**的，
+     * `active` 是会话维的；且"过期"在内存里是惰性撤销（[hit] 摸到才算），状态读数要
+     * 按时刻**如实**判。只加这一口：grant/hit/revoke/evict 一个字没动，467 判定逻辑零改动。
+     */
+    fun liveCount(nowMs: Long): Int = synchronized(lock) {
+        grants.values.count { it.revokedAtMs == null && !it.expired(nowMs) }
+    }
+
     /** 直测收尾（生产不调）。 */
     @Synchronized
     fun resetForTest() {

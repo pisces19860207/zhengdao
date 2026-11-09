@@ -249,4 +249,50 @@ class GovernanceCenterRulesTest {
         assertTrue("读不出时清空也不该乱按", !view.clearEnabled)
         assertTrue("盘上有这件文件就有时刻（读不出内容不等于没写过）", view.updatedClock.isNotEmpty())
     }
+
+    // ── 558：租约一行（判据层只抄不算；K=0 省第三段；无租约整行不出现）──────────
+
+    /** 一把 lease 段（只给关心的格，缺省 0）。 */
+    private fun leaseSectionOf(
+        live: Int,
+        grantedToday: Int,
+        savedCards: Int,
+        downgraded: Int,
+    ): JSONObject = JSONObject(
+        "{\"live\":$live,\"grantedToday\":$grantedToday,\"hits\":0," +
+            "\"savedCards\":$savedCards,\"revoked\":0,\"downgraded\":$downgraded,\"expired\":0}",
+    )
+
+    @Test
+    fun `租约行_有租约_K大于0三段齐`() {
+        val root = JSONObject().put("lease", leaseSectionOf(live = 2, grantedToday = 1, savedCards = 3, downgraded = 1))
+        val row = GovernanceCenterRules.lease(root)
+        assertEquals("lease", row?.key)
+        assertEquals("活 2 · 今日免卡 3 · 降权 1", row?.value)
+    }
+
+    @Test
+    fun `租约行_K等于0_只省第三段行仍在`() {
+        val root = JSONObject().put("lease", leaseSectionOf(live = 2, grantedToday = 1, savedCards = 3, downgraded = 0))
+        assertEquals("活 2 · 今日免卡 3", GovernanceCenterRules.lease(root)?.value)
+    }
+
+    @Test
+    fun `租约行_零租约整行不出现_不补零`() {
+        val root = JSONObject().put("lease", leaseSectionOf(live = 0, grantedToday = 0, savedCards = 0, downgraded = 0))
+        assertNull("无租约 ⇒ null（缺哪格少哪格）", GovernanceCenterRules.lease(root))
+    }
+
+    @Test
+    fun `租约行_出口没给段或段读不到_整行不出现`() {
+        assertNull("没有 lease 段", GovernanceCenterRules.lease(JSONObject()))
+        assertNull("整段 unknown（落点未装配）", GovernanceCenterRules.lease(JSONObject().put("lease", JSONObject().put("unknown", "租约账落点未装配"))))
+        assertNull("根都不是对象", GovernanceCenterRules.lease(null))
+    }
+
+    @Test
+    fun `租约行_今天授过但已收场_行仍在显示活0`() {
+        val root = JSONObject().put("lease", leaseSectionOf(live = 0, grantedToday = 3, savedCards = 5, downgraded = 0))
+        assertEquals("显示条件与体检行同一条（grantedToday>0 即显示）", "活 0 · 今日免卡 5", GovernanceCenterRules.lease(root)?.value)
+    }
 }
