@@ -17,12 +17,20 @@
 // 三条纪律（照 DeviationWiring 的房型）：
 //   1. **静默**：没挂根目录（[install] 没调）⇒ 一个字节不写、不抛、不打日志——
 //      登记永远不连累主流程；
-//   2. **只登记不拦人**：准入结论（含 reject_incompetent「未考＝没过」）只落盘留痕＋
-//      一行日志，**不改管线的任何判定**（派工单判据③「只加调用不改判定」）；
+//   2. **只登记不拦人**：准入结论（含 reject_incompetent）只落盘留痕＋一行日志，
+//      **不改管线的任何判定**（派工单判据③「只加调用不改判定」）；
 //   3. **未登记才走**：快照已在（本进程或上一进程登记的）⇒ 不重跑四步，只读画像
 //      （canAccept／needsReprobe——派工单判据③的读画像就在这里），对不上才说话。
 //      每次现读快照（几 KB 的小文件，MCP 调用本身是网络往返）——不养内存缓存，
 //      就没有"缓存说登记了、盘上没有"的第二种状态。
+//
+// 第五百四十六批（L3 出题接线）：上面第 3 条的"未登记才走"原先喂的是 `emptyMap()`——九道题面
+// 零引用，判卷器只能按「未考＝没过」判，真本事与假本事同一个档。现在改成先经 [IntakeExam] 真出
+// 一次题（5 探针＋4 品行），把量出来的**真 traces** 喂四步链。三点不变：
+//   * [onExternalToolCall] 的签名与管线调用点一个字没动（546 判据⑤）；
+//   * 出题只在首调发生，[IntakeExam] 自带 (题目版本, 执行体版本) 缓存，再调不重考；
+//   * 没装出题通道（[installChannel] 没调）⇒ 空卷 ⇒ 出题结论 UNVERIFIABLE、traces 仍为空 ⇒
+//     门照旧给 reject_incompetent。**空卷两头都不 PASS**；真通道归 548（MCP＋A2A 接入）。
 package com.example.zhengdao.baopu.intake
 
 import java.io.File
@@ -34,9 +42,19 @@ internal object AdmissionWiring {
         root = globalRoot
     }
 
+    /**
+     * 装出题通道（L3 的缝；546）。**生产真通道归 548**：MCP 现在只有 `callTool`，没有"派一件活
+     * 给外部执行体"的任务原语，所以这里不假装已经通了——没装就是空卷 UNVERIFIABLE，如实记账。
+     * 传 null 即摘通道（与 [resetForTest] 同效，但保留根目录）。
+     */
+    fun installChannel(examChannel: ExamChannel?) {
+        channel = examChannel
+    }
+
     /** 测试摘挂载（进程级状态不清就是随执行顺序变红——`DeviationWiring.resetForTest` 同款）。 */
     fun resetForTest() {
         root = null
+        channel = null
     }
 
     /**
@@ -62,6 +80,8 @@ internal object AdmissionWiring {
 
     @Volatile private var root: File? = null
 
+    @Volatile private var channel: ExamChannel? = null
+
     private fun admit(
         dir: File,
         wireName: String,
@@ -86,21 +106,23 @@ internal object AdmissionWiring {
             }
             return
         }
-        // 未登记：走四步成链（本执行体没有考卷可喂——空卷按 345 口径「未考＝没过」，
-        // 结论诚实落在门给的档上；本批只登记不拦人）。
+        // 未登记：先真出一次题（546 的 L3），再把量出来的真卷喂四步成链。
+        // 没装通道 ⇒ 空卷 ⇒ IntakeExam 记 UNVERIFIABLE、traces 为空 ⇒ 门照 345 口径给 reject_incompetent。
+        val exam = IntakeExam.take(dir, agentId, version, channel)
         val record = AdmissionFlow.run(
             AdmissionFlow.Request(
                 agentId = agentId,
                 version = version,
                 probedAtMs = System.currentTimeMillis(),
                 selfReport = SelfReport(agentId = agentId, version = version, claimedCapabilities = emptyList()),
-                probeTraces = emptyMap(),
-                conductTraces = emptyMap(),
+                probeTraces = exam.probeTraces,
+                conductTraces = exam.conductTraces,
             ),
         )
         AdmissionFlow.save(dir, record)
         log(
-            "抱朴准入：外部执行体「$agentId」已登记 ${record.wire()}（未考，按门给的档）" +
+            "抱朴准入：外部执行体「$agentId」已登记 ${record.wire()}" +
+                "（出题：${exam.conclusion.cn}·${exam.asked} 道）" +
                 "｜canAccept($kind)=${record.profile.canAccept(kind, version)}" +
                 "｜needsReprobe=${record.profile.needsReprobe(version)}",
         )
