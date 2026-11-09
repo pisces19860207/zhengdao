@@ -86,7 +86,13 @@ class GuardPipelineTest {
     @Test
     fun `点点点逃逸_287起按真实目标解析_工作区外可读`() {
         val root = tmp("dots")
-        val r = pipeline(root).execute(call("read_file", "../../etc/passwd"), { _, _ -> null })
+        // ⚠️ 2026-11-10 修 CI（ci #1928 / emit #79）：这里原来写死 `../../etc/passwd`，
+        // 暗含「临时目录只有 1 层深」；564 把测试临时目录挪到 `app/build/tmp/testDebugUnitTest/` 之后，
+        // 两个 `..` 只退到 build 目录里，落点变成 `<ws>/app/build/tmp/etc/passwd`（不是系统目录）⇒ POSIX 分支必红。
+        // 改成**按真实深度算逃逸段数**：从临时目录一路退到文件系统根，再拼 etc/passwd。
+        val depth = root.absolutePath.replace('\\', '/').split('/').count { it.isNotEmpty() }
+        val escape = "../".repeat(depth) + "etc/passwd"
+        val r = pipeline(root).execute(call("read_file", escape), { _, _ -> null })
         // ⚠️ 平台差异（2026-10-30 CI 红出来的真因）：
         //   · POSIX：这条**真的**落到 `/etc/passwd` —— 那是**系统目录**，FilePolicy 必须拒，
         //     且拒绝理由只能是「系统目录」（L287 的三条硬下限之一），**不是**「工作区越界」。
@@ -95,6 +101,9 @@ class GuardPipelineTest {
         // platform-gate: allow 理由：这条判据要的就是「POSIX 上 chmod 真能拦」，只能按平台分流；路径本身用 File 拼，没带反斜杠。
         val onPosix = !System.getProperty("os.name").orEmpty().startsWith("Windows")
         if (onPosix) {
+            // 先自证落点：escape 从临时目录退到 / 再进 etc/passwd ⇒ 规范化后必须正好是 /etc/passwd。
+            // 深度算法一错，这里先红，比在 FilePolicy 断言里猜「为什么没拒」清楚得多。
+            assertEquals("/etc/passwd", File(root, escape).canonicalPath)
             // ← CI（ubuntu）走这条：/etc/passwd 是系统目录 ⇒ 必须拒，而且理由必须是「系统目录」。
             assertTrue(
                 "POSIX 上 ../../etc/passwd 落在系统目录 ⇒ 必须拒且理由是「系统目录」：$r",
