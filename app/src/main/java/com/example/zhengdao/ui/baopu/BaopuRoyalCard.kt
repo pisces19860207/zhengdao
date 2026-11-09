@@ -53,6 +53,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.theme.ZhuSha
 import com.example.zhengdao.ui.theme.ZhuTint
+import com.example.zhengdao.ui.theme.rBadge
 import com.example.zhengdao.ui.theme.rCard
 
 /**
@@ -112,7 +113,7 @@ private fun RoyalSeal() {
     Box(
         Modifier
             .size(ROYAL_SEAL_DP.dp)
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(RADIUS_SEAL))
             .background(ZhuTint),
         contentAlignment = Alignment.Center,
     ) {
@@ -133,7 +134,7 @@ private fun RoyalStamp(modifier: Modifier = Modifier) {
             .size(ROYAL_STAMP_DP.dp)
             .rotate(ROYAL_STAMP_ROTATION)
             .alpha(0.5f)
-            .border(2.dp, ZhuSha, RoundedCornerShape(6.dp)),
+            .border(2.dp, ZhuSha, RoundedCornerShape(rBadge)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -243,6 +244,12 @@ private const val ROYAL_LINE_LABEL_WIDTH_DP = 62
 // ── 第五百五十五批 · 御案卡美化（四个尺寸；全部取既有 token，不加字号档） ──────
 
 /** 御印边长（标题条左侧 16dp 方印）。 */
+/** 御印圆角 5dp：8 档（4/6/8/10/12/14/16/24）之外的自定义值。
+ *  16dp 方印要的是「近圆」而不是 rBadge 的 6dp 或 rSwatch 的 4dp，改任一档都会动定稿视觉；
+ *  故按 theme/Radius.kt 的口径走**命名常量**（该口径把常量参数列为已知盲区，要求交付里逐条点名），
+ *  不裸写、也不占白名单名额（白名单已满 24 条、只降不升）。 */
+private val RADIUS_SEAL = 5.dp
+
 private const val ROYAL_SEAL_DP = 16
 
 /** 左侧朱封条宽度（4dp，整卡高度）。 */
