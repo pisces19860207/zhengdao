@@ -11,6 +11,9 @@ import androidx.core.net.toUri
 import android.content.Context
 import android.os.Environment
 import androidx.core.content.edit
+import com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring
+import com.example.zhengdao.baopu.evolution.trigger.GoalCloseout
+import com.example.zhengdao.baopu.plan.GoalBoard
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.ArtifactRaster
 import com.example.zhengdao.baopu.agent.AskDailyBudget
@@ -425,6 +428,7 @@ internal object BaopuRuntime {
         // 同一房型：Context 只到装配层这一处，工具与面板都从这里拿同一份壳 ⇒ 两处读到的数才是一个。
         com.example.zhengdao.baopu.agent.LogisticsQueryTool.store = logisticsStore(appCtx)
         // 第五百二十七批：治理出口（governance_state）的运行环境（注入口见 [wireGovernanceState]）
+        // 482 前置②：目标收口事实的出口在同一处装配（见 wireGoalCloseout）
         wireGovernanceState(appCtx)
         // 2026-10-18：抱朴自己写技能（确认制；写前备份、同名即改、写完进索引）
         reg.register(
@@ -456,6 +460,19 @@ internal object BaopuRuntime {
     }
 
     /**
+     * 目标收口事实的出口（第四百八十二批前置②：**只写不聚合**）。
+     *
+     * 落到 495 已经在读的那本触发账（`filesDir/evolution/trigger-ledger.jsonl`），
+     * 行形仍是既有 13 键、`type` 仍是既有 `manual`、`triggered=false` ⇒
+     * 不新增 kind、不新增文件格式、不进 495 的聚合（见 [GoalCloseout] 文件头）。
+     */
+    private fun wireGoalCloseout(appCtx: Context) {
+        GoalBoard.attachCloseoutSink { fact ->
+            GoalCloseout.append(EvalTriggerWiring.ledgerFile(appCtx), fact)
+        }
+    }
+
+    /**
      * 第五百二十七批：治理出口（governance_state）的运行环境注入口——执行体的 filesDir
      * 与 run_log 取数壳（`MetricsSources.logSteps`，METRICS.md §1.3 的唯一真相源；SQLite
      * 没有 jsonl 副本，所以这一路是注入的**只读查询**，不是另造一套）。房型同 IndexTools.ctx：
@@ -463,6 +480,7 @@ internal object BaopuRuntime {
      * （首次调用才建库壳）。
      */
     private fun wireGovernanceState(appCtx: Context) {
+        wireGoalCloseout(appCtx)
         com.example.zhengdao.baopu.agent.GovernanceStateTool.env =
             com.example.zhengdao.baopu.agent.GovernanceStateTool.Env(
                 identityDir = { appCtx.filesDir },

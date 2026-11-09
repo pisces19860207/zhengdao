@@ -8,6 +8,11 @@
 package com.example.zhengdao.baopu.plan
 
 import com.example.zhengdao.baopu.PlanRules
+import com.example.zhengdao.baopu.evolution.trigger.GoalCloseout
+import com.example.zhengdao.baopu.evolution.trigger.TriggerLedgerStore
+import com.example.zhengdao.baopu.evolution.trigger.TriggerRow
+import com.example.zhengdao.baopu.evolution.trigger.TriggerRowCodec
+import com.example.zhengdao.baopu.evolution.trigger.TriggerType
 import com.example.zhengdao.baopu.verify.Status
 import com.example.zhengdao.ui.baopu.GovernanceCenterRules
 import java.io.File
@@ -500,5 +505,144 @@ class GoalModeTest {
         val candidates = listOf(suffix, "../app/$suffix", "app/$suffix")
         return candidates.map(::File).firstOrNull(File::isFile)?.readText(Charsets.UTF_8)
             ?: throw AssertionError("找不到 PlanController.kt（工作目录 ${File(".").absolutePath}）")
+    }
+
+    // ── 前置②：收口事实按既有形状交出去（只交不收）────────────────────────────
+
+    /** 两条判据：一条文件类（没兑现）＋ 一条人判（待判）——失败行的字段最全。 */
+    private fun twoCriteria(): String =
+        """[{"text":"报告在","kind":"file","path":"产物/报告.md"},""" +
+            """{"text":"用户看过说行","kind":"human"}]"""
+
+    /** 立一份目标并收口一次，返回（事实，账文件）。 */
+    private fun settledFact(dirName: String, exists: Boolean = false): Pair<GoalRules.CloseoutFact, File> {
+        val ws = Files.createTempDirectory(dirName).toFile()
+        GoalBoard.resetForTest()
+        GoalBoard.attach(ws)
+        val draft = (GoalRules.parse(args(criteria = twoCriteria()), hasPledge = true)
+            as GoalRules.GoalParse.Ok).draft
+        GoalBoard.freeze(draft, pledge(), 1_000L, 7L)
+        val outcome = GoalBoard.settle(2, 5, { exists }, 2_000L)!!
+        val fact = GoalRules.closeoutFact(outcome.goal, outcome.verdict, 2_000L)
+        return fact to File(ws, "trigger-ledger.jsonl")
+    }
+
+    @Test
+    fun `假读取器能解析收口那行_按495文档的键名逐格取值`() {
+        val (fact, ledger) = settledFact("goal-482-fake")
+        try {
+            assertTrue(GoalCloseout.append(ledger, fact))
+            // 「假读取器」：只认 495 文档写明的键名，不 import 任何生产解析器
+            val line = ledger.readLines(Charsets.UTF_8).single { it.isNotBlank() }
+            val o = JSONObject(line)
+            assertEquals("at 必在", 2_000L, o.getLong("at"))
+            assertEquals("type 只用既有 kind", "manual", o.getString("type"))
+            assertFalse("这行不是评测触发（不许替 495 花限频额度）", o.getBoolean("triggered"))
+            assertTrue("ref 指回目标", o.getString("ref").startsWith("goal:"))
+            assertTrue("intent 里要有预算用量", o.getString("intent").contains("预算"))
+            assertTrue("抑制原因必须写明", o.getString("suppressReason").isNotBlank())
+            assertEquals("逐条结果一条一行", 2, o.getJSONArray("evalFailedCases").length())
+            assertFalse("不许给 passRate（给了就会被 495 的聚合吃掉）", o.has("evalPassRate"))
+        } finally {
+            ledger.parentFile?.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `既有读取器原样读得回来_字段与事实逐项相等`() {
+        val (fact, ledger) = settledFact("goal-482-real")
+        try {
+            assertTrue(GoalCloseout.append(ledger, fact))
+            // ★ 真正的读取器（495 那一侧，本批一个字没改）
+            val row = TriggerLedgerStore(ledger).read().single()
+            assertEquals(fact.atMs, row.atMs)
+            assertEquals("goal:" + fact.goalId, row.ref)
+            assertEquals(fact.ran, row.evalRan)
+            assertEquals(fact.passed, row.evalPassed)
+            assertEquals(fact.total, row.evalTotal)
+            assertNull("passRate 必须留空（495 只认真触发行）", row.evalPassRate)
+            assertEquals(fact.cases, row.evalFailedCases)
+            assertEquals(GoalCloseout.NOT_A_TRIGGER, row.suppressReason)
+        } finally {
+            ledger.parentFile?.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `失败的Goal也写行_字段齐全不缩水`() {
+        val goal = goalOf(criteria = twoCriteria())
+        val verdict = GoalRules.judge(goal) { false }
+        assertEquals("样例必须是失败行", Status.FAIL, verdict.status)
+        val fact = GoalRules.closeoutFact(goal, verdict, 3_000L)
+        assertEquals("未达成", fact.stateCn)
+        assertEquals("验了几条＝判据条数", 2, fact.ran)
+        assertEquals("过了几条", 0, fact.passed)
+        assertEquals(2, fact.total)
+        assertEquals("逐条都在", 2, fact.cases.size)
+        assertTrue("逐条要标结果：" + fact.cases, fact.cases.any { it.startsWith("未兑现|") })
+        assertTrue("人判那条标待判：" + fact.cases, fact.cases.any { it.startsWith("待判|") })
+        assertEquals(
+            "预算用量照算",
+            "40%",
+            GoalRules.closeoutFact(goal.copy(stepsUsed = 2), verdict, 3_000L).budgetPct,
+        )
+        assertTrue(fact.sentence.isNotBlank())
+        assertTrue(fact.goalId.isNotBlank())
+    }
+
+    @Test
+    fun `不新增kind与文件格式_对拍既有闭集与字段集`() {
+        // kind：触发类型仍是四个（新增一个就会在这里红）
+        assertEquals(
+            listOf("run_failed", "user_correction", "skill_rate", "manual"),
+            TriggerType.entries.map { it.wire },
+        )
+        // 字段：TriggerRow 仍是 13 个（524 的守卫同口径，这里只核对没被本批撑大）
+        val fields = TriggerRow::class.java.declaredFields
+            .filterNot { it.isSynthetic || it.name.startsWith("$") }
+        assertEquals("TriggerRow 字段集不许变", 13, fields.size)
+        // 编码键：全部落在既有键表里（没有新键）
+        val legacy = setOf(
+            "at", "type", "triggered", "ref", "intent", "evalRan", "evalPassed", "evalTotal",
+            "evalPassRate", "evalFailedCases", "evalError", "route", "suppressReason",
+        )
+        val sample = goalOf()
+        val encoded = TriggerRowCodec.encode(
+            GoalCloseout.row(GoalRules.closeoutFact(sample, GoalRules.judge(sample) { true }, 1L)),
+        ).keys().asSequence().toSet()
+        assertTrue("编码出既有键表以外的键：" + (encoded - legacy), legacy.containsAll(encoded))
+    }
+
+    @Test
+    fun `模板候选只产值_不带任何启用或灰度闸`() {
+        val candidate = GoalRules.templateCandidate(goalOf())
+        assertTrue(candidate.name.startsWith("目标模板："))
+        assertTrue(candidate.scenario.isNotBlank())
+        assertEquals("判据写法逐条抄形状", 1, candidate.criteriaPattern.size)
+        assertTrue(candidate.criteriaPattern.single().startsWith("file:"))
+        assertEquals(goalOf().id, candidate.sourceGoalId)
+    }
+
+    @Test
+    fun `源码里没有自动启用或灰度_目标这一侧只产候选`() {
+        val rels = listOf(
+            "src/main/java/com/example/zhengdao/baopu/plan/GoalMode.kt",
+            "src/main/java/com/example/zhengdao/baopu/evolution/trigger/GoalCloseout.kt",
+        )
+        // 先剥块注释（KDoc 里会正当地提到「灰度」这两个字），再剥行注释——与仓里既有源级门禁用同一法
+        val stripped = rels.joinToString("\n") { rel ->
+            sourceOf(rel)
+                .replace(Regex("""/\*[\s\S]*?\*/"""), " ")
+                .split("\n").joinToString("\n") { it.substringBefore("//") }
+        }
+        listOf("自动启用", "autoEnable", "autoApply", "canary", "灰度开关", "enabledByDefault")
+            .forEach { word -> assertFalse("目标侧不许出现「" + word + "」", stripped.contains(word)) }
+    }
+
+    /** 源文件（同 [runEngineSource] 的找法）。 */
+    private fun sourceOf(rel: String): String {
+        val candidates = listOf(rel, "../app/" + rel, "app/" + rel)
+        return candidates.map(::File).firstOrNull(File::isFile)?.readText(Charsets.UTF_8)
+            ?: throw AssertionError("找不到 " + rel)
     }
 }

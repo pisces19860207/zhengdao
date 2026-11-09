@@ -64,6 +64,9 @@ internal object GoalRules {
     /** 单条判据/边界一句话的字数上限。 */
     const val MAX_TEXT = 60
 
+    /** 模板名里取目标句的前几个字（够认人就行，不做摘要）。 */
+    const val NAME_PREVIEW = 20
+
     /** 判据与不做清单各自的条数上限（多了卡面放不下，也管不过来）。 */
     const val MAX_ITEMS = 8
 
@@ -174,9 +177,50 @@ internal object GoalRules {
     data class Outcome(val goal: Goal, val verdict: Verdict, val notice: String)
 
     /** 一条判据判定后的三态读数。 */
-    data class Verdict(val status: Status, val reasons: List<String>) {
+    data class Verdict(
+        val status: Status,
+        val reasons: List<String>,
+        /** 逐条判据的结果（判据「判据逐条结果」那一格；与 [status] 同一把尺算出来的）。 */
+        val results: List<CriterionResult> = emptyList(),
+    ) {
         val passed: Boolean get() = status == Status.PASS
     }
+
+    /** 单条判据的结局（三值：过／未兑现／待判——待判只为人判那类）。 */
+    enum class CriterionState(val cn: String) {
+        MET("过"),
+        MISSED("未兑现"),
+        UNJUDGED("待判"),
+    }
+
+    /** 一条判据的判定结果（[criterion] 原文照带，账上要能一句一句对回目标）。 */
+    data class CriterionResult(val criterion: Criterion, val state: CriterionState)
+
+    /**
+     * 一次收口的**事实行**（第四百八十二批前置②：只产出、只交出去）。
+     *
+     * 本类型不认识任何账本：它只是一份"该记什么"的纯数据，写进哪本账、用什么键名，
+     * 由装配层交给那本条线自己的实现（[com.example.zhengdao.baopu.evolution.trigger.GoalCloseout]）。
+     * 这样目标这一侧永远不新增 kind、不新增文件格式——形状归既有账本所有。
+     */
+    data class CloseoutFact(
+        val atMs: Long,
+        val goalId: String,
+        val sentence: String,
+        /** 收口状态的中文（已达成／未达成／待验收／已停下）。 */
+        val stateCn: String,
+        /** 验了几条（判据总条数）。 */
+        val ran: Int,
+        /** 过了几条。 */
+        val passed: Int,
+        val total: Int,
+        /** 逐条结果，一行一条（`<标记>|<判据>|<路径>`）。 */
+        val cases: List<String>,
+        val budgetUsed: Int,
+        val budgetMax: Int,
+        /** `40%` 这种形状（由 [percentText] 算，别处不重算）。 */
+        val budgetPct: String,
+    )
 
     // ── 立（判据「空判据拒立」「可机械验证 ≥1 条」的落点）────────────────────
 
@@ -378,23 +422,105 @@ internal object GoalRules {
      * @param exists 路径在不在（生产传工作区真查，单测传假件——判据层不碰磁盘）
      */
     fun judge(goal: Goal, exists: (String) -> Boolean): Verdict {
-        if (goal.criteria.isEmpty()) return Verdict(Status.UNVERIFIABLE, listOf("没有判据：判不了"))
-        val missed = goal.criteria.filter { it.mechanical && !exists(it.path) }
+        val results = goal.criteria.map { c ->
+            CriterionResult(
+                c,
+                when {
+                    !c.mechanical -> CriterionState.UNJUDGED
+                    exists(c.path) -> CriterionState.MET
+                    else -> CriterionState.MISSED
+                },
+            )
+        }
+        if (goal.criteria.isEmpty()) return Verdict(Status.UNVERIFIABLE, listOf("没有判据：判不了"), results)
+        val missed = results.filter { it.state == CriterionState.MISSED }
         if (missed.isNotEmpty()) {
-            return Verdict(Status.FAIL, missed.map { "「${it.text}」没兑现：${it.path} 不在" })
+            return Verdict(
+                Status.FAIL,
+                missed.map { "「${it.criterion.text}」没兑现：${it.criterion.path} 不在" },
+                results,
+            )
         }
-        val human = goal.criteria.filter { !it.mechanical }
-        if (human.isNotEmpty()) {
-            return Verdict(Status.UNVERIFIABLE, human.map { "「${it.text}」只能人来判" })
+        val unjudged = results.filter { it.state == CriterionState.UNJUDGED }
+        if (unjudged.isNotEmpty()) {
+            return Verdict(
+                Status.UNVERIFIABLE,
+                unjudged.map { "「${it.criterion.text}」只能人来判" },
+                results,
+            )
         }
-        return Verdict(Status.PASS, emptyList())
+        return Verdict(Status.PASS, emptyList(), results)
     }
+
+    /**
+     * 收口事实（前置②）：把一次收口摊成一行可记的纯数据。
+     *
+     * 失败也是事实——**未达成/待验收/已停下都要出这一行**，字段一个不省。
+     */
+    fun closeoutFact(
+        goal: Goal,
+        verdict: Verdict,
+        atMs: Long,
+        stopped: Boolean = false,
+    ): CloseoutFact = CloseoutFact(
+        atMs = atMs,
+        goalId = goal.id,
+        sentence = goal.sentence,
+        stateCn = outcomeState(verdict, stopped).cn,
+        ran = verdict.results.size,
+        passed = verdict.results.count { it.state == CriterionState.MET },
+        total = goal.criteria.size,
+        cases = verdict.results.map { caseLine(it) },
+        budgetUsed = goal.stepsUsed,
+        budgetMax = goal.budget.maxSteps,
+        budgetPct = percentText(goal.stepsUsed, goal.budget.maxSteps),
+    )
+
+    /**
+     * 目标模板候选（前置②：**只产候选，不建库、不启用**）。
+     *
+     * 用户在派工单里写死了边界：模板「只出候选（灰度后才用）」——所以本函数只**返回一个值**，
+     * 不写任何文件、不登记任何能力、不打任何灰度开关、不参与下次立目标。谁要用它，
+     * 先过候选通道与人点头（那是更后面的事，不在本批）。
+     */
+    data class TemplateCandidate(
+        /** 模板名（从目标句里取一段，够认人就行）。 */
+        val name: String,
+        /** 适用场景（原目标句——模板是"这类活"的写法，不是这句话本身）。 */
+        val scenario: String,
+        /** 判据写法（照原目标逐条抄形状：`file:判据原文`，教下次怎么写判据）。 */
+        val criteriaPattern: List<String>,
+        /** 来源 goal id（追得回是哪一次目标提炼出来的）。 */
+        val sourceGoalId: String,
+    )
+
+    fun templateCandidate(goal: Goal): TemplateCandidate = TemplateCandidate(
+        name = "目标模板：" + goal.sentence.take(NAME_PREVIEW),
+        scenario = goal.sentence,
+        criteriaPattern = goal.criteria.map { "${it.kind.wire}:${it.text}" },
+        sourceGoalId = goal.id,
+    )
+
+    /** 逐条结果的账上一行：`过|判据原文|路径`（路径只对文件类有意义，人判那类留空）。 */
+    private fun caseLine(r: CriterionResult): String =
+        "${r.state.cn}|${r.criterion.text}|${r.criterion.path}"
 
     /** 三态 ⇒ 目标状态（PASS 才「已达成」，判不了就停在「待验收」）。 */
     fun stateOf(status: Status): GoalState = when (status) {
         Status.PASS -> GoalState.ACHIEVED
         Status.FAIL -> GoalState.FAILED
         Status.UNVERIFIABLE -> GoalState.PENDING
+    }
+
+    /**
+     * 一次收口的**结局状态**（settle 与 closeoutFact 共用这一把尺，不许两处各算一套）。
+     *
+     * @param stopped 这次收尾是被打断的 ⇒ 判据没全兑现时记「已停下」（不是「未达成」）
+     */
+    fun outcomeState(verdict: Verdict, stopped: Boolean): GoalState = when {
+        verdict.status == Status.PASS -> GoalState.ACHIEVED
+        stopped -> GoalState.STOPPED
+        else -> stateOf(verdict.status)
     }
 
     /** 收尾要贴给人看的那一句（PASS 说达成，判不了就说判不了，不装）。 */
@@ -600,6 +726,20 @@ internal object GoalBoard {
     @Volatile
     private var startedAtMs: Long = 0L
 
+    /**
+     * 收口事实的出口（前置②：**只交出去、不收进来**）。
+     *
+     * 目标这一侧不认识任何账本：写进哪本账、用什么键名，由装配层交给那本条线自己的实现
+     * （生产是 [com.example.zhengdao.baopu.evolution.trigger.GoalCloseout]，495 读的那本账）。
+     * 不注入 ⇒ 只算不交（JVM 单测与早期启动都安全；不注入不等于出错）。
+     */
+    @Volatile
+    private var closeoutSink: ((GoalRules.CloseoutFact) -> Boolean)? = null
+
+    fun attachCloseoutSink(sink: ((GoalRules.CloseoutFact) -> Boolean)?) {
+        closeoutSink = sink
+    }
+
     /** 装配（引擎 init 调一次）：给工作区，并把盘上那份目标接回来（跨轮/跨进程都认账）。 */
     fun attach(workspace: File) {
         root = workspace
@@ -688,11 +828,7 @@ internal object GoalBoard {
         val current = active ?: return null
         if (current.state != GoalRules.GoalState.ACTIVE) return null
         val verdict = GoalRules.judge(current, exists)
-        val state = when {
-            verdict.status == Status.PASS -> GoalRules.GoalState.ACHIEVED
-            stopped -> GoalRules.GoalState.STOPPED
-            else -> GoalRules.stateOf(verdict.status)
-        }
+        val state = GoalRules.outcomeState(verdict, stopped)
         val next = current.copy(
             state = state,
             done = done.coerceIn(0, if (total > 0) total else done),
@@ -710,6 +846,21 @@ internal object GoalBoard {
             GoalRules.stoppedNotice(next, verdict)
         } else {
             GoalRules.settleNotice(next, verdict)
+        }
+        // 前置②：成功与失败**都要交出去**（失败也是事实）；交失败只记日志，不许把收口带崩
+        // （与「账写失败只 log」同一条口径）。
+        val fact = GoalRules.closeoutFact(next, verdict, atMs, stopped)
+        closeoutSink?.let { sink ->
+            val ok = runCatching { sink(fact) }.getOrDefault(false)
+            if (!ok) RunLog.log("目标收口事实没交出去（${next.state.cn}）——盘上仍只有 .goal.json")
+        }
+        // 真收口（已达成/未达成）时提炼一次模板候选：**只记一行日志**，不落库、不启用、不当默认值。
+        if (state == GoalRules.GoalState.ACHIEVED || state == GoalRules.GoalState.FAILED) {
+            val candidate = GoalRules.templateCandidate(next)
+            RunLog.log(
+                "目标模板候选（只产不启用）：${candidate.name}｜判据写法 " +
+                    "${candidate.criteriaPattern.size} 条｜来源 goal:${candidate.sourceGoalId}",
+            )
         }
         return GoalRules.Outcome(next, verdict, notice)
     }
@@ -740,5 +891,6 @@ internal object GoalBoard {
     fun resetForTest() {
         clear()
         root = null
+        closeoutSink = null
     }
 }
