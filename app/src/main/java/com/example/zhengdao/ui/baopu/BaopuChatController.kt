@@ -130,6 +130,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.browser.BrowserTabManager
+import com.example.zhengdao.baopu.todo.TodoStore
+import com.example.zhengdao.baopu.todo.TodoWrite
+import com.example.zhengdao.baopu.verify.VerifyAction
+import com.example.zhengdao.baopu.verify.VerifyFailureKind
+import com.example.zhengdao.baopu.verify.VerifyLine
+import com.example.zhengdao.baopu.verify.VerifyLines
+import com.example.zhengdao.baopu.verify.VerifyNarrative
+import com.example.zhengdao.baopu.verify.VerifyRow
+import com.example.zhengdao.baopu.verify.verifyTodoSummary
 
 /**
  * 会话库一行（第二十批 §2.1 浮层数据源；SQL 在
@@ -2856,6 +2865,36 @@ internal class BaopuChatController(context: Context) {
      */
     val roundArtifacts: List<String> get() = engine.roundArtifacts.value
 
+    // ── 第三百一十七批：每轮结束那**一行**验收结论（人话层上屏）────────────────
+    //
+    // 判定不在这里：三态是引擎收工那一步由 332 判据表算好的（`RunEngine` →
+    // `VerifyNarrative.fromContract`），这里只把那一行**收进台账**、把按钮**接到真去处**。
+    // 台账与"一轮最多一行"的状态机在 [VerifyLines]（判据②的唯一落点），本层不判
+    // "要不要再起一行"——那是结构上就不可能的分支。
+
+    /** 本会话每一轮的那一行结论（锚＝该轮用户消息的库 id；换会话一起清）。 */
+    var verifyLines by mutableStateOf<List<VerifyRow>>(emptyList())
+        private set
+
+    /**
+     * 本轮用户那条消息的库 id＝结论的锚。
+     *
+     * 只从 [EngineEvent.MessagePersisted]（role=user）取——**不猜、不从消息流反推**：
+     * 引擎落库那一刻给的就是渲染层 [BaopuRound.userMessageId] 用的那个 id，两头同源，
+     * 结论才挂得对轮。
+     */
+    private var lastUserMessageId = 0L
+
+    /**
+     * 本轮真实命中的失败类别（派工单 §二 那两类）＋它发生在哪一页。
+     *
+     * 读数是工具回执本身（[VerifyNarrative.failureKindOf] 只认 224 的 `needsHumanClick`
+     * 那一格与玄览器件族的 `ok=false`），多次调用取最强的一条；`Settled` 后清零。
+     */
+    private var roundFailureKind: VerifyFailureKind? = null
+    private var roundFailurePlace: String? = null
+    private var roundFailureUrl: String? = null
+
     /** 现在点开的是哪个产物（null = 查看器没开）。只读查看器自己不开，由产物行点片写。 */
     var viewingArtifact by mutableStateOf<String?>(null)
         private set
@@ -3300,6 +3339,7 @@ internal class BaopuChatController(context: Context) {
         compressionNote = null // 新会话没压过，细条不许跟着上个会话走
         queuedCount = 0       // 新会话没有队列，计数不许跟着上个会话走
         resetRoundUsage() // 用量与产物同理：顶栏跑马灯不许把上个会话的本轮账带过来
+        verifyLines = VerifyLines.clear() // 317：上个会话那一行的结论也不许带过来
     }
 
     // ── 会话库（第二十批 §2.1：旧会话能开能删）─────────────────────────────
@@ -3385,6 +3425,7 @@ internal class BaopuChatController(context: Context) {
         compressionNote = null
         queuedCount = 0 // 先归零，refresh 再按目标会话的引擎队列写回真值
         resetRoundUsage() // 切会话 ⇒ 上个会话的本轮账一起清（A4 同一口径）
+        verifyLines = VerifyLines.clear() // 317：上一会话每一轮那行结论跟着会话一起清
         refresh()
         restoreConfirmCard()
     }
@@ -3497,6 +3538,7 @@ internal class BaopuChatController(context: Context) {
         compressionNote = null
         queuedCount = 0
         resetRoundUsage() // 删掉当前会话回空态 ⇒ 顶栏也不许留着它的本轮账
+        verifyLines = VerifyLines.clear() // 317：会话没了，它每一轮的那行结论一起没
     }
 
     /**
@@ -4254,6 +4296,10 @@ internal class BaopuChatController(context: Context) {
             if (ev is EngineEvent.MessagePersisted && ev.role == HistoryMessage.ROLE_USER) {
                 // 路径随事件回来（排队时各自独立）——别再从一个共享格子里取。
                 attachImageParts(ev.messageId, ev.imageRelPaths)
+                // 317：这一轮结论行的锚就在这儿结（引擎给的库 id，与渲染层
+                // BaopuRound.userMessageId 同源）；续跑/重试不发这条事件 ⇒ 锚留在原轮，
+                // 重跑的那一次覆盖同一行，不会另起一行。
+                lastUserMessageId = ev.messageId
                 // 147：跑前基线（提炼游标同款）——只认本会话在此之后新增的 run_log 行。
                 diaryMarkBeforeRun()
             }
@@ -4266,6 +4312,17 @@ internal class BaopuChatController(context: Context) {
                 roundUsedTools = true
                 com.example.zhengdao.baopu.browserActivityLine(ev.tool, ev.summary)?.let {
                     browserActivity = it
+                }
+                // 317 §二：这一跳工具读数命中哪一类失败（「需要你操作」／「页面没读出来」）。
+                // 只认回执里真有的那两样，都不命中 ⇒ 什么都不改（不猜"看起来像在等人"）。
+                val failureKind = VerifyNarrative.failureKindOf(ev.tool, ev.summary, ev.ok)
+                if (failureKind != null) {
+                    roundFailureKind = VerifyNarrative.strongest(roundFailureKind, failureKind)
+                }
+                val pageUrl = VerifyNarrative.failureUrlOf(ev.summary)
+                if (pageUrl != null) {
+                    roundFailureUrl = pageUrl
+                    roundFailurePlace = VerifyNarrative.failurePlaceOf(ev.summary)
                 }
                 // 第一百六十九批 §3：子 Agent 批结束也是一次「长任务完成」。
                 // 只报结果、不带 summary（summary 可能有正文）；前台/权限/合并窗口由
@@ -4314,7 +4371,7 @@ internal class BaopuChatController(context: Context) {
                 // 第二十九批 B 段：用户在确认卡上拍过「停掉并切过来」⇒ 门一放就兑现那一下切换。
                 // 放在这里而不是 acceptSessionSwitch 里死等：Settled 由引擎在释放单活跃门之后才发，
                 // 是"这个 run 真结束了"的唯一权威信号（同上面对 interruptedStep 的那条口径）。
-                consumePendingSwitch(); offerProduceCardOnSettle() // 547：本轮真有产出 ⇒ 产出卡请求（闸在 OutputCards 里判；合并一行，给 onEngineEvent 留余量）
+                consumePendingSwitch(); offerProduceCardOnSettle(); verifyOnSettle() // 547：本轮真有产出 ⇒ 产出卡请求（闸在 OutputCards 里判；317：本轮那一行验收结论收进台账。合并一行，给 onEngineEvent 留余量）
                 // 第一百九十批：题材批量写作的逐篇对账（只在我们等的那轮上动作；
                 // messages 已在 refresh(force) 里重读过，拿到的是刚落库的最终消息集）。
                 topicBatchOnSettled()
@@ -4324,6 +4381,76 @@ internal class BaopuChatController(context: Context) {
             apply()
         } else {
             main.post { apply() }
+        }
+    }
+
+    // ── 第三百一十七批：那一行结论的收尾与出路 ────────────────────────────────
+
+    /**
+     * 收尾那一刻把这一行收进台账（判据①②的落点）。
+     *
+     * 两步，都不判断：① 把引擎算好的三态人话叠上本轮真实命中的失败类别（§二 那两类；
+     * 纯问答轮没有验收单，页面照样能读失败 ⇒ **仍然出行**）；② 按锚收进 [VerifyLines]——
+     * "同一轮只有一行"是那里结构上保证的，所以这里**不管**这一轮是不是已经有一行。
+     */
+    private fun verifyOnSettle() {
+        val line = VerifyNarrative.withFailureKind(
+            base = engine.roundVerifyLine.value,
+            kind = roundFailureKind,
+            location = roundFailurePlace,
+            url = roundFailureUrl,
+        )
+        verifyLines = VerifyLines.absorb(verifyLines, lastUserMessageId, line)
+        roundFailureKind = null
+        roundFailurePlace = null
+        roundFailureUrl = null
+    }
+
+    /**
+     * 那一行下面的出路按钮（判据③：每个按钮都落到一个**真存在**的动作）。
+     *
+     * 四个去处全是既有通道，本批不开新的执行路径：
+     * · 重试／再试一次 ⇒ [retryLastTurn]（引擎续跑，不新增用户消息）；
+     * · 换个做法 ⇒ [BaopuIntents.requestPrompt] 预填输入框（只预填不发送，与 181 批
+     *   「修一下」同一姿势——发不发由人定）；
+     * · 你点一下玄览／去点 ⇒ [openInXuanlan]（有地址就带着地址交卷给玄览），
+     *   没地址 ⇒ 至少把人送到玄览那一页（`requestBrowserTab`），**不许出现"点了没反应"**；
+     * · 就这样，先记下来 ⇒ [TodoStore.add]（541 的账、565 的看板；判据④）。
+     */
+    fun onVerifyAction(line: VerifyLine, action: VerifyAction) {
+        when (action) {
+            VerifyAction.RETRY, VerifyAction.AGAIN -> retryLastTurn()
+            VerifyAction.SWAP -> BaopuIntents.requestPrompt(
+                verifySwapPrefillText(appCtx.resources),
+                truncated = false,
+            )
+
+            VerifyAction.XUANLAN, VerifyAction.GO_TAP -> if (line.url.isNotBlank()) {
+                openInXuanlan(line.url)
+            } else {
+                // 没地址 ⇒ 至少把人送到玄览那一页；**不编一个地址**，也不许"点了没反应"。
+                com.example.zhengdao.ui.browser.BrowserHolder.requestBrowserTab()
+            }
+
+            VerifyAction.NOTE -> verifyNoteDown(line)
+        }
+    }
+
+    /** 「就这样，先记下来」⇒ 写进未办成单，回执一句人话（点了必须有反应，负例④）。 */
+    private fun verifyNoteDown(line: VerifyLine) {
+        val res = appCtx.resources
+        val summary = verifyTodoSummary(verifyNoteText(line, res))
+        val source = verifyNoteSourceText(res)
+        val root = workspaceRoot
+        scope.launch {
+            val write = withContext(Dispatchers.IO) {
+                runCatching { TodoStore.add(root, summary, source, System.currentTimeMillis()) }
+                    .getOrElse { TodoWrite.Refused(verifyNoteFailText(res)) }
+            }
+            skillNote = when (write) {
+                is TodoWrite.Ok -> BaopuNote(verifyNoteDoneText(res), BaopuNoteLevel.Info)
+                is TodoWrite.Refused -> BaopuNote(write.reason, BaopuNoteLevel.Error)
+            }
         }
     }
 

@@ -1083,6 +1083,10 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                     awaitConfirmTool = controller.confirmCard?.tool,
                     // 第一百八十一批 #6：失败行「修一下」——预填修复请求，发送仍由用户点。
                     onRepairFailed = { tool, err -> controller.requestToolRepair(tool, err) },
+                    // 第三百一十七批：每轮结束那一行验收结论（台账在控制器，渲染层只按轮取）
+                    // ＋出路按钮的去处——**这一对必须是真接线**，门禁在 VerifyVisibleGateTest 钉。
+                    verifyLines = controller.verifyLines,
+                    onVerifyAction = { line, action -> controller.onVerifyAction(line, action) },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // 计划区（第一百零六批，v1.5 §3.11）：消息区右上悬浮胶囊＋浮层面板。

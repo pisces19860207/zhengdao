@@ -632,11 +632,33 @@ internal class RunEngine(
     val roundArtifacts: State<List<String>> get() = _roundArtifacts
 
     /**
-     * 换会话 / 开新会话时清空产物视图（引擎内那份 [verifyTouched] 不动——它只在
+     * 第三百一十七批 · 本轮收工那张单子翻成的**一行话**（null = 这一轮没有验收单）。
+     *
+     * 引擎只**发布读数**，一个字也不在这儿判断：三态由 378 的 `RunContractWiring.closeRun`
+     * （→ 332 判据表）算，翻人话由 317 的 `VerifyNarrative` 做（纯键名＋参数，中文在
+     * `strings_baopu_verify.xml`）。这一格是"结论只进运行日志"到"结论对人可见"之间
+     * 缺的那一根线——派工单 317 §一。
+     *
+     * 房型照 [roundArtifacts]：跑前清、收尾时按本轮真读数写一次，壳层只读不抄
+     * （抄一份就有两个真源）。全限定名调 `com.example.zhengdao.baopu.verify.*`——
+     * 本文件头**不许加 import**（会把 `Thread(r, "zd-baopu-run")` 从它现在的行位顶走，
+     * 同文件里 `selectTextArtifacts`／usage 那条链早就是同一个写法）。
+     */
+    private val _roundVerifyLine =
+        mutableStateOf<com.example.zhengdao.baopu.verify.VerifyLine?>(null)
+    val roundVerifyLine: State<com.example.zhengdao.baopu.verify.VerifyLine?> get() = _roundVerifyLine
+
+    /**
+     * 换会话 / 开新会话 / 开新一轮时清空本轮视图（引擎内那份 [verifyTouched] 不动——它只在
      * 一个 run 里有意义）。不清就会看到上个会话的文件名，点进去是别人的产物。
+     *
+     * 第三百一十七批：验收那一行跟着同一个口子清。它和产物行是**同一轮的两张脸**
+     * （产物行说"落了哪些"，验收行说"这一轮算不算做完"），留着上一轮的那一句就等于
+     * 让新一轮顶着旧结论上屏——比不显示更糟。
      */
     fun clearRoundArtifactView() {
         _roundArtifacts.value = emptyList()
+        _roundVerifyLine.value = null
     }
 
     /**
@@ -2575,9 +2597,7 @@ internal class RunEngine(
                     // PASS/FAIL/UNVERIFIABLE 真由 ContractSelector.evaluate 算
                     // （verify/RunContractWiring → 332 判据表，判据一个字没改）；证据是本轮
                     // 真落盘的文档产物，打勾的依据是上面收尾闸的既有读数——本层不新造判据、
-                    // 不判卷。只进日志与 notice（FAIL 才贴），不进修复回路、不拦收尾
-                    // （照 227 §0.5 答案自检同款纪律：报数不拦人）。
-                    var contractNotice: String? = null
+                    // 不判卷。只进日志（FAIL 也不贴 notice：见下面 317 那段）。
                     runOrder?.let { order ->
                         val report = RunContractWiring.closeRun(
                             order,
@@ -2587,7 +2607,17 @@ internal class RunEngine(
                         )
                         // 457：收工行同样两路全落（起单/前置读/收工三行 × 三处对齐）。
                         contractLine(sessionId, stepCount, RunContractWiring.reportLine(report))
-                        contractNotice = RunContractWiring.noticeLine(report)
+                        // 第三百一十七批：同一份三态翻成人话，交给壳层在对话流里上那一行。
+                        // 这里**只发布读数**（键名＋参数），一个字不在这儿判、一句中文不在这儿写。
+                        // 378 原先往 `_notice` 贴的那一句（`noticeLine`）带着 `PASS`／
+                        // `UNVERIFIABLE（判不了）` 原词上屏——正是 317 负例①的形状，已删；
+                        // 验收结论从此只有**一个出口**（那一行人话），不再有第二处措辞会漂。
+                        _roundVerifyLine.value =
+                            com.example.zhengdao.baopu.verify.VerifyNarrative.fromContract(
+                                report = report,
+                                files = _roundArtifacts.value,
+                                gateFindings = findings.size,
+                            )
                     }
                     // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）。
                     // 覆盖顺序（改前源码的顺序，一级压一级）：截断 > 计划未勾 > 收尾闸摘要；
@@ -2611,10 +2641,9 @@ internal class RunEngine(
                     goalNotice?.let { g ->
                         _notice.value = _notice.value?.let { cur -> "$cur $g" } ?: g
                     }
-                    // 378②：契约验收没过 ⇒ 同样贴在最外层（过了不贴——PASS 不打扰）。
-                    contractNotice?.let { c ->
-                        _notice.value = _notice.value?.let { cur -> "$cur $c" } ?: c
-                    }
+                    // 378② 的契约验收**不再往这里贴**（第三百一十七批）：那一句带内部词，
+                    // 且与对话流里那一行是同一件事的两处措辞。结论的唯一出口是
+                    // [_roundVerifyLine] → 壳层 `BaopuVerifyLineRow`。
 
                     persistAssistantMessage(sessionId, outcome.text)
                     history += HistoryMessage(

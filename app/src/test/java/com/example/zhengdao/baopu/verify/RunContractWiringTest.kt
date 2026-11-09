@@ -38,6 +38,20 @@ class RunContractWiringTest {
         f.writeText(body)
     }
 
+    /**
+     * 本批被测件源码（先剥注释再断言：注释里提到的 `noticeLine` 不算代码里还有它）。
+     *
+     * 第三百一十七批的反钉用——收工结论只剩**一个**出口（日志行 + 人话那一行），
+     * 旧的 notice 出口必须真没了，光看行为测不出来（那条路径不返回东西，只是不再调用）。
+     */
+    private fun wiringCode(): String = File(
+        "src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt",
+    ).let { if (it.isFile) it else File("app/src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt") }
+        .readText()
+        .replace("\r\n", "\n")
+        .replace(Regex("(?s)/\\*.*?\\*/"), "")
+        .replace(Regex("(?m)^[ \\t]*//.*$"), "")
+
     // ── 判据① 起单：契约建得出来，字段全是真实状态 ──────────────────────────
 
     @Test
@@ -129,7 +143,10 @@ class RunContractWiringTest {
         assertEquals(Status.PASS, report.status)
         assertEquals(Reason.OK, report.reason)
         assertEquals(3, report.checks.size)
-        assertNull("PASS 不该打扰用户（notice 必须为 null）", RunContractWiring.noticeLine(report))
+        assertFalse(
+            "317：PASS 之外也不许再有第二个出口——noticeLine 这个口子必须已经拆掉",
+            wiringCode().contains("noticeLine"),
+        )
         assertTrue(RunContractWiring.reportLine(report).contains("PASS"))
         assertTrue(File(root, "产物/周报.md").delete())
     }
@@ -143,7 +160,10 @@ class RunContractWiringTest {
         // 缺证据也要把契约列的判据逐条摊开（一条都不许吞）
         assertEquals(3, report.checks.size)
         assertTrue(report.checks.all { it.missing })
-        assertNotNull("FAIL 必须进 notice（没交卷要让人看见）", RunContractWiring.noticeLine(report))
+        assertTrue(
+            "缺证据的 FAIL 必须在日志行里点得出来（317 之后那是唯一的书面出口）",
+            RunContractWiring.reportLine(report).contains("缺"),
+        )
     }
 
     @Test

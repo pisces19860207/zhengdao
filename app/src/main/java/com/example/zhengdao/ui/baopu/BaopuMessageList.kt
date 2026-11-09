@@ -79,6 +79,10 @@ import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.agent.RunState
 import com.example.zhengdao.baopu.artifactChipPlan
 import com.example.zhengdao.baopu.artifactFileName
+import com.example.zhengdao.baopu.verify.VerifyAction
+import com.example.zhengdao.baopu.verify.VerifyLine
+import com.example.zhengdao.baopu.verify.VerifyRow
+import com.example.zhengdao.baopu.verify.VerifyLines
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -270,6 +274,11 @@ internal fun BaopuMessageList(
     awaitConfirmTool: String? = null,
     // 第一百八十一批 #6：失败行「修一下」往下透传；null ⇒ 过程条不出该按钮。
     onRepairFailed: ((tool: String, err: String) -> Unit)? = null,
+    // 第三百一十七批：每轮结束那一行验收结论（锚＝该轮用户消息 id）＋出路按钮去处。
+    // 台账由控制器给，本层只按轮次取那一行；默认值只为预览/单测不必造控制器，
+    // **生产调用点必须传真的**（`VerifyVisibleGateTest` 在 BaopuScreen 那头钉这一对）。
+    verifyLines: List<VerifyRow> = emptyList(),
+    onVerifyAction: (VerifyLine, VerifyAction) -> Unit = { _, _ -> },
 ) {
     if (messages.isEmpty()) {
         Column(modifier.fillMaxWidth().padding(24.dp)) {
@@ -293,9 +302,20 @@ internal fun BaopuMessageList(
     // 明细不进入列表布局、不会把正文推长。
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
         rounds.forEach { round ->
+            // 317：这一轮的那一行结论（没有 ⇒ 一个字都不画）。按锚取，所以切走再回来、
+            // 重进会话，同一轮还是那一行——不会裂成两行（判据②的另一半）。
+            val verifyLine = VerifyLines.find(verifyLines, round.userMessageId)
             if (!roundHasProcess(round, steps, awaitConfirmTool)) {
                 items(round.messages, key = { it.id }) { msg ->
                     BaopuMessageRow(msg, onSpeak, onUserLongPress)
+                }
+                if (verifyLine != null) {
+                    item(key = "baopu-verify-${round.userMessageId}") {
+                        BaopuVerifyLineRow(
+                            line = verifyLine,
+                            onAction = { action -> onVerifyAction(verifyLine, action) },
+                        )
+                    }
                 }
             } else {
                 item(key = round.userMessageId) {
@@ -312,6 +332,8 @@ internal fun BaopuMessageList(
                         engineStep = engineStep,
                         awaitConfirmTool = awaitConfirmTool,
                         onRepairFailed = onRepairFailed,
+                        verifyLine = verifyLine,
+                        onVerifyAction = onVerifyAction,
                     )
                 }
             }
@@ -400,6 +422,9 @@ private fun BaopuRoundItem(
     engineStep: Int = 0,
     awaitConfirmTool: String? = null,
     onRepairFailed: ((tool: String, err: String) -> Unit)? = null,
+    // 第三百一十七批：这一轮那一行验收结论（null ⇒ 不画）＋出路按钮的去处。
+    verifyLine: VerifyLine? = null,
+    onVerifyAction: (VerifyLine, VerifyAction) -> Unit = { _, _ -> },
 ) {
     val collapsed = roundCollapsed(
         round = round,
@@ -430,6 +455,14 @@ private fun BaopuRoundItem(
             awaitConfirmTool = awaitConfirmTool,
             onRepairFailed = onRepairFailed,
         )
+        // 第三百一十七批：过程条后面那一行**验收结论**（一轮只有一行，收工那一刻结的账）。
+        // 没有结论（纯问答轮没交付）⇒ 这一行一个字都不画，不拿「验过了」糊弄人。
+        if (verifyLine != null) {
+            BaopuVerifyLineRow(
+                line = verifyLine,
+                onAction = { action -> onVerifyAction(verifyLine, action) },
+            )
+        }
     }
 }
 

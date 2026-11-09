@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第三百一十七批（验证对人可见 · 人话层）：验收结论上屏的全部文案。
+     字符串单独成文件（158/198/212/242 批同款做法）——与放进 strings.xml 完全等价，
+     但不与正在改 strings.xml 的 544/565 抢同一个文件。
+
+     三条口径（派工单 §一.2／§二，改这里等于改口径，别处都不动）：
+     1. 判据①钉的是「三态各用哪个 key」（值在 `VerifyPhrase` 里逐个对号），**不是这里的中文**；
+        要换个说法，只改本文件与 values-en 那一份，门禁不红。
+     2. 值里不许出现内部词（PASS／FAIL／UNVERIFIABLE／sha256／GapItem 这一族）——
+        `VerifyVisibleGateTest` 按 [VerifyNarrative.FORBIDDEN] 中英两份逐条扫。
+        写中文时顺手避开了英文字母词，改文案请守住这条。
+     3. 占位符只用 %1$s／%2$s（一律字符串位）：渲染层把数目转成字串喂进来，
+        位置与条数由 `VerifyVisibleGateTest` 按 [PLACEHOLDER_COUNTS] 钉死——
+        改了占位符个数不改表，测试直接红（少喂一位是运行时崩，不该等到线上）。 -->
+<resources>
+    <!-- ── 三态结论（§一.2 那张表；detail=点得出缺哪几样，bare=点不出来）────── -->
+    <string name="baopu_verify_pass">验过了：该写的都写了，账也对得上</string>
+    <string name="baopu_verify_fail_detail">没验过：缺 %1$s。要我再做一次吗</string>
+    <string name="baopu_verify_fail_bare">没验过：具体缺哪一条这一轮没拿到。要我再做一次吗</string>
+    <string name="baopu_verify_unverifiable_detail">这次判断不了：缺 %1$s。你可以看一眼再决定</string>
+    <string name="baopu_verify_unverifiable_bare">这次判断不了：一条能对上的读数都没有。你可以看一眼再决定</string>
+
+    <!-- ── 失败像产品（§二 那张表，三类各有出路）────────────────────────── -->
+    <string name="baopu_verify_page_read">页面没读出来</string>
+    <string name="baopu_verify_no_evidence">我没法确认</string>
+    <string name="baopu_verify_needs_tap">需要你在屏幕上点一下：%1$s</string>
+    <string name="baopu_verify_needs_tap_nowhere">需要你在屏幕上点一下：这一轮我没定位到具体位置</string>
+
+    <!-- ── 结论后面那半句依据（点开是证据明细）──────────────────────────── -->
+    <string name="baopu_verify_basis_files">本轮落了 %1$s 个文件</string>
+    <string name="baopu_verify_basis_rows">对上的读数有 %1$s 条</string>
+    <string name="baopu_verify_basis_gate">收尾检查有 %1$s 项没过</string>
+    <string name="baopu_verify_basis_read">要看的是 %1$s</string>
+    <string name="baopu_verify_basis_tap">你点完这一下，我再接着往下跑</string>
+    <string name="baopu_verify_basis_bare">这一轮没有能对上的读数</string>
+
+    <!-- ── 证据浮层（结论那一行点开的东西：文件路径/账行）────────────────── -->
+    <string name="baopu_verify_evidence_title">能点开的证据</string>
+    <string name="baopu_verify_evidence_more">还有 %1$s 条没列出</string>
+    <string name="baopu_verify_evidence_none">这一轮没有可对的文件或账行</string>
+    <string name="baopu_verify_toggle_open">点开这一轮的依据</string>
+    <string name="baopu_verify_toggle_close">收起这一轮的依据</string>
+
+    <!-- ── 出路按钮（每个都有真实去处，判据③）──────────────────────────── -->
+    <string name="baopu_verify_act_retry">重试</string>
+    <string name="baopu_verify_act_swap">换个做法</string>
+    <string name="baopu_verify_act_xuanlan">你点一下玄览</string>
+    <string name="baopu_verify_act_again">再试一次</string>
+    <string name="baopu_verify_act_note">就这样，先记下来</string>
+    <string name="baopu_verify_act_go_tap">去点</string>
+
+    <!-- ── 连接符（渲染层不写死中文标点：文案一律出自本文件）─────────────── -->
+    <string name="baopu_verify_join_or">、</string>
+    <string name="baopu_verify_line_sep">｜</string>
+
+    <!-- ── 「换个做法」替她把话起个头（填进输入框，发不发由她）────────────── -->
+    <string name="baopu_verify_swap_prefill">刚才那一页没读出来。换个做法：先把页面打开停在那儿，再一步一步告诉我要点哪里。</string>
+
+    <!-- ── 「就这样，先记下来」那条待办的摘要（541 的账、565 的看板）───────── -->
+    <string name="baopu_verify_note_item">先记下：这一轮验收没过（%1$s）</string>
+    <string name="baopu_verify_note_source">这一轮验收</string>
+    <string name="baopu_verify_note_done">已记进未办成单，随时能翻回来</string>
+    <string name="baopu_verify_note_fail">这一条没能记上（待办账写不进去），盘上原有的账没动</string>
+    <string name="baopu_verify_detail_none">没点到具体哪一条</string>
+
+    <!-- ── 332 那 14 条判据的人话名（一条不许漏：漏了就是把判据号贴给用户）── -->
+    <string name="baopu_verify_item_path_set">对得上的文件清单</string>
+    <string name="baopu_verify_item_byte_identical">逐字一致的拷贝</string>
+    <string name="baopu_verify_item_no_escape">没跑出约定范围的落点</string>
+    <string name="baopu_verify_item_ledger_complete">一笔一笔的文件账</string>
+    <string name="baopu_verify_item_exists">写出来的文件</string>
+    <string name="baopu_verify_item_structure">完整的章节结构</string>
+    <string name="baopu_verify_item_user_checklist">你给的检查项逐条打勾</string>
+    <string name="baopu_verify_item_compile">编译过的代码</string>
+    <string name="baopu_verify_item_tests_green">跑绿的测试</string>
+    <string name="baopu_verify_item_diff_in_scope">没超出范围的改动</string>
+    <string name="baopu_verify_item_budget">没超支的用量</string>
+    <string name="baopu_verify_item_shape">对得上的行列数</string>
+    <string name="baopu_verify_item_sample_5">抽出来核对过的几行</string>
+    <string name="baopu_verify_item_reopenable">重新打得开的输出</string>
+</resources>

@@ -25,6 +25,13 @@
 //
 // 与 347 军令状收口的关系：收口（有状对账）照旧独立跑；本文件的验收是**无状的日常任务单**
 // 也有的一张验收读数。两行都进运行日志，互不替代。
+//
+// 第三百一十七批改了一格（其余一字未动）：**收工结论不再往 notice 贴**。
+// 原来那一句 `noticeLine` = 「【任务契约】验收 UNVERIFIABLE（判不了）：…」把三态原词
+// 直接送上了屏，正是 317 派工单负例①点名的形状（内部词不许出现在用户可见文案里）。
+// 现在结论只有一个出口：引擎发布 `VerifyNarrative.fromContract` 那一行话（键名＋参数，
+// 中文在 `strings_baopu_verify.xml`），`reportLine` 那行原样留在**运行日志**（日志不是屏）。
+// 判据、取数、三态口径一个字没改——改的是"说到哪儿去"，不是"怎么判"。
 package com.example.zhengdao.baopu.verify
 
 import com.example.zhengdao.baopu.preread.PreReadWiring
@@ -271,14 +278,6 @@ internal object RunContractWiring {
         val detail = if (bad.isEmpty()) "判据 ${report.checks.size} 条全过" else "未过：${bad.joinToString("、")}"
         return "$head｜$detail"
     }
-
-    /** 收工没过 ⇒ 给用户的一句实话（进 notice；PASS 返回 null——过了不打扰）。 */
-    fun noticeLine(report: ContractReport): String? =
-        if (report.status == Status.PASS) {
-            null
-        } else {
-            "【任务契约】验收 ${report.status.cn}：${report.note}"
-        }
 
     private fun brief(raw: String, max: Int = 24): String {
         val one = raw.replace('\n', ' ').trim()
