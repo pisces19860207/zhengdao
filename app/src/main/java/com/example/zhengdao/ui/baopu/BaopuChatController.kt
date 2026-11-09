@@ -4307,11 +4307,12 @@ internal class BaopuChatController(context: Context) {
             // 顶栏玄览状态：只有浏览器工具在跑时才出现，本轮结束就撤（不留在屏上骗人）
             if (ev is EngineEvent.ScratchLeft) scratchLeft = ev.count
             if (ev is EngineEvent.ToolCallVisible) {
-                roundUsedTools = true
+                // 并成一行不是洁癖：`onEngineEvent` 正顶在 detekt 的 60 行闸上（冻结区预算
+                // 只降不升），判读本身在 readToolFailure 里。
+                roundUsedTools = true; readToolFailure(ev) // 317 §二：这一跳读数命中哪一类失败
                 com.example.zhengdao.baopu.browserActivityLine(ev.tool, ev.summary)?.let {
                     browserActivity = it
                 }
-                readToolFailure(ev) // 317 §二：这一跳读数命中哪一类失败（判读在那儿，不铺开）
                 // 第一百六十九批 §3：子 Agent 批结束也是一次「长任务完成」。
                 // 只报结果、不带 summary（summary 可能有正文）；前台/权限/合并窗口由
                 // BaopuCompletionRules 判，重复事件不会刷屏。
