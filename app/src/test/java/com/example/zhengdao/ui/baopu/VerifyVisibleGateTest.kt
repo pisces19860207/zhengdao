@@ -71,7 +71,6 @@ class VerifyVisibleGateTest {
         "baopu_verify_unverifiable_detail" to 1,
         "baopu_verify_needs_tap" to 1,
         "baopu_verify_basis_files" to 1,
-        "baopu_verify_basis_rows" to 1,
         "baopu_verify_basis_gate" to 1,
         "baopu_verify_basis_read" to 1,
         "baopu_verify_evidence_more" to 1,
@@ -141,7 +140,7 @@ class VerifyVisibleGateTest {
             }
         }
         // 判别器自证：扫法真数得出来
-        assertEquals(1, Regex("%\\d\\$[a-z]").findAll("本轮落了 %1$s 个文件").count())
+        assertEquals(1, Regex("%\\d\\$[a-z]").findAll("本轮落了 %1\$s 个文件").count())
         assertEquals(0, Regex("%\\d\\$[a-z]").findAll("验过了：该写的都写了").count())
     }
 
@@ -151,7 +150,7 @@ class VerifyVisibleGateTest {
         val argOf = src.substringAfter("private fun argOf").substringBefore("internal fun verifyText")
         listOf(
             "FAIL_DETAIL", "UNVERIFIABLE_DETAIL", "NOTE_ITEM", "NEEDS_TAP",
-            "BASIS_READ", "BASIS_FILES", "BASIS_ROWS", "BASIS_GATE",
+            "BASIS_READ", "BASIS_FILES", "BASIS_GATE",
         ).forEach { assertTrue("argOf 没管 $it 这一位", argOf.contains("VerifyPhrase.$it")) }
         // 脚注那条自己带数（「还有 N 条」），不走 argOf
         assertTrue(src.contains("VerifyPhrase.EVIDENCE_MORE, res, more.toString()"))

@@ -20,7 +20,7 @@
     <string name="baopu_verify_fail_detail">Not verified: missing %1$s. Want me to run it again</string>
     <string name="baopu_verify_fail_bare">Not verified: this round did not name which item fell short. Want me to run it again</string>
     <string name="baopu_verify_unverifiable_detail">I could not call this one: missing %1$s. Take a look and decide</string>
-    <string name="baopu_verify_unverifiable_bare">I could not call this one: no reading came back to compare. Take a look and decide</string>
+    <string name="baopu_verify_unverifiable_bare">I could not call this one: this round did not name which item fell short. Take a look and decide</string>
 
     <!-- failure looks like a product (§二, three kinds, each with a way out) -->
     <string name="baopu_verify_page_read">The page did not come through</string>
@@ -30,7 +30,6 @@
 
     <!-- the basis clause behind the verdict (tap it to open the evidence) -->
     <string name="baopu_verify_basis_files">%1$s file(s) landed this round</string>
-    <string name="baopu_verify_basis_rows">%1$s reading(s) lined up</string>
     <string name="baopu_verify_basis_gate">%1$s item(s) did not clear the closing check</string>
     <string name="baopu_verify_basis_read">The page in question: %1$s</string>
     <string name="baopu_verify_basis_tap">Once you tap it, I pick the run back up</string>

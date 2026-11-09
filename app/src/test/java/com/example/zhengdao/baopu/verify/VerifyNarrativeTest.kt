@@ -124,13 +124,16 @@ class VerifyNarrativeTest {
     fun `判据2_一轮最多一行`() {
         val a = line(VerifyPhrase.PASS)
         val b = line(VerifyPhrase.NO_EVIDENCE)
+        // 后到的覆盖先到的：这就是「一轮插三行」（负例②）在这一处发生不了的原因
         var rows = VerifyLines.absorb(emptyList(), 100L, a)
         rows = VerifyLines.absorb(rows, 100L, b)
-        rows = VerifyLines.absorb(rows, 100L, a)
-        assertEquals("同一轮写三次也只有一行（派工单负例②在这一处结构上发生不了）", 1, rows.size)
+        assertEquals("同一轮写两次也只有一行", 1, rows.size)
         assertEquals(b, VerifyLines.find(rows, 100L))
+        rows = VerifyLines.absorb(rows, 100L, a)
+        assertEquals("同一轮写三次也只有一行", 1, rows.size)
+        assertEquals(a, VerifyLines.find(rows, 100L))
         // 没锚（引擎没给库 id）与没结论都不落行
-        assertEquals(rows, VerifyLines.absorb(rows, 0L, a))
+        assertEquals(rows, VerifyLines.absorb(rows, 0L, b))
         assertEquals(rows, VerifyLines.absorb(rows, 101L, null))
         assertEquals(2, VerifyLines.absorb(rows, 101L, b).size)
     }
@@ -256,41 +259,48 @@ class VerifyNarrativeTest {
         assertNull(VerifyNarrative.withFailureKind(null, null, "example.com", "https://example.com"))
     }
 
-    // ── 右相那份用同一套词表（不许另起一套）────────────────────────────────
-
+    // ── 依据那半句只说得到的事（和结论不许打架）───────────────────────────
+    //
+    // 派工单 §一.1 要的是「白话结论 ＋ 一句依据」，那半句同样是**陈述**：
+    // 本轮有文件可点开、收尾闸有过不去的项，就不许说「这一轮没有能对上的读数」。
+    // 判不了（UNVERIFIABLE）最容易在这儿说谎——那一态的缺项常常点不出来，
+    // 但盘上的文件与闸的读数照样在。
     @Test
-    fun `右相那份翻人话与收工单子同一套键`() {
-        val pass = VerifyNarrative.fromChancellor(
-            ChancellorReport(ChancellorVerdict.PASS, emptyList(), listOf("字节数一致 1,024"), emptyList(), true, 12L),
-        )
-        assertEquals(VerifyPhrase.PASS, pass.conclusion)
-        assertEquals(VerifyPhrase.BASIS_ROWS, pass.basis)
-        assertTrue(pass.actions.isEmpty())
+    fun `依据那句按真有的东西选键`() {
+        val unverifiable = VerifyNarrative.fromContract(
+            report(Status.UNVERIFIABLE, emptyList()),
+            listOf("产物/周报.md"),
+            gateFindings = 0,
+        )!!
+        assertEquals("有文件可点开却说「没有读数」＝依据那句是假的",
+            VerifyPhrase.BASIS_FILES, unverifiable.basis)
+        assertEquals(listOf(1), unverifiable.numbers)
 
-        val fail = VerifyNarrative.fromChancellor(
-            ChancellorReport(
-                ChancellorVerdict.FAIL,
-                listOf(
-                    ChancellorFinding("C1", "两份文件的字节数对不上", "凭什么"),
-                    ChancellorFinding("C2", "sha256 没对上", "凭什么"),
-                ),
-                emptyList(),
-                emptyList(),
-                false,
-                30L,
-            ),
-        )
-        assertEquals(VerifyPhrase.FAIL_BARE, fail.conclusion)
-        assertTrue("302 的判据号（C1/C2）不上屏：走 bare 那句", fail.items.isEmpty())
-        assertEquals("带内部词的那条证据整条丢掉", listOf("两份文件的字节数对不上"), fail.evidence)
-        assertEquals(listOf(2), fail.numbers)
+        val gated = VerifyNarrative.fromContract(
+            report(Status.UNVERIFIABLE, emptyList()),
+            emptyList(),
+            gateFindings = 2,
+        )!!
+        assertEquals("闸上有读数先说闸——它比「没落文件」信息量大",
+            VerifyPhrase.BASIS_GATE, gated.basis)
+        assertEquals(listOf(2), gated.numbers)
 
-        val cannot = VerifyNarrative.fromChancellor(
-            ChancellorReport(ChancellorVerdict.UNVERIFIABLE, emptyList(), emptyList(), listOf("缺路径"), false, 5L),
-        )
-        assertEquals(VerifyPhrase.UNVERIFIABLE_DETAIL, cannot.conclusion)
-        assertEquals(listOf("缺路径"), cannot.evidence)
-        assertTrue(cannot.actions.contains(VerifyAction.NOTE))
+        val nothing = VerifyNarrative.fromContract(
+            report(Status.UNVERIFIABLE, emptyList()),
+            emptyList(),
+            gateFindings = 0,
+        )!!
+        assertEquals(VerifyPhrase.BASIS_BARE, nothing.basis)
+        assertTrue("两样都没有时不留一个空参数位", nothing.numbers.isEmpty())
+
+        val failed = VerifyNarrative.fromContract(
+            report(Status.FAIL, listOf(check(CheckId.EXISTS, false, false))),
+            listOf("产物/周报.md"),
+            gateFindings = 3,
+        )!!
+        assertEquals("FAIL 与 UNVERIFIABLE 用同一把尺，不各写一套 if",
+            VerifyPhrase.BASIS_GATE, failed.basis)
+        assertEquals(listOf(3), failed.numbers)
     }
 
     private fun line(conclusion: VerifyPhrase) = VerifyLine(

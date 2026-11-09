@@ -8,7 +8,7 @@
 // 判定、取数、三态一个都不在这里——那是 `baopu/verify/VerifyNarrative.kt` 与 302/332/378 的地盘。
 //
 // ## 为什么是表，不是 when
-// 212 批那张卡文案表用 `when (key)`；这里 48 个键照抄会多一条 detekt `CyclomaticComplexMethod`
+// 212 批那张卡文案表用 `when (key)`；这里的键照抄会多一条 detekt `CyclomaticComplexMethod`
 // （阈值 15，本批预算是**净零**）。所以是 `Map`。代价是漏一个键编译器不报错，于是
 // `VerifyVisibleGateTest` 顶上：键表与 `VerifyPhrase` 一一对应、中英两份 XML 各有同名
 // `<string>`、值里没有内部词、占位符条数按表钉死——任何一边漏了当场红，而不是等用户
@@ -69,7 +69,6 @@ private val VERIFY_PHRASE_RES: Map<VerifyPhrase, Int> = mapOf(
     VerifyPhrase.NEEDS_TAP to R.string.baopu_verify_needs_tap,
     VerifyPhrase.NEEDS_TAP_NOWHERE to R.string.baopu_verify_needs_tap_nowhere,
     VerifyPhrase.BASIS_FILES to R.string.baopu_verify_basis_files,
-    VerifyPhrase.BASIS_ROWS to R.string.baopu_verify_basis_rows,
     VerifyPhrase.BASIS_GATE to R.string.baopu_verify_basis_gate,
     VerifyPhrase.BASIS_READ to R.string.baopu_verify_basis_read,
     VerifyPhrase.BASIS_TAP to R.string.baopu_verify_basis_tap,
@@ -128,7 +127,7 @@ private fun argOf(phrase: VerifyPhrase, line: VerifyLine, res: Resources): Strin
         verifyItemDetail(line, res)
 
     VerifyPhrase.NEEDS_TAP, VerifyPhrase.BASIS_READ -> line.place
-    VerifyPhrase.BASIS_FILES, VerifyPhrase.BASIS_ROWS, VerifyPhrase.BASIS_GATE ->
+    VerifyPhrase.BASIS_FILES, VerifyPhrase.BASIS_GATE ->
         line.numbers.firstOrNull()?.toString().orEmpty()
 
     else -> ""

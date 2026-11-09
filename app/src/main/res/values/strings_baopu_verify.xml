@@ -18,7 +18,7 @@
     <string name="baopu_verify_fail_detail">没验过：缺 %1$s。要我再做一次吗</string>
     <string name="baopu_verify_fail_bare">没验过：具体缺哪一条这一轮没拿到。要我再做一次吗</string>
     <string name="baopu_verify_unverifiable_detail">这次判断不了：缺 %1$s。你可以看一眼再决定</string>
-    <string name="baopu_verify_unverifiable_bare">这次判断不了：一条能对上的读数都没有。你可以看一眼再决定</string>
+    <string name="baopu_verify_unverifiable_bare">这次判断不了：没点到具体缺哪一条。你可以看一眼再决定</string>
 
     <!-- ── 失败像产品（§二 那张表，三类各有出路）────────────────────────── -->
     <string name="baopu_verify_page_read">页面没读出来</string>
@@ -28,7 +28,6 @@
 
     <!-- ── 结论后面那半句依据（点开是证据明细）──────────────────────────── -->
     <string name="baopu_verify_basis_files">本轮落了 %1$s 个文件</string>
-    <string name="baopu_verify_basis_rows">对上的读数有 %1$s 条</string>
     <string name="baopu_verify_basis_gate">收尾检查有 %1$s 项没过</string>
     <string name="baopu_verify_basis_read">要看的是 %1$s</string>
     <string name="baopu_verify_basis_tap">你点完这一下，我再接着往下跑</string>

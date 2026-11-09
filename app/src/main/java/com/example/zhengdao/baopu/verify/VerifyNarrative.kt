@@ -4,12 +4,17 @@
 //
 // ## 为什么单独一层
 // 三态判定早就有了，本层**一个判定都不改**：
-//   · 每轮收工那张单子（378 接线 → 332 判据表）出 [ContractReport]；右相本体（302）出
-//     [ChancellorReport]。两份的词表都是 `PASS`／`FAIL`／`UNVERIFIABLE`。
+//   · 每轮收工那张单子（378 接线 → 332 判据表）出 [ContractReport]，词表是
+//     `PASS`／`FAIL`／`UNVERIFIABLE`。
 //   · 这些是**内部词**：直接贴给用户，她看见的是「UNVERIFIABLE（判不了）」，
 //     不是「这次判断不了：缺什么、你能怎么办」。派工单 §一.3 明令禁止（负例①）。
 // 所以本层只做两件事：**把三态翻成人话**，**给每句人话配一个真实去处**。
-// 判定、取数、账行一律不在这儿（那是 302/332/378 的地盘）。
+// 判定、取数、账行一律不在这儿（那是 332/378 的地盘）。
+//
+// ## 只有一个产出口，右相（302）那份不在这儿
+// 派工单 §一.1 说的「每轮结束」只有 378 那一处会到；302 那份 [ChancellorReport] 出在
+// 转正／三司时刻，**没有"哪一轮"可锚**，本批不替它编一个上屏时机、也不留一个没人调的
+// 翻译口（那＝死代码）。它仍是日志与 541 看板那份，交付报告里作为移交项写明。
 //
 // ## 文案走 strings，判据钉 key（前置②；541 在这上面栽过）
 // 本层**不写一个中文字**：产出 [VerifyPhrase]（键名）＋参数。于是判据①钉的是
@@ -40,8 +45,7 @@ internal enum class VerifyPhrase(val key: String) {
      * 点不出来走 `*_BARE`。
      *
      * 为什么分两句而不是一句加占位符：占位符空着上屏就是「没验过：缺 。要我再做一次吗」
-     * ——负例③说的「失败只给错误码」的反面，同样不是人话。右相（302）那份报告的
-     * `findings` 本来就没有判据号，走 `*_BARE` 是它的常态。
+     * ——负例③说的「失败只给错误码」的反面，同样不是人话。
      */
     PASS("baopu_verify_pass"),
     FAIL_DETAIL("baopu_verify_fail_detail"),
@@ -57,7 +61,6 @@ internal enum class VerifyPhrase(val key: String) {
 
     // ── 一句依据（结论后面那半句；点开是证据明细）──────────────────────────
     BASIS_FILES("baopu_verify_basis_files"),
-    BASIS_ROWS("baopu_verify_basis_rows"),
     BASIS_GATE("baopu_verify_basis_gate"),
     BASIS_READ("baopu_verify_basis_read"),
     BASIS_TAP("baopu_verify_basis_tap"),
@@ -168,7 +171,7 @@ internal data class VerifyLine(
     val verdict: String,
 )
 
-/** 右相（302）与收工单子（332/378）两条产出共用的翻译口。 */
+/** 收工单子（332/378）→ 人话的唯一翻译口（判定与取数都不在这儿）。 */
 internal object VerifyNarrative {
 
     /** 证据浮层最多摆几行（沿用过程条口径：更多折成「还有 N 条」）。 */
@@ -238,96 +241,38 @@ internal object VerifyNarrative {
                 verdict = report.status.name,
             )
 
-            Status.FAIL -> VerifyLine(
-                conclusion = shortfall(VerifyPhrase.FAIL_DETAIL, VerifyPhrase.FAIL_BARE, missing, evidence),
-                items = missing,
-                place = "",
-                url = "",
-                basis = if (gateFindings > 0) VerifyPhrase.BASIS_GATE else VerifyPhrase.BASIS_FILES,
-                numbers = if (gateFindings > 0) listOf(gateFindings) else listOf(touched.size),
-                actions = listOf(VerifyAction.AGAIN, VerifyAction.NOTE),
-                evidence = evidence,
-                verdict = report.status.name,
-            )
-
-            Status.UNVERIFIABLE -> VerifyLine(
-                conclusion = shortfall(
-                    VerifyPhrase.UNVERIFIABLE_DETAIL,
-                    VerifyPhrase.UNVERIFIABLE_BARE,
-                    missing,
-                    evidence,
-                ),
-                items = missing,
-                place = "",
-                url = "",
-                basis = VerifyPhrase.BASIS_BARE,
-                numbers = emptyList(),
-                actions = listOf(VerifyAction.AGAIN, VerifyAction.NOTE),
-                evidence = evidence,
-                verdict = report.status.name,
-            )
-        }
-    }
-
-    /**
-     * 右相本体那份报告 → **同一套话术**（转正/三司那两处不许另起一套词）。
-     *
-     * `findings`（确定不过）条数进依据，`missing`（判到哪一步、缺什么）进证据。
-     * 302 的 `findings` 带的是判据号（C1/C2…），**不是**332 那 14 条判据 → 不映射成人话缺项名，
-     * 走 `*_BARE`：宁可少说一样，也不把内部编号搬上屏（负例①同一条纪律）。
-     */
-    fun fromChancellor(report: ChancellorReport): VerifyLine {
-        val notes = report.notes.mapNotNull(::sanitize)
-        val gaps = report.missing.mapNotNull(::sanitize)
-        val failed = report.findings.mapNotNull { sanitize(it.evidence) }
-        return when (report.verdict) {
-            ChancellorVerdict.PASS -> {
-                val evidence = notes + gaps
+            Status.FAIL -> {
+                val basis = basisOf(gateFindings, touched)
                 VerifyLine(
-                    conclusion = VerifyPhrase.PASS,
-                    items = emptyList(),
+                    conclusion = shortfall(VerifyPhrase.FAIL_DETAIL, VerifyPhrase.FAIL_BARE, missing, evidence),
+                    items = missing,
                     place = "",
                     url = "",
-                    basis = VerifyPhrase.BASIS_ROWS,
-                    numbers = listOf(evidence.size),
-                    actions = emptyList(),
-                    evidence = evidence,
-                    verdict = report.verdict.name,
-                )
-            }
-
-            ChancellorVerdict.FAIL -> {
-                val evidence = failed + notes + gaps
-                VerifyLine(
-                    conclusion = shortfall(VerifyPhrase.FAIL_DETAIL, VerifyPhrase.FAIL_BARE, emptyList(), evidence),
-                    items = emptyList(),
-                    place = "",
-                    url = "",
-                    basis = VerifyPhrase.BASIS_GATE,
-                    numbers = listOf(report.findings.size),
+                    basis = basis.first,
+                    numbers = basis.second,
                     actions = listOf(VerifyAction.AGAIN, VerifyAction.NOTE),
                     evidence = evidence,
-                    verdict = report.verdict.name,
+                    verdict = report.status.name,
                 )
             }
 
-            ChancellorVerdict.UNVERIFIABLE -> {
-                val evidence = gaps + notes
+            Status.UNVERIFIABLE -> {
+                val basis = basisOf(gateFindings, touched)
                 VerifyLine(
                     conclusion = shortfall(
                         VerifyPhrase.UNVERIFIABLE_DETAIL,
                         VerifyPhrase.UNVERIFIABLE_BARE,
-                        emptyList(),
+                        missing,
                         evidence,
                     ),
-                    items = emptyList(),
+                    items = missing,
                     place = "",
                     url = "",
-                    basis = VerifyPhrase.BASIS_BARE,
-                    numbers = emptyList(),
+                    basis = basis.first,
+                    numbers = basis.second,
                     actions = listOf(VerifyAction.AGAIN, VerifyAction.NOTE),
                     evidence = evidence,
-                    verdict = report.verdict.name,
+                    verdict = report.status.name,
                 )
             }
         }
@@ -396,6 +341,19 @@ internal object VerifyNarrative {
         items.isNotEmpty() -> detail
         evidence.isEmpty() -> VerifyPhrase.NO_EVIDENCE
         else -> bare
+    }
+
+    /**
+     * 结论后面那半句依据填哪句：收尾闸有过不去的项先说闸，其次说这一轮落了几个文件，
+     * 两样都没有就明说「没有能对上的读数」。
+     *
+     * 为什么 [Status.UNVERIFIABLE] 也要看闸：判不了**不等于**没有坏消息——闸上真有过不去的项时
+     * 说「本轮落了 0 个文件」是把唯一说得出的事实藏起来（派工单 §一.1「一句依据」要的是依据）。
+     */
+    private fun basisOf(gateFindings: Int, touched: List<String>): Pair<VerifyPhrase, List<Int>> = when {
+        gateFindings > 0 -> VerifyPhrase.BASIS_GATE to listOf(gateFindings)
+        touched.isNotEmpty() -> VerifyPhrase.BASIS_FILES to listOf(touched.size)
+        else -> VerifyPhrase.BASIS_BARE to emptyList()
     }
 
     /** 332 那 14 条判据 → 人话名（闭集；`when` 不带 else，将来加判据会编译不过）。 */
