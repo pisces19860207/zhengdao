@@ -4295,11 +4295,9 @@ internal class BaopuChatController(context: Context) {
             // 只是等单写者把活干完，不会与引擎自己的写事务互相等待。
             if (ev is EngineEvent.MessagePersisted && ev.role == HistoryMessage.ROLE_USER) {
                 // 路径随事件回来（排队时各自独立）——别再从一个共享格子里取。
-                attachImageParts(ev.messageId, ev.imageRelPaths)
-                // 317：这一轮结论行的锚就在这儿结（引擎给的库 id，与渲染层
-                // BaopuRound.userMessageId 同源）；续跑/重试不发这条事件 ⇒ 锚留在原轮，
-                // 重跑的那一次覆盖同一行，不会另起一行。
-                lastUserMessageId = ev.messageId
+                // 317：这一轮结论的锚（库 id）也在这同一刻结——续跑/重试不发这条事件，
+                // 所以重跑覆盖同一行不另起。
+                attachImageParts(ev.messageId, ev.imageRelPaths); lastUserMessageId = ev.messageId
                 // 147：跑前基线（提炼游标同款）——只认本会话在此之后新增的 run_log 行。
                 diaryMarkBeforeRun()
             }
@@ -4313,17 +4311,7 @@ internal class BaopuChatController(context: Context) {
                 com.example.zhengdao.baopu.browserActivityLine(ev.tool, ev.summary)?.let {
                     browserActivity = it
                 }
-                // 317 §二：这一跳工具读数命中哪一类失败（「需要你操作」／「页面没读出来」）。
-                // 只认回执里真有的那两样，都不命中 ⇒ 什么都不改（不猜"看起来像在等人"）。
-                val failureKind = VerifyNarrative.failureKindOf(ev.tool, ev.summary, ev.ok)
-                if (failureKind != null) {
-                    roundFailureKind = VerifyNarrative.strongest(roundFailureKind, failureKind)
-                }
-                val pageUrl = VerifyNarrative.failureUrlOf(ev.summary)
-                if (pageUrl != null) {
-                    roundFailureUrl = pageUrl
-                    roundFailurePlace = VerifyNarrative.failurePlaceOf(ev.summary)
-                }
+                readToolFailure(ev) // 317 §二：这一跳读数命中哪一类失败（判读在那儿，不铺开）
                 // 第一百六十九批 §3：子 Agent 批结束也是一次「长任务完成」。
                 // 只报结果、不带 summary（summary 可能有正文）；前台/权限/合并窗口由
                 // BaopuCompletionRules 判，重复事件不会刷屏。
@@ -4387,6 +4375,24 @@ internal class BaopuChatController(context: Context) {
     // ── 第三百一十七批：那一行结论的收尾与出路 ────────────────────────────────
 
     /**
+     * 一跳工具读数 ⇒ 记下它命中了 §二 的哪一类失败、发生在哪一页（有地址就连地址一起记）。
+     *
+     * 只认回执里真有的那两样（224 的 `needsHumanClick` 那一格、玄览器件族的 `ok=false`），
+     * 都不命中 ⇒ 什么都不改（不猜「看起来像在等人」）。抽成独立函数是为了不在
+     * [onEngineEvent] 里铺开——那个函数已经在冻结区的欠债名单上，别再给它加行。
+     */
+    private fun readToolFailure(ev: EngineEvent.ToolCallVisible) {
+        VerifyNarrative.failureKindOf(ev.tool, ev.summary, ev.ok)?.let {
+            roundFailureKind = VerifyNarrative.strongest(roundFailureKind, it)
+        }
+        val url = VerifyNarrative.failureUrlOf(ev.summary)
+        if (url != null) {
+            roundFailureUrl = url
+            roundFailurePlace = VerifyNarrative.failurePlaceOf(ev.summary)
+        }
+    }
+
+    /**
      * 收尾那一刻把这一行收进台账（判据①②的落点）。
      *
      * 两步，都不判断：① 把引擎算好的三态人话叠上本轮真实命中的失败类别（§二 那两类；
@@ -4447,10 +4453,13 @@ internal class BaopuChatController(context: Context) {
                 runCatching { TodoStore.add(root, summary, source, System.currentTimeMillis()) }
                     .getOrElse { TodoWrite.Refused(verifyNoteFailText(res)) }
             }
-            skillNote = when (write) {
-                is TodoWrite.Ok -> BaopuNote(verifyNoteDoneText(res), BaopuNoteLevel.Info)
-                is TodoWrite.Refused -> BaopuNote(write.reason, BaopuNoteLevel.Error)
+            // 级别随回执一起定：记上了是进度（8 秒自清），没记上是错误（常驻可点掉）。
+            // 写成 `BaopuNote(文案, 级别)` 那一型——`NoteLevelTest` B5 拦的就是漏标级别的裸文案。
+            val note = when (write) {
+                is TodoWrite.Ok -> verifyNoteDoneText(res) to BaopuNoteLevel.Info
+                is TodoWrite.Refused -> write.reason to BaopuNoteLevel.Error
             }
+            skillNote = BaopuNote(note.first, note.second)
         }
     }
 
