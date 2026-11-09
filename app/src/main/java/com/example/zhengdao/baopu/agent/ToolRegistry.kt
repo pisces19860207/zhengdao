@@ -8,6 +8,9 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.mcp.McpSelfService
+import com.example.zhengdao.baopu.todo.TodoAddTool
+import com.example.zhengdao.baopu.todo.TodoListTool
+import com.example.zhengdao.baopu.todo.TodoMarkDoneTool
 import com.example.zhengdao.trigger.TriggerTool
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 import org.json.JSONArray
@@ -199,8 +202,17 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
          * 判据（`BoardUnlockTest` 五例）：冷启首轮 board_write 真写成功 ／ tools 数组里有它 ／
          * 名册两处都没有 `board_*` 与 `governance_state` ／ 关掉 FILES 组后一起消失 ／
          * 名单里的名字必须真注册（写错名字＝静默失效，装配期直接抛）。
+         *
+         * ── 第五百四十一批：待办中心三件同样处理（用户 2026-11-09 派工单「入口净增 0」）──
+         * `todo_add` / `todo_list` / `todo_mark_done` 是模型自己的手账，与小黑板同一房型：
+         * 免解锁、不进名册。`todo_confirm` **不在这张名单里，也不在任何一张表里**——
+         * 它根本不是工具（只由界面调 `TodoStore.confirm(actor = USER)`），这是「模型不可自删」
+         * 的结构保证（门禁 `TodoCenterTest` 用注册表真查，见该测试判据⑤）。
          */
-        val UNLOCK_FREE_SILENT: Set<String> = setOf("board_read", "board_write", "governance_state")
+        val UNLOCK_FREE_SILENT: Set<String> = setOf(
+            "board_read", "board_write", "governance_state",
+            "todo_add", "todo_list", "todo_mark_done",
+        )
 
         /**
          * 成员在 [ToolGroupTable] 里有静态名单的组（设置页 / capabilities 名册 /
@@ -301,6 +313,14 @@ internal object ToolGroupTable {
         // 527：治理出口（governance_state，只读 R0）——读的是本机自己的账本（与索引两件
         // 「读 search.db 的账」同一房型），归 FILES 默认不可见（B1「默认可见 ≤12」硬卡不破）。
         "governance_state" to ToolGroup.FILES,
+        // 541：待办中心三件（`产物/.todo.jsonl` 的手账）——同 FILES、同「免解锁不进名册」
+        // 口径（见 ToolGroup.UNLOCK_FREE_SILENT）。
+        // ⚠️ `todo_confirm` **故意两处都不登记**（ENTRIES 与这张表）：它不是工具，只由界面调
+        // `TodoStore.confirm(actor = USER)`。哪天有人把它当工具加进来，`TodoCenterTest` 的
+        // 判据⑤（拿真注册表查这个）当场红——「模型不可自删」不靠注释守。
+        "todo_add" to ToolGroup.FILES,
+        "todo_list" to ToolGroup.FILES,
+        "todo_mark_done" to ToolGroup.FILES,
         "move_path" to ToolGroup.FILES,
         "convert_encoding" to ToolGroup.FILES,
         "delete_path" to ToolGroup.FILES,
@@ -1376,6 +1396,12 @@ internal object BaopuToolCatalog {
         // 读 FREE、写 R1（便签：每次一张确认卡会把"记一笔"变成打扰）；漏了这两行 ⇒ 模型永远看不见便签。
         "board_read",
         "board_write",
+        // 541：待办中心三件默认「启用」（组归 FILES；同 542 小黑板口径——免解锁、锁着也可调）。
+        // 同组的 `write_skill` / `append_persona` 也在这张表里，所以本批不破坏
+        // ToolRegistrySwitchTest 的「ENTRIES.size + 2」那条对账。
+        "todo_add",
+        "todo_list",
+        "todo_mark_done",
         "book_outline",
         "file_info",
         "write_file",
@@ -1522,6 +1548,12 @@ internal object BaopuToolCatalog {
         // 落账只记长度与行数，不记正文。治理中心只做只读镜像（GovernanceCenterScreen）。
         Entry("board_read") { BoardReadTool.spec(it) },
         Entry("board_write") { BoardWriteTool.spec(it) },
+        // 541：待办中心三件（`产物/.todo.jsonl`；点号开头 ⇒ 不计入「产物 N 件」，同 322 口径）。
+        // 四态（待做/已做/已完成/已确认删除）与"标注≠完成"的闸都在 todo 包：
+        // 标已做即送右相（TodoVerify），PASS 才进已完成；删除只由界面调 TodoStore.confirm 追加一行。
+        Entry("todo_add") { TodoAddTool.spec(it) },
+        Entry("todo_list") { TodoListTool.spec(it) },
+        Entry("todo_mark_done") { TodoMarkDoneTool.spec(it) },
         Entry("book_outline") { BookOutlineTool.spec(it) },
         Entry("file_info") { FileInfoTool.spec(it) },
         Entry("write_file") { WriteFileTool.spec(it) },

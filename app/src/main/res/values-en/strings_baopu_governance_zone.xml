@@ -65,4 +65,10 @@
     <string name="baopu_tool_board_read_desc">Read the model\'s own working note (products/.board.md, max 4KB/20 lines). Read-only: no writes, no memory.</string>
     <string name="baopu_tool_board_write">Write board</string>
     <string name="baopu_tool_board_write_desc">Replace the model\'s own working note (whole text, not append); refuses past 4KB/20 lines and asks to trim first; empty string clears it.</string>
+    <string name="baopu_tool_todo_add">Add a to-do</string>
+    <string name="baopu_tool_todo_add_desc">The model adds a to-do for itself (products/.todo.jsonl); one line, 40 characters max, refused if longer; the same item is never added twice.</string>
+    <string name="baopu_tool_todo_list">List to-dos</string>
+    <string name="baopu_tool_todo_list_desc">Read the model\'s own to-do list (summary + state + the right minister\'s verdict). Read-only.</string>
+    <string name="baopu_tool_todo_mark_done">Mark done</string>
+    <string name="baopu_tool_todo_mark_done_desc">Mark a to-do as done. The right minister then verifies it: PASS moves it to completed, otherwise it stays at done. Only the user can remove it.</string>
 </resources>

@@ -83,4 +83,11 @@
     <string name="baopu_tool_board_read_desc">读模型自己的工作便签（产物/.board.md，最多 4KB/20 行）。只读，不改盘、不进记忆。</string>
     <string name="baopu_tool_board_write">写小黑板</string>
     <string name="baopu_tool_board_write_desc">整篇替换模型自己的工作便签（不是追加）；超 4KB/20 行拒写并提示先删旧；空串＝清空。</string>
+    <!-- 541 待办中心三件 -->
+    <string name="baopu_tool_todo_add">立一条待办</string>
+    <string name="baopu_tool_todo_add_desc">模型给自己立一条待办（产物/.todo.jsonl）；只有一句话、最多 40 字，超了拒收；不会重复立同一条。</string>
+    <string name="baopu_tool_todo_list">看待办</string>
+    <string name="baopu_tool_todo_list_desc">读模型自己的待办清单（摘要＋状态＋右相结论）。只读，不改盘。</string>
+    <string name="baopu_tool_todo_mark_done">标已做</string>
+    <string name="baopu_tool_todo_mark_done_desc">把待办标成「已做」，随即由右相验收：判 PASS 才进「已完成」，判不了就留在「已做」。删除只有用户能点。</string>
 </resources>

@@ -577,6 +577,11 @@ class ToolSchemaAllTest {
             // 322：小黑板读无参数（REQUIRED_EMPTY_OK 已签字）；写唯一必填是整篇 text
             "board_read" to JSONObject(),
             "board_write" to JSONObject().put("text", "下一步：查 527 出口的第四段"),
+            // 541：待办中心三件（list 无参数——REQUIRED_EMPTY_OK 已签字；add 必填 text；
+            // mark_done 必填 id，样本值只求"填对了键"，不求那条待办真存在）
+            "todo_list" to JSONObject(),
+            "todo_add" to JSONObject().put("text", "把交付报告写完"),
+            "todo_mark_done" to JSONObject().put("id", "t1"),
             "mcp_add_server" to JSONObject().put("url", "https://m.example.com/mcp"),
             "mcp_connect" to JSONObject().put("id", "s0a1b2c"),
             "mcp_disconnect" to JSONObject().put("id", "s0a1b2c"),

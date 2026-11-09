@@ -131,6 +131,8 @@ internal object ToolSchemaRules {
             "「念一遍能问什么」的名册——必填在哪条路上由执行体点名报错（TableQueryTool.run，232 批）",
         "mcp_list" to "无参数：列清单本身不需要输入（McpSelfService.listSpec，502 批）",
         "governance_state" to "无参数：六段治理读数一把出，没有可填的东西（GovernanceStateTool，527 批）",
+        // 第五百四十一批：看待办不吃参数——读的就是那一本手账（TodoListTool）
+        "todo_list" to "无参数：整本手账一起读（摘要＋状态＋右相结论），没有可填的东西（TodoListTool，541 批）",
     )
 
     /**

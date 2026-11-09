@@ -68,6 +68,9 @@ class ToolSchedulingGateTest {
         // 322：board_read 只读工作区里一件便签（不写盘、不联网），与别的读可并行
         // （board_write 是写，故意**不**进这张表：并行读表只收只读件）
         "board_read",
+        // 541：todo_list 只读工作区里一本手账（不写盘、不联网），与别的读可并行
+        // （todo_add / todo_mark_done 是写，同 board_write 口径**不**进这张表）
+        "todo_list",
         // 232: table_query 只读用户的表（唯一落盘是 App 自己的登记簿），与别的读可并行
         "table_query",
         // 288: organize_preview 只读预览（纯文件 stat/读，不写盘），与别的读可并行

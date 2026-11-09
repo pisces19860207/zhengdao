@@ -61,6 +61,10 @@ internal object BaopuToolLabels {
         // 322：模型小黑板两件（FILES 组；漏一行 ⇒ 设置页开工具卡直接抛，fail-fast）
         "board_read" to R.string.baopu_tool_board_read,
         "board_write" to R.string.baopu_tool_board_write,
+        // 541：待办中心三件（FILES 组，同 542 免解锁口径；漏一行 ⇒ 设置页开工具卡直接抛）
+        "todo_add" to R.string.baopu_tool_todo_add,
+        "todo_list" to R.string.baopu_tool_todo_list,
+        "todo_mark_done" to R.string.baopu_tool_todo_mark_done,
         "book_outline" to R.string.baopu_tool_book_outline,
         "file_info" to R.string.baopu_tool_file_info,
         "write_file" to R.string.baopu_tool_write_file,
@@ -175,6 +179,10 @@ internal object BaopuToolLabels {
         // 322：模型小黑板两件（读一件、写一件，同一份上限口径）
         "board_read" to R.string.baopu_tool_board_read_desc,
         "board_write" to R.string.baopu_tool_board_write_desc,
+        // 541：待办中心三件（读一件、立/标各一件；"标注≠完成"的口径写进第二句）
+        "todo_add" to R.string.baopu_tool_todo_add_desc,
+        "todo_list" to R.string.baopu_tool_todo_list_desc,
+        "todo_mark_done" to R.string.baopu_tool_todo_mark_done_desc,
         "book_outline" to R.string.baopu_tool_book_outline_desc,
         "file_info" to R.string.baopu_tool_file_info_desc,
         "write_file" to R.string.baopu_tool_write_file_desc,

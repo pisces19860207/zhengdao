@@ -432,6 +432,11 @@ internal data class RiskTable(
                 // 档位照记（R1），所以抽检/统计仍看得见这条动作。
                 "board_read" to ToolRule(RiskClass.R0),
                 "board_write" to ToolRule(RiskClass.R1),
+                // ── 541 待办中心三件：看 R0（只读手账）；立/标 写 R1（只写工作区 `产物/.todo.jsonl`，
+                // 不动用户文件、不联网）。标「已做」时右相只读两本账，不产生新的外部后果 ⇒ 仍 R1。
+                "todo_list" to ToolRule(RiskClass.R0),
+                "todo_add" to ToolRule(RiskClass.R1),
+                "todo_mark_done" to ToolRule(RiskClass.R1),
                 // ── 218 预置六件（工具还没合入，档先钉死） ─────────────────────
                 "sheet_read" to ToolRule(RiskClass.R0),
                 // ── 232 通用表格问答：只读用户的表（唯一落盘是 App 自己的登记簿）──────
