@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 460 |
-| 生产可达（有生产引用，含同文件） | 457 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 461 |
+| 生产可达（有生产引用，含同文件） | 459 |
 | A 有定义无调用 | 1 |
-| B 只有测试在调 | 2 |
+| B 只有测试在调 | 1 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **4** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **1** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -25,15 +25,12 @@
 
 | 符号 | 文件:行 | 结论 | 说明/证据 |
 |---|---|---|---|
-| `ExamTasks` | `app/src/main/java/com/example/zhengdao/baopu/intake/ConductExam.kt:17` | 接线 | 谁接：准入「品行考」出题链——345 批③的四道坏题题面。判卷 ConductExam 已随 427 进生产（agent/GuardPipeline.kt:479 → intake/AdmissionWiring.kt:91 → AdmissionFlow.run:133-136 → policy/CapabilityProfile.kt:137），但喂的是空卷（AdmissionWiring.kt:96-98 probeTraces／conductTraces 都是 emptyMap，按 345「未考＝没过」只登记不拦人）⇒ 缺的是「出题＋取证」那一半，题面至今零引用。接在出题链落地那批（未立项） |
-| `ProbeTasks` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProbes.kt:14` | 接线 | 谁接：准入「探针层」出题链——345 批②的五枚探针题面。判卷 IntakeProbes 同样随 427 可达（CapabilityProfile.kt:133 examine 调 runAll），实跑的也是空集（AdmissionWiring.kt:96 emptyMap）⇒ 题面零引用；与 ExamTasks 同一批出题链落地后一并复核 |
 | `OffscreenCaptureProbe` | `app/src/main/java/com/example/zhengdao/browser/offscreen/OffscreenCaptureProbe.kt:47` | 不急 | 理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），只有 app/src/debug/.../OffscreenProbeActivity.kt:21／:25 引用，release 不可达；属复现证据不是生产功能，留作对照不删（503 悬空清单同一件，508／509 未处置） |
 
 ## B 只有测试在调（生产不可达）
 
 | 符号 | 文件:行 | 测试引用 | 结论 | 说明/证据 |
 |---|---|---|---|---|
-| `OutputCards` | `app/src/main/java/com/example/zhengdao/baopu/cards/OutputCards.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt:91`、`app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt:99`、`app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt:213` | 接线 | 谁接：产出类出卡链——465 批定的唯一出卡入口（依据闸 OutputCitationGate 在它里面）。生产至今只有一处 push，且是**查询类**物流卡（ui/baopu/BaopuScreen.kt:165 ResultCards.push），产出卡（写作／选题／做卡／报告）没有生产出口 ⇒ 这道闸从未在真实路径上生效过。503 悬空清单挂着「产物卡 push 入口是否被别处替代」，508／509 未处置。产出卡落地那一批必须走 OutputCards.push，否则 465 形同虚设 |
 | `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 该删 | 该删：345 批画像层（AgentProfile＋四条硬规矩）已被 365 的 policy/CapabilityProfile.kt 整套取代——365 文件头自述「把 345 批立下的四层设计做成 policy 侧的真对象」、三条硬规矩同口径；427 接进生产的准入链走的正是 365 那套（AdmissionWiring.kt:91 → AdmissionFlow.run → CapabilityProfile），345 这件的 intake／canAccept／needsReprobe／onTaskResult／reprobe／reinstate／portrait 全仓零外部引用（只有 IntakeProfileTest 在调）。只列不删：另立清理批删 intake/IntakeProfile.kt 整件＋intake/IntakeModels.kt:103 的 AgentProfile 与 :124 的 ViolationRecord 及连带测试 |
 
 ## C 已接线默认关、无开启路径

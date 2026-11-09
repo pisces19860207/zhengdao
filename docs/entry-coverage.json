@@ -32,41 +32,6 @@
   "B": [
    {
     "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/cards/OutputCards.kt",
-    "file_mates_wired": false,
-    "kind": "object",
-    "line": 10,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：产出类出卡链——465 批定的唯一出卡入口（依据闸 OutputCitationGate 在它里面）。生产至今只有一处 push，且是**查询类**物流卡（ui/baopu/BaopuScreen.kt:165 ResultCards.push），产出卡（写作／选题／做卡／报告）没有生产出口 ⇒ 这道闸从未在真实路径上生效过。503 悬空清单挂着「产物卡 push 入口是否被别处替代」，508／509 未处置。产出卡落地那一批必须走 OutputCards.push，否则 465 形同虚设",
-    "package": "com.example.zhengdao.baopu.cards",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "OutputCards",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt",
-      "line": 91
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt",
-      "line": 99
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt",
-      "line": 213
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/cards/OutputCitationTest.kt",
-      "line": 243
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -221,11 +186,11 @@
  },
  "summary": {
   "A": 1,
-  "B": 2,
+  "B": 1,
   "C": 4,
   "gates_with_write_path": 1,
-  "not_wired": 2,
-  "production_top_level_public": 460,
-  "wired": 457
+  "not_wired": 1,
+  "production_top_level_public": 461,
+  "wired": 459
  }
 }

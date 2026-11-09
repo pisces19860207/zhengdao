@@ -82,6 +82,12 @@
     <string name="baopu_card_write_words">Target length</string>
     <string name="baopu_card_write_duration">Est. duration</string>
     <string name="baopu_card_write_risk">Main risk</string>
+
+    <string name="baopu_card_output_title">Outputs</string>
+    <string name="baopu_card_output_g_batch">Summary</string>
+    <string name="baopu_card_output_g_files">Produced in this run</string>
+    <string name="baopu_card_output_count">File count</string>
+    <string name="baopu_card_output_files">Files</string>
     <!-- ── 465 output citations ──────────────────────────────────── -->
     <string name="baopu_citation_prefix">Basis: </string>
     <string name="baopu_citation_open">Open</string>

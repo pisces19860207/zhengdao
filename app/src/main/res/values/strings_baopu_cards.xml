@@ -87,6 +87,14 @@
     <string name="baopu_card_write_words">目标字数</string>
     <string name="baopu_card_write_duration">预计时长</string>
     <string name="baopu_card_write_risk">主要风险</string>
+
+    <!-- ── 模板：产出卡（547；产出类必须有依据，查询类不走这份）──────── -->
+    <string name="baopu_card_output_title">产出</string>
+    <string name="baopu_card_output_g_batch">概览</string>
+    <string name="baopu_card_output_g_files">本轮产出</string>
+    <string name="baopu_card_output_count">文件数</string>
+    <string name="baopu_card_output_files">文件</string>
+
     <!-- ── 465 产出引依据 ─────────────────────────────────────────── -->
     <string name="baopu_citation_prefix">依据：</string>
     <string name="baopu_citation_open">看原文</string>

@@ -92,6 +92,10 @@ import com.example.zhengdao.baopu.TopicFlowPhase
 import com.example.zhengdao.baopu.TopicSuggest
 import com.example.zhengdao.baopu.UsageCopy
 import com.example.zhengdao.baopu.agent.RunState
+import com.example.zhengdao.baopu.cards.CardLedger
+import com.example.zhengdao.baopu.cards.CitationVerdict
+import com.example.zhengdao.baopu.cards.OutputCards
+import com.example.zhengdao.baopu.cards.OutputCitationSources
 import com.example.zhengdao.baopu.cards.ResultCardBody
 import com.example.zhengdao.baopu.cards.ResultCardLogistics
 import com.example.zhengdao.baopu.cards.ResultCardRegistry
@@ -164,13 +168,45 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
         if (card != null) {
             resultCards = ResultCards.push(resultCards, card)
             // 只记模板与行数，**不记任何字段值**（§2：姓名与手机号不进日志）
-            RunLog.log(ResultCardBody.logLine(resultCards))
+            // 547：查询卡与产出卡走同一行口径（有无依据=无 依据条数=0；尾段是 212 那行原话）。
+            RunLog.log(CardLedger.line(CardLedger.Kind.QUERY, null, resultCards))
         }
         card != null
     }
     // 换通道 = 换引擎：控制器构造期持引擎（BaopuChatController），改 epoch 让它重建。
     var channelEpoch by remember { mutableIntStateOf(0) }
     val controller = remember(channelEpoch) { BaopuChatController(context) }
+    // ── 第五百四十七批 · **产出卡**（写作／选题／做卡／小说正文等真产出）──────────
+    // 产出类的唯一入场：控制器在收尾时发一条请求（本轮真写出过文本文件才有），这里
+    // 经 `OutputCards.push` 过依据闸入卡区 —— 闸不过 ⇒ 一张卡都不加，只留一句人话。
+    // 两类不混：查询卡（上面那条）照旧直推 ResultCards.push，不要求依据、不进这道闸。
+    val produceOffer = controller.produceCardOffer
+    LaunchedEffect(produceOffer) {
+        val offer = produceOffer ?: return@LaunchedEffect
+        controller.consumeProduceCardOffer(offer.id)
+        val spec = resultCardRegistry.card(
+            offer.templateId,
+            offer.values,
+            { key -> baopuCardString(key, res) },
+            itemCount = offer.itemCount,
+        )
+        if (spec == null) {
+            controller.noteProduceCardMissing()
+            return@LaunchedEffect
+        }
+        val admission = OutputCards.push(
+            resultCards,
+            spec,
+            offer.citations,
+            OutputCitationSources.exists(offer.view),
+            controller.citationGateMessages(),
+        )
+        resultCards = admission.state
+        RunLog.log(CardLedger.line(CardLedger.Kind.PRODUCE, admission.verdict, resultCards))
+        if (admission.verdict is CitationVerdict.Reject) {
+            controller.noteProduceCardRejected(admission.verdict.detail)
+        }
+    }
     // 第一百三十一批：初值读进程级草稿——跳玄览会把本页整个带出组合，回来时
     // 「抽屉还在」这句话只有草稿能兑现（补充节 §三末句）。
     var showChannel by remember { mutableStateOf(ModelSheetDraft.showing) }
@@ -1336,6 +1372,17 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
             // topicConfirmWrite 之后、走 179 的 BaopuLongformStore。
             // 465：依据闸拒时只留这一句人话，一张卡都不摆
             controller.topicCitationNote?.let { hint ->
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
+            // 547：产出卡被依据闸拦下时同样只留一句人话（判据①「不出卡并给原因」）
+            controller.produceCardNote?.let { hint ->
                 Text(
                     text = hint,
                     style = MaterialTheme.typography.labelMedium,

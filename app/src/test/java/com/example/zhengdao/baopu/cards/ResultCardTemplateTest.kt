@@ -35,8 +35,9 @@ class ResultCardTemplateTest {
     private val lookup: (String) -> String = { k -> "L:$k" }
 
     @Test
-    fun `三份随包模板都能解析_且 id 与文件名一致`() {
-        listOf("logistics.waybill", "study.knowledge", "write.topic").forEach { id ->
+    fun `随包模板都能解析_且 id 与文件名一致`() {
+        // 547：产出卡（output.produce）是第四份，与 212 的三份同一套解析器。
+        listOf("logistics.waybill", "study.knowledge", "write.topic", "output.produce").forEach { id ->
             val t = parseAsset(id)
             assertEquals(id, t.templateId)
             assertEquals(ResultCardTemplate.FORMAT_VERSION, t.version)

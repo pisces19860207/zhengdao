@@ -111,6 +111,13 @@ internal fun baopuCardString(key: String, res: Resources): String = when (key) {
     "baopu_card_write_duration" -> res.getString(R.string.baopu_card_write_duration)
     "baopu_card_write_risk" -> res.getString(R.string.baopu_card_write_risk)
 
+    // 产出卡（547；产出类必须有依据）
+    "baopu_card_output_title" -> res.getString(R.string.baopu_card_output_title)
+    "baopu_card_output_g_batch" -> res.getString(R.string.baopu_card_output_g_batch)
+    "baopu_card_output_g_files" -> res.getString(R.string.baopu_card_output_g_files)
+    "baopu_card_output_count" -> res.getString(R.string.baopu_card_output_count)
+    "baopu_card_output_files" -> res.getString(R.string.baopu_card_output_files)
+
     // 465 产出引依据（界面组件直接取 R.string；这一行只为三处键集合对账）
     "baopu_citation_prefix" -> res.getString(R.string.baopu_citation_prefix)
     "baopu_citation_open" -> res.getString(R.string.baopu_citation_open)

@@ -1,0 +1,26 @@
+{
+  "_comment": "第五百四十七批 · 产出卡（这一轮真写出的文本文件）。**只有产出类走它**：物流/知识点等查询类仍走 logistics.waybill / study.knowledge，不要求依据。依据行与「无依据不许出卡」由 OutputCards 侧给，模板只描述卡面。",
+  "templateId": "output.produce",
+  "version": 1,
+  "titleKey": "baopu_card_output_title",
+  "emptyTextKey": "baopu_card_unfilled",
+  "groups": [
+    {
+      "key": "batch",
+      "titleKey": "baopu_card_output_g_batch",
+      "rows": [
+        { "key": "count", "labelKey": "baopu_card_output_count" }
+      ]
+    },
+    {
+      "key": "files",
+      "titleKey": "baopu_card_output_g_files",
+      "rows": [
+        { "key": "files", "labelKey": "baopu_card_output_files", "copyable": true, "collapsible": true }
+      ]
+    }
+  ],
+  "actions": [
+    { "id": "copyAll", "labelKey": "baopu_card_action_copy_all" }
+  ]
+}

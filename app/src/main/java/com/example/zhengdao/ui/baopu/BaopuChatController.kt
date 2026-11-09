@@ -2244,6 +2244,47 @@ internal class BaopuChatController(context: Context) {
     var topicCitationNote by mutableStateOf<String?>(null)
         private set
 
+    // ── 第五百四十七批 · 产出卡（有依据才出卡；查询类不走这里）────────────────
+    //
+    // 实核：`OutputCards.push`（465 定的唯一出卡入口，依据闸在它里面）改前只有测试在调；
+    // 465 的闸确实在 [topicStart] 跑，但那只挡住「开选题流」这一处，**对任何一张产出卡都没
+    // 生效过**（docs/entry-coverage.md 把这条挂在 B 区）。本批把「产出」接上：一轮跑完、引擎认下
+    // **真写出过文本文件**（`engine.roundArtifacts`——顶栏产物条与产物台账用的是同一份
+    // 判据，本批不另立第二条「什么算产出」）⇒ 在这条链上收依据（人设／知识库／搜索），
+    // 交界面过闸入卡区。**无依据 ⇒ 一张卡都不加**，只留一句人话（判据①）。
+    //
+    // 为什么这里只「发请求」不直接推卡：卡区状态（ResultCardState）跟着抱朴页走
+    // （查询卡的唯一出口也在那一层），跨层直接改会把一份状态拆成两份——两份迟早不一致。
+
+    /**
+     * 一次「产出卡入库」的请求（纯数据）。
+     *
+     * @param id 单调号：界面消费完只清自己那条，迟到的旧请求不许抹掉新的
+     * @param view 收依据时用的只读视图（「还在不在」由 [OutputCitationSources.exists] 拿它判）
+     */
+    data class ProduceCardOffer(
+        val id: Long,
+        val templateId: String,
+        val values: Map<String, String>,
+        val itemCount: Int,
+        val citations: List<Citation>,
+        val view: CitationSourceView,
+    )
+
+    var produceCardOffer by mutableStateOf<ProduceCardOffer?>(null)
+        private set
+
+    /** 产出卡没出成的原因（依据闸拒／模板读不出）；界面显示一行，下一轮覆盖。 */
+    var produceCardNote by mutableStateOf<String?>(null)
+        private set
+
+    private var produceCardSeq = 0L
+
+    /** 界面消费完一条请求。 */
+    internal fun consumeProduceCardOffer(id: Long) {
+        if (produceCardOffer?.id == id) produceCardOffer = null
+    }
+
     /** 本地偏好（不联网）：上次成功落盘那套写法的 id。 */
     private val topicPrefs = appCtx.getSharedPreferences("baopu-topic", android.content.Context.MODE_PRIVATE)
 
@@ -3668,6 +3709,15 @@ internal class BaopuChatController(context: Context) {
     )
 
     /**
+     * 547：屏幕侧过产出卡依据闸时用的同一份文案（**只读转发**）。
+     *
+     * 为什么不把 [citationMessages] 直接开成 internal：465 的接线门禁是按
+     * `private fun citationView()` 切片到下一个 `private fun` 的，把中间这层改可见性
+     * 会把 [topicScan] 吞进切片（实测：判据五当场红）。所以正文一个字不动，另加一层转发。
+     */
+    internal fun citationGateMessages(): CitationMessages = citationMessages()
+
+    /**
      * 台账＋产物目录扫描（IO；落点与台账选择**原样复用 179**：
      * [BaopuLongformStore.vaultRoot]/[BaopuLongformPolicy.pickLedger]，不另找路径）。
      * 只读不写——确认前的「零落盘」从这里开始保证。
@@ -3965,6 +4015,61 @@ internal class BaopuChatController(context: Context) {
         )
     }
 
+    // ── 第五百四十七批 · 产出卡的请求与拒绝原因 ────────────────────────────
+
+    /** 产出卡模板（assets/baopu/cards/output.produce.json）与它那两行的键。 */
+    private val outputCardTemplate = "output.produce"
+    private val outputRowCount = "count"
+    private val outputRowFiles = "files"
+
+    /**
+     * 收尾（Settled）⇒ 本轮真有产出就发一条产出卡请求（IO 上收依据，主线程只赋值）。
+     *
+     * 触发点与 [topicBatchOnSettled] 同一处：`EngineEvent.Settled` 是「这个 run 真结束了」
+     * 的唯一权威信号；`roundArtifacts` 跑前清空、收尾时按 `verifyTouched` 重算，
+     * 所以「本轮写过哪些文本文件」在这里是最新的那一份。
+     *
+     * **闸不在这里判**：依据齐不齐由 [OutputCards.push] 一次判完（收集只负责收集），
+     * 免得两处各判一遍、迟早判出两个答案。
+     */
+    private fun offerProduceCardOnSettle() {
+        val artifacts = engine.roundArtifacts.value
+        if (artifacts.isEmpty()) return
+        scope.launch {
+            val view = withContext(Dispatchers.IO) { citationView() }
+            val citations = OutputCitationSources.collect(view)
+            produceCardSeq += 1
+            // 上一轮留下的「不出卡」原因到这一轮就过期了（与 465 的 topicCitationNote 同口径）。
+            produceCardNote = null
+            produceCardOffer = ProduceCardOffer(
+                id = produceCardSeq,
+                templateId = outputCardTemplate,
+                values = mapOf(
+                    outputRowCount to artifacts.size.toString(),
+                    outputRowFiles to artifacts.joinToString("\n"),
+                ),
+                itemCount = artifacts.size,
+                citations = citations,
+                view = view,
+            )
+            com.example.zhengdao.core.RunLog.log(
+                "抱朴产出卡：本轮产出 ${artifacts.size} 个文本文件、依据 ${citations.size} 条，交界面过闸",
+            )
+        }
+    }
+
+    /** 依据闸拒了这张产出卡：不出卡，但把理由说给人听（判据①「不出卡并给原因」）。 */
+    internal fun noteProduceCardRejected(detail: String) {
+        produceCardNote = detail
+        com.example.zhengdao.core.RunLog.log("抱朴产出卡：依据闸拒 ⇒ 不出卡（$detail）")
+    }
+
+    /** 模板读不出（与 212 同口径：没有模板的卡就是空壳，宁可不弹）。 */
+    internal fun noteProduceCardMissing() {
+        produceCardNote = null
+        com.example.zhengdao.core.RunLog.log("抱朴产出卡：模板 $outputCardTemplate 读不出 ⇒ 不出卡")
+    }
+
     /**
      * 执行收料（A 段第 3/4 步）：私有复制 ＋ 两份清单 ＋ 索引镜像 ＋ 五步流水线。
      *
@@ -4209,7 +4314,7 @@ internal class BaopuChatController(context: Context) {
                 // 第二十九批 B 段：用户在确认卡上拍过「停掉并切过来」⇒ 门一放就兑现那一下切换。
                 // 放在这里而不是 acceptSessionSwitch 里死等：Settled 由引擎在释放单活跃门之后才发，
                 // 是"这个 run 真结束了"的唯一权威信号（同上面对 interruptedStep 的那条口径）。
-                consumePendingSwitch()
+                consumePendingSwitch(); offerProduceCardOnSettle() // 547：本轮真有产出 ⇒ 产出卡请求（闸在 OutputCards 里判；合并一行，给 onEngineEvent 留余量）
                 // 第一百九十批：题材批量写作的逐篇对账（只在我们等的那轮上动作；
                 // messages 已在 refresh(force) 里重读过，拿到的是刚落库的最终消息集）。
                 topicBatchOnSettled()

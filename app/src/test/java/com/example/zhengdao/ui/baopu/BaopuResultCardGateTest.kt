@@ -113,9 +113,15 @@ class BaopuResultCardGateTest {
     }
 
     @Test
-    fun `红线五补 三份模板随包`() {
+    fun `红线五补 模板清单随包`() {
+        // 547：加场景＝加一份 JSON（212 的原话）；清单随之变成四份，缺一份或多一份都红。
         assertEquals(
-            listOf("logistics.waybill.json", "study.knowledge.json", "write.topic.json"),
+            listOf(
+                "logistics.waybill.json",
+                "output.produce.json",
+                "study.knowledge.json",
+                "write.topic.json",
+            ),
             jsonFiles().map { it.name },
         )
     }
