@@ -36,6 +36,7 @@ import com.example.zhengdao.baopu.Provider
 import com.example.zhengdao.baopu.ReflectionWiring
 import com.example.zhengdao.baopu.ShotTier
 import com.example.zhengdao.baopu.ShotTierRule
+import com.example.zhengdao.baopu.ScaffoldSwitches
 import com.example.zhengdao.baopu.ScreenshotConsent
 import com.example.zhengdao.baopu.ScreenshotSwitchConsent
 import com.example.zhengdao.baopu.ScreenSwitch
@@ -280,6 +281,9 @@ internal class RunEngine(
      * `OrchestrationGate.enabledNow(appCtx)`。
      */
     private val orchestrationEnabled: () -> Boolean = { false },
+    /** 第五百六十批：脚手架开关（历史预过滤/压卡摘要）。默认开＝今天行为一行不改。 */
+    private val historyPrefilterEnabled: () -> Boolean = { true },
+    private val compressionPromptEnabled: () -> Boolean = { true },
 
     /**
      * 第三百八十八单（离场值守）的锁屏探针：**开值守且锁着屏** ⇒ 弹卡闸把卡压进队列
@@ -2324,7 +2328,11 @@ internal class RunEngine(
                 compressionSummary, compressedIds, compressedIds,
                 oldMessageCount = oldMessageCount,
             )
-            if (probe.needsCompressing) {
+            if (ScaffoldSwitches.shouldRunCompression(
+                    compressionPromptEnabled(),
+                    probe.needsCompressing,
+                )
+            ) {
                 _state.value = RunState.COMPRESSING
                 persistStep(sessionId, stepCount, "Compressing")
                 // 双读数落一行：估算/触发线 ＋ 可压条数/条数线，T1 一眼看出是哪条触发
@@ -3228,7 +3236,7 @@ internal class RunEngine(
         windowTokens = windowTokens,
         compressionSummary = compressionSummary,
         compressedIds = compressedIds,
-        skipIds = skipIds,
+        skipIds = ScaffoldSwitches.historySkipIds(historyPrefilterEnabled(), skipIds),
         oldMessageCount = oldMessageCount,
         // 第四百三十八批：记忆「待复核→仅供参考」的时刻判据（转级一份，循环内不变）。
         nowMillis = nowMillis,

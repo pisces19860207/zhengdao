@@ -848,6 +848,8 @@ internal object BaopuRuntime {
             // 第二百一十四批：编排引擎开关（默认关；关掉＝今天行为一行不改）。
             // 只读闸门现读 SP，写口在 OrchestrationSettings——引擎不持 Context。
             orchestrationEnabled = { OrchestrationGate.enabledNow(appCtx) },
+            historyPrefilterEnabled = { ScaffoldSwitches.historyPrefilterEnabled(appCtx) },
+            compressionPromptEnabled = { ScaffoldSwitches.compressionPromptEnabled(appCtx) },
             // 第三百八十八单（离场值守）：锁屏探针＋事件口——引擎不摸 SP/KeyguardManager，
             // Context 只在装配层（与上面 orchestrationEnabled 同一条规矩）。不开值守时
             // 探针恒 false、事件口不响，行为一行不改。
