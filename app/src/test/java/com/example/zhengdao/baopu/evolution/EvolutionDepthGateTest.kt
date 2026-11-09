@@ -122,11 +122,14 @@ class EvolutionDepthGateTest {
         val d = EvolutionDepth.adjudicate(cost(), evidence(), nowMs = t0)
         assertEquals("定档人＝两相合成（不是模型，也不是某一个人）", EvolutionDepth.DECIDER, d.by)
         assertTrue("依据至少要有一条（没依据的定档＝事后编）", d.reasons.isNotEmpty())
-        assertEquals("当时读数全量进账", 13, d.readings.size)
+        // 13 ⇒ 18（563）：右相新增 495 评估账的五格（evalAt/evalType/evalRan/evalPass/evalRef）。
+        // 只加键：老账缺这五格照样 parse（563 的金样例用例钉住），版本号不动。
+        assertEquals("当时读数全量进账", 18, d.readings.size)
         assertEquals("2", d.readings["cardBudgetLeft"])
         assertEquals("0.9", d.readings["profileConfidence"])
         assertEquals(EvolutionConclusion.LANDED.name, d.readings["last"])
         assertEquals(CanaryStatus.UNAVAILABLE.wire, d.readings["canary"])
+        assertEquals("没装评估账 ⇒ 五格留空串（不是 0）", "", d.readings["evalAt"])
         assertTrue(File(ledger, DepthLedger.FILE_NAME).isFile)
         val on = DepthLedger.replay()
         assertEquals(1, on.size)

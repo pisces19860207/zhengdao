@@ -262,23 +262,28 @@ internal object EvolutionWiring {
      * 定一次档并落账（517①；本文件是深度裁定的**生产调用方**——
      * 左相成本位＝装配缝读数 [DepthFactsWiring.readings]，右相证据位＝本文件自己的账：
      * 上一场结论出自尝试账、没法验增多出自待验队列积压、连续成功与回滚已验证也出自尝试账）。
+     *
+     * 563 起右相再加一本：**495 评估账**（[DepthEvalFeed]）。"证据足"改成两本取合——
+     * 四条验证读数在（[proofReady]）**且**本机真评过（[eval] 非空且出了读数），
+     * 缺任一本都按"证据不足"走。只收紧不放松：505 判据②的老话是"不知道就不升档"。
      */
-    private fun adjudicateDepth(evidenceEnough: Boolean, nowMs: Long): DepthDecision {
+    private fun adjudicateDepth(proofReady: Boolean, eval: DepthEvalReading?, nowMs: Long): DepthDecision {
         val side = DepthFactsWiring.readings()
         val evidence = EvidenceFacts(
             last = lastAttemptConclusion(),
-            evidenceEnough = evidenceEnough,
+            evidenceEnough = proofReady && eval?.evidenceEnough() == true,
             unverifiableRising = unverifiableQueueRising(nowMs),
             falseBlockRising = side.falseBlockRising,
             sameKindSuccessStreak = sameKindSuccessStreak(),
             rollbackVerified = rollbackVerifiedOnce(),
             canary = side.toCanaryStatus(),
+            eval = eval,
         )
         return EvolutionDepth.adjudicate(side.toCostFacts(), evidence, nowMs)
     }
 
     /** 同轮失败的那次降档：右相只带 FAIL 这一格（其余维持现场读数），合成规则必降一档。 */
-    private fun downgradeAfterFailure(nowMs: Long) {
+    private fun downgradeAfterFailure(eval: DepthEvalReading?, nowMs: Long) {
         val side = DepthFactsWiring.readings()
         val evidence = EvidenceFacts(
             last = EvolutionConclusion.FAILED,
@@ -288,6 +293,7 @@ internal object EvolutionWiring {
             sameKindSuccessStreak = 0,
             rollbackVerified = rollbackVerifiedOnce(),
             canary = side.toCanaryStatus(),
+            eval = eval,
         )
         EvolutionDepth.adjudicate(side.toCostFacts(), evidence, nowMs)
     }
@@ -361,11 +367,14 @@ internal object EvolutionWiring {
         // 第五百一十七批①：**进化提案进入判定前定一次档**（深度裁定的生产调用点——
         // 左相成本读数由装配缝 [DepthFactsWiring] 给，右相证据读数从本文件自己的账算；
         // 读数缺 ⇒ 全默认 ⇒ 浅档，判据②的字面）。落账＝[EvolutionDepth.adjudicate]（谁定/依据/读数）。
-        adjudicateDepth(evidenceEnough = gap is ProofGap.Available, nowMs = nowMs)
+        // 第五百六十三批：右相再加一本 495 评估账——**一次链只读一遍**，定档与降档共用同一份读数
+        // （两拍各读一遍会让"同轮两行引用同一行账"这件事靠运气）。读账是纯读，不落任何账。
+        val eval = DepthEvalFeed.readInstalled()
+        adjudicateDepth(proofReady = gap is ProofGap.Available, eval = eval, nowMs = nowMs)
         val outcome = chainBody(trigger, candidate, next, rulingRef, anchors, proofRunner, nowMs, gap)
         // 第五百一十七批③：**同轮 FAIL ⇒ 立刻降一档**（不等下一轮周期）——
         // 链的结论当场喂回裁定，账上能查到"这一轮败了、当场降了档"。
-        if (outcome.conclusion == EvolutionConclusion.FAILED) downgradeAfterFailure(nowMs)
+        if (outcome.conclusion == EvolutionConclusion.FAILED) downgradeAfterFailure(eval, nowMs)
         return outcome
     }
 

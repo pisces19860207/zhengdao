@@ -113,6 +113,14 @@ internal data class EvidenceFacts(
     val canary: CanaryStatus = CanaryStatus.UNAVAILABLE,
     /** 用户明确降过档（说"浅一点"）。 */
     val userAskedLower: Boolean = false,
+    /**
+     * 495 评估账里的那一行读数（563 起读；null＝这台机器还没评过）。
+     *
+     * 只作**证据**与**可追**两用：档位判定读 [evidenceEnough]（由调用方把两本账取合后给），
+     * 本字段只让定档行的 `rd` 记下"依据的是账上哪一行"（at 是钥匙，见 [DepthEvalReading.trace]）。
+     * 它**不参与**升档判据——多一份读数不等于多一条升档理由。
+     */
+    val eval: DepthEvalReading? = null,
 ) {
     /** 判据④的即时降档条件（任一条命中就降，不等周期）。 */
     fun mustDowngrade(): Boolean = last == EvolutionConclusion.FAILED ||
@@ -387,6 +395,13 @@ internal object DepthRules {
         "rollbackVerified" to evidence.rollbackVerified.toString(),
         "canary" to evidence.canary.wire,
         "userAskedLower" to evidence.userAskedLower.toString(),
+        // 563：495 评估账那一行的地址与读数（空串＝这一侧没有读数，**不是 0**）。
+        // 加键不加版本：老行缺这五格照样 parse（不回填、不改写——有金样例钉着）。
+        "evalAt" to (evidence.eval?.atMs?.toString() ?: ""),
+        "evalType" to (evidence.eval?.type ?: ""),
+        "evalRan" to (evidence.eval?.ran?.toString() ?: ""),
+        "evalPass" to (evidence.eval?.passRate?.toString() ?: ""),
+        "evalRef" to (evidence.eval?.ref ?: ""),
     )
 }
 

@@ -68,6 +68,7 @@ import com.example.zhengdao.baopu.agent.multiagent.VaultSubTaskWriteGuard
 import com.example.zhengdao.baopu.consequence.CanaryBand
 import com.example.zhengdao.baopu.consequence.ConsequenceWiring
 import com.example.zhengdao.baopu.escalate.BoundaryTable
+import com.example.zhengdao.baopu.evolution.DepthEvalFeed
 import com.example.zhengdao.baopu.evolution.DepthFactsWiring
 import com.example.zhengdao.baopu.evolution.DepthSideReadings
 import com.example.zhengdao.baopu.inspect.DeviationLedger
@@ -1036,6 +1037,11 @@ internal object BaopuRuntime {
                 canaryAvailable = ConsequenceWiring.currentCanaryBand(CANARY_CAPABILITY) == CanaryBand.FULL,
             )
         }
+        // 第五百六十三批：**深度裁定的右相证据位改读 495 评估账**（`evolution/trigger-ledger.jsonl`
+        // ——304 的触发账，每次触发跑完评测落一行，带 run/passed/passRate）。这里只交文件，
+        // 读与判在 evolution 包（本包零 Android 的房型，与上面那条缝同款）。
+        // 没装/文件不在 ⇒ 读不到 ⇒ "证据不足" ⇒ 停在浅档（保守方向，不是遗漏）。
+        DepthEvalFeed.ledgerFile = { EvalTriggerWiring.ledgerFile(appCtx) }
         // 第二百九十六批 §2：**影子预演**的沙盒在这里装配（这是全仓唯一一处 `ShadowAdapter.install`）。
         // 没装 ⇒ 第⑤步只能报 `NO_SANDBOX` ⇒ 六步停在 NO_DATA ⇒ 一张卡也不会少弹（保守方向）。
         // 只交引用、不交 Context：沙盒要的全部事实（工作区根／声明对象／内容）都由调用方给。
