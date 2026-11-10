@@ -90,6 +90,14 @@ class ZhengdaoApp : Application() {
         initWebViewDataDirectory()
         logSignature()
         keepalive()
+        // v2.2.6 P0（冷启闪退·第二修）：引擎在**主组合之前**建好（Application 里是主线程、全局快照）。
+        // 详见 MainActivity 同段注释：引擎的十几个 mutableStateOf 一旦在 Scaffold 的 measure 子组合里
+        // 被首次创建，快照 id 就比主组合晚，主组合读它即崩。
+        runCatching {
+            com.example.zhengdao.baopu.BaopuRuntime.engine(this)
+        }.onFailure {
+            RunLog.log("启动：引擎预建失败（${it.javaClass.simpleName}: ${it.message}），退回懒建")
+        }
     }
 
     // 2026-10-16 旧抱朴线清场：原先这里还有 registerOcShutdownOnFinish()
