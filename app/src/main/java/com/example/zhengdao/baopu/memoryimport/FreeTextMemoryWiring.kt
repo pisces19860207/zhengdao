@@ -13,6 +13,10 @@ import com.example.zhengdao.baopu.FreeTextMemoryImport
 import com.example.zhengdao.baopu.FreeTextMemoryStore
 import com.example.zhengdao.baopu.GlobalMemory
 import com.example.zhengdao.baopu.MemoryLayout
+import com.example.zhengdao.baopu.consequence.CanaryCapability
+import com.example.zhengdao.baopu.evolution.lowrisk.EvoCandidate
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.CoroutineScope
@@ -170,7 +174,7 @@ internal object FreeTextMemoryWiring {
 
     /**
      * 冷启首读：上次导入早于今天 ⇒ 后台静默扫运行时目录一次。
-     * @return true＝这轮真的扫了；false＝今天已导过（闸没放行）。
+     * @return true＝这轮真的扫了；false＝今天已导过（闸没放行）或档位没放行（568-A）。
      */
     fun autoRun(context: Context): Boolean {
         val appCtx = context.applicationContext
@@ -178,7 +182,41 @@ internal object FreeTextMemoryWiring {
             AppPrefs.prefs(appCtx).getLong(MemoryImportRules.KEY_LAST_IMPORT_AT, 0L)
         }.getOrDefault(0L)
         if (!MemoryImportRules.dueByDay(last, System.currentTimeMillis())) return false
-        runOnce(appCtx, TRIGGER_COLD_START)
+        // 第五百六十八批 A：记忆组织域接既有灰度链（473）——**自动**收编先问档
+        // （MEMORY_IMPORT 缺省灰度 ⇒ 既有行为不变）。档位关闭 ⇒ 本轮不自动扫（候选保留，
+        // 手动广播入口 [runNow] 是人点的，不受档位管）；红线候选拒并记账（判据④）。
+        // 455 的其余判据一字未动：日闸、幂等、不覆盖人工版、失败不落戳照旧。
+        val candidate = EvoCandidate(
+            domain = CanaryCapability.MEMORY_IMPORT.wire,
+            target = "memory-import:运行时目录",
+        )
+        when (val v = LowRiskEvo.gate(CanaryCapability.MEMORY_IMPORT, candidate)) {
+            is LowRiskVerdict.Refuse -> {
+                LowRiskEvo.recordRefusal(
+                    CanaryCapability.MEMORY_IMPORT,
+                    v.redLine,
+                    v.note,
+                    candidate,
+                    System.currentTimeMillis(),
+                )
+                RunLog.log("记忆收编：候选踩自进化红线，本轮不自动扫——${v.note}")
+                return false
+            }
+            is LowRiskVerdict.Hold -> {
+                RunLog.log("记忆收编：灰度档关闭，本轮不自动扫（手动广播不受限）——${v.note}")
+                return false
+            }
+            is LowRiskVerdict.Allow -> Unit
+        }
+        val outcome = runOnce(appCtx, TRIGGER_COLD_START)
+        // 568-A：灰度观察账（473 §二②，指标的唯一来源）——自动扫这一轮的结局一行：
+        // 干净（无读不动／无失败）＝ok；读数口径与「落不落戳」同一把尺（MemoryImportRules）。
+        // 手动入口不记：那是人点的，不是自动化在跑。
+        LowRiskEvo.observeRun(
+            CanaryCapability.MEMORY_IMPORT,
+            ok = MemoryImportRules.shouldStamp(outcome),
+            atMs = System.currentTimeMillis(),
+        )
         return true
     }
 

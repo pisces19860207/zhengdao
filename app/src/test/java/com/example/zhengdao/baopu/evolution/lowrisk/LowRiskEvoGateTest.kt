@@ -124,6 +124,38 @@ class LowRiskEvoGateTest {
         assertFalse("拔门后必须红（判据③：尾段直接生效＝门禁红）", body!!.contains("LowRiskEvo.gate("))
     }
 
+    // ── 记忆组织：自动收编先问档、结局落观察账 ──────────────────────────────
+
+    private fun memoryWiring(): String =
+        code("src/main/java/com/example/zhengdao/baopu/memoryimport/FreeTextMemoryWiring.kt")
+
+    @Test
+    fun `G5_记忆组织_autoRun先问档_结局落观察_手动入口不受档`() {
+        val body = GateBodies.functionBody(memoryWiring(), "fun autoRun(")
+        assertTrue("autoRun 不在了？", body != null)
+        val gate = body!!.indexOf("LowRiskEvo.gate(")
+        val run = body.indexOf("runOnce(appCtx, TRIGGER_COLD_START)")
+        val observe = body.indexOf("LowRiskEvo.observeRun(")
+        assertTrue("门不在 autoRun 里", gate >= 0)
+        assertTrue("观察账不在 autoRun 里", observe >= 0)
+        assertTrue("顺序必须是 门 → 收编 → 观察账", gate < run && run < observe)
+        assertTrue("红线拒要记账", body.contains("LowRiskEvo.recordRefusal("))
+        // 手动广播（runNow→runOnce）不问档：档位管自动化，不管人的手
+        val manual = GateBodies.functionBody(memoryWiring(), "fun runNow(")
+        assertTrue("runNow 不在了？", manual != null)
+        assertFalse("手动入口不许被档位管", manual!!.contains("LowRiskEvo.gate("))
+    }
+
+    @Test
+    fun `G5负例_把门从autoRun拔掉_同一把断言必须红`() {
+        val src = memoryWiring()
+        assertTrue("前提：autoRun 里有门", src.contains("LowRiskEvo.gate("))
+        val mutated = src.replace("LowRiskEvo.gate(", "LowRiskEvo.gateRemoved(")
+        val body = GateBodies.functionBody(mutated, "fun autoRun(")
+        assertTrue(body != null)
+        assertFalse("拔门后必须红（判据③：收编直接生效＝门禁红）", body!!.contains("LowRiskEvo.gate("))
+    }
+
     // ── 扫档：收工家族一行 ──────────────────────────────────────────────────
 
     @Test
