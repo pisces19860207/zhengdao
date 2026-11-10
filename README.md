@@ -28,8 +28,8 @@
 
 **门槛**：Android 16（API 36）＋ arm64 手机。不符合装不上。
 
-**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.2.3（versionCode 41）。
-> **2.2.3 新增**：暗卫巡检 · 记忆分层 · 决策中心 · 御医自修；另加事件触发（定时到点／日程开始前）、影子按需预演（不可逆动作前采指纹）、进化时接真验证读数。逐条变更见 [release-notes v2.2.3](https://github.com/pisces19860207/zhengdao/blob/v2.2.3/.github/release-notes/v2.2.3.md)。
+**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.2.4（versionCode 42）。
+> **2.2.4（2.2 系列收官）**：只收口、不开新能力——授权租约、目标模式、准入真出题、产出卡接依据闸、项目账本、活动看板、构建核对包；界面做御案卡美化与验证明白话；工程上 detekt 硬墙 335→333、单测临时目录水位 1000→422。逐条变更见 [release-notes v2.2.4](https://github.com/pisces19860207/zhengdao/blob/v2.2.4/.github/release-notes/v2.2.4.md)。
 
 
 **不用装**：Termux、Shizuku，不需要 ADB，也不用连电脑。

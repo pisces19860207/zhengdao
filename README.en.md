@@ -17,13 +17,13 @@ One APK, no root, no commands. Baopu reads and writes files, can search the whol
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.3 (versionCode 41).
-> **New in 2.2.3**: night-watch inspection · memory tiers · decision center · doctor self-repair; plus event triggers (scheduled / calendar), on-demand shadow rehearsal (fingerprint before irreversible actions), and real CI readings for the evolution loop. Per-commit changelog: [release notes v2.2.3](https://github.com/pisces19860207/zhengdao/blob/v2.2.3/.github/release-notes/v2.2.3.md).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.4 (versionCode 42).
+> **New in 2.2.4 (2.2 series finale)**: closing-only, no new capabilities — authorization leases, goal mode, real admission tasks, output cards gated by evidence, project ledger, activity board, build audit pack; UI: royal-case card polish and plain-language verdicts; engineering: detekt wall 335→333, test temp-dir water mark 1000→422. Per-commit changelog: [release notes v2.2.4](https://github.com/pisces19860207/zhengdao/blob/v2.2.4/.github/release-notes/v2.2.4.md).
 
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
-**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch. The package is still v2.2.3 (versionCode 41).
+**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch. The package is still v2.2.4 (versionCode 42).
 
 ## Requirements
 
