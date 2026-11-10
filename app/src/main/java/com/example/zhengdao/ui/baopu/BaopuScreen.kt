@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -427,7 +428,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val state = controller.engineState.value
+    // v2.2.5 P0：引擎状态是 StateFlow（不携带 Compose 快照 id）⇒ 组合期收一次
+    val state = controller.engineState.collectAsState().value
     val lastAssistant = lastNonUserPartText(controller.messages)
     // ── 第三十八批 §8（用户 2026-10-19 追加）：顶栏那一条显示什么 ──────────────
     // 用户原话：「把那个复制功能做小点，这样点击展开就能显示更多的那些产物的内容了，
@@ -1357,7 +1359,9 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
             val tailSet = tailActions(
                 busy = controller.busy,
                 truncated = controller.tailTruncated,
-                aborted = controller.engineState.value == RunState.ABORTED,
+                // v2.2.5：StateFlow 不许在组合里点 .value（lint StateFlowValueCalledInComposition）；
+                // 上面已经 collectAsState 收成 state，这里用它（同一次组合读到的同一个值）。
+                aborted = state == RunState.ABORTED,
             )
             if (tailSet.isNotEmpty()) {
                 BaopuTailActions(

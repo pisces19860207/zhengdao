@@ -9,6 +9,8 @@
 package com.example.zhengdao.baopu.agent
 
 import androidx.compose.runtime.State
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.database.sqlite.transaction
@@ -308,9 +310,19 @@ internal class RunEngine(
     private val stopState: StopStateStore? = null,
 ) {
 
-    /** UI 观察用（Compose State）。 */
-    private val _state = mutableStateOf(RunState.IDLE)
-    val state: State<RunState> get() = _state
+    /**
+     * UI 观察用。
+     *
+     * ⚠️ 2026-11-10（v2.2.5 P0）：**从 Compose State 改成 StateFlow**。
+     * 原实现是 `mutableStateOf`——它的创建会绑定"创建时的快照 id"；引擎一旦在
+     * 组合期/子组合（Scaffold 的 SubcomposeLayout 在 measure 里起组合）里被构造，
+     * 该 State 的快照 id 就比主组合晚，主组合再读它就抛
+     * `IllegalStateException: Reading a state that was created after the snapshot was taken`
+     * ⇒ 冷启闪退（真机 3/3）。StateFlow 不携带快照 id，读写都只走普通值语义；
+     * UI 侧用 `collectAsState()` 收（`BaopuScreen`），跨线程写入也不会撞 Snapshot 断言。
+     */
+    private val _state = MutableStateFlow(RunState.IDLE)
+    val state: StateFlow<RunState> get() = _state
 
     private val _step = mutableIntStateOf(0)
     val step: State<Int> get() = _step

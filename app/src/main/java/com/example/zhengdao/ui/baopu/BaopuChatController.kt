@@ -2374,7 +2374,7 @@ internal class BaopuChatController(context: Context) {
     private val noticeFirstMove = "first-move"
 
     /** 引擎可观察状态（直接透出 Compose State）。 */
-    val engineState: androidx.compose.runtime.State<RunState> get() = engine.state
+    val engineState: kotlinx.coroutines.flow.StateFlow<RunState> get() = engine.state
     val engineStep: androidx.compose.runtime.State<Int> get() = engine.step
     val engineNotice: androidx.compose.runtime.State<String?> get() = engine.notice
 
