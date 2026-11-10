@@ -34,6 +34,9 @@ class LeaseEntryGuardTest {
         // （不在 Lease(X) 词族里），没有这条登记它就会静默漏账——名册以这里为准。
         "com/example/zhengdao/baopu/agent/tools/GovernanceStateTool.kt",
         "com/example/zhengdao/ui/baopu/BaopuConfirmCard.kt",
+        // 584：MCP 服务端的租约闸——外部 tools/call 每次必过 LeaseStore.hit/LeaseRules.classOf
+        // （判定零改动，只新增一个调用点；免卡类口径与矩阵同源，未命中一律拒）。
+        "com/example/zhengdao/baopu/mcp/server/McpCallLease.kt",
     )
 
     /** 只认本批的**标识符**：仓里"租约"一词另有旧含义（派工单的文件租约），不能按中文扫。 */

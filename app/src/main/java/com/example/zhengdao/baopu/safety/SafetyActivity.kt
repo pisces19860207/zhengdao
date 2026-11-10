@@ -23,20 +23,26 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.core.view.WindowCompat
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.agent.ActiveSessionGate
 import com.example.zhengdao.baopu.agent.DeviationWiring
+import com.example.zhengdao.baopu.mcp.server.McpServerController
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.SettingsSubPage
@@ -75,6 +81,7 @@ private fun SafetyPage(onBack: () -> Unit) {
         RollbackCard(ctx, scope, snackbar)
         DiaryCard(ctx)
         NotifySwitchCard()
+        McpServerCard(scope, snackbar)
     }
 }
 
@@ -221,5 +228,92 @@ private fun NotifySwitchCard() {
             checked = on,
             onCheckedChange = { SafetyPrefs.setNotifyEnabled(it) },
         )
+    }
+}
+
+/**
+ * MCP 服务端卡（第五百八十四单）：开关/绑定档/令牌显抄/白名单读数。
+ *
+ * 本卡只读 [McpServerController.status()]、把开关按到控制器上，自己不做任何判定——
+ * 鉴权/白名单/租约/审计/停机五闸全在服务端核心里。**停机闸联动是结构性的**：
+ * 上面 HaltCard 一键停机（软/硬）落下 ⇒ 看门狗 1 秒内关端口，本卡状态行随之翻停。
+ * 令牌默认掩码：显示/复制/换钥匙都只出现在人工点按这一条路上（token 永不进日志/账/报告）。
+ */
+@Composable
+private fun McpServerCard(
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState,
+) {
+    val clipboard = LocalClipboardManager.current
+    // 1s 轮询一次状态（服务起停是后台线程的事，Compose 侧只看读数；与 HaltGate.changeTick 同一房型）。
+    val tick = remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            tick.value += 1
+        }
+    }
+    val st = remember(tick.value) { McpServerController.status() }
+    val showToken = remember { mutableStateOf(false) }
+    SectionCard(title = "MCP 服务端（外部工具口）") {
+        Text(
+            when {
+                st.halted -> "停机闸在位：端口已关（471）——解除停机后自动复活"
+                st.running -> "运行中 @${st.endpoint ?: "?"}"
+                st.enabled -> "开关开着但没在监听（看门狗正在对齐；端口被占会记进账）"
+                else -> "已停（开关关）"
+            },
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            "绑定：${if (st.bindAll) "0.0.0.0（局域网可选档）" else "127.0.0.1（默认：只许本机其他 App 连）"}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            "只暴露 R0 只读工具 ${st.whitelistCount} 件；token／白名单／租约／审计／停机 五闸全过才到执行件",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(
+                checked = st.enabled,
+                onCheckedChange = { McpServerController.setEnabled(it) },
+            )
+            Text(
+                if (st.enabled) "服务开着" else "服务关着",
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(
+                checked = st.bindAll,
+                onCheckedChange = { McpServerController.setBindAll(it) },
+            )
+            Text(
+                "绑 0.0.0.0（局域网电脑可连；公网档不存在）",
+                modifier = Modifier.padding(start = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(
+            "访问令牌：" + if (showToken.value) {
+                (McpServerController.revealToken() ?: "（还没生成——开启服务时自动生成）")
+            } else {
+                "••••••••（指纹 ${st.tokenFingerprint ?: "-"}）"
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row {
+            TextButton(onClick = { showToken.value = !showToken.value }) {
+                Text(if (showToken.value) "隐藏令牌" else "显示令牌")
+            }
+            TextButton(onClick = {
+                McpServerController.revealToken()?.let { clipboard.setText(AnnotatedString(it)) }
+                scope.launch { snackbar.showSnackbar("令牌已复制到剪贴板（用完记得清）") }
+            }) { Text("复制令牌") }
+            TextButton(onClick = {
+                McpServerController.rotateToken()
+                scope.launch { snackbar.showSnackbar("已换新钥匙：旧令牌立即失效") }
+            }) { Text("换钥匙") }
+        }
     }
 }

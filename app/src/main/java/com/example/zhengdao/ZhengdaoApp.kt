@@ -98,6 +98,11 @@ class ZhengdaoApp : Application() {
         }.onFailure {
             RunLog.log("启动：引擎预建失败（${it.javaClass.simpleName}: ${it.message}），退回懒建")
         }
+        // 第五百八十四单：App 内 MCP 服务端总闸——默认只绑 127.0.0.1:8765（判据⑤）；
+        // 471 停机闸联动（判据④：停机 ⇒ 看门狗秒级关端口）；开关默认关，安全台那张卡开。
+        // install 只装零件与提交线程池（主线程零套接字——判据⑥），绑定/启停全在 zd-mcp-* 线程。
+        // 必须在引擎预建之后：审计账的落点（抱朴记忆/）由引擎装配安装。
+        com.example.zhengdao.baopu.mcp.server.McpServerController.install(this, BuildConfig.VERSION_NAME)
     }
 
     // 2026-10-16 旧抱朴线清场：原先这里还有 registerOcShutdownOnFinish()
