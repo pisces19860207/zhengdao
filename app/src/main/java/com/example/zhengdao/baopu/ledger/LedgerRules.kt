@@ -4,12 +4,14 @@
 //
 // 用户口径（2026-11-09 派工单原文）：
 //   每个工作区一本任务账（做了啥/在做啥/没做啥/冻结啥）；模型维护、右相判完成、左相判提醒、他只看；
-//   五态「在飞／待验收／已收／冻结／撤」；**append-only**；**无 sourceMsgId 拒建**（承接"不准编造"）；
+//   五态「在飞／待验收／已收／冻结／撤」；**append-only**；无 sourceMsgId 拒建（承接"不准编造"，
+//   **574 改可选**：模型不传 ⇒ 工具层用本轮消息号自动补，后台轮落 null、不写占位号）；
 //   「已收」**不可退回**「在飞」；归档＝默认视图隐藏（账不删）。
 //
 // 本文件只放**纯判据与纯数据**（零 IO、零时钟、零 Android、零 JSON 依赖）：
 //   - 五态与合法迁移（[LedgerRules.allows] / [LedgerRules.transitionRefusal] / [LedgerRules.fold]）；
-//   - 标题上限 40 字 ＋ **sourceMsgId 必填**（判据①：嘴上的事不许进账）；
+//   - 标题上限 40 字 ＋ sourceMsgId 凭证号上限 64 字（判据①：嘴上的事不许进账；
+//     **574 起空来源不再拒**——工具层自动补本轮消息号，没有就落 null，不写占位号）；
 //   - 记录态那一行 `在飞 N · 待验收 M · 已收 K · 冻结 J · 撤 X` 的唯一算法（[LedgerRules.headerLine]）。
 //
 // 为什么「已收」不是随便写的一个状态值（判据②的结构保证）：
@@ -115,7 +117,7 @@ internal data class LedgerRow(
 internal data class LedgerItem(
     val id: String,
     val title: String,
-    /** 这件事从哪来（用户那句话/缺口编号的 id）。**必填**（判据①）。 */
+    /** 这件事从哪来（用户那句话的 id；574 起可空——后台轮落 null，不写占位号）。 */
     val sourceMsgId: String,
     val createdAtMs: Long,
     val status: LedgerState,
@@ -185,18 +187,15 @@ internal object LedgerRules {
     }
 
     /**
-     * `sourceMsgId` 能不能收（判据①：**无 sourceMsgId 拒建**）。
+     * `sourceMsgId` 能不能收（574 起**可选**：模型不传 ⇒ 工具层用本轮消息号自动补，
+     * 后台轮没有 ⇒ 落 null；这里只拦「有来源但不像凭证号」的）。
      *
-     * 为什么这一条是硬的：账本的价值全在"这件事从哪来"。没有来源的条目，
-     * 事后既查不出是谁说的、也判不了该不该做——那正是「不准编造」要挡的东西。
+     * 为什么放开（574 派工单）：544 的「无 sourceMsgId 拒建」把"记一笔"变成"先背参数"，
+     * 而本轮消息号引擎手里本来就有——工具层自动补比让模型抄一遍可靠。
+     * 「不准编造」的初心不破：自动补的是**引擎落库的真消息号**，不是模型嘴上的号。
      */
     fun sourceRefusal(raw: String): String? {
         val src = normalize(raw)
-        if (src.isEmpty()) {
-            return "拒建：没有 sourceMsgId。账上每一条都必须带上「这件事从哪来」" +
-                "（用户那句话的编号／缺口编号／提案 id）——**没有来源的条目一个字都不许进账**。" +
-                "先拿到那个 id，再调一次。"
-        }
         val n = charCount(src)
         if (n > MAX_SOURCE_CHARS) {
             return "拒建：sourceMsgId $n 字 > 上限 $MAX_SOURCE_CHARS 字。这里只放一个**凭证号**" +

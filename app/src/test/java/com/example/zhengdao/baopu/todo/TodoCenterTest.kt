@@ -23,6 +23,7 @@ import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.InMemoryToolPrefs
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolRegistry
+import com.example.zhengdao.baopu.agent.TurnSourceWiring
 import java.io.File
 import org.json.JSONObject
 import org.junit.After
@@ -48,11 +49,13 @@ class TodoCenterTest {
     @Before
     fun resetLedgers() {
         FileOpLog.resetForTest()
+        TurnSourceWiring.resetForTest()
     }
 
     @After
     fun clearLedgers() {
         FileOpLog.resetForTest()
+        TurnSourceWiring.resetForTest()
     }
 
     /** 冷注册表：全新 prefs（没有任何"长期同意"）、没解锁任何组、currentSessionId ＝ NO_SESSION。 */
@@ -262,5 +265,56 @@ class TodoCenterTest {
         addTodo(workspace, "先立一条", 1_000L)
         TodoStore.fileOf(workspace).appendText("{这行是半截 JSON\n", Charsets.UTF_8)
         assertEquals("坏行只丢它自己，前面的行照读", 1, TodoRules.live(TodoStore.items(workspace)).size)
+    }
+
+    // ── 574：sourceId 可选，自动补本轮消息号；后台落 null、不写占位号 ─────────
+
+    @Test
+    fun `不传sourceId_工具层自动补本轮消息号_旧行为同口径`() {
+        val workspace = ws()
+        // 引擎在新一轮落库后会把消息号装进信箱——这里装一个"本轮"的号当引擎替身
+        TurnSourceWiring.installTurn(42L)
+        okJson(TodoAddTool.run(JSONObject().put("text", "不传来源号的一条"), workspace, 1_000L))
+        val item = TodoStore.items(workspace).single()
+        assertEquals("判据⑤：待办行要带上本轮的真实 messageId", "42", item.sourceId)
+        // 传了就用模型的（不覆盖）：显式来源号原样落账
+        TurnSourceWiring.installTurn(42L)
+        okJson(TodoAddTool.run(JSONObject().put("text", "自带来源的一条").put("sourceId", "缺口-541"), workspace, 1_100L))
+        assertEquals("显式传的来源号原样保留", "缺口-541", TodoStore.items(workspace).first { it.text == "自带来源的一条" }.sourceId)
+    }
+
+    @Test
+    fun `负例_后台无消息号_落null_不写未注明占位号`() {
+        val workspace = ws()
+        // 信箱是空的（定时/后台轮没有用户消息）——不许拿上一轮的旧值、不许编占位号
+        okJson(TodoAddTool.run(JSONObject().put("text", "后台记的一条"), workspace, 1_000L))
+        val item = TodoStore.items(workspace).single()
+        assertEquals("判据⑤：来源落 null（空串＝无）", "", item.sourceId)
+        val addLine = TodoStore.fileOf(workspace).readLines(Charsets.UTF_8).single { JSONObject(it).optString("op") == "add" }
+        assertFalse("行里没有 source 键（null 不写成假号）", JSONObject(addLine).has("source"))
+        assertFalse("全行不许出现占位号（574 起不再写「未注明」）", addLine.contains("未注明"))
+        assertFalse("全行不许出现「缺口-」占位号", addLine.contains("缺口-"))
+    }
+
+    @Test
+    fun `旧占位号行仍可读可列表_不回填不迁移`() {
+        val workspace = ws()
+        // 直接种一行 541 时代的旧「未注明」账（旧行一个字节不动）
+        val old = TodoRow(
+            op = TodoOp.ADD,
+            id = "t1",
+            who = TodoActor.MODEL,
+            atMs = 1_000L,
+            text = "旧占位号的一条",
+            source = "未注明",
+        )
+        assertTrue(TodoStore.append(workspace, old))
+        // 新规则照常在它后面立新条：账文件是追加，旧行不改一字
+        TurnSourceWiring.installTurn(7L)
+        okJson(TodoAddTool.run(JSONObject().put("text", "新规则的一条"), workspace, 2_000L))
+        val lines = TodoStore.fileOf(workspace).readLines(Charsets.UTF_8)
+        assertEquals("旧行原样还在（不迁移）", "未注明", JSONObject(lines.first()).optString("source"))
+        assertEquals("判据⑥：旧行照常出现在列表里", 2, okJson(TodoListTool.run(workspace)).getJSONArray("items").length())
+        assertEquals("判据⑥：旧行照读", "未注明", TodoStore.items(workspace).first { it.id == "t1" }.sourceId)
     }
 }

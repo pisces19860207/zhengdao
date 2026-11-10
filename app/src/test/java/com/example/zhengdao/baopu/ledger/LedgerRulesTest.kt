@@ -3,7 +3,8 @@
 // 第五百四十四批 · 项目账本**判据层**的直测（纯函数：零 IO、零时钟、零 Android）。
 //
 // 判据逐条（派工单 §判据）：
-//   ① 无 sourceMsgId ⇒ 拒建（空、纯空白、超长都拒；拒因要说清怎么办）；
+//   ① sourceMsgId **可选**（574）：空/纯空白放行（工具层自动补本轮消息号，没有就落 null），
+//      超长仍拒（拒因要说清怎么办）；
 //   ② 「已收」只认右相 PASS —— 重放层面就堵死：没有 verdict=PASS 的 done 行，谁写都到不了已收；
 //   ③ append-only 可回放 —— 五态全部由 [LedgerRules.fold] 从行里折出来；
 //   ④ 「已收」不可退回「在飞」—— 迁移表 + 重放两处都拒；
@@ -41,16 +42,14 @@ class LedgerRulesTest {
     private fun archive(id: String, at: Long = 4_000L) =
         LedgerRow(kind = LedgerKind.ARCHIVE, id = id, atMs = at, status = "accepted")
 
-    // ── ① 来源必填与标题上限 ──────────────────────────────────────────────────
+    // ── ① 来源可选（574）与标题上限 ──────────────────────────────────────────
 
     @Test
-    fun `无sourceMsgId拒建_空白与缺失一样`() {
+    fun `空来源放行_574改可选_超长仍拒`() {
         listOf("", "   ", "\n\t ").forEach { src ->
-            val refusal = LedgerRules.sourceRefusal(src)
-            assertNotNull("空来源必须拒：$src", refusal)
-            assertTrue("拒因要点名 sourceMsgId：$refusal", refusal!!.contains("sourceMsgId"))
+            assertNull("空来源不再拒（工具层自动补本轮消息号，后台轮落 null）：$src", LedgerRules.sourceRefusal(src))
         }
-        assertNull("有来源就放行", LedgerRules.sourceRefusal("msg-2026-11-09-001"))
+        assertNull("有来源照样放行", LedgerRules.sourceRefusal("msg-2026-11-09-001"))
     }
 
     @Test
@@ -69,12 +68,15 @@ class LedgerRulesTest {
     }
 
     @Test
-    fun `两条闸先标题后来源_一次只报一个错`() {
+    fun `两条闸先标题后来源_标题空了先报标题`() {
         val both = LedgerRules.addRefusal("", "")
         assertNotNull(both)
         assertTrue("先报标题：$both", both!!.contains("标题"))
-        val onlySrc = LedgerRules.addRefusal("正常标题", "")
-        assertTrue("标题过了就报来源：$onlySrc", onlySrc!!.contains("sourceMsgId"))
+        // 574：来源空不再拦——标题过了就放行（来源由工具层自动补/落 null）
+        assertNull("标题过了、来源空 ⇒ 放行", LedgerRules.addRefusal("正常标题", ""))
+        // 对照：来源有值但超长照样拦（可选 ≠ 不设防）
+        val longSrc = LedgerRules.addRefusal("正常标题", "m".repeat(LedgerRules.MAX_SOURCE_CHARS + 1))
+        assertTrue("超长来源仍要拦：$longSrc", longSrc!!.contains("sourceMsgId"))
     }
 
     @Test

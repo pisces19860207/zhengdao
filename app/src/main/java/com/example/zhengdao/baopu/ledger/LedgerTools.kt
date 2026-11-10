@@ -25,6 +25,7 @@ import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.agent.ToolTimeout
+import com.example.zhengdao.baopu.agent.TurnSourceWiring
 import com.example.zhengdao.baopu.agent.jsonArrayOf
 import com.example.zhengdao.baopu.agent.jsonObjectOf
 import com.example.zhengdao.core.RunLog
@@ -37,8 +38,9 @@ import org.json.JSONObject
 /**
  * 立一条（R1：只写工作区 `.zd-ledger.jsonl`，不动用户文件、不联网）。
  *
- * `sourceMsgId` **也是必填**（判据①）：没有来源的条目一个字都不许进账。
- * 这一条不放在"执行体里再说"——它写进 schema 的 `required`，模型第一次就看得见。
+ * `sourceMsgId` **可选**（574）：模型不传 ⇒ 执行体用本轮用户消息的 messageId 自动补
+ * （[TurnSourceWiring]，引擎落库的真值，不是模型嘴上的号）；
+ * 定时/后台跑没有这句话 ⇒ 落 null——**不写「缺口-XXX」这类占位号**。
  */
 internal object LedgerAddTool {
 
@@ -51,8 +53,9 @@ internal object LedgerAddTool {
         name = NAME,
         description = "在项目账上给自己记一件事（你自己的工作账，显示在「账本」那一块）。" +
             "title 只有**一句话**、最多 ${LedgerRules.MAX_TITLE_CHARS} 字（超了拒收并让你按长度重写）。" +
-            "sourceMsgId **必填**：这件事从哪来（用户那句话的编号／缺口编号／提案 id）——" +
-            "**没有来源不许进账**，这是硬规矩。会记成「在飞」；做完调 ledger_status 标「已收」送右相。" +
+            "sourceMsgId 可选：这件事从哪来（用户那句话的编号／缺口编号／提案 id）——" +
+            "不传就自动记本轮那句话的编号（定时/后台跑没有这句话，就空着）。" +
+            "会记成「在飞」；做完调 ledger_status 标「已收」送右相。" +
             "同标题同来源且还活着的条目不会重复立，回你既有的那条 id。归档不由你做。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -63,10 +66,11 @@ internal object LedgerAddTool {
                 ),
                 ARG_SOURCE to jsonObjectOf(
                     "type" to "string",
-                    "description" to "必填：来源凭证号（用户那句话的编号／缺口编号／提案 id）；空着会被拒建。",
+                    "description" to "可选：来源凭证号（用户那句话的编号／缺口编号／提案 id）；" +
+                        "不传自动记本轮消息号，没有就空着。",
                 ),
             ),
-            "required" to jsonArrayOf(ARG_TITLE, ARG_SOURCE),
+            "required" to jsonArrayOf(ARG_TITLE),
             "additionalProperties" to false,
         ),
         permission = ToolPermission.FREE, // 手账：每记一笔弹一张卡会把"记账"变成打扰（风险档仍是 R1）
@@ -79,7 +83,7 @@ internal object LedgerAddTool {
         val write = LedgerStore.add(
             workspaceRoot,
             args.optString(ARG_TITLE),
-            args.optString(ARG_SOURCE),
+            TurnSourceWiring.resolveFrom(args, ARG_SOURCE),
             nowMs,
         )
         return when (write) {

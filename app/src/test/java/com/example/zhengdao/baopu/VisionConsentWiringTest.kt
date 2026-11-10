@@ -70,7 +70,7 @@ class VisionConsentWiringTest {
     fun `G1_同意闸排在读盘与落库之前`() {
         val gate = engine.indexOf("if (!askVisionConsent(pendingImageRelPaths.size)) return")
         val load = engine.indexOf("VisionFiles.load(spillRoot(), turnImagePaths")
-        val persist = engine.indexOf("val persisted = persistUserMessage(")
+        val persist = engine.indexOf("val persistedMsgId = persistUserMessage(")
         val runLoop = engine.indexOf("private fun runLoop(")
         assertTrue("runLoop 入口必须有同意闸调用（一处都不许多：两处就是弹两遍卡）", gate in 1 until engine.length)
         assertEquals(

@@ -110,7 +110,9 @@ internal object TodoStore {
         TodoRules.live(all).firstOrNull { it.text == text }?.let { return TodoWrite.Ok(it, created = false) }
         val rows = rows(wsRoot)
         val id = TodoRules.nextId(rows)
-        val source = TodoRules.oneLine(sourceId).ifEmpty { "未注明" }
+        // 574：来源空就落 null（行里不写 source 键）——不再造「未注明」占位号；
+        // 旧行里已有的「未注明」不回填、不迁移，照读照列。
+        val source = TodoRules.oneLine(sourceId)
         if (!append(wsRoot, row(TodoOp.ADD, id, TodoActor.MODEL, nowMs, text = text, source = source))) {
             return TodoWrite.Refused("待办账写不进去（盘上原有内容没动）——如实说「没记上」，别当成记上了。")
         }

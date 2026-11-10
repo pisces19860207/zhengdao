@@ -2253,15 +2253,18 @@ internal class RunEngine(
             // 丢弃闸正是审计 F 的病灶（丢条且不计入「清掉 N 条」），随同锁闸一并撤销。
             // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
             planController.newRound()
-            val persisted = persistUserMessage(
+            val persistedMsgId = persistUserMessage(
                 sessionId, userText, turnImagePaths, queueRowId, queueSubmittedAt,
             )
-            if (!persisted) {
+            if (persistedMsgId <= 0L) {
                 // 消息没落库就不许跑：跑了等于「库里有答案、没有问题」，续跑也会错位。
                 _notice.value = "用户消息没落库（已记日志）：这一轮没有跑"
                 settle(sessionId, stepCount, RunState.ABORTED, "Aborted", err = "user-persist-failed")
                 return
             }
+            // 574：本轮出处进来源信箱——`ledger_add` / `todo_add` 不传来源号时，
+            // 工具层用这个 id 自动补（定时/后台轮没有这句话 ⇒ 信箱空 ⇒ 落 null）。
+            TurnSourceWiring.installTurn(persistedMsgId)
             history += HistoryMessage("local-user-${System.nanoTime()}", HistoryMessage.ROLE_USER, userText)
         }
         // 第四十八批 P0-3：这里**不许**再声明同名局部 `var compressionSummary`——
@@ -3173,6 +3176,8 @@ internal class RunEngine(
             log("抱朴引擎：插话落库失败（session=$sessionId，原文已记日志不丢）：${text.take(80)}")
             return -1L
         }
+        // 574：插话也是本轮的用户消息——落库成功就覆盖来源信箱（之后的工具调用以它为出处）。
+        TurnSourceWiring.installTurn(msgId)
         onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER, emptyList()))
         return msgId
     }
@@ -3748,6 +3753,8 @@ internal class RunEngine(
         roundStartedAtMs = 0L
         // 第三百八十六批：出处信箱同步摘空（偏差判定都发生在跑轮期间，收工后不许再记给旧轮）。
         DeviationWiring.clearRun()
+        // 574：来源信箱同口径摘空（收工后的工具调用拿不到上一轮的消息号——宁空勿猜）。
+        TurnSourceWiring.clearTurn()
         if (runId.isBlank()) return
         runCatching {
             ReflectionWiring.of(spillRoot(), pf, db, log).onSettled(runId, startedAt)
@@ -5545,7 +5552,7 @@ internal class RunEngine(
      * - 崩在事务前 ⇒ 队列行还在，消息没落 ⇒ 重进还能再跑，不丢；
      * - 崩在事务后 ⇒ 消息已落、队列行已删 ⇒ 不会重复跑。
      *
-     * @return false = 事务失败（调用方必须停下这一轮，不许「库里没问题、模型却答了」）。
+     * @return 消息 id（≤0 ＝ 事务失败：调用方必须停下这一轮，不许「库里没问题、模型却答了」）。
      */
     private fun persistUserMessage(
         sessionId: Long,
@@ -5553,7 +5560,7 @@ internal class RunEngine(
         imageRelPaths: List<String> = emptyList(),
         queueRowId: Long = -1L,
         queueSubmittedAt: Long = 0L,
-    ): Boolean {
+    ): Long {
         var msgId = -1L
         // P2-3（第五十六批）：① `.get()` 等事务真的提交（旧实现把 Future 丢了，
         // 写失败静默）；② 事件移到 `endTransaction()` **之后**——旧实现在事务体内就发，
@@ -5608,10 +5615,10 @@ internal class RunEngine(
         }.isSuccess
         if (!ok) {
             log("抱朴引擎：用户消息落库失败（session=$sessionId），本次不发 MessagePersisted")
-            return false
+            return -1L
         }
         onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_USER, imageRelPaths))
-        return true
+        return msgId
     }
 
     /** assistant 消息：流结束一次性落库（判据 7：流式期间内存累积，不每 token 写一次）。 */

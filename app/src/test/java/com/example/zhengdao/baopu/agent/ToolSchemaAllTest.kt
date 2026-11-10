@@ -583,7 +583,7 @@ class ToolSchemaAllTest {
             "todo_add" to JSONObject().put("text", "把交付报告写完"),
             "todo_mark_done" to JSONObject().put("id", "t1"),
             // 544：项目账本三件（list 只带可选 includeArchived——REQUIRED_EMPTY_OK 已签字；
-            // add 必填 title＋sourceMsgId；status 必填 id＋status，样本值只求"填对了键"）
+            // add 必填 title，sourceMsgId 574 起可选；status 必填 id＋status，样本值只求"填对了键"）
             "ledger_list" to JSONObject(),
             "ledger_add" to JSONObject().put("title", "把这道门禁接到账上")
                 .put("sourceMsgId", "msg-2026-11-09-001"),

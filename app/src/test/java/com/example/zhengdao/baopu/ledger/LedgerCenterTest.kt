@@ -3,17 +3,19 @@
 // 第五百四十四批 · 项目账本的**行为级判据**（过注册表真跑，不看注释）。
 //
 // 判据逐条（派工单 §判据 ①–⑩；⑨ 入口净增 0 与 ⑩ detekt/lint 是静态读数，见交付报告）：
-//   ① 无 sourceMsgId ⇒ 拒建（工具层真跑：回 Failed，且盘上一个字节都没写）；
-//   ② 右相 PASS 才「已收」，UNVERIFIABLE 停「待验收」——三例真跑（正例 / 没落盘 / 账上有行但文件不在）；
-//   ③ append-only 可回放 —— 账文件只追加，重放出来与工具回执一致；
-//   ④ 「已收」不可退回「在飞」—— 工具层真跑拒绝，盘上状态不变；
-//   ⑤ 归档后账文件仍全 —— 归档只多一行，其余行一条不少，条目仍在（includeArchived 能看见）；
-//   ⑥ 四态计数与账文件重放一致 —— 用例**自己**解析 JSON 行重算（不复用 LedgerRules.fold），
-//      两边数对上才算过（否则是「自己证明自己」）；
-//   ⑦ 点号开头不计产物数 —— 账文件在产物目录之外、名字点号开头，isCountedProduct 为 false；
-//   ⑧ 三工具免解锁、不在 capabilities 名册 —— 冷启注册表真查 + 名册整词匹配（带负例）。
+//   ① sourceMsgId 可选（574）：不传 ⇒ 工具层自动补本轮消息号（真跑断言账行带真实 messageId）；
+//   ② 自动补出来的行**可跳**：来源号是纯数字消息号 ⇒ parseJump 解析成功（屏幕层给跳）；
+//   ③ 后台无消息号 ⇒ 落 null（行里没有 sourceMsgId 键）＋不可跳＋**无「缺口-XXX」占位号**（负例）；
+//   ④ 右相 PASS 才「已收」，UNVERIFIABLE 停「待验收」——三例真跑（正例 / 没落盘 / 账上有行但文件不在）；
+//   ⑤ append-only 可回放 —— 账文件只追加，重放出来与工具回执一致；
+//   ⑥ 旧占位号行（「缺口-544」这类）仍可读可列表——不回填、不迁移；
+//   ⑦ 「已收」不可退回「在飞」—— 工具层真跑拒绝，盘上状态不变；
+//   ⑧ 归档后账文件仍全 —— 归档只多一行，其余行一条不少，条目仍在（includeArchived 能看见）；
+//   ⑨ 四态计数与账文件重放一致 —— 用例**自己**解析 JSON 行重算（不复用 LedgerRules.fold）；
+//   ⑩ 点号开头不计产物数 / 三工具免解锁、不在 capabilities 名册。
 //
-// ⚠️ FileOpLog 是进程级单例：每条用例前后都 reset，否则上一条的账行会漏进来把"没落盘"喂成 PASS（假绿）。
+// ⚠️ FileOpLog 与 TurnSourceWiring 都是进程级单例：每条用例前后都 reset，
+// 否则上一条的账行/消息号会漏进来把"后台"喂成"有本轮消息号"（假绿）。
 package com.example.zhengdao.baopu.ledger
 
 import com.example.zhengdao.baopu.FileOpKind
@@ -24,6 +26,9 @@ import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.InMemoryToolPrefs
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolRegistry
+import com.example.zhengdao.baopu.agent.TurnSourceWiring
+import com.example.zhengdao.ui.baopu.LedgerBoardRules
+import com.example.zhengdao.ui.baopu.LedgerJump
 import java.io.File
 import org.json.JSONObject
 import org.junit.After
@@ -49,11 +54,13 @@ class LedgerCenterTest {
     @Before
     fun resetLedgers() {
         FileOpLog.resetForTest()
+        TurnSourceWiring.resetForTest()
     }
 
     @After
     fun clearLedgers() {
         FileOpLog.resetForTest()
+        TurnSourceWiring.resetForTest()
     }
 
     /** 冷注册表：全新 prefs（没有任何"长期同意"）、没解锁任何组、currentSessionId ＝ NO_SESSION。 */
@@ -118,35 +125,96 @@ class LedgerCenterTest {
         assertTrue("匹配函数本身要能命中：delete_path 在名册里", mentions("delete_path"))
     }
 
-    // ── ① 无 sourceMsgId 拒建 ─────────────────────────────────────────────────
+    // ── ①/②/③ 来源号可选与自动补（574） ─────────────────────────────────────
 
     @Test
-    fun `负例_没有sourceMsgId_拒建且账文件不存在`() {
+    fun `不传sourceMsgId_工具层自动补本轮消息号_账行带真id_可跳`() {
         val workspace = ws()
-        val out = LedgerAddTool.run(JSONObject().put("title", "想空手记账"), workspace, 1_000L)
-        assertTrue("没有来源必须拒：$out", out is ToolOutcome.Failed)
-        val reason = (out as ToolOutcome.Failed).error
-        assertTrue("拒因要点名 sourceMsgId：$reason", reason.contains("sourceMsgId"))
-        assertFalse("拒了就不许建账文件", LedgerStore.fileOf(workspace).exists())
-        // 只写空白字也一样拒（空白不是来源）
-        val blank = LedgerAddTool.run(
-            JSONObject().put("title", "空白来源").put("sourceMsgId", "   "),
-            workspace,
-            1_500L,
+        // 引擎在新一轮落库后会把消息号装进信箱——这里装一个"本轮"的号当引擎替身
+        TurnSourceWiring.installTurn(42L)
+        val json = okJson(
+            LedgerAddTool.run(JSONObject().put("title", "不传来源号的一条"), workspace, 1_000L),
         )
-        assertTrue("空白 sourceMsgId 也要拒：$blank", blank is ToolOutcome.Failed)
-        assertFalse("还是没建文件", LedgerStore.fileOf(workspace).exists())
+        assertEquals("判据①：账行要带上本轮的真实 messageId", "42", json.getString("sourceMsgId"))
+        val item = LedgerStore.items(workspace).single()
+        assertEquals("落盘的也是真值", "42", item.sourceMsgId)
+        // 判据②：自动补出来的是纯数字消息号 ⇒ 屏幕层解析得动（有解析结果才给跳）
+        val parsed = LedgerBoardRules.parseJump(item.sourceMsgId)
+        assertEquals("纯数字＝(0, 消息id)，会话由屏幕层按消息反查", 0L to 42L, parsed)
+        val row = LedgerBoardRules.rows(listOf(item)) { src ->
+            if (LedgerBoardRules.parseJump(src) != null) LedgerJump(0L, 42L) else null
+        }.single()
+        assertTrue("解析出来就该可跳", row.canJump)
+        // 传了就用模型的（不覆盖）：显式来源号原样落账
+        val explicit = okJson(
+            LedgerAddTool.run(
+                JSONObject().put("title", "自带来源的一条").put("sourceMsgId", "缺口-544"),
+                workspace,
+                1_100L,
+            ),
+        )
+        assertEquals("显式传的来源号原样保留", "缺口-544", explicit.getString("sourceMsgId"))
     }
 
     @Test
-    fun `负例_注册表层也拦_缺sourceMsgId过不了schema`() {
+    fun `负例_后台无消息号_落null不可跳_不写占位号`() {
+        val workspace = ws()
+        // 信箱是空的（定时/后台轮没有用户消息）——不许拿上一轮的旧值、不许编占位号
+        val json = okJson(
+            LedgerAddTool.run(JSONObject().put("title", "后台记的一条"), workspace, 1_000L),
+        )
+        assertTrue("回执不带占位号：$json", !json.getString("sourceMsgId").contains("缺口"))
+        val item = LedgerStore.items(workspace).single()
+        assertEquals("判据③：来源落 null（空串＝无）", "", item.sourceMsgId)
+        val addLine = LedgerStore.fileOf(workspace).readLines(Charsets.UTF_8).single { JSONObject(it).optString("kind") == "add" }
+        val o = JSONObject(addLine)
+        assertFalse("行里没有 sourceMsgId 键（null 不写成假号）", o.has("sourceMsgId"))
+        assertFalse("全行不许出现「缺口-」占位号", addLine.contains("缺口-"))
+        // 屏幕层同口径：没有来源号 ⇒ 连解析都不调、不给跳
+        var calls = 0
+        val row = LedgerBoardRules.rows(listOf(item)) {
+            calls++
+            null
+        }.single()
+        assertFalse("判据③：不可跳", row.canJump)
+        assertEquals("没有来源号不该去查库", 0, calls)
+    }
+
+    @Test
+    fun `负例_schema层_sourceMsgId不再是必填`() {
         val root = ws()
         val reg = coldRegistry(root)
         val spec = reg.find("ledger_add")!!
-        assertNotNull("schema 里 sourceMsgId 必须是 required", spec.inputSchema.optJSONArray("required"))
         val required = spec.inputSchema.getJSONArray("required")
         val keys = (0 until required.length()).map { required.getString(it) }
-        assertTrue("required 里必须有 sourceMsgId：$keys", "sourceMsgId" in keys)
+        assertTrue("title 还是必填：$keys", "title" in keys)
+        assertFalse("判据⑤的另一半：sourceMsgId 不在 required 里（574 改可选）：$keys", "sourceMsgId" in keys)
+    }
+
+    @Test
+    fun `旧占位号行仍可读可列表_不回填不迁移`() {
+        val workspace = ws()
+        // 直接种一行 544 时代的旧占位号账（旧行一个字节不动）
+        val old = LedgerRow(
+            kind = LedgerKind.ADD,
+            id = "L1",
+            atMs = 1_000L,
+            title = "旧占位号的一条",
+            status = "flying",
+            sourceMsgId = "缺口-544",
+        )
+        assertTrue(LedgerStore.append(workspace, old))
+        // 新规则照常在它后面立新条：账文件是追加，旧行不改一字
+        TurnSourceWiring.installTurn(7L)
+        okJson(LedgerAddTool.run(JSONObject().put("title", "新规则的一条"), workspace, 2_000L))
+        val lines = LedgerStore.fileOf(workspace).readLines(Charsets.UTF_8)
+        assertEquals("旧行原样还在（不迁移）", "缺口-544", JSONObject(lines.first()).optString("sourceMsgId"))
+        val listed = okJson(LedgerListTool.run(workspace))
+        assertEquals("判据⑥：旧行照常出现在列表里", 2, listed.getJSONArray("items").length())
+        val items = LedgerStore.items(workspace)
+        assertEquals("判据⑥：旧行照读", "缺口-544", items.first { it.id == "L1" }.sourceMsgId)
+        // 旧行的占位号解析不出真消息 ⇒ 不可跳（但没有来源号 ≠ 读不出）
+        assertFalse("占位号不是消息号 ⇒ 不给跳", LedgerBoardRules.parseJump("缺口-544") != null)
     }
 
     // ── ② 右相三态 ────────────────────────────────────────────────────────────

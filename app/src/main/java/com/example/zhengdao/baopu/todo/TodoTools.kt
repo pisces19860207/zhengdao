@@ -26,6 +26,7 @@ import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPermission
 import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.agent.ToolTimeout
+import com.example.zhengdao.baopu.agent.TurnSourceWiring
 import com.example.zhengdao.baopu.agent.jsonArrayOf
 import com.example.zhengdao.baopu.agent.jsonObjectOf
 import com.example.zhengdao.core.RunLog
@@ -38,8 +39,9 @@ import org.json.JSONObject
 /**
  * 立一条待办（R1：只写工作区 `产物/.todo.jsonl`，不动用户文件、不联网）。
  *
- * 参数 `text` 必填、`sourceId` 可省（省了就记"未注明"）：必填参数只要一个，
- * 模型漏传 sourceId 不该整条拒掉（那是把"记一笔"变成"先背参数"）。
+ * 参数 `text` 必填、`sourceId` 可省：省了 ⇒ 执行体用本轮用户消息的 messageId 自动补
+ * （[TurnSourceWiring]；574 起同 `ledger_add` 一张口）；定时/后台跑没有这句话 ⇒
+ * 落 null——**不再写「未注明」占位号**（旧行不动、不迁移，照读照列）。
  */
 internal object TodoAddTool {
 
@@ -53,7 +55,8 @@ internal object TodoAddTool {
         description = "给自己立一条待办（你自己的手账，显示在自治理中心的「待办」那一块）。" +
             "text 只有**一句话**、最多 ${TodoRules.MAX_SUMMARY_CHARS} 字：写「要做什么」就够，" +
             "正文/来源不要抄进来（超了会被**拒收**并让你按长度重写）。" +
-            "sourceId 可选：这条从哪来的（缺口编号/提案 id/用户那句话的编号）。" +
+            "sourceId 可选：这条从哪来的（缺口编号/提案 id/用户那句话的编号）——" +
+            "不传就自动记本轮那句话的编号（定时/后台跑没有这句话，就空着）。" +
             "同摘要且还没删的条目不会重复立，回你既有的那条 id。" +
             "做完之后调 todo_mark_done(id)：那条会由右相判 PASS 才进「已完成」，" +
             "最后一下删除是**用户**点的，你删不了。",
@@ -66,7 +69,8 @@ internal object TodoAddTool {
                 ),
                 ARG_SOURCE to jsonObjectOf(
                     "type" to "string",
-                    "description" to "可选：这条从哪来（缺口编号/提案 id/用户原话编号），省了记「未注明」。",
+                    "description" to "可选：这条从哪来（缺口编号/提案 id/用户原话编号）；" +
+                        "不传自动记本轮消息号，没有就空着。",
                 ),
             ),
             "required" to jsonArrayOf(ARG_TEXT),
@@ -79,7 +83,12 @@ internal object TodoAddTool {
     ) { args -> run(args, workspaceRoot(), System.currentTimeMillis()) }
 
     fun run(args: JSONObject, workspaceRoot: File, nowMs: Long): ToolOutcome {
-        val write = TodoStore.add(workspaceRoot, args.optString(ARG_TEXT), args.optString(ARG_SOURCE), nowMs)
+        val write = TodoStore.add(
+            workspaceRoot,
+            args.optString(ARG_TEXT),
+            TurnSourceWiring.resolveFrom(args, ARG_SOURCE),
+            nowMs,
+        )
         return when (write) {
             is TodoWrite.Refused -> ToolOutcome.Failed(write.reason)
             is TodoWrite.Ok -> {
