@@ -8,14 +8,19 @@
 package com.example.zhengdao.baopu.verify
 
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ValueGateWiringTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tmp(name: String): File = Files.createTempDirectory("baopu-384a-$name").toFile()
+
+    private fun tmp(name: String): File = TempSandboxPool.create("baopu-384a-$name")
 
     private fun write(root: File, rel: String, body: String) {
         val f = File(root, rel)

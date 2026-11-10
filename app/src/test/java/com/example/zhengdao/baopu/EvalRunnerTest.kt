@@ -20,8 +20,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class EvalRunnerTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     @get:Rule
     val tmp = TemporaryFolder()
@@ -83,7 +89,7 @@ class EvalRunnerTest {
         error: String? = null,
         dirFiles: Map<String, String> = mapOf("答案.md" to "内容"),
     ): CaseResult {
-        val dir = kotlin.io.path.createTempDirectory("zd-eval-test-").toFile()
+        val dir = TempSandboxPool.create("zd-eval-test-")
         dirFiles.forEach { (n, c) -> File(dir, n).writeText(c, Charsets.UTF_8) }
         return CaseResult(
             id = "case", note = "", ok = ok, steps = steps, failures = failures,

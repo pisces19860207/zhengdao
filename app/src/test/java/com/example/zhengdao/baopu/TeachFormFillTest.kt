@@ -13,11 +13,16 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class TeachFormFillTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tempDir(): File = Files.createTempDirectory("form201").toFile()
+
+    private fun tempDir(): File = TempSandboxPool.create("form201")
 
     // ── 正例：5 字段一录一放，回读全一致 ────────────────────────────────────
 

@@ -8,12 +8,17 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ReadFileToolTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private fun file(lines: List<String>): File {
-        val dir = Files.createTempDirectory("baopu-readfile").toFile()
+        val dir = TempSandboxPool.create("baopu-readfile")
         val f = File(dir, "a.md")
         f.writeText(lines.joinToString("\n"))
         return f
@@ -91,14 +96,14 @@ class ReadFileToolTest {
 
     @Test
     fun `不是文件_Failed`() {
-        val dir = Files.createTempDirectory("baopu-readfile-dir").toFile()
+        val dir = TempSandboxPool.create("baopu-readfile-dir")
         assertTrue(ReadFileTool.read(dir, 0, 100) is ToolOutcome.Failed)
     }
 
     @Test
     fun `路径不存在_说「不存在」而不是「不是文件」`() {
         // 2026-10-17 真机实测：把不存在的路径报成「不是一个文件」，模型会以为路径对、只改类型
-        val ghost = File(Files.createTempDirectory("baopu-readfile-ghost").toFile(), "根本没有.md")
+        val ghost = File(TempSandboxPool.create("baopu-readfile-ghost"), "根本没有.md")
         val out = ReadFileTool.read(ghost, 0, 100)
         assertTrue(out is ToolOutcome.Failed)
         val err = (out as ToolOutcome.Failed).error
@@ -109,7 +114,7 @@ class ReadFileToolTest {
 
     @Test
     fun `超大文件_拒绝整读_说清大小`() {
-        val dir = Files.createTempDirectory("baopu-readfile-big").toFile()
+        val dir = TempSandboxPool.create("baopu-readfile-big")
         val f = File(dir, "big.bin")
         // 造一个超过上限的文件（只写头部 + 扩容，不真写 2MB 内容）
         f.writeBytes(ByteArray(1024))
@@ -125,7 +130,7 @@ class ReadFileToolTest {
 
     @Test
     fun `GBK文件_自动解码_不读成乱码`() {
-        val dir = Files.createTempDirectory("baopu-readfile-gbk").toFile()
+        val dir = TempSandboxPool.create("baopu-readfile-gbk")
         val f = File(dir, "老书.txt")
         f.writeBytes("第一章\n主人公名叫王大锤，家住城西。\n".toByteArray(charset("GBK")))
         val text = (ReadFileTool.read(f, offset = 0, limit = 100) as ToolOutcome.Ok).text
@@ -135,7 +140,7 @@ class ReadFileToolTest {
 
     @Test
     fun `UTF16LE文件_能读且不留BOM`() {
-        val dir = Files.createTempDirectory("baopu-readfile-utf16").toFile()
+        val dir = TempSandboxPool.create("baopu-readfile-utf16")
         val f = File(dir, "wide.txt")
         val bom = byteArrayOf(0xFF.toByte(), 0xFE.toByte())
         f.writeBytes(bom + "第一行\n第二行".toByteArray(charset("UTF-16LE")))
@@ -146,7 +151,7 @@ class ReadFileToolTest {
 
     @Test
     fun `二进制文件_拒绝读取_不往上下文灌乱码`() {
-        val dir = Files.createTempDirectory("baopu-readfile-bin").toFile()
+        val dir = TempSandboxPool.create("baopu-readfile-bin")
         val f = File(dir, "a.bin")
         f.writeBytes(byteArrayOf(0x41, 0x00, 0x42, 0x00))
         val out = ReadFileTool.read(f, offset = 0, limit = 100)

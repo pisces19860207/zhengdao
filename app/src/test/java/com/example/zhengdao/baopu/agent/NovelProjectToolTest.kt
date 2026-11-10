@@ -13,11 +13,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class NovelProjectToolTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tmp(): File = Files.createTempDirectory("novel-v1").toFile()
+
+    private fun tmp(): File = TempSandboxPool.create("novel-v1")
 
     private fun create(root: File, vararg pairs: Pair<String, Any>): ToolOutcome =
         NovelCreateTool.create(root, JSONObject().apply { pairs.forEach { put(it.first, it.second) } })

@@ -10,11 +10,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ListDirToolTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private fun tmp(name: String): File =
-        Files.createTempDirectory("baopu-listdir-$name").toFile()
+        TempSandboxPool.create("baopu-listdir-$name")
 
     @Test
     fun `列目录_目录在前_名称序_文件带大小`() {

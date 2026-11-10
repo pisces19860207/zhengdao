@@ -18,19 +18,24 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.RawToolCall
 import java.io.File
-import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class BadArgsCostGateTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     // ── ① 恒坏场景：到线即停 ──────────────────────────────────────────
 
     /** 真注册表（真 Schema）：恒坏样本用「半截 JSON」（永远解不出来的那种）。 */
     private fun registry(): ToolRegistry {
-        val root = createTempDirectory("zd-gate-").toFile()
+        val root = TempSandboxPool.create("zd-gate-")
         val reg = ToolRegistry(InMemoryToolPrefs())
         BaopuToolCatalog.loadInto(reg) { root }
         return reg

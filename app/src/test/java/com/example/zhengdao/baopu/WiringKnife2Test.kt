@@ -12,15 +12,20 @@ import com.example.zhengdao.baopu.agent.multiagent.SubTaskResult
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskStatus
 import com.example.zhengdao.routeIncomingIntent
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class WiringKnife2Test {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     // ── #2 召回预算按模型窗口（recallBudgetOf） ───────────────────────────
 
@@ -145,7 +150,7 @@ class WiringKnife2Test {
 
     @Test
     fun `正向_decidePending按include只判该判的_被拦的不落审计`() {
-        val dir = Files.createTempDirectory("wk2-store").toFile()
+        val dir = TempSandboxPool.create("wk2-store")
         val store = ProposalCandidateStore(dir, log = {})
         store.appendNew(listOf(candidate("c-1"), candidate("c-2")), 1L)
         val sink = RecordingSink()
@@ -168,7 +173,7 @@ class WiringKnife2Test {
 
     @Test
     fun `负例_无候选不硬造_decidePending空表零审计`() {
-        val dir = Files.createTempDirectory("wk2-empty").toFile()
+        val dir = TempSandboxPool.create("wk2-empty")
         val store = ProposalCandidateStore(dir, log = {})
         val sink = RecordingSink()
         val decisions = EvolutionDecisionPort(audit = sink).decidePending(

@@ -19,10 +19,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class PersonaBackupRefusalTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tmp(): File = Files.createTempDirectory("persona-backup").toFile()
+
+    private fun tmp(): File = TempSandboxPool.create("persona-backup")
 
     /** `<工作区>/抱朴记忆/` 当作 C 层根；备份区 = `<工作区>/备份/人设/`（199 起）。 */
     private class Harness(val workspace: File, val files: PersonaFiles) {

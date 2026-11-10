@@ -11,13 +11,18 @@ package com.example.zhengdao.baopu.inspect
 
 import com.example.zhengdao.baopu.RiskClass
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ShadowRehearsalTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private val now = 1_760_000_000_000L
     private val realRoot = "/data/user/0/com.example.zhengdao/files/抱朴/工作区"
@@ -155,7 +160,7 @@ class ShadowRehearsalTest {
 
     // ── 影子台账（落盘那一本）───────────────────────────────────────────────
 
-    private fun root(): File = Files.createTempDirectory("zd-239-shadow-").toFile()
+    private fun root(): File = TempSandboxPool.create("zd-239-shadow-")
 
     @Test
     fun `影子台账_写一行读一行_键是会话步`() {

@@ -8,16 +8,21 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.RootMode
 import com.example.zhengdao.baopu.WsRoot
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.Executors
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class GuardMultiRootTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tmp(name: String): File = Files.createTempDirectory("ws492-guard-$name").toFile()
+
+    private fun tmp(name: String): File = TempSandboxPool.create("ws492-guard-$name")
 
     private fun registry(): ToolRegistry = ToolRegistry().apply {
         register(ReadFileTool.spec())

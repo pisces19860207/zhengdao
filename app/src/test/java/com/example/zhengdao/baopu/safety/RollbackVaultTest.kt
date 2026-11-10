@@ -6,7 +6,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 /**
  * 504 判据④的 JVM 钉子：删 5 个文件 ⇒ 回滚 ⇒ 5 个都回来且 hash 一致；
@@ -14,8 +15,12 @@ import java.nio.file.Files
  * 顺带钉：覆盖写恢复、新建删回、>10MB 的如实"不可字节回滚"。
  */
 class RollbackVaultTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tmp(name: String): File = Files.createTempDirectory("safety-vault-$name").toFile()
+
+    private fun tmp(name: String): File = TempSandboxPool.create("safety-vault-$name")
 
     private fun vault(dir: File) = RollbackVault.also { it.install(dir) }
 

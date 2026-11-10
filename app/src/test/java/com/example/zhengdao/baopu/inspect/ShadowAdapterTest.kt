@@ -19,20 +19,25 @@ package com.example.zhengdao.baopu.inspect
 import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.agent.FileShadowSandbox
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ShadowAdapterTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private val now = 1_793_289_600_000L // 2026-10-30 00:00 +08:00（写死：账上的时刻不许随跑漂）
 
-    private fun workspace(): File = Files.createTempDirectory("zd-296-ws-").toFile()
+    private fun workspace(): File = TempSandboxPool.create("zd-296-ws-")
 
-    private fun ledgerRoot(): File = Files.createTempDirectory("zd-296-ledger-").toFile()
+    private fun ledgerRoot(): File = TempSandboxPool.create("zd-296-ledger-")
 
     private fun input(
         ws: File,

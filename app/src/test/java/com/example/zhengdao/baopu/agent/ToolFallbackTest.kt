@@ -16,7 +16,6 @@ import com.example.zhengdao.baopu.DecisionKind
 import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.RiskClass
 import java.io.File
-import kotlin.io.path.createTempDirectory
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,8 +23,14 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ToolFallbackTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private val sid = 7001L
     private val now = 1_760_000_000_000L
@@ -37,7 +42,7 @@ class ToolFallbackTest {
         disabledGroups: Set<ToolGroup> = emptySet(),
         unlocked: Set<ToolGroup> = emptySet(),
     ): ToolRegistry {
-        val root = createTempDirectory("zd-237-").toFile()
+        val root = TempSandboxPool.create("zd-237-")
         val reg = ToolRegistry(InMemoryToolPrefs(initialGroups = disabledGroups))
         BaopuToolCatalog.loadInto(reg) { root }
         if (unlocked.isNotEmpty()) reg.unlockStore().unlock(sid, unlocked)
@@ -610,7 +615,7 @@ class ToolFallbackTest {
         try {
             assertFalse("没装配落点就不落（照 208）", FailureAuditLog.append(row("browser_click")))
             assertTrue(FailureAuditLog.readAll().isEmpty())
-            val root = createTempDirectory("zd-237-ledger-").toFile()
+            val root = TempSandboxPool.create("zd-237-ledger-")
             DecisionLedger.install(root)
             val noEvidence = row("browser_click").copy(evidence = "  ")
             assertFalse("缺证据不落：宁可无账", FailureAuditLog.append(noEvidence))
@@ -625,7 +630,7 @@ class ToolFallbackTest {
     @Test
     fun `226审计_一次最多50行且加载更多`() {
         val previous = DecisionLedger.installedRoot()
-        val root = createTempDirectory("zd-237-ledger-").toFile()
+        val root = TempSandboxPool.create("zd-237-ledger-")
         DecisionLedger.install(root)
         try {
             repeat(60) { i ->

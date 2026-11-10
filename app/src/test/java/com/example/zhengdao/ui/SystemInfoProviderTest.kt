@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 /**
  * node 二进制版本扫描单测（[SystemInfoProvider.scanNodeVersion]）。
@@ -16,9 +18,13 @@ import java.io.File
  * 两段版本号、多余的点、以及跨块边界，都要有确定行为。
  */
 class SystemInfoProviderTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private fun temp(bytes: ByteArray): File =
-        File.createTempFile("node-scan", ".bin").apply { writeBytes(bytes) }
+        File(TempSandboxPool.create("node-scan"), "scan.bin").apply { writeBytes(bytes) }
 
     @Test
     fun `读出完整三段版本号`() {

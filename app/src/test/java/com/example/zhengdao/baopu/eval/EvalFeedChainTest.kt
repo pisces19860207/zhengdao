@@ -42,10 +42,16 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class EvalFeedChainTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private val temp: File = File.createTempFile("zd495f", "").let { it.delete(); it.mkdirs(); it }
+
+    private val temp: File = TempSandboxPool.create("zd495f")
     private val ledgerFile: File = File(temp, "evolution/trigger-ledger.jsonl")
     private val store = TriggerLedgerStore(ledgerFile)
 

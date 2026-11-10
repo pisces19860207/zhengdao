@@ -1,10 +1,10 @@
 {
- "budget": 1000,
- "measured": 908,
- "measuredAt": "2026-11-09",
- "measuredHow": "wt-567（已 rebase 到 origin/main a8523ea4b）：一轮 testDebugUnitTest（909 套件 / 10,495 例 / 0 失败 / 8 跳过）跑完后的 app/build/**/tmp* 目录总数。测试任务开跑前会清空自己的临时区（app/build.gradle.kts 的 tasks.withType<Test>），所以这是**一轮**的量，不是连跑多轮的累加。",
- "perRunResidue": 908,
+ "budget": 424,
+ "measured": 424,
+ "measuredAt": "2026-11-10",
+ "measuredHow": "573（wt-573 @ chore/temp-migrate，基线 origin/main 969d5e897）：把 35 个「手工建临时目录且无 @After」的测试迁到 testkit/TempSandboxPool（底层走 564 的 TempSandbox）后，全量 :app:testDebugUnitTest 连跑两轮；两轮均 913 套件 / 10,534 例 / 0 失败 / 8 跳过，每轮跑完用 check-test-temp.py --list 数 app/build/**/tmp* 目录数，读数 424 / 424（第二轮增量 0）。Test 任务 doFirst 会清空 java.io.tmpdir 区，故读数代表一轮的量，不是连跑多轮的累加。",
+ "perRunResidue": 424,
  "osTempGrowthPerRun": 0,
  "goal": 50,
- "note": "存量 136 个测试文件还没迁到 testkit/TempSandbox（清单见 check-test-temp.py --scan-tests）：一轮单测仍留下 908 个目录。系统临时区增量为 0（java.io.tmpdir 已钉进 app/build，且开跑前清空）。迁移一批就把本值往下压一次：只降不升，最终收口 50。"
+ "note": "口径校准（573）：--scan-tests 实数 139 个（派工单写 138，为 11-09 时点）；逐文件复核后真正「手工建目录且零清理痕迹」的是 35 个（已迁），其余 104 个是 JUnit TemporaryFolder @Rule（after() 自带递归删除、不产生残留），按 564 判据②列不改并逐条写明清理方式（见 证道设计报告/附件-573/列不改-TemporaryFolder-104条.md）。迁移后 java.io.tmpdir 钉住的 testDebugUnitTest 里已无本批 35 个文件的前缀；剩余 424 个目录来自清单外的两类写法：File(\"build/tmp/...\") 相对路径（repair408-* / repair419-* / health291-* / 511-* …），以及另一批有清理痕迹却仍留沙盒的测试（opinion-wiring* / zd289-* / baopu-242-ledger* …）。这两类不在 573 清单口径内 ⇒ 水位按只降不升从 1000 收到 424，未达 goal=50；要继续往下压须另立单扩清单口径。系统临时区本仓前缀目录 4002→4002（增量 0）。"
 }

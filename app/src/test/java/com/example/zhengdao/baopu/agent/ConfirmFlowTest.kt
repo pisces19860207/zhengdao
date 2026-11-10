@@ -14,7 +14,6 @@ import com.example.zhengdao.baopu.inspect.DeviationKind
 import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.ui.baopu.BaopuConfirmRestore
 import java.io.File
-import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Job
@@ -26,6 +25,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 /**
  * 确认制内核测试（J1–J5 ＋ pending 落库 + 恢复执行）。
@@ -34,9 +35,13 @@ import org.junit.Test
  * 不 mock 执行链——「批准后文件真的被改」就是要跑到底才叫验过。
  */
 class ConfirmFlowTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private fun tmp(name: String): File =
-        Files.createTempDirectory("baopu-confirm-$name").toFile()
+        TempSandboxPool.create("baopu-confirm-$name")
 
     private fun sha256(f: File): String =
         MessageDigest.getInstance("SHA-256").digest(f.readBytes()).joinToString("") { "%02x".format(it) }
@@ -618,7 +623,7 @@ class ConfirmFlowTest {
             CardDisposition.resetForTest()
             DeviationWiring.resetForTest()
             // 卸账＝挂一个空目录（本仓的既有口径：DeviationWiringSilentTest 同款）
-            DeviationLedger.install(Files.createTempDirectory("baopu-415-detach").toFile())
+            DeviationLedger.install(TempSandboxPool.create("baopu-415-detach"))
         }
     }
 

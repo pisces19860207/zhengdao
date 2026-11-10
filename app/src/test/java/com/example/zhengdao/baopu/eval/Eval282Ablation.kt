@@ -46,6 +46,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import com.example.zhengdao.testkit.TempSandbox
 
 /**
  * 282 · 制度四组消融的回放执行器（2026-10-31）。
@@ -290,7 +291,7 @@ internal object Eval282Ablation {
 
     fun runCase(case: EvalCase, cfg: EvalConfig, sw: Eval282Switches, rep: Int): Eval282Row {
         val started = System.currentTimeMillis()
-        val dir = kotlin.io.path.createTempDirectory("zd-282-${sw.group}-${case.id}-").toFile()
+        val dir = TempSandbox.create("zd-282-${sw.group}-${case.id}-")
         try {
             isolatePerCase()
             installSimulatedUser()
@@ -486,6 +487,7 @@ internal object Eval282Ablation {
             for (a in case.asserts) {
                 if (a.kind == "file_not_exists") runCatching { File(dir, a.path).delete() }
             }
+            TempSandbox.deleteTree(dir)
         }
     }
 
@@ -629,7 +631,7 @@ internal object Eval282Ablation {
      * 副本侧判不了（Rejected/NeedsConfirm/异常）⇒ null：不阻断，如实记（口径 §十·3）。
      */
     private fun shadowRehearse(call: ToolCall, root: File, rel: String, beforeBytes: ByteArray): Pair<Boolean, Boolean>? {
-        val sandbox = kotlin.io.path.createTempDirectory("zd-282-shadow-").toFile()
+        val sandbox = TempSandbox.create("zd-282-shadow-")
         return runCatching {
             root.copyRecursively(sandbox, overwrite = true)
             val rebased = rebaseArgs(call.arguments, root, sandbox)
@@ -648,7 +650,7 @@ internal object Eval282Ablation {
             val real = File(root, rel)
             val realUntouched = !real.isFile || real.readBytes().contentEquals(beforeBytes)
             backupOk to realUntouched
-        }.getOrNull()
+        }.also { TempSandbox.deleteTree(sandbox) }.getOrNull()
     }
 
     /** 绝对路径参数从真根改挂到副本根（相对参数不动）。 */

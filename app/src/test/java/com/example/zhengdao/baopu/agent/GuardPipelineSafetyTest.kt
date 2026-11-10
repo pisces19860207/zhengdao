@@ -10,8 +10,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.Executors
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 /**
  * 504：监督缝**在管线上**的钉子——
@@ -21,6 +22,10 @@ import java.util.concurrent.Executors
  * 拦截拒绝（Rejected）不进 afterRun——没执行的动作不是"做过的事"，账上不冒行。
  */
 class GuardPipelineSafetyTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     /** 记账用假缝（三口都收，intercept 可拨）。 */
     private class RecordingHooks : SafetyHooks {
@@ -54,7 +59,7 @@ class GuardPipelineSafetyTest {
         }
     }
 
-    private fun tmp(): File = Files.createTempDirectory("safety-pipeline").toFile()
+    private fun tmp(): File = TempSandboxPool.create("safety-pipeline")
 
     private fun call(name: String, path: String): ToolCall =
         ToolCall("c-1", name, JSONObject().put("path", path))

@@ -10,6 +10,7 @@
 // 取数那一段（`PatrolSources`）的 SQL 只能真机验，交付报告里如实标。
 package com.example.zhengdao.baopu.inspect
 
+import java.io.File
 import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionGroup
 import com.example.zhengdao.baopu.DecisionKind
@@ -18,8 +19,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class InspectChecksTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private val now = 1_760_000_000_000L
     private val min = 60_000L
@@ -469,7 +476,7 @@ class InspectChecksTest {
 
     @Test
     fun `落盘_巡按台账写一行读一行`() {
-        val root = java.nio.file.Files.createTempDirectory("zd-239-patrol-").toFile()
+        val root = TempSandboxPool.create("zd-239-patrol-")
         val report = Inspector.report(
             listOf(
                 InspectFinding(

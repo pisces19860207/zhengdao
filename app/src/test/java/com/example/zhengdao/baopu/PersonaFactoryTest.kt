@@ -5,13 +5,18 @@
 package com.example.zhengdao.baopu
 
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class PersonaFactoryTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private fun factoryFile(): File = PersonaFactory.sourceFile()
 
@@ -32,7 +37,7 @@ class PersonaFactoryTest {
     @Test
     fun `判据_多次改动人设之后出厂文件仍然一字不差`() {
         // 模拟"用户/模型改了很多次"：每次往 active 里写不同的东西
-        val root = Files.createTempDirectory("factory-immutable").toFile()
+        val root = TempSandboxPool.create("factory-immutable")
         val files = PersonaFiles(globalRoot = root, projectRoot = root, factoryProjectText = FACTORY)
         (1..5).forEach { n ->
             val cur = files.read(PersonaLayer.C_PROJECT).orEmpty()
@@ -48,7 +53,7 @@ class PersonaFactoryTest {
 
     @Test
     fun `判据_恢复出厂也不写出厂文件`() {
-        val root = Files.createTempDirectory("factory-restore").toFile()
+        val root = TempSandboxPool.create("factory-restore")
         val files = PersonaFiles(globalRoot = root, projectRoot = root, factoryProjectText = FACTORY)
         val before = PersonaFactory.sha256Hex(factoryBytes())
         assertTrue(files.restoreFactory())

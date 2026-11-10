@@ -16,8 +16,14 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class HealthCheckTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private val srcRoot = File("src/main/java/com/example/zhengdao/baopu/inspect")
 
@@ -399,7 +405,7 @@ class HealthCheckTest {
 
     @Test
     fun `产出数三态_没有是零_读不动是空`() {
-        val dir = File("build/tmp/health291").apply { mkdirs() }
+        val dir = TempSandboxPool.create("health291")
         assertEquals(0, HealthSources.outputLines(dir, "不存在.jsonl"))
         val f = File(dir, "有.jsonl").apply { writeText("{\"a\":1}\n{\"a\":2}\n") }
         assertEquals(2, HealthSources.outputLines(dir, f.name))

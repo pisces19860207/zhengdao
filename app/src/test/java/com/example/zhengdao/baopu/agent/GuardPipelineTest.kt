@@ -15,13 +15,18 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.Executors
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class GuardPipelineTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private fun tmp(name: String): File =
-        Files.createTempDirectory("baopu-pipeline-$name").toFile()
+        TempSandboxPool.create("baopu-pipeline-$name")
 
     private fun registry(root: File): ToolRegistry = ToolRegistry().apply {
         register(ReadFileTool.spec())

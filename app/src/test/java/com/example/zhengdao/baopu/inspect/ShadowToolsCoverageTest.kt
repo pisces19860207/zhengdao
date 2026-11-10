@@ -15,21 +15,26 @@ import com.example.zhengdao.baopu.RiskClass
 import com.example.zhengdao.baopu.agent.FileShadowSandbox
 import java.io.File
 import java.nio.charset.Charset
-import java.nio.file.Files
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class ShadowToolsCoverageTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     private val gb18030: Charset = Charset.forName("GB18030")
 
-    private fun workspace(): File = Files.createTempDirectory("zd-306-ws-").toFile()
+    private fun workspace(): File = TempSandboxPool.create("zd-306-ws-")
 
-    private fun ledgerRoot(): File = Files.createTempDirectory("zd-306-ledger-").toFile()
+    private fun ledgerRoot(): File = TempSandboxPool.create("zd-306-ledger-")
 
     private fun input(
         ws: File,

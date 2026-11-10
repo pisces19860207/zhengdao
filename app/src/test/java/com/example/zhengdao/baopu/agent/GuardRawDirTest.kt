@@ -21,14 +21,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.Executors
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class GuardRawDirTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
+
 
     /** 临时工作区 ＋ 「资料库/原始」原件区（与生产同构：raw 在 root 之内）。 */
     private class Fixture(name: String) {
-        val root: File = Files.createTempDirectory("baopu-raw-$name").toFile()
+        val root: File = TempSandboxPool.create("baopu-raw-$name")
         val raw: File = File(root, "资料库/原始").apply { mkdirs() }
         val pipeline: GuardPipeline
 

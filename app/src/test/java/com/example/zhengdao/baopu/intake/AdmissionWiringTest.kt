@@ -6,15 +6,20 @@
 package com.example.zhengdao.baopu.intake
 
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.zhengdao.testkit.TempSandboxPool
+import org.junit.After
 
 class AdmissionWiringTest {
+    // 573：临时目录统一走 testkit/TempSandbox（经 TempSandboxPool 登记，@After 收口）；断言零改动。
+    @After
+    fun zdCleanSandboxes() = TempSandboxPool.clean()
 
-    private fun tmp(name: String): File = Files.createTempDirectory("baopu-427-admission-$name").toFile()
+
+    private fun tmp(name: String): File = TempSandboxPool.create("baopu-427-admission-$name")
 
     @Test
     fun `判据一_外部执行体首调_未登记才走_登记落盘`() {
