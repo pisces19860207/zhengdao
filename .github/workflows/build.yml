@@ -310,7 +310,9 @@ jobs:
         run: |
           set -euo pipefail
           SHA8="${GITHUB_SHA:0:8}"
-          if [ -n "$(git status --porcelain)" ]; then
+          # 只认受跟踪文件的改动：本步之前刚把产物 cp 进 apk-release/ 等未跟踪目录，
+          # 裸 `git status --porcelain` 会把自己产出的目录算成"脏"，正式 tag 就永远发不出去（561 修正）。
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             SHA8="$SHA8-dirty"
             echo "::warning::工作区有未提交改动：边车短号带 -dirty，release job 的闸会拒绝发布（561）"
           fi
