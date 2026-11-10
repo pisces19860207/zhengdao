@@ -321,6 +321,22 @@ class MainActivity : ComponentActivity() {
         if (!isTaskRoot) {
             // 恢复出来的副本同样不重放外部请求（真正的宿主是栈里那份主页）。
             handleBaopuShortcut(intent, allowIncoming = savedInstanceState == null)
+
+        // v2.2.6 P0（冷启闪退·第二修）：**引擎必须在进组合之前建好**。
+        //
+        // 为什么：引擎里十几个 `mutableStateOf`（roundArtifacts / step / notice / …）在**构造那一刻**
+        // 绑定当时的快照 id。`Scaffold` 的 SubcomposeLayout 会在 **measure 阶段**起一层子组合，
+        // 若引擎是在那层子组合里被首次取用（BaopuChatController 懒取），它的快照 id 就比主组合晚，
+        // 主组合稍后读 `engine.roundArtifacts.value` 立刻抛
+        // `IllegalStateException: Reading a state that was created after the snapshot was taken`
+        // ⇒ 冷启闪退（v2.2.4/v2.2.5 真机复现；retrace 已确认到 BaopuChatController.getRoundArtifacts）。
+        // 在 setContent 之前、主线程上把它建好，这些状态就都落在"已应用的全局快照"里，跨线程读写都安全。
+        runCatching {
+            com.example.zhengdao.baopu.BaopuRuntime.engine(this)
+            com.example.zhengdao.core.RunLog.log("启动：引擎在主组合之前预建（v2.2.6 冷启修复）")
+        }.onFailure {
+            com.example.zhengdao.core.RunLog.log("启动：引擎预建失败，退回懒建（${it.javaClass.simpleName}: ${it.message}）")
+        }
             finish()
             return
         }
