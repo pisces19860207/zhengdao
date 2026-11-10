@@ -384,12 +384,16 @@ class EvolutionDepthGateTest {
         // 蓝总管验收接管（2026-11-07）：只改名册，语义仍是「新增调用方必须先改这格再合」。
         // 第五百一十七批（生产调用点）：`evolution/EvolutionWiring.kt` 在提案进入判定前调
         // [EvolutionDepth.adjudicate]（§一①），同轮 FAIL 当场降档（§一③）——进名册。
+        // 第五百六十八批 A（低风险四域）：`evolution/lowrisk/LowRiskGate.kt` 是四域共用的
+        // 准入门，读一次深度档做"改结构类候选不到深档不做"的收紧（只收紧不放松，
+        // 不定档不落账——定档仍在 EvolutionWiring 的链里）——按「新增必须先改这格再合」进名册。
         assertEquals(
             "深度裁定的生产调用方名册（517 起进化链接线：EvolutionWiring 定档；新增必须先改这格再合）",
             listOf(
                 "baopu/consequence/ConsequenceLedger.kt",
                 "baopu/consequence/EvolutionDepth.kt",
                 "baopu/evolution/EvolutionWiring.kt",
+                "baopu/evolution/lowrisk/LowRiskGate.kt",
             ),
             callers.sorted(),
         )

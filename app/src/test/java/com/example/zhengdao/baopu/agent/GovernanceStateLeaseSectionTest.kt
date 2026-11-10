@@ -118,8 +118,13 @@ class GovernanceStateLeaseSectionTest {
             "\"skip\":{\"d\":6,\"rate\":\"unknown\",\"n\":1}," +
             "\"intervention\":{\"d\":3,\"rate\":\"unknown\",\"n\":2}}"
     private val goldenCards = "{\"pass\":2,\"compress\":1,\"card\":1}"
+    // 第五百六十八批 A：登记表按 473 自己的扩法补了 prompt_tail（缺省灰度）⇒ gray 段
+    // 多一行；gray 的 JSON 键序是 org.json HashMap 迭代序（Java8 spread，String 哈希规范
+    // 固定 ⇒ 可推算），新键落在 wish 与 event_trigger 之间——金样例按登记表生长更新，
+    // 其余字节照旧逐字节钉死。
     private val goldenGray =
         "{\"wish\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"event_trigger\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
             "\"memory_import\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"orchestration\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
