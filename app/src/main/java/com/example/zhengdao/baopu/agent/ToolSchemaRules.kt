@@ -133,6 +133,9 @@ internal object ToolSchemaRules {
         "governance_state" to "无参数：八段治理读数一把出（527 立六段，482 加 goal，558 加 lease），没有可填的东西（GovernanceStateTool）",
         // 第五百四十一批：看待办不吃参数——读的就是那一本手账（TodoListTool）
         "todo_list" to "无参数：整本手账一起读（摘要＋状态＋右相结论），没有可填的东西（TodoListTool，541 批）",
+        // 第五百四十四批：看账只带一个可选参数（includeArchived 默认 false ＝ 只看账面）
+        "ledger_list" to "唯一参数 includeArchived 可选：默认 false＝只看还露面的条目，归档的要用 true 才一起给" +
+            "（LedgerListTool，544 批）",
     )
 
     /**

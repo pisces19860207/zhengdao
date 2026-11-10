@@ -3430,6 +3430,26 @@ internal class BaopuChatController(context: Context) {
         restoreConfirmCard()
     }
 
+    /**
+     * 544：把账本里的**来源号**解析成「哪条消息」——只读一条 SELECT，解析不出就回 null（不猜）。
+     *
+     * 两个输入来自 `LedgerBoardRules.parseJump`：纯数字 ⇒ `(0, 消息id)`（会话按消息反查）；
+     * `<会话id>:<消息id>` ⇒ 两段都给（还要校验那条消息真在那个会话里——手改账本跳串的要挡住）。
+     *
+     * 为什么放在控制器而不是账本包：查库要 DB 句柄，而账本包是纯 IO 文件层（不认 Android、
+     * 不认 SQLite）。这一路**只读**，不动账、不改会话，跳转本身仍由屏幕层调 [openSession]。
+     */
+    fun resolveJump(target: Pair<Long, Long>): Pair<Long, Long>? = db.read { d ->
+        d.rawQuery("SELECT session_id FROM message WHERE id = ?", arrayOf(target.second.toString())).use { c ->
+            if (!c.moveToFirst()) {
+                null
+            } else {
+                val sid = c.getLong(0)
+                if (target.first <= 0L || target.first == sid) sid to target.second else null
+            }
+        }
+    }
+
     // ── 单活跃门的「先问人」（第二十九批 B 段）─────────────────────────────
     //
     // 引擎那一侧一个字没改（`baopu/agent/**` 本批禁改，[com.example.zhengdao.baopu.agent.ActiveSessionGate]

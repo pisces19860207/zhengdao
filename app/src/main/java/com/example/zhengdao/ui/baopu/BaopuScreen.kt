@@ -264,6 +264,10 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     var showDecisionCenter by remember { mutableStateOf(false) }
     // 第三百二十二批：治理中心（抽屉「定时任务」下面那一行进的只读浮层：读数／执行体／小黑板）。
     var showGovernanceCenter by remember { mutableStateOf(false) }
+    // 第五百四十四批（第二段）：账本一行点「跳回原话」⇒ 记下目标，等消息刷回来再滚到那一条。
+    // 为什么不在点击那一下直接滚：openSession 之后消息是异步读回来的（refresh 在协程里），
+    // 此刻列表还是空的、滚不动；所以这里只记目标，滚动交给下面那个 LaunchedEffect。
+    var pendingJump by remember { mutableStateOf<LedgerJump?>(null) }
     // 朗读（2026-10-18）：系统 TTS 跟着页面生命走 —— 离开抱朴页就 shutdown，不许后台接着念。
     // 引擎是异步就绪的，首次点击由 BaopuSpeaker 自己排队（见该类 KDoc 第 1 条）。
     val speaker = remember { BaopuSpeaker(context) }
@@ -1002,6 +1006,25 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
             val listState = rememberLazyListState()
             var autoScroll by remember { mutableStateOf(true) }
             var hasNewContent by remember { mutableStateOf(false) }
+            // 544 第二段：账本「跳回原话」的落地——消息刷回来之后滚到那一条（找不到就放手）。
+            // 判据（哪一条消息在第几个 item）在 LedgerBoardRules.messageItemIndex，与列表同一套分组。
+            LaunchedEffect(pendingJump, controller.sessionId, controller.messages) {
+                val jump = pendingJump ?: return@LaunchedEffect
+                if (controller.sessionId != jump.sessionId) return@LaunchedEffect
+                val idx = LedgerBoardRules.messageItemIndex(
+                    messages = controller.messages,
+                    steps = controller.stepRows,
+                    awaitConfirmTool = controller.confirmCard?.tool,
+                    messageId = jump.messageId,
+                )
+                if (idx >= 0) {
+                    listState.scrollToItem(idx)
+                    pendingJump = null
+                } else if (controller.messages.isNotEmpty()) {
+                    // 那一条已经不在这个会话里（被重来/删掉）⇒ 停在会话里，不再反复找
+                    pendingJump = null
+                }
+            }
             // 2026-10-18 真机：输入框被键盘顶上去了，但**正文没有跟着**——根布局让出键盘高度后
             // 列表视口变矮、滚动位置不变 ⇒ 最下面那条被挡在键盘后面。
             // 这里盯视口高度：一变矮（键盘弹出/旋转）且用户本来就贴着底部，就把列表重新贴回底部。
@@ -1554,6 +1577,21 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                 GovernanceCenterScreen(
                     controller = controller,
                     onDismiss = { showGovernanceCenter = false },
+                    // 544 第二段：收屏 → 切会话 → 记目标（滚动在消息刷回来之后做）。
+                    // busy 时 openSession 会静默不动（全局单活跃门）⇒ 先如实说一句，不假装跳了。
+                    onJumpToSource = { jump ->
+                        if (controller.busy) {
+                            Toast.makeText(
+                                context,
+                                R.string.gc_ledger_jump_busy,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            showGovernanceCenter = false
+                            if (controller.sessionId != jump.sessionId) controller.openSession(jump.sessionId)
+                            pendingJump = jump
+                        }
+                    },
                 )
             }
             // 高风险采纳的二次确认层（验收 #8：无确认不可采纳；完整前后对比）

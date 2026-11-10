@@ -112,4 +112,24 @@
     <string name="gc_audit_fail">导出失败：%1$s</string>
     <string name="gc_audit_ablation_unset">消融登记：未建立（559）</string>
     <string name="gc_audit_ablation_set">消融登记：已建立（明细在同名 .json）</string>
+    <!-- 544 项目账本三件 -->
+    <string name="baopu_tool_ledger_add">记一笔</string>
+    <string name="baopu_tool_ledger_add_desc">在项目账上记一件事（工作区 .zd-ledger.jsonl）；一句话最多 40 字，且必须带来源凭证号，没有来源拒建。</string>
+    <string name="baopu_tool_ledger_status">改账上状态</string>
+    <string name="baopu_tool_ledger_status_desc">改一条的状态（在飞/待验收/冻结/撤）；标「已收」会送右相验收，判 PASS 才落已收，否则停待验收。归档只有用户能点。</string>
+    <string name="baopu_tool_ledger_list">看账</string>
+    <string name="baopu_tool_ledger_list_desc">读模型自己的项目账（一句话标题＋五态＋右相结论）。只读；归档的默认不露面。</string>
+    <!-- 544 第二段 治理中心「账本」块 -->
+    <string name="gc_ledger_hint">账上每条只有一句话；状态归模型与右相改，这里只看见。带来源的那几条点一下能跳回原话。</string>
+    <string name="gc_ledger_empty">账上还没有条目</string>
+    <string name="gc_ledger_scope_live">账面</string>
+    <string name="gc_ledger_scope_all">全部</string>
+    <string name="gc_ledger_jump">跳回原话 ›</string>
+    <string name="gc_ledger_jump_busy">还有会话在跑，等它停下来再跳（不抢现场）</string>
+    <string name="gc_ledger_group_flying">在飞</string>
+    <string name="gc_ledger_group_pending">待验收</string>
+    <string name="gc_ledger_group_accepted">已收</string>
+    <string name="gc_ledger_group_frozen">冻结</string>
+    <string name="gc_ledger_group_withdrawn">撤</string>
+    <string name="gc_ledger_group_archived">已归档</string>
 </resources>

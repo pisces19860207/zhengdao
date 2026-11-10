@@ -39,7 +39,8 @@ class RiskMatrixTest {
         // 491 备份/还原（76 → 80）；502 MCP 自配五件（80 → 85）；527 治理出口（85 → 86）；
         // 322 模型小黑板两件（86 → 88：board_read R0 / board_write R1）
         // 541 待办中心三件（88 → 91：todo_list R0 / todo_add R1 / todo_mark_done R1）
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 91, names.size)
+        // 544 项目账本三件（91 → 94：ledger_list R0 / ledger_add R1 / ledger_status R1）
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 94, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),

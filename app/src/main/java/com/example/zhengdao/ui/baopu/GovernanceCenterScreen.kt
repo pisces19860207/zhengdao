@@ -31,6 +31,14 @@
 // 于是本屏的人按写口从两个变成**三个**：清空小黑板 / 清空今天干过什么 / 确认删一条待办。
 // 三个都由**人**按，模型一个都够不着（541 判据⑤：`todo_confirm` 不是工具）。
 //
+// 第五百四十四批（第二段，2026-11-09）追加第 6 块「账本」（`feat/project-ledger` 第二笔）：
+//   · 收起态一行 `账本 · 在飞 N / 待验收 M / 已收 K`（[LedgerBoardRules.header]）；
+//   · 点开＝分组（在飞＞待验收＞已收＞冻结＞撤），每组标题可再折；行里**只有一句话标题**；
+//   · 归档的默认不露，右上角切「全部」才多出末尾「已归档」那一组（判据⑤）；
+//   · 点一条能跳回来源会话那条消息（**只有来源号解析得出真消息才可点**，判据见 [LedgerRowView]）；
+//   · **没有编辑按钮**：改状态归模型与右相，本屏只画、只跳。
+//   本块与「待办」块**共用同一个展开槽位**（`TodoBoardRules.toggle`，判据②：别各搞一套）。
+//   本屏的人按写口因此**不变**——账本块一个写口都没有（归档只在落盘口，界面上还没接）。
 // 第五百六十一批（2026-11-09）追加第 7 块「开发核对」：一行摘要 ＋「导出核对包」。
 // 块本体在 `GovernanceCenterAudit.kt`（544/558/561 三单同屏在飞，块放独立文件把合并面压到最小）；
 // 屏里只补快照一个字段＋LazyColumn 一行。三条口径落在判据层：
@@ -93,6 +101,10 @@ import com.example.zhengdao.baopu.agent.BoardStore
 import com.example.zhengdao.baopu.agent.GovernanceStateTool
 import com.example.zhengdao.baopu.consequence.CredentialStore
 import com.example.zhengdao.baopu.consequence.IdentityStore
+import com.example.zhengdao.baopu.ledger.LedgerCounts
+import com.example.zhengdao.baopu.ledger.LedgerRules
+import com.example.zhengdao.baopu.ledger.LedgerState
+import com.example.zhengdao.baopu.ledger.LedgerStore
 import com.example.zhengdao.baopu.todo.TodoActor
 import com.example.zhengdao.baopu.todo.TodoCounts
 import com.example.zhengdao.baopu.todo.TodoRules
@@ -137,6 +149,13 @@ private data class GovSnapshot(
     val todoRows: List<TodoRowView> = emptyList(),
     /** 收起态那一行要的两个数（[TodoBoardRules.header] 是唯一渲染口）。 */
     val todoCounts: TodoCounts = TodoCounts(todo = 0, doing = 0, complete = 0),
+    /**
+     * 账本块的行（544 第二段）：**已经过判据层的四字段行**（只有 id/标题/状态/来源跳转）。
+     * 归档的也在里面（`archived` 标记），"默认不露"由 [LedgerBoardRules.groups] 决定。
+     */
+    val ledgerRows: List<LedgerRowView> = emptyList(),
+    /** 收起态那一行要的三个数（[LedgerBoardRules.header] 是唯一渲染口）。 */
+    val ledgerCounts: LedgerCounts = LedgerCounts(0, 0, 0, 0, 0, 0),
     /** 首次读盘还没回来：与"读出来是空的"分开（同抽屉那批 264 的口径）。 */
     val ready: Boolean = false,
     /**
@@ -150,11 +169,14 @@ private data class GovSnapshot(
  * 治理中心（只读一屏）。
  *
  * @param onDismiss 关闭（顶部 ←／系统返回）
+ * @param onJumpToSource 544 第二段：从账本一行跳回它来自的那条消息（收本屏＋切会话＋滚到那一条，
+ *   三件都由屏幕层做；本屏只管把目标传出去）
  */
 @Composable
 internal fun GovernanceCenterScreen(
     controller: BaopuChatController,
     onDismiss: () -> Unit,
+    onJumpToSource: (LedgerJump) -> Unit = {},
 ) {
     val context = LocalContext.current
     // 协程作用域必须装崩溃处理器（本仓门禁：UI 侧不许裸 rememberCoroutineScope）
@@ -166,11 +188,17 @@ internal fun GovernanceCenterScreen(
     var confirmingActivityClear by remember { mutableStateOf(false) }
     // 565：哪一块是展开的（null＝全收起）。状态机在判据层（TodoBoardRules.toggle），这里只存返回值。
     var expandedBlock by remember { mutableStateOf<String?>(null) }
+    // 544：账本块「账面／全部」范围（默认账面＝归档的不露；判据⑤）。
+    var ledgerAll by remember { mutableStateOf(false) }
 
     // 读盘全在 IO 上（264 的口径：抽屉/面板首帧不许占主线程），读回来再一次性换快照。
     LaunchedEffect(tick) {
         snapshot = withContext(Dispatchers.IO) {
-            readSnapshot(context, controller.workspaceRoot)
+            readSnapshot(context, controller.workspaceRoot) { ref ->
+                // 来源号 → 真消息：解析不出 ⇒ null ⇒ 那一行不可点（判据：没有可跳的来源就不给跳）
+                val parsed = LedgerBoardRules.parseJump(ref) ?: return@readSnapshot null
+                controller.resolveJump(parsed)?.let { (sid, mid) -> LedgerJump(sid, mid) }
+            }
         }
     }
 
@@ -178,12 +206,18 @@ internal fun GovernanceCenterScreen(
         snapshot = snapshot,
         wsRoot = controller.workspaceRoot,
         expandedBlock = expandedBlock,
+        ledgerAll = ledgerAll,
         onDismiss = onDismiss,
         onClearBoard = { confirmingClear = true },
         onClearActivity = { confirmingActivityClear = true },
         onToggleTodo = {
             expandedBlock = TodoBoardRules.toggle(expandedBlock, TodoBoardRules.BLOCK_TODO)
         },
+        onToggleLedger = {
+            expandedBlock = TodoBoardRules.toggle(expandedBlock, LedgerBoardRules.BLOCK_LEDGER)
+        },
+        onToggleLedgerScope = { ledgerAll = !ledgerAll },
+        onJumpToSource = onJumpToSource,
         onConfirmTodo = { id ->
             launchTodoConfirm(scope, controller.workspaceRoot, id) { tick++ }
         },
@@ -218,10 +252,14 @@ private fun GovFrame(
     snapshot: GovSnapshot,
     wsRoot: File,
     expandedBlock: String?,
+    ledgerAll: Boolean,
     onDismiss: () -> Unit,
     onClearBoard: () -> Unit,
     onClearActivity: () -> Unit,
     onToggleTodo: () -> Unit,
+    onToggleLedger: () -> Unit,
+    onToggleLedgerScope: () -> Unit,
+    onJumpToSource: (LedgerJump) -> Unit,
     onConfirmTodo: (String) -> Unit,
 ) {
     Dialog(
@@ -248,6 +286,17 @@ private fun GovFrame(
                             expanded = expandedBlock == TodoBoardRules.BLOCK_TODO,
                             onToggle = onToggleTodo,
                             onConfirm = onConfirmTodo,
+                        )
+                    }
+                    item { Spacer(Modifier.height(14.dp)) }
+                    item {
+                        LedgerSection(
+                            snapshot = snapshot,
+                            expanded = expandedBlock == LedgerBoardRules.BLOCK_LEDGER,
+                            includeArchived = ledgerAll,
+                            onToggle = onToggleLedger,
+                            onToggleScope = onToggleLedgerScope,
+                            onJump = onJumpToSource,
                         )
                     }
                     // 「开发核对」（561）：块本体在 GovernanceCenterAudit.kt；屏内块、无抽屉入口。
@@ -294,7 +343,11 @@ private fun GovClearDialogs(
 }
 
 /** 一次读全（IO 上跑；每一路都自己兜住，缺哪路由界面如实说读不到）。 */
-private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
+private fun readSnapshot(
+    context: Context,
+    wsRoot: File,
+    resolveJump: (String) -> LedgerJump? = { null },
+): GovSnapshot {
     val nowMs = System.currentTimeMillis()
     // ① 读数：**唯一取数路**——527 出口。不在这里算第二遍（判据②）。
     val root = runCatching {
@@ -330,6 +383,9 @@ private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
             BuildAuditPack.deadCandidateCount(),
         )
     }.getOrNull()
+    // ⑥ 账本（544 第二段）：同一房型——读不出 ⇒ 空（"还没有账"与"读不出"在界面上是同一句
+    // "账上还没有条目"；账本不是读数，读不出时它不是"账不实"）。
+    val ledgerItems = runCatching { LedgerStore.items(wsRoot) }.getOrDefault(emptyList())
     return GovSnapshot(
         root = root,
         credentialCount = creds,
@@ -346,6 +402,9 @@ private fun readSnapshot(context: Context, wsRoot: File): GovSnapshot {
         todoRows = TodoBoardRules.rows(todoItems),
         todoCounts = TodoRules.counts(todoItems),
         auditSummary = auditSummary,
+        // ⑥ 账本（544 第二段）：账本 → 四字段行（判据层）＋ 收起态三个数。本屏不筛、不拼。
+        ledgerRows = LedgerBoardRules.rows(ledgerItems, resolveJump),
+        ledgerCounts = LedgerRules.counts(ledgerItems),
         ready = true,
     )
 }
@@ -877,6 +936,183 @@ private fun todoStateLabel(state: TodoState): String = when (state) {
     TodoState.TODO -> stringResource(R.string.gc_todo_state_todo)
     TodoState.MODEL_DONE -> stringResource(R.string.gc_todo_state_done)
     TodoState.COMPLETE -> stringResource(R.string.gc_todo_state_complete)
+}
+
+// ── 第 6 块：账本（544 第二段）─────────────────────────────────────────────
+//
+// 三条口径（判据建在上面）：
+// 1. **只画不算**：那一行来自 [LedgerBoardRules.header]，行来自 [LedgerBoardRules.rows]，
+//    分组与"归档露不露面"在 [LedgerBoardRules.groups]。本屏一个判断都不加（判据③/④/⑤）；
+// 2. **只跳不改**：点一行＝把来源消息交出去（[LedgerRowView.canJump] 为真才可点）；
+//    本块**没有编辑按钮**——改状态归模型与右相（用户口径「不做编辑按钮」）；
+// 3. **与待办块共用展开槽位**：`expandedBlock` 是屏幕层唯一的一个 `String?`，
+//    切换仍是 [TodoBoardRules.toggle]（判据②："别各搞一套"）。
+
+/** 账本块（收起态一行 ＋ 展开态分组）。 */
+@Composable
+private fun LedgerSection(
+    snapshot: GovSnapshot,
+    expanded: Boolean,
+    includeArchived: Boolean,
+    onToggle: () -> Unit,
+    onToggleScope: () -> Unit,
+    onJump: (LedgerJump) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ShapeCard,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            LedgerHeaderLine(
+                counts = snapshot.ledgerCounts,
+                expanded = expanded,
+                includeArchived = includeArchived,
+                onToggle = onToggle,
+                onToggleScope = onToggleScope,
+            )
+            if (expanded) LedgerBody(snapshot.ledgerRows, includeArchived, onJump)
+        }
+    }
+}
+
+/** 收起态那一行（整行可点：点开 / 再点收回）；右侧「账面／全部」只在展开时出现。 */
+@Composable
+private fun LedgerHeaderLine(
+    counts: LedgerCounts,
+    expanded: Boolean,
+    includeArchived: Boolean,
+    onToggle: () -> Unit,
+    onToggleScope: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = LedgerBoardRules.header(counts),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (expanded) {
+            TextButton(onClick = onToggleScope, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(
+                    text = stringResource(
+                        if (includeArchived) R.string.gc_ledger_scope_all else R.string.gc_ledger_scope_live,
+                    ),
+                )
+            }
+        }
+        Text(
+            text = stringResource(
+                if (expanded) R.string.gc_todo_collapse else R.string.gc_todo_expand,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 展开态：一句说明 ＋ 分组（每组标题可再折）；一条都没有就如实说"账上还没有条目"。 */
+@Composable
+private fun LedgerBody(
+    rows: List<LedgerRowView>,
+    includeArchived: Boolean,
+    onJump: (LedgerJump) -> Unit,
+) {
+    // 哪些组是折起来的（默认全展）。只在展开态里活着，收起再展开回到全展——不做持久化。
+    var folded by remember { mutableStateOf(setOf<String>()) }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Text(
+        text = stringResource(R.string.gc_ledger_hint),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
+    )
+    val groups = LedgerBoardRules.groups(rows, includeArchived)
+    if (groups.isEmpty()) {
+        Text(
+            text = stringResource(R.string.gc_ledger_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 8.dp),
+        )
+        return
+    }
+    groups.forEach { group ->
+        LedgerGroupHeader(
+            group = group,
+            folded = group.key in folded,
+            onToggle = {
+                folded = if (group.key in folded) folded - group.key else folded + group.key
+            },
+        )
+        if (group.key !in folded) {
+            group.rows.forEach { row -> LedgerLine(row, onJump) }
+        }
+    }
+}
+
+/** 组标题（`在飞 3` ＋ 折/展）：点一下只折这一组，别的组不动。 */
+@Composable
+private fun LedgerGroupHeader(group: LedgerGroupView, folded: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = ledgerGroupLabel(group.key) + " " + group.rows.size,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = stringResource(if (folded) R.string.gc_todo_expand else R.string.gc_todo_collapse),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 一行：**只有那句话**（判据③）。
+ *
+ * 能跳的（[LedgerRowView.canJump]）才可点——点了把目标交给屏幕层（收本屏＋切会话＋滚到那一条）；
+ * 不能跳的照旧显示标题，只是点不动（不灰、不加角标：它本来就是"这件事"的一句话）。
+ */
+@Composable
+private fun LedgerLine(row: LedgerRowView, onJump: (LedgerJump) -> Unit) {
+    val jump = row.jump
+    val base = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    val modifier = if (jump != null) base.clickable { onJump(jump) } else base
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = row.title,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (jump != null) {
+            Text(
+                text = stringResource(R.string.gc_ledger_jump),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 组键 → 文案（**只查资源，不做判断**：顺序与分组的判据在 [LedgerBoardRules]）。 */
+@Composable
+private fun ledgerGroupLabel(key: String): String = when (key) {
+    LedgerState.FLYING.wire -> stringResource(R.string.gc_ledger_group_flying)
+    LedgerState.PENDING.wire -> stringResource(R.string.gc_ledger_group_pending)
+    LedgerState.ACCEPTED.wire -> stringResource(R.string.gc_ledger_group_accepted)
+    LedgerState.FROZEN.wire -> stringResource(R.string.gc_ledger_group_frozen)
+    LedgerState.WITHDRAWN.wire -> stringResource(R.string.gc_ledger_group_withdrawn)
+    else -> stringResource(R.string.gc_ledger_group_archived)
 }
 
 @Composable
