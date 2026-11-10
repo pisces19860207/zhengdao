@@ -131,10 +131,19 @@ def load_budget(repo: Path) -> tuple[int, str]:
 
 
 def tmp_anchors(root: Path) -> list[Path]:
-    """`root` 下所有以 tmp 开头的目录（锚点）。不存在 root ⇒ 空。"""
+    """`root` 下所有以 tmp 开头的目录（锚点）。不存在 root ⇒ 空。
+
+    2026-11-10（ci #1936 红出来的口径问题）：**构建系统自己的 tmp 不算数**。
+    `intermediates/.../tmp` 是 AGP 的中间产物目录，数量随 Gradle 版本/平台浮动，
+    不是「测试跑完不删」的泄漏；把它算进水位数，会让水位在换平台时凭空 +1（424→425）。
+    这里只留真正的暂存区锚点（如 `<build>/tmp`、`<build>/tmp/testDebugUnitTest/...`）。"""
     if not root.is_dir():
         return []
-    return sorted(p for p in root.rglob("*") if p.is_dir() and p.name.startswith("tmp"))
+    return sorted(
+        p
+        for p in root.rglob("*")
+        if p.is_dir() and p.name.startswith("tmp") and "intermediates" not in p.parts
+    )
 
 
 def count_dirs(root: Path) -> tuple[int, list[tuple[Path, int]]]:
@@ -147,6 +156,10 @@ def count_dirs(root: Path) -> tuple[int, list[tuple[Path, int]]]:
     for anchor in tmp_anchors(root):
         added = 0
         for path in [anchor, *anchor.rglob("*")]:
+            # JDK 的 `jar_extract_*_tmp`：ZipFS 解包时的临时目录，由 JDK 自己回收，
+            # 不是测试写的临时目录（数量随 JDK/平台浮动）⇒ 不计入水位。
+            if path.name.startswith("jar_extract_"):
+                continue
             if path.is_dir() and path not in seen:
                 seen.add(path)
                 added += 1
