@@ -166,6 +166,16 @@ internal class McpClient(
     override var protocolVersion: String = McpJsonRpc.PROTOCOL
         private set
 
+    /**
+     * 第五百四十八批：initialize 结果里服务器声明的 `capabilities`（握手成功前为 null）。
+     *
+     * 只存不判：能力探测（`peer/McpPeerProbe`）拿它决定「按能力拉 tools/list」——
+     * 服务器没声明 tools 能力就不发 tools/list。键集原样保留，不做白名单裁剪。
+     */
+    @Volatile
+    var serverCapabilities: JSONObject? = null
+        private set
+
     /** 统一出口：失败一律 [McpException]，userMessage 已清洗。 */
     override fun connect() {
         synchronized(lock) {
@@ -303,6 +313,7 @@ internal class McpClient(
             )
         }
         t.protocolVersion = McpJsonRpc.PROTOCOL
+        serverCapabilities = result.optJSONObject("capabilities")
         // initialized 是通知，没有响应；失败不阻断（有的实现回 202、有的干脆不接受）。
         runCatching { t.notify("notifications/initialized", null, config.connectTimeoutMs) }
             .onFailure { log("[mcp] ${config.id} initialized 通知未被接受（${it.javaClass.simpleName}）") }

@@ -37,6 +37,10 @@ class LeaseEntryGuardTest {
         // 584：MCP 服务端的租约闸——外部 tools/call 每次必过 LeaseStore.hit/LeaseRules.classOf
         // （判定零改动，只新增一个调用点；免卡类口径与矩阵同源，未命中一律拒）。
         "com/example/zhengdao/baopu/mcp/server/McpCallLease.kt",
+        // 548：外发即租约的闸（判据⑤「未批准不发起」）——对端探测以 R0 类目 `peer/probe`
+        // 走 LeaseStore.grant/hit/noteUsed，判定层（LeaseRules 法条）一个字没动；
+        // 探测不是工具调用，这里是它唯一能拿到授权的门。
+        "com/example/zhengdao/baopu/peer/PeerOutboundGate.kt",
     )
 
     /** 只认本批的**标识符**：仓里"租约"一词另有旧含义（派工单的文件租约），不能按中文扫。 */
