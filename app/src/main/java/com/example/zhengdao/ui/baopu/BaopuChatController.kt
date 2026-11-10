@@ -1911,6 +1911,24 @@ internal class BaopuChatController(context: Context) {
                 }
             }
 
+            // 第五百六十八批 A：灰度档位行（473 的 `canary:` 前缀 tool_grant——达标自动转全开/
+            // 回灰的档位账）⇒ **一键回灰**（506 的 humanRevertCanary：人按的那颗钮，账行照落）。
+            // 这一颗补的是判据②「转正后可一键回滚」的生产入口：转全开的档位行在决策中心
+            // 点一下回滚，档位回灰度，四域的门当场收紧（档从账读，没有第二处真相）。
+            // 本来就在灰度（humanRevert 原样返回）或已关闭 ⇒ false，UI 那句「没能回滚」照实说。
+            com.example.zhengdao.baopu.DecisionKind.TOOL_GRANT ->
+                if (r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.CANARY)) {
+                    val cap = r.evidence
+                        .removePrefix(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.CANARY)
+                        .substringBefore(':')
+                    val now = com.example.zhengdao.baopu.consequence.ConsequenceWiring
+                        .humanRevertCanary(cap, System.currentTimeMillis())
+                    now != com.example.zhengdao.baopu.consequence.CanaryBand.ofWire(r.after)
+                } else {
+                    // 深度档（depth: 前缀）等其余授权行没有回灰语义 ⇒ 走老实话
+                    false
+                }
+
             // 其余（搜索范围／日记维护／评测／自治动作）没有统一回滚通道 ⇒ 老实返回 false。
             // 搜索范围为什么不在这里：198 的 ⑥① 把拨开关的写入点钉死在设置页一处，
             // 「读侧可见面只有那两片 UI」这条门禁不许控制器引 search 包 ⇒ 它记录为不可回滚，

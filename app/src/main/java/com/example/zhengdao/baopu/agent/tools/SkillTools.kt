@@ -26,6 +26,10 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
+import com.example.zhengdao.baopu.consequence.CanaryCapability
+import com.example.zhengdao.baopu.evolution.lowrisk.EvoCandidate
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import org.json.JSONObject
 import java.io.File
 import com.example.zhengdao.core.RunLog
@@ -153,10 +157,43 @@ internal object SkillTools {
                     reason = args.optString("reason").ifBlank { "抱朴自己记下来的" },
                     draft = draft,
                 )
+                // 第五百六十八批 A：技能域接既有灰度链（473）——候选先过四域共用的门
+                // （红线 → 档位 → 深度，判定全在 evolution/lowrisk/LowRiskGate）。
+                // 登记表缺省档＝灰度 ⇒ 既有行为不变；差别是红线候选拒并记账（判据④）、
+                // 档位被回灰后候选保留不写（一键回滚真的管得住这条自动化）。
+                val evoCandidate = EvoCandidate(
+                    domain = CanaryCapability.REFLECTION_AUTO_EDIT.wire,
+                    target = "skill:project/" + proposal.name,
+                    body = proposal.body,
+                )
+                when (val v = LowRiskEvo.gate(CanaryCapability.REFLECTION_AUTO_EDIT, evoCandidate)) {
+                    is LowRiskVerdict.Refuse -> {
+                        LowRiskEvo.recordRefusal(
+                            CanaryCapability.REFLECTION_AUTO_EDIT,
+                            v.redLine,
+                            v.note,
+                            evoCandidate,
+                            System.currentTimeMillis(),
+                        )
+                        return ToolOutcome.Rejected("这条候选踩了自进化红线，不自动写：" + v.note)
+                    }
+                    is LowRiskVerdict.Hold -> return ToolOutcome.Rejected("灰度没走到这一步，先不自动写：" + v.note)
+                    is LowRiskVerdict.Allow -> Unit
+                }
                 // 第一百九十二批：写盘**前**插的免批判据层（SkillStore.apply 的写盘顺序一字未动，
                 // 174 验过）。decide 五条全满足才 AUTO——落草稿＋审计带免批标＋技能页可一键撤销；
                 // NEEDS_CONFIRM 一个字节都不写，把否决原因如实说给模型，让它改小或请用户确认。
-                when (val a = SkillAutoWrite.tryAutoWrite(proposal, root, globalRoot, pf, stamp())) {
+                val a = SkillAutoWrite.tryAutoWrite(proposal, root, globalRoot, pf, stamp())
+                // 第五百六十八批 A：灰度观察账（473 §二②——指标的唯一来源，内存计数没有入口）。
+                // 免批这一跑的结局一行：写成＝ok；要问人＝没自主跑完（askedHuman）——
+                // 介入率由此从账上算得出来，转全开的"省心"判据才有数。
+                LowRiskEvo.observeRun(
+                    CanaryCapability.REFLECTION_AUTO_EDIT,
+                    ok = a is SkillAutoOutcome.Written,
+                    atMs = System.currentTimeMillis(),
+                    askedHuman = a is SkillAutoOutcome.NeedsConfirm,
+                )
+                when (a) {
                     is SkillAutoOutcome.Written -> ToolOutcome.Ok(
                         buildString {
                             append("已免批写入技能（草稿）：").append(a.file.absolutePath)
