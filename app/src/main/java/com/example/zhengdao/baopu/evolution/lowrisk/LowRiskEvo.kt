@@ -51,6 +51,7 @@ internal object LowRiskEvo {
     /** 四域在 473 登记表里的能力（扫档按这张清单逐一走梯子）。 */
     internal val CAPABILITIES: List<CanaryCapability> = listOf(
         CanaryCapability.REFLECTION_AUTO_EDIT,
+        CanaryCapability.PROMPT_TAIL,
         CanaryCapability.MEMORY_IMPORT,
         CanaryCapability.NOCTURNAL_PATROL,
     )

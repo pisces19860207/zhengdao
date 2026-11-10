@@ -94,6 +94,14 @@ internal enum class CanaryCapability(
      * 缺省灰度档：能进，但每一步都落账（`许愿/_流水线.jsonl`）；转正仍走 SkillStore 那把闸。
      */
     WISH_PIPELINE("wish", "许愿流水线", CanaryBand.CANARY, "wish", "只写副本与草稿；转正走 SkillStore 闸"),
+
+    /**
+     * 568-A 提示词尾部：判据/坑账运行时包进 system 的自进化注入（`CriteriaPitPack.systemSuffix`）。
+     * 缺省灰度档：照常注入（既有行为不变），但**每段新内容**都落一条观察账；
+     * 档位关闭 ⇒ 尾段不发（候选保留在账上）。只许尾部追加——前段锁死由调用点结构保证
+     * （`systemFinal` 尾巴上那一格；`CriteriaPitPackTest` 源级钉着落点）。
+     */
+    PROMPT_TAIL("prompt_tail", "提示词尾部", CanaryBand.CANARY, "prompt_tail", "只尾部追加；前段锁死（前缀判据）"),
     ;
 
     companion object {

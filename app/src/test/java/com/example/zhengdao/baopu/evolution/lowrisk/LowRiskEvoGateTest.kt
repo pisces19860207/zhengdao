@@ -91,6 +91,39 @@ class LowRiskEvoGateTest {
         assertFalse("变异后顺序断言必须红", mGate < mWrite && mWrite < mObserve)
     }
 
+    // ── 提示词尾部：注入点先问档、新内容落观察账 ────────────────────────────
+    //
+    // RunEngine 的调用点已有既有源级钉（CriteriaPitPackTest「落点是system不是user」：
+    // RunEngine 必须保持 `CriteriaPitPack.systemSuffix()` 原样）——所以门只许在
+    // systemSuffix 内部，RunEngine 一行不动。CriteriaPitPack 无原始串 ⇒ GateBodies 可用。
+
+    private fun pitPack(): String =
+        code("src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt")
+
+    @Test
+    fun `G4_提示词尾部_systemSuffix先问档_新内容落观察账_关闭不发`() {
+        val body = GateBodies.functionBody(pitPack(), "fun systemSuffix(")
+        assertTrue("systemSuffix 不在了？", body != null)
+        val gate = body!!.indexOf("LowRiskEvo.gate(")
+        val input = body.indexOf("val input = snapshot()")
+        val observe = body.indexOf("LowRiskEvo.observeRun(")
+        assertTrue("门不在注入点里", gate >= 0)
+        assertTrue("观察账不在注入点里", observe >= 0)
+        assertTrue("顺序必须是 门 → 取数渲染 → 观察账（档关闭时不取数不记观察）", gate < input && input < observe)
+        assertTrue("档关闭不发（返回空串）", body.contains("return \"\""))
+        assertTrue("红线拒要记账", body.contains("LowRiskEvo.recordRefusal("))
+    }
+
+    @Test
+    fun `G4负例_把门从注入点拔掉_同一把断言必须红`() {
+        val src = pitPack()
+        assertTrue("前提：注入点里有门", src.contains("LowRiskEvo.gate("))
+        val mutated = src.replace("LowRiskEvo.gate(", "LowRiskEvo.gateRemoved(")
+        val body = GateBodies.functionBody(mutated, "fun systemSuffix(")
+        assertTrue(body != null)
+        assertFalse("拔门后必须红（判据③：尾段直接生效＝门禁红）", body!!.contains("LowRiskEvo.gate("))
+    }
+
     // ── 扫档：收工家族一行 ──────────────────────────────────────────────────
 
     @Test

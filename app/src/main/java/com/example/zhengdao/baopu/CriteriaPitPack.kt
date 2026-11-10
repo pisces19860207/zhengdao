@@ -19,11 +19,20 @@
 // 本批判据④「零拦截」在本文件怎么成立：它**只产文本**——不判动作、不改三态、
 // 不 import `GuardPipeline`，也不读任何档位/阈值。有没有这条注入，判定结果一模一样。
 // 「判据/坑账是硬规矩不是建议」这句话的**执行**仍在 310/253 的闸里，这里只是让模型知道它存在。
+//
+// 第五百六十八批 A（2026-11-10）改一处并如实记账：注入口多了**灰度门**——上一段"不读任何
+// 档位"从 568-A 起不再成立，发不发这段文本由登记表 `PROMPT_TAIL` 的档位决定（缺省灰度
+// ⇒ 行为不变），版本变更落一条观察账。其余四项裁定（只注摘要／哈希去重／不混分层／
+// 不判动作不改三态）逐字未动；`systemSuffix` 的 KDoc 里写了完整的账。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.baopu.agent.ExperienceKind
 import com.example.zhengdao.baopu.agent.ExperienceRow
 import com.example.zhengdao.baopu.agent.JudgmentExperienceLedger
+import com.example.zhengdao.baopu.consequence.CanaryCapability
+import com.example.zhengdao.baopu.evolution.lowrisk.EvoCandidate
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.policy.EpochRuntime
 import com.example.zhengdao.baopu.policy.ImmutableCriteria
 import com.example.zhengdao.core.TimeFormats
@@ -211,17 +220,38 @@ internal object CriteriaPitPack {
      * 拼在 `systemFinal` 尾巴上的那一段（`RunEngine` 是本方法唯一的生产调用点）。
      *
      * 返回串自带前置空行；版本键没变就复用上一次渲染的字节（判据②「不重复增长」）。
+     *
+     * 第五百六十八批 A：这一格现在归**提示词尾部域**（473 登记表 `PROMPT_TAIL`，缺省灰度）——
+     * 先问档再发文本：档位关闭 ⇒ 尾段不发（返回空串，候选保留在账上）；红线的拒由共用门出
+     * （尾部候选的固定标 `system:tail` 恒净 ⇒ 生产上不会误拒）；版本键变更且放行 ⇒
+     * 落一条灰度观察账（一段新内容进了灰度注入；版本没变不重复记——同判据②的口径）。
+     * 「零拦截」的本义没破：仍不判动作、不改三态、不 import GuardPipeline；
+     * 变的只是"这段文本本身也是一项被灰度管的自动化"（436 的四项裁定在尾段发不发这一格上
+     * 多了一个主人，其余逐字不变）。
      */
     @Synchronized
     fun systemSuffix(nowMs: Long = System.currentTimeMillis()): String {
+        val verdict = LowRiskEvo.gate(CanaryCapability.PROMPT_TAIL, TAIL_CANDIDATE)
+        if (verdict is LowRiskVerdict.Refuse) {
+            LowRiskEvo.recordRefusal(CanaryCapability.PROMPT_TAIL, verdict.redLine, verdict.note, TAIL_CANDIDATE, nowMs)
+            return ""
+        }
+        if (verdict is LowRiskVerdict.Hold) return ""
         val input = snapshot()
         val key = versionKey(input, nowMs)
         if (key != lastKey) {
             lastKey = key
             lastText = render(input, nowMs)
+            LowRiskEvo.observeRun(CanaryCapability.PROMPT_TAIL, ok = true, atMs = nowMs)
         }
         return "\n\n" + lastText
     }
+
+    /** 568-A：尾部候选的固定标（尾段没有独立目标键；红线扫 target＋body，恒净 ⇒ 不误伤）。 */
+    private val TAIL_CANDIDATE = EvoCandidate(
+        domain = CanaryCapability.PROMPT_TAIL.wire,
+        target = "system:tail",
+    )
 
     /** 测试专用：清掉去重缓存（谁用谁还，与 224 批「装配落点谁装谁还」同一条规矩）。 */
     @Synchronized
