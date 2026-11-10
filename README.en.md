@@ -17,7 +17,7 @@ One APK, no root, no commands. Baopu reads and writes files, can search the whol
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.4 (versionCode 42).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.5 (versionCode 43).
 > **New in 2.2.4 (2.2 series finale)**: closing-only, no new capabilities — authorization leases, goal mode, real admission tasks, output cards gated by evidence, project ledger, activity board, build audit pack; UI: royal-case card polish and plain-language verdicts; engineering: detekt wall 335→333, test temp-dir water mark 1000→422. Per-commit changelog: [release notes v2.2.4](https://github.com/pisces19860207/zhengdao/blob/v2.2.4/.github/release-notes/v2.2.4.md).
 
 
