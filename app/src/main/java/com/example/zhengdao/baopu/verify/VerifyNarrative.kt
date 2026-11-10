@@ -356,23 +356,30 @@ internal object VerifyNarrative {
         else -> VerifyPhrase.BASIS_BARE to emptyList()
     }
 
-    /** 332 那 14 条判据 → 人话名（闭集；`when` 不带 else，将来加判据会编译不过）。 */
-    fun itemOf(id: CheckId): VerifyPhrase = when (id) {
-        CheckId.PATH_SET -> VerifyPhrase.ITEM_PATH_SET
-        CheckId.BYTE_IDENTICAL -> VerifyPhrase.ITEM_BYTE_IDENTICAL
-        CheckId.NO_ESCAPE -> VerifyPhrase.ITEM_NO_ESCAPE
-        CheckId.LEDGER_COMPLETE -> VerifyPhrase.ITEM_LEDGER_COMPLETE
-        CheckId.EXISTS -> VerifyPhrase.ITEM_EXISTS
-        CheckId.STRUCTURE -> VerifyPhrase.ITEM_STRUCTURE
-        CheckId.USER_CHECKLIST -> VerifyPhrase.ITEM_USER_CHECKLIST
-        CheckId.COMPILE -> VerifyPhrase.ITEM_COMPILE
-        CheckId.TESTS_GREEN -> VerifyPhrase.ITEM_TESTS_GREEN
-        CheckId.DIFF_IN_SCOPE -> VerifyPhrase.ITEM_DIFF_IN_SCOPE
-        CheckId.BUDGET -> VerifyPhrase.ITEM_BUDGET
-        CheckId.SHAPE -> VerifyPhrase.ITEM_SHAPE
-        CheckId.SAMPLE_5 -> VerifyPhrase.ITEM_SAMPLE_5
-        CheckId.REOPENABLE -> VerifyPhrase.ITEM_REOPENABLE
-    }
+    /** 332 那 14 条判据 → 人话名（闭集）。
+     *
+     * 原来是 14 分支 `when`（不带 else，加判据编译不过），但它的复杂度正好顶破引擎区预算 1 条；改成查表后复杂度 1，**穷尽性从编译器搬到 [VerifyNarrativeTest] 的覆盖用例**：
+     * 新增 CheckId 却没填人话名 ⇒ `ITEM_NAMES` 少一格 ⇒ 覆盖用例红（`getValue` 也会直接抛）。
+     */
+    private val ITEM_NAMES: Map<CheckId, VerifyPhrase> = mapOf(
+        CheckId.PATH_SET to VerifyPhrase.ITEM_PATH_SET,
+        CheckId.BYTE_IDENTICAL to VerifyPhrase.ITEM_BYTE_IDENTICAL,
+        CheckId.NO_ESCAPE to VerifyPhrase.ITEM_NO_ESCAPE,
+        CheckId.LEDGER_COMPLETE to VerifyPhrase.ITEM_LEDGER_COMPLETE,
+        CheckId.EXISTS to VerifyPhrase.ITEM_EXISTS,
+        CheckId.STRUCTURE to VerifyPhrase.ITEM_STRUCTURE,
+        CheckId.USER_CHECKLIST to VerifyPhrase.ITEM_USER_CHECKLIST,
+        CheckId.COMPILE to VerifyPhrase.ITEM_COMPILE,
+        CheckId.TESTS_GREEN to VerifyPhrase.ITEM_TESTS_GREEN,
+        CheckId.DIFF_IN_SCOPE to VerifyPhrase.ITEM_DIFF_IN_SCOPE,
+        CheckId.BUDGET to VerifyPhrase.ITEM_BUDGET,
+        CheckId.SHAPE to VerifyPhrase.ITEM_SHAPE,
+        CheckId.SAMPLE_5 to VerifyPhrase.ITEM_SAMPLE_5,
+        CheckId.REOPENABLE to VerifyPhrase.ITEM_REOPENABLE,
+    )
+
+    fun itemOf(id: CheckId): VerifyPhrase = ITEM_NAMES.getValue(id)
+
 
     /**
      * 运行时输入消毒：带内部词的一律 null（调用方**丢弃**，不截断、不改写）。
