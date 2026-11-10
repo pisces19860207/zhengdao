@@ -6,8 +6,14 @@
 //
 // 还有一条最容易写成假绿的：**"没发现信号"不许写成"没有 bug"**——
 // 所以这里钉的不是"有结论"，而是三种结果各自的话术（命中／未发现信号／未取样）不许互相冒充。
+//
+// 第五百五十七批去脆化（普查那一格）：小非零不再钉「恰 N 次」——新接口重名／新增合法
+// 调用点都会假红（onSettled 实测踩过）。闸只问三件事：未接线保持 0、已接线 ≥1 处
+// 生产调用点、高频口 ≥ 登记下限。裸名只数**调用形态**（`fun onSettled(` 定义不算接线，
+// 否则删光调用点还剩定义假绿）；过滤换 CodeText（字符串里的同名字面不算数）。
 package com.example.zhengdao.baopu.inspect
 
+import com.example.zhengdao.CodeText
 import com.example.zhengdao.baopu.agent.ToolGroup
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -337,10 +343,14 @@ class HealthCheckTest {
         OrganCensus.HEALTH_PARTS.forEach { p ->
             if (!p.present) return@forEach
             val actual = countCalls(p.entry, p.declaredIn)
-            if (p.callSites >= OrganCensus.CALL_SITES_FLOOR_ONLY) {
-                assertTrue("${p.name}（${p.entry}）实际 $actual 处，普查记 ${p.callSites}：接线被删了？", actual >= p.callSites)
-            } else {
-                assertEquals("${p.name}（${p.entry}）实际 $actual 处，普查记 ${p.callSites}：改了接线要同步改普查与证据行", p.callSites, actual)
+            when {
+                p.callSites >= OrganCensus.CALL_SITES_FLOOR_ONLY ->
+                    assertTrue("${p.name}（${p.entry}）实际 $actual 处，普查记 ${p.callSites}：接线被删了？", actual >= p.callSites)
+                p.callSites == 0 ->
+                    assertEquals("${p.name}（${p.entry}）按裁定未接线，不许冒出调用点", 0, actual)
+                // 557：小非零只问「接没接」（≥1），不钉恰 N 次——重名/新增合法调用点不该红。
+                else ->
+                    assertTrue("${p.name}（${p.entry}）普查记已接线（${p.callSites}），实际一处调用都没有：接线被删了？", actual >= 1)
             }
         }
     }
@@ -354,13 +364,14 @@ class HealthCheckTest {
         ).forEach { assertTrue("普查缺部位：$it", it in names) }
     }
 
-    /** 与普查同一口径：剥注释后数 `entry` 在 `app/src/main` 里、不在定义文件里的出现次数。 */
+    /** 与普查同一口径：CodeText 剥注释/字符串后数 `entry` 在 `app/src/main` 里、不在定义文件里的调用。 */
     private fun countCalls(entry: String, declaredIn: String): Int {
         val pat = if (entry.contains('.')) {
             val (base, member) = entry.split('.')
             Regex("""\b${Regex.escape(base)}\s*\.\s*${Regex.escape(member)}\b""")
         } else {
-            Regex("""\b${Regex.escape(entry)}\b""")
+            // 裸名只数调用形态：定义（fun onSettled(）不算接线——否则删光调用点还剩定义，假绿。
+            Regex("""(?<!fun )\b${Regex.escape(entry)}\s*\(""")
         }
         val skip = declaredIn.substringAfter("src/main/java/", "")
         // 普查表自己的字符串（entry/证据行）不是调用点：把它排除，否则每加一条证据就自己给自己 +1。
@@ -370,7 +381,7 @@ class HealthCheckTest {
             val rel = f.path.replace('\\', '/').substringAfter("src/main/java/", "")
             if (rel == census) return@forEach
             if (skip.isNotEmpty() && rel == skip) return@forEach
-            total += pat.findAll(code(f)).count()
+            total += pat.findAll(CodeText.codeOnly(f.readText(Charsets.UTF_8))).count()
         }
         return total
     }

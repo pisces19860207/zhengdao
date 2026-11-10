@@ -428,7 +428,8 @@ jobs:
       #   324（2026-10-31）**口径修正**：10-19 的旧 baseline 实际还压着 101 条真读数
       #   （双跑对照 334→435），baseline 文件与指到它的参数已整条删除、预算用真读数重记
       #  （raised_reason 写明「口径修正，非放宽」）。防回归门禁见下一步。
-      # 276a D1（2026-10-29）：**硬墙**先跑——上限取自 config/detekt/detekt.yml 的 `maxIssues`，
+      # 276a D1（2026-10-29）：**硬墙**先跑——上限取自 config/detekt/detekt-wall.yml 的 `maxIssues`
+      #   （557 起从 detekt.yml 移驾；墙只开 CyclomaticComplexMethod，LongMethod 降为提示），
       #   交给 detekt 自己的 `--max-issues`；超一条就非 0（不经过下面的 python 脚本）。
       #   这道闸的意义：就算有人把预算脚本从流水线里删掉，上限还在 detekt 这边。
       # 352：detekt 子进程用 JDK 21（见顶部「CI 双 JDK」注释）。

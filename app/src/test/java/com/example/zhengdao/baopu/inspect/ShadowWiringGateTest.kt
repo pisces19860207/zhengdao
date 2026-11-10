@@ -11,8 +11,16 @@
 //   4. 碰盘的那一份（建副本／复制／删副本）不长在勘验层——那是 [InspectReadOnlyGateTest]
 //      那条"纠察只查不改"的门禁的**另一半**：它钉"没有写口"，这条钉"跑的人在对岸"；
 //   5. 免卡判据的字面只认 `CONSISTENT`，第⑤步没有给结构故障留"仍然执行"的出口（§2）。
+//
+// 第五百五十七批（⑤去脆化）：整句字面／含局部名的计数 → 结构断言，保护意图不变——
+// · shadowAllows 的函数体必须整份就是「X == CONSISTENT」（参数名自由；加 || 放宽必红）；
+// · gate 里不许有 shadowAllows 之外的第二处 == CONSISTENT（containment，不数词频）；
+// · 第⑤步区域用「Rehearsed 过滤 → 第一处 RECORD 读数」定位，不钉 val signal/steps 这些局部名；
+// · 稳定 API 调用点唯一性（compare/rehearse/install/shortCircuit）保留计数。
 package com.example.zhengdao.baopu.inspect
 
+import com.example.zhengdao.CodeText
+import com.example.zhengdao.GateBodies
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,11 +46,8 @@ class ShadowWiringGateTest {
         return dir.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.toList()
     }
 
-    /** 只留代码行：注释里写「唯一调用点是 ShadowRehearsal.compare」不算调用（276 批同规矩）。 */
-    private fun codeOnly(src: String): String = src
-        .split("\n")
-        .filterNot { it.trim().startsWith("//") || it.trim().startsWith("*") || it.trim().startsWith("/*") }
-        .joinToString("\n")
+    /** 只留代码行：注释里写「唯一调用点是 ShadowRehearsal.compare」不算调用（276 批同规矩）。557 起走 CodeText（连字符串一起剥）。 */
+    private fun codeOnly(src: String): String = CodeText.codeOnly(src)
 
     private fun code(f: File): String = codeOnly(f.readText(Charsets.UTF_8))
 
@@ -69,20 +74,23 @@ class ShadowWiringGateTest {
     fun `判据⑤_第⑤步真去问适配器`() {
         val text = code(gate())
         assertEquals("`ShadowAdapter.rehearse(` 在第⑤步只许一处", 1, text.occurrences("ShadowAdapter.rehearse("))
-        assertEquals(1, text.occurrences("shadowSignalFor(request.shadowInput)"))
+        // 557：不钉实参局部名（request.shadowInput），改问「非定义的调用点恰一处」。
+        assertEquals("shadowSignalFor 只许一处调用", 1, Regex("""(?<!fun )shadowSignalFor\s*\(""").findAll(text).count())
         assertTrue(
             "先认调用方交回的现成结论，没有才自己去跑（同一次动作只许跑一遍影子）",
-            text.contains("val signal = request.shadow.takeIf { it is ShadowSignal.Rehearsed }"),
+            Regex("""takeIf\s*\{\s*it\s+is\s+ShadowSignal\.Rehearsed\s*\}""").containsMatchIn(text),
         )
-        assertEquals("请求里要带着预演输入", 1, text.occurrences("val shadowInput: ShadowInput? = null,"))
+        assertTrue("请求里要带着预演输入（可空、默认 null）", Regex("""val\s+shadowInput\s*:\s*ShadowInput\?\s*=\s*null""").containsMatchIn(text))
     }
 
     @Test
     fun `判据⑤_构造层交输入_装配层装沙盒`() {
         val w = code(wire())
-        assertEquals(1, w.occurrences("shadowInputOf(call, root, objectId, verdict"))
-        assertTrue("算出来的输入要真的挂进请求", w.contains("shadowInput = shadowInput,"))
-        assertTrue(w.contains("shadowInput: ShadowInput? = null,"))
+        // 557：不钉整串实参（call, root, objectId, verdict…），改问「非定义的调用点恰一处」。
+        assertEquals("shadowInputOf 只许一处调用", 1, Regex("""(?<!fun )shadowInputOf\s*\(""").findAll(w).count())
+        // 挂进请求：named-arg 或 positional 都算（不钉 = 号两边）。
+        assertTrue("算出来的输入要真的挂进请求", Regex("""[(,]\s*shadowInput\s*[,)=]""").containsMatchIn(w))
+        assertTrue("装配层的预演输入必须可空、默认 null", Regex("""shadowInput\s*:\s*ShadowInput\?\s*=\s*null""").containsMatchIn(w))
         assertEquals(
             "沙盒全仓只许装一次，而且装在装配层（装两处＝两份副本口径）",
             listOf("BaopuRuntime.kt" to 1),
@@ -118,17 +126,22 @@ class ShadowWiringGateTest {
 
     @Test
     fun `负例④_免卡判据只认CONSISTENT`() {
-        val text = code(gate())
+        val raw = gate().readText(Charsets.UTF_8)
+        // 557：整句字面 → 函数体形状。参数名/写法可变，但「只认 CONSISTENT」这一条不许放宽。
+        val body = GateBodies.functionBody(raw, "fun shadowAllows(")
+        assertTrue("shadowAllows 不在了？", body != null)
+        val bodyCode = CodeText.codeOnly(body!!).trim()
         assertTrue(
             "shadowAllows 一旦变成「UNVERIFIABLE 也放行」，249 §7 的三态就废了",
-            text.contains(
-                "internal fun shadowAllows(verdict: ShadowVerdict): Boolean = verdict == ShadowVerdict.CONSISTENT",
-            ),
+            Regex("""(?:=\s*|return\s+)\w+\s*==\s*ShadowVerdict\.CONSISTENT\s*\}?\s*$""").containsMatchIn(bodyCode),
         )
-        assertEquals(1, text.occurrences("verdict == ShadowVerdict.CONSISTENT"))
-        // 适配器也不许自己造放行：全文件只许在"清不清副本"那一格引用 CONSISTENT
-        assertEquals(1, code(adapter()).occurrences("ShadowVerdict.CONSISTENT"))
-        assertTrue(code(adapter()).contains("val kept = judged.verdict != ShadowVerdict.CONSISTENT"))
+        // 第二处放行判据＝shadowAllows 之外还出现 == CONSISTENT（containment，不数词频）。
+        val rest = CodeText.codeOnly(raw).replace(CodeText.codeOnly(body!!), "")
+        assertFalse("gate 里出现了 shadowAllows 之外的 == CONSISTENT（＝第二个放行口）", Regex("""==\s*ShadowVerdict\.CONSISTENT""").containsMatchIn(rest))
+        // 适配器也不许自己造放行：只许在"清不清副本"那一格用 !=。
+        val a = code(adapter())
+        assertFalse("适配器里出现了 == CONSISTENT（自己造放行）", Regex("""==\s*ShadowVerdict\.CONSISTENT""").containsMatchIn(a))
+        assertTrue("清副本的判据必须是 != CONSISTENT（违规的副本不许清）", Regex("""!=\s*ShadowVerdict\.CONSISTENT""").containsMatchIn(a))
     }
 
     // ── §2：结构故障取消自动资格，没有「仍然执行」那颗按钮 ─────────────────────
@@ -136,9 +149,15 @@ class ShadowWiringGateTest {
     @Test
     fun `§2_第⑤步不给结构故障留绕过去的口子`() {
         val text = code(gate())
-        val block = text
-            .substringAfter("val signal = request.shadow.takeIf")
-            .substringBefore("steps += StepReading(GrantStep.RECORD")
+        // 557：区域定位不钉局部名（原 substringAfter "val signal = …" / substringBefore "steps += …"），
+        // 起点＝Rehearsed 过滤那一处，终点＝第一处 RECORD 读数（稳定 API 构造子）。
+        val start = Regex("""takeIf\s*\{\s*it\s+is\s+ShadowSignal\.Rehearsed\s*\}""").find(text)
+        val end = Regex("""StepReading\s*\(\s*GrantStep\.RECORD""").find(text)
+        assertTrue(
+            "第⑤步的那一段抓不到了（改动挪走了？）",
+            start != null && end != null && start!!.range.first < end!!.range.first,
+        )
+        val block = text.substring(start!!.range.first, end!!.range.first)
         assertTrue("第⑤步的那一段抓不到了（改动挪走了？）", block.contains("ShadowVerdict"))
         assertTrue("第⑤步只剩停下这一条路", block.contains("GateOutcome.STOPPED"))
         listOf("GateOutcome.ALLOW", "GateOutcome.ASK_SINGLE", "GateOutcome.ASK_DELTA", "GateOutcome.REJECT")
@@ -147,7 +166,8 @@ class ShadowWiringGateTest {
             }
         assertTrue(
             "UNVERIFIABLE 记未验、MISMATCH/MISWIRED 记不过（239 的三态口径）",
-            block.contains("passed = if (verdict == ShadowVerdict.UNVERIFIABLE) null else false"),
+            Regex("""passed\s*=\s*if\s*\(\s*\w+\s*==\s*ShadowVerdict\.UNVERIFIABLE\s*\)\s*null\s+else\s+false""")
+                .containsMatchIn(block),
         )
     }
 

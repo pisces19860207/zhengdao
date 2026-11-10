@@ -18,8 +18,15 @@
 // 动作键合不上数字锚 ⇒ 证据源自己拒收（本层不造第二把出处判据）；
 // 源级：管线只喂采集器（一处 `AnomalyFeed.report(`、两处喂），代码面零引用判定层——
 // 谁在管线里引 `law/AnomalyGate`，名册就得跟着手改，而工单明令不许手改（见 LawSourceWiringGateTest）。
+//
+// 第五百五十七批去脆化（源级那一格）：不再钉实参名（`feedScopeEscape(\s*call`／
+// `gate = GATE_`／`noteToolRejection(spec, effectiveCall, …)`——改局部名、改位置参数就假红）。
+// 换成：调用形态计数（稳定 API 恰 N 处＝「只有一个口径」的不变量本身）＋
+// 括号配对实参段里的红线字面量／GATE_ 常量覆盖（GateBodies，named/positional 都认）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.CodeText
+import com.example.zhengdao.GateBodies
 import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.FileOpLog
 import com.example.zhengdao.baopu.RiskClass
@@ -286,32 +293,44 @@ class GuardScopeEscapeFeedTest {
     @Test
     fun `源级_管线只喂采集器_代码面零引用判定层`() {
         LawIo.assertNotBlind(LawIo.MAIN_ROOT, minFiles = 100, minLines = 10_000)
-        val code = LawIo.stripComments(
-            LawIo.read("src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt"),
-        )
+        val raw = LawIo.read("src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt")
+        val code = CodeText.codeOnly(raw)
         assertTrue("接线本身要在（防空转）", code.contains("AnomalyFactKind.OVER_SCOPE"))
         assertEquals(
             "采集口只许一处 AnomalyFeed.report(（多一处＝第二个形状）",
             1,
             Regex("""AnomalyFeed\s*\.\s*report\s*\(""").findAll(code).count(),
         )
+        // 六处红线各喂一次：数调用形态、不钉实参名；红线字面量从实参段取（原文切片，字符串还在）。
+        val feedCalls = GateBodies.callArgs(raw, "feedScopeEscape(")
+            .filterNot { it.contains("fun feedScopeEscape(") }
         assertEquals(
             "六处红线各喂一次（单数键系统目录/原件区/只读根/批量系统目录/批量只读根；492 起 RO 是第三条口径；"
                 + "517 起加「声明边界」第六条——缺行按最严的那道闸；多了＝第二个口径冒出来，少了＝有一段红线没接）",
             6,
-            Regex("""(?<!fun )feedScopeEscape\(\s*call""").findAll(code).count(),
+            feedCalls.size,
+        )
+        val redlines = feedCalls
+            .flatMap { Regex(""""([a-z]+)"""").findAll(it).map { m -> m.groupValues[1] }.toList() }
+            .toSet()
+        assertTrue(
+            "四条红线口径都要有人喂（policy/raw/ro/declared），实测：$redlines",
+            redlines.containsAll(listOf("policy", "raw", "ro", "declared")),
         )
         // 2026-11-02 口径：③ 段两处拒绝各记一行偏差（不许发事件、不许合成一处）；
         // ④ 段工具自拒只记工具失败一处（不混进 SCOPE_ESCAPE，也不落偏差账）。
-        assertEquals(
-            "③ 段两处拒绝各记一行偏差账",
-            2,
-            Regex("""gate\s*=\s*GATE_""").findAll(code).count(),
-        )
+        // 偏差账钉「哪两道闸」：GATE_ 常量在实参段里（named/positional 都认），不钉 `gate =` 形。
+        val deviationCalls = GateBodies.callArgs(raw, "noteDeviation(")
+            .filterNot { it.contains("fun noteDeviation(") }
+        assertEquals("③ 段两处拒绝各记一行偏差账", 2, deviationCalls.size)
+        val gates = deviationCalls
+            .flatMap { Regex("""GATE_\w+""").findAll(it).map { m -> m.value }.toList() }
+            .toSet()
+        assertEquals("偏差账必须矩阵闸与授权闸各一道", setOf("GATE_RISK_MATRIX", "GATE_TASK_GRANT"), gates)
         assertEquals(
             "④ 段工具自拒只记工具失败一处",
             1,
-            Regex("""noteToolRejection\(\s*spec,\s*effectiveCall,\s*outcome\.reason\s*\)""").findAll(code).count(),
+            Regex("""(?<!fun )noteToolRejection\(""").findAll(code).count(),
         )
         listOf("AnomalyGate", "AnomalyVerdict", "AccountabilityGate", "baopu.law.").forEach { bad ->
             assertFalse(

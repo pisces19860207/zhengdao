@@ -1,6 +1,9 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.ui
 
+import com.example.zhengdao.CodeText
+import com.example.zhengdao.GateBodies
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,11 +46,9 @@ class NavTransitionGateTest {
      * 去注释（**必须做**，第⑲刀的教训）：本刀 KDoc 里为了说明"Activity 级转场留给独立一刀"
      * 写了 `overridePendingTransition` 这个词，而门禁偏偏要断言"没有引入它"—— 不剥注释就是
      * 自己拦自己。**凡断言"某字样不出现"，先剥注释再断言**（断言"出现"同理，
-     * 否则注释里写一句就算过）。
+     * 否则注释里写一句就算过）。557 起统一走 CodeText（连字符串字面量一起剥，行号仍对齐）。
      */
-    private fun stripped(): String = mainActivitySource()
-        .replace(Regex("(?s)/\\*.*?\\*/"), "")
-        .replace(Regex("(?m)//.*$"), "")
+    private fun stripped(): String = CodeText.codeOnly(mainActivitySource())
 
     @Test
     fun `NavHost 四个转场参数齐全`() {
@@ -86,14 +87,25 @@ class NavTransitionGateTest {
     @Test
     fun `转场只允许在全图定义一处_不许单页单独覆盖`() {
         val src = stripped()
-        // NavHost 那一处有 4 个键；任何 composable(...) 里再出现就是单页覆盖。
-        // 用词频判定：这四个键在整个文件里应各只出现 1 次。
+        // 557 结构断言（不钉词频）：四个键的每次出现都必须落在 NavHost 调用的**圆括号**
+        // 实参段里——composable(...) 在 NavHost 的尾随 lambda 里、圆括号之外，单页覆盖必红。
+        val marker = "NavHost("
+        val regions = mutableListOf<IntRange>()
+        var from = 0
+        while (true) {
+            val at = src.indexOf(marker, from)
+            if (at < 0) break
+            val end = GateBodies.balancedEnd(src, at + marker.length - 1)
+            regions += at until end
+            from = end
+        }
+        assertEquals("全图只许一处 NavHost 转场定义", 1, regions.size)
         listOf("enterTransition", "exitTransition", "popEnterTransition", "popExitTransition").forEach { key ->
-            val n = Regex("\\b$key\\b").findAll(src).count()
+            val uses = Regex("\\b$key\\b").findAll(src).map { it.range.first }.toList()
+            assertTrue("NavHost 缺 $key", uses.isNotEmpty())
             assertTrue(
-                "$key 在 MainActivity 里出现了 $n 次 —— 除 NavHost 那一处外还有别处覆盖" +
-                    "（单页关动画/改节奏必须显式说明，不能悄悄加）",
-                n == 1,
+                "$key 出现在 NavHost 实参段之外 —— 单页关动画/改节奏必须显式说明，不能悄悄加",
+                uses.all { at -> regions.any { at in it } },
             )
         }
     }

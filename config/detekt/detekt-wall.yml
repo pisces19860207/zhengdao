@@ -1,0 +1,29 @@
+# Detekt 硬墙配置（557，2026-11-10）：主判据＝圈复杂度；行数只作提示。
+#
+# 为什么单开一份：547 实测——onEngineEvent 59/60 行，加一行就撞 LongMethod「新增」⇒
+# 冻结区预算红，逼着把两行并成一行（为线数合并，伤可读性）。557 起：
+#   · 本文件只开 CyclomaticComplexMethod（阈值 15，与 detekt.yml 同口径）——`:app:detektWall` 用它；
+#   · LongMethod 留在 detekt.yml（报告档照测），预算闸只把它印成提示，不判红；
+#   · 长而直的函数不罚，长而弯的函数复杂度闸会抓——保护意图不变，只是不再数行数。
+#
+# ⚠️ CLI 默认不 buildUponDefaultConfig：本文件没写的规则一律不跑。
+complexity:
+  active: true
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 15
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 硬墙上限（276a D1 机制沿用；557 从 detekt.yml 移驾本文件）
+#
+# 这一行是**互锁的一端**：`tools/check-detekt-budget.py` 校验它必须等于
+# `config/detekt/issue-budget.json` 的 `total`（557 起口径＝仅复杂度），不等即红。
+# 只准降不准升；要改时**两处同一提交一起改**（操作步骤见 config/detekt/README.md）。
+#
+# 为什么是 189（557，2026-11-10）：基线 d3ad174e8 本机 detektReport 真读数
+# （detekt-cli 1.23.8＋JDK21 工具链，与 CI 同源）：CyclomaticComplexMethod 189 条
+# （引擎 145／冻结 44）；LongMethod 144 条同日转提示，不再占预算。
+# maxIssues: 189
+#   ↑ 这行**故意是注释**：实测 detekt 1.23.8 把未注释的 `maxIssues:` 当非法键
+#     （`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）。
+#     值由 `:app:detektWall` 与 check-detekt-budget.py 用正则读，作为 CLI `--max-issues` 执行。

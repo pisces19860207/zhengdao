@@ -1,6 +1,7 @@
 # Detekt 配置（P1-3，2026-10-19）
 #
-# 目的：先只开两条「可维护性」规则，report-only、冻结基线；不设门槛、不影响 CI。
+# 目的：先只开两条「可维护性」规则。266（2026-10-28）起进 CI 上闸（报告档＋预算闸）；
+# 557（2026-11-10）起 LongMethod 降为提示，硬墙主判据＝CyclomaticComplexMethod（见文末）。
 # 两条规则都只需要语法树，不需要类型解析（type resolution），所以对 AGP 9 内置 Kotlin
 # 的工程也能跑。
 #
@@ -9,7 +10,7 @@
 #
 # ⚠️ CLI 默认不 buildUponDefaultConfig（没加 --build-upon-default-config）：本文件没写的规则一律不跑。
 # 阈值按当前代码冻结时的默认值（LongMethod 60 行 / CyclomaticComplexMethod 15）留档；
-# 首跑违规已进 `baseline.xml`，以后新增违规会出现在 report 里，但 `isIgnoreExitValue=true` 不拦构建。
+# 首跑违规的 baseline.xml 已在 324（2026-10-31）整条删除（156/171 早已失效），判红由预算闸＋硬墙完成。
 
 complexity:
   active: true
@@ -23,25 +24,12 @@ complexity:
     threshold: 15
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 硬墙（276a D1，2026-10-29）
+# 硬墙上限移驾（557，2026-11-10）
 #
-# ⚠️ detekt 1.23.8 **没有 YAML `maxIssues` 键**（官方文档：build failure 是「有 severity=error 的
-#    问题就失败」，见 detekt 1.23.8 configurations）。硬墙用 CLI 的 `--max-issues` 实现：
-#    构建脚本 `:app:detektWall` 读**下面这一行**，把它作为 `--max-issues` 传给 detekt；
-#    一旦发现条数超过它，detekt 自己就非 0 退出（`isIgnoreExitValue=false`）——不依赖 python 脚本。
-#
-# 这一行同时是**互锁的一端**：`tools/check-detekt-budget.py` 会校验它必须等于
-# `config/detekt/issue-budget.json` 的 `total`，不等即红（D2/D3）。
-# 只准降不准升；要降时**两处同一提交一起改**（操作步骤见 config/detekt/README.md）。
-#
-# 为什么是 345（410，2026-11-03）：**第八批还债落地**——引擎区挑 6 个双黄蛋
-# （LogisticsXlsx.readSheet／ProposalRules.generate／SubAgentCoordinator.runAll／
-# KbIndexer.build／SchedulePass.run／TaskGrantGate.evaluate），行为等价拆分，消 12 条；
-# 引擎区 226→214（**冻结区 131 一条没动**）。PlanController.submit 本批让位 404
-# （fix/pledge-trigger 在动同一条起单/计划/契约链），换 SchedulePass.run 补位。
-# 只降不升从 435 起算；下一批至少降 5 条。
-# maxIssues: 335
-#   ↑ 这行**故意是注释**：实测 detekt 1.23.8 把未注释的 `maxIssues:` 当非法键
-#     （`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）。
-#     值仍在这里（人读真源），由 `:app:detektWall` 与 check-detekt-budget.py 用正则读，
-#     再作为 CLI `--max-issues` 交给 detekt 执行。
+# 本文件是**报告档**（detektReport / detektModulesReport 用）：LongMethod 与
+# CyclomaticComplexMethod 都照测——557 起行数是「提示」不是闸（预算闸只把 LongMethod
+# 印成 notice，不判红）。
+# 硬墙（`:app:detektWall`）改用 config/detekt/detekt-wall.yml：只开 CyclomaticComplexMethod，
+# 上限那行注释形态的 `# maxIssues: N` 也住在那边；与 issue-budget.json 的互锁随之指向那边。
+# 为什么：547 实测行数闸逼着「为线数合并」（onEngineEvent 59/60，加一行就红）——
+# 行数只作提示，主判据用圈复杂度（派工单 557 §⑩）。本文件不再放上限行，防两处真源漂移。

@@ -7,8 +7,20 @@
 // · **接线用源码形状**：RunEngine 的日志/触发在 Compose＋协程＋SQLite 里，JVM 打不到，
 //   所以「引擎确实调了这两条闸」只能用剥注释后的源码结构钉——这是本仓既定的门禁范式，不是偷懒。
 // · **补信任件禁止开关**：用**显式入口清单**钉，不按文件名扫（命名一变就漏）。
+//
+// 第五百五十七批：
+// · ⑥「关掉压卡不发请求」**未做行为级验证**——RunEngine 构造要 BaopuDb（Android SQLite），
+//   JVM 起不来（派工单⑥的退路：明写，不用纯函数冒充）。真值表只证判定层；新增的一格
+//   证「判定层串在请求口上」：唯一的 runCompression 调用在 shouldRunCompression 的 if 体内。
+// · ⑦ SP 读取那格从「恰 1 次」计数改结构断言（读取点存在＋键与默认值成对）；
+//   UI 写口禁令与显式入口清单 560 已落地，本批核验保留（DataFence 声明在 GuardPipeline.kt:88，
+//   清单的「停机/围栏入口」一行已覆盖派工单点名的围栏）。
+// · 注入点不再钉实参名 appCtx；注释/字符串过滤换 CodeText（旧版 substringBefore("//")
+//   会把字符串里的 "https://" 当注释截断）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.CodeText
+import com.example.zhengdao.GateBodies
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,28 +74,39 @@ class ScaffoldSwitchesTest {
         assertTrue("缺历史预过滤调用", engine.contains("ScaffoldSwitches.historySkipIds("))
         assertEquals("压卡闸只许一处调用", 1, occurrences(engine, "ScaffoldSwitches.shouldRunCompression("))
         assertEquals("历史预过滤只许一处调用", 1, occurrences(engine, "ScaffoldSwitches.historySkipIds("))
-        // 两个开关都必须由装配层注入（引擎不持 Context）
+        // 两个开关都必须由装配层注入（引擎不持 Context）；实参名不钉（appCtx 是局部名）。
         val runtime = codeOnly(read(RUNTIME))
-        assertTrue(runtime.contains("ScaffoldSwitches.historyPrefilterEnabled(appCtx)"))
-        assertTrue(runtime.contains("ScaffoldSwitches.compressionPromptEnabled(appCtx)"))
+        assertTrue("历史预过滤开关必须由装配层注入",
+            Regex("""ScaffoldSwitches\.historyPrefilterEnabled\s*\(""").containsMatchIn(runtime))
+        assertTrue("压卡摘要开关必须由装配层注入",
+            Regex("""ScaffoldSwitches\.compressionPromptEnabled\s*\(""").containsMatchIn(runtime))
     }
 
-    // ── ④ 唯一读取点：SP 读取各一处，默认 true ───────────────────────────────
+    // ── ⑥ 接线（557）：压卡请求只在闸内发——「关掉 ⇒ 零请求」的结构保证 ─────────
+    // 引擎级行为验证未做（头注已明写）；这一格钉的是请求口与闸的物理串联。
     @Test
-    fun `SP键各有唯一读取点_默认开启`() {
+    fun `压卡请求只在脚手架闸内发_闸外零调用`() {
+        val engine = codeOnly(read(ENGINE))
+        assertEquals(
+            "runCompression 只许一处调用（闸外再有一处＝关掉开关也照压）",
+            1,
+            Regex("""(?<!fun )runCompression\(""").findAll(engine).count(),
+        )
+        val gated = GateBodies.blockBody(read(ENGINE), Regex("""if\s*\(\s*ScaffoldSwitches\.shouldRunCompression\s*\("""))
+        assertTrue("引擎里压卡闸的 if 不在了", gated != null)
+        assertTrue("唯一的 runCompression 调用必须在压卡闸的 if 体内", gated!!.contains("runCompression("))
+    }
+
+    // ── ④ 读取点：SP 键各有读取点，默认 true（557：存在性＋默认值，不钉恰 N 次） ──
+    // `,?` 是 557 演练补出来的：把这一行 getBoolean 拆成三行并留尾逗号（ktlint 推荐的写法），
+    // 原判据当场打红＝合法形状被误伤，故默认值判据必须容得下尾逗号。
+    @Test
+    fun `SP键读取点都在且默认开启`() {
         val source = codeOnly(read(SWITCHES))
-        assertEquals(
-            "历史预过滤的 SP 读取只许一处",
-            1,
-            occurrences(source, "getBoolean(ScaffoldSwitch.HISTORY_PREFILTER.key, true)"),
-        )
-        assertEquals(
-            "压卡摘要的 SP 读取只许一处",
-            1,
-            occurrences(source, "getBoolean(ScaffoldSwitch.COMPRESSION_PROMPT.key, true)"),
-        )
-        assertTrue("默认值必须是开", source.contains("ScaffoldSwitch.HISTORY_PREFILTER.key, true)"))
-        assertTrue("默认值必须是开", source.contains("ScaffoldSwitch.COMPRESSION_PROMPT.key, true)"))
+        assertTrue("历史预过滤要有 SP 读取点且默认开",
+            Regex("""getBoolean\(\s*ScaffoldSwitch\.HISTORY_PREFILTER\.key\s*,\s*true\s*,?\s*\)""").containsMatchIn(source))
+        assertTrue("压卡摘要要有 SP 读取点且默认开",
+            Regex("""getBoolean\(\s*ScaffoldSwitch\.COMPRESSION_PROMPT\.key\s*,\s*true\s*,?\s*\)""").containsMatchIn(source))
     }
 
     // ── ⑤ 补信任件禁止开关：显式入口清单（不按文件名扫） ──────────────────────
@@ -119,10 +142,8 @@ class ScaffoldSwitchesTest {
     // ── 工具 ──────────────────────────────────────────────────────────────────
     private fun read(rel: String): String = repoFile(rel).readText()
 
-    /** 剥注释：行注释与块注释都不算代码（防「注释里出现过」造成的假绿/假红）。 */
-    private fun codeOnly(src: String): String =
-        src.split("\n").joinToString("\n") { it.substringBefore("//") }
-            .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+    /** 剥注释与字符串（CodeText 统一口径；字面量里的同名字样不算接线）。 */
+    private fun codeOnly(src: String): String = CodeText.codeOnly(src)
 
     private fun occurrences(source: String, text: String): Int =
         Regex(Regex.escape(text)).findAll(source).count()

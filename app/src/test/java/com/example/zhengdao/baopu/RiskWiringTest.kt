@@ -409,12 +409,14 @@ class RiskWiringTest {
     fun `负例8_没有引入新UI`() {
         // 四档芯片/额度/计划模式属 173；本批只借用 220 那一行的位置
         val card = File("src/main/java/com/example/zhengdao/ui/baopu/BaopuConfirmCard.kt").readText()
+        // 第五百五十七批（⑤同族）：原来用 `indexOf("text = impactLine")` 钉字面形状，
+        // 把 named-arg 改成位置参数（合法重构）就把它打红。改成结构定位：
+        // 先按括号配对抓到"渲染 impactLine 的那一个 Text 调用"，再看它自己那一段里的 maxLines。
         // 只认**那一行**的 maxLines：文件里另一个 maxLines=1 是范围按钮的（与本批无关），
         // 断言整份文件"含 maxLines = 1"会被它冒充（门禁自己被门禁咬的教训）。
-        val at = card.indexOf("text = impactLine")
-        assertTrue("卡面那一行不见了", at >= 0)
-        val seg = card.substring(at, minOf(card.length, at + 320))
-        assertTrue("卡面那一行必须仍是单行省略：$seg", seg.contains("maxLines = 1"))
+        val seg = com.example.zhengdao.GateBodies.callArgs(card, "Text(").firstOrNull { it.contains("impactLine") }
+        assertTrue("卡面那一行不见了", seg != null)
+        assertTrue("卡面那一行必须仍是单行省略：$seg", seg!!.contains("maxLines = 1"))
         listOf("RiskClass", "RiskVerdict", "RiskCode", "quota", "Quota").forEach { sym ->
             assertFalse("卡面出现了档位/额度符号（$sym）＝新 UI 入场", card.contains(sym))
         }

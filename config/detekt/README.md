@@ -111,37 +111,43 @@ G7 点名的 5 个文件共 **16 条**：
   `BaopuSettingsScreen`（992 行）、`RiskMatrix.classify`（185 行／复杂度 58）。
 
 
-## 硬墙与互锁（276a D1–D4，2026-10-29）
+## 硬墙与互锁（276a D1–D4，2026-10-29；557 口径切换，2026-11-10）
 
 **两道闸，缺一不可**：
 
 | 闸 | 在哪 | 判据 |
 |---|---|---|
-| **硬墙** | `:app:detektWall`（CI 里单独一步，先跑） | 发现条数 > `maxIssues` ⇒ detekt 自己非 0 退出（`Analysis failed with N weighted issues.`），**不经 python 脚本** |
-| **预算闸** | `tools/check-detekt-budget.py`（CI 里紧随其后） | 只看**总量**是否超 `issue-budget.json` 的 total；另做**互锁**：`maxIssues` 必须等于 total，不等即红 |
+| **硬墙** | `:app:detektWall`（CI 里单独一步，先跑） | **复杂度**条数 > `maxIssues` ⇒ detekt 自己非 0 退出（`Analysis failed with N weighted issues.`），**不经 python 脚本** |
+| **预算闸** | `tools/check-detekt-budget.py`（CI 里紧随其后） | 只看**总量**（仅复杂度）是否超 `issue-budget.json` 的 total；另做**互锁**：`maxIssues` 必须等于 total，不等即红 |
 
 > 为什么要有硬墙：预算闸是脚本，脚本被跳过 / 从流水线里删掉就没有第二道闸；
 > 上限交给 detekt 自己（CLI `--max-issues`，1.23.8 官方文档：
 > 「return exit code 0 only when found issues count does not exceed specified issues count」）。
 
-**值放哪**：`config/detekt/detekt.yml` 末尾一行 **注释形态**的 `# maxIssues: 392`。
+**557 口径切换（2026-11-10）**：行数（LongMethod）**只作提示，不判红**——547 实测
+onEngineEvent 59/60 行，加一行就撞「新增」⇒ 冻结区红，逼着为线数并一行。现在：
+- 硬墙用 **`config/detekt/detekt-wall.yml`**（只开 CyclomaticComplexMethod，阈值 15 不变）；
+- 报告档 `detekt.yml` 两条规则照测（LongMethod 条数由预算闸印成 notice）；
+- 预算 total/zones/指纹只记复杂度；保护意图不变——长而弯的函数 CCM 照抓，长而直的不罚。
+
+**值放哪**：`config/detekt/detekt-wall.yml` 末尾一行 **注释形态**的 `# maxIssues: 189`。
 它故意是注释——实测 detekt 1.23.8 把未注释的 `maxIssues:` 当**非法配置键**
 （`Property 'maxIssues' is misspelled or does not exist.` ⇒ 退出码 3）⇒ 值由 `detektWall` 与预算闸
 用正则读，再作为 CLI `--max-issues` 交给 detekt。
 
-**当前值**：`# maxIssues: 392` ＝ `issue-budget.json` 的 `total`（354 批真读数；
-只降不升自 435 起算，下一批至少降 5 条）。
+**当前值**：`# maxIssues: 189` ＝ `issue-budget.json` 的 `total`（557 真读数 @ d3ad174e8：
+复杂度 189＝引擎 145＋冻结 44；LongMethod 144 条同日转提示。只降不升）。
 
 ### 降上限（唯一合法路径：两处同改）
 
 ```bash
 # 1) 用 CI 的读数重记预算（--write 只许 CI 的 XML；本机读数不进预算）
 python3 tools/check-detekt-budget.py --write --xml <CI artifact detekt.xml> --from-ci "run #N"
-#    ⚠️ 若新 total 与 detekt.yml 的 maxIssues 不等，会被互锁拒绝——这正是设计：
+#    ⚠️ 若新 total 与 detekt-wall.yml 的 maxIssues 不等，会被互锁拒绝——这正是设计：
 #       它逼你「两处同一提交一起改」，不允许只改一处让硬墙放水。
 
-# 2) 同一提交里把 detekt.yml 那行改成新值
-#    config/detekt/detekt.yml：  # maxIssues: <新 total>
+# 2) 同一提交里把 detekt-wall.yml 那行改成新值
+#    config/detekt/detekt-wall.yml：  # maxIssues: <新 total>
 
 # 3) 本地复核两道闸（都要绿）
 ./gradlew :app:detektWall                 # 硬墙：超上限即非 0
@@ -150,12 +156,12 @@ python3 tools/check-detekt-budget.py      # 预算闸 + 互锁
 
 **抬升**：`--allow-raise "为什么这次必须涨"`，同样**两处同改**，理由写进提交信息。
 
-### 负例（本机实做过，2026-10-29）
+### 负例（276a 本机实做 2026-10-29；557 移驾后同机制针对 detekt-wall.yml 重演练）
 
-- `# maxIssues: 324`（低于真实 325）⇒ `:app:detektWall` **BUILD FAILED**，
-  detekt 原文 `Analysis failed with 325 weighted issues.`（不经过脚本）。
-- `# maxIssues: 327` 而预算 326 ⇒ 预算闸 **rc=1**，报「`maxIssues: 327` ≠ 预算 total 326，两处必须相等且同一提交一起改」。
-- `--write` 后 total=325 但 yml 仍 326 ⇒ **rc=1** 并提示「把 detekt.yml 那行改成 325 再跑」。
+- 上限低于真实条数 ⇒ `:app:detektWall` **BUILD FAILED**，
+  detekt 原文 `Analysis failed with N weighted issues.`（不经过脚本）。
+- 上限与预算不等 ⇒ 预算闸 **rc=1**，报「`maxIssues: N` ≠ 预算 total M，两处必须相等且同一提交一起改」。
+- `--write` 后 total 与 yml 不等 ⇒ **rc=1** 并提示「把 detekt-wall.yml 那行改成新 total 再跑」。
 
 ### 改 `detektWall` 的坑：不要在 `doFirst` 里设 `args`
 
@@ -182,10 +188,10 @@ Configuration cache problems found in this build.
 |---|---|---|
 | `engine` | 除 `ui/` 之外的全部（`baopu/agent`、`inspect`、`logistics`、`core`…） | **超预算 ⇒ 红**（这一红才是真该拆的） |
 | `frozen_ui` | `app/src/main/java/com/example/zhengdao/ui/` | **超预算 ⇒ 红**（2026-10-31 用户追加：**冻结区也只降不升**——否则 UI 可以永远欠着新债） |
-| 总量 | 两本之和 | 超 `total` ⇒ 红；且必须等于 `detekt.yml` 的 `# maxIssues`（D1/D2 互锁不变） |
+| 总量 | 两本之和（只计 CCM） | 超 `total` ⇒ 红；且必须等于 `detekt-wall.yml` 的 `# maxIssues`（557 起互锁指向墙配置；D1/D2 不变） |
 
-**当前**：总量 392（引擎 **261** ／冻结 **131**）；`# maxIssues: 392`（354 批真读数；
-旧账 334＝240＋94 少了被 baseline 压住的 101 条）。
+**当前**（557，2026-11-10）：总量 **189**（引擎 **145** ／冻结 **44**）；`# maxIssues: 189` 在 `detekt-wall.yml`。
+LongMethod 144 条只作提示、不入任何一本账（行数不再判红——547 的 `onEngineEvent` 59/60 就是被行数逼着并行）。
 
 **负例（本机实做，2026-10-31 两条追加后重跑）**
 - 引擎压到 239（实际 240）⇒ **rc=1**；

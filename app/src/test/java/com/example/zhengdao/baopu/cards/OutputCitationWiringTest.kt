@@ -3,8 +3,11 @@
 // 第四百六十五批 · **接线与红线门禁**（判据④⑤⑥）。
 // 纯判据在 OutputCitationTest；这里钉「判据对、但接线上别走样」，并做 6 处变异自证：
 // 自检若恒真，改坏任何一处都应当变红——不许拿「文件含某字面量」当判据。
+// 第五百五十七批：bodyOf 从「切到下一个 private fun」换成括号配对（GateBodies）——
+// 中间夹一层改可见性不再吞并 topicScan（547 实测红过的正是这一格）；marker 不再带可见性。
 package com.example.zhengdao.baopu.cards
 
+import com.example.zhengdao.GateBodies
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -68,13 +71,16 @@ class OutputCitationWiringTest {
     private fun qualityVerifierUntouched(source: String): Boolean =
         !source.contains("OutputCitationGate") && !source.contains("CitationVerdict")
 
+    /** 函数体＝括号配对定位（GateBodies）；marker 不带可见性，改 internal/private 都不影响切片。 */
     private fun bodyOf(source: String, marker: String): String {
-        val at = source.indexOf(marker)
-        assertTrue("找不到 $marker", at >= 0)
-        val next = source.indexOf("\n    private fun ", at + marker.length)
-            .let { if (it < 0) source.length else it }
-        return source.substring(at, next)
+        val body = GateBodies.functionBody(source, marker)
+        assertTrue("找不到 $marker", body != null)
+        return body!!
     }
+
+    /** 判据五的尺：依据视图里不许出现的台账符号。真实源与变异源用同一把尺。 */
+    private fun ledgerLeaks(view: String): List<String> =
+        listOf("publishedFromLedger", "pickLedger", "产物/台账.md", "ledger.readText()").filter { view.contains(it) }
 
     // ── 判据④：SKILL.md 七步、第一步联网搜、台账只查重 ────────────────────
 
@@ -121,10 +127,8 @@ class OutputCitationWiringTest {
 
     @Test
     fun `判据五_来源收集器不读台账`() {
-        val view = bodyOf(controller, "private fun citationView()")
-        listOf("publishedFromLedger", "pickLedger", "产物/台账.md", "ledger.readText()").forEach { w ->
-            assertFalse("citationView() 里不许出现 $w", view.contains(w))
-        }
+        assertEquals("citationView() 里不许出现台账符号",
+            emptyList<String>(), ledgerLeaks(bodyOf(controller, "fun citationView()")))
         listOf("publishedFromLedger", "pickLedger", "产物/台账.md", "LedgerEntry").forEach { w ->
             assertFalse("OutputCitationSources.kt 里不许出现 $w", sources.contains(w))
         }
@@ -141,7 +145,7 @@ class OutputCitationWiringTest {
     @Test
     fun `判据五_搜索结果另走WEB通道_与台账不相交`() {
         assertTrue(searchTool.contains("CitationHitCache.record("))
-        assertTrue(bodyOf(controller, "private fun citationView()").contains("CitationHitCache.snapshot()"))
+        assertTrue(bodyOf(controller, "fun citationView()").contains("CitationHitCache.snapshot()"))
     }
 
     // ── 卡面与接线 ────────────────────────────────────────────────────────
@@ -149,7 +153,7 @@ class OutputCitationWiringTest {
     @Test
     fun `接线_出卡前先过闸_拒时一张卡都不出`() {
         assertTrue(gateBeforeStart(controller))
-        val start = bodyOf(controller, "private fun topicStart()")
+        val start = bodyOf(controller, "fun topicStart()")
         assertTrue(start.contains("OutputCitationGate.check("))
         assertTrue(start.contains("topicCitationNote = verdict.detail"))
         assertTrue(start.contains("topicFlow = null"))
@@ -227,6 +231,29 @@ class OutputCitationWiringTest {
         assertFalse("闭集多出 LEDGER 要红", citationKindsClosed(kinds.replace("    WEB,", "    WEB,\n    LEDGER,")))
         assertFalse("去掉依据闸要红", gateBeforeStart(controller.replace("OutputCitationGate.check(", "NO_GATE(")))
         assertFalse("把依据闸塞进质量验收器要红", qualityVerifierUntouched(verifier + "OutputCitationGate"))
+    }
+
+    // ── 557 去脆化自证：547 踩过的「中间层改可见性吞并切片」永久钉住 ────────
+
+    @Test
+    fun `去脆化自证_中间层改可见性_切片一字不变`() {
+        // 547 实测红过的那一格：citationMessages 从 private 改 internal，旧切片器
+        // （切到下一个 private fun）会把 topicScan 吞进 citationView ⇒ 判据五误红。
+        val mutated = controller.replace("private fun citationMessages(", "internal fun citationMessages(")
+        assertTrue("源里应有 private fun citationMessages(", mutated != controller)
+        listOf("fun citationView()", "fun topicScan()", "fun topicStart()").forEach { marker ->
+            assertEquals("可见性变更不许影响 $marker 的切片",
+                bodyOf(controller, marker), bodyOf(mutated, marker))
+        }
+        assertEquals("切片仍不许吞进台账", emptyList<String>(),
+            ledgerLeaks(bodyOf(mutated, "fun citationView()")))
+    }
+
+    @Test
+    fun `去脆化自证_依据视图塞进台账_同一把尺变红`() {
+        val mutated = controller.replace("CitationHitCache.snapshot()", "pickLedger()")
+        assertTrue("源里应有 CitationHitCache.snapshot()", mutated != controller)
+        assertEquals(listOf("pickLedger"), ledgerLeaks(bodyOf(mutated, "fun citationView()")))
     }
 
     private companion object {
