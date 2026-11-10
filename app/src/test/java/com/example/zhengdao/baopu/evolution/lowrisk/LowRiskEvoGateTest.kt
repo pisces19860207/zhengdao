@@ -156,6 +156,39 @@ class LowRiskEvoGateTest {
         assertFalse("拔门后必须红（判据③：收编直接生效＝门禁红）", body!!.contains("LowRiskEvo.gate("))
     }
 
+    // ── 调度降频：自动档先问档（急停在前）、跑完落观察账 ────────────────────
+
+    private fun nocturnalAuto(): String =
+        code("src/main/java/com/example/zhengdao/baopu/inspect/NocturnalAuto.kt")
+
+    @Test
+    fun `G6_调度降频_runDue档位在急停之后机会条件之前_跑完落观察_手动不受档`() {
+        val body = GateBodies.functionBody(nocturnalAuto(), "fun runDue(")
+        assertTrue("runDue 不在了？", body != null)
+        val brake = body!!.indexOf("MaintBrake.blocked(")
+        val gate = body.indexOf("LowRiskEvo.gate(")
+        val opp = body.indexOf("Opportunistic.decide(")
+        val observe = body.indexOf("LowRiskEvo.observeRun(")
+        assertTrue("门不在 runDue 里", gate >= 0)
+        assertTrue("观察账不在 runDue 里", observe >= 0)
+        assertTrue(
+            "顺序必须是 急停（479 不动）→ 档位 → 机会条件（511 不动）→ 观察",
+            brake < gate && gate < opp && opp < observe,
+        )
+        assertTrue("档位只管自动（MANUAL 不问档）", body.contains("AskSource.MANUAL"))
+        assertTrue("红线拒要记账", body.contains("LowRiskEvo.recordRefusal("))
+    }
+
+    @Test
+    fun `G6负例_把门从runDue拔掉_同一把断言必须红`() {
+        val src = nocturnalAuto()
+        assertTrue("前提：runDue 里有门", src.contains("LowRiskEvo.gate("))
+        val mutated = src.replace("LowRiskEvo.gate(", "LowRiskEvo.gateRemoved(")
+        val body = GateBodies.functionBody(mutated, "fun runDue(")
+        assertTrue(body != null)
+        assertFalse("拔门后必须红（判据③：自动档直接生效＝门禁红）", body!!.contains("LowRiskEvo.gate("))
+    }
+
     // ── 扫档：收工家族一行 ──────────────────────────────────────────────────
 
     @Test

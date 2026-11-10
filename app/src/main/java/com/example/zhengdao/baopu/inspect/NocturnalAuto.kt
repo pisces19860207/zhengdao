@@ -28,6 +28,10 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.consequence.CanaryCapability
+import com.example.zhengdao.baopu.evolution.lowrisk.EvoCandidate
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
+import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.maintenance.AutoMaintenance
 import com.example.zhengdao.baopu.maintenance.MaintDevice
 import com.example.zhengdao.baopu.maintenance.MaintPause
@@ -88,6 +92,34 @@ internal object NocturnalAuto {
             RunLog.log(MaintBrake.deferredLine(DEVICE, source, it, readout))
             return null
         }
+        // 第五百六十八批 A：调度降频域接既有灰度链（473）——**自动**档先问登记表那一档
+        // （NOCTURNAL_PATROL 既有登记，缺省灰度 ⇒ 既有行为不变；急停与单件暂停的顺序在前，
+        // 479 的语义不动）。MANUAL 是人点的，不受档位管（与 MaintBrake 同一口径）；
+        // 机会条件/负载/冷却的判定全在 Opportunistic，本批一个字不改。
+        if (source != AskSource.MANUAL) {
+            val candidate = EvoCandidate(
+                domain = CanaryCapability.NOCTURNAL_PATROL.wire,
+                target = "nightwatch:" + JOB.wire,
+            )
+            when (val v = LowRiskEvo.gate(CanaryCapability.NOCTURNAL_PATROL, candidate)) {
+                is LowRiskVerdict.Refuse -> {
+                    LowRiskEvo.recordRefusal(
+                        CanaryCapability.NOCTURNAL_PATROL,
+                        v.redLine,
+                        v.note,
+                        candidate,
+                        nowMs,
+                    )
+                    RunLog.log(MaintBrake.deferredLine(DEVICE, source, "候选踩自进化红线：" + v.note, readout))
+                    return null
+                }
+                is LowRiskVerdict.Hold -> {
+                    RunLog.log(MaintBrake.deferredLine(DEVICE, source, "灰度档关闭，本轮不自动跑（人工入口不受限）", readout))
+                    return null
+                }
+                is LowRiskVerdict.Allow -> Unit
+            }
+        }
         val gate = Opportunistic.decide(
             job = JOB,
             source = source,
@@ -105,8 +137,15 @@ internal object NocturnalAuto {
             RunLog.log(MaintBrake.deferredLine(DEVICE, source, Opportunistic.WHY_HEAVY, readout))
             return null
         }
+        // 568-A：灰度观察账（473 §二②）——自动档这一轮的结局一行：跑成＝ok、抛了＝fail
+        // （异常照旧上抛给调用方，观察只是留痕，不改变任何行为）。MANUAL 不经此路。
         return try {
-            runRound(ctx, root, nowMs, trigger, readout)
+            runRound(ctx, root, nowMs, trigger, readout).also {
+                LowRiskEvo.observeRun(CanaryCapability.NOCTURNAL_PATROL, ok = true, atMs = nowMs)
+            }
+        } catch (t: Throwable) {
+            LowRiskEvo.observeRun(CanaryCapability.NOCTURNAL_PATROL, ok = false, atMs = nowMs)
+            throw t
         } finally {
             HeavyWork.exit(JOB.wire)
         }
