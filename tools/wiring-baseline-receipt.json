@@ -1,0 +1,21 @@
+{
+  "schema": "wiring-receipt/1",
+  "baselineSha256": "74c950300151a4323a97c0b0d0ede9f8bc1edbfbfc0af8f1565b10c83c65cc88",
+  "counts": {
+    "total": 50,
+    "wired": 31,
+    "byDesign": 16,
+    "pending": 3,
+    "unwiredTotal": 19,
+    "companion": 49,
+    "portInterfaces": 3,
+    "ruled": 2
+  },
+  "changes": {
+    "added": [],
+    "gone": [],
+    "flipped": []
+  },
+  "reason": "600 三次拍板：为现有基线补一份收据（指纹+变更+因由），不改基线内容",
+  "note": ""
+}

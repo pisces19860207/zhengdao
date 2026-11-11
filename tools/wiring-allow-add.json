@@ -1,0 +1,5 @@
+{
+  "schema": "wiring-allow-add/1",
+  "note": "`--allow-add` 的白名单（人行，进 git 可 review）。只有登记在这里的类名才允许让 --generate 往基线里加新条目；规则与验收见 tools/wiring-report.py 的 validate_allow_add。新增一条要写清 kind（必须与扫描出的声明种类一致：interface／enum／data class／sealed class／sealed interface／object(无 install 入口)）与 why。本文件为空表示：当前不允许任何新增放行。",
+  "entries": []
+}

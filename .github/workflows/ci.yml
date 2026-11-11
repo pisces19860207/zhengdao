@@ -208,7 +208,9 @@ jobs:
       #   R1 新增待判（新写了 wiring 没人调）／R2 翻成待判（接上的线断了）
       #   R3 名册消失（删/改名没对账）／R4 裁定过期（RULINGS 与事实不符）
       # **不红**：新增纯常量/纯 DTO/端口接口，以及「待判 → 有调用点」（接上了是好事）。
-      # 600 闸只读：`--check` 不写任何文件（ci.yml 里不跑 `--generate`，基线只能人写）。
+      # 600 闸只读：`--check` 不写任何文件（ci.yml 里不跑 `--generate`，基线只能人写；
+      # `--allow-add` 也只许本地交互，CI 里传了会退 2）。
+      # 断言套件是独立文件 `tools/wiring_report_test.py`（测试搬进工具房，改断言要过 review）。
       # R5（防洗）要 `git diff <base>` 取「本次改了哪些生产文件」——PR 检出默认不带
       # origin/main 这个 remote-tracking ref，所以先补一刀；fetch 失败不许当绿，
       # `--check` 自己会因「判不了 R5」退 2。
@@ -219,10 +221,10 @@ jobs:
           python3 tools/check-evo-anchor-wiring.py --selftest
           python3 tools/check-evo-anchor-wiring.py
 
-      - name: 接线闸（600 接线清单 · 五条红标准：R1–R4 名册 + R5 防洗）
+      - name: 接线闸（600 接线清单 · 六条红标准：R1–R4 名册 + R5 防洗 + R6 收据）
         run: |
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main || true
-          python3 tools/wiring-report.py --selftest
+          python3 tools/wiring_report_test.py
           python3 tools/wiring-report.py --check
 
       - name: 编译 Debug APK（含 .so 打包验证）
