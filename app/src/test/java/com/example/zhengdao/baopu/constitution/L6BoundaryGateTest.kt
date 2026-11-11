@@ -176,6 +176,10 @@ class L6BoundaryGateTest {
             // （DecisionLedger.installedRoot），append-only 一行一条问不问的决定/放过/申诉/切档；
             // 与 274/277/298/278 同一条理由：这本账记"该不该打扰"，不是模型指的工作区路径。
             "agent/AskGovernance.kt" to setOf("mkdirs", "appendText"),
+            // 第五百七十一批：相处改判账（法典 L34 的"账在哪"：改判落一行，原判/新判/依据）。
+            // 落点同 274/499：208 已装配的那棵私有目录（DecisionLedger.installedRoot()），
+            // 文件名独立（相处改判.jsonl），追加-only、不覆盖不删除；不往 208 那本账写。
+            "agent/CompanionRejudgeLedger.kt" to setOf("mkdirs", "appendText"),
             // 第三百二十二批：模型小黑板（`产物/.board.md`）。**路径不是模型指的**——
             // 落点由 `MemoryLayout.productsDir(工作区根)` 定死，文件名是常量 `.board.md`，
             // 工具参数只有内容（`text`）没有路径 ⇒ 没有"自己挑路径写"的面，因此不需要 PathGuard。

@@ -36,7 +36,11 @@
     <string name="gc_card_compress">压卡</string>
 
     <!-- 租约（558：读数区那一行的标签） -->
+        <!-- 租约（558：读数区那一行的标签） -->
     <string name="gc_lease">租约</string>
+
+    <!-- 相处改判（571：法典 L34 的改判行标签） -->
+    <string name="gc_rejudge">相处改判</string>
 
     <!-- 执行体 -->
     <string name="gc_section_executor">执行体</string>

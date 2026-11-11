@@ -13,7 +13,7 @@
 //
 // 与决策中心的零重叠（判据⑤）也在这层落地：本层没有账本、没有队列、没有待批条目——
 // 它只认识 527 出口那六段 JSON 里的三段（ratios / cards / gray）＋ identity 两格
-// ＋ 482 的 goal 行 ＋ 558 的 lease 行（同一条「原样抄出口」的规矩，没有第二条取数路）。
+// ＋ 482 的 goal 行 ＋ 558 的 lease 行 ＋ 571 的相处改判行（同一条「原样抄出口」的规矩，没有第二条取数路）。
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.baopu.consequence.IdentityRow
@@ -176,6 +176,31 @@ internal object GovernanceCenterRules {
         val parts = mutableListOf("活 $live", "今日免卡 $savedCards")
         if (downgraded > 0) parts.add("降权 $downgraded")
         return GovReading("lease", parts.joinToString(" · "), "")
+    }
+
+    /**
+     * 相处改判那一行（第五百七十一批）：`学习 → 工作｜依据：…`，小字 `今日 N 次`。
+     *
+     * 原样抄出口的 `companion` 段（法典 L34 点名的改判三列：**原判**在箭头左、**新判**在
+     * 箭头右、**依据**带标签）——没有换算（322 判据②的「零算术」门禁照旧绿）。显示规则
+     * 同 [lease] 的老规矩：从没改判过（段里没有 `last`）或出口没给段/段是 `unknown` ⇒
+     * **null＝整行不出现**（缺哪格少哪格，不补 0，不说"读不到"冒充一行读数）。
+     *
+     * @return 行读数；null＝这一行不显示
+     */
+    fun companion(root: JSONObject?): GovReading? {
+        val sec = root?.optJSONObject("companion") ?: return null
+        if (sec.optString("unknown").isNotEmpty()) return null
+        val last = sec.optJSONObject("last") ?: return null
+        val basis = last.optString("basis")
+        if (basis.isEmpty()) return null
+        val fromCn = last.optString("fromCn").ifEmpty { last.optString("from") }
+        val toCn = last.optString("toCn").ifEmpty { last.optString("to") }
+        return GovReading(
+            key = "rejudge",
+            value = "$fromCn → $toCn｜依据：$basis",
+            detail = "今日 ${sec.optInt("today")} 次",
+        )
     }
 
     /**

@@ -958,6 +958,20 @@ internal object BaopuRuntime {
         AskGovernance.tierSink = { t -> askTierStore(appCtx, t) }
         AskIntakeGate.selfCheck = { _ -> selfCheckListing(workspaceRoot(appCtx)) }
         ProfileIntakeWiring.install(enabled = { AskHabitSwitch.on(appCtx) })
+        // 第五百七十一批（2026-11-12）：相处模式制度面（法典 L34）的观察口——左相判完档，
+        // 把这一轮的既成事实递给右相：学习档收口的达成判定＋改判落一行账（判定件在
+        // verify/ 的纯判定区；账与接线在 agent/，与 AskGovLedger 同乡——verify 禁时钟写盘）。
+        // 只读：观察者不改判档，原判/新判/依据进自治理中心。
+        com.example.zhengdao.baopu.MediatorWiring.turnObserver = { fact ->
+            com.example.zhengdao.baopu.agent.CompanionLawWiring.onTurn(
+                turn = fact.turn,
+                sessionId = fact.sessionId,
+                prevMode = fact.prevMode,
+                decided = fact.decided,
+                correction = fact.correction,
+                userText = fact.userText,
+            )
+        }
         // 第二百八十七批：每轮入口喂会话身份（文件操作账按会话分账，回放时看得清是哪一轮）。
         engine.onSessionEnter = { FileOpLog.enterSession(it) }
         // 第一百二十四批 · 发图同意闸的候选来源：「已验证能看图、且真能切过去」的那几条通道。

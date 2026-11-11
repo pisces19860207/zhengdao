@@ -82,13 +82,16 @@ class EndToEnd(LawversionCase):
     """端到端演练：真跑脚本、真退出码、真 md 文件。"""
 
     def test_direction_one_md_only_is_red(self):
-        md = self.tmp_md(codex_md_equal_to_gate() + "| **L34** | 只加在 md 里的新条 | x | x | ❌ |\n")
+        # 演练样本必须是「门禁账上没有」的空号：309 立此哨兵时用的是 L34（当时没门禁）；
+        # 571 把 L34 真落了地（法典卷十二＋L34CompanionLawGateTest）⇒ 同号再用就撞真条，
+        # 演练换成下一个空号 L35——哨兵的判据不变：只加 md 不加门禁 ⇒ 红。
+        md = self.tmp_md(codex_md_equal_to_gate() + "| **L35** | 只加在 md 里的新条 | x | x | ❌ |\n")
         r = run_tool(SCRIPT, "--md", str(md))
         self.assertEqual(r.returncode, 1, "只加 md 不加门禁必须红（309 §一·3）")
-        self.assertIn("L34 在《法典》md 里有条文", r.stdout)
+        self.assertIn("L35 在《法典》md 里有条文", r.stdout)
         rj = run_tool(SCRIPT, "--md", str(md), "--json")
         payload = json.loads(rj.stdout)
-        self.assertIn("L34", payload["md_sync"]["md_only"])
+        self.assertIn("L35", payload["md_sync"]["md_only"])
         self.assertFalse(payload["ok"])
 
     def test_direction_two_gate_only_is_red(self):

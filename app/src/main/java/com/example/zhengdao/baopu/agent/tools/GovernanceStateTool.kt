@@ -2,12 +2,13 @@
 //
 // 第五百二十七批（2026-11-07）· 治理出口的机器口：`governance_state`（只读 R0）。
 //
-// 一把出八段 JSON（口径唯一真相在 `docs/metrics-registry.md`，本文件只按它取数，不另算）：
+// 一把出九段 JSON（口径唯一真相在 `docs/metrics-registry.md`，本文件只按它取数，不另算）：
 //   ratios 四率（违规/误判/干预/跳过，当日窗）／cards 弹卡三数（healthLine 同源，本批
 //   从 healthLine 提出 [AskGovernance.healthCounts] 共用，没造第二遍）／gray 灰度档
 //   （506 登记表逐能力当前档，从 208 账读回）／conflicts 冲突队列条数（互查账待回放行）
 //   ／identity 执行体（476 身份账）／openLoops 未闭环 top-N（236 欠账）／goal 目标（482）
-//   ／lease 租约（558：活/今日授予/命中/免卡/撤销/降权/过期，同源数据函数 [LeaseReadings]）。
+//   ／lease 租约（558：活/今日授予/命中/免卡/撤销/降权/过期，同源数据函数 [LeaseReadings]）
+//   ／companion 相处改判（571：法典 L34 的改判账——当日次数＋最近一次原判/新判/依据）。
 //
 // 三条写死（metrics-registry.md 〇节，代码里不许参数化）：
 //   · 窗口＝当日 00:00 起（本地日历天，[AskGovernance.dayOf] 同一把尺）；状态读数不切窗；
@@ -57,8 +58,8 @@ internal object GovernanceStateTool {
 
     const val NAME = "governance_state"
 
-    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2，558 加 `lease` 段 ⇒ 3）。 */
-    const val VERSION = 3
+    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2，558 加 `lease` 段 ⇒ 3，571 加 `companion` 段 ⇒ 4）。 */
+    const val VERSION = 4
 
     /** 未闭环 top-N（metrics-registry.md §6：挂账最久的前 N 条；写死不参数化）。 */
     const val OPEN_LOOP_TOP = 10
@@ -80,11 +81,12 @@ internal object GovernanceStateTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
-        description = "读本机治理出口的八段只读读数（不改任何东西）：ratios 四率" +
+        description = "读本机治理出口的九段只读读数（不改任何东西）：ratios 四率" +
             "（违规/误判/干预/跳过，当日窗）、cards 弹卡三数（今日自动放过/问卡/压卡）、" +
             "gray 灰度档（逐能力当前档）、conflicts 冲突队列条数（待回放）、identity 执行体身份、" +
             "openLoops 未闭环承诺 top-10、goal 目标（一句话目标/进度/预算用量）、" +
-            "lease 租约（活/今日授予/命中/免卡/撤销/降权/过期）。" +
+            "lease 租约（活/今日授予/命中/免卡/撤销/降权/过期）、companion 相处改判" +
+            "（当日次数＋最近一次：原判/新判/依据，法典 L34）。" +
             "口径唯一真相在 docs/metrics-registry.md：分母 0 回 " +
             "no_sample，不编 0%；读不到的段回 unknown 加原因，不抛异常。（这个工具在 FILES 组：" +
             "看不到就先 capabilities 解锁）",
@@ -101,7 +103,7 @@ internal object GovernanceStateTool {
         timeoutMs = ToolTimeout.FILE_MS,
     ) { _ -> run(workspaceRoot(), System.currentTimeMillis()) }
 
-    /** 八段一起出（[nowMs] 由调用方给：单测传常量钉边界，生产传当前时刻）。 */
+    /** 九段一起出（[nowMs] 由调用方给：单测传常量钉边界，生产传当前时刻）。 */
     fun run(workspaceRoot: File, nowMs: Long): ToolOutcome {
         val json = JSONObject()
             .put("v", VERSION)
@@ -114,6 +116,7 @@ internal object GovernanceStateTool {
             .put("openLoops", openLoopsSection(workspaceRoot))
             .put("goal", goalSection(workspaceRoot))
             .put("lease", leaseSection(nowMs))
+            .put("companion", companionSection(nowMs))
         return ToolOutcome.Ok(json.toString())
     }
 
@@ -317,6 +320,32 @@ internal object GovernanceStateTool {
             .put("revoked", c.revoked)
             .put("downgraded", c.downgraded)
             .put("expired", c.expired)
+    }
+
+    /**
+     * 第九段：相处改判（第五百七十一批；排在最后——旧八段的键序与字节一个不动）。
+     *
+     * 法典 L34 的"账在哪"：改判落一行（原判/新判/依据），行账在 [CompanionRejudgeLedger]，
+     * 本段只**抄**它的回放（当日次数＋最近一次），不算第二遍。账落点未装配 ⇒ 整段 unknown；
+     * 账在但没改判过 ⇒ `{"today":0}`（真零，不编 last 冒充读数）。
+     */
+    private fun companionSection(nowMs: Long): JSONObject {
+        val root = DecisionLedger.installedRoot()
+            ?: return unknown("账本根未装配，相处改判账读不到")
+        val rows = runCatching { CompanionRejudgeLedger.replay() }
+            .getOrElse { return unknown("相处改判账读不出：${it.javaClass.simpleName}") }
+        val last = rows.firstOrNull() ?: return JSONObject().put("today", 0)
+        val out = JSONObject().put("today", rows.count { isToday(it.atMs, nowMs) })
+        return out.put(
+            "last",
+            JSONObject()
+                .put("from", last.from)
+                .put("fromCn", last.fromCn)
+                .put("to", last.to)
+                .put("toCn", last.toCn)
+                .put("basis", last.basis)
+                .put("at", last.atMs),
+        )
     }
 
     /** 当日归属（本地日历天；与体检/账本同一把尺）。 */

@@ -37,6 +37,14 @@
 //   · 落账走**路线②**：只落 `RunLog` 一行人话（[companionLine]），不进任何账本
 //     ——理由写在 [companionLine] 的调用位（495/517 的行里没有可放的列）。
 //   · W1–W4 一个字没动，`logLine` 的字面也没动（258 把它钉死了，并进去就是改别人的判据）。
+//
+// 第五百七十一批（2026-11-12）：加一个**只读观察口** [turnObserver]——判档逻辑（W5 的
+// 三级顺序、一轮一次、纠正识别）一个字没动，只是判完、落完账之后把这一轮的**既成事实**
+// 交给装配层注册的观察者（app 侧用它喂右相达成判定与改判账，法典 L34 的制度落点）。
+//   · `null`（没人注册）⇒ 行为与接线前逐字节一致；
+//   · 观察者拿到的是**快照**（[CompanionTurnFact]），不是活引用——它不许改判档，
+//     只许记账、判定、落行；
+//   · [resetForTest] 同步摘观察口（谁注册谁摘，进程内单例不许串测）。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.core.RunLog
@@ -208,6 +216,20 @@ object MediatorWiring {
         // 495 那几个 reason 码是 verify 路径里的常量，不是可追加的行。扩容单见交付报告。
         RunLog.log(companionLine(decided, correction, turns, boundSessionId))
 
+        // 第五百七十一批：判档与落账都已结成**既成事实**，交给观察口（装配层注册；
+        // null＝没人看，行为与接线前逐字节一致）。放在最后一步：观察者看见的永远是
+        // "这一轮已经判完"的快照，不存在"判到一半被旁观"的中间态。
+        turnObserver?.invoke(
+            CompanionTurnFact(
+                turn = turns,
+                sessionId = boundSessionId,
+                prevMode = prevCompanion?.mode,
+                decided = decided,
+                correction = correction,
+                userText = userText,
+            ),
+        )
+
         step.flags.forEach { flag -> write(flag, now) }
         return step.flags
     }
@@ -280,6 +302,37 @@ object MediatorWiring {
     @Synchronized
     fun companionSuffix(): String = "\n\n" + CompanionJudge.segment(currentCompanion())
 
+    // ── 第五百七十一批：一轮的只读观察口（法典 L34 的制度落点在 app 侧，这里只递事实）──
+
+    /**
+     * 一轮判档的**既成事实**快照（[onUserTurn] 判完、落完账之后交给 [turnObserver]）。
+     *
+     * @param turn 第几轮（1 起）
+     * @param sessionId 会话 id（纠正只认同一会话内的前后两轮，与判档同一把尺）
+     * @param prevMode 上一轮判的档；`null`＝第一轮（没有上一轮，也就没有可纠的判）
+     * @param decided 本轮判档结论（左相的既成结论，观察者不许改）
+     * @param correction 非空＝用户点名改判（[CompanionJudge.correctionOf] 认出的那一次，
+     *   误判纠正的账源——改判行的原判/新判/依据三列全从这里来）
+     * @param userText 本轮用户原话（学习档收口时它是达成判定的证据，右相只读这一份）
+     */
+    data class CompanionTurnFact(
+        val turn: Int,
+        val sessionId: Long,
+        val prevMode: CompanionMode?,
+        val decided: CompanionDecision,
+        val correction: CompanionDecision?,
+        val userText: String,
+    )
+
+    /**
+     * 观察口（装配层注册；`null`＝没人看 ⇒ [onUserTurn] 行为与接线前逐字节一致）。
+     *
+     * 生产由 `BaopuRuntime` 注册到 app 侧的右相达成判定与改判账（法典 L34）；进程内单例
+     * ⇒ 测试用完必须经 [resetForTest] 摘掉，不许把上一单的观察者漏进下一单。
+     */
+    @Volatile
+    var turnObserver: ((CompanionTurnFact) -> Unit)? = null
+
     // ── 第四百零六批：弹卡闸的咨询口（shouldAsk/budgetFor/decide 的生产读数）────
 
     /**
@@ -325,6 +378,7 @@ object MediatorWiring {
         reframeNote = null
         askedThisTurn = 0
         companion = null
+        turnObserver = null
     }
 
     /**

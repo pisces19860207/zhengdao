@@ -85,6 +85,8 @@ class GovernanceStateLeaseSectionTest {
         leaseDir = File(wsRoot, "同目录").apply { mkdirs() }
         DecisionLedger.resetForTest()
         AskGovernance.resetForTest()
+        // 571 的改判账也一起还：companion 段读它，漏一行内存账会让金样例的「真零」变假
+        CompanionRejudgeLedger.resetForTest()
         // 467 的两本（内存账＋账落点）一起还——落点**装在 workspace 根**（生产：管线
         // rememberRoot 喂的就是它），558 的读数按生产形状装配
         LeaseStore.resetForTest()
@@ -100,6 +102,7 @@ class GovernanceStateLeaseSectionTest {
         GovernanceStateTool.env = null
         AskGovernance.resetForTest()
         DecisionLedger.resetForTest()
+        CompanionRejudgeLedger.resetForTest()
         LeaseStore.resetForTest()
         memoryRoot.deleteRecursively()
         filesDir.deleteRecursively()
@@ -162,13 +165,13 @@ class GovernanceStateLeaseSectionTest {
     }
 
     @Test
-    fun `旧七段键集不变_lease是唯一新增段_v升3`() {
+    fun `旧八段键集不变_companion是唯一新增段_v升4`() {
         seedAll()
         val out = exit()
-        assertEquals(3, out.getInt("v"))
+        assertEquals(4, out.getInt("v"))
         assertEquals(
-            "出口键集：旧七段一个不少一个不多，lease 是唯一新增",
-            setOf("v", "day", "ratios", "cards", "gray", "conflicts", "identity", "openLoops", "goal", "lease"),
+            "出口键集：旧八段一个不少一个不多，companion（571）是唯一新增",
+            setOf("v", "day", "ratios", "cards", "gray", "conflicts", "identity", "openLoops", "goal", "lease", "companion"),
             out.keys().asSequence().toSet(),
         )
         // goal 段（482 加的第七段）的代码路径一个字没动：字节照旧是没立目标的那句 unknown。
@@ -177,7 +180,14 @@ class GovernanceStateLeaseSectionTest {
             "{\"unknown\":\"这次会话还没有立目标\"}",
             out.getJSONObject("goal").toString(),
         )
-        // 注：键**序**在两处运行时不一样——Android 的 org.json 是插入序（lease 排在最后，
+        // companion 段（571 加的第九段）：改判账没人写过 ⇒ 真零（{"today":0}，不编 last 冒充读数）。
+        // 558 的铁律照旧成立：这一段是**追加**，旧八段的键序与字节一个不动。
+        assertEquals(
+            "companion 字节（571：没改判过 ⇒ 真零）",
+            "{\"today\":0}",
+            out.getJSONObject("companion").toString(),
+        )
+        // 注：键**序**在两处运行时不一样——Android 的 org.json 是插入序（companion 排在最后，
         // 由 run() 里最后一格 .put 保证），JVM 测试件是 HashMap（顺序是散列的假象）。
         // 所以这里钉键集与逐段字节，键序以生产运行时为准。
     }

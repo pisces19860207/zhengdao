@@ -1,7 +1,7 @@
 # 治理出口读数口径（metrics-registry）
 
 - 立单：第五百二十七批＋第五百三十批（合并实施，2026-11-07）；本文件是**机器口 `governance_state` 工具读数的唯一口径**。
-- 改版记录：**形状版本 1→2**（482 加 `goal` 段）；**2→3（第五百五十八批，2026-11-09）加 `lease` 租约段**——先改本节再动代码，旧七段（ratios/cards/gray/conflicts/identity/openLoops/goal）的键序与字节**一个不动**（金样例钉在 `GovernanceStateLeaseSectionTest`）。
+- 改版记录：**形状版本 1→2**（482 加 `goal` 段）；**2→3（第五百五十八批，2026-11-09）加 `lease` 租约段**；**3→4（第五百七十一批，2026-11-12）加 `companion` 相处改判段**——先改本节再动代码，旧段的键序与字节**一个不动**（金样例钉在 `GovernanceStateLeaseSectionTest`）。
 - 改口径的规矩（照 `docs/METRICS.md` R2 同款）：先改本文件、写明改的理由与生效日期，再动代码；**不许看了数再改口径**。
 - 与 `docs/METRICS.md` 的关系：METRICS.md 管**周报人读数**；本文件管**机器口**。两处的定义（分子/分母怎么数）同源，不另造第二套；**窗口不同**（机器口写死当日，见下），这不是另算，是两个出口各自的窗口，各写各的。
 
@@ -113,11 +113,29 @@ JSON 形状：`{"live":0,"grantedToday":0,"hits":0,"savedCards":0,"revoked":0,"d
 
 ---
 
-## 二、工具出口形状（`governance_state` 返回的八段 JSON）
+### 9. `companion` 相处改判（第五百七十一批新增，2026-11-12）
+
+> 法典 L34 的"账在哪"：用户点名纠正相处模式判档 ⇒ 落一行改判账（`相处改判.jsonl`，与 208
+> 同一棵目录；三列 **原判（from）／新判（to）／依据（basis）**），本段把账**抄成读数**。
+> 按 558 同款规矩**追加在出口最后**（第九段）；旧八段的键序与字节一个不动（金样例钉在
+> `GovernanceStateLeaseSectionTest`）。
+
+| 读数 | 定义 | 来源 | 窗口 | 分母 0 怎么说 |
+|---|---|---|---|---|
+| `companion.today` | 今日改判次数（改判账行数，按 `at` 切当日窗） | `CompanionRejudgeLedger.replay()`（app/src/main/java/com/example/zhengdao/baopu/agent/CompanionRejudgeLedger.kt） | 当日 00:00 起 | 不适用（计数，0 就是 0） |
+| `companion.last` | 最近一次改判（**从没改判过 ⇒ 格不存在**，段只有 `today`；不编空行冒充读数） | 同上（replay 新→旧的第一行） | 不适用（状态读数） | 不适用 |
+
+JSON 形状：`{"today":0}`（真零）或 `{"today":N,"last":{"from":"study","fromCn":"学习","to":"work","toCn":"工作","basis":"…","at":0}}`；账本根未装配 ⇒ 整段 `{"unknown":"账本根未装配，相处改判账读不到"}`。
+
+**同一份数的三个读口（不许各造一遍）**：① 本段（机器口 `governance_state`）；② 运行日志的改判账本身（落账面，`CompanionRejudgeLedger.append` 一处写）；③ 自治理中心读数区那一行 `相处改判：学习 → 工作｜依据：…`（小字 `今日 N 次`；**显示条件：`last` 存在**——从没改判过 ⇒ 整行不出现，不显示 0）。三口取数都在 `CompanionRejudgeLedger.replay` 一处，屏幕逐字抄出口（`GovernanceCenterRules.companion`，零算术）。
+
+---
+
+## 二、工具出口形状（`governance_state` 返回的九段 JSON）
 
 ```
 {
-  "v": 3,                          // 558 加 lease 段 ⇒ 形状版本 2 → 3
+  "v": 4,                          // 571 加 companion 段 ⇒ 形状版本 3 → 4
   "day": "yyyy-MM-dd",            // 当日（本地时区）＝ W1 窗口的那一天，读数与它对账
   "ratios":   { "violation": {…}, "misjudge": {…}, "intervention": {…}, "skip": {…} },
   "cards":    { "pass": 0, "card": 0, "compress": 0 },
@@ -126,9 +144,10 @@ JSON 形状：`{"live":0,"grantedToday":0,"hits":0,"savedCards":0,"revoked":0,"d
   "identity": { "id": "zdx-…", "state": "active" },
   "openLoops":{ "total": 0, "items": [ … ] },
   "goal":     { "sentence": "…", "state": "active", "progress": "3/5", "budget": "40%", "line": "目标：…" },
-  "lease":    { "live": 0, "grantedToday": 0, "hits": 0, "savedCards": 0, "revoked": 0, "downgraded": 0, "expired": 0 }
+  "lease":    { "live": 0, "grantedToday": 0, "hits": 0, "savedCards": 0, "revoked": 0, "downgraded": 0, "expired": 0 },
+  "companion":{ "today": 0, "last": { "from": "study", "fromCn": "学习", "to": "work", "toCn": "工作", "basis": "…", "at": 0 } }
 }
 ```
 
-- `v` ＝ 本口径版本（**3**）；改口径先改本文件再升 `v`。`lease` 排在最后（键序追加，旧七段的键序逐字节未动）。
-- **对拍判据**（527）：脚本（独立从账本原文重算）与工具出口**逐项相等**——`GovernanceStateToolTest` 是它的牙；558 的 `lease` 段对拍＋金样例在 `GovernanceStateLeaseSectionTest`（`live` 一格是内存权威，脚本侧不重算、以驱动状态钉期望值）。
+- `v` ＝ 本口径版本（**4**）；改口径先改本文件再升 `v`。`companion` 排在最后（键序追加，旧八段的键序逐字节未动）。
+- **对拍判据**（527）：脚本（独立从账本原文重算）与工具出口**逐项相等**——`GovernanceStateToolTest` 是它的牙；558 的 `lease` 段对拍＋金样例在 `GovernanceStateLeaseSectionTest`（`live` 一格是内存权威，脚本侧不重算、以驱动状态钉期望值）；571 的 `companion` 段在 `CompanionLawWiringTest` 对拍（账行 → 出口段 → 屏幕行三列齐）。

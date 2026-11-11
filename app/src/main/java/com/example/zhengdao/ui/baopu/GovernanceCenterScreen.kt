@@ -433,7 +433,7 @@ private fun GovTopBar(onDismiss: () -> Unit) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** ① 读数区：四率 · 弹卡三数 · 灰度（全部原样抄 527 出口）＋ 558 的租约一行。 */
+/** ① 读数区：四率 · 弹卡三数 · 灰度（全部原样抄 527 出口）＋ 558 的租约一行 ＋ 571 的相处改判一行。 */
 @Composable
 private fun ReadingSection(snapshot: GovSnapshot) {
     val root = snapshot.root
@@ -444,7 +444,10 @@ private fun ReadingSection(snapshot: GovSnapshot) {
             // 第五百五十八批：租约一行（`租约 · 活 N · 今日免卡 M · 降权 K`）——判据层
             // [GovernanceCenterRules.lease] 抄出口的 lease 段；无租约它自己回 null，
             // listOfNotNull 把"整行不出现"落在读数区的老规矩上（缺哪格少哪格，不补 0）。
-            listOfNotNull(GovernanceCenterRules.lease(root))
+            listOfNotNull(GovernanceCenterRules.lease(root)) +
+            // 第五百七十一批：相处改判一行（法典 L34：`学习 → 工作｜依据：…`，小字今日 N 次）
+            // ——同一条 listOfNotNull 老规矩：没改判过整行不出现。
+            listOfNotNull(GovernanceCenterRules.companion(root))
     }
     SectionCard(title = stringResource(R.string.gc_section_reading)) {
         if (readings == null) {
@@ -1161,6 +1164,7 @@ private fun labelOf(key: String): String = when (key) {
     "card" -> stringResource(R.string.gc_card_card)
     "compress" -> stringResource(R.string.gc_card_compress)
     "lease" -> stringResource(R.string.gc_lease)
+    "rejudge" -> stringResource(R.string.gc_rejudge)
     // 灰度那几格用出口自带的 `cn`（能力名）当标签，键是线的能力名 ⇒ 查不到也照原样显示
     else -> key
 }
