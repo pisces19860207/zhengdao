@@ -174,6 +174,56 @@ class MidRiskEvoGateTest {
         assertFalse("拔掉阈值回滚支后必须红（判据②的一键回滚不许静默消失）", body!!.contains("MidRiskEvo.revertThreshold("))
     }
 
+    // ── 域②：纠正出口在判档落账之后真调门，装配层真注入 ─────────────────────
+
+    private fun mediatorWiring(): String =
+        code("../policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt")
+
+    private fun baopuRuntime(): String =
+        code("src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt")
+
+    @Test
+    fun `G7_纠正出口在判档落账之后_候选不回流判档`() {
+        val body = GateBodies.functionBody(mediatorWiring(), "fun onUserTurn(")
+        assertTrue("onUserTurn 不在了？", body != null)
+        val line = body!!.indexOf("companionLine(")
+        val sink = body.indexOf("companionRuleSink")
+        val judge = body.indexOf("CompanionJudge.judge(")
+        assertTrue("候选出口不在纠正支路里（造了不接＝打回）", sink >= 0)
+        assertTrue(
+            "顺序必须是 判档 → 落账 → 候选出口（出口只搬运结论）",
+            judge >= 0 && judge < line && line < sink,
+        )
+        assertTrue("出口判 correction 非空才交（自动换档不是纠正）", body.contains("correction != null"))
+    }
+
+    @Test
+    fun `G7负例_候选出口从真文件里拔掉_同一把断言必须红`() {
+        val src = mediatorWiring()
+        assertTrue("前提：真文件里有候选出口", src.contains("companionRuleSink"))
+        val mutated = src.replace("companionRuleSink", "companionSinkGone")
+        val body = GateBodies.functionBody(mutated, "fun onUserTurn(")
+        assertTrue(body != null)
+        assertFalse("拔掉出口后必须红（判据⑤：生产调用点必须在）", body!!.contains("companionRuleSink"))
+    }
+
+    @Test
+    fun `G8_装配层真把纠正出口接到中风险门`() {
+        val src = baopuRuntime()
+        assertTrue("装配层没注入候选出口（sink 没人听＝假接线）", src.contains("MediatorWiring.companionRuleSink ="))
+        val wiring = src.indexOf("MediatorWiring.companionRuleSink =")
+        val call = src.indexOf("MidRiskEvo.onCompanionCorrection(")
+        assertTrue("出口没接到中风险门", call > wiring)
+    }
+
+    @Test
+    fun `G8负例_装配层注入拔掉_断言必须红`() {
+        val src = baopuRuntime()
+        assertTrue(src.contains("MediatorWiring.companionRuleSink ="))
+        val mutated = src.replace("MediatorWiring.companionRuleSink =", "MediatorWiring.companionRuleSinkDisabled =")
+        assertFalse("拔掉装配注入后必须红（出口无人听＝假接线）", mutated.contains("MediatorWiring.companionRuleSink ="))
+    }
+
     // ── 区间单一真相：中风险门不自带第二个区间 ────────────────────────────────
 
     @Test

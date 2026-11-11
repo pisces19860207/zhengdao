@@ -496,6 +496,17 @@ internal object BaopuRuntime {
      */
     private fun wireGovernanceState(appCtx: Context) {
         wireGoalCloseout(appCtx)
+        // 第五百六十八批 B 域②：相处规则候选的出口（550 的误判纠正 → 候选）。
+        // 只注入不判据：判档逻辑在 CompanionJudge（550，一字不动），灰度链的判定全在中风险门。
+        com.example.zhengdao.baopu.MediatorWiring.companionRuleSink = { prev, corrected, turns, sessionId, atMs ->
+            com.example.zhengdao.baopu.evolution.midrisk.MidRiskEvo.onCompanionCorrection(
+                prev,
+                corrected,
+                turns,
+                sessionId,
+                atMs,
+            )
+        }
         com.example.zhengdao.baopu.agent.GovernanceStateTool.env =
             com.example.zhengdao.baopu.agent.GovernanceStateTool.Env(
                 identityDir = { appCtx.filesDir },

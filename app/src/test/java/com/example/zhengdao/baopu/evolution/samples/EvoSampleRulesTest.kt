@@ -211,12 +211,13 @@ class EvoSampleRulesTest {
     @Test
     fun `判据⑫_锚类型声明齐_低风险四域加中风险域`() {
         val declared = EvoAnchorRegistry.DECLARED
-        assertEquals("五域各一条，不能少也不能多（589 四域＋568-B 域①）", 5, declared.size)
+        assertEquals("六域各一条，不能少也不能多（589 四域＋568-B 域①②）", 6, declared.size)
         assertEquals(EvoAnchorKind.SKILL_PROPOSAL, declared[CanaryCapability.REFLECTION_AUTO_EDIT])
         assertEquals(EvoAnchorKind.TAIL_VERSION, declared[CanaryCapability.PROMPT_TAIL])
         assertEquals(EvoAnchorKind.IMPORT_BATCH, declared[CanaryCapability.MEMORY_IMPORT])
         assertEquals(EvoAnchorKind.PATROL_ROUND, declared[CanaryCapability.NOCTURNAL_PATROL])
         assertEquals("568-B 域①判定阈值＝对话域轮次（589 拍板①）", EvoAnchorKind.CONV_TURN, declared[CanaryCapability.JUDGMENT_THRESHOLD])
+        assertEquals("568-B 域②相处规则＝对话域轮次（纠正发生在用户轮内）", EvoAnchorKind.CONV_TURN, declared[CanaryCapability.COMPANION_RULE])
         assertEquals("锚类型是闭集五格", 5, EvoAnchorKind.entries.size)
     }
 

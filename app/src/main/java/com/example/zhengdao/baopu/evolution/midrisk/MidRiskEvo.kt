@@ -30,6 +30,7 @@
 // `GuardPipeline`/`RunEngine`；208 账本结构零改动（只照 `depth:` 先例加一族 evidence 前缀）。
 package com.example.zhengdao.baopu.evolution.midrisk
 
+import com.example.zhengdao.baopu.CompanionDecision
 import com.example.zhengdao.baopu.consequence.AdvisorOpinion
 import com.example.zhengdao.baopu.consequence.AdvisorRules
 import com.example.zhengdao.baopu.consequence.CanaryBand
@@ -69,6 +70,7 @@ internal object MidRiskEvo {
     /** 中风险域在 473 登记表里的能力（扫档按这张清单逐一走梯子）。 */
     internal val CAPABILITIES: List<CanaryCapability> = listOf(
         CanaryCapability.JUDGMENT_THRESHOLD,
+        CanaryCapability.COMPANION_RULE,
     )
 
     // ── 域① 判定阈值：区间内自调 ─────────────────────────────────────────
@@ -178,6 +180,65 @@ internal object MidRiskEvo {
             anchor = p.turnAnchor,
         )
         return stamped
+    }
+
+    // ── 域② 相处规则候选（来自 550 的误判纠正，只出候选） ────────────────────
+
+    /** 域②候选的目标串（指向相处模式的判档面；不含任何源码路径与账本名——红线扫描对它透明）。 */
+    internal const val COMPANION_RULE_TARGET: String = "companion:mode-rules"
+
+    /**
+     * 一次误判纠正 ⇒ 一条相处规则候选（生产调用点：`MediatorWiring.onUserTurn` 的
+     * 候选出口——550 的判档逻辑一字未动，这里只接"已经判完的纠正"）。
+     *
+     * 候选只出**不启用**：正文落一行 RunLog（路线②，550/482 的同一形态）＋观察＋样本；
+     * 未转正不参与判档，**转正也不参与**——候选回流判档词表没有路（`MediatorWiring` 的
+     * 出口只搬运结论；`CompanionJudge` 的词表是判定常量）。灰度链管的是这一域的
+     * "产不产、记不记、升不升档"，不管判档本身。
+     *
+     * 会话号/轮次锚由调用方给（589 拍板①：对话域锚＝轮次）；没有会话（-1）⇒ 空，
+     * 样本按时刻自记身份，不硬造会话号。
+     *
+     * @return 候选出没出成（档位关闭/红线拒不产出；观察照常不落——Hold/拒不算执行）
+     */
+    fun onCompanionCorrection(
+        prev: CompanionDecision,
+        now: CompanionDecision,
+        turns: Int,
+        sessionId: Long,
+        atMs: Long,
+    ): Boolean {
+        val cap = CanaryCapability.COMPANION_RULE
+        val candidate = EvoCandidate(
+            domain = cap.wire,
+            target = COMPANION_RULE_TARGET,
+            body = "规则候选（只产不启用）：${prev.mode.cn}→${now.mode.cn} 的纠正样本" +
+                "——第 $turns 轮用户点名切档（依据：${now.reason}）⇒ 建议「${now.mode.cn}档显式信号直判」进候选区",
+        )
+        return when (val verdict = LowRiskEvo.gate(cap, candidate)) {
+            is LowRiskVerdict.Refuse -> {
+                LowRiskEvo.recordRefusal(cap, verdict.redLine, verdict.note, candidate, atMs)
+                false
+            }
+            is LowRiskVerdict.Hold -> {
+                RunLog.log("相处规则候选暂缓（${verdict.note}）")
+                false
+            }
+            is LowRiskVerdict.Allow -> {
+                RunLog.log(
+                    "相处规则候选（只产不启用）：第 $turns 轮 ${prev.mode.cn}→${now.mode.cn}" +
+                        "｜依据 ${now.reason}｜session=$sessionId",
+                )
+                LowRiskEvo.observeRun(
+                    cap,
+                    ok = true,
+                    atMs = atMs,
+                    sessionId = if (sessionId >= 0L) sessionId else 0L,
+                    anchor = if (sessionId >= 0L) "turn:$sessionId:$turns" else "",
+                )
+                true
+            }
+        }
     }
 
     // ── 收工扫档（生产调用点：`EvolutionWiring.onRunSettled` 一行） ──────────

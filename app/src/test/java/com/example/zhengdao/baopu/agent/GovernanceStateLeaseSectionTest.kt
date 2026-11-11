@@ -131,6 +131,8 @@ class GovernanceStateLeaseSectionTest {
     // 第五百六十八批 B 域①：登记表补 judgment_threshold（缺省灰度）⇒ 第 13 个键触发
     // HashMap 16→32 扩容，全表重排（12 键的相对序整个变了——扩容重哈希，不是插序微调）；
     // 新序按 spread&(32-1) 独立复算，与失败现场逐字节吻合后落笔，其余七段一个不动。
+    // 第五百六十八批 B 域②：登记表补 companion_rule（缺省灰度）⇒ 容量仍 32（≤24 不扩），
+    // 新键按哈希落进 data_repair 与 prod_eval 之间，其余键相对序不动（同一把复算法）。
     private val goldenGray =
         "{\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"orchestration\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
@@ -142,6 +144,7 @@ class GovernanceStateLeaseSectionTest {
             "\"memory_import\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"nocturnal_patrol\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"data_repair\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"companion_rule\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"prod_eval\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"scout\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
             "\"judgment_threshold\":{\"band\":\"canary\",\"cn\":\"灰度\"}}"

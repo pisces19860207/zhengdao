@@ -90,6 +90,9 @@ internal object EvoAnchorRegistry {
         CanaryCapability.NOCTURNAL_PATROL to EvoAnchorKind.PATROL_ROUND,
         // 568-B 域①判定阈值：对话域（未批准/同意都发生在会话轮内）⇒ 锚＝轮次（589 拍板①）。
         CanaryCapability.JUDGMENT_THRESHOLD to EvoAnchorKind.CONV_TURN,
+        // 568-B 域②相处规则候选：纠正发生在用户轮内（左相判档处）⇒ 锚＝轮次（同一轮的
+        // 多次纠正回声只计 1；589 拍板①对话域 turn）。
+        CanaryCapability.COMPANION_RULE to EvoAnchorKind.CONV_TURN,
     )
 
     /** 这一域声明了哪种锚（null＝无锚：不计、标注）。 */

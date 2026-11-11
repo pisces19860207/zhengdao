@@ -123,6 +123,14 @@ internal enum class CanaryCapability(
      * 缺省灰度档：调整照常判，但每一次提议都落观察账；档位关闭 ⇒ 不自调（政策表原值照用）。
      */
     JUDGMENT_THRESHOLD("judgment_threshold", "判定阈值", CanaryBand.CANARY, "judgment_threshold", "组闸重问阈值只在 1–10 内挪；出区间拒并记账"),
+
+    /**
+     * 568-B 域②相处规则候选：从 550 的误判纠正（用户点名纠正上一轮判档）产**规则候选**。
+     * 只出候选：候选永远不回流 [com.example.zhengdao.baopu.CompanionJudge] 的判档词表
+     * （550 的判档逻辑一字不动——那条边界比档位更硬，源级门禁钉）；灰度链管的是
+     * 候选"产不产、记不记、升不升档"，不管判档本身。
+     */
+    COMPANION_RULE("companion_rule", "相处规则", CanaryBand.CANARY, "companion_rule", "只出候选；未转正不参与判档"),
     ;
 
     companion object {

@@ -146,6 +146,26 @@ object MediatorWiring {
     private var companion: CompanionDecision? = null
 
     /**
+     * 相处规则候选的出口（第五百六十八批 B 域②；**只交出去、不收进来**——与
+     * `GoalBoard.closeoutSink` 同一手法）：用户点名纠正上一轮判档时，把"已经判完的事实"
+     * （上一轮档、这一轮档、轮次、会话、本轮时刻）原样交给装配层注入的实现。
+     *
+     * 判档本体一字不动：本出口在 [CompanionJudge.judge]/[CompanionJudge.correctionOf]
+     * 与 [companionLine] 落账**之后**，只搬运结论，不回流、不参与判档——派工单 §六
+     * 「未转正不参与判档」的结构保证就在这里（候选想影响判档，没有路）。
+     * 时刻用 [onUserTurn] 自己的 `now`（调解器的钟，不另取墙钟——测试与账同源）。
+     * 不注入 ⇒ 行为与接线前逐字一致（照旧只落 [companionLine]）。
+     */
+    @Volatile
+    var companionRuleSink: ((
+        prev: CompanionDecision,
+        corrected: CompanionDecision,
+        turns: Int,
+        sessionId: Long,
+        atMs: Long,
+    ) -> Unit)? = null
+
+    /**
      * 一轮用户输入（**唯一**接线点，控制器里只此一处）。
      *
      * @param userText 用户原话（界面那一份，不是 `reframe` 之后的那一份）
@@ -215,6 +235,12 @@ object MediatorWiring {
         // 把 work/study 写进去会被 `EvolutionDepth.current()` 当成当前**深度**档读走（污染 517）；
         // 495 那几个 reason 码是 verify 路径里的常量，不是可追加的行。扩容单见交付报告。
         RunLog.log(companionLine(decided, correction, turns, boundSessionId))
+        // 第五百六十八批 B 域②：纠正被认出来 ⇒ 原样交给候选出口（装配层注入；不注入＝什么都不发生）。
+        // 在判档与落账之后、只搬运结论——候选不回流判档（「未转正不参与判档」的结构保证）。
+        val ruleSink = companionRuleSink
+        if (correction != null && ruleSink != null && prevCompanion != null) {
+            ruleSink(prevCompanion, correction, turns, boundSessionId, now)
+        }
 
         // 第五百七十一批：判档与落账都已结成**既成事实**，交给观察口（装配层注册；
         // null＝没人看，行为与接线前逐字节一致）。放在最后一步：观察者看见的永远是
