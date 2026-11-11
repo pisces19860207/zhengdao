@@ -740,6 +740,20 @@ internal object GoalBoard {
         closeoutSink = sink
     }
 
+    /**
+     * 模板候选的出口（第五百六十八批 B 域③；**只交出去、不收进来**，与 [closeoutSink] 同一手法）。
+     *
+     * 482 的口径不变：候选只产值（不落库、不启用、不当默认值——`GoalModeTest` 的源级门禁钉着）。
+     * 出口只把**已经提炼完的候选**交给装配层注入的实现（灰度链管记不记账，不管判据写法）；
+     * 不注入 ⇒ 与 482 逐字节一致（照旧只记那行日志）。
+     */
+    @Volatile
+    private var templateSink: ((GoalRules.TemplateCandidate, Long) -> Unit)? = null
+
+    fun attachTemplateSink(sink: ((GoalRules.TemplateCandidate, Long) -> Unit)?) {
+        templateSink = sink
+    }
+
     /** 装配（引擎 init 调一次）：给工作区，并把盘上那份目标接回来（跨轮/跨进程都认账）。 */
     fun attach(workspace: File) {
         root = workspace
@@ -861,6 +875,9 @@ internal object GoalBoard {
                 "目标模板候选（只产不启用）：${candidate.name}｜判据写法 " +
                     "${candidate.criteriaPattern.size} 条｜来源 goal:${candidate.sourceGoalId}",
             )
+            // 第五百六十八批 B 域③：候选原样交给候选出口（装配层注入；不注入＝与 482 逐字节一致）。
+            // 交出去的是"已经提炼完的值"，收尾路径不许被候选拖挂（与 closeoutSink 同一条纪律）。
+            templateSink?.let { sink -> runCatching { sink(candidate, atMs) } }
         }
         return GoalRules.Outcome(next, verdict, notice)
     }
@@ -892,5 +909,6 @@ internal object GoalBoard {
         clear()
         root = null
         closeoutSink = null
+        templateSink = null
     }
 }

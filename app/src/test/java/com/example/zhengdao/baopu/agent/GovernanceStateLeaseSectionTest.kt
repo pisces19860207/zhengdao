@@ -133,10 +133,13 @@ class GovernanceStateLeaseSectionTest {
     // 新序按 spread&(32-1) 独立复算，与失败现场逐字节吻合后落笔，其余七段一个不动。
     // 第五百六十八批 B 域②：登记表补 companion_rule（缺省灰度）⇒ 容量仍 32（≤24 不扩），
     // 新键按哈希落进 data_repair 与 prod_eval 之间，其余键相对序不动（同一把复算法）。
+    // 第五百六十八批 B 域③：登记表补 goal_template（缺省灰度）⇒ 同款，落进
+    // reflection_auto_edit 与 persona_organize 之间（15 键仍 ≤24 不扩容，复算吻合）。
     private val goldenGray =
         "{\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"orchestration\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
             "\"reflection_auto_edit\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"goal_template\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"persona_organize\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
             "\"evolution\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"wish\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +

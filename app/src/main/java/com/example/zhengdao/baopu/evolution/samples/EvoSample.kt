@@ -62,6 +62,12 @@ internal enum class EvoAnchorKind(val wire: String, val cn: String) {
      * 同一轮里的多次事件是同一件事，只计 1；没有轮次可取时兜底 `at:`，不硬造轮次号）。
      */
     CONV_TURN("conv_turn", "对话轮次"),
+
+    /**
+     * 568-B 后台域（目标模板候选：收尾家族的闭合事件）：一小时的桶（589 拍板②：
+     * 锚＝`bucket:<1 小时桶>`——一小时里连收几次＝同一次条件成熟，只计 1；不是 runId）。
+     */
+    HOURLY_BUCKET("hourly_bucket", "后台一小时桶"),
     ;
 
     companion object {
@@ -93,6 +99,9 @@ internal object EvoAnchorRegistry {
         // 568-B 域②相处规则候选：纠正发生在用户轮内（左相判档处）⇒ 锚＝轮次（同一轮的
         // 多次纠正回声只计 1；589 拍板①对话域 turn）。
         CanaryCapability.COMPANION_RULE to EvoAnchorKind.CONV_TURN,
+        // 568-B 域③目标模板候选：收尾是后台家族的闭合事件（不在用户轮内）⇒ 锚＝1 小时桶
+        // （589 拍板②：一小时连收几次＝同一次条件成熟，只计 1）。
+        CanaryCapability.GOAL_TEMPLATE to EvoAnchorKind.HOURLY_BUCKET,
     )
 
     /** 这一域声明了哪种锚（null＝无锚：不计、标注）。 */
@@ -110,6 +119,7 @@ internal object EvoAnchorRegistry {
     fun anchorOf(kind: EvoAnchorKind, atMs: Long, supplied: String): String = when {
         supplied.isNotBlank() -> supplied
         kind == EvoAnchorKind.PATROL_ROUND -> "round:${atMs / EvoSampleRules.DAY_MS}"
+        kind == EvoAnchorKind.HOURLY_BUCKET -> "bucket:${atMs / EvoSampleRules.HOUR_MS}"
         else -> "at:$atMs"
     }
 }
@@ -275,6 +285,9 @@ internal object EvoSampleRules {
 
     /** 一天（读数与窗口共用一把尺）。 */
     const val DAY_MS: Long = 86_400_000L
+
+    /** 一小时（后台域 1h 桶锚的尺；589 拍板②）。 */
+    const val HOUR_MS: Long = 3_600_000L
 
     /** 行格式版本（池文件的一行；改它＝老行读不出来）。 */
     const val SCHEMA: String = "zd-evo/1"

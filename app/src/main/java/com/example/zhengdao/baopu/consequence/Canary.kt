@@ -131,6 +131,13 @@ internal enum class CanaryCapability(
      * 候选"产不产、记不记、升不升档"，不管判档本身。
      */
     COMPANION_RULE("companion_rule", "相处规则", CanaryBand.CANARY, "companion_rule", "只出候选；未转正不参与判档"),
+
+    /**
+     * 568-B 域③目标模板候选：482 在目标真收口时提炼的 [com.example.zhengdao.baopu.plan.GoalRules.TemplateCandidate]
+     * 接进灰度链。482 的口径不变：候选只产值（不落库、不启用、不当默认值——`GoalModeTest`
+     * 的源级门禁钉着）；灰度链管的是候选"记不记、升不升档"，判据写法本体一字不动。
+     */
+    GOAL_TEMPLATE("goal_template", "目标模板", CanaryBand.CANARY, "goal_template", "只出候选；未转正不参与判据"),
     ;
 
     companion object {

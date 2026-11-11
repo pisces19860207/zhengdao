@@ -224,6 +224,49 @@ class MidRiskEvoGateTest {
         assertFalse("拔掉装配注入后必须红（出口无人听＝假接线）", mutated.contains("MediatorWiring.companionRuleSink ="))
     }
 
+    // ── 域③：收尾出口在 482 提炼之后真调门，装配层真注入 ─────────────────────
+
+    private fun goalMode(): String =
+        code("src/main/java/com/example/zhengdao/baopu/plan/GoalMode.kt")
+
+    @Test
+    fun `G9_收尾出口在482提炼之后_只交已提炼完的候选`() {
+        val body = GateBodies.functionBody(goalMode(), "fun settle(")
+        assertTrue("settle 不在了？", body != null)
+        val log = body!!.indexOf("目标模板候选（只产不启用）")
+        val sink = body.indexOf("templateSink")
+        assertTrue("候选出口不在收尾路径里（造了不接＝打回）", sink >= 0)
+        assertTrue("顺序必须是 482 提炼 → 日志 → 出口（出口只搬运已提炼完的值）", log >= 0 && log < sink)
+        assertTrue("出口不拖挂收尾（runCatching 与 closeoutSink 同一条纪律）", body.contains("runCatching"))
+    }
+
+    @Test
+    fun `G9负例_候选出口从真文件里拔掉_同一把断言必须红`() {
+        val src = goalMode()
+        assertTrue("前提：真文件里有候选出口", src.contains("templateSink"))
+        val mutated = src.replace("templateSink", "goalSinkGone")
+        val body = GateBodies.functionBody(mutated, "fun settle(")
+        assertTrue(body != null)
+        assertFalse("拔掉出口后必须红（判据⑤：生产调用点必须在）", body!!.contains("templateSink"))
+    }
+
+    @Test
+    fun `G10_装配层真把模板出口接到中风险门`() {
+        val src = baopuRuntime()
+        assertTrue("装配层没注入模板候选出口（sink 没人听＝假接线）", src.contains("GoalBoard.attachTemplateSink"))
+        val wiring = src.indexOf("GoalBoard.attachTemplateSink")
+        val call = src.indexOf("MidRiskEvo.onGoalTemplate(")
+        assertTrue("出口没接到中风险门", call > wiring)
+    }
+
+    @Test
+    fun `G10负例_装配层注入拔掉_断言必须红`() {
+        val src = baopuRuntime()
+        assertTrue(src.contains("GoalBoard.attachTemplateSink"))
+        val mutated = src.replace("GoalBoard.attachTemplateSink", "GoalBoard.attachGoalSinkGone")
+        assertFalse("拔掉装配注入后必须红（出口无人听＝假接线）", mutated.contains("GoalBoard.attachTemplateSink"))
+    }
+
     // ── 区间单一真相：中风险门不自带第二个区间 ────────────────────────────────
 
     @Test

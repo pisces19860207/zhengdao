@@ -42,6 +42,7 @@ import com.example.zhengdao.baopu.evolution.lowrisk.EvoCandidate
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring
+import com.example.zhengdao.baopu.plan.GoalRules
 import com.example.zhengdao.baopu.policy.Policy
 import com.example.zhengdao.core.RunLog
 
@@ -71,6 +72,7 @@ internal object MidRiskEvo {
     internal val CAPABILITIES: List<CanaryCapability> = listOf(
         CanaryCapability.JUDGMENT_THRESHOLD,
         CanaryCapability.COMPANION_RULE,
+        CanaryCapability.GOAL_TEMPLATE,
     )
 
     // ── 域① 判定阈值：区间内自调 ─────────────────────────────────────────
@@ -238,6 +240,46 @@ internal object MidRiskEvo {
                 )
                 true
             }
+        }
+    }
+
+    // ── 域③ 目标模板候选（来自 482 的目标收尾，只出候选） ────────────────────
+
+    /** 域③候选的目标串（指向目标模式的模板面；不含源码路径——红线扫描对它透明）。 */
+    internal const val GOAL_TEMPLATE_TARGET: String = "goal:template-candidates"
+
+    /**
+     * 一次目标真收口的模板候选（生产调用点：`GoalBoard.settle` 的候选出口——482 的
+     * 提炼逻辑一字未动，这里只接"已经提炼完的候选"）。
+     *
+     * 候选只出**不启用**：482 的口径（不落库、不启用、不当默认值）原样保持；这一域走的是
+     * "记不记、升不升档"——观察＋样本照落（589 拍板②：后台域锚＝1 小时桶，一小时连收
+     * 几次＝同一次条件成熟，只计 1；样本行的 eventId 带来源 goal id，追得回出处）。
+     *
+     * @return 候选记没记上（档位关闭 ⇒ 暂缓不记；红线拒 ⇒ 记账不记；灰度/全开 ⇒ 记）
+     */
+    fun onGoalTemplate(candidate: GoalRules.TemplateCandidate, atMs: Long): Boolean {
+        val cap = CanaryCapability.GOAL_TEMPLATE
+        val evo = EvoCandidate(
+            domain = cap.wire,
+            target = GOAL_TEMPLATE_TARGET,
+            body = "${candidate.name}｜判据写法 ${candidate.criteriaPattern.size} 条｜来源 goal:${candidate.sourceGoalId}",
+        )
+        return when (val verdict = LowRiskEvo.gate(cap, evo)) {
+            is LowRiskVerdict.Refuse -> {
+                LowRiskEvo.recordRefusal(cap, verdict.redLine, verdict.note, evo, atMs)
+                false
+            }
+            is LowRiskVerdict.Hold -> {
+                RunLog.log("目标模板候选暂缓（${verdict.note}）")
+                false
+            }
+            is LowRiskVerdict.Allow -> LowRiskEvo.observeRun(
+                cap,
+                ok = true,
+                atMs = atMs,
+                eventId = "goal:${candidate.sourceGoalId}",
+            )
         }
     }
 

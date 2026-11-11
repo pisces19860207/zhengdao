@@ -485,6 +485,12 @@ internal object BaopuRuntime {
         GoalBoard.attachCloseoutSink { fact ->
             GoalCloseout.append(EvalTriggerWiring.ledgerFile(appCtx), fact)
         }
+        // 第五百六十八批 B 域③：目标模板候选的出口（482 的提炼 → 候选）。
+        // 只注入不判据：提炼逻辑在 GoalRules.templateCandidate（482，一字不动），
+        // 灰度链的判定全在中风险门；候选只产值不启用（GoalModeTest 源级门禁钉着）。
+        GoalBoard.attachTemplateSink { candidate, atMs ->
+            com.example.zhengdao.baopu.evolution.midrisk.MidRiskEvo.onGoalTemplate(candidate, atMs)
+        }
     }
 
     /**
