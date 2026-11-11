@@ -44,22 +44,46 @@ by-design（纯常量／纯 DTO／端口接口／人工裁定）是「无调用�
    这一档以前被算成 by-design「只被测试用」，**那是错的**：`BootCheck`（测试 37 次）、
    `EmergencyWiring`（测试 50 次）生产都一处没接，它们是真待办，不是 by-design。
 
+## 防洗三条（R5／R6／R7，2026-11-11 用户拍板）
+
+开红之后闸会被"更新基线"绕过，所以补三条把写口焊死：
+
+- **R5 减账必须有对价**——基线里某条**被移出**或**被降级成 by-design**时，必须二者之一成立：
+  (a) 新扫描里该件现在是 **wired**（真接上了）；(b) 该件所在文件**本次有生产改动**
+  （新建／删改／改名，或 diff 里新增了**对它的调用**行）。
+  都不成立 ⇒ 红：`疑似洗账：<类名> 被移出基线但代码没动`。
+  对价宽严分寸：移出（最严，要看到调用）＞降级（文件动过即可）＞消失（文件被删/改名）。
+  **证据只认 `git diff <--diff-base>` 与扫描结果，不看提交信息**（信息可以写假）。
+  取不到 diff ⇒ 退 2（判不了就是判不了，不许当绿）。
+- **R6 基线只许 `--generate` 写**——扫描结果与基线**一致时不写盘**（防无意义重写与 diff 噪音）；
+  CI 用 `--check` 只读跑；`--generate` 默认**拒绝增加条目**（只减不增），确认是正当新增
+  才加 `--allow-add`（会把新增清单逐条打出来）。
+- **R7 写要留因**——`--generate` 必须带 `--reason "..."`，否则退 2；脚本把本次变更
+  （新增／删除／翻栏）连同这句因由打成一段，供直接粘进提交信息/PR。机检**不读**这段
+  （信息可以写假），真正拦洗账的是 R5。
+
 ## 用法
 
-    python3 tools/wiring-report.py                    # 打印清单 + 写 JSON + 与基线比对
-    python3 tools/wiring-report.py --md out.md         # 清单另存一份
-    python3 tools/wiring-report.py --audit 5           # 抽查建议（默认 5 件，确定性抽取）
-    python3 tools/wiring-report.py --update-baseline   # 按现状重写 tools/wiring-baseline.json
-    python3 tools/wiring-report.py --strict            # 开红：四条红标准任一命中退 1（CI 用）
-    python3 tools/wiring-report.py --selftest          # 合成夹具自检（失败退出 1）
-    python3 tools/wiring-report.py --strict --no-json  # CI 里的跑法：判红，不写产物
+    python3 tools/wiring-report.py                     # 打印清单 + 写 JSON(非基线) + 与基线比对
+    python3 tools/wiring-report.py --check             # CI 用：只读判红（R1–R5），不写任何文件
+    python3 tools/wiring-report.py --generate --reason "为什么改"   # **唯一**写基线的入口
+    python3 tools/wiring-report.py --generate --reason "..." --allow-add  # 明确放行新增条目
+    python3 tools/wiring-report.py --md out.md          # 清单另存一份
+    python3 tools/wiring-report.py --audit 5            # 抽查建议（默认 5 件，确定性抽取）
+    python3 tools/wiring-report.py --selftest           # 合成夹具自检（失败退出 1）
+    python3 tools/wiring-report.py --strict             # --check 的旧名（保留兼容）
 
-## 基线（阶段一）
+`--update-baseline` 已废止：它不带因由、也不判"减账有没有对价"，正是 R5/R7 要堵的口子。
+
+## 基线（阶段一固化，阶段二开红，本批防洗）
 
 `tools/wiring-baseline.json` 只记「谁在、在哪一栏」：不带 commit、不带时间戳，所以重跑
-字节不变。默认运行会按 `(类名, 文件)` 比对基线（**不看行号**——行号会因编辑漂移，不是
-名册变化），把「新增／消失／翻栏」列在报告 §4.2。**本阶段只报差异、不开红**（判据①）；
-开红与 CI 接入是下一批的事。
+字节不变。按 `(类名, 文件)` 比对（**不看行号**——行号会因编辑漂移，不是名册变化），把
+「新增／消失／翻栏」列在报告 §4.2。默认运行只报差异不判红；`--check` 才判红（CI 用）；
+写盘只有 `--generate --reason` 一条路。
+
+⚠ 因为"一致时不写盘"，代码里插几行导致 `declLine` 漂移**不会**更新基线——基线里的行号
+只作参考，判据一律用 `(类名, 文件)`。
 
 ## 幂等
 
@@ -73,6 +97,7 @@ import bisect
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -955,6 +980,176 @@ def strict_violations(diff: dict, problems: list[str]) -> list[tuple[str, str]]:
     return out
 
 
+# ── 五之三、R5 减账必须有对价（防洗；证据只认 git diff + 扫描结果） ─────────
+
+
+def git_name_status(base: str) -> dict[str, str] | None:
+    """`git diff --name-status <base> -- app/src/main` ⇒ {仓内相对路径: A/M/D/R}。
+
+    取不到（没 git／base 不认识／超时）返回 None —— 调用方必须如实说「R5 未判定」，
+    **不许**当成「没问题」。
+    """
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--name-status", "--no-color", base, "--", "app/src/main"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+            encoding="utf-8", errors="replace",
+        )
+    except Exception:  # noqa: BLE001 - git 不在／超时，都归「取不到」
+        return None
+    if out.returncode != 0:
+        return None
+    status: dict[str, str] = {}
+    for line in out.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        code = parts[0][:1]
+        if code == "R" and len(parts) >= 3:
+            status[parts[2].strip()] = "R"
+        else:
+            status[parts[1].strip()] = code
+    return status
+
+
+def git_added_lines(base: str, path: str) -> list[str]:
+    """该文件在本次 diff 里的新增行（去掉 `+++` 头）。取不到就空表。"""
+    try:
+        out = subprocess.run(
+            ["git", "diff", "-U0", "--no-color", base, "--", path],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+            encoding="utf-8", errors="replace",
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    if out.returncode != 0:
+        return []
+    return [ln[1:] for ln in out.stdout.splitlines()
+            if ln.startswith("+") and not ln.startswith("+++")]
+
+
+def line_has_call(line: str, name: str) -> bool:
+    """这一行里有没有对 `name` 的**调用**（声明位不算，与扫描器同一口径）。"""
+    for m in re.finditer(r"(?<![A-Za-z0-9_.])%s\s*[.(]" % re.escape(name), line):
+        if _word_before(line, m.start()) not in DECL_KEYWORDS:
+            return True
+    return False
+
+
+def sovereignty_violations(diff: dict, current: dict, status: dict | None,
+                           added_lookup) -> list[tuple[str, str]]:
+    """R5：减账（移出基线／降级）必须有对价，否则红「疑似洗账」。
+
+    对价按情形宽严不同（这是本规则的全部内容，别简化成一条）：
+
+    · 条目**不在基线里**（`added`＝基线被删了／基线落后于代码）——**最严**：
+      该件现在 wired，或所在文件是本次新建，或该文件本次**新增了对它的调用**。
+      只要求"文件动过"会太好骗（顺手改个空行就能洗），所以这里要看到调用。
+    · 条目**降级成 by-design**——中等：所在文件本次有任何改动即可（把它改成纯数据类
+      也会改文件）；文件没动而基线掉了档 ⇒ 红。
+    · 条目**从扫描里消失**（gone）——看文件是否被删／改名。
+
+    证据只认 `git diff` 与扫描结果，**不看提交信息**（提交信息可以写假）。
+    `status=None` 表示 git 取不到 ⇒ 不判（调用方打 warning，绝不静默当绿）。
+    """
+    if status is None:
+        return []
+    out: list[tuple[str, str]] = []
+
+    def price(name: str, path: str, strict: bool) -> str:
+        cur = current.get((name, path))
+        if cur is not None and cur.bucket == BUCKET_WIRED:
+            return "该件现在有生产调用点"
+        code = status.get(path)
+        if code is None:
+            return ""
+        if code == "A":
+            return "该件所在文件是本次新增"
+        if code in ("D", "R"):
+            return "该件所在文件被删除/改名"
+        if code == "M":
+            if not strict:
+                return "该件所在文件本次有改动"
+            for line in added_lookup(path) or []:
+                if line_has_call(line, name):
+                    return "该件所在文件本次新增了对它的调用"
+        return ""
+
+    for x in diff["added"]:
+        if price(x["name"], x["file"], strict=True):
+            continue
+        out.append(("R5", "疑似洗账：`%s` 被移出基线但代码没动（%s，当前是 %s）"
+                    % (x["name"], x["file"], x["bucket"])))
+    for x in diff["gone"]:
+        if price(x["name"], x["file"], strict=False):
+            continue
+        out.append(("R5", "疑似洗账：`%s` 从基线里消失、代码里也没了，但所在文件没动（%s）"
+                    % (x["name"], x["file"])))
+    for x in diff["flipped"]:
+        if x["now"] != BUCKET_BY_DESIGN or x["was"] == BUCKET_BY_DESIGN:
+            continue
+        if price(x["name"], x["file"], strict=False):
+            continue
+        out.append(("R5", "疑似洗账：`%s` 被降级 %s → %s 但代码没动（%s）"
+                    % (x["name"], x["was"], x["now"], x["file"])))
+    return out
+
+
+def render_change_rationale(diff: dict | None, reason: str) -> str:
+    """R7：把「这次基线为什么动」渲染成能直接粘进提交信息／PR 的一段。
+
+    机检不读这段（信息可以写假），它只负责**逼人留因**：`--generate` 没有 `--reason`
+    直接退 2。真正拦洗账的是 R5（只认 git diff + 扫描结果）。
+    """
+    body: list[str] = ["### baseline 变更因由（R7，粘进提交信息/PR）", ""]
+    if diff is None:
+        body.append("（首次固化：基线此前不存在）")
+    elif diff["clean"]:
+        body.append("（与扫描一致：无变更）")
+    else:
+        body.append("本次变更：新增 %d ｜ 删除 %d ｜ 翻栏 %d"
+                    % (len(diff["added"]), len(diff["gone"]), len(diff["flipped"])))
+        for x in diff["added"]:
+            body.append("- 新增 `%s`（%s）· %s" % (x["name"], x["bucket"], x["file"]))
+        for x in diff["gone"]:
+            body.append("- 删除 `%s`（基线里是 %s）· %s"
+                        % (x["name"], x["bucket"], x["file"]))
+        for x in diff["flipped"]:
+            body.append("- 翻栏 `%s` · %s → %s · %s"
+                        % (x["name"], x["was"], x["now"], x["file"]))
+    body.append("")
+    body.append("因由：%s" % reason)
+    return "\n".join(body)
+
+
+def generate_baseline(entries: list[Entry], src: Path, base_path: Path,
+                      base: dict | None, reason: str, allow_add: bool) -> int:
+    """R6：基线的唯一写入口。
+
+    · 与扫描一致 ⇒ **不写盘**（防无意义重写、防 diff 噪音）；
+    · 默认**拒绝新增**（只减不增）；确认是正当新增才加 `--allow-add`；
+    · 写之前把变更因由（R7）打到 stderr，供人粘进提交信息。
+    """
+    payload = baseline_payload(entries, src)
+    diff = diff_baseline(entries, base) if base is not None else None
+    if diff is not None and diff["clean"]:
+        print("[generate] 基线与扫描一致，未写盘（R6：防无意义重写）。", file=sys.stderr)
+        return 0
+    if diff is not None and diff["added"] and not allow_add:
+        print("[generate] 拒绝写盘：本次会新增 %d 条（R6：默认只减不增）。"
+              % len(diff["added"]), file=sys.stderr)
+        for x in diff["added"]:
+            print("  + %s（%s）· %s" % (x["name"], x["file"], x["bucket"]), file=sys.stderr)
+        print("确认这些是正当新增（新写的装配类/契约）再加 --allow-add；不确定就先别写。",
+              file=sys.stderr)
+        return 1
+    print(render_change_rationale(diff, reason), file=sys.stderr)
+    write_json(payload, base_path)
+    print("[generate] 已写入：%s（%d 件）" % (rel(base_path), len(targets(entries))),
+          file=sys.stderr)
+    return 0
+
+
 def audit_rulings(entries: list[Entry]) -> list[str]:
     """裁定表体检：每条都得还在、且仍在 by-design。过期就点名，别留僵尸条目。"""
     first: dict[str, Entry] = {}
@@ -1257,13 +1452,104 @@ def selftest() -> int:
                             indent=2)
         expect(first == second, "两遍输出不一致（幂等坏了）")
 
+        # ── R5：减账必须有对价（内存级，喂假 diff/status，不依赖 git） ──────────
+        import contextlib
+        import io
+
+        class _Cur:
+            def __init__(self, bucket: str) -> None:
+                self.bucket = bucket
+
+        cur_map = {("A_Wiring", "a/A.kt"): _Cur(BUCKET_WIRED),
+                   ("D_Wiring", "a/D.kt"): _Cur(BUCKET_PENDING)}
+
+        def _d(added=(), gone=(), flipped=()):
+            return {"added": list(added), "gone": list(gone), "flipped": list(flipped),
+                    "clean": not (added or gone or flipped)}
+
+        def _no_added(_path: str):
+            return []
+
+        row_q = {"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_PENDING}
+        v = sovereignty_violations(_d(added=[row_q]), cur_map, {}, _no_added)
+        expect(len(v) == 1 and v[0][0] == "R5" and "疑似洗账" in v[0][1],
+               "① 洗账夹具没红：删一条基线、代码没动 ⇒ 必须报「疑似洗账」")
+        v = sovereignty_violations(
+            _d(added=[{"name": "A_Wiring", "file": "a/A.kt", "bucket": BUCKET_WIRED}]),
+            cur_map, {}, _no_added)
+        expect(v == [], "② 真接上后再删（该件当前 wired）被误红")
+        v = sovereignty_violations(
+            _d(added=[{"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_BY_DESIGN}]),
+            cur_map, {"a/Q.kt": "A"}, _no_added)
+        expect(v == [], "新增条目的文件是本次新建，被误红")
+        v = sovereignty_violations(
+            _d(added=[{"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_BY_DESIGN}]),
+            cur_map, {"a/Q.kt": "M"}, lambda _p: ["            Q_Wiring.go()"])
+        expect(v == [], "文件里真新增了对 Q_Wiring 的调用，被误红")
+        v = sovereignty_violations(
+            _d(added=[{"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_BY_DESIGN}]),
+            cur_map, {"a/Q.kt": "M"}, lambda _p: ["    // 顺手加一行注释"])
+        expect(len(v) == 1, "只改了注释（没有调用）也放过了 —— R5 太松")
+        v = sovereignty_violations(
+            _d(flipped=[{"name": "D_Wiring", "file": "a/D.kt",
+                         "was": BUCKET_PENDING, "now": BUCKET_BY_DESIGN}]),
+            cur_map, {}, _no_added)
+        expect(len(v) == 1 and "降级" in v[0][1], "降级（待判→by-design）没被 R5 抓到")
+        v = sovereignty_violations(
+            _d(flipped=[{"name": "D_Wiring", "file": "a/D.kt",
+                         "was": BUCKET_PENDING, "now": BUCKET_BY_DESIGN}]),
+            cur_map, {"a/D.kt": "M"}, _no_added)
+        expect(v == [], "降级但文件本次有改动，被误红")
+        v = sovereignty_violations(
+            _d(gone=[{"name": "G_Wiring", "file": "a/G.kt", "bucket": BUCKET_WIRED}]),
+            cur_map, {}, _no_added)
+        expect(len(v) == 1, "名册消失且文件没动，没被 R5 抓到")
+        v = sovereignty_violations(
+            _d(gone=[{"name": "G_Wiring", "file": "a/G.kt", "bucket": BUCKET_WIRED}]),
+            cur_map, {"a/G.kt": "D"}, _no_added)
+        expect(v == [], "文件被删了，消失条目被误红")
+        expect(sovereignty_violations(_d(gone=[row_q]), cur_map, None, _no_added) == [],
+               "取不到 git diff 时应「不判」而不是「判红」")
+
+        # ── R6/R7：--generate 三态（真文件；③ 无变化不写盘） ──────────────────
+        bl = base / "tools" / "wiring-baseline.json"
+        bl.parent.mkdir(parents=True, exist_ok=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = generate_baseline(entries, src, bl, None, "夹具：首次固化", False)
+        expect(rc == 0 and bl.exists(), "generate 首次固化没写盘")
+        original = bl.read_text(encoding="utf-8")
+        bl.write_text(original + "\n", encoding="utf-8", newline="\n")  # 留一道"非标准"痕迹
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = generate_baseline(entries, src, bl, load_baseline(bl), "夹具：无变化", False)
+        expect(rc == 0 and "未写盘" in buf.getvalue(), "③ 无变化时应打印「未写盘」")
+        expect(bl.read_text(encoding="utf-8") == original + "\n",
+               "③ 无变化时文件被重写了（R6 破了：痕迹被抹掉）")
+
+        payload2 = json.loads(original)
+        payload2["entries"] = [r for r in payload2["entries"] if r["name"] != "ForeignWiring"]
+        write_json(payload2, bl)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rc = generate_baseline(entries, src, bl, load_baseline(bl), "夹具：试删", False)
+        expect(rc == 1, "R6 默认没拒绝「会新增条目」的写盘")
+        with contextlib.redirect_stderr(io.StringIO()):
+            rc = generate_baseline(entries, src, bl, load_baseline(bl), "夹具：正当新增", True)
+        expect(rc == 0, "--allow-add 时仍拒绝写盘")
+        # R7：--generate 不带 --reason ⇒ 退 2（写要留因）
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = main(["--generate", "--src", str(src), "--baseline", str(bl)])
+        expect(rc == 2 and "必须带 --reason" in buf.getvalue(),
+               "R7：--generate 不带 --reason 没被挡住（或没说清原因）")
+
     if fails:
         print("SELFTEST FAILED（%d/%d 条）" % (len(fails), checked))
         for f in fails:
             print("  · " + f)
         return 1
-    print("SELFTEST OK：%d 条断言全过（全限定调用／同名双类与跨包 import／声明行不算调用／"
-          "注释负例／伴随类型／端口接口／裁定表与过期／基线往返与翻栏／幂等）" % checked)
+    print("SELFTEST OK：%d 条断言全过（扫描口径／端口接口／裁定表／基线往返／四条红／"
+          "R5 洗账九态／R6 三态／R7 留因／幂等）" % checked)
     return 0
 
 
@@ -1272,7 +1558,7 @@ def selftest() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="接线清单（只列不判）：app/src/main 里的装配类有没有生产调用点",
+        description="接线清单（只列不判；--check 判红、--generate 才写基线）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--src", default=str(MAIN_SRC), help="源码根，默认 app/src/main")
@@ -1281,17 +1567,34 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--md", default="", help="清单另存为 markdown 文件")
     ap.add_argument("--audit", type=int, default=5, help="抽查建议件数，默认 5")
     ap.add_argument("--baseline", default=str(DEFAULT_BASELINE), help="基线文件路径")
+    ap.add_argument("--check", action="store_true",
+                    help="只读判红（CI 用）：R1–R5 任一命中退 1；不写任何文件")
+    ap.add_argument("--strict", action="store_true", help="--check 的旧名（保留兼容）")
+    ap.add_argument("--generate", action="store_true",
+                    help="按现状重写基线（**唯一**写入口；必须带 --reason）")
+    ap.add_argument("--reason", default="", help="--generate 必填：这次基线变更为什么")
+    ap.add_argument("--allow-add", action="store_true",
+                    help="--generate 时允许新增条目（默认拒增：只减不增）")
+    ap.add_argument("--diff-base", default="origin/main",
+                    help="R5 取「本次改动文件集」的 git base，默认 origin/main")
     ap.add_argument("--update-baseline", action="store_true",
-                    help="按现状重写基线（阶段一固化；仍不开红）")
-    ap.add_argument("--strict", action="store_true",
-                    help="开红：R1 新增待判／R2 翻成待判／R3 名册消失／R4 裁定过期 任一命中退 1")
+                    help="【已废止】旧名，现在只报错并提示改用 --generate --reason")
     ap.add_argument("--selftest", action="store_true", help="跑合成夹具自检")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return selftest()
-    if args.strict and args.update_baseline:
-        print("--strict 与 --update-baseline 不能同用：那等于自己洗自己。", file=sys.stderr)
+    if args.update_baseline:
+        print("--update-baseline 已废止（R6：基线只许 --generate 写，且必须带 --reason）。",
+              file=sys.stderr)
+        print('  换成：--generate --reason "为什么改"', file=sys.stderr)
+        return 2
+    check = args.check or args.strict
+    if check and args.generate:
+        print("--check 与 --generate 不能同用：一个只读判红、一个写盘。", file=sys.stderr)
+        return 2
+    if args.generate and not args.reason.strip():
+        print("--generate 必须带 --reason（R7：写要留因）。", file=sys.stderr)
         return 2
 
     src = Path(args.src)
@@ -1315,27 +1618,35 @@ def main(argv: list[str] | None = None) -> int:
     print(md)
     if args.md:
         Path(args.md).write_text(md + "\n", encoding="utf-8", newline="\n")
-    if not args.no_json:
+    if not args.no_json and not check:
         write_json(to_json(entries, audit, src, base_diff=base_diff, base_path=base_path,
                            rule_problems=problems), Path(args.json))
-    if args.update_baseline:
-        write_json(baseline_payload(entries, src), base_path)
-        print("已写入基线：%s（%d 件）" % (rel(base_path), len(targets(entries))),
-              file=sys.stderr)
-    if args.strict:
+    if args.generate:
+        return generate_baseline(entries, src, base_path, base, args.reason.strip(),
+                                 args.allow_add)
+    if check:
         if base_diff is None:
             print("::error:: wiring 闸没有基线（%s），无法判定名册漂移" % rel(base_path),
                   file=sys.stderr)
             return 2
+        status = git_name_status(args.diff_base)
+        if status is None:
+            print("::error:: wiring 闸 R5 判不了：取不到 `git diff %s`（—判不了就是判不了，"
+                  "不许当绿）。修法：git fetch origin main，或用 --diff-base 指一个存在的 rev。"
+                  % args.diff_base, file=sys.stderr)
+            return 2
+        current = {(e.name, rel(e.decl.file)): e for e in targets(entries)}
         bad = strict_violations(base_diff, problems)
+        bad += sovereignty_violations(base_diff, current, status,
+                                      lambda p: git_added_lines(args.diff_base, p))
         for code, msg in bad:
             print("::error:: wiring %s %s" % (code, msg), file=sys.stderr)
         if bad:
-            print("wiring 闸：红 %d 条（R1 新增待判／R2 翻成待判／R3 名册消失／R4 裁定过期）"
-                  % len(bad), file=sys.stderr)
+            print("wiring 闸：红 %d 条（R1 新增待判／R2 翻成待判／R3 名册消失／"
+                  "R4 裁定过期／R5 疑似洗账）" % len(bad), file=sys.stderr)
             return 1
-        print("wiring 闸：四条红标准全过（新增待判 0／翻成待判 0／名册消失 0／裁定过期 0）。",
-              file=sys.stderr)
+        print("wiring 闸：五条红标准全过（新增待判 0／翻成待判 0／名册消失 0／"
+              "裁定过期 0／疑似洗账 0）。", file=sys.stderr)
     return 0
 
 
