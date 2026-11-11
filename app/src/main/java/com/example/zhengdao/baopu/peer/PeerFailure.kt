@@ -16,10 +16,35 @@ import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 
 /**
- * 外发失败的机器键（闭集；改 wire 等于让老账读不出）。
+ * 外发失败的机器键（闭集；**改既有 wire 等于让老账读不出**——只许增，不许改名、不许删）。
  *
- * 只增不改：590 批按立单（见交付报告《590-A2A收口-交付-2026-11-11》§立单）新增
- * version／endpoint／config 三个键——老键一个没动，老账照读；`ofWire` 顺带认得新键。
+ * 失败码说明（模型/对接方看这里；每类的人话在 [PeerFailureText]，对账按键不按文案猜）。
+ * 语义互不重叠：一类只管一件事，网络不通只归 network。
+ *
+ * | wire | 语义（唯一） | 典型来源 |
+ * |---|---|---|
+ * | ok | 探测/调用成功 | 探针收场 |
+ * | dns | 域名解析不了 | `UnknownHostException` |
+ * | port | 端口拒绝连接 | `ConnectException` |
+ * | tls | 证书信不过 | `SSLException` |
+ * | timeout | 等太久没回音 | 读/连接超时（`InterruptedIOException`） |
+ * | protocol | 对方说的不是一路话：响应形状坏（非 JSON/缺字段/空响应/JSON-RPC error/其余 4xx） | 解析与拒收路 |
+ * | version | **版本不在支持区间**（卡上 protocolVersion 越界，或 400/422 错误体点名 version）——只表版本 | A2A 预检＋HTTP 分类 |
+ * | endpoint | **地址不存在**（HTTP 404）——只表这条路没有 | A2A HTTP 分类 |
+ * | auth | 要先验明身份：需要授权或凭据无效（HTTP 401/403） | A2A/MCP 401 路 |
+ * | config | **本机配置不过检**（如凭据含非 ASCII 字符）——只表本地问题，请求未发出 | A2A 凭据过检 |
+ * | network | 连接半路断了（5xx/无响应/其余传输层错）——网络不通只归这类 | [PeerFailureClassify] 兜底 |
+ * | refused | 外发未批准，请求一个都没发 | 外发闸 |
+ *
+ * 扩值台账（谁/何时/为什么/清单）：
+ * - **590 批**（zcode，2026-11-12）：590 派工单判据①②④需要独立的「版本不符／端点不存在／
+ *   本地配置错」键，按「确需新值先立单」新增 **version／endpoint／config** 三值——既有九键的
+ *   语义与 wire **一字未动**；验收条件五条见交付报告《590-A2A收口-交付-2026-11-11》§九
+ *   （三值算 590 之内，不另立单）。
+ *
+ * 读侧兜底（老账照读的保证）：[ofWire] 对认不出的 wire 返回 **null，不抛**——本枚举后来的
+ * 新值在旧读侧眼里就是「未知值」，不许崩；事件账/租约账与能力清单的 `probeResult` 都按
+ * **字符串**存取，未知值原样透传。消费方拿到 null 自行兜底，**不许 `!!`**。
  */
 internal enum class PeerFailureCode(val wire: String) {
     OK("ok"),

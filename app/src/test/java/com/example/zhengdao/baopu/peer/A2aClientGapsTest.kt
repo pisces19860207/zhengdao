@@ -27,6 +27,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -101,6 +102,71 @@ class A2aClientGapsTest {
                 JSONObject().put("jsonrpc", "2.0").put("id", reqBody.opt("id"))
                     .put("error", JSONObject().put("code", code).put("message", message)).toString(),
             ).build()
+
+    // ── 验收条件①②：只增不改·读侧兜底·三新值三件套 ─────────────────────
+
+    @Test
+    fun `收口零_失败码三新值三件套_老账照读_未知值不崩`() {
+        // 条件①只增不改：既有九键的 wire 一字不动、照读如常（回归集写死，防手滑改键）。
+        val oldWires = mapOf(
+            PeerFailureCode.OK to "ok",
+            PeerFailureCode.DNS to "dns",
+            PeerFailureCode.PORT to "port",
+            PeerFailureCode.TLS to "tls",
+            PeerFailureCode.TIMEOUT to "timeout",
+            PeerFailureCode.PROTOCOL to "protocol",
+            PeerFailureCode.AUTH to "auth",
+            PeerFailureCode.NETWORK to "network",
+            PeerFailureCode.REFUSED to "refused",
+        )
+        oldWires.forEach { (code, wire) ->
+            assertEquals("老键 $wire 的序列化串不许动", wire, code.wire)
+            assertEquals("老键 $wire 必须还能读回来", code, PeerFailureCode.ofWire(wire))
+        }
+
+        // 三个新键读得出；认不出的键返回 null 不崩（新值在老读侧眼里就是未知值）。
+        assertEquals(PeerFailureCode.VERSION_MISMATCH, PeerFailureCode.ofWire("version"))
+        assertEquals(PeerFailureCode.ENDPOINT, PeerFailureCode.ofWire("endpoint"))
+        assertEquals(PeerFailureCode.CONFIG, PeerFailureCode.ofWire("config"))
+        assertNull("未知值兜底是 null，不许抛", PeerFailureCode.ofWire("future-x"))
+
+        // 条件②三件套的人话面：三句互不相同、各带指路关键词。
+        val humans = listOf(
+            PeerFailureText.human(PeerFailureCode.VERSION_MISMATCH, "靶"),
+            PeerFailureText.human(PeerFailureCode.ENDPOINT, "靶"),
+            PeerFailureText.human(PeerFailureCode.CONFIG, "靶"),
+        )
+        assertEquals("三句人话互不相同", 3, humans.toSet().size)
+        assertTrue("version 句要点版本：${humans[0]}", humans[0].contains("版本"))
+        assertTrue("endpoint 句要点端点：${humans[1]}", humans[1].contains("没有这条接口"))
+        assertTrue("config 句要指路换 token：${humans[2]}", humans[2].contains("ASCII"))
+
+        // 读侧兜底真跑一：事件账按字符串存取——新值/未知值原样透传，不丢行不崩。
+        PeerEventsLedger.append(PeerEventKinds.PROBE, "version", "http://x", detail = "d1")
+        PeerEventsLedger.append(PeerEventKinds.PROBE, "future-x", "http://x", detail = "d2")
+        val replayed = PeerEventsLedger.replay().map { it.optString("result") }
+        assertTrue("新值 version 在账上照读", replayed.contains("version"))
+        assertTrue("未知值 future-x 也照读", replayed.contains("future-x"))
+
+        // 读侧兜底真跑二：能力清单 probeResult 字符串直通（McpPeersManifest.load 不解析枚举）。
+        val root = AgentRegistry.root()!!
+        McpPeersManifest.upsert(
+            root,
+            PeerManifestEntry(
+                agentId = "ag-590",
+                serverId = "srv-590",
+                name = "590 留痕靶",
+                endpoint = "http://127.0.0.1:1",
+                protocolVersion = "1.0",
+                mode = "streamable-http",
+                capabilities = emptyList(),
+                tools = emptyList(),
+                probedAtMs = NOW,
+                probeResult = "config",
+            ),
+        )
+        assertEquals("清单 probeResult 照读新值", "config", McpPeersManifest.load(root)["ag-590"]?.probeResult)
+    }
 
     // ── 判据① 超区间不请求 ───────────────────────────────────────────────
 
