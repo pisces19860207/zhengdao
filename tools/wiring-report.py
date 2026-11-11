@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""wiring-report.py —— 接线清单：装配类到底有没有人调（第六百批 · 阶段零）。
+"""wiring-report.py —— 接线清单：装配类到底有没有人调（第六百批：阶段零只列不判 → 阶段一三栏固化）。
 
 ## 它只列不判
 
-这份脚本**不下结论、不开红门**：默认退出码恒 0（除非扫描器自己崩）。它只把
-`app/src/main` 里的装配类摆到两栏里——**有调用点** / **无调用点**——「无调用点」
-再分 by-design（纯常量／纯 DTO／只被测试用）与「待判」。一件东西是摆设还是故意的、
-该删该接，**由人判，不由脚本判**。
+这份脚本**不下结论、不开红门**：默认退出码恒 0（除非扫描器自己崩）。它把
+`app/src/main` 里的装配类摆进**三栏**——**有调用点** / **by-design** / **待判**。
+by-design（纯常量／纯 DTO／只被测试用／端口接口／人工裁定）是「无调用点，但已经
+知道为什么」；待判才是真正待人判的那一堆。一件东西是摆设还是故意的、该删该接，
+**由人判，不由脚本判**。
 
-## 五个口径（别猜，也别改着改着忘掉）
+⚠ **by-design ≠ 已接线**。看「有没有接」只看第一栏。三栏互斥且铺满总数，
+`unwiredTotal = byDesign + pending` 单独留着，就是为了不让 by-design 把账抹平。
+
+## 七个口径（别猜，也别改着改着忘掉）
 
 1. **候选**：`app/src/main/**/*.kt` 里 (a) **类名**含 `Wiring`／`Install`／`Boot` 的
-   `object`/`class`/`interface`；(b) 名字不含标记、但长在 `*Wiring.kt` 里的**伴随类型**
-   （`Record`、`Verdict` 这类 DTO）。两栏只算 (a)，(b) 单列附录——否则「有调用点 41」
-   会被一堆 `Verdict.Allow()` 撑胖，读数就废了。
+   `object`/`class`/`enum`/`interface`；(b) 名字不含标记、但长在 `*Wiring.kt` 里的
+   **伴随类型**（`Record`、`Verdict` 这类 DTO）。三栏只算 (a)，(b) 单列附录——否则
+   「有调用点」会被一堆 `Verdict.Allow()` 撑胖，读数就废了。
 2. **已接** ＝ 在**申报文件之外**的 `app/src/main` 里出现 `<类名>.某方法(` 或
    `<类名>(`（构造）——**全限定写法也算**（`com.example…TakeoverWiring.sweepStalled(`），
    这条是本仓最常见的一类接线（薄封装 + 全限定调用），漏了它「无调用点」整栏都是假的。
@@ -28,13 +32,27 @@
 5. **同名类各算各的**：`Installed` 在 `SeedSkills.kt` 与 `TaskGrantRuntime.kt` 各有一份，
    命中按「同文件 → 唯一 → import 精确匹配 → 同包」定位归属，定不下来就记
    `ambiguousHits`（**不硬摊给谁**），并在理由里写明「另有 N 处点名相同但归属不唯一」。
+6. **端口接口不进待判**（600 裁定）：`interface` 是契约不是装配件，调用点在实现类上，
+   一律归 by-design「端口接口」，理由里带「申报文件之外有没有人把它当类型/实现它」——
+   有就说明它活着，没有也不进待办。**别把端口接口塞进 unwired。**
+7. **人工裁定是闭集**（`RULINGS`，只减不增）：脚本不替人猜性质。表外的一律落「待判」；
+   表内命中要求该类**当前无生产调用点**——一旦有人接上就变成 wired，这条裁定过期，
+   `audit_rulings` 会在报告与 stderr 点名，该删行而不是留着装样子。
 
 ## 用法
 
-    python3 tools/wiring-report.py                 # 打印人读清单，并写 tools/wiring-report.json
-    python3 tools/wiring-report.py --md out.md      # 清单另存一份
-    python3 tools/wiring-report.py --audit 5        # 抽查建议（默认 5 件，确定性抽取）
-    python3 tools/wiring-report.py --selftest       # 合成夹具自检（失败退出 1）
+    python3 tools/wiring-report.py                    # 打印清单 + 写 JSON + 与基线比对
+    python3 tools/wiring-report.py --md out.md         # 清单另存一份
+    python3 tools/wiring-report.py --audit 5           # 抽查建议（默认 5 件，确定性抽取）
+    python3 tools/wiring-report.py --update-baseline   # 按现状重写 tools/wiring-baseline.json
+    python3 tools/wiring-report.py --selftest          # 合成夹具自检（失败退出 1）
+
+## 基线（阶段一）
+
+`tools/wiring-baseline.json` 只记「谁在、在哪一栏」：不带 commit、不带时间戳，所以重跑
+字节不变。默认运行会按 `(类名, 文件)` 比对基线（**不看行号**——行号会因编辑漂移，不是
+名册变化），把「新增／消失／翻栏」列在报告 §4.2。**本阶段只报差异、不开红**（判据①）；
+开红与 CI 接入是下一批的事。
 
 ## 幂等
 
@@ -72,6 +90,24 @@ BUCKET_PENDING = "无调用点·待判"
 BY_CONST = "纯常量"
 BY_DTO = "纯 DTO"
 BY_TEST = "只被测试用"
+BY_PORT = "端口接口"
+BY_RULED = "人工裁定"
+
+# 人工裁定表（**闭集：只减不增**）。脚本不替人猜性质——表外的一律落「待判」，等人判。
+# 命中条件：该类当前**无生产调用点**。一旦有人接上（变成 wired），这条裁定就过期，
+# `--selftest` 与默认运行都会点名（见 audit_rulings），该删行而不是留着装样子。
+RULINGS: dict[str, tuple[str, str]] = {
+    "BootPolicy": (
+        BY_RULED,
+        "开机定策的纯算式：只吃入参（同工作区同历史⇒同一行，判据⑩），KDoc 明写不读盘；"
+        "调用点在 QuietMode 内部（BootStrategy.click）。2026-11-11 用户裁定 by-design。",
+    ),
+    "BootStrategy": (
+        BY_RULED,
+        "data class 值对象：方法只读自己的 decisions（档/理由/计数/那一行/点了重算），无 IO、无写口；"
+        "调用点在 QuietMode 内部（BootPolicy.of 构造）。2026-11-11 用户裁定 by-design。",
+    ),
+}
 
 SCOPE_TARGET = "装配类"
 SCOPE_COMPANION = "伴随类型"
@@ -508,22 +544,40 @@ def classify(decl: Decl, hits: list[Hit], comment_mentions: int, test_refs: int,
         entry.reason = "生产调用点 %d 处（首处 %s）" % (len(calls), _site(calls[0]))
         return entry
 
-    extra = []
-    if self_calls:
-        extra.append("同文件内调用 %d 处" % len(self_calls))
+    # 证据计数分两组：`refs` 会被端口接口/裁定的正文自己念一遍，别重复拼。
+    refs = []
     if props:
-        extra.append("生产里属性引用 %d 处" % len(props))
+        refs.append("生产里属性引用 %d 处" % len(props))
     if type_refs:
-        extra.append("生产里类型引用 %d 处" % len(type_refs))
+        refs.append("生产里类型引用 %d 处" % len(type_refs))
     if import_refs:
-        extra.append("只被 import %d 处" % len(import_refs))
+        refs.append("只被 import %d 处" % len(import_refs))
+    other = []
+    if self_calls:
+        other.append("同文件内调用 %d 处" % len(self_calls))
     if comment_mentions:
-        extra.append("注释/字符串提及 %d 次" % comment_mentions)
+        other.append("注释/字符串提及 %d 次" % comment_mentions)
     if ambiguous_hits:
-        extra.append("另有 %d 处同名但归属不唯一" % ambiguous_hits)
-    tail = ("；" + "，".join(extra)) if extra else ""
+        other.append("另有 %d 处同名但归属不唯一" % ambiguous_hits)
+    tail = ("；" + "，".join(refs + other)) if (refs or other) else ""
+    tail_no_refs = ("；" + "，".join(other)) if other else ""
 
-    # ① 形状优先：没有方法的一律是「装东西的」，比「只被测试用」更能说明它为什么没人调。
+    # ① 人工裁定优先：表里点名的，按裁定归类（理由原样带出来，不重算）
+    if decl.name in RULINGS:
+        label, why = RULINGS[decl.name]
+        entry.bucket = BUCKET_BY_DESIGN
+        entry.by_design = label
+        entry.reason = "生产 0 处；%s%s" % (why.rstrip("。"), tail_no_refs)
+        return entry
+    # ② 端口接口：接口是契约不是装配件，调用点在实现类上 —— **不进待判**（600 裁定）
+    if decl.kind == "interface":
+        entry.bucket = BUCKET_BY_DESIGN
+        entry.by_design = BY_PORT
+        entry.reason = ("生产 0 处；接口是契约不是装配件，调用点在实现类上"
+                        "（申报文件之外：类型引用 %d 处、只被 import %d 处）%s"
+                        % (len(type_refs), len(import_refs), tail_no_refs))
+        return entry
+    # ③ 形状优先：没有方法的一律是「装东西的」，比「只被测试用」更能说明它为什么没人调。
     if not decl.functions and decl.kind in ("object", "class", "enum"):
         entry.bucket = BUCKET_BY_DESIGN
         entry.by_design = BY_CONST if decl.kind in ("object", "enum") else BY_DTO
@@ -535,12 +589,7 @@ def classify(decl: Decl, hits: list[Hit], comment_mentions: int, test_refs: int,
             shape = "无类体，只有构造参数"
         entry.reason = "生产 0 处；%s ⇒ %s%s" % (shape, entry.by_design, tail)
         return entry
-    # ② 接口没有静态调用形式；但它是不是「只被测试用」要看生产里有没有人把它当类型
-    if decl.kind == "interface":
-        entry.reason = ("生产 0 处；接口没有静态调用形式（调用点在实现类上）"
-                        "——生产里若有人实现/当参数类型，就不是摆设%s" % tail)
-        return entry
-    # ③ 「只被测试用」是个窄claim：生产里一处类型引用都没有才算，否则落待判，别替人抹平
+    # ④ 「只被测试用」是个窄 claim：生产里一处类型引用都没有才算，否则落待判，别替人抹平
     if test_refs and not type_refs and not props and not self_calls:
         entry.bucket = BUCKET_BY_DESIGN
         entry.by_design = BY_TEST
@@ -583,24 +632,45 @@ def targets(entries: list[Entry]) -> list[Entry]:
 
 
 def counts(entries: list[Entry]) -> dict[str, int]:
+    """三栏口径（600 阶段一改）：wired / byDesign / pending 互斥且铺满 total。
+
+    `unwiredTotal` = byDesign + pending，是**事实**（无生产调用点的总数），
+    留着是为了不让 by-design 把账抹平——by-design ≠ 已接线（见 docstring 「别自欺」）。
+    """
     main = targets(entries)
+    wired = sum(1 for e in main if e.bucket == BUCKET_WIRED)
+    by_design = sum(1 for e in main if e.bucket == BUCKET_BY_DESIGN)
+    pending = sum(1 for e in main if e.bucket == BUCKET_PENDING)
     return {
         "total": len(main),
-        "wired": sum(1 for e in main if e.bucket == BUCKET_WIRED),
-        "unwired": sum(1 for e in main if e.bucket != BUCKET_WIRED),
-        "byDesign": sum(1 for e in main if e.bucket == BUCKET_BY_DESIGN),
-        "pending": sum(1 for e in main if e.bucket == BUCKET_PENDING),
+        "wired": wired,
+        "byDesign": by_design,
+        "pending": pending,
+        "unwiredTotal": by_design + pending,
         "companion": len(entries) - len(main),
+        "portInterfaces": sum(1 for e in main if e.by_design == BY_PORT),
+        "ruled": sum(1 for e in main if e.by_design == BY_RULED),
     }
 
 
-def to_json(entries: list[Entry], audit: list[Entry], src: Path) -> dict:
+def to_json(entries: list[Entry], audit: list[Entry], src: Path,
+            base_diff: dict | None = None, base_path: Path | None = None,
+            rule_problems: list[str] | None = None) -> dict:
     return {
-        "schema": "wiring-report/1",
+        "schema": "wiring-report/2",
         "src": rel(src),
-        "note": "只列不判：wired/unwired 只表示有没有生产调用点，性质由人定。"
-                "scope=装配类 进两栏统计；scope=伴随类型（长在 *Wiring.kt 里但名字不含标记）单列。",
+        "note": "只列不判：wired/byDesign/pending 三栏互斥。by-design ≠ 已接线——"
+                "要判「有没有接」只看 bucket=有调用点。scope=装配类 进三栏；"
+                "scope=伴随类型（长在 *Wiring.kt 里但名字不含标记）单列。",
         "counts": counts(entries),
+        "rulings": [{"name": n, "label": RULINGS[n][0], "reason": RULINGS[n][1]}
+                    for n in sorted(RULINGS)],
+        "rulingProblems": rule_problems or [],
+        "baseline": {
+            "path": rel(base_path) if base_path else "",
+            "found": base_diff is not None,
+            "diff": base_diff,
+        },
         "entries": [
             {
                 "name": e.name,
@@ -672,19 +742,23 @@ def pick_audit(entries: list[Entry], n: int) -> list[Entry]:
     return picked
 
 
-def render_md(entries: list[Entry], audit: list[Entry], src: Path) -> str:
+def render_md(entries: list[Entry], audit: list[Entry], src: Path,
+              base_diff: dict | None = None, base_path: Path | None = None,
+              rule_problems: list[str] | None = None) -> str:
     c = counts(entries)
     main = targets(entries)
     out: list[str] = []
-    out.append("# 接线清单（600 · 阶段零：只列不判）\n")
-    out.append("扫描根 `%s`。候选＝类名含 `Wiring`/`Install`/`Boot` 的 object/class/interface"
-               "（两栏只算这一类）；`*Wiring.kt` 里名字不含标记的伴随类型单列附录（%d 件）。"
+    out.append("# 接线清单（600 · 阶段一：三栏固化）\n")
+    out.append("扫描根 `%s`。候选＝类名含 `Wiring`/`Install`/`Boot` 的 object/class/enum/interface"
+               "（三栏只算这一类）；`*Wiring.kt` 里名字不含标记的伴随类型单列附录（%d 件）。"
                % (rel(src), c["companion"]))
     out.append("「已接」＝**申报文件之外**的 `app/src/main` 里出现 `<类名>.方法(`（**全限定写法也算**）"
                "或 `<类名>(`；声明行、同文件内自调、注释与字符串都不算。\n")
-    out.append("合计 **%d** 件装配类：有调用点 **%d** ｜ 无调用点 **%d**"
-               "（by-design %d ＋ 待判 %d）。\n"
-               % (c["total"], c["wired"], c["unwired"], c["byDesign"], c["pending"]))
+    out.append("合计 **%d** 件装配类：有调用点 **%d** ｜ by-design **%d** ｜ 待判 **%d**"
+               "（无调用点合计 **%d**）。\n"
+               % (c["total"], c["wired"], c["byDesign"], c["pending"], c["unwiredTotal"]))
+    out.append("> **by-design ≠ 已接线**：by-design 只是「无调用点，且已知道为什么」（纯常量/纯 DTO/"
+               "只被测试用/端口接口/人工裁定）。要判「有没有接」，只看第一栏。\n")
 
     out.append("## 一、有调用点（%d）\n" % c["wired"])
     out.append("| # | 类 | 声明位置 | 首个调用点 | 调用数 |")
@@ -700,7 +774,7 @@ def render_md(entries: list[Entry], audit: list[Entry], src: Path) -> str:
 
     by_design = [e for e in main if e.bucket == BUCKET_BY_DESIGN]
     pending = [e for e in main if e.bucket == BUCKET_PENDING]
-    out.append("## 二、无调用点（%d）\n" % c["unwired"])
+    out.append("## 二、无调用点（%d）\n" % c["unwiredTotal"])
     out.append("### 2.1 by-design（%d）\n" % len(by_design))
     if by_design:
         out.append("| # | 类 | 声明位置 | 归类 | 理由 |")
@@ -731,6 +805,42 @@ def render_md(entries: list[Entry], audit: list[Entry], src: Path) -> str:
         out.append("   - 复核命令：`%s`" % audit_command(e))
     out.append("")
 
+    out.append("## 四、裁定与基线（阶段一）\n")
+    out.append("### 4.1 人工裁定（%d 条，闭集只减不增；表外一律落待判）\n" % len(RULINGS))
+    out.append("| 类 | 归类 | 理由 |")
+    out.append("| --- | --- | --- |")
+    for name in sorted(RULINGS):
+        label, why = RULINGS[name]
+        out.append("| `%s` | %s | %s |" % (name, label, why))
+    out.append("")
+    if rule_problems:
+        out.append("**裁定体检：%d 条对不上**（裁定表要人改，脚本不自己修）：\n" % len(rule_problems))
+        for p in rule_problems:
+            out.append("- " + p)
+    else:
+        out.append("裁定体检通过：%d 条都还在扫描结果里、都仍在 by-design。" % len(RULINGS))
+    out.append("")
+
+    base_name = rel(base_path) if base_path else "tools/wiring-baseline.json"
+    out.append("### 4.2 与基线的差异（`%s`）\n" % base_name)
+    if base_diff is None:
+        out.append("还没固化：没有 `%s`。跑 `--update-baseline` 生成（阶段一只固化、不开红）。"
+                   % base_name)
+    elif base_diff["clean"]:
+        out.append("**0 差异**：名册与三栏（wired/byDesign/pending）与基线逐条一致。")
+    else:
+        out.append("新增 %d ｜ 消失 %d ｜ 翻栏 %d\n"
+                   % (len(base_diff["added"]), len(base_diff["gone"]),
+                      len(base_diff["flipped"])))
+        for x in base_diff["added"]:
+            out.append("- 新增 `%s`（%s）· %s" % (x["name"], x["bucket"], x["file"]))
+        for x in base_diff["gone"]:
+            out.append("- 消失 `%s`（基线里是 %s）· %s" % (x["name"], x["bucket"], x["file"]))
+        for x in base_diff["flipped"]:
+            out.append("- 翻栏 `%s` · %s → %s · %s"
+                       % (x["name"], x["was"], x["now"], x["file"]))
+    out.append("")
+
     companions = [e for e in entries if e.scope == SCOPE_COMPANION]
     out.append("## 附：同文件伴随类型（%d 件，不计入上面三栏）\n" % len(companions))
     if companions:
@@ -749,6 +859,81 @@ def write_json(payload: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
                     encoding="utf-8", newline="\n")
+
+
+# ── 五之二、基线（阶段一：固化名册，**不开红**） ──────────────────────────────
+
+BASELINE_SCHEMA = "wiring-baseline/1"
+DEFAULT_BASELINE = ROOT / "tools/wiring-baseline.json"
+
+
+def baseline_payload(entries: list[Entry], src: Path) -> dict:
+    """基线只记「谁在、在哪一栏」——不带 commit、不带时间戳，所以重跑字节不变。"""
+    return {
+        "schema": BASELINE_SCHEMA,
+        "src": rel(src),
+        "note": "装配类名册与三栏归属（阶段一固化）。by-design ≠ 已接线：要判「有没有接」看 bucket=有调用点。",
+        "counts": counts(entries),
+        "entries": [
+            {
+                "name": e.name,
+                "file": rel(e.decl.file),
+                "declLine": e.decl.line,
+                "kind": e.decl.kind,
+                "bucket": e.bucket,
+                "byDesign": e.by_design,
+                "callCount": len(e.calls),
+            }
+            for e in targets(entries)
+        ],
+    }
+
+
+def load_baseline(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - 基线坏了要如实说，不许当成「没有基线」
+        raise SystemExit("基线读不动：%s（%s）" % (path, exc))
+    if data.get("schema") != BASELINE_SCHEMA:
+        raise SystemExit("基线 schema 不认识：%r ≠ %r" % (data.get("schema"), BASELINE_SCHEMA))
+    return data
+
+
+def diff_baseline(entries: list[Entry], base: dict) -> dict:
+    """按 (类名, 文件) 比对，不看行号（行号会因编辑漂移，不是名册变化）。"""
+    now = {(e.name, rel(e.decl.file)): e for e in targets(entries)}
+    old = {(x["name"], x["file"]): x for x in base.get("entries", [])}
+    added = sorted(k for k in now if k not in old)
+    gone = sorted(k for k in old if k not in now)
+    flipped = sorted((k[0], k[1], old[k]["bucket"], now[k].bucket)
+                     for k in now if k in old and old[k]["bucket"] != now[k].bucket)
+    return {
+        "added": [{"name": n, "file": f, "bucket": now[(n, f)].bucket} for n, f in added],
+        "gone": [{"name": n, "file": f, "bucket": old[(n, f)]["bucket"]} for n, f in gone],
+        "flipped": [{"name": n, "file": f, "was": w, "now": v} for n, f, w, v in flipped],
+        "clean": not (added or gone or flipped),
+    }
+
+
+def audit_rulings(entries: list[Entry]) -> list[str]:
+    """裁定表体检：每条都得还在、且仍在 by-design。过期就点名，别留僵尸条目。"""
+    first: dict[str, Entry] = {}
+    for e in entries:
+        first.setdefault(e.name, e)
+    problems: list[str] = []
+    for name in sorted(RULINGS):
+        entry = first.get(name)
+        if entry is None:
+            problems.append("`%s` 扫不到了（改名/删除）⇒ 删掉这条裁定" % name)
+        elif entry.bucket == BUCKET_WIRED:
+            problems.append("`%s` 已经有生产调用点了（%s）⇒ 裁定过期，删掉这条"
+                            % (name, _site(entry.calls[0])))
+        elif entry.bucket != BUCKET_BY_DESIGN:
+            problems.append("`%s` 现在落「%s」而不是 by-design ⇒ 裁定与事实对不上"
+                            % (name, entry.bucket))
+    return problems
 
 
 # ── 六、自检夹具（合成树，不碰仓库） ─────────────────────────────────────────
@@ -919,7 +1104,7 @@ def selftest() -> int:
             ("ConstWiring", False, BUCKET_BY_DESIGN),
             ("DtoWiring", False, BUCKET_BY_DESIGN),
             ("TestOnlyWiring", False, BUCKET_BY_DESIGN),
-            ("GrantWiring", False, BUCKET_PENDING),
+            ("GrantWiring", False, BUCKET_BY_DESIGN),
             ("ForeignWiring", False, BUCKET_PENDING),
         ]
         for name, _, want in [(n, a, b) for n, a, b in cases]:
@@ -961,6 +1146,46 @@ def selftest() -> int:
                "`*Wiring.kt` 里的伴随类型没进附录")
         hw = at("HolderWiring")
         expect(hw is not None and hw.scope == SCOPE_TARGET, "装配类被误判成伴随类型")
+        gw = at("GrantWiring")
+        expect(gw is not None and gw.by_design == BY_PORT,
+               "接口没归「端口接口」（端口不许进待判/待办）")
+
+        # 裁定表：注入一条夹具名 ⇒ 必须压过默认待判；表外的 ForeignWiring 仍待判（闭集）
+        saved_rulings = dict(RULINGS)
+        try:
+            RULINGS["ForeignWiring"] = (BY_RULED, "夹具：人工裁定")
+            ruled = {(e.name, e.decl.file.parent.name): e for e in build(src)}
+            fr = ruled.get(("ForeignWiring", "a"))
+            expect(fr is not None and fr.bucket == BUCKET_BY_DESIGN
+                   and fr.by_design == BY_RULED, "裁定表没生效（点了名还落待判）")
+            # 裁定过期：给已接的类挂一条裁定 ⇒ 体检必须点名
+            RULINGS["WiredWiring"] = (BY_RULED, "夹具：已接却挂裁定")
+            probs = audit_rulings(list(ruled.values()))
+            expect(any("WiredWiring" in p for p in probs),
+                   "裁定过期没被发现（已接的类还挂着裁定）")
+        finally:
+            RULINGS.clear()
+            RULINGS.update(saved_rulings)
+
+        # 基线：往返 0 差异；人为翻一栏必须被比对抓出来；两次生成字节相同
+        payload = baseline_payload(entries, src)
+        expect(diff_baseline(entries, payload)["clean"], "基线与现状往返比对不是 0 差异")
+        tampered = json.loads(json.dumps(payload))
+        for row in tampered["entries"]:
+            if row["bucket"] == BUCKET_WIRED:
+                row["bucket"] = BUCKET_PENDING
+                break
+        tdiff = diff_baseline(entries, tampered)
+        expect(not tdiff["clean"] and len(tdiff["flipped"]) == 1,
+               "翻栏没被基线比对抓出来")
+        expect(json.dumps(payload, ensure_ascii=False, sort_keys=True)
+               == json.dumps(baseline_payload(again, src), ensure_ascii=False, sort_keys=True),
+               "基线两次生成不一致（幂等坏了）")
+        cnt = counts(entries)
+        expect(cnt["total"] == cnt["wired"] + cnt["byDesign"] + cnt["pending"],
+               "三栏没铺满总数（有件漏出了统计）")
+        expect(cnt["unwiredTotal"] == cnt["byDesign"] + cnt["pending"],
+               "unwiredTotal 与 byDesign+pending 对不上")
 
         first = json.dumps(to_json(entries, pick_audit(entries, 3), src), ensure_ascii=False,
                            indent=2)
@@ -974,7 +1199,7 @@ def selftest() -> int:
             print("  · " + f)
         return 1
     print("SELFTEST OK：%d 条断言全过（全限定调用／同名双类与跨包 import／声明行不算调用／"
-          "注释负例／伴随类型／幂等）" % checked)
+          "注释负例／伴随类型／端口接口／裁定表与过期／基线往返与翻栏／幂等）" % checked)
     return 0
 
 
@@ -991,6 +1216,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-json", action="store_true", help="只打印，不写 JSON")
     ap.add_argument("--md", default="", help="清单另存为 markdown 文件")
     ap.add_argument("--audit", type=int, default=5, help="抽查建议件数，默认 5")
+    ap.add_argument("--baseline", default=str(DEFAULT_BASELINE), help="基线文件路径")
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="按现状重写基线（阶段一固化；仍不开红）")
     ap.add_argument("--selftest", action="store_true", help="跑合成夹具自检")
     args = ap.parse_args(argv)
 
@@ -1006,13 +1234,25 @@ def main(argv: list[str] | None = None) -> int:
     if not targets(entries):
         print("::warning:: 一件装配类都没扫到——先怀疑口径或路径，别当成「全是干净」。",
               file=sys.stderr)
+    base_path = Path(args.baseline)
+    base = load_baseline(base_path)
+    base_diff = diff_baseline(entries, base) if base is not None else None
+    problems = audit_rulings(entries)
+    for p in problems:
+        print("::warning:: 裁定表 %s" % p, file=sys.stderr)
     audit = pick_audit(entries, max(0, args.audit))
-    md = render_md(entries, audit, src)
+    md = render_md(entries, audit, src, base_diff=base_diff, base_path=base_path,
+                   rule_problems=problems)
     print(md)
     if args.md:
         Path(args.md).write_text(md + "\n", encoding="utf-8", newline="\n")
     if not args.no_json:
-        write_json(to_json(entries, audit, src), Path(args.json))
+        write_json(to_json(entries, audit, src, base_diff=base_diff, base_path=base_path,
+                           rule_problems=problems), Path(args.json))
+    if args.update_baseline:
+        write_json(baseline_payload(entries, src), base_path)
+        print("已写入基线：%s（%d 件）" % (rel(base_path), len(targets(entries))),
+              file=sys.stderr)
     return 0
 
 

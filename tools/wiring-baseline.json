@@ -1,0 +1,467 @@
+{
+  "schema": "wiring-baseline/1",
+  "src": "app/src/main",
+  "note": "装配类名册与三栏归属（阶段一固化）。by-design ≠ 已接线：要判「有没有接」看 bucket=有调用点。",
+  "counts": {
+    "total": 50,
+    "wired": 31,
+    "byDesign": 19,
+    "pending": 0,
+    "unwiredTotal": 19,
+    "companion": 49,
+    "portInterfaces": 3,
+    "ruled": 2
+  },
+  "entries": [
+    {
+      "name": "BackupWiring",
+      "file": "app/src/main/java/com/example/zhengdao/backup/BackupWiring.kt",
+      "declLine": 19,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "BaopuBrowserWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuBrowserWiring.kt",
+      "declLine": 46,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "ReflectionWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 367,
+      "kind": "class",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "Installed",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/SeedSkills.kt",
+      "declLine": 24,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "InstallReport",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/SeedSkills.kt",
+      "declLine": 30,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "AmendRiskWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AmendRiskWiring.kt",
+      "declLine": 35,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "AttributionWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+      "declLine": 23,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "ConflictRoyalWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConflictRoyalWiring.kt",
+      "declLine": 18,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "DeviationWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/DeviationWiring.kt",
+      "declLine": 29,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 27
+    },
+    {
+      "name": "DispositionWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/DispositionWiring.kt",
+      "declLine": 31,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "LearnWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 233,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 4
+    },
+    {
+      "name": "OpinionWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 326,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 7
+    },
+    {
+      "name": "BootStrategy",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/QuietMode.kt",
+      "declLine": 508,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "人工裁定",
+      "callCount": 0
+    },
+    {
+      "name": "BootPolicy",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/QuietMode.kt",
+      "declLine": 562,
+      "kind": "object",
+      "bucket": "无调用点·by-design",
+      "byDesign": "人工裁定",
+      "callCount": 0
+    },
+    {
+      "name": "TakeoverWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TakeoverWiring.kt",
+      "declLine": 70,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "TurnSourceWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TurnSourceWiring.kt",
+      "declLine": 23,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 5
+    },
+    {
+      "name": "WishIOWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+      "declLine": 49,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "WishUsageWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishUsageWiring.kt",
+      "declLine": 33,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 2
+    },
+    {
+      "name": "InstallResult",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantRuntime.kt",
+      "declLine": 55,
+      "kind": "interface",
+      "bucket": "无调用点·by-design",
+      "byDesign": "端口接口",
+      "callCount": 0
+    },
+    {
+      "name": "Installed",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantRuntime.kt",
+      "declLine": 56,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "WiringDisposition",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+      "declLine": 62,
+      "kind": "enum",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "callCount": 0
+    },
+    {
+      "name": "WiringResult",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+      "declLine": 81,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "GrantWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+      "declLine": 101,
+      "kind": "interface",
+      "bucket": "无调用点·by-design",
+      "byDesign": "端口接口",
+      "callCount": 0
+    },
+    {
+      "name": "ConsequenceWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/consequence/ConsequenceWiring.kt",
+      "declLine": 40,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 11
+    },
+    {
+      "name": "DepthFactsWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/DepthFacts.kt",
+      "declLine": 52,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 2
+    },
+    {
+      "name": "EvolutionWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+      "declLine": 153,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 4
+    },
+    {
+      "name": "EvoSampleWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/samples/EvoSampleWiring.kt",
+      "declLine": 42,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 2
+    },
+    {
+      "name": "EvalTriggerWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/trigger/EvalTriggerWiring.kt",
+      "declLine": 45,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 4
+    },
+    {
+      "name": "BootLimits",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 50,
+      "kind": "object",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "callCount": 0
+    },
+    {
+      "name": "BootPart",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 66,
+      "kind": "enum",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "callCount": 0
+    },
+    {
+      "name": "BootDisposition",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 79,
+      "kind": "enum",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "callCount": 0
+    },
+    {
+      "name": "BootFinding",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 105,
+      "kind": "enum",
+      "bucket": "无调用点·by-design",
+      "byDesign": "只被测试用",
+      "callCount": 0
+    },
+    {
+      "name": "BootReadings",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 198,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "BootInterrupt",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 265,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "BootSinks",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 273,
+      "kind": "interface",
+      "bucket": "无调用点·by-design",
+      "byDesign": "端口接口",
+      "callCount": 0
+    },
+    {
+      "name": "BootReport",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 301,
+      "kind": "class",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "callCount": 0
+    },
+    {
+      "name": "BootCheck",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 333,
+      "kind": "object",
+      "bucket": "无调用点·by-design",
+      "byDesign": "只被测试用",
+      "callCount": 0
+    },
+    {
+      "name": "EmergencyWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
+      "declLine": 165,
+      "kind": "object",
+      "bucket": "无调用点·by-design",
+      "byDesign": "只被测试用",
+      "callCount": 0
+    },
+    {
+      "name": "MetricsWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/MetricsWiring.kt",
+      "declLine": 63,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 2
+    },
+    {
+      "name": "TriggerWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/TriggerWiring.kt",
+      "declLine": 23,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "AdmissionWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionWiring.kt",
+      "declLine": 38,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 2
+    },
+    {
+      "name": "McpSelfServiceWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/mcp/McpSelfServiceWiring.kt",
+      "declLine": 20,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "FreeTextMemoryWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/memoryimport/FreeTextMemoryWiring.kt",
+      "declLine": 100,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 2
+    },
+    {
+      "name": "PreReadWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/preread/PreReadWiring.kt",
+      "declLine": 28,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 3
+    },
+    {
+      "name": "ProfileIntakeWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/profile/ProfileIntakeWiring.kt",
+      "declLine": 26,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "SafetyWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyWiring.kt",
+      "declLine": 23,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 11
+    },
+    {
+      "name": "ChancellorWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ChancellorWiring.kt",
+      "declLine": 25,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 3
+    },
+    {
+      "name": "RunContractWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt",
+      "declLine": 50,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 4
+    },
+    {
+      "name": "ValueGateWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ValueGateWiring.kt",
+      "declLine": 25,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "WishWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/wish/WishWiring.kt",
+      "declLine": 21,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 6
+    }
+  ]
+}
