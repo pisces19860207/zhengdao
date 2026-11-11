@@ -394,7 +394,8 @@ class RiskWiringTest {
         // 322 模型小黑板两件进表（board_read R0 / board_write R1）＝ 88 行（版本仍没动：没有新维度）
         // 541 待办中心三件进表（todo_list R0 / todo_add R1 / todo_mark_done R1）＝ 91 行（同样没有新维度）
         // 544 项目账本三件进表（ledger_list R0 / ledger_add R1 / ledger_status R1）＝ 94 行（同样没有新维度）
-        assertEquals("表行数变了：先对账再改（94 个注册工具 = 94 行（COMPAT 退役后无豁免行））", 94, RiskTable.DEFAULT.tools.size)
+        // 597 立绘外貌两件进表（portrait_look R1 / portrait_appearance R1）＝ 96 行（同样没有新维度）
+        assertEquals("表行数变了：先对账再改（96 个注册工具 = 96 行（COMPAT 退役后无豁免行））", 96, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)

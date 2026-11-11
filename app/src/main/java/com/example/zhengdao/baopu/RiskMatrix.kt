@@ -419,6 +419,12 @@ internal data class RiskTable(
                 "novel_continue" to ToolRule(RiskClass.R2),
                 "run_subtasks" to ToolRule(RiskClass.R2),
                 "card_export" to ToolRule(RiskClass.R2, writePathKeys = setOf("out")),
+                // ── 597 立绘外貌两件 ─────────────────────────────────────────
+                // look：只读图＋落一行账（`.appearance.jsonl` 点号文件）——账与 ledger_add 同口径 R1。
+                // appearance：R1＋CONFIRM（describe=唯一图片外发动作，人批在管线；merge 写卡走
+                // writePathKeys=card，路径过 checkPath；已有外貌不覆盖在 PortraitMerge 判）。
+                "portrait_look" to ToolRule(RiskClass.R1),
+                "portrait_appearance" to ToolRule(RiskClass.R1, writePathKeys = setOf("card")),
 
                 // ── R3 花钱外发账号 ───────────────────────────────────────────
                 "generate_image" to ToolRule(RiskClass.R3),

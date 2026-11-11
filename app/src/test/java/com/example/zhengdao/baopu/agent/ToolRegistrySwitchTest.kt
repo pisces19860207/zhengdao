@@ -115,6 +115,8 @@ class ToolRegistrySwitchTest {
                 // 第一百八十六批：画板/图表/表格（DRAW 组，默认不可见但默认启用）
                 "render_artifact", "draw_chart", "draw_table", "ask_user",
                 "card_inspect", "card_export", "card_build",
+                // 597：立绘外貌两件（CARD 组，默认不可见但默认启用；表序即注册序）
+                "portrait_look", "portrait_appearance",
                 // 第五十九批两条：capabilities（渐进披露入口）与 preview_local_file（玄览只显示）
                 "capabilities", "preview_local_file",
                 // 第一百二十七批：多 Agent 协作（AGENT 组，默认不可见但默认启用）

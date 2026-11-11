@@ -22,6 +22,9 @@ import com.example.zhengdao.baopu.agent.AskGovernance
 import com.example.zhengdao.baopu.agent.AskHabitSwitch
 import com.example.zhengdao.baopu.agent.AskIntakeGate
 import com.example.zhengdao.baopu.agent.AskTier
+import com.example.zhengdao.baopu.agent.AndroidPortraitDecoder
+import com.example.zhengdao.baopu.agent.LlmVisionPort
+import com.example.zhengdao.baopu.agent.PortraitAppearanceTool
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
 import com.example.zhengdao.baopu.agent.DeviceTools
@@ -409,6 +412,17 @@ internal object BaopuRuntime {
             publishAlbum = { bytes, name, mime, ext ->
                 MediaPublisher.publish(appCtx, bytes, name, mime, MediaOwnership.SOURCE_IMAGE, ext)
             },
+        )
+        // 第五百九十七批：立绘外貌两件（portrait_look / portrait_appearance）的装配。
+        // 视觉能力**只读当前通道的 Provider.vision**（597 判据②：无能力 ⇒ 工具回
+        // "该模型看不了图"，一个字节不发）；真外发是 CONFIRM——管线第③段末尾过
+        // 467 租约闸（命中免卡、未命中弹卡），工具里再拦一道 PortraitDescribeGate。
+        // 解码器与视觉出口都从这条缝注入：测试换假件（ImageIO 解码／假 port 数请求）。
+        PortraitAppearanceTool.env = PortraitAppearanceTool.Env(
+            visionSupported = provider.vision,
+            modelId = provider.model,
+            port = LlmVisionPort(provider),
+            decoder = AndroidPortraitDecoder,
         )
         // 第一百八十六批：画板/图表/表格的 PNG 截图器。
         // ArtifactRaster 是 App 侧唯一的 WebView 沙箱实现（JS 关、断网、只放 about/data）；

@@ -41,6 +41,9 @@ internal object BaopuToolLabels {
         "card_inspect" to R.string.baopu_tool_card_inspect,
         "card_export" to R.string.baopu_tool_card_export,
         "card_build" to R.string.baopu_tool_card_build,
+        // 597：立绘外貌两件（漏了 ⇒ 设置页开工具卡直接抛，同 update_plan 教训）
+        "portrait_look" to R.string.baopu_tool_portrait_look,
+        "portrait_appearance" to R.string.baopu_tool_portrait_appearance,
         // 第二百八十八批：复制/批量/整理五件
         "copy_path" to R.string.baopu_tool_copy_path,
         "bulk_move" to R.string.baopu_tool_bulk_move,
@@ -164,6 +167,9 @@ internal object BaopuToolLabels {
         "card_inspect" to R.string.baopu_tool_card_inspect_desc,
         "card_export" to R.string.baopu_tool_card_export_desc,
         "card_build" to R.string.baopu_tool_card_build_desc,
+        // 597：立绘外貌两件
+        "portrait_look" to R.string.baopu_tool_portrait_look_desc,
+        "portrait_appearance" to R.string.baopu_tool_portrait_appearance_desc,
         // 第二百八十八批：复制/批量/整理五件
         "copy_path" to R.string.baopu_tool_copy_path_desc,
         "bulk_move" to R.string.baopu_tool_bulk_move_desc,

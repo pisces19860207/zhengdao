@@ -137,6 +137,10 @@ class L6BoundaryGateTest {
             "agent/tools/ConvertEncodingTool.kt" to setOf("mkdirs", "writeBytes", "delete"),
             // 删除/移回收站：目标路径经管线守卫；mkdirs 只为回收站目录。
             "agent/tools/DeletePathTool.kt" to setOf("mkdirs", "delete"),
+            // 第五百九十七批：立绘外貌 merge——唯一写动作是把人批的草稿写进**守卫过的卡路径**
+            // （`checkPath` 在工具层自己跑，CONFIRM 管线＋已有外貌不覆盖在 PortraitMerge 判）。
+            // 账本（`.appearance.jsonl`）的 mkdirs/appendText 在 portrait/ 包，不在 agent/ 扫描域。
+            "agent/tools/PortraitAppearanceTool.kt" to setOf("writeText"),
             // 画板沙箱：HTML/SVG 出图写 tmp 后 rename（本地渲染产物）。
             "agent/tools/Draw.kt" to setOf("mkdirs", "writeText", "delete"),
             // 编辑文件：目标路径经管线守卫；原子写 tmp（半截文件比不写更坏）。

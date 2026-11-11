@@ -10,8 +10,14 @@ package com.example.zhengdao.baopu.agent.multiagent
 
 internal object SubAgentWhitelist {
 
-    /** 子任务永远不许碰的工具（v2 禁递归：子子孙孙不许再拆）。 */
-    val FORBIDDEN: Set<String> = setOf(SubTaskTool.NAME)
+    /**
+     * 子任务永远不许碰的工具（v2 禁递归：子子孙孙不许再拆）。
+     *
+     * 597 加 `portrait_appearance`：它的 describe 是**全仓唯一**把图片字节发出去的动作、
+     * merge 是改卡——两条都必须**人在场**（CONFIRM 卡/467 租约在主管线）；而子 Agent 的
+     * 执行器是直调（不经过弹卡），一旦进名单就是无人在场外发。`portrait_look` 只读，可留。
+     */
+    val FORBIDDEN: Set<String> = setOf(SubTaskTool.NAME, "portrait_appearance")
 
     /** 工具名上限（防一条 grant_writes 塞长文；正常工具名远短于此）。 */
     const val MAX_NAME_CHARS = 60

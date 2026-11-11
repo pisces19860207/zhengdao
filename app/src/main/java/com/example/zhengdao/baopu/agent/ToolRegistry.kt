@@ -360,6 +360,10 @@ internal object ToolGroupTable {
         "draw_table" to ToolGroup.DRAW,
         "card_inspect" to ToolGroup.CARD,
         "card_export" to ToolGroup.CARD,
+        // 597：立绘外貌两件（portrait_look 本地特征＋一致性只读；portrait_appearance
+        // 草稿/视觉描述/进卡）——归 CARD（默认不可见，capabilities 解锁——B1 硬卡不破）
+        "portrait_look" to ToolGroup.CARD,
+        "portrait_appearance" to ToolGroup.CARD,
         // 58 批 C 层「追加-only」人设通道：与 write_skill 同属自写类，同一组、同样默认不可见
         // （合流时补的分组——补不上 checkCoverage 直接抛，这是 §6「孤儿工具直接红」在跑）
         "write_skill" to ToolGroup.SKILL,
@@ -1499,6 +1503,10 @@ internal object BaopuToolCatalog {
         "card_inspect",
         "card_export",
         "card_build",
+        // 立绘外貌两件（597）：look FREE 只读图＋落一行账；appearance CONFIRM（描述=唯一外发、
+        // merge 不覆盖）。默认开、默认不可见（CARD 组）——同 generate_image 口径，解锁即用。
+        "portrait_look",
+        "portrait_appearance",
         // 渐进披露（第五十九批 §1.3）：capabilities 是「按需解锁低频组」的入口，默认开
         "capabilities",
         // 玄览本地预览（第五十九批 §5）：只显示、默认断网禁 JS，不执行任何东西
@@ -1651,6 +1659,10 @@ internal object BaopuToolCatalog {
         Entry("card_export") { CardTools.exportSpec(it) },
         // 写卡（第四十五批）：母档 → 三套产物（CONFIRM，不覆盖）
         Entry("card_build") { CardTools.buildSpec(it) },
+        // 立绘外貌两件（597）：本地特征＋一致性（FREE 只读图，账落 .appearance.jsonl）／
+        // 草稿・视觉描述（唯一外发动作）・进卡（CONFIRM，不覆盖已有外貌）
+        Entry("portrait_look") { PortraitAppearanceTool.lookSpec(it) },
+        Entry("portrait_appearance") { PortraitAppearanceTool.appearanceSpec(it) },
         // 渐进披露（第五十九批 §1.3）：列出组与解锁状态 / 本会话内解锁某组。
         // FREE：它只改「模型本轮能看见哪些工具」，不碰用户任何文件（与 update_plan 同理，
         // 逼它走确认卡等于每问一次「我有什么工具」就弹一次框）。

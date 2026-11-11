@@ -1256,6 +1256,10 @@
     <string name="baopu_artifact_shelf_close">Close</string>
     <string name="baopu_tool_card_build">Card builder</string>
     <string name="baopu_tool_card_build_desc">Build a card / world book / five-piece skeleton from a workspace spec JSON (writes files after confirmation; never overwrites)</string>
+    <string name="baopu_tool_portrait_look">Portrait local features (read-only)</string>
+    <string name="baopu_tool_portrait_look_desc">Read a portrait\'s dominant colors / aspect ratio / half-or-full body (no model calls); lists diffs for multiple images, report-only; appends one ledger line per run</string>
+    <string name="baopu_tool_portrait_appearance">Portrait appearance (draft / describe / merge)</string>
+    <string name="baopu_tool_portrait_appearance_desc">Appearance drafts enter a card only after human approval (never overwrites); the visual description is the only outbound action — a channel without vision support sends nothing</string>
     <string name="trash_sessions_title">Deleted chats (%1$d)</string>
     <string name="trash_sessions_none">No deleted chats.</string>
     <plurals name="trash_session_row">

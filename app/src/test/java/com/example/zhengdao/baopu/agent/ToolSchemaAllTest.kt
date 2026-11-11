@@ -551,6 +551,12 @@ class ToolSchemaAllTest {
             "card_inspect" to JSONObject().put("path", "c.json"),
             "card_export" to JSONObject().put("path", "c.json").put("out", "c.png"),
             "card_build" to JSONObject(),
+            // 597：立绘外貌两件（最小合法形状；文件存在性不归 schema 管）
+            "portrait_look" to JSONObject().put(
+                "paths",
+                JSONArray().put("立绘/a.png"),
+            ),
+            "portrait_appearance" to JSONObject().put("action", "draft"),
             "capabilities" to JSONObject(),
             "preview_local_file" to JSONObject().put("path", "产物/首页.html"),
             // 第一百二十七批：多 Agent 协作（只给最小合法形状：一条带 goal 的子任务）
