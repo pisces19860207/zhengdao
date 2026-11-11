@@ -89,6 +89,14 @@ internal object CardJson {
         null
     }
 
+    /** 解析成 JSON 数组；不是数组或语法坏 ⇒ null（599a：网络平台族裸数组形态）。 */
+    fun parseArray(text: String): JSONArray? = try {
+        val v = JSONTokener(withoutBom(text)).nextValue()
+        v as? JSONArray
+    } catch (e: Exception) {          // org.json 抛 JSONException；越界等也一并吞
+        null
+    }
+
     // ── 取值：**先判类型再取**（org.json 的 optInt 会把字符串 "3" 也吃成 3） ──
 
     fun intOf(o: JSONObject?, key: String): Int? {

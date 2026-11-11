@@ -45,10 +45,17 @@ internal object CardAssetParser {
         val verdict = CardFormat.recognize(bytes)
         if (!verdict.isKnown) return null
         val text = verdict.jsonText ?: verdict.embeddedJson ?: return null
-        val raw = CardJson.parseObject(text) ?: return null
         val bad = ArrayList<UnparsedAsset>()
+        // 599a：顶层裸数组没有顶层对象——先走 [webBare] 专路，别急着解对象
+        if (verdict.format == FormatKind.WEB_PLATFORM_BOOK &&
+            verdict.subtype == CardFormat.SUBTYPE_WEB_BOOK_BARE_ARRAY
+        ) {
+            val bare = webBare(CardJson.parseArray(text) ?: return null)
+            return Parsed(verdict = verdict, asset = bare, unparsed = bad.toList())
+        }
+        val raw = CardJson.parseObject(text) ?: return null
         val asset = when (verdict.format) {
-            FormatKind.WEB_BOOK -> web(raw)
+            FormatKind.WEB_PLATFORM_BOOK -> web(raw)
             FormatKind.TAVO_BOOK -> worldbook(raw, WorldbookDialect.TAVO, "tavo")
             FormatKind.ST_WORLD -> worldbook(raw, WorldbookDialect.ST_NATIVE, "sillytavern")
             FormatKind.CCV3_LOREBOOK -> worldbook(raw, WorldbookDialect.CCV3, "ccv3")
@@ -100,6 +107,32 @@ internal object CardAssetParser {
             builtInCss = "",
             worldbook = wb,
             raw = raw,
+        )
+    }
+
+    /**
+     * 裸数组形态（599a）：文件顶层就是条目数组，没有顶层对象可当 raw。
+     * 内部视图统一套一层 `world_book` 容器来复用世界书视图与体检——**仅视图用**：
+     * 每个条目的 `raw` 仍是原对象、一个字段不改；本批无写回，落盘一律走导出器（WebPlatformBook）。
+     */
+    private fun webBare(arr: JSONArray): WebWork {
+        val wrapped = JSONObject().put("world_book", arr)
+        val wb = Worldbook(
+            raw = wrapped,
+            dialect = WorldbookDialect.WEB,
+            entries = (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { viewOf(it, WorldbookDialect.WEB, i) }
+            },
+            vendor = "web",
+        )
+        return WebWork(
+            detailHtml = "",
+            prompt = "",
+            prePrompt = "",
+            postPrompt = "",
+            builtInCss = "",
+            worldbook = wb,
+            raw = wrapped,
         )
     }
 

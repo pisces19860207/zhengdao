@@ -19,15 +19,33 @@ import javax.imageio.ImageIO
 
 internal object CardFixtures {
 
-    // ── J1 · 网络平台常规（WEB_BOOK / PLAIN）──────────────────────────────
+    // ── J1 · 网络平台整包·常规（WEB_PLATFORM_BOOK / PLAIN）────────────────
     const val J1 = """
 {"world_book":[{"key":"_or_甲@wb@乙","value":"示例正文","group":"","key_region":3,"value_region":1,"sort":1,"depth":2,"probability":100,"match_type":2,"enable":true}]}
 """
 
-    // ── J2 · 网络平台模板（WEB_BOOK / TEMPLATE）───────────────────────────
+    // ── J2 · 网络平台整包·模板（WEB_PLATFORM_BOOK / TEMPLATE）─────────────
     const val J2 = """
 {"_comment":["示例说明一","示例说明二"],"world_book":[{"key":"_or_甲","value":"示例正文","group":"","key_region":3,"value_region":1,"sort":1,"depth":2,"probability":100,"match_type":2,"enable":true}]}
 """
+
+    // ── J8 · 网络平台裸数组（599a：顶层就是数组，无外壳）──────────────────
+    val J8: String = webBareArray(
+        webEntry("_or_甲@wb@乙", sort = 1, depth = 4),
+        webEntry("_or_丙", sort = 2, depth = 4),
+        webEntry("_or_丁", sort = 3, depth = 4),
+    )
+
+    // ── J9 · 网络平台整包·带整包字段（599a：pre_text 等可选字段在顶层）────
+    //  unknown_top 是白名单外的键：证据只记白名单字段，别的顶层键不进话术。
+    const val J9 = """
+{"pre_text":"前置文本","post_text":"","pre_prompt":"前置提示词","suggested_questions":[],"unknown_top":"不该进证据的键","world_book":[{"key":"_or_甲","value":"示例正文","group":"","key_region":3,"value_region":1,"sort":1,"depth":2,"probability":100,"match_type":2,"enable":true}]}
+"""
+
+    // ── J10 · 顶层裸数组但元素是他家特征（负例：本族不许抢）──────────────
+    const val J10_TAVOISH = """[{"keywords":["甲"],"content":"示例正文","enabled":true}]"""
+    const val J10_CCV3ISH = """[{"keys":["甲"],"content":"示例正文","insertion_order":1}]"""
+    const val J10_EMPTY = "[]"
 
     /** 一条 Tavo 世界书条目（占位词；字段齐 26 个）。 */
     private const val TAVO_ENTRY = """"identifier":"%s","name":"示例条目","content":"示例正文","strategy":"%s","injectionPosition":"lorebookBefore","injectionDepth":4,"injectionRole":"system","keywords":%s,"secondaryKeywords":[],"secondaryKeywordStrategy":"none","scanDepth":2,"caseSensitive":false,"matchWholeWord":true,"probability":100,"sticky":0,"cooldown":0,"delay":0,"excludeRecursion":true,"preventRecursion":true,"delayUntilRecursion":0,"groupName":"","groupOverride":false,"groupWeight":100,"useGroupScoring":false,"enabled":true,"useRegex":false"""
@@ -93,6 +111,9 @@ internal object CardFixtures {
     ): String = """{"key":"$key","value":"$value","group":"$group","key_region":$keyRegion,"value_region":$valueRegion,"sort":$sort,"depth":$depth,"probability":$probability,"match_type":$matchType,"enable":$enable}"""
 
     fun webBook(vararg entries: String): String = """{"world_book":[${entries.joinToString(",")}]}"""
+
+    /** 顶层裸数组壳（599a：网络平台族的另一种外壳）。 */
+    fun webBareArray(vararg entries: String): String = "[${entries.joinToString(",")}]"
 
     fun tavoEntry(identifier: String, strategy: String, keywordsJson: String): String =
         "{" + TAVO_ENTRY.format(identifier, strategy, keywordsJson) + "}"

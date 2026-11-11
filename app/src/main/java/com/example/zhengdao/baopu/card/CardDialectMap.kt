@@ -4,7 +4,7 @@
 //   §15.2（四套激活策略完全不同，别互相套）→ F22：只在该 dialect 存在时才检查
 //   §15.6（Tavo 是酒馆的改名版：字段对应表）→ F23：不许默认成 false/0
 //   §15.6.1（注入顺序：relative vs before_char）→ F24：injectionDepth 只映射 depth
-//   §16.3-3（三层并存：FormatKind.WEB_BOOK／WorldbookDialect.WEB／WEB_* 码表）
+//   §16.3-3（三层并存：FormatKind.WEB_PLATFORM_BOOK／WorldbookDialect.WEB／WEB_* 码表）
 //
 // 本文件是**纯表**：没有任何 I/O、没有状态。体检拿它判断「这条码属不属于这个方言」，
 // 测试拿它当「一套规则套四家」的靶子。
@@ -210,7 +210,7 @@ internal object CardDialectMap {
      * 拿到 null 又确实是世界书格式时**必须显式报错**，不许默默跳过（F22 的兜底断言）。
      */
     fun dialectOf(format: FormatKind): WorldbookDialect? = when (format) {
-        FormatKind.WEB_BOOK -> WorldbookDialect.WEB
+        FormatKind.WEB_PLATFORM_BOOK -> WorldbookDialect.WEB
         FormatKind.TAVO_BOOK -> WorldbookDialect.TAVO
         FormatKind.ST_WORLD -> WorldbookDialect.ST_NATIVE
         FormatKind.CCV3_LOREBOOK -> WorldbookDialect.CCV3
@@ -220,7 +220,7 @@ internal object CardDialectMap {
 
     /** 四类世界书格式（`dialectOf` 返回 null 而格式在这一列里 ⇒ 映射漏了，必须报错）。 */
     val WORLDBOOK_FORMATS: Set<FormatKind> = setOf(
-        FormatKind.WEB_BOOK, FormatKind.TAVO_BOOK, FormatKind.ST_WORLD, FormatKind.CCV3_LOREBOOK,
+        FormatKind.WEB_PLATFORM_BOOK, FormatKind.TAVO_BOOK, FormatKind.ST_WORLD, FormatKind.CCV3_LOREBOOK,
     )
 
     /**

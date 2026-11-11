@@ -290,7 +290,8 @@ internal object CardTools {
     fun buildSpec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = "card_build",
         description = "从母档生成一套卡/世界书/五件套骨架（会写盘，弹确认卡）。" +
-            "format 只认 web／tavo／st：web 出 world_book.json＋提示词/前置词/后置词/内置CSS/详细介绍；" +
+            "format 只认 web／tavo／st：web 的世界书默认裸数组（world_book.json），" +
+            "母档可带可选键 whole_package=true（切整包对象）、entry_limit／value_char_limit（预检上限，默认族内最严 1000 条/20000 字）；" +
             "tavo 出 card.json＋lorebook.json；st 出 card.json＋card.png（内嵌 chara/ccv3）。" +
             "**已存在的文件一律拒绝，不覆盖**；单字关键词会被拒（积分刺客）。",
         inputSchema = jsonObjectOf(
@@ -364,7 +365,7 @@ internal object CardTools {
     }
 
     private fun label(f: FormatKind): String = when (f) {
-        FormatKind.WEB_BOOK -> "网络平台世界书"
+        FormatKind.WEB_PLATFORM_BOOK -> "网络平台世界书"
         FormatKind.TAVO_BOOK -> "Tavo 世界书"
         FormatKind.TAVO_CHAR -> "Tavo 角色卡"
         FormatKind.TAVO_REGEX -> "Tavo 正则"

@@ -108,7 +108,7 @@ internal object CardCheck {
             else -> emptyList()
         }
         val stats = when (val f = verdict.format) {
-            FormatKind.WEB_BOOK -> checkWeb(entries, prompt, pre, post, detailHtml, given, findings)
+            FormatKind.WEB_PLATFORM_BOOK -> checkWeb(entries, prompt, pre, post, detailHtml, given, findings)
             FormatKind.TAVO_BOOK -> checkTavo(entries, prompt, pre, post, detailHtml, given, findings)
             FormatKind.ST_WORLD -> checkSt(asset.raw, entries, prompt, pre, post, detailHtml, given, findings)
             FormatKind.TAVO_CHAR, FormatKind.ST_CARD_PNG -> {
@@ -210,7 +210,7 @@ internal object CardCheck {
 
         return CheckStats(
             entries = entries.size,
-            byFormat = FormatKind.WEB_BOOK.name,
+            byFormat = FormatKind.WEB_PLATFORM_BOOK.name,
             cCount = cls.cCount,
             unjudgedCount = cls.unjudged,
             notApplicableCount = cls.notApplicable,

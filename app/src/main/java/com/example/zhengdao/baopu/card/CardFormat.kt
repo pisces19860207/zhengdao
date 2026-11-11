@@ -28,9 +28,9 @@ internal object CardFormat {
 
     /**
      * 认脸主入口（§2.2 按顺序命中即停）。detekt 清债批（chore/detekt-debt-6，2026-11-02）：
-     * 原 178 行／复杂度 51 的大函数按识别步骤拆成四个「谁认出来归谁」的私有段
+     * 原 178 行／复杂度 51 的大函数按识别步骤拆成「谁认出来归谁」的私有段
      * （PNG 在 [judgePng]、网络平台话术在 [web]），本函数只做「解析成 JSON ＋ 按优先级逐段问」。
-     * 判据、顺序、话术一个字没动。
+     * 599a（2026-11-11 改口径）：顶层裸数组在「不是对象」之前先给网络平台族一个机会（[recognizeWebPlatformArray]）。
      */
     fun recognize(bytes: ByteArray): FormatVerdict {
         // 第 0 步：PNG 先判（PNG 字节当文本解必失败）
@@ -46,6 +46,11 @@ internal object CardFormat {
             JSONTokener(CardJson.withoutBom(text)).nextValue()
         } catch (e: Exception) {
             return unknown("NOT_JSON", message = CardText.NOT_JSON)
+        }
+        // 第 1.5 步：顶层裸数组——网络平台族的另一种外壳（599a）；不像 ⇒ 落兜底话术
+        if (value is JSONArray) {
+            return recognizeWebPlatformArray(value, text)
+                ?: unknown("TOP_ARRAY_NOT_FAMILY", message = CardText.TOP_ARRAY_NOT_FAMILY)
         }
         if (value !is JSONObject) {
             return unknown("NOT_OBJECT", message = CardText.NOT_OBJECT)
@@ -69,6 +74,51 @@ internal object CardFormat {
     private fun recognizeWeb(j: JSONObject, keys: List<String>, text: String): FormatVerdict? {
         val worldBook = CardJson.arrayOf(j, "world_book") ?: return null
         return web(j, worldBook, keys, text)
+    }
+
+    // ── 第 1.5 步：顶层裸数组（599a 改口径：网络平台族的另一种外壳） ──────────
+
+    /**
+     * 顶层裸数组认族（599a）。**判到族为止**：只看元素像不像网络平台条目，
+     * 不下「是哪家」的结论；他家的特征（Tavo／CCv3 条目字段）先让路（598 优先级纪律）。
+     * 返回 null ＝ 不归本族（空数组零证据、首元素不是对象、元素不像）。
+     */
+    private fun recognizeWebPlatformArray(arr: JSONArray, text: String): FormatVerdict? {
+        if (arr.length() == 0) return null
+        val first = arr.optJSONObject(0) ?: return null
+        if (!webPlatformEntryLike(first)) return null
+        return FormatVerdict(
+            format = FormatKind.WEB_PLATFORM_BOOK,
+            subtype = SUBTYPE_WEB_BOOK_BARE_ARRAY,
+            confidence = Confidence.HIGH,
+            evidence = listOf(
+                "顶层是裸数组（${arr.length()} 条）",
+                "元素含 key/value/group 等网络平台条目字段${webKeyStyle(first)}",
+            ),
+            entryCount = arr.length(),
+            jsonText = text,
+        )
+    }
+
+    /**
+     * 元素像不像网络平台条目（族判据，两形态共用）。
+     * 强：`key` 是字符串且带 `_or_`／`_and_`／`@wb@` 串式分隔；
+     * 弱：`key`＋`group`＋区域字段（`key_region`／`value_region`）同现。
+     * 他家特征先让路：Tavo 的 keywords/injectionPosition、CCv3 的 keys/insertion_order/use_regex。
+     */
+    private fun webPlatformEntryLike(e: JSONObject): Boolean {
+        if (e.has("keywords") || e.has("injectionPosition")) return false
+        if (e.has("keys") || e.has("insertion_order") || e.has("use_regex")) return false
+        val key = CardJson.stringOf(e, "key") ?: return false
+        if (key.contains("_or_") || key.contains("_and_") || key.contains("@wb@")) return true
+        return e.has("group") && (e.has("key_region") || e.has("value_region"))
+    }
+
+    /** 关键词写法的证据（只记形状，不记平台；非串式 ⇒ 空串）。 */
+    private fun webKeyStyle(e: JSONObject): String {
+        val key = CardJson.stringOf(e, "key") ?: return ""
+        val serial = key.contains("@wb@") || key.startsWith("_or_") || key.startsWith("_and_")
+        return if (serial) "（关键词用 _or_／@wb@ 串式）" else ""
     }
 
     // ── 第 2.5 步：P2 CCv3 显式标记（比字段猜更可靠） ────────────────────────
@@ -274,13 +324,19 @@ internal object CardFormat {
         val commentIsArray = comment is JSONArray
         if (hasComment && !commentIsArray) conflicts += "_comment 不是数组"
 
+        // 599a：整包可选字段「看到了」就记进证据（只记形状，不下是哪家的结论）。
+        val packageFields = WebPlatformProfile.OPTIONAL_PACKAGE_FIELDS.filter { j.has(it) }
+
         return FormatVerdict(
-            format = FormatKind.WEB_BOOK,
+            format = FormatKind.WEB_PLATFORM_BOOK,
             subtype = if (commentIsArray) SUBTYPE_WEB_BOOK_TEMPLATE else SUBTYPE_WEB_BOOK_PLAIN,
             confidence = Confidence.HIGH,
             evidence = buildList {
                 add("顶层键 world_book 是数组（${book.length()} 条）")
                 if (commentIsArray) add("顶层另有 _comment（字符串数组）⇒ 平台模板")
+                if (packageFields.isNotEmpty()) {
+                    add("顶层另有整包字段：${packageFields.joinToString("、")}")
+                }
             },
             conflicts = conflicts,
             defaultsApplied = defaults.toList(),
@@ -436,6 +492,7 @@ internal object CardFormat {
     }
 
     // 子类型字面量（§2.2 哨兵值；§2.1 表视为过时，见 §16.3-2）
+    const val SUBTYPE_WEB_BOOK_BARE_ARRAY = "BARE_ARRAY"
     const val SUBTYPE_WEB_BOOK_TEMPLATE = "TEMPLATE"
     const val SUBTYPE_WEB_BOOK_PLAIN = "PLAIN"
     const val SUBTYPE_PNG_V3 = "V3"

@@ -15,6 +15,11 @@ import java.io.File
  * - 单字关键词**拒收**（`_or_` 单字＝积分刺客）；
  * - 不做二次改写：母档文本原样落盘；
  * - 生成后自检由调用方（CardTools）用 [CardCheck] 做。
+ *
+ * 599a（2026-11-11 拍板「不分家」）：web 档改走 [WebPlatformBook]——
+ * 外壳默认裸数组，母档 `whole_package`（布尔）切整包；条数/字数预检可配
+ * （母档 `entry_limit`／`value_char_limit`，默认族内最严 1000 条/20000 字）；
+ * 整包可选字段（pre_text 等）有则写、无则不写；**没有平台名分支**。
  */
 internal object CardBuild {
 
@@ -31,6 +36,10 @@ internal object CardBuild {
         val style: String,
         val html: String,
         val css: String,
+        val wholePackage: Boolean = false,
+        val entryLimit: Int? = null,
+        val valueCharLimit: Int? = null,
+        val packageFields: JSONObject? = null,
     )
 
     data class Built(val outDir: File, val files: List<File>)
@@ -63,7 +72,26 @@ internal object CardBuild {
             style = o.optString("style"),
             html = o.optString("html"),
             css = o.optString("css"),
+            wholePackage = boolSwitch(o, "whole_package"),
+            entryLimit = positiveInt(o, "entry_limit"),
+            valueCharLimit = positiveInt(o, "value_char_limit"),
+            packageFields = WebPlatformBook.packageFieldsOf(o),
         )
+    }
+
+    /** 布尔开关（母档可选键）：缺省 false；键在但不是布尔 ⇒ 拒收（不猜意图）。 */
+    private fun boolSwitch(o: JSONObject, key: String): Boolean {
+        if (!o.has(key) || CardJson.isJsonNull(o, key)) return false
+        return o.opt(key) as? Boolean
+            ?: throw BuildError("$key 必须是布尔（true／false），给的是 ${o.opt(key)}")
+    }
+
+    /** 正整数上限（母档可选键）：缺省 null＝用 profile 默认；键在但不是正整数 ⇒ 拒收。 */
+    private fun positiveInt(o: JSONObject, key: String): Int? {
+        if (!o.has(key) || CardJson.isJsonNull(o, key)) return null
+        val v = CardJson.numberAsInt(o, key)
+        return v?.takeIf { it > 0 }
+            ?: throw BuildError("$key 必须是正整数，给的是 ${o.opt(key)}")
     }
 
     /** `outDirRel` 为空时用 `成品/<name>/`（相对工作区根）。 */
@@ -75,14 +103,7 @@ internal object CardBuild {
         }
         val plan = LinkedHashMap<String, String>()
         when (spec.format) {
-            FORMAT_WEB -> {
-                plan["world_book.json"] = webWorldbook(spec)
-                plan["提示词.txt"] = listOf(spec.style, spec.persona).filter { it.isNotBlank() }.joinToString("\n\n")
-                plan["前置词.txt"] = ""
-                plan["后置词.txt"] = ""
-                plan["内置CSS.txt"] = spec.css
-                plan["详细介绍.html"] = spec.html.ifBlank { "<div class=\"gc\">（配置器骨架：待填）</div>" }
-            }
+            FORMAT_WEB -> planWeb(spec, plan)
             FORMAT_TAVO -> {
                 plan["card.json"] = tavoCardJson(spec)
                 plan["lorebook.json"] = tavoLorebook(spec)
@@ -115,30 +136,48 @@ internal object CardBuild {
 
     // ── web ──────────────────────────────────────────────────────────────
 
-    fun webWorldbook(spec: Spec): String {
-        val arr = JSONArray()
-        val key = "_or_" + spec.keywords.joinToString("@wb@")
-        spec.world.forEachIndexed { i, v ->
-            arr.put(
-                JSONObject()
-                    .put("key", key)
-                    .put("value", v)
-                    .put("group", "")
-                    .put("key_region", 3)
-                    .put("value_region", 1)
-                    .put("sort", i)
-                    .put("depth", 10)
-                    .put("probability", 100)
-                    .put("match_type", 2)
-                    .put("enable", true)
-                    .put("value_type", 0)
-                    .put("value_configs", JSONArray()),
-            )
+    /**
+     * web 档的产物计划（599a）。
+     *
+     * 外壳默认裸数组、开关切整包、预检可配——差异全在 [WebPlatformBook] 的数据里；
+     * 预检失败收成 [BuildError]（card_build 的失败口径只有一种）。
+     */
+    private fun planWeb(spec: Spec, plan: LinkedHashMap<String, String>) {
+        val profile = WebPlatformProfile().withLimits(spec.entryLimit, spec.valueCharLimit)
+        plan["world_book.json"] = try {
+            WebPlatformBook.export(webEntries(spec), spec.wholePackage, spec.packageFields, profile)
+        } catch (e: WebPlatformBook.PrecheckError) {
+            throw BuildError(e.message ?: "网络平台族上限预检未通过")
         }
-        return JSONObject()
-            .put("_comment", JSONArray().put("由 card_build 生成（2026-10-19）；字段口径见规格 §3／§15"))
-            .put("world_book", arr)
-            .toString(2) + "\n"
+        plan["提示词.txt"] = listOf(spec.style, spec.persona).filter { it.isNotBlank() }.joinToString("\n\n")
+        plan["前置词.txt"] = ""
+        plan["后置词.txt"] = ""
+        plan["内置CSS.txt"] = spec.css
+        plan["详细介绍.html"] = spec.html.ifBlank { "<div class=\"gc\">（配置器骨架：待填）</div>" }
+    }
+
+    /**
+     * web 档条目合成（599a 起交 [WebPlatformBook] 出盘）。
+     *
+     * 基础十字段与第四十五批一致；`value_type`／`value_configs` 是**可选字段**
+     * （体检口径：平台合法省略）⇒ 母档没给就不写（拍板：有则写、无则不写），
+     * 不再像旧版那样恒写 `value_type=0`／`value_configs=[]`。
+     */
+    fun webEntries(spec: Spec): List<JSONObject> {
+        val key = "_or_" + spec.keywords.joinToString("@wb@")
+        return spec.world.mapIndexed { i, v ->
+            JSONObject()
+                .put("key", key)
+                .put("value", v)
+                .put("group", "")
+                .put("key_region", 3)
+                .put("value_region", 1)
+                .put("sort", i)
+                .put("depth", 10)
+                .put("probability", 100)
+                .put("match_type", 2)
+                .put("enable", true)
+        }
     }
 
     // ── tavo / st 共用 CCv3 卡 ───────────────────────────────────────────

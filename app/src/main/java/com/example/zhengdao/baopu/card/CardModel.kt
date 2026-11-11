@@ -3,7 +3,9 @@
 // 依据：docs/格式层规格-三套卡与酒馆PNG-2026-10-19.md
 //   §2.1（FormatVerdict 字段名照抄）／§2.2（九个 FormatKind）／§4.1（CheckReport）
 //   §14.3（统一内部模型）／§15.1（血统枚举写 WorldbookDialect.WEB）
-//   §16.3（三层并存：FormatKind.WEB_BOOK／WorldbookDialect.WEB／WEB_* 码表）
+//   §16.3（三层并存：网络平台 kind／WorldbookDialect.WEB／WEB_* 码表）
+// 改口径（2026-11-11 用户拍板「风月与夜语不分家」）：WEB_BOOK 更名 WEB_PLATFORM_BOOK，
+//   值数不变（仍旧 9 个）——网络平台族只有这一个 kind，不许再立平台名 profile。
 //
 // 「正文/数据只有一个真相」：认脸结果、体检输入、导出的 JSON 全走这里的数据类，
 // 不许为读/写各拼一份。
@@ -13,8 +15,11 @@ import org.json.JSONObject
 
 /** 认脸结论（规格 §2.2：**只有这 9 个值**，不许自创）。 */
 internal enum class FormatKind {
-    /** 网络平台世界书（`world_book` 数组）。判据文本固定叫 WEB_BOOK，见 §16.3。 */
-    WEB_BOOK,
+    /**
+     * 网络平台族世界书（2026-11-11 拍板：一族一个 kind，判到族为止）。
+     * 两种形态都归它：顶层裸数组、`world_book` 对象包；是哪家由 evidence 记形状，不下结论。
+     */
+    WEB_PLATFORM_BOOK,
     TAVO_BOOK,
     TAVO_CHAR,
     TAVO_REGEX,
@@ -242,7 +247,9 @@ internal data class WebWork(
 /** 认脸与体检共用的逐字话术（§2.7／§5.8／§4.5）。**改话术只改这里**。 */
 internal object CardText {
     const val NOT_JSON = "认不出这个文件：既不是 PNG 图片，也不是合法的 JSON 文本。"
-    const val NOT_OBJECT = "认不出这个文件：JSON 最外层不是对象（是数组或单值），三套卡都不是这种形状。"
+    const val NOT_OBJECT = "认不出这个文件：JSON 最外层是单值，三套卡都不是这种形状。"
+    const val TOP_ARRAY_NOT_FAMILY =
+        "认不出这个文件：顶层是数组，但元素字段不像网络平台世界书条目（key/value/group…）。"
     const val ENTRIES_NOT_COLLECTION = "认不出这个文件：entries 既不是数组也不是对象。"
     const val PNG_NO_CARD_BLOCK = "这不是酒馆角色卡：PNG 里找不到 chara 或 ccv3 文本块。"
     const val CCV3_CARD_NOT_IN_SCOPE = "这是角色卡（CCv3），不是世界书。本批只处理世界书。"

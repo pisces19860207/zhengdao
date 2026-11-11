@@ -49,7 +49,7 @@ class CardDialectChainTest {
 
     @Test
     fun `四类世界书都有血统_认脸失败与卡正则预设都没有`() {
-        assertEquals(WorldbookDialect.WEB, CardDialectMap.dialectOf(FormatKind.WEB_BOOK))
+        assertEquals(WorldbookDialect.WEB, CardDialectMap.dialectOf(FormatKind.WEB_PLATFORM_BOOK))
         assertEquals(WorldbookDialect.TAVO, CardDialectMap.dialectOf(FormatKind.TAVO_BOOK))
         assertEquals(WorldbookDialect.ST_NATIVE, CardDialectMap.dialectOf(FormatKind.ST_WORLD))
         assertEquals(WorldbookDialect.CCV3, CardDialectMap.dialectOf(FormatKind.CCV3_LOREBOOK))
