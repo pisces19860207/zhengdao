@@ -12,6 +12,7 @@ import com.example.zhengdao.baopu.knowledge.KnowledgeLayout
 import com.example.zhengdao.baopu.repair.DataDoctor
 import com.example.zhengdao.baopu.repair.RepairLedger
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -212,4 +213,15 @@ class DataRepairIndexTest {
             assertFalse("执行层出现了 $word（索引的逻辑只许住在 knowledge/ 那层）", text.contains(word))
         }
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/repair408-index").deleteRecursively()
+        java.io.File("build/tmp/repair408-index-files").deleteRecursively()
+        java.io.File("build/tmp/repair408-index-fresh").deleteRecursively()
+        java.io.File("build/tmp/repair447-index-pair-fresh").deleteRecursively()
+    }
+
 }

@@ -7,6 +7,7 @@
 package com.example.zhengdao.baopu.inspect
 
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -97,4 +98,14 @@ class HealthLedgerTest {
         assertFalse(HealthLedger.read(dir).isNotEmpty())
         assertNull(HealthLedger.lastAt(dir))
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/health291-ledger").deleteRecursively()
+        java.io.File("build/tmp/health291-ledger-blank").deleteRecursively()
+        java.io.File("build/tmp/health291-ledger-empty").deleteRecursively()
+    }
+
 }

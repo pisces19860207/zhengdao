@@ -5,6 +5,7 @@
 // 与"灾异轮不当自动档的账"。触发判据的靶在 `OpportunisticTest`，不在这里重复第二套。
 package com.example.zhengdao.baopu.inspect
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -102,4 +103,14 @@ class NocturnalAutoTest {
     private companion object {
         const val STAMP = 1_790_000_000_000L
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/511-night-ledger").deleteRecursively()
+        java.io.File("build/tmp/511-night-ledger-none").deleteRecursively()
+        java.io.File("build/tmp/511-night-ledger-only").deleteRecursively()
+    }
+
 }

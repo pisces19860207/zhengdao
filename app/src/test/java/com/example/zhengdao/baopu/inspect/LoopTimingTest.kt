@@ -15,6 +15,7 @@ package com.example.zhengdao.baopu.inspect
 import com.example.zhengdao.baopu.CardDisposition
 import com.example.zhengdao.baopu.CardDisposition.CardDispositionRow
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -281,4 +282,12 @@ class LoopTimingTest {
         assertNull(s.handle.p50Min)
         assertEquals("同一本账整本口径照旧对得上（老行为一个字没动）", 1, LoopTiming.compute(root).handle.samples)
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/loop375-timing").deleteRecursively()
+    }
+
 }

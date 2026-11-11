@@ -11,6 +11,7 @@
 package com.example.zhengdao.baopu.inspect
 
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -190,4 +191,14 @@ class DeviationLedgerTest {
         // 事实句是"读数"不是"评语"：超步那句带着数
         assertEquals("超步数：实到步数 12；上限 10；越过的那一步 11", entries[0].describe())
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/deviation363-blocker").deleteRecursively()
+        java.io.File("build/tmp/deviation363-empty").deleteRecursively()
+        java.io.File("build/tmp/deviation363-ledger").deleteRecursively()
+    }
+
 }

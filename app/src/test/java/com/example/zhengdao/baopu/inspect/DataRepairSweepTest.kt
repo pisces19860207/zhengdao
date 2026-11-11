@@ -12,6 +12,7 @@ package com.example.zhengdao.baopu.inspect
 import com.example.zhengdao.baopu.repair.DataDoctor
 import com.example.zhengdao.baopu.repair.RepairLedger
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -215,4 +216,14 @@ class DataRepairSweepTest {
         assertTrue(DataRepair.isMainLedgerPath("决策记录.jsonl.part"))
         assertFalse(DataRepair.isMainLedgerPath("cache/别的账.jsonl"))
     }
+
+    /** cleanup-b571（2026-11-11）：本文件按 `build/tmp/repair419-$name` 逐个建目录（名字带插值，
+     *  静态扫描抓不到字面量），跑完必须整族删掉——它们是测试暂存区，564 的水位闸按目录数计。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp").listFiles()
+            ?.filter { it.name.startsWith("repair419-") }
+            ?.forEach { it.deleteRecursively() }
+    }
+
 }

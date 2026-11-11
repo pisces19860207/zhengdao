@@ -19,6 +19,7 @@ import com.example.zhengdao.baopu.repair.DataDoctor
 import com.example.zhengdao.baopu.repair.RepairEntry
 import com.example.zhengdao.baopu.repair.RepairLedger
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -248,4 +249,12 @@ class DataRepairConfigTest {
         assertNotNull("配置与缓存一起下单必须整单拒", two)
         assertTrue("要说收到几类：$two", two!!.contains("2 类"))
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/repair447-config").deleteRecursively()
+    }
+
 }

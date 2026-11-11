@@ -9,6 +9,7 @@ package com.example.zhengdao.baopu.inspect
 import com.example.zhengdao.baopu.repair.DataDoctor
 import com.example.zhengdao.baopu.repair.RepairLedger
 import java.io.File
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -123,4 +124,12 @@ class DataRepairLedgerTest {
         // 账行里的"凭什么"是判据层那句（含坏行数）；动手后的结果在 note 里，两样各归各。
         assertTrue("intent 行要带坏行计数：${rows[1].reason}", rows[1].reason.contains("3 行读不懂"))
     }
+
+    /** cleanup-b571（2026-11-11）：本文件在 `build/tmp/` 下建的目录跑完必须删——
+     *  它们是测试暂存区（564 的水位闸按这些目录计）；此前只建不删，水位只能一路涨。 */
+    @After
+    fun cleanTmpDirs571() {
+        java.io.File("build/tmp/repair408-ledger").deleteRecursively()
+    }
+
 }
