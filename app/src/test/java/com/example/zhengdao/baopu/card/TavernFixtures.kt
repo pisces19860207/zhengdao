@@ -16,7 +16,11 @@ internal fun TavernBundleDto.coreSnapshot(): String = buildString {
     appendLine("card.firstMes=${card.firstMes}")
     appendLine("card.mesExample=${card.mesExample}")
     appendLine("card.creatorNotes=${card.creatorNotes}")
+    appendLine("card.systemPrompt=${card.systemPrompt}")
+    appendLine("card.postHistoryInstructions=${card.postHistoryInstructions}")
+    appendLine("card.alternateGreetings=${card.alternateGreetings.joinToString("|")}")
     appendLine("card.tags=${card.tags.joinToString("|")}")
+    appendLine("card.regex=${card.regexScripts.joinToString("|") { "${it.findRegex}@${it.placement}" }}")
     appendLine("world.name=${world.name}")
     appendLine("world.size=${world.entries.size}")
     world.entries.forEachIndexed { i, e ->
@@ -32,13 +36,16 @@ internal fun TavernBundleDto.coreSnapshot(): String = buildString {
         appendLine("e[$i].addMemo=${e.addMemo}")
         appendLine("e[$i].group=${e.group}")
         appendLine("e[$i].position=${e.position}")
+        appendLine("e[$i].stPosition=${e.stPosition}")
+        appendLine("e[$i].stDepth=${e.stDepth}")
+        appendLine("e[$i].stRole=${e.stRole}")
         appendLine("e[$i].useProbability=${e.useProbability}")
     }
 }
 
 internal object TavernFixtures {
 
-    /** 一张字段齐全的卡＋含三种 key 写法的设定集。 */
+    /** 一张字段齐全的卡＋含三种 key 写法的设定集（含 position 双轨与正则脚本）。 */
     fun bundle(): TavernBundleDto = TavernBundleDto(
         card = TavernCardDto(
             name = "示例角色",
@@ -48,7 +55,20 @@ internal object TavernFixtures {
             firstMes = "你来了。",
             mesExample = "<START>示例对话",
             creatorNotes = "示例注",
+            systemPrompt = "示例系统提示",
+            postHistoryInstructions = "示例后置指令",
+            alternateGreetings = listOf("另一句开场"),
             tags = listOf("原创", "示例"),
+            regexScripts = listOf(
+                // 判据⑮：完整形式带 flags；显示类三件套
+                TavernRegexScript(
+                    findRegex = "/【(.+?)】/gi",
+                    replaceString = "$1",
+                    markdownOnly = true,
+                    promptOnly = false,
+                    placement = listOf(2),
+                ),
+            ),
         ),
         world = TavernWorldDto(
             name = "示例设定集",
@@ -66,6 +86,9 @@ internal object TavernFixtures {
                     disable = false,
                     addMemo = true,
                     group = "地点",
+                    position = "before_char",
+                    stPosition = 0,
+                    useProbability = true,
                 ),
                 // ② 多值键
                 TavernEntryDto(
@@ -73,10 +96,10 @@ internal object TavernFixtures {
                     content = "兵器谱",
                     order = 20,
                     group = "器物",
-                    position = 1,
-                    useProbability = true,
+                    position = "after_char",
+                    stPosition = 1,
                 ),
-                // ③ 正则键 /re/
+                // ③ 正则键 /re/ ＋ atDepth 双轨（position=4 配 depth/role）
                 TavernEntryDto(
                     keys = TavernKeys.tokensOf(listOf("/(客栈|驿站)/i", "/^第\\d+章$/")),
                     content = "正则触发的补充设定",
@@ -84,6 +107,10 @@ internal object TavernFixtures {
                     selective = true,
                     disable = true,
                     group = "",
+                    position = "before_char",
+                    stPosition = 4,
+                    stDepth = 2,
+                    stRole = 0,
                 ),
             ),
         ),
@@ -92,9 +119,13 @@ internal object TavernFixtures {
     /** 判据③负例：带一个「我们的自定义字段」。 */
     fun bundleWithCustomField(): TavernBundleDto {
         val b = bundle()
-        return b.copy(
-            card = b.card.copy(customFields = mapOf("我们的自定义字段" to "这条会丢")),
-        )
+        return b.copy(card = b.card.copy(customFields = mapOf("我们的自定义字段" to "这条会丢")))
+    }
+
+    /** 判据⑮负例：正则脚本裸 pattern（会被 ST 拒，必须报会丢且不导出）。 */
+    fun bundleWithBareRegex(): TavernBundleDto {
+        val b = bundle()
+        return b.copy(card = b.card.copy(regexScripts = listOf(TavernRegexScript(findRegex = "裸pattern"))))
     }
 
     /** 判据⑤：500 条大世界书。 */
@@ -117,30 +148,63 @@ internal object TavernFixtures {
         },
     )
 
-    /** 外部酒馆原生卡（entries 是字典、主键叫 key），验证「别人给的卡也能进来」。 */
-    fun silkyNativeWorld(): String {
-        val entries = JSONArray()
-        // 用 org.json 程序拼，不手写 JSON 文本（与铁律①同口径）
-        for (i in 0 until 2) {
-            val o = JSONObject()
-                .put("uid", i)
-                .put("key", JSONArray(listOf("原生键$i")))
-                .put("keysecondary", JSONArray(listOf("次级$i")))
-                .put("content", "原生正文$i")
-                .put("constant", false)
-                .put("selective", false)
-                .put("order", i)
-                .put("depth", 4)
-                .put("probability", 100)
-                .put("disable", false)
-                .put("addMemo", true)
-                .put("group", "原生组")
-                .put("comment", "表外字段：应报会丢")
-                .put("vectorized", false)
-            entries.put(o)
-        }
+    /**
+     * 项目既有 ST 链路能认的**独立世界书**（entries 字典 + key）。
+     * 判据⑨用它真跑 CardFormat/CardAssetParser/CardCheck。
+     */
+    fun stStandaloneWorld(): String {
         val dict = JSONObject()
-        for (i in 0 until entries.length()) dict.put(i.toString(), entries.optJSONObject(i))
+        for (i in 0 until 2) {
+            dict.put(
+                i.toString(),
+                JSONObject()
+                    .put("uid", i)
+                    .put("key", JSONArray(listOf("原生键$i")))
+                    .put("keysecondary", JSONArray(listOf("次级$i")))
+                    .put("comment", "示例备注")
+                    .put("content", "原生正文$i")
+                    .put("constant", false)
+                    .put("selective", false)
+                    .put("order", i)
+                    .put("depth", 4)
+                    .put("probability", 100)
+                    .put("disable", false)
+                    .put("addMemo", true)
+                    .put("group", "原生组"),
+            )
+        }
         return JSONObject().put("name", "原生书").put("entries", dict).toString(2) + "\n"
     }
+
+    /** 外部卡（v2 平铺、无 data 包裹）：验证「v2/v3 都吃」。 */
+    fun v2Card(): String = JSONObject()
+        .put("spec", TavernFields.CARD_SPEC_V2)
+        .put("name", "v2角色")
+        .put("description", "")
+        .put("personality", "v2性格")
+        .put("scenario", "v2场景")
+        .put("first_mes", "v2开场")
+        .put("mes_example", "")
+        .put("creator_notes", "v2注")
+        .put("tags", JSONArray(listOf("v2")))
+        .toString(2) + "\n"
+
+    /** 卡内 character_book 形状（数组 + keys）的外部样本：验证判据⑫导入。 */
+    fun cardBookText(): String = JSONObject()
+        .put("name", "卡内书")
+        .put("entries", JSONArray().put(stEntryForCardBook()))
+        .toString(2) + "\n"
+
+    private fun stEntryForCardBook(): JSONObject = JSONObject()
+        .put("keys", JSONArray(listOf("卡内键")))
+        .put("keysecondary", JSONArray(listOf("卡内次级")))
+        .put("content", "卡内正文")
+        .put("constant", false)
+        .put("selective", false)
+        .put("order", 1)
+        .put("depth", 4)
+        .put("probability", 100)
+        .put("disable", false)
+        .put("addMemo", true)
+        .put("group", "卡内组")
 }

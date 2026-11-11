@@ -8,8 +8,10 @@
 //  · 导出**可撤销**：每次导出写一份回执，撤销只删「本次生成且内容未变」的文件；
 //  · **不自动上传**：本文件零网络 API，源码门禁钉死。
 //
-// 落盘前先跑 TavernFields 的 schema 自检；不过就整次拒绝，不产生半套产物
-// （与 CardBuild「先全查再写」同款）。
+// ★ 形状修正：两种文件分别落，不混用——
+//   card.json                   = chara_card_v3，卡内 character_book.entries 是数组 + keys
+//   *.worldbook.json            = 独立世界书，entries 是字典(uid) + key
+// 落盘前三者分别按各自形状自检；不过就整次拒绝，不产生半套产物。
 package com.example.zhengdao.baopu.card
 
 import com.example.zhengdao.core.ZhengdaoDirs
@@ -39,8 +41,11 @@ internal object TavernExport {
     const val REL_DIR = "酒馆兼容"
     const val RECEIPT_DIR_REL = "_酒馆导出回执"
     const val FILE_CARD = "card.json"
-    const val FILE_WORLD = "world.json"
+    const val FILE_WORLD_SUFFIX = ".worldbook.json"
     const val FILE_LOSSES = "_会丢字段.md"
+
+    /** 独立世界书文件名：`<作品名>.worldbook.json`（ST 认这个后缀）。 */
+    fun worldFileName(name: String): String = safeName(name) + FILE_WORLD_SUFFIX
 
     /** 目录真源：`产物/`（直接引 ZhengdaoDirs 的 const，编译期内联，不抄第二份）。 */
     const val PRODUCTS: String = ZhengdaoDirs.PRODUCTS_DIR
@@ -52,11 +57,15 @@ internal object TavernExport {
      */
     fun export(root: File, name: String, bundle: TavernBundleDto, stamp: String): TavernExportResult {
         val encoded = TavernCodec.encode(bundle)
-        // 生产侧自检：不是「测试里才验」，导出当场就按酒馆 schema 验一遍。
+        // 生产侧「三形状」自检：卡、卡内 character_book（数组+keys）、独立世界书（字典+key）。
+        val cardObject = JSONObject(encoded.cardJson)
+        val cardBookText = cardObject.getJSONObject("data")
+            .optJSONObject(TavernFields.CARD_BOOK_KEY)?.toString().orEmpty()
         val violations = TavernFields.validateCard(encoded.cardJson) +
-            TavernFields.validateWorld(encoded.worldJson)
+            TavernFields.validateCardBook(cardBookText) +
+            TavernFields.validateStandaloneWorld(encoded.worldJson)
         if (violations.isNotEmpty()) {
-            throw TavernExportError("导出未落盘：schema 自检不通过（${violations.first().line}）")
+            throw TavernExportError("导出未落盘：schema 自检不通过（${violations.first().line()}）")
         }
 
         val outDir = File(File(root, PRODUCTS), "$REL_DIR/${safeName(name)}")
@@ -65,7 +74,7 @@ internal object TavernExport {
         }
         val plan = LinkedHashMap<String, String>()
         plan[FILE_CARD] = encoded.cardJson
-        plan[FILE_WORLD] = encoded.worldJson
+        plan[worldFileName(name)] = encoded.worldJson
         if (!encoded.losses.isEmpty) plan[FILE_LOSSES] = encoded.losses.markdown()
 
         // 先全查再写：任一目标已存在整次拒绝，绝不覆盖用户文件。

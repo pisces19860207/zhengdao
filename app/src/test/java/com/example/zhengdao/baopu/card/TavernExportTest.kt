@@ -1,10 +1,13 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第五百八十五批（2026-11-11）：产物/ 出口、可撤销、不覆盖、不自动上传（边界）。
+// 形状修正后：落盘两份文件分别是 card.json（数组+keys 内嵌）与 *.worldbook.json（字典+key）。
 package com.example.zhengdao.baopu.card
 
 import com.example.zhengdao.testkit.TempSandbox
 import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,17 +20,24 @@ class TavernExportTest {
         val r = TavernExport.export(root, "示例作品", TavernFixtures.bundle(), "stamp-1")
         assertTrue("schema 自检必须 0 违规", r.schemaViolations.isEmpty())
         assertTrue("产物必须在 产物/ 下", r.outDir.absolutePath.contains("${File.separator}产物${File.separator}"))
+        val worldName = TavernExport.worldFileName("示例作品")
         assertEquals(2, r.files.size) // 没有自定义字段 ⇒ 不写「会丢」清单
-        assertEquals(setOf("card.json", "world.json"), r.files.map { it.name }.toSet())
+        assertEquals(setOf("card.json", worldName), r.files.map { it.name }.toSet())
+        assertTrue("独立世界书必须用 .worldbook.json 后缀", worldName.endsWith(".worldbook.json"))
         for (f in r.files) {
             assertTrue("${f.name} 应落盘", f.isFile)
             assertTrue("${f.name} 非空", f.length() > 0)
         }
         // 从磁盘读回再判（不拿内存字符串自证）
         val diskCard = File(r.outDir, "card.json").readText(Charsets.UTF_8)
-        val diskWorld = File(r.outDir, "world.json").readText(Charsets.UTF_8)
+        val diskWorld = File(r.outDir, worldName).readText(Charsets.UTF_8)
         assertTrue(TavernFields.validateCard(diskCard).isEmpty())
-        assertTrue(TavernFields.validateWorld(diskWorld).isEmpty())
+        assertTrue(TavernFields.validateStandaloneWorld(diskWorld).isEmpty())
+        val book = JSONObject(diskCard).getJSONObject("data")
+            .getJSONObject(TavernFields.CARD_BOOK_KEY)
+        assertTrue("落盘卡内是数组+keys", book.opt("entries") is JSONArray)
+        assertTrue(TavernFields.validateCardBook(book.toString()).isEmpty())
+        assertTrue("落盘独立书是字典+key", JSONObject(diskWorld).opt("entries") is JSONObject)
     }
 
     @Test
@@ -62,7 +72,7 @@ class TavernExportTest {
         editable.writeText("用户自己改了内容", Charsets.UTF_8)
 
         val u = TavernExport.undo(root, r.receiptId)
-        assertEquals(1, u.deleted) // 只删了没被改过的 world.json
+        assertEquals(1, u.deleted) // 只删了没被改过的 *.worldbook.json
         assertEquals(1, u.skipped) // 被改过的跳过
         assertTrue("用户改过的内容必须原样保留", editable.readText().contains("用户自己改了内容"))
     }
