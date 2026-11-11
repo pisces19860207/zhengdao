@@ -234,34 +234,40 @@ object McpServerController {
             val needsRebind = running && startedBindAll != null && startedBindAll != bindAll
             when {
                 // 停机/关开关 ⇒ 收摊（判据④：端口让出来；审计一行写明为什么停）。
-                !desired && running -> {
-                    transport.stop()
-                    startedBindAll = null
-                    McpAuditLedger.append(
-                        McpAuditLedger.EV_SERVER,
-                        mapOf("detail" to if (halted) "halted_stop" else "disabled_stop"),
-                    )
-                }
+                !desired && running -> shutDown(halted)
                 // 该跑没跑（或换了绑定档）⇒ 起。
-                desired && (!running || needsRebind) -> {
-                    if (running) transport.stop()
-                    if (vault.currentToken() == null) {
-                        vault.ensureToken()
-                        McpAuditLedger.append(McpAuditLedger.EV_SERVER, mapOf("detail" to "token_created"))
-                    }
-                    val host = if (bindAll) HOST_LAN else HOST_LOOPBACK
-                    val core = McpServerCore(vault, runner, haltProbe, serverVersion)
-                    val ok = transport.start(McpServerTransport.Config(host, PORT), core::handle)
-                    startedBindAll = if (ok) bindAll else null
-                    McpAuditLedger.append(
-                        McpAuditLedger.EV_SERVER,
-                        mapOf(
-                            "detail" to if (ok) "started" else "start_failed",
-                            "bind" to if (bindAll) HOST_LAN else HOST_LOOPBACK,
-                        ),
-                    )
-                }
+                desired && (!running || needsRebind) -> startUp(running, bindAll)
             }
         }
+    }
+
+    /** 收摊：端口让出来 ＋ 审计一行写明为什么停（判据④）。内容原样搬自 sync 的收摊支。 */
+    private fun shutDown(halted: Boolean) {
+        transport.stop()
+        startedBindAll = null
+        McpAuditLedger.append(
+            McpAuditLedger.EV_SERVER,
+            mapOf("detail" to if (halted) "halted_stop" else "disabled_stop"),
+        )
+    }
+
+    /** 起服（含换绑定档与首启造 token）：内容原样搬自 sync 的起服支。 */
+    private fun startUp(running: Boolean, bindAll: Boolean) {
+        if (running) transport.stop()
+        if (vault.currentToken() == null) {
+            vault.ensureToken()
+            McpAuditLedger.append(McpAuditLedger.EV_SERVER, mapOf("detail" to "token_created"))
+        }
+        val host = if (bindAll) HOST_LAN else HOST_LOOPBACK
+        val core = McpServerCore(vault, runner, haltProbe, serverVersion)
+        val ok = transport.start(McpServerTransport.Config(host, PORT), core::handle)
+        startedBindAll = if (ok) bindAll else null
+        McpAuditLedger.append(
+            McpAuditLedger.EV_SERVER,
+            mapOf(
+                "detail" to if (ok) "started" else "start_failed",
+                "bind" to host,
+            ),
+        )
     }
 }
