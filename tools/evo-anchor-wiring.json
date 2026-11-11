@@ -1,13 +1,17 @@
 {
- "schema": "zd-evo-anchor-wiring/1",
- "note": "样本锚与接线登记的欠账白名单；只减不增。一条一行：域 → 待接/无锚。已接的域不许留在这里（check-evo-anchor-wiring.py 会红）。",
- "entries": {
-  "data_repair": "无锚",
-  "event_trigger": "无锚",
-  "orchestration": "无锚",
-  "persona_organize": "无锚",
-  "prod_eval": "无锚",
-  "scout": "无锚",
-  "wish": "无锚"
- }
+  "schema": "zd-evo-anchor-wiring/1",
+  "note": "样本锚与接线登记的欠账白名单；只减不增。一条一行：域 → 待接/无锚。已接的域不许留在这里（check-evo-anchor-wiring.py 会红）。",
+  "entries": {
+    "data_repair": "无锚",
+    "event_trigger": "无锚",
+    "evolution": "无锚",
+    "orchestration": "无锚",
+    "persona_organize": "无锚",
+    "prod_eval": "无锚",
+    "scout": "无锚",
+    "wish": "无锚"
+  },
+  "reasons": {
+    "evolution": "588 补登记的读档线值：只供深度裁定读 amounts（canaryAvailable），不是样本域；样本只从 473 四域观察落账进池，故本域不声明锚、不落样"
+  }
 }
