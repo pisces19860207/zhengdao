@@ -239,6 +239,43 @@ def newest_dirs(build: Path, limit: int = 8) -> list[tuple[str, float]]:
     return items[:limit]
 
 
+NOISE_DIR_NAMES = {
+    "reports",
+    "test-results",
+    "outputs",
+    "logs",
+    "intermediates",
+    "testDebugUnitTest",
+    ".cache",
+}
+
+
+def leaked_hint(build: Path, limit: int = 10) -> list[tuple[str, float]]:
+    """判红时点名用：只留「像测试沙盒」的目录。
+
+    `newest_dirs` 的第一版把 `reports/`、`test-results/` 这些**测试跑完之后才生成**的
+    产物目录排在最前（ci #1947 实测），等于没线索。这里跳过构建/报告产物，
+    只看 mtime 最新的疑似泄漏目录（名字里带随机数后缀的优先）。"""
+    items: list[tuple[str, float]] = []
+    try:
+        for d in build.rglob("*"):
+            if not d.is_dir():
+                continue
+            parts = set(d.relative_to(build).parts)
+            if parts & NOISE_DIR_NAMES:
+                continue
+            if d.name.startswith("jar_extract_") or d.name.startswith("compileDebug"):
+                continue
+            try:
+                items.append((d.relative_to(build).as_posix(), d.stat().st_mtime))
+            except OSError:
+                continue
+    except OSError:
+        return []
+    items.sort(key=lambda kv: kv[1], reverse=True)
+    return items[:limit]
+
+
 def run(repo: Path, build: Path, budget: int, source: str = "") -> tuple[int, list[str]]:
     if not build.is_dir():
         return 0, [
@@ -247,7 +284,7 @@ def run(repo: Path, build: Path, budget: int, source: str = "") -> tuple[int, li
             "结果: PASS（跳过判红）",
         ]
     total, per_anchor = count_dirs(build)
-    code, lines = evaluate(total, budget, source, newest_dirs(build))
+    code, lines = evaluate(total, budget, source, leaked_hint(build))
     for anchor, added in per_anchor:
         lines.append("  %-58s %4d" % (anchor.as_posix(), added))
     return code, lines
