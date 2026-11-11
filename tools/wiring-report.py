@@ -44,20 +44,28 @@ by-design（纯常量／纯 DTO／端口接口／人工裁定）是「无调用�
    这一档以前被算成 by-design「只被测试用」，**那是错的**：`BootCheck`（测试 37 次）、
    `EmergencyWiring`（测试 50 次）生产都一处没接，它们是真待办，不是 by-design。
 
-## 防洗三条（R5／R6／R7，2026-11-11 用户拍板）
+## 防洗三条（R5／R6／R7，2026-11-11 用户拍板；2026-11-12 二次拍板改判据）
 
 开红之后闸会被"更新基线"绕过，所以补三条把写口焊死：
 
-- **R5 减账必须有对价**——基线里某条**被移出**或**被降级成 by-design**时，必须二者之一成立：
-  (a) 新扫描里该件现在是 **wired**（真接上了）；(b) 该件所在文件**本次有生产改动**
-  （新建／删改／改名，或 diff 里新增了**对它的调用**行）。
-  都不成立 ⇒ 红：`疑似洗账：<类名> 被移出基线但代码没动`。
-  对价宽严分寸：移出（最严，要看到调用）＞降级（文件动过即可）＞消失（文件被删/改名）。
-  **证据只认 `git diff <--diff-base>` 与扫描结果，不看提交信息**（信息可以写假）。
+- **R5 减账必须有对价**——三类减账，三类判法（**判据是声明种类，不是"文件动没动"**）：
+  · **条目被移出基线**（基线有、扫描有、基线文件里却没这条）：最严——必须**扫描到
+    wired**（真接上了）才算对价；手删基线不改代码，既扫不到 wired 也没有新增声明行 ⇒ 必红。
+    唯一例外是"本次新增的声明"（文件 A，或 M 里 diff 新增了它的声明行）——那不叫减账，
+    走 R6/`--allow-add` 那条路，欠账照样被 R1 红。
+  · **条目被降级成 by-design**：只认**声明种类**。可降的只有 `interface`／`enum`／
+    `data class`／`sealed`／**无 install 入口的 object**；有 install/record 入口的 object
+    （装配件）或普通 class 申请降档 ⇒ **直接拒**（`降档被拒`）。
+    这样"改一行业务代码再降档"那条路自动消失——不需要靠 diff 猜。
+  · **条目从扫描里消失**：看文件是否被删／改名／改动（D／R／M）。
+  **证据只认扫描结果与 `git diff <--diff-base>`，不看提交信息**（信息可以写假）。
   取不到 diff ⇒ 退 2（判不了就是判不了，不许当绿）。
-- **R6 基线只许 `--generate` 写**——扫描结果与基线**一致时不写盘**（防无意义重写与 diff 噪音）；
-  CI 用 `--check` 只读跑；`--generate` 默认**拒绝增加条目**（只减不增），确认是正当新增
-  才加 `--allow-add`（会把新增清单逐条打出来）。
+- **R6 基线只许 `--generate` 写**——扫描结果与基线**一致时不写盘**（防无意义重写与 diff
+  噪音）；CI 用 `--check` 只读跑；`--generate` 默认**拒绝增加条目**（只减不增）。
+  `--allow-add` 放行新增要过**四道门**：① 只许 **by-design 种类**且当前 bucket 就是
+  by-design（欠账／已接件一律拒）；② 必须带 `--note "理由"`，空理由拒；③ 必须是
+  **本次提交新增的声明**（文件 `A`，或 `M` 里 diff 新增了它的声明行；`R` 改名来的不算）；
+  ④ **CI 里永不放行**（按 `CI`／`GITHUB_ACTIONS` 判，流水线洗不了账）。
 - **R7 写要留因**——`--generate` 必须带 `--reason "..."`，否则退 2；脚本把本次变更
   （新增／删除／翻栏）连同这句因由打成一段，供直接粘进提交信息/PR。机检**不读**这段
   （信息可以写假），真正拦洗账的是 R5。
@@ -67,7 +75,8 @@ by-design（纯常量／纯 DTO／端口接口／人工裁定）是「无调用�
     python3 tools/wiring-report.py                     # 打印清单 + 写 JSON(非基线) + 与基线比对
     python3 tools/wiring-report.py --check             # CI 用：只读判红（R1–R5），不写任何文件
     python3 tools/wiring-report.py --generate --reason "为什么改"   # **唯一**写基线的入口
-    python3 tools/wiring-report.py --generate --reason "..." --allow-add  # 明确放行新增条目
+    python3 tools/wiring-report.py --generate --reason "..." --allow-add --note "为什么这些新增正当"
+                                                        # 放行新增（只许 by-design 种类 + 新声明；CI 禁用）
     python3 tools/wiring-report.py --md out.md          # 清单另存一份
     python3 tools/wiring-report.py --audit 5            # 抽查建议（默认 5 件，确定性抽取）
     python3 tools/wiring-report.py --selftest           # 合成夹具自检（失败退出 1）
@@ -96,6 +105,7 @@ import argparse
 import bisect
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -112,6 +122,13 @@ ROOT = Path(__file__).resolve().parent.parent
 MAIN_SRC = ROOT / "app/src/main"
 TEST_SRCS = (ROOT / "app/src/test", ROOT / "app/src/androidTest")
 DEFAULT_JSON = ROOT / "tools/wiring-report.json"
+
+def in_ci() -> bool:
+    """CI 环境判定：`GITHUB_ACTIONS` 或通用 `CI` 任一为真。
+
+    `--allow-add`（往基线里加条目）**只许本地交互用**——CI 里一律拒，流水线洗不了账。
+    """
+    return bool(os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"))
 
 WIRED = "wired"
 UNWIRED = "unwired"
@@ -286,6 +303,9 @@ class Decl:
     functions: list[str] = field(default_factory=list)
     properties: list[str] = field(default_factory=list)
     has_body: bool = False
+    is_data: bool = False
+    is_sealed: bool = False
+    has_entry: bool = False   # object 上有没有 install*/record* 入口（"装配件"的判据）
 
     @property
     def scope(self) -> str:
@@ -339,7 +359,8 @@ def parse_decls(path: Path, code: str, package: str) -> list[Decl]:
     found: list[Decl] = []
     for m in DECL_RE.finditer(code):
         kind, name = m.group(1), m.group(2)
-        if kind == "class" and _word_before(code, m.start()) == "enum":
+        mod = _word_before(code, m.start())
+        if kind == "class" and mod == "enum":
             kind = "enum"  # `enum class X`：常量表，别混进「类」
         by_name = bool(NAME_MARK.search(name))
         if not (by_name or stem_is_wiring):
@@ -354,17 +375,51 @@ def parse_decls(path: Path, code: str, package: str) -> list[Decl]:
             by_name_mark=by_name,
             in_wiring_file=stem_is_wiring,
             has_body=span is not None,
+            # 修饰符只看紧邻那个词：`internal data class` ⇒ data，`sealed interface` ⇒ sealed
+            is_data=(mod == "data"),
+            is_sealed=(mod == "sealed"),
         )
         if span is not None:
             body = code[span[0]:span[1] + 1]
             decl.functions = sorted(set(FUN_RE.findall(body)))
             decl.properties = sorted(set(PROP_RE.findall(body)))
+            # "装配件"的判据：object 上有没有 install*／record* 入口（600 拍板的降档门槛）
+            decl.has_entry = any(
+                f.startswith("install") or f.startswith("record") for f in decl.functions
+            )
         found.append(decl)
     return found
 
 
-# ── 三、引用扫描 ─────────────────────────────────────────────────────────────
+OBJECT_NO_ENTRY = "object(无 install 入口)"
+OBJECT_WITH_ENTRY = "object(有 install/record 入口)"
 
+# 能被归成／降成 by-design 的**声明种类**（600 二次拍板）。判据是种类，不看文件动没动。
+BY_DESIGN_KINDS = ("interface", "enum", "data class", "sealed class",
+                   "sealed interface", OBJECT_NO_ENTRY)
+
+
+def decl_label(decl: Decl) -> str:
+    """声明的"种类名"（人话，同时是降档/放行的判据键）。"""
+    if decl.kind == "enum":
+        return "enum"
+    if decl.kind == "interface":
+        return "sealed interface" if decl.is_sealed else "interface"
+    if decl.kind == "object":
+        return OBJECT_WITH_ENTRY if decl.has_entry else OBJECT_NO_ENTRY
+    if decl.is_sealed:
+        return "sealed class"
+    if decl.is_data:
+        return "data class"
+    return "class"
+
+
+def is_by_design_kind(decl: Decl) -> bool:
+    """这个种类的声明，"没人调"是不是本来就正常（可进/可降 by-design）。"""
+    return decl_label(decl) in BY_DESIGN_KINDS
+
+
+# ── 三、引用扫描 ─────────────────────────────────────────────────────────────
 
 @dataclass
 class Hit:
@@ -1036,63 +1091,103 @@ def line_has_call(line: str, name: str) -> bool:
     return False
 
 
+def new_declaration_in_diff(decl: Decl, status: dict | None, added_lookup) -> bool:
+    """这个声明是不是**本次提交新增的**（600 拍板 d：不许把既有件改名塞进基线）。
+
+    认三样，不认第四样：
+    · 所在文件是 `A`（新建）⇒ 是；
+    · 文件是 `M`（改动）且 diff 新增行里出现**它的声明**（`class/object/interface Name`）⇒ 是；
+    · 文件是 `R`（改名而来）⇒ **不是**（改名件不许当"新增"进基线）。
+    """
+    if status is None:
+        return False
+    code = status.get(rel(decl.file))
+    if code == "A":
+        return True
+    if code != "M":
+        return False
+    pat = re.compile(
+        r"(?<![A-Za-z0-9_.])(?:(?:data|sealed|enum|open|abstract|internal|private|public)\s+)*"
+        r"(?:class|object|interface)\s+%s(?![A-Za-z0-9_])" % re.escape(decl.name)
+    )
+    return any(pat.search(line) for line in (added_lookup(rel(decl.file)) or []))
+
+
 def sovereignty_violations(diff: dict, current: dict, status: dict | None,
                            added_lookup) -> list[tuple[str, str]]:
-    """R5：减账（移出基线／降级）必须有对价，否则红「疑似洗账」。
+    """R5：减账必须有对价（防洗）。三类减账，三类判法。
 
-    对价按情形宽严不同（这是本规则的全部内容，别简化成一条）：
+    ① **条目不在基线里**（`added`）——最严：只有**扫描到 wired**（真接上了）才算对价。
+       例外是"本次新增的声明"——那不叫减账，走 R6/`--allow-add` 那条路（欠账照样被 R1 红）。
+       手删基线不会改代码，所以它既扫不到 wired、也没有新增声明行 ⇒ 必然红。
+    ② **降级成 by-design**——**按声明种类判，不看文件动没动**（600 二次拍板）：
+       只有 interface／enum／data class／sealed／**无 install 入口的 object** 能降；
+       有 install/record 入口的 object（装配件）申请降档 ⇒ 直接拒。
+       这样"改一行业务代码再降档"那条路自动消失——不需要靠 diff 猜。
+    ③ **从扫描里消失**（`gone`）——看文件是否被删/改名/改动。
 
-    · 条目**不在基线里**（`added`＝基线被删了／基线落后于代码）——**最严**：
-      该件现在 wired，或所在文件是本次新建，或该文件本次**新增了对它的调用**。
-      只要求"文件动过"会太好骗（顺手改个空行就能洗），所以这里要看到调用。
-    · 条目**降级成 by-design**——中等：所在文件本次有任何改动即可（把它改成纯数据类
-      也会改文件）；文件没动而基线掉了档 ⇒ 红。
-    · 条目**从扫描里消失**（gone）——看文件是否被删／改名。
-
-    证据只认 `git diff` 与扫描结果，**不看提交信息**（提交信息可以写假）。
-    `status=None` 表示 git 取不到 ⇒ 不判（调用方打 warning，绝不静默当绿）。
+    证据只认扫描结果与 `git diff`，**不看提交信息**（信息可以写假）。
+    `status=None`（git 取不到）⇒ 调用方已退 2，这里返回空表只为不炸。
     """
     if status is None:
         return []
     out: list[tuple[str, str]] = []
 
-    def price(name: str, path: str, strict: bool) -> str:
-        cur = current.get((name, path))
-        if cur is not None and cur.bucket == BUCKET_WIRED:
-            return "该件现在有生产调用点"
-        code = status.get(path)
-        if code is None:
-            return ""
-        if code == "A":
-            return "该件所在文件是本次新增"
-        if code in ("D", "R"):
-            return "该件所在文件被删除/改名"
-        if code == "M":
-            if not strict:
-                return "该件所在文件本次有改动"
-            for line in added_lookup(path) or []:
-                if line_has_call(line, name):
-                    return "该件所在文件本次新增了对它的调用"
-        return ""
-
     for x in diff["added"]:
-        if price(x["name"], x["file"], strict=True):
-            continue
+        entry = current.get((x["name"], x["file"]))
+        if entry is not None and entry.bucket == BUCKET_WIRED:
+            continue  # 对价 a：扫描到调用行
+        if entry is not None and new_declaration_in_diff(entry.decl, status, added_lookup):
+            continue  # 本次新增的声明 ⇒ 不是减账
         out.append(("R5", "疑似洗账：`%s` 被移出基线但代码没动（%s，当前是 %s）"
                     % (x["name"], x["file"], x["bucket"])))
-    for x in diff["gone"]:
-        if price(x["name"], x["file"], strict=False):
-            continue
-        out.append(("R5", "疑似洗账：`%s` 从基线里消失、代码里也没了，但所在文件没动（%s）"
-                    % (x["name"], x["file"])))
+
     for x in diff["flipped"]:
         if x["now"] != BUCKET_BY_DESIGN or x["was"] == BUCKET_BY_DESIGN:
             continue
-        if price(x["name"], x["file"], strict=False):
-            continue
-        out.append(("R5", "疑似洗账：`%s` 被降级 %s → %s 但代码没动（%s）"
-                    % (x["name"], x["was"], x["now"], x["file"])))
+        entry = current.get((x["name"], x["file"]))
+        label = decl_label(entry.decl) if entry is not None else "扫不到"
+        if entry is not None and is_by_design_kind(entry.decl):
+            continue  # 种类本身就该 by-design（interface/enum/data class/sealed/无入口 object）
+        out.append(("R5", "降档被拒：`%s` 是 %s，不属于可降种类"
+                    "（interface／enum／data class／sealed／无 install 入口的 object）（%s）"
+                    % (x["name"], label, x["file"])))
+
+    for x in diff["gone"]:
+        if status.get(x["file"]) in ("D", "R", "M"):
+            continue  # 文件被删/改名/改动 ⇒ 名册该跟着少一行
+        out.append(("R5", "疑似洗账：`%s` 从基线里消失、代码里也没了，但所在文件没动（%s）"
+                    % (x["name"], x["file"])))
     return out
+
+
+def validate_allow_add(diff: dict, current: dict, status: dict | None,
+                       added_lookup, note: str) -> list[str]:
+    """`--allow-add` 的四条门（600 拍板）：只许 by-design 种类、必须带 note、必须是新声明。
+
+    第四条"CI 永不传 --allow-add"在 main 里按环境变量判（见 `in_ci()`），不在这里。
+    """
+    problems: list[str] = []
+    if not note.strip():
+        problems.append("--allow-add 必须带 --note \"理由\"：新增条目要留因，空理由不信。")
+    for x in diff["added"]:
+        entry = current.get((x["name"], x["file"]))
+        if entry is None:
+            problems.append("`%s` 扫不到声明，无法判种类 ⇒ 不许放行。" % x["name"])
+            continue
+        label = decl_label(entry.decl)
+        if entry.bucket != BUCKET_BY_DESIGN:
+            problems.append("`%s` 当前是「%s」而不是 by-design ⇒ 欠账与已接件都不许进基线。"
+                            % (x["name"], entry.bucket))
+        if not is_by_design_kind(entry.decl):
+            problems.append("`%s`（%s）不是 by-design 种类 ⇒ 不许进基线"
+                            "（欠账与已接件都不许，只有 interface/enum/data class/"
+                            "sealed/无 install 入口的 object 可以）。" % (x["name"], label))
+        if not new_declaration_in_diff(entry.decl, status, added_lookup):
+            problems.append("`%s` 不是本次新增的声明（文件是 %s）⇒ 不许进基线："
+                            "这可能是在既有件上改名塞账。"
+                            % (x["name"], (status or {}).get(x["file"], "未见改动")))
+    return problems
 
 
 def render_change_rationale(diff: dict | None, reason: str) -> str:
@@ -1123,11 +1218,19 @@ def render_change_rationale(diff: dict | None, reason: str) -> str:
 
 
 def generate_baseline(entries: list[Entry], src: Path, base_path: Path,
-                      base: dict | None, reason: str, allow_add: bool) -> int:
+                      base: dict | None, reason: str, allow_add: bool,
+                      note: str = "", status: dict | None = None,
+                      added_lookup=None) -> int:
     """R6：基线的唯一写入口。
 
     · 与扫描一致 ⇒ **不写盘**（防无意义重写、防 diff 噪音）；
-    · 默认**拒绝新增**（只减不增）；确认是正当新增才加 `--allow-add`；
+    · 默认**拒绝新增**（只减不增）；
+    · `--allow-add` 放行新增，但要过四道门（600 拍板）：
+      ① 只许 **by-design 种类**（interface／enum／data class／sealed／无 install 入口的 object），
+         欠账（待判）与已接件一律拒；
+      ② 必须带 `--note "理由"`，空理由拒；
+      ③ 必须是**本次提交新增的声明**（改名来的文件不算）；
+      ④ CI 里永不放行（在 main 里按环境变量判，这里不重复）。
     · 写之前把变更因由（R7）打到 stderr，供人粘进提交信息。
     """
     payload = baseline_payload(entries, src)
@@ -1135,14 +1238,31 @@ def generate_baseline(entries: list[Entry], src: Path, base_path: Path,
     if diff is not None and diff["clean"]:
         print("[generate] 基线与扫描一致，未写盘（R6：防无意义重写）。", file=sys.stderr)
         return 0
-    if diff is not None and diff["added"] and not allow_add:
-        print("[generate] 拒绝写盘：本次会新增 %d 条（R6：默认只减不增）。"
-              % len(diff["added"]), file=sys.stderr)
+    lookup = added_lookup or (lambda _p: [])
+    current = {(e.name, rel(e.decl.file)): e for e in targets(entries)}
+    if diff is not None and diff["added"]:
+        if not allow_add:
+            print("[generate] 拒绝写盘：本次会新增 %d 条（R6：默认只减不增）。"
+                  % len(diff["added"]), file=sys.stderr)
+            for x in diff["added"]:
+                print("  + %s（%s）· %s" % (x["name"], x["file"], x["bucket"]),
+                      file=sys.stderr)
+            print("确认这些是正当新增再加 --allow-add --note \"理由\"；不确定就先别写。",
+                  file=sys.stderr)
+            return 1
+        problems = validate_allow_add(diff, current, status, lookup, note)
+        if problems:
+            print("[generate] 拒绝写盘：--allow-add 没过门（%d 条）——" % len(problems),
+                  file=sys.stderr)
+            for p in problems:
+                print("  ✗ " + p, file=sys.stderr)
+            return 1
+        print("[generate] 放行新增（逐条）：", file=sys.stderr)
         for x in diff["added"]:
-            print("  + %s（%s）· %s" % (x["name"], x["file"], x["bucket"]), file=sys.stderr)
-        print("确认这些是正当新增（新写的装配类/契约）再加 --allow-add；不确定就先别写。",
-              file=sys.stderr)
-        return 1
+            entry = current.get((x["name"], x["file"]))
+            label = decl_label(entry.decl) if entry is not None else "?"
+            print("  + %s ｜ %s ｜ %s ｜ 种类 %s"
+                  % (x["name"], x["file"], x["bucket"], label), file=sys.stderr)
     print(render_change_rationale(diff, reason), file=sys.stderr)
     write_json(payload, base_path)
     print("[generate] 已写入：%s（%d 件）" % (rel(base_path), len(targets(entries))),
@@ -1452,70 +1572,92 @@ def selftest() -> int:
                             indent=2)
         expect(first == second, "两遍输出不一致（幂等坏了）")
 
-        # ── R5：减账必须有对价（内存级，喂假 diff/status，不依赖 git） ──────────
+        # ── R5/R6/R7：减账对价 + 新增四门（内存级，不依赖 git） ────────────────
         import contextlib
         import io
 
-        class _Cur:
-            def __init__(self, bucket: str) -> None:
-                self.bucket = bucket
+        def _decl(name: str, kind: str = "object", data: bool = False,
+                  sealed: bool = False, funcs=()) -> Decl:
+            fs = list(funcs)
+            return Decl(name=name, kind=kind, package="demo",
+                        file=Path("a/%s.kt" % name), line=1,
+                        is_data=data, is_sealed=sealed, functions=fs,
+                        has_entry=any(f.startswith(("install", "record")) for f in fs))
 
-        cur_map = {("A_Wiring", "a/A.kt"): _Cur(BUCKET_WIRED),
-                   ("D_Wiring", "a/D.kt"): _Cur(BUCKET_PENDING)}
+        class _Cur:
+            def __init__(self, bucket: str, decl: Decl) -> None:
+                self.bucket = bucket
+                self.decl = decl
+
+        def _skip(_path: str):
+            return []
 
         def _d(added=(), gone=(), flipped=()):
             return {"added": list(added), "gone": list(gone), "flipped": list(flipped),
                     "clean": not (added or gone or flipped)}
 
-        def _no_added(_path: str):
-            return []
-
-        row_q = {"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_PENDING}
-        v = sovereignty_violations(_d(added=[row_q]), cur_map, {}, _no_added)
+        plain = _decl("Q_Wiring", "object", funcs=("go",))
+        cur_map = {("Q_Wiring", "a/Q_Wiring.kt"): _Cur(BUCKET_PENDING, plain),
+                   ("C_Wiring", "a/C_Wiring.kt"): _Cur(BUCKET_BY_DESIGN, _decl("C_Wiring"))}
+        row_q = {"name": "Q_Wiring", "file": "a/Q_Wiring.kt", "bucket": BUCKET_PENDING}
+        v = sovereignty_violations(_d(added=[row_q]), cur_map, {}, _skip)
         expect(len(v) == 1 and v[0][0] == "R5" and "疑似洗账" in v[0][1],
-               "① 洗账夹具没红：删一条基线、代码没动 ⇒ 必须报「疑似洗账」")
-        v = sovereignty_violations(
-            _d(added=[{"name": "A_Wiring", "file": "a/A.kt", "bucket": BUCKET_WIRED}]),
-            cur_map, {}, _no_added)
-        expect(v == [], "② 真接上后再删（该件当前 wired）被误红")
-        v = sovereignty_violations(
-            _d(added=[{"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_BY_DESIGN}]),
-            cur_map, {"a/Q.kt": "A"}, _no_added)
-        expect(v == [], "新增条目的文件是本次新建，被误红")
-        v = sovereignty_violations(
-            _d(added=[{"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_BY_DESIGN}]),
-            cur_map, {"a/Q.kt": "M"}, lambda _p: ["            Q_Wiring.go()"])
-        expect(v == [], "文件里真新增了对 Q_Wiring 的调用，被误红")
-        v = sovereignty_violations(
-            _d(added=[{"name": "Q_Wiring", "file": "a/Q.kt", "bucket": BUCKET_BY_DESIGN}]),
-            cur_map, {"a/Q.kt": "M"}, lambda _p: ["    // 顺手加一行注释"])
-        expect(len(v) == 1, "只改了注释（没有调用）也放过了 —— R5 太松")
-        v = sovereignty_violations(
-            _d(flipped=[{"name": "D_Wiring", "file": "a/D.kt",
-                         "was": BUCKET_PENDING, "now": BUCKET_BY_DESIGN}]),
-            cur_map, {}, _no_added)
-        expect(len(v) == 1 and "降级" in v[0][1], "降级（待判→by-design）没被 R5 抓到")
-        v = sovereignty_violations(
-            _d(flipped=[{"name": "D_Wiring", "file": "a/D.kt",
-                         "was": BUCKET_PENDING, "now": BUCKET_BY_DESIGN}]),
-            cur_map, {"a/D.kt": "M"}, _no_added)
-        expect(v == [], "降级但文件本次有改动，被误红")
-        v = sovereignty_violations(
-            _d(gone=[{"name": "G_Wiring", "file": "a/G.kt", "bucket": BUCKET_WIRED}]),
-            cur_map, {}, _no_added)
-        expect(len(v) == 1, "名册消失且文件没动，没被 R5 抓到")
-        v = sovereignty_violations(
-            _d(gone=[{"name": "G_Wiring", "file": "a/G.kt", "bucket": BUCKET_WIRED}]),
-            cur_map, {"a/G.kt": "D"}, _no_added)
-        expect(v == [], "文件被删了，消失条目被误红")
-        expect(sovereignty_violations(_d(gone=[row_q]), cur_map, None, _no_added) == [],
+               "① 洗账夹具没红：删一条基线、代码没动")
+        wired_map = {("W_Wiring", "a/W.kt"): _Cur(BUCKET_WIRED, _decl("W_Wiring"))}
+        v = sovereignty_violations(_d(added=[{"name": "W_Wiring", "file": "a/W.kt",
+                                             "bucket": BUCKET_WIRED}]), wired_map, {}, _skip)
+        expect(v == [], "② 扫描到 wired（真接上了）还红")
+        dto_row = {"name": "C_Wiring", "file": "a/C_Wiring.kt", "bucket": BUCKET_BY_DESIGN}
+        expect(sovereignty_violations(_d(added=[dto_row]), cur_map,
+                                      {"a/C_Wiring.kt": "A"}, _skip) == [],
+               "新增条目的文件是本次新建，被误红")
+        expect(sovereignty_violations(_d(added=[dto_row]), cur_map, {"a/C_Wiring.kt": "M"},
+                                      lambda _p: ["internal object C_Wiring {"]) == [],
+               "既有文件里新增了该声明，被误红")
+        v = sovereignty_violations(_d(added=[dto_row]), cur_map, {"a/C_Wiring.kt": "M"},
+                                   lambda _p: ["    // 顺手加一行注释"])
+        expect(len(v) == 1, "只改注释也放过了 —— 「移出基线」这一档太松")
+        v = sovereignty_violations(_d(added=[dto_row]), cur_map, {"a/C_Wiring.kt": "R"}, _skip)
+        expect(len(v) == 1, "改名来的文件（R）被当成新增 —— 改名塞账没堵住")
+
+        cur2 = {("I_Wiring", "a/I.kt"): _Cur(BUCKET_BY_DESIGN, _decl("I_Wiring", "interface")),
+                ("S_Wiring", "a/S.kt"): _Cur(BUCKET_BY_DESIGN,
+                                             _decl("S_Wiring", "interface", sealed=True)),
+                ("D_Wiring", "a/D.kt"): _Cur(BUCKET_BY_DESIGN, _decl("D_Wiring", "class",
+                                                                     data=True)),
+                ("E_Wiring", "a/E.kt"): _Cur(BUCKET_BY_DESIGN, _decl("E_Wiring", "enum")),
+                ("O_Wiring", "a/O.kt"): _Cur(BUCKET_BY_DESIGN, _decl("O_Wiring")),
+                ("X_Wiring", "a/X.kt"): _Cur(BUCKET_BY_DESIGN,
+                                             _decl("X_Wiring", funcs=("install",))),
+                ("K_Wiring", "a/K.kt"): _Cur(BUCKET_BY_DESIGN, _decl("K_Wiring", "class"))}
+
+        def _flip(name: str, path: str):
+            return {"name": name, "file": path,
+                    "was": BUCKET_PENDING, "now": BUCKET_BY_DESIGN}
+
+        for nm, path in (("I_Wiring", "a/I.kt"), ("S_Wiring", "a/S.kt"),
+                         ("D_Wiring", "a/D.kt"), ("E_Wiring", "a/E.kt"),
+                         ("O_Wiring", "a/O.kt")):
+            expect(sovereignty_violations(_d(flipped=[_flip(nm, path)]), cur2, {}, _skip) == [],
+                   "可降种类 %s 申请降档被误红" % nm)
+        v = sovereignty_violations(_d(flipped=[_flip("X_Wiring", "a/X.kt")]), cur2, {}, _skip)
+        expect(len(v) == 1 and "降档被拒" in v[0][1],
+               "⑮ 有 install 入口的 object 申请降档，没被拒")
+        v = sovereignty_violations(_d(flipped=[_flip("K_Wiring", "a/K.kt")]), cur2, {}, _skip)
+        expect(len(v) == 1, "普通 class 申请降档，没被拒")
+
+        gone_row = {"name": "G_Wiring", "file": "a/G.kt", "bucket": BUCKET_WIRED}
+        expect(len(sovereignty_violations(_d(gone=[gone_row]), cur2, {}, _skip)) == 1,
+               "名册消失且文件没动，没被 R5 抓到")
+        expect(sovereignty_violations(_d(gone=[gone_row]), cur2, {"a/G.kt": "D"}, _skip) == [],
+               "文件被删了，消失条目被误红")
+        expect(sovereignty_violations(_d(gone=[gone_row]), cur2, None, _skip) == [],
                "取不到 git diff 时应「不判」而不是「判红」")
 
-        # ── R6/R7：--generate 三态（真文件；③ 无变化不写盘） ──────────────────
+        # ── R6/R7：--generate 三态 + 新增四门 ────────────────────────────────
         bl = base / "tools" / "wiring-baseline.json"
         bl.parent.mkdir(parents=True, exist_ok=True)
-        buf = io.StringIO()
-        with contextlib.redirect_stderr(buf):
+        with contextlib.redirect_stderr(io.StringIO()):
             rc = generate_baseline(entries, src, bl, None, "夹具：首次固化", False)
         expect(rc == 0 and bl.exists(), "generate 首次固化没写盘")
         original = bl.read_text(encoding="utf-8")
@@ -1533,12 +1675,50 @@ def selftest() -> int:
         with contextlib.redirect_stderr(io.StringIO()):
             rc = generate_baseline(entries, src, bl, load_baseline(bl), "夹具：试删", False)
         expect(rc == 1, "R6 默认没拒绝「会新增条目」的写盘")
-        with contextlib.redirect_stderr(io.StringIO()):
-            rc = generate_baseline(entries, src, bl, load_baseline(bl), "夹具：正当新增", True)
-        expect(rc == 0, "--allow-add 时仍拒绝写盘")
-        # R7：--generate 不带 --reason ⇒ 退 2（写要留因）
+
+        cur3 = {(e.name, rel(e.decl.file)): e for e in targets(entries)}
+
+        def _path_of(name: str) -> str:
+            return next(k[1] for k in cur3 if k[0] == name)
+
+        # 种类门（防御性）：就算 bucket 被标成 by-design，带 install 入口的 object 也不许新增
+        cur4 = {("Z_Wiring", "a/Z.kt"): _Cur(BUCKET_BY_DESIGN,
+                                              _decl("Z_Wiring", funcs=("install",)))}
+        probs = validate_allow_add(
+            {"added": [{"name": "Z_Wiring", "file": "a/Z.kt", "bucket": BUCKET_BY_DESIGN}],
+             "gone": [], "flipped": [], "clean": False},
+            cur4, {"a/Z.kt": "A"}, _skip, "夹具：理由")
+        expect(any("不是 by-design 种类" in p for p in probs),
+               "带 install 入口的 object 竟然能走 --allow-add 进基线")
+
+        # ⑬ --allow-add 加一条 unwired（ForeignWiring 是 object 无入口、但落待判）⇒ 拒
+        probs = validate_allow_add(diff_baseline(entries, load_baseline(bl)), cur3,
+                                   {_path_of("ForeignWiring"): "A"}, _skip, "夹具：理由")
+        expect(any("待判" in p for p in probs),
+               "⑬ --allow-add 加一条 unwired 没被拒（欠账不许进基线）")
+        # ⑭ --note 为空 ⇒ 拒（用 ConstWiring：object 无入口、落 by-design）
+        payload3 = json.loads(original)
+        payload3["entries"] = [r for r in payload3["entries"] if r["name"] != "ConstWiring"]
+        d4 = diff_baseline(entries, payload3)
+        st4 = {_path_of("ConstWiring"): "A"}
+        probs = validate_allow_add(d4, cur3, st4, _skip, "")
+        expect(any("--note" in p for p in probs), "⑭ --note 为空没被拒")
+        expect(validate_allow_add(d4, cur3, st4, _skip, "夹具：理由") == [],
+               "合规新增（by-design 种类 + 新文件 + 有 note）被误拒")
+        # 第四门：CI 里 --allow-add 一律拒
+        os.environ["CI"] = "1"
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(io.StringIO()):
+                rc = main(["--generate", "--allow-add", "--note", "x", "--reason", "y",
+                           "--src", str(src), "--baseline", str(bl)])
+        finally:
+            os.environ.pop("CI", None)
+        expect(rc == 2 and "只许本地交互用" in buf.getvalue(),
+               "CI 环境下 --allow-add 没被拒（流水线能洗账）")
+        # R7：--generate 不带 --reason ⇒ 退 2
         buf = io.StringIO()
-        with contextlib.redirect_stderr(buf):
+        with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(io.StringIO()):
             rc = main(["--generate", "--src", str(src), "--baseline", str(bl)])
         expect(rc == 2 and "必须带 --reason" in buf.getvalue(),
                "R7：--generate 不带 --reason 没被挡住（或没说清原因）")
@@ -1549,7 +1729,7 @@ def selftest() -> int:
             print("  · " + f)
         return 1
     print("SELFTEST OK：%d 条断言全过（扫描口径／端口接口／裁定表／基线往返／四条红／"
-          "R5 洗账九态／R6 三态／R7 留因／幂等）" % checked)
+          "R5 减账三档（含种类判降档）／--allow-add 四门／R6 三态／R7 留因／幂等）" % checked)
     return 0
 
 
@@ -1574,7 +1754,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="按现状重写基线（**唯一**写入口；必须带 --reason）")
     ap.add_argument("--reason", default="", help="--generate 必填：这次基线变更为什么")
     ap.add_argument("--allow-add", action="store_true",
-                    help="--generate 时允许新增条目（默认拒增：只减不增）")
+                    help="--generate 时允许新增 by-design 条目（需同时 --note；CI 里禁用）")
+    ap.add_argument("--note", default="",
+                    help="--allow-add 必填：这些新增为什么可以进基线")
     ap.add_argument("--diff-base", default="origin/main",
                     help="R5 取「本次改动文件集」的 git base，默认 origin/main")
     ap.add_argument("--update-baseline", action="store_true",
@@ -1595,6 +1777,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.generate and not args.reason.strip():
         print("--generate 必须带 --reason（R7：写要留因）。", file=sys.stderr)
+        return 2
+    if args.allow_add and in_ci():
+        print("--allow-add 只许本地交互用：CI 环境（CI/GITHUB_ACTIONS）里一律拒——"
+              "流水线不许洗账。", file=sys.stderr)
         return 2
 
     src = Path(args.src)
@@ -1622,8 +1808,15 @@ def main(argv: list[str] | None = None) -> int:
         write_json(to_json(entries, audit, src, base_diff=base_diff, base_path=base_path,
                            rule_problems=problems), Path(args.json))
     if args.generate:
+        g_status = git_name_status(args.diff_base)
+        if g_status is None and base_diff is not None and base_diff["added"]:
+            print("::error:: 判不了「新增是不是本次的新声明」：取不到 `git diff %s`。"
+                  % args.diff_base, file=sys.stderr)
+            return 2
         return generate_baseline(entries, src, base_path, base, args.reason.strip(),
-                                 args.allow_add)
+                                 args.allow_add, note=args.note.strip(),
+                                 status=g_status,
+                                 added_lookup=lambda p: git_added_lines(args.diff_base, p))
     if check:
         if base_diff is None:
             print("::error:: wiring 闸没有基线（%s），无法判定名册漂移" % rel(base_path),
