@@ -1,9 +1,10 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第五百八十九批（2026-11-11）· 样本池的**装配缝**（读账、攒样本、判够不够、拒了记账）。
+// 第五百八十九批（2026-11-11）· 样本池的**装配缝**（攒样本、读读数、判够不够、拒了记账、重放）。
 //
-// 本文件只有四个动作，一句判据都不自己写：
-//   · 攒（[record]）⇒ `EvoSamplePool.append`（append-only，去重归读侧折叠）；
+// 本文件只有五个动作，一句判据都不自己写：
+//   · 攒（[recordObservation]／[record]）⇒ `EvoSamplePool.append`（append-only，去重归读侧折叠）；
+//     锚类型与锚值由 [EvoAnchorRegistry] 定，本文件不自己编"一次"。
 //   · 读（[reading]／[readout]）⇒ `EvoSampleRules.reading`（口径只有一个来源）；
 //   · 拒（[promote]）⇒ 判据不足就**拒并记账**——记账走既有参谋意见账
 //     （`ConsequenceWiring.recordAdvisor`：506 给这一类写明的用途就是"被拦下来的意见也记这一行"，
@@ -14,14 +15,12 @@
 // 本批只回答"样本够不够格谈这件事"，够格了就交给梯子——如果这里顺手把档写上去，
 // 就等于在 589 里又造了一个改档口，495/517 的聚合口径当场被绕过（派工单 ⑤ 明令不许）。
 //
-// 装配：`install(wsRoot)` 一处落根（`<工作区>/.zd-evo/`），由装配层在拿到工作区根之后调一次。
-// 本批**不动任何既有装配文件**（生产 diff＝0，与 376 同型），接线点两处列在交付报告里：
-//   ① `BaopuRuntime` 的装配段（与 `DecisionLedger.install`／`ConsequenceWiring.install` 同处）：
-//      `EvoSampleWiring.install(BaopuRuntime.workspaceRoot(appCtx))`（`BaopuRuntime.kt:217`，
-//      主根＝`BaopuWorkspace.hostDir`，与 `.zd-ledger.jsonl` 同一个根）；
-//   ② 观察落账之后（`LowRiskEvo.observeRun` 那一行之后）：
-//      `EvoSampleWiring.record(EvoSampleEvent(域, 会话, 事件号, 动作类, 时刻))`。
-// 没装配 ⇒ 读数是"没装配"，攒样本返回 false，绝不抛（启动路径不许被样本池挡住）。
+// 装配（⑧⑨⑩ 拍板后**已接线**，生产改动**只两处**，`EvoSampleWiringGateTest` 按文件＋次数钉名册）：
+//   ① `BaopuRuntime` 装配段（`ConsequenceWiring.install` 之后一行）：
+//      `EvoSampleWiring.install(workspaceRoot(appCtx))`——与 `.zd-ledger.jsonl` 同一个工作区根；
+//   ② `evolution/lowrisk/LowRiskEvo.observeRun` 落完观察账之后一行：
+//      `EvoSampleWiring.recordObservation(capability, atMs)`——四域的观察只在这里长样本。
+// 没装配 ⇒ 读数说"没装配"，攒样本返回 false，绝不抛（启动路径不许被样本池挡住）。
 package com.example.zhengdao.baopu.evolution.samples
 
 import com.example.zhengdao.baopu.consequence.AdvisorOpinion
@@ -48,7 +47,7 @@ internal object EvoSampleWiring {
     @Volatile
     private var wsRoot: File? = null
 
-    /** 装配样本池的落点（工作区根；本批只在测试与将来的装配段里调）。 */
+    /** 装配样本池的落点（工作区根；生产唯一调用点在 `BaopuRuntime`，名册门禁钉着）。 */
     fun install(root: File) {
         wsRoot = root
     }
@@ -62,9 +61,40 @@ internal object EvoSampleWiring {
     fun installed(): Boolean = wsRoot != null
 
     /**
-     * 攒一条样本。
+     * **生产唯一攒样本口**（⑧：全仓只有 `LowRiskEvo.observeRun` 一处调它，名册门禁钉着）。
      *
-     * 没装配／域不在册／盘写不上 ⇒ false（**不抛**）：样本是判定的料，不是动作的闸，
+     * 会话号／事件号由调用方给；不给就用缺省（会话 0、事件号＝`obs@<时刻>`）——
+     * 缺省的语义是"同一毫秒重投算同一次"，**不会**把不同时刻的观察合成一条。
+     * 真正的"同一件事"由锚认（⑪）：暗卫的锚是轮次，同一天连开五次落到同一个 `round:<天>`。
+     *
+     * 无锚域（⑫）直接返回 false：不攒、不读、不报数，读数里标"无锚|不计"。
+     *
+     * 不抛（攒样本是判定的料，不是动作的闸）：盘写不上只 log 一句。
+     */
+    fun recordObservation(
+        capability: CanaryCapability,
+        atMs: Long,
+        sessionId: Long = 0L,
+        eventId: String = "",
+        anchor: String = "",
+    ): Boolean {
+        val kind = EvoAnchorRegistry.of(capability.wire) ?: return false
+        val event = EvoSampleEvent(
+            domain = capability.wire,
+            anchorKind = kind.wire,
+            anchor = EvoAnchorRegistry.anchorOf(kind, atMs, anchor),
+            sessionId = sessionId,
+            eventId = eventId.ifBlank { "obs@$atMs" },
+            kind = capability.wire,
+            atMs = atMs,
+        )
+        return record(event)
+    }
+
+    /**
+     * 攒一条样本（底层口；生产只经 [recordObservation]，测试与重放直接调这个）。
+     *
+     * 没装配／域不在册／无锚域／盘写不上 ⇒ false（**不抛**）：样本是判定的料，不是动作的闸，
      * 攒不上不许把正在跑的那件事弄挂（同 506 `stamp` 的口径：记录是留痕不是闸门）。
      */
     fun record(event: EvoSampleEvent): Boolean {
@@ -81,7 +111,7 @@ internal object EvoSampleWiring {
     }
 
     /**
-     * 全表读数（`evo_samples`，每域一行：次数／天数／结论）。
+     * 全表读数（`evo_samples`，每域一行：锚类型／次数／天数／结论；无锚域写"无锚|不计"）。
      *
      * 逐域走 473 的登记表（不是"盘上有哪个文件就报哪个域"）：一个从来没过样本的域
      * 也必须出现在读数里，否则"没跑过"与"这域不存在"长得一样。
@@ -93,10 +123,11 @@ internal object EvoSampleWiring {
         if (installed()) readout().joinToString("\n") else "${EvoSampleReading.READING_KEY}：样本池没装配"
 
     /**
-     * 要转正：够格才放行，不够格**拒并记账**（判据③）。
+     * 要转正：够格才放行，不够格**拒并记账**（判据③；无锚域按"不计"拒——⑫）。
      *
-     * 三条拒路各说各的（账上一眼能看出是次数不够还是天数不够）：
+     * 四条拒路各说各的（账上一眼能看出是次数不够、天数不够、还是这一域压根没有锚）：
      *   · 没登记在册的域 ⇒ 拒（也不记账：不是"差样本"，是"问错对象"）；
+     *   · **无锚域** ⇒ 拒＋记账（"没定义什么叫一次"本身就是拒绝转正的理由，且要留痕）；
      *   · `INSUFFICIENT`（<8 次）⇒ 拒＋账单里写"样本不足"；
      *   · `CANARY_ONLY`（≥8 但不够转正）⇒ 拒＋账单里写"只够灰度"。
      *
@@ -116,7 +147,7 @@ internal object EvoSampleWiring {
                 advisor = ADVISOR_PREFIX + domain,
                 advice = AdvisorRules.ADVICE_FAIL,
                 reason = why,
-                risks = listOf(r.verdict.wire),
+                risks = listOf(if (r.anchored) r.verdict.wire else "unanchored"),
                 aboutOwnOutput = false,
                 atMs = nowMs,
             ),
@@ -128,17 +159,19 @@ internal object EvoSampleWiring {
     /**
      * 拒的那句话（判据③要能在账上读到"为什么不许"）。
      *
-     * 三种说全：差在哪条线、差多少、下一步只能做什么。数字取自同一份读数，不另算。
+     * 四种说全：无锚／差在哪条线／差多少／下一步只能做什么。数字取自同一份读数，不另算。
      */
-    internal fun refusalReason(r: EvoSampleReading): String = when (r.verdict) {
-        EvoSampleVerdict.INSUFFICIENT ->
+    internal fun refusalReason(r: EvoSampleReading): String = when {
+        !r.anchored ->
+            "无锚域不许转正：${r.domain} 没声明「一次独立事件」按什么认身份 ⇒ 样本不计（⑫）"
+        r.verdict == EvoSampleVerdict.INSUFFICIENT ->
             "样本不足，不许转正：${r.events} 次／${r.days} 天" +
                 "（转正要 ≥${EvoSampleRules.PROMOTE_EVENTS} 次且 ≥${EvoSampleRules.PROMOTE_DAYS} 天；" +
                 "灰度也要 ≥${EvoSampleRules.CANARY_EVENTS} 次）"
-        EvoSampleVerdict.CANARY_ONLY ->
+        r.verdict == EvoSampleVerdict.CANARY_ONLY ->
             "样本只够灰度，不许转正：${r.events} 次／${r.days} 天" +
                 "（转正要 ≥${EvoSampleRules.PROMOTE_EVENTS} 次且 ≥${EvoSampleRules.PROMOTE_DAYS} 天）"
-        EvoSampleVerdict.PROMOTE_READY -> "样本够转正：${r.describe()}"
+        else -> "样本够转正：${r.describe()}"
     }
 
     /**

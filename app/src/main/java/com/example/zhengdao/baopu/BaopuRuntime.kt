@@ -1006,6 +1006,10 @@ internal object BaopuRuntime {
         // 顺序在账本落点之后：身份自己也要落一行「首启生成」的账。真首装 ⇒ 生成；
         // 恢复后缺身份（U4）⇒ 不生成，体检格与日志提示「需铸新身份」（人工铸新才恢复）。
         ConsequenceWiring.install(appCtx.filesDir, System.currentTimeMillis())
+        // 第五百八十九批（生产调用点①，全仓只此一处）：**进化判定样本池**的落点（`<工作区>/.zd-evo/`）。
+        // 与 `.zd-ledger.jsonl` 同一个工作区根（点号开头 ⇒ 不计入「产物 N 件」）；没装 ⇒ 读数说
+        // "没装配"、攒样本返回 false，启动路径不受影响（`EvoSampleWiring` 自己兜住，不抛）。
+        com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring.install(workspaceRoot(appCtx))
         // 第五百一十七批：**边界声明表**（唯一数据源）装配——越界判定/执行闸/体检展示都读它。
         // 可写根类展开表在这里给：workspace＝RW 工作区根，private＝应用私有树。
         BoundaryTable.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)) {

@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第五百八十九批 · 判据①（池的形状）与判据④（可重放、删池不丢历史账）的盘上走法。
+// 第五百八十九批 · 判据①（池的形状）、④（可重放、删池不丢历史账）、⑫（无锚域不落）、
+// ⑬（池内 anchorKind 与注册表一致）的盘上走法。
 //
 // 每条都真写盘、真读回（与 `LedgerRulesTest` 同款纪律：只有碰盘才算数）：
 // 池文件在 `<工作区>/.zd-evo/<域>.jsonl`，append-only，坏行跳过，
@@ -47,9 +48,17 @@ class EvoSamplePoolTest {
         TempSandbox.deleteTree(ws)
     }
 
-    /** 第 i 条：一天一条，都在过去（i 越大越新）。 */
+    /** 第 i 条：一天一条，都在过去（i 越大越新）；锚按序号唯一。 */
     private fun event(i: Int, kind: String = "act", session: Long = 7_000L + i): EvoSampleEvent =
-        EvoSampleEvent(domain, session, "e$i", kind, now - (30L - i) * day)
+        EvoSampleEvent(
+            domain = domain,
+            anchorKind = EvoAnchorRegistry.of(domain)!!.wire,
+            anchor = "p$i",
+            sessionId = session,
+            eventId = "e$i",
+            kind = kind,
+            atMs = now - (30L - i) * day,
+        )
 
     /** 灌 [n] 条（间隔一天，条条独立）。 */
     private fun fill(n: Int): List<EvoSampleEvent> = (1..n).map { event(it) }
@@ -90,7 +99,8 @@ class EvoSamplePoolTest {
         val f = EvoSamplePool.fileOf(ws, domain)
         f.parentFile!!.mkdirs()
         val other = CanaryCapability.MEMORY_IMPORT.wire
-        f.appendText(EvoSamplePool.toLine(event(1).copy(domain = other)) + "\n", Charsets.UTF_8)
+        val line = EvoSamplePool.toLine(event(1).copy(domain = other, anchorKind = EvoAnchorRegistry.of(other)!!.wire))
+        f.appendText(line + "\n", Charsets.UTF_8)
         assertEquals("把 A 域的行粘进 B 域文件 ⇒ 不许让 B 域虚高", 0, EvoSamplePool.read(ws, domain).size)
     }
 
@@ -99,6 +109,36 @@ class EvoSamplePoolTest {
         assertNull("没在册的域建不出事件行", EvoSamplePool.parse("{\"domain\":\"nope\"}", "nope"))
         assertEquals(0, EvoSamplePool.read(ws, "nope").size)
         assertFalse("连文件都不该出现", EvoSamplePool.fileOf(ws, "nope").exists())
+    }
+
+    // ── 判据⑫：无锚域不落、不计、标注 ────────────────────────────────────
+
+    @Test
+    fun `判据⑫_无锚域_不落盘_读数标无锚`() {
+        val scout = CanaryCapability.SCOUT.wire
+        assertNull("斥候没有锚", EvoAnchorRegistry.of(scout))
+        assertFalse("无锚域不攒样本", EvoSampleWiring.recordObservation(CanaryCapability.SCOUT, now))
+        assertFalse("连文件都不该出现", EvoSamplePool.fileOf(ws, scout).exists())
+        val r = EvoSampleWiring.reading(scout)
+        assertFalse(r.anchored)
+        assertEquals("evo_samples|$scout|无锚|不计", r.line())
+    }
+
+    // ── 判据⑬：池内 anchorKind 与注册表一致 ──────────────────────────────
+
+    @Test
+    fun `判据⑬_手改锚类型的行_不算数`() {
+        fill(2).forEach { EvoSampleWiring.record(it) }
+        val f = EvoSamplePool.fileOf(ws, domain)
+        assertEquals(2, EvoSampleWiring.reading(domain).events)
+
+        // 手写一行：域对、锚值看着也像，但锚类型写成别域的那一种。
+        f.appendText(
+            "{\"v\":\"zd-evo/1\",\"domain\":\"$domain\",\"anchorKind\":\"patrol_round\"," +
+                "\"anchor\":\"round:1\",\"session\":99,\"event\":\"fake\",\"kind\":\"act\",\"at\":$now}\n",
+            Charsets.UTF_8,
+        )
+        assertEquals("锚类型与注册表不一致的行必须被挡在计数之外", 2, EvoSampleWiring.reading(domain).events)
     }
 
     // ── 判据④：可重放、删池不丢历史账 ────────────────────────────────────
@@ -119,7 +159,7 @@ class EvoSamplePoolTest {
 
     @Test
     fun `判据④_删池不丢历史账_也不许凭空够样本`() {
-        // 908 决策账先有 25 条观察行（历史账），池里也有 25 条样本。
+        // 208 决策账先有 25 条观察行（历史账），池里也有 25 条样本。
         fill(25).forEach { EvoSampleWiring.record(it) }
         repeat(25) { i ->
             ConsequenceWiring.observe(CanaryObservation(domain, ok = true), now - i * day)

@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第五百八十九批 · 判据③（样本不足强行转正 ⇒ 拒并记账）与判据⑤（不改 495/517 聚合口径）。
+// 第五百八十九批 · 判据③（样本不足强行转正 ⇒ 拒并记账）、判据⑤（不改 495/517 聚合口径）、
+// 判据⑫（无锚域拒转正）的盘上走法。
 //
 // 判据③走**真盘账**：拒了不算数，"拒＋账上有那一行"才算（506 给参谋意见账写明的用途就是
 // "被拦下来的意见也记这一行"——只拦不记，等于没人知道有人试过强行转正）。
@@ -57,10 +58,11 @@ class EvoSampleGateTest {
 
     private fun fill(n: Int, days: Int) {
         val span = days.toLong() * day
+        val kind = EvoAnchorRegistry.of(domain)!!.wire
         (0 until n).forEach { i ->
             val at = if (n <= 1) now - span else now - span + i * span / (n - 1)
             EvoSampleWiring.record(
-                EvoSampleEvent(domain, 9_000L + i, "run-$i", "act", at),
+                EvoSampleEvent(domain, kind, "p$i", 9_000L + i, "run-$i", "act", at),
             )
         }
     }
@@ -113,17 +115,32 @@ class EvoSampleGateTest {
         assertEquals(0, rows().size)
     }
 
+    // ── 判据⑫：无锚域不许转正（也是"拒并记账"的一条） ────────────────────
+
     @Test
-    fun `读数_evo_samples每域一行_没跑过的域也出现`() {
+    fun `判据⑫_无锚域要求转正_拒并记账_理由写无锚`() {
+        val out = EvoSampleWiring.promote(CanaryCapability.SCOUT.wire, now)
+        assertFalse("无锚域不许转正", out.allowed)
+        assertTrue("理由要说清是没锚，不是次数不够：${out.reason}", out.reason.contains("无锚"))
+        assertTrue(out.refusalAccepted)
+        assertEquals(1, advisorRows().size)
+        assertTrue(
+            "账上要认得出是哪个域（无锚也留痕）：${advisorRows().first().evidence}",
+            advisorRows().first().evidence.contains(CanaryCapability.SCOUT.wire),
+        )
+    }
+
+    @Test
+    fun `读数_evo_samples每域一行_没跑过的域也出现_无锚域标不计`() {
         fill(25, 8)
         val lines = EvoSampleWiring.readout()
         assertEquals("登记表里每个域都要有一行", CanaryCapability.entries.size, lines.size)
         assertTrue(lines.all { it.startsWith(EvoSampleReading.READING_KEY + "|") })
         assertTrue(lines.any { it.contains(domain) && it.endsWith(EvoSampleVerdict.PROMOTE_READY.cn) })
-        assertTrue(
-            "没跑过的域要报样本不足，不是消失：${lines.first { it.contains(CanaryCapability.SCOUT.wire) }}",
-            lines.first { it.contains(CanaryCapability.SCOUT.wire) }.endsWith(EvoSampleVerdict.INSUFFICIENT.cn),
-        )
+        val scout = lines.first { it.contains(CanaryCapability.SCOUT.wire) }
+        assertEquals("无锚域不发数字，只标出来", "evo_samples|${CanaryCapability.SCOUT.wire}|无锚|不计", scout)
+        val tail = lines.first { it.contains(CanaryCapability.PROMPT_TAIL.wire) }
+        assertTrue("有锚但没跑过 ⇒ 样本不足（不是无锚）：$tail", tail.endsWith(EvoSampleVerdict.INSUFFICIENT.cn))
     }
 
     // ── 判据⑤：不改 473/495/517 的聚合口径（反向钉） ──────────────────────
@@ -145,8 +162,9 @@ class EvoSampleGateTest {
         assertTrue("10 条在 473 那边仍是「读得出来」", metrics.known)
 
         // 同样这 10 条，其中 5 条是同一会话同一事件（重复投递）⇒ 589 只认 5 条独立事件。
+        val kind = EvoAnchorRegistry.of(domain)!!.wire
         val events = (0 until 10).map { i ->
-            EvoSampleEvent(domain, 3L, "e${i % 5}", "act", now - i * day)
+            EvoSampleEvent(domain, kind, "p${i % 5}", 3L, "e${i % 5}", "act", now - i * day)
         }
         val reading = EvoSampleRules.reading(domain, events)
         assertEquals(5, reading.events)

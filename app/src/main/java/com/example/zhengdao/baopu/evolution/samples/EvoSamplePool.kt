@@ -11,11 +11,15 @@
 //   3. **不认识 Android**：只吃 `java.io.File` + `org.json`，JVM 单测直接打。
 //
 // 为什么样本池是**另一个文件**而不是写进 208 决策账：208 那一行记的是"发生了什么"，
-// 记不下"这一条算不算独立事件"（去重、防刷是判据，不是事实）。事实进 208，判据进这里，
+// 记不下"这一条算不算独立事件"（去重、防刷、锚都是判据，不是事实）。事实进 208，判据进这里，
 // 两边各自能重放——这正是判据④「删池不丢历史账」的落法：删掉 `.zd-evo/` 只丢**派生读数**，
 // 208 那本账一行不少（`EvoSamplePoolTest·判据④…` 用例逐行核对条数）。
 //
-// 边界：不建表、不联网、不写 App 私有目录；域不在 473 登记表里 ⇒ 连文件都不建（fail-closed）。
+// ⑬（拍板补丁）：一行带 `anchorKind`＋`anchor` 两格。**读侧也要核锚类型**——池是 append-only 的
+// 文件，手改一行就能伪造样本；核锚类型等于把"手改"挡在计数之外（对不上的行不算数，
+// 与坏行同一处置）。核的是"这一域声明的锚类型"，不是行里那个字符串自己说了算。
+//
+// 边界：不建表、不联网、不写 App 私有目录；域不在 473 登记表里、或没声明锚 ⇒ 连文件都不建（fail-closed）。
 package com.example.zhengdao.baopu.evolution.samples
 
 import com.example.zhengdao.baopu.consequence.CanaryCapability
@@ -38,9 +42,9 @@ internal object EvoSamplePool {
     /**
      * 读一个域的事件（文件不在 ⇒ 空表：一个还没跑过的域是合法状态，不是错误）。
      *
-     * 三类行**跳过不算数**（都只 log 一句，不抛）：坏 JSON、认不出的域、
-     * 域与文件名对不上的行——最后那类防的是"把 A 域的行粘进 B 域文件"，
-     * 粘错了读数会虚高，而虚高的样本正是这批要治的病。
+     * 四类行**跳过不算数**（都只 log 一句，不抛）：坏 JSON、认不出的域、域与文件名对不上的行、
+     * 锚类型与注册表对不上的行（⑬）。后两类防的是"把 A 域的行粘进 B 域""手改一行骗样本"——
+     * 粘错/改错会让读数虚高，而虚高的样本正是这批要治的病。
      */
     fun read(wsRoot: File, domain: String): List<EvoSampleEvent> {
         val f = fileOf(wsRoot, domain)
@@ -59,6 +63,8 @@ internal object EvoSamplePool {
      */
     fun append(wsRoot: File, event: EvoSampleEvent): Boolean = runCatching {
         if (CanaryCapability.ofWire(event.domain) == null) return@runCatching false
+        // ⑫：无锚域不落——不给"没定义什么叫一次"的域攒样本（攒了也只能"不计"，纯属脏盘）。
+        if (EvoAnchorRegistry.of(event.domain) == null) return@runCatching false
         val f = fileOf(wsRoot, event.domain)
         val dir = f.parentFile ?: return@runCatching false
         if (!dir.isDirectory && !dir.mkdirs()) return@runCatching false
@@ -86,7 +92,7 @@ internal object EvoSamplePool {
         return written
     }
 
-    /** 一行 → 事件（坏行/域不符 ⇒ null；见 [read] 的口径）。 */
+    /** 一行 → 事件（坏行/域不符/锚不符 ⇒ null；见 [read] 的口径）。 */
     internal fun parse(raw: String, domain: String): EvoSampleEvent? {
         val line = raw.trim()
         if (line.isEmpty()) return null
@@ -94,10 +100,16 @@ internal object EvoSamplePool {
         if (o.optString("domain") != domain) return null
         val eventId = o.optString("event")
         val kind = o.optString("kind")
-        if (eventId.isEmpty() || kind.isEmpty()) return null
+        val anchorKind = o.optString("anchorKind")
+        val anchor = o.optString("anchor")
+        if (eventId.isEmpty() || kind.isEmpty() || anchor.isEmpty()) return null
+        // ⑬：锚类型以**注册表**为准。行里写别的（含留空、写自造值）一律不算数。
+        if (EvoAnchorRegistry.of(domain)?.wire != anchorKind) return null
         return runCatching {
             EvoSampleEvent(
                 domain = domain,
+                anchorKind = anchorKind,
+                anchor = anchor,
                 sessionId = o.optLong("session", -1L),
                 eventId = eventId,
                 kind = kind,
@@ -110,6 +122,8 @@ internal object EvoSamplePool {
     internal fun toLine(event: EvoSampleEvent): String = JSONObject()
         .put("v", EvoSampleRules.SCHEMA)
         .put("domain", event.domain)
+        .put("anchorKind", event.anchorKind)
+        .put("anchor", event.anchor)
         .put("session", event.sessionId)
         .put("event", event.eventId)
         .put("kind", event.kind)

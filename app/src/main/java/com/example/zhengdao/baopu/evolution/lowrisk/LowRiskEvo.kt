@@ -34,6 +34,7 @@ import com.example.zhengdao.baopu.consequence.CanaryMetrics
 import com.example.zhengdao.baopu.consequence.CanaryObservation
 import com.example.zhengdao.baopu.consequence.CanarySample
 import com.example.zhengdao.baopu.consequence.ConsequenceWiring
+import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring
 import com.example.zhengdao.core.RunLog
 
 /**
@@ -75,10 +76,16 @@ internal object LowRiskEvo {
         atMs: Long,
         askedHuman: Boolean = false,
         permanentLoss: Boolean = false,
-    ): Boolean = ConsequenceWiring.observe(
-        CanaryObservation(capability.wire, ok = ok, askedHuman = askedHuman, permanentLoss = permanentLoss),
-        atMs,
-    )
+    ): Boolean {
+        val stamped = ConsequenceWiring.observe(
+            CanaryObservation(capability.wire, ok = ok, askedHuman = askedHuman, permanentLoss = permanentLoss),
+            atMs,
+        )
+        // 第五百八十九批（生产调用点②，全仓只此一处）：观察账落完，同一件事也进样本池。
+        // 只攒不改判：`stamped` 原样返回，样本攒不上不影响这条观察（`recordObservation` 不抛）。
+        EvoSampleWiring.recordObservation(capability, atMs)
+        return stamped
+    }
 
     /**
      * 红线拒并记账（判据④的"记账"半边；"拒"已由 [LowRiskGate] 出过结论）。
