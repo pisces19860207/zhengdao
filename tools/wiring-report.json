@@ -5,8 +5,8 @@
   "counts": {
     "total": 50,
     "wired": 31,
-    "byDesign": 19,
-    "pending": 0,
+    "byDesign": 16,
+    "pending": 3,
     "unwiredTotal": 19,
     "companion": 49,
     "portInterfaces": 3,
@@ -538,7 +538,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 1 次（测试用≠生产接上）",
       "members": {
         "functions": [],
         "properties": []
@@ -565,7 +565,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "端口接口",
-      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 0 处、只被 import 0 处）；同文件内调用 5 处",
+      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 0 处、只被 import 0 处）；同文件内调用 5 处，测试里用了 8 次（测试用≠生产接上）",
       "members": {
         "functions": [],
         "properties": [
@@ -597,7 +597,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；生产里类型引用 1 处，同文件内调用 1 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；生产里类型引用 1 处，同文件内调用 1 处，测试里用了 3 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": []
@@ -858,7 +858,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 1 次（测试用≠生产接上）",
       "members": {
         "functions": [],
         "properties": []
@@ -885,7 +885,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 20 个方法（archiveOf、autonomyKindOf、bodyFileOf、candidate）但无人调；同文件内调用 8 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；类体 20 个方法（archiveOf、autonomyKindOf、bodyFileOf、candidate）但无人调；同文件内调用 8 处，测试里用了 23 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [
           "archiveOf",
@@ -1023,7 +1023,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 3 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": []
@@ -1050,7 +1050,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；类体 2 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处",
+      "reason": "生产 0 处；类体 2 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 2 次（测试用≠生产接上）",
       "members": {
         "functions": [],
         "properties": [
@@ -1080,7 +1080,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "端口接口",
-      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 1 处、只被 import 0 处）；注释/字符串提及 2 次",
+      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 1 处、只被 import 0 处）；测试里用了 1 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [
           "reauthorize",
@@ -1579,7 +1579,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "端口接口",
-      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 3 处、只被 import 0 处）；注释/字符串提及 4 次",
+      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 3 处、只被 import 0 处）；测试里用了 1 次（测试用≠生产接上），注释/字符串提及 4 次",
       "members": {
         "functions": [
           "append",
@@ -1625,7 +1625,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 18 处，生产里类型引用 1 处，只被 import 4 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 18 处，生产里类型引用 1 处，只被 import 4 处，测试里用了 23 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [],
         "properties": []
@@ -1824,7 +1824,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 2 个方法（append、readAll）但无人调；同文件内调用 2 处",
+      "reason": "生产 0 处；类体 2 个方法（append、readAll）但无人调；同文件内调用 2 处，测试里用了 3 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "append",
@@ -2229,7 +2229,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；生产里属性引用 3 处，生产里类型引用 1 处，只被 import 2 处，同文件内调用 1 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；生产里属性引用 3 处，生产里类型引用 1 处，只被 import 2 处，同文件内调用 1 处，测试里用了 57 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [
           "ofWire"
@@ -2291,7 +2291,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，注释/字符串提及 3 次",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，测试里用了 23 次（测试用≠生产接上），注释/字符串提及 3 次",
       "members": {
         "functions": [
           "ofWire"
@@ -2320,7 +2320,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 2 个方法（parse、toJson）但无人调；生产里类型引用 12 处，只被 import 3 处，同文件内调用 4 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；类体 2 个方法（parse、toJson）但无人调；生产里类型引用 12 处，只被 import 3 处，同文件内调用 4 处，测试里用了 12 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [
           "parse",
@@ -2404,7 +2404,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 1 个方法（judge）但无人调；同文件内调用 3 处，注释/字符串提及 5 次",
+      "reason": "生产 0 处；类体 1 个方法（judge）但无人调；同文件内调用 3 处，测试里用了 2 次（测试用≠生产接上），注释/字符串提及 5 次",
       "members": {
         "functions": [
           "judge"
@@ -2778,7 +2778,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "人工裁定",
-      "reason": "生产 0 处；开机定策的纯算式：只吃入参（同工作区同历史⇒同一行，判据⑩），KDoc 明写不读盘；调用点在 QuietMode 内部（BootStrategy.click）。2026-11-11 用户裁定 by-design；同文件内调用 1 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；开机定策的纯算式：只吃入参（同工作区同历史⇒同一行，判据⑩），KDoc 明写不读盘；调用点在 QuietMode 内部（BootStrategy.click）。2026-11-11 用户裁定 by-design；同文件内调用 1 处，测试里用了 17 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [
           "noDataWhy",
@@ -2809,7 +2809,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 1 次（测试用≠生产接上）",
       "members": {
         "functions": [],
         "properties": []
@@ -3278,7 +3278,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "端口接口",
-      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 0 处、只被 import 0 处）；同文件内调用 4 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 0 处、只被 import 0 处）；同文件内调用 4 处，测试里用了 8 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": [
@@ -3320,7 +3320,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；生产里类型引用 1 处，同文件内调用 1 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；生产里类型引用 1 处，同文件内调用 1 处，测试里用了 3 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": []
@@ -3353,7 +3353,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 2 处，只被 import 1 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 2 处，只被 import 1 处，测试里用了 26 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [],
         "properties": []
@@ -3397,7 +3397,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；类体 1 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 6 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；类体 1 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 6 处，测试里用了 9 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": [
@@ -3426,7 +3426,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "端口接口",
-      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 1 处、只被 import 1 处）",
+      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 1 处、只被 import 1 处）；测试里用了 8 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "decide"
@@ -3710,7 +3710,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；生产里属性引用 8 处，生产里类型引用 3 处，只被 import 1 处，同文件内调用 1 处",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；生产里属性引用 8 处，生产里类型引用 3 处，只被 import 1 处，同文件内调用 1 处，测试里用了 22 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "ofWire"
@@ -3802,7 +3802,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 2 个方法（parse、toJson）但无人调；生产里类型引用 1 处，只被 import 1 处，同文件内调用 3 处",
+      "reason": "生产 0 处；类体 2 个方法（parse、toJson）但无人调；生产里类型引用 1 处，只被 import 1 处，同文件内调用 3 处，测试里用了 1 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "parse",
@@ -3849,7 +3849,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 4 处，生产里类型引用 1 处，注释/字符串提及 3 次",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 4 处，生产里类型引用 1 处，测试里用了 20 次（测试用≠生产接上），注释/字符串提及 3 次",
       "members": {
         "functions": [],
         "properties": []
@@ -3903,7 +3903,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 2 个方法（landed、rolledBack）但无人调；同文件内调用 6 处",
+      "reason": "生产 0 处；类体 2 个方法（landed、rolledBack）但无人调；同文件内调用 6 处，测试里用了 1 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "landed",
@@ -4274,7 +4274,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；类体 4 个常量/属性、0 个方法 ⇒ 纯常量；注释/字符串提及 5 次",
+      "reason": "生产 0 处；类体 4 个常量/属性、0 个方法 ⇒ 纯常量；测试里用了 2 次（测试用≠生产接上），注释/字符串提及 5 次",
       "members": {
         "functions": [],
         "properties": [
@@ -4306,7 +4306,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；注释/字符串提及 1 次",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；测试里用了 21 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": []
@@ -4333,7 +4333,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；注释/字符串提及 3 次",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；测试里用了 6 次（测试用≠生产接上），注释/字符串提及 3 次",
       "members": {
         "functions": [],
         "properties": [
@@ -4360,9 +4360,9 @@
       "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
       "declLine": 105,
       "status": "unwired",
-      "bucket": "无调用点·by-design",
-      "byDesign": "只被测试用",
-      "reason": "生产 0 处、无任何生产引用；测试源里出现 22 次 ⇒ 只被测试用；注释/字符串提及 3 次",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（fix）但无人调；测试里用了 22 次（测试用≠生产接上），注释/字符串提及 3 次",
       "members": {
         "functions": [
           "fix"
@@ -4391,7 +4391,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；注释/字符串提及 1 次",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；测试里用了 24 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [],
         "properties": []
@@ -4418,7 +4418,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 2 次（测试用≠生产接上）",
       "members": {
         "functions": [],
         "properties": []
@@ -4445,7 +4445,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "端口接口",
-      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 0 处、只被 import 0 处）；注释/字符串提及 3 次",
+      "reason": "生产 0 处；接口是契约不是装配件，调用点在实现类上（申报文件之外：类型引用 0 处、只被 import 0 处）；测试里用了 1 次（测试用≠生产接上），注释/字符串提及 3 次",
       "members": {
         "functions": [
           "emitInterrupt",
@@ -4507,9 +4507,9 @@
       "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
       "declLine": 333,
       "status": "unwired",
-      "bucket": "无调用点·by-design",
-      "byDesign": "只被测试用",
-      "reason": "生产 0 处、无任何生产引用；测试源里出现 37 次 ⇒ 只被测试用",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 22 个方法（auditFindings、briefOf、candidatesOf、count）但无人调；测试里用了 37 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "auditFindings",
@@ -4586,7 +4586,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，测试里用了 22 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [
           "ofWire"
@@ -4615,7 +4615,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，测试里用了 13 次（测试用≠生产接上）",
       "members": {
         "functions": [
           "ofWire"
@@ -4679,9 +4679,9 @@
       "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
       "declLine": 165,
       "status": "unwired",
-      "bucket": "无调用点·by-design",
-      "byDesign": "只被测试用",
-      "reason": "生产 0 处、无任何生产引用；测试源里出现 50 次 ⇒ 只被测试用；注释/字符串提及 11 次",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 10 个方法（executeStopLoss、fileIn、installUnfinishedDirs、ratify）但无人调；测试里用了 50 次（测试用≠生产接上），注释/字符串提及 11 次",
       "members": {
         "functions": [
           "executeStopLoss",
@@ -4737,7 +4737,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯常量",
-      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 1 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 1 处，测试里用了 5 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [],
         "properties": []
@@ -5041,7 +5041,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 4 个方法（dueByDay、shouldStamp、startOfDay、summaryLine）但无人调；同文件内调用 4 处，注释/字符串提及 2 次",
+      "reason": "生产 0 处；类体 4 个方法（dueByDay、shouldStamp、startOfDay、summaryLine）但无人调；同文件内调用 4 处，测试里用了 15 次（测试用≠生产接上），注释/字符串提及 2 次",
       "members": {
         "functions": [
           "dueByDay",
@@ -5873,7 +5873,7 @@
       "status": "unwired",
       "bucket": "无调用点·待判",
       "byDesign": "",
-      "reason": "生产 0 处；类体 4 个方法（amendLine、precheckLine、reissueAck、startLine）但无人调；生产里类型引用 1 处，同文件内调用 1 处，注释/字符串提及 1 次",
+      "reason": "生产 0 处；类体 4 个方法（amendLine、precheckLine、reissueAck、startLine）但无人调；生产里类型引用 1 处，同文件内调用 1 处，测试里用了 4 次（测试用≠生产接上），注释/字符串提及 1 次",
       "members": {
         "functions": [
           "amendLine",
@@ -5969,7 +5969,7 @@
       "status": "unwired",
       "bucket": "无调用点·by-design",
       "byDesign": "纯 DTO",
-      "reason": "生产 0 处；类体 3 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处，注释/字符串提及 2 次，另有 81 处同名但归属不唯一",
+      "reason": "生产 0 处；类体 3 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处，测试里用了 42 次（测试用≠生产接上），注释/字符串提及 2 次，另有 81 处同名但归属不唯一",
       "members": {
         "functions": [],
         "properties": [
@@ -6090,6 +6090,11 @@
       "command": "grep -rn \"ReflectionWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
     },
     {
+      "name": "EmergencyWiring",
+      "bucket": "无调用点·待判",
+      "command": "grep -rn \"EmergencyWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+    },
+    {
       "name": "BootInterrupt",
       "bucket": "无调用点·by-design",
       "command": "grep -rn \"BootInterrupt\" app/src/main app/src/test app/src/androidTest --include=*.kt"
@@ -6100,14 +6105,9 @@
       "command": "grep -rn \"LearnWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
     },
     {
-      "name": "EmergencyWiring",
-      "bucket": "无调用点·by-design",
-      "command": "grep -rn \"EmergencyWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
-    },
-    {
-      "name": "PreReadWiring",
-      "bucket": "有调用点",
-      "command": "grep -rn \"PreReadWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+      "name": "BootCheck",
+      "bucket": "无调用点·待判",
+      "command": "grep -rn \"BootCheck\" app/src/main app/src/test app/src/androidTest --include=*.kt"
     }
   ]
 }

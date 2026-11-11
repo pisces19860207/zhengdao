@@ -5,8 +5,8 @@
   "counts": {
     "total": 50,
     "wired": 31,
-    "byDesign": 19,
-    "pending": 0,
+    "byDesign": 16,
+    "pending": 3,
     "unwiredTotal": 19,
     "companion": 49,
     "portInterfaces": 3,
@@ -297,8 +297,8 @@
       "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
       "declLine": 105,
       "kind": "enum",
-      "bucket": "无调用点·by-design",
-      "byDesign": "只被测试用",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
       "callCount": 0
     },
     {
@@ -342,8 +342,8 @@
       "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
       "declLine": 333,
       "kind": "object",
-      "bucket": "无调用点·by-design",
-      "byDesign": "只被测试用",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
       "callCount": 0
     },
     {
@@ -351,8 +351,8 @@
       "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
       "declLine": 165,
       "kind": "object",
-      "bucket": "无调用点·by-design",
-      "byDesign": "只被测试用",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
       "callCount": 0
     },
     {
