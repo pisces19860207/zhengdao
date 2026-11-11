@@ -128,19 +128,23 @@ class GovernanceStateLeaseSectionTest {
     // 第五百八十八批：登记表补登记 evolution（517 漏登的读档线值，缺省灰度）⇒ 同款生长。
     // 新键按 String 哈希落进 persona_organize 与 prod_eval 之间（键序独立复算过，不是照抄
     // 本次输出）：去掉 evolution 后与上一版逐字节相同，其余七段的键序与字节一个不动。
+    // 第五百六十八批 B 域①：登记表补 judgment_threshold（缺省灰度）⇒ 第 13 个键触发
+    // HashMap 16→32 扩容，全表重排（12 键的相对序整个变了——扩容重哈希，不是插序微调）；
+    // 新序按 spread&(32-1) 独立复算，与失败现场逐字节吻合后落笔，其余七段一个不动。
     private val goldenGray =
-        "{\"wish\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
-            "\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
-            "\"event_trigger\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
-            "\"memory_import\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+        "{\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"orchestration\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
             "\"reflection_auto_edit\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
-            "\"nocturnal_patrol\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
-            "\"data_repair\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"persona_organize\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
             "\"evolution\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"wish\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"event_trigger\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
+            "\"memory_import\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"nocturnal_patrol\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"data_repair\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"prod_eval\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
-            "\"scout\":{\"band\":\"off\",\"cn\":\"关闭\"}}"
+            "\"scout\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
+            "\"judgment_threshold\":{\"band\":\"canary\",\"cn\":\"灰度\"}}"
     private val goldenConflicts = "{\"pending_replay\":2}"
     private val goldenIdentity =
         "{\"id\":\"zdx-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\",\"state\":\"active\"}"

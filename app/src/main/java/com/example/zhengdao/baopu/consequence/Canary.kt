@@ -115,6 +115,14 @@ internal enum class CanaryCapability(
      * 变的只是「账上真有 FULL 行时读得出来」这一条被吞掉的路。
      */
     EVOLUTION("evolution", "进化深度", CanaryBand.CANARY, "evolution", "只供深度裁定读档；不新开动档入口"),
+
+    /**
+     * 568-B 域①判定阈值：组闸重问阈值（`groupReaskThreshold`，97 批）的**区间内自调**。
+     * 已定区间 1–10 是 122 拍板（[com.example.zhengdao.baopu.policy.Policy] 的 require 与
+     * 读表器同一把尺）：候选只在区间内挪，出区间 ⇒ 拒并记账（要人批的那一类归 568-C）。
+     * 缺省灰度档：调整照常判，但每一次提议都落观察账；档位关闭 ⇒ 不自调（政策表原值照用）。
+     */
+    JUDGMENT_THRESHOLD("judgment_threshold", "判定阈值", CanaryBand.CANARY, "judgment_threshold", "组闸重问阈值只在 1–10 内挪；出区间拒并记账"),
     ;
 
     companion object {

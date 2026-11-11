@@ -42,6 +42,14 @@ internal data class Policy(
         /** 组闸默认 N（第九十七批原值）：被拒后攒几次申请再弹。 */
         const val GROUP_REASK_THRESHOLD = 3
 
+        /**
+         * 组闸重问阈值的**已定区间**（第一百二十二批拍板：只许 1–10）。
+         * 命名出来只做一件事：让 568-B 域①的区间内自调（`MidRiskEvo`）与 require、
+         * 读表器用同一把尺——区间本身要人拍板，拍板的结果只有这一处。
+         */
+        const val GROUP_REASK_MIN = 1
+        const val GROUP_REASK_MAX = 10
+
         /** eval 过线默认值（第八十八批原值）。 */
         const val EVAL_FLOOR = 0.8
 
@@ -160,7 +168,7 @@ internal data class ApprovalPolicy(
     val riskLevels: Map<EvolutionRiskCategory, EvolutionRisk>,
 ) {
     init {
-        require(groupReaskThreshold in 1..10) {
+        require(groupReaskThreshold in Policy.GROUP_REASK_MIN..Policy.GROUP_REASK_MAX) {
             "groupReaskThreshold 越界：$groupReaskThreshold（只许 1–10）"
         }
         require(riskLevels.keys == EvolutionRiskCategory.entries.toSet()) {

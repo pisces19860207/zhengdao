@@ -20,7 +20,7 @@
 //
 // ── 拍板补丁（2026-11-11 晚，⑪⑫⑬）：**一条样本得先有"锚"** ────────────────────
 // 「独立事件」这句话要落地，得先回答"凭什么说这是**同一件事**"。所以每个域声明一种**锚类型**
-// （[EvoAnchorKind]，闭集四格，[EvoAnchorRegistry] 是唯一真相）：
+// （[EvoAnchorKind]，闭集，[EvoAnchorRegistry] 是唯一真相；568-B 起按派工逐批扩格）：
 //   · 技能＝候选提案、提示词尾部＝尾段版本、记忆组织＝收编批次、调度降频＝抽检轮次；
 //   · **同一域内同一锚值只算一次**（⑪：暗卫连开五次若都在同一轮，就是同一件事的五次回声 ⇒ 计 1）；
 //   · **没有锚的域不计**，且在读数里标出来（⑫）——不给"没定义什么叫一次"的域发样本数；
@@ -39,7 +39,7 @@ package com.example.zhengdao.baopu.evolution.samples
 import com.example.zhengdao.baopu.consequence.CanaryCapability
 
 /**
- * 锚类型（**闭集四格**）：这一域的"一次独立事件"按什么认身份。
+ * 锚类型（**闭集**）：这一域的"一次独立事件"按什么认身份。
  *
  * 线值落盘就是稳定键（[wire]），改字面量＝老行读不出来（同 `ConsequenceEvidence` 的纪律）。
  */
@@ -56,6 +56,12 @@ internal enum class EvoAnchorKind(val wire: String, val cn: String) {
 
     /** 调度降频／暗卫：一趟抽检轮次（锚值＝轮次；同一轮里连开几次是同一件事）。 */
     PATROL_ROUND("patrol_round", "抽检轮次"),
+
+    /**
+     * 568-B 对话域（判定阈值／相处规则候选）：一次对话轮次（589 拍板①：锚＝`turn:` 标——
+     * 同一轮里的多次事件是同一件事，只计 1；没有轮次可取时兜底 `at:`，不硬造轮次号）。
+     */
+    CONV_TURN("conv_turn", "对话轮次"),
     ;
 
     companion object {
@@ -82,6 +88,8 @@ internal object EvoAnchorRegistry {
         CanaryCapability.PROMPT_TAIL to EvoAnchorKind.TAIL_VERSION,
         CanaryCapability.MEMORY_IMPORT to EvoAnchorKind.IMPORT_BATCH,
         CanaryCapability.NOCTURNAL_PATROL to EvoAnchorKind.PATROL_ROUND,
+        // 568-B 域①判定阈值：对话域（未批准/同意都发生在会话轮内）⇒ 锚＝轮次（589 拍板①）。
+        CanaryCapability.JUDGMENT_THRESHOLD to EvoAnchorKind.CONV_TURN,
     )
 
     /** 这一域声明了哪种锚（null＝无锚：不计、标注）。 */
@@ -93,7 +101,7 @@ internal object EvoAnchorRegistry {
      *
      * 兜底不是凑数——[EvoAnchorKind.PATROL_ROUND] 的"一轮"就是**当天**（暗卫每天最多一趟），
      * 所以同一天连开五次落到同一个 `round:<epochDay>` 上，⑪ 那句"只计 1 次"由此成立；
-     * 其余三种的兜底是 `at:<毫秒>`，意思是"没有身份就拿时刻当身份"——它**不合并**任何东西，
+     * 其余各格的兜底是 `at:<毫秒>`，意思是"没有身份就拿时刻当身份"——它**不合并**任何东西，
      * 只是让行落得下去、读得回来，且不会假装比实际更独立。
      */
     fun anchorOf(kind: EvoAnchorKind, atMs: Long, supplied: String): String = when {
@@ -148,7 +156,7 @@ internal data class EvoSampleEvent(
 ) {
     init {
         require(CanaryCapability.ofWire(domain) != null) { "没登记在册的域「$domain」：样本池按登记表分文件，不许自造域" }
-        require(EvoAnchorKind.ofWire(anchorKind) != null) { "认不出的锚类型「$anchorKind」：锚是闭集四格，不许自造" }
+        require(EvoAnchorKind.ofWire(anchorKind) != null) { "认不出的锚类型「$anchorKind」：锚是闭集，不许自造" }
         require(EvoAnchorRegistry.of(domain)?.wire == anchorKind) {
             "域的锚类型与注册表不一致（$domain 声明的是 ${EvoAnchorRegistry.of(domain)?.wire ?: "无锚"}，" +
                 "这条写的是 $anchorKind）：⑬ 池内 anchorKind 必须与注册表一致"

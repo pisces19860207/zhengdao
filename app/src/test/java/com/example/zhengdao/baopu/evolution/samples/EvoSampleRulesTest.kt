@@ -209,14 +209,15 @@ class EvoSampleRulesTest {
     }
 
     @Test
-    fun `判据⑫_四域锚类型声明齐`() {
+    fun `判据⑫_锚类型声明齐_低风险四域加中风险域`() {
         val declared = EvoAnchorRegistry.DECLARED
-        assertEquals("四域各一条，不能少也不能多", 4, declared.size)
+        assertEquals("五域各一条，不能少也不能多（589 四域＋568-B 域①）", 5, declared.size)
         assertEquals(EvoAnchorKind.SKILL_PROPOSAL, declared[CanaryCapability.REFLECTION_AUTO_EDIT])
         assertEquals(EvoAnchorKind.TAIL_VERSION, declared[CanaryCapability.PROMPT_TAIL])
         assertEquals(EvoAnchorKind.IMPORT_BATCH, declared[CanaryCapability.MEMORY_IMPORT])
         assertEquals(EvoAnchorKind.PATROL_ROUND, declared[CanaryCapability.NOCTURNAL_PATROL])
-        assertEquals("锚类型是闭集四格", 4, EvoAnchorKind.entries.size)
+        assertEquals("568-B 域①判定阈值＝对话域轮次（589 拍板①）", EvoAnchorKind.CONV_TURN, declared[CanaryCapability.JUDGMENT_THRESHOLD])
+        assertEquals("锚类型是闭集五格", 5, EvoAnchorKind.entries.size)
     }
 
     // ── 判据⑬：锚类型必须与注册表一致 ────────────────────────────────────

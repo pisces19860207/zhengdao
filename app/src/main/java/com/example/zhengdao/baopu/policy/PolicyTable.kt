@@ -145,7 +145,9 @@ internal object PolicyTable {
         val approvalObj = strictObject(root, "approval", "顶层")
         rejectUnknown(approvalObj, setOf("groupReaskThreshold", "riskLevels"), "approval")
         val threshold = strictInt(approvalObj, "groupReaskThreshold", "approval")
-        require(threshold in 1..10) { "approval.groupReaskThreshold 越界：$threshold（只许 1–10）" }
+        require(threshold in Policy.GROUP_REASK_MIN..Policy.GROUP_REASK_MAX) {
+            "approval.groupReaskThreshold 越界：$threshold（只许 1–10）"
+        }
 
         val risksObj = strictObject(approvalObj, "riskLevels", "approval")
         val riskKeys = EvolutionRiskCategory.entries.map { it.name }.toSet()

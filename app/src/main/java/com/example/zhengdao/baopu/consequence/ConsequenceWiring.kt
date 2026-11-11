@@ -304,6 +304,23 @@ internal object ConsequenceWiring {
     fun currentDepth(capability: String): EvolutionDepth =
         ConsequenceLedger.currentDepth(rows(), capability)
 
+    /**
+     * 现在生效的判定阈值调整值（568-B 域①，从账读；没有调整行 ⇒ null＝调用方用政策表原值）。
+     *
+     * 档位与深度同一把尺：账上有行才生效，被回滚的行不算。
+     */
+    fun currentThreshold(capability: String): Int? =
+        ConsequenceLedger.currentThreshold(rows(), capability)
+
+    /**
+     * 落一条判定阈值调整行（568-B 域①；**只转手**：区间判据在中风险门里判过才许调到这里，
+     * 本函数自己一条判都不加——与 [decideCanaryBand] 的「读的是账、算的是指标、写的还是账」同款边界）。
+     *
+     * @return 账落上没有（盘写不上只 log，不抛——记录是留痕不是闸门）
+     */
+    fun applyThresholdChange(c: ThresholdChange): Boolean =
+        stamp(ConsequenceLedger.draftOf(c), c.atMs, "判定阈值 ${c.capability}")
+
     /** 某能力的灰度观察样本（从账读，判据层拿它算指标）。 */
     fun samplesOf(capability: String): List<CanarySample> =
         ConsequenceLedger.samplesOf(rows(), capability)

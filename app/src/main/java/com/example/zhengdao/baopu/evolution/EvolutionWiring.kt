@@ -43,6 +43,7 @@ import com.example.zhengdao.baopu.DecisionLedger
 import com.example.zhengdao.baopu.agent.RoyalDecisionLedger
 import com.example.zhengdao.baopu.agent.RoyalVerdict
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
+import com.example.zhengdao.baopu.evolution.midrisk.MidRiskEvo
 import com.example.zhengdao.baopu.inspect.DeviationEntry
 import com.example.zhengdao.baopu.inspect.DeviationLedger
 import com.example.zhengdao.baopu.policy.AdmissionState
@@ -203,6 +204,10 @@ internal object EvolutionWiring {
         // （达标自动转全开／坏消息自动回灰，判定全在 ConsequenceWiring.decideCanaryBand，
         // 单域算不动只 log 不带崩别域；域清单见 evolution/lowrisk/LowRiskEvo.CAPABILITIES）。
         LowRiskEvo.sweepOnSettle(nowMs)
+        // 第五百六十八批 B：中风险域扫档一行——同一个收工节拍；升档方向先过 589 的样本门
+        // （样本不足不许转正，拒并记账），回灰方向照走梯子。
+        // 域清单见 evolution/midrisk/MidRiskEvo.CAPABILITIES。
+        MidRiskEvo.sweepOnSettle(nowMs)
     }
 
     /** 触发 a 的换算（376 留白"谁读偏差账换成 MisjudgmentRow"的答案）：kind 线值＝判据键。 */

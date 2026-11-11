@@ -25,7 +25,7 @@ import com.example.zhengdao.baopu.DecisionDraft
 import com.example.zhengdao.baopu.DecisionKind
 import com.example.zhengdao.baopu.DecisionRecord
 
-/** 208 里这一族账的 evidence 前缀（五族各一个，互不覆盖）。 */
+/** 208 里这一族账的 evidence 前缀（一族一个，互不覆盖；第六族 `threshold:` 为 568-B 域①所加，照 517 加 `depth:` 的先例）。 */
 internal object ConsequenceEvidence {
     const val CANARY: String = "canary:"
     const val CANARY_RUN: String = "canary-run:"
@@ -33,6 +33,7 @@ internal object ConsequenceEvidence {
     const val COMPENSATION: String = "compensation:"
     const val IDENTITY: String = "identity:"
     const val ADVISOR: String = "advisorOpinion:"
+    const val THRESHOLD: String = "threshold:"
 
     /** 前缀后面第一格是能力名，读到下一个冒号为止（能力名里没有冒号 ⇒ 两格就够）。 */
     fun capabilityOf(evidence: String, prefix: String): String? {
@@ -154,6 +155,42 @@ internal object ConsequenceLedger {
         return EvolutionDepth.ofWire(latest.after) ?: EvolutionDepth.DEFAULT
     }
 
+    // ── ③′ 判定阈值调整行（568-B 域①；复用 tool_grant，与档位/深度同一取舍）──────
+
+    /**
+     * 阈值调整行。与 [draftOf] 的三条件同款：区间判据在中风险门里判过才调到这里，
+     * 这里只做**机械兜底**（from≠to、两值都可读），判据拒的返回 null 不产草稿。
+     */
+    fun draftOf(c: ThresholdChange): DecisionDraft? {
+        if (c.before == c.after) return null
+        return DecisionDraft(
+            kind = DecisionKind.TOOL_GRANT,
+            actor = DecisionActor.AUTO,
+            reason = "判定阈值 ${c.capability}：${c.before}→${c.after}（${c.why}）",
+            evidence = "${ConsequenceEvidence.THRESHOLD}${c.capability}:${c.after}",
+            before = c.before.toString(),
+            after = c.after.toString(),
+            atMs = c.atMs,
+            rollbackRef = "${ConsequenceEvidence.THRESHOLD}${c.capability}:${c.before}",
+            reversible = true,
+        )
+    }
+
+    /**
+     * 现在生效的判定阈值（从账读；没有调整行或读不出数 ⇒ null＝调用方用政策表原值）。
+     *
+     * `!rolledBack` 与 [currentCanaryBand]/[currentDepth] 同一格：被回滚的调整行还有效，
+     * 就等于「撤销只改得动账、改不动闸」。
+     */
+    fun currentThreshold(rows: List<DecisionRecord>, capability: String): Int? {
+        val prefix = "${ConsequenceEvidence.THRESHOLD}$capability:"
+        val latest = rows
+            .filter { it.kind == DecisionKind.TOOL_GRANT && !it.rolledBack && it.evidence.startsWith(prefix) }
+            .maxByOrNull { it.atMs }
+            ?: return null
+        return latest.after.toIntOrNull()
+    }
+
     // ── ④ 赔付（新 kind）──────────────────────────────────────────────────
 
     /**
@@ -251,6 +288,19 @@ internal data class CanaryObservation(
     val ok: Boolean,
     val askedHuman: Boolean = false,
     val permanentLoss: Boolean = false,
+)
+
+/**
+ * 一次判定阈值调整（568-B 域①的落账形状；与 [CanaryChange]/[DepthChange] 同一家族）。
+ *
+ * 区间判据不在本类里：提议值是否在已定区间内，由中风险门（`MidRiskEvo`）判过才调到这里。
+ */
+internal data class ThresholdChange(
+    val capability: String,
+    val before: Int,
+    val after: Int,
+    val atMs: Long,
+    val why: String,
 )
 
 /**

@@ -9,6 +9,11 @@
 //   用户选「本次会话 / 一直 / 取消」，同意才落解锁；被拒后按 N 次限流再问。
 //   59 批那套「自解锁」口径作废（交付报告里附改写前后对照）。
 //
+// 第五百六十八批 B（域①判定阈值）：未批准/无人应答/同意三处各多一行**提议**（`MidRiskEvo`：
+// 阈值 ±1 自调，区间 1–10 内才自动挪，出区间拒并记账；档位关闭只暂缓），限流的"等几次"
+// 改用生效阈值（账上调整行优先、政策表原值兜底；没调整行＝与接线前逐字节同值）。
+// 本文件不判区间、不落账——那是 `MidRiskEvo` 的租约；这里只出事实（谁、几次、同意与否）。
+//
 // 三条设计口径：
 // 1. **卡就是 ask_user 那张卡**（零新 UI）：[GroupApprovalCard] 只产出
 //    [AskUserRequest]，落点是 `AskUserTool.sink`（引擎在 BaopuRuntime 里挂的
@@ -20,6 +25,8 @@
 //    注册表继续零 Android 依赖（JVM 直测）。行首 `[group]` 是可 grep 的锚。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.evolution.midrisk.MidRiskEvo
+import com.example.zhengdao.baopu.evolution.midrisk.ThresholdProposal
 import com.example.zhengdao.baopu.policy.Policy
 import com.example.zhengdao.baopu.policy.PolicyRuntime
 
@@ -150,33 +157,81 @@ internal class ToolGroupGate(
 
     /** 用户同意了（任何一种 scope）：清掉该组的计数与「卡在等」。 */
     fun noteApproved(sessionId: Long, group: ToolGroup) {
+        val base = effectiveThreshold()
         synchronized(lock) {
             val k = Key(sessionId, group)
             attempts.remove(k)
             nextAskAt.remove(k)
             pending.remove(k)
         }
+        // 第五百六十八批 B 域①（生产调用点②）：同意 ⇒ 问卡是有效的，提议阈值 −1（下次可以更快再问）。
+        // 区间内才自动挪、出区间拒并记账；限流语义（97 批）一字未动。
+        MidRiskEvo.proposeThresholdShift(
+            ThresholdProposal(
+                base = base,
+                delta = -1,
+                why = "用户同意「${group.key}」组",
+                sessionId = sessionId,
+                turnAnchor = currentTurnAnchor(),
+            ),
+            System.currentTimeMillis(),
+        )
     }
 
-    /** 用户点了取消：下次要再攒 [threshold] 次申请才弹。 */
+    /** 用户点了取消：下次要再攒几次申请才弹（次数＝生效阈值，见 [effectiveThreshold]）。 */
     fun noteDeclined(sessionId: Long, group: ToolGroup) {
+        val base = effectiveThreshold()
         synchronized(lock) {
             val k = Key(sessionId, group)
             val n = attempts[k] ?: 1
-            nextAskAt[k] = n + threshold
+            nextAskAt[k] = n + base
             pending.remove(k)
         }
+        // 第五百六十八批 B 域①（生产调用点①）：未批准 ⇒ 提议阈值 +1（下次等更久再弹）。
+        // 只提议不拦截：本函数的限流语义（97 批）一字未动；区间内才自动挪，出区间拒并记账。
+        MidRiskEvo.proposeThresholdShift(
+            ThresholdProposal(
+                base = base,
+                delta = 1,
+                why = "用户未批准「${group.key}」组",
+                sessionId = sessionId,
+                turnAnchor = currentTurnAnchor(),
+            ),
+            System.currentTimeMillis(),
+        )
     }
 
     /** 没人应答（超时/没有界面）：与拒绝同一条限流，但审计来源不同。 */
     fun noteAbandoned(sessionId: Long, group: ToolGroup) {
+        val base = effectiveThreshold()
         synchronized(lock) {
             val k = Key(sessionId, group)
             val n = attempts[k] ?: 1
-            nextAskAt[k] = n + threshold
+            nextAskAt[k] = n + base
             pending.remove(k)
         }
+        // 第五百六十八批 B 域①（生产调用点③）：无人应答与拒绝同向 ⇒ 提议阈值 +1。
+        MidRiskEvo.proposeThresholdShift(
+            ThresholdProposal(
+                base = base,
+                delta = 1,
+                why = "无人应答「${group.key}」组（超时/无界面）",
+                sessionId = sessionId,
+                turnAnchor = currentTurnAnchor(),
+            ),
+            System.currentTimeMillis(),
+        )
     }
+
+    /**
+     * 生效阈值：568-B 域①的调整行优先（档位开着才生效），政策表原值（构造值）兜底。
+     * 没调整行/档位关闭 ⇒ 与接线前逐字节同值（缺省灰度 ⇒ 接线当天行为不变）。
+     */
+    private fun effectiveThreshold(): Int = MidRiskEvo.effectiveReaskThreshold(threshold)
+
+    /** 本轮对话锚（574 信箱；没有轮次 ⇒ 空串＝样本按时刻自记身份，不硬造轮次号）。 */
+    private fun currentTurnAnchor(): String =
+        TurnSourceWiring.currentTurnMessageId().takeIf { it > 0L }?.let { "turn:$it" } ?: ""
 
     /** 本会话对该组累计申请了几次（测试/报告用；不是判据本体）。 */
     fun attemptCount(sessionId: Long, group: ToolGroup): Int =

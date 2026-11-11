@@ -76,6 +76,9 @@ internal object LowRiskEvo {
         atMs: Long,
         askedHuman: Boolean = false,
         permanentLoss: Boolean = false,
+        sessionId: Long = 0L,
+        eventId: String = "",
+        anchor: String = "",
     ): Boolean {
         val stamped = ConsequenceWiring.observe(
             CanaryObservation(capability.wire, ok = ok, askedHuman = askedHuman, permanentLoss = permanentLoss),
@@ -83,7 +86,9 @@ internal object LowRiskEvo {
         )
         // 第五百八十九批（生产调用点②，全仓只此一处）：观察账落完，同一件事也进样本池。
         // 只攒不改判：`stamped` 原样返回，样本攒不上不影响这条观察（`recordObservation` 不抛）。
-        EvoSampleWiring.recordObservation(capability, atMs)
+        // 第五百六十八批 B：会话／事件号／锚值由调用方给（589 拍板：对话域锚＝轮次）；
+        // 不给就照 589 的缺省（会话 0、锚按注册表兜底），四域老调用一个字不用改。
+        EvoSampleWiring.recordObservation(capability, atMs, sessionId, eventId, anchor)
         return stamped
     }
 
