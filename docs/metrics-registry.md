@@ -48,6 +48,8 @@ JSON 形状：`{"pass": <n>, "card": <n>, "compress": <n>}`；账本根读不到
 
 ### 3. `gray` 灰度（506 登记表，逐能力当前档）
 
+> **第五百八十八批（2026-11-11）补登记 `evolution`**：口径**一个字没改**，仍是「登记表全量，一项一格」，形状版本 `v=3` 不动。变的是登记表补齐了漏掉的一项：517 起 `BaopuRuntime` 的左相读数 `canaryAvailable` 就按线值 `evolution` 读 `currentCanaryBand`，但当批只写了常量、没在 `Canary.kt`:`CanaryCapability` 里登记 ⇒ 读侧认不出、恒回落 `OFF`，写侧又按「没登记在册」把它的档位行全拒，这格读数从来没有真值可读。588 把 `evolution`（进化深度，缺省灰度）补进闭集 ⇒ 本段随之多一格；金样例 `GovernanceStateLeaseSectionTest.goldenGray` 按登记表生长更新（与 568-A 补 `prompt_tail` 同款），**其余七段的键序与字节一个不动**。新增「读档线值必须在注册表内」的源级门禁见 `CanaryReadWireGateTest`。
+
 | 名称 | 定义 | 来源 文件:函数 | 窗口 | 分母 0 怎么说 |
 |---|---|---|---|---|
 | `gray.<capability>` | 每项自动化能力**当前生效的灰度档**（off/canary/full；只认没被回滚的档位行，一条没有 ⇒ 登记表缺省档） | `app/src/main/java/com/example/zhengdao/baopu/consequence/ConsequenceLedger.kt`:`ConsequenceLedger.currentCanaryBand`（能力闭集＝`Canary.kt`:`CanaryCapability`；账本根读不到 ⇒ 整段 `unknown`） | 不适用（状态读数） | 不适用 |

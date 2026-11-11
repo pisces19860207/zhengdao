@@ -122,6 +122,9 @@ class GovernanceStateLeaseSectionTest {
     // 多一行；gray 的 JSON 键序是 org.json HashMap 迭代序（Java8 spread，String 哈希规范
     // 固定 ⇒ 可推算），新键落在 wish 与 event_trigger 之间——金样例按登记表生长更新，
     // 其余字节照旧逐字节钉死。
+    // 第五百八十八批：登记表补登记 evolution（517 漏登的读档线值，缺省灰度）⇒ 同款生长。
+    // 新键按 String 哈希落进 persona_organize 与 prod_eval 之间（键序独立复算过，不是照抄
+    // 本次输出）：去掉 evolution 后与上一版逐字节相同，其余七段的键序与字节一个不动。
     private val goldenGray =
         "{\"wish\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
@@ -132,6 +135,7 @@ class GovernanceStateLeaseSectionTest {
             "\"nocturnal_patrol\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"data_repair\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"persona_organize\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
+            "\"evolution\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"prod_eval\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"scout\":{\"band\":\"off\",\"cn\":\"关闭\"}}"
     private val goldenConflicts = "{\"pending_replay\":2}"

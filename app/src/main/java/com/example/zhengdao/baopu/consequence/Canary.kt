@@ -102,6 +102,19 @@ internal enum class CanaryCapability(
      * （`systemFinal` 尾巴上那一格；`CriteriaPitPackTest` 源级钉着落点）。
      */
     PROMPT_TAIL("prompt_tail", "提示词尾部", CanaryBand.CANARY, "prompt_tail", "只尾部追加；前段锁死（前缀判据）"),
+
+    /**
+     * 588 补登记：517 起 [com.example.zhengdao.baopu.BaopuRuntime] 的左相读数
+     * `canaryAvailable` 就按这个线值读档，但当批漏在 506 登记表里同步登记 ⇒
+     * [ConsequenceLedger.currentCanaryBand] 认不出它、恒回落 [CanaryBand.OFF]，
+     * 写侧 [CanaryLadder.refusalOf] 又按「没登记在册」把它的档位行全拒——
+     * 这格读数于是从来没有真值可读（代码在、功能没跑过）。
+     *
+     * 缺省灰度（与 516 `wish`／568-A `prompt_tail` 同款接法）：读档判断式一字不改，
+     * 仍只有 `FULL` 才让 `canaryAvailable=true` ⇒ 无账时深档门槛与修前一致，
+     * 变的只是「账上真有 FULL 行时读得出来」这一条被吞掉的路。
+     */
+    EVOLUTION("evolution", "进化深度", CanaryBand.CANARY, "evolution", "只供深度裁定读档；不新开动档入口"),
     ;
 
     companion object {
