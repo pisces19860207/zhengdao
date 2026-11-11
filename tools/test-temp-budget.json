@@ -1,10 +1,10 @@
 {
- "budget": 422,
- "measured": 422,
- "measuredAt": "2026-11-10",
- "measuredHow": "573（wt-573 @ chore/temp-migrate，基线 origin/main 969d5e897）：把 35 个「手工建临时目录且无 @After」的测试迁到 testkit/TempSandboxPool（底层走 564 的 TempSandbox）后，全量 :app:testDebugUnitTest 连跑两轮；两轮均 913 套件 / 10,534 例 / 0 失败 / 8 跳过，每轮跑完用 check-test-temp.py --list 数 app/build/**/tmp* 目录数，读数 424 / 424（第二轮增量 0）。2026-11-10 口径修正（ci #1936 红）：闸原先连 AGP 的 intermediates/**/tmp 与 JDK 的 jar_extract_*_tmp 一起数，换平台会凭空 +1（本机 424 / CI 425）。修正后只数测试暂存区，ci #1937 实测 422 ⇒ 水位随实测降到 422。",
- "perRunResidue": 422,
+ "budget": 380,
+ "measured": 380,
+ "measuredAt": "2026-11-11",
+ "measuredHow": "2026-11-11：ci #1945（dbab4ad3f）超预算 2 个（424 > 422）。给闸加「点名最新目录」诊断后（4b3205a05 / 69acbd27d），ci #1948 的清单把既有泄漏沙盒点了出来（mcp-captures、511-night-ledger*、health291-*、deviation363-*、repair408-*、repair419-*）；根子是十一个测试在 build/tmp 下建目录只建不删。给它们各加 @After 收口（97966be88）后，ci #1949 实测 380 ⇒ 水位 422→380。",
+ "perRunResidue": 380,
  "osTempGrowthPerRun": 0,
  "goal": 50,
- "note": "口径校准（573）：--scan-tests 实数 139 个（派工单写 138，为 11-09 时点）；逐文件复核后真正「手工建目录且零清理痕迹」的是 35 个（已迁），其余 104 个是 JUnit TemporaryFolder @Rule（after() 自带递归删除、不产生残留），按 564 判据②列不改并逐条写明清理方式（见 证道设计报告/附件-573/列不改-TemporaryFolder-104条.md）。迁移后 java.io.tmpdir 钉住的 testDebugUnitTest 里已无本批 35 个文件的前缀；剩余 424 个目录来自清单外的两类写法：File(\"build/tmp/...\") 相对路径（repair408-* / repair419-* / health291-* / 511-* …），以及另一批有清理痕迹却仍留沙盒的测试（opinion-wiring* / zd289-* / baopu-242-ledger* …）。这两类不在 573 清单口径内 ⇒ 水位按只降不升从 1000 收到 424，未达 goal=50；要继续往下压须另立单扩清单口径。系统临时区本仓前缀目录 4002→4002（增量 0）。｜2026-11-10：口径修正——tmp_anchors 跳过 intermediates，count_dirs 跳过 jar_extract_*；ci #1937 实测 422，水位 424→422（只降不升）。"
+ "note": "口径校准（573）：--scan-tests 实数 139 个（派工单写 138，为 11-09 时点）；逐文件复核后真正「手工建目录且零清理痕迹」的是 35 个（已迁），其余 104 个是 JUnit TemporaryFolder @Rule（after() 自带递归删除、不产生残留），按 564 判据②列不改并逐条写明清理方式（见 证道设计报告/附件-573/列不改-TemporaryFolder-104条.md）。迁移后 java.io.tmpdir 钉住的 testDebugUnitTest 里已无本批 35 个文件的前缀；剩余 424 个目录来自清单外的两类写法：File(\"build/tmp/...\") 相对路径（repair408-* / repair419-* / health291-* / 511-* …），以及另一批有清理痕迹却仍留沙盒的测试（opinion-wiring* / zd289-* / baopu-242-ledger* …）。这两类不在 573 清单口径内 ⇒ 水位按只降不升从 1000 收到 424，未达 goal=50；要继续往下压须另立单扩清单口径。系统临时区本仓前缀目录 4002→4002（增量 0）。｜2026-11-10：口径修正——tmp_anchors 跳过 intermediates，count_dirs 跳过 jar_extract_*；ci #1937 实测 422，水位 424→422（只降不升）。｜2026-11-11：十一个 inspect 测试补 @After 收口（cleanup-b571），ci #1949 实测 380，水位 422→380（只降不升）；闸同时新增「判红点名最新目录」诊断。"
 }
