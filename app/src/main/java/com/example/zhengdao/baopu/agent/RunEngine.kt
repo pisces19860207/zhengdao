@@ -2435,8 +2435,13 @@ internal class RunEngine(
                 // 第四百三十六批 A ③：判据与坑账的**运行时包摘要**接在 258 那句契约之后
                 // （尾巴追加 ⇒ 前面字节不动）。恒常追加、同版本字节相同——
                 // 见 CriteriaPitPack 的裁定三条（摘要／哈希去重／不混 438 的记忆分层）。
+                // 与上面两段同一条边界：`prefix` 为空时整段跳过（214 钉的"逐字节一致"照旧成立）。
                 systemText + "\n\n" + com.example.zhengdao.baopu.MediatorWiring.PROMPT_CONTRACT +
-                    com.example.zhengdao.baopu.CriteriaPitPack.systemSuffix()
+                    com.example.zhengdao.baopu.CriteriaPitPack.systemSuffix() +
+                    // 第五百五十批：相处模式段排在**最末**（`companionSuffix()` 自带 "\n\n" 前导）。
+                    // 恒常追加、两档各一种固定字节 ⇒ 只有"切换那一次"打掉前缀缓存（用户 2026-11-11
+                    // 裁定：省略＝没信号，模型分不清"这次没判"与"判成工作"，学习档会残留到下一轮）。
+                    com.example.zhengdao.baopu.MediatorWiring.companionSuffix()
             }
             // 第四百五十九批：把**这一步真正要发出去的** system 段只读抄一份（debug 默认开）。
             // 位置刻意放在拼装完成之后、发请求之前：抄到的就是这一次请求的原文；

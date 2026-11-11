@@ -2,7 +2,7 @@
   "_说明": "352③ public 面注册表（2026-11-01）。范围＝:policy 与 :core 的**顶层声明**（Kotlin 默认 public，无修饰符也算）。谁放宽：:policy 整批归 293（ffdf911b 宰相抽模块，只搬不改行为）；:core 主体归 240（5a63c0f0 终端解耦第一刀），KnowledgeBaseSummaries 归 301（63e5589a 摘要链接线），IssueCenter 归终端抽核（361fd310）、PathGuard 归终端第四刀（79c998c9）搬入。verdict＝能不能收紧：public 必要＝:app/:core 之间确有引用；internal 候选＝外部零引用，收紧要动模块源码（不在 352 租约，另行派单）。成员级（类内部 public 成员）不在本闸，走 code review。",
   "_闸": "tools/check-public-surface.py —— 扫描结果与本表逐条比对：未登记 ⇒ 红；登记已消失 ⇒ notice（顺手清表）。",
   "policy": {
-    "origin": "293（ffdf911b）：宰相抽 :policy 模块，只搬不改行为，可见性按 Kotlin 默认未收；406（bafd191b）新增 MediatorDecide（调解器决策级三权）",
+    "origin": "293（ffdf911b）：宰相抽 :policy 模块，只搬不改行为，可见性按 Kotlin 默认未收；406（bafd191b）新增 MediatorDecide（调解器决策级三权）；550 新增 CompanionMode/CompanionDecision/CompanionJudge（相处模式三档闭集＋纯判档＋≤3 行渲染）",
     "declarations": [
       {
         "name": "DecisionKind",
@@ -150,6 +150,27 @@
         "file": "MediatorDecide.kt",
         "external_refs": 40,
         "verdict": "public 必要（:app 侧 5 个测试文件 40 处在用；406 生产接线尚未落地——接线后若要收窄，须先搬测试或加 testFixtures，不能直接改 internal）"
+      },
+      {
+        "name": "CompanionMode",
+        "kind": "enum class",
+        "file": "CompanionMode.kt",
+        "external_refs": 0,
+        "verdict": "public 必要（550 相处模式档位闭集；:app 接线层读 DEFAULT／ofWire）"
+      },
+      {
+        "name": "CompanionDecision",
+        "kind": "data class",
+        "file": "CompanionMode.kt",
+        "external_refs": 0,
+        "verdict": "public 必要（550 判档产物；:app 接线层与测试读 mode/reason/explicit）"
+      },
+      {
+        "name": "CompanionJudge",
+        "kind": "object",
+        "file": "CompanionMode.kt",
+        "external_refs": 0,
+        "verdict": "public 必要（550 判档算式与模式段渲染；:app 接线层调 judge／segment）"
       }
     ]
   },

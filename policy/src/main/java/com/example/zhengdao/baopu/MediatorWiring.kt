@@ -30,6 +30,13 @@
 //     `reason`／`evidence`／`kind`／`sessionId`／那句失败日志的形状全部逐字节不变。
 //   · 没动——判据、档位机、词表、`PROMPT_MARK`／`PROMPT_CONTRACT` 那两句一个字。
 //   纪律 1 照旧成立：端口拿不到 `File`，落盘那套留在 :app，本文件仍然零 IO。
+//
+// 第五百五十批（2026-11-11）：加一条 **W5 相处模式**——左相在这里多判一件事：「用什么口吻」。
+//   · 判据本体在 [CompanionJudge]（本文件只搬运，与 W1/W2/W3 同一条纪律 3）；
+//   · 出口只走 system **尾部追加**（[companionSuffix]，恒常追加、固定字符串）；
+//   · 落账走**路线②**：只落 `RunLog` 一行人话（[companionLine]），不进任何账本
+//     ——理由写在 [companionLine] 的调用位（495/517 的行里没有可放的列）。
+//   · W1–W4 一个字没动，`logLine` 的字面也没动（258 把它钉死了，并进去就是改别人的判据）。
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.core.RunLog
@@ -121,6 +128,16 @@ object MediatorWiring {
     private var askedThisTurn = 0
 
     /**
+     * 本轮的相处模式判档（第五百五十批）；`null`＝这一进程还没经过 [onUserTurn]
+     * （引擎直跑工具、没有用户输入的那种轮次，与 [consultAsk] 的 `NO_SESSION` 同一口径）。
+     *
+     * 读取口 [companionSuffix] 对 `null` 落**默认工作档**而不是省略这一段：派工单 §一③
+     * 「判不出就用它」，加上模式段是**恒常追加**的（用户 2026-11-11 裁定：省略＝没信号，
+     * 模型分不清"这次没判"与"判成工作"，上一轮学习档的行为会残留到这一轮）。
+     */
+    private var companion: CompanionDecision? = null
+
+    /**
      * 一轮用户输入（**唯一**接线点，控制器里只此一处）。
      *
      * @param userText 用户原话（界面那一份，不是 `reframe` 之后的那一份）
@@ -144,6 +161,7 @@ object MediatorWiring {
             note = null
             reframeNote = null
             askedThisTurn = 0
+            companion = null
         }
         turns += 1
         askedThisTurn = 0
@@ -170,11 +188,46 @@ object MediatorWiring {
         // 产出只走尾部（[promptNotes]），不替换消息本体：替换历史字节＝破前缀缓存。
         reframeNote = reframeNoteOf(userText = userText, modelText = modelText, repeats = state.taskFailures)
 
+        // W5（第五百五十批）：相处模式判档。**一轮只判一次**是结构性质，不是计数纪律——
+        // [onUserTurn] 是控制器里唯一的接线点（258 负例6 已把它钉成一处），
+        // [CompanionJudge.judge] 全仓也只在这一行出现；引擎每步拼提示词走的是 [companionSuffix]
+        // 那个**非消费读取口**，读多少次都不重判（同轮每一步必须看到同一份，换批＝打破前缀）。
+        // 上一轮的档位在上面"换会话即清零"之后才取，所以纠正只认**同一会话内**的前后两轮。
+        val prevCompanion = companion
+        val decided = CompanionJudge.judge(userText)
+        companion = decided
+        // 派工单 §四⑥：用户点名纠正（学习档下说一句「别这么啰嗦」）⇒ 本轮立即切回工作档
+        // ——切换本身由 [CompanionJudge] 的三级顺序保证，这里只负责把"这是一次纠正"认出来，
+        // 它是 §六 的进化样本（自动信号换档不算纠正，理由见 [CompanionDecision.explicit]）。
+        val correction = CompanionJudge.correctionOf(prevCompanion, decided)
+
         RunLog.log(logLine(state, step.flags, turns))
+        // 判据④的落账走**路线②**：只落 RunLog 一行人话（带证据）。为什么不进账本：
+        // 495/517 既有的行里没有可放的列——`进化深度.jsonl` 的 `depth` 是闭集枚举（浅/中/深），
+        // 把 work/study 写进去会被 `EvolutionDepth.current()` 当成当前**深度**档读走（污染 517）；
+        // 495 那几个 reason 码是 verify 路径里的常量，不是可追加的行。扩容单见交付报告。
+        RunLog.log(companionLine(decided, correction, turns, boundSessionId))
 
         step.flags.forEach { flag -> write(flag, now) }
         return step.flags
     }
+
+    /**
+     * 相处模式那一行日志（判据④落账路线②：**一行**人话，带档位＋依据＋是不是纠正）。
+     *
+     * 抽成纯函数与 [logLine] 同一条理由：格式本身是判据（三样都必须在场），
+     * 埋在 `RunLog.log(...)` 的拼接里就只能靠真机日志抓，单测抓不到。
+     * 与 [logLine] **分两行**而不是并成一行：258 那一条判据把调解器行的字面钉死了
+     * （`MediatorWiringTest.W1_日志行带档位…`），并进去就是改别人的判据。
+     */
+    fun companionLine(
+        d: CompanionDecision,
+        correction: CompanionDecision?,
+        turns: Int,
+        sessionId: Long,
+    ): String = "抱朴相处模式：第 $turns 轮判成 ${d.mode.cn}（${d.mode.wire}）｜依据：${d.reason}" +
+        "｜${if (d.explicit) "用户点名" else "自动判定"}｜session=$sessionId" +
+        (if (correction != null) "｜用户纠正上一轮 ⇒ 进化样本" else "")
 
     /**
      * 那一行日志（W1 的判据："真机跑一轮：日志出现档位"）。
@@ -207,6 +260,25 @@ object MediatorWiring {
     /** 这一进程里处理过几轮（测试用）。 */
     @Synchronized
     fun turns(): Int = turns
+
+    // ── 第五百五十批：相处模式（左相判"用什么口吻"；W1 那句"要不要打扰"一个字没改）──
+
+    /** 当前相处模式（没判过 ⇒ 默认工作档）。日志与测试用；界面不显示，也不新增任何入口。 */
+    @Synchronized
+    fun currentCompanion(): CompanionMode = companion?.mode ?: CompanionMode.DEFAULT
+
+    /**
+     * system 尾部那一段（引擎每次拼提示词时取；**不消费**、同轮每次逐字节相同）。
+     *
+     * 恒常追加 ⇒ **永不返回空串**：返回空串就是"没信号"，模型分不清"这次没判"与"判成工作"。
+     * 内容全是固定字符串（两档一共两种字节），所以前缀缓存照常命中，只有"切换那一次"失效——
+     * 这是用户 2026-11-11 裁定里"代价最小"的那一条。
+     *
+     * 排位恒在最后（引擎里接在 258 契约与 436-A 运行时包之后）⇒ 只追加，
+     * 前面每一字节都不动（判据④的前缀判据）。
+     */
+    @Synchronized
+    fun companionSuffix(): String = "\n\n" + CompanionJudge.segment(currentCompanion())
 
     // ── 第四百零六批：弹卡闸的咨询口（shouldAsk/budgetFor/decide 的生产读数）────
 
@@ -252,6 +324,7 @@ object MediatorWiring {
         note = null
         reframeNote = null
         askedThisTurn = 0
+        companion = null
     }
 
     /**
