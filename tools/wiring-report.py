@@ -66,8 +66,10 @@ by-design（纯常量／纯 DTO／端口接口／人工裁定）是「无调用�
   ① 只许 **by-design 种类**且当前 bucket 就是 by-design（欠账／已接件一律拒）；
   ② 必须带 `--note "理由"`，空理由拒；
   ③ **+ 行**：该声明必须出现在 diff 的新增行里（新文件也要看到声明，别拿"新文件"当免检）；
-  ④ **白名单**：类名必须登记在 `tools/wiring-allow-add.json`（人行、进 git 可 review），
-     登记的 `kind` 要与实际种类一致；
+  ④ **白名单**：`tools/wiring-allow-add.json`（人行、进 git 可 review）里按
+     **「类名＋文件路径」逐条精确匹配**（不许通配符、不许目录前缀），每条写全
+     `class/file/kind/why/date`，`kind` 与实际种类一致、**`why` 必须与 `--note` 是同一句**；
+     条目数上限 **20**（超了 `--check` 红）；某条对应的类已进基线后即可删（先 generate 再删）。
   ⑤ **无旧同名**：不能与基线现存条目同名，也不能与本次 `gone` 的条目同名（改名/替换塞账）；
   外加 **CI 里永不放行**（按 `CI`／`GITHUB_ACTIONS` 判，流水线洗不了账）。
 - **R6 的收据半边**——`--generate` 落一份 `tools/wiring-baseline-receipt.json`：基线内容
@@ -83,8 +85,8 @@ by-design（纯常量／纯 DTO／端口接口／人工裁定）是「无调用�
     python3 tools/wiring-report.py                     # 打印清单 + 写 JSON(非基线) + 与基线比对
     python3 tools/wiring-report.py --check             # CI 用：只读判红（R1–R5），不写任何文件
     python3 tools/wiring-report.py --generate --reason "为什么改"   # **唯一**写基线的入口
-    python3 tools/wiring-report.py --generate --reason "..." --allow-add --note "为什么这些新增正当"
-                                                        # 放行新增（只许 by-design 种类 + 新声明；CI 禁用）
+    python3 tools/wiring-report.py --generate --reason "..." --allow-add --note "与白名单 why 同一句"
+                                                        # 放行新增（五门全过才行；CI 禁用）
     python3 tools/wiring-report.py --md out.md          # 清单另存一份
     python3 tools/wiring-report.py --audit 5            # 抽查建议（默认 5 件，确定性抽取）
     python3 tools/wiring-report.py --selftest           # 合成夹具自检（失败退出 1）
@@ -1103,23 +1105,66 @@ def line_has_call(line: str, name: str) -> bool:
 
 
 ALLOW_ADD_WHITELIST = ROOT / "tools/wiring-allow-add.json"
-ALLOW_ADD_SCHEMA = "wiring-allow-add/1"
+ALLOW_ADD_SCHEMA = "wiring-allow-add/2"
+ALLOW_ADD_MAX = 20
+ALLOW_ADD_FIELDS = ("class", "file", "kind", "why", "date")
 
 
-def load_allow_add(path: Path | None = None) -> dict[str, dict]:
-    """读 `tools/wiring-allow-add.json`（人名册）：`{类名: {name, kind, why}}`。
+def load_allow_add(path: Path | None = None) -> dict[tuple[str, str], dict]:
+    """读 `tools/wiring-allow-add.json`（人名册）：键是 `(类名, 仓内相对路径)`。
 
-    这是 `--allow-add` 的**第二道护栏**：就算有人跑 `--allow-add`，也只能放行这份
-    文件里点名登记过的类。文件进 git、要 review —— 比命令行加个参数可见得多。
+    **只做逐条精确匹配**：不许通配符、不许目录前缀（`*?[]` 与结尾 `/` 一律拒）。
+    每条必须写全 `class / file / kind / why / date` 五个字段（用户口径的四项＋文件路径）。
+
+    配置写错就地抛 `ValueError`（由调用方转成"红"或"退 2"）：白名单是人的名册，
+    写错就是错的，不该被脚本"猜"成能用的样子。
     """
     target = path or ALLOW_ADD_WHITELIST
     if not target.exists():
         return {}
     data = json.loads(target.read_text(encoding="utf-8"))
     if data.get("schema") != ALLOW_ADD_SCHEMA:
-        raise SystemExit("白名单 schema 不认识：%r ≠ %r"
+        raise ValueError("白名单 schema 不认识：%r ≠ %r"
                          % (data.get("schema"), ALLOW_ADD_SCHEMA))
-    return {e["name"]: e for e in data.get("entries", []) if e.get("name")}
+    table: dict[tuple[str, str], dict] = {}
+    for i, entry in enumerate(data.get("entries", []), 1):
+        missing = [f for f in ALLOW_ADD_FIELDS if not str(entry.get(f, "")).strip()]
+        if missing:
+            raise ValueError("白名单第 %d 条缺字段：%s（必须写全 class/file/kind/why/date）"
+                             % (i, "、".join(missing)))
+        for field in ("class", "file"):
+            value = str(entry.get(field, ""))
+            if any(ch in value for ch in "*?[]") or value.endswith("/"):
+                raise ValueError("白名单第 %d 条的 `%s` 含通配/目录前缀：%r"
+                                 "（只许逐条精确匹配：类名 + 文件路径）" % (i, field, value))
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(entry.get("date", ""))):
+            raise ValueError("白名单第 %d 条的 date 不是 YYYY-MM-DD：%r"
+                             % (i, entry.get("date", "")))
+        key = (str(entry.get("class", "")), str(entry.get("file", "")))
+        if key in table:
+            raise ValueError("白名单重复登记：%s（%s）" % key)
+        table[key] = entry
+    return table
+
+
+def audit_allow_add(white: dict[tuple[str, str], dict], base: dict | None) -> tuple[list[str], list[str]]:
+    """白名单体检 ⇒（红项、提示项）。
+
+    红：条数 > [ALLOW_ADD_MAX]（跟 RULINGS 一样，逼人别把它当常设通道）。
+    提示：某条对应的类**已经在基线里** ⇒ 那一次放行已经完成，这条可以删了
+    （用户口径：先 generate 再删 allow 行，顺序别反）。
+    """
+    problems: list[str] = []
+    notices: list[str] = []
+    if len(white) > ALLOW_ADD_MAX:
+        problems.append("白名单 %d 条 > 上限 %d：--allow-add 是逐次通道，不是常设名单。"
+                        % (len(white), ALLOW_ADD_MAX))
+    base_keys = {(r["name"], r["file"]) for r in (base or {}).get("entries", [])}
+    for key in sorted(white):
+        if key in base_keys:
+            notices.append("白名单 `%s`（%s）已经在基线里 ⇒ 那一次放行已完成，这条可以删了。"
+                           % key)
+    return problems, notices
 
 
 def new_declaration_in_diff(decl: Decl, status: dict | None, added_lookup) -> bool:
@@ -1233,14 +1278,19 @@ def validate_allow_add(diff: dict, current: dict, status: dict | None,
             problems.append("`%s` 不在本次 diff 的新增行里（文件是 %s）⇒ 不许进基线："
                             "新文件也要看到声明，改名件更不算。"
                             % (name, (status or {}).get(path, "未见改动")))
-        if name not in white:
-            problems.append("`%s` 不在白名单 `tools/wiring-allow-add.json` 里 ⇒ 不许进基线"
-                            "（要先人登记，别拿命令行参数当通行证）。" % name)
+        key = (name, path)
+        if key not in white:
+            problems.append("`%s`（%s）不在白名单里 ⇒ 不许进基线"
+                            "（要按「类名＋文件路径」逐条精确登记，别拿命令行参数当通行证）。"
+                            % (name, path))
         else:
-            want = white[name].get("kind", "")
-            if want and want != label:
+            entry_w = white[key]
+            if entry_w.get("kind") != label:
                 problems.append("`%s` 白名单登记的种类是「%s」，实际是「%s」⇒ 对不上，拒。"
-                                % (name, want, label))
+                                % (name, entry_w.get("kind"), label))
+            if str(entry_w.get("why", "")).strip() != note.strip():
+                problems.append("`%s` 白名单的 why 与 --note 不是同一句 ⇒ 拒"
+                                "（三处必须同一句：类声明、白名单、--note）。" % name)
         if name in base_names:
             problems.append("`%s` 与基线现存的同名声明确实重名（同名多份）⇒ 不许进基线。"
                             % name)
@@ -1371,10 +1421,14 @@ def generate_baseline(entries: list[Entry], src: Path, base_path: Path,
             print("确认这些是正当新增再加 --allow-add --note \"理由\"；不确定就先别写。",
                   file=sys.stderr)
             return 1
-        problems = validate_allow_add(
-            diff, current, status, lookup, note,
-            base_names={r["name"] for r in (base or {}).get("entries", [])},
-        )
+        try:
+            problems = validate_allow_add(
+                diff, current, status, lookup, note,
+                base_names={r["name"] for r in (base or {}).get("entries", [])},
+            )
+        except ValueError as exc:  # 白名单写错：先修名册，别谈放行
+            print("[generate] 白名单配置错：%s" % exc, file=sys.stderr)
+            return 2
         if problems:
             print("[generate] 拒绝写盘：--allow-add 没过门（%d 条）——" % len(problems),
                   file=sys.stderr)
@@ -1658,6 +1712,15 @@ def main(argv: list[str] | None = None) -> int:
         bad += sovereignty_violations(base_diff, current, status,
                                       lambda p: git_added_lines(args.diff_base, p))
         bad += [("R6", m) for m in receipt_problems(base, Path(args.receipt))]
+        try:
+            white = load_allow_add()
+        except ValueError as exc:  # 配置写错 = 红，不是崩
+            white = {}
+            bad.append(("R6", "白名单配置错：%s" % exc))
+        probs_w, notices_w = audit_allow_add(white, base)
+        bad += [("R6", m) for m in probs_w]
+        for note_w in notices_w:
+            print("::notice:: %s" % note_w, file=sys.stderr)
         for code, msg in bad:
             print("::error:: wiring %s %s" % (code, msg), file=sys.stderr)
         if bad:

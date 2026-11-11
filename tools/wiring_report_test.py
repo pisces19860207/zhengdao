@@ -364,27 +364,72 @@ def run() -> int:
         st4 = {_path_of("ConstWiring"): "A"}
         probs = validate_allow_add(d4, cur3, st4, _skip, "")
         expect(any("--note" in p for p in probs), "⑭ --note 为空没被拒")
-        white_ok = {"ConstWiring": {"name": "ConstWiring", "kind": OBJECT_NO_ENTRY,
-                                    "why": "夹具"}}
+        why_same = "夹具：理由"
+        key_c = ("ConstWiring", _path_of("ConstWiring"))
+        white_ok = {key_c: {"class": "ConstWiring", "file": _path_of("ConstWiring"),
+                            "kind": OBJECT_NO_ENTRY, "why": why_same, "date": "2026-11-12"}}
         add_lines = lambda _p: ["internal object ConstWiring {"]
-        expect(validate_allow_add(d4, cur3, st4, add_lines, "夹具：理由",
+        expect(validate_allow_add(d4, cur3, st4, add_lines, why_same,
                                   whitelist=white_ok) == [],
                "合规新增（种类+新声明+白名单+note 全齐）被误拒")
-        # 白名单门：不在名册 ⇒ 拒；名册里登记的种类对不上 ⇒ 拒
-        probs = validate_allow_add(d4, cur3, st4, add_lines, "夹具：理由", whitelist={})
+        # 白名单门①：不在名册 ⇒ 拒
+        probs = validate_allow_add(d4, cur3, st4, add_lines, why_same, whitelist={})
         expect(any("不在白名单" in p for p in probs), "不在白名单也被放行")
-        wrong_kind = {"ConstWiring": {"name": "ConstWiring", "kind": "data class",
-                                      "why": "夹具"}}
-        probs = validate_allow_add(d4, cur3, st4, add_lines, "夹具：理由",
-                                   whitelist=wrong_kind)
+        # 白名单门②：**精确匹配** —— 同名但文件不同，不算登记
+        other_key = ("ConstWiring", "a/other.kt")
+        white_other = {other_key: dict(white_ok[key_c], file="a/other.kt")}
+        probs = validate_allow_add(d4, cur3, st4, add_lines, why_same, whitelist=white_other)
+        expect(any("不在白名单" in p for p in probs),
+               "白名单按类名匹配了（必须「类名＋文件路径」精确匹配）")
+        # 白名单门③：kind 对不上 ⇒ 拒
+        wrong_kind = {key_c: dict(white_ok[key_c], kind="data class")}
+        probs = validate_allow_add(d4, cur3, st4, add_lines, why_same, whitelist=wrong_kind)
         expect(any("白名单登记的种类" in p for p in probs), "白名单种类对不上也没拒")
-        # 无旧同名门：added 与本次 gone 同名 ⇒ 拒（改名/替换塞账）
-        d5 = {"added": [{"name": "ConstWiring", "file": _path_of("ConstWiring"),
-                         "bucket": BUCKET_BY_DESIGN}],
-              "gone": [{"name": "ConstWiring", "file": "a/old.kt", "bucket": BUCKET_PENDING}],
-              "flipped": [], "clean": False}
-        probs = validate_allow_add(d5, cur3, st4, add_lines, "夹具：理由", whitelist=white_ok)
-        expect(any("同名" in p for p in probs), "与本次被删条目同名也没拒（改名塞账）")
+        # 白名单门④：why 与 --note 不是同一句 ⇒ 拒
+        probs = validate_allow_add(d4, cur3, st4, add_lines, "另一句理由", whitelist=white_ok)
+        expect(any("why 与 --note" in p for p in probs),
+               "why 与 --note 不一致也放行（三处必须同一句）")
+        # 白名单文件本身：缺字段／通配符／目录前缀／date 格式／条数上限／用毕提示
+        with tempfile.TemporaryDirectory() as wt:
+            wp = Path(wt) / "allow.json"
+
+            def _write_and_load(obj):
+                wp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+                try:
+                    load_allow_add(wp)
+                    return None
+                except ValueError as exc:
+                    return str(exc)
+
+            base_obj = {"schema": ALLOW_ADD_SCHEMA, "entries": []}
+            e_missing = {"class": "X", "file": "a/X.kt", "kind": "data class", "why": "w"}
+            msg = _write_and_load(dict(base_obj, entries=[e_missing]))
+            expect(msg is not None and "缺字段" in msg, "白名单缺 date 字段没被拒")
+            e_wild = {"class": "*Wiring", "file": "a/X.kt", "kind": "data class",
+                      "why": "w", "date": "2026-11-12"}
+            msg = _write_and_load(dict(base_obj, entries=[e_wild]))
+            expect(msg is not None and "通配" in msg, "白名单允许通配符")
+            e_prefix = {"class": "X", "file": "app/src/main/java/demo/",
+                        "kind": "data class", "why": "w", "date": "2026-11-12"}
+            msg = _write_and_load(dict(base_obj, entries=[e_prefix]))
+            expect(msg is not None and "通配" in msg, "白名单允许目录前缀")
+            e_date = {"class": "X", "file": "a/X.kt", "kind": "data class",
+                      "why": "w", "date": "2026/11/12"}
+            msg = _write_and_load(dict(base_obj, entries=[e_date]))
+            expect(msg is not None and "YYYY-MM-DD" in msg, "白名单 date 格式没校验")
+            many = [{"class": "X%d" % i, "file": "a/X%d.kt" % i, "kind": "data class",
+                     "why": "w", "date": "2026-11-12"} for i in range(ALLOW_ADD_MAX + 1)]
+            _write_and_load(dict(base_obj, entries=many))
+            probs_w, _notes = audit_allow_add(load_allow_add(wp), None)
+            expect(any("上限" in p for p in probs_w),
+                   "白名单 %d 条没报超上限" % (ALLOW_ADD_MAX + 1))
+            used = [{"class": "ConstWiring", "file": _path_of("ConstWiring"),
+                     "kind": OBJECT_NO_ENTRY, "why": "w", "date": "2026-11-12"}]
+            _write_and_load(dict(base_obj, entries=used))
+            _p2, notes2 = audit_allow_add(load_allow_add(wp), json.loads(original))
+            expect(any("可以删了" in n for n in notes2),
+                   "已进基线的白名单条目没提示「可以删了」")
+
         # 裁定表上限：11 条 ⇒ 报「超上限」
         saved2 = dict(RULINGS)
         try:
