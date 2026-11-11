@@ -71,6 +71,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 try:  # Windows 控制台默认 GBK：个别字符编不出来时降级替换，而不是让门禁自己崩
@@ -167,8 +168,17 @@ def count_dirs(root: Path) -> tuple[int, list[tuple[Path, int]]]:
     return len(seen), per_anchor
 
 
-def evaluate(total: int, budget: int, source: str = "") -> tuple[int, list[str]]:
-    """核心判据。返回 (exit_code, 输出行)。判红只看 total > budget。"""
+def evaluate(
+    total: int,
+    budget: int,
+    source: str = "",
+    newest: list[tuple[str, float]] | None = None,
+) -> tuple[int, list[str]]:
+    """核心判据。返回 (exit_code, 输出行)。判红只看 total > budget。
+
+    2026-11-11：判红时把 `newest`（最新建的若干个目录，路径＋时间戳）印出来。
+    起因是 ci #1945 报「超预算 2 个」却只有总数、没有名字，只能靠"猜哪条测试漏了"；
+    迁移水位这种事，名字比总数有用得多。"""
     lines = [
         "读数: app/build 下 tmp* 目录区共 %d 个目录（预算 %d%s）"
         % (total, budget, ("｜" + source) if source else "")
@@ -179,6 +189,11 @@ def evaluate(total: int, budget: int, source: str = "") -> tuple[int, list[str]]
             "testkit/TempSandbox 的 use{} 收口，或 --scan-tests 找出强嫌疑文件"
             % (total - budget)
         )
+        if newest:
+            lines.append("最新建的目录（越靠前越新；先查它们对应的测试）：")
+            for rel, ts in newest:
+                stamp = time.strftime("%m-%d %H:%M:%S", time.localtime(ts)) if ts else "?"
+                lines.append("  %s  %s" % (stamp, rel))
         return 1, lines
     if total < budget:
         lines.append("提示: 比水位低 %d 个——迁移有进展就把 %s 的 budget 降下来（只降不升）"
@@ -207,6 +222,23 @@ def scan_tests(repo: Path) -> list[tuple[str, int]]:
     return suspects
 
 
+def newest_dirs(build: Path, limit: int = 8) -> list[tuple[str, float]]:
+    """按 mtime 取最新的 limit 个目录（相对 build 的路径）。判红时用来直接点名。"""
+    items: list[tuple[str, float]] = []
+    try:
+        for d in build.rglob("*"):
+            if not d.is_dir() or d.name.startswith("jar_extract_"):
+                continue
+            try:
+                items.append((d.relative_to(build).as_posix(), d.stat().st_mtime))
+            except OSError:
+                continue
+    except OSError:
+        return []
+    items.sort(key=lambda kv: kv[1], reverse=True)
+    return items[:limit]
+
+
 def run(repo: Path, build: Path, budget: int, source: str = "") -> tuple[int, list[str]]:
     if not build.is_dir():
         return 0, [
@@ -215,7 +247,7 @@ def run(repo: Path, build: Path, budget: int, source: str = "") -> tuple[int, li
             "结果: PASS（跳过判红）",
         ]
     total, per_anchor = count_dirs(build)
-    code, lines = evaluate(total, budget, source)
+    code, lines = evaluate(total, budget, source, newest_dirs(build))
     for anchor, added in per_anchor:
         lines.append("  %-58s %4d" % (anchor.as_posix(), added))
     return code, lines
