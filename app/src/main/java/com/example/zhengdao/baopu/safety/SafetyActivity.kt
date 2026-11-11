@@ -251,10 +251,10 @@ private fun McpServerCard(
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(1000)
-            tick.value += 1
+            tick.intValue += 1
         }
     }
-    val st = remember(tick.value) { McpServerController.status() }
+    val st = remember(tick.intValue) { McpServerController.status() }
     val showToken = remember { mutableStateOf(false) }
     SectionCard(title = "MCP 服务端（外部工具口）") {
         Text(
