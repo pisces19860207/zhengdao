@@ -1,0 +1,1023 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""wiring-report.py —— 接线清单：装配类到底有没有人调（第六百批 · 阶段零）。
+
+## 它只列不判
+
+这份脚本**不下结论、不开红门**：默认退出码恒 0（除非扫描器自己崩）。它只把
+`app/src/main` 里的装配类摆到两栏里——**有调用点** / **无调用点**——「无调用点」
+再分 by-design（纯常量／纯 DTO／只被测试用）与「待判」。一件东西是摆设还是故意的、
+该删该接，**由人判，不由脚本判**。
+
+## 五个口径（别猜，也别改着改着忘掉）
+
+1. **候选**：`app/src/main/**/*.kt` 里 (a) **类名**含 `Wiring`／`Install`／`Boot` 的
+   `object`/`class`/`interface`；(b) 名字不含标记、但长在 `*Wiring.kt` 里的**伴随类型**
+   （`Record`、`Verdict` 这类 DTO）。两栏只算 (a)，(b) 单列附录——否则「有调用点 41」
+   会被一堆 `Verdict.Allow()` 撑胖，读数就废了。
+2. **已接** ＝ 在**申报文件之外**的 `app/src/main` 里出现 `<类名>.某方法(` 或
+   `<类名>(`（构造）——**全限定写法也算**（`com.example…TakeoverWiring.sweepStalled(`），
+   这条是本仓最常见的一类接线（薄封装 + 全限定调用），漏了它「无调用点」整栏都是假的。
+   同文件内自己调自己**不算**：那不是接线点，是内部实现。
+3. **声明行不算调用**：`class Installed(val x: Int)` 里的 `Installed(` 是声明不是构造调用；
+   `class`/`object`/`interface`/`fun` 之后那个名字一律跳过。
+4. **注释与字符串不算**：先把 `//`、`/* */`（Kotlin 可嵌套）、`"..."`、`\"\"\"...\"\"\"`
+   全部挖成空格（**保持字符偏移与行号不变**），再在剩下的代码上找调用点。所以
+   `EvoSample.kt` 里「记账在 `EvoSampleWiring.promote`」那句注释不算已接——而裸 grep
+   会把它算进去。每件的 `commentMentions` 就是给这个差异留的账。
+5. **同名类各算各的**：`Installed` 在 `SeedSkills.kt` 与 `TaskGrantRuntime.kt` 各有一份，
+   命中按「同文件 → 唯一 → import 精确匹配 → 同包」定位归属，定不下来就记
+   `ambiguousHits`（**不硬摊给谁**），并在理由里写明「另有 N 处点名相同但归属不唯一」。
+
+## 用法
+
+    python3 tools/wiring-report.py                 # 打印人读清单，并写 tools/wiring-report.json
+    python3 tools/wiring-report.py --md out.md      # 清单另存一份
+    python3 tools/wiring-report.py --audit 5        # 抽查建议（默认 5 件，确定性抽取）
+    python3 tools/wiring-report.py --selftest       # 合成夹具自检（失败退出 1）
+
+## 幂等
+
+输出里**没有时间戳**；条目按 `(文件, 声明行, 类名)` 排序，JSON 键序固定；抽查按
+`md5(类名)` 定序（不走 random）。同一棵树跑两遍，两份产物字节完全相同。
+"""
+from __future__ import annotations
+
+import argparse
+import bisect
+import hashlib
+import json
+import re
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+
+try:  # Windows 控制台默认 GBK：个别字符编不出来时降级替换，不让报告自己崩
+    sys.stdout.reconfigure(errors="replace")
+except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
+    pass
+
+ROOT = Path(__file__).resolve().parent.parent
+MAIN_SRC = ROOT / "app/src/main"
+TEST_SRCS = (ROOT / "app/src/test", ROOT / "app/src/androidTest")
+DEFAULT_JSON = ROOT / "tools/wiring-report.json"
+
+WIRED = "wired"
+UNWIRED = "unwired"
+BUCKET_WIRED = "有调用点"
+BUCKET_BY_DESIGN = "无调用点·by-design"
+BUCKET_PENDING = "无调用点·待判"
+
+BY_CONST = "纯常量"
+BY_DTO = "纯 DTO"
+BY_TEST = "只被测试用"
+
+SCOPE_TARGET = "装配类"
+SCOPE_COMPANION = "伴随类型"
+
+NAME_MARK = re.compile(r"(Wiring|Install|Boot)")
+
+# 一次扫描把注释与字符串挖空；顺序敏感：`//`、`/*` 先于 `"`，`"""` 先于 `"`。
+TOKEN_RE = re.compile(r'//|/\*|"""|"|\'')
+DECL_RE = re.compile(r"(?<![A-Za-z0-9_.])(object|class|interface)\s+([A-Za-z_][A-Za-z0-9_]*)")
+FUN_RE = re.compile(
+    r"(?<![A-Za-z0-9_.])fun\s+(?:<[^>\n]{1,80}>\s*)?"
+    r"(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)*([A-Za-z_][A-Za-z0-9_]*)\s*\("
+)
+PROP_RE = re.compile(r"(?<![A-Za-z0-9_.])(?:const\s+)?va[lr]\s+([A-Za-z_][A-Za-z0-9_]*)")
+WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+CHAR_LIT_RE = re.compile(r"'(\\.|[^'\\\n])'")
+PACKAGE_RE = re.compile(r"(?m)^[ \t]*package[ \t]+([A-Za-z0-9_.]+)")
+IMPORT_RE = re.compile(r"(?m)^[ \t]*import[ \t]+([A-Za-z0-9_.`]+)")
+
+DECL_KEYWORDS = frozenset({"class", "object", "interface", "fun", "constructor"})
+
+
+# ── 一、源码预处理：注释与字符串挖空，偏移不变 ───────────────────────────────
+
+
+def _blank(seg: str) -> str:
+    """把一段（注释或字符串）挖成空格，只保留换行——偏移与行号因此不变。"""
+    return "".join("\n" if ch == "\n" else " " for ch in seg)
+
+
+def blank_noncode(src: str) -> str:
+    """注释（含嵌套块注释）与字符串字面量全部挖成空格；返回值与 src 等长。"""
+    out: list[str] = []
+    pos = 0
+    n = len(src)
+    for m in TOKEN_RE.finditer(src):
+        start = m.start()
+        if start < pos:
+            continue  # 落在已处理区段内（例如 \"\"\" 里的第二个引号）
+        tok = m.group(0)
+        if tok == "'":
+            lit = CHAR_LIT_RE.match(src, start)
+            if not lit:
+                continue
+            out.append(src[pos:start])
+            out.append(_blank(lit.group(0)))
+            pos = lit.end()
+            continue
+        out.append(src[pos:start])
+        if tok == "//":
+            end = src.find("\n", start)
+            end = n if end < 0 else end
+        elif tok == "/*":
+            end = _block_comment_end(src, start)
+        elif tok == '"""':
+            end = src.find('"""', start + 3)
+            end = n if end < 0 else end + 3
+        else:  # '"'
+            end = _string_end(src, start)
+        out.append(_blank(src[start:end]))
+        pos = end
+    out.append(src[pos:])
+    return "".join(out)
+
+
+def _block_comment_end(src: str, start: int) -> int:
+    """Kotlin 块注释可嵌套：返回 `/*` 对应的 `*/` 之后的位置。"""
+    depth = 0
+    i = start
+    n = len(src)
+    while i < n:
+        if src.startswith("/*", i):
+            depth += 1
+            i += 2
+            continue
+        if src.startswith("*/", i):
+            depth -= 1
+            i += 2
+            if depth == 0:
+                return i
+            continue
+        i += 1
+    return n
+
+
+def _string_end(src: str, start: int) -> int:
+    """普通字符串的收尾位置（含转义；不闭合时截止到行尾止损）。"""
+    i = start + 1
+    n = len(src)
+    while i < n:
+        ch = src[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == '"':
+            return i + 1
+        if ch == "\n":
+            return i
+        i += 1
+    return n
+
+
+def _line_index(text: str) -> list[int]:
+    starts = [0]
+    for i, ch in enumerate(text):
+        if ch == "\n":
+            starts.append(i + 1)
+    return starts
+
+
+def _line_of(starts: list[int], offset: int) -> int:
+    return bisect.bisect_right(starts, offset)
+
+
+def _source_line(raw: str, line: int, width: int = 150) -> str:
+    lines = raw.splitlines()
+    if 1 <= line <= len(lines):
+        return lines[line - 1].strip()[:width]
+    return ""
+
+
+def _word_before(code: str, start: int) -> str:
+    """`start` 之前紧邻的标识符（用来认声明位：`class Foo(` 里的 class）。"""
+    i = start - 1
+    while i >= 0 and code[i] in " \t\r\n":
+        i -= 1
+    j = i
+    while j >= 0 and (code[j].isalnum() or code[j] == "_"):
+        j -= 1
+    return code[j + 1:i + 1]
+
+
+# ── 二、声明解析 ─────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Decl:
+    name: str
+    kind: str
+    package: str
+    file: Path
+    line: int
+    by_name_mark: bool = False
+    in_wiring_file: bool = False
+    functions: list[str] = field(default_factory=list)
+    properties: list[str] = field(default_factory=list)
+    has_body: bool = False
+
+    @property
+    def scope(self) -> str:
+        return SCOPE_TARGET if self.by_name_mark else SCOPE_COMPANION
+
+
+def _brace_span(code: str, open_pos: int) -> tuple[int, int]:
+    depth = 0
+    j = open_pos
+    n = len(code)
+    while j < n:
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return (open_pos, j)
+        j += 1
+    return (open_pos, n - 1)
+
+
+def body_span(code: str, start: int) -> tuple[int, int] | None:
+    """从声明名之后找类体 `{ ... }`；无类体（`class A(val x: Int) : B`）返回 None。"""
+    i = start
+    n = len(code)
+    depth = 0
+    while i < n:
+        ch = code[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "{" and depth <= 0:
+            return _brace_span(code, i)
+        elif ch == "\n" and depth <= 0:
+            k = i + 1
+            while k < n and code[k] in " \t\r\n":
+                k += 1
+            # 声明还没完（`: Base` 或换行后的 `{`）就继续吃；否则这份声明没有类体。
+            if k < n and code[k] in ":{":
+                i = k
+                continue
+            return None
+        i += 1
+    return None
+
+
+def parse_decls(path: Path, code: str, package: str) -> list[Decl]:
+    """抽出本文件里所有候选声明（类名规则 ∪ `*Wiring.kt` 伴随类型）。"""
+    stem_is_wiring = path.stem.endswith("Wiring")
+    found: list[Decl] = []
+    for m in DECL_RE.finditer(code):
+        kind, name = m.group(1), m.group(2)
+        if kind == "class" and _word_before(code, m.start()) == "enum":
+            kind = "enum"  # `enum class X`：常量表，别混进「类」
+        by_name = bool(NAME_MARK.search(name))
+        if not (by_name or stem_is_wiring):
+            continue
+        span = body_span(code, m.end())
+        decl = Decl(
+            name=name,
+            kind=kind,
+            package=package,
+            file=path,
+            line=code.count("\n", 0, m.start()) + 1,
+            by_name_mark=by_name,
+            in_wiring_file=stem_is_wiring,
+            has_body=span is not None,
+        )
+        if span is not None:
+            body = code[span[0]:span[1] + 1]
+            decl.functions = sorted(set(FUN_RE.findall(body)))
+            decl.properties = sorted(set(PROP_RE.findall(body)))
+        found.append(decl)
+    return found
+
+
+# ── 三、引用扫描 ─────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Hit:
+    owner: str     # 命中的候选类名
+    kind: str      # call | ctor | prop | bare
+    file: Path
+    line: int
+    member: str    # call/prop 的成员名；其余为空
+    text: str      # 该行原文（截断 150 字），给人核对用
+
+
+@dataclass
+class FileCtx:
+    path: Path
+    raw: str
+    code: str
+    package: str
+    imports: set[str]
+
+
+def file_meta(code: str) -> tuple[str, set[str]]:
+    pkg = PACKAGE_RE.search(code)
+    imports = set()
+    for m in IMPORT_RE.finditer(code):
+        imports.add(m.group(1).replace("`", ""))
+    return (pkg.group(1) if pkg else ""), imports
+
+
+def scan_file(ctx: FileCtx, names: set[str]) -> tuple[list[Hit], dict[str, int]]:
+    """一趟词法走完：`Name.m(`＝调用、`Name(`＝构造、`Name.x`＝属性、其余＝类型/导入。
+
+    返回（命中表、本文件里各候选名出现次数——后者用于算「注释/字符串提及」）。
+    """
+    code, raw = ctx.code, ctx.raw
+    hits: list[Hit] = []
+    seen: dict[str, int] = {}
+    starts = _line_index(code)
+    n = len(code)
+    for m in WORD_RE.finditer(code):
+        name = m.group(0)
+        if name not in names:
+            continue
+        seen[name] = seen.get(name, 0) + 1
+        if _word_before(code, m.start()) in DECL_KEYWORDS:
+            continue  # `class Installed(` 是声明，不是构造调用
+        j = m.end()
+        while j < n and code[j] in " \t":
+            j += 1
+        line = _line_of(starts, m.start())
+        if j < n and code[j] == ".":
+            member, k = _member_after_dot(code, j + 1)
+            if member is None:
+                continue
+            hits.append(Hit(owner=name, kind="call" if k < n and code[k] == "(" else "prop",
+                            file=ctx.path, line=line, member=member,
+                            text=_source_line(raw, line)))
+            continue
+        if j < n and code[j] == "(":
+            hits.append(Hit(owner=name, kind="ctor", file=ctx.path, line=line, member="",
+                            text=_source_line(raw, line)))
+            continue
+        hits.append(Hit(owner=name, kind="bare", file=ctx.path, line=line, member="",
+                        text=_source_line(raw, line)))
+    return hits, seen
+
+
+def _member_after_dot(code: str, i: int) -> tuple[str | None, int]:
+    """`Name.<member>`／`Name.Companion.<member>`：返回成员名与紧跟其后的位置。"""
+    n = len(code)
+    k = i
+    while k < n and code[k] in " \t":
+        k += 1
+    word = WORD_RE.match(code, k)
+    if not word:
+        return (None, k)
+    member = word.group(0)
+    k = word.end()
+    if member == "Companion":
+        probe = k
+        while probe < n and code[probe] in " \t\r\n":
+            probe += 1
+        if probe < n and code[probe] == ".":
+            return _member_after_dot(code, probe + 1)
+    while k < n and code[k] in " \t\r\n":
+        k += 1
+    return (member, k)
+
+
+def resolve(hit: Hit, ctx: FileCtx, by_name: dict[str, list[Decl]]) -> Decl | None:
+    """这次命中属于哪一份声明：同文件 → 唯一 → import 精确 → 同包；定不下来返回 None。"""
+    cands = by_name.get(hit.owner)
+    if not cands:
+        return None
+    same_file = [d for d in cands if d.file == ctx.path]
+    if len(same_file) == 1:
+        return same_file[0]
+    if len(cands) == 1:
+        return cands[0]
+    exact = [d for d in cands if ("%s.%s" % (d.package, d.name)) in ctx.imports]
+    if len(exact) == 1:
+        return exact[0]
+    same_pkg = [d for d in cands if d.package == ctx.package]
+    if len(same_pkg) == 1:
+        return same_pkg[0]
+    return None
+
+
+def collect(src: Path):
+    """扫一遍源码树：声明表、每份声明的命中、提及次数、测试引用数、归属不唯一数。"""
+    files = sorted(p for p in src.rglob("*.kt") if p.is_file())
+    ctxs: dict[Path, FileCtx] = {}
+    decls: list[Decl] = []
+    for path in files:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        code = blank_noncode(raw)
+        package, imports = file_meta(code)
+        ctxs[path] = FileCtx(path=path, raw=raw, code=code, package=package, imports=imports)
+        decls.extend(parse_decls(path, code, package))
+
+    by_name: dict[str, list[Decl]] = {}
+    for d in decls:
+        by_name.setdefault(d.name, []).append(d)
+    names = set(by_name)
+
+    hits_by_decl: dict[int, list[Hit]] = {id(d): [] for d in decls}
+    ambiguous: dict[str, int] = {}
+    raw_counts: dict[str, int] = {}
+    code_counts: dict[str, int] = {}
+    for path in files:
+        ctx = ctxs[path]
+        hits, seen = scan_file(ctx, names)
+        for name, cnt in seen.items():
+            code_counts[name] = code_counts.get(name, 0) + cnt
+        for m in WORD_RE.finditer(ctx.raw):
+            token = m.group(0)
+            if token in names:
+                raw_counts[token] = raw_counts.get(token, 0) + 1
+        for hit in hits:
+            owner = resolve(hit, ctx, by_name)
+            if owner is None:
+                ambiguous[hit.owner] = ambiguous.get(hit.owner, 0) + 1
+            else:
+                hits_by_decl[id(owner)].append(hit)
+
+    mentions = {n: max(0, raw_counts.get(n, 0) - code_counts.get(n, 0)) for n in names}
+    return decls, hits_by_decl, mentions, _test_counts(names), ambiguous
+
+
+def _test_counts(names: set[str]) -> dict[str, int]:
+    """测试源里每个候选名出现多少次（挖掉注释/字符串之后按词计）。"""
+    counts: dict[str, int] = {name: 0 for name in names}
+    for src in TEST_SRCS:
+        if not src.exists():
+            continue
+        for path in sorted(p for p in src.rglob("*.kt") if p.is_file()):
+            code = blank_noncode(path.read_text(encoding="utf-8", errors="replace"))
+            for m in WORD_RE.finditer(code):
+                token = m.group(0)
+                if token in counts:
+                    counts[token] += 1
+    return counts
+
+
+# ── 四、分栏（只分栏，不下对错） ─────────────────────────────────────────────
+
+
+@dataclass
+class Entry:
+    decl: Decl
+    status: str
+    bucket: str
+    reason: str
+    by_design: str = ""
+    calls: list[Hit] = field(default_factory=list)
+    self_calls: list[Hit] = field(default_factory=list)
+    props: list[Hit] = field(default_factory=list)
+    type_refs: list[Hit] = field(default_factory=list)
+    import_refs: list[Hit] = field(default_factory=list)
+    comment_mentions: int = 0
+    test_refs: int = 0
+    ambiguous_hits: int = 0
+
+    @property
+    def name(self) -> str:
+        return self.decl.name
+
+    @property
+    def scope(self) -> str:
+        return self.decl.scope
+
+
+def classify(decl: Decl, hits: list[Hit], comment_mentions: int, test_refs: int,
+             ambiguous_hits: int) -> Entry:
+    calls = [h for h in hits if h.file != decl.file and h.kind in ("call", "ctor")]
+    self_calls = [h for h in hits if h.file == decl.file and h.kind in ("call", "ctor")]
+    props = [h for h in hits if h.file != decl.file and h.kind == "prop"]
+    bares = [h for h in hits if h.file != decl.file and h.kind == "bare"]
+    import_refs = [h for h in bares if h.text.startswith("import ")]
+    type_refs = [h for h in bares if not h.text.startswith("import ")]
+    entry = Entry(decl=decl, status=UNWIRED, bucket=BUCKET_PENDING, reason="",
+                  calls=calls, self_calls=self_calls, props=props,
+                  type_refs=type_refs, import_refs=import_refs,
+                  comment_mentions=comment_mentions, test_refs=test_refs,
+                  ambiguous_hits=ambiguous_hits)
+    if calls:
+        entry.status = WIRED
+        entry.bucket = BUCKET_WIRED
+        entry.reason = "生产调用点 %d 处（首处 %s）" % (len(calls), _site(calls[0]))
+        return entry
+
+    extra = []
+    if self_calls:
+        extra.append("同文件内调用 %d 处" % len(self_calls))
+    if props:
+        extra.append("生产里属性引用 %d 处" % len(props))
+    if type_refs:
+        extra.append("生产里类型引用 %d 处" % len(type_refs))
+    if import_refs:
+        extra.append("只被 import %d 处" % len(import_refs))
+    if comment_mentions:
+        extra.append("注释/字符串提及 %d 次" % comment_mentions)
+    if ambiguous_hits:
+        extra.append("另有 %d 处同名但归属不唯一" % ambiguous_hits)
+    tail = ("；" + "，".join(extra)) if extra else ""
+
+    # ① 形状优先：没有方法的一律是「装东西的」，比「只被测试用」更能说明它为什么没人调。
+    if not decl.functions and decl.kind in ("object", "class", "enum"):
+        entry.bucket = BUCKET_BY_DESIGN
+        entry.by_design = BY_CONST if decl.kind in ("object", "enum") else BY_DTO
+        if decl.kind == "enum":
+            shape = "枚举常量表、0 个方法"
+        elif decl.has_body:
+            shape = "类体 %d 个常量/属性、0 个方法" % len(decl.properties)
+        else:
+            shape = "无类体，只有构造参数"
+        entry.reason = "生产 0 处；%s ⇒ %s%s" % (shape, entry.by_design, tail)
+        return entry
+    # ② 接口没有静态调用形式；但它是不是「只被测试用」要看生产里有没有人把它当类型
+    if decl.kind == "interface":
+        entry.reason = ("生产 0 处；接口没有静态调用形式（调用点在实现类上）"
+                        "——生产里若有人实现/当参数类型，就不是摆设%s" % tail)
+        return entry
+    # ③ 「只被测试用」是个窄claim：生产里一处类型引用都没有才算，否则落待判，别替人抹平
+    if test_refs and not type_refs and not props and not self_calls:
+        entry.bucket = BUCKET_BY_DESIGN
+        entry.by_design = BY_TEST
+        entry.reason = "生产 0 处、无任何生产引用；测试源里出现 %d 次 ⇒ 只被测试用%s" % (
+            test_refs, tail)
+        return entry
+    entry.reason = ("生产 0 处；类体 %d 个方法（%s）但无人调%s"
+                    % (len(decl.functions), "、".join(decl.functions[:4]), tail))
+    return entry
+
+
+def _site(hit: Hit) -> str:
+    member = ("." + hit.member + "()") if hit.kind == "call" else " 构造"
+    return "%s:%d%s" % (rel(hit.file), hit.line, member)
+
+
+def rel(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except Exception:  # noqa: BLE001 - 自检夹具在临时目录，不在仓内
+        return Path(path).as_posix()
+
+
+def build(src: Path) -> list[Entry]:
+    decls, hits_by_decl, mentions, test_counts, ambiguous = collect(src)
+    entries = [
+        classify(d, hits_by_decl.get(id(d), []), mentions.get(d.name, 0),
+                 test_counts.get(d.name, 0), ambiguous.get(d.name, 0))
+        for d in decls
+    ]
+    entries.sort(key=lambda e: (rel(e.decl.file), e.decl.line, e.name))
+    return entries
+
+
+# ── 五、输出 ─────────────────────────────────────────────────────────────────
+
+
+def targets(entries: list[Entry]) -> list[Entry]:
+    return [e for e in entries if e.scope == SCOPE_TARGET]
+
+
+def counts(entries: list[Entry]) -> dict[str, int]:
+    main = targets(entries)
+    return {
+        "total": len(main),
+        "wired": sum(1 for e in main if e.bucket == BUCKET_WIRED),
+        "unwired": sum(1 for e in main if e.bucket != BUCKET_WIRED),
+        "byDesign": sum(1 for e in main if e.bucket == BUCKET_BY_DESIGN),
+        "pending": sum(1 for e in main if e.bucket == BUCKET_PENDING),
+        "companion": len(entries) - len(main),
+    }
+
+
+def to_json(entries: list[Entry], audit: list[Entry], src: Path) -> dict:
+    return {
+        "schema": "wiring-report/1",
+        "src": rel(src),
+        "note": "只列不判：wired/unwired 只表示有没有生产调用点，性质由人定。"
+                "scope=装配类 进两栏统计；scope=伴随类型（长在 *Wiring.kt 里但名字不含标记）单列。",
+        "counts": counts(entries),
+        "entries": [
+            {
+                "name": e.name,
+                "scope": e.scope,
+                "kind": e.decl.kind,
+                "package": e.decl.package,
+                "file": rel(e.decl.file),
+                "declLine": e.decl.line,
+                "status": e.status,
+                "bucket": e.bucket,
+                "byDesign": e.by_design,
+                "reason": e.reason,
+                "members": {"functions": e.decl.functions, "properties": e.decl.properties},
+                "evidence": {
+                    "callSites": [
+                        {"file": rel(h.file), "line": h.line, "member": h.member,
+                         "kind": h.kind, "text": h.text}
+                        for h in e.calls[:10]
+                    ],
+                    "callCount": len(e.calls),
+                    "selfCallCount": len(e.self_calls),
+                    "propertyRefs": [
+                        {"file": rel(h.file), "line": h.line, "member": h.member}
+                        for h in e.props[:10]
+                    ],
+                    "typeRefs": [
+                        {"file": rel(h.file), "line": h.line, "text": h.text}
+                        for h in e.type_refs[:5]
+                    ],
+                    "importRefs": [
+                        {"file": rel(h.file), "line": h.line, "text": h.text}
+                        for h in e.import_refs[:5]
+                    ],
+                    "commentMentions": e.comment_mentions,
+                    "testRefs": e.test_refs,
+                    "ambiguousHits": e.ambiguous_hits,
+                },
+            }
+            for e in entries
+        ],
+        "audit": [{"name": e.name, "bucket": e.bucket, "command": audit_command(e)}
+                  for e in audit],
+    }
+
+
+def audit_command(entry: Entry) -> str:
+    return 'grep -rn "%s" app/src/main app/src/test app/src/androidTest --include=*.kt' % entry.name
+
+
+def pick_audit(entries: list[Entry], n: int) -> list[Entry]:
+    """确定性抽取：组内按 md5(类名) 定序，三个桶轮流取，保证两栏都被抽到。"""
+    pool = targets(entries)
+    groups = {
+        BUCKET_WIRED: sorted([e for e in pool if e.bucket == BUCKET_WIRED],
+                             key=lambda e: hashlib.md5(e.name.encode()).hexdigest()),
+        BUCKET_BY_DESIGN: sorted([e for e in pool if e.bucket == BUCKET_BY_DESIGN],
+                                 key=lambda e: hashlib.md5(e.name.encode()).hexdigest()),
+        BUCKET_PENDING: sorted([e for e in pool if e.bucket == BUCKET_PENDING],
+                               key=lambda e: hashlib.md5(e.name.encode()).hexdigest()),
+    }
+    order = [BUCKET_WIRED, BUCKET_PENDING, BUCKET_BY_DESIGN]
+    picked: list[Entry] = []
+    i = 0
+    while len(picked) < n and any(groups.values()):
+        group = groups[order[i % len(order)]]
+        if group:
+            picked.append(group.pop(0))
+        i += 1
+    return picked
+
+
+def render_md(entries: list[Entry], audit: list[Entry], src: Path) -> str:
+    c = counts(entries)
+    main = targets(entries)
+    out: list[str] = []
+    out.append("# 接线清单（600 · 阶段零：只列不判）\n")
+    out.append("扫描根 `%s`。候选＝类名含 `Wiring`/`Install`/`Boot` 的 object/class/interface"
+               "（两栏只算这一类）；`*Wiring.kt` 里名字不含标记的伴随类型单列附录（%d 件）。"
+               % (rel(src), c["companion"]))
+    out.append("「已接」＝**申报文件之外**的 `app/src/main` 里出现 `<类名>.方法(`（**全限定写法也算**）"
+               "或 `<类名>(`；声明行、同文件内自调、注释与字符串都不算。\n")
+    out.append("合计 **%d** 件装配类：有调用点 **%d** ｜ 无调用点 **%d**"
+               "（by-design %d ＋ 待判 %d）。\n"
+               % (c["total"], c["wired"], c["unwired"], c["byDesign"], c["pending"]))
+
+    out.append("## 一、有调用点（%d）\n" % c["wired"])
+    out.append("| # | 类 | 声明位置 | 首个调用点 | 调用数 |")
+    out.append("| --- | --- | --- | --- | --- |")
+    wired = [e for e in main if e.bucket == BUCKET_WIRED]
+    for i, e in enumerate(wired, 1):
+        out.append("| %d | `%s` | %s:%d | %s | %d |"
+                   % (i, e.name, rel(e.decl.file), e.decl.line, _site(e.calls[0]),
+                      len(e.calls)))
+    if not wired:
+        out.append("| — | （无） | — | — | — |")
+    out.append("")
+
+    by_design = [e for e in main if e.bucket == BUCKET_BY_DESIGN]
+    pending = [e for e in main if e.bucket == BUCKET_PENDING]
+    out.append("## 二、无调用点（%d）\n" % c["unwired"])
+    out.append("### 2.1 by-design（%d）\n" % len(by_design))
+    if by_design:
+        out.append("| # | 类 | 声明位置 | 归类 | 理由 |")
+        out.append("| --- | --- | --- | --- | --- |")
+        for i, e in enumerate(by_design, 1):
+            out.append("| %d | `%s` | %s:%d | %s | %s |"
+                       % (i, e.name, rel(e.decl.file), e.decl.line, e.by_design, e.reason))
+    else:
+        out.append("（无）")
+    out.append("")
+    out.append("### 2.2 待判（%d）\n" % len(pending))
+    if pending:
+        out.append("| # | 类 | 声明位置 | 理由（含证据计数） |")
+        out.append("| --- | --- | --- | --- |")
+        for i, e in enumerate(pending, 1):
+            out.append("| %d | `%s` | %s:%d | %s |"
+                       % (i, e.name, rel(e.decl.file), e.decl.line, e.reason))
+    else:
+        out.append("（无）")
+    out.append("")
+
+    out.append("## 三、抽查建议（%d 件，按 md5 定序，不随运行变化）\n" % len(audit))
+    for i, e in enumerate(audit, 1):
+        out.append("%d. `%s` · %s · %s:%d" % (i, e.name, e.bucket, rel(e.decl.file), e.decl.line))
+        out.append("   - 报告说：%s" % e.reason)
+        if e.calls:
+            out.append("   - 报告记的调用点：%s" % "、".join(_site(h) for h in e.calls[:3]))
+        out.append("   - 复核命令：`%s`" % audit_command(e))
+    out.append("")
+
+    companions = [e for e in entries if e.scope == SCOPE_COMPANION]
+    out.append("## 附：同文件伴随类型（%d 件，不计入上面三栏）\n" % len(companions))
+    if companions:
+        out.append("| # | 类 | 声明位置 | 状态 | 一句话（不判性质） |")
+        out.append("| --- | --- | --- | --- | --- |")
+        for i, e in enumerate(companions, 1):
+            out.append("| %d | `%s` | %s:%d | %s | %s |"
+                       % (i, e.name, rel(e.decl.file), e.decl.line, e.bucket, e.reason))
+    else:
+        out.append("（无）")
+    out.append("")
+    return "\n".join(out)
+
+
+def write_json(payload: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8", newline="\n")
+
+
+# ── 六、自检夹具（合成树，不碰仓库） ─────────────────────────────────────────
+
+
+FIXTURE_SRC = {
+    "a/WiredWiring.kt": """
+package demo.a
+internal object WiredWiring {
+    fun go(): Int = 1
+}
+""",
+    "a/Caller.kt": """
+package demo.a
+fun callsWired(): Int {
+    return WiredWiring.go()
+}
+""",
+    "a/QualifiedWiring.kt": """
+package demo.a
+internal object QualifiedWiring {
+    fun go(): Int = 6
+}
+""",
+    "a/QualifiedCaller.kt": """
+package demo.other
+fun callsQualified(): Int {
+    return demo.a.QualifiedWiring.go()
+}
+""",
+    "a/CommentOnlyWiring.kt": """
+package demo.a
+internal object CommentOnlyWiring {
+    fun go(): Int = 2
+}
+""",
+    "a/Mention.kt": """
+package demo.a
+// 记账在 CommentOnlyWiring.go() 那句（只是注释，不算调用）
+private val TEXT = "CommentOnlyWiring.go() 也只是字符串"
+private val RAW = \"\"\"CommentOnlyWiring.go()\"\"\"
+""",
+    "a/ConstWiring.kt": """
+package demo.a
+internal object ConstWiring {
+    const val LIMIT: Int = 3
+    val NAME: String = "x"
+}
+""",
+    "a/DtoWiring.kt": """
+package demo.a
+internal class DtoWiring(val a: Int)
+""",
+    "a/TestOnlyWiring.kt": """
+package demo.a
+internal object TestOnlyWiring {
+    fun go(): Int = 4
+}
+""",
+    "a/GrantWiring.kt": """
+package demo.a
+internal interface GrantWiring {
+    fun go(): Int
+}
+""",
+    "a/ForeignWiring.kt": """
+package demo.a
+internal object ForeignWiring {
+    fun go(): Int = 5
+}
+""",
+    "p1/TwinWiring.kt": """
+package demo.p1
+internal class TwinWiring(val a: Int)
+""",
+    "p2/TwinWiring.kt": """
+package demo.p2
+internal class TwinWiring(val a: Int)
+""",
+    "p2/TwinUser.kt": """
+package demo.p2
+internal fun useTwin(): TwinWiring = TwinWiring(7)
+""",
+    "q1/AliasWiring.kt": """
+package demo.q1
+internal object AliasWiring {
+    fun go(): Int = 9
+}
+""",
+    "q2/AliasWiring.kt": """
+package demo.q2
+internal object AliasWiring {
+    fun go(): Int = 10
+}
+""",
+    "q3/User.kt": """
+package demo.q3
+import demo.q2.AliasWiring
+internal fun u(): Int = AliasWiring.go()
+""",
+    "a/SelfWiredWiring.kt": """
+package demo.a
+internal class SelfWiredWiring(val x: Int) {
+    fun go(): Int = 11
+}
+""",
+    "a/CompanionHolderWiring.kt": """
+package demo.a
+internal object HolderWiring {
+    fun go(): Int = 8
+}
+internal class HolderRecord(val x: Int)
+""",
+}
+
+FIXTURE_TEST = {
+    "a/TestOnlyWiringTest.kt": """
+package demo.a
+class TestOnlyWiringTest {
+    fun t() = TestOnlyWiring.go()
+}
+""",
+}
+
+
+def selftest() -> int:
+    fails: list[str] = []
+    checked = 0
+
+    def expect(cond: bool, msg: str) -> None:
+        nonlocal checked
+        checked += 1
+        if not cond:
+            fails.append(msg)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        src = base / "app/src/main"
+        for name, body in FIXTURE_SRC.items():
+            path = src / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body.lstrip("\n"), encoding="utf-8")
+        for name, body in FIXTURE_TEST.items():
+            path = base / "app/src/test" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body.lstrip("\n"), encoding="utf-8")
+
+        global TEST_SRCS
+        saved = TEST_SRCS
+        TEST_SRCS = (base / "app/src/test", base / "app/src/androidTest")
+        try:
+            entries = build(src)
+            # 幂等要在这里比：两遍都必须在同一个 TEST_SRCS 下，否则第二次扫的是真仓测试源，
+            # 「只被测试用」那一格会翻栏——这不是幂等坏了，是夹具没关住（自检自己抓到过）。
+            again = build(src)
+        finally:
+            TEST_SRCS = saved
+
+        got = {(e.name, e.decl.file.parent.name): e for e in entries}
+
+        def at(name: str, pkg_dir: str = "a") -> Entry | None:
+            return got.get((name, pkg_dir))
+
+        cases = [
+            ("WiredWiring", True, BUCKET_WIRED),
+            ("QualifiedWiring", True, BUCKET_WIRED),
+            ("CommentOnlyWiring", False, BUCKET_PENDING),
+            ("ConstWiring", False, BUCKET_BY_DESIGN),
+            ("DtoWiring", False, BUCKET_BY_DESIGN),
+            ("TestOnlyWiring", False, BUCKET_BY_DESIGN),
+            ("GrantWiring", False, BUCKET_PENDING),
+            ("ForeignWiring", False, BUCKET_PENDING),
+        ]
+        for name, _, want in [(n, a, b) for n, a, b in cases]:
+            entry = at(name)
+            if entry is None:
+                fails.append("没扫到 `%s`" % name)
+            elif entry.bucket != want:
+                fails.append("`%s` 应落「%s」，实际「%s」（%s）"
+                             % (name, want, entry.bucket, entry.reason))
+        co = at("CommentOnlyWiring")
+        expect(co is not None and co.comment_mentions >= 3,
+               "注释/字符串提及次数没数出来（挖注释可能失效）")
+        qw = at("QualifiedWiring")
+        expect(qw is not None and len(qw.calls) == 1,
+               "全限定调用 `demo.a.QualifiedWiring.go()` 没被算成调用点")
+        # 同名双类：调用方在 p2 ⇒ 只能归 p2 那份；归给 p1（或摊给两边）就是串证据
+        t1, t2 = at("TwinWiring", "p1"), at("TwinWiring", "p2")
+        expect(t1 is not None and t2 is not None, "同名双类没各扫一份")
+        if t1 is not None and t2 is not None:
+            expect(t2.bucket == BUCKET_WIRED and len(t2.calls) == 1,
+                   "同名类的调用点没归给同包那份（p2）")
+            expect(t1.bucket != BUCKET_WIRED,
+                   "同名类的调用点被摊给了另一份（p1）—— 归属有错")
+        # 跨包同名：q3 用 import 指名 q2 那份
+        a1, a2 = at("AliasWiring", "q1"), at("AliasWiring", "q2")
+        if a1 is not None and a2 is not None:
+            expect(a2.bucket == BUCKET_WIRED,
+                   "import 指名的那份（q2/AliasWiring）没判成已接")
+            expect(a1.bucket != BUCKET_WIRED,
+                   "同名的另一份（q1/AliasWiring）被 import 串了证据")
+        else:
+            fails.append("跨包同名 AliasWiring 没各扫一份")
+        # 声明行不是调用：`class SelfWiredWiring(` 不能算一次自调
+        sw = at("SelfWiredWiring")
+        expect(sw is not None and len(sw.self_calls) == 0,
+               "`class X(` 声明行被算成了构造调用（self_calls 虚高）")
+        hr = at("HolderRecord")
+        expect(hr is not None and hr.scope == SCOPE_COMPANION,
+               "`*Wiring.kt` 里的伴随类型没进附录")
+        hw = at("HolderWiring")
+        expect(hw is not None and hw.scope == SCOPE_TARGET, "装配类被误判成伴随类型")
+
+        first = json.dumps(to_json(entries, pick_audit(entries, 3), src), ensure_ascii=False,
+                           indent=2)
+        second = json.dumps(to_json(again, pick_audit(again, 3), src), ensure_ascii=False,
+                            indent=2)
+        expect(first == second, "两遍输出不一致（幂等坏了）")
+
+    if fails:
+        print("SELFTEST FAILED（%d/%d 条）" % (len(fails), checked))
+        for f in fails:
+            print("  · " + f)
+        return 1
+    print("SELFTEST OK：%d 条断言全过（全限定调用／同名双类与跨包 import／声明行不算调用／"
+          "注释负例／伴随类型／幂等）" % checked)
+    return 0
+
+
+# ── 七、入口 ─────────────────────────────────────────────────────────────────
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="接线清单（只列不判）：app/src/main 里的装配类有没有生产调用点",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument("--src", default=str(MAIN_SRC), help="源码根，默认 app/src/main")
+    ap.add_argument("--json", default=str(DEFAULT_JSON), help="JSON 产物路径")
+    ap.add_argument("--no-json", action="store_true", help="只打印，不写 JSON")
+    ap.add_argument("--md", default="", help="清单另存为 markdown 文件")
+    ap.add_argument("--audit", type=int, default=5, help="抽查建议件数，默认 5")
+    ap.add_argument("--selftest", action="store_true", help="跑合成夹具自检")
+    args = ap.parse_args(argv)
+
+    if args.selftest:
+        return selftest()
+
+    src = Path(args.src)
+    if not src.exists():
+        print("扫描根不存在：%s（扫描器环境有问题，不是接线问题）" % src, file=sys.stderr)
+        return 2
+
+    entries = build(src)
+    if not targets(entries):
+        print("::warning:: 一件装配类都没扫到——先怀疑口径或路径，别当成「全是干净」。",
+              file=sys.stderr)
+    audit = pick_audit(entries, max(0, args.audit))
+    md = render_md(entries, audit, src)
+    print(md)
+    if args.md:
+        Path(args.md).write_text(md + "\n", encoding="utf-8", newline="\n")
+    if not args.no_json:
+        write_json(to_json(entries, audit, src), Path(args.json))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

@@ -80,6 +80,7 @@
 | `tools/zd.py` | zd.py —— 证道（zhengdao）仓库的**统一工具入口**。 | 子命令 `preflight` `doctor` `install-hooks` `hooks-status`；`preflight -k` `-p` `--max-behind` `--no-fetch` | — | 2026-11-02 / 07d4cd9f | 本地/人工工具；`docs/协作规约.md §5` 指定的统一入口，`.ps1` 是它的薄壳 |
 | `tools/zd_ci_anno.py` | 取 GitHub check-runs / annotations（匿名，仓库公开）并把 CI 基线落地。 | `[sha]` `--wait` `--save-baseline` | — | 2026-10-21 / 8bc5fdbb | 本地/人工工具；与 `ci-test-annotations.py` 反向：它从 GitHub 往本地取读数 |
 | `tools/必读清单生成.py` | 必读清单生成.py —— `/init` 式的「开工先读哪几页」清单生成器（第四百三十六批 A · ②）。 | `--repo` `--workspace` `--out` `--private-out` `--today` `--max-pits` `--max-rulings` `--public` `--private` `--leak-check` `--dry-run` `--selftest` | — | 2026-11-05 / 5e1f8e92 | 本地/人工工具；硬判据「已存在 AGENTS.md 则增改不覆盖」写在 docstring |
+| `tools/wiring-report.py` | wiring-report.py —— 接线清单：装配类到底有没有人调（第六百批 · 阶段零）。 | `--src` `--json` `--no-json` `--md` `--audit` `--selftest` | — | 2026-11-11 / 未提交 | 本地/人工工具；**只列不判**（默认退出码恒 0，不只出红）；产物 `tools/wiring-report.json`；`--selftest` 11 条断言（全限定调用／同名双类与跨包 import／声明行不算调用／注释负例／伴随类型／幂等）。⚠ 本行加入后 `ls tools/*.py` 已是 49，文首「44 个／44 行」仍是 2026-11-05 快照，重基线归文档批（同 591 行挂账） |
 
 ## 未自述条目（共 1 条）
 

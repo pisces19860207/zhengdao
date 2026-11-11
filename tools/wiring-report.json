@@ -1,0 +1,6088 @@
+{
+  "schema": "wiring-report/1",
+  "src": "app/src/main",
+  "note": "只列不判：wired/unwired 只表示有没有生产调用点，性质由人定。scope=装配类 进两栏统计；scope=伴随类型（长在 *Wiring.kt 里但名字不含标记）单列。",
+  "counts": {
+    "total": 50,
+    "wired": 31,
+    "unwired": 19,
+    "byDesign": 14,
+    "pending": 5,
+    "companion": 49
+  },
+  "entries": [
+    {
+      "name": "BackupWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.backup",
+      "file": "app/src/main/java/com/example/zhengdao/backup/BackupWiring.kt",
+      "declLine": 19,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt:68.install()）",
+      "members": {
+        "functions": [
+          "install"
+        ],
+        "properties": [
+          "START_DELAY_MS",
+          "ctx",
+          "snap"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt",
+            "line": 68,
+            "member": "install",
+            "kind": "call",
+            "text": "com.example.zhengdao.backup.BackupWiring.install(this)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BaopuBrowserWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuBrowserWiring.kt",
+      "declLine": 46,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt:327.install()）",
+      "members": {
+        "functions": [
+          "appInForeground",
+          "awaitMain",
+          "browserOnScreen",
+          "click",
+          "closeTab",
+          "currentUrl",
+          "detachForShot",
+          "evidence",
+          "goBack",
+          "goForward",
+          "hover",
+          "install",
+          "installTeach",
+          "key",
+          "loadForShot",
+          "longPress",
+          "open",
+          "openForShot",
+          "pageInfo",
+          "pageRenderable",
+          "recordSiteTrust",
+          "reload",
+          "replay",
+          "restoreAfterShot",
+          "saveDraft",
+          "screenshot",
+          "scroll",
+          "scrollIntoView",
+          "selectOption",
+          "show",
+          "skillAllowedDomains",
+          "snapshot",
+          "startRecording",
+          "stopRecording",
+          "swipe",
+          "switchTab",
+          "tabsList",
+          "tap",
+          "teachGlobalRoot",
+          "trustAdd",
+          "trustRemove",
+          "trustedHosts",
+          "typeInto",
+          "waitFor",
+          "waitForStable"
+        ],
+        "properties": [
+          "SCROLL_STEP",
+          "appCtx",
+          "appCtxRef",
+          "choice",
+          "ctx",
+          "d",
+          "done",
+          "host",
+          "info",
+          "lastDraft",
+          "lastTeachError",
+          "latch",
+          "main",
+          "model",
+          "msg",
+          "note",
+          "out",
+          "r",
+          "ref",
+          "root",
+          "run",
+          "shot",
+          "skill",
+          "teachModel",
+          "teachScope",
+          "text"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 327,
+            "member": "install",
+            "kind": "call",
+            "text": "BaopuBrowserWiring.install(appCtx)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 15,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ImpactInject",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ImpactWiring.kt",
+      "declLine": 28,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt:2230.noteFor()）",
+      "members": {
+        "functions": [
+          "clamp",
+          "noteFor",
+          "reset"
+        ],
+        "properties": [
+          "DEDUPE_MS",
+          "MAX_CHARS",
+          "hint",
+          "lastAtMs",
+          "lastText",
+          "line",
+          "one",
+          "text",
+          "tier",
+          "worth"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 2230,
+            "member": "noteFor",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.ImpactInject.noteFor("
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 22,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ImpactLedger",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ImpactWiring.kt",
+      "declLine": 103,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt:530.record()）",
+      "members": {
+        "functions": [
+          "clear",
+          "record",
+          "sha12",
+          "snapshot"
+        ],
+        "properties": [
+          "CAPACITY",
+          "atMs",
+          "bytes",
+          "hash",
+          "md",
+          "r",
+          "ring",
+          "shown",
+          "summary",
+          "tool"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 530,
+            "member": "record",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.ImpactLedger.record(\"skill_govern\", line, shown = false)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 2212,
+            "member": "record",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.ImpactLedger.record(req.tool, text, shown = true)"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 12,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Record",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ImpactWiring.kt",
+      "declLine": 115,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 3 处（首处 app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt:89 构造）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 89,
+            "member": "",
+            "kind": "ctor",
+            "text": "return Record("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 137,
+            "member": "",
+            "kind": "ctor",
+            "text": "return Record("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 159,
+            "member": "fromJson",
+            "kind": "call",
+            "text": "return runCatching { Record.fromJson(JSONObject(f.readText())) }.getOrNull()"
+          }
+        ],
+        "callCount": 3,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 87,
+            "text": "fun fromJson(o: JSONObject): Record {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 131,
+            "text": "fun run(req: Request): Record {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 147,
+            "text": "fun save(root: File, record: Record): File {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 156,
+            "text": "fun load(root: File, agentId: String): Record? {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionFlow.kt",
+            "line": 186,
+            "text": "private fun ledgerLine(record: Record): String = JSONObject()"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 4,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ImpactMailbox",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ImpactWiring.kt",
+      "declLine": 159,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:3311.drain()）",
+      "members": {
+        "functions": [
+          "clear",
+          "drain",
+          "offer"
+        ],
+        "properties": [
+          "pending",
+          "t"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 3311,
+            "member": "drain",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.ImpactMailbox.drain() +"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 2234,
+            "member": "offer",
+            "kind": "call",
+            "text": ")?.let { com.example.zhengdao.baopu.ImpactMailbox.offer(it) }"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 11,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ImpactPrefs",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ImpactWiring.kt",
+      "declLine": 187,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 3 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt:2183.get()）",
+      "members": {
+        "functions": [
+          "get",
+          "resolve",
+          "set"
+        ],
+        "properties": [
+          "KEY_SHOW",
+          "PREFS_NAME"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 2183,
+            "member": "get",
+            "kind": "call",
+            "text": "if (!com.example.zhengdao.baopu.ImpactPrefs.get(appCtx)) return"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt",
+            "line": 452,
+            "member": "get",
+            "kind": "call",
+            "text": "var impactOn by rememberSaveable { mutableStateOf(ImpactPrefs.get(ctx)) }"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt",
+            "line": 474,
+            "member": "set",
+            "kind": "call",
+            "text": "ImpactPrefs.set(ctx, want)"
+          }
+        ],
+        "callCount": 3,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt",
+            "line": 69,
+            "text": "import com.example.zhengdao.baopu.ImpactPrefs"
+          }
+        ],
+        "commentMentions": 1,
+        "testRefs": 3,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ImpactStats",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ImpactWiring.kt",
+      "declLine": 217,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt:2198.record()）",
+      "members": {
+        "functions": [
+          "clear",
+          "count",
+          "overBudget",
+          "p50",
+          "p95",
+          "percentile",
+          "record"
+        ],
+        "properties": [
+          "CAPACITY",
+          "idx",
+          "list",
+          "samples",
+          "total"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 2198,
+            "member": "record",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.ImpactStats.record(facts.nowMs() - t0)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 18,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "SettledRound",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 55,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "SettledReflectionOutcome",
+      "scope": "伴随类型",
+      "kind": "interface",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 64,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；接口没有静态调用形式（调用点在实现类上）——生产里若有人实现/当参数类型，就不是摆设；同文件内调用 5 处",
+      "members": {
+        "functions": [],
+        "properties": [
+          "line",
+          "row",
+          "tierLine",
+          "why"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 5,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 8,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "NoSignal",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 66,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，生产里类型引用 1 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/trigger/EvalTriggerEngine.kt",
+            "line": 72,
+            "text": "if (signals.isEmpty()) return listOf(EvalTriggerOutcome.NoSignal)"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 3,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "NotWritten",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 69,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 11 处（首处 app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt:138 构造）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 138,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten(verdict, AutonomyTell.line(verdict))"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 148,
+            "member": "",
+            "kind": "ctor",
+            "text": "SelfEditOutcome.NotWritten(verdict, \"面上没有自动写口：${proposal.kind.label}（${proposal.kind.surface}）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 156,
+            "member": "",
+            "kind": "ctor",
+            "text": "?: return SelfEditOutcome.NotWritten("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 163,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 176,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 196,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten(AutonomyVerdict.AutoEdit(p), \"写口预检没过：$it\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 203,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten(AutonomyVerdict.AutoEdit(p), \"没写成：${written.reason}\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 207,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 248,
+            "member": "",
+            "kind": "ctor",
+            "text": "?: return SelfEditOutcome.NotWritten("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 254,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SelfEditOutcome.NotWritten(AutonomyVerdict.AutoEdit(p), \"人设写盘失败，没改成\")"
+          }
+        ],
+        "callCount": 11,
+        "selfCallCount": 2,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/AutonomySelfEdit.kt",
+            "line": 357,
+            "text": "is SelfEditOutcome.NotWritten -> \"没自改：${o.line}\""
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 8,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Written",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 72,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 10 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/tools/DrawPublish.kt:60 构造）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/DrawPublish.kt",
+            "line": 60,
+            "member": "",
+            "kind": "ctor",
+            "text": "drawOk(Written(target, bytes))"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/logistics/LogisticsLedger.kt",
+            "line": 198,
+            "member": "",
+            "kind": "ctor",
+            "text": "LedgerWrite.Written(LogisticsPaths.displayPath(workspace, file), rows, overwritten = existed)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillStore.kt",
+            "line": 254,
+            "member": "",
+            "kind": "ctor",
+            "text": "SkillWriteResult.Written(file = file, backup = backup, indexUpdated = true)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillStore.kt",
+            "line": 279,
+            "member": "",
+            "kind": "ctor",
+            "text": "SkillWriteResult.Written(file = gone, backup = null, indexUpdated = false)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillStore.kt",
+            "line": 299,
+            "member": "",
+            "kind": "ctor",
+            "text": "SkillWriteResult.Written(file = file, backup = cur.name, indexUpdated = false)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillWritePolicy.kt",
+            "line": 265,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SkillAutoOutcome.Written(written.file, written)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillWritePolicy.kt",
+            "line": 324,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SkillWriteResult.Written(file = gone, backup = null, indexUpdated = true)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/SkillLibraryScreen.kt",
+            "line": 269,
+            "member": "",
+            "kind": "ctor",
+            "text": "SkillWriteResult.Written(file = row.file, backup = null, indexUpdated = true)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/SkillLibraryScreen.kt",
+            "line": 274,
+            "member": "",
+            "kind": "ctor",
+            "text": "else -> SkillWriteResult.Written(file = row.file, backup = null, indexUpdated = false)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/SkillLibraryScreen.kt",
+            "line": 457,
+            "member": "",
+            "kind": "ctor",
+            "text": "return SkillWriteResult.Written(file = r.file, backup = null, indexUpdated = indexUpdated)"
+          }
+        ],
+        "callCount": 10,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/DrawPublish.kt",
+            "line": 47,
+            "text": "): DrawResult<Written> {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/RenderArtifactTool.kt",
+            "line": 108,
+            "text": "written: DrawPublish.Written,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/SkillTools.kt",
+            "line": 192,
+            "text": "ok = a is SkillAutoOutcome.Written,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/SkillTools.kt",
+            "line": 197,
+            "text": "is SkillAutoOutcome.Written -> ToolOutcome.Ok("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/tools/SkillTools.kt",
+            "line": 324,
+            "text": "is SkillWriteResult.Written -> ToolOutcome.Ok("
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 85,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "WriteFailed",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 75,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "SettledReflectionRules",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 80,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 20 个方法（archiveOf、autonomyKindOf、bodyFileOf、candidate）但无人调；同文件内调用 8 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [
+          "archiveOf",
+          "autonomyKindOf",
+          "bodyFileOf",
+          "candidate",
+          "failureCandidate",
+          "failures",
+          "hasSignal",
+          "ledgerCandidate",
+          "ledgerInRound",
+          "lineOf",
+          "noSignalLine",
+          "promiseOf",
+          "proposalOf",
+          "rejectionCandidate",
+          "rejections",
+          "relOf",
+          "splitKey",
+          "tierLabelOf",
+          "traceEvidence",
+          "writable"
+        ],
+        "properties": [
+          "NOTE_MAX",
+          "NOTE_PREFIX",
+          "actions",
+          "all",
+          "evidences",
+          "f",
+          "fp",
+          "i",
+          "kind",
+          "kinds",
+          "last",
+          "lines",
+          "p",
+          "pair",
+          "rejected",
+          "rows",
+          "rp",
+          "skillDir",
+          "tool",
+          "verify",
+          "why"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 8,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 23,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ReflectionWiring",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/ReflectionWiring.kt",
+      "declLine": 367,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:3777.of()）",
+      "members": {
+        "functions": [
+          "ledgerLines",
+          "notWritten",
+          "of",
+          "onSettled",
+          "reportDebt",
+          "write",
+          "writeOrExplain"
+        ],
+        "properties": [
+          "bad",
+          "c",
+          "debt",
+          "f",
+          "findings",
+          "globalRoot",
+          "line",
+          "name",
+          "o",
+          "out",
+          "prior",
+          "round",
+          "row",
+          "shape",
+          "text",
+          "today",
+          "verdict",
+          "why"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 3777,
+            "member": "of",
+            "kind": "call",
+            "text": "ReflectionWiring.of(spillRoot(), pf, db, log).onSettled(runId, startedAt)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 38,
+            "text": "import com.example.zhengdao.baopu.ReflectionWiring"
+          }
+        ],
+        "commentMentions": 1,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Installed",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/SeedSkills.kt",
+      "declLine": 24,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 3,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "InstallReport",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/SeedSkills.kt",
+      "declLine": 30,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；类体 2 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": [
+          "failed",
+          "installed"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 2,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AmendRiskGate",
+      "scope": "伴随类型",
+      "kind": "interface",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AmendRiskWiring.kt",
+      "declLine": 24,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；接口没有静态调用形式（调用点在实现类上）——生产里若有人实现/当参数类型，就不是摆设；生产里类型引用 1 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [
+          "reauthorize",
+          "recordDowngrade"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5267,
+            "text": "private val amendRiskGateImpl = object : AmendRiskGate {"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AmendRiskOutcome",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AmendRiskWiring.kt",
+      "declLine": 33,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 4 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 4,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AmendRiskWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AmendRiskWiring.kt",
+      "declLine": 35,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:5252.onAmendLanded()）",
+      "members": {
+        "functions": [
+          "onAmendLanded",
+          "reauthorize",
+          "recordDowngrade"
+        ],
+        "properties": [
+          "NO_PROBE_LINE",
+          "approved",
+          "line",
+          "recheck"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5252,
+            "member": "onAmendLanded",
+            "kind": "call",
+            "text": "val outcome = AmendRiskWiring.onAmendLanded("
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 6,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AmendRiskCards",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AmendRiskWiring.kt",
+      "declLine": 87,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:5271.reauthorizeRequest()）",
+      "members": {
+        "functions": [
+          "approved",
+          "reauthorizeRequest"
+        ],
+        "properties": [
+          "OPT_KEEP",
+          "OPT_REAUTHORIZE"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5271,
+            "member": "reauthorizeRequest",
+            "kind": "call",
+            "text": "val picked = askUser(AmendRiskCards.reauthorizeRequest(recheck), mustAsk = true)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5272,
+            "member": "approved",
+            "kind": "call",
+            "text": "return AmendRiskCards.approved(picked?.id)"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AmendRiskLedger",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AmendRiskWiring.kt",
+      "declLine": 112,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:5278.downgradeRow()）",
+      "members": {
+        "functions": [
+          "downgradeRow"
+        ],
+        "properties": [
+          "EVENT"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5278,
+            "member": "downgradeRow",
+            "kind": "call",
+            "text": "AmendRiskLedger.downgradeRow(recheck, requirement, System.currentTimeMillis()),"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AttributionWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+      "declLine": 23,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:3785.onSettled()）",
+      "members": {
+        "functions": [
+          "append",
+          "attributionRows",
+          "onSettled",
+          "readAll",
+          "readout"
+        ],
+        "properties": [
+          "KEY_PREFIX",
+          "added",
+          "attr",
+          "before",
+          "byWhy",
+          "detail",
+          "result",
+          "seen",
+          "tail",
+          "unknown"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 3785,
+            "member": "onSettled",
+            "kind": "call",
+            "text": "AttributionWiring.onSettled(spillRoot())"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 6,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "DedupStore",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+      "declLine": 74,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 2 个方法（append、readAll）但无人调",
+      "members": {
+        "functions": [
+          "append",
+          "readAll"
+        ],
+        "properties": [
+          "seen"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ConflictRoyalWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConflictRoyalWiring.kt",
+      "declLine": 18,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt:343.record()）",
+      "members": {
+        "functions": [
+          "record"
+        ],
+        "properties": [
+          "a",
+          "b"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 343,
+            "member": "record",
+            "kind": "call",
+            "text": "ConflictRoyalWiring.record(row.conflict, it)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 65,
+            "text": "import com.example.zhengdao.baopu.agent.ConflictRoyalWiring"
+          }
+        ],
+        "commentMentions": 1,
+        "testRefs": 2,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "DeviationWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/DeviationWiring.kt",
+      "declLine": 29,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 27 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/AnswerReflow.kt:412.currentRunId()）",
+      "members": {
+        "functions": [
+          "clearRun",
+          "currentRunId",
+          "currentTaskId",
+          "installRun",
+          "nowMs",
+          "record",
+          "recordOverSteps",
+          "recordSuspendTimeout",
+          "recordTimeout",
+          "resetForTest"
+        ],
+        "properties": [
+          "rid",
+          "root",
+          "runId",
+          "taskId"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AnswerReflow.kt",
+            "line": 412,
+            "member": "currentRunId",
+            "kind": "call",
+            "text": "runId = DeviationWiring.currentRunId(),"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AnswerReflow.kt",
+            "line": 413,
+            "member": "currentTaskId",
+            "kind": "call",
+            "text": "taskId = DeviationWiring.currentTaskId(),"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 246,
+            "member": "currentRunId",
+            "kind": "call",
+            "text": "val runId = DeviationWiring.currentRunId()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 247,
+            "member": "currentTaskId",
+            "kind": "call",
+            "text": "val taskId = DeviationWiring.currentTaskId()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 281,
+            "member": "recordSuspendTimeout",
+            "kind": "call",
+            "text": "DeviationWiring.recordSuspendTimeout(at, summary, stillPending = false, callId = call.id)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 340,
+            "member": "currentRunId",
+            "kind": "call",
+            "text": "runId = DeviationWiring.currentRunId(),"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 341,
+            "member": "currentTaskId",
+            "kind": "call",
+            "text": "taskId = DeviationWiring.currentTaskId(),"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 121,
+            "member": "recordTimeout",
+            "kind": "call",
+            "text": "DeviationWiring.recordTimeout("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 491,
+            "member": "currentRunId",
+            "kind": "call",
+            "text": "if (Escalation.isDisabled(DeviationWiring.currentRunId(), capability.wire)) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/PlanController.kt",
+            "line": 270,
+            "member": "currentRunId",
+            "kind": "call",
+            "text": "val rid = DeviationWiring.currentRunId()"
+          }
+        ],
+        "callCount": 27,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/preread/PreReadWiring.kt",
+            "line": 24,
+            "text": "import com.example.zhengdao.baopu.agent.DeviationWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyActivity.kt",
+            "line": 45,
+            "text": "import com.example.zhengdao.baopu.agent.DeviationWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyWiring.kt",
+            "line": 17,
+            "text": "import com.example.zhengdao.baopu.agent.DeviationWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/trace/TraceBlackbox.kt",
+            "line": 38,
+            "text": "import com.example.zhengdao.baopu.agent.DeviationWiring"
+          }
+        ],
+        "commentMentions": 5,
+        "testRefs": 83,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "DispositionWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/DispositionWiring.kt",
+      "declLine": 31,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt:611.onMatrixReject()）",
+      "members": {
+        "functions": [
+          "onMatrixReject"
+        ],
+        "properties": [
+          "DECIDER_CENTER_AUTO",
+          "outcome"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 611,
+            "member": "onMatrixReject",
+            "kind": "call",
+            "text": "DispositionWiring.onMatrixReject("
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 4,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "JudgmentExperienceStore",
+      "scope": "伴随类型",
+      "kind": "interface",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 45,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；接口没有静态调用形式（调用点在实现类上）——生产里若有人实现/当参数类型，就不是摆设；生产里类型引用 3 处，注释/字符串提及 4 次",
+      "members": {
+        "functions": [
+          "append",
+          "readAll"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+            "line": 74,
+            "text": "private object DedupStore : JudgmentExperienceStore {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt",
+            "line": 36,
+            "text": "internal object JudgmentExperienceLedger : JudgmentExperienceStore {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ReflectAttribution.kt",
+            "line": 189,
+            "text": "private val store: JudgmentExperienceStore,"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 4,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ExperienceKind",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 53,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 18 处，生产里类型引用 1 处，只被 import 4 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+            "line": 54,
+            "member": "ATTRIBUTION"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+            "line": 58,
+            "member": "ATTRIBUTION"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt",
+            "line": 99,
+            "member": "SIGNAL"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt",
+            "line": 127,
+            "member": "entries"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ReflectAttribution.kt",
+            "line": 266,
+            "member": "ATTRIBUTION"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt",
+            "line": 88,
+            "member": "VIOLATION"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt",
+            "line": 89,
+            "member": "ATTRIBUTION"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt",
+            "line": 90,
+            "member": "REASK"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnContextNote.kt",
+            "line": 60,
+            "member": "SIGNAL"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnContextNote.kt",
+            "line": 67,
+            "member": "ASK"
+          }
+        ],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt",
+            "line": 87,
+            "text": "private val PIT_RANK: Map<ExperienceKind, Int> = mapOf("
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt",
+            "line": 29,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceKind"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnContextNote.kt",
+            "line": 27,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceKind"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 21,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceKind"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 25,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceKind"
+          }
+        ],
+        "commentMentions": 2,
+        "testRefs": 23,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ExperienceRow",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 89,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt:133 构造）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt",
+            "line": 133,
+            "member": "",
+            "kind": "ctor",
+            "text": "return ExperienceRow("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ReflectAttribution.kt",
+            "line": 263,
+            "member": "",
+            "kind": "ctor",
+            "text": "ExperienceRow("
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 5,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+            "line": 57,
+            "text": "internal fun readout(rows: List<ExperienceRow> = JudgmentExperienceLedger.readAll()): String {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+            "line": 75,
+            "text": "override fun append(row: ExperienceRow) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
+            "line": 87,
+            "text": "override fun readAll(): List<ExperienceRow> = JudgmentExperienceLedger.readAll()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt",
+            "line": 50,
+            "text": "private val memory = ArrayList<ExperienceRow>()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JudgmentExperienceLedger.kt",
+            "line": 59,
+            "text": "override fun append(row: ExperienceRow) {"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt",
+            "line": 30,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceRow"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnContextNote.kt",
+            "line": 28,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceRow"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 22,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceRow"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceRuntime.kt",
+            "line": 21,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceRow"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 26,
+            "text": "import com.example.zhengdao.baopu.agent.ExperienceRow"
+          }
+        ],
+        "commentMentions": 1,
+        "testRefs": 21,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "InMemoryJudgmentExperienceStore",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 100,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 2 个方法（append、readAll）但无人调；同文件内调用 2 处",
+      "members": {
+        "functions": [
+          "append",
+          "readAll"
+        ],
+        "properties": [
+          "rows"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 2,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 3,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "UserSignal",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 125,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt:313.ofRoyal()）",
+      "members": {
+        "functions": [
+          "ofRoyal",
+          "ofWire"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 313,
+            "member": "ofRoyal",
+            "kind": "call",
+            "text": "LearnWiring.onUserSignal(UserSignal.ofRoyal(it), row.gist, row.id)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 75,
+            "text": "import com.example.zhengdao.baopu.agent.UserSignal"
+          }
+        ],
+        "commentMentions": 0,
+        "testRefs": 32,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "LearnPolicy",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 156,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 8 处（首处 app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt:87.shouldSuppress()）",
+      "members": {
+        "functions": [
+          "mustAsk",
+          "orderRulings",
+          "shouldSuppress",
+          "stats"
+        ],
+        "properties": [
+          "SUPPRESS_AFTER_CLOSES",
+          "WINDOW_DAYS",
+          "approves",
+          "closes",
+          "lastReask",
+          "lastReaskAtMs",
+          "mine",
+          "reason",
+          "rejects",
+          "s",
+          "signals",
+          "suppressed",
+          "windowStart"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 87,
+            "member": "shouldSuppress",
+            "kind": "call",
+            "text": "val verdict = LearnPolicy.shouldSuppress(rows, cardClass, now)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 91,
+            "member": "mustAsk",
+            "kind": "call",
+            "text": "if (opinion != null && LearnPolicy.mustAsk(opinion)) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 123,
+            "member": "orderRulings",
+            "kind": "call",
+            "text": "val out = LearnPolicy.orderRulings(rulings) { cls ->"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 125,
+            "member": "stats",
+            "kind": "call",
+            "text": "LearnPolicy.stats(rows, cls, now)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 127,
+            "member": "ClassStats",
+            "kind": "call",
+            "text": "LearnPolicy.ClassStats(closes = 0, approves = 0, rejects = 0, lastReaskAtMs = null)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictDraft.kt",
+            "line": 102,
+            "member": "mustAsk",
+            "kind": "call",
+            "text": "if (LearnPolicy.mustAsk(opinion)) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 111,
+            "member": "ClassStats",
+            "kind": "call",
+            "text": "fun statsOf(cardClass: String, now: Long): LearnPolicy.ClassStats = LearnPolicy.ClassStats("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 159,
+            "member": "stats",
+            "kind": "call",
+            "text": "val s = LearnPolicy.stats(own, cls, now)"
+          }
+        ],
+        "callCount": 8,
+        "selfCallCount": 2,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 57,
+            "member": "WINDOW_DAYS"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 40,
+            "member": "WINDOW_DAYS"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 111,
+            "member": "ClassStats"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 131,
+            "member": "SUPPRESS_AFTER_CLOSES"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 155,
+            "member": "SUPPRESS_AFTER_CLOSES"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 157,
+            "member": "WINDOW_DAYS"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 23,
+            "text": "import com.example.zhengdao.baopu.agent.LearnPolicy"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictDraft.kt",
+            "line": 28,
+            "text": "import com.example.zhengdao.baopu.agent.LearnPolicy"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 27,
+            "text": "import com.example.zhengdao.baopu.agent.LearnPolicy"
+          }
+        ],
+        "commentMentions": 19,
+        "testRefs": 13,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ClassStats",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 176,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt:127 构造）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 127,
+            "member": "",
+            "kind": "ctor",
+            "text": "LearnPolicy.ClassStats(closes = 0, approves = 0, rejects = 0, lastReaskAtMs = null)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 111,
+            "member": "",
+            "kind": "ctor",
+            "text": "fun statsOf(cardClass: String, now: Long): LearnPolicy.ClassStats = LearnPolicy.ClassStats("
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictExperienceSnapshot.kt",
+            "line": 111,
+            "text": "fun statsOf(cardClass: String, now: Long): LearnPolicy.ClassStats = LearnPolicy.ClassStats("
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 2,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "SuppressVerdict",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 196,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 2 处",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 2,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "LearnWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+      "declLine": 233,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 4 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt:749.recordDraftVeto()）",
+      "members": {
+        "functions": [
+          "classKeyOf",
+          "defaultReason",
+          "installRoundSource",
+          "installStore",
+          "logLine",
+          "newId",
+          "onOpinion",
+          "onUserSignal",
+          "recordDraftVeto",
+          "recordViolation",
+          "refreshTable",
+          "replay",
+          "resetForTest",
+          "roundMark",
+          "shouldAsk",
+          "signalsOf",
+          "violations"
+        ],
+        "properties": [
+          "REASON_PREFIX",
+          "SUPPRESS_WHY",
+          "closes",
+          "cls",
+          "installed",
+          "mandate",
+          "rec",
+          "roundSource",
+          "row",
+          "ruling",
+          "seq",
+          "store",
+          "verdict"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+            "line": 749,
+            "member": "recordDraftVeto",
+            "kind": "call",
+            "text": "LearnWiring.recordDraftVeto(opinion, drafted.draft?.rule ?: \"\", drafted.vetoWhy ?: \"\", now)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1068,
+            "member": "installStore",
+            "kind": "call",
+            "text": "LearnWiring.installStore(JudgmentExperienceLedger)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 154,
+            "member": "replay",
+            "kind": "call",
+            "text": "fun rows(): List<ExperienceRow> = LearnWiring.replay()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 313,
+            "member": "onUserSignal",
+            "kind": "call",
+            "text": "LearnWiring.onUserSignal(UserSignal.ofRoyal(it), row.gist, row.id)"
+          }
+        ],
+        "callCount": 4,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 36,
+            "text": "import com.example.zhengdao.baopu.agent.LearnWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 24,
+            "text": "import com.example.zhengdao.baopu.agent.LearnWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 68,
+            "text": "import com.example.zhengdao.baopu.agent.LearnWiring"
+          }
+        ],
+        "commentMentions": 18,
+        "testRefs": 85,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "OpinionDecision",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 59,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，生产里属性引用 3 处，生产里类型引用 1 处，只被 import 2 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [
+          "ofWire"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictDraft.kt",
+            "line": 97,
+            "member": "SKIP"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 356,
+            "member": "SKIP"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 406,
+            "member": "SKIP"
+          }
+        ],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictDraft.kt",
+            "line": 51,
+            "text": "val decision: OpinionDecision,"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/policy/VerdictDraft.kt",
+            "line": 29,
+            "text": "import com.example.zhengdao.baopu.agent.OpinionDecision"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 70,
+            "text": "import com.example.zhengdao.baopu.agent.OpinionDecision"
+          }
+        ],
+        "commentMentions": 1,
+        "testRefs": 57,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "OpinionWhy",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 81,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，注释/字符串提及 3 次",
+      "members": {
+        "functions": [
+          "ofWire"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 23,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Ruling",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 144,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 2 个方法（parse、toJson）但无人调；同文件内调用 4 处，生产里类型引用 12 处，只被 import 3 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [
+          "parse",
+          "toJson"
+        ],
+        "properties": [
+          "VERSION",
+          "action",
+          "day",
+          "decision",
+          "evidence",
+          "id",
+          "law",
+          "o",
+          "severity",
+          "source",
+          "why"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 4,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 222,
+            "text": "rulings: List<Ruling>,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 224,
+            "text": "): List<Ruling> = rulings.sortedWith("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 225,
+            "text": "compareByDescending<Ruling> { statsOf(it.opinion.gist).approves }"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 328,
+            "text": "): Ruling? {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 50,
+            "text": "data class OrderedResult(val rulings: List<Ruling>, val activatedLine: String?)"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/LearnRead.kt",
+            "line": 25,
+            "text": "import com.example.zhengdao.baopu.agent.Ruling"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/RoyalDrafts.kt",
+            "line": 22,
+            "text": "import com.example.zhengdao.baopu.agent.Ruling"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/RoyalQueueRules.kt",
+            "line": 17,
+            "text": "import com.example.zhengdao.baopu.agent.Ruling"
+          }
+        ],
+        "commentMentions": 2,
+        "testRefs": 12,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "OpinionJudge",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 253,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（judge）但无人调；同文件内调用 3 处，注释/字符串提及 5 次",
+      "members": {
+        "functions": [
+          "judge"
+        ],
+        "properties": [
+          "dayFull",
+          "decision",
+          "detail",
+          "exemptReason",
+          "reason",
+          "why"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 3,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 5,
+        "testRefs": 2,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Verdict",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 255,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt:178.Allow()）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 178,
+            "member": "Allow",
+            "kind": "call",
+            "text": "if (mustAsk) return Verdict.Allow(used)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 181,
+            "member": "Allow",
+            "kind": "call",
+            "text": "return Verdict.Allow(used)"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 9,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 179,
+            "member": "Compress"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 253,
+            "member": "ASK_HUMAN"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 255,
+            "member": "USE_DEFAULT"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 257,
+            "member": "USE_DEFAULT"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 259,
+            "member": "USE_DEFAULT"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 261,
+            "member": "SELF_DECIDE"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 267,
+            "member": "SELF_DECIDE"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 379,
+            "member": "Compress"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 416,
+            "member": "SELF_DECIDE"
+          }
+        ],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 161,
+            "text": "data class Allow(val used: Int) : Verdict"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 164,
+            "text": "data object Compress : Verdict"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 173,
+            "text": "fun decide(dayKey: Int, mustAsk: Boolean = false): Verdict {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AskIntake.kt",
+            "line": 245,
+            "text": "data class Decision(val verdict: Verdict, val basis: String, val answer: ProfileAnswer? = null)"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 42,
+        "ambiguousHits": 81
+      }
+    },
+    {
+      "name": "OpinionWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/OpinionWiring.kt",
+      "declLine": 326,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 7 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt:586.onVerdict()）",
+      "members": {
+        "functions": [
+          "acceptanceBlockers",
+          "advanceDeferredRounds",
+          "autoSettledCount",
+          "dayOf",
+          "deferred",
+          "distinctEventCount",
+          "draftConsultStats",
+          "draftCounts",
+          "draftTotals",
+          "enqueueOnly",
+          "eventRetryCount",
+          "fileIn",
+          "installConflictProducts",
+          "installRoundSource",
+          "logLine",
+          "mergeOpinion",
+          "onDisposition",
+          "onOpinion",
+          "onVerdict",
+          "opinionOf",
+          "pending",
+          "processNote",
+          "processNoteCount",
+          "record",
+          "recordConflictWithPrior",
+          "recordConflicts",
+          "replay",
+          "resetForTest",
+          "root",
+          "roundMark",
+          "seedDay",
+          "state",
+          "submit",
+          "tableConclusion",
+          "verdictWithDraft"
+        ],
+        "properties": [
+          "BY_CALL_CAP",
+          "FILE_NAME",
+          "MEMORY_CAP",
+          "PENDING_CAP",
+          "PROCESS_ROUND",
+          "action",
+          "all",
+          "byCall",
+          "conflictNoteLogged",
+          "conflictProducts",
+          "day",
+          "deferred",
+          "drafted",
+          "eventKey",
+          "eventRetries",
+          "eventStates",
+          "evidence",
+          "f",
+          "first",
+          "firstRulings",
+          "fromFile",
+          "full",
+          "gist",
+          "idemKey",
+          "installed",
+          "key",
+          "law",
+          "lifeState",
+          "lifecycleEvent",
+          "mark",
+          "memory",
+          "merged",
+          "ns",
+          "opinion",
+          "pending",
+          "phased",
+          "prior",
+          "processNoteLines",
+          "processNoteLogged",
+          "root",
+          "roundKey",
+          "roundPops",
+          "roundSource",
+          "row",
+          "royalToday",
+          "ruling",
+          "seen",
+          "seq",
+          "severity",
+          "st",
+          "today",
+          "turns",
+          "written"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 586,
+            "member": "onVerdict",
+            "kind": "call",
+            "text": "OpinionWiring.onVerdict(effectiveCall, verdict)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 334,
+            "member": "onOpinion",
+            "kind": "call",
+            "text": "return OpinionWiring.onOpinion(opinion, tool, now, exemptionReason, alreadyRefused, callId)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 360,
+            "member": "onOpinion",
+            "kind": "call",
+            "text": "val ruling = OpinionWiring.onOpinion(opinion, tool, now, exemptionReason, alreadyRefused, callId)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 545,
+            "member": "resetForTest",
+            "kind": "call",
+            "text": "OpinionWiring.resetForTest()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 305,
+            "member": "enqueueOnly",
+            "kind": "call",
+            "text": "OpinionWiring.enqueueOnly(opinion, tool = \"\", now = nowMs)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 355,
+            "member": "replay",
+            "kind": "call",
+            "text": "val rulings = OpinionWiring.replay()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 405,
+            "member": "replay",
+            "kind": "call",
+            "text": "return OpinionWiring.replay()"
+          }
+        ],
+        "callCount": 7,
+        "selfCallCount": 1,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/LearnWiring.kt",
+            "line": 530,
+            "member": "PROCESS_ROUND"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 997,
+            "member": "installConflictProducts"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 38,
+            "text": "import com.example.zhengdao.baopu.agent.OpinionWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 27,
+            "text": "import com.example.zhengdao.baopu.agent.OpinionWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/DecisionCenterScreen.kt",
+            "line": 71,
+            "text": "import com.example.zhengdao.baopu.agent.OpinionWiring"
+          }
+        ],
+        "commentMentions": 21,
+        "testRefs": 176,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootStrategy",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/QuietMode.kt",
+      "declLine": 508,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 5 个方法（click、countOf、line、tierOf）但无人调；同文件内调用 1 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [
+          "click",
+          "countOf",
+          "line",
+          "tierOf",
+          "whyOf"
+        ],
+        "properties": [
+          "text"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootPolicy",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/QuietMode.kt",
+      "declLine": 562,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 3 个方法（noDataWhy、of、tierOf）但无人调；同文件内调用 1 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [
+          "noDataWhy",
+          "of",
+          "tierOf"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 17,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "TrackedOrder",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TakeoverWiring.kt",
+      "declLine": 44,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "TakeoverOutcome",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TakeoverWiring.kt",
+      "declLine": 60,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（takenOver）但无人调；同文件内调用 6 处",
+      "members": {
+        "functions": [
+          "takenOver"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 6,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "TakeoverWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TakeoverWiring.kt",
+      "declLine": 70,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt:1135.sweepStalled()）",
+      "members": {
+        "functions": [
+          "appendTakeoverLine",
+          "appendToFile",
+          "ledger",
+          "onProgressNote",
+          "parseProgress",
+          "persistProgress",
+          "readProgressLedger",
+          "reportProgress",
+          "resetForTest",
+          "shaHandle",
+          "sweepStalled"
+        ],
+        "properties": [
+          "PROGRESS_FILE",
+          "TAKEOVER_FILE",
+          "at",
+          "blockerArr",
+          "byOrder",
+          "consumedPairs",
+          "f",
+          "json",
+          "key",
+          "lastNotes",
+          "ledgerLines",
+          "newest",
+          "note",
+          "o",
+          "order",
+          "out",
+          "prev",
+          "record",
+          "root",
+          "rows",
+          "scene",
+          "t",
+          "takenOver",
+          "takeoverScene",
+          "traceArr",
+          "traces",
+          "verdict"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 1135,
+            "member": "sweepStalled",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.agent.TakeoverWiring.sweepStalled(System.currentTimeMillis())"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 24,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ProgressRow",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TakeoverWiring.kt",
+      "declLine": 217,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "TurnSourceWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/TurnSourceWiring.kt",
+      "declLine": 23,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 5 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:2279.installTurn()）",
+      "members": {
+        "functions": [
+          "clearTurn",
+          "currentTurnMessageId",
+          "installTurn",
+          "resetForTest",
+          "resolveFrom"
+        ],
+        "properties": [
+          "given",
+          "mid",
+          "msgId"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 2279,
+            "member": "installTurn",
+            "kind": "call",
+            "text": "TurnSourceWiring.installTurn(persistedMsgId)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 3197,
+            "member": "installTurn",
+            "kind": "call",
+            "text": "TurnSourceWiring.installTurn(msgId)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 3774,
+            "member": "clearTurn",
+            "kind": "call",
+            "text": "TurnSourceWiring.clearTurn()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/ledger/LedgerTools.kt",
+            "line": 86,
+            "member": "resolveFrom",
+            "kind": "call",
+            "text": "TurnSourceWiring.resolveFrom(args, ARG_SOURCE),"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/todo/TodoTools.kt",
+            "line": 89,
+            "member": "resolveFrom",
+            "kind": "call",
+            "text": "TurnSourceWiring.resolveFrom(args, ARG_SOURCE),"
+          }
+        ],
+        "callCount": 5,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/ledger/LedgerTools.kt",
+            "line": 28,
+            "text": "import com.example.zhengdao.baopu.agent.TurnSourceWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/todo/TodoTools.kt",
+            "line": 29,
+            "text": "import com.example.zhengdao.baopu.agent.TurnSourceWiring"
+          }
+        ],
+        "commentMentions": 2,
+        "testRefs": 26,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "WishIOWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+      "declLine": 49,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/wish/WishFlow.kt:60.ports()）",
+      "members": {
+        "functions": [
+          "cardSpecJson",
+          "citationCount",
+          "collect",
+          "contentDraft",
+          "deliveredFileName",
+          "draftDir",
+          "generateBody",
+          "goalOf",
+          "hashTree",
+          "ledgerDuplicates",
+          "novelChapter",
+          "oldChaptersChanged",
+          "padTo",
+          "ports",
+          "productDir",
+          "promote",
+          "promoteCard",
+          "promoteContent",
+          "promoteNovel",
+          "quotaOf",
+          "quotedNames",
+          "rehearse",
+          "rehearseCard",
+          "rehearseContent",
+          "rehearseNovel",
+          "rehearseSkill",
+          "rollback",
+          "sha256",
+          "shaNames",
+          "skillBody",
+          "skillGlobalRoot",
+          "stash",
+          "titleOf",
+          "trialCard",
+          "trialNovel",
+          "writeDraft",
+          "writeDraftFile"
+        ],
+        "properties": [
+          "CARD_DRAFT",
+          "CARD_REAL_DIR",
+          "CONTENT_DRAFT",
+          "CONTENT_MAX_WORDS",
+          "CONTENT_MIN_WORDS",
+          "NOVEL_DRAFT",
+          "NOVEL_MIN_WORDS",
+          "SKILL_ASSET_NAME",
+          "TRACK",
+          "a",
+          "after",
+          "b",
+          "base",
+          "before",
+          "bodies",
+          "body",
+          "bodyDir",
+          "book",
+          "buf",
+          "bytes",
+          "cal",
+          "cite",
+          "conventions",
+          "copy",
+          "d",
+          "deterministic",
+          "dir",
+          "draft",
+          "drafts",
+          "dups",
+          "errors",
+          "existing",
+          "f",
+          "file",
+          "goal",
+          "inCopy",
+          "keywords",
+          "ledger",
+          "ledgerMsg",
+          "loaded",
+          "m",
+          "maxWords",
+          "n",
+          "name",
+          "newChapter",
+          "newNames",
+          "note",
+          "notes",
+          "ok",
+          "oldChanged",
+          "open",
+          "out",
+          "productDir",
+          "r",
+          "reading",
+          "readings",
+          "real",
+          "rel",
+          "root",
+          "rows",
+          "sample",
+          "sandbox",
+          "seq",
+          "skill",
+          "skillDir",
+          "skillDraft",
+          "slug",
+          "spec",
+          "staged",
+          "target",
+          "text",
+          "untouched",
+          "verdict",
+          "words",
+          "worldbook",
+          "y"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/wish/WishFlow.kt",
+            "line": 60,
+            "member": "ports",
+            "kind": "call",
+            "text": "val ports = WishIOWiring.ports("
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/wish/WishFlow.kt",
+            "line": 13,
+            "text": "import com.example.zhengdao.baopu.agent.WishIOWiring"
+          }
+        ],
+        "commentMentions": 4,
+        "testRefs": 6,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "WishUsageWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.agent",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishUsageWiring.kt",
+      "declLine": 33,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt:1268.onToolHit()）",
+      "members": {
+        "functions": [
+          "count",
+          "entryOf",
+          "handle",
+          "judge",
+          "manual",
+          "onCardAdopted",
+          "onContentLedger",
+          "onToolHit",
+          "recordInto",
+          "recordVia",
+          "shortHash"
+        ],
+        "properties": [
+          "after",
+          "appCtx",
+          "digest",
+          "note",
+          "outcome",
+          "result",
+          "seen",
+          "uses",
+          "wishId",
+          "workspace"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1268,
+            "member": "onToolHit",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.agent.WishUsageWiring.onToolHit(appCtx, name)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 5427,
+            "member": "onCardAdopted",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.agent.WishUsageWiring.onCardAdopted(appCtx, name)"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuLongformCard.kt",
+            "line": 105,
+            "text": "com.example.zhengdao.baopu.agent.WishUsageWiring"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 21,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "InstallResult",
+      "scope": "装配类",
+      "kind": "interface",
+      "package": "com.example.zhengdao.baopu.authz",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantRuntime.kt",
+      "declLine": 55,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；接口没有静态调用形式（调用点在实现类上）——生产里若有人实现/当参数类型，就不是摆设；同文件内调用 4 处，生产里属性引用 2 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": [
+          "detail",
+          "reason",
+          "state"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 4,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+            "line": 326,
+            "member": "Installed"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+            "line": 331,
+            "member": "Refused"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 8,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Installed",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.authz",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantRuntime.kt",
+      "declLine": 56,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，生产里类型引用 1 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+            "line": 326,
+            "text": "is InstallResult.Installed -> {"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 3,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "WiringDisposition",
+      "scope": "装配类",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.authz",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+      "declLine": 62,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 2 处，只被 import 1 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 722,
+            "member": "ALLOW"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 723,
+            "member": "REJECT"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 35,
+            "text": "import com.example.zhengdao.baopu.authz.WiringDisposition"
+          }
+        ],
+        "commentMentions": 2,
+        "testRefs": 26,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "WiringResult",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.authz",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+      "declLine": 81,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；类体 1 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 6 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": [
+          "allow"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 6,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 9,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "GrantWiring",
+      "scope": "装配类",
+      "kind": "interface",
+      "package": "com.example.zhengdao.baopu.authz",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/authz/TaskGrantWire.kt",
+      "declLine": 101,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；接口没有静态调用形式（调用点在实现类上）——生产里若有人实现/当参数类型，就不是摆设；生产里类型引用 1 处，只被 import 1 处",
+      "members": {
+        "functions": [
+          "decide"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 274,
+            "text": "private val grantWiring: GrantWiring = TaskGrantWire,"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 27,
+            "text": "import com.example.zhengdao.baopu.authz.GrantWiring"
+          }
+        ],
+        "commentMentions": 0,
+        "testRefs": 8,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ConsequenceWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.consequence",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/consequence/ConsequenceWiring.kt",
+      "declLine": 40,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 11 处（首处 app/src/main/java/com/example/zhengdao/backup/BackupShell.kt:225.markRestored()）",
+      "members": {
+        "functions": [
+          "currentCanaryBand",
+          "currentDepth",
+          "decideCanaryBand",
+          "decideDepth",
+          "executorId",
+          "executorSheetLine",
+          "humanRevertCanary",
+          "install",
+          "legacyDraft",
+          "markRestored",
+          "mintIdentity",
+          "mutateIdentity",
+          "needsIdentityMint",
+          "observe",
+          "recordAdvisor",
+          "recordCompensation",
+          "restoreMarkerAtMs",
+          "restoreMarkerFile",
+          "revocationNote",
+          "rows",
+          "samplesOf",
+          "stamp",
+          "sweepLegacyCredentials",
+          "uninstallForTest"
+        ],
+        "properties": [
+          "AUTO_ACTOR",
+          "DAY_MS",
+          "HUMAN_ACTOR",
+          "RESTORE_MARKER",
+          "active",
+          "band",
+          "cachedExecutor",
+          "creds",
+          "current",
+          "defects",
+          "denied",
+          "dir",
+          "draft",
+          "expired",
+          "f",
+          "fresh",
+          "generated",
+          "installedDir",
+          "lastRevoked",
+          "legacyDue",
+          "legacyNote",
+          "m",
+          "next",
+          "noticedAt",
+          "ok",
+          "outcome",
+          "rejection",
+          "restored",
+          "root",
+          "rows",
+          "shortId",
+          "tail",
+          "trigger"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/backup/BackupShell.kt",
+            "line": 225,
+            "member": "markRestored",
+            "kind": "call",
+            "text": "ConsequenceWiring.markRestored(ctx.filesDir, System.currentTimeMillis())"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1008,
+            "member": "install",
+            "kind": "call",
+            "text": "ConsequenceWiring.install(appCtx.filesDir, System.currentTimeMillis())"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1041,
+            "member": "currentCanaryBand",
+            "kind": "call",
+            "text": "canaryAvailable = ConsequenceWiring.currentCanaryBand(CANARY_CAPABILITY) == CanaryBand.FULL,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 67,
+            "member": "currentCanaryBand",
+            "kind": "call",
+            "text": "val band = ConsequenceWiring.currentCanaryBand(capability.wire)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 68,
+            "member": "currentDepth",
+            "kind": "call",
+            "text": "val depth = ConsequenceWiring.currentDepth(capability.wire)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 80,
+            "member": "observe",
+            "kind": "call",
+            "text": "val stamped = ConsequenceWiring.observe("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 104,
+            "member": "recordAdvisor",
+            "kind": "call",
+            "text": "): String? = ConsequenceWiring.recordAdvisor("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 126,
+            "member": "decideCanaryBand",
+            "kind": "call",
+            "text": "ConsequenceWiring.decideCanaryBand(cap.wire, nowMs, passedRoundsOf(cap.wire, nowMs))"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 141,
+            "member": "samplesOf",
+            "kind": "call",
+            "text": "val samples: List<CanarySample> = ConsequenceWiring.samplesOf(capabilityWire)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/samples/EvoSampleWiring.kt",
+            "line": 145,
+            "member": "recordAdvisor",
+            "kind": "call",
+            "text": "val accepted = ConsequenceWiring.recordAdvisor("
+          }
+        ],
+        "callCount": 11,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 1924,
+            "text": "val now = com.example.zhengdao.baopu.consequence.ConsequenceWiring"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/backup/BackupShell.kt",
+            "line": 19,
+            "text": "import com.example.zhengdao.baopu.consequence.ConsequenceWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 69,
+            "text": "import com.example.zhengdao.baopu.consequence.ConsequenceWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 36,
+            "text": "import com.example.zhengdao.baopu.consequence.ConsequenceWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/samples/EvoSampleWiring.kt",
+            "line": 29,
+            "text": "import com.example.zhengdao.baopu.consequence.ConsequenceWiring"
+          }
+        ],
+        "commentMentions": 16,
+        "testRefs": 100,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "DepthFactsWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.evolution",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/DepthFacts.kt",
+      "declLine": 52,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt:286.readings()）",
+      "members": {
+        "functions": [
+          "readings",
+          "resetForTest"
+        ],
+        "properties": [
+          "sideReadings"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+            "line": 286,
+            "member": "readings",
+            "kind": "call",
+            "text": "val side = DepthFactsWiring.readings()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+            "line": 302,
+            "member": "readings",
+            "kind": "call",
+            "text": "val side = DepthFactsWiring.readings()"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1026,
+            "member": "sideReadings"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 72,
+            "text": "import com.example.zhengdao.baopu.evolution.DepthFactsWiring"
+          }
+        ],
+        "commentMentions": 3,
+        "testRefs": 9,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ProposalStatus",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.evolution",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+      "declLine": 78,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，生产里属性引用 8 处，生产里类型引用 3 处，只被 import 1 处",
+      "members": {
+        "functions": [
+          "ofWire"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/ProposalCandidate.kt",
+            "line": 61,
+            "member": "PENDING"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/ProposalCandidateStore.kt",
+            "line": 46,
+            "member": "PENDING"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 184,
+            "member": "LANDED"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 185,
+            "member": "ROLLED_BACK"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 186,
+            "member": "OPEN"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 186,
+            "member": "ADMITTED"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 187,
+            "member": "RETURNED"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 187,
+            "member": "REFUSED"
+          }
+        ],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/ProposalCandidate.kt",
+            "line": 61,
+            "text": "val status: ProposalStatus = ProposalStatus.PENDING,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/ProposalCandidateStore.kt",
+            "line": 116,
+            "text": "val status = enumOf<ProposalStatus>(o.optString(\"status\")) ?: continue"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 183,
+            "text": "fun proposalStatus(status: ProposalStatus): String = when (status) {"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 31,
+            "text": "import com.example.zhengdao.baopu.evolution.ProposalStatus"
+          }
+        ],
+        "commentMentions": 0,
+        "testRefs": 22,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EvolutionProposal",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.evolution",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+      "declLine": 93,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 2 个方法（parse、toJson）但无人调；同文件内调用 3 处，生产里类型引用 1 处，只被 import 1 处",
+      "members": {
+        "functions": [
+          "parse",
+          "toJson"
+        ],
+        "properties": [
+          "VERSION",
+          "id",
+          "o",
+          "status"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 3,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 164,
+            "text": "fun proposalCandidates(rows: List<EvolutionProposal>, fromMs: Long): List<ActivityCandidate> = rows"
+          }
+        ],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 29,
+            "text": "import com.example.zhengdao.baopu.evolution.EvolutionProposal"
+          }
+        ],
+        "commentMentions": 0,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EvolutionConclusion",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.evolution",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+      "declLine": 129,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 4 处，生产里类型引用 1 处，注释/字符串提及 3 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionDepth.kt",
+            "line": 99,
+            "member": "UNVERIFIABLE"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionDepth.kt",
+            "line": 126,
+            "member": "FAILED"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionDepth.kt",
+            "line": 130,
+            "member": "LANDED"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionDepth.kt",
+            "line": 362,
+            "member": "FAILED"
+          }
+        ],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionDepth.kt",
+            "line": 99,
+            "text": "val last: EvolutionConclusion = EvolutionConclusion.UNVERIFIABLE,"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 20,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ChainOutcome",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.evolution",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+      "declLine": 136,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 2 个方法（landed、rolledBack）但无人调；同文件内调用 6 处",
+      "members": {
+        "functions": [
+          "landed",
+          "rolledBack"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 6,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EvolutionWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.evolution",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
+      "declLine": 153,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 4 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/JinwuObserve.kt:215.onGapsRecorded()）",
+      "members": {
+        "functions": [
+          "adjudicateDepth",
+          "anchorsForAdmission",
+          "appendLine",
+          "attempts",
+          "chainBody",
+          "conclusionOf",
+          "conclusionText",
+          "defaultProof",
+          "depthEvidenceEnough",
+          "downgradeAfterFailure",
+          "lastAttemptConclusion",
+          "latestProposals",
+          "onGapsRecorded",
+          "onRunSettled",
+          "openMisjudgmentProposal",
+          "openProposalIfNew",
+          "proposals",
+          "recordRefused",
+          "resetForTest",
+          "rollbackVerifiedOnce",
+          "root",
+          "runEvolutionChain",
+          "sameKindSuccessStreak",
+          "setProposalStatus",
+          "sheetLines",
+          "stopWithoutReading",
+          "sweepApprovedProposals",
+          "sweepOne",
+          "syncAttemptLedger",
+          "toCandidate",
+          "toMisjudgmentRow",
+          "toTrigger",
+          "unverifiableQueueRising"
+        ],
+        "properties": [
+          "ATTEMPT_FILE",
+          "PROPOSAL_FILE",
+          "REASON_INVALID",
+          "REASON_MISSING",
+          "admit",
+          "apply",
+          "approved",
+          "attempts",
+          "byId",
+          "cells",
+          "conclusion",
+          "counts",
+          "eval",
+          "evidence",
+          "f",
+          "gap",
+          "gate",
+          "hit",
+          "hitKey",
+          "items",
+          "last",
+          "n",
+          "old",
+          "outcome",
+          "proposals",
+          "reading",
+          "reason",
+          "root",
+          "row",
+          "rows",
+          "seen",
+          "side",
+          "status",
+          "stuck",
+          "verify",
+          "worst"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JinwuObserve.kt",
+            "line": 215,
+            "member": "onGapsRecorded",
+            "kind": "call",
+            "text": "EvolutionWiring.onGapsRecorded(System.currentTimeMillis())"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 244,
+            "member": "sheetLines",
+            "kind": "call",
+            "text": "EvolutionWiring.sheetLines() +"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 160,
+            "member": "latestProposals",
+            "kind": "call",
+            "text": "proposalCandidates(EvolutionWiring.latestProposals(), fromMs)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 1134,
+            "member": "onRunSettled",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.evolution.EvolutionWiring.onRunSettled(System.currentTimeMillis())"
+          }
+        ],
+        "callCount": 4,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/JinwuObserve.kt",
+            "line": 29,
+            "text": "import com.example.zhengdao.baopu.evolution.EvolutionWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 30,
+            "text": "import com.example.zhengdao.baopu.evolution.EvolutionWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/ActivityBoardSource.kt",
+            "line": 30,
+            "text": "import com.example.zhengdao.baopu.evolution.EvolutionWiring"
+          }
+        ],
+        "commentMentions": 4,
+        "testRefs": 72,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EvoPromoteOutcome",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.evolution.samples",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/samples/EvoSampleWiring.kt",
+      "declLine": 34,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 3 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 3,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EvoSampleWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.evolution.samples",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/samples/EvoSampleWiring.kt",
+      "declLine": 42,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt:1012.install()）",
+      "members": {
+        "functions": [
+          "install",
+          "installed",
+          "promote",
+          "reading",
+          "readout",
+          "readoutBlock",
+          "record",
+          "recordObservation",
+          "refusalReason",
+          "replay",
+          "uninstallForTest"
+        ],
+        "properties": [
+          "ADVISOR_PREFIX",
+          "accepted",
+          "event",
+          "kind",
+          "ok",
+          "r",
+          "root",
+          "why",
+          "wsRoot"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1012,
+            "member": "install",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring.install(workspaceRoot(appCtx))"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 86,
+            "member": "recordObservation",
+            "kind": "call",
+            "text": "EvoSampleWiring.recordObservation(capability, atMs)"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/lowrisk/LowRiskEvo.kt",
+            "line": 37,
+            "text": "import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring"
+          }
+        ],
+        "commentMentions": 6,
+        "testRefs": 52,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EvalTriggerWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.evolution.trigger",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/trigger/EvalTriggerWiring.kt",
+      "declLine": 45,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 4 处（首处 app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt:472.ledgerFile()）",
+      "members": {
+        "functions": [
+          "assetsText",
+          "engine",
+          "gatherInputs",
+          "lastUserText",
+          "ledgerFile",
+          "offlineEval",
+          "onRunSettled",
+          "recentRuns",
+          "rollbackRows",
+          "shortIntent",
+          "skillRows",
+          "toProposal",
+          "toUnfinished",
+          "triggerManually"
+        ],
+        "properties": [
+          "CASES_ASSET",
+          "INTENT_MAX",
+          "MEMORY_ROOT",
+          "POLICY_ASSET",
+          "RATE_WINDOW_MS",
+          "added",
+          "args",
+          "arm",
+          "candidate",
+          "cases",
+          "evalNote",
+          "first",
+          "inputs",
+          "intent",
+          "item",
+          "ok",
+          "payload",
+          "policy",
+          "root",
+          "rows",
+          "runner",
+          "store",
+          "where"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 472,
+            "member": "ledgerFile",
+            "kind": "call",
+            "text": "GoalCloseout.append(EvalTriggerWiring.ledgerFile(appCtx), fact)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1048,
+            "member": "ledgerFile",
+            "kind": "call",
+            "text": "DepthEvalFeed.ledgerFile = { EvalTriggerWiring.ledgerFile(appCtx) }"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 1122,
+            "member": "onRunSettled",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring.onRunSettled(appCtx, db, sid, scope)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 4933,
+            "member": "ledgerFile",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring.ledgerFile(appCtx),"
+          }
+        ],
+        "callCount": 4,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 14,
+            "text": "import com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring"
+          }
+        ],
+        "commentMentions": 5,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootLimits",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 50,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；类体 4 个常量/属性、0 个方法 ⇒ 纯常量；注释/字符串提及 5 次",
+      "members": {
+        "functions": [],
+        "properties": [
+          "MAX_BOOT_MS",
+          "MAX_BRIEF_LINES",
+          "MAX_ORGAN_NAMES",
+          "REF_PREFIX"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 5,
+        "testRefs": 2,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootPart",
+      "scope": "装配类",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 66,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 21,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootDisposition",
+      "scope": "装配类",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 79,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；注释/字符串提及 3 次",
+      "members": {
+        "functions": [],
+        "properties": [
+          "rank"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 6,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootFinding",
+      "scope": "装配类",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 105,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "只被测试用",
+      "reason": "生产 0 处、无任何生产引用；测试源里出现 22 次 ⇒ 只被测试用；注释/字符串提及 3 次",
+      "members": {
+        "functions": [
+          "fix"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 22,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootReadings",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 198,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；注释/字符串提及 1 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 24,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootInterrupt",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 265,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 2,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootSinks",
+      "scope": "装配类",
+      "kind": "interface",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 273,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；接口没有静态调用形式（调用点在实现类上）——生产里若有人实现/当参数类型，就不是摆设；注释/字符串提及 3 次",
+      "members": {
+        "functions": [
+          "emitInterrupt",
+          "interruptShown",
+          "noteHealed",
+          "noteSelfRuling",
+          "recordUnfinished",
+          "repair"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 3,
+        "testRefs": 1,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootReport",
+      "scope": "装配类",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 301,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；类体 2 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处",
+      "members": {
+        "functions": [],
+        "properties": [
+          "cardCount",
+          "withinBudget"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "BootCheck",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/BootCheck.kt",
+      "declLine": 333,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "只被测试用",
+      "reason": "生产 0 处、无任何生产引用；测试源里出现 37 次 ⇒ 只被测试用",
+      "members": {
+        "functions": [
+          "auditFindings",
+          "briefOf",
+          "candidatesOf",
+          "count",
+          "factOf",
+          "inspectorFindings",
+          "interruptText",
+          "keyOf",
+          "locWord",
+          "missingPermission",
+          "notWired",
+          "openDefects",
+          "pathWord",
+          "physicianFact",
+          "physicianFindings",
+          "reasonOf",
+          "run",
+          "scoutFact",
+          "scoutFindings",
+          "unfinishedOf",
+          "verdictOf",
+          "yes"
+        ],
+        "properties": [
+          "blocking",
+          "budget",
+          "cap",
+          "chosen",
+          "dead",
+          "done",
+          "fact",
+          "failed",
+          "finding",
+          "healFailures",
+          "healed",
+          "heals",
+          "intent",
+          "interrupts",
+          "lines",
+          "more",
+          "n",
+          "names",
+          "needHuman",
+          "once",
+          "out",
+          "rest",
+          "rulings",
+          "unfinished",
+          "usable",
+          "verdicts"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 37,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "StopLossAction",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
+      "declLine": 67,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [
+          "ofWire"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 22,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EmergencyStatus",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
+      "declLine": 80,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 1 个方法（ofWire）但无人调；同文件内调用 1 处",
+      "members": {
+        "functions": [
+          "ofWire"
+        ],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 13,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EmergencyReceipt",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
+      "declLine": 97,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 3 个方法（parse、ratifyOverdue、toJson）但无人调；同文件内调用 2 处",
+      "members": {
+        "functions": [
+          "parse",
+          "ratifyOverdue",
+          "toJson"
+        ],
+        "properties": [
+          "VERSION",
+          "action",
+          "id",
+          "o",
+          "status"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 2,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "EmergencyWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/EmergencyWiring.kt",
+      "declLine": 165,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "只被测试用",
+      "reason": "生产 0 处、无任何生产引用；测试源里出现 50 次 ⇒ 只被测试用；注释/字符串提及 11 次",
+      "members": {
+        "functions": [
+          "executeStopLoss",
+          "fileIn",
+          "installUnfinishedDirs",
+          "ratify",
+          "record",
+          "recordUnfinished",
+          "replay",
+          "resetForTest",
+          "stopLossActiveActions",
+          "sweepOverdue"
+        ],
+        "properties": [
+          "FILE_NAME",
+          "MEMORY_CAP",
+          "dirs",
+          "downgraded",
+          "f",
+          "fromFile",
+          "item",
+          "latest",
+          "memory",
+          "ok",
+          "ratified",
+          "receipt",
+          "root",
+          "rows",
+          "seq",
+          "unfinishedDirs",
+          "who"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 11,
+        "testRefs": 50,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ReadingState",
+      "scope": "伴随类型",
+      "kind": "enum",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/MetricsWiring.kt",
+      "declLine": 35,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "reason": "生产 0 处；枚举常量表、0 个方法 ⇒ 纯常量；生产里属性引用 1 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 229,
+            "member": "NO_DATA"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 5,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "MetricsReading",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/MetricsWiring.kt",
+      "declLine": 49,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；无类体，只有构造参数 ⇒ 纯 DTO；同文件内调用 1 处，生产里类型引用 3 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 155,
+            "text": "private fun organOutputs(p: OrganProbe, root: File, reading: MetricsReading): Int? ="
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 228,
+            "text": "internal fun readingOutputs(reading: MetricsReading): Int ="
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 242,
+            "text": "private fun extraReadings(reading: MetricsReading, nowMs: Long): List<String> ="
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "MetricsWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/MetricsWiring.kt",
+      "declLine": 63,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt:86.read()）",
+      "members": {
+        "functions": [
+          "human",
+          "noData",
+          "of",
+          "read",
+          "readingLine",
+          "samplePhrase",
+          "shortfall",
+          "stateOf"
+        ],
+        "properties": [
+          "CENTER_KEYS",
+          "FOUR_RATES",
+          "FOUR_RATE_HEAD",
+          "d",
+          "four",
+          "head",
+          "name",
+          "picked",
+          "r",
+          "state",
+          "v"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 86,
+            "member": "read",
+            "kind": "call",
+            "text": "val reading = runCatching { MetricsWiring.read(db, projectRoot, root, nowMs) }"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/HealthRun.kt",
+            "line": 88,
+            "member": "noData",
+            "kind": "call",
+            "text": ".getOrElse { MetricsWiring.noData(nowMs) }"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 21,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "TriggerWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.inspect",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/TriggerWiring.kt",
+      "declLine": 23,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt:1139.onRunSettled()）",
+      "members": {
+        "functions": [
+          "onRunSettled",
+          "safe"
+        ],
+        "properties": [
+          "ran"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt",
+            "line": 1139,
+            "member": "onRunSettled",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.inspect.TriggerWiring.onRunSettled(appCtx)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 5,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "AdmissionWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.intake",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/intake/AdmissionWiring.kt",
+      "declLine": 38,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt:502.onExternalToolCall()）",
+      "members": {
+        "functions": [
+          "admit",
+          "agentIdOf",
+          "install",
+          "installChannel",
+          "onExternalToolCall",
+          "resetForTest",
+          "versionOf"
+        ],
+        "properties": [
+          "WIRE_PREFIX",
+          "agentId",
+          "body",
+          "canAccept",
+          "channel",
+          "dir",
+          "exam",
+          "kind",
+          "known",
+          "record",
+          "reprobe",
+          "root",
+          "server",
+          "version"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 502,
+            "member": "onExternalToolCall",
+            "kind": "call",
+            "text": "AdmissionWiring.onExternalToolCall("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 1004,
+            "member": "install",
+            "kind": "call",
+            "text": "AdmissionWiring.install(File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY))"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 43,
+            "text": "import com.example.zhengdao.baopu.intake.AdmissionWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 77,
+            "text": "import com.example.zhengdao.baopu.intake.AdmissionWiring"
+          }
+        ],
+        "commentMentions": 5,
+        "testRefs": 38,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "McpSelfServiceWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.mcp",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/mcp/McpSelfServiceWiring.kt",
+      "declLine": 20,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt:72.install()）",
+      "members": {
+        "functions": [
+          "install",
+          "kick",
+          "onBackgroundCallback",
+          "openInBrowser"
+        ],
+        "properties": [
+          "appCtx",
+          "auth",
+          "done",
+          "e",
+          "id",
+          "installed",
+          "outcome",
+          "queue"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt",
+            "line": 72,
+            "member": "install",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.mcp.McpSelfServiceWiring.install(this)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "MemoryImportRules",
+      "scope": "伴随类型",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.memoryimport",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/memoryimport/FreeTextMemoryWiring.kt",
+      "declLine": 34,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 4 个方法（dueByDay、shouldStamp、startOfDay、summaryLine）但无人调；同文件内调用 4 处，注释/字符串提及 2 次",
+      "members": {
+        "functions": [
+          "dueByDay",
+          "shouldStamp",
+          "startOfDay",
+          "summaryLine"
+        ],
+        "properties": [
+          "KEY_LAST_IMPORT_AT"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 4,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 15,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "FreeTextMemoryWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.memoryimport",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/memoryimport/FreeTextMemoryWiring.kt",
+      "declLine": 100,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 2 处（首处 app/src/main/java/com/example/zhengdao/baopu/memoryimport/MemoryImportReceiver.kt:36.runNow()）",
+      "members": {
+        "functions": [
+          "autoRun",
+          "importScope",
+          "install",
+          "outcome",
+          "pickProjectSource",
+          "pickReadable",
+          "publish",
+          "runImportOnce",
+          "runNow",
+          "runOnce",
+          "stampLastImport"
+        ],
+        "properties": [
+          "LABEL_GLOBAL",
+          "LABEL_PROJECT",
+          "STAGING_DIR",
+          "TRIGGER_COLD_START",
+          "TRIGGER_MANUAL",
+          "appCtx",
+          "candidate",
+          "elapsedMs",
+          "entries",
+          "failures",
+          "g",
+          "installed",
+          "kept",
+          "last",
+          "outcome",
+          "p",
+          "payload",
+          "result",
+          "running",
+          "scope",
+          "skippedLines",
+          "sourceLines",
+          "staging",
+          "startedAt",
+          "store",
+          "t",
+          "target",
+          "unchanged",
+          "unreadable",
+          "v",
+          "written",
+          "ws"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/memoryimport/MemoryImportReceiver.kt",
+            "line": 36,
+            "member": "runNow",
+            "kind": "call",
+            "text": "FreeTextMemoryWiring.runNow(ctx)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt",
+            "line": 57,
+            "member": "install",
+            "kind": "call",
+            "text": "com.example.zhengdao.baopu.memoryimport.FreeTextMemoryWiring.install(this)"
+          }
+        ],
+        "callCount": 2,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 5,
+        "testRefs": 10,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Outcome",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.memoryimport",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/memoryimport/FreeTextMemoryWiring.kt",
+      "declLine": 103,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 39 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt:131.Cooling()）",
+      "members": {
+        "functions": [],
+        "properties": []
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 131,
+            "member": "Cooling",
+            "kind": "call",
+            "text": "return Outcome.Cooling(lastFailed + COOLDOWN_STEPS)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 139,
+            "member": "Skipped",
+            "kind": "call",
+            "text": "return Outcome.Skipped(\"选区为空：最近 ${Compressor.KEEP_RECENT} 条之外没有未压过的旧消息\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 159,
+            "member": "Skipped",
+            "kind": "call",
+            "text": "return Outcome.Skipped(\"压缩通道已降级，本次不压（摘要不可信，原文仍在）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 208,
+            "member": "Ok",
+            "kind": "call",
+            "text": "Outcome.Ok(record, metrics)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 215,
+            "member": "Failed",
+            "kind": "call",
+            "text": "Outcome.Failed(r.code, r.message)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 212,
+            "member": "Approved",
+            "kind": "call",
+            "text": "return Outcome.Approved(call, result)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 286,
+            "member": "TimedOut",
+            "kind": "call",
+            "text": "Outcome.TimedOut(RunRules.CONFIRM_TIMEOUT_NOTE)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 298,
+            "member": "Rejected",
+            "kind": "call",
+            "text": "Outcome.Rejected(RunRules.rejectNote(p?.summary ?: summary, note))"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 306,
+            "member": "Approved",
+            "kind": "call",
+            "text": "Outcome.Approved(p?.call ?: call, result)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/eval/EvolutionReport.kt",
+            "line": 161,
+            "member": "",
+            "kind": "ctor",
+            "text": "return Outcome(report, judgement, null, null)"
+          }
+        ],
+        "callCount": 39,
+        "selfCallCount": 1,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 234,
+            "member": "Ignored"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 237,
+            "member": "Ignored"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/ConfirmFlow.kt",
+            "line": 296,
+            "member": "Abandoned"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 4655,
+            "member": "Approved"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 4670,
+            "member": "Rejected"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 4693,
+            "member": "Abandoned"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 4699,
+            "member": "TimedOut"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 4715,
+            "member": "Ignored"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5832,
+            "member": "Ok"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 5833,
+            "member": "Skipped"
+          }
+        ],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 98,
+            "text": ") : Outcome"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 101,
+            "text": "data class Skipped(val reason: String) : Outcome"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 104,
+            "text": "data class Failed(val code: Int, val message: String) : Outcome"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 107,
+            "text": "data class Cooling(val untilStep: Int) : Outcome"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompressionRunner.kt",
+            "line": 127,
+            "text": "): Outcome {"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 13,
+        "testRefs": 113,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Tally",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.memoryimport",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/memoryimport/FreeTextMemoryWiring.kt",
+      "declLine": 125,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt:56 构造）",
+      "members": {
+        "functions": [
+          "outcome"
+        ],
+        "properties": [
+          "entries",
+          "failures",
+          "kept",
+          "skippedLines",
+          "sourceLines",
+          "unchanged",
+          "unreadable",
+          "written"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt",
+            "line": 56,
+            "member": "",
+            "kind": "ctor",
+            "text": "val tally = Tally()"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt",
+            "line": 72,
+            "text": "private fun schedStep(rule: TriggerRule, rows: MutableList<TriggerRule>, nowMs: Long, tally: Tally) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt",
+            "line": 89,
+            "text": "tally: Tally,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt",
+            "line": 110,
+            "text": "tally: Tally,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt",
+            "line": 144,
+            "text": "tally: Tally,"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerPass.kt",
+            "line": 159,
+            "text": "private fun advanceOnly(rule: TriggerRule, rows: MutableList<TriggerRule>, nowMs: Long, tally: Tally) {"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 0,
+        "testRefs": 0,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "PreReadWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.preread",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/preread/PreReadWiring.kt",
+      "declLine": 28,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 3 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt:541.beforeToolCall()）",
+      "members": {
+        "functions": [
+          "armByLongTask",
+          "attachOrder",
+          "beforeToolCall",
+          "closeout",
+          "conclusion",
+          "declareNotRequired",
+          "failOpen",
+          "modeNow",
+          "review",
+          "startHint",
+          "submitReceipt",
+          "taskKey"
+        ],
+        "properties": [
+          "LOG_HEAD",
+          "diff",
+          "gaps",
+          "issues",
+          "key",
+          "r"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 541,
+            "member": "beforeToolCall",
+            "kind": "call",
+            "text": "PreReadWiring.beforeToolCall(spec.name, isWrite = !spec.readOnly)?.let { blocked ->"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/PlanController.kt",
+            "line": 280,
+            "member": "armByLongTask",
+            "kind": "call",
+            "text": "val armed = PreReadWiring.armByLongTask(applied.items.size, crossSession())"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt",
+            "line": 238,
+            "member": "closeout",
+            "kind": "call",
+            "text": "PreReadWiring.closeout(touched)"
+          }
+        ],
+        "callCount": 3,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/GuardPipeline.kt",
+            "line": 51,
+            "text": "import com.example.zhengdao.baopu.preread.PreReadWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/PlanController.kt",
+            "line": 27,
+            "text": "import com.example.zhengdao.baopu.preread.PreReadWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt",
+            "line": 37,
+            "text": "import com.example.zhengdao.baopu.preread.PreReadWiring"
+          }
+        ],
+        "commentMentions": 1,
+        "testRefs": 80,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ProfileIntakeWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.profile",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/profile/ProfileIntakeWiring.kt",
+      "declLine": 26,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt:960.install()）",
+      "members": {
+        "functions": [
+          "answerFor",
+          "install",
+          "resetForTest"
+        ],
+        "properties": [
+          "CANDIDATE_KINDS",
+          "CONCLUSION",
+          "SAMPLE_COUNT_FLOOR",
+          "clock",
+          "enabled",
+          "kind",
+          "now",
+          "share"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 960,
+            "member": "install",
+            "kind": "call",
+            "text": "ProfileIntakeWiring.install(enabled = { AskHabitSwitch.on(appCtx) })"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 93,
+            "text": "import com.example.zhengdao.baopu.profile.ProfileIntakeWiring"
+          }
+        ],
+        "commentMentions": 2,
+        "testRefs": 15,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "SafetyWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.safety",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyWiring.kt",
+      "declLine": 23,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 11 处（首处 app/src/main/java/com/example/zhengdao/baopu/safety/SafetyActivity.kt:113.softStop()）",
+      "members": {
+        "functions": [
+          "afterRun",
+          "basisLine",
+          "beforeRun",
+          "bigFileNote",
+          "blockAutoStartIfHalted",
+          "ctx",
+          "diary",
+          "hardRollbackInFlight",
+          "hardStop",
+          "install",
+          "intercept",
+          "liftByHuman",
+          "nowWhere",
+          "runId",
+          "sessionId",
+          "softStop"
+        ],
+        "properties": [
+          "appCtx",
+          "big",
+          "c",
+          "f",
+          "failStreak",
+          "flying",
+          "hooks",
+          "inFlight",
+          "now",
+          "ok",
+          "outcome",
+          "prev",
+          "rec",
+          "result",
+          "route",
+          "run",
+          "session",
+          "startedAt",
+          "watch",
+          "what",
+          "where"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyActivity.kt",
+            "line": 113,
+            "member": "softStop",
+            "kind": "call",
+            "text": "SafetyWiring.softStop(by = \"人工（安全台）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyActivity.kt",
+            "line": 117,
+            "member": "hardStop",
+            "kind": "call",
+            "text": "SafetyWiring.hardStop(by = \"人工（安全台）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyActivity.kt",
+            "line": 125,
+            "member": "hardStop",
+            "kind": "call",
+            "text": "SafetyWiring.hardStop(by = \"人工（安全台）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyActivity.kt",
+            "line": 130,
+            "member": "liftByHuman",
+            "kind": "call",
+            "text": "val ok = SafetyWiring.liftByHuman()"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyNotificationReceiver.kt",
+            "line": 18,
+            "member": "softStop",
+            "kind": "call",
+            "text": "SafetyWiring.softStop(by = \"人工（通知栏）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/safety/SafetyNotificationReceiver.kt",
+            "line": 22,
+            "member": "hardStop",
+            "kind": "call",
+            "text": "SafetyWiring.hardStop(by = \"人工（通知栏）\")"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/schedule/ScheduleRunner.kt",
+            "line": 42,
+            "member": "blockAutoStartIfHalted",
+            "kind": "call",
+            "text": "if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted(\"定时任务\")) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/trigger/TriggerRunner.kt",
+            "line": 37,
+            "member": "blockAutoStartIfHalted",
+            "kind": "call",
+            "text": "if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted(\"事件触发\")) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/unattended/UnattendedDutyService.kt",
+            "line": 167,
+            "member": "blockAutoStartIfHalted",
+            "kind": "call",
+            "text": "if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted(\"离场值守\")) {"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/unattended/UnattendedWatchdog.kt",
+            "line": 56,
+            "member": "blockAutoStartIfHalted",
+            "kind": "call",
+            "text": "if (com.example.zhengdao.baopu.safety.SafetyWiring.blockAutoStartIfHalted(\"值守看门狗\")) {"
+          }
+        ],
+        "callCount": 11,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuRuntime.kt",
+            "line": 834,
+            "member": "hooks"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 4,
+        "testRefs": 3,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ChancellorWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.verify",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ChancellorWiring.kt",
+      "declLine": 25,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 3 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:2680.conveneIrreversibleDelivery()）",
+      "members": {
+        "functions": [
+          "conveneAtLearningPromotion",
+          "conveneByReferral",
+          "conveneIrreversibleDelivery",
+          "conveneUserNamed",
+          "decisionSnapshot",
+          "resetCourtStateForTest",
+          "verifyLearningPromotion"
+        ],
+        "properties": [
+          "COURT_REPORT_HEAD",
+          "FILE_OPS_WINDOW",
+          "IRREVERSIBLE_KINDS",
+          "REPORT_HEAD",
+          "body",
+          "factSpecs",
+          "fileOps",
+          "key",
+          "ops",
+          "repeatFailStreak",
+          "streak",
+          "submission"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 2680,
+            "member": "conveneIrreversibleDelivery",
+            "kind": "call",
+            "text": "ChancellorWiring.conveneIrreversibleDelivery("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillPromote.kt",
+            "line": 102,
+            "member": "verifyLearningPromotion",
+            "kind": "call",
+            "text": "val chancellor = ChancellorWiring.verifyLearningPromotion(skillFile, scope, name)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillPromote.kt",
+            "line": 107,
+            "member": "conveneAtLearningPromotion",
+            "kind": "call",
+            "text": "ChancellorWiring.conveneAtLearningPromotion(skillFile, scope, name, chancellor, nowMs)"
+          }
+        ],
+        "callCount": 3,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 78,
+            "text": "import com.example.zhengdao.baopu.verify.ChancellorWiring"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/SkillPromote.kt",
+            "line": 16,
+            "text": "import com.example.zhengdao.baopu.verify.ChancellorWiring"
+          }
+        ],
+        "commentMentions": 8,
+        "testRefs": 19,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "RunContractWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.verify",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt",
+      "declLine": 50,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 4 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:421.amendRun()）",
+      "members": {
+        "functions": [
+          "amendLine",
+          "amendRun",
+          "brief",
+          "closeRun",
+          "composedGoal",
+          "precheckLine",
+          "reissueAck",
+          "reportLine",
+          "startLine",
+          "startRun",
+          "tick"
+        ],
+        "properties": [
+          "AMEND_MARK",
+          "DECLARED",
+          "DELIVERABLE_ID",
+          "DOC_EXTS",
+          "LOG_HEAD",
+          "STANDING_CRITERION",
+          "amended",
+          "b",
+          "bad",
+          "contract",
+          "declared",
+          "detail",
+          "evidence",
+          "goal",
+          "head",
+          "next",
+          "one",
+          "primary",
+          "runId",
+          "text"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 421,
+            "member": "amendRun",
+            "kind": "call",
+            "text": "val next = RunContractWiring.amendRun(current, requirement) ?: return \"\""
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 2328,
+            "member": "startRun",
+            "kind": "call",
+            "text": "?.let { RunContractWiring.startRun(roundRunId, it) }"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 2622,
+            "member": "closeRun",
+            "kind": "call",
+            "text": "val report = RunContractWiring.closeRun("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 2629,
+            "member": "reportLine",
+            "kind": "call",
+            "text": "contractLine(sessionId, stepCount, RunContractWiring.reportLine(report))"
+          }
+        ],
+        "callCount": 4,
+        "selfCallCount": 0,
+        "propertyRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 377,
+            "member": "RunOrder"
+          }
+        ],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 80,
+            "text": "import com.example.zhengdao.baopu.verify.RunContractWiring"
+          }
+        ],
+        "commentMentions": 6,
+        "testRefs": 26,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "RunOrder",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.verify",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/RunContractWiring.kt",
+      "declLine": 89,
+      "status": "unwired",
+      "bucket": "无调用点·待判",
+      "byDesign": "",
+      "reason": "生产 0 处；类体 4 个方法（amendLine、precheckLine、reissueAck、startLine）但无人调；同文件内调用 1 处，生产里类型引用 1 处，注释/字符串提及 1 次",
+      "members": {
+        "functions": [
+          "amendLine",
+          "precheckLine",
+          "reissueAck",
+          "startLine"
+        ],
+        "properties": [
+          "b"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 377,
+            "text": "private var activeRunOrder: RunContractWiring.RunOrder? = null"
+          }
+        ],
+        "importRefs": [],
+        "commentMentions": 1,
+        "testRefs": 4,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "ValueGateWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.verify",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ValueGateWiring.kt",
+      "declLine": 25,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 1 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt:2528.findingsOf()）",
+      "members": {
+        "functions": [
+          "findingsOf",
+          "line",
+          "note",
+          "verdict"
+        ],
+        "properties": [
+          "CHECK_VALUE",
+          "detail",
+          "failed",
+          "head",
+          "ran",
+          "results",
+          "unverifiable",
+          "v",
+          "verified"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 2528,
+            "member": "findingsOf",
+            "kind": "call",
+            "text": "ValueGateWiring.findingsOf(outcome.text, spillRoot(), verifyTouched)"
+          }
+        ],
+        "callCount": 1,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+            "line": 81,
+            "text": "import com.example.zhengdao.baopu.verify.ValueGateWiring"
+          }
+        ],
+        "commentMentions": 0,
+        "testRefs": 11,
+        "ambiguousHits": 0
+      }
+    },
+    {
+      "name": "Verdict",
+      "scope": "伴随类型",
+      "kind": "class",
+      "package": "com.example.zhengdao.baopu.verify",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/verify/ValueGateWiring.kt",
+      "declLine": 31,
+      "status": "unwired",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯 DTO",
+      "reason": "生产 0 处；类体 3 个常量/属性、0 个方法 ⇒ 纯 DTO；同文件内调用 1 处，注释/字符串提及 2 次，另有 81 处同名但归属不唯一",
+      "members": {
+        "functions": [],
+        "properties": [
+          "failed",
+          "ran",
+          "unverifiable"
+        ]
+      },
+      "evidence": {
+        "callSites": [],
+        "callCount": 0,
+        "selfCallCount": 1,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [],
+        "commentMentions": 2,
+        "testRefs": 42,
+        "ambiguousHits": 81
+      }
+    },
+    {
+      "name": "WishWiring",
+      "scope": "装配类",
+      "kind": "object",
+      "package": "com.example.zhengdao.baopu.wish",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/wish/WishWiring.kt",
+      "declLine": 21,
+      "status": "wired",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "reason": "生产调用点 6 处（首处 app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt:90.skillWriteDraft()）",
+      "members": {
+        "functions": [
+          "promoteSkill",
+          "rollbackSkill",
+          "skillName",
+          "skillPromote",
+          "skillRollback",
+          "skillWriteDraft",
+          "writeDraft"
+        ],
+        "properties": [
+          "backup",
+          "body",
+          "file",
+          "name",
+          "outcome",
+          "proposal",
+          "result"
+        ]
+      },
+      "evidence": {
+        "callSites": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+            "line": 90,
+            "member": "skillWriteDraft",
+            "kind": "call",
+            "text": "val skillDraft = WishWiring.skillWriteDraft("
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+            "line": 130,
+            "member": "skillName",
+            "kind": "call",
+            "text": "val name = WishWiring.skillName(ctx.wishText) ?: \"许愿卡\""
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+            "line": 226,
+            "member": "skillName",
+            "kind": "call",
+            "text": "val name = WishWiring.skillName(ctx.wishText)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+            "line": 404,
+            "member": "skillPromote",
+            "kind": "call",
+            "text": "WishProduct.SKILL -> WishWiring.skillPromote(workspace, persona, stamp)(ctx)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+            "line": 476,
+            "member": "skillRollback",
+            "kind": "call",
+            "text": "return WishWiring.skillRollback(workspace, persona, stamp)(ctx, reason)"
+          },
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/wish/WishPipeline.kt",
+            "line": 71,
+            "member": "skillName",
+            "kind": "call",
+            "text": "val name = WishWiring.skillName(ctx.wishText) ?: return false"
+          }
+        ],
+        "callCount": 6,
+        "selfCallCount": 0,
+        "propertyRefs": [],
+        "typeRefs": [],
+        "importRefs": [
+          {
+            "file": "app/src/main/java/com/example/zhengdao/baopu/agent/WishIOWiring.kt",
+            "line": 38,
+            "text": "import com.example.zhengdao.baopu.wish.WishWiring"
+          }
+        ],
+        "commentMentions": 2,
+        "testRefs": 18,
+        "ambiguousHits": 0
+      }
+    }
+  ],
+  "audit": [
+    {
+      "name": "ReflectionWiring",
+      "bucket": "有调用点",
+      "command": "grep -rn \"ReflectionWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+    },
+    {
+      "name": "GrantWiring",
+      "bucket": "无调用点·待判",
+      "command": "grep -rn \"GrantWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+    },
+    {
+      "name": "BootInterrupt",
+      "bucket": "无调用点·by-design",
+      "command": "grep -rn \"BootInterrupt\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+    },
+    {
+      "name": "LearnWiring",
+      "bucket": "有调用点",
+      "command": "grep -rn \"LearnWiring\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+    },
+    {
+      "name": "BootPolicy",
+      "bucket": "无调用点·待判",
+      "command": "grep -rn \"BootPolicy\" app/src/main app/src/test app/src/androidTest --include=*.kt"
+    }
+  ]
+}
