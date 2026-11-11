@@ -15,7 +15,12 @@ import java.net.ConnectException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 
-/** 外发失败的机器键（闭集；改 wire 等于让老账读不出）。 */
+/**
+ * 外发失败的机器键（闭集；改 wire 等于让老账读不出）。
+ *
+ * 只增不改：590 批按立单（见交付报告《590-A2A收口-交付-2026-11-11》§立单）新增
+ * version／endpoint／config 三个键——老键一个没动，老账照读；`ofWire` 顺带认得新键。
+ */
 internal enum class PeerFailureCode(val wire: String) {
     OK("ok"),
     DNS("dns"),
@@ -23,7 +28,16 @@ internal enum class PeerFailureCode(val wire: String) {
     TLS("tls"),
     TIMEOUT("timeout"),
     PROTOCOL("protocol"),
+
+    /** A2A 协议版本对不上：卡上 protocolVersion 超出支持区间（或 400/422 错误体点名 version）。 */
+    VERSION_MISMATCH("version"),
+
+    /** 路径不存在：HTTP 404——服务在那儿，但这个地址不给这条接口（与「说不上话」「连不上」分开）。 */
+    ENDPOINT("endpoint"),
     AUTH("auth"),
+
+    /** 本机配置就没过检（如凭据含非 ASCII 字符）——请求一个字节都没发。 */
+    CONFIG("config"),
     NETWORK("network"),
 
     /** 没被批准就发起了——这行账记在闸头上，请求一个都没发出去。 */
@@ -86,8 +100,11 @@ internal object PeerFailureText {
         PeerFailureCode.PORT -> "「$peerName」门口没人应：端口拒绝连接——对方服务多半没起，或端口写错了"
         PeerFailureCode.TLS -> "「$peerName」的证书信不过：HTTPS 握手失败（自签/过期/域名不符）——证书这一关没过"
         PeerFailureCode.TIMEOUT -> "「$peerName」等太久没回音：超时——对方忙，或不在这个网络里"
-        PeerFailureCode.PROTOCOL -> "「$peerName」说的不是一路话：协议不符——对方不是 MCP/A2A，或版本对不上，已停止（不会硬猜着用）"
+        PeerFailureCode.PROTOCOL -> "「$peerName」说的不是一路话：协议不符——对方不是 MCP/A2A，已停止（不会硬猜着用）"
+        PeerFailureCode.VERSION_MISMATCH -> "「$peerName」的 A2A 协议版本对不上：不在本端支持的区间——要么它太旧要么太新，已停住不硬谈（先对齐 protocolVersion）"
+        PeerFailureCode.ENDPOINT -> "「$peerName」那儿没有这条接口：地址给的是 404——端点/路径不对（服务在，但这条路不通）"
         PeerFailureCode.AUTH -> "「$peerName」要先验明身份：需要授权或凭据无效——先授权/换凭据，再连"
+        PeerFailureCode.CONFIG -> "「$peerName」还没出门就卡住了：本机配置不过检（如凭据含非 ASCII 字符）——请换 ASCII token 或改用自定头"
         PeerFailureCode.NETWORK -> "「$peerName」的连接半路断了：网络错误"
         PeerFailureCode.REFUSED -> "「$peerName」这次外发没有批准，没有发起（先批再连）"
     }

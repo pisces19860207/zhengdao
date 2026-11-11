@@ -11,6 +11,13 @@
 //
 // 失败与 MCP 探针同一把尺（[PeerFailureClassify]）：DNS/端口/证书/超时/协议/鉴权各是各的类。
 // 红线：不打印请求头/凭据；凭据只从调用方给的 [A2aCredential] 过一手内存，本类不落盘。
+//
+// 第五百九十批 · A2A 收口（四件，立单见交付报告）：
+//   ① 卡上 protocolVersion 先判支持区间（[ensureProtocolInRange]），超区间 VERSION_MISMATCH，一个字节不发；
+//   ② HTTP 状态码按序分（[classifyHttpFailure]）：401/403→AUTH、404→ENDPOINT、400/422+version→VERSION_MISMATCH、
+//      其余 4xx→PROTOCOL、5xx→NETWORK——不再一律 NETWORK；
+//   ③ [taskCancel]：A2A tasks/cancel，终态收敛且幂等（spec §3.3.1）；
+//   ④ 非 ASCII 凭据本机拦下归 CONFIG（[ensureAsciiCredential]），人话指路「换 ASCII token 或改用自定头」。
 package com.example.zhengdao.baopu.peer
 
 import java.util.concurrent.TimeUnit
@@ -153,6 +160,24 @@ internal class A2aClient(
         return parseTask(task, "tasks/get")
     }
 
+    // ── ③ tasks/cancel（590 收口③：补上 570 记的 G-570-3 缺口） ──────────
+
+    /**
+     * 请求取消任务（A2A `tasks/cancel`；spec §3.3.1：取消是幂等的，重复取消同效）。
+     *
+     * 终态收敛：服务器用 JSON-RPC 错误拒了（多半 `TaskNotCancelableError`——任务已终态），
+     * 回读一次 `tasks/get`：读到一个终态就照它收（幂等——再取消不炸不重演）；
+     * 没读到终态就把**原错**原样抛回去——不许把「取消失败」谎报成「已取消」。
+     */
+    fun taskCancel(card: A2aCard, taskId: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): A2aTask =
+        try {
+            parseTask(rpcCall(card, METHOD_CANCEL, JSONObject().put("id", taskId), timeoutMs), METHOD_CANCEL)
+        } catch (e: A2aException) {
+            if (e.failureCode != PeerFailureCode.PROTOCOL) throw e
+            val readback = runCatching { taskGet(card, taskId, timeoutMs) }.getOrNull()
+            readback?.takeIf { it.state.terminal } ?: throw e
+        }
+
     /**
      * 发送并轮询到停（终态 / 要人 / 超时）。
      *
@@ -184,6 +209,7 @@ internal class A2aClient(
     // ── 线下：JSON-RPC 传输 ─────────────────────────────────────────────
 
     private fun rpcCall(card: A2aCard, method: String, params: JSONObject, timeoutMs: Long): JSONObject {
+        ensureProtocolInRange(card)
         val body = JSONObject()
             .put("jsonrpc", JSONRPC_VERSION)
             .put("id", rpcId())
@@ -202,6 +228,21 @@ internal class A2aClient(
         return json.optJSONObject("result") ?: throw A2aException(
             PeerFailureCode.PROTOCOL,
             "「${card.name}」的 $method 没有返回 result：不是一路 A2A（协议不符）",
+        )
+    }
+
+    /**
+     * 590 收口①：卡上的 protocolVersion 先判支持区间（spec §3.6：按 Major.Minor 比，patch 不参与）。
+     * 超区间（含卡上没写/认不出）直接 VERSION_MISMATCH——这一个字节都不发。
+     */
+    private fun ensureProtocolInRange(card: A2aCard) {
+        val major = card.protocolVersion.trim().substringBefore('.').toIntOrNull()
+        if (major == SUPPORTED_PROTOCOL_MAJOR) return
+        val declared = card.protocolVersion.trim().ifEmpty { "（卡上没写）" }
+        throw A2aException(
+            PeerFailureCode.VERSION_MISMATCH,
+            "「${card.name}」的 A2A 协议版本是「$declared」：本客户端支持 $SUPPORTED_PROTOCOL_MAJOR.x" +
+                "——版本对不上，一个字节不发（协议版本不符）",
         )
     }
 
@@ -253,8 +294,41 @@ internal class A2aClient(
 
     private fun baseRequest(url: String): Request.Builder {
         val b = Request.Builder().url(url).header("Accept", "application/json")
-        credential?.takeIf { it.value.isNotBlank() }?.let { b.header(it.headerName, it.value) }
+        credential?.takeIf { it.value.isNotBlank() }?.let {
+            ensureAsciiCredential(it) // 590 收口④：本机就拦下，归 CONFIG，一个字节不发
+            b.header(it.headerName, it.value)
+        }
         return b
+    }
+
+    /**
+     * 590 收口④：HTTP 头值只放 ASCII（OkHttp 对非 ASCII 抛 IllegalArgumentException，
+     * 曾顺着分类尺被归成「协议不符」——不对，这是本机配置问题，归 CONFIG）。
+     */
+    private fun ensureAsciiCredential(cred: A2aCredential) {
+        val badInValue = cred.value.firstOrNull { it.code < ASCII_MIN || it.code > ASCII_MAX }
+        val badInName = cred.headerName.firstOrNull { it.code < ASCII_MIN || it.code > ASCII_MAX }
+        if (badInValue == null && badInName == null) return
+        throw A2aException(
+            PeerFailureCode.CONFIG,
+            "「$baseUrl」的凭据没法装进请求头：token/头名里有非 ASCII 字符" +
+                "——请换 ASCII token 或改用自定头（本机配置问题，请求未发出）",
+        )
+    }
+
+    /**
+     * 590 收口②：HTTP 状态码按序分（不再一律 NETWORK）：
+     * 401/403→AUTH；404→ENDPOINT；400/422 且错误体点名 version→VERSION_MISMATCH
+     * （spec §6.4 的 400 版本拒绝体里就有 "version-not-supported"/"supportedVersions"）；
+     * 其余 4xx→PROTOCOL；5xx/3xx→NETWORK。
+     */
+    private fun classifyHttpFailure(httpCode: Int, errorBody: String): PeerFailureCode = when {
+        httpCode == 401 || httpCode == 403 -> PeerFailureCode.AUTH
+        httpCode == 404 -> PeerFailureCode.ENDPOINT
+        (httpCode == 400 || httpCode == 422) && errorBody.contains("version", ignoreCase = true) ->
+            PeerFailureCode.VERSION_MISMATCH
+        httpCode in 400..499 -> PeerFailureCode.PROTOCOL
+        else -> PeerFailureCode.NETWORK
     }
 
     private fun executeText(req: Request, stage: String, timeoutMs: Long): String {
@@ -267,16 +341,11 @@ internal class A2aClient(
             throw A2aException(code, PeerFailureText.human(code, baseUrl), e)
         }
         response.use { r ->
-            if (!r.isSuccessful) {
-                val code = if (r.code == 401 || r.code == 403) PeerFailureCode.AUTH else PeerFailureCode.NETWORK
-                val why = if (code == PeerFailureCode.AUTH) {
-                    PeerFailureText.human(PeerFailureCode.AUTH, baseUrl) + "（HTTP ${r.code}）"
-                } else {
-                    "「$baseUrl」的 $stage 返回 HTTP ${r.code}（网络/服务端错误）"
-                }
-                throw A2aException(code, why)
-            }
             val text = runCatching { r.body?.string().orEmpty() }.getOrDefault("")
+            if (!r.isSuccessful) {
+                val code = classifyHttpFailure(r.code, text)
+                throw A2aException(code, "${PeerFailureText.human(code, baseUrl)}（HTTP ${r.code}，$stage）")
+            }
             if (text.isBlank()) {
                 throw A2aException(PeerFailureCode.PROTOCOL, "「$baseUrl」的 $stage 返回了空响应（协议不符）")
             }
@@ -296,6 +365,15 @@ internal class A2aClient(
 
         /** 委派的默认轮询上限（549 接线时可调）。 */
         const val DEFAULT_POLL_MAX_MS = 120_000L
+
+        /** 支持的 A2A 协议主版本（支持区间 [1.0, 2.0)；patch 不参与比较，spec §3.6）。 */
+        const val SUPPORTED_PROTOCOL_MAJOR = 1
+
+        /** 头值/头名的合法字符界（ASCII 可打印＋空白；界外即本机配置错）。 */
+        private const val ASCII_MIN = 0x20
+        private const val ASCII_MAX = 0x7e
+
+        private const val METHOD_CANCEL = "tasks/cancel"
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }

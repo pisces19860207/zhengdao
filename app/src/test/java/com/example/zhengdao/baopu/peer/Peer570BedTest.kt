@@ -3,8 +3,9 @@
 // 第五百七十批 · **A2A 自测床的判据**（派工单 570 的 ①–⑥）。
 //
 // 被测方一律是 548 已合的手写客户端（`A2aClient` / `A2aException` / `PeerFailureCode`），
-// 本批**不写第二个客户端**；只有 `tasks/cancel` 一次是裸 HTTP——548 的客户端没有取消入口，
-// 这个缺口记在交付报告里（G-570-3），不在本批偷偷补。
+// 本批**不写第二个客户端**；`tasks/cancel` 一路是裸 HTTP——548 的客户端当时没有取消入口，
+// 这个缺口记在交付报告里（G-570-3），590 批已在客户端补上（[A2aClient.taskCancel]），
+// 这里的裸 HTTP 用例保留：床的取消语义仍按床判。
 package com.example.zhengdao.baopu.peer
 
 import com.example.zhengdao.testkit.A2aBedFault
@@ -153,17 +154,20 @@ class Peer570BedTest {
 
     @Test
     fun `床六_版本不符_错token_超时_三类三句`() {
-        // ① 协议版本不符：卡上公布旧版，RPC 一律被 -32001 拒。
+        // ① 协议版本不符：卡上公布旧版。590 收口①后客户端先判支持区间——message/send 一个都不发，
+        //    直接 VERSION_MISMATCH（不再等 -32001 回来才归 PROTOCOL）。
         bed.fault = A2aBedFault.BAD_PROTOCOL
         val stale = client()
         val staleCard = stale.fetchCard()
         assertEquals("卡上如实公布旧版", Peer570A2aBed.UNSUPPORTED_PROTOCOL, staleCard.protocolVersion)
+        val rpcBeforeStale = bed.rpcMethods.size
         val e1 = failure { stale.messageSend(staleCard, "发一条") }
-        assertEquals("版本对不上不是网络错", PeerFailureCode.PROTOCOL, e1.failureCode)
+        assertEquals("版本对不上不是网络错", PeerFailureCode.VERSION_MISMATCH, e1.failureCode)
+        assertEquals("超区间的 message/send 一个都不发", rpcBeforeStale, bed.rpcMethods.size)
 
         // ② 错 token ⇒ 401 ⇒ AUTH。
         bed.fault = A2aBedFault.BAD_TOKEN
-        // 头值只许 ASCII：中文 token 连请求都发不出去（OkHttp 先抛 IllegalArgumentException），
+        // 头值只许 ASCII：中文 token 连请求都发不出去（590 收口④：本机就拦下，归 CONFIG），
         // 验不到 401 这条路——所以这里用一把写得对的「错 token」。
         val wrong = A2aCredential(Peer570A2aBed.TOKEN_HEADER, "sk-wrong-570")
         val e2 = failure { A2aClient(bed.base(), http(), credential = wrong).fetchCard() }
@@ -186,7 +190,7 @@ class Peer570BedTest {
         assertTrue("不许混成「网络错误」：$humans", humans.none { it.contains("网络错误") })
         assertEquals(
             "三类机器键互不相同（账上按键对账，不许两类共用一个键）",
-            setOf(PeerFailureCode.PROTOCOL, PeerFailureCode.AUTH, PeerFailureCode.TIMEOUT),
+            setOf(PeerFailureCode.VERSION_MISMATCH, PeerFailureCode.AUTH, PeerFailureCode.TIMEOUT),
             listOf(e1, e2, e3).map { it.failureCode }.toSet(),
         )
     }
