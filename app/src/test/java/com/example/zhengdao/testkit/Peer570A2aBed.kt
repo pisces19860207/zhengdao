@@ -23,6 +23,12 @@
 // 幂等（判据④）：不用随机数、不读时钟——任务号按发送序号递增、时间戳写死常量、
 // 每个任务一条独立状态游标（新 send 建新任务 ⇒ 游标从头走），所以同一剧本跑多少遍，
 // [servedTicks] 逐条相同。取消是粘住的：置了 canceled 就不再动游标。
+//
+// 第五百四十九批 · **续任务**（回复回路的另一半）：message/send 带着已有任务的
+// taskId 回来 ⇒ **不建新任务**，同一 TaskCell 的游标换到 [replyScript] 从头走，
+// 回执报 working（A2A spec §3.2：续话是对同一任务继续处理）。续过几次记在
+// [replies]（断言"是续，不是重开"就数它）。不带 taskId 的 send 一字不改——
+// 570 既有用例钉的行为原样。
 package com.example.zhengdao.testkit
 
 import java.util.concurrent.ConcurrentHashMap
@@ -76,6 +82,13 @@ class Peer570A2aBed {
     @Volatile
     var script: A2aBedScript = A2aBedScript.NORMAL
 
+    /**
+     * 续任务的剧本（第五百四十九批）：input-required 之后对方回话续任务，
+     * 游标换到这一套从头走（缺省就是正常完成——"补上料就办完了"）。
+     */
+    @Volatile
+    var replyScript: A2aBedScript = A2aBedScript.NORMAL
+
     /** 失败注入。 */
     @Volatile
     var fault: A2aBedFault = A2aBedFault.NONE
@@ -99,12 +112,18 @@ class Peer570A2aBed {
     /** 本床实际吐出去的状态序列；幂等判据的断言对象。 */
     val servedTicks: MutableList<String> = CopyOnWriteArrayList()
 
+    /** 被续过的任务号（按续话顺序；断言"是续，不是重开"就数它）。 */
+    val replies: MutableList<String> = CopyOnWriteArrayList()
+
     private val tasks = ConcurrentHashMap<String, TaskCell>()
     private val sendCount = AtomicInteger(0)
 
     private class TaskCell(val id: String) {
         var cursor: Int = 0
         var canceled: Boolean = false
+
+        /** 第五百四十九批：被回话续过 ⇒ 游标走 [Peer570A2aBed.replyScript]。 */
+        var resumed: Boolean = false
     }
 
     fun start() {
@@ -166,24 +185,36 @@ class Peer570A2aBed {
     }
 
     private fun messageSend(body: JSONObject): MockResponse {
+        val replyTo = body.optJSONObject("params")?.optJSONObject("message")?.optString("taskId").orEmpty()
+        val existing = tasks[replyTo]
+        if (existing != null) return resume(existing, body)
         val cell = TaskCell("task-570-${sendCount.incrementAndGet()}")
         tasks[cell.id] = cell
-        tick(SUBMITTED)
-        return rpcResult(body, taskJson(cell, SUBMITTED))
+        tick(SUBMITTED, script)
+        return rpcResult(body, taskJson(cell, SUBMITTED, script))
+    }
+
+    /** 第五百四十九批 · 续任务：同一 TaskCell 游标换到续剧本，回执报 working，不建新任务。 */
+    private fun resume(cell: TaskCell, body: JSONObject): MockResponse {
+        cell.resumed = true
+        cell.cursor = 0
+        replies += cell.id
+        tick(WORKING, replyScript)
+        return rpcResult(body, taskJson(cell, WORKING, replyScript))
     }
 
     private fun taskGet(body: JSONObject): MockResponse {
         val cell = cellOf(body) ?: return unknownTask(body)
         val state = nextState(cell)
-        tick(state)
-        return rpcResult(body, taskJson(cell, state))
+        tick(state, activeScriptOf(cell))
+        return rpcResult(body, taskJson(cell, state, activeScriptOf(cell)))
     }
 
     private fun taskCancel(body: JSONObject): MockResponse {
         val cell = cellOf(body) ?: return unknownTask(body)
         cell.canceled = true
-        tick(CANCELED)
-        return rpcResult(body, taskJson(cell, CANCELED))
+        tick(CANCELED, activeScriptOf(cell))
+        return rpcResult(body, taskJson(cell, CANCELED, activeScriptOf(cell)))
     }
 
     private fun cellOf(body: JSONObject): TaskCell? =
@@ -195,14 +226,17 @@ class Peer570A2aBed {
     /** 取消是粘住的：置了 canceled 就不再动游标，所以「再查仍是 canceled」。 */
     private fun nextState(cell: TaskCell): String {
         if (cell.canceled) return CANCELED
-        val states = script.states
+        val states = activeScriptOf(cell).states
         val idx = cell.cursor.coerceAtMost(states.size - 1)
         cell.cursor += 1
         return states[idx]
     }
 
-    private fun tick(state: String) {
-        val text = if (state == COMPLETED) script.artifactText.orEmpty() else ""
+    /** 这个任务此刻听哪套剧本的（续过 ⇒ 续剧本）。 */
+    private fun activeScriptOf(cell: TaskCell): A2aBedScript = if (cell.resumed) replyScript else script
+
+    private fun tick(state: String, src: A2aBedScript) {
+        val text = if (state == COMPLETED) src.artifactText.orEmpty() else ""
         servedTicks += if (text.isEmpty()) state else "$state|$text"
     }
 
@@ -230,17 +264,17 @@ class Peer570A2aBed {
             .toString()
     }
 
-    private fun taskJson(cell: TaskCell, state: String): JSONObject {
+    private fun taskJson(cell: TaskCell, state: String, src: A2aBedScript): JSONObject {
         val status = JSONObject()
             .put("state", state)
             .put("timestamp", FIXED_TIMESTAMP)
-            .put("message", JSONObject().put("kind", "message").put("content", script.statusText))
+            .put("message", JSONObject().put("kind", "message").put("content", src.statusText))
         val task = JSONObject()
             .put("id", cell.id)
             .put("contextId", CONTEXT_ID)
             .put("kind", "task")
             .put("status", status)
-        script.artifactText?.takeIf { state == COMPLETED }?.let { text ->
+        src.artifactText?.takeIf { state == COMPLETED }?.let { text ->
             task.put("artifacts", JSONArray().put(artifactJson(text)))
         }
         return task
@@ -294,6 +328,7 @@ class Peer570A2aBed {
 
         /** 失败注入要的三样：状态名、坏版本错误码、方法不存在错误码。 */
         const val SUBMITTED = "submitted"
+        const val WORKING = "working"
         const val CANCELED = "canceled"
         const val COMPLETED = "completed"
         const val BAD_VERSION_CODE = -32001

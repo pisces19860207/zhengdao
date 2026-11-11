@@ -34,8 +34,16 @@ internal interface PeerOutboundGate {
     /**
      * 发请求之前问一句。**位置是判据**：Refused 之后不许有任何网络字节。
      * @param opId 这次外发的操作号（账行对账用）
+     * @param cls 过哪一类目的租约（第五百四十九批：委派走 `peer/delegate`，缺省仍是探针的
+     *   `peer/probe`——既有调用点（MCP/A2A 探针）一个字不改，判定顺序原样）。
      */
-    fun authorize(endpoint: String, opId: String, sessionId: Long, nowMs: Long): GateDecision
+    fun authorize(
+        endpoint: String,
+        opId: String,
+        sessionId: Long,
+        nowMs: Long,
+        cls: String = LeaseOutboundGate.PROBE_CLS,
+    ): GateDecision
 
     /** 收场结算：结果（[PeerFailureCode.wire]）落成租约的 use/outcome 两行。 */
     fun settle(grant: OutboundGrant, result: String, tool: String, nowMs: Long)
@@ -60,11 +68,24 @@ internal object LeaseOutboundGate : PeerOutboundGate {
     /** 探针租约的时间窗：10 分钟（比 467 默认 4h 短得多——探测是当场的事）。 */
     const val PROBE_TTL_MS = 10L * 60L * 1000L
 
-    override fun authorize(endpoint: String, opId: String, sessionId: Long, nowMs: Long): GateDecision =
+    /**
+     * 第五百四十九批 · **委派租约的类目**（同一条「外发即租约」法条的第二类目）。
+     * 委派一次＝一次外发交换（准入考试的九道题＋派活后的发送/轮询/取消都算这一次交换之内），
+     * 所以闸口与探针同形：cap=1、范围=对端 host、时间窗 10 分钟（考试 60s＋轮询 120s 装得下）。
+     */
+    const val DELEGATE_CLS = "peer/delegate"
+
+    override fun authorize(
+        endpoint: String,
+        opId: String,
+        sessionId: Long,
+        nowMs: Long,
+        cls: String,
+    ): GateDecision =
         when (
             val v = LeaseStore.hit(
                 sessionId = sessionId,
-                cls = PROBE_CLS,
+                cls = cls,
                 targets = emptyList(),
                 args = JSONObject().put("url", endpoint),
                 cost = 1,
@@ -99,6 +120,24 @@ internal object LeaseOutboundGate : PeerOutboundGate {
             ttlMs = PROBE_TTL_MS,
         )
         return LeaseStore.grant(offer, sessionId, sourceCardId, nowMs).id
+    }
+
+    /**
+     * 第五百四十九批 · 授一张**委派租约**（`peer/delegate`）。
+     *
+     * 授予动作＝**管线批准这次委派**（`delegate_peer_task` 是 R2 必问的第一方工具：授权卡
+     * 点了批准，执行体开跑时在入口代记授予，授予源写这次调用的 opId——批准与授予是同一件事
+     * 的两笔账，不是两道人）。之后的每个外发请求都过 [PeerOutboundGate.authorize] 扣次；
+     * 撤销/过期/用尽当场断流（一单一个 opId 一张租约，不给下一次白用）。
+     */
+    fun grantDelegateLease(endpoint: String, sessionId: Long, sourceOpId: String, nowMs: Long): String {
+        val offer = LeaseOffer(
+            cls = DELEGATE_CLS,
+            scope = LeaseScope(LeaseScope.Kind.HOST, hostOf(endpoint)),
+            cap = 1,
+            ttlMs = PROBE_TTL_MS,
+        )
+        return LeaseStore.grant(offer, sessionId, sourceOpId, nowMs).id
     }
 
     private fun hostOf(endpoint: String): String =

@@ -15,13 +15,19 @@ import com.example.zhengdao.core.RunLog
 import java.io.File
 import org.json.JSONObject
 
-/** 事件账的 kind 词表（稳定机器键：改了等于让老账读不出）。 */
+/** 事件账的 kind 词表（稳定机器键：改了等于让老账读不出；**只增不改名不删**——老账照读）。 */
 internal object PeerEventKinds {
     /** 一次探测的收场：result = [PeerFailureCode.wire]，detail = 人话补一句。 */
     const val PROBE = "probe"
 
     /** 闸的一次裁决：result = refused／ok（ok 只是记录，真正执行在 probe 行）。 */
     const val GATE = "gate"
+
+    /**
+     * 第五百四十九批 · 一次**委派的收场**：result = 终/停状态（A2aTaskState.wire），
+     * detail = 任务号＋迁移轨迹摘要（五条流的账面证据）。
+     */
+    const val DELEGATE = "delegate"
 }
 
 internal object PeerEventsLedger {
