@@ -14,6 +14,13 @@
 // 原始串整段吃到底），但 RAW 态当时只找结束的 `"""`，没像其它五态那样回填串内换行。
 // GateBodies 在 code 空间数换行定位行号再切回原文 ⇒ 含跨行原始串的文件整体前移 N 行
 // （N＝串内换行数）。568 在 LowRiskEvoGateTest.kt:47-50 记下盲区并绕开；本批把换行补回来。
+//
+// 第六百零一批（嵌套块注释）：Kotlin 的块注释**可嵌套**，旧尺子在遇到第一个闭符就回 CODE，
+// 于是嵌套注释的后半段会漏进代码空间；KDoc 里写 glob 路径（多级通配符）或注释符号示例时，
+// 也会提前收口、把注释散文当成代码。本批把 BLOCK 态改成深度计数
+// （开符 +1 / 闭符 -1 / 归零才结束），嵌套内的换行仍回填；到文件尾深度未归零 ⇒ 明确报错，
+// 不许静默把后面的源码吞成注释再切错行。593 报告 §七 的遗留即此单。
+// 注：本段刻意不写出任何注释定界符字面量——KDoc 里写它会开一个永不关闭的嵌套注释。
 package com.example.zhengdao
 
 internal object CodeText {
@@ -36,19 +43,28 @@ internal object CodeText {
      * - CODE 态里三引号必须**先于**单个 `"` 判定：三引号是一整段原始串，不是三次
      *   「开串／闭串／再开串」；原始串内部的单个／连续两个引号、花括号、注释符号都不切态；
      * - 遇到"字符串里出现裸换行"就退出字符串态（Kotlin 里这只会发生在没写对的源码上，
-     *   编译器会先拒，本函数不需要为它兜底，兜了反而把后面的代码全吞掉）。
+     *   编译器会先拒，本函数不需要为它兜底，兜了反而把后面的代码全吞掉）；
+     * - 块注释按 Kotlin 词法**可嵌套**（601）：BLOCK 态里遇开符（斜杠紧跟星号）深度 +1、
+     *   遇闭符（星号紧跟斜杠）深度 −1，归零才回 CODE；只有 CODE 态能开新的块注释，
+     *   所以字符串／原始串／字符字面量／行注释里出现开符都不会误开深度；
+     * - 嵌套层里的换行同样回填（占位但不出内容），否则 code 空间行号会比原文少；
+     * - 扫到文件尾深度仍未归零 ⇒ 抛 [IllegalStateException] 明确报错，不许静默把后面的
+     *   源码吞成注释再按错行号切片。KDoc 内刻意不写任何注释定界符字面量。
      */
     fun codeOnly(src: String): String {
         val out = StringBuilder(src.length)
         var i = 0
         var st = CODE
+        var blockDepth = 0
+        var blockStart = -1
         while (i < src.length) {
             val c = src[i]
             val nx = if (i + 1 < src.length) src[i + 1] else ' '
             var jump = 1
             when (st) {
                 CODE -> when {
-                    c == '/' && nx == '*' -> { st = BLOCK; jump = 2 }
+                    // 601：只有 CODE 态能开块注释 ⇒ 字符串／原始串／字符／行注释里的开符不误开。
+                    c == '/' && nx == '*' -> { st = BLOCK; blockDepth = 1; blockStart = i; jump = 2 }
                     c == '/' && nx == '/' -> { st = LINE; jump = 2 }
                     // 三引号先判：不许把 """ 当成三次单引号边界（587 夹具第 4 例钉住）。
                     src.startsWith(RAW_QUOTE, i) -> { st = RAW; out.append(STR_MARK); jump = 3 }
@@ -57,8 +73,15 @@ internal object CodeText {
                     else -> out.append(c)
                 }
 
+                // 601：Kotlin 块注释可嵌套。开符 +1、闭符 -1，归零才回 CODE；
+                // 嵌套层里的换行照样回填（占位不出内容），code 空间行号才与原文对齐。
                 BLOCK -> when {
-                    c == '*' && nx == '/' -> { st = CODE; jump = 2 }
+                    c == '/' && nx == '*' -> { blockDepth++; jump = 2 }
+                    c == '*' && nx == '/' -> {
+                        blockDepth--
+                        if (blockDepth == 0) st = CODE
+                        jump = 2
+                    }
                     c == '\n' -> out.append(c)
                 }
 
@@ -90,6 +113,15 @@ internal object CodeText {
                 }
             }
             i += jump
+        }
+        // 601：未闭合不许静默切错。旧版会把文件尾整段吞成注释，切片按错行号走却无人知晓；
+        // 这里明确抛错，把「最外层开符所在行 + 剩余深度」交给门禁/夹具，便于定位。
+        if (blockDepth != 0) {
+            val line = if (blockStart >= 0) src.substring(0, blockStart).count { it == '\n' } + 1 else -1
+            error(
+                "块注释未闭合到文件尾：起始行 $line，剩余深度 $blockDepth" +
+                    "（CodeText 不静默切错；请补全闭符或修正源码）",
+            )
         }
         return out.toString()
     }
