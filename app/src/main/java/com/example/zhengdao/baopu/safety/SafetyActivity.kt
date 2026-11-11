@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -246,7 +247,7 @@ private fun McpServerCard(
 ) {
     val clipboard = LocalClipboardManager.current
     // 1s 轮询一次状态（服务起停是后台线程的事，Compose 侧只看读数；与 HaltGate.changeTick 同一房型）。
-    val tick = remember { mutableStateOf(0) }
+    val tick = remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(1000)
