@@ -260,6 +260,20 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      # ── 612（2026-11-12）：L3 红线底账聚合 ─────────────────────────────────────
+      # docs/L3-红线底账.md = 红线（人话）↔ 实现落点 ↔ 既有负例 的对账表（31 条，六组：
+      # 不可逆未确认/越权外发/停机后仍执行/回滚失败静默/账本被直改/假动作）。
+      # 本步**只按名字筛既有用例**重跑（tools/run-redline-tests.py，gradle --tests，
+      # 不复制判定逻辑）；排在全量单元测试之后：单测先兜底，这里只可能红在「红线负例本身」。
+      # 先 --selftest 自证解析器红路（字段空／编号重复／状态越界／模块认不出／表格混入陌生行），
+      # 再真跑：底账逐条过；某条真没负例的行如实列「缺负例」列进交付报告，不许补写冒充有。
+      # 底账里用例改名/被删 ⇒ --tests 筛不到当场红（底账不许指向不存在的用例）；
+      # 红时 ::error 点名「哪条红线、哪个用例」，匿名可读。
+      - name: L3 红线负例聚合（612 · 底账逐条点名）
+        run: |
+          python3 tools/run-redline-tests.py --selftest
+          python3 tools/run-redline-tests.py
+
       # ── 607（2026-11-12）：口径改为「只数测试自建的」，并把每轮读数记进趋势账 ──────
       # 旧口径（564）数的是 `app/build/**/tmp*` 里的目录总数，把构建系统自己的 tmp
       # （`.cache`、`compileDebugJavaWithJavac/compileTransaction`、`kapt…`、JDK 的
