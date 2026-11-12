@@ -14,6 +14,7 @@ import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.library.ChapterSplitter
 import com.example.zhengdao.baopu.library.SplitOptions
+import com.example.zhengdao.baopu.UserPath
 import java.io.File
 
 /**
@@ -78,27 +79,31 @@ internal object BookOutlineTool {
         file: File,
         maxChapters: Int = DEFAULT_MAX_CHAPTERS,
         splitOptions: SplitOptions = SplitOptions(),
+        rawPath: String? = null,
     ): ToolOutcome {
         if (!file.exists()) {
-            return ToolOutcome.Failed("不存在：${file.name}（这个位置没有这个文件；先用 find_files 或 list_dir 找）")
+            return ToolOutcome.Failed(
+                "不存在：${file.absolutePath}（这个位置没有这个文件；先用 find_files 或 list_dir 找）",
+            )
         }
         if (!file.isFile) {
-            return ToolOutcome.Failed("不是一个文件：${file.name}（book_outline 只看文件；列目录用 list_dir）")
+            return ToolOutcome.Failed("不是一个文件：${file.absolutePath}（book_outline 只看文件；列目录用 list_dir）")
         }
         // 第一百五十六批：越界改走统一判据（开关开＋已授权 ⇒ 放行；关 ⇒ 原文拒绝）
-        fileAccessCheck(file, FilePaths.display(root, file))?.let { return ToolOutcome.Rejected(it) }
+        // 613：连同**原文**一起判（见 `fileAccessCheck` 的第三参说明）
+        fileAccessCheck(file, FilePaths.display(root, file), rawPath)?.let { return ToolOutcome.Rejected(it) }
         if (file.length() > MAX_FILE_BYTES) {
             return ToolOutcome.Failed(
-                "文件太大不列目录：${file.name} 有 ${file.length()} B，超过 $MAX_FILE_BYTES B 上限。" +
+                "文件太大不列目录：${file.absolutePath} 有 ${file.length()} B，超过 $MAX_FILE_BYTES B 上限。" +
                     "先用 convert_encoding / 切章把它拆小，或直接用 read_file 带 offset 分段读。",
             )
         }
         // 编码只留一份实现（2026-10-17 行 180 的口径）：复用 TextDecode，不另起一套猜法。
         val bytes = runCatching { file.readBytes() }
-            .getOrElse { return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.name}") }
+            .getOrElse { return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.absolutePath}") }
         val decoded = TextDecode.decode(file, bytes)
         val text = decoded.text
-            ?: return ToolOutcome.Failed(decoded.error ?: "读不了：${file.name}")
+            ?: return ToolOutcome.Failed(decoded.error ?: "读不了：${file.absolutePath}")
         val lines = TextDecode.splitLines(text)
         if (lines.isEmpty() || text.isBlank()) {
             return ToolOutcome.Ok("（空文件，没有可列的章节）：${file.name}")
@@ -133,14 +138,25 @@ internal object BookOutlineTool {
         return ToolOutcome.Ok(body.toString().trimEnd())
     }
 
-    /** executor：arguments 里的 path 已是守卫过的绝对路径。 */
-    private fun run(args: org.json.JSONObject, root: File): ToolOutcome {
+    /**
+     * executor：arguments 里的 path 已是守卫过的绝对路径（613 起相对路径与 `file://` 同走一处解析）。
+     *
+     * `internal` 而非 `private`：613 的判据要钉「解析发生在执行入口」这一层
+     * （`outline()` 收到的是已解析的 File，证明不了 `file://` 与相对路径在这里只解析一次）。
+     */
+    internal fun run(args: org.json.JSONObject, root: File): ToolOutcome {
         val path = args.optString(ARG_PATH).trim()
         if (path.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        UserPath.foreignScheme(path)?.let { scheme ->
+            return ToolOutcome.Failed(
+                "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径",
+            )
+        }
         return outline(
             root = root,
-            file = File(path),
+            file = UserPath.resolve(root, path),
             maxChapters = args.optInt(ARG_MAX_CHAPTERS, DEFAULT_MAX_CHAPTERS),
+            rawPath = path,
         )
     }
 

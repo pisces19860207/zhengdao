@@ -13,6 +13,7 @@
 // 将来要加"某类目录也不许碰"，改 [FilePolicy] 一处即可。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.BuildConfig
 import java.io.File
 
 /**
@@ -26,10 +27,24 @@ import java.io.File
  *
  * @param target 解析后的真实目标（绝对路径）
  * @param shown 给模型看的路径（相对工作区，或绝对路径）
+ * @param rawPath 调用方收到的**原文**（可空）。给了就额外按原文判一次——
+ *   见下方「为什么原文也要判一次」。
  * @return null = 放行；非 null = 给模型的拒绝原文（调用方包成 `ToolOutcome.Rejected`）
+ *
+ * 为什么原文也要判一次（613）：[FilePolicy] 是拿 `File` 的绝对/规范形态去判的，而
+ * `File("/system/x")` 在 **JVM 单测宿主（Windows）** 上会变成 `C:\system\x` ⇒ 系统区那一条
+ * 在测试里恒不命中（真机命中）。判据本身没错，缺的是「同一个口径在两种宿主上都成立」的入口。
+ * 于是这里按原文（归一后）再判一次：真机上是一次多余但等价的判断，测试宿主上才判得动。
+ * 顺带兜住「目标还不存在」时 `canonicalPath` 只能词法折叠的那一类。
  */
-internal fun fileAccessCheck(target: File, shown: String): String? =
-    FilePolicy.denyReason(target)?.let { "路径被拒：$shown——$it" }
+internal fun fileAccessCheck(target: File, shown: String, rawPath: String? = null): String? {
+    rawPath?.let { raw ->
+        FilePolicy.denyReasonOf(UserPath.normalize(raw), BuildConfig.APPLICATION_ID)?.let {
+            return "路径被拒：$shown——$it"
+        }
+    }
+    return FilePolicy.denyReason(target)?.let { "路径被拒：$shown——$it" }
+}
 
 /**
  * 覆盖前要不要备份（287：>5MB 不备份，但**必须在确认卡与回执里说明**）。

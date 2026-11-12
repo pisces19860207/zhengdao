@@ -15,6 +15,7 @@ import com.example.zhengdao.baopu.FileOpLog
 import com.example.zhengdao.baopu.FileOpRules
 import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.FilePolicy
+import com.example.zhengdao.baopu.UserPath
 import com.example.zhengdao.baopu.WsRoot
 import com.example.zhengdao.baopu.WorkspaceRootRules
 import com.example.zhengdao.baopu.fileAccessCheck
@@ -1117,6 +1118,11 @@ internal class GuardPipeline(
                 }
                 continue
             }
+            // 613：外域 scheme（`content://`／`http://` …）**不认**（派工单：另立单）——
+            // 不在这里拦，归一时它会被当成相对路径拼进工作区，造出 `<根>/content:/…`
+            // 这种假路径（下一个读的人会以为「文件真的不在」）。这一格不是越界：没打算碰禁区，
+            // 所以 scopeEscape 留 false（505 口径：含糊不等于越界）。
+            foreignSchemeReason(raw)?.let { return Guarded.No(it) }
             val target = resolveStrict(raw)
             // 287：唯一硬边界——系统与凭据目录一律拒（其余全盘可读写）
             fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
@@ -1136,6 +1142,19 @@ internal class GuardPipeline(
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
     }
+
+    /**
+     * 613：`path` 型参数收到外域 scheme（`content://`、`http(s)://` …）时给模型的原文。
+     *
+     * 为什么在管线拦而不是各工具自查：参数在这里会被**改写**成绝对路径，改写之后
+     * 原文就没了（`content://x` → `<根>/content:/x`），工具再也说不清「你给的是 content://」。
+     * `file://` 不在此列——它是同一个文件路径的另一种写法，归 [UserPath.normalize] 剥掉。
+     */
+    private fun foreignSchemeReason(raw: String): String? =
+        UserPath.foreignScheme(raw)?.let { scheme ->
+            "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径。" +
+                "先把它落成本机文件，再把路径给我"
+        }
 
     /**
      * 写类目标的红线（[guardPath] 的 P0-2 ＋ 492 RO，拆出来让守卫主干只留顺序语义）：
@@ -1493,6 +1512,8 @@ internal class GuardPipeline(
             for (i in 0 until arr.length()) {
                 val raw = arr.optString(i).trim()
                 if (raw.isEmpty()) continue
+                // 613：批量里任何一项是外域 scheme ⇒ 整条拒（与「一项越线就拒整条」同一原子口径）
+                foreignSchemeReason(raw)?.let { return newArgs to it }
                 val target = resolveVia(roots, raw)
                 fileAccessCheck(target, FilePaths.display(root, target))?.let { reason ->
                     log("抱朴管线：拒绝 $toolName $key[$i] $raw（${FilePolicy.denyReason(target)}）")

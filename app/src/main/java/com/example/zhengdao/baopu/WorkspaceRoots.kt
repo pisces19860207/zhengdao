@@ -97,13 +97,17 @@ internal object WorkspaceRootRules {
      *    而不是静默折回主根（否则「往 RO 子目录里写新文件」会变成「在主根另建一份」）；
      *    祖先在多个根里同样歧义（落哪个根必须说清）；
      * 3. 连祖先都没有（顶层新建）⇒ 主根——这就是旧单根算式，A④「0 回归」由这条结构保证。
+     *
+     * 613：入口先过 [UserPath.normalize]——`file://` 前缀与百分号编码在这里就剥掉，
+     * 于是「`file://` 也算相对路径」这条老毛病（会被拼成 `<根>/file:/…`）在本段根治；
+     * 归一后的绝对形态仍走 [Resolution.Absolute]，**不再拼根**。
      */
     fun resolve(
         roots: List<WsRoot>,
         raw: String,
         isAbsoluteRaw: (String) -> Boolean = ::defaultIsAbsolute,
     ): Resolution {
-        val path = raw.trim()
+        val path = UserPath.normalize(raw)
         require(path.isNotEmpty()) { "空串不是路径（管线层把空 path 当参数错，不进这里）" }
         if (isAbsoluteRaw(path)) return Resolution.Absolute(File(path))
         fun hits(rel: String): List<Pair<WsRoot, File>> = roots.mapNotNull { r ->

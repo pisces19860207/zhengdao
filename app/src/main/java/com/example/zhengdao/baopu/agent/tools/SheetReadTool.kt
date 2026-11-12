@@ -13,6 +13,7 @@ import com.example.zhengdao.baopu.agent.ToolTimeout
 import com.example.zhengdao.baopu.agent.jsonArrayOf
 import com.example.zhengdao.baopu.agent.jsonObjectOf
 import com.example.zhengdao.baopu.FilePaths
+import com.example.zhengdao.baopu.UserPath
 import com.example.zhengdao.baopu.fileAccessCheck
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,7 +37,11 @@ internal object SheetReadTool {
         inputSchema = jsonObjectOf(
             "type" to "object",
             "properties" to jsonObjectOf(
-                ARG_PATH to jsonObjectOf("type" to "string", "description" to "相对工作区根的表文件路径（.xlsx / .csv）"),
+                ARG_PATH to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "表文件路径：相对工作区根（如 资料库/成绩表.xlsx），" +
+                        "或全盘绝对路径（如 /storage/emulated/0/证道/成绩表.xlsx）；file:// 前缀也认",
+                ),
                 ARG_SHEET to jsonObjectOf("type" to "string", "description" to "可选：sheet 名或序号（1 起）；缺省第一个"),
                 ARG_RANGE to jsonObjectOf("type" to "string", "description" to "可选：A1:C10 这种矩形范围"),
                 ARG_HAS_HEADER to jsonObjectOf("type" to "boolean", "description" to "首行是不是表头（缺省 false）"),
@@ -53,12 +58,23 @@ internal object SheetReadTool {
     ) { args -> run(args, workspaceRoot()) }
 
     fun run(args: JSONObject, root: File): ToolOutcome {
-        val rel = args.optString(ARG_PATH).ifBlank { return ToolOutcome.Failed("缺 path（相对工作区根）") }
-        val file = File(root, rel)
-        fileAccessCheck(file, FilePaths.display(root, file))
+        val raw = args.optString(ARG_PATH).trim()
+        if (raw.isBlank()) return ToolOutcome.Failed("缺 path（相对工作区根，或全盘绝对路径）")
+        UserPath.foreignScheme(raw)?.let { scheme ->
+            return ToolOutcome.Failed(
+                "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径",
+            )
+        }
+        // 613：**解析只有一处**（`UserPath`）。管线的 ② 段已把相对路径改写成绝对路径，
+        // 这里再解析一次是幂等的（绝对原样）——569 的病根正是这里写成了 `File(root, rel)`，
+        // 于是绝对路径被拼成 `<工作区>/storage/…`，同目录的 .xlsx 一律「不存在」。
+        val file = UserPath.resolve(root, raw)
+        fileAccessCheck(file, FilePaths.display(root, file), raw)
             ?.let { return ToolOutcome.Rejected(it) }
         if (!file.isFile) {
-            return ToolOutcome.Failed("不存在：$rel（先用 list_dir 看结构）")
+            // 报错要自证：回**解析后的绝对路径**（不是输入串）——回输入串时模型看不出
+            // 我们到底去哪找了，只能原地重试（569 的模型就是这么打转熔断的）。
+            return ToolOutcome.Failed("不存在：${file.absolutePath}（这个位置没有这个文件；先用 list_dir 看结构）")
         }
         val maxRows = if (args.has(ARG_MAX_ROWS)) args.optInt(ARG_MAX_ROWS, SheetLimits.DEFAULT_ROWS) else SheetLimits.DEFAULT_ROWS
         val result = SheetReader.read(
@@ -71,7 +87,7 @@ internal object SheetReadTool {
         val grid = when (val failure = result.exceptionOrNull()) {
             null -> result.getOrThrow()
             is SheetReadFailure.TooBig -> return ToolOutcome.Failed(
-                "文件太大（${failure.bytes / 1024 / 1024}MB > 上限 ${SheetLimits.MAX_FILE_BYTES / 1024 / 1024}MB）：$rel",
+                "文件太大（${failure.bytes / 1024 / 1024}MB > 上限 ${SheetLimits.MAX_FILE_BYTES / 1024 / 1024}MB）：${file.absolutePath}",
             )
             SheetReadFailure.Encrypted -> return ToolOutcome.Failed(
                 "这个 xlsx 是加密工作簿，未认领（先在电脑上另存为不加密的副本再放进工作区）",
