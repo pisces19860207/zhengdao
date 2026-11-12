@@ -66,6 +66,20 @@ internal class McpOAuthClient(
         }
         prmUrls += McpOAuthDiscovery.resourceMetadataUrls(config.url)
 
+        // 606③：候选里只要有一个 HTTP 应答（哪怕 404），「发现链拉不到」才算问过了；
+        // 全程传输层故障（DNS/TLS/超时）时把最后一次原样抛出——不说「不支持 OAuth」。
+        var sawHttpResponse = false
+        var transportFailure: McpAuthException? = null
+        fun note(e: McpAuthException) {
+            if (e.failure == McpAuthFailure.NO_METADATA) sawHttpResponse = true
+            if (e.failure == McpAuthFailure.NETWORK ||
+                e.failure == McpAuthFailure.TLS ||
+                e.failure == McpAuthFailure.TIMEOUT
+            ) {
+                transportFailure = e
+            }
+        }
+
         var prm: McpResourceMetadata? = null
         var lastError: String? = null
         for (url in prmUrls) {
@@ -74,6 +88,7 @@ internal class McpOAuthClient(
                 prm = McpOAuthDiscovery.parseResourceMetadata(json, McpUrlRules.redact(url))
                 break
             } catch (e: McpAuthException) {
+                note(e)
                 lastError = e.userMessage
                 if (e.failure == McpAuthFailure.BAD_METADATA) throw e
             }
@@ -88,6 +103,7 @@ internal class McpOAuthClient(
                         val meta = McpOAuthDiscovery.parseAuthServerMetadata(json, url)
                         return McpDiscovery(prm, meta, resource)
                     } catch (e: McpAuthException) {
+                        note(e)
                         asError = e.userMessage
                         if (e.failure == McpAuthFailure.BAD_METADATA) throw e
                     }
@@ -109,10 +125,15 @@ internal class McpOAuthClient(
                 log("[mcp] ${config.id} 没有 PRM，按 MCP origin 上的 AS 元数据接入")
                 return McpDiscovery(null, meta, resource)
             } catch (e: McpAuthException) {
+                note(e)
                 fallbackError = e.userMessage
                 if (e.failure == McpAuthFailure.BAD_METADATA) throw e
             }
         }
+        // 606③：一个 HTTP 应答都没拿到 ⇒ 原样抛传输层失败（DNS/TLS/超时），
+        // 「该服务器不支持现代授权」只许下给「问到了、确实没有」的结论。
+        val transport = transportFailure
+        if (!sawHttpResponse && transport != null) throw transport
         throw McpAuthException(
             McpAuthFailure.NO_METADATA,
             "该服务器不支持现代授权（OAuth 发现链拉不到）：${lastError ?: fallbackError ?: "没有授权服务器元数据"}",
@@ -352,18 +373,24 @@ internal class McpOAuthClient(
         call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
         return try {
             call.execute()
-        } catch (e: InterruptedIOException) {
-            log(McpFailureNote("授权服务器连接", "连接环节超时（${timeoutMs / 1000}s）").logLine())
-            throw McpAuthException(McpAuthFailure.NO_METADATA, "授权服务器连接超时（${timeoutMs / 1000}s）", e)
         } catch (e: Exception) {
-            // 环节只分类到「连接／证书-TLS」；不带 URL（授权地址上挂着 code/verifier）。
-            val kind = if (e is SSLException) "证书/TLS 握手" else "连接"
+            // 606③：传输层故障按因分键（TIMEOUT/TLS/NETWORK，本机地址不合法归 BAD_METADATA）
+            // ——一律不说「不支持 OAuth」。环节词不带 URL（授权地址上挂着 code/verifier）。
+            val failure = transportFailureOf(e)
+            val kind = when (failure) {
+                McpAuthFailure.TIMEOUT -> "连接超时（${timeoutMs / 1000}s）"
+                McpAuthFailure.TLS -> "证书/TLS 握手失败"
+                McpAuthFailure.BAD_METADATA -> "地址不合法"
+                else -> "连接失败（${e.javaClass.simpleName}）"
+            }
             log(McpFailureNote("授权服务器$kind", "失败（${e.javaClass.simpleName}）").logLine())
-            throw McpAuthException(
-                McpAuthFailure.NO_METADATA,
-                "授权服务器${kind}失败（${e.javaClass.simpleName}）",
-                e,
-            )
+            val why = when (failure) {
+                McpAuthFailure.TIMEOUT -> "网络没通到 HTTP"
+                McpAuthFailure.TLS -> "连接没建立"
+                McpAuthFailure.BAD_METADATA -> "请检查服务器地址"
+                else -> "网络没通到 HTTP"
+            }
+            throw McpAuthException(failure, "授权服务器$kind——$why，不是「不支持 OAuth」", e)
         }
     }
 
@@ -413,6 +440,19 @@ internal class McpOAuthClient(
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
         private val FORM_MEDIA = "application/x-www-form-urlencoded".toMediaType()
+
+        /**
+         * 606③：传输层异常 → 授权失败键（可直测的映射）。
+         * 超时→TIMEOUT、证书→TLS、本机地址不合法→BAD_METADATA、其余连接错→NETWORK。
+         * 这四个键都不进 `unsupported`（见 McpAuthFlow.begin）——DNS/TLS/超时不得说
+         * 「不支持 OAuth」。
+         */
+        internal fun transportFailureOf(e: Throwable): McpAuthFailure = when (e) {
+            is InterruptedIOException -> McpAuthFailure.TIMEOUT
+            is SSLException -> McpAuthFailure.TLS
+            is IllegalArgumentException -> McpAuthFailure.BAD_METADATA
+            else -> McpAuthFailure.NETWORK
+        }
 
         /** 生产实例：不跟重定向、不重试（授权请求的每一跳都必须是本机算出来的地址）。 */
         fun defaultHttp(): OkHttpClient = OkHttpClient.Builder()

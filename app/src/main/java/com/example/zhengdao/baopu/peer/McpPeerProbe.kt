@@ -136,7 +136,10 @@ internal class McpPeerProbe(
             PeerFailureCode.OK.wire,
             config.url,
             detail = "tools=${tools.size} cap=${capabilities.joinToString(",")}" +
-                " changed=${change?.changed == true} agent=${registered.record.id}",
+                " changed=${change?.changed == true} agent=${registered.record.id}" +
+                // 606③（吞法 D）：initialized 通知被拒不阻断，但账行要看得见——
+                // 「握手其实没走完」不再只埋在日志里。
+                " initialized=${if (client.initializedNotice == null) "accepted" else "rejected"}",
             atMs = nowMs,
         )
         log("[peer] ${config.id} 探测成功：${tools.size} 个工具（${entry.mode}）")

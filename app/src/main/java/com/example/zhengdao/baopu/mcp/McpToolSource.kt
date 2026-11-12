@@ -182,7 +182,7 @@ internal class McpToolSource(
 
         val handshake = handshakeLocked(state)
         if (handshake is Handshake.NeedsAuth) return handshake.outcome
-        if (handshake is Handshake.Fail) return McpConnectOutcome.Failed(handshake.message)
+        if (handshake is Handshake.Fail) return McpConnectOutcome.Failed(handshake.message, handshake.failure)
         finishConnectLocked(state, handshake as Handshake.Done)
     }
 
@@ -191,7 +191,9 @@ internal class McpToolSource(
         /** 已握上的 client（尚未登记进 state）＋ 原始描述符（尚未做名字避让转换）。 */
         data class Done(val client: McpSession, val descriptors: List<McpToolDescriptor>) : Handshake
         data class NeedsAuth(val outcome: McpConnectOutcome.NeedsAuth) : Handshake
-        data class Fail(val message: String) : Handshake
+
+        /** 606：带机器分类（[failure]；null = 无从归类，如「没有这个 id」）。 */
+        data class Fail(val message: String, val failure: McpFailure? = null) : Handshake
     }
 
     /** 建 client → initialize → tools/list。失败分支在这里收口（状态置 ERROR、关 client）。 */
@@ -200,7 +202,11 @@ internal class McpToolSource(
             clientFactory(state.config)
         } catch (e: Exception) {
             state.status = McpServerStatus.ERROR
-            return Handshake.Fail("MCP 服务器「${state.config.name}」配置不可用（${e.javaClass.simpleName}）")
+            // 606：配置构造不过检（URL/头/超时）是本机 CONFIG，不是无名异常。
+            return Handshake.Fail(
+                "MCP 服务器「${state.config.name}」配置不可用（${e.javaClass.simpleName}）",
+                McpFailure.CONFIG,
+            )
         }
         val descriptors = try {
             client.connect()
@@ -225,7 +231,7 @@ internal class McpToolSource(
                     }
                 }
             }
-            return Handshake.Fail(e.userMessage)
+            return Handshake.Fail(e.userMessage, e.failure)
         } catch (e: Exception) {
             runCatching { client.close() }
             state.status = McpServerStatus.ERROR
@@ -295,7 +301,8 @@ internal class McpToolSource(
             client.listTools()
         } catch (e: McpException) {
             log("[mcp] server=${state.config.id} 工具清单刷新失败：${e.failure}（保留旧清单 ${state.tools.size} 个）")
-            return McpConnectOutcome.Failed(e.userMessage)
+            // 606：失败带分类（602 落点：刷新失败不再无机键）。
+            return McpConnectOutcome.Failed(e.userMessage, e.failure)
         } catch (e: Exception) {
             log("[mcp] server=${state.config.id} 工具清单刷新失败（${e.javaClass.simpleName}）（保留旧清单 ${state.tools.size} 个）")
             return McpConnectOutcome.Failed("MCP 服务器「${state.config.name}」刷新失败（${e.javaClass.simpleName}）")
@@ -304,7 +311,7 @@ internal class McpToolSource(
             convertedForLocked(state, descriptors)
         } catch (e: McpException) {
             log("[mcp] server=${state.config.id} 刷新到的工具形状不合法：${e.failure}（保留旧清单）")
-            return McpConnectOutcome.Failed(e.userMessage)
+            return McpConnectOutcome.Failed(e.userMessage, e.failure)
         }
         val before = state.wireNames
         val after = converted.map { it.wireName }.toSet()

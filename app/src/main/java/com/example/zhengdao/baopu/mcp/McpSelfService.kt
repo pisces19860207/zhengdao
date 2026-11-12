@@ -230,7 +230,12 @@ internal object McpSelfService {
         val auth = e.auth() ?: return ToolOutcome.Failed("授权流程未装配，无法导入令牌")
         // 硬边界①②：token 只进 vault；回执与日志都不出现内容（importToken 里同样只记事件）。
         val ok = auth.importToken(config, tokenRaw)
-        if (!ok) return ToolOutcome.Failed("令牌形状不合法（空/超长/含控制字符）：没有写入保险柜。")
+        if (!ok) {
+            // 606④：形状闸三通道同一把尺——非 ASCII 本机就拒，入库前拦下。
+            return ToolOutcome.Failed(
+                "令牌形状不合法（空/超长/含控制字符或非 ASCII，只收可见 ASCII）：没有写入保险柜。",
+            )
+        }
         return ToolOutcome.Ok(
             "已把「${config.name}」的令牌写进令牌保险柜（Keystore 加密）。" +
                 "内容不回显、不进日志、不进备份；现在可以 mcp_connect（id=$id）验证连接。",

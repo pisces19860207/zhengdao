@@ -32,6 +32,11 @@ internal data class McpProbeResult(
     val failure: McpProbeFailure? = null,
     /** 401 时：discovery（well-known）里有没有授权服务器。 */
     val discoveryFound: Boolean = false,
+    /**
+     * 606③：401 后探测 discovery 时连接失败（DNS/TLS/超时）——「没问到」，不是「没有」。
+     * 此为 true 时 [discoveryFound] 恒 false，且**不得**下「这台没配授权服务器」的结论。
+     */
+    val discoveryProbeFailed: Boolean = false,
 ) {
     val reachable: Boolean get() = statusCode != null
     val needsAuth: Boolean get() = statusCode == 401
@@ -81,7 +86,12 @@ internal object McpConnectProbe {
             return McpProbeResult(failure = failureOf(e))
         }
         if (code != 401) return McpProbeResult(statusCode = code)
-        return McpProbeResult(statusCode = code, discoveryFound = hasDiscovery(client, url))
+        val discovery = hasDiscovery(client, url)
+        return McpProbeResult(
+            statusCode = code,
+            discoveryFound = discovery == true,
+            discoveryProbeFailed = discovery == null,
+        )
     }
 
     /** 与真正连接时同一个请求形状（只是**不带** Authorization）。 */
@@ -107,9 +117,13 @@ internal object McpConnectProbe {
 
     /**
      * discovery：按 RFC 9728 的候选地址挨个 GET，第一个 200 且解析出
-     * `authorization_servers` 的就算找到。失败一律 false（已经拿到 401，不再加戏）。
+     * `authorization_servers` 的就算找到。
+     *
+     * 606③：三态——true＝找到；false＝**问到了**、确实没有；null＝有候选根本没问到
+     * （DNS/TLS/超时）——不能断定「没有」，调用方不得把它说成「没配授权服务器」。
      */
-    private fun hasDiscovery(client: OkHttpClient, url: String): Boolean {
+    private fun hasDiscovery(client: OkHttpClient, url: String): Boolean? {
+        var probeFailed = false
         for (candidate in McpOAuthDiscovery.resourceMetadataUrls(url)) {
             val found = runCatching {
                 val req = Request.Builder().url(candidate).get().build()
@@ -119,10 +133,10 @@ internal object McpConnectProbe {
                     val json = JSONObject(r.peekBody(MAX_DISCOVERY_BYTES).string())
                     McpOAuthDiscovery.parseResourceMetadata(json, candidate).authorizationServers.isNotEmpty()
                 }
-            }.getOrDefault(false)
+            }.onFailure { probeFailed = true }.getOrDefault(false)
             if (found) return true
         }
-        return false
+        return if (probeFailed) null else false
     }
 
     /** 异常 → 具体原因（DNS／证书／超时／拒连／其它网络错误）。 */

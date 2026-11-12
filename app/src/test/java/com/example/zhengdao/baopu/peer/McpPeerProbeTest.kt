@@ -203,18 +203,19 @@ class McpPeerProbeTest {
     // ── 判据②：三类失败各有不同人话与账行 ──────────────────────────────
 
     @Test
-    fun `判据②_协议不符_人话带协议不符_账行protocol_且说明期望与实际`() {
+    fun `判据②_回声版本不符_人话带版本对不上_账行version_且说明期望与实际`() {
+        // 606①：版本对不上是自己的键（version），不再借宿 protocol（602 行 12 收口）。
         fx.protocolEcho = "2025-03-26"
         grant()
         val out = probe(config())
-        assertEquals(PeerFailureCode.PROTOCOL, out.code)
-        assertTrue("人话要说「协议不符」：${out.human}", out.human.contains("协议不符"))
+        assertEquals(PeerFailureCode.VERSION_MISMATCH, out.code)
+        assertTrue("人话要说「版本对不上」：${out.human}", out.human.contains("版本对不上"))
         val row = PeerEventsLedger.replay().first { it.optString("kind") == PeerEventKinds.PROBE }
-        assertEquals("protocol", row.optString("result"))
+        assertEquals("version", row.optString("result"))
         assertTrue("账行要说明期望与实际：${row.optString("detail")}",
             row.optString("detail").contains(Peer570Fixture.MCP_PROTOCOL) && row.optString("detail").contains("2025-03-26"))
         val outcomeRow = LeaseLedger.replay().first { it.optString("kind") == "outcome" }
-        assertEquals("protocol", outcomeRow.optString("result"))
+        assertEquals("version", outcomeRow.optString("result"))
     }
 
     @Test

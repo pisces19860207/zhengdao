@@ -231,6 +231,17 @@ internal enum class McpAuthFailure {
 
     /** 没有待处理的授权（回调来晚了/重启后丢了 pending）。 */
     NO_PENDING,
+
+    // ── 606③：传输层三键——发现链 DNS/拒连/证书/超时不是「不支持 OAuth」，不得进 unsupported ──
+
+    /** 发现链连接失败（DNS 解析不了/端口拒连/其它传输层错）——网络没通到 HTTP，不是「没能力」。 */
+    NETWORK,
+
+    /** 发现链卡在证书/TLS 握手——连接没建立，不是「没能力」。 */
+    TLS,
+
+    /** 发现链超时——等太久没回音，不是「没能力」。 */
+    TIMEOUT,
 }
 
 /**

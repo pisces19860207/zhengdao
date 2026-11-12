@@ -31,6 +31,9 @@
     <string name="baopu_mcp_probe_ok">「%1$s」连通：HTTP %2$d。</string>
     <string name="baopu_mcp_probe_auth">「%1$s」连通：HTTP 401（需要授权）。</string>
     <string name="baopu_mcp_probe_auth_discovery">「%1$s」连通：HTTP 401（需要授权；discovery 已找到授权服务器）。</string>
+    <string name="baopu_mcp_probe_auth_probe_error">「%1$s」连通：HTTP 401（需要授权）；但探测授权服务器时连接失败——不能断定它不支持 OAuth，稍后再试。</string>
+    <string name="baopu_mcp_probe_endpoint">「%1$s」那儿没有这条接口：HTTP 404——端点/路径不对（服务在，但这条路不通）。</string>
+    <string name="baopu_mcp_probe_protocol">「%1$s」说的不是一路话：HTTP %2$d（4xx）——服务器应了，但不是 MCP 这一路。</string>
     <string name="baopu_mcp_probe_http">「%1$s」连不通：HTTP %2$d。</string>
     <string name="baopu_mcp_probe_bad_url">「%1$s」地址不合法，测不了。</string>
     <string name="baopu_mcp_probe_dns">「%1$s」连不通：域名解析失败（DNS）。</string>

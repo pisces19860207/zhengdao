@@ -100,6 +100,9 @@ internal class McpAuthFlow(
                 sessionFor(config, resource)
             } catch (e: McpAuthException) {
                 log("[mcp] server=${config.id} 授权准备失败：${e.failure}")
+                // 606③：只有「问到了 HTTP、但没元数据/没注册入口」才算这台不支持 OAuth；
+                // 传输层故障（NETWORK/TLS/TIMEOUT——606 新键）与形状拒收不进 unsupported，
+                // 状态不得翻成「不支持 OAuth」。
                 if (e.failure == McpAuthFailure.NO_METADATA ||
                     e.failure == McpAuthFailure.REGISTRATION_FAILED
                 ) {
@@ -223,12 +226,14 @@ internal class McpAuthFlow(
      * ② 模型侧只许写不许读（读通道只有 [tokenFor]，且只喂传输层）；
      * ③ 导入即清「刷新失败/不支持」的旧标记（与 [complete] 同口径）。
      *
-     * @return true = 已入库；false = 形状不合法（空串/超长/控制字符/resource 无法规范化）
+     * 606④：形状闸与剪贴板/配置头**同一把尺**（[tokenShapeRejection]）——非 ASCII 本机
+     * 就拒，不会再入库后到 OkHttp 才炸 IAE。
+     *
+     * @return true = 已入库；false = 形状不合法（空/超长/控制字符/非 ASCII/resource 无法规范化）
      */
     fun importToken(config: McpServerConfig, accessToken: String): Boolean = synchronized(lock) {
         val token = accessToken.trim()
-        if (token.isEmpty() || token.length > MAX_IMPORTED_TOKEN) return false
-        if (token.any { it.code < 0x20 || it.code == 0x7f }) return false
+        if (tokenShapeRejection(token) != null) return false
         val resource = McpResource.canonical(config.url) ?: return false
         vault.save(
             config.id,
@@ -399,6 +404,22 @@ internal class McpAuthFlow(
 
         /** 手动导入令牌的长度上限（PAT 常见 ≤ 512；8 KB 是宽裕的天花板，防整段粘贴误入）。 */
         const val MAX_IMPORTED_TOKEN = 8192
+
+        /**
+         * 606④：令牌形状的**唯一一把尺**（三通道共用：剪贴板 / `mcp_set_token` / 配置头）。
+         *
+         * 非空、≤[MAX_IMPORTED_TOKEN]、每个字符都是可见 ASCII（0x21–0x7E）——
+         * 中文/全角/控制字符一律拒。拒了就进不了保险柜，后续请求自然带不上（与传输层
+         * 的 ASCII 闸双保险，但本机这道先拦，`requestCount` 恒为 0）。
+         *
+         * @return null = 形状可收；非 null = 人话原因（不含内容本身）
+         */
+        fun tokenShapeRejection(token: String): String? = when {
+            token.isEmpty() -> "空"
+            token.length > MAX_IMPORTED_TOKEN -> "超长（上限 $MAX_IMPORTED_TOKEN）"
+            token.any { it.code < 0x21 || it.code > 0x7e } -> "含控制字符或非 ASCII（只收可见 ASCII）"
+            else -> null
+        }
     }
 }
 

@@ -75,6 +75,12 @@ internal data class McpServerConfig(
                 "MCP 请求头「$k」属于鉴权头：本客户端只用 OAuth 授权，不接受手工填 token"
             }
             require(v.none { it == '\r' || it == '\n' || it.code == 0 }) { "MCP 请求头「$k」的值含换行/控制字符" }
+            // 606④：头值只放 ASCII——OkHttp 对越界头值会抛 IAE，这里本机就拒（同一把尺，
+            // 与 mcp_set_token/剪贴板通道一致），配置期拦下，请求一个字节都不发。
+            // 界与 OkHttp headersCheckValue 对齐：\t(0x09) 与 0x20–0x7e 之外即拒。
+            require(v.none { it.code != 0x09 && (it.code < 0x20 || it.code > 0x7e) }) {
+                "MCP 请求头「$k」的值含非 ASCII 字符（头值只放 ASCII）"
+            }
             require(v.length <= MAX_HEADER_VALUE) { "MCP 请求头「$k」的值过长" }
         }
     }
@@ -158,10 +164,17 @@ internal object McpUrlRules {
         "<无法解析的 URL>"
     }
 
-    /** 请求头名称按 RFC 7230 token 判（不接受空格/冒号/换行）。 */
+    /**
+     * 请求头名称按 RFC 7230 token 判（不接受空格/冒号/换行）。
+     *
+     * 606④：字母/数字**只收 ASCII**——`isLetterOrDigit()` 是 Unicode 语义，会把中文放行，
+     * 到 OkHttp 才炸 IAE；头名本机就拦（tchar 的 ALPHA/DIGIT 本来就是 ASCII 段）。
+     */
     fun isHeaderName(name: String): Boolean =
         name.isNotEmpty() && name.length <= 128 &&
-            name.all { it.isLetterOrDigit() || it in "!#$%&'*+-.^_`|~" }
+            name.all {
+                it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "!#$%&'*+-.^_`|~"
+            }
 
     /**
      * 旧式 SSE 返回的 POST endpoint：只允许**同源**绝对/相对路径。
@@ -233,6 +246,18 @@ internal enum class McpFailure {
 
     /** 403 `insufficient_scope`：权限不够，要 step-up（不是重新登录）。 */
     INSUFFICIENT_SCOPE,
+
+    /**
+     * 606①：HTTP 404——这条路没有。只表「端点不存在」，不再与其它 HTTP 错混居
+     * （在 initialize 阶段仍保留旧式 SSE 回退资格，回退失败时此分类留账）。
+     */
+    ENDPOINT,
+
+    /**
+     * 606①：版本对不上——initialize 回声不是本端协议版本，或 400/422 错误体点名
+     * version。只表版本，不再拆在 PROTOCOL/HTTP 两处。
+     */
+    VERSION_MISMATCH,
     HTTP,
     PROTOCOL,
     SCHEMA,
@@ -307,7 +332,16 @@ internal sealed interface McpConnectOutcome {
         val missingScope: String? = null,
     ) : McpConnectOutcome
 
-    data class Failed(val message: String) : McpConnectOutcome
+    /**
+     * 失败（只有一句话；606 起带机器分类 [failure]，生产链不再「无机键」）。
+     *
+     * [failure] 是 [McpFailure] 原值（MCP 侧尺）；对账到 12 键经
+     * `PeerFailureClassify`（peer 侧映射表），不在本层越权。
+     */
+    data class Failed(
+        val message: String,
+        val failure: McpFailure? = null,
+    ) : McpConnectOutcome
 }
 
 /** server 状态（只读给未来设置页；v1 无 UI）。 */

@@ -274,8 +274,14 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
         return when {
             code == 401 && result.discoveryFound ->
                 McpNotice(true, res.getString(R.string.baopu_mcp_probe_auth_discovery, name))
+            // 606③：discovery 探测根本没问到（DNS/TLS/超时）——不许说「没找到授权服务器」。
+            code == 401 && result.discoveryProbeFailed ->
+                McpNotice(true, res.getString(R.string.baopu_mcp_probe_auth_probe_error, name))
             code == 401 -> McpNotice(true, res.getString(R.string.baopu_mcp_probe_auth, name))
             code in 200..299 -> McpNotice(true, res.getString(R.string.baopu_mcp_probe_ok, name, code))
+            // 606①（602 落点：测试连接 4xx 不再一律「HTTP %d」）：404→端点；其余 4xx→协议。
+            code == 404 -> McpNotice(false, res.getString(R.string.baopu_mcp_probe_endpoint, name))
+            code in 400..499 -> McpNotice(false, res.getString(R.string.baopu_mcp_probe_protocol, name, code))
             else -> McpNotice(false, res.getString(R.string.baopu_mcp_probe_http, name, code))
         }
     }

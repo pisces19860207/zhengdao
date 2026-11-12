@@ -277,9 +277,11 @@ class McpFailureNoteTest {
     fun `接线_两个客户端都把线索交给调用方`() {
         val client = File("src/main/java/com/example/zhengdao/baopu/mcp/McpClient.kt").readText()
         val oauthSrc = File("src/main/java/com/example/zhengdao/baopu/mcp/McpOAuthClient.kt").readText()
-        assertTrue("MCP 客户端读数要返回分类线索（442批：钉函数签名行，miss 辅助函数兜不了底）", client.contains("): Pair<String?, McpFailureNote?> {"))
-        assertTrue("调用方拿线索记日志", client.contains("withheld?.let { log(it.logLine(config.id)) }"))
-        assertTrue("调用方拿线索补文案", client.contains("detail = usable ?: withheld?.hint"))
+        // 442 批钉「线索必须交给调用方」；606 重构后非 2xx 结论装在 ErrorBodyDetail 里，
+        // note（分类线索）仍是其一等字段——钉字段与两处接线，miss 辅助函数照样兜不了底。
+        assertTrue("MCP 客户端读数要返回分类线索（606：结论带 note 字段）", client.contains("val note: McpFailureNote?"))
+        assertTrue("调用方拿线索记日志", client.contains("detail.note?.let { log(it.logLine(config.id)) }"))
+        assertTrue("调用方拿线索补文案", client.contains("detail = detail.usable ?: detail.note?.hint"))
         assertFalse("改前那种一律 return null 的收口不许回来", client.contains("if (text.isBlank()) return null"))
         assertFalse("Content-Type 不对也不许静默", client.contains("if (!contentType.contains(\"json\")) return null"))
         assertTrue("OAuth 读体三态化", oauthSrc.contains("private fun readCapped(r: Response, stage: String): Pair<String?, McpFailureNote?>"))

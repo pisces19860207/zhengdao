@@ -79,6 +79,31 @@ internal enum class PeerFailureCode(val wire: String) {
  *
  * MCP 的 [McpClient] 会把底层 IOException 包进 [McpException]（cause 保留），所以
  * 先看 MCP 的失败枚举，CONNECT 再顺 cause 链细分 DNS／端口；纯 A2A 的异常直接顺链。
+ *
+ * ## 五套尺 → 12 键映射表（606 收口⑥；与 [McpFailureMappingTest] 的断言一一对应）
+ *
+ * 上面的失败码闭集（12 键）是唯一对账口径；MCP 侧各把尺按此表归键（**只表不接线**的尺
+ * 也写在这里，免得再出现「两把尺各自为政」的账外地带）。「顺 cause」＝按 [ofThrowable]
+ * 的链路细分，兜底 network。
+ *
+ * | 尺 | 值 | 12 键 |
+ * |---|---|---|
+ * | McpFailure（MCP 请求异常） | CONFIG | config（606⑤：不再压平进 protocol） |
+ * | | ENDPOINT | endpoint（606①：HTTP 404） |
+ * | | VERSION_MISMATCH | version（606①：回声版本不符 / 400·422 点名 version） |
+ * | | TIMEOUT | timeout |
+ * | | AUTH / AUTH_REQUIRED / INSUFFICIENT_SCOPE | auth |
+ * | | PROTOCOL / SCHEMA | protocol |
+ * | | CONNECT / HTTP / TOOL | 顺 cause（HTTP 只剩 5xx/3xx ⇒ network） |
+ * | | CLOSED | network |
+ * | PeerFailureCode（本闭集） | 12 值 | 恒等映射 |
+ * | McpProbeFailure（测试连接） | BAD_URL | config（地址不合法是本机配置） |
+ * | | DNS / TLS / TIMEOUT / REFUSED / NETWORK | dns / tls / timeout / refused / network |
+ * | McpAuthFailure（OAuth 授权） | NO_METADATA / REGISTRATION_FAILED / STATE_MISMATCH / UNSUPPORTED / NO_PENDING | protocol |
+ * | | BAD_METADATA | config |
+ * | | AUTHORIZATION_DENIED / TOKEN_EXCHANGE_FAILED / REFRESH_FAILED / AUDIENCE_MISMATCH | auth |
+ * | | NETWORK / TLS / TIMEOUT | network / tls / timeout（606③：传输层故障不说「不支持」） |
+ * | McpAuthStatus / McpServerStatus | 5 态 / 3 态 | 不映射（状态非失败，无键） |
  */
 internal object PeerFailureClassify {
 
@@ -101,15 +126,25 @@ internal object PeerFailureClassify {
         e is ConnectException -> PeerFailureCode.PORT
         e is SSLException -> PeerFailureCode.TLS
         e is InterruptedIOException -> PeerFailureCode.TIMEOUT
-        e is java.net.MalformedURLException || e is IllegalArgumentException -> PeerFailureCode.PROTOCOL
+        // 606④：裸 IllegalArgumentException 是 OkHttp 对本机给的地址/头值摇头（如非 ASCII
+        // 头值）——本机配置问题归 config，不再冒充「协议不符」。MalformedURL 同理是本机地址
+        // 没写对，但历史上归 protocol 且 A2A 侧账已按此读，保持不动。
+        e is IllegalArgumentException -> PeerFailureCode.CONFIG
+        e is java.net.MalformedURLException -> PeerFailureCode.PROTOCOL
         else -> null
     }
 
     private fun ofMcp(e: McpException): PeerFailureCode = when (e.failure) {
         McpFailure.TIMEOUT -> PeerFailureCode.TIMEOUT
-        McpFailure.PROTOCOL, McpFailure.SCHEMA, McpFailure.CONFIG -> PeerFailureCode.PROTOCOL
+        // 606①：4xx 在 McpClient.httpError 源头就分好了键，这里只许原样放行。
+        McpFailure.ENDPOINT -> PeerFailureCode.ENDPOINT
+        McpFailure.VERSION_MISMATCH -> PeerFailureCode.VERSION_MISMATCH
+        // 606⑤：CONFIG 是本机配置不过检，不许再压平成 protocol（键空转的最后一道闸）。
+        McpFailure.CONFIG -> PeerFailureCode.CONFIG
+        McpFailure.PROTOCOL, McpFailure.SCHEMA -> PeerFailureCode.PROTOCOL
         McpFailure.AUTH, McpFailure.AUTH_REQUIRED, McpFailure.INSUFFICIENT_SCOPE -> PeerFailureCode.AUTH
         McpFailure.CLOSED -> PeerFailureCode.NETWORK
+        // HTTP 到这里只剩 5xx/3xx（4xx 已在源头分流）——无 cause 即 network，与规格表一致。
         McpFailure.CONNECT, McpFailure.HTTP, McpFailure.TOOL -> e.cause?.let { ofThrowable(it) } ?: PeerFailureCode.NETWORK
     }
 
@@ -126,7 +161,7 @@ internal object PeerFailureText {
         PeerFailureCode.TLS -> "「$peerName」的证书信不过：HTTPS 握手失败（自签/过期/域名不符）——证书这一关没过"
         PeerFailureCode.TIMEOUT -> "「$peerName」等太久没回音：超时——对方忙，或不在这个网络里"
         PeerFailureCode.PROTOCOL -> "「$peerName」说的不是一路话：协议不符——对方不是 MCP/A2A，已停止（不会硬猜着用）"
-        PeerFailureCode.VERSION_MISMATCH -> "「$peerName」的 A2A 协议版本对不上：不在本端支持的区间——要么它太旧要么太新，已停住不硬谈（先对齐 protocolVersion）"
+        PeerFailureCode.VERSION_MISMATCH -> "「$peerName」的协议版本对不上：不在本端支持的区间——要么它太旧要么太新，已停住不硬谈（先对齐 protocolVersion）"
         PeerFailureCode.ENDPOINT -> "「$peerName」那儿没有这条接口：地址给的是 404——端点/路径不对（服务在，但这条路不通）"
         PeerFailureCode.AUTH -> "「$peerName」要先验明身份：需要授权或凭据无效——先授权/换凭据，再连"
         PeerFailureCode.CONFIG -> "「$peerName」还没出门就卡住了：本机配置不过检（如凭据含非 ASCII 字符）——请换 ASCII token 或改用自定头"

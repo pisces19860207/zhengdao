@@ -30,6 +30,9 @@
     <string name="baopu_mcp_probe_ok">\"%1$s\" reachable: HTTP %2$d.</string>
     <string name="baopu_mcp_probe_auth">\"%1$s\" reachable: HTTP 401 (authorization required).</string>
     <string name="baopu_mcp_probe_auth_discovery">\"%1$s\" reachable: HTTP 401 (authorization required; discovery found an authorization server).</string>
+    <string name="baopu_mcp_probe_auth_probe_error">\"%1$s\" reachable: HTTP 401 (authorization required); but the authorization-server probe failed to connect - cannot conclude it lacks OAuth support, retry later.</string>
+    <string name="baopu_mcp_probe_endpoint">\"%1$s\" has no such endpoint: HTTP 404 - wrong endpoint/path (the server is there, this route is not).</string>
+    <string name="baopu_mcp_probe_protocol">\"%1$s\" is not speaking MCP: HTTP %2$d (4xx) - the server answered, but not in MCP terms.</string>
     <string name="baopu_mcp_probe_http">\"%1$s\" unreachable: HTTP %2$d.</string>
     <string name="baopu_mcp_probe_bad_url">\"%1$s\" has an invalid address; nothing to test.</string>
     <string name="baopu_mcp_probe_dns">\"%1$s\" unreachable: DNS lookup failed.</string>

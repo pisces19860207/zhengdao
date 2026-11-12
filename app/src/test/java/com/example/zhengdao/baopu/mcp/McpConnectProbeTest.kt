@@ -86,6 +86,21 @@ class McpConnectProbeTest {
         val r = McpConnectProbe.probe(mcpUrl())
         assertEquals(401, r.statusCode)
         assertFalse(r.discoveryFound)
+        assertFalse("问到了、确实没有：不是探测失败", r.discoveryProbeFailed)
+    }
+
+    // ── 606 ③：discovery 探测连接失败 ≠「没有授权服务器」 ────────────────
+
+    @Test
+    fun `收口_401时发现探测超时_不断言没找到_如实记探测失败`() {
+        server.enqueue(MockResponse.Builder().code(401).build())
+        // 第一个候选拖死（超过整测超时），第二个候选照答 404——混合态也不许下「没有」的结论。
+        server.enqueue(MockResponse.Builder().code(200).headersDelay(3, TimeUnit.SECONDS).build())
+        server.enqueue(MockResponse.Builder().code(404).build())
+        val r = McpConnectProbe.probe(mcpUrl(), timeoutMs = 400)
+        assertEquals(401, r.statusCode)
+        assertFalse("没问到 ≠ 没有", r.discoveryFound)
+        assertTrue("探测失败要如实记（606③ 吞法 C）", r.discoveryProbeFailed)
     }
 
     @Test
@@ -228,6 +243,10 @@ class McpConnectProbeTest {
             "baopu_mcp_probe_network",
             "baopu_mcp_probe_http",
             "baopu_mcp_probe_auth",
+            "baopu_mcp_probe_auth_discovery",
+            "baopu_mcp_probe_auth_probe_error",
+            "baopu_mcp_probe_endpoint",
+            "baopu_mcp_probe_protocol",
         )) {
             assertTrue("界面必须为 $key 给出具体一句话", ui.contains("R.string.$key"))
         }

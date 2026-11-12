@@ -50,10 +50,8 @@ internal object McpClipboardToken {
         else -> null
     }
 
-    private fun visibleAsciiRun(text: String): Boolean =
-        text.isNotEmpty() &&
-            text.length <= McpAuthFlow.MAX_IMPORTED_TOKEN &&
-            text.all { it.code in 0x21..0x7E }
+    /** 606④：可见 ASCII 的判定收敛到 [McpAuthFlow.tokenShapeRejection] 这一把尺（三通道同尺）。 */
+    private fun visibleAsciiRun(text: String): Boolean = McpAuthFlow.tokenShapeRejection(text) == null
 
     /**
      * 通道本体：形状闸 → [McpAuthFlow.importToken] 落库。
