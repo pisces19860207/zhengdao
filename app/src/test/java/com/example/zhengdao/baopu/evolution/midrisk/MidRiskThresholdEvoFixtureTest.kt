@@ -230,6 +230,14 @@ class MidRiskThresholdEvoFixtureTest {
     }
 
     @Test
+    fun `判据⑨_后果链没装配_不自调不写账_闸行为与接线前一致`() {
+        ConsequenceWiring.uninstallForTest()
+        DecisionLedger.uninstallForTest()
+        assertFalse("没装配 ⇒ 不提议不落行", propose(base = 3, delta = 1, turn = 1, atMs = now))
+        assertEquals("没装配 ⇒ 生效值＝政策表原值（闸行为与接线前逐字节一致）", policyValue, effective())
+    }
+
+    @Test
     fun `判据④c_红线假动作_共用门拒并记账`() {
         val fake = EvoCandidate(
             domain = cap.wire,

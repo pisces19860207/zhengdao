@@ -96,6 +96,7 @@ internal object MidRiskEvo {
      */
     fun effectiveReaskThreshold(policyValue: Int): Int {
         val cap = CanaryCapability.JUDGMENT_THRESHOLD
+        if (!ConsequenceWiring.installed()) return policyValue
         if (ConsequenceWiring.currentCanaryBand(cap.wire) == CanaryBand.OFF) return policyValue
         return ConsequenceWiring.currentThreshold(cap.wire) ?: policyValue
     }
@@ -111,6 +112,10 @@ internal object MidRiskEvo {
      */
     fun proposeThresholdShift(p: ThresholdProposal, atMs: Long): Boolean {
         val cap = CanaryCapability.JUDGMENT_THRESHOLD
+        if (!ConsequenceWiring.installed()) {
+            RunLog.log("判定阈值暂缓（后果链没装配 ⇒ 不自调不写账，候选保留）")
+            return false
+        }
         val proposed = p.base + p.delta
         val candidate = EvoCandidate(
             domain = cap.wire,
@@ -139,6 +144,7 @@ internal object MidRiskEvo {
      */
     fun revertThreshold(toValue: Int, expectCurrent: Int?, atMs: Long): Boolean {
         val cap = CanaryCapability.JUDGMENT_THRESHOLD
+        if (!ConsequenceWiring.installed()) return false
         val from = ConsequenceWiring.currentThreshold(cap.wire) ?: return false
         if (expectCurrent != null && from != expectCurrent) return false
         if (from == toValue) return true
@@ -294,6 +300,10 @@ internal object MidRiskEvo {
      * 单域算不动不许带崩别域（runCatching 只 log）。
      */
     fun sweepOnSettle(nowMs: Long) {
+        if (!ConsequenceWiring.installed()) {
+            RunLog.log("中风险域扫档跳过（后果链没装配 ⇒ 无账可读、无档可动）")
+            return
+        }
         CAPABILITIES.forEach { cap ->
             runCatching {
                 var rounds = LowRiskEvo.passedRoundsOf(cap.wire, nowMs)

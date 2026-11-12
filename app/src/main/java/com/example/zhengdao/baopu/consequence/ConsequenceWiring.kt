@@ -177,6 +177,13 @@ internal object ConsequenceWiring {
     fun executorId(): String = cachedExecutor
 
     /**
+     * 后果链装上了没有（568-B 域①的自调闸用）：没装配 ⇒ 阈值不自调、扫档不跑——
+     * "机制没装配 ⇒ 不自己跑"与 568-A 的 LowRiskEvo 同一条纪律；判据层读到的是缺省档，
+     * 但**写口**（提议落行）必须整条链在场才许动。
+     */
+    fun installed(): Boolean = installedDir != null
+
+    /**
      * 改身份（撤销／轮换／铸新；517 U2 起**没有**"解除撤销"这个动词）：判据拒 ⇒ 盘和账都不动；
      * 判据放行 ⇒ 先盘后账。
      *
