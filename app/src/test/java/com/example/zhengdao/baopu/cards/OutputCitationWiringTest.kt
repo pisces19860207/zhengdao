@@ -256,6 +256,98 @@ class OutputCitationWiringTest {
         assertEquals(listOf("pickLedger"), ledgerLeaks(bodyOf(mutated, "fun citationView()")))
     }
 
+    // ── 616：引据缓存键带来源域（预览造数进不了生产卡）─────────────────────
+
+    private val previewActivity by lazy {
+        src("src/debug/java/com/example/zhengdao/baopu/cards/OutputCitationPreviewActivity.kt")
+    }
+
+    /**
+     * 判据③的源码断言：缓存键必须是「来源域」——存储按 [CitationDomain] 分键，
+     * 读写都经 `domain` 参数索引（不是写死的常量；判据⑥变异的就是这个索引）。
+     */
+    private fun cacheKeysCarryDomain(sources: String): Boolean {
+        val body = bodyOf(sources, "object CitationHitCache")
+        return Regex("""Map<CitationDomain,\s*List<CitationWebHit>>""").containsMatchIn(body) &&
+            Regex("""hitsByDomain\[domain]""").containsMatchIn(body) &&
+            Regex("""next\[domain]""").containsMatchIn(body) &&
+            Regex("""record\(\s*items: List<CitationWebHit>,\s*domain: CitationDomain""").containsMatchIn(body) &&
+            Regex("""snapshot\(\s*domain: CitationDomain""").containsMatchIn(body)
+    }
+
+    /** 预览准入的接线：造数与取数（含那条示例 hit）、视图域都必须显式点名 PREVIEW，且不碰生产域。 */
+    private fun previewWiring(activity: String): Boolean {
+        val recordArgs = GateBodies.callArgs(activity, "CitationHitCache.record(")
+        val snapshotArgs = GateBodies.callArgs(activity, "CitationHitCache.snapshot(")
+        val hitArgs = GateBodies.callArgs(activity, "CitationWebHit(")
+        val viewArgs = GateBodies.callArgs(activity, "CitationSourceView(")
+        return recordArgs.isNotEmpty() && recordArgs.all { it.contains("CitationDomain.PREVIEW") } &&
+            snapshotArgs.isNotEmpty() && snapshotArgs.all { it.contains("CitationDomain.PREVIEW") } &&
+            hitArgs.isNotEmpty() && hitArgs.all { it.contains("CitationDomain.PREVIEW") } &&
+            viewArgs.isNotEmpty() && viewArgs.all { it.contains("CitationDomain.PREVIEW") } &&
+            !activity.contains("CitationDomain.PRODUCTION")
+    }
+
+    /**
+     * 出卡侧的来源校验：视图带自己的域（默认＝生产），收集与存在性只认同域 hits——
+     * 「来自示例/预览的引据一律拒」写在这一个比较上（616③）。
+     */
+    private fun citationAssemblyDomainAware(sources: String): Boolean =
+        bodyOf(sources, "data class CitationSourceView")
+            .contains("val domain: CitationDomain = CitationDomain.PRODUCTION") &&
+            bodyOf(sources, "ofDomain(domain: CitationDomain)").contains("it.source == domain")
+
+    @Test
+    fun `判据三_缓存键带来源域_读写都经域参数索引`() {
+        assertTrue(cacheKeysCarryDomain(sources))
+    }
+
+    @Test
+    fun `判据三_出卡侧只认同域引据_示例预览一律拒`() {
+        assertTrue(citationAssemblyDomainAware(sources))
+    }
+
+    @Test
+    fun `判据三_预览读写都点名PREVIEW_不碰生产域`() {
+        assertTrue(previewWiring(previewActivity))
+    }
+
+    @Test
+    fun `判据三_生产读写点零改动_默认域就是生产`() {
+        assertTrue(bodyOf(controller, "fun citationView()").contains("CitationHitCache.snapshot()"))
+        assertTrue(searchTool.contains("CitationHitCache.record("))
+        assertTrue(
+            "默认域＝生产（生产读写点零改动的出处）",
+            sources.contains("domain: CitationDomain = CitationDomain.PRODUCTION"),
+        )
+        assertTrue(
+            "搜索 hit 默认生产域（SearchWebTool 构造点零改动）",
+            sources.contains("source: CitationDomain = CitationDomain.PRODUCTION"),
+        )
+    }
+
+    @Test
+    fun `变异自证_缓存键改成常量_断言变红`() {
+        // 判据⑥的源码半边：把「索引的域参数」换成常量 ⇒ 键不再是来源域，断言必须红
+        val mutated = sources.replace("[domain]", "[CitationDomain.PRODUCTION]")
+        assertTrue("源里应有 [domain]", mutated != sources)
+        assertFalse(cacheKeysCarryDomain(mutated))
+    }
+
+    @Test
+    fun `变异自证_预览读写改用生产域_断言变红`() {
+        val mutated = previewActivity.replace("CitationDomain.PREVIEW", "CitationDomain.PRODUCTION")
+        assertTrue("源里应有 CitationDomain.PREVIEW", mutated != previewActivity)
+        assertFalse(previewWiring(mutated))
+    }
+
+    @Test
+    fun `变异自证_出卡域校验写死成常量_断言变红`() {
+        val mutated = sources.replace("it.source == domain", "it.source == CitationDomain.PREVIEW")
+        assertTrue("源里应有 it.source == domain", mutated != sources)
+        assertFalse(citationAssemblyDomainAware(mutated))
+    }
+
     private companion object {
         const val SkillWritePolicyMax = 2 * 1024
     }
