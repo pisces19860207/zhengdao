@@ -44,6 +44,9 @@ internal object BaopuToolLabels {
         // 597：立绘外貌两件（漏了 ⇒ 设置页开工具卡直接抛，同 update_plan 教训）
         "portrait_look" to R.string.baopu_tool_portrait_look,
         "portrait_appearance" to R.string.baopu_tool_portrait_appearance,
+        // 610：通读两件（预检只读；run 真开跑会多次调模型＋写盘）
+        "novel_readthrough" to R.string.baopu_tool_novel_readthrough,
+        "novel_readthrough_run" to R.string.baopu_tool_novel_readthrough_run,
         // 第二百八十八批：复制/批量/整理五件
         "copy_path" to R.string.baopu_tool_copy_path,
         "bulk_move" to R.string.baopu_tool_bulk_move,
@@ -177,6 +180,9 @@ internal object BaopuToolLabels {
         // 597：立绘外貌两件
         "portrait_look" to R.string.baopu_tool_portrait_look_desc,
         "portrait_appearance" to R.string.baopu_tool_portrait_appearance_desc,
+        // 610：通读两件
+        "novel_readthrough" to R.string.baopu_tool_novel_readthrough_desc,
+        "novel_readthrough_run" to R.string.baopu_tool_novel_readthrough_run_desc,
         // 第二百八十八批：复制/批量/整理五件
         "copy_path" to R.string.baopu_tool_copy_path_desc,
         "bulk_move" to R.string.baopu_tool_bulk_move_desc,

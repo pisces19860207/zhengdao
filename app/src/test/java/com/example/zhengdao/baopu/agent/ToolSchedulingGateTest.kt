@@ -71,6 +71,9 @@ class ToolSchedulingGateTest {
         // 322：board_read 只读工作区里一件便签（不写盘、不联网），与别的读可并行
         // （board_write 是写，故意**不**进这张表：并行读表只收只读件）
         "board_read",
+        // 610：novel_readthrough 预检只读（零网络零写盘），与别的读可并行；
+        // novel_readthrough_run 是写＋多次模型调用（CONFIRM），故意**不**进这张表
+        "novel_readthrough",
         // 541：todo_list 只读工作区里一本手账（不写盘、不联网），与别的读可并行
         // （todo_add / todo_mark_done 是写，同 board_write 口径**不**进这张表）
         "todo_list",

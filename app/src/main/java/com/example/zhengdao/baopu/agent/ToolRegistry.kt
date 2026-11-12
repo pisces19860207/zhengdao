@@ -373,6 +373,11 @@ internal object ToolGroupTable {
         // 草稿/视觉描述/进卡）——归 CARD（默认不可见，capabilities 解锁——B1 硬卡不破）
         "portrait_look" to ToolGroup.CARD,
         "portrait_appearance" to ToolGroup.CARD,
+        // 610：通读两件——novel_readthrough 预检（FREE 只读，预算/编码/切分异常逐条报）；
+        // novel_readthrough_run 真开跑（CONFIRM：会多次调模型＋写 jsonl）。
+        // 归 LIBRARY（默认不可见，capabilities 解锁——B1 硬卡不破）
+        "novel_readthrough" to ToolGroup.LIBRARY,
+        "novel_readthrough_run" to ToolGroup.LIBRARY,
         // 58 批 C 层「追加-only」人设通道：与 write_skill 同属自写类，同一组、同样默认不可见
         // （合流时补的分组——补不上 checkCoverage 直接抛，这是 §6「孤儿工具直接红」在跑）
         "write_skill" to ToolGroup.SKILL,
@@ -1473,6 +1478,9 @@ internal object BaopuToolCatalog {
         "novel_relations",
         "novel_timeline",
         "novel_annotations",
+        // 610：通读两件（LIBRARY 组，默认不可见但默认启用；预检只读、run CONFIRM）
+        "novel_readthrough",
+        "novel_readthrough_run",
         // 浏览器六件（玄览）：读类免确认、写类 CONFIRM；网关没注入时统一回「玄览还没打开」
         "browser_open",
         "browser_snapshot",
@@ -1662,6 +1670,10 @@ internal object BaopuToolCatalog {
         Entry("novel_annotations") { NovelAnnotationsTool.spec(it) },
         Entry("novel_timeline_append") { NovelTimelineAppendTool.spec(it) },
         Entry("novel_annotation_reply") { NovelAnnotationReplyTool.spec(it) },
+        // 610：通读两件（读章用既有 book_outline/read_file 的 machinery——同一套行号口径；
+        // 预检 FREE 先报预算，开跑 CONFIRM 再闸一遍：超额不启动、断点续跑）。
+        Entry("novel_readthrough") { NovelReadthroughTool.planSpec(it) },
+        Entry("novel_readthrough_run") { NovelReadthroughTool.runSpec(it) },
         // 浏览器六件不需要 workspaceRoot（守卫走 URL/scheme，不走路径）
         Entry("browser_open") { BrowserTools.openSpec() },
         Entry("browser_snapshot") { BrowserTools.snapshotSpec() },

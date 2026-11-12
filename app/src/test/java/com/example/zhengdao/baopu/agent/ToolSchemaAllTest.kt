@@ -496,6 +496,9 @@ class ToolSchemaAllTest {
             "novel_create" to JSONObject().put("title", "书名"),
             "novel_project" to JSONObject().put("path", "小说/书名"),
             "novel_continue" to JSONObject().put("path", "小说/书名"),
+            // 610：通读两件（必填只有 path；mode/query 等全可选）
+            "novel_readthrough" to JSONObject().put("path", "投递/书.txt"),
+            "novel_readthrough_run" to JSONObject().put("path", "投递/书.txt"),
             "browser_open" to JSONObject().put("url", "https://m.bing.com"),
             "browser_snapshot" to JSONObject(),
             "browser_evidence" to JSONObject(),

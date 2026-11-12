@@ -105,6 +105,8 @@ class ToolRegistrySwitchTest {
                 // 609：小说资产六件（表序即注册序，novel_continue 之后；写两件默认关）
                 "novel_roster", "novel_relations", "novel_timeline", "novel_annotations",
                 "novel_timeline_append", "novel_annotation_reply",
+                // 610：通读两件（LIBRARY 组，默认不可见但默认启用；表序即注册序）
+                "novel_readthrough", "novel_readthrough_run",
                 "browser_open", "browser_snapshot", "browser_evidence", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot",
                 // 第一百七十七批：坐标四件＋等待（表序即注册序，插在 screenshot 之后）

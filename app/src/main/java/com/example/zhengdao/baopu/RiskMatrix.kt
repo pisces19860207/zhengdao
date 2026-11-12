@@ -437,6 +437,13 @@ internal data class RiskTable(
                 "portrait_look" to ToolRule(RiskClass.R1),
                 "portrait_appearance" to ToolRule(RiskClass.R1, writePathKeys = setOf("card")),
 
+                // ── 610 通读两件 ─────────────────────────────────────────
+                // readthrough：预检只读（零模型零写盘）⇒ R0；
+                // run：一次调用连烧几十上百次模型请求＋写 jsonl（FactStore append-only）
+                // ⇒ R2（无人值守必问；CONFIRM 卡在主管线，子 Agent 禁单另有封堵）。
+                "novel_readthrough" to ToolRule(RiskClass.R0),
+                "novel_readthrough_run" to ToolRule(RiskClass.R2),
+
                 // ── R3 花钱外发账号 ───────────────────────────────────────────
                 "generate_image" to ToolRule(RiskClass.R3),
 
