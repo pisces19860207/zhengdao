@@ -199,9 +199,12 @@ class ToolSchemaAllTest {
             val obj = sentA.getJSONObject(i)
             anthropic[obj.getString("name")] = obj.getJSONObject("input_schema").toString()
         }
-        assertEquals("tools 数组没发全（有工具看不见）", reg.names().toSet(), openAi.keys)
-        assertEquals("anthropic 的 tools 数组没发全", reg.names().toSet(), anthropic.keys)
-        for (spec in reg.all()) {
+        // 609：发出去的 tools 数组 ＝ **启用的**工具（DEFAULT_DISABLED 里的默认关件不发是设计，
+        // 不是漏发）；所以期望集取 enabledNames()，逐工具对拍也只对发出去的那些。
+        val visible = reg.enabledNames().toSet()
+        assertEquals("tools 数组没发全（有工具看不见）", visible, openAi.keys)
+        assertEquals("anthropic 的 tools 数组没发全", visible, anthropic.keys)
+        for (spec in reg.all().filter { it.name in visible }) {
             val local = spec.inputSchema.toString()
             assertEquals("${spec.name}（openai）发出去的不是校验用的那一份 ⇒ 模型按 A 写、校验按 B 判", local, openAi[spec.name])
             assertEquals("${spec.name}（anthropic）发出去的不是校验用的那一份", local, anthropic[spec.name])

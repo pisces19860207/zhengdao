@@ -321,10 +321,12 @@ class ToolRegistrySwitchTest {
         assertFalse(prefs.isDisabled("a"))
         prefs.setDisabled("a", true)
         assertTrue(prefs.isDisabled("a"))
-        assertEquals(setOf("a"), prefs.disabledNames())
+        // 609 三态：disabledNames() ＝ 显式关 ∪ **默认关**（设置页按它渲染每个工具的开关，
+        // 必须是「生效状态」——否则默认关的工具会被显示成「开」）。
+        assertEquals("显式关 ∪ 默认关", setOf("a") + BaopuToolCatalog.DEFAULT_DISABLED, prefs.disabledNames())
         prefs.setDisabled("a", false)
         assertFalse(prefs.isDisabled("a"))
-        assertTrue(prefs.disabledNames().isEmpty())
+        assertEquals("只剩默认关的那些", BaopuToolCatalog.DEFAULT_DISABLED, prefs.disabledNames())
     }
 
     @Test
