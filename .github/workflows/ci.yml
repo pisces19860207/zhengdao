@@ -33,6 +33,10 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # 607：趋势账要推到专用分支 ci/temp-trend（与 readings-emit 的 ci/readings 同款，main 不动）。
+    # 只给 verify job —— supply-chain 仍是最小权限。
+    permissions:
+      contents: write
     # 2026-11-08：30 → 45。ci #1912（356aa427）在**冷缓存**那轮被 30 分钟上限掐死：
     # 编译 Debug APK 13.6 分 + 全量单测 10.4 分 + 其余静态门禁 ⇒ 到 lint 那步刚好到点，
     # GitHub 把超时作业记成 **cancelled**（不是 failure）；而取消的 run 不会存 cache ⇒ 下一轮又是冷缓存。
@@ -256,23 +260,56 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
-      # 564（2026-11-09）：**测试临时目录不许无限攒**。
-      # app/src/test 里有 299 个文件建临时目录（526 处调用），其中 136 个跑完不删；本机实测
-      # 系统临时区曾攒到 84,594 个本仓测试目录（磁盘被吃到 0 字节），而编译/单测/detekt/lint
-      # 全绿——没有任何断言盯着它。同批把 java.io.tmpdir 钉进 app/build（build.gradle.kts 的
-      # tasks.withType<Test>），这些目录才落进本闸的视野。
-      # 判据：`app/build/**/tmp*` 目录区的目录总数 > 水位 ⇒ 红。水位取自
-      # tools/test-temp-budget.json（实测 **908/轮**，判据线 1,000，**只降不升**）：不是 50，
-      # 因为存量 136 个测试文件还没迁到 testkit/TempSandbox；降到 50 是迁移批的收口目标。
-      # 测试任务开跑前会清空自己的临时区（build.gradle.kts），所以这个数是「一轮」的量，
-      # 连跑多轮不会累加——闸红了就只能是「这一轮真变多了」，不会教人去 `clean`。
-      # --selftest 用合成树自证「=预算绿、预算+1 红」，防这条闸自己悄悄失效。
-      # 位置在单测之后、注解之前：红了这一条，注解步骤仍要跑（if: always()）。
-      - name: 测试临时目录闸（564 · 超水位即红，水位见 tools/test-temp-budget.json）
+      # ── 607（2026-11-12）：口径改为「只数测试自建的」，并把每轮读数记进趋势账 ──────
+      # 旧口径（564）数的是 `app/build/**/tmp*` 里的目录总数，把构建系统自己的 tmp
+      # （`.cache`、`compileDebugJavaWithJavac/compileTransaction`、`kapt…`、JDK 的
+      # `jar_extract_*`）一起算进了水位 ⇒ 读数跟着「这轮跑没跑 detekt / 中间产物清没清」上下跳，
+      # 那不是测试泄漏，是别人的噪声。
+      # 新口径（脚本头有判决表）：**只数测试建的沙盒根**，构建系统 tmp 一个都不数；
+      # 判定用「名字（Gradle 任务名形态）+ 产生者（只在 build/tmp 这一层建）」两条一起看，
+      # `testDebugUnitTest` 之下不判名字（测试根里叫 `compileDebug…` 的目录照样计数）。
+      # 判红：**CI 超预算红；本地只提示**（607 ②：本地环境差异不作判据）。
+      # 预算 = tools/test-temp-budget.json 的 measured（干净单轮实测）+ 固定余量 20，脚本自算。
+      # --record 追加一行 {date, measured, budget, commit} 到 tools/test-temp-trend.jsonl。
+      # --selftest 用合成树自证四条：Gradle 式 tmp 不计数、测试 tmp 计 +1、
+      # 伪装/同层/长数字三种反例照样计数、超一条时 CI 红而本地 WARN。
+      - name: 测试临时目录闸（607 · 只数测试自建｜预算 = 实测 + 20）
         if: always()
         run: |
           python3 tools/check-test-temp.py --selftest
-          python3 tools/check-test-temp.py
+          python3 tools/check-test-temp.py --record
+          echo "---- 趋势末两行 ----"
+          tail -2 tools/test-temp-trend.jsonl || true
+
+      # 趋势账要跨轮累积 ⇒ 推到专用分支 `ci/temp-trend`（与 readings-emit 的 `ci/readings`
+      # 同款：main 一字不动）。PR 上不推（fork 无写权限，也会把 PR 读数混进主线账）。
+      # continue-on-error：趋势是账、不是判据 —— 推失败不该把一轮验证判成红（那是假红）。
+      - name: 归档趋势账（ci/temp-trend）
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          NEW="$(tail -1 tools/test-temp-trend.jsonl)"
+          RUN_ID="${{ github.run_id }}"
+          git config user.name "temp-trend"
+          git config user.email "actions@users.noreply.github.com"
+          # 先切/建专用分支，再合行 —— 顺序不能反（orphan 检出的 git clean 会删掉未跟踪文件）。
+          if git fetch origin ci/temp-trend 2>/dev/null && git rev-parse --verify origin/ci/temp-trend >/dev/null 2>&1; then
+            git checkout -B ci/temp-trend origin/ci/temp-trend
+          else
+            git checkout --orphan ci/temp-trend
+            git rm -rf --cached . >/dev/null 2>&1 || true
+            git clean -fdx >/dev/null 2>&1 || true
+          fi
+          mkdir -p tools
+          if [ -f tools/test-temp-trend.jsonl ] && grep -q "\"run\": \"$RUN_ID\"" tools/test-temp-trend.jsonl; then
+            echo "run $RUN_ID 已在账上（重跑），不重复落行"
+            exit 0
+          fi
+          printf '%s\n' "$NEW" >> tools/test-temp-trend.jsonl
+          git add tools/test-temp-trend.jsonl
+          git commit -m "trend: run $RUN_ID"
+          git push origin ci/temp-trend
 
       # 2026-10-30：这一步不判成败，只**把失败的用例变成注解**。
       # 起因：CI 红在测试步时，注解里只有一句 `Process completed with exit code 1.`，

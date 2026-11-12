@@ -1,43 +1,80 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""check-test-temp.py —— 测试临时目录不许无限攒（564，2026-11-09）。
+"""check-test-temp.py —— 测试自建的临时目录不许攒（564 立闸，607 改口径）。
 
 ## 为什么要有这道闸
 
-单测里有 163 处 `Files.createTempDirectory(…)`、60 处 `createTempFile(…)`，另有一批直接写
-`File("build/tmp/…")` 的相对路径（例：`baopu/inspect/DataRepairSweepTest.kt:28`）。
-其中相当一部分**跑完不删**。它们落在 Gradle 给测试 JVM 的临时根
-（`app/build/tmp/testDebugUnitTest`）或模块 `build/tmp/` 下，于是：
+单测里有大量 `Files.createTempDirectory(…)` / `createTempFile(…)`，另有一批直接写
+`File("build/tmp/…")` 的相对路径。其中相当一部分**跑完不删**。它们落在 Gradle 给测试
+JVM 的临时根（`app/build/tmp/testDebugUnitTest`）或模块 `build/tmp/` 下，于是：
 
   * 每跑一轮就多一棵树，`app/build` 里的文件数上万地涨；
   * `clean`/`rebuild`/CI 缓存上传都跟着变慢、变大；
   * **编译、单测、detekt、lint 全绿** —— 这是「磁盘卫生」的裂缝，没有任何断言盯着它。
 
-本闸把「攒到多少算失控」变成一条会红的数字，配合 `testkit/TempSandbox.kt`
-（建了必删，删不干净必响）把这笔账从「靠自觉」变成「靠读数」。
+## 口径（607 改法：**只数测试自建的**）
 
-## 判据（只有一条）
+旧口径数的是「`app/build` 下 `tmp*` 区域里的目录总数」，把构建系统自己的临时目录
+（`.cache`、`compileDebugJavaWithJavac/compileTransaction`、`kapt…`、JDK 的
+`jar_extract_*`）一起算进了水位。于是读数会跟着「这轮跑没跑 detekt / 中间产物有没有被
+清」上下浮动 —— 那不是测试泄漏，是别人的噪声。
 
-单测跑完后，`app/build` 下**名字以 `tmp` 开头**的目录区（含嵌套，如
-`app/build/tmp/testDebugUnitTest`）里的**目录总数** `> 预算`（默认 50）⇒ 退出 1。
+新口径一句话：**只数测试建出来的沙盒根，构建系统的 tmp 一个都不数。**
+判定用两条一起看（缺一条就会误伤，或者把排除扩成全排除）：
 
-为什么要算整片 `tmp*` 而不是只算 `testDebugUnitTest`：漏出来的临时目录不止一条来路——
-Kotlin 的 `Files.createTempDirectory` 走 `java.io.tmpdir`，手写相对路径走 `build/tmp/`，
-还有 androidTest 的 `build/tmp/<task>`。按**区域**数，来路变了也漏不掉。
+  ① **名字**：Gradle 任务目录名是「小写起驼峰、无连字符/下划线、无长数字串」
+     （`testDebugUnitTest`、`compileDebugJavaWithJavac`、`kaptGenerateStubsDebugKotlin`）；
+     测试沙盒几乎都带 `-`/`_` 或 6 位以上连续数字（`zd549-…12345678901234`、`junit860…`）。
+  ② **产生者（位置）**：Gradle 只会在 `<module>/build/tmp/<task>` 这一层建自己的任务目录；
+     同一层里出现「不像任务名」的目录 ⇒ 那是测试用相对路径写的，照样算。
 
-预算取 50 而不是 0：Gradle 自己也在 `app/build/tmp` 下放东西（`.cache`、
-`compileDebugJavaWithJavac` 的事务目录…），实测一次干净构建后约 16 个目录；
-50 留出「一两个用例的沙盒同时在跑」的余量，又不至于让一棵漏树的几百个目录藏进去。
-真要把预算收紧，改 `DEFAULT_BUDGET` 并在报告里附一次实测读数，不许凭感觉调。
+两条合起来的判决表（`classify_tmp_child`）：
+
+  | 实测形态                                   | 判成   | 计不计数            |
+  |--------------------------------------------|--------|---------------------|
+  | `build/tmp/.cache`、`kotlin`               | build  | 不计                |
+  | `build/tmp/jar_extract_<长数字>_tmp`       | build  | 不计（JDK ZipFS）   |
+  | `build/tmp/compileDebugJavaWithJavac`      | task   | 整枝不计（构建内部）|
+  | `build/tmp/testDebugUnitTest`              | task   | 容器：**其直接子项逐个计 1** |
+  | `build/tmp/repair408-aaa`                  | test   | 计 1                |
+  | `build/tmp/testDebugUnitTest/<沙盒>`        | test   | 每个沙盒根计 1      |
+
+**一个沙盒 = 1**（不再数沙盒内部层级）：一次泄漏就是一个沙盒，里面的 `a/b/c` 是它的
+内部结构，跟着它一起删；数层级只会让读数随「测试在沙盒里挖了几层」抖动。
+
+边界（607 派工单的原话）：**不许把「排除」扩成「全排除」**。所以：
+  * 排除只认 `build/tmp` 这一层上「名字像 Gradle 任务」的目录，其余一律计数；
+  * `testDebugUnitTest` 之下不判名字 —— 测试根里叫 `compileDebugJavaWithJavac` 的目录
+    是测试建的，照样计 1（`--selftest` 有这一条负例）。
+
+## 判红规则（607 改法：本地只提示，CI 才判红）
+
+预算 = **CI 单轮实测基线 + 固定余量 20**，由脚本自己算（`measured + MARGIN`），
+不写死在文件里（双真相必然漂）。
+
+  * **CI**（`GITHUB_ACTIONS=true`）超预算 ⇒ exit 1；
+  * **本地**超预算 ⇒ 只打 WARN、exit 0 —— 本地环境差异（要不要跑 detekt、中间产物清没清、
+    JDK 版本）不作判据。本地想按 CI 判就加 `--strict`。
+
+## 趋势留档（607 ③）
+
+`--record` 把本轮读数追加一行到 `tools/test-temp-trend.jsonl`：
+
+    {"date": "2026-11-12", "measured": 224, "budget": 244, "commit": "8e6b63771",
+     "commitFull": "…", "mode": "ci", "run": "12345", "baseline": 224, "platform": "linux"}
+
+`measured` = 本轮实测，`budget` = 本轮用的预算，`baseline` = 预算文件里的基线。
+CI 里同一个 run 重跑不会重复落行（`run` 做去重键）。
 
 ## 用法
 
-    python3 tools/check-test-temp.py                 # 查真仓；超预算 exit 1
-    python3 tools/check-test-temp.py --budget 30     # 临时收紧（演练用）
-    python3 tools/check-test-temp.py --list          # 只打印每片 tmp* 的目录数，不判红
-    python3 tools/check-test-temp.py --scan-tests    # 列「建临时目录却没清理痕迹」的测试文件
-    python3 tools/check-test-temp.py --os-temp       # 数系统临时区（只报读数，验证 tmpdir 钉住了）
-    python3 tools/check-test-temp.py --selftest      # 合成树：预算内绿、超一条红（各一例）
+    python3 tools/check-test-temp.py                 # 查真仓（CI 判红／本地只提示）
+    python3 tools/check-test-temp.py --strict         # 本地也按 CI 判红（演练）
+    python3 tools/check-test-temp.py --record         # 顺带记一行趋势
+    python3 tools/check-test-temp.py --list           # 只打印读数与逐锚点明细
+    python3 tools/check-test-temp.py --scan-tests     # 列「建临时目录却没清理痕迹」的测试
+    python3 tools/check-test-temp.py --os-temp        # 数系统临时区（只报读数）
+    python3 tools/check-test-temp.py --selftest       # 合成树：判据①②③④的夹具
 
 `--selftest` 全程用临时目录里的合成树，**不读真仓**（否则「仓库恰好干净」会把闸的自测也染绿）。
 
@@ -45,30 +82,22 @@ Kotlin 的 `Files.createTempDirectory` 走 `java.io.tmpdir`，手写相对路径
 
 只按**文字痕迹**判：文件里出现过建临时目录/文件的调用，且**一处清理痕迹都没有**
 （`deleteRecursively` / `deleteOnExit` / `deleteIfExists` / `@After` / `TempSandbox` / `rmTree`）。
-启发式，只用来排改造顺序：有痕迹的相对干净（不等于删对了），没痕迹的进改造清单。
-它**不参与判红** —— 静态猜「删没删对」必然误判，真正的判据永远是上一条目录计数。
-
-CI：`.github/workflows/ci.yml` 的 verify job 在「全量单元测试」之后、注解步骤之前跑本脚本。
+启发式，只用来排改造顺序。它**不参与判红**。
 
 ## `--os-temp`：为什么还要看系统临时目录
 
-564 动手前在本机实测（2026-11-09）：`%TEMP%` 里躺着 **84,594** 个本仓测试前缀的目录
-（`baopu-*`／`zd-*`／`opinion-*`／`persona-*`…），条目总数 105,970，清理掉 79,765 个
-（其余是 3 小时内动过的在飞用例）。根因：Gradle 的 Test 任务**默认不设置** `java.io.tmpdir`，
-`Files.createTempDirectory` 一律落到系统临时区 ⇒ 只看 `app/build` 的闸一个都数不到。
-
-本批的处置：`app/build.gradle.kts` 的 `tasks.withType<Test>` 里把 `java.io.tmpdir` 钉到
-`app/build/tmp/testDebugUnitTest`（钉住之后 CI 的目录计数才有意义），并用 `--os-temp`
-做**回归读数**：钉住了 ⇒ 这个数每轮增量 ≈ 0；哪天有人把那条 systemProperty 删了，
-这个数会重新开始涨——它是"闸被人拆了"的报警器。
-
-`--os-temp` 只报读数、不判红：CI runner 的 `/tmp` 是共享的，别人留下的东西不该算在我们头上。
+Gradle 的 Test 任务默认**不设置** `java.io.tmpdir`，`Files.createTempDirectory` 一律落到
+系统临时区 ⇒ 只看 `build` 的闸一个都数不到。`app/build.gradle.kts` 的
+`tasks.withType<Test>` 把 `java.io.tmpdir` 钉到 `app/build/tmp/testDebugUnitTest`，
+`--os-temp` 做回归读数：钉住了 ⇒ 每轮增量 ≈ 0；涨了说明钉住被拆了。
 """
 
 import argparse
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -79,12 +108,17 @@ try:  # Windows 控制台默认 GBK：个别字符编不出来时降级替换，
 except Exception:  # noqa: BLE001 - reconfigure 是尽力而为
     pass
 
-# 预算：见模块头「为什么是 50」。改它必须附一次实测读数（报告里写清哪棵树、跑了几轮）。
+# 固定余量（607 定死 20）：预算是「CI 单轮实测 + 20」，不是手写的一个数。
+# 为什么固定 20：本地干净单轮与 CI 单轮实测差在 ±1–2（549/570/571 的历史读数），
+# 20 足以吸收「测试并行/条件写盘」的抖动，又不至于让一次真泄漏（几十上百）藏进去。
+MARGIN = 20
+
+# 没有水位文件时的兜底预算（全新仓库/文件被删）。正常路径永远走 measured + MARGIN。
 DEFAULT_BUDGET = 50
 
-# 水位文件：实测存量比 50 大得多（564 交付时一轮就是 1,746），所以按「只降不升」冻结现水位——
-# 与 detekt 预算闸同一房型（266）。文件不存在 ⇒ 退回 DEFAULT_BUDGET（全新仓库的干净线）。
+# 水位文件：只放 measured（CI 单轮实测基线）与出处，**不放 budget**（派生值，双真相必漂）。
 BUDGET_FILE = "tools/test-temp-budget.json"
+TREND_FILE = "tools/test-temp-trend.jsonl"
 
 # 「建临时目录/文件」的写法（--scan-tests 用）
 CREATE_RE = re.compile(
@@ -104,6 +138,20 @@ OS_TEMP_PREFIXES = (
 )
 OS_TEMP_RE = re.compile(r"^(?:%s)[-_].*\d{8,}$" % "|".join(OS_TEMP_PREFIXES))
 
+# ── 607 口径：Gradle 任务目录名 vs 测试沙盒名 ─────────────────────────────────
+# Gradle 的任务目录名（build/tmp/<task>）实测形态：小写起驼峰、无 `-`/`_`/`.`、无长数字。
+# 不带前导点是有意的：`.ssh` 这种无数字短名在本仓是测试沙盒（实测存在于测试根下），
+# 若允许前导点，它会与 `.cache` 混在一起被误判成构建目录。`.cache` 走 BUILD_ONLY_NAMES。
+GRADLE_TASK_RE = re.compile(r"^[a-z][A-Za-z0-9]*$")
+# 6 位以上连续数字：本仓测试沙盒几乎都带（`junit8602780560656064424`），
+# Gradle 任务名从不带 ⇒ 用它把「驼峰但带随机数」的沙盒从任务名里挑出来。
+LONG_DIGITS_RE = re.compile(r"\d{6,}")
+# 明确属于构建系统、但不是任务名的固定项
+BUILD_ONLY_NAMES = {"kotlin", "kapt", "hc", ".cache"}
+JAR_EXTRACT_PREFIX = "jar_extract_"
+# Gradle 的 Test 任务名都以 test 开头（testDebugUnitTest / testReleaseUnitTest / test）
+TEST_TASK_PREFIX = "test"
+
 
 def count_os_temp(root: Path) -> tuple[int, int]:
     """返回 (系统临时区里本仓测试前缀的目录数, 全部条目数)。只数不删。"""
@@ -114,104 +162,153 @@ def count_os_temp(root: Path) -> tuple[int, int]:
     return mine, len(entries)
 
 
-def load_budget(repo: Path) -> tuple[int, str]:
-    """返回 (预算, 出处)。水位文件读不出 ⇒ 退回 DEFAULT_BUDGET，并且**说清是退回的**。"""
+def load_baseline(repo: Path) -> tuple[int, int, int, str]:
+    """返回 (基线 measured, 余量, 预算, 出处)。
+
+    预算 = measured + MARGIN，**由脚本算**。文件里的 `budget` 字段（旧 schema）不再采信，
+    只说一句「已弃用」——否则两边打架时没人知道该信哪个。
+    """
     f = repo / BUDGET_FILE
     if not f.is_file():
-        return DEFAULT_BUDGET, "默认（无水文件）"
+        return 0, MARGIN, DEFAULT_BUDGET, "默认（无水文件：%d）" % DEFAULT_BUDGET
     try:
         data = json.loads(f.read_text(encoding="utf-8"))
-        value = data.get("budget")
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-            return value, "%s（实测 %s @ %s）" % (
-                BUDGET_FILE, data.get("measured"), data.get("measuredAt"),
-            )
-        return DEFAULT_BUDGET, "默认（水文件 schema 不对：budget 不是非负整数）"
     except (ValueError, OSError) as exc:
-        return DEFAULT_BUDGET, "默认（水文件读不出：%s）" % exc
+        return 0, MARGIN, DEFAULT_BUDGET, "默认（水文件读不出：%s）" % exc
 
+    measured = data.get("measured")
+    if not isinstance(measured, int) or isinstance(measured, bool) or measured < 0:
+        return 0, MARGIN, DEFAULT_BUDGET, "默认（水文件 schema 不对：measured 不是非负整数）"
 
-def tmp_anchors(root: Path) -> list[Path]:
-    """`root` 下所有以 tmp 开头的目录（锚点）。不存在 root ⇒ 空。
-
-    2026-11-10（ci #1936 红出来的口径问题）：**构建系统自己的 tmp 不算数**。
-    `intermediates/.../tmp` 是 AGP 的中间产物目录，数量随 Gradle 版本/平台浮动，
-    不是「测试跑完不删」的泄漏；把它算进水位数，会让水位在换平台时凭空 +1（424→425）。
-    这里只留真正的暂存区锚点（如 `<build>/tmp`、`<build>/tmp/testDebugUnitTest/...`）。"""
-    if not root.is_dir():
-        return []
-    return sorted(
-        p
-        for p in root.rglob("*")
-        if p.is_dir() and p.name.startswith("tmp") and "intermediates" not in p.parts
+    budget = measured + MARGIN
+    source = "%s（基线 %d + 余量 %d；基线实测于 %s）" % (
+        BUDGET_FILE, measured, MARGIN, data.get("measuredAt"),
     )
+    if "budget" in data:
+        source += "｜文件里的 budget 字段已弃用（607 改为派生）"
+    return measured, MARGIN, budget, source
 
 
-def _is_build_tool_dir(path: Path) -> bool:
-    """构建系统自己的 tmp（不是测试泄漏）：javac 事务目录、Gradle 的 .cache 等。"""
-    parts = path.parts
-    if ".cache" in parts:
-        return True
-    return any(p.startswith("compileDebug") or p.startswith("compileRelease") for p in parts)
+def tmp_anchors(build_root: Path) -> list[Path]:
+    """`build_root` 下所有 `<module>/build/tmp*` 锚点。
 
-
-def count_dirs(root: Path) -> tuple[int, list[tuple[Path, int]]]:
-    """返回 (总目录数, [(锚点, 该锚点新增计入的目录数)])。
-
-    嵌套锚点（`tmp/xxx/tmp`）只计一次：用 seen 集合去重，避免上层锚点把下层重复数一遍。
+    为什么只认父目录名为 `build`：Gradle 的暂存区就在这一层；`intermediates/.../tmp`
+    是 AGP 的中间产物目录（数量随版本/平台浮动），不是暂存区。
     """
-    seen: set[Path] = set()
-    per_anchor: list[tuple[Path, int]] = []
-    for anchor in tmp_anchors(root):
-        added = 0
-        for path in [anchor, *anchor.rglob("*")]:
-            # JDK 的 `jar_extract_*_tmp`：ZipFS 解包时的临时目录，由 JDK 自己回收，
-            # 不是测试写的临时目录（数量随 JDK/平台浮动）⇒ 不计入水位。
-            # 549 验收（蓝总管 2026-11-12）：口径补漏——`compileDebug*`（含 `compileTransaction`
-            # 事务目录）与 `.cache` 是**构建系统自己的** tmp，跑不跑 detekt/编译会让它们出现/消失；
-            # 573/ci#1936 的原口径就是「构建系统自己的 tmp 不算数」，这里把这两个也排除（不改预算）。
-            if _is_build_tool_dir(path):
+    if not build_root.is_dir():
+        return []
+    found: list[Path] = []
+    for p in build_root.rglob("tmp*"):
+        if not p.is_dir():
+            continue
+        if "intermediates" in p.parts:
+            continue
+        if p.parent.name != "build":
+            continue
+        found.append(p)
+    found.sort(key=lambda p: len(p.parts))
+    # 去嵌套：沙盒内部若又造出 `build/tmp` 结构，它属于那个沙盒，不单独当锚点
+    anchors: list[Path] = []
+    for p in found:
+        if any(p.is_relative_to(a) for a in anchors):
+            continue
+        anchors.append(p)
+    return sorted(anchors)
+
+
+def classify_tmp_child(path: Path) -> str:
+    """判一个 `build/tmp` 直接子目录的**产生者**：`build` / `task` / `test`。
+
+    名字 + 位置双重判定，见模块头判决表。返回 `test` 就计数。
+    """
+    name = path.name
+    if name.startswith(JAR_EXTRACT_PREFIX):
+        return "build"          # JDK ZipFS 解包目录，由 JDK 自己回收
+    if name in BUILD_ONLY_NAMES:
+        return "build"          # Gradle 自己的缓存/脚本目录
+    if GRADLE_TASK_RE.match(name) and not LONG_DIGITS_RE.search(name):
+        return "task"           # 驼峰任务名 ⇒ Gradle 的任务目录
+    return "test"
+
+
+def collect_sandboxes(build_root: Path) -> tuple[list[Path], list[tuple[Path, int, int]]]:
+    """返回 (沙盒根列表, [(锚点, 沙盒数, 跳过的构建目录数)])。一个沙盒 = 一个路径。"""
+    sandboxes: list[Path] = []
+    per_anchor: list[tuple[Path, int, int]] = []
+    for anchor in tmp_anchors(build_root):
+        mine = 0
+        skipped = 0
+        try:
+            children = sorted(anchor.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            if not child.is_dir():
                 continue
-            if path.name.startswith("jar_extract_"):
+            kind = classify_tmp_child(child)
+            if kind == "build":
+                skipped += 1
                 continue
-            if path.is_dir() and path not in seen:
-                seen.add(path)
-                added += 1
-        per_anchor.append((anchor, added))
-    return len(seen), per_anchor
+            if kind == "task":
+                skipped += 1
+                if not child.name.startswith(TEST_TASK_PREFIX):
+                    continue        # 非测试任务：整枝是构建系统内部产物
+                # 测试任务的临时根：**其直接子项逐个算沙盒**，这里不判名字
+                try:
+                    for grand in sorted(child.iterdir()):
+                        if grand.is_dir() and not grand.name.startswith(JAR_EXTRACT_PREFIX):
+                            sandboxes.append(grand)
+                            mine += 1
+                except OSError:
+                    continue
+                continue
+            sandboxes.append(child)  # 测试用相对路径直接建在 build/tmp 下
+            mine += 1
+        per_anchor.append((anchor, mine, skipped))
+    return sandboxes, per_anchor
 
 
 def evaluate(
     total: int,
     budget: int,
     source: str = "",
+    mode: str = "local",
     newest: list[tuple[str, float]] | None = None,
+    baseline: int | None = None,
 ) -> tuple[int, list[str]]:
-    """核心判据。返回 (exit_code, 输出行)。判红只看 total > budget。
+    """核心判据。返回 (exit_code, 输出行)。
 
-    2026-11-11：判红时把 `newest`（最新建的若干个目录，路径＋时间戳）印出来。
-    起因是 ci #1945 报「超预算 2 个」却只有总数、没有名字，只能靠"猜哪条测试漏了"；
-    迁移水位这种事，名字比总数有用得多。"""
+    **CI 超预算 ⇒ 1；本地超预算 ⇒ 0（只提示）**。本地环境差异不作判据（607 ②）。
+    """
     lines = [
-        "读数: app/build 下 tmp* 目录区共 %d 个目录（预算 %d%s）"
-        % (total, budget, ("｜" + source) if source else "")
+        "读数: 测试自建临时目录 %d 个（预算 %d%s）" % (total, budget, ("｜" + source) if source else ""),
+        "口径: 只数测试建的沙盒根；构建系统 tmp（.cache/compile*/kapt*/jar_extract_*）不计",
     ]
+    if baseline is not None:
+        lines.append("预算算式: 基线 %d + 余量 %d = %d" % (baseline, MARGIN, budget))
+
     if total > budget:
+        if mode == "ci":
+            tail = "结果: FAIL（超预算 %d 个）" % (total - budget)
+        else:
+            tail = "结果: WARN（超预算 %d 个；本地只提示不判红，CI 上会红）" % (total - budget)
         lines.append(
-            "结果: FAIL（超预算 %d 个）—— 有测试跑完不删临时目录；改用 "
-            "testkit/TempSandbox 的 use{} 收口，或 --scan-tests 找出强嫌疑文件"
-            % (total - budget)
+            tail + " —— 有测试跑完不删临时目录；改用 testkit/TempSandbox 的 use{} 收口，"
+            "或 --scan-tests 找出强嫌疑文件"
         )
         if newest:
-            lines.append("最新建的目录（越靠前越新；先查它们对应的测试）：")
+            lines.append("最新建的沙盒（越靠前越新；先查它们对应的测试）：")
             for rel, ts in newest:
                 stamp = time.strftime("%m-%d %H:%M:%S", time.localtime(ts)) if ts else "?"
                 lines.append("  %s  %s" % (stamp, rel))
-        return 1, lines
-    if total < budget:
-        lines.append("提示: 比水位低 %d 个——迁移有进展就把 %s 的 budget 降下来（只降不升）"
-                     % (budget - total, BUDGET_FILE))
-    lines.append("结果: PASS（%d ≤ %d）" % (total, budget))
+        return (1 if mode == "ci" else 0), lines
+
+    if baseline is not None and total < baseline:
+        lines.append(
+            "提示: 比基线低 %d 个 —— 若这是干净单轮实测，把 %s 的 measured 改成 %d（基线只降不升）"
+            % (baseline - total, BUDGET_FILE, total)
+        )
+    lines.append("结果: PASS（%d ≤ %d｜%s 模式）" % (total, budget, mode))
     return 0, lines
 
 
@@ -235,122 +332,236 @@ def scan_tests(repo: Path) -> list[tuple[str, int]]:
     return suspects
 
 
-def newest_dirs(build: Path, limit: int = 8) -> list[tuple[str, float]]:
-    """按 mtime 取最新的 limit 个目录（相对 build 的路径）。判红时用来直接点名。"""
+def newest_sandboxes(sandboxes: list[Path], limit: int = 8) -> list[tuple[str, float]]:
+    """按 mtime 取最新的 limit 个沙盒（点名用，判红时给线索）。"""
     items: list[tuple[str, float]] = []
-    try:
-        for d in build.rglob("*"):
-            if not d.is_dir() or d.name.startswith("jar_extract_"):
-                continue
-            try:
-                items.append((d.relative_to(build).as_posix(), d.stat().st_mtime))
-            except OSError:
-                continue
-    except OSError:
-        return []
+    for d in sandboxes:
+        try:
+            items.append((d.as_posix(), d.stat().st_mtime))
+        except OSError:
+            continue
     items.sort(key=lambda kv: kv[1], reverse=True)
     return items[:limit]
 
 
-NOISE_DIR_NAMES = {
-    "reports",
-    "test-results",
-    "outputs",
-    "logs",
-    "intermediates",
-    "testDebugUnitTest",
-    ".cache",
-}
+def module_build_dirs(repo: Path) -> list[Path]:
+    """仓库里的模块构建目录（`app/build`、`core/build`…）。只看一到两层，不深挖。"""
+    dirs: list[Path] = []
+    for pat in ("*/build", "*/*/build"):
+        for p in sorted(repo.glob(pat)):
+            if p.is_dir() and p.name == "build":
+                dirs.append(p)
+    return dirs
 
 
-def leaked_hint(build: Path, limit: int = 10) -> list[tuple[str, float]]:
-    """判红时点名用：只留「像测试沙盒」的目录。
-
-    `newest_dirs` 的第一版把 `reports/`、`test-results/` 这些**测试跑完之后才生成**的
-    产物目录排在最前（ci #1947 实测），等于没线索。这里跳过构建/报告产物，
-    只看 mtime 最新的疑似泄漏目录（名字里带随机数后缀的优先）。"""
-    items: list[tuple[str, float]] = []
-    try:
-        for d in build.rglob("*"):
-            if not d.is_dir():
-                continue
-            parts = set(d.relative_to(build).parts)
-            if parts & NOISE_DIR_NAMES:
-                continue
-            if d.name.startswith("jar_extract_") or d.name.startswith("compileDebug"):
-                continue
+def measure(build_roots: list[Path]) -> tuple[int, list[Path], list[tuple[Path, int, int]]]:
+    """对所有构建目录取并集计数（一个沙盒只算一次）。"""
+    all_sandboxes: list[Path] = []
+    per_anchor: list[tuple[Path, int, int]] = []
+    seen: set[Path] = set()
+    for root in build_roots:
+        sandboxes, anchors = collect_sandboxes(root)
+        per_anchor.extend(anchors)
+        for sb in sandboxes:
             try:
-                items.append((d.relative_to(build).as_posix(), d.stat().st_mtime))
+                key = sb.resolve()
             except OSError:
+                key = sb
+            if key in seen:
                 continue
-    except OSError:
-        return []
-    items.sort(key=lambda kv: kv[1], reverse=True)
-    return items[:limit]
+            seen.add(key)
+            all_sandboxes.append(sb)
+    return len(all_sandboxes), all_sandboxes, per_anchor
 
 
-def run(repo: Path, build: Path, budget: int, source: str = "") -> tuple[int, list[str]]:
-    if not build.is_dir():
+def evaluate_mode(force_strict: bool) -> str:
+    """`ci` 判红；`local` 只提示。CI 判定只认 GitHub Actions 的显式变量。"""
+    if force_strict:
+        return "ci"
+    return "ci" if os.environ.get("GITHUB_ACTIONS", "").lower() == "true" else "local"
+
+
+def git_commit(repo: Path) -> tuple[str, str]:
+    """返回 (短号, 全号)；取不到就诚实写 unknown（不猜）。"""
+    try:
+        full = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10, check=False,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown", "unknown"
+    if not full:
+        return "unknown", "unknown"
+    return full[:9], full
+
+
+def _today_cn() -> str:
+    """日期按 UTC+8 记（本仓所有报告/台账都用北京时间）。
+
+    为什么不直接用 `time.strftime`：CI runner 是 UTC，凌晨跑会记成前一天，
+    与 commit 日期、报告日期错位一格 —— 趋势是拿来对账的，错一天就没法对。
+    """
+    return time.strftime("%Y-%m-%d", time.gmtime(time.time() + 8 * 3600))
+
+
+def record_trend(
+    repo: Path, total: int, budget: int, baseline: int | None, mode: str,
+) -> tuple[bool, str]:
+    """追加一行趋势。返回 (是否写入, 说明)。
+
+    去重只针对 CI 的同一 `run`（重跑不重复落行）；本地不加去重 —— 「每轮一条」。
+    """
+    short, full = git_commit(repo)
+    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    row = {
+        "date": _today_cn(),
+        "measured": total,
+        "budget": budget,
+        "commit": short,
+        "commitFull": full,
+        "baseline": baseline,
+        "mode": mode,
+        "run": run_id or None,
+        "platform": sys.platform,
+    }
+    f = repo / TREND_FILE
+    if run_id and f.is_file():
+        try:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                old = json.loads(line)
+                if old.get("run") == run_id and old.get("commit") == short:
+                    return False, "跳过：run %s + commit %s 已有记录（重跑不重复落行）" % (run_id, short)
+        except (ValueError, OSError):
+            pass  # 坏行不影响追加：趋势是账，不是判据
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with f.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return True, "趋势已记: %s ← date=%s measured=%d budget=%d commit=%s mode=%s" % (
+        TREND_FILE, row["date"], total, budget, short, mode,
+    )
+
+
+def run(
+    build_roots: list[Path],
+    budget: int,
+    source: str = "",
+    mode: str = "local",
+    baseline: int | None = None,
+    verbose: bool = True,
+) -> tuple[int, list[str], int, list[Path]]:
+    if not any(r.is_dir() for r in build_roots):
         return 0, [
-            "读数: %s 不存在（尚未构建）—— 本闸只在单测之后有意义，此处按 0 计"
-            % build.as_posix(),
+            "读数: 没有构建目录（尚未构建）—— 本闸只在单测之后有意义，此处按 0 计",
             "结果: PASS（跳过判红）",
-        ]
-    total, per_anchor = count_dirs(build)
-    code, lines = evaluate(total, budget, source, leaked_hint(build))
-    for anchor, added in per_anchor:
-        lines.append("  %-58s %4d" % (anchor.as_posix(), added))
-    return code, lines
+        ], 0, []
+    total, sandboxes, per_anchor = measure(build_roots)
+    code, lines = evaluate(total, budget, source, mode, newest_sandboxes(sandboxes), baseline)
+    if verbose:
+        for anchor, n, skipped in per_anchor:
+            lines.append("  %-46s 沙盒 %3d｜构建系统目录(不计) %d" % (anchor.as_posix(), n, skipped))
+    return code, lines, total, sandboxes
 
 
-SYNTH_POSITIVE_TOTAL = DEFAULT_BUDGET          # 恰好等于预算 ⇒ 必须绿（判据是「>」）
-SYNTH_NEGATIVE_TOTAL = DEFAULT_BUDGET + 1      # 超一条 ⇒ 必须红
+SYNTH_BUDGET = 20   # selftest 用小预算：造 21 个沙盒就能测「超一条」
 
 
 def selftest() -> int:
-    """合成树正例＋负例各一条；不读真仓。"""
+    """合成树夹具：判据①②③④ + 反例（防把排除扩成全排除）。不读真仓。"""
     results: list[tuple[bool, str, list[str]]] = []
-    with tempfile.TemporaryDirectory(prefix="zd564-selftest-") as td:
+
+    def build_tree(td: str) -> Path:
         build = Path(td) / "app" / "build"
+        tmp = build / "tmp"
+        # 判据①：Gradle 式 tmp（非测试创建）—— 全都不许计数
+        (tmp / "compileDebugJavaWithJavac" / "compileTransaction" / "stash-1").mkdir(parents=True)
+        (tmp / "compileReleaseJavaWithJavac").mkdir()
+        (tmp / "kaptGenerateStubsDebugKotlin").mkdir()
+        (tmp / ".cache" / "reports").mkdir(parents=True)
+        (tmp / "jar_extract_15213301627954921517_tmp").mkdir()
+        (tmp / "testDebugUnitTest").mkdir()
+        (build / "intermediates" / "merged" / "tmp" / "foo").mkdir(parents=True)
+        return build
 
-        def make_tree(n: int) -> None:
-            """造 n 个目录：锚点自身与 Gradle 风格子目录占 4 个，其余当泄漏项补齐。"""
-            if build.exists():
-                shutil.rmtree(build)
-            anchor = build / "tmp" / "testDebugUnitTest"
-            anchor.mkdir(parents=True)
-            (build / "tmp" / ".cache").mkdir()
-            (build / "tmp" / "compileDebugJavaWithJavac").mkdir()
-            # 锚点自身＋.cache＋compile 已占 5 个（tmp / testDebugUnitTest / .cache /
-            # compile / 各自的下级按需），剩下的用泄漏项补齐到 n。
-            total, _ = count_dirs(build)
-            for i in range(n - total):
-                (anchor / ("junit%04d" % i)).mkdir()
+    with tempfile.TemporaryDirectory(prefix="zd607-selftest-") as td:
+        build = build_tree(td)
 
-        # 正例：刚好等于预算 ⇒ 绿
-        make_tree(SYNTH_POSITIVE_TOTAL)
-        total, _ = count_dirs(build)
-        code, out = run(Path(td), build, DEFAULT_BUDGET)
-        ok_pos = code == 0 and total <= DEFAULT_BUDGET
+        # ① 判据①：只有构建系统 tmp ⇒ 计数必须是 0
+        code, out, total, _ = run([build], SYNTH_BUDGET, "合成树", "ci")
+        ok = (total == 0 and code == 0)
         results.append((
-            ok_pos,
-            "[正例] 合成 %d 个目录（= 预算）→ 期望绿(0)，实得 %d / 计数 %d"
-            % (SYNTH_POSITIVE_TOTAL, code, total),
+            ok,
+            "[①] 造 6 个 Gradle 式 tmp（compile*/kapt*/.cache/jar_extract/intermediates）"
+            "→ 期望计数 0，实得 %d（exit=%d）" % (total, code),
             out,
         ))
 
-        # 负例：多一个 ⇒ 必须红，且红在「超预算」这句上
-        make_tree(SYNTH_NEGATIVE_TOTAL)
-        total, _ = count_dirs(build)
-        code, out = run(Path(td), build, DEFAULT_BUDGET)
-        hit = [line for line in out if line.startswith("结果: FAIL") and "超预算" in line]
-        ok_neg = code == 1 and total > DEFAULT_BUDGET and len(hit) == 1
+        # ② 判据②：造一个测试沙盒 ⇒ 计数 +1（且只算根，不算内部层级）
+        sb = build / "tmp" / "testDebugUnitTest" / "zd607-demo123456789"
+        (sb / "inner" / "deeper").mkdir(parents=True)
+        code, out, total, _ = run([build], SYNTH_BUDGET, "合成树", "ci")
+        ok = (total == 1 and code == 0)
         results.append((
-            ok_neg,
-            "[负例] 合成 %d 个目录（= 预算 + 1）→ 期望红(1) 且命中超预算一行，"
-            "实得 exit=%d / 计数 %d / 命中 %d"
-            % (SYNTH_NEGATIVE_TOTAL, code, total, len(hit)),
+            ok,
+            "[②] 再加 1 个测试沙盒（内部两层）→ 期望计数 +1 = 1，实得 %d（exit=%d）" % (total, code),
             out,
+        ))
+
+        # ②bcd 反例：伪装成任务名 / 相对路径 / 驼峰带长数字 —— 三种都必须计数
+        (build / "tmp" / "testDebugUnitTest" / "compileDebugJavaWithJavac").mkdir()
+        (build / "tmp" / "repair408-aaa").mkdir()
+        (build / "tmp" / "junit8602780560656064424").mkdir()
+        code, out, total, _ = run([build], SYNTH_BUDGET, "合成树", "ci")
+        ok = (total == 4)
+        results.append((
+            ok,
+            "[②bcd] 再塞 3 个「像任务名/相对路径/长数字」的测试目录 → 期望计数 4，实得 %d" % total,
+            out,
+        ))
+
+        # ③ 判据③：超预算在 CI 模式必须红，在本地模式必须只是 WARN（exit 0）
+        for i in range(SYNTH_BUDGET - 1):
+            (build / "tmp" / "testDebugUnitTest" / ("bulk-%02d-123456789" % i)).mkdir()
+        code_ci, out_ci, total, _ = run([build], SYNTH_BUDGET, "合成树", "ci")
+        code_local, out_local, _, _ = run([build], SYNTH_BUDGET, "合成树", "local")
+        hit_fail = [x for x in out_ci if x.startswith("结果: FAIL") and "超预算" in x]
+        hit_warn = [x for x in out_local if x.startswith("结果: WARN") and "超预算" in x]
+        ok = (
+            total > SYNTH_BUDGET and code_ci == 1 and len(hit_fail) == 1
+            and code_local == 0 and len(hit_warn) == 1
+        )
+        results.append((
+            ok,
+            "[③] 计数 %d > 预算 %d → 期望 CI 红(1) 且本地 WARN(0)，"
+            "实得 ci=%d local=%d / 命中 %d/%d"
+            % (total, SYNTH_BUDGET, code_ci, code_local, len(hit_fail), len(hit_warn)),
+            out_ci + ["--local--"] + out_local,
+        ))
+
+        # ④ 判据④：预算 = 基线 + 余量，脚本自算（防止有人把 budget 写死回去）
+        fake_repo = Path(td) / "repo"
+        (fake_repo / "tools").mkdir(parents=True)
+        # 4a 无水文件 ⇒ 退回默认线
+        b0, m0, budget0, _ = load_baseline(fake_repo)
+        # 4b 有基线 7 ⇒ 预算必须自己算出 27（不是文件里写的数字）
+        baseline_file = fake_repo / BUDGET_FILE
+        baseline_file.write_text(
+            json.dumps({"measured": 7, "measuredAt": "2026-11-12", "budget": 999}),
+            encoding="utf-8",
+        )
+        b1, m1, budget1, source1 = load_baseline(fake_repo)
+        ok = (
+            m0 == m1 == MARGIN == 20
+            and budget0 == DEFAULT_BUDGET
+            and b1 == 7 and budget1 == 27
+            and "已弃用" in source1   # 旧 budget 字段（999）不许被采信
+        )
+        results.append((
+            ok,
+            "[④] 预算自算：无水文件 %d；基线 7 + 余量 %d 期望 27，实得 %d"
+            "（文件里的旧 budget=999 必须被忽略）" % (budget0, MARGIN, budget1),
+            ["余量常量 MARGIN=%d" % MARGIN, "算式: %d + %d = %d" % (b1, m1, budget1)],
         ))
 
     ok = all(r[0] for r in results)
@@ -358,9 +569,9 @@ def selftest() -> int:
     for good, headline, out in results:
         print(("  [OK] " if good else "  [FAIL] ") + headline)
         for line in out:
-            if line.startswith(("结果:", "读数:")):
+            if line.startswith(("结果:", "读数:", "预算算式:", "--local--", "余量", "算式")):
                 print("      " + line)
-    print("自测结论:", "PASS 正例绿、负例红" if ok else "FAIL")
+    print("自测结论:", "PASS 判据①②③④ 全对" if ok else "FAIL")
     return 0 if ok else 1
 
 
@@ -368,20 +579,25 @@ def main() -> int:
     repo = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", type=Path, default=repo, help="仓库根（默认脚本上级的上级）")
-    ap.add_argument("--build", type=Path, help="构建目录（默认 <repo>/app/build）")
+    ap.add_argument("--build", type=Path, help="只量这个构建目录（默认自动发现 <module>/build）")
     ap.add_argument("--budget", type=int, default=None,
-                    help="目录数上限（默认读 %s，缺文件时 %d）" % (BUDGET_FILE, DEFAULT_BUDGET))
-    ap.add_argument("--list", action="store_true", help="只打印读数，不判红")
+                    help="覆盖预算（演练用；正常走 measured+%d）" % MARGIN)
+    ap.add_argument("--list", action="store_true", help="只打印读数与逐锚点明细，不判红")
     ap.add_argument("--scan-tests", action="store_true", help="列零清理痕迹的测试文件（启发式）")
     ap.add_argument("--os-temp", action="store_true", help="数系统临时区里本仓测试前缀的目录（只报不判）")
-    ap.add_argument("--selftest", action="store_true", help="合成树正例＋负例各一条")
+    ap.add_argument("--selftest", action="store_true", help="合成树夹具（判据①②③④）")
+    ap.add_argument("--strict", action="store_true", help="本地也按 CI 判红（默认本地只提示）")
+    ap.add_argument("--record", action="store_true", help="把本轮读数追加到 %s" % TREND_FILE)
     args = ap.parse_args()
 
     if args.selftest:
         return selftest()
 
     repo_root = args.repo.resolve()
-    build = (args.build or (repo_root / "app" / "build")).resolve()
+    if args.build:
+        build_roots = [args.build.resolve()]
+    else:
+        build_roots = module_build_dirs(repo_root) or [(repo_root / "app" / "build")]
 
     if args.os_temp:
         mine, total = count_os_temp(Path(tempfile.gettempdir()))
@@ -396,18 +612,30 @@ def main() -> int:
             print("  %s  （建目录 %d 处）" % (rel, hits))
         return 0
 
+    baseline, _margin, budget, source = load_baseline(repo_root)
+    if args.budget is not None:
+        # 命令行覆盖时不再显示「基线 + 余量」算式 —— 否则算式与预算自相矛盾
+        budget, source, baseline = args.budget, "命令行覆盖（--budget）", None
+    mode = evaluate_mode(args.strict)
+
     if args.list:
-        budget, source = load_budget(repo_root) if args.budget is None else (args.budget, "命令行")
-        total, per_anchor = count_dirs(build)
-        print("读数: %d 个目录（预算 %d｜%s）" % (total, budget, source))
-        for anchor, added in per_anchor:
-            print("  %-58s %4d" % (anchor.as_posix(), added))
+        total, sandboxes, per_anchor = measure(build_roots)
+        print("读数: 测试自建临时目录 %d 个（预算 %d｜%s｜%s 模式）" % (total, budget, source, mode))
+        print("口径: 只数测试建的沙盒根；构建系统 tmp 不计")
+        for anchor, n, skipped in per_anchor:
+            print("  %-46s 沙盒 %3d｜构建系统目录(不计) %d" % (anchor.as_posix(), n, skipped))
+        for sb in sandboxes[:20]:
+            print("    · %s" % sb.as_posix())
+        if len(sandboxes) > 20:
+            print("    … 另有 %d 个" % (len(sandboxes) - 20))
         return 0
 
-    budget, source = load_budget(repo_root) if args.budget is None else (args.budget, "命令行")
-    code, lines = run(repo_root, build, budget, source)
+    code, lines, total, _ = run(build_roots, budget, source, mode, baseline)
     for line in lines:
         print(line)
+    if args.record:
+        _wrote, note = record_trend(repo_root, total, budget, baseline, mode)
+        print("趋势: " + note)
     return code
 
 

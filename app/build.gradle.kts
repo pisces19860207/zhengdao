@@ -1219,7 +1219,8 @@ tasks.withType<Test>().configureEach {
     // 而 CI 只看 `app/build`，一个都数不到 ⇒ 「临时目录闸」等于没装。
     //
     // 钉了以后：临时目录全部落在 `app/build/tmp/testDebugUnitTest`，由
-    // `tools/check-test-temp.py` 数得到（> 50 即红），`./gradlew clean` 也能一次收干净。
+    // `tools/check-test-temp.py` 数得到（607 起只数测试建的沙盒根：超「实测基线 + 20」在 CI 判红，
+    // 本地只提示），`./gradlew clean` 也能一次收干净。
     // 这不是"把问题挪个地方"：配 `testkit/TempSandbox` 用{} 收口，增量才会真的降到 0；
     // 闸只负责让"没降"这件事看得见。
     val testTmpDir = layout.buildDirectory.dir("tmp/testDebugUnitTest").get().asFile
