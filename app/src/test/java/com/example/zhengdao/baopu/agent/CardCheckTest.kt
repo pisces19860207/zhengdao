@@ -21,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.json.JSONObject
 import org.junit.Test
 
 class CardCheckTest {
@@ -399,5 +400,46 @@ class CardCheckTest {
             val b = CardAssetParser.parse(json.toByteArray())!!.asset
             assertEquals(kindOf(a), kindOf(b))
         }
+    }
+
+    // ── 599 段D ①「认」：卡里出现 ai_variable_* ⇒ 体检认得出（判据原文）─────────────────
+
+    /** 造一张 ccv3 卡（走 PNG 双包装，与既有 F15 用例同一条路）。 */
+    private fun variableCardBytes(switch: Boolean?, withTemplate: Boolean = true): ByteArray {
+        val extend = JSONObject()
+        if (switch != null) extend.put("ai_variable_enabled", switch)
+        val modelConfig = JSONObject()
+            .put("ai_variable_json", """{"type":"object","properties":{"境界":{"type":"string"}}}""")
+        if (withTemplate) modelConfig.put("ai_variable_template", "<div>{{境界}}</div>")
+        modelConfig.put("ai_variable_prompt", "更新这些字段").put("extend", extend)
+        val card = JSONObject()
+            .put("spec", "chara_card_v3")
+            .put("data", JSONObject().put("name", "示例").put("description", "d"))
+            .put("model_config", modelConfig)
+        return CardFixtures.withText(CardFixtures.basePng(), "ccv3", CardFixtures.b64(card.toString()))
+    }
+
+    private fun checkBytes(bytes: ByteArray): CheckReport {
+        val parsed = CardAssetParser.parse(bytes)!!
+        return CardCheck.check(parsed)
+    }
+
+    @Test
+    fun `599_变量面板三件齐_体检认得出并报用了变量面板`() {
+        val r = checkBytes(variableCardBytes(switch = true))
+        assertEquals("应有一条 INFO 点名变量面板", 1, r.count("CARD_VARIABLE_PANEL"))
+        val f = r.of("CARD_VARIABLE_PANEL").single()
+        assertEquals(Level.INFO, f.level)
+        assertTrue("话术要点名三件里写了哪些: ${f.message}", f.message.contains("ai_variable_json"))
+        assertTrue("开关状态要报: ${f.message}", f.message.contains("皮肤开关=开"))
+    }
+
+    @Test
+    fun `599_开关没写_仍认得出面板且报没写`() {
+        val r = checkBytes(variableCardBytes(switch = null, withTemplate = false))
+        assertEquals("三件里两件在就够认", 1, r.count("CARD_VARIABLE_PANEL"))
+        val f = r.of("CARD_VARIABLE_PANEL").single()
+        assertTrue("没写开关要如实报: ${f.message}", f.message.contains("皮肤开关=没写"))
+        assertTrue("只写了两件就只报两件: ${f.message}", f.message.contains("ai_variable_prompt"))
     }
 }
