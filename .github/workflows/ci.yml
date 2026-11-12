@@ -293,23 +293,40 @@ jobs:
           RUN_ID="${{ github.run_id }}"
           git config user.name "temp-trend"
           git config user.email "actions@users.noreply.github.com"
-          # 先切/建专用分支，再合行 —— 顺序不能反（orphan 检出的 git clean 会删掉未跟踪文件）。
-          if git fetch origin ci/temp-trend 2>/dev/null && git rev-parse --verify origin/ci/temp-trend >/dev/null 2>&1; then
-            git checkout -B ci/temp-trend origin/ci/temp-trend
+
+          # 607 修订（2026-11-13，ci #1974 真因）：**全程不碰工作树**。
+          # 旧实现走 `git checkout --orphan` + `git rm -rf --cached .` + `git clean -fdx`；
+          # 在 `ci/temp-trend` 还不存在的那一轮（#1974 恰好是第一次）`--cached` 之后
+          # 所有文件都成了未跟踪，`git clean -fdx` 把整个检出目录清空 ⇒ 后面三步
+          # （单测失败清单／入口覆盖清点／Android Lint）找不到脚本与报告，全部 exit 2 报红，
+          # 而那轮 10563 例单测其实是过的 —— 是这一步把树删了，不是代码坏了。
+          # 现在改用 plumbing + 独立 index：读旧账 → 追加 → 写 blob/tree/commit → push，
+          # 只在 $tmp 里操作；分支首次不存在也能建。
+          tmp="$(mktemp -d)"
+          git fetch --no-tags origin ci/temp-trend >/dev/null 2>&1 || true
+          if git rev-parse --verify --quiet origin/ci/temp-trend >/dev/null; then
+            base="$(git rev-parse origin/ci/temp-trend)"
+            git show "$base:tools/test-temp-trend.jsonl" > "$tmp/trend.jsonl" 2>/dev/null || : > "$tmp/trend.jsonl"
           else
-            git checkout --orphan ci/temp-trend
-            git rm -rf --cached . >/dev/null 2>&1 || true
-            git clean -fdx >/dev/null 2>&1 || true
+            base=""
+            : > "$tmp/trend.jsonl"
           fi
-          mkdir -p tools
-          if [ -f tools/test-temp-trend.jsonl ] && grep -q "\"run\": \"$RUN_ID\"" tools/test-temp-trend.jsonl; then
+          if grep -q "\"run\": \"$RUN_ID\"" "$tmp/trend.jsonl"; then
             echo "run $RUN_ID 已在账上（重跑），不重复落行"
             exit 0
           fi
-          printf '%s\n' "$NEW" >> tools/test-temp-trend.jsonl
-          git add tools/test-temp-trend.jsonl
-          git commit -m "trend: run $RUN_ID"
-          git push origin ci/temp-trend
+          printf '%s\n' "$NEW" >> "$tmp/trend.jsonl"
+          export GIT_INDEX_FILE="$tmp/index"
+          if [ -n "$base" ]; then git read-tree "$base"; else git read-tree --empty; fi
+          blob="$(git hash-object -w "$tmp/trend.jsonl")"
+          git update-index --add --cacheinfo 100644,"$blob","tools/test-temp-trend.jsonl"
+          tree="$(git write-tree)"
+          if [ -n "$base" ]; then
+            commit="$(git commit-tree "$tree" -p "$base" -m "trend: run $RUN_ID")"
+          else
+            commit="$(git commit-tree "$tree" -m "trend: run $RUN_ID")"
+          fi
+          git push origin "$commit:refs/heads/ci/temp-trend"
 
       # 2026-10-30：这一步不判成败，只**把失败的用例变成注解**。
       # 起因：CI 红在测试步时，注解里只有一句 `Process completed with exit code 1.`，
