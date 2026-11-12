@@ -230,6 +230,21 @@ jobs:
       - name: 编译 Debug APK（含 .so 打包验证）
         run: ./gradlew :app:assembleDebug --console=plain
 
+      # ── 611（2026-11-12）：**打包产物**里的 .so 也要过 16KB 判据 ────────────────
+      # 为什么补在 assembleDebug 之后：上面那道「入库 .so 门禁」只扫 jniLibs 源码目录，而
+      # **依赖自带的 .so**（androidx.graphics:graphics-path）与 merge/strip 之后那份只在
+      # build/ 里出现 —— 源码树里根本没有它们，它们照样进 APK、照样在 16KB 页设备上
+      # loadLibrary 失败并静默退回 Java。611 段A 先另写过一份独立脚本，实测它唯一多出的
+      # 就是这一面（理由与取舍写在 tools/check-native-so.py 顶部）；同一判据挂两处迟早只修
+      # 一处，故并进本脚本（--artifact），只留一份 ELF 解析，那份独立脚本已删。
+      # 先跑 --selftest：合成 APK 里塞 4KB ⇒ 必须红并点名包内路径、16KB ⇒ 必须绿、
+      # 非 zip ⇒ 必须报「读不出」（不许静默跳过）。红时点名「包内路径 ← 来源依赖/模块」，
+      # 来源取 AGP 的 native-libs-blame 报告。
+      - name: 打包产物 .so 门禁（APK 内 lib/<abi>/*.so 的 16KB 对齐 · 611）
+        run: |
+          python3 tools/check-native-so.py --selftest
+          python3 tools/check-native-so.py --artifact 'app/build/outputs/apk/debug/*.apk'
+
       # E-105 的门禁：那次实测发现 AGP 打包**会剥掉构件顶层的 META-INF/LICENSE* / NOTICE***
       #   （commons-compress 有 LICENSE.txt/NOTICE.txt 却一个都没进 APK，zstd-jni 的 .so 进了
       #   包而它的 BSD-2 正文没进），所以「随构件分发」不能当承诺 —— 义务只能由我们自己随包
