@@ -191,6 +191,14 @@ class L6BoundaryGateTest {
             // （原子替换，半条便签比没有更糟）；delete 只删自己那件 tmp/旧文件（改名前那一下）。
             // 点号开头 ⇒ 512 的 `isCountedProduct` 不计入「产物 N 件」；不写任何记忆树/账本。
             "agent/tools/BoardTools.kt" to setOf("mkdirs", "writeText", "delete"),
+            // 第六百零九批：小说资产两件的写盘。**路径不是模型指的**——
+            // NovelAssets.atomicWrite 的文件由调用方（写两件工具）在 `NovelFence` 围栏内、
+            // 从工作区根派生，函数本身只写 `<name>.tmp` 再 rename（原子替换，半截文件比不写更坏）；
+            // writeText 只碰那个 tmp、delete 只删自己那件 tmp（rename 失败时），不删别人的文件。
+            // NovelTimelineTool 的 mkdirs 只建时间线目录的父层（同样在围栏内），不碰围栏外。
+            // 围栏本身在 NovelFence，两个写工具都先过它再调这里 ⇒ 不需要再过一次 PathGuard。
+            "agent/tools/NovelAssets.kt" to setOf("writeText", "delete"),
+            "agent/tools/NovelTimelineTool.kt" to setOf("mkdirs"),
         )
     }
 
