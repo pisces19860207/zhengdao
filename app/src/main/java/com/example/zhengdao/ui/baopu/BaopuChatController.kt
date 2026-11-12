@@ -1857,6 +1857,22 @@ internal class BaopuChatController(context: Context) {
         com.example.zhengdao.baopu.DecisionSampling.pendingIds(records, decisionRecordJudgedIds())
 
     /**
+     * 阈值行（`threshold:` 前缀）的回滚活体（第五百六十八批 B 域①）。
+     *
+     * 从 [rollbackDecisionNow] 抽出（502 同款：冻结区复杂度不许过墙）：把值退回被回滚那行的
+     * before——回滚也是一次调整行，闸下一问就用回退值；盘上已换新值 ⇒ 老实话 false，
+     * `DecisionRollbacks.run` 对 false 不留 `rollback_of`。
+     */
+    private fun rollbackThresholdRowNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean {
+        val toValue = r.before.toIntOrNull() ?: return false
+        return com.example.zhengdao.baopu.evolution.midrisk.MidRiskEvo.revertThreshold(
+            toValue,
+            r.after.toIntOrNull(),
+            System.currentTimeMillis(),
+        )
+    }
+
+    /**
      * 回滚一条记录（二次确认在 UI；这里只执行）。
      *
      * 失败（没有回滚通道／盘上已变／kind 本来就不回滚）⇒ **不留** `rollback_of`、
@@ -1934,14 +1950,9 @@ internal class BaopuChatController(context: Context) {
                     // 第五百六十八批 B 域①：判定阈值调整行（`threshold:` 前缀）⇒ 回滚＝把值退回
                     // 那行的 before（回滚也是一次调整行，闸下一问就用回退值；盘上已换新值 ⇒ 老实话
                     // false，`DecisionRollbacks.run` 对 false 不留 `rollback_of`）。
-                    r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.THRESHOLD) -> {
-                        val toValue = r.before.toIntOrNull()
-                        toValue != null && com.example.zhengdao.baopu.evolution.midrisk.MidRiskEvo.revertThreshold(
-                            toValue,
-                            r.after.toIntOrNull(),
-                            System.currentTimeMillis(),
-                        )
-                    }
+                    // 活体抽成 [rollbackThresholdRowNow]（502 同款）：本函数在冻结区，复杂度不许过墙。
+                    r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.THRESHOLD) ->
+                        rollbackThresholdRowNow(r)
                     else -> {
                         // 深度档（depth: 前缀）等其余授权行没有回灰语义 ⇒ 走老实话
                         false

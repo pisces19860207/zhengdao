@@ -160,8 +160,11 @@ class MidRiskEvoGateTest {
     fun `G3_回滚when有阈值行支_真调revertThreshold`() {
         val body = GateBodies.functionBody(chatController(), "fun rollbackDecisionNow(")
         assertTrue("rollbackDecisionNow 不在了？", body != null)
-        assertTrue("阈值行没有回滚通道（revertThreshold 不在回滚 when 里）", body!!.contains("MidRiskEvo.revertThreshold("))
+        assertTrue("阈值行没有回滚通道（活体不在回滚 when 里）", body!!.contains("rollbackThresholdRowNow("))
         assertTrue("只认 threshold: 前缀的调整行", body.contains("ConsequenceEvidence.THRESHOLD"))
+        val live = GateBodies.functionBody(chatController(), "fun rollbackThresholdRowNow(")
+        assertTrue("回滚活体不在了？", live != null)
+        assertTrue("活体没接到中风险门（MidRiskEvo.revertThreshold 不在活体里）", live!!.contains("MidRiskEvo.revertThreshold("))
     }
 
     @Test
