@@ -147,6 +147,14 @@ def tmp_anchors(root: Path) -> list[Path]:
     )
 
 
+def _is_build_tool_dir(path: Path) -> bool:
+    """构建系统自己的 tmp（不是测试泄漏）：javac 事务目录、Gradle 的 .cache 等。"""
+    parts = path.parts
+    if ".cache" in parts:
+        return True
+    return any(p.startswith("compileDebug") or p.startswith("compileRelease") for p in parts)
+
+
 def count_dirs(root: Path) -> tuple[int, list[tuple[Path, int]]]:
     """返回 (总目录数, [(锚点, 该锚点新增计入的目录数)])。
 
@@ -159,6 +167,11 @@ def count_dirs(root: Path) -> tuple[int, list[tuple[Path, int]]]:
         for path in [anchor, *anchor.rglob("*")]:
             # JDK 的 `jar_extract_*_tmp`：ZipFS 解包时的临时目录，由 JDK 自己回收，
             # 不是测试写的临时目录（数量随 JDK/平台浮动）⇒ 不计入水位。
+            # 549 验收（蓝总管 2026-11-12）：口径补漏——`compileDebug*`（含 `compileTransaction`
+            # 事务目录）与 `.cache` 是**构建系统自己的** tmp，跑不跑 detekt/编译会让它们出现/消失；
+            # 573/ci#1936 的原口径就是「构建系统自己的 tmp 不算数」，这里把这两个也排除（不改预算）。
+            if _is_build_tool_dir(path):
+                continue
             if path.name.startswith("jar_extract_"):
                 continue
             if path.is_dir() and path not in seen:
