@@ -321,22 +321,6 @@ class MainActivity : ComponentActivity() {
         if (!isTaskRoot) {
             // 恢复出来的副本同样不重放外部请求（真正的宿主是栈里那份主页）。
             handleBaopuShortcut(intent, allowIncoming = savedInstanceState == null)
-
-        // v2.2.6 P0（冷启闪退·第二修）：**引擎必须在进组合之前建好**。
-        //
-        // 为什么：引擎里十几个 `mutableStateOf`（roundArtifacts / step / notice / …）在**构造那一刻**
-        // 绑定当时的快照 id。`Scaffold` 的 SubcomposeLayout 会在 **measure 阶段**起一层子组合，
-        // 若引擎是在那层子组合里被首次取用（BaopuChatController 懒取），它的快照 id 就比主组合晚，
-        // 主组合稍后读 `engine.roundArtifacts.value` 立刻抛
-        // `IllegalStateException: Reading a state that was created after the snapshot was taken`
-        // ⇒ 冷启闪退（v2.2.4/v2.2.5 真机复现；retrace 已确认到 BaopuChatController.getRoundArtifacts）。
-        // 在 setContent 之前、主线程上把它建好，这些状态就都落在"已应用的全局快照"里，跨线程读写都安全。
-        runCatching {
-            com.example.zhengdao.baopu.BaopuRuntime.engine(this)
-            com.example.zhengdao.core.RunLog.log("启动：引擎在主组合之前预建（v2.2.6 冷启修复）")
-        }.onFailure {
-            com.example.zhengdao.core.RunLog.log("启动：引擎预建失败，退回懒建（${it.javaClass.simpleName}: ${it.message}）")
-        }
             finish()
             return
         }
@@ -352,6 +336,18 @@ class MainActivity : ComponentActivity() {
 
         // 第二百四十八批（第四刀）：**环境安装状态随终端搬走** —— 主仓不再有 rootfs，
         // 也就没有"装没装"要同步；导航直落主页（欢迎页/安装引导在证道终端里）。
+
+        // 617（586 第二修收口）：预建必须在**正常冷启路径**上、且在 setContent 之前。
+        // v2.2.6 把这段放进了 `if (!isTaskRoot) { ... finish(); return }` —— 那是「栈里已有主页、
+        // 又拉起一个副本」的提前返回分支，正常冷启（isTaskRoot = true）根本走不到，
+        // 注释里写的「MainActivity 也预建一次」实际从未生效（只有 Application 那处生效）。
+        // 引擎里十几个 mutableStateOf 在**构造那一刻**绑定快照 id；Scaffold 的 SubcomposeLayout
+        // 会在 measure 阶段起子组合，若引擎在那层被首次取用，快照 id 就比主组合晚 ⇒ 抛
+        // `Reading a state that was created after the snapshot was taken`。
+        // 这里与 ZhengdaoApp.onCreate 各调一次（engine() 是 double-check 幂等），
+        // 保证「引擎的任何构造点都在主组合之前的全局快照里」——不吞异常、不靠降级掩盖。
+        com.example.zhengdao.baopu.BaopuRuntime.engine(this)
+        com.example.zhengdao.core.RunLog.log("启动：引擎在主组合之前预建（617 正常冷启路径）")
 
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
