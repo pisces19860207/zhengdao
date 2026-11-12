@@ -1,10 +1,11 @@
 {
- "budget": 378,
+ "budget": 380,
  "measured": 378,
  "measuredAt": "2026-11-12",
  "measuredHow": "2026-11-11：ci #1945（dbab4ad3f）超预算 2 个（424 > 422）。给闸加「点名最新目录」诊断后（4b3205a05 / 69acbd27d），ci #1948 的清单把既有泄漏沙盒点了出来（mcp-captures、511-night-ledger*、health291-*、deviation363-*、repair408-*、repair419-*）；根子是十一个测试在 build/tmp 下建目录只建不删。给它们各加 @After 收口（97966be88）后，ci #1949 实测 380 ⇒ 水位 422→380。",
  "perRunResidue": 378,
  "osTempGrowthPerRun": 0,
  "goal": 50,
- "note": "口径校准（573）：--scan-tests 实数 139 个（派工单写 138，为 11-09 时点）；逐文件复核后真正「手工建目录且零清理痕迹」的是 35 个（已迁），其余 104 个是 JUnit TemporaryFolder @Rule（after() 自带递归删除、不产生残留），按 564 判据②列不改并逐条写明清理方式（见 证道设计报告/附件-573/列不改-TemporaryFolder-104条.md）。迁移后 java.io.tmpdir 钉住的 testDebugUnitTest 里已无本批 35 个文件的前缀；剩余 424 个目录来自清单外的两类写法：File(\"build/tmp/...\") 相对路径（repair408-* / repair419-* / health291-* / 511-* …），以及另一批有清理痕迹却仍留沙盒的测试（opinion-wiring* / zd289-* / baopu-242-ledger* …）。这两类不在 573 清单口径内 ⇒ 水位按只降不升从 1000 收到 424，未达 goal=50；要继续往下压须另立单扩清单口径。系统临时区本仓前缀目录 4002→4002（增量 0）。｜2026-11-10：口径修正——tmp_anchors 跳过 intermediates，count_dirs 跳过 jar_extract_*；ci #1937 实测 422，水位 424→422（只降不升）。｜2026-11-11：十一个 inspect 测试补 @After 收口（cleanup-b571），ci #1949 实测 380，水位 422→380（只降不升）；闸同时新增「判红点名最新目录」诊断。｜2026-11-12（571）：三件新测试零残留（全部走 testkit/TempSandbox，zd571* 前缀零 leftovers）；本轮实测 378（先清掉本树一次被中断编译留下的 app/build/tmp/compileDebugJavaWithJavac 事务 stash 再量），水位 380→378（只降不升）。"
+ "note": "口径校准（573）：--scan-tests 实数 139 个（派工单写 138，为 11-09 时点）；逐文件复核后真正「手工建目录且零清理痕迹」的是 35 个（已迁），其余 104 个是 JUnit TemporaryFolder @Rule（after() 自带递归删除、不产生残留），按 564 判据②列不改并逐条写明清理方式（见 证道设计报告/附件-573/列不改-TemporaryFolder-104条.md）。迁移后 java.io.tmpdir 钉住的 testDebugUnitTest 里已无本批 35 个文件的前缀；剩余 424 个目录来自清单外的两类写法：File(\"build/tmp/...\") 相对路径（repair408-* / repair419-* / health291-* / 511-* …），以及另一批有清理痕迹却仍留沙盒的测试（opinion-wiring* / zd289-* / baopu-242-ledger* …）。这两类不在 573 清单口径内 ⇒ 水位按只降不升从 1000 收到 424，未达 goal=50；要继续往下压须另立单扩清单口径。系统临时区本仓前缀目录 4002→4002（增量 0）。｜2026-11-10：口径修正——tmp_anchors 跳过 intermediates，count_dirs 跳过 jar_extract_*；ci #1937 实测 422，水位 424→422（只降不升）。｜2026-11-11：十一个 inspect 测试补 @After 收口（cleanup-b571），ci #1949 实测 380，水位 422→380（只降不升）；闸同时新增「判红点名最新目录」诊断。｜2026-11-12（571）：三件新测试零残留（全部走 testkit/TempSandbox，zd571* 前缀零 leftovers）；本轮实测 378（先清掉本树一次被中断编译留下的 app/build/tmp/compileDebugJavaWithJavac 事务 stash 再量），水位 380→378（只降不升）。",
+ "headroomNote": "571 验收（蓝总管 2026-11-12）：571 把预算从 380 降到本地单轮实测 378，但同一棵树我连测两轮（含 `rm -rf app/build/tmp` 后单轮）都是 **379** ⇒ 零余量会让任何一单误红。**预算回 380（CI #1949 的实测口径），不是放宽**；本地单轮 378 的记录保留在 measured/perRunResidue。根子问题：这条闸是「硬总数」，与「测试并行/顺序/条件写盘」天然抖动 ±1–2 ⇒ 要么给 ±2 余量，要么改成「只数本轮新增」——待用户拍板，已第 7 次提。"
 }
