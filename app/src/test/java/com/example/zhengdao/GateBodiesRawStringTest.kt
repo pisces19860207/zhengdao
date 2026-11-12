@@ -2,11 +2,12 @@
 //
 // 第五百八十七批：GateBodies 切片尺子的「Kotlin 原始字符串」复现／回归夹具。
 //
-// 现场（仓库内已有旁证：LowRiskEvoGateTest.kt:47-50）：557 的 GateBodies 在
+// 现场（仓库内已有旁证：LowRiskEvoGateTest 的 G1 段注释）：557 的 GateBodies 在
 // CodeText.codeOnly 空间做括号配对，再用 code 空间数出的行号切回原文。
 // CodeText 的 RAW 态当时**不回填串内换行**，其余五个态都回填 ⇒ 含跨行 """ 的文件，
 // code 空间比原文少 N 行，sliceByLines 于是拿偏小的起止行去原文切，切片整体前移 N 行。
-// 568 发现这个盲区后只能把 SkillTools 的顺序断言改钉全文；本单把尺子修回来。
+// 568 发现这个盲区后只能把 SkillTools 的顺序断言改钉全文；本单把尺子修回来
+// （605 已据此撤掉 568 那条绕行，G1 回到块级切片）。
 //
 // 判据只钉可量化的两件事，不用「片段 contains 某字面量」当主判据（那类断言在夹具上恒真）：
 //   ①切片与真实函数体**逐行等值**（首行、末行、行数、整段 List<String> 全比）；

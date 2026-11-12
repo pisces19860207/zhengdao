@@ -13,12 +13,18 @@
 //
 // 判据③的"负例"也在这：每个缝点配一条**拔缝变异**——把真文件里的调用点从原文里
 // 摘掉再跑同一把断言，必须红。门禁自己能红，才不是恒真摆设（428 的 N2 教训）。
+//
+// 第六百零五批：撤掉「绕开块级切片」的绕行。568 当时在 SkillTools 上切不准块
+// （587 已修：RAW 态回填串内换行 ⇒ code 空间与原文逐行对齐），只能把 G1 的序断言
+// 改钉「剥注释后的全文 indexOf」。本批 G1 回到块级切片，形态从「全文」收到「块内」，
+// 判据反而更严（见 G1 段注释与判据③负例）。
 package com.example.zhengdao.baopu.evolution.lowrisk
 
 import com.example.zhengdao.GateBodies
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,60 +48,135 @@ class LowRiskEvoGateTest {
     private fun gateBranchOn(src: String): String? =
         GateBodies.blockBody(src, Regex("""when\s*\(\s*val\s+\w+\s*=\s*LowRiskEvo\.gate\("""))
 
+    private companion object {
+        /** 门切不到时 G1 的那条理由：三处负例都断言到**这一条**上，防止"红在别的理由"。 */
+        const val NO_BRANCH = "门不在 `when (val v = LowRiskEvo.gate(…))` 支路里"
+    }
+
     // ── 技能域：门在免批写之前、观察账在写之后 ──────────────────────────────
     //
-    // 557 尺子的一个实测盲区（本单发现）：SkillTools 头部有原始串（DESC 的 """ 块），
-    // CodeText 的 RAW 态不回填串内换行 ⇒ GateBodies 的行号切片在含原始串的文件里整体前移
-    // ——块级切片在这类文件上不可靠。所以本条序断言钉在**剥注释后的全文**上
-    // （调用点串是全仓唯一的，无局部名依赖；块级锚只留给"拔门"负例验锚本身）。
+    // 587 已修（RAW 态回填串内换行），此处用块级切片：SkillTools 头部虽有跨行原始串
+    // （DESC 的 """ 块），GateBodies 仍能按 code 空间行号切回原文——568 当时因尺子整体
+    // 前移改钉「剥注释后的全文」，那条绕行本单撤掉。
+    // 块内比全文严在三处：①行尾注释里写 `LowRiskEvo.gate(` 不算调用（旧尺子只剥整行注释，
+    // 会被它骗过）；②同名调用长在别的函数里，也缝不到这条断言上；③顺序只在免批写支路内比。
+
+    /** 免批写支路（`runAction`）：块级切片，不拿全文 indexOf 当尺子。 */
+    private fun autoWriteBody(src: String): String? =
+        GateBodies.functionBody(src, "fun runAction(")
+
+    /**
+     * G1 的唯一一把尺：全部成立返回 null，否则返回第一条不成立的理由。
+     * 真跑与四条变异共用这一份判据——两把尺会漂移（557 的教训；428 的 N2 同型）。
+     */
+    private fun g1Failure(src: String): String? {
+        val body = autoWriteBody(src) ?: return "免批写支路（runAction）切不到"
+        // 切片准不准先看首末行：587 的毛病就是整体前移／被伪括号提前截断，
+        // 那时首行会变成别的行、末行也不再是真闭括号（只判 contains 会放过这种偏）。
+        val head = body.lines().first().trim()
+        if (!head.startsWith("private fun runAction(")) return "免批写支路切片首行不对（整体前移？）：$head"
+        if (body.lines().last().trim() != "}") return "免批写支路切片末行不是真闭括号（被伪括号截断？）"
+        val branch = gateBranchOn(src) ?: return NO_BRANCH
+        if (!branch.lines().first().trim().startsWith("when (val")) return "when 支路切片首行不对：${branch.lines().first()}"
+        if (!branch.contains("LowRiskEvo.gate(")) return "门不在 when 支路里"
+        if (!branch.contains("LowRiskEvo.recordRefusal(")) return "红线拒没记账（recordRefusal 不在支路里）"
+        if (branch.split("return ToolOutcome.Rejected").size - 1 != 2) {
+            return "拒的两支（红线／灰度不到）必须各自 return 挡回去"
+        }
+        val gate = body.indexOf("LowRiskEvo.gate(")
+        val write = body.indexOf("SkillAutoWrite.tryAutoWrite(")
+        val observe = body.indexOf("LowRiskEvo.observeRun(")
+        if (gate < 0) return "门不在免批写支路里"
+        if (write < 0) return "免批写不在免批写支路里"
+        if (observe < 0) return "观察账不在免批写支路里"
+        if (!(gate < write && write < observe)) return "顺序不是 门 → 免批写 → 观察账"
+        return null
+    }
 
     @Test
     fun `G1_技能域_免批写支路真调门且顺序是门_写_观察`() {
         val src = skillTools()
-        val gate = src.indexOf("LowRiskEvo.gate(")
-        val write = src.indexOf("SkillAutoWrite.tryAutoWrite(")
-        val observe = src.indexOf("LowRiskEvo.observeRun(")
-        assertTrue("门不在 SkillTools 里", gate >= 0)
-        assertTrue("免批写不在 SkillTools 里", write >= 0)
-        assertTrue("观察账不在 SkillTools 里", observe >= 0)
-        assertTrue(
-            "顺序必须是 门 → 免批写 → 观察账（先问档再动手；跑完才落账）",
-            gate < write && write < observe,
-        )
-        assertTrue("拒行不落账（recordRefusal 不在支路里）", src.contains("LowRiskEvo.recordRefusal("))
+        val why = g1Failure(src)
+        assertTrue("G1 判据不过（块级切片：SkillTools 含跨行原始串也要切得准）：$why", why == null)
+        assertTrue("拒行不落账（recordRefusal 只记账）", src.contains("LowRiskEvo.recordRefusal("))
         assertTrue("拒的支路要挡回去（Rejected）", src.contains("ToolOutcome.Rejected"))
     }
 
     @Test
-    fun `G1负例_把门从真文件里拔掉_同一把断言必须红`() {
+    fun `G1负例_把门从真文件里拔掉_同一把尺必须红`() {
         val src = skillTools()
         assertTrue("前提：真文件里有门", src.contains("LowRiskEvo.gate("))
         val mutated = src.replace("LowRiskEvo.gate(", "LowRiskEvo.gateRemoved(")
-        assertFalse("拔门后必须红（门禁不是恒真）", mutated.contains("LowRiskEvo.gate("))
-        assertTrue("拔门后切块必须切不到（判据③：直接生效＝门禁红）", gateBranchOn(mutated) == null)
+        assertFalse("拔门后门字面量应当消失", mutated.contains("LowRiskEvo.gate("))
+        assertTrue("拔门后块级锚必须切不到（判据③：直接生效＝门禁红）", gateBranchOn(mutated) == null)
+        assertEquals("拔门必须红在「切不到支路」这一条上", NO_BRANCH, g1Failure(mutated))
     }
 
+    /** 判据②之一：门挪到 `when` 分支之外（条件表达式不再是门）⇒ 块级锚必须切不到。 */
+    @Test
+    fun `G1变异_门挪到when分支之外_块级锚必须切不到`() {
+        val header =
+            "when (val v = LowRiskEvo.gate(CanaryCapability.REFLECTION_AUTO_EDIT, evoCandidate)) {"
+        val mutated = skillTools().replace(
+            header,
+            "val v = LowRiskEvo.gate(CanaryCapability.REFLECTION_AUTO_EDIT, evoCandidate)\n" +
+                "                when (v) {",
+        )
+        assertTrue("前提：门调用本身还在（只是不在 when 头里）", mutated.contains("LowRiskEvo.gate("))
+        assertTrue("门出了 when 头 ⇒ 块级锚必须切不到", gateBranchOn(mutated) == null)
+        assertEquals("门出 when 头必须红在「切不到支路」这一条上", NO_BRANCH, g1Failure(mutated))
+    }
+
+    /** 判据②之二：整段门支路搬到免批写之后（真搬：拿尺子切下来的那段原文剪贴）⇒ 顺序断言必须红。 */
+    @Test
+    fun `G1变异_门挪到免批写之后_顺序断言必须红`() {
+        val src = skillTools()
+        val branch = gateBranchOn(src)
+        assertNotNull("前提：门支路切得到", branch)
+        val writeLine = "val a = SkillAutoWrite.tryAutoWrite(proposal, root, globalRoot, pf, stamp())"
+        val moved = src.replace(branch!!, "").replace(writeLine, writeLine + "\n" + branch)
+        assertTrue("前提：门还在（换了个位置）", moved.contains("LowRiskEvo.gate("))
+        assertNotNull("块级锚仍切得到——本变异要红在顺序上，不是红在锚上", gateBranchOn(moved))
+        assertEquals("顺序变了 ⇒ 同一把尺必须红在顺序上", "顺序不是 门 → 免批写 → 观察账", g1Failure(moved))
+    }
+
+    /**
+     * 判据③：门只写在**行尾注释**里 ⇒ 不许被当成调用。
+     *
+     * 这条正是「块内 vs 全文」的分水岭：`code()` 只剥**整行**的双斜杠注释（行首空白之后才算），
+     * 行尾注释原样留着 ⇒ 旧的「剥注释后的全文 indexOf」会被它骗过（真调用已经没了，
+     * 旧尺子仍报有门）；GateBodies 走 CodeText 词法，行尾注释一并清掉 ⇒ 切不到。
+     */
+    @Test
+    fun `G1负例_门只写在行尾注释里_不许被当成调用`() {
+        val header =
+            "when (val v = LowRiskEvo.gate(CanaryCapability.REFLECTION_AUTO_EDIT, evoCandidate)) {"
+        val mutated = skillTools().replace(header, "when (val v = LowRiskVerdict.Allow) { // LowRiskEvo.gate(")
+        assertTrue(
+            "前提：字面量还在行尾注释里（旧尺子这一行会判「有门」＝被骗）",
+            mutated.indexOf("LowRiskEvo.gate(") >= 0,
+        )
+        assertTrue("块级切片不许把注释当调用", gateBranchOn(mutated) == null)
+        assertEquals("注释里的名字必须红在「切不到支路」这一条上", NO_BRANCH, g1Failure(mutated))
+    }
+
+    /** 顺序的另一条边：观察账挪到免批写之前（「先记账后动手」的假接线）⇒ 顺序断言必须红。 */
     @Test
     fun `G1负例_观察账挪到写之前_顺序断言必须红`() {
         val src = skillTools()
-        val gate = src.indexOf("LowRiskEvo.gate(")
-        val write = src.indexOf("SkillAutoWrite.tryAutoWrite(")
-        assertTrue("前提：真支路顺序成立", gate < write)
-        // 变异：把观察账挪到写之前（模拟"先记账后动手"的假接线）
-        val mutated = src
-            .replace("LowRiskEvo.observeRun(", "LowRiskEvo.observeRunDisabled(")
-            .replace("SkillAutoWrite.tryAutoWrite(", "LowRiskEvo.observeRun(\n        SkillAutoWrite.tryAutoWriteDisabled(")
-        val mGate = mutated.indexOf("LowRiskEvo.gate(")
-        val mWrite = mutated.indexOf("SkillAutoWrite.tryAutoWrite(")
-        val mObserve = mutated.indexOf("LowRiskEvo.observeRun(")
-        assertFalse("变异后顺序断言必须红", mGate < mWrite && mWrite < mObserve)
+        val call = GateBodies.callArgs(src, "LowRiskEvo.observeRun(").single()
+        val writeLine = "val a = SkillAutoWrite.tryAutoWrite(proposal, root, globalRoot, pf, stamp())"
+        val mutated = src.replace(call, "").replace(writeLine, call + "\n" + writeLine)
+        assertTrue("前提：观察账调用还在（换了个位置）", mutated.contains("LowRiskEvo.observeRun("))
+        assertEquals("顺序变了 ⇒ 同一把尺必须红在顺序上", "顺序不是 门 → 免批写 → 观察账", g1Failure(mutated))
     }
 
     // ── 提示词尾部：注入点先问档、新内容落观察账 ────────────────────────────
     //
     // RunEngine 的调用点已有既有源级钉（CriteriaPitPackTest「落点是system不是user」：
     // RunEngine 必须保持 `CriteriaPitPack.systemSuffix()` 原样）——所以门只许在
-    // systemSuffix 内部，RunEngine 一行不动。CriteriaPitPack 无原始串 ⇒ GateBodies 可用。
+    // systemSuffix 内部，RunEngine 一行不动。587 已修 RAW 回填 ⇒ GateBodies 照切，
+    // 不再靠「这份文件碰巧没有原始串」这个前提。
 
     private fun pitPack(): String =
         code("src/main/java/com/example/zhengdao/baopu/CriteriaPitPack.kt")
