@@ -234,6 +234,14 @@ jobs:
           ZHENGDAO_KEY_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: ./gradlew :app:assembleRelease --console=plain
 
+      # 611（2026-11-12）：发布包里**装进去的那份 .so** 也要过 16KB 判据。
+      # 上面那道门禁只扫 jniLibs 源码目录；依赖自带的 .so 与 merge/strip 之后那份只在
+      # build/ 里，源码树看不到。发布路径是最终用户装的包，这条判据在这里最该有。
+      - name: 打包产物 .so 门禁（release APK 内 lib/<abi>/*.so 的 16KB 对齐 · 611）
+        run: |
+          python3 tools/check-native-so.py --selftest
+          python3 tools/check-native-so.py --artifact 'app/build/outputs/apk/release/*.apk'
+
       # E-072：R8 究竟把哪个类/方法改了名，唯一的地面真值是构建产物 mapping.txt ——
       #   单测（R8KeepRuleGuardTest 只读 proguard 文本）与 check-native-so.py（只读 .so 符号）
       #   都够不到它。这一步把"关键类未被改名 + onProgress 保住"变成会红的断言
