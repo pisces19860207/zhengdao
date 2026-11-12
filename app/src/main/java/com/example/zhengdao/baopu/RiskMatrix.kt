@@ -288,8 +288,11 @@ internal data class RiskTable(
          * mcp_add_server R3（对外连接：登记即要联系外部服务器，必问一次）；
          * mcp_connect R1（对外动作，但端点在登记时已批过）；mcp_disconnect R1（清本机令牌，
          * 重连可恢复）；mcp_set_token R3（账号语义：写入的是凭据，永远必问）。
+         * v11（第六百零九批）：小说资产六件入表——读四件 R0（roster/relations/timeline/
+         * annotations，只读结构不读正文）；写两件 R1＋必问（timeline_append/annotation_reply，
+         * 只追加不改已有，且 DEFAULT_DISABLED 默认关）。不新造档。
          */
-        const val DEFAULT_VERSION: Int = 10
+        const val DEFAULT_VERSION: Int = 11
 
         /**
          * 唯一一张默认表（70 行 = 注册工具 70 个全有账；bash 豁免行留作后备——248 COMPAT 退役后它不在注册表里）。
@@ -417,6 +420,14 @@ internal data class RiskTable(
                 "novel_create" to ToolRule(RiskClass.R2),
                 "novel_project" to ToolRule(RiskClass.R2),
                 "novel_continue" to ToolRule(RiskClass.R2),
+                // ── 609 小说资产六件：读 R0（只读结构不读正文）；写 R1＋必问 ──────
+                // （只追加不改已有；DEFAULT_DISABLED 默认关，设置里显式开才可用）
+                "novel_roster" to ToolRule(RiskClass.R0),
+                "novel_relations" to ToolRule(RiskClass.R0),
+                "novel_timeline" to ToolRule(RiskClass.R0),
+                "novel_annotations" to ToolRule(RiskClass.R0),
+                "novel_timeline_append" to ToolRule(RiskClass.R1, alwaysAsk = true, writePathKeys = setOf("path")),
+                "novel_annotation_reply" to ToolRule(RiskClass.R1, alwaysAsk = true, writePathKeys = setOf("path")),
                 "run_subtasks" to ToolRule(RiskClass.R2),
                 "card_export" to ToolRule(RiskClass.R2, writePathKeys = setOf("out")),
                 // ── 597 立绘外貌两件 ─────────────────────────────────────────

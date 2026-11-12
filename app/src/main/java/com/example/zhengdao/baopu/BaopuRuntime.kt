@@ -600,6 +600,13 @@ internal object BaopuRuntime {
         private const val FILE = "baopu_tools"
         private const val KEY_DISABLED = "disabled"
 
+        /**
+         * 609：用户**显式开过**的工具名（只对 [BaopuToolCatalog.DEFAULT_DISABLED] 里的
+         * 默认关件有意义）。三态：显式关（KEY_DISABLED）> 显式开（本键）> 默认。
+         * 与 InMemoryToolPrefs 同一口径——两处语义必须逐字一致，否则单测与真机分叉。
+         */
+        private const val KEY_ENABLED = "enabled_default_off"
+
         /** 组开关那份集合（存的是组的 `key`，不是枚举 ordinal——枚举顺序将来会变）。 */
         private const val KEY_DISABLED_GROUPS = "disabled_groups"
 
@@ -629,19 +636,37 @@ internal object BaopuRuntime {
 
         private fun sp(): android.content.SharedPreferences? = prefs
 
-        override fun isDisabled(name: String): Boolean =
-            sp()?.getStringSet(KEY_DISABLED, emptySet())?.contains(name) == true
+        override fun isDisabled(name: String): Boolean {
+            val p = sp() ?: return name in BaopuToolCatalog.DEFAULT_DISABLED
+            if (p.getStringSet(KEY_DISABLED, emptySet())?.contains(name) == true) return true
+            return name in BaopuToolCatalog.DEFAULT_DISABLED &&
+                p.getStringSet(KEY_ENABLED, emptySet())?.contains(name) != true
+        }
 
         override fun setDisabled(name: String, disabled: Boolean) {
             val p = sp() ?: return
             // getStringSet 返回的实例不许原地改（Android 文档）⇒ 拷贝再写回
             val cur = p.getStringSet(KEY_DISABLED, emptySet())?.toMutableSet() ?: mutableSetOf()
-            if (disabled) cur.add(name) else cur.remove(name)
-            p.edit { putStringSet(KEY_DISABLED, cur) }
+            val en = p.getStringSet(KEY_ENABLED, emptySet())?.toMutableSet() ?: mutableSetOf()
+            if (disabled) {
+                cur.add(name)
+                en.remove(name)
+            } else {
+                cur.remove(name)
+                if (name in BaopuToolCatalog.DEFAULT_DISABLED) en.add(name)
+            }
+            p.edit {
+                putStringSet(KEY_DISABLED, cur)
+                putStringSet(KEY_ENABLED, en)
+            }
         }
 
-        override fun disabledNames(): Set<String> =
-            sp()?.getStringSet(KEY_DISABLED, mutableSetOf()) ?: emptySet()
+        override fun disabledNames(): Set<String> {
+            val p = sp() ?: return BaopuToolCatalog.DEFAULT_DISABLED
+            val explicit = p.getStringSet(KEY_DISABLED, emptySet()) ?: emptySet()
+            val enabled = p.getStringSet(KEY_ENABLED, emptySet()) ?: emptySet()
+            return explicit + (BaopuToolCatalog.DEFAULT_DISABLED - enabled)
+        }
 
         override fun disabledGroups(): Set<ToolGroup> =
             sp()?.getStringSet(KEY_DISABLED_GROUPS, emptySet())

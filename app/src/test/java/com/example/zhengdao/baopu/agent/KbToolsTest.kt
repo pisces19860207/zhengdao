@@ -228,7 +228,9 @@ class KbToolsTest {
         // ＋ 541 待办中心三件：todo_add / todo_list / todo_mark_done
         // ＋ 544 项目账本三件：ledger_add / ledger_status / ledger_list——
         // 它们不进组级默认可见，但走 UNLOCK_FREE_SILENT 那条免解锁通路，所以确实在 tools 数组里）
-        assertEquals(28, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
+        // 609：+小说资产读四件（novel_roster/novel_relations/novel_timeline/novel_annotations
+        // 进工具级默认可见名单；写两件 DEFAULT_DISABLED 默认关，不在默认面）
+        assertEquals(32, reg.visibleSpecs(ToolRegistry.NO_SESSION).size)
     }
 
     @Test

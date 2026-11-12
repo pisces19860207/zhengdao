@@ -388,14 +388,17 @@ class RiskWiringTest {
         // 谁再动表，先对账再改这两行）。
         // 第四百九十一批：备份/还原两件进表 ⇒ 9/80
         // 第五百零二批：MCP 自配五件进表 ⇒ 10/85（list R0；add/set_token R3；connect/disconnect R1）
-        assertEquals("矩阵版本与表不配套（改表必 +1）", 10, RiskTable.DEFAULT_VERSION)
+        // 609 小说资产六件进表 ⇒ 11/102（读四件 R0；写两件 R1 必问。按 RiskMatrix KDoc
+        // 「改表必须同时动 DEFAULT_VERSION」+1；不新造档，只复用 R0/R1）
+        assertEquals("矩阵版本与表不配套（改表必 +1）", 11, RiskTable.DEFAULT_VERSION)
         // 399 event_trigger 进表（与 schedule_task 同族同档 R2/必问）＝ 8/76（版本没动：没加新风险维度）
         // 527 治理出口进表（R0，只读）＝ 86 行（版本没动：没加新风险维度，同 399 先例）
         // 322 模型小黑板两件进表（board_read R0 / board_write R1）＝ 88 行（版本仍没动：没有新维度）
         // 541 待办中心三件进表（todo_list R0 / todo_add R1 / todo_mark_done R1）＝ 91 行（同样没有新维度）
         // 544 项目账本三件进表（ledger_list R0 / ledger_add R1 / ledger_status R1）＝ 94 行（同样没有新维度）
         // 597 立绘外貌两件进表（portrait_look R1 / portrait_appearance R1）＝ 96 行（同样没有新维度）
-        assertEquals("表行数变了：先对账再改（96 个注册工具 = 96 行（COMPAT 退役后无豁免行））", 96, RiskTable.DEFAULT.tools.size)
+        // 609 小说资产六件进表（读四件 R0 / timeline_append、annotation_reply R1 必问）＝ 102 行
+        assertEquals("表行数变了：先对账再改（102 个注册工具 = 102 行（COMPAT 退役后无豁免行））", 102, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)

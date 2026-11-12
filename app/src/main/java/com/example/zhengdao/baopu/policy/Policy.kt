@@ -68,7 +68,11 @@ internal data class Policy(
                 defaultVisible = setOf(ToolGroup.CORE, ToolGroup.EDIT, ToolGroup.COMPAT),
                 // 157「资料库默认可见」：两个只读件一上来就看得见（组仍锁，写类三件照旧按需解锁）。
                 // 与落盘 policy_v1.json 逐字段一致；readOnly 由 register 时再拦一次（fail closed）。
-                defaultVisibleTools = setOf("library_list", "kb_search"),
+                // 609：小说资产读四件同口径进默认面（判据⑥「自动可被模型调用」）；写两件不进。
+                defaultVisibleTools = setOf(
+                    "library_list", "kb_search",
+                    "novel_roster", "novel_relations", "novel_timeline", "novel_annotations",
+                ),
             ),
             approval = ApprovalPolicy(
                 groupReaskThreshold = GROUP_REASK_THRESHOLD,

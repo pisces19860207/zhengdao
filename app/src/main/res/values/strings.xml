@@ -1245,6 +1245,19 @@
     <string name="baopu_tool_novel_project_desc">看一个项目的总览：大纲、人物、目录、每章实际字数与目标差；只读。</string>
     <string name="baopu_tool_novel_continue">novel_continue：续写简报</string>
     <string name="baopu_tool_novel_continue_desc">接哪章哪段、人物与设定、一致性提示；续写用 edit_file 追加或 write_file 新开一章，不覆盖正文。</string>
+    <!-- 第六百零九批：小说资产六件（读四件默认可见；写两件默认关，开在这里） -->
+    <string name="baopu_tool_novel_roster">novel_roster：角色树</string>
+    <string name="baopu_tool_novel_roster_desc">从角色文件（Markdown 标题层级/JSON5）与关系表推断父子/族群，只给结构不读正文。</string>
+    <string name="baopu_tool_novel_relations">novel_relations：关系表</string>
+    <string name="baopu_tool_novel_relations_desc">读 *.rjson5 关系表，返回 {from,to,kind,note}；坏文件报「第 N 行」，不猜。</string>
+    <string name="baopu_tool_novel_timeline">novel_timeline：时间线</string>
+    <string name="baopu_tool_novel_timeline_desc">读 *.tjson5 时间线，返回 {id,name,at,parent}，支持区间过滤；只读结构。</string>
+    <string name="baopu_tool_novel_annotations">novel_annotations：批注线程</string>
+    <string name="baopu_tool_novel_annotations_desc">读 *.ajson5 批注线程（含状态与回复）；只读批注结构不读正文。</string>
+    <string name="baopu_tool_novel_timeline_append">novel_timeline_append：追加时间线事件</string>
+    <string name="baopu_tool_novel_timeline_append_desc">往时间线文件末尾追加一条事件，已有内容一个字节不动；同名/同 id 报冲突不写。每次要确认。</string>
+    <string name="baopu_tool_novel_annotation_reply">novel_annotation_reply：回复批注</string>
+    <string name="baopu_tool_novel_annotation_reply_desc">给批注线程追加一条回复，已有内容一个字节不动；线程不存在报错不猜。每次要确认。</string>
     <!-- 第一百六十八批：生产评测开关（eval_prod_on 写入口；默认关） -->
     <string name="baopu_eval_prod_card">生产评测</string>
     <string name="trigger_settings_card">事件触发</string>

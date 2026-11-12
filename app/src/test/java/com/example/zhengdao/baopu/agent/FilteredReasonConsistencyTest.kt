@@ -90,6 +90,12 @@ class FilteredReasonConsistencyTest {
         try {
             // 全部长期同意 ⇒ 全可见（默认可见 ∪ 已同意 ∪ 已解锁 三川并流）
             ToolGroup.values().forEach { reg.setGroupApproved(it, true) }
+            // 609：默认关两件即使组全同意也被 filtered 点名「用户关闭」；显式开后才 none
+            val pre = reg.filteredLine()
+            BaopuToolCatalog.DEFAULT_DISABLED.forEach {
+                assertTrue("默认关工具要带原因：$pre", pre.contains("$it=用户关闭"))
+                reg.setDisabled(it, false)
+            }
             assertEquals("none", reg.filteredLine())
 
             reg.setDisabled("read_file", true)

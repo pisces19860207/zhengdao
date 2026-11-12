@@ -279,6 +279,15 @@ internal object ToolGroupTable {
         "novel_create" to ToolGroup.LIBRARY,
         "novel_project" to ToolGroup.LIBRARY,
         "novel_continue" to ToolGroup.LIBRARY,
+        // 第六百零九批：小说资产六件（读四件 R0 ＋ 写两件 R1 必问）。同归 LIBRARY：
+        // 读四件另进 toolGroups.defaultVisibleTools（默认可见，判据⑥「自动可被模型调用」）；
+        // 写两件另进 DEFAULT_DISABLED（默认关，设置里显式开）。
+        "novel_roster" to ToolGroup.LIBRARY,
+        "novel_relations" to ToolGroup.LIBRARY,
+        "novel_timeline" to ToolGroup.LIBRARY,
+        "novel_annotations" to ToolGroup.LIBRARY,
+        "novel_timeline_append" to ToolGroup.LIBRARY,
+        "novel_annotation_reply" to ToolGroup.LIBRARY,
         // ── 以下默认不可见，要 capabilities 解锁
         "browser_click" to ToolGroup.BROWSER,
         "browser_type" to ToolGroup.BROWSER,
@@ -926,16 +935,29 @@ internal class InMemoryToolPrefs(
     initial: Set<String> = emptySet(),
     initialGroups: Set<ToolGroup> = emptySet(),
     initialApproved: Set<ToolGroup> = emptySet(),
+    /** 609：用户**显式开过**的名字（只对 DEFAULT_DISABLED 里的默认关件有意义）。 */
+    initialEnabled: Set<String> = emptySet(),
 ) : ToolPrefs {
     private val disabled = initial.toMutableSet()
+    private val enabled = initialEnabled.toMutableSet()
     private val disabledGroups = initialGroups.toMutableSet()
     private val approvedGroups = initialApproved.toMutableSet()
-    override fun isDisabled(name: String): Boolean = name in disabled
+
+    // 609 三态：显式关 > 显式开 > 默认（DEFAULT_DISABLED 里的默认关，其余默认开）
+    override fun isDisabled(name: String): Boolean =
+        name in disabled || (name in BaopuToolCatalog.DEFAULT_DISABLED && name !in enabled)
+
     override fun setDisabled(name: String, disabled: Boolean) {
-        if (disabled) this.disabled.add(name) else this.disabled.remove(name)
+        if (disabled) {
+            this.disabled.add(name)
+            enabled.remove(name)
+        } else {
+            this.disabled.remove(name)
+            if (name in BaopuToolCatalog.DEFAULT_DISABLED) enabled.add(name)
+        }
     }
 
-    override fun disabledNames(): Set<String> = disabled.toSet()
+    override fun disabledNames(): Set<String> = disabled + (BaopuToolCatalog.DEFAULT_DISABLED - enabled)
 
     override fun disabledGroups(): Set<ToolGroup> = disabledGroups.toSet()
 
@@ -1445,6 +1467,12 @@ internal object BaopuToolCatalog {
         "novel_create",
         "novel_project",
         "novel_continue",
+        // 第六百零九批：小说资产读四件默认「启用」＋默认可见（defaultVisibleTools）；
+        // 写两件**不在这里**——它们在 DEFAULT_DISABLED（默认关，判据④负例）
+        "novel_roster",
+        "novel_relations",
+        "novel_timeline",
+        "novel_annotations",
         // 浏览器六件（玄览）：读类免确认、写类 CONFIRM；网关没注入时统一回「玄览还没打开」
         "browser_open",
         "browser_snapshot",
@@ -1539,6 +1567,23 @@ internal object BaopuToolCatalog {
         "mcp_set_token",
     )
 
+    /**
+     * 第六百零九批：**默认关**集合（判据④「写两件默认不可见」）。
+     *
+     * 与 [DEFAULT_ENABLED] 的关系：那张表是「默认开」的清单（文档/对账用），
+     * 这张表是「默认关」的清单（**真生效**——prefs 的 isDisabled/disabledNames
+     * 都认它：名字在这里且用户没显式开过 ⇒ 关）。用户在设置里打开 ⇒ 记进
+     * 「显式开」集合（BaopuToolPrefs 的 KEY_ENABLED / InMemoryToolPrefs 的 enabled），
+     * 之后与常规工具同口径；再关 ⇒ 回到默认关。
+     *
+     * 为什么写两件要默认关而 novel_create 不用：那两件是 609 派工单点名
+     * 「默认关，需在设置里显式开」的追加写口；novel_create 是 155 批的既有口径，不动。
+     */
+    val DEFAULT_DISABLED: Set<String> = setOf(
+        "novel_timeline_append",
+        "novel_annotation_reply",
+    )
+
     /** 一张表（顺序即 tools 数组顺序——稳定，缓存友好；读类在前，写类在后）。 */
     val ENTRIES: List<Entry> = listOf(
         // 第二百一十八批 · 工具补齐 v1（六件；riskTier：R0/R0/R2/R1/R1/R1，协作注意 #1）
@@ -1608,6 +1653,15 @@ internal object BaopuToolCatalog {
         Entry("novel_create") { NovelCreateTool.spec(it) },
         Entry("novel_project") { NovelProjectTool.spec(it) },
         Entry("novel_continue") { NovelContinueTool.spec(it) },
+        // 第六百零九批：小说资产六件——读四件 FREE 只读（R0，默认可见）；
+        // 写两件 CONFIRM（R1 必问，DEFAULT_DISABLED 默认关）。解析/围栏在
+        // NovelJson5/NovelFence/NovelAssets，六件共用，不另写第二套。
+        Entry("novel_roster") { NovelRosterTool.spec(it) },
+        Entry("novel_relations") { NovelRelationsTool.spec(it) },
+        Entry("novel_timeline") { NovelTimelineTool.spec(it) },
+        Entry("novel_annotations") { NovelAnnotationsTool.spec(it) },
+        Entry("novel_timeline_append") { NovelTimelineAppendTool.spec(it) },
+        Entry("novel_annotation_reply") { NovelAnnotationReplyTool.spec(it) },
         // 浏览器六件不需要 workspaceRoot（守卫走 URL/scheme，不走路径）
         Entry("browser_open") { BrowserTools.openSpec() },
         Entry("browser_snapshot") { BrowserTools.snapshotSpec() },

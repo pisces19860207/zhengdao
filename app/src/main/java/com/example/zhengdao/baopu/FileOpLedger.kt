@@ -165,6 +165,9 @@ internal object FileOpRules {
         "copy_path", "bulk_copy" -> FileOpKind.COPY
         "bulk_move", "organize" -> FileOpKind.MOVE
         "organize_preview" -> FileOpKind.READ
+        // 609 小说资产六件：读四件 READ；写两件 WRITE（只追加，不改已有）
+        "novel_roster", "novel_relations", "novel_timeline", "novel_annotations" -> FileOpKind.READ
+        "novel_timeline_append", "novel_annotation_reply" -> FileOpKind.WRITE
         else -> null
     }
 
@@ -206,6 +209,13 @@ internal object FileOpRules {
         "archive_pack" -> "打包"
         "archive_extract" -> "解包"
         "image_ops" -> "图像处理"
+        // 609 小说资产六件（一句人话，同上方口径）
+        "novel_roster" -> "看角色树"
+        "novel_relations" -> "看关系表"
+        "novel_timeline" -> "看时间线"
+        "novel_annotations" -> "看批注线程"
+        "novel_timeline_append" -> "追加时间线事件「${brief(args.optString("name"))}」"
+        "novel_annotation_reply" -> "回复批注线程「${brief(args.optString("thread"))}」"
         else -> tool
     }
 

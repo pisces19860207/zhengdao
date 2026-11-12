@@ -69,7 +69,11 @@ class ToolRegistrySwitchTest {
         val reg = registry()
 
         // write_skill / append_persona 由 BaopuRuntime 单独注册（要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
-        assertEquals(BaopuToolCatalog.ENTRIES.size + 2, BaopuToolCatalog.DEFAULT_ENABLED.size)
+        // 609：写两件进 DEFAULT_DISABLED（默认关）⇒ 默认启用面 = ENTRIES + 2 − 默认关两件
+        assertEquals(
+            BaopuToolCatalog.ENTRIES.size + 2 - BaopuToolCatalog.DEFAULT_DISABLED.size,
+            BaopuToolCatalog.DEFAULT_ENABLED.size,
+        )
         assertEquals(
             listOf(
                 // 218：工具补齐 v1 六件（ENTRIES 最前；组默认不可见但默认启用）
@@ -98,6 +102,9 @@ class ToolRegistrySwitchTest {
                 "copy_path", "bulk_move", "bulk_copy", "organize", "organize_preview",
                 // 小说工程三件（第一百五十五批）：表序即注册序（convert_encoding 之后）
                 "novel_create", "novel_project", "novel_continue",
+                // 609：小说资产六件（表序即注册序，novel_continue 之后；写两件默认关）
+                "novel_roster", "novel_relations", "novel_timeline", "novel_annotations",
+                "novel_timeline_append", "novel_annotation_reply",
                 "browser_open", "browser_snapshot", "browser_evidence", "browser_click",
                 "browser_type", "browser_scroll", "browser_screenshot",
                 // 第一百七十七批：坐标四件＋等待（表序即注册序，插在 screenshot 之后）
@@ -135,9 +142,17 @@ class ToolRegistrySwitchTest {
             reg.names(),
         )
         BaopuToolCatalog.ENTRIES.forEach { e ->
-            assertTrue("${e.name} 默认必须启用", reg.isEnabled(e.name))
+            if (e.name in BaopuToolCatalog.DEFAULT_DISABLED) {
+                // 609：默认关两件——默认必须**不**启用（设置里显式开才启用）
+                assertFalse("${e.name} 默认必须关", reg.isEnabled(e.name))
+            } else {
+                assertTrue("${e.name} 默认必须启用", reg.isEnabled(e.name))
+            }
         }
-        assertEquals(BaopuToolCatalog.ENTRIES.map { it.name }.toSet(), reg.enabledNames().toSet())
+        assertEquals(
+            BaopuToolCatalog.ENTRIES.map { it.name }.toSet() - BaopuToolCatalog.DEFAULT_DISABLED,
+            reg.enabledNames().toSet(),
+        )
     }
 
     @Test
@@ -160,9 +175,13 @@ class ToolRegistrySwitchTest {
             }
         assertEquals(defaultVisible, namesOf(reg.toolsJsonOpenAi()))
         // 全解锁（模拟 capabilities 把每一组都开过）⇒ 表序**完整**复现
+        // 609：默认关两件即使组解锁也不进 tools 数组（开关优先级高于组可见性）
         reg.currentSessionId = 7L
         reg.unlockStore().unlock(7L, ToolGroup.values().toList())
-        assertEquals(BaopuToolCatalog.ENTRIES.map { it.name }, namesOf(reg.toolsJsonOpenAi()))
+        assertEquals(
+            BaopuToolCatalog.ENTRIES.map { it.name } - BaopuToolCatalog.DEFAULT_DISABLED,
+            namesOf(reg.toolsJsonOpenAi()),
+        )
     }
 
     @Test

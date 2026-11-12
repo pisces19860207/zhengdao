@@ -598,6 +598,16 @@ class ToolSchemaAllTest {
             "mcp_connect" to JSONObject().put("id", "s0a1b2c"),
             "mcp_disconnect" to JSONObject().put("id", "s0a1b2c"),
             "mcp_set_token" to JSONObject().put("id", "s0a1b2c").put("token", "sample"),
+            // 609：小说资产六件（读四件 path 全可选——REQUIRED_EMPTY_OK 已签字；
+            // 写两件必填：append = path+name+at，reply = path+thread+text）
+            "novel_roster" to JSONObject(),
+            "novel_relations" to JSONObject(),
+            "novel_timeline" to JSONObject(),
+            "novel_annotations" to JSONObject(),
+            "novel_timeline_append" to JSONObject()
+                .put("path", "小说/书名/时间线/主线.tjson5").put("name", "灵潮爆发").put("at", "2026-11-12"),
+            "novel_annotation_reply" to JSONObject()
+                .put("path", "小说/书名/批注/第一卷.ajson5").put("thread", "t1").put("text", "收到，第十节补"),
         )
 
         /** 数组成员的参数（按「工具名.参数名」索引）：自动造不出有意义的元素，手写。 */

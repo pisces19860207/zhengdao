@@ -136,6 +136,11 @@ internal object ToolSchemaRules {
         // 第五百四十四批：看账只带一个可选参数（includeArchived 默认 false ＝ 只看账面）
         "ledger_list" to "唯一参数 includeArchived 可选：默认 false＝只看还露面的条目，归档的要用 true 才一起给" +
             "（LedgerListTool，544 批）",
+        // 第六百零九批：小说资产读四件——path 省略＝约定位置全收（同 novel_project 的免必填口径）
+        "novel_roster" to "path 可省略：省略＝各小说项目与资料库的 角色/ 全收（NovelRosterTool，609 批）",
+        "novel_relations" to "path 可省略：省略＝各小说项目与资料库的 关系/ 全收（NovelRelationsTool，609 批）",
+        "novel_timeline" to "path/from/to 全可选：path 省略＝约定位置全收，from/to 省略＝不过滤（NovelTimelineTool，609 批）",
+        "novel_annotations" to "path 可省略：省略＝各小说项目与资料库的 批注/ 全收（NovelAnnotationsTool，609 批）",
     )
 
     /**

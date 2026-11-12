@@ -57,6 +57,9 @@ class ToolSchedulingGateTest {
         // 第一百五十五批：novel_project/novel_continue 都是纯文件读（FREE 只读、parallelSafe），
         // novel_create 会写盘（CONFIRM）**不在此列**
         "novel_project", "novel_continue",
+        // 609：小说资产读四件都是纯文件读（FREE 只读、parallelSafe）；
+        // 写两件 novel_timeline_append/novel_annotation_reply 会写盘（CONFIRM）**不在此列**
+        "novel_roster", "novel_relations", "novel_timeline", "novel_annotations",
         // 第一百九十五批：查询读的是本机当日发货表（一次查询=一次只读 SELECT，不写盘、不碰工作区、
         // 不调模型也不联网），与别的读可并行；写台账的是导入那一步，不是这个工具
         "logistics_query",

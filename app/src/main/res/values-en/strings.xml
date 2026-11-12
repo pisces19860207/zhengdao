@@ -1291,6 +1291,19 @@
     <string name="baopu_tool_novel_project_desc">Read-only overview of a project: outline, characters, chapter list, actual words vs target.</string>
     <string name="baopu_tool_novel_continue">novel_continue: Continuation brief</string>
     <string name="baopu_tool_novel_continue_desc">Where to continue (chapter and paragraph), characters and notes, consistency hints; append via edit_file or start a new chapter via write_file, never overwrite.</string>
+    <!-- Batch 609: novel asset tools (four reads visible by default; two writes off by default, enable here) -->
+    <string name="baopu_tool_novel_roster">novel_roster: Character tree</string>
+    <string name="baopu_tool_novel_roster_desc">Infers parent/group links from character files (Markdown heading levels/JSON5) and relation tables; structure only, never chapter text.</string>
+    <string name="baopu_tool_novel_relations">novel_relations: Relation table</string>
+    <string name="baopu_tool_novel_relations_desc">Reads *.rjson5 relation tables, returns {from,to,kind,note}; broken files report the line number, never guesses.</string>
+    <string name="baopu_tool_novel_timeline">novel_timeline: Timeline</string>
+    <string name="baopu_tool_novel_timeline_desc">Reads *.tjson5 timelines, returns {id,name,at,parent} with range filtering; structure only.</string>
+    <string name="baopu_tool_novel_annotations">novel_annotations: Annotation threads</string>
+    <string name="baopu_tool_novel_annotations_desc">Reads *.ajson5 annotation threads (status and replies); annotation structure only, never chapter text.</string>
+    <string name="baopu_tool_novel_timeline_append">novel_timeline_append: Append timeline event</string>
+    <string name="baopu_tool_novel_timeline_append_desc">Appends one event to a timeline file without touching existing bytes; duplicate name/id is reported as a conflict, not written. Confirmation required each time.</string>
+    <string name="baopu_tool_novel_annotation_reply">novel_annotation_reply: Reply to annotation</string>
+    <string name="baopu_tool_novel_annotation_reply_desc">Appends one reply to an annotation thread without touching existing bytes; unknown thread is an error, never guessed. Confirmation required each time.</string>
     <!-- Batch 168: production eval switch (eval_prod_on write entry; off by default) -->
     <string name="baopu_eval_prod_card">Production eval</string>
     <string name="trigger_settings_card">Event triggers</string>

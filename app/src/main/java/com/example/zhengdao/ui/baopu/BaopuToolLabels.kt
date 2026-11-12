@@ -125,6 +125,13 @@ internal object BaopuToolLabels {
         "novel_create" to R.string.baopu_tool_novel_create,
         "novel_project" to R.string.baopu_tool_novel_project,
         "novel_continue" to R.string.baopu_tool_novel_continue,
+        // 609：小说资产六件（漏一行 ⇒ 设置页开工具卡直接抛，同 update_plan 教训）
+        "novel_roster" to R.string.baopu_tool_novel_roster,
+        "novel_relations" to R.string.baopu_tool_novel_relations,
+        "novel_timeline" to R.string.baopu_tool_novel_timeline,
+        "novel_annotations" to R.string.baopu_tool_novel_annotations,
+        "novel_timeline_append" to R.string.baopu_tool_novel_timeline_append,
+        "novel_annotation_reply" to R.string.baopu_tool_novel_annotation_reply,
         "ask_user" to R.string.baopu_tool_ask_user,
         // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
         "run_subtasks" to R.string.baopu_tool_run_subtasks,
@@ -242,6 +249,13 @@ internal object BaopuToolLabels {
         "novel_create" to R.string.baopu_tool_novel_create_desc,
         "novel_project" to R.string.baopu_tool_novel_project_desc,
         "novel_continue" to R.string.baopu_tool_novel_continue_desc,
+        // 609：小说资产六件（同上，漏一行即抛）
+        "novel_roster" to R.string.baopu_tool_novel_roster_desc,
+        "novel_relations" to R.string.baopu_tool_novel_relations_desc,
+        "novel_timeline" to R.string.baopu_tool_novel_timeline_desc,
+        "novel_annotations" to R.string.baopu_tool_novel_annotations_desc,
+        "novel_timeline_append" to R.string.baopu_tool_novel_timeline_append_desc,
+        "novel_annotation_reply" to R.string.baopu_tool_novel_annotation_reply_desc,
         "ask_user" to R.string.baopu_tool_ask_user_desc,
         "run_subtasks" to R.string.baopu_tool_run_subtasks_desc,
         // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolDesc 的 fail-fast）
