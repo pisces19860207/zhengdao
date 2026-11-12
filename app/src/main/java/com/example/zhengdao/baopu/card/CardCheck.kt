@@ -130,32 +130,42 @@ internal object CardCheck {
             }
         }
 
-        // 599 段D ①「认」（判据原文：卡里出现这四件 ⇒ 体检认得出，并报「用了变量面板」）：
-        // 只加一条 INFO，不改任何既有判据 —— 没写 ai_variable_* 的卡，报告逐字节不变。
+        findings += variablePanelFindings(asset)
+        findings += dialectGuards(verdict.format, findings.toList())
+
+        return CheckReport(findings, stats, skipped, given)
+    }
+
+    /**
+     * 599 段D ①「认」：卡里出现 ai_variable_* ⇒ 一条 INFO（判据原文「体检认得出」）。
+     *
+     * 抽成私有函数是为了**不给 [check] 加复杂度**（CyclomaticComplexMethod 卡 15；
+     * 内联会把 check 推到 22 ⇒ 硬墙 190 破 189 预算）。
+     * 没写 ai_variable_* 的卡，报告逐字节不变（返回空表）。
+     */
+    private fun variablePanelFindings(asset: CardAsset): List<Finding> {
         val vars = FengyueVars.detect(asset.raw)
-        if (vars.hasJson || vars.hasTemplate || vars.hasPrompt) {
-            val pieces = buildList {
-                if (vars.hasJson) add(FengyueVars.KEY_JSON)
-                if (vars.hasTemplate) add(FengyueVars.KEY_TEMPLATE)
-                if (vars.hasPrompt) add(FengyueVars.KEY_PROMPT)
-            }.joinToString("／")
-            val switch = when (vars.enabled) {
-                true -> "开"
-                false -> "关"
-                null -> "没写"
-            }
-            findings += Finding(
+        if (!vars.hasJson && !vars.hasTemplate && !vars.hasPrompt) return emptyList()
+        val pieces = buildList {
+            if (vars.hasJson) add(FengyueVars.KEY_JSON)
+            if (vars.hasTemplate) add(FengyueVars.KEY_TEMPLATE)
+            if (vars.hasPrompt) add(FengyueVars.KEY_PROMPT)
+        }.joinToString("／")
+        val switch = when (vars.enabled) {
+            true -> "开"
+            false -> "关"
+            null -> "没写"
+        }
+        return listOf(
+            Finding(
                 level = Level.INFO,
                 code = "CARD_VARIABLE_PANEL",
                 stage = Stage.SEMANTIC,
                 field = FengyueVars.KEY_JSON,
                 message = "这张卡用了风月变量面板（" + pieces + "）；皮肤开关=" + switch,
                 evidence = "model_config 里出现 ai_variable_* ⇒ 变量面板口径（599 D①）",
-            )
-        }
-        findings += dialectGuards(verdict.format, findings.toList())
-
-        return CheckReport(findings, stats, skipped, given)
+            ),
+        )
     }
 
     /**
