@@ -237,6 +237,24 @@ class MidRiskThresholdEvoFixtureTest {
         assertEquals("没装配 ⇒ 生效值＝政策表原值（闸行为与接线前逐字节一致）", policyValue, effective())
     }
 
+    /**
+     * 半装配现场（568-B 收尾趟补）：只摘后果链、账本留在盘上——这才是 installed() 守卫能区分的一态。
+     * 上一条判据⑨ 把两把装口一起摘（账本空 ⇒ currentThreshold 恒 null），摘不摘守卫都绿，钉不住守卫。
+     */
+    @Test
+    fun `判据⑨b_半装配_账还在后果链摘了_生效值不跟账跑_不落新行`() {
+        repeat(2) { i ->
+            assertTrue(propose(effective(), 1, turn = i + 1, atMs = now + i * 3_600_000L))
+        }
+        assertEquals("装配齐 ⇒ 生效值跟着账走", policyValue + 2, effective())
+        assertEquals("半装配现场先让账上有料", 2, thresholdRows().size)
+        ConsequenceWiring.uninstallForTest()
+        assertEquals("链没装 ⇒ 生效值回政策表原值（不许读还留在盘上的账）", policyValue, effective())
+        assertFalse("链没装 ⇒ 不自调", propose(effective(), 1, turn = 3, atMs = now + 7_200_000L))
+        assertEquals("链没装 ⇒ 账上不多写调整行", 2, thresholdRows().size)
+        assertEquals("链没装 ⇒ 账上不多写观察行", 2, observationRows().size)
+    }
+
     @Test
     fun `判据④c_红线假动作_共用门拒并记账`() {
         val fake = EvoCandidate(
