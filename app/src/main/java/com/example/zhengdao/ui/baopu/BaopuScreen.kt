@@ -1599,7 +1599,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                 )
             }
             // 高风险采纳的二次确认层（验收 #8：无确认不可采纳；完整前后对比）
-            controller.pendingAdoptConfirm?.let { s ->
+            // 618：两侧正文都取 `pendingAdoptDiff`（＝写盘那份算法的输出），不再拿候选里那一段顶替「后」。
+            controller.pendingAdoptConfirm?.let {
                 AlertDialog(
                     onDismissRequest = { controller.dismissAdoptConfirm() },
                     title = { Text(stringResource(R.string.decision_adopt_confirm_title)) },
@@ -1616,8 +1617,9 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = controller.pendingAdoptBefore
-                                    ?: stringResource(R.string.decision_adopt_none),
+                                text = controller.pendingAdoptDiff?.before?.ifEmpty {
+                                    stringResource(R.string.decision_adopt_none)
+                                } ?: stringResource(R.string.decision_adopt_none),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1628,7 +1630,10 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = s.payload,
+                                // 618：这里以前直接渲染候选里那一段「要追加的正文」，
+                                // 与「采纳前」的盘上全文对不上 ⇒ 现在取的是**真会写进去的那份正文**。
+                                text = controller.pendingAdoptDiff?.after
+                                    ?: stringResource(R.string.decision_adopt_none),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

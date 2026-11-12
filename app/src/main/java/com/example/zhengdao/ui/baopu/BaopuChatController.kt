@@ -1437,48 +1437,59 @@ internal class BaopuChatController(context: Context) {
         private set
 
     /**
-     * 二次确认层的「采纳前」正文（IO 现读；null = 还没读出来或首写）。
+     * 二次确认层的「采纳前／采纳后」一对正文（IO 现算；null ＝ 还没算出来）。
      *
-     * 高风险采纳的确认层要展示完整 diff（设计稿 §0 决策 #4）——「后」就是
-     * [EvolutionSuggestion.payload]，「前」在这里现读盘（项目层优先、全局层兜底，
-     * 与 [skillFileOf] 同一口径；人设类读 C 层正文）。
+     * 高风险采纳的确认层要展示**完整前后对比**（设计稿 §0 决策 #4、验收 #8）。第六百一十八批前
+     * 这里是「前＝盘上正文、后＝[EvolutionSuggestion.payload]」——而 payload 只是一段待追加的正文，
+     * 于是弹窗上「前」是全文、「后」是增量，逐字对不上（539-(5)）。现在两边都走
+     * [com.example.zhengdao.baopu.AdoptPreviewRules]：**它就是写盘用的那份算法**，
+     * 弹窗展示的「后」与将来落盘的正文是同一个函数的同一个输出。
      */
-    var pendingAdoptBefore by mutableStateOf<String?>(null)
+    var pendingAdoptDiff by mutableStateOf<com.example.zhengdao.baopu.AdoptPreviewRules.Preview?>(null)
         private set
 
     fun dismissAdoptConfirm() {
         pendingAdoptConfirm = null
-        pendingAdoptBefore = null
+        pendingAdoptDiff = null
     }
 
     /** 二次确认层里点「确认采纳」。 */
     fun confirmAdoptSuggestion() {
         val s = pendingAdoptConfirm ?: return
         pendingAdoptConfirm = null
-        pendingAdoptBefore = null
+        pendingAdoptDiff = null
         applySuggestionAdopt(s)
     }
 
-    /** 打开二次确认层，并异步读「采纳前」正文（IO 不压重组）。 */
+    /** 打开二次确认层，并异步算「前／后」两份正文（IO 不压重组）。 */
     private fun openAdoptConfirm(s: EvolutionSuggestion) {
         pendingAdoptConfirm = s
-        pendingAdoptBefore = null
+        pendingAdoptDiff = null
         scope.launch {
-            pendingAdoptBefore = withContext(Dispatchers.IO) {
+            pendingAdoptDiff = withContext(Dispatchers.IO) {
                 runCatching {
                     when (s.kind) {
                         com.example.zhengdao.baopu.ProposalKind.SKILL_BODY -> {
-                            val globalRoot = java.io.File(appCtx.filesDir, "抱朴记忆")
                             val projectRoot = com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(appCtx)
-                            skillFileOf(s.target, projectRoot, globalRoot)?.readText()
+                            // 「前」读**会被覆盖的那一个**（项目落点），不拿全局同名技能顶替
+                            val target = com.example.zhengdao.baopu.AdoptPreviewRules.skillTargetFile(projectRoot, s.target)
+                            val previous = target?.takeIf { it.isFile }?.readText(Charsets.UTF_8)
+                            com.example.zhengdao.baopu.AdoptPreviewRules.skillBody(
+                                previous = previous,
+                                // 「后」与 [writeLearnedSkill] 里 `SkillProposal.body` 同一个表达式
+                                body = com.example.zhengdao.baopu.SkillRefine.skillBodyFor(learnProposalOf(s)),
+                            )
                         }
 
                         // 2026-10-23：TOOL_RULE 采纳落点＝本项目人设（C 层），
                         // 与 PERSONA_APPEND 同一条有备份的写盘通道；采纳前也要读旧正文做对比。
                         com.example.zhengdao.baopu.ProposalKind.PERSONA_APPEND,
                         com.example.zhengdao.baopu.ProposalKind.TOOL_RULE ->
-                            com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
-                                .read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT)
+                            com.example.zhengdao.baopu.AdoptPreviewRules.personaAppend(
+                                current = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
+                                    .read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT),
+                                payload = s.payload,
+                            )
                     }
                 }.getOrNull()
             }
@@ -1630,7 +1641,9 @@ internal class BaopuChatController(context: Context) {
     private fun appendSuggestionPersona(s: EvolutionSuggestion): BaopuNote {
         val pf = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(appCtx)
         val current = pf.read(com.example.zhengdao.baopu.PersonaLayer.C_PROJECT).orEmpty()
-        val proposed = if (current.isBlank()) s.payload else current.trimEnd() + "\n\n" + s.payload
+        // 618：追加算法只有一份（AdoptPreviewRules.appended）——弹窗「采纳后」展示的就是这一份，
+        // 谁再在这儿自己拼空行，弹窗与落盘就会第二次分叉。
+        val proposed = com.example.zhengdao.baopu.AdoptPreviewRules.personaAppend(current, s.payload).after
         val p = com.example.zhengdao.baopu.PersonaProposal(
             layer = com.example.zhengdao.baopu.PersonaLayer.C_PROJECT,
             current = current,
