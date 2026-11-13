@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 629: startup failure page + safe mode. Kept in its own file (same house style as
+     strings_health.xml) so the shared strings.xml does not turn into a conflict point. -->
+<resources>
+    <string name="startup_fail_title">Baopu did not start: %1$s</string>
+    <string name="startup_fail_subtitle">Assembly was interrupted at this step, so the main screen never opened. Files in your workspace were not deleted or modified.</string>
+    <string name="startup_fail_reason_label">Reason</string>
+    <string name="startup_fail_reason_empty">(this exception carried no message)</string>
+    <string name="startup_fail_retry">Retry</string>
+    <string name="startup_fail_retry_hint">Retry assembles once more. If nothing changed, it will fail again.</string>
+    <string name="startup_fail_export">Export diagnostics</string>
+    <string name="startup_fail_export_again">Export again</string>
+    <string name="startup_fail_safe_mode">Continue in safe mode</string>
+    <string name="startup_fail_dump_done">Diagnostics saved to: %1$s</string>
+    <string name="startup_fail_dump_failed">Could not write the diagnostics: the workspace is not writable. Set it back to the default and try again.</string>
+    <string name="startup_safe_banner">Safe mode · limited features</string>
+    <string name="startup_safe_desc">Baopu did not start. Only Settings and Logs are available.</string>
+    <string name="startup_safe_reason">Last failure: %1$s</string>
+    <string name="startup_safe_settings_desc">The usual settings page</string>
+    <string name="startup_safe_logs">Logs</string>
+    <string name="startup_safe_logs_desc">Run log, including the previous start</string>
+    <string name="startup_safe_exit">Leave safe mode and assemble again</string>
+</resources>

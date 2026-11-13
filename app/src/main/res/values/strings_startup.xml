@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第六百二十九单：装配失败页与安全模式的文案。单独成文件（房型照 158/198/291 那几本）：
+     共享 strings.xml 每批都有人碰，抽出来少一处冲突点，键名也一眼数得清。
+     口径：错误页三钮的名字与判据逐字对齐（重试／导出诊断／以安全模式继续），
+     安全模式必须在屏上明示"功能受限"，不许只把抱朴藏起来当没事。 -->
+<resources>
+    <!-- 判据①的标题形态：「抱朴没能启动：<异常类型>」——类型名是变量，不写死某一类异常 -->
+    <string name="startup_fail_title">抱朴没能启动：%1$s</string>
+    <string name="startup_fail_subtitle">启动装配在这一步中断了，主界面没有打开。工作区里的文件没有被删除，也没有被改动。</string>
+    <string name="startup_fail_reason_label">原因</string>
+    <string name="startup_fail_reason_empty">（这个异常没有带说明）</string>
+    <string name="startup_fail_retry">重试</string>
+    <string name="startup_fail_retry_hint">点「重试」会重新装配一次；问题没修好之前，它会再失败一次。</string>
+    <string name="startup_fail_export">导出诊断</string>
+    <string name="startup_fail_export_again">再导出一次诊断</string>
+    <string name="startup_fail_safe_mode">以安全模式继续</string>
+    <string name="startup_fail_dump_done">诊断已写到：%1$s</string>
+    <string name="startup_fail_dump_failed">诊断没写出来——工作区不可写，先把它改回默认再试。</string>
+    <!-- 安全模式：横幅常驻（切到设置页也不消失），明示"抱朴没启动、只有两件事能做" -->
+    <string name="startup_safe_banner">安全模式 · 功能受限</string>
+    <string name="startup_safe_desc">抱朴没有启动。现在只有「设置」和「日志」可用。</string>
+    <string name="startup_safe_reason">上次失败：%1$s</string>
+    <string name="startup_safe_settings_desc">与平时一样的设置页</string>
+    <string name="startup_safe_logs">日志</string>
+    <string name="startup_safe_logs_desc">运行日志，含上一次启动的记录</string>
+    <string name="startup_safe_exit">退出安全模式并重新装配</string>
+</resources>
