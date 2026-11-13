@@ -175,7 +175,7 @@
     ]
   },
   "core": {
-    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入",
+    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入；WorkspaceTruth 615（工作区实态唯一判据，两个解析器共用）",
     "declarations": [
       {
         "name": "AppPrefs",
@@ -253,6 +253,13 @@
         "file": "TimeFormats.kt",
         "external_refs": 147,
         "verdict": "public 必要（:app 重度在用）"
+      },
+      {
+        "name": "WorkspaceTruth",
+        "kind": "object",
+        "file": "WorkspaceTruth.kt",
+        "external_refs": 5,
+        "verdict": "public 必要（615）：全 App 有两个工作区解析器（:app BaopuWorkspace 管投递／产物／附件，:core ZhengdaoDirs 管资料库／备份），「声明 vs 实走背离怎么判、那一行长什么样、什么时候不许再记」必须只有一份定义，否则两处一定漂移（前例＝EnvironmentScope 消双判）。:app 侧引用＝BaopuWorkspace.kt 的 import＋report＋diverged×2＋SAME。收口条件：两套 prefs 键（baopu_ws_* 与 workspace_*）并成一套、只剩一个解析器之后，可退回 internal（那是另一单）"
       },
       {
         "name": "ZhengdaoDirs",
