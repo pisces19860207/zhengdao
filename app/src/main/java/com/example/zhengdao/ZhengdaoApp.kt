@@ -94,12 +94,11 @@ class ZhengdaoApp : Application() {
         // 详见 MainActivity 同段注释：引擎的十几个 mutableStateOf 一旦在 Scaffold 的 measure 子组合里
         // 被首次创建，快照 id 就比主组合晚，主组合读它即崩。
         //
-        // 617：**不许 runCatching 吞掉预建失败再「退回懒建」**。那条兜底会把保护条件化——
-        // 装配一失败引擎实例就还是 null，下一次取用恰好落在组合期（BaopuChatController 构造），
-        // 于是又回到 617 那条栈。这里是唯一合法的构造点，装配失败属不可恢复错误，
-        // 应当带完整栈 fail fast，而不是静默降级成一个更隐蔽的偶发崩溃。
-        com.example.zhengdao.baopu.BaopuRuntime.engine(this)
-        RunLog.log("启动：引擎在主组合之前预建完成（617 无条件构造）")
+        // 629：这里不再是 `runCatching { engine(this) }.onFailure { 退回懒建 }`。那条兜底把
+        // 「装配失败」变成一行日志 + 一次静默降级，下一次取用落到组合期照样炸（617 的栈）。
+        // 现在装配统一走 [StartupGate]：成功 ⇒ 主界面；失败 ⇒ 记下现场、自动落诊断、
+        // 由 `StartupRoot` 画错误页（判据①）。**任何路径都不许绕过这道闸去直接 engine()**。
+        com.example.zhengdao.startup.StartupGate.install(this)
         // 第五百八十四单：App 内 MCP 服务端总闸——默认只绑 127.0.0.1:8765（判据⑤）；
         // 471 停机闸联动（判据④：停机 ⇒ 看门狗秒级关端口）；开关默认关，安全台那张卡开。
         // install 只装零件与提交线程池（主线程零套接字——判据⑥），绑定/启停全在 zd-mcp-* 线程。

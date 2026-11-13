@@ -83,12 +83,31 @@ class FirstLaunchSnapshotGateTest {
     private val screenSrc get() = repoFile(base + "ui/baopu/BaopuScreen.kt").readText()
 
     private val engineCallLiteral = "BaopuRuntime.engine(this)"
+
+    // 629（2026-11-13）：装配入口统一过 `StartupGate`（成功⇒主界面／失败⇒错误页），
+    // 所以「装配调用」有三种合法写法。**判据语义一点没放宽**：仍必须在 setContent 之前、
+    // 不在 `if (!isTaskRoot)` 提前返回分支里、不被 runCatching 包住。
+    private val assemblyCallLiterals = listOf(
+        "BaopuRuntime.engine(this)",
+        "StartupGate.ensure(this)",
+        "StartupGate.install(this)",
+    )
+
+    /** 装配调用在 code 空间里的最早起点；一处都没有 ⇒ -1。 */
+    private fun assemblyCallAt(code: String): Int =
+        assemblyCallLiterals.map { code.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: -1
+
+    /** 命中的那条装配调用原文（变异用例替换它）。 */
+    private fun assemblyCallLiteral(code: String): String? =
+        assemblyCallLiterals
+            .filter { code.indexOf(it) >= 0 }
+            .minByOrNull { code.indexOf(it) }
     private val deadBranchHeader = "if (!isTaskRoot)"
 
     // ── 判据 ①：MainActivity 预建必须在【正常冷启路径】上、setContent 之前、不被吞 ──
     private fun mainPrebuildOnNormalPath(main: String): Boolean {
         val code = codeOnly(main)
-        val call = code.indexOf(engineCallLiteral)
+        val call = assemblyCallAt(code)
         val setContent = code.indexOf("setContent {")
         if (call < 0 || setContent < 0 || call >= setContent) return false
         val dead = blockRange(code, deadBranchHeader) ?: return false
@@ -101,7 +120,7 @@ class FirstLaunchSnapshotGateTest {
     // ── 判据 ②：Application 预建必须无条件（不吞）、且在 MCP install 之前 ──
     private fun appPrebuildUnconditional(app: String): Boolean {
         val code = codeOnly(app)
-        val call = code.indexOf(engineCallLiteral)
+        val call = assemblyCallAt(code)
         if (call < 0) return false
         if (enclosedByAny(code, "runCatching", call)) return false
         val mcp = code.indexOf("McpServerController.install")
@@ -184,7 +203,7 @@ class FirstLaunchSnapshotGateTest {
     @Test
     fun `变异1_预建挪回死分支_判据必红`() {
         val code = codeOnly(mainSrc)
-        val call = code.indexOf(engineCallLiteral)
+        val call = assemblyCallAt(code)
         val dead = blockRange(code, deadBranchHeader)!!
         // 把调用整行搬到死分支内部（模拟 586 的原始接线）
         val lineStart = code.lastIndexOf('\n', call) + 1
@@ -199,13 +218,13 @@ class FirstLaunchSnapshotGateTest {
 
     @Test
     fun `变异2_删掉MainActivity预建_判据必红`() {
-        assertFalse(mainPrebuildOnNormalPath(mainSrc.replace(engineCallLiteral, "// removed")))
+        assertFalse(mainPrebuildOnNormalPath(mainSrc.replace(assemblyCallLiteral(codeOnly(mainSrc)) ?: engineCallLiteral, "// removed")))
     }
 
     @Test
     fun `变异3_Application预建包回runCatching_判据必红`() {
         val code = codeOnly(appSrc)
-        val call = code.indexOf(engineCallLiteral)
+        val call = assemblyCallAt(code)
         val lineStart = code.lastIndexOf('\n', call) + 1
         val mutated = code.substring(0, lineStart) +
             "        runCatching {\n" + code.substring(lineStart)
@@ -220,7 +239,7 @@ class FirstLaunchSnapshotGateTest {
     @Test
     fun `变异5_预建挪到setContent之后_判据必红`() {
         val code = codeOnly(mainSrc)
-        val call = code.indexOf(engineCallLiteral)
+        val call = assemblyCallAt(code)
         val lineStart = code.lastIndexOf('\n', call) + 1
         val lineEnd = code.indexOf('\n', call).let { if (it < 0) code.length else it }
         val line = code.substring(lineStart, lineEnd)

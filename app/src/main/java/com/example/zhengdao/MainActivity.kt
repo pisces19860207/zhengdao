@@ -346,13 +346,17 @@ class MainActivity : ComponentActivity() {
         // `Reading a state that was created after the snapshot was taken`。
         // 这里与 ZhengdaoApp.onCreate 各调一次（engine() 是 double-check 幂等），
         // 保证「引擎的任何构造点都在主组合之前的全局快照里」——不吞异常、不靠降级掩盖。
-        com.example.zhengdao.baopu.BaopuRuntime.engine(this)
+        // 629：装配统一走 [StartupGate]（失败 ⇒ 记现场 + 落诊断 + 错误页），不再裸调 engine()。
+        com.example.zhengdao.startup.StartupGate.ensure(this)
         com.example.zhengdao.core.RunLog.log("启动：引擎在主组合之前预建（617 正常冷启路径）")
 
         setContent {
             com.example.zhengdao.ui.theme.ZhengdaoTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ZhengdaoApp(lastRoute = lastRoute)
+                    // 629：进组合之前多一道分叉。装配失败时这里画的是错误页，
+                    // 主界面（含抱朴页）根本没有被组合的机会 —— 「不静默降级」的落点。
+                    // 正常路径（Ready）与历史行为逐字一致：Surface { ZhengdaoApp(lastRoute) }。
+                    com.example.zhengdao.ui.startup.StartupRoot(lastRoute = lastRoute)
                 }
             }
         }
