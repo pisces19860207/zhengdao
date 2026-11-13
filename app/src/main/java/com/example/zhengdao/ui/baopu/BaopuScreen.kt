@@ -385,6 +385,7 @@ internal fun BaopuScreen(
                     now = System.currentTimeMillis(),
                     templates = timeTemplates,
                     fallbackTitle = unnamedSessionLabel,
+                    declaredPath = BaopuWorkspace.declaredPath(context),
                 )
             }
             drawerTreeLoading = false

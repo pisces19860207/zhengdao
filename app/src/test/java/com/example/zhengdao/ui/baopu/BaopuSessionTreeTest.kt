@@ -6,6 +6,8 @@ package com.example.zhengdao.ui.baopu
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -850,5 +852,128 @@ class BaopuSessionTreeTest {
         assertTrue("最后一行必须是默认工作区", nodes.last().unknown)
         assertEquals("默认工作区", nodes.last().label)
         assertTrue("它下面可以一条会话都没有", nodes.last().rows.isEmpty())
+    }
+
+    // ── 615：显示名／实路径两行（判据①②③） ────────────────────────────────
+    //
+    // 起因是 569 真机：SP 与抽屉都说 `Download/男性`，IO 却走在 App 私有外部目录，
+    // 用户照着屏幕放素材 ⇒ App 看不见。这几条钉的是「屏幕上那条路，就是真正在读写的那条」。
+
+    private val maleWs = "/storage/emulated/0/Download/男性"
+    private val defaultWs = "/storage/emulated/0/Download/证道"
+    private val privateWs = "/storage/emulated/0/Android/data/com.example.zhengdao/files/workspace"
+
+    /** 615 调用桩：把**实走的**与**声明的**分开交进来（569 那一幕就是这个分家）。 */
+    private fun truthTree(
+        realPath: String,
+        declaredPath: String?,
+        state: WorkspaceState = WorkspaceState.NORMAL,
+        entries: List<BaopuSessionEntry> = listOf(entry(1L, "一条", now - hour, maleWs)),
+    ) = buildWorkspaceTree(
+        entries = entries,
+        currentHostPath = realPath,
+        currentLabel = workspaceFolderLabel(realPath, state, "App 私有", "未授权"),
+        currentState = state,
+        unknownLabel = "默认工作区",
+        unknownPath = defaultWs,
+        currentSessionId = null,
+        now = now,
+        templates = zhTemplates(),
+        fallbackTitle = "未命名会话",
+        declaredPath = declaredPath,
+    )
+
+    /** 当前工作区那一行交出去的两行读数（抽屉画的就是它）。 */
+    private fun noticeOf(
+        realPath: String,
+        declaredPath: String?,
+        state: WorkspaceState = WorkspaceState.NORMAL,
+    ): WorkspaceTruthNotice? {
+        val current = truthTree(realPath, declaredPath, state).first { it.isCurrent }
+        return realPathNotice(current.declaredPath, current.fullPath, "（没记录）")
+    }
+
+    @Test
+    fun `615_回落时两行都给_显示名取声明实路径取实走`() {
+        val n = noticeOf(realPath = privateWs, declaredPath = maleWs, state = WorkspaceState.UNAUTHORIZED)
+        assertNotNull("声明与实走分家时不许一行都不说（那正是 569 的形状）", n)
+        assertEquals("显示名只到末级（W1 口径）：$maleWs ⇒ 男性", "男性", n?.shownName)
+        assertEquals("实路径必须是解析后的那个 File（不是字符串拼接、不是 prefs 原值）", privateWs, n?.realPath)
+    }
+
+    @Test
+    fun `615_声明与实走一致时不给第二行`() {
+        assertNull("一致就没第二行可说，占位等于噪音", noticeOf(privateWs, privateWs))
+        assertNull("尾斜杠不算两个目录", noticeOf(maleWs, "$maleWs/"))
+        assertNull("默认档跑在默认目录里也不给", noticeOf(defaultWs, defaultWs))
+    }
+
+    @Test
+    fun `615_负例_实路径那一栏不许被声明值顶掉`() {
+        // 判据③的负例形状：一旦有人把显示改回"喂 prefs 原值"，这一条立刻红。
+        val n = noticeOf(realPath = privateWs, declaredPath = maleWs)
+        assertNotNull(n)
+        assertFalse("实路径栏里出现 Download/男性 ⇒ 显示又糊回声明那条路了", n?.realPath?.contains("男性") == true)
+        assertTrue("实路径要能指到 App 私有目录：${n?.realPath}", n?.realPath?.contains("Android/data") == true)
+    }
+
+    @Test
+    fun `615_切换工作区后不残留旧读数`() {
+        val before = noticeOf(realPath = privateWs, declaredPath = maleWs)
+        val after = noticeOf(realPath = maleWs, declaredPath = maleWs)
+        assertNotNull(before)
+        assertNull("换回声明那条路并且真跑通了 ⇒ 两行都要收回去，不许留旧值", after)
+        // 再切走一次：新的实路径是第三条路，前两次的读数都不该出现在行里。
+        val moved = noticeOf(realPath = defaultWs, declaredPath = maleWs)
+        assertEquals(defaultWs, moved?.realPath)
+        assertFalse("旧实路径残留", moved?.realPath?.contains(privateWs) == true)
+    }
+
+    @Test
+    fun `615_SP没读数时显示名不冒充_顶一句明写的字`() {
+        val n = noticeOf(realPath = privateWs, declaredPath = null)
+        assertEquals("（没记录）", n?.shownName)
+        assertEquals(privateWs, n?.realPath)
+        assertTrue(
+            "文案得真在 strings 里（代码不许自己写死那句）",
+            valueOf("src/main/res/values/strings_baopu_ws_truth.xml", "baopu_drawer_ws_undeclared") == "（没记录）",
+        )
+    }
+
+    @Test
+    fun `615_只有当前工作区带声明读数_历史组一律空`() {
+        // 声明是「我现在往哪写」的属性；历史组带着它就是同一个目录第二张脸。
+        val nodes = truthTree(realPath = privateWs, declaredPath = maleWs)
+        assertTrue(nodes.first { it.isCurrent }.declaredPath == maleWs)
+        nodes.filter { !it.isCurrent }.forEach {
+            assertNull("非当前组不该带声明读数：${it.label}", it.declaredPath)
+        }
+    }
+
+    @Test
+    fun `615_接线_显示层从解析器拿声明_不自己拼prefs键`() {
+        assertTrue(
+            "抱朴页要把解析器的声明值交进树（不是抽屉自己去读 prefs）",
+            screenCode.contains("declaredPath = BaopuWorkspace.declaredPath(context)"),
+        )
+        // absence 一律剥注释后再断（本文件口径：KDoc 里合法提到键名不该被判红）。
+        mapOf("抱朴页" to screenCode, "抽屉" to drawerCode, "树" to treeCode).forEach { (who, code) ->
+            assertFalse("$who 不许直接读 SP 的工作区键当显示源", code.contains("baopu_ws_path"))
+        }
+        assertTrue("抽屉真的两行都画", drawerCode.contains("wsTruth.shownName"))
+        assertTrue("抽屉真的两行都画", drawerCode.contains("wsTruth.realPath"))
+        assertTrue("画的那一行由纯函数判（抽屉不自己判背离）", drawerCode.contains("realPathNotice("))
+    }
+
+    @Test
+    fun `615_文案中英文成对_两行都有`() {
+        val zh = "src/main/res/values/strings_baopu_ws_truth.xml"
+        val en = "src/main/res/values-en/strings_baopu_ws_truth.xml"
+        listOf("baopu_drawer_ws_shown", "baopu_drawer_ws_real", "baopu_drawer_ws_undeclared").forEach { k ->
+            assertTrue("$zh 缺 $k", raw(zh).contains("name=\"$k\""))
+            assertTrue("$en 缺 $k", raw(en).contains("name=\"$k\""))
+        }
+        assertTrue("显示名那行要带一个占位", valueOf(zh, "baopu_drawer_ws_shown").contains("%1\$s"))
+        assertTrue("实路径那行要带一个占位", valueOf(zh, "baopu_drawer_ws_real").contains("%1\$s"))
     }
 }

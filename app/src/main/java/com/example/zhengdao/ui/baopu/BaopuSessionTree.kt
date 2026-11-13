@@ -140,6 +140,39 @@ internal fun workspaceFolderLabel(
     WorkspaceState.NORMAL, WorkspaceState.UNRECORDED -> folderLeafName(hostAbsolutePath)
 }
 
+// ── 工作区实态两行（615）──────────────────────────────────────────────
+
+/**
+ * 「显示名／实路径」那两行的内容。
+ *
+ * 只在**声明与实走不是同一条路**时存在（一致时 [realPathNotice] 给 null，界面一行都不占）。
+ * 两个字段一个是末级名（[shownName]，走 W1 口径）、一个是完整绝对路径（[realPath]）——
+ * 故意不对称：用户找文件夹靠末级名认，排障靠绝对路径认，两件事分开说才不含糊。
+ */
+internal data class WorkspaceTruthNotice(val shownName: String, val realPath: String)
+
+/**
+ * 当前工作区要不要补那两行（615 判据②的本体，纯函数）。
+ *
+ * 口径与 `WorkspaceTruth.diverged`（`:core`，留痕那一侧）同一件事一个说法：
+ * 尾斜杠不算两个目录（这里复用本文件的 [groupKey]，纯函数文件不往外 import）。
+ *
+ * @param declaredPath SP 声明的那条路（[com.example.zhengdao.baopu.BaopuWorkspace.declaredPath]）
+ * @param realPath     实走的那条路（`hostDir().absolutePath`，全 App 唯一的读写根）
+ * @param undeclaredLabel custom 模式但 SP 里没读数时，显示名那一栏顶替的字
+ */
+internal fun realPathNotice(
+    declaredPath: String?,
+    realPath: String?,
+    undeclaredLabel: String,
+): WorkspaceTruthNotice? = when {
+    // 没有实走读数（树还在 IO 上算）⇒ 不许猜，一行都不画。
+    realPath.isNullOrEmpty() -> null
+    declaredPath.isNullOrEmpty() -> WorkspaceTruthNotice(undeclaredLabel, realPath)
+    groupKey(declaredPath) == groupKey(realPath) -> null
+    else -> WorkspaceTruthNotice(folderLeafName(declaredPath), realPath)
+}
+
 // ── 工作区树（W5）──────────────────────────────────────────────────────
 
 /** 树里的一条会话（A2 段口径：**只有标题＋相对时间**，不许塞摘要、不许塞轮数）。 */
@@ -165,6 +198,13 @@ internal data class DrawerWorkspaceNode(
     /** 是不是「历史未记录」组（永远排最后）。 */
     val unknown: Boolean,
     val rows: List<DrawerSessionRow>,
+    /**
+     * SP 声明的那条路（615）。**只有当前工作区那一行带得上**，其余节点为 null：
+     * 声明是「我现在该往哪写」的属性，历史组带着它只会又多一张脸。
+     * 由 [com.example.zhengdao.baopu.BaopuWorkspace.declaredPath] 交进来，
+     * 抽屉不许自己去拼 prefs。
+     */
+    val declaredPath: String? = null,
 )
 
 /** 归组键：只把尾斜杠当同一个目录，其余原样比较（不许在这里做名字截断——那是显示层的事）。 */
@@ -186,6 +226,8 @@ private fun groupKey(path: String): String = path.trimEnd('/')
  * @param currentState 当前工作区状态（[workspaceStateOf] 算出来的那个；历史组一律 [WorkspaceState.NORMAL]）
  * @param unknownLabel 「默认工作区 · 历史未记录」
  * @param unknownPath 未记录组点开提示用的路径 = 默认目录绝对路径（只作提示，**不回填库**）
+ * @param declaredPath 615：SP 声明的那条路（[com.example.zhengdao.baopu.BaopuWorkspace.declaredPath]）。
+ *      只随**当前工作区**那一行带下去，喂给 [realPathNotice]；它不参与分组、不参与排序、不是读写根。
  * @param fallbackTitle 标题兜底的最后一环（库里没标题也没首句 ⇒ 「未命名会话」）
  */
 internal fun buildWorkspaceTree(
@@ -199,6 +241,7 @@ internal fun buildWorkspaceTree(
     now: Long,
     templates: RelativeTemplates,
     fallbackTitle: String,
+    declaredPath: String? = null,
 ): List<DrawerWorkspaceNode> {
     val currentKey = groupKey(currentHostPath)
     // 「默认工作区」就是 `Download/证道` 这个**真文件夹**（2026-10-18 用户口径）。
@@ -232,6 +275,7 @@ internal fun buildWorkspaceTree(
             state = if (current) currentState else WorkspaceState.NORMAL,
             unknown = false,
             rows = rowsOf(grouped[key].orEmpty()),
+            declaredPath = if (current) declaredPath else null,
         )
     }
 
@@ -248,6 +292,7 @@ internal fun buildWorkspaceTree(
         state = if (defaultIsCurrent) currentState else WorkspaceState.UNRECORDED,
         unknown = true,
         rows = rowsOf(unknownEntries),
+        declaredPath = if (defaultIsCurrent) declaredPath else null,
     )
     return nodes + listOf(defaultNode)
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 615 · workspace truth lines (2026-11-13).
+  Keys mirror values/strings_baopu_ws_truth.xml one-for-one.
+-->
+<resources>
+    <string name="baopu_drawer_ws_shown">Shown as: %1$s</string>
+    <string name="baopu_drawer_ws_real">Actual path: %1$s</string>
+    <string name="baopu_drawer_ws_undeclared">(no record)</string>
+</resources>

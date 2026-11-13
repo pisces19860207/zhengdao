@@ -348,9 +348,48 @@ object ZhengdaoDirs {
             else -> defaultDir(ctx)
         }
         runCatching { resolved.mkdirs() }
-        if (resolved.isDirectory) return resolved
-        // 共享存储创建失败（无权限/挂载异常）→ 回落私有，基础功能不受损
-        return privateDir(ctx).apply { runCatching { mkdirs() } }
+        // 615：两条 return 合成一条，为的是让「实走的是哪条」只在**一处**被说出来（见 reportTruth）。
+        val host = if (resolved.isDirectory) resolved else privateDir(ctx).apply { runCatching { mkdirs() } }
+        reportTruth(ctx, mode, host)
+        return host
+    }
+
+    /**
+     * 实态自证（第六百一十五批，判据与留痕都归 [WorkspaceTruth]，那边只有一个定义）。
+     *
+     * 修的是 569 那个现场：授权没了 ⇒ 这里悄悄回落成 App 私有目录，而 SP／界面还说共享存储
+     * 里那个文件夹，用户照着界面放素材就永远等不到。回落不是错（错的是基础功能受损），
+     * **不说是错**。
+     */
+    private fun reportTruth(ctx: Context, mode: String, host: File) {
+        val declared = declaredPath(ctx, mode)
+        WorkspaceTruth.report(
+            source = "资料库",
+            realPath = host.absolutePath,
+            declaredPath = declared,
+            reason = truthReason(ctx, mode, host, declared),
+            sink = RunLog::log,
+        )
+    }
+
+    /**
+     * SP 声明的那条路（**不建目录、不判能不能用**，那两件事归 [hostDir]）。
+     *
+     * custom 而没读数 ⇒ null（那一行会印「（无读数）」）；把它顶成默认目录＝伪造一条"声明过的路"。
+     */
+    private fun declaredPath(ctx: Context, mode: String): String? = when (mode) {
+        "private" -> privateDir(ctx).absolutePath
+        "custom" -> AppPrefs.prefs(ctx).getString(KEY_PATH, null)?.takeIf { it.isNotBlank() }
+        else -> defaultDir(ctx).absolutePath
+    }
+
+    /** 那一行的「为什么」：把改掉路的那条分支点名说清楚，回落不许只留一个结果。 */
+    private fun truthReason(ctx: Context, mode: String, host: File, declared: String?): String = when {
+        !storageGranted(ctx) -> "共享存储未授权 ⇒ 回落 App 私有目录"
+        mode != "private" && WorkspaceTruth.diverged(host.absolutePath, privateDir(ctx).absolutePath) ->
+            "声明的目录不可用 ⇒ 回落 App 私有目录"
+        WorkspaceTruth.diverged(host.absolutePath, declared) -> "实走与声明不一致"
+        else -> WorkspaceTruth.SAME
     }
 
     /**

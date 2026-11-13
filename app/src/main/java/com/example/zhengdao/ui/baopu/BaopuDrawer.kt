@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import com.example.zhengdao.R
+import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import com.example.zhengdao.schedule.ScheduleRules
 import com.example.zhengdao.schedule.ScheduleStore
 import com.example.zhengdao.schedule.ScheduleTask
@@ -265,6 +266,44 @@ internal const val OLD_WORKSPACE_ROW_END_DP = 16
  */
 internal fun runHereRowEndPaddingDp(oldEndDp: Int, touchDp: Int, glyphDp: Int): Int =
     oldEndDp - (touchDp - glyphDp) / 2
+
+/**
+ * 「显示名／实路径」两行（第六百一十五批）。
+ *
+ * 画在工作区小节标题下面、树行**外面**：W1 那条口径（行里只到末级名、完整路径不上表）管的是
+ * 分组行，这一句是排障读数——两者不是一回事，别把它塞进 [WorkspaceRow] 的 label 里。
+ * 屏幕上这一行和日志里 `grep '\[ws\]'` 那一行必须是同一条路；各说一条就是 569 现场的重演。
+ *
+ * 颜色走 `zhengdaoErrorText()`：`colorScheme.error` 直接做正文对比度只有 3.55:1（P2-11 门禁钉着）。
+ */
+@Composable
+private fun WorkspaceTruthRow(wsTruth: WorkspaceTruthNotice) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = BAO_LIST_INSET_DP.dp,
+                end = BAO_LIST_INSET_DP.dp,
+                top = 2.dp,
+                bottom = 4.dp,
+            ),
+    ) {
+        Text(
+            text = stringResource(R.string.baopu_drawer_ws_shown, wsTruth.shownName),
+            style = MaterialTheme.typography.labelSmall,
+            color = zhengdaoErrorText(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = stringResource(R.string.baopu_drawer_ws_real, wsTruth.realPath),
+            style = MaterialTheme.typography.labelSmall,
+            color = zhengdaoErrorText(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
 
 /**
  * 工作区一行（文件夹行）。
@@ -595,6 +634,18 @@ internal fun BaopuDrawer(
                 )
             },
         )
+        // 615：声明的那条路跟实走的那条不是同一条时，两行都写出来（判据②）。
+        // 569 那一幕就是这么没的：抽屉画「男性」、IO 在 App 私有目录，人照屏幕放素材 ⇒ App 看不见。
+        // 一致时一行都不占 —— 「没出事」不需要占一行字。
+        val wsCurrent = nodes.firstOrNull { it.isCurrent }
+        val wsTruth = realPathNotice(
+            declaredPath = wsCurrent?.declaredPath,
+            realPath = wsCurrent?.fullPath,
+            undeclaredLabel = stringResource(R.string.baopu_drawer_ws_undeclared),
+        )
+        if (wsTruth != null) {
+            WorkspaceTruthRow(wsTruth = wsTruth)
+        }
         // 树还在 IO 上算（本批新形状）：首帧这一行是「读取中…」，不是空 ——
         // 空树本身是合法状态（工作区树至少有一行当前工作区），不能拿它当加载态。
         if (workspaceLoading && nodes.isEmpty()) {

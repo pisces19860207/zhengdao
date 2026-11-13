@@ -23,6 +23,8 @@ import androidx.core.content.edit
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.EnvironmentScope
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.WorkspaceTruth
 import java.io.File
 
 /**
@@ -60,7 +62,52 @@ object BaopuWorkspace {
             else -> resolve(m, customPath(ctx), defaultDir())
         }
         runCatching { target.mkdirs() }
-        return if (target.isDirectory) target else privateDir(ctx).apply { runCatching { mkdirs() } }
+        // 615：两条 return 合成一条，让「实走的到底是哪条」只在一处被说出来（见 reportTruth）。
+        val host = if (target.isDirectory) target else privateDir(ctx).apply { runCatching { mkdirs() } }
+        reportTruth(ctx, m, host)
+        return host
+    }
+
+    /**
+     * 实态自证（第六百一十五批）。
+     *
+     * 修的是 569 真机那一幕：`baopu_ws_path` 说 `Download/男性`、抽屉也说「男性」，
+     * 而这里因为授权不在就悄悄改走 App 私有目录 —— 用户照着屏幕放素材，App 当然看不见。
+     * 判据、文案、去重闸门都在 `:core` 的 [WorkspaceTruth] 那边**只写一份**，
+     * 与 [com.example.zhengdao.core.ZhengdaoDirs.hostDir] 共用（两个解析器各记各的，互不顶掉）。
+     */
+    private fun reportTruth(ctx: Context, mode: String, host: File) {
+        val declared = declaredPath(ctx, mode)
+        WorkspaceTruth.report(
+            source = "投递",
+            realPath = host.absolutePath,
+            declaredPath = declared,
+            reason = truthReason(ctx, mode, host, declared),
+            sink = RunLog::log,
+        )
+    }
+
+    /**
+     * SP 声明的那条路（**只用来和实走对拍**：不许拿它读写、也不许把它画上界面当真值）。
+     *
+     * 公开给显示层是有意的一次开口：界面要靠它判断「要不要补第二行实路径」，
+     * 而不是自己去拼 `baopu_ws_path` —— 后者就是 569 那次分歧的另一半来源。
+     */
+    fun declaredPath(ctx: Context): String? = declaredPath(ctx, mode(ctx))
+
+    private fun declaredPath(ctx: Context, mode: String): String? = when (mode) {
+        "private" -> privateDir(ctx).absolutePath
+        "custom" -> customPath(ctx)?.takeIf { it.isNotBlank() }
+        else -> defaultDir().absolutePath
+    }
+
+    /** 那一行的「为什么」：把改掉路的那条分支点名说清楚，回落不许只留一个结果。 */
+    private fun truthReason(ctx: Context, mode: String, host: File, declared: String?): String = when {
+        !storageGranted(ctx) -> "共享存储未授权 ⇒ 回落 App 私有目录"
+        mode != "private" && WorkspaceTruth.diverged(host.absolutePath, privateDir(ctx).absolutePath) ->
+            "声明的目录不可用 ⇒ 回落 App 私有目录"
+        WorkspaceTruth.diverged(host.absolutePath, declared) -> "实走与声明不一致"
+        else -> WorkspaceTruth.SAME
     }
 
     /** 当前是不是「仅 App 私有」（没授权时也会落在这里）。 */

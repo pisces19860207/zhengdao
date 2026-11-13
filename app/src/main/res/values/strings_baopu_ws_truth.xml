@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第六百一十五批 · 工作区实态两行（2026-11-13）。
+  单独成文件（房型照 158/198/212/220 各批）：共享 strings.xml 是高冲突文件（610 批在租约里占着），
+  本批对它零改动。键与 values-en/strings_baopu_ws_truth.xml 一一对应。
+  为什么要有这两行：569 真机实测「抽屉说 Download/男性、IO 走 App 私有目录」，
+  用户照着屏幕放素材 ⇒ App 看不见。显示名与实路径不一致时，两个都得说出口。
+-->
+<resources>
+    <!-- 当前工作区「声明的那条路」的末级名（跟 W1 一个口径：只到末级，不带斜杠）。 -->
+    <string name="baopu_drawer_ws_shown">显示名：%1$s</string>
+    <!-- 当前工作区真正在读写的那条路（完整绝对路径，就是这一行负责说清楚）。 -->
+    <string name="baopu_drawer_ws_real">实路径：%1$s</string>
+    <!-- SP 里没有读数时，显示名那一栏顶替的字（不许留空，也不许拿实路径顶上去）。 -->
+    <string name="baopu_drawer_ws_undeclared">（没记录）</string>
+</resources>
