@@ -34,7 +34,8 @@ class EncodingReportTest {
         assertEquals("GBK", v.encoding)
         assertTrue("注意里要提 Big5 盲区：${v.note}", v.note.contains("Big5"))
         assertTrue("要给转码指路：${v.note}", v.note.contains("convert_encoding"))
-        assertEquals(0.0, v.replacementRatio, 0.0001)
+        assertEquals("GBK 正常书不该有替换符", 0, v.replacementCount)
+        assertEquals(0, v.replacementPermille)
     }
 
     @Test
@@ -60,7 +61,18 @@ class EncodingReportTest {
         assertFalse("坏字节必须拒绝：$v", v.ok)
     }
 
-    @Test
+        @Test
+    fun `占比是整数千分比_不是浮点`() {
+        // 310 判据进化门禁「禁标量分」：判据结论类型不许带 Double/Float（ci #1982 真因）。
+        // 占比用 counts + 千分比表达，这里钉住换算本身。
+        assertEquals(5, EncodingVerdict("GBK", false, "x", replacementCount = 5, totalChars = 1000).replacementPermille)
+        assertEquals(0, EncodingVerdict("GBK", true, "x", replacementCount = 0, totalChars = 0).replacementPermille)
+        assertEquals("恰好 2‰ 不算超线",
+            EncodingReport.SUSPECT_PERMILLE,
+            EncodingVerdict("GBK", true, "x", replacementCount = 2, totalChars = 1000).replacementPermille)
+    }
+
+@Test
     fun `二进制_读不了_报拒`() {
         val v = EncodingReport.analyze(
             TextDecode.Decoded(null, "", null, "二进制文件不读：书.txt"),
