@@ -73,11 +73,21 @@ class QuietVerifyWiringGateTest {
     // ── G3：豁免放行要落账 ──────────────────────────────────────────────
 
     @Test
-    fun `G3_豁免放行那一张要落账_照常弹仍然不记账`() {
+    fun `G3_豁免放行那一张要落账_379那句短路原样保住`() {
         val body = slice(codeOnly(read(engineRel)), "private fun quietDefer(", "private fun drainQuietQueue(")
         assertTrue(
             "豁免的账行不许被丢掉（免打扰期里凭空多一张卡，事后没人说得清凭什么）",
-            body.contains("if (outcome.line.isNotEmpty()) log(outcome.line)"),
+            body.contains("if (outcome.verdict == QuietCardVerdict.ASK && outcome.line.isNotEmpty()) log(outcome.line)"),
+        )
+        // 379 的原句必须还在、还在同一个位置（ReflowWiringGateTest W3 也钉着这一句）：
+        // 本批只在它**前面**加一行留痕，没有改它、也没有加新条件。
+        assertTrue(
+            "379 那句短路原封不动",
+            body.contains("if (outcome.verdict == QuietCardVerdict.ASK) return false"),
+        )
+        assertTrue(
+            "留痕必须排在短路之前（排后面就到不了）",
+            body.indexOf("outcome.line.isNotEmpty()") < body.indexOf("QuietCardVerdict.ASK) return false"),
         )
         assertTrue("放行照样立即收手，不压", body.contains("return false"))
     }

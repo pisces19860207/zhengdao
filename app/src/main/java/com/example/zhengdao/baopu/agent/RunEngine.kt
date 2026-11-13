@@ -1593,12 +1593,12 @@ internal class RunEngine(
         val now = System.currentTimeMillis()
         val locked = awayLocked()
         val outcome = quietGate.onAsk(quietGrant, quietShape(now), now, req, locked)
-        if (outcome.verdict == QuietCardVerdict.ASK) {
-            // 619：「照常弹」平时没有要记的账（账行空串），但**豁免**放行的那一张要留痕——
-            // 不然免打扰期里凭空多出一张卡，事后没人说得出它是凭什么过的闸。
-            if (outcome.line.isNotEmpty()) log(outcome.line)
-            return false
-        }
+        // 619：**豁免**放行的那一张要留痕——"照常弹"的账行是空串（这行平时什么都不做），
+        // 但免打扰期里凭空多出一张卡，事后必须有人说得清它是凭什么过的闸。
+        // 位置在下面 379 那句短路**之前**：短路一走后头的 log 就到不了，而那一行一个字不许动
+        // （`ReflowWiringGateTest` W3 把它原样钉着）。
+        if (outcome.verdict == QuietCardVerdict.ASK && outcome.line.isNotEmpty()) log(outcome.line)
+        if (outcome.verdict == QuietCardVerdict.ASK) return false
         log(outcome.line)
         // 388 接线：这一格是**离场锁屏**压下的 ⇒ 交值守装配层记账＋通知（圈外入队的高优先一声）。
         // 免打扰/夜间压下的不响（330/379 的账已记），判据就是这一次问闸时锁没锁。
