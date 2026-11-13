@@ -140,7 +140,9 @@ class RunLogErrTest {
         val cases = listOf(
             Triple("失败：缺少必填参数「to」", FailureOwner.BEHAVIOR, "缺少必填参数"),
             Triple("失败：源不存在：/sdcard/x/a.md", FailureOwner.ENVIRONMENT, "源不存在"),
-            Triple("失败：MCP 服务器「x」tools/call 超时（30s）", FailureOwner.UNATTRIBUTED, "timeout"),
+            // 620 收口（2026-11-13 用户裁定）：码是主判据 ⇒ `timeout` 认成**环境类**（只记账不弹卡）。
+            // 原先这里钉 UNATTRIBUTED 是 631 的时点口径（那时 620 还不认码），现按裁定改。
+            Triple("失败：MCP 服务器「x」tools/call 超时（30s）", FailureOwner.ENVIRONMENT, "timeout"),
         )
         cases.forEach { (wrapped, owner, head) ->
             val err = RunLoopRules.runLogErr(wrapped)

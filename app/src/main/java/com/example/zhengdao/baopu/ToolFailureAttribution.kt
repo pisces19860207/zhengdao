@@ -16,6 +16,8 @@
 // 根因键稳定且不含次数/工具名 —— 同轮限一次、跨轮幂等都靠它。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.agent.ToolErrCodes
+
 /** 这次失败该记在谁头上（闭集三格；「既环境又行为」的第四格不存在）。 */
 internal enum class FailureOwner(val label: String) {
     ENVIRONMENT("环境类"),
@@ -104,6 +106,16 @@ internal object ToolFailureAttribution {
     fun classify(err: String): FailureAttribution {
         val text = err.trim()
         if (text.isEmpty()) return unattributed(NO_CLUE)
+        // 第六百二十批收口（用户裁定⑥）：**码是主判据**——码由引擎按规则生成，比自然语言稳；
+        // 文本命中降为兜底（码认不出时才看中文词）。表只有一份：[ToolErrCodes.ALL]。
+        ToolErrCodes.parse(text)?.let { code ->
+            return FailureAttribution(
+                owner = code.owner,
+                reason = "失败码「${code.code}」（${code.owner.label}）" +
+                    if (code.note.isEmpty()) "" else "｜${code.note}",
+                rootCause = "${code.owner.name}|${code.code.uppercase()}",
+            )
+        }
         for (rule in RULES) {
             val hit = rule.tokens.firstOrNull { text.contains(it) }
             if (hit != null) {

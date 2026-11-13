@@ -210,7 +210,10 @@ internal object RunLoopRules {
     fun runLogErr(wrapped: String): String {
         if (toolExchangeOk(wrapped)) return ""
         val line = PREFIX_TOKEN.replace(wrapped, "").lineSequence().firstOrNull()?.trim().orEmpty()
-        ERR_KEY_RULES.firstOrNull { it.first.containsMatchIn(line) }?.let { return it.second }
+        // 620 收口：按共享表的特征词认码，命中就写它的固定短句（正文一字不带）。
+        ToolErrCodes.ALL
+            .firstOrNull { c -> c.patterns.any { it.containsMatchIn(line) } }
+            ?.let { return it.line }
         val cleaned = scrubPathTokens(cutAtClause(line)).trim()
         return if (cleaned.isEmpty()) ERR_NO_CLUE else clipErr(cleaned)
     }
@@ -240,19 +243,8 @@ internal object RunLoopRules {
      * 那套人话的短句）。**特征词宁窄不宽**：认错键会把环境的错记到别处，
      * 认不出就退回第 3 档截断——不硬猜。
      */
-    private val ERR_KEY_RULES: List<Pair<Regex, String>> = listOf(
-        Regex("域名解析|DNS") to "dns: 域名解析不了",
-        Regex("拒绝连接") to "port: 端口拒绝连接",
-        Regex("证书|TLS") to "tls: 证书信不过",
-        Regex("超时") to "timeout: 等太久没回音",
-        Regex("版本对不上|版本不匹配|不在支持区间|protocolVersion") to "version: 协议版本对不上",
-        Regex("没有这条接口|HTTP 404") to "endpoint: 那儿没有这条接口",
-        Regex("需要授权|凭据无效|授权已失效") to "auth: 要先验明身份",
-        Regex("配置不过检|配置不可用|非 ASCII") to "config: 本机配置不过检",
-        Regex("说的不是一路话|协议不符|不是合法 JSON") to "protocol: 说的不是一路话",
-        Regex("外发没有批准|未批准外发") to "refused: 外发没批准，没有发起",
-        Regex("尚未连接|连接已断|连接半路断了") to "network: 连接半路断了",
-    )
+    // 第六百二十批收口：码表**不在这里**了，统一从 [ToolErrCodes.ALL] 取（唯一一份）。
+    // 631 写侧只负责「按特征词认出码、写它的固定短句」；认不出的走第 3 档截断。
 
     /** 切在第一个分句边界（`http://` 里的冒号不算边界——那是地址不是分句）。 */
     private fun cutAtClause(line: String): String {
