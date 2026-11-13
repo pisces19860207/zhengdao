@@ -15,6 +15,7 @@
 package com.example.zhengdao.baopu.agent
 
 import org.w3c.dom.Element
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
@@ -67,6 +68,26 @@ internal object SheetLimits {
  */
 internal object SheetReader {
 
+    /** 按名字分格式 —— **只有这一份**（628：File 入口与字节入口共用，不许各写一套）。 */
+    private enum class Kind { XLSX, CSV, NONE }
+
+    private fun kindOf(name: String): Kind {
+        val lower = name.lowercase()
+        return when {
+            lower.endsWith(".xlsx") -> Kind.XLSX
+            lower.endsWith(".csv") || lower.endsWith(".txt") -> Kind.CSV
+            else -> Kind.NONE
+        }
+    }
+
+    /** 扩展名由调用方按自己的口径给出（File 用 `file.extension`，字节入口按虚拟名字取）。 */
+    private fun unsupported(extension: String): Result<SheetGrid> = Result.failure(
+        SheetReadFailure.Unsupported(
+            "只支持 xlsx / csv（这是「${extension.ifBlank { "无扩展名" }}」）；" +
+                "别的格式未认领，不许当文本硬读",
+        ),
+    )
+
     fun read(
         file: File,
         sheet: String?,
@@ -77,18 +98,34 @@ internal object SheetReader {
         if (file.length() > SheetLimits.MAX_FILE_BYTES) {
             return Result.failure(SheetReadFailure.TooBig(file.length()))
         }
-        val name = file.name.lowercase()
         val max = maxRows.coerceIn(1, SheetLimits.MAX_ROWS)
-        return when {
-            name.endsWith(".xlsx") -> SheetWorkbook.read(file, sheet, range, hasHeader, max)
-            name.endsWith(".csv") || name.endsWith(".txt") ->
-                Result.success(SheetCsv.read(file, range, hasHeader, max))
-            else -> Result.failure(
-                SheetReadFailure.Unsupported(
-                    "只支持 xlsx / csv（这是「${file.extension.ifBlank { "无扩展名" }}」）；" +
-                        "别的格式未认领，不许当文本硬读",
-                ),
-            )
+        return when (kindOf(file.name)) {
+            Kind.XLSX -> SheetWorkbook.read(file, sheet, range, hasHeader, max)
+            Kind.CSV -> Result.success(SheetCsv.read(file, range, hasHeader, max))
+            Kind.NONE -> unsupported(file.extension)
+        }
+    }
+
+    /**
+     * 628：`content://` 的字节入口 —— **不碰盘**（不落产物、不建临时文件）。
+     * 上限、格式分流、解析判据全部与 [read] 同源；只是数据源换成内存字节。
+     */
+    fun readBytes(
+        name: String,
+        bytes: ByteArray,
+        sheet: String?,
+        range: String?,
+        hasHeader: Boolean,
+        maxRows: Int,
+    ): Result<SheetGrid> {
+        if (bytes.size.toLong() > SheetLimits.MAX_FILE_BYTES) {
+            return Result.failure(SheetReadFailure.TooBig(bytes.size.toLong()))
+        }
+        val max = maxRows.coerceIn(1, SheetLimits.MAX_ROWS)
+        return when (kindOf(name)) {
+            Kind.XLSX -> SheetWorkbook.readBytes(bytes, sheet, range, hasHeader, max)
+            Kind.CSV -> Result.success(SheetCsv.readBytes(name, bytes, range, hasHeader, max))
+            Kind.NONE -> unsupported(name.substringAfterLast('.', ""))
         }
     }
 }
@@ -118,7 +155,28 @@ internal object SheetWorkbook {
         hasHeader: Boolean,
         maxRows: Int,
     ): Result<SheetGrid> = runCatching {
-        val zip = unzipAll(file)
+        parseZip(unzipAll(file.inputStream().buffered()), sheet, range, hasHeader, maxRows)
+    }
+
+    /** 628：内存字节入口（content:// 读到的 ByteArray），与 [read] 共用 [parseZip] 一份判据。 */
+    fun readBytes(
+        bytes: ByteArray,
+        sheet: String?,
+        range: String?,
+        hasHeader: Boolean,
+        maxRows: Int,
+    ): Result<SheetGrid> = runCatching {
+        parseZip(unzipAll(ByteArrayInputStream(bytes)), sheet, range, hasHeader, maxRows)
+    }
+
+    /** 解 zip 之后到 SheetGrid 的整段判据：File 与字节两条入口**只有这一份**。 */
+    private fun parseZip(
+        zip: Map<String, ByteArray>,
+        sheet: String?,
+        range: String?,
+        hasHeader: Boolean,
+        maxRows: Int,
+    ): SheetGrid {
         // 加密工作簿（OLE/EncryptedPackage）⇒ 未认领（负例：把加密件当空表糊弄）
         if (zip.containsKey("EncryptedPackage") || zip.containsKey("EncryptionInfo")) {
             throw SheetReadFailure.Encrypted
@@ -137,7 +195,7 @@ internal object SheetWorkbook {
         val limitedNos = nosRaw.take(maxRows)
         val header = if (hasHeader) limited.firstOrNull() ?: emptyList() else emptyList()
         val body = if (hasHeader) limited.drop(1) else limited
-        SheetGrid(
+        return SheetGrid(
             sheets = sheets,
             header = header,
             rows = body,
@@ -148,9 +206,9 @@ internal object SheetWorkbook {
     }
 
     /** 把整个 zip 读进内存（条目名 → 字节；目录条目跳过）。 */
-    private fun unzipAll(file: File): Map<String, ByteArray> {
+    private fun unzipAll(source: InputStream): Map<String, ByteArray> {
         val zip = mutableMapOf<String, ByteArray>()
-        ZipInputStream(file.inputStream().buffered()).use { z ->
+        ZipInputStream(source).use { z ->
             while (true) {
                 val e = z.nextEntry ?: break
                 if (!e.isDirectory) zip[e.name] = z.readBytes()
@@ -336,8 +394,41 @@ internal object SheetCsv {
         hasHeader: Boolean,
         maxRows: Int,
         delimiter: Char = ',',
+    ): SheetGrid = parseGrid(
+        name = file.name,
+        text = file.readText(Charsets.UTF_8),
+        range = range,
+        hasHeader = hasHeader,
+        maxRows = maxRows,
+        delimiter = delimiter,
+    )
+
+    /** 628：内存字节入口（content://），与 [read] 共用 [parseGrid] 一份判据。 */
+    fun readBytes(
+        name: String,
+        bytes: ByteArray,
+        range: String?,
+        hasHeader: Boolean,
+        maxRows: Int,
+        delimiter: Char = ',',
+    ): SheetGrid = parseGrid(
+        name = name,
+        text = String(bytes, Charsets.UTF_8),
+        range = range,
+        hasHeader = hasHeader,
+        maxRows = maxRows,
+        delimiter = delimiter,
+    )
+
+    private fun parseGrid(
+        name: String,
+        text: String,
+        range: String?,
+        hasHeader: Boolean,
+        maxRows: Int,
+        delimiter: Char,
     ): SheetGrid {
-        val records = parse(file.readText(Charsets.UTF_8), delimiter)
+        val records = parse(text, delimiter)
         val bounds = range?.let { SheetRange.parse(it) }
         val sliced = if (bounds != null) {
             records.drop(bounds.firstRow - 1).take(bounds.lastRow - bounds.firstRow + 1)
@@ -352,7 +443,7 @@ internal object SheetCsv {
         val offset = if (bounds != null) bounds.firstRow - 1 else 0
         val nos = limited.indices.map { offset + it + 1 }
         return SheetGrid(
-            sheets = listOf(file.name),
+            sheets = listOf(name),
             header = header,
             rows = body,
             truncated = sliced.size > maxRows,

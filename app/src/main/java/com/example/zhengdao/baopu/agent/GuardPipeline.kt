@@ -11,6 +11,7 @@ import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionDraft
 import com.example.zhengdao.baopu.DecisionKind
 import com.example.zhengdao.baopu.DecisionLedger
+import com.example.zhengdao.baopu.ContentUri
 import com.example.zhengdao.baopu.FileOpLog
 import com.example.zhengdao.baopu.FileOpRules
 import com.example.zhengdao.baopu.FilePaths
@@ -69,6 +70,9 @@ private const val GATE_TASK_GRANT = "task_grant"
 
 /** 第四百六十七批：第 ② 段红线拒的（原件区/只读根/系统凭据/批上限）。 */
 private const val GATE_PATH = "path"
+
+/** 628：允许接 `content://` 的两个读工具（表格 / 文本各一），**闭集**，见 [GuardPipeline.contentUriGuard]。 */
+private val CONTENT_READ_TOOLS = setOf("sheet_read", "read_file")
 
 /** 三元组（L26）先拦下时六步还没跑：拒因码按这一格落，不冒充六步的结论码。 */
 private const val BINDING_MISMATCH = "binding_mismatch"
@@ -1088,6 +1092,10 @@ internal class GuardPipeline(
 
         val args = call.arguments
         val keys = pathKeysFor(toolName, args)
+        // 628：`content://` 不是本地路径 —— 在一切解析/改写/越界判定**之前**分流。
+        // 读类两个工具原样透传（工具层自己开流）；其余（含写类）明确拒，
+        // 绝不把 URI 拼成 `<根>/content:/…` 这种假路径（613 的真机教训）。
+        contentUriGuard(call, toolName, args)?.let { return it }
         // 第四百六十六批：批量形参（`paths`）与单数键走同一段，但它值里是一串路径——
         // 逐项解析/逐项拒，任何一项越线就拒**整条**调用（原子，不做一半）。
         if (keys.isEmpty() && arrayPathKeysFor(toolName).none { args.optJSONArray(it) != null }) {
@@ -1122,6 +1130,8 @@ internal class GuardPipeline(
             // 不在这里拦，归一时它会被当成相对路径拼进工作区，造出 `<根>/content:/…`
             // 这种假路径（下一个读的人会以为「文件真的不在」）。这一格不是越界：没打算碰禁区，
             // 所以 scopeEscape 留 false（505 口径：含糊不等于越界）。
+            // 628：`content://` 已由上面的 [contentUriGuard] 先分流（两个读工具透传、其余拒），
+            // 能走到这里的 content:// 只可能是「读工具之外的路径」——照旧按外域 scheme 拒。
             foreignSchemeReason(raw)?.let { return Guarded.No(it) }
             val target = resolveStrict(raw)
             // 287：唯一硬边界——系统与凭据目录一律拒（其余全盘可读写）
@@ -1155,6 +1165,32 @@ internal class GuardPipeline(
             "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径。" +
                 "先把它落成本机文件，再把路径给我"
         }
+
+    /**
+     * 628：`content://` 在 ② 段的分流（**先于一切解析/改写**）。
+     *
+     * - 只有 [CONTENT_READ_TOOLS] 这两个读工具放行，且 `path` **原样**回给工具层
+     *   （它们自己用 [ContentUri] 开流，不需要本地路径）；
+     * - 其余工具一律明确拒 —— 派工单「不写 content://（SAF 写另立单）」：
+     *   写类若混进来，绝不能落到「拼成 `<根>/content:/…` 再写盘」那条老路上；
+     * - 批量形参里出现 content:// 也整条拒（与 466「一项越线就拒整条」同口径）。
+     *
+     * 为什么不在这里读：管线不该认识 ContentResolver，那是装配层的事（工具层零 Android
+     * 依赖的房型）。这里只负责「不改写、不判越界、不放给写类」。
+     */
+    private fun contentUriGuard(call: ToolCall, toolName: String, args: JSONObject): Guarded? {
+        val inKeys = pathKeysFor(toolName, args).any { ContentUri.isContent(args.optString(it)) }
+        val inBatch = arrayPathKeysFor(toolName).any { key ->
+            args.optJSONArray(key)?.let { arr ->
+                (0 until arr.length()).any { ContentUri.isContent(arr.optString(it)) }
+            } ?: false
+        }
+        if (!inKeys && !inBatch) return null
+        if (toolName in CONTENT_READ_TOOLS && !inBatch) return Guarded.Yes(call)
+        return Guarded.No(
+            "content:// 只支持读（sheet_read / read_file）；写回或批量传入 SAF URI 本版不做（另立单）",
+        )
+    }
 
     /**
      * 写类目标的红线（[guardPath] 的 P0-2 ＋ 492 RO，拆出来让守卫主干只留顺序语义）：

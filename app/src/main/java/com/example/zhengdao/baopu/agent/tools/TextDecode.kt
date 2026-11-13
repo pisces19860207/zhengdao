@@ -62,7 +62,13 @@ internal object TextDecode {
      * 宽松解码。编码判定复用 [FileInfoTool.guessEncoding]（BOM/UTF-16/UTF-8 严格/GBK
      * 同一套判据，不另起一套），解码器取 [charsetFor]。
      */
-    fun decode(file: File, bytes: ByteArray): Decoded {
+    fun decode(file: File, bytes: ByteArray): Decoded = decodeNamed(file.name, bytes)
+
+    /**
+     * 628：按**显示名**解码（content:// 读到的是内存字节，没有 File）。
+     * [decode] 直接委托过来 —— 判定与话术只有这一份，File 路径行为逐字不变。
+     */
+    fun decodeNamed(name: String, bytes: ByteArray): Decoded {
         if (bytes.isEmpty()) return Decoded("", FileInfoTool.Encodings.UTF8, Charsets.UTF_8)
         val head = if (bytes.size <= FileInfoTool.SNIFF_BYTES) bytes else bytes.copyOf(FileInfoTool.SNIFF_BYTES)
         val guess = FileInfoTool.guessEncoding(head, FileInfoTool.looksBinary(head))
@@ -71,18 +77,18 @@ internal object TextDecode {
                 null,
                 "",
                 null,
-                "二进制文件不读：${file.name}（先用 file_info 看类型，别硬读）",
+                "二进制文件不读：$name（先用 file_info 看类型，别硬读）",
             )
         }
         val charset = charsetFor(guess) ?: return Decoded(
             null,
             guess,
             null,
-            "读不了：${file.name} 的编码判不出来（既不是 UTF-8 也不是 GBK/UTF-16），" +
+            "读不了：$name 的编码判不出来（既不是 UTF-8 也不是 GBK/UTF-16），" +
                 "可能不是文本。先 file_info 确认，别猜内容。",
         )
         val text = runCatching { String(bytes, charset) }.getOrElse {
-            return Decoded(null, guess, null, "读不了这个文件（按 $guess 解不开）：${file.name}")
+            return Decoded(null, guess, null, "读不了这个文件（按 $guess 解不开）：$name")
         }
         // BOM 解出来是 U+FEFF（UTF-16 常见）；不裁掉的话第一行会被它污染
         return Decoded(text.trimStart('\uFEFF'), guess, charset)

@@ -163,13 +163,25 @@ class SheetPathResolveTest {
     }
 
     @Test
-    fun `外域scheme_明确拒并说另立单`() {
+    fun `外域scheme_http仍拒并说另立单_content已由628转读`() {
         TempSandbox.use("zd613-scheme") { ws ->
-            val out = SheetReadTool.run(JSONObject().put("path", "content://media/external/1"), ws)
-            assertTrue(out is ToolOutcome.Failed)
-            val err = (out as ToolOutcome.Failed).error
-            assertTrue("要点名是哪一种地址：$err", err.contains("content://"))
-            assertTrue("要说清为什么不认：$err", err.contains("另立单"))
+            // 628（2026-11-13）起 `content://` 就是 613 说的那张「另立单」：sheet_read 不再
+            // 按外域 scheme 拒，而是转去 ContentUri 开流。JVM 测试没装配 opener ⇒ 结局是
+            // 「URI 无权限或已失效」，**不再**说「另立单」，更不许说「不存在」。
+            val content = SheetReadTool.run(JSONObject().put("path", "content://media/external/1"), ws)
+            assertTrue("content:// 应走 628 的读取分支：$content", content is ToolOutcome.Failed)
+            val contentErr = (content as ToolOutcome.Failed).error
+            assertTrue("要带 URI 原文：$contentErr", contentErr.contains("content://media/external/1"))
+            assertTrue("未装配 opener ⇒ 无权限或已失效：$contentErr", contentErr.contains("URI 无权限或已失效"))
+            assertFalse("628 起不许再说「另立单」：$contentErr", contentErr.contains("另立单"))
+            assertFalse("更不许报「不存在」：$contentErr", contentErr.contains("不存在"))
+
+            // 628 只放 `content://` 这一种；`http(s)://` 仍是外域 scheme，照旧拒并说另立单。
+            val http = SheetReadTool.run(JSONObject().put("path", "http://example.com/a.xlsx"), ws)
+            assertTrue("http:// 仍应拒：$http", http is ToolOutcome.Failed)
+            val httpErr = (http as ToolOutcome.Failed).error
+            assertTrue("要点名是哪一种地址：$httpErr", httpErr.contains("http://"))
+            assertTrue("要说清为什么不认：$httpErr", httpErr.contains("另立单"))
         }
     }
 
@@ -197,12 +209,29 @@ class SheetPathResolveTest {
                 ok.wrapped.contains("管线里的值"),
             )
 
-            val bad = pipe.execute(
+            // 628：`content://` 由 ② 段的 contentUriGuard 先分流 —— 对 sheet_read **原样透传**
+            // （不在这里拒、也不改写），到工具层才按读取端口处理；未装配 opener ⇒ 工具层
+            // 给「URI 无权限或已失效」，管线把它记成 Failed（**不是** Rejected：② 段没拦）。
+            val content = pipe.execute(
                 ToolCall("c2", "sheet_read", JSONObject().put("path", "content://media/external/1")),
             ) { _, _ -> null }
-            assertTrue("管线要拒：$bad", bad is GuardPipeline.Result.Rejected)
+            assertTrue(
+                "628 起 content:// 不在 ② 段被拒（应为工具层失败）：$content",
+                content is GuardPipeline.Result.Failed,
+            )
+            val contentErr = (content as GuardPipeline.Result.Failed).error
+            assertTrue(
+                "原样透传到工具层 ⇒ 未装配 opener 时应给「无权限或已失效」：$contentErr",
+                contentErr.contains("URI 无权限或已失效"),
+            )
+
+            // `http://` 仍在 ② 段被拒（628 只放 content://），且拒因不是越界。
+            val bad = pipe.execute(
+                ToolCall("c3", "sheet_read", JSONObject().put("path", "http://example.com/a.xlsx")),
+            ) { _, _ -> null }
+            assertTrue("管线要拒 http://：$bad", bad is GuardPipeline.Result.Rejected)
             val rejected = bad as GuardPipeline.Result.Rejected
-            assertTrue("拒绝原文要点名 scheme：${rejected.reason}", rejected.reason.contains("content://"))
+            assertTrue("拒绝原文要点名 scheme：${rejected.reason}", rejected.reason.contains("http://"))
             assertFalse("这不是越界（没打算碰禁区），不许记成越界：$rejected", rejected.scopeEscape)
         }
     }

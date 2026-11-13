@@ -10,6 +10,7 @@ import androidx.core.net.toUri
 
 import android.content.Context
 import android.os.Environment
+import android.provider.OpenableColumns
 import androidx.core.content.edit
 import com.example.zhengdao.baopu.evolution.trigger.EvalTriggerWiring
 import com.example.zhengdao.baopu.evolution.trigger.GoalCloseout
@@ -341,6 +342,9 @@ internal object BaopuRuntime {
         val appCtx = context.applicationContext
         // 浏览器六件的网关（进程内直调玄览；幂等，重复注入只换同一份）
         BaopuBrowserWiring.install(appCtx)
+        // 628：content:// 读取端口 —— 装配层注入真 ContentResolver（工具层零 Android 依赖）。
+        // 只捕获 ContentResolver，不把 Context 放进 object 静态字段（lint StaticFieldLeak）。
+        installContentUriOpener(appCtx)
         val reg = ToolRegistry(
             prefs = toolPrefs(appCtx),
             unlocks = toolUnlocks(appCtx),
@@ -498,6 +502,39 @@ internal object BaopuRuntime {
      * 行形仍是既有 13 键、`type` 仍是既有 `manual`、`triggered=false` ⇒
      * 不新增 kind、不新增文件格式、不进 495 的聚合（见 [GoalCloseout] 文件头）。
      */
+    /**
+     * 628：`content://` 的真实现（**全仓唯一**碰 `ContentResolver.openInputStream` 的地方）。
+     *
+     * 只把 [android.content.ContentResolver] 捕进端口对象，不把 [Context] 存进静态字段；
+     * `DISPLAY_NAME` 用于判 .xlsx/.csv，`SIZE` 让上层能在开流前就拒超限（不截断）。
+     * 权限失效 / URI 失效 ⇒ `openInputStream` 抛 SecurityException / FileNotFoundException，
+     * 这里返回 null，由上层的 [ContentRead.Unavailable] 统一说「URI 无权限或已失效」。
+     */
+    private fun installContentUriOpener(appCtx: Context) {
+        val resolver = appCtx.contentResolver
+        ContentUriSource.opener = object : ContentOpener {
+            override fun open(uri: String): ContentStream? {
+                val parsed = runCatching { uri.trim().toUri() }.getOrNull() ?: return null
+                val stream = runCatching { resolver.openInputStream(parsed) }.getOrNull() ?: return null
+                val meta = runCatching { queryMeta(resolver, parsed) }.getOrNull()
+                return ContentStream(meta?.first, meta?.second, stream)
+            }
+        }
+    }
+
+    /** 返回「显示名 / 声明大小」；provider 不给就都是 null（上层按魔数与边读边数兜）。 */
+    private fun queryMeta(
+        resolver: android.content.ContentResolver,
+        uri: android.net.Uri,
+    ): Pair<String?, Long?>? = resolver.query(uri, null, null, null, null)?.use { c ->
+        if (!c.moveToFirst()) return@use null
+        val nameIdx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        val sizeIdx = c.getColumnIndex(OpenableColumns.SIZE)
+        val name = if (nameIdx >= 0) c.getString(nameIdx) else null
+        val size = if (sizeIdx >= 0 && !c.isNull(sizeIdx)) c.getLong(sizeIdx) else null
+        name to size
+    }
+
     private fun wireGoalCloseout(appCtx: Context) {
         GoalBoard.attachCloseoutSink { fact ->
             GoalCloseout.append(EvalTriggerWiring.ledgerFile(appCtx), fact)

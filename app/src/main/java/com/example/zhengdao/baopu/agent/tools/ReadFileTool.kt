@@ -5,6 +5,8 @@
 // §10 竖切片①（read_file 是切片①的两个读工具之一）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.ContentRead
+import com.example.zhengdao.baopu.ContentUri
 import com.example.zhengdao.baopu.UserPath
 import java.io.File
 
@@ -97,11 +99,36 @@ internal object ReadFileTool {
         }
         val bytes = runCatching { file.readBytes() }
             .getOrElse { return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.absolutePath}") }
+        // 628：解码话术仍按**文件名**（613 未改这层文案，保持零回归）；content:// 走下面的 readContent。
+        return render(file.name, bytes, offset, limit)
+    }
+
+    /**
+     * 628：`content://` 读取入口 —— **不碰 File**（不拼路径、不落产物）。
+     * 三条结局各说人话：成功走 [render] 同一份行号渲染；无权限/失效绝不报「不存在」；
+     * 超限整条失败、不截断。
+     */
+    fun readContent(uri: String, offset: Int, limit: Int): ToolOutcome =
+        when (val result = ContentUri.read(uri, MAX_FILE_BYTES)) {
+            is ContentRead.Ok -> render(
+                ContentUri.parseName(result.displayName, result.bytes),
+                result.bytes,
+                offset,
+                limit,
+            )
+            ContentRead.Unavailable -> ToolOutcome.Failed(ContentUri.unavailableMessage(uri))
+            is ContentRead.TooBig -> ToolOutcome.Failed(
+                ContentUri.tooBigMessage(result.bytes, MAX_FILE_BYTES, uri)
+            )
+        }
+
+    /** 从字节到带行号的输出：File 与 content:// 两条入口**只有这一份**。 */
+    private fun render(name: String, bytes: ByteArray, offset: Int, limit: Int): ToolOutcome {
         if (bytes.isEmpty()) {
             return ToolOutcome.Ok("（空文件）")
         }
-        val decoded = TextDecode.decode(file, bytes)
-        val text = decoded.text ?: return ToolOutcome.Failed(decoded.error ?: "读不了：${file.name}")
+        val decoded = TextDecode.decodeNamed(name, bytes)
+        val text = decoded.text ?: return ToolOutcome.Failed(decoded.error ?: "读不了：$name")
         val lines = TextDecode.splitLines(text)
         if (lines.isEmpty()) {
             return ToolOutcome.Ok("（空文件）")
@@ -133,10 +160,18 @@ internal object ReadFileTool {
     // 读侧解码已统一到 [TextDecode]（2026-10-17）：判定与解码只许有一份实现——
     // 否则又会回到「read_file 读得出、edit_file 改出乱码」那种各写一套的老路。
 
-    /** executor：arguments 里的 path 已是守卫过的绝对路径（613 起 `file://` 与前导空白也在这里归一）。 */
+    /**
+     * executor：arguments 里的 path 已是守卫过的绝对路径（613 起 `file://` 与前导空白也在这里归一）；
+     * 628 起 `content://` 原样透传，在**任何本地路径解析之前**转走。
+     */
     private fun run(args: org.json.JSONObject): ToolOutcome {
         val path = args.optString(ARG_PATH).trim()
         if (path.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        val offset = args.optInt(ARG_OFFSET, DEFAULT_OFFSET)
+        val limit = args.optInt(ARG_LIMIT, DEFAULT_LIMIT)
+        // 628：content:// 不是本地路径 —— **在 613 的外域 scheme 拒与 File(path) 之前**就转走。
+        // 顺序是判据③源码断言钉死的：它绝不进「拼路径／判存在」那一支。
+        if (ContentUri.isContent(path)) return readContent(path, offset, limit)
         UserPath.foreignScheme(path)?.let { scheme ->
             return ToolOutcome.Failed(
                 "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径",
@@ -146,8 +181,8 @@ internal object ReadFileTool {
             // 这里**没有**工作区根可拼（spec 不带根）：相对路径按既有语义交给进程 cwd，
             // 绝对路径本就原样——613 只补 `file://` 归一，不改老语义。
             File(UserPath.normalize(path)),
-            args.optInt(ARG_OFFSET, DEFAULT_OFFSET),
-            args.optInt(ARG_LIMIT, DEFAULT_LIMIT),
+            offset,
+            limit,
         )
     }
 }

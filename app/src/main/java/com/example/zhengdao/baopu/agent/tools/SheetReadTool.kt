@@ -12,6 +12,8 @@ import com.example.zhengdao.baopu.agent.ToolSpec
 import com.example.zhengdao.baopu.agent.ToolTimeout
 import com.example.zhengdao.baopu.agent.jsonArrayOf
 import com.example.zhengdao.baopu.agent.jsonObjectOf
+import com.example.zhengdao.baopu.ContentRead
+import com.example.zhengdao.baopu.ContentUri
 import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.UserPath
 import com.example.zhengdao.baopu.fileAccessCheck
@@ -40,7 +42,8 @@ internal object SheetReadTool {
                 ARG_PATH to jsonObjectOf(
                     "type" to "string",
                     "description" to "表文件路径：相对工作区根（如 资料库/成绩表.xlsx），" +
-                        "或全盘绝对路径（如 /storage/emulated/0/证道/成绩表.xlsx）；file:// 前缀也认",
+                        "或全盘绝对路径（如 /storage/emulated/0/证道/成绩表.xlsx）；file:// 前缀也认；" +
+                        "也可给系统文件选择器拿到的 content:// 地址（只读，不落盘）",
                 ),
                 ARG_SHEET to jsonObjectOf("type" to "string", "description" to "可选：sheet 名或序号（1 起）；缺省第一个"),
                 ARG_RANGE to jsonObjectOf("type" to "string", "description" to "可选：A1:C10 这种矩形范围"),
@@ -60,6 +63,9 @@ internal object SheetReadTool {
     fun run(args: JSONObject, root: File): ToolOutcome {
         val raw = args.optString(ARG_PATH).trim()
         if (raw.isBlank()) return ToolOutcome.Failed("缺 path（相对工作区根，或全盘绝对路径）")
+        // 628：content:// 不是本地路径 —— **在 613 的外域 scheme 拒与 UserPath 解析之前**转走。
+        // 判据③源码断言钉的就是这个顺序：它绝不进「拼工作区根」那一支。
+        if (ContentUri.isContent(raw)) return readContent(args, raw)
         UserPath.foreignScheme(raw)?.let { scheme ->
             return ToolOutcome.Failed(
                 "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径",
@@ -76,18 +82,46 @@ internal object SheetReadTool {
             // 我们到底去哪找了，只能原地重试（569 的模型就是这么打转熔断的）。
             return ToolOutcome.Failed("不存在：${file.absolutePath}（这个位置没有这个文件；先用 list_dir 看结构）")
         }
-        val maxRows = if (args.has(ARG_MAX_ROWS)) args.optInt(ARG_MAX_ROWS, SheetLimits.DEFAULT_ROWS) else SheetLimits.DEFAULT_ROWS
         val result = SheetReader.read(
             file = file,
             sheet = args.optString(ARG_SHEET).ifBlank { null },
             range = args.optString(ARG_RANGE).ifBlank { null },
             hasHeader = args.optBoolean(ARG_HAS_HEADER, false),
-            maxRows = maxRows,
+            maxRows = maxRowsOf(args),
         )
+        // 报错自证：回**解析后的绝对路径**（613 口径），不是输入串。
+        return render(result, file.absolutePath)
+    }
+
+    /** 628：`content://` 读取入口 —— 不拼路径、不判存在、不落产物、不走围栏（外域 URI 无本地路径）。 */
+    private fun readContent(args: JSONObject, uri: String): ToolOutcome =
+        when (val result = ContentUri.read(uri, SheetLimits.MAX_FILE_BYTES)) {
+            is ContentRead.Ok -> render(
+                SheetReader.readBytes(
+                    name = ContentUri.parseName(result.displayName, result.bytes),
+                    bytes = result.bytes,
+                    sheet = args.optString(ARG_SHEET).ifBlank { null },
+                    range = args.optString(ARG_RANGE).ifBlank { null },
+                    hasHeader = args.optBoolean(ARG_HAS_HEADER, false),
+                    maxRows = maxRowsOf(args),
+                ),
+                uri,
+            )
+            ContentRead.Unavailable -> ToolOutcome.Failed(ContentUri.unavailableMessage(uri))
+            is ContentRead.TooBig -> ToolOutcome.Failed(
+                ContentUri.tooBigMessage(result.bytes, SheetLimits.MAX_FILE_BYTES, uri)
+            )
+        }
+
+    private fun maxRowsOf(args: JSONObject): Int =
+        if (args.has(ARG_MAX_ROWS)) args.optInt(ARG_MAX_ROWS, SheetLimits.DEFAULT_ROWS) else SheetLimits.DEFAULT_ROWS
+
+    /** 解析结果 → 输出渲染：File 与 content:// 两条入口**只有这一份**。 */
+    private fun render(result: Result<SheetGrid>, label: String): ToolOutcome {
         val grid = when (val failure = result.exceptionOrNull()) {
             null -> result.getOrThrow()
             is SheetReadFailure.TooBig -> return ToolOutcome.Failed(
-                "文件太大（${failure.bytes / 1024 / 1024}MB > 上限 ${SheetLimits.MAX_FILE_BYTES / 1024 / 1024}MB）：${file.absolutePath}",
+                "文件太大（${failure.bytes / 1024 / 1024}MB > 上限 ${SheetLimits.MAX_FILE_BYTES / 1024 / 1024}MB）：$label",
             )
             SheetReadFailure.Encrypted -> return ToolOutcome.Failed(
                 "这个 xlsx 是加密工作簿，未认领（先在电脑上另存为不加密的副本再放进工作区）",
