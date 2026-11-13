@@ -19,8 +19,9 @@
 //    只在下面 [request] 这一处置真——而且只有用户亲口说的那几句话才走得到这里
 //    （[triggerOf] 闭集解析）。模型没有这个口子：`ask_user` 的入参里没有这一格，
 //    所以模型再怎么说"这是自检"也变不出豁免。
-// 2. **只弹一次**（派工单①的括号）：同一段静默里同一张自检卡只放一次（计数在闸里，
-//    见 `QuietCardGate.exemptSelfCheck`）——豁免是一张通行证，不是一条常开的门。
+// 2. **只弹一次**（派工单①的括号）：**一段静默里只放一张**自检卡（口径与上限都在闸里，
+//    见 `QuietCardGate.exemptSelfCheck` 与 `QuietGateLimits.MAX_SELF_CHECK`）——
+//    豁免是一张通行证，不是一条常开的门。
 // 3. **不许替用户说那句话**：[triggerOf] 认不出就 null ⇒ 什么都不弹。与免打扰授权
 //    （`QuietMode.grantFromText`）同一条纪律：机器不能自己给自己批一次"这算验卡"。
 package com.example.zhengdao.baopu.agent
