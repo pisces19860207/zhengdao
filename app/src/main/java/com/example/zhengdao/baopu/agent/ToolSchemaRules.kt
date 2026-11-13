@@ -2,7 +2,7 @@
 //
 // 依据：派工单第一百一十九批 §0 / §1（第九十四批的续）。
 // 94 批只锁了四个核心文件工具（read_file / write_file / edit_file / list_dir）的契约，
-// 本批把**所有已注册工具**（[BaopuToolCatalog.ENTRIES] 27 条 ＋ 运行时注册 4 条 = 31 个）
+// 本批把**所有已注册工具**（[BaopuToolCatalog.ENTRIES] 27 条 ＋ 运行时注册 4 条 + 622 两件 = 33 个）
 // 拉进同一份判据，并回答一个问题：**「这个工具的 schema 到底算不算完整」由谁说了算？**
 //
 // 三条边界（写完再回头看，一个字都别松）：
@@ -28,12 +28,12 @@ import org.json.JSONObject
  *
  * 谁能用：
  * - [ToolRegistry.register]：每次注册记账一份（[ToolRegistry.schemaIssues]）；
- * - `ToolSchemaGateTest` / `ToolSchemaAllTest`：全量 31 个工具一条一条过，
+ * - `ToolSchemaGateTest` / `ToolSchemaAllTest`：全量 33 个工具一条一条过，
  *   以及「源码里新写的 ToolSpec( 必须带 inputSchema」的源码门禁。
  *
  * 为什么注册表**不**直接抛异常（派工单 §0 写的是「缺 schema 的工具不允许注册（源码门禁）」，
  * 后半句才是落点）：抱朴的注册表在引擎装配期建好，装配期抛异常 ⇒ 用户拿到的是「抱朴打不开」，
- * 而不是「这个工具用不了」；而这批 31 个工具的 schema 已被门禁测试钉死，
+ * 而不是「这个工具用不了」；而这批 33 个工具的 schema 已被门禁测试钉死，
  * 真出错该在 CI/单测里红，不该让用户当第一个发现者。所以这里是**记账 + 门禁**，
  * 不是运行期崩溃。若要改硬抛，只动 [ToolRegistry.register] 一行，理由写进报告。
  */

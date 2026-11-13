@@ -475,12 +475,6 @@ object BrowserCommands {
     private fun sanitizeEvidenceText(s: String): String =
         SensitiveRedactor().redactDom(PageSnapshot.scrubSecrets(s))
 
-    /** `evidence` 的回包：Ok 带最终文本（已脱敏＋钳制＋render），Bad 带原因。 */
-    sealed class EvidenceCapture {
-        data class Ok(val text: String) : EvidenceCapture()
-        data class Bad(val error: String) : EvidenceCapture()
-    }
-
     /**
      * `execJS`：页面内 JS 自由执行（高权限区，含读 cookie/localStorage）。
      *
@@ -924,29 +918,9 @@ object BrowserCommands {
      * 元素不存在 ⇒ `NOT_FOUND` 口径报错（**不许**回一张整页图充数）；元素宽或高为 0 ⇒
      * 明说「元素没有尺寸」。
      */
-    /**
-     * 一次截图的落盘结果（第一百七十七批：**JSON 与 ref 两个出口共用这一份**）。
-     *
-     * 为什么要有 ref：抱朴侧不需要 JSON 文本，它要的是「文件在哪」——好把像素读进模型
-     * （`VisionFiles.load`）并带上相对路径。桥侧（终端 guest）仍要 JSON 形状，一个字不改。
-     */
-    internal data class ShotRef(
-        val file: String,
-        val hostPath: String,
-        val guestPath: String,
-        val bytes: Int,
-        val mode: String,
-        val width: Int,
-        val height: Int,
-        val scale: Float,
-        val note: String?,
-    )
-
-    /** 截图结局：要么拿到落盘引用，要么一句可读错误（不抛、不回 1×1 假成功）。 */
-    internal sealed interface ShotCapture {
-        data class Ok(val ref: ShotRef) : ShotCapture
-        data class Bad(val error: String) : ShotCapture
-    }
+    // ── 622：ShotRef / ShotCapture / EvidenceCapture 搬去 bridge/ShotContract.kt ──
+    // （回执契约端口与执行层共用，搬出来之后「bridge 之外只许引用端口」的源码断言
+    //   才不破：调用方判回执类型不再需要碰 BrowserCommands 这个名字。字段语义一字未动。）
 
     /**
      * 旧核对图目录名（第一百七十七批 ＝ `证道/截屏/`）。

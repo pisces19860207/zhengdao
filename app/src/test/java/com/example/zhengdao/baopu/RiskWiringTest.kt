@@ -399,7 +399,7 @@ class RiskWiringTest {
         // 597 立绘外貌两件进表（portrait_look R1 / portrait_appearance R1）＝ 96 行（同样没有新维度）
         // 609 小说资产六件进表（读四件 R0 / timeline_append、annotation_reply R1 必问）＝ 102 行
         // 610 通读两件进表（readthrough R0 / run R2）＝ 104 行
-        assertEquals("表行数变了：先对账再改（104 个注册工具 = 104 行（COMPAT 退役后无豁免行））", 104, RiskTable.DEFAULT.tools.size)
+        assertEquals("表行数变了：先对账再改（106 个注册工具 = 106 行（COMPAT 退役后无豁免行；622 加导出/导入两行））", 106, RiskTable.DEFAULT.tools.size)
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)

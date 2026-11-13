@@ -46,6 +46,8 @@ class TeachToolsTest {
         override fun stopRecording(): String { calls += "stop"; return "已录到 3 步，生成技能草稿「m.example.com-流程」" }
         override fun saveDraft(name: String): String { calls += "save:$name"; return "已保存技能「$name」" }
         override fun skillAllowedDomains(name: String): List<String>? = allowed
+        override fun exportSkill(name: String): String { calls += "export:$name"; return "已完成：导出 $name" }
+        override fun importSkill(name: String): String { calls += "import:$name"; return "已完成：导入 $name" }
         override fun replay(name: String, sentence: String?, driftChoice: String?): String {
             calls += "replay:$name/${sentence ?: "-"}/${driftChoice ?: "-"}"
             return "回放完成：3 步；取证：/tmp/evidence"

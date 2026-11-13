@@ -3,7 +3,7 @@
 // 第一百九十六批 · 生产端适配层（学习器＋执行器的壳）：
 //
 // - [BrowserTeachDom]：[TeachDom] 的玄览实现——所有页面访问都走**现有的**
-//   [BrowserCommands.execJs] 桥（派工单 §1「不新开桥」），JS 是十条哑查询，
+//   执行端口的 PROBE/ACT 口（622 收口；派工单 §1「不新开桥」），JS 是十条哑查询，
 //   决策全在 Kotlin 侧（TeachResolve/TeachExecutor）。
 // - [TeachRecorder]：示教录制——往页面注入监听（挂 window.__zlTeach 队列），
 //   轮询收割事件；只记录不干预（用户正常点/输/翻页）。
@@ -14,7 +14,7 @@
 // 跑完出「待发布卡」。`TeachExecutor.kt` 一个字没改：它每步只问一句 `ask(Act(…))`，
 // 换掉这一句的实现就等于换掉了动手的方式，而顺序铁律、门控、取证、审计全留在原处。
 //
-// 线程契约：BrowserCommands.execJs 是同步桥且**禁止主线程调用**——本文件的
+// 线程契约：端口底层（BrowserCommands.evalJs）是同步桥且**禁止主线程调用**——本文件的
 // 录制/回放都跑在调用方给的后台协程里，UI 只碰 [TeachSessionUiModel]。
 package com.example.zhengdao.baopu
 
@@ -216,13 +216,42 @@ return JSON.stringify({hits:out})})()""".trimIndent() + "})()"
     }
 }
 
-// ── TeachDom 的玄览实现（经既有 execJs 桥）────────────────────────────────────
+// ── TeachDom 的玄览实现（622 起经执行端口；旧「经 execJs 桥」的直调路收口） ──────────
 
-/** 解析 execJs 的 `{"ok":true,"result":"…"}` 包装（result 里是查询脚本自己的 JSON）。 */
-internal class BrowserTeachDom(private val tabId: Int?) : TeachDom {
+/**
+ * 解析端口的 `{"ok":true,"result":"…"}` 包装（result 里是查询脚本自己的 JSON）。
+ *
+ * [policy] 是回放方的授权域（技能的 allowedDomains）——查询与动作在端口过域闸：
+ * 页面漂出授权域时端口先拒（比执行器的每步域检查更早一道）。
+ */
+internal class BrowserTeachDom(
+    private val tabId: Int?,
+    private val policy: com.example.zhengdao.bridge.BrowserPort.PortPolicy = com.example.zhengdao.bridge.BrowserPort.PortPolicy.OPEN,
+) : TeachDom {
 
     private fun exec(code: String): JSONObject? {
-        val raw = BrowserCommands.execJs(code, tabId?.toString())
+        val raw = com.example.zhengdao.bridge.BrowserPort.probe(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_REPLAY, code, tabId?.toString(), policy,
+        )
+        return parsePortJson(raw)
+    }
+
+    private fun act(code: String, subject: List<String>): JSONObject? {
+        val raw = com.example.zhengdao.bridge.BrowserPort.act(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_REPLAY, code, subject, tabId?.toString(), policy,
+        )
+        val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        if (!o.optBoolean("ok")) return o // 闸停/执行失败带 stop/error 键原样上交——分支里区分
+        val result = o.optString("result").takeIf { it.isNotBlank() } ?: return null
+        return runCatching { JSONObject(result) }.getOrNull()
+    }
+
+    /** 端口闸停识别（act 专用）：ok=false 且带 stop 键 ⇒ 动作被端口拦下（不是页面失败）。 */
+    private fun JSONObject.portStopped(): String? =
+        if (!optBoolean("ok") && has("stop")) optString("error") else null
+
+    /** 端口回包统一解析（probe/act 同一形状；闸停/失败都归 null，调用方如实报「取不到」）。 */
+    private fun parsePortJson(raw: String): JSONObject? {
         val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
         if (!o.optBoolean("ok")) return null
         val result = o.optString("result").takeIf { it.isNotBlank() } ?: return null
@@ -276,15 +305,20 @@ internal class BrowserTeachDom(private val tabId: Int?) : TeachDom {
             TeachQuery.HeadersAndButtons -> exec(TeachScripts.HEADERS_AND_BUTTONS)
                 ?.let { TeachReply.Anchors(readStrings(it, "h"), readStrings(it, "b")) }
                 ?: TeachReply.Failed("execJs 失败（HeadersAndButtons）")
-            is TeachQuery.Act -> exec(TeachScripts.act(query.locator, query.action, query.value))
+            is TeachQuery.Act -> act(TeachScripts.act(query.locator, query.action, query.value), query.subject)
                 ?.let {
-                    if (it.optBoolean("ok")) {
+                    // 端口闸停（外部不可逆/域外/限速）＝动作没发生且**不许重试**——
+                    // 原因原样上交，执行器按失败停下并取证（不会把它当「滚一下再试」的普通失败）。
+                    val stopped = it.portStopped()
+                    if (stopped != null) {
+                        TeachReply.Acted(ok = false, reason = "执行端口拦下：$stopped", urlAfter = "")
+                    } else if (it.optBoolean("ok")) {
                         TeachReply.Acted(ok = true, reason = null, urlAfter = it.optString("u"))
                     } else {
                         TeachReply.Acted(ok = false, reason = it.optString("r"), urlAfter = "")
                     }
                 }
-                ?: TeachReply.Failed("execJs 失败（Act）")
+                ?: TeachReply.Failed("执行失败（Act）")
             TeachQuery.DomSummary -> exec(TeachScripts.DOM_SUMMARY)
                 ?.let {
                     TeachReply.Summary(
@@ -465,7 +499,16 @@ return JSON.stringify({u:location.href,r:rows,e:q.slice(0,50)})})()
         job = scope.launch(Dispatchers.IO) {
             // 起点页事实（指纹与 startUrl）
             runCatching {
-                val o = JSONObject(BrowserCommands.execJs(FACTS_SCRIPT, tabId?.toString()))
+                // 622：录制侧的观察探针也过执行端口（READ 档；策略 OPEN——录制时页面由人
+                // 自由操作，信任闸在 teach_record_start 那里把过一道）
+                val o = JSONObject(
+                    com.example.zhengdao.bridge.BrowserPort.probe(
+                        com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_RECORD,
+                        FACTS_SCRIPT,
+                        tabId?.toString(),
+                        com.example.zhengdao.bridge.BrowserPort.PortPolicy.OPEN,
+                    ),
+                )
                 if (o.optBoolean("ok")) {
                     val r = JSONObject(o.optString("result"))
                     startFacts = TeachPageFacts(
@@ -496,7 +539,12 @@ return JSON.stringify({u:location.href,r:rows,e:q.slice(0,50)})})()
     }
 
     private fun harvestOnce(): Boolean {
-        val rawJson = BrowserCommands.execJs(harvestScript(), tabId?.toString())
+        val rawJson = com.example.zhengdao.bridge.BrowserPort.probe(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_RECORD,
+            harvestScript(),
+            tabId?.toString(),
+            com.example.zhengdao.bridge.BrowserPort.PortPolicy.OPEN,
+        )
         val o = runCatching { JSONObject(rawJson) }.getOrNull() ?: return false
         if (!o.optBoolean("ok")) return false
         val r = runCatching { JSONObject(o.optString("result")) }.getOrNull() ?: return false
@@ -1071,8 +1119,17 @@ private fun publishReplayCard(
 ): PublishCard? {
     val outcomes = dom.formOutcomes
     if (outcomes.isEmpty()) return null
-    val shot = when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
-        is com.example.zhengdao.bridge.BrowserCommands.ShotCapture.Ok -> c.ref.hostPath
+    val shot = when (
+        val c = com.example.zhengdao.bridge.BrowserPort.screenshotRef(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_REPLAY,
+            context,
+            tabId?.toString(),
+            "viewport",
+            null,
+            com.example.zhengdao.bridge.BrowserPort.PortPolicy(skill.allowedDomains),
+        )
+    ) {
+        is com.example.zhengdao.bridge.ShotCapture.Ok -> c.ref.hostPath
         else -> null
     }
     val card = buildReplayPublishCard(
@@ -1123,13 +1180,23 @@ object TeachReplay {
             ?.let { return failedReport(name, it) }
 
         val evidenceRoot = File(MemoryLayout.productsDir(workspace), "玄览技能")
+        val portPolicy = com.example.zhengdao.bridge.BrowserPort.PortPolicy(skill.allowedDomains)
         val sink = FileTeachEvidenceSink(evidenceRoot) { _ ->
-            when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
-                is com.example.zhengdao.bridge.BrowserCommands.ShotCapture.Ok -> c.ref.hostPath
+            when (
+                val c = com.example.zhengdao.bridge.BrowserPort.screenshotRef(
+                    com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_REPLAY,
+                    context,
+                    tabId?.toString(),
+                    "viewport",
+                    null,
+                    portPolicy,
+                )
+            ) {
+                is com.example.zhengdao.bridge.ShotCapture.Ok -> c.ref.hostPath
                 else -> null
             }
         }
-        val dom = FormFillingTeachDom(BrowserTeachDom(tabId), BrowserFormDom(tabId))
+        val dom = FormFillingTeachDom(BrowserTeachDom(tabId, portPolicy), BrowserFormDom(tabId, portPolicy))
         val executor = TeachExecutor(
             dom = dom,
             evidence = sink,
@@ -1222,6 +1289,10 @@ internal class RedactingEvidenceSink(
         delegate.step(index, action, TeachParams.redact(summary, values), screenshotRef)
     }
 
+    override fun final(summary: String, screenshotRef: String?) {
+        delegate.final(TeachParams.redact(summary, values), screenshotRef)
+    }
+
     override fun finish(report: TeachRunReport) {
         delegate.finish(report)
         // 196 的 sink 把 `report.toString()` 原样落 run.json：这里把它覆写成脱敏版
@@ -1259,7 +1330,16 @@ fun replaySkillWithParams(
         is TeachParams.TeachRunPlan.Stop -> return TeachParamRun(null, null, emptyList(), pl.reason)
         is TeachParams.TeachRunPlan.Ready -> {
             pl.navigateTo?.let { url ->
-                val r = runCatching { BrowserCommands.navigate(url, tabId?.toString()) }
+                // 622：起点导航也过执行端口（域闸拿技能的授权域判——越域导航在这里就拒，
+                // 不是跑到执行器里才被「当前页不在授权域」拦下）
+                val r = runCatching {
+                    com.example.zhengdao.bridge.BrowserPort.navigate(
+                        com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_REPLAY,
+                        url,
+                        tabId?.toString(),
+                        com.example.zhengdao.bridge.BrowserPort.PortPolicy(pl.skill.allowedDomains),
+                    )
+                }
                 val okNav = r.getOrNull()?.contains("\"ok\":true") == true
                 if (!okNav) {
                     // 导航失败就别跑了（跑的是「别的页面」，结果不能当技能结果）
@@ -1273,13 +1353,23 @@ fun replaySkillWithParams(
             driftGate(context, projectRoot, name, driftChoice, tabId)
                 ?.let { return TeachParamRun(null, null, pl.display, it) }
             val evidenceRoot = File(MemoryLayout.productsDir(workspace), "玄览技能")
+            val portPolicy = com.example.zhengdao.bridge.BrowserPort.PortPolicy(pl.skill.allowedDomains)
             val raw = FileTeachEvidenceSink(evidenceRoot) { _ ->
-                when (val c = BrowserCommands.captureShotRef(context, tabId?.toString(), "viewport", null)) {
-                    is com.example.zhengdao.bridge.BrowserCommands.ShotCapture.Ok -> c.ref.hostPath
+                when (
+                    val c = com.example.zhengdao.bridge.BrowserPort.screenshotRef(
+                        com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_REPLAY,
+                        context,
+                        tabId?.toString(),
+                        "viewport",
+                        null,
+                        portPolicy,
+                    )
+                ) {
+                    is com.example.zhengdao.bridge.ShotCapture.Ok -> c.ref.hostPath
                     else -> null
                 }
             }
-            val dom = FormFillingTeachDom(BrowserTeachDom(tabId), BrowserFormDom(tabId))
+            val dom = FormFillingTeachDom(BrowserTeachDom(tabId, portPolicy), BrowserFormDom(tabId, portPolicy))
             val executor = TeachExecutor(
                 dom = dom,
                 evidence = RedactingEvidenceSink(raw, pl.values),

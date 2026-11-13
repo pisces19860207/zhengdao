@@ -46,6 +46,15 @@ internal interface TeachGateway {
     fun skillAllowedDomains(name: String): List<String>?
 
     /**
+     * 622 A②：把技能导出成单文件动作脚本（产物/玄览脚本/<名>.玄览脚本.json）。
+     * 凭证闸＋不可逆闸在导出侧就过（带病脚本不出门）；回执一句话。
+     */
+    fun exportSkill(name: String): String
+
+    /** 622 A②：把导出脚本装回技能库（schema/凭证/不可逆/入库四道闸，同人重导＝替换）。 */
+    fun importSkill(name: String): String
+
+    /**
      * 回放（同步阻塞；name 带 sentence 时按一句话换算参数）。
      * 第三百一十四批：[driftChoice] 是人对漂移问题的回答（ask/proceed/new_version/cancel；
      * null/「ask」＝先问）——接线层 [com.example.zhengdao.baopu.DriftWire] 按它处置。
@@ -141,11 +150,65 @@ internal object TeachTools {
             "additionalProperties" to false,
         ),
         permission = ToolPermission.CONFIRM,
-        timeoutMs = ToolTimeout.BROWSER_MS,
+        timeoutMs = ToolTimeout.FILE_MS,
     ) { args ->
         val gw = BaopuTeach.require() ?: return@ToolSpec ToolOutcome.Failed(NO_TEACH)
         runCatching { ToolOutcome.Ok(gw.saveDraft(args.optString(ARG_NAME).trim())) }
             .getOrElse { ToolOutcome.Failed("保存失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    // ── ③b/③c 622 A②：动作脚本的导出与导入（可版本化、可带走、可装回） ────────
+
+    fun skillExportSpec(): ToolSpec = ToolSpec(
+        name = "teach_skill_export",
+        description = "把一个已保存的示教技能导出成单文件动作脚本" +
+            "（产物/玄览脚本/<名>.玄览脚本.json；schema zl-teach/2：目标站/版本/步骤/校验点/最终快照）。" +
+            "导出前过凭证扫描与不可逆动作扫描——带凭据或含提交/支付/删除类点击的脚本不出门。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_NAME to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "要导出的技能名（teach_skill_save 保存时的那个名字）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_NAME),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.FILE_MS,
+    ) { args ->
+        val gw = BaopuTeach.require() ?: return@ToolSpec ToolOutcome.Failed(NO_TEACH)
+        val name = args.optString(ARG_NAME).trim()
+        if (name.isEmpty()) return@ToolSpec ToolOutcome.Failed("name 不能为空：导出哪个技能")
+        runCatching { ToolOutcome.Ok(gw.exportSkill(name)) }
+            .getOrElse { ToolOutcome.Failed("导出失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    fun skillImportSpec(): ToolSpec = ToolSpec(
+        name = "teach_skill_import",
+        description = "把一个导出过的动作脚本装回技能库（从 产物/玄览脚本/ 读，同人重导＝替换）。" +
+            "四道闸：schema 严格解析（只认 zl-teach/1、/2）、凭证扫描、不可逆动作扫描" +
+            "（提交/支付/删除类点击整份拒绝）、入库验收闸——任何一道不过就一个字节不写。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_NAME to jsonObjectOf(
+                    "type" to "string",
+                    "description" to "要导入的脚本名（导出时的技能名，不带扩展名）",
+                ),
+            ),
+            "required" to jsonArrayOf(ARG_NAME),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.FILE_MS,
+    ) { args ->
+        val gw = BaopuTeach.require() ?: return@ToolSpec ToolOutcome.Failed(NO_TEACH)
+        val name = args.optString(ARG_NAME).trim()
+        if (name.isEmpty()) return@ToolSpec ToolOutcome.Failed("name 不能为空：导入哪个脚本")
+        runCatching { ToolOutcome.Ok(gw.importSkill(name)) }
+            .getOrElse { ToolOutcome.Failed("导入失败：${it.message ?: it.javaClass.simpleName}") }
     }
 
     // ── ④ 回放 ──────────────────────────────────────────────────────────
@@ -269,7 +332,7 @@ internal object TeachTools {
                 "（撤销：teach_site_trust remove <域名>）"
         }
 
-    /** 回放报告的人话（refusals/retried/取证都回灌，不许只说「好了」。） */
+    /** 回放报告的人话（refusals/retried/取证/建议都回灌，不许只说「好了」。） */
     fun reportLine(r: TeachRunReport): String = buildString {
         append(if (r.ok) "回放完成：" else "回放停下：")
         append(r.stepsDone).append(" 步")
@@ -282,5 +345,7 @@ internal object TeachTools {
             append("；第 ").append(r.retried.joinToString("、")).append(" 步滚入视口重试后成功")
         }
         r.evidenceDir?.let { append("；取证：").append(it) }
+        // 622 A④：失败给下一步建议（是给人看的路标，不是新计划——回放自己不乱点）
+        r.suggestion?.let { append("；建议：").append(it) }
     }
 }

@@ -30,8 +30,17 @@ sealed class TeachQuery {
     /** 起点页结构指纹探针：关键表头文本集合＋关键按钮名集合。 */
     data object HeadersAndButtons : TeachQuery()
 
-    /** 执行动作：定位器必须唯一命中才动手；返回执行后的 URL。 */
-    data class Act(val locator: TeachLocator, val action: TeachAction, val value: String?) : TeachQuery()
+    /**
+     * 执行动作：定位器必须唯一命中才动手；返回执行后的 URL。
+     * 622：[subject] 带候选元素的语义面（text/name/aria/testid）——动作经执行端口派发时，
+     * 端口拿它判「外部不可逆」（提交/支付/删除类 ⇒ 拦下回闸），与执行器的安全闸同源。
+     */
+    data class Act(
+        val locator: TeachLocator,
+        val action: TeachAction,
+        val value: String?,
+        val subject: List<String> = emptyList(),
+    ) : TeachQuery()
 
     /** DOM 摘要（取证用：页面头几层结构＋行数＋URL，脱敏后落证据目录）。 */
     data object DomSummary : TeachQuery()

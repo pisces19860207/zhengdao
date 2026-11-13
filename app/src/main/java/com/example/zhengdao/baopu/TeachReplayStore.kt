@@ -65,6 +65,15 @@ internal object TeachReplayStore {
         if (findings.isNotEmpty()) {
             return SaveResult.reject("技能里有明文凭证，写盘前拒绝：${findings.joinToString("；")}")
         }
+        // ①② 622 判据④（脚本层拒不可逆）：CLICK 步语义面命中拒点词 ⇒ 一个字节不写。
+        // 录制层本就拒记（TeachLearner），这里拦的是手改草稿塞进来那条路——三层同源，
+        // 词表只有一份（bridge/PortIrreversible）。
+        val irreversible = TeachScriptExchange.irreversibleFindings(draft.skill)
+        if (irreversible.isNotEmpty()) {
+            return SaveResult.reject(
+                "技能含不可逆动作（提交/支付/删除类点击），写盘前拒绝：${irreversible.joinToString("；")}",
+            )
+        }
         val safeName = SkillStore.sanitizeName(draft.skill.name)
             ?: return SaveResult.reject("技能名不可用（只许字母／数字／中文／_／-，且不能为空）")
 

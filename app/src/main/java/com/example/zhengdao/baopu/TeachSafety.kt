@@ -21,17 +21,17 @@ internal object TeachSafety {
     // 这正是「不许它乱动手」的落点：宁可误拒（页面同时有「确认收货」这类合法按钮时技能
     // 会停下来让人看），不可漏放。判定输入是候选元素的**全部语义面**：可见文本、可访问名、
     // aria-label、data-testid 值——换一个面写危险词照样拦。
+    //
+    // 622 起：词表与判定**上收**到端口侧 [com.example.zhengdao.bridge.PortIrreversible]
+    // （执行端口的三档闸同一份词表），这里只留委托——名单只有一份，谁都没资格抄第二份。
 
-    /** 拒点词表（派工单定稿九词，一个字不许增删——增删要过派工单变更）。 */
-    val CLICK_REFUSAL_TEXT: Regex = Regex("提交|确认|删除|作废|发货|派车|结算|支付|充值")
+    /** 拒点词表（派工单定稿九词；唯一实现在 [com.example.zhengdao.bridge.PortIrreversible]）。 */
+    val CLICK_REFUSAL_TEXT: Regex
+        get() = com.example.zhengdao.bridge.PortIrreversible.CLICK_REFUSAL_TEXT
 
-    /**
-     * 英文镜像词表（本批加固）：同一九个概念的英文写法，词边界匹配。真实页面常有
-     * `Submit`／`删除` 以外的英文按钮面（testid="submit-btn"），只拦中文会漏。
-     * 误伤方向安全（误拦 ⇒ 停下问人，不误点）。
-     */
-    val CLICK_REFUSAL_TEXT_EN: Regex =
-        Regex("(?i)\\b(submit|confirm|delete|remove|void|ship|dispatch|settle|pay|payment|checkout|recharge|topup|top_up)\\b")
+    /** 英文镜像词表（唯一实现在端口侧；622 上收后这里是转发）。 */
+    val CLICK_REFUSAL_TEXT_EN: Regex
+        get() = com.example.zhengdao.bridge.PortIrreversible.CLICK_REFUSAL_TEXT_EN
 
     /** 候选元素的语义面（判定拒点用；四个面全空 = 无名元素，交给定位层而非这里）。 */
     data class ClickSurface(
@@ -43,24 +43,15 @@ internal object TeachSafety {
 
     /**
      * 拒点判定：命中拒点词 ⇒ 返回拒点原因（执行器原样进报告与审计）；null = 放行。
+     * 622 起委托端口侧唯一实现（文案改口为「回抱朴走闸」——判据不变，说话的语境统一）。
      */
-    fun refuseClickReason(surface: ClickSurface): String? {
-        val faces = listOfNotNull(
+    fun refuseClickReason(surface: ClickSurface): String? =
+        com.example.zhengdao.bridge.PortIrreversible.reasonIn(
             surface.text,
             surface.accessibleName,
             surface.ariaLabel,
             surface.testid,
-        ).filter { it.isNotBlank() }
-        for (face in faces) {
-            CLICK_REFUSAL_TEXT.find(face)?.let {
-                return "拒点：候选文案含「${it.value}」（${face.take(24)}）——提交/删除/结算类按钮代码层面一律不点"
-            }
-            CLICK_REFUSAL_TEXT_EN.find(face)?.let {
-                return "拒点：候选文案含英文危险词「${it.value}」（${face.take(24)}）——提交/删除/结算类按钮代码层面一律不点"
-            }
-        }
-        return null
-    }
+        )
 
     // ── ② 输入白名单：密码/验证码拒填（§3.2）─────────────────────────────────
 
@@ -93,46 +84,19 @@ internal object TeachSafety {
     }
 
     // ── ③ 域名白名单（§3.3）───────────────────────────────────────────────────
+    //
+    // 622 起：host 解析与授权域判定**上收**到 [com.example.zhengdao.bridge.BridgePolicy]
+    // （端口的域闸同一份判据），这里只留委托——名单判据只有一份。
 
     /**
-     * 域判据：url 的 host 必须落在授权域内。授权域 `a.com` 放行 `a.com` 与 `*.a.com`
-     * （点前缀匹配，防 `a.com.evil.io` 蹭过）；授权域本身带子域（`t.a.com`）时只放行该子域
-     * 及其下。host 大小写归一。
+     * 域判据：url 的 host 必须落在授权域内（点前缀匹配防 `a.com.evil.io` 蹭过；
+     * 空授权域全拒）。622 起委托 BridgePolicy.hostAllowedIn。
      */
-    fun domainAllowed(url: String, allowedDomains: List<String>): Boolean {
-        val host = hostOf(url) ?: return false
-        if (allowedDomains.isEmpty()) return false
-        return allowedDomains.any { d ->
-            val dom = d.trim().removePrefix(".").lowercase()
-            if (dom.isEmpty()) return@any false
-            host == dom || host.endsWith(".$dom")
-        }
-    }
+    fun domainAllowed(url: String, allowedDomains: List<String>): Boolean =
+        com.example.zhengdao.bridge.BridgePolicy.hostAllowedIn(url, allowedDomains)
 
-    /** 取 url 的 host；裸串（无 scheme）按全串当 host 试（录制时页面 url 一定带 scheme）。 */
-    fun hostOf(url: String): String? {
-        val s = url.trim()
-        if (s.isEmpty()) return null
-        // authority＝scheme 后、路径/查询/锚点前的整段；里面可能有 userinfo（user:pass@）和端口
-        val authority = when {
-            s.contains("://") -> s.substringAfter("://")
-            s.startsWith("//") -> s.substring(2)
-            else -> s
-        }.substringBefore('/').substringBefore('?').substringBefore('#')
-        val hostPort = if (authority.contains('@')) authority.substringAfterLast('@') else authority
-        // 剥端口：最后一个冒号后面是数字才当端口剥（IPv6 的 [::1] 不进这条链，如实小写返回）
-        val host = if (hostPort.startsWith("[")) {
-            hostPort.substringBefore(']')
-        } else {
-            val idx = hostPort.lastIndexOf(':')
-            if (idx > 0 && hostPort.substring(idx + 1).all { it.isDigit() } && hostPort.substring(idx + 1).isNotEmpty()) {
-                hostPort.substring(0, idx)
-            } else {
-                hostPort
-            }
-        }
-        return host.lowercase().ifEmpty { null }
-    }
+    /** 取 url 的 host（622 起委托 BridgePolicy.hostOf——唯一实现）。 */
+    fun hostOf(url: String): String? = com.example.zhengdao.bridge.BridgePolicy.hostOf(url)
 
     // ── ④ 凭证扫描：技能里不许有明文密码/凭证（§3.4 + 负例 7）────────────────
 

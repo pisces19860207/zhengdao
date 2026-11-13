@@ -15,6 +15,7 @@
 // 读数落 external files 的 real_browser_result.json，adb pull 回收。
 package com.example.zhengdao.patrol
 
+import com.example.zhengdao.bridge.EvidenceCapture
 import android.content.Intent
 import android.os.Build
 import android.util.Log
@@ -90,7 +91,7 @@ class EvidenceOnRealBrowserTest {
             val r = runCatching { BrowserCommands.evidenceSnapshot() }
             val capture = r.getOrNull()
             when (capture) {
-                is BrowserCommands.EvidenceCapture.Ok -> {
+                is EvidenceCapture.Ok -> {
                     // 判据不用固定字串（真网站标题会变）：readyState=complete 且 DOM 摘要
                     // 有实质内容（>40 字）就算真读到了
                     val dom = capture.text
@@ -103,7 +104,7 @@ class EvidenceOnRealBrowserTest {
                     }
                     last = "第 ${i + 1} 次还没成形（DOM ${dom.length} 字）：${capture.text.take(100)}"
                 }
-                is BrowserCommands.EvidenceCapture.Bad -> last = "第 ${i + 1} 次：${capture.error}"
+                is EvidenceCapture.Bad -> last = "第 ${i + 1} 次：${capture.error}"
                 null -> last = "第 ${i + 1} 次：抛异常 ${r.exceptionOrNull()?.message}"
             }
             Thread.sleep(POLL_MS)

@@ -20,7 +20,12 @@ import com.example.zhengdao.baopu.agent.TeachGateway
 import com.example.zhengdao.baopu.agent.TeachTools
 import com.example.zhengdao.baopu.inspect.VisualEvidenceQueue
 import com.example.zhengdao.baopu.kernel.BaopuKernel
-import com.example.zhengdao.bridge.BrowserCommands
+import com.example.zhengdao.baopu.safety.HaltGate
+import com.example.zhengdao.bridge.BrowserPort
+import com.example.zhengdao.bridge.BrowserPort.PortCaller
+import com.example.zhengdao.bridge.BrowserPort.PortPolicy
+import com.example.zhengdao.bridge.EvidenceCapture
+import com.example.zhengdao.bridge.ShotCapture
 import com.example.zhengdao.browser.SensitiveRedactor
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.browser.BrowserHolder
@@ -50,38 +55,41 @@ internal object BaopuBrowserWiring {
 
     fun install(context: Context) {
         val appCtx = context.applicationContext
+        installBrowserPort(appCtx)
         installTeach(appCtx)
         BaopuBrowser.gateway = object : BrowserGateway {
 
             override fun open(url: String, newTab: Boolean): String =
-                if (newTab) {
-                    BrowserCommands.newTab(appCtx, url)
-                } else {
-                    BrowserCommands.navigate(url)
-                }
+                BrowserPort.open(
+                    PortCaller.BAOPU_AGENT, url, newTab, appCtx, null,
+                    PortPolicy.OPEN,
+                )
 
             override fun snapshot(selector: String?): String =
-                BrowserCommands.snapshot("text", selector)
+                BrowserPort.snapshot(PortCaller.BAOPU_AGENT, "text", selector, null, PortPolicy.OPEN)
 
             // 262 批：证据快照（不依赖前台可见——DOM/属性读取；失败 Bad 翻成异常，
             // 工具层 runCatching 接住翻 ToolOutcome.Failed——与 screenshot 同规）
             override fun evidence(): String =
-                when (val r = BrowserCommands.evidenceSnapshot()) {
-                    is BrowserCommands.EvidenceCapture.Ok -> r.text
-                    is BrowserCommands.EvidenceCapture.Bad -> throw IllegalStateException(r.error)
+                when (val r = BrowserPort.evidence(PortCaller.BAOPU_AGENT, null, PortPolicy.OPEN)) {
+                    is EvidenceCapture.Ok -> r.text
+                    is EvidenceCapture.Bad -> throw IllegalStateException(r.error)
                 }
 
             // 第一百七十七批 S3：抱朴这条线走**带前后校验**的内核（桥那条仍是原 `click`，
             // 回执形状不变）——「点好了」要带「页面变没变」，不许只说一句成功。
+            // 622：subject 面（语义面）抱朴工具路径暂无元素快照可带 ⇒ 空面交端口
+            // （升档判据见 BrowserPort 的「三档闸」段；确认卡兜底在工具层 CONFIRM）。
             override fun click(target: String): String =
-                BrowserCommands.clickChecked(target)
+                BrowserPort.click(PortCaller.BAOPU_AGENT, target, null, emptyList(), PortPolicy.OPEN)
 
             override fun typeInto(target: String, text: String): String =
-                BrowserCommands.typeChecked(target, text)
+                BrowserPort.typeInto(PortCaller.BAOPU_AGENT, target, text, null, PortPolicy.OPEN)
 
             override fun scroll(direction: String): String {
-                // 用 scrollBy（相对位移）而不是 BrowserCommands.scroll 的 scrollTo（绝对坐标）：
-                // 绝对坐标要知道当前滚到哪了，工具层并不知道；scrollBy 超出范围由页面自己 clamp。
+                // 用 scrollBy（相对位移）而不是绝对 scrollTo：绝对坐标要知道当前滚到哪了，
+                // 工具层并不知道；scrollBy 超出范围由页面自己 clamp。622：scroll 属只读档，
+                // 相对滚动的脚本收进端口（旧的内联 execJs 自由脚本从此没有执行口）。
                 val (dx, dy) = when (direction) {
                     "up" -> 0 to -SCROLL_STEP
                     "down" -> 0 to SCROLL_STEP
@@ -89,7 +97,7 @@ internal object BaopuBrowserWiring {
                     "right" -> SCROLL_STEP to 0
                     else -> 0 to 0
                 }
-                return BrowserCommands.execJs("(function(){window.scrollBy($dx,$dy);return 'OK'})()")
+                return BrowserPort.scrollBy(PortCaller.BAOPU_AGENT, dx, dy, null, PortPolicy.OPEN)
             }
 
             /**
@@ -103,13 +111,16 @@ internal object BaopuBrowserWiring {
              */
             override fun screenshot(fullPage: Boolean, album: Boolean): Shot =
                 when (
-                    val r = BrowserCommands.captureShotRef(
+                    val r = BrowserPort.screenshotRef(
+                        PortCaller.BAOPU_AGENT,
                         appCtx,
                         null,
                         if (fullPage) "1" else "0",
+                        null,
+                        PortPolicy.OPEN,
                     )
                 ) {
-                    is BrowserCommands.ShotCapture.Ok -> {
+                    is ShotCapture.Ok -> {
                         val ref = r.ref
                         val info = pageInfo()
                         val text = buildString {
@@ -128,53 +139,53 @@ internal object BaopuBrowserWiring {
                         Shot(text, if (album) null else ref.file, album = album)
                     }
 
-                    is BrowserCommands.ShotCapture.Bad ->
+                    is ShotCapture.Bad ->
                         throw IllegalStateException(r.error)
                 }
 
             override fun tap(cssX: Int, cssY: Int): String =
-                BrowserCommands.tap(cssX, cssY)
+                BrowserPort.tap(PortCaller.BAOPU_AGENT, cssX, cssY, null, PortPolicy.OPEN)
 
             override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int): String =
-                BrowserCommands.swipe(x1, y1, x2, y2, durationMs)
+                BrowserPort.swipe(PortCaller.BAOPU_AGENT, x1, y1, x2, y2, durationMs, null, PortPolicy.OPEN)
 
             override fun longPress(cssX: Int, cssY: Int, durationMs: Int): String =
-                BrowserCommands.longPress(cssX, cssY, durationMs)
+                BrowserPort.longPress(PortCaller.BAOPU_AGENT, cssX, cssY, durationMs, null, PortPolicy.OPEN)
 
             override fun key(key: String): String =
-                BrowserCommands.keyPress(key)
+                BrowserPort.key(PortCaller.BAOPU_AGENT, key, null, PortPolicy.OPEN)
 
             override fun waitFor(ms: Int, selector: String?): String =
-                BrowserCommands.await(ms, selector)
+                BrowserPort.wait(PortCaller.BAOPU_AGENT, ms, selector, null, PortPolicy.OPEN)
 
             // 228 批 A-3：stable 等待接玄览内核（readyState==complete ＋ DOM 连续 200ms 无变化）
             override fun waitForStable(ms: Int): String =
-                BrowserCommands.awaitStable(ms)
+                BrowserPort.awaitStable(PortCaller.BAOPU_AGENT, ms, PortPolicy.OPEN)
 
-            // ── 228 批 B 片九件：与桥同一套 BrowserCommands 内核（差别只在没过 token） ──
+            // ── 228 批 B 片九件：同一套内核，622 起全部过端口（闸在端口一处判） ──
 
-            override fun goBack(): String = BrowserCommands.goBack()
+            override fun goBack(): String = BrowserPort.goBack(PortCaller.BAOPU_AGENT, null, PortPolicy.OPEN)
 
-            override fun goForward(): String = BrowserCommands.goForward()
+            override fun goForward(): String = BrowserPort.goForward(PortCaller.BAOPU_AGENT, null, PortPolicy.OPEN)
 
-            override fun reload(): String = BrowserCommands.reload()
+            override fun reload(): String = BrowserPort.reload(PortCaller.BAOPU_AGENT, null, PortPolicy.OPEN)
 
             override fun selectOption(target: String, value: String): String =
-                BrowserCommands.selectOption(target, value)
+                BrowserPort.selectOption(PortCaller.BAOPU_AGENT, target, value, null, PortPolicy.OPEN)
 
             override fun hover(target: String): String =
-                BrowserCommands.hover(target)
+                BrowserPort.hover(PortCaller.BAOPU_AGENT, target, null, PortPolicy.OPEN)
 
             override fun scrollIntoView(target: String): String =
-                BrowserCommands.scrollIntoView(target)
+                BrowserPort.scrollIntoView(PortCaller.BAOPU_AGENT, target, null, PortPolicy.OPEN)
 
-            override fun tabsList(): String = BrowserCommands.tabsList()
+            override fun tabsList(): String = BrowserPort.tabsList(PortCaller.BAOPU_AGENT, PortPolicy.OPEN)
 
             override fun switchTab(tabId: Int): String =
-                BrowserCommands.activeTab(tabId.toString())
+                BrowserPort.switchTab(PortCaller.BAOPU_AGENT, tabId, PortPolicy.OPEN)
 
             override fun closeTab(tabId: Int): String =
-                BrowserCommands.closeTab(tabId.toString())
+                BrowserPort.closeTab(PortCaller.BAOPU_AGENT, tabId, PortPolicy.OPEN)
 
             /**
              * 当前页身份：读活跃标签的 `state`（**只读**，不改 `BrowserTabManager`——
@@ -257,17 +268,17 @@ internal object BaopuBrowserWiring {
                 VisualEvidenceQueue.drain(
                     shoot = { item ->
                         val shot = runCatching {
-                            BrowserCommands.captureShotRef(ctx, null, "0")
+                            BrowserPort.screenshotRef(PortCaller.VISUAL_EVIDENCE, ctx, null, "0", null, PortPolicy.OPEN)
                         }.getOrNull()
                         when (shot) {
-                            is BrowserCommands.ShotCapture.Ok -> VisualEvidenceQueue.Done(
+                            is ShotCapture.Ok -> VisualEvidenceQueue.Done(
                                 reason = item.reason,
                                 enqueuedAtMs = item.enqueuedAtMs,
                                 atMs = System.currentTimeMillis(),
                                 shotRel = shot.ref.file,
                                 error = null,
                             )
-                            is BrowserCommands.ShotCapture.Bad ->
+                            is ShotCapture.Bad ->
                                 VisualEvidenceQueue.Done(
                                     reason = item.reason,
                                     enqueuedAtMs = item.enqueuedAtMs,
@@ -294,6 +305,40 @@ internal object BaopuBrowserWiring {
 
     /** 进程级主线程 Handler（与 WebViewEngine 同规：不用 View 自身的 post，未 attach 时会压队列）。 */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // ══ 622：执行端口的装配（急停＋记账的两根线）════════════════════════════════
+    //
+    // 端口（bridge/BrowserPort）只认两个函数型出口，真身在这里接：
+    // - 急停 → HaltGate（软停/硬停都拦——端口是浏览器动作的最后一道闸，
+    //   GuardPipeline 的工具闸拦不到「示教收割」「补拍」这类非工具路径）；
+    // - 记账 → RunLog 一行（全部闸停与 LOCAL 动作）＋ 决策记录一行（deny/escalate——
+    //   「越白名单被拒」「想点提交被拦」是要在决策中心复盘的事；throttle/halt 是
+    //   瞬时熔断与全局状态，RunLog 足够，不灌决策账）。
+    private fun installBrowserPort(appCtx: Context) {
+        BrowserPort.install(
+            halt = { HaltGate.halted() },
+            ledger = { e ->
+                runCatching { RunLog.log("浏览器端口｜${e.kind}｜${e.caller.wire}｜${e.action.wire}｜${e.target}｜${e.reason}") }
+                if (e.kind == "deny" || e.kind == "escalate") {
+                    val rec = DecisionLedger.recordTo(
+                        teachGlobalRoot(appCtx),
+                        DecisionDraft(
+                            kind = DecisionKind.BROWSER_GATE,
+                            actor = DecisionActor.AUTO,
+                            reason = "${e.kind}｜${e.reason}",
+                            evidence = "browser_port:${e.action.wire}:${e.target}",
+                            before = "",
+                            after = "",
+                            atMs = e.atMs,
+                        ),
+                    )
+                    if (rec == null) {
+                        DecisionLedger.lastError?.let { RunLog.log("浏览器端口闸停记账失败：$it") }
+                    }
+                }
+            },
+        )
+    }
 
     // ══ 228 批 C 片：示教/回放五件工具的真身（[TeachGateway]）═════════════════════
     //
@@ -408,6 +453,24 @@ internal object BaopuBrowserWiring {
 
             override fun skillAllowedDomains(name: String): List<String>? =
                 TeachReplayStore.load(BaopuRuntime.workspaceRoot(ctx), name)?.allowedDomains
+
+            // 622 A②：动作脚本的导出/导入（四道闸在 TeachScriptExchange；这里只是接线）
+            override fun exportSkill(name: String): String {
+                val root = BaopuRuntime.workspaceRoot(ctx)
+                return TeachScriptExchange.export(projectRoot = root, workspace = root, name = name)
+                    .message(name)
+            }
+
+            override fun importSkill(name: String): String {
+                val root = BaopuRuntime.workspaceRoot(ctx)
+                return TeachScriptExchange.import(
+                    workspace = root,
+                    globalRoot = teachGlobalRoot(ctx),
+                    personaFiles = BaopuRuntime.personaFiles(ctx),
+                    name = name,
+                    stampText = com.example.zhengdao.core.TimeFormats.fileStamp(),
+                ).message(name)
+            }
 
             override fun replay(name: String, sentence: String?, driftChoice: String?): String {
                 val root = BaopuRuntime.workspaceRoot(ctx)

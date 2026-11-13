@@ -296,13 +296,21 @@ internal object DriftWire {
 }
 
 /**
- * 生产探针：经既有 execJs 桥查玄览当前页（**不新开桥**，与 BrowserTeachDom 同一条包装解析）。
+ * 生产探针：经执行端口查玄览当前页（622 收口；与 BrowserTeachDom 同一条包装解析）。
  * JS 只做 `querySelector`＋`getClientRects`（存在性＋可见性），一个字节都不取页面文本。
  */
-internal class BrowserDriftReader(private val tabId: Int) : DriftPageReader {
+internal class BrowserDriftReader(
+    private val tabId: Int,
+    private val policy: com.example.zhengdao.bridge.BrowserPort.PortPolicy = com.example.zhengdao.bridge.BrowserPort.PortPolicy.OPEN,
+) : DriftPageReader {
 
     private fun exec(code: String): JSONObject? {
-        val raw = com.example.zhengdao.bridge.BrowserCommands.execJs(code, tabId.toString())
+        val raw = com.example.zhengdao.bridge.BrowserPort.probe(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.DRIFT_PROBE,
+            code,
+            tabId.toString(),
+            policy,
+        )
         val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
         if (!o.optBoolean("ok")) return null
         val result = o.optString("result").takeIf { it.isNotBlank() } ?: return null

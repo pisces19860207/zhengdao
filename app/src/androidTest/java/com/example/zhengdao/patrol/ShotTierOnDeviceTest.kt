@@ -16,6 +16,7 @@
 // 读数落 shot_tier_result.json，adb pull 回收。
 package com.example.zhengdao.patrol
 
+import com.example.zhengdao.bridge.EvidenceCapture
 import android.graphics.Canvas
 import android.os.Build
 import android.util.Log
@@ -267,7 +268,7 @@ class ShotTierOnDeviceTest {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val r = runCatching { BrowserCommands.evidenceSnapshot() }.getOrNull()
-            if (r is BrowserCommands.EvidenceCapture.Ok) return true
+            if (r is EvidenceCapture.Ok) return true
             Thread.sleep(300)
         }
         return false

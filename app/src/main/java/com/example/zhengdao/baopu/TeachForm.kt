@@ -1596,11 +1596,19 @@ return JSON.stringify({c:out})})()"""
     }
 }
 
-/** [FormDom] 的玄览实现（经既有 `BrowserCommands.execJs`，不新开桥）。 */
-internal class BrowserFormDom(private val tabId: Int?) : FormDom {
+/** [FormDom] 的玄览实现（622 起经执行端口的 PROBE 口收派；旧 execJs 直调路撤销）。 */
+internal class BrowserFormDom(
+    private val tabId: Int?,
+    private val policy: com.example.zhengdao.bridge.BrowserPort.PortPolicy = com.example.zhengdao.bridge.BrowserPort.PortPolicy.OPEN,
+) : FormDom {
 
     private fun exec(code: String): JSONObject? {
-        val raw = BrowserCommands.execJs(code, tabId?.toString())
+        val raw = com.example.zhengdao.bridge.BrowserPort.probe(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.TEACH_FORM,
+            code,
+            tabId?.toString(),
+            policy,
+        )
         val o = runCatching { JSONObject(raw) }.getOrNull() ?: return null
         if (!o.optBoolean("ok")) return null
         val result = o.optString("result").takeIf { it.isNotBlank() } ?: return null

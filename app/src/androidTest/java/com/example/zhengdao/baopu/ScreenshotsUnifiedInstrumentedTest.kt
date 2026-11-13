@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.bridge.ShotCapture
 import android.content.Intent
 import android.os.Environment
 import android.provider.MediaStore
@@ -268,12 +269,12 @@ class ScreenshotsUnifiedInstrumentedTest {
             // 3. 产品方法截一张（离屏重载 → MediaStore → 账本）
             //    注意：`return@repeat` 是 continue 不是 break——这里用旗标，成功就停手，
             //    否则一轮测试会把整个截屏夹刷满（2026-10-29 真机首轮教训）。
-            var capture: BrowserCommands.ShotCapture? = null
+            var capture: ShotCapture? = null
             var attempt = 0
             while (attempt < RETRY && capture == null) {
                 attempt++
                 val r = runCatching { BrowserCommands.captureShotRef(ctx, null, "0") }.getOrNull()
-                if (r is BrowserCommands.ShotCapture.Ok) capture = r
+                if (r is ShotCapture.Ok) capture = r
                 else {
                     Log.i(TAG, "attempt $attempt: $r")
                     Thread.sleep(POLL_MS)
@@ -281,8 +282,8 @@ class ScreenshotsUnifiedInstrumentedTest {
             }
             @Suppress("USELESS_ELVIS")
             val ok = capture
-            assertTrue("真机截屏必须成功：$ok", ok is BrowserCommands.ShotCapture.Ok)
-            val ref = (ok as BrowserCommands.ShotCapture.Ok).ref
+            assertTrue("真机截屏必须成功：$ok", ok is ShotCapture.Ok)
+            val ref = (ok as ShotCapture.Ok).ref
             Log.i(TAG, "ROW|capture|file=${ref.file}|host=${ref.hostPath}|bytes=${ref.bytes}|note=${ref.note}")
             evidence = evidence
                 .put("file", ref.file)

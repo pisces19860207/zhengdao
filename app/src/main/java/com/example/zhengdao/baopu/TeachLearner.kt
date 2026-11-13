@@ -144,6 +144,10 @@ internal object TeachLearner {
                 .distinctBy { it.name }
                 .take(FINGERPRINT_MAX),
         )
+        // 622 v2：目标站（startUrl 的 host；执行期授权真源仍是 allowedDomains）＋ 最终快照
+        // （收尾页地址；终态校验点由人编辑补充，机器不猜——猜错会把「成功的回放」判停）。
+        val targetSite = TeachSafety.hostOf(startFacts.url) ?: ""
+        val tailUrl = events.lastOrNull()?.afterUrl?.takeIf { it.isNotBlank() } ?: startFacts.url
         val skill = TeachSkill(
             name = name,
             purpose = purpose,
@@ -153,6 +157,8 @@ internal object TeachLearner {
             clickTagWhitelist = clickTags.toList(),
             fingerprint = fingerprint,
             steps = steps,
+            targetSite = targetSite,
+            finalSnapshot = TeachFinalSnapshot(url = tailUrl, expects = emptyList()),
         )
         return TeachSkillDraft(skill = skill, warnings = warnings, summary = summarize(skill, warnings))
     }

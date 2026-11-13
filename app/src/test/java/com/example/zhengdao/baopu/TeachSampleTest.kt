@@ -53,8 +53,11 @@ class TeachSampleTest {
                 ),
             ),
         )
-        val expected = """{"schema":"zl-teach/1","name":"样例-查单","purpose":"按单号查状态","createdAt":0,""" +
-            """"startUrl":"https://demo.example.com/list","allowedDomains":["demo.example.com"],""" +
+        // 622 v2 金样：新键序＝schema/name/purpose/createdAt/startUrl/targetSite/…/steps/finalSnapshot；
+        // 直接构造的技能 targetSite 缺省空串、finalSnapshot 缺省空终态（取证不缺位）。
+        val expected = """{"schema":"zl-teach/2","name":"样例-查单","purpose":"按单号查状态","createdAt":0,""" +
+            """"startUrl":"https://demo.example.com/list","targetSite":"",""" +
+            """"allowedDomains":["demo.example.com"],""" +
             """"clickTagWhitelist":["BUTTON"],"fingerprint":{"anchors":[{"kind":"header","name":"单号"}]},""" +
             """"steps":[{"i":1,"action":"type","url":"https://demo.example.com/list",""" +
             """"locators":[{"tier":4,"kind":"elemId","value":"q"},{"tier":5,"kind":"inputName","value":"wb"}],""" +
@@ -63,7 +66,8 @@ class TeachSampleTest {
             """{"i":2,"action":"click","url":"https://demo.example.com/list",""" +
             """"locators":[{"tier":1,"kind":"roleName","value":"button|查询"},{"tier":7,"kind":"text","value":"查询"}],""" +
             """"value":"","snapshot":{"tag":"BUTTON","role":"button","name":"查询","text":"查询","inputType":""},""" +
-            """"expect":[{"kind":"urlChanged","value":""}]}]}"""
+            """"expect":[{"kind":"urlChanged","value":""}]}],""" +
+            """"finalSnapshot":{"url":"","expects":[]}}"""
         assertEquals(expected, skill.toJsonText())
         assertEquals(skill, TeachSkill.fromJson(expected))
     }
@@ -104,7 +108,11 @@ class TeachSampleTest {
         // 键集用 Set 比：解析进 HashMap 的键序不定，规范键序由原文（金样）钉。
         val o = JSONObject(skill.toJsonText())
         assertEquals(TeachSkill.SCHEMA, o.getString("schema"))
-        assertEquals(9, o.length()) // 顶层键恰好 9 个：schema/name/purpose/createdAt/startUrl/allowedDomains/clickTagWhitelist/fingerprint/steps
+        assertEquals(11, o.length()) // 顶层键恰好 11 个：schema/name/purpose/createdAt/startUrl/targetSite/allowedDomains/clickTagWhitelist/fingerprint/steps/finalSnapshot
+        // 622 v2：学习器真产出的脚本带目标站与最终快照（收尾页）
+        assertEquals("search.example.com", o.getString("targetSite"))
+        assertTrue(o.getJSONObject("finalSnapshot").has("url"))
+        assertTrue(o.getJSONObject("finalSnapshot").has("expects"))
         val steps = o.getJSONArray("steps")
         for (i in 0 until steps.length()) {
             val s = steps.getJSONObject(i)

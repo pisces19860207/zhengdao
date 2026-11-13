@@ -377,7 +377,7 @@ internal object TeachParams {
         val out = interim.copy(params = skill.params + ordered.map { paramOfPick(it) })
         // 序列化再解析一遍：形态合法才算数（免得把半截对象交给落盘层）
         val round = TeachSkill.fromJson(out.toJsonText(), strict = true)
-            ?: return ParameterizeResult(null, listOf("参数化后的技能不符合 zl-teach/1 形态，已拒绝"))
+            ?: return ParameterizeResult(null, listOf("参数化后的技能不符合 zl-teach/2 形态，已拒绝"))
         return ParameterizeResult(round, emptyList(), ordered.map { it.name })
     }
 
@@ -1042,7 +1042,7 @@ internal object TeachParams {
         /** 每次编辑都过一遍严格解析：编完还能被 196 读回来，才算改对了。 */
         private fun verify(skill: TeachSkill): TeachEditResult {
             val back = TeachSkill.fromJson(skill.toJsonText(), strict = true)
-                ?: return TeachEditResult(null, "改完的技能不符合 zl-teach/1 形态，已拒绝")
+                ?: return TeachEditResult(null, "改完的技能不符合 zl-teach/2 形态，已拒绝")
             return TeachEditResult(back, null)
         }
 

@@ -148,6 +148,9 @@ internal object BaopuToolLabels {
         "teach_skill_save" to R.string.baopu_tool_teach_skill_save,
         "browser_replay_skill" to R.string.baopu_tool_browser_replay_skill,
         "teach_site_trust" to R.string.baopu_tool_teach_site_trust,
+        // 622：动作脚本导出/导入（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
+        "teach_skill_export" to R.string.baopu_tool_teach_skill_export,
+        "teach_skill_import" to R.string.baopu_tool_teach_skill_import,
         // 第二百六十九批：打包/解包。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
         // 第四百九十一批：备份/还原（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
         "export_data" to R.string.baopu_tool_export_data,
@@ -274,6 +277,9 @@ internal object BaopuToolLabels {
         "teach_skill_save" to R.string.baopu_tool_teach_skill_save_desc,
         "browser_replay_skill" to R.string.baopu_tool_browser_replay_skill_desc,
         "teach_site_trust" to R.string.baopu_tool_teach_site_trust_desc,
+        // 622：动作脚本导出/导入（同上，漏了 fail-fast）
+        "teach_skill_export" to R.string.baopu_tool_teach_skill_export_desc,
+        "teach_skill_import" to R.string.baopu_tool_teach_skill_import_desc,
         // 第二百六十九批：打包/解包（同上，漏了 fail-fast）
         "export_data" to R.string.baopu_tool_export_data_desc,
         "import_data" to R.string.baopu_tool_import_data_desc,

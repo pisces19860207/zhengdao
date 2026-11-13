@@ -13,6 +13,8 @@
 // 同一份代码，只是把结果留档（captureShotRef 内部判完就丢了）。
 package com.example.zhengdao.patrol
 
+import com.example.zhengdao.bridge.ShotCapture
+import com.example.zhengdao.bridge.EvidenceCapture
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Build
@@ -261,7 +263,7 @@ class ScreenshotSixCellsOnDeviceTest {
         val landed = added.firstOrNull()?.let { File(BrowserCommands.shotDir(ctx), it) }
 
         return when (val c = r.getOrNull()) {
-            is BrowserCommands.ShotCapture.Ok -> {
+            is ShotCapture.Ok -> {
                 val enum = landed?.let { judgeFile(it) } ?: WhiteImageJudge.Classification.EMPTY.name
                 val sha = landed?.let { sha256(it) }?.take(8) ?: "--------"
                 val copy = landed?.let { src ->
@@ -280,7 +282,7 @@ class ScreenshotSixCellsOnDeviceTest {
                 ).also { logRow(what, it) }
             }
 
-            is BrowserCommands.ShotCapture.Bad -> ShotEvidence(
+            is ShotCapture.Bad -> ShotEvidence(
                 tag = tag, ms = ms, verdict = "（没出图）", sha8 = "--------", png = "（无）",
                 note = "（无）", raw = c.error, failureReason = c.error, reportedOkWithUniform = false,
             ).also { logRow(what, it) }
@@ -411,7 +413,7 @@ class ScreenshotSixCellsOnDeviceTest {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val r = runCatching { BrowserCommands.evidenceSnapshot() }.getOrNull()
-            if (r is BrowserCommands.EvidenceCapture.Ok) return true
+            if (r is EvidenceCapture.Ok) return true
             Thread.sleep(300)
         }
         return false

@@ -38,8 +38,13 @@ data class TeachRunReport(
     val evidenceDir: String?,
     /** 动手失败后滚入视口重试成功的步号（第二百二十八批 C 片；空 = 没发生过重试）。 */
     val retried: List<Int> = emptyList(),
+    /**
+     * 622 A④：下一步建议（失败时非空；「卡在第 N 步＋快照＋原因＋建议」的第四件）。
+     * 判据见 [teachSuggestionOf]——纯函数映射，不猜页面，只给「人可以照做」的一句。
+     */
+    val suggestion: String? = null,
 ) {
-    /** 审计一行（§3.5：技能名/步数/结果/耗时/漂移/被拒动作）。 */
+    /** 审计一行（§3.5：技能名/步数/结果/耗时/漂移/被拒动作；622 加建议）。 */
     fun auditLine(nowMs: Long, opId: String? = null): String {
         val sb = StringBuilder("{")
         sb.append("\"ts\":").append(nowMs)
@@ -49,6 +54,7 @@ data class TeachRunReport(
         opId?.let { sb.append(",\"op\":\"").append(it).append('"') }
         failedStep?.let { sb.append(",\"failedStep\":").append(it) }
         stopReason?.let { sb.append(",\"reason\":\"").append(jsonEsc(it)).append("\"") }
+        suggestion?.let { sb.append(",\"suggestion\":\"").append(jsonEsc(it)).append("\"") }
         sb.append(",\"durationMs\":").append(durationMs)
         if (drifts.isNotEmpty()) {
             sb.append(",\"drifts\":[")
@@ -84,13 +90,20 @@ interface TeachEvidenceSink {
     /** 第 [index] 步的证据：DOM 摘要＋截图引用（截图失败给 null，不阻塞回放）。 */
     fun step(index: Int, action: TeachAction, summary: String, screenshotRef: String?)
 
+    /**
+     * 622 A②：终态取证（**每次回放都采**，成功与失败都到——「最终快照」首先是证据）。
+     * 缺省空实现：装饰器与测试桩不必都知道这一件。
+     */
+    fun final(summary: String, screenshotRef: String?) {
+    }
+
     /** 收尾：整份报告 JSON。 */
     fun finish(report: TeachRunReport)
 }
 
 /**
  * 文件实现：真实目录、真实文件（JVM 单测直接用临时目录断言存在）。
- * [shot] 生产端接 BrowserCommands.captureShotRef（返回 hostPath）；测试不给（null 即不落截图，
+ * [shot] 生产端接执行端口的截图（返回 hostPath）；测试不给（null 即不落截图，
  * DOM 摘要照落——截图是证据的增强项，不是回放的依赖项）。
  */
 internal class FileTeachEvidenceSink(
@@ -114,6 +127,15 @@ internal class FileTeachEvidenceSink(
             File(d, "step-$index-${action.wire}.dom.txt").writeText(summary, Charsets.UTF_8)
             val ref = screenshotRef ?: shot?.invoke(index)
             ref?.let { File(d, "step-$index-${action.wire}.shot.ref.txt").writeText(it, Charsets.UTF_8) }
+        }
+    }
+
+    override fun final(summary: String, screenshotRef: String?) {
+        val d = dir ?: return
+        runCatching {
+            File(d, "final.dom.txt").writeText(summary, Charsets.UTF_8)
+            val ref = screenshotRef ?: shot?.invoke(0)
+            ref?.let { File(d, "final.shot.ref.txt").writeText(it, Charsets.UTF_8) }
         }
     }
 
@@ -157,6 +179,16 @@ internal class TeachExecutor(
         var stepsDone = 0
 
         fun stop(failedStep: Int?, reason: String, ask: TeachAsk? = null): TeachRunReport {
+            // 622 A④：失败处**当场取证**（页面 DOM 摘要＋截图引用）——「卡在第 N 步」
+            // 必须连「当时的页面长什么样」一起留下，不许只留一句原因。
+            runCatching {
+                evidence.step(
+                    failedStep ?: 0,
+                    TeachAction.WAIT,
+                    "失败取证｜$reason\n${domSummary(dom, urlNow())}",
+                    null,
+                )
+            }
             val report = TeachRunReport(
                 skillName = skill.name,
                 ok = false,
@@ -169,6 +201,7 @@ internal class TeachExecutor(
                 ask = ask,
                 evidenceDir = evidenceDir,
                 retried = retried,
+                suggestion = teachSuggestionOf(reason, failedStep),
             )
             evidence.finish(report)
             audit(report, clock())
@@ -212,7 +245,6 @@ internal class TeachExecutor(
                 val waitUrl = (dom.ask(TeachQuery.CurrentUrl) as? TeachReply.Url)?.url ?: beforeUrl
                 val rowsAfter = verifyExpects(step, beforeUrl, beforeRows, dom)
                 if (rowsAfter == null) {
-                    evidence.step(step.index, step.action, domSummary(dom, waitUrl), null)
                     return stop(
                         step.index,
                         "第 ${step.index} 步等待超时（${step.expect.joinToString("、") { it.kind.wire }}）——已停并取证",
@@ -318,11 +350,23 @@ internal class TeachExecutor(
             // 重试等于双击双提交）。重试的判据是**起点页指纹复核**：锚点不全在 ⇒ 页面可能
             // 已离开起点，重试不可判 ⇒ fail-closed 直接停。最多一次：滚入视口后重试同一
             // 动作，再败即停，**不存在循环重试**。
-            var acted = dom.ask(TeachQuery.Act(locator, step.action, step.value))
+            // 622：CLICK 步把语义面带给端口（端口三档闸与上面的安全闸同源同词表——
+            // 这里的安全闸拦「技能里的危险步」，端口拦「任何路径的未遂点击」）。
+            val subjectFaces = if (step.action == TeachAction.CLICK) {
+                listOfNotNull(hit.text, hit.name, hit.ariaLabel, hit.testid)
+            } else {
+                emptyList()
+            }
+            var acted = dom.ask(TeachQuery.Act(locator, step.action, step.value, subjectFaces))
             var actOk = acted as? TeachReply.Acted
             if (actOk == null || !actOk.ok) {
                 val failReason = (acted as? TeachReply.Failed)?.reason
                     ?: actOk?.reason ?: "页面无响应"
+                // 622：执行端口拦下的动作**不重试**——闸拦的不是「页面没反应」，重试等于
+                // 再撞一次闸；原因原样停下（带取证），让「为什么被拦」看得见。
+                if (failReason.contains("执行端口拦下")) {
+                    return stop(step.index, "第 ${step.index} 步执行失败：$failReason")
+                }
                 if (!fingerprintLive(skill, dom)) {
                     return stop(
                         step.index,
@@ -333,7 +377,7 @@ internal class TeachExecutor(
                 if (scrolled !is TeachReply.Acted || !scrolled.ok) {
                     return stop(step.index, "第 ${step.index} 步执行失败：$failReason（滚入视口也不成）")
                 }
-                acted = dom.ask(TeachQuery.Act(locator, step.action, step.value))
+                acted = dom.ask(TeachQuery.Act(locator, step.action, step.value, subjectFaces))
                 actOk = acted as? TeachReply.Acted
                 if (actOk == null || !actOk.ok) {
                     val retryReason = (acted as? TeachReply.Failed)?.reason
@@ -346,11 +390,10 @@ internal class TeachExecutor(
                 retried += step.index
             }
 
-            // ── expect 校验（不满足 ⇒ 停并取证）──
+            // ── expect 校验（不满足 ⇒ 停并取证——取证在 stop() 里统一做）──
             val urlAfter = actOk.urlAfter
             val rowsAfter = verifyExpects(step, beforeUrl, beforeRows, dom)
             if (rowsAfter == null) {
-                evidence.step(step.index, step.action, domSummary(dom, urlAfter), null)
                 return stop(
                     step.index,
                     "第 ${step.index} 步期望断言不满足（${step.expect.joinToString("、") { it.kind.wire }}）——已停并取证",
@@ -372,6 +415,28 @@ internal class TeachExecutor(
             // 行数基线每步重读：URL 变化的步之后页面换了，旧行数不能带到下一步
             beforeRows = rowCount()
         }
+
+        // ── ④ 最终快照（622 v2：终态校验点非空 ⇒ 收尾前逐条验；无论校不校，终态取证必采）──
+        val tailUrl = urlNow()
+        skill.finalSnapshot?.expects?.takeIf { it.isNotEmpty() }?.let { finals ->
+            val finalStep = TeachStep(
+                index = stepsDone + 1,
+                action = TeachAction.WAIT,
+                url = tailUrl,
+                locators = emptyList(), // WAIT 步允许空定位链
+                value = null,
+                snapshot = TeachElementSnapshot("FINAL", null, null, null, null),
+                expect = finals,
+            )
+            if (verifyExpects(finalStep, beforeUrl, beforeRows, dom) == null) {
+                return stop(
+                    stepsDone + 1,
+                    "最终快照校验不满足（${finals.joinToString("、") { it.kind.wire }}）——" +
+                        "步骤都跑完了，但收尾页面不在示教时的终态",
+                )
+            }
+        }
+        evidence.final(domSummary(dom, tailUrl), null)
 
         val report = TeachRunReport(
             skillName = skill.name,
@@ -444,6 +509,10 @@ internal class TeachExecutor(
     private fun domSummary(dom: TeachDom, url: String): String =
         "url=$url\n" + ((dom.ask(TeachQuery.DomSummary) as? TeachReply.Summary)?.text ?: "")
 
+    /** 当前页地址（取不到 ⇒ 空串——取证行照落，只是没有 url）。 */
+    private fun urlNow(): String =
+        (dom.ask(TeachQuery.CurrentUrl) as? TeachReply.Url)?.url ?: ""
+
     private fun stripFragment(url: String): String = url.substringBefore('#')
 }
 
@@ -459,4 +528,38 @@ internal fun stamp(nowMs: Long): String {
         c.get(java.util.Calendar.MINUTE),
         c.get(java.util.Calendar.SECOND),
     )
+}
+
+/**
+ * 622 A④：失败原因 ⇒ **下一步建议**（「卡在第 N 步＋快照＋原因＋建议」的第四件）。
+ *
+ * 纯函数映射：只认执行器/端口已知的失败类别，每类给一句「人可以照做」的话；
+ * 认不出的类别给通用兜底（查取证快照、重教或改参数）——不猜页面、不编计划
+ * （工单口径：失败时不许自行改计划乱点，建议是给人看的路标，不是新计划）。
+ */
+internal fun teachSuggestionOf(reason: String, failedStep: Int?): String {
+    val at = failedStep?.let { "第 $it 步" } ?: "起点检查"
+    // 表驱动（detekt 复杂度口径：一串 contains-when 会超限；映射表一条一行，顺序即优先级）
+    val rules: List<Pair<List<String>, String>> = listOf(
+        listOf("执行端口拦下") to
+            "该动作被执行端口判为外部不可逆（提交/支付/删除类）——这类动作必须回抱朴确认后由人执行；重教时跳过它",
+        listOf("急停") to
+            "先请用户在安全台解除停机（解除只能人工），再重新回放",
+        listOf("不在授权域", "跳出授权域") to
+            "把目标站点加进信任名单（teach_site_trust add），或先打开技能的起点页再回放",
+        listOf("页面结构变了", "指纹复核不通过") to
+            "页面已改版：重新教一遍生成新技能（teach_record_start），或在漂移闸里选「按新版重新校准」",
+        listOf("期望断言不满足", "等待超时", "最终快照校验") to
+            "校验点可能过时：对照取证快照里的页面，改技能里 $at 的校验点（expect），或重新教这一步",
+        listOf("定位失败", "自愈", "候选", "定位全空") to
+            "看取证快照：元素不在了就重新教；被遮挡就先滚动或等加载完成",
+        listOf("被安全闸拦下", "拒点", "拒填") to
+            "提交/支付/删除类按钮与密码框一律人工执行——技能里不该有这一步",
+        listOf("没有值", "不完整") to
+            "把缺的输入值补上（参数化回放把参数说全，或重教时填好值）",
+    )
+    for ((keys, advice) in rules) {
+        if (keys.any { reason.contains(it) }) return advice
+    }
+    return "查 $at 的取证快照对照页面现状：重教、改参数或改校验点——不要让回放自行换路子乱点"
 }

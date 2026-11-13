@@ -78,6 +78,9 @@ data class TeachLocator(val kind: TeachLocatorKind, val value: String) {
         .put("value", value)
 
     companion object {
+        /** 严格解析允许的键（622：篡改出的未知键在 schema 闸死）。 */
+        val KEYS: Set<String> = setOf("tier", "kind", "value")
+
         fun fromJson(o: JSONObject): TeachLocator? {
             val kind = TeachLocatorKind.fromWire(o.optString("kind")) ?: return null
             val value = o.optString("value")
@@ -118,6 +121,9 @@ data class TeachExpect(val kind: TeachExpectKind, val value: String?) {
     fun toJson(): JSONObject = JSONObject().put("kind", kind.wire).put("value", value ?: "")
 
     companion object {
+        /** 严格解析允许的键（622）。 */
+        val KEYS: Set<String> = setOf("kind", "value")
+
         fun fromJson(o: JSONObject): TeachExpect? {
             val k = TeachExpectKind.fromWire(o.optString("kind")) ?: return null
             val v = o.optString("value").takeIf { it.isNotEmpty() }
@@ -142,6 +148,9 @@ data class TeachElementSnapshot(
         .put("inputType", inputType ?: "")
 
     companion object {
+        /** 严格解析允许的键（622）。 */
+        val KEYS: Set<String> = setOf("tag", "role", "name", "text", "inputType")
+
         fun fromJson(o: JSONObject): TeachElementSnapshot = TeachElementSnapshot(
             tag = o.optString("tag").ifBlank { "?" },
             role = o.optString("role").takeIf { it.isNotEmpty() },
@@ -250,7 +259,61 @@ data class TeachFingerprint(val anchors: List<TeachFingerprintAnchor>) {
 }
 
 /**
- * 一份回放技能。schema 只认 [SCHEMA]；格式变更必须升版本号，不许原地改语义。
+ * 最终快照（622 A②：可版本化动作脚本的终态要素）——**回放跑完时页面应该长什么样**。
+ *
+ * 三件内容：
+ * - [url]：示教收尾页的地址（描述性记录；回放不拿它硬判——动态站点收尾 URL 会合理漂移）；
+ * - [expects]：终态校验点（与每步的 [TeachExpect] 同一套判据）。非空 ⇒ 回放成功收尾前
+ *   逐条验（不满足 ⇒ 停在「最终快照」，一个字节不写技能）；
+ * - 无论 expects 是否为空，回放收尾都会**采一次终态取证**（DOM 摘要＋截图）落证据目录——
+ *   「最终快照」首先是证据，其次才是校验点。
+ */
+data class TeachFinalSnapshot(
+    val url: String,
+    val expects: List<TeachExpect>,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("url", url)
+        .put("expects", JSONArray(expects.map { it.toJson() }))
+
+    companion object {
+        val KEYS: Set<String> = setOf("url", "expects")
+
+        fun fromJson(o: JSONObject): TeachFinalSnapshot? {
+            val expects = mutableListOf<TeachExpect>()
+            val arr = o.optJSONArray("expects") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                arr.optJSONObject(i)?.let { e -> TeachExpect.fromJson(e)?.let { expects += it } }
+            }
+            return TeachFinalSnapshot(url = o.optString("url"), expects = expects)
+        }
+    }
+
+    /** 规范序列化（键序固定 url→expects）。 */
+    fun canonical(): String = buildString {
+        append("{\"url\":").append('"').append(teachJsonEsc(url)).append('"')
+        append(",\"expects\":[").append(
+            expects.joinToString(",") {
+                "{\"kind\":" + '"' + it.kind.wire + '"' + ",\"value\":" + '"' + teachJsonEsc(it.value ?: "") + '"' + "}"
+            },
+        ).append("]}")
+    }
+}
+
+/**
+ * 一份回放技能（622 起＝**可版本化动作脚本**）。schema 只认 [SCHEMA]；格式变更必须升
+ * 版本号，不许原地改语义。
+ *
+ * ## 622 升级：zl-teach/1 → zl-teach/2（动作脚本五要素齐）
+ *
+ * v1 已有：目标站（startUrl＋allowedDomains）、版本（schema 字符串）、动作序列（steps）、
+ * 每步校验点（expect）。v2 补齐最后两件：
+ * - [targetSite]：目标站主域（录制时从 startUrl 的 host 提取；导入/导出的人读字段——
+ *   **执行期的授权真源仍是 allowedDomains**，本字段只是脚本自述）；
+ * - [finalSnapshot]：终态校验点＋取证要求（见 [TeachFinalSnapshot]）。
+ *
+ * **v1 向后兼容**：[fromJson] 同时收 v1（缺省新字段）与 v2；序列化**总是**写 v2——
+ * 老技能被重存/编辑时自然升级，没动过的老文件字节不变（哈希判据不受影响）。
  */
 data class TeachSkill(
     val name: String,
@@ -262,14 +325,21 @@ data class TeachSkill(
     val fingerprint: TeachFingerprint,
     val steps: List<TeachStep>,
     /**
-     * 第二百批：参数表（空 = 没参数化，字节与 196 的技能文件完全一致）。
+     * 第二百批：参数表（空 = 没参数化）。
      * 参数值**不在**这里出现——步骤里只有 `${name}` 占位，声明的默认值与下拉项是
      * 「用户明确写下的东西」，不算残留字面量（见 [TeachParams.residualLiterals] 的口径）。
      */
     val params: List<TeachParam> = emptyList(),
+    /** 622 v2：目标站主域（脚本自述；执行期授权真源仍是 [allowedDomains]）。 */
+    val targetSite: String = "",
+    /** 622 v2：终态校验点＋取证要求（null = v1 老脚本，回放只采终态取证、不验校验点）。 */
+    val finalSnapshot: TeachFinalSnapshot? = null,
 ) {
     companion object {
-        const val SCHEMA = "zl-teach/1"
+        const val SCHEMA = "zl-teach/2"
+
+        /** 兼容线：v1 老脚本仍可读（缺省新字段），序列化只写 v2。 */
+        const val SCHEMA_V1 = "zl-teach/1"
 
         /**
          * 顶层允许的键（严格解析用；[strict]=true 时多一个键就整份不收）。
@@ -278,18 +348,43 @@ data class TeachSkill(
          */
         val TOP_KEYS: Set<String> = setOf(
             "schema", "name", "purpose", "createdAt", "startUrl", "allowedDomains",
-            "clickTagWhitelist", "fingerprint", "steps", "params",
+            "clickTagWhitelist", "fingerprint", "steps", "params", "targetSite", "finalSnapshot",
         )
 
         fun fromJson(text: String, strict: Boolean = false): TeachSkill? = runCatching {
             val o = JSONObject(text)
-            if (o.optString("schema") != SCHEMA) return@runCatching null
+            val schema = o.optString("schema")
+            if (schema != SCHEMA && schema != SCHEMA_V1) return@runCatching null
+            val isV2 = schema == SCHEMA
             if (strict && unknownKeys(o, TOP_KEYS).isNotEmpty()) return@runCatching null
             val steps = mutableListOf<TeachStep>()
             val arr = o.optJSONArray("steps") ?: JSONArray()
             for (i in 0 until arr.length()) {
                 val s = arr.optJSONObject(i) ?: continue
                 if (strict && unknownKeys(s, TeachStep.KEYS).isNotEmpty()) return@runCatching null
+                // 622：步骤内嵌对象（定位链/校验点/快照/选项）同样严格——
+                // 篡改脚本塞结构外的键，在 schema 闸死，不给「解析宽松」留缝。
+                if (strict) {
+                    val locArr = s.optJSONArray("locators") ?: JSONArray()
+                    for (j in 0 until locArr.length()) {
+                        val lo = locArr.optJSONObject(j) ?: continue
+                        if (unknownKeys(lo, TeachLocator.KEYS).isNotEmpty()) return@runCatching null
+                    }
+                    val expArr = s.optJSONArray("expect") ?: JSONArray()
+                    for (j in 0 until expArr.length()) {
+                        val eo = expArr.optJSONObject(j) ?: continue
+                        if (unknownKeys(eo, TeachExpect.KEYS).isNotEmpty()) return@runCatching null
+                    }
+                    val snapO = s.optJSONObject("snapshot")
+                    if (snapO != null && unknownKeys(snapO, TeachElementSnapshot.KEYS).isNotEmpty()) {
+                        return@runCatching null
+                    }
+                    val optArr = s.optJSONArray("options") ?: JSONArray()
+                    for (j in 0 until optArr.length()) {
+                        val oo = optArr.optJSONObject(j) ?: continue
+                        if (unknownKeys(oo, TeachOption.KEYS).isNotEmpty()) return@runCatching null
+                    }
+                }
                 TeachStep.fromJson(s)?.let { steps += it }
             }
             if (steps.isEmpty()) return@runCatching null
@@ -307,6 +402,19 @@ data class TeachSkill(
                 TeachParam.fromJson(p)?.let { params += it }
             }
             if (strict && params.map { it.name }.toSet().size != params.size) return@runCatching null
+            // v2 新字段：v1 老文件不带 ⇒ 缺省（finalSnapshot=null 的回放语义见执行器）
+            val finalSnap = if (isV2) {
+                o.optJSONObject("finalSnapshot")?.let { raw ->
+                    if (strict && unknownKeys(raw, TeachFinalSnapshot.KEYS).isNotEmpty()) {
+                        return@runCatching null
+                    }
+                    // 空终态（无 url、无校验点）归一为 null：直接构造的老技能序列化出
+                    // 空终态后读回来仍是 null，「构造→序列化→解析→相等」往返判据不破。
+                    TeachFinalSnapshot.fromJson(raw)?.takeIf { it.url.isNotBlank() || it.expects.isNotEmpty() }
+                }
+            } else {
+                null
+            }
             TeachSkill(
                 name = o.optString("name").ifBlank { return@runCatching null },
                 purpose = o.optString("purpose"),
@@ -317,6 +425,8 @@ data class TeachSkill(
                 fingerprint = TeachFingerprint.fromJson(o.optJSONObject("fingerprint") ?: JSONObject()),
                 steps = steps,
                 params = params,
+                targetSite = if (isV2) o.optString("targetSite") else "",
+                finalSnapshot = finalSnap,
             )
         }.getOrNull()
 
@@ -335,16 +445,19 @@ data class TeachSkill(
         append(",\"purpose\":").append(q(purpose))
         append(",\"createdAt\":").append(createdAtMs)
         append(",\"startUrl\":").append(q(startUrl))
+        append(",\"targetSite\":").append(q(targetSite))
         append(",\"allowedDomains\":[").append(allowedDomains.joinToString(",") { q(it) }).append(']')
         append(",\"clickTagWhitelist\":[").append(clickTagWhitelist.joinToString(",") { q(it) }).append(']')
         append(",\"fingerprint\":{\"anchors\":[")
             .append(fingerprint.anchors.joinToString(",") { "{\"kind\":" + q(it.kind) + ",\"name\":" + q(it.name) + "}" })
             .append("]}")
         append(",\"steps\":[").append(steps.joinToString(",") { it.canonical() }).append(']')
-        // 第二百批：参数表只在有内容时出现（空 ⇒ 与 196 的技能文件字节一致）
+        // 第二百批：参数表只在有内容时出现
         if (params.isNotEmpty()) {
             append(",\"params\":[").append(params.joinToString(",") { it.canonical() }).append(']')
         }
+        // 622 v2：最终快照恒在（v1 缺省的脚本序列化为空 expects 的终态——终态取证不缺位）
+        append(",\"finalSnapshot\":").append(finalSnapshot?.canonical() ?: "{\"url\":\"\",\"expects\":[]}")
         append('}')
     }
 
@@ -497,6 +610,9 @@ data class TeachOption(val value: String, val label: String) {
     fun toJson(): JSONObject = JSONObject().put("v", value).put("t", label)
 
     companion object {
+        /** 严格解析允许的键（622）。 */
+        val KEYS: Set<String> = setOf("v", "t")
+
         fun fromJson(o: JSONObject): TeachOption? {
             val v = o.optString("v")
             val t = o.optString("t").ifBlank { v }

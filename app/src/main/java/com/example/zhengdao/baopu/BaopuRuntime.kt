@@ -895,7 +895,9 @@ internal object BaopuRuntime {
             MediaPublisher.deleteByRelPath(appCtx, rel)
         }
         runCatching {
-            val target = com.example.zhengdao.bridge.BrowserCommands.shotDir(appCtx)
+            // 622：经端口转发（目录常量本身非动作；转发口让「bridge 之外不碰
+            // BrowserCommands」的源码断言零例外——见 BrowserPort.legacyShotDir 的 KDoc）
+            val target = com.example.zhengdao.bridge.BrowserPort.legacyShotDir(appCtx)
             val legacy = File(ZhengdaoDirs.root(appCtx), MediaMigration.LEGACY_SHOT_DIR)
             MediaMigration.migrateShots(ws, legacy, target)
         }.onFailure { RunLog.log("抱朴截屏目录迁移跳过：${it.javaClass.simpleName}") }

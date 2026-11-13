@@ -13,6 +13,8 @@
 // external files，供人拉下来**用眼睛看图**（不是只信"非白 5%"）。
 package com.example.zhengdao.patrol
 
+import com.example.zhengdao.bridge.ShotCapture
+import com.example.zhengdao.bridge.EvidenceCapture
 import android.content.Intent
 import android.os.Build
 import android.util.Log
@@ -87,7 +89,7 @@ class ScreenshotOffscreenOnDeviceTest {
             val r = runCatching { BrowserCommands.captureShotRef(ctx, null, "0") }
             val ms = System.currentTimeMillis() - t0
             when (val c = r.getOrNull()) {
-                is BrowserCommands.ShotCapture.Ok -> {
+                is ShotCapture.Ok -> {
                     okCount++
                     record(
                         "第 ${i + 1} 张", "captureShotRef(视口)",
@@ -97,7 +99,7 @@ class ScreenshotOffscreenOnDeviceTest {
                     )
                 }
 
-                is BrowserCommands.ShotCapture.Bad -> record(
+                is ShotCapture.Bad -> record(
                     "第 ${i + 1} 张", "captureShotRef(视口)", "不能",
                     "${ms}ms ｜ ${c.error}",
                 )
@@ -124,12 +126,12 @@ class ScreenshotOffscreenOnDeviceTest {
         Thread.sleep(2_000)
         val bg = runCatching { BrowserCommands.captureShotRef(ctx, null, "0") }
         when (val c = bg.getOrNull()) {
-            is BrowserCommands.ShotCapture.Ok -> record(
+            is ShotCapture.Ok -> record(
                 "判据 2", "App 退后台时截图", "能",
                 "居然成功了：${c.ref.width}x${c.ref.height} ${c.ref.bytes}B（说明这条也能走通）",
             )
 
-            is BrowserCommands.ShotCapture.Bad -> record(
+            is ShotCapture.Bad -> record(
                 "判据 2", "App 退后台时截图", "说明",
                 "如实失败并给了原因：${c.error}",
             )
@@ -170,7 +172,7 @@ class ScreenshotOffscreenOnDeviceTest {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             val r = runCatching { BrowserCommands.evidenceSnapshot() }.getOrNull()
-            if (r is BrowserCommands.EvidenceCapture.Ok) return true
+            if (r is EvidenceCapture.Ok) return true
             Thread.sleep(300)
         }
         return false

@@ -17,4 +17,8 @@
     <string name="baopu_tool_browser_replay_skill_desc">回放一个已保存的示教技能：按示教时的步骤在玄览里自动定位并执行。有四道闸：授权域（只在示教时的那些站点跑）、站点信任、页面结构指纹（变了就停）、安全闸（提交、支付、删除类按钮一律拒点）。某一步点不动会先滚入视口重试一次，再不行就停并留下每一步的取证。每次回放都会弹确认卡。</string>
     <string name="baopu_tool_teach_site_trust">信任站点管理</string>
     <string name="baopu_tool_teach_site_trust_desc">查看、添加、撤销「回放信任站点」名单：名单默认是空的，示教与回放默认全拒；信任一个域名（如 m.example.com）才允许在那儿自动执行。localhost、IP、内网地址不收。加与撤都写决策记录，可以在决策中心回滚。每次加/撤都会弹确认卡。</string>
+    <string name="baopu_tool_teach_skill_export">导出动作脚本</string>
+    <string name="baopu_tool_teach_skill_export_desc">把一个已保存的示教技能导出成单文件动作脚本（产物/玄览脚本/ 下，schema zl-teach/2：目标站、版本、步骤、每步校验点、最终快照）。导出前过凭证扫描与不可逆动作扫描——带明文凭据或含提交、支付、删除类点击的脚本不出门。每次导出都会弹确认卡。</string>
+    <string name="baopu_tool_teach_skill_import">导入动作脚本</string>
+    <string name="baopu_tool_teach_skill_import_desc">把导出过的动作脚本装回技能库（从 产物/玄览脚本/ 读；同名重导＝替换）。四道闸：schema 严格解析、凭证扫描（带明文凭据拒收）、不可逆动作扫描（提交、支付、删除类点击整份拒绝）、入库验收闸——任何一道不过就一个字节不写。每次导入都会弹确认卡。</string>
 </resources>

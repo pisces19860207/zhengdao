@@ -87,4 +87,53 @@ object BridgePolicy {
             else -> Verdict.Deny("snapshot 的 mode 只支持 text / dom / full，收到：$raw")
         }
     }
+
+    // ── 622：域判定的纯函数内核（端口域闸与示教层同源，名单判据只有一份） ──────
+
+    /**
+     * 取 url 的 host；裸串（无 scheme）按全串当 host 试（录制时页面 url 一定带 scheme）。
+     *
+     * 622 起这里是**唯一实现**（原 `TeachSafety.hostOf` 逐字上收）：执行端口（BrowserPort
+     * 域闸）与示教层（TeachSafety）共用——域判据一个字不许两边各写一份。
+     */
+    fun hostOf(url: String): String? {
+        val s = url.trim()
+        if (s.isEmpty()) return null
+        // authority＝scheme 后、路径/查询/锚点前的整段；里面可能有 userinfo（user:pass@）和端口
+        val authority = when {
+            s.contains("://") -> s.substringAfter("://")
+            s.startsWith("//") -> s.substring(2)
+            else -> s
+        }.substringBefore('/').substringBefore('?').substringBefore('#')
+        val hostPort = if (authority.contains('@')) authority.substringAfterLast('@') else authority
+        // 剥端口：最后一个冒号后面是数字才当端口剥（IPv6 的 [::1] 不进这条链，如实小写返回）
+        val host = if (hostPort.startsWith("[")) {
+            hostPort.substringBefore(']')
+        } else {
+            val idx = hostPort.lastIndexOf(':')
+            if (idx > 0 && hostPort.substring(idx + 1).all { it.isDigit() } && hostPort.substring(idx + 1).isNotEmpty()) {
+                hostPort.substring(0, idx)
+            } else {
+                hostPort
+            }
+        }
+        return host.lowercase().ifEmpty { null }
+    }
+
+    /**
+     * 域判据：url 的 host 必须落在授权域内。授权域 `a.com` 放行 `a.com` 与 `*.a.com`
+     * （点前缀匹配，防 `a.com.evil.io` 蹭过）；授权域本身带子域（`t.a.com`）时只放行该子域
+     * 及其下。host 大小写归一；授权域为空 ⇒ 全拒（fail-closed）。
+     *
+     * 622 起唯一实现（原 `TeachSafety.domainAllowed` 逐字上收）：端口的域闸统一走这里。
+     */
+    fun hostAllowedIn(url: String, allowedDomains: List<String>): Boolean {
+        val host = hostOf(url) ?: return false
+        if (allowedDomains.isEmpty()) return false
+        return allowedDomains.any { d ->
+            val dom = d.trim().removePrefix(".").lowercase()
+            if (dom.isEmpty()) return@any false
+            host == dom || host.endsWith(".$dom")
+        }
+    }
 }

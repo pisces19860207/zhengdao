@@ -508,6 +508,10 @@ internal data class RiskTable(
                 "teach_skill_save" to ToolRule(RiskClass.R1),
                 "browser_replay_skill" to ToolRule(RiskClass.R2, alwaysAsk = true),
                 "teach_site_trust" to ToolRule(RiskClass.R1, alwaysAsk = true),
+                // 622：动作脚本导出/导入（R1，同 skill_save 档——写产物区/写技能库；
+                // 四道闸在交换层：schema 严格解析/凭证扫描/不可逆扫描/入库验收）。
+                "teach_skill_export" to ToolRule(RiskClass.R1),
+                "teach_skill_import" to ToolRule(RiskClass.R1),
                 // ── 502 MCP 自配五件（CORE 组；add/set_token 是 R3 必问——对外连接与凭据）──
                 "mcp_list" to ToolRule(RiskClass.R0),
                 "mcp_add_server" to ToolRule(RiskClass.R3),

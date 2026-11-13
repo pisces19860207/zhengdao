@@ -171,6 +171,19 @@ enum class DecisionKind(
      * **被拦下来的意见也记这一类**：不记就等于没人知道模型试过一次给自己发票。
      */
     ADVISOR_OPINION("advisor_opinion", DecisionGroup.EVAL, false, DecisionAudit.WEEKLY),
+
+    /**
+     * 622：**浏览器执行端口的闸停留痕**（域拒绝/升档回闸——动作**没有**发生）。
+     *
+     * 为什么必须有这一类、不能塞进 [AUTO_ACT]：AUTO_ACT 记的是「真的动了手」（既成事实），
+     * 这条记的是「端口把动作拦下了」（未遂）——混在一起，抽检就分不出「越了白名单」
+     * 与「做成了什么」。房型沿 [RISK_UNCLASSIFIED] 的先例：闸的留痕归 GRANT 组。
+     *
+     * 只记 **deny / escalate** 两类闸停（throttle 是瞬时熔断、量可能大，进 RunLog 不进这里；
+     * LOCAL 已执行的动作有自己的专业账：回放审计行与工具层 auto_act）。
+     * `reversible=false`：拦截没有反方向（不是改了什么，是没让它发生）。
+     */
+    BROWSER_GATE("browser_gate", DecisionGroup.GRANT, false, DecisionAudit.NONE),
     ;
 
     companion object {

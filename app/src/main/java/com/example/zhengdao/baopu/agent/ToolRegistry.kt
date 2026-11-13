@@ -411,6 +411,9 @@ internal object ToolGroupTable {
         "teach_skill_save" to ToolGroup.BROWSER,     // R1 写技能库
         "browser_replay_skill" to ToolGroup.BROWSER, // R2 自动执行＋拒点提交
         "teach_site_trust" to ToolGroup.BROWSER,     // R1 授权类
+        // ── 622：动作脚本导出/导入两件（同 BROWSER；写产物区/写技能库，闸在交换层）──
+        "teach_skill_export" to ToolGroup.BROWSER,   // R1 写 产物/玄览脚本/
+        "teach_skill_import" to ToolGroup.BROWSER,   // R1 写技能库（schema/凭证/不可逆/入库四道闸）
         // ── 502：MCP 自配五件（CORE，默认可见）——「零新增 UI 入口」的本体。
         // 不放 MCP 动态组的原因：动态组要等第一台连上才可见，模型拿不到 mcp_add_server
         // 就是死锁；写类进 defaultVisibleTools 又被 register() 的 fail-closed 只读闸拦死。
@@ -1611,6 +1614,9 @@ internal object BaopuToolCatalog {
         "teach_skill_save",
         "browser_replay_skill",
         "teach_site_trust",
+        // 622：动作脚本导出/导入——同一条能力线（教一遍→存→导出→装回→回放），同组同口径
+        "teach_skill_export",
+        "teach_skill_import",
         // 第五百零二批：MCP 自配五件——默认开、默认可见（CORE 组）。这是「零新增 UI 入口」
         // 的本体：模型自己配 MCP 服务器，不加设置页不加按钮。list 只读 FREE；
         // add/connect/disconnect/set_token 全 CONFIRM，add 是对外连接（矩阵 R3）必问一次。
@@ -1804,6 +1810,9 @@ internal object BaopuToolCatalog {
         Entry("teach_skill_save") { TeachTools.skillSaveSpec() },
         Entry("browser_replay_skill") { TeachTools.replaySpec() },
         Entry("teach_site_trust") { TeachTools.siteTrustSpec() },
+        // 622：动作脚本导出/导入（A②）——闸在 TeachScriptExchange，本表只放 spec
+        Entry("teach_skill_export") { TeachTools.skillExportSpec() },
+        Entry("teach_skill_import") { TeachTools.skillImportSpec() },
         // 第五百零二批：MCP 自配五件（CORE 组，默认可见）——「零新增 UI 入口」的本体：
         // 模型自己列/登记/连/断/写令牌。运行环境由 BaopuRuntime 注入（McpSelfService.env）。
         Entry("mcp_list") { McpSelfService.listSpec() },

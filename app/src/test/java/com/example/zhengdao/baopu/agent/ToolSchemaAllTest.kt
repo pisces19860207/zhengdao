@@ -2,7 +2,7 @@
 //
 // 依据：派工单第一百一十九批 §2「测试」——
 // - 每个工具至少：合法参数通过、缺必填拒绝、类型错拒绝、未知字段拒绝；
-// - schema 单一来源逐字节比对（同 94 批，但这次覆盖**全部** 31 个工具、**两个**协议）；
+// - schema 单一来源逐字节比对（同 94 批，但这次覆盖**全部** 33 个工具、**两个**协议）；
 // - 负例：摘掉 required ⇒ 缺必填被放行；造第二套 schema ⇒ 单一来源会红；
 // - 也不许把「合法参数照常执行」改坏（golden：本轮动过的六个工具逐值比对）。
 //
@@ -42,7 +42,7 @@ class ToolSchemaAllTest {
         AskGovLedger.resetForTest()
     }
 
-    // ── ① 全量：31 个工具一条不漏，S1–S12 全过 ─────────────────────────────
+    // ── ① 全量：33 个工具一条不漏，S1–S12 全过 ─────────────────────────────
 
     @Test
     fun `全部工具_schema_契约齐全_一个不漏`() {
@@ -125,7 +125,7 @@ class ToolSchemaAllTest {
             assertTrue("${spec.name} 的错误原文没点名「$key」：$err", err!!.contains(key))
             checked++
         }
-        // 31 个工具里 24 个有必填（其余 7 个是白名单里的全可选）
+        // 33 个工具里 26 个有必填（其余 7 个是白名单里的全可选）
         assertTrue("这条用例一个工具都没验到（判据空了）", checked >= 20)
     }
 
@@ -582,6 +582,9 @@ class ToolSchemaAllTest {
             "teach_skill_save" to JSONObject(),
             "browser_replay_skill" to JSONObject().put("name", "查货"),
             "teach_site_trust" to JSONObject().put("action", "list"),
+            // 622：动作脚本导出/导入（唯一必填是 name——导出哪个/导入哪个）
+            "teach_skill_export" to JSONObject().put("name", "查货"),
+            "teach_skill_import" to JSONObject().put("name", "查货"),
             // 502：MCP 自配五件（list 全可选且有 REQUIRED_EMPTY_OK 签字；其余各有必填）
             "mcp_list" to JSONObject(),
             // 527：治理出口无参数（REQUIRED_EMPTY_OK 已签字）

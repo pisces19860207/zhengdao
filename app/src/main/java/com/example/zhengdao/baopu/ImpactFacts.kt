@@ -85,14 +85,19 @@ internal class AndroidFacts(
     }
 
     /**
-     * 网页表单读数（**一次** execJs，≤150ms 预算的软闸）。
+     * 网页表单读数（**一次**探针，≤150ms 预算的软闸）。
      *
-     * 线程纪律：`BrowserCommands.execJs` 会自己 post 到主线程再等回调（见其 `evalJs`），
+     * 线程纪律：端口底层（BrowserCommands.evalJs）会自己 post 到主线程再等回调，
      * 所以**必须从非主线程调**（预览跑在 IO 协程上）；主线程调会走 `onMain` 的失败分支
      * 返回 null ⇒ 界面只报目标名，不会翻车。
      */
     override fun formState(selector: String): FormState? = runCatching {
-        val raw = BrowserCommands.execJs(ImpactDom.script(selector))
+        val raw = com.example.zhengdao.bridge.BrowserPort.probe(
+            com.example.zhengdao.bridge.BrowserPort.PortCaller.IMPACT_PROBE,
+            ImpactDom.script(selector),
+            null,
+            com.example.zhengdao.bridge.BrowserPort.PortPolicy.OPEN,
+        )
         ImpactDom.parse(raw)
     }.getOrNull()
 
