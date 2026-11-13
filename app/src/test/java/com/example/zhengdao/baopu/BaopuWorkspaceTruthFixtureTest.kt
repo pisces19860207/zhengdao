@@ -134,11 +134,22 @@ class BaopuWorkspaceTruthFixtureTest {
 
     private fun pair(rel: String, source: String) {
         val code = repoText(rel)
-        assertTrue("$rel：hostDir 没把实态交给留痕", code.contains("WorkspaceTruth.report("))
+        // 接线：留痕函数定义在那儿**不算**，hostDir 自己调用它才算（变异 C 抓到过这一格）。
+        assertTrue("$rel：找不到 hostDir 签名（接线断言的前提没了）", code.contains(HOST_DIR_SIG))
+        val body = hostDirBody(code)
+        assertTrue("$rel：hostDir 没把实态交给留痕（真源定义了却没接上＝569 那种沉默回落）", body.contains("reportTruth("))
         assertTrue("$rel：报的必须是解析后的那一个 File（不是 prefs 原值）", code.contains("realPath = host.absolutePath"))
         assertTrue("$rel：落点是 RunLog（println 与 logcat 都不算自证）", code.contains("sink = RunLog::log"))
         assertTrue("$rel：署名要跟界面/日志对得上（$source）", code.contains("source = \"$source\""))
     }
+
+    private companion object {
+        const val HOST_DIR_SIG = "fun hostDir(ctx: Context): File {"
+    }
+
+    /** hostDir 那一块的函数体：从签名起，到第一个四个空格缩进的 `}` 为止（接线只认这一块）。 */
+    private fun hostDirBody(code: String): String =
+        code.substringAfter(HOST_DIR_SIG).substringBefore("\n    }")
 
     /** 测试的工作目录可能是仓根、也可能是模块目录，两边都试一次。 */
     private fun repoText(rel: String): String = listOf(rel, "app/$rel", "../$rel", "../../$rel")
