@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,7 @@ import com.example.zhengdao.baopu.TeachStopKind
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.ui.baopu.BaopuChatController
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -106,9 +108,19 @@ import java.io.File
  *
  * 图标说明：本项目图标一律 Canvas 自绘（Tab 图标 / BackChevron 同款笔法），不引
  * material-icons 库——视觉统一 + 零额外依赖。底栏键位 glyph 见 [BrowserBottomBar]。
+ *
+ * **第六百二十三批**：控制器由 `MainActivity` 上提（与抱朴页**同一个实例**，定稿 §4.2），
+ * 教学模式下多一层浮层 [XuanlanCapsuleLayer]（胶囊＋半屏），非教学模式不进组合树。
+ *
+ * @param controller 主会话控制器（只读 `messages` / `busy`，发送只走 `send`）
+ * @param onOpenDecisionCenter 半屏里那行「去决策中心」的唯一出口（由宿主切 Tab 并开屏）
  */
 @Composable
-fun BrowserScreen(modifier: Modifier = Modifier) {
+internal fun BrowserScreen(
+    controller: BaopuChatController,
+    onOpenDecisionCenter: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val res = LocalResources.current
     // ── P1-7（第五十五批 · §B 77 审计，2026-10-19）：WebView 不再在组合期构造 ──────────
@@ -207,6 +219,17 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // ── 第六百二十三批：教学浮层（胶囊 ＋ 半屏）的状态位 ────────────────────────
+    // 教学模式 = 录制中 或 刚录完待确认（定稿 §1.2 可观察的那两态；「回放中」当前无状态源，
+    // 一期不做）。非教学模式**整个浮层不进组合树**（判据⑨，不是 visibility = GONE）。
+    val teaching = teachRecording || teachDraft != null
+    var capsuleExpanded by rememberSaveable { mutableStateOf(false) }
+    // 确认卡是否由用户「打开」过：胶囊里的按钮要能把它重新叫出来（落盘口仍只有一张卡）。
+    var teachConfirmOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(teaching) {
+        if (!teaching) capsuleExpanded = false
+    }
+
     LaunchedEffect(active?.id) {
         urlInput = active?.state?.url ?: ""
         addressEditing = false
@@ -301,12 +324,19 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
     // ③ 都没有 ⇒ 交给系统。两条 BackHandler 的 enabled **互斥**，谁在栈顶都不抢对方。
     // P1-7：第二条要等引擎构造完（engine 非空）才登记 —— 构造前没有历史栈可退，
     // 不登记就等于「交给系统」，语义与旧版 canGoBack()==false 一致。
+    // 623：教学半屏展开时先收半屏（四条 enabled 两两互斥，顺序即优先级）。
+    BackHandler(enabled = teaching && capsuleExpanded && !addressEditing) { capsuleExpanded = false }
     BackHandler(enabled = addressEditing) { exitAddressEditing() }
     if (engine != null) {
-        BackHandler(enabled = !addressEditing && engine.canGoBack()) { engine.goBack() }
+        BackHandler(enabled = !addressEditing && !(teaching && capsuleExpanded) && engine.canGoBack()) {
+            engine.goBack()
+        }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // 浮层自己在内部再取一次 BoxWithConstraints（它要读可用高算 40% 与安全区），
+    // 这一层只负责「叠一个整屏的画布」——用 Box 就够，别留一个没人读的约束作用域。
+    Box(modifier = modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         // ── 标签条（第⑨刀 B） ──
         BrowserTabStrip(
             tabs = tabs,
@@ -505,9 +535,11 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                         teachModel.stop { kind, d ->
                             teachRecording = false
                             teachDraft = d
+                            teachConfirmOpen = d != null
                             when (kind) {
                                 TeachStopKind.EMPTY_NAV_ONLY -> uiMsg = res.getString(R.string.teach_empty_nav)
                                 TeachStopKind.EMPTY_NO_EVENTS -> uiMsg = res.getString(R.string.teach_empty)
+                                // 623：录到草稿 ⇒ 胶囊转「待确认」红点，还不算教学结束。
                                 TeachStopKind.DRAFT -> Unit
                             }
                         }
@@ -522,25 +554,49 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         }
     }
 
+        // ── 第六百二十三批：教学浮层（胶囊 ＋ 半屏叠层）────────────────────────
+        // 只在教学模式进组合树（判据⑨）；半屏是**叠层**，不是 Dialog、不是新路由（判据②）。
+        // 页面区的 AndroidView 一个字节不动 ⇒ 收起后网页滚动位置天然不变。
+        if (teaching) {
+            XuanlanCapsuleLayer(
+                controller = controller,
+                draftPending = teachDraft != null,
+                expanded = capsuleExpanded,
+                onExpandedChange = { capsuleExpanded = it },
+                onOpenTeachConfirm = { teachConfirmOpen = true },
+                onOpenDecisionCenter = onOpenDecisionCenter,
+            )
+        }
+    }
+
     // ── JS 弹窗对话框 ──
     jsDialog?.let { dialog ->
         JsDialogUi(dialog = dialog, onDismiss = { jsDialog = null })
     }
 
     // ── 示教确认卡（196）：确认才落盘，「放弃」一个字节不写 ──
-    teachDraft?.let { d ->
+    // 623：`teachConfirmOpen` 只控制「这张卡现在要不要摆着」——初值由上面 stop 时置真，
+    // 胶囊里的按钮能再把它叫出来；落盘口仍然只有这一张卡。
+    teachDraft?.takeIf { teachConfirmOpen }?.let { d ->
         TeachConfirmSheet(
             draft = d,
             onSave = { name ->
                 teachDraft = null
+                teachConfirmOpen = false
                 teachModel.save(d.skill.copy(name = name), d.warnings) { msg -> uiMsg = msg }
             },
             onDiscard = {
                 teachDraft = null
+                teachConfirmOpen = false
                 teachModel.discard()
+                // 教学真正结束（recording=false 且 draft=null）⇒ 胶囊与半屏一起消失（判据⑪）。
+                uiMsg = res.getString(R.string.capsule_teach_ended)
             },
             // 第二百批：先把「北京」这种值勾出来变参数，再回来存
-            onParameterize = { teachParamsDraft = d },
+            onParameterize = {
+                teachConfirmOpen = false
+                teachParamsDraft = d
+            },
         )
     }
 
@@ -551,9 +607,13 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
             onApply = { skill, warnings ->
                 teachDraft = d.copy(skill = skill, summary = TeachLearner.summarize(skill, warnings))
                 teachParamsDraft = null
+                teachConfirmOpen = true
                 uiMsg = res.getString(R.string.teach_params_applied)
             },
-            onDismiss = { teachParamsDraft = null },
+            onDismiss = {
+                teachParamsDraft = null
+                teachConfirmOpen = true
+            },
         )
     }
 }

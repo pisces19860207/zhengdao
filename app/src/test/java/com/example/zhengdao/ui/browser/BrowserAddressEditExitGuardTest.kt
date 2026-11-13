@@ -41,7 +41,9 @@ class BrowserAddressEditExitGuardTest {
         )
         assertTrue(
             "原来那条历史栈 BackHandler 必须加 !addressEditing 守卫，否则编辑态按返回会直接导航掉",
-            src.contains("BackHandler(enabled = !addressEditing && engine.canGoBack())"),
+            // 623（2026-11-13）：多了第四条「先收教学半屏」的出口，三条 enabled 两两互斥，
+            // 这一条的守卫因此在 !addressEditing 之外再排掉半屏展开态（本单改的是这一行）。
+            src.contains("BackHandler(enabled = !addressEditing && !(teaching && capsuleExpanded) && engine.canGoBack())"),
         )
     }
 

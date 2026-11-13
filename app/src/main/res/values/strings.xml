@@ -1704,4 +1704,23 @@
     <string name="safety_settings_running">运行中（没有停机；叫停/回滚/通知规则都在安全台）</string>
     <string name="safety_settings_halted">已%1$s（停机持久化：重启 App／手机仍是停的；解除只能人工）</string>
     <string name="safety_settings_open">打开安全台</string>
+
+    <!-- 第六百二十三批：玄览教学浮层（胶囊 ＋ 半屏）。文案表见 623 定稿 §3.4。 -->
+    <string name="capsule_teach_idle">抱朴 · 教它</string>
+    <string name="capsule_teach_thinking">抱朴正在想</string>
+    <string name="capsule_teach_confirm">抱朴要你确认</string>
+    <string name="capsule_bubble_hint">教它的时候，我在这儿</string>
+    <string name="capsule_sheet_title">教抱朴 · 当前页</string>
+    <string name="capsule_sheet_no_page">没有打开的页面</string>
+    <string name="capsule_ref_page_on">引用本页 · %1$s</string>
+    <string name="capsule_ref_page_off">引用已关</string>
+    <string name="capsule_ref_preview_note">预览页不引用网址</string>
+    <string name="capsule_input_hint">说这一步对不对…</string>
+    <string name="capsule_send">发送</string>
+    <string name="capsule_collapse">收起对话</string>
+    <string name="capsule_action_answer">回答这一步</string>
+    <string name="capsule_action_open_confirm">打开确认卡</string>
+    <string name="capsule_go_decision_center">还有 %1$d 项等你决定 · 去决策中心</string>
+    <string name="capsule_teach_ended">教学结束，胶囊已收起</string>
+    <string name="capsule_screen_short">屏幕太矮，先收起对话</string>
 </resources>

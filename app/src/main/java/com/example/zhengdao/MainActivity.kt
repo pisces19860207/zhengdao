@@ -679,6 +679,20 @@ fun HomeTabs() {
         mutableIntStateOf(TabIndex.BAOPU)
     }
 
+    // ── 第六百二十三批：主会话控制器**上提到这一层**（定稿 §4.2）─────────────────
+    // 玄览的教学浮层要读同一条会话（同一实例、同一份 messages/busy），所以控制器不能只活在
+    // 抱朴页里。存储仍是进程级一份（BaopuRuntime.db/engine/memoryStore），这里只是把「同一个
+    // 实例」摆到两页的共同父组合上。旋屏会重建 Activity（MainActivity 未声明 configChanges），
+    // 那属于同一条会话的另一个实例，不是第二份存储（定稿 §4.4）。
+    val homeContext = androidx.compose.ui.platform.LocalContext.current
+    var channelEpoch by remember { mutableIntStateOf(0) }
+    val chatController = remember(channelEpoch) {
+        com.example.zhengdao.ui.baopu.BaopuChatController(homeContext)
+    }
+    // 玄览胶囊那行「去决策中心」的唯一出口：在本页改 Tab ＋ 一个请求位，
+    // 不新造路由、不建进程级槽（点击就发生在 HomeTabs 的组合范围内）。
+    var openDecisionOnBaopu by remember { mutableStateOf(false) }
+
     // 160：同一页里点「注册」/预览也要立刻切玄览——观察请求版本号，组合期消费。
     val tabReqVersion = com.example.zhengdao.ui.browser.BrowserHolder.tabRequestVersion
     androidx.compose.runtime.LaunchedEffect(tabReqVersion) {
@@ -901,7 +915,13 @@ fun HomeTabs() {
                 // 旧线（opencode serve）史见 docs/ERRATA.md E-140；占位页 BaopuRebuilding 已于第六十二批删除。
                 // 第二百八十六批：`onExit` 形参已删 —— 它自始没有调用点（抱朴页从不主动切 Tab），
                 // 原注释「onExit 仍落怡然」也跟着删了：怡然随终端拆走，这句早已不成立。
-                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen()
+                TabIndex.BAOPU -> com.example.zhengdao.ui.baopu.BaopuScreen(
+                    controller = chatController,
+                    channelEpoch = channelEpoch,
+                    onChannelChanged = { channelEpoch++ },
+                    openDecisionCenter = openDecisionOnBaopu,
+                    onDecisionCenterOpened = { openDecisionOnBaopu = false },
+                )
                 // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
                 //    用户完全无从判断发生了什么。给一个诚实的空态：说清终端在哪、给一个再进去的按钮。
@@ -909,7 +929,14 @@ fun HomeTabs() {
                 // 玄览：浏览器（用户模式 MVP，阶段 1）。WebView 实例由 BrowserHolder
                 // 跨 Tab 保活；外部打开入口（终端链接点击等）走 BrowserHolder.pendingUrl
                 // + 上面 ON_RESUME 的切 Tab 消费（§4.6，第 ② 刀接线）。
-                TabIndex.BROWSER -> com.example.zhengdao.ui.browser.BrowserScreen()
+                TabIndex.BROWSER -> com.example.zhengdao.ui.browser.BrowserScreen(
+                    controller = chatController,
+                    // 623：胶囊里那行「去决策中心」——先切 Tab，抱朴页读到请求就开屏（不新造路由）。
+                    onOpenDecisionCenter = {
+                        openDecisionOnBaopu = true
+                        tab = TabIndex.BAOPU
+                    },
+                )
                 else -> {}
             }
         }

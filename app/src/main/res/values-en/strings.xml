@@ -1749,4 +1749,23 @@
     <string name="safety_settings_running">Running (no halt; stop / rollback / notification rules live in the Safety Console)</string>
     <string name="safety_settings_halted">%1$s engaged (halt persists across app/phone restarts; only a human can lift it)</string>
     <string name="safety_settings_open">Open Safety Console</string>
+
+    <!-- Batch 623: Xuanlan teaching capsule (48dp pill + half sheet). Copy table: spec 623 section 3.4. -->
+    <string name="capsule_teach_idle">Baopu · Teaching</string>
+    <string name="capsule_teach_thinking">Baopu is thinking</string>
+    <string name="capsule_teach_confirm">Baopu needs your call</string>
+    <string name="capsule_bubble_hint">I\'m here while you teach</string>
+    <string name="capsule_sheet_title">Teaching · This page</string>
+    <string name="capsule_sheet_no_page">No page open</string>
+    <string name="capsule_ref_page_on">Citing this page · %1$s</string>
+    <string name="capsule_ref_page_off">Citation off</string>
+    <string name="capsule_ref_preview_note">Previews aren\'t cited</string>
+    <string name="capsule_input_hint">Say what\'s wrong with this step…</string>
+    <string name="capsule_send">Send</string>
+    <string name="capsule_collapse">Collapse conversation</string>
+    <string name="capsule_action_answer">Answer this step</string>
+    <string name="capsule_action_open_confirm">Open confirmation</string>
+    <string name="capsule_go_decision_center">Open Decision Center · pending: %1$d</string>
+    <string name="capsule_teach_ended">Teaching ended</string>
+    <string name="capsule_screen_short">Not enough height; collapsed</string>
 </resources>

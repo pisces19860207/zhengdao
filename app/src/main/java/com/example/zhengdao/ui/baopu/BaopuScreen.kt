@@ -135,7 +135,14 @@ import kotlinx.coroutines.withContext
  * 用户把回复复制到别处用，是这一行设计的实际用途场景（报告里写明解释）。
  */
 @Composable
-fun BaopuScreen(modifier: Modifier = Modifier) {
+internal fun BaopuScreen(
+    controller: BaopuChatController,
+    channelEpoch: Int,
+    onChannelChanged: () -> Unit,
+    openDecisionCenter: Boolean,
+    onDecisionCenterOpened: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val res = LocalResources.current
     // 443：模型名表随包读一次装进纯函数层（读盘只在 ModelLabelAssets，判据层零 Android）。
@@ -175,8 +182,8 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
         card != null
     }
     // 换通道 = 换引擎：控制器构造期持引擎（BaopuChatController），改 epoch 让它重建。
-    var channelEpoch by remember { mutableIntStateOf(0) }
-    val controller = remember(channelEpoch) { BaopuChatController(context) }
+    // 第六百二十三批：控制器**上提到 MainActivity**（玄览的教学浮层要读同一条会话，同一实例），
+    // 这里改为接参；epoch 与「换通道」回调也一并由宿主持有（定稿 §4.2）。
     // ── 第五百四十七批 · **产出卡**（写作／选题／做卡／小说正文等真产出）──────────
     // 产出类的唯一入场：控制器在收尾时发一条请求（本轮真写出过文本文件才有），这里
     // 经 `OutputCards.push` 过依据闸入卡区 —— 闸不过 ⇒ 一张卡都不加，只留一句人话。
@@ -224,7 +231,7 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
             context, id, "", customBase, customModel, ProviderPrefs.storedCustomProtocol(context)
         )
         topSheet = BaopuTopBarSheet.NONE
-        channelEpoch++ // 换引擎（provider 是构造期注入；旧引擎线程闲着无害）
+        onChannelChanged() // 换引擎（provider 是构造期注入；旧引擎线程闲着无害）
     }
     // 模型名区点一条：预设落 `user_model_$id`（连同**那一刻清单里拿到的**元数据）；自定义落 `custom_model`。
     // 只写名字、留着**上一个模型**的窗口数＝假数据（ContextBudget 会照那个数裁上下文），
@@ -244,7 +251,7 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
             )
         }
         topSheet = BaopuTopBarSheet.NONE
-        channelEpoch++
+        onChannelChanged()
     }
     var showBackup by remember { mutableStateOf(false) }
     var showExtract by remember { mutableStateOf(false) }
@@ -263,6 +270,14 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
     // （SettingsScreen 原样调用 TasteSettingsScreen），抱朴页不再承载这一页。
     // 第一百零四批：决策中心（顶栏盾牌进的四页签浮层）
     var showDecisionCenter by remember { mutableStateOf(false) }
+    // 623：玄览教学胶囊那行「还有 N 项等你决定 · 去决策中心」的唯一落点——
+    // 宿主切到本页并置请求位，这里读到就开屏、开完清位（不新造路由，也不建进程级槽）。
+    LaunchedEffect(openDecisionCenter) {
+        if (openDecisionCenter) {
+            showDecisionCenter = true
+            onDecisionCenterOpened()
+        }
+    }
     // 第三百二十二批：治理中心（抽屉「定时任务」下面那一行进的只读浮层：读数／执行体／小黑板）。
     var showGovernanceCenter by remember { mutableStateOf(false) }
     // 第五百四十四批（第二段）：账本一行点「跳回原话」⇒ 记下目标，等消息刷回来再滚到那一条。
@@ -1521,7 +1536,7 @@ fun BaopuScreen(modifier: Modifier = Modifier) {
                         }
                         ModelSheetDraft.clear()
                         showChannel = false
-                        channelEpoch++ // 换引擎（provider 是构造期注入；旧引擎线程闲着无害）
+                        onChannelChanged() // 换引擎（provider 是构造期注入；旧引擎线程闲着无害）
                     },
                 )
             }
