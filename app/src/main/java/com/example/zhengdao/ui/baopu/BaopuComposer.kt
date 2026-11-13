@@ -132,6 +132,8 @@ internal fun BaopuComposer(
     onRevokeInterject: (String) -> Unit = {},
 ) {
     var text by rememberSaveable { mutableStateOf("") }
+    // 第六百三十三批：语音输入只写回输入框，绝不调用 onSend（发送只由下方按钮触发）。
+    val voice = rememberVoiceBridge(onText = { text = it }, currentText = { text })
     // 多选（2026-10-18 用户）：最多 9 个
     var attachList by remember { mutableStateOf<List<BaopuAttachments.Saved>>(emptyList()) }
     var sheetOpen by remember { mutableStateOf(false) }
@@ -253,6 +255,7 @@ internal fun BaopuComposer(
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }
+        VoiceStatusRow(voice)
         // 排队状态行（第一百一十七批）：跑着也能看见「还有几条在等」。
         // 「继续排队」只在没跑的时候出现——跑到一半点它只会撞单活跃门（引擎会拒绝）。
         if (queuedCount > 0) {
@@ -337,9 +340,14 @@ internal fun BaopuComposer(
             ) {
                 PaperclipGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant, side = 20.dp)
             }
+            // 语音输入（633）：两模式由设置页选；不可用则按钮灰掉并由状态行给引导。
+            VoiceMicButton(ui = voice, modifier = Modifier.padding(bottom = 8.dp))
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = { incoming ->
+                    text = incoming
+                    voice.noteUserEdit(incoming)
+                },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text(stringResource(R.string.baopu_input_hint)) },
                 maxLines = 4,

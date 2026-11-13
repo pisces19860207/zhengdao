@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 第六百三十三批 · 语音输入（中文）。英文镜像见 values-en/strings_voice.xml。 -->
+    <string name="voice_mic_desc">语音输入</string>
+    <string name="voice_listening">正在听…说完点结束，或点取消丢弃整段</string>
+    <string name="voice_cancel">取消</string>
+    <string name="voice_guide_action">去开启</string>
+    <string name="voice_permission_guide">没给麦克风权限，说不了话。点「去开启」授权；音频只在本机处理。</string>
+    <string name="voice_denied_guide">麦克风权限被拒：请到 设置 → 应用 → 权限 手动开启。</string>
+    <string name="voice_system_unavailable">本机没有可用的系统语音识别服务，麦克风暂不可用。</string>
+    <string name="voice_local_missing">本地模型未安装，麦克风暂不可用。可在设置里切回系统自带识别。</string>
+    <string name="voice_settings_card">语音输入</string>
+    <string name="voice_settings_desc">转完只进输入框，不自动发送；取消则整段丢弃。音频不上传、不保存，账只记时长、来源与是否成功。</string>
+    <string name="voice_mode_title">说话方式</string>
+    <string name="voice_mode_hold">按住说（松手结束）</string>
+    <string name="voice_mode_tap">点按开始 / 再点结束</string>
+    <string name="voice_source_system">系统自带识别（默认）</string>
+    <string name="voice_source_local">本地模型（可选）</string>
+    <string name="voice_local_not_installed">未安装</string>
+    <string name="voice_local_hint">装好本地模型后才会亮起；没装时不会偷偷改走系统识别。</string>
+    <string name="voice_selected_mark">已选</string>
+</resources>

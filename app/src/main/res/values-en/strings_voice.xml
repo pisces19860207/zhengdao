@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Batch 633 - Voice input (English mirror of values/strings_voice.xml). -->
+    <string name="voice_mic_desc">Voice input</string>
+    <string name="voice_listening">Listening… tap to finish, or Cancel to discard the whole draft</string>
+    <string name="voice_cancel">Cancel</string>
+    <string name="voice_guide_action">Enable</string>
+    <string name="voice_permission_guide">Microphone permission is missing. Tap Enable; audio stays on this device.</string>
+    <string name="voice_denied_guide">Microphone permission was denied: open Settings → Apps → Permissions to enable it.</string>
+    <string name="voice_system_unavailable">No system speech recognition service is available on this device.</string>
+    <string name="voice_local_missing">Local model is not installed. Switch back to system recognition in Settings.</string>
+    <string name="voice_settings_card">Voice input</string>
+    <string name="voice_settings_desc">Results only fill the input box and are never sent automatically; Cancel discards the whole draft. Audio is never uploaded or saved; the ledger stores only duration, source and success.</string>
+    <string name="voice_mode_title">How to speak</string>
+    <string name="voice_mode_hold">Press and hold (release to finish)</string>
+    <string name="voice_mode_tap">Tap to start / tap again to finish</string>
+    <string name="voice_source_system">System recognition (default)</string>
+    <string name="voice_source_local">Local model (optional)</string>
+    <string name="voice_local_not_installed">Not installed</string>
+    <string name="voice_local_hint">Becomes available once a local model is installed; no silent fallback to system recognition.</string>
+    <string name="voice_selected_mark">Selected</string>
+</resources>

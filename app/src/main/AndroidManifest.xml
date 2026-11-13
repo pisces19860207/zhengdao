@@ -55,6 +55,10 @@
          里按需请求（见 BaopuComposer 的 RequestPermission）。 -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 语音输入（第六百三十三批）：系统自带 ASR 走本机离线服务，音频只过内存、不上传、
+         不落盘、不申请设备租约。运行时在输入框就地请求（与 CAMERA 同款房型）。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- 精确闹钟（第一百六十七批 · 定时任务 v1）：**只声明 SCHEDULE_EXACT_ALARM，
          不声明 USE_EXACT_ALARM**。两条的差别不是写法而是口径——
          · SCHEDULE_EXACT_ALARM 是 App-optimized 权限：Android 14 起对新装机**默认拒绝**，
@@ -74,6 +78,9 @@
     <!-- 第 129 批 lint 清债：CAMERA 权限要配一条 required=false 的 uses-feature，否则 lint 报
          PermissionImpliesUnsupportedChromeOsHardware（原意就是这个：没摄像头也能装，只是拍照按钮不可用）。 -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- 同 CAMERA：声明了 RECORD_AUDIO 就要配 required=false，否则 lint 报
+         PermissionImpliesUnsupportedChromeOsHardware（没麦克风的设备也能装，只是按钮不可用）。 -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <!-- 明文（cleartext）放行范围收窄（2026-10-12，用户交办）：
          改前这里是 android:usesCleartextTraffic="true" —— 全局放行，等于允许 App 与
