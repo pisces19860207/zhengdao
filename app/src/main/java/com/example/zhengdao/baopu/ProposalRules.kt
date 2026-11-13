@@ -36,12 +36,19 @@ internal object ProposalRules {
         val target: String = "skill",
     )
 
-    /** run_log 一条工具步（只要工具名与成败；err 原文不进来）。 */
+    /**
+     * run_log 一条工具步。
+     *
+     * 第六百二十批：`err` 带进**错误线索**（不复制用户正文），供
+     * [ToolFailureAttribution] 先分清「谁的错」。缺省空串 ⇒ 未归因 ⇒ 不提约束
+     * （fail-closed），因此不给它编一个默认罪名。
+     */
     data class ToolRun(
         val id: Long,
         val tool: String,
         val ok: Boolean,
         val atMs: Long,
+        val err: String = "",
     )
 
     /** 生成器入参：全部来自调用方已读出的记录，生成器自身不摸库。 */
@@ -193,27 +200,101 @@ internal object ProposalRules {
         )
     }
 
-    /** ③ 失败模式：同会话、同一工具重复失败 ≥ MIN_REPEATS 次 ⇒ 工具使用约束。 */
+    /** 归因后的一条账行（只在生成判据内部用，不落盘）。 */
+    private data class ClassifiedRun(val run: ToolRun, val attribution: FailureAttribution)
+
+    /**
+     * ③ 失败模式（第六百二十批）：**先分清谁的错**，再谈要不要提约束。
+     *
+     * 三路分流，账行一律不删不改（本函数只管「要不要提约束」）：
+     * - 环境类 ⇒ 只记账：留一行跳过说明，绝不生成「约束模型」的卡；
+     * - 行为类 ⇒ 按**根因**聚合（不是按工具名）；一个根因本轮最多一张卡 ⇒ 同轮内
+     *   限一次、同根因重复失败不叠加；
+     * - 未归因 ⇒ 账行没留错误线索，**不硬猜**，保持既有口径（按工具名分组）。
+     *   这条是刻意保留的兼容路径：现有 run_log 工具行的 err 列为空，见交付报告
+     *   「已知边界」。无依据的数据不在本单改造范围内。
+     *
+     * 次数只进证据（runLogIds），不进正文 ⇒ id 稳定 ⇒ 跨轮幂等。
+     */
     private fun failureCandidates(input: Input, sink: CandidateSink) {
-        val failures = input.toolRuns.filter { !it.ok && isRealTool(it.tool) }.groupBy { it.tool }
-        for ((tool, rows) in failures) {
-            if (rows.size < MIN_REPEATS) continue
-            val payload = failurePayload(tool)
-            sink.offer(
-                ProposalCandidate(
-                    id = idOf(tool, payload),
-                    kind = ProposalKind.TOOL_RULE,
-                    target = tool,
-                    payload = payload,
-                    evidence = ProposalEvidence(
-                        runLogIds = rows.map { it.id }.takeLast(MAX_EVIDENCE_IDS),
-                        atMs = rows.maxOfOrNull { it.atMs } ?: input.nowMs,
-                    ),
-                    createdAt = input.nowMs,
-                ),
+        val classified = input.toolRuns.filter { !it.ok && isRealTool(it.tool) }
+            .map { ClassifiedRun(it, ToolFailureAttribution.classify(it.err)) }
+        noteEnvironmentOnly(classified, sink)
+        offerBehavioral(classified, sink, input.nowMs)
+        offerUnattributed(classified, sink, input.nowMs)
+    }
+
+    /** 环境类：账行已经在 run_log 里了，这里只补一条「为什么没提约束」的留痕。 */
+    private fun noteEnvironmentOnly(rows: List<ClassifiedRun>, sink: CandidateSink) {
+        for (row in rows) {
+            if (row.attribution.owner != FailureOwner.ENVIRONMENT) continue
+            sink.skipped += Skip(
+                row.run.tool,
+                "失败分类：${row.attribution.owner.label}；${row.attribution.reason}；" +
+                    "只记账，不提约束模型",
             )
         }
     }
+
+    /**
+     * 行为类：**同轮内限一次**。
+     *
+     * 先按根因分组（同根因只占一组 ⇒ 重复失败不叠加），再整轮只提第一个过阈值的
+     * 根因 —— 派工单「同轮内限一次」按字面钉死，不给「多个根因各弹一张」留刷屏口子。
+     * 其余根因记 skipped 说明，不静默丢弃。
+     */
+    private fun offerBehavioral(rows: List<ClassifiedRun>, sink: CandidateSink, nowMs: Long) {
+        val byRoot = LinkedHashMap<String, MutableList<ClassifiedRun>>()
+        for (row in rows) {
+            if (!ToolFailureAttribution.mayProposeRule(row.attribution)) continue
+            byRoot.getOrPut(row.attribution.rootCause) { mutableListOf() }.add(row)
+        }
+        var proposed = false
+        for (entry in byRoot) {
+            val group = entry.value
+            if (group.size < MIN_REPEATS) continue
+            val tool = group.first().run.tool
+            if (proposed) {
+                sink.skipped += Skip(tool, "同轮已提过一条工具约束，本根因不再叠加")
+                continue
+            }
+            val payload = failurePayload(tool, group.first().attribution)
+            sink.offer(ruleCandidate(tool, payload, group.map { it.run }, nowMs))
+            proposed = true
+        }
+    }
+
+    /** 未归因：保持既有口径（按工具名分组、旧正文），不改无依据数据的行为。 */
+    private fun offerUnattributed(rows: List<ClassifiedRun>, sink: CandidateSink, nowMs: Long) {
+        val byTool = LinkedHashMap<String, MutableList<ClassifiedRun>>()
+        for (row in rows) {
+            if (row.attribution.owner != FailureOwner.UNATTRIBUTED) continue
+            byTool.getOrPut(row.run.tool) { mutableListOf() }.add(row)
+        }
+        for (entry in byTool) {
+            val group = entry.value
+            if (group.size < MIN_REPEATS) continue
+            sink.offer(ruleCandidate(entry.key, failurePayload(entry.key), group.map { it.run }, nowMs))
+        }
+    }
+
+    /** 一条工具约束候选（证据只放事件 id 与时间，不含正文）。 */
+    private fun ruleCandidate(
+        tool: String,
+        payload: String,
+        runs: List<ToolRun>,
+        nowMs: Long,
+    ): ProposalCandidate = ProposalCandidate(
+        id = idOf(tool, payload),
+        kind = ProposalKind.TOOL_RULE,
+        target = tool,
+        payload = payload,
+        evidence = ProposalEvidence(
+            runLogIds = runs.map { it.id }.takeLast(MAX_EVIDENCE_IDS),
+            atMs = runs.maxOfOrNull { it.atMs } ?: nowMs,
+        ),
+        createdAt = nowMs,
+    )
 
     /** ④ 成功模式：同会话、同一技能连续成功 ≥ MIN_REPEATS 次，且工具链也有成功 ⇒ 正文补充。 */
     private fun successCandidates(input: Input, sink: CandidateSink) {
@@ -264,10 +345,19 @@ internal object ProposalRules {
         "用户明确否决过多条技能提案。" +
             "人设追加：提出技能/做法前先确认范围与命名；被否决过的写法不要换个名字再提。"
 
-    /** 工具约束正文（只引用工具名；次数在证据里）。 */
+    /**
+     * 工具约束正文（第六百二十批）：**必须写「失败分类＋依据」**。
+     *
+     * 依据只放结构化线索标签（[FailureAttribution.reason]），不复制错误原文、不放用户
+     * 正文；次数在证据里不进正文 —— 正文一变 id 就变，同根因会再弹一张，幂等就破了。
+     */
+    internal fun failurePayload(tool: String, a: FailureAttribution): String =
+        "工具「$tool」在同一会话里重复失败。失败分类：${a.owner.label}；依据：${a.reason}。" +
+            "工具使用约束：同一根因连续失败就停下，换路径/换参数或问人，不要原样重试。"
+
+    /** 未归因口径（账行没留错误线索）：正文同样写明分类与依据，不假装分得清。 */
     internal fun failurePayload(tool: String): String =
-        "工具「$tool」在同一会话里重复失败。" +
-            "工具使用约束：同一工具连续失败两次就停下，换路径/换参数或问人，不要原样重试。"
+        failurePayload(tool, ToolFailureAttribution.classify(""))
 
     /** 技能正文补充正文（只引用技能名；连续成功的次数在证据里）。 */
     internal fun successPayload(name: String): String =

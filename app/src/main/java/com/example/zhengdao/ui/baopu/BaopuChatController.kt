@@ -4720,9 +4720,11 @@ internal class BaopuChatController(context: Context) {
             }
         }
 
+        // 第六百二十批：多读一列已有的 `err`（不动记账写入）当作失败线索，供
+        // `ToolFailureAttribution` 先分清「谁的错」。空串 ⇒ 未归因 ⇒ 不硬猜。
         val toolRuns = db.read { d ->
             d.rawQuery(
-                "SELECT id, tool, ok, created_at FROM run_log " +
+                "SELECT id, tool, ok, created_at, err FROM run_log " +
                     "WHERE session_id = ? AND tool != '' ORDER BY id",
                 arrayOf(sid.toString()),
             ).use { c ->
@@ -4734,6 +4736,7 @@ internal class BaopuChatController(context: Context) {
                                 tool = c.getString(1).orEmpty(),
                                 ok = c.getInt(2) != 0,
                                 atMs = c.getLong(3),
+                                err = c.getString(4).orEmpty(),
                             ),
                         )
                     }
