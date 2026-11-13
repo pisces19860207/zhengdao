@@ -41,13 +41,17 @@ class RunLoopExtractionGateTest {
     private val engine = "src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt"
     private val helper = "src/main/java/com/example/zhengdao/baopu/agent/RunLoopRules.kt"
 
-    // ── G1：八处调用都在位（每个恰好一次） ────────────────────────────────
+    // ── G1：九处调用都在位（每个恰好一次） ────────────────────────────────
     // 2026-10-24 第一百八十八批 §1.6：省钱闸到线的人话 notice（badArgsStopNotice）
     // 成为第八个 helper 函数——它在引擎里恰好调用一次（活的，不是死函数），
     // 本门禁的计数随之 7→8。判据意图不变：多一个调不到的死函数照样红。
+    //
+    // 2026-11-13 第六百三十一批：`runLogErr`（工具失败线索进 run_log.err）成为第九个，
+    // 同样在引擎里恰好调用一次（`persistToolExchange` 的 err 那一行）。计数 8→9，
+    // 判据意图一字不变——**新增的这一个是「有调用点」才进来的**，不是死函数。
 
     @Test
-    fun `G1_八处helper调用都在引擎里_各恰好一次`() {
+    fun `G1_九处helper调用都在引擎里_各恰好一次`() {
         val src = code(engine)
         val calls = listOf(
             "RunLoopRules.verifyRepairNotice(",
@@ -58,11 +62,12 @@ class RunLoopExtractionGateTest {
             "RunLoopRules.badArgsStopNotice(",
             "RunLoopRules.isTruncatedStopReason(",
             "RunLoopRules.toolExchangeOk(",
+            "RunLoopRules.runLogErr(",
         )
         calls.forEach { c ->
             assertEquals("调用点必须恰好一处（少了＝抽取没落地，多了＝第二条链）：$c", 1, Regex(Regex.escape(c)).findAll(src).count())
         }
-        assertEquals("RunLoopRules 引用总共就这八处", 8, Regex("RunLoopRules\\.").findAll(src).count())
+        assertEquals("RunLoopRules 引用总共就这九处", 9, Regex("RunLoopRules\\.").findAll(src).count())
     }
 
     // ── G2：搬走的字面在引擎里归零（没有第二份实现） ──────────────────────
@@ -128,14 +133,14 @@ class RunLoopExtractionGateTest {
         assertEquals("helper 零 import（同包直接用 RunRules）", 0, Regex("(?m)^import ").findAll(src).count())
     }
 
-    // ── G5：helper 公开函数恰好八个，没有死函数 ──────────────────────────
+    // ── G5：helper 公开函数恰好九个，没有死函数 ──────────────────────────
 
     @Test
-    fun `G5_helper公开函数恰好八个_与引擎调用一一对应`() {
+    fun `G5_helper公开函数恰好九个_与引擎调用一一对应`() {
         val src = code(helper)
         val fns = Regex("(?m)^    fun (\\w+)\\(").findAll(src).map { it.groupValues[1] }.toList()
         assertEquals(
-            "helper 的公开函数应与 G1 的八处调用一一对应（多一个＝死函数）",
+            "helper 的公开函数应与 G1 的九处调用一一对应（多一个＝死函数）",
             listOf(
                 "verifyRepairNotice",
                 "textSettleNotice",
@@ -145,6 +150,7 @@ class RunLoopExtractionGateTest {
                 "badArgsStopNotice",
                 "isTruncatedStopReason",
                 "toolExchangeOk",
+                "runLogErr",
             ),
             fns,
         )

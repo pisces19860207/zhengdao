@@ -179,4 +179,93 @@ internal object RunLoopRules {
      */
     fun toolExchangeOk(wrapped: String): Boolean =
         !wrapped.startsWith("失败") && !wrapped.startsWith("被拒")
+
+    // ── ⑤ 失败线索落 err（第六百三十一批）────────────────────────────────
+
+    /**
+     * 工具失败时写进 `run_log.err` 的那**一句**（纯值；成功恒空串）。
+     *
+     * 病灶：六百二十批（[com.example.zhengdao.baopu.ToolFailureAttribution]）已经按
+     * `ok=0` 的 `err` 做归因、反思器（[com.example.zhengdao.baopu.ReflectionRunner]）
+     * 已经拿 `err` 首行当失败分类——可 `persistToolExchange` 一直写 `err = ""`，
+     * 于是「有线索」的那两侧在生产上永远读到空串：归因恒「未归因」、分类恒空。
+     * 本函数就是补上那个源头，**只决定 err 这一个列写什么**，不改任何判定。
+     *
+     * 三道闸，按序（前三档都不可能带出正文，第四档才是原文，但仍过闸）：
+     * 1. **成功不写**：`toolExchangeOk` 判真 ⇒ 空串（负例：成功也写 ⇒ 判据②红）。
+     * 2. **606 的 12 键优先**：线索命中 [PeerFailureCode] 闭集里的某一类 ⇒
+     *    只写 `<wire>: <该类固定的那句人话>`，正文一个字都不带（结构上不含路径/正文）。
+     * 3. **否则首行截断**：只取错误首行，**切在第一个分句边界**（`：`/`:`/`，`/`；`/`。`/`、`）——
+     *    本项目错误文案恒为「短因：细节」形，细节才是路径与正文的所在。
+     * 4. **抹路径 token**：`C:\…`、`/sdcard/…`、`file://…` 一律抹掉（宁可把「备份/回滚点」
+     *    这种斜杠词也当路径抹了，也不放过一条真路径）。
+     *
+     * 硬上限 [ERR_MAX] 字符：超过就截断加省略号。为什么值得单测：这一列是
+     * 「不读代码也能验收」的那本账，写脏了（带路径、带正文、超长）等于把私密内容
+     * 抄进运维账；写空等于 620/反思器两处继续空转。
+     *
+     * @param wrapped 工具出参原文（与 [toolExchangeOk] 同一个入参，成败同一把尺）
+     * @return 成功 ⇒ `""`；失败 ⇒ 非空且长度 ≤ [ERR_MAX]
+     */
+    fun runLogErr(wrapped: String): String {
+        if (toolExchangeOk(wrapped)) return ""
+        val line = PREFIX_TOKEN.replace(wrapped, "").lineSequence().firstOrNull()?.trim().orEmpty()
+        ERR_KEY_RULES.firstOrNull { it.first.containsMatchIn(line) }?.let { return it.second }
+        val cleaned = scrubPathTokens(cutAtClause(line)).trim()
+        return if (cleaned.isEmpty()) ERR_NO_CLUE else clipErr(cleaned)
+    }
+
+    /** err 列硬上限（字符）。**只能改小**——这是「别把正文抄进账」的最后一道。 */
+    const val ERR_MAX: Int = 200
+
+    /** 账上连一个字都读不出来时的固定一句（非空：判据①要求失败必有原因）。 */
+    const val ERR_NO_CLUE: String = "工具失败（账上无可读线索）"
+
+    /** 「失败：」「被拒：」前缀（有冒号无冒号都认——[toolExchangeOk] 判的就是前缀二字）。 */
+    private val PREFIX_TOKEN = Regex("^(?:失败|被拒)[：:]?")
+
+    /** 分句边界：切在第一个，后面的细节（路径/参数值/正文）整个不要。 */
+    private val CLAUSE_BREAK: Set<Char> = setOf('：', ':', '，', ',', '；', ';', '。', '、', '\t')
+
+    /**
+     * 路径样式 token：盘符路径 / `file://` / 以 `/` 打头的串。
+     *
+     * 为什么连 `备份/回滚点` 这种斜杠词也抹：抹错的代价是多读两个字，
+     * 漏过的代价是绝对路径明文进了运维账——两害取其轻。
+     */
+    private val PATH_TOKEN = Regex("""(?:[A-Za-z]:[\\/]|file://|/)[^\s，。；、：（）()【】「」"']{2,}""")
+
+    /**
+     * 12 键优先表（键 → 固定的一行；606 的 wire ＋ [com.example.zhengdao.baopu.peer.PeerFailureText]
+     * 那套人话的短句）。**特征词宁窄不宽**：认错键会把环境的错记到别处，
+     * 认不出就退回第 3 档截断——不硬猜。
+     */
+    private val ERR_KEY_RULES: List<Pair<Regex, String>> = listOf(
+        Regex("域名解析|DNS") to "dns: 域名解析不了",
+        Regex("拒绝连接") to "port: 端口拒绝连接",
+        Regex("证书|TLS") to "tls: 证书信不过",
+        Regex("超时") to "timeout: 等太久没回音",
+        Regex("版本对不上|版本不匹配|不在支持区间|protocolVersion") to "version: 协议版本对不上",
+        Regex("没有这条接口|HTTP 404") to "endpoint: 那儿没有这条接口",
+        Regex("需要授权|凭据无效|授权已失效") to "auth: 要先验明身份",
+        Regex("配置不过检|配置不可用|非 ASCII") to "config: 本机配置不过检",
+        Regex("说的不是一路话|协议不符|不是合法 JSON") to "protocol: 说的不是一路话",
+        Regex("外发没有批准|未批准外发") to "refused: 外发没批准，没有发起",
+        Regex("尚未连接|连接已断|连接半路断了") to "network: 连接半路断了",
+    )
+
+    /** 切在第一个分句边界（`http://` 里的冒号不算边界——那是地址不是分句）。 */
+    private fun cutAtClause(line: String): String {
+        line.forEachIndexed { i, c ->
+            if (c !in CLAUSE_BREAK) return@forEachIndexed
+            val inScheme = c == ':' && line.startsWith("//", i + 1)
+            if (!inScheme) return line.substring(0, i)
+        }
+        return line
+    }
+
+    private fun scrubPathTokens(text: String): String = PATH_TOKEN.replace(text, "").trim()
+
+    private fun clipErr(text: String): String =
+        if (text.length <= ERR_MAX) text else text.take(ERR_MAX - 1) + "…"
 }

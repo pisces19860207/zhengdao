@@ -5742,7 +5742,9 @@ internal class RunEngine(
                         tool = tool,
                         ok = RunLoopRules.toolExchangeOk(wrapped),
                         latencyMs = 0,
-                        err = "",
+                        // 第六百三十一批：失败线索写进 err（成功恒空串）。620 的归因与反思器
+                        // 的分类都读这一列——原先恒 `err = ""` 让那两处永远读到空。
+                        err = RunLoopRules.runLogErr(wrapped),
                         createdAt = now,
                     )
                     d.execSQL(rl.sql, rl.args)

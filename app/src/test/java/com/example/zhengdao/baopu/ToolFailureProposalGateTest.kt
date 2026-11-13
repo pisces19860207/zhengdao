@@ -3,7 +3,9 @@
 // 第六百二十批 · 连环失败提案的门禁（派工单判据①②③④）。
 //
 // 三条行为判据都用「夹具」跑真 [ProposalRules.generate]，不读源码充数；
-// 另配源码门禁钉住接线（读取侧带 err）与「不改失败→记账链路」。
+// 另配源码门禁钉住接线（读取侧带 err）与记账链路。
+// 631（第六百三十一批）接手最后一条：620 当时钉的是「记账仍写 err 空串」，
+// 631 动的正是那一列 ⇒ 断言改成「err 由失败线索函数产出」，其余三样一字未动。
 // 每条门禁都带负例样本 —— 门禁自己必须能红，否则只是三行 assertTrue。
 package com.example.zhengdao.baopu
 
@@ -271,14 +273,27 @@ class ToolFailureProposalGateTest {
     }
 
     @Test
-    fun `不改记账链路_run_log工具行仍按原样写入_负例改写成线索会红`() {
+    fun `不改记账链路_run_log工具行只换了err一列_负例写原文会红`() {
         val block = slice(engine, "private fun persistToolExchange(", "if (!ok) log(")
-        assertTrue("记账仍写 err 空串（本单不动写入）", block.contains("err = \"\""))
+        // 631 起本行的 err 由失败线索函数产出（620 当时那句「本单不动写入」的断言随之交棒：
+        // 631 动的正是这一列，其余三样——成败判据、落库调用、行型——一行都没动）。
+        assertTrue(
+            "err 由失败线索函数产出（成功恒空、失败非空）",
+            block.contains("err = RunLoopRules.runLogErr(wrapped)"),
+        )
         assertTrue("成败仍按既有 toolExchangeOk 判", block.contains("RunLoopRules.toolExchangeOk(wrapped)"))
         assertTrue("仍是原有的 insertRunLog", block.contains("BaopuSql.insertRunLog("))
+        // 负例一：把 err 改成原文（会带路径/正文）⇒ 门禁必须红
         assertFalse(
-            "负例：把记账写成「带错误线索」就不再是原链路",
-            block.replace("err = \"\"", "err = wrapped").contains("err = \"\""),
+            "负例：err 直接写 wrapped（原文含路径与正文）",
+            block.replace("err = RunLoopRules.runLogErr(wrapped)", "err = wrapped")
+                .contains("err = RunLoopRules.runLogErr(wrapped)"),
+        )
+        // 负例二：把 err 改回空串（620 之前的空转状态）⇒ 门禁必须红
+        assertFalse(
+            "负例：err 回到空串，620 与反思器又开始空转",
+            block.replace("err = RunLoopRules.runLogErr(wrapped)", "err = \"\"")
+                .contains("err = RunLoopRules.runLogErr(wrapped)"),
         )
     }
 }
