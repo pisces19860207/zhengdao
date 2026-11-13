@@ -1043,6 +1043,15 @@ internal class ToolRegistry(
     private var lastEmitted: List<String> = emptyList()
 
     /**
+     * 第六百三十单：本轮 MCP 预算装配名单（wireName 集）；null ＝ 未启用装配。
+     *
+     * 每步由装配器重算重写；引擎的单线程步循环是唯一写者，读侧（请求侧三出口）
+     * 只读快照 ⇒ @Volatile 足够，不加锁。
+     */
+    @Volatile
+    private var mcpLoadedNames: Set<String>? = null
+
+    /**
      * 本轮属于哪个会话（第五十九批 §1.4 的「按会话」落点）。
      *
      * 形制照 [RunEngine] 里的 `planSessionId`：引擎是进程级单例、一轮只跑一个会话，
@@ -1162,14 +1171,51 @@ internal class ToolRegistry(
     /**
      * 此刻该模型看见的工具（**唯一一条链的调用点**；顺序 = 表顺序，稳定缓存友好）。
      *
-     * @param sessionId 本轮会话；默认可见组 ∪ 本会话解锁组，再 ∩ 用户两种开关。
+     * 第六百三十单追加第五条判据：**MCP 全局预算的装载名单**（[setMcpLoadedNames]）。
+     * 名单非空时，MCP 组里不在名单上的工具整具不进 tools 数组（内置照旧全带）——
+     * 这是「预算挤出」的可见性后果，不是第五条过滤链：判据本体仍是 [isVisibleTool]，
+     * 名单由装配器每步算好写进来，null ＝ 未启用装配（行为与从前逐字节一致）。
+     *
+     * @param sessionId 本轮会话；默认可见组 ∪ 本会话解锁组，再 ∩ 用户两种开关 ∩ 预算名单。
      */
     fun visibleSpecs(sessionId: Long = currentSessionId): List<ToolSpec> {
         val visible = visibleTools(all(), settings(), unlockedGroups(sessionId))
+        val loaded = mcpLoadedNames
+        val visible2 = if (loaded == null) {
+            visible
+        } else {
+            val (mcp, rest) = visible.partition { it.group == ToolGroup.MCP }
+            rest + mcp.filter { it.name in loaded }
+        }
         // 第一百零三批：集合变了才留痕（下一轮真机复测靠这行读「那一刻模型到底看得见什么」）
-        emitIfChanged(visible.map { it.name })
-        return visible
+        emitIfChanged(visible2.map { it.name })
+        return visible2
     }
+
+    /**
+     * MCP 组的**未过闸**可见清单（第六百三十单：装配器的候选池）。
+     *
+     * 装配每步都要从「全部可见 MCP」重新排——上一轮被挤出的工具这一轮（用户 pin 了、
+     * 意图对上了）要能回来，所以这里必须绕开装载名单、只走用户开关那一段判据。
+     * 顺序 = 注册顺序（= 连接序 + server 内注册序），装配器拿它当兜底排序。
+     */
+    fun mcpVisibleSpecs(sessionId: Long = currentSessionId): List<ToolSpec> =
+        visibleTools(all(), settings(), unlockedGroups(sessionId))
+            .filter { it.group == ToolGroup.MCP }
+
+    /**
+     * 第六百三十单：本轮 MCP 装配名单（wireName 集）；null ＝ 未启用装配。
+     *
+     * 只许装配器（[com.example.zhengdao.baopu.mcp.McpBudgetWiring]）写；名单由
+     * [com.example.zhengdao.baopu.mcp.McpToolAssembly.plan] 算出——「挤出」只发生在
+     * 可见性上，工具本体仍注册着（名字还能被校验，执行侧守卫管线照旧）。
+     */
+    fun setMcpLoadedNames(names: Set<String>?) {
+        mcpLoadedNames = names
+    }
+
+    /** 面板读数 {loadedCount} 的对面（null ＝ 未启用装配，读数方按全量算）。 */
+    fun loadedMcpNames(): Set<String>? = mcpLoadedNames
 
     /** 见 [onVisibleChanged]：只做观察，异常自己吞掉（留痕不许影响请求）。 */
     private fun emitIfChanged(names: List<String>) {

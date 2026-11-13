@@ -33,6 +33,18 @@ internal data class McpServerView(
     val lastConnectedAtMs: Long?,
     /** 第五百零二批：在不在启动自动连名单上（配置级布尔；与连接状态无关）。 */
     val autoConnect: Boolean = false,
+    /**
+     * 第六百三十单：本 server 工具 schema 的字节合计（UTF-8；面板读数）。
+     * 「16 台 × 64 具每轮都带」的膨胀读数就从这列看见。
+     */
+    val schemaBytes: Long = 0L,
+    /**
+     * 第六百三十单：其中此刻真的装进 tools 数组的有几具。
+     * 未启用预算装配时 ＝ [toolCount]；启用后 = 本 server 工具 ∩ 装载名单。
+     */
+    val loadedCount: Int = 0,
+    /** 第六百三十单：本 server 被用户钉住（pin）的工具数（装配必带的那批）。 */
+    val pinnedCount: Int = 0,
 )
 
 /**
@@ -66,6 +78,11 @@ internal class McpToolSource(
     /** null = 不落盘（单测与「配置只在内存」的旧调用点）。 */
     private val store: McpServerStore? = null,
     private val now: () -> Long = { System.currentTimeMillis() },
+    /**
+     * 第六百三十单：装配账本（pin / LRU / 预算比例）。默认纯内存——
+     * 旧行为零回归；生产在 BaopuRuntime 接 prefs 版。
+     */
+    private val budget: McpBudgetStore = McpBudgetStore.inMemory(),
 ) {
 
     private class ServerState(
@@ -373,6 +390,8 @@ internal class McpToolSource(
 
     /** 面板用的快照（按登记顺序），UI 只读这份、不碰 State。 */
     fun snapshot(): List<McpServerView> = synchronized(lock) {
+        val loaded = registry.loadedMcpNames()
+        val pinned = budget.pins()
         servers.values.map { state ->
             McpServerView(
                 id = state.config.id,
@@ -384,6 +403,14 @@ internal class McpToolSource(
                 toolCount = state.tools.size,
                 lastConnectedAtMs = state.lastConnectedAtMs,
                 autoConnect = state.config.autoConnect,
+                // 630：{toolCount, schemaBytes, loadedCount} 三件读数（④）。
+                // loadedCount：未启用装配（loaded == null）＝ 全量都在；启用后数交集。
+                schemaBytes = state.tools.sumOf { McpToolBudget.schemaBytes(it.inputSchema) },
+                loadedCount = when (loaded) {
+                    null -> state.tools.size
+                    else -> state.tools.count { it.wireName in loaded }
+                },
+                pinnedCount = state.tools.count { it.wireName in pinned },
             )
         }
     }
@@ -423,6 +450,58 @@ internal class McpToolSource(
 
     /** 只给门禁/单测看（断连后应清空）。 */
     fun grantSnapshot(): Map<String, Set<String>> = grants.snapshot()
+
+    // ── 第六百三十单：装配三件（候选池 / pin / LRU）────────────────────────
+
+    /**
+     * 装配候选池（**全部已连接工具**，顺序 = 连接序 → server 内注册序）。
+     *
+     * 谁再筛用户开关、谁再算预算，都是装配器（McpBudgetWiring）的事——本方法只出
+     * 「有哪些可装」这一份真相，不掺第二层过滤（G2 纪律：过滤链只有一条）。
+     */
+    fun assemblyCandidates(): List<McpAssemblyCandidate> = synchronized(lock) {
+        val pool = ArrayList<McpAssemblyCandidate>()
+        servers.values.forEachIndexed { serverSeq, state ->
+            state.tools.forEachIndexed { toolSeq, tool ->
+                pool.add(
+                    McpAssemblyCandidate(
+                        wireName = tool.wireName,
+                        remoteName = tool.remoteName,
+                        description = tool.description,
+                        schemaTokens = McpToolBudget.schemaTokens(tool.inputSchema),
+                        serverSeq = serverSeq,
+                        toolSeq = toolSeq,
+                    ),
+                )
+            }
+        }
+        pool
+    }
+
+    /** 用户钉住一个工具（面板「查看工具」清单的开关；装配必带，判据②）。 */
+    fun pinTool(serverId: String, remoteName: String): Boolean = synchronized(lock) {
+        val wireName = servers[serverId]?.tools?.firstOrNull { it.remoteName == remoteName }?.wireName
+            ?: return false
+        budget.pin(wireName)
+    }
+
+    fun unpinTool(serverId: String, remoteName: String): Boolean = synchronized(lock) {
+        val wireName = servers[serverId]?.tools?.firstOrNull { it.remoteName == remoteName }?.wireName
+            ?: return false
+        budget.unpin(wireName)
+    }
+
+    /** 本 server 已钉住的原名集（面板渲染用）。 */
+    fun pinnedRemoteNames(serverId: String): Set<String> = synchronized(lock) {
+        val state = servers[serverId] ?: return emptySet()
+        val pinned = budget.pins()
+        state.tools.filter { it.wireName in pinned }.map { it.remoteName }.toSet()
+    }
+
+    /** 预算比例的覆盖读数（null = 用默认 8%；设置页/单测可拨）。 */
+    fun budgetRatio(): Double? = budget.ratio()
+
+    fun setBudgetRatio(value: Double?): Boolean = budget.setRatio(value)
 
     // ── 内部 ─────────────────────────────────────────────────────────────
 
@@ -521,7 +600,14 @@ internal class McpToolSource(
                         "本工具不会在没有授权的情况下发网络请求"
                     null
                 }
-                else -> active
+                else -> {
+                    // 630：请求真发出去才算「最近用过」（授权被拒的没发，不算）。装配按
+                    // LRU 取舍靠这份账；wireName 找不到（清单刚被刷新挤掉）就跳过不记。
+                    state?.tools?.firstOrNull { it.remoteName == remoteName }?.let { tool ->
+                        budget.recordUsed(tool.wireName, now())
+                    }
+                    active
+                }
             }
         }
         if (client == null) return ToolOutcome.Rejected(reject ?: "外部工具不可用")

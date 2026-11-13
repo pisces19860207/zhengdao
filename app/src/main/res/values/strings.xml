@@ -679,6 +679,13 @@
     <plurals name="baopu_mcp_tool_count">
         <item quantity="other">%1$d 个工具</item>
     </plurals>
+    <string name="baopu_mcp_loaded_stats">装载 %1$d/%2$d · schema %3$s</string>
+    <plurals name="baopu_mcp_pinned_count">
+        <item quantity="other">已钉 %1$d 个</item>
+    </plurals>
+    <string name="baopu_mcp_pin">钉住</string>
+    <string name="baopu_mcp_pinned">已钉（必装载）</string>
+    <string name="baopu_mcp_pin_note">预算装不下时，钉住的工具仍会带上；其余按最近使用取舍。</string>
     <string name="baopu_mcp_disconnect">断开</string>
     <string name="baopu_mcp_reconnect">连接</string>
     <string name="baopu_mcp_delete">删除</string>

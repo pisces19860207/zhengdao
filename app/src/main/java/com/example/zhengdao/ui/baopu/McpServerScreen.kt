@@ -110,6 +110,8 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
     var pendingDisconnect by remember { mutableStateOf<McpServerView?>(null) }
     var viewingTools by remember { mutableStateOf<McpServerView?>(null) }
     var toolNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    /** 630：查看工具清单里被钉住的原名集（面板开关的镜像；真账在 McpBudgetStore）。 */
+    var pinnedNames by remember { mutableStateOf<Set<String>>(emptySet()) }
     /** 502 自动 C：URL 框里一旦是合法地址就提示「名称/传输」（纯文本，不是新入口）。 */
     var parseHint by remember { mutableStateOf<String?>(null) }
 
@@ -446,11 +448,31 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
         }
     }
 
-    /** 查看工具（只读）。 */
+    /** 查看工具（只读清单 ＋ 630 的 pin 开关）。 */
     fun viewTools(target: McpServerView) {
         scope.launch {
-            toolNames = withContext(Dispatchers.IO) { BaopuRuntime.mcp(context).toolNames(target.id) }
+            val loaded = withContext(Dispatchers.IO) {
+                val source = BaopuRuntime.mcp(context)
+                val names = source.toolNames(target.id)
+                val pins = source.pinnedRemoteNames(target.id)
+                names to pins
+            }
+            toolNames = loaded.first
+            pinnedNames = loaded.second
             viewingTools = target
+        }
+    }
+
+    /** 钉住/取消一个工具（630：装配必带的那批；真账落 prefs，本地镜像即时刷新）。 */
+    fun togglePin(serverId: String, remoteName: String) {
+        scope.launch {
+            val nowPinned = withContext(Dispatchers.IO) {
+                val source = BaopuRuntime.mcp(context)
+                if (remoteName in pinnedNames) source.unpinTool(serverId, remoteName)
+                else source.pinTool(serverId, remoteName)
+                source.pinnedRemoteNames(serverId)
+            }
+            pinnedNames = nowPinned
         }
     }
 
@@ -637,7 +659,7 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
         )
     }
 
-    // 查看工具：只读列表（工具名来自服务器 tools/list，不是我们编的）。
+    // 查看工具：清单 + 630 的 pin 开关（钉住的工具在预算装不下时仍会带上）。
     viewingTools?.let { target ->
         AlertDialog(
             onDismissRequest = { viewingTools = null },
@@ -647,12 +669,36 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                     Text(stringResource(R.string.baopu_mcp_oauth_tools_empty))
                 } else {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            text = stringResource(R.string.baopu_mcp_pin_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         toolNames.forEach { name ->
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(vertical = 2.dp),
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(vertical = 2.dp),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                TextButton(onClick = { togglePin(target.id, name) }) {
+                                    Text(
+                                        text = if (name in pinnedNames) {
+                                            stringResource(R.string.baopu_mcp_pinned)
+                                        } else {
+                                            stringResource(R.string.baopu_mcp_pin)
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -749,7 +795,20 @@ private fun McpServerRow(
         ) {
             // 组合期取资源必须在可组合调用里完成（不能塞进 buildString 的 lambda）。
             val toolText = if (connected) {
-                pluralStringResource(R.plurals.baopu_mcp_tool_count, view.toolCount, view.toolCount)
+                // 630：{toolCount, schemaBytes, loadedCount} 三件读数都在面板这一行（④）。
+                val stats = stringResource(
+                    R.string.baopu_mcp_loaded_stats,
+                    view.loadedCount,
+                    view.toolCount,
+                    formatSchemaBytes(view.schemaBytes),
+                )
+                val pinned = if (view.pinnedCount > 0) {
+                    pluralStringResource(R.plurals.baopu_mcp_pinned_count, view.pinnedCount, view.pinnedCount)
+                } else {
+                    ""
+                }
+                val count = pluralStringResource(R.plurals.baopu_mcp_tool_count, view.toolCount, view.toolCount)
+                listOf(count, stats, pinned).filter { it.isNotEmpty() }.joinToString(" · ")
             } else {
                 ""
             }
@@ -819,3 +878,11 @@ private fun McpServerRow(
  */
 private fun formatClock(epochMs: Long): String =
     "${TimeFormats.monthDay(epochMs)} ${TimeFormats.hourMinute(epochMs)}"
+
+/** schema 字节量的显示形态（630 面板读数；KB 一位小数，1 KB 以下按字节）。 */
+private fun formatSchemaBytes(bytes: Long): String =
+    if (bytes >= 1024) {
+        String.format(java.util.Locale.ROOT, "%.1f KB", bytes / 1024.0)
+    } else {
+        "$bytes B"
+    }

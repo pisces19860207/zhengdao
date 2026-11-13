@@ -87,10 +87,12 @@ import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.library.LibraryPipeline
 import com.example.zhengdao.baopu.library.LibraryStore
 import com.example.zhengdao.baopu.mcp.McpServerStore
+import com.example.zhengdao.baopu.mcp.McpBudgetStore
 import com.example.zhengdao.baopu.mcp.McpAuthFlow
 import com.example.zhengdao.baopu.mcp.McpOAuthClient
 import com.example.zhengdao.baopu.mcp.McpTokenVault
 import com.example.zhengdao.baopu.mcp.McpToolSource
+import com.example.zhengdao.baopu.mcp.PrefsMcpBudgetStorage
 import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.policy.AnchorAsset
@@ -141,6 +143,15 @@ internal object BaopuRuntime {
      */
     @Volatile
     private var mcpSource: McpToolSource? = null
+
+    /**
+     * 第六百三十单：MCP 装配账本（pin / LRU / 预算比例；进程级一份）。
+     *
+     * 与 server 配置同份 prefs 文件（key 不同）；[McpToolSource] 与 [McpBudgetWiring]
+     * 共用这一份——LRU 由工具执行侧写、装配侧读，账本必须同一个。
+     */
+    @Volatile
+    private var mcpBudget: McpBudgetStore? = null
 
     /** OAuth 授权流程（进程级单例；token 只在它背后的加密存储里）。 */
     // 同对象的 dbInstance/engineInstance/mcpSource 全有 @Volatile，唯独它漏了：装配线程
@@ -633,10 +644,26 @@ internal object BaopuRuntime {
                     PrefsMcpServerStorage(context.applicationContext),
                     log = { RunLog.log(it) },
                 ),
+                // 630：装配账本（pin/LRU/比例）落同一份 prefs 文件；与装配器共用同一实例。
+                budget = mcpBudgetStore(context),
             ).also { mcpSource = it }
         }
         source.attach(reg)
         return source
+    }
+
+    /** MCP 装配账本（进程级单例；[McpToolSource] 与 [McpBudgetWiring] 共用同一份）。 */
+    internal fun mcpBudgetStore(context: Context): McpBudgetStore {
+        val appCtx = context.applicationContext
+        return mcpBudget ?: synchronized(this) {
+            mcpBudget ?: McpBudgetStore(
+                PrefsMcpBudgetStorage(appCtx),
+                log = { RunLog.log(it) },
+            ).also {
+                it.load()
+                mcpBudget = it
+            }
+        }
     }
 
     /**
@@ -953,6 +980,15 @@ internal object BaopuRuntime {
             db = db,
             registry = reg,
             pipeline = pipeline,
+            // 第六百三十单：MCP 全局预算装配（pin→意图→LRU→连接序，装到预算为止）。
+            // 注册表取「每次最新的」：换通道重建表后名单仍写进引擎正在用的那张。
+            mcpAssembler = com.example.zhengdao.baopu.mcp.McpBudgetWiring(
+                registry = { engineRegistry ?: reg },
+                budget = mcpBudgetStore(appCtx),
+                source = { mcpSourceFor(reg, appCtx) },
+                provider = { provider },
+                log = { RunLog.log(it) },
+            ),
             personaFiles = personaFiles(appCtx),
             // 第一百六十五批：人设包按工作区现读（设置页换包后下一轮生效；文件是真相）。
             personaPack = { activePersonaPack(appCtx) },

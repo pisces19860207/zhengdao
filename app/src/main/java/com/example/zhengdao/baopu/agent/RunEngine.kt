@@ -227,6 +227,15 @@ internal class RunEngine(
      */
     private val channelFallback: (Provider, String) -> RunRules.ChannelCandidate? = { _, _ -> null },
     /**
+     * 第六百三十单：MCP 全局预算装配器（每步在组装 tools 数组前调一次）。
+     *
+     * null ＝ 未接线（默认）：MCP 工具全量进 tools 数组，行为与从前逐字节一致。
+     * 生产由 BaopuRuntime 注入 [com.example.zhengdao.baopu.mcp.McpBudgetWiring]；
+     * 它把装载名单写进注册表（[ToolRegistry.setMcpLoadedNames]），本引擎自己
+     * **不过滤** tools 数组——G2 门禁钉的「判据只有一条链」原样成立。
+     */
+    private val mcpAssembler: com.example.zhengdao.baopu.mcp.McpTurnAssembler? = null,
+    /**
      * 安全点切换效应（第六十四批）：入参 (当前通道 id, 目标通道 id)，
      * 返回重建后的新 Provider；null = 没切过去（调用方要回滚并留因）。
      *
@@ -2443,9 +2452,17 @@ internal class RunEngine(
             // （两处读数因此永远同源，不会出现「界面 3.2s、轨迹 2.1s」）。
             trace.beginStep(stepCount, stepStartedAtMs)
 
+            // 第六百三十单：MCP 全局预算装配（每步一次；挤出说明进本轮上下文）。
+            // 放在 prompt 组装前：notice 要进 extraNotes 与本轮请求同发；装载名单写进
+            // 注册表后，下面 tools 数组的那条唯一链自动按名单出——这里不做任何 filter。
+            val mcpAssembly = mcpAssembler?.assembleForStep(sessionId, turnUserText)
+            if (mcpAssembly?.notice != null) {
+                log("抱朴引擎：${mcpAssembly.notice}")
+            }
             val prompt = assemble(
                 persona, facts, history, "", windowTokens,
                 compressionSummary, compressedIds, compressedIds,
+                extraNotes = turnNotes + listOfNotNull(mcpAssembly?.notice),
             )
             // 第一百二十四批：记下**这一步真的带上 wire 的图数**（失败那句要报得出几张；
             // 1213 行那次探针不算——它只为判断要不要压缩，不进请求体）。
@@ -2519,6 +2536,9 @@ internal class RunEngine(
                     provider,
                     tools,
                     filtered = registry.filteredLine(sessionId),
+                    // 第六百三十单：188 批立好的 budget 列从此有了真读数——被全局工具
+                    // 预算挤出的外部工具数（未接线时恒 0，与原口径一致）。
+                    budgetCut = mcpAssembly?.evictedCount ?: 0,
                 ),
             )
 
