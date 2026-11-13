@@ -1098,7 +1098,9 @@ internal class GuardPipeline(
         contentUriGuard(call, toolName, args)?.let { return it }
         // 第四百六十六批：批量形参（`paths`）与单数键走同一段，但它值里是一串路径——
         // 逐项解析/逐项拒，任何一项越线就拒**整条**调用（原子，不做一半）。
-        if (keys.isEmpty() && arrayPathKeysFor(toolName).none { args.optJSONArray(it) != null }) {
+        // 628：这一格抽成 [noPathArgs] —— guardPath 自身已到复杂度硬墙（15/15），
+        // 再塞一个 `&&` 就撞墙（detekt 硬墙实测红），故把判定搬出去，语义不变。
+        if (noPathArgs(toolName, args, keys)) {
             return Guarded.Yes(call)
         }
         val roots = rootList()
@@ -1152,6 +1154,15 @@ internal class GuardPipeline(
         log("抱朴管线：$toolName 路径放行 ${keys.joinToString("、")}")
         return Guarded.Yes(if (newArgs === args) call else call.copy(arguments = newArgs))
     }
+
+    /**
+     * 466／628：这个工具这一趟**根本没有路径参数**（既无单数键，也无批量键）。
+     *
+     * 抽出来只为给 [guardPath] 腾复杂度空间（它在 detekt 硬墙 15/15 上，628 加分流后撞墙）；
+     * 判据仍是原来那一行，没有任何语义变化。
+     */
+    private fun noPathArgs(toolName: String, args: JSONObject, keys: List<String>): Boolean =
+        keys.isEmpty() && arrayPathKeysFor(toolName).none { args.optJSONArray(it) != null }
 
     /**
      * 613：`path` 型参数收到外域 scheme（`content://`、`http(s)://` …）时给模型的原文。
