@@ -95,10 +95,20 @@ internal object QuietVerify {
             "此刻=${state.cn}${if (hushed.isEmpty()) "" else "（静默凭=$hushed）"}｜自检卡免打扰也照弹（同张只放一次）"
     }
 
-    /** 静默是凭什么（与 `QuietCardGate` 的账同一个口径：授权／夜间／专注，命中几个连几个）。 */
-    fun hushedWhy(grant: QuietGrant?, shape: SessionShape, nowMs: Long): String = buildList {
+    /**
+     * 静默是凭什么（授权／夜间／专注；命中几个给几个）。
+     *
+     * **唯一一份**：免打扰闸的落账行（`QuietCardGate.quietWhy`）与这里都用这一份，
+     * 不在两个文件里各抄一遍条件——免打扰以后多一个源，抄两份就迟早只改一处。
+     * 离场锁屏不在这儿：它不是免打扰（人在不在），闸自己那一格加。
+     */
+    fun hushedReasons(grant: QuietGrant?, shape: SessionShape, nowMs: Long): List<String> = buildList {
         if (QuietMode.active(grant, nowMs)) add("免打扰授权中")
         if (shape.atNight) add("夜间时段")
         if (shape.busy) add("专注期（连发指令中）")
-    }.joinToString("＋")
+    }
+
+    /** [hushedReasons] 的一行版（落账行里那一格：`免打扰授权中＋夜间时段`）。 */
+    fun hushedWhy(grant: QuietGrant?, shape: SessionShape, nowMs: Long): String =
+        hushedReasons(grant, shape, nowMs).joinToString("＋")
 }

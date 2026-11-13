@@ -284,13 +284,16 @@ internal class QuietCardGate {
 
     companion object {
 
-        /** 凭什么压的（多源按"离场→授权→夜间→专注"排，命中几个连几个；四格全空到不了这里）。 */
+        /**
+         * 凭什么压的（多源按"离场→授权→夜间→专注"排，命中几个连几个；四格全空到不了这里）。
+         *
+         * 后三条不在这儿抄：[QuietVerify.hushedReasons] 是那三条的**唯一一份**（619 起），
+         * 免得免打扰多一个源时两个文件各改一半。离场锁屏留在这儿——它不是免打扰。
+         */
         private fun quietWhy(grant: QuietGrant?, shape: SessionShape, nowMs: Long, awayLocked: Boolean = false): String =
             buildList {
                 if (awayLocked) add("离场值守·锁屏")
-                if (QuietMode.active(grant, nowMs)) add("免打扰授权中")
-                if (shape.atNight) add("夜间时段")
-                if (shape.busy) add("专注期（连发指令中）")
+                addAll(QuietVerify.hushedReasons(grant, shape, nowMs))
             }.joinToString("＋")
 
         /** 此刻静默吗（离场锁屏／授权／形状，任一为真即静默；[QuietMode.active] 是唯一授权判据）。 */
