@@ -16,6 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import com.example.zhengdao.testkit.TempSandbox
 import com.example.zhengdao.testkit.TempSandboxPool
 import org.junit.After
 
@@ -73,9 +74,15 @@ class NovelWorkspaceBoundaryTest {
     fun `同前缀兄弟目录_组件级判定不许按字符串前缀放行`() {
         val workspace = tmp("novel-root")
         val sibling = File(workspace.absolutePath + "-evil")
-        val project = makeProject(sibling)
-        val r = NovelProjectTool.overview(workspace, project.absolutePath)
-        assertTrue("`<工作区>-evil` 不是工作区的子目录（字符串前缀口径会放它过去）", r is ToolOutcome.Failed)
+        try {
+            val project = makeProject(sibling)
+            val r = NovelProjectTool.overview(workspace, project.absolutePath)
+            assertTrue("`<工作区>-evil` 不是工作区的子目录（字符串前缀口径会放它过去）", r is ToolOutcome.Failed)
+        } finally {
+            // 606 验收补（蓝总管）：兄弟目录不在 TempSandbox 池里（它叫 `<root>-evil`），
+            // 原先每跑一轮漏 1 个沙盒 —— 水位 296→297 漂移的真因就是它。自己收口，不抬基线。
+            TempSandbox.deleteTree(sibling)
+        }
     }
 
     @Test
