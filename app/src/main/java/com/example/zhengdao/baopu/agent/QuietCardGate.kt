@@ -26,6 +26,13 @@
 // "锁屏期间不弹卡（进队列）"）。实现只是给 [onAsk]／[takeNext]／[comebackLine] 加一个
 // 默认 false 的 [awayLocked] 参数：330 的三格判据一个字没改，330/379 的既有测试原样绿；
 // 凭据多写一行"离场值守·锁屏"。
+//
+// 第六百一十九批补一笔（2026-11-13）：静默多了一个**例外**——显式验证动作（619 派工单）：
+// 用户亲口说"验卡"时引擎弹的那张自检卡（[AskUserRequest.selfCheck]）在静默期内照弹。
+// 三条边界，一条都不许松：
+// - 只认这个标（[exemptSelfCheck]）：普通卡、组授权卡、人设提案卡一张都不放，免打扰整体不变；
+// - **一段静默只放一张**（[QuietGateLimits.MAX_SELF_CHECK]）：豁免是一张通行证，不是常开的门；
+// - 离场锁屏不算：人不在这儿，弹了也没人点——锁屏那一路仍然全压。
 package com.example.zhengdao.baopu.agent
 
 /** 免打扰延后的容量上限。改这个数＝改"堆多少件必须升级成检查点等待"的制度，不许调用处各写一把。 */
@@ -38,6 +45,15 @@ internal object QuietGateLimits {
      * （转检查点等待）与现身的时点（下一个检查点必现），从不变更"这件事要回到她面前"。
      */
     const val MAX_DEFERRED = 3
+
+    /**
+     * **一段静默里最多放几张自检卡**（619 派工单①的括号："只弹一次、标自检"）。
+     *
+     * 为什么是硬上限 1 而不是"每张自检卡一次"：豁免是免打扰上的一个口子，
+     * 它只能证明"这条路通"，不能长期当通道用——夜里连着验十次＝免打扰白开了。
+     * 改这个数＝改豁免制度（不是改某次验卡），所以钉在这儿，不许调用处各写一把。
+     */
+    const val MAX_SELF_CHECK = 1
 }
 
 /** 弹卡闸的裁决（闭集三格；"既不问也不记"的第四格不存在）。 */
@@ -106,6 +122,15 @@ internal class QuietCardGate {
     private val queue = ArrayDeque<DeferredAsk>()
     private var seq: Int = 0
 
+    /**
+     * 自检豁免的账：**这一段静默里已经放过几张自检卡**（619）。
+     *
+     * 静默一结束就清零（[onAsk] 的放行那一格）——下一段静默重新计一次；这样"只弹一次"
+     * 说的是**一次静默一次**，不是"这个进程一辈子一次"。为什么不按授权到期时刻记：
+     * 夜间静默可能根本没有授权（569 那晚就是），挂在授权上会让"夜里验卡"依旧被压。
+     */
+    private var selfCheckPassed: Int = 0
+
     /** 队列里现在压着几件（含检查点等待）。 */
     val size: Int get() = synchronized(this) { queue.size }
 
@@ -118,6 +143,11 @@ internal class QuietCardGate {
      * 静默＝[QuietMode.active]（授权）或 [SessionShape.hush]（夜间／专注）或 [awayLocked]
      * （388：离场值守＋锁屏 ⇒ 不弹卡，进队列）。
      * 满员与否只决定挂 [DeferredAsk.checkpoint] 与账行措辞——队列满了也**不拒**（纪律 4）。
+     *
+     * 619 的两格是**例外**，位置在静默判定之后、入队之前：
+     * - 不在静默 ⇒ 照常弹，并把自检豁免的账清空（下一段静默重新计）；
+     * - 静默中且这是一张**显式验证动作**来的自检卡 ⇒ 照弹（一段静默只放一张），账行标"自检豁免"。
+     *   其余卡（含普通提问、组授权、人设提案）一律走原路——免打扰没有被放宽一格。
      */
     fun onAsk(
         grant: QuietGrant?,
@@ -126,7 +156,18 @@ internal class QuietCardGate {
         request: AskUserRequest,
         awayLocked: Boolean = false,
     ): QuietCardOutcome {
-        if (!hushed(grant, shape, nowMs, awayLocked)) return QuietCardOutcome(QuietCardVerdict.ASK, "", null)
+        if (!hushed(grant, shape, nowMs, awayLocked)) {
+            synchronized(this) { selfCheckPassed = 0 }
+            return QuietCardOutcome(QuietCardVerdict.ASK, "", null)
+        }
+        if (exemptSelfCheck(request, awayLocked)) {
+            return QuietCardOutcome(
+                QuietCardVerdict.ASK,
+                "自检豁免｜${request.question}｜凭=${quietWhy(grant, shape, nowMs, awayLocked)}" +
+                    "，仍然出卡（同一段静默只放 ${QuietGateLimits.MAX_SELF_CHECK} 张）",
+                null,
+            )
+        }
         val item = synchronized(this) {
             enqueue(grant, shape, nowMs, request, queue.size >= QuietGateLimits.MAX_DEFERRED, awayLocked)
         }
@@ -138,6 +179,27 @@ internal class QuietCardGate {
             "因免打扰延后｜${item.headline}｜凭=${item.why}｜静默上限 ms ${item.dueMs}"
         }
         return QuietCardOutcome(verdict, line, item)
+    }
+
+    /**
+     * 这一张自检卡还放不放（619；**只在静默中问**）。
+     *
+     * 三个条件缺一不可：① 这张卡带 [AskUserRequest.selfCheck]（显式验证动作的凭据）；
+     * ② 不是离场锁屏（人不在，弹了也没人点）；③ 这一段静默还没放满
+     * （[QuietGateLimits.MAX_SELF_CHECK]＝1）。
+     * 第三条的"判断＋记账"在同一个锁里一次做完——分开写会有两次机会各说各话，
+     * 并发下能放进两张（这正是豁免该防的事）。
+     */
+    private fun exemptSelfCheck(request: AskUserRequest, awayLocked: Boolean): Boolean {
+        if (!request.selfCheck || awayLocked) return false
+        return synchronized(this) {
+            if (selfCheckPassed >= QuietGateLimits.MAX_SELF_CHECK) {
+                false
+            } else {
+                selfCheckPassed += 1
+                true
+            }
+        }
     }
 
     /**

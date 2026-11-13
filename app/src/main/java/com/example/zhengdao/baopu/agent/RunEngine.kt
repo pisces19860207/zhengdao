@@ -1436,7 +1436,13 @@ internal class RunEngine(
     private fun cardLabelOf(req: AskUserRequest): String = when (req.kind) {
         AskKind.GROUP_AUTHORIZATION -> "组授权御批卡"
         AskKind.PERSONA_PROPOSAL -> "人设提案卡"
-        AskKind.QUESTION -> if (req.subject.startsWith("help:")) "求助卡" else "ask_user"
+        // 619：显式验证动作（用户说「验卡」）弹的自检卡——事由仍是 QUESTION（走同一张选项卡），
+        // 但账上要认得出"这是自检"，不然夜里那一张混在 ask_user 里没人分得清。
+        AskKind.QUESTION -> when {
+            req.selfCheck -> "自检卡"
+            req.subject.startsWith("help:") -> "求助卡"
+            else -> "ask_user"
+        }
     }
 
     /** [askUser] 的原始弹卡体（过闸放行之后才走这里；检查点补问也走这里，不再过闸）。 */
@@ -1587,7 +1593,12 @@ internal class RunEngine(
         val now = System.currentTimeMillis()
         val locked = awayLocked()
         val outcome = quietGate.onAsk(quietGrant, quietShape(now), now, req, locked)
-        if (outcome.verdict == QuietCardVerdict.ASK) return false
+        if (outcome.verdict == QuietCardVerdict.ASK) {
+            // 619：「照常弹」平时没有要记的账（账行空串），但**豁免**放行的那一张要留痕——
+            // 不然免打扰期里凭空多出一张卡，事后没人说得出它是凭什么过的闸。
+            if (outcome.line.isNotEmpty()) log(outcome.line)
+            return false
+        }
         log(outcome.line)
         // 388 接线：这一格是**离场锁屏**压下的 ⇒ 交值守装配层记账＋通知（圈外入队的高优先一声）。
         // 免打扰/夜间压下的不响（330/379 的账已记），判据就是这一次问闸时锁没锁。
@@ -1804,6 +1815,27 @@ internal class RunEngine(
         quietGrant = grant
         log(QuietMode.authRecord(grant, now))
         log(quietGate.stateLine(grant, now))
+    }
+
+    /**
+     * 轮次入口过一遍**显式验证动作**（619：用户亲口说「验卡」⇒ 弹一张自检卡）。
+     *
+     * 为什么由引擎弹、而不是等模型去调 `ask_user`：验的是**卡路**（闸让不让、卡画不画得出、
+     * 点不点得动）。模型的提问走 [AskKind.QUESTION]、本来就被免打扰压回去——569 报的
+     * 病灶正是这个；而"验卡"这三个字对模型只是普通一句话，它认不出这是个命令。
+     * 所以命令归引擎，卡上带 [AskUserRequest.selfCheck] 这个标，闸里才有豁免可认。
+     *
+     * 三件小事：
+     * - 先记一行账（[QuietVerify.armLine]）再弹：569 那晚账上只有"因免打扰延后"，
+     *   事后分不清"没人验"和"验了被吞"；
+     * - `mustAsk = true`：人亲口要验的东西，调解器的问卡预算不许把它压掉（406 让步格）；
+     * - 没人点 ⇒ 15 分钟超时如实回 null（与 `ask_user` 同一条纪律），不重弹、不假装点过。
+     */
+    private fun noteQuietVerify(sessionId: Long, text: String) {
+        val trigger = QuietVerify.triggerOf(text) ?: return
+        val now = System.currentTimeMillis()
+        log(QuietVerify.armLine(trigger, sessionId, quietGrant, quietShape(now), now))
+        askUser(QuietVerify.request(trigger), mustAsk = true)
     }
 
     /** 用户点「停止」：半成品保留（写工具归刀 2；本刀只读，停止即止循环）。 */
@@ -2116,6 +2148,9 @@ internal class RunEngine(
         userText?.let {
             noteQuietGrant(sessionId, it)
             drainQuietQueue()
+            // 619：她亲口说「验卡」⇒ 弹一张自检卡。位置在补问之后：先把压着的按序放完，
+            // 再出这张新卡（同一张卡也不许越过队首先冒出来）。
+            noteQuietVerify(sessionId, it)
         }
         val workspacePath = spillRoot().absolutePath
         val windowTokens = ContextAssembler.ContextBudgets.windowOf(provider)

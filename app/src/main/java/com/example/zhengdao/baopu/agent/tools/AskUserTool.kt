@@ -92,6 +92,10 @@ internal data class AskQuestion(
  * - [questions]：问题组（空 ＝ 旧单问题形状，内部包成 1 项，见 [allQuestions]）；
  * - [note]：拆卡续问提示（引擎只放在第一张卡上：「另有 N 项，答完这张接着来」）。
  *
+ * 第六百一十九批再加**一个带默认值的尾部字段**（老调用一个字都不用改）：
+ * - [selfCheck]：这张卡是**显式验证动作**弹的（用户亲口说「验卡」，见
+ *   [com.example.zhengdao.baopu.agent.QuietVerify]）——它免打扰期内照弹，别的卡照旧压。
+ *
  * 为什么不另立一个「带类型的请求」类：引擎/工具侧只认这一个形状，多加一类
  * 就要在 sink 上分叉；默认值保证既有调用方与测试原样编译。
  */
@@ -105,6 +109,15 @@ internal data class AskUserRequest(
     val questions: List<AskQuestion> = emptyList(),
     /** 拆卡续问提示（只有第一张卡非空；[AskGroupRules.moreNote] 造）。 */
     val note: String = "",
+    /**
+     * 是不是**显式验证动作**弹的自检卡（第六百一十九批）。
+     *
+     * 默认 false；只有用户亲口说「验卡」那一路（[QuietVerify]）才置 true。
+     * 这个标是免打扰闸里唯一的豁免凭据（`QuietCardGate`）：**不是** AskKind——
+     * 加档位要动 ui 层渲染，而且会让人误以为"某一类卡天生免打扰"；
+     * 它是一个**这一次是谁要验**的事实，与卡的事由分类正交。
+     */
+    val selfCheck: Boolean = false,
 ) {
     /**
      * 这张卡上的问题，**旧形状也在这里露面**：没给 [questions] 时把
