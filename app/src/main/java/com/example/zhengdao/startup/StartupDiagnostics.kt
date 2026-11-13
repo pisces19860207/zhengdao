@@ -64,15 +64,21 @@ internal object StartupDiagnostics {
         facts: StartupFacts,
         failure: StartupFailure,
         sanitize: (String) -> String = { it },
+        /**
+         * 渲染时区。生产不传（＝系统默认时区：诊断给人看，用用户手机上的时刻才对）；
+         * 单测显式传固定时区，否则 CI 的 UTC 与本机的 +08:00 会渲染出不同的钟点
+         * （ci #1988 / emit #139：期望 14:05、实际 06:05，两例红都是这个）。
+         */
+        zone: ZoneId = ZoneId.systemDefault(),
     ): String {
         val sb = StringBuilder()
         sb.appendLine("证道 · 启动失败诊断")
-        sb.appendLine("生成时间：${humanTime(facts.nowMillis)}")
+        sb.appendLine("生成时间：${humanTime(facts.nowMillis, zone)}")
         sb.appendLine("———————————————————————————————")
         sb.appendLine("失败类型：${failure.type}")
         sb.appendLine("完整类名：${failure.typeFull}")
         sb.appendLine("消息：${failure.message ?: "（无）"}")
-        sb.appendLine("发生时刻：${humanTime(failure.atMillis)}")
+        sb.appendLine("发生时刻：${humanTime(failure.atMillis, zone)}")
         sb.appendLine("— 版本 —")
         sb.appendLine("版本名：${facts.versionName}")
         sb.appendLine("commit：${facts.gitSha}")
@@ -86,7 +92,7 @@ internal object StartupDiagnostics {
             if (facts.lastOkAtMillis == null) {
                 "从没有成功启动过（首次启动就失败）"
             } else {
-                "时刻：${humanTime(facts.lastOkAtMillis)}（版本 ${facts.lastOkVersion ?: "未知"}）"
+                "时刻：${humanTime(facts.lastOkAtMillis, zone)}（版本 ${facts.lastOkVersion ?: "未知"}）"
             },
         )
         sb.appendLine("— 栈 —")
@@ -114,12 +120,13 @@ internal object StartupDiagnostics {
         facts: StartupFacts,
         failure: StartupFailure,
         sanitize: (String) -> String = { it },
-        stamp: String = stamp(failure.atMillis),
+        zone: ZoneId = ZoneId.systemDefault(),
+        stamp: String = stamp(failure.atMillis, zone),
         write: (File, String) -> Unit = ::writeToDisk,
     ): File {
         val file = File(dir, fileName(stamp))
         if (file.isFile) return file
-        write(file, body(facts, failure, sanitize))
+        write(file, body(facts, failure, sanitize, zone))
         return file
     }
 

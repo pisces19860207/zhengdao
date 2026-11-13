@@ -67,7 +67,7 @@ class StartupDiagnosticsTest {
 
     @Test
     fun `正文_含栈与版本commit机型与上次成功启动`() {
-        val text = StartupDiagnostics.body(facts(), failure())
+        val text = StartupDiagnostics.body(facts(), failure(), zone = zone)
         assertTrue("要有异常类型", text.contains("失败类型：IllegalStateException"))
         assertTrue("要有版本名", text.contains("版本名：2.3.0"))
         assertTrue("要有 commit（561 的构建指纹）", text.contains("commit：f5f1dd973-dirty"))
@@ -81,7 +81,7 @@ class StartupDiagnosticsTest {
 
     @Test
     fun `正文_首次就失败时照实说没有上次成功启动`() {
-        val text = StartupDiagnostics.body(facts(lastOk = null), failure())
+        val text = StartupDiagnostics.body(facts(lastOk = null), failure(), zone = zone)
         assertTrue(text.contains("从没有成功启动过"))
     }
 
@@ -89,7 +89,7 @@ class StartupDiagnosticsTest {
     fun `正文_密钥与私有路径被脱敏（接生产那一个 redact）`() {
         val filesDir = "/data/user/0/com.example.zhengdao/files"
         val leaky = failure("请求头 Authorization: Basic c2VjcmV0 与 token=sk-live-9f8e7d 在 $filesDir/logs")
-        val text = StartupDiagnostics.body(facts(), leaky) { line -> RunLog.redact(line, filesDir) }
+        val text = StartupDiagnostics.body(facts(), leaky, { line -> RunLog.redact(line, filesDir) }, zone)
         assertFalse("Bearer/Basic 的值不许出现：$text", text.contains("c2VjcmV0"))
         assertFalse("token 的值不许出现", text.contains("sk-live-9f8e7d"))
         assertFalse("App 私有绝对路径不许出现", text.contains("/data/user/0/"))
@@ -99,7 +99,7 @@ class StartupDiagnosticsTest {
     @Test
     fun `正文_超长行被截断（挡整段请求体塞进异常消息）`() {
         val huge = "x".repeat(5_000)
-        val text = StartupDiagnostics.body(facts(), failure(huge))
+        val text = StartupDiagnostics.body(facts(), failure(huge), zone = zone)
         val longest = text.lineSequence().maxOf { it.length }
         assertTrue(
             "最长行 ${longest} 超过上限 ${StartupDiagnostics.MAX_LINE_CHARS}",
@@ -113,7 +113,7 @@ class StartupDiagnosticsTest {
         // 这是「不含正文」的结构判据：正文只由 StartupFacts + StartupFailure 拼成，
         // 一旦有人往里面加一段会话/账本内容，行数就对不上了 —— 那时必须有人来解释。
         val f = failure()
-        val lines = StartupDiagnostics.body(facts(), f).lines()
+        val lines = StartupDiagnostics.body(facts(), f, zone = zone).lines()
         assertEquals("骨架 18 行 + 栈 ${f.stack.size} 行", 18 + f.stack.size, lines.size)
     }
 
@@ -126,6 +126,7 @@ class StartupDiagnosticsTest {
             facts = facts(),
             failure = failure(),
             sanitize = { it },
+            zone = zone,
             write = { f, text -> written += f to text },
         )
         assertEquals("启动失败-20261113-140501.txt", file.name)
@@ -147,6 +148,7 @@ class StartupDiagnosticsTest {
             facts = facts(),
             failure = failure(),
             sanitize = { it },
+            zone = zone,
             stamp = StartupDiagnostics.stamp(failure().atMillis, zone),
             write = { _, _ -> writes++ },
         )
