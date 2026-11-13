@@ -11,7 +11,7 @@ package com.example.zhengdao.baopu
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.ui.baopu.realPathNotice
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -101,18 +101,25 @@ class BaopuWorkspaceTruthFixtureTest {
         val private = tmp.newFolder("回落期私有根")
         val back = tmp.newFolder("Download", "男性")
 
-        // 回落期：界面与读写都在私有根，放了 10 个。
+        // 回落期：界面说 back、读写在 private ⇒ 两行都在，且第二行指的是私有根。
         val during = BaopuWorkspace.resolve("default", back.absolutePath, private)
+        assertEquals(private, during)
         seedTen(LibraryPaths.deliverDirUnder(during))
+        val duringNotice = realPathNotice(back.absolutePath, during.absolutePath, "（没记录）")
+            ?: error("回落期不给两行＝又回到 569 那种只字不提")
+        assertEquals(ten, countIn(File(duringNotice.realPath)))
 
-        // 授权回来了：custom 合法 ⇒ 根换成声明那条 ⇒ 两行该收回去。
-        val healed = BaopuWorkspace.resolve("custom", back.absolutePath, private)
-        assertEquals(back, healed)
-        assertNull("一致就不该再有第二行", realPathNotice(back.absolutePath, healed.absolutePath, "（没记录）"))
+        // 授权回来了：合法的 custom ⇒ 根交给声明那一条，不再顶兜底根。
+        // 这里声明值用**共享存储前缀那条真路径的字符串**（custom 的合法性只看这个前缀）：
+        // JVM 里造不出以它开头的真目录，所以这一刀核对的是「换没换根」，不是「目录里有没有东西」。
+        val shared = "/storage/emulated/0/Download/男性"
+        val healed = BaopuWorkspace.resolve("custom", shared, private)
+        assertEquals("授权恢复就该把根换成声明那一条", File(shared), healed)
+        assertNotEquals("不许还留在回落期的私有根上", private, healed)
 
-        // 旧根里那 10 个不跟过来（换根就是换根，本批不改投递行为，判据④）。
+        // 换根就是换根：旧根那十个不跟过来（判据④，本批不动投递扫描）。
         assertEquals(0, countIn(healed))
-        assertEquals(ten, countIn(during))
+        assertEquals(ten, countIn(private))
     }
 
     // ── 判据③：回落那一支必须自己出声（接线断言，源码级） ────────────────
