@@ -26,6 +26,7 @@
 // 它只吃「种类/表名/运算/命中行数」，结构上拿不到任何单元格，所以泄漏不是靠自觉。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.UserPath
 import com.example.zhengdao.baopu.table.Cmp
 import com.example.zhengdao.baopu.table.Cond
 import com.example.zhengdao.baopu.table.TableAnswer
@@ -98,6 +99,51 @@ internal object TableQueryTool {
         synchronized(this) { cached = null }
     }
 
+    /** 613：表参数解析结果——要么换成登记簿认的相对路径，要么给一句能照着改的原文。 */
+    private sealed interface TablePath {
+        data class Ok(val rel: String) : TablePath
+        data class Reject(val reason: String) : TablePath
+    }
+
+    /**
+     * 表参数 → 登记簿里的**相对路径**（613）。
+     *
+     * 三条口径与文件工具同一处（[UserPath]）：相对原样、绝对换算成根内相对、`file://` 先归一。
+     * 工作区**外**的绝对路径不硬读：登记簿只登记工作区（与默认工作区）里的表，
+     * 换算不出相对路径时如实说「不在工作区」，并指路 `sheet_read`（它能读全盘）——
+     * 不许把外部路径当成表名去登记簿里瞎匹配，那会匹配到一张同名却不相干的表。
+     *
+     * `..` 与反斜杠开头的相对路径照旧拒（既有判据：表名只认工作区内的相对路径）。
+     */
+    private fun tablePathOf(root: File, raw: String): TablePath {
+        UserPath.foreignScheme(raw)?.let { scheme ->
+            return TablePath.Reject(
+                "「$scheme://」这种地址抱朴还不认（另立单）；把表放进工作区，或直接给文件路径",
+            )
+        }
+        val text = UserPath.normalize(raw)
+        if (!UserPath.isAbsolute(text)) {
+            return if (raw.contains("..") || raw.startsWith("\\")) {
+                TablePath.Reject("表名只接受工作区里的相对路径：$raw")
+            } else {
+                TablePath.Ok(raw)
+            }
+        }
+        val file = File(text)
+        val rel = runCatching { root.absoluteFile.toPath().relativize(file.absoluteFile.toPath()).toString() }
+            .getOrNull()
+            ?.replace('\\', '/')
+            ?.takeIf { it.isNotEmpty() && !it.startsWith("..") }
+        return if (rel != null) {
+            TablePath.Ok(rel)
+        } else {
+            TablePath.Reject(
+                "这张表不在工作区里：${file.absolutePath}。table_query 只在工作区（与默认工作区）里找表；" +
+                    "要看这份文件的原始行，用 sheet_read path=\"${file.absolutePath}\"",
+            )
+        }
+    }
+
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
         description = "按表格回答真实答案（只读、不联网、不调模型）：xlsx / csv / tsv 都认，" +
@@ -115,7 +161,8 @@ internal object TableQueryTool {
                 ),
                 ARG_TABLE to jsonObjectOf(
                     "type" to "string",
-                    "description" to "表名或相对工作区的路径（如「成绩表.xlsx」）；不填＝按问到的列选，多张就问",
+                    "description" to "表名，或相对工作区的路径（如「成绩表.xlsx」／「资料库/成绩表.xlsx」），" +
+                        "也收工作区内表的绝对路径与 file:// 前缀；不填＝按问到的列选，多张就问",
                 ),
                 ARG_SHEET to jsonObjectOf("type" to "string", "description" to "sheet 名；不填＝第一张能认出表头的"),
                 ARG_HEADER_ROW to jsonObjectOf(
@@ -155,24 +202,37 @@ internal object TableQueryTool {
     fun run(args: JSONObject, root: File): ToolOutcome {
         val question = args.optString(ARG_QUESTION).trim()
         val opRaw = args.optString(ARG_OP).trim()
-        val table = args.optString(ARG_TABLE).trim().ifEmpty { null }
+        val tableRaw = args.optString(ARG_TABLE).trim().ifEmpty { null }
         val sheet = args.optString(ARG_SHEET).trim().ifEmpty { null }
         val headerRow = if (args.has(ARG_HEADER_ROW)) args.optInt(ARG_HEADER_ROW) else null
 
         // PDF：**在碰任何文件之前**拒（负例 6：不许硬解 PDF）
-        listOfNotNull(table, args.optString(ARG_JOIN_WITH).trim().ifEmpty { null }).forEach { name ->
+        listOfNotNull(tableRaw, args.optString(ARG_JOIN_WITH).trim().ifEmpty { null }).forEach { name ->
             if (TableRegistry.isPdf(name)) {
                 return ToolOutcome.Ok(jsonOf(TableAnswer.pdf(name), null).toString())
             }
         }
-        if (table != null && (table.contains("..") || table.startsWith("/") || table.startsWith("\\"))) {
-            return ToolOutcome.Rejected("表名只接受工作区里的相对路径：$table")
+        // 613：表参数先统一解析（相对 / 绝对 / `file://` 走同一处 `UserPath`），
+        // 解析结果写进**参数副本**——后面的表名比较、联表与出处一律读解析后的值。
+        // 为什么这里不做「拼根」：登记簿按相对路径找表，本工具从来不拼根；
+        // 老代码是**直接拒绝**一切绝对路径（`表名只接受工作区里的相对路径`），
+        // 于是「同一张表，read_file 读得到、table_query 说路径不合法」。
+        val a = JSONObject(args.toString())
+        for (key in listOf(ARG_TABLE, ARG_JOIN_WITH)) {
+            val raw = args.optString(key).trim()
+            if (raw.isEmpty()) continue
+            when (val p = tablePathOf(root, raw)) {
+                is TablePath.Reject -> return ToolOutcome.Rejected(p.reason)
+                is TablePath.Ok -> a.put(key, p.rel)
+            }
         }
+        val table = a.optString(ARG_TABLE).trim().ifEmpty { null }
+
         val registry = registryFor(root)
         var answer = when {
             question.isNotEmpty() -> TableQuery.askQuestion(registry, question, table, sheet, headerRow)
             opRaw.isNotEmpty() -> {
-                val ask = buildAsk(opRaw, args, table, sheet, headerRow)
+                val ask = buildAsk(opRaw, a, table, sheet, headerRow)
                     ?: return ToolOutcome.Failed(
                         "「$opRaw」不是本工具认的 op（只认：${OPS.joinToString("／")}）",
                     )

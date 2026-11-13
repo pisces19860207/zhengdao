@@ -71,7 +71,7 @@ class AskGateMustAskTest {
     // ── 法条必问：走让步格（调解器压不掉、不占预算） ─────────────────────
 
     @Test
-    fun `必问类十条_全部带mustAsk=true`() {
+    fun `必问类十一处_全部带mustAsk=true`() {
         val mustAskSites = listOf(
             "askUser(VisionConsent.request(verified, imageCount), mustAsk = true)",
             "askUser(ScreenshotConsent.request(hostOf(info?.url), info?.title, sensitive), mustAsk = true)",
@@ -82,14 +82,18 @@ class AskGateMustAskTest {
             "askUser(PlanPledgeCards.pledgeRequest(candidate), mustAsk = true)",
             "askUser(PlanContractCards.approvalRequest(declared), mustAsk = true)",
             "askUser(dev.request, mustAsk = true)",
+            // 619：**人亲口要的那一次显式验证**（用户说「验卡」弹的自检卡）。它不是法条必问，
+            // 但同理压不掉——调解器的问卡预算不许把"我亲手按下的验卡"压回去，
+            // 否则 569 报的正是"验了被吞"。这一格进这张表，是为了让它跟另十处一样被点数。
+            "askUser(QuietVerify.request(trigger), mustAsk = true)",
         )
         for (site in mustAskSites) {
             assertTrue("必问卡必须走让步格：$site", engine.contains(site))
         }
         // changeRequest 在超时重问处弹第二次（161 的重问一次），同一张必问卡两处；
         assertEquals(
-            "mustAsk = true 恰好 10 处（9 张卡＋超时重问 1 处）",
-            10,
+            "mustAsk = true 恰好 11 处（9 张法条卡＋超时重问 1 处＋619 的验卡 1 处）",
+            11,
             Regex(", mustAsk = true\\)").findAll(engine).count(),
         )
     }

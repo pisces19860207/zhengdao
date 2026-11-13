@@ -1304,6 +1304,11 @@
     <string name="baopu_tool_novel_timeline_append_desc">Appends one event to a timeline file without touching existing bytes; duplicate name/id is reported as a conflict, not written. Confirmation required each time.</string>
     <string name="baopu_tool_novel_annotation_reply">novel_annotation_reply: Reply to annotation</string>
     <string name="baopu_tool_novel_annotation_reply_desc">Appends one reply to an annotation thread without touching existing bytes; unknown thread is an error, never guessed. Confirmation required each time.</string>
+    <!-- Batch 610: readthrough pair -->
+    <string name="baopu_tool_novel_readthrough">novel_readthrough: Readthrough preflight</string>
+    <string name="baopu_tool_novel_readthrough_desc">Pre-run budget/encoding/slicing report (read-only, no model calls); refuses over budget, lists skim misses.</string>
+    <string name="baopu_tool_novel_readthrough_run">novel_readthrough_run: Readthrough run</string>
+    <string name="baopu_tool_novel_readthrough_run_desc">Really run it: many model calls, writes jsonl; resume never re-runs finished slices; degrades or pauses on bad network.</string>
     <!-- Batch 168: production eval switch (eval_prod_on write entry; off by default) -->
     <string name="baopu_eval_prod_card">Production eval</string>
     <string name="trigger_settings_card">Event triggers</string>

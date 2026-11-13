@@ -1258,6 +1258,11 @@
     <string name="baopu_tool_novel_timeline_append_desc">往时间线文件末尾追加一条事件，已有内容一个字节不动；同名/同 id 报冲突不写。每次要确认。</string>
     <string name="baopu_tool_novel_annotation_reply">novel_annotation_reply：回复批注</string>
     <string name="baopu_tool_novel_annotation_reply_desc">给批注线程追加一条回复，已有内容一个字节不动；线程不存在报错不猜。每次要确认。</string>
+    <!-- 第六百一十批：通读两件 -->
+    <string name="baopu_tool_novel_readthrough">novel_readthrough：通读预检</string>
+    <string name="baopu_tool_novel_readthrough_desc">开跑前的预算/编码/切分异常报告（只读不跑模型）；预算超限明说不启动，略读列漏章。</string>
+    <string name="baopu_tool_novel_readthrough_run">novel_readthrough_run：通读开跑</string>
+    <string name="baopu_tool_novel_readthrough_run_desc">按预检真开跑：多次调模型、写 jsonl；断点续跑不重跑已完成片，网络差降并发或暂停。</string>
     <!-- 第一百六十八批：生产评测开关（eval_prod_on 写入口；默认关） -->
     <string name="baopu_eval_prod_card">生产评测</string>
     <string name="trigger_settings_card">事件触发</string>

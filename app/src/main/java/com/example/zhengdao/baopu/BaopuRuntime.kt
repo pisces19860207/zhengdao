@@ -23,7 +23,9 @@ import com.example.zhengdao.baopu.agent.AskHabitSwitch
 import com.example.zhengdao.baopu.agent.AskIntakeGate
 import com.example.zhengdao.baopu.agent.AskTier
 import com.example.zhengdao.baopu.agent.AndroidPortraitDecoder
+import com.example.zhengdao.baopu.agent.LlmExtractionPort
 import com.example.zhengdao.baopu.agent.LlmVisionPort
+import com.example.zhengdao.baopu.agent.NovelReadthroughTool
 import com.example.zhengdao.baopu.agent.PortraitAppearanceTool
 import com.example.zhengdao.baopu.agent.AskUserTool
 import com.example.zhengdao.baopu.agent.BaopuToolCatalog
@@ -196,8 +198,16 @@ internal object BaopuRuntime {
 
     /**
      * 换通道（UI「启用此通道」落点）：存 SP + 重建引擎。
-     * 引擎一份的来历见 [engine]——换通道必须换引擎（provider 是构造期注入的），
-     * 重建由下次 [engine] 调用完成；旧引擎的 daemon 线程闲着无害（换通道是低频动作）。
+     * 引擎一份的来历见 [engine]——换通道必须换引擎（provider 是构造期注入的）。
+     *
+     * 617：**重建必须在本函数里同步做完**，不许把「实例为空」留到下一次 [engine] 调用。
+     * 调用点全是点击回调（非组合期），而 [engine] 的下一次调用来自
+     * `BaopuScreen` 的 `remember(channelEpoch) { BaopuChatController(context) }`——那是在
+     * **组合期/Scaffold 的 measure 子组合里**构造控制器，控制器构造又取 [engine]。
+     * 若把重建留给那一刻，引擎里十几个 `mutableStateOf` 就会绑定到子组合快照 id，
+     * 主组合再读它们即抛 `Reading a state that was created after the snapshot was taken`
+     * ——与 617 首启崩溃同一根因、同一条栈，只是触发口换成「换通道／配置变化」。
+     * 旧引擎的 daemon 线程闲着无害（换通道是低频动作）。
      */
     fun switchChannel(
         context: Context,
@@ -214,6 +224,9 @@ internal object BaopuRuntime {
             // 引擎重建 ⇒ 表也重建；旧表的引用不能再当成「引擎正在用的那张」。
             engineRegistry = null
         }
+        // 617：立刻在全局快照里把新引擎建好（engine() 是 double-check 幂等，
+        // 本次一定触发 build；此后组合期再取只会走快路径拿现成实例，不会重新绑快照 id）。
+        engine(appCtx)
     }
 
     /** 工作区根（唯一真相源 Workspace.hostDir；守卫与 spill 都以它为根）。 */
@@ -424,6 +437,10 @@ internal object BaopuRuntime {
             port = LlmVisionPort(provider),
             decoder = AndroidPortraitDecoder,
         )
+        // 第六百一十批：通读两件（novel_readthrough 预检 FREE／novel_readthrough_run 开跑
+        // CONFIRM）的装配。模型出口只在这里接一次（同 LlmVisionPort 房型：
+        // 装配层注入，测试换假件数调用）；事实落 产物/通读/<书>/，append-only。
+        NovelReadthroughTool.env = NovelReadthroughTool.Env(port = LlmExtractionPort(provider))
         // 第一百八十六批：画板/图表/表格的 PNG 截图器。
         // ArtifactRaster 是 App 侧唯一的 WebView 沙箱实现（JS 关、断网、只放 about/data）；
         // 纯排版层 DrawPublish 只认接口，测试里换成假截图器即可直测。

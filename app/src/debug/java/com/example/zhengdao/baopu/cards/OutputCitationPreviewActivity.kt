@@ -6,6 +6,11 @@
 // （照 249 的规矩，不注册 LAUNCHER，只能显式 am start）。
 // 为什么不写死一组「依据」字符串当样本：判据③要验的是「依据真能点开看原文」，
 // 所以这里临时造两份**真文件**、过一次**真闸**，卡的依据与展开的原文同源。
+//
+// 616（缺陷现场 570/569）：本页的造数过去直接灌进程级 CitationHitCache，正式出卡
+// 从此带上示例引据且过了闸。现在准入逻辑抽到 [CitationPreviewAdmission]（纯 JVM，
+// 单测可直接按真序列夹具跑），造数只进 CitationDomain.PREVIEW 域——生产读不到，
+// 出卡侧的收集与存在性也只认生产域。
 package com.example.zhengdao.baopu.cards
 
 import android.content.Context
@@ -46,39 +51,59 @@ class OutputCitationPreviewActivity : ComponentActivity() {
     }
 }
 
-/** 造两份真文件 + 一条本轮搜索结果，过一次真闸；返回的依据与卡面那一行同源。 */
-private fun previewAdmission(ctx: Context): Pair<List<Citation>, CitationVerdict> {
-    val root = File(ctx.filesDir, "citation-preview")
-    val persona = File(root, "人设-本项目.md")
-    val kb = File(File(root, "知识库/整理"), "街巷笔记.md")
-    persona.parentFile?.mkdirs()
-    kb.parentFile?.mkdirs()
-    persona.writeText("## 语气\n- 短句，不铺陈\n- 少用感叹号\n## 习惯\n- 先给结论\n", Charsets.UTF_8)
-    kb.writeText("# 街巷笔记\n清晨的早点铺最热闹。\n", Charsets.UTF_8)
+/**
+ * 预览页的准入（616②：**独立缓存域**）。造两份真文件 + 一条本轮搜索结果，过一次真闸；
+ * 返回的依据与卡面那一行同源。搜索造数只进 [CitationDomain.PREVIEW]——读写都点名域，
+ * 进程级缓存的生产域不被本页碰（判据④的只读测试与判据①的夹具在
+ * OutputCitationCacheDomainTest 按真序列钉住）。
+ */
+internal object CitationPreviewAdmission {
 
-    val now = 1_700_000_000_000L
-    CitationHitCache.record(
-        listOf(CitationWebHit("https://news.example/hot", "近日热点", "街口新开早点铺", now)),
-    )
-    val view = CitationSourceView(
-        docs = listOf(
-            CitationSourceDoc("抱朴记忆/人设-本项目.md", persona),
-            CitationSourceDoc("知识库/整理/街巷笔记.md", kb),
-        ),
-        personaRel = "抱朴记忆/人设-本项目.md",
-        webHits = CitationHitCache.snapshot(),
-    )
-    val citations = OutputCitationSources.collect(view)
-    val messages = CitationMessages(
-        prefix = ctx.getString(R.string.baopu_citation_prefix),
-        emptyHint = ctx.getString(R.string.baopu_citation_empty_hint),
-        ledgerHint = ctx.getString(R.string.baopu_citation_ledger_hint),
-        badRefHint = ctx.getString(R.string.baopu_citation_bad_ref_hint),
-        danglingHint = ctx.getString(R.string.baopu_citation_dangling_hint),
-    )
-    val verdict = OutputCitationGate.check(citations, OutputCitationSources.exists(view), messages)
-    return citations to verdict
+    fun run(root: File, messages: CitationMessages, now: Long): Pair<List<Citation>, CitationVerdict> {
+        val persona = File(root, "人设-本项目.md")
+        val kb = File(File(root, "知识库/整理"), "街巷笔记.md")
+        persona.parentFile?.mkdirs()
+        kb.parentFile?.mkdirs()
+        persona.writeText("## 语气\n- 短句，不铺陈\n- 少用感叹号\n## 习惯\n- 先给结论\n", Charsets.UTF_8)
+        kb.writeText("# 街巷笔记\n清晨的早点铺最热闹。\n", Charsets.UTF_8)
+
+        CitationHitCache.record(
+            listOf(
+                CitationWebHit(
+                    "https://news.example/hot", "近日热点", "街口新开早点铺", now,
+                    CitationDomain.PREVIEW,
+                ),
+            ),
+            CitationDomain.PREVIEW,
+        )
+        val view = CitationSourceView(
+            docs = listOf(
+                CitationSourceDoc("抱朴记忆/人设-本项目.md", persona),
+                CitationSourceDoc("知识库/整理/街巷笔记.md", kb),
+            ),
+            personaRel = "抱朴记忆/人设-本项目.md",
+            webHits = CitationHitCache.snapshot(CitationDomain.PREVIEW),
+            domain = CitationDomain.PREVIEW,
+        )
+        val citations = OutputCitationSources.collect(view)
+        val verdict = OutputCitationGate.check(citations, OutputCitationSources.exists(view), messages)
+        return citations to verdict
+    }
 }
+
+/** 只看一眼的入口：根目录、文案、样本时刻由 Activity 注入；逻辑在 [CitationPreviewAdmission]。 */
+private fun previewAdmission(ctx: Context): Pair<List<Citation>, CitationVerdict> =
+    CitationPreviewAdmission.run(
+        root = File(ctx.filesDir, "citation-preview"),
+        messages = CitationMessages(
+            prefix = ctx.getString(R.string.baopu_citation_prefix),
+            emptyHint = ctx.getString(R.string.baopu_citation_empty_hint),
+            ledgerHint = ctx.getString(R.string.baopu_citation_ledger_hint),
+            badRefHint = ctx.getString(R.string.baopu_citation_bad_ref_hint),
+            danglingHint = ctx.getString(R.string.baopu_citation_dangling_hint),
+        ),
+        now = 1_700_000_000_000L,
+    )
 
 @Composable
 private fun OutputCitationPreview() {

@@ -5,6 +5,7 @@
 // §10 竖切片①（read_file 是切片①的两个读工具之一）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.UserPath
 import java.io.File
 
 /**
@@ -82,20 +83,20 @@ internal object ReadFileTool {
         // 模型会以为路径对、只是类型不对，于是原地反复重试（2026-10-17）。
         if (!file.exists()) {
             return ToolOutcome.Failed(
-                "不存在：${file.name}（这个位置没有这个文件；先用 list_dir 看结构再决定读哪个）"
+                "不存在：${file.absolutePath}（这个位置没有这个文件；先用 list_dir 看结构再决定读哪个）"
             )
         }
         if (!file.isFile) {
-            return ToolOutcome.Failed("不是一个文件：${file.name}（read_file 只读文件；列目录用 list_dir）")
+            return ToolOutcome.Failed("不是一个文件：${file.absolutePath}（read_file 只读文件；列目录用 list_dir）")
         }
         if (file.length() > MAX_FILE_BYTES) {
             return ToolOutcome.Failed(
-                "文件太大不整读：${file.name} 有 ${file.length()} B，超过 ${MAX_FILE_BYTES} B 上限。" +
+                "文件太大不整读：${file.absolutePath} 有 ${file.length()} B，超过 ${MAX_FILE_BYTES} B 上限。" +
                     "这类文件应该先 list_dir 看结构，再分批 offset/limit 读。"
             )
         }
         val bytes = runCatching { file.readBytes() }
-            .getOrElse { return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.name}") }
+            .getOrElse { return ToolOutcome.Failed("读不了这个文件（权限或 IO 错误）：${file.absolutePath}") }
         if (bytes.isEmpty()) {
             return ToolOutcome.Ok("（空文件）")
         }
@@ -132,12 +133,19 @@ internal object ReadFileTool {
     // 读侧解码已统一到 [TextDecode]（2026-10-17）：判定与解码只许有一份实现——
     // 否则又会回到「read_file 读得出、edit_file 改出乱码」那种各写一套的老路。
 
-    /** executor：arguments 里的 path 已是守卫过的绝对路径。 */
+    /** executor：arguments 里的 path 已是守卫过的绝对路径（613 起 `file://` 与前导空白也在这里归一）。 */
     private fun run(args: org.json.JSONObject): ToolOutcome {
         val path = args.optString(ARG_PATH).trim()
         if (path.isBlank()) return ToolOutcome.Failed("缺少必填参数「$ARG_PATH」")
+        UserPath.foreignScheme(path)?.let { scheme ->
+            return ToolOutcome.Failed(
+                "「$scheme://」这种地址抱朴还不认（另立单）；只认文件路径，或 file:// 前缀的同一个路径",
+            )
+        }
         return read(
-            File(path),
+            // 这里**没有**工作区根可拼（spec 不带根）：相对路径按既有语义交给进程 cwd，
+            // 绝对路径本就原样——613 只补 `file://` 归一，不改老语义。
+            File(UserPath.normalize(path)),
             args.optInt(ARG_OFFSET, DEFAULT_OFFSET),
             args.optInt(ARG_LIMIT, DEFAULT_LIMIT),
         )
