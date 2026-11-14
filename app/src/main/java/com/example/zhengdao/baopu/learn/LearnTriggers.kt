@@ -151,8 +151,10 @@ internal object LearnTriggers {
             (n.xp.isNotBlank() && n.xp == e.xp)
         )
 
+    /** 定位面：OBSERVE 现取的节点表（按文档最新一份）；夹具直塞带节点的 pages 时走回退。 */
     private fun latestPage(snapshot: ObserveSnapshot, docId: String): ObservePage? =
-        snapshot.pages.lastOrNull { it.docId == docId && it.nodes.isNotEmpty() }
+        snapshot.nodeTables[docId]
+            ?: snapshot.pages.lastOrNull { it.docId == docId && it.nodes.isNotEmpty() }
 
     private fun isSearchLike(f: ObserveFaces): Boolean = f.inputType.equals("search", true) ||
         SEARCHISH.containsMatchIn("${f.placeholder} ${f.name} ${f.inputName}")

@@ -201,7 +201,28 @@ class LearnBoardGateTest {
         val center = code(centerRel)
         assertTrue("pruneAll 按 id 判旧", center.contains("pruneAll"))
         assertTrue("时钟可注入", center.contains("clock: () -> Long"))
-        assertTrue("收割通道可注入", center.contains("drain: (tabId: Int?, script: String) -> String?"))
+        assertTrue("收割通道可注入", center.contains("harvest: (tabId: Int?) -> String?"))
+        assertTrue("观察面通道可注入", center.contains("nodeTable: (tabId: Int?) -> String?"))
+    }
+
+    // ── 判据①（对齐 622/645 口径）：除 BrowserPort 内部实现外零 BrowserCommands 引用 ──
+
+    @Test
+    fun `判据1对齐622_645_learn包零BrowserCommands直引_两通道只认端口`() {
+        learnSources().forEachIndexed { i, src ->
+            assertFalse("learn 包文件 #$i 不许直引 BrowserCommands（622/645 判据①）", src.contains("BrowserCommands."))
+        }
+        val center = code(centerRel)
+        assertTrue("事件收割走端口 probe（TeachRecorder 同款模板脚本口径）", center.contains("BrowserPort.probe"))
+        assertTrue("节点表走端口 observe（NODE_TABLE 枚举，脚本内置传不进）", center.contains("BrowserPort.observe"))
+        assertTrue("观察者身份＝TEACH_RECORD", center.contains("PortCaller.TEACH_RECORD"))
+        assertTrue("观察项＝枚举，不传脚本", center.contains("ObserveItem.NODE_TABLE"))
+        // 负例：换成 BrowserCommands 直引 ⇒ 判别函数必抓
+        assertMutationCaught(
+            center,
+            center.replaceFirst("BrowserPort.probe", "BrowserCommands.execJs"),
+            "零直引",
+        ) { s -> !s.contains("BrowserCommands.") }
     }
 
     // ── 判据⑤：四类触发各出一条卡（≤3 问） ──────────────────────────────────────

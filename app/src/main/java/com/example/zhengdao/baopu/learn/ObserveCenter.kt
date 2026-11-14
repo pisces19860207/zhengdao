@@ -6,14 +6,19 @@
 // 这里不做全局协程）；会话生命周期（开关关／浏览器离树／空闲 10 分钟 ⇒ 收会话）；
 // 收会话 ⇒ 四类校验 ⇒ 未学会清单；「就教这一步」的武装与复验；24h 自清。
 //
-// 依赖注入三件（判据①④的可测性就在这里）：`enabled`（开关供给方）、`clock`（时间），
-// `drain`（收割通道）。生产接线在 install(Context)；JVM 测试用 install(rootDir,…)。
+// 依赖注入（判据①④的可测性就在这里）：`enabled`（开关供给方）、`clock`（时间）、
+// `harvest`（事件收割通道）＋`nodeTable`（一次性观察面通道）。生产接线在 install(Context)
+// ——两通道都只认 BrowserPort（probe＝模板脚本／observe＝NODE_TABLE 枚举）；
+// JVM 测试用 install(root,…) 注假件。
 // **不记正文**在结构上封死：这里流动的只有 ObserveRows 的封闭键行，没有字符串正文通道。
 package com.example.zhengdao.baopu.learn
 
 import android.content.Context
 import com.example.zhengdao.baopu.MemoryLayout
-import com.example.zhengdao.bridge.BrowserCommands
+import com.example.zhengdao.bridge.BrowserPort
+import com.example.zhengdao.bridge.BrowserPort.PortCaller
+import com.example.zhengdao.bridge.BrowserPort.PortPolicy
+import com.example.zhengdao.bridge.ObserveItem
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +29,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 /** 「就教这一步」的一次武装（等页面上匹配 kind 的下一条事件，超时自动解除）。 */
 internal data class ArmedTeach(
@@ -66,7 +70,13 @@ internal object ObserveCenter {
 
     @Volatile private var rootDir: File? = null
     @Volatile private var clock: () -> Long = System::currentTimeMillis
-    @Volatile private var drain: (tabId: Int?, script: String) -> String? = { _, _ -> null }
+
+    /** 事件收割通道（生产＝BrowserPort.probe＋本层模板脚本；见 install 注释）。 */
+    @Volatile private var harvest: (tabId: Int?) -> String? = { _ -> null }
+
+    /** 一次性观察面通道（生产＝BrowserPort.observe＋NODE_TABLE 枚举；脚本在 assets，传不进）。 */
+    @Volatile private var nodeTable: (tabId: Int?) -> String? = { _ -> null }
+
     @Volatile private var enabled: () -> Boolean = { false }
     @Volatile private var texts: LearnCardTexts = DEFAULT_TEXTS
 
@@ -95,15 +105,28 @@ internal object ObserveCenter {
 
     // ── 接线 ─────────────────────────────────────────────────────────────────
 
-    /** 生产接线（ZhengdaoApp 调一次）：落 `filesDir/抱朴记忆/观察/`，文案走资源。 */
+    /**
+     * 生产接线（ZhengdaoApp 调一次）：落 `filesDir/抱朴记忆/观察/`，文案走资源。
+     *
+     * 通道（622/645 判据①：**除 BrowserPort 内部实现外零 BrowserCommands 引用**）：
+     *   · 事件收割（自装自收模板脚本）走 `BrowserPort.probe`（TeachRecorder 同款口径，
+     *     645 交付报告 §四2/§七1 授权 624 裁定：模板脚本性质，非自由 JS）；
+     *   · 节点表（一次性观察面）走 `BrowserPort.observe`——调用方只传 `ObserveItem`
+     *     枚举（NODE_TABLE），脚本内置 assets、hash 写死，传不进任何脚本或参数。
+     */
     fun install(context: Context, cardTexts: LearnCardTexts) {
-        val files = context.applicationContext.filesDir
+        val app = context.applicationContext
         install(
-            root = File(MemoryLayout.globalMemoryDir(files), DIR_NAME),
+            root = File(MemoryLayout.globalMemoryDir(app.filesDir), DIR_NAME),
             cardTexts = cardTexts,
             clock = System::currentTimeMillis,
-            drain = { tabId, script -> drainViaCommands(tabId, script) },
-            enabled = { ObservePrefs.on(context.applicationContext) },
+            harvest = { tabId ->
+                BrowserPort.probe(PortCaller.TEACH_RECORD, ObserveScript.DRAIN, tabId?.toString(), PortPolicy.OPEN)
+            },
+            nodeTable = { tabId ->
+                BrowserPort.observe(PortCaller.TEACH_RECORD, ObserveItem.NODE_TABLE, app, tabId?.toString(), PortPolicy.OPEN)
+            },
+            enabled = { ObservePrefs.on(app) },
         )
     }
 
@@ -112,13 +135,15 @@ internal object ObserveCenter {
         root: File,
         cardTexts: LearnCardTexts,
         clock: () -> Long,
-        drain: (tabId: Int?, script: String) -> String?,
+        harvest: (tabId: Int?) -> String?,
+        nodeTable: (tabId: Int?) -> String?,
         enabled: () -> Boolean,
     ) {
         this.rootDir = root
         this.texts = cardTexts
         this.clock = clock
-        this.drain = drain
+        this.harvest = harvest
+        this.nodeTable = nodeTable
         this.enabled = enabled
         this.store = NotLearnedStore(File(root, NotLearnedStore.FILE_NAME))
         notLearnedFlow.value = store.state()
@@ -141,16 +166,10 @@ internal object ObserveCenter {
     suspend fun tick(tabId: Int?) = withContext(Dispatchers.IO) {
         val now = clock()
         if (!enabled()) {
-            closeSession()
-            if (armedFlow.value == null) return@withContext
-            // 「就教这一步」是显式教学，不受观察开关牵连（人点名要教的步，照收）——
-            // 但只复验、不入观察账（关后 0 记录仍是硬线）。
-            val raw = runCatching { drain(tabId, ObserveScript.DRAIN) }.getOrNull() ?: return@withContext
-            val result = DrainResult.parse(raw) ?: return@withContext
-            tryCapture(null, result)
+            tickWhenDisabled(tabId)
             return@withContext
         }
-        val raw = runCatching { drain(tabId, ObserveScript.DRAIN) }.getOrNull() ?: return@withContext
+        val raw = runCatching { harvest(tabId) }.getOrNull() ?: return@withContext
         val result = DrainResult.parse(raw) ?: return@withContext
         if (discardNext) {
             discardNext = false // 这一批是关着时积下的：只清页内队列，不入账
@@ -158,9 +177,28 @@ internal object ObserveCenter {
         }
         val active = ensureSession(now) ?: return@withContext
         active.ingest(result)
+        fetchNodesIfNeeded(active, result, tabId, now)
         sessionActiveFlow.value = true
         if (armedFlow.value != null) tryCapture(active, result)
         if (active.isIdle(IDLE_MS)) closeSession()
+    }
+
+    /** 关态轮询：收会话；「就教这一步」的武装照复验（显式教学不受开关牵连），但**不入观察账**。 */
+    private fun tickWhenDisabled(tabId: Int?) {
+        closeSession()
+        if (armedFlow.value == null) return
+        val raw = runCatching { harvest(tabId) }.getOrNull() ?: return
+        val result = DrainResult.parse(raw) ?: return
+        tryCapture(null, result)
+    }
+
+    /** 页面变化（新文档／url／节点数）⇒ 端口 OBSERVE(NODE_TABLE) 现取一份定位面（2s 节流）。 */
+    private fun fetchNodesIfNeeded(active: ObserveSession, result: DrainResult, tabId: Int?, now: Long) {
+        val facts = result.page ?: active.lastFacts(result.docId)
+        if (!active.needsNodeTable(result.docId, facts, now)) return
+        runCatching { nodeTable(tabId) }.getOrNull()
+            ?.let { ObserveSurface.parse(it, result.docId, now) }
+            ?.let { active.ingestNodes(it) }
     }
 
     /** 浏览器离树（DisposableEffect onDispose）：会话就地收，触发卡照出。 */
@@ -269,13 +307,6 @@ internal object ObserveCenter {
         }
         store.prune(clock())
         notLearnedFlow.value = store.state()
-    }
-
-    private fun drainViaCommands(tabId: Int?, script: String): String? {
-        // execJs 是阻塞式 evaluate（内部有 latch 与超时），不需要 suspend；调用方已在 IO 上。
-        val raw = BrowserCommands.execJs(script, tabId?.toString())
-        val ok = runCatching { JSONObject(raw).optBoolean("ok", false) }.getOrDefault(false)
-        return raw.takeIf { ok }
     }
 
     private val LOCK = Any()

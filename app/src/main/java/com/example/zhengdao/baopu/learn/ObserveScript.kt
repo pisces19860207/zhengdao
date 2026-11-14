@@ -1,30 +1,32 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第六百二十四批 · 学习板块阶段一 · 观察注入脚本（一段 IIFE：自装＋自收）。
+// 第六百二十四批 · 学习板块阶段一 · 收割脚本（一段 IIFE：自装＋自收）。
 //
-// 设计：**不挂任何 JS 接口桥**（红线④的口径：桥只许示教录制临时挂）——本脚本每次
-// 轮询执行一遍：开头 `if(!window.__zlObs)` 幂等自装监听，尾部现取现清队列并顺带
-// 在**每个文档第一次被收割时**交一份页面语义节点表（结构字段，无正文）。
-// 跨导航不用任何 WebView 钩子：新文档没有 __zlObs，下一轮自装。
+// 分工（645 定）：
+//   · 本文件＝**自装自收的事件收割**（页内监听＋事件队列＋页事实行）——按 645 交付报告
+//     §四2/§七1 的授权口径走端口 PROBE（TeachRecorder 同款：脚本本层固定模板常量，
+//     观察者身份 PortCaller.TEACH_RECORD，不是模型可注入的自由 JS）；
+//   · 节点表/字段面/值形状（一次性观察面）归端口 `PortAction.OBSERVE`（assets/bridge/
+//     observe_v1.js，hash 写死进门禁），调用方只传 ObserveItem 枚举——本文件不再页内
+//     收割节点表。
+// 通道：**不直调 BrowserCommands**（622/645 判据①：除 BrowserPort 内部实现外零引用），
+// 唯一出口是 BrowserPort（见 ObserveCenter 的注入实现）。
 //
-// 隐私三闸（全部在**页内源头**做，源头闸优先于原生侧第二道过滤）：
+// 隐私三闸（全部在**页内源头**做，原生侧第二道过滤是纵深防御，见 [ObserveRows]）：
 //   ① 密码/验证码源（type=password、autocomplete 敏感值、name/id/placeholder/aria
 //      命中敏感词表）**整条丢弃**——事件连身份面都不出页，队列里根本没有这条；
-//   ② `snap()` 只出**身份面**（tag/role/可及名≤40/aria/testid/id/inputName/
+//   ② `faces()` 只出**身份面**（tag/role/可及名≤40/aria/testid/id/inputName/
 //      placeholder≤40/inputType/autocomplete/formLabel/xpath/classes≤8），
 //      **无 text 字段、无 value、无 options、无任何 HTML**；
 //   ③ 输入事件只出 `vs`（值**形状**：empty/short/digits/date/long），值本身不出页。
 // 可及名（accName，≤40 字）属**元素身份面**（十级定位同源），页面段落正文不取。
 package com.example.zhengdao.baopu.learn
 
-/** 观察脚本（页内源头闸的唯一真身；Kotlin 侧的敏感过滤是纵深防御的第二道，见 [ObserveRows]）。 */
+/** 收割脚本（页内源头闸的唯一真身；原生侧的敏感过滤是纵深防御的第二道，见 [ObserveRows]）。 */
 internal object ObserveScript {
 
     /** 页内队列封顶：丢最旧（seq 单调，去重不靠它）。 */
     const val QUEUE_CAP: Int = 300
-
-    /** 节点表封顶（< MAX_RESULT_CHARS 的零头；派工单「只记结构化」）。 */
-    const val NODE_CAP: Int = 120
 
     val DRAIN: String = """
 (function(){
@@ -93,25 +95,13 @@ internal object ObserveScript {
  }
  var t=window.__zlObs,evs=t.q.splice(0,t.q.length),pg=null;
  var curU=location.href,curNc=document.querySelectorAll('*').length,now=Date.now();
- // 页行两档（判据⑤②的喂食口）：
- //   变化档＝首割或 URL/节点数变了——带完整节点表（定位不唯一要靠它）；
- //   心跳档＝2s 一拍没变化也发——「看过、没变化」就是缺证据的证据（节点表空，省成本）。
+ // 页事实行（url/title/nc）：首割必发＋2s 心跳——「看过、没变化」是缺证据的证据。
+ // 节点表不在这里收割：645 起走端口 OBSERVE(NODE_TABLE) 按枚举现取（assets 一份、hash 闸）。
  var changed=!t.pg||t.lastU!==curU||t.lastNc!==curNc;
  var due=now-t.lastPgTs>=2000;
  if(due&&(changed||t.pg)){
-  var first=!t.pg;
   t.pg=true;t.lastU=curU;t.lastNc=curNc;t.lastPgTs=now;
-  var nodes=[];
-  if(changed){
-   var sel='button,a,[role=button],input,select,textarea,summary,[onclick],h1,h2,h3,th,[data-testid]';
-   var els=document.querySelectorAll(sel),i,f;
-   for(i=0;i<els.length&&nodes.length<120;i++){
-    f=sens(els[i])?{tag:els[i].tagName,role:iRole(els[i]),name:'',aria:'',testid:'',id:'',inputName:'',placeholder:'',inputType:(els[i].tagName=='INPUT'?(els[i].getAttribute('type')||''):''),auto:'',formLabel:'',xp:path(els[i]),cls:[]}
-                 :faces(els[i]);
-    nodes.push(f);
-   }
-  }
-  pg={url:curU,title:(document.title||'').slice(0,40),nc:curNc,nodes:nodes};
+  pg={url:curU,title:(document.title||'').slice(0,40),nc:curNc};
  }
  return JSON.stringify({doc:t.doc,seq:t.seq,ev:evs,pg:pg});
 })()

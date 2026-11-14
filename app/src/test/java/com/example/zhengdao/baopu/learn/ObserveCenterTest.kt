@@ -33,6 +33,9 @@ internal class ObserveCenterTest {
     private val drainCalls = java.util.Collections.synchronizedList(ArrayList<String>())
     private val drainQueue = java.util.ArrayDeque<String>()
 
+    /** 节点表通道（OBSERVE）的调用剧本；null＝该次取不到（端口闸停如实归 null）。 */
+    private val nodeQueue = java.util.ArrayDeque<String>()
+
     private fun facesJson(
         tag: String = "BUTTON",
         name: String = "查询",
@@ -78,10 +81,11 @@ internal class ObserveCenterTest {
             root = root,
             cardTexts = texts,
             clock = { fakeNow },
-            drain = { _, script ->
-                drainCalls.add(script.take(20))
+            harvest = { _ ->
+                drainCalls.add("harvest")
                 drainQueue.poll()
             },
+            nodeTable = { _ -> nodeQueue.poll() },
             enabled = { observeOn },
         )
     }

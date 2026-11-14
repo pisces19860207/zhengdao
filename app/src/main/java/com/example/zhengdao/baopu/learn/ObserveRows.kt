@@ -155,7 +155,7 @@ internal data class ObservePage(
     }
 }
 
-/** 一次收割的产物（页内脚本返回值的 Kotlin 形状）。 */
+/** 收割入账的产物（页内脚本返回值的 Kotlin 形状；页行只带 url/title/nc 事实，无节点）。 */
 internal data class DrainResult(val docId: String, val events: List<ObserveEvent>, val page: ObservePage?) {
     companion object {
         /** 解 execJs 的返回：外层 {"result":"<转义 json>"}（去敏＋限长既有路径），内层才是账。 */
@@ -176,6 +176,32 @@ internal data class DrainResult(val docId: String, val events: List<ObserveEvent
 }
 
 /**
+ * OBSERVE（645）回包解析：外层端口 JSON（{"ok":true,"result":"…"}；闸停/失败没有
+ * result ⇒ null），内层 {item,page:{url,title,nc},nodes:[身份面…]}——
+ * 节点表按文档归档时补 docId 与收割时刻（资产脚本不知道这两样）。
+ */
+internal object ObserveSurface {
+    fun parse(raw: String, docId: String, nowMs: Long): ObservePage? = runCatching {
+        val outer = JSONObject(raw)
+        val inner = outer.optString("result")
+        if (inner.isEmpty()) return null
+        val o = JSONObject(inner)
+        val page = o.optJSONObject("page") ?: return null
+        val nodes = o.optJSONArray("nodes")?.let { a ->
+            (0 until a.length()).mapNotNull { k -> runCatching { ObserveNode.fromJson(a.getJSONObject(k)) }.getOrNull() }
+        } ?: emptyList()
+        ObservePage(
+            ts = nowMs,
+            docId = docId,
+            url = page.optString("url"),
+            title = page.optString("title"),
+            nodeCount = page.optInt("nc", 0),
+            nodes = nodes,
+        )
+    }.getOrNull()
+}
+
+/**
  * 一个观察会话：内存累积（去重＋敏感过滤）＋ jsonl 追加写，收会话时交出全部行供校验。
  *
  * 会话 id＝起始时刻（base36），文件名 `会话-<id>.jsonl`——24h 自清按 id 判旧（判据④）。
@@ -188,12 +214,14 @@ internal class ObserveSession(
     private val seen = HashSet<String>()
     private val events = ArrayList<ObserveEvent>()
     private val pagesByDoc = LinkedHashMap<String, MutableList<ObservePage>>()
+    private val nodeTables = LinkedHashMap<String, ObservePage>()
+    private val nodeFetchMs = LinkedHashMap<String, Long>()
     private var closed = false
 
     val eventCount: Int get() = synchronized(LOCK) { events.size }
     val pageCount: Int get() = synchronized(LOCK) { pagesByDoc.size }
 
-    /** 收割入账（去重 doc#seq；敏感整条丢弃；页行 URL/节点数变了才追加，每文档封顶）。 */
+    /** 收割入账（去重 doc#seq；敏感整条丢弃；页行＝url/title/nc 事实，2s 心跳＋变化档）。 */
     fun ingest(result: DrainResult): Boolean = synchronized(LOCK) {
         if (closed) return false
         var wrote = false
@@ -209,9 +237,29 @@ internal class ObserveSession(
         wrote
     }
 
-    /** 该文档**最新一份带节点表**的页行（单步补录的定位复验用；心跳行不带节点，跳过）。 */
-    fun latestPage(docId: String): ObservePage? = synchronized(LOCK) {
-        pagesByDoc[docId]?.lastOrNull { it.nodes.isNotEmpty() }
+    /** 该文档**最新一份节点表**（OBSERVE 现取的定位面；单步补录的复验与定位不唯一都用它）。 */
+    fun latestPage(docId: String): ObservePage? = synchronized(LOCK) { nodeTables[docId] }
+
+    /** 节点表要不要现取：每文档 2s 节流；新文档、或页事实（url/nc）与已存节点表不同 ⇒ 取。 */
+    fun needsNodeTable(docId: String, facts: ObservePage?, now: Long): Boolean = synchronized(LOCK) {
+        val last = nodeFetchMs[docId]
+        if (last != null && now - last < NODE_TABLE_THROTTLE_MS) return false
+        val stored = nodeTables[docId]
+        stored == null || facts == null ||
+            facts.url != stored.url || facts.nodeCount != stored.nodeCount
+    }
+
+    /** 该文档最近已知页事实（url/title/nc；收割批次没带页行时用最近已知值判变化）。 */
+    fun lastFacts(docId: String): ObservePage? = synchronized(LOCK) {
+        pagesByDoc[docId]?.lastOrNull()
+    }
+
+    /** 节点表入账（OBSERVE 现取；每文档只留最新一份——定位不唯一比对用「当下」）。 */
+    fun ingestNodes(page: ObservePage): Boolean = synchronized(LOCK) {
+        if (closed) return false
+        nodeTables[page.docId] = page
+        nodeFetchMs[page.docId] = page.ts
+        true
     }
 
     /** 空闲判（收会话用）。 */
@@ -230,6 +278,7 @@ internal class ObserveSession(
             openedAtMs(),
             events.toList(),
             pagesByDoc.values.flatMap { it.toList() },
+            nodeTables.toMap(),
         )
     }
 
@@ -260,6 +309,7 @@ internal class ObserveSession(
     companion object {
         const val MAX_EVENTS = 2_000
         const val MAX_PAGES_PER_DOC = 8
+        const val NODE_TABLE_THROTTLE_MS = 2_000L
         const val MAX_ROW_CHARS = 20_000
         const val FILE_PREFIX = "会话-"
         const val FILE_SUFFIX = ".jsonl"
@@ -269,9 +319,12 @@ internal class ObserveSession(
     }
 }
 
-/** 收会话时交出的只读快照（校验器输入；纯数据，JVM 直测）。 */
+/** 收会话时交出的只读快照（校验器输入；纯数据，JVM 直测）。
+ *  pages＝页事实行（url/title/nc 时间线，缺证据判据用）；nodeTables＝各文档**最新**节点表
+ *  （OBSERVE 现取，定位不唯一与单步复验用）——两者物理分开，事实时间线不许被节点表搅浑。 */
 internal data class ObserveSnapshot(
     val openedAtMs: Long,
     val events: List<ObserveEvent>,
     val pages: List<ObservePage>,
+    val nodeTables: Map<String, ObservePage> = emptyMap(),
 )

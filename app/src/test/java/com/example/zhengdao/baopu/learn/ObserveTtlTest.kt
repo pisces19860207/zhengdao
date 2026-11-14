@@ -32,12 +32,12 @@ internal class ObserveTtlTest {
         TempSandbox.use("zd624-ttl-sessions") { root ->
             val old = sessionFile(root, fakeNow - 25L * 60 * 60 * 1000) // 25h 前
             val fresh = sessionFile(root, fakeNow - 1L * 60 * 60 * 1000) // 1h 前
-            ObserveCenter.install(root, texts, { fakeNow }, { _, _ -> null }, { false })
+            ObserveCenter.install(root, texts, { fakeNow }, { _ -> null }, { _ -> null }, { false })
             assertFalse("过期会话文件已自清", old.exists())
             assertTrue("新鲜会话文件保留", fresh.exists())
             // 第二轮：时钟走到 fresh 也过期 ⇒ 再清（同一个 install 期 pruneAll）
             fakeNow += 24L * 60 * 60 * 1000 // 一整天：fresh 的 createdAt 也在界外了
-            ObserveCenter.install(root, texts, { fakeNow }, { _, _ -> null }, { false })
+            ObserveCenter.install(root, texts, { fakeNow }, { _ -> null }, { _ -> null }, { false })
             assertFalse(fresh.exists())
             assertEquals(0, ObserveCenter.dataFileCount())
         }
@@ -56,7 +56,7 @@ internal class ObserveTtlTest {
             }
             store.add(listOf(mk("old", fakeNow - 25L * 60 * 60 * 1000), mk("fresh", fakeNow)))
             // install 会装上同一个文件并 prune
-            ObserveCenter.install(root, texts, { fakeNow }, { _, _ -> null }, { false })
+            ObserveCenter.install(root, texts, { fakeNow }, { _ -> null }, { _ -> null }, { false })
             val items = ObserveCenter.notLearned.value.items
             assertEquals(listOf("fresh"), items.map { it.id })
         }
