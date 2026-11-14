@@ -175,14 +175,42 @@
     ]
   },
   "core": {
-    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入；WorkspaceTruth 615（工作区实态唯一判据，两个解析器共用）",
+    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入；WorkspaceTruth 615（工作区实态唯一判据，两个解析器共用）；DocRead/DocTextExtractor 642（.doc 只读，蓝总管补登记）",
     "declarations": [
+      {
+        "name": "AppNotifications",
+        "kind": "object",
+        "file": "notify/AppNotifications.kt",
+        "external_refs": 11,
+        "verdict": "public 必要（:app 在用）"
+      },
       {
         "name": "AppPrefs",
         "kind": "object",
         "file": "AppPrefs.kt",
         "external_refs": 17,
         "verdict": "public 必要（:app 在用）"
+      },
+      {
+        "name": "BudgetPreset",
+        "kind": "enum class",
+        "file": "TaskContract.kt",
+        "external_refs": 0,
+        "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
+      },
+      {
+        "name": "DocRead",
+        "kind": "interface",
+        "file": "doc/DocTextExtractor.kt",
+        "external_refs": 3,
+        "verdict": "public 必要（:app 的 ReadFileTool 在用；.doc 只读端口）"
+      },
+      {
+        "name": "DocTextExtractor",
+        "kind": "object",
+        "file": "doc/DocTextExtractor.kt",
+        "external_refs": 6,
+        "verdict": "public 必要（:app 的 ReadFileTool 在用；.doc 正文抽取）"
       },
       {
         "name": "DocxTextExtractor",
@@ -197,6 +225,20 @@
         "file": "EnvironmentScope.kt",
         "external_refs": 6,
         "verdict": "public 必要（:app 在用）"
+      },
+      {
+        "name": "EvidenceKind",
+        "kind": "enum class",
+        "file": "TaskContract.kt",
+        "external_refs": 0,
+        "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
+      },
+      {
+        "name": "ExitAction",
+        "kind": "enum class",
+        "file": "TaskContract.kt",
+        "external_refs": 0,
+        "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
       },
       {
         "name": "IssueCenter",
@@ -227,67 +269,11 @@
         "verdict": "internal 候选（:core 内部消费）"
       },
       {
-        "name": "AppNotifications",
-        "kind": "object",
-        "file": "notify/AppNotifications.kt",
-        "external_refs": 11,
-        "verdict": "public 必要（:app 在用）"
-      },
-      {
         "name": "PathGuard",
         "kind": "object",
         "file": "PathGuard.kt",
         "external_refs": 97,
         "verdict": "public 必要（:app 重度在用）"
-      },
-      {
-        "name": "RunLog",
-        "kind": "object",
-        "file": "RunLog.kt",
-        "external_refs": 571,
-        "verdict": "public 必要（:app 重度在用）"
-      },
-      {
-        "name": "TimeFormats",
-        "kind": "object",
-        "file": "TimeFormats.kt",
-        "external_refs": 147,
-        "verdict": "public 必要（:app 重度在用）"
-      },
-      {
-        "name": "WorkspaceTruth",
-        "kind": "object",
-        "file": "WorkspaceTruth.kt",
-        "external_refs": 5,
-        "verdict": "public 必要（615）：全 App 有两个工作区解析器（:app BaopuWorkspace 管投递／产物／附件，:core ZhengdaoDirs 管资料库／备份），「声明 vs 实走背离怎么判、那一行长什么样、什么时候不许再记」必须只有一份定义，否则两处一定漂移（前例＝EnvironmentScope 消双判）。:app 侧引用＝BaopuWorkspace.kt 的 import＋report＋diverged×2＋SAME。收口条件：两套 prefs 键（baopu_ws_* 与 workspace_*）并成一套、只剩一个解析器之后，可退回 internal（那是另一单）"
-      },
-      {
-        "name": "ZhengdaoDirs",
-        "kind": "object",
-        "file": "ZhengdaoDirs.kt",
-        "external_refs": 20,
-        "verdict": "public 必要（:app 在用）"
-      },
-      {
-        "name": "BudgetPreset",
-        "kind": "enum class",
-        "file": "TaskContract.kt",
-        "external_refs": 0,
-        "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
-      },
-      {
-        "name": "EvidenceKind",
-        "kind": "enum class",
-        "file": "TaskContract.kt",
-        "external_refs": 0,
-        "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
-      },
-      {
-        "name": "ExitAction",
-        "kind": "enum class",
-        "file": "TaskContract.kt",
-        "external_refs": 0,
-        "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
       },
       {
         "name": "ReceiptEvidence",
@@ -302,6 +288,13 @@
         "file": "TaskContract.kt",
         "external_refs": 0,
         "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
+      },
+      {
+        "name": "RunLog",
+        "kind": "object",
+        "file": "RunLog.kt",
+        "external_refs": 571,
+        "verdict": "public 必要（:app 重度在用）"
       },
       {
         "name": "TaskAuthority",
@@ -351,6 +344,27 @@
         "file": "TaskContract.kt",
         "external_refs": 0,
         "verdict": "342 设计件（接线前 :app 零引用；接线批落地前不复用，落地后复核是否收 internal）"
+      },
+      {
+        "name": "TimeFormats",
+        "kind": "object",
+        "file": "TimeFormats.kt",
+        "external_refs": 147,
+        "verdict": "public 必要（:app 重度在用）"
+      },
+      {
+        "name": "WorkspaceTruth",
+        "kind": "object",
+        "file": "WorkspaceTruth.kt",
+        "external_refs": 5,
+        "verdict": "public 必要（615）：全 App 有两个工作区解析器（:app BaopuWorkspace 管投递／产物／附件，:core ZhengdaoDirs 管资料库／备份），「声明 vs 实走背离怎么判、那一行长什么样、什么时候不许再记」必须只有一份定义，否则两处一定漂移（前例＝EnvironmentScope 消双判）。:app 侧引用＝BaopuWorkspace.kt 的 import＋report＋diverged×2＋SAME。收口条件：两套 prefs 键（baopu_ws_* 与 workspace_*）并成一套、只剩一个解析器之后，可退回 internal（那是另一单）"
+      },
+      {
+        "name": "ZhengdaoDirs",
+        "kind": "object",
+        "file": "ZhengdaoDirs.kt",
+        "external_refs": 20,
+        "verdict": "public 必要（:app 在用）"
       }
     ]
   }
