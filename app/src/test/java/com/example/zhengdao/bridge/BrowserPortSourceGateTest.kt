@@ -7,15 +7,18 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * 622 判据①（源码断言）：**只有执行端口（BrowserPort）能派发浏览器动作**——
- * `bridge/` 之外的任何生产源码出现 `BrowserCommands.` 引用即红；三处旧入口
- * （抱朴网关 / 示教回放 / 探针）全部只认 BrowserPort。
+ * 622 判据①（源码断言，645 收窄例外口径）：**只有执行端口（BrowserPort）能派发浏览器
+ * 动作**——**除 BrowserPort 内部实现外**（全仓只许 `bridge/BrowserPort.kt` 这一个文件，
+ * 645 起从"整个 bridge 包"收窄到端口一个文件），任何生产源码出现 `BrowserCommands.`
+ * 引用即红；三处旧入口（抱朴网关 / 示教回放 / 探针）全部只认 BrowserPort。
  *
  * 扫描口径与仓库其它源码门禁一致：工作目录 = app/，剥注释再断言（E-133：
  * KDoc 里提「BrowserCommands」是说明历史，不算引用）。
  *
  * 边界：
- * - `BrowserCommands.kt` 自己与 `BrowserPort.kt`（端口调执行层）在 bridge 包内，天然合法；
+ * - 例外清单只有 `BrowserPort.kt`（端口的执行段选 BrowserCommands 入口）；其余 bridge
+ *   文件（含 `BrowserCommands.kt` 自己）在**代码里**零自引用——645 的 OBSERVE 执行体
+ *   之所以长在 BrowserPort.kt 里而不另立文件，正是为了不破坏这条；
  * - androidTest 的探针测试直接打执行层是**测试设备取证**用的（patrol/），不属于生产派发路，
  *   不在 main 扫描面里（本测试只扫 src/main/java）。
  */
@@ -43,13 +46,16 @@ class BrowserPortSourceGateTest {
     }
 
     @Test
-    fun `判据① bridge之外零BrowserCommands引用_三处旧入口全部收口`() {
+    fun `判据① 除BrowserPort内部实现外_零BrowserCommands引用_三处旧入口全部收口`() {
+        // 645 口径收窄：例外从「bridge 包整体」缩到「BrowserPort 内部实现」一个文件
+        val allowed = setOf("com/example/zhengdao/bridge/BrowserPort.kt")
         val offenders = productionSources()
-            .filter { !it.first.startsWith("com/example/zhengdao/bridge/") }
+            .filter { it.first !in allowed }
             .filter { strip(it.second).contains("BrowserCommands.") }
             .map { it.first }
         assertTrue(
-            "执行端口收口破坏：以下文件仍在直接引用 BrowserCommands（必须改走 BrowserPort）→ $offenders",
+            "执行端口收口破坏（645 判据①：除 BrowserPort 内部实现外，bridge 之外零 BrowserCommands. 引用）：" +
+                "以下文件仍在直接引用 BrowserCommands（必须改走 BrowserPort）→ $offenders",
             offenders.isEmpty(),
         )
     }

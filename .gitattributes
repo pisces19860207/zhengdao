@@ -19,3 +19,6 @@ app/src/main/assets/persona/*.md -text
 # 第三百二十七批：锚定集随包出厂，sha256 被 AnchorAsset 常量钉死；-text 禁止
 # text=auto 的行尾转换（285 教训：CRLF 改一个字节指纹就废）。
 app/src/main/assets/policy/anchor-set.jsonl -text
+
+# 645：OBSERVE 固定观察脚本——hash 门禁以 LF 形态为基准（sha256Hex 同时归一 \r\n，双保险）
+app/src/main/assets/bridge/observe_v1.js text eol=lf

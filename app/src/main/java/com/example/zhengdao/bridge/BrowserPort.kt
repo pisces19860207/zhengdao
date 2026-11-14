@@ -35,8 +35,9 @@ import java.io.File
  * 静态档位写在 [PortAction] 上；**动态升档**只有一条路：CLICK / ACT 的语义面
  * （[PortCall.subject]）命中 [PortIrreversible] 拒点词 ⇒ 升 EXTERNAL（词表只有一份，
  * 与示教层共用）。自由 JS（[PortAction.EXEC_JS]）静态 EXTERNAL：端口根本不提供
- * 自由脚本的执行口——页面内 JS 只能走 PROBE（固定只读查询）或 ACT（示教动作），
- * 新能力要显式加动作枚举，没有"顺手 eval 一下"的后门。
+ * 自由脚本的执行口——页面内 JS 只能走 PROBE（固定只读查询）、OBSERVE（内置观察面：
+ * 脚本随包放在 assets 一份、hash 写死进门禁，调用方只选观察项枚举，645）或
+ * ACT（示教动作），新能力要显式加动作枚举，没有"顺手 eval 一下"的后门。
  *
  * ## 五道闸的次序（[gate]）
  *
@@ -121,6 +122,13 @@ object BrowserPort {
         TABS_LIST("tabs_list", PortTier.READ),
         /** 固定只读查询（示教/表单/漂移/影响面探针的脚本族；脚本由各模块的模板构造）。 */
         PROBE("probe", PortTier.READ),
+        /**
+         * 固定观察面（645）：脚本**内置**（assets 一份固定 JS，SHA-256 写死进门禁——
+         * 改脚本必须改 hash，等于强制 review），调用方只选 [ObserveItem] 观察项枚举，
+         * 传不进脚本也传不进参数；页内隐私三闸（密码/验证码整条丢、值只出形状、
+         * 不回整页 HTML）在脚本源头执行。
+         */
+        OBSERVE("observe", PortTier.READ),
 
         // ── LOCAL：本地可逆（执行并记账） ──
         CLICK("click", PortTier.LOCAL),
@@ -174,6 +182,8 @@ object BrowserPort {
         val ms: Int? = null,
         /** 固定脚本（PROBE/ACT 专用：由各模块的模板构造，端口不收自由 JS）。 */
         val script: String? = null,
+        /** OBSERVE 的观察项（645：唯一入参——枚举之外端口不收脚本也不收参数）。 */
+        val observeItem: ObserveItem? = null,
         /** 候选元素语义面（text/name/aria/testid，可空；CLICK/ACT 升档判据的输入）。 */
         val subject: List<String> = emptyList(),
     )
@@ -413,6 +423,10 @@ object BrowserPort {
             PortAction.PROBE, PortAction.ACT ->
                 if (call.script.isNullOrBlank()) return PortStop.Denied("${call.action.wire} 缺固定脚本")
 
+            // 645：OBSERVE 的执行体只有 assets 那一份——传自定义脚本当场拒（判据③的落点）；
+            // 观察项是唯一入参，缺了也是拒。判据本体在 [observeParamStop]（与 selectorStop 同款抽出）。
+            PortAction.OBSERVE -> observeParamStop(call)?.let { return it }
+
             PortAction.TYPE -> if (call.text == null) return PortStop.Denied("type 缺 text")
             PortAction.SELECT -> if (call.value == null) return PortStop.Denied("select 缺 value")
             else -> Unit
@@ -420,9 +434,26 @@ object BrowserPort {
         return selectorStop(call)
     }
 
+    /**
+     * OBSERVE 的参数校验（645）：**不收脚本**（判据③的落点——执行体只有 assets 那一份，
+     * 传自定义脚本当场拒）；**观察项是唯一入参**（缺了在参数闸点名）。其余字段
+     * （selector/text/value…）OBSERVE 一律不读——观察面只有三枚举。
+     */
+    private fun observeParamStop(call: PortCall): PortStop? {
+        if (!call.script.isNullOrBlank()) {
+            return PortStop.Denied(
+                "observe 不收脚本：执行体内置（assets/${ObserveAsset.PATH}，hash 写死进门禁），" +
+                    "观察项枚举之外没有参数",
+            )
+        }
+        if (call.observeItem == null) {
+            return PortStop.Denied("observe 缺观察项（fields_text/node_table/value_shape 三选一）")
+        }
+        return null
+    }
+
     /** selector 系动作的公共校验（@ref 句柄不走 CSS 校验——与 BrowserCommands 同口径）。 */
-    private fun selectorStop(call: PortCall): PortStop? {
-        val needsSelector = when (call.action) {
+    private fun selectorStop(call: PortCall): PortStop? {        val needsSelector = when (call.action) {
             PortAction.CLICK, PortAction.TYPE, PortAction.SELECT, PortAction.HOVER,
             PortAction.SCROLL_INTO_VIEW,
             -> true
@@ -507,7 +538,7 @@ object BrowserPort {
             PortAction.NAVIGATE, PortAction.NEW_TAB, PortAction.BACK, PortAction.FORWARD, PortAction.RELOAD ->
                 execNavigation(call, ctx)
             PortAction.STATUS, PortAction.SNAPSHOT, PortAction.EVIDENCE, PortAction.SCREENSHOT,
-            PortAction.TABS_LIST, PortAction.PROBE, PortAction.AWAIT_STABLE,
+            PortAction.TABS_LIST, PortAction.PROBE, PortAction.OBSERVE, PortAction.AWAIT_STABLE,
             -> execObserve(call, ctx)
             PortAction.SCROLL, PortAction.SCROLL_INTO_VIEW, PortAction.WAIT -> execScrollWait(call)
             PortAction.CLICK, PortAction.TYPE, PortAction.SELECT, PortAction.HOVER, PortAction.TAP,
@@ -529,7 +560,7 @@ object BrowserPort {
         else -> PortOutcome.Stopped(PortStop.Denied("不该到导航族：${call.action.wire}"))
     }
 
-    /** 观察族（READ）：状态/快照/证据/截图/标签列表/探针/稳等。 */
+    /** 观察族（READ）：状态/快照/证据/截图/标签列表/探针/固定观察/稳等。 */
     private fun execObserve(call: PortCall, ctx: Context?): PortOutcome = when (call.action) {
         PortAction.STATUS -> PortOutcome.Done(BrowserCommands.status(call.tabId))
         PortAction.SNAPSHOT -> PortOutcome.Done(BrowserCommands.snapshot(call.mode, call.selector, call.tabId))
@@ -539,8 +570,39 @@ object BrowserPort {
         )
         PortAction.TABS_LIST -> PortOutcome.Done(BrowserCommands.tabsList())
         PortAction.PROBE -> PortOutcome.Done(BrowserCommands.execJs(call.script!!, call.tabId))
+        PortAction.OBSERVE -> observeRun(call, ctx)
         PortAction.AWAIT_STABLE -> PortOutcome.Done(BrowserCommands.awaitStable(call.ms ?: 2_000))
         else -> PortOutcome.Stopped(PortStop.Denied("不该到观察族：${call.action.wire}"))
+    }
+
+    /**
+     * OBSERVE 的执行段（645）：读 assets 固定脚本 → hash 写死值核对 → 按观察项包装
+     * → 落执行层 execJs（其返回值照走 redactText/redactPairs——页内三闸之外的纵深第二道）。
+     *
+     * hash 不符 ＝ 资产被改过而没人改 hash（强制 review 的闸被绕了）⇒ fail-closed
+     * 拒执行并记账；上下文缺失同理拒——OBSERVE 要用 Context.assets 读脚本，
+     * 没有上下文就没有执行体。
+     */
+    private fun observeRun(call: PortCall, ctx: Context?): PortOutcome {
+        val item = call.observeItem
+            ?: return PortOutcome.Stopped(PortStop.Denied("observe 缺观察项（fields_text/node_table/value_shape 三选一）"))
+        val context = ctx ?: return PortOutcome.Stopped(PortStop.Denied("observe 需要应用上下文（读内置脚本）"))
+        val script = ObserveAsset.load(context)
+            ?: return PortOutcome.Stopped(
+                ledgered(call, PortStop.Denied("OBSERVE 固定脚本读不到（assets/${ObserveAsset.PATH}）——fail-closed 不执行")),
+            )
+        if (!ObserveAsset.verify(script)) {
+            return PortOutcome.Stopped(
+                ledgered(
+                    call,
+                    PortStop.Denied(
+                        "OBSERVE 脚本 hash 与写死值不符——脚本被改而 hash 未改，强制 review 的闸不容绕过：" +
+                            "fail-closed 不执行",
+                    ),
+                ),
+            )
+        }
+        return PortOutcome.Done(BrowserCommands.execJs(ObserveAsset.wrap(script, item), call.tabId))
     }
 
     /** 滚动与等待族（READ）。 */
@@ -748,6 +810,24 @@ object BrowserPort {
      */
     fun act(caller: PortCaller, script: String, subject: List<String>, tabId: String?, policy: PortPolicy): String =
         run(PortCall(caller = caller, action = PortAction.ACT, policy = policy, script = script, tabId = tabId, subject = subject))
+
+    /**
+     * 固定观察（OBSERVE，645）：脚本内置（assets 一份固定 JS，hash 写死进门禁），
+     * 调用方只选观察项枚举——不能传脚本，也没有别的参数可传。[context] 用于读
+     * assets（缺了在执行段如实拒）。页内隐私三闸（密码/验证码整条丢、值只出形状、
+     * 不回整页 HTML）在脚本源头执行，见 assets/${ObserveAsset.PATH} 文件头。
+     */
+    fun observe(caller: PortCaller, item: ObserveItem, context: Context?, tabId: String?, policy: PortPolicy): String =
+        run(
+            PortCall(
+                caller = caller,
+                action = PortAction.OBSERVE,
+                policy = policy,
+                observeItem = item,
+                context = context,
+                tabId = tabId,
+            ),
+        )
 
     /**
      * 存量迁移目录的转发口（**非动作**，不过闸）：`BrowserCommands.shotDir` 只服务
