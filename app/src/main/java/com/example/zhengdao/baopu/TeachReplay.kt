@@ -33,6 +33,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.baopu.evolution.script.ScriptEvo
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.scout.ScoutDirs
 
@@ -1245,6 +1246,11 @@ data class TeachParamRun(
      * 两个出口——渲染层 `FormFillSheet.kt` 同样只有这两个按钮，没有第三个。
      */
     val publish: PublishCard? = null,
+    /**
+     * 第六百四十三批：这一跑在「脚本 → 候选 → 灰度」链上的一句话（生成候选／灰度回滚）。
+     * 没事发生 ⇒ null（默认 null ⇒ 老调用点一个字节不改）。
+     */
+    val evoNote: String? = null,
 ) {
     val ok: Boolean get() = report?.ok == true
 
@@ -1369,6 +1375,9 @@ fun replaySkillWithParams(
                     else -> null
                 }
             }
+            // 643：这一跑在验收账落定后可能"有话要说"（候选生成了／灰度回滚了），
+            // 审计回调里拿回来、随 [TeachParamRun] 一并交给界面（只在真有事时说）。
+            var evoNote: String? = null
             val dom = FormFillingTeachDom(BrowserTeachDom(tabId, portPolicy), BrowserFormDom(tabId, portPolicy))
             val executor = TeachExecutor(
                 dom = dom,
@@ -1378,13 +1387,15 @@ fun replaySkillWithParams(
                     if (!TeachReplayStore.appendAudit(projectRoot, TeachParams.redact(report.auditLine(now, opId), pl.values))) {
                         RunLog.log("回放审计落盘失败：skill=${report.skillName}")
                     }
-                    recordAcceptance(context, projectRoot, pl.skill, report, now, opId)
+                    evoNote = recordAcceptance(context, projectRoot, pl.skill, report, now, opId)?.let {
+                        TeachParams.redact(it, pl.values)
+                    }
                 },
             )
             val report = executor.run(pl.skill)
             // 表单步出「待发布卡」；落盘的文本按 200 的口径把参数值换回占位符，界面拿的对象不换
             val card = publishReplayCard(context, tabId, report, dom, pl.skill, pl.values)
-            return TeachParamRun(report, null, pl.display, null, card)
+            return TeachParamRun(report, null, pl.display, null, card, evoNote)
         }
     }
 }
@@ -1447,12 +1458,20 @@ private fun recordAcceptance(
     report: TeachRunReport,
     nowMs: Long,
     opId: String,
-) {
+): String? {
+    var note: String? = null
     runCatching {
         val pf = BaopuRuntime.personaFiles(context)
         val globalRoot = File(context.applicationContext.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)
         TeachReplayStore.recordRun(projectRoot, globalRoot, pf, skill, report, nowMs, opId)
+        // 第六百四十三批 · 生产调用点①：这一跑也是「脚本 → 技能候选 → 568-A 灰度」的输入端。
+        // 顺序即语义：先落验收账（候选判据要从账上算次数），再问这一跑该不该生成候选／回滚。
+        // 只转手不判定：够不够格在 ScriptEvoRules，能不能进灰度在 LowRiskEvo.gate。
+        note = ScriptEvo.onReplaySettled(projectRoot, globalRoot, pf, skill, report, nowMs)?.also {
+            RunLog.log(it)
+        }
     }.onFailure {
         RunLog.log("验收记账失败：${skill.name}（${it.javaClass.simpleName}）")
     }
+    return note
 }

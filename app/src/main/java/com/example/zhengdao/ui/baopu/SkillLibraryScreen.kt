@@ -103,6 +103,8 @@ internal fun replayAnswerLine(run: TeachParamRun): String = buildString {
     run.report?.refusals?.takeIf { it.isNotEmpty() }?.let {
         append("\n拦下 ${it.size} 个不该点的动作（提交/支付类），没有替你点")
     }
+    // 643：链上那一句（候选生成／灰度回滚）——没人点也可能出现，就在回放答复里说清楚
+    run.evoNote?.takeIf { it.isNotBlank() }?.let { append("\n$it") }
     run.report?.evidenceDir?.let { append("\n每步证据：$it") }
 }
 

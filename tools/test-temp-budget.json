@@ -1,6 +1,6 @@
 {
- "measured": 296,
- "measuredAt": "2026-11-12",
- "measuredHow": "2026-11-12 / wt-607（基线 8e6b63771）/ 从零构建后只跑这一轮 :app:testDebugUnitTest + :core:testDebugUnitTest（Test 任务的 doFirst 已先清空 testDebugUnitTest 根，故读数代表一轮）：新口径（只数测试自建沙盒根）实测 296。同轮 detekt 189（896 files analyzed）、lint 预算闸 0/0（另有 2 条网络/版本类不计预算）、app 973 份 XML/11076 例 0 失败、core 8 份/86 例 0 失败。",
- "note": "607 改口径（2026-11-12）：预算不再写在本文件里，由脚本自算 measured + 20（tools/check-test-temp.py 的 MARGIN=20）。旧口径（564/549）数的是 app/build 下 tmp* 区域里的目录总数，把构建系统自己的 .cache / compileTransaction / kapt* / jar_extract_* 也算进水位 —— 同一棵树能读出 378/379/382 三个数，每单都要为 ±1 解释一次。新口径只数测试建的沙盒根（名字 + 产生者双重判定），构建系统 tmp 一个都不数；一个沙盒 = 1（不数内部层级）；本地超预算只提示（exit 0），CI（GITHUB_ACTIONS=true）才判红。历史读数：1000 → 908 → 424 → 422 → 380（ci#1949，旧口径）→ 378 → 296（607 新口径）。两口径不可直接比较：同一份 build 双跑，旧口径 368、新口径 296，差 72 = tmp 自身(1) + 8 个直接子项（1 个 testDebugUnitTest、1 个 compileDebugJavaWithJavac、6 个 jar_extract_*）+ 63 个沙盒内部层级。趋势账见 tools/test-temp-trend.jsonl。"
+ "measured": 295,
+ "measuredAt": "2026-11-14",
+ "measuredHow": "2026-11-14 / wt-643（643 批）/ 先删空本树 app/build/tmp 再只跑这一轮 :app:testDebugUnitTest + :core:testDebugUnitTest（干净单轮）：新口径实测 295（比 607 的 296 低 1，基线只降不升 ⇒ 改 295）。同轮 detekt 189、lint 预算闸 0/0/0/0（另有 8 条网络/版本类不计预算）、app 1030 份 XML/11666 例 0 失败（8 跳过）、core 98 例 0 失败。",
+ "note": "607 改口径（2026-11-12）：预算不再写在本文件里，由脚本自算 measured + 20（tools/check-test-temp.py 的 MARGIN=20）。旧口径（564/549）数的是 app/build 下 tmp* 区域里的目录总数，把构建系统自己的 .cache / compileTransaction / kapt* / jar_extract_* 也算进水位 —— 同一棵树能读出 378/379/382 三个数，每单都要为 ±1 解释一次。新口径只数测试建的沙盒根（名字 + 产生者双重判定），构建系统 tmp 一个都不数；一个沙盒 = 1（不数内部层级）；本地超预算只提示（exit 0），CI（GITHUB_ACTIONS=true）才判红。历史读数：1000 → 908 → 424 → 422 → 380（ci#1949，旧口径）→ 378 → 296（607 新口径）→ 295（643，2026-11-14，干净单轮）。两口径不可直接比较：同一份 build 双跑，旧口径 368、新口径 296，差 72 = tmp 自身(1) + 8 个直接子项（1 个 testDebugUnitTest、1 个 compileDebugJavaWithJavac、6 个 jar_extract_*）+ 63 个沙盒内部层级。趋势账见 tools/test-temp-trend.jsonl。"
 }

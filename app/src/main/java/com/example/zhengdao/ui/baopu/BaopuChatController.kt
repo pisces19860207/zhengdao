@@ -754,6 +754,20 @@ internal class BaopuChatController(context: Context) {
             SkillRowAction.PROMOTE -> {
                 val draftRow = row.toDraftRow()
                     ?: return "「${row.name}」不是草稿，没有「转正」这一步"
+                // 第六百四十三批 · 生产调用点②：**回放脚本**的转正走「脚本 → 候选 → 568-A 灰度」
+                // 那条链（够不够格看 ScriptEvoRules，能不能进灰度看 LowRiskEvo.gate）；
+                // 纯文字技能的转正口径一个字节没改（还是下面这条）。
+                if (row.scope == SkillScope.PROJECT &&
+                    com.example.zhengdao.baopu.evolution.script.ScriptEvo.isScript(workspaceRoot, row.name)
+                ) {
+                    return com.example.zhengdao.baopu.evolution.script.ScriptEvo.promote(
+                        workspaceRoot,
+                        globalRoot,
+                        pf,
+                        row.name,
+                        System.currentTimeMillis(),
+                    ).message
+                }
                 when (
                     val r = commitSkillDraft(
                         row = draftRow,
@@ -2158,6 +2172,21 @@ internal class BaopuChatController(context: Context) {
             ?: return false to appCtx.getString(R.string.skill_promote_revert_missing, name)
         val body = runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
             ?: return false to appCtx.getString(R.string.skill_promote_revert_missing, name)
+        // 第六百四十三批 · 生产调用点③：**回放脚本**的「一键收回」走 ScriptEvo.revoke——
+        // 只把状态头改回草稿、账上留一行 `promote_undo`，`回放.json` 一个字节不动（判据⑤）。
+        // 纯文字技能仍走下面这条老路（207 的回退口径没改）。
+        if (resolved.scope == MemoryScope.PROJECT &&
+            com.example.zhengdao.baopu.evolution.script.ScriptEvo.isScript(ws, name)
+        ) {
+            val r = com.example.zhengdao.baopu.evolution.script.ScriptEvo.revoke(
+                ws,
+                gRoot,
+                pf,
+                name,
+                System.currentTimeMillis(),
+            )
+            return r.ok to r.message
+        }
         val newBody = com.example.zhengdao.baopu.SkillPromote.revertBody(body)
             ?: return false to appCtx.getString(R.string.skill_promote_revert_not_active, name)
         val rowScope = when (resolved.scope) {

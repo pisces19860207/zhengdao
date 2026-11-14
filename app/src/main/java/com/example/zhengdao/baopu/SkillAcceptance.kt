@@ -33,6 +33,15 @@ internal data class AcceptanceSample(
     val fingerprintOk: Boolean,
     val driftCount: Int,
     val site: String,
+    /**
+     * 第六百四十三批：这一跑跑的是**哪一版脚本**（规范序列化 sha256 前 12 位）。
+     *
+     * 只增不改：老样本没有这一格（空串＝"没标版本"），读侧照旧；写完只是多一个键 `ver`。
+     * 为什么必须有它：643 的生成条件之一是"**同一版本**成功回放 ≥3 次"——没有版本，
+     * 改过脚本之后的老成功次数会被当成本版的成绩（255 的 `onRelearned` 会清样本，
+     * 但那要靠"每次改都走重教"，不如版本号自己说话）。
+     */
+    val version: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("op", opId)
@@ -41,6 +50,8 @@ internal data class AcceptanceSample(
         .put("fp", fingerprintOk)
         .put("drifts", driftCount)
         .put("site", site)
+        // 没标版本就不写这个键：老样本序列化出来的字节一个都不变（255 的往返判据不破）
+        .apply { if (version.isNotBlank()) put("ver", version) }
 
     companion object {
         fun fromJson(o: JSONObject): AcceptanceSample? {
@@ -55,6 +66,7 @@ internal data class AcceptanceSample(
                 fingerprintOk = o.optBoolean("fp", true),
                 driftCount = o.optInt("drifts", 0).coerceAtLeast(0),
                 site = o.optString("site"),
+                version = o.optString("ver"),
             )
         }
     }

@@ -289,6 +289,8 @@ internal object TeachReplayStore {
             fingerprintOk = fingerprintOkOf(report),
             driftCount = report.drifts.size,
             site = TeachSafety.hostOf(skill.startUrl) ?: "",
+            // 643：这一跑跑的是哪一版脚本——「同版本成功 ≥3 次」靠它算，不靠"上次重教是什么时候"
+            version = sha256Of(skill).take(12),
         )
         val update = SkillAcceptance.applyRun(state, sample, nowMs)
         if (update.duplicate) {
