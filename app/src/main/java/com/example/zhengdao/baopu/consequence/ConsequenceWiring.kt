@@ -344,6 +344,22 @@ internal object ConsequenceWiring {
     fun applyWhitelistChange(c: WhitelistChange): Boolean =
         stamp(ConsequenceLedger.draftOf(c), c.atMs, "工具白名单 ${c.capability}")
 
+    /**
+     * 现在生效的路由调整值（568-C 域②，从账读；没有调整行 ⇒ null＝调用方用缺省路由）。
+     * 档位与深度同一把尺：账上有行才生效，被回滚的行不算。
+     */
+    fun currentRoute(capability: String): String? =
+        ConsequenceLedger.currentRoute(rows(), capability)
+
+    /**
+     * 落一条路由调整行（568-C 域②；**只转手**：状态机守卫在高风险门里判过才许调到这里，
+     * 本函数自己一条判都不加——与 [applyWhitelistChange] 同款边界）。
+     *
+     * @return 账落上没有（盘写不上只 log，不抛——记录是留痕不是闸门）
+     */
+    fun applyRouteChange(c: RouteChange): Boolean =
+        stamp(ConsequenceLedger.draftOf(c), c.atMs, "路由 ${c.capability}")
+
     /** 某能力的灰度观察样本（从账读，判据层拿它算指标）。 */
     fun samplesOf(capability: String): List<CanarySample> =
         ConsequenceLedger.samplesOf(rows(), capability)

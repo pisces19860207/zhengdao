@@ -135,6 +135,10 @@ class GovernanceStateLeaseSectionTest {
     // 新键按哈希落进 data_repair 与 prod_eval 之间，其余键相对序不动（同一把复算法）。
     // 第五百六十八批 B 域③：登记表补 goal_template（缺省灰度）⇒ 同款，落进
     // reflection_auto_edit 与 persona_organize 之间（15 键仍 ≤24 不扩容，复算吻合）。
+    // 第五百六十八批 C 域①②：登记表补 tool_whitelist（域①）＋ envoy_route（域②），均缺省灰度
+    // ⇒ 17 键仍 ≤24 不扩容（容量 32 不变），旧 15 键相对序一个不动；两新键按 spread&(32-1)
+    // 独立复算落在表尾（judgment_threshold 之后），与失败现场逐字节吻合后落笔。复算自校验：
+    // 同一把哈希模型先逐字节复现旧 15 键金样例，再扩到 17 键（不是照抄本次输出）。
     private val goldenGray =
         "{\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"orchestration\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
@@ -150,7 +154,9 @@ class GovernanceStateLeaseSectionTest {
             "\"companion_rule\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"prod_eval\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"scout\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
-            "\"judgment_threshold\":{\"band\":\"canary\",\"cn\":\"灰度\"}}"
+            "\"judgment_threshold\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"tool_whitelist\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
+            "\"envoy_route\":{\"band\":\"canary\",\"cn\":\"灰度\"}}"
     private val goldenConflicts = "{\"pending_replay\":2}"
     private val goldenIdentity =
         "{\"id\":\"zdx-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\",\"state\":\"active\"}"

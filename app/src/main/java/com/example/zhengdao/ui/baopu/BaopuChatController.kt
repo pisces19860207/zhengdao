@@ -1900,6 +1900,23 @@ internal class BaopuChatController(context: Context) {
         )
 
     /**
+     * 路由行（`route:` 前缀）的回滚活体（第五百六十八批 C 域②）。
+     *
+     * 从 [rollbackDecisionNow] 的 else 分派抽出（502 同款：冻结区复杂度不许过墙，走 else 而非
+     * 新开 when 支净零不抬预算）：先判前缀——不是路由行（depth: 等其余授权行）⇒ 老实话 false；
+     * 是路由行 ⇒ 把偏好退回被回滚那行的 before，盘上已换新值 ⇒ false，`DecisionRollbacks.run`
+     * 对 false 不留 `rollback_of`。
+     */
+    private fun rollbackRouteRowNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean {
+        if (!r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.ROUTE)) return false
+        return com.example.zhengdao.baopu.evolution.highrisk.RouteEvo.revertRoute(
+            com.example.zhengdao.baopu.evolution.highrisk.RouteSemantics.decode(r.before),
+            com.example.zhengdao.baopu.evolution.highrisk.RouteSemantics.decode(r.after),
+            System.currentTimeMillis(),
+        )
+    }
+
+    /**
      * 站点信任行的回滚活体（228-C 的加/撤对偶）。从 [rollbackDecisionNow] 抽出（502 同款）：
      * 本函数在冻结区，白名单支补进来后复杂度撞墙，把唯一带嵌套 when 的站点信任支抽出去净零，
      * 行为逐字节不变（canary/threshold/whitelist 三支仍留在回滚 when 里，各域门禁照钉）。
@@ -1993,10 +2010,11 @@ internal class BaopuChatController(context: Context) {
                     // 活体抽成 [rollbackWhitelistRowNow]（502 同款）：本函数在冻结区，复杂度不许过墙。
                     r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.WHITELIST) ->
                         rollbackWhitelistRowNow(r)
-                    else -> {
-                        // 深度档（depth: 前缀）等其余授权行没有回灰语义 ⇒ 走老实话
-                        false
-                    }
+                    // 第五百六十八批 C 域②：路由调整行（`route:` 前缀）⇒ 回滚＝把路由偏好退回那行的
+                    // before（回滚也是一次调整行；盘上已换新值 ⇒ 老实话 false）。活体抽成
+                    // [rollbackRouteRowNow]（502 同款）：本函数在冻结区，走 else 分派而非新开 when 支，
+                    // 净零不抬预算；depth: 等其余授权行由活体判前缀后仍走老实话 false。
+                    else -> rollbackRouteRowNow(r)
                 }
 
             // 其余（搜索范围／日记维护／评测／自治动作）没有统一回滚通道 ⇒ 老实返回 false。

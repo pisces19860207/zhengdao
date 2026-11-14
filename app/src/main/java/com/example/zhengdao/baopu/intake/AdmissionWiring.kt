@@ -55,6 +55,7 @@ internal object AdmissionWiring {
     fun resetForTest() {
         root = null
         channel = null
+        routeSink = null
     }
 
     /**
@@ -81,6 +82,15 @@ internal object AdmissionWiring {
     @Volatile private var root: File? = null
 
     @Volatile private var channel: ExamChannel? = null
+
+    /**
+     * 第五百六十八批 C 域②：新 peer 准入的路由候选出口（装配层注入 → `RouteEvo.onPeerAdmitted`）。
+     *
+     * 与准入判定分开：546 的四步链/画像/登记一字未动，这一路只在「登记完」这个既有动作边上
+     * 出一次路由偏好候选（选哪个 peer 是路由输入，不碰五流状态机）。null = 没人听（候选不产，准入照旧）。
+     */
+    @Volatile
+    var routeSink: ((agentId: String, atMs: Long) -> Unit)? = null
 
     private fun admit(
         dir: File,
@@ -126,6 +136,9 @@ internal object AdmissionWiring {
                 "｜canAccept($kind)=${record.profile.canAccept(kind, version)}" +
                 "｜needsReprobe=${record.profile.needsReprobe(version)}",
         )
+        // 第五百六十八批 C 域②（生产调用点，全仓只此一处）：新 peer 登记完 ⇒ 出一次路由偏好候选。
+        // 546 的准入判定一字未动；候选产不产、落不落账由 RouteEvo 按档位判，这里只转手。
+        routeSink?.invoke(agentId, System.currentTimeMillis())
     }
 
     /** `mcp_<serverSlug>_<toolSlug>` ⇒ `mcp-<serverSlug>`（最后一个下划线是 server 与 tool 的界）。 */

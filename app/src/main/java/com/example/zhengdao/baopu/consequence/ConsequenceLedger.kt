@@ -35,6 +35,7 @@ internal object ConsequenceEvidence {
     const val ADVISOR: String = "advisorOpinion:"
     const val THRESHOLD: String = "threshold:"
     const val WHITELIST: String = "whitelist:"
+    const val ROUTE: String = "route:"
 
     /** 前缀后面第一格是能力名，读到下一个冒号为止（能力名里没有冒号 ⇒ 两格就够）。 */
     fun capabilityOf(evidence: String, prefix: String): String? {
@@ -227,6 +228,41 @@ internal object ConsequenceLedger {
         return latest.after
     }
 
+    // ── ③‴ 路由调整行（568-C 域②；复用 tool_grant，与白名单/阈值/档位同一取舍）──────
+
+    /**
+     * 路由调整行。状态机守卫（冲突时以状态机为准）在高风险门（`RouteEvo`）里判过才调到这里，
+     * 这里只做**机械兜底**（before≠after），判据拒的返回 null 不产草稿。before/after 是
+     * [com.example.zhengdao.baopu.evolution.highrisk.RouteSemantics.encode] 的稳定串（`peer|path`）。
+     */
+    fun draftOf(c: RouteChange): DecisionDraft? {
+        if (c.before == c.after) return null
+        return DecisionDraft(
+            kind = DecisionKind.TOOL_GRANT,
+            actor = DecisionActor.AUTO,
+            reason = "路由 ${c.capability}：${c.before.ifBlank { "（缺省）" }}→${c.after.ifBlank { "（缺省）" }}（${c.why}）",
+            evidence = "${ConsequenceEvidence.ROUTE}${c.capability}:${c.after}",
+            before = c.before,
+            after = c.after,
+            atMs = c.atMs,
+            rollbackRef = "${ConsequenceEvidence.ROUTE}${c.capability}:${c.before}",
+            reversible = true,
+        )
+    }
+
+    /**
+     * 现在生效的路由（从账读；没有调整行 ⇒ null＝调用方用缺省路由）。`!rolledBack` 与
+     * [currentWhitelist]/[currentThreshold] 同一格：被回滚的调整行还有效，就等于「撤销只改得动账、改不动闸」。
+     */
+    fun currentRoute(rows: List<DecisionRecord>, capability: String): String? {
+        val prefix = "${ConsequenceEvidence.ROUTE}$capability:"
+        val latest = rows
+            .filter { it.kind == DecisionKind.TOOL_GRANT && !it.rolledBack && it.evidence.startsWith(prefix) }
+            .maxByOrNull { it.atMs }
+            ?: return null
+        return latest.after
+    }
+
     // ── ④ 赔付（新 kind）──────────────────────────────────────────────────
 
     /**
@@ -346,6 +382,20 @@ internal data class ThresholdChange(
  * 才调到这里。before/after 是排序相连的稳定串（空集＝空串）。
  */
 internal data class WhitelistChange(
+    val capability: String,
+    val before: String,
+    val after: String,
+    val atMs: Long,
+    val why: String,
+)
+
+/**
+ * 一次路由调整（568-C 域②的落账形状；与 [WhitelistChange] 同一家族）。
+ *
+ * 状态机守卫不在本类里：路由候选假设的迁移合不合法由高风险门（`RouteEvo`）经 549 的
+ * `EnvoyLaw.legal` 判过才调到这里。before/after 是 `peer|path` 稳定串（缺省路由＝空串）。
+ */
+internal data class RouteChange(
     val capability: String,
     val before: String,
     val after: String,

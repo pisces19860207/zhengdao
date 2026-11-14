@@ -583,6 +583,11 @@ internal object BaopuRuntime {
         com.example.zhengdao.baopu.agent.ToolGroupAudit.whitelistSink = { groupKey, widening, atMs ->
             com.example.zhengdao.baopu.evolution.highrisk.HighRiskEvo.onWhitelistEvent(groupKey, widening, atMs)
         }
+        // 第五百六十八批 C 域②：路由偏好候选的出口（新 peer 准入 → 候选）。
+        // 只注入不判据：546 的准入判定一字未动，状态机守卫（冲突以状态机为准）的判定全在高风险门。
+        com.example.zhengdao.baopu.intake.AdmissionWiring.routeSink = { agentId, atMs ->
+            com.example.zhengdao.baopu.evolution.highrisk.RouteEvo.onPeerAdmitted(agentId, atMs)
+        }
         com.example.zhengdao.baopu.agent.GovernanceStateTool.env =
             com.example.zhengdao.baopu.agent.GovernanceStateTool.Env(
                 identityDir = { appCtx.filesDir },

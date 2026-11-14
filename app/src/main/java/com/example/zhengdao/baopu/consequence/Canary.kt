@@ -146,6 +146,15 @@ internal enum class CanaryCapability(
      * [com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules]，装配在 HighRiskEvo。
      */
     TOOL_WHITELIST("tool_whitelist", "工具白名单", CanaryBand.CANARY, "tool_whitelist", "收窄自动生效；加宽过 467 准入"),
+
+    /**
+     * 568-C 域②路由与使臣五流：路由输入（选哪个 peer、走哪条路）可调，五流状态语义不可改
+     * （549 的 [com.example.zhengdao.baopu.peer.A2aTaskState]／[com.example.zhengdao.baopu.peer.EnvoyLaw]
+     * 一字一句不许动；硬要求①：只调路由输入，不改状态判定）。冲突时以状态机为准——候选假设的
+     * 非法迁移由 [com.example.zhengdao.baopu.evolution.highrisk.RouteSemantics.flowLegal]（＝549 迁移法条）拒。
+     * 缺省灰度档：变更照常判，但每一次都落观察账；档位关闭 ⇒ 不自调（缺省路由照用）。装配在 RouteEvo。
+     */
+    ENVOY_ROUTE("envoy_route", "路由与五流", CanaryBand.CANARY, "envoy_route", "路由输入可调；状态语义不可改，冲突以状态机为准"),
     ;
 
     companion object {

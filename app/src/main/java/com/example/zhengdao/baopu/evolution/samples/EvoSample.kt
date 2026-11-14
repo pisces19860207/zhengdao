@@ -74,6 +74,12 @@ internal enum class EvoAnchorKind(val wire: String, val cn: String) {
      * 的多次回声只计 1；没有身份可取时兜底 `at:`，不硬造事件号）。
      */
     WHITELIST_EVENT("whitelist_event", "白名单变更事件"),
+
+    /**
+     * 568-C 域②路由：一次路由变更事件（锚值＝变更前后的稳定串对——同一对 before→after
+     * 的多次回声只计 1；没有身份可取时兜底 `at:`，不硬造事件号）。
+     */
+    ROUTE_EVENT("route_event", "路由变更事件"),
     ;
 
     companion object {
@@ -94,7 +100,7 @@ internal enum class EvoAnchorKind(val wire: String, val cn: String) {
  */
 internal object EvoAnchorRegistry {
 
-    /** 已声明锚的四域。 */
+    /** 已声明锚的域（568-A 四域起，568-B 三域、568-C 两域逐批扩格；不在表里＝无锚）。 */
     val DECLARED: Map<CanaryCapability, EvoAnchorKind> = mapOf(
         CanaryCapability.REFLECTION_AUTO_EDIT to EvoAnchorKind.SKILL_PROPOSAL,
         CanaryCapability.PROMPT_TAIL to EvoAnchorKind.TAIL_VERSION,
@@ -110,6 +116,8 @@ internal object EvoAnchorRegistry {
         CanaryCapability.GOAL_TEMPLATE to EvoAnchorKind.HOURLY_BUCKET,
         // 568-C 域①工具白名单：一次变更事件（组授权/撤销发生在会话内）⇒ 锚＝变更事件本身。
         CanaryCapability.TOOL_WHITELIST to EvoAnchorKind.WHITELIST_EVENT,
+        // 568-C 域②路由：一次变更事件（新 peer 准入/路由偏好调整）⇒ 锚＝变更事件本身。
+        CanaryCapability.ENVOY_ROUTE to EvoAnchorKind.ROUTE_EVENT,
     )
 
     /** 这一域声明了哪种锚（null＝无锚：不计、标注）。 */
