@@ -65,7 +65,7 @@
       "left_ledger_at": "635（2026-11-15 重跑；本单接线后生产可达，不再属「仅测试」）",
       "wired_at": "baopu/inspect/ClaimEvidenceWiring.kt:133 claimEvidenceRowsOf 调 ClaimEvidenceAudit.audit(...) ← :221 claimEvidenceRound ← :244 runClaimEvidenceAudit ← baopu/inspect/NocturnalAuto.kt:234（432 调度＋479 两级刹车之后、仅夜间窗口）；回显 ui/baopu/BaopuChatController.kt:1423 读 ClaimEvidenceRowStore.latest() 落建议页签第三类行",
       "fact": "真接线，生产可达。627 交付的是只读判据层（ClaimEvidenceAudit.kt 三段机检＋ClaimEvidenceEnv 注入口），当时只有测试在调；635 接进暗卫夜跑：装配层读数接口给账行查询／commit 摘要／测试 XML 四个数（金吾卫只调用不连库），缺口 ≥1 且左相允许 ⇒ 落 1 行（typeLabel=对账、带 id 与时间），0 缺口 ⇒ 0 行，窗口外不跑。生产调用点 ≥1 由 ClaimEvidenceWiringGateTest.G1 源码门禁钉住；627 三个文件本单零改动（G5 用 git diff 自证），被检查对象 git status／账表行数前后不变（C4）",
-      "note": "原 B 区 note 照留（627 报告 §七.1 的时点陈述）：「没做生产接线：暗卫排期／装配层给证据读数／决策中心建议页签真正落行，都归后续接线单」——本单即该接线单。**校准**：当前 check-entry-coverage 口径只列顶层 public 声明，627 的 internal 件本就不在 A/B 清单（本版 A=OffscreenCaptureProbe／B=IntakeProfile），故并无条目可翻；接线事实以本存档＋判据⑤源码门禁＋wiring --check 绿为准。计数 479/477 → 481/479 是 543 批刷新后主仓新增 2 个公开声明所致，走脚本默认模式刷新产物，未手改"
+      "note": "原 B 区 note 照留（627 报告 §七.1 的时点陈述）：「没做生产接线：暗卫排期／装配层给证据读数／决策中心建议页签真正落行，都归后续接线单」——本单即该接线单。**校准**：当前 check-entry-coverage 口径只列顶层 public 声明，627 的 internal 件本就不在 A/B 清单（本版 A=OffscreenCaptureProbe／B=IntakeProfile），故并无条目可翻；接线事实以本存档＋判据⑤源码门禁＋wiring --check 绿为准。**改口**：本单曾把计数从 479/477 刷成 481/479，跑测期间 637（Mermaid）合入并把同一产物刷成 487/485，pre-commit 陈旧基准闸正确拦下重叠改动 ⇒ 撤销本单中间态、rebase 到 origin/main@b196f9c84 后重算无新增 diff（本单新件全为 internal，不进公开面），故最终不重复刷新产物；--strict 计数锁 4/4 绿（487/485）、--check 逐字节一致"
     }
   }
 }
