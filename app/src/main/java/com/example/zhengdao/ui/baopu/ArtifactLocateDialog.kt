@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.getSystemService
 import com.example.zhengdao.R
+import com.example.zhengdao.ui.theme.rCard
 
 /** 没有文件管理器能接目录 Uri 时的那一层：路径看得见、复制点得动。 */
 @Composable
@@ -39,7 +40,9 @@ internal fun ArtifactLocateDialog(absPath: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
-            shape = RoundedCornerShape(16.dp),
+            // 16dp＝rCard（与既有「Dialog 内 Surface」同值）；弹窗层到底用 14 还是 16 的定案
+            // 还在 radius 白名单备注里排队，这里先按现值上令牌，不擅自改观感。
+            shape = RoundedCornerShape(rCard),
             tonalElevation = 6.dp,
         ) {
             Column(Modifier.padding(18.dp)) {
