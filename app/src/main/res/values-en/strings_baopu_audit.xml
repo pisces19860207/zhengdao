@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 635: type label of the third row kind on the Suggestions tab (2026-11-15).
+  Kept in its own file: the shared strings.xml is a high-conflict file; this batch
+  does not touch it. Keys mirror values/strings_baopu_audit.xml one-to-one.
+-->
+<resources>
+    <!-- Third kind on the Suggestions tab: claim-vs-evidence reconciliation gaps. -->
+    <string name="decision_type_audit">Reconcile</string>
+</resources>

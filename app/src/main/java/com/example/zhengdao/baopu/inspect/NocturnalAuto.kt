@@ -225,6 +225,19 @@ internal object NocturnalAuto {
         // 第五百零八批在 main 上接的互查写口（511 从更早基线切出，rebase 时补回）：
         // 暗卫本轮认定 × 金吾卫上次巡按 ⇒ 有冲突才写行。
         mutualConflicts(root, findings, nowMs)
+        // 第六百三十五批：结论-证据对账接线。本函数在 432 的本趟调度与 479 两级刹车
+        // （MaintBrake／LowRiskEvo.gate）之后才跑，不新开调度；只在夜间低峰窗口触发，
+        // 窗口外一行账都不写。时刻由本趟 nowMs 注入，判据本体在 ClaimEvidenceWiring。
+        // 左相：异步进「建议」页签不即时弹卡、不占调解器预算 ⇒ 默认准许；即时打扰
+        // 仍归 MediatorWiring.consultAsk，本单不碰那套计数。
+        runCatching {
+            val rows = runClaimEvidenceAudit(ctx, root, nowMs, AUDIT_LEFT_ALLOWS)
+            if (rows.isNotEmpty()) {
+                RunLog.log("对账接线：本轮落 ${rows.size} 行建议页签第三类行（id=${rows.first().id}）")
+            }
+        }.onFailure {
+            RunLog.log("对账接线：这趟没跑成——${it.javaClass.simpleName}: ${it.message}")
+        }
         return stamped
     }
 

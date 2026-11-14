@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第六百三十五批 · 决策中心「建议」页签第三类行的类型签（2026-11-15）。
+  单独成文件（房型照 158/198/212/220/615 各批）：共享 strings.xml 是高冲突文件，
+  本批对它零改动。键与 values-en/strings_baopu_audit.xml 一一对应。
+  字面值「对账」由 ClaimEvidenceWiringGateTest 源码门禁钉住。
+-->
+<resources>
+    <!-- 「建议」页签第三类：结论-证据对账的缺口行（区别于 99 建议／100 效果）。 -->
+    <string name="decision_type_audit">对账</string>
+</resources>

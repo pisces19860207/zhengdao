@@ -1381,9 +1381,10 @@ internal class BaopuChatController(context: Context) {
         pendingChoice?.takeIf { it.kind == AskKind.PERSONA_PROPOSAL }?.let { personaSpec(it) }
 
     /**
-     * 建议页签的行（99 建议＋100 效果双类型；效果排前，类型签区分——不并串）。
+     * 建议页签的行（99 建议＋100 效果＋635 对账三类型；效果排前，类型签区分——不并串）。
      *
      * 行可点开同款卡；行上的徽标/副标题与卡面同源（标题函数复用）。
+     * 635 第三类只认本进程最近一轮对账结果：0 缺口 ⇒ 0 行（判据③）。
      */
     fun decisionCenterSuggestionRows(): List<DecisionCenterRow> = suggestionTabRows(
         buildList {
@@ -1414,6 +1415,19 @@ internal class BaopuChatController(context: Context) {
                         ),
                         badge = appCtx.getString(riskBadgeRes(s.riskClass)),
                         typeLabel = appCtx.getString(R.string.decision_type_suggestion),
+                    ),
+                )
+            }
+            // 635 第三类「对账」：只认本进程最近一轮结果（0 缺口那一轮 publish 空表 ⇒ 0 行），
+            // 不读历史账本，免得上一轮的旧缺口一直顶着。行自带稳定 id 与时间。
+            com.example.zhengdao.baopu.inspect.ClaimEvidenceRowStore.latest().forEach { r ->
+                add(
+                    DecisionCenterRow(
+                        id = r.id,
+                        variant = DecisionVariant.SUGGESTION,
+                        title = r.title,
+                        subtitle = r.subtitle,
+                        typeLabel = appCtx.getString(R.string.decision_type_audit),
                     ),
                 )
             }
