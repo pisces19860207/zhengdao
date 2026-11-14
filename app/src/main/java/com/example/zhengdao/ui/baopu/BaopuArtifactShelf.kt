@@ -285,6 +285,8 @@ internal fun ArtifactShelfDialog(
     var viewingRel by remember { mutableStateOf<String?>(null) }
     // 第一百七十八批：清单勾选批量删（179 台账那本账；不与本页 38 批库表合并）
     var pickerOpen by remember { mutableStateOf(false) }
+    // 第六百四十一批：定位退化时显示的完整路径；空＝不显示那一层。
+    var locatePath by remember { mutableStateOf<String?>(null) }
     // P4-4 纪律：UI 作用域必须装 CoroutineCrashHandler（门禁扫「没装 handler 的裸作用域」）
     val scope = rememberCoroutineScope { CoroutineCrashHandler }
 
@@ -331,6 +333,37 @@ internal fun ArtifactShelfDialog(
             }
             tick++ // 重新查库（C4：删完这条当场消失）
             onChanged() // 抽屉里「产物 N」与「回收站 N」两笔账一起重数
+        }
+    }
+
+    /**
+     * 第六百四十一批：用外部应用打开。判据与 Intent 都在新文件里，
+     * 这里只把五种下场翻成一句话；文件不在了要现查盘，不信列表里的旧徽标。
+     */
+    fun openExternal(row: ArtifactShelfRow) {
+        val msg = when (openArtifactExternally(ctx, workspaceRoot, row.relPath)) {
+            ArtifactOpenOutcome.OPENED -> return
+            ArtifactOpenOutcome.NO_VIEWER -> res.getString(R.string.baopu_artifact_open_no_app, row.relPath)
+            ArtifactOpenOutcome.GONE -> res.getString(R.string.baopu_artifact_open_gone, row.relPath)
+            ArtifactOpenOutcome.UNSUPPORTED -> res.getString(R.string.baopu_artifact_open_unsupported, row.relPath)
+            ArtifactOpenOutcome.FAILED -> res.getString(R.string.baopu_artifact_open_failed, row.relPath)
+        }
+        Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+    }
+
+    /** 定位：没有文件管理器能接目录 Uri 就明说，并退化成完整路径＋复制。 */
+    fun locate(row: ArtifactShelfRow) {
+        when (locateArtifact(ctx, workspaceRoot, row.relPath)) {
+            ArtifactLocateOutcome.GONE -> Toast.makeText(
+                ctx,
+                res.getString(R.string.baopu_artifact_open_gone, row.relPath),
+                Toast.LENGTH_LONG,
+            ).show()
+            ArtifactLocateOutcome.OPENED -> Unit
+            ArtifactLocateOutcome.SHOW_PATH -> {
+                Toast.makeText(ctx, res.getString(R.string.baopu_artifact_locate_no_app), Toast.LENGTH_LONG).show()
+                locatePath = File(workspaceRoot, row.relPath).absolutePath
+            }
         }
     }
 
@@ -408,6 +441,14 @@ internal fun ArtifactShelfDialog(
                                         Text(stringResource(R.string.baopu_artifact_shelf_delete))
                                     }
                                 }
+                                Row {
+                                    TextButton(onClick = { openExternal(row) }) {
+                                        Text(stringResource(R.string.baopu_artifact_open_external))
+                                    }
+                                    TextButton(onClick = { locate(row) }) {
+                                        Text(stringResource(R.string.baopu_artifact_locate))
+                                    }
+                                }
                                 if (isConfirming) {
                                     // 第二击前的红字（C5 的可见形状；C6 那一型问的是「清掉这一行」）
                                     Text(
@@ -457,5 +498,8 @@ internal fun ArtifactShelfDialog(
                 onChanged()
             },
         )
+    }
+    locatePath?.let { path ->
+        ArtifactLocateDialog(absPath = path, onDismiss = { locatePath = null })
     }
 }

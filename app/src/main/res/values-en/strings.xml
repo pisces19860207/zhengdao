@@ -1262,6 +1262,20 @@
     <string name="baopu_artifact_shelf_none">No artifacts yet</string>
     <string name="baopu_artifact_shelf_none_hint">Ask it to write something</string>
     <string name="baopu_artifact_shelf_close">Close</string>
+    <!-- 641: open artifact externally and the file-manager fallback -->
+    <string name="baopu_artifact_open_external">Open with another app</string>
+    <string name="baopu_artifact_locate">Locate in file manager</string>
+    <string name="baopu_artifact_open_no_app">No app can open this file type: %1$s</string>
+    <string name="baopu_artifact_open_gone">The file is gone: %1$s</string>
+    <string name="baopu_artifact_open_unsupported">This file type cannot be opened by another app: %1$s</string>
+    <string name="baopu_artifact_open_failed">Could not open %1$s. The file is untouched.</string>
+    <string name="baopu_artifact_locate_no_app">No file manager can open the folder; showing the path instead.</string>
+    <string name="baopu_artifact_locate_title">Locate in file manager</string>
+    <string name="baopu_artifact_locate_hint">Android has no standard reveal-file action. Here is the full path; copy it and paste it into your file manager search.</string>
+    <string name="baopu_artifact_locate_path">Path: %1$s</string>
+    <string name="baopu_artifact_locate_copy">Copy path</string>
+    <string name="baopu_artifact_locate_copied">Path copied</string>
+    <string name="baopu_artifact_locate_copy_failed">Copy failed. Long-press the path above to copy it manually.</string>
     <string name="baopu_tool_card_build">Card builder</string>
     <string name="baopu_tool_card_build_desc">Build a card / world book / five-piece skeleton from a workspace spec JSON (writes files after confirmation; never overwrites)</string>
     <string name="baopu_tool_portrait_look">Portrait local features (read-only)</string>

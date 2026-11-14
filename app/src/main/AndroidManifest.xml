@@ -366,6 +366,20 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/baopu_file_paths" />
         </provider>
+
+        <!-- 第六百四十一批：产物「用其他应用打开」专用 provider。
+             与上面相机那个分开：相机 paths 仍只暴露 baopu-camera，本件只给
+             工作区里的产物发 content:// 临时读授权（见 res/xml/artifact_open_paths.xml）。
+             exported=false ＋ grantUriPermissions=true；本单权限声明一字未动。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.artifact.open"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/artifact_open_paths" />
+        </provider>
     </application>
 
 </manifest>

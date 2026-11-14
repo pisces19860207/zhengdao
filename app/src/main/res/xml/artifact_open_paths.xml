@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第六百四十一批：产物「用其他应用打开」专用 FileProvider 的可暴露目录。
+     既有 baopu_file_paths.xml 仍只放相机缓存目录，本文件是第二个独立 provider。
+     工作区根三种形态（默认 Download/证道、自定义共享目录、仅私有的 App 外部目录）
+     都在 Environment.getExternalStorageDirectory() 之下，故用 external-path；
+     第二条覆盖 getExternalFilesDir(null) 起算的私有模式。
+     刻意不放 root-path（设备根）、不放 files-path（内部私有）、不放 cache-path：
+     口子止于共享存储，代码侧再验 PathGuard.isInside ＋ 三类后缀白名单。 -->
+<paths>
+    <external-path name="artifact_external" path="." />
+    <external-files-path name="artifact_ext_files" path="." />
+</paths>
