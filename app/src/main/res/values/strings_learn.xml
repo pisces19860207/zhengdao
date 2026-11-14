@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第六百二十四批 · 学习板块阶段一（中文）。英文镜像见 values-en/strings_learn.xml。
+     文案表：判据对照见派工单 624（A 观察／E 提问四类触发／F 未学会清单）。
+     问题卡模板里的 {步}／{目标}／{页}／{条数} 是 LearnTriggers.format 的占位符，
+     落盘前已替换成真实字——不许在渲染层二次替换。 -->
+<resources>
+    <string name="learn_section_title">学习板块</string>
+    <string name="learn_switch_title">观察玄览操作（默认开）</string>
+    <string name="learn_switch_desc">只记点击、输入、导航、滚动与页面结构；不记正文、不记整页 HTML；密码与验证码整条丢弃；私有目录内 24 小时自动清理，不出设备。</string>
+    <string name="learn_data_summary">观察数据：%1$d 个会话文件 · 未学会 %2$d 条</string>
+    <string name="learn_session_active">正在观察（玄览前台）</string>
+    <string name="learn_clear_data">清空观察数据</string>
+    <string name="learn_clear_data_confirm">清空后观察记录不可找回。未学会清单不受影响。确定清空？</string>
+    <string name="learn_clear_list">清空未学会</string>
+    <string name="learn_clear_list_confirm">清空后这批待学的步骤就没了（含已答的记录）。确定清空？</string>
+    <string name="learn_confirm_ok">清空</string>
+    <string name="learn_confirm_cancel">先不清</string>
+    <string name="learn_list_title">未学会清单</string>
+    <string name="learn_list_empty">暂时没有要学的。你在玄览里操作、而它没学明白的步骤会出现在这里。</string>
+    <string name="learn_type_ambiguous">定位不唯一</string>
+    <string name="learn_type_no_evidence">缺证据</string>
+    <string name="learn_type_param">参数不确定</string>
+    <string name="learn_type_intent">意图不确定</string>
+    <string name="learn_step_label">第 %1$d 步 · %2$s</string>
+    <string name="learn_teach_this_step">就教这一步</string>
+    <string name="learn_answered_toast">已记下，这条从清单里销了</string>
+    <string name="learn_taught_toast">已补教这一步</string>
+    <string name="learn_keep_ambiguous_toast">这一步在页面上还是对不上唯一位置，先留在清单里</string>
+    <string name="learn_capture_waiting_toast">到玄览里把这一步做一遍（60 秒内有效）</string>
+    <string name="learn_capture_timeout_toast">没等到这一步的操作，先解除了</string>
+    <string name="learn_pill_desc">未学会清单：%1$d 条待处理</string>
+    <string name="learn_sheet_title">待学的步骤</string>
+    <string name="learn_q_ambiguous">第 {步} 步「{目标}」在页面上有 {条数} 条走法，你平时用哪条？</string>
+    <string name="learn_q_no_evidence">第 {步} 步点了「{目标}」但页面没变化，这一步想做什么？</string>
+    <string name="learn_q_param">第 {步} 步「{目标}」填的内容每次都不同吗？</string>
+    <string name="learn_q_intent">这次是在「{页}」做哪件事？</string>
+    <string name="learn_opt_param">是参数（每次会变）</string>
+    <string name="learn_opt_fixed">固定值（每次一样）</string>
+    <string name="learn_opt_teach">就教这一步</string>
+    <string name="learn_opt_drop">这一步不算</string>
+    <string name="learn_free_text">或者直接说你的想法</string>
+</resources>

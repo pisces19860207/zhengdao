@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 624: learn board phase 1 (English mirror of values/strings_learn.xml).
+     Question templates keep the {步}/{目标}/{页}/{条数} placeholders — substituted by
+     LearnTriggers.format before persisting; the render layer must not substitute again.
+     Note: template placeholder tokens stay in Chinese wire form on purpose (they are
+     machine keys, not display text). -->
+<resources>
+    <string name="learn_section_title">Learn board</string>
+    <string name="learn_switch_title">Observe browser actions (on by default)</string>
+    <string name="learn_switch_desc">Records clicks, inputs, navigation, scrolls and page structure only. No body text, no full-page HTML; password and captcha events are dropped whole; private storage self-clears after 24 hours; never leaves the device.</string>
+    <string name="learn_data_summary">Observation data — session files: %1$d; to learn: %2$d</string>
+    <string name="learn_session_active">Observing (browser in foreground)</string>
+    <string name="learn_clear_data">Clear observation data</string>
+    <string name="learn_clear_data_confirm">Cleared observation records cannot be recovered. The to-learn list is not affected. Clear now?</string>
+    <string name="learn_clear_list">Clear to-learn list</string>
+    <string name="learn_clear_list_confirm">These steps to learn will be gone (answered records included). Clear now?</string>
+    <string name="learn_confirm_ok">Clear</string>
+    <string name="learn_confirm_cancel">Not now</string>
+    <string name="learn_list_title">To-learn list</string>
+    <string name="learn_list_empty">Nothing to learn yet. Steps it could not figure out while you use the browser will show up here.</string>
+    <string name="learn_type_ambiguous">Ambiguous target</string>
+    <string name="learn_type_no_evidence">No evidence</string>
+    <string name="learn_type_param">Parameter uncertain</string>
+    <string name="learn_type_intent">Intent uncertain</string>
+    <string name="learn_step_label">Step %1$d · %2$s</string>
+    <string name="learn_teach_this_step">Teach just this step</string>
+    <string name="learn_answered_toast">Answer saved; the item left the list</string>
+    <string name="learn_taught_toast">Step taught</string>
+    <string name="learn_keep_ambiguous_toast">This step still matches more than one element; keeping it in the list</string>
+    <string name="learn_capture_waiting_toast">Perform this step in the browser (valid for 60 seconds)</string>
+    <string name="learn_capture_timeout_toast">Timed out waiting for this step; disarmed</string>
+    <string name="learn_pill_desc">To-learn list — pending: %1$d</string>
+    <string name="learn_sheet_title">Steps to learn</string>
+    <string name="learn_q_ambiguous">Step {步}:「{目标}」matches {条数} ways on the page — which one do you usually use?</string>
+    <string name="learn_q_no_evidence">Step {步}: clicked「{目标}」but the page did not change — what did you mean to do?</string>
+    <string name="learn_q_param">Does「{目标}」at step {步} change every time you fill it in?</string>
+    <string name="learn_q_intent">What were you doing on「{页}」this time?</string>
+    <string name="learn_opt_param">A parameter (changes every time)</string>
+    <string name="learn_opt_fixed">A fixed value (same every time)</string>
+    <string name="learn_opt_teach">Teach just this step</string>
+    <string name="learn_opt_drop">Skip this step</string>
+    <string name="learn_free_text">Or just tell me in your own words</string>
+</resources>

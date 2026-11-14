@@ -104,6 +104,13 @@ class ZhengdaoApp : Application() {
         // install 只装零件与提交线程池（主线程零套接字——判据⑥），绑定/启停全在 zd-mcp-* 线程。
         // 必须在引擎预建之后：审计账的落点（抱朴记忆/）由引擎装配安装。
         com.example.zhengdao.baopu.mcp.server.McpServerController.install(this, BuildConfig.VERSION_NAME)
+        // 第六百二十四批：学习板块观察中枢——落 `filesDir/抱朴记忆/观察/`；开关默认开（判据①），
+        // 时间/收割通道可注入（判据④）。install 顺带跑一次 24h 自清；文案走资源（E 卡模板）。
+        // 必须**在引擎预建之后**：不碰引擎，但目录真源（MemoryLayout）随运行时口径走。
+        com.example.zhengdao.baopu.learn.ObserveCenter.install(
+            this,
+            com.example.zhengdao.ui.baopu.learnCardTexts(this),
+        )
     }
 
     // 2026-10-16 旧抱朴线清场：原先这里还有 registerOcShutdownOnFinish()

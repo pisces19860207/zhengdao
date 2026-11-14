@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,6 +67,7 @@ import com.example.zhengdao.baopu.TeachSessionUiModel
 import com.example.zhengdao.baopu.TeachSkillDraft
 import com.example.zhengdao.baopu.TeachStopKind
 import com.example.zhengdao.baopu.kernel.BaopuKernel
+import com.example.zhengdao.baopu.learn.ObserveCenter
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.baopu.BaopuChatController
@@ -247,6 +249,30 @@ internal fun BrowserScreen(
     }
     val navigate: () -> Unit = {
         if (!tryNavigate(context, urlInput)) reportBlocked()
+    }
+
+    // ── 第六百二十四批：学习板块（A 观察收割循环 ＋ F 未学会胶囊件 ＋ 单步补录导航）──────
+    // 收割循环只在玄览前台跑（离开组合自动停；tick 内部自查开关——关后 0 记录，判据①）。
+    // tick 是阻塞式 evaluate ⇒ ObserveCenter 内部切 IO，这里每 TICK_MS 调一次。
+    val learnState by ObserveCenter.notLearned.collectAsState()
+    val armedTeach by ObserveCenter.armed.collectAsState()
+    LaunchedEffect(Unit) {
+        while (true) {
+            ObserveCenter.tick(BrowserTabManager.activeTab()?.id)
+            delay(ObserveCenter.TICK_MS)
+        }
+    }
+    // 「就教这一步」武装条目带 URL：活跃页签不在条目页就带过去（只导航，不重录全程）
+    LaunchedEffect(armedTeach?.itemId) {
+        val arm = armedTeach ?: return@LaunchedEffect
+        val current = active?.state?.url.orEmpty()
+        if (arm.url.isNotBlank() && current != arm.url) {
+            urlInput = arm.url
+            navigate()
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { ObserveCenter.onBrowserGone() } // 离树收会话：触发卡照出（会话口径）
     }
 
     // ── JS 弹窗收口（§4.4）：引擎（applicationContext 的 WebView，弹不了框）→ 本界面对话框 ──
@@ -566,6 +592,10 @@ internal fun BrowserScreen(
                 onOpenTeachConfirm = { teachConfirmOpen = true },
                 onOpenDecisionCenter = onOpenDecisionCenter,
             )
+        } else if (learnState.count > 0) {
+            // 624 阶段一：未学会橙点件（兄弟分支——与教学胶囊互斥恒一颗；教学模式下
+            // 不显示橙点（623 定稿 §5.5）；归零不组合（判据⑦）。位置共用 CapsulePrefs。
+            NotLearnedCapsulePill(webView = active?.webView)
         }
     }
 

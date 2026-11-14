@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -700,6 +701,14 @@ fun HomeTabs() {
             // 262：目标读旁路（老请求恒是玄览；程序化切屏的恢复可能指向别的页签）。
             tab = com.example.zhengdao.ui.browser.BrowserHolder.requestedTabTarget()
         }
+    }
+
+    // 624 阶段一：「就教这一步」的武装请求（治理中心或未学会胶囊件点出）——
+    // armed 是唯一真相源（ObserveCenter.requestTeachStep 设）；此处只负责把人带到玄览，
+    // 导航到条目页与单步补录由 BrowserScreen 的 armed LaunchedEffect 与收割循环接手。
+    val armedTeach by com.example.zhengdao.baopu.learn.ObserveCenter.armed.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(armedTeach?.itemId) {
+        if (armedTeach != null && tab != TabIndex.BROWSER) tab = TabIndex.BROWSER
     }
 
     // 262：页签变化上报（程序化切屏的「用户手动切走就不抢」判定面读它）。

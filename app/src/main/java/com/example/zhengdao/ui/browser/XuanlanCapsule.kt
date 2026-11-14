@@ -942,16 +942,19 @@ private fun CapsuleToggle(checked: Boolean, enabled: Boolean, onCheckedChange: (
     }
 }
 
-/** 归一化坐标 → 起点（没存过就落默认位）。单独成函数，免得把组合体的圈复杂度顶上去。 */
-private fun startLeftOf(storedX: Float, width: Float): Float =
+/** 归一化坐标 → 起点（没存过就落默认位）。单独成函数，免得把组合体的圈复杂度顶上去。
+ *  624 阶段一的未学会胶囊件同位同算法（同一颗的同一个位），故提为 internal——实现只有这一份。 */
+internal fun startLeftOf(storedX: Float, width: Float): Float =
     if (storedX.isNaN()) CapsuleGeometry.defaultLeft(width) else CapsuleGeometry.denormalize(storedX, width)
 
-private fun startTopOf(storedY: Float, height: Float): Float =
+internal fun startTopOf(storedY: Float, height: Float): Float =
     if (storedY.isNaN()) CapsuleGeometry.defaultTop(height) else CapsuleGeometry.denormalize(storedY, height)
 
 /** 展开期间临时关掉活跃 WebView 的触摸（Compose 浮层压不住 AndroidView）；收起即还原。 */
 @Composable
-private fun PageTouchGate(expanded: Boolean, webView: android.webkit.WebView?) {
+internal fun PageTouchGate(expanded: Boolean, webView: android.webkit.WebView?) {
+    // 624 阶段一的未学会胶囊件同病同药（同一个 hazards、同一个解），故由 private 提为
+    // internal——逻辑一字未动，两处引用同一份实现，不许复制出第二份真相。
     DisposableEffect(expanded, webView) {
         if (expanded) webView?.isEnabled = false
         onDispose { if (expanded) webView?.isEnabled = true }

@@ -301,6 +301,10 @@ private fun GovFrame(
                     }
                     // 「开发核对」（561）：块本体在 GovernanceCenterAudit.kt；屏内块、无抽屉入口。
                     item { AuditSection(summary = snapshot.auditSummary, wsRoot = wsRoot) }
+                    item { Spacer(Modifier.height(14.dp)) }
+                    // 624 阶段一：学习板块（单一入口，总则①）——观察开关/摘要/清空两口/未学会清单。
+                    // 状态与动作全走 ObserveCenter（与未学会胶囊件同一个真相源），本屏不另立取数路。
+                    item { LearnBoardSection() }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
