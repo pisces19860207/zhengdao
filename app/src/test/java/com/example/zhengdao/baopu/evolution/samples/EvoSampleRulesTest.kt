@@ -209,9 +209,9 @@ class EvoSampleRulesTest {
     }
 
     @Test
-    fun `判据⑫_锚类型声明齐_低风险四域加中风险三域`() {
+    fun `判据⑫_锚类型声明齐_低中七域加高风险白名单`() {
         val declared = EvoAnchorRegistry.DECLARED
-        assertEquals("七域各一条，不能少也不能多（589 四域＋568-B 三域）", 7, declared.size)
+        assertEquals("八域各一条，不能少也不能多（589 四域＋568-B 三域＋568-C 白名单）", 8, declared.size)
         assertEquals(EvoAnchorKind.SKILL_PROPOSAL, declared[CanaryCapability.REFLECTION_AUTO_EDIT])
         assertEquals(EvoAnchorKind.TAIL_VERSION, declared[CanaryCapability.PROMPT_TAIL])
         assertEquals(EvoAnchorKind.IMPORT_BATCH, declared[CanaryCapability.MEMORY_IMPORT])
@@ -219,7 +219,8 @@ class EvoSampleRulesTest {
         assertEquals("568-B 域①判定阈值＝对话域轮次（589 拍板①）", EvoAnchorKind.CONV_TURN, declared[CanaryCapability.JUDGMENT_THRESHOLD])
         assertEquals("568-B 域②相处规则＝对话域轮次（纠正发生在用户轮内）", EvoAnchorKind.CONV_TURN, declared[CanaryCapability.COMPANION_RULE])
         assertEquals("568-B 域③目标模板＝后台一小时桶（收尾是后台家族事件，589 拍板②）", EvoAnchorKind.HOURLY_BUCKET, declared[CanaryCapability.GOAL_TEMPLATE])
-        assertEquals("锚类型是闭集六格", 6, EvoAnchorKind.entries.size)
+        assertEquals("568-C 域①工具白名单＝白名单变更事件（一次调整＝一次独立事件）", EvoAnchorKind.WHITELIST_EVENT, declared[CanaryCapability.TOOL_WHITELIST])
+        assertEquals("锚类型是闭集七格", 7, EvoAnchorKind.entries.size)
     }
 
     // ── 判据⑬：锚类型必须与注册表一致 ────────────────────────────────────

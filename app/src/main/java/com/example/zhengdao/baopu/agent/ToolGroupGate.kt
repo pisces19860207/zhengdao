@@ -265,9 +265,19 @@ internal object ToolGroupAudit {
     @Volatile
     var sink: ((String) -> Unit)? = null
 
+    /**
+     * 第五百六十八批 C 域①：白名单候选出口（装配层注入 → `HighRiskEvo.onWhitelistEvent`）。
+     *
+     * 与 [sink] 分开：[sink] 落审计文本，这一路出进化候选。批准/手动开＝加宽（过准入），
+     * 手动关/撤销＝收窄（自动）。组授权语义（97/104 批）一字未动——这里只在既有动作边上多问一次门。
+     * null = 没人听（候选不产，审计照旧）。
+     */
+    @Volatile
+    var whitelistSink: ((groupKey: String, widening: Boolean, atMs: Long) -> Unit)? = null
+
     /** 用户同意（卡片来源）。[scope] 是「本次会话」/「长期」。 */
     fun grant(group: ToolGroup, scope: String, source: String = "卡片"): String =
-        "$TAG 批准 ${group.key}（$scope）来源=$source".also { emit(it) }
+        "$TAG 批准 ${group.key}（$scope）来源=$source".also { emit(it) }.also { emitWhitelist(group, true) }
 
     /** 用户取消 / 无人应答（卡片来源）。 */
     fun deny(group: ToolGroup, source: String = "卡片"): String =
@@ -275,7 +285,7 @@ internal object ToolGroupAudit {
 
     /** 设置页手动开/关（来源固定写「设置页」，与卡片区分）。 */
     fun manual(group: ToolGroup, on: Boolean): String =
-        "$TAG 手动${if (on) "开启" else "关闭"} ${group.key} 来源=设置页".also { emit(it) }
+        "$TAG 手动${if (on) "开启" else "关闭"} ${group.key} 来源=设置页".also { emit(it) }.also { emitWhitelist(group, on) }
 
     /**
      * 第一百零四批：决策中心·记录页撤销授权（来源＝决策中心）。
@@ -284,9 +294,14 @@ internal object ToolGroupAudit {
      * undo 只是收回「同意」这件事——组还回「已锁」，模型下次要再申请。
      */
     fun undo(group: ToolGroup, scope: String): String =
-        "$TAG 撤销 ${group.key}（$scope）来源=决策中心".also { emit(it) }
+        "$TAG 撤销 ${group.key}（$scope）来源=决策中心".also { emit(it) }.also { emitWhitelist(group, false) }
 
     private fun emit(line: String) {
         sink?.invoke(line)
+    }
+
+    /** 出一次白名单候选（568-C 域①；时刻由这里给，审计文本本身仍不带时钟）。 */
+    private fun emitWhitelist(group: ToolGroup, widening: Boolean) {
+        whitelistSink?.invoke(group.key, widening, System.currentTimeMillis())
     }
 }

@@ -578,6 +578,11 @@ internal object BaopuRuntime {
                 atMs,
             )
         }
+        // 第五百六十八批 C 域①：工具白名单候选的出口（组授权批准/手动/撤销 → 候选）。
+        // 只注入不判据：组授权语义（97/104 批）一字未动，方向与加宽准入的判定全在高风险门。
+        com.example.zhengdao.baopu.agent.ToolGroupAudit.whitelistSink = { groupKey, widening, atMs ->
+            com.example.zhengdao.baopu.evolution.highrisk.HighRiskEvo.onWhitelistEvent(groupKey, widening, atMs)
+        }
         com.example.zhengdao.baopu.agent.GovernanceStateTool.env =
             com.example.zhengdao.baopu.agent.GovernanceStateTool.Env(
                 identityDir = { appCtx.filesDir },

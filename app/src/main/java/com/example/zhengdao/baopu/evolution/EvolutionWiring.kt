@@ -208,6 +208,9 @@ internal object EvolutionWiring {
         // （样本不足不许转正，拒并记账），回灰方向照走梯子。
         // 域清单见 evolution/midrisk/MidRiskEvo.CAPABILITIES。
         MidRiskEvo.sweepOnSettle(nowMs)
+        // 第五百六十八批 C：高风险域扫档一行——同一个收工节拍；升档方向先过 589 的样本门，
+        // 回灰方向照走梯子。域清单见 evolution/highrisk/HighRiskEvo.CAPABILITIES。
+        com.example.zhengdao.baopu.evolution.highrisk.HighRiskEvo.sweepOnSettle(nowMs)
     }
 
     /** 触发 a 的换算（376 留白"谁读偏差账换成 MisjudgmentRow"的答案）：kind 线值＝判据键。 */

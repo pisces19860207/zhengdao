@@ -1886,6 +1886,36 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 白名单行（`whitelist:` 前缀）的回滚活体（第五百六十八批 C 域①）。
+     *
+     * 从 [rollbackDecisionNow] 抽出（502 同款：冻结区复杂度不许过墙）：把键集退回被回滚那行的
+     * before——回滚也是一次调整行，闸下一问就用回退集；盘上已换新值 ⇒ 老实话 false，
+     * `DecisionRollbacks.run` 对 false 不留 `rollback_of`。
+     */
+    private fun rollbackWhitelistRowNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean =
+        com.example.zhengdao.baopu.evolution.highrisk.HighRiskEvo.revertWhitelist(
+            com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules.decode(r.before),
+            com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules.decode(r.after),
+            System.currentTimeMillis(),
+        )
+
+    /**
+     * 站点信任行的回滚活体（228-C 的加/撤对偶）。从 [rollbackDecisionNow] 抽出（502 同款）：
+     * 本函数在冻结区，白名单支补进来后复杂度撞墙，把唯一带嵌套 when 的站点信任支抽出去净零，
+     * 行为逐字节不变（canary/threshold/whitelist 三支仍留在回滚 when 里，各域门禁照钉）。
+     */
+    private fun rollbackSiteTrustNow(r: com.example.zhengdao.baopu.DecisionRecord): Boolean {
+        val host = r.evidence.substringAfter(':', "")
+        return when {
+            host.isBlank() -> false
+            r.evidence.startsWith("site_trust_add:") ->
+                com.example.zhengdao.baopu.TeachSiteTrust.remove(decisionLedgerRoot(), host)
+            else ->
+                com.example.zhengdao.baopu.TeachSiteTrust.add(decisionLedgerRoot(), host)
+        }
+    }
+
+    /**
      * 回滚一条记录（二次确认在 UI；这里只执行）。
      *
      * 失败（没有回滚通道／盘上已变／kind 本来就不回滚）⇒ **不留** `rollback_of`、
@@ -1929,16 +1959,8 @@ internal class BaopuChatController(context: Context) {
 
             // 站点信任（228 批 C 片）⇒ 加的回滚＝撤、撤的回滚＝加（名单文件纯文件操作，
             // 就是回滚通道；回滚行已由 rollback_of 记，这里不再写第二条 site_trust）
-            com.example.zhengdao.baopu.DecisionKind.SITE_TRUST -> {
-                val host = r.evidence.substringAfter(':', "")
-                when {
-                    host.isBlank() -> false
-                    r.evidence.startsWith("site_trust_add:") ->
-                        com.example.zhengdao.baopu.TeachSiteTrust.remove(decisionLedgerRoot(), host)
-                    else ->
-                        com.example.zhengdao.baopu.TeachSiteTrust.add(decisionLedgerRoot(), host)
-                }
-            }
+            // 活体抽成 [rollbackSiteTrustNow]（502 同款）：本函数在冻结区，复杂度不许过墙。
+            com.example.zhengdao.baopu.DecisionKind.SITE_TRUST -> rollbackSiteTrustNow(r)
 
             // 第五百六十八批 A：灰度档位行（473 的 `canary:` 前缀 tool_grant——达标自动转全开/
             // 回灰的档位账）⇒ **一键回灰**（506 的 humanRevertCanary：人按的那颗钮，账行照落）。
@@ -1966,6 +1988,11 @@ internal class BaopuChatController(context: Context) {
                     // 活体抽成 [rollbackThresholdRowNow]（502 同款）：本函数在冻结区，复杂度不许过墙。
                     r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.THRESHOLD) ->
                         rollbackThresholdRowNow(r)
+                    // 第五百六十八批 C 域①：工具白名单调整行（`whitelist:` 前缀）⇒ 回滚＝把键集退回
+                    // 那行的 before（回滚也是一次调整行；盘上已换新值 ⇒ 老实话 false）。
+                    // 活体抽成 [rollbackWhitelistRowNow]（502 同款）：本函数在冻结区，复杂度不许过墙。
+                    r.evidence.startsWith(com.example.zhengdao.baopu.consequence.ConsequenceEvidence.WHITELIST) ->
+                        rollbackWhitelistRowNow(r)
                     else -> {
                         // 深度档（depth: 前缀）等其余授权行没有回灰语义 ⇒ 走老实话
                         false

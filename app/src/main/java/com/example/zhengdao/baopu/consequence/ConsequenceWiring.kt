@@ -328,6 +328,22 @@ internal object ConsequenceWiring {
     fun applyThresholdChange(c: ThresholdChange): Boolean =
         stamp(ConsequenceLedger.draftOf(c), c.atMs, "判定阈值 ${c.capability}")
 
+    /**
+     * 现在生效的工具白名单调整值（568-C 域①，从账读；没有调整行 ⇒ null＝调用方用缺省集）。
+     * 档位与深度同一把尺：账上有行才生效，被回滚的行不算。
+     */
+    fun currentWhitelist(capability: String): String? =
+        ConsequenceLedger.currentWhitelist(rows(), capability)
+
+    /**
+     * 落一条工具白名单调整行（568-C 域①；**只转手**：方向判据与加宽准入在高风险门里判过才许调到这里，
+     * 本函数自己一条判都不加——与 [applyThresholdChange] 同款边界）。
+     *
+     * @return 账落上没有（盘写不上只 log，不抛——记录是留痕不是闸门）
+     */
+    fun applyWhitelistChange(c: WhitelistChange): Boolean =
+        stamp(ConsequenceLedger.draftOf(c), c.atMs, "工具白名单 ${c.capability}")
+
     /** 某能力的灰度观察样本（从账读，判据层拿它算指标）。 */
     fun samplesOf(capability: String): List<CanarySample> =
         ConsequenceLedger.samplesOf(rows(), capability)

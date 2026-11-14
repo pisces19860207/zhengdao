@@ -68,6 +68,12 @@ internal enum class EvoAnchorKind(val wire: String, val cn: String) {
      * 锚＝`bucket:<1 小时桶>`——一小时里连收几次＝同一次条件成熟，只计 1；不是 runId）。
      */
     HOURLY_BUCKET("hourly_bucket", "后台一小时桶"),
+
+    /**
+     * 568-C 域①工具白名单：一次白名单变更事件（锚值＝变更前后的稳定串对——同一对 before→after
+     * 的多次回声只计 1；没有身份可取时兜底 `at:`，不硬造事件号）。
+     */
+    WHITELIST_EVENT("whitelist_event", "白名单变更事件"),
     ;
 
     companion object {
@@ -102,6 +108,8 @@ internal object EvoAnchorRegistry {
         // 568-B 域③目标模板候选：收尾是后台家族的闭合事件（不在用户轮内）⇒ 锚＝1 小时桶
         // （589 拍板②：一小时连收几次＝同一次条件成熟，只计 1）。
         CanaryCapability.GOAL_TEMPLATE to EvoAnchorKind.HOURLY_BUCKET,
+        // 568-C 域①工具白名单：一次变更事件（组授权/撤销发生在会话内）⇒ 锚＝变更事件本身。
+        CanaryCapability.TOOL_WHITELIST to EvoAnchorKind.WHITELIST_EVENT,
     )
 
     /** 这一域声明了哪种锚（null＝无锚：不计、标注）。 */

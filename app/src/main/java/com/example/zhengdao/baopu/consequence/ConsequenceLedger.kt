@@ -34,6 +34,7 @@ internal object ConsequenceEvidence {
     const val IDENTITY: String = "identity:"
     const val ADVISOR: String = "advisorOpinion:"
     const val THRESHOLD: String = "threshold:"
+    const val WHITELIST: String = "whitelist:"
 
     /** 前缀后面第一格是能力名，读到下一个冒号为止（能力名里没有冒号 ⇒ 两格就够）。 */
     fun capabilityOf(evidence: String, prefix: String): String? {
@@ -191,6 +192,41 @@ internal object ConsequenceLedger {
         return latest.after.toIntOrNull()
     }
 
+    // ── ③″ 工具白名单调整行（568-C 域①；复用 tool_grant，与档位/深度/阈值同一取舍）──────
+
+    /**
+     * 白名单调整行。方向判据（收窄/加宽）与加宽准入在高风险门（`HighRiskEvo`）里判过才调到这里，
+     * 这里只做**机械兜底**（before≠after），判据拒的返回 null 不产草稿。before/after 是
+     * [com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules.encode] 的稳定串（排序相连）。
+     */
+    fun draftOf(c: WhitelistChange): DecisionDraft? {
+        if (c.before == c.after) return null
+        return DecisionDraft(
+            kind = DecisionKind.TOOL_GRANT,
+            actor = DecisionActor.AUTO,
+            reason = "工具白名单 ${c.capability}：${c.before.ifBlank { "（空）" }}→${c.after.ifBlank { "（空）" }}（${c.why}）",
+            evidence = "${ConsequenceEvidence.WHITELIST}${c.capability}:${c.after}",
+            before = c.before,
+            after = c.after,
+            atMs = c.atMs,
+            rollbackRef = "${ConsequenceEvidence.WHITELIST}${c.capability}:${c.before}",
+            reversible = true,
+        )
+    }
+
+    /**
+     * 现在生效的白名单（从账读；没有调整行 ⇒ null＝调用方用缺省集）。`!rolledBack` 与
+     * [currentCanaryBand]/[currentThreshold] 同一格：被回滚的调整行还有效，就等于「撤销只改得动账、改不动闸」。
+     */
+    fun currentWhitelist(rows: List<DecisionRecord>, capability: String): String? {
+        val prefix = "${ConsequenceEvidence.WHITELIST}$capability:"
+        val latest = rows
+            .filter { it.kind == DecisionKind.TOOL_GRANT && !it.rolledBack && it.evidence.startsWith(prefix) }
+            .maxByOrNull { it.atMs }
+            ?: return null
+        return latest.after
+    }
+
     // ── ④ 赔付（新 kind）──────────────────────────────────────────────────
 
     /**
@@ -299,6 +335,20 @@ internal data class ThresholdChange(
     val capability: String,
     val before: Int,
     val after: Int,
+    val atMs: Long,
+    val why: String,
+)
+
+/**
+ * 一次工具白名单调整（568-C 域①的落账形状；与 [ThresholdChange] 同一家族）。
+ *
+ * 方向判据与加宽准入不在本类里：收窄/加宽由高风险门（`HighRiskEvo`）判过、加宽过了 467 准入
+ * 才调到这里。before/after 是排序相连的稳定串（空集＝空串）。
+ */
+internal data class WhitelistChange(
+    val capability: String,
+    val before: String,
+    val after: String,
     val atMs: Long,
     val why: String,
 )

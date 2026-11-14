@@ -138,6 +138,14 @@ internal enum class CanaryCapability(
      * 的源级门禁钉着）；灰度链管的是候选"记不记、升不升档"，判据写法本体一字不动。
      */
     GOAL_TEMPLATE("goal_template", "目标模板", CanaryBand.CANARY, "goal_template", "只出候选；未转正不参与判据"),
+
+    /**
+     * 568-C 域①工具白名单：收窄（移除工具/缩权）自动生效，加宽（新增工具/提权）必须过 467 准入
+     * （[com.example.zhengdao.baopu.intake.AdmissionGate]，不新造通道）。缺省灰度档：变更照常判，
+     * 但每一次都落观察账；档位关闭 ⇒ 不自调（白名单原值照用）。方向判定在
+     * [com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules]，装配在 HighRiskEvo。
+     */
+    TOOL_WHITELIST("tool_whitelist", "工具白名单", CanaryBand.CANARY, "tool_whitelist", "收窄自动生效；加宽过 467 准入"),
     ;
 
     companion object {
