@@ -8,6 +8,8 @@ package com.example.zhengdao.baopu.agent
 import com.example.zhengdao.baopu.ContentRead
 import com.example.zhengdao.baopu.ContentUri
 import com.example.zhengdao.baopu.UserPath
+import com.example.zhengdao.core.doc.DocRead
+import com.example.zhengdao.core.doc.DocTextExtractor
 import java.io.File
 
 /**
@@ -45,7 +47,8 @@ internal object ReadFileTool {
         description = "读一个文件的指定行范围（offset 从 0 起 = 第一行）。" +
             "**全盘可读**：相对路径相对工作区，绝对路径（如 /storage/emulated/0/小说/…）直接读；" +
             "自动识别 UTF-8（含 BOM）/UTF-16/GBK 并解码，GBK 老书不会读成乱码；" +
-            "二进制文件直接拒绝。大文件被 spill 后，用这个工具带 offset/limit 把需要的那几段读回来。" +
+            "Word 老格式 .doc 也能读（自动抽正文；抽不出会明确说只支持 .docx）；" +
+            "其它二进制文件直接拒绝。大文件被 spill 后，用这个工具带 offset/limit 把需要的那几段读回来。" +
             "回显行号从 0 起；要拿它去 edit_file 改行要 +1（那边行号从 1 起）。",
         inputSchema = jsonObjectOf(
             "type" to "object",
@@ -91,9 +94,9 @@ internal object ReadFileTool {
         if (!file.isFile) {
             return ToolOutcome.Failed("不是一个文件：${file.absolutePath}（read_file 只读文件；列目录用 list_dir）")
         }
-        if (file.length() > MAX_FILE_BYTES) {
+        if (file.length() > maxBytesOf(file.name)) {
             return ToolOutcome.Failed(
-                "文件太大不整读：${file.absolutePath} 有 ${file.length()} B，超过 ${MAX_FILE_BYTES} B 上限。" +
+                "文件太大不整读：${file.absolutePath} 有 ${file.length()} B，超过 ${maxBytesOf(file.name)} B 上限。" +
                     "这类文件应该先 list_dir 看结构，再分批 offset/limit 读。"
             )
         }
@@ -127,8 +130,41 @@ internal object ReadFileTool {
         if (bytes.isEmpty()) {
             return ToolOutcome.Ok("（空文件）")
         }
+        // 642：`.doc`（Word 97–2003）是**复合文档**，按文本硬读只会出乱码 ⇒ 先抽正文。
+        if (DocTextExtractor.canHandle(name)) return renderDoc(bytes, offset, limit)
         val decoded = TextDecode.decodeNamed(name, bytes)
         val text = decoded.text ?: return ToolOutcome.Failed(decoded.error ?: "读不了：$name")
+        val note = if (decoded.encoding != FileInfoTool.Encodings.UTF8) {
+            "（文件编码判为 ${decoded.encoding}，读时已自动解码）\n"
+        } else {
+            ""
+        }
+        return renderLines(text, offset, limit, note)
+    }
+
+    /**
+     * 642：`.doc` 走 [DocTextExtractor]（只读抽取，不写 .doc）。
+     *
+     * 抽不出来时**必须明确说"只支持 .docx"**（派工单判据②的负例：报"不存在"就红）——
+     * 模型看到"不存在"会以为路径错了、原地重试；看到"格式不支持"才会换路子
+     * （让用户另存为 .docx，或改用别的文件）。
+     */
+    private fun renderDoc(bytes: ByteArray, offset: Int, limit: Int): ToolOutcome =
+        when (val read = DocTextExtractor.extract(bytes)) {
+            is DocRead.Ok -> renderLines(
+                read.text,
+                offset,
+                limit,
+                "（这是 .doc 老格式：已抽出正文 ${read.chars} 字；表格按制表符分隔）\n",
+            )
+            is DocRead.Unsupported -> ToolOutcome.Failed(
+                "只支持 .docx：这份 .doc ${read.reason}。" +
+                    "请在 Word/WPS 里「另存为」.docx 再让我读（.doc 我不写，只读这一种老格式）",
+            )
+        }
+
+    /** 行号渲染（纯文本与 `.doc` 抽取两条路共用一份，行号口径不许分叉）。 */
+    private fun renderLines(text: String, offset: Int, limit: Int, note: String): ToolOutcome {
         val lines = TextDecode.splitLines(text)
         if (lines.isEmpty()) {
             return ToolOutcome.Ok("（空文件）")
@@ -142,9 +178,7 @@ internal object ReadFileTool {
         }
         val end = (start + limit.coerceIn(1, MAX_LIMIT)).coerceAtMost(lines.size)
         val body = buildString {
-            if (decoded.encoding != FileInfoTool.Encodings.UTF8) {
-                append("（文件编码判为 ${decoded.encoding}，读时已自动解码）\n")
-            }
+            append(note)
             for (i in start until end) {
                 append(i).append('\t').append(lines[i]).append('\n')
             }
@@ -157,8 +191,19 @@ internal object ReadFileTool {
         return ToolOutcome.Ok(body.toString().trimEnd())
     }
 
-    // 读侧解码已统一到 [TextDecode]（2026-10-17）：判定与解码只许有一份实现——
-    // 否则又会回到「read_file 读得出、edit_file 改出乱码」那种各写一套的老路。
+    /** 读侧解码已统一到 [TextDecode]（2026-10-17）：判定与解码只许有一份实现——
+     *  否则又会回到「read_file 读得出、edit_file 改出乱码」那种各写一套的老路。
+     */
+
+    /**
+     * 642：`.doc` 走抽取器，它有自己更宽的上限（40MB）。
+     *
+     * 为什么不一起用 2MB：`.doc` 是二进制容器，正文之外塞着格式信息，2MB 的老合同很常见；
+     * 而 `.doc` 又不能"分批 offset 读"（正文位置由分片表决定，不是行）⇒ 卡 2MB 等于
+     * 让一半旧资料读不了。抽取器内部另有 20 万字截断兜底，不会把上下文撑爆。
+     */
+    private fun maxBytesOf(name: String): Long =
+        if (DocTextExtractor.canHandle(name)) DocTextExtractor.MAX_DOC_BYTES else MAX_FILE_BYTES
 
     /**
      * executor：arguments 里的 path 已是守卫过的绝对路径（613 起 `file://` 与前导空白也在这里归一）；

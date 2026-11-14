@@ -159,7 +159,7 @@ internal object FileOpRules {
         "find_files", "search_in_files", "index_search" -> FileOpKind.SEARCH
         "index_browse" -> FileOpKind.READ
         "write_file", "edit_file", "archive_pack", "archive_extract", "image_ops",
-        "docx_write", "xlsx_write" -> FileOpKind.WRITE
+        "docx_write", "xlsx_write", "docx_template" -> FileOpKind.WRITE
         "delete_path" -> FileOpKind.DELETE
         "move_path" -> FileOpKind.MOVE
         // 288：复制/批量/整理（预览是只读，按 READ 入账——「每笔读写入账」没有黑洞）
@@ -220,6 +220,8 @@ internal object FileOpRules {
         // 632 轻办公：一句人话说清「生成了什么、叫什么」（大小与来源由 OfficeSink 拼进用途）
         "docx_write" -> "生成 docx「${brief(args.optString("name").ifBlank { "文档" })}」"
         "xlsx_write" -> "生成 xlsx「${brief(args.optString("name").ifBlank { "表格" })}」"
+        // 642：套模板——账面上要能看出「用的是哪份模板」
+        "docx_template" -> "按模板生成 docx「${brief(args.optString("name").ifBlank { "填好的文档" })}」"
         else -> tool
     }
 

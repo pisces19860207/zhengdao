@@ -44,7 +44,8 @@ class RiskMatrixTest {
         // 609 小说资产六件（96 → 102：读四件 R0 / novel_timeline_append、novel_annotation_reply R1 必问）
         // 610 通读两件（102 → 104）；622 动作脚本导出/导入两件（104 → 106，R1×2）
         // 632 轻办公两件（106 → 108：docx_write R1 / xlsx_write R1——只写工作区 产物/）
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 108, names.size)
+        // 642 套模板一件（108 → 109：docx_template R1——读模板、只写 产物/）
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 109, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),

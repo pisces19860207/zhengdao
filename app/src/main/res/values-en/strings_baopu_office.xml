@@ -7,4 +7,7 @@
     <string name="baopu_tool_docx_write_desc">Writes structured content into a .docx: headings level 1–3, paragraphs, bullet/numbered lists, bold/italic, tables (max 10 columns), one header line, images (max 2). One fixed style set (headings 22/17/15pt, body 15pt, 1.5 line spacing) — not editable. Saved to 产物/ only; never overwrites.</string>
     <string name="baopu_tool_xlsx_write">Write Excel</string>
     <string name="baopu_tool_xlsx_write_desc">Writes tabular data into a .xlsx: up to 5 sheets, bold frozen header row, auto column widths, number/date formats, merged cells. Values only, no formulas; saved to 产物/ only; never overwrites.</string>
+    <!-- Batch 642: light office phase 2 (template fill) -->
+    <string name="baopu_tool_docx_template">Fill Word template</string>
+    <string name="baopu_tool_docx_template_desc">Uses a .docx you provide as a template and replaces its {{placeholders}}: layout, fonts, header and footer stay exactly as templated — only text changes. Any placeholder without a value fails the whole run with "missing field" (never left blank). Macro-enabled .docm, formulas and loop/conditional templates are not supported. Output goes to 产物/ only; the template file is never modified.</string>
 </resources>

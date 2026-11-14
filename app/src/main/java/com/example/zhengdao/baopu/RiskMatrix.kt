@@ -523,6 +523,9 @@ internal data class RiskTable(
                 // 不设 writePathKeys：落点由工具按 `产物/` 自己算，调用方没有路径参数可判。
                 "docx_write" to ToolRule(RiskClass.R1),
                 "xlsx_write" to ToolRule(RiskClass.R1),
+                // ── 642 套模板：读用户那份 .docx（只读），成品写 `产物/` ──
+                // 同样 R1：不动原件、不联网、不花钱；缺字段整次失败 ⇒ 不会产出半份空合同。
+                "docx_template" to ToolRule(RiskClass.R1),
             ),
             // 173 口径：终端不参与分级——bash 不查档、不叠规则，原样交回终端那条路。
             // 注意它必须**显式豁免**：若只返回 null，fail-closed 会把它当未分类判 R2＋必问，

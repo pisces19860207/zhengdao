@@ -427,6 +427,9 @@ internal object ToolGroupTable {
         // 不动用户既有文件、不联网，所以矩阵 R1；两件都 CONFIRM（每次一张卡）。
         "docx_write" to ToolGroup.FILES,        // R1 生成 Word
         "xlsx_write" to ToolGroup.FILES,        // R1 生成 Excel
+        // ── 第六百四十二批：轻办公二期（模板替换）──
+        // 与 docx_write 同组同档：读用户模板、只写 产物/，不动原件、不联网 ⇒ R1＋CONFIRM。
+        "docx_template" to ToolGroup.FILES,
     )
 
     /**
@@ -1634,6 +1637,9 @@ internal object BaopuToolCatalog {
         // 默认开≠能静默动手：两件都是 CONFIRM，每次一张卡。
         "docx_write",
         "xlsx_write",
+        // 642：套模板——同样默认「启用」（组归 FILES 仍默认不可见，解锁即用）。
+        // 漏了这行 ⇒ 注册了但默认关，模型永远看不见它（632 那两件就是栽在这条上）。
+        "docx_template",
     )
 
     /**
@@ -1834,6 +1840,8 @@ internal object BaopuToolCatalog {
         // 只写值不写公式；docx 的样式是固定一套（不做样式编辑）。
         Entry("docx_write") { DocxWriteTool.spec(it) },
         Entry("xlsx_write") { XlsxWriteTool.spec(it) },
+        // 第六百四十二批：套模板（只换 {{占位符}} 的字，不改版；缺字段整次失败）。
+        Entry("docx_template") { DocxTemplateTool.spec(it) },
     )
 
     /**

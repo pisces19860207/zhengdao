@@ -319,7 +319,13 @@ internal object RunRules {
                 "把访问令牌写入 MCP 服务器 id=${args.optString("id").trim().ifBlank { "？" }} 的保险柜（内容不回显）"
             // 632：轻办公两件——卡面说清「生成什么、落哪、会不会动旧文件」。
             "docx_write" ->
-                "生成 Word 文档：${args.optJSONArray("blocks")?.length() ?: 0} 块内容 → 产物/（同名不覆盖，旧文件不动）"
+                "生成 Word 文档：${args.optJSONArray("blocks")?.length() ?: 0} 块内容" +
+                    (if (args.optBoolean("footer_pages", false)) "＋页脚页码" else "") +
+                    " → 产物/（同名不覆盖，旧文件不动）"
+            // 642：套模板——卡面必须说清「用哪份模板、填几个字段」，用户才好判断是不是自己那份
+            "docx_template" ->
+                "按模板生成 Word 文档：模板「${args.optString("template").trim()}」" +
+                    "／填 ${args.optJSONObject("fields")?.length() ?: 0} 个字段 → 产物/（模板原件不动）"
             "xlsx_write" ->
                 "生成 Excel 表格：${args.optJSONArray("sheets")?.length() ?: 0} 个工作表 → 产物/（同名不覆盖，旧文件不动）"
             else -> "$tool（${args.toString().take(60)}）"

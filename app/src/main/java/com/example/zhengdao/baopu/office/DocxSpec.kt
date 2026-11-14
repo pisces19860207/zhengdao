@@ -80,15 +80,29 @@ internal sealed interface DocxBlock {
 }
 
 /**
+ * 页脚（第六百四十二批）——**一行文字** ＋ 可选的页码域。
+ *
+ * @param text 页脚那句话（空串＝页脚里只放页码）
+ * @param pages 是否追加「第 X 页 / 共 Y 页」：X/Y 是 Word 的 `PAGE`／`NUMPAGES` **域**，
+ *   由 Word/WPS 自己算（我们只写域、不写死数字——写死的话第二页就错了）
+ */
+internal data class DocxFooter(val text: String, val pages: Boolean)
+
+/** 页脚是不是「什么都不用写」（文字空 + 不要页码 ⇒ 不建 footer 部件）。 */
+internal fun DocxFooter?.isEmpty(): Boolean = this == null || (text.isBlank() && !pages)
+
+/**
  * 一份 docx 的完整描述。
  *
  * @param fileBase 落盘用的文件基名（不含扩展名与时间戳）
  * @param header 页眉那一行（空串＝不建页眉）
+ * @param footer 页脚（null／空 ⇒ 不建页脚；642 起）
  */
 internal data class DocxSpec(
     val fileBase: String,
     val header: String,
     val blocks: List<DocxBlock>,
+    val footer: DocxFooter? = null,
 ) {
 
     /** 各类块的件数（回执与账行用；也是判据①「结构断言」的读数来源）。 */
@@ -98,7 +112,8 @@ internal data class DocxSpec(
         val lists = blocks.count { it is DocxBlock.Bullets }
         val tables = blocks.count { it is DocxBlock.Table }
         val pictures = blocks.count { it is DocxBlock.Picture }
-        return "标题 $headings / 段落 $paragraphs / 列表 $lists / 表格 $tables / 图片 $pictures"
+        val tail = if (footer.isEmpty()) "" else " / 页脚" + if (footer?.pages == true) "（页码）" else ""
+        return "标题 $headings / 段落 $paragraphs / 列表 $lists / 表格 $tables / 图片 $pictures$tail"
     }
 }
 
@@ -173,14 +188,34 @@ internal object DocxInline {
     }
 }
 
-/** `blocks`/`name`/`title`/`header` 的解析与校验（**纯函数**，零 IO）。 */
+/** `blocks`/`name`/`title`/`header`/`footer` 的解析与校验（**纯函数**，零 IO）。 */
 internal object DocxSpecParser {
 
     const val ARG_NAME = "name"
     const val ARG_HEADER = "header"
     const val ARG_BLOCKS = "blocks"
 
+    /** 642：页脚那一行文字。 */
+    const val ARG_FOOTER = "footer"
+
+    /** 642：页脚是否带「第 X 页 / 共 Y 页」。 */
+    const val ARG_FOOTER_PAGES = "footer_pages"
+
+    /**
+     * 642 判据⑤（负例：接受 ⇒ 红）：**公式与宏一律当场拒**。
+     *
+     * 为什么不做公式：docx 的公式是 OMML（一套独立的数学标记），要写对得先有公式引擎；
+     * 硬塞进 `<w:t>` 会被 Word 当普通文本显示（用户以为算出结果，其实是一串源码）——
+     * 这比明确说"不做"更坏。宏（.docm/VBA）是安全红线：不执行、不嵌入。
+     *
+     * 认的名字覆盖模型常用的几种叫法（formula/equation/math/latex；macro/vba/docm），
+     * 并且**不是静默忽略**：给了就整次失败，并说清改怎么办。
+     */
+    private val FORMULA_KEYS = setOf("formula", "formulas", "equation", "math", "latex", "omml")
+    private val MACRO_KEYS = setOf("macro", "macros", "vba", "docm", "macro_code")
+
     fun parse(args: JSONObject): Step<DocxSpec> {
+        rejectFormulaOrMacro(args)?.let { return it }
         val array = args.optJSONArray(ARG_BLOCKS)
             ?: return Step.Bad("缺少必填参数「$ARG_BLOCKS」：把要写的内容按块列出来（标题/段落/列表/表格/图片）")
         if (array.length() == 0) return Step.Bad("「$ARG_BLOCKS」是空的——没有内容可写")
@@ -201,8 +236,34 @@ internal object DocxSpecParser {
                 fileBase = baseName(args, blocks),
                 header = args.optString(ARG_HEADER).trim(),
                 blocks = blocks,
+                footer = footerOf(args),
             ),
         )
+    }
+
+    /** 顶层参数里出现公式/宏 ⇒ 直接拒（判据⑤）。 */
+    private fun rejectFormulaOrMacro(args: JSONObject): Step.Bad? {
+        val keys = args.keys()
+        while (keys.hasNext()) {
+            val key = keys.next().lowercase()
+            if (key in FORMULA_KEYS) {
+                return Step.Bad(
+                    "不做公式：这个工具只写文字/表格/图片（公式要公式引擎，写进 Word 会被当文本显示）。" +
+                        "请先把公式算好、把结果写成文字或截成图片。",
+                )
+            }
+            if (key in MACRO_KEYS) {
+                return Step.Bad("不做宏：宏（VBA/.docm）是安全红线，不执行、不嵌入。请用普通 .docx。")
+            }
+        }
+        return null
+    }
+
+    /** 页脚：文字空 + 不要页码 ⇒ null（不建部件，保持 632 的字节级零变化）。 */
+    private fun footerOf(args: JSONObject): DocxFooter? {
+        val text = args.optString(ARG_FOOTER).trim()
+        val pages = args.optBoolean(ARG_FOOTER_PAGES, false)
+        return if (text.isEmpty() && !pages) null else DocxFooter(text, pages)
     }
 
     /** 文件名基：显式 `name` → 第一个标题 → 「文档」。 */
@@ -223,6 +284,12 @@ internal object DocxSpecParser {
             "list", "bullets", "ordered_list", "unordered_list" -> listBlock(obj, at)
             "table" -> tableOf(obj, at)
             "image", "picture" -> pictureOf(obj, at)
+            // 642 判据⑤：块级也要拒（顶层参数拒了，块里塞 type=formula 同样不许）
+            in FORMULA_KEYS -> Step.Bad(
+                "$at 是公式块：不做公式（要公式引擎，写进 Word 只会变成一串文本）。" +
+                    "请把公式算好、结果写成文字或截图。",
+            )
+            in MACRO_KEYS -> Step.Bad("$at 要嵌宏：不做宏（安全红线，不执行、不嵌入）。")
             else -> Step.Bad("$at 的 type「$type」不认得（可写 heading / paragraph / list / table / image）")
         }
     }

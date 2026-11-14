@@ -38,18 +38,20 @@ internal object DocxWriter {
         val pictures = spec.blocks.filterIsInstance<DocxBlock.Picture>()
         require(pictures.size <= OfficeLimits.DOCX_MAX_IMAGES) { "图片超过上限" }
         require(pictures.all { images.containsKey(it.path) }) { "图片字节没准备好" }
-        val ids = Ids(spec.header.isNotBlank())
+        val footer = spec.footer.takeUnless { it.isEmpty() }
+        val ids = Ids(spec.header.isNotBlank(), footer != null)
         val imageIds = pictures.map { ids.image() }
         val pkg = OoxmlPackage()
-        pkg.xml(OoxmlPackage.CONTENT_TYPES, contentTypes(spec.header.isNotBlank(), pictures, images))
+        pkg.xml(OoxmlPackage.CONTENT_TYPES, contentTypes(spec.header.isNotBlank(), footer != null, pictures, images))
         pkg.xml(OoxmlPackage.ROOT_RELS, rootRels())
         val body = DocxBody(spec, images, imageIds)
         val (bodyXml, orderedCount) = body.render()
-        pkg.xml("word/document.xml", documentXml(bodyXml, ids.header))
+        pkg.xml("word/document.xml", documentXml(bodyXml, ids.header, ids.footer))
         pkg.xml("word/styles.xml", stylesXml())
         pkg.xml("word/numbering.xml", numberingXml(orderedCount))
         pkg.xml("word/_rels/document.xml.rels", documentRels(ids, pictures, images))
         if (ids.header.isNotEmpty()) pkg.xml("word/header1.xml", headerXml(spec.header))
+        if (footer != null) pkg.xml("word/footer1.xml", footerXml(footer))
         pictures.forEachIndexed { i, pic ->
             val info = images.getValue(pic.path)
             pkg.binary("word/media/image${i + 1}.${info.info.ext}", info.bytes)
@@ -57,27 +59,46 @@ internal object DocxWriter {
         return pkg.build()
     }
 
-    /** 关系 id 分配：styles=1、numbering=2、header=3（有页眉时）、图片从下一个起。 */
-    private class Ids(hasHeader: Boolean) {
+    /**
+     * 关系 id 分配：styles=1、numbering=2、header（有页眉时）、footer（有页脚时），图片从下一个起。
+     *
+     * 642 起图片的 rId 不再靠「有页眉就 +4」这种猜：构造时把**下一个可用号**记下来
+     * （[firstImage]），`document.xml` 里嵌的 rId 与 rels 里写的必然一致——
+     * 页脚一来，"3 还是 4"那种算术就会错一位，而错一位的表现是「Word 说文件损坏」。
+     */
+    private class Ids(hasHeader: Boolean, hasFooter: Boolean) {
         private var next = 1
         val styles: String = rid()
         val numbering: String = rid()
         val header: String = if (hasHeader) rid() else ""
+        val footer: String = if (hasFooter) rid() else ""
+
+        /** 图片 rId 的起点（styles/numbering/header/footer 之后）。 */
+        private val firstImage = next
+
+        /** 第 [index] 张图的 rId（与 [image] 的分配顺序一一对应）。 */
+        fun imageId(index: Int): String = "rId${firstImage + index}"
+
         fun image(): String = rid()
         private fun rid(): String = "rId${next++}"
     }
 
     // ── 包清单与关系 ──────────────────────────────────────────────────────
 
-    private fun contentTypes(hasHeader: Boolean, pictures: List<DocxBlock.Picture>, images: Map<String, OfficeImage>): String {
+    private fun contentTypes(
+        hasHeader: Boolean,
+        hasFooter: Boolean,
+        pictures: List<DocxBlock.Picture>,
+        images: Map<String, OfficeImage>,
+    ): String {
         val exts = pictures.map { images.getValue(it.path).info.ext }.distinct()
         val ct = StringBuilder(XML_HEAD)
         ct.append("<Types xmlns=\"").append(OoxmlNs.CONTENT_TYPES).append("\">")
         ct.append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>")
         ct.append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>")
         for (ext in exts) {
-            val mime = if (ext == "png") "image/png" else "image/jpeg"
-            ct.append("<Default Extension=\"").append(ext).append("\" ContentType=\"").append(mime).append("\"/>")
+            ct.append("<Default Extension=\"").append(ext).append("\" ContentType=\"")
+                .append(mimeOf(ext)).append("\"/>")
         }
         ct.append(override("/word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"))
         ct.append(override("/word/styles.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"))
@@ -85,8 +106,18 @@ internal object DocxWriter {
         if (hasHeader) {
             ct.append(override("/word/header1.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"))
         }
+        if (hasFooter) {
+            ct.append(override("/word/footer1.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"))
+        }
         ct.append("</Types>")
         return ct.toString()
+    }
+
+    /** 扩展名 → MIME（642 起多一个 webp：Word 365/WPS 认它，Android 也原生能画）。 */
+    private fun mimeOf(ext: String): String = when (ext) {
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        else -> "image/jpeg"
     }
 
     private fun override(part: String, type: String): String =
@@ -107,9 +138,10 @@ internal object DocxWriter {
             DocxRel(ids.numbering, "$REL/numbering", "numbering.xml"),
         )
         if (ids.header.isNotEmpty()) rels += DocxRel(ids.header, "$REL/header", "header1.xml")
+        if (ids.footer.isNotEmpty()) rels += DocxRel(ids.footer, "$REL/footer", "footer1.xml")
         pictures.forEachIndexed { i, pic ->
             val ext = images.getValue(pic.path).info.ext
-            rels += DocxRel(imageRid(ids, i), "$REL/image", "media/image${i + 1}.$ext")
+            rels += DocxRel(ids.imageId(i), "$REL/image", "media/image${i + 1}.$ext")
         }
         val head = XML_HEAD + "<Relationships xmlns=\"" + OoxmlNs.PACKAGE_REL + "\">"
         return rels.fold(head) { acc, rel ->
@@ -117,29 +149,28 @@ internal object DocxWriter {
         } + "</Relationships>"
     }
 
-    /** 第 [index] 张图的 rId：与 [Ids.image] 的分配顺序一一对应（先 styles/序号，再 header，再按图片顺序）。 */
-    private fun imageRid(ids: Ids, index: Int): String {
-        val first = if (ids.header.isEmpty()) 3 else 4
-        return "rId${first + index}"
-    }
-
     // ── 部件 ──────────────────────────────────────────────────────────────
 
-    private fun documentXml(body: String, headerRid: String): String {
+    private fun documentXml(body: String, headerRid: String, footerRid: String): String {
         val head = StringBuilder(XML_HEAD)
         head.append("<w:document xmlns:w=\"").append(NS_W).append("\"")
         head.append(" xmlns:r=\"").append(REL).append("\"")
         head.append(" xmlns:wp=\"").append(OoxmlNs.DRAWING_WORD).append("\"")
         head.append(" xmlns:a=\"").append(OoxmlNs.DRAWING).append("\">")
         head.append("<w:body>").append(body)
-        head.append(sectPr(headerRid))
+        head.append(sectPr(headerRid, footerRid))
         head.append("</w:body></w:document>")
         return head.toString()
     }
 
-    private fun sectPr(headerRid: String): String {
-        val ref = if (headerRid.isEmpty()) "" else "<w:headerReference w:type=\"default\" r:id=\"$headerRid\"/>"
-        return "<w:sectPr>$ref" +
+    /**
+     * 节属性：页眉/页脚引用必须在 `w:pgSz` **之前**（ECMA-376 的 `CT_SectPr` 是有序序列，
+     * 顺序错了 Word 会报"内容有问题"）。
+     */
+    private fun sectPr(headerRid: String, footerRid: String): String {
+        val head = if (headerRid.isEmpty()) "" else "<w:headerReference w:type=\"default\" r:id=\"$headerRid\"/>"
+        val foot = if (footerRid.isEmpty()) "" else "<w:footerReference w:type=\"default\" r:id=\"$footerRid\"/>"
+        return "<w:sectPr>$head$foot" +
             "<w:pgSz w:w=\"11906\" w:h=\"16838\"/>" +
             "<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"" +
             " w:header=\"851\" w:footer=\"992\" w:gutter=\"0\"/>" +
@@ -147,6 +178,57 @@ internal object DocxWriter {
             "<w:docGrid w:type=\"lines\" w:linePitch=\"312\"/>" +
             "</w:sectPr>"
     }
+
+    /**
+     * 页脚（第六百四十二批）：**一行** —— 可选的文字 ＋ 「第 X 页 / 共 Y 页」。
+     *
+     * 页码为什么是**域**（`PAGE`／`NUMPAGES`）而不是我们算好的数字：
+     * 页数只有排版器知道（字体、纸张、行距都影响），我们这边写 "第 1 页 / 共 1 页"
+     * 到了第二页就是错的；域由 Word/WPS 打开时自己算，插页删页都对。
+     *
+     * 域的形状按 ECMA-376 §17.16.5.3（简单域的五颗 run）：
+     * `fldChar begin` → `instrText PAGE` → `fldChar separate` → 结果文本 → `fldChar end`。
+     * `separate` 后面那句是**未计算前的占位结果**（Word 一打开就会重算并覆盖它）；
+     * 少了它，有些阅读器（含部分 WPS 版本）会显示空白。
+     */
+    private fun footerXml(footer: DocxFooter): String {
+        val sb = StringBuilder(XML_HEAD)
+        sb.append("<w:ftr xmlns:w=\"").append(NS_W).append("\" xmlns:r=\"").append(REL).append("\">")
+        sb.append("<w:p><w:pPr>")
+        sb.append("<w:pBdr><w:top w:val=\"single\" w:sz=\"4\" w:space=\"1\" w:color=\"999999\"/></w:pBdr>")
+        sb.append("<w:spacing w:before=\"0\" w:after=\"0\"/><w:jc w:val=\"center\"/></w:pPr>")
+        if (footer.text.isNotBlank()) {
+            sb.append(footerRun(footer.text))
+            if (footer.pages) sb.append(footerRun(FOOTER_GAP))
+        }
+        if (footer.pages) {
+            sb.append(footerRun("第 "))
+            sb.append(footerField("PAGE"))
+            sb.append(footerRun(" 页 / 共 "))
+            sb.append(footerField("NUMPAGES"))
+            sb.append(footerRun(" 页"))
+        }
+        sb.append("</w:p></w:ftr>")
+        return sb.toString()
+    }
+
+    /** 页脚里的一段文字（9pt，与页眉同口径）。 */
+    private fun footerRun(text: String): String =
+        "<w:r><w:rPr><w:sz w:val=\"18\"/><w:szCs w:val=\"18\"/></w:rPr>" +
+            "<w:t xml:space=\"preserve\">" + Xml.text(text) + "</w:t></w:r>"
+
+    /** 一个简单域（`PAGE` / `NUMPAGES`）：五颗 run，结果位先放 1，打开由排版器重算。 */
+    private fun footerField(instr: String): String {
+        val rPr = "<w:rPr><w:sz w:val=\"18\"/><w:szCs w:val=\"18\"/></w:rPr>"
+        return "<w:r>$rPr<w:fldChar w:fldCharType=\"begin\"/></w:r>" +
+            "<w:r>$rPr<w:instrText xml:space=\"preserve\"> $instr </w:instrText></w:r>" +
+            "<w:r>$rPr<w:fldChar w:fldCharType=\"separate\"/></w:r>" +
+            "<w:r>$rPr<w:t>1</w:t></w:r>" +
+            "<w:r>$rPr<w:fldChar w:fldCharType=\"end\"/></w:r>"
+    }
+
+    /** 页脚文字与页码之间的间隔（两个全角空格；半角空格在等宽/宋体里太挤）。 */
+    private const val FOOTER_GAP = "　　"
 
     private fun headerXml(text: String): String {
         val runs = DocxBody.runsXml(listOf(DocxRun(text, bold = false, italic = false)), sizeHalfPt = 18)

@@ -166,6 +166,8 @@ internal object BaopuToolLabels {
         // 632：轻办公两件（docx/xlsx 写出）
         "docx_write" to R.string.baopu_tool_docx_write,
         "xlsx_write" to R.string.baopu_tool_xlsx_write,
+        // 642：套模板（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
+        "docx_template" to R.string.baopu_tool_docx_template,
     )
 
     /** 工具名 → 开关副标题。键集必须与 [LABEL] 完全一致（同一张目录，缺一即红）。 */
@@ -296,6 +298,8 @@ internal object BaopuToolLabels {
         "mcp_set_token" to R.string.baopu_tool_mcp_set_token_desc,
         "docx_write" to R.string.baopu_tool_docx_write_desc,
         "xlsx_write" to R.string.baopu_tool_xlsx_write_desc,
+        // 642：套模板
+        "docx_template" to R.string.baopu_tool_docx_template_desc,
     )
 
     /** 取标签；没有就是配置错误（调用方只有设置页，漏了立即炸而不是显示空串）。 */

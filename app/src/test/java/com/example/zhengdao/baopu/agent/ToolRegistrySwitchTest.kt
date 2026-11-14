@@ -144,6 +144,8 @@ class ToolRegistrySwitchTest {
                 "mcp_list", "mcp_add_server", "mcp_connect", "mcp_disconnect", "mcp_set_token",
                 // 632：轻办公两件（FILES 组，默认不可见但默认启用；表序即注册序）
                 "docx_write", "xlsx_write",
+                // 642：套模板（同组同档；默认不可见但默认启用）
+                "docx_template",
             ),
             reg.names(),
         )

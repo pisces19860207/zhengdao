@@ -469,6 +469,9 @@ class ToolSchemaAllTest {
                         .put("rows", JSONArray().put(JSONArray().put("示例"))),
                 ),
             ),
+            // 642：套模板（最小合法参数 = 一份模板 + 一个字段）
+            "docx_template" to JSONObject().put("template", "模板.docx")
+                .put("fields", JSONObject().put("姓名", "张三")),
             // 第二百三十二批：通用表格问答（两条入口二选一，样本给一句话那条）
             "table_query" to JSONObject().put("question", "一共几个人"),
             "search_web" to JSONObject().put("query", "word"),
