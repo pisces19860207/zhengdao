@@ -22,3 +22,8 @@ app/src/main/assets/policy/anchor-set.jsonl -text
 
 # 645：OBSERVE 固定观察脚本——hash 门禁以 LF 形态为基准（sha256Hex 同时归一 \r\n，双保险）
 app/src/main/assets/bridge/observe_v1.js text eol=lf
+# 第六百三十七批：随包的 mermaid 运行时，sha256 被门禁钉死（= 上游 dist 原样）。
+# 同 285 的教训：-text 禁止 text=auto 在 checkout 时把 LF 改成 CRLF——否则进 APK 的就是
+# 一份"多了 314 个 \r"的字节，'字节未修改' 这句话当场变假（本机实测 CRLF 形态 2,574,214 B /
+# sha256 58d8965f…，上游 2,571,900 B / a43bc1af…）。
+app/src/main/assets/mermaid/* -text

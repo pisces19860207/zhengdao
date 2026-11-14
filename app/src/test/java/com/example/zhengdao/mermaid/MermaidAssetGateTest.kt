@@ -22,6 +22,9 @@ class MermaidAssetGateTest {
     /** mermaid 11.4.1 的 dist/mermaid.min.js（UMD/IIFE，无动态 import，file:// 可直载）。 */
     private val pinnedSha256 = "a43bc1afd446f9c4cc66ac5dd45d02e8d65e26fc5344ec0ef787f88d6ddb6f9e"
 
+    /** 同一份文件的上游体积（字节）——sha256 之外的第二把尺，换版本时两把会一起变。 */
+    private val pinnedBytes = 2_571_900L
+
     private fun asset(path: String): File = SrcRoots.find("src/main/assets/$path")
 
     private fun html(): String = asset("mermaid/mermaid.html").readText()
@@ -65,12 +68,27 @@ class MermaidAssetGateTest {
     fun `mermaid 库是钉死的那一份且没有动态加载`() {
         val js = asset("mermaid/mermaid.min.js")
         assertTrue("随包库文件不见了", js.isFile)
+        val bytes = js.readBytes()
+
+        // ⚠️ 这一条是 637 验收被打回的直接原因，别再退回去：
+        // 钉的 sha256 是**上游 dist 的原始字节**。Windows 检出时若被 text=auto 改成 CRLF，
+        // 文件会变成 2,574,214 B／sha256 58d8965f…（同一份内容，多了 314 个 \r），
+        // 于是"字节未修改"这句话当场变假，而门禁在 Linux（w/lf）上又是绿的 ⇒ 本机红/CI 绿的分裂。
+        // 处置：`.gitattributes` 里 `app/src/main/assets/mermaid/* -text` + 这里直接断言没有 \r。
+        assertFalse(
+            "文件是 CRLF 形态（陈旧检出：删掉重新检出即变 LF）；随包字节必须与上游逐字节相同",
+            bytes.any { it == '\r'.code.toByte() },
+        )
+        assertEquals("体积不对（上游 11.4.1 dist 是 2,571,900 B）", pinnedBytes, bytes.size.toLong())
+
         val digest = MessageDigest.getInstance("SHA-256")
-            .digest(js.readBytes())
+            .digest(bytes)
             .joinToString("") { "%02x".format(it) }
         assertEquals("mermaid.min.js 被换过/改过 ⇒ 必须重新登记许可与体积", pinnedSha256, digest)
 
-        val text = js.readText()
+        val text = String(bytes, Charsets.UTF_8)
+        // 版本号从**文件自己**读出来，不靠文件名/注释/记忆（换了版本这句先红）
+        assertTrue("文件里读不到 11.4.1 的版本串，说明不是这一版", text.contains("\"11.4.1\""))
         assertFalse("动态 import 在 file:// 下会失败（离线页会变白）", text.contains("import("))
         assertFalse("ESM 导出在经典 script 标签下用不了", text.contains("export{"))
         assertTrue("必须自己挂到 globalThis.mermaid 上", text.contains("globalThis.mermaid"))
@@ -87,6 +105,9 @@ class MermaidAssetGateTest {
         val thirdText = thirdParty.readText()
         assertTrue("第三方文件必须登记在 ASSETS.md", thirdText.contains("mermaid/mermaid.min.js"))
         assertTrue("许可必须是 MIT", thirdText.contains("| `mermaid/mermaid.min.js` | 11.4.1 | MIT |"))
+        // 台账与磁盘必须对得上：名册里写的 sha256/体积就是门禁钉死的那两个数
+        assertTrue("ASSETS.md 那一行没写对 sha256", thirdText.contains(pinnedSha256))
+        assertTrue("ASSETS.md 那一行没写对体积", thirdText.contains("2,571,900 B"))
 
         val firstParty = File(repo, "licenses/FIRST-PARTY.md")
         assertTrue("找不到 licenses/FIRST-PARTY.md", firstParty.isFile)

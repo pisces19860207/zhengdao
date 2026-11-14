@@ -59,4 +59,4 @@
 
 | 资产名 | 版本 | 许可 | 随包？ | 署名要求 | 来源 |
 | --- | --- | --- | --- | --- | --- |
-| `mermaid/mermaid.min.js` | 11.4.1 | MIT | 是 | 随包附 MIT 正文（`licenses/MIT.txt`）＋版权行 `Copyright (c) 2014 - 2022 Knut Sveidqvist`（已录 `licenses/NOTICES.txt` 第 3 段） | <https://github.com/mermaid-js/mermaid>（npm `mermaid@11.4.1` 的 `dist/mermaid.min.js`，字节未修改，SHA256 `a43bc1afd446f9c4cc66ac5dd45d02e8d65e26fc5344ec0ef787f88d6ddb6f9e`） |
+| `mermaid/mermaid.min.js` | 11.4.1 | MIT | 是 | 随包附 MIT 正文（`licenses/MIT.txt`）＋版权行 `Copyright (c) 2014 - 2022 Knut Sveidqvist`（已录 `licenses/NOTICES.txt` 第 3 段） | <https://github.com/mermaid-js/mermaid>（npm `mermaid@11.4.1` 的 `dist/mermaid.min.js`，**字节未修改**）；**体积 2,571,900 B**；**sha256 `a43bc1afd446f9c4cc66ac5dd45d02e8d65e26fc5344ec0ef787f88d6ddb6f9e`**（= 上游 dist 原始字节；门禁 `MermaidAssetGateTest` 按这个值钉死，`.gitattributes` 里 `app/src/main/assets/mermaid/* -text` 禁止 CRLF 转换，否则会变成 2,574,214 B／`58d8965f…`） |
