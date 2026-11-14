@@ -818,6 +818,24 @@ jobs:
           python3 tools/check-license-policy.py --assets --selftest
           python3 tools/check-license-policy.py --assets
 
+      # ── 634（2026-11-14）：模型权重登记闸 ────────────────────────────────────
+      # 与 D/E/F 同级：**会红、会拦 CI**。判的是「模型权重能不能进这个仓」，
+      # 前面三道都不管这件事：423 看代码依赖 POM、424 看声明与依赖一致、
+      # 440 看 assets 里每个文件的许可**是否被允许**（但它不看「能不能商用／能不能
+      # 再分发／身份有没有钉住」）。模型权的义务形态是六件事各自成立（许可／可商用／
+      # 可再分发／体积／sha256／来源），所以另起一张十列表 docs/models-registry.md
+      # 与这道闸。判据：
+      #   · 红：内置未登记／许可列空或不明／可商用=否／端侧不可再分发／端侧许可不在
+      #         Apache-2.0·MIT·BSD-2·BSD-3 内（CC BY-NC 一律红）／sha256 格式或真值不符；
+      #   · 黄（只提示）：标了内置但文件不在／体积与真文件差 >2%；
+      #   · 环境错误(2)：登记表被删、十列表头找不到 —— 删表不许变绿。
+      # 当前仓里零个权重文件、登记表零行 ⇒ 应绿（这是真状态，不是漏判）。
+      # 本步先 `--selftest`（九例：三例判据＋五条守卫＋防假绿）再真空参跑判红。
+      - name: 模型登记闸（634：权重十列登记，内置未登记／许可空／不可商用 ⇒ 红）
+        run: |
+          python3 tools/check-model-registry.py --selftest
+          python3 tools/check-model-registry.py
+
       - name: 归档 SBOM
         if: always()
         uses: actions/upload-artifact@v7
