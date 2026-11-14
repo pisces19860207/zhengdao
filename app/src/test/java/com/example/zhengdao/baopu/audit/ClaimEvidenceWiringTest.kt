@@ -4,8 +4,14 @@
 //
 // 夹具全是内存字符串／列表：**不建临时目录、不落盘**，跑完水位不动（607 口径）。
 // 唯一真跑的外部命令是 git status（只读自证，且断言退出码 0 防假绿）。
-package com.example.zhengdao.baopu.inspect
+package com.example.zhengdao.baopu.audit
 
+import com.example.zhengdao.baopu.inspect.ClaimEvidenceAudit
+import com.example.zhengdao.baopu.inspect.ClaimEvidenceEnv
+import com.example.zhengdao.baopu.inspect.EvidenceNeed
+import com.example.zhengdao.baopu.inspect.LeftAdvice
+import com.example.zhengdao.baopu.inspect.PatrolScheduler
+import com.example.zhengdao.baopu.inspect.TestXmlReading
 import com.example.zhengdao.baopu.safety.DiaryCodec
 import com.example.zhengdao.baopu.safety.DiaryEvent
 import com.example.zhengdao.baopu.safety.DiaryKind

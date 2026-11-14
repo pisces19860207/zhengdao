@@ -1420,7 +1420,7 @@ internal class BaopuChatController(context: Context) {
             }
             // 635 第三类「对账」：只认本进程最近一轮结果（0 缺口那一轮 publish 空表 ⇒ 0 行），
             // 不读历史账本，免得上一轮的旧缺口一直顶着。行自带稳定 id 与时间。
-            com.example.zhengdao.baopu.inspect.ClaimEvidenceRowStore.latest().forEach { r ->
+            com.example.zhengdao.baopu.audit.ClaimEvidenceRowStore.latest().forEach { r ->
                 add(
                     DecisionCenterRow(
                         id = r.id,

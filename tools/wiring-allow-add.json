@@ -4,7 +4,7 @@
   "entries": [
     {
       "class": "ClaimEvidenceWiring",
-      "file": "app/src/main/java/com/example/zhengdao/baopu/inspect/ClaimEvidenceWiring.kt",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/audit/ClaimEvidenceWiring.kt",
       "kind": "object(无 install 入口)",
       "why": "635 对账接线：装配层读数接口与对账结果行，by-design 声明逐条登记",
       "date": "2026-11-15"

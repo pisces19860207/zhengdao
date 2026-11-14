@@ -4,7 +4,7 @@
 //
 // 扫的是**剥掉注释之后**的代码：KDoc 里解释口径的话不算证据，真调用才算。
 // 每条断言都配一个坏样本（G0），不许「A 干净就 true」式的恒绿。
-package com.example.zhengdao.baopu.inspect
+package com.example.zhengdao.baopu.audit
 
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -14,7 +14,7 @@ import org.junit.Test
 
 class ClaimEvidenceWiringGateTest {
 
-    private val wiringRel = "src/main/java/com/example/zhengdao/baopu/inspect/ClaimEvidenceWiring.kt"
+    private val wiringRel = "src/main/java/com/example/zhengdao/baopu/audit/ClaimEvidenceWiring.kt"
     private val nocturnalRel = "src/main/java/com/example/zhengdao/baopu/inspect/NocturnalAuto.kt"
     private val controllerRel = "src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt"
     private val audit627Rel =

@@ -16,11 +16,15 @@
 // · 「跑不跑」＝夜间窗口 [claimEvidenceShouldRun]，复用 239/432 的唯一钟点判据；
 // · 「落不落行」＝缺口数 × 左相允许，**不看钟点**。夜里悄悄对账，天亮人打开建议页签看行。
 //   627 的 [LeftAdvice] 管的是「要不要即时打扰」，与本单「异步进页签」不是一件事。
-package com.example.zhengdao.baopu.inspect
+package com.example.zhengdao.baopu.audit
 
 import android.content.Context
 import com.example.zhengdao.BuildConfig
 import com.example.zhengdao.baopu.DecisionLedger
+import com.example.zhengdao.baopu.inspect.ClaimEvidenceAudit
+import com.example.zhengdao.baopu.inspect.ClaimEvidenceEnv
+import com.example.zhengdao.baopu.inspect.PatrolScheduler
+import com.example.zhengdao.baopu.inspect.TestXmlReading
 import com.example.zhengdao.baopu.safety.DiaryCodec
 import com.example.zhengdao.baopu.safety.DiaryEvent
 import com.example.zhengdao.baopu.safety.DiaryKind

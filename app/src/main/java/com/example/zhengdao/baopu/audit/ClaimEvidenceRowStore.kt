@@ -1,7 +1,7 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第六百三十五批 · 「建议」页签第三类行的进程内持有者。
-package com.example.zhengdao.baopu.inspect
+package com.example.zhengdao.baopu.audit
 
 /**
  * 「最近一轮对账」的结果（进程级，重启即忘；持久化留痕在 `对账结果.jsonl`，职责分开）。
