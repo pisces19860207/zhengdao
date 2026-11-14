@@ -56,6 +56,7 @@ import com.example.zhengdao.ui.baopu.BaopuChannelSheet
 import com.example.zhengdao.ui.baopu.BaopuIntents
 import com.example.zhengdao.ui.baopu.BaopuSettingsScreen
 import com.example.zhengdao.ui.baopu.KnowledgeLibraryScreen
+import com.example.zhengdao.ui.baopu.McpBudgetDialRow
 import com.example.zhengdao.ui.baopu.ModelSheetDraft
 import com.example.zhengdao.ui.baopu.TasteSettingsScreen
 import com.example.zhengdao.ui.theme.AppearancePrefs
@@ -225,6 +226,16 @@ fun SettingsScreen() {
                     AskGovernance.setTier(next)
                     askTierNote = next.cn
                 }
+            }
+
+            // ── MCP 服务（第六百四十单 · 外部工具预算拨盘）─────────────────
+            // 630 定好了全局预算与按需装配，只缺一个「比例」的人改入口；这一行补上它。
+            // 纯 UI：滑杆改的是 630 备好的 McpBudgetStore.setRatio，落盘仍是同一份
+            // `baopu_mcp` / `assembly` 键里的 ratio 字段，没有第二份配置。
+            // 装配器每步现读 ratio()，所以拖动完下一轮装配就按新额度算，不用重启 App。
+            // 标题与行内文案按本单边界写中文常量，不引多语言（不新增 <string> 键）。
+            SectionCard(title = "MCP 服务") {
+                McpBudgetDialRow()
             }
 
             // ── 「申请权限」集中卡（第二百一十批 · 入口与权限归位）─────────────
