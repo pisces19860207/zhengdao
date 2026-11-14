@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 632 (2026-11-13): tool-switch strings for the two light-office writers.
+     Kept in its own file (same shape as strings_baopu_mcp.xml) so the shared
+     strings.xml stays untouched while several agents work in parallel. -->
+<resources>
+    <string name="baopu_tool_docx_write">Write Word</string>
+    <string name="baopu_tool_docx_write_desc">Writes structured content into a .docx: headings level 1–3, paragraphs, bullet/numbered lists, bold/italic, tables (max 10 columns), one header line, images (max 2). One fixed style set (headings 22/17/15pt, body 15pt, 1.5 line spacing) — not editable. Saved to 产物/ only; never overwrites.</string>
+    <string name="baopu_tool_xlsx_write">Write Excel</string>
+    <string name="baopu_tool_xlsx_write_desc">Writes tabular data into a .xlsx: up to 5 sheets, bold frozen header row, auto column widths, number/date formats, merged cells. Values only, no formulas; saved to 产物/ only; never overwrites.</string>
+</resources>

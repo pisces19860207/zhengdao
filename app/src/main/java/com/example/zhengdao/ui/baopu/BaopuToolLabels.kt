@@ -163,6 +163,9 @@ internal object BaopuToolLabels {
         "mcp_connect" to R.string.baopu_tool_mcp_connect,
         "mcp_disconnect" to R.string.baopu_tool_mcp_disconnect,
         "mcp_set_token" to R.string.baopu_tool_mcp_set_token,
+        // 632：轻办公两件（docx/xlsx 写出）
+        "docx_write" to R.string.baopu_tool_docx_write,
+        "xlsx_write" to R.string.baopu_tool_xlsx_write,
     )
 
     /** 工具名 → 开关副标题。键集必须与 [LABEL] 完全一致（同一张目录，缺一即红）。 */
@@ -291,6 +294,8 @@ internal object BaopuToolLabels {
         "mcp_connect" to R.string.baopu_tool_mcp_connect_desc,
         "mcp_disconnect" to R.string.baopu_tool_mcp_disconnect_desc,
         "mcp_set_token" to R.string.baopu_tool_mcp_set_token_desc,
+        "docx_write" to R.string.baopu_tool_docx_write_desc,
+        "xlsx_write" to R.string.baopu_tool_xlsx_write_desc,
     )
 
     /** 取标签；没有就是配置错误（调用方只有设置页，漏了立即炸而不是显示空串）。 */

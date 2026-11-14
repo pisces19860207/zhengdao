@@ -198,6 +198,12 @@ class L6BoundaryGateTest {
             // NovelTimelineTool 的 mkdirs 只建时间线目录的父层（同样在围栏内），不碰围栏外。
             // 围栏本身在 NovelFence，两个写工具都先过它再调这里 ⇒ 不需要再过一次 PathGuard。
             "agent/tools/NovelAssets.kt" to setOf("writeText", "delete"),
+            // 第六百三十二批：轻办公两件的落盘口（docx/xlsx）。**路径不是模型指的**——
+            // 落点由 `MemoryLayout.productsDir(工作区根)` 定死，文件名由 [OfficeSink.baseOf]
+            // 清洗后加时间戳与序号（同名不覆盖）；工具参数里没有任何路径可填。
+            // mkdirs 只建 `产物/`；writeBytes 写 `<名>.tmp` 再 rename（原子，半截 docx 比没有更坏）；
+            // delete 只删自己那件 tmp。不写任何记忆树/账本（账走 FileOpLog）。
+            "agent/tools/OfficeSink.kt" to setOf("mkdirs", "writeBytes", "delete"),
             "agent/tools/NovelTimelineTool.kt" to setOf("mkdirs"),
         )
     }

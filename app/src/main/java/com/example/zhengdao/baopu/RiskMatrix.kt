@@ -518,6 +518,11 @@ internal data class RiskTable(
                 "mcp_connect" to ToolRule(RiskClass.R1),
                 "mcp_disconnect" to ToolRule(RiskClass.R1),
                 "mcp_set_token" to ToolRule(RiskClass.R3),
+                // ── 632 轻办公两件：只写工作区 `产物/` 下**新生成**的一份文档/表格 ──
+                // 不动用户既有文件、不联网、不花钱 ⇒ R1（CONFIRM 卡在主管线）。
+                // 不设 writePathKeys：落点由工具按 `产物/` 自己算，调用方没有路径参数可判。
+                "docx_write" to ToolRule(RiskClass.R1),
+                "xlsx_write" to ToolRule(RiskClass.R1),
             ),
             // 173 口径：终端不参与分级——bash 不查档、不叠规则，原样交回终端那条路。
             // 注意它必须**显式豁免**：若只返回 null，fail-closed 会把它当未分类判 R2＋必问，

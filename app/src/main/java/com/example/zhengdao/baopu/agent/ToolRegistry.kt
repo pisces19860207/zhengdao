@@ -422,6 +422,11 @@ internal object ToolGroupTable {
         "mcp_connect" to ToolGroup.CORE,        // R1 对外动作
         "mcp_disconnect" to ToolGroup.CORE,     // R1 清令牌
         "mcp_set_token" to ToolGroup.CORE,      // R3 账号语义
+        // ── 第六百三十二批：轻办公两件（docx/xlsx 写出）──
+        // 归 FILES：默认不可见（capabilities 解锁），但**只写工作区 产物/**——
+        // 不动用户既有文件、不联网，所以矩阵 R1；两件都 CONFIRM（每次一张卡）。
+        "docx_write" to ToolGroup.FILES,        // R1 生成 Word
+        "xlsx_write" to ToolGroup.FILES,        // R1 生成 Excel
     )
 
     /**
@@ -1625,6 +1630,10 @@ internal object BaopuToolCatalog {
         "mcp_connect",
         "mcp_disconnect",
         "mcp_set_token",
+        // 632：轻办公两件——默认「启用」（组仍默认不可见，解锁即用，同 copy_path/archive_pack 口径）。
+        // 默认开≠能静默动手：两件都是 CONFIRM，每次一张卡。
+        "docx_write",
+        "xlsx_write",
     )
 
     /**
@@ -1820,6 +1829,11 @@ internal object BaopuToolCatalog {
         Entry("mcp_connect") { McpSelfService.connectSpec() },
         Entry("mcp_disconnect") { McpSelfService.disconnectSpec() },
         Entry("mcp_set_token") { McpSelfService.setTokenSpec() },
+        // 第六百三十二批：轻办公两件（自研 OOXML 拼装，零新增依赖）。
+        // 落点固定 `产物/<名>-<时间>.<ext>`（同名不覆盖，加序号），写成功落一行账。
+        // 只写值不写公式；docx 的样式是固定一套（不做样式编辑）。
+        Entry("docx_write") { DocxWriteTool.spec(it) },
+        Entry("xlsx_write") { XlsxWriteTool.spec(it) },
     )
 
     /**

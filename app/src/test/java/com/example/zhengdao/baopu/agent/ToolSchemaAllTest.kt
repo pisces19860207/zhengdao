@@ -457,6 +457,18 @@ class ToolSchemaAllTest {
         val REQUIRED_ONLY: Map<String, JSONObject> = mapOf(
             // 第二百一十八批：工具补齐 v1（六件）
             "sheet_read" to JSONObject().put("path", "biao.xlsx"),
+            // 第六百三十二批：轻办公两件（最小合法参数 = 一个段落 / 一个空 sheet）
+            "docx_write" to JSONObject().put(
+                "blocks",
+                JSONArray().put(JSONObject().put("type", "paragraph").put("text", "示例")),
+            ),
+            "xlsx_write" to JSONObject().put(
+                "sheets",
+                JSONArray().put(
+                    JSONObject().put("name", "Sheet1")
+                        .put("rows", JSONArray().put(JSONArray().put("示例"))),
+                ),
+            ),
             // 第二百三十二批：通用表格问答（两条入口二选一，样本给一句话那条）
             "table_query" to JSONObject().put("question", "一共几个人"),
             "search_web" to JSONObject().put("query", "word"),

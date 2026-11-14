@@ -142,6 +142,8 @@ class ToolRegistrySwitchTest {
                 "teach_skill_export", "teach_skill_import",
                 // 502：MCP 自配五件（CORE 组，默认可见——模型自己配服务器的本体）
                 "mcp_list", "mcp_add_server", "mcp_connect", "mcp_disconnect", "mcp_set_token",
+                // 632：轻办公两件（FILES 组，默认不可见但默认启用；表序即注册序）
+                "docx_write", "xlsx_write",
             ),
             reg.names(),
         )
