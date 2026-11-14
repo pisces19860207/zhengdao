@@ -1,0 +1,182 @@
+<!doctype html>
+<!--
+  独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+  唯一第三方件是同目录的 mermaid.min.js（MIT，登记见 licenses/ASSETS.md）。
+
+  第六百三十七批 · Mermaid 离屏渲染页
+
+  这个页面只做三件事，别往里加第四件：
+    ① 载入同目录的 mermaid.min.js（本地文件，**不联网**）；
+    ② 收 Kotlin 递进来的图源码（走 JS 参数，**不走 innerHTML/模板拼接**）→ mermaid.render；
+    ③ 把「成了没有 / 多高 / 错在哪一行」写进 window.__zd，供 Kotlin 轮询。
+
+  跟 Kotlin 的约定（协议是死的，两边改要同时改）：
+    window.__zd = { s: 'boot' | 'ready' | 'rendering' | 'ok' | 'error', h?: 像素高, msg?: 首行错误 }
+    Kotlin 轮询 `JSON.stringify(window.__zd)`：
+      ready    → 调 ZD.render(<源码>)
+      ok       → 按 h（**设备像素**）重排 WebView 后截图
+      error    → 直接把 msg 给用户看，**不许静默留白**
+
+  安全口径（与 Kotlin 侧同一套，双重防线）：
+    · securityLevel:'strict' + htmlLabels:false —— 标签一律走文本节点，不解析 HTML；
+    · CSP：default-src 'none'，只准内联样式与同目录脚本；connect-src 'none' 断掉一切网络；
+    · 源码只经 textContent/JS 字符串参数进入，绝不拼进 innerHTML。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline' 'self' file:; style-src 'unsafe-inline'; img-src data: file:; font-src data: file:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Mermaid</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  #zd-out { padding: 12px; box-sizing: border-box; }
+  #zd-out svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  #zd-err {
+    display: none; padding: 12px; color: #b3261e;
+    font: 13px/1.5 sans-serif; white-space: pre-wrap; word-break: break-word;
+  }
+</style>
+</head>
+<body>
+<div id="zd-out"></div>
+<div id="zd-err"></div>
+<script src="mermaid.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var out = document.getElementById('zd-out');
+  var err = document.getElementById('zd-err');
+  window.__zd = { s: 'boot' };
+
+  function state(s, extra) {
+    var o = { s: s };
+    if (extra) { for (var k in extra) { if (Object.prototype.hasOwnProperty.call(extra, k)) o[k] = extra[k]; } }
+    window.__zd = o;
+  }
+
+  // 错误只留「首行」：mermaid 的报错前半句是人话（Parse error on line 3: …），
+  // 后面跟着的是一整段期望符号表——对用户没有信息量，还占满整块屏。
+  function firstLine(raw) {
+    var s = String(raw == null ? '' : raw);
+    s = s.replace(/<[^>]*>/g, ' ');
+    var lines = s.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].replace(/\s+/g, ' ').trim();
+      if (t.length > 0) {
+        return t.length > 160 ? t.slice(0, 160) + '…' : t;
+      }
+    }
+    return '（渲染失败，但没有给出原因）';
+  }
+
+  function cleanup(id) {
+    var stray = document.getElementById(id);
+    if (stray && stray.parentNode) { stray.parentNode.removeChild(stray); }
+    var d = document.getElementById('d' + id);
+    if (d && d.parentNode) { d.parentNode.removeChild(d); }
+  }
+
+  if (!window.mermaid) {
+    state('error', { msg: '内置渲染库没载入（assets/mermaid/mermaid.min.js 缺失）' });
+    return;
+  }
+
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    htmlLabels: false,
+    theme: 'neutral',
+    fontFamily: 'sans-serif',
+    flowchart: { htmlLabels: false, useMaxWidth: true, curve: 'basis' },
+    sequence: { useMaxWidth: true, wrap: true },
+    state: { useMaxWidth: true },
+    maxTextSize: 50000,
+    maxEdges: 500
+  });
+
+  // 设备像素上限由 Kotlin 用 ?maxh= 递进来（默认 5200）：太高会顶爆位图内存。
+  var MAX_H = 5200;
+  try {
+    var q = new URLSearchParams(location.search).get('maxh');
+    if (q) {
+      var n = parseInt(q, 10);
+      if (isFinite(n) && n >= 320) { MAX_H = n; }
+    }
+  } catch (e) { /* 老内核没有 URLSearchParams：用默认值，不是错误 */ }
+
+  window.ZD = {
+    render: function (code) {
+      out.innerHTML = '';
+      err.style.display = 'none';
+      err.textContent = '';
+      out.style.transform = '';
+      out.style.transformOrigin = '';
+      out.style.width = '';
+      state('rendering');
+
+      // 源码只当**字符串参数**用：不拼 HTML、不进 innerHTML。
+      var src = String(code == null ? '' : code);
+      var id = 'zd' + Date.now();
+
+      var done = false;
+      function fail(e) {
+        if (done) { return; }
+        done = true;
+        cleanup(id);
+        out.innerHTML = '';
+        var msg = firstLine(e && (e.str || e.message) ? (e.str || e.message) : e);
+        err.textContent = msg;
+        err.style.display = 'block';
+        state('error', { msg: msg });
+      }
+
+      try {
+        mermaid.render(id, src).then(function (res) {
+          if (done) { return; }
+          // ⚠️ 顺序是硬的：**先清临时节点，再放 svg**。
+          // mermaid 生成的 <svg> 自带 id=<render id>，它一旦进了 DOM，
+          // 按 id 找"残留节点"就会找到这张刚画好的图并把它删掉（637 实测：
+          // 渲染成功却只剩一句"输出为空"）。
+          var svgText = res && res.svg ? res.svg : '';
+          cleanup(id);
+          out.innerHTML = svgText;
+          // ⚠️ 这里**不能用 requestAnimationFrame**：离屏 WebView 是挂在 1dp 容器里的，
+          // 页面在合成器眼里"不可见"⇒ rAF 回调根本不发（637 实测：等 10 秒一点回话都没有）。
+          // 用 setTimeout：定时器与可见性无关；赋完 innerHTML 之后 getBoundingClientRect()
+          // 会强制同步布局，量到的就是最终高度。
+          setTimeout(function () {
+            if (done) { return; }
+            var svg = out.querySelector('svg');
+            if (!svg) { fail('渲染完成但输出为空'); return; }
+            var dpr = window.devicePixelRatio || 1;
+            var rect = out.getBoundingClientRect();
+            var h = Math.ceil(rect.height * dpr) + 2;
+            if (!isFinite(h) || h < 8) { fail('量不到图表高度（可能是空图）'); return; }
+            if (h > MAX_H) {
+              // 太高：整体等比缩到上限（宁可小一点，也不截断半张图、不爆位图内存）。
+              var k = MAX_H / h;
+              out.style.transformOrigin = 'top left';
+              out.style.transform = 'scale(' + k + ')';
+              out.style.width = (100 / k) + '%';
+              h = MAX_H;
+            }
+            // done 必须在**所有校验都过**之后才置位：fail() 自己有 done 守卫，
+            // 先置位会让"渲染完成但输出为空"这类错误被自己的守卫吞掉（只剩超时）。
+            done = true;
+            state('ok', { h: Math.round(h) });
+          }, 60);
+        }, function (e) { fail(e); });
+      } catch (e) {
+        fail(e);
+      }
+    }
+  };
+
+  state('ready');
+})();
+</script>
+</body>
+</html>

@@ -1790,4 +1790,14 @@
     <string name="capsule_go_decision_center">Open Decision Center · pending: %1$d</string>
     <string name="capsule_teach_ended">Teaching ended</string>
     <string name="capsule_screen_short">Not enough height; collapsed</string>
+
+    <!-- 637: mermaid code block (code only by default; image renders on tap) -->
+    <string name="baopu_mermaid_label">Mermaid diagram</string>
+    <string name="baopu_mermaid_render">Render image</string>
+    <string name="baopu_mermaid_rendering">Rendering…</string>
+    <string name="baopu_mermaid_failed">Render failed: %1$s</string>
+    <string name="baopu_mermaid_saved">Saved to %1$s</string>
+    <string name="baopu_mermaid_too_large">Code block size %1$s bytes is over the 20KB limit; not rendered</string>
+    <string name="baopu_mermaid_no_activity">Not running in an Activity; cannot render (go back to the chat)</string>
+    <string name="baopu_mermaid_empty">The code block is empty; nothing to draw</string>
 </resources>

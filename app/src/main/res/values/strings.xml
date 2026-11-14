@@ -1744,4 +1744,14 @@
     <string name="capsule_go_decision_center">还有 %1$d 项等你决定 · 去决策中心</string>
     <string name="capsule_teach_ended">教学结束，胶囊已收起</string>
     <string name="capsule_screen_short">屏幕太矮，先收起对话</string>
+
+    <!-- 第六百三十七批：mermaid 代码块（默认只显示代码，点按钮才出图） -->
+    <string name="baopu_mermaid_label">Mermaid 图</string>
+    <string name="baopu_mermaid_render">渲染成图</string>
+    <string name="baopu_mermaid_rendering">渲染中…</string>
+    <string name="baopu_mermaid_failed">渲染失败：%1$s</string>
+    <string name="baopu_mermaid_saved">已存到 %1$s</string>
+    <string name="baopu_mermaid_too_large">代码块 %1$s 字节，超过 20KB 上限，没有渲染</string>
+    <string name="baopu_mermaid_no_activity">当前页面不是 Activity，出不了图（回到对话页再试）</string>
+    <string name="baopu_mermaid_empty">代码块是空的，没有可画的图</string>
 </resources>

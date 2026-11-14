@@ -29,6 +29,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -49,6 +51,21 @@ class OffscreenShotter(
     private val webConfig: ProbeWebConfig = ProbeWebConfig(javaScriptEnabled = true),
     private val pageTimeoutMs: Long = 20_000,
     private val visualTimeoutMs: Long = 8_000,
+    /**
+     * 637：**离线页专用**——断网、禁文件访问、禁 JS 桥。
+     *
+     * 默认 false，既有调用（262/263 探针、玄览取图）一个字都不变。置 true 时只做加法：
+     * · `blockNetworkLoads(true)`：http/https 一律失败 ⇒「断网仍能出图」是**结构性**成立，
+     *   不是"我们没写请求"这种口头保证；
+     * · `allowFileAccess(false)`＋两个 `allow*FromFileURLs(false)`：页内脚本读不到任何
+     *   本地文件（`file:///android_asset` 仍可载入，那是 App 自己的随包资源）；
+     * · 不装任何 `addJavascriptInterface`（本类从来没有，这里写明是防后人加）。
+     */
+    private val offlineOnly: Boolean = false,
+    /** 637：「页内脚本就绪」轮询的超时（只在 [capture] 传了 readyScript 时用）。 */
+    private val readyTimeoutMs: Long = 10_000,
+    /** 637：页内 `console.*` 的出口（排查离屏页时唯一能看见 JS 侧说了什么的地方）。 */
+    private val onConsole: ((String) -> Unit)? = null,
 ) {
 
     /** 一次离屏取图的结局。失败必须带可读原因——不许静默回一张灰图。 */
@@ -80,22 +97,48 @@ class OffscreenShotter(
         /** 画出来了，但整幅同色（白图或灰图）——等于没画。 */
         UNIFORM,
 
+        /**
+         * 637：**页面自己报的错**（图源码有语法错、页面说高度不合法等）。
+         *
+         * 与 [LOAD_ERROR] 分开：那个是"没载进来"（网络/证书），这个是"载进来了但活没干成"，
+         * 给用户看的话术不一样——后者要把页面的原话原样带出去。
+         */
+        PAGE_ERROR,
+
         /** 取图环节抛异常。 */
         EXCEPTION,
     }
 
     private val main = Handler(Looper.getMainLooper())
 
+    companion object {
+        /** 637：页内脚本轮询间隔（够密，又不至于把主线程的 evaluateJavascript 排队排爆）。 */
+        private const val READY_POLL_MS = 120L
+
+        /** 637：改完子视图尺寸后，等布局/合成一帧再拍（0 会拍到改之前那一帧）。 */
+        private const val RELAYOUT_SETTLE_MS = 220L
+
+        /** 637：单张位图的高度上限（像素）——1080 宽 × 6000 高 × 4 字节 ≈ 26MB，留足余量。 */
+        const val MAX_CAPTURE_HEIGHT_PX = 6000
+    }
+
     /**
      * 载入 [url] 并取一张图。阻塞直到出结果或超时。
      *
+     * @param readyScript 637：页面载完后**反复执行**的 JS 表达式，返回一个普通字符串：
+     *   `ok:<设备像素高>` ⇒ 按这个高度重排 WebView 再拍（拍内容的紧边，不是整屏）；
+     *   `err:<首行错误>` ⇒ 立刻失败（错误原样带给用户，不许静默留白）；
+     *   其它（`wait` 之类）⇒ 隔 [READY_POLL_MS] 再问一次，直到 [readyTimeoutMs]。
+     *   传 null ⇒ 老行为：页面载完就等视觉帧，拍整屏。
      * @return [Outcome.Ok] 只在**判定为真图**时返回；白图/灰图一律 [Outcome.Fail]。
      */
-    fun capture(url: String): Outcome {
+    fun capture(url: String, readyScript: String? = null): Outcome {
         val latch = CountDownLatch(1)
         var out: Outcome = Outcome.Fail(Kind.EXCEPTION, "内部错误：没有回填结果")
-        main.post { runSession(url) { r -> out = r; latch.countDown() } }
-        if (!latch.await(pageTimeoutMs + visualTimeoutMs + 10_000, TimeUnit.MILLISECONDS)) {
+        main.post { runSession(url, readyScript) { r -> out = r; latch.countDown() } }
+        val budget = pageTimeoutMs + visualTimeoutMs + 10_000 +
+            if (readyScript == null) 0 else readyTimeoutMs
+        if (!latch.await(budget, TimeUnit.MILLISECONDS)) {
             return Outcome.Fail(Kind.PAGE_TIMEOUT, "整体等待超时（页面或视觉帧一直没到）")
         }
         return out
@@ -104,7 +147,7 @@ class OffscreenShotter(
     // ── 一次完整会话（全程主线程） ──────────────────────────────────────────
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun runSession(url: String, done: (Outcome) -> Unit) {
+    private fun runSession(url: String, readyScript: String?, done: (Outcome) -> Unit) {
         var finished = false
         var webView: WebView? = null
         var container: FrameLayout? = null
@@ -131,7 +174,29 @@ class OffscreenShotter(
             webView = wv
             wv.settings.javaScriptEnabled = webConfig.javaScriptEnabled
             wv.settings.domStorageEnabled = true
+            if (offlineOnly) {
+                // 637：断网＋禁文件＋禁跨源，三件事都在这里落地（判据"断网仍成功"靠它结构性成立）
+                runCatching { wv.settings.blockNetworkLoads = true }
+                // 缓存也要关：只加 blockNetworkLoads 的话，**命中缓存的页面照样能"载入成功"**
+                // （637 实测：对照组 example.com 从缓存里出图了，控制变量失效）。
+                runCatching { wv.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE }
+                runCatching { wv.settings.allowFileAccess = false }
+                runCatching { wv.settings.allowContentAccess = false }
+                runCatching { wv.settings.allowFileAccessFromFileURLs = false }
+                runCatching { wv.settings.allowUniversalAccessFromFileURLs = false }
+                runCatching { wv.settings.javaScriptCanOpenWindowsAutomatically = false }
+                // 不装 JS 桥：本类从未 addJavascriptInterface，写在这里是给后人看的红线。
+            }
             wv.setBackgroundColor(0xFFFFFFFF.toInt())
+
+            onConsole?.let { sink ->
+                wv.webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                        sink("${m.messageLevel()} ${m.message()} @${m.sourceId()}:${m.lineNumber()}")
+                        return true
+                    }
+                }
+            }
 
             val pageLatch = CountDownLatch(1)
             var pageError: String? = null
@@ -178,6 +243,7 @@ class OffscreenShotter(
                     maxOf(1, dm.heightPixels),
                 ),
             )
+            val viewportWidth = maxOf(1, dm.widthPixels)
 
             wv.loadUrl(url)
 
@@ -199,13 +265,128 @@ class OffscreenShotter(
                         return
                     }
                     main.removeCallbacks(pageDeadline)
-                    awaitVisualThenDraw(wv) { finish(it) }
+                    if (readyScript == null) {
+                        awaitVisualThenDraw(wv) { finish(it) }
+                    } else {
+                        awaitScriptReady(wv, readyScript, viewportWidth) { finish(it) }
+                    }
                 }
             }
             main.postDelayed(awaitPage, 100)
         }.onFailure {
             finish(Outcome.Fail(Kind.EXCEPTION, "取图异常：${it.javaClass.simpleName} ${it.message}"))
         }
+    }
+
+    /**
+     * 637：页内脚本就绪轮询——**这是"页面自己说它画完了"的唯一通道**。
+     *
+     * 为什么不能沿用 `onPageFinished`：那个信号只说明 HTML 到了，不代表图算完了；
+     * 也不能固定 sleep 一个数——图多大、多复杂，只有页面自己知道。
+     *
+     * 协议（与 `assets/mermaid/mermaid.html` 是同一份约定）：
+     * `ok:<设备像素高>` / `err:<首行错误>` / 其它 = 继续等。
+     */
+    private fun awaitScriptReady(
+        wv: WebView,
+        script: String,
+        viewportWidth: Int,
+        done: (Outcome) -> Unit,
+    ) {
+        var settled = false
+        val deadline = System.currentTimeMillis() + readyTimeoutMs
+        val timeUp = "等渲染结果超时（${readyTimeoutMs}ms）——页面没有回话"
+
+        val giveUp = Runnable {
+            if (!settled) {
+                settled = true
+                done(Outcome.Fail(Kind.VISUAL_TIMEOUT, timeUp))
+            }
+        }
+        main.postDelayed(giveUp, readyTimeoutMs)
+
+        lateinit var tick: Runnable
+        lateinit var onProbe: (String?) -> Unit
+
+        tick = Runnable {
+            if (!settled) {
+                if (System.currentTimeMillis() > deadline) {
+                    main.removeCallbacks(giveUp)
+                    settled = true
+                    done(Outcome.Fail(Kind.VISUAL_TIMEOUT, timeUp))
+                } else {
+                    runCatching { wv.evaluateJavascript(script) { raw -> onProbe(raw) } }
+                        .onFailure {
+                            settled = true
+                            main.removeCallbacks(giveUp)
+                            done(Outcome.Fail(Kind.EXCEPTION, "页内脚本执行失败：${it.message}"))
+                        }
+                }
+            }
+        }
+
+        onProbe = { raw ->
+            if (!settled) {
+                when (val probe = parseProbe(unquoteJsString(raw))) {
+                    Probe.Wait -> main.postDelayed(tick, READY_POLL_MS)
+                    is Probe.Err -> {
+                        settled = true
+                        main.removeCallbacks(giveUp)
+                        done(Outcome.Fail(Kind.PAGE_ERROR, probe.message))
+                    }
+                    is Probe.Ok -> {
+                        settled = true
+                        main.removeCallbacks(giveUp)
+                        if (probe.heightPx < 8) {
+                            done(Outcome.Fail(Kind.PAGE_ERROR, "页面报了成功但高度不合法：${probe.heightPx}"))
+                        } else {
+                            resizeToContent(wv, viewportWidth, probe.heightPx)
+                            main.postDelayed({ awaitVisualThenDraw(wv) { done(it) } }, RELAYOUT_SETTLE_MS)
+                        }
+                    }
+                }
+            }
+        }
+
+        main.postDelayed(tick, READY_POLL_MS)
+    }
+
+    /**
+     * 拍**内容紧边**而不是整屏：把子视图高度改成内容高度。
+     *
+     * 宽仍是真实视口宽（Chromium 的视口宽度必须是真的，否则页面按 1px 排版）。
+     */
+    private fun resizeToContent(wv: WebView, viewportWidth: Int, contentHeightPx: Int) {
+        val lp = wv.layoutParams ?: return
+        lp.width = viewportWidth
+        lp.height = contentHeightPx.coerceIn(8, MAX_CAPTURE_HEIGHT_PX)
+        wv.layoutParams = lp
+        wv.requestLayout()
+    }
+
+    /** 探针回话的三种语义（与页面协议一一对应，别在这里加第四种）。 */
+    private sealed interface Probe {
+        data object Wait : Probe
+
+        data class Ok(val heightPx: Int) : Probe
+
+        data class Err(val message: String) : Probe
+    }
+
+    private fun parseProbe(text: String?): Probe = when {
+        text == null || text.isEmpty() || text == "wait" -> Probe.Wait
+        text.startsWith("err:") -> Probe.Err(text.removePrefix("err:"))
+        text.startsWith("ok:") -> Probe.Ok(text.removePrefix("ok:").trim().toIntOrNull() ?: -1)
+        else -> Probe.Wait
+    }
+
+    /** `evaluateJavascript` 回的是 JSON 字面量（带引号、可能 `\uXXXX`）⇒ 解成普通字符串。 */
+    private fun unquoteJsString(raw: String?): String? {
+        if (raw == null) return null
+        val s = raw.trim()
+        if (s.isEmpty() || s == "null") return null
+        if (!s.startsWith("\"")) return s
+        return runCatching { org.json.JSONTokener(s).nextValue() as? String }.getOrNull()
     }
 
     /** 等一帧真画出来（`postVisualStateCallback`），再 draw。 */

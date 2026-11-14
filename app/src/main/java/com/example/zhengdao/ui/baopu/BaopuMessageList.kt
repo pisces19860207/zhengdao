@@ -14,6 +14,7 @@
 package com.example.zhengdao.ui.baopu
 
 import com.example.zhengdao.R
+import com.example.zhengdao.mermaid.MermaidFence
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -557,31 +558,65 @@ private fun BaopuMessageRow(
                     } else {
                         null
                     }
-                    if (textParts.isNotEmpty()) {
-                        val renderParts: @Composable () -> Unit = {
+                    // 637：正文里有 ```mermaid 围栏 ⇒ 按「话 / 图」切段渲染。
+                    // **没有围栏时这条支路完全不成立**（split 会原样返回单段文本），
+                    // 既有渲染路径一个字节都不动——这是本批对老行为的最小扰动口径。
+                    // 只在"全是纯文本 part"时切：混着压缩点时切开等于把压缩卡吞掉。
+                    val mermaidSplit = if (!isUser && textParts.isNotEmpty() &&
+                        textParts.all { it.kind == "text" }
+                    ) {
+                        MermaidFence.split(textParts.joinToString("\n") { it.text })
+                    } else {
+                        null
+                    }
+                    val mermaid = mermaidSplit
+                    when {
+                        // 637：有图 ⇒ 每段各自渲染（图段走代码块＋按钮，话段照旧是正文）。
+                        // ⚠️ 话段这里**不装配长文卡**：407 的红线是「一条消息只有一个卡装配口」
+                        // （BaopuLongformGateTest / BaopuLongformCollapseTest 两条门禁钉着），
+                        // 在这里多装配一处就等于同一条消息能出两张卡。
+                        mermaid != null && mermaid.hasDiagram -> {
                             Column {
-                                textParts.forEachIndexed { i, part ->
-                                    when (part.kind) {
-                                        // 139：没有 tool 分支——工具明细只走过程条浮层
-                                        "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
-                                        else -> BaopuTextPart(part, key = "${msg.id}-$i")
+                                mermaid.segments.forEachIndexed { i, seg ->
+                                    when (seg) {
+                                        is MermaidFence.Segment.Text ->
+                                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                                BaopuTextPart(seg.text)
+                                            }
+
+                                        is MermaidFence.Segment.Diagram ->
+                                            BaopuMermaidBlock(seg, key = "${msg.id}-m$i")
                                     }
                                 }
                             }
                         }
-                        // 用户气泡：长按归「长按菜单」（编辑/复制），不再套 SelectionContainer；
-                        // 助手气泡照旧可长按选字复制；长文消息改走输出卡（卡片自己管复制/保存）。
-                        if (isUser) {
-                            renderParts()
-                        } else if (longform) {
-                            // 209：带上消息 id——折叠态按 id 记住，滚动回来不弹回
-                            BaopuLongformCard(assistantText, messageId = msg.id.toString())
-                        } else if (answerFold != null && answerFold.foldable) {
-                            // 245：首块常显、其余默认收起；点开＝再点收起
-                            BaopuAnswerFoldView(answerFold, key = msg.id.toString())
-                        } else {
-                            androidx.compose.foundation.text.selection.SelectionContainer {
+
+                        textParts.isNotEmpty() -> {
+                            val renderParts: @Composable () -> Unit = {
+                                Column {
+                                    textParts.forEachIndexed { i, part ->
+                                        when (part.kind) {
+                                            // 139：没有 tool 分支——工具明细只走过程条浮层
+                                            "compressed" -> BaopuCompressedPart(part, key = "${msg.id}-$i")
+                                            else -> BaopuTextPart(part, key = "${msg.id}-$i")
+                                        }
+                                    }
+                                }
+                            }
+                            // 用户气泡：长按归「长按菜单」（编辑/复制），不再套 SelectionContainer；
+                            // 助手气泡照旧可长按选字复制；长文消息改走输出卡（卡片自己管复制/保存）。
+                            if (isUser) {
                                 renderParts()
+                            } else if (longform) {
+                                // 209：带上消息 id——折叠态按 id 记住，滚动回来不弹回
+                                BaopuLongformCard(assistantText, messageId = msg.id.toString())
+                            } else if (answerFold != null && answerFold.foldable) {
+                                // 245：首块常显、其余默认收起；点开＝再点收起
+                                BaopuAnswerFoldView(answerFold, key = msg.id.toString())
+                            } else {
+                                androidx.compose.foundation.text.selection.SelectionContainer {
+                                    renderParts()
+                                }
                             }
                         }
                     }

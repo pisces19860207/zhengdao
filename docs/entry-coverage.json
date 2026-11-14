@@ -190,7 +190,7 @@
   "C": 4,
   "gates_with_write_path": 3,
   "not_wired": 1,
-  "production_top_level_public": 479,
-  "wired": 477
+  "production_top_level_public": 485,
+  "wired": 483
  }
 }

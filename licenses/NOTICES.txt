@@ -136,6 +136,17 @@ zstd-sys v2.1.0+zstd.1.5.7 — BSD-3-Clause
     Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
 
 --------------------------------------------------------------------------------
+3) Mermaid（随包 JS 运行时，637 批）
+
+   app/src/main/assets/mermaid/mermaid.min.js（11.4.1；上游 dist/mermaid.min.js 原样随包，
+   字节未修改，SHA256 a43bc1afd446f9c4cc66ac5dd45d02e8d65e26fc5344ec0ef787f88d6ddb6f9e）
+
+   MIT License — Copyright (c) 2014 - 2022 Knut Sveidqvist
+   正文见 licenses/MIT.txt（SPDX 通用模板）；上游：https://github.com/mermaid-js/mermaid
+   为什么 MIT 也要写在这里：MIT 的义务只有一条——版权声明与许可声明必须随副本。
+   MIT.txt 那份模板首行是占位符，版权人只能在这份汇总里逐条复现。
+
+--------------------------------------------------------------------------------
 维护：新增 / 升级带 NOTICE 的依赖时，照上面的格式把该构件的 NOTICE 原文追加进来，并同步
 licenses/README.md 的字节数 / 行数 / SHA256 与 THIRD-PARTY-LICENSES.md 末节的依赖表。
 
