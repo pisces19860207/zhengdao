@@ -14,6 +14,10 @@
 1. 只扫 `.kt`；注释与 KDoc 不算（字面量之外的 `n=` 不报）。
 2. **JS/表达式赋值不算**：`var n=`、`,n=`、`?n=` 这类是语言赋值，不是日志标签。
 3. 已有 `n>=`、`n_lb`、`lowerBound`、`count>=`、`samples>=` 一律放行。
+3b. **XML/HTML 属性形态不算读数标签**：`count="2"`、`count=\"2\"`（Kotlin 转义）这类是
+    OOXML/HTML 的**标记属性**（如 xlsx 的 `<fonts count="2">`），不是给人看的计数读数；
+    判据是「`=` 后面紧跟引号」——读数标签按约定不带引号（`count=5`、`n>=20`）。
+    2026-11-14 632 的 docx/xlsx 写出件撞出来的假红（ci #2000–#2002）。
 4. 登记表 `config/metric-labels-allowlist.json`：每条必须写 reason 与 expires（默认 30 天），
    **过期即红**；只许收窄，不许清空。
 
@@ -48,6 +52,8 @@ BARE = re.compile(r"(?<![A-Za-z0-9_.\\\\])(n|count|samples)=(?!>)")
 LOWER_BOUND = re.compile(r"(>=|_lb\b|lowerBound|lower_bound|下限)")
 # 语言赋值形态（JS/表达式），不算日志标签
 ASSIGN = re.compile(r"(?:\bvar\s+|\bval\s+|[,?]\s*)(n|count|samples)=")
+# XML/HTML 标记属性：`count="2"` / Kotlin 转义写法 `count=\"2\"` ⇒ 不是读数标签
+XML_ATTR = re.compile(r'(?<![A-Za-z0-9_.\\])(n|count|samples)=\\?["\']')
 # 粗略字符串字面量抽取（支持 \" 转义；不做三引号跨行合并，够用）
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
@@ -72,6 +78,10 @@ def scan_text(text):
         lit = m.group(1)
         line_no = text.count("\n", 0, m.start()) + 1
         if not BARE.search(lit):
+            continue
+        # 先把 XML/HTML 属性形态剥掉（`count=\"2\"`），剩下的才算读数标签候选
+        bare_lit = XML_ATTR.sub("", lit)
+        if not BARE.search(bare_lit):
             continue
         if LOWER_BOUND.search(lit):
             continue
@@ -146,6 +156,9 @@ SELFTEST_CASES = [
     ('val s = "var n=document.querySelectorAll(x)"', False, "JS 赋值不算"),
     ('val s = "samples>=10"', False, "samples>= 放行"),
     ('val s = "tools.count=` + n + `"', False, "结构化键 tools.count= 放行（带点前缀=非裸标签）"),
+    ('val s = "<fonts count=\\"2\\">"', False, "XML 属性 count= 不算读数标签（632 的 xlsx）"),
+    ('val s = " count=\\""', False, "XML 属性片段（拼串写法）也不算"),
+    ('val s = "detail count=5"', True, "无引号的 count= 仍是裸读数标签（别把口子开太大）"),
 ]
 
 
