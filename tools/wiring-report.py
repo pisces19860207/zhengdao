@@ -1263,6 +1263,15 @@ def validate_allow_add(diff: dict, current: dict, status: dict | None,
     for x in diff["added"]:
         name, path = x["name"], x["file"]
         entry = current.get((name, path))
+        # 2026-11-15（635 卡壳处修）：**已接件不进 allow-add 的门**。
+        # 原来这里对「本次新增的全部条目」逐条过门，于是只要基线落后几件
+        # 「已接」装配类（它们有生产调用点，扫描即可证，不需要白名单背书），
+        # `--generate --allow-add` 就永远退 1 ⇒ 谁也没法把该登记的 by-design 件
+        # （635 的 ClaimEvidenceWiring）补进基线 ⇒ R5 永远红。
+        # 口径：已接件由 R5「对价 a：扫描到 wired」证明，加进基线只是把账补实，
+        # 不构成洗账；白名单只用来给 by-design（无调用点）新增背书。
+        if entry is not None and entry.bucket == BUCKET_WIRED:
+            continue
         if entry is None:
             problems.append("`%s` 扫不到声明，无法判种类 ⇒ 不许放行。" % name)
             continue

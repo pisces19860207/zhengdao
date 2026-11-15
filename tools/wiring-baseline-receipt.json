@@ -1,21 +1,37 @@
 {
   "schema": "wiring-receipt/1",
-  "baselineSha256": "74c950300151a4323a97c0b0d0ede9f8bc1edbfbfc0af8f1565b10c83c65cc88",
+  "baselineSha256": "cf62f849c823c88681269335446b9e454bb52bebca2ad3654d720dfe186cc971",
   "counts": {
-    "total": 50,
-    "wired": 31,
-    "byDesign": 16,
+    "total": 53,
+    "wired": 33,
+    "byDesign": 17,
     "pending": 3,
-    "unwiredTotal": 19,
-    "companion": 49,
+    "unwiredTotal": 20,
+    "companion": 55,
     "portInterfaces": 3,
     "ruled": 2
   },
   "changes": {
-    "added": [],
+    "added": [
+      {
+        "name": "ClaimEvidenceWiring",
+        "file": "app/src/main/java/com/example/zhengdao/baopu/audit/ClaimEvidenceWiring.kt",
+        "bucket": "无调用点·by-design"
+      },
+      {
+        "name": "CompanionLawWiring",
+        "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompanionLawWiring.kt",
+        "bucket": "有调用点"
+      },
+      {
+        "name": "McpBudgetWiring",
+        "file": "app/src/main/java/com/example/zhengdao/baopu/mcp/McpBudgetWiring.kt",
+        "bucket": "有调用点"
+      }
+    ],
     "gone": [],
     "flipped": []
   },
-  "reason": "600 三次拍板：为现有基线补一份收据（指纹+变更+因由），不改基线内容",
-  "note": ""
+  "reason": "635 结论-证据对账接线：装配层常量件 ClaimEvidenceWiring 按 by-design 登记（无 install 入口，真入口是顶层函数）；同时把上一轮以来新增的已接装配件补进基线，让账追上扫描",
+  "note": "635 对账接线：装配层读数接口与对账结果行，by-design 声明逐条登记"
 }
