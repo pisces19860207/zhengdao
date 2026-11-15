@@ -146,6 +146,8 @@ class ToolRegistrySwitchTest {
                 "docx_write", "xlsx_write",
                 // 642：套模板（同组同档；默认不可见但默认启用）
                 "docx_template",
+                // 621：剧本五件（LIBRARY 组，默认不可见但默认启用；表序即注册序）
+                "script_outline", "script_approve", "script_write", "script_export", "script_trace",
             ),
             reg.names(),
         )

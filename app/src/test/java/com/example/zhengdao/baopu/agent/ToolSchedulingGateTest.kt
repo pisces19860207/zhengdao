@@ -68,6 +68,8 @@ class ToolSchedulingGateTest {
         "sheet_read", "search_web",
         // 527：governance_state 只读各本账（不写盘、不联网），与别的读可并行
         "governance_state",
+        // 621：script_trace 只读原文（按章按行取文本，不写盘、不联网），与别的读可并行
+        "script_trace",
         // 322：board_read 只读工作区里一件便签（不写盘、不联网），与别的读可并行
         // （board_write 是写，故意**不**进这张表：并行读表只收只读件）
         "board_read",

@@ -165,6 +165,11 @@ class L6BoundaryGateTest {
             "agent/PathCopyCore.kt" to setOf("mkdirs", "writeText", "appendText", "delete"),
             // 288 整理：范围/目标经管线守卫；mkdirs 只为配方目录，writeText 只写配方 json。
             "agent/OrganizeTool.kt" to setOf("mkdirs", "writeText"),
+            // 621 剧本五件：本文件只做「工程目录不存在就建」这一步（mkdirs），四个文件的
+            // 落盘全在 script/ScriptStore（不在本判据域）。落点由 ScriptStore.dirOf 圈死：
+            // 只许 `<工作区>/剧本/<片名>/`，片名不许带分隔符/`..`/绝对路径（ScriptDomainTest
+            // 的负例钉着），所以模型给不出一个会写到围栏外的路径。
+            "agent/tools/ScriptTools.kt" to setOf("mkdirs"),
             // 第三百二十八批：金吾卫喂入口的落盘（attempts 跨进程续跑＋装配账）——落点在
             // 应用私有目录 filesDir/jinwu-patrol/，不是模型指的工作区路径；mkdirs 建自己的
             // 账目录，appendText 是装配账一行一条（available/unavailable），writeText 是

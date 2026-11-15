@@ -472,6 +472,24 @@ class ToolSchemaAllTest {
             // 642：套模板（最小合法参数 = 一份模板 + 一个字段）
             "docx_template" to JSONObject().put("template", "模板.docx")
                 .put("fields", JSONObject().put("姓名", "张三")),
+            // 621：剧本五件（最小合法参数：outline 一场戏核 / approve+export+trace 只给片名 /
+            // write 一场最小戏：地点+时间+一拍动作）
+            "script_outline" to JSONObject().put("project", "片名").put("mode", "original")
+                .put(
+                    "scenes",
+                    JSONArray().put(JSONObject().put("summary", "开场：雨夜等人")),
+                ),
+            "script_approve" to JSONObject().put("project", "片名"),
+            "script_write" to JSONObject().put("project", "片名").put(
+                "scene",
+                JSONObject().put("id", "S01").put("location", "咖啡馆").put("time", "夜")
+                    .put(
+                        "beats",
+                        JSONArray().put(JSONObject().put("kind", "action").put("text", "她推门进来。")),
+                    ),
+            ),
+            "script_export" to JSONObject().put("project", "片名"),
+            "script_trace" to JSONObject().put("project", "片名"),
             // 第二百三十二批：通用表格问答（两条入口二选一，样本给一句话那条）
             "table_query" to JSONObject().put("question", "一共几个人"),
             "search_web" to JSONObject().put("query", "word"),
