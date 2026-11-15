@@ -262,8 +262,9 @@ internal fun BrowserScreen(
     var exportSheetOpen by remember { mutableStateOf(false) }
     var exportBusy by remember { mutableStateOf(false) }
     var presetName by rememberSaveable { mutableStateOf(PageExportPolicy.Preset.PHONE.name) }
-    // 用 mutableStateOf(Int) 而不是 mutableIntStateOf：rememberSaveable 的自动保存只认 MutableState
-    var customWidthDp by rememberSaveable { mutableStateOf(PageExportPolicy.DEFAULT_CUSTOM_WIDTH_DP) }
+    // 用 mutableIntStateOf（不装箱）：lint 的 AutoboxingStateCreation 会盯 mutableStateOf(Int)。
+    // 代价：自定义**宽度**不跨进程保留（重启回到默认宽）；预设档位仍由上面那个 String 记住。
+    var customWidthDp by remember { mutableIntStateOf(PageExportPolicy.DEFAULT_CUSTOM_WIDTH_DP) }
     val preset = runCatching { PageExportPolicy.Preset.valueOf(presetName) }
         .getOrDefault(PageExportPolicy.Preset.PHONE)
     val viewport = PageExportPolicy.viewportOf(preset, customWidthDp)
@@ -313,6 +314,9 @@ internal fun BrowserScreen(
         PageExportPolicy.Refusal.NOT_RENDERED -> refuseNotRendered
     }
 
+    // 屏幕像素尺寸在**组合期**读一次（lint: LocalContextResourcesRead —— 回调里读资源不会随
+    // 旋转/分屏重组）。导出目标尺寸要用它把预设 dp 换成设备像素。
+    val displayMetrics = context.resources.displayMetrics
     val exportScope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
     val submitExport: (ExportKind) -> Unit = { kind ->
         val tab = BrowserTabManager.activeTab()
@@ -335,12 +339,11 @@ internal fun BrowserScreen(
             exportScope.launch {
                 try {
                     // 651：预设只作用在这里——按预设重排一次再拍（屏幕上的排版不动）
-                    val dm = context.resources.displayMetrics
                     val target = PageExportPolicy.captureTarget(
                         vp = viewport,
-                        density = dm.density,
-                        screenWidthPx = dm.widthPixels,
-                        screenHeightPx = dm.heightPixels,
+                        density = displayMetrics.density,
+                        screenWidthPx = displayMetrics.widthPixels,
+                        screenHeightPx = displayMetrics.heightPixels,
                     )
                     val shot = when (kind) {
                         ExportKind.PNG_VIEWPORT -> PageExporter.captureViewport(tab.webView, target)
