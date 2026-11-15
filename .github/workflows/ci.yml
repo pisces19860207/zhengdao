@@ -836,6 +836,19 @@ jobs:
           python3 tools/check-model-registry.py --selftest
           python3 tools/check-model-registry.py
 
+      # ── 626 批一（2026-11-15）：六体仿生登记闸 ───────────────────────────────
+      # 判的是「带 @BioAnalog("件名") 标记的类有没有先登记在 docs/bio-analog-registry.md」。
+      # 六体（杏仁核／海马／前额叶／纹状体／岛叶／丘脑）批一定稿：六件都无判定权，
+      # 只出读数；批二起落码时必须带标记，标记即登记承诺，闸按表放行。判据：
+      #   · 红：标记未登记／裸标记缺件名／登记表七列有空格／六行缺行／冒出第七件／同件两行；
+      #   · 环境错误(2)：登记表被删、七列表头找不到 —— 删表不许变绿；
+      #   · 注释与三引号串里的 @BioAnalog 不算承诺（133 批「跳过注释行」同款口径）。
+      # 当前仓内零个标记类 ⇒ 应绿（真状态，不是漏判）；绿没绿对，靠 selftest 正负例各自证明。
+      - name: 六体登记闸（626：@BioAnalog 未登记即红，六件闭集）
+        run: |
+          python3 tools/check-bio-analog.py --selftest
+          python3 tools/check-bio-analog.py
+
       - name: 归档 SBOM
         if: always()
         uses: actions/upload-artifact@v7
