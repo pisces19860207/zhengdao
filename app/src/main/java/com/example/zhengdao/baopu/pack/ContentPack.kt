@@ -12,6 +12,7 @@
 // ——测试里换一个会计数的包根，读没读一眼可见。
 package com.example.zhengdao.baopu.pack
 
+import androidx.core.content.edit
 import android.content.Context
 import java.io.File
 
@@ -36,7 +37,7 @@ internal object ContentPackGate {
     fun set(ctx: Context, on: Boolean) {
         runCatching {
             ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit().putBoolean(KEY_ON, on).apply()
+                .edit { putBoolean(KEY_ON, on) }
         }
     }
 }
