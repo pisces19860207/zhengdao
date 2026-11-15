@@ -30,6 +30,9 @@ import com.example.zhengdao.baopu.evolution.lowrisk.EvoRedLine
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring
+import com.example.zhengdao.baopu.peer.AgentForm
+import com.example.zhengdao.baopu.peer.AgentIds
+import com.example.zhengdao.baopu.peer.AgentRegistry
 import com.example.zhengdao.baopu.peer.A2aTaskState
 import com.example.zhengdao.testkit.TempSandbox
 import java.io.File
@@ -52,6 +55,7 @@ class HighRiskRouteEvoFixtureTest {
 
     @Before
     fun setUp() {
+        AgentRegistry.resetForTest() // ②消费缝读名册：进程级单例先还清
         sandbox = TempSandbox.create("zd568c-rt-")
         memory = File(sandbox, "抱朴记忆")
         DecisionLedger.install(memory)
@@ -61,6 +65,7 @@ class HighRiskRouteEvoFixtureTest {
 
     @After
     fun tearDown() {
+        AgentRegistry.resetForTest()
         EvoSampleWiring.uninstallForTest()
         ConsequenceWiring.uninstallForTest()
         DecisionLedger.uninstallForTest()
@@ -347,5 +352,57 @@ class HighRiskRouteEvoFixtureTest {
         assertTrue(propose(null, RouteInput("peerA", ""), anchor = "", atMs = now))
         val reading = EvoSampleWiring.reading(cap.wire)
         assertEquals("兜底锚不合并任何东西：计 1", 1, reading.events)
+    }
+
+    // ── 644 ②：生效值消费缝——resolveEndpoint（生效路由 → 请求真发往新 peer 的解析半边）──
+
+    private fun registerPeer(name: String, endpoint: String): String =
+        AgentRegistry.register(name, AgentForm.A2A, endpoint, "", "").record.id
+
+    @Test
+    fun `消费缝②_路由行指向名册peer_解析出它的endpoint`() {
+        AgentRegistry.installRoot { sandbox }
+        val endpoint = "http://10.7.0.1:9001"
+        val id = registerPeer("peerA", endpoint)
+        assertNull("没有路由行 ⇒ 不挪", RouteEvo.resolveEndpoint("http://10.7.0.9:9002"))
+        assertTrue("路由偏好指向名册 peer", propose(before = null, after = RouteInput(id, "fast"), anchor = "rt:c1", atMs = now))
+        assertEquals(
+            "偏好 peer 在名册 ⇒ 解析出它的 endpoint（请求真发往新 peer 的地址半边）",
+            endpoint,
+            RouteEvo.resolveEndpoint("http://10.7.0.9:9002"),
+        )
+        assertNull(
+            "偏好与请求同址（规范化后相等）⇒ 不挪（不挪等于没挪，别误报路由动了）",
+            RouteEvo.resolveEndpoint("$endpoint/"),
+        )
+    }
+
+    @Test
+    fun `消费缝②_偏好不在名册_回落请求原值_说一句为什么`() {
+        AgentRegistry.installRoot { sandbox }
+        assertTrue(propose(before = null, after = RouteInput("ag-nonexistent", ""), anchor = "rt:c2", atMs = now))
+        val logs = mutableListOf<String>()
+        assertNull("不在名册（未注册或已移除）⇒ 不能把请求发去没有的地址", RouteEvo.resolveEndpoint("http://10.7.0.9:9002", log = { logs += it }))
+        assertTrue("回落有话说：${logs.joinToString()}", logs.single().contains("不在名册"))
+    }
+
+    @Test
+    fun `消费缝②_档位被拨关_收权不挪`() {
+        AgentRegistry.installRoot { sandbox }
+        val id = registerPeer("peerA", "http://10.7.0.1:9001")
+        assertTrue(propose(before = null, after = RouteInput(id, ""), anchor = "rt:c3", atMs = now))
+        turnOff(now + 3_600_000L)
+        assertNull("档位关闭 ⇒ 收权：生效值回缺省路由，解析也不挪", RouteEvo.resolveEndpoint("http://10.7.0.9:9002"))
+    }
+
+    @Test
+    fun `消费缝②_peer被移除后_路由行还在但不挪_不再指向没有的地址`() {
+        AgentRegistry.installRoot { sandbox }
+        val endpoint = "http://10.7.0.1:9001"
+        val id = registerPeer("peerA", endpoint)
+        assertTrue(propose(before = null, after = RouteInput(id, ""), anchor = "rt:c4", atMs = now))
+        assertEquals(endpoint, RouteEvo.resolveEndpoint("http://10.7.0.9:9002"))
+        AgentRegistry.markRemoved(endpoint, AgentForm.A2A, "断连", now + 60_000L)
+        assertNull("移除后偏好不可解析 ⇒ 回落请求原值", RouteEvo.resolveEndpoint("http://10.7.0.9:9002"))
     }
 }

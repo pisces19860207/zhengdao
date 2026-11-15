@@ -222,4 +222,76 @@ class HighRiskEvoGateTest {
         assertTrue(body != null)
         assertFalse("拔掉白名单回滚支后必须红（判据②的一键回滚不许静默消失）", body!!.contains("HighRiskEvo.revertWhitelist("))
     }
+
+    // ── 644 ① 生效值消费缝：收窄增量 → 生产工具分发真的少一件 ────────────────────
+
+    @Test
+    fun `G9_生产工具分发真消费收窄增量_runSubtasks的available按narrowAvailable收窄`() {
+        val body = GateBodies.functionBody(baopuRuntime(), "private fun runSubtasks(")
+        assertTrue("runSubtasks 不在了？", body != null)
+        assertTrue(
+            "生产分发没消费生效白名单（available 不收窄＝接线日白名单一个字不变）",
+            body!!.contains("HighRiskEvo.narrowAvailable("),
+        )
+        assertTrue("组键映射没注入（evolution 不反 import agent，映射由装配层给）", body.contains("ToolGroupTable.GROUP_OF"))
+        assertTrue("收窄要发生在解析之前（parseDecomposition 吃的就是收窄后的 available）", body.indexOf("narrowAvailable(") < body.indexOf("parseDecomposition("))
+    }
+
+    @Test
+    fun `G9负例_收窄消费从runSubtasks拔掉_断言必须红`() {
+        val src = baopuRuntime()
+        assertTrue("前提：真文件里有消费缝", src.contains("HighRiskEvo.narrowAvailable("))
+        val mutated = src.replace("HighRiskEvo.narrowAvailable(", "HighRiskEvo.narrowGone(")
+        val body = GateBodies.functionBody(mutated, "private fun runSubtasks(")
+        assertTrue(body != null)
+        assertFalse("拔掉消费缝后必须红（负例：收窄后仍可调 ⇒ 红）", body!!.contains("HighRiskEvo.narrowAvailable("))
+    }
+
+    @Test
+    fun `G10_收窄增量读口先问档再读行_增量等于最新行的before减after`() {
+        val body = GateBodies.functionBody(highRiskEvo(), "fun narrowedGroupKeys(")
+        assertTrue("narrowedGroupKeys 不在了？", body != null)
+        val band = body!!.indexOf("currentCanaryBand(")
+        val row = body.indexOf("currentWhitelistRow(")
+        assertTrue("消费读口不读档位（OFF 也收窄＝越权）", band >= 0)
+        assertTrue("消费读口不读白名单行的原文（before/after）", row >= 0)
+        assertTrue("顺序必须是 先问档 → 再读行", band < row)
+        assertTrue("增量没做集合差（before−after 分不出删了哪些键）", body.contains("decode(row.first) - WhitelistRules.decode(row.second)"))
+    }
+
+    @Test
+    fun `G10负例_收窄增量读口拔掉_断言必须红`() {
+        val src = highRiskEvo()
+        assertTrue("前提：真文件里有收窄增量读口", src.contains("currentWhitelistRow("))
+        val mutated = src.replace("currentWhitelistRow(", "currentWhitelistRowGone(")
+        val body = GateBodies.functionBody(mutated, "fun narrowedGroupKeys(")
+        assertTrue(body != null)
+        assertFalse("拔掉增量读口后必须红（消费缝没有原料＝白名单行永远不落地）", body!!.contains("currentWhitelistRow("))
+    }
+
+    // ── 644 ③ 加宽真画像：同一条 467 四步链，拒因带探针明细与画像来源 ──────────────
+
+    @Test
+    fun `G11_加宽准入走真467画像_不再凭空造空画像_拒因带画像来源`() {
+        val admitted = GateBodies.functionBody(highRiskEvo(), "private fun wideningAdmitted(")
+        assertTrue("wideningAdmitted 不在了？", admitted != null)
+        assertTrue("准入没吃画像来源（拒因说不清没考过还是没建档）", admitted!!.contains("wideningProfile("))
+        assertTrue("拒因没带画像来源", admitted.contains("画像来源："))
+        val profile = GateBodies.functionBody(highRiskEvo(), "private fun wideningProfile(")
+        assertTrue("wideningProfile 不在了？", profile != null)
+        assertTrue(
+            "生产画像没走 467 真链（快照现读/四步首建＝不新造通道）",
+            profile!!.contains("AdmissionWiring.profileForEvolution("),
+        )
+    }
+
+    @Test
+    fun `G11负例_真画像从加宽路径里拔掉_断言必须红`() {
+        val src = highRiskEvo()
+        assertTrue("前提：真文件里有真画像读口", src.contains("AdmissionWiring.profileForEvolution("))
+        val mutated = src.replace("AdmissionWiring.profileForEvolution(", "AdmissionWiring.profileGone(")
+        val body = GateBodies.functionBody(mutated, "private fun wideningProfile(")
+        assertTrue(body != null)
+        assertFalse("拔掉真画像后必须红（加宽一律拒的病根回来了）", body!!.contains("AdmissionWiring.profileForEvolution("))
+    }
 }

@@ -228,6 +228,21 @@ internal object ConsequenceLedger {
         return latest.after
     }
 
+    /**
+     * 最新白名单行的 (before, after) 原文（第六百四十四批 ①消费缝；与 [currentWhitelist] 是
+     * **同一行、同一取舍**——`!rolledBack`、按 at 取最新——只是消费缝需要**收窄增量**（before−after），
+     * 光有 after 分不出"这一行删掉了哪些键"）。没有未回滚的白名单行 ⇒ null（消费侧按"没有进化收窄"
+     * 处理，不另立缺省）。解码（逗号串⇒键集）归调用方（`WhitelistRules.decode`），本层只回原文。
+     */
+    fun currentWhitelistRow(rows: List<DecisionRecord>, capability: String): Pair<String, String>? {
+        val prefix = "${ConsequenceEvidence.WHITELIST}$capability:"
+        val latest = rows
+            .filter { it.kind == DecisionKind.TOOL_GRANT && !it.rolledBack && it.evidence.startsWith(prefix) }
+            .maxByOrNull { it.atMs }
+            ?: return null
+        return latest.before to latest.after
+    }
+
     // ── ③‴ 路由调整行（568-C 域②；复用 tool_grant，与白名单/阈值/档位同一取舍）──────
 
     /**

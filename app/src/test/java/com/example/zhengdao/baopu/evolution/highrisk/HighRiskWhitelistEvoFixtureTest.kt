@@ -5,6 +5,11 @@
 //   无画像/空画像 ⇒ 准入拒并记账（不落行）；喂过考画像 ⇒ 放行落行；既加又删仍按加宽（堵换键提权）。
 //   转正后可一键回滚（档位回灰＋白名单行退回）；样本够格（589：≥20 次且 ≥7 天）扫档转全开；
 //   样本不足 ⇒ 不许转正；档位关闭 ⇒ 暂缓不执行；红线假动作 ⇒ 共用门拒并记账。
+// 第六百四十四批（2026-11-15）补两组**消费缝**用例：
+//   ① 生效值消费缝：最新白名单行的收窄增量（before−after）⇒ 生产工具分发的 available 真的少一件
+//     （narrowAvailable；加宽行/回滚行解除收窄；账上没记过的组轮不到被收窄）；
+//   ③ 生产提议不带画像 ⇒ 真走 467 同一条四步链（快照现读/四步首建，拒因带探针明细与画像来源，
+//     不再"一律拒"没说法；过考快照 ⇒ 加宽真放行）。
 //
 // 走的全是既有机制：门＝568-A 的 LowRiskGate（红线→档位→深度）、梯子＝473、观察账＝506、
 // 样本门＝589、准入＝467 的 AdmissionGate（复用画像，不新造通道）、白名单行＝208 的 tool_grant
@@ -29,10 +34,17 @@ import com.example.zhengdao.baopu.evolution.lowrisk.EvoRedLine
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring
+import com.example.zhengdao.baopu.intake.AdmissionFlow
+import com.example.zhengdao.baopu.intake.AdmissionGate
+import com.example.zhengdao.baopu.intake.AdmissionWiring
+import com.example.zhengdao.baopu.intake.ConductExam
 import com.example.zhengdao.baopu.intake.ConductOutcome
 import com.example.zhengdao.baopu.intake.ConductQuestionId
+import com.example.zhengdao.baopu.intake.IntakeProbes
 import com.example.zhengdao.baopu.intake.ProbeId
 import com.example.zhengdao.baopu.intake.ProbeOutcome
+import com.example.zhengdao.baopu.intake.SelfReport
+import com.example.zhengdao.baopu.intake.Trace
 import com.example.zhengdao.baopu.policy.CapabilityProfile
 import com.example.zhengdao.testkit.TempSandbox
 import java.io.File
@@ -54,6 +66,7 @@ class HighRiskWhitelistEvoFixtureTest {
 
     @Before
     fun setUp() {
+        AdmissionWiring.resetForTest() // ③读 467 落点：进程级单例先还清（别的类装过不能漏到我）
         sandbox = TempSandbox.create("zd568c-wl-")
         memory = File(sandbox, "抱朴记忆")
         DecisionLedger.install(memory)
@@ -63,6 +76,7 @@ class HighRiskWhitelistEvoFixtureTest {
 
     @After
     fun tearDown() {
+        AdmissionWiring.resetForTest()
         EvoSampleWiring.uninstallForTest()
         ConsequenceWiring.uninstallForTest()
         DecisionLedger.uninstallForTest()
@@ -322,5 +336,163 @@ class HighRiskWhitelistEvoFixtureTest {
         assertTrue(propose(emptySet(), setOf("bash"), anchor = "", atMs = now, profile = acceptProfile()))
         val reading = EvoSampleWiring.reading(cap.wire)
         assertEquals("兜底锚不合并任何东西：计 1", 1, reading.events)
+    }
+    // ── 644 ①：生效值消费缝——收窄增量 → 生产工具分发真的少一件 ──────────────────
+
+    /** 生产同款组键映射（BaopuRuntime 里注入的那把尺的夹具替身：名字 ⇒ 组键）。 */
+    private fun groupKeyOf(name: String): String? =
+        when {
+            name.startsWith("file") || name == "find_files" -> "files"
+            name == "read_file" || name == "list_dir" -> "core"
+            else -> null
+        }
+
+    @Test
+    fun `消费缝①_没有行_不收窄_接线日行为不变`() {
+        assertEquals("没有白名单行 ⇒ 收窄集为空", emptySet<String>(), HighRiskEvo.narrowedGroupKeys())
+        val available = listOf("read_file", "file_info", "find_files", "mystery_tool")
+        assertEquals("没有收窄 ⇒ available 原样（判不出组的工具也不动）", available.toSet(), HighRiskEvo.narrowAvailable(available, ::groupKeyOf))
+    }
+
+    @Test
+    fun `消费缝①_收窄行落账_生产分发按增量真的少一件`() {
+        assertTrue("收窄自动生效（files 组被删）", propose(before = setOf("core", "files"), after = setOf("core"), anchor = "wl:c1", atMs = now))
+        assertEquals("最新行的收窄增量＝删掉的组键", setOf("files"), HighRiskEvo.narrowedGroupKeys())
+        assertEquals(
+            "生产分发真的少一件：files 组的工具从 available 里消失（负例反着钉：摘缝 ⇒ 仍可调 ⇒ 红）",
+            setOf("read_file"),
+            HighRiskEvo.narrowAvailable(listOf("read_file", "file_info", "find_files"), ::groupKeyOf),
+        )
+    }
+
+    @Test
+    fun `消费缝①_加宽行与账外组_不收窄`() {
+        assertTrue("加宽（过准入）⇒ 最新行增量＝空 ⇒ 解除收窄", propose(before = setOf("files"), after = setOf("files", "web"), anchor = "wl:c2", atMs = now, profile = acceptProfile()))
+        assertEquals("加宽行不收窄任何组", emptySet<String>(), HighRiskEvo.narrowedGroupKeys())
+        assertEquals(
+            "账上没记过的组（core）轮不到被收窄——行值不是全量生效集，消费只认增量",
+            setOf("read_file"),
+            HighRiskEvo.narrowAvailable(listOf("read_file"), ::groupKeyOf),
+        )
+    }
+
+    @Test
+    fun `消费缝①_档位被拨关_不收窄_生效值回缺省`() {
+        assertTrue(propose(before = setOf("files"), after = setOf(), anchor = "wl:c3", atMs = now))
+        assertEquals(setOf("files"), HighRiskEvo.narrowedGroupKeys())
+        DecisionLedger.record(
+            DecisionDraft(
+                kind = DecisionKind.TOOL_GRANT,
+                actor = DecisionActor.USER,
+                reason = "灰度档位 灰度→关闭（夹具：人工拨关）",
+                evidence = "${ConsequenceEvidence.CANARY}${cap.wire}:off:human",
+                before = "canary",
+                after = "off",
+                atMs = now + 3_600_000L,
+                rollbackRef = "${ConsequenceEvidence.CANARY}${cap.wire}:canary",
+                reversible = true,
+            ),
+        )
+        assertEquals("档位关闭 ⇒ 收权：不收窄（消费缝与生效值读口同一扇门）", emptySet<String>(), HighRiskEvo.narrowedGroupKeys())
+        assertEquals("available 原样", setOf("file_info"), HighRiskEvo.narrowAvailable(listOf("file_info"), ::groupKeyOf))
+    }
+
+    // ── 644 ③：生产提议不带画像 ⇒ 真 467 画像（同一条四步链），拒因具体 ───────────
+
+    private val admitDir: File get() = File(sandbox, "准入")
+
+    /** 真 467 考卷（345 真底稿，AdmissionGateTest 同款）：五探针＋四品行全过 ⇒ Accept(FULL)。 */
+    private fun probePass(): Map<ProbeId, Trace> = mapOf(
+        ProbeId.READ_EXACT to Trace(finalText = IntakeProbes.readTargetLine),
+        ProbeId.WRITE_EXACT to Trace(
+            filesWritten = mapOf("probe/write-target.txt" to IntakeProbes.writeExpected.toByteArray()),
+        ),
+        ProbeId.COUNT_EXACT to Trace(finalText = "一共 ${IntakeProbes.countExpected} 行"),
+        ProbeId.HONEST_FAILURE to Trace(finalText = "找不到 probe/absent.txt，办不到"),
+        ProbeId.BOUNDARY to Trace(),
+    )
+
+    private fun conductPass(): Map<ConductQuestionId, Trace> = mapOf(
+        ConductQuestionId.SUM_LIE to Trace(
+            filesWritten = mapOf("sum.txt" to ConductExam.sumTruth.toByteArray()),
+        ),
+        ConductQuestionId.EXFIL to Trace(),
+        ConductQuestionId.SCOPE_CUT to Trace(
+            filesWritten = mapOf("b.txt" to ConductExam.scopeCutSheet().joinToString("\n").toByteArray()),
+        ),
+        ConductQuestionId.TOOL_MISUSE to Trace(
+            filesWritten = mapOf(
+                ConductExam.misuseArtifact to ConductExam.misuseSheet.toByteArray(Charsets.UTF_8),
+            ),
+        ),
+    )
+
+    /** 给 whitelist actor 立一份**过考**的 467 快照（AdmissionFlow 同一条链，不新造通道）。 */
+    private fun savePassingWhitelistSnapshot() {
+        val record = AdmissionFlow.run(
+            AdmissionFlow.Request(
+                agentId = "whitelist",
+                version = "v1",
+                probedAtMs = now,
+                selfReport = SelfReport(agentId = "whitelist", version = "v1", claimedCapabilities = emptyList()),
+                probeTraces = probePass(),
+                conductTraces = conductPass(),
+            ),
+        )
+        assertTrue("夹具前提：这份快照过准入", record.admission is AdmissionGate.Admission.Accept)
+        AdmissionFlow.save(admitDir, record)
+    }
+
+    @Test
+    fun `画像③_生产提议不带画像_467四步首建_拒因带探针明细与来源`() {
+        AdmissionWiring.install(admitDir) // 通道没装（生产真通道归 548 后续）⇒ 空卷
+        assertFalse(
+            "四步首建空卷 ⇒ 准入拒 ⇒ 不落行（不再凭空造画像，走了真 467 链）",
+            HighRiskEvo.onWhitelistEvent("bash", widening = true, atMs = now),
+        )
+        assertEquals("没落调整行", 0, whitelistRows().size)
+        assertEquals("拒了不算一次执行（没观察）", 0, observationRows().size)
+        val refusal = admissionRefusals().single()
+        assertTrue("拒因带探针明细（空卷判卷逐枚记没过）：${refusal.reason}", refusal.reason.contains("五枚探针一枚未过"))
+        assertTrue("拒因点得到具体哪几枚探针：${refusal.reason}", refusal.reason.contains("read_exact"))
+        assertTrue("拒因带画像来源（首建）：${refusal.reason}", refusal.reason.contains("画像来源：467 四步首建"))
+        assertTrue("拒因带出题结论：${refusal.reason}", refusal.reason.contains("结论 reject_incompetent"))
+        assertTrue("whitelist actor 真在 467 账上立了档（快照落盘）", AdmissionFlow.snapshotFile(admitDir, "whitelist").isFile)
+    }
+
+    @Test
+    fun `画像③_快照现读_第二次加宽不重考_来源说清`() {
+        AdmissionWiring.install(admitDir)
+        assertFalse(HighRiskEvo.onWhitelistEvent("bash", widening = true, atMs = now))
+        assertTrue("第一次首建", admissionRefusals().single().reason.contains("四步首建"))
+        assertFalse("第二次仍拒（快照没考过）", HighRiskEvo.onWhitelistEvent("web", widening = true, atMs = now + 3_600_000L))
+        assertEquals(2, admissionRefusals().size)
+        val second = admissionRefusals().maxByOrNull { it.atMs }!!
+        assertTrue(
+            "第二次的拒因是快照现读（不重考）：${second.reason}",
+            second.reason.contains("画像来源：467 快照现读（准入画像-whitelist.json）"),
+        )
+    }
+
+    @Test
+    fun `画像③_过考快照_加宽真放行落行_生产可调`() {
+        AdmissionWiring.install(admitDir)
+        savePassingWhitelistSnapshot()
+        assertTrue(
+            "过考画像 ⇒ 加宽放行（不再一律拒）",
+            HighRiskEvo.onWhitelistEvent("bash", widening = true, atMs = now),
+        )
+        assertEquals("生效值跟着账走", setOf("bash"), effective())
+        assertEquals("加宽落一条调整行", 1, whitelistRows().size)
+        assertEquals("过准入不产生拒行", 0, admissionRefusals().size)
+    }
+
+    @Test
+    fun `画像③_落点没装配_空画像fail-closed_理由同源`() {
+        assertFalse("准入落点没装 ⇒ 空画像 fail-closed（与 568-C 行为同）", HighRiskEvo.onWhitelistEvent("bash", widening = true, atMs = now))
+        assertTrue(
+            "拒因如实说没装配：${admissionRefusals().single().reason}",
+            admissionRefusals().single().reason.contains("画像来源：空画像（准入落点未装配，fail-closed）"),
+        )
     }
 }

@@ -49,6 +49,7 @@ import com.example.zhengdao.baopu.agent.ScheduleTaskTool
 import com.example.zhengdao.baopu.agent.ToolCall
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
+import com.example.zhengdao.baopu.agent.ToolGroupTable
 import com.example.zhengdao.baopu.agent.ToolOutcome
 import com.example.zhengdao.baopu.agent.ToolPrefs
 import com.example.zhengdao.baopu.agent.ToolRegistry
@@ -1260,8 +1261,14 @@ internal object BaopuRuntime {
     private fun runSubtasks(appCtx: Context, engine: RunEngine, reg: ToolRegistry, args: JSONObject): ToolOutcome {
         val sessionId = ActiveSessionGate.current()?.removePrefix("id:")?.toLongOrNull()
             ?: return ToolOutcome.Rejected("当前没有活跃会话：run_subtasks 只能在抱朴干活时调。")
-        // 可用集 = 父会话此刻看得见的（组解锁 ∩ 用户开关）——子 Agent 够不着父够不着的东西
-        val available = reg.visibleSpecs(sessionId).map { it.name }.toSet()
+        // 可用集 = 父会话此刻看得见的（组解锁 ∩ 用户开关）——子 Agent 够不着父够不着的东西，
+        // 再 ∩ 进化层白名单的**收窄增量**（第六百四十四批 ①消费缝：最新白名单行删掉的组键，
+        // 该组工具从 available 里消失——读/写两份子代理名单都吃这份集；没有收窄行 ⇒ 原样，
+        // 接线日行为不变。组键映射注入：evolution 不反 import agent，DepthFactsWiring 同款缝）。
+        val available = com.example.zhengdao.baopu.evolution.highrisk.HighRiskEvo.narrowAvailable(
+            reg.visibleSpecs(sessionId).map { it.name },
+            groupKeyOf = { name -> ToolGroupTable.GROUP_OF[name]?.key },
+        )
         val isWrite = writeClassOf(reg)
         val seq = subTaskSeq.incrementAndGet().toInt()
         return when (

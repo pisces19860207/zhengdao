@@ -139,6 +139,12 @@ class GovernanceStateLeaseSectionTest {
     // ⇒ 17 键仍 ≤24 不扩容（容量 32 不变），旧 15 键相对序一个不动；两新键按 spread&(32-1)
     // 独立复算落在表尾（judgment_threshold 之后），与失败现场逐字节吻合后落笔。复算自校验：
     // 同一把哈希模型先逐字节复现旧 15 键金样例，再扩到 17 键（不是照抄本次输出）。
+    // 第六百四十四批（2026-11-15）补记「新增哪两个、为什么」（568-C 当时只补了字节没写清来历）：
+    //   · tool_whitelist＝568-C 域①「工具白名单」在 473 登记表补登记的能力（wire=tool_whitelist，
+    //     缺省灰度）——gray 段按 CanaryCapability.entries 逐能力出档，登记表长一格它就必须长一格；
+    //   · envoy_route＝568-C 域②「路由与使臣五流」补登记的能力（wire=envoy_route，缺省灰度），
+    //     同一句理由。两域都是"接进既有灰度链、不新建机制"，所以走的是登记表扩键＋金样例生长，
+    //     而不是另立出口；旧 15 键的相对序一个不动（灰度常量不可拆，序依赖全键集）。
     private val goldenGray =
         "{\"prompt_tail\":{\"band\":\"canary\",\"cn\":\"灰度\"}," +
             "\"orchestration\":{\"band\":\"off\",\"cn\":\"关闭\"}," +
@@ -181,13 +187,13 @@ class GovernanceStateLeaseSectionTest {
     }
 
     @Test
-    fun `旧八段键集不变_companion是唯一新增段_v升4`() {
+    fun `旧九段键集不变_effective是571之后唯一新增_v升5`() {
         seedAll()
         val out = exit()
-        assertEquals(4, out.getInt("v"))
+        assertEquals(5, out.getInt("v"))
         assertEquals(
-            "出口键集：旧八段一个不少一个不多，companion（571）是唯一新增",
-            setOf("v", "day", "ratios", "cards", "gray", "conflicts", "identity", "openLoops", "goal", "lease", "companion"),
+            "出口键集：旧九段一个不少一个不多，effective（644）是 571 之后唯一新增",
+            setOf("v", "day", "ratios", "cards", "gray", "conflicts", "identity", "openLoops", "goal", "lease", "companion", "effective"),
             out.keys().asSequence().toSet(),
         )
         // goal 段（482 加的第七段）的代码路径一个字没动：字节照旧是没立目标的那句 unknown。
@@ -206,6 +212,46 @@ class GovernanceStateLeaseSectionTest {
         // 注：键**序**在两处运行时不一样——Android 的 org.json 是插入序（companion 排在最后，
         // 由 run() 里最后一格 .put 保证），JVM 测试件是 HashMap（顺序是散列的假象）。
         // 所以这里钉键集与逐段字节，键序以生产运行时为准。
+    }
+
+    // ── 二、gray 17 键闭集与"少一键仍红"负例（644 ④）─────────────────────────
+
+    @Test
+    fun `gray段_17键与登记表闭集一一对应_金样例钉住每一键`() {
+        seedAll()
+        val gray = exit().getJSONObject("gray")
+        val wires = com.example.zhengdao.baopu.consequence.CanaryCapability.entries.map { it.wire }
+        assertEquals("gray 段键数＝登记表闭集（568-C 域①②补登记后＝17）", 17, gray.length())
+        assertEquals(
+            "金样例的键集与登记表闭集一一对应（缺一格＝登记表与出口失联）",
+            wires.toSet(),
+            gray.keys().asSequence().toSet(),
+        )
+    }
+
+    @Test
+    fun `金样例负例_gray少一键_比较必红`() {
+        seedAll()
+        val gray = exit().getJSONObject("gray")
+        val wires = com.example.zhengdao.baopu.consequence.CanaryCapability.entries.map { it.wire }
+        // 逐键拔掉金样例 ⇒ 与生产读数必对不上（17 键每一键都被钉住；谁想"修"金样例删一键就红）。
+        // 本仓测试件的 org.json 没有 Android 的 similar()，这里手写同义等值（键集＋逐键值）。
+        wires.forEach { wire ->
+            val mutated = org.json.JSONObject(goldenGray)
+            mutated.remove(wire)
+            assertFalse(
+                "拔掉 $wire 后金样例必须红（少一键＝账对不上，不许静默放行）",
+                sameGray(mutated, gray),
+            )
+        }
+    }
+
+    /** gray 等值（键集＋逐键字节；同一 JVM 的 org.json 对同一键集迭代序确定 ⇒ 字节可比）。 */
+    private fun sameGray(a: JSONObject, b: JSONObject): Boolean {
+        val ka = a.keys().asSequence().toSet()
+        val kb = b.keys().asSequence().toSet()
+        if (ka != kb) return false
+        return ka.all { k -> a.getJSONObject(k).toString() == b.getJSONObject(k).toString() }
     }
 
     // ── 二、lease 段形状与降级 ────────────────────────────────────────────────
@@ -353,6 +399,88 @@ class GovernanceStateLeaseSectionTest {
     fun `读数区那行_无租约整行不出现_不补零`() {
         seedAll() // 零租约
         assertNull("零租约 ⇒ 整行不出现（读数区不补 0）", GovernanceCenterRules.lease(exit()))
+    }
+
+    // ── 四′、effective 段：当前生效的白名单与路由（644 ④）──────────────────────
+
+    /** 落一行白名单调整行（208 的 whitelist: 族，568-C 域①同款证据前缀）。 */
+    private fun seedWhitelistRow(before: String, after: String, atMs: Long = nowMs - 5_000) {
+        DecisionLedger.recordTo(
+            memoryRoot,
+            DecisionDraft(
+                kind = DecisionKind.TOOL_GRANT, actor = DecisionActor.AUTO,
+                reason = "工具白名单 tool_whitelist：${before.ifBlank { "（空）" }}→${after.ifBlank { "（空）" }}（夹具）",
+                evidence = "${com.example.zhengdao.baopu.consequence.ConsequenceEvidence.WHITELIST}tool_whitelist:$after",
+                before = before, after = after, atMs = atMs,
+                rollbackRef = "${com.example.zhengdao.baopu.consequence.ConsequenceEvidence.WHITELIST}tool_whitelist:$before",
+            ),
+        )!!
+    }
+
+    /** 落一行路由调整行（208 的 route: 族，568-C 域②同款证据前缀）。 */
+    private fun seedRouteRow(after: String, atMs: Long = nowMs - 4_000) {
+        DecisionLedger.recordTo(
+            memoryRoot,
+            DecisionDraft(
+                kind = DecisionKind.TOOL_GRANT, actor = DecisionActor.AUTO,
+                reason = "路由 envoy_route：→$after（夹具）",
+                evidence = "${com.example.zhengdao.baopu.consequence.ConsequenceEvidence.ROUTE}envoy_route:$after",
+                before = "", after = after, atMs = atMs,
+                rollbackRef = "${com.example.zhengdao.baopu.consequence.ConsequenceEvidence.ROUTE}envoy_route:",
+            ),
+        )!!
+    }
+
+    @Test
+    fun `effective段_没行_两格都unknown_不冒充全放行`() {
+        seedAll()
+        val eff = exit().getJSONObject("effective")
+        val wl = eff.getJSONObject("whitelist")
+        val rt = eff.getJSONObject("route")
+        assertTrue("没白名单行 ⇒ unknown＋原因", wl.has("unknown") && wl.getString("unknown").contains("没有生效调整行"))
+        assertTrue("没路由行 ⇒ unknown＋原因", rt.has("unknown") && rt.getString("unknown").contains("没有生效路由行"))
+    }
+
+    @Test
+    fun `effective段_有行_读出当前生效的白名单键集与路由偏好`() {
+        seedAll()
+        seedWhitelistRow(before = "files", after = "core,edit")
+        seedRouteRow(after = "ag-abc|fast")
+        val eff = exit().getJSONObject("effective")
+        val wl = eff.getJSONObject("whitelist")
+        assertEquals("白名单来源＝账（ledger）", "ledger", wl.getString("source"))
+        assertEquals(
+            "生效键集＝最新行的 after（同一把 WhitelistRules.decode，排序相连）",
+            listOf("core", "edit"),
+            (0 until wl.getJSONArray("keys").length()).map { wl.getJSONArray("keys").getString(it) },
+        )
+        val rt = eff.getJSONObject("route")
+        assertEquals("路由来源＝账（ledger）", "ledger", rt.getString("source"))
+        assertEquals("生效偏好 peer＝最新行的 peer", "ag-abc", rt.getString("peer"))
+        assertEquals("生效路径标＝最新行的 path", "fast", rt.getString("path"))
+    }
+
+    @Test
+    fun `effective段_档位被拨关_生效值回缺省_unknown不装行还在`() {
+        seedAll()
+        seedWhitelistRow(before = "files", after = "core,edit")
+        seedRouteRow(after = "ag-abc|fast")
+        DecisionLedger.recordTo(
+            memoryRoot,
+            DecisionDraft(
+                kind = DecisionKind.TOOL_GRANT, actor = DecisionActor.USER,
+                reason = "灰度档位 tool_whitelist 灰度→关闭（夹具：人工拨关）",
+                evidence = "${com.example.zhengdao.baopu.consequence.ConsequenceEvidence.CANARY}tool_whitelist:off:human",
+                before = "canary", after = "off", atMs = nowMs - 1_000,
+                rollbackRef = "${com.example.zhengdao.baopu.consequence.ConsequenceEvidence.CANARY}tool_whitelist:canary",
+            ),
+        )!!
+        val eff = exit().getJSONObject("effective")
+        assertTrue(
+            "档关 ⇒ 生效值回缺省（unknown，行留在账上不算生效）",
+            eff.getJSONObject("whitelist").getString("unknown").contains("档位关闭"),
+        )
+        assertEquals("路由档没动 ⇒ 照常读出生效值", "ag-abc", eff.getJSONObject("route").getString("peer"))
     }
 
     // ── 夹具与共用 ─────────────────────────────────────────────────────────────

@@ -2,13 +2,15 @@
 //
 // 第五百二十七批（2026-11-07）· 治理出口的机器口：`governance_state`（只读 R0）。
 //
-// 一把出九段 JSON（口径唯一真相在 `docs/metrics-registry.md`，本文件只按它取数，不另算）：
+// 一把出十段 JSON（口径唯一真相在 `docs/metrics-registry.md`，本文件只按它取数，不另算）：
 //   ratios 四率（违规/误判/干预/跳过，当日窗）／cards 弹卡三数（healthLine 同源，本批
 //   从 healthLine 提出 [AskGovernance.healthCounts] 共用，没造第二遍）／gray 灰度档
 //   （506 登记表逐能力当前档，从 208 账读回）／conflicts 冲突队列条数（互查账待回放行）
 //   ／identity 执行体（476 身份账）／openLoops 未闭环 top-N（236 欠账）／goal 目标（482）
 //   ／lease 租约（558：活/今日授予/命中/免卡/撤销/降权/过期，同源数据函数 [LeaseReadings]）
-//   ／companion 相处改判（571：法典 L34 的改判账——当日次数＋最近一次原判/新判/依据）。
+//   ／companion 相处改判（571：法典 L34 的改判账——当日次数＋最近一次原判/新判/依据）
+//   ／effective 当前生效的白名单与路由（644：高风险域两个生效值读口——568-C 的行值
+//   经 644 消费缝真接生产分发，面板把"当前生效"读出来）。
 //
 // 三条写死（metrics-registry.md 〇节，代码里不许参数化）：
 //   · 窗口＝当日 00:00 起（本地日历天，[AskGovernance.dayOf] 同一把尺）；状态读数不切窗；
@@ -17,8 +19,8 @@
 //     走内存权威，是 registry 明文的例外，理由在 §8）。
 //
 // 判据：读不到 ⇒ 该段 {"unknown":"原因"}，**不抛异常**；八段永远一起返回。
-// 558 的铁律：**旧七段的键序与字节一个不动**（金样例钉在 GovernanceStateLeaseSectionTest），
-// lease 只许追加在最后。
+// 558 的铁律：**旧九段的键序与字节一个不动**（金样例钉在 GovernanceStateLeaseSectionTest），
+// effective 只许追加在最后。
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.ClosureRules
@@ -58,8 +60,8 @@ internal object GovernanceStateTool {
 
     const val NAME = "governance_state"
 
-    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2，558 加 `lease` 段 ⇒ 3，571 加 `companion` 段 ⇒ 4）。 */
-    const val VERSION = 4
+    /** 出口形状版本（改 metrics-registry.md 的段形状时一起升；482 加 `goal` 段 ⇒ 2，558 加 `lease` 段 ⇒ 3，571 加 `companion` 段 ⇒ 4，644 加 `effective` 段 ⇒ 5）。 */
+    const val VERSION = 5
 
     /** 未闭环 top-N（metrics-registry.md §6：挂账最久的前 N 条；写死不参数化）。 */
     const val OPEN_LOOP_TOP = 10
@@ -81,12 +83,13 @@ internal object GovernanceStateTool {
 
     fun spec(workspaceRoot: () -> File): ToolSpec = ToolSpec(
         name = NAME,
-        description = "读本机治理出口的九段只读读数（不改任何东西）：ratios 四率" +
+        description = "读本机治理出口的十段只读读数（不改任何东西）：ratios 四率" +
             "（违规/误判/干预/跳过，当日窗）、cards 弹卡三数（今日自动放过/问卡/压卡）、" +
             "gray 灰度档（逐能力当前档）、conflicts 冲突队列条数（待回放）、identity 执行体身份、" +
             "openLoops 未闭环承诺 top-10、goal 目标（一句话目标/进度/预算用量）、" +
             "lease 租约（活/今日授予/命中/免卡/撤销/降权/过期）、companion 相处改判" +
-            "（当日次数＋最近一次：原判/新判/依据，法典 L34）。" +
+            "（当日次数＋最近一次：原判/新判/依据，法典 L34）、effective 当前生效的白名单与路由" +
+            "（高风险域两个生效值读口：进化白名单行收窄的键集＋路由行的偏好 peer；没有生效行如实说）。" +
             "口径唯一真相在 docs/metrics-registry.md：分母 0 回 " +
             "no_sample，不编 0%；读不到的段回 unknown 加原因，不抛异常。（这个工具在 FILES 组：" +
             "看不到就先 capabilities 解锁）",
@@ -117,6 +120,7 @@ internal object GovernanceStateTool {
             .put("goal", goalSection(workspaceRoot))
             .put("lease", leaseSection(nowMs))
             .put("companion", companionSection(nowMs))
+            .put("effective", effectiveSection())
         return ToolOutcome.Ok(json.toString())
     }
 
@@ -355,4 +359,53 @@ internal object GovernanceStateTool {
     /** 当日 00:00 的毫秒（本地时区；run_log 取数壳的窗口起点）。 */
     internal fun dayStartMs(nowMs: Long): Long =
         AskGovernance.dayOf(nowMs).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    // ── 第十段：effective 当前生效的白名单与路由（644；排在最后——旧九段键序字节不动）──
+
+    /**
+     * 高风险域两个生效值的**面板读口**（第六百四十四批 ④；568-C 的行值经 644 消费缝真接生产
+     * 分发——白名单行收窄的组键真会少一件工具、路由行的偏好真会把委派发往新 peer——面板把
+     * "当前生效"读出来）。取数照 W3 纪律只走账本 replay（[ConsequenceLedger.currentWhitelistRow]／
+     * [ConsequenceLedger.currentRoute]／[ConsequenceLedger.currentCanaryBand]），与消费缝同一行同一把尺。
+     *
+     * 「生效」的口径与消费缝逐格相同：档位开着**且**有未回滚的调整行才算；档关/没行 ⇒ unknown＋原因
+     * （不冒充"全放行"——生产缺省白名单另有用户开关与注册表管，本段不代答）。
+     */
+    private fun effectiveSection(): JSONObject {
+        val ledger = readLedger() ?: return unknown("账本根未装配，生效值账读不到")
+        val out = JSONObject()
+        out.put("whitelist", whitelistEffective(ledger))
+        out.put("route", routeEffective(ledger))
+        return out
+    }
+
+    /** 生效白名单：最新调整行的 after（键集；[com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules.decode] 同一把尺）。 */
+    private fun whitelistEffective(ledger: List<DecisionRecord>): JSONObject {
+        val cap = CanaryCapability.TOOL_WHITELIST
+        val row = ConsequenceLedger.currentWhitelistRow(ledger, cap.wire)
+            ?: return unknown("没有生效调整行（生产按缺省白名单与用户开关走）")
+        if (band(ledger, cap.wire) == CanaryBand.OFF) return unknown("档位关闭（生效值回缺省）")
+        return JSONObject()
+            .put("source", "ledger")
+            .put("keys", JSONArray(com.example.zhengdao.baopu.evolution.highrisk.WhitelistRules.decode(row.second).sorted()))
+    }
+
+    /** 生效路由：最新调整行的 peer|path（[com.example.zhengdao.baopu.evolution.highrisk.RouteSemantics.decode] 同一把尺）。 */
+    private fun routeEffective(ledger: List<DecisionRecord>): JSONObject {
+        val cap = CanaryCapability.ENVOY_ROUTE
+        val raw = ConsequenceLedger.currentRoute(ledger, cap.wire)
+            ?: return unknown("没有生效路由行（委派按调用给的 endpoint 走）")
+        if (band(ledger, cap.wire) == CanaryBand.OFF) return unknown("档位关闭（生效值回缺省）")
+        val route = com.example.zhengdao.baopu.evolution.highrisk.RouteSemantics.decode(raw)
+            ?: return unknown("路由行读不出（peer 空＝不成路由）")
+        return JSONObject()
+            .put("source", "ledger")
+            .put("peer", route.preferredPeer)
+            .put("path", route.path)
+    }
+
+    /** 档位读数（与 gray 段同一格：账上读，读不出按缺省档兜底）。 */
+    private fun band(ledger: List<DecisionRecord>, wire: String): CanaryBand =
+        runCatching { ConsequenceLedger.currentCanaryBand(ledger, wire) }
+            .getOrElse { CanaryCapability.ofWire(wire)?.defaultBand ?: CanaryBand.OFF }
 }

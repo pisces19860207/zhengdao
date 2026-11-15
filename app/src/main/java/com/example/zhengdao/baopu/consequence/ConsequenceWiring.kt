@@ -336,6 +336,14 @@ internal object ConsequenceWiring {
         ConsequenceLedger.currentWhitelist(rows(), capability)
 
     /**
+     * 最新白名单行的 (before, after) 原文（第六百四十四批 ①消费缝；与 [currentWhitelist] 同一行
+     * 同一取舍，只是多露 before——收窄增量（before−after）是消费缝判定"收窄了哪些组键"的原料）。
+     * 没有未回滚的白名单行 ⇒ null。
+     */
+    fun currentWhitelistRow(capability: String): Pair<String, String>? =
+        ConsequenceLedger.currentWhitelistRow(rows(), capability)
+
+    /**
      * 落一条工具白名单调整行（568-C 域①；**只转手**：方向判据与加宽准入在高风险门里判过才许调到这里，
      * 本函数自己一条判都不加——与 [applyThresholdChange] 同款边界）。
      *

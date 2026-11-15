@@ -38,6 +38,8 @@ import com.example.zhengdao.baopu.evolution.lowrisk.EvoCandidate
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring
+import com.example.zhengdao.baopu.peer.AgentIds
+import com.example.zhengdao.baopu.peer.AgentRegistry
 import com.example.zhengdao.baopu.peer.A2aTaskState
 import com.example.zhengdao.core.RunLog
 
@@ -97,6 +99,41 @@ internal object RouteEvo {
         if (ConsequenceWiring.currentCanaryBand(cap.wire) == CanaryBand.OFF) return default
         val raw = ConsequenceWiring.currentRoute(cap.wire) ?: return default
         return RouteSemantics.decode(raw) ?: default
+    }
+
+    // ── 域② 生效值消费缝（644 ②）：生效路由 → 委派请求真的发往新 peer ─────────────
+
+    /**
+     * 生效路由行（第六百四十四批 ②消费缝的可空读口；未装配／档位关／没行 ⇒ null＝不挪）。
+     * 与 [effectiveRoute] 同一扇门同一把尺，只是消费缝要区分"没有行"与"行值是缺省"——
+     * null 是消费判定里"按调用方原值发"的唯一记号。
+     */
+    fun effectiveRouteOrNull(): RouteInput? {
+        val cap = CanaryCapability.ENVOY_ROUTE
+        if (!ConsequenceWiring.installed()) return null
+        if (ConsequenceWiring.currentCanaryBand(cap.wire) == CanaryBand.OFF) return null
+        return ConsequenceWiring.currentRoute(cap.wire)?.let { RouteSemantics.decode(it) }
+    }
+
+    /**
+     * 委派请求的**路由消费判定**（第六百四十四批 ②；生产调用点：`EnvoyDeliver.deliver` 经注入的
+     * routeOf——生效路由行的偏好 peer 在名册上**在册且未移除** ⇒ 返回它的 endpoint，请求真发往
+     * 新 peer）。
+     *
+     * 解析不到就不挪（返回 null＝调用方按请求原值发）：偏好 peer 不在名册（未注册／已断连移除）
+     * 不能把请求发去一个没有的地址——路由偏好只指向"准入过的 peer"，它不在册了就回落调用方原值，
+     * 说一句为什么。偏好与请求同址（规范化后相等）也 null——不挪等于没挪，别让调用方误读成路由动了。
+     */
+    fun resolveEndpoint(requested: String, log: (String) -> Unit = {}): String? {
+        val route = effectiveRouteOrNull() ?: return null
+        val peer = route.preferredPeer.trim()
+        if (peer.isEmpty()) return null
+        val record = AgentRegistry.active().firstOrNull { it.id == peer }
+        if (record == null) {
+            log("路由偏好「$peer」不在名册（未注册或已移除）⇒ 按调用方 endpoint 发")
+            return null
+        }
+        return if (AgentIds.normalize(record.endpoint) != AgentIds.normalize(requested)) record.endpoint else null
     }
 
     /**

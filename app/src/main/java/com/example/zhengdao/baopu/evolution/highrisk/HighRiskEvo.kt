@@ -38,6 +38,7 @@ import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskEvo
 import com.example.zhengdao.baopu.evolution.lowrisk.LowRiskVerdict
 import com.example.zhengdao.baopu.evolution.samples.EvoSampleWiring
 import com.example.zhengdao.baopu.intake.AdmissionGate
+import com.example.zhengdao.baopu.intake.AdmissionWiring
 import com.example.zhengdao.baopu.policy.CapabilityProfile
 import com.example.zhengdao.core.RunLog
 
@@ -79,6 +80,15 @@ internal object HighRiskEvo {
      */
     internal val BASELINE_WHITELIST: Set<String> = emptySet()
 
+    /**
+     * 第六百四十四批 ③：加宽准入用的执行体身份（467 画像快照的 agentId；568-C 的空画像兜底
+     * 用同一名字建档——快照在不在，读的都是同一份）。
+     */
+    internal const val WHITELIST_AGENT: String = "whitelist"
+
+    /** 467 画像作证版本（与 568-C 空画像兜底同值；通道后装 ⇒ 重探换版本）。 */
+    internal const val WHITELIST_AGENT_VERSION: String = "v1"
+
     /** 高风险域在 473 登记表里的能力（扫档按这张清单逐一走梯子）。 */
     internal val CAPABILITIES: List<CanaryCapability> = listOf(
         CanaryCapability.TOOL_WHITELIST,
@@ -96,6 +106,40 @@ internal object HighRiskEvo {
         if (ConsequenceWiring.currentCanaryBand(cap.wire) == CanaryBand.OFF) return default
         val raw = ConsequenceWiring.currentWhitelist(cap.wire) ?: return default
         return WhitelistRules.decode(raw)
+    }
+
+    // ── 域① 生效值消费缝（644 ①）：收窄增量 → 生产工具分发真的少一件 ─────────────
+
+    /**
+     * 进化层**现在收窄着的组键**（第六百四十四批 ①消费缝的读口＝最新白名单行的 before−after）。
+     *
+     * 与 [effectiveWhitelist] 同一扇门（未装配／档位关／没有行 ⇒ 空集＝不收窄，生产行为逐字节不变），
+     * 但消费语义不同：白名单行是进化层**自己的账**（[BASELINE_WHITELIST] 空集起步，568-C 语义没动），
+     * 拿行值当"全量生效集"去交集会把账上没记过的组（缺省可见的 core/edit 等）一并误杀——
+     * 所以消费只认**最新一行删掉的键**：
+     *   · 收窄行 ⇒ 增量＝删掉的组键 ⇒ 生产分发真的少一件（"收窄自动生效"落到工具上）；
+     *   · 回滚行（[revertWhitelist]）把删掉的键加回来 ⇒ 增量清空 ⇒ 收窄解除；
+     *   · 加宽行 ⇒ 增量＝空 ⇒ 不收窄；账上没记过的组永远轮不到被收窄。
+     */
+    fun narrowedGroupKeys(): Set<String> {
+        val cap = CanaryCapability.TOOL_WHITELIST
+        if (!ConsequenceWiring.installed()) return emptySet()
+        if (ConsequenceWiring.currentCanaryBand(cap.wire) == CanaryBand.OFF) return emptySet()
+        val row = ConsequenceWiring.currentWhitelistRow(cap.wire) ?: return emptySet()
+        return WhitelistRules.decode(row.first) - WhitelistRules.decode(row.second)
+    }
+
+    /**
+     * 生产工具分发的**消费判定**（第六百四十四批 ①，生产调用点：`BaopuRuntime.runSubtasks` 的
+     * available——子代理的读/写两份名单都吃这份集，收窄真的少一件）。
+     *
+     * [groupKeyOf] 由调用方注入（evolution 不反 import agent，`DepthFactsWiring` 同款缝）：
+     * 工具名 ⇒ 所属组键；判不出组的工具不归白名单管 ⇒ 原样保留。没有收窄 ⇒ 原样返回（同一集合语义）。
+     */
+    fun narrowAvailable(available: Collection<String>, groupKeyOf: (String) -> String?): Set<String> {
+        val narrowed = narrowedGroupKeys()
+        if (narrowed.isEmpty()) return available.toSet()
+        return available.filterNot { groupKeyOf(it)?.let { g -> g in narrowed } == true }.toSet()
     }
 
     /**
@@ -190,7 +234,12 @@ internal object HighRiskEvo {
 
     /**
      * 加宽准入（复用 467 [AdmissionGate.judge]，不新造通道）：Accept ⇒ true；
-     * Reject ⇒ 拒并记账（参谋意见账，与红线拒同一口）后 false。无画像 ⇒ 空画像（未考＝能力不足）⇒ 拒。
+     * Reject ⇒ 拒并记账（参谋意见账，与红线拒同一口）后 false。
+     *
+     * 第六百四十四批 ③（画像真接线）：生产提议不带画像时不再凭空造空画像（那等于"一律拒"），
+     * 改走 [AdmissionWiring.profileForEvolution] 的**真 467 画像**（快照现读／四步链首建，同一把尺）；
+     * 准入落点没装配才落回空画像 fail-closed。拒行带上**画像来源**与门的原话证据（哪道题/几行账/
+     * 哪几枚探针）——复盘分得清"没考过"与"根本没建档"。
      */
     private fun wideningAdmitted(
         cap: CanaryCapability,
@@ -198,7 +247,7 @@ internal object HighRiskEvo {
         candidate: EvoCandidate,
         atMs: Long,
     ): Boolean {
-        val profile = p.profile ?: CapabilityProfile.enroll(agentId = "whitelist", version = "v1", probedAtMs = atMs)
+        val (profile, profileSource) = wideningProfile(p, atMs)
         return when (val admission = AdmissionGate.judge(profile)) {
             is AdmissionGate.Admission.Accept -> true
             is AdmissionGate.Admission.Reject -> {
@@ -206,7 +255,8 @@ internal object HighRiskEvo {
                     AdvisorOpinion(
                         advisor = ADVISOR_GATE_PREFIX + cap.wire,
                         advice = AdvisorRules.ADVICE_FAIL,
-                        reason = "加宽未过准入（${admission.kind.cn}）：${admission.evidence}｜${candidate.body}",
+                        reason = "加宽未过准入（${admission.kind.cn}）：${admission.evidence}" +
+                            "｜画像来源：$profileSource｜${candidate.body}",
                         risks = listOf(WHITELIST_TARGET),
                         aboutOwnOutput = false,
                         atMs = atMs,
@@ -215,6 +265,21 @@ internal object HighRiskEvo {
                 false
             }
         }
+    }
+
+    /**
+     * 加宽准入的画像来源（第六百四十四批 ③；返回 画像＋来源说明——拒行的理由里带上）：
+     * 提议自带（夹具/调用方喂）⇒ 原样；准入落点装配了 ⇒ 真 467 画像（快照在＝现读、不在＝四步首建）；
+     * 落点没装配 ⇒ 空画像 fail-closed（与 568-C 行为同、理由同源）。
+     */
+    private fun wideningProfile(p: WhitelistProposal, atMs: Long): Pair<CapabilityProfile, String> {
+        p.profile?.let { return it to "提议自带" }
+        AdmissionWiring.profileForEvolution(atMs)?.let { return it }
+        return CapabilityProfile.enroll(
+            agentId = WHITELIST_AGENT,
+            version = WHITELIST_AGENT_VERSION,
+            probedAtMs = atMs,
+        ) to "空画像（准入落点未装配，fail-closed）"
     }
 
     // ── 收工扫档（生产调用点：`EvolutionWiring.onRunSettled` 一行） ──────────

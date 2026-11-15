@@ -41,6 +41,9 @@ class HighRiskRouteEvoGateTest {
     private fun routeSemantics(): String =
         code("src/main/java/com/example/zhengdao/baopu/evolution/highrisk/RouteSemantics.kt")
 
+    private fun envoyDeliver(): String =
+        code("src/main/java/com/example/zhengdao/baopu/peer/EnvoyDeliver.kt")
+
     private fun evolutionWiring(): String =
         code("src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt")
 
@@ -226,5 +229,53 @@ class HighRiskRouteEvoGateTest {
         val body = GateBodies.functionBody(mutated, "fun flowLegal(")
         assertTrue(body != null)
         assertFalse("把法条委托改成恒真后必须红（派工单负例：改了状态含义 ⇒ 红）", body!!.contains("EnvoyLaw.legal(from, to)"))
+    }
+
+    // ── 644 ② 生效值消费缝：resolveEndpoint ＋ EnvoyDeliver 真转发 ──────────────
+
+    @Test
+    fun `R9_路由消费解析口_先问档再读行_偏好经名册解成endpoint`() {
+        val body = GateBodies.functionBody(routeEvo(), "fun resolveEndpoint(")
+        assertTrue("resolveEndpoint 不在了？（生效路由没有消费口＝接线日路由不变）", body != null)
+        assertTrue("解析口不读生效路由行", body!!.contains("effectiveRouteOrNull("))
+        assertTrue("偏好 peer 没经名册解析（AgentRegistry 是 agentId⇒endpoint 的唯一真源）", body.contains("AgentRegistry.active("))
+        assertTrue("解析不到不挪（回落请求原值＋说一句为什么）", body.contains("return null"))
+        val row = GateBodies.functionBody(routeEvo(), "fun effectiveRouteOrNull(")
+        assertTrue("effectiveRouteOrNull 不在了？", row != null)
+        val band = row!!.indexOf("currentCanaryBand(")
+        val read = row.indexOf("currentRoute(")
+        assertTrue("消费读口也必须先问档 → 再读行（OFF 收权）", band in 0 until read)
+    }
+
+    @Test
+    fun `R9负例_名册解析从消费口里拔掉_断言必须红`() {
+        val src = routeEvo()
+        assertTrue("前提：真文件里有名册解析", src.contains("AgentRegistry.active("))
+        val mutated = src.replace("AgentRegistry.active(", "AgentRegistry.activeGone(")
+        val body = GateBodies.functionBody(mutated, "fun resolveEndpoint(")
+        assertTrue(body != null)
+        assertFalse("拔掉名册解析后必须红（偏好解不成 endpoint＝路由改了也不生效）", body!!.contains("AgentRegistry.active("))
+    }
+
+    @Test
+    fun `R10_委派入口真消费路由_routeOf在最前_闸序全走实际发往的endpoint`() {
+        val body = GateBodies.functionBody(envoyDeliver(), "fun deliver(")
+        assertTrue("deliver 不在了？", body != null)
+        val route = body!!.indexOf("routeOf?.invoke(")
+        val lease = body.indexOf("authorizeOrRefuse(")
+        assertTrue("委派入口没消费路由（routeOf 没接＝生效路由无处落地）", route >= 0)
+        assertTrue("路由消费必须在租约闸之前（先定地址再过闸）", route < lease)
+        assertTrue("闸后没用实际发往的 endpoint（账面记的还是请求原值＝路由白挪）", body.contains("authorizeOrRefuse(opId, endpoint,"))
+        assertTrue("同址不挪的钳制没了（规范化比较＝防误报路由动了）", body.contains("AgentIds.normalize("))
+    }
+
+    @Test
+    fun `R10负例_路由消费从委派入口拔掉_断言必须红`() {
+        val src = envoyDeliver()
+        assertTrue("前提：真文件里有路由消费", src.contains("routeOf?.invoke("))
+        val mutated = src.replace("routeOf?.invoke(", "routeOfGone?.invoke(")
+        val body = GateBodies.functionBody(mutated, "fun deliver(")
+        assertTrue(body != null)
+        assertFalse("拔掉路由消费后必须红（判据：路由改后请求真发往新 peer）", body!!.contains("routeOf?.invoke("))
     }
 }

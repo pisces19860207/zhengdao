@@ -84,25 +84,41 @@ internal class EnvoyDeliver(
     private val http: OkHttpClient,
     private val gate: PeerOutboundGate = PeerOutboundGate.LIVE,
     private val log: (String) -> Unit = {},
+    /**
+     * 第六百四十四批 ② 生效值消费缝：路由解析口（装配层注入 `RouteEvo::resolveEndpoint`）——
+     * 生效路由行的偏好 peer 在名册上 ⇒ 返回它的 endpoint（请求真发往新 peer）；不挪 ⇒ null。
+     * null 注入（缺省）＝未接进化路由，行为与接线前逐字节一致。
+     */
+    private val routeOf: ((requested: String) -> String?)? = null,
 ) {
 
     private val seq = AtomicLong(0)
 
-    /** 派一件活（完整闸序：租约 → 卡 → 准入 → 档位 → 发送/轮询 → 结算）。 */
+    /**
+     * 派一件活（完整闸序：**路由 → 租约 → 卡 → 准入 → 档位 → 发送/轮询 → 结算**）。
+     *
+     * 第六百四十四批 ②：路由消费缝在最前——生效路由行的偏好 peer 在名册上 ⇒ 请求真发往新 peer，
+     * 之后每一道闸（租约/卡/准入/对端账）都走**实际发往的 endpoint**（账面上的 endpoint 也是它）。
+     * 只挪**新派活**；[reply]/[cancel] 续既有任务——任务住在原 peer 上，挪了就找不到它。
+     */
     fun deliver(req: EnvoyRequest, nowMs: Long = System.currentTimeMillis()): EnvoyOutcome {
         val opId = newOpId(nowMs)
         val track = EnvoyTrack("")
-        val (grant, refused) = authorizeOrRefuse(opId, req.endpoint, req.sessionId, req.grantOnApproval, track, nowMs)
-        if (grant == null) return refusalOutcome(opId, req.endpoint, track, refused.orEmpty())
-        val client = A2aClient(req.endpoint, http, log, req.credential)
+        val endpoint = routeOf?.invoke(req.endpoint)
+            ?.takeIf { AgentIds.normalize(it) != AgentIds.normalize(req.endpoint) }
+            ?.also { log("[envoy] 路由生效：${req.endpoint} → $it（进化路由行）") }
+            ?: req.endpoint
+        val (grant, refused) = authorizeOrRefuse(opId, endpoint, req.sessionId, req.grantOnApproval, track, nowMs)
+        if (grant == null) return refusalOutcome(opId, endpoint, track, refused.orEmpty())
+        val client = A2aClient(endpoint, http, log, req.credential)
         val card = try {
             client.fetchCard()
         } catch (e: A2aException) {
-            return lineFailed(opId, req.endpoint, grant, track, e.failureCode, e.message.orEmpty(), nowMs)
+            return lineFailed(opId, endpoint, grant, track, e.failureCode, e.message.orEmpty(), nowMs)
         }
         val admission = EnvoyAdmission.ensure(
             root = req.root,
-            endpoint = req.endpoint,
+            endpoint = endpoint,
             executorVersion = card.capabilityFingerprint(),
             channel = req.examChannelOf(client, card),
             claimed = card.skills.map { it.id },
@@ -110,23 +126,23 @@ internal class EnvoyDeliver(
             log = log,
         )
         if (!admission.admitted) {
-            return admissionRefused(opId, req.endpoint, grant, track, admission, nowMs)
+            return admissionRefused(opId, endpoint, grant, track, admission, nowMs)
         }
         val kind = if (req.writes) TaskKind.WRITES else TaskKind.READ_ONLY
         if (!admission.allows(kind)) {
-            return admissionRefused(opId, req.endpoint, grant, track, admission, nowMs, kindRefusal(admission, kind))
+            return admissionRefused(opId, endpoint, grant, track, admission, nowMs, kindRefusal(admission, kind))
         }
         val task = try {
             client.messageSend(card, req.task)
         } catch (e: A2aException) {
-            return lineFailed(opId, req.endpoint, grant, track, e.failureCode, e.message.orEmpty(), nowMs)
+            return lineFailed(opId, endpoint, grant, track, e.failureCode, e.message.orEmpty(), nowMs)
         }
         track.taskId = task.id
         if (!track.observe(task.state, EnvoyAction.SEND)) {
-            return anomaly(opId, req.endpoint, grant, track, task, nowMs)
+            return anomaly(opId, endpoint, grant, track, task, nowMs)
         }
         return settlePoll(
-            opId, req.endpoint, grant, track, admission, client, card, task,
+            opId, endpoint, grant, track, admission, client, card, task,
             PollKnobs(req.pollEveryMs, req.maxWaitMs, req.sleeper), nowMs,
         )
     }

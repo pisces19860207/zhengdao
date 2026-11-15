@@ -92,6 +92,45 @@ internal object AdmissionWiring {
     @Volatile
     var routeSink: ((agentId: String, atMs: Long) -> Unit)? = null
 
+    /**
+     * 第六百四十四批 ③：进化 whitelist actor（[EVOLUTION_AGENT_ID]）的**真 467 画像**——
+     * 568-C 域①加宽准入的生产消费缝。与 MCP 执行体/A2A peer **同一条四步链**（[AdmissionFlow]），
+     * 不新造考卷不另立通道：
+     *   · 画像快照在 ⇒ 现读（每次现读，不养缓存——与 [admit] 同一取舍）；
+     *   · 快照不在 ⇒ 走 467 四步建档并落盘（出题通道没装 ⇒ 空卷 ⇒ 门给 reject_incompetent，
+     *     准入账留痕——"没考过"从此有据可查；通道后装 ⇒ [com.example.zhengdao.baopu.intake.IntakeExam]
+     *     换版本重考即可翻案）；
+     *   · 落点没装配（[install] 没跑过）⇒ null（调用方按空画像 fail-closed，与 568-C 行为同）。
+     *
+     * @return 画像＋来源说明（拒行理由里带上：复盘分得清"没考过"与"根本没建档"）；落点没装 ⇒ null。
+     */
+    fun profileForEvolution(atMs: Long): Pair<com.example.zhengdao.baopu.policy.CapabilityProfile, String>? {
+        val dir = root ?: return null
+        return runCatching {
+            AdmissionFlow.load(dir, EVOLUTION_AGENT_ID)?.profile?.let { profile ->
+                profile to "467 快照现读（${AdmissionFlow.snapshotFile(dir, EVOLUTION_AGENT_ID).name}）"
+            } ?: run {
+                val exam = IntakeExam.take(dir, EVOLUTION_AGENT_ID, EVOLUTION_AGENT_VERSION, channel)
+                val record = AdmissionFlow.run(
+                    AdmissionFlow.Request(
+                        agentId = EVOLUTION_AGENT_ID,
+                        version = EVOLUTION_AGENT_VERSION,
+                        probedAtMs = atMs,
+                        selfReport = SelfReport(
+                            agentId = EVOLUTION_AGENT_ID,
+                            version = EVOLUTION_AGENT_VERSION,
+                            claimedCapabilities = emptyList(),
+                        ),
+                        probeTraces = exam.probeTraces,
+                        conductTraces = exam.conductTraces,
+                    ),
+                )
+                AdmissionFlow.save(dir, record)
+                record.profile to "467 四步首建（出题：${exam.conclusion.cn}·${exam.asked} 道；结论 ${record.wire()}）"
+            }
+        }.getOrNull()
+    }
+
     private fun admit(
         dir: File,
         wireName: String,
@@ -147,6 +186,12 @@ internal object AdmissionWiring {
         val server = body.substringBeforeLast('_').ifBlank { "server" }
         return "mcp-$server"
     }
+
+    /** 第六百四十四批 ③：进化 whitelist actor 在 467 账面上的 agentId（与 `HighRiskEvo.WHITELIST_AGENT` 同值）。 */
+    internal const val EVOLUTION_AGENT_ID = "whitelist"
+
+    /** 画像作证版本（与 568-C 空画像兜底同值；通道后装 ⇒ 重探换版本翻案）。 */
+    internal const val EVOLUTION_AGENT_VERSION = "v1"
 
     /** 版本指纹：当前 MCP 工具名全集排序相连（集合一变指纹就变——needsReprobe 说真话的根据）。 */
     internal fun versionOf(currentNames: List<String>): String =

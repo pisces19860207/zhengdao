@@ -1,7 +1,7 @@
 # 治理出口读数口径（metrics-registry）
 
 - 立单：第五百二十七批＋第五百三十批（合并实施，2026-11-07）；本文件是**机器口 `governance_state` 工具读数的唯一口径**。
-- 改版记录：**形状版本 1→2**（482 加 `goal` 段）；**2→3（第五百五十八批，2026-11-09）加 `lease` 租约段**；**3→4（第五百七十一批，2026-11-12）加 `companion` 相处改判段**——先改本节再动代码，旧段的键序与字节**一个不动**（金样例钉在 `GovernanceStateLeaseSectionTest`）。
+- 改版记录：**形状版本 1→2**（482 加 `goal` 段）；**2→3（第五百五十八批，2026-11-09）加 `lease` 租约段**；**3→4（第五百七十一批，2026-11-12）加 `companion` 相处改判段**；**4→5（第六百四十四批，2026-11-15）加 `effective` 生效值段（白名单＋路由）**——先改本节再动代码，旧段的键序与字节**一个不动**（金样例钉在 `GovernanceStateLeaseSectionTest`）。
 - 改口径的规矩（照 `docs/METRICS.md` R2 同款）：先改本文件、写明改的理由与生效日期，再动代码；**不许看了数再改口径**。
 - 与 `docs/METRICS.md` 的关系：METRICS.md 管**周报人读数**；本文件管**机器口**。两处的定义（分子/分母怎么数）同源，不另造第二套；**窗口不同**（机器口写死当日，见下），这不是另算，是两个出口各自的窗口，各写各的。
 
@@ -131,11 +131,31 @@ JSON 形状：`{"today":0}`（真零）或 `{"today":N,"last":{"from":"study","f
 
 ---
 
-## 二、工具出口形状（`governance_state` 返回的九段 JSON）
+### 10. `effective` 当前生效的白名单与路由（第六百四十四批新增，2026-11-15）
+
+> 高风险域（568-C）两个生效值的**消费缝**在 644 真接生产分发：白名单行收窄的组键真会让
+> 子代理少一件工具（`BaopuRuntime.runSubtasks` 的 available）、路由行的偏好 peer 真会把
+> 新委派发往名册上的那台 peer（`EnvoyDeliver.deliver` 的 routeOf）。本段把"当前生效"读出来。
+> 按 558 同款规矩**追加在出口最后**（第十段）；旧九段的键序与字节一个不动（金样例钉在
+> `GovernanceStateLeaseSectionTest`）。「生效」的口径与消费缝逐格相同：档位开着**且**有
+> 未回滚的调整行；档关/没行 ⇒ unknown＋原因（不冒充"全放行"，缺省白名单另有用户开关管）。
+
+| 读数 | 定义 | 来源 | 窗口 | 分母 0 怎么说 |
+|---|---|---|---|---|
+| `effective.whitelist` | 当前生效的工具白名单（最新未回滚调整行的 after 键集；`tool_whitelist` 档位开着才算生效） | `ConsequenceLedger.currentWhitelistRow`（208 账，`app/src/main/java/com/example/zhengdao/baopu/consequence/ConsequenceLedger.kt`）＋ `WhitelistRules.decode`（同一把尺） | 不适用（状态读数） | 没有调整行 ⇒ `{"unknown":"没有生效调整行（生产按缺省白名单与用户开关走）"}` |
+| `effective.route` | 当前生效的路由输入（最新未回滚调整行的 `peer|path`；`envoy_route` 档位开着才算生效） | `ConsequenceLedger.currentRoute` ＋ `RouteSemantics.decode`（同一把尺） | 不适用（状态读数） | 没有调整行 ⇒ `{"unknown":"没有生效路由行（委派按调用给的 endpoint 走）"}` |
+
+JSON 形状：`{"whitelist":{"source":"ledger","keys":["…"]},"route":{"source":"ledger","peer":"ag-…","path":"…"}}`；`tool_whitelist`/`envoy_route` 档位被拨关 ⇒ 对应格 `{"unknown":"档位关闭（生效值回缺省）"}`；账本根未装配 ⇒ 整段 `{"unknown":"账本根未装配，生效值账读不到"}`。
+
+**同一份数的两个读口（不许各造一遍）**：① 本段（面板读数）；② 消费缝的判定本体（`HighRiskEvo.narrowedGroupKeys`／`RouteEvo.resolveEndpoint`——生产分发真消费的同一行账）。两处都走 `ConsequenceLedger` 的同一读函数，不各算各的。
+
+---
+
+## 二、工具出口形状（`governance_state` 返回的十段 JSON）
 
 ```
 {
-  "v": 4,                          // 571 加 companion 段 ⇒ 形状版本 3 → 4
+  "v": 5,                          // 644 加 effective 段 ⇒ 形状版本 4 → 5
   "day": "yyyy-MM-dd",            // 当日（本地时区）＝ W1 窗口的那一天，读数与它对账
   "ratios":   { "violation": {…}, "misjudge": {…}, "intervention": {…}, "skip": {…} },
   "cards":    { "pass": 0, "card": 0, "compress": 0 },
@@ -145,9 +165,10 @@ JSON 形状：`{"today":0}`（真零）或 `{"today":N,"last":{"from":"study","f
   "openLoops":{ "total": 0, "items": [ … ] },
   "goal":     { "sentence": "…", "state": "active", "progress": "3/5", "budget": "40%", "line": "目标：…" },
   "lease":    { "live": 0, "grantedToday": 0, "hits": 0, "savedCards": 0, "revoked": 0, "downgraded": 0, "expired": 0 },
-  "companion":{ "today": 0, "last": { "from": "study", "fromCn": "学习", "to": "work", "toCn": "工作", "basis": "…", "at": 0 } }
+  "companion":{ "today": 0, "last": { "from": "study", "fromCn": "学习", "to": "work", "toCn": "工作", "basis": "…", "at": 0 } },
+  "effective":{ "whitelist": { "source": "ledger", "keys": [ … ] }, "route": { "source": "ledger", "peer": "ag-…", "path": "…" } }
 }
 ```
 
-- `v` ＝ 本口径版本（**4**）；改口径先改本文件再升 `v`。`companion` 排在最后（键序追加，旧八段的键序逐字节未动）。
+- `v` ＝ 本口径版本（**5**）；改口径先改本文件再升 `v`。`effective` 排在最后（键序追加，旧九段的键序逐字节未动）。
 - **对拍判据**（527）：脚本（独立从账本原文重算）与工具出口**逐项相等**——`GovernanceStateToolTest` 是它的牙；558 的 `lease` 段对拍＋金样例在 `GovernanceStateLeaseSectionTest`（`live` 一格是内存权威，脚本侧不重算、以驱动状态钉期望值）；571 的 `companion` 段在 `CompanionLawWiringTest` 对拍（账行 → 出口段 → 屏幕行三列齐）。
