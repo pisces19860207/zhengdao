@@ -3214,12 +3214,19 @@ internal class BaopuChatController(context: Context) {
      * 第六百四十七批：一轮 L1 漏斗读数（**唯一**接线点，与调解器同一道、同一理由：
      * send 是「用户亲口说一句话」的唯一入口）。判定纯、IO 壳里走 Dispatchers.IO；
      * 只记读数不拦消息——这句话后面照常进引擎（装配改动留给后续单，判据⑤）。
+     * L2 轮（同批续刀）：L1 读数之后**同一协程顺序**接 L2 一枪——previousRoute 取 L1
+     * 更新前的值（重算的 L1 判定与 L1 壳必同：纯函数同输入同输出）；L1 命中则 L2 只记跳过账，
+     * 未命中才开便宜一枪；超时/失败一律回退 L1 记 warning，整轮不崩（工单⑤）。
      */
     private fun funnelReadTurn(text: String, attachments: List<BaopuAttachments.Saved>) {
         val sid = (sessionId ?: com.example.zhengdao.baopu.MediatorWiring.NO_SESSION).toString()
         val hasImage = attachments.any { it.isImage }
         scope.launch {
+            val prevRoute = com.example.zhengdao.baopu.funnel.FunnelRead.snapshot()[sid]
             com.example.zhengdao.baopu.funnel.FunnelRead.onUserTurn(sid, text, hasImage, workspaceRoot)
+            val provider = com.example.zhengdao.baopu.eval.RuntimeEval.providerOf(appCtx)
+                .takeIf { com.example.zhengdao.baopu.eval.RuntimeEval.unusableReason(it) == null }
+            com.example.zhengdao.baopu.funnel.FunnelL2Read.onUserTurn(sid, text, hasImage, workspaceRoot, prevRoute, provider)
         }
     }
 
