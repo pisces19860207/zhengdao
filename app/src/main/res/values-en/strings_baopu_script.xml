@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 621 (2026-11-15): tool-switch strings for the five screenplay tools
+     (original + novel adaptation). Kept in its own file so the shared
+     strings.xml stays untouched while several agents work in parallel. -->
+<resources>
+    <string name="baopu_tool_script_outline">Write screenplay outline</string>
+    <string name="baopu_tool_script_outline_desc">Writes or updates a screenplay outline — the thing you approve. Original work: one logline per scene. Adaptation: also needs the source file, a fidelity tier (faithful / moderate rework / bold re-imagining — it must be chosen, never defaulted to the boldest), and a chapter+line range per scene. Changing one word voids the previous approval.</string>
+    <string name="baopu_tool_script_approve">Approve outline</string>
+    <string name="baopu_tool_script_approve_desc">Shows the outline as a card (title / tier / scene count / loglines / digest). Only tapping ’Approve’ counts; other choices or no UI mean not approved — it never taps for you. Body writing is unlocked only after approval.</string>
+    <string name="baopu_tool_script_write">Write one scene</string>
+    <string name="baopu_tool_script_write_desc">Writes exactly one scene per call (asking for five is rejected): location, time, characters, action/dialogue/transition beats. Requires your approved outline; adaptations must map every scene to chapter+line; if a character does something the source forbids, the conflict must be listed item by item or the write is refused (never silently changed).</string>
+    <string name="baopu_tool_script_export">Export screenplay</string>
+    <string name="baopu_tool_script_export_desc">Exports two files: a Fountain file (parseable by Fountain tools — it re-reads the export and refuses to write a file it cannot parse back) and a Chinese standard screenplay. Saved to 产物/ only, never overwrites. Adaptations also get an attribution table (scene → chapter/lines). No .fdx, no PDF typesetting.</string>
+    <string name="baopu_tool_script_trace">Trace scenes to source</string>
+    <string name="baopu_tool_script_trace_desc">Samples a few scenes (3 by default: first, middle, last), quotes the matching source lines verbatim with line numbers, and lists each scene’s beat count and conflicts — so you can check which source lines a scene actually came from. Original works have no source and say so.</string>
+</resources>

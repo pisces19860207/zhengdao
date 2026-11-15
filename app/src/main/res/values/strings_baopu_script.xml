@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第六百二十一批（2026-11-15）· 剧本五件（原创＋小说改编）的开关文案。
+     单独一份文件（房型照 strings_baopu_office.xml）：共享 strings.xml 是多人在飞时
+     最容易撞车的文件，本批对它的改动保持零字节。 -->
+<resources>
+    <string name="baopu_tool_script_outline">写剧本大纲</string>
+    <string name="baopu_tool_script_outline_desc">写或更新一部剧本的大纲（这是要你批准的东西）：原创给每场一句戏核；改编还要给原文路径、改编幅度（忠于原文/适度重构/大胆再创作——必须选了才写，不会默认最大幅度），并且每场标清对应原文第几章哪几行。大纲改一个字，之前的批准就作废。</string>
+    <string name="baopu_tool_script_approve">批剧本大纲</string>
+    <string name="baopu_tool_script_approve_desc">把大纲弹成一张卡给你看（片名/档位/场数/每场戏核/摘要码），你点「批准」才算批过；点别的或没界面都算没批，它不会替你点。批过之后才能写正文。</string>
+    <string name="baopu_tool_script_write">写一场戏</string>
+    <string name="baopu_tool_script_write_desc">一次只写一场（一次要五场会被拒）：给地点、时间、人物、动作/对白/转场。前提是大纲已经你批准；改编每场都要能对上原文第几章哪几行；人物做了原作里不会做的事，必须先把冲突项逐条写清楚，漏了会拒写（不会偷偷改）。</string>
+    <string name="baopu_tool_script_export">导出剧本</string>
+    <string name="baopu_tool_script_export_desc">把已写的场导出两份：Fountain 文件（能被 Fountain 解析器读，导出前会自己读回验一遍，读不回来就不出文件）与中文标准剧本。只落 产物/，同名不覆盖。改编另出一份溯源表（每场对应第几章哪几行）。不做 .fdx、不做 PDF 排版。</string>
+    <string name="baopu_tool_script_trace">剧本对原文</string>
+    <string name="baopu_tool_script_trace_desc">抽几场（默认 3 场：第一场/中间/最后一场）把对应的原文行原样贴出来，带行号，并列出这一场的拍数与冲突项——用来核对剧本到底是从原文哪几行来的。原创没有原文，会如实说。</string>
+</resources>

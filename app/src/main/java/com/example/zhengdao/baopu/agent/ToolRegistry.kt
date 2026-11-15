@@ -361,6 +361,15 @@ internal object ToolGroupTable {
         // 知识库 v2 两件套（第一百二十八批）：同资料库组，默认不可见（要 capabilities 解锁）
         "kb_index" to ToolGroup.LIBRARY,
         "kb_search" to ToolGroup.LIBRARY,
+        // ── 621：剧本五件（原创＋小说改编），同归 LIBRARY ──────────────────
+        // 为什么不新开一个 SCRIPT 组：组只决定**可见性**，剧本与小说工程是同一类"作品工程"，
+        // 同组同口径（默认不可见、capabilities 解锁、默认启用）最省一次枚举+文案+名册改动；
+        // 新组的唯一收益是设置页多一行标题，代价是四处表与名册都要跟着加一层。
+        "script_outline" to ToolGroup.LIBRARY,
+        "script_approve" to ToolGroup.LIBRARY,
+        "script_write" to ToolGroup.LIBRARY,
+        "script_export" to ToolGroup.LIBRARY,
+        "script_trace" to ToolGroup.LIBRARY,
         // 第一百五十八批：文生图（Gemini 原生生图；默认不可见，capabilities 解锁）
         "generate_image" to ToolGroup.IMAGE,
         // 第一百八十六批：确定性绘图/表格（本地排 SVG/HTML；默认不可见，capabilities 解锁）
@@ -1640,6 +1649,13 @@ internal object BaopuToolCatalog {
         // 642：套模板——同样默认「启用」（组归 FILES 仍默认不可见，解锁即用）。
         // 漏了这行 ⇒ 注册了但默认关，模型永远看不见它（632 那两件就是栽在这条上）。
         "docx_template",
+        // 621：剧本五件——组归 LIBRARY（默认不可见），默认「启用」：解锁即用，同 novel 三件口径。
+        // 漏一行 ⇒ 注册了但默认关，模型永远看不见剧本能力（这条门禁已经拦过两次）。
+        "script_outline",
+        "script_approve",
+        "script_write",
+        "script_export",
+        "script_trace",
     )
 
     /**
@@ -1842,6 +1858,16 @@ internal object BaopuToolCatalog {
         Entry("xlsx_write") { XlsxWriteTool.spec(it) },
         // 第六百四十二批：套模板（只换 {{占位符}} 的字，不改版；缺字段整次失败）。
         Entry("docx_template") { DocxTemplateTool.spec(it) },
+        // ── 第六百二十一批：剧本五件（原创＋小说改编）────────────────────────
+        // 真源 `剧本/<片名>/场次.jsonl`（一行一场）；导出 Fountain ＋ 中文标准剧本，不碰 .fdx / 不做 PDF。
+        // 人批链：script_outline（草稿）→ script_approve（**用户在卡上点批准**）→ script_write（一场一次）。
+        // script_approve 的弹卡口默认取 AskUserTool.sink（同 AppendPersonaTool 房型），
+        // 单测可注入假卡，运行期不许绕过。
+        Entry("script_outline") { ScriptOutlineTool.spec(it) },
+        Entry("script_approve") { ScriptApproveTool.spec(it) },
+        Entry("script_write") { ScriptWriteTool.spec(it) },
+        Entry("script_export") { ScriptExportTool.spec(it) },
+        Entry("script_trace") { ScriptTraceTool.spec(it) },
     )
 
     /**

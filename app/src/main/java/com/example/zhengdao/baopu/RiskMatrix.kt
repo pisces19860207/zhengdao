@@ -526,6 +526,15 @@ internal data class RiskTable(
                 // ── 642 套模板：读用户那份 .docx（只读），成品写 `产物/` ──
                 // 同样 R1：不动原件、不联网、不花钱；缺字段整次失败 ⇒ 不会产出半份空合同。
                 "docx_template" to ToolRule(RiskClass.R1),
+                // ── 621 剧本五件：全部只动工作区 `剧本/<片名>/` 或 `产物/` ──
+                // outline/approve/write/export 四件是 R1（写自己作品工程与产物，不动用户既有文件、
+                // 不联网、不花钱）；trace 只读原文（R0）。**不设 alwaysAsk**：写正文本来就一场一次，
+                // 每场再叠一张确认卡会把"一场一场写"变成"一场两次点"；人批的闸在大纲卡上。
+                "script_outline" to ToolRule(RiskClass.R1),
+                "script_approve" to ToolRule(RiskClass.R1),
+                "script_write" to ToolRule(RiskClass.R1),
+                "script_export" to ToolRule(RiskClass.R1),
+                "script_trace" to ToolRule(RiskClass.R0),
             ),
             // 173 口径：终端不参与分级——bash 不查档、不叠规则，原样交回终端那条路。
             // 注意它必须**显式豁免**：若只返回 null，fail-closed 会把它当未分类判 R2＋必问，
