@@ -39,4 +39,21 @@
     <string name="learn_opt_teach">就教这一步</string>
     <string name="learn_opt_drop">这一步不算</string>
     <string name="learn_free_text">或者直接说你的想法</string>
+    <string name="learn_draft_title">技能草案</string>
+    <string name="learn_draft_empty">还没有草案。在玄览里操作几步、收会话后点「从最近观察建草案」。</string>
+    <string name="learn_draft_goal_hint">这次是在做哪件事？（意图名）</string>
+    <string name="learn_draft_induce">建草案</string>
+    <string name="learn_draft_merged_mark">由 %1$d 次观察归并</string>
+    <string name="learn_draft_conflict_mark">有定位冲突（两种走法待人裁）</string>
+    <string name="learn_draft_optional_mark">偶发步 %1$d</string>
+    <string name="learn_draft_param_mark">参数 %1$s</string>
+    <string name="learn_draft_steps_mark">%1$d 步 · 证据 %2$d 处</string>
+    <string name="learn_draft_confirm">转正为技能</string>
+    <string name="learn_draft_confirm_name_hint">技能名（字母／数字／中文／_／-）</string>
+    <string name="learn_draft_confirm_defaults_hint">参数默认值（每行「名=值」，可留空）</string>
+    <string name="learn_draft_confirm_ok">落成技能</string>
+    <string name="learn_draft_discard">弃</string>
+    <string name="learn_draft_rejected_toast">草案被结构校验拒收：%1$s</string>
+    <string name="learn_draft_created_toast">草案已入草稿区（未转正）</string>
+    <string name="learn_draft_merged_toast">同一意图，已归并为一条（%1$d 次观察）</string>
 </resources>

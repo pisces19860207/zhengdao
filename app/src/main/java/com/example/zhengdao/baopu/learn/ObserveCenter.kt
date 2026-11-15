@@ -14,7 +14,10 @@
 package com.example.zhengdao.baopu.learn
 
 import android.content.Context
+import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.MemoryLayout
+import com.example.zhengdao.baopu.TeachReplayStore
+import com.example.zhengdao.baopu.TeachSkillDraft
 import com.example.zhengdao.bridge.BrowserPort
 import com.example.zhengdao.bridge.BrowserPort.PortCaller
 import com.example.zhengdao.bridge.BrowserPort.PortPolicy
@@ -39,7 +42,10 @@ internal data class ArmedTeach(
 )
 
 /** 给 UI 的轻提示（文案键在 UI 层映射；arg 是人话参数，如条目页名；seq 保证同款连发不丢）。 */
-internal enum class LearnToastKind { ANSWERED, CAPTURE_WAITING, TAUGHT, KEEP_AMBIGUOUS, CAPTURE_TIMEOUT }
+internal enum class LearnToastKind {
+    ANSWERED, CAPTURE_WAITING, TAUGHT, KEEP_AMBIGUOUS, CAPTURE_TIMEOUT,
+    DRAFT_CREATED, DRAFT_MERGED, DRAFT_REJECTED,
+}
 
 internal data class LearnToast(val seq: Int, val kind: LearnToastKind, val arg: String = "")
 
@@ -82,6 +88,15 @@ internal object ObserveCenter {
 
     private var store: NotLearnedStore = NotLearnedStore(File("/dev/null", "x"))
     private var session: ObserveSession? = null
+    private var draftStore: SkillDraftStore = SkillDraftStore(File("/dev/null", "x"))
+
+    /** 最近收口的会话快照（B 归纳的输入；「从最近观察建草案」用）。 */
+    @Volatile private var lastSession: ObserveSnapshot? = null
+
+    /** 确认转正的落盘依赖（工作区根／全局根／人设文件；缺省 null ⇒ confirm 如实拒）。 */
+    @Volatile private var projectRootSupplier: (() -> File)? = null
+    @Volatile private var globalRootSupplier: (() -> File)? = null
+    @Volatile private var personaFilesSupplier: (() -> com.example.zhengdao.baopu.PersonaFiles)? = null
 
     /** 关→开之间积在页内队列的批次**丢弃**（判据①「关后 0 记录」：关着时的操作不补记）。 */
     @Volatile private var discardNext = false
@@ -91,6 +106,7 @@ internal object ObserveCenter {
     private val armedFlow = MutableStateFlow<ArmedTeach?>(null)
     private val toastFlow = MutableStateFlow<LearnToast?>(null)
     private val teachRequestFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    private val draftsFlow = MutableStateFlow<List<SkillDraft>>(emptyList())
     private var toastSeq = 0
 
     val notLearned: StateFlow<LearnBoardState> get() = notLearnedFlow.asStateFlow()
@@ -102,6 +118,9 @@ internal object ObserveCenter {
 
     /** 学习板块页（治理中心）点「就教这一步」：武装＋请求切玄览（MainActivity 收口）。 */
     val teachRequests: SharedFlow<String> get() = teachRequestFlow.asSharedFlow()
+
+    /** 技能草稿区读数（B/C 产物；人批前不落技能）。 */
+    val drafts: StateFlow<List<SkillDraft>> get() = draftsFlow.asStateFlow()
 
     // ── 接线 ─────────────────────────────────────────────────────────────────
 
@@ -116,6 +135,9 @@ internal object ObserveCenter {
      */
     fun install(context: Context, cardTexts: LearnCardTexts) {
         val app = context.applicationContext
+        projectRootSupplier = { com.example.zhengdao.baopu.BaopuRuntime.workspaceRoot(app) }
+        globalRootSupplier = { File(app.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY) }
+        personaFilesSupplier = { com.example.zhengdao.baopu.BaopuRuntime.personaFiles(app) }
         install(
             root = File(MemoryLayout.globalMemoryDir(app.filesDir), DIR_NAME),
             cardTexts = cardTexts,
@@ -146,7 +168,9 @@ internal object ObserveCenter {
         this.nodeTable = nodeTable
         this.enabled = enabled
         this.store = NotLearnedStore(File(root, NotLearnedStore.FILE_NAME))
+        this.draftStore = SkillDraftStore(File(root, SkillDraftStore.DIR_NAME))
         notLearnedFlow.value = store.state()
+        refreshDrafts()
         pruneAll()
     }
 
@@ -230,11 +254,15 @@ internal object ObserveCenter {
         notLearnedFlow.value = store.state()
     }
 
-    /** 清观察数据（学习板块页「清空观察数据」；未学会清单不受影响，按钮分开）。 */
+    /** 清观察数据（学习板块页「清空观察数据」；未学会清单与技能草稿区不受影响，按钮分开）。 */
     fun clearObservations() {
         closeSession()
         val dir = rootDir ?: return
-        dir.listFiles()?.forEach { f -> if (f.name != NotLearnedStore.FILE_NAME) runCatching { f.delete() } }
+        dir.listFiles()?.forEach { f ->
+            if (f.name != NotLearnedStore.FILE_NAME && f.name != SkillDraftStore.DIR_NAME) {
+                runCatching { f.delete() }
+            }
+        }
         RunLog.log("学习板块：观察数据已清空")
     }
 
@@ -243,6 +271,75 @@ internal object ObserveCenter {
         armedFlow.value = ArmedTeach(itemId, item.kind, item.url, clock() + ARM_TIMEOUT_MS)
         toast(LearnToastKind.CAPTURE_WAITING, item.pageName)
         teachRequestFlow.tryEmit(itemId)
+    }
+
+    // ── B/C：意图归纳与多次归并（阶段二）───────────────────────────────────────
+
+    /**
+     * 「从最近观察建草案」（B 的入口）：把最近收口的会话归纳成技能草案进草稿区。
+     * goal 由人给（观察数据里没有意图，不猜）。同意图草案已在区里 ⇒ 自动归并成一条
+     * （C；判据③的接线点），冲突步两套候选并存（判据⑤），不转正。
+     */
+    fun induceDraft(goal: String): SkillDraftStore.AddOutcome {
+        val snapshot = lastSession
+            ?: return SkillDraftStore.AddOutcome.Rejected(listOf("还没有观察会话——先在玄览里操作几步"))
+        val sessionId = snapshot.openedAtMs.toString(36)
+        val outcome = when (val o = DraftInducer.induce(snapshot, sessionId, goal, clock().toString(36))) {
+            is DraftInducer.Outcome.Drafted -> o.draft
+            is DraftInducer.Outcome.Rejected -> return rejected(o.problems)
+            DraftInducer.Outcome.NoSteps -> return rejected(
+                listOf("那段轨迹里没有可成步的操作（只有滚动或空会话）"),
+            )
+        }
+        val result = draftStore.add(outcome, clock().toString(36))
+        refreshDrafts()
+        when (result) {
+            is SkillDraftStore.AddOutcome.Merged -> toast(LearnToastKind.DRAFT_MERGED, result.withN.toString())
+            is SkillDraftStore.AddOutcome.Created -> toast(LearnToastKind.DRAFT_CREATED)
+            else -> Unit
+        }
+        return result
+    }
+
+    /** 人批转正（判据⑥）：草案 → zl-teach/2 → TeachReplayStore.saveConfirmed（凭证/不可逆/入库三闸照走）。 */
+    suspend fun confirmDraft(id: String, skillName: String, paramDefaults: Map<String, String>): String = withContext(Dispatchers.IO) {
+        val draft = draftStore.byId(id)
+            ?: return@withContext "草案不存在（可能已被归并或清掉）"
+        val skill = when (val c = DraftConverter.toSkill(draft, skillName, paramDefaults, clock())) {
+            is DraftConverter.Outcome.Skill -> c.skill
+            is DraftConverter.Outcome.Refused -> return@withContext c.reason
+        }
+        val projectRoot = projectRootSupplier?.invoke()
+            ?: return@withContext "转正落点未接线（工作区根缺失）——如实拒，不猜"
+        val result = TeachReplayStore.saveConfirmed(
+            draft = TeachSkillDraft(skill, warnings = emptyList(), summary = draft.goal),
+            projectRoot = projectRoot,
+            globalRoot = globalRootSupplier?.invoke() ?: File(projectRoot, ".."),
+            personaFiles = personaFilesSupplier?.invoke()
+                ?: return@withContext "人设文件未接线——如实拒，不猜",
+            stampText = clock().toString(36),
+        )
+        if (result.written != null) {
+            draftStore.resolve(id)
+            refreshDrafts()
+            RunLog.log("学习板块：草案已转正为技能（$skillName，经 643 候选链）")
+        }
+        result.reason ?: "已落成技能：$skillName"
+    }
+
+    /** 弃掉一条草案。 */
+    fun discardDraft(id: String) {
+        draftStore.resolve(id)
+        refreshDrafts()
+    }
+
+    private fun refreshDrafts() {
+        draftsFlow.value = draftStore.pending()
+    }
+
+    private fun rejected(problems: List<String>): SkillDraftStore.AddOutcome.Rejected {
+        toast(LearnToastKind.DRAFT_REJECTED, problems.joinToString("；"))
+        return SkillDraftStore.AddOutcome.Rejected(problems)
     }
 
     private fun toast(kind: LearnToastKind, arg: String = "") {
@@ -266,6 +363,7 @@ internal object ObserveCenter {
         session = null
         sessionActiveFlow.value = false
         val snapshot = runCatching { active.close() }.getOrNull() ?: return
+        lastSession = snapshot // B 归纳的输入（「从最近观察建草案」）
         val triggers = LearnTriggers.validate(snapshot)
         if (triggers.isEmpty()) return
         val now = clock()

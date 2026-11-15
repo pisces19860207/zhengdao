@@ -254,12 +254,25 @@ class LearnBoardGateTest {
     // ── 判据⑥：「就教这一步」只补该步（不重录、不建草案）─────────────────────────
 
     @Test
-    fun `判据6_learn包不启示教录制_不建草案`() {
-        learnSources().forEachIndexed { i, src ->
+    fun `判据6_learn包不启示教录制_TeachSkillDraft只许确认转正一处`() {
+        // 阶段二（624B）：确认转正经 TeachSkillDraft（saveConfirmed 的入参形状）是**唯一**合法出现点；
+        // 事件收割/归纳/归并一律不许启示教录制器（TeachRecorder/TeachSessionUiModel）。
+        val sources = learnSources()
+        sources.forEachIndexed { i, src ->
             assertFalse("learn 包文件 #$i 不许启 TeachRecorder", src.contains("TeachRecorder("))
             assertFalse("learn 包文件 #$i 不许启 TeachSessionUiModel", src.contains("TeachSessionUiModel"))
-            assertFalse("learn 包文件 #$i 不许建技能草稿", src.contains("TeachSkillDraft"))
         }
+        val holders = learnDirFiles().filter { stripComments(it.readText()).contains("TeachSkillDraft") }
+        assertTrue("TeachSkillDraft 只许在 ObserveCenter（确认转正一处）；实见 $holders", holders.size == 1 && holders[0].name == "ObserveCenter.kt")
+        assertTrue("确认转正必须走 TeachReplayStore.saveConfirmed 三闸", stripComments(holders[0].readText()).contains("saveConfirmed"))
+    }
+
+    private fun learnDirFiles(): List<File> {
+        val dir = listOf(File(learnDir), File("../$learnDir")).firstOrNull { it.isDirectory }
+            ?: throw AssertionError("learn 包目录不存在")
+        val files = dir.listFiles { f -> f.name.endsWith(".kt") } ?: emptyArray()
+        assertTrue("门禁不许空转", files.isNotEmpty())
+        return files.toList()
     }
 
     @Test

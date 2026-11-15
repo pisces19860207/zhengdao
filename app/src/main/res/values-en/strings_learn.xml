@@ -40,4 +40,21 @@
     <string name="learn_opt_teach">Teach just this step</string>
     <string name="learn_opt_drop">Skip this step</string>
     <string name="learn_free_text">Or just tell me in your own words</string>
+    <string name="learn_draft_title">Skill drafts</string>
+    <string name="learn_draft_empty">No drafts yet. Use the browser for a few steps, then tap "Draft from latest observation" after the session closes.</string>
+    <string name="learn_draft_goal_hint">What were you doing? (intent name)</string>
+    <string name="learn_draft_induce">Create draft</string>
+    <string name="learn_draft_merged_mark">Merged — observations: %1$d</string>
+    <string name="learn_draft_conflict_mark">Locator conflict (two ways pending human pick)</string>
+    <string name="learn_draft_optional_mark">optional ×%1$d</string>
+    <string name="learn_draft_param_mark">param %1$s</string>
+    <string name="learn_draft_steps_mark">steps: %1$d · evidence refs: %2$d</string>
+    <string name="learn_draft_confirm">Promote to skill</string>
+    <string name="learn_draft_confirm_name_hint">Skill name (letters/digits/CJK/_/-)</string>
+    <string name="learn_draft_confirm_defaults_hint">Param defaults, one per line "name=value" (optional)</string>
+    <string name="learn_draft_confirm_ok">Write as skill</string>
+    <string name="learn_draft_discard">Discard</string>
+    <string name="learn_draft_rejected_toast">Draft rejected by structure check: %1$s</string>
+    <string name="learn_draft_created_toast">Draft saved to the draft area (not promoted)</string>
+    <string name="learn_draft_merged_toast">Same intent — merged into one; observations: %1$d</string>
 </resources>

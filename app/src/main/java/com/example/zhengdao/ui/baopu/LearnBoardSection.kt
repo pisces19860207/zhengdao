@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -42,12 +44,15 @@ import com.example.zhengdao.baopu.learn.LearnCardTexts
 import com.example.zhengdao.baopu.learn.LearnToastKind
 import com.example.zhengdao.baopu.learn.LearnTriggerType
 import com.example.zhengdao.baopu.learn.NotLearnedItem
+import com.example.zhengdao.baopu.learn.SkillDraft
+import com.example.zhengdao.baopu.learn.SkillDraftStore
 import com.example.zhengdao.baopu.learn.ObserveCenter
 import com.example.zhengdao.baopu.learn.ObservePrefs
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import android.widget.Toast
@@ -154,6 +159,7 @@ internal fun LearnBoardSection() {
                 )
             }
         }
+        LearnDraftArea(Modifier.padding(top = 16.dp))
     }
 
     LearnClearDialogs(
@@ -173,6 +179,160 @@ internal fun LearnBoardSection() {
     )
 }
 
+/**
+ * 技能草稿区（B/C 产物；单一入口）。要点：
+ *   · 「从最近观察建草案」⇒ ObserveCenter.induceDraft(goal)——同意图自动归并（判据③），
+ *     结构校验拒收当场说明（判据①②）；冲突草案标「两种走法待人裁」且**不给转正钮**（判据⑤）；
+ *   · 「转正为技能」⇒ ObserveCenter.confirmDraft（人批）——经 TeachReplayStore 三闸落
+ *     zl-teach/2，之后 643 候选链原样能吃（判据⑥）；未批前**不落技能目录**（不转正）。
+ */
+@Composable
+private fun LearnDraftArea(modifier: Modifier = Modifier) {
+    val drafts by ObserveCenter.drafts.collectAsState()
+    val scope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
+    var goal by rememberSaveable { mutableStateOf("") }
+    var inducing by remember { mutableStateOf(false) }
+    var confirmingId by remember { mutableStateOf<String?>(null) }
+
+    Column(modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.learn_draft_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (drafts.isEmpty()) {
+            Text(
+                text = stringResource(R.string.learn_draft_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        } else {
+            drafts.forEach { draft -> DraftRow(draft = draft, onConfirm = { confirmingId = draft.id }) }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = goal,
+                onValueChange = { goal = it },
+                placeholder = { Text(stringResource(R.string.learn_draft_goal_hint)) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = {
+                    inducing = true
+                    scope.launch {
+                        withContext(Dispatchers.IO) { ObserveCenter.induceDraft(goal.trim()) }
+                        inducing = false
+                        // 成败提示走 ObserveCenter 轻提示通道（LearnToasts 组合期 stringResource，
+                        // LocalContext.getString 过不了 lint 硬闸——阶段一同款修正）
+                    }
+                },
+                enabled = !inducing && goal.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.learn_draft_induce))
+            }
+        }
+    }
+    if (confirmingId != null) {
+        LearnDraftConfirmDialog(
+            draftId = confirmingId.orEmpty(),
+            onDismiss = { confirmingId = null },
+        )
+    }
+}
+
+/** 一条草案行：goal＋归并标记＋冲突/偶发/参数标记＋步数，转正与弃两颗钮（冲突不给转正）。 */
+@Composable
+private fun DraftRow(draft: SkillDraft, onConfirm: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(
+            text = draft.goal,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = buildList {
+                if (draft.mergedFrom >= 2) add(stringResource(R.string.learn_draft_merged_mark, draft.mergedFrom))
+                add(stringResource(R.string.learn_draft_steps_mark, draft.skeleton.size, draft.skeleton.sumOf { it.evidence.size }))
+                if (draft.hasConflict()) add(stringResource(R.string.learn_draft_conflict_mark))
+                val optionals = draft.skeleton.count { it.optional }
+                if (optionals > 0) add(stringResource(R.string.learn_draft_optional_mark, optionals))
+                val params = draft.params.joinToString("、") { it.name }
+                if (params.isNotEmpty()) add(stringResource(R.string.learn_draft_param_mark, params))
+            }.joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (draft.hasConflict()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            TextButton(onClick = onConfirm, enabled = !draft.hasConflict()) {
+                Text(stringResource(R.string.learn_draft_confirm))
+            }
+            TextButton(onClick = { ObserveCenter.discardDraft(draft.id) }) {
+                Text(stringResource(R.string.learn_draft_discard))
+            }
+        }
+    }
+}
+
+/** 转正确认对话框：技能名＋参数默认值（每行「名=值」；空值＝执行端参数链如实处理）。 */
+@Composable
+private fun LearnDraftConfirmDialog(draftId: String, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
+    val context = LocalContext.current
+    var name by rememberSaveable { mutableStateOf("") }
+    var defaults by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.learn_draft_confirm)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text(stringResource(R.string.learn_draft_confirm_name_hint)) },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = defaults,
+                    onValueChange = { defaults = it },
+                    placeholder = { Text(stringResource(R.string.learn_draft_confirm_defaults_hint)) },
+                    minLines = 2,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && name.isNotBlank(),
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        val msg = withContext(Dispatchers.IO) {
+                            ObserveCenter.confirmDraft(draftId, name.trim(), parseDefaults(defaults))
+                        }
+                        busy = false
+                        onDismiss()
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                },
+            ) { Text(stringResource(R.string.learn_draft_confirm_ok)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.learn_confirm_cancel)) } },
+    )
+}
+
+private fun parseDefaults(text: String): Map<String, String> = text.lines()
+    .mapNotNull { line ->
+        val i = line.indexOf('=')
+        if (i <= 0) return@mapNotNull null
+        line.substring(0, i).trim() to line.substring(i + 1).trim()
+    }.toMap()
+
 /** 轻提示出口（ObserveCenter.lastToast 按 seq 弹 Toast；两个宿主共用这一件）。 */
 @Composable
 internal fun LearnToasts() {
@@ -185,6 +345,9 @@ internal fun LearnToasts() {
         LearnToastKind.TAUGHT -> stringResource(R.string.learn_taught_toast)
         LearnToastKind.KEEP_AMBIGUOUS -> stringResource(R.string.learn_keep_ambiguous_toast)
         LearnToastKind.CAPTURE_TIMEOUT -> stringResource(R.string.learn_capture_timeout_toast)
+        LearnToastKind.DRAFT_CREATED -> stringResource(R.string.learn_draft_created_toast)
+        LearnToastKind.DRAFT_MERGED -> stringResource(R.string.learn_draft_merged_toast, toast.value?.arg?.toIntOrNull() ?: 0)
+        LearnToastKind.DRAFT_REJECTED -> stringResource(R.string.learn_draft_rejected_toast, toast.value?.arg ?: "")
         null -> ""
     }
     LaunchedEffect(toast.value) {

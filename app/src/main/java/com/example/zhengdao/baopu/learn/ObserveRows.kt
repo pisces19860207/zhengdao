@@ -52,6 +52,17 @@ internal data class ObserveFaces(
         AUTO_SENS.containsMatchIn(auto) ||
         SENSITIVE.containsMatchIn("$inputName $id $placeholder $aria $formLabel")
 
+    /** 人读标签（placeholder／可及名／字段名依次取；意图、参数名、走法措辞都从这里出）。 */
+    fun label(): String = placeholder.ifBlank { name.ifBlank { inputName } }
+
+    /** 身份同判（E 定位不唯一与 B/C 归并共用：同 tag 且 name/id/testid/xp 任一相等）。 */
+    fun sameIdentityAs(other: ObserveFaces): Boolean = tag == other.tag && (
+        (name.isNotBlank() && name == other.name) ||
+            (id.isNotBlank() && id == other.id) ||
+            (testid.isNotBlank() && testid == other.testid) ||
+            (xp.isNotBlank() && xp == other.xp)
+        )
+
     fun toJson(): JSONObject = JSONObject()
         .put("tag", tag).put("role", role).put("name", name).put("aria", aria)
         .put("testid", testid).put("id", id).put("inputName", inputName)
