@@ -314,9 +314,15 @@ internal fun BrowserScreen(
         PageExportPolicy.Refusal.NOT_RENDERED -> refuseNotRendered
     }
 
-    // 屏幕像素尺寸在**组合期**读一次（lint: LocalContextResourcesRead —— 回调里读资源不会随
-    // 旋转/分屏重组）。导出目标尺寸要用它把预设 dp 换成设备像素。
-    val displayMetrics = context.resources.displayMetrics
+    // 屏幕像素尺寸在**组合期**从窗口容器取（134 批同款处置，见 BaopuScreen）：
+    // · 不用 `context.resources`（lint: LocalContextResourcesRead，不随配置变）；
+    // · 不用 `LocalConfiguration.screenWidthDp`（lint: ConfigurationScreenWidthHeight，
+    //   多窗口/折叠屏下不跟窗口走）。
+    // LocalWindowInfo 是 px，正好是导出要的；density 从 LocalDensity 取（与网页 CSS px 的换算用）。
+    val composeDensity = androidx.compose.ui.platform.LocalDensity.current.density
+    val composeWindow = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    val screenWidthPx = composeWindow.width
+    val screenHeightPx = composeWindow.height
     val exportScope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
     val submitExport: (ExportKind) -> Unit = { kind ->
         val tab = BrowserTabManager.activeTab()
@@ -341,9 +347,9 @@ internal fun BrowserScreen(
                     // 651：预设只作用在这里——按预设重排一次再拍（屏幕上的排版不动）
                     val target = PageExportPolicy.captureTarget(
                         vp = viewport,
-                        density = displayMetrics.density,
-                        screenWidthPx = displayMetrics.widthPixels,
-                        screenHeightPx = displayMetrics.heightPixels,
+                        density = composeDensity,
+                        screenWidthPx = screenWidthPx,
+                        screenHeightPx = screenHeightPx,
                     )
                     val shot = when (kind) {
                         ExportKind.PNG_VIEWPORT -> PageExporter.captureViewport(tab.webView, target)
