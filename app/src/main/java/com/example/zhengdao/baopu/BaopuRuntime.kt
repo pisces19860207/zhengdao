@@ -272,8 +272,35 @@ internal object BaopuRuntime {
      * 缓存一份而不是每次 new：`SQLiteOpenHelper` 每个实例各带一套连接，面板每次重组都新建
      * 就是在漏连接；工具与面板共用同一份 ⇒ 「查询面板的数」与「模型报的数」必然同源。
      */
-    fun logisticsStore(context: Context): com.example.zhengdao.baopu.logistics.LogisticsStore {
-        logisticsStoreRef?.let { return it }
+    /**
+     * 649 批一：资料包的**注入账**（append-only，单行 JSON，落在 App 私有目录）。
+     *
+     * 为什么不写进 `<工作区>/.zd-ledger.jsonl`：那本是**项目账本**，行格式由
+     * `LedgerRules` 的 fold/replay 决定（544 判据②③都钉着它）。把"检索注入了哪几片"
+     * 塞进去，会让那本账多出一种它不认识的行 ⇒ 宁可另开一本，也不污染。
+     * 这本账的用途只有一个：事后能回答"哪一轮读了包里哪几片、几字节"。
+     *
+     * 写失败只记日志、不阻塞检索（账是旁证，不是通行证）。
+     */
+    fun packLedger(context: Context): com.example.zhengdao.baopu.pack.PackLedger {
+        val dir = java.io.File(context.filesDir, "content_pack")
+        val file = java.io.File(dir, "注入账.jsonl")
+        return com.example.zhengdao.baopu.pack.PackLedger { query, ids, bytes ->
+            runCatching {
+                if (!dir.isDirectory) dir.mkdirs()
+                val row = org.json.JSONObject()
+                    .put("at", System.currentTimeMillis())
+                    .put("q", query)
+                    .put("ids", org.json.JSONArray(ids))
+                    .put("bytes", bytes)
+                file.appendText(row.toString() + "\n", Charsets.UTF_8)
+            }.onFailure {
+                com.example.zhengdao.core.RunLog.log("资料包注入账写不进：${it.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun logisticsStore(context: Context): com.example.zhengdao.baopu.logistics.LogisticsStore {        logisticsStoreRef?.let { return it }
         return synchronized(this) {
             logisticsStoreRef ?: com.example.zhengdao.baopu.logistics.SqlLogisticsStore(
                 context.applicationContext,
@@ -466,6 +493,18 @@ internal object BaopuRuntime {
         // 工具（kb_index/kb_search）与引擎的每轮自动注入共用同一份壳——房型同
         // AskUserTool.sink／PlanTool.sink：Context 只到装配层这一处。
         KbTools.store = com.example.zhengdao.baopu.kb.KbIndexStore(appCtx.filesDir)
+        // 649 批一：内容创作资料包（隐藏能力·按需挂载）。三处注入口，全在装配层：
+        //   ① 包根＝App 私有 filesDir/packs/男性（批一只产出包源，拷进设备后即此路径）；
+        //   ② 开关＝设置页那把（默认关，读失败也按关 ⇒ 关着就不挂、也不读文件）；
+        //   ③ 注入账＝filesDir/content_pack/注入账.jsonl（append-only，单行 JSON，写失败只留日志）。
+        // 工具层不认识 Context（同 KbTools 房型），所以这里注入一次即可 JVM 直测。
+        com.example.zhengdao.baopu.pack.PackTools.rootProvider = {
+            java.io.File(appCtx.filesDir, "packs/男性")
+        }
+        com.example.zhengdao.baopu.pack.PackTools.gateOn = {
+            com.example.zhengdao.baopu.pack.ContentPackGate.on(appCtx)
+        }
+        com.example.zhengdao.baopu.pack.PackTools.ledger = packLedger(appCtx)
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }
@@ -1037,6 +1076,9 @@ internal object BaopuRuntime {
             // 本轮输入；索引不在 ⇒ null，静默跳过不阻塞）。真实存储在 KbTools.store
             // （registry() 里注入的同一份壳），Context 依旧只出现在装配层。
             kbRecall = { text -> KbTools.autoInjectNote(text) },
+            // 649 批一：内容创作资料包的挂载判定（开关 ∧ 本轮 L1 命中）。
+            // 关着 ⇒ PackTools.l1Hit 第一行就 false，一个包文件都不读。
+            packMount = { text -> com.example.zhengdao.baopu.pack.PackTools.l1Hit(text) },
             // 第四百五十九批：提示词导出（debug 默认开、release 默认关；SP 可拨）。
             // 只把**这一步拼好的** system 段递出去，落盘／脱敏／开关全在 PromptExport 里；
             // 闭包返回 Unit ⇒ 引擎没有任何回写提示词的通道（派工单边界「只读复制」）。

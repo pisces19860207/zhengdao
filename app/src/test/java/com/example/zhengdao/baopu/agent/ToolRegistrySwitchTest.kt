@@ -120,6 +120,8 @@ class ToolRegistrySwitchTest {
                 "library_list", "library_organize",
                 // 第一百二十八批两条：kb_index（建索引，CONFIRM）/ kb_search（检索，FREE 只读）
                 "kb_index", "kb_search",
+                // 649 批一：资料包检索（默认关；组 PACK 由开关＋本轮命中挂载）
+                "pack_search",
                 "delete_path", "image_ops", "generate_image",
                 // 第一百八十六批：画板/图表/表格（DRAW 组，默认不可见但默认启用）
                 "render_artifact", "draw_chart", "draw_table", "ask_user",

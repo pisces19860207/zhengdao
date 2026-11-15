@@ -94,6 +94,7 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.agent.AskHabitSwitch
+import com.example.zhengdao.baopu.pack.ContentPackGate
 import com.example.zhengdao.baopu.agent.PersonaApprovalCard
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
@@ -514,6 +515,43 @@ internal fun BaopuSettingsScreen(
                             AskHabitSwitch.set(ctx, want)
                             habitOn = want
                             RunLog.log("抱朴设置：按习惯免问 = $want")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 内容创作资料包（649 批一：隐藏能力·按需挂载，默认关）──
+            // 定位：关着 ⇒ 不挂 pack_search、不读资料包任何一个文件；打开后也只有
+            // 这轮话题命中主题标签时才挂上来（引擎每轮重算，不跨轮）。写口只有
+            // ContentPackGate.set 一处，屏上显示与闸门读的是同一个键。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_pack_card)) {
+                var packOn by rememberSaveable { mutableStateOf(ContentPackGate.on(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_pack_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_pack_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = packOn,
+                        onCheckedChange = { want ->
+                            ContentPackGate.set(ctx, want)
+                            packOn = want
+                            RunLog.log("抱朴设置：内容创作资料包 = $want")
                         },
                         colors = zhengdaoSwitchColors(),
                     )

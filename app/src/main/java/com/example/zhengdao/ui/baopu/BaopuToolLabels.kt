@@ -117,6 +117,8 @@ internal object BaopuToolLabels {
         "library_organize" to R.string.baopu_tool_library_organize,
         "kb_index" to R.string.baopu_tool_kb_index,
         "kb_search" to R.string.baopu_tool_kb_search,
+        // 649 批一：内容创作资料包（默认关，开关＋话题命中才挂）
+        "pack_search" to R.string.baopu_tool_pack_search,
         "delete_path" to R.string.baopu_tool_delete_path,
         "image_ops" to R.string.baopu_tool_image_ops,
         "generate_image" to R.string.baopu_tool_generate_image,
@@ -258,6 +260,8 @@ internal object BaopuToolLabels {
         "library_organize" to R.string.baopu_tool_library_organize_desc,
         "kb_index" to R.string.baopu_tool_kb_index_desc,
         "kb_search" to R.string.baopu_tool_kb_search_desc,
+        // 649 批一
+        "pack_search" to R.string.baopu_tool_pack_search_desc,
         "delete_path" to R.string.baopu_tool_delete_path_desc,
         "image_ops" to R.string.baopu_tool_image_ops_desc,
         "generate_image" to R.string.baopu_tool_generate_image_desc,

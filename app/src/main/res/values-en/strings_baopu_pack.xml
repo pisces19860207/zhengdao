@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 649 batch 1: personal content pack (hidden capability, mounted on demand). -->
+<resources>
+    <string name="baopu_pack_card">Content pack</string>
+    <string name="baopu_pack_title">Turn on the content pack</string>
+    <string name="baopu_pack_desc">Off by default. While off, pack_search is not mounted and not a single pack file is read. When on, the tool only appears in turns whose topic matches a theme tag, returning at most 3 slices / 6KB.</string>
+    <string name="baopu_tool_pack_search">Pack slices</string>
+    <string name="baopu_tool_pack_search_desc">Pull slices from the local content pack by theme (read-only): each slice carries its id and source file name, at most 3 slices / 6KB per call. Says so plainly when nothing matches. Only appears when the switch is on and this turn hits a theme tag.</string>
+    <string name="baopu_tools_group_pack">Content pack</string>
+    <string name="baopu_group_line_pack">Pull your private draft slices by theme (off by default; switch + topic match, read-only)</string>
+</resources>

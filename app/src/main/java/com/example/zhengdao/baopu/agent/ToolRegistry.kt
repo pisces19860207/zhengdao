@@ -138,6 +138,16 @@ enum class ToolGroup(val key: String, val oneLine: String, val dynamic: Boolean 
     LOGISTICS("logistics", "物流查询：查当日发货表（方向/车牌/单号/件数/装没装），只读"),
 
     /**
+     * 内容创作资料包（649 批一）：按主题取片，**默认关**。
+     *
+     * 与其它"按需解锁"的组不同：它不是靠 `capabilities` 解锁，而是靠**设置页开关
+     * ＋ 本轮 L1 命中**两件事同时成立才露头（[setPackMount]）。理由：包里的东西是
+     * 私人文稿，用户要的是"我要用才读"，不是"模型觉得该用就读"。
+     * 关着 ⇒ 组不可见 ＋ 执行器第一行拒绝 ⇒ **零磁盘读**。
+     */
+    PACK("pack", "内容创作资料包：按主题取片（默认关；设置里开了且本轮话题命中主题时才出现）"),
+
+    /**
      * **墓碑（第二百四十八批，第四刀）**：免费通道的 `read` / `bash` 兼容条目已退役。
      *
      * 为什么枚举值还留着、而不是整条删掉：`policy/Policy.kt`、`CapabilitiesTool`、
@@ -288,6 +298,8 @@ internal object ToolGroupTable {
         "novel_annotations" to ToolGroup.LIBRARY,
         "novel_timeline_append" to ToolGroup.LIBRARY,
         "novel_annotation_reply" to ToolGroup.LIBRARY,
+        // 649 批一：内容创作资料包检索（组默认关，靠设置开关＋本轮 L1 命中挂载）
+        "pack_search" to ToolGroup.PACK,
         // ── 以下默认不可见，要 capabilities 解锁
         "browser_click" to ToolGroup.BROWSER,
         "browser_type" to ToolGroup.BROWSER,
@@ -1081,6 +1093,27 @@ internal class ToolRegistry(
     @Volatile
     var currentSessionId: Long = NO_SESSION
 
+    /**
+     * 649 批一：本轮**要不要把内容创作资料包挂上去**（逐轮算，不跨轮、不落盘）。
+     *
+     * 为什么不做成"会话解锁"：`GroupUnlockStore.unlock` 按设计是**只增不减**的
+     * （解锁一次，本会话后续每轮都还看得见）。资料包不行——派工单要的是
+     * 「开着**且 L1 命中**才挂」，下一轮话题换了就该收回去。所以它不写解锁格，
+     * 只在本轮 [settings] 里临时把 PACK 组算成"用户同意"，下一轮重算即失效。
+     *
+     * 判据本体仍是 [isVisibleTool] 那一条链：这里只喂输入，不另开判据。
+     */
+    @Volatile
+    private var packMountOn: Boolean = false
+
+    /** 写本轮挂载位（引擎在组装 tools 数组之前写；关着就写 false，**不是不动**）。 */
+    fun setPackMount(on: Boolean) {
+        packMountOn = on
+    }
+
+    /** 本轮资料包是否已挂（诊断/门禁用）。 */
+    fun isPackMountOn(): Boolean = packMountOn
+
     /** 注册（同名覆盖：工具集演化时后注册的赢，调用方显式覆盖而非默默双注册）。 */
     fun register(spec: ToolSpec) {
         // 组按那张唯一的表盖章：装配层（BaopuRuntime 的 write_skill / read / bash）与
@@ -1185,7 +1218,9 @@ internal class ToolRegistry(
     fun settings(): ToolUserSettings = ToolUserSettings(
         disabledNames = prefs.disabledNames(),
         disabledGroups = prefs.disabledGroups(),
-        approvedGroups = prefs.approvedGroups(),
+        // 649：本轮资料包挂载位在这里并入"用户同意"——见 [setPackMount] 的 KDoc
+        approvedGroups = prefs.approvedGroups() +
+            if (packMountOn) setOf(ToolGroup.PACK) else emptySet(),
     )
 
     /**
@@ -1483,6 +1518,9 @@ internal object BaopuToolCatalog {
      * CONFIRM，够不着「静默动手」——真要防，用户自己在设置里关。
      */
     val DEFAULT_ENABLED: Set<String> = setOf(
+        // 649 批一：内容创作资料包检索。**必须在表里**，否则挂载了也看不见
+        // （"注册了但默认关"是这一族的经典翻车点）。可见性另由 PACK 组挂载位控制。
+        "pack_search",
         // 第二百一十八批：六件默认「启用」（组仍默认不可见——解锁即用，与 IMAGE/DRAW 同款口径）
         "sheet_read", "search_web", "schedule_task", "event_trigger", "clipboard_write", "notify", "phone_dial",
         // 第二百三十二批：通用表格问答默认「启用」（组仍默认不可见——解锁即用，同上口径）
@@ -1791,6 +1829,8 @@ internal object BaopuToolCatalog {
         // kb_search 关键词检索带来源引用（FREE 只读）
         Entry("kb_index") { KbTools.indexSpec(it) },
         Entry("kb_search") { KbTools.searchSpec(it) },
+        // 649 批一：内容创作资料包检索（只读；默认关，设置开关＋本轮 L1 命中才挂）
+        Entry("pack_search") { com.example.zhengdao.baopu.pack.PackTools.spec() },
         // 删除（2026-10-18）：默认进回收站，permanent 才真删；禁区一律拒
         Entry("delete_path") { DeletePathTool.spec(it) },
         // 图片处理（2026-10-18）：缩放/裁剪/转格式/取主色/生成图标各档

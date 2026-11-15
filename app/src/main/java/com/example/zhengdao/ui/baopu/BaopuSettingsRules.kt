@@ -207,6 +207,8 @@ internal fun baopuGroupTitle(group: ToolGroup): Int = when (group) {
     ToolGroup.WEBSEARCH -> R.string.baopu_tools_group_websearch
     ToolGroup.SCHEDULE -> R.string.baopu_tools_group_schedule
     ToolGroup.DEVICE -> R.string.baopu_tools_group_device
+    // 649 批一：内容创作资料包（默认关，开关＋本轮命中才挂）
+    ToolGroup.PACK -> R.string.baopu_tools_group_pack
     // COMPAT 由通道决定、没有开关，卡片尾部以只读文字展示（第十八批 §2.1-4）⇒ 不进分组列表
     ToolGroup.COMPAT -> compatNoSwitch()
 }
@@ -249,6 +251,8 @@ internal fun baopuGroupLine(group: ToolGroup): Int = when (group) {
     ToolGroup.WEBSEARCH -> R.string.baopu_group_line_websearch
     ToolGroup.SCHEDULE -> R.string.baopu_group_line_schedule
     ToolGroup.DEVICE -> R.string.baopu_group_line_device
+    // 649 批一
+    ToolGroup.PACK -> R.string.baopu_group_line_pack
     ToolGroup.COMPAT -> compatNoSwitch()
 }
 

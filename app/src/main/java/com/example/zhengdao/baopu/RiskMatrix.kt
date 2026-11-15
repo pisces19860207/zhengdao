@@ -338,6 +338,8 @@ internal data class RiskTable(
                 "preview_local_file" to ToolRule(RiskClass.R0),
                 "library_list" to ToolRule(RiskClass.R0),
                 "kb_search" to ToolRule(RiskClass.R0),
+                // 649 批一：资料包检索只读本机私人文稿（关了开关连文件都不读）
+                "pack_search" to ToolRule(RiskClass.R0),
                 // kb_index 只重建 App 私有索引缓存，不碰用户文件（派工单「只读部分」口径）
                 "kb_index" to ToolRule(RiskClass.R0),
                 // 免费通道的 read 是 read_file 的别名

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 649 批一：内容创作资料包（隐藏能力·按需挂载）。中英各一份，键名与 BaopuToolLabels 对位。 -->
+<resources>
+    <string name="baopu_pack_card">内容创作资料包</string>
+    <string name="baopu_pack_title">开启内容创作资料包</string>
+    <string name="baopu_pack_desc">默认关。关着时不挂 pack_search、不读资料包任何一个文件；打开后只有这轮话题命中主题标签，才把取片工具挂上来，每次最多 3 片、合计 6KB。</string>
+    <string name="baopu_tool_pack_search">资料包取片</string>
+    <string name="baopu_tool_pack_search_desc">从本机内容创作资料包按主题取片（只读）：每片带片 id 与来源文件名，单次最多 3 片、合计不超过 6KB。没命中就明说没命中。只在开关打开且本轮话题命中主题时才出现。</string>
+    <string name="baopu_tools_group_pack">内容创作资料包</string>
+    <string name="baopu_group_line_pack">按主题取你的私人文稿片（默认关；开关＋话题命中才挂，只读）</string>
+</resources>

@@ -260,6 +260,17 @@ internal class RunEngine(
      */
     private val kbRecall: ((String) -> String?)? = null,
     /**
+     * 649 批一：内容创作资料包的**挂载判定口**（入参＝本轮用户输入，出参＝挂不挂）。
+     *
+     * 为什么是注入的闭包：判定要读设置开关（Context）与包索引（磁盘），引擎两样都不持
+     * （与 [kbRecall] 同一条纪律）；真实现由装配层给（`BaopuRuntime` 里 `ContentPackGate`
+     * ＋`PackStore.l1Hits`）。
+     *
+     * **每轮都调、每轮都写回**（包括 false）：挂载是逐轮的，不是会话内一挂到底——
+     * 上一轮命中了这个话题、这一轮换了话题，工具就该收回去。
+     */
+    private val packMount: ((String) -> Boolean)? = null,
+    /**
      * 提示词抓取口（第四百五十九批）：入参＝(这一步拼好的 system 段原文, 当前通道)。
      *
      * 为什么是注入的闭包而不是持 Context：引擎不持 Context（与 [kbRecall]／
@@ -2288,6 +2299,18 @@ internal class RunEngine(
                 log("抱朴引擎：知识库自动注入已拼入本轮输入（${kbNote.length} 字符）")
             }
         }
+        // 649 批一：资料包挂载位（每轮重算）。关着 ⇒ 闭包第一行就返回 false，**不读包**；
+        // 没命中 ⇒ 也 false。写回注册表后，tools 数组那一处（[ToolRegistry.visibleSpecs]）
+        // 自然就看不见这一组——不在这里做任何 filter（§2 门禁只认那一处）。
+        val packWant = if (userText.isNullOrBlank()) {
+            false
+        } else {
+            runCatching { packMount?.invoke(userText) ?: false }.getOrDefault(false)
+        }
+        if (registry.isPackMountOn() != packWant) {
+            log("抱朴引擎：内容创作资料包挂载位 = $packWant")
+        }
+        registry.setPackMount(packWant)
         // 157：日记检索查询——用本轮用户输入提一次（房型同上面的知识库自动注入：
         // 每轮算一次、全程同一份；纯函数提取，引擎不读时钟）。续跑不重复提
         // （原轮已注过，同 kbRecall 口径）⇒ else 分支显式置 null，不留上一轮残值。

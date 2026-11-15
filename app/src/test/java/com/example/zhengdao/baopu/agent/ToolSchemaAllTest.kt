@@ -563,6 +563,8 @@ class ToolSchemaAllTest {
             "library_organize" to JSONObject().put("action", "index"),
             "kb_index" to JSONObject(),
             "kb_search" to JSONObject().put("query", "第一章"),
+            // 649 批一：资料包检索（q 必填，k 1..3）
+            "pack_search" to JSONObject().put("q", "勃起温度"),
             "delete_path" to JSONObject(),
             "image_ops" to JSONObject().put("action", "palette").put("path", "a.png"),
             // 第一百五十八批：文生图（只给最小合法形状：一句提示词）

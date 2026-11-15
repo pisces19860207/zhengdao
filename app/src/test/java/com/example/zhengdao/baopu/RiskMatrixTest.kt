@@ -46,7 +46,8 @@ class RiskMatrixTest {
         // 632 轻办公两件（106 → 108：docx_write R1 / xlsx_write R1——只写工作区 产物/）
         // 642 套模板一件（108 → 109：docx_template R1——读模板、只写 产物/）
         // 621 剧本五件（109 → 114：outline/approve/write/export R1，trace R0）
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 114, names.size)
+        // 649 资料包一件（114 → 115：pack 工具 R1——隐藏能力、按需挂载）
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 115, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),
