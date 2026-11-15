@@ -49,6 +49,7 @@ internal object PageExporter {
     /** 页面度量（CSS px）：视口宽 ＋ 整页高。 */
     data class Metrics(val cssWidth: Int, val contentHeightCss: Int)
 
+
     /**
      * 量当前页面：视口宽与整页高。
      *
@@ -74,50 +75,62 @@ internal object PageExporter {
             }
         }
 
-    /** 可视区一张图：就是 WebView 此刻的尺寸（预设宽 × 可用高）。 */
-    fun captureViewport(wv: WebView): Shot? {
-        val w = wv.width
-        val h = wv.height
-        if (w <= 0 || h <= 0) return null
-        return drawAndJudge(wv, w, h, truncated = false)
+    /**
+     * 可视区一张图：把 WebView **临时**改成 [target] 尺寸拍一张，再复原。
+     *
+     * 为什么不是"拍它此刻的样子"：屏幕上的排版恒等于手机宽（651 的口径：预设只作用于导出，
+     * 见交付报告 §四），所以"桌面档的可视区"必须真的按 1280×800 重排一次再拍。
+     * 重排是 WebView 自己的事（`measure`/`layout` → Chromium 改视口），拍完立刻复原。
+     */
+    fun captureViewport(wv: WebView, target: PageExportPolicy.Px): Shot? =
+        captureAt(wv, target.w, target.h, truncated = false)
+
+    /**
+     * 整页一张图：宽按 [targetWidthPx] 重排，高取内容的实际高度（受像素预算夹紧）。
+     *
+     * @param metrics [measureContent] 量到的那两个数（CSS 宽只从这里来，本类不缓存、
+     *   也不猜 density——页面带 initial-scale 时 density 会把图画短或画长）
+     */
+    fun captureFullPage(wv: WebView, metrics: Metrics, targetWidthPx: Int): Shot? {
+        if (metrics.contentHeightCss <= 0 || metrics.cssWidth <= 0 || targetWidthPx <= 0) return null
+        // 内容高（CSS px）→ 目标宽下的设备 px：按「目标宽 / CSS 视口宽」换算
+        val rawPx = (metrics.contentHeightCss.toFloat() * targetWidthPx / metrics.cssWidth).toInt().coerceAtLeast(1)
+        val target = PageExportPolicy.captureHeightPx(rawPx, targetWidthPx)
+        val truncated = PageExportPolicy.truncated(rawPx, targetWidthPx) || target < rawPx
+        return captureAt(wv, targetWidthPx, target, truncated)
     }
 
     /**
-     * 整页一张图：临时把 WebView 拉到内容高度 → 画 → 复原。
+     * 临时把 WebView 改成 [w]×[h] 拍一张，然后复原（尺寸、布局、滚动位）。
      *
-     * @param metrics [measureContent] 量到的那两个数（**必须一起传**：CSS 宽只从这里来，
-     *   本类不缓存、也不猜 density——页面带 initial-scale 时 density 会把图画短或画长）
-     * @return null ＝ 量不到 / 画出来不是真图；否则 [Shot]（`truncated` 标明是否被
-     *   [PageExportPolicy.MAX_CAPTURE_HEIGHT_PX] 截断）
+     * 三条都是踩过的：
+     * 1. **量一次排一次，不等下一帧**（我们只要一张图，不需要它先上屏）；
+     * 2. **复原顺序固定**：先尺寸、再 `requestLayout`、最后滚回去（滚动范围才有意义）；
+     * 3. 画出来**先判白图**（[WhiteImageJudge]），不是真图一律 null —— 绝不把灰图当成功。
      */
-    fun captureFullPage(wv: WebView, metrics: Metrics): Shot? {
-        val w = wv.width
-        if (w <= 0 || metrics.contentHeightCss <= 0 || metrics.cssWidth <= 0) return null
-        // CSS px → 设备 px：用「WebView 实宽 / CSS 视口宽」这一比。
-        val scale = w.toFloat() / metrics.cssWidth
-        val rawPx = (metrics.contentHeightCss * scale).toInt().coerceAtLeast(1)
-        val target = PageExportPolicy.captureHeightPx(rawPx)
-        val truncated = PageExportPolicy.truncated(rawPx) || target < rawPx
-
+    private fun captureAt(wv: WebView, w: Int, h: Int, truncated: Boolean): Shot? {
+        if (w <= 0 || h <= 0) return null
         val lp = wv.layoutParams ?: return null
-        val oldHeight = lp.height
+        val oldW = lp.width
+        val oldH = lp.height
+        val oldScrollX = wv.scrollX
         val oldScrollY = wv.scrollY
         return try {
-            lp.height = target
+            lp.width = w
+            lp.height = h
             wv.layoutParams = lp
-            // 立刻量一次/排一次（不等下一帧）：我们只要一张图，不需要它先上屏。
             wv.measure(
                 View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(target, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY),
             )
-            wv.layout(wv.left, wv.top, wv.left + w, wv.top + target)
-            drawAndJudge(wv, w, target, truncated)
+            wv.layout(wv.left, wv.top, wv.left + w, wv.top + h)
+            drawAndJudge(wv, w, h, truncated)
         } finally {
-            // 复原：尺寸、布局、滚动位（顺序固定，先尺寸后滚动，滚动才有正确的可滚范围）
-            lp.height = oldHeight
+            lp.width = oldW
+            lp.height = oldH
             wv.layoutParams = lp
             wv.requestLayout()
-            runCatching { wv.scrollTo(wv.scrollX, oldScrollY) }
+            runCatching { wv.scrollTo(oldScrollX, oldScrollY) }
         }
     }
 

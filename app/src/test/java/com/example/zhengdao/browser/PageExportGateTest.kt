@@ -13,7 +13,8 @@ import java.io.File
  * ① 「未加载完 ⇒ 拒绝导出」在**点击那一刻**再判一次（不是只靠半屏里那枚灰键——
  *    切 Tab、开始加载都可能在点击瞬间发生）；
  * ② 半屏里三枚导出键共用同一个 `ready` 判据（不许某一枚自己判一套）；
- * ③ 尺寸预设真的接到了页面区（`fitScale` 被调用），不是只改了个数字；
+ * ③ 尺寸预设真的接到了**取图**（`captureTarget` → `captureViewport/captureFullPage`），
+ *    且屏幕上的排版不许被预设动（真机上「撑大再缩」会画空白）；
  * ④ 落点：图进相册（`MediaPublisher` ＋ SOURCE_SCREENSHOT）、PDF 进下载（`MediaStore.Downloads`）；
  * ⑤ 导出链路不联网（本文件与页记忆门禁各钉一半）；
  * ⑥ **不动 622/645/623/624 的判定**：教学浮层与未学会胶囊仍被调用（本批只加东西，不删别人的件）。
@@ -99,16 +100,16 @@ class PageExportGateTest {
     // ── ③ 预设真的接到页面区 ────────────────────────────────────────────────
 
     @Test
-    fun `判据_预设接到页面区_跟随屏幕时零改动`() {
+    fun `判据_预设接到取图_屏幕排版不动`() {
         val s = screen()
         assertTrue("预设 → 视口必须走纯函数", s.contains("PageExportPolicy.viewportOf("))
-        assertTrue("缩放必须走 fitScale（不在这里自己算比例）", s.contains("PageExportPolicy.fitScale("))
-        // 空白无关地比：换成 \s+ 免得被缩进重排弄红
-        assertTrue(
-            "跟随屏幕必须走原来的 fillMaxSize（老路径零改动）",
-            Regex("if\\s*\\(\\s*vp\\.followsScreen\\s*\\)\\s*\\{\\s*Modifier\\.fillMaxSize\\(\\)").containsMatchIn(s),
-        )
-        assertTrue("固定尺寸档要把 WebView 排成预设大小", s.contains(".size(vwDp.dp, vhDp.dp)"))
+        assertTrue("预设 → 像素目标必须走 captureTarget", s.contains("PageExportPolicy.captureTarget("))
+        assertTrue("可视区取图要带目标尺寸", s.contains("PageExporter.captureViewport(tab.webView, target)"))
+        assertTrue("整页取图要带目标宽", s.contains("PageExporter.captureFullPage(tab.webView, metrics, target.w)"))
+        // 屏上排版不许被预设动：这两条是 21:41／21:46 两次真机实测换来的（画空白）
+        assertFalse("不许再出现「撑到预设宽再缩」的写法", s.contains(".requiredSize(vwDp.dp"))
+        assertFalse("不许再给 WebView 套缩放图层", s.contains("transformOrigin = androidx.compose.ui.graphics.TransformOrigin"))
+        assertTrue("页面区必须仍是 fillMaxSize（预设不参与屏上排版）", s.contains("modifier = Modifier.fillMaxSize()"))
     }
 
     @Test

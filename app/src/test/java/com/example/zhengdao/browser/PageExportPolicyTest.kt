@@ -47,27 +47,25 @@ class PageExportPolicyTest {
         assertEquals(450, PageExportPolicy.customViewport(600).heightDp)
     }
 
-    // ── 缩放：只缩不放 ──────────────────────────────────────────────────────
+    // ── 导出目标（预设只作用于导出）────────────────────────────────────────
 
     @Test
-    fun `桌面档塞进手机屏_按较紧的那一边缩`() {
-        // 1280×800 塞进 360×600：宽先不够（0.28125），高够（0.75）⇒ 取 0.28125
-        val s = PageExportPolicy.fitScale(1280, 800, 360, 600)
-        assertEquals(0.28125f, s, 0.0001f)
-        // 平板 768×1024 塞进 360×800：宽 0.46875、高 0.78125 ⇒ 取宽
-        val t = PageExportPolicy.fitScale(768, 1024, 360, 800)
-        assertEquals(0.46875f, t, 0.0001f)
+    fun `跟随屏幕就用屏幕像素_与旧取图一模一样`() {
+        val t = PageExportPolicy.captureTarget(PageExportPolicy.FOLLOW_SCREEN, 3.5f, 1312, 2848)
+        assertEquals(1312, t.w)
+        assertEquals(2848, t.h)
     }
 
     @Test
-    fun `屏幕比预设还大也绝不放大`() {
-        assertEquals("放大＝拿模糊像素冒充清晰", 1f, PageExportPolicy.fitScale(768, 1024, 2000, 3000), 0f)
-    }
-
-    @Test
-    fun `量不到尺寸时不缩`() {
-        assertEquals(1f, PageExportPolicy.fitScale(1280, 800, 0, 0), 0f)
-        assertEquals(1f, PageExportPolicy.fitScale(0, 0, 360, 600), 0f)
+    fun `桌面档按 density 换成设备像素`() {
+        val desktop = PageExportPolicy.viewportOf(PageExportPolicy.Preset.DESKTOP)
+        val t = PageExportPolicy.captureTarget(desktop, 3.5f, 1312, 2848)
+        assertEquals(4480, t.w)
+        assertEquals(2800, t.h)
+        val tablet = PageExportPolicy.viewportOf(PageExportPolicy.Preset.TABLET)
+        val t2 = PageExportPolicy.captureTarget(tablet, 2f, 800, 1200)
+        assertEquals(1536, t2.w)
+        assertEquals(2048, t2.h)
     }
 
     // ── 判据：未加载完 ⇒ 拒绝导出 ────────────────────────────────────────────
@@ -141,6 +139,16 @@ class PageExportPolicyTest {
     }
 
     // ── PDF 分页 ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `桌面档整页要按像素预算降高_否则 107MB 必 OOM`() {
+        // 手机档 1312px 宽：预算 16M/1312 = 12195 ⇒ 仍由 6000 高度上限决定（老行为不变）
+        assertEquals(6000, PageExportPolicy.captureHeightPx(20000, 1312))
+        // 桌面档 4480px 宽：16M/4480 = 3571 ⇒ 高度降到 3571（再乘 4B ≈ 64MB）
+        assertEquals(3571, PageExportPolicy.captureHeightPx(20000, 4480))
+        assertEquals("没超预算就不算截断", false, PageExportPolicy.truncated(3000, 4480))
+        assertEquals("超预算必须标截断", true, PageExportPolicy.truncated(5000, 4480))
+    }
 
     @Test
     fun `A4 一页装得下的源图高度_按可用宽算比例`() {

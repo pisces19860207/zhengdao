@@ -12,7 +12,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
@@ -267,9 +267,6 @@ internal fun BrowserScreen(
     val preset = runCatching { PageExportPolicy.Preset.valueOf(presetName) }
         .getOrDefault(PageExportPolicy.Preset.PHONE)
     val viewport = PageExportPolicy.viewportOf(preset, customWidthDp)
-    // 页面区的可用尺寸（dp）——只给半屏显示「按 xx% 缩小」用。
-    // 由页面区那层 BoxWithConstraints 用 LaunchedEffect 回填（不在组合期写状态）。
-    var pageAreaDp by remember { mutableStateOf(0 to 0) }
 
     // 会话号接到管理器：记忆按会话分桶的唯一真相是 controller.sessionId。
     // 用 SideEffect 而不是 LaunchedEffect —— sessionId 一变就得立刻换桶，否则
@@ -331,19 +328,34 @@ internal fun BrowserScreen(
         if (tab == null || refuseMsg != null) {
             // 「未加载完 ⇒ 拒绝导出**并提示**」：提示走底栏之上那条提示条（既有唯一出口）
             uiMsg = refuseMsg ?: refuseNoTab
+            // 留一行：真机上报"点了没反应"时，先看这行是哪一种拒绝
+            com.example.zhengdao.core.RunLog.log("玄览 导出：拒绝（${now.name}）· 目标=$kind")
         } else if (!exportBusy) {
             exportBusy = true
             exportScope.launch {
                 try {
+                    // 651：预设只作用在这里——按预设重排一次再拍（屏幕上的排版不动）
+                    val dm = context.resources.displayMetrics
+                    val target = PageExportPolicy.captureTarget(
+                        vp = viewport,
+                        density = dm.density,
+                        screenWidthPx = dm.widthPixels,
+                        screenHeightPx = dm.heightPixels,
+                    )
                     val shot = when (kind) {
-                        ExportKind.PNG_VIEWPORT -> PageExporter.captureViewport(tab.webView)
+                        ExportKind.PNG_VIEWPORT -> PageExporter.captureViewport(tab.webView, target)
                         else -> {
                             val metrics = PageExporter.measureContent(tab.engine)
-                            if (metrics == null) null else PageExporter.captureFullPage(tab.webView, metrics)
+                            if (metrics == null) {
+                                null
+                            } else {
+                                PageExporter.captureFullPage(tab.webView, metrics, target.w)
+                            }
                         }
                     }
                     if (shot == null) {
                         uiMsg = exportBlank
+                        com.example.zhengdao.core.RunLog.log("玄览 导出：没画出内容（$kind，tab#${tab.id}）")
                     } else if (kind == ExportKind.PDF) {
                         val pdf = PageExporter.toPdf(shot)
                         uiMsg = if (pdf == null) {
@@ -373,13 +385,16 @@ internal fun BrowserScreen(
                         )
                         // 整页被上限截断时必须说清（不许把半张图当"整页"交出去）
                         uiMsg = if (shot.truncated) {
-                            base + "；" + String.format(exportTruncated, PageExportPolicy.MAX_CAPTURE_HEIGHT_PX)
+                            base + "；" + String.format(exportTruncated, shot.heightPx)
                         } else {
                             base
                         }
                     }
                 } finally {
                     exportBusy = false
+                    // 导出结束就收起半屏：结果提示条在浏览器里（半屏+遮罩会把它盖住，
+                    // 21:38 真机实测"导出成功但用户看不到任何反馈"）。
+                    exportSheetOpen = false
                 }
             }
         }
@@ -520,9 +535,7 @@ internal fun BrowserScreen(
 
         // ── 页面区（底栏改版 2026-10-18：紧跟标签条，壳子只剩 52＋56） ──
         // key(活跃标签) ⇒ 切 Tab 时旧 WebView 摘挂载、新的挂上
-        // 651：换成 BoxWithConstraints 只为一件事——量到可用宽高，好把平板/桌面预设等比缩进来
-        // （[PageExportPolicy.fitScale]）。约束作用域是 Box 自带的，布局语义一个字没变。
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -537,10 +550,6 @@ internal fun BrowserScreen(
                 },
         ) {
             val activeId = active?.id
-            // 651：把这一层的可用尺寸回填给半屏（只用于显示缩放比例，不参与排版）
-            LaunchedEffect(maxWidth.value, maxHeight.value) {
-                pageAreaDp = maxWidth.value.toInt() to maxHeight.value.toInt()
-            }
             // 第一百七十二批 S2：本标签的渲染进程被系统回收过 ⇒ 页面是死的，
             // 不挂 WebView（挂上去只会是一块白），改画「点一下重新加载」卡片。
             val recycled = active?.state?.recycled == true
@@ -550,22 +559,9 @@ internal fun BrowserScreen(
             // 起始页的雾白图腾/标题压成 ~1:1（实测截图不可见）；空态时页面区就是
             // 起始页（背景走主题色），everLoaded 翻转后照常挂回，状态机零改动。
             if (activeId != null && !recycled && !restored && active.state.everLoaded) {
-                // 651：预设＝跟随屏幕时走原样（零改动）；否则按预设 CSS 尺寸排版再等比缩小。
-                // 缩到"看得全"而不是"能滚"：导出的是那个尺寸下的版式，用户要一眼看出差在哪儿。
-                val vp = viewport
-                // 跟随屏幕时这两个数不用（走 fillMaxSize），取 0 只为了让下面几行不写 `!!`
-                val vwDp = vp.widthDp ?: 0
-                val vhDp = vp.heightDp ?: 0
-                val scale = if (vp.followsScreen) {
-                    1f
-                } else {
-                    PageExportPolicy.fitScale(
-                        viewportWidthDp = vwDp,
-                        viewportHeightDp = vhDp,
-                        availWidthDp = maxWidth.value.toInt(),
-                        availHeightDp = maxHeight.value.toInt(),
-                    )
-                }
+                // 651：预设**不改屏幕上的排版**（原因见交付报告：真机上把 WebView 撑到
+                // 1280dp 再缩小，会得到一块 4480×2800 的图层，真机直接画空白）。
+                // 预设只作用在导出那一路（PageExporter 临时改尺寸→拍照→复原）。
                 key(activeId) {
                     AndroidView(
                         factory = {
@@ -576,20 +572,7 @@ internal fun BrowserScreen(
                                 ?.also { v -> (v.parent as? ViewGroup)?.removeView(v) }
                                 ?: WebView(it)
                         },
-                        modifier = if (vp.followsScreen) {
-                            Modifier.fillMaxSize()
-                        } else {
-                            Modifier
-                                // 固定成预设的 CSS 尺寸（缩放在下面这层，不参与排版）
-                                .size(vwDp.dp, vhDp.dp)
-                                // 缩放锚在左上角：缩完正好贴住页面区左上，不留一圈空白
-                                .graphicsLayer {
-                                    scaleX = scale
-                                    scaleY = scale
-                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                                }
-                                .align(Alignment.TopStart)
-                        },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
@@ -840,7 +823,6 @@ internal fun BrowserScreen(
         XuanlanExportSheet(
             preset = preset,
             customWidthDp = customWidthDp,
-            scalePercent = exportScalePercent(viewport, pageAreaDp),
             refusal = exportRefusal,
             busy = exportBusy,
             onPreset = { presetName = it.name },
@@ -868,26 +850,6 @@ private const val HOME_URL = "https://cn.bing.com"
  */
 private fun exportTitleOf(tab: BrowserTabManager.Tab): String =
     tab.state.title.ifBlank { BrowserUrlPolicy.displayHost(tab.state.url) }
-
-/**
- * 半屏上那句「按 xx% 缩小显示」（651）。
- *
- * 跟随屏幕 ⇒ 100%（没有缩放这回事，说了反而让人以为被缩过）。页面区还没量到尺寸
- * （首帧/被虚拟键盘顶掉）时也回 100%——宁可少说一句，也不报一个算不出来的数。
- */
-private fun exportScalePercent(
-    viewport: PageExportPolicy.Viewport,
-    areaDp: Pair<Int, Int>,
-): Int {
-    if (viewport.followsScreen) return 100
-    val scale = PageExportPolicy.fitScale(
-        viewportWidthDp = viewport.widthDp ?: 0,
-        viewportHeightDp = viewport.heightDp ?: 0,
-        availWidthDp = areaDp.first,
-        availHeightDp = areaDp.second,
-    )
-    return Math.round(scale * 100f).coerceIn(1, 100)
-}
 
 /**
  * 落盘结局 → 一句回执（651）。成功说"在哪儿"，重名说"已经有了"，失败带原因代号。

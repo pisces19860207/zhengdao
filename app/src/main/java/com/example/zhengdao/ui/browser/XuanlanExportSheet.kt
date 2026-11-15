@@ -44,8 +44,9 @@ import com.example.zhengdao.browser.PageExportPolicy
  *
  * 两段，与用户口径一一对应：
  * 1. **设备尺寸预设**：手机 / 平板 / 桌面 / 自定义。手机＝跟随屏幕（默认，零改动）；
- *    其余三档把页面按那个 CSS 尺寸排，再等比缩小显示（[PageExportPolicy.fitScale]）。
- *    这里只**发选择**，真正改视口的是 `BrowserScreen` 的页面区（判据唯一）。
+ *    其余三档决定**导出时按多大尺寸重排再拍**（屏幕上的排版不动——真机上把 WebView
+ *    撑到 1280dp 再缩会画空白，见 `PageExportPolicy.captureTarget` 的注释）。
+ *    这里只**发选择**，换算与取图都在既定的两跳里（[PageExportPolicy] 判、`PageExporter` 拍）。
  * 2. **导出**：PNG（可视区）/ PNG（整页）/ PDF 三枚键。**未加载完一律禁用并写明原因**
  *    （[PageExportPolicy.Refusal] → 一句人话）——这就是"拒绝导出并提示"那条判据的界面半，
  *    另一半在执行层（`BrowserScreen.submitExport` 里同一判据再判一次，防状态在点击瞬间变化）。
@@ -58,7 +59,6 @@ import com.example.zhengdao.browser.PageExportPolicy
 internal fun XuanlanExportSheet(
     preset: PageExportPolicy.Preset,
     customWidthDp: Int,
-    scalePercent: Int,
     refusal: PageExportPolicy.Refusal,
     busy: Boolean,
     onPreset: (PageExportPolicy.Preset) -> Unit,
@@ -142,11 +142,17 @@ internal fun XuanlanExportSheet(
             }
 
             Spacer(Modifier.height(6.dp))
+            val vp = PageExportPolicy.viewportOf(preset, customWidthDp)
             Text(
-                text = if (preset == PageExportPolicy.Preset.PHONE) {
+                text = if (vp.followsScreen) {
                     stringResource(R.string.xuanlan_preset_follow_screen)
                 } else {
-                    stringResource(R.string.xuanlan_preset_scale, scalePercent)
+                    // 说清"导出出来是多大"：用户要的是这个数，不是缩放百分比
+                    stringResource(
+                        R.string.xuanlan_preset_size,
+                        vp.widthDp ?: 0,
+                        vp.heightDp ?: 0,
+                    )
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.inkDisabled,

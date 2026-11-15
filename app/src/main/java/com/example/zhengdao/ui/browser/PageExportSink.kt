@@ -70,8 +70,15 @@ internal object PageExportSink {
                 source = MediaOwnership.SOURCE_SCREENSHOT,
                 ext = "png",
             )) {
-                is MediaPublish.Ok -> Saved.Ok(r.entry.relPath)
-                is MediaPublish.Duplicate -> Saved.Ok(r.entry.relPath, duplicate = true)
+                is MediaPublish.Ok -> {
+                    RunLog.log("玄览 导出：PNG 入相册 ${r.entry.relPath}（${shot.png.size} 字节 ${shot.widthPx}x${shot.heightPx}）")
+                    Saved.Ok(r.entry.relPath)
+                }
+
+                is MediaPublish.Duplicate -> {
+                    RunLog.log("玄览 导出：相册已有同一张（${r.entry.relPath}），不重复入库")
+                    Saved.Ok(r.entry.relPath, duplicate = true)
+                }
                 is MediaPublish.Unavailable -> {
                     RunLog.log("玄览 导出：PNG 入相册失败：${r.reason}")
                     Saved.Failed(Failure.NO_ALBUM, r.reason)

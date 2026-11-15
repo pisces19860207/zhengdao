@@ -347,14 +347,14 @@
     <string name="xuanlan_preset_desktop">Desktop</string>
     <string name="xuanlan_preset_custom">Custom</string>
     <string name="xuanlan_preset_custom_hint">Width %1$d–%2$d</string>
+    <string name="xuanlan_preset_size">Export size %1$d × %2$d</string>
     <string name="xuanlan_preset_follow_screen">Follows screen width</string>
-    <string name="xuanlan_preset_scale">Shown at %1$d%%</string>
     <string name="xuanlan_export_png_view">Export PNG (viewport)</string>
     <string name="xuanlan_export_png_full">Export PNG (full page)</string>
     <string name="xuanlan_export_pdf">Export PDF</string>
     <string name="xuanlan_export_busy">Exporting…</string>
     <string name="xuanlan_export_ok_png">Saved to album: %1$s</string>
-    <string name="xuanlan_export_ok_pdf">Saved to Downloads: %1$s</string>
+    <string name="xuanlan_export_ok_pdf">Saved to 产物 folder: %1$s</string>
     <string name="xuanlan_export_dup">Already in your album: %1$s</string>
     <string name="xuanlan_export_fail">Export failed (%1$s)</string>
     <string name="xuanlan_export_truncated">Page is very long; only the first %1$d px were captured</string>
