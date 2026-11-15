@@ -366,6 +366,31 @@ internal object BaopuBrowserWiring {
         )
     }
 
+    // ── 638：玄览 UI 侧那份会话模型（进程级，与上面的工具侧单例同房型）──────────
+    // 教学三态已上提到 [TeachSessionState]，这里只持有**动作层**那一个实例。共用 [teachScope]
+    // （进程级 SupervisorJob）：原先 BrowserScreen 用 rememberCoroutineScope，切到抱朴页组合
+    // 一销毁，录制器的协程域就被取消 —— 教学看着还在、其实已经死了。
+    // 两路仍各持一份实例：工具侧 teach_record_start/stop 的行为一字未改（622 边界）。
+    @Volatile
+    private var uiTeachModelRef: TeachSessionUiModel? = null
+
+    /** 玄览界面取（或首建）那份会话模型；传进来的必须是 applicationContext。 */
+    internal fun uiTeachModel(appCtx: Context): TeachSessionUiModel = synchronized(this) {
+        uiTeachModelRef ?: TeachSessionUiModel(
+            scope = teachScope,
+            context = appCtx.applicationContext,
+            tabId = { BrowserTabManager.activeTab()?.id },
+            projectRoot = { BaopuRuntime.workspaceRoot(appCtx) },
+            globalRoot = { teachGlobalRoot(appCtx) },
+            personaFiles = { BaopuRuntime.personaFiles(appCtx) },
+        ).also { uiTeachModelRef = it }
+    }
+
+    /** 只给 [TeachSessionState.simulateNewProcess] 夹具用：模拟新进程里模型重建。 */
+    internal fun forgetUiTeachModel() {
+        uiTeachModelRef = null
+    }
+
     /** 示教停下来的草稿（stop 产出、save 消费；save 成败都清）。 */
     @Volatile
     private var lastDraft: TeachSkillDraft? = null

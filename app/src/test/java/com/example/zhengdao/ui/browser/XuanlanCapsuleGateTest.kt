@@ -53,6 +53,7 @@ class XuanlanCapsuleGateTest {
     }
 
     private val capsuleRel = "app/src/main/java/com/example/zhengdao/ui/browser/XuanlanCapsule.kt"
+    private val stateRel = "app/src/main/java/com/example/zhengdao/baopu/TeachSessionState.kt"
     private val browserRel = "app/src/main/java/com/example/zhengdao/ui/browser/BrowserScreen.kt"
     private val baopuRel = "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuScreen.kt"
     private val mainRel = "app/src/main/java/com/example/zhengdao/MainActivity.kt"
@@ -135,9 +136,14 @@ class XuanlanCapsuleGateTest {
     @Test
     fun `判据11_结束教学浮层一起消失`() {
         assertTrue("teaching 的合成口径必须只有 recording / draft", endsWithTeaching(code(browserRel)))
+        // 638：合成口径上提到进程级持有者，玄览只调用它一次（口径仍只认录制中 / 待确认）。
         assertTrue(
             "teaching 的定义必须同时看录制中与待确认",
-            code(browserRel).contains("val teaching = teachRecording || teachDraft != null"),
+            code(stateRel).contains("fun teachingNow(): Boolean = teachRecording || teachDraft != null"),
+        )
+        assertTrue(
+            "玄览必须直接读持有者的合成口径，不许自己重算第二份",
+            code(browserRel).contains("val teaching = TeachSessionState.teachingNow()"),
         )
         assertFalse(
             "复位那一句被删必须红",

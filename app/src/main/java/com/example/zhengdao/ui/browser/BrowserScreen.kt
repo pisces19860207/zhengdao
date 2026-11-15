@@ -36,10 +36,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,12 +61,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import com.example.zhengdao.R
-import com.example.zhengdao.baopu.BaopuRuntime
+import com.example.zhengdao.baopu.BaopuBrowserWiring
 import com.example.zhengdao.baopu.TeachLearner
-import com.example.zhengdao.baopu.TeachSessionUiModel
+import com.example.zhengdao.baopu.TeachSessionState
 import com.example.zhengdao.baopu.TeachSkillDraft
 import com.example.zhengdao.baopu.TeachStopKind
-import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.learn.ObserveCenter
 import com.example.zhengdao.browser.PageExportPolicy
 import com.example.zhengdao.browser.PageExporter
@@ -77,8 +74,6 @@ import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.baopu.BaopuChatController
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import java.io.File
 
 /**
  * 玄览主界面 —— 用户模式（第⑨刀 B 多标签 + C 底栏改版）。
@@ -199,36 +194,26 @@ internal fun BrowserScreen(
     var uiMsg by remember { mutableStateOf<String?>(null) }
 
     // ── 第一百九十六批：「教它一次」（示教录制 → 技能草稿 → 确认落盘）──────────
-    // 判据在 baopu 侧（TeachSessionUiModel/TeachLearner/TeachReplayStore），本界面只接线。
+    // 638：教学三态与 UI 侧会话模型都在**进程级**持有者 [TeachSessionState] / 接线层里 ——
+    // 切页 / 切标签只销毁本组合，不碰它们；本界面只负责读与转发动作，不再 remember 任何教学态。
+    // 判据在 baopu 侧（TeachSessionState/TeachSessionUiModel/TeachReplayStore），本界面只接线。
+    val teachModel = BaopuBrowserWiring.uiTeachModel(context.applicationContext)
     // 录制指示条的步数靠轮询（录制事件在 IO 协程里追加，没有组合期可观察状态源）。
-    val teachScope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
-    val teachModel = remember {
-        val appCtx = context.applicationContext
-        TeachSessionUiModel(
-            scope = teachScope,
-            context = appCtx,
-            tabId = { BrowserTabManager.activeTab()?.id },
-            projectRoot = { BaopuRuntime.workspaceRoot(appCtx) },
-            globalRoot = { File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY) },
-            personaFiles = { BaopuRuntime.personaFiles(appCtx) },
-        )
-    }
-    var teachRecording by remember { mutableStateOf(false) }
-    var teachStepCount by remember { mutableIntStateOf(0) }
-    var teachDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
-    // 第二百批：参数化面板（勾哪些值变参数）。勾完回到确认卡，再存。
-    var teachParamsDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
-    LaunchedEffect(teachRecording) {
-        while (teachRecording) {
-            teachStepCount = teachModel.recordedSoFar()
+    // 切走玄览时这条 effect 停，但录制器跑在进程级协程域里照收；回来接着轮询，步数不丢。
+    LaunchedEffect(TeachSessionState.teachRecording) {
+        while (TeachSessionState.teachRecording) {
+            TeachSessionState.noteSteps(teachModel.recordedSoFar())
             delay(1000)
         }
     }
+    // 第二百批：参数化面板（勾哪些值变参数）。勾完回到确认卡，再存。
+    var teachParamsDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
 
     // ── 第六百二十三批：教学浮层（胶囊 ＋ 半屏）的状态位 ────────────────────────
     // 教学模式 = 录制中 或 刚录完待确认（定稿 §1.2 可观察的那两态；「回放中」当前无状态源，
     // 一期不做）。非教学模式**整个浮层不进组合树**（判据⑨，不是 visibility = GONE）。
-    val teaching = teachRecording || teachDraft != null
+    // 合成口径只在 [TeachSessionState] 定义一次，这里不重写。
+    val teaching = TeachSessionState.teachingNow()
     var capsuleExpanded by rememberSaveable { mutableStateOf(false) }
     // 确认卡是否由用户「打开」过：胶囊里的按钮要能把它重新叫出来（落盘口仍只有一张卡）。
     var teachConfirmOpen by remember { mutableStateOf(false) }
@@ -656,12 +641,12 @@ internal fun BrowserScreen(
         }
 
         // ── 示教指示条（196）：正在记这件事必须可见 ──
-        if (teachRecording) {
+        if (TeachSessionState.teachRecording) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                TeachRecordingBadge(stepCount = teachStepCount)
+                TeachRecordingBadge(stepCount = TeachSessionState.teachStepCount)
             }
         }
 
@@ -715,17 +700,17 @@ internal fun BrowserScreen(
                     }
                 },
                 onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
-                teaching = teachRecording,
+                teaching = TeachSessionState.teachRecording,
                 // 651：两个入口都只开半屏，动作本体在这份文件里（与上面几件同一条纪律）
                 onPageMemory = { memorySheetOpen = true },
                 onSizeAndExport = { exportSheetOpen = true },
                 onTeachToggle = {
-                    if (teachRecording) {
+                    if (TeachSessionState.teachRecording) {
                         // 第二百二十六批 G2：停止时按「三步结局」说话——0 步也分
                         // 「录到导航」与「真的什么都没有」，不再一律说"没录到操作"。
                         teachModel.stop { kind, d ->
-                            teachRecording = false
-                            teachDraft = d
+                            // 638：显式停止的归零／留草案都交给进程级持有者，页面不自己写状态。
+                            TeachSessionState.finishRecording(d)
                             teachConfirmOpen = d != null
                             when (kind) {
                                 TeachStopKind.EMPTY_NAV_ONLY -> uiMsg = res.getString(R.string.teach_empty_nav)
@@ -735,8 +720,7 @@ internal fun BrowserScreen(
                             }
                         }
                     } else {
-                        teachRecording = true
-                        teachStepCount = 0
+                        TeachSessionState.beginRecording()
                         uiMsg = res.getString(R.string.teach_started_toast)
                         teachModel.start { err -> uiMsg = err }
                     }
@@ -751,7 +735,7 @@ internal fun BrowserScreen(
         if (teaching) {
             XuanlanCapsuleLayer(
                 controller = controller,
-                draftPending = teachDraft != null,
+                draftPending = TeachSessionState.teachDraft != null,
                 expanded = capsuleExpanded,
                 onExpandedChange = { capsuleExpanded = it },
                 onOpenTeachConfirm = { teachConfirmOpen = true },
@@ -772,18 +756,17 @@ internal fun BrowserScreen(
     // ── 示教确认卡（196）：确认才落盘，「放弃」一个字节不写 ──
     // 623：`teachConfirmOpen` 只控制「这张卡现在要不要摆着」——初值由上面 stop 时置真，
     // 胶囊里的按钮能再把它叫出来；落盘口仍然只有这一张卡。
-    teachDraft?.takeIf { teachConfirmOpen }?.let { d ->
+    TeachSessionState.teachDraft?.takeIf { teachConfirmOpen }?.let { d ->
         TeachConfirmSheet(
             draft = d,
             onSave = { name ->
-                teachDraft = null
+                TeachSessionState.endTeaching()
                 teachConfirmOpen = false
                 teachModel.save(d.skill.copy(name = name), d.warnings) { msg -> uiMsg = msg }
             },
             onDiscard = {
-                teachDraft = null
+                TeachSessionState.endTeaching()
                 teachConfirmOpen = false
-                teachModel.discard()
                 // 教学真正结束（recording=false 且 draft=null）⇒ 胶囊与半屏一起消失（判据⑪）。
                 uiMsg = res.getString(R.string.capsule_teach_ended)
             },
@@ -800,7 +783,9 @@ internal fun BrowserScreen(
         TeachParamsSheet(
             draft = d,
             onApply = { skill, warnings ->
-                teachDraft = d.copy(skill = skill, summary = TeachLearner.summarize(skill, warnings))
+                TeachSessionState.replaceDraft(
+                    d.copy(skill = skill, summary = TeachLearner.summarize(skill, warnings))
+                )
                 teachParamsDraft = null
                 teachConfirmOpen = true
                 uiMsg = res.getString(R.string.teach_params_applied)

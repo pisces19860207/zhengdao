@@ -714,7 +714,14 @@ return JSON.stringify({u:location.href,r:document.querySelectorAll('table tr,[ro
 
 // ── 会话控制（UI 用：开始/停止/存/回放）───────────────────────────────────────
 
-/** UI 侧的可观察状态（Compose 持有；动作跑在 [scope]）。 */
+/**
+ * 示教会话的**动作层**（录制 / 停止 / 保存 / 回放都跑在 [scope]）。
+ *
+ * 638：教学三态（录制中 / 步数 / 草案）已上提到 [TeachSessionState] —— 本类不再另存
+ * 一份，避免第二个真相源。这里只留「有没有一颗活着的录制器」这一件底层事实，供工具侧
+ * `teach_record_start/stop` 当守卫；`BaopuChatController` 拼出来的回放用实例本来就不持
+ * 有录制状态（见它自己的 KDoc）。
+ */
 internal class TeachSessionUiModel(
     val scope: CoroutineScope,
     val context: Context,
@@ -723,25 +730,19 @@ internal class TeachSessionUiModel(
     val globalRoot: () -> File,
     val personaFiles: () -> PersonaFiles,
 ) {
-    var recording: Boolean = false
-        private set
-    var stepCount: Int = 0
-        private set
-    var draft: TeachSkillDraft? = null
-        private set
-
     private var recorder: TeachRecorder? = null
+
+    /** 录制器在不在跑（工具侧守卫；**不是** UI 教学态，后者唯一真相在 [TeachSessionState]）。 */
+    val recording: Boolean get() = recorder != null
 
     /** 到目前为止录到的原始事件数（UI 指示条轮询用；两路合并后的条数）。 */
     fun recordedSoFar(): Int = recorder?.rawCount ?: 0
 
     /** 开始示教（失败给一句人话）。 */
     fun start(onError: (String) -> Unit) {
-        if (recording) return
+        if (recorder != null) return
         val rec = TeachRecorder(tabId(), scope)
         recorder = rec
-        recording = true
-        stepCount = 0
         rec.start(onError)
     }
 
@@ -755,7 +756,6 @@ internal class TeachSessionUiModel(
     fun stop(onDone: (TeachStopKind, TeachSkillDraft?) -> Unit) {
         val rec = recorder ?: return
         recorder = null
-        recording = false
         scope.launch {
             val collected = withContext(Dispatchers.IO) { rec.finish() }
             val facts = rec.startFacts ?: TeachPageFacts("", emptyList(), emptyList())
@@ -767,8 +767,9 @@ internal class TeachSessionUiModel(
                 nowMs = System.currentTimeMillis(),
             )
             val kind = TeachStopRules.kind(d?.skill?.steps?.size ?: 0, collected.sawNavigation)
-            stepCount = d?.skill?.steps?.size ?: 0
-            draft = if (kind == TeachStopKind.DRAFT) d else null
+            // 638：草案不再留在本类（那是第二个真相源），只作**局部值**交给回调 →
+            // TeachSessionState.finishRecording 收。口径与改前逐字一致：只有 DRAFT 才有草案。
+            val draft = if (kind == TeachStopKind.DRAFT) d else null
             withContext(Dispatchers.Main) { onDone(kind, draft) }
         }
     }
@@ -776,7 +777,6 @@ internal class TeachSessionUiModel(
     /** 确认保存（走 TeachReplayStore → 184 写口）；结果一句话回调。 */
     fun save(skill: TeachSkill, warnings: List<String>, onDone: (String) -> Unit) {
         val d = TeachSkillDraft(skill, warnings, TeachLearner.summarize(skill, warnings))
-        draft = null
         scope.launch(Dispatchers.IO) {
             val r = TeachReplayStore.saveConfirmed(
                 draft = d,
@@ -792,11 +792,6 @@ internal class TeachSessionUiModel(
             }
             withContext(Dispatchers.Main) { onDone(msg) }
         }
-    }
-
-    /** 放弃草稿（一个字节不写）。 */
-    fun discard() {
-        draft = null
     }
 
     /** 回放一个已存技能（给接线层用；UI 本批不挂入口）。 */
