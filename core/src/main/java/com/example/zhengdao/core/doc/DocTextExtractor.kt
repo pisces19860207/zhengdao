@@ -254,57 +254,78 @@ object DocTextExtractor {
      * 只读 `ccpText` 这一段（正文），不读页眉/脚注/批注（它们在 CP 后面，用户不需要）。
      */
     private fun pieces(word: ByteArray, table: ByteArray, ccpText: Int): String {
-        val fcClx = i32(word, 0x01A2)
-        val lcbClx = i32(word, 0x01A6)
-        if (fcClx < 0 || lcbClx <= 0) return ""
-        val end = minOf(fcClx + lcbClx, table.size)
-        var pos = fcClx
-        var plcStart = -1
-        var plcLen = 0
-        while (pos + 5 <= end) {
-            when (table[pos].toInt() and 0xFF) {
-                1 -> { // Prc：2 字节长度 + 数据，跳过
-                    val cb = u16(table, pos + 1)
-                    pos += 3 + cb
-                }
-                2 -> { // Pcdt：4 字节长度 + PlcPcd
-                    plcLen = i32(table, pos + 1)
-                    plcStart = pos + 5
-                    break
-                }
-                else -> return ""
-            }
-        }
-        if (plcStart < 0 || plcLen < 16 || plcStart + plcLen > table.size) return ""
+        val plc = locatePlc(word, table) ?: return ""
+        val (plcStart, plcLen) = plc
         val count = (plcLen - 4) / 12
         if (count <= 0) return ""
         val cps = IntArray(count + 1) { i32(table, plcStart + it * 4) }
         val pcdBase = plcStart + (count + 1) * 4
         val sb = StringBuilder()
-        for (i in 0 until count) {
-            val pcd = pcdBase + i * 8
-            if (pcd + 8 > table.size) break
-            val fcRaw = i32(table, pcd + 2)
-            val compressed = (fcRaw and 0x40000000) != 0
-            val fc = fcRaw and 0x3FFFFFFF
-            val offset = if (compressed) fc / 2 else fc
-            val from = cps[i]
-            val to = if (ccpText in 1..(cps[i + 1])) minOf(cps[i + 1], ccpText) else cps[i + 1]
-            if (to <= from) continue
-            for (cp in from until to) {
-                val at = offset + (if (compressed) cp - from else (cp - from) * 2)
-                if (at < 0 || at >= word.size) break
-                if (compressed) {
-                    sb.append(CP1252[word[at].toInt() and 0xFF])
-                } else {
-                    if (at + 1 >= word.size) break
-                    sb.append(
-                        ((word[at].toInt() and 0xFF) or ((word[at + 1].toInt() and 0xFF) shl 8)).toChar(),
-                    )
+        for (i in 0 until count) appendPiece(sb, word, table, cps, i, pcdBase, ccpText)
+        return sb.toString()
+    }
+
+    /**
+     * 在 `0Table/1Table` 里找到分片表（Clx 里的 Pcdt 段）。
+     *
+     * Clx 是「Prc* + Pcdt」串：Prc 是 2 字节长度＋数据（跳过），Pcdt 才是分片表。
+     * 找到返回 (起始偏移, 长度)；结构不认识/越界 ⇒ null（上层按「抽不出正文」处理）。
+     * 抽出来是为了让 [pieces] 的复杂度落在 detekt 阈值内（642 的观察档红）。
+     */
+    private fun locatePlc(word: ByteArray, table: ByteArray): Pair<Int, Int>? {
+        // 注意：Clx 的**位置**在 `WordDocument` 流的 FIB 里（0x01A2/0x01A6），
+        // 分片表本体才在 0Table/1Table；这两处读错流，会表现成「整篇抽不出正文」。
+        val fcClx = i32(word, 0x01A2)
+        val lcbClx = i32(word, 0x01A6)
+        if (fcClx < 0 || lcbClx <= 0) return null
+        val end = minOf(fcClx + lcbClx, table.size)
+        var pos = fcClx
+        while (pos + 5 <= end) {
+            when (table[pos].toInt() and 0xFF) {
+                1 -> pos += 3 + u16(table, pos + 1) // Prc：2 字节长度 + 数据，跳过
+                2 -> { // Pcdt：4 字节长度 + PlcPcd
+                    val len = i32(table, pos + 1)
+                    val start = pos + 5
+                    if (len < 16 || start + len > table.size) return null
+                    return start to len
                 }
+                else -> return null
             }
         }
-        return sb.toString()
+        return null
+    }
+
+    /** 把第 [i] 个分片的字符接进 [sb]（压缩＝CP1252 单字节；非压缩＝UTF-16LE 双字节）。 */
+    private fun appendPiece(
+        sb: StringBuilder,
+        word: ByteArray,
+        table: ByteArray,
+        cps: IntArray,
+        i: Int,
+        pcdBase: Int,
+        ccpText: Int,
+    ) {
+        val pcd = pcdBase + i * 8
+        if (pcd + 8 > table.size) return
+        val fcRaw = i32(table, pcd + 2)
+        val compressed = (fcRaw and 0x40000000) != 0
+        val fc = fcRaw and 0x3FFFFFFF
+        val offset = if (compressed) fc / 2 else fc
+        val from = cps[i]
+        val to = if (ccpText in 1..cps[i + 1]) minOf(cps[i + 1], ccpText) else cps[i + 1]
+        if (to <= from) return
+        for (cp in from until to) {
+            val at = offset + (if (compressed) cp - from else (cp - from) * 2)
+            if (at < 0 || at >= word.size) return
+            if (compressed) {
+                sb.append(CP1252[word[at].toInt() and 0xFF])
+            } else {
+                if (at + 1 >= word.size) return
+                sb.append(
+                    ((word[at].toInt() and 0xFF) or ((word[at + 1].toInt() and 0xFF) shl 8)).toChar(),
+                )
+            }
+        }
     }
 
     // ── 文本清洗 ────────────────────────────────────────────────────────
@@ -321,22 +342,32 @@ object DocTextExtractor {
         var inInstr = false
         for (c in raw) {
             when (c.code) {
-                0x13 -> { inInstr = true; continue }
-                0x14 -> { inInstr = false; continue }
-                0x15 -> { inInstr = false; continue }
+                0x13 -> {
+                    inInstr = true
+                    continue
+                }
+                0x14, 0x15 -> {
+                    inInstr = false
+                    continue
+                }
             }
             if (inInstr) continue
-            when (c.code) {
-                0x0D, 0x0B, 0x0C -> sb.append('\n')
-                0x07 -> sb.append('\t')
-                0x1E -> sb.append('-')
-                0x1F -> Unit
-                0xA0 -> sb.append(' ')
-                0x01, 0x02, 0x05, 0x08 -> Unit // 图片锚点/脚注引用等占位符
-                else -> if (c.code < 0x20) sb.append(' ') else sb.append(c)
-            }
+            appendClean(sb, c)
         }
         return sb.toString()
+    }
+
+    /** 单个控制字符 → 人话（域外的那一层；域内（inInstr）不进来）。 */
+    private fun appendClean(sb: StringBuilder, c: Char) {
+        when (c.code) {
+            0x0D, 0x0B, 0x0C -> sb.append('\n')
+            0x07 -> sb.append('\t')
+            0x1E -> sb.append('-')
+            0x1F -> Unit
+            0xA0 -> sb.append(' ')
+            0x01, 0x02, 0x05, 0x08 -> Unit // 图片锚点/脚注引用等占位符
+            else -> if (c.code < 0x20) sb.append(' ') else sb.append(c)
+        }
     }
 
     /** 空白收敛（与 `DocxTextExtractor` 同口径：段内多空格压一个、连续空行压一个）。 */
