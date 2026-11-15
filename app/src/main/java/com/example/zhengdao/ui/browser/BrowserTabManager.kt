@@ -269,6 +269,17 @@ object BrowserTabManager {
     /** 首次拿到 context 时记住（快照的 DB 写入要用；selectTab/closeTab 签名里没有 Context）。 */
     private var appCtx: android.app.Application? = null
 
+    /**
+     * 会话级页面记忆的**会话号来源**（651）。
+     *
+     * 为什么是注入的闭包而不是本类自己去查库：会话的真相只有一份——`BaopuChatController.sessionId`
+     * （用户切会话时它变）。本类拿不到控制器（它在组合树外层），也不该为记一条页去开第二个"当前会话"
+     * 判据（两个真相迟早在"切了会话但记忆还记到旧桶"上分叉）。所以由界面装配层注入，
+     * 默认 0 ＝「还没开会话」那一桶。
+     */
+    @Volatile
+    var pageMemorySessionOf: () -> Long = { 0L }
+
     /** 最近一次从页面读到的滚动值（CSS px；滚动节流回调里写）。 */
     private val lastScrollY = HashMap<Int, Float>()
 
@@ -767,6 +778,18 @@ object BrowserTabManager {
             if (pendingScroll.containsKey(tab.id)) applyRestoredScroll(tab)
             // L4：页面刚加载完，先采一次滚动值（供退后台快照用）
             appCtx?.let { captureScroll(it, tab.id) }
+            // 651：会话级页面记忆——**只记 URL 与标题**（正文从不经过这条链）。
+            // 落点选在 onPageFinished（不是 onPageStarted）：这一页真的到齐了才算"看过"，
+            // 失败/被拦/半途取消的加载不该出现在"最近 20 页"里。
+            appCtx?.let { c ->
+                PageMemoryStore.record(
+                    context = c,
+                    sessionId = pageMemorySessionOf(),
+                    url = url,
+                    title = tab.state.title,
+                    isPreview = tab.state.isPreview(),
+                )
+            }
         }
 
         override fun onReceivedTitle(title: String) {

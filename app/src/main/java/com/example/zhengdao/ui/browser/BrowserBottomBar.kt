@@ -116,6 +116,17 @@ fun BrowserBottomBar(
     modifier: Modifier = Modifier,
     teaching: Boolean = false,
     onTeachToggle: () -> Unit = {},
+    /**
+     * 651：会话级页面记忆半屏（「本会话看过哪些页」＋ 两种清空）。
+     * 与下面两件一样只发回调——动作本体住 BrowserScreen，底栏不碰存储、不碰 WebView。
+     */
+    onPageMemory: () -> Unit = {},
+    /**
+     * 651：尺寸与导出半屏（设备预设 ＋ PNG/PDF 导出）。
+     * 为什么收进同一个半屏而不是菜单里再放三枚导出键：菜单是"进入某个工作区"，
+     * 不是"一排危险动作"——导出要看清"当前尺寸是多少、能不能导"，那是半屏的活。
+     */
+    onSizeAndExport: () -> Unit = {},
 ) {
     val palette = xuanLanPalette()
     var menuOpen by remember { mutableStateOf(false) }
@@ -231,6 +242,24 @@ fun BrowserBottomBar(
                     onClick = {
                         menuOpen = false
                         onTeachToggle()
+                    },
+                )
+                // 651：本会话看过哪些页（只记网址与标题）；两种清空在半屏里。
+                MenuEntry(
+                    label = stringResource(R.string.xuanlan_memory_menu),
+                    palette = palette,
+                    onClick = {
+                        menuOpen = false
+                        onPageMemory()
+                    },
+                )
+                // 651：设备尺寸预设 ＋ 导出（PNG 整页/可视区、PDF）；未加载完时半屏里说原因。
+                MenuEntry(
+                    label = stringResource(R.string.xuanlan_export_menu),
+                    palette = palette,
+                    onClick = {
+                        menuOpen = false
+                        onSizeAndExport()
                     },
                 )
             }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -68,6 +70,8 @@ import com.example.zhengdao.baopu.TeachSkillDraft
 import com.example.zhengdao.baopu.TeachStopKind
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.learn.ObserveCenter
+import com.example.zhengdao.browser.PageExportPolicy
+import com.example.zhengdao.browser.PageExporter
 import com.example.zhengdao.browser.WebViewEngine
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.baopu.BaopuChatController
@@ -251,6 +255,137 @@ internal fun BrowserScreen(
         if (!tryNavigate(context, urlInput)) reportBlocked()
     }
 
+    // ── 第六百五十一批：会话级页面记忆 ＋ 设备尺寸预设与导出 ────────────────────
+    // 三件状态：① 记忆半屏开没开；② 尺寸半屏开没开；③ 导出进行中（防连点、给"正在导出…"）。
+    // 预设与自定义宽度用 rememberSaveable：转屏/被系统回收后回来还是同一档，不丢用户的选择。
+    var memorySheetOpen by remember { mutableStateOf(false) }
+    var exportSheetOpen by remember { mutableStateOf(false) }
+    var exportBusy by remember { mutableStateOf(false) }
+    var presetName by rememberSaveable { mutableStateOf(PageExportPolicy.Preset.PHONE.name) }
+    // 用 mutableStateOf(Int) 而不是 mutableIntStateOf：rememberSaveable 的自动保存只认 MutableState
+    var customWidthDp by rememberSaveable { mutableStateOf(PageExportPolicy.DEFAULT_CUSTOM_WIDTH_DP) }
+    val preset = runCatching { PageExportPolicy.Preset.valueOf(presetName) }
+        .getOrDefault(PageExportPolicy.Preset.PHONE)
+    val viewport = PageExportPolicy.viewportOf(preset, customWidthDp)
+    // 页面区的可用尺寸（dp）——只给半屏显示「按 xx% 缩小」用。
+    // 由页面区那层 BoxWithConstraints 用 LaunchedEffect 回填（不在组合期写状态）。
+    var pageAreaDp by remember { mutableStateOf(0 to 0) }
+
+    // 会话号接到管理器：记忆按会话分桶的唯一真相是 controller.sessionId。
+    // 用 SideEffect 而不是 LaunchedEffect —— sessionId 一变就得立刻换桶，否则
+    // "切了会话、下一页还记在旧桶里"。这步早于任何页面加载，不依赖顺序运气。
+    val currentSessionId = controller.sessionId
+    androidx.compose.runtime.SideEffect {
+        BrowserTabManager.pageMemorySessionOf = { currentSessionId ?: 0L }
+    }
+
+    // 「未加载完不许导出」的判据在纯函数里（[PageExportPolicy.refusalOf]），这里只喂状态；
+    // 与 [BrowserTabState.isRenderable] 同一条合取：载入过 ＋ 前台渲染过 ＋ 没被回收。
+    val exportRefusal = PageExportPolicy.refusalOf(
+        hasTab = active != null,
+        loading = active?.state?.loading == true,
+        everLoaded = active?.state?.everLoaded == true,
+        renderedWhileForeground = active?.state?.renderedWhileForeground == true,
+        restored = active?.state?.restored == true,
+        recycled = active?.state?.recycled == true,
+    )
+
+    // 文案在组合期取好（协程体里不能调 stringResource；`context.getString` 写在协程里会被 lint 判
+    // LocalContextGetResourceValueCall —— 与上面 tabsFullNote 同一条处置）。
+    val refuseNoTab = stringResource(R.string.xuanlan_refuse_no_tab)
+    val refuseRestored = stringResource(R.string.xuanlan_refuse_restored)
+    val refuseRecycled = stringResource(R.string.xuanlan_refuse_recycled)
+    val refuseLoading = stringResource(R.string.xuanlan_refuse_loading)
+    val refuseNotLoaded = stringResource(R.string.xuanlan_refuse_not_loaded)
+    val refuseNotRendered = stringResource(R.string.xuanlan_refuse_not_rendered)
+    val exportBlank = stringResource(R.string.xuanlan_export_blank)
+    val exportOkPng = stringResource(R.string.xuanlan_export_ok_png)
+    val exportOkPdf = stringResource(R.string.xuanlan_export_ok_pdf)
+    val exportDup = stringResource(R.string.xuanlan_export_dup)
+    val exportFail = stringResource(R.string.xuanlan_export_fail)
+    val exportTruncated = stringResource(R.string.xuanlan_export_truncated)
+
+    // 一个判据两处用：半屏里的灰键 ＋ 点击那一刻再判一次（切 Tab / 开始加载都可能在点击瞬间发生）。
+    fun refusalMessage(r: PageExportPolicy.Refusal): String? = when (r) {
+        PageExportPolicy.Refusal.NONE -> null
+        PageExportPolicy.Refusal.NO_TAB -> refuseNoTab
+        PageExportPolicy.Refusal.RESTORED -> refuseRestored
+        PageExportPolicy.Refusal.RECYCLED -> refuseRecycled
+        PageExportPolicy.Refusal.LOADING -> refuseLoading
+        PageExportPolicy.Refusal.NOT_LOADED -> refuseNotLoaded
+        PageExportPolicy.Refusal.NOT_RENDERED -> refuseNotRendered
+    }
+
+    val exportScope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
+    val submitExport: (ExportKind) -> Unit = { kind ->
+        val tab = BrowserTabManager.activeTab()
+        val now = PageExportPolicy.refusalOf(
+            hasTab = tab != null,
+            loading = tab?.state?.loading == true,
+            everLoaded = tab?.state?.everLoaded == true,
+            renderedWhileForeground = tab?.state?.renderedWhileForeground == true,
+            restored = tab?.state?.restored == true,
+            recycled = tab?.state?.recycled == true,
+        )
+        val refuseMsg = refusalMessage(now)
+        if (tab == null || refuseMsg != null) {
+            // 「未加载完 ⇒ 拒绝导出**并提示**」：提示走底栏之上那条提示条（既有唯一出口）
+            uiMsg = refuseMsg ?: refuseNoTab
+        } else if (!exportBusy) {
+            exportBusy = true
+            exportScope.launch {
+                try {
+                    val shot = when (kind) {
+                        ExportKind.PNG_VIEWPORT -> PageExporter.captureViewport(tab.webView)
+                        else -> {
+                            val metrics = PageExporter.measureContent(tab.engine)
+                            if (metrics == null) null else PageExporter.captureFullPage(tab.webView, metrics)
+                        }
+                    }
+                    if (shot == null) {
+                        uiMsg = exportBlank
+                    } else if (kind == ExportKind.PDF) {
+                        val pdf = PageExporter.toPdf(shot)
+                        uiMsg = if (pdf == null) {
+                            String.format(exportFail, "PDF")
+                        } else {
+                            reportOf(
+                                PageExportSink.savePdf(
+                                    context,
+                                    pdf,
+                                    PageExportSink.baseName(exportTitleOf(tab), System.currentTimeMillis()),
+                                ),
+                                ok = exportOkPdf,
+                                dup = exportDup,
+                                fail = exportFail,
+                            )
+                        }
+                    } else {
+                        val base = reportOf(
+                            PageExportSink.savePng(
+                                context,
+                                shot,
+                                PageExportSink.baseName(exportTitleOf(tab), System.currentTimeMillis()),
+                            ),
+                            ok = exportOkPng,
+                            dup = exportDup,
+                            fail = exportFail,
+                        )
+                        // 整页被上限截断时必须说清（不许把半张图当"整页"交出去）
+                        uiMsg = if (shot.truncated) {
+                            base + "；" + String.format(exportTruncated, PageExportPolicy.MAX_CAPTURE_HEIGHT_PX)
+                        } else {
+                            base
+                        }
+                    }
+                } finally {
+                    exportBusy = false
+                }
+            }
+        }
+    }
+
+
     // ── 第六百二十四批：学习板块（A 观察收割循环 ＋ F 未学会胶囊件 ＋ 单步补录导航）──────
     // 收割循环只在玄览前台跑（离开组合自动停；tick 内部自查开关——关后 0 记录，判据①）。
     // tick 是阻塞式 evaluate ⇒ ObserveCenter 内部切 IO，这里每 TICK_MS 调一次。
@@ -385,7 +520,9 @@ internal fun BrowserScreen(
 
         // ── 页面区（底栏改版 2026-10-18：紧跟标签条，壳子只剩 52＋56） ──
         // key(活跃标签) ⇒ 切 Tab 时旧 WebView 摘挂载、新的挂上
-        Box(
+        // 651：换成 BoxWithConstraints 只为一件事——量到可用宽高，好把平板/桌面预设等比缩进来
+        // （[PageExportPolicy.fitScale]）。约束作用域是 Box 自带的，布局语义一个字没变。
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -400,6 +537,10 @@ internal fun BrowserScreen(
                 },
         ) {
             val activeId = active?.id
+            // 651：把这一层的可用尺寸回填给半屏（只用于显示缩放比例，不参与排版）
+            LaunchedEffect(maxWidth.value, maxHeight.value) {
+                pageAreaDp = maxWidth.value.toInt() to maxHeight.value.toInt()
+            }
             // 第一百七十二批 S2：本标签的渲染进程被系统回收过 ⇒ 页面是死的，
             // 不挂 WebView（挂上去只会是一块白），改画「点一下重新加载」卡片。
             val recycled = active?.state?.recycled == true
@@ -409,6 +550,22 @@ internal fun BrowserScreen(
             // 起始页的雾白图腾/标题压成 ~1:1（实测截图不可见）；空态时页面区就是
             // 起始页（背景走主题色），everLoaded 翻转后照常挂回，状态机零改动。
             if (activeId != null && !recycled && !restored && active.state.everLoaded) {
+                // 651：预设＝跟随屏幕时走原样（零改动）；否则按预设 CSS 尺寸排版再等比缩小。
+                // 缩到"看得全"而不是"能滚"：导出的是那个尺寸下的版式，用户要一眼看出差在哪儿。
+                val vp = viewport
+                // 跟随屏幕时这两个数不用（走 fillMaxSize），取 0 只为了让下面几行不写 `!!`
+                val vwDp = vp.widthDp ?: 0
+                val vhDp = vp.heightDp ?: 0
+                val scale = if (vp.followsScreen) {
+                    1f
+                } else {
+                    PageExportPolicy.fitScale(
+                        viewportWidthDp = vwDp,
+                        viewportHeightDp = vhDp,
+                        availWidthDp = maxWidth.value.toInt(),
+                        availHeightDp = maxHeight.value.toInt(),
+                    )
+                }
                 key(activeId) {
                     AndroidView(
                         factory = {
@@ -419,7 +576,20 @@ internal fun BrowserScreen(
                                 ?.also { v -> (v.parent as? ViewGroup)?.removeView(v) }
                                 ?: WebView(it)
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = if (vp.followsScreen) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier
+                                // 固定成预设的 CSS 尺寸（缩放在下面这层，不参与排版）
+                                .size(vwDp.dp, vhDp.dp)
+                                // 缩放锚在左上角：缩完正好贴住页面区左上，不留一圈空白
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                                }
+                                .align(Alignment.TopStart)
+                        },
                     )
                 }
             }
@@ -554,6 +724,9 @@ internal fun BrowserScreen(
                 },
                 onCloseTab = { active?.let { BrowserTabManager.closeTab(it.id) } },
                 teaching = teachRecording,
+                // 651：两个入口都只开半屏，动作本体在这份文件里（与上面几件同一条纪律）
+                onPageMemory = { memorySheetOpen = true },
+                onSizeAndExport = { exportSheetOpen = true },
                 onTeachToggle = {
                     if (teachRecording) {
                         // 第二百二十六批 G2：停止时按「三步结局」说话——0 步也分
@@ -646,6 +819,36 @@ internal fun BrowserScreen(
             },
         )
     }
+
+    // ── 651：页面记忆半屏（本会话最近 20 页；两个清空的落点）────────────────────
+    if (memorySheetOpen) {
+        XuanlanMemorySheet(
+            sessionId = currentSessionId ?: 0L,
+            onOpen = { url ->
+                // 提交只走既有唯一入口 navigate（它读 urlInput、内部走 tryNavigate）——
+                // 这里再写一次 tryNavigate(context, …) 就是第三条提交路径（B77 门禁会红）
+                urlInput = url
+                navigate()
+            },
+            onDismiss = { memorySheetOpen = false },
+            onToast = { uiMsg = it },
+        )
+    }
+
+    // ── 651：尺寸与导出半屏（预设 ＋ 三种导出；未加载完时三枚键灰着并写明原因）──────
+    if (exportSheetOpen) {
+        XuanlanExportSheet(
+            preset = preset,
+            customWidthDp = customWidthDp,
+            scalePercent = exportScalePercent(viewport, pageAreaDp),
+            refusal = exportRefusal,
+            busy = exportBusy,
+            onPreset = { presetName = it.name },
+            onCustomWidth = { customWidthDp = it },
+            onExport = submitExport,
+            onDismiss = { exportSheetOpen = false },
+        )
+    }
 }
 
 /**
@@ -656,6 +859,54 @@ internal fun BrowserScreen(
  * 见 [BrowserStartPage]。
  */
 private const val HOME_URL = "https://cn.bing.com"
+
+/**
+ * 导出的文件名取自「这一页」——标题优先，没标题就用 host（651）。
+ *
+ * 为什么不用 URL 全文：文件名里塞一段带查询串的地址，用户既读不懂也容易过长；
+ * host 已经足够区分（同名再靠时间戳）。
+ */
+private fun exportTitleOf(tab: BrowserTabManager.Tab): String =
+    tab.state.title.ifBlank { BrowserUrlPolicy.displayHost(tab.state.url) }
+
+/**
+ * 半屏上那句「按 xx% 缩小显示」（651）。
+ *
+ * 跟随屏幕 ⇒ 100%（没有缩放这回事，说了反而让人以为被缩过）。页面区还没量到尺寸
+ * （首帧/被虚拟键盘顶掉）时也回 100%——宁可少说一句，也不报一个算不出来的数。
+ */
+private fun exportScalePercent(
+    viewport: PageExportPolicy.Viewport,
+    areaDp: Pair<Int, Int>,
+): Int {
+    if (viewport.followsScreen) return 100
+    val scale = PageExportPolicy.fitScale(
+        viewportWidthDp = viewport.widthDp ?: 0,
+        viewportHeightDp = viewport.heightDp ?: 0,
+        availWidthDp = areaDp.first,
+        availHeightDp = areaDp.second,
+    )
+    return Math.round(scale * 100f).coerceIn(1, 100)
+}
+
+/**
+ * 落盘结局 → 一句回执（651）。成功说"在哪儿"，重名说"已经有了"，失败带原因代号。
+ *
+ * 文案由调用方给（组合期从资源取好的），本函数只管拼——**不在这里取资源**
+ * （`context.getString` 出现在非组合代码里会被 lint 判 Error 级，预算闸只容存量）。
+ */
+private fun reportOf(
+    saved: PageExportSink.Saved,
+    ok: String,
+    dup: String,
+    fail: String,
+): String = when (saved) {
+    is PageExportSink.Saved.Ok ->
+        if (saved.duplicate) String.format(dup, saved.where) else String.format(ok, saved.where)
+
+    is PageExportSink.Saved.Failed ->
+        String.format(fail, saved.detail.ifBlank { saved.kind.name })
+}
 
 /** JS 弹窗的两种形态（alert/confirm 同一形态；prompt 多一个输入框）。 */
 private sealed class JsDialog {

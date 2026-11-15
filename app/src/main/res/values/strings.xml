@@ -320,6 +320,46 @@
     <string name="browser_restored_body">这是上次没看完的页面。为了不偷偷联网，点下面才会打开。</string>
     <string name="browser_restored_open">打开</string>
     <string name="browser_restored_chip_prefix">上次 · </string>
+    <!-- 651：会话级页面记忆（每会话最近 20 页，只记网址与标题）＋ 尺寸预设与导出。
+         键前缀走 xuanlan_：这十来个字是玄览这一侧的"工具面"，不混进 browser_* 的底栏判据
+         （browser_* 的 zh/en 键集对称由 BrowserBottomBarGuardTest 钉着）。
+         禁用/可导两态的话术只在这里：执行层不拼中文（PageExportSink / PageExporter 只回代号）。 -->
+    <string name="xuanlan_memory_menu">页面记忆</string>
+    <string name="xuanlan_memory_title">本会话看过的页</string>
+    <string name="xuanlan_memory_subtitle">只记网址与标题，不记页面内容</string>
+    <string name="xuanlan_memory_empty">这个会话还没记下页面。打开一个网页就会记一条。</string>
+    <string name="xuanlan_memory_open">打开</string>
+    <string name="xuanlan_memory_clear_session">清空本会话</string>
+    <string name="xuanlan_memory_clear_all">全部清空</string>
+    <string name="xuanlan_memory_cleared_session">已清空本会话的页面记忆</string>
+    <string name="xuanlan_memory_cleared_all">已清空 %1$d 个会话的页面记忆</string>
+    <string name="xuanlan_memory_clear_failed">没清成功，稍后再试</string>
+    <string name="xuanlan_memory_confirm_all">所有会话的页面记忆都会删掉，删了就找不回来。确定清空？</string>
+    <string name="xuanlan_export_menu">尺寸与导出</string>
+    <string name="xuanlan_export_title">预览尺寸与导出</string>
+    <string name="xuanlan_preset_phone">手机</string>
+    <string name="xuanlan_preset_tablet">平板</string>
+    <string name="xuanlan_preset_desktop">桌面</string>
+    <string name="xuanlan_preset_custom">自定义</string>
+    <string name="xuanlan_preset_custom_hint">宽度 %1$d–%2$d</string>
+    <string name="xuanlan_preset_follow_screen">跟随屏幕宽度</string>
+    <string name="xuanlan_preset_scale">按 %1$d%% 缩小显示</string>
+    <string name="xuanlan_export_png_view">导出 PNG（可视区）</string>
+    <string name="xuanlan_export_png_full">导出 PNG（整页）</string>
+    <string name="xuanlan_export_pdf">导出 PDF</string>
+    <string name="xuanlan_export_busy">正在导出…</string>
+    <string name="xuanlan_export_ok_png">已存到相册：%1$s</string>
+    <string name="xuanlan_export_ok_pdf">已存到下载：%1$s</string>
+    <string name="xuanlan_export_dup">相册里已经有这一张了：%1$s</string>
+    <string name="xuanlan_export_fail">导出没成功（%1$s）</string>
+    <string name="xuanlan_export_truncated">页面太长，整页图只截了前 %1$d 像素</string>
+    <string name="xuanlan_export_blank">这一页没画出内容，先滚一下或刷新再试</string>
+    <string name="xuanlan_refuse_no_tab">先打开一个网页再导出</string>
+    <string name="xuanlan_refuse_restored">这一页还没打开（点一下「打开」再来）</string>
+    <string name="xuanlan_refuse_recycled">这一页被系统回收了，重新加载后再导出</string>
+    <string name="xuanlan_refuse_loading">页面还在加载，等它加载完再导出</string>
+    <string name="xuanlan_refuse_not_loaded">这一页还没加载过，先打开一个网页</string>
+    <string name="xuanlan_refuse_not_rendered">这一页还没画出来，切到玄览看一眼再导出</string>
     <string name="browser_start_title">玄 览</string>
     <string name="browser_start_hint">输入网址或搜索词，或点一个快捷入口</string>
     <string name="browser_start_search_hint">搜索或输入网址</string>
