@@ -37,7 +37,7 @@ class FunnelReadGateTest {
         const val NO_LEGAL = "judge 收尾没过闭集（route in legal 被拆了＝组外名字也能当有效路由）"
         const val NO_WIRE = "send 里没接 funnelReadTurn＝每轮一行断供（判据④）"
         const val NO_LOG = "壳没把读数行落 RunLog＝只算不记（判据④）"
-        const val L3_TAKEN = "装配侧出现了漏斗字样＝本单红线「不改现有装配」（判据⑤）"
+        const val L3_TAKEN = "tools 装配段或 ContextAssembler 出现漏斗字样＝L3 判定权被动（判据②；647 L3 轮细化）"
         const val L3_FREE = "L3 工具数组不再走 toolsJson 唯一链＝判定权被动（判据⑤）"
     }
 
@@ -62,17 +62,40 @@ class FunnelReadGateTest {
         assertTrue("塞进模型引用后断言必须红", modelFreeFailure(mutated, "FunnelL1") != null)
     }
 
-    // ── G2：装配侧不含漏斗（本单只记读数） ─────────────────────────────────
+    // ── G2：tools 装配段与 ContextAssembler 不含漏斗 ──────────────────────────
+    //
+    // L1 轮原文径是「装配侧零 Funnel 字样」（那一轮只记读数、不装配）。647 L3 轮工单明文
+    // 要求把一句话建议放进主循环上下文——建议**只许进 extraNotes**，tools 数组仍走唯一链
+    // （L3 轮判据②）。所以整文件扫描细化为「tools 装配段零漏斗＋ContextAssembler 零漏斗」；
+    // 负例照旧：把漏斗塞进 tools 链必须红。
 
-    @Test
-    fun `G2_RunEngine与ContextAssembler不含漏斗字样`() {
-        assertTrue(L3_TAKEN, !runEngine().contains("Funnel") && !contextAssembler().contains("Funnel"))
+    /** tools 数组装配段（唯一链起点到快照调用）：判据②的承重切片。 */
+    private fun toolsChainSlice(src: String): String? {
+        val start = src.indexOf("val tools = when (provider.protocol)")
+        if (start < 0) return null
+        val end = src.indexOf("ToolDeclSnapshot.of(", start)
+        return if (end < 0) null else src.substring(start, end)
+    }
+
+    private fun takenFailure(engine: String, assembler: String): String? {
+        val slice = toolsChainSlice(engine) ?: return "tools 装配段切不到（锚点被挪＝门失效）"
+        return if (!slice.contains("Funnel") && !assembler.contains("Funnel")) null else L3_TAKEN
     }
 
     @Test
-    fun `G2负例_把漏斗接进引擎_必须红`() {
-        val mutated = runEngine().replace("class RunEngine", "class RunEngine /* FunnelRead.judge */")
-        assertTrue("接进装配后断言必须红", mutated.contains("Funnel"))
+    fun `G2_引擎tools装配段与ContextAssembler不含漏斗字样`() {
+        val why = takenFailure(runEngine(), contextAssembler())
+        assertTrue("G2 不过：$why", why == null)
+    }
+
+    @Test
+    fun `G2负例_把漏斗塞进tools装配段_必须红`() {
+        val mutated = runEngine().replace(
+            "val tools = when (provider.protocol) {",
+            "val tools = when (provider.protocol) { /* FunnelSuggest 按建议组过滤 */",
+        )
+        assertNotNull("突变必须保住锚点（否则这条负例是安慰剂）", toolsChainSlice(mutated))
+        assertTrue("漏斗进 tools 链后断言必须红", takenFailure(mutated, contextAssembler()) != null)
     }
 
     // ── G3：funnel 主源没有写口 ─────────────────────────────────────────────

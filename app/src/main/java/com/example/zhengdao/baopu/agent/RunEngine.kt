@@ -2482,10 +2482,21 @@ internal class RunEngine(
             if (mcpAssembly?.notice != null) {
                 log("抱朴引擎：${mcpAssembly.notice}")
             }
+            // 第六百四十七批（L3 轮）建议注入：把 L1/L2 的组选择作为**一句话提示**放进本轮上下文
+            // （≤60 字、无 schema、不说"你必须这么做"；超长 fail-closed 不注入）。只在首步消费：
+            // 续跑轮／后台轮不消费（漏斗只判用户亲口说的话）；最多等 2s 让 L2 那一枪落账，
+            // 等不到就放弃——建议是加分项不是拦路项。判据②：建议只进 extraNotes，
+            // **不进下面 tools 装配段**（唯一链不动；FunnelL3GateTest G2 钉那一段零漏斗字样）。
+            val funnelSuggestion = if (stepCount == 1 && !resumed && userText != null) {
+                com.example.zhengdao.baopu.funnel.FunnelSuggest.consumeForTurn(sessionId.toString()) { stopRequested }
+            } else {
+                null
+            }
+            val funnelExtraNotes = turnNotes + listOfNotNull(mcpAssembly?.notice, funnelSuggestion?.line)
             val prompt = assemble(
                 persona, facts, history, "", windowTokens,
                 compressionSummary, compressedIds, compressedIds,
-                extraNotes = turnNotes + listOfNotNull(mcpAssembly?.notice),
+                extraNotes = funnelExtraNotes,
             )
             // 第一百二十四批：记下**这一步真的带上 wire 的图数**（失败那句要报得出几张；
             // 1213 行那次探针不算——它只为判断要不要压缩，不进请求体）。
@@ -2564,6 +2575,20 @@ internal class RunEngine(
                     budgetCut = mcpAssembly?.evictedCount ?: 0,
                 ),
             )
+            // 第六百四十七批（L3 轮）读数：每轮一行、五字段齐（与 L1/L2 同一张 RunLog 表，判据④）。
+            // 实际装载工具数＝本步 tools 数组长度（唯一链的产出，不另算一遍）；注入段数＝本轮
+            // extraNotes 实参条数；耗时ms＝本步开步到现在（与 usage 的 elapsed 同一口径）。
+            if (stepCount == 1 && !resumed && userText != null) {
+                RunLog.log(
+                    com.example.zhengdao.baopu.funnel.FunnelSuggest.readingLineOf(
+                        sessionId.toString(),
+                        funnelSuggestion,
+                        tools.length(),
+                        funnelExtraNotes.size,
+                        System.currentTimeMillis() - stepStartedAtMs,
+                    ),
+                )
+            }
 
             // ── 流式一轮（内存累积，流结束一次性落库——判据 7）──
             when (val outcome = streamRound(sessionId, messages, tools)) {

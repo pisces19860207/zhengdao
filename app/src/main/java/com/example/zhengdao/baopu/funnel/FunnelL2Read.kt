@@ -101,11 +101,14 @@ internal object FunnelL2Read {
             validGroupKeys = FunnelRead.validGroupKeys(),
         )
         if (l1.route != FunnelL1Rules.ROUTE_MISS) {
+            // 647 L3 轮：出口①顺路落建议（L1 命中⇒建议只用 L1 的 route；判定逻辑没动）
+            FunnelSuggest.publish(sessionId, l1.route, null, FunnelSuggest.STATE_SKIP_L1)
             RunLog.log(logLineOf(sessionId, l1.route, "跳过(L1命中)", "—", 0L))
             return
         }
         val port = askOverride ?: provider?.let { L2LlmPort(it, timeoutMs) }
         if (port == null) {
+            FunnelSuggest.publish(sessionId, l1.route, null, FunnelSuggest.STATE_FALLBACK)
             RunLog.log("${LOG_PREFIX}warning：没有可用通道，本轮 L2 不开枪")
             RunLog.log(logLineOf(sessionId, l1.route, "回退L1", "没有可用通道", 0L))
             return
@@ -117,11 +120,15 @@ internal object FunnelL2Read {
         val cost = System.currentTimeMillis() - started
         val raw = outcome.getOrElse { err ->
             val why = "${err.javaClass.simpleName}: ${err.message ?: "无消息"}"
+            FunnelSuggest.publish(sessionId, l1.route, null, FunnelSuggest.STATE_FALLBACK)
             RunLog.log("${LOG_PREFIX}warning：L2 调用失败（$why）——回退 L1 结果，整轮不崩")
             RunLog.log(logLineOf(sessionId, l1.route, "回退L1", why, cost))
             return
         }
         val d = FunnelL2Judge.judge(raw)
+        // 出口④：undecided 照落信箱——但 build 只认「命中组」才吃 L2 的组（判据⑤的承重行）
+        val l2State = if (d.undecided) FunnelSuggest.STATE_UNDECIDED else FunnelSuggest.STATE_HIT
+        FunnelSuggest.publish(sessionId, l1.route, d.group, l2State)
         RunLog.log(logLineOf(sessionId, l1.route, d.group, if (d.undecided) d.reason else "—", cost))
     }
 

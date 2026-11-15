@@ -6,16 +6,18 @@
 // ⇒ extraNotes 的顺序就是列表顺序，位次会改变模型看到的位置（越靠后越"新"）。
 // 既有门禁只断言"含某字符串/有没有某注"，**不断言排第几** ⇒ 位次可静默漂移。
 //
-// 当前实际顺序（2026-11-08 在 b860fd6d 上量出，注替身按此序喂）：
+// 当前实际顺序（2026-11-08 在 b860fd6d 上量出；647 L3 轮 2026-11-16 复测：漏斗建议注插在
+// 契约前置读与影响提示之间——它进的是 extraNotes 实参尾部，不进 turnNotes；注替身按此序喂）：
 //   CURRENT 段行下标（current 本体占行 0）：
 //     行1  视觉通道说明（vision.note；组装器内置在所有 extraNotes 之前）  ContextAssembler.kt:386
 //     行2  图片读失败说明（turnNotes 首项，轮开跑赋值）                  RunEngine.kt:2174/2183
 //     行3  知识库自动注入 kbNote（turnNotes 追加）                       RunEngine.kt:2200
 //     行4  任务契约前置读行 precheck（turnNotes 追加）                   RunEngine.kt:2286
-//     行5  影响提示 ImpactMailbox.drain()（引擎拼接第 1 路）             RunEngine.kt:3225
-//     行6  转译段 MediatorWiring.promptNotes()（引擎拼接第 2 路）        RunEngine.kt:3226
-//     行7  补问回灌 AnswerReflow.notes()（引擎拼接第 3 路）              RunEngine.kt:3227
-//     行8  经验注 listOfNotNull(turnLearnNote)（引擎拼接第 4 路，恒最末）RunEngine.kt:3230
+//     行5  能力路由建议注 FunnelSuggest（extraNotes 实参尾，首步消费才注）RunEngine.kt:2472
+//     行6  影响提示 ImpactMailbox.drain()（引擎拼接第 1 路）             RunEngine.kt:3225
+//     行7  转译段 MediatorWiring.promptNotes()（引擎拼接第 2 路）        RunEngine.kt:3226
+//     行8  补问回灌 AnswerReflow.notes()（引擎拼接第 3 路）              RunEngine.kt:3227
+//     行9  经验注 listOfNotNull(turnLearnNote)（引擎拼接第 4 路，恒最末）RunEngine.kt:3230
 //
 // 钉两层（RunEngine 在 JVM 单测里跑不起来，照本仓门禁范式用源码形状钉，同款见
 // LearnContextNoteGateTest／ImpactGateTest）：
@@ -38,14 +40,18 @@ class ExtraNotesOrderGateTest {
     private val noteImage = "（图片没读出来：本轮按纯文本处理，请让用户用文字说一遍图里内容）"
     private val noteKb = "【知识库自动注入】命中片段"
     private val noteContract = "【任务契约·前置读】预算单档"
+    private val noteFunnel = "【能力路由建议】L1 倾向组 logistics（仅供参考，工具自选）"
     private val noteImpact = "【影响提示】刚改了一个文件"
     private val noteReframe = "【转译段】用户原话已按保事实改写"
     private val noteReflow = "【补问回灌】上一轮没答完的部分"
     private val noteLearn = "上次同类：删目录 ⇒ 学习判了不打扰"
 
-    /** extraNotes 生产序（RunEngine.kt:3224-3230 + turnNotes 装配序 2174→2200→2286）。 */
+    /**
+     * extraNotes 生产序（RunEngine.kt:3224-3230 + turnNotes 装配序 2174→2200→2286；
+     * 647 L3 轮追加漏斗建议注：契约前置读之后、影响提示之前）。
+     */
     private val productionOrder = listOf(
-        noteImage, noteKb, noteContract, noteImpact, noteReframe, noteReflow, noteLearn,
+        noteImage, noteKb, noteContract, noteFunnel, noteImpact, noteReframe, noteReflow, noteLearn,
     )
 
     private val currentText = "本轮输入本体：用户原话"
@@ -74,7 +80,7 @@ class ExtraNotesOrderGateTest {
 
     /**
      * **下标等值断言**（判据②；硬编码期望值，不是 contains）：
-     * 七路注替身必须从 [firstNoteLine] 行起逐行原样占位，且注后不许再有行。
+     * 八路注替身必须从 [firstNoteLine] 行起逐行原样占位，且注后不许再有行。
      */
     private fun pinNoteLines(lines: List<String>, firstNoteLine: Int) {
         val expected = productionOrder
@@ -96,14 +102,14 @@ class ExtraNotesOrderGateTest {
     // ── 门禁 A：行为级——生产序喂注，逐行下标等值 ──────────────────────────
 
     @Test
-    fun `门禁A_有视觉说明时_七路注依次占行2到行8_逐行下标等值`() {
+    fun `门禁A_有视觉说明时_八路注依次占行2到行9_逐行下标等值`() {
         val lines = currentLines(assembleWith(productionOrder, withVisionNote = true))
         assertEquals("行1 必须是视觉通道说明（vision.note 恒在所有 extraNotes 之前）", visionNote, lines[1])
         pinNoteLines(lines, firstNoteLine = 2)
     }
 
     @Test
-    fun `门禁A2_无视觉说明时_七路注整体前移到行1到行7_相对顺序不变`() {
+    fun `门禁A2_无视觉说明时_八路注整体前移到行1到行8_相对顺序不变`() {
         val lines = currentLines(assembleWith(productionOrder, withVisionNote = false))
         pinNoteLines(lines, firstNoteLine = 1)
     }
@@ -113,7 +119,7 @@ class ExtraNotesOrderGateTest {
     @Test
     fun `门禁A负例_知识注入与经验注调换_下标等值断言必须红`() {
         val swapped = listOf(
-            noteImage, noteLearn, noteContract, noteImpact, noteReframe, noteReflow, noteKb,
+            noteImage, noteLearn, noteContract, noteFunnel, noteImpact, noteReframe, noteReflow, noteKb,
         )
         val lines = currentLines(assembleWith(swapped, withVisionNote = true))
         val red = try {

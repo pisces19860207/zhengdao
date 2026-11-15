@@ -58,17 +58,40 @@ class FunnelL2GateTest {
         assertTrue(MODEL_MARKS.any { mutated.contains(it) })
     }
 
-    // ── G2：装配侧零漏斗（L2 也不许接进装配） ──────────────────────────────
+    // ── G2：tools 装配段与 ContextAssembler 零漏斗 ────────────────────────────
+    //
+    // L2 轮原文径是「装配侧零 Funnel 字样」（那一轮只记账、不装配）。647 L3 轮工单明文要求
+    // 把一句话建议放进主循环上下文——建议只进 extraNotes，tools 数组仍走唯一链（L3 轮判据②）。
+    // 所以整文件扫描细化为「tools 装配段零漏斗＋ContextAssembler 零漏斗」；
+    // 负例照旧：把漏斗塞进 tools 链必须红（同款切片见 FunnelReadGateTest）。
 
-    @Test
-    fun `G2_RunEngine与ContextAssembler不含漏斗字样`() {
-        assertTrue("判据⑥：装配侧出现漏斗字样", !runEngine().contains("Funnel") && !contextAssembler().contains("Funnel"))
+    /** tools 数组装配段（唯一链起点到快照调用）：判据②的承重切片。 */
+    private fun toolsChainSlice(src: String): String? {
+        val start = src.indexOf("val tools = when (provider.protocol)")
+        if (start < 0) return null
+        val end = src.indexOf("ToolDeclSnapshot.of(", start)
+        return if (end < 0) null else src.substring(start, end)
+    }
+
+    private fun takenFailure(engine: String, assembler: String): String? {
+        val slice = toolsChainSlice(engine) ?: return "tools 装配段切不到（锚点被挪＝门失效）"
+        return if (!slice.contains("Funnel") && !assembler.contains("Funnel")) null else "判据⑥（L3 轮细化）：tools 装配段或 ContextAssembler 出现漏斗字样"
     }
 
     @Test
-    fun `G2负例_把L2接进引擎_必须红`() {
-        val mutated = runEngine().replace("class RunEngine", "class RunEngine /* FunnelL2Read.onUserTurn */")
-        assertTrue("接进装配后断言必须红", mutated.contains("Funnel"))
+    fun `G2_引擎tools装配段与ContextAssembler不含漏斗字样`() {
+        val why = takenFailure(runEngine(), contextAssembler())
+        assertTrue("G2 不过：$why", why == null)
+    }
+
+    @Test
+    fun `G2负例_把漏斗塞进tools装配段_必须红`() {
+        val mutated = runEngine().replace(
+            "val tools = when (provider.protocol) {",
+            "val tools = when (provider.protocol) { /* FunnelSuggest 按建议组过滤 */",
+        )
+        assertNotNull("突变必须保住锚点（否则这条负例是安慰剂）", toolsChainSlice(mutated))
+        assertTrue("漏斗进 tools 链后断言必须红", takenFailure(mutated, contextAssembler()) != null)
     }
 
     // ── G3：L2 壳零写口 ─────────────────────────────────────────────────────
