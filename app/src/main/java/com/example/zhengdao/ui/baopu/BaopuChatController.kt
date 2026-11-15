@@ -3211,6 +3211,19 @@ internal class BaopuChatController(context: Context) {
     }
 
     /**
+     * 第六百四十七批：一轮 L1 漏斗读数（**唯一**接线点，与调解器同一道、同一理由：
+     * send 是「用户亲口说一句话」的唯一入口）。判定纯、IO 壳里走 Dispatchers.IO；
+     * 只记读数不拦消息——这句话后面照常进引擎（装配改动留给后续单，判据⑤）。
+     */
+    private fun funnelReadTurn(text: String, attachments: List<BaopuAttachments.Saved>) {
+        val sid = (sessionId ?: com.example.zhengdao.baopu.MediatorWiring.NO_SESSION).toString()
+        val hasImage = attachments.any { it.isImage }
+        scope.launch {
+            com.example.zhengdao.baopu.funnel.FunnelRead.onUserTurn(sid, text, hasImage, workspaceRoot)
+        }
+    }
+
+    /**
      * 发送（首次自动建会话）。
      *
      * 第一百一十七批起**不再「忙就丢」**：本会话跑着 ⇒ 进该会话 FIFO 队列；
@@ -3244,6 +3257,9 @@ internal class BaopuChatController(context: Context) {
         // 第五百零七批收口 §二：本轮三数（问卡 N／被压 M／必问 K）跟调解器的回合同源同清——
         // send 是 onUserTurn 的唯一调用点，beginTurn 只许在这里调（别处清会让守恒对不上）。
         com.example.zhengdao.baopu.agent.AskGovernance.beginTurn()
+        // 第六百四十七批：能力路由漏斗 L1 读数（每轮一行，**只记不装**——判据④⑤：
+        // 判定在 FunnelL1Rules 纯函数、IO 在壳层 scope 里异步走，这句话照常进引擎。
+        funnelReadTurn(text, attachments)
         // 第四百四十一单：一句话值守触发（**唯一**接线点，与调解器同一道、同一理由：
         // 点通知走深链、点问卡按钮走 engine.answerChoice——都不经过 send，天然不触发
         // 隐式解除；网页内容/工具返回值根本没有一条道能进触发层）。放在所有分支之前：
