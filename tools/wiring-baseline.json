@@ -3,12 +3,12 @@
   "src": "app/src/main",
   "note": "装配类名册与三栏归属（阶段一固化）。by-design ≠ 已接线：要判「有没有接」看 bucket=有调用点。",
   "counts": {
-    "total": 50,
-    "wired": 31,
-    "byDesign": 16,
+    "total": 53,
+    "wired": 33,
+    "byDesign": 17,
     "pending": 3,
-    "unwiredTotal": 19,
-    "companion": 49,
+    "unwiredTotal": 20,
+    "companion": 55,
     "portInterfaces": 3,
     "ruled": 2
   },
@@ -25,7 +25,7 @@
     {
       "name": "BaopuBrowserWiring",
       "file": "app/src/main/java/com/example/zhengdao/baopu/BaopuBrowserWiring.kt",
-      "declLine": 46,
+      "declLine": 51,
       "kind": "object",
       "bucket": "有调用点",
       "byDesign": "",
@@ -71,6 +71,15 @@
       "name": "AttributionWiring",
       "file": "app/src/main/java/com/example/zhengdao/baopu/agent/AttributionWiring.kt",
       "declLine": 23,
+      "kind": "object",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
+    },
+    {
+      "name": "CompanionLawWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/agent/CompanionLawWiring.kt",
+      "declLine": 24,
       "kind": "object",
       "bucket": "有调用点",
       "byDesign": "",
@@ -155,7 +164,7 @@
       "kind": "object",
       "bucket": "有调用点",
       "byDesign": "",
-      "callCount": 5
+      "callCount": 6
     },
     {
       "name": "WishIOWiring",
@@ -174,6 +183,15 @@
       "bucket": "有调用点",
       "byDesign": "",
       "callCount": 2
+    },
+    {
+      "name": "ClaimEvidenceWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/audit/ClaimEvidenceWiring.kt",
+      "declLine": 43,
+      "kind": "object",
+      "bucket": "无调用点·by-design",
+      "byDesign": "纯常量",
+      "callCount": 0
     },
     {
       "name": "InstallResult",
@@ -227,7 +245,7 @@
       "kind": "object",
       "bucket": "有调用点",
       "byDesign": "",
-      "callCount": 11
+      "callCount": 44
     },
     {
       "name": "DepthFactsWiring",
@@ -241,7 +259,7 @@
     {
       "name": "EvolutionWiring",
       "file": "app/src/main/java/com/example/zhengdao/baopu/evolution/EvolutionWiring.kt",
-      "declLine": 153,
+      "declLine": 154,
       "kind": "object",
       "bucket": "有调用点",
       "byDesign": "",
@@ -254,7 +272,7 @@
       "kind": "object",
       "bucket": "有调用点",
       "byDesign": "",
-      "callCount": 2
+      "callCount": 5
     },
     {
       "name": "EvalTriggerWiring",
@@ -381,6 +399,15 @@
       "bucket": "有调用点",
       "byDesign": "",
       "callCount": 2
+    },
+    {
+      "name": "McpBudgetWiring",
+      "file": "app/src/main/java/com/example/zhengdao/baopu/mcp/McpBudgetWiring.kt",
+      "declLine": 68,
+      "kind": "class",
+      "bucket": "有调用点",
+      "byDesign": "",
+      "callCount": 1
     },
     {
       "name": "McpSelfServiceWiring",
