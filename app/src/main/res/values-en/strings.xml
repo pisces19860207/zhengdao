@@ -1846,7 +1846,7 @@
     <string name="replay_failure_step">Step %1$d of %2$d</string>
     <string name="replay_failure_step_unknown">Stopped at the start checks (never reached step 1)</string>
     <string name="replay_failure_target">Target: %1$s</string>
-    <string name="replay_failure_hits">Matched %1$d element(s)</string>
+    <string name="replay_failure_hits">Matched: %1$d</string>
     <string name="replay_failure_hits_unknown">Matched: unknown (no element lookup on this step)</string>
     <string name="replay_failure_reason">Reason: %1$s</string>
     <string name="replay_ask_baopu">Ask Baopu to fix this skill</string>

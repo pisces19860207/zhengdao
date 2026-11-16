@@ -39,7 +39,7 @@
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
-    "note": "（未裁决）",
+    "note": "谁接：666 派工单明写「接线：把 silhouette(H,C,pos,pose) 接到 660 的高度场输出」——660 几何内核尚未交付，故本单只交接缝（HeightFieldSource）＋夹具高度场（腰线/裆缝/大腿根），生产侧换成实测高度场即生效；核心 Silhouette.kt 是纯函数，不依赖接缝。用途：形轨.轮廓可见度（三态＋一句话），解决 12.9 记的「轮廓该不该看得出」实际故障。",
     "package": "com.example.zhengdao.baopu.body",
     "proguard_hits": [],
     "self_file_refs": 0,
@@ -66,7 +66,7 @@
       "line": 185
      }
     ],
-    "verdict": "UNRESOLVED",
+    "verdict": "wired",
     "wrapper_scan": []
    },
    {
@@ -228,8 +228,8 @@
   "B": 2,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 1,
-  "production_top_level_public": 505,
-  "wired": 502
+  "not_wired": 2,
+  "production_top_level_public": 507,
+  "wired": 504
  }
 }

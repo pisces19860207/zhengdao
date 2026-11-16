@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 505 |
-| 生产可达（有生产引用，含同文件） | 502 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 507 |
+| 生产可达（有生产引用，含同文件） | 504 |
 | A 有定义无调用 | 1 |
 | B 只有测试在调 | 2 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **1** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **2** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -31,7 +31,7 @@
 
 | 符号 | 文件:行 | 测试引用 | 结论 | 说明/证据 |
 |---|---|---|---|---|
-| `SilhouetteWire` | `app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:177`、`app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:179`、`app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:179` | （未裁决） | （未裁决） |
+| `SilhouetteWire` | `app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:177`、`app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:179`、`app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:179` | 接线 | 谁接：666 派工单明写「接线：把 silhouette(H,C,pos,pose) 接到 660 的高度场输出」——660 几何内核尚未交付，故本单只交接缝（HeightFieldSource）＋夹具高度场（腰线/裆缝/大腿根），生产侧换成实测高度场即生效；核心 Silhouette.kt 是纯函数，不依赖接缝。用途：形轨.轮廓可见度（三态＋一句话），解决 12.9 记的「轮廓该不该看得出」实际故障。 |
 | `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 该删 | 该删：345 批画像层（AgentProfile＋四条硬规矩）已被 365 的 policy/CapabilityProfile.kt 整套取代——365 文件头自述「把 345 批立下的四层设计做成 policy 侧的真对象」、三条硬规矩同口径；427 接进生产的准入链走的正是 365 那套（AdmissionWiring.kt:91 → AdmissionFlow.run → CapabilityProfile），345 这件的 intake／canAccept／needsReprobe／onTaskResult／reprobe／reinstate／portrait 全仓零外部引用（只有 IntakeProfileTest 在调）。只列不删：另立清理批删 intake/IntakeProfile.kt 整件＋intake/IntakeModels.kt:103 的 AgentProfile 与 :124 的 ViolationRecord 及连带测试 |
 
 ## C 已接线默认关、无开启路径
