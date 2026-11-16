@@ -428,10 +428,8 @@ class HealthCheckTest {
     fun `首次体检单可复现`() {
         val tools = toolCensus()
         assertEquals(
-            "工具表条数与派工单对不上（ENTRIES 段真值：609 六件＋610 两件＋632 两件 ⇒ 106；"
-                + "642 套模板一件 ⇒ 107；621 剧本五件 ⇒ 112；649 资料包一件 ⇒ 113；"
             "工具表条数与派工单对不上（ENTRIES 段真值：614 基线 116；"
-                + "654 模型提交口两件 ⇒ 118）",
+                + "654 模型提交口两件 learn_draft_submit／learn_trace_summary ⇒ 118）",
             118, tools.size,
         )
         val organs = OrganCensus.HEALTH_PARTS.map { HealthCheck.organ(it) }

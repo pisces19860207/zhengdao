@@ -410,8 +410,6 @@ class RiskWiringTest {
             120,
             RiskTable.DEFAULT.tools.size,
         )
-            RiskTable.DEFAULT.tools.size,
-        )
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)
         assertEquals("批量阈值变了", 20, RiskTable.DEFAULT.maxTargetsPerCall)
         assertEquals("删除阈值变了", 10, RiskTable.DEFAULT.maxDeleteTargetsPerCall)
