@@ -54,6 +54,7 @@ import com.example.zhengdao.baopu.inspect.HealthScheduler
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.baopu.BaopuChannelSheet
 import com.example.zhengdao.ui.baopu.BaopuIntents
+import com.example.zhengdao.ui.baopu.BaopuMcpSheet
 import com.example.zhengdao.ui.baopu.BaopuSettingsScreen
 import com.example.zhengdao.ui.baopu.KnowledgeLibraryScreen
 import com.example.zhengdao.ui.baopu.McpBudgetDialRow
@@ -112,6 +113,9 @@ fun SettingsScreen() {
     // 律令只负责挂入口 —— 页面与内部逻辑一行没动，所以这里只有三个开关量。
     // 第二百八十六批（2026-10-30 用户裁定）：MCP 搬回抱朴抽屉，资料库搬进本组。
     var libraryOpen by remember { mutableStateOf(false) }
+    // 第六百七十四单（2026-11-16 用户裁定）：服务器清单入口并入下面「MCP 服务」卡
+    // （抽屉那行同批删除）。面板仍是**原有 composable**（BaopuMcpSheet 薄壳），这里只多一个开关量。
+    var mcpOpen by remember { mutableStateOf(false) }
     // 初值读**进程级草稿**：选模型浮层里那两条「去玄览注册/看限额」会把本页整个带出组合
     // （MainActivity 的 `when (tab)`），回来时"浮层还开着、已填的内容还在"这句话
     // 只有 `ModelSheetDraft` 能兑现 —— 与抱朴页那一处（BaopuScreen 的 showChannel）同一口径。
@@ -234,7 +238,17 @@ fun SettingsScreen() {
             // `baopu_mcp` / `assembly` 键里的 ratio 字段，没有第二份配置。
             // 装配器每步现读 ratio()，所以拖动完下一轮装配就按新额度算，不用重启 App。
             // 标题与行内文案按本单边界写中文常量，不引多语言（不新增 <string> 键）。
+            // 第六百七十四单（2026-11-16 用户裁定）：这张卡加「服务器清单」一行——
+            // 原抱朴抽屉那个入口并入这里，同一件事不再有两个入口；页面与逻辑一行没动
+            // （面板仍是原 composable，清单与拨盘共用既有 store，不新增第二份状态）。
+            // 文案统一「MCP 服务」，与卡标题逐字一致；行内同样写中文常量、不新增键。
             SectionCard(title = "MCP 服务") {
+                SettingRow(
+                    label = "服务器清单",
+                    value = "MCP 服务：连接后才有工具；默认锁着",
+                    valueMaxLines = 2,
+                ) { mcpOpen = true }
+                SettingsDivider()
                 McpBudgetDialRow()
             }
 
@@ -395,7 +409,11 @@ fun SettingsScreen() {
 
         // ── 第二百五十一批：抱朴三张面板（原样调用，都是自带窗口的 Dialog／浮层）──────
         // MCP 服务器清单（McpServerScreen 的薄壳）。关面板不关连接：工具留在表里，
-        // 模型下一轮就能看见 —— 与抱朴抽屉里那一份行为逐字一致。
+        // 模型下一轮就能看见。第六百七十四单（2026-11-16）：入口从抱朴抽屉搬回本文件
+        // 「MCP 服务」卡，抽屉那一处同批删除 ⇒ 这里是全仓唯一挂载点（门禁 McpEntryWiringTest 盯这里）。
+        if (mcpOpen) {
+            BaopuMcpSheet(onDismiss = { mcpOpen = false })
+        }
         // 资料库（第二百八十六批：从抱朴抽屉搬来的入口，页面原样 —— 索引状态／上次更新／重建索引）。
         if (libraryOpen) {
             KnowledgeLibraryScreen(onDismiss = { libraryOpen = false })

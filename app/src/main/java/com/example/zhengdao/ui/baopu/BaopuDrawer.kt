@@ -501,11 +501,11 @@ internal fun BaopuDrawer(
      */
     onGovernanceCenter: () -> Unit,
     // 第二百八十六批（2026-10-30 用户裁定）：`onLibrary`（资料库）随入口搬去律令，参数删除；
-    // 同时把 `onMcp`（外部工具）接回来 —— 它从律令「抱朴」组搬到这里，排在「技能」下面。
+    // 同时把清单回调接回来 —— 排在「技能」下面。
+    // 第六百七十四单（2026-11-16 用户裁定）：清单入口并入律令设置里那张同名卡，
+    // 该回调连同入口一起删（先例：251/286 批「参数还在＝有人还能从别处接回来」）。
     /** 第二百零五批：技能列表页（三组＋反思器候选卡；184 技能卡的生产渲染点）。 */
     onSkillLibrary: () -> Unit,
-    /** 第二百八十六批：外部工具（MCP）清单（BaopuMcpSheet，自带窗口的 Dialog）。 */
-    onMcp: () -> Unit,
     /** 第一百五十五批：小说工程总览（抽屉入口；之前只有模型工具，没有 UI 落点）。 */
     onNovel: () -> Unit,
     onExtract: () -> Unit,
@@ -514,7 +514,7 @@ internal fun BaopuDrawer(
     onPreviewLastReply: () -> Unit,
     /** 清空预览缓存（返回清掉的张数，由调用方说话）。 */
     onPreviewClear: () -> Unit,
-    // 第二百五十一批：「外部工具（MCP）」「选模型」「抱朴设置」三个回调随入口一起删 ——
+    // 第二百五十一批：清单、「选模型」「抱朴设置」三个回调随入口一起删 ——
     // 它们现在挂在律令的「抱朴」组里（SettingsScreen），抽屉不再渲染这三项。
     // 第二百八十六批：`onTaste`（口味档案）同样随入口搬去律令「抱朴」组，回调一并删。
     /** 回收站里「彻底删除」一个会话（两击确认后）：走控制器口子，面板不自己开库。 */
@@ -846,14 +846,9 @@ internal fun BaopuDrawer(
             description = stringResource(R.string.baopu_drawer_skills_desc),
             onClick = onSkillLibrary,
         )
-        // 第二百八十六批（2026-10-30 用户裁定）：「外部工具（MCP）」从律令「抱朴」组搬回抽屉，
-        // 紧挨「技能」下面 —— 两者都是「这台机器上能干什么」的清单，放在一起看。
-        // 页面原样调用（BaopuMcpSheet，自带窗口的 Dialog），关面板不关连接：工具留在表里。
-        DrawerItem(
-            title = stringResource(R.string.baopu_drawer_mcp),
-            description = stringResource(R.string.baopu_drawer_mcp_desc),
-            onClick = onMcp,
-        )
+        // 第二百八十六批曾把清单行接回「技能」下面；第六百七十四单（2026-11-16 用户裁定）
+        // 又把它并入律令设置里那张同名卡——同一件事只留一个入口，本组从「技能」开始不变。
+        // 页面与路由都保留（冷启动恢复要用），只是入口不再挂在这里。
         DrawerItem(
             title = stringResource(R.string.baopu_drawer_novel),
             description = stringResource(R.string.baopu_drawer_novel_desc),
@@ -894,7 +889,7 @@ internal fun BaopuDrawer(
         // 组里原本两行：①「定时任务」跳转行 —— 与第一组「新会话」下面那行
         // `ScheduleDrawerRow` 进的是同一个 ScheduleTasksActivity，抽屉里出现两个同名条目；
         // ②「口味档案」—— 用户原话「口味档案还在抱朴的设置里」，一并搬去律令的「抱朴」组
-        // （与 MCP／选模型／抱朴设置 同处，那三项 251 批就搬了）。
+        // （与清单／选模型／抱朴设置 同处，那三项 251 批就搬了）。
         // 两行都走后这一组空了，整组连同分隔线一起删 —— 抽屉只留「每天要拉的东西」。
         // 定时任务的**主入口**仍在第一组（带「未启用／下次 HH:mm」状态位），页面一个没删。
         Spacer(Modifier.height(24.dp))

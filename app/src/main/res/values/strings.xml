@@ -689,8 +689,6 @@
     <string name="baopu_kb_rebuild_started">已开始重建，几秒后再看</string>
     <string name="baopu_drawer_novel">小说工程</string>
     <string name="baopu_drawer_novel_desc">建项目、看总览、拿续写简报</string>
-    <string name="baopu_drawer_mcp">外部工具（MCP）</string>
-    <string name="baopu_drawer_mcp_desc">连接后才有工具；默认锁着</string>
     <string name="baopu_novel_sheet_title">小说工程</string>
     <string name="baopu_novel_sheet_desc">抱朴在「小说/书名/」里建项目；下面列出已有项目。</string>
     <string name="baopu_novel_empty">还没有小说项目。起个书名，让抱朴先建项目、再写第一章。</string>

@@ -258,8 +258,8 @@ internal fun BaopuScreen(
     // 2026-10-23：小说工程的抽屉入口（之前只有工具、没有落点）。
     var showNovel by remember { mutableStateOf(false) }
     // 第二百八十六批（2026-10-30 用户裁定）：`showKnowledgeLibrary` 随「资料库」入口一起搬去律令；
-    // 同时把 `showMcp` 接回来 —— 外部工具（MCP）从律令搬回抽屉「技能」下面。
-    var showMcp by remember { mutableStateOf(false) }
+    // 第六百七十四单（2026-11-16 用户裁定）：清单入口并入律令设置里那张同名卡，
+    // `showMcp` 开关随抽屉入口一起删（入口搬走＝死代码，与 286 批同一口径；页面与路由都保留）。
     // 第四十批：长按用户消息 ⇒ 小菜单（编辑这条 / 复制）⇒ 编辑框。
     var menuMsg by remember { mutableStateOf<BaopuUiMessage?>(null) }
     var editMsg by remember { mutableStateOf<Pair<Long, String>?>(null) }
@@ -569,12 +569,8 @@ internal fun BaopuScreen(
                     },
                     // 长按文件夹行＝只看路径，不跳页（派工单 §7 的「长按提示」）。
                     onWorkspaceHold = showWorkspacePath,
-                    // 第二百八十六批（2026-10-30 用户裁定）：「资料库」搬去律令，
-                    // 「外部工具（MCP）」从律令搬回这里、排在「技能」下面。
-                    onMcp = {
-                        scope.launch { drawerState.close() }
-                        showMcp = true
-                    },
+                    // 第二百八十六批（2026-10-30 用户裁定）：「资料库」搬去律令，清单回调曾接在这里；
+                    // 第六百七十四单（2026-11-16 用户裁定）：清单入口并入律令，该实参随抽屉入口一起删。
                     // 第二百零五批：技能列表页（三组＋反思器候选卡的壳）。
                     onSkillLibrary = {
                         scope.launch { drawerState.close() }
@@ -1564,10 +1560,8 @@ internal fun BaopuScreen(
                     },
                 )
             }
-            // 外部工具（MCP）清单（第二百八十六批：从律令搬回抽屉「技能」下面）。
-            if (showMcp) {
-                BaopuMcpSheet(onDismiss = { showMcp = false })
-            }
+            // 清单面板（曾于 286 批挂在抽屉「技能」下面）：第六百七十四单起入口并入律令，
+            // 挂载点只剩 SettingsScreen 那一处——本页不再挂（两处挂载＝两套会漂的入口）。
             if (showSettings) {
                 BaopuSettingsScreen(
                     onDismiss = { showSettings = false },

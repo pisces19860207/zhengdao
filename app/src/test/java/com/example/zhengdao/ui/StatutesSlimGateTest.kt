@@ -175,15 +175,36 @@ class StatutesSlimGateTest {
             drawer.contains("R.string.baopu_taste_title"),
         )
         // 三个回调连同入口一起删（参数还在 = 有人还能从别处接回来）
-        // 2026-10-30：`onMcp` 例外 —— MCP 已搬回抽屉（排在「技能」下面），它**应该**在。
-        listOf("onChannel", "onSettings", "onTaste").forEach { p ->
+        // 2026-10-30：`onMcp` 曾例外接回抽屉（清单行排在「技能」下面）；
+        // 第六百七十四单（2026-11-16 用户裁定）：清单入口并入律令，`onMcp` 随入口再删——四个都不许有。
+        listOf("onChannel", "onSettings", "onTaste", "onMcp").forEach { p ->
             assertFalse("BaopuDrawer 里还有 $p 参数/调用", drawer.contains(p))
         }
-        assertTrue("MCP 搬回抽屉后 onMcp 应在", drawer.contains("onMcp"))
-        // 抱朴页那一侧同样：MCP 的本地开关回来了，其余三项仍不该出现。
-        assertTrue("MCP 搬回抽屉后抱朴页要有 showMcp", baopuScreen.contains("showMcp"))
+        // 第六百七十四单判据②：抽屉项文案集合里不许有「外部工具」「MCP」字样——
+        // 「搜不到」按原文算（注释也算），所以这三条用**未剥注释**的原文。
+        val drawerRaw = text("src/main/java/com/example/zhengdao/ui/baopu/BaopuDrawer.kt")
+        assertFalse("抽屉原文里还有「外部工具」", drawerRaw.contains("外部工具"))
+        assertFalse("抽屉原文里还有「MCP」字样", drawerRaw.contains("MCP"))
+        assertFalse("抽屉原文里还有清单键", drawerRaw.contains("baopu_drawer_mcp"))
+        // 抱朴页那一侧同样：清单开关随抽屉入口删（入口搬走＝死代码，与 286 批同一口径），
+        // 挂载点全仓只剩律令一处（反向钉在 McpEntryWiringTest）。
+        assertFalse("清单入口并入律令后抱朴页不许有 showMcp", baopuScreen.contains("showMcp"))
         assertFalse("BaopuScreen 里不该有 showTaste（口味档案已搬去律令）", baopuScreen.contains("showTaste"))
         assertFalse("BaopuScreen 里还有 showTaste（口味档案已搬去律令）", baopuScreen.contains("showTaste"))
+    }
+
+    // ── 第六百七十四单（2026-11-16）：清单入口并入律令「MCP 服务」卡 ────────────
+
+    @Test
+    fun `六百七十四单_律令MCP服务卡_清单入口与拨盘都在`() {
+        // 判据①：律令能打开服务器清单（挂载点在 SettingsScreen），且拨盘那一行还在。
+        assertTrue("律令缺「MCP 服务」卡", settings.contains("SectionCard(title = \"MCP 服务\")"))
+        assertTrue("「MCP 服务」卡缺「服务器清单」行", settings.contains("label = \"服务器清单\""))
+        // 判据④：文案统一「MCP 服务」，与卡标题那一行逐字一致（行的 value 里含这一串）。
+        assertTrue("清单行文案没写「MCP 服务」", settings.contains("MCP 服务"))
+        assertTrue("拨盘那一行不见了", settings.contains("McpBudgetDialRow()"))
+        // 入口搬来＝面板挂在这；页面零改动（薄壳原样调用，判据在 McpEntryWiringTest）。
+        assertTrue("律令该挂清单面板", settings.contains("BaopuMcpSheet(onDismiss"))
     }
 
     @Test

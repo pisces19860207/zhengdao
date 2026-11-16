@@ -711,8 +711,6 @@
     <string name="baopu_kb_rebuild_started">Rebuild started — check back in a moment</string>
     <string name="baopu_drawer_novel">Novel project</string>
     <string name="baopu_drawer_novel_desc">Create a project, see the overview, get a continue brief</string>
-    <string name="baopu_drawer_mcp">External tools (MCP)</string>
-    <string name="baopu_drawer_mcp_desc">Tools appear only after connecting; locked by default</string>
     <string name="baopu_novel_sheet_title">Novel project</string>
     <string name="baopu_novel_sheet_desc">Baopu creates projects under novel/title/; existing projects are listed below.</string>
     <string name="baopu_novel_empty">No novel projects yet. Name one and let Baopu create the project, then write chapter one.</string>
