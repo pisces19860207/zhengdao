@@ -1231,6 +1231,11 @@ internal object BaopuRuntime {
         EnvoyTool.sink = EnvoySink { args ->
             delegatePeerTask(envoyDeliver, File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY), args)
         }
+        // 第六百四十八批 ②（572 G-572-4）：**准入考试的独立生产入口**。同一件 envoyDeliver、
+        // 同一个准入落点——考试与委派差的是闸序里那一格（ensure／retest），不差第二套路子。
+        EnvoyExamTool.sink = EnvoyExamSink { args ->
+            examPeerAgent(envoyDeliver, File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY), args)
+        }
         // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
         // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
         ToolGroupAudit.sink = { line -> RunLog.log(line) }
@@ -1410,6 +1415,47 @@ internal object BaopuRuntime {
             outcome.refusal != null -> ToolOutcome.Rejected(outcome.refusal)
             outcome.failure != null -> ToolOutcome.Failed(outcome.failure)
             else -> ToolOutcome.Ok(envoyReceipt(outcome))
+        }
+    }
+
+    /**
+     * 第六百四十八批 ② · `exam_peer_agent` 的落点：单独给一台对端出一场准入考（G-572-4）。
+     *
+     * 与 [delegatePeerTask] 同一取舍：这一段只递参数、翻人话，闸序与判卷全在
+     * [EnvoyDeliver.exam] → [EnvoyAdmission.retest] 那条链上（要**真的那份**被测到，
+     * 测试里复刻一份接线就等于没接）。一件任务也不派：走到准入那一格就收口。
+     */
+    internal fun examPeerAgent(deliver: EnvoyDeliver, admitRoot: File, args: JSONObject): ToolOutcome {
+        val sessionId = ActiveSessionGate.current()?.removePrefix("id:")?.toLongOrNull()
+            ?: return ToolOutcome.Rejected("当前没有活跃会话：exam_peer_agent 只能在抱朴干活时调。")
+        val endpoint = args.optString("endpoint").trim()
+        if (endpoint.isEmpty()) {
+            return ToolOutcome.Rejected("exam_peer_agent 要一个 endpoint：说出要考哪台 A2A（与派活用的是同一格地址）。")
+        }
+        val out = deliver.exam(EnvoyExamRequest(endpoint = endpoint, sessionId = sessionId, root = admitRoot))
+        return when {
+            out.refusal != null -> ToolOutcome.Rejected(out.refusal)
+            out.failure != null -> ToolOutcome.Failed(out.failure)
+            else -> ToolOutcome.Ok(examReceipt(out))
+        }
+    }
+
+    /**
+     * 考试回执（模型/用户看得见的唯一一份收场信息）：档位 ＋ 那两把尺各在哪本账上。
+     *
+     * 第六百四十八批 三：`conclusion=fail` 与 `accept_read_only` 并存是**口径差**，不是矛盾
+     * （出题量「能不能写」，准入量「收编到哪档」）。本批按派工单只记录不修——但记录要落在
+     * 用户真看得见的地方，所以这句话跟着回执走，不只写在报告里。
+     */
+    private fun examReceipt(o: EnvoyExamOutcome): String {
+        val reading = o.admission
+        return buildString {
+            append("准入考试收场：").append(reading?.verdictWire ?: "没结论（落点未挂）")
+            append("｜endpoint=").append(o.endpoint)
+            append("｜身份=").append(o.agentId)
+            if (reading != null) append("｜").append(reading.human)
+            append("｜两把尺：能不能写看「准入出题账」（conclusion），收编到哪档看「准入账」（verdict）")
+            append("——只读档不是禁用：读类活照派，写类活不派给它。")
         }
     }
 

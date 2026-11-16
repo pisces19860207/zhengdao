@@ -18,6 +18,17 @@
 //     结论当门禁用——Reject ⇒ 一件活都不派，Accept(READ_ONLY) ⇒ 写类活不派。
 //
 // fail-closed：准入落点没装配（root=null）或读数认不出 ⇒ 一律不放行——闸宁可错关，不可错开。
+//
+// 第六百四十八批 ② 加的入口是 [retest]（主动出题/补考），并且把两条入口的考试体折成
+// 一个 [examine]：本文件里 `IntakeExam.take` 只出现一次，「两套考试」这条路从结构上堵死。
+//
+// ## 两把尺（648 三、口径差**只记录不修**，这里是最容易被当成矛盾的那一格）
+//   · `准入出题账.jsonl` 的 `conclusion` 量的是**能不能写**（5 枚探针里有写类题，纯文本对端必不过
+//     ⇒ 常记 `fail`）；
+//   · `准入账.jsonl` 的 `accept_read_only` 量的是**收编到哪一档**（345 硬规矩①：算错/纪律差只降权，
+//     不清退）。
+//   所以「出题 fail ＋准入 accept_read_only」是**同一份事实的两句实话**，不是自相矛盾：
+//   要看结论去出题账，要看档位去准入账。委派侧只认档位那一格（[EnvoyAdmissionReading.allows]）。
 package com.example.zhengdao.baopu.peer
 
 import com.example.zhengdao.baopu.intake.AdmissionFlow
@@ -59,6 +70,8 @@ internal object EnvoyAdmission {
      * 过一遍准入：画像在且版本对得上 ⇒ 直接给读数（不重考）；
      * 没画像或对端能力指纹变了 ⇒ 真考一次（546 的九道题，经 [channel] 送达）并落盘。
      *
+     * 这是**委派路上**那道闸（自动）；用户主动要考一场走 [retest]，两条走同一个 [examine]。
+     *
      * @param root 准入账落点（`<App私有>/抱朴记忆/`；null＝没装配 ⇒ 不放行）
      * @param executorVersion 对端能力指纹（变 ⇒ 旧卷作废重考）
      * @param channel 出题通道（委派入口装的是 [A2aExamChannel]；null ⇒ 空卷 ⇒ UNVERIFIABLE ⇒ 门不开）
@@ -74,21 +87,63 @@ internal object EnvoyAdmission {
         log: (String) -> Unit,
     ): EnvoyAdmissionReading {
         val agentId = AgentIds.stableId(endpoint)
-        if (root == null) {
-            return EnvoyAdmissionReading(
-                agentId = agentId,
-                verdictWire = NO_ROOT,
-                admitted = false,
-                tier = null,
-                examined = false,
-                human = "准入账没装配（落点未挂）：派活前先装准入——闸宁可错关，不可错开",
-            )
-        }
+        if (root == null) return noRoot(agentId)
         val known = AdmissionFlow.load(root, agentId)
         if (known != null && !known.profile.needsReprobe(executorVersion)) {
             return readingOf(known, examined = false)
         }
-        val exam = IntakeExam.take(root, agentId, executorVersion, channel)
+        return examine(root, agentId, executorVersion, channel, claimed, nowMs, log, useCache = true)
+    }
+
+    /**
+     * 第六百四十八批 ② · **主动补考**：用户点了「给这台出题/补考」就该真考一场，
+     * 而不是从缓存里翻出旧卷念一遍（[IntakeExam.take] 的 `useCache=false` 那一格）。
+     *
+     * 与 [ensure] 走的是**同一个** [examine]——题面、判卷、快照、三本账一条不缺，
+     * 也不另开第二套考试（派工单 648 二判据③「共用同一个考试实现（源码断言，防两套）」）。
+     * 补考**不改判定**：判的还是 384 那道门，考出 FAIL 就照 FAIL 落 `accept_read_only`／`reject_*`。
+     */
+    fun retest(
+        root: File?,
+        endpoint: String,
+        executorVersion: String,
+        channel: ExamChannel?,
+        claimed: List<String>,
+        nowMs: Long,
+        log: (String) -> Unit,
+    ): EnvoyAdmissionReading {
+        val agentId = AgentIds.stableId(endpoint)
+        if (root == null) return noRoot(agentId)
+        return examine(root, agentId, executorVersion, channel, claimed, nowMs, log, useCache = false)
+    }
+
+    /** 落点没装配的读数（fail-closed，两条入口共用）。 */
+    private fun noRoot(agentId: String): EnvoyAdmissionReading = EnvoyAdmissionReading(
+        agentId = agentId,
+        verdictWire = NO_ROOT,
+        admitted = false,
+        tier = null,
+        examined = false,
+        human = "准入账没装配（落点未挂）：派活前先装准入——闸宁可错关，不可错开",
+    )
+
+    /**
+     * 全仓 peer 侧**唯一**的一处出题→判卷→落盘（`IntakeExam.take` 只在这里调一次）。
+     *
+     * 两条入口（首调 [ensure]／主动 [retest]）的差别只有 [useCache] 一个布尔——
+     * 判卷器、考卷缓存、画像快照、`准入账.jsonl`、`准入出题账.jsonl` 全是同一件。
+     */
+    private fun examine(
+        root: File,
+        agentId: String,
+        executorVersion: String,
+        channel: ExamChannel?,
+        claimed: List<String>,
+        nowMs: Long,
+        log: (String) -> Unit,
+        useCache: Boolean,
+    ): EnvoyAdmissionReading {
+        val exam = IntakeExam.take(root, agentId, executorVersion, channel, useCache = useCache)
         val record = AdmissionFlow.run(
             AdmissionFlow.Request(
                 agentId = agentId,

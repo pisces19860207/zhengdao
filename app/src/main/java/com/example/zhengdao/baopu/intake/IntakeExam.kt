@@ -125,6 +125,10 @@ internal object IntakeExam {
      *
      * [questions]／[clock] 可注入是为了让上限判据能咬到**生产常量本身**（传 10 道题／让时钟跳过
      * [TIME_LIMIT_MS]），不是另设一套测试阈值。
+     *
+     * [useCache]＝false 是第六百四十八批 ② 给**主动补考**留的一格：用户点了「给这台出题/补考」，
+     * 拿回一行 `from_cache=true` 就是没办事。缺省仍是 true——546 判据③「首调之外不重考、
+     * 出题次数不涨」靠的就是这一格默认值，一个字没动。
      */
     fun take(
         root: File,
@@ -133,9 +137,10 @@ internal object IntakeExam {
         channel: ExamChannel?,
         questions: List<ExamQuestion> = questions(),
         clock: () -> Long = System::currentTimeMillis,
+        useCache: Boolean = true,
     ): ExamResult {
         val examVersion = examVersionOf(questions)
-        val cached = loadCache(root, agentId, examVersion, executorVersion)
+        val cached = if (useCache) loadCache(root, agentId, examVersion, executorVersion) else null
         if (cached != null) {
             // 命中也落一行账：判据③要的"出题次数不增加"得有可核对的读数（from_cache=true·用时 0）。
             val hit = cached.copy(fromCache = true, elapsedMs = 0)
