@@ -190,8 +190,29 @@ fun usageNoticeBody(usage: BaopuRoundUsage, copy: UsageCopy): String {
 val TEXT_ARTIFACT_EXTENSIONS: Set<String> =
     setOf("json", "txt", "md", "csv", "yml", "yaml", "log", "html")
 
+/**
+ * 第六百八十一批 · 文档族：本机写出来的 docx／xlsx。
+ *
+ * 与文本族的关键差别是**不做内置预览**（docx/xlsx 是 zip 容器，塞进只读查看器只会是一屏乱码），
+ * 点开就是「用其他应用打开」，交给系统里真正的 Word／表格应用。
+ */
+val DOC_ARTIFACT_EXTENSIONS: Set<String> = setOf("docx", "xlsx")
+
+/** 第六百八十一批 · 图片族：png／jpg／webp。同样不做内置预览（本区没有图片查看器）。 */
+val IMAGE_ARTIFACT_EXTENSIONS: Set<String> = setOf("png", "jpg", "webp")
+
 /** 收集时的单文件大小上限（>512 KB 不收；B2 的「大小上限」就这一处判据）。 */
 const val ARTIFACT_MAX_FILE_BYTES: Long = 512L * 1024L
+
+/**
+ * 第六百八十一批 · 文档／图片的单文件上限（16 MB）。
+ *
+ * 为什么不套文本那条 512 KB：512 KB 是**查看器**的账（要开流读前 8 KB、要按行截断），
+ * 二进制既不进查看器也不读正文，套同一条会把「一张 800 KB 的 png」判成不够格——
+ * 那与 673 真机轮三「产物架 0 行」是同一类后果（行没了，人就够不着那个文件）。
+ * 上限仍要有：几个 G 的东西不该因为「被写过一次」就进台账。
+ */
+const val ARTIFACT_MAX_BINARY_BYTES: Long = 16L * 1024L * 1024L
 
 /** 判二进制前读多少字节（8 KB；里面有 `\u0000` 就当二进制不收）。 */
 const val ARTIFACT_SNIFF_BYTES: Int = 8 * 1024
@@ -227,6 +248,28 @@ fun artifactFileName(relPath: String): String =
 
 /** 扩展名在白名单里吗（**纯函数**，不碰盘）。 */
 fun isTextArtifactPath(relPath: String): Boolean = artifactExtension(relPath) in TEXT_ARTIFACT_EXTENSIONS
+
+/**
+ * 第六百八十一批：产物三族（台账认的就是这三种；不在族里的一律不进台账）。
+ *
+ * 三族各有一条后果，界面上必须分得开：
+ * - [Text] 进只读查看器（可内嵌预览）；
+ * - [Doc]、[Image] **不做内置预览**，点开＝「用其他应用打开」。
+ */
+enum class ArtifactFamily { Text, Doc, Image }
+
+/**
+ * 这份路径属于哪一族（**纯函数**，不碰盘）。三族之外 ⇒ null。
+ *
+ * 三份扩展名名单各只有一处（[TEXT_ARTIFACT_EXTENSIONS]／[DOC_ARTIFACT_EXTENSIONS]／
+ * [IMAGE_ARTIFACT_EXTENSIONS]），本函数只做归并，不另抄一份。
+ */
+fun artifactFamilyOf(relPath: String): ArtifactFamily? = when (artifactExtension(relPath)) {
+    in TEXT_ARTIFACT_EXTENSIONS -> ArtifactFamily.Text
+    in DOC_ARTIFACT_EXTENSIONS -> ArtifactFamily.Doc
+    in IMAGE_ARTIFACT_EXTENSIONS -> ArtifactFamily.Image
+    else -> null
+}
 
 /** 前 8 KB 里有 NUL 字节就当二进制（**纯函数**；B2 的第二条判据）。 */
 fun hasNulByte(bytes: ByteArray): Boolean = bytes.any { it == 0.toByte() }
@@ -271,6 +314,42 @@ fun selectTextArtifacts(root: File, relPaths: List<String>): List<String> {
     relPaths.forEach { raw ->
         val rel = toWorkspaceRelative(root, raw)
         if (isTextArtifactPath(rel) && isTextArtifactFile(File(root, rel))) kept += rel
+    }
+    return kept.toList()
+}
+
+/**
+ * 第六百八十一批：文档／图片够不够格进台账（**只在引擎线程上调**，只 stat 一次，不开流）。
+ *
+ * 两道：在盘上且是文件 → 非 0 字节 → ≤16 MB（[ARTIFACT_MAX_BINARY_BYTES]）。
+ * **不看前 8 KB 有没有 NUL**：docx/xlsx 本身就是 zip、png 压缩流里到处是 0，
+ * 拿文本那条「无 NUL」去判会把这一族全判掉（那正是 673 真机轮三的根因之一）。
+ */
+fun isBinaryArtifactFile(f: File): Boolean {
+    if (!f.isFile) return false
+    val size = f.length()
+    return size > 0L && size <= ARTIFACT_MAX_BINARY_BYTES
+}
+
+/**
+ * 第六百八十一批 · 台账口径的产物收集：文本族**原样走 [selectTextArtifacts]**，
+ * 再并上文档族与图片族（保序去重，同一文件写两次只列一次）。
+ *
+ * 为什么文本那一半是「调它」而不是照着重写一遍：白名单／512 KB／NUL 这三条判据只能有一个
+ * 主人（38 批「顶栏与抽屉共用一份收集逻辑」那条纪律）。本函数只加一层：文档/图片也进台账，
+ * 于是「生成 docx ⇒ 产物架出现一行」这句才有落点——只筛文本时 `upsertArtifact` 永远不落行。
+ *
+ * **不收不在三族里的东西**（pdf/zip/exe…）：台账是「我们写出来、并且认得出是什么」的那批，
+ * 认不出的进来只会让人点开看见一句「不支持」。
+ */
+fun selectArtifacts(root: File, relPaths: List<String>): List<String> {
+    val kept = LinkedHashSet(selectTextArtifacts(root, relPaths))
+    relPaths.forEach { raw ->
+        val rel = toWorkspaceRelative(root, raw)
+        val family = artifactFamilyOf(rel) ?: return@forEach
+        // 文本族已经在上面按老三道（白名单＋512 KB＋无 NUL）筛过了，这里不许再判一遍
+        if (family == ArtifactFamily.Text) return@forEach
+        if (isBinaryArtifactFile(File(root, rel))) kept += rel
     }
     return kept.toList()
 }

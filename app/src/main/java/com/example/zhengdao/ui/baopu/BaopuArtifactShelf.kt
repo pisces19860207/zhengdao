@@ -34,10 +34,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.ArtifactFamily
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuGuardCore
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuSql
+import com.example.zhengdao.baopu.artifactFamilyOf
 import com.example.zhengdao.baopu.artifactFileName
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
@@ -55,10 +57,15 @@ import java.io.File
 // 这一页为什么必须存在：§8 把顶栏改成产物条之后，**本轮**写的东西一眼能看见，但上一轮、昨天、
 // 上周写出来的仍然只有抱朴自己知道。要「回看／删除」就得先有一本账（§9.1 的 artifact 表），
 // 再有一个读这本账的入口（就是这里）。两件都不重造：
-//   - 收集＝`BaopuCostAndArtifacts.kt` 的 `selectTextArtifacts`（与 §8 顶栏产物条**同一份**：
-//     白名单／512 KB 上限／NUL 判定只有一处，两入口不可能各说一套）；
+//   - 收集＝`BaopuCostAndArtifacts.kt` 的 `selectArtifacts`（台账口径：文本族走
+//     `selectTextArtifacts` 那老三道，再并上 docx/xlsx 与 png/jpg/webp；白名单／上限／NUL
+//     判定各只有一处，顶栏与台账不可能各说一套）；
 //   - 查看＝`BaopuArtifactViewer.kt` 那个只读查看器（点文件名直接开；§7 那三条复制纪律
 //     也只在那一处，本页一个复制按钮都不放，免得出现第二种「复制全文」）。
+//
+// 第六百八十一批（673 真机轮三 G-673-1 的修）：这一页原来只认文本产物，于是「生成 docx 成功
+// 但产物架 0 行」——641 写的三个 MIME 分支一个入口都走不到。现在三族都进台账，而 docx/xlsx/
+// 图片**不做内置预览**：点开就是「用其他应用打开」（判据③，641 那三个分支由此可达）。
 //
 // 为什么不复用工具层那个删除工具（§9.4 红线）：它的入参来自模型、确认卡来自引擎，界面走那条路
 // 等于给自己开一条绕过工具层权限模型的旁路。所以这一页**只有一个动作**：把台账里的一条
@@ -255,6 +262,25 @@ internal fun deleteArtifactRow(db: BaopuDb, root: File, relPath: String): Boolea
 }.getOrDefault(false)
 
 /**
+ * 第六百八十一批：产物架一行「点一下」去哪一层。
+ *
+ * 文本族 ⇒ 内置只读查看器（38 批 B 段那一份，可内嵌预览）；
+ * 文档族／图片族 ⇒ 交给外部应用（641 的 ACTION_VIEW）。
+ */
+internal enum class ArtifactRowTap { Preview, External }
+
+/**
+ * 这一行点开该走哪一层（**纯函数**，JVM 可断言）。
+ *
+ * 判据只有一条：族是 [ArtifactFamily.Text] 才能内嵌预览。docx/xlsx 是 zip 容器、
+ * png/jpg/webp 是压缩像素流，塞进只读文本查看器只会显示一屏乱码——所以它们**不做内置预览**，
+ * 点开就是「用其他应用打开」（判据③）。族都认不出（老台账里的 .doc 之类）也只给外部打开，
+ * 那时由 641 那句「这类文件不能用其他应用打开」兜住，不许假装能看。
+ */
+internal fun artifactRowTapOf(relPath: String): ArtifactRowTap =
+    if (artifactFamilyOf(relPath) == ArtifactFamily.Text) ArtifactRowTap.Preview else ArtifactRowTap.External
+
+/**
  * 产物区面板（§9.2 那一页；房型照 36 批 [TrashDialog]，但**没有**「彻底删除」与「清空」）。
  *
  * 与回收站那一页的两点形状差异，都是判据要求的：
@@ -397,12 +423,20 @@ internal fun ArtifactShelfDialog(
                         rows.forEach { row ->
                             val isConfirming = confirmingRel == row.relPath
                             val name = artifactFileName(row.relPath)
+                            // 第六百八十一批：文本族才内嵌预览；文档/图片族点开＝外部应用
+                            val tap = artifactRowTapOf(row.relPath)
+                            val previewable = tap == ArtifactRowTap.Preview
                             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                                 Text(
-                                    // 文件名点得 ⇒ 开只读查看器（§9.2「点文件名 ⇒ 38 批 B 段查看器」）
+                                    // 文件名点得 ⇒ 文本族开只读查看器（§9.2）；文档/图片族开外部应用
                                     text = name,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.clickable { viewingRel = row.relPath },
+                                    modifier = Modifier.clickable {
+                                        when (tap) {
+                                            ArtifactRowTap.Preview -> viewingRel = row.relPath
+                                            ArtifactRowTap.External -> openExternal(row)
+                                        }
+                                    },
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -433,9 +467,20 @@ internal fun ArtifactShelfDialog(
                                         color = zhengdaoErrorText(),
                                     )
                                 }
+                                if (!previewable) {
+                                    // 判据③：docx/xlsx/图片不在这里内嵌渲染，先说明白，别让人以为点开能看到内容
+                                    Text(
+                                        text = stringResource(R.string.baopu_artifact_shelf_external_only),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                                 Row {
-                                    TextButton(onClick = { viewingRel = row.relPath }) {
-                                        Text(stringResource(R.string.baopu_artifact_shelf_open))
+                                    // 「回看」只对文本族有意义（那是只读查看器）；文档/图片族的入口在下面那行
+                                    if (previewable) {
+                                        TextButton(onClick = { viewingRel = row.relPath }) {
+                                            Text(stringResource(R.string.baopu_artifact_shelf_open))
+                                        }
                                     }
                                     TextButton(onClick = { moveAway(row) }) {
                                         Text(stringResource(R.string.baopu_artifact_shelf_delete))

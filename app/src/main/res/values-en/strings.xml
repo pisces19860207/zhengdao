@@ -1297,6 +1297,7 @@
     <string name="baopu_artifact_shelf_ledger_failed">The file is in the trash, but this ledger row was not cleared: %1$s (you will still see it next time)</string>
     <string name="baopu_artifact_shelf_none">No artifacts yet</string>
     <string name="baopu_artifact_shelf_none_hint">Ask it to write something</string>
+    <string name="baopu_artifact_shelf_external_only">No inline preview for this type — use “Open with another app”</string>
     <string name="baopu_artifact_shelf_close">Close</string>
     <!-- 641: open artifact externally and the file-manager fallback -->
     <string name="baopu_artifact_open_external">Open with another app</string>

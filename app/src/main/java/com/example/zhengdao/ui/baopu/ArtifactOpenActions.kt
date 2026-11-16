@@ -29,11 +29,23 @@ internal enum class ArtifactLocateOutcome { OPENED, SHOW_PATH, GONE }
 internal fun openArtifactExternally(ctx: Context, root: File, relPath: String): ArtifactOpenOutcome {
     val file = File(root, relPath)
     if (!PathGuard.isInside(root, file)) return ArtifactOpenOutcome.FAILED
-    return when (val plan = ArtifactOpen.planOf(file.name, file.isFile)) {
+    return when (val plan = artifactOpenPlanOf(root, relPath)) {
         ArtifactOpenPlan.Gone -> ArtifactOpenOutcome.GONE
         ArtifactOpenPlan.Unsupported -> ArtifactOpenOutcome.UNSUPPORTED
         is ArtifactOpenPlan.Ready -> launchView(ctx, file, plan.spec)
     }
+}
+
+/**
+ * 第六百八十一批：**现查盘**再出规格（`isFile` 每次现问，不信列表里那枚旧徽标）。
+ *
+ * 抽出来只有一个目的：让「文件被用户删掉之后再点」这一支能在纯 JVM 里断言
+ * （[ArtifactOpen.planOf] 的 `onDisk` 由这里的 `file.isFile` 现读）。带 `Context`
+ * 的那一半仍在 [openArtifactExternally] 里，本函数不碰 Android 类。
+ */
+internal fun artifactOpenPlanOf(root: File, relPath: String): ArtifactOpenPlan {
+    val file = File(root, relPath)
+    return ArtifactOpen.planOf(file.name, file.isFile)
 }
 
 /** 把一份规格变成 Intent；返回发没发出去，以及为什么没发出去。 */

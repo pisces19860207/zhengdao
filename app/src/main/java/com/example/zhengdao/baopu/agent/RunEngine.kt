@@ -711,12 +711,13 @@ internal class RunEngine(
     }
 
     /**
-     * 第三十八批 §9.1：把**这一子调用真写成功**的文本产物记进 `artifact` 台账。
+     * 第三十八批 §9.1：把**这一子调用真写成功**的产物记进 `artifact` 台账。
      *
-     * 「什么算产物」一个字都不在这里重写——直接复用 B 段那两个纯函数：
-     * `selectTextArtifacts`（文本白名单＋≤512 KB＋前 8 KB 无 NUL）与
-     * `artifactEntries`（字节数取自盘，不编）。顶栏、消息列表、抽屉三处看的是同一份
-     * 规则（用户 2026-10-19 口径：两处共用同一份收集逻辑与查看器）。
+     * 「什么算产物」一个字都不在这里重写——直接复用纯函数那两份：
+     * `selectArtifacts`（文本族走 `selectTextArtifacts` 的老三道，再并上 docx/xlsx 与
+     * png/jpg/webp；**台账只有这一本**）与 `artifactEntries`（字节数取自盘，不编）。
+     * 顶栏产物条仍只显示文本族（那里的片是「点开＝只读查看器」，二进制进去就是一屏乱码），
+     * 用户要看/要打开 docx 走抽屉里的产物区——两边读的都是这一本台账。
      *
      * 表里只有**相对路径**与字节数（§9.4：不存绝对路径、不存文件内容）；
      * 同一 `(workspace, rel_path)` 再写 ⇒ `ON CONFLICT DO UPDATE` 只刷字节与时间，
@@ -732,7 +733,7 @@ internal class RunEngine(
      */
     private fun persistArtifactLedger(sessionId: Long, touched: List<String>) {
         val root = spillRoot()
-        val kept = com.example.zhengdao.baopu.selectTextArtifacts(root, touched)
+        val kept = com.example.zhengdao.baopu.selectArtifacts(root, touched)
         if (kept.isEmpty()) return
         // workspace 存绝对路径**字符串**（与 session.workspace 同一取法：spillRoot() 就是
         // BaopuRuntime.workspaceRoot ⇒ 与 hostDir 同一个目录），产物按工作区隔离全靠它。

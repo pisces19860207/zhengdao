@@ -245,8 +245,10 @@ class BaopuArtifactShelfTest {
     fun `C2_记账用的就是同一份收集逻辑_而且自己不写盘`() {
         val src = engine()
         assertTrue(
-            "收集口径与 §8 顶栏同一份（selectTextArtifacts：白名单＋512KB＋无 NUL）",
-            src.contains("com.example.zhengdao.baopu.selectTextArtifacts(root, touched)"),
+            // 第六百八十一批：台账收集从 selectTextArtifacts 扩到 selectArtifacts（多了文档/图片两族），
+            // 但文本那老三道（白名单＋512KB＋无 NUL）仍然只有 selectTextArtifacts 一个主人。
+            "收集口径走纯函数那一份（selectArtifacts：文本族转调 selectTextArtifacts）",
+            src.contains("com.example.zhengdao.baopu.selectArtifacts(root, touched)"),
         )
         assertTrue("字节数与查看器同一份（artifactEntries）", src.contains("artifactEntries(root, kept)"))
         assertTrue("落库语句只认 BaopuSql 那一条", src.contains("BaopuSql.upsertArtifact(sessionId, workspace, e.relPath, e.fileBytes, now)"))
@@ -256,7 +258,7 @@ class BaopuArtifactShelfTest {
         val body = src
             .substringAfter("private fun persistArtifactLedger(sessionId: Long, touched: List<String>) {")
             .substringBefore("\n    }\n")
-        assertTrue("判别器：函数体真切到了（切不到＝作用域是白圈的）", body.contains("selectTextArtifacts(root, touched)"))
+        assertTrue("判别器：函数体真切到了（切不到＝作用域是白圈的）", body.contains("selectArtifacts(root, touched)"))
         listOf("writeText(", "createNewFile(", "deleteRecursively", ".delete(", "copyTo(").forEach { bad ->
             assertFalse("记账这一步不动盘：$bad", body.contains(bad))
         }
@@ -336,7 +338,11 @@ class BaopuArtifactShelfTest {
 
         // 接线侧：面板点文件名就是把这一条交给查看器（渲染与复制都归 B 段那一处）
         val src = shelf()
-        assertTrue("文件名可点 ⇒ viewingRel", src.contains("Modifier.clickable { viewingRel = row.relPath }"))
+        assertTrue(
+            // 第六百八十一批：点开之前先按族分流（文本族进查看器，文档/图片族走外部打开）
+            "文件名可点 ⇒ 文本族 viewingRel",
+            src.contains("ArtifactRowTap.Preview -> viewingRel = row.relPath"),
+        )
         assertTrue("开的是那一份查看器", src.contains("BaopuArtifactViewer("))
         assertEquals("查看器调用点只有一个", 1, Regex("BaopuArtifactViewer\\(").findAll(src).count())
     }

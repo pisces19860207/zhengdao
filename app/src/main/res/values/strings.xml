@@ -1254,6 +1254,7 @@
     <string name="baopu_artifact_shelf_ledger_failed">文件已进回收站，但台账那一行没清掉：%1$s（下次打开还会看见它）</string>
     <string name="baopu_artifact_shelf_none">还没有产物</string>
     <string name="baopu_artifact_shelf_none_hint">让它写点东西就有了</string>
+    <string name="baopu_artifact_shelf_external_only">这类文件不在这里预览，点「用其他应用打开」交给别的应用</string>
     <string name="baopu_artifact_shelf_close">关闭</string>
     <!-- 641 打开产物：外部打开与文件管理器定位退化 -->
     <string name="baopu_artifact_open_external">用其他应用打开</string>
