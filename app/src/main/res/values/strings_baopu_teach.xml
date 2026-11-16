@@ -21,4 +21,8 @@
     <string name="baopu_tool_teach_skill_export_desc">把一个已保存的示教技能导出成单文件动作脚本（产物/玄览脚本/ 下，schema zl-teach/2：目标站、版本、步骤、每步校验点、最终快照）。导出前过凭证扫描与不可逆动作扫描——带明文凭据或含提交、支付、删除类点击的脚本不出门。每次导出都会弹确认卡。</string>
     <string name="baopu_tool_teach_skill_import">导入动作脚本</string>
     <string name="baopu_tool_teach_skill_import_desc">把导出过的动作脚本装回技能库（从 产物/玄览脚本/ 读；同名重导＝替换）。四道闸：schema 严格解析、凭证扫描（带明文凭据拒收）、不可逆动作扫描（提交、支付、删除类点击整份拒绝）、入库验收闸——任何一道不过就一个字节不写。每次导入都会弹确认卡。</string>
+    <string name="baopu_tool_teach_correct_apply">纠正改脚本</string>
+    <string name="baopu_tool_teach_correct_apply_desc">回放被暂停后，把用户那句纠正落成一个单步编辑（改输入值、换定位、加校验点、删步、挪顺序）。工具弹人批确认卡＝改脚本必须先确认；批后旧版自动备份到 技能/名/修订/、留痕 script_corrected，可一键回滚。改完用 teach_correct_resume 从被纠正的那一步重跑——不重录。</string>
+    <string name="baopu_tool_teach_correct_resume">从第 N 步重跑</string>
+    <string name="baopu_tool_teach_correct_resume_desc">纠正改完后从第 N 步重跑：前 N-1 步已成功过，不会重执行；起点指纹与开场域闸豁免（页面已在中途），每步域闸与安全闸照跑。不重录、不重建技能。每次续跑都会弹确认卡。</string>
 </resources>

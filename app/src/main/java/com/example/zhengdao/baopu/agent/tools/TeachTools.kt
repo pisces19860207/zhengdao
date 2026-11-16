@@ -18,6 +18,7 @@
 package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.TeachRunReport
+import com.example.zhengdao.baopu.correct.CorrectEdit
 import com.example.zhengdao.baopu.TeachSiteTrust
 import org.json.JSONObject
 
@@ -60,6 +61,17 @@ internal interface TeachGateway {
      * null/「ask」＝先问）——接线层 [com.example.zhengdao.baopu.DriftWire] 按它处置。
      */
     fun replay(name: String, sentence: String?, driftChoice: String? = null): String
+
+    /**
+     * 624C：把一句纠正落成**单步编辑**（人批卡片即确认闸；备份/留痕/回滚在 TeachScriptHistory）。
+     * 回执一句话（成功含新旧版本与 resume 提示；拒绝含原因）。
+     */
+    fun correctApply(name: String, edit: CorrectEdit): String
+
+    /**
+     * 624C：**从第 N 步重跑**（判据③——前 N-1 步不重执行；回执一句话）。
+     */
+    fun correctResume(name: String, fromStep: Int): String
 }
 
 /** 端口的运行时持有者（与 [BaopuBrowser] 同规：每次调用现取，不抓引用）。 */
@@ -83,6 +95,18 @@ internal object TeachTools {
 
     /** drift 参数的合法值（与 [com.example.zhengdao.baopu.DriftChoice] 的 wire 一致）。 */
     val DRIFT_WIRES = setOf("proceed", "new_version", "cancel", "mute")
+
+    /** 624C：纠正编辑的参数名。 */
+    const val ARG_STEP = "step"
+    const val ARG_OP = "op"
+    const val ARG_VALUE = "value"
+    const val ARG_LOCATOR_KIND = "locatorKind"
+    const val ARG_EXPECT = "expect"
+    const val ARG_TO_INDEX = "toIndex"
+    const val ARG_REASON = "reason"
+
+    /** 624C：纠正编辑的闭集（与 [com.example.zhengdao.baopu.correct.CorrectEdit.OPS] 一致）。 */
+    val CORRECT_OPS = setOf("setValue", "setLocator", "setExpect", "deleteStep", "moveStep")
 
     /** 拿不到网关时的统一话术（与浏览器件同一把声音）。 */
     val NO_TEACH = "玄览还没打开：先在底部切到「玄览」并打开一个页面，再教我或让我回放。"
@@ -265,6 +289,91 @@ internal object TeachTools {
         }
         runCatching { ToolOutcome.Ok(gw.replay(name, sentence.ifEmpty { null }, drift)) }
             .getOrElse { ToolOutcome.Failed("回放失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    // ── ④' 624C：纠正（边看边纠）两件 ──────────────────────────────────────
+
+    fun correctApplySpec(): ToolSpec = ToolSpec(
+        name = "teach_correct_apply",
+        description = "回放被暂停后，把用户那句纠正落成**一个单步编辑**（改输入值／换定位／加校验点／删步／挪顺序）。" +
+            "编辑只会改这一步，其余步不动；工具弹人批确认卡＝「改脚本必须先确认」，批后旧版自动备份到 技能/<名>/修订/、" +
+            "留痕 script_corrected，可一键回滚。改完用 teach_correct_resume 从被纠正的那一步重跑——**不重录**。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_NAME to jsonObjectOf("type" to "string", "description" to "要纠正的技能名"),
+                ARG_STEP to jsonObjectOf("type" to "number", "description" to "被纠正的步号（暂停报告里给的那个 N）"),
+                ARG_OP to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("setValue", "setLocator", "setExpect", "deleteStep", "moveStep"),
+                    "description" to "编辑种类：setValue=改这一步的输入值；setLocator=换这一步的一档定位；" +
+                        "setExpect=给这一步加校验点；deleteStep=删掉这一步；moveStep=把这一步挪到别的位置",
+                ),
+                ARG_VALUE to jsonObjectOf("type" to "string", "description" to "setValue/setLocator 的新值；其他 op 不用给"),
+                ARG_LOCATOR_KIND to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("roleName", "testid", "ariaLabel", "elemId", "inputName", "placeholder", "xpath"),
+                    "description" to "setLocator 的定位档；其他 op 不用给",
+                ),
+                ARG_EXPECT to jsonObjectOf(
+                    "type" to "string",
+                    "enum" to jsonArrayOf("urlChanged", "rowCountChange", "textAppears", "elementGone"),
+                    "description" to "setExpect 的校验点；其他 op 不用给",
+                ),
+                ARG_TO_INDEX to jsonObjectOf("type" to "number", "description" to "moveStep 的目标位（1 起）；其他 op 不用给"),
+                ARG_REASON to jsonObjectOf("type" to "string", "description" to "用户那句纠正的原话（进账留痕，一个字不改）"),
+            ),
+            "required" to jsonArrayOf(ARG_NAME, ARG_STEP, ARG_OP, ARG_REASON),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.FILE_MS,
+    ) { args ->
+        val gw = BaopuTeach.require() ?: return@ToolSpec ToolOutcome.Failed(NO_TEACH)
+        val name = args.optString(ARG_NAME).trim()
+        val step = if (args.has(ARG_STEP)) args.optInt(ARG_STEP, -1) else -1
+        val op = args.optString(ARG_OP).trim()
+        val reason = args.optString(ARG_REASON).trim()
+        if (name.isEmpty()) return@ToolSpec ToolOutcome.Failed("name 不能为空：要纠正哪个技能")
+        if (step < 1) return@ToolSpec ToolOutcome.Failed("step 要是被纠正的步号（暂停报告里的 N）")
+        if (op !in CORRECT_OPS) return@ToolSpec ToolOutcome.Failed("op 只认 ${CORRECT_OPS.joinToString("／")}（拿到「$op」）")
+        if (reason.isEmpty()) return@ToolSpec ToolOutcome.Failed("reason 不能为空：用户那句纠正要原话留痕")
+        val edit = CorrectEdit(
+            name = name, step = step, op = op,
+            value = args.optString(ARG_VALUE).trim().ifEmpty { null },
+            locatorKind = args.optString(ARG_LOCATOR_KIND).trim().ifEmpty { null },
+            expect = args.optString(ARG_EXPECT).trim().ifEmpty { null },
+            toIndex = if (args.has(ARG_TO_INDEX)) args.optInt(ARG_TO_INDEX, -1) else null,
+            reason = reason,
+        )
+        runCatching { ToolOutcome.Ok(gw.correctApply(name, edit)) }
+            .getOrElse { ToolOutcome.Failed("纠正落盘失败：${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    fun correctResumeSpec(): ToolSpec = ToolSpec(
+        name = "teach_correct_resume",
+        description = "纠正改完后**从第 N 步重跑**：前 N-1 步已成功过，不会重执行（判据③）；" +
+            "起点指纹与开场域闸豁免（页面已在中途），每步域闸与安全闸照跑。" +
+            "fromStep 给被纠正的那一步的步号。不重录、不重建技能。",
+        inputSchema = jsonObjectOf(
+            "type" to "object",
+            "properties" to jsonObjectOf(
+                ARG_NAME to jsonObjectOf("type" to "string", "description" to "要续跑的技能名"),
+                ARG_STEP to jsonObjectOf("type" to "number", "description" to "从第几步开始重跑（被纠正的那一步；1 起）"),
+            ),
+            "required" to jsonArrayOf(ARG_NAME, ARG_STEP),
+            "additionalProperties" to false,
+        ),
+        permission = ToolPermission.CONFIRM,
+        timeoutMs = ToolTimeout.REPLAY_MS,
+    ) { args ->
+        val gw = BaopuTeach.require() ?: return@ToolSpec ToolOutcome.Failed(NO_TEACH)
+        val name = args.optString(ARG_NAME).trim()
+        val fromStep = if (args.has(ARG_STEP)) args.optInt(ARG_STEP, -1) else -1
+        if (name.isEmpty()) return@ToolSpec ToolOutcome.Failed("name 不能为空：要续跑哪个技能")
+        if (fromStep < 1) return@ToolSpec ToolOutcome.Failed("step 要 ≥1（从第几步重跑）")
+        runCatching { ToolOutcome.Ok(gw.correctResume(name, fromStep)) }
+            .getOrElse { ToolOutcome.Failed("续跑失败：${it.message ?: it.javaClass.simpleName}") }
     }
 
     // ── ⑤ 信任名单 ──────────────────────────────────────────────────────

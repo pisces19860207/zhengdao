@@ -3315,6 +3315,9 @@ internal class RunEngine(
         }
         if (!running) return false
         if (!interjections.offer(text)) return false
+        // 624C：回放在跑 ⇒ 这句插话同时是「针对回放的纠正」——转发给回放暂停闸
+        // （CorrectInbox 只在回放活动时收；插话本来的落点与语义一字未改，判据⑤不碰端口与闸）
+        com.example.zhengdao.baopu.correct.CorrectInbox.noteInterjection(text)
         if (interjectOwner == null) {
             interjectOwner = _sessionKey.value?.removePrefix("id:")?.toLongOrNull()
         }

@@ -620,6 +620,10 @@ class ToolSchemaAllTest {
             // 622：动作脚本导出/导入（唯一必填是 name——导出哪个/导入哪个）
             "teach_skill_export" to JSONObject().put("name", "查货"),
             "teach_skill_import" to JSONObject().put("name", "查货"),
+            // 624C：纠正两件（apply 唯一必填 name/step/op/reason；resume 是 name/step）
+            "teach_correct_apply" to JSONObject()
+                .put("name", "查货").put("step", 2).put("op", "setValue").put("value", "WB999").put("reason", "单号要填新运单"),
+            "teach_correct_resume" to JSONObject().put("name", "查货").put("step", 2),
             // 502：MCP 自配五件（list 全可选且有 REQUIRED_EMPTY_OK 签字；其余各有必填）
             "mcp_list" to JSONObject(),
             // 527：治理出口无参数（REQUIRED_EMPTY_OK 已签字）

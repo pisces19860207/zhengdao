@@ -43,6 +43,14 @@ data class TeachRunReport(
      * 判据见 [teachSuggestionOf]——纯函数映射，不猜页面，只给「人可以照做」的一句。
      */
     val suggestion: String? = null,
+    /**
+     * 624C：回放被**插话纠正**暂停（判据①：当步结束即暂停，该句作为「针对第 N 步的纠正」）。
+     * paused=true 时 ok=false、failedStep=null、correction 非空、pausedAtStep=待重跑的步号；
+     * 暂停的回放**不计验收样本、不触发自进化回滚**（人插话不是脚本失败——TeachReplay 侧滤）。
+     */
+    val paused: Boolean = false,
+    val pausedAtStep: Int? = null,
+    val correction: String? = null,
 ) {
     /** 审计一行（§3.5：技能名/步数/结果/耗时/漂移/被拒动作；622 加建议）。 */
     fun auditLine(nowMs: Long, opId: String? = null): String {
@@ -160,6 +168,12 @@ internal class TeachExecutor(
     private val audit: (TeachRunReport, Long) -> Unit = { _, _ -> },
     private val clock: () -> Long = System::currentTimeMillis,
     private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
+    /**
+     * 624C：**步间暂停闸**（判据①）。每步开头查一次——非空＝用户插话要求纠正，
+     * 当前步跑完（=上一处循环已完整走完）后**下一步动手前**停：该句作为「针对第 N 步的
+     * 纠正」进暂停报告（判据①「当步结束即暂停」）。null＝照常执行。缺省无闸＝旧口径。
+     */
+    private val pauseGate: () -> String? = { null },
 ) {
 
     companion object {
@@ -170,7 +184,13 @@ internal class TeachExecutor(
         const val EXPECT_POLL_MS = 150L
     }
 
-    fun run(skill: TeachSkill): TeachRunReport {
+    /**
+     * 回放。624C 加 [fromStep]（**从第 N 步重跑**，判据③）：1＝从第一步（旧口径）；
+     * N>1＝跳过前 N-1 步**不重执行**（断言调用次数的落点），起点域与结构指纹两道
+     * 开场闸只在 fromStep==1 时跑（中途续跑的页面已不在起点，开场指纹必假阳性；
+     * 每步的域白名单与安全闸照跑不豁免）。
+     */
+    fun run(skill: TeachSkill, fromStep: Int = 1): TeachRunReport {
         val started = clock()
         val drifts = mutableListOf<TeachDrift>()
         val refusals = mutableListOf<String>()
@@ -208,29 +228,66 @@ internal class TeachExecutor(
             return report
         }
 
-        // ── ① 起点域白名单 ──
+        /** 624C 判据①：暂停报告（不是失败——不取失败证据、不进重教建议表；判据②不出现重录话术）。 */
+        fun paused(atStep: Int, correction: String): TeachRunReport {
+            val report = TeachRunReport(
+                skillName = skill.name,
+                ok = false,
+                stepsDone = stepsDone,
+                failedStep = null,
+                stopReason = "第 $atStep 步结束后暂停——收到纠正：${correction.take(80)}",
+                durationMs = clock() - started,
+                drifts = drifts,
+                refusals = refusals,
+                ask = null,
+                evidenceDir = evidenceDir,
+                retried = retried,
+                suggestion = "纠正落在第 $atStep 步：teach_correct_apply 确认改完，" +
+                    "再用 teach_correct_resume(name, fromStep=$atStep) 从该步重跑（不重跑已成功的前 ${atStep - 1} 步，不重录）",
+                paused = true,
+                pausedAtStep = atStep,
+                correction = correction,
+            )
+            evidence.finish(report)
+            audit(report, clock())
+            return report
+        }
+
+        // ── ① 起点域白名单 ──（624C：中途续跑（fromStep>1）豁免开场两道闸——页面已在
+        // 流程中段，起点指纹必假阳性；每步域白名单与安全闸不豁免）
         val startUrl = (dom.ask(TeachQuery.CurrentUrl) as? TeachReply.Url)?.url
             ?: return stop(null, "取不到当前页面（标签可能还在加载）")
-        if (!TeachSafety.domainAllowed(startUrl, skill.allowedDomains)) {
+        if (fromStep == 1 && !TeachSafety.domainAllowed(startUrl, skill.allowedDomains)) {
             return stop(null, "当前页不在授权域（${TeachSafety.hostOf(startUrl) ?: "?"}），回放只在授权域内执行")
         }
 
         // ── ② 结构指纹：关键表头/关键按钮的 name 集合对不上 ⇒ 停手（负例 2）──
-        val anchors = dom.ask(TeachQuery.HeadersAndButtons) as? TeachReply.Anchors
-            ?: return stop(null, "取不到页面结构指纹（页面可能还在加载）")
-        val live = (anchors.headers + anchors.buttons).map { it.trim() }.toSet()
-        val missing = skill.fingerprint.anchors.filter { it.name.trim() !in live }
-        if (missing.isNotEmpty()) {
-            return stop(
-                null,
-                "页面结构变了，请重新教一遍（关键锚点缺失：${missing.joinToString("、") { it.name }}）",
-            )
+        if (fromStep == 1) {
+            val anchors = dom.ask(TeachQuery.HeadersAndButtons) as? TeachReply.Anchors
+                ?: return stop(null, "取不到页面结构指纹（页面可能还在加载）")
+            val live = (anchors.headers + anchors.buttons).map { it.trim() }.toSet()
+            val missing = skill.fingerprint.anchors.filter { it.name.trim() !in live }
+            if (missing.isNotEmpty()) {
+                return stop(
+                    null,
+                    "页面结构变了，请重新教一遍（关键锚点缺失：${missing.joinToString("、") { it.name }}）",
+                )
+            }
         }
 
         // ── ③ 步骤循环 ──
         var beforeUrl = startUrl
         var beforeRows = rowCount()
-        for (step in skill.steps) {
+        for (step in skill.steps.drop(fromStep - 1)) {
+            // 624C：步间暂停闸（判据①）——上一步已完整走完（含 expect＋取证），此刻收
+            // 到纠正 ⇒ **当步结束即暂停**：纠正是「针对第 ${step.index} 步」的，处理完
+            // 用 teach_correct_resume 从该步重跑（判据③），**不许要求重录**（判据②）。
+            pauseGate()?.let { correction ->
+                return paused(
+                    atStep = step.index,
+                    correction = correction,
+                )
+            }
             // 域白名单：每步执行前再查一次（上一步可能已把页面带出去）
             val stepUrl = (dom.ask(TeachQuery.CurrentUrl) as? TeachReply.Url)?.url ?: beforeUrl
             if (!TeachSafety.domainAllowed(stepUrl, skill.allowedDomains)) {

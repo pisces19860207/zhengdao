@@ -148,6 +148,8 @@ internal object BaopuToolLabels {
         "teach_record_start" to R.string.baopu_tool_teach_record_start,
         "teach_record_stop" to R.string.baopu_tool_teach_record_stop,
         "teach_skill_save" to R.string.baopu_tool_teach_skill_save,
+        "teach_correct_apply" to R.string.baopu_tool_teach_correct_apply,
+        "teach_correct_resume" to R.string.baopu_tool_teach_correct_resume,
         "browser_replay_skill" to R.string.baopu_tool_browser_replay_skill,
         "teach_site_trust" to R.string.baopu_tool_teach_site_trust,
         // 622：动作脚本导出/导入（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
@@ -290,6 +292,8 @@ internal object BaopuToolLabels {
         "teach_record_start" to R.string.baopu_tool_teach_record_start_desc,
         "teach_record_stop" to R.string.baopu_tool_teach_record_stop_desc,
         "teach_skill_save" to R.string.baopu_tool_teach_skill_save_desc,
+        "teach_correct_apply" to R.string.baopu_tool_teach_correct_apply_desc,
+        "teach_correct_resume" to R.string.baopu_tool_teach_correct_resume_desc,
         "browser_replay_skill" to R.string.baopu_tool_browser_replay_skill_desc,
         "teach_site_trust" to R.string.baopu_tool_teach_site_trust_desc,
         // 622：动作脚本导出/导入（同上，漏了 fail-fast）

@@ -514,6 +514,11 @@ internal data class RiskTable(
                 // 四道闸在交换层：schema 严格解析/凭证扫描/不可逆扫描/入库验收）。
                 "teach_skill_export" to ToolRule(RiskClass.R1),
                 "teach_skill_import" to ToolRule(RiskClass.R1),
+                // 624C：纠正两件（边看边纠）。correct_apply 改脚本写盘（R1，同 skill_save 档
+                // ——备份/留痕/回滚在 TeachScriptHistory；CONFIRM 卡＝「改脚本必须先确认」）；
+                // correct_resume 自动执行页面动作（R2＋alwaysAsk，同 replay_skill 档）。
+                "teach_correct_apply" to ToolRule(RiskClass.R1),
+                "teach_correct_resume" to ToolRule(RiskClass.R2, alwaysAsk = true),
                 // ── 502 MCP 自配五件（CORE 组；add/set_token 是 R3 必问——对外连接与凭据）──
                 "mcp_list" to ToolRule(RiskClass.R0),
                 "mcp_add_server" to ToolRule(RiskClass.R3),

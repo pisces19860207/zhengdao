@@ -1160,6 +1160,10 @@ object TeachReplay {
      * 第二百零一批 ②：TYPE/SELECT 两支的「动手」走 [FormFillingTeachDom]（＝201 的
      * [FormFiller]），跑完出「待发布卡」（数据在 [PublishCard]，渲染在 `FormFillSheet.kt`）。
      */
+    /**
+     * 624C：[fromStep] 支持「从第 N 步重跑」（判据③——前 N-1 步不重执行）；暂停闸接
+     * [com.example.zhengdao.baopu.correct.CorrectInbox]（判据①：插话当步结束即暂停）。
+     */
     fun replaySkill(
         context: Context,
         projectRoot: File,
@@ -1167,6 +1171,7 @@ object TeachReplay {
         name: String,
         tabId: Int?,
         driftChoice: DriftChoice = DriftChoice.ASK,
+        fromStep: Int = 1,
     ): TeachRunReport {
         val skill = TeachReplayStore.load(projectRoot, name)
             ?: return failedReport(name, "没有这个回放技能：$name（先在玄览里教一遍）")
@@ -1206,12 +1211,20 @@ object TeachReplay {
                 if (!TeachReplayStore.appendAudit(projectRoot, report.auditLine(now, opId))) {
                     RunLog.log("回放审计落盘失败：skill=${report.skillName}")
                 }
-                recordAcceptance(context, projectRoot, skill, report, now, opId)
+                // 624C：**暂停的回放不计验收样本、不触发自进化回滚**——人插话不是脚本失败
+                // （ScriptEvo.onReplaySettled 对失败即自动降级，暂停不能背这个锅）；审计行照落。
+                if (!report.paused) recordAcceptance(context, projectRoot, skill, report, now, opId)
             },
+            pauseGate = { com.example.zhengdao.baopu.correct.CorrectInbox.pendingCorrection() },
         )
-        val report = executor.run(skill)
-        publishReplayCard(context, tabId, report, dom, skill)
-        return report
+        com.example.zhengdao.baopu.correct.CorrectInbox.beginReplay(skill.name, skill.steps.size)
+        try {
+            val report = executor.run(skill, fromStep)
+            publishReplayCard(context, tabId, report, dom, skill)
+            return report
+        } finally {
+            com.example.zhengdao.baopu.correct.CorrectInbox.endReplay()
+        }
     }
 
     private fun failedReport(name: String, reason: String): TeachRunReport = TeachRunReport(
@@ -1387,15 +1400,20 @@ fun replaySkillWithParams(
                     if (!TeachReplayStore.appendAudit(projectRoot, TeachParams.redact(report.auditLine(now, opId), pl.values))) {
                         RunLog.log("回放审计落盘失败：skill=${report.skillName}")
                     }
-                    evoNote = recordAcceptance(context, projectRoot, pl.skill, report, now, opId)?.let {
-                        TeachParams.redact(it, pl.values)
-                    }
+                    // 624C：暂停不计样本（同 replaySkill——人插话不是脚本失败）；脱敏在收口处
+                    evoNote = recordParamsAcceptance(context, projectRoot, pl.skill, report, now, opId, pl.values)
                 },
+                pauseGate = { com.example.zhengdao.baopu.correct.CorrectInbox.pendingCorrection() },
             )
-            val report = executor.run(pl.skill)
-            // 表单步出「待发布卡」；落盘的文本按 200 的口径把参数值换回占位符，界面拿的对象不换
-            val card = publishReplayCard(context, tabId, report, dom, pl.skill, pl.values)
-            return TeachParamRun(report, null, pl.display, null, card, evoNote)
+            com.example.zhengdao.baopu.correct.CorrectInbox.beginReplay(pl.skill.name, pl.skill.steps.size)
+            try {
+                val report = executor.run(pl.skill)
+                // 表单步出「待发布卡」；落盘的文本按 200 的口径把参数值换回占位符，界面拿的对象不换
+                val card = publishReplayCard(context, tabId, report, dom, pl.skill, pl.values)
+                return TeachParamRun(report, null, pl.display, null, card, evoNote)
+            } finally {
+                com.example.zhengdao.baopu.correct.CorrectInbox.endReplay()
+            }
         }
     }
 }
@@ -1406,6 +1424,23 @@ fun replaySkillWithParams(
  * 第二百五十五批 U3：回放前的验收闸（stale ⇒ 返回停手话，null ⇒ 可以跑）。
  * 状态读失败/没有状态文件 ⇒ 不拦（没有账不等于有罪——第一次跑总是没有样本）。
  */
+/** 624C：带参回放的验收记账＋脱敏（复杂度从 replaySkillWithParams 的审计 λ 挪出来；
+ *  暂停的回放不计样本——人插话不是脚本失败）。 */
+private fun recordParamsAcceptance(
+    context: Context,
+    projectRoot: File,
+    skill: TeachSkill,
+    report: TeachRunReport,
+    nowMs: Long,
+    opId: String,
+    values: Map<String, String>,
+): String? {
+    if (report.paused) return null
+    return recordAcceptance(context, projectRoot, skill, report, nowMs, opId)?.let {
+        TeachParams.redact(it, values)
+    }
+}
+
 private fun preAcceptanceBlock(projectRoot: File, name: String, nowMs: Long): String? = runCatching {
     val md = TeachReplayStore.skillMdFile(projectRoot, name).takeIf { it.isFile }
         ?.readText(Charsets.UTF_8)

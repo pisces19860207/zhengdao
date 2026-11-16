@@ -508,6 +508,38 @@ internal object BaopuBrowserWiring {
                     }
                 }
             }
+
+            // 624C：纠正编辑（人批卡片＝确认闸；备份/留痕/回滚在 TeachScriptHistory）
+            override fun correctApply(name: String, edit: com.example.zhengdao.baopu.correct.CorrectEdit): String {
+                val root = BaopuRuntime.workspaceRoot(ctx)
+                return com.example.zhengdao.baopu.correct.TeachCorrectApply.apply(
+                    projectRoot = root,
+                    globalRoot = File(ctx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY),
+                    personaFiles = com.example.zhengdao.baopu.BaopuRuntime.personaFiles(ctx),
+                    name = name,
+                    edit = edit,
+                    nowMs = System.currentTimeMillis(),
+                )
+            }
+
+            // 624C：从第 N 步重跑（判据③——前 N-1 步不重执行；回放中重复续跑被 CorrectInbox 拒）
+            override fun correctResume(name: String, fromStep: Int): String {
+                if (com.example.zhengdao.baopu.correct.CorrectInbox.active() != null) {
+                    return "已有一个回放在跑——等它结束（或暂停落地）再续跑"
+                }
+                val root = BaopuRuntime.workspaceRoot(ctx)
+                return TeachTools.reportLine(
+                    TeachReplay.replaySkill(
+                        context = ctx,
+                        projectRoot = root,
+                        workspace = root,
+                        name = name,
+                        tabId = BrowserTabManager.activeTab()?.id,
+                        driftChoice = com.example.zhengdao.baopu.DriftChoice.PROCEED,
+                        fromStep = fromStep,
+                    ),
+                )
+            }
         }
     }
 

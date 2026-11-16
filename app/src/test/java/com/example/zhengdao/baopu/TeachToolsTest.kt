@@ -52,6 +52,17 @@ class TeachToolsTest {
             calls += "replay:$name/${sentence ?: "-"}/${driftChoice ?: "-"}"
             return "回放完成：3 步；取证：/tmp/evidence"
         }
+
+        // 624C：纠正两件（假网关只记调用；判据细节在 TeachCorrectFlowTest/TeachScriptHistoryTest）
+        override fun correctApply(name: String, edit: com.example.zhengdao.baopu.correct.CorrectEdit): String {
+            calls += "correctApply:$name/${edit.step}/${edit.op}"
+            return "已确认改脚本：$name（留痕 script_corrected）"
+        }
+
+        override fun correctResume(name: String, fromStep: Int): String {
+            calls += "correctResume:$name/$fromStep"
+            return "续跑完成：从第 $fromStep 步"
+        }
     }
 
     @After
