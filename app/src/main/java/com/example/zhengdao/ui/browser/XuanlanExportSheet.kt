@@ -3,6 +3,7 @@
 
 package com.example.zhengdao.ui.browser
 
+import com.example.zhengdao.ui.theme.rPill
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -120,7 +121,7 @@ internal fun XuanlanExportSheet(
                     Box(
                         modifier = Modifier
                             .heightIn(min = 44.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(rPill))
                             .background(palette.clusterPrimaryBg)
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                     ) {
