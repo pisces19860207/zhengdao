@@ -32,6 +32,45 @@
   "B": [
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 14,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "（未裁决）",
+    "package": "com.example.zhengdao.baopu.body",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "SilhouetteWire",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt",
+      "line": 177
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt",
+      "line": 179
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt",
+      "line": 179
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt",
+      "line": 184
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt",
+      "line": 185
+     }
+    ],
+    "verdict": "UNRESOLVED",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -186,11 +225,11 @@
  },
  "summary": {
   "A": 1,
-  "B": 1,
+  "B": 2,
   "C": 4,
   "gates_with_write_path": 4,
   "not_wired": 1,
-  "production_top_level_public": 495,
-  "wired": 493
+  "production_top_level_public": 505,
+  "wired": 502
  }
 }
