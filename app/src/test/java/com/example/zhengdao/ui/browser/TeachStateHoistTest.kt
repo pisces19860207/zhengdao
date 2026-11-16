@@ -443,7 +443,10 @@ class TeachStateHoistTest {
         assertTrue("玄览取的是接线层那份单例", wiring.contains("internal fun uiTeachModel(appCtx: Context): TeachSessionUiModel = synchronized(this)"))
         assertTrue("共用进程级 teachScope", wiring.contains("scope = teachScope"))
         assertTrue("teachScope 是 SupervisorJob 进程级域", wiring.contains("CoroutineScope(SupervisorJob() + Dispatchers.Main)"))
-        assertFalse("玄览不许再有 rememberCoroutineScope（切页会取消录制器）", browser.contains("rememberCoroutineScope"))
+        // 651 合入后同一文件新增了 exportScope = rememberCoroutineScope{...}（导出是页面级动作，
+        // 页面销毁即取消，语义正确）⇒ 本闸只钉「教学不能被页面级域接管」这一条。
+        assertFalse("教学（会话模型/录制器）不许接页面级 rememberCoroutineScope", teachScopedByComposition(browser))
+        assertTrue("前提：导出用的页面级域确实存在（651），本闸只放行它", browser.contains("exportScope = rememberCoroutineScope"))
         assertFalse("玄览不许再自己 new 会话模型", browser.contains("TeachSessionUiModel("))
     }
 
@@ -457,5 +460,22 @@ class TeachStateHoistTest {
         )
         assertFalse("恒真口径必须被判据抓住", mutated.contains("fun teachingNow(): Boolean = teachRecording || teachDraft != null"))
         assertTrue("变异确实改了文件", mutated.contains("fun teachingNow(): Boolean = true"))
+    }
+
+    /** 教学相关行里出现 rememberCoroutineScope ⇒ 视为违规；导出那类页面级动作用例逐条放行。 */
+    private fun teachScopedByComposition(src: String): Boolean {
+        val allowed = listOf("exportScope = rememberCoroutineScope")
+        return src.lines()
+            .filter { it.contains("rememberCoroutineScope") }
+            .filterNot { line -> allowed.any { line.contains(it) } }
+            .any { line -> line.contains("teach", ignoreCase = true) || line.contains("record", ignoreCase = true) }
+    }
+
+    @Test
+    fun `判据1负例_教学域接回页面组合必红`() {
+        val browser = code(browserRel)
+        assertFalse("前提：真源码里教学不接页面级域", teachScopedByComposition(browser))
+        val mutated = browser + "\n    val teachScope = rememberCoroutineScope { }"
+        assertTrue("教学接回页面级域必须被抓", teachScopedByComposition(mutated))
     }
 }

@@ -358,7 +358,7 @@ internal object BaopuBrowserWiring {
         val ctx = appCtxRef?.get() ?: error("BaopuBrowserWiring.install 还没跑")
         TeachSessionUiModel(
             scope = teachScope,
-            context = ctx,
+            context = { ctx },
             tabId = { BrowserTabManager.activeTab()?.id },
             projectRoot = { BaopuRuntime.workspaceRoot(ctx) },
             globalRoot = { teachGlobalRoot(ctx) },
@@ -378,7 +378,7 @@ internal object BaopuBrowserWiring {
     internal fun uiTeachModel(appCtx: Context): TeachSessionUiModel = synchronized(this) {
         uiTeachModelRef ?: TeachSessionUiModel(
             scope = teachScope,
-            context = appCtx.applicationContext,
+            context = { appCtx.applicationContext },
             tabId = { BrowserTabManager.activeTab()?.id },
             projectRoot = { BaopuRuntime.workspaceRoot(appCtx) },
             globalRoot = { teachGlobalRoot(appCtx) },

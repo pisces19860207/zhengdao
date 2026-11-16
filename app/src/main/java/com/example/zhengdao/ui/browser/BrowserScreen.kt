@@ -36,10 +36,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -74,6 +77,7 @@ import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.ui.baopu.BaopuChatController
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 玄览主界面 —— 用户模式（第⑨刀 B 多标签 + C 底栏改版）。

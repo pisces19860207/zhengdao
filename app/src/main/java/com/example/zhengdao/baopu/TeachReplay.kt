@@ -724,7 +724,7 @@ return JSON.stringify({u:location.href,r:document.querySelectorAll('table tr,[ro
  */
 internal class TeachSessionUiModel(
     val scope: CoroutineScope,
-    val context: Context,
+    val context: () -> Context,
     val tabId: () -> Int?,
     val projectRoot: () -> File,
     val globalRoot: () -> File,
@@ -798,7 +798,7 @@ internal class TeachSessionUiModel(
     fun replay(name: String, workspace: File, onDone: (TeachRunReport) -> Unit) {
         scope.launch(Dispatchers.IO) {
             val report = TeachReplay.replaySkill(
-                context = context,
+                context = context(),
                 projectRoot = projectRoot(),
                 workspace = workspace,
                 name = name,
@@ -815,7 +815,7 @@ internal class TeachSessionUiModel(
     fun replayWith(name: String, sentence: String, workspace: File, onDone: (TeachParamRun) -> Unit) {
         scope.launch(Dispatchers.IO) {
             val run = replaySkillWithParams(
-                context = context,
+                context = context(),
                 projectRoot = projectRoot(),
                 workspace = workspace,
                 name = name,

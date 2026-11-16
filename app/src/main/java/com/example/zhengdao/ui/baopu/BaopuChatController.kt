@@ -731,7 +731,7 @@ internal class BaopuChatController(context: Context) {
         val pf = BaopuRuntime.personaFiles(appCtx)
         return com.example.zhengdao.baopu.TeachSessionUiModel(
             scope = scope,
-            context = appCtx,
+            context = { appCtx },
             tabId = { BrowserTabManager.activeTab()?.id },
             projectRoot = { workspaceRoot },
             globalRoot = { java.io.File(pf.globalFile().parentFile ?: workspaceRoot, "") },
