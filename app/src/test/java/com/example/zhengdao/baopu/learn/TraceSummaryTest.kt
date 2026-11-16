@@ -55,6 +55,8 @@ internal class TraceSummaryTest {
 
     @Test
     fun `判据5_摘要不超300字_不含正文关键词_敏感操作整条丢弃`() {
+        // 上限是派工单写死的数，这里钉字面量——用常量自证等于恒真（改常量也不会红）
+        assertEquals("300 字是派工单写死的上限", 300, TraceSummary.MAX_CHARS)
         val snapshot = snapshot(
             listOf(
                 event(ObserveKind.CLICK, 1, faces(name = "查询", testid = "q-btn")),
@@ -64,7 +66,7 @@ internal class TraceSummaryTest {
             ),
         )
         val summary = TraceSummary.of(snapshot)
-        assertTrue("不许超 300 字（实到 ${summary.length}）", summary.length <= TraceSummary.MAX_CHARS)
+        assertTrue("不许超 300 字（实到 ${summary.length}）", summary.length <= 300)
         assertTrue("要有步骤序号：$summary", summary.contains("1.") && summary.contains("2."))
         assertTrue("要有动作名：$summary", summary.contains("点击") && summary.contains("输入"))
         assertTrue("要有定位种类：$summary", summary.contains("testid"))
@@ -80,7 +82,7 @@ internal class TraceSummaryTest {
     fun `判据5_长轨迹压到300字以内_并标已截断`() {
         val events = (1..80).map { i -> event(ObserveKind.CLICK, i, faces(name = "按钮$i", xp = "button[$i]")) }
         val summary = TraceSummary.of(snapshot(events))
-        assertTrue("80 步也必须 ≤300 字（实到 ${summary.length}）", summary.length <= TraceSummary.MAX_CHARS)
+        assertTrue("80 步也必须 ≤300 字（实到 ${summary.length}）", summary.length <= 300)
         assertTrue("要如实标截断：$summary", summary.contains("共 80 步") && summary.contains("摘要已截断"))
         assertTrue("截断后仍要有可读的步骤：$summary", summary.contains("1. 点击"))
     }
