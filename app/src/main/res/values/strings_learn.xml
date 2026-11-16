@@ -56,4 +56,18 @@
     <string name="learn_draft_rejected_toast">草案被结构校验拒收：%1$s</string>
     <string name="learn_draft_created_toast">草案已入草稿区（未转正）</string>
     <string name="learn_draft_merged_toast">同一意图，已归并为一条（%1$d 次观察）</string>
+    <!-- 第六百七十二批 · 冲突步人裁（671 的「待人裁」在这里有了入口） -->
+    <string name="learn_adj_title">定位冲突待人裁</string>
+    <string name="learn_adj_intro">%1$d 步还有两种走法没定。机器不替你选：并排看两套定位各命中几处、证据在哪一帧，再点你要的那套。</string>
+    <string name="learn_adj_step">第 %1$d 步「%2$s」</string>
+    <string name="learn_adj_slot_a">走法 A</string>
+    <string name="learn_adj_slot_b">走法 B</string>
+    <string name="learn_adj_evidence_label">一帧证据：%1$s</string>
+    <string name="learn_adj_pick_a">选 A</string>
+    <string name="learn_adj_pick_b">选 B</string>
+    <string name="learn_adj_pick_none">都不对</string>
+    <string name="learn_adj_resolved">已裁：%1$s · %2$s · %3$s</string>
+    <string name="learn_adj_resolved_none">已记「都不对」——这一步要回玄览重新教一遍。</string>
+    <string name="learn_adj_reteach">去玄览重新教这一步</string>
+    <string name="learn_draft_promote_blocked">有冲突未裁——先在上面的卡片里裁完再转正</string>
 </resources>

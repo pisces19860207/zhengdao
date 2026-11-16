@@ -9,6 +9,8 @@
 //
 // 四条硬边界：
 //   · **冲突草案不转**：有候选并存待裁的步 ⇒ 拒（231「不擅自选」，阶段二没有代人选的授权）；
+//     672 起这条边界有了出口：判据本体在 [SkillDraftRules.checkForPromotion]——人裁完
+//     （A／B 各一套上位）才放行，裁 none ⇒ 拒并说「回重新教这一步」；转换器**不自己选**；
 //   · **定位不足两条不转**：TeachStep 要求每步 ≥2 档定位（622 学习器保证）；
 //   · **参数步不带字面量**：v2 口径步骤里只有 `${name}` 占位，参数默认值由**人批确认时**
 //     填进 [TeachParam.default]（观察数据里没有值，草案里也不造值——判据④的结构保证）；
@@ -43,20 +45,27 @@ internal object DraftConverter {
      * 草案 → zl-teach/2。[paramDefaults] 是**人批确认时**填的参数默认值（键＝参数名；
      * 没填的参数 default 为 null——执行端参数替换链照常工作，空值跑不了在回放侧如实失败，
      * 转换层不造假值）。
+     *
+     * [adjudications] 是人裁记录（672）：冲突步未裁／裁 none ⇒ 拒，理由照
+     * [SkillDraftRules.checkForPromotion] 的原话（「有冲突未裁」「回重新教这一步」）；
+     * 裁了 A／B ⇒ 先把选定那套落到主位再转。**本层没有任何代选逻辑**。
      */
-    fun toSkill(draft: SkillDraft, name: String, paramDefaults: Map<String, String>, nowMs: Long): Outcome {
-        val conflicted = draft.skeleton.filter { it.candidates.isNotEmpty() }
-        if (conflicted.isNotEmpty()) {
-            return Outcome.Refused(
-                "第 ${conflicted.joinToString("、") { it.index.toString() }} 步有定位冲突" +
-                    "（两种走法待人裁）——裁完再转正",
-            )
+    fun toSkill(
+        draft: SkillDraft,
+        name: String,
+        paramDefaults: Map<String, String>,
+        nowMs: Long,
+        adjudications: List<DraftAdjudication> = emptyList(),
+    ): Outcome {
+        val resolved = when (val applied = DraftAdjudications.apply(draft, adjudications)) {
+            is DraftAdjudications.Applied.Blocked -> return Outcome.Refused(applied.problems.joinToString("；"))
+            is DraftAdjudications.Applied.Ready -> applied.draft
         }
         if (name.isBlank()) return Outcome.Refused("技能名不能为空")
-        if (draft.skeleton.isEmpty()) return Outcome.Refused("草案没有可回放的步骤")
-        val steps = ArrayList<TeachStep>(draft.skeleton.size)
+        if (resolved.skeleton.isEmpty()) return Outcome.Refused("草案没有可回放的步骤")
+        val steps = ArrayList<TeachStep>(resolved.skeleton.size)
         val paramSteps = HashMap<String, MutableList<Int>>()
-        draft.skeleton.forEach { step ->
+        resolved.skeleton.forEach { step ->
             val action = TeachAction.fromWire(step.kind) ?: return Outcome.Refused("第 ${step.index} 步动作「${step.kind}」不可回放")
             val locators = tiersOf(step.locator)
             if (locators.size < 2) {
@@ -87,14 +96,14 @@ internal object DraftConverter {
         }
         val skill = TeachSkill(
             name = name,
-            purpose = draft.goal,
+            purpose = resolved.goal,
             createdAtMs = nowMs,
             startUrl = steps.first().url,
-            allowedDomains = listOf(draft.targetSite).filter { it.isNotBlank() },
+            allowedDomains = listOf(resolved.targetSite).filter { it.isNotBlank() },
             clickTagWhitelist = emptyList(),
             fingerprint = TeachFingerprint(emptyList()),
             steps = steps,
-            params = draft.params.map { p ->
+            params = resolved.params.map { p ->
                 TeachParam(
                     name = p.name,
                     label = p.name,
@@ -104,7 +113,7 @@ internal object DraftConverter {
                     default = paramDefaults[p.name],
                 )
             },
-            targetSite = draft.targetSite,
+            targetSite = resolved.targetSite,
             finalSnapshot = null,
         )
         return Outcome.Skill(skill)

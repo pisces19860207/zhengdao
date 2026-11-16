@@ -105,6 +105,10 @@ internal data class SkillDraft(
     /** 有定位冲突步（两套候选并存待裁——确认转正前必须由人裁定，裁前不许落成技能）。 */
     fun hasConflict(): Boolean = skeleton.any { it.candidates.isNotEmpty() }
 
+    /** 还没裁的冲突步（672 判据①：有它就是「有冲突未裁」；裁完但裁 none 的不算在这里）。 */
+    fun unresolvedSteps(adjudications: List<DraftAdjudication>): List<DraftStep> =
+        DraftAdjudications.pending(this, adjudications)
+
     fun toJson(): JSONObject = JSONObject()
         .put("schema", DRAFT_SCHEMA)
         .put("id", id)
@@ -159,6 +163,33 @@ internal object SkillDraftRules {
      * 模型侧 LearnSubmit）都要过门，闸只装在门上一处；装在提交口会变成两份判据。
      */
     const val IRREVERSIBLE = "不可逆"
+
+    /** 冲突未裁的定稿说法（672 判据①③断言到这五个字上，改字＝改判据）。 */
+    const val CONFLICT_UNRESOLVED = "有冲突未裁"
+
+    /** 裁 none 的去处的定稿说法（672 判据②断言到这一句上）。 */
+    const val RETEACH = "重新教这一步"
+
+    /** 未裁一句话（转正门与转换器的唯一文案，别处不许再拼一遍）。 */
+    fun unresolvedProblem(index: Int): String =
+        "第 $index 步$CONFLICT_UNRESOLVED（两种走法待人裁）——裁完再转正"
+
+    /** 裁 none 一句话（⇒ 回到重新教这一步，不是「随便挑一套」）。 */
+    fun reteachProblem(index: Int): String =
+        "第 $index 步两套定位都不对——回「$RETEACH」"
+
+    /**
+     * 转正门（672 判据①④）：**有候选 ⇒ 必须先由人裁定**。
+     *
+     * 判据本体＝「把裁定落到草案上」（[DraftAdjudications.apply]）＋「落完再过一次结构门」
+     * ——两步合一处，前后调用同一个函数即可断言结论变化（裁定前 Invalid「有冲突未裁」，
+     * 裁定后 Ok）。裁 none 也在这里拦（[reteachProblem]），转换层不再各判一遍。
+     */
+    fun checkForPromotion(draft: SkillDraft, adjudications: List<DraftAdjudication>): DraftCheck =
+        when (val applied = DraftAdjudications.apply(draft, adjudications)) {
+            is DraftAdjudications.Applied.Blocked -> DraftCheck.Invalid(applied.problems)
+            is DraftAdjudications.Applied.Ready -> validate(applied.draft)
+        }
 
     fun validate(draft: SkillDraft): DraftCheck {
         val problems = mutableListOf<String>()

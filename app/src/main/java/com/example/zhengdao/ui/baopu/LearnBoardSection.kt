@@ -8,12 +8,14 @@
 // 「就教这一步」只武装单步补录（ObserveCenter.requestTeachStep），不启示教录制。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -36,20 +38,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.AskUserCard
 import com.example.zhengdao.baopu.AskUserOption
+import com.example.zhengdao.baopu.learn.AdjudicationCard
+import com.example.zhengdao.baopu.learn.ConflictStepCard
+import com.example.zhengdao.baopu.learn.DraftAdjudication
+import com.example.zhengdao.baopu.learn.DraftChoice
+import com.example.zhengdao.baopu.learn.DraftCheck
 import com.example.zhengdao.baopu.learn.LearnCardTexts
 import com.example.zhengdao.baopu.learn.LearnToastKind
 import com.example.zhengdao.baopu.learn.LearnTriggerType
+import com.example.zhengdao.baopu.learn.LocatorCandidate
 import com.example.zhengdao.baopu.learn.NotLearnedItem
 import com.example.zhengdao.baopu.learn.SkillDraft
+import com.example.zhengdao.baopu.learn.SkillDraftRules
 import com.example.zhengdao.baopu.learn.SkillDraftStore
 import com.example.zhengdao.baopu.learn.ObserveCenter
 import com.example.zhengdao.baopu.learn.ObservePrefs
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.ui.SectionCard
+import com.example.zhengdao.ui.theme.rChip
 import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -189,6 +201,7 @@ internal fun LearnBoardSection() {
 @Composable
 private fun LearnDraftArea(modifier: Modifier = Modifier) {
     val drafts by ObserveCenter.drafts.collectAsState()
+    val adjudications by ObserveCenter.adjudications.collectAsState()
     val scope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
     var goal by rememberSaveable { mutableStateOf("") }
     var inducing by remember { mutableStateOf(false) }
@@ -208,7 +221,13 @@ private fun LearnDraftArea(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         } else {
-            drafts.forEach { draft -> DraftRow(draft = draft, onConfirm = { confirmingId = draft.id }) }
+            drafts.forEach { draft ->
+                DraftRow(
+                    draft = draft,
+                    adjudications = adjudications[draft.id].orEmpty(),
+                    onConfirm = { confirmingId = draft.id },
+                )
+            }
         }
         Row(
             Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -245,9 +264,16 @@ private fun LearnDraftArea(modifier: Modifier = Modifier) {
     }
 }
 
-/** 一条草案行：goal＋归并标记＋冲突/偶发/参数标记＋步数，转正与弃两颗钮（冲突不给转正）。 */
+/**
+ * 一条草案行：goal＋归并标记＋冲突/偶发/参数标记＋步数，转正与弃两颗钮。
+ *
+ * 672 起冲突不再只是「不给转正」：下面直接挂裁定卡（[ConflictAdjudicateCard]），
+ * **三选只有人能做**——裁完 A／B 才放行转正，裁 none ⇒ 回重新教这一步（判据①②）。
+ * 判据本体在 `SkillDraftRules.checkForPromotion`（转正钮的 enabled 就是它的结论）。
+ */
 @Composable
-private fun DraftRow(draft: SkillDraft, onConfirm: () -> Unit) {
+private fun DraftRow(draft: SkillDraft, adjudications: List<DraftAdjudication>, onConfirm: () -> Unit) {
+    val promotable = SkillDraftRules.checkForPromotion(draft, adjudications) is DraftCheck.Ok
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text(
             text = draft.goal,
@@ -268,16 +294,190 @@ private fun DraftRow(draft: SkillDraft, onConfirm: () -> Unit) {
             color = if (draft.hasConflict()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp),
         )
+        if (draft.hasConflict()) {
+            ConflictAdjudicateCard(draft = draft, adjudications = adjudications)
+        }
         Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            TextButton(onClick = onConfirm, enabled = !draft.hasConflict()) {
+            TextButton(onClick = onConfirm, enabled = promotable) {
                 Text(stringResource(R.string.learn_draft_confirm))
             }
             TextButton(onClick = { ObserveCenter.discardDraft(draft.id) }) {
                 Text(stringResource(R.string.learn_draft_discard))
             }
         }
+        if (draft.hasConflict() && !promotable) {
+            Text(
+                text = stringResource(R.string.learn_draft_promote_blocked),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
+
+/**
+ * 冲突裁定卡（672 判据③④）：并排两套定位（描述 · 命中数）＋一帧证据，三选 A／B／都不对。
+ *
+ * 位置＝治理中心「学习」区的草案行下面（与 E 卡同区，**不进对话流**）：裁定是人的事，
+ * 不能挂在模型能说话的地方。命中数与证据都取「最近一次收口会话」的那份观察面；
+ * 取不到就如实说「未聊/无证据」，不编数字、不崩。
+ */
+@Composable
+private fun ConflictAdjudicateCard(draft: SkillDraft, adjudications: List<DraftAdjudication>) {
+    val snapshot = remember(draft.id) { ObserveCenter.observation() }
+    val cards = remember(draft, adjudications, snapshot) {
+        AdjudicationCard.steps(draft, snapshot, adjudications)
+    }
+    if (cards.isEmpty()) return
+    val pendingCount = cards.count { it.resolved == null }
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Text(
+            text = stringResource(R.string.learn_adj_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = stringResource(R.string.learn_adj_intro, pendingCount),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        cards.forEach { card -> ConflictStepCardView(draft.id, card) }
+    }
+}
+
+/** 一个冲突步：两列并排＋证据帧＋三选。 */
+@Composable
+private fun ConflictStepCardView(draftId: String, card: ConflictStepCard) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope { com.example.zhengdao.keepalive.CoroutineCrashHandler }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(
+            text = stringResource(
+                R.string.learn_adj_step,
+                card.stepIndex,
+                card.intent.ifBlank { card.kind },
+            ),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = card.url,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LocatorSideView(card, card.a, Modifier.weight(1f))
+            LocatorSideView(card, card.b, Modifier.weight(1f))
+        }
+        EvidenceFrameChip(
+            text = stringResource(R.string.learn_adj_evidence_label, card.evidenceText()),
+            missing = card.evidenceRef == null,
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            AdjudicateButton(draftId, card, DraftChoice.A, R.string.learn_adj_pick_a, context, scope)
+            AdjudicateButton(draftId, card, DraftChoice.B, R.string.learn_adj_pick_b, context, scope)
+            AdjudicateButton(draftId, card, DraftChoice.NONE, R.string.learn_adj_pick_none, context, scope)
+        }
+        card.resolved?.let { choice ->
+            Text(
+                text = stringResource(
+                    R.string.learn_adj_resolved,
+                    choice.label(),
+                    card.by ?: "-",
+                    stampText(card.atMs),
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        if (card.resolved == DraftChoice.NONE) {
+            Text(
+                text = stringResource(R.string.learn_adj_resolved_none),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = { ObserveCenter.armReteachStep(card.url, card.kind) }) {
+                Text(stringResource(R.string.learn_adj_reteach))
+            }
+        }
+    }
+}
+
+/** 并排的一侧：A／B 签＋命中数＋定位描述（描述里带路径，两套同名元素也分得开）。 */
+@Composable
+private fun LocatorSideView(card: ConflictStepCard, side: LocatorCandidate, modifier: Modifier) {
+    Column(modifier) {
+        Text(
+            text = stringResource(
+                if (side.slot == DraftChoice.A) R.string.learn_adj_slot_a else R.string.learn_adj_slot_b,
+            ) + " · " + card.hitsText(side),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = side.desc,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+/** 一帧证据（622 快照引用的形状：文件#序号）；缺证据只显示「无证据」（判据③不崩）。 */
+@Composable
+private fun EvidenceFrameChip(text: String, missing: Boolean) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (missing) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(rChip))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/** 三选之一（A／B／都不对）。点完由 ObserveCenter 记一行，提示照实说。 */
+@Composable
+private fun AdjudicateButton(
+    draftId: String,
+    card: ConflictStepCard,
+    choice: DraftChoice,
+    labelRes: Int,
+    context: Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val picked = card.resolved == choice
+    TextButton(
+        onClick = {
+            scope.launch {
+                val msg = withContext(Dispatchers.IO) { ObserveCenter.adjudicate(draftId, card.stepIndex, choice) }
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
+        },
+        enabled = !picked,
+    ) {
+        Text(
+            text = stringResource(labelRes),
+            fontWeight = if (picked) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (picked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/**
+ * 「已裁」一行里的时刻（盘上留毫秒，卡面照进程默认时区给人读）。
+ *
+ * 走 `:core` 的 [TimeFormats]（B-补-24 的唯一真源）——主源码里不许再逐次新建
+ * `SimpleDateFormat`（`TimeFormatsTest` 的源码门禁会红，本单第一次就撞上了）。
+ */
+private fun stampText(atMs: Long): String =
+    if (atMs <= 0L) "-" else TimeFormats.monthDay(atMs) + " " + TimeFormats.hourMinute(atMs)
 
 /** 转正确认对话框：技能名＋参数默认值（每行「名=值」；空值＝执行端参数链如实处理）。 */
 @Composable

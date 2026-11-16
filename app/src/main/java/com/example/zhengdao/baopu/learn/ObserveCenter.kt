@@ -75,6 +75,9 @@ internal object ObserveCenter {
     /** 武装超时（ms）：到点没等到那一步，自动解除。 */
     const val ARM_TIMEOUT_MS: Long = 60_000L
 
+    /** 「重新教这一步」的武装 id 前缀（它不是清单条目，只是同一套武装通道的一次占用）。 */
+    const val RETEACH_ITEM_PREFIX: String = "reteach:"
+
     @Volatile private var rootDir: File? = null
     @Volatile private var clock: () -> Long = System::currentTimeMillis
 
@@ -90,6 +93,9 @@ internal object ObserveCenter {
     private var store: NotLearnedStore = NotLearnedStore(File("/dev/null", "x"))
     private var session: ObserveSession? = null
     private var draftStore: SkillDraftStore = SkillDraftStore(File("/dev/null", "x"))
+
+    /** 冲突步人裁的落盘壳（672；与草案同目录、不同前缀，见 [DraftAdjudicationStore]）。 */
+    private var adjudicationStore: DraftAdjudicationStore = DraftAdjudicationStore(File("/dev/null", "x"))
 
     /** 最近收口的会话快照（B 归纳的输入；「从最近观察建草案」用）。 */
     @Volatile private var lastSession: ObserveSnapshot? = null
@@ -108,6 +114,7 @@ internal object ObserveCenter {
     private val toastFlow = MutableStateFlow<LearnToast?>(null)
     private val teachRequestFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val draftsFlow = MutableStateFlow<List<SkillDraft>>(emptyList())
+    private val adjudicationsFlow = MutableStateFlow<Map<String, List<DraftAdjudication>>>(emptyMap())
     private var toastSeq = 0
 
     val notLearned: StateFlow<LearnBoardState> get() = notLearnedFlow.asStateFlow()
@@ -122,6 +129,9 @@ internal object ObserveCenter {
 
     /** 技能草稿区读数（B/C 产物；人批前不落技能）。 */
     val drafts: StateFlow<List<SkillDraft>> get() = draftsFlow.asStateFlow()
+
+    /** 冲突步的人裁记录（672；键＝草案 id——裁定卡与「转正」钮都读这一份）。 */
+    val adjudications: StateFlow<Map<String, List<DraftAdjudication>>> get() = adjudicationsFlow.asStateFlow()
 
     // ── 接线 ─────────────────────────────────────────────────────────────────
 
@@ -170,6 +180,7 @@ internal object ObserveCenter {
         this.enabled = enabled
         this.store = NotLearnedStore(File(root, NotLearnedStore.FILE_NAME))
         this.draftStore = SkillDraftStore(File(root, SkillDraftStore.DIR_NAME))
+        this.adjudicationStore = DraftAdjudicationStore(File(root, SkillDraftStore.DIR_NAME))
         notLearnedFlow.value = store.state()
         refreshDrafts()
         pruneAll()
@@ -306,7 +317,8 @@ internal object ObserveCenter {
     suspend fun confirmDraft(id: String, skillName: String, paramDefaults: Map<String, String>): String = withContext(Dispatchers.IO) {
         val draft = draftStore.byId(id)
             ?: return@withContext "草案不存在（可能已被归并或清掉）"
-        val skill = when (val c = DraftConverter.toSkill(draft, skillName, paramDefaults, clock())) {
+        val adjudications = adjudicationStore.load(id)
+        val skill = when (val c = DraftConverter.toSkill(draft, skillName, paramDefaults, clock(), adjudications)) {
             is DraftConverter.Outcome.Skill -> c.skill
             is DraftConverter.Outcome.Refused -> return@withContext c.reason
         }
@@ -322,16 +334,73 @@ internal object ObserveCenter {
         )
         if (result.written != null) {
             draftStore.resolve(id)
+            adjudicationStore.clear(id) // 草案转正走了，裁定跟着走（不留在盘上误导下一条）
             refreshDrafts()
             RunLog.log("学习板块：草案已转正为技能（$skillName，经 643 候选链）")
         }
         result.reason ?: "已落成技能：$skillName"
     }
 
-    /** 弃掉一条草案。 */
+    /** 弃掉一条草案（裁决一起弃——裁定是这条草案的附注，草案没了就无处可依）。 */
     fun discardDraft(id: String) {
         draftStore.resolve(id)
+        adjudicationStore.clear(id)
         refreshDrafts()
+    }
+
+    // ── 672：冲突步人裁（三选一口气；**没有自动路径**）────────────────────────────
+
+    /**
+     * 人裁一条冲突步（判据②）：[choice] ∈ A／B／none，落盘 `resolved`＋时间＋[by]。
+     *
+     * 为什么签名里必须有 [by] 且缺省是 [DraftAdjudications.USER]：裁定是**人握主权**的动作，
+     * 记录没有主体就等于没有发生过。本函数只由治理中心「学习」区的卡片调用
+     * （源码断言见 DraftAdjudicateSourceGateTest；工具层没有任何入口）。
+     *
+     * 返回一句人话（成功／失败都如实说；不抛）。
+     */
+    fun adjudicate(
+        draftId: String,
+        stepIndex: Int,
+        choice: DraftChoice,
+        by: String = DraftAdjudications.USER,
+    ): String {
+        val draft = draftStore.byId(draftId) ?: return "草案不存在（可能已被归并或清掉）"
+        val step = draft.skeleton.firstOrNull { it.index == stepIndex } ?: return "草案里没有第 $stepIndex 步"
+        if (step.candidates.isEmpty()) return "第 $stepIndex 步没有定位冲突，不用裁"
+        val slot = when (choice) {
+            DraftChoice.A -> 0
+            DraftChoice.B -> 1
+            DraftChoice.NONE -> return record(draftId, stepIndex, choice, by, "已记为「都不对」——回「重新教这一步」")
+        }
+        if (step.candidates.getOrNull(slot) == null) {
+            return "第 $stepIndex 步只有 ${step.candidates.size} 套定位，没有走法 ${choice.wire} 可裁"
+        }
+        return record(draftId, stepIndex, choice, by, "已记下：第 $stepIndex 步用走法 ${choice.wire}")
+    }
+
+    /** 「重新教这一步」的武装（判据②的出口：裁 none 不是终点，是回到玄览把这一步再做一遍）。 */
+    fun armReteachStep(url: String, kind: String) {
+        if (url.isBlank() || kind.isBlank()) return
+        armedFlow.value = ArmedTeach(RETEACH_ITEM_PREFIX + url + "#" + kind, kind, url, clock() + ARM_TIMEOUT_MS)
+        toast(LearnToastKind.CAPTURE_WAITING)
+        teachRequestFlow.tryEmit("reteach")
+    }
+
+    /** 最近收口会话的只读快照（裁定卡算命中数与证据回读用；没有 ⇒ null，卡面如实说未知）。 */
+    fun observation(): ObserveSnapshot? = lastSession
+
+    private fun record(
+        draftId: String,
+        stepIndex: Int,
+        choice: DraftChoice,
+        by: String,
+        okText: String,
+    ): String {
+        val record = DraftAdjudication(stepIndex, choice, clock(), by.ifBlank { DraftAdjudications.USER })
+        if (!adjudicationStore.put(draftId, record)) return "裁定没写进盘（存储不可写）——如实说，不装作已记"
+        refreshAdjudications()
+        return okText
     }
 
     // ── 654：模型提交口与轨迹摘要（两条归纳路共用同一道结构门）────────────────────
@@ -367,6 +436,12 @@ internal object ObserveCenter {
 
     private fun refreshDrafts() {
         draftsFlow.value = draftStore.pending()
+        refreshAdjudications()
+    }
+
+    /** 裁定读数回读（一份草案一个文件；空文件（未裁）不入表——UI 侧 `.orEmpty()` 兜住）。 */
+    private fun refreshAdjudications() {
+        adjudicationsFlow.value = adjudicationStore.all()
     }
 
     private fun rejected(problems: List<String>): SkillDraftStore.AddOutcome.Rejected {

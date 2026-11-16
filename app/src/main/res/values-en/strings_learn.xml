@@ -57,4 +57,18 @@
     <string name="learn_draft_rejected_toast">Draft rejected by structure check: %1$s</string>
     <string name="learn_draft_created_toast">Draft saved to the draft area (not promoted)</string>
     <string name="learn_draft_merged_toast">Same intent — merged into one; observations: %1$d</string>
+    <!-- Batch 672 · human adjudication of conflicting steps -->
+    <string name="learn_adj_title">Conflicting locators need your call</string>
+    <string name="learn_adj_intro">The machine will not pick for you: compare how many nodes each route hits and which frame the evidence is in, then pick the one you actually use. Routes still undecided: %1$d</string>
+    <string name="learn_adj_step">Step %1$d · %2$s</string>
+    <string name="learn_adj_slot_a">Route A</string>
+    <string name="learn_adj_slot_b">Route B</string>
+    <string name="learn_adj_evidence_label">Evidence frame: %1$s</string>
+    <string name="learn_adj_pick_a">Pick A</string>
+    <string name="learn_adj_pick_b">Pick B</string>
+    <string name="learn_adj_pick_none">Neither</string>
+    <string name="learn_adj_resolved">Decided: %1$s · %2$s · %3$s</string>
+    <string name="learn_adj_resolved_none">Recorded "neither" — this step has to be taught again in Xuanlan.</string>
+    <string name="learn_adj_reteach">Re-teach this step in Xuanlan</string>
+    <string name="learn_draft_promote_blocked">Unresolved conflict — adjudicate it in the card above before promoting</string>
 </resources>
