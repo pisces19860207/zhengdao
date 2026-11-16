@@ -73,6 +73,7 @@ class VerifyVisibleGateTest {
         "baopu_verify_basis_files" to 1,
         "baopu_verify_basis_gate" to 1,
         "baopu_verify_basis_read" to 1,
+        "baopu_verify_basis_rows" to 1,
         "baopu_verify_evidence_more" to 1,
         "baopu_verify_note_item" to 1,
     )
@@ -150,7 +151,7 @@ class VerifyVisibleGateTest {
         val argOf = src.substringAfter("private fun argOf").substringBefore("internal fun verifyText")
         listOf(
             "FAIL_DETAIL", "UNVERIFIABLE_DETAIL", "NOTE_ITEM", "NEEDS_TAP",
-            "BASIS_READ", "BASIS_FILES", "BASIS_GATE",
+            "BASIS_READ", "BASIS_FILES", "BASIS_GATE", "BASIS_ROWS",
         ).forEach { assertTrue("argOf 没管 $it 这一位", argOf.contains("VerifyPhrase.$it")) }
         // 脚注那条自己带数（「还有 N 条」），不走 argOf
         assertTrue(src.contains("VerifyPhrase.EVIDENCE_MORE, res, more.toString()"))

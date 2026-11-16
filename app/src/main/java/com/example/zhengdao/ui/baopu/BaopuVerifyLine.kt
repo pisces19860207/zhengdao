@@ -61,6 +61,7 @@ import com.example.zhengdao.ui.theme.rSheet
 
 private val VERIFY_PHRASE_RES: Map<VerifyPhrase, Int> = mapOf(
     VerifyPhrase.PASS to R.string.baopu_verify_pass,
+    VerifyPhrase.READ_PASS to R.string.baopu_verify_read_pass,
     VerifyPhrase.FAIL_DETAIL to R.string.baopu_verify_fail_detail,
     VerifyPhrase.FAIL_BARE to R.string.baopu_verify_fail_bare,
     VerifyPhrase.UNVERIFIABLE_DETAIL to R.string.baopu_verify_unverifiable_detail,
@@ -74,6 +75,7 @@ private val VERIFY_PHRASE_RES: Map<VerifyPhrase, Int> = mapOf(
     VerifyPhrase.BASIS_READ to R.string.baopu_verify_basis_read,
     VerifyPhrase.BASIS_TAP to R.string.baopu_verify_basis_tap,
     VerifyPhrase.BASIS_BARE to R.string.baopu_verify_basis_bare,
+    VerifyPhrase.BASIS_ROWS to R.string.baopu_verify_basis_rows,
     VerifyPhrase.EVIDENCE_TITLE to R.string.baopu_verify_evidence_title,
     VerifyPhrase.EVIDENCE_MORE to R.string.baopu_verify_evidence_more,
     VerifyPhrase.EVIDENCE_NONE to R.string.baopu_verify_evidence_none,
@@ -107,6 +109,7 @@ private val VERIFY_PHRASE_RES: Map<VerifyPhrase, Int> = mapOf(
     VerifyPhrase.ITEM_SHAPE to R.string.baopu_verify_item_shape,
     VerifyPhrase.ITEM_SAMPLE_5 to R.string.baopu_verify_item_sample_5,
     VerifyPhrase.ITEM_REOPENABLE to R.string.baopu_verify_item_reopenable,
+    VerifyPhrase.ITEM_TOOL_ROWS to R.string.baopu_verify_item_tool_rows,
 )
 
 private fun phraseText(phrase: VerifyPhrase, res: Resources, vararg args: String): String {
@@ -128,7 +131,7 @@ private fun argOf(phrase: VerifyPhrase, line: VerifyLine, res: Resources): Strin
         verifyItemDetail(line, res)
 
     VerifyPhrase.NEEDS_TAP, VerifyPhrase.BASIS_READ -> line.place
-    VerifyPhrase.BASIS_FILES, VerifyPhrase.BASIS_GATE ->
+    VerifyPhrase.BASIS_FILES, VerifyPhrase.BASIS_GATE, VerifyPhrase.BASIS_ROWS ->
         line.numbers.firstOrNull()?.toString().orEmpty()
 
     else -> ""

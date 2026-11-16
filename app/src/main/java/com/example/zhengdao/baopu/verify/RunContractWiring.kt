@@ -32,6 +32,14 @@
 // 现在结论只有一个出口：引擎发布 `VerifyNarrative.fromContract` 那一行话（键名＋参数，
 // 中文在 `strings_baopu_verify.xml`），`reportLine` 那行原样留在**运行日志**（日志不是屏）。
 // 判据、取数、三态口径一个字没改——改的是"说到哪儿去"，不是"怎么判"。
+//
+// 第六百八十二批（G-673-3）改了**选尺子**这一步，判定仍是 332 的：
+// 起单时只有一句话、分不出四类，于是每一单都声明成「文档/内容产出」；可收工时**只读任务
+// 根本不产物**，按产物的三条判据收卷必然判「缺证据」（673 真机上 2 次，都是 list_dir 这类）。
+// 现在收工先认**任务形态**（`TaskShape`：只读／写入／混合，从本轮真跑成的工具行认，
+// 不看用户话、不看证据），认成只读就只判「工具行＋结果摘要」那一条，产物三条摊开标
+// 「不适用」；写入/混合一格不放宽（混合按最高要求）。形态与工具行条数都写进收工行，
+// 账与面板上看得见「本任务属于只读」——这不是"过了"，是"换了尺子才过的"，两件事得说清。
 package com.example.zhengdao.baopu.verify
 
 import com.example.zhengdao.baopu.preread.PreReadWiring
@@ -223,12 +231,14 @@ internal object RunContractWiring {
      * @param workspace 工作区根（引擎的 spillRoot；产物相对路径按它解析）
      * @param touched 本轮真写成功的产物相对路径（收尾闸同一份清单，[com.example.zhengdao.baopu.verify.VerifyTargets] 记账）
      * @param gateFindings 收尾闸的读数（[ArtifactVerifier.check] 的返回；打勾的"凭什么"）
+     * @param trace 本轮真跑成的工具行读数（[RoundTrace]；第六百八十二批新增，默认空＝老调用点口径不变）
      */
     fun closeRun(
         order: RunOrder,
         workspace: File,
         touched: List<String>,
         gateFindings: List<Finding>,
+        trace: RoundTrace = RoundTrace(),
     ): ContractReport {
         // 第四百三十六批 B：收工对照（判据③「回执说改的文件 vs 实际改的」）。
         // 挂在这一格而不是引擎里：这里已经是"本轮真写过哪些文件"的**唯一口径**
@@ -236,6 +246,14 @@ internal object RunContractWiring {
         // 只落账与提出，**不参与**下面那个三态结论：预读越界不是验收失败（裁定「不阻断」），
         // 掺进 ContractReport 等于给 242 的判据表加一格——那是另一批的事。
         PreReadWiring.closeout(touched)
+        // 第六百八十二批（G-673-3）：**先认形态，再选尺子**。
+        // 只读任务（list_dir 这类）根本不产物，按产物的三条判据收卷必然判「缺证据」——
+        // 那不是"没做"，是拿错了尺子。形态从工具行读数里认（不看用户话、不看证据），
+        // 认成只读就只判工具行那一条，产物三条摊开标「不适用」。
+        val shape = ShapeRules.shapeOf(trace, touched)
+        if (shape == TaskShape.READ_ONLY) {
+            return stamped(Contracts.readOnlyReport(order.declared, trace), shape, trace)
+        }
         // 主交付物按 404 口径解析（resolveTarget：与写入侧 287 对齐）——工作区外的
         // 合法落点（绝对路径写全盘）也算数，不再因为「不在工作区」被当没交卷
         // （401 验机 M7：产物全在盘上却判 FAIL 缺证据的误判链第二环）。
@@ -244,14 +262,32 @@ internal object RunContractWiring {
             .firstOrNull { it.extension.lowercase() in DOC_EXTS }
         if (primary == null) {
             // 挑不出文档类主交付物：不硬凑证据——判据表自己判"缺证据"（硬规矩②）。
-            return ContractSelector.evaluate(order.declared, evidence = null)
+            return stamped(ContractSelector.evaluate(order.declared, evidence = null), shape, trace)
         }
         val evidence = Contracts.readDoc(
             file = primary,
             declaredItems = listOf(STANDING_CRITERION),
             ticks = listOf(tick(gateFindings)),
         )
-        return ContractSelector.evaluate(order.declared, evidence)
+        return stamped(ContractSelector.evaluate(order.declared, evidence), shape, trace)
+    }
+
+    /**
+     * 第六百八十二批：把「这单算哪类任务」与工具行读数盖到报告上（进账与运行日志）。
+     *
+     * 为什么写类/混合也要盖：判据③要的是「账里能看出本任务属于只读」——反过来，
+     * 写入单上写着"本任务：写入"，也就等于把"这条线真的在按形态分档"变成可核对的读数。
+     * 工具行对写活是**可选档**（产物存在本身就是更强的「真做过」证据），所以只记不判：
+     * 它进 note、不进三态。
+     */
+    private fun stamped(report: ContractReport, shape: TaskShape?, trace: RoundTrace): ContractReport {
+        val tag = shape?.cn ?: "未定"
+        val rows = if (trace.okRows > 0) {
+            "本轮工具行 ${trace.okRows} 条 ok=1（读 ${trace.readRows}／写 ${trace.writeRows}）"
+        } else {
+            "本轮没有 ok=1 的工具行"
+        }
+        return report.copy(shape = shape, note = "本任务：$tag｜$rows；" + report.note)
     }
 
     /**
@@ -270,13 +306,32 @@ internal object RunContractWiring {
         )
     }
 
-    /** 收工那一行（进运行日志；单行，含三态与未过/缺证据的判据号）。 */
+    /** 收工那一行（进运行日志；单行，含三态与未过/缺证据的判据号，以及本任务形态）。 */
     fun reportLine(report: ContractReport): String {
         val head = "$LOG_HEAD：收工验收 ${report.status.cn}（${report.reason.cn}）"
-        if (report.checks.isEmpty()) return "$head｜${report.note}"
+        val shapeBit = shapeBitOf(report.shape)
+        if (report.checks.isEmpty()) return "$head$shapeBit｜${report.note}"
         val bad = (report.missing.map { "${it.wire}(缺)" } + report.failed.map { "${it.wire}(败)" })
-        val detail = if (bad.isEmpty()) "判据 ${report.checks.size} 条全过" else "未过：${bad.joinToString("、")}"
-        return "$head｜$detail"
+        val na = report.notApplicable.size
+        val required = report.checks.size - na
+        val detail = if (bad.isEmpty()) {
+            if (na > 0) "必须档 $required 条全过（$na 条不适用）" else "判据 ${report.checks.size} 条全过"
+        } else {
+            "未过：${bad.joinToString("、")}"
+        }
+        return "$head｜$detail$shapeBit"
+    }
+
+    /**
+     * 形态那半句（第六百八十二批·判据③）：账与面板里一眼看出「本任务属于只读」。
+     *
+     * 只读要说得比另外两类更明白——它是**口径变了**（不是"过了"，是"换了尺子才过的"），
+     * 所以把放宽的依据（工具行＋结果摘要）一起写在行里，事后再对账不用翻代码。
+     */
+    private fun shapeBitOf(shape: TaskShape?): String = when {
+        shape == null -> "｜本任务：未定（一条工具行都没有）"
+        shape.relaxed -> "｜本任务属于只读（按放宽口径验：工具行＋结果摘要）"
+        else -> "｜本任务：${shape.cn}"
     }
 
     private fun brief(raw: String, max: Int = 24): String {

@@ -48,6 +48,11 @@ internal enum class VerifyPhrase(val key: String) {
      * ——负例③说的「失败只给错误码」的反面，同样不是人话。
      */
     PASS("baopu_verify_pass"),
+    /**
+     * 只读任务的 PASS（第六百八十二批）：这一轮没有产物可交，说「该写的都写了」就是假话。
+     * 它与 [PASS] 是**同一态、两句话**：选哪句由任务的形态定，不由状态定。
+     */
+    READ_PASS("baopu_verify_read_pass"),
     FAIL_DETAIL("baopu_verify_fail_detail"),
     FAIL_BARE("baopu_verify_fail_bare"),
     UNVERIFIABLE_DETAIL("baopu_verify_unverifiable_detail"),
@@ -65,6 +70,8 @@ internal enum class VerifyPhrase(val key: String) {
     BASIS_READ("baopu_verify_basis_read"),
     BASIS_TAP("baopu_verify_basis_tap"),
     BASIS_BARE("baopu_verify_basis_bare"),
+    /** 只读任务的依据（第六百八十二批）：这一轮真做成了几件（工具行 ok=1 的条数）。 */
+    BASIS_ROWS("baopu_verify_basis_rows"),
 
     // ── 证据浮层 ────────────────────────────────────────────────────────
     EVIDENCE_TITLE("baopu_verify_evidence_title"),
@@ -112,6 +119,9 @@ internal enum class VerifyPhrase(val key: String) {
     ITEM_SHAPE("baopu_verify_item_shape"),
     ITEM_SAMPLE_5("baopu_verify_item_sample_5"),
     ITEM_REOPENABLE("baopu_verify_item_reopenable"),
+
+    /** 只读口径那一条（第六百八十二批；跨类，不在四类判据表里）。 */
+    ITEM_TOOL_ROWS("baopu_verify_item_tool_rows"),
     ;
 }
 
@@ -218,31 +228,36 @@ internal object VerifyNarrative {
      *   「验过了：该写的都写了」对一轮没交付的问答是假话，宁可不说话。
      * @param files 本轮够格的文本产物（引擎那份 `roundArtifacts`，证据用；本层不读盘）
      * @param gateFindings 收尾闸未过项数（[ArtifactVerifier] 的既有读数，本层不重算）
+     * @param toolRows 本轮 ok=1 的工具行条数（第六百八十二批：只读任务依据那一句要用它）
      */
     fun fromContract(
         report: ContractReport?,
         files: List<String>,
         gateFindings: Int,
+        toolRows: Int = 0,
     ): VerifyLine? {
         if (report == null) return null
         val touched = files.mapNotNull(::sanitize)
         val missing = (report.missing + report.failed).distinct().take(MAX_ITEM_NAMES).map(::itemOf)
         val evidence = touched
+        // 第六百八十二批：只读任务的结论与依据各有一套说法。产物那套对它全是假话——
+        // 「该写的都写了」（没产物可写）、「本轮落了 0 个文件」（它本来就不落文件）。
+        val readOnly = report.shape?.relaxed == true
+        val basis = basisOf(readOnly, gateFindings, touched, toolRows)
         return when (report.status) {
             Status.PASS -> VerifyLine(
-                conclusion = VerifyPhrase.PASS,
+                conclusion = if (readOnly) VerifyPhrase.READ_PASS else VerifyPhrase.PASS,
                 items = emptyList(),
                 place = "",
                 url = "",
-                basis = VerifyPhrase.BASIS_FILES,
-                numbers = listOf(touched.size),
+                basis = basis.first,
+                numbers = basis.second,
                 actions = emptyList(),
                 evidence = evidence,
                 verdict = report.status.name,
             )
 
             Status.FAIL -> {
-                val basis = basisOf(gateFindings, touched)
                 VerifyLine(
                     conclusion = shortfall(VerifyPhrase.FAIL_DETAIL, VerifyPhrase.FAIL_BARE, missing, evidence),
                     items = missing,
@@ -257,7 +272,6 @@ internal object VerifyNarrative {
             }
 
             Status.UNVERIFIABLE -> {
-                val basis = basisOf(gateFindings, touched)
                 VerifyLine(
                     conclusion = shortfall(
                         VerifyPhrase.UNVERIFIABLE_DETAIL,
@@ -344,15 +358,24 @@ internal object VerifyNarrative {
     }
 
     /**
-     * 结论后面那半句依据填哪句：收尾闸有过不去的项先说闸，其次说这一轮落了几个文件，
+     * 结论后面那半句依据填哪句：收尾闸有过不去的项先说闸，其次说这一轮的真读数，
      * 两样都没有就明说「没有能对上的读数」。
      *
      * 为什么 [Status.UNVERIFIABLE] 也要看闸：判不了**不等于**没有坏消息——闸上真有过不去的项时
      * 说「本轮落了 0 个文件」是把唯一说得出的事实藏起来（派工单 §一.1「一句依据」要的是依据）。
+     *
+     * 第六百八十二批加了只读那一支：只读任务的读数是**工具行条数**，不是文件数——
+     * 拿「本轮落了 0 个文件」当依据，正好把「它真干了 6 件事」说成「它什么都没干」。
      */
-    private fun basisOf(gateFindings: Int, touched: List<String>): Pair<VerifyPhrase, List<Int>> = when {
+    private fun basisOf(
+        readOnly: Boolean,
+        gateFindings: Int,
+        touched: List<String>,
+        toolRows: Int,
+    ): Pair<VerifyPhrase, List<Int>> = when {
         gateFindings > 0 -> VerifyPhrase.BASIS_GATE to listOf(gateFindings)
-        touched.isNotEmpty() -> VerifyPhrase.BASIS_FILES to listOf(touched.size)
+        readOnly && toolRows > 0 -> VerifyPhrase.BASIS_ROWS to listOf(toolRows)
+        !readOnly && touched.isNotEmpty() -> VerifyPhrase.BASIS_FILES to listOf(touched.size)
         else -> VerifyPhrase.BASIS_BARE to emptyList()
     }
 
@@ -376,6 +399,7 @@ internal object VerifyNarrative {
         CheckId.SHAPE to VerifyPhrase.ITEM_SHAPE,
         CheckId.SAMPLE_5 to VerifyPhrase.ITEM_SAMPLE_5,
         CheckId.REOPENABLE to VerifyPhrase.ITEM_REOPENABLE,
+        CheckId.TOOL_ROWS to VerifyPhrase.ITEM_TOOL_ROWS,
     )
 
     fun itemOf(id: CheckId): VerifyPhrase = ITEM_NAMES.getValue(id)

@@ -78,6 +78,8 @@ import com.example.zhengdao.baopu.verify.ArtifactVerifier
 import com.example.zhengdao.baopu.verify.ChancellorWiring
 import com.example.zhengdao.baopu.verify.Finding
 import com.example.zhengdao.baopu.verify.RunContractWiring
+import com.example.zhengdao.baopu.verify.RoundTrace
+import com.example.zhengdao.baopu.verify.ShapeRules
 import com.example.zhengdao.baopu.verify.ValueGateWiring
 import com.example.zhengdao.baopu.verify.VerifyTargets
 import com.example.zhengdao.baopu.wire.ToolDeclSnapshot
@@ -362,6 +364,20 @@ internal class RunEngine(
      * 上一轮的文件算进来（假红比不验更坏）。
      */
     private val verifyTouched = LinkedHashSet<String>()
+
+    /**
+     * 第六百八十二批：本轮**真跑成**的工具行读数（只读/写类分开数；G-673-3 的取数口）。
+     *
+     * 为什么按注册表的 `readOnly` 分桶：读还是写只有一个真源（`ToolSpec.readOnly`），
+     * 另立一张名字表就是两套真相（`VerifyTargets` 那张只认会落盘的五件，够不着只读工具）。
+     * 表外工具（MCP 等）按写处理——与 531 子代理名单同一条兜底：拿不准就往严的一侧算。
+     * 只认 `Result.Done` 那一支：失败/被拒不是"做成了的事"，与 run_log 的 ok 列同口径。
+     */
+    private var roundReadRows = 0
+    private var roundWriteRows = 0
+
+    /** 本轮工具行的结果摘要（只留头几条：账行要短，摘要只用来证明"有结果可对"）。 */
+    private val roundToolLines = ArrayList<String>()
 
     /**
      * 第三百七十八批：本轮用户的**原话**（起单那一刻定；弹卡闸与契约起单都读它）。
@@ -2357,6 +2373,10 @@ internal class RunEngine(
 
         // 收尾闸按「一次 run」重置：续跑是新 run，只验它自己写的东西
         verifyTouched.clear()
+        // 682：工具行读数同口径按 run 清（上一轮的只读步不许让这一轮判成"只读任务"）。
+        roundReadRows = 0
+        roundWriteRows = 0
+        roundToolLines.clear()
         // 404 判据③：任务契约同口径按 run 挂账——先清（续跑/闲聊轮不背上一张），起单才挂。
         activeRunOrder = null
         roundToolText.setLength(0)
@@ -2723,11 +2743,18 @@ internal class RunEngine(
                     // 真落盘的文档产物，打勾的依据是上面收尾闸的既有读数——本层不新造判据、
                     // 不判卷。只进日志（FAIL 也不贴 notice：见下面 317 那段）。
                     runOrder?.let { order ->
+                        // 682：把本轮工具行读数一起交上去——收工先认形态（只读/写入/混合），
+                        // 只读任务不再按产物判据收卷（673 那条"只读也判缺证据"的误判在这条线上断）。
                         val report = RunContractWiring.closeRun(
                             order,
                             spillRoot(),
                             verifyTouched.toList(),
                             findings,
+                            RoundTrace(
+                                readRows = roundReadRows,
+                                writeRows = roundWriteRows,
+                                summaries = roundToolLines.toList(),
+                            ),
                         )
                         // 457：收工行同样两路全落（起单/前置读/收工三行 × 三处对齐）。
                         contractLine(sessionId, stepCount, RunContractWiring.reportLine(report))
@@ -2741,6 +2768,8 @@ internal class RunEngine(
                                 report = report,
                                 files = _roundArtifacts.value,
                                 gateFindings = findings.size,
+                                // 682：只读任务的依据要说"做成几件"，这个数只有引擎有。
+                                toolRows = roundReadRows + roundWriteRows,
                             )
                     }
                     // 2026-10-19：收尾时计划若还有没勾的条目，说一句实话（不许装成按计划走完了）。
@@ -3649,6 +3678,21 @@ internal class RunEngine(
         append(wrapped.take(160))
     }
 
+    /**
+     * 第六百八十二批：记一行「真跑成的工具行」（收工认任务形态的唯一取数口）。
+     *
+     * 只认 `Result.Done` 那一支调用它：失败走 `Failed`、被闸拦下走 `Rejected`，两条都不该
+     * 算"这一轮做过的事"——与 run_log 的 ok 列同一条口径（[RunLoopRules.toolExchangeOk]）。
+     * 摘要只留头 [ShapeRules.MAX_SUMMARIES] 条且截到 200 字：它只用来证明"有结果可对"，
+     * 不是账本，攒全量只会把内存和账行一起撑大。
+     */
+    private fun noteRoundToolRow(call: ToolCall, wrapped: String) {
+        if (registry.find(call.name)?.readOnly == true) roundReadRows++ else roundWriteRows++
+        if (roundToolLines.size < ShapeRules.MAX_SUMMARIES) {
+            roundToolLines += toolSummary(call, wrapped).take(200)
+        }
+    }
+
     // ── 落库（每步一次事务） ──────────────────────────────────────────────
 
     /**
@@ -4451,6 +4495,8 @@ internal class RunEngine(
                 }
             }
             persistToolExchange(sessionId, step, result.call.name, result.wrapped)
+            // 682：真跑成的一步记进本轮读数（收工用它认「这单算哪类任务」）。
+            noteRoundToolRow(result.call, result.wrapped)
             // 189 §1.3：本步工具结果的稳定内容哈希入账（围栏前算的，见 Result.Done）；
             // 步末 [accountNoProgress] 统一取哈希比对。空 = 非 finish 产的结果，不参与。
             result.contentHash.takeIf { it.isNotEmpty() }?.let { stepResultTexts += it }

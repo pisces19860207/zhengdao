@@ -17,6 +17,8 @@
 <resources>
     <!-- three states (§一.2; detail = the missing items are nameable, bare = they are not) -->
     <string name="baopu_verify_pass">Checked: everything that had to be written is there, and the log lines up</string>
+    <!-- read-only rounds have nothing to hand over, so the line above would be a lie (682) -->
+    <string name="baopu_verify_read_pass">Checked: this round was read-only — there was nothing to hand over, and every step it took left a reading</string>
     <string name="baopu_verify_fail_detail">Not verified: missing %1$s. Want me to run it again</string>
     <string name="baopu_verify_fail_bare">Not verified: this round did not name which item fell short. Want me to run it again</string>
     <string name="baopu_verify_unverifiable_detail">I could not call this one: missing %1$s. Take a look and decide</string>
@@ -34,6 +36,8 @@
     <string name="baopu_verify_basis_read">The page in question: %1$s</string>
     <string name="baopu_verify_basis_tap">Once you tap it, I pick the run back up</string>
     <string name="baopu_verify_basis_bare">No reading came back to compare</string>
+    <!-- read-only rounds report steps done, not files written (682) -->
+    <string name="baopu_verify_basis_rows">%1$s steps actually done this round</string>
 
     <!-- evidence sheet opened from that line (file paths / log rows) -->
     <string name="baopu_verify_evidence_title">Evidence you can open</string>
@@ -80,4 +84,6 @@
     <string name="baopu_verify_item_shape">the expected row and column counts</string>
     <string name="baopu_verify_item_sample_5">sampled rows checked against the source</string>
     <string name="baopu_verify_item_reopenable">output that reopens cleanly</string>
+    <!-- read-only tier (682): the tool rows this round actually completed -->
+    <string name="baopu_verify_item_tool_rows">the steps actually completed this round</string>
 </resources>

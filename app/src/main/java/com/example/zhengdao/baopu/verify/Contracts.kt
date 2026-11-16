@@ -81,6 +81,9 @@ internal enum class CheckId(val wire: String, val cn: String) {
     SHAPE("shape", "行列数符合"),
     SAMPLE_5("sample_5", "抽样 5 行与源一致"),
     REOPENABLE("reopenable", "输出可被再次读取"),
+
+    // 跨类·只读口径（第六百八十二批）：**不进四类判据表**，只由只读收工口径使用
+    TOOL_ROWS("tool_rows", "工具行与结果摘要"),
     ;
 
     companion object {
@@ -110,6 +113,14 @@ internal data class CheckOutcome(
     val missing: Boolean,
     /** PASS＝读数；不过＝「我说 X、实际 Y」；缺证据＝缺什么。 */
     val detail: String,
+    /**
+     * 本形态下这一条要得多严（第六百八十二批）：三档见 [CheckNeed]。
+     *
+     * 默认 `必须` ⇒ 332 原来那四条判据的每条判定**一字未变**；只有只读口径会把产物三条
+     * 标成 `不适用`、把工具行标成 `必须`。`不适用` 的条目照样摊在 [ContractReport.checks]
+     * 里（省得人问「怎么没验」），但**不参与三态汇总**。
+     */
+    val need: CheckNeed = CheckNeed.REQUIRED,
 )
 
 /**
@@ -127,9 +138,22 @@ internal data class ContractReport(
     val checks: List<CheckOutcome>,
     /** 一句话口径说明（为什么这么判）。 */
     val note: String,
+    /**
+     * 本任务形态（第六百八十二批）：只读／写入／混合；null＝**未定**（一条工具行都没有，
+     * 或调用方没给读数）。形态不参与三态计算——它决定的是「哪几条要判、哪几条不适用」。
+     */
+    val shape: TaskShape? = null,
 ) {
-    val missing: List<CheckId> get() = checks.filter { it.missing }.map { it.id }
-    val failed: List<CheckId> get() = checks.filter { !it.ok && !it.missing }.map { it.id }
+    /** 缺证据的判据（**只数必须档**：不适用／可选的不算缺）。 */
+    val missing: List<CheckId> get() = checks.filter { it.need == CheckNeed.REQUIRED && it.missing }.map { it.id }
+
+    /** 判了不过的判据（**只数必须档**：可选档只记不判）。 */
+    val failed: List<CheckId>
+        get() = checks.filter { it.need == CheckNeed.REQUIRED && !it.ok && !it.missing }.map { it.id }
+
+    /** 本形态下不参与判定的判据（不适用档）。 */
+    val notApplicable: List<CheckId>
+        get() = checks.filter { it.need == CheckNeed.NOT_APPLICABLE }.map { it.id }
 
     /** 人话报告（进验收单/回灌用）；不含分数、不含比例。 */
     fun render(): String {
@@ -137,19 +161,28 @@ internal data class ContractReport(
         sb.append("任务型验收：").append(status.cn)
         if (reason != Reason.OK) sb.append("（").append(reason.cn).append("）")
         sb.append('\n').append("  任务类型：").append(taskType?.cn ?: "未声明").append('\n')
+        shape?.let { sb.append("  本任务：").append(it.cn).append(shapeNote(it)).append('\n') }
         if (checks.isEmpty()) {
             sb.append("  判据：一条都没判 —— ").append(note).append('\n')
             return sb.toString().trimEnd()
         }
-        sb.append("  判据 ").append(checks.size).append(" 条（全过才算过，不投票、不评分）：\n")
+        sb.append("  判据 ").append(checks.size).append(" 条（必须档全过才算过，不投票、不评分）：\n")
         for (c in checks) {
-            sb.append("    ").append(mark(c)).append(' ').append(c.id.cn).append(" —— ").append(c.detail).append('\n')
+            sb.append("    ").append(mark(c)).append(' ').append(c.id.cn)
+                .append(needBit(c)).append(" —— ").append(c.detail).append('\n')
         }
         sb.append("  口径：").append(note).append('\n')
         return sb.toString().trimEnd()
     }
 
+    private fun shapeNote(shape: TaskShape): String =
+        if (shape.relaxed) "（只认工具行＋结果摘要，产物类判据不适用）" else "（按最高要求验）"
+
+    private fun needBit(c: CheckOutcome): String =
+        if (c.need == CheckNeed.REQUIRED) "" else "（${c.need.cn}）"
+
     private fun mark(c: CheckOutcome): String = when {
+        c.need == CheckNeed.NOT_APPLICABLE -> "[不适用]"
         c.missing -> "[缺证据]"
         c.ok -> "[过]"
         else -> "[不过]"
@@ -299,12 +332,16 @@ internal object Contracts {
     }
 
     /**
-     * 合取汇总（硬规矩③）：**全部过才 PASS**，没有任何「凑够几条」的口子。
+     * 合取汇总（硬规矩③）：**必须档全部过才 PASS**，没有任何「凑够几条」的口子。
      * 缺证据与对不上同时出现时，顶层原因报缺证据（明细一条不吞）。
+     *
+     * 第六百八十二批只改了「数哪几条」：`不适用` 与 `可选` 两档不进汇总，
+     * 必须档仍是原来那套合取——所以四类任务的老口径一格未变。
      */
-    private fun report(type: TaskType, checks: List<CheckOutcome>): ContractReport {
-        val missing = checks.count { it.missing }
-        val failed = checks.count { !it.ok && !it.missing }
+    private fun report(type: TaskType, checks: List<CheckOutcome>, shape: TaskShape? = null): ContractReport {
+        val judged = checks.filter { it.need == CheckNeed.REQUIRED }
+        val missing = judged.count { it.missing }
+        val failed = judged.count { !it.ok && !it.missing }
         val reason = when {
             missing > 0 -> Reason.MISSING_EVIDENCE
             failed > 0 -> Reason.VALUE_MISMATCH
@@ -317,6 +354,56 @@ internal object Contracts {
             reason = reason,
             checks = checks,
             note = "判据 ${checks.size} 条全过才算过；缺一条证据也算不过（合取，不投票、不评分）",
+            shape = shape,
+        )
+    }
+
+    // ── 只读口径（第六百八十二批·G-673-3）────────────────────────────────
+
+    /** 只读口径的口径说明（进报告 note；`render` 与日志都读这一句）。 */
+    const val READ_ONLY_NOTE = "只读口径：不产生产物，只认 ok=1 的工具行＋结果摘要" +
+        "（产物三条判据不适用——不是放过，是不该拿它量读活）"
+
+    /**
+     * 只读收工验收：**只判工具行这一条**，产物三条摊开标「不适用」。
+     *
+     * 为什么不是「把三条删掉就算过」：删掉判据＝这一单没有任何必须档，PASS 就成了空过
+     * （派工单④「不放宽是否真做过」）。所以放宽的同时**补上一条必须**：工具行必须 ok=1
+     * 且带结果摘要——读一次目录也是一次真做过的事，它得留下能对的读数。
+     */
+    fun readOnlyReport(type: TaskType, trace: RoundTrace): ContractReport =
+        report(type, listOf(toolRowCheck(trace)) + notApplicableChecks(type), TaskShape.READ_ONLY)
+            .copy(note = READ_ONLY_NOTE)
+
+    /**
+     * 产物类判据在只读形态下的条目：摊开、标不适用（不参与汇总）。
+     *
+     * 哪些条目不适用**由 [ShapeRules.notApplicableOf] 说了算**——分档表只有一份，
+     * 报告不许自己再存一份「哪三条不适用」的名单（两份名单＝两套真相，改一处漏一处）。
+     */
+    private fun notApplicableChecks(type: TaskType): List<CheckOutcome> =
+        ShapeRules.notApplicableOf(type, TaskShape.READ_ONLY).map {
+            CheckOutcome(
+                id = it,
+                ok = false,
+                missing = false,
+                detail = "只读任务不产生产物，本条不适用",
+                need = CheckNeed.NOT_APPLICABLE,
+            )
+        }
+
+    /** 工具行那一条：ok=1 的条数 ＋ 结果摘要（空账、无摘要都不算有证据）。 */
+    private fun toolRowCheck(trace: RoundTrace): CheckOutcome {
+        if (trace.okRows <= 0) {
+            return missing(CheckId.TOOL_ROWS, "一条 ok=1 的工具行都没有：没做过就不算有证据")
+        }
+        val withSummary = trace.summaries.count { it.isNotBlank() }
+        if (withSummary <= 0) {
+            return missing(CheckId.TOOL_ROWS, "工具行 ${trace.okRows} 条，但一条结果摘要都没有")
+        }
+        return ok(
+            CheckId.TOOL_ROWS,
+            "工具行 ${trace.okRows} 条 ok=1（其中只读 ${trace.readRows} 条），结果摘要 $withSummary 条",
         )
     }
 
