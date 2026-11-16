@@ -67,6 +67,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.ImpactPrefs
+import com.example.zhengdao.baopu.subconscious.InspirationSwitch
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaApplyResult
@@ -475,6 +476,43 @@ internal fun BaopuSettingsScreen(
                             ImpactPrefs.set(ctx, want)
                             impactOn = want
                             RunLog.log("抱朴设置：显示影响提示 = $want")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 灵感闪回（534·第六百七十七批）：默认开（可关）──
+            // 定位：关掉 ⇒ 唤醒口连算都不算（refreshInspirationRows 第一行就是它），
+            // 行为与本批之前逐字节一致。它不管「记灵感」——那是用户主动的行为，
+            // 关的是「浮出」这一半（三重命中＋每天 ≤1 次的自动唤回）。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_inspiration_card)) {
+                var inspOn by rememberSaveable { mutableStateOf(InspirationSwitch.get(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_inspiration_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_inspiration_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = inspOn,
+                        onCheckedChange = { want ->
+                            InspirationSwitch.set(ctx, want)
+                            inspOn = want
+                            RunLog.log("抱朴设置：灵感闪回 = $want")
                         },
                         colors = zhengdaoSwitchColors(),
                     )

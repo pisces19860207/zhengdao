@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第六百七十七批 · 534 灵感闪回的文案（2026-11-16）。
+  单独成文件（房型照 635 的 strings_baopu_audit.xml）：共享 strings.xml 是高冲突文件，
+  本批对它零改动。键与 values-en/strings_baopu_inspiration.xml 一一对应。
+-->
+<resources>
+    <!-- 「建议」页签灵感类行的类型签（与 99 建议／100 效果／635 对账同区，typeLabel 区分）。 -->
+    <string name="inspiration_type_label">灵感</string>
+
+    <!-- 记灵感入口与对话框（一句话直写 L0；不自动摘要、不自动进 L2、不自动成待办）。 -->
+    <string name="inspiration_capture_record">＋ 记灵感</string>
+    <string name="inspiration_capture_hint">一句话直写，原文逐字保存（不自动摘要、不自动成待办）。三重命中才浮出，每天最多一次。</string>
+    <string name="inspiration_capture_body_label">灵感</string>
+    <string name="inspiration_capture_tags_label">标签（可选，逗号隔开）</string>
+    <string name="inspiration_capture_ok">记下</string>
+
+    <!-- 灵感卡（点开同款卡；原文逐字展示）。 -->
+    <string name="inspiration_card_title">灵感闪回</string>
+    <string name="inspiration_ignore">忽略</string>
+    <string name="inspiration_card_footer">不点不进上下文；这次点开已把原文放行给下一轮（用完即清）。</string>
+
+    <!-- 设置页开关（默认开，可关；关的是「浮出」这一半，记录不受管）。 -->
+    <string name="baopu_inspiration_card">灵感闪回</string>
+    <string name="baopu_inspiration_title">关联唤醒灵感</string>
+    <string name="baopu_inspiration_desc">三重命中（语义近邻＋近期上下文＋同任务/主题）才在「建议」页签浮出，每天最多一次；不点不进上下文。</string>
+</resources>

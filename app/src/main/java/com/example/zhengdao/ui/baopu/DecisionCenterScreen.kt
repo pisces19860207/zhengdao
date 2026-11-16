@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -429,14 +430,101 @@ private fun SuggestionsTab(
     openCardKey: String?,
     onOpenCard: (String?) -> Unit,
 ) {
-    val rows = controller.decisionCenterSuggestionRows()
-    DecisionTabBody(DecisionTab.SUGGESTIONS, empty = rows.isEmpty()) {
-        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
-            items(rows, key = { it.id }) { row ->
-                DecisionRowCard(row, onClick = { onOpenCard(row.id) })
+    // 534/677：进页签算一轮灵感唤醒（机会式——用户打开才算，零后台调度，不是第二个执行器；
+    // 浮不浮归 subconscious 纯层判据：三重命中缺一不浮、每天 ≤1 次、忽略 24h 不再浮）。
+    LaunchedEffect(Unit) { controller.refreshInspirationRows() }
+    var showCapture by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        InspirationCaptureRow(onClick = { showCapture = true })
+        val rows = controller.decisionCenterSuggestionRows()
+        DecisionTabBody(DecisionTab.SUGGESTIONS, empty = rows.isEmpty()) {
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                items(rows, key = { it.id }) { row ->
+                    DecisionRowCard(
+                        row,
+                        // 534/677：灵感行的点开副作用（放行注入＋账行）挂在**点击**上——
+                        // 每次真点一次；重组不重放（开卡走 decisionCardSpecFor 纯读）。
+                        onClick = {
+                            if (row.id.startsWith("inspiration:")) controller.onInspirationOpened(row.id)
+                            onOpenCard(row.id)
+                        },
+                    )
+                }
             }
         }
     }
+    if (showCapture) {
+        InspirationCaptureDialog(controller = controller, onDismiss = { showCapture = false })
+    }
+}
+
+/** 「记灵感」入口行（534④：一句话直写 L0；记录不受「可关」开关管——那是用户主动的行为）。 */
+@Composable
+private fun InspirationCaptureRow(onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+    ) {
+        Text(stringResource(R.string.inspiration_capture_record))
+    }
+}
+
+/** 记灵感对话框：一句话原文（必填）＋标签（可选）；原文逐字落 L0，不自动摘要、不自动成待办。 */
+@Composable
+private fun InspirationCaptureDialog(controller: BaopuChatController, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.inspiration_capture_record)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.inspiration_capture_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.inspiration_capture_body_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+                OutlinedTextField(
+                    value = tags,
+                    onValueChange = { tags = it },
+                    label = { Text(stringResource(R.string.inspiration_capture_tags_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    controller.recordInspiration(text, tags.split(',', '，', '、')) { reason ->
+                        if (reason == null) onDismiss() else error = reason
+                    }
+                },
+                enabled = text.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.inspiration_capture_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }
 
 @Composable

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sixth-seventy-seventh batch · 534 inspiration recall strings (2026-11-16).
+  Keys map 1:1 to values/strings_baopu_inspiration.xml.
+-->
+<resources>
+    <!-- Type label for inspiration rows in the Suggestions tab (same area, distinct typeLabel). -->
+    <string name="inspiration_type_label">Inspiration</string>
+
+    <!-- Capture entry and dialog (write verbatim to L0; no auto summary, no auto todo). -->
+    <string name="inspiration_capture_record">＋ New inspiration</string>
+    <string name="inspiration_capture_hint">One sentence, saved verbatim (no auto summary, no auto todo). Surfaces only on a triple hit, at most once per day.</string>
+    <string name="inspiration_capture_body_label">Inspiration</string>
+    <string name="inspiration_capture_tags_label">Tags (optional, comma-separated)</string>
+    <string name="inspiration_capture_ok">Save</string>
+
+    <!-- Inspiration card (same-style card; original text shown verbatim). -->
+    <string name="inspiration_card_title">Inspiration recall</string>
+    <string name="inspiration_ignore">Ignore</string>
+    <string name="inspiration_card_footer">Not clicked ⇒ never enters context; this tap releases the original text to the next turn (consumed once).</string>
+
+    <!-- Settings switch (default on, can be turned off; governs surfacing only, not recording). -->
+    <string name="baopu_inspiration_card">Inspiration recall</string>
+    <string name="baopu_inspiration_title">Cue-based inspiration recall</string>
+    <string name="baopu_inspiration_desc">Surfaces in the Suggestions tab only on a triple hit (semantic neighbor + recent context + same task/topic), at most once per day; not clicked ⇒ never enters context.</string>
+</resources>

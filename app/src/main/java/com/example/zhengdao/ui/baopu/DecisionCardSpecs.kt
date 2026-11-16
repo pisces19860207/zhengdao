@@ -15,6 +15,7 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.PostAdoptionNotice
 import com.example.zhengdao.baopu.PostAdoptionVerdict
 import com.example.zhengdao.baopu.ProposalKind
+import com.example.zhengdao.baopu.subconscious.InspirationRow
 import com.example.zhengdao.baopu.agent.AskKind
 import com.example.zhengdao.baopu.agent.AskUserRequest
 import com.example.zhengdao.baopu.agent.GroupGrantScope
@@ -211,6 +212,25 @@ internal object DecisionSpecs {
             footer = s.get(R.string.decision_effect_once_note),
         )
     }
+
+    // ── 灵感卡（534·677：点开同款卡，L0 原文逐字展示） ────────────────────────
+
+    /**
+     * 灵感卡：正文＝L0 原文逐字（判据①「可点开」的落点），标签当 chips，
+     * 唯一动作「忽略」。footer 明说这次点开已把原文放行注入（判据③的卡面口径）。
+     */
+    fun inspiration(row: InspirationRow, s: DecisionStrRes): DecisionCardSpec = DecisionCardSpec(
+        variant = DecisionVariant.SUGGESTION,
+        key = row.id,
+        title = s.get(R.string.inspiration_card_title),
+        subtitle = row.subtitle,
+        body = row.body,
+        chips = row.tags,
+        buttons = listOf(
+            DecisionButton("ignore", s.get(R.string.inspiration_ignore), DecisionButtonRole.NEGATIVE),
+        ),
+        footer = s.get(R.string.inspiration_card_footer),
+    )
 }
 
 /**

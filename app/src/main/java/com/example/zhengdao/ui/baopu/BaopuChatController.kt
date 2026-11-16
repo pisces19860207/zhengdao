@@ -270,6 +270,10 @@ private data class PreAdoptionBaseline(
  * 数据流：引擎落库（先落库再渲染）⇒ onEvent ⇒ [refresh] 重读 db ⇒ Compose 状态更新。
  * UI 不回写引擎数据，只调动作（send/stop/resume/记忆确认）。
  */
+
+/** 灵感唤醒读近期上下文的字数上限（只喂词面匹配，不灌全文——上下文是大段也能算得快）。 */
+private const val INSPIRATION_CONTEXT_CHARS = 2_000
+
 internal class BaopuChatController(context: Context) {
 
     private val appCtx = context.applicationContext
@@ -1378,8 +1382,158 @@ internal class BaopuChatController(context: Context) {
                         .dismiss(key.removePrefix("sub:"))
                 }
             }
+            key.startsWith("inspiration:") -> {
+                if (buttonId == "ignore") decideInspirationIgnored(key.removePrefix("inspiration:"))
+            }
 
             else -> answerChoice(buttonId) // auth: / persona: ⇒ 引擎选项 id 原路答回
+        }
+    }
+
+    // ── 534/677 灵感闪回（装配层；判据本体在 subconscious 纯层） ────────────────
+
+    /**
+     * 打开「建议」页签时算一轮灵感唤醒（**机会式**：用户打开页签才算，零后台调度——
+     * 不是第二个执行器；676 的 SubconsciousRunner 合入后由它低频调同一判据并回归）。
+     *
+     * 浮不浮全归纯层判据（三重命中缺一不浮、≤1 条/天、忽略 24h 不再浮）；
+     * 本方法只装配：读 L0 候选＋读会话近期上下文＋读本账 ⇒ 喂给纯层 ⇒ publish＋落账。
+     * 开关关掉 ⇒ 连算都不算（判据「可关」；记录灵感不受它管）。
+     */
+    fun refreshInspirationRows() {
+        if (!com.example.zhengdao.baopu.subconscious.InspirationSwitch.get(appCtx)) return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val ws = workspaceRoot
+                // 「灵感」来源＝本单注册进执行器约定的唯一新增面（676 合入后整缝交接）。
+                val source = com.example.zhengdao.baopu.subconscious.InspirationSource(inspirationStore())
+                val signals = inspirationContextSignals()
+                val round = com.example.zhengdao.baopu.subconscious.runInspirationRecall(
+                    candidates = source.inspirationCandidates(),
+                    signals = signals,
+                    // 676 未合入 ⇒ 生产暂走「模型不可用」形：判据层退回关键词规则版
+                    //（统一口径⑥的既定退路）。模型判的选择器等 676 执行器合入后接上并回归。
+                    selector = { _, _ -> com.example.zhengdao.baopu.subconscious.InspirationSelection.Unavailable },
+                    ledgerEvents = com.example.zhengdao.baopu.subconscious.InspirationLedger
+                        .read(inspirationLedgerFile()),
+                )
+                com.example.zhengdao.baopu.subconscious.InspirationRowStore.publish(round.rows)
+                // 浮 N 条 ⇒ 本账 N 行（行数与该次建议一致；起居注同形 ACTION，635 房型）。
+                round.rows.forEach { row ->
+                    com.example.zhengdao.baopu.subconscious.InspirationLedger.append(
+                        inspirationLedgerFile(),
+                        com.example.zhengdao.baopu.subconscious.InspirationLedger.floatedEvent(
+                            row.atMs, row.l0Id, row.title, row.subtitle,
+                        ),
+                    )
+                }
+                val broken = source.brokenCount()
+                if (broken > 0) RunLog.log("灵感 L0：$broken 个坏文件跳过（不静默）")
+                RunLog.log("灵感唤醒：${round.note}")
+            }.onFailure { RunLog.log("灵感唤醒没跑成：${it.javaClass.simpleName}") }
+        }
+    }
+
+    /** 记一条灵感（用户手记；一句话直写 L0——判据①）。IO 上落盘，结果回调回主线程。 */
+    fun recordInspiration(text: String, tags: List<String>, onResult: (String?) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val result = inspirationStore().record(System.currentTimeMillis(), text, tags)
+            when (result) {
+                is com.example.zhengdao.baopu.subconscious.InspirationStore.SaveResult.Saved -> {
+                    RunLog.log("灵感 L0：落盘 ${result.record.id}（原文 ${result.record.body.length} 字可点开）")
+                    withContext(Dispatchers.Main) { onResult(null) }
+                }
+                is com.example.zhengdao.baopu.subconscious.InspirationStore.SaveResult.Rejected -> {
+                    RunLog.log("灵感 L0：拒收——${result.reason}")
+                    withContext(Dispatchers.Main) { onResult(result.reason) }
+                }
+            }
+        }
+    }
+
+    /**
+     * 点开灵感卡＝放行注入（判据③「不点不进上下文」的**唯一放行口**；全仓只有这里
+     * offer——源码门禁钉）。放行的是下一轮提示词的附注（[InspirationMailbox] 取走即清，
+     * 不重放）：原文＋标签＋L0 指针，一次；不点 ⇒ 信箱空 ⇒ 提示词与没有本功能时逐字节相同。
+     */
+    private fun openInspiration(row: com.example.zhengdao.baopu.subconscious.InspirationRow) {
+        com.example.zhengdao.baopu.subconscious.InspirationMailbox.offer(
+            buildString {
+                append("【灵感闪回·用户点开】").append(row.title)
+                if (row.tags.isNotEmpty()) append("（标签：").append(row.tags.joinToString("、")).append("）")
+                append('\n').append(row.body)
+                append("\n（L0 ").append(row.l0Id).append("；仅因用户点开放行本轮，用完即清）")
+            },
+        )
+        RunLog.log("灵感点开：${row.l0Id} 原文放行注入（一次）")
+        scope.launch(Dispatchers.IO) {
+            com.example.zhengdao.baopu.subconscious.InspirationLedger.append(
+                inspirationLedgerFile(),
+                com.example.zhengdao.baopu.subconscious.InspirationLedger.openedEvent(
+                    System.currentTimeMillis(), row.l0Id,
+                ),
+            )
+        }
+    }
+
+    /** 忽略一条浮出（行即刻消失＋本账一行 ⇒ 24h 内不再浮——625 口径）。 */
+    private fun decideInspirationIgnored(l0Id: String) {
+        com.example.zhengdao.baopu.subconscious.InspirationRowStore.publish(
+            com.example.zhengdao.baopu.subconscious.InspirationRowStore.latest().filterNot { it.l0Id == l0Id },
+        )
+        RunLog.log("灵感忽略：$l0Id（24h 内不再浮）")
+        scope.launch(Dispatchers.IO) {
+            com.example.zhengdao.baopu.subconscious.InspirationLedger.append(
+                inspirationLedgerFile(),
+                com.example.zhengdao.baopu.subconscious.InspirationLedger.ignoredEvent(
+                    System.currentTimeMillis(), l0Id,
+                ),
+            )
+        }
+    }
+
+    /** L0 灵感库（目录跟工作区；现取不缓存——换工作区后要跟着变）。 */
+    private fun inspirationStore() = com.example.zhengdao.baopu.subconscious.InspirationStore(
+        com.example.zhengdao.baopu.subconscious.InspirationStore.dirOf(workspaceRoot),
+    )
+
+    /** 本账落点（`<工作区>/产物/灵感闪回.jsonl`）。 */
+    private fun inspirationLedgerFile() =
+        com.example.zhengdao.baopu.subconscious.InspirationLedger.fileOf(workspaceRoot)
+
+    /**
+     * 近期上下文信号（IO 上调）：当前会话最近若干条 text 消息的正文＋最新时刻＋
+     * 用户最近一句话。会话没有/读不到 ⇒ 全空信号 ⇒ 判据层如实判「缺近期上下文」，不编。
+     */
+    private fun inspirationContextSignals(): com.example.zhengdao.baopu.subconscious.RecallSignals {
+        val sid = sessionId ?: return com.example.zhengdao.baopu.subconscious.RecallSignals(
+            System.currentTimeMillis(), "", 0L, "",
+        )
+        return db.read { d ->
+            d.rawQuery(
+                "SELECT m.created_at, m.role, p.payload FROM message m " +
+                    "LEFT JOIN part p ON p.message_id = m.id " +
+                    "WHERE m.session_id = ? AND (p.kind IS NULL OR p.kind = 'text') " +
+                    "ORDER BY m.seq DESC, p.seq ASC LIMIT 24",
+                arrayOf(sid.toString()),
+            ).use { c ->
+                var newestAt = 0L
+                var latestUser = ""
+                val texts = StringBuilder()
+                while (c.moveToNext()) {
+                    val at = c.getLong(0)
+                    if (newestAt == 0L) newestAt = at
+                    if (latestUser.isEmpty() && c.getString(1) == "user") latestUser = c.getString(2) ?: ""
+                    val payload = c.getString(2) ?: ""
+                    if (texts.length < INSPIRATION_CONTEXT_CHARS) texts.append(payload).append('\n')
+                }
+                com.example.zhengdao.baopu.subconscious.RecallSignals(
+                    nowMs = System.currentTimeMillis(),
+                    contextText = texts.toString(),
+                    lastMessageAtMs = newestAt,
+                    latestUserText = latestUser,
+                )
+            }
         }
     }
 
@@ -1463,6 +1617,19 @@ internal class BaopuChatController(context: Context) {
                     ),
                 )
             }
+            // 534/677 灵感类行：三重命中才浮（闸在 subconscious 纯层，≤1 条/天）；
+            // 行只进本页签（无第二浮出入口），点开同款卡看 L0 原文。
+            com.example.zhengdao.baopu.subconscious.InspirationRowStore.latest().forEach { r ->
+                add(
+                    DecisionCenterRow(
+                        id = r.id,
+                        variant = DecisionVariant.SUGGESTION,
+                        title = r.title,
+                        subtitle = r.subtitle,
+                        typeLabel = appCtx.getString(R.string.inspiration_type_label),
+                    ),
+                )
+            }
         },
     )
 
@@ -1488,8 +1655,25 @@ internal class BaopuChatController(context: Context) {
             .latest()
             .firstOrNull { "sub:${it.id}" == key }
             ?.let { subconsciousSpec(it) }
+        // 534/677 灵感卡：同款卡展示 L0 原文。**纯读**——点开的副作用（放行注入＋账行）
+        // 在屏幕层的点击回调里经 [onInspirationOpened] 走一次（本方法每次重组都会被调，
+        // 副作用挂这里会跟着重组重放）。
+        key.startsWith("inspiration:") -> com.example.zhengdao.baopu.subconscious.InspirationRowStore
+            .latest()
+            .firstOrNull { it.id == key }
+            ?.let { DecisionSpecs.inspiration(it, decisionStr) }
 
         else -> null
+    }
+
+    /**
+     * 用户点开一条灵感（屏幕层点击回调转交，**每次真点只走一次**）：
+     * 放行注入（判据③唯一放行口，见 [openInspiration]）。
+     */
+    fun onInspirationOpened(id: String) {
+        com.example.zhengdao.baopu.subconscious.InspirationRowStore.latest()
+            .firstOrNull { it.id == id }
+            ?.let(::openInspiration)
     }
 
     // ── 建议卡三决策（99 批报告 §6：采纳只走现有落盘通道） ─────────────────────

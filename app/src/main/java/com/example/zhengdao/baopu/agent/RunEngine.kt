@@ -3451,8 +3451,11 @@ internal class RunEngine(
         // [AnswerReflow.notes] 同轮重复调用返回逐字相同、不消费不置标志位——拼提示词每一步
         // 都会重算这里，中途换批等于打破前缀（与上面两段同一口径）。寿命写死在形状里：
         // 到达轮＋下一轮，到点自己退场，不往历史里塞（选 B 不选 A 的理由见 AnswerReflow 文件头）。
+        // 第六百七十七批（534 灵感闪回）：点开灵感卡放行的原文附注（信箱取走即清、不重放）。
+        // 不点 ⇒ 信箱空 ⇒ 空表 ⇒ 与接线前逐字节一致（判据③「不点不进上下文」的拼装侧）。
         extraNotes = extraNotes +
             com.example.zhengdao.baopu.ImpactMailbox.drain() +
+            com.example.zhengdao.baopu.subconscious.InspirationMailbox.drain() +
             com.example.zhengdao.baopu.MediatorWiring.promptNotes() +
             AnswerReflow.notes(currentRoundId) +
             // 第四百零五批：最近同类经验一行（轮开跑算好的一份）。null ⇒ 空表 ⇒ 与接线前
