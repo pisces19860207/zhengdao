@@ -59,21 +59,43 @@ class LocalLifecycleOwnerGuardTest {
     @Test
     fun `门禁_版本号没被碰（红线）`() {
         // 旧口径（钉死 2.1.1 / 36）在 v2.1.2 发版时变成假警报 —— 已改判为发版口径：
-        // 版本号可以随发版前进，但 gradle ／ release note ／ README 中英必须四处一致
-        // （同判据详见 `TargetSdkGateTest > 版本号红线未动`）。
+        // 版本名可以随发版前进，但 gradle ／ release note ／ README 中英必须四处一致。
+        //
+        // 683（2026-11-16）再改一层：versionCode 不再是一个手写的数字，而是**由构建派生**
+        // （提交数 × 1000 ＋ 短号指纹，见 app/build.gradle.kts「versionCode 派生」段）。
+        // 旧判据「README 里必须写出 gradle 里那个数」因此不成立 —— 那个数在每次提交上都不一样。
+        // 现在的判据：①gradle 里**不许**再有写死的号（负例，写回去就是 673 第⑫项复发）；
+        //   ②号必须取自派生值；③release note 仍在；④README 中英都跟上了版本名，
+        //   且都不许再报一个写死的号（报了必然与产物对不上）。
         val gradle = File("build.gradle.kts").readText()
         val version = Regex("appVersionName\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)\"")
             .find(gradle)?.groupValues?.get(1) ?: error("找不到 appVersionName")
-        val code = Regex("versionCode\\s*=\\s*(\\d+)").find(gradle)?.groupValues?.get(1)
-            ?: error("找不到 versionCode")
+        val hardcoded = Regex("versionCode\\s*=\\s*\\d+").find(gradle)?.value
+        assertTrue(
+            "gradle 里又把 versionCode 写成了常量（$hardcoded）——两次提交会得到同一个号（683 的病根）",
+            hardcoded == null,
+        )
+        assertTrue(
+            "versionCode 必须取自派生值（versionCode = zdVersionCode…）",
+            Regex("versionCode\\s*=\\s*zdVersionCode").containsMatchIn(gradle),
+        )
         assertTrue(
             "release note `../.github/release-notes/v$version.md` 不在 —— 发版正文没跟上版本号",
             File("../.github/release-notes/v$version.md").isFile,
         )
         val cn = File("../README.md").readText()
+        val en = File("../README.en.md").readText()
         assertTrue(
-            "README.md 与 gradle 版本号不一致（应为 v$version / versionCode $code）",
-            cn.contains("当前版本：v$version") && cn.contains("versionCode $code"),
+            "README.md 与 gradle 版本号不一致（应为 v$version）",
+            cn.contains("当前版本：v$version"),
         )
+        assertTrue(
+            "README.en.md 与 gradle 版本号不一致（应为 v$version）",
+            en.contains("Current release: v$version"),
+        )
+        val cnCode = Regex("versionCode\\s*\\d+").find(cn)?.value
+        assertTrue("README.md 还报着写死的号（$cnCode）——它现在由构建派生", cnCode == null)
+        val enCode = Regex("versionCode\\s*\\d+").find(en)?.value
+        assertTrue("README.en.md 还报着写死的号（$enCode）——它现在由构建派生", enCode == null)
     }
 }

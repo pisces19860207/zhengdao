@@ -110,34 +110,33 @@ private fun SettingsAboutPage(onBack: () -> Unit) {
     SettingsSubPage(title = stringResource(R.string.settings_about), onBack = onBack) {
         // ── 关于 ──
         SectionCard(stringResource(R.string.settings_about)) {
+            // 683（2026-11-16）：版本行一行说完三件事 —— `versionName (versionCode) · sha7 · 构建时间`。
+            // 为什么并成一行：673 第⑫项的病是「装包前后 versionCode=44 / versionName=2.2.6 一模一样」，
+            //   用户看到「版本 2.2.6」无从判断手机里装的是不是刚构建的那个包；现在构建号**每次提交都变**
+            //   （app/build.gradle.kts「versionCode 派生」段），配上短号与构建时刻，一行就能对号。
+            // 为什么原来分三行、现在只剩一行：分三行时 commit 与时间各占一行，用户要跨三行拼事实；
+            //   而它们的值本来就必须同源（都只读 BuildConfig），拆开只会让人以为可以分别看。
+            // -dirty / local 仍然标红（561 的规矩：这种包不许外发，App 只报不拦）。
+            val gitSha = BuildConfig.GIT_SHA
             InfoRow(
                 stringResource(R.string.about_version),
-                "${BuildConfig.VERSION_NAME} (versionCode ${BuildConfig.VERSION_CODE})",
+                AboutVersionLine.of(
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE,
+                    gitSha,
+                    BuildConfig.BUILD_TIME,
+                ),
+                valueColor = if (AboutVersionLine.suspect(gitSha)) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    Color.Unspecified
+                },
                 onClick = {
                     versionTaps++
                     // 第二百四十八批：输入法回归页随终端搬走（它测的是终端内嵌视图的 IME 桥，
                     // 该视图已随第四刀删除），主仓不再有那套 View，这个隐藏入口也就没有落点了。
                 },
             )
-            Spacer(Modifier.height(4.dp))
-            // 构建指纹（2026-10-23 建；561 批 2026-11-09 扩成三行）：同一天多个包都可能叫
-            // 2.2.3，这一族行用来分辨「手机里装的是哪一次构建」。值只读 BuildConfig，
-            // 与包内一字不差（561 判据①：关于页与 BuildConfig 一致）：
-            //   · commit：CI 报 GITHUB_SHA 前 8 位；本机报 git HEAD 前 8 位；git 不可用才 local。
-            //   · **-dirty 红显**：工作区有未提交改动 ⇒ 号对不上仓库里任何干净提交，按
-            //     用户 2026-11-09 的规矩这种包不许当正式包外发——App 只报不拦，红字即显形。
-            val commitSha = BuildConfig.GIT_SHA
-            InfoRow(
-                stringResource(R.string.about_build_commit),
-                commitSha,
-                valueColor = if (commitSha == "local" || commitSha.endsWith("-dirty")) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    Color.Unspecified
-                },
-            )
-            Spacer(Modifier.height(4.dp))
-            InfoRow(stringResource(R.string.about_build_time), BuildConfig.BUILD_TIME)
             Spacer(Modifier.height(4.dp))
             InfoRow(stringResource(R.string.about_build_abi), BuildConfig.ABI)
             Spacer(Modifier.height(4.dp))

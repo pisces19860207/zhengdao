@@ -333,8 +333,19 @@ abstract class ZdBuildShaSource : ValueSource<String, ZdBuildShaParams> {
         return head.take(8) + if (dirty) "-dirty" else ""
     }
 
-    /** 跑一条 git 只读命令；git 不在 PATH／不在仓库里 ⇒ null（调用方兜底）。 */
-    private fun gitLine(dir: File, vararg args: String): String? = runCatching {
+    private fun gitLine(dir: File, vararg args: String): String? = ZdGit.line(dir, *args)
+}
+
+/**
+ * 跑一条 git 只读命令；git 不在 PATH／不在仓库里 ⇒ null（调用方兜底）。
+ *
+ * ⚠️ 为什么是 `object` 而不是脚本顶层函数（683 实测踩过）：Kotlin 脚本里的顶层函数是**脚本类的成员**，
+ * ValueSource 这类由 Gradle 反射实例化的类一旦引用它，就会捕获脚本实例 ⇒ 编译成
+ * `non-static inner class` ⇒ `Could not create an instance of type … is a non-static inner class`
+ * （第一次跑 :app:zdPrintVersionIdentity 就红在这）。`object` 的成员是静态可达的，不会有这层绑定。
+ */
+object ZdGit {
+    fun line(dir: File, vararg args: String): String? = runCatching {
         val proc = ProcessBuilder("git", *args)
             .directory(dir)
             .redirectErrorStream(true)
@@ -349,6 +360,64 @@ val zdBuildSha = providers.of(ZdBuildShaSource::class) {
     parameters.dir.set(rootDir)
     parameters.shaOverride.set((findProperty("zhengdao.gitSha") as String?) ?: "")
 }
+
+// ── versionCode 派生（683，2026-11-16）────────────────────────────────────────
+// 病（673 第⑫项）：同一台手机装包前后，`dumpsys package` 里 versionCode 44、versionName 2.2.6
+//   **一模一样**，「装的是不是新包」只能靠 lastUpdateTime + codePath + 包内 GIT_SHA 反推。
+//   ⇒ 号必须由构建派生，写死一个数就等于「所有构建都是同一个版本」。
+//
+// 口径：versionCode = 提交总数 × 1000 + 短号指纹（HEAD 短号前 7 位十六进制 ÷ 1000 的余数）。
+//   · 同支线上每多一条提交 ⇒ 提交数 +1 ⇒ 号至少 +1（后三位最多吃掉 999）⇒ **递增**，
+//     adb install -r 不会掉进 INSTALL_FAILED_VERSION_DOWNGRADE；
+//   · 只由「提交数、短号」两个 git 事实决定 ⇒ **同 commit 幂等**；不掺工作区脏不脏、
+//     不掺构建时刻 ⇒ 本机脏树与 CI 干净检出**同 commit 必同号**（683 判据②④）；
+//   · 跨支线可能撞见同一个提交数（分叉点各走各的），后三位指纹负责把这种撞车拆开
+//     —— 1/1000 才会再撞，那时「关于页的 sha7」还能分辨（单一数字口径本就不可能绝对无撞）。
+// 为什么不用提交时间戳：本仓有同一秒内的多条提交（rebase/批处理提交），`%ct` 会给出同值。
+// 为什么不用 `rev-list --count` 单值：不同支线正好同数时又回到「新旧不分」。
+// 上限：2147483647 / 1000 ⇒ 约 2,147,483 条提交（本仓 ~80 条/天也算足够宽）。
+interface ZdVersionCodeParams : ValueSourceParameters {
+    /** 仓库根：git 在这里跑。 */
+    val dir: DirectoryProperty
+
+    /** `-Pzhengdao.versionCode=<十进制数>` 显式覆盖（负例/复现/无 git 环境用）；空串＝无覆盖。 */
+    val override: org.gradle.api.provider.Property<String>
+}
+
+abstract class ZdVersionCodeSource : ValueSource<String, ZdVersionCodeParams> {
+    override fun obtain(): String {
+        parameters.override.orNull?.trim()?.takeIf { it.isNotEmpty() }?.let { o ->
+            require(Regex("\\d{1,9}").matches(o)) {
+                "-Pzhengdao.versionCode=$o 不是十进制数（只收 1–9 位数字，683）"
+            }
+            return o
+        }
+        val dir = parameters.dir.get().asFile
+        // 浅克隆里 `rev-list --count` 只会数到检出深度 ⇒ 号会小得离谱且与 CI 对不上。
+        // 直接红，并指名修法；CI 两处 checkout 都已是 fetch-depth: 0。
+        check(ZdGit.line(dir, "rev-parse", "--is-shallow-repository") != "true") {
+            "浅克隆数不出提交总数（git rev-list --count 只数得到检出深度）⇒ versionCode 会算错。" +
+                "请 `git fetch --unshallow`（CI 上 actions/checkout 需 fetch-depth: 0），" +
+                "或 -Pzhengdao.versionCode=<十进制数> 显式指定（683）。"
+        }
+        val count = ZdGit.line(dir, "rev-list", "--count", "HEAD")?.toLongOrNull()
+        val sha = ZdGit.line(dir, "rev-parse", "HEAD")?.takeIf { it.length >= 7 }
+        check(count != null && count > 0 && sha != null) {
+            "推导不出 versionCode（git 不可用 / 不在仓库里）⇒ 请从 git 检出构建，" +
+                "或 -Pzhengdao.versionCode=<十进制数> 显式指定（683）。"
+        }
+        val fingerprint = sha!!.take(7).toLong(16) % 1000
+        return (count!! * 1000 + fingerprint).toString()
+    }
+}
+
+val zdVersionCode = providers.of(ZdVersionCodeSource::class) {
+    parameters.dir.set(rootDir)
+    parameters.override.set((findProperty("zhengdao.versionCode") as String?) ?: "")
+}
+
+/** versionNameSuffix 与关于页共用的短号：**7 位**（派工单口径 sha7）；`local` 原样返回。 */
+val zdSha7: String get() = zdBuildSha.get().trim().take(7)
 
 // 发版闸（561）：正式包必须带真短号。本机没 git／没有 CI 号 ⇒ GIT_SHA 只能是 local，
 // 这种包对不上仓库里的任何提交，打出去就是"对不上号的包"——直接失败，不是警告。
@@ -406,7 +475,11 @@ android {
         // ⚠️ 2026-10-07 更正：原注释写「MagicOS 11」，实测 build 号对不上——MagicOS 10
         //    才基于 Android 16（MagicOS 11 对应 Android 17），记录见 docs/acceptance/v1.1-2026-10-07.md。
         minSdk = 36
-        versionCode = 44
+        // 683（2026-11-16）：由构建派生（提交数 × 1000 + 短号指纹，见文件「versionCode 派生」段）。
+        // 旧口径是一个写死的常量（到 2.2.6 为止是 44）：任何两次构建在包里都是同一个号，
+        // 「手机里装的是不是新包」只能靠 dumpsys 的时间戳反推（673 第⑫项）。
+        // ⚠️ 别把这里改回数字：门禁会红（ReleaseSigningGateTest / LocalLifecycleOwnerGuardTest）。
+        versionCode = zdVersionCode.get().toInt()
         // 2026-10-27：桌面名分版（用户：「debug 包叫开发版/预览版，正式版还是正式版，
         // 这样我能分清手机上装的是哪个版本」「预览版也有版本号那种」）。
         // 做法：manifest 的 android:label 用占位符 ${appLabel}——
@@ -491,6 +564,10 @@ android {
         debug {
             manifestPlaceholders["appLabel"] =
                 "证道·开发版 v$appVersionName (" + zdBuildSha.get() + ")"
+            // 683：开发版 versionName 带构建身份 —— 2.2.6 → 2.2.6-debug+9501f76。
+            // 正式版不带后缀（versionName 保持人工语义版本，对外仍是一个干净的三段号）；
+            // 「换没换包」在正式版上由 versionCode 说话，在开发版上后缀＋号一起说话。
+            versionNameSuffix = "-debug+" + zdSha7
         }
         release {
             optimization {
@@ -1105,6 +1182,40 @@ abstract class ZdReleaseIdentityGateTask : DefaultTask() {
 val zdReleaseIdentityGate = tasks.register<ZdReleaseIdentityGateTask>("zdReleaseIdentityGate") {
     group = "verification"
     description = "561：正式包必须带真 commit 短号（GIT_SHA=local ⇒ 失败）"
+    gitSha.set(zdBuildSha)
+}
+
+// ── 683：把构建身份打出来（不编译、不回读产物，配置完就能跑）─────────────────────
+// 用途：① 人工核对「这个 commit 的号是多少」；② 判据①/②的取证
+//   （换两个 commit 各跑一次 ⇒ 号必不同；同一 commit 跑两次 ⇒ 号必相同）。
+//   ./gradlew :app:zdPrintVersionIdentity
+// ⚠️ 值一律走 Property 注入，不在 doLast 里引用脚本对象（configuration-cache 会拒收脚本引用，
+//    561 那次负例测试实测红过一次，见上面 ZdReleaseIdentityGateTask 的注释）。
+abstract class ZdPrintVersionIdentityTask : DefaultTask() {
+    @get:org.gradle.api.tasks.Input
+    abstract val versionCode: org.gradle.api.provider.Property<String>
+
+    @get:org.gradle.api.tasks.Input
+    abstract val versionName: org.gradle.api.provider.Property<String>
+
+    @get:org.gradle.api.tasks.Input
+    abstract val gitSha: org.gradle.api.provider.Property<String>
+
+    @org.gradle.api.tasks.TaskAction
+    fun print() {
+        val sha = gitSha.get()
+        logger.lifecycle(
+            "[zdVersionIdentity] versionCode=${versionCode.get()} versionName=${versionName.get()} " +
+                "gitSha=$sha sha7=${sha.take(7)}"
+        )
+    }
+}
+
+val zdPrintVersionIdentity = tasks.register<ZdPrintVersionIdentityTask>("zdPrintVersionIdentity") {
+    group = "verification"
+    description = "683：打印派生的 versionCode / versionName / 短号（判据取证用）"
+    versionCode.set(zdVersionCode)
+    versionName.set(appVersionName)
     gitSha.set(zdBuildSha)
 }
 listOf("assembleRelease", "bundleRelease").forEach { name ->

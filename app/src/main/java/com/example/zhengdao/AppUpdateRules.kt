@@ -34,11 +34,17 @@ internal object AppUpdateRules {
      * - 只对 **remote** 剥 `v` 前缀；`local` 不剥 —— local 来自 `BuildConfig.VERSION_NAME`，
      *   本来就没有 `v`，剥了反而掩盖「有人给 versionName 加了 v」这种真问题；
      * - 缺失段按 0 补齐（`1.2` 与 `1.2.0` 相等）；
-     * - 非数字段按 0 处理（`1.x.3` ⇒ `[1,0,3]`），不抛异常。
+     * - **段首非数字按 0**（`1.x.3` ⇒ `[1,0,3]`），不抛异常。
+     *
+     * 683（2026-11-16）：段的解析从「整段必须是数字」放宽成「**取段首连续数字**」。
+     * 起因是 debug 包的 versionName 变成 `2.2.6-debug+9501f76`（versionNameSuffix）：
+     * 老写法把第三段判成非数字 ⇒ local=[2,2,0] ⇒ 远端 `v2.2.6` 永远"比本地新"
+     * ⇒ 开发版每次启动都弹一次更新提示。放宽后第三段读到 6，两个 2.2.6 相等、不弹。
+     * ⚠️ 这条放宽**没有**改变「段首非数字仍按 0」的语义（`1.x.3` 的 `x` 还是 0）。
      */
     fun isNewer(remote: String, local: String): Boolean {
-        val r = remote.removePrefix("v").split('.').map { it.toIntOrNull() ?: 0 }
-        val l = local.split('.').map { it.toIntOrNull() ?: 0 }
+        val r = segments(remote.removePrefix("v"))
+        val l = segments(local)
         for (i in 0 until maxOf(r.size, l.size)) {
             val a = r.getOrElse(i) { 0 }
             val b = l.getOrElse(i) { 0 }
@@ -46,4 +52,8 @@ internal object AppUpdateRules {
         }
         return false
     }
+
+    /** 按 `.` 切段，每段取**段首连续数字**（`6-debug+x` ⇒ 6，`x1` ⇒ 0）。 */
+    private fun segments(v: String): List<Int> =
+        v.split('.').map { seg -> seg.takeWhile { it.isDigit() }.toIntOrNull() ?: 0 }
 }

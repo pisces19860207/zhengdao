@@ -125,19 +125,47 @@ class ReleaseSigningGateTest {
     }
 
     @Test
-    fun `版本号三处一致_且该版本有 release note`() {
-        val g = gradle
-        val name = Regex("val appVersionName = \"([0-9.]+)\"").find(g)?.groupValues?.get(1)
-        val code = Regex("versionCode = (\\d+)").find(g)?.groupValues?.get(1)
+    fun `版本号由构建派生_且该版本有 release note`() {
+        val name = Regex("val appVersionName = \"([0-9.]+)\"").find(gradle)?.groupValues?.get(1)
         assertTrue("app/build.gradle.kts 里读不到 appVersionName", name != null)
-        assertTrue("app/build.gradle.kts 里读不到 versionCode", code != null)
+
+        // 683（2026-11-16）：versionCode 改为**由构建派生**。这条断言原先查的是
+        // 「versionCode = 44」这类常量，并与 README 上那个数对拍；写死一个数正是 673 第⑫项的病灶：
+        // 装包前后都是同一个号，「手机里装的是不是新包」只能拿 dumpsys 的 lastUpdateTime 反推。
+        // 现在判据反过来：**不许**再有常量（负例），且必须真的挂在派生值上（正例）。
+        val hardcoded = Regex("""versionCode\s*=\s*\d+""").find(gradleCode)?.value
+        assertTrue(
+            "versionCode 又被写成了常量（$hardcoded）——两次不同提交会得到同一个号，673 第⑫项复发",
+            hardcoded == null,
+        )
+        assertTrue(
+            "versionCode 必须取自派生值（versionCode = zdVersionCode…）",
+            Regex("""versionCode\s*=\s*zdVersionCode""").containsMatchIn(gradleCode),
+        )
+        // 派生源本身要真的数提交：只靠短号也能"不同提交不同号"，但号就不再递增 ⇒ 会被
+        // adb install -r 判成降级。这条防的是"有人把提交数那一项删了"。
+        assertTrue(
+            "派生源里没有 `rev-list --count`（提交数）——号就不再随提交递增",
+            gradleCode.contains("\"rev-list\"") && gradleCode.contains("\"--count\""),
+        )
+        // 开发版后缀（判据③的载体）：debug 的 versionName 必须带 -debug+<sha7>。
+        assertTrue(
+            "debug 的 versionNameSuffix 必须是 \"-debug+\" 开头（否则开发版与正式版在关于页分不开）",
+            Regex("versionNameSuffix\\s*=\\s*\"-debug\\+").containsMatchIn(gradleCode),
+        )
 
         val zh = readRepo("README.md")
         val en = readRepo("README.en.md")
         assertTrue("README.md 的「当前版本」没跟上：应写 v$name", zh.contains("当前版本：v$name"))
-        assertTrue("README.md 的 versionCode 没跟上：应写 $code", zh.contains("versionCode $code"))
         assertTrue("README.en.md 的 Current release 没跟上：应写 v$name", en.contains("Current release: v$name"))
-        assertTrue("README.en.md 的 versionCode 没跟上：应写 $code", en.contains("versionCode $code"))
+        // 683：README 里也不许再报一个写死的号 —— 它与派生值必然对不上，等于公开对错号。
+        val zhCode = Regex("""versionCode\s*\d+""").find(zh)?.value
+        assertTrue("README.md 还报着写死的 versionCode（$zhCode）——这个号现在由构建派生", zhCode == null)
+        val enCode = Regex("""versionCode\s*\d+""").find(en)?.value
+        assertTrue("README.en.md 还报着写死的 versionCode（$enCode）——这个号现在由构建派生", enCode == null)
+        // 正例：说明「派生」这件事本身，否则用户按老习惯去找那个数会找不到。
+        assertTrue("README.md 必须写明 versionCode 由构建派生", zh.contains("versionCode 由构建派生"))
+        assertTrue("README.en.md 必须写明 versionCode 由构建派生", en.contains("versionCode is derived"))
 
         val notes = repoFile(".github/release-notes/v$name.md")
         assertTrue("缺 .github/release-notes/v$name.md —— tag 触发的 Release 会没有正文", notes.exists())

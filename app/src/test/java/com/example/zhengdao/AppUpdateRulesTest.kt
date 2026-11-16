@@ -58,6 +58,22 @@ class AppUpdateRulesTest {
     }
 
     @Test
+    fun `版本比较_开发版后缀不改变数值语义`() {
+        // 683（2026-11-16）：debug 包的 versionName 变成 `2.2.6-debug+9501f76`（versionNameSuffix）。
+        // 老写法「整段必须是数字」把第三段判成 0 ⇒ local=[2,2,0] ⇒ 远端 v2.2.6 永远"更新"
+        // ⇒ 开发版每次启动都弹一次更新提示。放宽成「取段首数字」后两边都是 6。
+        assertFalse(AppUpdateRules.isNewer("v2.2.6", "2.2.6-debug+9501f76"))
+        // 反方向：远端自己带后缀（不是现在的形态，但解析器两边同一条规则）⇒ 仍然相等
+        assertFalse(AppUpdateRules.isNewer("v2.2.6-debug+a1b2c3d", "2.2.6"))
+        assertTrue(AppUpdateRules.isNewer("v2.2.7", "2.2.6-debug+9501f76"))
+        assertTrue(AppUpdateRules.isNewer("v2.3.0", "2.2.6-debug+08b1c0d"))
+        // 反例：放宽只放宽"段首数字"，段首不是数字的仍按 0。
+        // 若有人把规则改成"抠出段里任意数字"（x9 ⇒ 9），这一条立刻红：届时 local 会变 [1,9,0]，
+        // 远端 1.5.0 就不算更新了。
+        assertTrue("段首是 x ⇒ 该段按 0（不是把 9 抠出来）", AppUpdateRules.isNewer("1.5.0", "1.x9.0"))
+    }
+
+    @Test
     fun `tag解析_从响应体取出tag_name`() {
         val body = """{"url":"https://api.github.com/…","tag_name":"v2.2.0","name":"2.2.0"}"""
         assertEquals("v2.2.0", AppUpdateRules.parseLatestTag(body))
