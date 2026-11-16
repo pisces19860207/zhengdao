@@ -48,8 +48,9 @@ class RiskMatrixTest {
         // 621 剧本五件（109 → 114：outline/approve/write/export R1，trace R0）
         // 649 资料包一件（114 → 115：pack 工具 R1——隐藏能力、按需挂载）
         // 624C 纠正两件（115 → 117：teach_correct_apply R1 / teach_correct_resume R2 必问——边看边纠）
-        // 614 外部委派一件（117 → 118：delegate_peer_task R2＋点名必问——549 的「每次派活都要人批」）
-        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 118, names.size)
+        // 614 合并批（117 → 118：delegate_peer_task R2+alwaysAsk）
+        // 654 模型提交口两件（118 → 120：learn_draft_submit R1 / learn_trace_summary R0）
+        assertEquals("注册表工具数变了：先更新本批的工具→档表，再回来改这条", 120, names.size)
         assertEquals(
             "这些注册工具没有风险档（fail-closed 门禁）：${RiskMatrix.uncovered(names)}",
             emptyList<String>(),

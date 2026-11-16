@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /** 「就教这一步」的一次武装（等页面上匹配 kind 的下一条事件，超时自动解除）。 */
 internal data class ArmedTeach(
@@ -332,6 +333,37 @@ internal object ObserveCenter {
         draftStore.resolve(id)
         refreshDrafts()
     }
+
+    // ── 654：模型提交口与轨迹摘要（两条归纳路共用同一道结构门）────────────────────
+
+    /**
+     * 模型提交草案（`learn_draft_submit` 的落点）：解析 → [SkillDraftRules] → 草稿区。
+     *
+     * 与 [induceDraft]（脚本侧）**只差归纳者**：录入、校验、归并、落区全同一条链——
+     * 结构门只有一处，写口只有 [SkillDraftStore] 一处（本函数不碰文件）。
+     * 收进草稿区**不转正**（转正仍需人批 [confirmDraft]）。
+     */
+    fun submitDraft(payload: JSONObject): LearnSubmit.Outcome {
+        val now = clock()
+        val result = LearnSubmit.submit(
+            payload = payload,
+            newId = now.toString(36),
+            lastSessionId = lastSession?.openedAtMs?.toString(36),
+            store = draftStore,
+        )
+        when (result) {
+            is LearnSubmit.Outcome.Accepted -> {
+                refreshDrafts()
+                if (result.merged) toast(LearnToastKind.DRAFT_MERGED, result.withN.toString())
+                else toast(LearnToastKind.DRAFT_CREATED)
+            }
+            is LearnSubmit.Outcome.Rejected -> toast(LearnToastKind.DRAFT_REJECTED, result.reasons.joinToString("；"))
+        }
+        return result
+    }
+
+    /** 最近一次教学轨迹的摘要（≤300 字；没有会话 ⇒ 空串，由调用方如实说）。 */
+    fun traceSummary(): String = lastSession?.let { TraceSummary.of(it) } ?: ""
 
     private fun refreshDrafts() {
         draftsFlow.value = draftStore.pending()

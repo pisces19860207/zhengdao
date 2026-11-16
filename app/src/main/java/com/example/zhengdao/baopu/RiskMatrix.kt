@@ -528,6 +528,12 @@ internal data class RiskTable(
                 // correct_resume 自动执行页面动作（R2＋alwaysAsk，同 replay_skill 档）。
                 "teach_correct_apply" to ToolRule(RiskClass.R1),
                 "teach_correct_resume" to ToolRule(RiskClass.R2, alwaysAsk = true),
+                // 654：模型提交口两件。draft_submit 只把草案放进草稿区（App 私有目录、
+                // 封顶 20 条、不转正、不进技能库）⇒ R1（同 board_write：有痕迹不改外部世界，
+                // 也同它一样免确认卡——每次归纳都弹卡会把「归纳」变成「打扰」）；
+                // trace_summary 只读内存里的轨迹快照 ⇒ R0。
+                "learn_draft_submit" to ToolRule(RiskClass.R1),
+                "learn_trace_summary" to ToolRule(RiskClass.R0),
                 // ── 502 MCP 自配五件（CORE 组；add/set_token 是 R3 必问——对外连接与凭据）──
                 "mcp_list" to ToolRule(RiskClass.R0),
                 "mcp_add_server" to ToolRule(RiskClass.R3),

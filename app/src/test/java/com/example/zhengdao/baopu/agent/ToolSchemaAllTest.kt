@@ -490,6 +490,24 @@ class ToolSchemaAllTest {
             ),
             "script_export" to JSONObject().put("project", "片名"),
             "script_trace" to JSONObject().put("project", "片名"),
+            // 654：模型提交口（最小合法草案＝一句话目标 + 一步点击，证据指回会话；摘要无参数）
+            "learn_draft_submit" to JSONObject().put(
+                "draft",
+                JSONObject().put("goal", "查装车").put(
+                    "skeleton",
+                    JSONArray().put(
+                        JSONObject().put("i", 1).put("intent", "查询").put("a", "click")
+                            .put("url", "https://example.test/list")
+                            .put(
+                                "el",
+                                JSONObject().put("tag", "BUTTON").put("name", "查询")
+                                    .put("xp", "/html/body/button[1]"),
+                            )
+                            .put("ev", JSONArray().put("观察/会话-abc.jsonl#seq1")),
+                    ),
+                ),
+            ),
+            "learn_trace_summary" to JSONObject(),
             // 第二百三十二批：通用表格问答（两条入口二选一，样本给一句话那条）
             "table_query" to JSONObject().put("question", "一共几个人"),
             "search_web" to JSONObject().put("query", "word"),

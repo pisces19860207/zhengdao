@@ -430,8 +430,9 @@ class HealthCheckTest {
         assertEquals(
             "工具表条数与派工单对不上（ENTRIES 段真值：609 六件＋610 两件＋632 两件 ⇒ 106；"
                 + "642 套模板一件 ⇒ 107；621 剧本五件 ⇒ 112；649 资料包一件 ⇒ 113；"
-                + "624C 纠正两件 ⇒ 115；614 外部委派一件 ⇒ 116）",
-            116, tools.size,
+            "工具表条数与派工单对不上（ENTRIES 段真值：614 基线 116；"
+                + "654 模型提交口两件 ⇒ 118）",
+            118, tools.size,
         )
         val organs = OrganCensus.HEALTH_PARTS.map { HealthCheck.organ(it) }
         val rows = tools.map { HealthCheck.tool(it) }

@@ -403,11 +403,13 @@ class RiskWiringTest {
                 // 642 套模板进表（docx_template R1）＝ 109 行
                 // 621 剧本五件进表（outline/approve/write/export R1；trace R0）＝ 114 行
                 // 624C 纠正两件进表（teach_correct_apply R1 / teach_correct_resume R2 必问）＝ 117 行（没有新风险维度，版本不动）
-        // 649 资料包进表（pack R1）＝ 115 行；614 外部委派进表（delegate_peer_task R2＋必问）＝ 118 行
+                // 614 进表一件（delegate_peer_task R2+alwaysAsk）＝ 118 行
+                // 654 进表两件（learn_draft_submit R1 / learn_trace_summary R0）＝ 120 行（无新风险维度，版本不动）
         assertEquals(
-            "表行数变了：先对账再改（118 个注册工具 = 118 行；621 剧本五件 ⇒ 114，649 资料包 ⇒ 115，"
-                + "624C 纠正两件 ⇒ 117，614 委派 ⇒ 118）",
-            118,
+            "表行数变了：先对账再改（120 个注册工具 = 120 行；614 基线 118，654 加 2 ⇒ 120）",
+            120,
+            RiskTable.DEFAULT.tools.size,
+        )
             RiskTable.DEFAULT.tools.size,
         )
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)

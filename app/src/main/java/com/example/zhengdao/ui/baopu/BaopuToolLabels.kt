@@ -158,6 +158,9 @@ internal object BaopuToolLabels {
         // 622：动作脚本导出/导入（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
         "teach_skill_export" to R.string.baopu_tool_teach_skill_export,
         "teach_skill_import" to R.string.baopu_tool_teach_skill_import,
+        // 654：模型提交口两件（学习板块；漏了同样 fail-fast）
+        "learn_draft_submit" to R.string.baopu_tool_learn_draft_submit,
+        "learn_trace_summary" to R.string.baopu_tool_learn_trace_summary,
         // 第二百六十九批：打包/解包。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
         // 第四百九十一批：备份/还原（漏这一行 ⇒ 设置页开工具卡直接抛，fail-fast）
         "export_data" to R.string.baopu_tool_export_data,
@@ -303,6 +306,9 @@ internal object BaopuToolLabels {
         // 622：动作脚本导出/导入（同上，漏了 fail-fast）
         "teach_skill_export" to R.string.baopu_tool_teach_skill_export_desc,
         "teach_skill_import" to R.string.baopu_tool_teach_skill_import_desc,
+        // 654：模型提交口两件（同上，漏了 fail-fast）
+        "learn_draft_submit" to R.string.baopu_tool_learn_draft_submit_desc,
+        "learn_trace_summary" to R.string.baopu_tool_learn_trace_summary_desc,
         // 第二百六十九批：打包/解包（同上，漏了 fail-fast）
         "export_data" to R.string.baopu_tool_export_data_desc,
         "import_data" to R.string.baopu_tool_import_data_desc,

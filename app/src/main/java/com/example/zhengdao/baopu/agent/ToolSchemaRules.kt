@@ -141,6 +141,9 @@ internal object ToolSchemaRules {
         "novel_relations" to "path 可省略：省略＝各小说项目与资料库的 关系/ 全收（NovelRelationsTool，609 批）",
         "novel_timeline" to "path/from/to 全可选：path 省略＝约定位置全收，from/to 省略＝不过滤（NovelTimelineTool，609 批）",
         "novel_annotations" to "path 可省略：省略＝各小说项目与资料库的 批注/ 全收（NovelAnnotationsTool，609 批）",
+        // 第六百五十四批：看最近一次教学轨迹的摘要，没有可填的东西（LearnTools.traceSummarySpec）
+        "learn_trace_summary" to "无参数：摘要作用于最近一次收口的教学会话，没有可填的东西" +
+            "（LearnTools.traceSummarySpec，654 批）",
     )
 
     /**

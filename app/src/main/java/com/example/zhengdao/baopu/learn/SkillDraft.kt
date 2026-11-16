@@ -14,6 +14,7 @@
 //     名出现（判据④「断言字面量已拔掉」在数据结构上成立），真值在人批确认时填。
 package com.example.zhengdao.baopu.learn
 
+import com.example.zhengdao.bridge.PortIrreversible
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -151,6 +152,14 @@ internal object SkillDraftRules {
     /** 无证据的定稿说法（判据②断言到这一句上）。 */
     const val NO_EVIDENCE = "没有证据"
 
+    /**
+     * 含不可逆动作的定稿说法（654 判据④断言到这三个字上）。
+     *
+     * 为什么这道闸在**结构门**而不是在提交工具里：两条归纳路（脚本侧 DraftInducer、
+     * 模型侧 LearnSubmit）都要过门，闸只装在门上一处；装在提交口会变成两份判据。
+     */
+    const val IRREVERSIBLE = "不可逆"
+
     fun validate(draft: SkillDraft): DraftCheck {
         val problems = mutableListOf<String>()
         if (draft.goal.isBlank()) problems += "goal 不能为空（归纳必须有意图）"
@@ -161,6 +170,7 @@ internal object SkillDraftRules {
         draft.skeleton.filter { it.evidence.isEmpty() }.forEach { step ->
             problems += "第 ${step.index} 步$NO_EVIDENCE（指不回观察账）——拒收"
         }
+        draft.skeleton.forEach { step -> irreversibleProblem(step)?.let { problems += it } }
         draft.skeleton.filter { it.param != null && it.candidates.isEmpty() }.forEach { step ->
             val declared = draft.params.any { p -> p.name == step.param }
             if (!declared) problems += "第 ${step.index} 步声明参数「${step.param}」但 params 里没有它"
@@ -169,5 +179,20 @@ internal object SkillDraftRules {
             problems += "第 ${step.index} 步候选只有 1 条（冲突必须两套并存，单候选是坏形）"
         }
         return if (problems.isEmpty()) DraftCheck.Ok else DraftCheck.Invalid(problems)
+    }
+
+    /**
+     * 654 判据④：点击步的**可及名/身份面**命中不可逆词表 ⇒ 拒收（原因是「不可逆」）。
+     *
+     * 词表不新造：复用 [PortIrreversible]（端口/示教层/622 脚本交换同一份九词表），
+     * 冲突步的每套候选也一起扫——候选里有「提交」就等于这条技能迟早会点提交。
+     */
+    private fun irreversibleProblem(step: DraftStep): String? {
+        if (step.kind != ObserveKind.CLICK.wire) return null
+        val faces = listOf(step.locator) + step.candidates
+        val reason = faces.firstNotNullOfOrNull { f ->
+            PortIrreversible.reasonIn(listOf(f.name, f.aria, f.testid, f.formLabel, f.placeholder))
+        } ?: return null
+        return "第 ${step.index} 步含${IRREVERSIBLE}动作（$reason）——拒收"
     }
 }

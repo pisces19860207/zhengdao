@@ -404,6 +404,10 @@ internal object ToolGroupTable {
         // （合流时补的分组——补不上 checkCoverage 直接抛，这是 §6「孤儿工具直接红」在跑）
         "write_skill" to ToolGroup.SKILL,
         "append_persona" to ToolGroup.SKILL,
+        // 654：模型提交口两件——与 write_skill 同组（「把学到的东西写下来」这一族）：
+        // learn_draft_submit 只进草稿区（不转正）、learn_trace_summary 只读轨迹摘要。
+        "learn_draft_submit" to ToolGroup.SKILL,
+        "learn_trace_summary" to ToolGroup.SKILL,
         "preview_local_file" to ToolGroup.PREVIEW,
         // 第一百二十七批：多 Agent 协作（run_subtasks）。默认不可见——大任务才用得到，
         // 小任务模型看不见它就不会瞎拆（渐进披露，见 ToolGroup.AGENT 注释）。
@@ -1623,6 +1627,10 @@ internal object BaopuToolCatalog {
         // （它由 BaopuRuntime 单独注册——要 personaFiles，ENTRIES 的工厂只吃 workspaceRoot）
         "write_skill",
         "append_persona",
+        // 654：模型提交口两件（组归 SKILL，默认不可见＝capabilities 解锁即用）。
+        // **必须在表里**——漏了就是「注册了但默认关」，模型永远看不见提交口（这一族已翻车多次）。
+        "learn_draft_submit",
+        "learn_trace_summary",
         // 资料库两件套（第三十一批）：list 只读；organize 三个动作一律 CONFIRM，够不着「静默动手」
         "library_list",
         "library_organize",
@@ -1929,6 +1937,12 @@ internal object BaopuToolCatalog {
         Entry("script_write") { ScriptWriteTool.spec(it) },
         Entry("script_export") { ScriptExportTool.spec(it) },
         Entry("script_trace") { ScriptTraceTool.spec(it) },
+        // ── 第六百五十四批：模型提交口两件（学习板块）──────────────────────────
+        // 624 阶段二留下的挂账：脚本侧归纳（DraftInducer）有了，模型侧没有提交通道。
+        // learn_draft_submit 只到草稿区（人批才转正，与 643 一致）；learn_trace_summary 只读。
+        // 两件都不要 workspaceRoot：数据在 App 私有目录（抱朴记忆/观察/），由 ObserveCenter 持有。
+        Entry("learn_draft_submit") { LearnTools.draftSubmitSpec() },
+        Entry("learn_trace_summary") { LearnTools.traceSummarySpec() },
     )
 
     /**

@@ -155,6 +155,8 @@ class ToolRegistrySwitchTest {
                 "docx_template",
                 // 621：剧本五件（LIBRARY 组，默认不可见但默认启用；表序即注册序）
                 "script_outline", "script_approve", "script_write", "script_export", "script_trace",
+                // 654：模型提交口两件（SKILL 组，默认不可见但默认启用；表序即注册序，接在剧本五件之后）
+                "learn_draft_submit", "learn_trace_summary",
             ),
             reg.names(),
         )

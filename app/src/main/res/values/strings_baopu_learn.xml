@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 654 批：模型提交口两件的字符串单独成文件（与 228 的 strings_baopu_teach.xml 同一做法：
+     不往主干 strings.xml 上叠改动，工具文案门禁（BaopuToolStringsTest）按目录全读 strings*.xml，
+     独立文件与并入完全等价。
+
+     文案里刻意写死三件事（与 LearnTools 两个 spec 的描述同口径）：
+     ① 提交只进草稿区，**不转正**——转正要人批；② 拒收原因分四类（缺定位／缺证据／
+     结构不合法／含不可逆动作）；③ 摘要只给步骤序号＋动作＋定位种类，不给页面正文。 -->
+<resources>
+    <string name="baopu_tool_learn_draft_submit">提交学到的草案</string>
+    <string name="baopu_tool_learn_draft_submit_desc">把归纳出的技能草案交给结构校验：过了就进「草稿区」等你确认，**不会自己转正**，也不写技能库。没过会说清欠哪一样：缺定位、缺证据、结构不合法、含不可逆动作。草案要指回真跑过的那段教学轨迹，每步都要有能点开的证据。</string>
+    <string name="baopu_tool_learn_trace_summary">看教学轨迹摘要</string>
+    <string name="baopu_tool_learn_trace_summary_desc">看最近一次教学轨迹的摘要（300 字以内）：只有步骤序号、动作（点击／输入／选择）和定位种类，没有页面正文、没有填过的内容；密码、验证码这类敏感操作整条不出现。归纳草案前先看它。只读。</string>
+</resources>
