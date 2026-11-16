@@ -440,6 +440,11 @@ internal data class RiskTable(
                 // 故意不给 urlKeys：内网/白名单那条硬拒是**新闸**，外发地址的闸在 549 的
                 // 租约＋准入那两道（PeerOutboundGate/EnvoyAdmission），本批不另开一条。
                 "delegate_peer_task" to ToolRule(RiskClass.R2, alwaysAsk = true),
+                // 648（G-572-4）：准入考试的独立入口——**同样点名必问**。放权档免不掉它：
+                // 九道题是九次真实外发（message/send＋轮询），没人批就一个考卷字节都不许出。
+                // 不给 urlKeys 的理由与 delegate_peer_task 同一条：外发的闸在 549 的
+                // 租约＋准入那两道（禁区那一道在 648 的 SubAgentWhitelist），本表不另开一条。
+                "exam_peer_agent" to ToolRule(RiskClass.R2, alwaysAsk = true),
                 "card_export" to ToolRule(RiskClass.R2, writePathKeys = setOf("out")),
                 // ── 597 立绘外貌两件 ─────────────────────────────────────────
                 // look：只读图＋落一行账（`.appearance.jsonl` 点号文件）——账与 ledger_add 同口径 R1。

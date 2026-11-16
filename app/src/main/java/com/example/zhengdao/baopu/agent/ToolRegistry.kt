@@ -415,6 +415,9 @@ internal object ToolGroupTable {
         // 614（549 遗留的配套三行之二）：外部 A2A 委派同归 AGENT——默认不可见（解锁才露面），
         // 破不了 B1「默认可见 ≤12」那张硬卡；派到外部 agent 的活也是「协作」，不是本地工具的一个分支。
         "delegate_peer_task" to ToolGroup.AGENT,
+        // 648（G-572-4）：准入考试的独立入口同归 AGENT——它与 delegate_peer_task 是同一件事的
+        // 两半（一个摸底、一个派活），分组的理由一个字不少；默认不可见，破不了 B1 那张硬卡。
+        "exam_peer_agent" to ToolGroup.AGENT,
         // 第一百九十五批：查询只读工具（LOGISTICS 组，默认不可见，capabilities 解锁）。
         // 不进 CORE ⇒ 默认可见 12 条的硬卡不破。
         "logistics_query" to ToolGroup.LOGISTICS,
@@ -1672,6 +1675,9 @@ internal object BaopuToolCatalog {
         // 默认不可见（AGENT 组）：漏这一行就是「注册了却永远看不见」那一族经典翻车点。
         // 开着≠静默动手：RiskMatrix 把它点名成「必问」，每一次派活都要用户在卡上批（549 的闸）。
         "delegate_peer_task",
+        // 648（G-572-4）：准入考试入口同 delegate_peer_task 口径——默认开着、默认不可见；
+        // 开着≠静默动手：每次出题都要用户在卡上批（外发即租约，考卷也是字节）。
+        "exam_peer_agent",
         // 物流查询（第一百九十五批）：默认**开着**但默认不可见（LOGISTICS 组）——
         // 与 run_subtasks/generate_image 同口径：capabilities 解锁后立即可用，不必先去设置页翻开关。
         // 它是 readOnly + FREE（只读，弹卡等于每问一次装没装就打断一次用户）。
@@ -1889,6 +1895,10 @@ internal object BaopuToolCatalog {
         // 落点在 BaopuRuntime（EnvoyTool.sink → EnvoyDeliver），表里只放 spec——同 run_subtasks 房型。
         // 默认不可见（AGENT 组，渐进披露）但默认启用；解锁后每次调用仍必过授权卡（RiskMatrix 点名必问）。
         Entry("delegate_peer_task") { EnvoyTool.spec() },
+        // 第六百四十八批 ②（G-572-4）：给一台对端单独出一场准入考（不必等首次委派）。
+        // 落点同样在 BaopuRuntime（EnvoyExamTool.sink → EnvoyDeliver.exam → EnvoyAdmission.retest），
+        // 表里只放 spec；表序紧跟 delegate_peer_task——摸底与派活是同一件事的两半，读表的人该连着看。
+        Entry("exam_peer_agent") { EnvoyExamTool.spec() },
         // 物流查询（第一百九十五批）：只读查本机当日发货表（零网络、零模型调用）。
         // 不要 workspaceRoot：查的是 App 私有 `filesDir/物流/logistics.db`，与工作区无关
         // （inbox 只是她放导出文件的入口，读它的是导入那一步）。

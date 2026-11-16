@@ -143,6 +143,8 @@ internal object BaopuToolLabels {
         // 614（549 遗留两行）：外部 A2A 委派。漏这两行 ⇒ 设置页开工具卡直接抛
         // （BaopuToolLabelCoverageTest 按 switchableNames() 逐名核对，漏一个就红并点名）。
         "delegate_peer_task" to R.string.baopu_tool_delegate_peer_task,
+        // 648（G-572-4）：准入考试的独立入口。同样漏一行 ⇒ 设置页开这张卡直接抛。
+        "exam_peer_agent" to R.string.baopu_tool_exam_peer_agent,
         // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolLabel 的 fail-fast）
         "logistics_query" to R.string.baopu_tool_logistics_query,
         // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
@@ -291,6 +293,8 @@ internal object BaopuToolLabels {
         "ask_user" to R.string.baopu_tool_ask_user_desc,
         "run_subtasks" to R.string.baopu_tool_run_subtasks_desc,
         "delegate_peer_task" to R.string.baopu_tool_delegate_peer_task_desc,
+        // 648（G-572-4）：出题这张卡的说明（漏一行 ⇒ baopuToolDesc 的 fail-fast 直接抛）。
+        "exam_peer_agent" to R.string.baopu_tool_exam_peer_agent_desc,
         // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolDesc 的 fail-fast）
         "logistics_query" to R.string.baopu_tool_logistics_query_desc,
         // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页工具卡副标题直接抛

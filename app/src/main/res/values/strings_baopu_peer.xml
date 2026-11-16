@@ -3,4 +3,7 @@
 <resources>
     <string name="baopu_tool_delegate_peer_task">派活给外部 Agent（使臣团）</string>
     <string name="baopu_tool_delegate_peer_task_desc">把一件活派给外部的 A2A agent：先过准入（没考过的不派），再过外发租约闸，然后发出任务并轮询到收场。返回终态或 input-required——要补输入时带原任务号再调一次，续的是同一条任务，不重开新活。writes=true 表示这活要对方动它的盘或外部资源，只有准入 FULL 档接。每一次派活都要用户在确认卡上批准，批了才发得出字节。默认不可见：先在 capabilities 里解锁「多 Agent 协作」组才会出现。</string>
+    <!-- 648（G-572-4）：准入考试的独立生产入口（572 演练取证的那格：考试只挂在首次委派里）。 -->
+    <string name="baopu_tool_exam_peer_agent">给外部 Agent 出准入考卷</string>
+    <string name="baopu_tool_exam_peer_agent_desc">单独考一台外部 A2A agent，不必先派活：九道题（五枚探针＋四道品行）真发到对端做，考完就地更新它的准入画像与档位。通过＝可用（读类写类都接）；算错或纪律差＝降权只读（写类活不派给它，读类活照派，禁用不是降权）；明知红线还踩＝不用。补考也走这里：旧卷不作数，会真重新考一场。考试本身也是外发，每一次都要用户在确认卡上批准，批了才发得出考卷字节。看结论要分清两本账：能不能写记在「准入出题账」，收编到哪一档记在「准入账」。默认不可见：先在 capabilities 里解锁「多 Agent 协作」组才会出现。</string>
 </resources>
