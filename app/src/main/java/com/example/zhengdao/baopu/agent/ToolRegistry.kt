@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.mcp.McpSelfService
+import com.example.zhengdao.baopu.peer.EnvoyTool
 import com.example.zhengdao.baopu.ledger.LedgerAddTool
 import com.example.zhengdao.baopu.ledger.LedgerListTool
 import com.example.zhengdao.baopu.ledger.LedgerStatusTool
@@ -407,6 +408,9 @@ internal object ToolGroupTable {
         // 第一百二十七批：多 Agent 协作（run_subtasks）。默认不可见——大任务才用得到，
         // 小任务模型看不见它就不会瞎拆（渐进披露，见 ToolGroup.AGENT 注释）。
         "run_subtasks" to ToolGroup.AGENT,
+        // 614（549 遗留的配套三行之二）：外部 A2A 委派同归 AGENT——默认不可见（解锁才露面），
+        // 破不了 B1「默认可见 ≤12」那张硬卡；派到外部 agent 的活也是「协作」，不是本地工具的一个分支。
+        "delegate_peer_task" to ToolGroup.AGENT,
         // 第一百九十五批：查询只读工具（LOGISTICS 组，默认不可见，capabilities 解锁）。
         // 不进 CORE ⇒ 默认可见 12 条的硬卡不破。
         "logistics_query" to ToolGroup.LOGISTICS,
@@ -1656,6 +1660,10 @@ internal object BaopuToolCatalog {
         // 多 Agent 协作（第一百二十七批）：默认**开着**但默认不可见（AGENT 组）——
         // capabilities 解锁后立即可用，不必先去设置页找开关；小任务模型看不见它就不会瞎拆。
         "run_subtasks",
+        // 614（549 遗留的配套三行之三）：外部 A2A 委派同 run_subtasks 口径——默认**开着**但
+        // 默认不可见（AGENT 组）：漏这一行就是「注册了却永远看不见」那一族经典翻车点。
+        // 开着≠静默动手：RiskMatrix 把它点名成「必问」，每一次派活都要用户在卡上批（549 的闸）。
+        "delegate_peer_task",
         // 物流查询（第一百九十五批）：默认**开着**但默认不可见（LOGISTICS 组）——
         // 与 run_subtasks/generate_image 同口径：capabilities 解锁后立即可用，不必先去设置页翻开关。
         // 它是 readOnly + FREE（只读，弹卡等于每问一次装没装就打断一次用户）。
@@ -1869,6 +1877,10 @@ internal object BaopuToolCatalog {
         // 表里只放 spec。默认不可见（AGENT 组，渐进披露）但**默认启用**——
         // 「看得见」与「开着」是两件事：解锁后立即可用，不必先去设置页找开关。
         Entry("run_subtasks") { SubTaskTool.spec() },
+        // 第五百四十九批的遗留两行之一（614 接线批）：把外部的活派给 A2A agent（使臣团）。
+        // 落点在 BaopuRuntime（EnvoyTool.sink → EnvoyDeliver），表里只放 spec——同 run_subtasks 房型。
+        // 默认不可见（AGENT 组，渐进披露）但默认启用；解锁后每次调用仍必过授权卡（RiskMatrix 点名必问）。
+        Entry("delegate_peer_task") { EnvoyTool.spec() },
         // 物流查询（第一百九十五批）：只读查本机当日发货表（零网络、零模型调用）。
         // 不要 workspaceRoot：查的是 App 私有 `filesDir/物流/logistics.db`，与工作区无关
         // （inbox 只是她放导出文件的入口，读它的是导入那一步）。

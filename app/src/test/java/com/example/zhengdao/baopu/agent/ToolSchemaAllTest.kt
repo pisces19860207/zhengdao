@@ -605,6 +605,10 @@ class ToolSchemaAllTest {
                 "subtasks",
                 JSONArray().put(JSONObject().put("goal", "读 a.md 写摘要")),
             ),
+            // 第六百一十四批：外部 A2A 委派（必填 endpoint＋task；writes/task_id 都可省）
+            "delegate_peer_task" to JSONObject()
+                .put("endpoint", "https://peer.example/a2a")
+                .put("task", "把这份清单里缺货的 SKU 列出来"),
             "write_skill" to JSONObject().put("name", "试样").put("body", "# 试样\n"),
             "append_persona" to JSONObject().put("text", "先列计划再动手"),
             // 第一百九十五批：查询（唯一必填是 ask，三档之一；其余四个条件都可省）

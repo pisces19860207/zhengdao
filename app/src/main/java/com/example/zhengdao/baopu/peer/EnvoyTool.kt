@@ -8,9 +8,9 @@
 //   · **工具只有一条执行路径**（GuardPipeline 类注释的原文级规矩）：本 spec 只从注册表经
 //     管线到达——停机闸（471 intercept）、授权闸（风险矩阵/确认卡）、租约闸（467 的
 //     onRejected/onFinished）都在管线的第 ①②③ 段跑完才轮到执行体；
-//   · **未分类 ⇒ fail-closed R2 必问**：本工具**不进**矩阵表与分组表（那三处是配套账，
-//     归 ToolRegistry 的在飞租约方合并时三行一起补——见交付报告），矩阵查不到 ⇒ R2 必问
-//     ＋ unclassified_tool 账行，授权闸照咬，不会漏问；
+//   · **必问是硬线**（614 接线批登记的口径）：分组表（AGENT 组）与风险矩阵（R2＋点名必问）
+//     各有一条。登记前它靠 fail-closed「未分类 ⇒ R2 必问」活着，登记后「必问」这一条不许松——
+//     放权档只免得掉「根内＋可回滚」的 R1/R2，免不掉矩阵点名的必问（AskTierRules 的硬线）；
 //   · **闸后的下半段**全在 [EnvoyDeliver]：租约/准入/档位三道闸在执行体里按序再过一遍，
 //     拒了就是一个字节不发。
 package com.example.zhengdao.baopu.peer
@@ -81,8 +81,8 @@ internal object EnvoyTool {
         ),
         permission = ToolPermission.FREE,
         timeoutMs = TOOL_TIMEOUT_MS,
-        // 组盖章：注册表按 ToolGroupTable 盖（本工具不进那张表——归在飞租约方合并时补），
-        // 这里显式给 AGENT 组，测试注册表直接用它。
+        // 组盖章：注册表按 ToolGroupTable 盖（614 起那张表有 AGENT 这一条），
+        // 这里显式给同一个组是为了测试注册表直接用它（表里的值会覆盖这里，两处必须一致）。
         group = ToolGroup.AGENT,
         riskTier = "R2",
         // 只读本机盘（派活不改盘），但**不许并行**：它要外发并阻塞整段（与 run_subtasks 同立场）。

@@ -431,6 +431,15 @@ internal data class RiskTable(
                 "novel_timeline_append" to ToolRule(RiskClass.R1, alwaysAsk = true, writePathKeys = setOf("path")),
                 "novel_annotation_reply" to ToolRule(RiskClass.R1, alwaysAsk = true, writePathKeys = setOf("path")),
                 "run_subtasks" to ToolRule(RiskClass.R2),
+                // 614（549 遗留的配套三行之一）：外部 A2A 委派进档。
+                // **alwaysAsk 不是可选项**：未分类时走的是 fail-closed「必问」硬线（AskTierRules
+                // 的 hardAsk＝必问/未分类/R3，任何档位都不许跳）。登记成光板 R2 就把这枚工具从
+                // 硬线挪到「档位说话」那一支——放权档＋无路径目标＋判成可回滚 ⇒ 卡片被免，
+                // 字节静默发去外部 agent。委派要人批是 549 的原话（工具描述也这么写），
+                // 所以档位照 run_subtasks 报 R2、必问照未分类时的行为钉死。
+                // 故意不给 urlKeys：内网/白名单那条硬拒是**新闸**，外发地址的闸在 549 的
+                // 租约＋准入那两道（PeerOutboundGate/EnvoyAdmission），本批不另开一条。
+                "delegate_peer_task" to ToolRule(RiskClass.R2, alwaysAsk = true),
                 "card_export" to ToolRule(RiskClass.R2, writePathKeys = setOf("out")),
                 // ── 597 立绘外貌两件 ─────────────────────────────────────────
                 // look：只读图＋落一行账（`.appearance.jsonl` 点号文件）——账与 ledger_add 同口径 R1。

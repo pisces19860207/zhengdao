@@ -96,6 +96,12 @@ import com.example.zhengdao.baopu.mcp.McpToolSource
 import com.example.zhengdao.baopu.mcp.PrefsMcpBudgetStorage
 import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
+import com.example.zhengdao.baopu.peer.EnvoyDeliver
+import com.example.zhengdao.baopu.peer.EnvoyOutcome
+import com.example.zhengdao.baopu.peer.EnvoyReply
+import com.example.zhengdao.baopu.peer.EnvoyRequest
+import com.example.zhengdao.baopu.peer.EnvoySink
+import com.example.zhengdao.baopu.peer.EnvoyTool
 import com.example.zhengdao.baopu.policy.AnchorAsset
 import com.example.zhengdao.baopu.policy.PolicyAssets
 import com.example.zhengdao.baopu.policy.PolicyRuntime
@@ -128,6 +134,9 @@ internal object BaopuRuntime {
 
     /** 灰度档在后果治理账里的能力名（深度裁定的灰度读数从这一档读）。 */
     private const val CANARY_CAPABILITY: String = "evolution"
+
+    /** 委派回执里单件产物正文的字数上限——对端可能回一大篇，全量进上下文就是吃窗口（614）。 */
+    private const val ENVOY_ARTIFACT_MAX_CHARS: Int = 2_000
 
     @Volatile
     private var dbInstance: BaopuDb? = null
@@ -1200,6 +1209,26 @@ internal object BaopuRuntime {
         // 都在下面 runSubtasks 里拼；引擎侧只认 SubTaskSink 接口（与 AskUserTool.sink
         // 同一房型）。判据与并发全在 multiagent 包的纯函数层，本函数只做接线。
         SubTaskTool.sink = SubTaskSink { args -> runSubtasks(appCtx, engine, reg, args) }
+        // 第五百四十九批留给接线批的那一行（第六百一十四批）：**delegate_peer_task 的落点**。
+        // 与上面 run_subtasks 同一房型——判据一字不挪（路由 → 外发租约 → agent card → 准入 →
+        // 档位 → 发送/轮询 → 结算全在 EnvoyDeliver 里），本行只递上装配层才拿得到的三样：
+        //   · http：进程级共享客户端（A2aClient 自己按调用派生超时，不另建第二台）；
+        //   · log：外发留痕统一进 RunLog（与 `[kernel]` 同口径，引擎线程上串行写）；
+        //   · routeOf：第六百四十四批 ② 的生效值消费缝——生效路由行偏好某个在册 peer 时
+        //     请求真发往那个 peer；没接线 / 不挪 ⇒ null，行为与接线前逐字节一致。
+        // 一件建一次，不是每次调用建：opId 是 `ev-<毫秒>-<seq>`，序号只有同一个实例才连得起来
+        // （每次新建都从 1 起跳，同一毫秒的两笔委派就会撞同一个账号）。
+        val envoyDeliver = EnvoyDeliver(
+            http = LlmClient.sharedHttp,
+            log = { line -> RunLog.log(line) },
+            routeOf = { requested ->
+                com.example.zhengdao.baopu.evolution.highrisk.RouteEvo.resolveEndpoint(
+                    requested,
+                    { note -> RunLog.log(note) },
+                )
+            },
+        )
+        EnvoyTool.sink = EnvoySink { args -> delegatePeerTask(appCtx, envoyDeliver, args) }
         // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
         // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
         ToolGroupAudit.sink = { line -> RunLog.log(line) }
@@ -1326,6 +1355,81 @@ internal object BaopuRuntime {
             is SubAgentRules.ParseResult.Rejected -> ToolOutcome.Rejected(parsed.reason)
             is SubAgentRules.ParseResult.Ok ->
                 runDecomposition(appCtx, engine, reg, parsed.decomposition, isWrite)
+        }
+    }
+
+    /**
+     * 一次外部委派的**接线段**（第六百一十四批）：args → 第五百四十九批的 [EnvoyDeliver] → ToolOutcome。
+     *
+     * 这里一道闸都不加——路由/租约/卡/准入/档位/结算的判定全在 [EnvoyDeliver] 内，本函数只翻译。
+     * 三样输入只有装配层给得出：
+     *   · `sessionId`：外发租约的主体是当前这轮会话。没有会话就没有批准派活的人 ⇒ 明确拒绝，
+     *     不降级成「匿名会话」把字节发出去（与 [runSubtasks] 同一口径）。
+     *   · `root`：准入账的落点，与 208/427/517 同区 `<App私有>/抱朴记忆/`。这一格给不出，
+     *     [com.example.zhengdao.baopu.peer.EnvoyAdmission] 就 fail-closed 拒派——宁可不派，
+     *     也不派给没考过准入的对端。
+     *   · `credential`：schema 里没有这一格，所以恒不给。对端要授权时按 549 的口径停在
+     *     `auth-required` 交人（[EnvoyOutcome.needsHuman]），不在这里暗存暗取凭据。
+     *
+     * 带 `task_id` ⇒ [EnvoyDeliver.reply] 续原任务，否则 [EnvoyDeliver.deliver] 派新活。
+     * 644 的路由消费缝只挪新派活：任务住在原 peer 上，续话挪了就找不到它。
+     */
+    private fun delegatePeerTask(appCtx: Context, deliver: EnvoyDeliver, args: JSONObject): ToolOutcome {
+        val sessionId = ActiveSessionGate.current()?.removePrefix("id:")?.toLongOrNull()
+            ?: return ToolOutcome.Rejected("当前没有活跃会话：delegate_peer_task 只能在抱朴干活时调。")
+        val root = File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)
+        val endpoint = args.optString("endpoint").trim()
+        val text = args.optString("task")
+        val taskId = args.optString("task_id").trim()
+        val outcome = if (taskId.isEmpty()) {
+            deliver.deliver(
+                EnvoyRequest(
+                    endpoint = endpoint,
+                    task = text,
+                    writes = args.optBoolean("writes"),
+                    sessionId = sessionId,
+                    root = root,
+                ),
+            )
+        } else {
+            deliver.reply(
+                EnvoyReply(
+                    endpoint = endpoint,
+                    taskId = taskId,
+                    text = text,
+                    sessionId = sessionId,
+                    root = root,
+                ),
+            )
+        }
+        return when {
+            outcome.refusal != null -> ToolOutcome.Rejected(outcome.refusal)
+            outcome.failure != null -> ToolOutcome.Failed(outcome.failure)
+            else -> ToolOutcome.Ok(envoyReceipt(outcome))
+        }
+    }
+
+    /**
+     * 收场回执（模型看得见的唯一一份收场信息）：终态＋五条流轨迹＋产物正文＋续话提示。
+     * 产物正文按 [ENVOY_ARTIFACT_MAX_CHARS] 截短；`needsHuman` 时把 `task_id` 说在脸上——
+     * 549 的原话是「续这条任务，别重开新任务」，回执里不给任务号模型就只会重开。
+     */
+    private fun envoyReceipt(o: EnvoyOutcome): String = buildString {
+        append("委派收场：").append(o.state.wire)
+        append("｜endpoint=").append(o.endpoint)
+        append("｜task_id=").append(o.taskId)
+        append("｜五条流 ").append(o.track.wire())
+        if (o.timedOut) append("｜轮询到上限，任务还在对端跑（可带 task_id 续问）")
+        if (o.statusMessage.isNotBlank()) append("｜对端说：").append(o.statusMessage)
+        o.artifacts.forEach { artifact ->
+            val body = artifact.texts.joinToString("\n")
+            append("｜产物「")
+                .append(artifact.name.ifBlank { artifact.artifactId })
+                .append("」：")
+                .append(if (body.length > ENVOY_ARTIFACT_MAX_CHARS) body.take(ENVOY_ARTIFACT_MAX_CHARS) + "…" else body)
+        }
+        if (o.needsHuman) {
+            append("｜要人补输入：带 task_id=").append(o.taskId).append(" 再调一次本工具续这条任务。")
         }
     }
 

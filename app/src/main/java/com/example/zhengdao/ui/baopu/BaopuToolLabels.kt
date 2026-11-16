@@ -140,6 +140,9 @@ internal object BaopuToolLabels {
         "ask_user" to R.string.baopu_tool_ask_user,
         // 第一百二十七批：多 Agent 协作（run_subtasks）。不补这两行 ⇒ 设置页开工具卡直接抛。
         "run_subtasks" to R.string.baopu_tool_run_subtasks,
+        // 614（549 遗留两行）：外部 A2A 委派。漏这两行 ⇒ 设置页开工具卡直接抛
+        // （BaopuToolLabelCoverageTest 按 switchableNames() 逐名核对，漏一个就红并点名）。
+        "delegate_peer_task" to R.string.baopu_tool_delegate_peer_task,
         // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolLabel 的 fail-fast）
         "logistics_query" to R.string.baopu_tool_logistics_query,
         // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页开工具卡直接抛（fail-fast）
@@ -284,6 +287,7 @@ internal object BaopuToolLabels {
         "novel_annotation_reply" to R.string.baopu_tool_novel_annotation_reply_desc,
         "ask_user" to R.string.baopu_tool_ask_user_desc,
         "run_subtasks" to R.string.baopu_tool_run_subtasks_desc,
+        "delegate_peer_task" to R.string.baopu_tool_delegate_peer_task_desc,
         // 第一百九十五批：查询。漏这一行 ⇒ 设置页开工具卡直接抛（baopuToolDesc 的 fail-fast）
         "logistics_query" to R.string.baopu_tool_logistics_query_desc,
         // 第二百二十四批：表单填写（只填不提交）。漏这一行 ⇒ 设置页工具卡副标题直接抛

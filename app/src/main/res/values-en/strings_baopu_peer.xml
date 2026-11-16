@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 614 (the two lines 549 left behind): settings copy for delegate_peer_task. Keys mirror BaopuToolLabels. -->
+<resources>
+    <string name="baopu_tool_delegate_peer_task">Delegate to an external agent</string>
+    <string name="baopu_tool_delegate_peer_task_desc">Sends one task to an external A2A agent: admission first (a peer that never passed the exam is not given work), then the outbound lease gate, then the task is sent and polled until it settles. Returns a terminal state or input-required - to supply what is missing, call again with the original task id so the same task continues instead of starting over. writes=true means the peer has to touch its own disk or an external resource; only a peer admitted at FULL tier takes those. Every single delegation needs the user to approve a confirmation card before a byte leaves the device. Hidden by default: unlock the multi-agent group in capabilities first.</string>
+</resources>
