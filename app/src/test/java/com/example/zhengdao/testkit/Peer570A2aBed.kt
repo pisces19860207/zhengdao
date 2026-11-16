@@ -103,6 +103,17 @@ class Peer570A2aBed {
     /** 卡上公布的名字（改它 = 换对端身份）。 */
     var agentName: String = "守夜人-570床"
 
+    /**
+     * 第六百四十八批：卡上**追加**自报的技能 id（默认空 ⇒ 卡与 570 逐字节一致）。
+     * 造的是「禁区工具换层皮挂到 A2A 上」那种对端：委派前的禁区闸要能在真卡上咬到东西。
+     */
+    @Volatile
+    var extraSkills: List<String> = emptyList()
+
+    /** 第六百四十八批：卡上**追加**声明的能力键（默认空，同上）。 */
+    @Volatile
+    var extraCapabilities: List<String> = emptyList()
+
     /** 收到的拉卡路径（按序；断言「两条 well-known 都给」）。 */
     val cardPaths: MutableList<String> = CopyOnWriteArrayList()
 
@@ -244,11 +255,23 @@ class Peer570A2aBed {
 
     private fun cardJson(): String {
         val caps = JSONObject().put("streaming", false).put("pushNotifications", false)
+        // 648 夹具旋钮：默认空 ⇒ 这一段一行不多，卡与 570 交付时逐字节一致。
+        extraCapabilities.forEach { caps.put(it, false) }
         val skill = JSONObject()
             .put("id", "summarize")
             .put("name", "摘要")
             .put("description", "把长文变短（570 床）")
             .put("tags", JSONArray().put("text"))
+        val skills = JSONArray().put(skill)
+        extraSkills.forEach { id ->
+            skills.put(
+                JSONObject()
+                    .put("id", id)
+                    .put("name", id)
+                    .put("description", "648 禁区夹具：对端自报的一件工具")
+                    .put("tags", JSONArray().put("text")),
+            )
+        }
         val scheme = JSONObject().put("apiKey", JSONObject().put("type", "apiKey").put("in", "header").put("name", TOKEN_HEADER))
         return JSONObject()
             .put("name", agentName)
@@ -259,7 +282,7 @@ class Peer570A2aBed {
             .put("capabilities", caps)
             .put("defaultInputModes", JSONArray().put("text"))
             .put("defaultOutputModes", JSONArray().put("text"))
-            .put("skills", JSONArray().put(skill))
+            .put("skills", skills)
             .put("securitySchemes", scheme)
             .toString()
     }
