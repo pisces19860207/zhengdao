@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 676: type labels and copy for the subconscious echo rows on the Suggestions
+  tab of the Decision Center (2026-11-16). Kept in its own file: the shared strings.xml
+  is a high-conflict file; this batch does not touch it. Keys mirror
+  values/strings_baopu_subconscious.xml one-to-one.
+-->
+<resources>
+    <!-- Suggestions tab: subconscious echo of a recent failure. -->
+    <string name="decision_type_subconscious">Echo</string>
+    <!-- Suggestions tab: recall of an unfinished step / a mentioned-but-not-done item. -->
+    <string name="decision_type_recall">Recall</string>
+    <!-- Row subtitle: right-minister verdict plus the ledger line it points back to. -->
+    <string name="subconscious_row_subtitle">Advisable · per ledger line %1$s</string>
+    <!-- Card opened from the row: title, basis line, note and one closing button. -->
+    <string name="subconscious_card_title">Echo: %1$s</string>
+    <string name="subconscious_card_basis">Per ledger line %1$s (signal only — nothing was executed)</string>
+    <string name="subconscious_card_note">This is an echo signal from your project ledger, not a new task. To act on it, open the ledger yourself.</string>
+    <string name="subconscious_card_dismiss">Got it</string>
+</resources>

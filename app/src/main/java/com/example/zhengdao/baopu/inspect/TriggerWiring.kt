@@ -17,9 +17,10 @@
 package com.example.zhengdao.baopu.inspect
 
 import android.content.Context
+import com.example.zhengdao.baopu.subconscious.subconsciousOnRunSettled
 import com.example.zhengdao.core.RunLog
 
-/** 收工事件的后台维护入口（暗卫＋巡按共用一套触发判据）。 */
+/** 收工事件的后台维护入口（暗卫＋巡按＋676 回响；前两件共用一套触发判据，回响自带天闸）。 */
 internal object TriggerWiring {
 
     /**
@@ -31,6 +32,10 @@ internal object TriggerWiring {
         var ran = 0
         if (safe("暗卫") { NocturnalAuto.runDue(ctx, nowMs, AskSource.EVENT) } != null) ran++
         if (safe("巡按") { PatrolAuto.runDue(ctx, nowMs, AskSource.EVENT) } != null) ran++
+        // 第六百七十六批：下意识回响——收工即一次机会（「每 N 轮或空闲时」那一格），
+        // 节奏由它自带的天闸（≤1 次/天）与左相（免打扰窗口内延后）管，这里只递钟点与账根。
+        // 模型不可用 ⇒ 它内部退回规则版（不崩、不空转），本行一个字都不用知道。
+        if (safe("回响") { subconsciousOnRunSettled(ctx, nowMs) } != null) ran++
         return ran
     }
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第六百七十六批 · 下意识回响进决策中心「建议」页签的类型签与文案（2026-11-16）。
+  单独成文件（房型照 158/198/212/220/615/635 各批）：共享 strings.xml 是高冲突文件，
+  本批对它零改动。键与 values-en/strings_baopu_subconscious.xml 一一对应。
+  typeLabel 字面值「下意识／想起」由 SubconsciousGateTest 源码门禁钉住
+  （判据：灵感/想起/下意识——「灵感」归 677，本批不占它的键）。
+-->
+<resources>
+    <!-- 「建议」页签：下意识（最近失败的回响）。 -->
+    <string name="decision_type_subconscious">下意识</string>
+    <!-- 「建议」页签：想起（未完成步骤／用户提过没做的回响）。 -->
+    <string name="decision_type_recall">想起</string>
+    <!-- 行副标题：右相结论＋指回的账行（缺引用的候选活不到出卡，判据②）。 -->
+    <string name="subconscious_row_subtitle">右相可建议 · 依据账行 %1$s</string>
+    <!-- 点行开的卡：标题、依据行、说明与一枚收尾钮。 -->
+    <string name="subconscious_card_title">回响：%1$s</string>
+    <string name="subconscious_card_basis">依据账行 %1$s（只出信号，没有执行任何动作）</string>
+    <string name="subconscious_card_note">这是一枚回响信号——来自你的项目账，不是新任务。要做的话请自己去账上立活。</string>
+    <string name="subconscious_card_dismiss">知道了</string>
+</resources>

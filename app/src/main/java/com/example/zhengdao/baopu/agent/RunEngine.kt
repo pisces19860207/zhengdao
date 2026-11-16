@@ -1434,6 +1434,14 @@ internal class RunEngine(
     /** 当前会话的免打扰授权（null ＝ 没开过；到期不是清掉，是 [QuietState.EXPIRED] 可查）。 */
     @Volatile private var quietGrant: QuietGrant? = null
 
+    /**
+     * 676 回响的**只读**快照口：收工触发的下意识执行器（`SubconsciousWiring`）在
+     * IO 上判「免打扰窗口内不弹」时，用本会话授权现查（判定本体在
+     * `QuietVerify.hushedReasons`，本层不重抄）。没有写口——授权的开/关仍只走
+     * [noteQuietGrant] 那条路。
+     */
+    internal fun quietGrantSnapshot(): QuietGrant? = quietGrant
+
     /** 上次看授权的时刻（[QuietMode.justExpired] 的边沿检测；轮次入口刷新）。 */
     private var quietSeenMs: Long = 0L
 

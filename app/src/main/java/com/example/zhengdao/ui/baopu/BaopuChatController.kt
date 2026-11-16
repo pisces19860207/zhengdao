@@ -1327,6 +1327,10 @@ internal class BaopuChatController(context: Context) {
     private fun effectSpec(n: com.example.zhengdao.baopu.PostAdoptionNotice): DecisionCardSpec =
         DecisionSpecs.effect(n, decisionStr)
 
+    /** 676 回响卡（只有一枚收尾钮：看过就收——信号不是任务，没有采纳/拒绝那一路）。 */
+    private fun subconsciousSpec(s: com.example.zhengdao.baopu.subconscious.SubconsciousSignal): DecisionCardSpec =
+        com.example.zhengdao.ui.baopu.SubconsciousCardSpecs.spec(s, decisionStr)
+
     /**
      * 卡上点了一枚按钮（屏幕层原样转交 id，本层按当前槽位归类）。
      *
@@ -1363,6 +1367,15 @@ internal class BaopuChatController(context: Context) {
                     "defer" -> decideSuggestion(candidateId, SuggestionDecision.DEFER)
                     "adopt" -> decideSuggestion(candidateId, SuggestionDecision.ADOPT)
                     else -> Unit
+                }
+            }
+
+            // 676 回响卡：只有一枚收尾钮——人看过就收（从页签行里撤下这一枚信号；
+            // 账行与账本一行不动——信号不是任务）。
+            key.startsWith("sub:") -> {
+                if (buttonId == "dismiss") {
+                    com.example.zhengdao.baopu.subconscious.SubconsciousRowStore
+                        .dismiss(key.removePrefix("sub:"))
                 }
             }
 
@@ -1431,6 +1444,25 @@ internal class BaopuChatController(context: Context) {
                     ),
                 )
             }
+            // 676 第四类「回响」：下意识执行器浮出的信号（只出信号不执行；typeLabel
+            // 区分下意识/想起——677 的灵感走同一执行器，到时同区加一类）。
+            // 行只认本进程最近一轮真跑出的信号：延后/天闸跳过的轮不 publish ⇒ 原样保留。
+            com.example.zhengdao.baopu.subconscious.SubconsciousRowStore.latest().forEach { s ->
+                add(
+                    DecisionCenterRow(
+                        id = "sub:${s.id}",
+                        variant = DecisionVariant.SUGGESTION,
+                        title = s.title,
+                        subtitle = appCtx.getString(
+                            R.string.subconscious_row_subtitle,
+                            s.ledgerId,
+                        ),
+                        typeLabel = appCtx.getString(
+                            com.example.zhengdao.ui.baopu.subconsciousTypeRes(s.kind),
+                        ),
+                    ),
+                )
+            }
         },
     )
 
@@ -1451,6 +1483,11 @@ internal class BaopuChatController(context: Context) {
         key.startsWith("suggestion:") -> evolutionSuggestions
             .firstOrNull { "suggestion:${it.candidateId}" == key }
             ?.let { suggestionSpec(it) }
+
+        key.startsWith("sub:") -> com.example.zhengdao.baopu.subconscious.SubconsciousRowStore
+            .latest()
+            .firstOrNull { "sub:${it.id}" == key }
+            ?.let { subconsciousSpec(it) }
 
         else -> null
     }
