@@ -429,8 +429,9 @@ class HealthCheckTest {
         val tools = toolCensus()
         assertEquals(
             "工具表条数与派工单对不上（ENTRIES 段真值：614 基线 116；"
-                + "654 模型提交口两件 learn_draft_submit／learn_trace_summary ⇒ 118）",
-            118, tools.size,
+                + "654 模型提交口两件 learn_draft_submit／learn_trace_summary ⇒ 118；"
+                + "648 准入考试独立入口一件 exam_peer_agent ⇒ 119）",
+            119, tools.size,
         )
         val organs = OrganCensus.HEALTH_PARTS.map { HealthCheck.organ(it) }
         val rows = tools.map { HealthCheck.tool(it) }

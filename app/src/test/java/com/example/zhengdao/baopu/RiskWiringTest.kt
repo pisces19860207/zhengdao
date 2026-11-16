@@ -405,9 +405,10 @@ class RiskWiringTest {
                 // 624C 纠正两件进表（teach_correct_apply R1 / teach_correct_resume R2 必问）＝ 117 行（没有新风险维度，版本不动）
                 // 614 进表一件（delegate_peer_task R2+alwaysAsk）＝ 118 行
                 // 654 进表两件（learn_draft_submit R1 / learn_trace_summary R0）＝ 120 行（无新风险维度，版本不动）
+                // 648 进表一件（exam_peer_agent R2+alwaysAsk：出题也是外发，必问）＝ 121 行（无新风险维度，版本不动）
         assertEquals(
-            "表行数变了：先对账再改（120 个注册工具 = 120 行；614 基线 118，654 加 2 ⇒ 120）",
-            120,
+            "表行数变了：先对账再改（121 个注册工具 = 121 行；614 基线 118，654 加 2，648 加 1 ⇒ 121）",
+            121,
             RiskTable.DEFAULT.tools.size,
         )
         assertEquals("豁免集合变了", setOf("bash"), RiskTable.DEFAULT.exempt)

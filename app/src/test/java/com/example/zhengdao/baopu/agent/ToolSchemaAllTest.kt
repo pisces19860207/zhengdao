@@ -627,6 +627,8 @@ class ToolSchemaAllTest {
             "delegate_peer_task" to JSONObject()
                 .put("endpoint", "https://peer.example/a2a")
                 .put("task", "把这份清单里缺货的 SKU 列出来"),
+            // 第六百四十八批 ②：准入考试独立入口（唯一必填就是 endpoint——不派活，所以没有 task）
+            "exam_peer_agent" to JSONObject().put("endpoint", "https://peer.example/a2a"),
             "write_skill" to JSONObject().put("name", "试样").put("body", "# 试样\n"),
             "append_persona" to JSONObject().put("text", "先列计划再动手"),
             // 第一百九十五批：查询（唯一必填是 ask，三档之一；其余四个条件都可省）

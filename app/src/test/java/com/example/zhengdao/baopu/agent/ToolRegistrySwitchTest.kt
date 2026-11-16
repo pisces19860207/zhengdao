@@ -135,6 +135,8 @@ class ToolRegistrySwitchTest {
                 // 第六百一十四批：外部 A2A 委派（AGENT 组，同 run_subtasks 房型——默认不可见但默认启用；
                 // 表序即注册序，落在 run_subtasks 之后一格）
                 "delegate_peer_task",
+                // 第六百四十八批 ②：准入考试独立入口（AGENT 组，同 delegate_peer_task 房型）
+                "exam_peer_agent",
                 // 第一百九十五批：查询（LOGISTICS 组，默认不可见、capabilities 解锁）
                 "logistics_query",
                 // 第二百二十四批：表单填写（BROWSER 组，默认不可见但默认启用；表尾一条）
