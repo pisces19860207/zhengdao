@@ -129,6 +129,9 @@ internal object IntakeExam {
      * [useCache]＝false 是第六百四十八批 ② 给**主动补考**留的一格：用户点了「给这台出题/补考」，
      * 拿回一行 `from_cache=true` 就是没办事。缺省仍是 true——546 判据③「首调之外不重考、
      * 出题次数不涨」靠的就是这一格默认值，一个字没动。
+     *
+     * 参数序是硬约束：[clock] 必须留在**最后一格**——尾随 lambda 只绑最后一个参数，
+     * 546 的两处时钟用例（`IntakeExamTest` 判据四之一／之二）就是这么传的；新参排在它后面＝那两例编译不过。
      */
     fun take(
         root: File,
@@ -136,8 +139,8 @@ internal object IntakeExam {
         executorVersion: String,
         channel: ExamChannel?,
         questions: List<ExamQuestion> = questions(),
-        clock: () -> Long = System::currentTimeMillis,
         useCache: Boolean = true,
+        clock: () -> Long = System::currentTimeMillis,
     ): ExamResult {
         val examVersion = examVersionOf(questions)
         val cached = if (useCache) loadCache(root, agentId, examVersion, executorVersion) else null

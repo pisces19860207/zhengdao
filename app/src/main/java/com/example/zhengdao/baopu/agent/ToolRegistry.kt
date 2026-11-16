@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.agent.multiagent.SubTaskTool
 import com.example.zhengdao.baopu.mcp.McpSelfService
+import com.example.zhengdao.baopu.peer.EnvoyExamTool
 import com.example.zhengdao.baopu.peer.EnvoyTool
 import com.example.zhengdao.baopu.ledger.LedgerAddTool
 import com.example.zhengdao.baopu.ledger.LedgerListTool

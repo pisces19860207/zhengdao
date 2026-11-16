@@ -97,6 +97,10 @@ import com.example.zhengdao.baopu.mcp.PrefsMcpBudgetStorage
 import com.example.zhengdao.baopu.mcp.PrefsMcpSecretStore
 import com.example.zhengdao.baopu.mcp.PrefsMcpServerStorage
 import com.example.zhengdao.baopu.peer.EnvoyDeliver
+import com.example.zhengdao.baopu.peer.EnvoyExamOutcome
+import com.example.zhengdao.baopu.peer.EnvoyExamRequest
+import com.example.zhengdao.baopu.peer.EnvoyExamSink
+import com.example.zhengdao.baopu.peer.EnvoyExamTool
 import com.example.zhengdao.baopu.peer.EnvoyOutcome
 import com.example.zhengdao.baopu.peer.EnvoyReply
 import com.example.zhengdao.baopu.peer.EnvoyRequest
