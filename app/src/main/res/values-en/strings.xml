@@ -1838,4 +1838,19 @@
     <string name="baopu_mermaid_too_large">Code block size %1$s bytes is over the 20KB limit; not rendered</string>
     <string name="baopu_mermaid_no_activity">Not running in an Activity; cannot render (go back to the chat)</string>
     <string name="baopu_mermaid_empty">The code block is empty; nothing to draw</string>
+
+    <!-- 671: replay visibility (top bar + failure card). Single source: baopu/ReplayState. -->
+    <string name="replay_bar_head">"Replaying %1$d/%2$d · "</string>
+    <string name="replay_stop">Stop</string>
+    <string name="replay_failure_title">Replay stopped: %1$s</string>
+    <string name="replay_failure_step">Step %1$d of %2$d</string>
+    <string name="replay_failure_step_unknown">Stopped at the start checks (never reached step 1)</string>
+    <string name="replay_failure_target">Target: %1$s</string>
+    <string name="replay_failure_hits">Matched %1$d element(s)</string>
+    <string name="replay_failure_hits_unknown">Matched: unknown (no element lookup on this step)</string>
+    <string name="replay_failure_reason">Reason: %1$s</string>
+    <string name="replay_ask_baopu">Ask Baopu to fix this skill</string>
+    <string name="replay_reteach">Teach again</string>
+    <string name="replay_later">Not now</string>
+    <string name="replay_ask_baopu_busy">Baopu is busy; the failure report stays on the card — try again once it is free</string>
 </resources>

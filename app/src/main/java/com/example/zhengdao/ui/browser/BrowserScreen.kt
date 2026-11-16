@@ -65,6 +65,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuBrowserWiring
+import com.example.zhengdao.baopu.ReplayState
+import com.example.zhengdao.baopu.ReplayText
 import com.example.zhengdao.baopu.TeachLearner
 import com.example.zhengdao.baopu.TeachSessionState
 import com.example.zhengdao.baopu.TeachSkillDraft
@@ -214,8 +216,11 @@ internal fun BrowserScreen(
     var teachParamsDraft by remember { mutableStateOf<TeachSkillDraft?>(null) }
 
     // ── 第六百二十三批：教学浮层（胶囊 ＋ 半屏）的状态位 ────────────────────────
-    // 教学模式 = 录制中 或 刚录完待确认（定稿 §1.2 可观察的那两态；「回放中」当前无状态源，
-    // 一期不做）。非教学模式**整个浮层不进组合树**（判据⑨，不是 visibility = GONE）。
+    // 教学模式 = 录制中 或 刚录完待确认（定稿 §1.2 可观察的那两态）。
+    // 671：**「回放中」现在也有状态源了**（`baopu/ReplayState`，由回放执行器写）——回放走的是
+    // 下面那条兄弟分支（同一颗胶囊、只多一行进度字），不把回放算进教学模式（判据⑥：
+    // 教学三态的合成口径仍只有 recording / draft 两项，一个字没改）。
+    // 非教学模式**整个浮层不进组合树**（判据⑨，不是 visibility = GONE）。
     // 合成口径只在 [TeachSessionState] 定义一次，这里不重写。
     val teaching = TeachSessionState.teachingNow()
     var capsuleExpanded by rememberSaveable { mutableStateOf(false) }
@@ -531,6 +536,15 @@ internal fun BrowserScreen(
             },
         )
 
+        // ── 第六百七十一批：回放指示条（顶部，标签条之下第一行） ─────────────────
+        // 判据①：回放开始 ⇒ 玄览在前台（HomeTabs 看 ReplayState.playing 切页）＋ 这一行出现，
+        // 整行 ≤40 字（收口在 ReplayText.fitBar，步号永远完整）。
+        // 判据③：`playing` 一落，这一整行**不进组合树**（不是 GONE）——停在这儿而不是"留着变灰"。
+        // 读的是 ReplayState 那一份（判据⑤）；本页不存第二份进度。
+        if (ReplayState.playing) {
+            ReplayIndicatorBar(onStop = { ReplayState.requestStop() })
+        }
+
         // ── 页面区（底栏改版 2026-10-18：紧跟标签条，壳子只剩 52＋56） ──
         // key(活跃标签) ⇒ 切 Tab 时旧 WebView 摘挂载、新的挂上
         Box(
@@ -745,6 +759,18 @@ internal fun BrowserScreen(
                 onOpenTeachConfirm = { teachConfirmOpen = true },
                 onOpenDecisionCenter = onOpenDecisionCenter,
             )
+        } else if (ReplayState.playing) {
+            // 671：回放态 —— **同一颗 623 胶囊**（同一位置偏好、同一几何），只多一行进度字。
+            // 不新造浮层：分支之间换的是参数，不是组件（判据④）。
+            XuanlanCapsuleLayer(
+                controller = controller,
+                draftPending = false,
+                expanded = capsuleExpanded,
+                onExpandedChange = { capsuleExpanded = it },
+                onOpenTeachConfirm = {},
+                onOpenDecisionCenter = onOpenDecisionCenter,
+                replayProgress = ReplayText.capsuleText(ReplayState.stepIndex, ReplayState.stepTotal),
+            )
         } else if (learnState.count > 0) {
             // 624 阶段一：未学会橙点件（兄弟分支——与教学胶囊互斥恒一颗；教学模式下
             // 不显示橙点（623 定稿 §5.5）；归零不组合（判据⑦）。位置共用 CapsulePrefs。
@@ -827,6 +853,31 @@ internal fun BrowserScreen(
             onCustomWidth = { customWidthDp = it },
             onExport = submitExport,
             onDismiss = { exportSheetOpen = false },
+        )
+    }
+    // ── 671：回放失败卡（判据④：第几步/目标/命中几个/原因 ＋ 三钮）──────────────
+    // 三钮的动作本体都写在本文件（与 196 的确认卡同一条纪律）：
+    //  ① 让抱朴改这条技能——把失败报告原文交给同一个 controller（吃的是 ReplayFailure.reportText）；
+    //  ② 重新教——走底栏那颗键的同一套起手（TeachSessionState.beginRecording ＋ teachModel.start）；
+    //  ③ 先不管——只收卡，一个字节不写。
+    ReplayState.failure?.let { f ->
+        ReplayFailureCard(
+            failure = f,
+            onAskBaopu = {
+                if (controller.send(f.reportText())) {
+                    ReplayState.dismissFailure()
+                } else {
+                    // 发不出去就**别收卡**：报告还在手上，等抱朴空下来再点一次
+                    uiMsg = res.getString(R.string.replay_ask_baopu_busy)
+                }
+            },
+            onReteach = {
+                ReplayState.dismissFailure()
+                TeachSessionState.beginRecording()
+                uiMsg = res.getString(R.string.teach_started_toast)
+                teachModel.start { err -> uiMsg = err }
+            },
+            onLater = { ReplayState.dismissFailure() },
         )
     }
 }

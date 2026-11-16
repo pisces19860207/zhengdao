@@ -711,6 +711,15 @@ fun HomeTabs() {
         if (armedTeach != null && tab != TabIndex.BROWSER) tab = TabIndex.BROWSER
     }
 
+    // 671：**回放一开始就把人带到玄览**（判据①）。状态源是 baopu/ReplayState（唯一真相源，
+    // 由回放执行器写）：这里只做「playing 翻真就切页」这一件事，不改状态、不消费请求——
+    // 回放是从抱朴那条链（teach_run 工具）起跑的，人在抱朴页上，不切过来就等于看不见它在动。
+    // 用户随后手动切走不再抢（本 effect 只在 playing 变化时跑一次）。
+    val replayPlaying = com.example.zhengdao.baopu.ReplayState.playing
+    androidx.compose.runtime.LaunchedEffect(replayPlaying) {
+        if (replayPlaying && tab != TabIndex.BROWSER) tab = TabIndex.BROWSER
+    }
+
     // 262：页签变化上报（程序化切屏的「用户手动切走就不抢」判定面读它）。
     // tab 的写入点分散（底栏/ON_RESUME/退出抱朴），逐点上报漏一处判定面就失真；
     // 这里组合后统一报，初始值也覆盖。

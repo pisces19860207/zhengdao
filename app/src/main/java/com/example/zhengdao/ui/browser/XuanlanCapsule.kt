@@ -237,7 +237,15 @@ internal fun XuanlanCapsuleLayer(
     onExpandedChange: (Boolean) -> Unit,
     onOpenTeachConfirm: () -> Unit,
     onOpenDecisionCenter: () -> Unit,
+    // Modifier 必须是第一个可选参数（lint ModifierParameter），所以它排在 replayProgress 前面
     modifier: Modifier = Modifier,
+    /**
+     * 671：回放态下的进度字（`2/5`；非回放恒 null）。
+     *
+     * 形态一个字不改（48dp 圆、同色同描边）——回放时只是把中间那枚图标换成一行进度字：
+     * 判据④「胶囊只在回放态下显示进度、不新造浮层」的落点就在这一个参数上。
+     */
+    replayProgress: String? = null,
 ) {
     val context = LocalContext.current
     val palette = xuanLanPalette()
@@ -369,6 +377,7 @@ internal fun XuanlanCapsuleLayer(
                 palette = palette,
                 leftDp = leftDp,
                 topDp = topDp,
+                replayText = replayProgress,
                 onClick = {
                     bubbleVisible = false
                     focusManager.clearFocus(force = true)
@@ -399,6 +408,8 @@ private fun CapsuleButton(
     onClick: () -> Unit,
     onDrag: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
+    /** 671：非 null ⇒ 中间那枚图标换成这行进度字（回放态；形态与几何一个字节不动）。 */
+    replayText: String? = null,
 ) {
     val density = LocalDensity.current
     val label = stringResource(
@@ -449,12 +460,22 @@ private fun CapsuleButton(
             border = BorderStroke(1.dp, palette.clusterStrokePrimary),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CapsuleGlyph(
-                    tint = iconTint,
-                    modifier = Modifier
-                        .size(CapsuleGeometry.ICON.dp)
-                        .alpha(if (state == XuanlanCapsuleState.THINKING) alpha else 1f),
-                )
+                // 671：回放态只换中间这一格（图标 ↔ 进度字），胶囊的尺寸/形状/描边/位置全不动
+                if (replayText != null) {
+                    Text(
+                        text = replayText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.ink,
+                        maxLines = 1,
+                    )
+                } else {
+                    CapsuleGlyph(
+                        tint = iconTint,
+                        modifier = Modifier
+                            .size(CapsuleGeometry.ICON.dp)
+                            .alpha(if (state == XuanlanCapsuleState.THINKING) alpha else 1f),
+                    )
+                }
             }
         }
         if (state == XuanlanCapsuleState.NEEDS_DECISION) {

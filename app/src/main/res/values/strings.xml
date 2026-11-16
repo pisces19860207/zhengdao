@@ -1794,4 +1794,19 @@
     <string name="baopu_mermaid_too_large">代码块 %1$s 字节，超过 20KB 上限，没有渲染</string>
     <string name="baopu_mermaid_no_activity">当前页面不是 Activity，出不了图（回到对话页再试）</string>
     <string name="baopu_mermaid_empty">代码块是空的，没有可画的图</string>
+
+    <!-- 第六百七十一批：回放可见（顶部指示条 ＋ 失败卡）。单一状态源在 baopu/ReplayState。 -->
+    <string name="replay_bar_head">"回放中 %1$d/%2$d · "</string>
+    <string name="replay_stop">停止</string>
+    <string name="replay_failure_title">回放没跑完：%1$s</string>
+    <string name="replay_failure_step">第 %1$d 步 / 共 %2$d 步</string>
+    <string name="replay_failure_step_unknown">停在起手检查（还没走到第 1 步）</string>
+    <string name="replay_failure_target">目标：%1$s</string>
+    <string name="replay_failure_hits">命中 %1$d 个</string>
+    <string name="replay_failure_hits_unknown">命中：未知（这一步没在页面上找元素）</string>
+    <string name="replay_failure_reason">原因：%1$s</string>
+    <string name="replay_ask_baopu">让抱朴改这条技能</string>
+    <string name="replay_reteach">重新教</string>
+    <string name="replay_later">先不管</string>
+    <string name="replay_ask_baopu_busy">抱朴正忙，失败报告还在卡上——等它空下来再点一次</string>
 </resources>

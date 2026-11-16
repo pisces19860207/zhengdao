@@ -1211,13 +1211,19 @@ object TeachReplay {
                 if (!report.paused) recordAcceptance(context, projectRoot, skill, report, now, opId)
             },
             pauseGate = { com.example.zhengdao.baopu.correct.CorrectInbox.pendingCorrection() },
+            // 671：回放可见的唯一写口（判据⑤）——进度写 ReplayState，UI 只读那一份
+            onStep = { p -> ReplayState.noteStep(p.index, p.total, p.action, p.target) },
+            onFailed = { p, reason -> ReplayState.markFailure(p.index, p.total, p.target, p.hits, reason) },
+            stopRequest = { ReplayState.stopRequested() },
         )
+        ReplayState.begin(skill.name, skill.steps.size)
         com.example.zhengdao.baopu.correct.CorrectInbox.beginReplay(skill.name, skill.steps.size)
         try {
             val report = executor.run(skill, fromStep)
             publishReplayCard(context, tabId, report, dom, skill)
             return report
         } finally {
+            ReplayState.end()
             com.example.zhengdao.baopu.correct.CorrectInbox.endReplay()
         }
     }
@@ -1399,7 +1405,12 @@ fun replaySkillWithParams(
                     evoNote = recordParamsAcceptance(context, projectRoot, pl.skill, report, now, opId, pl.values)
                 },
                 pauseGate = { com.example.zhengdao.baopu.correct.CorrectInbox.pendingCorrection() },
+                // 671：与无参入口同一个写口（判据⑤：两条回放入口写同一份 ReplayState）
+                onStep = { p -> ReplayState.noteStep(p.index, p.total, p.action, p.target) },
+                onFailed = { p, reason -> ReplayState.markFailure(p.index, p.total, p.target, p.hits, reason) },
+                stopRequest = { ReplayState.stopRequested() },
             )
+            ReplayState.begin(pl.skill.name, pl.skill.steps.size)
             com.example.zhengdao.baopu.correct.CorrectInbox.beginReplay(pl.skill.name, pl.skill.steps.size)
             try {
                 val report = executor.run(pl.skill)
@@ -1407,6 +1418,7 @@ fun replaySkillWithParams(
                 val card = publishReplayCard(context, tabId, report, dom, pl.skill, pl.values)
                 return TeachParamRun(report, null, pl.display, null, card, evoNote)
             } finally {
+                ReplayState.end()
                 com.example.zhengdao.baopu.correct.CorrectInbox.endReplay()
             }
         }

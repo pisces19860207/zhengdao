@@ -159,6 +159,20 @@ internal class FileTeachEvidenceSink(
 // ── 执行器 ────────────────────────────────────────────────────────────────────
 
 /**
+ * 第六百七十一批：一步的进度事实（回放可见的原料；执行器只报事实，文案与状态归 [ReplayState]）。
+ *
+ * [hits] 只在**这一步真去页面找过**时非空：WAIT 步没有目标元素，域外/超时那类失败也不是
+ * 「找了几个」，此时为 null——卡上印「未知」，不编一个 0 出来充数。
+ */
+internal data class TeachStepProgress(
+    val index: Int,
+    val total: Int,
+    val action: TeachAction,
+    val target: String,
+    val hits: Int? = null,
+)
+
+/**
  * 回放一个技能。**同步阻塞**（生产端 BrowserCommands.execJs 本就是同步桥，调用方负责
  * 放后台线程/协程；JVM 单测里假 DOM 瞬回）。
  */
@@ -174,6 +188,18 @@ internal class TeachExecutor(
      * 纠正」进暂停报告（判据①「当步结束即暂停」）。null＝照常执行。缺省无闸＝旧口径。
      */
     private val pauseGate: () -> String? = { null },
+    /**
+     * 671：每步动手前的进度上报（回放可见的唯一写口之一）。缺省空实现 ⇒ 老调用点
+     * 与既有判据一个字节不改；上报什么由调用方决定（生产端写 [ReplayState]）。
+     */
+    private val onStep: (TeachStepProgress) -> Unit = {},
+    /** 671：失败时把「第几步 / 目标 / 命中几个」连同原因一起交出去（失败卡的原料）。 */
+    private val onFailed: (TeachStepProgress, String) -> Unit = { _, _ -> },
+    /**
+     * 671：「停止」钮的判据（判据③）。每步动手前查一次——为真就停，不再动页面。
+     * 缺省恒假 ⇒ 旧口径（没人点停止）。
+     */
+    private val stopRequest: () -> Boolean = { false },
 ) {
 
     companion object {
@@ -197,8 +223,23 @@ internal class TeachExecutor(
         val retried = mutableListOf<Int>()
         val evidenceDir = evidence.begin(skill.name, stamp(clock()))
         var stepsDone = 0
+        // 671：失败卡要的两样（这一步是谁、在页面上找过几个）——stop() 读它们交给可见层
+        var curStep: TeachStep? = null
+        var hitsNow: Int? = null
 
         fun stop(failedStep: Int?, reason: String, ask: TeachAsk? = null): TeachRunReport {
+            // 671：先把「第几步 / 目标 / 命中几个 / 原因」交出去（失败卡与给抱朴的失败报告），
+            // 再走原有的失败取证——顺序即语义：卡上说的与取证拍的是同一刻
+            onFailed(
+                TeachStepProgress(
+                    index = failedStep ?: curStep?.index ?: 0,
+                    total = skill.steps.size,
+                    action = curStep?.action ?: TeachAction.WAIT,
+                    target = curStep?.let { targetTextOf(it) }.orEmpty(),
+                    hits = hitsNow,
+                ),
+                reason,
+            )
             // 622 A④：失败处**当场取证**（页面 DOM 摘要＋截图引用）——「卡在第 N 步」
             // 必须连「当时的页面长什么样」一起留下，不许只留一句原因。
             runCatching {
@@ -279,6 +320,13 @@ internal class TeachExecutor(
         var beforeUrl = startUrl
         var beforeRows = rowCount()
         for (step in skill.steps.drop(fromStep - 1)) {
+            // 671：进度上报 ＋ 停止闸——都排在「这一步动手之前」，所以点了停止就不会再点出去
+            curStep = step
+            hitsNow = null
+            onStep(TeachStepProgress(step.index, skill.steps.size, step.action, targetTextOf(step)))
+            if (stopRequest()) {
+                return stop(step.index, "用户点了停止——第 ${step.index} 步没动手")
+            }
             // 624C：步间暂停闸（判据①）——上一步已完整走完（含 expect＋取证），此刻收
             // 到纠正 ⇒ **当步结束即暂停**：纠正是「针对第 ${step.index} 步」的，处理完
             // 用 teach_correct_resume 从该步重跑（判据③），**不许要求重录**（判据②）。
@@ -315,6 +363,8 @@ internal class TeachExecutor(
             }
 
             val verdict = TeachResolve.gate(TeachResolve.resolve(step.locators, dom))
+            // 671：这一步在页面上找过几个（失败卡「命中几个」的唯一来源；拿不到就留空）
+            hitsNow = hitsOf(verdict)
 
             val locator: TeachLocator
             val hit: TeachHit
@@ -620,3 +670,28 @@ internal fun teachSuggestionOf(reason: String, failedStep: Int?): String {
     }
     return "查 $at 的取证快照对照页面现状：重教、改参数或改校验点——不要让回放自行换路子乱点"
 }
+
+/**
+ * 671：这一步在页面上「找过几个」——失败卡第四行（判据④）的唯一来源。
+ *
+ * 只有真去找过的那三支才有数：唯一命中＝1，命中多个＝候选个数，自愈＝扫到的个数。
+ * 自愈之后 NotFound 记 0（真的零命中），Ambiguous 记候选数——这两种正是「命中了几个」
+ * 最该说清的两处（0 个＝元素没了；3 个＝分不清点哪个）。
+ */
+private fun hitsOf(verdict: TeachResolve.Verdict): Int = when (verdict) {
+    is TeachResolve.Verdict.Execute -> 1
+    is TeachResolve.Verdict.AskCandidates -> verdict.candidates.size
+    is TeachResolve.Verdict.Heal -> verdict.resolution.hits.size
+}
+
+/**
+ * 671：一步的「目标」人话（指示条与失败卡共用）。
+ *
+ * 口径与录制端一致：可访问名 → 可见文本 → 定位器原值；三者都没有（WAIT 步）就是空串——
+ * 空串在 [ReplayState] 那里会被翻成「这一步没有目标元素」，不在执行器里编词。
+ */
+private fun targetTextOf(step: TeachStep): String =
+    step.snapshot.name?.takeIf { it.isNotBlank() }
+        ?: step.snapshot.text?.takeIf { it.isNotBlank() }
+        ?: step.locators.firstOrNull()?.value?.takeIf { it.isNotBlank() }
+        ?: ""
