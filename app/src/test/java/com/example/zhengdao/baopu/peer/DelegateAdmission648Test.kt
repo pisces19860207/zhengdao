@@ -302,7 +302,8 @@ class DelegateAdmission648Test {
         assertEquals("出题那两行租约账（use＋outcome）配不齐：$lease", 2, lease.size)
         assertEquals(LeaseKinds.USE, lease[0].optString("kind"))
         assertEquals(LeaseKinds.OUTCOME, lease[1].optString("kind"))
-        assertEquals("账面工具名要分清出题与派活", EnvoyDeliver.EXAM_LEDGER_TOOL, lease[1].optString("tool"))
+        assertEquals("账面工具名要分清出题与派活", "peer.exam", lease[1].optString("tool"))
+        assertEquals("出题挂账的尺必须指向那枚字面量（不许改挂到 peer.delegate）", "peer.exam", EnvoyDeliver.EXAM_LEDGER_TOOL)
         assertEquals("租约照结算（考完要收口）", "ok", lease[1].optString("result"))
     }
 
@@ -362,6 +363,7 @@ class DelegateAdmission648Test {
         val examTool = mainSource("peer/EnvoyExamTool.kt")
         assertTrue("出题工具没声明走 retest 那一条链", mainSource("peer/EnvoyDeliver.kt").contains("EnvoyAdmission.retest("))
         assertTrue("出题工具不该自己出题", !examTool.contains("IntakeExam."))
+        assertTrue("出题工具的账名自己写了一份字面量（两把尺就是这么长出来的）", examTool.contains("EnvoyDeliver.EXAM_LEDGER_TOOL"))
 
         // 行为侧：先出题、后委派 ⇒ 委派那一次只多发一件活，考卷零字节。
         stage()
