@@ -1228,7 +1228,9 @@ internal object BaopuRuntime {
                 )
             },
         )
-        EnvoyTool.sink = EnvoySink { args -> delegatePeerTask(appCtx, envoyDeliver, args) }
+        EnvoyTool.sink = EnvoySink { args ->
+            delegatePeerTask(envoyDeliver, File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY), args)
+        }
         // 第九十七批：组授权留痕（`[group] …`，可 grep）。只产出文本的纯函数在 agent 包，
         // 落盘统一走 RunLog —— 与 26-B 的 `[kernel]` 留痕同一口径（引擎线程上串行写）。
         ToolGroupAudit.sink = { line -> RunLog.log(line) }
@@ -1365,7 +1367,7 @@ internal object BaopuRuntime {
      * 三样输入只有装配层给得出：
      *   · `sessionId`：外发租约的主体是当前这轮会话。没有会话就没有批准派活的人 ⇒ 明确拒绝，
      *     不降级成「匿名会话」把字节发出去（与 [runSubtasks] 同一口径）。
-     *   · `root`：准入账的落点，与 208/427/517 同区 `<App私有>/抱朴记忆/`。这一格给不出，
+     *   · `admitRoot`：准入账的落点，与 208/427/517 同区 `<App私有>/抱朴记忆/`。这一格给不出，
      *     [com.example.zhengdao.baopu.peer.EnvoyAdmission] 就 fail-closed 拒派——宁可不派，
      *     也不派给没考过准入的对端。
      *   · `credential`：schema 里没有这一格，所以恒不给。对端要授权时按 549 的口径停在
@@ -1373,11 +1375,13 @@ internal object BaopuRuntime {
      *
      * 带 `task_id` ⇒ [EnvoyDeliver.reply] 续原任务，否则 [EnvoyDeliver.deliver] 派新活。
      * 644 的路由消费缝只挪新派活：任务住在原 peer 上，续话挪了就找不到它。
+     *
+     * 可见性给到 internal、准入落点收 File 不收 Context（614 判据②）：这一段要**真的那份**被测到，
+     * 测试里复刻一份接线就等于没接；不吃 Context，JVM 单测才起得来（与 572 演练同一取舍）。
      */
-    private fun delegatePeerTask(appCtx: Context, deliver: EnvoyDeliver, args: JSONObject): ToolOutcome {
+    internal fun delegatePeerTask(deliver: EnvoyDeliver, admitRoot: File, args: JSONObject): ToolOutcome {
         val sessionId = ActiveSessionGate.current()?.removePrefix("id:")?.toLongOrNull()
             ?: return ToolOutcome.Rejected("当前没有活跃会话：delegate_peer_task 只能在抱朴干活时调。")
-        val root = File(appCtx.filesDir, BaopuKernel.Data.DIR_GLOBAL_MEMORY)
         val endpoint = args.optString("endpoint").trim()
         val text = args.optString("task")
         val taskId = args.optString("task_id").trim()
@@ -1388,7 +1392,7 @@ internal object BaopuRuntime {
                     task = text,
                     writes = args.optBoolean("writes"),
                     sessionId = sessionId,
-                    root = root,
+                    root = admitRoot,
                 ),
             )
         } else {
@@ -1398,7 +1402,7 @@ internal object BaopuRuntime {
                     taskId = taskId,
                     text = text,
                     sessionId = sessionId,
-                    root = root,
+                    root = admitRoot,
                 ),
             )
         }
