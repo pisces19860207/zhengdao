@@ -26,4 +26,10 @@
     <string name="voice_local_not_installed">Not installed</string>
     <string name="voice_local_hint">Becomes available once a local model is installed; no silent fallback to system recognition.</string>
     <string name="voice_selected_mark">Selected</string>
+    <!-- Batch 700 - 12-second silent-probe verdict and channel guidance -->
+    <string name="voice_probe_silent">System speech recognition did not respond (no callback within 12 seconds). Try the local model, or try again later.</string>
+    <string name="voice_channel_switch">Switch recognition channel</string>
+    <string name="voice_channel_local_unwired">The local recognition channel is not wired yet (batch 693), so it cannot be selected.</string>
+    <string name="voice_channel_local_missing">The local model is not installed yet, so it cannot be selected.</string>
+    <string name="voice_streak_stop_retry">No response %1$d times in a row: automatic retry is off — tap the microphone to try manually.</string>
 </resources>

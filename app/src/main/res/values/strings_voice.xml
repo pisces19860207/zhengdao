@@ -26,4 +26,10 @@
     <string name="voice_local_not_installed">未安装</string>
     <string name="voice_local_hint">装好本地模型后才会亮起；没装时不会偷偷改走系统识别。</string>
     <string name="voice_selected_mark">已选</string>
+    <!-- 第七百批 · 12 秒零回调探测与通道引导 -->
+    <string name="voice_probe_silent">系统语音识别没有响应（12 秒内无回调）。可改用本地模型或稍后再试</string>
+    <string name="voice_channel_switch">切换识别通道</string>
+    <string name="voice_channel_local_unwired">本地识别通道还没接上（批次 693），暂时切不过去</string>
+    <string name="voice_channel_local_missing">本地模型还没装，暂时切不过去</string>
+    <string name="voice_streak_stop_retry">已经连续 %1$d 次没有响应：不再自动重试，请点麦克风手动再试</string>
 </resources>

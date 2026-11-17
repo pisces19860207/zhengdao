@@ -41,14 +41,15 @@ class VoiceWiringGateTest {
     }
 
     @Test
-    fun `设置页挂了语音卡_两模式两来源都能落盘_本地未装灰掉`() {
+    fun `设置页挂了语音卡_两模式两来源都能落盘_本地未装或未接线灰掉`() {
         assertTrue("设置页没挂语音卡", settings().contains("VoiceSettingsCard()"))
         val card = settingsCard()
         for (tok in listOf(
             "VoicePrefs.setMode(",
             "VoicePrefs.setSource(",
-            "enabled = localInstalled",
+            "enabled = localUsable",
             "R.string.voice_local_not_installed",
+            "VoiceChannels.LOCAL_CHANNEL_WIRED",
         )) {
             assertTrue("设置卡里缺 $tok", card.contains(tok))
         }
@@ -72,7 +73,7 @@ class VoiceWiringGateTest {
         val en = stringKeys("src/main/res/values-en/strings_voice.xml")
         assertTrue("中文语音文案一个都没读到", zh.isNotEmpty())
         assertEquals("中英键集合必须完全一致", zh, en)
-        assertEquals("633 的 18 条 ＋ 680 的停止 2 条 ＋ 失败 4 档", 24, zh.size)
+        assertEquals("633 的 18 条 ＋ 680 的停止 2 条 ＋ 失败 4 档 ＋ 700 的 5 条", 29, zh.size)
     }
 
     @Test
@@ -98,12 +99,29 @@ class VoiceWiringGateTest {
     }
 
     @Test
-    fun `680_会话有停止后3秒兜底与ready看门狗`() {
+    fun `700_状态行按读数说话_通道入口与连续失败提示都挂上`() {
+        val row = code("src/main/java/com/example/zhengdao/ui/baopu/VoiceStatusRow.kt")
+        assertTrue("零回调那句文案要挂上", row.contains("R.string.voice_probe_silent"))
+        assertTrue("切换入口要有", row.contains("R.string.voice_channel_switch"))
+        assertTrue("入口按 ChannelSwitch.enabled 灰", row.contains("enabled = ui.channelSwitch.enabled"))
+        assertTrue("灰掉要注明原因", row.contains("SwitchNote(ui.channelSwitch.block"))
+        assertTrue("连续失败提示要挂上", row.contains("R.string.voice_streak_stop_retry"))
+        assertTrue("判据要读政策而不是另写一个数", row.contains("VoiceRetryPolicy.gaveUp("))
+        val bridge = code("src/main/java/com/example/zhengdao/ui/baopu/VoiceBridge.kt")
+        assertTrue("探测读数由会话推来", bridge.contains("onProbe = { probe = it }"))
+        assertTrue("streak 由政策推进", bridge.contains("VoiceRetryPolicy.nextStreak("))
+        assertTrue("通道状态由目录判", bridge.contains("VoiceChannels.switchFrom("))
+    }
+
+    @Test
+    fun `700_会话有12秒零回调硬超时_不再是等ready`() {
         val s = code("src/main/java/com/example/zhengdao/baopu/voice/VoiceSession.kt")
-        assertTrue("停止后 3 秒兜底", s.contains("STOP_TIMEOUT_MS = 3_000L"))
-        assertTrue("启动看门狗", s.contains("READY_TIMEOUT_MS"))
-        assertTrue("有半句就落地", s.contains("landPartial("))
+        assertTrue("停止后 3 秒兜底还在", s.contains("STOP_TIMEOUT_MS = 3_000L"))
+        assertTrue("12 秒窗口来自唯一来源", s.contains("probeTimeoutMs: Long = VoiceProbe.TIMEOUT_MS"))
+        assertTrue("零回调才判", s.contains("VoiceProbe.verdict("))
+        assertFalse("「等 ready」那只表已经撤掉（会把发 partial 不发 ready 的引擎误杀）", s.contains("READY_TIMEOUT_MS"))
         assertTrue("失败必须把相位归零", s.contains("moveTo(VoicePhase.IDLE)"))
+        assertTrue("探测读数要进账", s.contains("probe?.callbacks"))
     }
 
     @Test

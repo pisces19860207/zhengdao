@@ -16,6 +16,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.zhengdao.baopu.voice.ChannelSwitch
+import com.example.zhengdao.baopu.voice.VoiceChannels
 import com.example.zhengdao.baopu.voice.VoiceDecision
 import com.example.zhengdao.baopu.voice.VoiceDraft
 import com.example.zhengdao.baopu.voice.VoiceFailure
@@ -23,6 +25,8 @@ import com.example.zhengdao.baopu.voice.VoiceGate
 import com.example.zhengdao.baopu.voice.VoiceMode
 import com.example.zhengdao.baopu.voice.VoicePhase
 import com.example.zhengdao.baopu.voice.VoicePrefs
+import com.example.zhengdao.baopu.voice.VoiceProbe
+import com.example.zhengdao.baopu.voice.VoiceRetryPolicy
 import com.example.zhengdao.baopu.voice.VoiceSession
 import com.example.zhengdao.baopu.voice.VoiceSource
 import kotlinx.coroutines.delay
@@ -39,10 +43,17 @@ internal data class VoiceUi(
     val systemInstalled: Boolean,
     /** 最近一次失败（四档闭集）；null = 这一轮没有失败。 */
     val failure: VoiceFailure?,
+    /** 最近一次探测读数（12 秒零回调才有）；界面据此选「12 秒内无回调」那句文案。 */
+    val probe: VoiceProbe?,
+    /** 连续失败次数；到了 [VoiceRetryPolicy.LIMIT] 就只留手动入口（[VoiceRetryPolicy.gaveUp]）。 */
+    val streak: Int,
+    /** 「切换识别通道」入口；693 未合入时 [ChannelSwitch.enabled] 恒 false。 */
+    val channelSwitch: ChannelSwitch,
     val onStart: () -> Unit,
     val onStop: () -> Unit,
     val onCancel: () -> Unit,
     val onRequestPermission: () -> Unit,
+    val onSwitchChannel: () -> Unit,
     val noteUserEdit: (String) -> Unit,
 )
 
@@ -51,6 +62,7 @@ internal data class VoiceUi(
  *
  * 第六百八十批：相位与失败都由会话回调**推**过来，本类不自己维护「在听」的副本——
  * 副本一多，就会出现「会话已经死了、界面还在正在听」的 G-673-2 式错位。
+ * 第七百批：探测读数也由会话推过来，本类不自己数回调（数两遍必有一遍是错的）。
  */
 internal class VoiceController(
     private val engine: AndroidSpeechEngine,
@@ -58,6 +70,7 @@ internal class VoiceController(
     private val onText: (String) -> Unit,
     private val onPhase: (VoicePhase) -> Unit,
     private val onFailure: (VoiceFailure?) -> Unit,
+    private val onProbe: (VoiceProbe) -> Unit = {},
 ) {
     private var session: VoiceSession? = null
 
@@ -78,6 +91,7 @@ internal class VoiceController(
             onText = onText,
             onPhase = onPhase,
             onSettled = onFailure,
+            onProbe = onProbe,
         )
         session = next
         return next.start(blocked)
@@ -116,6 +130,8 @@ internal fun rememberVoiceBridge(
     var deniedBefore by remember { mutableStateOf(false) }
     var phase by remember { mutableStateOf(VoicePhase.IDLE) }
     var failure by remember { mutableStateOf<VoiceFailure?>(null) }
+    var probe by remember { mutableStateOf<VoiceProbe?>(null) }
+    var streak by remember { mutableStateOf(0) }
     var mode by remember { mutableStateOf(VoicePrefs.getMode(ctx)) }
     var source by remember { mutableStateOf(VoicePrefs.getSource(ctx)) }
 
@@ -133,7 +149,13 @@ internal fun rememberVoiceBridge(
             scheduler = scheduler,
             onText = { sink.value(it) },
             onPhase = { phase = it },
-            onFailure = { failure = it },
+            onFailure = { f ->
+                // 连着两次不成 ⇒ 不再自动重试（判据⑤）；手动入口不受这条限制。
+                streak = VoiceRetryPolicy.nextStreak(streak, f)
+                failure = f
+                if (f == null) probe = null
+            },
+            onProbe = { probe = it },
         )
     }
     DisposableEffect(engine) {
@@ -166,7 +188,11 @@ internal fun rememberVoiceBridge(
         }
     }
 
-    val decision = VoiceGate.decide(source, granted, engine.available(), engine.installed())
+    // 本地档要两条线同时成立：模型装上了（文件在）＋ 通道接上了（693 合入）。
+    val localInstalled = remember { engine.installed() }
+    val localUsable = localInstalled && VoiceChannels.LOCAL_CHANNEL_WIRED
+    val decision = VoiceGate.decide(source, granted, engine.available(), localUsable)
+    val channelSwitch = VoiceChannels.switchFrom(source, localInstalled)
     return VoiceUi(
         granted = granted,
         deniedBefore = deniedBefore,
@@ -176,6 +202,9 @@ internal fun rememberVoiceBridge(
         decision = decision,
         systemInstalled = engine.installed(),
         failure = failure,
+        probe = probe,
+        streak = streak,
+        channelSwitch = channelSwitch,
         onStart = {
             // 每次启动都重读权限：不信进程内缓存，也不信上一次的 decision。
             granted = engine.granted()
@@ -184,12 +213,22 @@ internal fun rememberVoiceBridge(
                 failure = VoiceFailure.PERMISSION
             } else {
                 failure = null
+                probe = null
                 controller.start(source, baseline.value())
             }
         },
         onStop = { controller.finish() },
         onCancel = { controller.cancel() },
         onRequestPermission = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
+        onSwitchChannel = {
+            // 693 未合入时按钮是灰的，走不到这里；合入后这一句就是唯一的切换口。
+            if (channelSwitch.enabled) {
+                VoicePrefs.setSource(ctx, channelSwitch.target)
+                source = channelSwitch.target
+                failure = null
+                probe = null
+            }
+        },
         noteUserEdit = { controller.noteUserEdit(it) },
     )
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
+import com.example.zhengdao.baopu.voice.VoiceChannels
 import com.example.zhengdao.baopu.voice.VoiceMode
 import com.example.zhengdao.baopu.voice.VoicePrefs
 import com.example.zhengdao.baopu.voice.VoiceSource
@@ -37,7 +38,8 @@ import com.example.zhengdao.ui.theme.zhengdaoReady
  * 第六百三十三批 · 语音输入设置（抱朴设置浮层里的一张卡）。
  *
  * 两件事：交互模式（按住说／点按开始结束）、识别来源（系统默认／本地可选）。
- * 本地模型未装 ⇒ 那一行真的灰掉且写「未安装」，点不动，也不偷偷回退到系统档。
+ * 本地档要两条线同时成立：模型装上了（文件在）＋ 通道接上了（693）。
+ * 缺哪条就灰着并写明哪条——既不假装可用，也不偷偷回退到系统档。
  */
 @Composable
 internal fun VoiceSettingsCard() {
@@ -45,6 +47,7 @@ internal fun VoiceSettingsCard() {
     val res = LocalResources.current
     val engine = remember { AndroidSpeechEngine(ctx.applicationContext) }
     val localInstalled = remember { engine.installed() }
+    val localUsable = localInstalled && VoiceChannels.LOCAL_CHANNEL_WIRED
     var mode by rememberSaveable { mutableStateOf(VoicePrefs.getMode(ctx)) }
     var source by rememberSaveable { mutableStateOf(VoicePrefs.getSource(ctx)) }
     var modeDialog by remember { mutableStateOf(false) }
@@ -69,15 +72,19 @@ internal fun VoiceSettingsCard() {
         )
         VoiceOptionRow(
             label = stringResource(R.string.voice_source_local),
-            value = if (!localInstalled) {
+            value = if (!localUsable) {
                 res.getString(R.string.voice_local_not_installed)
             } else if (source == VoiceSource.LOCAL) {
                 res.getString(R.string.voice_selected_mark)
             } else {
                 ""
             },
-            enabled = localInstalled,
-            note = if (localInstalled) "" else res.getString(R.string.voice_local_hint),
+            enabled = localUsable,
+            note = when {
+                !VoiceChannels.LOCAL_CHANNEL_WIRED -> res.getString(R.string.voice_channel_local_unwired)
+                !localInstalled -> res.getString(R.string.voice_local_hint)
+                else -> ""
+            },
             onClick = {
                 VoicePrefs.setSource(ctx, VoiceSource.LOCAL)
                 source = VoiceSource.LOCAL

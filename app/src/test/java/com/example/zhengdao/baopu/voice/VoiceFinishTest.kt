@@ -83,15 +83,15 @@ class VoiceFinishTest {
     }
 
     @Test
-    fun `判据_服务不ready_到点归零并说没响应`() {
+    fun `判据_服务零回调_到12秒归零并说没响应`() {
         val r = rig(listOf("甲"))
         r.port.readyOnStart = false
         r.session.start()
         assertEquals(VoicePhase.LISTENING, r.session.phase)
-        r.scheduler.advance(VoiceSession.READY_TIMEOUT_MS - 1)
-        assertEquals("ready 看门狗不许提前开火", VoicePhase.LISTENING, r.session.phase)
+        r.scheduler.advance(VoiceProbe.TIMEOUT_MS - 1)
+        assertEquals("12 秒窗口内不许提前开火", VoicePhase.LISTENING, r.session.phase)
         r.scheduler.advance(1)
-        assertEquals("服务没起来必须归零", VoicePhase.IDLE, r.session.phase)
+        assertEquals("零回调必须归零", VoicePhase.IDLE, r.session.phase)
         assertEquals(VoiceFailure.NO_RESPONSE, r.lastFailure)
         assertEquals(0, r.scheduler.pending())
     }
@@ -101,7 +101,7 @@ class VoiceFinishTest {
         val r = rig(listOf("甲"))
         r.port.readyOnStart = false
         r.session.start()
-        r.scheduler.advance(VoiceSession.READY_TIMEOUT_MS)
+        r.scheduler.advance(VoiceProbe.TIMEOUT_MS)
         assertFalse("失败后会话必须已收口", r.session.active)
 
         // 用户第二下：新建一轮，必须真的能再进 LISTENING（旧代码 listening 恒 true ⇒ 死键）

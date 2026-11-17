@@ -23,6 +23,10 @@ internal class FakeAudioRecord(
     var released = false
         private set
 
+    /** 被真正起了几轮：判据⑤「不许偷偷自动重试」就看这个数是不是恒为 1。 */
+    var startCalls = 0
+        private set
+
     /** 生产侧 onReadyForSpeech 会不会到。 */
     var readyOnStart = true
 
@@ -34,6 +38,7 @@ internal class FakeAudioRecord(
 
     override fun start(callback: SpeechCallback): Boolean {
         if (!startOk) return false
+        startCalls++
         this.callback = callback
         if (readyOnStart) callback.onReady()
         return true
