@@ -117,11 +117,10 @@ class FaultInjectProbeActivity : Activity() {
             "sessionId=$sid（${if (latest != null) "沿用聊天页当前会话" else "没有历史会话，新建的——约束卡这一格会读不到" }）",
         )
 
-        // 目标文件放**工作区的 临时/**：模型看到的是它熟悉的那棵树里的真文件，不会因为
-        // `/data/user/0/...` 这种路径"看着可疑"而拒绝调用工具（那样三连失败就复现不出来）。
-        // 内容只有一行，跑完由脚本/用户自己删（`临时/` 本来就是可丢的草稿区）。
-        val scratch = File(BaopuRuntime.workspaceRoot(this), "临时").apply { mkdirs() }
-        val target = File(scratch, "故障注入-验收.txt").apply {
+        // 目标文件放**工作区根**（不放 `临时/`：引擎收尾会把 `临时/` 里的东西搬进回收站，
+        // 真机首跑就是这样——注入额度用完后模型再读，文件已经被收走，读出一个真实的
+        // `err=不存在`，把"注入判据"和"真失败"混在一起）。跑完由本探针自己删。
+        val target = File(BaopuRuntime.workspaceRoot(this), TARGET_NAME).apply {
             writeText("684 故障注入探针的目标文件：注入命中时工具根本不会真的执行。\n")
         }
         record("SET", "目标文件", "INFO", target.absolutePath)
@@ -216,6 +215,8 @@ class FaultInjectProbeActivity : Activity() {
         }
 
         val fails = rows.count { it.contains("|FAIL|") }
+        // 目标文件是探针自己造的：跑完就删（不留垃圾在工作区根）。
+        runCatching { target.delete() }
         return if (fails == 0) {
             "PASS 三连失败可复现：${injected.size} 条注入失败（err=「$expectedCode」）、" +
                 "归因全为行为类、约束卡 1 张" + if (others.isEmpty()) "" else "（另有真实失败 ${others.size} 条，已单列）"
@@ -355,6 +356,7 @@ class FaultInjectProbeActivity : Activity() {
     companion object {
         private const val TAG = "FaultInjectProbe"
         private const val PROBE_DIR = "fault-probe"
+        private const val TARGET_NAME = "故障注入-验收.txt"
         private const val DEFAULT_TOOL = "read_file"
         private const val DEFAULT_ROUNDS = 3
         private const val MAX_ROUNDS = 6
