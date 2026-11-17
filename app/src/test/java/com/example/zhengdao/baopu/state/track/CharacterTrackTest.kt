@@ -292,6 +292,29 @@ class CharacterTrackTest {
         assertEquals("窗口整体丢弃（不累积、不追溯）", emptyList<Int>(), track.stateView().window)
         assertEquals("惯性跨 veto 保留", "层3·被触碰", track.stateView().inertia)
         assertTrue(track.invariantsHold())
+        // 参数域第二段（御裁②「veto 期间接触层锁 1」）：默认表下 Lv1/S0 的 min 上限本就是 1，
+        // 双约束单独就能拒 ⇒ 把两张表合法地抬到 2，veto 的锁必须自己扛，不许靠参数表兜。
+        // 表须单调不减：内核只在回退／否决路径钳位（tick 不钳 layer），
+        // 若 S0=2 而 S1=1，推进过程中 cap 会缩到既有层以下 ⇒ 先被「每步不变量」抓死，那是我的表不合法。
+        val loose = CharacterTrack(
+            params = TrackParams(
+                salienceLayerMax = mapOf(1 to 2, 2 to 2, 3 to 3, 4 to 3),
+                layerCapByStage = mapOf(0 to 2, 1 to 2, 2 to 2, 3 to 2, 4 to 3, 5 to 3, 6 to 3),
+            ),
+            stance = Stance.DESIRE,
+        )
+        tower(loose)
+        loose.hardVeto("离别")
+        assertEquals("抬表后 veto 期显性度仍锁 Lv1", 1, loose.salience)
+        assertEquals(
+            "此参数下双约束单独允许层 2（拒不了才轮到 veto）",
+            2,
+            minOf(loose.params.salienceLayerMax.getValue(loose.salience), loose.params.layerCapByStage.getValue(loose.dStage)),
+        )
+        val looseMsg = loose.touch(2)
+        assertTrue("veto 期请求层 2 仍须拒：$looseMsg", looseMsg.startsWith("拒绝接触层2"))
+        assertEquals("接触层没被算上去", 1, loose.layer)
+        assertTrue("抬表后不变量仍守", loose.invariantsHold())
         track.releaseVeto(SafetySignal.USER_INPUT)
         assertEquals("解除后不是回原值", 0, track.dStage)
         assertEquals("解除后显性度从 Lv1 起重推", 1, track.salience)
