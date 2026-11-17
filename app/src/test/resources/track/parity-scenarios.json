@@ -1,0 +1,639 @@
+{
+ "_comment": "670 跨语言对拍共享场景脚本：Python 参考与 Kotlin 移植同读此文件。op 语义见 tools/character-track-parity.py。",
+ "scenarios": [
+  {
+   "id": "s1-normal-12",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    }
+   ]
+  },
+  {
+   "id": "s2-anchor-round3",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick",
+     "anchor": true
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    }
+   ]
+  },
+  {
+   "id": "s3-tower-one-reject",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": -1
+    }
+   ]
+  },
+  {
+   "id": "s4-interruption",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    },
+    {
+     "op": "inertia",
+     "template": "层{layer}·腰侧·0.4m"
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "inertia",
+     "template": "层{layer}·腰侧·0.4m"
+    }
+   ]
+  },
+  {
+   "id": "s5-early-reject",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": -1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    }
+   ]
+  },
+  {
+   "id": "s6-anchor-late",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick",
+     "anchor": true
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    }
+   ]
+  },
+  {
+   "id": "s7-touch-refusal",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "touch",
+     "layer": 3
+    },
+    {
+     "op": "touch",
+     "layer": 1
+    },
+    {
+     "op": "feed",
+     "sig": 1
+    },
+    {
+     "op": "touch",
+     "layer": 3
+    },
+    {
+     "op": "touch",
+     "layer": 2
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "touch",
+     "layer": 3
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "attacker"
+    }
+   ]
+  },
+  {
+   "id": "s8-unknown-signals",
+   "stance": "欲望",
+   "ops": [
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "feed",
+     "sig": 0
+    },
+    {
+     "op": "tick"
+    },
+    {
+     "op": "attacker"
+    },
+    {
+     "op": "touch_max"
+    }
+   ]
+  }
+ ]
+}

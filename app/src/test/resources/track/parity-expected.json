@@ -1,0 +1,3898 @@
+{
+ "reference": "证道设计报告/附件-角色轨状态机/character_track.py",
+ "reference_sha256": "38c6aa4f537cbc67cbb49752226484458c089c4387f9d4442b34b0e47ac27c09",
+ "reference_bytes": 8345,
+ "scenarios": [
+  {
+   "id": "s1-normal-12",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层2（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv3",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S2唤醒",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜B正当接触｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "C越界",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "C越界",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S3掩饰",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "D突破",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "D突破",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S4憋声",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "E掌控",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "E掌控",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S5承受",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "F催逼",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "F催逼",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S6沦陷",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 6,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S6沦陷｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "F催逼",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 6,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S6沦陷｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 6,
+      "a_stage": 5,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S6沦陷｜F催逼｜层3｜Lv4·欲望｜锚—｜惯性—"
+    }
+   ]
+  },
+  {
+   "id": "s2-anchor-round3",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv3",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick",
+      "anchor": true
+     },
+     "msg": "防守→S2唤醒",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv3·欲望｜锚[1]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚[1]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚[1]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚[1]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S3掩饰",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜A观察｜层1｜Lv4·欲望｜锚[1]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜A观察｜层1｜Lv4·欲望｜锚[1]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       1
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜A观察｜层1｜Lv4·欲望｜锚[1]｜惯性—"
+    }
+   ]
+  },
+  {
+   "id": "s3-tower-one-reject",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层2（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv3",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S2唤醒",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜B正当接触｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "C越界",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "C越界",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S3掩饰",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "D突破",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "D突破",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S4憋声",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 3,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜D突破｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "E掌控",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": -1
+     },
+     "msg": "显性度回退→Lv3",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 4,
+      "a_stage": 4,
+      "layer": 3,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜E掌控｜层3｜Lv3·欲望｜锚—｜惯性—"
+    }
+   ]
+  },
+  {
+   "id": "s4-interruption",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层2（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv3",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S2唤醒",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜B正当接触｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "C越界",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "C越界",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "拒绝接触层3（当前上限2）",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "inertia",
+      "template": "层{layer}·腰侧·0.4m"
+     },
+     "msg": "层1·腰侧·0.4m",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": "层1·腰侧·0.4m"
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性层1·腰侧·0.4m"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       0
+      ],
+      "inertia": "层1·腰侧·0.4m"
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性层1·腰侧·0.4m"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       0,
+       0
+      ],
+      "inertia": "层1·腰侧·0.4m"
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性层1·腰侧·0.4m"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": "层1·腰侧·0.4m"
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性层1·腰侧·0.4m"
+    },
+    {
+     "op": {
+      "op": "inertia",
+      "template": "层{layer}·腰侧·0.4m"
+     },
+     "msg": "层1·腰侧·0.4m",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 2,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": "层1·腰侧·0.4m"
+     },
+     "snapshot": "[角色轨] S2唤醒｜C越界｜层1｜Lv4·欲望｜锚—｜惯性层1·腰侧·0.4m"
+    }
+   ]
+  },
+  {
+   "id": "s5-early-reject",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": -1
+     },
+     "msg": "显性度回退→Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 2,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 3,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 4,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 4,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 4,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       -1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    }
+   ]
+  },
+  {
+   "id": "s6-anchor-late",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv3",
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 3,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv3·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S2唤醒",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 2,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S2唤醒｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S3掩饰",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 3,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S3掩饰｜A观察｜层1｜Lv4·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick",
+      "anchor": true
+     },
+     "msg": "防守→S4憋声",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 4,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S4憋声｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S5承受",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv4",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜A观察｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜B正当接触｜层1｜Lv4·欲望｜锚[3]｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层3",
+     "state": {
+      "stance": "欲望",
+      "salience": 4,
+      "d_stage": 5,
+      "a_stage": 1,
+      "layer": 3,
+      "turns": 1,
+      "anchors_hit": [
+       3
+      ],
+      "window": [
+       1,
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S5承受｜B正当接触｜层3｜Lv4·欲望｜锚[3]｜惯性—"
+    }
+   ]
+  },
+  {
+   "id": "s7-touch-refusal",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch",
+      "layer": 3
+     },
+     "msg": "拒绝接触层3（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch",
+      "layer": 1
+     },
+     "msg": "接触层1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 1
+     },
+     "msg": "显性度上升→Lv2",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch",
+      "layer": 3
+     },
+     "msg": "拒绝接触层3（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch",
+      "layer": 2
+     },
+     "msg": "拒绝接触层2（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch",
+      "layer": 3
+     },
+     "msg": "拒绝接触层3（当前上限1）",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 2,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       1,
+       1
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv2·欲望｜锚—｜惯性—"
+    }
+   ]
+  },
+  {
+   "id": "s8-unknown-signals",
+   "steps": [
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 0,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S0情境｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": "防守→S1破冰",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 0,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 1,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 2,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "feed",
+      "sig": 0
+     },
+     "msg": "保持Lv1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 2,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "tick"
+     },
+     "msg": null,
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 0,
+      "layer": 1,
+      "turns": 3,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜A观察｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "attacker"
+     },
+     "msg": "B正当接触",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 3,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    },
+    {
+     "op": {
+      "op": "touch_max"
+     },
+     "msg": "接触层1",
+     "state": {
+      "stance": "欲望",
+      "salience": 1,
+      "d_stage": 1,
+      "a_stage": 1,
+      "layer": 1,
+      "turns": 3,
+      "anchors_hit": [],
+      "window": [
+       0,
+       0,
+       0
+      ],
+      "inertia": null
+     },
+     "snapshot": "[角色轨] S1破冰｜B正当接触｜层1｜Lv1·欲望｜锚—｜惯性—"
+    }
+   ]
+  }
+ ]
+}
