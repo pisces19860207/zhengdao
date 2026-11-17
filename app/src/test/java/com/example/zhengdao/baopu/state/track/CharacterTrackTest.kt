@@ -87,7 +87,7 @@ class CharacterTrackTest {
     fun criterion4_interruption_keeps_state_and_inertia() {
         val track = CharacterTrack(stance = Stance.DESIRE)
         tower(track, rounds = 5)
-        track.holdInertia("层${track.layer}·腰侧·0.4m")
+        track.holdInertia("层${track.layer}·被触碰")
         val before = track.stateView()
         val snapshotBefore = track.snapshot()
         repeat(3) { track.feed(unknown()) }
@@ -170,18 +170,18 @@ class CharacterTrackTest {
     fun criterion8_summary_budget_fields_determinism() {
         val anchors = AnchorConfig(
             mapOf(
-                0 to listOf("后颈", "耳垂", "腰侧"),
+                0 to listOf("被触碰", "被叫名字", "被命令"),
                 1 to listOf("被叫名字"),
-                2 to listOf("手腕"),
+                2 to listOf("被触碰"),
                 3 to listOf("被命令"),
             ),
         )
         val track = CharacterTrack(anchors = anchors, stance = Stance.DESIRE)
         tower(track, rounds = 12)
-        track.holdInertia("层3·腰侧·0.4m")
-        track.recordAutonomous("梦遗")
+        track.holdInertia("层3·被触碰")
+        track.recordAutonomous("私密场景走神")
         val line = track.summaryLine()
-        assertTrue("token 预算：$line", TrackSummary.tokens(line) <= TrackSummary.TOKEN_BUDGET)
+        assertTrue("token 预算：$line", TrackSummary.tokenEst(line) <= TrackSummary.TOKEN_BUDGET)
         for (field in listOf("[角色轨]", "｜层", "｜Lv", "·欲望", "｜锚", "｜惯性:")) {
             assertTrue("字段齐：缺 $field", line.contains(field))
         }
@@ -194,17 +194,17 @@ class CharacterTrackTest {
         val track = CharacterTrack(anchors = anchors, stance = Stance.DESIRE)
         repeat(12) { round(track, anchor = true) }
         repeat(2) { track.tick(anchorHit = true) }
-        track.holdInertia("层3·腰侧·0.4m·温度持续·呼吸还近·手还搭着")
+        track.holdInertia("层3·被触碰·走神·忆起·联想·被叫名字·被命令")
         repeat(3) { track.recordAutonomous("自主事件") }
         val line = track.summaryLine()
-        assertTrue("最坏配置仍在预算内：$line", TrackSummary.tokens(line) <= TrackSummary.TOKEN_BUDGET)
+        assertTrue("最坏配置仍在预算内：$line", TrackSummary.tokenEst(line) <= TrackSummary.TOKEN_BUDGET)
         assertEquals(line, track.summaryLine())
     }
 
     @Test
     fun criterion8_example_line_shape() {
         val track = CharacterTrack(
-            anchors = AnchorConfig(mapOf(3 to listOf("后颈"))),
+            anchors = AnchorConfig(mapOf(3 to listOf("被触碰"))),
             stance = Stance.DESIRE,
         )
         repeat(6) { track.feed(positive()); track.tick() }
@@ -212,11 +212,12 @@ class CharacterTrackTest {
         track.attackerStep()
         track.attackerStep()
         track.touch(2)
-        track.holdInertia("层2·腰侧·0.4m")
+        track.holdInertia("层2·被触碰")
         val line = track.summaryLine()
-        assertTrue("锚点用配置名：$line", line.contains("锚[后颈]"))
-        assertTrue("惯性带冒号：$line", line.contains("惯性:层2·腰侧·0.4m"))
-        assertTrue(TrackSummary.tokens(line) <= TrackSummary.TOKEN_BUDGET)
+        assertTrue("锚点用配置名：$line", line.contains("锚[被触碰]"))
+        assertTrue("惯性带冒号：$line", line.contains("惯性:层2·被触碰"))
+        assertEquals("示例行＝约 25 token（tokenEst/1，御裁③钉死口径）行=$line", 25, TrackSummary.tokenEst(line))
+        assertTrue(TrackSummary.tokenEst(line) <= TrackSummary.TOKEN_BUDGET)
     }
 
     // ── 追加③ hard_veto：三态归零＋写账＋3 轮试探不自恢复＋安全信号解除 ───────
@@ -224,7 +225,7 @@ class CharacterTrackTest {
     fun veto_zeroes_three_states_and_writes_ledger() {
         val track = CharacterTrack(stance = Stance.DESIRE)
         tower(track)
-        track.hardVeto("气味")
+        track.hardVeto("联想")
         assertEquals("阶段→S0", 0, track.dStage)
         assertEquals("接触层→1", 1, track.layer)
         assertEquals("显性度→Lv1", 1, track.salience)
@@ -232,7 +233,7 @@ class CharacterTrackTest {
         assertTrue("进攻链被双重约束压回", track.aStage <= 1)
         val ledger = track.vetoHistory()
         assertEquals(1, ledger.size)
-        assertEquals("气味", ledger[0].trigger)
+        assertEquals("联想", ledger[0].trigger)
         assertNull("尚未解除", ledger[0].releasedBy)
     }
 
@@ -240,7 +241,7 @@ class CharacterTrackTest {
     fun veto_three_probe_rounds_do_not_self_recover() {
         val track = CharacterTrack(stance = Stance.DESIRE)
         tower(track)
-        track.hardVeto("被固定")
+        track.hardVeto("僵硬")
         repeat(3) {
             track.feed(positive())
             track.tick()
@@ -268,6 +269,34 @@ class CharacterTrackTest {
         track.feed(positive())
         track.tick()
         assertEquals("解除后信号驱动恢复推进", "防守→S1破冰", track.tick())
+    }
+
+    // ── 御裁② 新判据：veto 期间注入「高阶段＋高显性度」仍是 S0/层1/Lv1 ─────────
+    @Test
+    fun veto_period_discards_all_advance_inputs_and_releases_to_zero() {
+        val track = CharacterTrack(stance = Stance.DESIRE)
+        tower(track)
+        assertEquals("塔先登顶", 6, track.dStage)
+        track.holdInertia("层3·被触碰")
+        track.hardVeto("离别")
+        repeat(6) {
+            track.feed(positive())
+            assertNull(track.tick())
+            track.attackerStep()
+            track.touch(3)
+        }
+        assertEquals("veto 期间阶段锁 S0", 0, track.dStage)
+        assertEquals("veto 期间显性度锁 Lv1", 1, track.salience)
+        assertEquals("veto 期间接触层锁 1", 1, track.layer)
+        assertEquals("进攻按双约束钳到上限 B（御裁②口径）", 1, track.aStage)
+        assertEquals("窗口整体丢弃（不累积、不追溯）", emptyList<Int>(), track.stateView().window)
+        assertEquals("惯性跨 veto 保留", "层3·被触碰", track.stateView().inertia)
+        assertTrue(track.invariantsHold())
+        track.releaseVeto(SafetySignal.USER_INPUT)
+        assertEquals("解除后不是回原值", 0, track.dStage)
+        assertEquals("解除后显性度从 Lv1 起重推", 1, track.salience)
+        repeat(4) { round(track) }
+        assertTrue("解除后重新按双约束推进", track.dStage >= 1)
     }
 
     // ── 追加① 信号来源：状态机不得自己产生信号（源码断言＋结构断言） ──────────

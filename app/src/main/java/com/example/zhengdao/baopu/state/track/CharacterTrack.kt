@@ -121,11 +121,13 @@ class CharacterTrack(
 
     /**
      * 每轮喂一个观测信号（不对称滤波器：升需 advanceNeed 个正向，降只需 retreatNeed 个拒绝）。
-     * 无排斥确认不满足 ⇒ 显性度不升反降（硬安全门）。硬否决期间信号不改状态。
+     * 无排斥确认不满足 ⇒ 显性度不升反降（硬安全门）。
+     * 硬否决期间一切推进输入整体丢弃（御裁②：优先级 hard_veto ＞ 双约束 ＞ 单向门——
+     * veto 是「身体说停」，不属推进链，不能被双约束算回中间值）。
      */
     fun feed(signal: TrackSignal, confirmation: NoRepulsion = NoRepulsion.CONFIRMED): String {
-        lastConfirmation = confirmation
         if (activeVeto != null) return "硬否决中→Lv$salience"
+        lastConfirmation = confirmation
         window.addLast(signal.value)
         while (window.size > params.window) window.removeFirst()
         val rejected = window.count { it == -1 } >= params.retreatNeed
@@ -186,8 +188,9 @@ class CharacterTrack(
     }
 
     /**
-     * 硬否决（追加③）：PTSD 类触发 ⇒ 阶段→S0、接触层→1、显性度→Lv1，并写账。
-     * 不参与渐进、不因「多试」解除；进攻链由双重约束同步压回。
+     * 硬否决（追加③，御裁②）：PTSD 类触发 ⇒ 阶段锁 S0、接触层锁 1、显性度锁 Lv1，并写账；
+     * 优先级 hard_veto ＞ 双约束 ＞ 单向门。解除不是回原值，而是从 S0/Lv1 重新按双约束推进
+     * （惯性保留、显性度不追溯——窗口已清）。进攻链按双约束钳到当前上限。
      */
     fun hardVeto(trigger: String) {
         require(trigger.isNotEmpty()) { "触发物必须写明（写账用）" }
@@ -219,7 +222,7 @@ class CharacterTrack(
         inertia = value
     }
 
-    /** 自主事件（如梦遗）：由形轨按频率参数生成后写入，不经 AI 决定；引擎只记录进状态串。 */
+    /** 自主事件（如私密场景走神）：由形轨按频率参数生成后写入，不经 AI 决定；引擎只记录进状态串。 */
     fun recordAutonomous(event: String) {
         require(event.isNotEmpty()) { "自主事件名须非空" }
         autonomousEvents.add(event)
@@ -263,7 +266,7 @@ class CharacterTrack(
         var events = autonomousEvents.toList()
         var inertiaText = inertia ?: "—"
         var line = renderSummary(names, events, inertiaText)
-        while (TrackSummary.tokens(line) > TrackSummary.TOKEN_BUDGET) {
+        while (TrackSummary.tokenEst(line) > TrackSummary.TOKEN_BUDGET) {
             when {
                 names.size > 1 -> names = names.dropLast(1)
                 names.isNotEmpty() && names != listOf("…") -> names = listOf("…")
@@ -312,29 +315,35 @@ class CharacterTrack(
     }
 }
 
-/** 一行摘要的 token 口径（判据⑧）：CJK 每字 1、ASCII 字母数字连续段 1、其余符号各 1。 */
+/**
+ * tokenEst/1 估算口径（御裁③）：CJK 单字＝1、ASCII 字母数字连续段＝1、空白与标点不计。
+ * **不是模型 tokenizer**——只用于预算、两态比较、前后差值；对外不许声称「精确 N token」，
+ * 计数一律写「约 N token（tokenEst/1）」。换口径 ⇒ TOKEN_EST_VERSION 升号，旧新读数不得相加。
+ */
 object TrackSummary {
+    const val TOKEN_EST_VERSION = "1"
     const val TOKEN_BUDGET = 40
     private const val CJK_START = 0x4E00
     private const val CJK_END = 0x9FFF
     private const val ASCII_END = 128
 
-    fun tokens(line: String): Int {
+    fun tokenEst(line: String): Int {
         var count = 0
         var i = 0
         while (i < line.length) {
             val c = line[i]
-            if (c.code in CJK_START..CJK_END) {
-                count += 1
-                i += 1
-            } else if (c.code < ASCII_END && c.isLetterOrDigit()) {
-                var j = i
-                while (j < line.length && line[j].code < ASCII_END && line[j].isLetterOrDigit()) j += 1
-                count += 1
-                i = j
-            } else {
-                count += 1
-                i += 1
+            when {
+                c.code in CJK_START..CJK_END -> {
+                    count += 1
+                    i += 1
+                }
+                c.code < ASCII_END && c.isLetterOrDigit() -> {
+                    var j = i
+                    while (j < line.length && line[j].code < ASCII_END && line[j].isLetterOrDigit()) j += 1
+                    count += 1
+                    i = j
+                }
+                else -> i += 1
             }
         }
         return count

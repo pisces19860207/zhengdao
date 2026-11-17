@@ -397,7 +397,7 @@
     },
     {
      "op": "inertia",
-     "template": "层{layer}·腰侧·0.4m"
+     "template": "层{layer}·被触碰"
     },
     {
      "op": "feed",
@@ -413,7 +413,7 @@
     },
     {
      "op": "inertia",
-     "template": "层{layer}·腰侧·0.4m"
+     "template": "层{layer}·被触碰"
     }
    ]
   },

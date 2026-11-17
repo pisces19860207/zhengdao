@@ -15,6 +15,8 @@ op 语义：
   touch      请求接触层（layer 给定）
   touch_max  请求接触层 min(3, SALIENCE_LAYER_MAX[当前显性度])（参考实现场景写法）
   inertia    写惯性（template 里 {layer} 用当前接触层渲染）
+  场景脚本的 inertia 模板用公开仓写法（御裁①：不写部位/距离，同一概念一种写法），
+  两国语言共读同一份 scenarios.json，故对拍不受措辞影响。
 
 每条 op 记录：返回值 msg、操作后状态 state、snapshot()。参考实现的 check()
 不变量在每步后执行；任何断言失败即非零退出（不产假夹具）。
