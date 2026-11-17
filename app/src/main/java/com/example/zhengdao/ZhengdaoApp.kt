@@ -111,6 +111,21 @@ class ZhengdaoApp : Application() {
             this,
             com.example.zhengdao.ui.baopu.learnCardTexts(this),
         )
+        // 第六百八十九批：状态摘要（653 的 M1）的**账本读取口**——本层只装闭包，不读盘、
+        // 不算摘要：真读发生在 `update_plan` 的 ack 尾巴（工具线程），主线程零 IO。
+        // 三本账都是既有只读口（起居注 readAll／未办成单 load／未学会清单的 StateFlow），
+        // 这里一个写口都没有；神轨实例（670）目前没有生产产生方 ⇒ 缺省恒 null（不插那一行）。
+        com.example.zhengdao.baopu.state.summary.StateSummaryWiring.attach(
+            diary = { com.example.zhengdao.baopu.safety.SupervisionDiary.readAll(applicationContext) },
+            ledger = {
+                com.example.zhengdao.baopu.scout.UnfinishedLedger(
+                    com.example.zhengdao.baopu.scout.ScoutDirs.ledgerDirs(applicationContext),
+                ).load()
+            },
+            unlearned = {
+                com.example.zhengdao.baopu.learn.ObserveCenter.notLearned.value.items.map { it.question }
+            },
+        )
     }
 
     // 2026-10-16 旧抱朴线清场：原先这里还有 registerOcShutdownOnFinish()

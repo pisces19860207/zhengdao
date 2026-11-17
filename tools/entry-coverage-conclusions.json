@@ -15,10 +15,6 @@
       "verdict": "wired",
       "note": "谁接：666 派工单明写「接线：把 silhouette(H,C,pos,pose) 接到 660 的高度场输出」——660 几何内核尚未交付，故本单只交接缝（HeightFieldSource）＋夹具高度场（腰线/裆缝/大腿根），生产侧换成实测高度场即生效；核心 Silhouette.kt 是纯函数，不依赖接缝。用途：形轨.轮廓可见度（三态＋一句话），解决 12.9 记的「轮廓该不该看得出」实际故障。"
     },
-    "CharacterTrack": {
-      "verdict": "not_urgent",
-      "note": "670 批神轨状态机内核（防守 S0–S6／进攻 A–F／显性度观测／双约束＋单向门＋硬否决），判据⑨跨语言对拍与全部 23 例判据都只从测试调它 ⇒ 「仅测试在调」是本批刻意的交付形态，不是漏接线：消费方＝653（运行图与状态摘要，未派），工单「挂账」条明确本单只算「接口就绪」；653 合入时按判据⑩只加字段并入其状态摘要（不许另造第二份摘要），届时此项应转为「已有生产引用」而自动离开 B 表。在飞表 670 行已挂同一账。"
-    },
     "RelationTrack": {
       "verdict": "not_urgent",
       "note": "670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，7 例判据（表钉死／守卫证据／触发牌词表／回流三条件四态／不可逆／修饰符）全部只从测试调。"
@@ -43,6 +39,12 @@
     }
   },
   "已接线存档": {
+    "CharacterTrack": {
+      "left_ledger_at": "689（2026-11-17 重跑；scan 判定已有生产引用，不再进 B）",
+      "wired_at": "state/summary/RunStateAssembler.kt:111 track.summaryLine() ← StateSummaryWiring.kt:66 ackNote() ← agent/PlanController.kt:323 update_plan 的 ack 尾巴（模型每次更新计划即读到）",
+      "fact": "真接线，生产可达（引擎工具线程 PlanController.submit → StateSummaryWiring → RunStateAssembler → CharacterTrack.summaryLine()）；670 的挂账条「消费方＝653」由 689 兑现，653 的 M1（状态摘要）先落地，M2（运行图）未做",
+      "note": "原 B 区 note 照留：670 批神轨状态机内核（防守 S0–S6／进攻 A–F／显性度观测／双约束＋单向门＋硬否决），判据⑨跨语言对拍与全部 23 例判据都只从测试调它 ⇒ 「仅测试在调」是本批刻意的交付形态，不是漏接线：消费方＝653（运行图与状态摘要，未派），工单「挂账」条明确本单只算「接口就绪」；653 合入时按判据⑩只加字段并入其状态摘要（不许另造第二份摘要），届时此项应转为「已有生产引用」而自动离开 B 表。在飞表 670 行已挂同一账。"
+    },
     "OutputCards": {
       "left_ledger_at": "547（2026-11-09 重跑；scan 判定已有生产引用，不再进 B）",
       "wired_at": "ui/baopu/BaopuScreen.kt:197 OutputCards.push(...)（产出卡入卡区，依据闸在它里面）← BaopuChatController.kt:4317 offerProduceCardOnSettle()（Settled 收尾触发，定义在 :4035）",

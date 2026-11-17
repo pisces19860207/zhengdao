@@ -10,9 +10,9 @@
 | 口径 | 数 |
 |---|---:|
 | 顶层公开面（app/src/main/java，剥注释后计数） | 524 |
-| 生产可达（有生产引用，含同文件） | 519 |
+| 生产可达（有生产引用，含同文件） | 520 |
 | A 有定义无调用 | 1 |
-| B 只有测试在调 | 4 |
+| B 只有测试在调 | 3 |
 | C 已接线默认关、无开启路径 | 4 |
 | **NOT_WIRED（结论=接线，接线欠账）** | **2** |
 
@@ -33,7 +33,6 @@
 |---|---|---|---|---|
 | `SilhouetteWire` | `app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:177`、`app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:179`、`app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt:179` | 接线 | 谁接：666 派工单明写「接线：把 silhouette(H,C,pos,pose) 接到 660 的高度场输出」——660 几何内核尚未交付，故本单只交接缝（HeightFieldSource）＋夹具高度场（腰线/裆缝/大腿根），生产侧换成实测高度场即生效；核心 Silhouette.kt 是纯函数，不依赖接缝。用途：形轨.轮廓可见度（三态＋一句话），解决 12.9 记的「轮廓该不该看得出」实际故障。 |
 | `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 该删 | 该删：345 批画像层（AgentProfile＋四条硬规矩）已被 365 的 policy/CapabilityProfile.kt 整套取代——365 文件头自述「把 345 批立下的四层设计做成 policy 侧的真对象」、三条硬规矩同口径；427 接进生产的准入链走的正是 365 那套（AdmissionWiring.kt:91 → AdmissionFlow.run → CapabilityProfile），345 这件的 intake／canAccept／needsReprobe／onTaskResult／reprobe／reinstate／portrait 全仓零外部引用（只有 IntakeProfileTest 在调）。只列不删：另立清理批删 intake/IntakeProfile.kt 整件＋intake/IntakeModels.kt:103 的 AgentProfile 与 :124 的 ViolationRecord 及连带测试 |
-| `CharacterTrack` | `app/src/main/java/com/example/zhengdao/baopu/state/track/CharacterTrack.kt:87` | `app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt:20`、`app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt:29`、`app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt:36` | 不急 | 670 批神轨状态机内核（防守 S0–S6／进攻 A–F／显性度观测／双约束＋单向门＋硬否决），判据⑨跨语言对拍与全部 23 例判据都只从测试调它 ⇒ 「仅测试在调」是本批刻意的交付形态，不是漏接线：消费方＝653（运行图与状态摘要，未派），工单「挂账」条明确本单只算「接口就绪」；653 合入时按判据⑩只加字段并入其状态摘要（不许另造第二份摘要），届时此项应转为「已有生产引用」而自动离开 B 表。在飞表 670 行已挂同一账。 |
 | `RelationTrack` | `app/src/main/java/com/example/zhengdao/baopu/state/track/RelationTrack.kt:75` | `app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt:41`、`app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt:54`、`app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt:58` | 不急 | 670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，7 例判据（表钉死／守卫证据／触发牌词表／回流三条件四态／不可逆／修饰符）全部只从测试调。 |
 
 ## C 已接线默认关、无开启路径

@@ -170,105 +170,6 @@
    },
    {
     "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/track/CharacterTrack.kt",
-    "file_mates_wired": true,
-    "kind": "class",
-    "line": 87,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "670 批神轨状态机内核（防守 S0–S6／进攻 A–F／显性度观测／双约束＋单向门＋硬否决），判据⑨跨语言对拍与全部 23 例判据都只从测试调它 ⇒ 「仅测试在调」是本批刻意的交付形态，不是漏接线：消费方＝653（运行图与状态摘要，未派），工单「挂账」条明确本单只算「接口就绪」；653 合入时按判据⑩只加字段并入其状态摘要（不许另造第二份摘要），届时此项应转为「已有生产引用」而自动离开 B 表。在飞表 670 行已挂同一账。",
-    "package": "com.example.zhengdao.baopu.state.track",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "CharacterTrack",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 20
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 29
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 36
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 52
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 61
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 88
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 107
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 119
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 141
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 158
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 179
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 194
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 206
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 226
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 242
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 260
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 263
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 277
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 299
-     }
-    ],
-    "verdict": "not_urgent",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/track/RelationTrack.kt",
     "file_mates_wired": true,
     "kind": "class",
@@ -371,11 +272,11 @@
  },
  "summary": {
   "A": 1,
-  "B": 4,
+  "B": 3,
   "C": 4,
   "gates_with_write_path": 4,
   "not_wired": 2,
   "production_top_level_public": 524,
-  "wired": 519
+  "wired": 520
  }
 }

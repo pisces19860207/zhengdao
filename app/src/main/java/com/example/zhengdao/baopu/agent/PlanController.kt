@@ -25,6 +25,7 @@ import com.example.zhengdao.baopu.plan.PlanPledgeRules
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeParse
 import com.example.zhengdao.baopu.plan.PlanPledgeRules.PledgeSnapshot
 import com.example.zhengdao.baopu.preread.PreReadWiring
+import com.example.zhengdao.baopu.state.summary.StateSummaryWiring
 import org.json.JSONArray
 import org.json.JSONObject
 import com.example.zhengdao.core.RunLog
@@ -315,7 +316,11 @@ internal class PlanController(
             PlanRules.renderAck(applied.items, ok.notices + applied.stickyNotes) +
                 contractStateLine(declared, activated, PlanContractBoard.hasContract()) +
                 (cardLine ?: "") +
-                pledgeNotes.joinToString(""),
+                pledgeNotes.joinToString("") +
+                // 第六百八十九批：状态摘要（653 的 M1，给模型看）。没接线／空状态 ⇒ 空串
+                // ⇒ 这一版的 ack 与本行存在之前**逐字节相同**（铁律①：无话可说不加字）。
+                // 神轨那一行也走这里（670 `summaryLine()` 的生产消费方）。
+                StateSummaryWiring.ackNote(applied.items, declared?.goal),
         )
     }
 
