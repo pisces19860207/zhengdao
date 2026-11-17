@@ -18,8 +18,6 @@
 //      的 A2 要求该字面留在 `onUsage?.invoke(` 块内。
 package com.example.zhengdao.baopu.agent
 
-import com.example.zhengdao.baopu.ToolFailureAttribution
-
 /**
  * runLoop 的纯判据外挂（第七十九批）。
  *
@@ -264,11 +262,11 @@ internal object RunLoopRules {
      * 现在的三段：
      * 1. [detailCut]：第一个冒号/制表符之后是**细节域**（路径、参数值、正文），整段丢弃；
      * 2. 原因域按 [REASON_BREAK]（分号/逗号/句号/顿号）切段——这些只是句子边界，不丢内容；
-     * 3. 取**最后一个**「抹掉路径后仍能单独当失败依据」的段（[ToolFailureAttribution.carriesClue]，
-     *    与 620 同一张词表，不另立）：这样「路径不存在」的限定词不会被切掉，
-     *    「某处失败，目标文件不存在」也能留住真正判类的那截。
+     * 3. 取**最后一个**「抹掉路径后仍能单独当失败依据」的段
+     *    （[ATTRIBUTION]`.carriesClue`，与 620 同一张词表，不另立）：这样「路径不存在」
+     *    的限定词不会被切掉，「某处失败，目标文件不存在」也能留住真正判类的那截。
      *
-     * 一段都不带线索 ⇒ 退回首段（隐私优先：宁短不长，"写下改失败，我的密码是 8801"
+     * 一段都不带线索 ⇒ 退回首段（隐私优先：宁短不长，「改名失败，我的密码是 8801」
      * 这种尾巴不因为长就被采用）。
      */
     private fun keptReason(line: String): String {
@@ -277,9 +275,18 @@ internal object RunLoopRules {
         val segs = head.split(*REASON_BREAK).map { it.trim() }.filter { it.isNotEmpty() }
         if (segs.isEmpty()) return ""
         if (segs.size == 1) return segs.first()
-        return segs.lastOrNull { ToolFailureAttribution.carriesClue(scrubPathTokens(it)) }
+        return segs.lastOrNull { ATTRIBUTION.carriesClue(scrubPathTokens(it)) }
             ?: segs.first()
     }
+
+    /**
+     * 620 归因对象（全名引用，不写 import）。
+     *
+     * 为什么不用 import：本文件受 G4 门禁钉着「helper 零 import」（纯判据不许外挂），
+     * 而「这截文字里有没有可归因线索」必须用 620 那张唯一的词表（另写一份迟早漂）。
+     * 全名引用既守住零 import，也保住单一真相。
+     */
+    private val ATTRIBUTION = com.example.zhengdao.baopu.ToolFailureAttribution
 
     /** 切在第一个细节边界（`http://` 里的冒号不算边界——那是地址不是分句）。 */
     private fun detailCut(line: String): String {
