@@ -147,16 +147,27 @@ class FaultInjectProbeActivity : Activity() {
         failures.forEach { f ->
             record("LOG", "run_log#${f.id}", "INFO", "step=${f.step} tool=${f.tool} ok=${f.ok} err=${f.err}")
         }
-        val real = failures.filter { it.tool == tool && !it.ok && it.err.isNotBlank() }
+        // 只认**注入出来的**那几条：`err` 必须逐字等于配置里那个码的固定短句。为什么不能
+        // "凡是 ok=0 都算"——注入用完次数后模型可能真撞上一次别的失败（首跑实测：第 4 条是
+        // `err=不存在`，工具真的没找到它换的那个路径）。那是**真失败**，不该冒充注入，
+        // 也不该让它的归因结论把本判据拉红。
+        val expectedCode = expectedCodeOf()
+        val injected = failures.filter { it.tool == tool && !it.ok && it.err == expectedCode }
+        val others = failures.filter { it.tool == tool && !it.ok && it.err != expectedCode }
+        if (others.isNotEmpty()) {
+            others.forEach { f ->
+                record("LOG", "非注入失败 run_log#${f.id}", "INFO", "err=${f.err}（真实失败，不计入注入判据）")
+            }
+        }
         record(
             "LOG",
-            "失败行计数（$tool）",
-            if (real.size >= REQUIRED_FAILURES) "PASS" else "FAIL",
-            "ok=0 且 err 非空：${real.size} 条（要 ≥ $REQUIRED_FAILURES）",
+            "注入失败行计数（$tool）",
+            if (injected.size >= REQUIRED_FAILURES) "PASS" else "FAIL",
+            "err=「$expectedCode」的行：${injected.size} 条（要 ≥ $REQUIRED_FAILURES）；另有非注入失败 ${others.size} 条",
         )
 
-        // 读数二：归因（生产同一个分类器）
-        val owners = real.map { ToolFailureAttribution.classify(it.err) }
+        // 读数二：归因（生产同一个分类器；只看注入出来的那几条）
+        val owners = injected.map { ToolFailureAttribution.classify(it.err) }
         owners.forEachIndexed { i, a ->
             record("ATTR", "第 ${i + 1} 条", a.owner.name, "${a.owner.label}｜${a.reason}｜root=${a.rootCause}")
         }
@@ -164,38 +175,50 @@ class FaultInjectProbeActivity : Activity() {
         record(
             "ATTR",
             "行为类计数",
-            if (behavior == real.size && behavior > 0) "PASS" else "FAIL",
-            "行为类 $behavior / 共 ${real.size}",
+            if (behavior == injected.size && behavior > 0) "PASS" else "FAIL",
+            "行为类 $behavior / 共 ${injected.size}",
         )
 
         // 读数三：约束卡（生产收尾路径写的候选档；最多等一会儿——它跟 Settled 事件异步）
         val card = awaitToolRuleCard(tool, since)
-        // 同 hash 的卡还在 PENDING 时，生产侧**故意**不再写第二条（跨轮幂等，ProposalRules
-        // 的 pendingIds 闸）。这不算失败：卡就是那一张，重复跑不会刷出第二张——如实说明。
-        val pending = toolRuleCards(tool)
+        // 判据要的是「**归因判行为类**出 1 张」。所以只数正文里写着「失败分类：行为类」的卡：
+        // · 同 hash 的卡还在 PENDING 时生产侧**故意**不再写第二条（跨轮幂等）⇒ 那不是失败；
+        // · 同一工具还可能有**别的根因**的卡（首跑实测：一条 `err=不存在` 的真失败走
+        //   `offerUnattributed` 的老口径，按工具名另出一张，正文写「未归因」）。根因不同、
+        //   正文不同，本来就不是"同轮限一次"管的那一格，不能算破。
+        val behaviorCards = toolRuleCards(tool).filter { it.payload.contains("失败分类：行为类") }
+        val otherCards = toolRuleCards(tool).filterNot { it.payload.contains("失败分类：行为类") }
         val mark = when {
-            card != null -> "PASS"
-            pending.isNotEmpty() -> "PASS"
+            behaviorCards.size == 1 -> "PASS"
+            behaviorCards.isEmpty() -> "FAIL"
             else -> "FAIL"
         }
         record(
             "CARD",
-            "约束卡",
+            "行为类约束卡",
             mark,
             when {
-                card != null -> "新写入 1 张：id=${card.id} target=${card.target} payload=${card.payload.take(80)}"
-                pending.isNotEmpty() -> "幂等：同 hash 的卡已在 PENDING（共 ${pending.size} 张，未再叠加）" +
-                    "｜id=${pending.first().id}"
-                else -> "候选档里没有 target=$tool 的 TOOL_RULE（聊天页要活着，收尾钩子才跑）"
+                card != null && card.payload.contains("失败分类：行为类") ->
+                    "新写入 1 张：id=${card.id} target=${card.target} payload=${card.payload.take(80)}"
+                behaviorCards.size == 1 ->
+                    "幂等：同 hash 的卡已在 PENDING（未再叠加）｜id=${behaviorCards.first().id}"
+                behaviorCards.isEmpty() ->
+                    "候选档里没有 target=$tool 的**行为类** TOOL_RULE（聊天页要活着，收尾钩子才跑）"
+                else -> "行为类卡堆了 ${behaviorCards.size} 张（同轮限一次破了）｜ids=" +
+                    behaviorCards.joinToString(",") { it.id }
             },
         )
-        if (pending.size > 1) {
-            record("CARD", "同工具卡片数", "FAIL", "同一工具堆了 ${pending.size} 张约束卡（同轮限一次破了）")
+        if (otherCards.isNotEmpty()) {
+            // 别的根因的卡如实列出，但不计入本判据（它们是生产里另外两条路径的合法产物）。
+            otherCards.forEach { c ->
+                record("CARD", "其他根因的卡", "INFO", "id=${c.id} payload=${c.payload.take(60)}")
+            }
         }
 
         val fails = rows.count { it.contains("|FAIL|") }
         return if (fails == 0) {
-            "PASS 三连失败可复现：${real.size} 条 ok=0（err 非空）、归因全为行为类、约束卡 1 张"
+            "PASS 三连失败可复现：${injected.size} 条注入失败（err=「$expectedCode」）、" +
+                "归因全为行为类、约束卡 1 张" + if (others.isEmpty()) "" else "（另有真实失败 ${others.size} 条，已单列）"
         } else {
             "FAIL 有 $fails 行没过（看上面 FAIL 那几行）"
         }
@@ -249,6 +272,19 @@ class FaultInjectProbeActivity : Activity() {
                 }
             }
         }
+    }
+
+    /**
+     * 配置里那个码的**固定短句**（注入写进 `run_log.err` 的就是它）。
+     *
+     * 为什么从配置现读而不是写死：脚本可能换 `--code`（比如验环境类不该出卡），
+     * 探针得跟着配置走，否则"注入失败"和"期望的那句话"会各说各的。
+     */
+    private fun expectedCodeOf(): String {
+        val file = FaultInjection.configFile(this)
+        val code = runCatching { FaultRuleParser.parse(file.readText()).firstOrNull()?.code }
+            .getOrNull() ?: "protocol"
+        return com.example.zhengdao.baopu.agent.ToolErrCodes.byCode(code)?.line ?: "protocol: 说的不是一路话"
     }
 
     /** 候选档里这个工具现有的 TOOL_RULE 卡（PENDING）。 */
