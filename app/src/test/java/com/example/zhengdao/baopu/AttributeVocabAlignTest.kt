@@ -138,27 +138,36 @@ class AttributeVocabAlignTest {
 
     @Test
     fun `判据4_两条规则都命中_取最长那条`() {
-        // 「里有一层不存在」(7) 属 E_PATH_ABSENT；「组未解锁」(4)/「未解锁」(3) 属 E_VISIBILITY。
-        // 两条规则都命中，必须取更长的路径码，而不是表序更靠前的可见性码或更短的别名。
-        val text = "路径里有一层不存在，工具组未解锁"
-        assertTrue("两个短词确实都在文本里（否则这条测不到最长匹配）", text.contains("组未解锁"))
-        assertTrue("长词也在", text.contains("里有一层不存在"))
+        // 「不是合法 JSON」(9 字，E_PARSE) 与「组未解锁」(4 字)／「未解锁」(3 字，E_VISIBILITY) 都命中。
+        // 若按表序取「第一条命中的规则」，结果是 E_VISIBILITY；按最长匹配必须是 E_PARSE。
+        val text = "工具组未解锁（暂不支持）：参数不是合法 JSON"
+        assertTrue("短词确实在文本里（否则这条测不到最长匹配）", text.contains("组未解锁"))
+        assertTrue("长词也在", text.contains("不是合法 JSON"))
         assertEquals(
             "选中的必须是最长那条：${ToolFailureAttribution.classify(text).reason}",
-            "ENVIRONMENT|E_PATH_ABSENT",
+            "ENVIRONMENT|E_PARSE",
             ToolFailureAttribution.classify(text).rootCause,
         )
+        assertTrue("两条都是环境类 ⇒ 仍然不提约束卡", !ToolFailureAttribution.mayProposeRule(ToolFailureAttribution.classify(text)))
+    }
+
+    @Test
+    fun `判据4_跨归属也按最长_长短语是环境类就压住短的行为词`() {
+        // 「未知工具」(4 字，行为类) 与「文件不存在」(5 字，环境类) 都命中 ⇒ 取更长的环境类。
+        // 这条同时守住 620 的红线：宁可少提一张约束卡，也不把环境的错记到模型头上。
+        val text = "未知工具「read_file」：文件不存在（先 list_dir）"
+        assertEquals("环境类短语更长 ⇒ 必须归环境类", FailureOwner.ENVIRONMENT, ToolFailureAttribution.classify(text).owner)
     }
 
     @Test
     fun `判据4_负例_最长匹配改回首段命中_这条会红`() {
         // 负例：把文本里的长词去掉，只剩短的 —— 选中的规则随之变化，证明上面真的在比长短。
-        val shortOnly = "工具组未解锁"
+        val shortOnly = "工具组未解锁（暂不支持）"
         assertEquals("去掉长词后落到可见性码", "ENVIRONMENT|E_VISIBILITY", ToolFailureAttribution.classify(shortOnly).rootCause)
         assertNotEquals(
             "两者结论不同 ⇒ 上面那条的断言不是恒真",
             ToolFailureAttribution.classify(shortOnly).rootCause,
-            ToolFailureAttribution.classify("路径里有一层不存在，工具组未解锁").rootCause,
+            ToolFailureAttribution.classify("工具组未解锁（暂不支持）：参数不是合法 JSON").rootCause,
         )
     }
 
@@ -181,6 +190,16 @@ class AttributeVocabAlignTest {
         assertEquals("旧口径（切第一个分句）确实只剩首段", "写入失败", old)
         assertFalse("旧结果里没有判类线索 ⇒ 才会落未归因", ToolFailureAttribution.carriesClue(old))
         assertTrue("新口径保住了短语", ToolFailureAttribution.carriesClue(RunLoopRules.runLogErr(wrapped)))
+    }
+
+    @Test
+    fun `判据5_隐私_无线索的尾巴不许因为靠后就采用`() {
+        // 「保尾部语义」只保**能判类**的那截：逗号后面的用户正文没有线索词，
+        // 一旦按"取最后一段"就会把私密内容抄进运维账 —— 这里钉死退回首段。
+        val wrapped = "失败：改名失败，我的银行卡密码是 8801"
+        val err = RunLoopRules.runLogErr(wrapped)
+        assertEquals("没有线索的尾巴不采用（隐私优先，宁短不长）", "改名失败", err)
+        assertFalse("正文不许进账", err.contains("8801") || err.contains("银行卡"))
     }
 
     @Test
