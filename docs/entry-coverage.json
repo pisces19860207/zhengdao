@@ -261,7 +261,7 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/CharacterTrackTest.kt",
-      "line": 359
+      "line": 299
      }
     ],
     "verdict": "not_urgent",
