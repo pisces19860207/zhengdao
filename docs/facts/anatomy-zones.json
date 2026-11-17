@@ -1,0 +1,266 @@
+{
+  "schema": "anatomy-zones/v1",
+  "source": "证道设计报告/附件-部位分区表/男性-解剖分区-13.json（v1，2026-11-16，13 条 reality=real）",
+  "factbase": "男性素材-事实底盘 v0.7 §十五（15.4 分区对照表）",
+  "asOf": "2026-11-17",
+  "reality": "real",
+  "shared_with": ["669 词表误写", "660 形体"],
+  "note": "口径与参数表，非素材正文。669 与 660 共用本文件为单一真源，不许复制第二份。改本文件必须与 anatomy-zones.md 同一提交一起改（双真相不许漂）。",
+  "zones": [
+    {
+      "zone_id": "radix",
+      "name": "根部",
+      "latin": "radix",
+      "aliases": ["阴茎根", "耻骨"],
+      "observable": [
+        "埋于会阴，体表不可见",
+        "耻骨前脂肪厚度影响可见长度：脂肪厚时同尺寸露出更短，脂肪薄时显得更长"
+      ],
+      "common_errors": [
+        "把根部当成可见段",
+        "忽略耻骨前脂肪对露出长度的影响"
+      ],
+      "relations": {
+        "adjacent": ["shaft", "mons"],
+        "position": "体内段，连接柱身与耻骨区；体表不可见，无背腹外观之分"
+      }
+    },
+    {
+      "zone_id": "shaft",
+      "name": "柱身",
+      "latin": "corpus cavernosum",
+      "aliases": ["阴茎体", "海绵体"],
+      "observable": [
+        "背侧两条阴茎海绵体、腹侧一条尿道海绵体",
+        "横截面偏椭圆而非正圆",
+        "背侧偏硬、腹侧偏软"
+      ],
+      "common_errors": [
+        "写成单一均匀圆柱",
+        "无背腹差异",
+        "忽略腹侧那条偏软"
+      ],
+      "relations": {
+        "adjacent": ["radix", "glans", "raphe", "prepuce"],
+        "position": "背腹质地不同：背侧偏硬、腹侧偏软；腹侧正中延续阴茎缝"
+      }
+    },
+    {
+      "zone_id": "raphe",
+      "name": "阴茎缝",
+      "latin": "raphe",
+      "aliases": ["中缝"],
+      "observable": [
+        "腹侧正中一条色略深的线",
+        "从会阴延续至阴囊中缝",
+        "几乎所有人都存在，只是深浅不同"
+      ],
+      "common_errors": [
+        "完全没有中缝",
+        "把它写成背侧"
+      ],
+      "relations": {
+        "adjacent": ["shaft", "scrotum", "prepuce"],
+        "position": "腹侧正中线（会阴→阴囊），不在背侧"
+      }
+    },
+    {
+      "zone_id": "glans",
+      "name": "龟头",
+      "latin": "glans",
+      "aliases": ["龟头体"],
+      "observable": [
+        "黏膜样表面，比柱身更光滑、更薄",
+        "颜色通常比柱身深一档",
+        "表面无毛"
+      ],
+      "common_errors": [
+        "与柱身同质同色",
+        "写成皮肤质感",
+        "写成有毛"
+      ],
+      "relations": {
+        "adjacent": ["shaft", "corona", "meatus", "frenulum", "prepuce"],
+        "position": "尖端尿道口略偏腹侧；腹侧由系带连接包皮"
+      }
+    },
+    {
+      "zone_id": "corona",
+      "name": "龟头冠",
+      "latin": "corona glandis",
+      "aliases": ["冠状", "冠部"],
+      "observable": [
+        "龟头近端的隆起边缘",
+        "是整个结构最宽的一圈",
+        "界限清晰"
+      ],
+      "common_errors": [
+        "与龟头混为一体、无边界",
+        "写成凸起球状（犬科结构，人类没有）"
+      ],
+      "relations": {
+        "adjacent": ["glans", "sulcus"],
+        "position": "前有冠、后有沟；冠比沟宽且凸"
+      }
+    },
+    {
+      "zone_id": "sulcus",
+      "name": "冠状沟",
+      "latin": "coronal sulcus",
+      "aliases": ["冠后", "沟"],
+      "observable": [
+        "龟头冠后方的环形凹陷",
+        "沟比冠窄且凹"
+      ],
+      "common_errors": [
+        "只写沟不写位置",
+        "把沟和冠搞反",
+        "写成一圈凸起"
+      ],
+      "relations": {
+        "adjacent": ["corona", "glans", "shaft"],
+        "position": "位于冠后方（近端侧），环形凹陷而非凸起"
+      }
+    },
+    {
+      "zone_id": "frenulum",
+      "name": "系带",
+      "latin": "frenulum",
+      "aliases": ["包皮系带"],
+      "observable": [
+        "腹侧连接包皮与龟头的小褶",
+        "神经末梢密集，牵拉敏感度高"
+      ],
+      "common_errors": [
+        "漏写",
+        "位置写成背侧",
+        "写成可以被绕过的结构"
+      ],
+      "relations": {
+        "adjacent": ["glans", "prepuce"],
+        "position": "腹侧（不在正中背面）"
+      }
+    },
+    {
+      "zone_id": "meatus",
+      "name": "尿道口",
+      "latin": "meatus",
+      "aliases": ["马眼", "尿道外口"],
+      "observable": [
+        "龟头尖端的纵裂",
+        "通常略偏腹侧，不是正中心的圆孔",
+        "平时闭合，排尿时张开"
+      ],
+      "common_errors": [
+        "写成正中间一个圆孔",
+        "写成常开",
+        "忽略它是纵裂而非圆孔"
+      ],
+      "relations": {
+        "adjacent": ["glans"],
+        "position": "龟头尖端、略偏腹侧的纵裂"
+      }
+    },
+    {
+      "zone_id": "prepuce",
+      "name": "包皮",
+      "latin": "prepuce",
+      "aliases": ["包皮内板", "包皮外板"],
+      "observable": [
+        "内板：黏膜、薄、湿润",
+        "外板：皮肤、有毛囊",
+        "环切与否状态完全不同",
+        "未环切时覆盖程度个体差异很大",
+        "退下是逐步而非一次性完成"
+      ],
+      "common_errors": [
+        "不区分内外板",
+        "忽略是否环切就直接写",
+        "把退下写成一次性完成"
+      ],
+      "relations": {
+        "adjacent": ["glans", "corona", "sulcus", "frenulum", "shaft"],
+        "position": "内板贴龟头（黏膜面），外板朝外（皮肤面）；腹侧经系带连龟头"
+      }
+    },
+    {
+      "zone_id": "scrotum",
+      "name": "阴囊",
+      "latin": "scrotum",
+      "aliases": ["囊袋", "阴囊皮"],
+      "observable": [
+        "皮肤薄、有皱褶与中缝",
+        "冷时收缩上提、热时松弛下垂",
+        "松紧随温度与提睾反射持续变化"
+      ],
+      "common_errors": [
+        "永远紧缩或永远沉甸甸",
+        "无中缝",
+        "写成与温度无关的固定状态"
+      ],
+      "relations": {
+        "adjacent": ["raphe", "testis", "cord", "mons"],
+        "position": "中缝延续阴茎缝；内容物睾丸左右不等高"
+      }
+    },
+    {
+      "zone_id": "testis",
+      "name": "睾丸",
+      "latin": "testis / epididymis",
+      "aliases": ["蛋", "附睾"],
+      "observable": [
+        "左右通常不等高，左侧一般略低",
+        "附睾贴在后方，可触及条索感",
+        "大小有左右差异"
+      ],
+      "common_errors": [
+        "左右完全对称、同高",
+        "无附睾",
+        "写成表面完全光滑无结构"
+      ],
+      "relations": {
+        "adjacent": ["scrotum", "cord"],
+        "position": "左侧通常略低；附睾贴睾丸后方；精索连其后上方"
+      }
+    },
+    {
+      "zone_id": "cord",
+      "name": "精索",
+      "latin": "spermatic cord",
+      "aliases": ["条索"],
+      "observable": [
+        "从腹股沟延伸至睾丸后上方的条索",
+        "可触及",
+        "粗细有个体差异"
+      ],
+      "common_errors": [
+        "完全缺失",
+        "写成血管暴起"
+      ],
+      "relations": {
+        "adjacent": ["testis", "scrotum"],
+        "position": "腹股沟→睾丸后上方"
+      }
+    },
+    {
+      "zone_id": "mons",
+      "name": "耻骨区",
+      "latin": "mons pubis",
+      "aliases": ["阴毛", "耻骨"],
+      "observable": [
+        "阴毛分布形态个体差异极大（三角、菱形、稀密、边缘修整与否）",
+        "耻骨前脂肪厚度影响整体外观"
+      ],
+      "common_errors": [
+        "统一浓密",
+        "统一光洁",
+        "忽略修整痕迹",
+        "忽略脂肪厚度"
+      ],
+      "relations": {
+        "adjacent": ["radix", "scrotum", "shaft"],
+        "position": "体表最前段，覆盖耻骨联合前方"
+      }
+    }
+  ]
+}
