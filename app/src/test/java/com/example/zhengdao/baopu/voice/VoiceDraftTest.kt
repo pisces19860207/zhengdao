@@ -26,7 +26,9 @@ class VoiceDraftTest {
             source = VoiceSource.SYSTEM,
             ledger = null,
             clock = { 1_000L },
+            scheduler = ManualScheduler(),
             onText = { host.onVoiceText(it) },
+            onPhase = {},
         )
         return Rig(buffer, port, host, session)
     }
@@ -51,8 +53,8 @@ class VoiceDraftTest {
         r.session.start()
         r.port.feedPcm()
         assertEquals("原有 半截", r.host.text)
-        val restored = r.session.cancel()
-        assertEquals("原有", restored)
+        r.session.cancel()
+        assertEquals("取消后输入框回到开始前内容", "原有", r.host.before)
         assertEquals("原有", r.host.text)
         assertEquals(r.host.before, r.host.text)
         assertTrue(VoiceGate.cancelRestores(r.host.before, r.host.text))

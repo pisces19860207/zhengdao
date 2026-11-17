@@ -31,6 +31,31 @@ internal enum class VoiceGuide {
 
 internal data class VoiceDecision(val enabled: Boolean, val guide: VoiceGuide)
 
+/**
+ * 第六百八十批 · 失败四档（闭集，不许加第五档）。
+ *
+ * 派工单要求「四档失败文案」：每一档都必须有一句人话，且**都不许静默**——
+ * 老代码 onError 只把输入框回滚、界面一声不响，用户以为「说了但没反应」。
+ *
+ * - [NOT_HEARD]：一个字都没收到（ERROR_NO_MATCH / 收尾超时且无 partial）；
+ * - [NO_RESPONSE]：识别端根本没起来（未 ready、客户端/服务端/音频错）；
+ * - [TIMEOUT]：停止后 3 秒没等到最终结果——**有 partial 就落地**，只是明说「没等到最终结果」；
+ * - [PERMISSION]：麦克风权限被撤（含启动前置检查不通过）。
+ */
+internal enum class VoiceFailure(val wire: String) {
+    NOT_HEARD("not_heard"),
+    NO_RESPONSE("no_response"),
+    TIMEOUT("timeout"),
+    PERMISSION("permission"),
+}
+
+/**
+ * 会话相位：界面的「正在听」只能由它驱动，不许另起一个布尔量各说各话。
+ *
+ * [STOPPING] 是「已请识别端收尾、等最终结果」——最长等 3 秒，到点必归 [IDLE]。
+ */
+internal enum class VoicePhase { IDLE, LISTENING, STOPPING }
+
 internal object VoiceGate {
 
     /**

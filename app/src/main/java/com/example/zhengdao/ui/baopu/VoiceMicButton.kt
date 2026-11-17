@@ -19,14 +19,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.voice.VoiceMode
+import com.example.zhengdao.baopu.voice.VoicePhase
 import com.example.zhengdao.ui.theme.zhengdaoReady
 
 /**
- * 第六百三十三批 · 输入框旁的麦克风按钮。
+ * 第六百三十三批 · 输入框旁的麦克风按钮；第六百八十批改「结束」这一半。
  *
  * 两模式（设置里选）：
- * - HOLD 按住说：按下开听，松手收尾；手势被抢走（tryAwaitRelease 返回 false）＝整段取消；
- * - TAP 点按：第一下开始，第二下结束。
+ * - HOLD 按住说：按下开听，松手收尾。**手势被外层抢走也照样收尾**——`tryAwaitRelease`
+ *   返回 false 只说明父级（滚动/翻页）把指针拿走了，不等于用户想取消；旧代码在这里
+ *   直接 `onCancel()`，结果「一按就取消」。真正的取消只认状态行上那颗「取消」。
+ * - TAP 点按：按 [VoicePhase] 判定，第一下开始，第二下收尾；收尾途中再点不重复下发。
  * 不可用（权限被拒 / 系统 ASR 不可用 / 本地模型未装）⇒ 按钮灰掉，引导由状态行给出，
  * 绝不在静默里假装录上了。
  */
@@ -40,14 +43,20 @@ internal fun VoiceMicButton(ui: VoiceUi, modifier: Modifier = Modifier) {
                 val s = current
                 if (s.mode == VoiceMode.HOLD && s.decision.enabled) {
                     s.onStart()
-                    val released = tryAwaitRelease()
-                    if (released) s.onFinish() else s.onCancel()
+                    // 返回值忽略：抢走与松开都算「说完了」，取消只认显式按钮。
+                    tryAwaitRelease()
+                    s.onStop()
                 }
             },
             onTap = {
                 val s = current
                 if (s.mode == VoiceMode.TAP && s.decision.enabled) {
-                    if (s.listening) s.onFinish() else s.onStart()
+                    when (s.phase) {
+                        VoicePhase.IDLE -> s.onStart()
+                        VoicePhase.LISTENING -> s.onStop()
+                        // 已在收尾：等 3 秒兜底，不再叠一次 stop
+                        VoicePhase.STOPPING -> Unit
+                    }
                 }
             },
         )

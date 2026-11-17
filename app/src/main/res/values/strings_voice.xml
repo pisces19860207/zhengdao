@@ -2,8 +2,15 @@
 <resources>
     <!-- 第六百三十三批 · 语音输入（中文）。英文镜像见 values-en/strings_voice.xml。 -->
     <string name="voice_mic_desc">语音输入</string>
-    <string name="voice_listening">正在听…说完点结束，或点取消丢弃整段</string>
+    <string name="voice_listening">正在听…说完点停止，或点取消丢弃整段</string>
+    <string name="voice_stopping">正在收尾…最多等 3 秒</string>
+    <string name="voice_stop">停止</string>
     <string name="voice_cancel">取消</string>
+    <!-- 第六百八十批 · 失败四档：每一档一句人话，都不许静默 -->
+    <string name="voice_fail_not_heard">没听清：这次一个字也没收到。再点一下重说。</string>
+    <string name="voice_fail_no_response">识别服务没响应（本机系统识别没起来）。再试一次，或在设置里换本地模型。</string>
+    <string name="voice_fail_timeout">没等到最终结果，已把听到的半句放进输入框，你可以直接改。</string>
+    <string name="voice_fail_permission">麦克风权限没了。点「去开启」授权后再试。</string>
     <string name="voice_guide_action">去开启</string>
     <string name="voice_permission_guide">没给麦克风权限，说不了话。点「去开启」授权；音频只在本机处理。</string>
     <string name="voice_denied_guide">麦克风权限被拒：请到 设置 → 应用 → 权限 手动开启。</string>

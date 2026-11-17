@@ -16,6 +16,7 @@ import com.example.zhengdao.baopu.voice.MicPermissionState
 import com.example.zhengdao.baopu.voice.SpeechCallback
 import com.example.zhengdao.baopu.voice.SpeechSessionPort
 import com.example.zhengdao.baopu.voice.SystemSpeechAvailability
+import com.example.zhengdao.baopu.voice.VoiceFailure
 import com.example.zhengdao.baopu.voice.VoiceLedger
 import java.io.File
 
@@ -57,8 +58,15 @@ internal class AndroidSpeechEngine(private val ctx: Context) :
         this.callback = callback
         recognizer = created
         created.setRecognitionListener(listener)
-        created.startListening(offlineIntent())
-        return true
+        // 第六百八十批：startListening 自己也会抛（服务被禁、识别器正忙）⇒ 必须当场收手，
+        // 否则会话停在「正在听…」，只能靠看门狗救。
+        val started = runCatching { created.startListening(offlineIntent()) }.isSuccess
+        if (!started) {
+            runCatching { created.destroy() }
+            recognizer = null
+            this.callback = null
+        }
+        return started
     }
 
     override fun stop() {
@@ -92,7 +100,11 @@ internal class AndroidSpeechEngine(private val ctx: Context) :
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
 
     private val listener = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) = Unit
+        /** 第六百八十批：服务真的起来了才算「在听」，会话据此撤掉启动看门狗。 */
+        override fun onReadyForSpeech(params: Bundle?) {
+            callback?.onReady()
+        }
+
         override fun onBeginningOfSpeech() = Unit
         override fun onRmsChanged(rmsdB: Float) = Unit
 
@@ -111,14 +123,14 @@ internal class AndroidSpeechEngine(private val ctx: Context) :
         override fun onResults(results: Bundle?) {
             val text = firstText(results)
             if (text.isEmpty()) {
-                callback?.onError()
+                callback?.onError(VoiceFailure.NOT_HEARD)
             } else {
                 callback?.onFinal(text)
             }
         }
 
         override fun onError(error: Int) {
-            callback?.onError()
+            callback?.onError(failureOf(error))
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -127,6 +139,13 @@ internal class AndroidSpeechEngine(private val ctx: Context) :
     private fun firstText(bundle: Bundle?): String = runCatching {
         bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
     }.getOrDefault("")
+
+    /** 系统错误码 → 四档失败闭集。不新造档，认不出的都算「服务没响应」。 */
+    private fun failureOf(error: Int): VoiceFailure = when (error) {
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> VoiceFailure.PERMISSION
+        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> VoiceFailure.NOT_HEARD
+        else -> VoiceFailure.NO_RESPONSE
+    }
 
     companion object {
         /** 32 KiB 定长内存环：够接住系统回调的 PCM，且不会无限增长。 */

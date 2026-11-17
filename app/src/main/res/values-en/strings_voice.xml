@@ -2,8 +2,15 @@
 <resources>
     <!-- Batch 633 - Voice input (English mirror of values/strings_voice.xml). -->
     <string name="voice_mic_desc">Voice input</string>
-    <string name="voice_listening">Listening… tap to finish, or Cancel to discard the whole draft</string>
+    <string name="voice_listening">Listening… tap Stop when done, or Cancel to discard the whole draft</string>
+    <string name="voice_stopping">Finishing… waiting up to 3 seconds</string>
+    <string name="voice_stop">Stop</string>
     <string name="voice_cancel">Cancel</string>
+    <!-- Batch 680 - four failure tiers; each must say something, never fail silently -->
+    <string name="voice_fail_not_heard">Didn\'t catch that: nothing came back. Tap again and repeat.</string>
+    <string name="voice_fail_no_response">Recognition service did not respond (the system engine never came up). Try again, or switch to a local model in Settings.</string>
+    <string name="voice_fail_timeout">No final result arrived, so the half sentence we heard is in the input box — edit it as you like.</string>
+    <string name="voice_fail_permission">Microphone permission is gone. Tap Enable, then try again.</string>
     <string name="voice_guide_action">Enable</string>
     <string name="voice_permission_guide">Microphone permission is missing. Tap Enable; audio stays on this device.</string>
     <string name="voice_denied_guide">Microphone permission was denied: open Settings → Apps → Permissions to enable it.</string>

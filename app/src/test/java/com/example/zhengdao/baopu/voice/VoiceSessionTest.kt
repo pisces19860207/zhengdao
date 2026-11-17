@@ -6,6 +6,7 @@ import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -16,20 +17,29 @@ class VoiceSessionTest {
         val port: FakeAudioRecord,
         val host: VoiceHostFixture,
         val session: VoiceSession,
+        val scheduler: ManualScheduler,
+        val phases: MutableList<VoicePhase>,
+        val failures: MutableList<VoiceFailure?>,
     )
 
     private fun rig(words: List<String>, ledger: VoiceLedger? = null): Rig {
         val port = FakeAudioRecord(AudioRingBuffer(1024), words)
         val host = VoiceHostFixture("原有")
+        val scheduler = ManualScheduler()
+        val phases = mutableListOf<VoicePhase>()
+        val failures = mutableListOf<VoiceFailure?>()
         val session = VoiceSession(
             draft = VoiceDraft("原有"),
             port = port,
             source = VoiceSource.SYSTEM,
             ledger = ledger,
             clock = { 1_000L },
+            scheduler = scheduler,
             onText = { host.onVoiceText(it) },
+            onPhase = { phases += it },
+            onSettled = { failures += it },
         )
-        return Rig(port, host, session)
+        return Rig(port, host, session, scheduler, phases, failures)
     }
 
     @Test
@@ -63,6 +73,8 @@ class VoiceSessionTest {
         r.session.cancel()
         assertEquals("原有", r.host.text)
         assertEquals(0, r.host.sendCalls)
+        assertEquals("取消之后相位必须归零", VoicePhase.IDLE, r.session.phase)
+        assertNull("取消不是失败，不该带失败档", r.failures.last())
     }
 
     @Test
@@ -102,6 +114,34 @@ class VoiceSessionTest {
                 assertEquals(VoiceLedger.Row.KEYS, JSONObject(r.toJson()).keys().asSequence().toSet())
             }
         }
+    }
+
+    @Test
+    fun `相位以IDLE收尾_看门狗撤干净`() {
+        val r = rig(listOf("甲"))
+        r.port.respondToStop = false
+        r.session.start()
+        assertEquals(VoicePhase.LISTENING, r.session.phase)
+        r.port.feedPcm()
+        r.session.finish()
+        assertEquals("收尾途中是 STOPPING", VoicePhase.STOPPING, r.session.phase)
+        assertEquals(VoicePhase.STOPPING, r.phases.last())
+        r.scheduler.advance(VoiceSession.STOP_TIMEOUT_MS)
+        assertEquals("到点必归零", VoicePhase.IDLE, r.session.phase)
+        assertEquals(VoicePhase.IDLE, r.phases.last())
+        assertEquals(VoiceFailure.TIMEOUT, r.failures.last())
+        assertEquals("看门狗必须撤干净", 0, r.scheduler.pending())
+    }
+
+    @Test
+    fun `识别端回最终结果_记成功且不带失败档`() {
+        val r = rig(listOf("甲"))
+        r.session.start()
+        r.port.feedPcm()
+        r.session.finish()
+        assertEquals(VoicePhase.IDLE, r.session.phase)
+        assertNull("成功路径不该带失败档", r.failures.last())
+        assertEquals(0, r.scheduler.pending())
     }
 
     private fun sendNotCalled(calls: Int): Boolean = calls == 0

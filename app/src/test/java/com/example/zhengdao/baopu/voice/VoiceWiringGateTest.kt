@@ -72,7 +72,38 @@ class VoiceWiringGateTest {
         val en = stringKeys("src/main/res/values-en/strings_voice.xml")
         assertTrue("中文语音文案一个都没读到", zh.isNotEmpty())
         assertEquals("中英键集合必须完全一致", zh, en)
-        assertEquals(18, zh.size)
+        assertEquals("633 的 18 条 ＋ 680 的停止 2 条 ＋ 失败 4 档", 24, zh.size)
+    }
+
+    @Test
+    fun `680_手势被外层抢走也收尾_取消只认显式按钮`() {
+        val src = code("src/main/java/com/example/zhengdao/ui/baopu/VoiceMicButton.kt")
+        val press = src.substringAfter("onPress = {").substringBefore("onTap = {")
+        assertTrue("HOLD 松手/被抢都要收尾", press.contains("s.onStop()"))
+        assertFalse("手势被抢不等于取消（旧代码在这里 onCancel ⇒ 一按就取消）", press.contains("onCancel"))
+    }
+
+    @Test
+    fun `680_状态行有显式停止_且四档文案都挂上了`() {
+        val row = code("src/main/java/com/example/zhengdao/ui/baopu/VoiceStatusRow.kt")
+        assertTrue("必须有显式「停止」按钮", row.contains("R.string.voice_stop"))
+        assertTrue("停止走 onStop", row.contains("onClick = ui.onStop"))
+        for (f in listOf("voice_fail_not_heard", "voice_fail_no_response", "voice_fail_timeout", "voice_fail_permission")) {
+            assertTrue("状态行没挂 $f", row.contains("R.string.$f"))
+        }
+        val bridge = code("src/main/java/com/example/zhengdao/ui/baopu/VoiceBridge.kt")
+        assertTrue("相位必须由会话推过来", bridge.contains("onPhase = { phase = it }"))
+        assertTrue("启动前重读权限（G-673-2）", bridge.contains("granted = engine.granted()"))
+        assertTrue("看门狗要挂主线程定时器", bridge.contains("MainHandlerScheduler"))
+    }
+
+    @Test
+    fun `680_会话有停止后3秒兜底与ready看门狗`() {
+        val s = code("src/main/java/com/example/zhengdao/baopu/voice/VoiceSession.kt")
+        assertTrue("停止后 3 秒兜底", s.contains("STOP_TIMEOUT_MS = 3_000L"))
+        assertTrue("启动看门狗", s.contains("READY_TIMEOUT_MS"))
+        assertTrue("有半句就落地", s.contains("landPartial("))
+        assertTrue("失败必须把相位归零", s.contains("moveTo(VoicePhase.IDLE)"))
     }
 
     @Test
