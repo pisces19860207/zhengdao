@@ -1,0 +1,105 @@
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
+//
+// 第六百五十五批 · 形轨.几何判定：姿态合法性。
+// 三类检查：自碰撞（非相邻段对，GJK 距离＋EPA 深度，穿透深度超过接触容差才记违规，
+// 恰好接触深度 0 不算）、穿地穿沙（最低点 vs 地面/沙面高度）、限位越界（消费
+// JointChain 的截断留痕）。
+// 相邻段对（如大腿与小腿）由调用方给名单跳过——它们天然接触，不算自碰撞。
+package com.example.zhengdao.baopu.state.geometry
+
+/** 一段身体代理体：名字＋凸体（由 660 形体参数导出，本单不造形体）。 */
+data class SegmentProxy(val name: String, val shape: ConvexShape)
+
+/** 环境高度（cm）：地面在下、沙面在上；沙面不得低于地面。 */
+data class Environment(val groundYCm: Double, val sandYCm: Double) {
+    init {
+        require(sandYCm >= groundYCm) { "沙面不得低于地面" }
+    }
+}
+
+/** 违规类别。 */
+enum class ViolationKind { SELF_COLLISION, GROUND_PENETRATION, SAND_PENETRATION, LIMIT_EXCEEDED }
+
+/** 单条违规：类别＋当事段＋（碰撞时的）对方段＋深度/越限量＋一句话。 */
+data class Violation(
+    val kind: ViolationKind,
+    val segment: String,
+    val other: String? = null,
+    val depthCm: Double = 0.0,
+    val detail: String = "",
+)
+
+/** 姿态合法性读数。 */
+data class PoseVerdict(
+    val valid: Boolean,
+    val violations: List<Violation>,
+    val assumption: String = "静态姿态检查：GJK/EPA 自碰撞＋最低点穿地穿沙＋关节限位留痕（无时间积分）",
+    val note: String = GeometryNotes.NOT_MEASUREMENT,
+)
+
+/** 姿态合法性判定（纯函数）。 */
+object PoseValidity {
+
+    fun check(
+        segments: List<SegmentProxy>,
+        env: Environment,
+        chain: ChainPose? = null,
+        adjacent: Set<Pair<String, String>> = emptySet(),
+        contactTolCm: Double = 0.0,
+    ): PoseVerdict {
+        val violations = ArrayList<Violation>()
+        violations += selfCollisions(segments, adjacent, contactTolCm)
+        violations += groundViolations(segments, env)
+        violations += limitViolations(chain)
+        return PoseVerdict(violations.isEmpty(), violations)
+    }
+
+    private fun selfCollisions(
+        segments: List<SegmentProxy>,
+        adjacent: Set<Pair<String, String>>,
+        tol: Double,
+    ): List<Violation> {
+        val out = ArrayList<Violation>()
+        for (i in segments.indices) {
+            for (j in i + 1 until segments.size) {
+                val a = segments[i]
+                val b = segments[j]
+                if (isAdjacent(a.name, b.name, adjacent)) continue
+                val dist = Gjk.distance(a.shape, b.shape).distanceCm
+                if (dist > tol) continue
+                val depth = Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0
+                if (depth > tol) {
+                    out.add(Violation(ViolationKind.SELF_COLLISION, a.name, b.name, depth, "段间穿透"))
+                }
+            }
+        }
+        return out
+    }
+
+    private fun isAdjacent(a: String, b: String, adjacent: Set<Pair<String, String>>): Boolean =
+        (a to b) in adjacent || (b to a) in adjacent
+
+    private fun groundViolations(segments: List<SegmentProxy>, env: Environment): List<Violation> {
+        val out = ArrayList<Violation>()
+        for (s in segments) {
+            val lowest = s.shape.lowestY()
+            if (lowest < env.groundYCm) {
+                out.add(Violation(ViolationKind.GROUND_PENETRATION, s.name, depthCm = env.groundYCm - lowest, detail = "穿地"))
+            } else if (lowest < env.sandYCm) {
+                out.add(Violation(ViolationKind.SAND_PENETRATION, s.name, depthCm = env.sandYCm - lowest, detail = "穿沙"))
+            }
+        }
+        return out
+    }
+
+    private fun limitViolations(chain: ChainPose?): List<Violation> =
+        chain?.joints.orEmpty().filter { !it.withinLimit }.map {
+            Violation(
+                ViolationKind.LIMIT_EXCEEDED,
+                it.name,
+                depthCm = kotlin.math.abs(it.requestedRad - it.appliedRad),
+                detail = "请求 ${it.requestedRad} 截到 ${it.appliedRad}",
+            )
+        }
+}
