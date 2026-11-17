@@ -23,6 +23,13 @@
 #
 # 前置：debug 包已安装（`./gradlew :app:installDebug`），且 App 里配好了模型通道
 #       ——探针发的是**真消息**，没有可用通道时会停在"第 1 轮没被引擎收下"或直接失败。
+#
+# ⚠ 装包签名：工作树里没有 `ZHENGDAO_KEYSTORE_FILE` 时，`assembleDebug` 会用默认 debug 钥匙签，
+#   而机上存量包是项目钥匙（`.zhengdao-keys/zhengdao-release.jks`，alias `zhengdao`）签的 ⇒
+#   `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。办法是**重签再装**（别卸载，卸载会清 App 私有目录）：
+#     apksigner sign --ks .zhengdao-keys/zhengdao-release.jks --ks-key-alias zhengdao \
+#       --ks-pass file:RELEASE_KEY_PASSWORD.txt --out app-signed.apk app/build/outputs/apk/debug/*.apk
+#     adb install -r -d app-signed.apk
 set -u
 
 PKG="${ZD_PKG:-com.example.zhengdao}"
