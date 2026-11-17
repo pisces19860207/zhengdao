@@ -29,6 +29,7 @@ class ArtifactOpenGateTest {
         .replace(Regex("(?m)^[ \\t]*//.*$"), "")
 
     private fun plan() = code("src/main/java/com/example/zhengdao/ui/baopu/ArtifactOpenPlan.kt")
+    private fun kinds() = code("src/main/java/com/example/zhengdao/baopu/ArtifactKinds.kt")
     private fun actions() = code("src/main/java/com/example/zhengdao/ui/baopu/ArtifactOpenActions.kt")
     private fun shelf() = code("src/main/java/com/example/zhengdao/ui/baopu/BaopuArtifactShelf.kt")
     private fun locateDialog() = code("src/main/java/com/example/zhengdao/ui/baopu/ArtifactLocateDialog.kt")
@@ -126,10 +127,14 @@ class ArtifactOpenGateTest {
             ArtifactOpen.MIME_XLSX,
         )
         assertEquals("image/png", ArtifactOpen.MIME_PNG)
+        // 685：MIME 与「扩展名 → 类型」只有 ArtifactKinds 一张表，字面量住在那边
+        val k = kinds()
+        assertTrue("docx 常量在源码里逐字存在", k.contains(ArtifactOpen.MIME_DOCX))
+        assertTrue("xlsx 常量在源码里逐字存在", k.contains(ArtifactOpen.MIME_XLSX))
+        assertTrue("png 常量在源码里逐字存在", k.contains(ArtifactOpen.MIME_PNG))
+        assertTrue("jpeg 常量在源码里逐字存在", k.contains(ArtifactOpen.MIME_JPEG))
+        assertTrue("webp 常量在源码里逐字存在", k.contains(ArtifactOpen.MIME_WEBP))
         val p = plan()
-        assertTrue("docx 常量在源码里逐字存在", p.contains(ArtifactOpen.MIME_DOCX))
-        assertTrue("xlsx 常量在源码里逐字存在", p.contains(ArtifactOpen.MIME_XLSX))
-        assertTrue("png 常量在源码里逐字存在", p.contains(ArtifactOpen.MIME_PNG))
         assertFalse("不许拿 MimeTypeMap 猜（docx 常返回 null）", p.contains("MimeTypeMap"))
         assertFalse("不许拿 octet-stream 兜底", p.contains("application/octet-stream"))
         assertEquals("docx", ArtifactOpen.MIME_DOCX, resolved("a.docx").mime)

@@ -38,6 +38,14 @@ class ZhengdaoApp : Application() {
         )
         // 第一百六十九批 §3：完成通知只在后台发 ⇒ 这里装前台探针（只数 started，不做别的）。
         AppForeground.install(this)
+        // 第六百八十五批：产物类型表自检——「台账准入 ⊆ 打开映射」这条不变式冷启断言一次。
+        // 为什么要有：681 的事故是「台账收了 jpg/webp，点开却说打不开」，根因是准入与打开
+        // 各维护一份名单。现在只有 ArtifactKinds.TABLE 一张表，自检把「两边对得上」写成
+        // 可执行断言（加了一行没给 mime、族与 mime 不一致都会在这里现形）。
+        // 只记日志、不阻断启动：表错了不该让用户进不了 App，但必须在日志里留痕。
+        com.example.zhengdao.baopu.ArtifactKinds.selfCheck().forEach {
+            RunLog.log("产物类型表自检失败｜$it")
+        }
         // 第一百八十二批：知识库自动刷新（启动/回前台增量 ＋ MediaStore 可选加速 ＋ 前台周期兜底）。
         com.example.zhengdao.baopu.KnowledgeRefresh.install(this)
         // 第二百九十一批（第二刀）：御医体检的月位——一个月一次、非精确、只在充电时跑。

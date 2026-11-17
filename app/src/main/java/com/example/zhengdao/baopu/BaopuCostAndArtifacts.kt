@@ -186,9 +186,11 @@ fun usageNoticeBody(usage: BaopuRoundUsage, copy: UsageCopy): String {
  * 文本产物扩展名白名单（派工单 §2.1 逐字八条；比较时统一转小写 ⇒ 大小写不敏感）。
  *
  * 图片、PDF、docx、zip 一律**不做**——用户原话「其他的太重了」。
+ *
+ * 第六百八十五批：**不再是第二份名单**，而是 [ArtifactKinds.TABLE] 里文本族那一截的派生。
+ * 名单与 MIME 从此只有一处，改表就等于同时改「进不进台账」与「点得开吗」。
  */
-val TEXT_ARTIFACT_EXTENSIONS: Set<String> =
-    setOf("json", "txt", "md", "csv", "yml", "yaml", "log", "html")
+val TEXT_ARTIFACT_EXTENSIONS: Set<String> = ArtifactKinds.extensionsIn(ArtifactFamily.Text)
 
 /**
  * 第六百八十一批 · 文档族：本机写出来的 docx／xlsx。
@@ -196,10 +198,15 @@ val TEXT_ARTIFACT_EXTENSIONS: Set<String> =
  * 与文本族的关键差别是**不做内置预览**（docx/xlsx 是 zip 容器，塞进只读查看器只会是一屏乱码），
  * 点开就是「用其他应用打开」，交给系统里真正的 Word／表格应用。
  */
-val DOC_ARTIFACT_EXTENSIONS: Set<String> = setOf("docx", "xlsx")
+val DOC_ARTIFACT_EXTENSIONS: Set<String> = ArtifactKinds.extensionsIn(ArtifactFamily.Doc)
 
-/** 第六百八十一批 · 图片族：png／jpg／webp。同样不做内置预览（本区没有图片查看器）。 */
-val IMAGE_ARTIFACT_EXTENSIONS: Set<String> = setOf("png", "jpg", "webp")
+/**
+ * 第六百八十一批 · 图片族：png／jpg／jpeg／webp。同样不做内置预览（本区没有图片查看器）。
+ *
+ * 第六百八十五批补 `jpeg`：681 只有 png 两边都认，jpg／webp 只在准入那一半有
+ * （点开就「不支持」）；jpeg 与 jpg 是同一个类型，手机相册两种写法都常见。
+ */
+val IMAGE_ARTIFACT_EXTENSIONS: Set<String> = ArtifactKinds.extensionsIn(ArtifactFamily.Image)
 
 /** 收集时的单文件大小上限（>512 KB 不收；B2 的「大小上限」就这一处判据）。 */
 const val ARTIFACT_MAX_FILE_BYTES: Long = 512L * 1024L
@@ -250,26 +257,14 @@ fun artifactFileName(relPath: String): String =
 fun isTextArtifactPath(relPath: String): Boolean = artifactExtension(relPath) in TEXT_ARTIFACT_EXTENSIONS
 
 /**
- * 第六百八十一批：产物三族（台账认的就是这三种；不在族里的一律不进台账）。
- *
- * 三族各有一条后果，界面上必须分得开：
- * - [Text] 进只读查看器（可内嵌预览）；
- * - [Doc]、[Image] **不做内置预览**，点开＝「用其他应用打开」。
- */
-enum class ArtifactFamily { Text, Doc, Image }
-
-/**
  * 这份路径属于哪一族（**纯函数**，不碰盘）。三族之外 ⇒ null。
  *
- * 三份扩展名名单各只有一处（[TEXT_ARTIFACT_EXTENSIONS]／[DOC_ARTIFACT_EXTENSIONS]／
- * [IMAGE_ARTIFACT_EXTENSIONS]），本函数只做归并，不另抄一份。
+ * 族 [ArtifactFamily] 本身定义在 [ArtifactKinds] 那个文件里（族与 MIME 同一张表，包名不变）。
+ * 三份扩展名名单、MIME、族三者都只在 [ArtifactKinds.TABLE] 里写一次；本函数只查表，
+ * 且**只认点得开的行**（[ArtifactKinds.isAdmitted]）：表里有、但没 MIME 的扩展名
+ * 不登记——宁可不进台账，也不许登记后点开一句「不支持」。
  */
-fun artifactFamilyOf(relPath: String): ArtifactFamily? = when (artifactExtension(relPath)) {
-    in TEXT_ARTIFACT_EXTENSIONS -> ArtifactFamily.Text
-    in DOC_ARTIFACT_EXTENSIONS -> ArtifactFamily.Doc
-    in IMAGE_ARTIFACT_EXTENSIONS -> ArtifactFamily.Image
-    else -> null
-}
+fun artifactFamilyOf(relPath: String): ArtifactFamily? = ArtifactKinds.familyOf(artifactExtension(relPath))
 
 /** 前 8 KB 里有 NUL 字节就当二进制（**纯函数**；B2 的第二条判据）。 */
 fun hasNulByte(bytes: ByteArray): Boolean = bytes.any { it == 0.toByte() }

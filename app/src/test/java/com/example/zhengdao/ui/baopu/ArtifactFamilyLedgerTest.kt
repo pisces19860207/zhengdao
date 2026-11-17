@@ -6,6 +6,7 @@ package com.example.zhengdao.ui.baopu
 import com.example.zhengdao.baopu.ARTIFACT_MAX_BINARY_BYTES
 import com.example.zhengdao.baopu.ARTIFACT_MAX_FILE_BYTES
 import com.example.zhengdao.baopu.ArtifactFamily
+import com.example.zhengdao.baopu.ArtifactKinds
 import com.example.zhengdao.baopu.BaopuSql
 import com.example.zhengdao.baopu.DOC_ARTIFACT_EXTENSIONS
 import com.example.zhengdao.baopu.IMAGE_ARTIFACT_EXTENSIONS
@@ -243,18 +244,20 @@ class ArtifactFamilyLedgerTest {
     // ── 判据⑥：不新增第二份台账；641 的 MIME 映射表一字未动 ────────────────
 
     @Test
-    fun `判据6_仍然只有一本台账_641的MIME表一个字没改`() {
+    fun `判据6_仍然只有一本台账_641的映射已并进表`() {
         val ddl = BaopuSql.ARTIFACT_DDL.joinToString("\n")
         assertEquals("建表＋索引两条，不多不少", 2, BaopuSql.ARTIFACT_DDL.size)
         assertEquals("建表只针对 artifact 一张", 1, Regex("CREATE TABLE IF NOT EXISTS").findAll(ddl).count())
         assertTrue("表还是那张 artifact", ddl.contains("CREATE TABLE IF NOT EXISTS artifact ("))
         assertFalse("本单不许再建第二张产物表", Regex("CREATE TABLE IF NOT EXISTS (?!artifact )").containsMatchIn(ddl))
 
-        // 641 的映射表仍是三支（docx/xlsx/png）：本单只把入口接通，没往里加第四支
-        assertEquals("mimeOf 仍只有三个分支", 3, Regex("-> MIME_").findAll(plan()).count())
-        assertNull("jpg 不在 641 的表里（本单不改那张表）", ArtifactOpen.mimeOf("图/甲.jpg"))
-        assertNull("webp 同理", ArtifactOpen.mimeOf("图/乙.webp"))
+        // 685：641 那三支 `when` 已并进 ArtifactKinds 一张表——plan 里不许再有第二份映射
+        assertEquals("plan 里不再有 -> MIME_ 分支", 0, Regex("-> MIME_").findAll(plan()).count())
+        assertTrue("mimeOf 只做一次查表（不自己再判一遍扩展名）", plan().contains("ArtifactKinds.openMimeOf"))
         assertEquals("docx 仍然认得", ArtifactOpen.MIME_DOCX, ArtifactOpen.mimeOf("a.docx"))
+        // 681 当时钉的是「jpg/webp 不在 641 的表里」；685 把这条修掉了，钉法随之改成「认得」
+        assertEquals("jpg 现在认得（685 修的就是这条）", ArtifactKinds.MIME_JPEG, ArtifactOpen.mimeOf("图/甲.jpg"))
+        assertEquals("webp 同理", ArtifactKinds.MIME_WEBP, ArtifactOpen.mimeOf("图/乙.webp"))
 
         // 台账那本账只有一个写入口（引擎那条链），产物架只读
         assertEquals("记账调用点只有一个", 1, Regex("persistArtifactLedger\\(sessionId,").findAll(engine()).count())
@@ -274,7 +277,11 @@ class ArtifactFamilyLedgerTest {
     @Test
     fun `口径_三族名单各一处_大小写不敏感_族外一律不进台账`() {
         assertEquals("文档族就是这两支", setOf("docx", "xlsx"), DOC_ARTIFACT_EXTENSIONS)
-        assertEquals("图片族就是这三支（单上写死的三项）", setOf("png", "jpg", "webp"), IMAGE_ARTIFACT_EXTENSIONS)
+        assertEquals(
+            "图片族四支：png／jpg／jpeg／webp（685 补 jpeg，与 jpg 同类型）",
+            setOf("png", "jpg", "jpeg", "webp"),
+            IMAGE_ARTIFACT_EXTENSIONS,
+        )
         assertEquals("大写后缀照样认", ArtifactFamily.Image, artifactFamilyOf("A/B.JPG"))
         assertEquals("子目录不误判", ArtifactFamily.Doc, artifactFamilyOf("A/B/C.Docx"))
         assertEquals("文本族归位", ArtifactFamily.Text, artifactFamilyOf("A/B.md"))

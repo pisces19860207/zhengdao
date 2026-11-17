@@ -13,9 +13,12 @@
 //
 // 三类之外的文件一律 Unsupported，文件不在盘上一律 Gone：两种情况都必须
 // 说人话，不许静默、不许退化成 application/octet-stream 去碰运气。
+//
+// 第六百八十五批：这里的「三类」改成「表内」——类型与 MIME 只有
+// `com.example.zhengdao.baopu.ArtifactKinds.TABLE` 一张表，本文件只查表。
 package com.example.zhengdao.ui.baopu
 
-import java.util.Locale
+import com.example.zhengdao.baopu.ArtifactKinds
 
 internal object ArtifactOpen {
 
@@ -28,19 +31,23 @@ internal object ArtifactOpen {
     /** 定位父目录时试探用的目录 MIME；没有应用接就退化成路径＋复制。 */
     const val FOLDER_MIME = "vnd.android.document/directory"
 
-    const val MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    const val MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    const val MIME_PNG = "image/png"
+    const val MIME_DOCX = ArtifactKinds.MIME_DOCX
+    const val MIME_XLSX = ArtifactKinds.MIME_XLSX
+    const val MIME_PNG = ArtifactKinds.MIME_PNG
+    const val MIME_JPEG = ArtifactKinds.MIME_JPEG
+    const val MIME_WEBP = ArtifactKinds.MIME_WEBP
 
-    /** 只认三类：docx / xlsx / png。大小写不敏感，但绝不猜未知后缀的 MIME。 */
-    fun mimeOf(fileName: String): String? = when (
-        fileName.substringAfterLast('/').substringAfterLast('.', "").lowercase(Locale.ROOT)
-    ) {
-        "docx" -> MIME_DOCX
-        "xlsx" -> MIME_XLSX
-        "png" -> MIME_PNG
-        else -> null
-    }
+    /**
+     * 交给别的应用时用的类型：**查表，不猜**。
+     *
+     * 第六百八十五批：641 这里原本是 `when (扩展名) { docx / xlsx / png }` 三支——
+     * 而台账准入另有一份名单，两份各管一半 ⇒ jpg／webp 进得了台账、点开却「不支持」。
+     * 现在全仓只有 [ArtifactKinds.TABLE] 一张表，这里只做一次查表。
+     *
+     * 大小写不敏感、`/` 与 `\` 都当分隔符（解析统一走 [artifactExtension]）。
+     * 表外 ⇒ null（[planOf] 回 Unsupported），绝不退化成 `application/octet-stream` 碰运气。
+     */
+    fun mimeOf(fileName: String): String? = ArtifactKinds.openMimeOf(fileName)
 
     /** 一次 ACTION_VIEW 的全部可判字段。grantRead 与 withClipData 恒为 true。 */
     fun intentSpecOf(mime: String): ArtifactOpenIntent = ArtifactOpenIntent(
