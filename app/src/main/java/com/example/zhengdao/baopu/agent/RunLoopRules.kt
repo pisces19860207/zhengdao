@@ -18,6 +18,8 @@
 //      的 A2 要求该字面留在 `onUsage?.invoke(` 块内。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.baopu.ToolFailureAttribution
+
 /**
  * runLoop 的纯判据外挂（第七十九批）。
  *
@@ -195,8 +197,11 @@ internal object RunLoopRules {
      * 1. **成功不写**：`toolExchangeOk` 判真 ⇒ 空串（负例：成功也写 ⇒ 判据②红）。
      * 2. **606 的 12 键优先**：线索命中 [PeerFailureCode] 闭集里的某一类 ⇒
      *    只写 `<wire>: <该类固定的那句人话>`，正文一个字都不带（结构上不含路径/正文）。
-     * 3. **否则首行截断**：只取错误首行，**切在第一个分句边界**（`：`/`:`/`，`/`；`/`。`/`、`）——
-     *    本项目错误文案恒为「短因：细节」形，细节才是路径与正文的所在。
+     * 3. **否则保语义截断**（第六百九十六批改）：只取错误首行 → **细节域丢弃**
+     *    （第一个 `：`/`:`/制表符之后就是路径与正文所在）→ 原因域按分句边界切段 →
+     *    取**最后一个「抹掉路径后仍能单独当失败依据」的段**。
+     *    改前是「切在第一个分句边界」，于是「写入失败；目标文件不存在」只剩「写入失败」，
+     *    「路径不存在」被切剩的尾巴又认不出码 ⇒ 真失败全落「未归因」。
      * 4. **抹路径 token**：`C:\…`、`/sdcard/…`、`file://…` 一律抹掉（宁可把「备份/回滚点」
      *    这种斜杠词也当路径抹了，也不放过一条真路径）。
      *
@@ -214,7 +219,7 @@ internal object RunLoopRules {
         ToolErrCodes.ALL
             .firstOrNull { c -> c.patterns.any { it.containsMatchIn(line) } }
             ?.let { return it.line }
-        val cleaned = scrubPathTokens(cutAtClause(line)).trim()
+        val cleaned = scrubPathTokens(keptReason(line)).trim()
         return if (cleaned.isEmpty()) ERR_NO_CLUE else clipErr(cleaned)
     }
 
@@ -227,8 +232,11 @@ internal object RunLoopRules {
     /** 「失败：」「被拒：」前缀（有冒号无冒号都认——[toolExchangeOk] 判的就是前缀二字）。 */
     private val PREFIX_TOKEN = Regex("^(?:失败|被拒)[：:]?")
 
-    /** 分句边界：切在第一个，后面的细节（路径/参数值/正文）整个不要。 */
-    private val CLAUSE_BREAK: Set<Char> = setOf('：', ':', '，', ',', '；', ';', '。', '、', '\t')
+    /** 「细节域」边界：第一个这类字符之后是路径/参数值/正文，整段丢弃（631 隐私底线）。 */
+    private val DETAIL_BREAK: Set<Char> = setOf('：', ':', '\t')
+
+    /** 「原因域」内的分句边界（第六百九十六批）：只在这里切段，不在这里丢内容。 */
+    private val REASON_BREAK: CharArray = charArrayOf('；', ';', '，', ',', '。', '、')
 
     /**
      * 路径样式 token：盘符路径 / `file://` / 以 `/` 打头的串。
@@ -246,10 +254,37 @@ internal object RunLoopRules {
     // 第六百二十批收口：码表**不在这里**了，统一从 [ToolErrCodes.ALL] 取（唯一一份）。
     // 631 写侧只负责「按特征词认出码、写它的固定短句」；认不出的走第 3 档截断。
 
-    /** 切在第一个分句边界（`http://` 里的冒号不算边界——那是地址不是分句）。 */
-    private fun cutAtClause(line: String): String {
+    /**
+     * 保语义切句（第六百九十六批）。
+     *
+     * 改前只在**第一个**分句边界切（含 `：` `，` `；`），于是「写入失败；目标文件不存在」
+     * 只剩「写入失败」、「范围不是目录（或不存在）：/a」连线索一起丢——而 620 的词表
+     * 认的是短语，切剩的尾巴自然认不出，真失败被判「未归因」。
+     *
+     * 现在的三段：
+     * 1. [detailCut]：第一个冒号/制表符之后是**细节域**（路径、参数值、正文），整段丢弃；
+     * 2. 原因域按 [REASON_BREAK]（分号/逗号/句号/顿号）切段——这些只是句子边界，不丢内容；
+     * 3. 取**最后一个**「抹掉路径后仍能单独当失败依据」的段（[ToolFailureAttribution.carriesClue]，
+     *    与 620 同一张词表，不另立）：这样「路径不存在」的限定词不会被切掉，
+     *    「某处失败，目标文件不存在」也能留住真正判类的那截。
+     *
+     * 一段都不带线索 ⇒ 退回首段（隐私优先：宁短不长，"写下改失败，我的密码是 8801"
+     * 这种尾巴不因为长就被采用）。
+     */
+    private fun keptReason(line: String): String {
+        val head = detailCut(line).trim()
+        if (head.isEmpty()) return ""
+        val segs = head.split(*REASON_BREAK).map { it.trim() }.filter { it.isNotEmpty() }
+        if (segs.isEmpty()) return ""
+        if (segs.size == 1) return segs.first()
+        return segs.lastOrNull { ToolFailureAttribution.carriesClue(scrubPathTokens(it)) }
+            ?: segs.first()
+    }
+
+    /** 切在第一个细节边界（`http://` 里的冒号不算边界——那是地址不是分句）。 */
+    private fun detailCut(line: String): String {
         line.forEachIndexed { i, c ->
-            if (c !in CLAUSE_BREAK) return@forEachIndexed
+            if (c !in DETAIL_BREAK) return@forEachIndexed
             val inScheme = c == ':' && line.startsWith("//", i + 1)
             if (!inScheme) return line.substring(0, i)
         }
