@@ -363,7 +363,10 @@ class DelegateAdmission648Test {
         val examTool = mainSource("peer/EnvoyExamTool.kt")
         assertTrue("出题工具没声明走 retest 那一条链", mainSource("peer/EnvoyDeliver.kt").contains("EnvoyAdmission.retest("))
         assertTrue("出题工具不该自己出题", !examTool.contains("IntakeExam."))
-        assertTrue("出题工具的账名自己写了一份字面量（两把尺就是这么长出来的）", examTool.contains("EnvoyDeliver.EXAM_LEDGER_TOOL"))
+        assertTrue(
+            "出题工具的账名不是那把尺的别名（钉整行声明；KDoc 里再提一次不算数）",
+            examTool.contains("const val LEDGER_TOOL: String = EnvoyDeliver.EXAM_LEDGER_TOOL"),
+        )
 
         // 行为侧：先出题、后委派 ⇒ 委派那一次只多发一件活，考卷零字节。
         stage()
