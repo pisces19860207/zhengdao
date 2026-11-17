@@ -1195,6 +1195,24 @@ internal fun BaopuScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            // ── 540 模糊唤回卡（知会卡，不进「要用户动手」那套折叠账）────────
+            // 要点行的「跳原文」走 544 那套既有跳转：busy 先如实说一句（不假装跳了）；
+            // 切会话走 requestOpenSession 的既有门（别会话在跑 ⇒ 只出确认卡，不自动停）；
+            // 滚到那条消息交给下面 pendingJump 的 LaunchedEffect，不在这儿抢。
+            controller.recallCard?.let { view ->
+                BaopuRecallCard(
+                    view = view,
+                    onJump = { sid, mid ->
+                        if (controller.busy) {
+                            Toast.makeText(context, R.string.recall_jump_busy, Toast.LENGTH_SHORT).show()
+                        } else {
+                            if (controller.sessionId != sid) controller.requestOpenSession(sid)
+                            pendingJump = LedgerJump(sid, mid)
+                        }
+                    },
+                    onDismiss = { controller.dismissRecallCard() },
+                )
+            }
             // ── 底部操作卡区（第十八批-B §2.1）────────────────────────────
             // 「要用户动手」的卡（确认/问人/待过目记忆/记忆候选）紧贴输入框上方：
             // 翻消息不跟着滚走（在 LazyColumn 外的 Column 里）；键盘弹出时随

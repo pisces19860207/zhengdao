@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 540 模糊唤回卡的文案（独立成档：strings_baopu_cards.xml 被 BaopuResultCardGateTest
+     的红线六钉「键 = Kotlin 文案表」，域外键进来就是漂移）。 -->
+<resources>
+
+    <string name="recall_card_title">唤回旧话</string>
+    <string name="recall_not_found">没找到相关的旧消息</string>
+    <string name="recall_jump">跳原文</string>
+    <string name="recall_jump_busy">还有会话在跑，停下来再跳</string>
+    <string name="recall_dismiss">收起</string>
+
+</resources>

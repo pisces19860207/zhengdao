@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 540 vague recall card copy (own file: strings_baopu_cards.xml is pinned key-for-key
+     to a Kotlin table by BaopuResultCardGateTest red-line six). -->
+<resources>
+
+    <string name="recall_card_title">Recall old messages</string>
+    <string name="recall_not_found">No matching old messages</string>
+    <string name="recall_jump">Jump to source</string>
+    <string name="recall_jump_busy">A session is still running. Jump once it stops.</string>
+    <string name="recall_dismiss">Dismiss</string>
+
+</resources>

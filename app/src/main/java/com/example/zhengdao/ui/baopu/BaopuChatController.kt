@@ -52,6 +52,11 @@ import com.example.zhengdao.baopu.ReflectionArchive
 import com.example.zhengdao.baopu.ReflectionCandidate
 import com.example.zhengdao.baopu.ReflectionRunner
 import com.example.zhengdao.baopu.ReflectionTrigger
+import com.example.zhengdao.baopu.recall.RecallCardRules
+import com.example.zhengdao.baopu.recall.RecallCardView
+import com.example.zhengdao.baopu.recall.RecallDbSearch
+import com.example.zhengdao.baopu.recall.RecallEngine
+import com.example.zhengdao.baopu.recall.VagueTrigger
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.ShadowJudgement
@@ -2833,6 +2838,21 @@ internal class BaopuChatController(context: Context) {
     var askCard by mutableStateOf<AskUserCard?>(null)
         private set
 
+    // ── 540 模糊唤回卡（只出信号不拦话）────────────────────────────────────
+    //
+    // 这句话像在找旧话 ⇒ 异步检索既有消息、出一张可跳原文的卡。判据全在
+    // `baopu/recall` 纯层（触发／线索／次数账／提炼），这里只有出示与回收——
+    // 同 askCard 一条纪律：卡是给用户点「跳原文」用的，不做判定、不改档。
+
+    /** 模糊唤回卡（null = 没在出卡；新的一问会先收旧卡）。 */
+    var recallCard by mutableStateOf<RecallCardView?>(null)
+        private set
+
+    /** 收起唤回卡（点「收起」；下一句触发时也会自动收旧出新的）。 */
+    fun dismissRecallCard() {
+        recallCard = null
+    }
+
     /**
      * 资料库动作的一句话结果（收料/导出；成功失败都明说，不静默）。
      *
@@ -3622,6 +3642,9 @@ internal class BaopuChatController(context: Context) {
             )
             plan.noticeLine?.let { engine.showNotice(it) }
         }
+        // 540 模糊唤回（**唯一**接线点，与 441 同一道同理由）：这句话像在找旧话 ⇒
+        // 异步出一张可跳原文的召回卡。只出卡：不拦话、不改档，引擎照常跑。
+        runVagueRecall(text)
         // 第二百零五批：复盘话术 ⇒ 本地跑反思器（IO 单飞，不拦这句话进引擎——
         // 复盘结果以技能页候选卡＋便签给出，引擎照常聊天）。
         if (ReflectionTrigger.isReviewRequest(text)) runReflectionNow()
@@ -3675,6 +3698,47 @@ internal class BaopuChatController(context: Context) {
         topicRoundQueue.addLast(text)
         while (topicRoundQueue.size > 32) topicRoundQueue.removeFirst()
     }
+
+    /**
+     * 540 模糊唤回：像在找旧话的那句话 ⇒ 出一张召回卡（判定在 [VagueTrigger] 纯函数）。
+     *
+     * 线索三组（顺序＝组优先级）：①这句话自己的实词；②上一条助手回复的实词——
+     * 「那个」最常指的是它刚说过的话；③最近几轮用户原话的实词。每组一次检索，
+     * 次数硬顶 3（[RecallEngine.clueGroups] 截断，计数器进 [RecallEngine.Outcome]）。
+     * 检索走 [RecallDbSearch]（只读既有 message/part 表，不新建索引结构；533 的索引
+     * 合入后换底）；提炼在 [RecallEngine]（≤5 条、每条 ≤60 字、缺消息 id 就丢、
+     * 找不到直说）。
+     *
+     * 只出卡不拦话：异步在壳层 scope 里跑，这句照常进引擎；账只记组数/次数/条数
+     * ——查询词一个字都不进日志（与搜索索引同一条隐私线）。
+     */
+    private fun runVagueRecall(text: String) {
+        val signal = VagueTrigger.signalOf(text) ?: return
+        recallCard = null // 新的一问，旧卡先收：卡只回答最近这一句
+        val replyKw = VagueTrigger.contentKeywords(lastNonUserPartText(messages))
+        val userKw = VagueTrigger.contentKeywords(
+            recentUserTexts(3).joinToString(" "), // 3 轮：一个「上次」最远追溯多远，再多就翻到别的事了
+        )
+        val groups = RecallEngine.clueGroups(signal.keywords, replyKw, userKw)
+        scope.launch {
+            // 查库只在 IO 线程（scope 本体是 Main）：441 同款——判定与执行都在壳层
+            // scope 里异步走，IO 落 Dispatchers.IO；回主线程再写卡状态。
+            val outcome = withContext(Dispatchers.IO) {
+                RecallEngine.recall(groups, RecallDbSearch(db))
+            }
+            RunLog.log(
+                "模糊唤回：线索 ${outcome.clueGroupCount} 组·检索 ${outcome.searchCalls} 次" +
+                    "·要点 ${outcome.points.size} 条",
+            )
+            recallCard = RecallCardRules.viewOf(outcome)
+        }
+    }
+
+    /** 最近几轮用户原话的正文（线索②③的原料；取内存消息，不另开一次读库）。 */
+    private fun recentUserTexts(n: Int): List<String> =
+        messages.filter { it.role == "user" }.takeLast(n.coerceAtLeast(0))
+            .mapNotNull { m -> m.parts.firstOrNull { it.kind == "text" }?.text }
+            .filter { it.isNotBlank() }
 
     /**
      * 把本轮附件按**相对路径**补写成用户消息的 `part.kind='image'`（B1）。
