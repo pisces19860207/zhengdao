@@ -2,8 +2,10 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 //
 // 第六百七十五批 · 六体读数**源码断言**（派工单判据②③⑤的机器钉法）。
+// 第六百九十四批：源码清单 6→9 份（三件新器官入列）、行数预算分两档（675 三件 ≤150，
+// 694 三件 ≤200）、标记名册 3→6 处、禁词补引擎符号（计划写权/授权档/JSON/可变集合）。
 // 断言口径：剥掉注释后扫代码——注释里说"不做什么"不算证据，代码里"没有"才算。
-// 本文件只读 app/src/main 下 bio 包六份源码文本（SrcRoots 定位），零写盘。
+// 本文件只读 app/src/main 下 bio 包九份源码文本（SrcRoots 定位），零写盘。
 package com.example.zhengdao.baopu.bio
 
 import com.example.zhengdao.SrcRoots
@@ -20,25 +22,38 @@ class BioSourceAssertTest {
         "app/src/main/java/com/example/zhengdao/baopu/bio/Amygdala.kt",
         "app/src/main/java/com/example/zhengdao/baopu/bio/Insula.kt",
         "app/src/main/java/com/example/zhengdao/baopu/bio/Thalamus.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/bio/PrefrontalCortex.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/bio/Striatum.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/bio/Hippocampus.kt",
     )
 
-    private val organFiles = listOf(
+    /** 675 三件：≤150 行（原预算不动）。 */
+    private val organFilesSmall = listOf(
         "app/src/main/java/com/example/zhengdao/baopu/bio/Amygdala.kt",
         "app/src/main/java/com/example/zhengdao/baopu/bio/Insula.kt",
         "app/src/main/java/com/example/zhengdao/baopu/bio/Thalamus.kt",
     )
 
+    /** 694 三件：≤200 行（本批派工单口径）。 */
+    private val organFilesWide = listOf(
+        "app/src/main/java/com/example/zhengdao/baopu/bio/PrefrontalCortex.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/bio/Striatum.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/bio/Hippocampus.kt",
+    )
+
     /** 六件闭集（626 定稿）：标记件名必须落在这里，冒出第七件就是红。 */
     private val sixOrgans = setOf("杏仁核", "海马", "前额叶", "纹状体", "岛叶", "丘脑")
 
-    /** 禁词：判定类型（判据②）＋权威账（判据③）＋模型/网络调用（判据⑤）。 */
+    /** 禁词：判定类型（判据②）＋权威账（判据③）＋模型/网络调用（判据⑤）＋引擎符号（694）。 */
     private val forbidden = listOf(
         "RiskDecision", "PROCEED", "REJECT", "Proceed", "Reject", "proceed", "reject",
         "BaopuDb", "run_log", "execSQL", "Ledger",
         "Provider", "Http", "http", "URL", "OkHttp", "Retrofit", "java.net",
+        "PlanSink", "PlanRules", "AskTier", "AskGovernance", "ToolOutcome",
+        "JSONObject", "JSONArray", "MutableList", "MutableMap", "MutableSet",
     )
 
-    // ── 判据②③⑤：剥注释后的六份源码里，禁词一个都不许出现 ──
+    // ── 判据②③⑤：剥注释后的九份源码里，禁词一个都不许出现 ──
 
     @Test
     fun noJudgementNoLedgerNoModelInCode() {
@@ -48,7 +63,7 @@ class BioSourceAssertTest {
         }
     }
 
-    // ── 判据①（belt＋护腕，CI 闸之外再钉一道）：三件各恰有一处登记标记，件名在闭集 ──
+    // ── 判据①（belt＋护腕，CI 闸之外再钉一道）：六件各恰有一处登记标记，件名在闭集 ──
 
     @Test
     fun eachOrganCarriesExactlyOneRegisteredMarker() {
@@ -57,6 +72,9 @@ class BioSourceAssertTest {
             "app/src/main/java/com/example/zhengdao/baopu/bio/Amygdala.kt" to "杏仁核",
             "app/src/main/java/com/example/zhengdao/baopu/bio/Insula.kt" to "岛叶",
             "app/src/main/java/com/example/zhengdao/baopu/bio/Thalamus.kt" to "丘脑",
+            "app/src/main/java/com/example/zhengdao/baopu/bio/PrefrontalCortex.kt" to "前额叶",
+            "app/src/main/java/com/example/zhengdao/baopu/bio/Striatum.kt" to "纹状体",
+            "app/src/main/java/com/example/zhengdao/baopu/bio/Hippocampus.kt" to "海马",
         )
         for ((rel, organ) in marks) {
             assertTrue("$organ 必须在六件闭集", organ in sixOrgans)
@@ -65,13 +83,17 @@ class BioSourceAssertTest {
         }
     }
 
-    // ── 行数预算（派工单：每件 ≤150 行）──
+    // ── 行数预算（675 三件 ≤150 行；694 三件 ≤200 行）──
 
     @Test
     fun eachOrganStaysWithinLineBudget() {
-        for (rel in organFiles) {
+        for (rel in organFilesSmall) {
             val lines = SrcRoots.find(rel).readLines().size
             assertTrue("$rel 共 $lines 行，超 150 行预算", lines <= 150)
+        }
+        for (rel in organFilesWide) {
+            val lines = SrcRoots.find(rel).readLines().size
+            assertTrue("$rel 共 $lines 行，超 200 行预算", lines <= 200)
         }
     }
 
