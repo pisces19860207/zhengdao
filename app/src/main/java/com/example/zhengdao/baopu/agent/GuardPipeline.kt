@@ -422,7 +422,12 @@ internal class GuardPipeline(
         spillWriter: (fileName: String, text: String) -> SpillResult?,
     ): Result = when (val p = prepare(call)) {
         is Prepared.Settled -> p.result
-        is Prepared.Ready -> finish(p.spec, p.call, runner.run(p.spec, p.call.arguments), spillWriter)
+        is Prepared.Ready -> finish(
+            p.spec,
+            p.call,
+            executeOrInject(p.spec, p.call) { runner.run(p.spec, p.call.arguments) },
+            spillWriter,
+        )
     }
 
     /**
@@ -454,7 +459,26 @@ internal class GuardPipeline(
     fun executeInline(
         prepared: Prepared.Ready,
         spillWriter: (fileName: String, text: String) -> SpillResult?,
-    ): Result = finish(prepared.spec, prepared.call, runInline(prepared.spec, prepared.call.arguments), spillWriter)
+    ): Result = finish(
+        prepared.spec,
+        prepared.call,
+        executeOrInject(prepared.spec, prepared.call) { runInline(prepared.spec, prepared.call.arguments) },
+        spillWriter,
+    )
+
+    /**
+     * 第 ④ 段的**唯一入口**（[execute] / [executeInline] / [executeApproved] 共用）。
+     *
+     * 684：这里多问一句 [ToolFaultSeam]——命中注入就冒充失败、**不跑真工具**；没命中
+     * （release 恒如此，因为缝里没人赋值）就直接执行 [run]。为什么落在这一格：
+     * ①②③ 已经跑完（守卫语义一点没少），⑤ 与引擎记账还没开始（失败会原样走
+     * `Result.Failed` → `run_log.err` → 归因），所以注入出来的是**真失败**，不是假日志。
+     */
+    private inline fun executeOrInject(
+        spec: ToolSpec,
+        call: ToolCall,
+        run: () -> ToolOutcome,
+    ): ToolOutcome = ToolFaultSeam.intercept(spec.name, call.arguments) ?: run()
 
     /**
      * 第 ①②③ 段（[execute] / [executeInline] / [executeApproved] 共用）。
@@ -1002,7 +1026,7 @@ internal class GuardPipeline(
                 ?: return finish(
                     p.spec,
                     p.call,
-                    runner.run(p.spec, p.call.arguments),
+                    executeOrInject(p.spec, p.call) { runner.run(p.spec, p.call.arguments) },
                     spillWriter,
                 )
             Result.Failed(p.call, "工具授权失败（${hookError.javaClass.simpleName}），这次不执行")

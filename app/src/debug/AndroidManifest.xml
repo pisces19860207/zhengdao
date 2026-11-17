@@ -22,9 +22,32 @@
 
   第四百三十六批 B（2026-11-06）并一行：预读回执闸真机探针
   PreReadDeviceProbeActivity（屏上列五相读数、跑完自动 finish；logcat tag=PrereadProbe）。
+
+  第六百八十四批（2026-11-17）并一行：故障注入的**进程入口**（provider）＋「三连失败」探针。
+  这两件是本单「release 编译期剔除」的结构保证：它们只在本清单里，正式包既没有这条注册、
+  也没有这两个类（源码断言见 `FaultInjectExclusionGateTest`，产物断言见
+  `tools/check-fault-inject-absent.py`）。provider 不是对外入口（exported=false、不解析 uri），
+  它只是"进程起来时把注入器挂到 main 那根针上"；探针同样不挂 LAUNCHER：
+
+      adb shell am start -n com.example.zhengdao/com.example.zhengdao.debug.FaultInjectProbeActivity
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- 684：注入器的安装点（进程启动时跑一次；正式包没有这条）。
+             authority 用 ${applicationId} 前缀，避免与同机其他包撞名。 -->
+        <provider
+            android:name="com.example.zhengdao.debug.FaultInjectInstaller"
+            android:authorities="${applicationId}.faultinject"
+            android:exported="false" />
+
+        <!-- 684：「三连失败」探针。不透明主题（读数要截图）；不挂 LAUNCHER（桌面只许一个图标）。 -->
+        <activity
+            android:name="com.example.zhengdao.debug.FaultInjectProbeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Material.Light" />
+
         <!-- 产出引依据预览（465 批）：同 249，不挂 LAUNCHER，只能显式 am start。 -->
         <activity
             android:name="com.example.zhengdao.baopu.cards.OutputCitationPreviewActivity"
