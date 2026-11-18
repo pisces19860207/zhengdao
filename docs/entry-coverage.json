@@ -109,6 +109,18 @@
     "symbol": "SilhouetteWire",
     "test_refs": [
      {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/bio/InsulaTest.kt",
+      "line": 11
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/bio/InsulaTest.kt",
+      "line": 26
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/bio/InsulaTest.kt",
+      "line": 27
+     },
+     {
       "file": "app/src/test/java/com/example/zhengdao/baopu/body/SilhouetteTest.kt",
       "line": 177
      },
@@ -791,7 +803,7 @@
   "C": 4,
   "gates_with_write_path": 4,
   "not_wired": 10,
-  "production_top_level_public": 561,
-  "wired": 548
+  "production_top_level_public": 564,
+  "wired": 551
  }
 }
