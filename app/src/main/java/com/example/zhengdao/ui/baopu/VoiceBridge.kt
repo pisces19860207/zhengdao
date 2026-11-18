@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -131,7 +132,7 @@ internal fun rememberVoiceBridge(
     var phase by remember { mutableStateOf(VoicePhase.IDLE) }
     var failure by remember { mutableStateOf<VoiceFailure?>(null) }
     var probe by remember { mutableStateOf<VoiceProbe?>(null) }
-    var streak by remember { mutableStateOf(0) }
+    var streak by remember { mutableIntStateOf(0) }
     var mode by remember { mutableStateOf(VoicePrefs.getMode(ctx)) }
     var source by remember { mutableStateOf(VoicePrefs.getSource(ctx)) }
 
