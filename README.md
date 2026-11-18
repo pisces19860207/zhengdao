@@ -28,8 +28,10 @@
 
 **门槛**：Android 16（API 36）＋ arm64 手机。不符合装不上。
 
-**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.2.6（versionCode 由构建派生，随提交递增——装一次换一个号，关于页能看到号与短号）。
+**下载**：[GitHub Releases](https://github.com/pisces19860207/zhengdao/releases)，当前版本：v2.3.0（versionCode 由构建派生，随提交递增——装一次换一个号，关于页能看到号与短号）。
 > **2.2.4（2.2 系列收官）**：只收口、不开新能力——授权租约、目标模式、准入真出题、产出卡接依据闸、项目账本、活动看板、构建核对包；界面做御案卡美化与验证明白话；工程上 detekt 硬墙 335→333、单测临时目录水位 1000→422。逐条变更见 [release-notes v2.2.4](https://github.com/pisces19860207/zhengdao/blob/v2.2.4/.github/release-notes/v2.2.4.md)。
+
+> **2.3.0（L3 收口版）**：把“能写”变成“能跑，而且说得清”——自进化九域全部接入生产（判据与拓扑永不自改）· 外部 Agent 接入与委派准入补齐 · 学习板块四阶段闭环（观察/归纳/边看边纠/回放可见）· 能力路由漏斗只建议不夺权 · 语音与产物收口 · versionCode 由提交派生 · 构建锁 v11.3 · 接线台账第 4 档 sole-impl。逐条见 [release-notes v2.3.0](https://github.com/pisces19860207/zhengdao/blob/v2.3.0/.github/release-notes/v2.3.0.md)。
 
 
 **不用装**：Termux、Shizuku，不需要 ADB，也不用连电脑。
