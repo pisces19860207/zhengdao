@@ -1,5 +1,5 @@
 {
-  "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删（只列不删）。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。543（2026-11-08）刷新：旧账 389 是 473 批以前的时点，当场重算 458（A3／B2／C4），逐条按落地事实重裁，证据行号以 origin/main@5c845ee6 为准。",
+  "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删（只列不删）。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。543（2026-11-08）刷新：旧账 389 是 473 批以前的时点，当场重算 458（A3／B2／C4），逐条按落地事实重裁，证据行号以 origin/main@5c845ee6 为准。 706 加档：verdict 新增 `wired(sole-impl)`（唯一实现待消费方）。合法 verdict 四值：wired／not_urgent／delete／wired(sole-impl)。入档三件齐（soleImpl.uniqueImpl 唯一实现断言＋pendingConsumer 单号＋dueWhen 到期 sha），由 tools/check-entry-coverage.py 机检：重复实现／业务件误用／三件不齐／到期未回填均判红，到期者自动降 NOT_WIRED。",
   "A": {
     "OffscreenCaptureProbe": {
       "verdict": "not_urgent",
@@ -28,32 +28,116 @@
       "note": "理由：本单是**规则库＋纯函数扫描器**（十条规则子句级扫描、只报不改写、宾转主 suggest 不拦），生产侧还没有调用点——它要做的事是「写的时候给提示」，那需要一个提示入口（下一批）。先行落库是为了让 660 与写作侧共用同一份规则，避免各自写一套；判据已由 29 例夹具＋2 例源码断言钉住。"
     },
     "JointNames": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：关节名闭集（限位链的数据契约），660 关节链按名查限位。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：关节名闭集（限位链的数据契约），660 关节链按名查限位。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "JointNames",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/JointChain.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "670",
+        "dueWhen": {
+          "ticket": "670",
+          "mergedSha": ""
+        }
+      }
     },
     "PoseValidity": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：姿态合法性判定（关节限位＋可达三态的综合结论），660 姿态校验用它。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：姿态合法性判定（关节限位＋可达三态的综合结论），660 姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "PoseValidity",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/PoseValidity.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "670",
+        "dueWhen": {
+          "ticket": "670",
+          "mergedSha": ""
+        }
+      }
     },
     "Sphere": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：球支撑映射（最简形状，GJK/EPA 的测试基准与近似体）。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：球支撑映射（最简形状，GJK/EPA 的测试基准与近似体）。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "Sphere",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "660",
+        "dueWhen": {
+          "ticket": "660",
+          "mergedSha": ""
+        }
+      }
     },
     "ConvexHull": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：凸包支撑映射（GJK/EPA 的形状基础），660 形体与两体接触都用它。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：凸包支撑映射（GJK/EPA 的形状基础），660 形体与两体接触都用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "ConvexHull",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "660",
+        "dueWhen": {
+          "ticket": "660",
+          "mergedSha": ""
+        }
+      }
     },
     "Capsule": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：胶囊支撑映射（关节 limb 近似体），660 关节链与 670 姿态用它。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：胶囊支撑映射（关节 limb 近似体），660 关节链与 670 姿态用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "Capsule",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "670",
+        "dueWhen": {
+          "ticket": "670",
+          "mergedSha": ""
+        }
+      }
     },
     "Ellipsoid": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：椭球支撑映射（躯干近似体），660 躯干与可达性用它。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：椭球支撑映射（躯干近似体），660 躯干与可达性用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "Ellipsoid",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "660",
+        "dueWhen": {
+          "ticket": "660",
+          "mergedSha": ""
+        }
+      }
     },
     "TwoBodyCollision": {
-      "verdict": "wired",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：两体解析碰撞（动量/能量守恒 ±5%），660 双人互动姿态校验用它。"
+      "verdict": "wired(sole-impl)",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：两体解析碰撞（动量/能量守恒 ±5%），660 双人互动姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "soleImpl": {
+        "uniqueImpl": {
+          "symbol": "TwoBodyCollision",
+          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt",
+          "expectedDecls": 1
+        },
+        "pendingConsumer": "660",
+        "dueWhen": {
+          "ticket": "660",
+          "mergedSha": ""
+        }
+      }
     }
   },
   "C": {

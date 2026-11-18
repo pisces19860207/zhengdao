@@ -174,6 +174,12 @@ def strip_kotlin(text: str) -> str:
     return "".join(out)
 
 
+# ---------------------------------------------------------------- 706 sole-impl 档
+SOLE_IMPL = "wired(sole-impl)"          # 唯一实现·待消费方（新第 4 档）
+VALID_VERDICTS = ("wired", "not_urgent", "delete", SOLE_IMPL)
+# 只有基础几何库包下的件允许入 sole-impl 档；业务功能件误用 ⇒ 拒
+SOLE_IMPL_ALLOWED_PREFIX = "app/src/main/java/com/example/zhengdao/baopu/state/geometry/"
+
 DECL_RE = re.compile(
     r"^(?:(?:public|internal|private|protected|abstract|open|final|sealed|"
     r"data|enum|annotation|value|expect|actual|fun)\s+)*(class|object|interface)\s+"
@@ -639,8 +645,10 @@ def main() -> int:
             f["verdict"], f["note"] = "UNRESOLVED", "（未裁决）"
         else:
             f["verdict"], f["note"] = verdict.get("verdict", "UNRESOLVED"), verdict.get("note", "")
-            if f["verdict"] not in ("wired", "not_urgent", "delete"):
+            if f["verdict"] not in VALID_VERDICTS:
                 problems.append("%s/%s 非法 verdict：%s" % (f["list"], f["symbol"], f["verdict"]))
+            if f["verdict"] == SOLE_IMPL:
+                f["_soleImplMeta"] = verdict.get("soleImpl")
     for f in c_list:
         verdict = registry.get("C", {}).get(f["key"])
         if verdict is None:
@@ -656,6 +664,11 @@ def main() -> int:
         for sym in registry.get(lst, {}):
             if sym not in known:
                 problems.append("%s/%s 注册表陈旧（现扫描已无此项）" % (lst, sym))
+
+    # 706：sole-impl 机检（三件齐/唯一实现/业务件误用/到期降级），并入 problems 由 --strict 判红
+    problems += check_sole_impl(ab, sole_impl_index(corp))
+    for _f in ab:                       # 内部元数据不入产物，输出形态不变
+        _f.pop("_soleImplMeta", None)
 
     report = {
         "lists": {"A": [f for f in ab if f["list"] == "A"],
@@ -796,8 +809,79 @@ def render_md(report: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- 706 sole-impl 机检
+
+
+def sole_impl_index(corp) -> dict:
+    """全仓 app/src/main/java 顶层声明索引：symbol -> [(relpath, line, kind)]。
+    与分类共用 strip_kotlin + top_level_decls 口径（剥注释/字符串、列 0 声明）。"""
+    idx: dict = {}
+    for rp in sorted(corp.prod_rel):
+        stripped = corp.files[rp][1]
+        for ln, kind, name, _nonpub in top_level_decls(stripped):
+            idx.setdefault(name, []).append((rp, ln, kind))
+    return idx
+
+
+def check_sole_impl(items: list, decl_idx: dict) -> list:
+    """校验所有 wired(sole-impl) 条目，返回 problems（并入 --strict 判红）。
+
+    四道机检：
+      ① 三件齐：uniqueImpl(symbol/declFile/expectedDecls) + pendingConsumer + dueWhen(ticket/mergedSha)；
+      ② 唯一实现：全仓同名顶层声明数 == expectedDecls 且落在 declFile（造重复实现 ⇒ 红）；
+      ③ 业务件误用：declFile 不在基础几何库白名单前缀 ⇒ 拒（红）；
+      ④ 到期：dueWhen.mergedSha 非空（所指单已合入）却仍标 sole-impl ⇒ 到期未回填 ⇒ 红并降 NOT_WIRED。
+    「到期降 NOT_WIRED」通过把该条 verdict 改写为 wired 实现——既有 not_wired 计数公式
+    （verdict=="wired"）与输出形态一字不改，只加档。
+    """
+    problems: list = []
+    for f in items:
+        if f.get("verdict") != SOLE_IMPL:
+            continue
+        sym = f.get("symbol", "?")
+        tag = "%s/%s" % (f.get("list", "?"), sym)
+        meta = f.get("_soleImplMeta") or {}
+        # ① 三件齐
+        for k in ("uniqueImpl", "pendingConsumer", "dueWhen"):
+            if not meta.get(k):
+                problems.append("%s sole-impl 三件不齐：缺 %s" % (tag, k))
+        ui = meta.get("uniqueImpl") or {}
+        dw = meta.get("dueWhen") or {}
+        for k in ("symbol", "declFile", "expectedDecls"):
+            if k not in ui:
+                problems.append("%s sole-impl uniqueImpl 缺字段 %s" % (tag, k))
+        if "ticket" not in dw or "mergedSha" not in dw:
+            problems.append("%s sole-impl dueWhen 缺 ticket/mergedSha" % tag)
+        if not meta.get("pendingConsumer"):
+            problems.append("%s sole-impl pendingConsumer 为空" % tag)
+        if dw.get("ticket") and meta.get("pendingConsumer") and dw["ticket"] != meta["pendingConsumer"]:
+            problems.append("%s sole-impl dueWhen.ticket 与 pendingConsumer 不一致" % tag)
+        declfile = ui.get("declFile", "")
+        exp = ui.get("expectedDecls")
+        # ③ 业务功能件误用拒（白名单路径）
+        if declfile and not declfile.startswith(SOLE_IMPL_ALLOWED_PREFIX):
+            problems.append("%s sole-impl 误用：业务功能件不得入本档（declFile=%s）" % (tag, declfile))
+        # ② 唯一实现机检
+        target = ui.get("symbol", sym)
+        hits = decl_idx.get(target, [])
+        if isinstance(exp, int) and len(hits) != exp:
+            problems.append("%s sole-impl 唯一实现破坏：%s 全仓声明 %d 处（应 %d）"
+                            % (tag, target, len(hits), exp))
+        hit_files = {h[0] for h in hits}
+        if declfile and hits and declfile not in hit_files:
+            problems.append("%s sole-impl declFile 与实现不符：断言 %s，实扫 %s"
+                            % (tag, declfile, sorted(hit_files)[:3]))
+        # ④ 到期未回填 ⇒ 降 NOT_WIRED
+        if isinstance(dw.get("mergedSha"), str) and dw["mergedSha"].strip():
+            problems.append("%s sole-impl 到期未回填（dueWhen.mergedSha 已填）⇒ 降 NOT_WIRED" % tag)
+            f["verdict"] = "wired"
+            f["note"] = (f.get("note", "") + "【706 到期未回填，自动降 NOT_WIRED】")
+    return problems
+
+
 def verdict_cn(f: dict) -> str:
-    return {"wired": "接线", "not_urgent": "不急", "delete": "该删"}.get(f.get("verdict"), "（未裁决）")
+    return {"wired": "接线", "not_urgent": "不急", "delete": "该删",
+            "wired(sole-impl)": "唯一实现·待消费"}.get(f.get("verdict"), "（未裁决）")
 
 
 # ---------------------------------------------------------------- 自测
@@ -919,6 +1003,44 @@ def selftest() -> int:
             fails.append("误报：G2 写口有活调用方（Ui.kt 点 G2.set）不入 C")
         if gates_with_write != 1:
             fails.append("有活写口闸计数应为 1（k2），实得 %d" % gates_with_write)
+
+        # 706 selftest：三档（wired / wired(sole-impl) / 到期降 wired）＋ 违规负例
+        PFX = SOLE_IMPL_ALLOWED_PREFIX
+        fidx = {"Fixture": [(PFX + "Fixture.kt", 1, "class")]}
+        def mk(v, meta):
+            return {"list": "B", "symbol": "Fixture", "verdict": v, "note": "", "_soleImplMeta": meta}
+        def base():
+            return {"uniqueImpl": {"symbol": "Fixture", "declFile": PFX + "Fixture.kt",
+                                   "expectedDecls": 1},
+                    "pendingConsumer": "660", "dueWhen": {"ticket": "660", "mergedSha": ""}}
+        # 档集合恰四值（含新档，原三值原义不变）
+        if VALID_VERDICTS != ("wired", "not_urgent", "delete", SOLE_IMPL):
+            fails.append("VALID_VERDICTS 应恰含四档（含 sole-impl）")
+        # 正例：合规 sole-impl 零问题、不降级
+        f_ok = mk(SOLE_IMPL, base())
+        if check_sole_impl([f_ok], fidx) or f_ok["verdict"] != SOLE_IMPL:
+            fails.append("706 正例失败：合规 sole-impl 应零问题且不降级")
+        # wired 原义不变：检查器不碰 wired
+        f_wired = mk("wired", {})
+        if check_sole_impl([f_wired], fidx) or f_wired["verdict"] != "wired":
+            fails.append("706 回归失败：wired 档不得被检查器改动")
+        # 违规①：重复实现（expectedDecls=2 但实扫 1）⇒ 红
+        dup = base(); dup["uniqueImpl"]["expectedDecls"] = 2
+        if not any("唯一实现破坏" in p for p in check_sole_impl([mk(SOLE_IMPL, dup)], fidx)):
+            fails.append("706 负例失败：重复实现应咬中")
+        # 违规②：业务功能件误用（declFile 在几何库白名单外）⇒ 红
+        biz = base(); biz["uniqueImpl"]["declFile"] = "app/src/main/java/com/example/t/Biz.kt"
+        if not any("业务功能件" in p for p in check_sole_impl([mk(SOLE_IMPL, biz)], fidx)):
+            fails.append("706 负例失败：业务件写 sole-impl 应拒")
+        # 违规③：三件不齐 ⇒ 红
+        miss = {"pendingConsumer": "660"}
+        if not any("三件不齐" in p for p in check_sole_impl([mk(SOLE_IMPL, miss)], fidx)):
+            fails.append("706 负例失败：三件不齐应咬中")
+        # 违规④：到期未回填 ⇒ 红且降级为 wired（NOT_WIRED 计数公式不变）
+        due = base(); due["dueWhen"]["mergedSha"] = "deadbeef"
+        f_due = mk(SOLE_IMPL, due)
+        if not any("到期未回填" in p for p in check_sole_impl([f_due], fidx)) or f_due["verdict"] != "wired":
+            fails.append("706 负例失败：到期应判红并降 wired")
     if fails:
         for f in fails:
             print("[entry-coverage][selftest] %s" % f)
