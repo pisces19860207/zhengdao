@@ -17,8 +17,10 @@ One APK, no root, no commands. Baopu reads and writes files, can search the whol
 
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
-**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.2.6 (versionCode is derived at build time and grows with every commit, so each install has its own number; the About page shows it together with the short commit sha).
+**Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.3.0 (versionCode is derived at build time and grows with every commit, so each install has its own number; the About page shows it together with the short commit sha).
 > **New in 2.2.4 (2.2 series finale)**: closing-only, no new capabilities — authorization leases, goal mode, real admission tasks, output cards gated by evidence, project ledger, activity board, build audit pack; UI: royal-case card polish and plain-language verdicts; engineering: detekt wall 335→333, test temp-dir water mark 1000→422. Per-commit changelog: [release notes v2.2.4](https://github.com/pisces19860207/zhengdao/blob/v2.2.4/.github/release-notes/v2.2.4.md).
+
+> **New in 2.3.0 (L3 closure)**: turning "written" into "runs, and can explain itself" — all nine self-evolution domains wired into production (criteria and topology never self-modify) · external-agent delegation with real admission exams · the learning board closes its four stages (observe / induce / correct-while-watching / visible replay) · capability routing funnel that only advises, never takes the decision · voice and artifacts tightened · versionCode derived from commits · build lock v11.3 · a 4th wiring tier `wired(sole-impl)`. Full notes: [release-notes v2.3.0](https://github.com/pisces19860207/zhengdao/blob/v2.3.0/.github/release-notes/v2.3.0.md).
 
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
