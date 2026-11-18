@@ -1336,6 +1336,23 @@ internal class BaopuChatController(context: Context) {
         com.example.zhengdao.ui.baopu.SubconsciousCardSpecs.spec(s, decisionStr)
     private fun replaySpec(row: com.example.zhengdao.baopu.subconscious.ReplayRow): DecisionCardSpec =
         DecisionSpecs.replay(row, decisionStr)
+    /** 重放卡的规格（键不存在 ⇒ null）。抽出来是为了不把 [decisionCardSpecFor] 顶过复杂度墙。 */
+    /** 这三类键都来自行槽（回响/灵感/重放）：判定与分派各一处，免得 [decisionCardSpecFor] 越墙。 */
+    private fun isSignalRowKey(key: String): Boolean =
+        key.startsWith("sub:") || key.startsWith("inspiration:") || key.startsWith("replay")
+
+    /** 行槽类信号卡的规格（按前缀分派；键不存在 ⇒ null）。 */
+    private fun signalRowSpecForKey(key: String): DecisionCardSpec? = when {
+        key.startsWith("sub:") -> subconsciousSpecForKey(key)
+        key.startsWith("inspiration:") -> inspirationSpecForKey(key)
+        else -> replaySpecForKey(key)
+    }
+
+    private fun replaySpecForKey(key: String): DecisionCardSpec? =
+        com.example.zhengdao.baopu.subconscious.ReplayRowStore
+            .latest()
+            .firstOrNull { it.id == key }
+            ?.let { replaySpec(it) }
 
     // ── 534/677 灵感闪回（装配层；判据本体在 subconscious 纯层） ────────────────
 
@@ -1732,16 +1749,9 @@ internal class BaopuChatController(context: Context) {
             .firstOrNull { "suggestion:${it.candidateId}" == key }
             ?.let { suggestionSpec(it) }
 
-        key.startsWith("sub:") -> subconsciousSpecForKey(key)
-        // 534/677 灵感卡：同款卡展示 L0 原文。**纯读**——点开的副作用（放行注入＋账行）
-        // 在屏幕层的点击回调里经 [onInspirationOpened] 走一次（本方法每次重组都会被调，
-        // 副作用挂这里会跟着重组重放）。
-        key.startsWith("inspiration:") -> inspirationSpecForKey(key)
-        // 522/678 重放卡（经验条目／合并建议同款卡；纯读——副作用在动作分支）。
-        key.startsWith("replay") -> com.example.zhengdao.baopu.subconscious.ReplayRowStore
-            .latest()
-            .firstOrNull { it.id == key }
-            ?.let { replaySpec(it) }
+        // 行槽类信号卡（回响 676／灵感 677／重放 678）：三支合成一条，分派见 [signalRowSpecForKey]。
+        // 卡面都是「同款卡 + 纯读」——点开的副作用在屏幕层点击回调里走一次。
+        isSignalRowKey(key) -> signalRowSpecForKey(key)
 
         else -> null
     }
