@@ -231,6 +231,33 @@ internal object DecisionSpecs {
         ),
         footer = s.get(R.string.inspiration_card_footer),
     )
+    // ── 重放卡（678·522：经验条目／合并建议，每条带 L0 指针可回原消息） ────────
+
+    /**
+     * 重放卡：正文＝产物一段话（机械拼装，卡面不加工）；唯一动作两枚——
+     * 「知道了」（收起这一行）与「撤销本轮重放」（判据④：一键回到重放前）。
+     * chips 是 L0 指针（合并行两条都在）；footer 明说只出建议、不自动合并、
+     * 不改记忆正文（判据③的卡面口径）。
+     */
+    fun replay(row: com.example.zhengdao.baopu.subconscious.ReplayRow, s: DecisionStrRes): DecisionCardSpec =
+        DecisionCardSpec(
+            variant = DecisionVariant.SUGGESTION,
+            key = row.id,
+            title = when (row.kind) {
+                com.example.zhengdao.baopu.subconscious.ReplayRowKind.EXPERIENCE ->
+                    s.get(R.string.replay_card_title)
+                com.example.zhengdao.baopu.subconscious.ReplayRowKind.MERGE ->
+                    s.get(R.string.replay_merge_card_title)
+            },
+            subtitle = row.subtitle,
+            body = row.body,
+            chips = listOf(row.l0.value) + listOfNotNull(row.l0Second?.value),
+            buttons = listOf(
+                DecisionButton("dismiss", s.get(R.string.replay_dismiss), DecisionButtonRole.BUFFER),
+                DecisionButton("undo", s.get(R.string.replay_undo), DecisionButtonRole.NEGATIVE),
+            ),
+            footer = s.get(R.string.replay_card_footer),
+        )
 }
 
 /**

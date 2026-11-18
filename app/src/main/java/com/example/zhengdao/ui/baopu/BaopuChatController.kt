@@ -1334,54 +1334,8 @@ internal class BaopuChatController(context: Context) {
     /** 676 回响卡（只有一枚收尾钮：看过就收——信号不是任务，没有采纳/拒绝那一路）。 */
     private fun subconsciousSpec(s: com.example.zhengdao.baopu.subconscious.SubconsciousSignal): DecisionCardSpec =
         com.example.zhengdao.ui.baopu.SubconsciousCardSpecs.spec(s, decisionStr)
-
-    /**
-     * 卡上点了一枚按钮（屏幕层原样转交 id，本层按当前槽位归类）。
-     *
-     * 授权/提案的按钮 id 就是引擎选项 id ⇒ 原路 [answerChoice] 答回去，
-     * 执行路径（解锁/落盘）一个字没动；「去设置页处理」由屏幕层拦截（它拥有
-     * 设置页开关），不往控制器传。
-     */
-    fun onDecisionAction(id: String) {
-        val slot = decisionSlot ?: return
-        onDecisionCardAction(slot.id, id)
-    }
-
-    /**
-     * 对**指定**的一张卡动手（决策中心里点行开的卡；不依赖当前槽位）。
-     *
-     * @param key 卡键（`auth:`/`persona:`/`effect:`/`suggestion:` 前缀，见 [DecisionItem]）
-     */
-    fun onDecisionCardAction(key: String, buttonId: String) {
-        when {
-            key.startsWith("effect:") -> {
-                val eventId = key.removePrefix("effect:")
-                when (buttonId) {
-                    "keep" -> keepPostAdoption(eventId)
-                    "later" -> laterPostAdoption(eventId)
-                    "rollback" -> rollbackPostAdoption(eventId)
-                    else -> Unit // tosettings：屏幕层拦截
-                }
-            }
-
-            key.startsWith("suggestion:") -> {
-                val candidateId = key.removePrefix("suggestion:")
-                when (buttonId) {
-                    "reject" -> decideSuggestion(candidateId, SuggestionDecision.REJECT)
-                    "defer" -> decideSuggestion(candidateId, SuggestionDecision.DEFER)
-                    "adopt" -> decideSuggestion(candidateId, SuggestionDecision.ADOPT)
-                    else -> Unit
-                }
-            }
-
-            // 676 回响卡：只有一枚收尾钮——人看过就收（从页签行里撤下这一枚信号；
-            // 账行与账本一行不动——信号不是任务）。
-            key.startsWith("sub:") -> dismissSubconsciousSignal(key, buttonId)
-            key.startsWith("inspiration:") -> ignoreInspirationSignal(key, buttonId)
-
-            else -> answerChoice(buttonId) // auth: / persona: ⇒ 引擎选项 id 原路答回
-        }
-    }
+    private fun replaySpec(row: com.example.zhengdao.baopu.subconscious.ReplayRow): DecisionCardSpec =
+        DecisionSpecs.replay(row, decisionStr)
 
     // ── 534/677 灵感闪回（装配层；判据本体在 subconscious 纯层） ────────────────
 
@@ -1530,6 +1484,137 @@ internal class BaopuChatController(context: Context) {
         }
     }
 
+    // ── 522/678 海马重放（装配层；判据本体在 subconscious 纯层） ────────────────
+
+    /**
+     * 建议页签的重放行（Compose 状态——行槽 publish/撤销/收起后这里重算，
+     * 页签自动重组；屏幕层只渲染，不自己判）。
+     */
+    var replayRows by mutableStateOf<List<DecisionCenterRow>>(emptyList())
+        private set
+
+    /** 行槽 → 页签行（重放类 typeLabel；行自带稳定 id 与 L0 指针）。 */
+    private fun refreshReplayRowState() {
+        replayRows = com.example.zhengdao.baopu.subconscious.ReplayRowStore.latest().map { r ->
+            DecisionCenterRow(
+                id = r.id,
+                variant = DecisionVariant.SUGGESTION,
+                title = r.title,
+                subtitle = r.subtitle,
+                typeLabel = appCtx.getString(R.string.replay_type_label),
+            )
+        }
+    }
+
+    /**
+     * 打开「建议」页签时算一轮重放（**机会式**：用户打开页签才算，零后台调度——
+     * 不是第二个执行器；676 的 SubconsciousRunner 合入后由它低频调同一判据并回归）。
+     *
+     * 跑不跑全归纯层判据（空闲窗口＋天闸 ≤1 次/天；判据②的负例「前台忙碌跑就红」
+     * 拦在 [com.example.zhengdao.baopu.subconscious.idleVerdict]）；本方法只装配：
+     * 读 L2 记忆＋账行键＋L0 原话（全只读）⇒ 喂纯层 ⇒ publish＋落账。
+     */
+    fun refreshReplayRows() {
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                com.example.zhengdao.baopu.subconscious.runReplayRound(
+                    appCtx,
+                    System.currentTimeMillis(),
+                    com.example.zhengdao.baopu.subconscious.screenOnNow(appCtx),
+                )
+            }.onSuccess {
+                withContext(Dispatchers.Main) { refreshReplayRowState() }
+            }.onFailure { RunLog.log("重放没跑成：${it.javaClass.simpleName}") }
+        }
+    }
+
+    /** 一键撤销本轮重放（判据④；结果一句话回调回主线程——页签钮与卡上钮都走这里）。 */
+    fun undoReplay(onResult: (String) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val note = runCatching {
+                com.example.zhengdao.baopu.subconscious.undoLatestReplay(
+                    appCtx,
+                    System.currentTimeMillis(),
+                )
+            }.getOrDefault("撤销没跑成（见日志）")
+            withContext(Dispatchers.Main) {
+                refreshReplayRowState()
+                onResult(note)
+            }
+        }
+    }
+
+    /** 卡上「知道了」：收起这一行（不动撤销快照——撤销是整轮的事）。 */
+    fun dismissReplayRow(rowId: String) {
+        com.example.zhengdao.baopu.subconscious.ReplayRowStore.dismiss(rowId)
+        refreshReplayRowState()
+        RunLog.log("重放收起：$rowId")
+    }
+
+    /**
+     * 卡上点了一枚按钮（屏幕层原样转交 id，本层按当前槽位归类）。
+     *
+     * 授权/提案的按钮 id 就是引擎选项 id ⇒ 原路 [answerChoice] 答回去，
+     * 执行路径（解锁/落盘）一个字没动；「去设置页处理」由屏幕层拦截（它拥有
+     * 设置页开关），不往控制器传。
+     */
+    fun onDecisionAction(id: String) {
+        val slot = decisionSlot ?: return
+        onDecisionCardAction(slot.id, id)
+    }
+
+    /**
+     * 对**指定**的一张卡动手（决策中心里点行开的卡；不依赖当前槽位）。
+     *
+     * 分派层只认前缀（动作本体在下面三个助手——本函数曾因分支体全在怀里被 detekt
+     * 点名复杂度，678 起拆出；各分支的按钮 id 与落点一字未改）。
+     *
+     * @param key 卡键（`auth:`/`persona:`/`effect:`/`suggestion:`/`replay` 前缀，见 [DecisionItem]）
+     */
+    fun onDecisionCardAction(key: String, buttonId: String) {
+        when {
+
+            // 676 回响卡：只有一枚收尾钮——人看过就收（从页签行里撤下这一枚信号；
+            // 账行与账本一行不动——信号不是任务）。
+            key.startsWith("sub:") -> dismissSubconsciousSignal(key, buttonId)
+            key.startsWith("inspiration:") -> ignoreInspirationSignal(key, buttonId)
+
+            key.startsWith("effect:") -> onEffectCardAction(key.removePrefix("effect:"), buttonId)
+            key.startsWith("suggestion:") -> onSuggestionCardAction(key.removePrefix("suggestion:"), buttonId)
+            key.startsWith("replay") -> onReplayCardAction(key, buttonId)
+            else -> answerChoice(buttonId) // auth: / persona: ⇒ 引擎选项 id 原路答回
+        }
+    }
+
+    /** effect 卡三钮（本尊一行不动——只把分派挪出 [onDecisionCardAction]）。 */
+    private fun onEffectCardAction(eventId: String, buttonId: String) {
+        when (buttonId) {
+            "keep" -> keepPostAdoption(eventId)
+            "later" -> laterPostAdoption(eventId)
+            "rollback" -> rollbackPostAdoption(eventId)
+            else -> Unit // tosettings：屏幕层拦截
+        }
+    }
+
+    /** 建议卡三决策（99 批报告 §6：采纳只走现有落盘通道）。 */
+    private fun onSuggestionCardAction(candidateId: String, buttonId: String) {
+        when (buttonId) {
+            "reject" -> decideSuggestion(candidateId, SuggestionDecision.REJECT)
+            "defer" -> decideSuggestion(candidateId, SuggestionDecision.DEFER)
+            "adopt" -> decideSuggestion(candidateId, SuggestionDecision.ADOPT)
+            else -> Unit
+        }
+    }
+
+    /** 重放卡两钮（522/678：知道了＝收起这一行；撤销＝一键回到重放前——判据④）。 */
+    private fun onReplayCardAction(key: String, buttonId: String) {
+        when (buttonId) {
+            "dismiss" -> dismissReplayRow(key)
+            "undo" -> undoReplay { }
+            else -> Unit
+        }
+    }
+
     // ── 决策中心的数据口（屏幕层只渲染，不自己判） ────────────────────────────
 
     /** 待授权页签：当前那张授权卡（引擎单槽，最多一张）。 */
@@ -1623,6 +1708,9 @@ internal class BaopuChatController(context: Context) {
                     ),
                 )
             }
+            // 522/678 重放类行：经验条目＋合并建议（每条带 L0 指针；replayRows 是
+            // Compose 状态，读它进组合 ⇒ 行槽一变页签自动重算——判据①的行只进本页签）。
+            replayRows.forEach { add(it) }
         },
     )
 
@@ -1649,6 +1737,11 @@ internal class BaopuChatController(context: Context) {
         // 在屏幕层的点击回调里经 [onInspirationOpened] 走一次（本方法每次重组都会被调，
         // 副作用挂这里会跟着重组重放）。
         key.startsWith("inspiration:") -> inspirationSpecForKey(key)
+        // 522/678 重放卡（经验条目／合并建议同款卡；纯读——副作用在动作分支）。
+        key.startsWith("replay") -> com.example.zhengdao.baopu.subconscious.ReplayRowStore
+            .latest()
+            .firstOrNull { it.id == key }
+            ?.let { replaySpec(it) }
 
         else -> null
     }

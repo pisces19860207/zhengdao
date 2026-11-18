@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sixth-seventy-eighth batch · copy for 522 hippocampal replay (2026-11-17).
+  Standalone file (house style of strings_baopu_audit.xml / strings_baopu_inspiration.xml):
+  shared strings.xml is a high-conflict file, this batch leaves it untouched.
+  Keys map one-to-one with values/strings_baopu_replay.xml.
+-->
+<resources>
+    <!-- Type label for replay rows in the Suggestions tab (same area, distinguished by typeLabel). -->
+    <string name="replay_type_label">Replay</string>
+
+    <!-- Replay card (body = assembled entry text; chips are L0 pointers). -->
+    <string name="replay_card_title">Experience replay</string>
+    <string name="replay_merge_card_title">Merge suggestion</string>
+    <string name="replay_dismiss">Got it</string>
+    <string name="replay_undo">Undo this replay</string>
+    <string name="replay_card_footer">Suggestions only: no auto-merge, no memory edits. Undo restores the suggestion area and state to pre-replay; every entry links back to its L0 message.</string>
+
+    <!-- One-click undo at the top of the tab (shown only when replay rows exist). -->
+    <string name="replay_undo_tab">Undo this replay</string>
+</resources>

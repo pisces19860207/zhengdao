@@ -89,6 +89,15 @@ class ZhengdaoApp : Application() {
         com.example.zhengdao.baopu.safety.HaltGate.install(this)
         com.example.zhengdao.baopu.safety.SafetyPrefs.install(this)
         com.example.zhengdao.baopu.safety.SafetyWiring.install(this)
+        // 第五百二十二批（678 海马重放）：**机会式**灭屏触发——只挂一个事件接收器
+        // （ACTION_SCREEN_OFF），不轮询、不定时（判据⑤：没有第二个调度器；判据②的
+        // 空闲窗口闸在 subconscious 纯层，这里只是把「灭屏」这个时机递过去）。
+        // 跑不跑由窗口闸定（夜间/灭屏/无任务），一天 ≤1 次还有天闸兜底。
+        // goAsync＋自带线程：接收器 onReceive 在主线程，装配层不许在主线程读盘（264 探针）。
+        registerReceiver(
+            ReplayScreenOffReceiver(),
+            android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),
+        )
         // 262六格验收后补：玄览 WebView 远程调试（仅 debug 包）
         // 没有这一行，chrome://inspect 看不到 App 内任何 WebView；
         // 正式包 BuildConfig.DEBUG=false，行为逐字节不变。
@@ -238,5 +247,28 @@ class ZhengdaoApp : Application() {
                 .penaltyLog()
                 .build(),
         )
+    }
+}
+
+/**
+ * 522/678 海马重放的**机会式**灭屏触发（事件接收器，不是调度器：零轮询、零定时，
+ * 判据⑤「没有第二个调度器」的边界——跑不跑由 subconscious 纯层的空闲窗口闸定）。
+ *
+ * goAsync ＋ 自带线程：`onReceive` 在主线程，而装配层要读记忆/消息库——
+ * 主线程零读盘（264 探针纪律）。接收器随进程活；进程死了错过灭屏就等下一个时机
+ * （页签打开那一路还在），不补偿、不补跑。
+ */
+private class ReplayScreenOffReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+        if (intent.action != android.content.Intent.ACTION_SCREEN_OFF) return
+        val app = context.applicationContext
+        val pending = goAsync()
+        Thread {
+            try {
+                com.example.zhengdao.baopu.subconscious.replayOnScreenOff(app)
+            } finally {
+                pending.finish()
+            }
+        }.apply { name = "zhengdao-replay-screen-off" }.start()
     }
 }

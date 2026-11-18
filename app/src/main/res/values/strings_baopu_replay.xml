@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第六百七十八批 · 522 海马重放的文案（2026-11-17）。
+  单独成文件（房型照 635 的 strings_baopu_audit.xml／677 的 strings_baopu_inspiration.xml）：
+  共享 strings.xml 是高冲突文件，本批对它零改动。键与 values-en/strings_baopu_replay.xml 一一对应。
+-->
+<resources>
+    <!-- 「建议」页签重放类行的类型签（与 99 建议／100 效果／635 对账同区，typeLabel 区分）。 -->
+    <string name="replay_type_label">重放</string>
+
+    <!-- 重放卡（点开同款卡；正文＝产物一段话，chips 是 L0 指针）。 -->
+    <string name="replay_card_title">经验重放</string>
+    <string name="replay_merge_card_title">合并建议</string>
+    <string name="replay_dismiss">知道了</string>
+    <string name="replay_undo">撤销本轮重放</string>
+    <string name="replay_card_footer">只出建议：不自动合并、不改记忆正文。撤销后建议区与状态回到重放前；每条都可点回 L0 原消息。</string>
+
+    <!-- 页签顶部一键撤销（判据④：有重放行才显示；点一下＝回到重放前、无残留）。 -->
+    <string name="replay_undo_tab">撤销本次重放</string>
+</resources>

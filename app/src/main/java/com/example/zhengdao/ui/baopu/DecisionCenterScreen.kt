@@ -433,10 +433,31 @@ private fun SuggestionsTab(
     // 534/677：进页签算一轮灵感唤醒（机会式——用户打开才算，零后台调度，不是第二个执行器；
     // 浮不浮归 subconscious 纯层判据：三重命中缺一不浮、每天 ≤1 次、忽略 24h 不再浮）。
     LaunchedEffect(Unit) { controller.refreshInspirationRows() }
+    // 522/678：进页签算一轮海马重放（机会式——用户打开页签才算，零后台调度，不是
+    // 第二个执行器；跑不跑归 subconscious 纯层判据：空闲窗口＋一天 ≤1 次）。
+    LaunchedEffect(Unit) { controller.refreshReplayRows() }
     var showCapture by remember { mutableStateOf(false) }
+    var replayUndoNote by remember { mutableStateOf<String?>(null) }
+    val rows = controller.decisionCenterSuggestionRows()
     Column(Modifier.fillMaxSize()) {
         InspirationCaptureRow(onClick = { showCapture = true })
-        val rows = controller.decisionCenterSuggestionRows()
+        // 522/678 一键撤销（判据④）：有重放行才显示；点一下＝建议区与状态回到重放前。
+        if (controller.replayRows.isNotEmpty()) {
+            TextButton(
+                onClick = { controller.undoReplay { replayUndoNote = it } },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            ) {
+                Text(stringResource(R.string.replay_undo_tab))
+            }
+        }
+        replayUndoNote?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
         DecisionTabBody(DecisionTab.SUGGESTIONS, empty = rows.isEmpty()) {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 items(rows, key = { it.id }) { row ->
