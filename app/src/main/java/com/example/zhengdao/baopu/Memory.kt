@@ -175,23 +175,31 @@ internal object MemoryRules {
     }
 
     /**
-     * 把一段文本切成「词集合」：CJK 二字元 bigram ＋ ASCII 连续段（小写）。
+     * 把一段文本切成「词 → 出现次数」：CJK 二字元 bigram ＋ ASCII 连续段（小写）。
      * 单字 CJK 不成词（信息量低噪声高），一律并进 bigram。
+     *
+     * **分词只有这一套**（702 派工单「分词复用 tokensOf／不新造第二套分词」的落点）：
+     * BM25 的 tf 需要真词频，`Set` 只有去重形态给不出来，所以把计数做成核心，
+     * [tokensOf] 委托它取 keys（`LinkedHashMap.keys` 保插入序，切法与词形逐字不变）。
      */
-    fun tokensOf(text: String): Set<String> {
-        val out = LinkedHashSet<String>()
+    fun tokenCountsOf(text: String): Map<String, Int> {
+        val out = LinkedHashMap<String, Int>()
         val cjk = StringBuilder()
         val ascii = StringBuilder()
         fun flushAscii() {
             if (ascii.isNotEmpty()) {
-                out.add(ascii.toString().lowercase())
+                out.merge(ascii.toString().lowercase(), 1, Int::plus)
                 ascii.setLength(0)
             }
         }
         fun flushCjk() {
             if (cjk.isNotEmpty()) {
                 val s = cjk.toString()
-                if (s.length == 1) out.add(s) else for (i in 0..s.length - 2) out.add(s.substring(i, i + 2))
+                if (s.length == 1) {
+                    out.merge(s, 1, Int::plus)
+                } else {
+                    for (i in 0..s.length - 2) out.merge(s.substring(i, i + 2), 1, Int::plus)
+                }
                 cjk.setLength(0)
             }
         }
@@ -205,6 +213,9 @@ internal object MemoryRules {
         flushAscii(); flushCjk()
         return out
     }
+
+    /** 把一段文本切成「词集合」（[tokenCountsOf] 的去重视图：CJK 二字元 bigram ＋ ASCII 连续段）。 */
+    fun tokensOf(text: String): Set<String> = tokenCountsOf(text).keys
 
     private val PUNCT = setOf(
         '，', '。', '！', '？', '；', '：', '、', '（', '）', '「', '」', '『', '』',
