@@ -21,12 +21,23 @@ data class Environment(val groundYCm: Double, val sandYCm: Double) {
 /** 违规类别。 */
 enum class ViolationKind { SELF_COLLISION, GROUND_PENETRATION, SAND_PENETRATION, LIMIT_EXCEEDED }
 
-/** 单条违规：类别＋当事段＋（碰撞时的）对方段＋深度/越限量＋一句话。 */
+/** 量值单位（判据产物只存整数：310 禁标量分，判据结论类型不许带浮点）。 */
+enum class ViolationUnit { MILLIMETRE, MILLIRADIAN }
+
+/** 单条违规：类别＋当事段＋（碰撞时的）对方段＋越限量＋一句话。 */
 data class Violation(
     val kind: ViolationKind,
     val segment: String,
     val other: String? = null,
-    val depthCm: Double = 0.0,
+    /**
+     * 量值，**整数**：穿透类＝毫米；越限类＝毫弧度（[unit] 区分）。
+     *
+     * 为什么不存 Double 厘米：310「禁标量分」——本文件含判据结论类型 [PoseVerdict]，
+     * 文件里出现 `val x: Double` 就红（ci #2046 真因）。厘米在落账前乘 10 取整到毫米，
+     * 分辨率足够（几何内核仍用厘米浮点算，只有结论这一格是整数）。
+     */
+    val amountMilli: Int = 0,
+    val unit: ViolationUnit = ViolationUnit.MILLIMETRE,
     val detail: String = "",
 )
 
@@ -70,7 +81,15 @@ object PoseValidity {
                 if (dist > tol) continue
                 val depth = Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0
                 if (depth > tol) {
-                    out.add(Violation(ViolationKind.SELF_COLLISION, a.name, b.name, depth, "段间穿透"))
+                    out.add(
+                        Violation(
+                            ViolationKind.SELF_COLLISION,
+                            a.name,
+                            b.name,
+                            amountMilli = milliOf(depth),
+                            detail = "段间穿透",
+                        ),
+                    )
                 }
             }
         }
@@ -80,14 +99,33 @@ object PoseValidity {
     private fun isAdjacent(a: String, b: String, adjacent: Set<Pair<String, String>>): Boolean =
         (a to b) in adjacent || (b to a) in adjacent
 
+    /** 厘米 → 毫米整数（四舍五入；只用于把结论写成整数，内核仍按厘米算）。 */
+    private fun milliOf(
+        cm: Double,
+    ): Int = Math.round(cm * 10.0).toInt()
+
     private fun groundViolations(segments: List<SegmentProxy>, env: Environment): List<Violation> {
         val out = ArrayList<Violation>()
         for (s in segments) {
             val lowest = s.shape.lowestY()
             if (lowest < env.groundYCm) {
-                out.add(Violation(ViolationKind.GROUND_PENETRATION, s.name, depthCm = env.groundYCm - lowest, detail = "穿地"))
+                out.add(
+                    Violation(
+                        ViolationKind.GROUND_PENETRATION,
+                        s.name,
+                        amountMilli = milliOf(env.groundYCm - lowest),
+                        detail = "穿地",
+                    ),
+                )
             } else if (lowest < env.sandYCm) {
-                out.add(Violation(ViolationKind.SAND_PENETRATION, s.name, depthCm = env.sandYCm - lowest, detail = "穿沙"))
+                out.add(
+                    Violation(
+                        ViolationKind.SAND_PENETRATION,
+                        s.name,
+                        amountMilli = milliOf(env.sandYCm - lowest),
+                        detail = "穿沙",
+                    ),
+                )
             }
         }
         return out
@@ -98,7 +136,8 @@ object PoseValidity {
             Violation(
                 ViolationKind.LIMIT_EXCEEDED,
                 it.name,
-                depthCm = kotlin.math.abs(it.requestedRad - it.appliedRad),
+                amountMilli = Math.round(kotlin.math.abs(it.requestedRad - it.appliedRad) * 1000.0).toInt(),
+                unit = ViolationUnit.MILLIRADIAN,
                 detail = "请求 ${it.requestedRad} 截到 ${it.appliedRad}",
             )
         }

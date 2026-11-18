@@ -28,7 +28,9 @@ class PoseValidityTest {
         assertFalse(verdict.valid)
         val v = verdict.violations.single()
         assertEquals(ViolationKind.SELF_COLLISION, v.kind)
-        assertTrue("穿透深度≈1", abs(v.depthCm - 1.0) <= 0.05)
+        // 结论里的量值是整数毫米（310 禁标量分）：1cm ≈ 10mm，四舍五入容 1mm
+        assertEquals(ViolationUnit.MILLIMETRE, v.unit)
+        assertTrue("穿透深度≈1cm（${v.amountMilli}mm）", abs(v.amountMilli - 10) <= 1)
     }
 
     @Test
@@ -56,7 +58,7 @@ class PoseValidityTest {
         val verdict = PoseValidity.check(listOf(seg("foot", Vec3(0.0, 0.5, 0.0))), env)
         val v = verdict.violations.single()
         assertEquals(ViolationKind.GROUND_PENETRATION, v.kind)
-        assertEquals(0.5, v.depthCm, 1e-9)
+        assertEquals(5, v.amountMilli)
     }
 
     @Test
@@ -64,7 +66,7 @@ class PoseValidityTest {
         val verdict = PoseValidity.check(listOf(seg("foot", Vec3(0.0, 1.1, 0.0))), sandy)
         val v = verdict.violations.single()
         assertEquals(ViolationKind.SAND_PENETRATION, v.kind)
-        assertEquals(0.2, v.depthCm, 1e-9)
+        assertEquals(2, v.amountMilli)
     }
 
     @Test
@@ -87,7 +89,8 @@ class PoseValidityTest {
         val v = verdict.violations.single()
         assertEquals(ViolationKind.LIMIT_EXCEEDED, v.kind)
         assertEquals("knee", v.segment)
-        assertEquals(0.5, v.depthCm, 1e-9)
+        assertEquals(ViolationUnit.MILLIRADIAN, v.unit)
+        assertEquals(500, v.amountMilli)
     }
 
     @Test
@@ -131,7 +134,7 @@ class PoseValidityTest {
         val box = SegmentProxy("torso", Box(Vec3(0.0, 0.9, 0.0), Vec3(1.0, 1.0, 1.0)))
         val verdict = PoseValidity.check(listOf(box), env)
         assertEquals(ViolationKind.GROUND_PENETRATION, verdict.violations.single().kind)
-        assertEquals(0.1, verdict.violations.single().depthCm, 1e-9)
+        assertEquals(1, verdict.violations.single().amountMilli)
     }
 
     @Test
