@@ -857,11 +857,7 @@ private fun McpServerRow(
                 peer?.let { pr ->
                     val text = when (pr.state) {
                         PeerPanelState.OK ->
-                            stringResource(
-                                R.string.baopu_mcp_peer_ok,
-                                formatClock(pr.lastOkAtMs ?: 0),
-                                pr.toolCount,
-                            )
+                            stringResource(R.string.baopu_mcp_peer_ok, formatClock(pr.lastOkAtMs ?: 0))
                         PeerPanelState.STALE ->
                             if (pr.staleByTtl) {
                                 stringResource(R.string.baopu_mcp_peer_stale_ttl, formatClock(pr.lastOkAtMs ?: 0))

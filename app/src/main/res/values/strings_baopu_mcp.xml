@@ -46,7 +46,7 @@
     <!-- 707 · 对端探测（548 探针的生产接线）：按钮＋面板每行的探测三态。
          陈旧必须看得见：有登记但探测失败/超时 ⇒ 标「陈旧」＋最后一次成功时间，不许假装可用。 -->
     <string name="baopu_mcp_peer_probe">探测</string>
-    <string name="baopu_mcp_peer_ok">探测：可用（上次 %1$s · %2$d 个工具）</string>
+    <string name="baopu_mcp_peer_ok">探测：可用（上次 %1$s）</string>
     <string name="baopu_mcp_peer_stale_fail">探测：陈旧——上次探测失败，最后成功 %1$s</string>
     <string name="baopu_mcp_peer_stale_ttl">探测：陈旧——超过 24 小时没探成，最后成功 %1$s</string>
     <string name="baopu_mcp_peer_unknown">探测：未探测（连上或点「探测」后才有清单）</string>
