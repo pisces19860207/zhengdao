@@ -14,6 +14,7 @@
 // 执行器永不回写技能文件——本文件没有任何入口能让执行器改技能（「技能不自动改」结构性成立）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.learn.SkillDraftRules
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.security.MessageDigest
@@ -51,6 +52,10 @@ internal object TeachReplayStore {
      * 确认后的落盘（唯一写口）。顺序：凭证扫描 → 名字安全化 → 回放.json 先写临时文件 →
      * SKILL.md 走 184 写口 → 临时文件转正。SKILL.md 成功而回放.json 转正失败 ⇒ 返回失败
      * 原因（人可以手删半条，机器不静默吞）。
+     *
+     * [expectlessNavigate] 是 697 窄口（带证据、但观察里没有 URL 变化的导航步）：交给 G2
+     * 门按条件放行，并**强制**在技能正文里标「该步未校验跳转」——门放宽了，正文必须说出来，
+     * 否则下一个读技能的人会以为这一步有跳转校验。
      */
     fun saveConfirmed(
         draft: TeachSkillDraft,
@@ -58,6 +63,7 @@ internal object TeachReplayStore {
         globalRoot: File,
         personaFiles: PersonaFiles,
         stampText: String,
+        expectlessNavigate: List<ExpectlessNavigate> = emptyList(),
     ): SaveResult {
         val json = draft.skill.toJsonText()
         // ① 凭证扫描（负例 7）：发现问题一个字节不写
@@ -82,7 +88,11 @@ internal object TeachReplayStore {
         val existingMd = skillMdFile(projectRoot, safeName).takeIf { it.isFile }
             ?.let { runCatching { it.readText(Charsets.UTF_8) }.getOrNull() }
         val gate = SkillAcceptance.entryGate(
-            subject = EntrySubject.Replay(draft.skill, contractBody = existingMd),
+            subject = EntrySubject.Replay(
+                draft.skill,
+                contractBody = existingMd,
+                expectlessNavigate = expectlessNavigate,
+            ),
             rehearsal = Rehearsal(sites = listOfNotNull(TeachSafety.hostOf(draft.skill.startUrl))),
         )
         val gateNotice: String? = when (gate) {
@@ -102,7 +112,11 @@ internal object TeachReplayStore {
         }
 
         // ③ SKILL.md 走 184 写口（房型＝SkillCardWriter.save：先探盘上状态，头按现状重算）
-        val humanBody = skillMdBody(draft.skill, draft.warnings + listOfNotNull(gateNotice))
+        val narrowNotes = expectlessNavigate.filter { it.isAdmissible() }.map { n ->
+            "第 ${n.index} 步${SkillDraftRules.EXPECTLESS_MARK}（观察里没有 URL 变化证据，" +
+                "只有节点数 ${n.nodeCountBefore}→${n.nodeCountAfter}）——回放时这一步不以跳转判定成功"
+        }
+        val humanBody = skillMdBody(draft.skill, draft.warnings + narrowNotes + listOfNotNull(gateNotice))
         val probe = SkillStore.plan(
             proposal = SkillProposal(
                 scope = SkillScope.PROJECT,

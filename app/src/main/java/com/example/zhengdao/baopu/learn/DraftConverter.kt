@@ -18,6 +18,7 @@
 //     fingerprintOk 判据怎么办是 643/255 链的事，转换层不造假锚。
 package com.example.zhengdao.baopu.learn
 
+import com.example.zhengdao.baopu.ExpectlessNavigate
 import com.example.zhengdao.baopu.TeachAction
 import com.example.zhengdao.baopu.TeachElementSnapshot
 import com.example.zhengdao.baopu.TeachExpect
@@ -37,7 +38,16 @@ internal object DraftConverter {
 
     /** 转换产物（或拒绝原因——闭集两态）。 */
     sealed interface Outcome {
-        data class Skill(val skill: TeachSkill) : Outcome
+        /**
+         * @param expectlessNavigate 697 窄口：这批步是**带证据的导航步、没有 URL 断言**，
+         *   转正门对它放宽（见 [com.example.zhengdao.baopu.SkillAcceptance.entryGate]），
+         *   同时技能正文要标「未校验跳转」。空＝没有窄口步（常规路径）。
+         */
+        data class Skill(
+            val skill: TeachSkill,
+            val expectlessNavigate: List<ExpectlessNavigate> = emptyList(),
+        ) : Outcome
+
         data class Refused(val reason: String) : Outcome
     }
 
@@ -65,6 +75,7 @@ internal object DraftConverter {
         if (resolved.skeleton.isEmpty()) return Outcome.Refused("草案没有可回放的步骤")
         val steps = ArrayList<TeachStep>(resolved.skeleton.size)
         val paramSteps = HashMap<String, MutableList<Int>>()
+        val expectless = ArrayList<ExpectlessNavigate>()
         resolved.skeleton.forEach { step ->
             val action = TeachAction.fromWire(step.kind) ?: return Outcome.Refused("第 ${step.index} 步动作「${step.kind}」不可回放")
             val locators = tiersOf(step.locator)
@@ -76,6 +87,16 @@ internal object DraftConverter {
             val value = step.param?.takeIf { action == TeachAction.TYPE || action == TeachAction.SELECT }
                 ?.let { "\${$it}" } // v2 口径：参数步只有 ${name} 占位，字面量在结构上不存在
             if (step.param != null) paramSteps.getOrPut(step.param) { mutableListOf() }.add(step.index)
+            // 697 窄口：带证据的导航步没有 URL 断言 ⇒ 记下"这一步的跳转没被校验"，
+            // 交给转正门（放宽要有条件）与技能正文（必须在正文里说出来）
+            if (step.expectlessNavigate) {
+                expectless += ExpectlessNavigate(
+                    index = step.index,
+                    evidence = step.evidence,
+                    nodeCountBefore = step.nodeCount,
+                    nodeCountAfter = step.nodeCountAfter,
+                )
+            }
             steps += TeachStep(
                 index = step.index,
                 action = action,
@@ -116,7 +137,7 @@ internal object DraftConverter {
             targetSite = resolved.targetSite,
             finalSnapshot = null,
         )
-        return Outcome.Skill(skill)
+        return Outcome.Skill(skill, expectless)
     }
 
     /**

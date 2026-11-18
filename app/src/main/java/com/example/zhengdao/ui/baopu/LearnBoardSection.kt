@@ -49,6 +49,7 @@ import com.example.zhengdao.baopu.learn.DraftAdjudication
 import com.example.zhengdao.baopu.learn.DraftChoice
 import com.example.zhengdao.baopu.learn.DraftCheck
 import com.example.zhengdao.baopu.learn.LearnCardTexts
+import com.example.zhengdao.baopu.learn.LearnToast
 import com.example.zhengdao.baopu.learn.LearnToastKind
 import com.example.zhengdao.baopu.learn.LearnTriggerType
 import com.example.zhengdao.baopu.learn.LocatorCandidate
@@ -285,6 +286,8 @@ private fun DraftRow(draft: SkillDraft, adjudications: List<DraftAdjudication>, 
                 if (draft.mergedFrom >= 2) add(stringResource(R.string.learn_draft_merged_mark, draft.mergedFrom))
                 add(stringResource(R.string.learn_draft_steps_mark, draft.skeleton.size, draft.skeleton.sumOf { it.evidence.size }))
                 if (draft.hasConflict()) add(stringResource(R.string.learn_draft_conflict_mark))
+                val expectless = draft.skeleton.count { it.expectlessNavigate }
+                if (expectless > 0) add(stringResource(R.string.learn_draft_expectless_mark, expectless))
                 val optionals = draft.skeleton.count { it.optional }
                 if (optionals > 0) add(stringResource(R.string.learn_draft_optional_mark, optionals))
                 val params = draft.params.joinToString("、") { it.name }
@@ -538,21 +541,39 @@ private fun parseDefaults(text: String): Map<String, String> = text.lines()
 internal fun LearnToasts() {
     val context = LocalContext.current
     val toast = ObserveCenter.lastToast.collectAsState()
-    // 文案在组合期用 stringResource 解析（配置感知；LocalContext.getString 过不了 lint 硬闸）
-    val text = when (toast.value?.kind) {
+    val text = learnToastText(toast.value)
+    LaunchedEffect(toast.value) {
+        if (toast.value == null || text.isEmpty()) return@LaunchedEffect
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 轻提示的文案（一款一句）。
+ *
+ * 单开一个函数不为好看：`LearnToastKind` 每加一款就往 `LearnToasts` 里多一根分支，
+ * 分支一多就撞 detekt 的圈复杂度墙（697/698 加两款后实测 16 > 15）——文案映射本来就该
+ * 自己是一件小事，不跟「收集状态＋弹窗」挤在一个函数里。
+ *
+ * 文案在组合期用 stringResource 解析（配置感知；LocalContext.getString 过不了 lint 硬闸）。
+ */
+@Composable
+private fun learnToastText(toast: LearnToast?): String {
+    // 先摘掉 null：`when (toast?.kind)` 的 subject 是表达式，分支体里 toast 不会被智能转换
+    // 成非空（Kotlin 只对「同一变量直接判空」做转换）——写成 `toast.arg` 会编译不过。
+    if (toast == null) return ""
+    return when (toast.kind) {
         LearnToastKind.ANSWERED -> stringResource(R.string.learn_answered_toast)
         LearnToastKind.CAPTURE_WAITING -> stringResource(R.string.learn_capture_waiting_toast)
         LearnToastKind.TAUGHT -> stringResource(R.string.learn_taught_toast)
         LearnToastKind.KEEP_AMBIGUOUS -> stringResource(R.string.learn_keep_ambiguous_toast)
         LearnToastKind.CAPTURE_TIMEOUT -> stringResource(R.string.learn_capture_timeout_toast)
         LearnToastKind.DRAFT_CREATED -> stringResource(R.string.learn_draft_created_toast)
-        LearnToastKind.DRAFT_MERGED -> stringResource(R.string.learn_draft_merged_toast, toast.value?.arg?.toIntOrNull() ?: 0)
-        LearnToastKind.DRAFT_REJECTED -> stringResource(R.string.learn_draft_rejected_toast, toast.value?.arg ?: "")
-        null -> ""
-    }
-    LaunchedEffect(toast.value) {
-        if (toast.value == null || text.isEmpty()) return@LaunchedEffect
-        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+        LearnToastKind.DRAFT_MERGED ->
+            stringResource(R.string.learn_draft_merged_toast, toast.arg.toIntOrNull() ?: 0)
+        LearnToastKind.DRAFT_REJECTED -> stringResource(R.string.learn_draft_rejected_toast, toast.arg)
+        LearnToastKind.DRAFT_DUPLICATE -> stringResource(R.string.learn_draft_duplicate_toast, toast.arg)
+        LearnToastKind.DRAFT_NO_NEW_OBSERVATION -> stringResource(R.string.learn_draft_no_observation_toast)
     }
 }
 

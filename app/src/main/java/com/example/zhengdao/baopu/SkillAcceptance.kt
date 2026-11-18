@@ -21,6 +21,7 @@
 // 本文件零 IO、零时钟、零 Android（与 233/205 的纯层同一纪律）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.learn.SkillDraftRules
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -194,9 +195,35 @@ internal sealed interface EntryVerdict {
 internal sealed interface EntrySubject {
     /**
      * @param contractBody 盘上既有 SKILL.md 的正文（重存时用来读 protected；没有 ⇒ null）
+     * @param expectlessNavigate 697 窄口：**带证据的导航步、没有 URL 断言**的清单
+     *   （草案侧 [com.example.zhengdao.baopu.learn.DraftConverter] 给）。空＝常规路径，
+     *   G2 照旧「每步都要有 expect」。
      */
-    data class Replay(val skill: TeachSkill, val contractBody: String? = null) : EntrySubject
+    data class Replay(
+        val skill: TeachSkill,
+        val contractBody: String? = null,
+        val expectlessNavigate: List<ExpectlessNavigate> = emptyList(),
+    ) : EntrySubject
+
     data class Prose(val body: String) : EntrySubject
+}
+
+/**
+ * 697 窄口的一条记录：**哪一步**没有 URL 断言，以及它凭什么被放行。
+ *
+ * 为什么门禁不认一个裸 flag：`expect` 是「回放能证明这步成了」的唯一凭据，放宽就等于
+ * 承认某一步「证明不了也算成」。所以放行必须带**当时观察到的证据**——指得回账的行，
+ * 且页面确实变过（节点数前后不同）。三条缺一条，门就不开（[isAdmissible]）。
+ */
+internal data class ExpectlessNavigate(
+    val index: Int,
+    val evidence: List<String>,
+    val nodeCountBefore: Int,
+    val nodeCountAfter: Int,
+) {
+    /** 窄口准入：证据非空 ＋ 节点数确有变化（两条都是观察给的，不是调用方声明的）。 */
+    fun isAdmissible(): Boolean = evidence.isNotEmpty() &&
+        nodeCountBefore > 0 && nodeCountAfter > 0 && nodeCountBefore != nodeCountAfter
 }
 
 internal object SkillAcceptance {
@@ -354,7 +381,10 @@ internal object SkillAcceptance {
                 if (skill.steps.isEmpty()) {
                     return EntryVerdict.Reject("G2 未过：技能没有步骤，success 无从观察——先示教一遍")
                 }
-                val missing = skill.steps.filter { it.expect.isEmpty() }.map { it.index }
+                // 697 窄口：只有「证据齐 ＋ 节点数确实变了 ＋ 动作是点击」的那几步才免 expect
+                expectlessProblem(skill, subject.expectlessNavigate)?.let { return EntryVerdict.Reject(it) }
+                val exempt = exemptIndices(subject.expectlessNavigate)
+                val missing = skill.steps.filter { it.expect.isEmpty() && it.index !in exempt }.map { it.index }
                 if (missing.isNotEmpty()) {
                     return EntryVerdict.Reject(
                         "G2 未过：第 ${missing.joinToString("、")} 步没有可观察断言（expect）——" +
@@ -362,6 +392,8 @@ internal object SkillAcceptance {
                     )
                 }
                 notes += "G2 过：每步都有可观察断言（${skill.steps.size} 步）"
+                // 放宽了就必须留痕（这句话同时进 notes 与技能正文）
+                narrowNote(exempt)?.let { notes += it }
                 surface = replaySurface(skill) + rehearsal.touches
             }
             is EntrySubject.Prose -> {
@@ -418,6 +450,30 @@ internal object SkillAcceptance {
                 notes = notes,
             )
         }
+    }
+
+    /**
+     * 697 窄口的第一道核：**只对点击导航步开**（递进来的记录若指向一个非点击步 ⇒ 拒）。
+     * 第二道（证据／节点数）在 [ExpectlessNavigate.isAdmissible] 里，由 [exemptIndices] 执行。
+     */
+    private fun expectlessProblem(skill: TeachSkill, records: List<ExpectlessNavigate>): String? {
+        val exempt = exemptIndices(records)
+        val bad = skill.steps.filter { it.index in exempt && it.action != TeachAction.CLICK }
+        if (bad.isEmpty()) return null
+        return "G2 未过：第 ${bad.joinToString("、") { it.index.toString() }} 步标了「${SkillDraftRules.EXPECTLESS_MARK}」，" +
+            "但动作不是点击——窄口只对导航步开"
+    }
+
+    /** 真正被放行的步号（证据齐＋节点数有变化才进这个集合）。 */
+    private fun exemptIndices(records: List<ExpectlessNavigate>): Set<Int> =
+        records.filter { it.isAdmissible() }.map { it.index }.toSet()
+
+    /** 窄口的留痕句（没有放行 ⇒ null）：门放宽了，账面上必须说清放行了哪几步。 */
+    private fun narrowNote(exempt: Set<Int>): String? = if (exempt.isEmpty()) {
+        null
+    } else {
+        "G2 窄口放行：第 ${exempt.sorted().joinToString("、")} 步是导航步、证据齐、节点数有变化，" +
+            "但没有 URL 断言——正文已标「${SkillDraftRules.EXPECTLESS_MARK}」"
     }
 
     /** 示教技能会碰到的面（步骤 URL／输入值／元素名与文案／定位值／演练痕迹）。 */

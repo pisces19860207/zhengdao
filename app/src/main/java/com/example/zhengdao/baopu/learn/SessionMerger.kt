@@ -86,6 +86,8 @@ internal object SessionMerger {
             if (name != null && params.none { it.name == name }) params += DraftParam(name, "step${x.index}.input")
             name
         } else x.param
+        val expect = (x.expect + y.expect).distinct()
+        val nav = mergeNav(x, y, expect)
         return DraftStep(
             index = x.index,
             intent = x.intent.ifBlank { y.intent },
@@ -95,9 +97,27 @@ internal object SessionMerger {
             param = paramName,
             optional = x.optional && y.optional,
             candidates = emptyList(),
-            expect = (x.expect + y.expect).distinct(),
+            expect = expect,
             evidence = x.evidence + y.evidence,
+            // 697：两步都是导航步才算导航步；**两次都没 url 证据**才保留窄口
+            // （有一次看到 url 变了 ⇒ expect 里有 urlChanged，那就不是「未校验」）
+            navigate = nav.first,
+            expectlessNavigate = nav.second,
+            nodeCount = x.nodeCount,
+            nodeCountAfter = x.nodeCountAfter,
         )
+    }
+
+    /**
+     * 697：归并后这一步还是不是导航步／还保不保窄口。
+     *
+     * 单开一个函数纯粹是为了不把 [mergedStep] 撑过复杂度墙（它本来就是三层配对里的热点）。
+     * 判据：任一侧是导航步 ⇒ 是导航步；**只有两侧都窄口、且合并后仍没有断言**才保留窄口。
+     */
+    private fun mergeNav(x: DraftStep, y: DraftStep, expect: List<String>): Pair<Boolean, Boolean> {
+        val navigate = x.navigate || y.navigate
+        val expectless = x.expectlessNavigate && y.expectlessNavigate && expect.isEmpty()
+        return navigate to expectless
     }
 
     /** 定位冲突（判据⑤的落点）：主位留空＝「没选定」；两套候选并存，由人裁。
@@ -113,6 +133,10 @@ internal object SessionMerger {
         candidates = if (x.candidates.isNotEmpty()) x.candidates + listOf(y.locator) else listOf(x.locator, y.locator),
         expect = (x.expect + y.expect).distinct(),
         evidence = x.evidence + y.evidence,
+        navigate = x.navigate || y.navigate,
+        expectlessNavigate = x.expectlessNavigate && y.expectlessNavigate && x.expect.isEmpty() && y.expect.isEmpty(),
+        nodeCount = x.nodeCount,
+        nodeCountAfter = x.nodeCountAfter,
     )
 
     /** 偶发步：只在一侧出现 ⇒ 降级为可选（231 切片 C）。 */

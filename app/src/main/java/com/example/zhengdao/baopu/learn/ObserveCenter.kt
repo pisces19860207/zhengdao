@@ -46,6 +46,12 @@ internal data class ArmedTeach(
 internal enum class LearnToastKind {
     ANSWERED, CAPTURE_WAITING, TAUGHT, KEEP_AMBIGUOUS, CAPTURE_TIMEOUT,
     DRAFT_CREATED, DRAFT_MERGED, DRAFT_REJECTED,
+
+    /** 698：与已有草案逐字相同 ⇒ 说清「跟哪条撞了」并指人去看（不静默）。 */
+    DRAFT_DUPLICATE,
+
+    /** 698：这一轮没有新的观察 ⇒ 说清「去操作几步再来」（不许拿上一轮硬生成）。 */
+    DRAFT_NO_NEW_OBSERVATION,
 }
 
 internal data class LearnToast(val seq: Int, val kind: LearnToastKind, val arg: String = "")
@@ -97,7 +103,10 @@ internal object ObserveCenter {
     /** 冲突步人裁的落盘壳（672；与草案同目录、不同前缀，见 [DraftAdjudicationStore]）。 */
     private var adjudicationStore: DraftAdjudicationStore = DraftAdjudicationStore(File("/dev/null", "x"))
 
-    /** 最近收口的会话快照（B 归纳的输入；「从最近观察建草案」用）。 */
+    /** 拒收的账（698；`草案/拒收-账.jsonl` 一行一条——失败可核，不靠嘴说）。 */
+    private var rejectLog: DraftRejectLog = DraftRejectLog(File("/dev/null", "x"))
+
+    /** 最近收口的会话快照（**退化源**：没有活跃会话时才用它；「从最近观察建草案」）。 */
     @Volatile private var lastSession: ObserveSnapshot? = null
 
     /** 确认转正的落盘依赖（工作区根／全局根／人设文件；缺省 null ⇒ confirm 如实拒）。 */
@@ -178,9 +187,13 @@ internal object ObserveCenter {
         this.harvest = harvest
         this.nodeTable = nodeTable
         this.enabled = enabled
+        // 接线即重置「上一轮」：install 之前的那份快照不属于这套落点（进程内单例，
+        // 生产只在启动时装一次；测试逐个装，别让上一个夹具的会话漏进来）
+        this.lastSession = null
         this.store = NotLearnedStore(File(root, NotLearnedStore.FILE_NAME))
         this.draftStore = SkillDraftStore(File(root, SkillDraftStore.DIR_NAME))
         this.adjudicationStore = DraftAdjudicationStore(File(root, SkillDraftStore.DIR_NAME))
+        this.rejectLog = DraftRejectLog(File(File(root, SkillDraftStore.DIR_NAME), DraftRejectLog.FILE_NAME))
         notLearnedFlow.value = store.state()
         refreshDrafts()
         pruneAll()
@@ -206,7 +219,8 @@ internal object ObserveCenter {
             return@withContext
         }
         val raw = runCatching { harvest(tabId) }.getOrNull() ?: return@withContext
-        val result = DrainResult.parse(raw) ?: return@withContext
+        // 收割时刻一并交进去：页事实行没自带 t 时用它兜（697：t 恒 0 ⇒「永远没有之后」⇒ 推不出 expect）
+        val result = DrainResult.parse(raw, now) ?: return@withContext
         if (discardNext) {
             discardNext = false // 这一批是关着时积下的：只清页内队列，不入账
             return@withContext
@@ -288,19 +302,43 @@ internal object ObserveCenter {
     // ── B/C：意图归纳与多次归并（阶段二）───────────────────────────────────────
 
     /**
-     * 「从最近观察建草案」（B 的入口）：把最近收口的会话归纳成技能草案进草稿区。
+     * 「从最近观察建草案」（B 的入口）：把**这一次**观察归纳成技能草案进草稿区。
      * goal 由人给（观察数据里没有意图，不猜）。同意图草案已在区里 ⇒ 自动归并成一条
      * （C；判据③的接线点），冲突步两套候选并存（判据⑤），不转正。
+     *
+     * ## 会话源（698 判据①②）——690 的 G-690-6 就死在这里
+     *
+     * 旧实现只认 [lastSession]，而它**只在收会话时**才更新（空闲 10 分钟／关开关／浏览器
+     * 离树）。于是「示教完不切走直接建草案」拿的是**上一轮**会话：重新归纳出来的东西与
+     * 已有草案逐字相同 ⇒ 被当重复吞掉，屏幕上一点反应都没有（人以为是按钮坏了）。
+     *
+     * 现在的取法（退化顺序，照派工单）：
+     *   ① **当前活跃会话**（还在收割、行没结算）——「我刚做的那一轮」正是它；
+     *   ② 没有活跃会话（浏览器已离树等）⇒ [lastSession]——「从最近一次观察建草案」；
+     *   ③ 两样都没有／活跃但一行都没有 ⇒ **明说「没有新的观察」**，绝不拿旧会话硬生成。
+     *
+     * ③ 为什么不能退回 lastSession：那一轮已经被归纳过了，再归纳一次只会得到一模一样
+     * 的东西——这正是 G-690-6 的原症状。宁可说「没有新的观察」，也不许假装干成了活。
+     *
+     * 拒收一律**发声**（判据③④）：toast 说人话（撞了哪条草案／为什么不行）＋ 账里一行。
      */
     fun induceDraft(goal: String): SkillDraftStore.AddOutcome {
-        val snapshot = lastSession
-            ?: return SkillDraftStore.AddOutcome.Rejected(listOf("还没有观察会话——先在玄览里操作几步"))
-        val sessionId = snapshot.openedAtMs.toString(36)
-        val outcome = when (val o = DraftInducer.induce(snapshot, sessionId, goal, clock().toString(36))) {
+        val source = draftSource() ?: return noNewObservation()
+        val snapshot = source.snapshot
+        val outcome = when (val o = DraftInducer.induce(snapshot, source.id, goal, clock().toString(36))) {
             is DraftInducer.Outcome.Drafted -> o.draft
-            is DraftInducer.Outcome.Rejected -> return rejected(o.problems)
-            DraftInducer.Outcome.NoSteps -> return rejected(
-                listOf("那段轨迹里没有可成步的操作（只有滚动或空会话）"),
+            is DraftInducer.Outcome.Rejected -> return reject(o.problems, source.id)
+            DraftInducer.Outcome.NoSteps -> return reject(
+                listOf("那段轨迹里没有可成步的操作（只有滚动或空会话）"), source.id,
+            )
+        }
+        // 判据③：同一段观察、同一意图再归纳一次 ⇒ 逐字相同。这不是「新草案」，也不是「归并」
+        // （归并是两次真观察）——说清楚跟哪条撞了，人自己去看/去弃。
+        draftStore.duplicateOf(outcome)?.let { existing ->
+            return reject(
+                listOf("$DUPLICATE_PREFIX（${existing.id}）· 查看已有草案"),
+                source.id,
+                existing.id,
             )
         }
         val result = draftStore.add(outcome, clock().toString(36))
@@ -308,9 +346,60 @@ internal object ObserveCenter {
         when (result) {
             is SkillDraftStore.AddOutcome.Merged -> toast(LearnToastKind.DRAFT_MERGED, result.withN.toString())
             is SkillDraftStore.AddOutcome.Created -> toast(LearnToastKind.DRAFT_CREATED)
-            else -> Unit
+            is SkillDraftStore.AddOutcome.Rejected -> reject(result.problems, source.id)
+            is SkillDraftStore.AddOutcome.Full -> reject(
+                listOf("草稿区满了（${result.cap} 条）——先弃掉几条旧草案再来建"), source.id,
+            )
         }
         return result
+    }
+
+    /**
+     * 建草案的会话源（698）。看到「活跃」两个字要看的是**行**，不是会话对象：
+     * 会话在浏览器一开就建了，头一两个心跳里可能一行操作都还没有——那不算「有观察」。
+     */
+    private fun draftSource(): DraftSource? {
+        session?.let { live ->
+            val snap = runCatching { live.peek() }.getOrNull() ?: return null
+            if (snap.events.any { it.kind != ObserveKind.SCROLL }) return DraftSource(live.id, snap)
+            return null // 活跃但没操作：不退回上一轮（判据②）
+        }
+        val closed = lastSession ?: return null
+        if (closed.events.none { it.kind != ObserveKind.SCROLL }) return null
+        return DraftSource(closed.openedAtMs.toString(36), closed)
+    }
+
+    /** 一次归纳的输入（谁的会话、哪份快照）。 */
+    private data class DraftSource(val id: String, val snapshot: ObserveSnapshot)
+
+    /** 判据②：没有新的观察 ⇒ 明说（提示＋账），不生成任何草案。 */
+    private fun noNewObservation(): SkillDraftStore.AddOutcome.Rejected {
+        rejectLedger(NO_NEW_OBSERVATION, null)
+        toast(LearnToastKind.DRAFT_NO_NEW_OBSERVATION)
+        return SkillDraftStore.AddOutcome.Rejected(listOf(NO_NEW_OBSERVATION))
+    }
+
+    /** 判据③④：拒收一律「提示＋账里一行」；[existingDraftId] 非空＝撞上了哪条既有草案。 */
+    private fun reject(
+        problems: List<String>,
+        sessionId: String?,
+        existingDraftId: String? = null,
+    ): SkillDraftStore.AddOutcome.Rejected {
+        val reason = problems.joinToString("；")
+        rejectLedger(reason, sessionId, existingDraftId)
+        if (existingDraftId != null) toast(LearnToastKind.DRAFT_DUPLICATE, existingDraftId)
+        else toast(LearnToastKind.DRAFT_REJECTED, reason)
+        return SkillDraftStore.AddOutcome.Rejected(problems)
+    }
+
+    /** 账里一行（698 判据④）：时间＋原因＋会话 id＋撞上的草案 id；落盘失败进日志，不静默。 */
+    private fun rejectLedger(reason: String, sessionId: String?, existingDraftId: String? = null) {
+        rejectLog.append(reason, sessionId, existingDraftId, clock())
+        RunLog.log(
+            "学习板块：草案拒收——$reason" +
+                (sessionId?.let { "（会话 $it）" } ?: "") +
+                (existingDraftId?.let { "（已有草案 $it）" } ?: ""),
+        )
     }
 
     /** 人批转正（判据⑥）：草案 → zl-teach/2 → TeachReplayStore.saveConfirmed（凭证/不可逆/入库三闸照走）。 */
@@ -318,10 +407,11 @@ internal object ObserveCenter {
         val draft = draftStore.byId(id)
             ?: return@withContext "草案不存在（可能已被归并或清掉）"
         val adjudications = adjudicationStore.load(id)
-        val skill = when (val c = DraftConverter.toSkill(draft, skillName, paramDefaults, clock(), adjudications)) {
-            is DraftConverter.Outcome.Skill -> c.skill
+        val converted = when (val c = DraftConverter.toSkill(draft, skillName, paramDefaults, clock(), adjudications)) {
+            is DraftConverter.Outcome.Skill -> c
             is DraftConverter.Outcome.Refused -> return@withContext c.reason
         }
+        val skill = converted.skill
         val projectRoot = projectRootSupplier?.invoke()
             ?: return@withContext "转正落点未接线（工作区根缺失）——如实拒，不猜"
         val result = TeachReplayStore.saveConfirmed(
@@ -331,6 +421,8 @@ internal object ObserveCenter {
             personaFiles = personaFilesSupplier?.invoke()
                 ?: return@withContext "人设文件未接线——如实拒，不猜",
             stampText = clock().toString(36),
+            // 697 窄口：带证据的导航步没有 URL 断言 ⇒ 门按条件放行，正文标「未校验跳转」
+            expectlessNavigate = converted.expectlessNavigate,
         )
         if (result.written != null) {
             draftStore.resolve(id)
@@ -417,7 +509,9 @@ internal object ObserveCenter {
         val result = LearnSubmit.submit(
             payload = payload,
             newId = now.toString(36),
-            lastSessionId = lastSession?.openedAtMs?.toString(36),
+            // 会话源口径与 induceDraft 同一条（698）：先认当前活跃会话，没有再退到上一轮。
+            // 否则「示教完不切走就交草案」的模型会被判「指不到最近一次教学会话」。
+            lastSessionId = draftSource()?.id ?: lastSession?.openedAtMs?.toString(36),
             store = draftStore,
         )
         when (result) {
@@ -442,11 +536,6 @@ internal object ObserveCenter {
     /** 裁定读数回读（一份草案一个文件；空文件（未裁）不入表——UI 侧 `.orEmpty()` 兜住）。 */
     private fun refreshAdjudications() {
         adjudicationsFlow.value = adjudicationStore.all()
-    }
-
-    private fun rejected(problems: List<String>): SkillDraftStore.AddOutcome.Rejected {
-        toast(LearnToastKind.DRAFT_REJECTED, problems.joinToString("；"))
-        return SkillDraftStore.AddOutcome.Rejected(problems)
     }
 
     private fun toast(kind: LearnToastKind, arg: String = "") {
@@ -519,3 +608,9 @@ internal object ObserveCenter {
 
 /** 学习板块的私有目录段（`filesDir/抱朴记忆/观察/`；231 原文）。 */
 internal const val DIR_NAME: String = "观察"
+
+/** 698 判据②的定稿说法（断言到这四个字上，改字＝改判据）。 */
+internal const val NO_NEW_OBSERVATION: String = "没有新的观察"
+
+/** 698 判据③的定稿说法（toast 正文前半句；后半句「· 查看已有草案」拼在草案 id 之后）。 */
+internal const val DUPLICATE_PREFIX: String = "与已有草案一致"

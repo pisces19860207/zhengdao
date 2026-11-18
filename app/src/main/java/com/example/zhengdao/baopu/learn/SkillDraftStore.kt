@@ -62,6 +62,23 @@ internal class SkillDraftStore(private val dir: File) {
     /** 待定草案（按入区顺序）。 */
     fun pending(): List<SkillDraft> = synchronized(LOCK) { pendingList() }
 
+    /**
+     * 698 判据③：这条草案是不是「**同一段观察**、同一个意图」又被归纳了一遍？
+     *
+     * 判据两半，缺一不可：goal 归一化相等 ＋ 来源会话有交集。只比 goal 会把「两次真观察
+     * 的同一件事」误判成重复（那该走 624 的归并）；只看会话会把「同一段轨迹换个意图名」
+     * 误判成重复（那是人改主意，不是撞车）。
+     *
+     * 命中 ⇒ 交回既有那条。**调用方必须发声**（toast 说撞了哪条 ＋ 账里一行）：
+     * 690 报的正是「被吞掉、连 toast 都没有」，所以本函数只负责判定，不允许被静默使用。
+     */
+    fun duplicateOf(draft: SkillDraft): SkillDraft? = synchronized(LOCK) {
+        pendingList().firstOrNull { existing ->
+            normalize(existing.goal) == normalize(draft.goal) &&
+                existing.sourceSessions.any { it in draft.sourceSessions }
+        }
+    }
+
     fun byId(id: String): SkillDraft? = synchronized(LOCK) { pendingList().firstOrNull { it.id == id } }
 
     /** 人批销账（转正在 ObserveCenter.confirmDraft；这里只把草案移出待定）。 */

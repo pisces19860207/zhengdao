@@ -111,13 +111,25 @@ internal data class ObserveEvent(
         /** 事件行键闭集（el 内的键闭集见 [ObserveFaces.KEYS]）：多一列都是违规。 */
         val KEYS = setOf("k", "t", "doc", "seq", "a", "url", "nc", "el", "vs")
 
+        /**
+         * 解析一行事件。
+         *
+         * ⚠️ 697 修的真根因：页内脚本 `push()` 写的是**短键** `d`（文档）与 `s`（序号），
+         * 而这里原先只读长键 `doc`/`seq` ⇒ 设备上每一行都落成 `doc:""`/`seq:0`：
+         *   ① 去重键恒为 `#0`，一次会话只留得下**第一条**事件（多步示教被压成一步）；
+         *   ② 证据指针恒是 `#seq0`（点开回不到那一行）；
+         *   ③ 归纳按 `docId` 比对页事实，永远比对不上 ⇒ 步上永远没有 expect（G-690-5）。
+         * 两种键名都认（短键是脚本现状，长键是账上落盘的形状——旧账/旧夹具照样读得回来）。
+         */
         fun fromJson(o: JSONObject): ObserveEvent? {
             val kind = ObserveKind.of(o.optString("a")) ?: return null
             val faces = runCatching { ObserveFaces.fromJson(o.getJSONObject("el")) }.getOrNull() ?: return null
             val vs = o.optString("vs", "")
+            val docId = o.optString("doc").ifBlank { o.optString("d") }
+            val seq = if (o.has("seq")) o.optInt("seq", 0) else o.optInt("s", 0)
             return ObserveEvent(
-                kind = kind, ts = o.optLong("t", 0L), docId = o.optString("doc"),
-                seq = o.optInt("seq", 0), url = o.optString("url"), nodeCount = o.optInt("nc", 0),
+                kind = kind, ts = o.optLong("t", 0L), docId = docId,
+                seq = seq, url = o.optString("url"), nodeCount = o.optInt("nc", 0),
                 faces = faces, shape = if (vs.isEmpty()) null else ValueShape.of(vs),
             )
         }
@@ -169,8 +181,16 @@ internal data class ObservePage(
 /** 收割入账的产物（页内脚本返回值的 Kotlin 形状；页行只带 url/title/nc 事实，无节点）。 */
 internal data class DrainResult(val docId: String, val events: List<ObserveEvent>, val page: ObservePage?) {
     companion object {
-        /** 解 execJs 的返回：外层 {"result":"<转义 json>"}（去敏＋限长既有路径），内层才是账。 */
-        fun parse(raw: String): DrainResult? = runCatching {
+        /**
+         * 解 execJs 的返回：外层 {"result":"<转义 json>"}（去敏＋限长既有路径），内层才是账。
+         *
+         * [nowMs] 是**收割时刻**（调用方给）：页事实行若没自带 `t`（旧包/旧夹具），
+         * 用它兜住——697 之前页行的 `t` 恒为 0，而「之后有没有变化」全靠 `t` 比大小，
+         * 恒 0 等于永远「没有之后」⇒ 步上永远推不出 expect。
+         * 内层 `doc` 也回填进页行（脚本的 pg 只带 url/title/nc，文档号在外层）——
+         * 页行与事件行拿同一个文档号，才能判断「整页跳转」有没有换文档。
+         */
+        fun parse(raw: String, nowMs: Long = 0L): DrainResult? = runCatching {
             val outer = JSONObject(raw)
             val inner = outer.optString("result")
             if (inner.isEmpty()) return null
@@ -180,8 +200,14 @@ internal data class DrainResult(val docId: String, val events: List<ObserveEvent
                     runCatching { ObserveEvent.fromJson(a.getJSONObject(k)) }.getOrNull()
                 }
             } ?: emptyList()
-            val pg = o.optJSONObject("pg")?.let { ObservePage.fromJson(it) }
-            DrainResult(o.optString("doc"), evs, pg)
+            val docId = o.optString("doc")
+            val pg = o.optJSONObject("pg")?.let { ObservePage.fromJson(it) }?.let { p ->
+                p.copy(
+                    docId = p.docId.ifBlank { docId },
+                    ts = if (p.ts > 0) p.ts else nowMs,
+                )
+            }
+            DrainResult(docId, evs, pg)
         }.getOrNull()
     }
 }
@@ -285,13 +311,22 @@ internal class ObserveSession(
             appendLine(JSONObject().put("k", "close").put("t", nowMs()))
             closed = true
         }
-        ObserveSnapshot(
-            openedAtMs(),
-            events.toList(),
-            pagesByDoc.values.flatMap { it.toList() },
-            nodeTables.toMap(),
-        )
+        snapshotLocked()
     }
+
+    /**
+     * **看一眼，不结算**（698 判据①）：把此刻内存里的行交成快照，但**不落 close 行、
+     * 不冻结**——会话照常继续收割。「建草案」要的是「我刚做的这一轮」，那一轮往往还没收口
+     * （人还在玄览里、没切走也没空闲），所以不能靠 [close] 拿数据。
+     */
+    fun peek(): ObserveSnapshot = synchronized(LOCK) { snapshotLocked() }
+
+    private fun snapshotLocked(): ObserveSnapshot = ObserveSnapshot(
+        openedAtMs(),
+        events.toList(),
+        pagesByDoc.values.flatMap { it.toList() },
+        nodeTables.toMap(),
+    )
 
     /**
      * 页行照收（脚本侧 2s 心跳已节流；同事实的心跳行**保留**——「看过、没变化」正是

@@ -57,6 +57,10 @@
     <string name="learn_draft_rejected_toast">Draft rejected by structure check: %1$s</string>
     <string name="learn_draft_created_toast">Draft saved to the draft area (not promoted)</string>
     <string name="learn_draft_merged_toast">Same intent — merged into one; observations: %1$d</string>
+    <!-- Batch 698 · draft creation must speak up (G-690-6: nothing happened on screen) -->
+    <string name="learn_draft_duplicate_toast">Identical to an existing draft (%1$s) · View existing draft</string>
+    <string name="learn_draft_no_observation_toast">No new observation — do a few steps in Xuanlan first, then create the draft</string>
+    <string name="learn_draft_expectless_mark">steps without jump check: %1$d</string>
     <!-- Batch 672 · human adjudication of conflicting steps -->
     <string name="learn_adj_title">Conflicting locators need your call</string>
     <string name="learn_adj_intro">The machine will not pick for you: compare how many nodes each route hits and which frame the evidence is in, then pick the one you actually use. Routes still undecided: %1$d</string>

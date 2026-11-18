@@ -34,8 +34,34 @@ internal data class DraftStep(
     val param: String?, // 非空＝该步是参数步（字面量已拔掉，判据④）
     val optional: Boolean, // 偶发步（C 归并降级）
     val candidates: List<DraftLocator>, // 定位冲突两套并存（判据⑤；空＝无冲突）
-    val expect: List<String>, // 校验点 wire（urlChanged/rowCountChange——观察证据能推的两种）
+    val expect: List<String>, // 校验点 wire（urlChanged／rowCountChange；697 起归纳只出 urlChanged）
     val evidence: List<String>, // "观察/会话-<id>.jsonl#seq<n>"——点开回到对应行
+
+    /**
+     * 697：该步是**导航步**——点下去页面事实变了（换了文档／换了 URL／节点数变了）。
+     *
+     * 为什么不把 `kind` 直接写成 `"navigate"`：`kind` 是**回放动作**的闭集
+     * （[com.example.zhengdao.baopu.TeachAction]：click/type/select/scroll/waitFor），
+     * 塞个 navigate 进去，`DraftConverter` 会照实拒转（「不可回放」）——那一来更糟。
+     * 所以导航是**这一步的性质**，不是另一个动作：动作仍是 click（回放就是点那个链接，
+     * 跳转由页面自己完成），`navigate` 位说明「点完页面换了」。
+     */
+    val navigate: Boolean = false,
+
+    /**
+     * 697 窄口：导航步，但观察里**没有 URL 变化证据**（同页锚点／SPA 没改地址）。
+     *
+     * 置真 ⇒ 转正门允许这步没有 expect，但**必须同时**：是 click 导航步、evidence 非空、
+     * 有节点数变化（见 [nodeCount]／[nodeCountAfter]）；技能正文会标「该步未校验跳转」。
+     * 默认 false——窄口不是默认值，得由归纳层凭证据一处一处开。
+     */
+    val expectlessNavigate: Boolean = false,
+
+    /** 该步事件行记到的节点数（观察面的 `nc`；窄口的证据之一，0＝没记）。 */
+    val nodeCount: Int = 0,
+
+    /** 该步之后**第一份**页事实的节点数（同上；两次相等＝页面没变过，窄口不开）。 */
+    val nodeCountAfter: Int = 0,
 ) {
     /** 定位是否全空（判据①的判据本体：主定位全字段空且没有候选）。 */
     fun locatorBlank(): Boolean = candidates.isEmpty() && listOf(
@@ -43,6 +69,13 @@ internal data class DraftStep(
         locator.id, locator.inputName, locator.placeholder, locator.inputType,
         locator.formLabel, locator.xp,
     ).all { it.isBlank() }
+
+    /** 窄口只对「点击导航步」开（type/scroll 没有「跳转」可言）。 */
+    fun isNavigateStep(): Boolean = navigate && kind == ObserveKind.CLICK.wire
+
+    /** 窄口的三条证据是否齐（697 判据④：缺一条都不许过）。 */
+    fun expectlessEvidenceOk(): Boolean =
+        evidence.isNotEmpty() && nodeCount > 0 && nodeCountAfter > 0 && nodeCount != nodeCountAfter
 
     fun toJson(): JSONObject = JSONObject()
         .put("i", index)
@@ -55,6 +88,11 @@ internal data class DraftStep(
         .put("cands", JSONArray(candidates.map { it.toJson() }))
         .put("expect", JSONArray(expect))
         .put("ev", JSONArray(evidence))
+        // 697 三列只在有值时才写（旧草案照读：没有这三列就是「不是导航步／没窄口」）
+        .also { if (navigate) it.put("nav", true) }
+        .also { if (expectlessNavigate) it.put("expectless_navigate", true) }
+        .also { if (nodeCount > 0) it.put("nc", nodeCount) }
+        .also { if (nodeCountAfter > 0) it.put("ncAfter", nodeCountAfter) }
 
     companion object {
         fun fromJson(o: JSONObject): DraftStep? = runCatching {
@@ -73,6 +111,10 @@ internal data class DraftStep(
                 } ?: emptyList(),
                 expect = o.optJSONArray("expect")?.let { a -> (0 until a.length()).map { k -> a.optString(k) } } ?: emptyList(),
                 evidence = o.optJSONArray("ev")?.let { a -> (0 until a.length()).map { k -> a.optString(k) } } ?: emptyList(),
+                navigate = o.optBoolean("nav", false),
+                expectlessNavigate = o.optBoolean("expectless_navigate", false),
+                nodeCount = o.optInt("nc", 0),
+                nodeCountAfter = o.optInt("ncAfter", 0),
             )
         }.getOrNull()
     }
@@ -170,6 +212,24 @@ internal object SkillDraftRules {
     /** 裁 none 的去处的定稿说法（672 判据②断言到这一句上）。 */
     const val RETEACH = "重新教这一步"
 
+    /** 697 窄口的定稿说法（判据②断言到「未校验跳转」四个字上，改字＝改判据）。 */
+    const val EXPECTLESS_MARK = "未校验跳转"
+
+    /** 窄口三条证据缺一条时的说法（判据④断言到这一句上）。 */
+    const val EXPECTLESS_NO_EVIDENCE = "窄口只在有证据时开"
+
+    /** 697 判据③「凭空造断言」的定稿说法。 */
+    const val EXPECT_FABRICATED = "凭空造断言"
+
+    /**
+     * 断言闭集（697 判据③）：观察面能证的就这两种。
+     *
+     * 闭集外的一律拒，而不是**悄悄丢掉**：`DraftConverter` 原先用 `mapNotNull` 把认不得的
+     * wire 滤掉——那等于「写了条判据、盘上却没有」，人以为有断言、回放时没有。宁可当场拒，
+     * 也不许伪造或吞掉。
+     */
+    val EXPECT_CLOSED: Set<String> = linkedSetOf("urlChanged", "rowCountChange")
+
     /** 未裁一句话（转正门与转换器的唯一文案，别处不许再拼一遍）。 */
     fun unresolvedProblem(index: Int): String =
         "第 $index 步$CONFLICT_UNRESOLVED（两种走法待人裁）——裁完再转正"
@@ -209,7 +269,50 @@ internal object SkillDraftRules {
         draft.skeleton.filter { it.candidates.size == 1 }.forEach { step ->
             problems += "第 ${step.index} 步候选只有 1 条（冲突必须两套并存，单候选是坏形）"
         }
+        draft.skeleton.forEach { step -> expectlessProblems(step)?.let { problems += it } }
+        problems += fabricatedProblems(draft)
         return if (problems.isEmpty()) DraftCheck.Ok else DraftCheck.Invalid(problems)
+    }
+
+    /**
+     * 697 判据③：断言闭集外的写法**逐条列出来**（拒收理由）。
+     *
+     * 单开一个函数是为了不把结构门本身撑成「太复杂」——结构门是每个草案都要过的热点，
+     * 它自己变复杂了就没人愿意改它（detekt 硬墙也只认圈复杂度，不看意图）。
+     */
+    private fun fabricatedProblems(draft: SkillDraft): List<String> = draft.skeleton.mapNotNull { step ->
+        val strange = step.expect.filter { it !in EXPECT_CLOSED }
+        if (strange.isEmpty()) {
+            null
+        } else {
+            "第 ${step.index} 步的断言「${strange.joinToString("、")}」不在闭集（" +
+                "${EXPECT_CLOSED.joinToString("／")}）——$EXPECT_FABRICATED，拒收"
+        }
+    }
+
+    /**
+     * 697 窄口的**三道锁**（判据②④）：标了「未校验跳转」的步，允许没有 expect，但
+     *
+     *   a) 必须是**点击导航步**（`kind=click` 且 `navigate` 位真）——不是随便哪个步都能开；
+     *   b) evidence 非空（指不回观察账的步，一律按「没有证据」拒）；
+     *   c) 有**节点数变化记录**（`nc` ≠ `ncAfter`，且两个都记到了）。
+     *
+     * 三条缺一条就拒——窄口是给「真跳转了但地址没变」的那一种现场开的，不是免检通道。
+     * 另：既写了 expect 又标了窄口 ⇒ 自相矛盾（有断言就不叫「未校验」），一并拒。
+     */
+    private fun expectlessProblems(step: DraftStep): String? {
+        if (!step.expectlessNavigate) return null
+        if (step.expect.isNotEmpty()) {
+            return "第 ${step.index} 步既写了断言（${step.expect.joinToString("、")}）又标「$EXPECTLESS_MARK」——两边挑一边"
+        }
+        if (!step.isNavigateStep()) {
+            return "第 ${step.index} 步标了「$EXPECTLESS_MARK」，但动作不是点击导航步——窄口只对导航步开"
+        }
+        if (!step.expectlessEvidenceOk()) {
+            return "第 ${step.index} 步标了「$EXPECTLESS_MARK」但$EXPECTLESS_NO_EVIDENCE" +
+                "（证据 ${step.evidence.size} 处，节点数 ${step.nodeCount}→${step.nodeCountAfter}）"
+        }
+        return null
     }
 
     /**

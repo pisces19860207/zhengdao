@@ -56,6 +56,10 @@
     <string name="learn_draft_rejected_toast">草案被结构校验拒收：%1$s</string>
     <string name="learn_draft_created_toast">草案已入草稿区（未转正）</string>
     <string name="learn_draft_merged_toast">同一意图，已归并为一条（%1$d 次观察）</string>
+    <!-- 第六百九十八批 · 建草案失败要发声（690 的 G-690-6：点了没反应＝不知道出了什么事） -->
+    <string name="learn_draft_duplicate_toast">与已有草案一致（%1$s）· 查看已有草案</string>
+    <string name="learn_draft_no_observation_toast">没有新的观察——先在玄览里操作几步再来建草案</string>
+    <string name="learn_draft_expectless_mark">%1$d 步未校验跳转</string>
     <!-- 第六百七十二批 · 冲突步人裁（671 的「待人裁」在这里有了入口） -->
     <string name="learn_adj_title">定位冲突待人裁</string>
     <string name="learn_adj_intro">%1$d 步还有两种走法没定。机器不替你选：并排看两套定位各命中几处、证据在哪一帧，再点你要的那套。</string>

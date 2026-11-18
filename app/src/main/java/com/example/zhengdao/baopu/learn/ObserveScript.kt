@@ -101,7 +101,7 @@ internal object ObserveScript {
  var due=now-t.lastPgTs>=2000;
  if(due&&(changed||t.pg)){
   t.pg=true;t.lastU=curU;t.lastNc=curNc;t.lastPgTs=now;
-  pg={url:curU,title:(document.title||'').slice(0,40),nc:curNc};
+  pg={url:curU,title:(document.title||'').slice(0,40),nc:curNc,t:now};
  }
  return JSON.stringify({doc:t.doc,seq:t.seq,ev:evs,pg:pg});
 })()
