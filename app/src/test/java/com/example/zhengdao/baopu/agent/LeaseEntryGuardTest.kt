@@ -41,6 +41,10 @@ class LeaseEntryGuardTest {
         // 走 LeaseStore.grant/hit/noteUsed，判定层（LeaseRules 法条）一个字没动；
         // 探测不是工具调用，这里是它唯一能拿到授权的门。
         "com/example/zhengdao/baopu/peer/PeerOutboundGate.kt",
+        // 707：548 探针的生产接线（G-705-2）——面板点「探测」＝人在环，先授一张探针租约
+        // 再发起（外发即租约）；账本落点在使用侧带上（LeaseLedger.rememberRoot，467 同一条纪律）。
+        // 判定层依旧零改动：这里只是 grant→probe→settle 的装配，没有第二条授租约的路。
+        "com/example/zhengdao/baopu/peer/McpPeerProbeWiring.kt",
     )
 
     /** 只认本批的**标识符**：仓里"租约"一词另有旧含义（派工单的文件租约），不能按中文扫。 */

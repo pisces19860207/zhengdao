@@ -8,7 +8,9 @@
     <!-- 499: authority tier switch (human-only). Hard red lines are refused at every tier;
          tier-passed actions are still recorded. -->
     <string name="ask_governance_tier_row">Interruption governance tier</string>
-    <string name="ask_governance_tier_desc">Current: %1$s (tap to cycle Strict→Standard→Delegated; hard red lines refused at every tier, tier-passed actions still recorded)</string>
+    <!-- 707 (G-705-1 ruling): wording only, zero mechanism change — in Delegated tier lease
+         quotes and confirm cards are unreachable by design (it does not ask); say so plainly. -->
+    <string name="ask_governance_tier_desc">Current: %1$s (tap to cycle Strict→Standard→Delegated; hard red lines refused at every tier, tier-passed actions still recorded). The Delegated tier never shows a card and never offers a lease: it does not ask — act first, audit later (the ledger keeps the record); leases only appear in Strict/Standard tiers — that is not a broken lease</string>
     <!-- Batch 479: that single row is gone (2026-11-08: fewer entries and switches).
          Background maintenance is always on; the brakes and the per-device pause govern it. -->
 </resources>

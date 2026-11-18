@@ -42,6 +42,14 @@
     <string name="baopu_mcp_probe_network">\"%1$s\" unreachable: network error.</string>
     <string name="baopu_mcp_probe_unknown">\"%1$s\" is not in the list; nothing to test.</string>
 
+    <!-- 707: peer probe (production wiring of the 548 probe): button + per-row probe tri-state.
+         Staleness must be visible: registered but probe failed/timed out => "stale" + last success time. -->
+    <string name="baopu_mcp_peer_probe">Probe</string>
+    <string name="baopu_mcp_peer_ok">Probe: OK (last %1$s · %2$d tools)</string>
+    <string name="baopu_mcp_peer_stale_fail">Probe: stale — last probe failed; last success %1$s</string>
+    <string name="baopu_mcp_peer_stale_ttl">Probe: stale — no successful probe for over 24h; last success %1$s</string>
+    <string name="baopu_mcp_peer_unknown">Probe: not probed yet (list appears after connecting or probing)</string>
+
     <!-- 502: English labels/subtitles for the five MCP self-service tools. -->
     <string name="baopu_mcp_paste_hint">Recognized MCP server URL: name will be "%1$s" · %2$s</string>
     <string name="baopu_tool_mcp_list">MCP server list</string>

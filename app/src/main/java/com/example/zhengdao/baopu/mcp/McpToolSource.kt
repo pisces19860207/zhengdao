@@ -93,6 +93,11 @@ internal class McpToolSource(
         var lastConnectedAtMs: Long? = null,
         /** 最近一次失败的结论（UI 上"失败可读"；不含 token/URL）。 */
         var lastError: String? = null,
+        /**
+         * 第七百零七单 · 最近一次**对端探测**失败（陈旧：有登记但不可用）。
+         * true ⇒ 工具调用一律拒、一个字节不发（不许假装可用）；「连接」或探测成功即清。
+         */
+        var probeDown: Boolean = false,
     ) {
         val wireNames: Set<String> get() = tools.map { it.wireName }.toSet()
     }
@@ -286,6 +291,8 @@ internal class McpToolSource(
         state.status = McpServerStatus.CONNECTED
         state.lastConnectedAtMs = now()
         state.lastError = null
+        // 707：连接成功＝对端「回来了」的当下证据，陈旧标记清掉（判据②的恢复口）。
+        state.probeDown = false
         converted.forEach { registry.register(specFor(state, it)) }
 
         val warnings = ArrayList<String>(2)
@@ -338,6 +345,8 @@ internal class McpToolSource(
         state.tools = converted
         state.status = McpServerStatus.CONNECTED
         state.lastError = null
+        // 707：刷新成功同口径清陈旧标记。
+        state.probeDown = false
         converted.forEach { registry.register(specFor(state, it)) }
         log(
             "[mcp] server=${state.config.id} 工具清单已刷新：新增 $added 个、移除 ${gone.size} 个" +
@@ -430,6 +439,15 @@ internal class McpToolSource(
 
     /** 最近一次失败的原因（"失败要可读"）；null = 没有失败记录。 */
     fun lastError(id: String): String? = synchronized(lock) { servers[id]?.lastError }
+
+    /**
+     * 第七百零七单 · 面板「探测」收场回灌：ok=false ⇒ 这台标陈旧，之后的工具调用
+     * 一律明确拒、不发请求（判据②）；ok=true ⇒ 清掉（探测成功＝可用回来了）。
+     * 没有这台 ⇒ 忽略（面板与清单并发删时的竞态，不炸）。
+     */
+    fun notePeerProbe(id: String, ok: Boolean) {
+        synchronized(lock) { servers[id]?.probeDown = !ok }
+    }
 
     /** 「查看工具」用：已连接时它公布的工具名（只读，按注册顺序）。 */
     fun toolNames(id: String): List<String> = synchronized(lock) {
@@ -593,6 +611,13 @@ internal class McpToolSource(
             when {
                 active == null -> {
                     reject = "MCP 服务器「${state?.config?.name ?: serverId}」已断开：本次不发请求，请让用户重新连接"
+                    null
+                }
+                // 707（判据②）：对端探测失败 ⇒ 陈旧（有登记但不可用）——明确拒、
+                // 不发请求（与断开的口径一致：不许假装可用，宁可明说）。
+                state?.probeDown == true -> {
+                    reject = "MCP 服务器「${state?.config?.name ?: serverId}」上次探测失败（陈旧：有登记但不可用）：" +
+                        "本次不发请求。请让用户先点「探测」或「连接」确认它回来了再试"
                     null
                 }
                 !grants.isGranted(serverId, remoteName) -> {

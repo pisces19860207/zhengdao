@@ -46,6 +46,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -74,6 +76,11 @@ import com.example.zhengdao.baopu.mcp.McpServerDraft
 import com.example.zhengdao.baopu.mcp.McpServerStatus
 import com.example.zhengdao.baopu.mcp.McpServerView
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
+import com.example.zhengdao.baopu.peer.McpPeerProbeWiring
+import com.example.zhengdao.baopu.peer.PeerPanelReading
+import com.example.zhengdao.baopu.peer.PeerPanelState
+import com.example.zhengdao.baopu.peer.peerPanelReading
+import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,6 +122,14 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
     /** 502 自动 C：URL 框里一旦是合法地址就提示「名称/传输」（纯文本，不是新入口）。 */
     var parseHint by remember { mutableStateOf<String?>(null) }
 
+    // ── 707 · 探测三态（判据①：三态可显；陈旧必须看得见）─────────────────
+    // 真账是落盘的 `.mcp-peers.json`（548 的清单），这里只读它合成显示；
+    // 本进程内最近一次「探测」按钮的结果单独记一行（探测失败当场标陈旧）。
+    var peerReadings by remember { mutableStateOf<Map<String, PeerPanelReading>>(emptyMap()) }
+    val lastProbeOk = remember { mutableStateMapOf<String, Boolean>() }
+    /** 探测/连接收场计数：bump 一下让三态重算（rows 不变时也要重算）。 */
+    var probeSeq by remember { mutableIntStateOf(0) }
+
     /** 授权回调（浏览器回来时投递到这里；null ＝ 没有待处理的）。 */
     val callback by McpAuthInbox.pendingState
 
@@ -130,6 +145,24 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
             val source = BaopuRuntime.mcp(context)
             source.restoreFromStore()
             source.snapshot()
+        }
+    }
+
+    // 707：行集合或探测结果一变 ⇒ 三态重算（清单真账在盘上，这里每次只读合成）。
+    LaunchedEffect(rows, probeSeq) {
+        if (rows.isEmpty()) {
+            peerReadings = emptyMap()
+            return@LaunchedEffect
+        }
+        val source = BaopuRuntime.mcp(context)
+        val root = BaopuRuntime.workspaceRoot(context)
+        val now = System.currentTimeMillis()
+        peerReadings = withContext(Dispatchers.IO) {
+            rows.associate { row ->
+                val cfg = source.config(row.id)
+                val entry = if (cfg == null) null else McpPeerProbeWiring.manifestEntryFor(cfg, root)
+                row.id to peerPanelReading(entry, lastProbeOk[row.id], now)
+            }
         }
     }
 
@@ -215,6 +248,8 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
             is McpConnectOutcome.Ok -> {
                 // 502：连接成功 ⇒ 自动 B 的本 episode 闭环（过期重授还能再弹）。
                 McpSelfService.popupLedger.forget(result.serverId)
+                // 707：连接成功＝对端回来了 ⇒ 本进程的探测失败标记清掉（三态随之恢复）。
+                lastProbeOk.remove(result.serverId)?.let { probeSeq++ }
                 if (clearInput) {
                     url = ""
                     clientId = ""
@@ -303,6 +338,44 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
             }
             busyId = null
             notice = probeNotice(target.name, result)
+        }
+    }
+
+    /**
+     * 707 · 「探测」：走 548 的对端探针（握手＋列清单＋`.mcp-peers.json` 落盘＋两本账各一行）。
+     * 人点按钮＝人在环 ⇒ 探针租约在装配里先授（外发即租约，未批准一个字节不发）。
+     * 失败也如实说（不静默、不删登记）；失败后这台标陈旧，工具调用会被明确拒（判据②）。
+     */
+    fun probePeerServer(target: McpServerView) {
+        if (busyId != null) return
+        busyId = target.id
+        notice = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val source = BaopuRuntime.mcp(context)
+                val cfg = source.config(target.id) ?: return@withContext null
+                val tp = BaopuRuntime.mcpAuth(context).providerFor(cfg)
+                val root = BaopuRuntime.workspaceRoot(context)
+                val probe = McpPeerProbeWiring.probeFromPanel(
+                    cfg,
+                    root,
+                    tp,
+                    System.currentTimeMillis(),
+                    log = { RunLog.log(it) },
+                )
+                // 收场回灌：失败 ⇒ 这台标陈旧（McpToolSource 里工具调用当场拒、零请求）。
+                source.notePeerProbe(target.id, probe.ok)
+                probe
+            }
+            busyId = null
+            notice = when (result) {
+                null -> McpNotice(false, res.getString(R.string.baopu_mcp_clipboard_no_server, target.name))
+                else -> McpNotice(result.ok, result.human)
+            }
+            if (result != null) {
+                lastProbeOk[target.id] = result.ok
+                probeSeq++
+            }
         }
     }
 
@@ -598,11 +671,13 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
                         McpServerRow(
                             view = view,
                             busy = busyId != null,
+                            peer = peerReadings[view.id],
                             onConnect = { reconnect(view) },
                             onDisconnect = { pendingDisconnect = view },
                             onDelete = { pendingDelete = view },
                             onViewTools = { viewTools(view) },
                             onProbe = { probeServer(view) },
+                            onPeerProbe = { probePeerServer(view) },
                             onClipboard = { importFromClipboard(view) },
                         )
                     }
@@ -712,17 +787,20 @@ internal fun McpServerScreen(onDismiss: () -> Unit) {
     }
 }
 
-/** 一行：名字 / 主机 / 状态 / 授权状态 / 工具数 / 最后连接 / 动作簇（245 加「测试连接」，513 加「从剪贴板读取」）。 */
+/** 一行：名字 / 主机 / 状态 / 授权状态 / 探测三态 / 工具数 / 最后连接 / 动作簇（245 加「测试连接」，513 加「从剪贴板读取」，707 加「探测」与三态行）。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun McpServerRow(
     view: McpServerView,
     busy: Boolean,
+    /** 707：本行的探测三态读数（null ＝ 还没合成出来，不显示这一行）。 */
+    peer: PeerPanelReading?,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onDelete: () -> Unit,
     onViewTools: () -> Unit,
     onProbe: () -> Unit,
+    onPeerProbe: () -> Unit,
     onClipboard: () -> Unit,
 ) {
     val statusText = when (view.status) {
@@ -774,6 +852,37 @@ private fun McpServerRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // 707（判据①）：探测三态行——可用（青）/ 陈旧（朱，带最后一次成功时间）/ 未探测（灰）。
+                // 陈旧不许装可用：探测失败或清单过期都要明说，登记不删（那就是「最后一次成功」）。
+                peer?.let { pr ->
+                    val text = when (pr.state) {
+                        PeerPanelState.OK ->
+                            stringResource(
+                                R.string.baopu_mcp_peer_ok,
+                                formatClock(pr.lastOkAtMs ?: 0),
+                                pr.toolCount,
+                            )
+                        PeerPanelState.STALE ->
+                            if (pr.staleByTtl) {
+                                stringResource(R.string.baopu_mcp_peer_stale_ttl, formatClock(pr.lastOkAtMs ?: 0))
+                            } else {
+                                stringResource(R.string.baopu_mcp_peer_stale_fail, formatClock(pr.lastOkAtMs ?: 0))
+                            }
+                        PeerPanelState.UNKNOWN -> stringResource(R.string.baopu_mcp_peer_unknown)
+                    }
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = when (pr.state) {
+                            PeerPanelState.OK -> MaterialTheme.colorScheme.primary
+                            PeerPanelState.STALE -> MaterialTheme.colorScheme.error
+                            PeerPanelState.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(top = 2.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
@@ -861,6 +970,10 @@ private fun McpServerRow(
                 }
                 TextButton(onClick = onProbe, enabled = !busy) {
                     Text(stringResource(R.string.baopu_mcp_probe))
+                }
+                // 707：对端探测（握手＋列清单＋落盘＋三态）——与「测试连接」（只探地址）分工不同。
+                TextButton(onClick = onPeerProbe, enabled = !busy) {
+                    Text(stringResource(R.string.baopu_mcp_peer_probe))
                 }
                 TextButton(onClick = onDelete, enabled = !busy) {
                     Text(stringResource(R.string.baopu_mcp_delete))

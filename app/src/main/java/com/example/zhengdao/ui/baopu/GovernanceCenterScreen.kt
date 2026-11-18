@@ -470,6 +470,15 @@ private fun ReadingSection(snapshot: GovSnapshot) {
             modifier = Modifier.padding(bottom = 6.dp),
         )
         readings.forEach { r -> ReadingLine(labelOf(r.key), r.value, r.detail) }
+        // 707（G-705-1 裁定文案②）：放权档下租约整段不可达（它不问）⇒ 那个档位这里常年
+        // 没有租约行，用户会以为「租约坏了」。补一句**常显**说明（哪档都成立、写清条件）。
+        // 刻意不读档位：读数只走 527 出口是本屏门禁（GovernanceCenterGateTest），不引第二条取数路。
+        Text(
+            text = stringResource(R.string.gc_lease_delegated_note),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 

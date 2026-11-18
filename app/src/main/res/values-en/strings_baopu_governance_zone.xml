@@ -23,6 +23,10 @@
 
         <string name="gc_lease">Lease</string>
 
+    <!-- 707 (G-705-1 wording): always-visible note in the lease readings block while the
+         Delegated tier is active — no leases there is by design, not a broken lease. -->
+    <string name="gc_lease_delegated_note">The Delegated tier never shows a card and never offers a lease (it does not ask): in the Delegated tier an empty lease block here is not a broken lease; leases only appear in Strict/Standard tiers</string>
+
     <string name="gc_rejudge">Companion rejudge</string>
 
     <string name="gc_section_executor">Executor</string>

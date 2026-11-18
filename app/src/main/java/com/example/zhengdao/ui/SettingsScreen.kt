@@ -220,7 +220,9 @@ fun SettingsScreen() {
                 SettingRow(
                     label = stringResource(R.string.ask_governance_tier_row),
                     value = stringResource(R.string.ask_governance_tier_desc, askTierNote),
-                    valueMaxLines = 2,
+                    // 707：档位说明补了一句「放权档不弹卡、无租约报价」（G-705-1 裁定文案），
+                    // 两行装不下 ⇒ 放宽到 4 行（本行没有固定高，文字自撑）。
+                    valueMaxLines = 4,
                 ) {
                     val next = when (AskGovernance.currentTier) {
                         AskTier.STRICT -> AskTier.STANDARD
