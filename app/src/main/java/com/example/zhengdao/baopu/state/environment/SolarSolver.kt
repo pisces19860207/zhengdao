@@ -50,7 +50,7 @@ object SolarSolver {
             "输入为当地真太阳时，经度与时差改正已在输入侧完成；忽略大气折射与地磁；" +
             "影长比=cot(高度角)，高度角≤0 记 Infinity（无直射光）；" +
             "极昼/极夜按 cos(日落时角)=-tanφ·tanδ 越界判定（含边界）；" +
-            "天顶/极点方位角无定义，按时角约定 180+H；日照档按高度角 0/10/40° 分档"
+            "天顶/极点方位角无定义，按时角约定 180+H；日照档按高度角 0/10/40° 分 无/弱/中/强"
 
     const val EOT_ASSUMPTION =
         "时差近似式 v1：B=360·(n-81)/364，EoT=9.87·sin2B−7.53·cosB−1.5·sinB（分钟）；" +
@@ -127,10 +127,10 @@ object SolarSolver {
     }
 
     private fun intensityOf(elev: Double): String = when {
-        elev <= 0.0 -> "none"
-        elev < 10.0 -> "weak"
-        elev < 40.0 -> "medium"
-        else -> "strong"
+        elev <= 0.0 -> "无"
+        elev < 10.0 -> "弱"
+        elev < 40.0 -> "中"
+        else -> "强"
     }
 
     private fun clampUnit(x: Double): Double = x.coerceIn(-1.0, 1.0)

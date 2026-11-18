@@ -31,7 +31,7 @@ class SolarSolverTest {
         assertEquals("正午影长比锚定预核算值 0.0954", 0.0954, s.shadowRatio, 0.001)
         assertEquals("夏至正午太阳在正北（δ=23.45°>φ=18°）", 0.0, s.azimuthDeg, 0.01)
         assertEquals("影子朝南", 180.0, s.shadowDirDeg, 0.01)
-        assertEquals("strong", s.intensity)
+        assertEquals("强", s.intensity)
         assertEquals("none", s.polar)
     }
 
@@ -77,7 +77,7 @@ class SolarSolverTest {
         assertEquals("判据④：极夜标记", "polar_night", s.polar)
         assertTrue("极夜正午太阳仍在地平线下", s.elevationDeg <= 0.0)
         assertTrue("极夜影长比=Infinity", s.shadowRatio.isInfinite())
-        assertEquals("none", s.intensity)
+        assertEquals("无", s.intensity)
         assertNull("极夜无日落时刻", SolarSolver.sunsetOf(78.0, 355).trueSolarTimeH)
         assertEquals("polar_night", SolarSolver.sunsetOf(78.0, 355).polar)
     }
@@ -87,7 +87,7 @@ class SolarSolverTest {
         val s = SolarSolver.solve(18.0, 172, 0.0)
         assertTrue(s.elevationDeg < 0.0)
         assertTrue(s.shadowRatio.isInfinite())
-        assertEquals("none", s.intensity)
+        assertEquals("无", s.intensity)
     }
 
     @Test
