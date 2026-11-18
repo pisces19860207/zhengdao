@@ -2,6 +2,7 @@
 // 规格：素材库/01-沦陷链（10 条）＋02-欲望图谱（3 条）；行为基准 character_track.py。
 package com.example.zhengdao.baopu.state.track
 
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -294,8 +295,8 @@ class CharacterTrackTest {
         assertTrue(track.invariantsHold())
         // 参数域第二段（御裁②「veto 期间接触层锁 1」）：默认表下 Lv1/S0 的 min 上限本就是 1，
         // 双约束单独就能拒 ⇒ 把两张表合法地抬到 2，veto 的锁必须自己扛，不许靠参数表兜。
-        // 表须单调不减：内核只在回退／否决路径钳位（tick 不钳 layer），
-        // 若 S0=2 而 S1=1，推进过程中 cap 会缩到既有层以下 ⇒ 先被「每步不变量」抓死，那是我的表不合法。
+        // 表须单调不减：非单调表在加载期就被 B 层拒（御裁⑤-B，见 criterion5B_*），
+        // 推进时引擎再按阶段映射兜底钳层（御裁⑤-A）⇒ 这里给的表必须是合法表。
         val loose = CharacterTrack(
             params = TrackParams(
                 salienceLayerMax = mapOf(1 to 2, 2 to 2, 3 to 3, 4 to 3),
@@ -375,6 +376,59 @@ class CharacterTrackTest {
     @Test(expected = IllegalArgumentException::class)
     fun anchors_more_than_three_rejected() {
         AnchorConfig(mapOf(0 to listOf("一", "二", "三", "四")))
+    }
+
+    // ── 御裁⑤-B 加载期：阶段映射非单调 ⇒ 构造即拒，且点名反了哪两阶段（名＋两个值）──
+    @Test
+    fun criterion5B_layer_table_non_monotone_rejected_naming_stages() {
+        val bad = mapOf(0 to 1, 1 to 1, 2 to 3, 3 to 2, 4 to 3, 5 to 3, 6 to 3)
+        val msg = requireNotNull(
+            assertThrows(IllegalArgumentException::class.java) { TrackParams(layerCapByStage = bad) }.message,
+        )
+        assertTrue("错误信息须含两个阶段名：$msg", msg.contains("S2唤醒") && msg.contains("S3掩饰"))
+        assertTrue("错误信息须含两个值：$msg", msg.contains("3→2"))
+        assertTrue("错误信息须指明是哪张表：$msg", msg.contains("阶段→接触层"))
+    }
+
+    @Test
+    fun criterion5B_attacker_table_non_monotone_rejected_naming_stages() {
+        val bad = mapOf(0 to 1, 1 to 1, 2 to 2, 3 to 4, 4 to 3, 5 to 5, 6 to 5)
+        val msg = requireNotNull(
+            assertThrows(IllegalArgumentException::class.java) { TrackParams(attackerCapByStage = bad) }.message,
+        )
+        assertTrue("错误信息须含两个阶段名：$msg", msg.contains("S3掩饰") && msg.contains("S4憋声"))
+        assertTrue("错误信息须含两个值：$msg", msg.contains("4→3"))
+        assertTrue("错误信息须指明是哪张表：$msg", msg.contains("阶段→进攻"))
+    }
+
+    // ── 御裁⑤-A 运行时：绕过 B 直接喂 A ⇒ 每步不变量仍由引擎守住（不靠作者自觉）──
+    @Test
+    fun criterion5A_engine_clamps_layer_after_advance_when_check_bypassed() {
+        val loose = TrackParams(
+            monotoneCheck = false,
+            layerCapByStage = mapOf(0 to 1, 1 to 1, 2 to 3, 3 to 2, 4 to 2, 5 to 2, 6 to 2),
+        )
+        val track = CharacterTrack(params = loose, stance = Stance.DESIRE)
+        repeat(4) { round(track) }
+        assertEquals("S2 时阶段侧上限 3 ⇒ 层 3 可被合法算上去", 3, track.layer)
+        assertEquals(2, track.dStage)
+        assertEquals("显性度一侧允许层 3（钳层不是靠显性度兜）", 3, track.params.salienceLayerMax.getValue(track.salience))
+        round(track)
+        round(track)
+        assertEquals("推进到 S3：阶段侧上限缩回 2", 3, track.dStage)
+        assertEquals("A 层兜底：tick 推进后引擎把层钳回 2", 2, track.layer)
+        assertTrue("绕过 B 后每步不变量仍成立", track.invariantsHold())
+    }
+
+    @Test
+    fun criterion5B_monotone_check_bypass_is_test_only() {
+        val dir = File("src/main/java/com/example/zhengdao/baopu/state/track")
+        assertTrue("track 包须存在", dir.isDirectory)
+        val sources = dir.listFiles { f -> f.extension == "kt" }!!.joinToString("\n") { it.readText() }
+        assertFalse("生产源码不得关闭 B 层（绕出口只给判据用）", sources.contains("monotoneCheck = false"))
+        assertTrue("B 层须默认常开", sources.contains("val monotoneCheck: Boolean = true"))
+        assertTrue("B 层校验须在构造路径被调用", sources.contains("requireStageMonotone(\"阶段→接触层\", layerCapByStage)"))
+        assertTrue("A 层钳制须写在推进之后", sources.contains("layer = minOf(layer, params.layerCapByStage.getValue(dStage))"))
     }
 
     @Test

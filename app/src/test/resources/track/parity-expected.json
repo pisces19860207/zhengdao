@@ -1,7 +1,7 @@
 {
  "reference": "证道设计报告/附件-角色轨状态机/character_track.py",
- "reference_sha256": "38c6aa4f537cbc67cbb49752226484458c089c4387f9d4442b34b0e47ac27c09",
- "reference_bytes": 8345,
+ "reference_sha256": "2daa4e58d6211ac7b8ca1f142074ce25b82b109982c0980d02aa28ad866ca3e7",
+ "reference_bytes": 9550,
  "scenarios": [
   {
    "id": "s1-normal-12",

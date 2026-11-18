@@ -26,6 +26,10 @@ const val CONTACT_LAYERS = 3
  * 可进化数值参数（568-A 参数域）。默认值与 Python 参考实现逐一同源；
  * 映射阈值可进化，但「上限 = min(显性度映射, 阶段映射)」的组合规则锁死在代码里。
  * 非法参数 fail-closed：构造即拒，不带病运行。
+ *
+ * 御裁⑤（2026-11-17）B 层＝加载期单调校验：阶段↑ ⇒ 允许上限不许降。
+ * 非单调表在加载时就被拒，错误信息点名「哪两阶段反了」（阶段名＋两个值）；
+ * 引擎另外在 `tick()` 每步兜底钳层（A 层），不靠参数作者自觉。
  */
 data class TrackParams(
     val minDwell: Int = MIN_DWELL_FLOOR,
@@ -38,6 +42,11 @@ data class TrackParams(
     val salienceLayerMax: Map<Int, Int> = DEFAULT_SALIENCE_LAYER_MAX,
     val attackerCapByStage: Map<Int, Int> = DEFAULT_ATTACKER_CAP_BY_STAGE,
     val layerCapByStage: Map<Int, Int> = DEFAULT_LAYER_CAP_BY_STAGE,
+    /**
+     * B 层开关：默认开（生产路径恒开，源码有反钉判据）。
+     * **只**给判据用来绕过 B 直接喂 A（验证「每步兜底」真的在兜），不许业务代码传 false。
+     */
+    val monotoneCheck: Boolean = true,
 ) {
     init {
         require(minDwell >= MIN_DWELL_FLOOR) { "min_dwell 不得低于下限 $MIN_DWELL_FLOOR：$minDwell" }
@@ -53,6 +62,23 @@ data class TrackParams(
         require(salienceLayerMax.values.all { it in 1..CONTACT_LAYERS }) { "接触层上限越界" }
         require(attackerCapByStage.values.all { it in 0 until ATTACKER_STAGES }) { "阶段→进攻上限越界" }
         require(layerCapByStage.values.all { it in 1..CONTACT_LAYERS }) { "阶段→接触层上限越界" }
+        if (monotoneCheck) {
+            requireStageMonotone("阶段→接触层", layerCapByStage)
+            requireStageMonotone("阶段→进攻", attackerCapByStage)
+        }
+    }
+
+    /** 御裁⑤-B：阶段映射须单调不减；违例即拒，错误信息点名反了的两阶段（阶段名＋两个值）。 */
+    private fun requireStageMonotone(name: String, capByStage: Map<Int, Int>) {
+        for (stage in 1 until DEFENDER_STAGES) {
+            val prev = capByStage.getValue(stage - 1)
+            val cur = capByStage.getValue(stage)
+            if (cur < prev) {
+                throw IllegalArgumentException(
+                    "${name}表非单调：${STAGE_NAMES[stage - 1]}→${STAGE_NAMES[stage]} 上限反而降 $prev→$cur",
+                )
+            }
+        }
     }
 
     companion object {

@@ -110,10 +110,12 @@ class TrackParityTest {
     @Test
     fun parity_fixture_binds_reference_fingerprint() {
         val doc = JSONObject(resource("parity-expected.json"))
-        assertEquals("参考实现字节数（派工单 8,345 B）", 8345, doc.getInt("reference_bytes"))
+        // 御裁⑤（2026-11-17）修正参考实现（A 钳层＋B 加载校验）⇒ 指纹随基准一起升版；
+        // 派工单原口径 8,345 B / sha 38c6aa4f… 是被修正前的基准，对拍读数逐条未变（见交付报告 §四）。
+        assertEquals("参考实现字节数（御裁⑤ 修正后）", 9550, doc.getInt("reference_bytes"))
         assertEquals(
             "参考实现 sha256（指纹绑定对拍基准）",
-            "38c6aa4f537cbc67cbb49752226484458c089c4387f9d4442b34b0e47ac27c09",
+            "2daa4e58d6211ac7b8ca1f142074ce25b82b109982c0980d02aa28ad866ca3e7",
             doc.getString("reference_sha256"),
         )
     }

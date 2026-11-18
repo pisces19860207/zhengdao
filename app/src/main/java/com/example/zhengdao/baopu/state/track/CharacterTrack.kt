@@ -147,6 +147,9 @@ class CharacterTrack(
      * 一轮结束：防守方推进判定。最短停留未满 ⇒ 不动；锚点命中缩短停留但不改拓扑；
      * 上限由显性度把守（单向门：显性度是天花板不是动力，阶段只靠轮数推进）。
      * 无排斥未确认或硬否决期间 ⇒ 拒绝推进。返回换阶段消息，未换返回 null。
+     *
+     * 御裁⑤-A（每步兜底）：阶段上限由参数表提供，钳制由引擎执行——推进后按阶段映射钳层，
+     * 不靠参数作者自觉。显性度一侧的对称缺口另记交付报告 §五，不在此处顺手补。
      */
     fun tick(anchorHit: Boolean = false): String? {
         turnCount += 1
@@ -164,6 +167,7 @@ class CharacterTrack(
         if (dStage >= stageCap()) return null
         if (dStage < DEFENDER_STAGES - 1) {
             dStage += 1
+            layer = minOf(layer, params.layerCapByStage.getValue(dStage))
             turns = 0
             return "防守→${STAGE_NAMES[dStage]}"
         }

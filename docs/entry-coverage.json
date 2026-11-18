@@ -704,7 +704,7 @@
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
-    "note": "670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，7 例判据（表钉死／守卫证据／触发牌词表／回流三条件四态／不可逆／修饰符）全部只从测试调。",
+    "note": "670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，8 例判据（表钉死／守卫证据／触发牌词表＋脱敏护栏「触发词只许出现在卡列表内」／回流三条件四态／不可逆／修饰符；御裁④ 后由 7 例增到 8 例）全部只从测试调。",
     "package": "com.example.zhengdao.baopu.state.track",
     "proguard_hits": [],
     "self_file_refs": 0,
@@ -712,31 +712,31 @@
     "test_refs": [
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 41
+      "line": 42
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 54
+      "line": 55
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 58
+      "line": 59
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 77
+      "line": 104
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 85
+      "line": 112
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 99
+      "line": 126
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 121
+      "line": 148
      }
     ],
     "verdict": "not_urgent",

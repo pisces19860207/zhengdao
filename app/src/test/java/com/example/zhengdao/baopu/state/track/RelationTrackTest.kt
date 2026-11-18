@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class RelationTrackTest {
 
@@ -61,6 +62,32 @@ class RelationTrackTest {
             assertFalse("牌名本身不是 guard 证据（guard 是「出现」）", probe.step(RelationState.T4, setOf(card)))
         }
         assertTrue(track.step(RelationState.T4, setOf("出现")))
+    }
+
+    // ── 御裁④ 护栏：触发词只许以「触发条件列表」出现 ⇒ 不举例、不与场景描述同段 ──
+    // 范围＝state/track 生产源码。全仓「酒」另有约 40 处命中在酒馆／卡牌业务代码，
+    // 与本批回流牌无关，按普查口径属已知假阳性，故不进本护栏（报告 §五.2 记明）。
+    @Test
+    fun trigger_words_appear_only_inside_card_lists() {
+        val watched = listOf("凌晨一点后", "下雨", "相似气味", "相似背影", "梦到", "酒")
+        val dir = File("src/main/java/com/example/zhengdao/baopu/state/track")
+        assertTrue("track 包须存在", dir.isDirectory)
+        val cardLists = Regex("val (TRIGGER_CARDS|BACKFLOW_SUPPLEMENT_CARDS)[\\s\\S]*?\\)")
+        val offenders = mutableListOf<String>()
+        for (file in dir.listFiles { f -> f.extension == "kt" }!!.sortedBy { it.name }) {
+            val outside = cardLists.replace(file.readText(), "")
+            for (word in watched.filter { outside.contains(it) }) {
+                offenders += "${file.name}:「$word」出现在触发条件列表之外"
+            }
+            file.readLines().forEachIndexed { i, line ->
+                val hasCard = watched.any { line.contains(it) }
+                val exemplifies = listOf("比如", "例如", "譬如").any { line.contains(it) }
+                if (hasCard && exemplifies) offenders += "${file.name}:${i + 1}:触发词被当作举例"
+            }
+        }
+        assertTrue("脱敏护栏违例：$offenders", offenders.isEmpty())
+        assertEquals("回流补卡仍 8 张（裁定：本次脱敏不增减）", 8, RelationTable.BACKFLOW_SUPPLEMENT_CARDS.size)
+        assertEquals("TT 触发牌仍 5 张", 5, RelationTable.TRIGGER_CARDS.size)
     }
 
     // ── 回流三条件：全中才进 T4P，缺一条走 TE1（三条件锁死） ──────────────────
