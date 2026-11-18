@@ -12,7 +12,7 @@ internal object AmygdalaProbeGate : BioAnalogGate {
     override fun triple1MeasurableDifference(): BioAnalogGate.Answer = BioAnalogGate.Answer(
         question = "三问① 可测差异：装/不装快探，同一输入行为差在哪？",
         evidence = "同一事件流，快探的举手率随刺激历史变化而朴素读数恒定：" +
-            "AmygdalaProbeTest.habituationLowersMarkRateAndLedgersDesensitize 钉" +
+            "AmygdalaProbeTest.habituationLowersMarkRateAndAccountsDesensitize 钉" +
             "「同类无害刺激反复出现 ⇒ 标记率下降且账里有降敏行」，" +
             "AmygdalaProbeTest.freshProbeKeepsMarkingProvesHabituationCausesTheDrop 钉负例" +
             "「机制不在场则标记率不降」，" +
@@ -23,7 +23,7 @@ internal object AmygdalaProbeGate : BioAnalogGate {
     override fun triple2NoOverreach(): BioAnalogGate.Answer = BioAnalogGate.Answer(
         question = "三问② 不越权：快探的判定权边界在哪，怎么钉？",
         evidence = "只标记不拍板：输出 [ProbeMark] 只有读数/标签/举手三个布尔与数值字段，" +
-            "无任何裁量字段；AmygdalaSourceAssertTest.noJudgementNoLedgerNoModelInCode " +
+            "无任何裁量字段；AmygdalaSourceAssertTest.noJudgementNoAuthoritativeAccountNoModelInCode " +
             "剥注释断言本包源码判定类禁词（判定值/授权档/权威账/模型调用）零出现；" +
             "本件未接主链路，引擎行为不因它存在而变。",
     )

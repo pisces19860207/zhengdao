@@ -96,7 +96,7 @@ class AmygdalaProbeTest {
     // ── 判据② 习惯化：同类无害刺激 ×N ⇒ 标记率下降且账里有降敏行 ──
 
     @Test
-    fun habituationLowersMarkRateAndLedgersDesensitize() {
+    fun habituationLowersMarkRateAndAccountsDesensitize() {
         val probe = AmygdalaProbe(clock = { T0 })
         val marks = (1..12).map { probe.probe(stimulus) }
         assertTrue("前 6 次全举手（底数 0.55 ≥ 0.5）", marks.take(6).all { it.handRaised })
@@ -199,7 +199,7 @@ class AmygdalaProbeTest {
         val a3 = gate.triple3Fallback()
         assertTrue(a1.evidence.isNotBlank() && a2.evidence.isNotBlank() && a3.evidence.isNotBlank())
         for (needle in TRIPLE1_EVIDENCE) assertTrue("三问①证据须引用真实测试：$needle", needle in a1.evidence)
-        assertTrue("三问②证据须引用源码断言", "noJudgementNoLedgerNoModelInCode" in a2.evidence)
+        assertTrue("三问②证据须引用源码断言", "noJudgementNoAuthoritativeAccountNoModelInCode" in a2.evidence)
         assertTrue("三问③证据须引用兜底测试", "throwingAccountChangesNotOneByteOfOutput" in a3.evidence)
     }
 
@@ -275,7 +275,7 @@ class AmygdalaProbeTest {
         const val WARMUP = 300
         const val SAMPLES = 1000
         val TRIPLE1_EVIDENCE = listOf(
-            "habituationLowersMarkRateAndLedgersDesensitize",
+            "habituationLowersMarkRateAndAccountsDesensitize",
             "freshProbeKeepsMarkingProvesHabituationCausesTheDrop",
             "accidentSensitizesThenDecaysByClockFixture",
         )

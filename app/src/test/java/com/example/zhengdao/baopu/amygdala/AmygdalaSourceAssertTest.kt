@@ -16,7 +16,7 @@ class AmygdalaSourceAssertTest {
 
     private val files = listOf(
         "app/src/main/java/com/example/zhengdao/baopu/amygdala/ProbeAccount.kt" to 110,
-        "app/src/main/java/com/example/zhengdao/baopu/amygdala/AmygdalaState.kt" to 180,
+        "app/src/main/java/com/example/zhengdao/baopu/amygdala/AmygdalaState.kt" to 200,
         "app/src/main/java/com/example/zhengdao/baopu/amygdala/BioAnalogGate.kt" to 70,
         "app/src/main/java/com/example/zhengdao/baopu/amygdala/AmygdalaProbe.kt" to 250,
         "app/src/main/java/com/example/zhengdao/baopu/amygdala/AmygdalaProbeGate.kt" to 90,
@@ -27,19 +27,24 @@ class AmygdalaSourceAssertTest {
 
     private val pkgFiles get() = files.map { it.first }
 
-    /** 禁词：判定值（判据⑤）＋授权档（判据⑤）＋权威账（红线）＋模型/网络（判据①）＋词表（红线：不许自造第二套判断）。 */
+    /**
+     * 禁词：判定值（判据⑤）＋授权档（判据⑤）＋权威账（红线）＋模型/网络调用面（判据①）＋词表（红线：不许自造第二套判断）。
+     * 小写 "http" 不在列：外发类工具名标记表里合法含有**工具名** "http"（仓里真有这个分发名，
+     * 快探只分类名字、不建连接）；能上网的形状由 HttpURLConnection/openConnection/java.net/
+     * OkHttp/Retrofit/URL 全禁——这套调用面清单比裸子串更硬。
+     */
     private val forbidden = listOf(
         "RiskDecision", "PROCEED", "Proceed", "proceed",
         "AskTier", "AskGovernance",
         "BaopuDb", "run_log", "execSQL", "Ledger",
-        "Provider", "Http", "http", "URL", "OkHttp", "Retrofit", "java.net",
+        "Provider", "Http", "URL", "OkHttp", "Retrofit", "java.net", "openConnection",
         "DangerWords", "JSONObject", "JSONArray",
     )
 
     // ── 判据⑤＋红线：剥注释后，判定/授权/账/模型/词表禁词一个都不许出现 ──
 
     @Test
-    fun noJudgementNoLedgerNoModelInCode() {
+    fun noJudgementNoAuthoritativeAccountNoModelInCode() {
         val code = pkgFiles.joinToString("\n") { codeOf(it) }
         for (token in forbidden) {
             assertTrue("快探源码（剥注释后）不得出现 $token", token !in code)

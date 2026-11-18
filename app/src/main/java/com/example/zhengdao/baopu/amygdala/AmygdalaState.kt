@@ -12,7 +12,12 @@
 //
 // 事故盖过习惯化：出过事故的类三天内不许降敏（敏化期间习惯化闸门关着）；
 // 事故同时把已降敏的乘子拉回 1.0——"无害"的证据被一次事故作废，这是机理不是策略。
+//
+// 账挂了怎么办（判据⑥）：记账统一走 [ledger] 缝——状态先改、记账在后、写失败吞掉只留一行
+// stdout（BioLog 六体唯一 log 落点）。账从来不是快探的失败面：账好着与账坏着，读数逐字一致。
 package com.example.zhengdao.baopu.amygdala
+
+import com.example.zhengdao.baopu.bio.BioLog
 
 /**
  * 一类刺激（classKey＝工具名，无工具则轨迹相位）的当前状态。
@@ -47,7 +52,7 @@ internal class AmygdalaState(private val account: ProbeAccount) {
         val sens = if (cs.sensitizedUntilMs > nowMs) SENSITIZE_FACTOR else ClassState.DEFAULT_FACTOR
         if (cs.isSensitized && cs.sensitizedUntilMs <= nowMs && !cs.decayRecorded) {
             classes[classKey] = cs.copy(decayRecorded = true)
-            account.append(
+            ledger(
                 AccountEntry(
                     kind = AccountKind.DECAY,
                     classKey = classKey,
@@ -93,7 +98,7 @@ internal class AmygdalaState(private val account: ProbeAccount) {
     @Synchronized
     fun resetToDefault(nowMs: Long) {
         classes.clear()
-        account.append(
+        ledger(
             AccountEntry(
                 kind = AccountKind.RESET,
                 classKey = "*",
@@ -114,6 +119,13 @@ internal class AmygdalaState(private val account: ProbeAccount) {
 
     // ── 状态变化的两条触发线 ──
 
+    /** 记账唯一入口：状态已改完才调到这里；写失败＝无账续跑，异常绝不外漏。 */
+    private fun ledger(entry: AccountEntry) {
+        runCatching { account.append(entry) }.onFailure {
+            BioLog.line(TAG, "探针账写失败，降级为无账续跑：${it.message}")
+        }
+    }
+
     private fun desensitize(classKey: String, cs: ClassState, nowMs: Long) {
         val next = cs.copy(
             habituationFactor = (cs.habituationFactor * HABIT_STEP).coerceAtLeast(HABIT_FLOOR),
@@ -121,7 +133,7 @@ internal class AmygdalaState(private val account: ProbeAccount) {
             windowStartMs = nowMs,
         )
         classes[classKey] = next
-        account.append(
+        ledger(
             AccountEntry(
                 kind = AccountKind.DESSENSITIZE,
                 classKey = classKey,
@@ -140,7 +152,7 @@ internal class AmygdalaState(private val account: ProbeAccount) {
             decayRecorded = false,
         )
         classes[classKey] = next
-        account.append(
+        ledger(
             AccountEntry(
                 kind = AccountKind.SENSITIZE,
                 classKey = classKey,
@@ -160,6 +172,8 @@ internal class AmygdalaState(private val account: ProbeAccount) {
         }
 
     private companion object {
+        const val TAG = "杏仁核·快探"
+
         /** 标记率阈值：窗口 60s 内举手满 6 次 ⇒ 降敏一次（率≈0.1/s）。 */
         const val DESSENSITIZE_MARKS = 6
         const val WINDOW_MS = 60_000L

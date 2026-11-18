@@ -96,8 +96,8 @@ internal class AmygdalaProbe(
     /** 测试/诊断读回：某类刺激当前状态。 */
     fun viewOf(classKey: String): ClassState = state.classView(classKey)
 
-    /** 测试/诊断读回：探针账流水（判据②"账里有降敏行"的读账口）。 */
-    fun accountEntries(): List<AccountEntry> = account.entries()
+    /** 测试/诊断读回：探针账流水（判据②"账里有降敏行"的读账口）。账读失败＝空流水，不外漏。 */
+    fun accountEntries(): List<AccountEntry> = runCatching { account.entries() }.getOrDefault(emptyList())
 
     // ── 机械件：每个都便宜、每个都可能误报（②粗：宁误报，交慢层复核）──
 
