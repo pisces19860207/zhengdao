@@ -1376,15 +1376,8 @@ internal class BaopuChatController(context: Context) {
 
             // 676 回响卡：只有一枚收尾钮——人看过就收（从页签行里撤下这一枚信号；
             // 账行与账本一行不动——信号不是任务）。
-            key.startsWith("sub:") -> {
-                if (buttonId == "dismiss") {
-                    com.example.zhengdao.baopu.subconscious.SubconsciousRowStore
-                        .dismiss(key.removePrefix("sub:"))
-                }
-            }
-            key.startsWith("inspiration:") -> {
-                if (buttonId == "ignore") decideInspirationIgnored(key.removePrefix("inspiration:"))
-            }
+            key.startsWith("sub:") -> dismissSubconsciousSignal(key, buttonId)
+            key.startsWith("inspiration:") -> ignoreInspirationSignal(key, buttonId)
 
             else -> answerChoice(buttonId) // auth: / persona: ⇒ 引擎选项 id 原路答回
         }
@@ -1651,20 +1644,45 @@ internal class BaopuChatController(context: Context) {
             .firstOrNull { "suggestion:${it.candidateId}" == key }
             ?.let { suggestionSpec(it) }
 
-        key.startsWith("sub:") -> com.example.zhengdao.baopu.subconscious.SubconsciousRowStore
-            .latest()
-            .firstOrNull { "sub:${it.id}" == key }
-            ?.let { subconsciousSpec(it) }
+        key.startsWith("sub:") -> subconsciousSpecForKey(key)
         // 534/677 灵感卡：同款卡展示 L0 原文。**纯读**——点开的副作用（放行注入＋账行）
         // 在屏幕层的点击回调里经 [onInspirationOpened] 走一次（本方法每次重组都会被调，
         // 副作用挂这里会跟着重组重放）。
-        key.startsWith("inspiration:") -> com.example.zhengdao.baopu.subconscious.InspirationRowStore
-            .latest()
-            .firstOrNull { it.id == key }
-            ?.let { DecisionSpecs.inspiration(it, decisionStr) }
+        key.startsWith("inspiration:") -> inspirationSpecForKey(key)
 
         else -> null
     }
+
+    /**
+     * 回响卡上唯一的钮（`dismiss` ＝ 人看过就收）。**抽成小函数是为了不把
+     * [onDecisionCardAction] 的圈复杂度顶过墙**（677 与 676 两支并进同一个 when，
+     * detekt 实测 191 > 189；抽走两支实现而不动预算——闸不放宽）。
+     */
+    private fun dismissSubconsciousSignal(key: String, buttonId: String) {
+        if (buttonId == "dismiss") {
+            com.example.zhengdao.baopu.subconscious.SubconsciousRowStore
+                .dismiss(key.removePrefix("sub:"))
+        }
+    }
+
+    /** 灵感卡上的「知道了」钮（忽略 24h 不再浮）。抽出来的理由同上。 */
+    private fun ignoreInspirationSignal(key: String, buttonId: String) {
+        if (buttonId == "ignore") decideInspirationIgnored(key.removePrefix("inspiration:"))
+    }
+
+    /** 回响卡的规格（键不存在 ⇒ null）。抽出来同理：让 [decisionCardSpecFor] 保持一屏内。 */
+    private fun subconsciousSpecForKey(key: String): DecisionCardSpec? =
+        com.example.zhengdao.baopu.subconscious.SubconsciousRowStore
+            .latest()
+            .firstOrNull { "sub:${it.id}" == key }
+            ?.let { subconsciousSpec(it) }
+
+    /** 灵感卡的规格（同款卡展示 L0 原文；纯读，副作用不在这里）。 */
+    private fun inspirationSpecForKey(key: String): DecisionCardSpec? =
+        com.example.zhengdao.baopu.subconscious.InspirationRowStore
+            .latest()
+            .firstOrNull { it.id == key }
+            ?.let { DecisionSpecs.inspiration(it, decisionStr) }
 
     /**
      * 用户点开一条灵感（屏幕层点击回调转交，**每次真点只走一次**）：

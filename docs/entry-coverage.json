@@ -306,7 +306,7 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/PoseValidity.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 42,
+    "line": 53,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
@@ -334,59 +334,59 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 36
+      "line": 38
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 46
+      "line": 48
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 56
+      "line": 58
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 64
+      "line": 66
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 72
+      "line": 74
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 78
+      "line": 80
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 86
+      "line": 88
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 96
+      "line": 99
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 108
+      "line": 111
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 114
+      "line": 117
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 114
+      "line": 117
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 119
+      "line": 122
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 132
+      "line": 135
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 140
+      "line": 143
      }
     ],
     "verdict": "wired",
@@ -803,7 +803,7 @@
   "C": 4,
   "gates_with_write_path": 4,
   "not_wired": 10,
-  "production_top_level_public": 564,
-  "wired": 551
+  "production_top_level_public": 565,
+  "wired": 552
  }
 }

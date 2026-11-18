@@ -98,12 +98,29 @@ class InspirationRecallSourceGateTest {
 
     @Test
     fun 本包无第二执行器类() {
-        pkgSources.forEach { (name, src) ->
-            val runnerDecl = stripComments(src).lines().firstOrNull {
+        // 676 合入后口径改成「恰好一个执行器、且必须是 676 的」——判据更精确，牙没掉：
+        // 677 自己若长出执行器 ⇒ 下面 second 非空 ⇒ 红。
+        val runners = pkgSources.mapNotNull { (name, src) ->
+            val decl = stripComments(src).lines().firstOrNull {
                 Regex("(class|object)\\s+\\w*Runner").containsMatchIn(it)
             }
-            assertNull("subconscious/$name 不许定义 Runner（SubconsciousRunner 是 676 的）", runnerDecl)
+            decl?.let { name }
         }
+        assertEquals(
+            "本包执行器恰好一个（676 的 SubconsciousRunner）",
+            listOf(PKG_PREFIX + "SubconsciousRunner.kt"),
+            runners,
+        )
+        assertNull(
+            "677 的适配层文件不许带 Runner",
+            pkgSources.filterKeys { it != PKG_PREFIX + "SubconsciousRunner.kt" }.values
+                .mapNotNull { src ->
+                    stripComments(src).lines().firstOrNull {
+                        Regex("(class|object)\\s+\\w*Runner").containsMatchIn(it)
+                    }
+                }
+                .firstOrNull(),
+        )
     }
 
     @Test
