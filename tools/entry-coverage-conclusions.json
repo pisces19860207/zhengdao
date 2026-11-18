@@ -29,32 +29,32 @@
     },
     "JointNames": {
       "verdict": "wired(sole-impl)",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：关节名闭集（限位链的数据契约），660 关节链按名查限位。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：关节名闭集（限位链的数据契约），660 关节链按名查限位。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
       "soleImpl": {
         "uniqueImpl": {
           "symbol": "JointNames",
           "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/JointChain.kt",
           "expectedDecls": 1
         },
-        "pendingConsumer": "670",
+        "pendingConsumer": "660",
         "dueWhen": {
-          "ticket": "670",
+          "ticket": "660",
           "mergedSha": ""
         }
       }
     },
     "PoseValidity": {
       "verdict": "wired(sole-impl)",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：姿态合法性判定（关节限位＋可达三态的综合结论），660 姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：姿态合法性判定（关节限位＋可达三态的综合结论），660 姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
       "soleImpl": {
         "uniqueImpl": {
           "symbol": "PoseValidity",
           "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/PoseValidity.kt",
           "expectedDecls": 1
         },
-        "pendingConsumer": "670",
+        "pendingConsumer": "660",
         "dueWhen": {
-          "ticket": "670",
+          "ticket": "660",
           "mergedSha": ""
         }
       }
@@ -93,16 +93,16 @@
     },
     "Capsule": {
       "verdict": "wired(sole-impl)",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：胶囊支撑映射（关节 limb 近似体），660 关节链与 670 姿态用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
+      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：胶囊支撑映射（关节 limb 近似体），660 关节链与 670 姿态用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
       "soleImpl": {
         "uniqueImpl": {
           "symbol": "Capsule",
           "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
           "expectedDecls": 1
         },
-        "pendingConsumer": "670",
+        "pendingConsumer": "660",
         "dueWhen": {
-          "ticket": "670",
+          "ticket": "660",
           "mergedSha": ""
         }
       }
