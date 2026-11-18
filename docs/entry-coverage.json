@@ -32,6 +32,69 @@
   "B": [
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/body/AnatomyZones.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 28,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：660 形体线的**唯一真源**（docs/facts/anatomy-zones.json，头部 shared_with 声明 660 共用）。660 未交付 ⇒ 本单只交口径库与解析器（fail-closed、单一加载点），660 落地直接读它、不另抄一份。用途：13 区口径（可观察特征／AI 常见误写），供 660 形体模型与 669 误写检测共用。",
+    "package": "com.example.zhengdao.baopu.body",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AnatomyZones",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 17
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 22
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 24
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 64
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 77
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 83
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
+      "line": 91
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt",
+      "line": 16
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt",
+      "line": 17
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -67,6 +130,33 @@
      }
     ],
     "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/body/VocabGuard.kt",
+    "file_mates_wired": true,
+    "kind": "class",
+    "line": 37,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "理由：本单是**规则库＋纯函数扫描器**（十条规则子句级扫描、只报不改写、宾转主 suggest 不拦），生产侧还没有调用点——它要做的事是「写的时候给提示」，那需要一个提示入口（下一批）。先行落库是为了让 660 与写作侧共用同一份规则，避免各自写一套；判据已由 29 例夹具＋2 例源码断言钉住。",
+    "package": "com.example.zhengdao.baopu.body",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "VocabGuard",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt",
+      "line": 20
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt",
+      "line": 225
+     }
+    ],
+    "verdict": "not_urgent",
     "wrapper_scan": []
    },
    {
@@ -272,11 +362,11 @@
  },
  "summary": {
   "A": 1,
-  "B": 3,
+  "B": 5,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 2,
-  "production_top_level_public": 524,
-  "wired": 520
+  "not_wired": 3,
+  "production_top_level_public": 531,
+  "wired": 525
  }
 }
