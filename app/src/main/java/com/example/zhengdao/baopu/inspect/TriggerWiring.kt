@@ -17,10 +17,12 @@
 package com.example.zhengdao.baopu.inspect
 
 import android.content.Context
+import com.example.zhengdao.baopu.habit.habitOnRunSettled
+import com.example.zhengdao.baopu.insula.insulaOnRunSettled
 import com.example.zhengdao.baopu.subconscious.subconsciousOnRunSettled
 import com.example.zhengdao.core.RunLog
 
-/** 收工事件的后台维护入口（暗卫＋巡按＋676 回响；前两件共用一套触发判据，回响自带天闸）。 */
+/** 收工事件的后台维护入口（暗卫＋巡按＋676 回响＋521 岛叶/纹状体；前两件共用一套触发判据，其余自带闸）。 */
 internal object TriggerWiring {
 
     /**
@@ -36,6 +38,12 @@ internal object TriggerWiring {
         // 节奏由它自带的天闸（≤1 次/天）与左相（免打扰窗口内延后）管，这里只递钟点与账根。
         // 模型不可用 ⇒ 它内部退回规则版（不崩、不空转），本行一个字都不用知道。
         if (safe("回响") { subconsciousOnRunSettled(ctx, nowMs) } != null) ran++
+        // 第五百二十一批：岛叶自调——先读体征调四参数（并发度/批量/重试间隔/延后重活），
+        // 纹状体那一行消费它的现值；岛叶不可用 ⇒ 纹状体按出厂默认走（逐字节兜底口径）。
+        if (safe("岛叶自调") { insulaOnRunSettled(ctx, nowMs) } != null) ran++
+        // 第五百二十一批：纹状体固化——收工即一次机会：本轮轨迹刚落库，正是看
+        // "同一流程是否又成了 N 次"的时刻；只出建议卡，采纳走既有许愿流水线。
+        if (safe("纹状体固化") { habitOnRunSettled(ctx, nowMs) } != null) ran++
         return ran
     }
 

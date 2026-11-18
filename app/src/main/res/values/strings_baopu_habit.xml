@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第五百二十一批 · 纹状体固化建议卡＋岛叶自调卡的文案（2026-11-18）。
+  单独成文件（房型照 676 subconscious 各批）：共享 strings.xml 是高冲突文件，
+  本批对它零改动。键与 values-en/strings_baopu_habit.xml 一一对应。
+-->
+<resources>
+    <!-- 「建议」页签：习惯固化（同一流程 ≥5 次一次过的建议行）。 -->
+    <string name="habit_row_type">习惯固化</string>
+    <!-- 「建议」页签：岛叶自调（四参数调节的留痕行）。 -->
+    <string name="insula_row_type">岛叶自调</string>
+    <!-- 固化建议卡：标题与副题（副题带达标次数）。 -->
+    <string name="habit_card_title">习惯固化建议</string>
+    <string name="habit_card_subtitle">这条流程连着 %1$d 次都一次过</string>
+    <!-- 固化建议卡正文：证据＋序列（%1$d 次数，%2$s 流程串，%3$s 序列键）。 -->
+    <string name="habit_card_body">同一流程重复 ≥5 次且每次都成功：最近 %1$d 次「%2$s」全部一次过（无人纠正）。</string>
+    <string name="habit_card_sequence">序列：%1$s（可点开看习惯账）</string>
+    <!-- 已递许愿后的卡面：等确认（%1$s wishId）。 -->
+    <string name="habit_card_pending">已递进许愿流水线（%1$s）。在会话里回「许愿确认 &lt;编号&gt;」挑验收判据，草稿才会生成并进沙盒试跑；转正永远由你批。</string>
+    <!-- 固化建议卡动作钮：采纳＝递进既有许愿流水线（不是直接写技能）。 -->
+    <string name="habit_adopt">采纳·递许愿</string>
+    <string name="habit_card_footer">只出建议：不直写技能、不转正。采纳只把许愿递进既有流水线（草稿→沙盒试跑→自检→灰度），转正永远由你批；不想要就点「知道了」，以后不再提。</string>
+    <!-- 岛叶自调卡：标题、副题、每条动作（%1$s 参数，%2$s 旧值，%3$s 新值）。 -->
+    <string name="insula_card_title">岛叶自调</string>
+    <string name="insula_card_subtitle">身体读数偏紧，替自己收了一档（只调四参数）</string>
+    <string name="insula_card_move">%1$s：%2$s → %3$s</string>
+    <!-- 岛叶自调卡动作钮：一键回默认（调节账落 reset 行，历史账不删）。 -->
+    <string name="insula_reset">一键回默认</string>
+    <string name="insula_card_footer">只调四个行为参数（并发度·批量大小·重试间隔·延后重活），不碰你的设置、授权档、判据与工具白名单。每次调节都落账，可随时回默认。</string>
+</resources>

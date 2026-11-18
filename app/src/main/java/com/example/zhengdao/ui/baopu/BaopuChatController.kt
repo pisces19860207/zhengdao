@@ -1349,12 +1349,15 @@ internal class BaopuChatController(context: Context) {
     /** 重放卡的规格（键不存在 ⇒ null）。抽出来是为了不把 [decisionCardSpecFor] 顶过复杂度墙。 */
     /** 这三类键都来自行槽（回响/灵感/重放）：判定与分派各一处，免得 [decisionCardSpecFor] 越墙。 */
     private fun isSignalRowKey(key: String): Boolean =
-        key.startsWith("sub:") || key.startsWith("inspiration:") || key.startsWith("replay")
+        key.startsWith("sub:") || key.startsWith("inspiration:") || key.startsWith("replay") ||
+            key.startsWith("habit:") || key.startsWith("insula:")
 
     /** 行槽类信号卡的规格（按前缀分派；键不存在 ⇒ null）。 */
     private fun signalRowSpecForKey(key: String): DecisionCardSpec? = when {
         key.startsWith("sub:") -> subconsciousSpecForKey(key)
         key.startsWith("inspiration:") -> inspirationSpecForKey(key)
+        key.startsWith("habit:") -> habitSpecForKey(key)
+        key.startsWith("insula:") -> insulaSpecForKey(key)
         else -> replaySpecForKey(key)
     }
 
@@ -1605,6 +1608,10 @@ internal class BaopuChatController(context: Context) {
             // 账行与账本一行不动——信号不是任务）。
             key.startsWith("sub:") -> dismissSubconsciousSignal(key, buttonId)
             key.startsWith("inspiration:") -> ignoreInspirationSignal(key, buttonId)
+            // 521 纹状体固化建议卡（采纳＝递许愿）与岛叶自调卡（回默认）：
+            // 动作本体在下面两个助手，分派只认前缀——同 676 的拆法。
+            key.startsWith("habit:") -> habitCardAction(key, buttonId)
+            key.startsWith("insula:") -> insulaCardAction(key, buttonId)
 
             key.startsWith("effect:") -> onEffectCardAction(key.removePrefix("effect:"), buttonId)
             key.startsWith("suggestion:") -> onSuggestionCardAction(key.removePrefix("suggestion:"), buttonId)
@@ -1738,6 +1745,31 @@ internal class BaopuChatController(context: Context) {
             // 522/678 重放类行：经验条目＋合并建议（每条带 L0 指针；replayRows 是
             // Compose 状态，读它进组合 ⇒ 行槽一变页签自动重算——判据①的行只进本页签）。
             replayRows.forEach { add(it) }
+            // 521 纹状体固化建议行：同一流程 ≥5 次一次过才浮（闸在 habit 纯层＋三问门）；
+            // 行只认本进程最近一轮的建议，点开同款卡看证据，采纳走既有许愿流水线。
+            com.example.zhengdao.baopu.habit.HabitCardStore.latest().forEach { h ->
+                add(
+                    DecisionCenterRow(
+                        id = h.id,
+                        variant = DecisionVariant.SUGGESTION,
+                        title = appCtx.getString(R.string.habit_card_title),
+                        subtitle = appCtx.getString(R.string.habit_card_subtitle, h.count),
+                        typeLabel = appCtx.getString(R.string.habit_row_type),
+                    ),
+                )
+            }
+            // 521 岛叶自调行：真调过才浮（每动作一行摘要；账行在调节账里，行只是展示槽）。
+            com.example.zhengdao.baopu.insula.InsulaCardStore.latest().forEach { c ->
+                add(
+                    DecisionCenterRow(
+                        id = c.id,
+                        variant = DecisionVariant.SUGGESTION,
+                        title = appCtx.getString(R.string.insula_card_title),
+                        subtitle = c.moves.joinToString("；") { "${it.param.cn} ${it.from}→${it.to}" },
+                        typeLabel = appCtx.getString(R.string.insula_row_type),
+                    ),
+                )
+            }
         },
     )
 
@@ -1782,6 +1814,57 @@ internal class BaopuChatController(context: Context) {
     private fun ignoreInspirationSignal(key: String, buttonId: String) {
         if (buttonId == "ignore") decideInspirationIgnored(key.removePrefix("inspiration:"))
     }
+
+    /** 固化建议卡两钮（521；抽出来同理，不把 [onDecisionCardAction] 顶过墙）。 */
+    private fun habitCardAction(key: String, buttonId: String) {
+        when (buttonId) {
+            "adopt" -> scope.launch(Dispatchers.IO) {
+                val notice = com.example.zhengdao.baopu.habit.adoptHabit(
+                    com.example.zhengdao.baopu.DecisionLedger.installedRoot(),
+                    key,
+                    { text ->
+                        com.example.zhengdao.baopu.wish.WishFlow.pipeline(appCtx)
+                            .submit(text, com.example.zhengdao.baopu.wish.WishProduct.SKILL)
+                    },
+                    System.currentTimeMillis(),
+                )
+                if (notice != null) RunLog.log("纹状体采纳：$notice")
+            }
+            else -> com.example.zhengdao.baopu.habit.HabitCardStore.dismiss(key)
+        }
+    }
+
+    /** 岛叶自调卡两钮（521）：回默认＝整组还原为出厂档＋落 reset 账；知道了＝收卡。 */
+    private fun insulaCardAction(key: String, buttonId: String) {
+        when (buttonId) {
+            "reset" -> scope.launch(Dispatchers.IO) {
+                val root = com.example.zhengdao.baopu.DecisionLedger.installedRoot()
+                if (root != null) {
+                    val before = com.example.zhengdao.baopu.insula.resetTuningToDefaults(
+                        root,
+                        System.currentTimeMillis(),
+                    )
+                    RunLog.log("岛叶回默认：$before → 出厂档（账行已记）")
+                }
+                com.example.zhengdao.baopu.insula.InsulaCardStore.dismiss(key)
+            }
+            else -> com.example.zhengdao.baopu.insula.InsulaCardStore.dismiss(key)
+        }
+    }
+
+    /** 固化建议卡的规格（键不存在 ⇒ null；同 [subconsciousSpecForKey] 的房型）。 */
+    private fun habitSpecForKey(key: String): DecisionCardSpec? =
+        com.example.zhengdao.baopu.habit.HabitCardStore
+            .latest()
+            .firstOrNull { it.id == key }
+            ?.let { DecisionSpecs.habit(it, decisionStr) }
+
+    /** 岛叶自调卡的规格（键不存在 ⇒ null；同款房型）。 */
+    private fun insulaSpecForKey(key: String): DecisionCardSpec? =
+        com.example.zhengdao.baopu.insula.InsulaCardStore
+            .latest()
+            .firstOrNull { it.id == key }
+            ?.let { DecisionSpecs.insulaTuning(it, decisionStr) }
 
     /** 回响卡的规格（键不存在 ⇒ null）。抽出来同理：让 [decisionCardSpecFor] 保持一屏内。 */
     private fun subconsciousSpecForKey(key: String): DecisionCardSpec? =

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 521: copy for the habit solidification card (striatum) and the insula
+  self-tuning card (2026-11-18). Kept in its own file: the shared strings.xml
+  is a high-conflict file; this batch does not touch it. Keys mirror
+  values/strings_baopu_habit.xml one-to-one.
+-->
+<resources>
+    <!-- Suggestions tab: habit solidification (same flow passed 5+ times in a row). -->
+    <string name="habit_row_type">Habit</string>
+    <!-- Suggestions tab: insula self-tuning (adjustment record rows). -->
+    <string name="insula_row_type">Self-tuning</string>
+    <!-- Habit card: title and subtitle (subtitle carries the streak count). -->
+    <string name="habit_card_title">Habit solidification</string>
+    <string name="habit_card_subtitle">Clean-pass streak: %1$d</string>
+    <!-- Habit card body: evidence + sequence (%1$d count, %2$s flow, %3$s key). -->
+    <string name="habit_card_body">The same flow repeated 5+ passes in a row: \"%2$s\" — streak length %1$d, every one a clean pass (no corrections).</string>
+    <string name="habit_card_sequence">Sequence: %1$s (see the habit ledger for evidence)</string>
+    <!-- Habit card after adoption: awaiting confirmation (%1$s wishId). -->
+    <string name="habit_card_pending">Sent to the wish pipeline (%1$s). Reply \"confirm wish &lt;id&gt;\" in chat to pick acceptance criteria; the draft is then generated and rehearsed in the sandbox. Promotion is always approved by you.</string>
+    <!-- Habit card action: adopt = submit into the existing wish pipeline (never a direct skill write). -->
+    <string name="habit_adopt">Adopt · send wish</string>
+    <string name="habit_card_footer">Suggestion only: no direct skill writes, no promotion. Adopting only submits a wish into the existing pipeline (draft → sandbox rehearsal → self-check → gray), and promotion is always approved by you. Tap \"Got it\" to dismiss for good.</string>
+    <!-- Insula card: title, subtitle, one line per move (%1$s param, %2$s old, %3$s new). -->
+    <string name="insula_card_title">Insula self-tuning</string>
+    <string name="insula_card_subtitle">Body readings tightened; eased one notch (four parameters only)</string>
+    <string name="insula_card_move">%1$s: %2$s → %3$s</string>
+    <!-- Insula card action: one-tap reset to defaults (a reset row lands in the ledger; history is kept). -->
+    <string name="insula_reset">Reset to defaults</string>
+    <string name="insula_card_footer">Tunes only four behavior parameters (concurrency · batch size · retry interval · defer heavy work); never touches your settings, authorization tier, thresholds or tool whitelist. Every move is logged and reversible.</string>
+</resources>

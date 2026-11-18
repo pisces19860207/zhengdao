@@ -258,6 +258,60 @@ internal object DecisionSpecs {
             ),
             footer = s.get(R.string.replay_card_footer),
         )
+
+    // ── 固化建议卡（521 纹状体：建议走既有许愿流水线，转正永远人批） ──────────
+
+    /**
+     * 固化建议卡：正文＝证据（N 次一次过＋序列），动作「采纳递许愿／知道了」。
+     * [com.example.zhengdao.baopu.habit.HabitSuggestion.wishId] 非空 ＝ 已递进流水线，
+     * 卡面换成等确认的话（body 在此改写）。
+     */
+    fun habit(row: com.example.zhengdao.baopu.habit.HabitSuggestion, s: DecisionStrRes): DecisionCardSpec {
+        val flow = row.tools.joinToString("、")
+        val body = if (row.wishId.isEmpty()) {
+            s.get(R.string.habit_card_body, row.count, flow) +
+                "\n" + s.get(R.string.habit_card_sequence, row.seqKey)
+        } else {
+            s.get(R.string.habit_card_pending, row.wishId) +
+                "\n" + s.get(R.string.habit_card_sequence, row.seqKey)
+        }
+        val buttons = if (row.wishId.isEmpty()) {
+            listOf(
+                DecisionButton("adopt", s.get(R.string.habit_adopt), DecisionButtonRole.PRIMARY),
+                DecisionButton("dismiss", s.get(R.string.replay_dismiss), DecisionButtonRole.BUFFER),
+            )
+        } else {
+            listOf(DecisionButton("dismiss", s.get(R.string.replay_dismiss), DecisionButtonRole.BUFFER))
+        }
+        return DecisionCardSpec(
+            variant = DecisionVariant.SUGGESTION,
+            key = row.id,
+            title = s.get(R.string.habit_card_title),
+            subtitle = s.get(R.string.habit_card_subtitle, row.count),
+            body = body,
+            buttons = buttons,
+            footer = s.get(R.string.habit_card_footer),
+        )
+    }
+
+    // ── 岛叶自调卡（521：调了什么一目了然，回默认钮长在卡上） ────────────────
+
+    /** 自调卡：每条动作一行（参数 旧→新＋依据），动作「一键回默认／知道了」。 */
+    fun insulaTuning(card: com.example.zhengdao.baopu.insula.InsulaTuningCard, s: DecisionStrRes): DecisionCardSpec =
+        DecisionCardSpec(
+            variant = DecisionVariant.SUGGESTION,
+            key = card.id,
+            title = s.get(R.string.insula_card_title),
+            subtitle = s.get(R.string.insula_card_subtitle),
+            body = card.moves.joinToString("\n") { m ->
+                s.get(R.string.insula_card_move, m.param.cn, m.from, m.to) + "\n" + m.basis
+            } + "\n" + card.basis,
+            buttons = listOf(
+                DecisionButton("reset", s.get(R.string.insula_reset), DecisionButtonRole.NEGATIVE),
+                DecisionButton("dismiss", s.get(R.string.replay_dismiss), DecisionButtonRole.BUFFER),
+            ),
+            footer = s.get(R.string.insula_card_footer),
+        )
 }
 
 /**
