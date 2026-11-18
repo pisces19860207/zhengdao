@@ -17,6 +17,8 @@
 // 本文件一个写口都没有：落账归装配层（[SubconsciousWiring]），本层只产出。
 // 只出信号不执行（判据⑥）：返回类型里没有任何「去做某事」的出口，参数里也没有——
 // 执行器想执行都没有抓手。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.subconscious
 
 import com.example.zhengdao.baopu.agent.QuietGrant

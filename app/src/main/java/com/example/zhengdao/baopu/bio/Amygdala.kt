@@ -12,6 +12,8 @@
 //   ② 输出只有 {threat: 0..4, novelty: 0..2, note}——档位封顶封底，越界不可能；
 //   ③ 即发即弃：本 object 无状态、无落盘——同输入两次读数逐字一致（判据④）；
 //   ④ 只 log：每次打分走 [BioLog] 一行 stdout，不落权威账（判据③，BioSourceAssertTest 钉）。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.bio
 
 /** 杏仁核·突显读数（纯函数器官，零状态零落盘）。 */

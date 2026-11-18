@@ -92,4 +92,27 @@ class AmygdalaTest {
         assertSame(DangerWords.DEFAULT, DangerWords.fromFacts(emptyList()))
         assertNotSame(DangerWords.DEFAULT, from649)
     }
+
+    // ── 523 三件套①：同一输入，装与不装行为不同——朴素关键词计数 vs 器官读数 ──
+
+    @Test
+    fun triple1SameInputDiffersFromNaiveKeywordCount() {
+        // 朴素基线（没有本件）：只数危险词——"不要删除"只有 1 个命中 ⇒ 档 1。
+        assertEquals(1, DangerWords.DEFAULT.dangerHits("不要删除").coerceAtMost(4))
+        // 本件在场：否定词（立边界的表述本身是突显）升级 +1 ⇒ 2。同一输入，读数不同。
+        assertEquals(2, read("不要删除").threat)
+    }
+
+    // ── 523 三件套③：失败兜底——词表缝失效/读数缺失，处置与"没装它"一致 ──
+
+    @Test
+    fun triple3FallbackTreatsMissingSignalAsNoThreat() {
+        // 读数缺失形态（空白事件＝无信号）：威胁 0，note 明说"无威胁信号"——
+        // 主路径按"无威胁信号"处置，与没有本件时的现状一致。
+        val r = read("")
+        assertEquals(0, r.threat)
+        assertTrue(r.note.startsWith("无威胁信号"))
+        // 词表缝失效（649 facts 无货）⇒ 原样回默认表，不退化成空表（兜底＝现状）。
+        assertSame(DangerWords.DEFAULT, DangerWords.fromFacts(emptyList()))
+    }
 }

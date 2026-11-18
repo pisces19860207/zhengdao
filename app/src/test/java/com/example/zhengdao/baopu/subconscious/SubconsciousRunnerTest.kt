@@ -302,4 +302,56 @@ class SubconsciousRunnerTest {
         assertEquals(EchoVerdict.RECOMMEND, outcome.signals[0].verdict)
         assertEquals(listOf("可建议", "不建议", "不确定"), EchoVerdict.entries.map { it.cn })
     }
+
+    // ── 523 三件套①：同一批账，装与不装行为不同 ─────────────────────────────
+
+    @Test
+    fun `三件套①_同批账_执行器在场浮信号_无可回响时零变化`() {
+        val now = at(0, 10)
+        // 有它：可建议的账行浮成信号＋同形 ACTION 行（建议页签多出这一行）。
+        val on = SubconsciousRunner.run(
+            candidates = listOf(cand("L2", now - DAY_MS)),
+            nowMs = now,
+            grant = null,
+            shape = shape(),
+            lastRunDayKey = null,
+            suggestedAtByKey = emptyMap(),
+            picker = null,
+        )
+        assertTrue(on.ran)
+        assertEquals(1, on.signals.size)
+        assertEquals(1, on.actionRows.size)
+        // 没它（同一轮没有可回响的账）＝ 什么都不发生：0 信号 0 行，页签没有行可读。
+        val off = SubconsciousRunner.run(
+            candidates = listOf(cand("L9", now - 90 * DAY_MS)), // 超窗 ⇒ 右相不建议
+            nowMs = now,
+            grant = null,
+            shape = shape(),
+            lastRunDayKey = null,
+            suggestedAtByKey = emptyMap(),
+            picker = null,
+        )
+        assertTrue(off.ran)
+        assertTrue(off.signals.isEmpty() && off.actionRows.isEmpty())
+    }
+
+    // ── 523 三件套③：候选空池（件没东西可说）⇒ 真跑零产物，主链路零变化 ──────
+
+    @Test
+    fun `三件套③_候选空池_真跑零信号零行_页签零变化`() {
+        val now = at(0, 10)
+        val outcome = SubconsciousRunner.run(
+            candidates = emptyList(),
+            nowMs = now,
+            grant = null,
+            shape = shape(),
+            lastRunDayKey = null,
+            suggestedAtByKey = emptyMap(),
+            picker = null,
+        )
+        assertTrue(outcome.ran)
+        assertTrue(outcome.signals.isEmpty())
+        assertTrue(outcome.actionRows.isEmpty())
+        assertFalse(outcome.modelPicked)
+    }
 }

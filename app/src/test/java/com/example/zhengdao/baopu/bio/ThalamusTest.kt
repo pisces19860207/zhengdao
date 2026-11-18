@@ -61,4 +61,25 @@ class ThalamusTest {
         val e = BioEvent(text = "打开 /data/local/tmp", source = "chat")
         assertEquals(Thalamus.relay(e), Thalamus.relay(e))
     }
+
+    // ── 523 三件套①：有它＝同一输入出"路由＋新异"读数；没它＝事件没有这个读数面 ──
+
+    @Test
+    fun triple1SameInputYieldsRouteReadingOnlyWithOrgan() {
+        val r = relay("删除 /tmp/x")
+        assertEquals(Thalamus.Route.GUARD, r.route) // 装了它：事件有了去处（机械路由标签）
+        assertTrue(r.novelty in 0..2) // 读数面三样齐（route/novelty/note）——没它就没有这个面
+        assertTrue(r.note.contains("门禁"))
+    }
+
+    // ── 523 三件套③：词表缝失效（给空词表）⇒ 退回无词表的中继，不拦不丢 ──
+
+    @Test
+    fun triple3WordSeamFailureFallsBackToShapeOnly() {
+        val blind = DangerWords(danger = emptySet(), negation = emptySet(), noveltyMarks = emptySet())
+        // 词信号缺失 ⇒ 不再送门禁门口（与没有词信号的现状一致）；事件不丢——照走直答。
+        assertEquals(Thalamus.Route.DIRECT, relay("帮我删除这个文件", blind).route)
+        // 形状信号不依赖词表：路径样式照样中继（中继失败退直接分发的兜底口径）。
+        assertEquals(Thalamus.Route.TOOLS, relay("打开 /tmp/x", blind).route)
+    }
 }

@@ -104,4 +104,22 @@ class InsulaTest {
             Insula.snapshot(Insula.Sources(thermalC = { Double.NaN })).thermal, // 非有限值不造档
         )
     }
+
+    // ── 523 三件套①：有它＝一次调用汇齐七体征的读数面；没它＝没有这个面 ──
+
+    @Test
+    fun triple1UnifiedVitalsFaceIsTheDifference() {
+        val s = Insula.snapshot(full)
+        // 七格一次拿全且都有实义（散落日志做不到的事——这就是装与不装的差异）。
+        for ((name, v) in listOf(
+            "battery" to s.battery, "storage" to s.storage, "thermal" to s.thermal,
+            "build" to s.build, "gates" to s.gates, "formTrack" to s.formTrack, "note" to s.note,
+        )) {
+            assertTrue("$name 应有读数：$v", v.isNotEmpty())
+        }
+        // 探头没接（缝缺）⇒ 逐格"无读数"，不造数——缺读数即兜底，快照面仍在。
+        val bare = Insula.snapshot()
+        assertEquals("无读数", bare.battery)
+        assertEquals("无读数", bare.gates)
+    }
 }

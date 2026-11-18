@@ -112,4 +112,14 @@ class HippocampusTest {
         assertNotEquals(first.hint, elsewhere.hint) // 换地址就换键，不合并
         assertEquals(999L, elsewhere.sessionId)
     }
+
+    // ── 523 三件套①：有它＝键是"地址＋元数据"面；朴素截引（没它）会把正文带出去 ──
+
+    @Test
+    fun triple1KeyIsMetadataFaceNotBodyExcerpt() {
+        val body = sensitive.first()
+        val k = key(text = body)
+        assertTrue("键必须有地址（何时何地发生了什么）", k.hint.contains("会话 42 第 3 轮"))
+        assertTrue("键不带正文片段（朴素截引做不到这一点）", body !in k.hint && body !in k.toString())
+    }
 }

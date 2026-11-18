@@ -26,6 +26,8 @@
 // 执行器边界（判据⑤）：本文件零调度构造、零 Runner 类——执行节奏归 676 的
 // SubconsciousRunner（未合入，见装配层机会式调用点）；「一天 ≤1 次」复用
 // [PatrolScheduler.dayBucket] 同一把日历尺（676/677 同款，不另立日期真源）。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.subconscious
 
 import com.example.zhengdao.baopu.MemoryRules

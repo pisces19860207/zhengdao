@@ -120,4 +120,13 @@ class PrefrontalCortexTest {
         )
         assertEquals(PrefrontalCortex.readPlan(view), PrefrontalCortex.readPlan(view))
     }
+
+    // ── 523 三件套①：有它＝失败史出卡步读数；没它（无史）＝同一份计划读不出卡步 ──
+
+    @Test
+    fun triple1StuckReadingOnlyWithFailureHistory() {
+        val steps = listOf(step(1), step(2), step(3))
+        assertEquals(2, read(steps, listOf(2, 2, 2)).stuckAt) // 有失败史：卡步读数出现
+        assertNull(read(steps).stuckAt) // 无史：同一份计划，null——这个读数没它给不出来
+    }
 }

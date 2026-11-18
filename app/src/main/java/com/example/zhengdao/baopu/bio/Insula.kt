@@ -14,6 +14,8 @@
 //   ③ 形轨数值**现读现显**：走形轨只读 API（SilhouetteWire 一类纯函数）拿到什么显什么，
 //      快照里只留一句话——本件没有任何存形轨数值的字段/文件/表，"不抄进自己的账"
 //      在结构上成立，不靠自觉。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.bio
 
 import java.util.Locale

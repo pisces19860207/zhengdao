@@ -14,6 +14,8 @@
 //   ③ 不改计划：本 object 无状态、无落盘、不引用任何引擎计划类型（BioSourceAssertTest
 //      钉禁引擎符号）——同输入两次读数逐字一致（判据④）；
 //   ④ 只 log：每次读数走 [BioLog] 一行 stdout，不落权威账（BioSourceAssertTest 钉）。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.bio
 
 /** 前额叶·计划读数（纯函数器官，零状态零落盘）。 */

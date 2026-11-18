@@ -21,6 +21,8 @@
 //   2. **零时钟**：一切时刻由调用方注入（时间注入夹具，判据④的可测性地基）；
 //   3. **失败兜底**：哪一重没中、为什么没浮，[InspirationRound.note] 一行说明——
 //      不许猜、不许编（M3 三件套口径）。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.subconscious
 
 import com.example.zhengdao.baopu.MemoryRules

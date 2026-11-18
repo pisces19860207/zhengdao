@@ -15,6 +15,8 @@
 //   ③ 只 log：每次发键走 [BioLog] 一行 stdout，不落权威账。
 // 指纹只认形不认义：678 拿它对"同一件事是否再发生"，比对的是单向摘要不是内容——
 // 正文从指纹里读不回来，敏感夹具测试会证明输出里没有夹具的任何一个片段。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.bio
 
 import java.security.MessageDigest

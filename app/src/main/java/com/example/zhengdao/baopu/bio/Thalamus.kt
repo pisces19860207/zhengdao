@@ -12,6 +12,8 @@
 //   ① 输出只有 {route, novelty, note}——route 是机械路由标签，不是裁量；
 //   ② 危险词在场 ⇒ 中继到门禁**门口**：送，不拦（拦不拦是门禁的权，本件无从触碰）；
 //   ③ 只 log：每次中继走 [BioLog] 一行 stdout，不落权威账（判据③，BioSourceAssertTest 钉）。
+//
+// 本件无判定权（523 三件套②）：不产生 RiskDecision/PROCEED/REJECT，不改档，不写权威账。
 package com.example.zhengdao.baopu.bio
 
 /** 丘脑·中继（纯函数器官，零状态零落盘）。 */

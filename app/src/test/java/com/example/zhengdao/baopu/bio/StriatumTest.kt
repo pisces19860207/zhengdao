@@ -79,4 +79,13 @@ class StriatumTest {
         val outcome = Striatum.Outcome(ok = true, corrected = true)
         assertEquals(Striatum.rpe(outcome), Striatum.rpe(outcome))
     }
+
+    // ── 523 三件套①：二值成败说不出的形态，差读数说得——"成了但被打回"＝0 ──
+
+    @Test
+    fun triple1CorrectedSuccessDistinguishableFromPlainSuccess() {
+        // 没它（成败二值）：这格只能算"成功"；有它：差读数 0（正负相抵）——同一输入，两种读数。
+        assertEquals(0, rpe(ok = true, corrected = true).value)
+        assertEquals(1, rpe(ok = true, corrected = false).value)
+    }
 }
