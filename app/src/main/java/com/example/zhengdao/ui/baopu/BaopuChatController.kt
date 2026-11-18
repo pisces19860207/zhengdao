@@ -56,7 +56,12 @@ import com.example.zhengdao.baopu.recall.RecallCardRules
 import com.example.zhengdao.baopu.recall.RecallCardView
 import com.example.zhengdao.baopu.recall.RecallDbSearch
 import com.example.zhengdao.baopu.recall.RecallEngine
+import com.example.zhengdao.baopu.recall.RecallFallback
+import com.example.zhengdao.baopu.recall.RecallIndexSearch
+import com.example.zhengdao.baopu.recall.RecallLogLine
+import com.example.zhengdao.baopu.recall.RecallTimes
 import com.example.zhengdao.baopu.recall.VagueTrigger
+import com.example.zhengdao.baopu.recall.sessionIndexPort
 import com.example.zhengdao.baopu.SessionCompressionStore
 import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.ShadowJudgement
@@ -2848,6 +2853,12 @@ internal class BaopuChatController(context: Context) {
     var recallCard by mutableStateOf<RecallCardView?>(null)
         private set
 
+    /**
+     * 533/702 的会话索引（懒建：第一次唤回才开 `search.db` 连接并让它的 DDL 自愈建表）。
+     * 只由 [runVagueRecall] 在 IO 线程上取用；索引的维护（增量入库）在 533 的 `search` 里。
+     */
+    private val sessionIndex by lazy { sessionIndexPort(db, appCtx) }
+
     /** 收起唤回卡（点「收起」；下一句触发时也会自动收旧出新的）。 */
     fun dismissRecallCard() {
         recallCard = null
@@ -3705,12 +3716,15 @@ internal class BaopuChatController(context: Context) {
      * 线索三组（顺序＝组优先级）：①这句话自己的实词；②上一条助手回复的实词——
      * 「那个」最常指的是它刚说过的话；③最近几轮用户原话的实词。每组一次检索，
      * 次数硬顶 3（[RecallEngine.clueGroups] 截断，计数器进 [RecallEngine.Outcome]）。
-     * 检索走 [RecallDbSearch]（只读既有 message/part 表，不新建索引结构；533 的索引
-     * 合入后换底）；提炼在 [RecallEngine]（≤5 条、每条 ≤60 字、缺消息 id 就丢、
-     * 找不到直说）。
+     *
+     * **检索底座＝533/702 的会话索引**（[RecallIndexSearch] 适配 `search/digest/status`
+     * 三件）：有实词走命中原文，光杆指代走会话摘要；索引零命中时用**同一批线索**
+     * 直读兜底一次（索引是增量的，头几次可能还没铺到——只查索引会把「没铺到」
+     * 说成「没找到」）。两条路都空才叫没找到，兜底不新增线索组 ⇒ 仍守 ≤3 次。
+     * 提炼在 [RecallEngine]（≤5 条、每条 ≤60 字、缺消息 id 就丢、找不到直说）。
      *
      * 只出卡不拦话：异步在壳层 scope 里跑，这句照常进引擎；账只记组数/次数/条数
-     * ——查询词一个字都不进日志（与搜索索引同一条隐私线）。
+     * ——查询词一个字都不进日志（与搜索索引同一条隐私线，读数行由 [RecallLogLine] 拼）。
      */
     private fun runVagueRecall(text: String) {
         val signal = VagueTrigger.signalOf(text) ?: return
@@ -3720,17 +3734,28 @@ internal class BaopuChatController(context: Context) {
             recentUserTexts(3).joinToString(" "), // 3 轮：一个「上次」最远追溯多远，再多就翻到别的事了
         )
         val groups = RecallEngine.clueGroups(signal.keywords, replyKw, userKw)
+        // 光杆指代（本句零实词）⇒ 指的是一整段旧话 ⇒ 要点走 533 的会话摘要；
+        // 有实词 ⇒ 走命中原文（更准，不把整段会话里的高分噪音句端上来）。
+        val preferDigest = signal.keywords.isEmpty()
         scope.launch {
             // 查库只在 IO 线程（scope 本体是 Main）：441 同款——判定与执行都在壳层
             // scope 里异步走，IO 落 Dispatchers.IO；回主线程再写卡状态。
-            val outcome = withContext(Dispatchers.IO) {
-                RecallEngine.recall(groups, RecallDbSearch(db))
+            val (result, indexMessages) = withContext(Dispatchers.IO) {
+                // 索引是懒建的：第一次唤回才开 search.db 连接（533 的 DDL 自愈建表）。
+                val index = sessionIndex
+                val primary = RecallEngine.recall(
+                    groups,
+                    RecallIndexSearch(index, { ids -> RecallTimes.of(db, ids) }, preferDigest),
+                )
+                val outcome = RecallFallback.run(primary) {
+                    RecallEngine.recall(groups, RecallDbSearch(db))
+                }
+                // 索引读数只用于日志（不参与判定）：读不出按 -1 如实说「不知道」。
+                val messages = runCatching { index.status().messages }.getOrDefault(-1L)
+                outcome to messages
             }
-            RunLog.log(
-                "模糊唤回：线索 ${outcome.clueGroupCount} 组·检索 ${outcome.searchCalls} 次" +
-                    "·要点 ${outcome.points.size} 条",
-            )
-            recallCard = RecallCardRules.viewOf(outcome)
+            RunLog.log(RecallLogLine.of(result.outcome, indexMessages, result.usedFallback))
+            recallCard = RecallCardRules.viewOf(result.outcome)
         }
     }
 

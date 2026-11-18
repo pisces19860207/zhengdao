@@ -86,4 +86,30 @@ class RecallQueryTest {
     fun `常量钉死_与派工单判据对齐`() {
         assertNotNull(RecallQuery.MAX_KEYWORDS)
     }
+
+    // ── 533 索引命中补时刻（540 适配层用；主键点查，只带 id） ─────────────────
+
+    @Test
+    fun `时刻语句_主键点查_只带id_去重去零`() {
+        val stmt = RecallQuery.timestampsStmt(listOf(42L, 41L, 42L, 0L, -3L))!!
+        assertEquals("SELECT id, created_at FROM message WHERE id IN (?,?)", stmt.sql)
+        assertEquals(listOf("42", "41"), stmt.args.toList())
+        assertTrue("语句里没有用户词，只有 id 占位", !stmt.sql.contains("LIKE"))
+    }
+
+    @Test
+    fun `时刻语句_空表不发语句_截到上限`() {
+        assertNull(RecallQuery.timestampsStmt(emptyList()))
+        assertNull(RecallQuery.timestampsStmt(listOf(0L, -1L)))
+        val many = (1L..100L).toList()
+        assertEquals(RecallQuery.MAX_TIME_IDS, RecallQuery.timestampsStmt(many)!!.args.size)
+    }
+
+    @Test
+    fun `时刻语句_只读_没有DDL与写面`() {
+        val stmt = RecallQuery.timestampsStmt(listOf(7L))!!
+        listOf("CREATE", "ALTER", "DROP", "INSERT", "UPDATE ", "DELETE").forEach {
+            assertFalse("时刻语句出现「$it」", stmt.sql.contains(it))
+        }
+    }
 }

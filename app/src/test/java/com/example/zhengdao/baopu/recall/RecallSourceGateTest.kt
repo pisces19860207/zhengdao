@@ -10,16 +10,21 @@ import org.junit.Test
 /**
  * 540 的源码门禁（扫 `baopu/recall` 全包源码文本，`PhoneSearchPrivacyGateTest` 同款手法）。
  *
- * 钉四件事（派工单【判据】里可静态断言的那几条）：
- * 1. **不新建索引、不改索引结构**：全包零 DDL 字面量（CREATE/ALTER/DROP）——
- *    检索只许 SELECT 既有表，等 533 的倒排，不另造一套；
- * 2. **只读**：适配层零写面（execSQL/insert/beginTransaction/delete 都不许出现）；
- * 3. **查询词不进日志**：本包每一处 `RunLog.log(` 的参数表里，插值只许是「数量读数」
- *    （`*.size` 一类），用户话里切出来的词一个字都不许进去；
- * 4. **不调模型**：提炼是确定性抽取（要点只能来自命中原文），模型一来「找不到」
- *    就有了编造的口子。
+ * 钉五件事（派工单【判据】里可静态断言的那几条）：
+ * 1. **不新建索引、不改索引结构**：全包零 DDL 字面量（CREATE/ALTER/DROP）；
+ *    **533 的索引只许从 [RecallIndexPort] 这一个缝进**，且只有 `SessionIndexPort.kt`
+ *    能 import `baopu.msgsearch`（「复用 533 的索引，不另造」的正面锚）；
+ * 2. **只读**：执行层零写面（execSQL/insert/beginTransaction/delete 都不许出现）；
+ * 3. **查询词不进日志**：本包 `RunLog.log(` 的参数表里插值只许计数（`*.size`）；
+ *    控制器那行必须走 [RecallLogLine]（它只接计数，用户原话进不去）；
+ * 4. **不调模型**：提炼是确定性抽取（要点只能来自命中原文／533 的抽取式摘要），
+ *    模型一来「找不到」就有了编造的口子；
+ * 5. **SQL 文本只住 [RecallQuery]**：执行层（两个适配器＋时刻壳）只许调语句常量。
  */
 class RecallSourceGateTest {
+
+    /** 允许执行语句的壳（read-only thin shells）；除此之外任何文件都不许碰 SQL。 */
+    private val executors = setOf("RecallDbSearch.kt", "RecallTimes.kt")
 
     private val sources: Map<String, String> by lazy {
         val dir = repoFile("src/main/java/com/example/zhengdao/baopu/recall")
@@ -41,45 +46,54 @@ class RecallSourceGateTest {
         throw AssertionError("找不到 $rel（工作目录 ${File(".").absolutePath}）")
     }
 
-    // ── 1. 不新建索引、不改索引结构 ───────────────────────────────────────
+    // ── 1. 不新建索引、不改索引结构；533 索引唯一入口 ─────────────────────
 
     @Test
     fun `负例_全包零DDL_检索不建索引结构`() {
         val code = code(allSources())
         listOf("CREATE TABLE", "CREATE INDEX", "CREATE UNIQUE", "ALTER TABLE", "DROP TABLE", "DROP INDEX").forEach {
-            assertFalse("recall 包出现「$it」：540 不建索引，等 533 的倒排", code.contains(it))
+            assertFalse("recall 包出现「$it」：540 不建索引，复用 533 的倒排", code.contains(it))
         }
     }
 
     @Test
-    fun `正面_语句只住查询层_执行只住适配层`() {
+    fun `正面_533索引只有一个入口_只有SessionIndexPort认得msgsearch`() {
+        val importers = sources.filterValues { code(it).contains("msgsearch") || code(it).contains("SessionSearchStore") }
+        assertEquals("只许 SessionIndexPort.kt 搬 533 的类型（换底只改那一个文件）", setOf("SessionIndexPort.kt"), importers.keys)
+        assertTrue(
+            "索引主路径必须挂在 RecallIndexPort 上（不是自己另开一条查消息的路）",
+            code(sources.getValue("RecallIndexSearch.kt")).contains("RecallIndexPort"),
+        )
+    }
+
+    @Test
+    fun `正面_语句只住查询层_执行只住壳`() {
         val query = code(sources.getValue("RecallQuery.kt"))
         assertTrue("语句文本在这一个文件里", query.contains("SELECT m.id"))
-        // 其余文件不许再出现任何 SQL 关键字（判据层不藏第二条查消息的路）
+        // 除查询层与执行壳以外，任何文件不许出现 SQL 关键字（判据层不藏第二条查消息的路）
         val others = sources
-            .filterKeys { it != "RecallQuery.kt" && it != "RecallDbSearch.kt" }
+            .filterKeys { it != "RecallQuery.kt" && it !in executors }
             .values.joinToString("\n") { code(it) }
         listOf("SELECT ", "INSERT ", "UPDATE ", "DELETE FROM", "rawQuery", "BaopuSql").forEach {
-            assertFalse("「${it.trim()}」出现在查询层/执行层之外", others.contains(it))
+            assertFalse("「${it.trim()}」出现在查询层/执行壳之外", others.contains(it))
         }
-        val adapter = code(sources.getValue("RecallDbSearch.kt"))
-        assertEquals(
-            "rawQuery 只许在适配层出现一次（唯一执行点）",
-            1,
-            Regex("rawQuery").findAll(adapter).count(),
-        )
-        assertFalse("适配层不写语句文本（语句只在查询层）", adapter.contains("SELECT "))
+        executors.forEach { name ->
+            val shell = code(sources.getValue(name))
+            assertEquals("$name 里 rawQuery 只许一处（唯一执行点）", 1, Regex("rawQuery").findAll(shell).count())
+            assertFalse("$name 不写语句文本（语句只在查询层）", shell.contains("SELECT "))
+        }
     }
 
-    // ── 2. 适配层只读 ─────────────────────────────────────────────────────
+    // ── 2. 执行层只读 ─────────────────────────────────────────────────────
 
     @Test
-    fun `负例_适配层零写面`() {
-        val adapter = code(sources.getValue("RecallDbSearch.kt"))
+    fun `负例_执行层零写面`() {
+        val shells = executors.joinToString("\n") { code(sources.getValue(it)) }
         listOf("execSQL", "insert(", "beginTransaction", "delete(", "setTransactionSuccessful").forEach {
-            assertFalse("只读适配层出现「$it」", adapter.contains(it))
+            assertFalse("只读执行层出现「$it」", shells.contains(it))
         }
-        assertTrue("适配层必须挂在这条缝上（533 合入后换底的就是它）", adapter.contains("RecallSearchPort"))
+        assertTrue("检索适配器必须挂在这条缝上", code(sources.getValue("RecallDbSearch.kt")).contains("RecallSearchPort"))
+        assertTrue("索引适配器必须挂在这条缝上", code(sources.getValue("RecallIndexSearch.kt")).contains("RecallSearchPort"))
     }
 
     @Test
@@ -113,10 +127,32 @@ class RecallSourceGateTest {
         }
     }
 
+    @Test
+    fun `负例_读数行只接计数_要点原文进不去`() {
+        val outcome = RecallEngine.Outcome(
+            found = true,
+            points = listOf(RecallEngine.Point("用户原话在这", 7L, 42L)),
+            searchCalls = 2,
+            clueGroupCount = 3,
+        )
+        val line = RecallLogLine.of(outcome, indexMessages = 188L, usedFallback = true)
+        assertFalse("要点正文不许进日志", line.contains("用户原话在这"))
+        assertTrue("计数必须在", line.contains("188") && line.contains("是"))
+    }
+
+    @Test
+    fun `负例_控制器唤回那行只许RecallLogLine_不许自己插值`() {
+        val ctl = code(repoFile("src/main/java/com/example/zhengdao/ui/baopu/BaopuChatController.kt").readText())
+        val block = ctl.substringAfter("private fun runVagueRecall(")
+            .substringBefore("private fun recentUserTexts(")
+        assertEquals("唤回块里只许一行运行日志", 1, Regex("RunLog\\.log\\(").findAll(block).count())
+        assertTrue("那行必须走 RecallLogLine（只接计数）", block.contains("RunLog.log(RecallLogLine.of("))
+    }
+
     // ── 4. 不调模型 ───────────────────────────────────────────────────────
 
     @Test
-    fun `负例_提炼不调模型_要点只能来自命中原文`() {
+    fun `负例_提炼不调模型_要点只能来自原文`() {
         val code = code(allSources())
         listOf("LlmClient", "ModelRouter", "chat(", "complete(", "prompt").forEach {
             assertFalse("recall 包出现「$it」：确定性提炼，模型一进来「没找到」就有得编", code.contains(it))

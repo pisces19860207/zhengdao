@@ -24,6 +24,9 @@ internal object RecallQuery {
     /** 一组线索最多带几个词进语句（与 [VagueTrigger.MAX_KEYWORDS] 同数量级，防炸 IN）。 */
     const val MAX_KEYWORDS = 8
 
+    /** 一次补时刻的最多 id 数（索引命中 ≤20 ＋ 摘要 ≤5；留一倍余量，防炸 IN）。 */
+    const val MAX_TIME_IDS = 64
+
     private const val HEAD =
         "SELECT m.id, m.session_id, m.created_at, p.payload " +
         "FROM message m " +
@@ -53,4 +56,19 @@ internal object RecallQuery {
     /** 游标一行 → 命中（列序与 [HEAD] 一致；壳层取错列是测试红，不是运行时炸）。 */
     fun hitOf(id: Long, sessionId: Long, createdAt: Long, payload: String): RecallHit =
         RecallHit(sessionId = sessionId, messageId = id, atMs = createdAt, text = payload)
+
+    /**
+     * 索引命中补「原文时刻」（533 的 `SearchHit` 不带时刻，540 的组内排序要用）。
+     *
+     * 只按主键 `message.id` 打点：一条 `IN (?,…)`，与正文无关、与查询词无关
+     * （参数只有消息 id）。查不到的行**不补**——`message` 里已经没有它（压缩/删掉），
+     * 调用方据此丢这条命中（533 侧「取不到正文即丢」的同一条口径）。
+     */
+    fun timestampsStmt(msgIds: List<Long>): BaopuSql.Stmt? {
+        val ids = msgIds.filter { it > 0L }.distinct().take(MAX_TIME_IDS)
+        if (ids.isEmpty()) return null
+        val sql = "SELECT id, created_at FROM message WHERE id IN (" +
+            ids.joinToString(",") { "?" } + ")"
+        return BaopuSql.Stmt(sql, Array<String?>(ids.size) { ids[it].toString() })
+    }
 }

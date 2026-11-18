@@ -4,15 +4,15 @@
 //
 // ## 这条缝是谁的
 // 派工单②原话「多线索检索 ≤3 次（**复用 533 的索引，不新建索引**）」。533（会话搜索，
-// bigram 倒排）尚未开工 ⇒ 本包按同批惯例（678 派工单同款：依赖未合，按约定接口写
-// 适配层并在报告标注）立这条**索引缝**：540 的一切检索只许从 [RecallSearchPort] 进，
-// 不许自己另开第二条查消息的路。533 合入后由它实现这条接口换底，[RecallEngine] 与
-// 卡面一层不动——索引是谁的、长什么样，都不归本包管。
+// bigram 倒排）已由 702 交付（`feat/session-search`，`SessionSearchStore.search/digest/status`）
+// ⇒ 540 的生产主路径是 [RecallIndexSearch]（经 [SessionIndexPort] 接 533 的索引）。
+// [RecallDbSearch] 退为**直读兜底**：索引增量入库还没铺到目标（≤500 条/轮）时，
+// 用同一批线索再读一遍主库，两条路都空才叫没找到（[RecallFallback]）。
 //
 // ## 「不新建索引」在本包的落法
-// 生产侧今天的适配层（[RecallDbSearch]）**只读**既有 `message`/`part`/`session` 表，
-// 零建表、零建索引、零 ALTER（`RecallSourceGateTest` 扫源码钉死）——检索慢就慢，
-// 等的是 533 的倒排，不是另造一套索引结构。
+// 540 自己零 DDL、零建表：索引的结构与维护全在 533（`search.db` 的 `messages`/`tokens`
+// 两张表）；本包只有 [RecallQuery] 一条主键点查（补时刻）和一个只读 LIKE 兜底语句。
+// `RecallSourceGateTest` 扫源码钉死「全包零 DDL」与「只有 SessionIndexPort 认得 msgsearch」。
 package com.example.zhengdao.baopu.recall
 
 /**
