@@ -96,3 +96,4 @@
 {"date": "2026-11-19", "measured": 0, "budget": 315, "commit": "ecb17894d", "commitFull": "ecb17894d29dd88c4f49e8663092eed32fa02d38", "baseline": 295, "mode": "ci", "run": "44474189706", "platform": "linux"}
 {"date": "2026-11-19", "measured": 0, "budget": 315, "commit": "13af62e50", "commitFull": "13af62e50539a33b9458330df27bfeef6d648aac", "baseline": 295, "mode": "ci", "run": "44497285628", "platform": "linux"}
 {"date": "2026-11-19", "measured": 0, "budget": 315, "commit": "7777abac5", "commitFull": "7777abac5c3990bde71b3ccefdbe464f04983a4c", "baseline": 295, "mode": "ci", "run": "44511742612", "platform": "linux"}
+{"date": "2026-11-19", "measured": 0, "budget": 315, "commit": "2185956f0", "commitFull": "2185956f05f61925277af14c5de007896a01c4dd", "baseline": 295, "mode": "ci", "run": "44517609011", "platform": "linux"}
