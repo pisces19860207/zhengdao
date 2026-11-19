@@ -803,7 +803,7 @@
   "C": 4,
   "gates_with_write_path": 4,
   "not_wired": 3,
-  "production_top_level_public": 565,
-  "wired": 552
+  "production_top_level_public": 568,
+  "wired": 555
  }
 }
