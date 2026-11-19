@@ -33,10 +33,11 @@ internal fun lastNonUserPartText(messages: List<BaopuUiMessage>): String =
         ?.parts?.lastOrNull { it.kind == "text" }?.text.orEmpty()
 
 /**
- * 底部操作卡的输入快照：把「字段有没有」翻成 [BottomCardsInput] 的五面旗。
+ * 底部操作卡的输入快照：把「字段有没有」翻成 [BottomCardsInput] 的几面旗。
  *
  * 原式在屏幕上用 `!= null` / `isNotEmpty()` 直接构造；搬到这里后判据只剩一处：
  * 列表**非空**才算有那张卡（空列表 = 没有）。
+ * 第七百五十二批加 [hasPruneCard]（修剪读数卡；默认无——只有可撤销的修剪轮才有）。
  */
 internal fun screenBottomCardsInput(
     hasConfirmCard: Boolean,
@@ -44,10 +45,12 @@ internal fun screenBottomCardsInput(
     pendingMemoryCount: Int,
     memoryCandidateCount: Int,
     skillProposalCount: Int,
+    hasPruneCard: Boolean = false,
 ): BottomCardsInput = BottomCardsInput(
     confirmCard = hasConfirmCard,
     askCard = hasAskCard,
     pendingMemory = pendingMemoryCount > 0,
     memoryCandidate = memoryCandidateCount > 0,
     skillProposal = skillProposalCount > 0,
+    pruneCard = hasPruneCard,
 )

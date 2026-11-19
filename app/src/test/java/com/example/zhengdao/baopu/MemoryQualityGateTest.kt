@@ -31,7 +31,9 @@ class MemoryQualityGateTest {
         val READ_PATHS = listOf(
             "fun loadAll(): List<MemoryEntry>",
             "fun reindex(): ReindexResult",
-            "fun recall(query: String, budgetTokens: Int = MemoryRules.RECALL_TOKEN_BUDGET): RecallResult",
+            // 752：recall 加 includeRetired（默认 false——读路径口径不变；显式 true 仍零写入），
+            //   签名改多行 ⇒ 锚改「头四词」（sliceFun 按前缀切，本文件 recall 恰一处）。
+            "fun recall(",
             "fun qualityPass(now: Long): MemoryQuality.Pass",
             "fun ranked(now: Long = System.currentTimeMillis()): List<MemoryEntry>",
         )

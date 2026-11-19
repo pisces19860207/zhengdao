@@ -312,9 +312,22 @@ internal class MemoryStore(
      * ——同键重复塌成一条（来源 id 全在 `merged_from`，原件一条不动），同键不同值的
      * 冲突两侧都留着并带标记。查询相关性仍是第一裁决（第八批），质量分只管同分排序。
      * 签名与返回类型没动 ⇒ 调用方零改动（派工单 §1「接口保持兼容」）。
+     *
+     * 第七百五十二批加 [includeRetired]（默认 false）：退役条目不进默认召回
+     * （[ranked] 的质量账只看 CONFIRMED，退役条目本来就不在里面）；显式 true 时
+     * 直接喂 [loadAll] 全量原样（退役条目放回池里、权重减半——显式检索是审计路径，
+     * 不走合并视图；判据见 [MemoryRules.recall]）。
      */
-    fun recall(query: String, budgetTokens: Int = MemoryRules.RECALL_TOKEN_BUDGET): RecallResult =
-        MemoryRules.recall(ranked(), query, budgetTokens)
+    fun recall(
+        query: String,
+        budgetTokens: Int = MemoryRules.RECALL_TOKEN_BUDGET,
+        includeRetired: Boolean = false,
+    ): RecallResult = MemoryRules.recall(
+        if (includeRetired) loadAll() else ranked(),
+        query,
+        budgetTokens,
+        includeRetired = includeRetired,
+    )
 
     /**
      * 一次质量扫描（**读时算、零写入、可逆**）：打分 → 同键分组 → 合并视图 ＋ 审计。

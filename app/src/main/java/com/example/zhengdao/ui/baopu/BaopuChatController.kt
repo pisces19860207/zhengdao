@@ -439,6 +439,8 @@ internal class BaopuChatController(context: Context) {
                 withContext(Dispatchers.IO) { reflectionRunInternal() }
             }
         }
+        // 752：进抱朴刷一次修剪读数（有可撤销的修剪轮才摆读数卡；IO 上读，不拦进页）。
+        refreshPruneReadout()
     }
 
     /** 触发②（话术/按钮共用）：IO 上跑一轮，出卡就摆到技能页，不出卡就一句话。 */
@@ -1220,6 +1222,63 @@ internal class BaopuChatController(context: Context) {
      */
     internal var memoryInjectionPreview by mutableStateOf(MemoryInjectionBudget.Plan.EMPTY)
         private set
+
+    // ── 第七百五十二批：记忆修剪（夜间淘汰与退役的读数＋一键撤销）────────────
+
+    /**
+     * 最近一轮修剪的读数（状态文件投影；null ＝ 没跑过/已撤销——读数卡不渲染）。
+     * 界面零加工：总账一句（合并 N / 退役 M / 跳过 K）＋跳过明细原样带出。
+     */
+    var pruneReadout by mutableStateOf<com.example.zhengdao.baopu.memoryprune.PruneReadout?>(null)
+        private set
+
+    /** 撤销结果的一句话（点过「撤销本次修剪」才有；复用既有单行回显口径）。 */
+    var pruneNote by mutableStateOf<String?>(null)
+        private set
+
+    /** 撤销进行中（防连点——回滚是整轮原像写回，不重入）。 */
+    private var pruneUndoing = false
+
+    /** 本会话把读数卡收起（只藏卡，不动任何数据；下次修剪轮出现自然回来）。 */
+    private var pruneCardDismissed = false
+
+    /** 读数卡要不要摆出来（有可撤销的一轮且本会话没收起）。 */
+    internal val pruneCardVisible: Boolean
+        get() = pruneReadout != null && !pruneCardDismissed
+
+    /** 读状态文件刷读数（IO 上读，主线程写状态——441 同款纪律）。 */
+    fun refreshPruneReadout() {
+        scope.launch {
+            val state = withContext(Dispatchers.IO) {
+                runCatching {
+                    com.example.zhengdao.baopu.memoryprune.PruneDayGate.lastState(
+                        BaopuRuntime.workspaceRoot(appCtx),
+                    )
+                }.getOrNull()
+            }
+            pruneReadout = com.example.zhengdao.baopu.memoryprune.pruneReadoutOf(state)
+        }
+    }
+
+    /** 撤销最近一轮修剪（判据④一键回滚；IO 上跑，结果一句话回显）。 */
+    fun undoPrune() {
+        if (pruneUndoing) return
+        pruneUndoing = true
+        scope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                com.example.zhengdao.baopu.memoryprune.undoLatestPrune(appCtx, System.currentTimeMillis())
+            }
+            pruneUndoing = false
+            pruneNote = msg
+            refreshPruneReadout()
+        }
+    }
+
+    /** 「知道了」：本会话收起读数卡（只藏卡；数据与账零改动）。 */
+    fun dismissPruneCard() {
+        pruneCardDismissed = true
+        pruneReadout = null
+    }
 
     /**
      * C 段提炼出的候选记忆（[com.example.zhengdao.baopu.MemoryStatus.PENDING]、**未落盘**）。

@@ -1073,6 +1073,7 @@ internal fun BaopuScreen(
                 pendingMemoryCount = controller.pendingMemories.size,
                 memoryCandidateCount = controller.memoryCandidates.size,
                 skillProposalCount = controller.pendingSkillProposals.size,
+                hasPruneCard = controller.pruneCardVisible,
             )
             var expandAllCards by remember { mutableStateOf(false) }
             val cardsView = bottomCards(bottomCardsInput, expandAllCards)
@@ -1258,6 +1259,14 @@ internal fun BaopuScreen(
                                 candidates = controller.memoryCandidates,
                                 onConfirm = { controller.confirmMemory(it) },
                                 onForget = { controller.forgetMemory(it) },
+                            )
+
+                            // 752：修剪读数卡（有可撤销的修剪轮才有——读数原样、一键回滚）
+                            BottomCardKind.PRUNE -> BaopuPruneCard(
+                                readout = controller.pruneReadout,
+                                note = controller.pruneNote,
+                                onUndo = { controller.undoPrune() },
+                                onDismiss = { controller.dismissPruneCard() },
                             )
 
                             // 技能索引提案卡（第十九批 §2.2：采纳才写人设，丢弃只移除）

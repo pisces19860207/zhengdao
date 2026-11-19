@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第七百五十二批 · 记忆修剪的文案（2026-11-19）。
+  单独成文件（房型照 678 的 strings_baopu_replay.xml）：共享 strings.xml 是高冲突文件，
+  本批对它零改动。键与 values-en/strings_baopu_prune.xml 一一对应。
+-->
+<resources>
+    <!-- 修剪读数卡（有可撤销的修剪轮才显示；读数行是数据不是文案——来自状态文件）。 -->
+    <string name="baopu_prune_card_title">记忆修剪</string>
+    <string name="baopu_prune_card_footnote">退役＝只标状态不删文件：默认召回不再带它，显式检索仍可找到；撤销后条目与索引回到修剪前。</string>
+    <string name="baopu_prune_undo">撤销本次修剪</string>
+    <string name="baopu_prune_dismiss">知道了</string>
+</resources>

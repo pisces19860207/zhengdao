@@ -152,12 +152,15 @@ internal object MemoryTiers {
      * 这条记忆处在生命周期哪一态（**读时判、零写入、可逆**）。
      * REJECTED ⇒ null：四态之外，任何使用路径都必须当「没有这条」处理——
      * 用 null 不用第五个枚举值，是诚实的做法（四态就是四态，拒绝的不在里面）。
+     * RETIRED ⇒ 同样 null（752）：退役在四态之外，但它不是「没有这条」——
+     * 文件还在盘上，显式 include-retired 仍可检索；null 只表示「不进这四态的任何一态」。
      */
     fun lifecycleOf(entry: MemoryEntry, now: Long): MemoryLifecycle? = when (entry.status) {
         MemoryStatus.CANDIDATE -> MemoryLifecycle.CANDIDATE
         MemoryStatus.PENDING -> MemoryLifecycle.REVIEW
         MemoryStatus.CONFIRMED -> if (reviewDue(entry, now)) MemoryLifecycle.REVIEW_DUE else MemoryLifecycle.ACTIVE
         MemoryStatus.REJECTED -> null
+        MemoryStatus.RETIRED -> null
     }
 
     /**

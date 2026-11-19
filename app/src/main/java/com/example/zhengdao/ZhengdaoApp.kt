@@ -98,6 +98,13 @@ class ZhengdaoApp : Application() {
             ReplayScreenOffReceiver(),
             android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),
         )
+        // 第七百五十二批（记忆修剪）：同款**机会式**灭屏触发——只挂事件接收器，不轮询
+        // 不定时（判据⑤沿用 676/678 的空闲窗口闸；跑不跑由纯层定，天闸 ≤1 次/天兜底）。
+        // goAsync＋自带线程：onReceive 在主线程，装配层读记忆文件不许在主线程（264 探针）。
+        registerReceiver(
+            PruneScreenOffReceiver(),
+            android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF),
+        )
         // 262六格验收后补：玄览 WebView 远程调试（仅 debug 包）
         // 没有这一行，chrome://inspect 看不到 App 内任何 WebView；
         // 正式包 BuildConfig.DEBUG=false，行为逐字节不变。
@@ -270,5 +277,26 @@ private class ReplayScreenOffReceiver : android.content.BroadcastReceiver() {
                 pending.finish()
             }
         }.apply { name = "zhengdao-replay-screen-off" }.start()
+    }
+}
+
+/**
+ * 第七百五十二批（记忆修剪）的灭屏触发接收器（房型照 [ReplayScreenOffReceiver]；
+ * 判据⑤「没有第二个调度器」的边界——跑不跑由 memoryprune 纯层的空闲窗口闸定）。
+ * goAsync ＋ 自带线程：`onReceive` 在主线程，装配层要读记忆文件——主线程零读盘
+ * （264 探针纪律）。随进程活；进程死了错过灭屏就等下一个时机，不补偿、不补跑。
+ */
+private class PruneScreenOffReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+        if (intent.action != android.content.Intent.ACTION_SCREEN_OFF) return
+        val app = context.applicationContext
+        val pending = goAsync()
+        Thread {
+            try {
+                com.example.zhengdao.baopu.memoryprune.pruneOnScreenOff(app)
+            } finally {
+                pending.finish()
+            }
+        }.apply { name = "zhengdao-prune-screen-off" }.start()
     }
 }

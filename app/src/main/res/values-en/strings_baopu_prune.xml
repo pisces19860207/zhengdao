@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 752 · memory-prune strings (2026-11-19). Standalone file (same pattern as
+  678's strings_baopu_replay.xml); shared strings.xml untouched. Keys mirror
+  values/strings_baopu_prune.xml one-to-one.
+-->
+<resources>
+    <!-- Prune readout card (shown only when an undoable prune round exists; the
+         readout line is data from the state file, not a copy). -->
+    <string name="baopu_prune_card_title">Memory prune</string>
+    <string name="baopu_prune_card_footnote">Retire only marks status, never deletes files: default recall no longer includes it, explicit retrieval still finds it; undo restores entries and the index to the pre-prune state.</string>
+    <string name="baopu_prune_undo">Undo this prune</string>
+    <string name="baopu_prune_dismiss">Got it</string>
+</resources>

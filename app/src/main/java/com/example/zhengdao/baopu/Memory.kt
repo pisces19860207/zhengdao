@@ -29,7 +29,18 @@ enum class MemoryKind { PREFERENCE, FACT, TERM, LESSON, PROFILE, RULE }
  * **「待复核」不是 status**——事实类读时判（[MemoryTiers.lifecycleOf]，零写入、可逆），
  * REJECTED 在四态之外（人不肯记＝没有这条）。
  */
-enum class MemoryStatus { CANDIDATE, PENDING, CONFIRMED, REJECTED }
+enum class MemoryStatus { CANDIDATE, PENDING, CONFIRMED, REJECTED, RETIRED }
+
+/**
+ * `RETIRED`（第七百五十二批「记忆修剪与淘汰」追加，**只加不改**）：
+ * 退役＝**不物理删**——条目文件原地不动（id/标题/正文/来源一个字不改，只把 `status`
+ * 标成 `retired`），默认召回与注入不再带它（[MemoryTiers.injectable] 只认 CONFIRMED），
+ * 显式 `include-retired` 仍可检索且权重降不消失（[MemoryRules.recall]）。
+ * 生命周期四态（用户 2026-11-04 定）仍是四态：RETIRED 在四态之外
+ * （[MemoryTiers.lifecycleOf] 回 null）。与 REJECTED 的区别：REJECTED＝没有这条，
+ * RETIRED＝仍在库里、能追回。旧 App 读到 `status: retired` 解析不了会落回 CANDIDATE
+ * （[EntryCodec] 既定容错口径），不炸、不丢文件。
+ */
 
 /**
  * 一条记忆。[sourceSession] / [sourceFile] **不许为空**（判据 6：落盘必须带来源，
@@ -271,19 +282,34 @@ internal object MemoryRules {
     }
 
     /**
+     * 退役条目的检索权重折减（752 判据②「磁盘不减、索引权重降」的落点）：
+     * 相关分减半（下取整，地板 1）——退役条目在显式 include-retired 检索里
+     * **排得靠后但仍在**（0 分等于召不到，那是「不删之删」，同一条红线）。
+     */
+    private const val RETIRED_WEIGHT_DIVISOR = 2
+
+    /**
      * 召回：先按查询词打分排序，再按 token 上界裁剪。
      * @param tokensOf token 估算器（由调用方注入；默认走 [ContextAssembler] 的定版估算式，
      *   单测里可注入廉价实现钉边界）。
+     * @param includeRetired 默认 false：`RETIRED`（752 退役态）不进召回——默认口径与
+     *   注入侧（[MemoryTiers.injectable]）一致；显式 true 才把它们放回池里，
+     *   且相关分减半（权重降、不消失——退役不物理删的另一面）。
      */
     fun recall(
         entries: List<MemoryEntry>,
         query: String,
         budgetTokens: Int = RECALL_TOKEN_BUDGET,
         tokensOf: (String) -> Int = { TokenEstimator.estimate(it) },
+        includeRetired: Boolean = false,
     ): RecallResult {
         val terms = tokensOfQuery(query)
         val ranked = entries
-            .map { it to score(it, terms) }
+            .filter { includeRetired || it.status != MemoryStatus.RETIRED }
+            .map {
+                val s = score(it, terms)
+                it to if (it.status == MemoryStatus.RETIRED) (s / RETIRED_WEIGHT_DIVISOR).coerceAtLeast(1) else s
+            }
             .filter { it.second > 0 }
             // 全平手判据（追加四第 2 条：显式稳定排序，不依赖集合迭代顺序）：
             // 相关度 → 质量分 → 更新时间 → 创建时间 → id，一路排到没有平手为止。

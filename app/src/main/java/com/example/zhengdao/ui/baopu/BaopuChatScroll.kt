@@ -11,8 +11,10 @@ package com.example.zhengdao.ui.baopu
  * enum 声明序＝展示优先级：确认卡堵着引擎运行，最急；问人卡同急；
  * 待过目卡是「不点就不落盘」的显式动作；候选卡与技能提案卡最缓
  * （技能提案只在会话封卷/启动补算时出现，低频）。
+ * 第七百五十二批加 PRUNE（修剪读数卡，殿后）：夜间修剪真跑过一轮才有，
+ * 纯读数＋可撤销；不催不动，排最后。
  */
-internal enum class BottomCardKind { CONFIRM, ASK, PENDING, CANDIDATE, SKILL }
+internal enum class BottomCardKind { CONFIRM, ASK, PENDING, CANDIDATE, SKILL, PRUNE }
 
 /**
  * 底部卡片区的输入（[com.example.zhengdao.ui.baopu.BaopuChatController] 状态的纯投影）。
@@ -26,6 +28,7 @@ internal data class BottomCardsInput(
     val pendingMemory: Boolean,
     val memoryCandidate: Boolean,
     val skillProposal: Boolean = false, // 第十九批：技能索引提案卡（低频，默认无）
+    val pruneCard: Boolean = false, // 752：修剪读数卡（有可撤销的修剪轮才有，最低优先级）
 )
 
 /**
@@ -57,6 +60,7 @@ internal fun bottomCards(input: BottomCardsInput, expandAll: Boolean = false): B
         if (input.pendingMemory) add(BottomCardKind.PENDING)
         if (input.memoryCandidate) add(BottomCardKind.CANDIDATE)
         if (input.skillProposal) add(BottomCardKind.SKILL)
+        if (input.pruneCard) add(BottomCardKind.PRUNE)
     }
     if (present.isEmpty()) return BottomCardsView(visible = emptyList(), hiddenCount = 0)
     return if (expandAll) {
