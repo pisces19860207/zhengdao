@@ -59,12 +59,9 @@ if ($Run -ne "") {
   if ($LASTEXITCODE -eq 2) { exit 2 }
   try {
     Push-Location $repoRoot
-    # gradlew.bat now carries its own lock guard; skip it here or we would deadlock on ourselves.
-    $env:ZD_SKIP_BUILD_LOCK = "1"
     & (Join-Path $repoRoot "gradlew.bat") $Run.Split(" ") --console=plain
     exit $LASTEXITCODE
   } finally {
-    Remove-Item Env:ZD_SKIP_BUILD_LOCK -ErrorAction SilentlyContinue
     Pop-Location
     & $PSCommandPath -Release | Write-Host
   }
