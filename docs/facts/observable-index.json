@@ -1,0 +1,469 @@
+{
+  "schema": "observable-index/v1",
+  "title": "可观察素材索引（_补缺 16 份）",
+  "asOf": "2026-11-19",
+  "material_asOf": "2026-11-18",
+  "review_due": "2027-02-16",
+  "source": "桌面 C:/Users/guoli/OneDrive/Desktop/男性/_补缺/（16 素材＋_清单.md＋_依据.md；素材不入仓）",
+  "produced_by": "第 711 批 补缺素材验收入库",
+  "reality": "real",
+  "shared_with": [
+    "660 人体模型",
+    "658 轻生理状态轨迹",
+    "687 布料与着装可见度"
+  ],
+  "entry_fields": "id／file／tier／topic／zone_id 或 topic／layer／purpose（哪个引擎件读什么）／consumer／source／asOf／external_check／marks{todo,assumption}／items／review",
+  "marks_legend": {
+    "todo": "仍待核的 TODO 条数（已核项不计入）",
+    "assumption": "全篇 `○` 工程假设条数（可观察特征段＋常见误写段）"
+  },
+  "notes": [
+    "本索引只登记\"哪份文件说了什么主题\"，不复制素材正文；素材留在桌面，不入仓（隐私与体积）。",
+    "这批是**可观察描述**，不是区间锚点：数值区间仍归 665 的 facts.json，与本索引不是一回事。",
+    "改本文件必须与 observable-index.md 同一提交一起改（双真相不许漂），同 anatomy-zones 的规矩。",
+    "口径：外部事实动手前先搜，写下来必带 source＋asOf；默认 90 天过期，到期未复核标待复核。",
+    "消费方按 711 派工单③ 的文字映射登记；未在三单名单的两条 consumer 留空并标待裁定。",
+    "正文三段（可观察特征／常见误写／一句话示例）阿拉伯数字命中 0 处；TODO(待核) 段是编号与核实记录槽，本批① 依判据③ 在其中写入 zone_id: raphe (3)。"
+  ],
+  "audit": {
+    "materials": 16,
+    "four_section_ok": 16,
+    "arabic_digits_in_body": 0,
+    "example_max_len": 25,
+    "example_limit": 40,
+    "todo_open": 46,
+    "assumption_total": 88,
+    "cn_qty_in_observable": 0,
+    "cn_qty_total": 9
+  },
+  "entries": [
+    {
+      "id": "OBS-01",
+      "file": "13区-阴茎缝.md",
+      "tier": "P1",
+      "topic": "阴茎缝位置／默认形态（脊与沟两说）／与阴囊中缝的连续性／可见条件",
+      "zone_id": "raphe",
+      "zone_seq": 3,
+      "layer": "02_男性-下体（部位锚定层）",
+      "purpose": "660 十三区参数表 raphe 条目：可观察项与误写口径，与 669 词表共用同一 zone 口径",
+      "consumer": [
+        "660"
+      ],
+      "source": "作者素材＋补缺(13区-阴茎缝.md)",
+      "asOf": "2026-11-18",
+      "external_check": "A＋B（_依据.md：方位术语 A；脊／沟两说 B）",
+      "marks": {
+        "todo": 2,
+        "assumption": 7
+      },
+      "items": {
+        "observable": 8,
+        "misper": 9,
+        "example": 4
+      },
+      "review": null,
+      "note": "区号 TODO 已核＝raphe 序位 3（本批①）；色深程度、脊沟分布两问仍待核"
+    },
+    {
+      "id": "OBS-02",
+      "file": "状态词-心率与潮红.md",
+      "tier": "P1",
+      "topic": "潮红可见部位／两种红的起点之分／心跳的可见形式／主观与触感两层",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "03_男性-状态氛围（状态词层）＋00-00 总纲（状态变量）",
+      "purpose": "658 的 HR 与 dT 状态词化：把\"看见的搏动\"和两种红落成可写入的状态描述",
+      "consumer": [
+        "658"
+      ],
+      "source": "作者素材＋补缺(状态词-心率与潮红.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B＋B−（两种红起点；_依据.md 自陈需再找一源交叉）",
+      "marks": {
+        "todo": 4,
+        "assumption": 3
+      },
+      "items": {
+        "observable": 11,
+        "misper": 9,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-03",
+      "file": "衣物-湿透贴体.md",
+      "tier": "P1",
+      "topic": "湿布贴合／色深与水痕推进／透与不透的成立条件／湿态声音与温度",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（衣物与体表层）",
+      "purpose": "687 分区三态的湿态维度：贴身程度、色深边界怎么写得出",
+      "consumer": [
+        "687"
+      ],
+      "source": "作者素材＋补缺(衣物-湿透贴体.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B（不吸水→吸湿低，已改）",
+      "marks": {
+        "todo": 3,
+        "assumption": 4
+      },
+      "items": {
+        "observable": 9,
+        "misper": 7,
+        "example": 4
+      },
+      "review": null,
+      "note": "属可观察描述，非实测参数；687 面料表只认实测，本条只喂文案层"
+    },
+    {
+      "id": "OBS-04",
+      "file": "三液-尿道球腺与前液.md",
+      "tier": "P2",
+      "topic": "三词命名分工／渗出与射出的差别／干后痕迹／日常可见性／P 通道体感",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "02_男性-下体（体液层）",
+      "purpose": "658 三液分道（P 前液／前列腺液／V 精液）的命名与可观察区分",
+      "consumer": [
+        "658"
+      ],
+      "source": "作者素材＋补缺(三液-尿道球腺与前液.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B（新增日常可见性；科普号混用实例）",
+      "marks": {
+        "todo": 4,
+        "assumption": 6
+      },
+      "items": {
+        "observable": 10,
+        "misper": 8,
+        "example": 4
+      },
+      "review": null,
+      "note": "658 分道命名中 P＝前液，可部分回答本篇 TODO 第 4 问；未代作者拍板"
+    },
+    {
+      "id": "OBS-05",
+      "file": "三液-滑精.md",
+      "tier": "P2",
+      "topic": "无过程记忆的痕迹判读／精斑与尿渍汗渍之别／发现方式／不绑定梦境",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "02_男性-下体（体液层）＋03_男性-状态氛围（无过程状态）",
+      "purpose": "658 的 V 精液道\"事后发现\"状态：无过程记忆时的写法边界",
+      "consumer": [
+        "658"
+      ],
+      "source": "作者素材＋补缺(三液-滑精.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B（水线与边缘特征已反转修正）",
+      "marks": {
+        "todo": 3,
+        "assumption": 5
+      },
+      "items": {
+        "observable": 9,
+        "misper": 7,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-06",
+      "file": "环境-晒与日光.md",
+      "tier": "P2",
+      "topic": "直射光下高光与明暗／晒痕分界／汗与体液的反光差异／影子与逆光",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "03_男性-状态氛围（环境光层）",
+      "purpose": "687 的光照可见度（表现层）；与 657 环境求解器分工——657 出档位，本条出怎么写",
+      "consumer": [
+        "687"
+      ],
+      "source": "作者素材＋补缺(环境-晒与日光.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖（B 轮未含本篇）",
+      "marks": {
+        "todo": 3,
+        "assumption": 5
+      },
+      "items": {
+        "observable": 8,
+        "misper": 7,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-07",
+      "file": "形体-肩宽.md",
+      "tier": "P2",
+      "topic": "肩线形态与肩胯比例两层／骨架宽与肌肉厚之分／参照物写法／姿态可变项",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（体型总纲）",
+      "purpose": "660 体型与肩形参数：两层拆分直接对应形态项与比例项",
+      "consumer": [
+        "660"
+      ],
+      "source": "作者素材＋补缺(形体-肩宽.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B（分类拆成两层）",
+      "marks": {
+        "todo": 3,
+        "assumption": 5
+      },
+      "items": {
+        "observable": 10,
+        "misper": 8,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-08",
+      "file": "体液-撒尿与尿口.md",
+      "tier": "P2",
+      "topic": "撒尿／尿口／滴尿三词分工／尿流与余滴形态／排尿与射精的节律判据",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "02_男性-下体（体液与出口层）",
+      "purpose": "658 的出口口径：排尿≠射精、前液≠尿、滴白≠尿的\"看得出\"分辨法",
+      "consumer": [
+        "658"
+      ],
+      "source": "作者素材＋补缺(体液-撒尿与尿口.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B（补由强到弱的节律衰减）",
+      "marks": {
+        "todo": 3,
+        "assumption": 3
+      },
+      "items": {
+        "observable": 10,
+        "misper": 8,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-09",
+      "file": "自口-可达与姿态.md",
+      "tier": "P2",
+      "topic": "三关节活动度与可达线索／代偿表现／个体差异属属性／呼吸受限提示",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "04_男性-玩法（体位可达性层）",
+      "purpose": "可达性判定与\"到不了\"的写法；与 660 柔韧档／可达性三态重合",
+      "consumer": [],
+      "source": "作者素材＋补缺(自口-可达与姿态.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖（B 轮仅软化措辞，无等级）",
+      "marks": {
+        "todo": 3,
+        "assumption": 3
+      },
+      "items": {
+        "observable": 7,
+        "misper": 7,
+        "example": 4
+      },
+      "review": null,
+      "note": "不在 660／658／687 三单名单；660 已交\"柔韧档／可达性三态\"，接缝待裁定（建议归 660）"
+    },
+    {
+      "id": "OBS-10",
+      "file": "自慰-细节与节奏.md",
+      "tier": "P2",
+      "topic": "节奏变速与停顿内容／前中后三段状态／中断转折／声音层次与环境反馈",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "04_男性-玩法（节奏与前后状态层）",
+      "purpose": "658 轨迹的前后状态与变速：把易被漏写的后状态补成可读段落",
+      "consumer": [
+        "658"
+      ],
+      "source": "作者素材＋补缺(自慰-细节与节奏.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖",
+      "marks": {
+        "todo": 3,
+        "assumption": 3
+      },
+      "items": {
+        "observable": 8,
+        "misper": 8,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-11",
+      "file": "环境-潮气.md",
+      "tier": "P3",
+      "topic": "潮气载体清单／布料皮肤气味声音的方向感／闷热与湿冷之分",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "03_男性-状态氛围（环境层）",
+      "purpose": "687 的湿感表现层；湿度档位归 657",
+      "consumer": [
+        "687"
+      ],
+      "source": "作者素材＋补缺(环境-潮气.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖",
+      "marks": {
+        "todo": 2,
+        "assumption": 7
+      },
+      "items": {
+        "observable": 7,
+        "misper": 6,
+        "example": 4
+      },
+      "review": null,
+      "note": null
+    },
+    {
+      "id": "OBS-12",
+      "file": "衣物-内衣与沙滩裤.md",
+      "tier": "P3",
+      "topic": "内衣三功能与勒痕／松紧旧化／边线透出／沙滩裤湿态与空隙",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（衣物层）",
+      "purpose": "687 分区三态的内衣与外裤分层、湿态差别",
+      "consumer": [
+        "687"
+      ],
+      "source": "作者素材＋补缺(衣物-内衣与沙滩裤.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖",
+      "marks": {
+        "todo": 2,
+        "assumption": 7
+      },
+      "items": {
+        "observable": 8,
+        "misper": 6,
+        "example": 4
+      },
+      "review": null,
+      "note": "同面料表告警：非实测，只喂文案层"
+    },
+    {
+      "id": "OBS-13",
+      "file": "衣物-化纤与棉麻.md",
+      "tier": "P3",
+      "topic": "五类面料的手感／垂坠／贴感／声音／光泽／静电／旧化相对差别",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（衣物层）",
+      "purpose": "687 面料表的候选词条：只可作相对差文案，不入实测表",
+      "consumer": [
+        "687"
+      ],
+      "source": "作者素材＋补缺(衣物-化纤与棉麻.md)",
+      "asOf": "2026-11-18",
+      "external_check": "B（涤纶挺括与垂坠归属已修正）",
+      "marks": {
+        "todo": 2,
+        "assumption": 8
+      },
+      "items": {
+        "observable": 8,
+        "misper": 8,
+        "example": 5
+      },
+      "review": null,
+      "note": "⚠ 687 判据「面料表只认实测」，本篇全篇 ○ 8 条属常识观察，禁止当实测参数引用"
+    },
+    {
+      "id": "OBS-14",
+      "file": "阶段-中年与青春期.md",
+      "tier": "P3",
+      "topic": "青春期与中年的外观变化方向／不协调感／厚度与姿态／体毛变化",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（年龄阶段层）",
+      "purpose": "660 年龄阶段的形变方向：写变化的方向而非状态",
+      "consumer": [
+        "660"
+      ],
+      "source": "作者素材＋补缺(阶段-中年与青春期.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖",
+      "marks": {
+        "todo": 3,
+        "assumption": 8
+      },
+      "items": {
+        "observable": 7,
+        "misper": 7,
+        "example": 4
+      },
+      "review": "人工待扫",
+      "note": "示例段含 4 处中文时长表述（创作文案，非事实断言），人工扫时一并定口径"
+    },
+    {
+      "id": "OBS-15",
+      "file": "身体-疾病与术后痕迹.md",
+      "tier": "P3",
+      "topic": "切口与疤痕新旧／周围皮肤／胶布管路与针眼痕／活动受限与代偿",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（体表痕迹层）",
+      "purpose": "体表痕迹的可见写法；与 669 误写词表、660 体表层相关",
+      "consumer": [],
+      "source": "作者素材＋补缺(身体-疾病与术后痕迹.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖",
+      "marks": {
+        "todo": 3,
+        "assumption": 5
+      },
+      "items": {
+        "observable": 8,
+        "misper": 7,
+        "example": 4
+      },
+      "review": null,
+      "note": "不在三单名单；建议 660 体表层承接或列 722 词档素材，待裁定"
+    },
+    {
+      "id": "OBS-16",
+      "file": "体表-胸毛疤痕纹身.md",
+      "tier": "P3",
+      "topic": "胸毛分布与走向／密度质地颜色／湿态与光下／疤痕与纹身参数项／三者共同点",
+      "zone_id": null,
+      "zone_seq": null,
+      "layer": "01_男性-身体（体表细节层）",
+      "purpose": "660 体表细节与体表高度场的可观察项：落笔先给遮挡与露出的来路",
+      "consumer": [
+        "660"
+      ],
+      "source": "作者素材＋补缺(体表-胸毛疤痕纹身.md)",
+      "asOf": "2026-11-18",
+      "external_check": "未覆盖",
+      "marks": {
+        "todo": 3,
+        "assumption": 9
+      },
+      "items": {
+        "observable": 10,
+        "misper": 7,
+        "example": 4
+      },
+      "review": "人工待扫",
+      "note": null
+    }
+  ]
+}
