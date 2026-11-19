@@ -3,6 +3,24 @@
   "A": [
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/anchor/AnchorFields.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 145,
+    "list": "A",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "理由：747 批规格真源的**出处钉**（AnchorFields.kt:145－157：md 路径＋sha256 前 16 位 4ab930c29f3d9c02＋44,995 B／1,031 行＋dot 指纹＋VERIFIED_ON＝2026-11-19）。它按设计就该零调用：判据「规格只读、一字不抄进仓」由 AnchorSourceAssertTest.kt:191－197 读**源码文本**断言（路径与指纹须活在代码字符串里，防注释被剥掉后出处失踪），运行期没有任何消费者。删它等于拆掉回查锚点，故留不删；接线批来了也不该改成「有人调」——它调不到，只被对账。",
+    "package": "com.example.zhengdao.baopu.state.anchor",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AnchorSpecSource",
+    "test_refs": [],
+    "verdict": "not_urgent",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/GenitalModel.kt",
     "file_mates_wired": true,
     "kind": "class",
@@ -305,6 +323,124 @@
      }
     ],
     "verdict": "delete",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridge.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 58,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "理由：747 批 BODY 维→660 的只读桥（AnchorBodyBridge.kt:58），工单判据⑦ 明写「660 未合⇒留接口标未接入、不许自造字段」，本批交付形态就是接口＋名册：13 行 ROSTER 逐条回查 660 源码（AnchorSourceAssertTest.kt:141－147 的源断言臂，12 个真字段名命中、4 行标「660 无口径」），带 660 输入时读数分 CONNECTED 5／PARTIAL 4（body.fat／muscle／ratio＋g.testis，规格没给阈值⇒○ 待核）／NOT_IN_660 4（body.frame／legs／chest／hands，按判据⑦ 只留标不造字段）。消费方＝660 的读取面与锚定面板（未派），生产侧现在只从测试调是刻意的，不是漏接；桥本身零写入 660（`.copy(` 在桥源码里被闸判红）。",
+    "package": "com.example.zhengdao.baopu.state.anchor",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AnchorBodyBridge",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 35
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 47
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 73
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 74
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 101
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 103
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 111
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 123
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 132
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridgeTest.kt",
+      "line": 136
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorSourceAssertTest.kt",
+      "line": 143
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorSourceAssertTest.kt",
+      "line": 145
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorSourceAssertTest.kt",
+      "line": 146
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorSourceAssertTest.kt",
+      "line": 160
+     }
+    ],
+    "verdict": "not_urgent",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/anchor/AnchorLines.kt",
+    "file_mates_wired": true,
+    "kind": "class",
+    "line": 149,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "理由：747 批两条线读数（AnchorLines.kt:149：BodyLine／InnerLine／KinkOverlap／五档 BodyGrade／四型 ReactionType）。工单判据⑥ 的原话是「身体分和内在分是两条线，不合并成一条」⇒ 本件按规格**没有** total 也没有 plus（类字段名被扫描式断言钉死：AnchorLinesTest.kt:32－39 禁 total／sum／plus／combined 等合并口，并配注入自检）。消费方＝653 状态摘要线与锚定面板渲染（均未派），现只从测试调是本批形态；真到接线时读数口 readout() 三行照给，仍不许任何调用方把它们相加。",
+    "package": "com.example.zhengdao.baopu.state.anchor",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AnchorLines",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorLinesTest.kt",
+      "line": 16
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorLinesTest.kt",
+      "line": 33
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorLinesTest.kt",
+      "line": 34
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/anchor/AnchorLinesTest.kt",
+      "line": 135
+     }
+    ],
+    "verdict": "not_urgent",
     "wrapper_scan": []
    },
    {
@@ -624,53 +760,6 @@
     ],
     "verdict": "wired(sole-impl)",
     "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/track/RelationTrack.kt",
-    "file_mates_wired": true,
-    "kind": "class",
-    "line": 75,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，8 例判据（表钉死／守卫证据／触发牌词表＋脱敏护栏「触发词只许出现在卡列表内」／回流三条件四态／不可逆／修饰符；御裁④ 后由 7 例增到 8 例）全部只从测试调。",
-    "package": "com.example.zhengdao.baopu.state.track",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "RelationTrack",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 42
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 55
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 59
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 104
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 112
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 126
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/track/RelationTrackTest.kt",
-      "line": 148
-     }
-    ],
-    "verdict": "not_urgent",
-    "wrapper_scan": []
    }
   ],
   "C": [
@@ -728,12 +817,12 @@
   ]
  },
  "summary": {
-  "A": 2,
-  "B": 12,
+  "A": 3,
+  "B": 13,
   "C": 4,
   "gates_with_write_path": 4,
   "not_wired": 8,
-  "production_top_level_public": 667,
-  "wired": 653
+  "production_top_level_public": 693,
+  "wired": 677
  }
 }

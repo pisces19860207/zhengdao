@@ -1,6 +1,10 @@
 {
   "_说明": "373 入口覆盖清点 · 结论登记表。verdict 三值：wired=接线（欠账，排后续）／not_urgent=不急／delete=该删（只列不删）。note 必须写「谁接」或「理由」，不许空、不许待定。键：A/B=顶层公开符号名；C=prefs 键值（真实字符串，非常量名）。由 tools/check-entry-coverage.py 合并进 docs/entry-coverage.{md,json}；--strict 下缺条目或陈旧条目即红。「已接线存档」区＝曾挂在 A/B、重跑后因生产侧出现引用而离开清单的件，只存「谁接：文件:行」与可达性事实备查；脚本不读该区（不参与 --strict、不进 md/json），原有 verdict 一字未改。543（2026-11-08）刷新：旧账 389 是 473 批以前的时点，当场重算 458（A3／B2／C4），逐条按落地事实重裁，证据行号以 origin/main@5c845ee6 为准。 706 加档：verdict 新增 `wired(sole-impl)`（唯一实现待消费方）。合法 verdict 四值：wired／not_urgent／delete／wired(sole-impl)。入档三件齐（soleImpl.uniqueImpl 唯一实现断言＋pendingConsumer 单号＋dueWhen 到期 sha），由 tools/check-entry-coverage.py 机检：重复实现／业务件误用／三件不齐／到期未回填均判红，到期者自动降 NOT_WIRED。",
   "A": {
+    "AnchorSpecSource": {
+      "verdict": "not_urgent",
+      "note": "理由：747 批规格真源的**出处钉**（AnchorFields.kt:145－157：md 路径＋sha256 前 16 位 4ab930c29f3d9c02＋44,995 B／1,031 行＋dot 指纹＋VERIFIED_ON＝2026-11-19）。它按设计就该零调用：判据「规格只读、一字不抄进仓」由 AnchorSourceAssertTest.kt:191－197 读**源码文本**断言（路径与指纹须活在代码字符串里，防注释被剥掉后出处失踪），运行期没有任何消费者。删它等于拆掉回查锚点，故留不删；接线批来了也不该改成「有人调」——它调不到，只被对账。"
+    },
     "OffscreenCaptureProbe": {
       "verdict": "not_urgent",
       "note": "理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），只有 app/src/debug/.../OffscreenProbeActivity.kt:21／:25 引用，release 不可达；属复现证据不是生产功能，留作对照不删（503 悬空清单同一件，508／509 未处置）"
@@ -11,6 +15,14 @@
     }
   },
   "B": {
+    "AnchorBodyBridge": {
+      "verdict": "not_urgent",
+      "note": "理由：747 批 BODY 维→660 的只读桥（AnchorBodyBridge.kt:58），工单判据⑦ 明写「660 未合⇒留接口标未接入、不许自造字段」，本批交付形态就是接口＋名册：13 行 ROSTER 逐条回查 660 源码（AnchorSourceAssertTest.kt:141－147 的源断言臂，12 个真字段名命中、4 行标「660 无口径」），带 660 输入时读数分 CONNECTED 5／PARTIAL 4（body.fat／muscle／ratio＋g.testis，规格没给阈值⇒○ 待核）／NOT_IN_660 4（body.frame／legs／chest／hands，按判据⑦ 只留标不造字段）。消费方＝660 的读取面与锚定面板（未派），生产侧现在只从测试调是刻意的，不是漏接；桥本身零写入 660（`.copy(` 在桥源码里被闸判红）。"
+    },
+    "AnchorLines": {
+      "verdict": "not_urgent",
+      "note": "理由：747 批两条线读数（AnchorLines.kt:149：BodyLine／InnerLine／KinkOverlap／五档 BodyGrade／四型 ReactionType）。工单判据⑥ 的原话是「身体分和内在分是两条线，不合并成一条」⇒ 本件按规格**没有** total 也没有 plus（类字段名被扫描式断言钉死：AnchorLinesTest.kt:32－39 禁 total／sum／plus／combined 等合并口，并配注入自检）。消费方＝653 状态摘要线与锚定面板渲染（均未派），现只从测试调是本批形态；真到接线时读数口 readout() 三行照给，仍不许任何调用方把它们相加。"
+    },
     "EnvironmentSolver": {
       "verdict": "wired",
       "note": "谁接：657 派工单「统一并入 SceneState.environment」——SceneState 本体归 660（人体模型批）建，本批只交公式层与槽值 EnvironmentState（sun/wind/humidity/sweat/sand 五分项），与 660 零相交；660 建 SceneState 时挂本槽即接线。其余五件顶层公开面（EnvironmentNotes/SolarSolver/WindTable/HumiditySolver/EnvironmentState）由本件生产代码引用，计生产可达。"
@@ -22,10 +34,6 @@
     "SilhouetteWire": {
       "verdict": "wired",
       "note": "谁接：666 派工单明写「接线：把 silhouette(H,C,pos,pose) 接到 660 的高度场输出」——660 几何内核尚未交付，故本单只交接缝（HeightFieldSource）＋夹具高度场（腰线/裆缝/大腿根），生产侧换成实测高度场即生效；核心 Silhouette.kt 是纯函数，不依赖接缝。用途：形轨.轮廓可见度（三态＋一句话），解决 12.9 记的「轮廓该不该看得出」实际故障。"
-    },
-    "RelationTrack": {
-      "verdict": "not_urgent",
-      "note": "670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，8 例判据（表钉死／守卫证据／触发牌词表＋脱敏护栏「触发词只许出现在卡列表内」／回流三条件四态／不可逆／修饰符；御裁④ 后由 7 例增到 8 例）全部只从测试调。"
     },
     "VocabGuard": {
       "verdict": "not_urgent",
@@ -115,6 +123,12 @@
     }
   },
   "已接线存档": {
+    "RelationTrack": {
+      "left_ledger_at": "747（2026-11-20 重跑；scan 判定已有生产引用，不再进 B）",
+      "wired_at": "state/anchor/AnchorTrack.kt:51 private val relation = RelationTrack(modifier) → :76 relation.step(to, evidence.toSet())（越界与回流的边校验全权交给 670，本包只包一层不改它）",
+      "fact": "真接线，生产可达（anchor 包内：CrossLedger.kt:76 → AnchorTrack.gridOf → AnchorTrack.relation → RelationTrack.step／state／crossed）；670 挂的「消费方＝660 形轨线与 653 摘要线」这条账**没有**由本批兑现——本批是 747 锚定轨迹线，与 653／660 无关，包外（anchor 之外）生产侧仍零引用，跨包的摘要线仍未派。",
+      "note": "原 B 区 note 照留：670 批关系轨迹（11 态 13 边＋守卫＋触发牌＋T4 不可逆），与 CharacterTrack 同一形态：引擎只校验边与证据、不自动推进（工单边界），生产调用方等 660 形轨线与 653 摘要线；本批只提供数据缝 coupling_to_form_track，8 例判据（表钉死／守卫证据／触发牌词表＋脱敏护栏「触发词只许出现在卡列表内」／回流三条件四态／不可逆／修饰符；御裁④ 后由 7 例增到 8 例）全部只从测试调。747 追加：判据④ 要求三条链互不写入，故 anchor 包只**读** 670 的边表与状态（AnchorSourceAssertTest.kt:166－170 扫本包不许出现 dStage／aStage／STAGE_NAMES／ATTACKER_NAMES／TrackStateView／CharacterTrack／fallStage），11 态 13 边一字不改；拓扑真源人物锚定图.dot 的指纹另钉在 AnchorFields.kt:152－153。"
+    },
     "CharacterTrack": {
       "left_ledger_at": "689（2026-11-17 重跑；scan 判定已有生产引用，不再进 B）",
       "wired_at": "state/summary/RunStateAssembler.kt:111 track.summaryLine() ← StateSummaryWiring.kt:66 ackNote() ← agent/PlanController.kt:323 update_plan 的 ack 尾巴（模型每次更新计划即读到）",
