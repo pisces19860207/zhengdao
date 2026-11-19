@@ -56,10 +56,17 @@ class VariantSpectrumTest {
                 assertTrue("${dim.key} 最高频档占比 ${top / 10.0}% 须<60%", top < 600)
             }
         }
-        // 负例：构造一档独占概率100的三档维 ⇒ 抽1000次全落该档，检测闸必须能判红。
-        val collapsed = collapsedTable()
+        // 负例：把一维替换成"单档独占概率100"的塌缩维 ⇒ 抽1000次全落该档，检测闸必须能判红。
+        val collapsedKey = "bend_direction"
+        val collapsed = table.copy(dimensions = table.dimensions.map {
+            if (it.key == collapsedKey) it.copy(levels = listOf(
+                Level("only", "独占", 100, Reality.REAL),
+                Level("b", "乙", 0, Reality.REAL),
+                Level("c", "丙", 0, Reality.REAL),
+            )) else it
+        })
         val all = (0 until 1000).map { VariantSampler.sample(collapsed, VariantSampler.Options(seed = it.toLong())) }
-        val topCount = all.groupingBy { it.levelOf("x")!!.key }.eachCount().values.maxOrNull()!!
+        val topCount = all.groupingBy { it.levelOf(collapsedKey)!!.key }.eachCount().values.maxOrNull()!!
         assertEquals("塌缩负例应全落同一档", 1000, topCount)
         assertFalse("塌缩负例占比 100% 不应通过 <60% 闸", topCount < 600)
     }
@@ -157,20 +164,6 @@ class VariantSpectrumTest {
     }"""
 
     private fun removeField(json: String, field: String): String = json.replace("\"$field\"", "\"_$field\"")
-
-    private fun collapsedTable(): VariantTable = VariantTable(
-        source = "t", asOf = "t",
-        dimensions = listOf(
-            VariantDim(
-                "x", "塌缩维",
-                listOf(
-                    Level("a", "甲", 100, Reality.REAL),
-                    Level("b", "乙", 0, Reality.REAL),
-                    Level("c", "丙", 0, Reality.REAL),
-                ),
-            ),
-        ),
-    )
 
     private fun assertThrows(block: () -> Unit) {
         try {
