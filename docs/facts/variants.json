@@ -1,0 +1,161 @@
+{
+  "schema": "variant-spectrum/v1",
+  "source": "证道设计报告/附件-真实性补充包/男性-真实变异谱-21.json（21 条，只读归纳维度/档位名，不复制正文）",
+  "factbase": "男性-真实变异谱 v2 合并版（2026-11-16 14:18，21 条，reality=real）",
+  "asOf": "2026-11-19",
+  "reality": "real",
+  "shared_with": ["723 变异谱接入"],
+  "note": "本文件只存维度名、档位名与采样概率，不存谱内正文。probability 是按正文流行病学描述归纳的人群档位相对概率（非谱源 world_book.probability——后者恒为 100，是词条触发概率，与人群频率无关）。每张概率表内归一；病理维默认关闭，开启时档位附 note='少见（reality=real）'。",
+  "probabilityBasis": "正文提及的国别环切率、左侧精索静脉曲张占比、睾丸体积区间、ED 随年龄分级、Peyronie 3-9% 等流行病学口径；只取量级方向，不抄原文。",
+  "dimensions": [
+    {
+      "key": "bend_direction",
+      "name": "弯曲方向",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "up", "name": "上翘", "probability": 42, "reality": "real" },
+        { "key": "down", "name": "下弯", "probability": 22, "reality": "real" },
+        { "key": "left", "name": "左偏", "probability": 18, "reality": "real" },
+        { "key": "right", "name": "右偏", "probability": 18, "reality": "real" }
+      ]
+    },
+    {
+      "key": "girth_profile",
+      "name": "粗细分布",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "even", "name": "通体均匀", "probability": 45, "reality": "real" },
+        { "key": "base_heavy", "name": "根部偏粗", "probability": 25, "reality": "real" },
+        { "key": "shaft_heavy", "name": "柱身偏粗", "probability": 18, "reality": "real" },
+        { "key": "glans_heavy", "name": "冠部偏粗", "probability": 12, "reality": "real" }
+      ]
+    },
+    {
+      "key": "corona_sulcus",
+      "name": "冠与沟形态",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "pronounced", "name": "冠沟明显", "probability": 42, "reality": "real" },
+        { "key": "moderate", "name": "冠沟适中", "probability": 33, "reality": "real" },
+        { "key": "subtle", "name": "冠沟平缓", "probability": 25, "reality": "real" }
+      ]
+    },
+    {
+      "key": "foreskin_coverage",
+      "name": "包皮覆盖",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "uncircumcised_full", "name": "未切-完全覆盖", "probability": 40, "reality": "real" },
+        { "key": "uncircumcised_partial", "name": "未切-部分覆盖", "probability": 24, "reality": "real" },
+        { "key": "circumcised", "name": "已环切", "probability": 27, "reality": "real" },
+        { "key": "phimosis", "name": "包茎", "probability": 9, "reality": "real" }
+      ]
+    },
+    {
+      "key": "flaccid_erect_ratio",
+      "name": "疲软-勃起比",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "high", "name": "落差大", "probability": 38, "reality": "real" },
+        { "key": "medium", "name": "落差中", "probability": 37, "reality": "real" },
+        { "key": "low", "name": "落差小", "probability": 25, "reality": "real" }
+      ]
+    },
+    {
+      "key": "scrotum_sag",
+      "name": "阴囊下垂度",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "tight", "name": "紧致", "probability": 30, "reality": "real" },
+        { "key": "moderate", "name": "中度", "probability": 45, "reality": "real" },
+        { "key": "relaxed", "name": "松弛", "probability": 25, "reality": "real" }
+      ]
+    },
+    {
+      "key": "scrotum_hang",
+      "name": "阴囊悬垂",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "high", "name": "高位", "probability": 26, "reality": "real" },
+        { "key": "mid", "name": "中位", "probability": 44, "reality": "real" },
+        { "key": "low", "name": "低位", "probability": 30, "reality": "real" }
+      ]
+    },
+    {
+      "key": "scrotum_volume",
+      "name": "阴囊体积",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "small", "name": "偏小", "probability": 26, "reality": "real" },
+        { "key": "medium", "name": "中等", "probability": 46, "reality": "real" },
+        { "key": "large", "name": "偏大", "probability": 28, "reality": "real" }
+      ]
+    },
+    {
+      "key": "testis_asymmetry",
+      "name": "睾丸左右差",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "symmetric", "name": "基本对称", "probability": 40, "reality": "real" },
+        { "key": "slight", "name": "轻度不等", "probability": 42, "reality": "real" },
+        { "key": "noticeable", "name": "明显不等", "probability": 18, "reality": "real" }
+      ]
+    },
+    {
+      "key": "vessel_visibility",
+      "name": "血管可见度",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "low", "name": "不明显", "probability": 48, "reality": "real" },
+        { "key": "medium", "name": "中等", "probability": 34, "reality": "real" },
+        { "key": "high", "name": "明显", "probability": 18, "reality": "real" }
+      ]
+    },
+    {
+      "key": "vessel_texture",
+      "name": "血管触感",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "smooth", "name": "平滑", "probability": 46, "reality": "real" },
+        { "key": "firm", "name": "偏韧", "probability": 33, "reality": "real" },
+        { "key": "corded", "name": "条索感", "probability": 21, "reality": "real" }
+      ]
+    },
+    {
+      "key": "vessel_mobility",
+      "name": "血管可推移",
+      "pathological": false,
+      "reality": "real",
+      "levels": [
+        { "key": "fixed", "name": "固定", "probability": 26, "reality": "real" },
+        { "key": "partial", "name": "部分可移", "probability": 44, "reality": "real" },
+        { "key": "mobile", "name": "易推移", "probability": 30, "reality": "real" }
+      ]
+    },
+    {
+      "key": "pathology",
+      "name": "病理变异",
+      "pathological": true,
+      "reality": "real",
+      "defaultEnabled": false,
+      "levels": [
+        { "key": "none", "name": "无", "probability": 88, "reality": "real" },
+        { "key": "peyronie", "name": "佩罗尼斑块", "probability": 4, "reality": "real", "note": "少见（reality=real）" },
+        { "key": "varicocele", "name": "精索曲张", "probability": 5, "reality": "real", "note": "少见（reality=real）" },
+        { "key": "hypospadias", "name": "尿道下裂", "probability": 2, "reality": "real", "note": "少见（reality=real）" },
+        { "key": "cryptorchidism", "name": "隐睾史", "probability": 1, "reality": "real", "note": "少见（reality=real）" }
+      ]
+    }
+  ]
+}

@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.state.form
 import com.example.zhengdao.baopu.body.AnatomyZone
 import com.example.zhengdao.baopu.body.AnatomyZones
 import com.example.zhengdao.baopu.state.geometry.GeometryNotes
+import com.example.zhengdao.baopu.state.variant.VariantSample
 import java.io.File
 
 /** 定标账：哪些读数是实测、哪些是推算，以及偏离留痕（工单 §一⑤）。 */
@@ -96,6 +97,12 @@ data class BodyState(
     val advisories: List<String>,
     val assumption: String = BODY_ASSUMPTION,
     val note: String = GeometryNotes.NOT_MEASUREMENT,
+    /**
+     * 第七百二十三批 · 变体层（天生）：由 [VariantSample] 采样后经 copy 注入。
+     * 只加这一层，不改 660 的 13 区几何参数；731 管"此刻的状态"，本字段管"这个人天生的变体"。
+     * null＝尚未采样（默认），不参与几何推算——纯附加字段。
+     */
+    val variants: VariantSample? = null,
 ) {
     /** 硬误写命中即不通过；偏离留痕只报不改写，不拉低本值。 */
     val ok: Boolean get() = vocabErrors.isEmpty()
