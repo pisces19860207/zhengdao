@@ -58,6 +58,26 @@ class SolarSolverTest {
         assertEquals("判据③：两半球影子方向相差 180°", 180.0, diff, 0.01)
     }
 
+    /**
+     * ③′ **纬度符号真起作用**（657 合入方补）：
+     * 上面那条南半球用例取春分（δ≈0），而本公式里半球只进 `sin(φ)·sin(δ)` 一项——
+     * δ≈0 时该项恒为 0，把纬度写成 `abs(lat)` 也照样过。
+     * 这里取**南半球冬至（6/21，δ≈+23.45°）、纬度 −18°**，正午高度 ≈48.51°；
+     * 若半球信息丢失（`abs(lat)`），同一输入会算成 ≈84.28° ⇒ 必须红。
+     */
+    @Test
+    fun 判据3补_南半球冬至正午高度必须显著低于北半球同纬度() {
+        val south = SolarSolver.solve(-18.0, 172, 12.0)
+        assertEquals("南半球冬至正午高度", 48.51, south.elevationDeg, 0.15)
+        val north = SolarSolver.solve(18.0, 172, 12.0)
+        assertEquals("北半球同纬度夏至正午高度", 84.55, north.elevationDeg, 0.15)
+        assertTrue(
+            "南北半球同纬度同日期必须高处差很多（半球信息真起作用）",
+            north.elevationDeg - south.elevationDeg > 30.0,
+        )
+    }
+
+
     @Test
     fun midnightSunAt78NorthDoesNotCrash() {
         val s = SolarSolver.solve(78.0, 172, 12.0)
