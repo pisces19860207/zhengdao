@@ -22,15 +22,17 @@ import com.example.zhengdao.baopu.insula.insulaOnRunSettled
 import com.example.zhengdao.baopu.subconscious.subconsciousOnRunSettled
 import com.example.zhengdao.core.RunLog
 
-/** 收工事件的后台维护入口（暗卫＋巡按＋676 回响＋521 岛叶/纹状体；前两件共用一套触发判据，其余自带闸）。 */
+/** 收工事件的后台维护入口（暗卫＋巡按＋676 回响＋521 岛叶/纹状体＋714 六体读数；前两件共用一套触发判据，其余自带闸）。 */
 internal object TriggerWiring {
 
     /**
      * 一轮会话收工 ⇒ 问一次"负载够不够、机会齐不齐"。
      *
+     * @param sessionId 刚收尾那轮的会话号（可空：调用方没有就不做会话级读数）——
+     *   只喂给 714 的六体读数发射器，其余五件不认它
      * @return 这一趟真跑了几件（0 是最常见的结果：条件不齐或负载没到阈）——给门禁与日志用
      */
-    fun onRunSettled(ctx: Context, nowMs: Long = System.currentTimeMillis()): Int {
+    fun onRunSettled(ctx: Context, nowMs: Long = System.currentTimeMillis(), sessionId: Long? = null): Int {
         var ran = 0
         if (safe("暗卫") { NocturnalAuto.runDue(ctx, nowMs, AskSource.EVENT) } != null) ran++
         if (safe("巡按") { PatrolAuto.runDue(ctx, nowMs, AskSource.EVENT) } != null) ran++
@@ -44,6 +46,11 @@ internal object TriggerWiring {
         // 第五百二十一批：纹状体固化——收工即一次机会：本轮轨迹刚落库，正是看
         // "同一流程是否又成了 N 次"的时刻；只出建议卡，采纳走既有许愿流水线。
         if (safe("纹状体固化") { habitOnRunSettled(ctx, nowMs) } != null) ran++
+        // 第七百一十四批：六体读数接线（708 §五·B）——海马键/杏仁核/丘脑/前额叶四件
+        // 各出 BioLog 一行；只读、只 log、不参与判定，读数即弃。任一件抛异常 ⇒
+        // 内部逐件兜底、本行整段再被 safe 吞掉：收工链与"没有它"逐字节一致（判据③）。
+        // 不计入 ran：读数不是"跑了一件活"，ran 的口径（给门禁与日志）一字不动。
+        safe("六体读数") { BioReadoutWiring.onRunSettled(ctx, sessionId) }
         return ran
     }
 

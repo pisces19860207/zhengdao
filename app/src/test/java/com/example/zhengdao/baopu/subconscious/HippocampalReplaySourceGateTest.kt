@@ -10,7 +10,8 @@
 //   ⑤ **复用 676 执行器（没有第二个调度器）**：本包零调度构造、零 Runner 类；
 //      日桶复用 PatrolScheduler；夜间边界复用 SessionShape；
 //   ⑥ **不引向量检索**（485：结构化过滤＋中文 BM25）＋ **与形神不复制数据**；
-//   694 缝：海马·情景键形状（{sessionId, seq, hint}）按其派工单约定立着（合入后回归）。
+//   694 缝：海马·情景键形状（{sessionId, seq, hint}）——第七百一十四批已整缝交接
+//   （G-708-2：键定义全仓只此一处＝bio/Hippocampus.EpisodeKey，seq Int；本包不自造键）。
 package com.example.zhengdao.baopu.subconscious
 
 import java.io.File
@@ -254,10 +255,15 @@ class HippocampalReplaySourceGateTest {
     @Test
     fun 海马情景键形状与694约定一致() {
         val pure = pkgSources["baopu/subconscious/HippocampalReplay.kt"] ?: error("缺主文件")
-        assertTrue("694 约定形状 {sessionId, seq, hint} 必须立着", pure.contains("data class HippocampusKey"))
-        assertTrue("键源缝必须立着（694 合入后整缝交接）", pure.contains("fun interface KeySource"))
+        // G-708-2 收口（714）：键定义只此一处——本包不再自造第二把键，
+        // 一律消费 bio 包的 `Hippocampus.EpisodeKey`（seq Int）；本包留自己的键类 ⇒ 红。
+        assertTrue("键必须共用 bio 的 EpisodeKey（G-708-2：全仓键定义只此一处）", pure.contains("Hippocampus.EpisodeKey"))
+        assertTrue("本包不许再自造键类（G-708-2）", !pure.contains("data class HippocampusKey"))
+        assertTrue("seq 必须收敛 Int（G-708-2：Int/Long 双形状并存 ⇒ 红）", pure.contains("seq: Int"))
+        assertTrue("键源缝必须立着（整缝交接后由装配层喂）", pure.contains("fun interface KeySource"))
         val wiring = pkgSources["baopu/subconscious/ReplayWiring.kt"] ?: error("缺装配文件")
         assertTrue("键适配必须标注 694 出处（回归项）", wiring.contains("694"))
+        assertTrue("装配层键类型也要落到 EpisodeKey（G-708-2）", wiring.contains("EpisodeKey"))
     }
 
     @Test

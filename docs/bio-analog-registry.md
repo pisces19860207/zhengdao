@@ -22,8 +22,9 @@
 
 三件套三栏(怎么测 / N/A理由 / 兜底证据)**缺一栏即红**——闸对 §二的六行与 §四的三行同款盯非空。
 
-基线:origin/main @ 16a59e859。626 定稿与立闸;675/694 建六件读数源(未接线);
-676/677/678 建三件非器官仿生件(已接线,接线处自带兜底壳);523 升级本表为三件套口径。
+基线:origin/main @ 16a59e859。626 定稿与立闸;675/694 建六件读数源;
+676/677/678 建三件非器官仿生件(已接线,接线处自带兜底壳);523 升级本表为三件套口径;
+714 接线六件读数(纹状体/岛叶由 521 消费层接线,杏仁核/丘脑/前额叶/海马由 714 收工链接线——只读只 log)。
 
 ## 一、列口径(十列,一格都不许空)
 
@@ -44,12 +45,12 @@
 
 | 件 | 仿生自 | 只做 | 不做 | 可测差异 | 失败兜底 | 状态 | 怎么测 | N/A理由 | 兜底证据 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 杏仁核 | 杏仁核威胁/突显快速通路(先于慢思考的粗标) | 给事件打"威胁强度"读数,即发即弃,不落权威账 | 不拦截、不判定、不写库;不宣布任何内容"该禁该删"(那是门禁的权) | 相对关键词过滤,对语义改写的漏报率与误报率(同一标注集对比) | 读数缺失即视为"无威胁信号",主路径行为与现状逐字一致 | 批二·读数源已建(675,未接线);523 三件套齐 | AmygdalaTest.triple1SameInputDiffersFromNaiveKeywordCount(朴素关键词基线 vs 器官:同输入读数不同)＋threatBandsReachEveryLevel(全档可达) | — | AmygdalaTest.triple3FallbackTreatsMissingSignalAsNoThreat(读数缺失＝"无威胁信号";词表缝失效回默认表)＋BioSourceAssertTest(零写口零落库零模型) |
-| 海马 | 海马情景编码与回放固化(短时→回放→长时) | 记录"何时发生了什么",给情景打突显标签,供回放候选 | 不改写记忆、不决定记什么忘什么(取舍在既有记忆分层)、不输出结论 | 相对全量向量库,同查询下回放筛选后的召回率与存储放大系数 | 不可用时退回"无突显标签的回放",记忆层行为与现状一致 | 读数源已建(694,未接线);523 三件套齐 | HippocampusTest.triple1KeyIsMetadataFaceNotBodyExcerpt(键＝地址＋元数据,朴素截引做不到)＋hintCarriesNoBodyTextEvenWithSensitiveFixture(正文零片段) | — | HippocampusTest.emptyTextGetsEmptyBandAndNoFingerprint(空文退化"-"不造数)＋issuingKeysTwiceLeavesNoStateBehind(无状态零残留)＋BioSourceAssertTest(禁引擎符号) |
-| 前额叶 | 前额叶执行功能(慢思考、计划、抑制的候选生成) | 产出"候选计划＋风险清单"文本,供裁决面参考 | 不执行、不批准、不否决——无判定权(本表表头) | 相对单发直答,高风险操作经候选计划路径的比例与其后的翻案率 | 计划失败退回直答路径,等价于现状 | 读数源已建(694,未接线);523 三件套齐 | PrefrontalCortexTest.triple1StuckReadingOnlyWithFailureHistory(有失败史出卡步读数,没它读不出)＋stuckAtNeedsThreeFailuresOnSameUnfinishedPlannedStep | — | PrefrontalCortexTest.stuckAtIsNullWhenEvidenceIsInsufficientOrScattered(证据不够⇒null,判不了不猜)＋updatePlanPayloadIsByteIdenticalAroundReadCalls(读数前后计划 payload 逐字节一致) |
-| 纹状体 | 纹状体奖赏预测误差(多巴胺"预期-实际"差信号) | 记"预测奖赏 vs 实际奖赏"的差读数,攒习惯候选分 | 不调模型参数、不决定强化哪个行为、不直接改路由 | 相对手工规则,常用任务路径的步数收敛速度与差读数准确率 | 读数缺失即"无奖赏信号",既有评分不受影响 | 读数源已建(694,未接线);523 三件套齐 | StriatumTest.triple1CorrectedSuccessDistinguishableFromPlainSuccess(二值成败说不出的"成了但被打回"⇒0)＋fourCellTableMapsOutcomeToThreeBands | — | StriatumTest.askTierIsUntouchedByRpeCalls(全四格连打两轮,授权档逐字不变)＋valueStaysInsideDeclaredDomain(值域封死)＋BioSourceAssertTest(零写口) |
-| 岛叶 | 脑岛内感受(对身体自身状态的集合感知) | 把本 app 体征(电量/存储/构建时长/门禁红黄绿)汇成一个可读取数面 | 不以体征决定接不接任务、不触发自我修复(修是御医的职,岛叶只递读数) | 相对散落日志,御医取一次全身快照所需的读数面覆盖指标数与获取耗时 | 读数面不可用时御医退回逐项排查,行为与现状一致 | 批二·读数源已建(675,未接线);523 三件套齐 | InsulaTest.triple1UnifiedVitalsFaceIsTheDifference(一次调用汇齐七体征;没它没有这个面)＋fullSnapshotReadsEveryVital | — | InsulaTest.emptySourcesGiveAllMissing／wiredButReadlessSaysMissingNotUnwired(缺缝＝"无读数"逐格,不造数不补零)＋BioSourceAssertTest(零写口) |
-| 丘脑 | 丘脑感觉中继与门控(感觉信号先过中继再达皮层) | 把输入事件路由到对应下游,并打"新异性"读数;只中继不解读 | 不做内容过滤(过滤是既有门禁的事)、不决定是否处理、不丢弃事件 | 相对直接分发,路由错分率与转发 P95 延迟 | 中继失败退回直接分发,等价于现状 | 批二·读数源已建(675,未接线);523 三件套齐 | ThalamusTest.triple1SameInputYieldsRouteReadingOnlyWithOrgan(有它＝路由＋新异读数面)＋routesCoverAllFourDownstreams(四路可达) | — | ThalamusTest.triple3WordSeamFailureFallsBackToShapeOnly(词表缝失效退形状中继,不拦不丢)＋guardBeatsToolShapeAndNothingIsDropped(事件必有出路) |
+| 杏仁核 | 杏仁核威胁/突显快速通路(先于慢思考的粗标) | 给事件打"威胁强度"读数,即发即弃,不落权威账 | 不拦截、不判定、不写库;不宣布任何内容"该禁该删"(那是门禁的权) | 相对关键词过滤,对语义改写的漏报率与误报率(同一标注集对比) | 读数缺失即视为"无威胁信号",主路径行为与现状逐字一致 | 读数源已建(675);已接线·收工链只读只log(714);523 三件套齐 | AmygdalaTest.triple1SameInputDiffersFromNaiveKeywordCount(朴素关键词基线 vs 器官:同输入读数不同)＋threatBandsReachEveryLevel(全档可达) | — | AmygdalaTest.triple3FallbackTreatsMissingSignalAsNoThreat(读数缺失＝"无威胁信号";词表缝失效回默认表)＋BioSourceAssertTest(零写口零落库零模型) |
+| 海马 | 海马情景编码与回放固化(短时→回放→长时) | 记录"何时发生了什么",给情景打突显标签,供回放候选 | 不改写记忆、不决定记什么忘什么(取舍在既有记忆分层)、不输出结论 | 相对全量向量库,同查询下回放筛选后的召回率与存储放大系数 | 不可用时退回"无突显标签的回放",记忆层行为与现状一致 | 读数源已建(694);已接线·收工链只读只log(714)；重放键已整缝交接共用本件键(714·G-708-2);523 三件套齐 | HippocampusTest.triple1KeyIsMetadataFaceNotBodyExcerpt(键＝地址＋元数据,朴素截引做不到)＋hintCarriesNoBodyTextEvenWithSensitiveFixture(正文零片段) | — | HippocampusTest.emptyTextGetsEmptyBandAndNoFingerprint(空文退化"-"不造数)＋issuingKeysTwiceLeavesNoStateBehind(无状态零残留)＋BioSourceAssertTest(禁引擎符号) |
+| 前额叶 | 前额叶执行功能(慢思考、计划、抑制的候选生成) | 产出"候选计划＋风险清单"文本,供裁决面参考 | 不执行、不批准、不否决——无判定权(本表表头) | 相对单发直答,高风险操作经候选计划路径的比例与其后的翻案率 | 计划失败退回直答路径,等价于现状 | 读数源已建(694);已接线·收工链只读只log(714);523 三件套齐 | PrefrontalCortexTest.triple1StuckReadingOnlyWithFailureHistory(有失败史出卡步读数,没它读不出)＋stuckAtNeedsThreeFailuresOnSameUnfinishedPlannedStep | — | PrefrontalCortexTest.stuckAtIsNullWhenEvidenceIsInsufficientOrScattered(证据不够⇒null,判不了不猜)＋updatePlanPayloadIsByteIdenticalAroundReadCalls(读数前后计划 payload 逐字节一致) |
+| 纹状体 | 纹状体奖赏预测误差(多巴胺"预期-实际"差信号) | 记"预测奖赏 vs 实际奖赏"的差读数,攒习惯候选分 | 不调模型参数、不决定强化哪个行为、不直接改路由 | 相对手工规则,常用任务路径的步数收敛速度与差读数准确率 | 读数缺失即"无奖赏信号",既有评分不受影响 | 读数源已建(694);已接线·521 习惯固化消费(收工链,rpe 行194);523 三件套齐 | StriatumTest.triple1CorrectedSuccessDistinguishableFromPlainSuccess(二值成败说不出的"成了但被打回"⇒0)＋fourCellTableMapsOutcomeToThreeBands | — | StriatumTest.askTierIsUntouchedByRpeCalls(全四格连打两轮,授权档逐字不变)＋valueStaysInsideDeclaredDomain(值域封死)＋BioSourceAssertTest(零写口) |
+| 岛叶 | 脑岛内感受(对身体自身状态的集合感知) | 把本 app 体征(电量/存储/构建时长/门禁红黄绿)汇成一个可读取数面 | 不以体征决定接不接任务、不触发自我修复(修是御医的职,岛叶只递读数) | 相对散落日志,御医取一次全身快照所需的读数面覆盖指标数与获取耗时 | 读数面不可用时御医退回逐项排查,行为与现状一致 | 读数源已建(675);已接线·521 岛叶自调消费(收工链,snapshot 行127);523 三件套齐 | InsulaTest.triple1UnifiedVitalsFaceIsTheDifference(一次调用汇齐七体征;没它没有这个面)＋fullSnapshotReadsEveryVital | — | InsulaTest.emptySourcesGiveAllMissing／wiredButReadlessSaysMissingNotUnwired(缺缝＝"无读数"逐格,不造数不补零)＋BioSourceAssertTest(零写口) |
+| 丘脑 | 丘脑感觉中继与门控(感觉信号先过中继再达皮层) | 把输入事件路由到对应下游,并打"新异性"读数;只中继不解读 | 不做内容过滤(过滤是既有门禁的事)、不决定是否处理、不丢弃事件 | 相对直接分发,路由错分率与转发 P95 延迟 | 中继失败退回直接分发,等价于现状 | 读数源已建(675);已接线·收工链只读只log(714);523 三件套齐 | ThalamusTest.triple1SameInputYieldsRouteReadingOnlyWithOrgan(有它＝路由＋新异读数面)＋routesCoverAllFourDownstreams(四路可达) | — | ThalamusTest.triple3WordSeamFailureFallsBackToShapeOnly(词表缝失效退形状中继,不拦不丢)＋guardBeatsToolShapeAndNothingIsDropped(事件必有出路) |
 
 ## 三、闸与用法
 

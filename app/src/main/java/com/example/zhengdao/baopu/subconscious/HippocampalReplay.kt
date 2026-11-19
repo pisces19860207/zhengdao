@@ -19,9 +19,12 @@
 //      没有任何「执行合并」的出口；相似度用**中文 BM25**（485 口径：结构化过滤＋BM25，
 //      切词复用 [MemoryRules.tokensOf]，不引向量检索）。
 //
-// 给 694 留的缝（依赖声明：694 未合入 ⇒ 按其派工单约定形状写适配，合入后回归）：
-// 694 海马·情景键约定「输入账行/事件，输出 {sessionId, seq, hint}，只出键不取正文」——
-// 本文件只认这个形状（[HippocampusKey]），键从哪来归装配层（694 合入前由账行适配喂入）。
+// 给 694 的缝（**第七百一十四批已整缝交接**，G-708-2 收口）：
+// 694 的海马·情景键（bio/Hippocampus.EpisodeKey{sessionId: Long, seq: Int, hint}）已合入，
+// 本包不再自造第二把键——[KeySource]／[replayAnchorOf] 一律消费 `Hippocampus.EpisodeKey`
+// （全仓唯一键定义；bio 六件的算法与字段一字未动）。hint 在本包按 678 自己的锚定契约
+// 填「线索短语」（账行标题；键里没有消息正文），与器官自产键的元数据 hint 是同一
+// 类型的两种供给——口径见 [KeySource]。
 //
 // 执行器边界（判据⑤）：本文件零调度构造、零 Runner 类——执行节奏归 676 的
 // SubconsciousRunner（未合入，见装配层机会式调用点）；「一天 ≤1 次」复用
@@ -33,6 +36,7 @@ package com.example.zhengdao.baopu.subconscious
 import com.example.zhengdao.baopu.MemoryRules
 import com.example.zhengdao.baopu.agent.QuietLimits
 import com.example.zhengdao.baopu.agent.SessionShape
+import com.example.zhengdao.baopu.bio.Hippocampus
 import com.example.zhengdao.baopu.inspect.PatrolScheduler
 
 /** 限值唯一住处（改任何一条＝改重放制度，不许调用处各写一把）。 */
@@ -67,24 +71,21 @@ internal object ReplayLimits {
 }
 
 /**
- * 海马·情景键（**694 派工单约定形状**，只读索引键）：这件事在哪一轮/哪个会话发生过。
- *
- * 只出键不取正文（694 判据⑤）：键里没有消息正文，[hint] 只是线索短语；
- * L0 指针＝[pointer]（`session:<id>#seq:<n>`），装配层拿它到消息库**只读**回原文。
- * 694 未合入 ⇒ 键由装配层按约定从账行适配喂入（见 ReplayWiring），合入后整缝交接。
+ * L0 指针（判据①的**结构保证**）：能点回原消息的那一格。键本身不带指针——
+ * 指针是本包对 `Hippocampus.EpisodeKey` 的只读投影（G-708-2 收口后共用 bio 键，
+ * 指针格式沿用 678 的 `session:<id>#seq:<n>`，一格不改；bio 包零改动）。
  */
-internal data class HippocampusKey(
-    val sessionId: Long,
-    val seq: Long,
-    val hint: String,
-) {
-    /** L0 指针（能点回原消息的那一格；判据①的锚）。 */
-    val pointer: String get() = "session:$sessionId#seq:$seq"
-}
+internal val Hippocampus.EpisodeKey.pointer: String get() = "session:$sessionId#seq:$seq"
 
-/** 情景键的来源缝（694 合入前由装配层按约定喂；合入后由其 Hippocampus 件供给）。 */
+/**
+ * 情景键的来源缝（694 合入后的**整缝交接**，G-708-2）：键类型只此一把——
+ * `bio/Hippocampus.EpisodeKey`（seq: Int）。器官自产键（[Hippocampus.key]）的 hint
+ * 只由元数据拼成（694 判据⑤：正文一个字不进 hint）；本包按自己的锚定契约喂
+ * 「线索短语」（账行标题，见 ReplayWiring.keysOfLedger）——同一类型、两种供给，
+ * 键的定义、字段与类型不再有第二处。
+ */
 internal fun interface KeySource {
-    fun keys(): List<HippocampusKey>
+    fun keys(): List<Hippocampus.EpisodeKey>
 }
 
 /**
@@ -174,11 +175,14 @@ internal fun nightBoundary(): String =
  *   · 同输入同输出：会话直配 > 重合多 > sessionId 小 > seq 小。
  * 锚不上 ⇒ null（判据①：缺指针即丢——丢弃发生在进产物**之前**）。
  */
-internal fun replayAnchorOf(candidate: ReplayCandidate, keys: List<HippocampusKey>): HippocampusKey? {
+internal fun replayAnchorOf(
+    candidate: ReplayCandidate,
+    keys: List<Hippocampus.EpisodeKey>,
+): Hippocampus.EpisodeKey? {
     if (keys.isEmpty()) return null
     val session = candidate.sourceSession.toLongOrNull()
     val cue = MemoryRules.tokensOf(candidate.title + "\n" + candidate.body)
-    data class Scored(val key: HippocampusKey, val bySession: Boolean, val overlap: Int)
+    data class Scored(val key: Hippocampus.EpisodeKey, val bySession: Boolean, val overlap: Int)
     val scored = keys.map { k ->
         Scored(k, session != null && k.sessionId == session, cue.intersect(MemoryRules.tokensOf(k.hint)).size)
     }.filter { it.bySession || it.overlap >= ReplayLimits.ANCHOR_MIN_OVERLAP }

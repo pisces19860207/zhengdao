@@ -54,7 +54,9 @@ class HippocampalReplayTest {
         quote = quote,
     )
 
-    private fun key(sessionId: Long, seq: Long, hint: String) = HippocampusKey(sessionId, seq, hint)
+    /** 键夹具（G-708-2 收口后＝`bio/Hippocampus.EpisodeKey`，seq Int；hint 是本包的线索短语）。 */
+    private fun key(sessionId: Long, seq: Int, hint: String) =
+        com.example.zhengdao.baopu.bio.Hippocampus.EpisodeKey(sessionId, seq, hint)
 
     // ── 判据②：空闲窗口（先忙后暗） ──────────────────────────────────────────
 
@@ -340,7 +342,7 @@ class HippocampalReplayTest {
         assertEquals(0, round.rows.size)
     }
 
-    // ── 694 键适配（约定形状；合入前装配层喂，合入后整缝交接） ────────────────
+    // ── 694 键适配（G-708-2 收口：键类型＝bio.EpisodeKey，seq Int） ───────────
 
     @Test
     fun 键适配_账行带消息号_定位成键() {
@@ -363,12 +365,34 @@ class HippocampalReplayTest {
     }
 
     @Test
-    fun 键形状_与694约定一致_只出键不取正文() {
+    fun 键适配_seq超出Int范围的行跳过_不截断造假键() {
+        // G-708-2：EpisodeKey.seq 是 Int；消息库 seq 是整型长条——超出范围的行
+        // 宁可不锚也不截断（截断会造出指错消息的假键）。Int.MIN/MAX 恰好压线的行要活下来。
+        val items = listOf(
+            ledgerItem("L1", "压线最大", "ok"),
+            ledgerItem("L2", "超上界", "big"),
+            ledgerItem("L3", "压线最小", "neg"),
+            ledgerItem("L4", "超下界", "small"),
+        )
+        val keys = com.example.zhengdao.baopu.subconscious.keysOfLedger(items) { id ->
+            when (id) {
+                "ok" -> 7L to Int.MAX_VALUE.toLong()
+                "big" -> 7L to (Int.MAX_VALUE.toLong() + 1L)
+                "neg" -> 7L to Int.MIN_VALUE.toLong()
+                else -> 7L to (Int.MIN_VALUE.toLong() - 1L)
+            }
+        }
+        assertEquals(listOf("压线最大", "压线最小"), keys.map { it.hint })
+    }
+
+    @Test
+    fun 键形状_全仓唯一键定义_类型已统一() {
         val k = key(7, 3, "线索短语")
         assertEquals("session:7#seq:3", k.pointer)
         // 键里没有消息正文——判据⑤（694）「只出键不取内容」的形状边界。
         assertNotNull(k.hint)
-        assertEquals(listOf(7L, 3L, "线索短语"), listOf(k.sessionId, k.seq, k.hint))
+        // G-708-2：seq 收敛 Int（期望表里放 Int 3——若实现退回 Long，这里逐字不等 ⇒ 红）。
+        assertEquals(listOf<Any>(7L, 3, "线索短语"), listOf<Any>(k.sessionId, k.seq, k.hint))
     }
 
     /** 账行夹具（[com.example.zhengdao.baopu.ledger.LedgerItem] 的最小投影）。 */

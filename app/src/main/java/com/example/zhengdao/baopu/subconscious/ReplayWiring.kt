@@ -6,9 +6,11 @@
 // 1. **对被读的东西只读**：L2 记忆（[com.example.zhengdao.baopu.MemoryStore.loadAll]）
 //    与项目账（`LedgerStore.items`）只读当输入；自身产出只写自己的行槽＋账＋状态三样
 //    （见 [ReplayStores]）。记忆层没有任何写调用——判据③由源码门禁钉死。
-// 2. **694 未合入的键适配**：海马·情景键按 694 派工单约定形状（{sessionId, seq, hint}）
-//    从项目账行适配（[keysOfLedger]：账行 sourceMsgId → 消息库只读定位 → 键）；
-//    694 合入后整缝交接给其 Hippocampus 件（回归项，见交付报告）。
+// 2. **键供给（694 已合入，第七百一十四批整缝交接收口）**：海马·情景键只此一把——
+//    `bio/Hippocampus.EpisodeKey{sessionId: Long, seq: Int, hint}`（G-708-2：
+//    678 自造的 `HippocampusKey{seq: Long}` 已撤，全仓键定义只剩 bio 一处）。
+//    键从项目账行适配（[keysOfLedger]：账行 sourceMsgId → 消息库只读定位 → 键）；
+//    hint 按本包锚定契约填账行标题（键里没有消息正文）。
 // 3. **崩了只记一行**：装配层任何失败不抛出调用方（触发点在收工路径/广播上，
 //    65/89 口径——不许把别人的路径带下去）。
 // 4. **零调度**：本文件不建线程/协程/定时器——触发线程由调用方给（页签打开在
@@ -24,6 +26,7 @@ import com.example.zhengdao.baopu.MemoryRules
 import com.example.zhengdao.baopu.MemoryStatus
 import com.example.zhengdao.baopu.ledger.LedgerItem
 import com.example.zhengdao.baopu.ledger.LedgerStore
+import com.example.zhengdao.baopu.bio.Hippocampus
 import com.example.zhengdao.core.RunLog
 import java.time.Instant
 import java.time.ZoneId
@@ -51,20 +54,26 @@ internal fun engineBusyNow(): Boolean {
 }
 
 /**
- * 694 键适配（约定形状；694 合入前生产走这里，合入后整缝交接）：
+ * 键适配（G-708-2 收口后键类型＝`bio/Hippocampus.EpisodeKey`，seq 收敛 Int）：
  * 项目账行带 `sourceMsgId` 的 → 消息库只读定位 (session_id, seq) → 情景键。
- * [resolveMessage] 注入（纯映射，JVM 直测）；定位不到的行跳过（键缺 ＝ 不锚）。
+ * [resolveMessage] 注入（纯映射，JVM 直测）；定位不到的行跳过（键缺 ＝ 不锚）；
+ * seq 超出 Int 范围的行同样跳过——不截断造一把假键（键缺 ＝ 不锚，同一口径）。
  */
 internal fun keysOfLedger(
     items: List<LedgerItem>,
     resolveMessage: (String) -> Pair<Long, Long>?,
-): List<HippocampusKey> = items.asSequence()
+): List<Hippocampus.EpisodeKey> = items.asSequence()
     .filter { it.sourceMsgId.isNotBlank() }
     .mapNotNull { item ->
         val (sid, seq) = resolveMessage(item.sourceMsgId) ?: return@mapNotNull null
-        HippocampusKey(sessionId = sid, seq = seq, hint = item.title)
+        val seqNo = seq.takeIf { it in INT_MIN..INT_MAX }?.toInt() ?: return@mapNotNull null
+        Hippocampus.EpisodeKey(sessionId = sid, seq = seqNo, hint = item.title)
     }
     .toList()
+
+/** Int 收敛（G-708-2）的两个界；单独常量免得长表达式绊detekt 的魔法数。 */
+private const val INT_MIN = Int.MIN_VALUE.toLong()
+private const val INT_MAX = Int.MAX_VALUE.toLong()
 
 /** 消息定位（账行 sourceMsgId → (session_id, seq)；只读，查不到 ⇒ null）。 */
 internal fun messageLocateOf(db: BaopuDb, messageId: String): Pair<Long, Long>? = runCatching {
@@ -76,7 +85,7 @@ internal fun messageLocateOf(db: BaopuDb, messageId: String): Pair<Long, Long>? 
 }.getOrNull()
 
 /** L0 原话引用（按指针只读回原消息正文，截到 [ReplayLimits.QUOTE_CHARS]；没有 ⇒ null）。 */
-internal fun messageQuoteOf(db: BaopuDb, key: HippocampusKey): String? = runCatching {
+internal fun messageQuoteOf(db: BaopuDb, key: Hippocampus.EpisodeKey): String? = runCatching {
     db.read { d ->
         d.rawQuery(
             "SELECT p.payload FROM message m JOIN part p ON p.message_id = m.id " +
