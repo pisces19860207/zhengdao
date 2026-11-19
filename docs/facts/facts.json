@@ -1,0 +1,509 @@
+{
+  "disclaimer": "本文件是生理统计区间与工程取值口径，用于叙事引擎的初值与档位约束；它不构成诊疗建议，不作为任何疾病的诊断、治疗、用药或健康判断依据。个体差异与临床问题一律交回人与医生，引擎不代答。",
+  "schema": 1,
+  "kind": "facts-truth-source",
+  "id": "facts-male-body",
+  "version": "v0.1",
+  "pack": "男性",
+  "batch": 665,
+  "asOf": "2026-11-19",
+  "reviewDue": "2027-02-17",
+  "humanMirror": "male-body-v0.1.md",
+  "sourceDefault": "证道设计报告/男性素材-事实底盘-v0-2026-11-16.md（私材，只读）",
+  "provenance": {
+    "rule": "来源列形如『节｜文件:行区间』，指回私材可对照行号；私材正文不入仓、不打印。",
+    "evidenceCarryOver": "✅ 是报告作者已核原文的结论，665 原样继承并记录其引用出处；本单按派工单 §三『不引入新的外部数据抓取』未独立复核原文，故 ✅ 的含义是『上游已核＋出处可追』，不是『665 复核过』。",
+    "noWebFetch": true
+  },
+  "evidenceLegend": {
+    "verified": "✅ 已核原文",
+    "consensus": "◐ 临床共识（未逐条核原文）",
+    "assumption": "○ 工程假设",
+    "fiction": "✗ 虚构设定"
+  },
+  "paramClasses": {
+    "distribution": "分布参数（采样用）：只给均值/SD/分位/区间，不给点值",
+    "threshold": "阈值参数（事件边界）：分档线、抽样上限、提示触发线——是区间端点，不是抽样结果",
+    "rate": "速率参数（时间积分）：文献基本没有，只能人定，必标 ○",
+    "constraint": "约束（硬逻辑）：不是数据，无需证据标记"
+  },
+  "intakeRules": {
+    "onlyAllowed": ["区间", "分位", "阈值（端点）", "量表档数", "定性方向"],
+    "rejectedShapes": [
+      "可直接赋给某个角色的身体读数（如 length_cm=18）",
+      "无来源的数",
+      "把表外分位外推出来的数"
+    ],
+    "outOfScope": [
+      "主观感受与体验（归角色设定／用户偏好，引擎不生成）",
+      "叙事写法与节奏（归写法令／声学／时间与事件）",
+      "疾病诊断与治疗建议（不归引擎，标非医学依据）",
+      "状态机、耦合系数与判定逻辑（归 658／660／655）"
+    ]
+  },
+  "samplingRule": {
+    "mode": "percentile_or_band",
+    "pointReadAllowed": false,
+    "extrapolationAllowed": false,
+    "outsideTable": "拒收——表外分位不外推，外推就是编数",
+    "note": "下游要一个具体角色的数，只能『按分布抽样』或『按分位取档』，不许把本表的任何端点当默认角色值直接抄。"
+  },
+  "unitPolicy": {
+    "length": "cm",
+    "temperature": "℃",
+    "duration": "min",
+    "correlation": "r",
+    "scale": "级",
+    "conversionNote": "660 的 FactSource 以 mm 存储；×10 换算由装载器负责，本表只存 cm，两处不并记（避免双真相）。"
+  },
+  "anchors": [
+    {
+      "id": "fb.length.erectile",
+      "anchorNo": 1,
+      "name": "勃起长度分布",
+      "evidence": "✅",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·1｜男性素材-事实底盘-v0-2026-11-16.md:L86-L94",
+      "sourceDetail": "Veale 等，BJU International 2015（系统综述；总样本 n=15521，其中勃起实测 692 人）",
+      "asOf": "2026-11-16",
+      "distribution": { "type": "normal", "mean": 13.12, "sd": 1.66, "unit": "cm", "nTotal": 15521, "nMeasured": 692 },
+      "percentiles": [
+        { "pct": 50, "cm": 13.1, "evidence": "✅" },
+        { "pct": 90, "cm": 15.3, "evidence": "✅" },
+        { "pct": 95, "cm": 15.9, "evidence": "✅" },
+        { "pct": 99, "cm": 17.0, "evidence": "✅" }
+      ],
+      "bands": [
+        {
+          "id": "fb.length.band_common_default",
+          "lo": 12.0,
+          "hi": 14.0,
+          "unit": "cm",
+          "use": "default_sampling",
+          "evidence": "✅",
+          "note": "报告认可『默认 12–14』几乎照数据写；这是常态带，不是角色定值。"
+        },
+        {
+          "id": "fb.length.band_above_common",
+          "lo": 15.0,
+          "hi": 16.0,
+          "unit": "cm",
+          "use": "rare_channel",
+          "evidence": "✅",
+          "advisoryRequired": "极少见",
+          "note": "偏长带：可存在，写及须带『极少见』。"
+        }
+      ],
+      "thresholds": [
+        {
+          "id": "fb.length.threshold_rare_length_marker",
+          "axis": "cm",
+          "compare": "gte",
+          "bound": 18.0,
+          "z": 2.94,
+          "rarity": "1/600",
+          "rarityBasis": "0.16%（单侧尾概率，正态换算约 1/609）",
+          "not_default": true,
+          "existence": "可存在",
+          "advisoryRequired": "必须显式标注极少见",
+          "paramClass": "threshold",
+          "evidence": "✅",
+          "correction": "本条是 v0.1 修正一：旧口径『禁止出现 18cm』偏严，改为可存在但必须显式标注极少见且不得作默认值。",
+          "source": "事实底盘 v0 §四·1｜男性素材-事实底盘-v0-2026-11-16.md:L90-L93"
+        }
+      ],
+      "typicalMiswrites": ["把 18cm 当平均值写（真相是约 1/600）", "把右尾个案当常态描述"],
+      "consumers": ["660", "739"]
+    },
+    {
+      "id": "fb.girth_diameter.erectile",
+      "anchorNo": 2,
+      "name": "勃起周长与等效直径",
+      "evidence": "✅",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·2｜男性素材-事实底盘-v0-2026-11-16.md:L96-L104",
+      "sourceDetail": "与长度同源（Veale 等，BJU International 2015）；直径由周长按圆截面换算（周长/π），真实截面略扁（横径略大于前后径），故称『等效直径』",
+      "asOf": "2026-11-16",
+      "girth": {
+        "distribution": { "type": "normal", "mean": 11.66, "sd": 1.10, "unit": "cm" },
+        "percentiles": [
+          { "pct": 50, "cm": 11.66, "evidence": "○", "basis": "正态假设，以均值代（报告未单列 50 分位实测）" },
+          { "pct": 95, "cm": 13.47, "evidence": "✅" },
+          { "pct": 99, "cm": 14.22, "evidence": "✅" }
+        ],
+        "gap": "报告未给 90 分位周长 ⇒ 本表不收（不外推）。"
+      },
+      "diameter": {
+        "derivation": "等效直径 = 周长 / π",
+        "distribution": { "type": "derived_normal", "mean": 3.71, "sd": 0.35, "unit": "cm", "derivedFrom": "girth", "sdBasis": "报告未单列直径 SD；此处 sd 为周长 sd 除以 π 的线性换算值，不是独立测量" },
+        "percentiles": [
+          { "pct": 50, "cm": 3.71, "evidence": "○", "basis": "由 girth P50 换算" },
+          { "pct": 95, "cm": 4.29, "evidence": "✅", "basis": "由 girth P95 换算" },
+          { "pct": 99, "cm": 4.53, "evidence": "✅", "basis": "由 girth P99 换算" }
+        ]
+      },
+      "bands": [
+        {
+          "id": "fb.diameter.band_uncommon",
+          "axis": "cm",
+          "lo": 4.3,
+          "hi": 4.6,
+          "unit": "cm",
+          "use": "above_advisory_below_cap",
+          "evidence": "✅",
+          "advisoryRequired": ["少见", "需适应"],
+          "note": "与 threshold_advisory_uncommon 同一条线：那条管『从哪儿开始要写』，这条管『写到哪儿为止』——660 的 diameterAdvisories 是一段带，不是一个点。"
+        },
+        {
+          "id": "fb.diameter.band_extreme_case",
+          "axis": "cm",
+          "lo": 4.6,
+          "hi": 5.0,
+          "unit": "cm",
+          "use": "rare_channel",
+          "evidence": "◐",
+          "notBanned": true,
+          "advisoryRequired": ["极罕见", "硬度不足"],
+          "note": "报告 §八·修正1：这段是随机抽样意义上的极端个案，不是『不存在』；存在性上限不该当禁用线用。"
+        }
+      ],
+      "thresholds": [
+        {
+          "id": "fb.diameter.threshold_default_sampling_cap",
+          "axis": "cm",
+          "compare": "lte",
+          "bound": 4.6,
+          "z": 2.54,
+          "pctApprox": 99.4,
+          "rarity": "1/179",
+          "scope": "default_sampling",
+          "paramClass": "threshold",
+          "evidence": "✅",
+          "correction": "本条是 v0.1 修正二之一：旧口径『直径上限 5.0cm』把万分之一处当天花板且允许写 ⇒ 默认抽样上限收到 4.6。",
+          "source": "事实底盘 v0 §四·2＋§八·修正1｜男性素材-事实底盘-v0-2026-11-16.md:L100-L103,L216-L219"
+        },
+        {
+          "id": "fb.diameter.threshold_advisory_uncommon",
+          "axis": "cm",
+          "compare": "gte",
+          "bound": 4.3,
+          "z": 1.68,
+          "topShare": "4.6%",
+          "advisory": "少见、需适应",
+          "scope": "writing_prompt",
+          "paramClass": "threshold",
+          "evidence": "✅",
+          "source": "事实底盘 v0 §四·2｜男性素材-事实底盘-v0-2026-11-16.md:L103"
+        },
+        {
+          "id": "fb.diameter.threshold_extreme_upper",
+          "axis": "cm",
+          "compare": "lte",
+          "bound": 5.0,
+          "z": 3.68,
+          "rarity": "约 1/8,600（随机抽样口径，不是存在性上界）",
+          "advisory": "极罕见＋硬度不足",
+          "scope": "existence_allowed_beyond_default",
+          "paramClass": "threshold",
+          "evidence": "◐",
+          "note": "上传/拍摄是强选择事件，故『被拍到的那批里 5.0 不罕见』与『随机抽一个男性极罕见』两句同时成立；引擎取后者作抽样口径，取前者作存在性白名单。",
+          "source": "事实底盘 v0 §四·2＋§八·修正1/修正3｜男性素材-事实底盘-v0-2026-11-16.md:L100,L203-L219,L245-L263"
+        }
+      ],
+      "hardCouplingReference": {
+        "statement": "硬度上限随直径单调递减（白膜张力上限固定 ⇒ 半径越大可维持内压越低）；这条是力学推导，不是设定。",
+        "coefficientsBelongTo": "658／660（本表只记方向与阈值口径，不记系数与公式）",
+        "evidence": "○",
+        "basisEvidence": "◐",
+        "source": "事实底盘 v0 §八·修正2｜男性素材-事实底盘-v0-2026-11-16.md:L221-L243"
+      },
+      "typicalMiswrites": ["脱离周长单独断言粗度", "把抽样上限当存在性上限（该禁的不禁、不该禁的全禁）"],
+      "consumers": ["660", "655", "739"]
+    },
+    {
+      "id": "fb.stature_association",
+      "anchorNo": 3,
+      "name": "尺寸与身高／脚码的关系",
+      "evidence": "✅",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·3｜男性素材-事实底盘-v0-2026-11-16.md:L106-L109",
+      "asOf": "2026-11-16",
+      "withStature": {
+        "band": { "lo": 0.2, "hi": 0.6, "unit": "r" },
+        "strength": "弱到中等，且各研究差异大",
+        "evidence": "✅"
+      },
+      "withShoeSize": { "association": "无可靠关联", "numericRange": null, "evidence": "✅", "note": "报告未给相关系数 ⇒ 不收数值，只收方向性结论。" },
+      "constraints": [
+        { "id": "fb.stature.no_inference", "rule": "不许由身高／脚码反推生殖器尺寸", "kind": "constraint" },
+        { "id": "fb.stature.loader_no_entry", "rule": "取值口不得提供『身高 → 尺寸』的换算入口（660 已按此实现）", "kind": "constraint" }
+      ],
+      "typicalMiswrites": ["185 身高 ⇒ 必大"],
+      "consumers": ["660", "669"]
+    },
+    {
+      "id": "fb.arousal_dissociation",
+      "anchorNo": 4,
+      "name": "性反应分离（主观唤起 ≠ 生殖器反应）",
+      "evidence": "◐",
+      "paramClass": "constraint",
+      "source": "事实底盘 v0 §四·4｜男性素材-事实底盘-v0-2026-11-16.md:L111-L115",
+      "sourceDetail": "Chivers 等 2010 综述",
+      "asOf": "2026-11-16",
+      "concordance": { "level": "中等，可明显分离", "numericRange": null, "evidence": "◐", "note": "报告未给一致度区间 ⇒ 不收数值。" },
+      "constraints": [
+        { "id": "fb.arousal.two_variables", "rule": "心理唤起（M）与充血度（E）必须是两个独立变量——架构层面，不是提示词层面", "kind": "constraint" }
+      ],
+      "significance": "报告原话：这是整套体系里最有价值的一条，且有文献支撑，不是设定。",
+      "consumers": ["658", "660"]
+    },
+    {
+      "id": "fb.hardness_ehs",
+      "anchorNo": 5,
+      "name": "勃起硬度分级",
+      "evidence": "◐",
+      "paramClass": "threshold",
+      "source": "事实底盘 v0 §四·5｜男性素材-事实底盘-v0-2026-11-16.md:L117-L120",
+      "sourceDetail": "临床量表 EHS（Erection Hardness Score）1–4 级，另加 0＝无反应",
+      "asOf": "2026-11-16",
+      "scale": { "name": "EHS", "lo": 0, "hi": 4, "unit": "级", "zeroMeaning": "无反应", "enumeration": [0, 1, 2, 3, 4] },
+      "constraints": [
+        { "id": "fb.hardness.no_invented_scale", "rule": "不许自造硬度刻度；档位命名直接对齐 EHS，便于外部核对", "kind": "constraint" }
+      ],
+      "derivation": "档数＝hi−lo＋1（装载器算，本表不存 5 这个数）",
+      "consumers": ["658", "660", "669"]
+    },
+    {
+      "id": "fb.skin_temperature",
+      "anchorNo": 6,
+      "name": "温度（皮温与环境）",
+      "evidence": "◐",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·6｜男性素材-事实底盘-v0-2026-11-16.md:L122-L126",
+      "asOf": "2026-11-16",
+      "riseOnErection": {
+        "band": { "lo": 0.0, "hi": 1.0, "unit": "℃" },
+        "evidence": "○",
+        "note": "方向（略升、幅度小）◐ 有据；具体幅度未查到可直接引用的测量研究 ⇒ 数值按 ○ 处理，不冒充医学数据。"
+      },
+      "dominantFactor": { "statement": "环境温度与衣物的影响大于充血本身", "evidence": "◐" },
+      "couplings": [
+        {
+          "id": "fb.temperature.constriction_cools",
+          "trigger": "勒压（静脉回流受阻）",
+          "target": "skin_temperature",
+          "sign": "negative",
+          "evidence": "◐",
+          "illegalState": "越勒越烫",
+          "note": "符号与语料里的叙事因果相反——数值不来自语言，权重里那条因果图就没有入口。"
+        }
+      ],
+      "typicalMiswrites": ["滚烫", "越勒越烫"],
+      "consumers": ["658", "669"]
+    },
+    {
+      "id": "fb.refractory_period",
+      "anchorNo": 7,
+      "name": "不应期",
+      "evidence": "◐",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·7｜男性素材-事实底盘-v0-2026-11-16.md:L128-L131",
+      "asOf": "2026-11-16",
+      "duration": {
+        "orderOfMagnitudeBand": ["分钟级", "小时级"],
+        "numericRange": null,
+        "evidence": "◐",
+        "gap": "报告只给『数分钟到数小时』的量级，未给可引用的秒级区间 ⇒ 本表不收数值（缺口 G-1）。658 派工单里的示例区间属 658 的设定，不由 665 背书。"
+      },
+      "variability": { "statement": "个体差异极大", "evidence": "◐" },
+      "ageTrend": { "direction": "随年龄延长", "evidence": "◐" },
+      "constraints": [
+        { "id": "fb.refractory.per_role", "rule": "按角色设定取值，不得统一处理", "kind": "constraint" },
+        { "id": "fb.refractory.drop_input", "rule": "不应期内丢弃输入（硬逻辑，属 658 状态机）", "kind": "constraint" }
+      ],
+      "consumers": ["658"]
+    },
+    {
+      "id": "fb.pre_ejaculate",
+      "anchorNo": 8,
+      "name": "前液（Cowper 腺）",
+      "evidence": "◐",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·8｜男性素材-事实底盘-v0-2026-11-16.md:L133-L136",
+      "asOf": "2026-11-16",
+      "volume": { "statement": "量少、可变", "numericRange": null, "evidence": "◐", "gap": "报告未给毫升区间 ⇒ 不收数值（缺口 G-2）。" },
+      "occurrence": { "statement": "非必然", "probability": "not_obligatory", "evidence": "◐" },
+      "relation": { "to": "唤起程度", "shape": "非线性相关", "evidence": "◐" },
+      "typicalMiswrites": ["一唤起就大量"],
+      "consumers": ["658", "669"]
+    },
+    {
+      "id": "fb.ejaculation_latency",
+      "anchorNo": 9,
+      "name": "射精潜伏期",
+      "evidence": "○",
+      "paramClass": "distribution",
+      "source": "事实底盘 v0 §四·9｜男性素材-事实底盘-v0-2026-11-16.md:L138-L141",
+      "asOf": "2026-11-16",
+      "band": {
+        "id": "fb.latency.band_median",
+        "lo": 5.0,
+        "hi": 7.0,
+        "unit": "min",
+        "use": "order_of_magnitude_reference_only",
+        "evidence": "○",
+        "statement": "中位数约 5–7 分钟，离散度极大"
+      },
+      "constraints": [
+        { "id": "fb.latency.not_a_criterion", "rule": "只能当数量级参考，不许当判定阈值／合格判据", "kind": "constraint" }
+      ],
+      "typicalMiswrites": ["把数量级当标尺给角色卡点"],
+      "consumers": ["658"]
+    },
+    {
+      "id": "fb.color_congestion",
+      "anchorNo": 10,
+      "name": "颜色（充血与淤滞）",
+      "evidence": "◐",
+      "paramClass": "threshold",
+      "source": "事实底盘 v0 §四·10｜男性素材-事实底盘-v0-2026-11-16.md:L143-L146",
+      "asOf": "2026-11-16",
+      "deepenOnErection": {
+        "statement": "充血使颜色局部加深",
+        "byBaselineSkinTone": [
+          { "baseline": "浅肤", "toward": ["粉红", "红"] },
+          { "baseline": "深肤", "toward": ["浅褐", "红褐"] }
+        ],
+        "evidence": "◐"
+      },
+      "deepenSteps": {
+        "band": { "lo": 1.0, "hi": 2.0, "unit": "档" },
+        "evidence": "○",
+        "source": "660 FactsFromMd 现用口径（docs/facts 之外的实现真源）；报告 §四·10 未给档数 ⇒ 本表标 ○ 并如实改注出处，不沿用 660 原来挂的『§四』标签",
+        "asOf": "2026-11-19",
+        "note": "溯源纠正：本条不来自报告 §四·10（那里只有方向与肤色映射，没有档数），故出处改挂 660 现用口径并降为 ○。660 换 FactsFromJson 时沿用同一区间即零行为变化。"
+      },
+      "stasisMarker": {
+        "signs": ["紫红", "暗紫"],
+        "implies": "静脉淤滞（勒压、长时间）",
+        "requiresCoOccurrence": ["温度变化"],
+        "evidence": "◐",
+        "note": "颜色标记不许单独出现，必须与温度方向一致，否则就是语料因果图漏进来。"
+      },
+      "typicalMiswrites": ["不分基线肤色一律写粉红", "只写紫红不写温度"],
+      "consumers": ["658", "669"]
+    }
+  ],
+  "fiction": {
+    "inFactsTable": false,
+    "rule": "派工单追加口径：✗ 虚构三项不进事实表（本文件不收其数值），但进资料包（kind=fiction、reality=fictional）。",
+    "pointer": "存在虚构设定，见 649 资料包 kind=fiction（素材 06 双性／07 模拟锁结／08 母犬发情机制），不作生理依据。",
+    "items": [
+      {
+        "id": "fb.fiction.coitus_lock",
+        "anchorNo": 11,
+        "name": "锁结",
+        "evidence": "✗",
+        "reality": "fictional",
+        "source": "事实底盘 v0 §四·11｜男性素材-事实底盘-v0-2026-11-16.md:L148-L151",
+        "anatomicalBasis": "人类无阴茎骨、无球状腺（bulbus glandis），犬类锁结的解剖基础不存在 ⇒ 在所写形态下解剖学上不可能",
+        "premiseEvidence": "✅",
+        "engineHandling": ["打 fantasy 标记", "不做守恒校验", "诚实标注必须保留"]
+      },
+      {
+        "id": "fb.fiction.dual_sex_anatomy",
+        "anchorNo": 12,
+        "name": "双性（两套完整功能性器官）",
+        "evidence": "✗",
+        "reality": "fictional",
+        "source": "事实底盘 v0 §四·12｜男性素材-事实底盘-v0-2026-11-16.md:L153-L156",
+        "realWorldNeighbour": { "statement": "真实 DSD（性发育差异）存在但罕见，且绝大多数不是两套完整功能性器官", "evidence": "◐", "numericRange": null, "gap": "报告给的是文字性罕见度，未带可核区间 ⇒ 本表不收数（缺口 G-3）。" },
+        "engineHandling": ["打 fantasy 标记", "不与真实 DSD 混写"]
+      },
+      {
+        "id": "fb.fiction.canine_oestrus",
+        "anchorNo": null,
+        "name": "母犬发情机制",
+        "evidence": "✗",
+        "reality": "fictional",
+        "source": "派工单 665 追加口径 §三（素材 08）",
+        "engineHandling": ["打 fantasy 标记", "不进事实表"]
+      }
+    ]
+  },
+  "correctionsV01": [
+    {
+      "no": 1,
+      "id": "fb.length.threshold_rare_length_marker",
+      "from": "禁止出现 18cm",
+      "to": "可存在，但必须显式标注极少见（rarity 1/600），且不得作为默认值",
+      "why": "禁令把『不存在』与『极罕见』混为一谈；偏严的禁令会把存在性个案逼成禁写，却仍然修不好方向性偏差。",
+      "anchorNo": 1,
+      "source": "事实底盘 v0 §四·1｜男性素材-事实底盘-v0-2026-11-16.md:L90-L93"
+    },
+    {
+      "no": 2,
+      "ids": ["fb.diameter.threshold_default_sampling_cap", "fb.diameter.threshold_advisory_uncommon", "fb.diameter.threshold_extreme_upper", "fb.diameter.band_extreme_case"],
+      "from": "直径上限 5.0cm（z≈+3.7，约 1/8,600）——一个上限同时当抽样天花板与存在性天花板用",
+      "to": "拆成三档：默认抽样不超过 threshold_default_sampling_cap 的端点；达到 threshold_advisory_uncommon 端点起必须写『少见、需适应』；两档上端点之间的 band_extreme个案 不禁用，但必须附『极罕见＋硬度不足』",
+      "why": "旧上限把随机抽样里的极低概率当天花板，同时把『被拍摄上传』这一强选择事件的观察当存在性依据——两个问题混成一件事。抽样口径与存在性口径必须分开。",
+      "anchorNo": 2,
+      "source": "事实底盘 v0 §四·2＋§八·修正1｜男性素材-事实底盘-v0-2026-11-16.md:L100-L103,L203-L219,L245-L263"
+    }
+  ],
+  "consumers": {
+    "660": {
+      "name": "形轨·形体参数",
+      "takes": ["fb.length.erectile", "fb.girth_diameter.erectile", "fb.stature_association", "fb.hardness_ehs", "fb.skin_temperature", "fb.color_congestion"],
+      "todayReads": "FactsFromMd.kt（临时真源，全仓唯一允许出现分布字面量的地方）",
+      "switchTo": "FactsFromJson 读本文件后，FactSource 调用点一行不动"
+    },
+    "658": {
+      "name": "轻生理状态轨迹",
+      "takes": ["fb.arousal_dissociation", "fb.hardness_ehs", "fb.skin_temperature", "fb.refractory_period", "fb.pre_ejaculate", "fb.ejaculation_latency", "fb.color_congestion"],
+      "note": "本表只给区间/阈值/方向；时间常数与耦合系数属 658，必须自带来源或标 ○。"
+    },
+    "669": {
+      "name": "词表与误写",
+      "takes": ["fb.stature_association（禁推口径）", "fb.skin_temperature（误写词）", "fb.color_congestion（肤色映射与淤滞标记）", "fiction.pointer"],
+      "note": "误写规则取本表 typicalMiswrites 与 stasisMarker.signs 的口径，不另立一套词。"
+    },
+    "739": {
+      "name": "三化抑制（尺寸通胀/免责腔/模板腔）",
+      "takes": ["fb.length.threshold_rare_length_marker（rarity＋id）", "fb.length.band_common_default（默认带）", "fb.diameter.threshold_advisory_uncommon"],
+      "contract": "夸大表述必须同时带稀有度与来源 id ⇒ 稀有度从本表 thresholds[].rarity 取，id 取 thresholds[].id／anchors[].id。",
+      "knownDuplication": "anti-slop-baseline.json 现在把长度默认带抄成自己的两个 mm 端点（其 defaultBandSource 自陈源自 665 P50）⇒ 属数值复制，与判据⑥同一条规矩冲突；本单不改 739 文件域，挂账见 gaps G-4。"
+    }
+  },
+  "refContract649": {
+    "truthSourceIsSole": true,
+    "appliesTo": "649 资料包的全部片，尤其 computable=stats 的片（尺寸/时长/频率）",
+    "sliceStores": ["factRef（本表 id）"],
+    "sliceMustNotStore": ["本表任何数值、区间端点、分位读数"],
+    "field": "factRef",
+    "allowedRefValues": ["anchors[].id", "anchors[].bands[].id", "anchors[].thresholds[].id", "fiction.items[].id"],
+    "statsSlicesBuiltToday": false,
+    "status": "本表 2026-11-19 落地；649 现有 763 片含 method/observation/example/preference/fiction，无 stats 片、无 computable 列 ⇒ 契约先行，建 stats 片时必须带 factRef，不得回填数值。",
+    "validatedBy": "665 交付报告 §判据⑥（对 649 包全量扫描＋对本仓 fact-slices.json 扫描，均无本表数值复制）",
+    "ruleProvenance": "裁定记录 2026-11-15『stats 只能给区间，区间＋来源，源里没统计就不给』"
+  },
+  "selfCheck": {
+    "tolerance": "分位读数与『均值 + z·SD』换算之差须在 ±0.1cm 内；等效直径是换算量，收严到 ±0.011cm",
+    "invariants": [
+      "分位标记严格递增",
+      "同表读数单调不减",
+      "区间端点必须成对在场（lo 与 hi，或显式开区间）",
+      "无来源不收，无证据等级不收",
+      "表外分位不外推",
+      "阈值端点不许当默认角色值抄"
+    ],
+    "carriedBy": "665 交付报告 §三 机检读数（一次性校验脚本，按派工单 §三『只做数据表』未入库）"
+  },
+  "gaps": [
+    { "id": "G-1", "anchor": "fb.refractory_period", "missing": "秒级不应期区间（报告只给分钟级–小时级量级）", "owner": "658 须自带来源，或另派核源" },
+    { "id": "G-2", "anchor": "fb.pre_ejaculate", "missing": "前液量毫升区间", "owner": "待核源；未核到之前引擎只许写定性档位" },
+    { "id": "G-3", "anchor": "fb.fiction.dual_sex_anatomy", "missing": "真实 DSD 发生率的原文出处（报告以文字性罕见度表述）", "owner": "待核源，不入本表" },
+    { "id": "G-4", "anchor": "fb.length.erectile", "missing": "739 默认带改为引用 factRef（现抄数值）", "owner": "739 文件域，本单不代改" },
+    { "id": "G-5", "anchor": "fb.girth_diameter.erectile", "missing": "周长 90 分位（报告未列）", "owner": "待核源；本表不外推" }
+  ]
+}
