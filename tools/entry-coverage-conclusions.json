@@ -86,6 +86,14 @@
     "BodyModel": {
       "verdict": "wired",
       "note": "谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。"
+    },
+    "AntiSlopBaselines": {
+      "verdict": "wired",
+      "note": "谁接：**738 注入单**。本件是 `AntiSlopBaseline` 的配置加载器（读 `docs/facts/anti-slop-baseline.json`，阈值与词表全在配置、代码零写死）。739 的派工单把「738 注入」列为**依赖**而非本单产出 ⇒ 生产输出链尚无调用点；738 落地时由输出侧读配置、拿阈值。在此之前只有测试在调（B 桶），属**预期内欠账**。"
+    },
+    "AntiSlopGuard": {
+      "verdict": "wired",
+      "note": "谁接：**738 注入单**。本件是三条输出侧判据（A 尺寸通胀／B 医学免责腔／C 模板腔）的纯函数检测器，只报不改（原文逐字节不动）。738 把检测接进输出链后才算真接线；当前只有测试在调，故记 `wired` 欠账而非 `not_urgent`——**判据件也要有人接，不然就是没人用的尺**。"
     }
   },
   "C": {

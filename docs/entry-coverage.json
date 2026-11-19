@@ -50,6 +50,88 @@
   "B": [
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/antislop/AntiSlopBaseline.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 67,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**738 注入单**。本件是 `AntiSlopBaseline` 的配置加载器（读 `docs/facts/anti-slop-baseline.json`，阈值与词表全在配置、代码零写死）。739 的派工单把「738 注入」列为**依赖**而非本单产出 ⇒ 生产输出链尚无调用点；738 落地时由输出侧读配置、拿阈值。在此之前只有测试在调（B 桶），属**预期内欠账**。",
+    "package": "com.example.zhengdao.baopu.antislop",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AntiSlopBaselines",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 17
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 18
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 186
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 188
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 190
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopSourceAssertTest.kt",
+      "line": 95
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopSourceAssertTest.kt",
+      "line": 97
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/antislop/AntiSlopGuard.kt",
+    "file_mates_wired": true,
+    "kind": "class",
+    "line": 35,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**738 注入单**。本件是三条输出侧判据（A 尺寸通胀／B 医学免责腔／C 模板腔）的纯函数检测器，只报不改（原文逐字节不动）。738 把检测接进输出链后才算真接线；当前只有测试在调，故记 `wired` 欠账而非 `not_urgent`——**判据件也要有人接，不然就是没人用的尺**。",
+    "package": "com.example.zhengdao.baopu.antislop",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AntiSlopGuard",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 21
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 177
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 179
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt",
+      "line": 181
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -647,11 +729,11 @@
  },
  "summary": {
   "A": 2,
-  "B": 10,
+  "B": 12,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 6,
-  "production_top_level_public": 641,
-  "wired": 629
+  "not_wired": 8,
+  "production_top_level_public": 652,
+  "wired": 638
  }
 }

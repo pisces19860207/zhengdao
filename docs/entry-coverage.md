@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 641 |
-| 生产可达（有生产引用，含同文件） | 629 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 652 |
+| 生产可达（有生产引用，含同文件） | 638 |
 | A 有定义无调用 | 2 |
-| B 只有测试在调 | 10 |
+| B 只有测试在调 | 12 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **6** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **8** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -32,6 +32,8 @@
 
 | 符号 | 文件:行 | 测试引用 | 结论 | 说明/证据 |
 |---|---|---|---|---|
+| `AntiSlopBaselines` | `app/src/main/java/com/example/zhengdao/baopu/antislop/AntiSlopBaseline.kt:67` | `app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt:17`、`app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt:18`、`app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt:186` | 接线 | 谁接：**738 注入单**。本件是 `AntiSlopBaseline` 的配置加载器（读 `docs/facts/anti-slop-baseline.json`，阈值与词表全在配置、代码零写死）。739 的派工单把「738 注入」列为**依赖**而非本单产出 ⇒ 生产输出链尚无调用点；738 落地时由输出侧读配置、拿阈值。在此之前只有测试在调（B 桶），属**预期内欠账**。 |
+| `AntiSlopGuard` | `app/src/main/java/com/example/zhengdao/baopu/antislop/AntiSlopGuard.kt:35` | `app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt:21`、`app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt:177`、`app/src/test/java/com/example/zhengdao/baopu/antislop/AntiSlopGuardTest.kt:179` | 接线 | 谁接：**738 注入单**。本件是三条输出侧判据（A 尺寸通胀／B 医学免责腔／C 模板腔）的纯函数检测器，只报不改（原文逐字节不动）。738 把检测接进输出链后才算真接线；当前只有测试在调，故记 `wired` 欠账而非 `not_urgent`——**判据件也要有人接，不然就是没人用的尺**。 |
 | `SilhouetteWire` | `app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/bio/InsulaTest.kt:11`、`app/src/test/java/com/example/zhengdao/baopu/bio/InsulaTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/bio/InsulaTest.kt:27` | 接线 | 谁接：666 派工单明写「接线：把 silhouette(H,C,pos,pose) 接到 660 的高度场输出」——660 几何内核尚未交付，故本单只交接缝（HeightFieldSource）＋夹具高度场（腰线/裆缝/大腿根），生产侧换成实测高度场即生效；核心 Silhouette.kt 是纯函数，不依赖接缝。用途：形轨.轮廓可见度（三态＋一句话），解决 12.9 记的「轮廓该不该看得出」实际故障。 |
 | `VocabGuard` | `app/src/main/java/com/example/zhengdao/baopu/body/VocabGuard.kt:37` | `app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt:20`、`app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt:225` | 不急 | 理由：本单是**规则库＋纯函数扫描器**（十条规则子句级扫描、只报不改写、宾转主 suggest 不拦），生产侧还没有调用点——它要做的事是「写的时候给提示」，那需要一个提示入口（下一批）。先行落库是为了让 660 与写作侧共用同一份规则，避免各自写一套；判据已由 29 例夹具＋2 例源码断言钉住。 |
 | `IntakeProfile` | `app/src/main/java/com/example/zhengdao/baopu/intake/IntakeProfile.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:26`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:28`、`app/src/test/java/com/example/zhengdao/baopu/intake/IntakeProfileTest.kt:33` | 该删 | 该删：345 批画像层（AgentProfile＋四条硬规矩）已被 365 的 policy/CapabilityProfile.kt 整套取代——365 文件头自述「把 345 批立下的四层设计做成 policy 侧的真对象」、三条硬规矩同口径；427 接进生产的准入链走的正是 365 那套（AdmissionWiring.kt:91 → AdmissionFlow.run → CapabilityProfile），345 这件的 intake／canAccept／needsReprobe／onTaskResult／reprobe／reinstate／portrait 全仓零外部引用（只有 IntakeProfileTest 在调）。只列不删：另立清理批删 intake/IntakeProfile.kt 整件＋intake/IntakeModels.kt:103 的 AgentProfile 与 :124 的 ViolationRecord 及连带测试 |
