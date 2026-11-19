@@ -1,0 +1,53 @@
+{
+  "schema": "anti-slop-baseline/v1",
+  "source": "派工单-2026-11-19-第七百三十九批-三化抑制 §一；665 事实底盘长度 P50=131mm（见 app/src/main/java/com/example/zhengdao/baopu/state/form/FactsFromMd.kt）；四字格清单与默认区间带为 ○ 工程假设（阈值无旧文可标定，按派工单 §三 用低阈值草案）",
+  "asOf": "2026-11-19",
+  "evidence": "assumption",
+  "note": "输出侧三类风格病灶的阈值真源。检测代码不得写死任何阈值数字或词表，一律经 AntiSlopBaselines 读取；本表每条阈值带 source/asOf。红/绿=是否命中违规；拦/提示=处置（BLOCK 仅 A 无来源夸大与 B 建议词两处，其余只提示不改写）。",
+  "window": {
+    "hedgeChars": 100,
+    "blacklistChars": 500,
+    "fourCharChars": 100,
+    "source": "派工单 §一B『每 100 字 ≤1 处』、§一C『每 500 字 ≤1 处』『每 100 字 3 个』",
+    "asOf": "2026-11-19",
+    "evidence": "verified"
+  },
+  "a": {
+    "source": "派工单 §一A『出现 18 / 巨 / 夸张体量 类表述，必须同时带稀有度标记与来源 id；默认值必须来自 665 区间 (P50 附近)』",
+    "asOf": "2026-11-19",
+    "evidence": "verified",
+    "inflationMarkers": ["18cm", "18厘米", "十八厘米", "巨", "巨大", "巨型", "粗长", "粗大", "超长", "异常巨大"],
+    "rarityMarkers": ["极少见", "罕见", "少见", "约1/600", "1/600", "万中无一"],
+    "sourceMarkers": ["来源:", "来源：", "src:", "据", "出处:", "出处：", "id:", "ID:"],
+    "defaultCues": ["默认", "默认值", "通常取"],
+    "defaultValuePattern": "默认[^0-9]{0,4}([0-9]+(?:\\.[0-9]+)?)\\s*(cm|厘米|mm|毫米)?",
+    "mmPerCm": 10.0,
+    "mmPerMm": 1.0,
+    "defaultBandLowMm": 125.0,
+    "defaultBandHighMm": 140.0,
+    "defaultBandSource": "665 事实底盘长度 P50=131mm 附近工程带（P50±约 10mm），○ 工程假设；真源 FactsFromMd lengthRangePct.p50",
+    "defaultBandAsOf": "2026-11-16"
+  },
+  "b": {
+    "source": "派工单 §一B『hedge 每 100 字 ≤1 处；连续两段都出现 hedge 判红；治疗/预防/卫生建议直接红（走 728 禁词）；全局只允许一句非医疗判断』",
+    "asOf": "2026-11-19",
+    "evidence": "assumption",
+    "hedges": ["可能", "通常", "多数情况下", "需要注意的是", "一般来说", "往往", "大概", "似乎", "应该说", "建议"],
+    "maxHedgePer100": 1.0,
+    "consecutiveHedgeParagraphs": 2,
+    "adviceBanWords": ["治疗", "预防", "卫生建议"],
+    "globalDisclaimer": "非医疗判断",
+    "maxGlobalDisclaimer": 1
+  },
+  "c": {
+    "source": "派工单 §一C『黑名单词组每 500 字 ≤1 处；段尾总结率 ≤30%；四字词密度 ≤每 100 字 3 个（超只提示）』；四字格清单为 ○ 工程假设（无通用分词器，按清单确定性命中计）",
+    "asOf": "2026-11-19",
+    "evidence": "assumption",
+    "blacklist": ["一柱擎天", "粗如手腕", "大汗淋漓", "无法自已", "血脉偾张"],
+    "maxBlacklistPer500": 1.0,
+    "summaryMarkers": ["总之", "就这样", "总而言之", "说到底", "总的来说"],
+    "maxSummaryRate": 0.30,
+    "fourCharLexicon": ["一柱擎天", "粗如手腕", "大汗淋漓", "无法自已", "血脉偾张", "面红耳赤", "气喘吁吁", "青筋暴起", "欲罢不能", "发扬光大"],
+    "fourCharMaxPer100": 3.0
+  }
+}
