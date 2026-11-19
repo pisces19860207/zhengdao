@@ -401,6 +401,7 @@
     "items": [
       {
         "id": "fb.fiction.coitus_lock",
+        "inFactsTable": false,
         "anchorNo": 11,
         "name": "锁结",
         "evidence": "✗",
@@ -412,6 +413,7 @@
       },
       {
         "id": "fb.fiction.dual_sex_anatomy",
+        "inFactsTable": false,
         "anchorNo": 12,
         "name": "双性（两套完整功能性器官）",
         "evidence": "✗",
@@ -422,6 +424,7 @@
       },
       {
         "id": "fb.fiction.canine_oestrus",
+        "inFactsTable": false,
         "anchorNo": null,
         "name": "母犬发情机制",
         "evidence": "✗",
