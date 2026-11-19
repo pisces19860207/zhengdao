@@ -272,6 +272,53 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolver.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 10,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：657 派工单「统一并入 SceneState.environment」——SceneState 本体归 660（人体模型批）建，本批只交公式层与槽值 EnvironmentState（sun/wind/humidity/sweat/sand 五分项），与 660 零相交；660 建 SceneState 时挂本槽即接线。其余五件顶层公开面（EnvironmentNotes/SolarSolver/WindTable/HumiditySolver/EnvironmentState）由本件生产代码引用，计生产可达。",
+    "package": "com.example.zhengdao.baopu.state.environment",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "EnvironmentSolver",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt",
+      "line": 31
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt",
+      "line": 48
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt",
+      "line": 75
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt",
+      "line": 78
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSourceAssertTest.kt",
+      "line": 89
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSourceAssertTest.kt",
+      "line": 90
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/JointChain.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -799,11 +846,11 @@
  },
  "summary": {
   "A": 1,
-  "B": 12,
+  "B": 13,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 3,
-  "production_top_level_public": 568,
-  "wired": 555
+  "not_wired": 4,
+  "production_top_level_public": 574,
+  "wired": 560
  }
 }
