@@ -23,7 +23,7 @@ $me = "$env:COMPUTERNAME/$PID"
 
 function Show-Lock {
   if (-not (Test-Path $lock)) { "(free: no lock)"; return }
-  $txt = (Get-Content $lock -Raw).Trim()
+  $txt = (Get-Content $lock -Raw -Encoding UTF8).Trim()
   $age = ((Get-Date) - (Get-Item $lock).LastWriteTime).TotalMinutes
   "holder: $txt`nheartbeat: {0:N1} min ago" -f $age
 }
@@ -44,7 +44,7 @@ if ($Acquire) {
     }
     try {
       $fs = [System.IO.File]::Open($lock, 'CreateNew', 'Write')
-      $bytes = [Text.Encoding]::ASCII.GetBytes("$me since $(Get-Date -Format o)")
+      $bytes = [Text.Encoding]::UTF8.GetBytes("$me since $(Get-Date -Format o)")
       $fs.Write($bytes, 0, $bytes.Length); $fs.Close()
       "acquired: $me"; exit 0
     } catch {
@@ -59,9 +59,12 @@ if ($Run -ne "") {
   if ($LASTEXITCODE -eq 2) { exit 2 }
   try {
     Push-Location $repoRoot
+    # gradlew.bat now carries its own lock guard; skip it here or we would deadlock on ourselves.
+    $env:ZD_SKIP_BUILD_LOCK = "1"
     & (Join-Path $repoRoot "gradlew.bat") $Run.Split(" ") --console=plain
     exit $LASTEXITCODE
   } finally {
+    Remove-Item Env:ZD_SKIP_BUILD_LOCK -ErrorAction SilentlyContinue
     Pop-Location
     & $PSCommandPath -Release | Write-Host
   }
