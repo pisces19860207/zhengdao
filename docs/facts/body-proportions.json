@@ -1,0 +1,564 @@
+{
+  "schema": "body-proportions/v1",
+  "source": "人体测量学通用比例（US Army 1988 / USMC 2010 / 韩国 2015 人体尺寸调查）＋本项目工程假设",
+  "asOf": "2026-11-18",
+  "shared_with": ["660 形体"],
+  "note": "口径与参数表，非素材正文。ratios 三条有可引来源；segments / torso_sections / constants 是工程假设（○），可被定标入口覆盖。分数一律相对身高，单位 cm 由调用方乘身高得到。",
+  "caliber": "长度分数＝该段沿骨轴的长度／身高；半径分数＝该段横向半径／身高；torso_sections 的 station 归一到躯干柱（髋线→颈根），0＝髋线，1＝颈根。",
+  "ratios": [
+    {
+      "id": "shoulder_biacromial",
+      "low": 0.220,
+      "high": 0.235,
+      "default": 0.2275,
+      "caliber": "肩峰宽（biacromial）／身高。不是衣服肩宽（bideltoid，约大 2–3cm），两者不许混用。",
+      "basis": [22.25, 22.61, 23.01],
+      "basis_note": "US Army 1988＝22.25、USMC 2010＝22.61、韩国 2015 男性＝23.01（均已 ×100）",
+      "source": "人体测量学通用比例（US Army 1988 / USMC 2010 / 韩国 2015 人体尺寸调查）",
+      "asOf": "2026-11-18",
+      "evidence": "consensus"
+    },
+    {
+      "id": "arm_span",
+      "low": 0.98,
+      "high": 1.05,
+      "default": 1.015,
+      "caliber": "臂展（两手中指尖水平距）／身高。",
+      "basis": [1.0, 1.03, 1.04],
+      "basis_note": "Vitruvius 记 1.0；美国人群实测男 1.03–1.04",
+      "source": "人体测量学通用比例（Vitruvius 1.0；美国人群实测男 1.03–1.04）",
+      "asOf": "2026-11-18",
+      "evidence": "consensus"
+    },
+    {
+      "id": "head_body_ratio",
+      "low": 7.5,
+      "high": 8.0,
+      "default": 7.75,
+      "caliber": "头身比＝身高／头高（颏顶到颅顶）。等价于头高／身高＝1/8–1/7.5＝0.125–0.133333。",
+      "basis": [7.5, 8.0],
+      "basis_note": "艺术解剖与人体测量共用的 7.5–8 头身",
+      "source": "人体测量学通用比例（艺术解剖与人体测量共用 1/7.5–1/8 头身）",
+      "asOf": "2026-11-18",
+      "evidence": "consensus"
+    }
+  ],
+  "segment_defaults": {
+    "source": "本项目工程假设（由可引比例与腿长分数推得，未核原始文献）",
+    "asOf": "2026-11-18",
+    "evidence": "assumption"
+  },
+  "segments": [
+    {
+      "id": "head",
+      "joint": "head",
+      "side": "axial",
+      "shape": "ellipsoid",
+      "length_from": "head_body_ratio",
+      "radius_frac": 0.055,
+      "lateral": "none",
+      "caliber": "头高由头身比取倒数；横向半径○，前后半径＝横向×1.08。"
+    },
+    {
+      "id": "neck",
+      "joint": "neck",
+      "side": "axial",
+      "shape": "capsule",
+      "length_frac": 0.040,
+      "radius_frac": 0.032,
+      "lateral": "none",
+      "caliber": "颈段（颈根→颅底）长度○。"
+    },
+    {
+      "id": "torso",
+      "joint": "chest",
+      "extra_joint": "spine",
+      "split_frac": 0.55,
+      "side": "axial",
+      "shape": "ellipsoid",
+      "length_from": "torso_residual",
+      "lateral": "none",
+      "caliber": "躯干＝身高减去头/颈/骨盆/腿总长后的残差；上 55% 出 chest 代理体、下 45% 出 spine 代理体，截面取 torso_sections。"
+    },
+    {
+      "id": "pelvis",
+      "joint": "root",
+      "side": "axial",
+      "shape": "ellipsoid",
+      "length_frac": 0.080,
+      "lateral": "none",
+      "caliber": "骨盆段（髋线→躯干根）长度○，截面取 torso_sections.pelvis。"
+    },
+    {
+      "id": "upper_arm",
+      "joint": "shoulder",
+      "side": "bilateral",
+      "shape": "capsule",
+      "length_from": "arm_span_residual",
+      "radius_frac": 0.026,
+      "lateral": "shoulder",
+      "caliber": "上臂＝臂展半长减去肩关节横偏、前臂、手后的残差，保证臂展自洽；半径○。"
+    },
+    {
+      "id": "forearm",
+      "joint": "elbow",
+      "side": "bilateral",
+      "shape": "capsule",
+      "length_frac": 0.136,
+      "radius_frac": 0.021,
+      "lateral": "shoulder",
+      "caliber": "前臂（肘→腕）长度○。"
+    },
+    {
+      "id": "hand",
+      "joint": "wrist",
+      "side": "bilateral",
+      "shape": "ellipsoid",
+      "length_frac": 0.108,
+      "radius_frac": 0.020,
+      "lateral": "shoulder",
+      "caliber": "手（腕→中指尖）长度○，代理体为扁椭球。"
+    },
+    {
+      "id": "thigh",
+      "joint": "hip",
+      "side": "bilateral",
+      "shape": "capsule",
+      "length_frac": 0.245,
+      "radius_frac": 0.047,
+      "lateral": "hip",
+      "caliber": "大腿（髋→膝）长度○，与小腿、足高合成腿长分数 0.530。"
+    },
+    {
+      "id": "calf",
+      "joint": "knee",
+      "side": "bilateral",
+      "shape": "capsule",
+      "length_frac": 0.245,
+      "radius_frac": 0.032,
+      "lateral": "hip",
+      "caliber": "小腿（膝→踝）长度○。"
+    },
+    {
+      "id": "foot",
+      "joint": "ankle",
+      "side": "bilateral",
+      "shape": "box",
+      "length_frac": 0.040,
+      "radius_frac": 0.030,
+      "lateral": "hip",
+      "caliber": "足盒：length_frac 是踝离地高（竖直半高＝它×身高/2），左右半宽＝足半径，前后半长＝足半径×foot_length_factor。"
+    }
+  ],
+  "torso_sections": [
+    {
+      "id": "pelvis",
+      "station": 0.13,
+      "width_frac": 0.170,
+      "thickness_frac": 0.105,
+      "caliber": "骨盆截面椭圆（宽×厚）／身高○。"
+    },
+    {
+      "id": "waist",
+      "station": 0.47,
+      "width_frac": 0.145,
+      "thickness_frac": 0.095,
+      "caliber": "腰截面椭圆（宽×厚）／身高○。"
+    },
+    {
+      "id": "chest_lower",
+      "station": 0.72,
+      "width_frac": 0.165,
+      "thickness_frac": 0.100,
+      "caliber": "下胸截面椭圆（宽×厚）／身高○。"
+    },
+    {
+      "id": "chest_upper",
+      "station": 0.92,
+      "width_frac": 0.185,
+      "thickness_frac": 0.105,
+      "caliber": "上胸截面椭圆（宽×厚）／身高○；侧面轮廓由它决定。"
+    }
+  ],
+  "constants": {
+    "leg_total_frac": {
+      "value": 0.530,
+      "caliber": "腿总长（髋线→地面）／身高＝大腿＋小腿＋足高。",
+      "source": "本项目工程假设（腿长/身高≈0.530，二手引用 Karimi & Jahani 2012，未核原文）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "hip_offset_frac": {
+      "value": 0.055,
+      "caliber": "髋关节横偏（中线→髋关节）／身高○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "foot_heel_frac": {
+      "value": 0.25,
+      "caliber": "足长里落在踝关节之后的份额○（跟骨段）。足盒中心 z＝前后半长×(1−2×本值)，趾朝 +Z。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "foot_length_factor": {
+      "value": 2.5,
+      "caliber": "足盒前后半长＝足半径×本值○（合足长≈0.15×身高，与半径 0.030 口径自洽）。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "shoulder_joint_inset_frac": {
+      "value": 0.018,
+      "caliber": "肩峰点到肩关节中心的内缩／身高○。肩峰宽是骨性标志，关节中心在其内侧，故臂展换算用肩关节横偏＝肩峰宽/2−本值。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "shoulder_height_frac": {
+      "value": 0.818,
+      "caliber": "肩关节离地高／身高○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "ref_bmi": {
+      "value": 22.0,
+      "caliber": "软组织缩放参考 BMI（kg/m²）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "soft_tissue_clamp": {
+      "low": 0.80,
+      "high": 1.35,
+      "caliber": "BMI/参考BMI 的截断域○，防极端体重把半径推到非物理。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "muscle_grade_range": {
+      "low": 1,
+      "high": 5,
+      "caliber": "肌肉量档可行域（1 弱→5 强），参考档 3。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "muscle_step": {
+      "value": 0.04,
+      "caliber": "每偏离参考档一档，肌肉隆起与肢体半径的相对增量○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "body_fat_range_pct": {
+      "low": 3.0,
+      "high": 45.0,
+      "caliber": "男性体脂率可行域（%）：必需脂肪下限到肥胖上限，工程取整○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_cover_ref_pct": {
+      "value": 15.0,
+      "caliber": "脂肪覆盖参考体脂率（%）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_cover_slope": {
+      "value": 0.030,
+      "caliber": "体脂每高参考值 1 个百分点，肌肉隆起可见度的相对衰减○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_cover_clamp": {
+      "low": 0.35,
+      "high": 1.0,
+      "caliber": "脂肪覆盖系数截断域○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_uncertainty_ref_pct": {
+      "value": 10.0,
+      "caliber": "高度场不确定度参考体脂率（%）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_uncertainty_base": {
+      "value": 0.10,
+      "caliber": "参考体脂率下高度场区间半宽（相对值）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_uncertainty_slope": {
+      "value": 0.012,
+      "caliber": "体脂每高参考值 1 个百分点，区间半宽的相对增量○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "height_field_grid_cm": {
+      "value": 1.0,
+      "caliber": "体表高度场网格步长（cm），工单点名 cm 网格。",
+      "source": "派工单-2026-11-16-第六百六十批 §一③",
+      "asOf": "2026-11-16",
+      "evidence": "assumption"
+    },
+    "limb_relief_frac": {
+      "low": 0.05,
+      "high": 0.15,
+      "caliber": "肢体肌肉隆起／该段半径的分数○（大腿根等处的正面隆起）。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "contour_levels": {
+      "value": 4.0,
+      "caliber": "高度等值线条数（把隆起峰值均分）○；条数只影响输出密度，不影响读数。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "calibration_min_readings": {
+      "value": 3,
+      "caliber": "定标入口最少实测尺寸个数（工单 §一⑤：可填 3–5 个真实尺寸）。",
+      "source": "派工单-2026-11-16-第六百六十批 §一⑤",
+      "asOf": "2026-11-16",
+      "evidence": "verified"
+    },
+    "calibration_max_readings": {
+      "value": 5,
+      "caliber": "定标入口最多实测尺寸个数；其余一律按比例推并标『推算』。",
+      "source": "派工单-2026-11-16-第六百六十批 §一⑤",
+      "asOf": "2026-11-16",
+      "evidence": "verified"
+    },
+    "calibration_tolerance": {
+      "value": 0.10,
+      "caliber": "定标容差：用户实测覆盖值与比例推算值的相对偏差上限。裁定②——±10% 只用在这里，不叠加到比例区间上。",
+      "source": "用户裁定② 2026-11-18",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    }
+  },
+  "parts": {
+    "pec_mass": {
+      "low": 0.0,
+      "high": 1.0,
+      "default": 0.5,
+      "caliber": "胸肌量归一（0 未训练→1 发达）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "pec_insertion": {
+      "low": 0.0,
+      "high": 1.0,
+      "default": 0.5,
+      "caliber": "胸肌止点沿胸骨的位置归一（0 偏锁骨→1 偏下胸）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "pec_relief_cm": {
+      "low": 0.4,
+      "high": 2.2,
+      "caliber": "胸肌隆起高度区间（cm），随 pec_mass 线性○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "abs_blocks": {
+      "low": 4,
+      "high": 8,
+      "default": 6,
+      "caliber": "腹肌块数（4/6/8 常见，腱划决定）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "abs_depth": {
+      "low": 0.0,
+      "high": 1.0,
+      "default": 0.5,
+      "caliber": "腹肌沟深归一○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "abs_relief_cm": {
+      "low": 0.2,
+      "high": 1.2,
+      "caliber": "腹肌块隆起高度区间（cm），随 abs_depth 与肌肉档线性○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "glute_mass": {
+      "low": 0.0,
+      "high": 1.0,
+      "default": 0.5,
+      "caliber": "臀肌量归一○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "glute_relief_cm": {
+      "low": 0.5,
+      "high": 3.0,
+      "caliber": "臀部后凸高度区间（cm），随 glute_mass 线性○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    }
+  },
+  "skin": {
+    "elasticity_grade": {
+      "low": 1,
+      "high": 5,
+      "default": 3,
+      "caliber": "皮肤弹性档（1 松→5 紧）○；压痕回弹快慢随档位。",
+      "source": "本项目工程假设（方向取软组织压痕回弹常识）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "hair_grade": {
+      "low": 0,
+      "high": 5,
+      "default": 2,
+      "caliber": "体毛档（0 无→5 浓）○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "hair_gradient": {
+      "caliber": "阴毛分布梯度：耻骨区最浓（上缘平齐、发丝粗硬卷曲），往下向阴茎根部与阴囊两侧自然递减，柱身无毛。",
+      "source": "本项目工程假设（耻骨区丛毛分布示意，非实测）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus",
+      "mons_factor": 1.0,
+      "radix_factor": 0.5,
+      "scrotum_factor": 0.4,
+      "shaft_factor": 0.0
+    },
+    "color_hex_pattern": {
+      "value": 6,
+      "caliber": "色值必须是 #RRGGBB 六位十六进制；位数不符即拒收。",
+      "source": "派工单-2026-11-16-第六百六十批 §一①（分区 hex）",
+      "asOf": "2026-11-16",
+      "evidence": "assumption"
+    }
+  },
+  "flexibility": {
+    "caliber": "柔韧档与关节活动度：档 1–5，默认按年龄段给；限位＝基准活动度区间上界×档位系数。可达性三态 reachable/marginal/unreachable，unreachable 必带差多少度。不内置任何「人类不能」清单，极端姿态按 body_spec 判并附风险提示。",
+    "source": "派工单-2026-11-16-第六百六十批 追加·可达性三态与柔韧档①②③（2026-11-18 用户纠正）",
+    "asOf": "2026-11-18",
+    "evidence": "assumption",
+    "grade": {
+      "low": 1,
+      "high": 5,
+      "default": 3,
+      "caliber": "柔韧档（1 僵硬→5 极柔）。未填＝按年龄段取默认，年龄段也未填＝取本区间默认。"
+    },
+    "age_band_default": {
+      "caliber": "年龄段默认档：少年偏柔、老年偏僵。年龄段由调用方给，本表不内置年龄推算。",
+      "youth": 4,
+      "adult": 3,
+      "middle": 2,
+      "senior": 1
+    },
+    "limit_scale": {
+      "low": 0.6,
+      "high": 1.4,
+      "caliber": "档位系数：档 1 取 low、档 5 取 high，中间按档线性插值。"
+    },
+    "marginal_band": {
+      "value": 1.15,
+      "caliber": "边缘带系数：需求角超限位但不超限位×此系数⇒ marginal（够得着但勉强）；再超⇒ unreachable 并给差多少度。"
+    },
+    "joint_base_deg": {
+      "caliber": "各关节基准活动度区间（度，单侧绝对值）。方向性工程假设，非临床值域；限位由它乘档位系数得出，故不是常数表。",
+      "root": {
+        "low": 10,
+        "high": 30
+      },
+      "spine": {
+        "low": 20,
+        "high": 45
+      },
+      "chest": {
+        "low": 15,
+        "high": 35
+      },
+      "neck": {
+        "low": 30,
+        "high": 60
+      },
+      "head": {
+        "low": 20,
+        "high": 40
+      },
+      "shoulder_l": {
+        "low": 60,
+        "high": 120
+      },
+      "elbow_l": {
+        "low": 60,
+        "high": 110
+      },
+      "wrist_l": {
+        "low": 30,
+        "high": 60
+      },
+      "shoulder_r": {
+        "low": 60,
+        "high": 120
+      },
+      "elbow_r": {
+        "low": 60,
+        "high": 110
+      },
+      "wrist_r": {
+        "low": 30,
+        "high": 60
+      },
+      "hip_l": {
+        "low": 50,
+        "high": 100
+      },
+      "knee_l": {
+        "low": 60,
+        "high": 110
+      },
+      "ankle_l": {
+        "low": 20,
+        "high": 45
+      },
+      "hip_r": {
+        "low": 50,
+        "high": 100
+      },
+      "knee_r": {
+        "low": 60,
+        "high": 110
+      },
+      "ankle_r": {
+        "low": 20,
+        "high": 45
+      }
+    },
+    "risk_notes": {
+      "caliber": "需求角超过该关节基准区间上界即视为极端姿态，按关节附风险提示；只提示不禁止。",
+      "neck": "颈部过度屈曲：颈椎负荷与气道受压风险升高，须提示。",
+      "spine": "躯干过度屈曲：呼吸幅度受限，须提示。",
+      "chest": "胸段过度屈曲：呼吸幅度下降，须提示。"
+    }
+  }
+}

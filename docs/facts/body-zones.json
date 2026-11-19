@@ -1,0 +1,507 @@
+{
+  "schema": "body-zones/v1",
+  "source": "事实底盘 md §四＋本项目工程假设",
+  "asOf": "2026-11-18",
+  "zones_ref": "docs/facts/anatomy-zones.json",
+  "shared_with": ["660 形体"],
+  "note": "只放尺寸/形态/颜色口径与充血关系。区名、别名、可观察特征、常见误写一律取 anatomy-zones.json（669 真源），本表不复制第二份。颜色 hex 不在本表：无授权色值，必须由调用方带 source 传入（防编色），缺即拒。",
+  "caliber": "radius_factor＝该区半径／柱身参考半径 R（R 由 FactSource 周长分位换算，不在本表写死）；axial＝沿轴位置占长度 L 的分数（0＝根部，1＝顶端）；turgor_gain＝充血档 0→4 的相对半径增量区间。",
+  "zone_defaults": {
+    "source": "本项目工程假设（充血增量与形态分数无文献，事实底盘 §五：速率参数必标 ○）",
+    "asOf": "2026-11-18",
+    "evidence": "assumption"
+  },
+  "domains": {
+    "flaccid_length_mm": {
+      "low": 40.0,
+      "high": 125.0,
+      "caliber": "疲软长度可存在域。3–5cm 属正常低位，不写成很小/不正常。本域只作输入校验与自洽核对，抽样真源仍是 FactSource。",
+      "source": "本项目工程假设（疲软态观察域；事实底盘未给分布）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus"
+    },
+    "erect_length_mm": {
+      "low": 70.0,
+      "high": 170.0,
+      "caliber": "勃起长度观察域（偏短可到 70 以下、偏长可到 170 以上）。与 FactSource 的文献分位表口径不同：观察域用于校验，分位表用于抽样。",
+      "source": "事实底盘 md §四（勃起态观察域）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus"
+    },
+    "erect_diameter_mm": {
+      "low": 25.0,
+      "high": 52.0,
+      "caliber": "勃起直径可存在域，50mm 以上属少数但正常。默认抽样上限由 FactSource.defaultCapMm 给，本表不写第二个上限。",
+      "source": "事实底盘 md §四（勃起态观察域）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus"
+    },
+    "curvature_deg_common": {
+      "value": 30.0,
+      "caliber": "弯曲角度常见上界：多数在 30 度以内，超过 30 度也不少见 ⇒ 这是常见界不是硬上限。方向可左/右/上/下，也可轻微扭转。",
+      "source": "本项目工程假设（弯曲角上界，无文献）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus"
+    },
+    "meatus_slit_length_mm": {
+      "low": 6.0,
+      "high": 12.0,
+      "caliber": "尿道口纵裂常见纵向长度。位置口径以 669 词表为准（偏腹侧纵裂）；本素材的『顶端正中』属误写，不采。",
+      "source": "派工单-2026-11-16-第六百六十批 §二（纵裂口径，偏腹侧）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus"
+    },
+    "shaft_base_deepen_max_step": {
+      "value": 1.0,
+      "caliber": "柱身基底色相对大腿内侧/腹部肤色的加深档数上限（顶多深一号）。充血加深档数另由 FactSource.colorDeepenStep 给，本表不重复。",
+      "source": "本项目工程假设（示意色值，非实测）",
+      "asOf": "2026-11-16",
+      "evidence": "consensus"
+    },
+    "flaccid_length_ratio": {
+      "low": 0.35,
+      "high": 0.60,
+      "caliber": "疲软长度／勃起长度○。取值须落在 flaccid_length_mm 观察域内（自洽判据）。",
+      "source": "本项目工程假设（事实底盘未给疲软态分布）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "curvature_deg_max": {
+      "value": 45.0,
+      "caliber": "curvature=1 对应的弯曲角（度）○。常见界 30 度落在 curvature≈0.667。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "curvature_default": {
+      "value": 0.15,
+      "caliber": "默认弯曲归一值○（轻微，落在常见界内）。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "diameter_profile_points": {
+      "value": 6.0,
+      "caliber": "直径剖面采样点数，工单要求 5–8 点。",
+      "source": "派工单-2026-11-16-第六百六十批 §二",
+      "asOf": "2026-11-16",
+      "evidence": "assumption"
+    },
+    "scrotum_ref_temp_c": {
+      "value": 34.0,
+      "caliber": "阴囊皮温参考值（℃）○，低于核心体温；事实底盘只给『勃起皮温略升 <1℃ 量级』，未给绝对值。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_temp_step": {
+      "value": 0.20,
+      "caliber": "皮温每升 1℃，松弛档增量○（温度升⇒松弛档升，降温⇒收缩）。",
+      "source": "本项目工程假设（方向取 anatomy-zones.scrotum.observable，幅度无文献）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_turgor_step": {
+      "value": 1.5,
+      "caliber": "充血档 0→4 的上提档数○（兴奋时上提贴近根部，松弛时下坠）。",
+      "source": "本项目工程假设（方向取 669 词表 testis 可观察特征，幅度无文献）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_fat_step": {
+      "value": 0.06,
+      "caliber": "体脂每高参考值 1 个百分点，悬垂档减量○（精瘦者悬垂幅度最大，偏胖者大腿根脂肪挤压使悬垂视觉变短）。",
+      "source": "本项目工程假设（方向取 669 词表 scrotum 可观察特征，幅度无文献）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_volume_radius_factor": {
+      "low": 1.30,
+      "high": 2.60,
+      "caliber": "阴囊等效半径／柱身参考半径 R，随 volume_grade 1→5 线性○。",
+      "source": "本项目工程假设（事实底盘未给阴囊容积，属缺口）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_hang_frac": {
+      "low": 0.10,
+      "high": 0.45,
+      "caliber": "悬垂长度／勃起长度 L，随 sag_grade 1→5 线性○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "testis_radius_factor": {
+      "low": 0.95,
+      "high": 1.25,
+      "caliber": "睾丸等效半径／R○。左右差异另给，方向恒为左侧略低。",
+      "source": "本项目工程假设（事实底盘缺口；只有“大小差异常见”的方向）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "testis_asymmetry_mm": {
+      "low": 0.0,
+      "high": 6.0,
+      "caliber": "左右睾丸半径差（mm）○。0 是允许端点，但默认不为 0（不对称是常态）。",
+      "source": "本项目工程假设（方向取 anatomy-zones.testis.observable）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "testis_left_lower_mm": {
+      "low": 2.0,
+      "high": 8.0,
+      "caliber": "左侧睾丸低于右侧的竖直距离（mm）○。",
+      "source": "本项目工程假设（方向取 anatomy-zones.testis.observable『左侧通常略低』）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "cord_radius_factor": {
+      "low": 0.18,
+      "high": 0.28,
+      "caliber": "精索半径／R○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "mons_pad_thickness_frac": {
+      "low": 0.008,
+      "high": 0.020,
+      "caliber": "耻骨区脂肪垫厚度／身高○；体脂↑⇒垫厚↑（偏胖者根部附近可被脂肪轻微覆盖）。",
+      "source": "本项目工程假设（方向取 669 词表 mons 可观察特征）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "mons_width_frac_of_pelvis": {
+      "value": 0.60,
+      "caliber": "耻骨区垫宽／骨盆截面宽○。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "fat_ref_pct": {
+      "value": 15.0,
+      "caliber": "本表脂肪相关斜率的参考体脂率（%），与 body-proportions.fat_cover_ref_pct 同值但各自独立声明，改一处不影响另一处的口径归属。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_volume_grade": {
+      "low": 1,
+      "high": 5,
+      "default": 3,
+      "caliber": "阴囊容积档（1 小→5 大）○，工单点名 1–5。",
+      "source": "本项目工程假设（分级刻度按派工单 §二，档位边界无文献）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "scrotum_sag_grade": {
+      "low": 1,
+      "high": 5,
+      "default": 3,
+      "caliber": "阴囊松弛档（1 紧缩→5 松弛）○，工单点名 1–5；当前有效档由温度/充血/体脂推，不是常量。",
+      "source": "本项目工程假设（分级刻度按派工单 §二，档位边界无文献）",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    },
+    "taper_frac": {
+      "low": 0.0,
+      "high": 0.25,
+      "default": 0.10,
+      "caliber": "tapered 形态下从根到顶的半径相对收细量○。capsule/curved 不收细。",
+      "source": "本项目工程假设",
+      "asOf": "2026-11-18",
+      "evidence": "assumption"
+    }
+  },
+  "zones": [
+    {
+      "zone_id": "radix",
+      "proxy": "capsule",
+      "anchor": "root",
+      "radius_factor": 0.75,
+      "axial": [0.00, 0.12],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.25, 0.40],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "caliber": "根部：固定端，充血增量小于柱身。"
+    },
+    {
+      "zone_id": "shaft",
+      "proxy": "capsule",
+      "anchor": "root",
+      "radius_factor": 0.70,
+      "axial": [0.12, 0.78],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.30, 0.45],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "caliber": "柱身：半径基准区，其余区的 radius_factor 都相对它。"
+    },
+    {
+      "zone_id": "raphe",
+      "proxy": "box",
+      "anchor": "root",
+      "radius_factor": 0.05,
+      "axial": [0.05, 0.95],
+      "side": "ventral",
+      "lateral_factor": 1.0,
+      "turgor_gain": [0.00, 0.10],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "caliber": "阴茎缝：腹侧正中色素细线，作薄脊代理体，不是独立柱体。"
+    },
+    {
+      "zone_id": "glans",
+      "proxy": "ellipsoid",
+      "anchor": "root",
+      "radius_factor": 0.72,
+      "axial": [0.86, 1.00],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.40, 0.60],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "surface": "smoother_than_shaft",
+      "color_deepen_step": 1,
+      "caliber": "龟头：质地更光滑、颜色比柱身深一档（硬误写③）。"
+    },
+    {
+      "zone_id": "corona",
+      "proxy": "capsule",
+      "anchor": "root",
+      "radius_factor": 0.78,
+      "axial": [0.84, 0.88],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.40, 0.60],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "form": "ridge",
+      "caliber": "龟头冠：环状隆起缘，不是球状凸起（硬误写⑥，球状腺是犬科）。"
+    },
+    {
+      "zone_id": "sulcus",
+      "proxy": "capsule",
+      "anchor": "root",
+      "radius_factor": 0.62,
+      "axial": [0.80, 0.84],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.30, 0.45],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "caliber": "冠状沟：颈部缩窄，半径必须小于柱身与龟头。"
+    },
+    {
+      "zone_id": "frenulum",
+      "proxy": "box",
+      "anchor": "root",
+      "radius_factor": 0.06,
+      "axial": [0.80, 0.86],
+      "side": "ventral",
+      "lateral_factor": 0.9,
+      "turgor_gain": [0.00, 0.10],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "caliber": "系带：腹侧（不是背侧，硬误写①），连龟头与包皮的薄褶。"
+    },
+    {
+      "zone_id": "meatus",
+      "proxy": "box",
+      "anchor": "root",
+      "radius_factor": 0.08,
+      "axial": [0.98, 1.00],
+      "side": "ventral",
+      "lateral_factor": 0.5,
+      "turgor_gain": [0.00, 0.05],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "form": "ventral_slit",
+      "caliber": "尿道口：偏腹侧的纵裂（不是正中圆孔，硬误写②），纵向长度取 domains.meatus_slit_length_mm。"
+    },
+    {
+      "zone_id": "prepuce",
+      "proxy": "capsule",
+      "anchor": "root",
+      "radius_factor": 0.74,
+      "axial": [0.70, 0.95],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.28, 0.42],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "layers": ["inner", "outer"],
+      "retractable": true,
+      "caliber": "包皮：内板/外板两层，可回缩；褶皱随充血减少（见 surface_grade 联动）。"
+    },
+    {
+      "zone_id": "scrotum",
+      "proxy": "ellipsoid",
+      "anchor": "root",
+      "radius_factor": 1.0,
+      "axial": [-0.30, -0.02],
+      "side": "none",
+      "lateral_factor": 0.0,
+      "turgor_gain": [-0.10, 0.00],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "temp_linked": true,
+      "caliber": "阴囊：松紧随温度与上提反射持续变化（硬误写④），半径由 volume_grade 推，悬垂由 sag_grade 推。"
+    },
+    {
+      "zone_id": "testis",
+      "proxy": "sphere",
+      "anchor": "root",
+      "radius_factor": 1.0,
+      "axial": [-0.26, -0.06],
+      "side": "bilateral",
+      "lateral_factor": 0.55,
+      "turgor_gain": [0.00, 0.00],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "left_lower": true,
+      "caliber": "睾丸（含附睾）：左右各一，左侧常略低（硬误写⑤），本身不随充血胀大。"
+    },
+    {
+      "zone_id": "cord",
+      "proxy": "capsule",
+      "anchor": "root",
+      "radius_factor": 1.0,
+      "axial": [-0.34, 0.02],
+      "side": "bilateral",
+      "lateral_factor": 0.5,
+      "turgor_gain": [0.00, 0.05],
+      "source_ref": "girth",
+      "length_ref": "length",
+      "caliber": "精索：腹股沟至睾丸的条索，左右各一，半径取 domains.cord_radius_factor。"
+    },
+    {
+      "zone_id": "mons",
+      "proxy": "box",
+      "anchor": "root",
+      "radius_factor": 1.0,
+      "axial": [-0.02, 0.10],
+      "side": "dorsal",
+      "lateral_factor": 0.0,
+      "turgor_gain": [0.00, 0.03],
+      "source_ref": "body-proportions.torso_sections.pelvis",
+      "length_ref": "body-proportions.constants.height_field_grid_cm",
+      "caliber": "耻骨区：耻骨联合上方的脂肪垫，宽取骨盆截面宽×domains.mons_width_frac_of_pelvis，厚随体脂增。"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "INV-01",
+      "zone_id": "frenulum",
+      "field": "side",
+      "expected": "ventral",
+      "correction": "系带在腹侧，不是背侧",
+      "source": "派工单-2026-11-16-第六百六十批 §二 硬误写①／669 VocabGuard VG-01",
+      "asOf": "2026-11-16"
+    },
+    {
+      "id": "INV-02",
+      "zone_id": "meatus",
+      "field": "form",
+      "expected": "ventral_slit",
+      "correction": "尿道口是偏腹侧的纵裂，不是正中圆孔",
+      "source": "派工单-2026-11-16-第六百六十批 §二 硬误写②／669 VocabGuard VG-02",
+      "asOf": "2026-11-16"
+    },
+    {
+      "id": "INV-03",
+      "zone_id": "glans",
+      "field": "surface",
+      "expected": "smoother_than_shaft",
+      "correction": "龟头质地更光滑、颜色深一档，不与柱身同质同色",
+      "source": "派工单-2026-11-16-第六百六十批 §二 硬误写③／669 VocabGuard VG-03",
+      "asOf": "2026-11-16"
+    },
+    {
+      "id": "INV-04",
+      "zone_id": "scrotum",
+      "field": "temp_linked",
+      "expected": true,
+      "correction": "阴囊随温度与上提反射持续变化，不是恒定状态",
+      "source": "派工单-2026-11-16-第六百六十批 §二／anatomy-zones.scrotum.observable",
+      "asOf": "2026-11-16"
+    },
+    {
+      "id": "INV-05",
+      "zone_id": "testis",
+      "field": "left_lower",
+      "expected": true,
+      "correction": "左侧睾丸常略低，不是左右完全对称",
+      "source": "派工单-2026-11-16-第六百六十批 §二／anatomy-zones.testis.observable",
+      "asOf": "2026-11-16"
+    },
+    {
+      "id": "INV-06",
+      "zone_id": "corona",
+      "field": "form",
+      "expected": "ridge",
+      "correction": "龟头冠是环状隆起缘，不是球状凸起（球状腺是犬科）",
+      "source": "派工单-2026-11-16-第六百六十批 §二／669 VocabGuard VG-06",
+      "asOf": "2026-11-16"
+    }
+  ],
+  "enums": {
+    "shape": ["tapered", "capsule", "curved"],
+    "surface_grade": ["smooth", "fine_wrinkle", "pronounced"],
+    "vessel_visibility": ["low", "medium", "high"],
+    "hang_side": ["left", "right", "symmetric"],
+    "side": ["none", "ventral", "dorsal", "bilateral"],
+    "bend_direction": ["up", "down", "left", "right"],
+    "proxy": ["capsule", "ellipsoid", "box", "sphere"]
+  },
+  "bulge": {
+    "caliber": "裆缝凸起高 h = diameter_factor × 当前等效直径 × 硬度系数；硬度系数按 EHS 档线性（0 档→hardness_low，4 档→hardness_high）。只产 h，不乘清晰度——抹平是 666 比值模型的事，660 不知道面料。",
+    "source": "事实底盘 md §十二 12.2（h = 0.8 × 2a × 硬度系数，H=0→0.55、H=4→1.0）",
+    "asOf": "2026-11-16",
+    "evidence": "consensus",
+    "diameter_factor": 0.8,
+    "hardness_low": 0.55,
+    "hardness_high": 1.0
+  },
+  "frame": {
+    "caliber": "生殖器局部规范坐标系：原点在根部，轴沿 +Z（前），腹侧＝−Y、背侧＝+Y、左＝−X、右＝+X。姿态（悬垂角/勃起角）归 655 关节与 699 装配，660 只给规范形。root_y_below_hip_frac＝根部在髋线下的距离／身高。",
+    "source": "本项目工程假设（规范系约定，非事实）",
+    "asOf": "2026-11-18",
+    "evidence": "assumption",
+    "root_y_below_hip_frac": 0.02
+  },
+  "contact": {
+    "caliber": "供 661 腔隙碰撞的接触参数：恢复系数（软组织近零，随充血略升）与法向刚度档。655 TwoBodyCollision.resolve 的 restitution 取本区间当前值。661 未派，参数无文献。",
+    "source": "本项目工程假设",
+    "asOf": "2026-11-18",
+    "evidence": "assumption",
+    "restitution": {"low": 0.0, "high": 0.10},
+    "stiffness_grade": {"low": 1, "high": 5, "default": 2}
+  },
+  "surface_by_turgor": {
+    "caliber": "褶皱随充血消失：疲软可推动皮肤⇒明显皱；半勃撑紧⇒细皱；全勃高度撑紧⇒光滑发亮。",
+    "source": "派工单-2026-11-16-第六百六十批 §二（阴囊随温度持续变化）",
+    "asOf": "2026-11-16",
+    "evidence": "consensus",
+    "grade0": "pronounced",
+    "grade2": "fine_wrinkle",
+    "grade4": "smooth"
+  },
+  "vessel_rule": {
+    "caliber": "青筋按个体特征判断，不是充血套话：vessel_visibility 是个体常量，不随充血档变化（防『青筋暴起』漂移）。",
+    "source": "派工单-2026-11-16-第六百六十批 §二（防漂：血管可见度为个体常量）",
+    "asOf": "2026-11-16",
+    "evidence": "consensus",
+    "default": "low"
+  },
+  "purple_rule": {
+    "caliber": "紫红/暗紫只在回流受阻或勒压时出现，且必须伴随温度下降，不是默认颜色。",
+    "source": "派工单-2026-11-16-第六百六十批 §二（紫红仅勒压＋降温放行）",
+    "asOf": "2026-11-16",
+    "evidence": "consensus",
+    "requires_temp_drop": true
+  }
+}
