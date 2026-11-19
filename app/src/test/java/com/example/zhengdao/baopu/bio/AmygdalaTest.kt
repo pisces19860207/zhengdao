@@ -115,4 +115,24 @@ class AmygdalaTest {
         // 词表缝失效（649 facts 无货）⇒ 原样回默认表，不退化成空表（兜底＝现状）。
         assertSame(DangerWords.DEFAULT, DangerWords.fromFacts(emptyList()))
     }
+
+    // ── 719：facts 词并集语义——装载后 >24 且含默认 24 词；负例"替换⇒红" ──
+
+    @Test
+    fun fromFactsKeepsDefaultAndGrows() {
+        // 649 事实片的 words 是中性事实词（不含默认危险词）；喂进来做并集。
+        val factLines = listOf("分布", "常见区间", "取样", "极少数", "少见", "分布")
+        val loaded = DangerWords.fromFacts(factLines)
+        assertTrue("装载后词数必须 >24（默认24＋新词），实际 ${loaded.danger.size}",
+            loaded.danger.size > DangerWords.DEFAULT.danger.size)
+        assertTrue("装载后必须包含全部默认 24 词",
+            DangerWords.DEFAULT.danger.all { it in loaded.danger })
+        // 负例（判据②）：若实现成替换 base.copy(danger=words)，默认词会被冲掉——
+        // 这里显式构造那套错误结果并断言它会丢词，钉住"并集而非替换"这条语义。
+        val wrongReplace = DangerWords.DEFAULT.copy(danger = factLines.toSet())
+        assertTrue("负例：替换实现必须丢默认词（否则负例失效）",
+            DangerWords.DEFAULT.danger.any { it !in wrongReplace.danger })
+        // 默认词仍在场：原默认词命中不退化。
+        assertEquals(1, loaded.dangerHits("删除文件"))
+    }
 }

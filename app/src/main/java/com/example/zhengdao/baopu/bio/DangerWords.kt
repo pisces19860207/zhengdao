@@ -51,11 +51,17 @@ data class DangerWords(
         /**
          * 649 facts 接缝：facts 的词行进来，去空去重成危险词；**行集为空 ⇒ 原样回默认表**
          * （不空转、不退化成空表——空表会让粗标永远读零，等于器官瞎了）。
-         * 只换危险词，否定/新异两表仍取 base——649 facts 的口径是"危险词表"。
+         * 只动危险词，否定/新异两表仍取 base——649 facts 的口径是"危险词表"。
+         *
+         * 719 定稿（并集语义）：fact 词**追加**到 base.danger，不替换。
+         *   · 为什么要并集：默认 24 词是 app 域"动手就伤数据/钱包/边界"的常量（可审、可被 grep），
+         *     649 的 fact 片是生理事实域的中性词——两域互补，替换会把默认词冲掉（判据②负例：
+         *     "替换掉默认词 ⇒ 红"）。装载后必须既 >24 又包含默认 24 词，只有并集成立。
+         *   · 空集仍回 base 同一实例（675/523 既有断言钉死，不退化成空表）。
          */
         fun fromFacts(factLines: List<String>, base: DangerWords = DEFAULT): DangerWords {
             val words = factLines.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-            return if (words.isEmpty()) base else base.copy(danger = words)
+            return if (words.isEmpty()) base else base.copy(danger = base.danger + words)
         }
     }
 }
