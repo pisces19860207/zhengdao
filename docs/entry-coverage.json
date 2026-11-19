@@ -2,6 +2,24 @@
  "lists": {
   "A": [
    {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/GenitalModel.kt",
+    "file_mates_wired": true,
+    "kind": "class",
+    "line": 81,
+    "list": "A",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**699**。本件是 `GenitalModel.kt:81 data class GenitalResult`＝13 区参数求解的返回类型，当前只有测试在构造（A 桶：生产零引用）——它天然由 699 的装配层产出、给读写面消费；口径不许在此处自造判定（源断言钉死），故只登记不改。",
+    "package": "com.example.zhengdao.baopu.state.form",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "GenitalResult",
+    "test_refs": [],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
     "debug_only_refs": [
      {
       "file": "app/src/debug/java/com/example/zhengdao/browser/offscreen/OffscreenProbeActivity.kt",
@@ -30,69 +48,6 @@
    }
   ],
   "B": [
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/body/AnatomyZones.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 28,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：660 形体线的**唯一真源**（docs/facts/anatomy-zones.json，头部 shared_with 声明 660 共用）。660 未交付 ⇒ 本单只交口径库与解析器（fail-closed、单一加载点），660 落地直接读它、不另抄一份。用途：13 区口径（可观察特征／AI 常见误写），供 660 形体模型与 669 误写检测共用。",
-    "package": "com.example.zhengdao.baopu.body",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "AnatomyZones",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 17
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 22
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 24
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 64
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 77
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 83
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/AnatomyZonesTest.kt",
-      "line": 91
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt",
-      "line": 16
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/body/VocabGuardTest.kt",
-      "line": 17
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
    {
     "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/body/SilhouetteWire.kt",
@@ -319,33 +274,76 @@
    },
    {
     "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/JointChain.kt",
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 79,
+    "line": 28,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
-    "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：关节名闭集（限位链的数据契约），660 关节链按名查限位。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
-    "package": "com.example.zhengdao.baopu.state.geometry",
+    "note": "谁接：**699**（660 的装配单；660 明写「零装配、接线归 699」，源码断言钉死 ZhengdaoApp／CharacterTrack／StateSummaryWiring 一行没动）。本件是 `BodyState.kt:28 object Calibration`＝把形体参数标定进 BodyState 的入口，生产侧尚无调用点；699 落地时由装配层调它（读表→标定→BodyState）。",
+    "package": "com.example.zhengdao.baopu.state.form",
     "proguard_hits": [],
     "self_file_refs": 0,
-    "symbol": "JointNames",
+    "symbol": "Calibration",
     "test_refs": [
      {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/JointChainTest.kt",
-      "line": 120
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 41
      },
      {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/JointChainTest.kt",
-      "line": 121
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 43
      },
      {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/JointChainTest.kt",
-      "line": 121
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 50
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 66
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 88
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 123
      }
     ],
-    "verdict": "wired(sole-impl)",
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 114,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。",
+    "package": "com.example.zhengdao.baopu.state.form",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "BodyModel",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
+      "line": 181
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/FormFixtures.kt",
+      "line": 57
+     }
+    ],
+    "verdict": "wired",
     "wrapper_scan": []
    },
    {
@@ -444,105 +442,6 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
     "file_mates_wired": true,
     "kind": "class",
-    "line": 17,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：球支撑映射（最简形状，GJK/EPA 的测试基准与近似体）。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
-    "package": "com.example.zhengdao.baopu.state.geometry",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "Sphere",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 19
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 22
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 47
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 61
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 61
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 67
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 70
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 78
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 78
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 84
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 85
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 93
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 100
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 100
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
-      "line": 92
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
-      "line": 93
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
-      "line": 96
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
-      "line": 97
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 15
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 24
-     }
-    ],
-    "verdict": "wired(sole-impl)",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
-    "file_mates_wired": true,
-    "kind": "class",
     "line": 26,
     "list": "B",
     "member_scan": [],
@@ -560,104 +459,6 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
       "line": 64
-     }
-    ],
-    "verdict": "wired(sole-impl)",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
-    "file_mates_wired": true,
-    "kind": "class",
-    "line": 46,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：胶囊支撑映射（关节 limb 近似体），660 关节链与 670 姿态用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
-    "package": "com.example.zhengdao.baopu.state.geometry",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "Capsule",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 53
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/EpaTest.kt",
-      "line": 54
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 55
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 56
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 111
-     }
-    ],
-    "verdict": "wired(sole-impl)",
-    "wrapper_scan": [
-     {
-      "delegates_to_class": false,
-      "file": "app/src/main/java/com/example/zhengdao/baopu/ReplayState.kt",
-      "line": 91,
-      "wrapper": "capsuleText",
-      "wrapper_external_refs": 1
-     },
-     {
-      "delegates_to_class": true,
-      "file": "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuPlanArea.kt",
-      "line": 207,
-      "wrapper": "planCapsuleState",
-      "wrapper_external_refs": 0
-     },
-     {
-      "delegates_to_class": true,
-      "file": "app/src/main/java/com/example/zhengdao/ui/browser/NotLearnedCapsulePill.kt",
-      "line": 75,
-      "wrapper": "NotLearnedCapsulePill",
-      "wrapper_external_refs": 1
-     },
-     {
-      "delegates_to_class": true,
-      "file": "app/src/main/java/com/example/zhengdao/ui/browser/XuanlanCapsule.kt",
-      "line": 124,
-      "wrapper": "capsuleStateOf",
-      "wrapper_external_refs": 0
-     },
-     {
-      "delegates_to_class": true,
-      "file": "app/src/main/java/com/example/zhengdao/ui/browser/XuanlanCapsule.kt",
-      "line": 233,
-      "wrapper": "XuanlanCapsuleLayer",
-      "wrapper_external_refs": 2
-     }
-    ]
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
-    "file_mates_wired": true,
-    "kind": "class",
-    "line": 58,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：椭球支撑映射（躯干近似体），660 躯干与可达性用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
-    "package": "com.example.zhengdao.baopu.state.geometry",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "Ellipsoid",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 80
      }
     ],
     "verdict": "wired(sole-impl)",
@@ -845,12 +646,12 @@
   ]
  },
  "summary": {
-  "A": 1,
-  "B": 13,
+  "A": 2,
+  "B": 10,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 4,
-  "production_top_level_public": 574,
-  "wired": 560
+  "not_wired": 6,
+  "production_top_level_public": 641,
+  "wired": 629
  }
 }
