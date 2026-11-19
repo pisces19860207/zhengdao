@@ -1,0 +1,304 @@
+{
+  "schema": "deictic-index/v1",
+  "title": "位置→术语双向映射索引（13 区）＋触觉索引",
+  "asOf": "2026-11-19",
+  "source": "用户口述(2026-11-19)＋docs/facts/anatomy-zones.json＋731 顺序链(2026-11-19 用户更正)＋医学教材通用命名",
+  "reality": "real",
+  "shared_with": ["669 词表误写", "731 部位状态机", "711 可观察素材索引"],
+  "chain_source": "731 追加·更正·解剖顺序链（2026-11-19 用户更正后口径）",
+  "zone_source": "docs/facts/anatomy-zones.json（13 区单一真源，本索引不复制第二份区表）",
+  "entry_fields": "zone_id/canonical/canonical_zh/aliases{colloquial,folk}/descriptions[{text,keys,source,asOf}]/source/asOf",
+  "notes": [
+    "本索引只做'叫什么、在哪'，不做功能解释(658/730)、不做行为指导；别名分层：canonical 为规范输出，colloquial 口述可解释，folk 民间别名只进表、不得出现在规范输出。",
+    "'马眼'是 meatus 的民间别名，只进 aliases.folk；位置描述里用'撒尿的那个眼'等口语，不用民间别名。",
+    "顺序链严格取 731 更正版：apex→glansbody(龟头坡)→corona→sulcus→neckTaper(颈部过渡)→shaft；frenulum 腹侧落在 sulcus；prepuce 覆盖跨 corona/sulcus。apex/glansbody/neckTaper 是链上锚点(anchor)，host 指向所属 13 区，不是独立分区。",
+    "正向匹配为确定性闭集词面匹配(key 出现在输入文本里)，零模型、零联网、零随机、零时钟；多区命中列候选+给区分办法，不硬选。",
+    "触觉键三件齐：触点(contacts 闭集)+动作(actions 闭集)+手感四维(firmness/elasticity/glide/warmth 各在档位闭集内)，缺一拒判；手感只写'摸起来怎样'，不写诊断(728 红线)。",
+    "触觉判别优先级：requiresFeature=true 的强特征规则优先；仅当没有任何强特征规则命中时，requiresFeature=false 的兜底规则(如 TACT-06「只说软」⇒scrotum/glans 歧义)才生效——否则「一按即回+边缘台阶」会被兜底规则污染成四区歧义。",
+    "每条描述/规则带 source＋asOf；改本文件必须与 deictic-index.md 同一提交一起改（双真相不许漂），同 anatomy-zones 的规矩。"
+  ],
+  "chain": {
+    "core731": ["apex", "glansbody", "corona", "sulcus", "neckTaper", "shaft"],
+    "order": ["meatus", "apex", "glansbody", "corona", "sulcus", "neckTaper", "shaft", "radix"],
+    "nodes": {
+      "meatus": { "kind": "zone", "zone_id": "meatus", "zh": "尿道口" },
+      "apex": { "kind": "anchor", "host": "glans", "zh": "顶端" },
+      "glansbody": { "kind": "anchor", "host": "glans", "zh": "龟头体坡面（龟头坡）" },
+      "corona": { "kind": "zone", "zone_id": "corona", "zh": "龟头冠" },
+      "sulcus": { "kind": "zone", "zone_id": "sulcus", "zh": "冠状沟" },
+      "neckTaper": { "kind": "anchor", "host": "shaft", "zh": "颈部过渡" },
+      "shaft": { "kind": "zone", "zone_id": "shaft", "zh": "柱身" },
+      "radix": { "kind": "zone", "zone_id": "radix", "zh": "根部" }
+    },
+    "side": {
+      "frenulum": { "at": "sulcus", "surface": "腹侧", "note": "腹侧系带落在 sulcus 处" },
+      "prepuce": { "spans": ["corona", "sulcus"], "note": "覆盖范围跨 corona/sulcus" }
+    },
+    "source": "731 追加·更正（用户 2026-11-19 更正：龟头坡在 apex→corona，颈部过渡在 corona→shaft）",
+    "asOf": "2026-11-19"
+  },
+  "zones": [
+    {
+      "zone_id": "radix",
+      "canonical": "radix",
+      "canonical_zh": "根部",
+      "aliases": { "colloquial": ["最底下那截", "贴着身子那段"], "folk": [] },
+      "descriptions": [
+        { "text": "根部埋在最底下那截", "keys": ["根部", "最底下"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "贴着身子那一段", "keys": ["贴着身子"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "阴囊前面连着的那段往里", "keys": ["连着的那段"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "shaft",
+      "canonical": "shaft",
+      "canonical_zh": "柱身",
+      "aliases": { "colloquial": ["那根长条", "中间那根"], "folk": [] },
+      "descriptions": [
+        { "text": "中间那根长条", "keys": ["中间那根", "长条"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "龟头后面那根柱子", "keys": ["那根柱子"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "从前到后一整条", "keys": ["一整条"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "raphe",
+      "canonical": "raphe",
+      "canonical_zh": "阴茎缝",
+      "aliases": { "colloquial": ["腹侧那条中线", "底下的缝"], "folk": [] },
+      "descriptions": [
+        { "text": "肚子那面正中的一条线", "keys": ["正中的一条线", "腹侧正中"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "从会阴连到阴囊的中线", "keys": ["连到阴囊的中线"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "底下那条颜色深点的缝", "keys": ["颜色深点的缝"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "glans",
+      "canonical": "glans",
+      "canonical_zh": "龟头",
+      "aliases": { "colloquial": ["前面那个头", "滑滑的那块"], "folk": [] },
+      "descriptions": [
+        { "text": "前面那个圆头", "keys": ["圆头", "前面那个"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "顶端滑滑的那块", "keys": ["滑滑的那块"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "冠包着的那块头", "keys": ["包着的那块头"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "corona",
+      "canonical": "corona",
+      "canonical_zh": "龟头冠",
+      "aliases": { "colloquial": ["鼓起来那一圈", "最宽那道边"], "folk": [] },
+      "descriptions": [
+        { "text": "龟头边上鼓起来那一圈", "keys": ["鼓起来那一圈", "龟头边上"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "最宽的那道边", "keys": ["最宽的那道边"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "龟头后面凸出来的一圈沿", "keys": ["凸出来的一圈沿"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "sulcus",
+      "canonical": "sulcus",
+      "canonical_zh": "冠状沟",
+      "aliases": { "colloquial": ["龟头后面那道沟", "冠下面收进去那圈", "脖子那圈凹"], "folk": [] },
+      "descriptions": [
+        { "text": "龟头后面那道沟", "keys": ["龟头后面那道沟", "那道沟"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "冠下面收进去那圈", "keys": ["收进去那圈"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "脖子那圈凹", "keys": ["脖子那圈凹"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "鼓起那圈后面的槽", "keys": ["后面的槽"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "frenulum",
+      "canonical": "frenulum",
+      "canonical_zh": "系带",
+      "aliases": { "colloquial": ["连着皮的小褶", "一拽就紧那条"], "folk": [] },
+      "descriptions": [
+        { "text": "龟头下面连着皮的小褶", "keys": ["小褶", "连着皮"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "腹侧那条筋", "keys": ["腹侧那条筋"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "沟正下方一拽就紧的那条", "keys": ["一拽就紧"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "meatus",
+      "canonical": "meatus",
+      "canonical_zh": "尿道口",
+      "aliases": { "colloquial": ["撒尿的那个眼", "头尖上那道裂缝"], "folk": ["马眼"] },
+      "descriptions": [
+        { "text": "头顶上那道竖口", "keys": ["竖口", "头顶上那道"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "撒尿的那个眼", "keys": ["撒尿的那个眼"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "头尖上偏下的裂缝", "keys": ["偏下的裂缝"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "prepuce",
+      "canonical": "prepuce",
+      "canonical_zh": "包皮",
+      "aliases": { "colloquial": ["盖上头那层皮", "能翻上去的皮"], "folk": [] },
+      "descriptions": [
+        { "text": "盖在龟头上的那层皮", "keys": ["盖在龟头上的那层皮", "那层皮"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "能翻上去的皮", "keys": ["能翻上去", "能翻的皮"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "包着的一圈松皮", "keys": ["一圈松皮"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "scrotum",
+      "canonical": "scrotum",
+      "canonical_zh": "阴囊",
+      "aliases": { "colloquial": ["兜着蛋的袋子", "会皱会松那层皮"], "folk": ["囊袋"] },
+      "descriptions": [
+        { "text": "下面兜着蛋的袋子", "keys": ["兜着蛋的袋子", "那袋子"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "会皱会松的那层皮", "keys": ["会皱会松"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "垂在下面凉凉的囊", "keys": ["凉凉的囊"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "testis",
+      "canonical": "testis",
+      "canonical_zh": "睾丸",
+      "aliases": { "colloquial": ["那两颗", "圆圆的那个"], "folk": ["蛋蛋"] },
+      "descriptions": [
+        { "text": "袋子里那两颗", "keys": ["那两颗"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "左边比右边低一点的蛋", "keys": ["低一点的蛋"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "圆圆的能滑动的那个", "keys": ["圆圆的能滑动"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "cord",
+      "canonical": "cord",
+      "canonical_zh": "精索",
+      "aliases": { "colloquial": ["那根细绳", "通到腹股沟的索"], "folk": [] },
+      "descriptions": [
+        { "text": "从肚子连到蛋的那根细绳", "keys": ["细绳", "连到蛋的那根"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "蛋后上方摸到的条索", "keys": ["条索"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "一路通到腹股沟的索", "keys": ["腹股沟的索"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    },
+    {
+      "zone_id": "mons",
+      "canonical": "mons",
+      "canonical_zh": "耻骨区",
+      "aliases": { "colloquial": ["长毛那块", "骨头前面那片"], "folk": [] },
+      "descriptions": [
+        { "text": "最前面长毛的那块", "keys": ["长毛的那块"], "source": "用户口述(2026-11-19)＋anatomy-zones.json", "asOf": "2026-11-19" },
+        { "text": "骨头前面鼓起来那片", "keys": ["鼓起来那片"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+        { "text": "毛上面靠近肚子的地方", "keys": ["靠近肚子的地方"], "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+      ],
+      "source": "anatomy-zones.json＋用户口述(2026-11-19)",
+      "asOf": "2026-11-19"
+    }
+  ],
+  "disambiguations": [
+    { "zones": ["sulcus", "prepuce"], "hint": "冠后一道环形凹沟=sulcus；能翻动、可滑移的一层薄皮=prepuce。", "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+    { "zones": ["scrotum", "testis"], "hint": "外层有褶皱、随温度松紧的囊=scrotum；里面卵圆、可单独滑动的内容物=testis。", "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" },
+    { "zones": ["raphe", "frenulum"], "hint": "延伸到阴囊、不随牵拉改变的中线=raphe；连着包皮、牵拉敏感的小褶=frenulum。", "source": "用户口述(2026-11-19)", "asOf": "2026-11-19" }
+  ],
+  "tactile": {
+    "contacts": ["指尖", "指腹", "指侧", "掌根", "手背"],
+    "actions": ["按", "摸", "搓", "捏", "转", "托", "滑"],
+    "feel_dims": ["firmness", "elasticity", "glide", "warmth"],
+    "feel_grades": {
+      "firmness": ["很软", "软", "有韧性", "硬"],
+      "elasticity": ["一按即回", "慢回", "压下去不回"],
+      "glide": ["干涩", "微涩", "顺滑", "湿滑"],
+      "warmth": ["偏凉", "体温", "偏热"]
+    },
+    "rules": [
+      {
+        "id": "TACT-01",
+        "contacts": ["指腹", "指尖"],
+        "actions": ["按"],
+        "feel": { "firmness": ["软", "有韧性"], "elasticity": ["一按即回"] },
+        "requiresFeature": true,
+        "features": ["边缘有台阶", "一道棱"],
+        "zones": ["corona", "sulcus"],
+        "distinguish": "摸到连续凸起的宽边且有台阶=corona；宽边近侧一道凹沟=sulcus。",
+        "source": "用户口述(2026-11-19)＋731 冠沟判例",
+        "asOf": "2026-11-19"
+      },
+      {
+        "id": "TACT-02",
+        "contacts": ["指尖", "指腹"],
+        "actions": ["捏", "滑"],
+        "feel": { "glide": ["顺滑", "湿滑"] },
+        "requiresFeature": true,
+        "features": ["薄皮", "能滑动"],
+        "zones": ["prepuce"],
+        "distinguish": "捏起一层薄皮、能相对滑动=prepuce。",
+        "source": "用户口述(2026-11-19)＋派工单触觉判例",
+        "asOf": "2026-11-19"
+      },
+      {
+        "id": "TACT-03",
+        "contacts": ["掌根", "指腹"],
+        "actions": ["托"],
+        "feel": { "warmth": ["偏凉"] },
+        "requiresFeature": true,
+        "features": ["有重量", "褶皱"],
+        "zones": ["scrotum"],
+        "distinguish": "托起有重量、表面有褶皱且偏凉=scrotum（内容物睾丸另计）。",
+        "source": "用户口述(2026-11-19)＋派工单触觉判例",
+        "asOf": "2026-11-19"
+      },
+      {
+        "id": "TACT-04",
+        "contacts": ["指腹", "指尖"],
+        "actions": ["摸", "捏"],
+        "feel": { "glide": ["顺滑"], "firmness": ["有韧性"] },
+        "requiresFeature": true,
+        "features": ["卵圆", "椭圆形"],
+        "zones": ["testis"],
+        "distinguish": "触到卵圆、可单独滑动、有韧性=testis。",
+        "source": "用户口述(2026-11-19)＋派工单触觉判例",
+        "asOf": "2026-11-19"
+      },
+      {
+        "id": "TACT-05",
+        "contacts": ["指侧", "指腹"],
+        "actions": ["滑", "摸"],
+        "feel": {},
+        "requiresFeature": true,
+        "features": ["细管", "条索"],
+        "zones": ["cord"],
+        "distinguish": "沿一条线可摸到细管、连向腹股沟=cord。",
+        "source": "用户口述(2026-11-19)＋派工单触觉判例",
+        "asOf": "2026-11-19"
+      },
+      {
+        "id": "TACT-06",
+        "contacts": ["指腹"],
+        "actions": ["按", "摸"],
+        "feel": { "firmness": ["软"] },
+        "requiresFeature": false,
+        "features": [],
+        "zones": ["scrotum", "glans"],
+        "distinguish": "再托/再摸：有褶皱、偏凉、有重量=scrotum；表面光滑黏膜样、位于前端=glans（疲软态）。只说'软'不硬选。",
+        "source": "用户口述(2026-11-19)＋派工单歧义补则",
+        "asOf": "2026-11-19"
+      }
+    ],
+    "source": "用户口述(2026-11-19)＋派工单追加触觉索引判例",
+    "asOf": "2026-11-19"
+  }
+}
