@@ -445,6 +445,10 @@ internal fun BaopuSettingsScreen(
                 }
             }
 
+            // ── 记忆修剪（第七百五十八批：757 图纸 §2.1 施工；三控件＋已退役入口）──
+            // 判据层零改动：三键写口全在 PruneSettings，门槛在 PruneGates；本页只拨开关。
+            BaopuPruneSettingsSection()
+
             // ── 影响提示（第二百二十批；派工单 §2.5）──
             // 定位：**只管显不显示那一行小字**。开关关掉 ⇒ 控制器连算都不算
             // （`queueImpactPreview` 第一行就是它），行为与本批之前逐字节一致。

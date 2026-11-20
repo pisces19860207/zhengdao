@@ -53,15 +53,19 @@ class PhoneSearchPrivacyGateTest {
         ).forEach {
             assertFalse("卡片出现「$it」：查询词一落盘，「不保存搜索记录」这句承诺就成了假话", src.contains(it))
         }
-        // 输入框那几个字的全部去处（数出来就五类：声明／绑定／判空／切词／进门面）——多一条就是有人把它往别处带
+        // 输入框那几个字的全部去处（数出来就六类：声明／绑定／判空／切词／进门面／记忆检索）——
+        // 多一条就是有人把它往别处带。第六类（758）：include-retired 开关开着时把同一个词喂给
+        // 记忆检索 MemoryStore.recall——**内存只读、零落盘零写账**，与门面查询同一句变量同一时刻；
+        // 门禁跟着改的依据＝752「被改名了？门禁跟着改」口径，增列须在本注释留名。
         val uses = src.lines().filter { Regex("\\binput\\b").containsMatchIn(it) }
-        assertTrue("input 的使用点比预想的多：${uses.map { it.trim() }}", uses.size <= 9)
+        assertTrue("input 的使用点比预想的多：${uses.map { it.trim() }}", uses.size <= 10)
         uses.forEach { l ->
             val t = l.trim()
             assertTrue(
-                "input 出现在了不该出现的地方：「$t」（允许：state 声明／判空／切词／传给门面／传给 OutlinedTextField）",
+                "input 出现在了不该出现的地方：「$t」（允许：state 声明／判空／切词／传给门面／传给记忆检索／传给 OutlinedTextField）",
                 t.startsWith("var input by remember") || t.contains("input.isBlank()") || t.contains("input.isNotBlank()") ||
                     t.contains("PhoneRank.termsOf(input)") || t.contains("searchOutcomeOf(ctx, input)") ||
+                    t.contains("recall(input, includeRetired = includeRetired)") ||
                     t == "value = input," || t.startsWith("onValueChange = { input = it }"),
             )
         }

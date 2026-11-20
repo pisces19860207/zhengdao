@@ -11,4 +11,33 @@
     <string name="baopu_prune_card_footnote">Retire only marks status, never deletes files: default recall no longer includes it, explicit retrieval still finds it; undo restores entries and the index to the pre-prune state.</string>
     <string name="baopu_prune_undo">Undo this prune</string>
     <string name="baopu_prune_dismiss">Got it</string>
+
+    <!-- Batch 758 · prune UI (757 §2.1/§2.2/§2.3). The 752 keys above are untouched; new keys only.
+         baopu_prune_retired_notice: ≠ is U+2260 with a half-width space on each side; the whole
+         string is asserted verbatim by PruneUiGateTest and must render in both places
+         (settings section + retired list page top). -->
+    <string name="baopu_prune_retired_notice">Retired ≠ deleted — it can still be restored</string>
+    <string name="baopu_prune_settings_title">Memory pruning</string>
+    <string name="baopu_prune_enabled_title">Auto-prune master switch</string>
+    <string name="baopu_prune_enabled_desc">Tidies up during idle screen-off windows; off means no automatic pruning (manual retrieval is unaffected)</string>
+    <string name="baopu_prune_enabled_off_note">Memory pruning is off</string>
+    <string name="baopu_prune_schedule_title">Prune schedule</string>
+    <string name="baopu_prune_schedule_desc">Runs again only after this many days since the last round (a frequency gate, not a timer)</string>
+    <string name="baopu_prune_schedule_off">Off</string>
+    <string name="baopu_prune_schedule_daily">Daily</string>
+    <string name="baopu_prune_schedule_weekly">Weekly</string>
+    <string name="baopu_prune_schedule_off_note">Schedule: off (no automatic pruning)</string>
+    <string name="baopu_prune_retire_days_title">Retire after (days)</string>
+    <string name="baopu_prune_retire_days_desc">An entry retires only after being idle this many days and never referenced</string>
+    <string name="baopu_prune_retired_list_title">Retired</string>
+    <string name="baopu_prune_retired_empty">No retired entries</string>
+    <string name="baopu_prune_time_unknown">Time unknown</string>
+    <string name="baopu_prune_reason_merged">Absorbed by redundancy merge</string>
+    <string name="baopu_prune_reason_expired">Expired unreferenced</string>
+    <string name="baopu_prune_action_restore">Restore</string>
+    <string name="baopu_prune_action_keep">Keep forever</string>
+    <string name="baopu_prune_action_ignore">Ignore</string>
+    <string name="baopu_prune_search_include_retired">Include retired memories</string>
+    <string name="baopu_prune_retired_mark">Retired</string>
+    <string name="baopu_prune_search_memory_header">Memories (incl. retired): %1$d</string>
 </resources>

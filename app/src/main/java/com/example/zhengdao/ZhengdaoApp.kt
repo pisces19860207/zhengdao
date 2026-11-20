@@ -283,6 +283,8 @@ private class ReplayScreenOffReceiver : android.content.BroadcastReceiver() {
 /**
  * 第七百五十二批（记忆修剪）的灭屏触发接收器（房型照 [ReplayScreenOffReceiver]；
  * 判据⑤「没有第二个调度器」的边界——跑不跑由 memoryprune 纯层的空闲窗口闸定）。
+ * 第七百五十八批起走**前置门**：总开关／周期／频率门全在 pruneOnScreenOffGated
+ * （门槛拦下＝零写零账零耗天闸）；接收器本体照旧只管灭屏事件。
  * goAsync ＋ 自带线程：`onReceive` 在主线程，装配层要读记忆文件——主线程零读盘
  * （264 探针纪律）。随进程活；进程死了错过灭屏就等下一个时机，不补偿、不补跑。
  */
@@ -293,7 +295,7 @@ private class PruneScreenOffReceiver : android.content.BroadcastReceiver() {
         val pending = goAsync()
         Thread {
             try {
-                com.example.zhengdao.baopu.memoryprune.pruneOnScreenOff(app)
+                com.example.zhengdao.baopu.memoryprune.pruneOnScreenOffGated(app)
             } finally {
                 pending.finish()
             }

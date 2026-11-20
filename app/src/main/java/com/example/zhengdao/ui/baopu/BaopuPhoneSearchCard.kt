@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,6 +64,8 @@ import com.example.zhengdao.R
 import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuWorkspace
+import com.example.zhengdao.baopu.MemoryStatus
+import com.example.zhengdao.baopu.RecallResult
 import com.example.zhengdao.baopu.library.LibraryPaths
 import com.example.zhengdao.baopu.search.HitRow
 import com.example.zhengdao.baopu.search.IndexSnapshot
@@ -79,6 +82,7 @@ import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.SectionCard
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.ui.theme.zhengdaoSwitchColors
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +115,10 @@ internal fun BaopuPhoneSearchCard(onOpenSession: (Long) -> Unit) {
     var outcome by remember { mutableStateOf<SearchOutcome?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
     var viewing by remember { mutableStateOf<HitRow?>(null) }
+    // 758（757 §2.2）：include-retired 开关——**页面本地 state**，每次进页默认关，
+    // 不写 SharedPreferences（第四写口；开关只管检索，不改入口 N／不改自动修剪频率）。
+    var includeRetired by remember { mutableStateOf(false) }
+    var memoryResult by remember { mutableStateOf<RecallResult?>(null) }
     // 取消闸门用 AtomicBoolean 而不是 Compose State：扫描器在 IO 线程上读它，
     // 跨线程读 State 不是快照安全的（「点了停止没反应」就是这么来的）。
     val cancelFlag = remember { AtomicBoolean(false) }
@@ -125,6 +133,15 @@ internal fun BaopuPhoneSearchCard(onOpenSession: (Long) -> Unit) {
         if (input.isBlank()) return
         scope.launch {
             outcome = withContext(Dispatchers.IO) { searchOutcomeOf(ctx, input) }
+            // 758：开关开 ⇒ 记忆检索显式带退役条目（752 判据②同口径：活条目排在前，
+            // 退役相关分减半、地板 1——权重降不消失）；关 ⇒ 现有口径逐字不变（零额外调用）。
+            memoryResult = if (includeRetired) {
+                withContext(Dispatchers.IO) {
+                    BaopuRuntime.memoryStore(ctx).recall(input, includeRetired = includeRetired)
+                }
+            } else {
+                null
+            }
         }
     }
 
@@ -170,6 +187,28 @@ internal fun BaopuPhoneSearchCard(onOpenSession: (Long) -> Unit) {
         )
         snap?.let { s -> RootsLine(s) }
         Spacer(Modifier.height(8.dp))
+        // 758：开关在搜索框上方（757 §2.2 原话）。默认关＝行为与之前逐字节一致。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.baopu_prune_search_include_retired),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = includeRetired,
+                onCheckedChange = { want ->
+                    includeRetired = want
+                    if (!want) memoryResult = null // 关掉即清（不留上一把的退役行）
+                },
+                colors = zhengdaoSwitchColors(),
+            )
+        }
         OutlinedTextField(
             value = input,
             onValueChange = { input = it },
@@ -245,6 +284,33 @@ internal fun BaopuPhoneSearchCard(onOpenSession: (Long) -> Unit) {
                         }
                     },
                 )
+            }
+        }
+        // 758：记忆检索块（开关开、查过一次才有）：活条目在前，退役条目带标记——
+        // 权重降不消失（752 判据②的行为面直接落到屏上）。
+        memoryResult?.let { mem ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.baopu_prune_search_memory_header, mem.picked.size),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            mem.picked.forEach { e ->
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = e.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (e.status == MemoryStatus.RETIRED) {
+                    Text(
+                        text = stringResource(R.string.baopu_prune_retired_mark),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
             }
         }
         note?.let {

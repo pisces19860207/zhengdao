@@ -10,4 +10,32 @@
     <string name="baopu_prune_card_footnote">退役＝只标状态不删文件：默认召回不再带它，显式检索仍可找到；撤销后条目与索引回到修剪前。</string>
     <string name="baopu_prune_undo">撤销本次修剪</string>
     <string name="baopu_prune_dismiss">知道了</string>
+
+    <!-- 第七百五十八批 · 修剪界面（757 §2.1/§2.2/§2.3 施工；752 四键原文一字不动，只加新键）。
+         baopu_prune_retired_notice 逐字硬口径：≠ 是 U+2260，两侧各一个半角空格，后跟全角逗号
+         ——PruneUiGateTest 按整串全等断言，两处必显（设置页分区＋已退役列表页顶部）。 -->
+    <string name="baopu_prune_retired_notice">退役 ≠ 删除，仍可恢复</string>
+    <string name="baopu_prune_settings_title">记忆修剪</string>
+    <string name="baopu_prune_enabled_title">自动修剪总开关</string>
+    <string name="baopu_prune_enabled_desc">夜间灭屏时机自动整理；关掉后不再自动修剪（手动检索不受影响）</string>
+    <string name="baopu_prune_enabled_off_note">记忆修剪已关闭</string>
+    <string name="baopu_prune_schedule_title">修剪周期</string>
+    <string name="baopu_prune_schedule_desc">离上次修剪过了多少天才再跑（是频率门，不是定时器）</string>
+    <string name="baopu_prune_schedule_off">关</string>
+    <string name="baopu_prune_schedule_daily">每天</string>
+    <string name="baopu_prune_schedule_weekly">每周</string>
+    <string name="baopu_prune_schedule_off_note">当前周期：关（不会自动修剪）</string>
+    <string name="baopu_prune_retire_days_title">退役阈值（天）</string>
+    <string name="baopu_prune_retire_days_desc">闲置超过这个天数且从未被引用，才会退役</string>
+    <string name="baopu_prune_retired_list_title">已退役</string>
+    <string name="baopu_prune_retired_empty">没有已退役条目</string>
+    <string name="baopu_prune_time_unknown">时间未知</string>
+    <string name="baopu_prune_reason_merged">冗余合并吸收</string>
+    <string name="baopu_prune_reason_expired">超期未引用</string>
+    <string name="baopu_prune_action_restore">恢复</string>
+    <string name="baopu_prune_action_keep">永久保留</string>
+    <string name="baopu_prune_action_ignore">不管</string>
+    <string name="baopu_prune_search_include_retired">检索含已退役记忆</string>
+    <string name="baopu_prune_retired_mark">已退役</string>
+    <string name="baopu_prune_search_memory_header">记忆（含退役）%1$d 条</string>
 </resources>
