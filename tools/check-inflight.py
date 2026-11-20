@@ -26,7 +26,7 @@
 
 表规约（docs/在飞.md）
     表头：| 批次 | 承接会话 | 占用文件或目录 | 基线 commit | 开工时间 | 状态 |（至少 6 列）
-    状态不含「已收」＝活动行；含「已收」＝已销账，不参与核对。
+    状态不含「已收」且不含「已销账」＝活动行；含「已收」或「已销账」＝已销账，不参与核对。
     占用一格可写多个路径（空格/逗号/顿号/分号分隔，可用反引号包路径），支持目录前缀。
 """
 
@@ -120,7 +120,7 @@ def stray_bullets(lines: list[str]) -> list[int]:
 
 
 def active_rows(rows: list[dict]) -> list[dict]:
-    return [r for r in rows if "已收" not in r["status"]]
+    return [r for r in rows if "已收" not in r["status"] and "已销账" not in r["status"]]
 
 
 def _common(a: list[str], b: list[str]) -> str:
