@@ -18,7 +18,11 @@ class SessionTrashTest {
     fun v10_adds_deleted_at_only_when_missing() {
         assertTrue("缺列时要 ALTER", BaopuSql.sessionDeletedAtStmt(emptyList()).any { it.sql.contains("ADD COLUMN deleted_at") })
         assertTrue("已有列时幂等", BaopuSql.sessionDeletedAtStmt(listOf("deleted_at")).isEmpty())
-        assertEquals(24, BaopuDb.VERSION) // v24 = 755 run_log.step_ref（失败归因列）；v20 = 第二百八十七批 file_op 文件操作账；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批 memory 质量四列；本批只钉「版本在往前走」
+<<<<<<< HEAD
+        assertEquals(25, BaopuDb.VERSION) // v25 = 764（run_trace.created_at）；v24 = 755 run_log.step_ref（失败归因列）；v20 = 第二百八十七批 file_op 文件操作账；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批 memory 质量四列；本批只钉「版本在往前走」
+=======
+        assertEquals(25, BaopuDb.VERSION) // v20 = 第二百八十七批 file_op 文件操作账；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批 memory 质量四列；本批只钉「版本在往前走」
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
     }
 
     @Test

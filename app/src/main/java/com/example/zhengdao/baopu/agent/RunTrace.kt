@@ -58,6 +58,12 @@ internal data class TraceRow(
     val decision: String = "",
     val startedAt: Long = 0,
     val endedAt: Long = 0,
+    /**
+     * 系统记下这一行的墙钟毫秒（v24 / G-716-1）。**写入时落**，与事件时刻
+     * [startedAt]/[endedAt] 分属两轴：可空＝老行迁移后没有记录时刻（读数标 ts=null），
+     * 新写入行必须有值（[TraceJournal] 三处 emit 都在落库那一刻填 clock()）。
+     */
+    val createdAt: Long? = null,
 ) {
     /** 落库语句（薄封装：SQL 全在 [BaopuSql]，本类不拼 SQL）。 */
     fun toStmt(): BaopuSql.Stmt = BaopuSql.insertRunTrace(
@@ -76,7 +82,26 @@ internal data class TraceRow(
         decision = decision,
         startedAt = startedAt,
         endedAt = endedAt,
+        createdAt = createdAt ?: 0L,
     )
+}
+
+/**
+ * `created_at` 的来源（v24 / G-716-1）。三态分清"写下的／推的／没有的"：
+ * [WRITTEN] 写入那一刻落库（可信）；[INFERRED] 由同 run 相邻行的可信时刻推断（不是原始记录）；
+ * [UNKNOWN] 推不出——读数据此标 `ts=null`，**绝不拿迁移那一刻补位**。
+ */
+internal enum class CreatedAtOrigin { WRITTEN, INFERRED, UNKNOWN }
+
+/** 一行的记录时刻视图：值与来源分离，读数方按 [origin] 决定怎么显示。 */
+internal data class CreatedAtView(val valueMs: Long?, val origin: CreatedAtOrigin) {
+    /** 供读数显示的标签（`ts=null` 是"推不出"的约定写法）。 */
+    val label: String
+        get() = when (origin) {
+            CreatedAtOrigin.WRITTEN -> "written"
+            CreatedAtOrigin.INFERRED -> "inferred"
+            CreatedAtOrigin.UNKNOWN -> "ts=null"
+        }
 }
 
 /** 轨迹的纯规则（无 IO / 无 Android / 无时钟；JVM 直测）。 */
@@ -144,6 +169,53 @@ internal object RunTraceRules {
 
     /** 计数非负（服务端偶尔回负数或 null；negatives 一律归 0，不把脏数写进账本）。 */
     fun nonNegative(value: Int?): Int = (value ?: 0).coerceAtLeast(0)
+
+    // ── v24 / G-716-1：created_at 的推断与排序（纯函数，无时钟入参） ──────────
+
+    /**
+     * 解析一行的记录时刻来源。
+     *
+     * 刻意**不收"当前时间/迁移时刻"入参**——这是判据的硬形态：函数签名里根本没有
+     * `now`，调用方无从把"迁移那一刻"塞进历史行；唯一能填的值要么是本行写入时落的
+     * [own]，要么是同 run 前一行可信的 [prevWritten]（inferred）。
+     *
+     * 推断口径（保守）：一行记录时刻必不早于它前面那一行的记录时刻（逐行落库⇒单调不减）。
+     * 老行 created_at=NULL 时，用前邻可信时刻作下界估计并标 [CreatedAtOrigin.INFERRED]；
+     * 连前邻都没有（如 run 的首行）⇒ [CreatedAtOrigin.UNKNOWN]，读数标 `ts=null`。
+     */
+    fun resolveCreatedAt(own: Long?, prevWritten: Long?): CreatedAtView = when {
+        own != null -> CreatedAtView(own, CreatedAtOrigin.WRITTEN)
+        prevWritten != null -> CreatedAtView(prevWritten, CreatedAtOrigin.INFERRED)
+        else -> CreatedAtView(null, CreatedAtOrigin.UNKNOWN)
+    }
+
+    /**
+     * 整段 run 的时刻视图（按 [TraceRow.seq] 升序、即发生顺序逐行解析）。
+     *
+     * 只有[写入时落]的值才向后传递作前邻——inferred 值不再往下传，避免一段老行把
+     * 推断误差一路放大（保守：宁可后面标 ts=null，也不拿一个推断值当别人的真值）。
+     */
+    fun resolveRun(rows: List<TraceRow>): List<CreatedAtView> {
+        var prevWritten: Long? = null
+        return rows.sortedBy { it.seq }.map { row ->
+            val view = resolveCreatedAt(row.createdAt, prevWritten)
+            if (row.createdAt != null) prevWritten = row.createdAt
+            view
+        }
+    }
+
+    /**
+     * 按记录时刻排序（判据④：乱序到达的 5 行按 created_at 排能还原先后）。
+     *
+     * 稳定的二级键：先权威值、再 seq——同一毫秒内落库的多行用 seq 保住落库先后；
+     * created_at=NULL 的老行排末尾（它们没有可信时刻，不许插进有序时间线冒充中间点）。
+     */
+    fun sortByCreatedAt(rows: List<TraceRow>): List<TraceRow> =
+        rows.sortedWith(
+            compareBy<TraceRow> { it.createdAt == null }
+                .thenBy { it.createdAt ?: Long.MAX_VALUE }
+                .thenBy { it.seq },
+        )
 }
 
 /**
@@ -225,6 +297,7 @@ internal class TraceJournal(
                 decision = decision?.let { FailurePolicy.decisionLabel(it) } ?: "",
                 startedAt = start.coerceAtLeast(0L),
                 endedAt = at,
+                createdAt = clock(),
             ),
         )
     }
@@ -258,6 +331,7 @@ internal class TraceJournal(
                 failureKind = failureKind?.name ?: "",
                 startedAt = startedAtMs.coerceAtLeast(0L),
                 endedAt = endedAtMs,
+                createdAt = clock(),
             ),
         )
     }
@@ -282,6 +356,7 @@ internal class TraceJournal(
                 failureKind = failureKind?.name ?: "",
                 startedAt = startedAtMs.coerceAtLeast(0L),
                 endedAt = endedAtMs,
+                createdAt = clock(),
             ),
         )
     }
@@ -327,6 +402,8 @@ internal class RunTraceStore(private val db: BaopuDb) {
         decision = c.getString(c.idx("decision")),
         startedAt = c.getLong(c.idx("started_at")),
         endedAt = c.getLong(c.idx("ended_at")),
+        // v24：老行的 created_at 是 NULL（迁移只加列不回填）⇒ 读成 null，不编 0。
+        createdAt = c.idx("created_at").let { i -> if (c.isNull(i)) null else c.getLong(i) },
     )
 
     /**

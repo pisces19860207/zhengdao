@@ -88,7 +88,11 @@ class SkillEffectSignalTest {
             2,
             Regex("applyV12Migration\\(db\\)").findAll(body).count(),
         )
-        assertEquals("v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 24, BaopuDb.VERSION)
+<<<<<<< HEAD
+        assertEquals("v25 = 764（run_trace.created_at）；v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 25, BaopuDb.VERSION)
+=======
+        assertEquals("v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 25, BaopuDb.VERSION)
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
     }
 
     @Test

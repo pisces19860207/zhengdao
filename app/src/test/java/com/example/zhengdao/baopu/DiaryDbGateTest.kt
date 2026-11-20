@@ -35,7 +35,11 @@ class DiaryDbGateTest {
     fun `门禁_VERSION18与v17迁移链两处`() {
         // 157 补充把版本推到 18（workspace_grant/workspace_audit）；本条钉「版本号就是 18」
         // ＋「v17 迁移体还挂在链上两处」——语义要动就一起动，不许只改一半。
-        assertTrue("VERSION 应为 24（v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v22 = 451 memory as_of；v21 = 430 pending 两列；v20 = 287 file_op；v19 = 172 L4）", code.contains("const val VERSION = 24"))
+<<<<<<< HEAD
+        assertTrue("VERSION 应为 25（v25 = 764（run_trace.created_at）；v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v22 = 451 memory as_of；v21 = 430 pending 两列；v20 = 287 file_op；v19 = 172 L4）", code.contains("const val VERSION = 25"))
+=======
+        assertTrue("VERSION 应为 22（v22 = 451 memory as_of；v21 = 430 pending 两列；v20 = 287 file_op；v19 = 172 L4）", code.contains("const val VERSION = 25"))
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
         assertTrue("v18 迁移体必须在链上", code.contains("applyV18Migration(db)"))
         val chainHits = Regex("applyV17Migration\\(db\\)").findAll(code).count()
         assertTrue(

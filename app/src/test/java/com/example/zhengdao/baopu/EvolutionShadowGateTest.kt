@@ -290,7 +290,11 @@ class EvolutionShadowGateTest {
             assertFalse("影子文件不许出现：$token", shadow.contains(token))
         }
         // 第一百一十七批把库升到 v15（run_queue）；本批（影子）自己依旧不动库。
-        assertTrue("BaopuDb.VERSION 已是 24（v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v22 = 451 memory as_of；v21 = 430 pending 两列；v20 = 287 file_op；v19 = 172 L4）", db.contains("const val VERSION = 24"))
+<<<<<<< HEAD
+        assertTrue("BaopuDb.VERSION 已是 24（v25 = 764（run_trace.created_at）；v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v22 = 451 memory as_of；v21 = 430 pending 两列；v20 = 287 file_op；v19 = 172 L4）", db.contains("const val VERSION = 25"))
+=======
+        assertTrue("BaopuDb.VERSION 已是 22（v22 = 451 memory as_of；v21 = 430 pending 两列；v20 = 287 file_op；v19 = 172 L4）", db.contains("const val VERSION = 25"))
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
         assertTrue("影子读数不碰 DDL", !shadow.contains("DATABASE"))
     }
 

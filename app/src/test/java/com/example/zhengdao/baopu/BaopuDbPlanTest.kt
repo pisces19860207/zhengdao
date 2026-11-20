@@ -26,7 +26,11 @@ class BaopuDbPlanTest {
         // v7 是第十九批加的（session 封卷两列 closed_at / refined_at，有正式迁移）；
         // v8 是第二十批加的（session 工作区列 workspace，有正式迁移）——plan 部件自己依旧零 DDL。
         assertEquals(
+<<<<<<< HEAD
             "plan 批次不加表不加列；v9 归 artifact、v11 归 skill_event、v12 归第八十五批效果信号、v13 归第八十七批 run_trace、v14 归第八十九批 memory 质量列、v15 归第一百一十七批 run_queue、v16 归第一百二十七批 sub_task、v17 归第一百四十七批 diary_index 日记索引、v18 归 157 补充 workspace_grant/workspace_audit、v20 归第二百八十七批 file_op 文件操作账、v24 归 755 run_log.step_ref——plan 部件自己依旧零 DDL",
+=======
+            "plan 批次自己依旧零 DDL；版本号随全局迁移往前走（v24=764 run_trace created_at）",
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
             24,
             BaopuDb.VERSION,
         )

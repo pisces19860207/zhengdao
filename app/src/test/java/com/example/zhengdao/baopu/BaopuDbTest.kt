@@ -91,7 +91,11 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(24, BaopuDb.VERSION) // v24 = 755（run_log.step_ref 失败归因列）；v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+<<<<<<< HEAD
+        assertEquals(25, BaopuDb.VERSION) // v25 = 764（run_trace.created_at）；v24 = 755（run_log.step_ref 失败归因列）；v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+=======
+        assertEquals(25, BaopuDb.VERSION) // v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -176,7 +180,11 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(24, BaopuDb.VERSION) // v24 = 755（run_log.step_ref 失败归因列）；v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+<<<<<<< HEAD
+        assertEquals(25, BaopuDb.VERSION) // v24 = 755（run_log.step_ref 失败归因列）；v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+=======
+        assertEquals(25, BaopuDb.VERSION) // v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }

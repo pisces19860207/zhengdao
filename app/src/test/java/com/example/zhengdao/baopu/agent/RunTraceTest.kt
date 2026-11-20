@@ -237,7 +237,7 @@ class RunTraceTest {
             BaopuSql.RUN_TRACE_COLUMNS,
             RunTraceRules.COLUMNS,
         )
-        assertEquals("十五列（模型面十五个字段），多一列少一列都不行", 15, BaopuSql.RUN_TRACE_COLUMNS.size)
+        assertEquals("十六列（模型面十六个字段：原十五列＋v24 created_at），多一列少一列都不行", 16, BaopuSql.RUN_TRACE_COLUMNS.size)
     }
 
     @Test
@@ -263,16 +263,17 @@ class RunTraceTest {
         val insert = BaopuSql.insertRunTrace(
             runId = "r1@1", sessionId = 1L, step = 1, seq = 0, phase = "THINK", tool = "",
             argsHash = "", status = "OK", durationMs = 1L, tokensIn = 2, tokensOut = 3,
-            failureKind = "", decision = "", startedAt = 10L, endedAt = 11L,
+            failureKind = "", decision = "", startedAt = 10L, endedAt = 11L, createdAt = 12L,
         )
         BaopuSql.RUN_TRACE_COLUMNS.forEach { col ->
             assertTrue("INSERT 少了列 $col", insert.sql.contains(col))
         }
-        assertEquals("十五个占位符", 15, insert.sql.count { it == '?' })
+        assertEquals("十六个占位符（含 v24 created_at）", 16, insert.sql.count { it == '?' })
         assertEquals(
-            listOf("r1@1", "1", "1", "0", "THINK", "", "", "OK", "1", "2", "3", "", "", "10", "11"),
+            listOf("r1@1", "1", "1", "0", "THINK", "", "", "OK", "1", "2", "3", "", "", "10", "11", "12"),
             insert.args.toList(),
         )
+        assertTrue("created_at 必须是 INSERT 的最后一列", insert.sql.trimEnd().endsWith("created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
 
         val sel = BaopuSql.selectRunTrace("r1@1")
         assertTrue("必须按 runId 过滤", sel.sql.contains("WHERE run_id = ?"))
@@ -289,7 +290,11 @@ class RunTraceTest {
 
     @Test
     fun `R1_迁移只看表不动既有列_老库照常可读`() {
-        assertEquals("v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 24, BaopuDb.VERSION)
+<<<<<<< HEAD
+        assertEquals("v25 = 764（run_trace.created_at）；v24 = 755 run_log.step_ref（失败归因列）；v23 = 531 子智能体；v20 = 287 file_op 文件操作账；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计（v17 = 第一百四十七批 diary_index 情景记忆索引，v16 = 第一百二十七批 sub_task 多 Agent 审计，v15 = 第一百一十七批 run_queue，v14 = 第八十九批 memory 质量四列）", 25, BaopuDb.VERSION)
+=======
+        assertEquals("v24 = 764（run_trace created_at）；v23 = 531；v20 = 287；v14 = 89 memory 四列；v13 = 87 run_trace", 25, BaopuDb.VERSION)
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
         BaopuSql.RUN_TRACE_DDL.forEach {
             assertTrue("迁移 DDL 必须 IF NOT EXISTS（幂等）：$it", it.contains("IF NOT EXISTS"))
             assertFalse("加表不许顺手 ALTER 既有表（老库可读的前提）：$it", it.contains("ALTER TABLE"))
@@ -334,5 +339,133 @@ class RunTraceTest {
             "轨迹落库不许 .get()（不许让一次运行等它写盘）",
             code.contains("persistTrace(row).get()"),
         )
+    }
+
+    // ── ⑤ v24 / G-716-1：created_at（读数基础设施） ──────────────────────
+
+    @Test
+    fun `G716_1_新写入行100percent有created_at_写入时落`() {
+        // 固定时钟：写入那一刻落库，createdAt 必须取到它（非 null、非空占位）。
+        val sink = Sink()
+        val j = TraceJournal(emit = sink::emit, clock = { 9_999L })
+        j.newRun(1L, startedAtMs = 9_900L)
+        j.beginStep(1, at = 9_900L)
+        j.settleStep(1, TraceStatus.OK, at = 9_950L)
+        j.noteTool(1, "read_file", null, startedAtMs = 9_950L, endedAtMs = 9_960L, status = TraceStatus.OK)
+        j.noteCompress(1, startedAtMs = 9_960L, endedAtMs = 9_970L, status = TraceStatus.OK)
+
+        assertEquals("三种边界各一行，共三行", 3, sink.rows.size)
+        sink.rows.forEach {
+            assertTrue("判据①：新写入行必须有 created_at（不许 null）", it.createdAt != null)
+            assertEquals("created_at 必须在写入那一刻落（取 clock()）", 9_999L, it.createdAt)
+        }
+        // created_at 与事件时刻分轴：本例 endedAt 各异，但 created_at 都是落库那一刻。
+        assertEquals(
+            "事件结束时刻各异（与记录时刻分属两轴）",
+            listOf(9_950L, 9_960L, 9_970L),
+            sink.rows.map { it.endedAt },
+        )
+        // toStmt 把 createdAt 传进 SQL（新行不写 0 占位）。
+        val stmt = sink.rows.first().copy(createdAt = 12_345L).toStmt()
+        assertEquals("12345", stmt.args.last())
+        assertTrue("INSERT 必须带上 created_at 列", stmt.sql.contains("created_at"))
+    }
+
+    @Test
+    fun `G716_1_迁移只加列不重建不丢行_老行留NULL不回填`() {
+        val dbSrc = read("src/main/java/com/example/zhengdao/baopu/BaopuDb.kt")
+        // 迁移链两处都挂了 v24（新装与升级同一条路）。
+        assertEquals("onCreate + onUpgrade 各一次，共两处 v24 挂链", 2, Regex("applyV24Migration\\(db\\)").findAll(dbSrc).count())
+        assertTrue("onUpgrade 必须有 v24 分支", dbSrc.contains("if (oldVersion < 24) applyV24Migration(db)"))
+        // 判据②：唯一加列动作是 ALTER TABLE ADD COLUMN；没有重建表、没有丢行。
+        assertTrue("必须是 ALTER TABLE ADD COLUMN", dbSrc.contains("ALTER TABLE run_trace ADD COLUMN created_at INTEGER"))
+        assertFalse("不许 ALTER 时带 NOT NULL（那会改写老行）", dbSrc.contains("ADD COLUMN created_at INTEGER NOT NULL"))
+        assertFalse("不许重建表（DROP/CREATE 新表改名）", dbSrc.contains("DROP TABLE run_trace") || dbSrc.contains("run_trace_new"))
+        assertFalse("不许 DELETE 老行", dbSrc.contains("DELETE FROM run_trace"))
+        // 判据③硬形态：迁移体里不许 UPDATE run_trace、不许把时钟写进历史行。
+        val mig = dbSrc.substringAfter("private fun applyV24Migration").substringBefore("private val RUN_TRACE_CREATED_AT_ADD")
+        assertFalse("迁移体不许 UPDATE（回填等于造假时间线）", mig.contains("UPDATE run_trace"))
+        assertFalse("迁移体不许 current_timestamp", mig.contains("current_timestamp", ignoreCase = true))
+        assertFalse("迁移体不许 System.currentTimeMillis（迁移那刻不能冒充历史）", mig.contains("currentTimeMillis"))
+        assertFalse("迁移体不许 strftime", mig.contains("strftime", ignoreCase = true))
+        assertTrue("加列必须看列再动（幂等）", mig.contains("\"created_at\" !in cols"))
+        // 新装建表列可空（默认 NULL），老行不填。
+        assertTrue("建表 created_at 必须可空（老行默认 NULL）", BaopuSql.RUN_TRACE_DDL.first().contains("created_at INTEGER\n") || BaopuSql.RUN_TRACE_DDL.first().contains("created_at INTEGER"))
+        assertFalse("建表不许给 created_at 默认值（默认值会伪装成历史时刻）", Regex("created_at INTEGER\\s+DEFAULT").containsMatchIn(BaopuSql.RUN_TRACE_DDL.first()))
+    }
+
+    @Test
+    fun `G716_1_老行推断标inferred_推不出标tsnull_绝不拿迁移时刻补位`() {
+        // 三态解析：本行有值＝WRITTEN；NULL 且有前邻可信值＝INFERRED；都没有＝UNKNOWN(ts=null)。
+        val written = RunTraceRules.resolveCreatedAt(own = 5_000L, prevWritten = 4_000L)
+        assertEquals(CreatedAtOrigin.WRITTEN, written.origin)
+        assertEquals(5_000L, written.valueMs)
+        assertEquals("written", written.label)
+
+        val inferred = RunTraceRules.resolveCreatedAt(own = null, prevWritten = 4_000L)
+        assertEquals("老行由前邻推断必须标 inferred", CreatedAtOrigin.INFERRED, inferred.origin)
+        assertEquals(4_000L, inferred.valueMs)
+
+        val unknown = RunTraceRules.resolveCreatedAt(own = null, prevWritten = null)
+        assertEquals("推不出必须 UNKNOWN", CreatedAtOrigin.UNKNOWN, unknown.origin)
+        assertNullValue(unknown.valueMs)
+        assertEquals("推不出读数标 ts=null", "ts=null", unknown.label)
+
+        // 负例：resolveCreatedAt 签名只有两个入参，根本没有 now —— 无从把"迁移那一刻"塞进来。
+        val params = RunTraceRules::class.java.getDeclaredMethod(
+            "resolveCreatedAt", Long::class.javaObjectType, Long::class.javaObjectType,
+        ).parameterTypes
+        assertEquals("推断函数入参只有(own, prevWritten)两个，不许有第三参数", 2, params.size)
+
+        // 整段 run：只有 WRITTEN 值向后作前邻；inferred 值不再往下传（避免误差放大）。
+        val rows = listOf(
+            TraceRow("r", 1, 0, 0, TracePhase.THINK, TraceStatus.OK, createdAt = null), // run 首行无前邻
+            TraceRow("r", 1, 0, 1, TracePhase.ACT, TraceStatus.OK, createdAt = null),  // 仍无 WRITTEN 前邻
+            TraceRow("r", 1, 0, 2, TracePhase.ACT, TraceStatus.OK, createdAt = 1_000L), // 第一行有值的
+            TraceRow("r", 1, 0, 3, TracePhase.COMPRESSING, TraceStatus.OK, createdAt = null),
+        )
+        val views = RunTraceRules.resolveRun(rows)
+        assertEquals(
+            "前两行无 WRITTEN 前邻⇒ts=null；第四行由第三行推断⇒inferred",
+            listOf(CreatedAtOrigin.UNKNOWN, CreatedAtOrigin.UNKNOWN, CreatedAtOrigin.WRITTEN, CreatedAtOrigin.INFERRED),
+            views.map { it.origin },
+        )
+        assertNullValue(views[0].valueMs, "run 首行老行推不出")
+        assertNullValue(views[1].valueMs, "inferred 值不向后传，第二行仍推不出")
+        assertEquals("第四行推断=最近 WRITTEN 时刻", 1_000L, views[3].valueMs)
+    }
+
+    @Test
+    fun `G716_1_五行乱序写入按created_at排序还原先后`() {
+        // 造 5 行乱序（list 顺序 seq=0..4，但 created_at 交错），排序后按记录时刻还原。
+        val rows = listOf(
+            TraceRow("r", 1, 0, 0, TracePhase.THINK, TraceStatus.OK, createdAt = 300L),
+            TraceRow("r", 1, 0, 1, TracePhase.ACT, TraceStatus.OK, createdAt = 100L),
+            TraceRow("r", 1, 0, 2, TracePhase.ACT, TraceStatus.OK, createdAt = 500L),
+            TraceRow("r", 1, 0, 3, TracePhase.THINK, TraceStatus.OK, createdAt = 200L),
+            TraceRow("r", 1, 0, 4, TracePhase.COMPRESSING, TraceStatus.OK, createdAt = 400L),
+        )
+        val sorted = RunTraceRules.sortByCreatedAt(rows)
+        assertEquals("按 created_at 升序还原先后", listOf(100L, 200L, 300L, 400L, 500L), sorted.map { it.createdAt })
+        assertEquals("对应原始到达序号", listOf(1, 3, 0, 4, 2), sorted.map { it.seq })
+
+        // NULL 老行排末尾，不插进有序时间线冒充中间点。
+        val withNull = rows + TraceRow("r", 1, 0, 9, TracePhase.THINK, TraceStatus.OK, createdAt = null)
+        assertTrue("created_at=NULL 必须排末尾", RunTraceRules.sortByCreatedAt(withNull).last().createdAt == null)
+    }
+
+    @Test
+    fun `G716_1_其它列语义不变_只多一列created_at`() {
+        val cols = BaopuSql.RUN_TRACE_COLUMNS
+        val base = listOf(
+            "run_id", "session_id", "step", "seq", "phase", "tool", "args_hash", "status",
+            "duration_ms", "tokens_in", "tokens_out", "failure_kind", "decision", "started_at", "ended_at",
+        )
+        assertEquals("既有十五列一字不动，末尾只多 created_at", base + "created_at", cols)
+        assertEquals("created_at 必须是最后一列（老列位置不变）", "created_at", cols.last())
+    }
+
+    private fun assertNullValue(actual: Long?, message: String = "") {
+        org.junit.Assert.assertNull(message, actual)
     }
 }

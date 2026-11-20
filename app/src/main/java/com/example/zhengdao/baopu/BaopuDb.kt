@@ -1212,7 +1212,8 @@ internal object BaopuSql {
           failure_kind TEXT NOT NULL DEFAULT '',
           decision TEXT NOT NULL DEFAULT '',
           started_at INTEGER NOT NULL,
-          ended_at INTEGER NOT NULL
+          ended_at INTEGER NOT NULL,
+          created_at INTEGER
         )
         """.trimIndent(),
         // 回放读法就一种：按 runId 取全量、按 seq 排 ⇒ 复合索引。
@@ -1228,6 +1229,7 @@ internal object BaopuSql {
     val RUN_TRACE_COLUMNS: List<String> = listOf(
         "run_id", "session_id", "step", "seq", "phase", "tool", "args_hash", "status",
         "duration_ms", "tokens_in", "tokens_out", "failure_kind", "decision", "started_at", "ended_at",
+        "created_at",
     )
 
     // ── v15（第一百一十七批）：会话内任务队列 run_queue ─────────────────────
@@ -1265,14 +1267,15 @@ internal object BaopuSql {
         decision: String,
         startedAt: Long,
         endedAt: Long,
+        createdAt: Long,
     ): Stmt = Stmt(
         "INSERT INTO run_trace (run_id, session_id, step, seq, phase, tool, args_hash, status, " +
-            "duration_ms, tokens_in, tokens_out, failure_kind, decision, started_at, ended_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "duration_ms, tokens_in, tokens_out, failure_kind, decision, started_at, ended_at, created_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         arrayOf<String?>(
             runId, sessionId.toString(), step.toString(), seq.toString(), phase, tool, argsHash, status,
             durationMs.toString(), tokensIn.toString(), tokensOut.toString(), failureKind, decision,
-            startedAt.toString(), endedAt.toString(),
+            startedAt.toString(), endedAt.toString(), createdAt.toString(),
         ),
     )
 
@@ -1577,6 +1580,8 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         applyV21Migration(db)
         applyV22Migration(db)
         applyV23Migration(db)
+        applyV24Migration(db)
+        applyV25Migration(db)
     }
 
     /**
@@ -1619,6 +1624,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 22) applyV22Migration(db)
         if (oldVersion < 23) applyV23Migration(db)
         if (oldVersion < 24) applyV24Migration(db)
+        if (oldVersion < 25) applyV25Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1930,7 +1936,35 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
             if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
         }
     }
+     * v24 → v25 迁移体（第七百六十四批 · G-716-1）：`run_trace` 加可空 `created_at`
+     * （毫秒写入时刻＝系统记下这一行的墙钟；**看列再动** ⇒ 幂等，照 v21/v22/v23 房型）。
+     *
+     * 为什么要这一列：716 真机轮取证发现 `run_trace` 只有 `started_at`/`ended_at`
+     * （事件在世界/日志里的时间），没有「系统何时记下这一行」——读数无法按落库先后排序、
+     * 也无法把乱序到达的行对齐到"哪一步先发生"。这是读数基础设施缺口，不是功能缺陷。
+     *
+     * 三条硬纪律（派工单 §1）：
+     * 1. **只加列，不重建表、不丢旧行**：唯一 DDL 是 `ALTER TABLE … ADD COLUMN`；
+     *    SQLite 加列是元数据操作，旧行的所有既有列逐字节不动，行数不变。
+     * 2. **老行 created_at 留 NULL（默认 NULL），绝不回填**：本迁移体一个 `UPDATE` 都不写，
+     *    更不 `strftime('now')`／`System.currentTimeMillis()`——把"迁移那一刻"写进历史行
+     *    等于造一条假时间线（比 NULL 更坏）。老行的可信时刻留给读数侧 [推断] 处理，且
+     *    必须标 inferred；推不出就标 ts=null。
+     * 3. **其它列一个不动**：本函数只碰 `run_trace.created_at` 一列。
+     *
+     * 新装（[onCreate] 也调它）与 v23 及更早的库升级走同一条路径：新装在 v13 建表时
+     * `created_at` 已在 DDL 里 ⇒ 此处看列发现已存在，跳过；老库升级则真 ALTER 加列。
+     * 回滚见交付报告（ALTER 加列的可逆性：建库快照或忽略该列的只读降级）。
+     */
+    private fun applyV25Migration(db: SQLiteDatabase) {
+        val cols = tableColumns(db, "run_trace")
+        if (cols.isNotEmpty() && "created_at" !in cols) {
+            db.execSQL(RUN_TRACE_CREATED_AT_ADD)
+        }
+    }
 
+    /** v24 加列 DDL（唯一一份字面量；迁移体在冻结点之下，加行零位移）。 */
+    private val RUN_TRACE_CREATED_AT_ADD = "ALTER TABLE run_trace ADD COLUMN created_at INTEGER"
     /**
      * v19（第一百七十二批 L4 · 玄览页签快照）：`browser_tab` 表 ＋ LRU 索引。
      *
@@ -1990,8 +2024,8 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  v23 = 第五百三十一批（子智能体 v2：`sub_agent_ledger` 子 Agent 账表 ＋
          *  `sub_task.writes` 一列＝父显式授予的写类；老行回填空串＝当时本就只读）。
          *  v24 = 755（run_log 加可空 `step_ref` 列：失败/工具报错行**当场**落的三态
-         *  归因线；成功行与历史行 NULL 不回填——"不是机制覆盖的行"与"判不了"两回事）。 */
-        const val VERSION = 24
+         *  归因线；成功行与历史行 NULL 不回填——"不是机制覆盖的行"与"判不了"两回事）。
+ *  v25 = 764（G-716-1：`run_trace` 加可空 `created_at` 毫秒写入时刻，**看列再动**⇒幂等；老行 NULL 不回填、绝不拿「迁移那一刻」冒充历史时刻）。 */        const val VERSION = 25
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"

@@ -118,7 +118,11 @@ class DecisionWiringGateTest {
     @Test
     fun `W3_负例_不许动库版本`() {
         val db = text("baopu/BaopuDb.kt")
-        assertTrue("BaopuDb.VERSION 被改了（记录走既有通道，本批一个字节都不许动库结构；v24 = 755 run_log.step_ref）", db.contains("const val VERSION = 24"))
+<<<<<<< HEAD
+        assertTrue("BaopuDb.VERSION 被改了（记录走既有通道，本批一个字节都不许动库结构；v25 = 764（run_trace.created_at）；v24 = 755 run_log.step_ref）", db.contains("const val VERSION = 25"))
+=======
+        assertTrue("BaopuDb.VERSION 被改了（记录走既有通道，本批一个字节都不许动库结构）", db.contains("const val VERSION = 25"))
+>>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
     }
 
     @Test
