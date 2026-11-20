@@ -8,7 +8,9 @@
 - 20 条查询按派工单：5 换说法 + 5 否定条件 + 5 精确数值 + 5 专名
 - 真值(gold)人工标注，写死在脚本里，避免自证漂移
 - 输出：召回率@5/@10、误召回率(MRR@10作参考)、耗时、每组明细 JSON
-不写生产代码、不改判据、不碰 App 门禁。
+不写生产代码、不碰 App 门禁。
+判据版本：v2（2026-11-20 派单人裁定，事前定义）——见 JUDGMENT 块。
+v2 修订是「判据口径变更」，非结果修饰：检索算法、gold 标注、语料一字未动，仅在末尾新增确定性判定逻辑并重跑。
 """
 import json, time, urllib.request, sys, os
 from collections import Counter
@@ -135,6 +137,38 @@ def rrf_merge(vec_rank, bm_rank, rrf_k=60, topn=10):
             scores[idx] += 1.0 / (rrf_k + rank + 1)
     return [idx for idx, _ in scores.most_common()]
 
+# ---------- 6. 判据 v2（事前定义，2026-11-20 派单人裁定）----------
+# 版本历史：
+#   v1（废止）：整体 20 条 @10 混合比 BM25 >= +15pp —— 因铁律把 15/20 条挡在向量外，上限被锁死，废止。
+#   v2（本版，事前定义）：分组判定
+#     R1  换说法组：hybrid@10 - bm25@10 >= +15pp
+#     R2  数值/否定/专名三组：每组 hybrid@10 - bm25@10 >= -5pp（即不降超 5pp）
+#     R3  整体召回率不作为通过条件，仅作参考读数（overall_is_gate=False）
+#     总判定：R1 与 R2 三组全部 PASS => verdict=PASS；任一 FAIL => verdict=FAIL
+# 纪律：本判定基于上面的检索结果做确定性比较，不改动检索、gold、语料、阈值；重跑即复现。
+JUDGMENT_VERSION = "v2"
+JUDGMENT_RULES = {
+    "R1_paraphrase_min_delta_pp": 15.0,
+    "R2_other_max_drop_pp": 5.0,
+    "R3_overall_is_gate": False,
+}
+JUDGMENT_DEFINED = "2026-11-20 派单人裁定（事前定义；整体 +15pp 判据 v1 废止）"
+
+def judge(summary):
+    checks = []
+    d = summary["paraphrase"]["delta_pp"]
+    checks.append({"rule": "R1_paraphrase", "metric": "@10 delta >= +15pp",
+                   "value_pp": d, "threshold_pp": 15.0, "pass": d >= 15.0})
+    for cat in ("number", "negation", "entity"):
+        d = summary[cat]["delta_pp"]
+        checks.append({"rule": "R2_" + cat, "metric": "@10 delta >= -5pp (不降超5pp)",
+                       "value_pp": d, "threshold_pp": -5.0, "pass": d >= -5.0})
+    verdict = "PASS" if all(c["pass"] for c in checks) else "FAIL"
+    return {"version": JUDGMENT_VERSION, "defined": JUDGMENT_DEFINED,
+            "rules": JUDGMENT_RULES, "checks": checks, "verdict": verdict,
+            "overall_is_gate": False,
+            "note": "整体召回率仅参考读数；本次离线脚本未实现精筛层否定规则，negation/entity 组为纯召回上限数据"}
+
 def main():
     entries = load_entries()
     print("entries:", len(entries))
@@ -187,10 +221,18 @@ def main():
                     "dim": len(doc_vecs[0]), "emb_doc_ms": round(emb_doc_ms), "emb_query_total_ms": round(emb_q_ms),
                     "emb_query_avg_ms": round(emb_q_ms/len(queries),1), "embedding_network": "127.0.0.1 only, no outbound",
                     "note": "RRF 融合；否定/数值/专名按铁律不进语义腿的判定在精筛层做，本离线脚本仅先测纯召回上限"},
+           "judgment": judge(summary),
            "summary": summary, "details": results}
     json.dump(out, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     print("\n=== SUMMARY ===")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print("\n=== JUDGMENT (判据 %s) ===" % JUDGMENT_VERSION)
+    jd = out["judgment"]
+    for c in jd["checks"]:
+        print("  %-18s %-28s value=%+5.1fpp  threshold=%+5.1fpp  %s" %
+              (c["rule"], c["metric"], c["value_pp"], c["threshold_pp"], "PASS" if c["pass"] else "FAIL"))
+    print("  overall is gate: %s (仅参考: %+.1fpp)" % (jd["overall_is_gate"], summary["overall"]["delta_pp"]))
+    print("  >>> VERDICT: %s (判据 %s)" % (jd["verdict"], jd["version"]))
     print("\nwrote", OUT)
 
 if __name__ == "__main__":

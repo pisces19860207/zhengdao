@@ -3,11 +3,53 @@
     "entries": 55,
     "model": "Qwen3-Embedding-0.6B Q5_K_M (local llama.cpp)",
     "dim": 1024,
-    "emb_doc_ms": 6096,
-    "emb_query_total_ms": 1047,
-    "emb_query_avg_ms": 52.4,
+    "emb_doc_ms": 6726,
+    "emb_query_total_ms": 1188,
+    "emb_query_avg_ms": 59.4,
     "embedding_network": "127.0.0.1 only, no outbound",
     "note": "RRF 融合；否定/数值/专名按铁律不进语义腿的判定在精筛层做，本离线脚本仅先测纯召回上限"
+  },
+  "judgment": {
+    "version": "v2",
+    "defined": "2026-11-20 派单人裁定（事前定义；整体 +15pp 判据 v1 废止）",
+    "rules": {
+      "R1_paraphrase_min_delta_pp": 15.0,
+      "R2_other_max_drop_pp": 5.0,
+      "R3_overall_is_gate": false
+    },
+    "checks": [
+      {
+        "rule": "R1_paraphrase",
+        "metric": "@10 delta >= +15pp",
+        "value_pp": 23.3,
+        "threshold_pp": 15.0,
+        "pass": true
+      },
+      {
+        "rule": "R2_number",
+        "metric": "@10 delta >= -5pp (不降超5pp)",
+        "value_pp": 0.0,
+        "threshold_pp": -5.0,
+        "pass": true
+      },
+      {
+        "rule": "R2_negation",
+        "metric": "@10 delta >= -5pp (不降超5pp)",
+        "value_pp": -1.8,
+        "threshold_pp": -5.0,
+        "pass": true
+      },
+      {
+        "rule": "R2_entity",
+        "metric": "@10 delta >= -5pp (不降超5pp)",
+        "value_pp": -4.0,
+        "threshold_pp": -5.0,
+        "pass": true
+      }
+    ],
+    "verdict": "PASS",
+    "overall_is_gate": false,
+    "note": "整体召回率仅参考读数；本次离线脚本未实现精筛层否定规则，negation/entity 组为纯召回上限数据"
   },
   "summary": {
     "paraphrase": {
