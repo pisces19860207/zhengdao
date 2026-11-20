@@ -836,6 +836,8 @@ dependencies {
     }
 
     implementation(libs.androidx.navigation.compose)
+    // 746 折叠感知：FoldingFeature → FoldState 映射（唯一依赖 androidx.window 的文件）。
+    implementation(libs.androidx.window)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

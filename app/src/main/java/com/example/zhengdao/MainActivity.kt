@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -575,7 +577,9 @@ fun ZhengdaoApp(
             )
         }
         composable("home") {
-            HomeTabs()
+            // 746：外面套一层自适应壳——只加铰链避让 padding + 经 LocalLayoutConfig 暴露档位，
+            // 不改变 HomeTabs 内部任何状态持有者的身份/顺序 ⇒ 旋转/折叠/分屏后 rememberSaveable 照常恢复。
+            com.example.zhengdao.ui.adaptive.AdaptiveShell { HomeTabs() }
         }
         // ⚠️ 第二百八十六批：**本路由只服务冷启动恢复，正常请走「律令」Tab**。
         // 「律令」Tab（`TabIndex.SETTINGS`）渲染的就是同一个 `SettingsScreen()`——设置的本体在那里，
@@ -815,6 +819,10 @@ fun HomeTabs() {
     // 一并退役：旧 UI 壳已删，刀 1 的新页面自己管「是否跟随最新」与「定位过哪个会话」。
     val scope = androidx.compose.runtime.rememberCoroutineScope { CoroutineCrashHandler }
 
+    // 746：读自适应壳暴露的档位，仅用于给编辑器加宽度上限（expanded 更宽）；不参与任何业务状态。
+    val adaptiveCfg = com.example.zhengdao.ui.adaptive.LocalLayoutConfig.current
+    val editorMax = adaptiveCfg.editorMaxWidthDp.dp
+
     // K1（双击 Tab 滚顶）：在 HomeTabs 顶层记"上一次点同一个 Tab 的时间"。
     // 300ms 内再次点同一 Tab → 视为双击 → animateScrollToItem(0)。
     // 终端 Tab 没 listState（点了直接跳 Activity），双击分支对它 no-op。
@@ -939,6 +947,13 @@ fun HomeTabs() {
                     onChannelChanged = { channelEpoch++ },
                     openDecisionCenter = openDecisionOnBaopu,
                     onDecisionCenterOpened = { openDecisionOnBaopu = false },
+                    // 746：compact 用原 Modifier（手机布局零变化）；宽屏给编辑器上限并居中，
+                    // 避免行宽过长。只改外层 widthIn，不碰 BaopuScreen 内部任何状态。
+                    modifier = if (adaptiveCfg.widthClass == com.example.zhengdao.ui.adaptive.WidthSizeClass.COMPACT) {
+                        Modifier
+                    } else {
+                        Modifier.widthIn(max = editorMax).wrapContentWidth(Alignment.CenterHorizontally)
+                    },
                 )
                 // 逍遥：终端本身是独立的整屏页面（不在 Tab 里内嵌），所以这里只是"回程落点"。
                 // ⚠️ 以前这里是 `else -> {}`（全白）——红点关掉终端后落在逍遥会看到一片空白，
