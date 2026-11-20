@@ -180,7 +180,9 @@ internal fun noteHabitFailure(root: File, nowMs: Long) {
 
 /**
  * 最近运行的归一序列（只 SELECT 既有 `run_trace`；ACT 边界按发生序）。
- * 差读数消费 694 纹状体器官（四格表；`corrected` 轨迹上没有——恒 false，如实钉在注释里）。
+ * 差读数消费 694 纹状体器官（四格表）。756 语义收口：`corrected` 只能来自显式修正事件
+ * （cause/from/to 三件齐）；`run_trace` 只记成败、没有修正动作与来源指针，故本缝如实传
+ * `evidence = null`（⇒ corrected=false），不凭空造事件、也不做跨轮回填。
  */
 internal fun recentRunSeqs(db: BaopuDb, limit: Int): List<RunSeq> {
     val runIds = recentRunIds(db, limit)
@@ -191,7 +193,7 @@ internal fun recentRunSeqs(db: BaopuDb, limit: Int): List<RunSeq> {
         val act = rows.filter { it.phase == TracePhase.ACT && it.tool.isNotBlank() }
         if (act.isEmpty()) return@mapNotNull null
         val ok = act.all { it.status == TraceStatus.OK }
-        val rpe = Striatum.rpe(Striatum.Outcome(ok = ok, corrected = false)).value
+        val rpe = Striatum.rpe(Striatum.Outcome(ok = ok, evidence = null)).value
         RunSeq(
             runId = id,
             tools = act.map { it.tool },
