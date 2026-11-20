@@ -175,7 +175,7 @@
     ]
   },
   "core": {
-    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入；WorkspaceTruth 615（工作区实态唯一判据，两个解析器共用）；DocRead/DocTextExtractor 642（.doc 只读，蓝总管补登记）",
+    "origin": "主体 240（5a63c0f0 终端解耦第一刀）；KnowledgeBaseSummaries 301（63e5589a）；IssueCenter 361fd310、PathGuard 79c998c9 随终端抽核搬入；WorkspaceTruth 615（工作区实态唯一判据，两个解析器共用）；DocRead/DocTextExtractor 642（.doc 只读，蓝总管补登记）；ScanTolerance 765（G-716-4 坏名扫描容错）",
     "declarations": [
       {
         "name": "AppNotifications",
@@ -365,6 +365,13 @@
         "file": "ZhengdaoDirs.kt",
         "external_refs": 20,
         "verdict": "public 必要（:app 在用）"
+      },
+      {
+        "name": "ScanTolerance",
+        "kind": "object",
+        "file": "scan/ScanTolerance.kt",
+        "external_refs": 0,
+        "verdict": "public 必要（765 坏名扫描容错：:app 的 list_dir/find_files/search_in_files/记忆与资料库扫描面在用；core.kb 同树直用）"
       }
     ]
   }

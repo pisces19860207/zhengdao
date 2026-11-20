@@ -14,6 +14,7 @@ package com.example.zhengdao.baopu
 
 import android.content.Context
 import com.example.zhengdao.bridge.BrowserCommands
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.kb.KnowledgeBase
 import java.io.File
 import org.json.JSONObject
@@ -47,9 +48,13 @@ internal class AndroidFacts(
     override fun isDir(path: String): Boolean =
         runCatching { File(path).isDirectory }.getOrDefault(false)
 
-    override fun listNames(path: String): List<String>? = runCatching {
-        File(path).list()?.toList()
-    }.getOrNull()
+    override fun listNames(path: String): List<String>? {
+        val dir = File(path)
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）；
+        // 「不是目录/列不了 ⇒ null」的原语义保留（调用方用它区分"没得列"与"列不动"）。
+        if (!dir.isDirectory) return null
+        return runCatching { ScanTolerance.listTolerant(dir).entries.map { it.name } }.getOrNull()
+    }
 
     /**
      * 台账命中行数：产物台账（`artifact`，按 `workspace + rel_path`）＋

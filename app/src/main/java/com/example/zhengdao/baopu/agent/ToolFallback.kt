@@ -28,6 +28,7 @@
 // ⚠️ 本批不改 [ToolRegistry]（228 在飞占用）：等价表落在这里，组名与成员一律向注册表现读。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.baopu.DecisionActor
 import com.example.zhengdao.baopu.DecisionDraft
 import com.example.zhengdao.baopu.DecisionKind
@@ -883,9 +884,10 @@ internal object ToolFallback {
      * 这条取舍写进交付报告请蓝总管裁定。
      */
     fun draftsFor(projectRoot: File): List<FallbackDraft> = runCatching {
-        SkillRules.projectSkillDir(projectRoot).listFiles()
-            ?.filter { it.isDirectory }
-            ?.sortedBy { it.name }
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        ScanTolerance.listTolerant(SkillRules.projectSkillDir(projectRoot)).entries
+            .filter { it.isDirectory }
+            .sortedBy { it.name }
             ?.mapNotNull { sub ->
                 val body = runCatching { File(sub, SkillRules.SKILL_FILE).readText(Charsets.UTF_8) }.getOrNull()
                     ?: return@mapNotNull null

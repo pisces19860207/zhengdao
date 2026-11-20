@@ -5,6 +5,7 @@
 // 收尾闸 [ArtifactVerifier] 只验「有没有做」（存在/非空/编码/JSON），本闸验「说的数对不对」。
 package com.example.zhengdao.baopu.verify
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -433,7 +434,8 @@ object ValueCheck {
     /** 深度 ≤4；隐藏目录与「备份」不进；.bak、超大文件、.baopu-spill 不做来源。 */
     private fun walkInto(dir: File, prefix: String, depth: Int, out: MutableList<String>) {
         if (depth > 4) return
-        val children = runCatching { dir.listFiles() }.getOrNull() ?: return
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val children = ScanTolerance.listTolerant(dir).entries
         for (f in children) {
             val rel = if (prefix.isEmpty()) f.name else "$prefix/${f.name}"
             if (f.isDirectory) {

@@ -40,7 +40,8 @@ class BaopuLongformGateTest {
     fun `红线-b 同名不覆盖_走 nextFileName`() {
         val store = src("src/main/java/com/example/zhengdao/ui/baopu/BaopuLongformStore.kt")
         assertTrue("保存前必须先过 nextFileName（同名加 -2/-3，不许覆盖）", store.contains("nextFileName"))
-        assertTrue("nextFileName 的实现必须真的检查现有文件", store.contains("dir.list()"))
+        // 765：列举原语换成 ScanTolerance（单条目容错），锚跟着改——断言本体不变
+        assertTrue("nextFileName 的实现必须真的检查现有文件", store.contains("ScanTolerance.listTolerant(dir)"))
     }
 
     @Test

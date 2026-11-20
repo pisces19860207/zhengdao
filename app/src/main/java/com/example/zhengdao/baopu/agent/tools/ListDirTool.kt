@@ -5,6 +5,7 @@
 // 软链不跟随的纪律与 Guard.kt 的 checkMaterial / MemoryStore 扫描一致（仓库既有口径）。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import java.io.File
 import java.nio.file.Files
 
@@ -90,10 +91,19 @@ internal object ListDirTool {
         val lines = walk.lines
         val truncated = walk.truncated
         if (lines.isEmpty()) {
-            return ToolOutcome.Ok("（空目录）")
+            // 765：坏名条目被跳过不算"空"——不许静默（判据④），跳过数随结果交回。
+            return if (walk.skipped > 0) {
+                ToolOutcome.Ok("（可见条目为空；另有 ${walk.skipped} 个条目无法列出并已记账——见 RunLog 的 [scan-skip] 行）")
+            } else {
+                ToolOutcome.Ok("（空目录）")
+            }
         }
         val body = buildString {
             append(lines.joinToString("\n"))
+            if (walk.skipped > 0) {
+                // 765：跳过必须明说（判据④不许静默），模型才知道目录并未列全。
+                append("\n（另有 ${walk.skipped} 个条目无法列出并已记账——原因码见 RunLog 的 [scan-skip] 行）")
+            }
             if (truncated) {
                 append("\n")
                 append("（已触达条目上限 $effectiveLimit，下面可能还有更多内容——")
@@ -103,21 +113,27 @@ internal object ListDirTool {
         return ToolOutcome.Ok(body)
     }
 
-    /** 337 拆出：走树结果；error 非 null ⇒ 调用方直接回 Failed。 */
-    private class DirWalk(val lines: MutableList<String>, val truncated: Boolean, val error: String?)
+    /** 337 拆出：走树结果；error 非 null ⇒ 调用方直接回 Failed。skipped＝本轮坏名/属性失败被跳过的条数（已记账）。 */
+    private class DirWalk(val lines: MutableList<String>, val truncated: Boolean, val error: String?, val skipped: Int = 0)
 
     /** 337 拆出：栈式 DFS（同层按"目录在前、名称序"排——输出稳定，缓存友好）。 */
     private fun walkTree(target: File, effectiveDepth: Int, effectiveLimit: Int): DirWalk {
         val lines = mutableListOf<String>()
         var truncated = false
+        var skippedTotal = 0
         data class Item(val file: File, val level: Int)
         val stack = ArrayDeque<Item>()
         stack.addLast(Item(target, 1))
         while (stack.isNotEmpty()) {
             val (dir, level) = stack.removeLast()
-            val children = runCatching { dir.listFiles() }.getOrNull()
-                ?: return DirWalk(lines, truncated, "读不了这个目录（权限或 IO 错误）：${dir.name}")
-            val sorted = children.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+            // 765：列举换单条目容错（ScanTolerance）——坏名/属性失败条目跳过并记账
+            // （RunLog [scan-skip]），整批照走；目录级打不开沿用原 Failed 话术，语义不变（G-716-4）。
+            val listing = ScanTolerance.listTolerant(dir)
+            listing.dirError?.let {
+                return DirWalk(lines, truncated, "读不了这个目录（权限或 IO 错误）：${dir.name}", skippedTotal)
+            }
+            skippedTotal += listing.skips.size
+            val sorted = listing.entries.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
             for (f in sorted) {
                 if (lines.size >= effectiveLimit) {
                     truncated = true
@@ -136,7 +152,7 @@ internal object ListDirTool {
             }
             if (truncated) break
         }
-        return DirWalk(lines, truncated, null)
+        return DirWalk(lines, truncated, null, skippedTotal)
     }
 
     /** executor：arguments 里的 path 已是守卫过的绝对路径；省略（blank）＝工作区根。 */

@@ -2,6 +2,7 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.ZhengdaoDirs
 import java.io.File
 
@@ -76,10 +77,10 @@ internal object NovelAssets {
     }
 
     private fun filesIn(dir: File, exts: Array<out String>): List<File> =
-        dir.listFiles()
-            ?.filter { f -> f.isFile && exts.any { f.name.endsWith(it, ignoreCase = true) } }
-            ?.sortedBy { it.name }
-            ?: emptyList()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        ScanTolerance.listTolerant(dir).entries
+            .filter { f -> f.isFile && exts.any { f.name.endsWith(it, ignoreCase = true) } }
+            .sortedBy { it.name }
 
     /** 根是数组 ⇒ 它自己；根是对象 ⇒ 取 [key] 键的数组；都不是 ⇒ null（调用方报行号）。 */
     fun rootArray(root: NovelJson5.J5Node, key: String): NovelJson5.J5Arr? =

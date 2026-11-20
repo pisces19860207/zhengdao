@@ -44,6 +44,7 @@ package com.example.zhengdao.baopu.search
 import android.content.Context
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.library.LibraryPaths
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.RunLog
 import java.io.File
 
@@ -373,7 +374,9 @@ internal object PhoneSearch {
         var hits = 0
         while (queue.isNotEmpty()) {
             val dir = queue.removeFirst()
-            val children = dir.listFiles() // 一次 O(一层)；子目录进队，文件按下面的切片处理
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账（RunLog [scan-skip]），
+            // 整批照走；目录级打不开按空层处理，语义不变（G-716-4）。
+            val children = ScanTolerance.listTolerant(dir).entries // 一次 O(一层)；子目录进队，文件按下面的切片处理
             if (children != null) {
                 children.forEach { child ->
                     if (child.isDirectory && PhoneScanRules.enqueueDir(child)) queue.addLast(child)
