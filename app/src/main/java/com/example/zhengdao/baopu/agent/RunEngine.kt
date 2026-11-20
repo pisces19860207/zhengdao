@@ -51,6 +51,7 @@ import com.example.zhengdao.baopu.SessionPendingStore
 import com.example.zhengdao.baopu.SessionPlanStore
 import com.example.zhengdao.baopu.SkillRefine
 import com.example.zhengdao.baopu.SkillRules
+import com.example.zhengdao.baopu.StepRef
 import com.example.zhengdao.baopu.TaskMode
 import com.example.zhengdao.baopu.TaskModeBoundary
 import com.example.zhengdao.baopu.VisionConsent
@@ -904,6 +905,9 @@ internal class RunEngine(
      */
     private fun resetRunScopedCounters(sessionId: Long) {
         consecutiveToolFailures = 0
+        // 755：归因指针未立（开轮唯一复位点；newRound/seedFromStore 跑完才再立）——
+        // 通道熔断这类早退收尾在这之后发生，内存计划可能是上一轮旧指针，不认。
+        stepRefArmed = false
         // 第三百零六批：开新一轮——动作步号钟换轮（轮号 +1、步号清零重来）。四个开局口
         // （send/resume/approveRestoredPending/rejectRestoredPending/drainQueue）全收敛到
         // runLoop ⇒ 这里是唯一的开轮点；授权链（TaskGrantGate）按 opId 从这口钟领
@@ -986,6 +990,17 @@ internal class RunEngine(
      */
     @Volatile
     private var planSessionId: Long = -1
+
+    /**
+     * 755：本轮的计划指针是否已立（[PlanController.newRound]／[PlanController.seedFromStore]
+     * 跑完才算立）。立了之后发生的失败/工具报错才认内存计划做步号归因；立之前的失败
+     * （通道熔断、消息落库失败这类开轮前的收尾）内存里可能是**上一轮**的旧计划——
+     * 宁可按"无指针"走显式 unattributed，也不拿旧 doing 冒充本轮归因（宁可 unattributed
+     * 也不给好看的假值）。runLoop 设、工具线程读 ⇒ [Volatile]（planSessionId 同款）。
+     * 复位点在 [resetRunScopedCounters]（开轮唯一入口，通道熔断早退也在它之后）。
+     */
+    @Volatile
+    private var stepRefArmed = false
 
     /**
      * update_plan 内核（第十七批 A+B 段）：校验归一化 ⇒ sticky done ⇒ 落库 ⇒ 回灌。
@@ -2357,6 +2372,8 @@ internal class RunEngine(
             // 丢弃闸正是审计 F 的病灶（丢条且不计入「清掉 N 条」），随同锁闸一并撤销。
             // 新一轮 ⇒ 新计划：不继承上一轮的勾选状态（新任务不该因同名条目被钉 done）
             planController.newRound()
+            // 755：计划指针从这一刻起算"本轮已立"——之后的失败才认内存计划做步号归因。
+            stepRefArmed = true
             val persistedMsgId = persistUserMessage(
                 sessionId, userText, turnImagePaths, queueRowId, queueSubmittedAt,
             )
@@ -2441,6 +2458,8 @@ internal class RunEngine(
         // doing（用户看到「打完的勾又亮了」）。
         if (resumed) {
             planController.seedFromStore(sessionId)
+            // 755：续跑回种完成 ⇒ 计划指针已立（与新轮 newRound 后同一口径）。
+            stepRefArmed = true
             // 第三百一十二批 §4.5：跨会话续跑——账上的军令状接回来（同版不写第二行），
             // settle 行里记的轮数一并恢复（重签不清零幸存项——那是「对项」的记录）。
             seedPledge(sessionId)
@@ -4014,6 +4033,9 @@ internal class RunEngine(
             latencyMs = 0,
             err = err,
             createdAt = System.currentTimeMillis(),
+            // 755：失败收尾行同样当场归因（熔断/中止死在哪一步，收工读数才追得到）；
+            // 成功收尾行 null（门只盖失败）。
+            stepRef = if (err.isEmpty()) null else stepRefNow(sessionId).wire,
         )
         return db.write { d ->
             d.beginTransaction()
@@ -5840,9 +5862,35 @@ internal class RunEngine(
         onEvent?.invoke(EngineEvent.MessagePersisted(msgId, HistoryMessage.ROLE_ASSISTANT))
     }
 
+    /**
+     * 755：失败/工具报错事件的**当场**归因（发射那一刻算一次，随事件落账）。
+     *
+     * · 指针已立**且属于本会话**（stepRefArmed ＋ planSessionId 对上——恢复确认这类
+     *   不先进 runLoop 的路径上，内存指针可能是别的会话/上一轮的旧计划）才认内存计划；
+     *   否则传空表——旧 doing 不冒充本轮归因；
+     * · 空指针时才查一次库里有没有计划史（区分 no-plan／tool-failed-early；
+     *   指针已立且有计划时根本不碰库）；查库炸按"没有计划史"走——两个去向
+     *   都是显式 unattributed，不猜步号，也不许让归因把落库链路带炸；
+     * · 没有事后回扫：输入只有内存指针与这一条 EXISTS 式读，日志/账行一概不看。
+     */
+    private fun stepRefNow(sessionId: Long): StepRef {
+        val plan = if (stepRefArmed && planSessionId == sessionId) {
+            planController.currentPlan()
+        } else {
+            emptyList()
+        }
+        if (plan.isNotEmpty()) return StepRef.from(plan, storeHasPlan = true)
+        val hasPlanHistory = runCatching { SessionPlanStore(db).latest(sessionId) != null }
+            .getOrDefault(false)
+        return StepRef.from(plan, hasPlanHistory)
+    }
+
     /** 工具交换（入参 + 围栏后的出参）落一条 tool part：会话里看得见（设计 §9 施工细节）。 */
     private fun persistToolExchange(sessionId: Long, step: Int, tool: String, wrapped: String) {
         // P2-3：`.get()` 等提交；失败落日志（旧实现丢弃 Future ⇒ 工具结果丢了你都不知道）
+        // 755：成败先判一次（ok 与 err 同一把尺）；失败 ⇒ 当场归因，随这一行落 step_ref。
+        val exchangeOk = RunLoopRules.toolExchangeOk(wrapped)
+        val stepRef = if (exchangeOk) null else stepRefNow(sessionId).wire
         val ok = runCatching {
             db.write { d ->
                 d.beginTransaction()
@@ -5869,12 +5917,14 @@ internal class RunEngine(
                         tokensInEst = 0,
                         tokensOutEst = 0,
                         tool = tool,
-                        ok = RunLoopRules.toolExchangeOk(wrapped),
+                        ok = exchangeOk,
                         latencyMs = 0,
                         // 第六百三十一批：失败线索写进 err（成功恒空串）。620 的归因与反思器
                         // 的分类都读这一列——原先恒 `err = ""` 让那两处永远读到空。
                         err = RunLoopRules.runLogErr(wrapped),
                         createdAt = now,
+                        // 755：失败行的当场归因（三态线）；成功行 null（门只盖失败）。
+                        stepRef = stepRef,
                     )
                     d.execSQL(rl.sql, rl.args)
                     d.setTransactionSuccessful()

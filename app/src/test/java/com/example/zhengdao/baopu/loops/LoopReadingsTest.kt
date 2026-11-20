@@ -18,7 +18,7 @@ import org.junit.Test
 /** 708 §三 八环 ok 行的合规格本（每环一份，值域全合法；值随环变，形状按白名单）。 */
 private fun okReading(loop: Loop): Map<String, Any?> = when (loop) {
     Loop.RETRIEVAL -> mapOf("hits" to 3, "sources" to listOf("seg-1", "seg-2", "msg-7"), "ms" to 48)
-    Loop.PLAN -> mapOf("stepsLeft" to 2, "stuckAt" to null, "reason" to "剩 2/4 步未完；判不了就不猜")
+    Loop.PLAN -> mapOf("stepsLeft" to 2, "stuckAt" to null, "stepRef" to null, "reason" to "剩 2/4 步未完；判不了就不猜")
     Loop.SALIENCE -> mapOf("threat" to 1, "novelty" to 2, "note" to "威胁低档（读数仅供参考）；样式新异")
     Loop.RELAY -> mapOf("route" to "门禁", "novelty" to 1, "note" to "已中继至门禁（如何处置由下游定）")
     Loop.RPE -> mapOf("rpe" to 1, "note" to "一次过且无人纠正——正向兑现")
@@ -364,11 +364,52 @@ class LoopReadingsTest {
         assertTrue(validate(row(Loop.ACCEPT, reading = verdict)).any { it.contains("闭集") })
         val stuck = okReading(Loop.PLAN) + ("stuckAt" to -1)
         assertTrue(validate(row(Loop.PLAN, reading = stuck)).any { it.contains("超域") })
+        // 755：stepRef 从 1 起（0 = 计划步号域外——引擎条目序号＋1，不存在第 0 条）
+        val zeroRef = okReading(Loop.PLAN) + ("stepRef" to 0)
+        assertTrue(validate(row(Loop.PLAN, reading = zeroRef)).any { it.contains("超域") })
     }
 
     @Test
     fun stuckAt允许null_判不了就不猜() {
         assertTrue(validate(row(Loop.PLAN)).isEmpty())
+    }
+
+    // ── 755③：loop=plan 的 reading 带 stepRef（与失败事件字段名一致） ──
+
+    @Test
+    fun 判据755_plan_ok行缺stepRef判废_字段名与失败事件一致() {
+        val missing = okReading(Loop.PLAN) - "stepRef"
+        assertTrue(
+            "缺 stepRef 要点名（键位闭集：一 key 不缺）",
+            validate(row(Loop.PLAN, reading = missing)).any { it.contains("缺字段 stepRef") },
+        )
+        // 键名逐字：stepRef（camel，与失败事件的归因字段同名；不是 step_no / step_ref）
+        assertEquals(listOf("stepsLeft", "stuckAt", "stepRef", "reason"), READING_SPEC.getValue(Loop.PLAN).map { it.key })
+    }
+
+    @Test
+    fun 判据755_stepRef带归因步号的plan行_校验编码回读全绿() {
+        val reading = okReading(Loop.PLAN) + ("stepRef" to 3) + ("stuckAt" to 3)
+        val r = row(Loop.PLAN, reading = reading)
+        assertTrue(validate(r).isEmpty())
+        val back = parseLine(encode(r))!!
+        assertEquals(3, back.reading["stepRef"])
+        // 账本也收（先判后收链路对 stepRef 无特判）
+        TempSandbox.use("zd755-planref") { dir ->
+            val outcome = LoopReadingsLedger.append(File(dir, "ws"), r)
+            assertTrue(outcome is AppendOutcome.Appended)
+            assertTrue(LoopReadingsLedger.audit((outcome as AppendOutcome.Appended).file).isEmpty())
+        }
+    }
+
+    @Test
+    fun 判据755_stepRef判不出单一落点给null_与stuckAt同一口径() {
+        // ambiguous（候选≥2）/unattributed（原因码）不落单一数字 ⇒ null（判不了就不猜）；
+        // 三态原文在 run_log.step_ref，ref 指过去——账面只放"有把握的那一个数或 null"。
+        assertTrue(validate(row(Loop.PLAN)).isEmpty()) // stepRef=null 合法（fixture 即 null）
+        val back = parseLine(encode(row(Loop.PLAN)))!!
+        assertNull(back.reading["stepRef"])
+        assertTrue(back.reading.containsKey("stepRef")) // 键必须在场——null 也是读数，不是沉默
     }
 
     @Test

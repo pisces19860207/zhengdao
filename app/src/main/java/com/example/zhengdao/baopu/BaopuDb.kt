@@ -83,6 +83,7 @@ internal object BaopuSql {
           ok INTEGER NOT NULL DEFAULT 1,
           latency_ms INTEGER NOT NULL DEFAULT 0,
           err TEXT NOT NULL DEFAULT '',
+          step_ref TEXT,
           created_at INTEGER NOT NULL
         )
         """.trimIndent(),
@@ -663,18 +664,31 @@ internal object BaopuSql {
         createdAt: Long,
         cacheHitTokens: Int? = null,
         cacheMissTokens: Int? = null,
-    ): Stmt = Stmt(
-        "INSERT INTO run_log (session_id, step, state, model, tokens_in, tokens_out, " +
-            "tokens_in_est, tokens_out_est, tool, ok, latency_ms, err, created_at, " +
-            "cache_hit_tokens, cache_miss_tokens) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        arrayOf<String?>(
-            sessionId.toString(), step.toString(), state, model,
-            tokensIn.toString(), tokensOut.toString(), tokensInEst.toString(), tokensOutEst.toString(),
-            tool, if (ok) "1" else "0", latencyMs.toString(), err, createdAt.toString(),
-            cacheHitTokens?.toString(), cacheMissTokens?.toString(),
-        ),
-    )
+        stepRef: String? = null,
+    ): Stmt {
+        // 755 门（唯一写口上的机械闸）：失败行必须带当场归因——裸 null ⇒ 红，
+        // 线格式还必须是三态闭集里的合法串（StepRef.of 拒判垃圾）。
+        // 成功行不归因：step_ref 恒空（判据只覆盖失败/工具报错事件）。
+        if (!ok) {
+            require(stepRef != null && StepRef.of(stepRef) != null) {
+                "失败行（ok=0）缺 step_ref 或不是合法三态线（裸 null ⇒ 红）：$stepRef"
+            }
+        }
+        return Stmt(
+            "INSERT INTO run_log (session_id, step, state, model, tokens_in, tokens_out, " +
+                "tokens_in_est, tokens_out_est, tool, ok, latency_ms, err, created_at, " +
+                "cache_hit_tokens, cache_miss_tokens, step_ref) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            arrayOf<String?>(
+                sessionId.toString(), step.toString(), state, model,
+                tokensIn.toString(), tokensOut.toString(), tokensInEst.toString(), tokensOutEst.toString(),
+                tool, if (ok) "1" else "0", latencyMs.toString(), err, createdAt.toString(),
+                cacheHitTokens?.toString(), cacheMissTokens?.toString(),
+                // 755：失败归因线（attributed/ambiguous/unattributed）；成功行绑 SQL NULL。
+                stepRef,
+            ),
+        )
+    }
 
     /**
      * 把一轮的用量读数更新进 run_log（刀 3 B 段；[usage] 为 null 或五列全空
@@ -824,6 +838,23 @@ internal object BaopuSql {
         RUN_LOG_REASONING_COLUMNS
             .filterNot { col -> existingColumns.any { it.equals(col, ignoreCase = true) } }
             .map { col -> Stmt("ALTER TABLE run_log ADD COLUMN " + col + " INTEGER", emptyArray()) }
+
+    /**
+     * run_log 失败归因列（755）：`step_ref`——失败/工具报错行**当场**写下的三态归因线
+     * （`StepRef.wire`：attributed:N ／ ambiguous:N[,N…] ／ unattributed:<原因码>）。
+     * 可空：成功行与 755 之前的历史行就是没有归因（NULL＝"不是机制覆盖的行"，
+     * 与"判了但没有单一落点"是两回事——后者落显式原因码，不落 NULL）。
+     */
+    val RUN_LOG_STEP_REF_COLUMNS = listOf("step_ref")
+
+    /**
+     * run_log 归因列的加列语句（v24 · 纯函数：缺列才给 ALTER，幂等）。
+     * 与 [runLogReasoningColumnsStmt] 同一房型（先看列况再动，重跑迁移不炸）。
+     */
+    fun runLogStepRefColumnsStmt(existingColumns: List<String>): List<Stmt> =
+        RUN_LOG_STEP_REF_COLUMNS
+            .filterNot { col -> existingColumns.any { it.equals(col, ignoreCase = true) } }
+            .map { col -> Stmt("ALTER TABLE run_log ADD COLUMN " + col + " TEXT", emptyArray()) }
 
     /**
      * 按质量序读索引行（第八十九批 §1「检索排序」在 DB 侧的那一份）。
@@ -1587,6 +1618,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 21) applyV21Migration(db)
         if (oldVersion < 22) applyV22Migration(db)
         if (oldVersion < 23) applyV23Migration(db)
+        if (oldVersion < 24) applyV24Migration(db)
     }
 
     /** v2 迁移体：memory 表 ＋ 索引（IF NOT EXISTS）＋ session 加列（看列再动）。 */
@@ -1888,6 +1920,18 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
     }
 
     /**
+     * v23 → v24 迁移体（755）：run_log 加 `step_ref` 列（失败/工具报错行的**当场**三态
+     * 归因线）。加列走「先看列况再动」的纯函数 ⇒ 幂等，重复跑不炸；v23 库升级与新安装
+     * 走同一条路径（onCreate 也调它）。
+     */
+    private fun applyV24Migration(db: SQLiteDatabase) {
+        val runLogCols = tableColumns(db, "run_log")
+        BaopuSql.runLogStepRefColumnsStmt(runLogCols).forEach { stmt ->
+            if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
+        }
+    }
+
+    /**
      * v19（第一百七十二批 L4 · 玄览页签快照）：`browser_tab` 表 ＋ LRU 索引。
      *
      * DDL 放在 `BrowserTabSql` 一份字面量里，与 `onCreate` 共用 —— 新装与升级不会分叉。
@@ -1944,8 +1988,10 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
          *  90 天只是内部复核周期，不是事实有效期）。v21 归 430，451 顺位接 v22——同号会让
          *  已升到 430 的设备不重跑迁移，`as_of` 永远不存在。
          *  v23 = 第五百三十一批（子智能体 v2：`sub_agent_ledger` 子 Agent 账表 ＋
-         *  `sub_task.writes` 一列＝父显式授予的写类；老行回填空串＝当时本就只读）。 */
-        const val VERSION = 23
+         *  `sub_task.writes` 一列＝父显式授予的写类；老行回填空串＝当时本就只读）。
+         *  v24 = 755（run_log 加可空 `step_ref` 列：失败/工具报错行**当场**落的三态
+         *  归因线；成功行与历史行 NULL 不回填——"不是机制覆盖的行"与"判不了"两回事）。 */
+        const val VERSION = 24
 
         /** 库目录名（App 私有；设计 §9 定版落点）。 */
         const val DIR_BAOPU = "baopu"
