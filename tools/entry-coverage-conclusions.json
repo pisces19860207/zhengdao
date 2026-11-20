@@ -102,6 +102,10 @@
     "AntiSlopGuard": {
       "verdict": "wired",
       "note": "谁接：**738 注入单**。本件是三条输出侧判据（A 尺寸通胀／B 医学免责腔／C 模板腔）的纯函数检测器，只报不改（原文逐字节不动）。738 把检测接进输出链后才算真接线；当前只有测试在调，故记 `wired` 欠账而非 `not_urgent`——**判据件也要有人接，不然就是没人用的尺**。"
+    },
+    "VariantSampler": {
+      "verdict": "wired",
+      "note": "谁接：**后续装配单**（723 派工单边界明写「零装配」：BodyState 只加可空字段 `variants`，不碰状态机/App/几何）。本件是确定性加权采样器（自实现 seed→java.util.Random，同参逐字节一致），纯函数、无 IO/无时钟；当前只有 VariantSpectrumTest 在调。装配单落地时应由「谁产出 BodyState」那一层调用并把结果填进 `BodyState.variants`。"
     }
   },
   "C": {

@@ -495,7 +495,7 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 28,
+    "line": 29,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
@@ -542,7 +542,7 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 114,
+    "line": 121,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
@@ -760,6 +760,97 @@
     ],
     "verdict": "wired(sole-impl)",
     "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/variant/VariantSampler.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 35,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（723 派工单边界明写「零装配」：BodyState 只加可空字段 `variants`，不碰状态机/App/几何）。本件是确定性加权采样器（自实现 seed→java.util.Random，同参逐字节一致），纯函数、无 IO/无时钟；当前只有 VariantSpectrumTest 在调。装配单落地时应由「谁产出 BodyState」那一层调用并把结果填进 `BodyState.variants`。",
+    "package": "com.example.zhengdao.baopu.state.variant",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "VariantSampler",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 68
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 68
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 85
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 85
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 88
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 88
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 95
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 95
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 99
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 101
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 115
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 116
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 117
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 121
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 156
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt",
+      "line": 156
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
    }
   ],
   "C": [
@@ -818,11 +909,11 @@
  },
  "summary": {
   "A": 3,
-  "B": 13,
+  "B": 14,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 8,
-  "production_top_level_public": 693,
-  "wired": 677
+  "not_wired": 9,
+  "production_top_level_public": 699,
+  "wired": 682
  }
 }
