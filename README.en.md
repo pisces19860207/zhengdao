@@ -18,14 +18,12 @@ One APK, no root, no commands. Baopu reads and writes files, can search the whol
 **Requires**: Android 16 (API 36) or newer, on an arm64 phone. It will not install otherwise.
 
 **Download**: [GitHub Releases](https://github.com/pisces19860207/zhengdao/releases) — Current release: v2.3.0 (versionCode is derived at build time and grows with every commit, so each install has its own number; the About page shows it together with the short commit sha).
-> **New in 2.2.4 (2.2 series finale)**: closing-only, no new capabilities — authorization leases, goal mode, real admission tasks, output cards gated by evidence, project ledger, activity board, build audit pack; UI: royal-case card polish and plain-language verdicts; engineering: detekt wall 335→333, test temp-dir water mark 1000→422. Per-commit changelog: [release notes v2.2.4](https://github.com/pisces19860207/zhengdao/blob/v2.2.4/.github/release-notes/v2.2.4.md).
-
 > **New in 2.3.0 (L3 closure)**: turning "written" into "runs, and can explain itself" — all nine self-evolution domains wired into production (criteria and topology never self-modify) · external-agent delegation with real admission exams · the learning board closes its four stages (observe / induce / correct-while-watching / visible replay) · capability routing funnel that only advises, never takes the decision · voice and artifacts tightened · versionCode derived from commits · build lock v11.3 · a 4th wiring tier `wired(sole-impl)`. Full notes: [release-notes v2.3.0](https://github.com/pisces19860207/zhengdao/blob/v2.3.0/.github/release-notes/v2.3.0.md).
 
 
 **Not needed**: Termux, Shizuku, ADB, or a computer.
 
-**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch. The package at that point was v2.2.4.
+**Baseline**: the feature set is baselined at v2.2.0; from v2.2.1 on it only grows — no rewrites. The Decision Center, scheduled tasks, whole-phone search, MCP tool servers, teach-and-replay, the risk matrix and impact hints all landed batch by batch.
 
 ## Requirements
 
@@ -58,6 +56,8 @@ Baopu and Xuanlan are a pair: one acts, the other sees. Pages go from Xuanlan to
 
 **Write.** Give it an outline and it writes chapter by chapter; keep going, or paste an old draft back and ask for changes. Output is plain files in the workspace — any file manager can open them. Same for code, except code is only displayed, never executed. Long answers collapse into a card you can fold away, so the transcript stays readable.
 
+**Speak and listen.** Hold to talk, or tap and then speak; releasing cancels. With no result after three seconds it says why, and if the system recogniser stops responding it says that too. Any answer can be read aloud ("朗读") through the system voice — no network, no extra package. **Audio never leaves the device and is never written to disk.**
+
 **Schedule.** Say "every morning at eight, turn yesterday's diary into one paragraph" and it creates a scheduled task that fires on its own. Without exact-alarm permission it says "roughly around then" instead of forcing it.
 
 **Search the phone.** Ask it to find "that invoice from last month" and it scans phone storage in slices: read-only, nothing leaves the device, cancellable at any time — then it asks whether to bring the file into the workspace.
@@ -83,7 +83,7 @@ In short: it changes, but never without you.
 Models make things up; there is no point pretending otherwise. Zhengdao stops that at three places:
 
 - **Before**: every action first gets a risk level and an impact hint — whether this asks you, how many files it touches, how many ledger entries it involves. Being foreseeable is itself a constraint.
-- **During**: irreversible actions are never taken alone (originals folder, password fields and intranet URLs are blocked); a tool that stalls for 300 ms degrades; you can stop at any time and interject mid-run.
+- **During**: irreversible actions are never taken alone (originals folder, password fields and intranet URLs are blocked); a tool that does not respond switches to another approach instead of hanging there; you can stop at any time and interject mid-run.
 - **After**: every side effect lands in the Decision Center, where it can be inspected and undone; skill and memory changes keep a diff and a backup, so they can be rolled back.
 
 In one line: **the model thinks, the boundary blocks, the ledger remembers.**
@@ -103,6 +103,7 @@ Together that is what "heavy harness" means here: not many tools, but a boundary
 3. Before using Baopu, tap the company name in the top bar to pick a model: choose a company (OpenAI / Anthropic / DeepSeek / OpenRouter) → fetch its model list (OpenRouter is searchable) → enter a key (you can store several; they rotate). The free lane now runs on OpenRouter and still needs your own key; the sheet has a "get an OpenRouter key" link.
 4. Baopu reads and writes inside its workspace (default `Download/证道` on the phone, changeable in Settings); the default workspace lives on shared storage, so uninstalling Zhengdao keeps those files.
 5. Updates: the app can check for app and component updates.
+6. Documents and images it produces are registered in the artifact ledger: docx / xlsx / png / jpg / webp can all be registered and opened straight into another app; if you delete the file, it says plainly that the file is gone.
 
 Release history is on the [Releases](https://github.com/pisces19860207/zhengdao/releases) page.
 
@@ -121,9 +122,12 @@ Android may kill backgrounded apps. For long tasks, keep Zhengdao in the foregro
 
 ## How to give feedback
 
-- Report a bug: open [Issues → New issue](https://github.com/pisces19860207/zhengdao/issues/new/choose), pick "Report a bug", and paste the block from Settings → Feedback → Copy diagnostics into the log field.
-- Suggest an idea: pick "Suggest an idea" at the same place and say what you want, how you cope today, and why that is not enough.
+- **Feel, usability, shortcomings** → [GitHub Discussions · feedback](https://github.com/pisces19860207/zhengdao/discussions/22) (just reply; no need to write it well).
+- Report a bug: open [Issues → New issue](https://github.com/pisces19860207/zhengdao/issues/new?template=bug.yml), and paste the block from Settings → Feedback → Copy diagnostics into the log field.
+- Suggest an idea: use the [idea form](https://github.com/pisces19860207/zhengdao/issues/new?template=idea.yml) and say what you want, how you cope today, and why that is not enough.
 - No GitHub? Settings → Feedback → Send email prefills the same diagnostics block; **nothing leaves the device unless you tap**.
+
+Three cautions: (1) do not paste tokens, chat content or full logs; (2) for data, use the in-app "copy diagnostics" (already redacted); (3) say what you were doing at the time — one sentence is enough.
 
 ## Privacy
 
@@ -134,8 +138,7 @@ Android may kill backgrounded apps. For long tasks, keep Zhengdao in the foregro
 ## Known limits
 
 - Android 16 (API 36) and arm64 only, and verified end to end on a single device; other devices and OS versions have not been individually tested.
-- Baopu writes code but only displays it in Xuanlan — it never runs it. To run code on the phone, use the separate terminal app (`zhengdao-term`); the two sides do not cross.
-- Baopu never runs a shell and never spawns a process; clipboard, notifications, dialling and scheduling go through authorised tools, and the rest of the system is out of its scope by design.
+- Baopu writes code but only displays it in Xuanlan — it never runs it; it never runs a shell or spawns a process. Clipboard, notifications, dialling and scheduling go through authorised tools, and the rest of the system is out of its scope by design.
 - The orchestration mode (several steps per turn, segmented budget) is **off by default**: it is faster on complex work and easier to run off the rails, so it stays behind a usage cap and a stop button until explicitly opened.
 - New capabilities from this round (Decision Center, scheduled tasks, teach-and-replay, risk matrix / impact hints, whole-phone search) all have unit gates, but **real-device feel is still being verified batch by batch** — confirmation frequency, whether auto-write feels right, whether schedules fire on time. Anything not yet verified is stated in the release notes.
 - Baopu needs a network; long tasks can be affected by background reclamation — see the previous section.
@@ -166,4 +169,8 @@ Terminal-side components (Termux, PRoot, Debian, uv, etc.) are credited with the
 | **Baopu (this project)** | **Act on evidence, act within limits** — every action is authorised, supervised, audited and independently accepted |
 
 Positioning we use consistently: **Governance-first Agent Runtime**.
+
+---
+
+**It asks before it acts, keeps a ledger of what it did, and when it cannot tell, it says so.**
 
