@@ -867,60 +867,24 @@ fun HomeTabs() {
 
     Scaffold(
         bottomBar = {
-            // 底栏走 iOS 语言：与页面同为白底、靠一条 0.5dp 发丝线分隔。
-            // 刻意不用 M3 默认的 tonalElevation 阴影——浅色主题下那会压出一条灰带，
-            // 与全局"白卡片 + 发丝描边"的语言冲突（同一处理见怡然卡片）。
-            Column {
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                NavigationBar(
-                    modifier = Modifier.height(56.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp,
-                ) {
-                    // 选中＝systemBlue 图标/文字 + 淡蓝胶囊；未选中＝次要文字色
-                    val tabColors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = Color.Transparent,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    NavigationBarItem(
-                        selected = tab == TabIndex.BAOPU,
-                        // 抱朴 = Compose 原生对话页（旧的内嵌终端视图已随第四刀删除）
-                        //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
-                        // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
-                        onClick = { onTabClicked(TabIndex.BAOPU) },
-                        icon = { BaoPuIcon(tab == TabIndex.BAOPU) },
-                        label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
-                        colors = tabColors,
-                    )
-                    NavigationBarItem(
-                        selected = tab == TabIndex.BROWSER,
-                        // 玄览（期望）：浏览器。**排在逍遥之后**（§B 顺序 33，2026-10-14
-                        // 用户要求：抱朴 / 逍遥 / 玄览 / 怡然）。
-                        // 页面区不是列表，双击滚顶 no-op（animateToTop 的 when 不含它）。
-                        onClick = { onTabClicked(TabIndex.BROWSER) },
-                        icon = { XuanLanIcon(tab == TabIndex.BROWSER) },
-                        label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
-                        colors = tabColors,
-                    )
-                    NavigationBarItem(
-                        selected = tab == TabIndex.SETTINGS,
-                        // 律令（第二百五十批）：设置进底栏。以前设置是首页右上角的一个按钮，
-                        // 首页随终端删掉之后，设置需要一个固定入口。
-                        onClick = { onTabClicked(TabIndex.SETTINGS) },
-                        icon = { SettingsIcon(tint = tabIconColor(tab == TabIndex.SETTINGS)) },
-                        label = { Text(stringResource(R.string.nav_settings), style = tabLabelStyle) },
-                        colors = tabColors,
-                    )
-                }
+            // 746：compact 用底栏；宽屏收起底栏，改由内容区左侧 rail 承载（双栏）。
+            // 导航本身不持有用户状态（tab 在顶部 rememberSaveable）⇒ 档位切换不丢状态。
+            if (adaptiveCfg.navigation == com.example.zhengdao.ui.adaptive.NavigationStyle.BOTTOM) {
+                HomeBottomBar(tab = tab, onTabClicked = ::onTabClicked, tabLabelStyle = tabLabelStyle)
             }
         },
     ) { padding ->
+        androidx.compose.foundation.layout.Row {
+            // 746：宽屏（medium/expanded）左侧 rail 与内容并排＝双栏；compact 无 rail＝单栏。
+            if (adaptiveCfg.navigation == com.example.zhengdao.ui.adaptive.NavigationStyle.RAIL) {
+                com.example.zhengdao.ui.adaptive.AdaptiveHomeRail(
+                    selectedTab = tab,
+                    onTabClick = ::onTabClicked,
+                    baoPuTab = TabIndex.BAOPU,
+                    browserTab = TabIndex.BROWSER,
+                    settingsTab = TabIndex.SETTINGS,
+                )
+            }
         Surface(
             modifier = Modifier
                 .fillMaxSize()
@@ -973,7 +937,67 @@ fun HomeTabs() {
                 else -> {}
             }
         }
+        }
     }
+}
+
+
+/** 746：compact 档底栏导航（从 HomeTabs 原样提取；不含任何状态）。 */
+@Composable
+private fun HomeBottomBar(
+    tab: Int,
+    onTabClicked: (Int) -> Unit,
+    tabLabelStyle: TextStyle,
+) {
+        Column {
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+            NavigationBar(
+                modifier = Modifier.height(56.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+            ) {
+                // 选中＝systemBlue 图标/文字 + 淡蓝胶囊；未选中＝次要文字色
+                val tabColors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    indicatorColor = Color.Transparent,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                NavigationBarItem(
+                    selected = tab == TabIndex.BAOPU,
+                    // 抱朴 = Compose 原生对话页（旧的内嵌终端视图已随第四刀删除）
+                    //（不经过 PRoot；XDG 独立 = /data/data/证道/files/taiji/）
+                    // K1：双击 = 滚顶（见 HomeTabs 顶部的 lastTabClickAt 注释）。
+                    onClick = { onTabClicked(TabIndex.BAOPU) },
+                    icon = { BaoPuIcon(tab == TabIndex.BAOPU) },
+                    label = { Text(stringResource(R.string.nav_taiji), style = tabLabelStyle) },
+                    colors = tabColors,
+                )
+                NavigationBarItem(
+                    selected = tab == TabIndex.BROWSER,
+                    // 玄览（期望）：浏览器。**排在逍遥之后**（§B 顺序 33，2026-10-14
+                    // 用户要求：抱朴 / 逍遥 / 玄览 / 怡然）。
+                    // 页面区不是列表，双击滚顶 no-op（animateToTop 的 when 不含它）。
+                    onClick = { onTabClicked(TabIndex.BROWSER) },
+                    icon = { XuanLanIcon(tab == TabIndex.BROWSER) },
+                    label = { Text(stringResource(R.string.nav_browser), style = tabLabelStyle) },
+                    colors = tabColors,
+                )
+                NavigationBarItem(
+                    selected = tab == TabIndex.SETTINGS,
+                    // 律令（第二百五十批）：设置进底栏。以前设置是首页右上角的一个按钮，
+                    // 首页随终端删掉之后，设置需要一个固定入口。
+                    onClick = { onTabClicked(TabIndex.SETTINGS) },
+                    icon = { SettingsIcon(tint = tabIconColor(tab == TabIndex.SETTINGS)) },
+                    label = { Text(stringResource(R.string.nav_settings), style = tabLabelStyle) },
+                    colors = tabColors,
+                )
+            }
+        }
 }
 
 // 第二百五十批：`openZhengdaoTerminal` 一并删除 —— 主 APP 不给终端任何入口（不提、不跳、不检测）。

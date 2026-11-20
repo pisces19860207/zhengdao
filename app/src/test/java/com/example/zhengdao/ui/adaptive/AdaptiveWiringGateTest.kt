@@ -55,6 +55,9 @@ class AdaptiveWiringGateTest {
         assertTrue("home 路由必须经 AdaptiveShell", "AdaptiveShell" in s)
         assertTrue("必须读取档位供布局使用", "LocalLayoutConfig.current" in s)
         assertTrue("expanded 宽度约束必须接线", "widthIn(max = editorMax)" in s)
+        assertTrue("compact 底栏必须条件渲染", "NavigationStyle.BOTTOM" in s)
+        assertTrue("宽屏 rail 必须接线", "AdaptiveHomeRail" in s)
+        assertTrue("rail 必须按 RAIL 档出现", "NavigationStyle.RAIL" in s)
     }
 
     @Test
