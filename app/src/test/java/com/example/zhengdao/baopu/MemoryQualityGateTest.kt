@@ -107,7 +107,7 @@ class MemoryQualityGateTest {
             alter.contains("filterNot") && alter.contains("ALTER TABLE memory ADD COLUMN") &&
             db.contains("INTEGER NOT NULL DEFAULT \" + MEMORY_QUALITY_DEFAULT_SCORE") &&
             db.contains("const val MEMORY_QUALITY_DEFAULT_SCORE = 100") &&
-            db.contains("const val VERSION = 23") // 451 升到 v22（memory as_of）；287 是 v20（file_op）；172 L4 是 v19（browser_tab）；v18 = 157 workspace_grant/workspace_audit；v17/v16/v15/v14 迁移体仍在
+            db.contains("const val VERSION = 24") // 755 升到 v24（run_log.step_ref）；451 是 v22（memory as_of）；287 是 v20（file_op）；172 L4 是 v19（browser_tab）；v18 = 157 workspace_grant/workspace_audit；v17/v16/v15/v14 迁移体仍在
     }
 
     /** 红线 G：删除只有人那一把口（[MemoryStore.delete]），质量层与写路径都不碰它。 */
