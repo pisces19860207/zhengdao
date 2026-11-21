@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 762 |
-| 生产可达（有生产引用，含同文件） | 741 |
-| A 有定义无调用 | 3 |
-| B 只有测试在调 | 18 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 771 |
+| 生产可达（有生产引用，含同文件） | 748 |
+| A 有定义无调用 | 4 |
+| B 只有测试在调 | 19 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **15** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **17** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -27,6 +27,7 @@
 |---|---|---|---|
 | `AnchorSpecSource` | `app/src/main/java/com/example/zhengdao/baopu/state/anchor/AnchorFields.kt:145` | 不急 | 理由：747 批规格真源的**出处钉**（AnchorFields.kt:145－157：md 路径＋sha256 前 16 位 4ab930c29f3d9c02＋44,995 B／1,031 行＋dot 指纹＋VERIFIED_ON＝2026-11-19）。它按设计就该零调用：判据「规格只读、一字不抄进仓」由 AnchorSourceAssertTest.kt:191－197 读**源码文本**断言（路径与指纹须活在代码字符串里，防注释被剥掉后出处失踪），运行期没有任何消费者。删它等于拆掉回查锚点，故留不删；接线批来了也不该改成「有人调」——它调不到，只被对账。 |
 | `GenitalResult` | `app/src/main/java/com/example/zhengdao/baopu/state/form/GenitalModel.kt:81` | 接线 | 谁接：**699**。本件是 `GenitalModel.kt:81 data class GenitalResult`＝13 区参数求解的返回类型，当前只有测试在构造（A 桶：生产零引用）——它天然由 699 的装配层产出、给读写面消费；口径不许在此处自造判定（源断言钉死），故只登记不改。 |
+| `MotionNotes` | `app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionNotes.kt:6` | 接线 | 谁接：**后续装配单**（725 派工单边界为「形轨·动作关键帧」数据层，6 生产件全新增、零改既有、零装配）；本包只吃强度档吐档位，弧度映射仅在内部喂 655 四项，**零时间积分、零连续轨迹**。 本件＝**口径件**（只有两条常量：ASSUMPTION 说明「档位→弧度是工程抽象、非真实解剖 FK」，NOTE 写「模拟非测量」）；它是给读代码的人与后续装配单看的边界声明，**按设计就不该有调用点**，故落 A 桶。 |
 | `OffscreenCaptureProbe` | `app/src/main/java/com/example/zhengdao/browser/offscreen/OffscreenCaptureProbe.kt:47` | 不急 | 理由：263 批真机探针（量「后台新载入的页能不能渲染」的实证工具，BATCH=263），只有 app/src/debug/.../OffscreenProbeActivity.kt:21／:25 引用，release 不可达；属复现证据不是生产功能，留作对照不删（503 悬空清单同一件，508／509 未处置） |
 
 ## B 只有测试在调（生产不可达）
@@ -50,6 +51,7 @@
 | `Calibration` | `app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt:29` | `app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:41`、`app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:43`、`app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:50` | 接线 | 谁接：**699**（660 的装配单；660 明写「零装配、接线归 699」，源码断言钉死 ZhengdaoApp／CharacterTrack／StateSummaryWiring 一行没动）。本件是 `BodyState.kt:28 object Calibration`＝把形体参数标定进 BodyState 的入口，生产侧尚无调用点；699 落地时由装配层调它（读表→标定→BodyState）。 |
 | `BodyModel` | `app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt:121` | `app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:181`、`app/src/test/java/com/example/zhengdao/baopu/state/form/FormFixtures.kt:57` | 接线 | 谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。 |
 | `TwoBodyCollision` | `app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt:24` | `app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt:103`、`app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt:104`、`app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt:25` | 唯一实现·待消费 | 谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：两体解析碰撞（动量/能量守恒 ±5%），660 双人互动姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 |
+| `MotionKeyframes` | `app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionKeyframes.kt:21` | `app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:11`、`app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:17`、`app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:18` | 接线 | 谁接：**后续装配单**（725 派工单边界为「形轨·动作关键帧」数据层，6 生产件全新增、零改既有、零装配）；本包只吃强度档吐档位，弧度映射仅在内部喂 655 四项，**零时间积分、零连续轨迹**。 本件＝四动作 15 关键姿名录＋退档解析（对外唯一入口）。 |
 | `VariantSampler` | `app/src/main/java/com/example/zhengdao/baopu/state/variant/VariantSampler.kt:35` | `app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt:68`、`app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt:68`、`app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt:79` | 接线 | 谁接：**后续装配单**（723 派工单边界明写「零装配」：BodyState 只加可空字段 `variants`，不碰状态机/App/几何）。本件是确定性加权采样器（自实现 seed→java.util.Random，同参逐字节一致），纯函数、无 IO/无时钟；当前只有 VariantSpectrumTest 在调。装配单落地时应由「谁产出 BodyState」那一层调用并把结果填进 `BodyState.variants`。 |
 
 ## C 已接线默认关、无开启路径

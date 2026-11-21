@@ -38,6 +38,24 @@
     "wrapper_scan": []
    },
    {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionNotes.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 6,
+    "list": "A",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（725 派工单边界为「形轨·动作关键帧」数据层，6 生产件全新增、零改既有、零装配）；本包只吃强度档吐档位，弧度映射仅在内部喂 655 四项，**零时间积分、零连续轨迹**。 本件＝**口径件**（只有两条常量：ASSUMPTION 说明「档位→弧度是工程抽象、非真实解剖 FK」，NOTE 写「模拟非测量」）；它是给读代码的人与后续装配单看的边界声明，**按设计就不该有调用点**，故落 A 桶。",
+    "package": "com.example.zhengdao.baopu.state.motion",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "MotionNotes",
+    "test_refs": [],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
     "debug_only_refs": [
      {
       "file": "app/src/debug/java/com/example/zhengdao/browser/offscreen/OffscreenProbeActivity.kt",
@@ -1067,6 +1085,105 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionKeyframes.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 21,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（725 派工单边界为「形轨·动作关键帧」数据层，6 生产件全新增、零改既有、零装配）；本包只吃强度档吐档位，弧度映射仅在内部喂 655 四项，**零时间积分、零连续轨迹**。 本件＝四动作 15 关键姿名录＋退档解析（对外唯一入口）。",
+    "package": "com.example.zhengdao.baopu.state.motion",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "MotionKeyframes",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 11
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 17
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 18
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 19
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 20
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 33
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 34
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 40
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 41
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 42
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 49
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 50
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 51
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 57
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 58
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 64
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 65
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 71
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 76
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt",
+      "line": 81
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/variant/VariantSampler.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -1212,12 +1329,12 @@
   ]
  },
  "summary": {
-  "A": 3,
-  "B": 18,
+  "A": 4,
+  "B": 19,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 15,
-  "production_top_level_public": 762,
-  "wired": 741
+  "not_wired": 17,
+  "production_top_level_public": 771,
+  "wired": 748
  }
 }
