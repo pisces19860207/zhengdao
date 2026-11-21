@@ -54,11 +54,7 @@ class BrowserSnapshotGateTest {
     @Test
     fun `J-L4-4 迁移升到 v19 且两个入口都挂`() {
         val s = dbSource()
-<<<<<<< HEAD
         assertTrue("BaopuDb.VERSION 应 ≥ 19（755 起是 24）", s.contains("const val VERSION = 25"))
-=======
-        assertTrue("BaopuDb.VERSION 应 ≥ 19（451 起是 22）", s.contains("const val VERSION = 25"))
->>>>>>> 155355ed2 (feat(764): run_trace 补 created_at 写入时刻列（G-716-1）)
         assertTrue("必须有 applyV19Migration 迁移体", s.contains("private fun applyV19Migration("))
         val calls = Regex("applyV19Migration\\(db\\)").findAll(s).count()
         assertTrue(
