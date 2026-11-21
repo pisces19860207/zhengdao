@@ -733,6 +733,140 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/containment/Containment.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 14,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝容纳判定的总入口（档位＋三态＋文案）。",
+    "package": "com.example.zhengdao.baopu.state.containment",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "Containment",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt",
+      "line": 78
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt",
+      "line": 133
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt",
+      "line": 134
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt",
+      "line": 153
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt",
+      "line": 154
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt",
+      "line": 163
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 20
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 52
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 53
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 54
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 62
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 63
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 80
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 87
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 94
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentJudgeTest.kt",
+      "line": 28
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentJudgeTest.kt",
+      "line": 75
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentJudgeTest.kt",
+      "line": 151
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/containment/StanceLegality.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 52,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝**唯一的度量桥**（全包只有它碰 655 的四项判定，距离算一次即丢、返回里无坐标无毫米）。",
+    "package": "com.example.zhengdao.baopu.state.containment",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "StanceLegality",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 23
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt",
+      "line": 106
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentFixtures.kt",
+      "line": 215
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentJudgeTest.kt",
+      "line": 40
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/containment/StanceLegalityTest.kt",
+      "line": 27
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolver.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -1079,11 +1213,11 @@
  },
  "summary": {
   "A": 3,
-  "B": 16,
+  "B": 18,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 13,
-  "production_top_level_public": 742,
-  "wired": 723
+  "not_wired": 15,
+  "production_top_level_public": 762,
+  "wired": 741
  }
 }

@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 742 |
-| 生产可达（有生产引用，含同文件） | 723 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 762 |
+| 生产可达（有生产引用，含同文件） | 741 |
 | A 有定义无调用 | 3 |
-| B 只有测试在调 | 16 |
+| B 只有测试在调 | 18 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **13** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **15** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -44,6 +44,8 @@
 | `GravityContact` | `app/src/main/java/com/example/zhengdao/baopu/state/cavity/GravityContact.kt:33` | `app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt:19`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt:106`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt:120` | 接线 | 谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝重力触地判定（把接触法向与地面法向对齐后出触地读数）。 |
 | `ProxyLegality` | `app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxyLegality.kt:43` | `app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt:39`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt:56`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt:57` | 接线 | 谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝限位/可达/自碰撞/触地四项合法性读数（NOT_PROVEN 不算红也不算绿）。 |
 | `ProxySimplify` | `app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxySimplify.kt:19` | `app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt:49`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt:81`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt:104` | 接线 | 谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝代理体简化（保体积/保外接的降面数路径）。 |
+| `Containment` | `app/src/main/java/com/example/zhengdao/baopu/state/containment/Containment.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:78`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:133`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:134` | 接线 | 谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝容纳判定的总入口（档位＋三态＋文案）。 |
+| `StanceLegality` | `app/src/main/java/com/example/zhengdao/baopu/state/containment/StanceLegality.kt:52` | `app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt:23`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt:106`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentFixtures.kt:215` | 接线 | 谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝**唯一的度量桥**（全包只有它碰 655 的四项判定，距离算一次即丢、返回里无坐标无毫米）。 |
 | `EnvironmentSolver` | `app/src/main/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolver.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:31`、`app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:48`、`app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:75` | 接线 | 谁接：657 派工单「统一并入 SceneState.environment」——SceneState 本体归 660（人体模型批）建，本批只交公式层与槽值 EnvironmentState（sun/wind/humidity/sweat/sand 五分项），与 660 零相交；660 建 SceneState 时挂本槽即接线。其余五件顶层公开面（EnvironmentNotes/SolarSolver/WindTable/HumiditySolver/EnvironmentState）由本件生产代码引用，计生产可达。 |
 | `Calibration` | `app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt:29` | `app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:41`、`app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:43`、`app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:50` | 接线 | 谁接：**699**（660 的装配单；660 明写「零装配、接线归 699」，源码断言钉死 ZhengdaoApp／CharacterTrack／StateSummaryWiring 一行没动）。本件是 `BodyState.kt:28 object Calibration`＝把形体参数标定进 BodyState 的入口，生产侧尚无调用点；699 落地时由装配层调它（读表→标定→BodyState）。 |
 | `BodyModel` | `app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt:121` | `app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:181`、`app/src/test/java/com/example/zhengdao/baopu/state/form/FormFixtures.kt:57` | 接线 | 谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。 |
