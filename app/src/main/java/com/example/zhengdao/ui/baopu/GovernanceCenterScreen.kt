@@ -99,6 +99,7 @@ import com.example.zhengdao.baopu.BuildAuditPack
 import com.example.zhengdao.baopu.agent.BoardRules
 import com.example.zhengdao.baopu.agent.BoardStore
 import com.example.zhengdao.baopu.agent.GovernanceStateTool
+import com.example.zhengdao.baopu.calibration.CalibrationGovernance
 import com.example.zhengdao.baopu.consequence.CredentialStore
 import com.example.zhengdao.baopu.consequence.IdentityStore
 import com.example.zhengdao.baopu.ledger.LedgerCounts
@@ -163,6 +164,11 @@ private data class GovSnapshot(
      * 拼装在 `BuildAuditPack.summaryLine`（数据层），本屏只照着画（565"只画不算"同款）。
      */
     val auditSummary: String? = null,
+    /**
+     * 「校准注入」块那一行（774 追加三）：装配状态 ＋ 本场注入的条数与话题类别 ＋ 应急关闭态。
+     * 拼装只在 `CalibrationGovernance.snapshot()`（治理层），本屏只照着画；里面没有身体数值。
+     */
+    val calibration: String? = null,
 )
 
 /**
@@ -302,6 +308,9 @@ private fun GovFrame(
                     // 「开发核对」（561）：块本体在 GovernanceCenterAudit.kt；屏内块、无抽屉入口。
                     item { AuditSection(summary = snapshot.auditSummary, wsRoot = wsRoot) }
                     item { Spacer(Modifier.height(14.dp)) }
+                    // 「校准注入」（774 追加三）：屏内只读块、无抽屉入口（同 561 的取舍）。
+                    item { CalibrationSection(summary = snapshot.calibration) }
+                    item { Spacer(Modifier.height(14.dp)) }
                     // 624 阶段一：学习板块（单一入口，总则①）——观察开关/摘要/清空两口/未学会清单。
                     // 状态与动作全走 ObserveCenter（与未学会胶囊件同一个真相源），本屏不另立取数路。
                     item { LearnBoardSection() }
@@ -390,6 +399,9 @@ private fun readSnapshot(
     // ⑥ 账本（544 第二段）：同一房型——读不出 ⇒ 空（"还没有账"与"读不出"在界面上是同一句
     // "账上还没有条目"；账本不是读数，读不出时它不是"账不实"）。
     val ledgerItems = runCatching { LedgerStore.items(wsRoot) }.getOrDefault(emptyList())
+    // ⑦ 校准注入（774 追加三）：治理层自己那一行（模式＋条数＋话题类别），读不出 ⇒ null 占位。
+    //    这不是第二条读数路——527 那四率/弹卡/灰度一律没动，这里只问治理自己记了什么。
+    val calibration = runCatching { CalibrationGovernance.snapshot() }.getOrNull()
     return GovSnapshot(
         root = root,
         credentialCount = creds,
@@ -409,6 +421,7 @@ private fun readSnapshot(
         // ⑥ 账本（544 第二段）：账本 → 四字段行（判据层）＋ 收起态三个数。本屏不筛、不拼。
         ledgerRows = LedgerBoardRules.rows(ledgerItems, resolveJump),
         ledgerCounts = LedgerRules.counts(ledgerItems),
+        calibration = calibration,
         ready = true,
     )
 }

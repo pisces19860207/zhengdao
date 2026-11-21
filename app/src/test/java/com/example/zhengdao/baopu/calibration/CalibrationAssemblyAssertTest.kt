@@ -88,6 +88,17 @@ class CalibrationAssemblyAssertTest {
     }
 
     @Test
+    fun `追加三_治理中心只读看本场注入了什么`() {
+        val screen = stripComments(source("app/src/main/java/com/example/zhengdao/ui/baopu/GovernanceCenterScreen.kt"))
+        val block = stripComments(source("app/src/main/java/com/example/zhengdao/ui/baopu/GovernanceCenterCalibration.kt"))
+        assertTrue("那一行必须取自治理层快照，不在界面里另拼一遍", screen.contains("CalibrationGovernance.snapshot()"))
+        assertTrue("屏里必须挂上这块（只读、屏内、无抽屉入口）", screen.contains("CalibrationSection(summary = snapshot.calibration)"))
+        listOf("Switch(", "Checkbox(", "onClick", "halt(", "save(", "CalibrationWiring.enabled").forEach { tok ->
+            assertFalse("只读块里出现写口/开关记号 $tok 即红", block.contains(tok))
+        }
+    }
+
+    @Test
     fun `追加三_应急关闭要角色加确认`() {
         val code = codeOfOwn()
         assertTrue("关闭入口必须验角色", code.contains("who == WHO"))
