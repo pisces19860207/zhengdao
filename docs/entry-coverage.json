@@ -445,6 +445,294 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/cavity/CavityMap.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 33,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝七腔隙的静态几何表（代理体与相邻名单的唯一真源）。",
+    "package": "com.example.zhengdao.baopu.state.cavity",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "CavityMap",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt",
+      "line": 163
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 27
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 37
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 49
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 60
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 61
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 62
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 63
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 64
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 76
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 100
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 101
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 111
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 123
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 132
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 132
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 137
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt",
+      "line": 148
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/cavity/GravityContact.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 33,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝重力触地判定（把接触法向与地面法向对齐后出触地读数）。",
+    "package": "com.example.zhengdao.baopu.state.cavity",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "GravityContact",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 19
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 106
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 120
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 126
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 136
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 138
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 143
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 152
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 160
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 161
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt",
+      "line": 162
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxyLegality.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 43,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝限位/可达/自碰撞/触地四项合法性读数（NOT_PROVEN 不算红也不算绿）。",
+    "package": "com.example.zhengdao.baopu.state.cavity",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ProxyLegality",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 39
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 56
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 57
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 78
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 151
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 197
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 204
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 221
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 222
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxySimplify.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 19,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝代理体简化（保体积/保外接的降面数路径）。",
+    "package": "com.example.zhengdao.baopu.state.cavity",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ProxySimplify",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt",
+      "line": 49
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt",
+      "line": 104
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 39
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 40
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 41
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 42
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 238
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 259
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/OrganProxyTest.kt",
+      "line": 268
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 194
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
+      "line": 219
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolver.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -562,124 +850,6 @@
      }
     ],
     "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/PoseValidity.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 53,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：姿态合法性判定（关节限位＋可达三态的综合结论），660 姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
-    "package": "com.example.zhengdao.baopu.state.geometry",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "PoseValidity",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
-      "line": 101
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
-      "line": 102
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 20
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 27
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 38
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 48
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 58
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 66
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 74
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 80
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 88
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 99
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 111
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 117
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 117
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 122
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 135
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/PoseValidityTest.kt",
-      "line": 143
-     }
-    ],
-    "verdict": "wired(sole-impl)",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
-    "file_mates_wired": true,
-    "kind": "class",
-    "line": 26,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：凸包支撑映射（GJK/EPA 的形状基础），660 形体与两体接触都用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
-    "package": "com.example.zhengdao.baopu.state.geometry",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "ConvexHull",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 63
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GjkTest.kt",
-      "line": 64
-     }
-    ],
-    "verdict": "wired(sole-impl)",
     "wrapper_scan": []
    },
    {
@@ -909,11 +1079,11 @@
  },
  "summary": {
   "A": 3,
-  "B": 14,
+  "B": 16,
   "C": 4,
   "gates_with_write_path": 4,
-  "not_wired": 9,
-  "production_top_level_public": 712,
-  "wired": 695
+  "not_wired": 13,
+  "production_top_level_public": 736,
+  "wired": 717
  }
 }

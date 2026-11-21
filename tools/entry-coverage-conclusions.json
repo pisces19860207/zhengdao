@@ -39,38 +39,6 @@
       "verdict": "not_urgent",
       "note": "理由：本单是**规则库＋纯函数扫描器**（十条规则子句级扫描、只报不改写、宾转主 suggest 不拦），生产侧还没有调用点——它要做的事是「写的时候给提示」，那需要一个提示入口（下一批）。先行落库是为了让 660 与写作侧共用同一份规则，避免各自写一套；判据已由 29 例夹具＋2 例源码断言钉住。"
     },
-    "PoseValidity": {
-      "verdict": "wired(sole-impl)",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：姿态合法性判定（关节限位＋可达三态的综合结论），660 姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 670 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 ｜**改指（2026-11-18）**：原定 670，670 已合入 `da1a7fb09` 但几何包外引用 0 处 ⇒ 消费方改指 660。",
-      "soleImpl": {
-        "uniqueImpl": {
-          "symbol": "PoseValidity",
-          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/PoseValidity.kt",
-          "expectedDecls": 1
-        },
-        "pendingConsumer": "660",
-        "dueWhen": {
-          "ticket": "660",
-          "mergedSha": ""
-        }
-      }
-    },
-    "ConvexHull": {
-      "verdict": "wired(sole-impl)",
-      "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：凸包支撑映射（GJK/EPA 的形状基础），660 形体与两体接触都用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
-      "soleImpl": {
-        "uniqueImpl": {
-          "symbol": "ConvexHull",
-          "declFile": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/Shapes.kt",
-          "expectedDecls": 1
-        },
-        "pendingConsumer": "660",
-        "dueWhen": {
-          "ticket": "660",
-          "mergedSha": ""
-        }
-      }
-    },
     "TwoBodyCollision": {
       "verdict": "wired(sole-impl)",
       "note": "谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：两体解析碰撞（动量/能量守恒 ±5%），660 双人互动姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】",
@@ -106,6 +74,22 @@
     "VariantSampler": {
       "verdict": "wired",
       "note": "谁接：**后续装配单**（723 派工单边界明写「零装配」：BodyState 只加可空字段 `variants`，不碰状态机/App/几何）。本件是确定性加权采样器（自实现 seed→java.util.Random，同参逐字节一致），纯函数、无 IO/无时钟；当前只有 VariantSpectrumTest 在调。装配单落地时应由「谁产出 BodyState」那一层调用并把结果填进 `BodyState.variants`。"
+    },
+    "CavityMap": {
+      "verdict": "wired",
+      "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝七腔隙的静态几何表（代理体与相邻名单的唯一真源）。"
+    },
+    "GravityContact": {
+      "verdict": "wired",
+      "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝重力触地判定（把接触法向与地面法向对齐后出触地读数）。"
+    },
+    "ProxyLegality": {
+      "verdict": "wired",
+      "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝限位/可达/自碰撞/触地四项合法性读数（NOT_PROVEN 不算红也不算绿）。"
+    },
+    "ProxySimplify": {
+      "verdict": "wired",
+      "note": "谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝代理体简化（保体积/保外接的降面数路径）。"
     }
   },
   "C": {
