@@ -158,7 +158,12 @@ internal object LibraryPaths {
         stack.addLast(dir)
         while (stack.isNotEmpty() && collected.size < HARD_CAP) {
             val cur = stack.removeLast()
-            val children = cur.listFiles() ?: continue
+            // 772（E-197）：这里就是 716 崩溃链 KbIndexer.build 的扫描源——列举换单条目容错
+            // （765 的 ScanTolerance.listTolerant）：坏名/属性失败条目跳过并记账
+            // （RunLog [scan-skip]），整批照走；目录不存在＝与 listFiles 的 null 同语义
+            // （静默空表不记行），目录级打不开记一行后同样跳过该层。
+            // 五项语义原样：HARD_CAP/软链不跟随/垃圾名过滤/PathGuard/显式排序全在下面未动。
+            val children = ScanTolerance.listTolerant(cur).entries
             for (f in children) {
                 if (isSymlink(f)) continue
                 when {
@@ -203,12 +208,14 @@ internal object LibraryPaths {
      * 顶层条目数（文件＋目录，**不递归**；跳软链）——扫描门槛用，成本 O(一层)。
      *
      * 为什么需要它：导入扫描挂在「进页面＋每轮 Settled」上（见 LibraryImport.scan 的调用方），
-     * 料少时无所谓，料多时每轮都在整树爬。先花一次 listFiles 数顶层，超过 [MAX_SCAN]
+     * 料少时无所谓，料多时每轮都在整树爬。先花一次列举数顶层，超过 [MAX_SCAN]
      * 就**不再全量扫**，只列顶层并明说「太多了，先收窄到某个子目录」。
      */
     fun countTopLevel(dir: File): Int {
         if (!dir.isDirectory) return 0
-        val children = dir.listFiles() ?: return 0
+        // 772（E-197）：与 scanTree 同尺——坏名条目跳过并记账（不计入、不中断），
+        // 目录不存在＝与 listFiles 的 null 同语义返回 0，目录级打不开记一行后也按 0。
+        val children = ScanTolerance.listTolerant(dir).entries
         return children.count { !isSymlink(it) }
     }
 

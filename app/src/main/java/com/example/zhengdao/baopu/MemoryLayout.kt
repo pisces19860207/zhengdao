@@ -3,6 +3,7 @@
 package com.example.zhengdao.baopu
 
 import com.example.zhengdao.core.PathGuard
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.baopu.library.FaceIndex
 import com.example.zhengdao.baopu.library.LibraryPaths
@@ -254,12 +255,17 @@ internal object MemoryLayout {
      * 把 [src] 目录树的**内容**（递归）搬进 [dst]；冲突跳过并记账，绝不覆盖。
      * 搬空后 [src] 自己如果是空目录也删掉（只删空的——用户「只删空目录」口径），
      * 这样祖父目录（`资料库/`）才可能被 [removeIfEmpty] 收掉。
+     *
+     * 772（E-197 ⑤）：[src] 是旧布局的**用户内容**（`资料库/整理·投递·原始·改版·.baopu-bak`），
+     * 不是 App 自建名——列举换 [ScanTolerance.listTolerant]：坏名/属性失败条目跳过
+     * （RunLog [scan-skip] 记账）、原地不动、其余照搬不中断；目录不存在＝listFiles 的
+     * null 同语义（0 件，静默），目录级打不开记一行后同样按 0 件收场。
      * @return 搬移成功的文件数
      */
     private fun moveTreeInto(src: File, dst: File, skipped: MutableList<String>): Int {
         if (!src.isDirectory) return 0
         var moved = 0
-        val children = src.listFiles() ?: return 0
+        val children = ScanTolerance.listTolerant(src).entries
         for (f in children) {
             val target = File(dst, f.name)
             when {
@@ -283,9 +289,10 @@ internal object MemoryLayout {
                 }
             }
         }
-        // 搬空了才删自己（还有冲突跳过/失败留下的文件 ⇒ 非空，留着下遍接着搬）
-        val left = src.listFiles()
-        if (left != null && left.isEmpty()) runCatching { src.delete() }
+        // 搬空了才删自己（还有冲突跳过/失败/坏名留下的文件 ⇒ 非空，留着下遍接着搬）。
+        // 目录级打不开（dirError 非 null）＝「证明不了空」⇒ 不删——沿用 listFiles null 的既有语义。
+        val left = ScanTolerance.listTolerant(src)
+        if (left.dirError == null && left.entries.isEmpty()) runCatching { src.delete() }
         return moved
     }
 
