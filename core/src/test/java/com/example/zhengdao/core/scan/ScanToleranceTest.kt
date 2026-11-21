@@ -97,9 +97,17 @@ class ScanToleranceTest {
             assertTrue("账行要带 [scan-skip] 前缀：${row.ledgerLine()}", row.ledgerLine().startsWith("[scan-skip] "))
             assertTrue("账行不允许含替换符原字", !row.ledgerLine().contains('\uFFFD'))
         }
-        // 判据⑤：顺序与 java.io listFiles 同源一致（同 readdir 序）
+        // 判据⑤：与 java.io listFiles **同一批名字**（集合相等）。
+        // 这里**不**断言交错顺序：Listing 把「正常」与「跳过」分成两个表后，交错序已经
+        // 不可还原；且 NIO 流与 JNI 列举各拿一次 readdir，ext4 的 htree 序不保证两次一致
+        // （2026-11-21 emit #249 就是这条误报：Windows 上碰巧一致，Linux 上不一致）。
+        // 「顺序＝流序」由实现逐条透传保证；测试能钉的是「名字集合一致＋连跑稳定」。
         val viaListFiles = dir.listFiles()!!.map { it.name }
-        assertEquals(viaListFiles, listing.entries.map { it.name } + listing.skips.map { it.name })
+        assertEquals(
+            "两边是同一批名字（集合相等）",
+            viaListFiles.sorted(),
+            (listing.entries.map { it.name } + listing.skips.map { it.name }).sorted(),
+        )
         // 连跑两次顺序稳定
         val again = ScanTolerance.listTolerant(dir, skipSink = {})
         assertEquals(listing.entries.map { it.name }, again.entries.map { it.name })
