@@ -30,6 +30,7 @@
 // `-2`／`-3` 撞名后缀的规则整套抄过来——那才是把数据层的事搬到界面重算。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.PathGuard
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -167,7 +168,9 @@ internal fun trashListing(
     wantBytes: Boolean = false,
 ): TrashListing {
     if (!dir.isDirectory) return TrashListing(emptyList(), 0)
-    val kids = runCatching { dir.listFiles() }.getOrNull() ?: return TrashListing(emptyList(), 0)
+    // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）；
+    // 目录级打不开沿用原「空回收站」语义。
+    val kids = ScanTolerance.listTolerant(dir).entries
     val files = kids
         .filter { it.isFile && !BaopuGuardCore.isSymlink(it) }
         .sortedBy { it.name }

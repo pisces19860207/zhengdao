@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.TeachReplayStore
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupTable
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -49,11 +50,11 @@ internal object FunnelRead {
      */
     fun scriptsOf(workspaceRoot: File): List<FunnelScript> {
         val dir = SkillRules.projectSkillDir(workspaceRoot)
-        val names = dir.listFiles()
-            ?.filter { it.isDirectory && File(it, TeachReplayStore.REPLAY_FILE).isFile }
-            ?.map { it.name }
-            ?.sorted()
-            ?: return emptyList()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val names = ScanTolerance.listTolerant(dir).entries
+            .filter { it.isDirectory && File(it, TeachReplayStore.REPLAY_FILE).isFile }
+            .map { it.name }
+            .sorted()
         return names.mapNotNull { TeachReplayStore.load(workspaceRoot, it) }.map { skill ->
             FunnelScript(
                 name = skill.name,

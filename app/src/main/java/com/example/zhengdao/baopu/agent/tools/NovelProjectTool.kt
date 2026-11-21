@@ -12,6 +12,7 @@
 //    整本书从不进上下文；上下文预算归 ContextAssembler/压缩管线管。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.PathGuard
 import org.json.JSONArray
 import org.json.JSONObject
@@ -135,10 +136,10 @@ internal object NovelProjectStore {
     fun listProjects(root: File): List<File> {
         val base = File(root, NOVEL_ROOT_DIR)
         if (!base.isDirectory) return emptyList()
-        return base.listFiles()
-            ?.filter { it.isDirectory && File(it, NOVEL_META_FILE).isFile }
-            ?.sortedBy { it.name }
-            ?: emptyList()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        return ScanTolerance.listTolerant(base).entries
+            .filter { it.isDirectory && File(it, NOVEL_META_FILE).isFile }
+            .sortedBy { it.name }
     }
 
     /**
@@ -183,9 +184,10 @@ internal object NovelProjectStore {
     fun chapters(dir: File): List<NovelChapter> {
         val body = File(dir, NOVEL_BODY_DIR)
         if (!body.isDirectory) return emptyList()
-        return body.listFiles()
-            ?.filter { it.isFile && !it.name.startsWith(".") && !it.name.endsWith(".tmp") }
-            ?.sortedBy { it.name }
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        return ScanTolerance.listTolerant(body).entries
+            .filter { it.isFile && !it.name.startsWith(".") && !it.name.endsWith(".tmp") }
+            .sortedBy { it.name }
             ?.map { NovelChapter(it.name, wordCount(it.readText()), it.readLines().size) }
             ?: emptyList()
     }

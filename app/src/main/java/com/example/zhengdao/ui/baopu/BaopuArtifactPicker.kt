@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.zhengdao.R
 import com.example.zhengdao.baopu.ArtifactDeleteRules
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.RunLog
 import com.example.zhengdao.keepalive.CoroutineCrashHandler
 import com.example.zhengdao.ui.FilterChip2
@@ -106,10 +107,10 @@ internal fun ArtifactPickerDialog(
     val scan by produceState(initialValue = PickerScan(), key1 = ledger, key2 = tick) {
         value = withContext(Dispatchers.IO) {
             val text = runCatching { if (ledger.isFile) ledger.readText() else null }.getOrNull()
-            val files = runCatching { productDir.listFiles() }.getOrNull()
-                ?.filter { it.isFile && !com.example.zhengdao.baopu.BaopuGuardCore.isSymlink(it) }
-                ?.associate { it.name to runCatching { it.length() }.getOrDefault(0L) }
-                ?: emptyMap()
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+            val files = ScanTolerance.listTolerant(productDir).entries
+                .filter { it.isFile && !com.example.zhengdao.baopu.BaopuGuardCore.isSymlink(it) }
+                .associate { it.name to runCatching { it.length() }.getOrDefault(0L) }
             PickerScan(ArtifactDeleteRules.pickerRows(text, files, includePublishedOnly = false))
         }
     }

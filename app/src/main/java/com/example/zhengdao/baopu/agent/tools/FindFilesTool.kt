@@ -13,6 +13,7 @@ import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.fileAccessCheck
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.core.scan.ScanTolerance
 import java.io.File
 
 /**
@@ -208,7 +209,11 @@ internal object FindFilesTool {
         stack.addLast(ScanItem(startDir, 1))
         while (stack.isNotEmpty()) {
             val (current, level) = stack.removeLast()
-            val children = runCatching { current.listFiles() }.getOrNull() ?: continue
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账（RunLog [scan-skip]），
+            // 整批照走；目录级打不开沿用原 continue 语义（G-716-4）。
+            val listing = ScanTolerance.listTolerant(current)
+            if (listing.dirError != null) continue
+            val children = listing.entries
             // 同层「目录在前、名称序」：输出稳定，模型两次调用看到同样的顺序
             children.sortedWith(compareBy({ !it.isDirectory }, { it.name })).forEach { child ->
                 scanChild(st, child, level, depthCap, stack)

@@ -64,6 +64,7 @@ import com.example.zhengdao.baopu.SkillWriteResult
 import com.example.zhengdao.baopu.TeachParam
 import com.example.zhengdao.baopu.TeachParamRun
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.Dispatchers
@@ -142,7 +143,8 @@ internal fun skillLibraryRows(
         SkillScope.PROJECT to SkillRules.projectSkillDir(projectRoot),
         SkillScope.GLOBAL to SkillRules.globalSkillDir(globalRoot),
     ).forEach { (scope, dir) ->
-        val subs = dir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }.orEmpty()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val subs = ScanTolerance.listTolerant(dir).entries.filter { it.isDirectory }.sortedBy { it.name }
         subs.forEach { sub ->
             val bodyFile = File(sub, SkillRules.SKILL_FILE)
             if (bodyFile.isFile) {

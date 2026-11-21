@@ -130,6 +130,7 @@ import com.example.zhengdao.baopu.shadowSummaryLine
 import com.example.zhengdao.baopu.shadowVerdictOf
 import com.example.zhengdao.baopu.tallyShadow
 import com.example.zhengdao.baopu.toEffectSnapshot
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.RunLog
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -4497,7 +4498,8 @@ internal class BaopuChatController(context: Context) {
         val kbRoot = java.io.File(workspaceRoot, "知识库")
         listOf("整理", "原始").forEach { sub ->
             val dir = java.io.File(kbRoot, sub)
-            (dir.listFiles()?.filter { it.isFile && it.name.endsWith(".md") } ?: emptyList())
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+            (ScanTolerance.listTolerant(dir).entries.filter { it.isFile && it.name.endsWith(".md") })
                 .sortedBy { it.name }
                 .forEach { f -> docs += CitationSourceDoc("知识库/$sub/${f.name}", f) }
         }
@@ -4535,7 +4537,8 @@ internal class BaopuChatController(context: Context) {
         val root = BaopuLongformStore.vaultRoot(appCtx)
         val dir = BaopuLongformStore.productDirOf(root)
         val ledger = BaopuLongformPolicy.pickLedger(root, dir)
-        val names = (dir.listFiles()?.filter { it.isFile }?.map { it.name } ?: emptyList())
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val names = (ScanTolerance.listTolerant(dir).entries.filter { it.isFile }.map { it.name })
             .filter { it != "台账.md" && it != BaopuLongformPolicy.EXTERNAL_LEDGER && !it.endsWith(".bak") && !it.endsWith(".tmp") }
         val refs = TopicSuggest.publishedFromFiles(names) +
             TopicSuggest.publishedFromLedger(

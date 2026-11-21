@@ -52,6 +52,7 @@ import com.example.zhengdao.baopu.SkillRules
 import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.SkillWriteResult
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import com.example.zhengdao.ui.theme.zhengdaoErrorText
@@ -430,7 +431,8 @@ internal fun draftSkillRows(projectRoot: File, globalRoot: File): List<SkillDraf
         SkillScope.PROJECT to SkillRules.projectSkillDir(projectRoot),
         SkillScope.GLOBAL to SkillRules.globalSkillDir(globalRoot),
     ).forEach { (scope, dir) ->
-        val subDirs = dir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }.orEmpty()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val subDirs = ScanTolerance.listTolerant(dir).entries.filter { it.isDirectory }.sortedBy { it.name }
         subDirs.forEach { sub ->
             val file = File(sub, SkillRules.SKILL_FILE)
             if (!file.isFile) return@forEach
@@ -705,12 +707,14 @@ internal fun archivedSkillRows(projectRoot: File, globalRoot: File): List<Archiv
         SkillScope.PROJECT to SkillRules.projectSkillDir(projectRoot),
         SkillScope.GLOBAL to SkillRules.globalSkillDir(globalRoot),
     ).forEach { (scope, dir) ->
-        val skillDirs = dir.listFiles { f -> f.isDirectory && !BaopuGuardCore.isSymlink(f) }
-            .orEmpty()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        // lambda 参数保持原名 f（U3 门禁的软链锚逐字要 BaopuGuardCore.isSymlink(f)）。
+        val skillDirs = ScanTolerance.listTolerant(dir).entries
+            .filter { f -> f.isDirectory && !BaopuGuardCore.isSymlink(f) }
             .sortedBy { it.name }
         skillDirs.forEach { sub ->
-            val gone = sub.listFiles { f -> f.isFile && f.name.startsWith(ARCHIVED_PREFIX) }
-                .orEmpty()
+            val gone = ScanTolerance.listTolerant(sub).entries
+                .filter { f -> f.isFile && f.name.startsWith(ARCHIVED_PREFIX) }
                 .sortedByDescending { it.name }
             gone.forEach { f ->
                 out += ArchivedSkillRow(

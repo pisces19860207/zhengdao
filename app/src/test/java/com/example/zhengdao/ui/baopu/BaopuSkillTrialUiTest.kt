@@ -142,7 +142,8 @@ class BaopuSkillTrialUiTest {
     @Test
     fun `T1_列表真从目录扫_不是写死的名字`() {
         val src = card()
-        assertTrue("判别器正例：草稿区靠列目录得出", src.contains("dir.listFiles()"))
+        // 765：列举原语换成 ScanTolerance（单条目容错），判别器跟着改——断言本体不变
+        assertTrue("判别器正例：草稿区靠列目录得出", src.contains("ScanTolerance.listTolerant(dir)"))
         assertEquals("落点仍用 SkillRules 那两个唯一真源（442批：计数锚，少一处必须红）", 3, Regex("SkillRules\\.projectSkillDir\\(projectRoot\\)").findAll(src).count())
         assertEquals("全局层同样（442批：计数锚）", 3, Regex("SkillRules\\.globalSkillDir\\(globalRoot\\)").findAll(src).count())
         assertEquals("只认 SKILL.md 这个文件名（442批：计数锚）", 2, Regex("File\\(sub, SkillRules\\.SKILL_FILE\\)").findAll(src).count())

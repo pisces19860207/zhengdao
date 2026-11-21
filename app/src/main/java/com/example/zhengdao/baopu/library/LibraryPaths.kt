@@ -4,6 +4,7 @@
 // 路径边界判定复用 `rootfs/PathGuard.kt`（组件级比较，防同前缀兄弟目录）。
 package com.example.zhengdao.baopu.library
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.PathGuard
 import android.content.Context
 import com.example.zhengdao.baopu.BaopuWorkspace
@@ -218,7 +219,9 @@ internal object LibraryPaths {
     fun listTopLevelFiles(dir: File): List<ScannedFile> {
         if (!dir.isDirectory) return emptyList()
         val out = ArrayList<ScannedFile>()
-        for (f in dir.listFiles() ?: return emptyList()) {
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账（RunLog [scan-skip]），
+        // 整批照走；目录级打不开沿用原「空表」语义（G-716-4）。
+        for (f in ScanTolerance.listTolerant(dir).entries) {
             if (isSymlink(f) || !f.isFile) continue
             if (isJunkName(f.name)) continue
             if (!PathGuard.isInside(dir, f)) continue

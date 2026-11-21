@@ -1,6 +1,7 @@
 // 独立开发声明：本文件为本项目原创。
 package com.example.zhengdao.ui.baopu
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import android.content.Context
 import com.example.zhengdao.baopu.BaopuRuntime
 import java.io.File
@@ -80,7 +81,8 @@ internal object BaopuLongformStore {
             .getOrElse { "建目录失败：${it.message}" }
         if (dirMsg != null) return SaveOut(false, "落盘失败：$dirMsg", null)
 
-        val existing = dir.list()?.toSet() ?: emptySet()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val existing = ScanTolerance.listTolerant(dir).entries.map { it.name }.toSet()
         val seq = BaopuLongformPolicy.nextSeq(existing, y, m, d, track)
         val base = BaopuLongformPolicy.trackFileName(y, m, d, track, seq, BaopuLongformPolicy.cardTitle(markdown), ext)
         val name = BaopuLongformPolicy.nextFileName(existing, base)

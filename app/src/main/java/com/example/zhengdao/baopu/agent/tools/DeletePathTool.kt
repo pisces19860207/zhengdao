@@ -20,6 +20,7 @@
 // 5. 权限 CONFIRM——每次删都要用户看一眼「删哪个、进回收站还是真删」。
 package com.example.zhengdao.baopu.agent
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.PathGuard
 import com.example.zhengdao.baopu.MediaDelete
 import com.example.zhengdao.baopu.MediaOwnership
@@ -294,7 +295,8 @@ internal object DeletePathTool {
     fun emptyTrash(root: File): ToolOutcome {
         val trashDir = File(root, TRASH_DIR)
         if (!trashDir.isDirectory) return ToolOutcome.Ok("回收站是空的（还没有东西进来），不用清。")
-        val files = trashDir.listFiles()?.filter { it.isFile }.orEmpty()
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val files = ScanTolerance.listTolerant(trashDir).entries.filter { it.isFile }
         if (files.isEmpty()) return ToolOutcome.Ok("回收站里没有文件（只有子目录或本来就是空的）。")
         // 287 入账：清空回收站没有 path 参数，管线那一层记不到它 ⇒ 在动作发生的地方补一行
         // （「全盘操作入账」不允许有一个动作是黑洞；真没东西可清就不记，不编一笔）。

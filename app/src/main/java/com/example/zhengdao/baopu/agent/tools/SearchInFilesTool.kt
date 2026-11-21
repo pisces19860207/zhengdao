@@ -12,6 +12,7 @@ package com.example.zhengdao.baopu.agent
 
 import com.example.zhengdao.baopu.FilePaths
 import com.example.zhengdao.baopu.fileAccessCheck
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.baopu.kernel.BaopuKernel
 import java.io.File
 import java.nio.file.Files
@@ -180,12 +181,14 @@ internal object SearchInFilesTool {
         stack.addLast(Item(start, 1))
         while (stack.isNotEmpty() && st.hitCount < MAX_HITS) {
             val (current, level) = stack.removeLast()
-            val children = runCatching { current.listFiles() }.getOrNull()
-            if (children == null) {
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账（RunLog [scan-skip]），
+            // 整批照走；目录级打不开沿用既有 skippedError 口径（G-716-4）。
+            val listing = ScanTolerance.listTolerant(current)
+            if (listing.dirError != null) {
                 st.skippedError++
                 continue
             }
-            val sorted = children.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+            val sorted = listing.entries.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
             for (f in sorted) {
                 if (st.hitCount >= MAX_HITS) {
                     st.truncated = true

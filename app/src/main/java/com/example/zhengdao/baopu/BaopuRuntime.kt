@@ -5,6 +5,7 @@
 // 判据全在 agent/ 与 baopu/ 的纯函数层。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.PathGuard
 import androidx.core.net.toUri
 
@@ -1881,7 +1882,8 @@ private fun askTierStore(ctx: Context, tier: AskTier) {
  * 返回的文本就是"已查"的答案——模型拿它自己定位，不再弹卡。
  */
 private fun selfCheckListing(root: File): String? = runCatching {
-    val entries = root.listFiles()?.take(30).orEmpty()
+    // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+    val entries = ScanTolerance.listTolerant(root).entries.take(30)
     if (entries.isEmpty()) return null
     val names = entries.sortedBy { it.name.lowercase() }
         .joinToString("、") { if (it.isDirectory) "${it.name}/" else it.name }

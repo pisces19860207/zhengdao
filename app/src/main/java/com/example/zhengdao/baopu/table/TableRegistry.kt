@@ -20,6 +20,7 @@
 // 而且用户能自己翻、自己删（删了下次重建，不丢东西）。
 package com.example.zhengdao.baopu.table
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.baopu.agent.SheetCsv
 import com.example.zhengdao.baopu.agent.SheetGrid
 import com.example.zhengdao.baopu.agent.SheetLimits
@@ -282,7 +283,8 @@ class TableRegistry(
 
     private fun walk(dir: File, root: File, label: String, depth: Int, sink: (File) -> Unit) {
         if (depth > MAX_DEPTH) return
-        val listed = dir.listFiles() ?: return
+        // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+        val listed = ScanTolerance.listTolerant(dir).entries
         for (f in listed.sortedBy { it.name }) {
             if (f.isDirectory) {
                 if (f.name in SKIP_DIRS) continue

@@ -7,6 +7,7 @@
 //     （原始/ 只读、只增不减、同名不覆盖、软链不跟随不复制）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.PathGuard
 import java.io.File
 import java.nio.file.Files
@@ -80,7 +81,8 @@ internal object BaopuGuardCore {
         stack.addLast(rawDir)
         while (stack.isNotEmpty()) {
             val dir = stack.removeLast()
-            for (f in dir.listFiles() ?: continue) {
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+            for (f in ScanTolerance.listTolerant(dir).entries) {
                 if (isSymlink(f)) continue
                 if (f.isDirectory) {
                     sawDir = true

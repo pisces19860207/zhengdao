@@ -5,6 +5,7 @@
 // reindex 能从 抱朴记忆/ 的 .md/.json 重建）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.RunLog
 import java.io.File
 
@@ -287,7 +288,9 @@ internal class MemoryStore(
         val entries = mutableListOf<MemoryEntry>()
         val rows = mutableListOf<ScanSkipRow>()
         for (dir in listOf(globalDir(), projectDir())) {
-            val files = runCatching { dir.listFiles() }.getOrNull() ?: continue
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账（RunLog [scan-skip]），
+            // 整批照走；目录级打不开沿用原 continue 语义（G-716-4）。条目内容判定仍走 494 的 MemoryScanRules。
+            val files = ScanTolerance.listTolerant(dir).entries
             for (f in files) {
                 if (!f.isFile || f.extension != "md") continue
                 when (val verdict = MemoryScanRules.classify(f, reader)) {

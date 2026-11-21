@@ -10,6 +10,7 @@ import android.content.Context
 import androidx.core.content.edit
 import com.example.zhengdao.core.AppPrefs
 import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.scan.ScanTolerance
 import com.example.zhengdao.core.TimeFormats
 import com.example.zhengdao.core.ZhengdaoDirs
 import java.io.File
@@ -190,7 +191,9 @@ object KnowledgeBase {
         stack.addLast(base)
         while (stack.isNotEmpty() && n < MAX_SCAN) {
             val dir = stack.removeLast()
-            for (f in dir.listFiles() ?: continue) {
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账（RunLog [scan-skip]），
+            // 整批照走；目录级打不开沿用原 continue 语义（G-716-4）。
+            for (f in ScanTolerance.listTolerant(dir).entries) {
                 if (isSymlink(f)) continue
                 if (f.isDirectory) stack.addLast(f) else if (f.isFile) n++
             }
@@ -486,7 +489,8 @@ object KnowledgeBase {
         var truncated = false
         while (stack.isNotEmpty() && out.size < MAX_SCAN) {
             val dir = stack.removeLast()
-            val children = dir.listFiles() ?: continue
+            // 765：列举换单条目容错——坏名/属性失败条目跳过并记账，整批照走（G-716-4）。
+            val children = ScanTolerance.listTolerant(dir).entries
             for (f in children) {
                 if (isSymlink(f)) continue
                 when {
