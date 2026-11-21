@@ -519,6 +519,10 @@ internal object BaopuRuntime {
             com.example.zhengdao.baopu.pack.ContentPackGate.on(appCtx)
         }
         com.example.zhengdao.baopu.pack.PackTools.ledger = packLedger(appCtx)
+        // 七百七十四批：校准装配（660 身体设定 → 722 三行 → 738 注入）。738 只留了 provider 缝，
+        // 真源一直在生产端没人接 ⇒ 三行恒空。这里一次性把缝接满：工作区 docs/facts 是口径表根，
+        // 设定文件缺 ⇒ 出「未设定」而不是默认身材；应急关闭只认治理级确认（不做日常开关）。
+        com.example.zhengdao.baopu.calibration.CalibrationAssembly.install(appCtx)
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }

@@ -39,6 +39,17 @@ internal object CalibrationWiring {
     var variantProvider: (() -> String)? = null
 
     /**
+     * 774 装配缝：额外候选条目（人物自身的 660 读数，含触发式敏感层）。
+     * 拿到的是本轮命中的区名——空表＝未命中，装配层一条都不给；未装配（null）⇒ 与没有 774 一致。
+     */
+    @Volatile
+    var entryProvider: ((List<String>) -> List<SourceEntry>)? = null
+
+    /** 774 装配缝：注入回执观察者。收到的是最终 notes，脱敏由观察者自己做；空表不调用。 */
+    @Volatile
+    var notesObserver: ((List<String>) -> Unit)? = null
+
+    /**
      * 本轮注入文本。纯决策后短路：未命中／开关关／未装配三行 ⇒ 空表，零索引读取。
      * 返回值直接进 ContextAssembler.extraNotes（不进任何闸、不改判定）。
      */
@@ -52,16 +63,20 @@ internal object CalibrationWiring {
         if (!decision.calibrate) return emptyList()
         val readback = readbackProvider?.invoke() ?: return emptyList()
         val entries = when (decision.level) {
-            CalibrationLevel.L1, CalibrationLevel.L2 -> loadEntries()
+            CalibrationLevel.L1, CalibrationLevel.L2 -> loadEntries(decision.matchedZones)
             else -> emptyList()
         }
         val variants = if (decision.collapse) loadVariants() else emptyList()
-        return CalibrationInject.build(decision, readback, entries, variants).notes
+        val notes = CalibrationInject.build(decision, readback, entries, variants).notes
+        if (notes.isNotEmpty()) notesObserver?.invoke(notes)
+        return notes
     }
 
     /** 711 + 719 取数；两路 provider 各自独立，缺一路不影响另一路（缺源条目由 build 丢）。 */
-    private fun loadEntries(): List<SourceEntry> {
+    private fun loadEntries(matchedZones: List<String>): List<SourceEntry> {
         val out = ArrayList<SourceEntry>()
+        // 774：人物自身的读数排在前面——命中区名时先给"这个人"的规范值，再补索引事实。
+        entryProvider?.invoke(matchedZones)?.let { out += it }
         observableProvider?.invoke()?.let { out += CalibrationSource.fromObservableIndex(it) }
         factsProvider?.invoke()?.let { out += CalibrationSource.fromFactSlices(it) }
         return out
@@ -79,5 +94,7 @@ internal object CalibrationWiring {
         observableProvider = null
         factsProvider = null
         variantProvider = null
+        entryProvider = null
+        notesObserver = null
     }
 }
