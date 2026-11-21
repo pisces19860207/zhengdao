@@ -108,6 +108,12 @@ internal val READING_SPEC: Map<Loop, List<ReadingField>> = mapOf(
     Loop.PLAN to listOf(
         ReadingField.Num("stepsLeft", 0, Int.MAX_VALUE.toLong()),
         ReadingField.NumOrNull("stuckAt", 0, Int.MAX_VALUE.toLong()),
+        // 755 对齐（工单③「loop=plan 的 reading 带 stepRef，字段名一致」）：
+        // 最近一条失败/工具报错事件**当场**归因出的计划步号（1 起；三态里 attributed 的
+        // 那一个）。ambiguous（候选≥2）/unattributed（原因码 no-plan／step-not-recorded／
+        // tool-failed-early）判不出单一落点 ⇒ null——判不了就不猜；三态原文落在
+        // run_log.step_ref（失败行的证据 ref 指过去）。字段名与失败事件同叫 stepRef。
+        ReadingField.NumOrNull("stepRef", 1, Int.MAX_VALUE.toLong()),
         ReadingField.Text("reason", TEXT_MAX),
     ),
     Loop.SALIENCE to listOf(

@@ -91,7 +91,7 @@ class BaopuDbTest {
 
     @Test
     fun `v5 版本号与库路径纯函数`() {
-        assertEquals(23, BaopuDb.VERSION) // v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
+        assertEquals(24, BaopuDb.VERSION) // v24 = 755（run_log.step_ref 失败归因列）；v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 玄览页签快照；v18 = 157 补充 workspace_grant 会话级放行 ＋ workspace_audit 越界审计；v17 = 第一百四十七批 diary_index 情景记忆索引；v16 = 第一百二十七批 sub_task 多 Agent 审计；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列；v11 = 第五十七批 skill_event；v9 = 第三十八批 artifact
         val filesDir = java.io.File("/data/user/0/com.example.zhengdao/files")
         val db = BaopuDb.dbPathUnder(filesDir)
         assertEquals("baopu", db.parentFile?.name)
@@ -150,6 +150,8 @@ class BaopuDbTest {
             "ok INTEGER NOT NULL DEFAULT 1",
             "latency_ms INTEGER NOT NULL DEFAULT 0",
             "err TEXT NOT NULL DEFAULT ''",
+            // 755：失败归因列（可空——成功行与历史行没有归因，NULL＝不在机制覆盖内）
+            "step_ref TEXT",
             "created_at INTEGER NOT NULL",
         ).forEach { col -> assertTrue("run_log 缺列：$col", ddl.contains(col)) }
         assertTrue(BaopuSql.DDL.any { it.contains("idx_run_log_session ON run_log (session_id)") })
@@ -174,7 +176,7 @@ class BaopuDbTest {
 
     @Test
     fun `版本与库名`() {
-        assertEquals(23, BaopuDb.VERSION) // v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
+        assertEquals(24, BaopuDb.VERSION) // v24 = 755（run_log.step_ref 失败归因列）；v23 = 第五百三十一批（sub_agent_ledger ＋ sub_task.writes）；v19 = 第一百七十二批 L4 browser_tab 页签快照；v18 = 157 补充 workspace_grant/workspace_audit；v17 = 第一百四十七批 diary_index；v16 = 第一百二十七批 sub_task；v15 = 第一百一十七批 run_queue；v14 = 第八十九批（memory 质量四列）；v13 = 第八十七批 run_trace；v12 = 第八十五批效果四列
         assertEquals("baopu.db", BaopuDb.DB_NAME)
         assertEquals("baopu", BaopuDb.DIR_BAOPU)
     }
@@ -382,10 +384,11 @@ class BaopuDbTest {
             tool = "", ok = true, latencyMs = 10L, err = "", createdAt = 5L,
             cacheHitTokens = 640, cacheMissTokens = 360,
         )
-        assertEquals(15, withCache.args.size)
+        assertEquals(16, withCache.args.size) // 755：追加 step_ref（成功行绑 NULL）
         assertEquals("640", withCache.args[13])
         assertEquals("360", withCache.args[14])
-        assertTrue(withCache.sql.contains("cache_hit_tokens, cache_miss_tokens"))
+        assertNull(withCache.args[15]) // 成功行不归因（门只盖失败）
+        assertTrue(withCache.sql.contains("cache_hit_tokens, cache_miss_tokens, step_ref"))
 
         val noCache = BaopuSql.insertRunLog(
             sessionId = 1L, step = 1, state = "thinking", model = "m",
@@ -393,7 +396,7 @@ class BaopuDbTest {
             tool = "", ok = true, latencyMs = 10L, err = "", createdAt = 5L,
         )
         // 取不到 ⇒ SQL NULL（留空）——不是 "0"（0 = 确定没命中，与没测到是两件事）
-        assertEquals(15, noCache.args.size)
+        assertEquals(16, noCache.args.size)
         assertNull(noCache.args[13])
         assertNull(noCache.args[14])
     }
@@ -417,6 +420,71 @@ class BaopuDbTest {
         // 已有列（新库 / 重跑迁移）⇒ 一条不给（幂等）
         assertTrue(BaopuSql.runLogReasoningColumnsStmt(listOf("reasoning_tokens")).isEmpty())
         assertTrue(BaopuSql.runLogReasoningColumnsStmt(listOf("REASONING_TOKENS")).isEmpty()) // 大小写不敏感
+    }
+
+    // ── v24（755）：run_log 失败归因列 step_ref ＋ 写口机械闸 ───────────────
+
+    @Test
+    fun `v24迁移_run_log加step_ref列_缺列才给ALTER_幂等`() {
+        val none = BaopuSql.runLogStepRefColumnsStmt(emptyList())
+        assertEquals(1, none.size)
+        assertEquals("ALTER TABLE run_log ADD COLUMN step_ref TEXT", none[0].sql)
+        // 已有列（新库 / 重跑迁移）⇒ 一条不给（幂等；大小写不敏感同 v4 口径）
+        assertTrue(BaopuSql.runLogStepRefColumnsStmt(listOf("step_ref")).isEmpty())
+        assertTrue(BaopuSql.runLogStepRefColumnsStmt(listOf("STEP_REF")).isEmpty())
+    }
+
+    @Test
+    fun `755门_失败行缺stepRef裸null当场拒`() {
+        try {
+            BaopuSql.insertRunLog(
+                sessionId = 1L, step = 1, state = "Acting", model = "m",
+                tokensIn = 0, tokensOut = 0, tokensInEst = 0, tokensOutEst = 0,
+                tool = "read_file", ok = false, latencyMs = 0L, err = "boom", createdAt = 5L,
+            )
+            throw AssertionError("失败行裸 null step_ref 不该放行（判据：裸 null ⇒ 红）")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("裸 null"))
+        }
+    }
+
+    @Test
+    fun `755门_失败行的stepRef必须是三态闭集合法线`() {
+        // 乱串过不了（StepRef.of 拒判）——闸认形状，不认"给了就行"
+        listOf("step:3", "attributed:abc", "ambiguous:3", "unattributed:nope", "3")
+            .forEach { bad ->
+                try {
+                    BaopuSql.insertRunLog(
+                        sessionId = 1L, step = 1, state = "Acting", model = "m",
+                        tokensIn = 0, tokensOut = 0, tokensInEst = 0, tokensOutEst = 0,
+                        tool = "read_file", ok = false, latencyMs = 0L, err = "boom", createdAt = 5L,
+                        stepRef = bad,
+                    )
+                    throw AssertionError("非法线「$bad」不该放行")
+                } catch (expected: IllegalArgumentException) {
+                    assertTrue(expected.message!!.contains("合法三态线"))
+                }
+            }
+        // 三态各一条合法线都放行
+        listOf("attributed:3", "ambiguous:1,2", "unattributed:no-plan").forEach { good ->
+            val s = BaopuSql.insertRunLog(
+                sessionId = 1L, step = 1, state = "Acting", model = "m",
+                tokensIn = 0, tokensOut = 0, tokensInEst = 0, tokensOutEst = 0,
+                tool = "read_file", ok = false, latencyMs = 0L, err = "boom", createdAt = 5L,
+                stepRef = good,
+            )
+            assertEquals(good, s.args[15])
+        }
+    }
+
+    @Test
+    fun `755门_成功行不带归因不红_门只盖失败`() {
+        val s = BaopuSql.insertRunLog(
+            sessionId = 1L, step = 1, state = "Acting", model = "m",
+            tokensIn = 0, tokensOut = 0, tokensInEst = 0, tokensOutEst = 0,
+            tool = "read_file", ok = true, latencyMs = 3L, err = "", createdAt = 5L,
+        )
+        assertNull(s.args[15]) // 成功行 step_ref 恒空——判据只覆盖失败/工具报错事件
     }
 
     @Test
@@ -454,13 +522,14 @@ class BaopuDbTest {
     }
 
     @Test
-    fun `insertRunLog十五个参数全绑定`() {
+    fun `insertRunLog十六个参数全绑定_失败行带归因线`() {
         val s = BaopuSql.insertRunLog(
             sessionId = 1L, step = 2, state = "thinking", model = "m",
             tokensIn = 100, tokensOut = 50, tokensInEst = 98, tokensOutEst = 49,
             tool = "read_file", ok = false, latencyMs = 1234L, err = "boom", createdAt = 999L,
+            stepRef = "attributed:2",
         )
-        assertEquals(15, s.args.size) // v2 增加 cache_hit / cache_miss 两个可空列
+        assertEquals(16, s.args.size) // v2 cache 两可空列 ＋ 755 step_ref
         assertEquals("1", s.args[0])
         assertEquals("2", s.args[1])
         assertEquals("read_file", s.args[8])
@@ -471,6 +540,9 @@ class BaopuDbTest {
         // 缓存两列默认不给 ⇒ null（SQL 留空，不瞎填 0）
         assertNull(s.args[13])
         assertNull(s.args[14])
+        // 755：失败行的归因线逐字落列（attributed:N）
+        assertEquals("attributed:2", s.args[15])
+        assertTrue(s.sql.contains("cache_hit_tokens, cache_miss_tokens, step_ref)"))
     }
 
     @Test

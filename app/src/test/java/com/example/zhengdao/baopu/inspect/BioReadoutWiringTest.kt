@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -258,5 +259,29 @@ class BioReadoutWiringTest {
             "六体读数行不许进 ran 计数",
             !code.contains("BioReadoutWiring.onRunSettled(ctx, sessionId) } != null) ran++"),
         )
+    }
+
+    // ── 755：喂入读已记录的归因线（attributed 喂步号；其余一律 null，不推不猜） ──
+
+    @Test
+    fun 判据755_喂入归因线映射_attributed给步号_其余全null() {
+        // attributed:N ⇒ N（唯一放行的单一落点）
+        assertEquals(3, BioFeeds.attributedStepOf("attributed:3"))
+        // ambiguous（候选≥2）/unattributed（原因码）判不出单一落点 ⇒ null（判不了就不猜）
+        assertNull(BioFeeds.attributedStepOf("ambiguous:2,4"))
+        assertNull(BioFeeds.attributedStepOf("unattributed:no-plan"))
+        assertNull(BioFeeds.attributedStepOf("unattributed:step-not-recorded"))
+        assertNull(BioFeeds.attributedStepOf("unattributed:tool-failed-early"))
+        // 755 之前的历史行（NULL 列）与坏线 ⇒ null
+        assertNull(BioFeeds.attributedStepOf(null))
+        assertNull(BioFeeds.attributedStepOf("step:3"))
+        assertNull(BioFeeds.attributedStepOf(""))
+    }
+
+    @Test
+    fun 判据755_喂入缝SQL读step_ref列_不再恒null() {
+        val code = stripComments(wiringSources()[0].readText())
+        assertTrue("喂入必须读 step_ref 列（755 当场归因的落账处）", code.contains("SELECT step_ref FROM run_log"))
+        assertTrue("旧口径『每行映射成 null』必须已撤", !code.contains("rows.add(null)"))
     }
 }

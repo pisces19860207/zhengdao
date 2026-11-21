@@ -23,8 +23,10 @@
 // 数据从哪来（全部只读）：
 //   · 本轮用户消息：`message` role='user' 最新一行＋首个 text part（杏仁核/丘脑/海马共用）；
 //   · 计划快照：`part(kind='plan')` 该会话最后一版（SessionPlanStore.latest → PlanRules.fromJson）；
-//   · 近 3 条失败：run_log ok=0 的行——**只取条数**，失败落在计划哪一步引擎侧没有归因
-//     （474 同款留白），recentFailures 全记 null：前额叶口径"判不了就不猜"，不猜步号。
+//   · 近 3 条失败：run_log ok=0 的行——755 起每行带**当场**归因线 `step_ref`
+//     （attributed/ambiguous/unattributed，引擎发射那一刻落账，非事后回扫）：
+//     attributed 的喂真步号；ambiguous（候选≥2）/unattributed（原因码）/755 前的 NULL 行
+//     记 null——前额叶口径"判不了就不猜"（694 四条判据一字不动，喂的只是不再恒 null）。
 package com.example.zhengdao.baopu.inspect
 
 import android.content.Context
@@ -32,6 +34,7 @@ import com.example.zhengdao.baopu.BaopuDb
 import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.PlanRules
 import com.example.zhengdao.baopu.SessionPlanStore
+import com.example.zhengdao.baopu.StepRef
 import com.example.zhengdao.baopu.bio.Amygdala
 import com.example.zhengdao.baopu.bio.BioEvent
 import com.example.zhengdao.baopu.bio.DangerWords
@@ -55,7 +58,7 @@ internal class BioFeeds(
     val latestUserMessage: () -> BioUserLine?,
     /** 最后一版计划条目（空表 ＝ 该会话没有计划快照 ⇒ 前额叶那路整路静默，不出空话）。 */
     val planItems: () -> List<PlanRules.PlanItem>,
-    /** 近几条失败（元素恒 null：失败→计划步号的归因引擎侧没有，判不了就不猜）。 */
+    /** 近几条失败（元素＝失败行**当场**归因出的计划步号；判不出单一落点记 null——不猜）。 */
     val recentFailures: () -> List<Int?>,
     /** 词表（719 缝：包开关开着读 fact 片并集，关/缺/坏 ⇒ 原样默认表，零磁盘）。 */
     val words: () -> DangerWords,
@@ -100,23 +103,32 @@ internal class BioFeeds(
         }
 
         /**
-         * 近 [RECENT_FAILURES_MAX] 条失败行（run_log ok=0，时间倒序）。**只取条数**：
-         * 每行映射成 null——失败落在计划哪一步，引擎侧没有归因记录（474 留白），
-         * 喂步号等于猜（前额叶"判不了就不猜"的原话口径）。
+         * 近 [RECENT_FAILURES_MAX] 条失败行（run_log ok=0，时间倒序）。每行读**当场**
+         * 归因线（755 起引擎发射时落 `step_ref`）：attributed:N 喂 N；
+         * ambiguous（候选≥2）/unattributed（原因码）/NULL（755 前的历史行）喂 null——
+         * 本侧只**读已记录的归因**，一个步号都不推（禁事后回扫；判不了就不猜）。
          */
         internal fun recentFailureRowsOf(db: BaopuDb, sessionId: Long): List<Int?> = runCatching {
             db.read { d ->
                 d.rawQuery(
-                    "SELECT id FROM run_log WHERE session_id = ? AND ok = 0 " +
+                    "SELECT step_ref FROM run_log WHERE session_id = ? AND ok = 0 " +
                         "ORDER BY created_at DESC LIMIT $RECENT_FAILURES_MAX",
                     arrayOf(sessionId.toString()),
                 ).use { c ->
                     val rows = ArrayList<Int?>(c.count)
-                    while (c.moveToNext()) rows.add(null)
+                    while (c.moveToNext()) rows.add(attributedStepOf(c.getString(0)))
                     rows
                 }
             }
         }.getOrDefault(emptyList())
+
+        /**
+         * 归因线 → 前额叶喂入步号（internal 供单测）：attributed 给 N；
+         * ambiguous/unattributed/NULL/坏线一律 null——器官判据四条一字不动，
+         * 喂入只是不再恒 null（694 口径：判不了就不猜）。
+         */
+        internal fun attributedStepOf(wire: String?): Int? =
+            (wire?.let { StepRef.of(it) } as? StepRef.Attributed)?.step
 
         /** Long → Int 收敛（G-708-2）：超界返回 null，不截断造一把假键/假行。 */
         private fun userLineOf(rawSeq: Long, text: String?): BioUserLine? {
