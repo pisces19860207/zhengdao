@@ -649,6 +649,15 @@ internal object BaopuRuntime {
                     com.example.zhengdao.baopu.inspect.MetricsSources.logSteps(db(appCtx), fromMs)
                 },
             )
+
+        // 第七百七十八批 · 读数消费者的装配位（全 App 唯一一处）：
+        // 把调解器接到**现成落盘的 753 环读数账本**（只读投影）。722 三行与 747 越界在生产侧
+        // 本批之前未装配（背景事实），这里不替它们造装配点——投影器对这两路默认返回"无"，
+        // 符合"provider 未装配 ⇒ 视为无"。本单不新增任何读数生产，只把消费者接上。
+        // 端口是进程内单例、可空：本文件是唯一装配处，重置/测试走 ReadingPorts.detach()。
+        com.example.zhengdao.baopu.ReadingPorts.provider = {
+            com.example.zhengdao.baopu.ReadingFactsAdapter.project(workspaceRoot(appCtx))
+        }
     }
 
     /**

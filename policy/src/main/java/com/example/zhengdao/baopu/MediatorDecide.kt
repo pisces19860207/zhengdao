@@ -201,4 +201,96 @@ object MediatorDecide {
             line = "调解器建议：省力的先问（第 ${order.first() + 1} 问提前），要打字的靠后",
         )
     }
+
+    // ── 第七百七十八批：读数消费的决定合成（判定权不迁）────────────────────────
+    //
+    // ReadingCodex 只给**依据**（哪个规则命中、建议怎么变）；这里才是**唯一决定者**：
+    // 它拿着依据、当前档位状态与必问铁律，做出最终的三类行为决定。读数无权自己改任何东西。
+    // 三条硬约束在结构上兑现：
+    //   · 只影响三种行为：本区只动 ask（问不问人）/ degrade（降不降级）/ hint（提不提示）；
+    //   · 判定权不迁：mustAsk 恒放行、paused/LOOP 恒压——读数的 suppress 永远越不过这两道铁律；
+    //   · 无读数逐字节一致：[advice.hit]==false ⇒ 原样返回 base，连 reason 都不改一个字。
+
+    /** 一次读数消费后的三类行为决定（问不问人 / 降不降级 / 提不提示）。 */
+    data class ReadingsDecision(
+        /** 最终问卡建议（base Advice 经依据合成后）。 */
+        val advice: AskAdvice,
+        /** "降级"决定：true＝本轮从常规处理降到降级处理（只影响行为，不写任何状态）。 */
+        val degrade: Boolean,
+        /** "提示"决定：本轮要追加的一行提示；null＝不提示。 */
+        val hint: String?,
+        /** 可观测行（每次因读数改变的决定一行）；无改变则空表。 */
+        val affectLines: List<String>,
+    ) {
+        /** 相对 base 是否真的改了决定（判据①的对照锚：同一输入两种决定）。 */
+        val changed: Boolean get() = affectLines.isNotEmpty() || degrade || hint != null
+    }
+
+    /**
+     * 决定合成：拿 [base]（无读数时的原结论）与 [reading]（法典规则层的建议）做最终决定。
+     *
+     * 判定顺序（铁律在上，读数在下）：
+     *   1. 无读数 / 未命中 ⇒ [ReadingsDecision] 原样返回 base，空提示、空可观测行；
+     *   2. mustAsk ⇒ 恒放行，读数一条不许生效（判定权不迁的硬锚）；
+     *   3. paused / LOOP ⇒ 恒压（照旧），读数的 require/suppress 都盖不过熔断与暂停；
+     *   4. 其余才按建议位落地：requireAsk ⇒ 压卡翻放行；suppressAsk ⇒ 放行翻压卡；
+     *      degrade / hintOnce 各自成为独立决定位。
+     *
+     * 注意 [base] 的 `effective` 语义：true＝调解器真下了结论。读数触发的改变一律 effective=true
+     * （它确实参与了这次决定），reason 前缀固定 `读数：`（测试按前缀精确断言，防跨判据串味）。
+     */
+    fun decideWithReadings(
+        base: AskAdvice,
+        reading: ReadingCodex.Advice,
+    ): ReadingsDecision {
+        if (!reading.hit) {
+            return ReadingsDecision(base, false, null, emptyList())
+        }
+        if (mustAskGate(base)) return ReadingsDecision(base, false, null, emptyList())
+        if (hardSuppressGate(base)) return ReadingsDecision(base, false, null, emptyList())
+        return applyReading(base, reading)
+    }
+
+    /**
+     * 必问铁律：必问档恒放行（allowed=true、reason="必问档…"），调解器无权过问——
+     * 读数作为调解器的依据同样无权过问。按 reason 前缀判（不按 allowed，必问档本就放行）。
+     */
+    private fun mustAskGate(base: AskAdvice): Boolean = base.reason.startsWith("必问档")
+
+    /**
+     * 硬压铁律：暂停/熔断压卡时，读数的 require 不许把卡放出来。
+     * 用 reason 前缀判（paused="用户已暂停"、LOOP="已熔断"），与 shouldAsk 的分支同词。
+     */
+    private fun hardSuppressGate(base: AskAdvice): Boolean =
+        !base.allowed && (base.reason.startsWith("用户已暂停") || base.reason.startsWith("已熔断"))
+
+    /** 按建议位合成最终 AskAdvice（此时必问与硬压两道闸已过）。 */
+    private fun applyReading(base: AskAdvice, r: ReadingCodex.Advice): ReadingsDecision {
+        val codes = r.proposals.joinToString("+") { it.reasonCode }
+        val advice = when {
+            r.requireAsk && !base.allowed -> base.copy(
+                allowed = true,
+                effective = true,
+                reason = "读数：越界无证据，问人不放行（$codes）",
+            )
+            r.suppressAsk && base.allowed -> base.copy(
+                allowed = false,
+                effective = true,
+                reason = "读数：命中少问规则（$codes）",
+            )
+            else -> base
+        }
+        val hint = if (r.hintOnce) "读数提示：同类判断连续落空，先按上一步的证据复述再决定是否追问（$codes）" else null
+        // 可观测行只在"决定真的变了"时落：ask 翻转 / 降级 / 提示三者任一。
+        // 若读数命中但 base 已是该状态（如越界读数遇上本就放行的 card），不谎报"决定变化"——
+        // 这正是变异测试要钉的诚实性：掐掉读数，行也必须跟着消失。
+        val askChanged = advice.allowed != base.allowed
+        val lines = if (askChanged || r.degrade || r.hintOnce) r.affectLines else emptyList()
+        return ReadingsDecision(
+            advice = advice,
+            degrade = r.degrade,
+            hint = hint,
+            affectLines = lines,
+        )
+    }
 }

@@ -190,6 +190,7 @@ object MediatorWiring {
             reframeNote = null
             askedThisTurn = 0
             companion = null
+            pendingReadingsHint = null
         }
         turns += 1
         askedThisTurn = 0
@@ -295,7 +296,15 @@ object MediatorWiring {
     /** 引擎每次拼提示词时取的那几句（**不消费**：同一轮的工具循环里每一步都该看到同一份，
      * 换批等于打破前缀；下一轮用户输入时才更新）。顺序恒定：语气指令在前，转译段在后。 */
     @Synchronized
-    fun promptNotes(): List<String> = listOfNotNull(note, reframeNote)
+    fun promptNotes(): List<String> {
+        // 第五百一十八批那句两参 listOfNotNull 是 L1 源码门禁钉死的字面
+        // （L1NoFlatteryGateTest 第⑤跳），逐字保留、不许并进下面这一行——否则改写防线"断链"假红。
+        val base = listOfNotNull(note, reframeNote)
+        val hint = pendingReadingsHint
+        pendingReadingsHint = null // 取走即清：同一决定只提示一次，不随每步拼词重复
+        // 第七百七十八批：读数的"提示一次"排在既有两段之后＝纯追加，不动上面两段的顺序与字节。
+        return if (hint == null) base else base + hint
+    }
 
     /** 当前档位（日志与测试用；界面不显示数值，也不显示档位名）。 */
     @Synchronized
@@ -375,13 +384,35 @@ object MediatorWiring {
      */
     @Synchronized
     fun consultAsk(mustAsk: Boolean = false): MediatorDecide.AskAdvice {
-        if (boundSessionId == NO_SESSION) {
-            return MediatorDecide.shouldAsk(state, PatienceProfile(), 0, mustAsk)
-        }
-        val advice = MediatorDecide.shouldAsk(state, PatienceProfile(), askedThisTurn, mustAsk)
-        if (advice.allowed && !mustAsk) askedThisTurn += 1
+        // 第七百七十八批：先算**无读数时的原结论**（base），再让读数在上面做决定合成。
+        // 端口未装配 / 规则未命中 ⇒ decision.advice === base 的等值结论 ⇒ 下面每一行都与接线前一致。
+        val noSession = boundSessionId == NO_SESSION
+        val base = MediatorDecide.shouldAsk(state, PatienceProfile(), if (noSession) 0 else askedThisTurn, mustAsk)
+        val decision = decideReading(base)
+        val advice = decision.advice
+
+        // 可观测：每次因读数改变的决定落一行（原因码 / 来源 / 决定变化）。
+        decision.affectLines.forEach { RunLog.log(it) }
+        // "提示一次"出口：生成后存一次，promptNotes 取走即清（同轮多次拼词不重复）。
+        if (decision.hint != null) pendingReadingsHint = decision.hint
+
+        // 计数口径与接线前逐字一致：NO_SESSION 从不计数（原实现直接 return，不经这一行）。
+        if (!noSession && advice.allowed && !mustAsk) askedThisTurn += 1
         return advice
     }
+
+    /**
+     * 读数决定的**唯一取数+判定+决定**三步（抽成纯函数便于夹具直接调用；单例只负责搬运）。
+     * provider 空 ⇒ ReadingCodex.evaluate(null)=空建议 ⇒ decideWithReadings 原样返回 base。
+     */
+    private fun decideReading(base: MediatorDecide.AskAdvice): MediatorDecide.ReadingsDecision {
+        val facts = ReadingPorts.snapshot() ?: return MediatorDecide.ReadingsDecision(base, false, null, emptyList())
+        val reading = ReadingCodex.evaluate(facts)
+        return MediatorDecide.decideWithReadings(base, reading)
+    }
+
+    /** 读数触发的待提示行；null＝本轮没有提示决定（无读数时恒 null）。 */
+    private var pendingReadingsHint: String? = null
 
     /**
      * 一组问卡的排序建议（[MediatorDecide.decide] 的进程内接线版）。
@@ -405,6 +436,9 @@ object MediatorWiring {
         askedThisTurn = 0
         companion = null
         turnObserver = null
+        // 第七百七十八批：谁装配谁摘——进程内单例不许把上一单的读数端口/提示漏进下一单。
+        ReadingPorts.detach()
+        pendingReadingsHint = null
     }
 
     /**
