@@ -1936,6 +1936,8 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
             if (stmt.args.isEmpty()) db.execSQL(stmt.sql) else db.execSQL(stmt.sql, stmt.args)
         }
     }
+
+    /**
      * v24 → v25 迁移体（第七百六十四批 · G-716-1）：`run_trace` 加可空 `created_at`
      * （毫秒写入时刻＝系统记下这一行的墙钟；**看列再动** ⇒ 幂等，照 v21/v22/v23 房型）。
      *
@@ -1963,7 +1965,7 @@ class BaopuDb(context: Context) : SQLiteOpenHelper(
         }
     }
 
-    /** v24 加列 DDL（唯一一份字面量；迁移体在冻结点之下，加行零位移）。 */
+    /** v25 加列 DDL（唯一一份字面量；迁移体在冻结点之下，加行零位移）。 */
     private val RUN_TRACE_CREATED_AT_ADD = "ALTER TABLE run_trace ADD COLUMN created_at INTEGER"
     /**
      * v19（第一百七十二批 L4 · 玄览页签快照）：`browser_tab` 表 ＋ LRU 索引。
