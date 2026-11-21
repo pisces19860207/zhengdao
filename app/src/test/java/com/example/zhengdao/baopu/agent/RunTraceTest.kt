@@ -371,15 +371,15 @@ class RunTraceTest {
     fun `G716_1_迁移只加列不重建不丢行_老行留NULL不回填`() {
         val dbSrc = read("src/main/java/com/example/zhengdao/baopu/BaopuDb.kt")
         // 迁移链两处都挂了 v24（新装与升级同一条路）。
-        assertEquals("onCreate + onUpgrade 各一次，共两处 v24 挂链", 2, Regex("applyV24Migration\\(db\\)").findAll(dbSrc).count())
-        assertTrue("onUpgrade 必须有 v24 分支", dbSrc.contains("if (oldVersion < 24) applyV24Migration(db)"))
+        assertEquals("onCreate + onUpgrade 各一次，共两处 v25 挂链", 2, Regex("applyV25Migration\\(db\\)").findAll(dbSrc).count())
+        assertTrue("onUpgrade 必须有 v25 分支", dbSrc.contains("if (oldVersion < 25) applyV25Migration(db)"))
         // 判据②：唯一加列动作是 ALTER TABLE ADD COLUMN；没有重建表、没有丢行。
         assertTrue("必须是 ALTER TABLE ADD COLUMN", dbSrc.contains("ALTER TABLE run_trace ADD COLUMN created_at INTEGER"))
         assertFalse("不许 ALTER 时带 NOT NULL（那会改写老行）", dbSrc.contains("ADD COLUMN created_at INTEGER NOT NULL"))
         assertFalse("不许重建表（DROP/CREATE 新表改名）", dbSrc.contains("DROP TABLE run_trace") || dbSrc.contains("run_trace_new"))
         assertFalse("不许 DELETE 老行", dbSrc.contains("DELETE FROM run_trace"))
         // 判据③硬形态：迁移体里不许 UPDATE run_trace、不许把时钟写进历史行。
-        val mig = dbSrc.substringAfter("private fun applyV24Migration").substringBefore("private val RUN_TRACE_CREATED_AT_ADD")
+        val mig = dbSrc.substringAfter("private fun applyV25Migration").substringBefore("private val RUN_TRACE_CREATED_AT_ADD")
         assertFalse("迁移体不许 UPDATE（回填等于造假时间线）", mig.contains("UPDATE run_trace"))
         assertFalse("迁移体不许 current_timestamp", mig.contains("current_timestamp", ignoreCase = true))
         assertFalse("迁移体不许 System.currentTimeMillis（迁移那刻不能冒充历史）", mig.contains("currentTimeMillis"))
