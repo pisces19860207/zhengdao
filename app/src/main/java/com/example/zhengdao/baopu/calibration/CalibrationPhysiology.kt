@@ -52,11 +52,8 @@ internal object CalibrationPhysiology {
     /** 722 原样留位话头（658 已合入，这句在装配层按事实改写）。 */
     private const val STALE_SUFFIX = "（658未合）"
 
-    /** 658 已合、但没有合法逐场档位来源 ⇒ 前置单挂这里，读者看得见。 */
-    private const val SUFFIX_NO_SOURCE = "（658已合·逐场档源待前置单）"
-
-    /** turgor 归 660 下体信息（命中才注入），状态行这一项另挂单。 */
-    private const val SUFFIX_TURGOR = "（turgor另挂单）"
+    /** 658 已合、但没有合法逐场档位来源 ⇒ 前置单挂这里；turgor 另挂一张（不是 658 的产出）。 */
+    private const val SUFFIX_PENDING = "（658已合·档源与turgor各挂单）"
 
     /**
      * 逐场档位来源。生产端＝null（见文件头纪律）；真源接上后不需要再改本文件。
@@ -79,11 +76,8 @@ internal object CalibrationPhysiology {
     /** 治理只读用：状态行现在拿到几条真读数（不改任何取行逻辑）。 */
     fun wiredCount(): Int = PhysiologyKey.values().count { solveReadings()[it]?.usable == true }
 
-    private fun suffixOf(have: Map<PhysiologyKey, PhysiologyReading>): String = when {
-        have.size == PhysiologyKey.values().size -> ""
-        have.isNotEmpty() -> SUFFIX_TURGOR
-        else -> SUFFIX_NO_SOURCE + SUFFIX_TURGOR
-    }
+    private fun suffixOf(have: Map<PhysiologyKey, PhysiologyReading>): String =
+        if (have.size == PhysiologyKey.values().size) "" else SUFFIX_PENDING
 
     /**
      * 658 真解：有逐场档位**且带出处**才给读数，否则空表（宁留位不编）。

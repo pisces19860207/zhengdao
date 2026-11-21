@@ -174,7 +174,7 @@ class CalibrationAssemblyTest {
         val status = CalibrationAssembly.lines().status
         assertSlotsUnwired(status)
         assertFalse("658 已合入基线，不许再写'658未合'：$status", status.contains("658未合"))
-        assertTrue("留位要交代差在哪张单：$status", status.contains("前置单"))
+        assertTrue("留位要交代差在哪张单：$status", status.contains("挂单"))
         assertEquals(0, CalibrationPhysiology.wiredCount())
     }
 
@@ -206,7 +206,7 @@ class CalibrationAssemblyTest {
         CalibrationPhysiology.sceneProvider = { PhysioScene(hardScene(), "658夹具·剧烈长时", "2026-11-21") }
         val status = CalibrationAssembly.lines().status
         assertTrue("turgor 仍留位：$status", status.contains("turgor:${ReadbackLines.UNWIRED}"))
-        assertTrue("turgor 的话头要点明另挂单：$status", status.contains("turgor"))
+        assertTrue("话头要点明还挂着单：$status", status.contains("挂单"))
     }
 
     @Test
