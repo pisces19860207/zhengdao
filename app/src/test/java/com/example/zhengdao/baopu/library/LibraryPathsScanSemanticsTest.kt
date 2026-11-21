@@ -215,9 +215,15 @@ class LibraryPathsScanSemanticsTest {
         File(root, ".DS_Store").writeText("x")
         File(root, "子").mkdirs()
         val link = File(root, "链")
-        runCatching { java.nio.file.Files.createSymbolicLink(link.toPath(), File(root, "子").toPath()) }
-        val expected = if (link.exists()) 2 else 3 // 链不计入；造不出链的环境三件都在
-        assertEquals(expected, LibraryPaths.countTopLevel(root))
+        val linkCreated = runCatching {
+            java.nio.file.Files.createSymbolicLink(link.toPath(), File(root, "子").toPath())
+        }.isSuccess && java.nio.file.Files.isSymbolicLink(link.toPath())
+        // 三件正常条目（a.txt／.DS_Store／子）照旧计入——**垃圾名也计入**是本件原口径
+        // （上一条用例已钉）；链存在时同样不计入 ⇒ 有链没链都是 3。
+        // 2026-11-21 修 emit #256：原写「有链 2／无链 3」是把 .DS_Store 漏算了——
+        // Windows 造不出链（走 3 那支）一直绿，Linux 能造出链（走 2 那支）当场红。
+        val expected = 3
+        assertEquals("链存在=$linkCreated", expected, LibraryPaths.countTopLevel(root))
         assertEquals(expected, legacyCountTopLevel(root))
     }
 }
