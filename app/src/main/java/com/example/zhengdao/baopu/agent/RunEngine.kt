@@ -2364,6 +2364,8 @@ internal class RunEngine(
         // ⇒ prompt 与接线前逐字一致（铁律①「无经验一个字不加」）；续跑不带（原轮已注过，
         // 同上面两项口径）；账只读不写（铁律②）。每轮算一次、全程同一份（前缀判据）。
         turnLearnNote = com.example.zhengdao.baopu.LearnContextNote.roundNote(resumed)
+        // 第七百三十八批：校准注入（纯上下文，轮开跑算一次、每步同一份）。未装配/未命中 ⇒ 空表。
+        turnCalibrationNotes = com.example.zhengdao.baopu.calibration.CalibrationWiring.notes(userText)
         if (userText != null) {
             // 150批 F：能走到这里 ⇒ 这条已在 drain 的同锁闸上过了检查（取出那一刻 stop 还没立）。
             // 停止哪怕在闸后这一瞬到达：用户消息照落库（run_queue 行与消息同一事务——stop 的
@@ -3479,7 +3481,11 @@ internal class RunEngine(
             AnswerReflow.notes(currentRoundId) +
             // 第四百零五批：最近同类经验一行（轮开跑算好的一份）。null ⇒ 空表 ⇒ 与接线前
             // 逐字节一致（铁律①）；排最末＝纯追加，不动上面各段的顺序（前缀判据另一半）。
-            listOfNotNull(turnLearnNote),
+            listOfNotNull(turnLearnNote) +
+                // 第七百三十八批：校准注入行——排在经验注之后＝纯追加，不动既有四路顺序
+                // （532 顺序门的 slice 止于 turnLearnNote，本路在 slice 之外）。
+                // 未装配数据源／开关关／未命中 ⇒ 空表 ⇒ 逐字节一致；只进上下文，不进闸。
+                turnCalibrationNotes,
         // V5：视觉能力只许来自 `Provider.vision`，组装层不许自己猜模型名
         visionSupported = provider.vision,
         // 第一百二十四批：本轮这张「仍要发送（风险自负）」的通行证（默认 false ⇒ 行为与
@@ -3549,6 +3555,14 @@ internal class RunEngine(
      * 账只读不写（铁律②）。
      */
     private var turnLearnNote: String? = null
+
+    /**
+     * 第七百三十八批：本轮校准注入行（722 三行读回 + 带源条目，纯上下文）。
+     * [com.example.zhengdao.baopu.calibration.CalibrationWiring.notes] 在轮开跑算一次，
+     * 工具循环每步同一份（前缀判据）；未装配数据源／开关关时为空表 ⇒ 逐字节一致。
+     * 只进 extraNotes，不进任何闸、不改判定。
+     */
+    private var turnCalibrationNotes: List<String> = emptyList()
 
     /** 本轮附件里图片的**相对路径**（[send] 写入，[runLoop] 开跑时消费并清空）。 */
     private var pendingImageRelPaths: List<String> = emptyList()
