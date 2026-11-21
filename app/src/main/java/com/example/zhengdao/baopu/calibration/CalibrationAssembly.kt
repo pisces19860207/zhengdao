@@ -82,6 +82,9 @@ internal object CalibrationAssembly {
         CalibrationWiring.enabled = { CalibrationGovernance.on() }
         CalibrationWiring.lexiconProvider = { lexicon() }
         CalibrationWiring.readbackProvider = { lines() }
+        // ② PhysiologyProvider 的缝在 CalibrationPhysiology.sceneProvider：658 已合入本基线，
+        //    但它的入参（六类逐场档位）在本单允许的数据源 660/665/719/711 里都没有 ⇒ 保持未绑，
+        //    状态行按事实留"未接入＋前置单"。真源单落地时只改这一行，装配层其余不动。
         CalibrationWiring.entryProvider = { zones -> entries(zones) }
         CalibrationWiring.notesObserver = { notes -> observe(notes) }
         // ③ FactsProvider：711 索引 / 719 事实片 / 723 变体的取数（只读原文，解析在 738 那侧复用）。
@@ -107,7 +110,7 @@ internal object CalibrationAssembly {
         snapshot = null
         workspaceProvider = null
         ledgerProvider = null
-        CalibrationPhysiology.provider = null
+        CalibrationPhysiology.sceneProvider = null
         CalibrationGovernance.resetForTest()
         CalibrationWiring.resetForTest()
     }
@@ -251,7 +254,7 @@ internal object CalibrationAssembly {
         val s = current()
         val body = if (s.state == null) "身体$UNSET（${CalibrationBodySource.degradeReason(workspaceProvider?.invoke())}）"
         else "身体已装配"
-        val phys = if (CalibrationPhysiology.allUnwired()) "状态:658未接入" else "状态:已接入"
+        val phys = "状态:${CalibrationPhysiology.wiredCount()}/4项带真读数"
         val zones = if (s.zones.isEmpty()) ReadbackLines.UNWIRED else "${s.zones.size}区"
         val gate = if (s.halted) " · 应急关闭中" else ""
         return "$body · $phys · 词档$zones$gate"

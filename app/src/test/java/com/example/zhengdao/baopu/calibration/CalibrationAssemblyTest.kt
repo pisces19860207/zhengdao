@@ -11,6 +11,13 @@ package com.example.zhengdao.baopu.calibration
 import com.example.zhengdao.baopu.TokenEstimator
 import com.example.zhengdao.baopu.state.form.BodyModel
 import com.example.zhengdao.baopu.state.form.FormFixtures
+import com.example.zhengdao.baopu.state.physiology.ActivityBand
+import com.example.zhengdao.baopu.state.physiology.AmbientTempBand
+import com.example.zhengdao.baopu.state.physiology.DurationBand
+import com.example.zhengdao.baopu.state.physiology.EmotionBand
+import com.example.zhengdao.baopu.state.physiology.HumidityBand
+import com.example.zhengdao.baopu.state.physiology.IndividualBand
+import com.example.zhengdao.baopu.state.physiology.PhysioInputs
 import com.example.zhengdao.baopu.state.readback.BodyReadback
 import com.example.zhengdao.baopu.state.readback.ReadbackLines
 import java.io.File
@@ -152,46 +159,81 @@ class CalibrationAssemblyTest {
             val lines = CalibrationAssembly.lines()
             assertTrue("没有口径表就没有身体数：$lines.invariant", lines.invariant.contains(CalibrationAssembly.UNSET))
             assertTrue(lines.vocab.contains(ReadbackLines.UNWIRED))
-            assertEquals("状态行仍是 722 的留位", BodyReadback.statusLine(), lines.status)
+            assertSlotsUnwired(lines.status)
         } finally {
             assertTrue("还原口径表", bak.renameTo(facts))
         }
     }
 
+    /**
+     * 判据②的状态行形状：四项一律留位，且**写明前置单**（工单追加：缺项＝"未接入＋前置单号"）。
+     * 658 已在本基线（3669b211c），所以 722 里那句"（658未合）"是过时话头，装配层按事实改写。
+     */
     @Test
-    fun `判据二_状态行缺位与722逐字节一致`() {
-        assertEquals(BodyReadback.statusLine(), CalibrationAssembly.lines().status)
-        assertTrue(CalibrationPhysiology.allUnwired())
+    fun `判据二_状态行四项留位并写明前置单`() {
+        val status = CalibrationAssembly.lines().status
+        assertSlotsUnwired(status)
+        assertFalse("658 已合入基线，不许再写'658未合'：$status", status.contains("658未合"))
+        assertTrue("留位要交代差在哪张单：$status", status.contains("前置单"))
+        assertEquals(0, CalibrationPhysiology.wiredCount())
+    }
+
+    /** 逐场档有了、但没交出出处 ⇒ 一条都不算读数（"疲劳=清醒"就是这条红线）。 */
+    @Test
+    fun `严禁默认值_场景档缺出处就不算读数`() {
+        CalibrationPhysiology.sceneProvider = { PhysioScene(hardScene(), "", "") }
+        val status = CalibrationAssembly.lines().status
+        assertSlotsUnwired(status)
+        assertFalse("缺 source/asOf 的产出不能顶成读数：$status", status.contains("疲劳:清醒"))
     }
 
     @Test
-    fun `严禁默认值_无来源的疲劳读数顶不进来`() {
-        CalibrationPhysiology.provider = {
-            mapOf(PhysiologyKey.FATIGUE to PhysiologyReading("清醒", "", ""))
+    fun `判据二_658真读数接上_出汗心率疲劳换档`() {
+        writeSpec(specA)
+        val before = CalibrationAssembly.lines()
+        CalibrationPhysiology.sceneProvider = { PhysioScene(hardScene(), "658夹具·剧烈长时", "2026-11-21") }
+        val after = CalibrationAssembly.lines()
+        assertNotEquals("状态行逐场变", before.status, after.status)
+        listOf("出汗", "心率档", "疲劳").forEach { item ->
+            assertFalse("$item 该换成 658 的档名：$after", after.status.contains("$item:${ReadbackLines.UNWIRED}"))
         }
+        assertEquals(3, CalibrationPhysiology.wiredCount())
+    }
+
+    /** turgor 不是 658 的产出（658 四状态＝体温偏移/心率档/出汗/疲劳），它在 660 侧属命中才注入的下体信息。 */
+    @Test
+    fun `判据二_turgor不混进L0状态行_继续挂前置单`() {
+        CalibrationPhysiology.sceneProvider = { PhysioScene(hardScene(), "658夹具·剧烈长时", "2026-11-21") }
         val status = CalibrationAssembly.lines().status
-        assertFalse("缺源的读数一律不用（疲劳=清醒 ⇒ 红）", status.contains("疲劳:清醒"))
-        assertTrue(status.contains("疲劳:${ReadbackLines.UNWIRED}"))
+        assertTrue("turgor 仍留位：$status", status.contains("turgor:${ReadbackLines.UNWIRED}"))
+        assertTrue("turgor 的话头要点明另挂单：$status", status.contains("turgor"))
     }
 
     @Test
     fun `状态行可逐场变_且不许反向污染不变量行`() {
         writeSpec(specA)
         val before = CalibrationAssembly.lines()
-        val ok = PhysiologyReading("高", "658夹具", "2026-11-21")
-        CalibrationPhysiology.provider = {
-            mapOf(
-                PhysiologyKey.TURGOR to PhysiologyReading("充血2档", "658夹具", "2026-11-21"),
-                PhysiologyKey.SWEAT to PhysiologyReading("微汗", "658夹具", "2026-11-21"),
-                PhysiologyKey.HEART to PhysiologyReading("中", "658夹具", "2026-11-21"),
-                PhysiologyKey.FATIGUE to ok,
-            )
-        }
+        CalibrationPhysiology.sceneProvider = { PhysioScene(hardScene(), "658夹具·剧烈长时", "2026-11-21") }
         val after = CalibrationAssembly.lines()
         assertNotEquals("状态行逐场变", before.status, after.status)
-        assertTrue(after.status.contains("疲劳:高"))
-        assertFalse("四项齐了就不该再留 658未合 的旧话头", after.status.contains("658未合"))
         assertEquals("不变量行一字不许被状态行带跑", before.invariant, after.invariant)
+        assertEquals("词档行也不许被带跑", before.vocab, after.vocab)
+    }
+
+    /** 658 的入参夹具：全是极端档，产出必然非零——用来证明"接上了就换字"，不是拿基线糊。 */
+    private fun hardScene(): PhysioInputs = PhysioInputs(
+        ambientTemp = AmbientTempBand.HOT,
+        humidity = HumidityBand.SATURATED,
+        activity = ActivityBand.INTENSE,
+        duration = DurationBand.PROLONGED,
+        emotion = EmotionBand.INTENSE,
+        individual = IndividualBand.SENSITIVE,
+    )
+
+    private fun assertSlotsUnwired(status: String) {
+        listOf("turgor", "出汗", "心率档", "疲劳").forEach { item ->
+            assertTrue("状态行应留位「$item」：$status", status.contains("$item:${ReadbackLines.UNWIRED}"))
+        }
     }
 
     // ── ③ 来源纪律与触发式敏感层 ─────────────────────────────────────────
@@ -241,9 +283,7 @@ class CalibrationAssemblyTest {
     fun `判据四_三行合计不超200token_含状态行最坏情况`() {
         writeSpec(specA)
         assertBudget(CalibrationAssembly.lines())
-        CalibrationPhysiology.provider = {
-            PhysiologyKey.values().associateWith { PhysiologyReading("中位偏上档", "658夹具", "2026-11-21") }
-        }
+        CalibrationPhysiology.sceneProvider = { PhysioScene(hardScene(), "658夹具·剧烈长时·出处署名", "2026-11-21") }
         assertBudget(CalibrationAssembly.lines())
     }
 

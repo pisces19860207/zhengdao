@@ -135,6 +135,24 @@ class CalibrationAssemblyAssertTest {
         assertFalse("不许给疲劳填默认档", Regex("""疲劳[":＝]+(清醒|轻|中)""").containsMatchIn(code))
     }
 
+    /**
+     * 658 的合成基线（温和/适中/静息/短时/平静/典型）一旦进装配码，状态行就会把编出来的档
+     * 当成逐场读数（"疲劳=清醒"那条红线）。档名只能来自真解，真解只吃带出处的逐场档位。
+     */
+    @Test
+    fun `边界_不许拿658合成基线当读数`() {
+        val code = codeOfOwn()
+        assertFalse("装配码不得引用 658 的合成基线", code.contains("BASELINE"))
+        assertTrue("这道闸必须咬得住样例", stripComments("val i = PhysioInputs.BASELINE // 注释里的不算").contains("BASELINE"))
+    }
+
+    @Test
+    fun `边界_状态行的档只从658真解取`() {
+        val code = codeOfOwn()
+        assertTrue("必须现调 658 求解器，不许自己拼档名", code.contains("LightPhysiologySolver.solve"))
+        assertTrue("必须走 658 自己的档名", code.contains(".grade.label"))
+    }
+
     // ── 闸自检（负例）：证明闸有牙 ────────────────────────────────────────
 
     @Test
