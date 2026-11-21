@@ -1,0 +1,50 @@
+{"id":"NAR-CH-01","verdict":"支持","basis":"明文：先用袖口擦卡尺刻度，再量井口内径","evidence":"P1-C1 L3"}
+{"id":"NAR-CH-02","verdict":"矛盾","basis":"陆行舟用的是钢卷尺，黄铜卡尺只有沈砚秋用","evidence":"P1-C1 L29"}
+{"id":"NAR-CH-03","verdict":"矛盾","basis":"贺是退休返聘老站长，量井的是观测员沈砚秋","evidence":"P1-SET L33"}
+{"id":"NAR-CH-04","verdict":"支持","basis":"设定L-08列其先给判断，正文有“这里有东西”","evidence":"P1-C2 L13"}
+{"id":"NAR-CH-05","verdict":"矛盾","basis":"他刻意离盐湖远，站定在背风也背湖一侧","evidence":"P1-C1 L17"}
+{"id":"NAR-CH-06","verdict":"支持","basis":"正文原句，设定H-04列为口头禅","evidence":"P1-C1 L13"}
+{"id":"NAR-CH-07","verdict":"矛盾","basis":"八三年他三十四岁，但身份是本站站长","evidence":"P1-C3 L19"}
+{"id":"NAR-CH-08","verdict":"未知","basis":"只说到站第四十一天，未提此前在哪任职","evidence":"无"}
+{"id":"NAR-CH-09","verdict":"矛盾","basis":"她“没追问”，设定亦为不硬问","evidence":"P1-C2 L9"}
+{"id":"NAR-CH-10","verdict":"矛盾","basis":"空的是铜蟾蜍右眼，不是贺本人眼睛","evidence":"P1-C1 L9"}
+{"id":"NAR-ST-01","verdict":"支持","basis":"词表明文井口内径十二点七厘米","evidence":"P1-ENT L16"}
+{"id":"NAR-ST-02","verdict":"矛盾","basis":"改成的数是十二点七，不是十二点五","evidence":"P1-C3 L11"}
+{"id":"NAR-ST-03","verdict":"未知","basis":"只写三间与墙皮盐渍，未提屋顶材质","evidence":"无"}
+{"id":"NAR-ST-04","verdict":"矛盾","basis":"墙不到两米、盐胶结灰白，非四米砖砌","evidence":"P1-C2 L11"}
+{"id":"NAR-ST-05","verdict":"支持","basis":"原文：没有树，只有盐壳和一种灰草","evidence":"P1-C1 L7"}
+{"id":"NAR-ST-06","verdict":"矛盾","basis":"是西岸井壁年久的卤水溃坝，非东岸雨水堤坝","evidence":"P1-C3 L11"}
+{"id":"NAR-ST-07","verdict":"未知","basis":"全文未给建站年份","evidence":"无"}
+{"id":"NAR-ST-08","verdict":"矛盾","basis":"用红漆点记号，编号写在纸袋背面","evidence":"P1-C1 L27"}
+{"id":"NAR-ST-09","verdict":"未知","basis":"只给井口内径，未提井深","evidence":"无"}
+{"id":"NAR-TL-01","verdict":"支持","basis":"同一天：第四十一天，上午十点陆进滩","evidence":"P1-C1 L17"}
+{"id":"NAR-TL-02","verdict":"支持","basis":"预计三天，三天后离滩，设定称如期","evidence":"P1-C3 L39"}
+{"id":"NAR-TL-03","verdict":"矛盾","basis":"那一夜是第二天即第四十二天夜，非第四十一天夜","evidence":"P1-C2 L3"}
+{"id":"NAR-TL-04","verdict":"矛盾","basis":"到滩是第五十七天，四十六是陆离滩那天","evidence":"P2-C4 L5"}
+{"id":"NAR-TL-05","verdict":"支持","basis":"明文“七月十九日夜溃”","evidence":"P1-C3 L11"}
+{"id":"NAR-TL-06","verdict":"支持","basis":"八三年三十四岁，记了三十年即六十四","evidence":"P1-C3 L19"}
+{"id":"NAR-TL-07","verdict":"矛盾","basis":"离滩后第十一天复核组才到","evidence":"P2-C4 L3"}
+{"id":"NAR-TL-08","verdict":"未知","basis":"仅有“八三年”“三十年”，未给公历年份","evidence":"无"}
+{"id":"NAR-TL-09","verdict":"支持","basis":"结尾明文“这是第五十九天”","evidence":"P2-C5 L51"}
+{"id":"NAR-SC-01","verdict":"支持","basis":"清晨六点、十点、中午、下午三点依次推进","evidence":"P1-C1 L27"}
+{"id":"NAR-SC-02","verdict":"矛盾","basis":"第二章开头是“第二天一早”，只跨一夜","evidence":"P1-C2 L3"}
+{"id":"NAR-SC-03","verdict":"支持","basis":"傍晚回屋接“那一夜”，为同一夜","evidence":"P1-C3 L3"}
+{"id":"NAR-SC-04","verdict":"矛盾","basis":"她几乎没睡，天没亮就起身去东头","evidence":"P1-C3 L5"}
+{"id":"NAR-SC-05","verdict":"支持","basis":"六点井边、九点站前空地、上午风蚀墙","evidence":"P2-C4 L21"}
+{"id":"NAR-SC-06","verdict":"矛盾","basis":"她翻个身把问题压进枕头，并未起身","evidence":"P2-C4 L49"}
+{"id":"NAR-SC-07","verdict":"未知","basis":"未写贺长庚当夜是否入睡","evidence":"无"}
+{"id":"NAR-SC-08","verdict":"支持","basis":"承第四章“那一夜”续写，敲声即此夜","evidence":"P2-C5 L3"}
+{"id":"NAR-SP-01","verdict":"支持","basis":"东头贺住，中间那间安排给陆行舟","evidence":"P1-C1 L21"}
+{"id":"NAR-SP-02","verdict":"矛盾","basis":"明文：西头到东头非得从中间门底下过","evidence":"P2-C5 L3"}
+{"id":"NAR-SP-03","verdict":"支持","basis":"八百四十步、一刻钟","evidence":"P2-C4 L21"}
+{"id":"NAR-SP-04","verdict":"矛盾","basis":"七号井即西岸旧井，不在东岸","evidence":"P1-ENT L16"}
+{"id":"NAR-SP-05","verdict":"支持","basis":"明文“门都朝南”","evidence":"P2-C5 L3"}
+{"id":"NAR-SP-06","verdict":"矛盾","basis":"三间已满：东头贺、西头沈、中间待客，无余间","evidence":"P2-C5 L9"}
+{"id":"NAR-SP-07","verdict":"矛盾","basis":"明文安排他们“住中间那间”，非招待所","evidence":"P2-C4 L11"}
+{"id":"NAR-SP-08","verdict":"支持","basis":"湖在滩北岸，站在湖南岸，湖在站北","evidence":"P1-ENT L15"}
+{"id":"NAR-SP-09","verdict":"未知","basis":"只提站外风蚀墙，未提院墙","evidence":"无"}
+{"id":"NAR-PH-01","verdict":"支持","basis":"原文：蹲久了膝头发麻","evidence":"P1-C1 L7"}
+{"id":"NAR-PH-02","verdict":"矛盾","basis":"他脸已无血色、手插袖筒、牙碰着牙","evidence":"P2-C4 L21"}
+{"id":"NAR-PH-03","verdict":"支持","basis":"咳到弯腰、扶门框才直起来","evidence":"P2-C4 L45"}
+{"id":"NAR-PH-04","verdict":"矛盾","basis":"手指冻得不听使唤，蹭三遍才看清刻度","evidence":"P2-C4 L3"}
+{"id":"NAR-PH-05","verdict":"矛盾","basis":"蹲下容易站起费劲，起身扶膝喘气","evidence":"P2-C4 L25"}
