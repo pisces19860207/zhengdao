@@ -89,6 +89,9 @@
     <string name="gc_todo_state_complete">Completed</string>
     <!-- 561 governance center "Dev audit" block (in-page, no drawer entry; export is the 4th human-pressed write port) -->
     <string name="gc_audit_title">Dev audit</string>
+    <!-- 774 addendum 3: governance center read-only view of "what was injected this session" (counts and topic classes only, no body numbers) -->
+    <string name="gc_calibration_title">Calibration injection</string>
+    <string name="gc_calibration_hint">What calibration content this session carried for the model — read-only, counts and topic classes only, no body numbers and no source text. There is no switch here: it is on by default, and stopping it goes only through the governance-level emergency halt.</string>
     <string name="gc_audit_hint">Which commit this build is and which scaffolds are on — read-only collection, exported into the workspace products dir (dot-prefixed, not counted as products, never overwrites). No user content.</string>
     <string name="gc_audit_export">Export audit pack</string>
     <string name="gc_audit_exporting">Exporting…</string>
