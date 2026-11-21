@@ -2,7 +2,7 @@
   "_说明": "352③ public 面注册表（2026-11-01）。范围＝:policy 与 :core 的**顶层声明**（Kotlin 默认 public，无修饰符也算）。谁放宽：:policy 整批归 293（ffdf911b 宰相抽模块，只搬不改行为）；:core 主体归 240（5a63c0f0 终端解耦第一刀），KnowledgeBaseSummaries 归 301（63e5589a 摘要链接线），IssueCenter 归终端抽核（361fd310）、PathGuard 归终端第四刀（79c998c9）搬入。verdict＝能不能收紧：public 必要＝:app/:core 之间确有引用；internal 候选＝外部零引用，收紧要动模块源码（不在 352 租约，另行派单）。成员级（类内部 public 成员）不在本闸，走 code review。",
   "_闸": "tools/check-public-surface.py —— 扫描结果与本表逐条比对：未登记 ⇒ 红；登记已消失 ⇒ notice（顺手清表）。",
   "policy": {
-    "origin": "293（ffdf911b）：宰相抽 :policy 模块，只搬不改行为，可见性按 Kotlin 默认未收；406（bafd191b）新增 MediatorDecide（调解器决策级三权）；550 新增 CompanionMode/CompanionDecision/CompanionJudge（相处模式三档闭集＋纯判档＋≤3 行渲染）",
+    "origin": "293（ffdf911b）：宰相抽 :policy 模块，只搬不改行为，可见性按 Kotlin 默认未收；406（bafd191b）新增 MediatorDecide（调解器决策级三权）；550 新增 CompanionMode/CompanionDecision/CompanionJudge（相处模式三档闭集＋纯判档＋≤3 行渲染）；778（读数消费）新增 ReadingCodex/ReadingFacts/ReadingPorts（三条规则＋读数快照＋装配端口，默认空端口逐字节一致）",
     "declarations": [
       {
         "name": "DecisionKind",
@@ -171,6 +171,27 @@
         "file": "CompanionMode.kt",
         "external_refs": 0,
         "verdict": "public 必要（550 判档算式与模式段渲染；:app 接线层调 judge／segment）"
+      },
+      {
+        "name": "ReadingCodex",
+        "kind": "object",
+        "file": "ReadingCodex.kt",
+        "external_refs": 1,
+        "verdict": "public 必要（778 三条读数规则的法典层：阈值、reason 码、affect 行都在此；:app 侧 ReadingFactsAdapter/测试 1 处生产引用 —— 规则本身必须跨模块可调，收窄要改模块源码，另立单）"
+      },
+      {
+        "name": "ReadingFacts",
+        "kind": "data class",
+        "file": "ReadingFacts.kt",
+        "external_refs": 3,
+        "verdict": "public 必要（778 读数快照的纯数据类型：policy 侧端口消费、:app 侧 adapter 投影生产 3 处引用；跨模块传递的数据形态，收窄会断开装配口）"
+      },
+      {
+        "name": "ReadingPorts",
+        "kind": "object",
+        "file": "ReadingPorts.kt",
+        "external_refs": 2,
+        "verdict": "public 必要（778 装配端口：默认空 ⇒ 未装配时逐字节一致；:app 侧 BaopuRuntime 装配 2 处引用；这是 app→policy 的唯一注入口，收窄等于拆掉装配能力）"
       }
     ]
   },

@@ -1081,9 +1081,9 @@
   "A": 3,
   "B": 16,
   "C": 4,
-  "gates_with_write_path": 4,
+  "gates_with_write_path": 5,
   "not_wired": 13,
-  "production_top_level_public": 741,
-  "wired": 722
+  "production_top_level_public": 742,
+  "wired": 723
  }
 }
