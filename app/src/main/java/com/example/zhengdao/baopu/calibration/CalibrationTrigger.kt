@@ -80,24 +80,38 @@ object CalibrationTrigger {
     fun decide(text: String, lex: CalibrationLexicon = CalibrationLexicon.MINIMAL): TriggerDecision {
         if (text.isBlank()) return TriggerDecision.OFF
         val zones = lex.zoneNames.filter { it.isNotBlank() && it in text }
-        val states = lex.stateWords.any { it.isNotBlank() && it in text }
-        val request = lex.bodyRequestWords.any { it.isNotBlank() && it in text }
-        val detail = lex.detailWords.any { it.isNotBlank() && it in text }
-        val collapse = lex.collapseWords.any { it.isNotBlank() && it in text } && zones.isEmpty() && !states
-        val style = when {
-            lex.webnovelWords.any { it.isNotBlank() && it in text } -> CalibrationStyle.WEBNOVEL
-            lex.medicalWords.any { it.isNotBlank() && it in text } -> CalibrationStyle.MEDICAL
-            else -> CalibrationStyle.NEUTRAL
-        }
-        val hit = zones.isNotEmpty() || states || request || collapse || style != CalibrationStyle.NEUTRAL
-        if (!hit) return TriggerDecision.OFF
-        val level = when {
-            detail -> CalibrationLevel.L2
-            // 塌缩请求与泛化身体描述请求也要带内容（变体档 ⇒ 见 CalibrationInject），归 L1。
-            zones.isNotEmpty() || states || request || collapse -> CalibrationLevel.L1
-            // 仅风格命中（网文腔/医学腔）⇒ L0：三行 + 一条提醒。
-            else -> CalibrationLevel.L0
-        }
-        return TriggerDecision(hit, level, zones, style, detail, collapse)
+        val states = containsAny(lex.stateWords, text)
+        val request = containsAny(lex.bodyRequestWords, text)
+        val detail = containsAny(lex.detailWords, text)
+        val collapse = containsAny(lex.collapseWords, text) && zones.isEmpty() && !states
+        val style = styleOf(lex, text)
+        if (!isHit(zones, states, request, collapse, style)) return TriggerDecision.OFF
+        return TriggerDecision(true, levelOf(detail, zones, states, request, collapse), zones, style, detail, collapse)
+    }
+
+    /** 轻量包含判定：词表里任一词非空且出现在文本中。抽出来压低 decide 的圈复杂度。 */
+    private fun containsAny(words: List<String>, text: String): Boolean =
+        words.any { it.isNotBlank() && it in text }
+
+    /** 风格判定：网文腔优先于医学腔，二者皆无即中性。 */
+    private fun styleOf(lex: CalibrationLexicon, text: String): CalibrationStyle = when {
+        containsAny(lex.webnovelWords, text) -> CalibrationStyle.WEBNOVEL
+        containsAny(lex.medicalWords, text) -> CalibrationStyle.MEDICAL
+        else -> CalibrationStyle.NEUTRAL
+    }
+
+    /** 是否算命中男性身体相关内容。 */
+    private fun isHit(
+        zones: List<String>, states: Boolean, request: Boolean,
+        collapse: Boolean, style: CalibrationStyle,
+    ): Boolean = zones.isNotEmpty() || states || request || collapse || style != CalibrationStyle.NEUTRAL
+
+    /** 分档：显式详细 L2；部位/状态/请求/塌缩 L1；仅风格 L0。 */
+    private fun levelOf(
+        detail: Boolean, zones: List<String>, states: Boolean, request: Boolean, collapse: Boolean,
+    ): CalibrationLevel = when {
+        detail -> CalibrationLevel.L2
+        zones.isNotEmpty() || states || request || collapse -> CalibrationLevel.L1
+        else -> CalibrationLevel.L0
     }
 }
