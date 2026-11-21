@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第七百五十九批 · 虚构题材模式设置卡文案（独立文件，不碰共享 strings.xml）。 -->
+<resources>
+    <string name="baopu_fiction_card">虚构题材</string>
+    <string name="baopu_fiction_title">虚构题材模式（双性／模拟锁结）</string>
+    <string name="baopu_fiction_desc">默认关。开启只注入设定谱（canon）行，输出带设定戳；事实层取值不因本开关改变，关闭后零注入。</string>
+</resources>

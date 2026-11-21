@@ -96,6 +96,7 @@ import com.example.zhengdao.baopu.SkillScope
 import com.example.zhengdao.baopu.SkillStore
 import com.example.zhengdao.baopu.agent.AskHabitSwitch
 import com.example.zhengdao.baopu.pack.ContentPackGate
+import com.example.zhengdao.baopu.state.fiction.FictionModeGate
 import com.example.zhengdao.baopu.agent.PersonaApprovalCard
 import com.example.zhengdao.baopu.agent.ToolGroup
 import com.example.zhengdao.baopu.agent.ToolGroupAudit
@@ -594,6 +595,44 @@ internal fun BaopuSettingsScreen(
                             ContentPackGate.set(ctx, want)
                             packOn = want
                             RunLog.log("抱朴设置：内容创作资料包 = $want")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 虚构题材模式（759 批：双性/模拟锁结，默认关、显式开启）──
+            // 定位：开关只决定"设定谱（canon）行注不注入"；关掉 ⇒ 零注入、零行为变化，
+            // 与"没有本单"逐字节一致。事实层（665/669/660）不因本开关改一个值——
+            // 物理隔离：fiction 包对事实层零 import（源码闸钉）。写口只有
+            // FictionModeGate.set 一处，屏上显示与闸门读的是同一个键（照 649 房型）。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_fiction_card)) {
+                var fictionOn by rememberSaveable { mutableStateOf(FictionModeGate.on(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_fiction_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_fiction_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = fictionOn,
+                        onCheckedChange = { want ->
+                            FictionModeGate.set(ctx, want)
+                            fictionOn = want
+                            RunLog.log("抱朴设置：虚构题材模式 = $want")
                         },
                         colors = zhengdaoSwitchColors(),
                     )

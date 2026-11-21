@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Batch 759 · fiction subject-mode settings card copy (separate file; shared strings.xml untouched). -->
+<resources>
+    <string name="baopu_fiction_card">Fiction subjects</string>
+    <string name="baopu_fiction_title">Fiction subject mode (intersex / simulated lock)</string>
+    <string name="baopu_fiction_desc">Off by default. On injects canon lines only, marked as setting; fact-layer values never change with this switch, and off means zero injection.</string>
+</resources>
