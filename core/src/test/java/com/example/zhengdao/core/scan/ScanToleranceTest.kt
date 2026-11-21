@@ -22,7 +22,14 @@ import java.nio.file.Path
  *
  * 两层夹具（IO 全注入，与 494「Windows chmod 不作数」同口径）：
  * 1. **真文件系统夹具**：临时沙盒里 20 个正常文件 + 建得出来的坏名
- *    （U+FFFD 解码失败、300 字节超长）——验「扫描完成、不崩、跳过进账、正常零影响」；
+ *    （U+FFFD 解码失败；300 字节超长**只有 Windows 建得出**——见下）——
+ *    验「扫描完成、不崩、跳过进账、正常零影响」；
+ *    超长名这块的跨平台事实（2026-11-21 修 ci #2094 时查明）：
+ *    NTFS 的 255 是 **UTF-16 单元**数 ⇒ 100 个汉字（300 UTF-8 字节）能建出来，
+ *    [ScanNameRules.MAX_NAME_BYTES] 判它 too-long；
+ *    而 ext4/APFS 的 255 是 **UTF-8 字节**数 ⇒ 这类名字在 POSIX 上 createFile 就
+ *    `FileSystemException(ENAMETOOLONG)`，根本进不了目录。
+ *    所以真夹具按「建得出来才验」走，too-long 的判定另由注入夹具逐码覆盖（见下）；
  * 2. **注入夹具**：假流/假属性读——把五种原因码（含真文件系统造不出的
  *    reserved/attr-fail/denied）逐类造出来，目录级失败与迭代中断也在此验证。
  *
@@ -63,19 +70,26 @@ class ScanToleranceTest {
         val normalNames = (1..20).map { "正常-%02d.md".format(it) }
         normalNames.forEach { Files.createFile(dir.toPath().resolve(it)) }
         Files.createFile(dir.toPath().resolve(decodeFailName))
-        Files.createFile(dir.toPath().resolve(tooLongName))
+        // POSIX（ext4/APFS）上 300 字节的名字建不出来：ENAMETOOLONG。
+        // 建不出来就只验 decode-fail 这一类；too-long 由「注入夹具_五类原因码」单独钉。
+        val tooLongCreated = runCatching {
+            Files.createFile(dir.toPath().resolve(tooLongName))
+        }.isSuccess
 
         val sink = mutableListOf<ScanTolerance.NameSkip>()
         val listing = ScanTolerance.listTolerant(dir, skipSink = { sink += it })
 
         // 判据⑤/②：正常文件全部扫到、一个不少
         assertEquals("20 个正常文件全部扫到", normalNames.sorted(), listing.entries.map { it.name }.sorted())
-        // 判据①：坏名两类各记一条，扫描没有中断（能走到这里的断言本身就是"没崩"）
-        assertEquals(2, listing.skips.size)
-        assertEquals(
-            listOf("decode-fail", "too-long"),
-            listing.skips.map { it.reason }.sorted(),
-        )
+        // 判据①：坏名逐类各记一条，扫描没有中断（能走到这里的断言本身就是"没崩"）。
+        // 期望随平台：Windows 两种坏名都建得出（2 条）；POSIX 建不出超长名（1 条）。
+        val expectedReasons = if (tooLongCreated) {
+            listOf("decode-fail", "too-long")
+        } else {
+            listOf("decode-fail")
+        }
+        assertEquals(expectedReasons.size, listing.skips.size)
+        assertEquals(expectedReasons, listing.skips.map { it.reason }.sorted())
         // 判据④：跳过数 == 记账行数（不许静默）
         assertEquals("每条跳过恰好记一行", listing.skips.size, sink.size)
         // 判据③：账行带原因码与转义路径，且不含替换符原字
