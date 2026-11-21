@@ -55,8 +55,8 @@ class CalibrationAssemblyTest {
         }
     }
 
-    private val specA: String get() = """{"heightCm":176.0,"weightKg":70.5,"bodyFatPct":25.0,"muscleGrade":3,${skinNode()}"source":"作者设定","asOf":"2026-11-21"}"""
-    private val specB: String get() = """{"heightCm":181.0,"weightKg":78.25,"bodyFatPct":22.5,"muscleGrade":4,"ageBand":"adult",${skinNode()}"source":"作者设定","asOf":"2026-11-21"}"""
+    private val specA: String get() = """{"heightCm":176.0,"weightKg":70.5,"bodyFatPct":25.0,"muscleGrade":3,${skinNode()},"source":"作者设定","asOf":"2026-11-21"}"""
+    private val specB: String get() = """{"heightCm":181.0,"weightKg":78.25,"bodyFatPct":22.5,"muscleGrade":4,"ageBand":"adult",${skinNode()},"source":"作者设定","asOf":"2026-11-21"}"""
 
     /**
      * 合成语料的作者设定：660 的 SpecGuard 要求 669 词表 13 区每区都带 source+asOf 的色值，
@@ -118,6 +118,20 @@ class CalibrationAssemblyTest {
         val notes = CalibrationWiring.notes("详细描述根部和龟头的样子")
         assertEquals("三行原样、顺序不变", lines.asContextNotes(), notes.take(3))
         assertTrue("命中下体区必须有带源条目", notes.any { it.startsWith("[校准·") })
+    }
+
+    /**
+     * 夹具自证：specA 必须是"真能装上身"的那一份。
+     * 少了这一条，下面所有"未设定"断言都可能空转——本单初版 specA 少一个逗号（JSON 不合法），
+     * 装配层照常出「未设定」，于是判据②一片绿，而判据①的"数字对上"根本没跑起来。
+     */
+    @Test
+    fun `夹具自证_specA能被660收下_否则未设定断言全是空转`() {
+        writeSpec(specA)
+        assertNotNull("specA 必须解析得动", CalibrationBodySource.parseSetting(specA))
+        val inv = CalibrationAssembly.lines().invariant
+        assertFalse("装上身之后不许还是「未设定」：$inv", inv.contains(CalibrationAssembly.UNSET))
+        assertTrue("不变量行必须带 660 的真数：$inv", inv.contains("176cm"))
     }
 
     // ── ② 降级：未设定，不编 ─────────────────────────────────────────────
