@@ -127,7 +127,7 @@
 > `tools/notices-evidence.json` 的离线登记表兜底（带 POM 原文与 sha256）。全程不联网；
 > 两处都没有证据的坐标 ⇒ 写「未取证」，不按 group 猜。
 
-**表 8-A · 直接声明的 Maven 依赖**（28 条；随包 16 / 不随包 12 / 许可未取证 0）
+**表 8-A · 直接声明的 Maven 依赖**（29 条；随包 17 / 不随包 12 / 许可未取证 0）
 
 | 坐标 | 版本 | 许可 | 随包？ | 来源 | 许可取证 |
 |---|---|---|---|---|---|
@@ -149,6 +149,7 @@
 | `androidx.test.espresso:espresso-core:3.7.0` | `3.7.0` | Apache-2.0 | 否（androidTestImplementation） | app/build.gradle.kts（androidTestImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `androidx.test.ext:junit:1.3.0` | `1.3.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块/androidTestImplementation） | app/build.gradle.kts（androidTestImplementation）；macrobenchmark/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `androidx.test.uiautomator:uiautomator:2.4.0` | `2.4.0` | Apache-2.0 | 否（:macrobenchmark 是独立测试模块） | macrobenchmark/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `androidx.window:window:1.5.0` | `1.5.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `androidx.work:work-runtime:2.12.0` | `2.12.0` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `com.mikepenz:multiplatform-markdown-renderer-code:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `com.mikepenz:multiplatform-markdown-renderer-m3:0.38.1` | `0.38.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
