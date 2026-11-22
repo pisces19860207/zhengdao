@@ -1,0 +1,974 @@
+{
+  "schema": "zhengdao.capability-catalog/v1",
+  "generatedBy": "tools/check-capabilities.py",
+  "note": "12 字段为人工治理元数据；externalConsumers/wiredState 两列由脚本现算写入，禁止手填。scan 为现算定位信息，domain 为人读分组。",
+  "sourceOfTruth": {
+    "productionRoots": [
+      "app/src/main/java",
+      "policy/src/main/java",
+      "core/src/main/java",
+      "native-core/src/main/java"
+    ],
+    "testRootsExcluded": [
+      "*/src/test/*",
+      "*/src/androidTest/*",
+      "*/src/testDebug/*"
+    ],
+    "shadowNamePattern": "shadow|rehearsal (case-insensitive, basename)",
+    "consumerRule": "production file OUTSIDE the capability's own package/file, containing an import or qualified reference to it; one file counts once"
+  },
+  "capabilities": [
+    {
+      "capabilityId": "state.form",
+      "domain": "形体与外观",
+      "purpose": "从人填的 HumanBodySpec 与两张口径表推算出定标骨架、13 区生殖器读数、体表高度场、凸体代理体与柔韧可达性，装配出 BodyState。",
+      "inputs": "HumanBodySpec；FormTables.loadProportions/loadZones（docs/facts/body-proportions.json、body-zones.json）；baopu.body 的 AnatomyZone 词表；PoseDemand。",
+      "outputs": "BodyState；BodyFrame 推算骨架；GenitalModel 13 区；BodyHeightField；BodyProxies；FlexReach 三态；CalibrationReport。",
+      "dependsOn": [
+        "state.geometry",
+        "state.variant"
+      ],
+      "source": "数据",
+      "status": "生产批准",
+      "callWhen": "需要建立场次身体、已有合法 HumanBodySpec 与口径表时；用 Calibration.apply 做 3–5 个带来源实测定标；导出 655 代理体；判动作可达性。",
+      "banWhen": "禁止身高推尺寸；分布字面量只许住 FactsFromMd；读数/覆盖/色值/表项缺 source 或 asOf 即拒；超可行域即拒；分区表须与 669 词表 13 区一一对应；缺任一区色值即拒；紫红须伴温度下降。",
+      "onFailure": "fail-closed：超域/悬空键/缺源一律 require 抛 IllegalArgumentException，不给兜底默认；偏离只记 Deviation 留痕不改写；硬误写报 VocabError 只报不改。",
+      "acceptance": [
+        "BodyStateTest.kt",
+        "GenitalModelTest.kt",
+        "FormTablesTest.kt",
+        "FlexibilityTest.kt",
+        "HeightFieldTest.kt",
+        "FormSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.form.",
+        "selfDir": "baopu/state/form"
+      },
+      "externalConsumers": 8,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationAssembly.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationBodySource.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/anchor/AnchorBodyBridge.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingGeometry.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingReach.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingSampler.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxySimplify.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/readback/BodyReadback.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.bodyparts",
+      "domain": "形体与外观",
+      "purpose": "用纯档位（不读影像、不反推尺寸、不下诊断）记录八部位二十三维外观，并检出体脂/乳晕/对称/喉结四类自相矛盾。",
+      "inputs": "Reading 列表（dim/side/posture/level/basis/source/asOf）；FatBand、SpacingBand、LarynxDriver；BodyPartCatalog 目录表。",
+      "outputs": "BodyParts 完整单子（8 部位 23 维 72 条）；Finding 三态 PASS/NEED_CHECK/DENY；AreolaMatrix；twoStates 两态对照；line() 机读快照。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要给胸肌/乳头/乳晕/喉结/腹肌/肱二头/大腿/小腿打形态档，并检查体脂一致性、乳晕比例、左右对称、喉结驱动是否自洽时。",
+      "banWhen": "读数缺侧别/姿态、分左右缺一侧、档序越界、封闭行档当落点填即拒；须给依据的档缺 basis 拒；输出含长度/面积/百分比/绝对色号/诊断词时 BodyPartGuard 抛；零 IO 不读真人影像、不碰邻单账。",
+      "onFailure": "不完整单子构造即拒并点名哪部位/哪维/哪侧/哪态缺失或重复；给不出来源记 NO_SOURCE；line() 出口过两道文字闸，出现单位或判定词当场抛。",
+      "acceptance": [
+        "BodyPartSourceAssertTest.kt",
+        "BodyPartChecksTest.kt",
+        "BodyPartSheetTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.bodyparts.",
+        "selfDir": "baopu/state/bodyparts"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.variant",
+      "domain": "形体与外观",
+      "purpose": "严格解析天生变体谱表（docs/facts/variants.json），按 seed 做确定性加权采样，产出每维一档的变体选择与提示。",
+      "inputs": "VariantTable.load(repoRoot) 或 parse(json)；VariantDim/Level（probability 0..100、reality）；VariantSampler.Options(seed/fixed/includePathological)。",
+      "outputs": "VariantTable；VariantSample(chosen/advisories)；canonical() 逐字节一致规范串。",
+      "dependsOn": [],
+      "source": "工具",
+      "status": "生产批准",
+      "callWhen": "需要为角色生成一份天生变体设定且要求同 seed 跨 JVM 可复现；作者固定某维某档；显式纳入病理维并附提示；加载校验谱表。",
+      "banWhen": "schema 非 variant-spectrum/v1、source/asOf 空、维度<8、档位不在3–5、probability 越界或未归一、key 重复、reality 非法即拒收；病理维未显式开启即固定拒；产物不得复述谱内正文。",
+      "onFailure": "parse 严格校验缺字段/错 schema 直接抛 IllegalArgumentException；sample 固定档不存在/病理维未开启抛；pickWeighted 末档兜底；带 note 的 real 档汇总提示。",
+      "acceptance": [
+        "VariantSpectrumTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.variant.",
+        "selfDir": "baopu/state/variant"
+      },
+      "externalConsumers": 2,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationSource.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.geometry",
+      "domain": "几何与运动",
+      "purpose": "静态几何判定内核：向量/旋转算术、凸体支撑函数、GJK 最近距离、EPA 穿透深度、关节链静态运动学、末端可达三态、姿态合法性四类违规、两体闭式正碰，无时间积分。",
+      "inputs": "Vec3/Rot3 与 Double 几何量；ConvexShape 五种实现；JointChain 与关节角；Reachability.ofChain 参数；PoseValidity.check 段/环境/相邻名单；TwoBodyCollision.resolve 入参。",
+      "outputs": "GjkResult；EpaResult；ChainPose；ReachResult 三态；PoseVerdict（违规四类、整数毫米/毫弧度）；CollisionResult；均带模拟非测量注记。",
+      "dependsOn": [],
+      "source": "工具",
+      "status": "生产批准",
+      "callWhen": "需要凸体最近距离/相交、穿透深度与分离方向、关节角到末端位姿、末端可达三态、姿态自碰撞/穿地/穿沙/限位检查、两体正碰守恒核验时。",
+      "banWhen": "不得用于时间积分/连续轨迹/步进仿真；不得用于接触流形或顺序冲量求解；只接受凸体；结论不得当实测；PoseValidity 相邻段对须由调用方给名单；结论类型禁 Double 字段。",
+      "onFailure": "非法输入一律 require 抛 IllegalArgumentException；GJK 64 轮/相对收敛收口；EPA 不相交返回 null；采样未命中返回 UNKNOWN 而非 UNREACHABLE；深度未超容差不记违规。",
+      "acceptance": [
+        "GjkTest.kt",
+        "GjkDegenerateTest.kt",
+        "EpaTest.kt",
+        "JointChainTest.kt",
+        "ReachabilityTest.kt",
+        "PoseValidityTest.kt",
+        "TwoBodyCollisionTest.kt",
+        "GeometrySourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.geometry.",
+        "selfDir": "baopu/state/geometry"
+      },
+      "externalConsumers": 21,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingGeometry.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingReach.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingSampler.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingTypes.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/Aabb.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/Broadphase.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/CavityMap.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/ContactProbe.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/GravityContact.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/OrganProxy.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxyLegality.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxySimplify.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/containment/Phrasebook.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/containment/StanceLegality.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyProxies.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/form/Flexibility.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/form/GenitalModel.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/form/HeightField.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/motion/FrameCheckEval.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/motion/RigGeometry.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.cavity",
+      "domain": "几何与运动",
+      "purpose": "把形体导成四类简化器官代理，基于 655 几何原语给出腔隙三档、接触三量、四项合法性与准静态重力落定读数。",
+      "inputs": "BodyProxies（660 真形体 17 段＋13 区）；SegmentProxy/ConvexShape；AnatomyZone 及 669 关系表；JointChain/ChainPose；anchors/adjacent。",
+      "outputs": "OrganProxy 四类与 Aabb；CavityGap 三档；ContactReading 三量；LegalityReading 四项三态；RestingContact。",
+      "dependsOn": [
+        "state.form",
+        "state.geometry"
+      ],
+      "source": "模型",
+      "status": "独立验证",
+      "callWhen": "需要把 660 形体简化为可碰撞代理、算相邻区空隙、算穿透深度/接触点数/法线、检验四项合法性或做准静态重力落定时。",
+      "banWhen": "形状非四类原语拒；某区缺代理体抛错不静默漏条目；相邻表指向不存在区抛；未穿透返回 null；深度 NaN/负零/负值抛；法线零向量抛；不做有限元/连续碰撞/时间积分/接触流形。",
+      "onFailure": "未相交返回 null；几何原语退化抛错 fail-closed；凸包特征点超限截断并记 droppedFeatureCount；缺代理体/悬空相邻/非法深度/零法线/缺锚一律抛异常点名对象。",
+      "acceptance": [
+        "CavityBoundaryTest.kt",
+        "BroadphaseTest.kt",
+        "CavityMapTest.kt",
+        "ContactProbeTest.kt",
+        "GravityContactTest.kt",
+        "OrganProxyTest.kt",
+        "ProxyLegalityTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.cavity.",
+        "selfDir": "baopu/state/cavity"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.bearing",
+      "domain": "几何与运动",
+      "purpose": "判定手能否够到某区某方位某距离，给出可达三态、关节档与卡在哪，不判进入/容纳/穿透。",
+      "inputs": "BodyState（jointLimits/frame/proxies）；Environment；zoneId/subzone/bearing:Bearing6/distance:DistanceTier/side。",
+      "outputs": "BearingOutcome：Judged（七项）或 Incomplete（列 missing＋given）；三态；JointTiers；BearingPath.feasible/blockedBy；bestGapMm 整数。",
+      "dependsOn": [
+        "state.form",
+        "state.geometry"
+      ],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "三轴（目标区、六方位、四距离档）给齐、要判断手够不够得到并知道关节档时。",
+      "banWhen": "三轴缺一即 incomplete 不判；subzone 不在 SubzoneSource.of 时 incomplete（775 未落地该表恒空）；只判到区，不判进入可行性/空间容纳/穿透后果；baseline 恒 fixture 未接真形体；不做连续 IK/时间积分。",
+      "onFailure": "缺轴返回 Incomplete 逐项列 missing 与给定值；链长三角界闭式判 UNREACHABLE 标 blockedBy；几何原语异常 catch 保守记卡 fail-closed；输出 Locale.ROOT 定点格式逐字节一致。",
+      "acceptance": [
+        "BearingReachTest.kt",
+        "BearingSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.bearing.",
+        "selfDir": "baopu/state/bearing"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.containment",
+      "domain": "几何与运动",
+      "purpose": "给定空间三轴档、站位朝向与四项合法性台账，判定该姿势在该空间进得去/勉强/进不去，只出档与三态不出坐标尺寸。",
+      "inputs": "SpaceProfile（三轴 Grade＋opening）；Stance/Facing；StanceAudit 四项三态；StanceScene 经 StanceLegality.audit 转写。",
+      "outputs": "ContainmentVerdict（三态＋10 种 LimitReason 闭集＋快照＋文案）；ContainmentSurvey；StanceAudit。",
+      "dependsOn": [
+        "state.geometry"
+      ],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "已有空间三轴档与开口、选定站位朝向、每档站位备好四项台账时；高度差一档且可弯腰场合。",
+      "banWhen": "audit.stance 与被判 stance 不一致拒；survey 缺任一档台账拒；FIT 带受限原因/655 未四项全过却判 FIT/有 FAIL 项却非 NOFIT/文案非 Phrasebook 生成构造即抛；硬原因或最差差≥2 档不得判 FIT。",
+      "onFailure": "硬原因或 worstShortage≥2 直接 NOFIT；软原因压 MARGINAL；655 的 UNKNOWN 记 UNPROVEN 不据此判 FIT；前置不满足 require 抛；文案逐字校对命中禁词抛。",
+      "acceptance": [
+        "ContainmentJudgeTest.kt",
+        "ContainmentBoundaryTest.kt",
+        "ContainmentCouplingTest.kt",
+        "StanceLegalityTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.containment.",
+        "selfDir": "baopu/state/containment"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.motion",
+      "domain": "几何与运动",
+      "purpose": "给出走/蹲/跨/弯腰四动作共 15 帧静态关键姿（对外全为序数档位与布尔、零数值），每帧经几何四项判定并在不达标时逐级退档。",
+      "inputs": "MotionAction 闭集；目标强度档 1–5；index；KeySpec；内部 RigGeometry 把档位映射为关节量并派生腿链/段/环境/相邻名单。",
+      "outputs": "KeyPose（档位/布尔、phase 三态、demotedFrom、checks）；FrameChecks 四位 yn；Gait 三布尔；all/of/get 取帧入口。",
+      "dependsOn": [
+        "state.geometry"
+      ],
+      "source": "模型",
+      "status": "独立验证",
+      "callWhen": "需要四动作静态关键姿库或步态读数；需要把强度档派生为已过几何四项的合法姿态档并知道是否退档；校验走姿三态齐全/左右交替。",
+      "banWhen": "不得用于时间积分/连续轨迹/真实运动仿真；档位到关节量的映射非真实解剖真值；对外类型禁 Double/Float；不得另造几何内核或只调 PoseValidity 漏掉 Reachability；动作/相位闭集固定。",
+      "onFailure": "不合格帧逐级退档，1 档站立基准保底必过；demotedFrom 记录原目标档；派生输出档位恒不超已通过档；非法 level 抛 NoSuchElementException；FrameChecks 全布尔逐字节稳定。",
+      "acceptance": [
+        "MotionKeyframesTest.kt",
+        "MotionSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.motion.",
+        "selfDir": "baopu/state/motion"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.environment",
+      "domain": "环境与介质",
+      "purpose": "一次给定纬度/日序/真太阳时/风级风向/气温/湿度/活动强度/沙含水档，解出光照、风、湿度、汗液、沙含水五分项的环境状态（公式推算非实测）。",
+      "inputs": "latitudeDeg/dayOfYear/trueSolarTimeH/beaufort/windDirDeg/tempC/rhPct/activity/sandMoistureGrade；toTrueSolarTime/sunsetOf/beaufortOf 辅助入口；仅 kotlin.math。",
+      "outputs": "EnvironmentState：sun/wind/humidity/sweat/sand 五分项，每项带 assumption 与模拟非测量注记。",
+      "dependsOn": [],
+      "source": "模型",
+      "status": "独立验证",
+      "callWhen": "场景需要确定光照几何、风影响清单、露点/湿球/蒸发档、产汗档、湿沙束缚系数且天气参数外部给定时；钟表时先换算真太阳时。",
+      "banWhen": "各分项 require 拒收越界参数：纬度/真太阳时/dayOfYear/风级/活动/沙档/气温越界拒；极昼极夜 sunset 时刻 null；不做云层雾反射、不做流体流场、不做天气预测（天气必须外部给定）。",
+      "onFailure": "越界抛 IllegalArgumentException 不静默钳位；RH 只钳 1..100；湿球钳不超干球；极态返回 polar 且时刻 null；产出统一带模拟非测量注记。",
+      "acceptance": [
+        "EnvironmentSolverTest.kt",
+        "SolarSolverTest.kt",
+        "HumiditySolverTest.kt",
+        "WindTableTest.kt",
+        "EnvironmentSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.environment.",
+        "selfDir": "baopu/state/environment"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.physiology",
+      "domain": "环境与介质",
+      "purpose": "用五类档位化驱动合成整体生理态的四状态档与三液分道读数，纯函数产出固定顺序档位文本，不给点值、不下结论、不进闸。",
+      "inputs": "PhysioInputs 六类驱动各 0–3 档（温湿/活动/时长/情绪/个体）；BASELINE；无连续量、无 IO/时钟/随机。",
+      "outputs": "LightPhysiology 四状态 GradeReading；FluidChannels 恰三条独立 FluidTrack（汗/唾液/前液）；PhysioRenderer 固定顺序文本；PhysiologyChecks 判据问题列表。",
+      "dependsOn": [],
+      "source": "模型",
+      "status": "生产批准",
+      "callWhen": "需要整体层生理态档位读数或读回文本；由环境温湿/活动/时长/情绪/个体差异派生四态与三液；自检守约时对拍。",
+      "banWhen": "不得装配/进闸/落库/下判定；不得给任何点值；三液不得合并成体液/分泌物；不得替邻单落账（源码禁前列腺液/精液/射精等词）；非零档必须挂至少一条驱动；present 与 amount 非零性须一致。",
+      "onFailure": "档位越界 coerceIn 钳端点；冲突由 PhysiologyChecks 列表逐条点名不静默吞；渲染与求解纯函数同输入逐字节一致、无 IO/时钟/随机。",
+      "acceptance": [
+        "LightPhysiologyTest.kt",
+        "PhysiologyContractTest.kt",
+        "PhysiologySourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.physiology.",
+        "selfDir": "baopu/state/physiology"
+      },
+      "externalConsumers": 1,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationPhysiology.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.fluid",
+      "domain": "环境与介质",
+      "purpose": "三液（汗/唾液/前液/精液）的四维变化、混合、垂坠、织物、覆盖与离体六个判定器，吃档位吐档位，判红不出值，输出只有档名。",
+      "inputs": "FluidBody 四维 GradeRead（量/黏/温/干＋ChangeDriver）；FluidStep；MixRequest；DroopRequest；FabricMaterial/CoverageClaim/EjectionRequest/ShedRequest。",
+      "outputs": "FluidVerdict<T>（value 可空＋issues 分 RED/PROMPT）；Mixture；DroopReading；FabricStack；CoverageReading；DepartureSet；FluidRenderer 稳定档位文本。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要把液体样子写成档位结论时：四维随一步驱动用 step、两液相混用 mix、垂坠用 droop、织物渗透用 fabric、覆盖上限用 coverage、离体轨迹用 departure。",
+      "banWhen": "判红不出值：平均式混合/未给主液/非零档无驱动/干涸无新液复湿/垂坠缺体位/织物栈空或跳层/覆盖超量档/喷射缺驱动或落点/甩出缺三样或给法向/文案出现点值单位均判红。",
+      "onFailure": "判红即 value=null；只有提示时仍算可出且提示随行带出；DepartureSet 空段 require 抛；检查器只报红/提示不下结论；渲染纯函数零 IO/时钟/随机。",
+      "acceptance": [
+        "FluidChangeTest.kt",
+        "FluidMixTest.kt",
+        "FluidDepartureTest.kt",
+        "FluidSurfaceTest.kt",
+        "FluidSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.fluid.",
+        "selfDir": "baopu/state/fluid"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.surfaceflow",
+      "domain": "环境与介质",
+      "purpose": "对外部水与汗在体表的走法做只读结构化判定——只产档位与部位，给四件输出，有红不出值。",
+      "inputs": "SurfaceFlowClaim（source/posture/note）；paths/pools/drips/hairWicks；SweatProfile。",
+      "outputs": "SurfaceVerdict<SurfaceFlowResult>（红/提示分档，ok=value≠null 且无红）；FlowOutputs 四件 paths/poolAt/dripAt/posture；19 条码册。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要判定体表水流描述（路径/积水/滴落/毛束/汗分区）是否符合凸分流/凹积水/尖挂滴/缘导流/汗三点口径，并把通过值渲染成四件输出时。",
+      "banWhen": "posture 为 null、source=SWEAT 却 sweat=null、汗分区不足两区/重复/全同档、积水非零无出口、滴落未标 isLowest、包皮口缘滴落缺档、沿毛束无沾水毛束、note 含数字/单位/体液专名、显式全身均匀流下即判红；禁 IO/随机/时钟/依赖邻单/点值类型。",
+      "onFailure": "有任一 RED 返回 SurfaceVerdict(null,issues) 不出值；PROMPT 随 value 出去不置空；resultOf requireNotNull(posture) 兜底；无积水/滴落如实记「无」；排序固定逐字相同。",
+      "acceptance": [
+        "SurfaceFlowTerrainTest.kt",
+        "SurfaceFlowSweatTest.kt",
+        "SurfaceFlowRendererTest.kt",
+        "SurfaceFlowSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.surfaceflow.",
+        "selfDir": "baopu/state/surfaceflow"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.stimulus",
+      "domain": "环境与介质",
+      "purpose": "用离散档位与方向模型给出反复刺激的节律、分泌双相、敏感适应/饱和/恢复与六维进入感受，纯函数确定性。",
+      "inputs": "连续拍数/强度档/累积档/深度与撤回档/恢复级；Sensation.of 五独立入参＋WetnessSource；exposureGrade。",
+      "outputs": "RhythmReading；分泌档 0–3；敏感/不适/饱和；SensationReading 六维；短时/恢复/长期基线适应档。",
+      "dependsOn": [],
+      "source": "模型",
+      "status": "独立验证",
+      "callWhen": "需要把反复刺激建模成离散档位与方向：抽送节律、分泌先升后缓、敏感先升后反转、同强度持续适应、停后恢复、长期暴露基线、六维进入感受。",
+      "banWhen": "不得做剂量-效应数值/秒天时间量化/行为指导；四段入口不得互读；连续 6 拍后频率封顶；敏感越阈不得单调升；短时适应不降到无感；长期暴露不超过一档降且不得即时回弹；顺滑只从湿档源读；禁 var 累积器。",
+      "onFailure": "入参越界 coerceIn/clamp 不抛不越顶；超大拍数封顶；饱和区返回严格下降反转值；恢复 elapsed≥6 必回 target；湿档源未接默认恒 0；纯函数无积分器逐字节一致。",
+      "acceptance": [
+        "StimulusLoopTest.kt",
+        "StimulusSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.stimulus.",
+        "selfDir": "baopu/state/stimulus"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.prepuce",
+      "domain": "生殖与反应",
+      "purpose": "把包皮覆盖与露出状态记录成逐子区三态位图，按规则聚合成五档面积、预测疲软露出档，并拦截口径错误的文案。",
+      "inputs": "CoverageMask 12 子区×三态；FlaccidInput 四轴；ExposeClaim；区名查询；660 g.prepuce 档字符串。",
+      "outputs": "CoverageArea（五档或 null 未定＋rowId＋reason）；FlaccidPrediction；ExposeClaim；或带口径原话的拒绝。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要把叙事层包皮覆盖/露出落成结构化档位时：逐子区观察后才聚合面积档；疲软态给四轴时预测露出档；写口径入文前跑闸门校验。",
+      "banWhen": "从面积反推位图类型上走不通；位图缺冠或缺沟/算面积缺龟头五区或冠沟/同子区重复写/区名是合名或结论含单位/环切后写可回缩/全露未写可回缩或没给状态/疲软四轴矛盾组合即拒。",
+      "onFailure": "全部 fail-closed：抛 IllegalArgumentException 带口径原话不静默夹取；档外落 X1/X2 给 level=null 未定并给理由；AreaLevel.ofOrder 越界抛；660 表外词抛 UNKNOWN_REJECT。",
+      "acceptance": [
+        "PrepuceCoverageTest.kt",
+        "PrepuceExposureTest.kt",
+        "PrepuceGuardTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.prepuce.",
+        "selfDir": "baopu/state/prepuce"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.prostate",
+      "domain": "生殖与反应",
+      "purpose": "把当事人报告的前列腺感觉四档与排出型、触发三分类经唯一出口渲染成一行带免责的事件，或给带理由的拒绝。",
+      "inputs": "sensation 四档；trigger 三分类；kind 二型（默认流出）；outflowVolume；emissionCondition；allowUnverified（默认 false）。",
+      "outputs": "ProstateOutcome.Event 单行（带非医疗判断）；或 ProstateOutcome.Rejected(reason)（不抛不吞）。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要把一次前列腺感觉报告落成可入文事件行：已定四档感觉与触发三分类，默认走流出，仅显式给触发条件才写射出。",
+      "banWhen": "trigger=null 拒；UNVERIFIED 且 allowUnverified=false 拒；EMISSION 但 emissionCondition 空拒；流出型命中节律词闭集合判红；任何由冲击档/力学推感觉档的入口禁（零 injury 引用，源码闸钉死）。",
+      "onFailure": "三道闸不满足返回 Rejected 并给理由；档位越界 coerceIn 钳制 fail-closed；纯函数同输入逐字节一致。",
+      "acceptance": [
+        "ProstateChannelTest.kt",
+        "ProstateSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.prostate.",
+        "selfDir": "baopu/state/prostate"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.anchor",
+      "domain": "叙事状态",
+      "purpose": "为角色建立规格锁死的七维锚定档案，并管理带证据的越界/回流轨迹与任意时点回放。",
+      "inputs": "AnchorProfile 七维；AnchorPreference；BodyLine/InnerLine/KinkOverlap；RelationState 等（state.track）；跨格 evidence；HumanBodySpec（state.form）供只读。",
+      "outputs": "七维字段表；BridgeReading 四态；ReactionType 四型；Crossing（accepted/refused＋reason）；Replay；CrossRecord/DimSnapshot 摘要链。",
+      "dependsOn": [
+        "state.form",
+        "state.track"
+      ],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要给角色落七维锚定档案、读取 660 形体细字段接入状态、推进/回放关系越界轨迹时。",
+      "banWhen": "七维缺任一维抛 AnchorSpecException；字段 id 不在表内或表外取值拒；无证据推进/guard 未满足/进 T4 未出示触发牌/TX 出边未出示全中拒跨格；已越界后回越界前态拒；账本摘要链不自洽拒恢复；七维不许出现性别与性取向标签。",
+      "onFailure": "缺维/表外字段/空依据抛 AnchorSpecException 点名缺项；跨格闸不过返回 refused 写明拒因绝不静默推进；PARTIAL 只报 660 原始读数标待核不猜阈值；恢复时摘要对不上整体拒装填。",
+      "acceptance": [
+        "AnchorSourceAssertTest.kt",
+        "AnchorFieldsTest.kt",
+        "AnchorProfileTest.kt",
+        "AnchorBodyBridgeTest.kt",
+        "AnchorTrackTest.kt",
+        "CrossLedgerTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.anchor.",
+        "selfDir": "baopu/state/anchor"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.track",
+      "domain": "叙事状态",
+      "purpose": "用外部喂入的观测信号与证据驱动两套只读状态机（角色沦陷/升温链＋显性度、关系 11 态轨迹），产出阶段/接触层/显性度、否决账与一行状态串。",
+      "inputs": "TrackSignal（value −1..1，带 SignalSource）；NoRepulsion 三条件；SafetySignal；feed/tick/attackerStep/touch/hardVeto/releaseVeto；RelationTrack/step(证据)。",
+      "outputs": "salience/dStage/aStage/layer/stance/inertia；推进/拒绝消息；TrackStateView/snapshot/summaryLine；RelationTrack 11 态；vetoHistory/vetoActive。",
+      "dependsOn": [],
+      "source": "模型",
+      "status": "生产批准",
+      "callWhen": "每轮有六体读数或用户输入的状态信号时喂并推进；按 guard 证据推进关系轨迹；需要一行状态串替代重读沦陷链；PTSD 类触发写硬否决。",
+      "banWhen": "状态机不得自产信号（禁 Random/时钟）；信号必须带 SignalSource；硬否决活跃期一切推进输入整体丢弃，解除只认安全信号，多试不算；无排斥三条件任一不满足拒推进并降显性度；进攻/接触受双约束禁跳级；非单调阶段表构造即拒。",
+      "onFailure": "非法信号/参数构造期 require 拒；RelationTrack.step 无边/缺证据/越界回越界前态返回 false 不改状态；hardVeto 三态归零写账，从 S0/Lv1 重推；每步 enforceCaps 钳层兜底。",
+      "acceptance": [
+        "CharacterTrackTest.kt",
+        "RelationTrackTest.kt",
+        "TrackParityTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.track.",
+        "selfDir": "baopu/state/track"
+      },
+      "externalConsumers": 4,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/state/anchor/AnchorTrack.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/anchor/CrossLedger.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/summary/RunStateAssembler.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/state/summary/StateSummaryWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.summary",
+      "domain": "叙事状态",
+      "purpose": "把计划、起居注、六器账与未学会清单只读投影成一份不超 400 字、每个数字都带账行出处的状态摘要，注入 update_plan 的 ack 尾巴。",
+      "inputs": "goal；plan:PlanItem；diary:DiaryEvent；ledger:UnfinishedItem；unlearned:List<String>；track:CharacterTrack；StateSummaryWiring 注入闭包。",
+      "outputs": "RunState（四态 StepState＋Evidence）；StateSummary.render 短摘要；StateSummaryWiring.ackNote 注入段。",
+      "dependsOn": [
+        "state.track"
+      ],
+      "source": "数据",
+      "status": "生产批准",
+      "callWhen": "每次 update_plan 成功回执时；需要把当前目标/阶段/刚完成/卡住/待决策/未学会压成短摘要给模型时，且已 attach 账本读取闭包。",
+      "banWhen": "未 attach 闭包（尤其 diarySource=null）时 ackNote 恒返回空串；只读投影不新造状态机不能当状态转移用；源码门禁禁读对话正文；空状态只输出「无」且注入口不塞给模型。",
+      "onFailure": "Evidence 空串或行号<1 构造期 require 拒；任一账本读取闭包抛异常 runCatching 取空只丢那段；神轨取值失败按「没有」处理不插行不崩；超 400 字从尾整段丢弃。",
+      "acceptance": [
+        "StateSummaryTest.kt",
+        "StateSummaryWiringTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.summary.",
+        "selfDir": "baopu/state/summary"
+      },
+      "externalConsumers": 2,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/ZhengdaoApp.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/agent/PlanController.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.readback",
+      "domain": "叙事状态",
+      "purpose": "从 BodyState 与 669 词表把身体不变量、状态、词档渲染成三行读回文本，并对不变量行提供人批封印与失效回落。",
+      "inputs": "BodyState（state.form）；zones:AnatomyZone（669 词表）；approvedInvariant；InvariantSeal(basis/line/digest/who/atMs)。",
+      "outputs": "Rendered（ReadbackLines 不变量/状态/词档三行＋basis）；asContextNotes/asText；InvariantSeal 生效行与 isEffective。",
+      "dependsOn": [
+        "state.form"
+      ],
+      "source": "数据",
+      "status": "生产批准",
+      "callWhen": "需要往本轮文本上下文注入身体三行读回当文本背景时；需要固定不变量行只有人批才变、改版即作废时。",
+      "banWhen": "想把三行接进任何闸或落库/装配禁（源码闸钉死）；想硬编码 13 区正名或身高体脂值禁（真源只能 BodyState/669）；以非「用户」身份 approve 返回 null；缺口径时想编数禁（只能留位「未接入」）。",
+      "onFailure": "who≠「用户」approve 返回 null；seal 缺失/失配（digest 不符）回落当轮现算真读数；数值 NaN/非有限输出「未接入」；超长行截断加省略号（≤90 字、三行≤200 token）。",
+      "acceptance": [
+        "BodyReadbackTest.kt",
+        "ReadbackSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.readback.",
+        "selfDir": "baopu/state/readback"
+      },
+      "externalConsumers": 6,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationAssembly.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationGovernance.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationInject.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationPhysiology.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationSource.kt",
+        "app/src/main/java/com/example/zhengdao/baopu/calibration/CalibrationWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.capacity",
+      "domain": "叙事状态",
+      "purpose": "判断人数/分配/范围/时段四要素的容量断言是矛盾、支持还是未知，并禁止用房间数反推容量。",
+      "inputs": "CapacityClaim（quantity/allocation/scope/period/alternatives/confirmations/countingBasis）；SourceAnchor；Place 枚举。",
+      "outputs": "CapacityResult（verdict 三态＋missing 四要素固定序＋excludedAlternatives＋reason）；line() 一行机读快照。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "要对一段叙述里的人数/分配/范围/时段做容量断言，并需逐项带来源锚排除替代安排（判矛盾）或列正面陈述（判支持）时。",
+      "banWhen": "countingBasis=ROOM_COUNT_DERIVED 抛；四要素任一空即判 UNKNOWN 不许判矛盾；排除清单空或含无锚项降 UNKNOWN；构造 CONTRADICTION 而无非空清单抛；missing 须按固定序去重。",
+      "onFailure": "房间数反推直接抛 ROOM_COUNT_REJECT；缺要素返回 UNKNOWN 精确列 missing；清单含无锚项整张作废降 UNKNOWN；结论对象构造即校验不静默放行。",
+      "acceptance": [
+        "CapacityRuleTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.capacity.",
+        "selfDir": "baopu/state/capacity"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.injury",
+      "domain": "叙事状态",
+      "purpose": "把外部喂进来的冲击档翻译成看得见的伤情、疼痛、恢复三套观察档，拼成一句只描述可观察特征与当事人说法的文本并附非医疗判断。",
+      "inputs": "冲击档 Int 0–4（只读接口 ImpactTierSource.tier，727 未接默认 UnwiredImpact 恒 0）；elapsedRounds；档位构造 level/start/budgetRounds。",
+      "outputs": "InjuryGrade/PainGrade 四档；RecoveryGrade 三档＋GONE；ObservableLine.render 一行带免责；ImpactLink 起点；每档带 source/asOf。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "独立验证",
+      "callWhen": "需要给出只看得见的伤情/疼痛/恢复表现描述：有外部冲击档（或 727 未接走默认）且知道已过轮次；也可单用 ImpactLink 或 RecoveryModel.at。",
+      "banWhen": "不得输出结论/评分/处置（禁词骨折/内出血/感染/用药/治疗/预后零命中）；不得自行计算冲击档；输出不得缺免责；恢复严格三档 GONE 不算体系内档；恢复只降不升超 6 轮必回落；可观察特征不得抄诊疗原文。",
+      "onFailure": "越界钳制不报错：of() coerceIn 钳最重档 fail-closed；ImpactLink.clamp 保持单调；超最慢档返回 null 渲染取 GONE；727 未接恒 0 档明示没接；异常档不产生域外档，逐字节一致。",
+      "acceptance": [
+        "InjuryObservationTest.kt",
+        "InjurySourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.injury.",
+        "selfDir": "baopu/state/injury"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "state.fiction",
+      "domain": "叙事状态",
+      "purpose": "虚构题材模式：开关默认关，显式开启后才把锁结设定谱与双性双套型拓扑装配成带 canon 戳的设定行，设定与事实物理隔离。",
+      "inputs": "FictionModeGate（SharedPreferences 默认关、读失败按关）；LockCanon；DualSuiteTopology；ModuleExclusion。",
+      "outputs": "FictionMode.lines→设定行列表（关则恒空）；ModuleLoad.Loaded/Rejected；injectedBytes。",
+      "dependsOn": [],
+      "source": "模型",
+      "status": "生产批准",
+      "callWhen": "用户显式开启设置里虚构题材模式且已有合法 LockCanon 或 DualSuiteTopology 时注入设定行；只出机制与现象不出步骤/体位/技巧。",
+      "banWhen": "开关默认关读失败按关；命中球状体类禁词拒；depthStage 与 lockPoint 必须成对；source/canonVersion/asOfCanon 必须等于当前值；双套型与肛门阴道型同时请求拒；出口共用/同段重复占用/上下同档/缺戳拒；零引用事实层不新建解剖结构。",
+      "onFailure": "BulbusGuard 命中禁词抛；成对约束/版本时点/拓扑四约束不满足 require 抛；模块互斥返回 Rejected 说明哪条；缺戳 assertAllMarked 抛；CANON 块改动版本未升源码闸判红。",
+      "acceptance": [
+        "FictionCanonTest.kt",
+        "FictionModeTest.kt",
+        "IntersexTopologyTest.kt",
+        "FactLayerIsolationTest.kt",
+        "FictionSourceAssertTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.fiction.",
+        "selfDir": "baopu/state/fiction"
+      },
+      "externalConsumers": 1,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/ui/baopu/BaopuSettingsScreen.kt"
+      ]
+    },
+    {
+      "capabilityId": "state.persona",
+      "domain": "叙事状态",
+      "purpose": "三层性格模型（底层需求/恐惧/价值排序 core＋七轴稳定 trait＋由角色轨状态推的五维表层 state）与语声十维、台词样本，并以台词互换测试证明两人不是一张嘴。",
+      "inputs": "CoreLayer（3–5 条 CoreDrive 带 need/coreFear/rank/trigger）；TraitLayer 七轴；TrackStateSnapshot（turns/salience/dStage/intoxication/fatigue/stanceLabel/vetoActive）；VoiceLine/VoiceDimensions/LineFeatures。",
+      "outputs": "Persona（三层＋voice）；SurfaceState 五维各带 source；CheckReport（红/提示）；SwapResult/Mismatch 与 passed；line() 快照。",
+      "dependsOn": [],
+      "source": "模型",
+      "status": "独立验证",
+      "callWhen": "需要给角色落一份分层性格档案、由当前状态推表层五维（不改 core/trait）、检查三层齐/口头禅真出现/崩相必指定，或验证同场两人台词可区分时。",
+      "banWhen": "三层不许压成一层（表层只能由状态推，笼统标签拿不到状态推不出判红）；禁心理诊断词（依恋类型/MBTI/大五/九型/量表）命中即红；底层条文须 3–5 条、每条带触发、rank 连续无并列、需求不重复；口头禅超上限/写了永不出现/永不崩/只列需求不给触发判红或提示；台词互换两方向都须≥2 处不合否则判同张嘴；纯数据无 IO/随机/时钟。",
+      "onFailure": "validate 非法快照（轮数<0、显性度∉1..4、阶段∉0..6、酒意/疲惫∉0..3）require 拒；core 条数/排序/重复记 CORE_COUNT/CORE_RANK/CORE_NEED_DUP 红、无触发记 CORE_NO_TRIGGER 提示；诊断词命中 diagnosisChecks 红；互换不合<2 ⇒ passed=false；纯函数同输入同 CheckReport。",
+      "acceptance": [
+        "PersonaChecksTest.kt",
+        "SurfaceDeriverTest.kt",
+        "VoiceSwapTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "package",
+        "prefix": "baopu.state.persona.",
+        "selfDir": "baopu/state/persona"
+      },
+      "externalConsumers": 0,
+      "wiredState": "独立",
+      "shadowConsumers": 0,
+      "consumerFiles": []
+    },
+    {
+      "capabilityId": "policy.reading-codex",
+      "domain": "策略治理",
+      "purpose": "把装配层递来的读数事实快照判成三条法典规则的建议（卡步重试、RPE 连负、越界无证据），只给建议权不给决定权。",
+      "inputs": "ReadingFacts 只读快照（722/753/756/747 四类产物投影）。",
+      "outputs": "ReadingCodex.Advice（suppressAsk/requireAsk/degrade/hintOnce 四位建议＋逐条可观测行）。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "每次弹卡咨询先取快照后评估；快照非空且命中任一规则时产建议，最终决定交 policy.mediation-decide。",
+      "banWhen": "快照未装配（provider=null）/取数抛错/全空/未命中时不得产建议、不得参与决定；越界无证据规则之外不得触碰必问档；只输出四个建议位不得直接改问卡内容；不得落盘/取时钟/读用户原话。",
+      "onFailure": "facts=null 或空返回空建议（所有位 false）行为逐字节不变；越界无证据命中时独占决定其余让位。",
+      "acceptance": [
+        "ReadingConsumerTest.kt",
+        "ReadingFactsAdapterTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "class",
+        "name": "ReadingCodex",
+        "selfFile": "ReadingCodex.kt"
+      },
+      "externalConsumers": 2,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorDecide.kt",
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "policy.mediation",
+      "domain": "策略治理",
+      "purpose": "调解：居中观察互动形态后给出回灌基调与止损判断，不站任何一方，只管这几步顺不顺。",
+      "inputs": "上一轮调解状态快照；用户与模型的当轮原话（仅读信号不入产物）；画像阈值；调用方给的时间。",
+      "outputs": "新调解状态快照；一句回灌基调（≤60 字无数字/阈值/画像词）；改写后的回灌上下文；是否止损读数。",
+      "dependsOn": [
+        "policy.reframe"
+      ],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "每轮用户输入进来时观察一次；对外仅以「调解」名义被引用，供弹卡闸与回灌拼装读基调及止损读数。",
+      "banWhen": "永不公开：对外不得写类名/档位名/阈值/画像/计数/算法细节；不得因情绪降低事实标准或改权限；不得操纵用户；不得改界面原话只改回灌那份；不得跨会话带状态；不得自取时钟/读盘/联网。",
+      "onFailure": "坏数据/会话不匹配/版本不符整份作废回初始档；调用方未给时间则不做时间判断。",
+      "acceptance": [
+        "MediatorWiringTest.kt",
+        "MediatorPurityGateTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "class",
+        "name": "HarmonyMediator",
+        "selfFile": "HarmonyMediator.kt"
+      },
+      "externalConsumers": 2,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorDecide.kt",
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "policy.mediation-decide",
+      "domain": "策略治理",
+      "purpose": "弹卡前给出少问、排序、让步三类决策级读数，并把读数法典的建议合成最终决定，判定权始终留在裁决层。",
+      "inputs": "调解状态快照；画像阈值；本回合已问卡数；必问标记；问题形状重量；ReadingCodex.Advice。",
+      "outputs": "AskAdvice（弹卡许可/是否参与/依据/预算）；AskBudget；OrderAdvice；ReadingsDecision（问/降级/提示三类＋可观测行）。",
+      "dependsOn": [
+        "policy.mediation",
+        "policy.reading-codex"
+      ],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "左相弹卡闸在弹卡前咨询；引擎取问卡排序建议；读数命中后做决定合成。",
+      "banWhen": "无权制造问卡（没有必问出口）；必问档恒放行、暂停/熔断恒压，读数不得越过这两道铁律；不得丢卡/并卡/改卡/答卡，排序只给下标不自行采纳；不收用户原话，依据与建议句只能类别句；不得改右相三态；不得跨回合计数。",
+      "onFailure": "无读数/未命中原样返回 base 连依据都不改；必问档/硬压档直接返回 base；预算按档收紧钳≥0；取数异常由端口吞成无读数。",
+      "acceptance": [
+        "MediatorShouldAskTest.kt",
+        "MediatorBudgetTest.kt",
+        "MediatorDecideOrderTest.kt",
+        "MediatorDecideGateTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "class",
+        "name": "MediatorDecide",
+        "selfFile": "MediatorDecide.kt"
+      },
+      "externalConsumers": 2,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/agent/AskGovernance.kt",
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "policy.mediation-judge",
+      "domain": "策略治理",
+      "purpose": "按法典三条禁令（附和、空转道歉、情绪镜像）判模型这一轮回复是否违规，先判任务态再判禁令，只产出类别句证据。",
+      "inputs": "上一轮跨轮记忆（立场与空转连击）；用户当轮原话（只判态）；模型当轮回复；可选新证据清单。",
+      "outputs": "Step（新记忆＋违规列表 MediatorFlag）；stance/apologySentences/isMirroring/inferHasNewInfo 判据读数。",
+      "dependsOn": [
+        "policy.task-mode-boundary",
+        "policy.reframe"
+      ],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "每轮用户输入接线点判一次禁令；只在任务态下判；拿不到新证据清单走文本粗判。",
+      "banWhen": "闲聊态一律不判，闲聊笑声不许判情绪镜像；无立场不参与翻转；生产侧无新证据只能文本粗判且能算新信息就不判违规（宁漏勿误伤）；依据必须类别句原文不进账；不得改禁令词表与阈值；不得自取时钟/落盘/记原话。",
+      "onFailure": "空文本⇒无新信息；立场两表都不命中⇒null；跨轮记忆由调用方传回进程重启即丢；违规只在达下限那轮记一条不重复刷。",
+      "acceptance": [
+        "MemoryTriStateGateTest.kt",
+        "TaskModeEnglishGateTest.kt",
+        "L1NoFlatteryGateTest.kt",
+        "L3NoEmptyApologyGateTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "class",
+        "name": "MediatorJudge",
+        "selfFile": "MediatorJudge.kt"
+      },
+      "externalConsumers": 1,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "policy.task-mode-boundary",
+      "domain": "策略治理",
+      "purpose": "判一段话是办事态还是闲聊态（中英双语词表＋词边界＋大小写归一＋习语白名单＋请求形态共现），作为禁令与口吻判档的第一道门。",
+      "inputs": "一段文本。",
+      "outputs": "TaskMode（TASK/CHAT）；逐句判态/是否混合/闲聊词表对照读数。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "禁令判官判违规前先判态；口吻判档第三级取任务态结论；测试拿闲聊形态词做回归对照。",
+      "banWhen": "命中不了执行意图/事实主张/收尾就归闲聊态，宁漏判不把玩笑当办事；闲聊词表只作回归对照不参与判定；中文不进英文层；主语「我」的自责不收进事实主张；习语白名单遇请求标记让位；不得改词表字面量或判定顺序。",
+      "onFailure": "空文本⇒CHAT；中文四步都没命中才进英文层；动词命中而请求形态不共现⇒CHAT；自责形态同现时事实主张让位。",
+      "acceptance": [
+        "TaskModeEnglishGateTest.kt",
+        "TaskModeStructuralChineseGateTest.kt",
+        "TaskModeStructuralEnglishGateTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "symbol",
+        "name": "TaskModeBoundary",
+        "selfFile": "MediatorJudge.kt"
+      },
+      "externalConsumers": 2,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "app/src/main/java/com/example/zhengdao/baopu/agent/RunEngine.kt",
+        "policy/src/main/java/com/example/zhengdao/baopu/CompanionMode.kt"
+      ]
+    },
+    {
+      "capabilityId": "policy.reframe",
+      "domain": "策略治理",
+      "purpose": "把进入模型上下文的那一份原话双向改写：保事实与要求、去人格评价但不洗白、不加反事实鼓励。",
+      "inputs": "原话文本；方向（用户→模型 或 模型→下一轮上下文）；同一件事重复次数。",
+      "outputs": "净化后的回灌文本；是否需要改写判定；攻击/爱称/责备/短促否定/暂停/放弃/约束等信号读数。",
+      "dependsOn": [],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "回灌上下文拼装前判断是否需要改写并改写；调解读信号时调用各 is* 判据；禁令判官需要攻击或自贬计数时。",
+      "banWhen": "不改界面原话只改回灌那份；攻击短语优先爱称白名单，混句按攻击处理；「不对」不能改成「差不多对」；不许写反事实鼓励；无事实标记不得把情绪剩余当事实回灌；输入空白原样返回；不得新增采集/自取时钟。",
+      "onFailure": "空白输入原样返回；保不下原因如实写「未说明」；无事实标记只回灌固定句式不附事实；爱称或句末昵称命中原样透传。",
+      "acceptance": [
+        "ReframeFilterTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "class",
+        "name": "ReframeFilter",
+        "selfFile": "ReframeFilter.kt"
+      },
+      "externalConsumers": 3,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "policy/src/main/java/com/example/zhengdao/baopu/HarmonyMediator.kt",
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorJudge.kt",
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+      ]
+    },
+    {
+      "capabilityId": "policy.companion-mode",
+      "domain": "策略治理",
+      "purpose": "判「用什么口吻」：显式要求＞用户措辞＞任务类型＞默认工作档，两档各出一段固定模式行。",
+      "inputs": "本轮用户原话；任务态边界判据的任务态结论（原样调用不另抄词表）。",
+      "outputs": "CompanionDecision（档位＋必填依据＋是否用户点名）；纠正识别结果；提示词模式段（固定字符串≤3 行）。",
+      "dependsOn": [
+        "policy.task-mode-boundary"
+      ],
+      "source": "规则",
+      "status": "生产批准",
+      "callWhen": "每轮用户输入接线点判一次档；拼提示词时取模式段；用户点名纠正时产出进化样本事实。",
+      "banWhen": "不新增采集：判据只吃用户原话与任务态结论，不读盘/时钟/画像、不问模型；任务态那轴原样调边界判据禁抄第二套词表；判不出落默认工作档不许猜；两档都必须出模式行，依据/信号/命中词不进提示词；未转正规则候选不参与判档；一轮只判一次。",
+      "onFailure": "显式要求自相矛盾落默认档；三级都不命中默认工作档；无依据档位构造即拒；观察口没人注册时行为逐字节一致。",
+      "acceptance": [
+        "CompanionModeTest.kt",
+        "L34CompanionLawGateTest.kt"
+      ],
+      "owner": "待认领",
+      "scan": {
+        "kind": "symbol",
+        "name": "CompanionJudge",
+        "selfFile": "CompanionMode.kt"
+      },
+      "externalConsumers": 1,
+      "wiredState": "生产",
+      "shadowConsumers": 0,
+      "consumerFiles": [
+        "policy/src/main/java/com/example/zhengdao/baopu/MediatorWiring.kt"
+      ]
+    }
+  ]
+}
