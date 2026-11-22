@@ -6,6 +6,9 @@
 // "A fast procedure for computing the distance between complex objects in
 // three-dimensional space"。距离子算法用单纯形子集枚举（≤4 点 ⇒ ≤15 个子集，
 // 每个子集解一个小 Gram 线性组），不依赖第三方物理库。
+// 第八百一十二批加固（790 实跑咬出）：单纯形恒不超四点（全四点特征＝浮点近并列窗口，
+// 按收敛处理）；Gram 求解按相对奇异阈值判退化（尺度归一，不随形状大小漂）；
+// solve 分派对 >3 元系统显式拒绝（防御纵深）。未改公开语义：距离/相交判定同口径。
 // 边界：只求静态最近距离/是否相交；不做时间积分、不做接触流形。
 package com.example.zhengdao.baopu.state.geometry
 
@@ -31,13 +34,17 @@ data class GjkResult(
     internal val simplex: List<MinkPoint> = emptyList(),
 )
 
-private const val GJK_ASSUMPTION = "GJK 最近距离：凸体支撑函数＋单纯形迭代，相对收敛容差 1e-12，上限 64 轮"
+private const val GJK_ASSUMPTION =
+    "GJK 最近距离：凸体支撑函数＋单纯形迭代，相对收敛容差 1e-12，上限 64 轮；" +
+        "近退化（共点/共线/共面）子集按相对奇异阈值剔除，单纯形恒不超四点（812 加固）"
 private const val MAX_ITER = 64
 private const val REL_EPS = 1e-12
 private const val ZERO_NORM_SQ = 1e-16
 private const val DUP_NORM_SQ = 1e-20
 private const val WEIGHT_EPS = 1e-9
-private const val SINGULAR = 1e-24
+
+/** 相对奇异阈值（812 尺度归一）：|det| < 此值×maxEntry^m 判奇异；det 量纲随 m 随 maxEntry^m 走。 */
+private const val REL_SINGULAR = 1e-12
 
 /** GJK 距离求解（纯函数，无状态）。 */
 object Gjk {
@@ -51,6 +58,11 @@ object Gjk {
             val f = bestFeature(simplex)
             last = f
             if (f.point.normSq() <= ZERO_NORM_SQ) return finish(f, simplex, iter, true)
+            // 812 加固：全四点特征在精确算术下与边界子集并列（凸包最近点必在边界），
+            // 并列时 bestFeature 的严格小于让更早枚举的边界子集胜出 ⇒ 全四点胜出只可能是
+            // 近退化四面体的浮点近并列窗口——此时距离已收敛到噪声级，按收敛收口，
+            // 不再喂新支撑点（保证单纯形恒 ≤4 点，>4 点正是越界崩溃的路径）。
+            if (simplex.size == 4 && f.indices.size == 4) return finish(f, simplex, iter, false)
             val m = minkSupport(a, b, -f.point)
             val progress = f.point.normSq() - f.point.dot(m.w)
             val stuck = simplex.any { (it.w - m.w).normSq() < DUP_NORM_SQ }
@@ -97,8 +109,13 @@ private fun affineClosest(pts: List<Vec3>): Projection? {
     val edges = pts.drop(1).map { it - p0 }
     val m = edges.size
     val gram = Array(m) { i -> DoubleArray(m) { j -> edges[i].dot(edges[j]) } }
+    // 812 尺度归一：奇异阈值随 Gram 量纲走（det ~ maxEntry^m），不随形状大小漂移；
+    // 全同支撑点（maxEntry=0）＝点退化子集，直接剔除。
+    val maxEntry = gram.maxOf { row -> row.maxOf { kotlin.math.abs(it) } }
+    if (maxEntry <= 0.0) return null
+    val singular = REL_SINGULAR * Math.pow(maxEntry, m.toDouble())
     val rhs = DoubleArray(m) { i -> -p0.dot(edges[i]) }
-    val t = solve(gram, rhs) ?: return null
+    val t = solve(gram, rhs, singular) ?: return null
     val weights = listOf(1.0 - t.sum()) + t.toList()
     if (weights.any { it < -WEIGHT_EPS }) return null
     var q = p0
@@ -106,29 +123,31 @@ private fun affineClosest(pts: List<Vec3>): Projection? {
     return Projection(q, weights)
 }
 
-private fun solve(g: Array<DoubleArray>, b: DoubleArray): DoubleArray? = when (b.size) {
-    1 -> solve1(g, b)
-    2 -> solve2(g, b)
-    else -> solve3(g, b)
+/** 812 加固：>3 元系统显式拒绝（单纯形恒 ≤4 点后此支不可达，防御纵深，绝不错解）。 */
+private fun solve(g: Array<DoubleArray>, b: DoubleArray, singular: Double): DoubleArray? = when (b.size) {
+    1 -> solve1(g, b, singular)
+    2 -> solve2(g, b, singular)
+    3 -> solve3(g, b, singular)
+    else -> null
 }
 
-private fun solve1(g: Array<DoubleArray>, b: DoubleArray): DoubleArray? {
-    if (kotlin.math.abs(g[0][0]) < SINGULAR) return null
+private fun solve1(g: Array<DoubleArray>, b: DoubleArray, singular: Double): DoubleArray? {
+    if (kotlin.math.abs(g[0][0]) < singular) return null
     return doubleArrayOf(b[0] / g[0][0])
 }
 
-private fun solve2(g: Array<DoubleArray>, b: DoubleArray): DoubleArray? {
+private fun solve2(g: Array<DoubleArray>, b: DoubleArray, singular: Double): DoubleArray? {
     val det = g[0][0] * g[1][1] - g[0][1] * g[1][0]
-    if (kotlin.math.abs(det) < SINGULAR) return null
+    if (kotlin.math.abs(det) < singular) return null
     return doubleArrayOf(
         (b[0] * g[1][1] - g[0][1] * b[1]) / det,
         (g[0][0] * b[1] - b[0] * g[1][0]) / det,
     )
 }
 
-private fun solve3(g: Array<DoubleArray>, b: DoubleArray): DoubleArray? {
+private fun solve3(g: Array<DoubleArray>, b: DoubleArray, singular: Double): DoubleArray? {
     val det = det3(g)
-    if (kotlin.math.abs(det) < SINGULAR) return null
+    if (kotlin.math.abs(det) < singular) return null
     return DoubleArray(3) { i -> det3(withColumn(g, i, b)) / det }
 }
 
