@@ -17,6 +17,12 @@
       "contains": "} n=$n",
       "reason": "n 是请求上限 maxResults（1..10），不是返回条数；535 已列为移交、本批不改",
       "expires": "2027-05-01"
+    },
+    {
+      "file": "app/src/main/java/com/example/zhengdao/baopu/textbook/TextbookValidator.kt",
+      "contains": "scope 须写 n=<样本数>",
+      "reason": "拒收文案里的**格式占位**（教作者在 scope 里写样本数；<样本数> 本身已明示是占位符），不是计数读数、不输出数值",
+      "expires": "2027-05-01"
     }
   ]
 }
