@@ -1540,39 +1540,31 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 152
+      "line": 161
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 165
+      "line": 174
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 169
+      "line": 178
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 173
+      "line": 182
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 177
+      "line": 186
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 187
+      "line": 196
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 193
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 200
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 204
+      "line": 202
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
@@ -1580,7 +1572,15 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 224
+      "line": 213
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 218
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 233
      }
     ],
     "verdict": "wired",
@@ -1591,7 +1591,7 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 227,
+    "line": 232,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
@@ -1603,27 +1603,118 @@
     "test_refs": [
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 233
+      "line": 242
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 234
+      "line": 243
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 235
+      "line": 244
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 236
+      "line": 245
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 237
+      "line": 246
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
-      "line": 239
+      "line": 248
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStats.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 15,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（831 派工单边界为「退至冠后补档＋未定治理」，新增 1 生产件＋1 测试件、零改 804 位图与四型、零装配）；本件＝未定率统计入口（逐条按 resolved 反读、未定 n/N×100 可复算、严格 >5% 判档表缺陷并提示补档、空样本红）。**注：零消费方靠结论表而非编译期，与同批 PrepuceCoverage 同档。**",
+    "package": "com.example.zhengdao.baopu.state.prepuce",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "PrepuceUnknownStats",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 27
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 37
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 45
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 48
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 56
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 58
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 64
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 73
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 74
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 77
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 78
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 80
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 83
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 85
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 91
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 91
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt",
+      "line": 92
      }
     ],
     "verdict": "wired",
@@ -1777,11 +1868,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 24,
+  "B": 25,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 22,
-  "production_top_level_public": 884,
-  "wired": 856
+  "not_wired": 23,
+  "production_top_level_public": 886,
+  "wired": 857
  }
 }
