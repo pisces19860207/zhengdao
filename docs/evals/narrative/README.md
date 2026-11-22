@@ -152,3 +152,30 @@ docs/evals/narrative/
 - **不写代码、不改 App**：786 交付时本目录只有数据与标注，判分脚本、标注工具一律后置另立。
   **792 已另立判分器 `grader/grade.py`**：只读真值、只比对三档、口径逐字照 §五，出 MD＋JSON，不写回任何条目；标注工具仍未做。
 - **真值只读**：判分器发现 `accept` 与 `verdict` 不自洽时**只告警不改数据**（报告单列一节），改数据是 786 的事。
+
+## 十一、跑法（800 补记：判分器怎么跑）
+
+> 本节只补**跑法**，不改 §三 字段、§五 口径、§六 类别，也不动任何真值。
+
+**CI 不跑判分**：判分要喂被测系统的 `{id, verdict}` 输出，CI 里没有被测系统。
+CI 只跑 797 的数据自洽门禁（`.github/workflows/ci.yml` 的 `eval-gate` 一步：
+`python3 tools/check-eval-selftest.py` 与其 `--selftest`，两条都必须退出 0）。
+本地拿到被测输出后按下面跑：
+
+```bash
+# 判分：<file> = 被测系统 {id, verdict} JSONL；<dir> = 报告输出目录
+python tools/eval-narrative.py --pred <file> --out <dir>
+
+# 当前基线（e6c54a0d1）实际入库的判分器入口，参数名是 --out-dir
+python3 docs/evals/narrative/grader/grade.py --pred <file> --out-dir <dir>
+
+# 改过判分器必跑自检（28 项，不读外部输入）
+python3 docs/evals/narrative/grader/grade.py --selftest
+```
+
+> 注：基线 `e6c54a0d1` 上 `tools/eval-narrative.py` 这层统一入口尚未入库；800 只写跑法、
+> 不新建脚本、不改判分口径，所以把当前真正可执行的 792 入口一并记在此处。`--out`
+> 与 `--out-dir` 都指同一个报告目录；判分口径仍**逐字照 §五**，本节一个字未改。
+
+产物固定为 `<dir>/eval-report.md`（人读）与 `<dir>/eval-report.json`（机器读）；
+输入格式、退出码、六条写死的规矩见 `grader/README.md`。

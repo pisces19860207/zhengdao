@@ -260,6 +260,20 @@ jobs:
       - name: 全量单元测试（失败即红）
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
+      # ── 800（2026-11-22）：eval-gate —— 评测集自洽 ＋ 门禁自检 ──────────────────
+      # 接的是 797 的只读门禁：792 判分器首跑曾被「verdict 改判、accept 还停在旧档」
+      # 挡住，这道闸把同类数据错误拦在判分之前。两条命令都必须 exit 0
+      # （本步默认 bash -e -o pipefail，第一条红就当场红，后面的不跑）：
+      #   ① check-eval-selftest.py        六项自洽；红时逐条打 id + 字段 + 越档词；
+      #   ② 同脚本 --selftest             六类反例夹具必须真红，防门禁自己被改坏却还绿。
+      # 只读、纯标准库、不联网（仓外语料沿用 797「未复核」口径）；**不跑判分器**——
+      # CI 没有被测系统，判分跑法写在 docs/evals/narrative/README.md 的「跑法」一节。
+      # 排在单测之后、后续构建之前：秒级跑完，红了就不烧后面的分钟数。
+      - name: eval-gate（797 评测集自洽 + 门禁自检）
+        run: |
+          python3 tools/check-eval-selftest.py
+          python3 tools/check-eval-selftest.py --selftest
+
       # ── 612（2026-11-12）：L3 红线底账聚合 ─────────────────────────────────────
       # docs/L3-红线底账.md = 红线（人话）↔ 实现落点 ↔ 既有负例 的对账表（31 条，六组：
       # 不可逆未确认/越权外发/停机后仍执行/回滚失败静默/账本被直改/假动作）。
