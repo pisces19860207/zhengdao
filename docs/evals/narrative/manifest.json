@@ -5,13 +5,21 @@
   "date": "2026-11-21",
   "path": "zhengdao/docs/evals/narrative/",
   "purpose": "把「世界模型有没有用」从自评变成可复跑的读数：给 778/774/769 每落一件就跑一次的三档判定尺子。",
-  "answer_space": ["支持", "矛盾", "未知"],
+  "answer_space": [
+    "支持",
+    "矛盾",
+    "未知"
+  ],
   "counts": {
     "total": 100,
     "p1_only_runnable": 60,
     "needs_p2": 40
   },
-  "verdicts": { "支持": 40, "矛盾": 42, "未知": 18 },
+  "verdicts": {
+    "支持": 40,
+    "矛盾": 42,
+    "未知": 18
+  },
   "categories": {
     "人物一致": 10,
     "设定矛盾": 9,
@@ -25,19 +33,78 @@
     "伏笔回收": 10,
     "发现时点": 11
   },
-  "difficulty": { "易": 16, "中": 62, "难": 22 },
+  "difficulty": {
+    "易": 16,
+    "中": 62,
+    "难": 22
+  },
   "expertise_tagged": 7,
   "corpus": [
-    { "id": "P1-C1", "file": "第一章-第七口井.md", "scope": "git-external", "sha256": "ca5d2b38d1f076218d1fd94f90e251fefe269fd2d3a6a3c6e54493bb81263957", "chars": 1416 },
-    { "id": "P1-C2", "file": "第二章-缺页.md", "scope": "git-external", "sha256": "7eb8a99932bb9057132762228767a67ed0cb991e69fe3dee8e7bd12b2947d8b6", "chars": 1482 },
-    { "id": "P1-C3", "file": "第三章-十二点七.md", "scope": "git-external", "sha256": "46ad165d5a30f24704f852c20039fe8c4b6ba735daa43c2f16eac9c15b7fca68", "chars": 1460 },
-    { "id": "P1-SET", "file": "人物设定.md", "scope": "git-external", "sha256": "e2f540da62ad06d35a810e87a04c93f6a088a0e345de5d2baa8eba7b52315e80" },
-    { "id": "P1-ENT", "file": "实体词表.md", "scope": "git-external", "sha256": "c4a520cc4b290deec77164bfc49742d60b32f852fbd47ac48bf02978a425b33f" },
-    { "id": "P1-FS", "file": "伏笔登记.md", "scope": "git-external", "sha256": "9b9ee82d6212409f0c7d875718dca5efe729c7dc1069cbc7d4e58669a65b209c" },
-    { "id": "P2-C4", "file": "corpus-ext/第四章-复核组.md", "scope": "in-repo", "sha256": "f16ac643bc68142fbd0faf96f562628f631f5730119588cfb2fd43aeff6f408e", "chars": 1836 },
-    { "id": "P2-C5", "file": "corpus-ext/第五章-第二夜.md", "scope": "in-repo", "sha256": "8698ee958ea5c6d05d3a2c00c35752a7fe2fb1baef747a21b3b0aa0dc1750415", "chars": 1589 },
-    { "id": "P2-SET", "file": "corpus-ext/人物设定-增量.md", "scope": "in-repo", "sha256": "4e6adaf83dc3727341e32e5c11f1202a4bb763bc69dfd574c0079be6d9d7e649" },
-    { "id": "P2-ENT", "file": "corpus-ext/实体词表-增量.md", "scope": "in-repo", "sha256": "cbb822c5e4ea1ddeb1d6ffe11a11d8e5b382d43e4527aaf437fda2aa71691449" }
+    {
+      "id": "P1-C1",
+      "file": "第一章-第七口井.md",
+      "scope": "git-external",
+      "sha256": "ca5d2b38d1f076218d1fd94f90e251fefe269fd2d3a6a3c6e54493bb81263957",
+      "chars": 1416
+    },
+    {
+      "id": "P1-C2",
+      "file": "第二章-缺页.md",
+      "scope": "git-external",
+      "sha256": "7eb8a99932bb9057132762228767a67ed0cb991e69fe3dee8e7bd12b2947d8b6",
+      "chars": 1482
+    },
+    {
+      "id": "P1-C3",
+      "file": "第三章-十二点七.md",
+      "scope": "git-external",
+      "sha256": "46ad165d5a30f24704f852c20039fe8c4b6ba735daa43c2f16eac9c15b7fca68",
+      "chars": 1460
+    },
+    {
+      "id": "P1-SET",
+      "file": "人物设定.md",
+      "scope": "git-external",
+      "sha256": "e2f540da62ad06d35a810e87a04c93f6a088a0e345de5d2baa8eba7b52315e80"
+    },
+    {
+      "id": "P1-ENT",
+      "file": "实体词表.md",
+      "scope": "git-external",
+      "sha256": "c4a520cc4b290deec77164bfc49742d60b32f852fbd47ac48bf02978a425b33f"
+    },
+    {
+      "id": "P1-FS",
+      "file": "伏笔登记.md",
+      "scope": "git-external",
+      "sha256": "9b9ee82d6212409f0c7d875718dca5efe729c7dc1069cbc7d4e58669a65b209c"
+    },
+    {
+      "id": "P2-C4",
+      "file": "corpus-ext/第四章-复核组.md",
+      "scope": "in-repo",
+      "sha256": "f16ac643bc68142fbd0faf96f562628f631f5730119588cfb2fd43aeff6f408e",
+      "chars": 1836
+    },
+    {
+      "id": "P2-C5",
+      "file": "corpus-ext/第五章-第二夜.md",
+      "scope": "in-repo",
+      "sha256": "8698ee958ea5c6d05d3a2c00c35752a7fe2fb1baef747a21b3b0aa0dc1750415",
+      "chars": 1589
+    },
+    {
+      "id": "P2-SET",
+      "file": "corpus-ext/人物设定-增量.md",
+      "scope": "in-repo",
+      "sha256": "4e6adaf83dc3727341e32e5c11f1202a4bb763bc69dfd574c0079be6d9d7e649"
+    },
+    {
+      "id": "P2-ENT",
+      "file": "corpus-ext/实体词表-增量.md",
+      "scope": "in-repo",
+      "sha256": "cbb822c5e4ea1ddeb1d6ffe11a11d8e5b382d43e4527aaf437fda2aa71691449"
+    }
   ],
   "corpus_total_chars": 7783,
   "agreement": {
@@ -46,23 +113,70 @@
     "initial_agreement": 0.95,
     "initial_correct": 95,
     "by_verdict_initial": {
-      "支持": { "a": 39, "matched": 39, "rate": 1.0 },
-      "矛盾": { "a": 40, "matched": 40, "rate": 1.0 },
-      "未知": { "a": 21, "matched": 16, "rate": 0.762 }
+      "支持": {
+        "a": 39,
+        "matched": 39,
+        "rate": 1.0
+      },
+      "矛盾": {
+        "a": 40,
+        "matched": 40,
+        "rate": 1.0
+      },
+      "未知": {
+        "a": 21,
+        "matched": 16,
+        "rate": 0.762
+      }
     },
     "divergences": 5,
     "adjudication": {
-      "a_was_wrong_and_reversed": ["NAR-IB-03", "NAR-IB-08", "NAR-CL-06"],
-      "item_rewritten_then_reblinded": ["NAR-IB-10"],
-      "a_upheld_b_misread": ["NAR-SP-07"]
+      "a_was_wrong_and_reversed": [
+        "NAR-IB-03",
+        "NAR-IB-08",
+        "NAR-CL-06"
+      ],
+      "item_rewritten_then_reblinded": [
+        "NAR-IB-10"
+      ],
+      "a_upheld_b_misread": [
+        "NAR-SP-07"
+      ]
     },
     "post_adjudication_consensus": 1.0,
     "caveat": "裁定后 100% 是共识，不是独立复现。真正有信息的读数是：未知档初标一致率 76.2%，支持／矛盾两档 100%。分歧 5 条全部落在未知档——未知的边界是本集最难的地方，也是 766 §四 UNKNOWN 规则要防的地方。",
     "annotator_identity": "B 为独立盲标的另一个标注者（同一模型、不同上下文、未见答案），不等同于另一位人类专家；本题不冒充人工双标。"
   },
-  "changed_items": ["NAR-IB-03", "NAR-IB-08", "NAR-IB-10", "NAR-CL-06"],
-  "pending_human_review": ["NAR-SP-07", "NAR-OC-06"],
-  "unknown_ids": ["NAR-CH-08", "NAR-ST-03", "NAR-ST-07", "NAR-ST-09", "NAR-TL-08", "NAR-SC-07", "NAR-SP-07", "NAR-SP-09", "NAR-PH-06", "NAR-IB-10", "NAR-OC-07", "NAR-OC-10", "NAR-FS-04", "NAR-FS-06", "NAR-FS-07", "NAR-FS-10", "NAR-DT-06", "NAR-DT-10"],
+  "changed_items": [
+    "NAR-IB-03",
+    "NAR-IB-08",
+    "NAR-IB-10",
+    "NAR-CL-06"
+  ],
+  "pending_human_review": [
+    "NAR-SP-07",
+    "NAR-OC-06"
+  ],
+  "unknown_ids": [
+    "NAR-CH-08",
+    "NAR-ST-03",
+    "NAR-ST-07",
+    "NAR-ST-09",
+    "NAR-TL-08",
+    "NAR-SC-07",
+    "NAR-SP-07",
+    "NAR-SP-09",
+    "NAR-PH-06",
+    "NAR-IB-10",
+    "NAR-OC-07",
+    "NAR-OC-10",
+    "NAR-FS-04",
+    "NAR-FS-06",
+    "NAR-FS-07",
+    "NAR-FS-10",
+    "NAR-DT-06",
+    "NAR-DT-10"
+  ],
   "metrics_defined": [
     "总体准确率 = 判对条数 / 100",
     "矛盾召回 = 判矛盾且真值矛盾 / 42",
@@ -75,5 +189,18 @@
     "不做自动标注；探针与标准答案人写，第二标注者盲标",
     "不改 766 字段定义（本集三档≠766 的 status 字段）",
     "不写代码、不改 App；判分脚本与标注工具后置另立"
+  ],
+  "fixes": [
+    {
+      "date": "2026-11-22",
+      "kind": "data-self-consistency",
+      "summary": "三条改判条目 accept 未随 verdict 更新（NAR-IB-03/IB-08/CL-06）；全库 accept 规范化为「只含同档等价写法」",
+      "items": [
+        "NAR-IB-03",
+        "NAR-IB-08",
+        "NAR-CL-06"
+      ],
+      "affected": 200
+    }
   ]
 }
