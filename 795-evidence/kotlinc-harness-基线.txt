@@ -1,0 +1,12 @@
+PASS 判据①缺数量
+PASS 判据①缺分配
+PASS 判据①缺范围
+PASS 判据①缺时段
+PASS 判据②清单空判未知
+PASS 判据③带锚清单判矛盾
+PASS 清单含无锚项降未知
+PASS 判据④房间数反推抛异常
+PASS 判据⑤同输入同结论
+PASS 来源锚含字才成立
+PASS 矛盾态无清单构造即抛
+RESULT passed=11 failed=0

@@ -463,6 +463,77 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/capacity/CapacityRule.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 11,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（795 派工单边界为「容量类断言判定层」，2 生产件全新增、零改 741 `containment`、零装配）；本件为纯判定（四要素缺一⇒未知、判矛盾必给带来源锚的逐项排除清单、拿房间数反推一律红/拒），无 IO、无时钟。装配单落地时由「谁产出容量类断言」那一层调用。",
+    "package": "com.example.zhengdao.baopu.state.capacity",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "CapacityRule",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 36
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 45
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 48
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 55
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 67
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 76
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 90
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 104
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 116
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 118
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 123
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 134
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt",
+      "line": 135
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/cavity/CavityMap.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -1256,11 +1327,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 17,
+  "B": 18,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 15,
-  "production_top_level_public": 771,
-  "wired": 750
+  "not_wired": 16,
+  "production_top_level_public": 780,
+  "wired": 758
  }
 }
