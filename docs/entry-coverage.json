@@ -1311,6 +1311,148 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 122,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（同上 804 边界）；本件＝疲软态暴露表（9 行基础表×长短×冷热，钳五档，每条结论带行号＋理由，空依据构造不出来）。**注：未全 internal。**",
+    "package": "com.example.zhengdao.baopu.state.prepuce",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "FlaccidTable",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 89
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 110
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 111
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 118
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 120
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 123
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 125
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 136
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 152
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 165
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 169
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 173
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 177
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 187
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 193
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 200
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 204
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 209
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 224
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 227,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（804 派工单边界为「包皮＝775 子区」判定层，3 生产件全新增、零改既有、零装配）；本件＝位图→五档的判定本体（12 子区、冠与沟各独立一组、面积只许数格子得出不许反推 —— 反推路径类型上不可达）。**注：本包未全 internal（18 个顶层 public），零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.prepuce",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "PrepuceGrade",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 233
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 234
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 235
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 236
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 237
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt",
+      "line": 239
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/variant/VariantSampler.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -1457,11 +1599,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 20,
+  "B": 22,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 18,
-  "production_top_level_public": 832,
-  "wired": 808
+  "not_wired": 20,
+  "production_top_level_public": 850,
+  "wired": 824
  }
 }
