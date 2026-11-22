@@ -932,80 +932,6 @@
    },
    {
     "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 29,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：**699**（660 的装配单；660 明写「零装配、接线归 699」，源码断言钉死 ZhengdaoApp／CharacterTrack／StateSummaryWiring 一行没动）。本件是 `BodyState.kt:28 object Calibration`＝把形体参数标定进 BodyState 的入口，生产侧尚无调用点；699 落地时由装配层调它（读表→标定→BodyState）。",
-    "package": "com.example.zhengdao.baopu.state.form",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "Calibration",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 41
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 43
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 50
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 59
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 66
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 88
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 123
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 121,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。",
-    "package": "com.example.zhengdao.baopu.state.form",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "BodyModel",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt",
-      "line": 181
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/form/FormFixtures.kt",
-      "line": 57
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -1330,11 +1256,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 19,
+  "B": 17,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 17,
+  "not_wired": 15,
   "production_top_level_public": 771,
-  "wired": 748
+  "wired": 750
  }
 }

@@ -59,14 +59,6 @@
         }
       }
     },
-    "Calibration": {
-      "verdict": "wired",
-      "note": "谁接：**699**（660 的装配单；660 明写「零装配、接线归 699」，源码断言钉死 ZhengdaoApp／CharacterTrack／StateSummaryWiring 一行没动）。本件是 `BodyState.kt:28 object Calibration`＝把形体参数标定进 BodyState 的入口，生产侧尚无调用点；699 落地时由装配层调它（读表→标定→BodyState）。"
-    },
-    "BodyModel": {
-      "verdict": "wired",
-      "note": "谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。"
-    },
     "AntiSlopBaselines": {
       "verdict": "wired",
       "note": "谁接：**738 注入单**。本件是 `AntiSlopBaseline` 的配置加载器（读 `docs/facts/anti-slop-baseline.json`，阈值与词表全在配置、代码零写死）。739 的派工单把「738 注入」列为**依赖**而非本单产出 ⇒ 生产输出链尚无调用点；738 落地时由输出侧读配置、拿阈值。在此之前只有测试在调（B 桶），属**预期内欠账**。"

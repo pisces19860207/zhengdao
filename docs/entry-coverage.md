@@ -10,11 +10,11 @@
 | 口径 | 数 |
 |---|---:|
 | 顶层公开面（app/src/main/java，剥注释后计数） | 771 |
-| 生产可达（有生产引用，含同文件） | 748 |
+| 生产可达（有生产引用，含同文件） | 750 |
 | A 有定义无调用 | 4 |
-| B 只有测试在调 | 19 |
+| B 只有测试在调 | 17 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **17** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **15** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -48,8 +48,6 @@
 | `Containment` | `app/src/main/java/com/example/zhengdao/baopu/state/containment/Containment.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:78`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:133`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:134` | 接线 | 谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝容纳判定的总入口（档位＋三态＋文案）。 |
 | `StanceLegality` | `app/src/main/java/com/example/zhengdao/baopu/state/containment/StanceLegality.kt:52` | `app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt:23`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt:106`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentFixtures.kt:215` | 接线 | 谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝**唯一的度量桥**（全包只有它碰 655 的四项判定，距离算一次即丢、返回里无坐标无毫米）。 |
 | `EnvironmentSolver` | `app/src/main/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolver.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:31`、`app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:48`、`app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:75` | 接线 | 谁接：657 派工单「统一并入 SceneState.environment」——SceneState 本体归 660（人体模型批）建，本批只交公式层与槽值 EnvironmentState（sun/wind/humidity/sweat/sand 五分项），与 660 零相交；660 建 SceneState 时挂本槽即接线。其余五件顶层公开面（EnvironmentNotes/SolarSolver/WindTable/HumiditySolver/EnvironmentState）由本件生产代码引用，计生产可达。 |
-| `Calibration` | `app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt:29` | `app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:41`、`app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:43`、`app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:50` | 接线 | 谁接：**699**（660 的装配单；660 明写「零装配、接线归 699」，源码断言钉死 ZhengdaoApp／CharacterTrack／StateSummaryWiring 一行没动）。本件是 `BodyState.kt:28 object Calibration`＝把形体参数标定进 BodyState 的入口，生产侧尚无调用点；699 落地时由装配层调它（读表→标定→BodyState）。 |
-| `BodyModel` | `app/src/main/java/com/example/zhengdao/baopu/state/form/BodyState.kt:121` | `app/src/test/java/com/example/zhengdao/baopu/state/form/BodyStateTest.kt:181`、`app/src/test/java/com/example/zhengdao/baopu/state/form/FormFixtures.kt:57` | 接线 | 谁接：**699**。本件是 `BodyState.kt:114 object BodyModel`＝代理体导出面（把 BodyState 导成可供 660/670 消费的形状），同属 660 的「零装配」范围；699 接线时由装配层与消费方（character track／轮廓）读它。 |
 | `TwoBodyCollision` | `app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt:24` | `app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt:103`、`app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt:104`、`app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt:25` | 唯一实现·待消费 | 谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：两体解析碰撞（动量/能量守恒 ±5%），660 双人互动姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 |
 | `MotionKeyframes` | `app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionKeyframes.kt:21` | `app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:11`、`app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:17`、`app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:18` | 接线 | 谁接：**后续装配单**（725 派工单边界为「形轨·动作关键帧」数据层，6 生产件全新增、零改既有、零装配）；本包只吃强度档吐档位，弧度映射仅在内部喂 655 四项，**零时间积分、零连续轨迹**。 本件＝四动作 15 关键姿名录＋退档解析（对外唯一入口）。 |
 | `VariantSampler` | `app/src/main/java/com/example/zhengdao/baopu/state/variant/VariantSampler.kt:35` | `app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt:68`、`app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt:68`、`app/src/test/java/com/example/zhengdao/baopu/state/variant/VariantSpectrumTest.kt:79` | 接线 | 谁接：**后续装配单**（723 派工单边界明写「零装配」：BodyState 只加可空字段 `variants`，不碰状态机/App/几何）。本件是确定性加权采样器（自实现 seed→java.util.Random，同参逐字节一致），纯函数、无 IO/无时钟；当前只有 VariantSpectrumTest 在调。装配单落地时应由「谁产出 BodyState」那一层调用并把结果填进 `BodyState.variants`。 |
