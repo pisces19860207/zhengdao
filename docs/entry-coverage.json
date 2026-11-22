@@ -494,6 +494,105 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecks.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 49,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（805 派工单边界为「部位读数层」，5 生产件全新增、零改既有、零装配 —— 我扫过包外零引用）；本件＝8 部位×23 维读数的判定入口（一律带左右＋姿态、体脂一致性、乳晕档差矩阵、不做诊断）。**注：本包未全 internal（38 个顶层 public），比 780/788B 的『编译期挡住』弱一档，已在台账记。**",
+    "package": "com.example.zhengdao.baopu.state.bodyparts",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "BodyPartChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 22
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 33
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 41
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 48
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 55
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 61
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 78
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 86
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 130
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 138
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 144
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 150
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 157
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 165
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 174
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 182
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 192
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt",
+      "line": 205
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/capacity/CapacityRule.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -1358,11 +1457,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 19,
+  "B": 20,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 17,
-  "production_top_level_public": 794,
-  "wired": 771
+  "not_wired": 18,
+  "production_top_level_public": 832,
+  "wired": 808
  }
 }
