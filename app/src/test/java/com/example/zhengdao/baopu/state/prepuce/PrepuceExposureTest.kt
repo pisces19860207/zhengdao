@@ -126,7 +126,7 @@ class PrepuceExposureTest {
     }
 
     @Test
-    fun `判据四_五档都能被表内组合命中`() {
+    fun `判据六_疲软表命中804五档且退至冠后不在其中`() {
         val hit = mutableSetOf<AreaLevel>()
         for (skin in SkinAmount.entries) {
             for (size in FlaccidSize.entries) {
@@ -139,7 +139,16 @@ class PrepuceExposureTest {
                 }
             }
         }
-        assertEquals("五档必须全部可达", AreaLevel.entries.toSet(), hit)
+        assertEquals(
+            "804 的五个疲软档必须仍全部可达",
+            setOf(
+                AreaLevel.FULL_COVER, AreaLevel.ALMOST_ALL, AreaLevel.OVER_HALF,
+                AreaLevel.CORONA_ONLY, AreaLevel.FULLY_EXPOSED,
+            ),
+            hit,
+        )
+        assertFalse("退至冠后由位图专判，不从疲软表出",
+            hit.contains(AreaLevel.RETRACTED_BEHIND_CORONA))
     }
 
     @Test

@@ -137,8 +137,12 @@ object FlaccidTable {
 
     private const val CIRCUMCISED_ROW = "F0"
 
-    /** 五档最大序数（完全露出）。 */
-    private val LAST_ORDER = AreaLevel.entries.last().order
+    /**
+     * 疲软表最大序数（完全露出）＝4。
+     * 831 补了「退至冠后」这一档（覆盖序 4），但它由位图专判、不进疲软表；
+     * 这里取 flaccidOrder 的最大值而非覆盖序最大值，804 的 162 组合读数逐项不变。
+     */
+    private val LAST_ORDER = AreaLevel.entries.maxOf { it.flaccidOrder }
 
     /** 环切独占一行：皮量／长短／回缩都不再决定露多少。 */
     private val CIRCUMCISED = Row(
@@ -197,8 +201,9 @@ object FlaccidTable {
      */
     private fun levelOf(row: Row, input: FlaccidInput): AreaLevel {
         if (row.id == CIRCUMCISED_ROW) return row.level
-        val shifted = (row.level.order + input.size.shift + input.modulation.shift).coerceIn(0, LAST_ORDER)
-        return AreaLevel.ofOrder(shifted)
+        val shifted = (row.level.flaccidOrder + input.size.shift + input.modulation.shift)
+            .coerceIn(0, LAST_ORDER)
+        return AreaLevel.ofFlaccidOrder(shifted)
     }
 
     private fun basis(row: Row, input: FlaccidInput): String {

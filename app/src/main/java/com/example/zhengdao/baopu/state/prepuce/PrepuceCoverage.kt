@@ -55,43 +55,85 @@ enum class CoverState(val code: String, val label: String) {
     EXPOSED("exposed", "露出"),
 }
 
-/** 面积五档。序数即「覆盖从多到少」，从 0（完全覆盖）到 4（完全露出）。 */
-enum class AreaLevel(val label: String, val order: Int) {
-    FULL_COVER("完全覆盖", 0),
-    ALMOST_ALL("几乎全部", 1),
-    OVER_HALF("过半", 2),
-    CORONA_ONLY("仅冠", 3),
-    FULLY_EXPOSED("完全露出", 4),
+/**
+ * 覆盖六档。序数即「覆盖从多到少」，0（完全覆盖）→ 5（完全露出）。
+ *
+ * 831 补「退至冠后」：龟头五区全露＋冠露出＋沟仍覆，即 804 判为未定的 X2 转正。
+ * [flaccidOrder] 是疲软表专用的 0–4 序：退至冠后由位图专判、疲软表预测不出来，记 -1；
+ * 804 的 162 组合读数因此逐项不变（证据见 PrepuceExposureTest）。
+ */
+enum class AreaLevel(val label: String, val order: Int, internal val flaccidOrder: Int) {
+    FULL_COVER("完全覆盖", 0, 0),
+    ALMOST_ALL("几乎全部", 1, 1),
+    OVER_HALF("过半", 2, 2),
+    CORONA_ONLY("仅冠", 3, 3),
+    RETRACTED_BEHIND_CORONA("退至冠后", 4, -1),
+    FULLY_EXPOSED("完全露出", 5, 4),
     ;
 
     companion object {
-        /** 按序数取档，调用方负责先钳到 0..4（越界即抛，不静默夹取）。 */
+        /** 按覆盖序数取档，调用方负责先钳到 0..5（越界即抛，不静默夹取）。 */
         fun ofOrder(order: Int): AreaLevel =
             entries.firstOrNull { it.order == order } ?: throw IllegalArgumentException(OUT_OF_RANGE)
 
-        const val OUT_OF_RANGE: String = "档序越界：面积只有 0（完全覆盖）到 4（完全露出）五档"
+        /** 疲软表专用：0–4，跳过退至冠后（它没有疲软表中的序）。 */
+        internal fun ofFlaccidOrder(order: Int): AreaLevel =
+            entries.firstOrNull { it.flaccidOrder == order } ?: throw IllegalArgumentException(OUT_OF_RANGE)
+
+        const val OUT_OF_RANGE: String = "档序越界：覆盖只有 0（完全覆盖）到 5（完全露出）六档"
     }
 }
 
+/** 未定项的建议动作，三选一。裸未定不许出门（831）。 */
+enum class UnknownAction(val label: String) {
+    HUMAN_FILL("人补档"),
+    SNAP_NEAREST("落最近档"),
+    ESCALATE("转人工"),
+}
+
 /**
- * 面积结论。[level] 为 null ＝ **档外（未定）**：位图落在五档之外，不许硬塞进相邻档。
- * [rowId] 是命中的口径行号（A1–A5／X1–X2），[reason] 是给人看的一句依据。
+ * 面积结论。[level] 为 null ＝ **档外（未定）**：位图落在六档之外，不许硬塞进相邻档。
+ * [rowId] 是命中的口径行号（A1–A6／X1–X2），[reason] 是给人看的一句依据。
+ *
+ * 831：未定必须同时带 [unknownReason]（为什么判不了）与 [suggestedAction]（人下一步做什么），
+ * 缺一即红；已定档反过来不许带这两个字段，免得结论自相矛盾。
  */
-data class CoverageArea(val level: AreaLevel?, val rowId: String, val reason: String) {
+data class CoverageArea(
+    val level: AreaLevel?,
+    val rowId: String,
+    val reason: String,
+    val unknownReason: String? = null,
+    val suggestedAction: UnknownAction? = null,
+) {
     init {
         require(rowId.isNotBlank()) { NO_ROW }
         require(reason.isNotBlank()) { NO_ROW }
         PrepuceGuard.rejectMeasures(reason)
+        val why = unknownReason
+        if (level == null) {
+            require(!why.isNullOrBlank() && suggestedAction != null) { BARE_UNKNOWN }
+            PrepuceGuard.rejectMeasures(why)
+        } else {
+            require(why == null && suggestedAction == null) { RESOLVED_WITH_UNKNOWN }
+        }
     }
 
     val resolved: Boolean get() = level != null
 
-    /** 一行机读快照：未定时档位写「未定」。 */
-    fun line(): String = "${level?.label ?: UNRESOLVED_LABEL}|$rowId|$reason"
+    /** 一行机读快照：未定时档位写「未定」，并附未定因与建议动作。 */
+    fun line(): String = buildString {
+        append(level?.label ?: UNRESOLVED_LABEL).append('|').append(rowId).append('|').append(reason)
+        if (unknownReason != null) {
+            append("|未定因=").append(unknownReason)
+            append("|建议=").append(suggestedAction?.label)
+        }
+    }
 
     companion object {
         const val NO_ROW: String = "面积结论必须带口径行号与理由：不给依据的档位不算数"
         const val UNRESOLVED_LABEL: String = "未定"
+        const val BARE_UNKNOWN: String = "裸未定不许出门：未定项必须同时带 unknownReason 与建议动作"
+        const val RESOLVED_WITH_UNKNOWN: String = "已定档不许带未定因与建议动作：结论自相矛盾"
     }
 }
 
@@ -125,11 +167,21 @@ class CoverageMask private constructor(private val states: Map<SubRegion, CoverS
             in HALF_STEP..FULL_UNITS - 1 -> CoverageArea(AreaLevel.ALMOST_ALL, "A2", ALMOST_WHY)
             in HALF_UNITS - 1..HALF_UNITS -> CoverageArea(AreaLevel.OVER_HALF, "A3", HALF_WHY)
             0 -> exposedArea()
-            else -> CoverageArea(null, "X1", "龟头只零星覆盖（半区计 $units，五档外），不硬塞档")
+            else -> CoverageArea(
+                level = null,
+                rowId = "X1",
+                reason = "龟头只零星覆盖（半区计 $units，六档外），不硬塞档",
+                unknownReason = "龟头半区计 $units，落在 1–3：覆盖太零星，六档里没有这一格",
+                suggestedAction = UnknownAction.HUMAN_FILL,
+            )
         }
     }
 
-    /** 龟头全 exposed 之后才看冠与沟：冠沟都还盖着＝仅冠；都露＝完全露出；一露一覆＝档外。 */
+    /**
+     * 龟头全 exposed 之后才看冠与沟：冠沟都还盖着＝仅冠；都露＝完全露出；
+     * 冠露沟仍覆＝退至冠后（831 把 804 的 X2 转正）；冠未露而沟露＝仍未定，须带治理字段。
+     * 804 的方向性原样保留：冠露绝不直接推完全露出，沟必须自己也露。
+     */
     private fun exposedArea(): CoverageArea {
         val corona = states.getValue(SubRegion.CORONA)
         val sulcus = states.getValue(SubRegion.SULCUS)
@@ -141,8 +193,14 @@ class CoverageMask private constructor(private val states: Map<SubRegion, CoverS
             coronaExposed && sulcusExposed ->
                 CoverageArea(AreaLevel.FULLY_EXPOSED, "A5", "龟头五区＋冠＋沟全 exposed")
             PrepuceGuard.isRetractedBehindCorona(corona, sulcus) ->
-                CoverageArea(null, "X2", PrepuceGuard.CORONA_NOT_SULCUS)
-            else -> CoverageArea(null, "X2", "沟已露、冠仍覆：不是五档里的任何一档")
+                CoverageArea(AreaLevel.RETRACTED_BEHIND_CORONA, "A6", RETRACTED_WHY)
+            else -> CoverageArea(
+                level = null,
+                rowId = "X2",
+                reason = "沟已露、冠仍覆：不是六档里的任何一档",
+                unknownReason = "冠未露而沟已露，与六档的方向相反（退至冠后是冠露沟覆）",
+                suggestedAction = UnknownAction.ESCALATE,
+            )
         }
     }
 
@@ -179,6 +237,7 @@ class CoverageMask private constructor(private val states: Map<SubRegion, CoverS
         private const val HALF_STEP = 6
         private const val ALMOST_WHY = "龟头覆盖过半（半区计满 6 起）"
         private const val HALF_WHY = "龟头覆盖半数左右（半区计 4–5）"
+        private const val RETRACTED_WHY = "龟头五区全露出、冠露出、沟仍被盖：退至冠后（804 的 X2 转正）"
 
         private val AREA_NEEDS: List<SubRegion> = GLANS_REGIONS +
             listOf(SubRegion.CORONA, SubRegion.SULCUS)
