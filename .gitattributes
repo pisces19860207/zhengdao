@@ -27,3 +27,8 @@ app/src/main/assets/bridge/observe_v1.js text eol=lf
 # 一份"多了 314 个 \r"的字节，'字节未修改' 这句话当场变假（本机实测 CRLF 形态 2,574,214 B /
 # sha256 58d8965f…，上游 2,571,900 B / a43bc1af…）。
 app/src/main/assets/mermaid/* -text
+
+# 第八百零八批：评测夹具是"真机产物 + 判读件"，报告里钉的是它们的 sha256/md5 指纹，
+# 复跑配方做逐字对。同 285／637 的教训：-text 禁止 text=auto 在 checkout 时把 LF 改成
+# CRLF —— 多 3 个 \r 就等于指纹变了、"逐字相等"这句话当场变假。
+tools/fixtures/eval-adapter/* -text
