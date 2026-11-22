@@ -101,6 +101,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import importlib.util
+import json
 import os
 import re
 import sys
@@ -561,6 +562,34 @@ def licenses_for(gradle_home: Path, g: str, n: str, v: str) -> dict:
         if pom["parent"]:
             queue.append((*pom["parent"], depth + 1))
     return {"licenses": [], "origin": "", "error": "POM 与父链都没有 <licenses> 声明（无声明）"}
+
+
+EVIDENCE_REL = Path("tools") / "notices-evidence.json"
+
+
+def registry_evidence(g: str, n: str, v: str, path: Path | None = None) -> dict | None:
+    """仓库自带的离线取证登记表（`tools/notices-evidence.json` 的 maven 半张）。
+
+    为什么要它（2026-11-23）：本地 Gradle 缓存是**机器状态**——746 加的
+    `androidx.window` / 大屏那几件依赖，换台机器、换个缓存就是「缓存缺 POM ⇒ 未取证 ⇒ 红」，
+    于是同一棵树「谁跑谁红」，而它们其实都是 Apache-2.0 且仓库里**已存 POM sha256**
+    （由 `gen-notices.py --refresh` 从缓存 POM 重建、随 git 走）。
+    口径：**只认登记表里的 license + pom_sha256**；两者缺一 ⇒ 不采信（继续走「未取证」）。
+    这不是放宽政策——登记表是仓库里的证据文件，不是「猜许可」。
+    """
+    p = path or (ROOT / EVIDENCE_REL)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    entry = (data.get("maven") or {}).get("%s:%s:%s" % (g, n, v))
+    if not isinstance(entry, dict):
+        return None
+    lic = str(entry.get("license") or "").strip()
+    sha = str(entry.get("pom_sha256") or "").strip()
+    if not lic or len(sha) != 64:
+        return None
+    return {"license": lic, "raw": str(entry.get("raw") or ""), "sha": sha}
 
 
 # ── 豁免登记表 ────────────────────────────────────────────────────────────────
@@ -1042,7 +1071,18 @@ def collect(root: Path, gradle_home: Path) -> dict:
         else:
             got = licenses_for(gradle_home, g, n, v)
             row["origin"] = got["origin"]
-            if got["error"]:
+            reg = registry_evidence(g, n, v) if got["error"] else None
+            if reg is not None:
+                # 缓存缺 POM，但仓库登记表里有 POM 摘要 + 许可 ⇒ 按登记表取证（不猜）
+                ids = [reg["license"]]
+                row["ids"] = ids
+                row["raw"] = [reg["raw"] or reg["license"]]
+                row["status"] = classify(ids)
+                row["origin"] = ("仓库离线登记表 tools/notices-evidence.json"
+                                  "（POM sha256 %s…）" % reg["sha"][:12])
+                if row["status"] == "unevidenced":
+                    row["note"] = "登记表里的许可名归一不了：%s" % reg["license"]
+            elif got["error"]:
                 row["note"] = got["error"]
             else:
                 ids, unknown = to_spdx(got["licenses"])
@@ -1480,11 +1520,31 @@ def selftest() -> int:
             return code == 1 and "✗ 禁止 org.example:gpl" in text, \
                 "code=%d %s" % (code, text.splitlines()[-1])
 
+    def case_registry_evidence():
+        """登记表取证：license + 64 位 pom_sha256 才采信；缺一不采信（继续未取证）。"""
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "ev.json"
+            sha = "a" * 64
+            p.write_text(_json.dumps({"schema": 1, "maven": {
+                "org.example:reg:1.0": {"license": "Apache-2.0",
+                                      "raw": "The Apache Software License, Version 2.0",
+                                      "pom_sha256": sha},
+                "org.example:nosha:1.0": {"license": "Apache-2.0", "pom_sha256": "short"},
+            }}, ensure_ascii=False), encoding="utf-8")
+            got = registry_evidence("org.example", "reg", "1.0", path=p)
+            no_sha = registry_evidence("org.example", "nosha", "1.0", path=p)
+            absent = registry_evidence("org.example", "ghost", "9.9", path=p)
+            ok = (got is not None and got["license"] == "Apache-2.0"
+                  and got["sha"] == sha and no_sha is None and absent is None)
+            return ok, "got=%r no_sha=%r absent=%r" % (got, no_sha, absent)
+
     cases = [
         ("允许类：MIT ⇒ 绿", case_allow),
         ("禁止类：GPL-3.0 ⇒ 红", case_deny),
         ("禁止类：LGPL-2.1（jxl 同形，无版本号）⇒ 红", case_deny_lgpl),
         ("未知类：缓存缺 POM ⇒ 未取证/红（不是通过）", case_missing_pom),
+        ("缓存缺 POM 但仓库登记表有许可+sha256 ⇒ 采信（缺 sha 不采信）", case_registry_evidence),
         ("未知类：POM 无 <licenses> ⇒ 红", case_no_declaration),
         ("未知类：EPL 不在允许表 ⇒ 未登记/红", case_unlisted),
         ("豁免：五列齐全且在期内 ⇒ 绿", case_exempt_ok),
