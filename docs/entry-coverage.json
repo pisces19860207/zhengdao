@@ -463,6 +463,37 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingReach.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 18,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（790 派工单边界为「方位可达判定层」，5 生产件全新增、零碰 655/660、零装配）；本件＝方位可达的总入口（区×方位六档×距离四档 → 三态＋七项结论），纯判定、无 IO、无时钟；结论七项零浮点（浮点只在内部采样器）。装配单落地时由「谁产出待判方位请求」那一层调用。**补记：790 合入时我漏跑这道闸，由 773 这批补登。**",
+    "package": "com.example.zhengdao.baopu.state.bearing",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "BearingReach",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt",
+      "line": 25
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt",
+      "line": 72
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt",
+      "line": 80
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/capacity/CapacityRule.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -1327,11 +1358,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 18,
+  "B": 19,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 16,
-  "production_top_level_public": 780,
-  "wired": 758
+  "not_wired": 17,
+  "production_top_level_public": 794,
+  "wired": 771
  }
 }
