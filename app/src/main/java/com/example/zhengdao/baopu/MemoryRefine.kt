@@ -5,6 +5,10 @@
 // （恰好一条自省；不进 A 内核——PersonaRules.canWrite(A_KERNEL) 仍为 false）。
 package com.example.zhengdao.baopu
 
+import com.example.zhengdao.baopu.consider.ConsiderLog
+import com.example.zhengdao.baopu.consider.ConsiderRecord
+import com.example.zhengdao.baopu.consider.ConsiderVerdict
+
 /**
  * 会话结束提炼（刀 2 C 段）——**纯函数**：会话事实进、候选记忆 ＋ 一条自省出。
  *
@@ -105,6 +109,8 @@ internal object MemoryRefine {
         val candidates = extractCandidates(facts)
         val lessons = candidates.count { it.kind == MemoryKind.LESSON }
         val introspection = buildIntrospection(facts, lessons)
+        // 第八百一十一批：只加留痕——本批每个候选（含被否决的）记进通用池；下面任何选优一行未动。
+        ConsiderLog.shared.recordAll(accountAll(facts, candidates))
         return RefineResult(
             candidates = candidates,
             introspection = introspection,
@@ -143,6 +149,46 @@ internal object MemoryRefine {
         }
         // 丢的 = 命中标记的去重后条数 − 留下的条数（去重砍掉的 ＋ 超限砍掉的）
         return (seen.size - kept.size).coerceAtLeast(0)
+    }
+
+    // ── 候选留痕（第八百一十一批 · 只读旁路，不参与判定）────────────────────
+
+    /** 产生器 id（留痕池里区分来源；跨版本不变）。 */
+    internal const val CONSIDER_GENERATOR = "memory-refine"
+
+    /**
+     * 留痕用只读复算：把**命中标记的每一条句子**连同判定逐条吐出来（含被否决的）。
+     *
+     * 这不是第二套选优——判定顺序与 [extractCandidates] 完全同序（标记 → 长度 →
+     * 同正文去重 → 校验 → 上限），只是把「被砍掉的那几条」也变成可复盘记录。返回里
+     * ACCEPTED 的那几条与 [extractCandidates] 的产物一一对应（同 body）；其余四码正是
+     * 今天只进 [RefineResult.dropped] 一个总数、复盘时看不见的那些（判据①）。
+     *
+     * 零写盘、零时钟（时刻取 [SessionFacts.now]，与候选 createdAt 同一把尺）。
+     */
+    internal fun accountAll(facts: SessionFacts, kept: List<MemoryEntry>): List<ConsiderRecord> {
+        val keptBodies = kept.mapTo(HashSet()) { it.body.trim() }
+        val seen = LinkedHashSet<String>()
+        val out = ArrayList<ConsiderRecord>()
+        for (text in facts.userTexts) {
+            for (sentence in sentences(text)) {
+                val marker = matchMarker(sentence) ?: continue // 没命中标记 ⇒ 从来不是候选，不入池
+                val verdict = when {
+                    sentence.length < MIN_SENTENCE -> ConsiderVerdict.BELOW_BAR
+                    !seen.add(sentence) -> ConsiderVerdict.DUPLICATE
+                    buildCandidate(facts, sentence, marker) == null -> ConsiderVerdict.INVALID
+                    sentence.trim() in keptBodies -> ConsiderVerdict.ACCEPTED
+                    else -> ConsiderVerdict.OVER_LIMIT
+                }
+                out += ConsiderRecord(
+                    generatorId = CONSIDER_GENERATOR,
+                    inputDigest = ConsiderLog.digestOf(sentence),
+                    verdict = verdict,
+                    atMs = facts.now,
+                )
+            }
+        }
+        return out
     }
 
     /** 一条候选（过 [MemoryRules.validate]；不合格 ⇒ null，由 dropped 计数报账）。 */
