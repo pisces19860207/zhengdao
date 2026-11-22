@@ -1311,6 +1311,184 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/persona/PersonaChecks.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 10,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（819 派工单边界为「性格与语声判定层」，4 生产件全新增、零改既有、零装配）；本件＝三层性格（底层 3–5 条带触发／稳定七轴／表层五维由 670 只读状态现推）＋语声十维＋台词互换≥2 处的总检。**注：本包未全 internal（PersonaModel 29 个顶层 public），零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.persona",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "PersonaChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 18
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 37
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 38
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 48
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 58
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 67
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 76
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 86
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 98
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 105
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 106
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 109
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 111
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 114
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 118
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 126
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 138
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt",
+      "line": 159
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriver.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 10,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（同上 819 边界）；本件＝表层五维（耐心/酒意/疲惫/羞耻/紧张）由 670 角色轨状态推导，每维带来源、不改 670。**注：未全 internal。**",
+    "package": "com.example.zhengdao.baopu.state.persona",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "SurfaceDeriver",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaFixture.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 16
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 26
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 30
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 37
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 38
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 47
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 48
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 49
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 60
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 61
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 71
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt",
+      "line": 87
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -1599,11 +1777,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 22,
+  "B": 24,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 20,
-  "production_top_level_public": 850,
-  "wired": 824
+  "not_wired": 22,
+  "production_top_level_public": 884,
+  "wired": 856
  }
 }
