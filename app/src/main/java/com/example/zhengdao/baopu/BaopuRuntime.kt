@@ -523,6 +523,10 @@ internal object BaopuRuntime {
         // 真源一直在生产端没人接 ⇒ 三行恒空。这里一次性把缝接满：工作区 docs/facts 是口径表根，
         // 设定文件缺 ⇒ 出「未设定」而不是默认身材；应急关闭只认治理级确认（不做日常开关）。
         com.example.zhengdao.baopu.calibration.CalibrationAssembly.install(appCtx)
+        // 七百九十八批段 B：教材注入（教模型出口）——只读 workspace/教材库，命中区名由 738 本轮传入，
+        // 走 738 同一条 extraNotes 通路进本轮上下文；不落库、不改判据/阈值（段 C 不在本单）。
+        // 库目录不存在或无命中 ⇒ 空块 ⇒ 与没有段 B 逐字节一致。
+        com.example.zhengdao.baopu.textbook.inject.TextbookRuntime.install({ workspaceRoot(appCtx) })
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }

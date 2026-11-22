@@ -50,6 +50,14 @@ internal object CalibrationWiring {
     var notesObserver: ((List<String>) -> Unit)? = null
 
     /**
+     * 798 段 B 装配缝：教材注入块（复用本管道，纯追加在本轮 notes 尾部）。
+     * 入参＝本轮命中区名（matchedZones）——教材"当前命中"据此判定，随轮变化、下一轮不命中即回基线。
+     * null／未装配 ⇒ 空表 ⇒ 与没有段 B 逐字节一致；教材块独立 ≤300 token，不动 722 三行与 L1/L2 预算。
+     */
+    @Volatile
+    var textbookNotesProvider: ((List<String>) -> List<String>)? = null
+
+    /**
      * 本轮注入文本。纯决策后短路：未命中／开关关／未装配三行 ⇒ 空表，零索引读取。
      * 返回值直接进 ContextAssembler.extraNotes（不进任何闸、不改判定）。
      */
@@ -67,7 +75,12 @@ internal object CalibrationWiring {
             else -> emptyList()
         }
         val variants = if (decision.collapse) loadVariants() else emptyList()
-        val notes = CalibrationInject.build(decision, readback, entries, variants).notes
+        val notes = ArrayList(CalibrationInject.build(decision, readback, entries, variants).notes)
+        // 798 段 B：教材块纯追加在 738 既有 notes 之后，不动三行顺序与 L1/L2 预算；
+        // provider 未装配 ⇒ 空表 ⇒ 逐字节一致。只进本轮上下文，不落库、不进闸。
+        val teach = runCatching { textbookNotesProvider?.invoke(decision.matchedZones) }
+            .getOrDefault(emptyList()).orEmpty()
+        notes += teach
         if (notes.isNotEmpty()) notesObserver?.invoke(notes)
         return notes
     }
@@ -96,5 +109,6 @@ internal object CalibrationWiring {
         variantProvider = null
         entryProvider = null
         notesObserver = null
+        textbookNotesProvider = null
     }
 }
