@@ -9,6 +9,9 @@
 // 第八百一十二批加固（790 实跑咬出）：单纯形恒不超四点（全四点特征＝浮点近并列窗口，
 // 按收敛处理）；Gram 求解按相对奇异阈值判退化（尺度归一，不随形状大小漂）；
 // solve 分派对 >3 元系统显式拒绝（防御纵深）。未改公开语义：距离/相交判定同口径。
+// 第八百二十二批（epsilon 量纲与尺度归一）：DUP_NORM_SQ/WEIGHT_EPS 的绝对量纲退役——
+// 重复点阈值与负权重窗口改由形体标尺 L（两形体包围盒对角线之和，1 cm 兜底）推出；
+// 权重窗口另随 Gram 各向异性比 κ̂ 抬升噪声地板（混合尺度对不再把同一特征判成两个）。
 // 边界：只求静态最近距离/是否相交；不做时间积分、不做接触流形。
 package com.example.zhengdao.baopu.state.geometry
 
@@ -36,20 +39,36 @@ data class GjkResult(
 
 private const val GJK_ASSUMPTION =
     "GJK 最近距离：凸体支撑函数＋单纯形迭代，相对收敛容差 1e-12，上限 64 轮；" +
-        "近退化（共点/共线/共面）子集按相对奇异阈值剔除，单纯形恒不超四点（812 加固）"
-private const val MAX_ITER = 64
-private const val REL_EPS = 1e-12
-private const val ZERO_NORM_SQ = 1e-16
-private const val DUP_NORM_SQ = 1e-20
-private const val WEIGHT_EPS = 1e-9
+        "近退化（共点/共线/共面）子集按相对奇异阈值剔除，单纯形恒不超四点（812 加固）；" +
+        "重复点与权重阈值随形体标尺 L 归一（822 标定）"
 
-/** 相对奇异阈值（812 尺度归一）：|det| < 此值×maxEntry^m 判奇异；det 量纲随 m 随 maxEntry^m 走。 */
-private const val REL_SINGULAR = 1e-12
+// ── 容差常量表（822 集中登记，source=engineering；标定方法与三档读数见交付报告）──────
+private const val MAX_ITER = 64         // 迭代上限（轮数，无量纲）
+private const val REL_EPS = 1e-12       // 进度判据：progress ≤ REL_EPS × ‖p‖²（相对，655）
+private const val ZERO_NORM_SQ = 1e-16  // 相交判定：原点命中阈（绝对，物理接触口径，655 原样；
+                                        // 定义「亚埃级＝接触」的公开口径，不在 822 两常量范围）
+private const val REL_SINGULAR = 1e-12  // 奇异判据：|det| < REL_SINGULAR × maxEntry^m（相对，812 尺度归一）
+// 822 相对量纲：标尺 L = 形体A包围盒对角线＋形体B包围盒对角线（支撑函数 ±三轴探针＝凸体精确
+// AABB），下限 SCALE_FLOOR_CM——L<1 cm 按 1 cm 兜底，相对阈值不随退化形体放大到无意义。
+private const val SCALE_FLOOR_CM = 1.0
+// DUP_REL：重复支撑点线性阈值 = DUP_REL × L（平方后比较；GJK stuck 与 EPA 扩张同源同标定）。
+// 标定：支撑点坐标噪声 ≲ 60 次舍入 × eps × L ≈ 1.5e-14·L，两点差 ≤ 2 倍 ⇒ ~3e-14·L，
+// 取 ~33× 余量 ⇒ 1e-12。连续性：旧绝对 1e-10 cm 在 cm 工作尺度（L≈30）等效 3.3e-12，
+// 取紧的一侧防误合（stuck 晚触发由进度判据兜底，至多 +1 轮）；米级档（L=100 cm）线性阈
+// 1e-10 cm 与旧绝对值恰好等值。
+private const val DUP_REL = 1e-12
+// WEIGHT_REL：负权重窗口 = max(WEIGHT_REL, DBL_EPS × κ̂)，κ̂ = Gram 对角比（affineClosest 内算）。
+// 标定：重心权重无量纲（Σw=1），其舍入噪声 ≤ eps × 条件数；良态子集取基础窗 1e-9
+// （连续性＝旧绝对窗在权重 O(1) 时的等效值；空间语义＝允许 witness 出包 ≤ WEIGHT_REL × L）；
+// κ̂ ≳ 4.5e6（长细比 ≳2000 的混合尺度对）时窗口随噪声地板抬升，数值零权不再被误判成出包。
+private const val WEIGHT_REL = 1e-9
+private val DBL_EPS = Math.ulp(1.0)     // IEEE754 双精度机器舍入 2^-52（κ̂ 噪声地板系数）
 
 /** GJK 距离求解（纯函数，无状态）。 */
 object Gjk {
 
     fun distance(a: ConvexShape, b: ConvexShape): GjkResult {
+        val dupTol = dupTolSq(a, b) // 822：重复点阈值由形体标尺 L 推出，不再用绝对常数
         var simplex = listOf(minkSupport(a, b, Vec3.UNIT_X))
         var last = bestFeature(simplex)
         var iter = 0
@@ -65,7 +84,7 @@ object Gjk {
             if (simplex.size == 4 && f.indices.size == 4) return finish(f, simplex, iter, false)
             val m = minkSupport(a, b, -f.point)
             val progress = f.point.normSq() - f.point.dot(m.w)
-            val stuck = simplex.any { (it.w - m.w).normSq() < DUP_NORM_SQ }
+            val stuck = simplex.any { (it.w - m.w).normSq() < dupTol }
             if (progress <= REL_EPS * f.point.normSq() || stuck) return finish(f, simplex, iter, false)
             simplex = f.indices.map { simplex[it] } + m
         }
@@ -88,6 +107,26 @@ object Gjk {
 /** Minkowski 差支撑：A 沿 dir 最远点 − B 沿 −dir 最远点。 */
 internal fun minkSupport(a: ConvexShape, b: ConvexShape, dir: Vec3) =
     MinkPoint(a.support(dir), b.support(-dir))
+
+/** 包围盒对角线：±三轴支撑探针给出凸体的精确 AABB，返回其对角线长。 */
+private fun bboxDiag(s: ConvexShape): Double {
+    val ex = s.support(Vec3.UNIT_X).x - s.support(-Vec3.UNIT_X).x
+    val ey = s.support(Vec3.UNIT_Y).y - s.support(-Vec3.UNIT_Y).y
+    val ez = s.support(Vec3.UNIT_Z).z - s.support(-Vec3.UNIT_Z).z
+    return Math.sqrt(ex * ex + ey * ey + ez * ez)
+}
+
+/** 822 形体标尺 L：两形体包围盒对角线之和，下限 SCALE_FLOOR_CM 兜底（判据③退化保护）。 */
+internal fun pairScaleLen(a: ConvexShape, b: ConvexShape): Double {
+    val l = bboxDiag(a) + bboxDiag(b)
+    return if (l < SCALE_FLOOR_CM) SCALE_FLOOR_CM else l
+}
+
+/** 822 重复点判据（平方阈值）＝DUP_REL² × L²：GJK stuck 与 EPA 扩张同源同标定。 */
+internal fun dupTolSq(a: ConvexShape, b: ConvexShape): Double {
+    val l = pairScaleLen(a, b)
+    return DUP_REL * DUP_REL * l * l
+}
 
 /** 枚举单纯形的全部非空子集，取「仿射包上距原点最近且重心权重非负」者。 */
 private fun bestFeature(simplex: List<MinkPoint>): Feature {
@@ -116,8 +155,19 @@ private fun affineClosest(pts: List<Vec3>): Projection? {
     val singular = REL_SINGULAR * Math.pow(maxEntry, m.toDouble())
     val rhs = DoubleArray(m) { i -> -p0.dot(edges[i]) }
     val t = solve(gram, rhs, singular) ?: return null
+    // 822 尺度归一：负权重窗口随解的噪声地板走。κ̂ = Gram 对角比（走到此处必满秩 ⇒ 对角全 >0）：
+    // 良态子集取基础窗 WEIGHT_REL；各向异性大（混合尺度对）按 eps×κ̂ 抬升——
+    // 数值零权不再被误判成「重心出包」，同一特征不再被拆成两个。
+    var maxDiag = gram[0][0]
+    var minDiag = gram[0][0]
+    for (i in 1 until m) {
+        val d = gram[i][i]
+        if (d > maxDiag) maxDiag = d
+        if (d < minDiag) minDiag = d
+    }
+    val weightTol = maxOf(WEIGHT_REL, DBL_EPS * (maxDiag / minDiag))
     val weights = listOf(1.0 - t.sum()) + t.toList()
-    if (weights.any { it < -WEIGHT_EPS }) return null
+    if (weights.any { it < -weightTol }) return null
     var q = p0
     for (i in 0 until m) q += edges[i] * t[i]
     return Projection(q, weights)

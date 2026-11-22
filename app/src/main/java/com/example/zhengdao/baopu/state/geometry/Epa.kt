@@ -6,6 +6,8 @@
 // "A fast and robust GJK implementation for collision detection of convex
 // objects" 的 expanding polytope 思路。从 GJK 终端单纯形出发，沿最近面法向
 // 取支撑点扩张多面体，直到改进量小于容差；最近面到原点的距离即穿透深度。
+// 第八百二十二批（epsilon 量纲与尺度归一）：本文件的 DUP_NORM_SQ（1e-18，绝对）退役——
+// 重复点阈值改由形体标尺 L 推出（Gjk.dupTolSq，与 GJK stuck 同源同标定）。
 // 边界：只求静态穿透深度与分离方向；不做接触流形、不做时间积分。
 package com.example.zhengdao.baopu.state.geometry
 
@@ -21,12 +23,12 @@ data class EpaResult(
     val note: String = GeometryNotes.NOT_MEASUREMENT,
 )
 
-private const val EPA_ASSUMPTION = "EPA 穿透深度：支撑点扩张多面体，改进容差 1e-9（绝对＋相对），上限 96 轮"
+private const val EPA_ASSUMPTION = "EPA 穿透深度：支撑点扩张多面体，改进容差 1e-9（绝对＋相对），" +
+    "重复点阈值随形体标尺 L 归一（822），上限 96 轮"
 private const val EPA_MAX_ITER = 96
 private const val EPA_EPS_ABS = 1e-9
 private const val EPA_EPS_REL = 1e-9
 private const val VIS_EPS = 1e-12
-private const val DUP_NORM_SQ = 1e-18
 private const val CONTACT_DIST = 1e-7
 
 private data class Face(val i0: Int, val i1: Int, val i2: Int, val normal: Vec3, val dist: Double)
@@ -39,6 +41,7 @@ object Epa {
     fun penetration(a: ConvexShape, b: ConvexShape): EpaResult? {
         val gjk = Gjk.distance(a, b)
         if (gjk.distanceCm > CONTACT_DIST) return null
+        val dupTol = dupTolSq(a, b) // 822：随形体标尺 L 走，与 GJK stuck 同源同标定
         val verts = initialVertices(gjk.simplex, a, b)
             ?: return EpaResult(0.0, Vec3.UNIT_Y, 0)
         var poly = Polytope(verts, tetraFaces(verts))
@@ -49,7 +52,7 @@ object Epa {
             if (face.dist < 0.0) return EpaResult(0.0, face.normal, iter)
             val m = minkSupport(a, b, face.normal)
             val gain = m.w.dot(face.normal) - face.dist
-            val dup = poly.verts.any { (it.w - m.w).normSq() < DUP_NORM_SQ }
+            val dup = poly.verts.any { (it.w - m.w).normSq() < dupTol }
             if (gain <= EPA_EPS_ABS + EPA_EPS_REL * face.dist || dup) {
                 return EpaResult(face.dist, face.normal, iter)
             }
