@@ -527,6 +527,11 @@ internal object BaopuRuntime {
         // 走 738 同一条 extraNotes 通路进本轮上下文；不落库、不改判据/阈值（段 C 不在本单）。
         // 库目录不存在或无命中 ⇒ 空块 ⇒ 与没有段 B 逐字节一致。
         com.example.zhengdao.baopu.textbook.inject.TextbookRuntime.install({ workspaceRoot(appCtx) })
+        // 八百五十二批：外观卡装配（817 的 CastingSheet/SceneCheck 第一次有生产出口）。
+        // 这里只把缝挂进 738 尾部，卡源未绑——roleId→封闭档卡 的来源要先有 853 的描写抽取
+        // （剧本人物表 CharBible.traits 是自由文本，660 连续量→档的阈值 747 标 ○待核不许猜）。
+        // 未绑 ⇒ sceneNotes 恒空 ⇒ 主链输出与"没有本单"逐字节一致；真源单落地只改这一个实参。
+        com.example.zhengdao.baopu.state.casting.CastingRuntime.install()
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }

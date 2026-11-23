@@ -58,6 +58,14 @@ internal object CalibrationWiring {
     var textbookNotesProvider: ((List<String>) -> List<String>)? = null
 
     /**
+     * 852 段·外观卡装配缝（尾部纯追加在本轮 notes 最末，不动 722 三行与 L1/L2 预算）。
+     * 拿到的是 CastingRuntime 渲染好的 `[外观] <≤120 字摘要>` 行；null／未绑卡源 ⇒ 空表
+     * ⇒ 与没有本单逐字节一致。只进本轮上下文，不落库、不进闸、不改判定。
+     */
+    @Volatile
+    var castingProvider: (() -> List<String>)? = null
+
+    /**
      * 本轮注入文本。纯决策后短路：未命中／开关关／未装配三行 ⇒ 空表，零索引读取。
      * 返回值直接进 ContextAssembler.extraNotes（不进任何闸、不改判定）。
      */
@@ -81,6 +89,11 @@ internal object CalibrationWiring {
         val teach = runCatching { textbookNotesProvider?.invoke(decision.matchedZones) }
             .getOrDefault(emptyList()).orEmpty()
         notes += teach
+        // 852 外观卡：再纯追加在教材块之后，仍是本轮 notes 最末一段。
+        // 回执按前缀计数（只认 738 自己的 `[校准·` 条目），`[外观]` 行不进 entryCount／categories，
+        // 所以 722 三行与敏感层预算的读数与本单之前逐字相同（判据④）。
+        val casting = runCatching { castingProvider?.invoke() }.getOrDefault(emptyList()).orEmpty()
+        notes += casting
         if (notes.isNotEmpty()) notesObserver?.invoke(notes)
         return notes
     }
@@ -110,5 +123,6 @@ internal object CalibrationWiring {
         entryProvider = null
         notesObserver = null
         textbookNotesProvider = null
+        castingProvider = null
     }
 }
