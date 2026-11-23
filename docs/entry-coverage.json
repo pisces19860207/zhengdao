@@ -1270,6 +1270,116 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/micro/MicroAnchors.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 16,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（821 派工单边界为「微观描写判定层」，两包全新增、零改既有、零装配）；本件＝速率/走势锚点常量表（六轴各带 rate/edge 的挂靠声明）。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.micro",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "MicroAnchors",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt",
+      "line": 65
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt",
+      "line": 66
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt",
+      "line": 67
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt",
+      "line": 71
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/micro/MicroAxes.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 81,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（同上 821 边界）；本件＝六条动态轴的速率/走势档与五组联动的一体查询表。",
+    "package": "com.example.zhengdao.baopu.state.micro",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "AxisRateTable",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 14
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 16
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 20
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 29
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 32
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 40
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 41
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 47
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 50
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 56
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 64
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 64
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt",
+      "line": 65
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionKeyframes.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -1926,11 +2036,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 27,
+  "B": 29,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 25,
-  "production_top_level_public": 903,
-  "wired": 872
+  "not_wired": 27,
+  "production_top_level_public": 924,
+  "wired": 891
  }
 }
