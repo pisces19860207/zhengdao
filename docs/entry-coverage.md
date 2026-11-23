@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 886 |
-| 生产可达（有生产引用，含同文件） | 857 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 903 |
+| 生产可达（有生产引用，含同文件） | 872 |
 | A 有定义无调用 | 4 |
-| B 只有测试在调 | 25 |
+| B 只有测试在调 | 27 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **23** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **25** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -44,6 +44,8 @@
 | `BearingReach` | `app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingReach.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt:25`、`app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt:72`、`app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt:80` | 接线 | 谁接：**后续装配单**（790 派工单边界为「方位可达判定层」，5 生产件全新增、零碰 655/660、零装配）；本件＝方位可达的总入口（区×方位六档×距离四档 → 三态＋七项结论），纯判定、无 IO、无时钟；结论七项零浮点（浮点只在内部采样器）。装配单落地时由「谁产出待判方位请求」那一层调用。**补记：790 合入时我漏跑这道闸，由 773 这批补登。** |
 | `BodyPartChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecks.kt:49` | `app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt:22`、`app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt:33`、`app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt:41` | 接线 | 谁接：**后续装配单**（805 派工单边界为「部位读数层」，5 生产件全新增、零改既有、零装配 —— 我扫过包外零引用）；本件＝8 部位×23 维读数的判定入口（一律带左右＋姿态、体脂一致性、乳晕档差矩阵、不做诊断）。**注：本包未全 internal（38 个顶层 public），比 780/788B 的『编译期挡住』弱一档，已在台账记。** |
 | `CapacityRule` | `app/src/main/java/com/example/zhengdao/baopu/state/capacity/CapacityRule.kt:11` | `app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt:36`、`app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt:45`、`app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt:48` | 接线 | 谁接：**后续装配单**（795 派工单边界为「容量类断言判定层」，2 生产件全新增、零改 741 `containment`、零装配）；本件为纯判定（四要素缺一⇒未知、判矛盾必给带来源锚的逐项排除清单、拿房间数反推一律红/拒），无 IO、无时钟。装配单落地时由「谁产出容量类断言」那一层调用。 |
+| `SceneCheck` | `app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingChecks.kt:136` | `app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt:194`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt:207`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt:213` | 接线 | 谁接：**后续装配单**（817 派工单边界为「角色外观卡判定层」，4 生产件全新增、零改既有、零装配）；本件＝「每场写后」唯一校验出口（连续性＋鲜活＋千人千面三组）。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
+| `CastingSheet` | `app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingSheet.kt:31` | `app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt:100`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt:114` | 接线 | 谁接：**738 注入链（后续装配单）**（同上 817 边界）；本件＝外观卡唯一出口（档位向量＋≤120 字摘要，摘要排除下体组）。 |
 | `CavityMap` | `app/src/main/java/com/example/zhengdao/baopu/state/cavity/CavityMap.kt:33` | `app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityFixtures.kt:163`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt:27`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/CavityMapTest.kt:37` | 接线 | 谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝七腔隙的静态几何表（代理体与相邻名单的唯一真源）。 |
 | `GravityContact` | `app/src/main/java/com/example/zhengdao/baopu/state/cavity/GravityContact.kt:33` | `app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt:19`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt:106`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/GravityContactTest.kt:120` | 接线 | 谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝重力触地判定（把接触法向与地面法向对齐后出触地读数）。 |
 | `ProxyLegality` | `app/src/main/java/com/example/zhengdao/baopu/state/cavity/ProxyLegality.kt:43` | `app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt:39`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt:56`、`app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt:57` | 接线 | 谁接：**后续装配单**（686 派工单边界为「腔隙代理体＋判据层」，17 文件全新增、零装配）；本件为纯几何/判据计算，无 IO、无时钟、无状态。装配单落地时由「谁产出 BodyState 姿态」那一层调用。 本件＝限位/可达/自碰撞/触地四项合法性读数（NOT_PROVEN 不算红也不算绿）。 |
