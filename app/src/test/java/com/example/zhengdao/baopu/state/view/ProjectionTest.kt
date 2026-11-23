@@ -78,14 +78,8 @@ class ProjectionTest {
         }
     }
 
-    @Test
-    fun `小室里永远没有远档_两格乘一只有中`() {
-        val farthest = Projection.distanceTier(RegionGrade.SMALL_ROOM, CellOffset(2, 2, 2))
-        assertEquals("小室最远两格 ⇒ 中（不是漏算，小屋里本来没有远景）", DistanceTier.MID, farthest)
-        assertTrue("小室任何格距都到不了远", (0..2).none {
-            Projection.distanceTier(RegionGrade.SMALL_ROOM, CellOffset(it, 0, 0)) == DistanceTier.FAR
-        })
-    }
+    // 「小室无远档」「厅堂与旷野同档」已按业主 2026-11-23 拍板升格为契约测试：
+    // 见 ViewContractsTest 的 C1／C2（全量 125 种格差遍历，阈值一动就红）。
 
     @Test
     fun `三轴取最大格差_不用勾股`() {

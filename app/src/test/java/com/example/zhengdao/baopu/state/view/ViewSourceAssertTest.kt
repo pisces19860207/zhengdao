@@ -59,6 +59,17 @@ class ViewSourceAssertTest {
         "insert(", "persist", "gatePass",
     )
 
+    /**
+     * 来源契约：区域档不许从房间名猜档（「客厅」≠「厅堂」，有人客厅很大有人很小）。
+     *
+     * 用具体房间名做字面；不收单字「室／厅」——它们也是档位名「小室／厅堂」的一部分，
+     * 收进去会把自家档名判成硬映射（假红）。
+     */
+    private val roomNameTokens = listOf(
+        "客厅", "卧室", "厨房", "书房", "浴室", "卫生间", "阳台", "餐厅", "走廊",
+        "roomName", "roomToGrade", "roomToRegion", "roomType",
+    )
+
     /** 边界③：把屏幕格当参数的函数（禁反推的唯一硬形态）。 */
     private val screenAsParam = Regex("fun\\s+\\w+\\s*\\([^)]*ScreenCell")
 
@@ -86,6 +97,24 @@ class ViewSourceAssertTest {
     fun `边界三_没有任何函数把屏幕格当参数`() {
         val text = code()
         assertFalse("屏幕格只出不进：${screenAsParam.findAll(text).map { it.value }}", screenAsParam.containsMatchIn(text))
+    }
+
+    @Test
+    fun `来源契约_区域档不许从房间名猜档`() {
+        val text = code()
+        roomNameTokens.forEach { tok ->
+            assertFalse("不许把房间名当尺度档：$tok（客厅不等于厅堂）", text.contains(tok))
+        }
+    }
+
+    @Test
+    fun `来源契约_取值来源写进生产源码契约`() {
+        // 读**带注释**的源码：取值来源是写给人看的契约，必须在 RegionGrade 的 KDoc 里落地。
+        val grades = source(dir + "ViewGrades.kt")
+        val regionDoc = grades.substringBefore("enum class RegionGrade").substringAfterLast("/**")
+        assertTrue("RegionGrade 必须写明取值来源＝调用方/装配单显式传入", regionDoc.contains("显式传入"))
+        assertTrue("必须写明来源依据是场景图的可用空间尺度档", regionDoc.contains("场景图"))
+        assertTrue("必须写明「客厅」不等于「厅堂」", regionDoc.contains("客厅") && regionDoc.contains("厅堂"))
     }
 
     @Test
@@ -172,6 +201,12 @@ class ViewSourceAssertTest {
     fun `闸自检_注入几何求交必被咬住`() {
         val poisoned = stripComments("val hit = a.intersect(b)")
         assertTrue(occlusionTokens.any { poisoned.contains(it) })
+    }
+
+    @Test
+    fun `闸自检_注入房间名映射必被咬住`() {
+        val poisoned = stripComments("val grade = when (roomName) { \"客厅\" -> RegionGrade.HALL else -> SMALL_ROOM }")
+        assertTrue("房间名→档位必须被咬住", roomNameTokens.any { poisoned.contains(it) })
     }
 
     @Test
