@@ -132,6 +132,12 @@ data class EraAvailability(
 /** 年代可用集表：唯一真相，检查器与负例都从这里取，不许另抄一份。 */
 object EraTable {
 
+    /**
+     * 年代可用集一律按「城乡两套」登记；这里只登记衣物侧与条件侧两个去向。
+     * **必须声明在 ROWS 之前**：object 的成员按声明序初始化，先写 ROWS 会让每一档拿到 null 的 hands。
+     */
+    private val HANDS: List<Handoff> = listOf(Handoff.ERA_GARMENT_881, Handoff.ERA_VENUE_883)
+
     val ROWS: List<EraAvailability> = listOf(
         era(
             Era.PRE_1949,
@@ -174,9 +180,6 @@ object EraTable {
             listOf(WashVenue.HOME_HEATER, WashVenue.EN_SUITE_BATH, WashVenue.YARD_WATER),
         ),
     )
-
-    /** 年代可用集一律按「城乡两套」登记；这里只交接物侧与条件侧两个去向。 */
-    private val HANDS: List<Handoff> = listOf(Handoff.ERA_GARMENT_881, Handoff.ERA_VENUE_883)
 
     private fun era(
         which: Era,

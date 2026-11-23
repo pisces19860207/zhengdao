@@ -86,26 +86,35 @@ data class OccupationRow(
             f.basis?.forEach { parts.add(it.label) }
         }
         phase2?.let { p ->
-            p.habitat?.let { parts.add(it.status?.label ?: ""); parts.add(it.habitat?.label ?: ""); parts.add(it.bath?.label ?: "") }
+            p.habitat?.let { h ->
+                add(parts, h.status?.label)
+                add(parts, h.habitat?.label)
+                add(parts, h.bath?.label)
+            }
             p.traces?.let { t ->
-                parts.add(t.status?.label ?: "")
-                t.kinds?.forEach { parts.add(it.label) }
-                parts.add(t.backAche?.label ?: "")
-                parts.add(t.hearing?.label ?: "")
+                add(parts, t.status?.label)
+                t.kinds?.forEach { add(parts, it.label) }
+                add(parts, t.backAche?.label)
+                add(parts, t.hearing?.label)
             }
             p.odor?.let { o ->
-                parts.add(o.status?.label ?: "")
-                o.sources?.forEach { parts.add(it.label) }
+                add(parts, o.status?.label)
+                o.sources?.forEach { add(parts, it.label) }
             }
             p.minority?.let { m ->
-                parts.add(m.status?.label ?: "")
-                m.kinds?.forEach { parts.add(it.label) }
-                parts.add(m.share?.label ?: "")
-                parts.add(m.gaze?.label ?: "")
-                parts.add(m.address?.label ?: "")
+                add(parts, m.status?.label)
+                m.kinds?.forEach { add(parts, it.label) }
+                add(parts, m.share?.label)
+                add(parts, m.gaze?.label)
+                add(parts, m.address?.label)
             }
         }
         return parts
+    }
+
+    /** 空档（未设定）不进文本，免得词表扫描被一串空串干扰。 */
+    private fun add(into: MutableList<String>, value: String?) {
+        if (value != null) into.add(value)
     }
 
     /** 三挂（环境／着装／负荷）缺哪几样——判据③，缺了给提示不是判红。 */
