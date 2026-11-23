@@ -20,6 +20,8 @@ import com.example.zhengdao.baopu.state.geometry.Vec3
 import com.example.zhengdao.baopu.state.geometry.Violation
 import com.example.zhengdao.baopu.state.geometry.ViolationKind
 import com.example.zhengdao.baopu.state.geometry.lowestY
+import com.example.zhengdao.baopu.state.consider.ConsiderProbe // [844] 只加留痕
+import com.example.zhengdao.baopu.state.consider.digestOf // [844] 只加留痕
 
 /** 单臂单实例的采样读数（内部件，可含浮点；结论层只取档与整数毫米）。 */
 internal class ArmAttempt(
@@ -103,6 +105,8 @@ internal object BearingSampler {
 
 /** 采样搜索状态：最近构型＋合格（带宽内且四项干净）构型里利用率最低者。 */
 internal class Search(private val bandCm: Double) {
+    /** [844] 只加留痕：默认取当前探针；旁路记录，不参与下方任何判定或选优。 */
+    private val considerProbe: ConsiderProbe get() = BearingConsiderTracing.probe // [844] 只加留痕
 
     var bestErrorCm: Double = Double.MAX_VALUE
         private set
@@ -161,6 +165,7 @@ internal class Search(private val bandCm: Double) {
     /** 记一个构型：更新最近构型与 top-3 低误差名单（进诊断圈才做四项诊断）；干净且利用率更低者成为合格构型。 */
     fun consider(angles: List<Double>, ctx: Ctx) {
         val err = errorOf(angles, ctx)
+        considerProbe.record({ digestOf(angles) }, BearingConsiderTracing.verdictOf(err, bandCm), BearingConsiderTracing.inDiagCircle(err, bandCm)) // [844] 只加留痕
         insertLowError(err, angles)
         if (err < bestErrorCm) {
             bestErrorCm = err
