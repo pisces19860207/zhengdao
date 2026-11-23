@@ -125,10 +125,11 @@ class BearingSourceAssertTest {
     }
 
     @Test
-    fun 判据五_子区缝今日如实落地_恒空不假装() {
+    fun 判据五_子区缝如实落地_只转发不存清单() {
         val src = bearingSources().first { it.first == "SubzoneSource.kt" }.second
         val code = stripComments(src)
-        assertTrue("SubzoneSource.of 未按今日口径返回空表（775 未落地）", code.contains("= emptyList()"))
+        assertTrue("775 已落地：SubzoneSource.of 必须转发 SubzoneId.ofZone（不再恒空）", code.contains("SubzoneId.ofZone"))
+        assertTrue("SubzoneSource 不许自己存子区清单（判据⑤唯一来源）：$code", !code.contains("emptyList") && !code.contains("listOf("))
     }
 
     @Test

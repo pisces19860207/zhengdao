@@ -175,7 +175,7 @@ object BearingReach {
     private fun granularityReason(subzone: String?): String = if (subzone == null) {
         "未给子区：判到区级（判据④标原因；子区枚举唯一来源 ${SubzoneSource.SOURCE}）"
     } else {
-        "给了子区但 775 未落地：判到区级并如实标注，不假装判到子区（判据⑤）"
+        "子区「$subzone」已在册并随结论回显，但几何仍按区代理体判：子区级几何不在本单（判据④如实标）"
     }
 
     /** 关节档：肩=两自由度最大利用率，肘/腕各取自身；髋膝=1（fixture 站姿不参与，站位归 725/741）。 */

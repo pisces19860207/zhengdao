@@ -131,4 +131,4 @@ const val BEARING_ASSUMPTION =
         "不判进入（779）、不判容纳（741/795）、不判穿透后果（686）、不做连续 IK、不含时间积分"
 
 const val INCOMPLETE_ASSUMPTION =
-    "三轴缺一即 incomplete（判据②），不给默认补全；子区轴唯一来源＝SubzoneSource（775 未落地恒空，判据⑤不许假装判到子区）"
+    "三轴缺一即 incomplete（判据②），不给默认补全；子区轴唯一来源＝SubzoneSource（775 已落地：state/subzone/SubzoneId，判据⑤不许假装判到子区）"
