@@ -113,7 +113,7 @@ class OccPhase2Test {
             ),
         )
         val wired = rebar.copy(phase2 = filled, hands = handsOf(null, rebar.attire, filled))
-        assertEquals(0, OccupationGate.check(listOf(wired)).size)
+        assertEquals(0, rowFindings(wired).size)
         assertTrue(wired.hands!!.contains(Handoff.HABITAT_883))
         assertTrue(wired.hands!!.contains(Handoff.TRACE_BODY_805))
         assertTrue(wired.hands!!.contains(Handoff.ODOR_SOURCE_827))

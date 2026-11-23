@@ -23,6 +23,10 @@ class OccFaithEraTest {
 
     private fun c9(rows: List<EraAvailability>) = OccupationGate.check(eras = rows).filter { it.rule == "C9" }
 
+    /** 把篡改过的那一格放回五档菜单的原位——C9 的「年代缺档」是按五档逐个数，只给一格就成了计数噪声。 */
+    private fun splice(origin: EraAvailability, poisoned: EraAvailability): List<EraAvailability> =
+        EraTable.ROWS.map { if (it.era == origin.era) poisoned else it }
+
     @Test
     fun `正例_九条教派各一行且七件齐`() {
         val rows = OccupationTable.withFaith()
@@ -171,7 +175,8 @@ class OccFaithEraTest {
     fun `负例_网购提前到五十年代必红`() {
         val mid = EraTable.ROWS.first { it.era == Era.MID_50_70 }
         val poisoned = mid.copy(supply = mid.supply!! + GarmentSupply.ONLINE)
-        val findings = c9(listOf(poisoned))
+        // 篡改的那一格要**放回五档菜单里**再判：只喂一格，C9 会连报四条「其余年代缺档」，那条真红就被淹了。
+        val findings = c9(splice(mid, poisoned))
         assertEquals(1, findings.size)
         assertTrue(findings.first().message.contains("网购提前"))
     }
@@ -180,7 +185,7 @@ class OccFaithEraTest {
     fun `负例_早期形制留到当代必红`() {
         val now = EraTable.ROWS.first { it.era == Era.NOW }
         val poisoned = now.copy(forms = now.forms!! + EraForm.LOOSE_PANTS)
-        val findings = c9(listOf(poisoned))
+        val findings = c9(splice(now, poisoned))
         assertEquals(1, findings.size)
         assertTrue(findings.first().message.contains("早期形制"))
     }

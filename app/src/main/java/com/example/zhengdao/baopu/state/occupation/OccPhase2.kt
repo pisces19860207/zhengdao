@@ -207,13 +207,18 @@ data class Phase2Slots(
         return slots.filter { it.second == null }.map { it.first }
     }
 
-    /** 四槽的状态位是不是都在（缺状态位＝没法判断这块是占位还是漏填）。 */
+    /**
+     * 四槽的状态位是不是都在（缺状态位＝没法判断这块是占位还是漏填）。
+     * 只看**槽在、状态没填**那一种：整槽被抽掉已经由 [missingNames] 报过一条，
+     * 这里再报一次就成了「缺一样吃两条红」，负例的计数就钉不住。
+     */
     fun statusMissingNames(): List<String> {
-        val marks: List<Pair<String, SlotStatus?>> = listOf(
-            "⑤居住条件" to habitat?.status, "⑥痕迹" to traces?.status,
-            "⑦气味来源" to odor?.status, "⑧少数派处境" to minority?.status,
-        )
-        return marks.filter { it.second == null }.map { it.first }
+        val out = mutableListOf<String>()
+        habitat?.let { if (it.status == null) out.add("⑤居住条件") }
+        traces?.let { if (it.status == null) out.add("⑥痕迹") }
+        odor?.let { if (it.status == null) out.add("⑦气味来源") }
+        minority?.let { if (it.status == null) out.add("⑧少数派处境") }
+        return out
     }
 
     /** 状态填了 SET 却一格内容都没有＝假填，判红用。 */

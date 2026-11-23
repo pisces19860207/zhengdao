@@ -131,8 +131,12 @@ class OccTableTest {
         }
         listOf(
             Handoff.DRIVE_BUILD_815, Handoff.DRIVE_SKIN_805, Handoff.DRIVE_WEAR_881, Handoff.DRIVE_SWEAT_827,
-            Handoff.STRUCTURE_FLY_881, Handoff.DUTY_WINDOW_883, Handoff.ERA_GARMENT_881, Handoff.ERA_VENUE_883,
-        ).forEach { assertTrue("该用的交接没用：" + it.key, used.contains(it.name)) }
+            Handoff.STRUCTURE_FLY_881, Handoff.DUTY_WINDOW_883,
+        ).forEach { assertTrue("行里该用的交接没用：" + it.key, used.contains(it.name)) }
+        // 年代那两条交接挂在**年代可用集**上（EraTable 的 hands），不在工种行里——分开点，别拿行的清点去找年代的账。
+        val eraUsed = OccupationTable.eraUsedGrades()["Handoff"] ?: emptySet()
+        listOf(Handoff.ERA_GARMENT_881, Handoff.ERA_VENUE_883)
+            .forEach { assertTrue("年代该用的交接没用：" + it.key, eraUsed.contains(it.name)) }
         assertEquals(Handoff.ALLOWED_COUNT, Handoff.entries.count { it.allowed })
         assertEquals(Handoff.BANNED_COUNT, Handoff.banned().size)
         // 第二期状态位：只许 PLACEHOLDER，SET 一出现就说明有人提前填了内容。
@@ -177,3 +181,14 @@ class OccTableTest {
         assertTrue("$bucket 出现了枚举里没有的档位", all.toSet().containsAll(got))
     }
 }
+
+/**
+ * 表级判据：C8 数「哪些行业没有岗位示例」、C9 数「哪些年代缺可用集」——
+ * 它们的取材范围本来就是**整张表**，所以只喂一行进去必然报「其余 15 个行业缺示例」那种成堆的红。
+ * 单行注入负例要钉的是「这一行红几条」，就得把这两条摘掉；全表那条断言仍然照原样跑（`正例_生产表零发现`）。
+ */
+internal val TABLE_RULES = setOf("C8", "C9")
+
+/** 行级发现（单行取证用）：整张表在这里是 0 条，抽掉一行里的任何一格才会冒出对应规则的红。 */
+internal fun rowFindings(vararg rows: OccupationRow): List<OccFinding> =
+    OccupationGate.check(rows.toList()).filter { it.rule !in TABLE_RULES }

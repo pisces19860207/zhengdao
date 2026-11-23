@@ -58,7 +58,10 @@ class OccDriveTest {
         val c3 = OccupationGate.check(
             listOf(rebar.copy(drives = rebar.drives!!.copy(mechanisms = emptySet()))),
         ).filter { it.rule == "C3" }
-        assertEquals(1, c3.size)
+        // 清空机制吃两类红：一条「这一行举不出机制」（集合级）＋每条给了 ↑／↓ 的轴各一条「方向没有机制支撑」。
+        val dirs = DriveAxis.entries.count { rebar.drives!!.dirOf(it) == Dir.UP || rebar.drives!!.dirOf(it) == Dir.DOWN }
+        assertEquals("集合级 1 条＋有方向的轴各 1 条", 1 + dirs, c3.size)
+        assertEquals("集合级那条只许出现一次", 1, c3.count { it.message.contains("举不出物理机制") })
         assertTrue(c3.first().message.contains("举不出物理机制"))
     }
 
@@ -97,7 +100,7 @@ class OccDriveTest {
         // 冷链装卸给的是汗量↓：低温环境少出汗，同样是方向而不是「看情况」。
         val cold = OccupationTable.byKey("coldChainHandler")!!
         assertEquals(Dir.DOWN, cold.drives!!.sweat)
-        assertEquals(0, OccupationGate.check(listOf(cold)).size)
+        assertEquals(0, rowFindings(cold).size)
     }
 
     @Test

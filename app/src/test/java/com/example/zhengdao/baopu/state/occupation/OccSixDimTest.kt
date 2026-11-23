@@ -106,7 +106,7 @@ class OccSixDimTest {
     fun `负例_空防护清单是合法显式不给`() {
         // 机加工不该戴手套（旋转件），空表是结论不是漏填：抽掉 items 才红，给空表不红。
         val machinist = OccupationTable.byKey("machinist")!!
-        assertEquals(0, OccupationGate.check(listOf(machinist)).size)
+        assertEquals(0, rowFindings(machinist).size)
         val stripped = OccupationGate.check(
             listOf(machinist.copy(attire = machinist.attire!!.copy(items = null))),
         ).filter { it.rule == "C2" }
