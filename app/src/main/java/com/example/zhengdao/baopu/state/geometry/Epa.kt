@@ -25,10 +25,17 @@ data class EpaResult(
 
 private const val EPA_ASSUMPTION = "EPA 穿透深度：支撑点扩张多面体，改进容差 1e-9（绝对＋相对），" +
     "重复点阈值随形体标尺 L 归一（822），上限 96 轮"
+// EPA_MAX_ITER：性能参数（迭代轮数上限，无量纲），不随形体尺度变。
+// source=engineering——非物理口径、非数值容差，调整只需性能证据，不动语义（839 定性）。
 private const val EPA_MAX_ITER = 96
 private const val EPA_EPS_ABS = 1e-9
 private const val EPA_EPS_REL = 1e-9
 private const val VIS_EPS = 1e-12
+// CONTACT_DIST：EPA 入口口径（物理口径，839 定性）。公开承诺：GJK 距离 ≤ 1e-7 cm
+// （10 埃）的对才进 EPA 出深度读数；更远的分离对返回 null。本带是 838 接触带
+// （1 埃）的 10 倍，为 EPA 初始构造留数值余量；入口带 ≥ 接触带为硬互锁。
+// 改它＝破坏 null/非 null 公开语义（消费方：BearingSampler/PoseValidity/
+// ContactProbe/790 协议，全清单见 docs/geometry-semantics.md §四），必须另立单＋版本标记。
 private const val CONTACT_DIST = 1e-7
 
 private data class Face(val i0: Int, val i1: Int, val i2: Int, val normal: Vec3, val dist: Double)

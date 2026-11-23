@@ -40,16 +40,29 @@ data class GjkResult(
 private const val GJK_ASSUMPTION =
     "GJK 最近距离：凸体支撑函数＋单纯形迭代，相对收敛容差 1e-12，上限 64 轮；" +
         "近退化（共点/共线/共面）子集按相对奇异阈值剔除，单纯形恒不超四点（812 加固）；" +
-        "重复点与权重阈值随形体标尺 L 归一（822 标定）"
+        "重复点与权重阈值随形体标尺 L 归一（822 标定）；" +
+        "相交判定为物理口径：绝对间隙 ≤ 1e-8 cm（1 埃）一律报接触（655 确立，838 定性）"
 
 // ── 容差常量表（822 集中登记，source=engineering；标定方法与三档读数见交付报告）──────
+// MAX_ITER：性能参数（迭代轮数上限，无量纲），不随形体尺度变。
+// source=engineering——非物理口径、非数值容差，调整只需性能证据，不动语义（839 定性）。
 private const val MAX_ITER = 64         // 迭代上限（轮数，无量纲）
 private const val REL_EPS = 1e-12       // 进度判据：progress ≤ REL_EPS × ‖p‖²（相对，655）
-private const val ZERO_NORM_SQ = 1e-16  // 相交判定：原点命中阈（绝对，物理接触口径，655 原样；
-                                        // 定义「亚埃级＝接触」的公开口径，不在 822 两常量范围）
+// ZERO_NORM_SQ：相交判定阈（平方口径，cm²）。线性 = 1e-8 cm = 1 埃。
+// 性质＝物理口径（838 定性）：公开承诺「两形体表面绝对间隙 ≤ 1 埃一律报
+// intersecting=true 且 distanceCm=0」。判定只依赖绝对间隙，不随形体标尺 L、
+// 坐标量级、构型大小变——这是它与 REL_EPS/DUP_REL/WEIGHT_REL/REL_SINGULAR
+// （四个数值容差，相对量，812/822）的本质分界：两类常量各司其职，禁止合并、
+// 禁止互算、禁止把本常量相对化。数值噪声吸收不由本常量承担（域内阈高出
+// 噪声地板 ≥3 个数量级，7.5 km 尺度才追平）。改值＝破坏公开语义（声明见
+// docs/geometry-semantics.md 与几何包 README），必须另立单＋版本标记。
+private const val ZERO_NORM_SQ = 1e-16  // 相交判定：原点命中阈（绝对，物理接触口径，655 原样）
 private const val REL_SINGULAR = 1e-12  // 奇异判据：|det| < REL_SINGULAR × maxEntry^m（相对，812 尺度归一）
 // 822 相对量纲：标尺 L = 形体A包围盒对角线＋形体B包围盒对角线（支撑函数 ±三轴探针＝凸体精确
 // AABB），下限 SCALE_FLOOR_CM——L<1 cm 按 1 cm 兜底，相对阈值不随退化形体放大到无意义。
+// SCALE_FLOOR_CM：相对阈的绝对地板（工程口径，822 双阈机制件，839 定性）。
+// L<1 cm 按 1 cm 计——防退化形体的相对阈消失；是地板不是对外承诺，
+// 与 CONTACT_DIST/ZERO_NORM_SQ 两类公开口径禁止混用。
 private const val SCALE_FLOOR_CM = 1.0
 // DUP_REL：重复支撑点线性阈值 = DUP_REL × L（平方后比较；GJK stuck 与 EPA 扩张同源同标定）。
 // 标定：支撑点坐标噪声 ≲ 60 次舍入 × eps × L ≈ 1.5e-14·L，两点差 ≤ 2 倍 ⇒ ~3e-14·L，
