@@ -46,55 +46,50 @@ object OccupationTable {
     /**
      * 档位使用清点：枚举简名 → 表里真用过的条目名。
      * 测试拿它核「派工单点名的档名不能只列不用」，也核反向（没造永远取不到的死档）。
+     *
+     * 按面拆成九件是**闸的账不是审美的账**：合在一格里 CC=24，全仓 189 的 detekt 预算被顶成 190。
+     * 拆完每格取值范围逐字不变，`OccTableTest` 的「档名全用」五条断言仍照原样跑。
      */
     fun usedGrades(): Map<String, Set<String>> {
         val out = mutableMapOf<String, MutableSet<String>>()
-        ROWS.forEach { row ->
-            put(out, row.industry)
-            row.six?.let { s ->
-                put(out, s.posture); put(out, s.dirt); put(out, s.dress); put(out, s.sched); put(out, s.risk)
-            }
-            row.env?.let { e ->
-                put(out, e.place); put(out, e.noise); put(out, e.dust); put(out, e.temp)
-                put(out, e.moist); put(out, e.chem)
-            }
-            row.attire?.let { a ->
-                a.items?.forEach { put(out, it) }
-                put(out, a.closure)
-            }
-            row.burden?.let { b ->
-                put(out, b.carry); put(out, b.standing); put(out, b.shift)
-                b.repeats?.forEach { put(out, it) }
-            }
-            row.drives?.let { d ->
-                DriveAxis.entries.forEach { axis -> put(out, d.dirOf(axis)) }
-                d.mechanisms?.forEach { put(out, it) }
-                put(out, d.spread)
-            }
-            row.hands?.forEach { put(out, it) }
-            row.phase2?.let { p ->
-                p.habitat?.let { put(out, it.status) }
-                p.traces?.let { put(out, it.status) }
-                p.odor?.let { put(out, it.status) }
-                p.minority?.let { put(out, it.status) }
-            }
-            row.service?.let { s ->
-                put(out, s.arm); put(out, s.armyRank); put(out, s.policePost); put(out, s.firePost)
-                put(out, s.scene); put(out, s.phase); put(out, s.dutyCycle); put(out, s.returnGap)
-                s.gear?.forEach { put(out, it) }
-                s.envExtra?.forEach { put(out, it) }
-                s.bodyLoad?.forEach { put(out, it) }
-            }
-            row.faith?.let { f ->
-                put(out, f.branch); put(out, f.celibate); put(out, f.diet); put(out, f.hair)
-                put(out, f.dress); put(out, f.residence)
-                f.basis?.forEach { put(out, it) }
-            }
-        }
+        ROWS.forEach { row -> rowGrades(row).forEach { put(out, it) } }
         // Reach 由 Closure 带着走，单独清一次，免得「便利／更麻烦」哪档没人取到却没人发现。
         Closure.entries.forEach { put(out, it.reach) }
         return out
     }
+
+    private fun rowGrades(row: OccupationRow): List<Enum<*>?> = listOf(row.industry) +
+        sixGrades(row.six) + envGrades(row.env) + attireGrades(row.attire) + burdenGrades(row.burden) +
+        driveGrades(row.drives) + row.hands.orEmpty() + phase2Grades(row.phase2) +
+        serviceGrades(row.service) + faithGrades(row.faith)
+
+    private fun sixGrades(s: SixDims?): List<Enum<*>?> =
+        if (s == null) emptyList() else listOf(s.posture, s.dirt, s.dress, s.sched, s.risk)
+
+    private fun envGrades(e: EnvProfile?): List<Enum<*>?> =
+        if (e == null) emptyList() else listOf(e.place, e.noise, e.dust, e.temp, e.moist, e.chem)
+
+    private fun attireGrades(a: AttireProfile?): List<Enum<*>?> =
+        if (a == null) emptyList() else a.items.orEmpty() + listOf<Enum<*>?>(a.closure)
+
+    private fun burdenGrades(b: BurdenProfile?): List<Enum<*>?> =
+        if (b == null) emptyList() else
+            listOf<Enum<*>?>(b.carry, b.standing, b.shift) + b.repeats.orEmpty()
+
+    private fun driveGrades(d: DriveSet?): List<Enum<*>?> = if (d == null) emptyList() else
+        DriveAxis.entries.map { d.dirOf(it) } + d.mechanisms.orEmpty() + listOf<Enum<*>?>(d.spread)
+
+    /** 第一期只清状态位——四槽的内容本来就是占位，第二期填了内容自然会被各自的档名面收到。 */
+    private fun phase2Grades(p: Phase2Slots?): List<Enum<*>?> = if (p == null) emptyList() else
+        listOf(p.habitat?.status, p.traces?.status, p.odor?.status, p.minority?.status)
+
+    private fun serviceGrades(s: ServiceSlot?): List<Enum<*>?> = if (s == null) emptyList() else
+        listOf<Enum<*>?>(
+            s.arm, s.armyRank, s.policePost, s.firePost, s.scene, s.phase, s.dutyCycle, s.returnGap,
+        ) + s.gear.orEmpty() + s.envExtra.orEmpty() + s.bodyLoad.orEmpty()
+
+    private fun faithGrades(f: FaithSlot?): List<Enum<*>?> = if (f == null) emptyList() else
+        listOf<Enum<*>?>(f.branch, f.celibate, f.diet, f.hair, f.dress, f.residence) + f.basis.orEmpty()
 
     /** 年代可用集的使用清点（形制／材质／获取／场所四类）。 */
     fun eraUsedGrades(): Map<String, Set<String>> {
