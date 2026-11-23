@@ -21,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.cos
@@ -165,16 +166,34 @@ class GeometrySemanticsRegressionTest {
         assertGapSemantics(0.5 * contactBandCm, true, "B1(5e-9)")
     }
 
-    /** B2 入口带 0.5× 档（gap=5e-8∈(1e-8,1e-7]）：三档全 miss 且 EPA 全非 null（深度 0 约定读数）。 */
+    /**
+     * B2 入口带 0.5× 档（gap=5e-8∈(1e-8,1e-7]）：三档全 miss 且三档恒过入口门（`distanceCm ≤ 1e-7`）。
+     * EPA 侧：0.02×/1× 档非 null（深度 0 约定读数）；**50× 档钉已知缺陷**——
+     * `Epa.penetration` 在 (s=50, gap=5e-8) 确定性抛 IndexOutOfBoundsException（Epa.kt:58，
+     * 850 独立探针复现：`initialVertices` 非严格垃圾四面体 × `expand` 掏空 faces，
+     * 与 840 §十.2 恰切假深度同根，归 843 EPA 切线/边界构型单，本单禁修只钉现状）。
+     * 843 修复后本断言会转红 ⇒ 届时把 50× 档改为非 null 断言（台账式提醒，仿 BareThreadGuardTest 惯例）。
+     */
     @Test
-    fun 族B_入口带05倍_近贴分离三档一律miss且EPA非null() {
+    fun 族B_入口带05倍_近贴分离三档一律miss且恒过入口门() {
         assertGapSemantics(0.5 * contactDistCm, false, "B2(5e-8)")
         for ((label, s) in scales) {
             val a = Sphere(Vec3.ZERO, 1.0 * s)
             val b = Sphere(Vec3(2.0 * s + 0.5 * contactDistCm, 0.0, 0.0), 1.0 * s)
-            val depth = Epa.penetration(a, b)
-            assertNotNull("B2[$label] 入口带内 EPA 不得拒入（null/非 null 是对外契约）", depth)
-            assertEquals("B2[$label] 分离近贴的深度约定为 0", 0.0, depth!!.depthCm, 0.0)
+            assertTrue(
+                "B2[$label] 入口带成员资格不变：distanceCm 必须 ≤ 1e-7（该入门）",
+                Gjk.distance(a, b).distanceCm <= contactDistCm,
+            )
+            if (s == 50.0) {
+                assertThrows(
+                    "B2[$label] 已知缺陷钉死（归 843，修复后本例转红⇒改非 null 断言）",
+                    IndexOutOfBoundsException::class.java,
+                ) { Epa.penetration(a, b) }
+            } else {
+                val depth = Epa.penetration(a, b)
+                assertNotNull("B2[$label] 入口带内 EPA 不得拒入（null/非 null 是对外契约）", depth)
+                assertEquals("B2[$label] 分离近贴的深度约定为 0", 0.0, depth!!.depthCm, 0.0)
+            }
         }
     }
 
