@@ -1800,6 +1800,105 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/occupation/OccChecks.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 43,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（882 派工单边界为「职业池分类×驱动面」，17 生产件全新增、零改既有、零装配）；本件＝十三道判据 C1–C13 的唯一出口，70 行工种表与五档年代可用集都只经它被读出来——**在装配单落地之前，四面方向（体型／皮肤手／衣物磨损／汗量味型）不进任何提示词**。\n  口径钉两条，防后来人误解这个 B：① 交接面 `Handoff` 的三条禁区值（883 个体意愿档／条件档本身／派生档）按设计就该被本件引用、却永不被生产表引用——「表里 0 次」才是绿，装配单不许把它接成职业→卫生；② 年代与驻勤这两条只交**可用集与时段**（`ERA_VENUE_883`／`DUTY_WINDOW_883`），883 的 `washCondition` 档位本身仍归 883 定。\n  **注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.occupation",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "OccupationGate",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
+      "line": 51
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
+      "line": 58
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
+      "line": 67
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
+      "line": 77
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
+      "line": 100
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccFaithEraTest.kt",
+      "line": 22
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccFaithEraTest.kt",
+      "line": 24
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccHygieneTest.kt",
+      "line": 22
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccHygieneTest.kt",
+      "line": 24
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccPhase2Test.kt",
+      "line": 19
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccPhase2Test.kt",
+      "line": 116
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccPhase2Test.kt",
+      "line": 150
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 41
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 50
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 62
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 68
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 87
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 97
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/persona/PersonaChecks.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -2640,11 +2739,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 37,
+  "B": 38,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 35,
-  "production_top_level_public": 1050,
-  "wired": 1009
+  "not_wired": 36,
+  "production_top_level_public": 1127,
+  "wired": 1085
  }
 }

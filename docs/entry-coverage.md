@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 1050 |
-| 生产可达（有生产引用，含同文件） | 1009 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 1127 |
+| 生产可达（有生产引用，含同文件） | 1085 |
 | A 有定义无调用 | 4 |
-| B 只有测试在调 | 37 |
+| B 只有测试在调 | 38 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **35** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **36** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -60,6 +60,9 @@
 | `MicroAnchors` | `app/src/main/java/com/example/zhengdao/baopu/state/micro/MicroAnchors.kt:16` | `app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt:65`、`app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt:66`、`app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt:67` | 接线 | 谁接：**后续装配单**（821 派工单边界为「微观描写判定层」，两包全新增、零改既有、零装配）；本件＝速率/走势锚点常量表（六轴各带 rate/edge 的挂靠声明）。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
 | `AxisRateTable` | `app/src/main/java/com/example/zhengdao/baopu/state/micro/MicroAxes.kt:81` | `app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt:14`、`app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt:16`、`app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroRateTest.kt:20` | 接线 | 谁接：**后续装配单**（同上 821 边界）；本件＝六条动态轴的速率/走势档与五组联动的一体查询表。 |
 | `MotionKeyframes` | `app/src/main/java/com/example/zhengdao/baopu/state/motion/MotionKeyframes.kt:21` | `app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:11`、`app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:17`、`app/src/test/java/com/example/zhengdao/baopu/state/motion/MotionKeyframesTest.kt:18` | 接线 | 谁接：**后续装配单**（725 派工单边界为「形轨·动作关键帧」数据层，6 生产件全新增、零改既有、零装配）；本包只吃强度档吐档位，弧度映射仅在内部喂 655 四项，**零时间积分、零连续轨迹**。 本件＝四动作 15 关键姿名录＋退档解析（对外唯一入口）。 |
+| `OccupationGate` | `app/src/main/java/com/example/zhengdao/baopu/state/occupation/OccChecks.kt:43` | `app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt:51`、`app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt:58`、`app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt:67` | 接线 | 谁接：**后续装配单**（882 派工单边界为「职业池分类×驱动面」，17 生产件全新增、零改既有、零装配）；本件＝十三道判据 C1–C13 的唯一出口，70 行工种表与五档年代可用集都只经它被读出来——**在装配单落地之前，四面方向（体型／皮肤手／衣物磨损／汗量味型）不进任何提示词**。
+  口径钉两条，防后来人误解这个 B：① 交接面 `Handoff` 的三条禁区值（883 个体意愿档／条件档本身／派生档）按设计就该被本件引用、却永不被生产表引用——「表里 0 次」才是绿，装配单不许把它接成职业→卫生；② 年代与驻勤这两条只交**可用集与时段**（`ERA_VENUE_883`／`DUTY_WINDOW_883`），883 的 `washCondition` 档位本身仍归 883 定。
+  **注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
 | `PersonaChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/persona/PersonaChecks.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt:18`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt:37`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt:38` | 接线 | 谁接：**后续装配单**（819 派工单边界为「性格与语声判定层」，4 生产件全新增、零改既有、零装配）；本件＝三层性格（底层 3–5 条带触发／稳定七轴／表层五维由 670 只读状态现推）＋语声十维＋台词互换≥2 处的总检。**注：本包未全 internal（PersonaModel 29 个顶层 public），零消费方靠结论表而非编译期挡住。** |
 | `SurfaceDeriver` | `app/src/main/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriver.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaFixture.kt:81`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt:16`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt:26` | 接线 | 谁接：**后续装配单**（同上 819 边界）；本件＝表层五维（耐心/酒意/疲惫/羞耻/紧张）由 670 角色轨状态推导，每维带来源、不改 670。**注：未全 internal。** |
 | `FlaccidTable` | `app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt:122` | `app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:89`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:92`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:110` | 接线 | 谁接：**后续装配单**（同上 804 边界）；本件＝疲软态暴露表（9 行基础表×长短×冷热，钳五档，每条结论带行号＋理由，空依据构造不出来）。**注：未全 internal。** |
