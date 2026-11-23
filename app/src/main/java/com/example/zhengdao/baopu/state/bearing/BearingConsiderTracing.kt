@@ -14,9 +14,10 @@ import com.example.zhengdao.baopu.state.consider.ConsiderVerdict
 /**
  * 790 `Search.consider` 的留痕口（产生器自己降采样，记录层不懂业务语义）。
  *
- * 产生器口径：原始 8192 点 = [BearingGeometry.SAMPLES]；策略 stride（取样间隔 = 8192/64 = 128），
- * 单次评估硬顶 64 条 ≪ 2000 红线；每条带 sampledFrom=8192 与 strategy=stride。
- * 诊断圈（err ≤ band + margin）的候选仅在 diagnostic=true 时另记入 diag 池（strategy=diagnosticOnly），
+ * 产生器口径（派工单 + 2026-11-23 ERRATA）：原始 8192 点 = [BearingGeometry.SAMPLES]；
+ * **默认 strategy=diagnosticOnly**——主池只记诊断圈内候选（err ≤ band + margin，决策边界现场），
+ * 单次硬顶 64 条 ≪ 2000 红线；每条带 sampledFrom=8192 与 strategy=diagnosticOnly。
+ * 诊断模式 diagnostic=true 时，同一批候选多留一档细节到独立 diag 池（更大现场，硬顶 400），
  * 与主池两个独立实例，绝不混写；开关关 ⇒ diag 池为 null ⇒ 不产生 diag 文件。
  */
 internal object BearingConsiderTracing {
@@ -24,19 +25,19 @@ internal object BearingConsiderTracing {
     /** 产生器 id（稳定字面量，跨版本不变）。 */
     const val GENERATOR_ID = "bearing-consider"
 
-    /** 常规探针：只写主池，不写 diag。 */
+    /** 常规探针（790 默认）：strategy=diagnosticOnly，只写主池的诊断圈现场，不写 diag。 */
     val mainProbe = ConsiderProbe(
         generatorId = GENERATOR_ID,
         sampledFrom = BearingGeometry.SAMPLES,
-        strategy = ConsiderStrategy.STRIDE,
+        strategy = ConsiderStrategy.DIAGNOSTIC_ONLY,
         main = ConsiderLog.shared,
     )
 
-    /** 诊断探针：主池照写（stride），诊断圈内候选另写独立 diag 池。 */
+    /** 诊断探针：主池照写（diagnosticOnly），同批候选另写独立 diag 池（更大现场）。 */
     val diagProbe = ConsiderProbe(
         generatorId = GENERATOR_ID,
         sampledFrom = BearingGeometry.SAMPLES,
-        strategy = ConsiderStrategy.STRIDE,
+        strategy = ConsiderStrategy.DIAGNOSTIC_ONLY,
         main = ConsiderLog.shared,
         diagnostic = true,
     )

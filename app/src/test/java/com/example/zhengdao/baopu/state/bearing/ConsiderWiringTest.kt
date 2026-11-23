@@ -2,7 +2,8 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 //
 // 第八百四十四批 · ConsiderLog 覆盖扩展（批次 1）：790 接入点接线断言。
-// 判据① 用真 Ctx 夹具让全部候选被否决；判据⑤ 用基线哈希证明算法源码零改。
+// 判据① 用真 Ctx 夹具让全部候选"被否但在诊断圈内"（ERRATA 默认 diagnosticOnly）；
+// 判据⑤ 用基线哈希证明算法源码零改。
 package com.example.zhengdao.baopu.state.bearing
 
 import com.example.zhengdao.baopu.state.consider.ConsiderLog
@@ -24,7 +25,6 @@ class ConsiderWiringTest {
 
     private val body: BodyState by lazy { FormFixtures.state() }
 
-    /** 真链 + 指定目标：近处（零角指尖）用于诊断圈内夹具，远处用于全否决夹具。 */
     private fun ctx(target: Vec3, bandCm: Double = 2.0): Ctx = Ctx(
         chain = BearingGeometry.armChain("r", body),
         staticSet = emptyList(),
@@ -36,8 +36,21 @@ class ConsiderWiringTest {
         body = body,
     )
 
-    /** 真链 + 远处目标：全部候选误差远大于带宽 ⇒ 全被否决（无合格证据）。 */
+    private val zeroAngles: List<Double> get() = BearingGeometry.armChain("r", body).joints.map { 0.0 }
+
+    /** 远处目标：全在诊断圈外 ⇒ 圈外不进主池（ERRATA），池应为空。 */
     private fun farCtx(bandCm: Double = 2.0): Ctx = ctx(Vec3(10000.0, 10000.0, 10000.0), bandCm)
+
+    /**
+     * "被否但在诊断圈内"夹具：目标放在零角指尖外侧 band+1cm —— err ∈ (band, band+margin]，
+     * verdict=BLOCKED（被否），inDiagCircle=true（圈内）⇒ diagnosticOnly 默认会把它们全记下来。
+     */
+    private fun nearRejectedCtx(bandCm: Double = 2.0): Ctx {
+        val chain = BearingGeometry.armChain("r", body)
+        val end = chain.pose(zeroAngles).endEffectorCm
+        val target = Vec3(end.x + bandCm + 1.0, end.y, end.z)
+        return ctx(target, bandCm)
+    }
 
     @Before
     fun reset() {
@@ -48,9 +61,22 @@ class ConsiderWiringTest {
 
     @Test
     fun 判据一_全部候选被否决时池里仍有记录() {
+        val ctx = nearRejectedCtx()
+        val search = Search(ctx.bandCm)
+        repeat(30) { search.consider(zeroAngles, ctx) }
+        val pool = ConsiderLog.shared.query()
+        assertTrue("空池⇒红：被否决但圈内的候选也必须看得到", pool.isNotEmpty())
+        assertEquals("30 条全记（未到 64 硬顶）", 30, pool.size)
+        assertTrue("全被否决 ⇒ 原因码全 BLOCKED", pool.all { it.verdict == ConsiderVerdict.BLOCKED })
+        assertTrue("ERRATA 默认 strategy=diagnosticOnly", pool.all { it.strategy == ConsiderStrategy.DIAGNOSTIC_ONLY })
+        assertTrue("产生器 id 固定", pool.all { it.generatorId == BearingConsiderTracing.GENERATOR_ID })
+        assertTrue("sampledFrom=8192", pool.all { it.sampledFrom == BearingGeometry.SAMPLES })
+    }
+
+    @Test
+    fun ERRATA_诊断圈外候选不进主池_空池是正确行为() {
         val ctx = farCtx()
         val search = Search(ctx.bandCm)
-        // 8192 点原始采样：目标极远，逐一 consider 全部 BELOW_BAR（无合格构型）。
         repeat(BearingGeometry.SAMPLES) { k ->
             search.consider(
                 ctx.chain.joints.mapIndexed { i, j ->
@@ -60,25 +86,20 @@ class ConsiderWiringTest {
                 ctx,
             )
         }
-        assertFalse("夹具须真做到无合格证据", search.hasEvidence)
-        val pool = ConsiderLog.shared.query()
-        assertTrue("空池⇒红：候选全被否决也必须留痕", pool.isNotEmpty())
-        assertEquals("stride 64 条硬顶", 64, pool.size)
-        assertTrue("全部被否决 ⇒ 原因码应全为 BELOW_BAR", pool.all { it.verdict == ConsiderVerdict.BELOW_BAR })
-        assertTrue("产生器 id 固定", pool.all { it.generatorId == BearingConsiderTracing.GENERATOR_ID })
+        assertEquals("ERRATA：圈外一律不进主池（8192 全被判 BELOW_BAR）", 0, ConsiderLog.shared.size())
     }
 
     @Test
     fun 判据一_被否决候选与产物同在_不因无证据丢记录() {
-        val ctx = farCtx()
+        val ctx = nearRejectedCtx()
         val attempt = BearingSampler.evaluate(
             ctx.chain, ctx.staticSet, ctx.permissions, ctx.env, ctx.targetCm, ctx.bandCm, ctx.side, ctx.body,
             spanBlocked = false,
         )
-        assertFalse("夹具：无合格证据", attempt.hasEvidence)
-        assertEquals("夹具：最近误差仍巨大", true, attempt.bestErrorCm > 100.0)
-        assertTrue("留痕不随无证据而空", ConsiderLog.shared.size() > 0)
-        assertEquals("8192 采样 + 细化，单次写入仍 ≤64 ≪2000", true,
+        assertEquals("夹具走完 8192+细化", true, attempt.samplesTried >= BearingGeometry.SAMPLES)
+        assertTrue("圈内候选被留痕（不随判定丢）", ConsiderLog.shared.size() > 0)
+        assertTrue("留痕全是 ERRATA 默认策略", ConsiderLog.shared.query().all { it.strategy == ConsiderStrategy.DIAGNOSTIC_ONLY })
+        assertEquals("单次写入 ≤64 ≪2000", true,
             BearingConsiderTracing.mainProbe.writtenMain() <= ConsiderLog.MAX_WRITE_PER_CALL)
     }
 
@@ -86,9 +107,9 @@ class ConsiderWiringTest {
 
     @Test
     fun 判据二_接入点写出的记录六字段齐() {
-        val ctx = farCtx()
+        val ctx = nearRejectedCtx()
         val search = Search(ctx.bandCm)
-        repeat(200) { k -> search.consider(ctx.chain.joints.map { 0.0 }, ctx) }
+        repeat(8) { search.consider(zeroAngles, ctx) }
         val pool = ConsiderLog.shared.query()
         assertTrue(pool.isNotEmpty())
         val r = pool.first()
@@ -97,21 +118,21 @@ class ConsiderWiringTest {
         assertTrue(r.verdict in ConsiderVerdict.entries)
         assertTrue(r.atMs >= 0L)
         assertEquals(8192, r.sampledFrom)
-        assertTrue(r.strategy in ConsiderStrategy.entries)
+        assertEquals(ConsiderStrategy.DIAGNOSTIC_ONLY, r.strategy)
         val line = ConsiderLog.shared.toJsonl()
         for (key in listOf("generatorId", "inputDigest", "verdict", "atMs", "sampledFrom", "strategy")) {
             assertTrue("JSONL 缺 $key", line.contains("\"$key\""))
         }
+        assertTrue("strategy wire=diagnosticOnly", line.contains("\"strategy\":\"diagnosticOnly\""))
     }
 
     // ── 判据④：诊断开关 ──────────────────────────────────────────────────────
 
     @Test
     fun 判据四_开关关无diag_开关开diag独立() {
-        val ctx = farCtx()
-        val search = Search(ctx.bandCm)
-        val angles = ctx.chain.joints.map { 0.0 }
-        repeat(100) { search.consider(angles, ctx) }
+        val ctx = nearRejectedCtx()
+        val angles = zeroAngles
+        repeat(30) { Search(ctx.bandCm).consider(angles, ctx) }
         assertEquals("关：diag 池空", 0, BearingConsiderTracing.diagProbe.diagSize())
         val noDiag = File.createTempFile("zd844-wiring-off-", ".jsonl")
         try {
@@ -122,21 +143,12 @@ class ConsiderWiringTest {
         BearingConsiderTracing.reset()
         BearingConsiderTracing.diagnostic = true
         val search2 = Search(ctx.bandCm)
-        // 远处目标误差极大 ⇒ inDiagCircle=false ⇒ diag 不记（正确：诊断圈外不该进 diag）。
-        repeat(100) { search2.consider(angles, ctx) }
-        assertEquals("诊断圈外不进 diag", 0, BearingConsiderTracing.diagProbe.diagSize())
-
-        // 近处目标：诊断圈内应进 diag。
-        BearingConsiderTracing.reset()
-        BearingConsiderTracing.diagnostic = true
-        val nearCtx = ctx(ctx.chain.pose(angles).endEffectorCm)
-        val search3 = Search(nearCtx.bandCm)
-        repeat(100) { search3.consider(angles, nearCtx) }
-        assertTrue("诊断圈内候选应进 diag 独立池", BearingConsiderTracing.diagProbe.diagSize() > 0)
+        repeat(30) { search2.consider(angles, ctx) }
+        assertTrue("开：圈内候选进 diag 独立池", BearingConsiderTracing.diagProbe.diagSize() > 0)
         val diagLog = BearingConsiderTracing.diagProbe.diag!!
-        assertTrue("diag 全为 diagnosticOnly", diagLog.query().all { it.strategy == ConsiderStrategy.DIAGNOSTIC_ONLY })
-        assertTrue("主池不混 diagnosticOnly",
-            ConsiderLog.shared.query(strategy = ConsiderStrategy.DIAGNOSTIC_ONLY).isEmpty())
+        assertTrue("diag 全 diagnosticOnly", diagLog.query().all { it.strategy == ConsiderStrategy.DIAGNOSTIC_ONLY })
+        assertTrue("主池不混 diag 策略外内容",
+            ConsiderLog.shared.query().all { it.strategy == ConsiderStrategy.DIAGNOSTIC_ONLY })
     }
 
     // ── 判据⑤：只加留痕，不改算法（源码 diff 断言） ──────────────────────────
@@ -147,7 +159,6 @@ class ConsiderWiringTest {
         val fallback = File("../app/src/main/java/com/example/zhengdao/baopu/state/bearing")
         val root = if (dir.isDirectory) dir else fallback
         val src = File(root, "BearingSampler.kt").readText().replace("\r\n", "\n").replace("\r", "\n")
-        // 规范化到一个且仅一个结尾换行（Kotlin lines() 会留一个尾部空串，先 trim 再补）。
         val stripped = src.lines().filterNot { it.contains("[844]") }.joinToString("\n").trimEnd('\n') + "\n"
         val digest = MessageDigest.getInstance("SHA-256").digest(stripped.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
@@ -164,7 +175,6 @@ class ConsiderWiringTest {
         val fallback = File("../app/src/main/java/com/example/zhengdao/baopu/state/bearing")
         val root = if (dir.isDirectory) dir else fallback
         val code = File(root, "BearingSampler.kt").readText().replace("\r\n", "\n")
-        // 留痕调用恰好一处：只在 consider 里 record，refineFrom 的 consider 调用保持原样。
         val marks = code.lines().count { it.contains("considerProbe.record(") }
         assertEquals("留痕调用必须恰好一处（Search.consider）", 1, marks)
         for (anchor in listOf(
@@ -184,7 +194,7 @@ class ConsiderWiringTest {
     fun 判据六_同输入同输出_选优与留痕逐字节一致() {
         fun run(): Pair<String, String> {
             BearingConsiderTracing.reset()
-            val ctx = farCtx()
+            val ctx = nearRejectedCtx()
             val attempt = BearingSampler.evaluate(
                 ctx.chain, ctx.staticSet, ctx.permissions, ctx.env, ctx.targetCm, ctx.bandCm, ctx.side, ctx.body,
                 spanBlocked = false,
