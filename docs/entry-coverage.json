@@ -797,7 +797,7 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingSheet.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 31,
+    "line": 42,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
@@ -814,6 +814,18 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt",
       "line": 114
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt",
+      "line": 121
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt",
+      "line": 135
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt",
+      "line": 152
      }
     ],
     "verdict": "wired",
@@ -1997,6 +2009,105 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/topography/TopoChecks.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 80,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（866 派工单边界为「体表地形判定层」，5 生产件全新增、零改既有、零装配）；本件＝四件齐＋体脂联动＋完全对称提示＋不对称原因＋厚度正交五条判据的唯一出口（`all()`／`sceneLine()`）。**注：本包未全 internal（TopoCatalog/TopoGuard/Topography/TopoPerson 等由本件同包引用而计入生产可达），真正的零消费方靠本结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.topography",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "TopoChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 21
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 35
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 46
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 55
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 65
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 74
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 88
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 98
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 104
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 104
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 112
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 120
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 132
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 141
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 153
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 161
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 171
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 181
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 192
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/topography/TopoChecksTest.kt",
+      "line": 193
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/variant/VariantSampler.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -2178,11 +2289,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 31,
+  "B": 32,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 29,
-  "production_top_level_public": 975,
-  "wired": 940
+  "not_wired": 30,
+  "production_top_level_public": 996,
+  "wired": 960
  }
 }
