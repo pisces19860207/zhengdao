@@ -39,17 +39,19 @@ class CausalChainRunTest {
             mechanism = InjuryMechanism.FRICTION, intensity = 1,
             injury = InjuryGrade.COLOR, pain = PainGrade.TOUCH, healSpan = Span825.OVERNIGHT,
         )
-        val gait = InjuryChain.gaitAfter(strike, at = 1)
+        val gait = InjuryChain.gaitAfter(strike, at = 1, healSpan = Span825.OVERNIGHT)
         assertEquals("轻伤把关节角推到第 4 档", 4, levelOf(gait.immediate, CausalDim.POSE_JOINT))
         assertEquals("重心跟着掉一档", 2, levelOf(gait.immediate, CausalDim.POSE_COM))
         assertNotNull("关节角到 4 档就该受限（门槛＝常态 L3 ＋ 1）", InjuryChain.restrictAfter(gait, at = 2, healSpan = Span825.OVERNIGHT))
     }
 
     @Test
-    fun `链一_跨日之后伤情与疼痛都回到无`() {
+    fun `链一_跨日之后伤情疼痛与步态都回到无`() {
         val state = CausalReplay.of(CausalScenarios.injuryChain()).at(Span825.CROSS_DAY)
         assertEquals("伤情回零档", InjuryGrade.NONE.level, state.level(CausalDim.SITE_INJURY))
         assertEquals("疼痛回零档", PainGrade.NONE.level, state.level(CausalDim.SENSE_PAIN))
+        assertEquals("关节角回到 725 的中位档", CausalRules.NEUTRAL_JOINT, state.level(CausalDim.POSE_JOINT))
+        assertEquals("重心回到 725 的中位档", CausalRules.NEUTRAL_COM, state.level(CausalDim.POSE_COM))
     }
 
     @Test
@@ -89,10 +91,10 @@ class CausalChainRunTest {
     }
 
     @Test
-    fun `链二_小时级之后汗退一档_分钟级不退`() {
+    fun `链二_小时级汗干透_分钟级不干`() {
         val replay = CausalReplay.of(CausalScenarios.environmentChain())
         assertEquals("分钟级汗还在", 3, replay.at(Span825.MINUTES).level(CausalDim.SKIN_WET))
-        assertEquals("小时级汗退一档", 2, replay.at(Span825.HOURS).level(CausalDim.SKIN_WET))
+        assertEquals("小时级按 825 的「汗干」写干透", 0, replay.at(Span825.HOURS).level(CausalDim.SKIN_WET))
     }
 
     @Test

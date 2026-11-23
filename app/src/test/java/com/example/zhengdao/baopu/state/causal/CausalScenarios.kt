@@ -65,7 +65,7 @@ internal object CausalScenarios {
             pain = PainGrade.STEADY,
             healSpan = Span825.CROSS_DAY,
         )
-        val gait = InjuryChain.gaitAfter(strike, at = 3)
+        val gait = InjuryChain.gaitAfter(strike, at = 3, healSpan = Span825.CROSS_DAY)
         val restrict = requireNotNull(InjuryChain.restrictAfter(gait, at = 6, healSpan = Span825.CROSS_DAY)) {
             "肿起档必须推出后续受限"
         }

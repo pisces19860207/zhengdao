@@ -170,7 +170,8 @@ class CausalLinkTest {
             intensity = 0, injury = com.example.zhengdao.baopu.state.injury.InjuryGrade.NONE,
             pain = com.example.zhengdao.baopu.state.injury.PainGrade.NONE, healSpan = Span825.OVERNIGHT,
         )
-        assertNull("没伤就不该受限", InjuryChain.restrictAfter(InjuryChain.gaitAfter(strike, at = 1), at = 2, healSpan = Span825.OVERNIGHT))
+        val gait = InjuryChain.gaitAfter(strike, at = 1, healSpan = Span825.OVERNIGHT)
+        assertNull("没伤就不该受限", InjuryChain.restrictAfter(gait, at = 2, healSpan = Span825.OVERNIGHT))
     }
 
     @Test

@@ -61,8 +61,13 @@ internal object InjuryChain {
         note = note.ifBlank { "748 ${mechanism.label}" },
     )
 
-    /** 第二站：步态改变。伤情档从父事件读，读不到就抛（不许默认「没事」）。 */
-    fun gaitAfter(parent: CausalEvent, at: Int, note: String = ""): CausalEvent {
+    /**
+     * 第二站：步态改变。伤情档从父事件读，读不到就抛（不许默认「没事」）。
+     *
+     * 步态也要**回得去**：伤好了还瘸着，是把「受伤」写成了「终身残疾」。所以姿态的滞后项
+     * 在 [healSpan] 到期时把关节角与重心都送回 725 的中位档——与受限解除同一个跨度。
+     */
+    fun gaitAfter(parent: CausalEvent, at: Int, healSpan: Span825, note: String = ""): CausalEvent {
         val injuryLevel = levelOf(parent.immediate, CausalDim.SITE_INJURY)
             ?: error("父事件 ${parent.eventId} 没写 ${CausalDim.SITE_INJURY.id}，接不了步态")
         return CausalEvent(
@@ -73,6 +78,10 @@ internal object InjuryChain {
             site = parent.site,
             intensity = parent.intensity,
             immediate = CausalRules.poseWrites(InjuryGrade.of(injuryLevel)),
+            delayed = listOf(
+                DelayedGrade(GradeWrite.to(CausalDim.POSE_JOINT, CausalRules.NEUTRAL_JOINT), healSpan),
+                DelayedGrade(GradeWrite.to(CausalDim.POSE_COM, CausalRules.NEUTRAL_COM), healSpan),
+            ),
             note = note.ifBlank { "728 ${InjuryGrade.of(injuryLevel).label}→725" },
         )
     }
@@ -131,7 +140,12 @@ internal object EnvironmentChain {
         note = note.ifBlank { "657 日照=${env.sun.intensity} 产汗=${env.sweat.grade}" },
     )
 
-    /** 第二站：皮肤湿。806 量档取 657 产汗档的上封；滞后写「汗略干」＝退一档（有基线，故用 By）。 */
+    /**
+     * 第二站：皮肤湿。806 量档取 657 产汗档的上封。
+     *
+     * 滞后项按 825 §二「小时级：汗干」写成**干透**（回到 806 的零档），不是「退一档」——
+     * 退一档会让「过夜还一身中汗」，与 825 自己写的那句直接矛盾。
+     */
     fun wetAfter(
         parent: CausalEvent,
         at: Int,
@@ -146,7 +160,7 @@ internal object EnvironmentChain {
         site = parent.site,
         intensity = parent.intensity,
         immediate = listOf(GradeWrite.to(CausalDim.SKIN_WET, CausalRules.wetLevel(env))),
-        delayed = listOf(DelayedGrade(GradeWrite.by(CausalDim.SKIN_WET, -1), drySpan)),
+        delayed = listOf(DelayedGrade(GradeWrite.to(CausalDim.SKIN_WET, CausalDim.SKIN_WET.min), drySpan)),
         note = note.ifBlank { "657 产汗=${env.sweat.grade}→806" },
     )
 
