@@ -53,12 +53,13 @@ internal object ThermoInit {
         ThermalBand.HOT -> ThermoClock.PER_GRADE
     }
 
-    fun liftFromLoose(): Int = 0
+    /** 提睾起点：常态松垂（高度 0）。 */
+    fun liftBaseline(): Int = 0
 
     fun of(sweatGrade: Int, thermal: ThermalBand): ThermoState = ThermoState(
         film = filmFromSweat(sweatGrade),
         tempOffset = tempFromBand(thermal),
-        lift = liftFromLoose(),
+        lift = liftBaseline(),
         beat = 0,
     )
 }

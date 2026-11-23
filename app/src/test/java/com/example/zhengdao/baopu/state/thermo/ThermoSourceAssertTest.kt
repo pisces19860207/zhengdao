@@ -81,8 +81,22 @@ class ThermoSourceAssertTest {
     fun `ERRATA_禁连续量_无浮点无单位字面`() {
         val text = code()
         pointTokens.forEach { assertFalse("不得用浮点:$it", text.contains(it)) }
-        unitTokens.forEach { assertFalse("源码不得写单位字面:$it", text.contains(it)) }
+        // 单位按独立词判：缩写后紧跟 ASCII 字母不算（否则 liftBaseline 这类标识符会误咬）。
+        unitTokens.forEach { assertFalse("源码不得写单位字面:$it", containsUnitWord(text, it)) }
     }
+
+    /** 单位作为独立词出现：命中位置后面不许紧跟 ASCII 字母。 */
+    private fun containsUnitWord(text: String, unit: String): Boolean {
+        var i = text.indexOf(unit)
+        while (i >= 0) {
+            val after = i + unit.length
+            if (after >= text.length || !text[after].isAsciiLetter()) return true
+            i = text.indexOf(unit, i + 1)
+        }
+        return false
+    }
+
+    private fun Char.isAsciiLetter(): Boolean = this in 'a'..'z' || this in 'A'..'Z'
 
     @Test
     fun `边界_禁病理性温度`() {
@@ -134,7 +148,9 @@ class ThermoSourceAssertTest {
 
     @Test
     fun `闸自检_注入病理必被咬住`() {
-        assertTrue(pathoTokens.any { stripComments("val s = \"发\" + \"热\"").contains(it) })
+        // 负例源文本里写连续词（测试文件不被生产门禁扫，可直接写），证明闸对连续词有牙。
+        val poisoned = stripComments("val s = \"发热\"")
+        assertTrue(pathoTokens.any { poisoned.contains(it) })
     }
 
     @Test
