@@ -70,33 +70,43 @@ internal object ThermoInit {
  */
 internal object ThermoSolver {
 
-    /** 湿膜每拍增量（毫档）：湿/水/湿衣补给为正，干/风消退为负。 */
+    /** 湿膜每拍增量（毫档）：湿/水/湿衣补给为正，干/风消退为负。拆四个分量各自成函数，控复杂度。 */
     fun filmDelta(input: ThermoInput): Int {
-        var delta = when (input.humidity) {
-            HumidityBand.DRY -> -3
-            HumidityBand.NORMAL -> -2
-            HumidityBand.HUMID -> 1
-            HumidityBand.SATURATED -> 2
-        }
-        delta += when (input.wind) {
-            WindBand.STILL -> 0
-            WindBand.BREEZE -> -1
-            WindBand.WINDY -> -2
-            WindBand.GUSTY -> -3
-        }
-        delta += when (input.medium) {
-            Medium.NONE -> 0
-            Medium.WATER -> 2
-            Medium.SAND -> -1
-            Medium.WET_CLOTH -> 2
-        }
-        delta += when (input.thermal) {
-            ThermalBand.COOL -> 0
-            ThermalBand.MILD -> 0
-            ThermalBand.WARM -> 1
-            ThermalBand.HOT -> 1
-        }
+        val delta = humidityPart(input.humidity) + windPart(input.wind) +
+            mediumPart(input.medium) + thermalPart(input.thermal)
         return delta * (ThermoClock.PER_GRADE / 10)
+    }
+
+    /** 湿度分量：干燥消退快、饱和补给。 */
+    private fun humidityPart(h: HumidityBand): Int = when (h) {
+        HumidityBand.DRY -> -3
+        HumidityBand.NORMAL -> -2
+        HumidityBand.HUMID -> 1
+        HumidityBand.SATURATED -> 2
+    }
+
+    /** 风分量：风越大消退越快。 */
+    private fun windPart(w: WindBand): Int = when (w) {
+        WindBand.STILL -> 0
+        WindBand.BREEZE -> -1
+        WindBand.WINDY -> -2
+        WindBand.GUSTY -> -3
+    }
+
+    /** 介质分量：水/湿衣补给，沙稍束缚。 */
+    private fun mediumPart(m: Medium): Int = when (m) {
+        Medium.NONE -> 0
+        Medium.WATER -> 2
+        Medium.SAND -> -1
+        Medium.WET_CLOTH -> 2
+    }
+
+    /** 温度分量：热加速表面湿膜。 */
+    private fun thermalPart(t: ThermalBand): Int = when (t) {
+        ThermalBand.COOL -> 0
+        ThermalBand.MILD -> 0
+        ThermalBand.WARM -> 1
+        ThermalBand.HOT -> 1
     }
 
     /** 体表温度偏移每拍向环境目标靠拢（整型趋近，一步最多 500 毫档）。 */
