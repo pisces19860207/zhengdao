@@ -2085,6 +2085,41 @@
     ],
     "verdict": "wired",
     "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/view/ViewChecks.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 91,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**861／859 装配单**（860 派工单边界为「视点与相机判定层·只做判据不做渲染」，6 生产件全新增、零改既有、零装配）；本件＝一镜的唯一判定入口（装订＋四件输出＋遮挡对账＋取景对账），859 的 3D→2D 投影与 861 的遮挡装配都从这里取结论。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.view",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ViewChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/view/ViewChecksTest.kt",
+      "line": 23
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/view/ViewChecksTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/view/ViewChecksTest.kt",
+      "line": 125
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/view/ViewChecksTest.kt",
+      "line": 171
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
    }
   ],
   "C": [
@@ -2143,11 +2178,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 30,
+  "B": 31,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 28,
-  "production_top_level_public": 945,
-  "wired": 911
+  "not_wired": 29,
+  "production_top_level_public": 975,
+  "wired": 940
  }
 }
