@@ -44,13 +44,13 @@
 3. 由 ① 派生的回归义务：把 `ZERO_NORM_SQ` 改成相对量（ε·L²）必须被跨尺度回归咬红
    （见 [GeometrySemanticsRegressionTest](../app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySemanticsRegressionTest.kt) 族 B 与负控制说明）。
 
-## 四、受影响调用方清单（2026-11-23 对 origin/main grep 核实）
+## 四、受影响调用方清单（2026-11-23 对本分支 HEAD grep 核实）
 
-改接触带或入口带 ⇒ 下表逐条重估。行号以本文件落地时的 `origin/main` 为准。
+改接触带或入口带 ⇒ 下表逐条重估。行号以本分支 HEAD 为准（grep 实核，非抄录）。
 
 | # | 消费方 | 位置 | 消费什么 |
 |---|---|---|---|
-| 1 | `Epa` 入口门（包内） | Epa.kt:43 | `distanceCm=0` 归零读数恒过门（接触带→入口带衔接） |
+| 1 | `Epa` 入口门（包内） | Epa.kt:50（850 注释加行后，原 :43） | `distanceCm=0` 归零读数恒过门（接触带→入口带衔接） |
 | 2 | `BearingSampler`（790） | BearingSampler.kt:254–255 | `distanceCm ≤ CONTACT_DEPTH_TOL(0.5)` 才查 `Epa.penetration` 深度 |
 | 3 | `BearingSampler`（790） | BearingSampler.kt:266 | 点探针 `Epa.penetration(...)?.depthCm ?: 0.0`（null⇒0 兜底） |
 | 4 | `Broadphase` 细判 | Broadphase.kt:44 | `distanceCm ≤ CONTACT_TOL_CM(=0.0)`「恰好接触算接触」，直接继承归零语义 |
