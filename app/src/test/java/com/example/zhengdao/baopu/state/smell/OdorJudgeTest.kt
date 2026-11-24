@@ -164,9 +164,11 @@ class OdorJudgeTest {
         assertTrue(Odor.judge(claim.copy(note = "未洗净")).ok)
         assertTrue(Odor.judge(claim.copy(note = "没洗净")).ok)
         assertTrue(Odor.judge(claim.copy(note = "检查发现没洗净")).ok)
+        assertTrue(Odor.judge(claim.copy(note = "不排除天气原因，他明确没洗净")).ok)
         listOf(
             "并非未洗净", "并不是未洗净", "不是没洗净", "没有没洗净",
             "若没洗净，洗过仍有味", "可能没洗净", "他说“没洗净”", "他说『没洗净』", "没洗净？",
+            "不排除没洗净", "待核实没洗净", "尚需确认没洗净",
         ).forEach { note ->
             assertTrue(note, Odor.judge(claim.copy(note = note)).reds.any {
                 it.code == OdorCodes.TEMPORAL_WASH

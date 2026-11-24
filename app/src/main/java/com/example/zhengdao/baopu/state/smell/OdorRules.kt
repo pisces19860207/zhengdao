@@ -191,13 +191,14 @@ internal object OdorRules {
         Regex("""(?:并非|并不是|不是|没有)\s*(?:未洗净|没洗净)""")
     private val washExceptionUncertain = Regex(
         "(?:若|如果|假如|倘|一旦|除非|要是|是否|有没有|可能|也许|或许|疑似|怀疑|据说|听说|" +
-            "确认是否|判断是否)[^。！？；;\\n]{0,16}(?:未洗净|没洗净)",
+            "确认是否|判断是否|不排除|不能排除|无法排除|待核实|尚需确认|仍需确认|尚未确认|有待确认)" +
+            "[^。！？；;\\n]{0,16}(?:未洗净|没洗净)",
     )
 
     fun incompleteWashStated(note: String): Boolean {
         if (note.contains("？") || note.contains("?")) return false
         val affirmative = note.replace(washExceptionNegated, "")
-        return affirmative.split(Regex("""[。！？；;\n]""")).any { clause ->
+        return affirmative.split(Regex("""[。！？；;，,\n]""")).any { clause ->
             val stated = clause.contains("未洗净") || clause.contains("没洗净")
             val quoted = clause.contains("“") || clause.contains("”") || clause.contains("『") ||
                 clause.contains("』") || clause.contains("「") || clause.contains("」") || clause.contains("\"")

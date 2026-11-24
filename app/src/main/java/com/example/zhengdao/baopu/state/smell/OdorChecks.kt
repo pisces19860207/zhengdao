@@ -8,28 +8,57 @@ import com.example.zhengdao.baopu.state.fluid.DrynessGrade
 internal object OdorChecks {
 
     private val DISEASE_NAME = Regex("""[一-龥]{1,4}病|症状""")
+    private const val ODOR_TERM =
+        "(?:气味|汗味|体味|下体味|烟味|油味|酸味|异味)"
+    private const val WORD_END = "(?=$|[^一-龥]|啊|呀|呢|吧|吗|了|一点|一些)"
     private val INTENSITY_CLAIM = Regex(
         """(?:气味)?强度\s*(?:约|为|是|=|:|：)?\s*(?:第)?""" +
             """(?:[0-9一二三四五六七八九十]+|十分|很|极|明显|隐约|重|轻|""" +
-            """较[大小低高强弱轻重]|偏[高低强轻重])""",
+            """较[大小低高强弱轻重]|偏[高低强轻重])""" +
+            "|" + ODOR_TERM + """\s*(?:约|为|是|=|:|：)?\s*(?:第)?[0-9一二三四五六七八九十]+""" +
+            "|" + ODOR_TERM +
+            """[^。！？；;\n]{0,4}(?:特别重|很重|极重|较重|偏重|很浓|极浓|浓烈|强烈|重|浓|强)""" + WORD_END,
     )
     private val INTENSITY_FORMULA =
-        Regex("""(?:气味)?强度[^。！？\n]{0,16}[+\-*/][^。！？\n]{0,16}""")
-    private val PERFUME_GUIDANCE = Regex(
-        """(?:建议|推荐|喷|用|抹|洒|拿|借助|靠|使用|利用)[^。！？\n]{0,8}(?:香水|香味|香气|香体喷雾)""",
+        Regex("""(?:气味|强度|汗味|体味|下体味|烟味|油味|酸味|异味)[^。！？\n]{0,16}[+\-*/][^。！？\n]{0,16}""")
+    private val PERFUME_TERM = Regex("""(?:香水|香味|香气|香体喷雾)""")
+    private val PERFUME_ADVICE = Regex(
+        """(?:建议|推荐|可以|应该|应当|需要|不妨|请|想要|想|打算|准备|最好|试试|尝试|喷|用|抹|洒|拿|借助|靠|使用|利用)"""
     )
-    private const val OCCUPATION_WORDS =
-        "(?:职业|工人|农民|士兵|当兵|医生|护士|厨师|司机|程序员|白领)"
-    private val OCCUPATION = Regex(OCCUPATION_WORDS)
+    private val PERFUME_INTENT = Regex(
+        """(?:建议|推荐|可以|应该|应当|需要|不妨|请|想要|想|打算|准备|最好|试试|尝试)"""
+    )
+    private val PERFUME_PAST = Regex("""(?:上次|之前|刚才|昨天|曾经|当时)""")
+    private val PERFUME_HISTORY = Regex("""(?:上次|之前|刚才|昨天|曾经|当时|已经|用了|喷了|抹了|洒了)""")
+    private val PERFUME_MASK = Regex(
+        """(?:香水|香味|香气|香体喷雾)[^。！？；;\n]{0,12}(?:掩盖|遮蔽|遮|盖|压住|压过)"""
+    )
+    private val VALUE_DIRTY = Regex(
+        """(?:你|他|她|对方|本人|自己|这个人|身上)(?:今天|现在|总是|明明|确实|果然)?""" +
+            """(?:显得|看着|闻着)?(?:真|很|太|挺|特别|明显|有点)?脏""" + WORD_END +
+            """|(?:体味|汗味|气味)\s*(?:=|说明|代表|意味着)\s*(?:你|他|她|对方|本人)?\s*(?:很|真|太|特别)?脏""" + WORD_END,
+    )
+    private const val OCCUPATION_ROLE =
+        """(?!学生)[^，,。！？；;\n]{1,12}(?:师|员|工|民|兵|生|士|机|领|手|家|长|主|板|理|售|服|保安|保洁)"""
+    private const val OCCUPATION_NOUNS =
+        "(?:职业|工人|农民|士兵|当兵|医生|护士|厨师|司机|程序员|白领|教师)"
+    private const val OCCUPATION_SUBJECT =
+        """(?:(?:他|她|对方|本人|这位|此人)(?:的)?(?:职业|工作)?(?:是|为|当|干)""" + OCCUPATION_ROLE +
+            """|(?:他|她|对方|本人|这位|此人)\s*做""" + OCCUPATION_ROLE +
+            """|(?:职业|工作)(?:是|为)""" + OCCUPATION_ROLE +
+            """|(?:身为|作为)""" + OCCUPATION_ROLE + ")"
+    private val OCCUPATION = Regex("(?:" + OCCUPATION_SUBJECT + "|" + OCCUPATION_NOUNS + ")")
     private val CURRENT_OCCUPATION_ODOR = Regex(
-        "(?:所以|因此|就|现在|此时|此刻|当下|今天|一定|必然|可能)" +
-            "[^。！？\\n]{0,12}(?:有|带|沾|没|无)" +
-            "[^。！？\\n]{0,6}(?:汗味|体味|烟味|油味|气味)",
+        OCCUPATION_SUBJECT +
+            """(?:，|,)?(?:所以|因此|就|于是|导致|使得|现在|此时|此刻|当下|今天|一定|必然|可能)?""" +
+            """[^。！？；;\n]{0,12}(?:有|带|沾|没|无)[^。！？；;\n]{0,6}(?:汗味|体味|烟味|油味|气味)""" +
+            "|" + OCCUPATION_NOUNS +
+            """(?:所以|因此|就|现在|此时|此刻|当下|今天|一定|必然|可能)[^。！？；;\n]{0,12}""" +
+            """(?:有|带|沾|没|无)[^。！？；;\n]{0,6}(?:汗味|体味|烟味|油味|气味)""",
     )
     private val OCCUPATION_CAUSAL_ODOR = Regex(
-        "(?:因为|由于)[^。！？；;\\n]{0,20}" + OCCUPATION_WORDS +
-            "[^。！？；;\\n]{0,24}(?:有|带|沾|没|无)" +
-            "[^。！？；;\\n]{0,6}(?:汗味|体味|烟味|油味|气味)",
+        """(?:因为|由于)[^。！？；;\n]{0,20}(?:""" + OCCUPATION_SUBJECT + "|" + OCCUPATION_NOUNS + ")" +
+            """[^。！？；;\n]{0,24}(?:有|带|沾|没|无)[^。！？；;\n]{0,6}(?:汗味|体味|烟味|油味|气味)""",
     )
     private val FOOD_ODOR = Regex(
         "(?:菜|饭|食物|厨房)[^。！？；;\\n]{0,10}(?:有|带|沾)" +
@@ -113,8 +142,11 @@ internal object OdorChecks {
     }
 
     private fun textIssues(text: String): List<OdorIssue> = buildList {
-        addAll(wordIssues(OdorWords.DIAGNOSIS, OdorCodes.DIAGNOSIS, "病名/诊断", text))
+        addAll(diagnosisIssues(text))
         addAll(wordIssues(OdorWords.VALUE_JUDGMENT, OdorCodes.VALUE_JUDGMENT, "人格/地位判断", text))
+        if (VALUE_DIRTY.containsMatchIn(text)) {
+            add(issue(OdorCodes.VALUE_JUDGMENT, "不得用脏给人或体味作价值判断"))
+        }
         addAll(wordIssues(OdorWords.BEHAVIOR_GUIDANCE, OdorCodes.BEHAVIOR_GUIDANCE, "行为指导", text))
         addAll(
             wordIssues(OdorWords.OCCUPATION_INFERENCE, OdorCodes.OCCUPATION_INFERENCE, "职业直接推当下气味", text)
@@ -129,12 +161,23 @@ internal object OdorChecks {
         if (INTENSITY_CLAIM.containsMatchIn(text) || INTENSITY_FORMULA.containsMatchIn(text)) {
             add(issue(OdorCodes.INTENSITY_UNSOURCED, "强度只能引用 883 结构化档，不得在文案自报或自算"))
         }
-        if (PERFUME_GUIDANCE.containsMatchIn(text)) {
+        if (perfumeGuidanceStated(text)) {
             add(issue(OdorCodes.BEHAVIOR_GUIDANCE, "不得给出香水相关的行为指导"))
         }
         addAll(occupationIssues(text))
         addAll(washedTextIssues(text))
     }
+
+    private fun perfumeGuidanceStated(text: String): Boolean =
+        text.split(Regex("""[。！？；;\n]""")).any { sentence ->
+            sentence.split(Regex("""[,，]""")).any { clause ->
+                PERFUME_TERM.containsMatchIn(clause) &&
+                    (PERFUME_MASK.containsMatchIn(clause) ||
+                        (PERFUME_ADVICE.containsMatchIn(clause) &&
+                            (!PERFUME_HISTORY.containsMatchIn(clause) ||
+                                (!PERFUME_PAST.containsMatchIn(clause) && PERFUME_INTENT.containsMatchIn(clause)))))
+            }
+        }
 
     private fun occupationIssues(text: String): List<OdorIssue> =
         text.split(Regex("""[。！？；;\n]"""))
@@ -155,6 +198,13 @@ internal object OdorChecks {
     private fun washedTextIssues(text: String): List<OdorIssue> {
         if (OdorRules.incompleteWashStated(text)) return emptyList()
         return wordIssues(OdorWords.WASHED_STILL_ODOR, OdorCodes.WASHED_STILL_ODOR, "洗后仍味", text)
+    }
+
+    private fun diagnosisIssues(text: String): List<OdorIssue> {
+        val normalized = text.lowercase()
+        return OdorWords.DIAGNOSIS
+            .filter { word -> Regex(Regex.escape(word.lowercase()) + "(?!味)").containsMatchIn(normalized) }
+            .map { issue(OdorCodes.DIAGNOSIS, "出现病名/诊断词「" + it + "」") }
     }
 
     private fun wordIssues(

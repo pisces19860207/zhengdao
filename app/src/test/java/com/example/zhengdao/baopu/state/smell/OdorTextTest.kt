@@ -23,21 +23,24 @@ class OdorTextTest {
 
     @Test
     fun `病名诊断_出现即红`() {
-        listOf("狐臭", "感染味", "尿道炎", "梅毒", "无病").forEach { word ->
+        listOf("狐臭", "感染味", "尿道炎", "梅毒", "癌症", "细菌感染", "脚气", "无病").forEach { word ->
             assertTrue(word, Odor.judge(base(word)).reds.any { it.code == OdorCodes.DIAGNOSIS })
         }
     }
 
     @Test
     fun `人格地位判断_出现即红`() {
-        listOf("不讲卫生", "底层", "邋遢").forEach { word ->
+        listOf("不讲卫生", "底层", "邋遢", "你真脏", "他真脏", "体味说明他脏").forEach { word ->
             assertTrue(word, Odor.judge(base(word)).reds.any { it.code == OdorCodes.VALUE_JUDGMENT })
         }
     }
 
     @Test
     fun `行为指导_出现即红`() {
-        listOf("推荐香水", "遮味", "就医", "用些香水", "借助香味遮蔽体味").forEach { word ->
+        listOf(
+            "推荐香水", "遮味", "就医", "用些香水", "借助香味遮蔽体味",
+            "已经打算用香水", "最好拿香水应急",
+        ).forEach { word ->
             assertTrue(word, Odor.judge(base(word)).reds.any { it.code == OdorCodes.BEHAVIOR_GUIDANCE })
         }
     }
@@ -49,9 +52,22 @@ class OdorTextTest {
             "工人所以现在有汗味",
             "因为他是工人，今天有汗味",
             "因为他是工人，今天菜有油味，他也有汗味",
+            "他是教师，所以今天有汗味",
+            "职业是教师，因此现在有汗味",
+            "身为厨师，所以今天有汗味",
+            "他做厨师，所以有汗味",
+            "教师所以今天有汗味",
         ).forEach { note ->
             val verdict = Odor.judge(base(note))
             assertTrue(note, verdict.reds.any { it.code == OdorCodes.OCCUPATION_INFERENCE })
+        }
+    }
+
+    @Test
+    fun `文案自报强度_强弱词数字与算式都不许绕`() {
+        listOf("汗味很重", "汗味很重啊", "汗味很重了", "气味=2+1", "体味2", "气味很浓").forEach { note ->
+            val verdict = Odor.judge(base(note))
+            assertTrue(note, verdict.reds.any { it.code == OdorCodes.INTENSITY_UNSOURCED })
         }
     }
 
@@ -67,7 +83,14 @@ class OdorTextTest {
         assertTrue(Odor.judge(base("洗过仍有味")).reds.any { it.code == OdorCodes.WASHED_STILL_ODOR })
         assertTrue(Odor.judge(base("洗过仍有味，因为未洗净")).ok)
         assertTrue(Odor.judge(base("洗过仍有味，因为检查发现没洗净")).ok)
-        listOf("若没洗净，洗过仍有味", "可能没洗净，洗过仍有味").forEach { note ->
+        assertTrue(Odor.judge(base("不排除天气原因，他明确没洗净，洗过仍有味")).ok)
+        listOf(
+            "若没洗净，洗过仍有味",
+            "可能没洗净，洗过仍有味",
+            "不排除没洗净，洗过仍有味",
+            "待核实没洗净，洗过仍有味",
+            "尚需确认没洗净，洗过仍有味",
+        ).forEach { note ->
             assertTrue(note, Odor.judge(base(note)).reds.any { it.code == OdorCodes.WASHED_STILL_ODOR })
         }
     }
@@ -80,6 +103,13 @@ class OdorTextTest {
             "厨师说菜可能有油味",
             "天气炎热",
             "强度引用883",
+            "衣物不脏，只有淡烟味",
+            "上次用了香水，今天只有淡烟味",
+            "她看着脏衣物",
+            "脚气味",
+            "他做饭，所以有汗味",
+            "他认为有汗味",
+            "他是学生，所以有汗味",
         ).forEach { text ->
             val verdict = Odor.judge(base(text))
             assertTrue(text, verdict.ok)
