@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 1009 |
-| 生产可达（有生产引用，含同文件） | 972 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 1027 |
+| 生产可达（有生产引用，含同文件） | 989 |
 | A 有定义无调用 | 4 |
-| B 只有测试在调 | 33 |
+| B 只有测试在调 | 34 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **31** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **32** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -44,6 +44,7 @@
 | `BearingReach` | `app/src/main/java/com/example/zhengdao/baopu/state/bearing/BearingReach.kt:18` | `app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt:25`、`app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt:72`、`app/src/test/java/com/example/zhengdao/baopu/state/bearing/BearingReachTest.kt:80` | 接线 | 谁接：**后续装配单**（790 派工单边界为「方位可达判定层」，5 生产件全新增、零碰 655/660、零装配）；本件＝方位可达的总入口（区×方位六档×距离四档 → 三态＋七项结论），纯判定、无 IO、无时钟；结论七项零浮点（浮点只在内部采样器）。装配单落地时由「谁产出待判方位请求」那一层调用。**补记：790 合入时我漏跑这道闸，由 773 这批补登。** |
 | `BodyPartChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecks.kt:49` | `app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt:22`、`app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt:33`、`app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/BodyPartChecksTest.kt:41` | 接线 | 谁接：**后续装配单**（805 派工单边界为「部位读数层」，5 生产件全新增、零改既有、零装配 —— 我扫过包外零引用）；本件＝8 部位×23 维读数的判定入口（一律带左右＋姿态、体脂一致性、乳晕档差矩阵、不做诊断）。**注：本包未全 internal（38 个顶层 public），比 780/788B 的『编译期挡住』弱一档，已在台账记。** |
 | `TorsoChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/TorsoChecks.kt:54` | `app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/TorsoChecksTest.kt:22`、`app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/TorsoChecksTest.kt:33`、`app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/TorsoChecksTest.kt:42` | 接线 | 谁接：**后续装配单**（848 派工单边界为「躯干形状判定层」，4 生产件全新增、零改既有、零装配）；本件＝同场差异下限＋档案矛盾＋禁数值三组校验的唯一出口。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
+| `BuildChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/bodytype/BuildChecks.kt:56` | `app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt:14`、`app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt:23`、`app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt:30` | 接线 | 谁接：**下游装配层（865/866/869/874/848 按字段名取）**；815 边界为「母约束档位层」，新包 10 文件全新增、零改既有、零装配。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
 | `CapacityRule` | `app/src/main/java/com/example/zhengdao/baopu/state/capacity/CapacityRule.kt:11` | `app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt:36`、`app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt:45`、`app/src/test/java/com/example/zhengdao/baopu/state/capacity/CapacityRuleTest.kt:48` | 接线 | 谁接：**后续装配单**（795 派工单边界为「容量类断言判定层」，2 生产件全新增、零改 741 `containment`、零装配）；本件为纯判定（四要素缺一⇒未知、判矛盾必给带来源锚的逐项排除清单、拿房间数反推一律红/拒），无 IO、无时钟。装配单落地时由「谁产出容量类断言」那一层调用。 |
 | `SceneCheck` | `app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingChecks.kt:136` | `app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt:194`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt:207`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt:213` | 接线 | 谁接：**后续装配单**（817 派工单边界为「角色外观卡判定层」，4 生产件全新增、零改既有、零装配）；本件＝「每场写后」唯一校验出口（连续性＋鲜活＋千人千面三组）。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
 | `CastingSheet` | `app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingSheet.kt:42` | `app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt:100`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt:114`、`app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt:121` | 接线 | 谁接：**738 注入链（后续装配单）**（同上 817 边界）；本件＝外观卡唯一出口（档位向量＋≤120 字摘要，摘要排除下体组）。 |

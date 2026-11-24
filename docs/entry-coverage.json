@@ -692,6 +692,101 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodytype/BuildChecks.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 56,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**下游装配层（865/866/869/874/848 按字段名取）**；815 边界为「母约束档位层」，新包 10 文件全新增、零改既有、零装配。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.bodytype",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "BuildChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 14
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 23
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 30
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 37
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 47
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 53
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 61
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 69
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 87
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 98
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 110
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 118
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 129
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 139
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 146
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 155
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodytype/BuildChecksTest.kt",
+      "line": 155
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/capacity/CapacityRule.kt",
     "file_mates_wired": false,
     "kind": "object",
@@ -1481,6 +1576,14 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
       "line": 127
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/impact/ImpactBehaviorTest.kt",
+      "line": 11
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/impact/ImpactBehaviorTest.kt",
+      "line": 280
      }
     ],
     "verdict": "wired(sole-impl)",
@@ -2388,11 +2491,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 33,
+  "B": 34,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 31,
-  "production_top_level_public": 1009,
-  "wired": 972
+  "not_wired": 32,
+  "production_top_level_public": 1027,
+  "wired": 989
  }
 }
