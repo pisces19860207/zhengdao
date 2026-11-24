@@ -1505,6 +1505,89 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/frame/FrameChecks.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 43,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单（869 外观卡骨点引用位／866 体表地形／814 下体形状的读数面）**；865 边界为「只交骨点，不做骨段关节（归 900）、不改 660/815/869」，5 生产件全新增、零改既有、零装配。本件＝点数三项齐／815 体脂推导（高体脂分明即红）／参照锚／禁数值／660 截面正交／区名与 775 子区对齐六条判据的唯一出口（`all()`／`sceneLine()`）。**注：本包未全 internal（FrameCatalog/FrameGuard/BoneFrame/FramePerson 等由本件同包引用而计入生产可达），真正的零消费方靠本结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.frame",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "FramePointChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 16
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 26
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 35
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 46
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 52
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 59
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 66
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 88
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 96
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 104
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 109
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 117
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 142
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/frame/FrameChecksTest.kt",
+      "line": 156
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -2740,11 +2823,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 37,
+  "B": 38,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 35,
-  "production_top_level_public": 1156,
-  "wired": 1115
+  "not_wired": 36,
+  "production_top_level_public": 1171,
+  "wired": 1129
  }
 }
