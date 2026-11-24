@@ -858,76 +858,6 @@
    },
    {
     "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingChecks.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 136,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：**后续装配单**（817 派工单边界为「角色外观卡判定层」，4 生产件全新增、零改既有、零装配）；本件＝「每场写后」唯一校验出口（连续性＋鲜活＋千人千面三组）。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
-    "package": "com.example.zhengdao.baopu.state.casting",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "SceneCheck",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt",
-      "line": 194
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt",
-      "line": 207
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingChecksTest.kt",
-      "line": 213
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
-    "file": "app/src/main/java/com/example/zhengdao/baopu/state/casting/CastingSheet.kt",
-    "file_mates_wired": true,
-    "kind": "object",
-    "line": 42,
-    "list": "B",
-    "member_scan": [],
-    "member_scan_more": 0,
-    "note": "谁接：**738 注入链（后续装配单）**（同上 817 边界）；本件＝外观卡唯一出口（档位向量＋≤120 字摘要，摘要排除下体组）。",
-    "package": "com.example.zhengdao.baopu.state.casting",
-    "proguard_hits": [],
-    "self_file_refs": 0,
-    "symbol": "CastingSheet",
-    "test_refs": [
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt",
-      "line": 100
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingSourceAssertTest.kt",
-      "line": 114
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt",
-      "line": 121
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt",
-      "line": 135
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/casting/CastingV2Test.kt",
-      "line": 152
-     }
-    ],
-    "verdict": "wired",
-    "wrapper_scan": []
-   },
-   {
-    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/cavity/CavityMap.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -1823,19 +1753,15 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
-      "line": 67
+      "line": 70
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
-      "line": 77
+      "line": 80
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
-      "line": 92
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt",
-      "line": 100
+      "line": 95
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccFaithEraTest.kt",
@@ -1856,10 +1782,6 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccPhase2Test.kt",
       "line": 19
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccPhase2Test.kt",
-      "line": 116
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccPhase2Test.kt",
@@ -1892,6 +1814,14 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
       "line": 97
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 110
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccSixDimTest.kt",
+      "line": 118
      }
     ],
     "verdict": "wired",
@@ -2739,11 +2669,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 38,
+  "B": 36,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 36,
+  "not_wired": 34,
   "production_top_level_public": 1127,
-  "wired": 1085
+  "wired": 1087
  }
 }
