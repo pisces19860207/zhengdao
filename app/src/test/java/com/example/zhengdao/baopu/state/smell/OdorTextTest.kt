@@ -23,14 +23,16 @@ class OdorTextTest {
 
     @Test
     fun `病名诊断_出现即红`() {
-        listOf("狐臭", "感染味", "尿道炎", "梅毒", "癌症", "细菌感染", "脚气", "无病").forEach { word ->
+        listOf("狐臭", "感染味", "尿道炎", "梅毒", "癌症", "癌症味", "细菌感染", "脚气", "无病").forEach { word ->
             assertTrue(word, Odor.judge(base(word)).reds.any { it.code == OdorCodes.DIAGNOSIS })
         }
     }
 
     @Test
     fun `人格地位判断_出现即红`() {
-        listOf("不讲卫生", "底层", "邋遢", "你真脏", "他真脏", "体味说明他脏").forEach { word ->
+        listOf(
+            "不讲卫生", "底层", "邋遢", "你真脏", "他真脏", "体味说明他脏", "体味说明此人很脏",
+        ).forEach { word ->
             assertTrue(word, Odor.judge(base(word)).reds.any { it.code == OdorCodes.VALUE_JUDGMENT })
         }
     }
@@ -39,7 +41,7 @@ class OdorTextTest {
     fun `行为指导_出现即红`() {
         listOf(
             "推荐香水", "遮味", "就医", "用些香水", "借助香味遮蔽体味",
-            "已经打算用香水", "最好拿香水应急",
+            "已经打算用香水", "最好拿香水应急", "上次建议用香水", "之前推荐香水",
         ).forEach { word ->
             assertTrue(word, Odor.judge(base(word)).reds.any { it.code == OdorCodes.BEHAVIOR_GUIDANCE })
         }
@@ -57,6 +59,20 @@ class OdorTextTest {
             "身为厨师，所以今天有汗味",
             "他做厨师，所以有汗味",
             "教师所以今天有汗味",
+            "警察所以今天有汗味",
+            "记者所以现在有气味",
+            "他是屠夫，所以现在有汗味",
+            "他是泥瓦匠，因此今天有体味",
+            "他是警察，所以今天有汗味",
+            "他是记者，所以现在有气味",
+            "他是老师，所以自上周以来一直有汗味",
+            "他是老师，所以上周至今一直有汗味",
+            "他是老师，所以自上周以来一直没汗味",
+            "他是老师，所以上周到今日一直有汗味",
+            "他是老师，因此，今天有汗味",
+            "他是老师，所以今天有异味",
+            "工人所以现在没汗味",
+            "因为他是工人所以没有汗味",
         ).forEach { note ->
             val verdict = Odor.judge(base(note))
             assertTrue(note, verdict.reds.any { it.code == OdorCodes.OCCUPATION_INFERENCE })
@@ -65,7 +81,11 @@ class OdorTextTest {
 
     @Test
     fun `文案自报强度_强弱词数字与算式都不许绕`() {
-        listOf("汗味很重", "汗味很重啊", "汗味很重了", "气味=2+1", "体味2", "气味很浓").forEach { note ->
+        listOf(
+            "汗味很重", "汗味很重啊", "汗味很重了", "汗味很重的", "气味=2+1", "体味2", "气味很浓",
+            "气味强度等于2", "气味强度达到2", "气味强度≈2", "体味约为2", "气味强度已经达到2",
+            "汗味已经达到2",
+        ).forEach { note ->
             val verdict = Odor.judge(base(note))
             assertTrue(note, verdict.reds.any { it.code == OdorCodes.INTENSITY_UNSOURCED })
         }
@@ -96,6 +116,48 @@ class OdorTextTest {
     }
 
     @Test
+    fun `历史香水使用_只陈述不指导_历史建议仍红`() {
+        listOf(
+            "以前喷过香水", "之前喷过香水", "上次用了香水", "昨天洒了香水", "上次用香水掩盖了汗味",
+            "上次香水掩盖了汗味", "上次买了香水，今天要洗澡", "上次买了香水今天要洗澡",
+        ).forEach { text ->
+            val verdict = Odor.judge(base(text))
+            assertTrue(text, verdict.ok)
+            assertEquals(text, verdict.value?.note)
+        }
+        listOf(
+            "上次建议用香水", "之前推荐香水", "刚才说应该用香水", "已经打算用香水", "上次让我用香水",
+            "上次叫我用香水掩盖体味", "他上次说以后喷香水掩盖体味", "昨天说要多喷点香水",
+            "上次建议用香水掩盖体味", "上次想用香水", "他喷香水",
+            "他上次说以后喷香水", "他上次说以后买香水",
+            "他说以后买香水", "他要求以后买香水", "他禁止以后喷香水",
+            "他说，以后买香水", "他上次禁止以后喷香水",
+        ).forEach { text ->
+            assertTrue(text, Odor.judge(base(text)).reds.any { it.code == OdorCodes.BEHAVIOR_GUIDANCE })
+        }
+    }
+
+    @Test
+    fun `职业与历史气味_仅共现不直推_当前仍有才红`() {
+        val historical = "他是老师，上周有汗味，今天没味"
+        assertTrue(Odor.judge(base(historical)).ok)
+        val negatedCurrent = "他是老师，上周有汗味，今天无体味"
+        assertTrue(Odor.judge(base(negatedCurrent)).ok)
+        val negatedIntensity = "他是老师，今天没有明显汗味"
+        assertTrue(Odor.judge(base(negatedIntensity)).ok)
+        val postposedHistory = "他是老师，有汗味是上周发生的"
+        assertTrue(Odor.judge(base(postposedHistory)).ok)
+        val historicalOdorSynonym = "他是老师，上周有异味，今天没味"
+        assertTrue(Odor.judge(base(historicalOdorSynonym)).ok)
+        val continuousNegated = "他是老师，自上周以来一直没汗味"
+        assertTrue(Odor.judge(base(continuousNegated)).ok)
+        val continuousNegatedSynonym = "他是老师，上周至今一直没有体味"
+        assertTrue(Odor.judge(base(continuousNegatedSynonym)).ok)
+        val current = "他是老师，上周有汗味，今天有汗味"
+        assertTrue(Odor.judge(base(current)).reds.any { it.code == OdorCodes.OCCUPATION_INFERENCE })
+    }
+
+    @Test
     fun `中性描述_原样放行`() {
         listOf(
             "衣物上有淡淡烟味，靠近时可辨",
@@ -110,6 +172,10 @@ class OdorTextTest {
             "他做饭，所以有汗味",
             "他认为有汗味",
             "他是学生，所以有汗味",
+            "他是丈夫，所以有汗味",
+            "他是我的丈夫，所以有汗味",
+            "他是老师的丈夫，所以有汗味",
+            "她是女学生，所以有体味",
         ).forEach { text ->
             val verdict = Odor.judge(base(text))
             assertTrue(text, verdict.ok)

@@ -17,6 +17,7 @@ internal object OdorCodes {
     const val CORE_CLIMATE_TREND = "ODOR_CORE_CLIMATE_TREND"
     const val ZERO_WITH_DETAIL = "ODOR_ZERO_WITH_DETAIL"
     const val ZERO_WITH_INTENSITY = "ODOR_ZERO_WITH_INTENSITY"
+    const val INTENSITY_PRESENCE_CONFLICT = "ODOR_INTENSITY_PRESENCE_CONFLICT"
     const val LOWER_NO_SOURCE = "ODOR_LOWER_NO_SOURCE"
     const val REGION_REDLINE = "ODOR_REGION_REDLINE"
     const val CLIMATE_CONFLICT = "ODOR_CLIMATE_CONFLICT"
@@ -77,7 +78,9 @@ internal object OdorRules {
         val from657 = evidence.env657?.let(::biasOf657)
         val from730 = evidence.thermo730?.let(::biasOf730)
         val directional = listOfNotNull(from657, from730).filter { it != ClimateBias.NEUTRAL }
+        val coldOrDry730 = evidence.thermo730?.let { it.thermalLevel == 0 || it.humidityLevel == 0 } == true
         return when {
+            from657 == ClimateBias.HOT_HUMID && coldOrDry730 -> ClimateBias.CONFLICT
             directional.distinct().size > 1 -> ClimateBias.CONFLICT
             directional.isNotEmpty() -> directional.first()
             else -> ClimateBias.NEUTRAL
@@ -191,6 +194,7 @@ internal object OdorRules {
         Regex("""(?:并非|并不是|不是|没有)\s*(?:未洗净|没洗净)""")
     private val washExceptionUncertain = Regex(
         "(?:若|如果|假如|倘|一旦|除非|要是|是否|有没有|可能|也许|或许|疑似|怀疑|据说|听说|" +
+            "他说|她说|对方说|本人说|自己说|有人说|有人称|据称|声称|表示|认为|觉得|" +
             "确认是否|判断是否|不排除|不能排除|无法排除|待核实|尚需确认|仍需确认|尚未确认|有待确认)" +
             "[^。！？；;\\n]{0,16}(?:未洗净|没洗净)",
     )

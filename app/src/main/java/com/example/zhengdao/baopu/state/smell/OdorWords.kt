@@ -16,6 +16,8 @@ internal object OdorWords {
         "高血压", "冠心病", "哮喘", "湿疹", "股癣", "脚气",
     )
 
+    val DIAGNOSIS_ODOR_COLLISIONS: List<String> = listOf("脚气")
+
     val VALUE_JUDGMENT: List<String> = listOf(
         "不讲卫生", "没洗澡", "邋遢", "恶心", "底层", "下等人", "素质差", "没教养", "没有教养",
     )

@@ -96,6 +96,14 @@ class OdorJudgeTest {
     }
 
     @Test
+    fun `存在与883强度_有味零档冲突_非零档只引用`() {
+        val verdict = Odor.judge(base().copy(smellIntensity = SmellIntensityRef(0)))
+        assertTrue(verdict.reds.any { it.code == OdorCodes.INTENSITY_PRESENCE_CONFLICT })
+        val result = reading(base().copy(smellIntensity = SmellIntensityRef(1)))
+        assertEquals("883", result.smellIntensity?.source)
+    }
+
+    @Test
     fun `下体有味_无三选一来源必红`() {
         val claim = base().copy(odorRegion = setOf(OdorRegion.SCROTUM))
         val verdict = Odor.judge(claim)
@@ -158,6 +166,54 @@ class OdorJudgeTest {
     }
 
     @Test
+    fun `文案下体味_不能绕开结构化分区与正来源`() {
+        val perianal = base().copy(note = "肛周有异味")
+        assertTrue(Odor.judge(perianal).reds.any { it.code == OdorCodes.REGION_REDLINE })
+        val perianalAlias = base().copy(note = "肛门旁有异味")
+        assertTrue(Odor.judge(perianalAlias).reds.any { it.code == OdorCodes.REGION_REDLINE })
+        val lower = base().copy(note = "下体有异味")
+        assertTrue(Odor.judge(lower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        val plainLower = base().copy(note = "下体有味")
+        assertTrue(Odor.judge(plainLower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        val unmodeled = base().copy(note = "会阴有异味")
+        assertTrue(Odor.judge(unmodeled).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        listOf("下体并没有异味", "下体没有明显异味", "下体不存在异味", "下体并无异味").forEach { note ->
+            assertTrue(note, Odor.judge(base().copy(note = note)).ok)
+        }
+        val assertedLower = base().copy(note = "下体存在异味")
+        assertTrue(Odor.judge(assertedLower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        listOf(
+            "下体没有烟味，但有异味", "下体没有烟味但有异味", "下体没有烟味，有异味",
+            "下体不是无味", "下体不是完全无味", "下体无味，但仍有异味", "下体无味，但有异味",
+        ).forEach { note ->
+            assertTrue(note, Odor.judge(base().copy(note = note)).reds.any {
+                it.code == OdorCodes.LOWER_NO_SOURCE
+            })
+        }
+        assertTrue(Odor.judge(base().copy(note = "下体没有烟味，腋下有异味")).ok)
+        val doubleNegated = base().copy(note = "下体不是没有异味")
+        assertTrue(Odor.judge(doubleNegated).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        val noOdor = base().copy(
+            odorPresent = OdorPresence.NONE,
+            odorSource = emptySet(),
+            odorWord = emptySet(),
+            odorRegion = setOf(OdorRegion.SCROTUM),
+            lowerBodyOrigins = setOf(SmegmaSource(1)),
+            climateEvidence = ClimateEvidence(env657 = mildEnv()),
+            odorClimateTrend = Trend.FLAT,
+            note = "下体有味",
+        )
+        assertTrue(Odor.judge(noOdor.copy(note = "")).ok)
+        assertTrue(Odor.judge(noOdor).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        val structured = lower.copy(
+            odorRegion = setOf(OdorRegion.SCROTUM),
+            lowerBodyOrigins = setOf(SmegmaSource(1)),
+        )
+        assertTrue(Odor.judge(structured).ok)
+        assertTrue(Odor.judge(base().copy(note = "下体无味")).ok)
+    }
+
+    @Test
     fun `刚清洗后明显气味_未明写未洗净即红`() {
         val claim = base().copy(odorTemporal = OdorTemporal.JUST_WASHED)
         assertTrue(Odor.judge(claim).reds.any { it.code == OdorCodes.TEMPORAL_WASH })
@@ -168,7 +224,8 @@ class OdorJudgeTest {
         listOf(
             "并非未洗净", "并不是未洗净", "不是没洗净", "没有没洗净",
             "若没洗净，洗过仍有味", "可能没洗净", "他说“没洗净”", "他说『没洗净』", "没洗净？",
-            "不排除没洗净", "待核实没洗净", "尚需确认没洗净",
+            "不排除没洗净", "待核实没洗净", "尚需确认没洗净", "他说没洗净",
+            "可能没洗净，他说没洗净",
         ).forEach { note ->
             assertTrue(note, Odor.judge(claim.copy(note = note)).reds.any {
                 it.code == OdorCodes.TEMPORAL_WASH
@@ -377,6 +434,17 @@ class OdorJudgeTest {
             climateEvidence = ClimateEvidence(env657 = hotEnv(), thermo730 = ThermoTierRef(0, 0, 0)),
         )
         assertTrue(Odor.judge(claim).reds.any { it.code == OdorCodes.CLIMATE_CONFLICT })
+    }
+
+    @Test
+    fun `657热湿_730冷档或干湿档都不能吞掉冲突`() {
+        val claim = base()
+        listOf(ThermoTierRef(0, 3, 0), ThermoTierRef(3, 0, 0)).forEach { ref ->
+            val verdict = Odor.judge(
+                claim.copy(climateEvidence = ClimateEvidence(env657 = hotEnv(), thermo730 = ref))
+            )
+            assertTrue(ref.toString(), verdict.reds.any { it.code == OdorCodes.CLIMATE_CONFLICT })
+        }
     }
 
     @Test
