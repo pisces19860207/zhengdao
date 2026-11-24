@@ -2744,7 +2744,7 @@
   "C": 4,
   "gates_with_write_path": 5,
   "not_wired": 35,
-  "production_top_level_public": 1144,
-  "wired": 1103
+  "production_top_level_public": 1156,
+  "wired": 1115
  }
 }
