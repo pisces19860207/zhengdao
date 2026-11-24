@@ -25,6 +25,17 @@ data class FieldGrade(val fieldId: String, val cn: String, val grades: List<Stri
 const val SUMMARY_LIMIT = 120
 
 /**
+ * 869 四组引用位只登记进「摘要生成规则」，不逐项进摘要：
+ * 每组最多挑 [SUMMARY_PICK_PER_GROUP] 项最有辨识度的；四组当前全为 NONE（allowed 空、
+ * 卡填不进值），所以一条都不会真的进摘要——摘要行为与 817 逐字不变，≤120 字不变。
+ * 非敏感三组（TORSO/TOPO/BONE）进 safeGroups，将来落地后按上限挑选；下体形状（814）归
+ * GENITAL 敏感组，与既有下体字段同口径永久排除，不因本登记开洞。
+ */
+val SUMMARY_PENDING_GROUPS: Set<CardGroup> =
+    setOf(CardGroup.TORSO, CardGroup.TOPO, CardGroup.BONE, CardGroup.GENITAL)
+const val SUMMARY_PICK_PER_GROUP = 2
+
+/**
  * 对外唯一出口。给定一张卡，产出档位向量与人话摘要。
  * 这里不做校验（校验在 CastingChecks），只做可读化——判定与渲染职责分开。
  */
@@ -46,12 +57,18 @@ object CastingSheet {
      * 每组最多两项、每字段最多两个档，按白名单次序拼；超 120 字在最后一个完整词处截断。
      */
     private fun summaryOf(card: CastingCard): String {
-        val safeGroups = setOf(CardGroup.FACE, CardGroup.BODY, CardGroup.PART, CardGroup.HAIR, CardGroup.MARK)
+        // 869：把非敏感的三组新引用位纳入安全组；它们当前 NONE 无值，一条都不会进摘要，
+        // 行为与 817 逐字不变。GENITAL（含 814 下体形状）始终不在其中，敏感层不开洞。
+        val safeGroups = setOf(
+            CardGroup.FACE, CardGroup.BODY, CardGroup.PART, CardGroup.HAIR, CardGroup.MARK,
+            CardGroup.TORSO, CardGroup.TOPO, CardGroup.BONE,
+        )
         val parts = ArrayList<String>()
         var perGroup = HashMap<CardGroup, Int>()
         CastingRefs.CARD_FIELDS.forEach { ref ->
-            if (ref.group !in safeGroups || (perGroup[ref.group] ?: 0) >= 2 || !card.has(ref.id)) return@forEach
-            val grades = card.of(ref.id).take(2)
+            val groupFull = (perGroup[ref.group] ?: 0) >= SUMMARY_PICK_PER_GROUP
+            if (ref.group !in safeGroups || groupFull || !card.has(ref.id)) return@forEach
+            val grades = card.of(ref.id).take(SUMMARY_PICK_PER_GROUP)
             parts += "${ref.cn}${grades.joinToString("、")}"
             perGroup[ref.group] = (perGroup[ref.group] ?: 0) + 1
         }

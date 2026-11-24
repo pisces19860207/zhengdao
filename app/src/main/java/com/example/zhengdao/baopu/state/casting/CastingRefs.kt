@@ -42,10 +42,15 @@ enum class RefSource {
     NONE,         // 816 头发/纹身/眼镜：仓内无封闭档
 }
 
-/** 卡字段分组；粒度合并按组折叠。TRACE 不进卡字段，只作鲜活判据白名单。 */
+/**
+ * 卡字段分组；粒度合并按组折叠。TRACE 不进卡字段，只作鲜活判据白名单。
+ * 869 新增 TORSO/TOPO/BONE 三组标识（八六九批四组引用位）；下体形状（814）敏感，
+ * 直接归入 GENITAL，摘要安全组天然排除，不新增敏感出口。
+ */
 enum class CardGroup(val cn: String) {
     FACE("脸"), BODY("体型"), PART("部位"), GENITAL("下体"),
     HAIR("头发"), MARK("标记"), TRACE("状态痕迹"),
+    TORSO("躯干形状"), TOPO("体表地形"), BONE("骨点"),
 }
 
 /**
@@ -83,8 +88,8 @@ private fun anchorWords(id: String): () -> List<String> =
     { AnchorFields.spec(id).words }
 
 /**
- * 卡字段白名单（32 项，≤40 预算）。全部指向既有档；无既有档者 source=NONE、allowed 空。
- * 顺序即档位向量与摘要的稳定次序。
+ * 卡字段白名单（817 的 33 项 + 869 四组引用位 23 项 = 56 项，≤56 预算）。
+ * 全部指向既有档；无既有档者 source=NONE、allowed 空。顺序即档位向量与摘要的稳定次序。
  */
 object CastingRefs {
 
@@ -148,6 +153,50 @@ object CastingRefs {
         add(FieldRef("trace.posture", CardGroup.TRACE, "姿态", RefSource.BODY_PART,
             { com.example.zhengdao.baopu.state.bodyparts.Posture.values().map { it.label } }))
         add(FieldRef("trace.skin", CardGroup.TRACE, "皮肤变化", RefSource.ANCHOR, anchorWords("posture.skinFeel")))
+
+        // ⑧–⑪ 869 四组引用位：躯干形状(848)/体表地形(866)/骨点(865)/下体形状(814)。
+        // 这四组在本批一律 pending：848 待合中、866 在飞、865/814 待派——仓内无「本卡可直接
+        // 引用」的封闭档出口，故 source=NONE、allowed 恒空，卡未设定走可补卡。绝不填值、不自造档；
+        // 等各自合入 main 且有稳定出口后，由后续接线批把 source 换成对应既有档（本单不做装配）。
+        addPendingRefs()
+    }
+
+    /**
+     * 869 四组引用位工厂：[id] 是本卡字段 key，[cn] 只是人话标签，source 恒 NONE、allowed 恒空。
+     * 一组一组写全，便于门禁逐组核对「齐」与「NONE」，不靠数字约定。
+     */
+    private fun pending(id: String, group: CardGroup, cn: String): FieldRef =
+        FieldRef(id, group, cn, RefSource.NONE) { emptyList() }
+
+    private fun addPendingRefs() {
+        // ⑧ 躯干形状（848，六维）：块数/白线/胸下缘/斜方坡度/背阔外扩/前锯肌
+        add(pending("torso.blocks", CardGroup.TORSO, "腹肌块数"))
+        add(pending("torso.linea", CardGroup.TORSO, "白线"))
+        add(pending("torso.pecEdge", CardGroup.TORSO, "胸下缘"))
+        add(pending("torso.trapSlope", CardGroup.TORSO, "斜方坡度"))
+        add(pending("torso.latFlare", CardGroup.TORSO, "背阔外扩"))
+        add(pending("torso.serratus", CardGroup.TORSO, "前锯肌"))
+
+        // ⑨ 体表地形（866，四族）：凸起/凹陷/厚度/不对称
+        add(pending("topo.relief", CardGroup.TOPO, "凸起"))
+        add(pending("topo.hollow", CardGroup.TOPO, "凹陷"))
+        add(pending("topo.depth", CardGroup.TOPO, "厚度"))
+        add(pending("topo.asymmetry", CardGroup.TOPO, "不对称"))
+
+        // ⑩ 骨点（865，十处骨性标志）：每处一个引用位，取值将是 visible/palpable（可见/可触）。
+        // 十处取自通用骨性标志命名，仅作卡字段 key；865 未落地，故一律 NONE、allowed 空。
+        listOf(
+            "clavicle" to "锁骨", "acromion" to "肩峰", "scapula" to "肩胛骨",
+            "sternum" to "胸骨", "ribs" to "肋骨", "pelvis" to "骨盆",
+            "elbow" to "肘", "wrist" to "腕", "knee" to "膝", "ankle" to "踝",
+        ).forEach { (key, cn) ->
+            add(pending("bone.$key", CardGroup.BONE, cn))
+        }
+
+        // ⑪ 下体形状（814，三项）：柱身截面/龟头廓形/横纵截面。归 GENITAL 敏感组，摘要排除。
+        add(pending("shape.shaftSection", CardGroup.GENITAL, "柱身截面"))
+        add(pending("shape.glansContour", CardGroup.GENITAL, "龟头廓形"))
+        add(pending("shape.crossSection", CardGroup.GENITAL, "横纵截面"))
     }
 
     /** 取既有封闭词表的子集：词的字面仍来自既有档，单内只给筛选键。 */
@@ -168,13 +217,14 @@ object CastingRefs {
         field("face.shape"), field("hair.style"), field("body.frame")
     )
 
-    const val MAX_CARD_ITEMS = 40
+    /** 869：卡上限 40 → 56。四组引用位共新增 23 项，33+23=56，正好用满，不越界。 */
+    const val MAX_CARD_ITEMS = 56
 
     fun field(id: String): FieldRef = fields[id] ?: throw CastingSpecException("卡字段不在既有档白名单，不许新增：$id")
 
     fun known(id: String): Boolean = id in fields
 
-    /** 卡字段预算自检：白名单自身不得超 40；超了本批就自己不合规。 */
+    /** 卡字段预算自检：白名单自身不得超 56；超了本批就自己不合规。 */
     init {
         require(CARD_FIELDS.size <= MAX_CARD_ITEMS) {
             "卡字段白名单 ${CARD_FIELDS.size} 项超预算 $MAX_CARD_ITEMS"

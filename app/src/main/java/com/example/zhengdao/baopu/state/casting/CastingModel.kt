@@ -94,9 +94,9 @@ data class CastingCard(
     }
 
     /**
-     * 粒度预算的结构性落点：卡字段白名单本身即为上限（CARD_FIELDS.size ≤ 40）。
-     * 「超了合并同类」在结构上不会发生——白名单只有 33 个卡字段，够细又封顶；
-     * 若将来白名单扩到 >40，CastingRefs 的 init 会当场拒装配，不会让超预算的卡落库。
+     * 粒度预算的结构性落点：卡字段白名单本身即为上限（CARD_FIELDS.size ≤ 56，869 起）。
+     * 「超了合并同类」在结构上不会发生——白名单 56 个卡字段（817 的 33 + 869 四组引用位 23），
+     * 够细又封顶；若将来白名单扩到 >56，CastingRefs 的 init 会当场拒装配，不让超预算的卡落库。
      * 这里返回当前项数与预算，供面板/报告显示，不参与判定。
      */
     fun budget(): Pair<Int, Int> = values.size to CastingRefs.MAX_CARD_ITEMS

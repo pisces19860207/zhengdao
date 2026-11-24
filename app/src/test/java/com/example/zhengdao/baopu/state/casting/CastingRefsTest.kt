@@ -57,11 +57,12 @@ class CastingRefsTest {
         assertFalse(CastingRefs.known("face.hairColor"))
     }
 
-    /** 判据⑤：卡字段白名单 ≤40（粒度预算结构性封顶）。 */
+    /** 判据②（869）：卡字段白名单 ≤56（869 起上限 40→56，33+23=56 正好用满）。 */
     @Test
-    fun `判据五_卡字段白名单不超40`() {
-        assertTrue("卡字段 ${CastingRefs.CARD_FIELDS.size} 须 ≤40", CastingRefs.CARD_FIELDS.size <= 40)
-        assertEquals("三连恰好三维", 3, CastingRefs.TRIO.size)
+    fun `判据二_卡字段白名单56项用满不超`() {
+        assertEquals("上限应为 56", 56, CastingRefs.MAX_CARD_ITEMS)
+        assertEquals("33+23=56 正好用满", 56, CastingRefs.CARD_FIELDS.size)
+        assertTrue("三连恰好三维", CastingRefs.TRIO.size == 3)
     }
 
     /** 标记位置档引用 805 八部位与 790 六方位，不新造位置词。 */

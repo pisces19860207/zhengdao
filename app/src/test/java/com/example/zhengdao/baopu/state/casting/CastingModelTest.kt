@@ -90,9 +90,9 @@ class CastingModelTest {
         assertEquals(a.line(), b.line())
     }
 
-    /** 判据⑤：预算回报 = 当前项数 / 40。 */
+    /** 判据②（869）：预算回报 = 当前项数 / 56。 */
     @Test
-    fun `判据五_预算回报`() {
-        assertEquals(2 to 40, base().budget())
+    fun `判据二_预算回报56`() {
+        assertEquals(2 to 56, base().budget())
     }
 }
