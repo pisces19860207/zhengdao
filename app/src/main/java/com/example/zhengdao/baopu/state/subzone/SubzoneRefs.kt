@@ -9,6 +9,19 @@
 // 为什么要在代码里记这本账而不是只写在报告里：报告会过期、代码不会。867 的组合表、
 // 727 的撞击落点、804 的覆盖位图都要按 code 拼字符串，一旦某个 id 悄悄没了引用，
 // 门禁应当在**这里**先红，而不是等三单各自跑到一半发现查不到。
+//
+// 第八百八十八批 · code 冻结与五列下游引用账。
+//
+// 新增子区流程（假想新增 example）：
+// 1. 只在 SubzoneId 加枚举，先不改 Codes／账本；
+// 2. 跑 code冻结_枚举集合必须与Codes逐字相同，先看到 entries 与 Codes 不等的红；
+// 3. 同单把 example 加入 Codes、更新冻结测试的预期数量，并按真实接入情况更新五列账；
+//    计划中仍保留计划中，只有代码真接入且有文件:行证据才升为已引用；
+// 4. 重跑冻结与账本测试，并在交付报告登记新 code、引用方与证据。
+//
+// 引用方 | 状态 | 引用形式 | 具体 code/范围 | 证据
+// 状态只有已引用／计划中／已废弃；形式只有直接(.code)／间接(名字对应)／全表(entries.map)。
+// 间接引用改名不会编译报错，只会静默错位，所以 code 与证据行都必须冻住。
 package com.example.zhengdao.baopu.state.subzone
 
 import com.example.zhengdao.baopu.state.bodyparts.BodyPartGuard
@@ -30,7 +43,107 @@ data class SubzoneRef(val consumer: Consumer, val note: String) {
     }
 }
 
+enum class ReferenceStatus(val label: String) {
+    REFERENCED("已引用"),
+    PLANNED("计划中"),
+    DEPRECATED("已废弃"),
+}
+
+enum class ReferenceForm(val label: String) {
+    DIRECT("直接(.code)"),
+    INDIRECT("间接(名字对应)"),
+    FULL_TABLE("全表(entries.map)"),
+}
+
+data class DownstreamReference(
+    val consumer: String,
+    val status: ReferenceStatus,
+    val form: ReferenceForm,
+    val codes: Set<String>,
+    val evidence: String,
+) {
+    val scope: String
+        get() = if (form == ReferenceForm.FULL_TABLE) "全表（${codes.size}）" else codes.joinToString("、")
+
+    init {
+        require(consumer.isNotBlank()) { "五列账缺引用方" }
+        require(codes.isNotEmpty()) { "五列账缺具体 code/范围：$consumer" }
+        require(evidence.isNotBlank()) { "五列账缺证据：$consumer" }
+        when (status) {
+            ReferenceStatus.REFERENCED ->
+                require(Regex("""[^\s`]+\.kt:[1-9]\d*""").containsMatchIn(evidence)) {
+                    "已引用必须给文件:行证据：$consumer"
+                }
+            ReferenceStatus.PLANNED ->
+                require(
+                    evidence.contains("接入时点=") &&
+                        evidence.substringAfter("接入时点=").isNotBlank(),
+                ) { "计划中必须写接入时点：$consumer" }
+            ReferenceStatus.DEPRECATED ->
+                require(
+                    evidence.contains("废弃原因=") &&
+                        evidence.substringAfter("废弃原因=").isNotBlank(),
+                ) { "已废弃必须写废弃原因：$consumer" }
+        }
+    }
+}
+
 object SubzoneRefs {
+
+    private const val IMPACT_GRADES =
+        "app/src/main/java/com/example/zhengdao/baopu/state/impact/ImpactGrades.kt"
+    private const val IMPACT_MATRIX =
+        "app/src/main/java/com/example/zhengdao/baopu/state/impact/ImpactMatrix.kt"
+
+    val Codes: Set<String> = setOf(
+        "apex", "glansbody", "corona", "sulcus", "frenulum",
+        "shaftProximal", "shaftMid", "shaftDistal", "radix",
+        "meatusRim", "meatusSlit",
+        "prepuceInner", "prepuceOuter", "prepuceOrifice",
+    )
+
+    val downstreamRefs: List<DownstreamReference> = listOf(
+        DownstreamReference(
+            consumer = "727",
+            status = ReferenceStatus.REFERENCED,
+            form = ReferenceForm.INDIRECT,
+            codes = setOf(
+                "apex", "frenulum", "shaftProximal", "shaftMid", "shaftDistal", "radix", "meatusRim",
+            ),
+            evidence = """
+                apex → ImpactSite.GLANS：$IMPACT_GRADES:108 `GLANS("龟头", "glans"),`
+                frenulum → ImpactSite.FRENULUM：$IMPACT_GRADES:110 `FRENULUM("系带", "frenulum"),`
+                meatusRim → ImpactSite.MEATUS：$IMPACT_GRADES:111 `MEATUS("尿道口", "meatus"),`
+                shaftProximal → ImpactSite.SHAFT：$IMPACT_GRADES:114 `SHAFT("柱身", "shaft"),`
+                shaftMid → ImpactSite.SHAFT：$IMPACT_GRADES:114 `SHAFT("柱身", "shaft"),`
+                shaftDistal → ImpactSite.SHAFT：$IMPACT_GRADES:114 `SHAFT("柱身", "shaft"),`
+                radix → ImpactSite.ROOT：$IMPACT_GRADES:115 `ROOT("根部", "radix"),`
+                力矩阵按 site.ordinal 取档：$IMPACT_MATRIX:91 `val base = MATRIX_TIER.getValue(force)[site.ordinal]`
+                七类力矩阵行：$IMPACT_MATRIX:14 `internal val MATRIX_TIER: Map<ForceKind, IntArray> = mapOf(`
+            """.trimIndent(),
+        ),
+        DownstreamReference(
+            consumer = "869",
+            status = ReferenceStatus.PLANNED,
+            form = ReferenceForm.FULL_TABLE,
+            codes = Codes,
+            evidence = "接入时点=869 合入后：四组接入；届时以 SubzoneId.entries.map { it.code } 读全表，当前尚未接入。",
+        ),
+        DownstreamReference(
+            consumer = "875",
+            status = ReferenceStatus.PLANNED,
+            form = ReferenceForm.FULL_TABLE,
+            codes = Codes,
+            evidence = "接入时点=875 合入后：外观隆起接入；届时以 SubzoneId.entries.map { it.code } 读全表，当前尚未接入。",
+        ),
+        DownstreamReference(
+            consumer = "886",
+            status = ReferenceStatus.PLANNED,
+            form = ReferenceForm.FULL_TABLE,
+            codes = Codes,
+            evidence = "接入时点=886 合入后：占位回填接入；届时以 SubzoneId.entries.map { it.code } 读全表，当前尚未接入。",
+        ),
+    )
 
     private val P804 = Consumer.P804
     private val P727 = Consumer.P727
@@ -107,6 +220,16 @@ object SubzoneRefs {
         require(missing.isEmpty()) { missingRefsMessage(missing) }
         val unknown = REFS.keys - SubzoneId.entries.toSet()
         require(unknown.isEmpty()) { "引用账里有已改名的旧 id：${unknown.joinToString("、") { it.code }}（改名即打断下游）" }
+        val expectedConsumers = setOf("727", "869", "875", "886")
+        require(downstreamRefs.size == expectedConsumers.size && downstreamRefs.map { it.consumer }.toSet() == expectedConsumers) {
+            "五列账必须恰好登记 727／869／875／886 各一行"
+        }
+        require(downstreamRefs.all { ref -> ref.codes.all { it in Codes } }) {
+            "五列账引用了 Codes 以外的 code"
+        }
+        require(downstreamRefs.filter { it.form == ReferenceForm.FULL_TABLE }.all { it.codes == Codes }) {
+            "全表引用必须覆盖 Codes 全集"
+        }
     }
 
     fun of(id: SubzoneId): List<SubzoneRef> = REFS.getValue(id)
