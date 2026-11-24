@@ -63,18 +63,38 @@ class CompoundSourceAssertTest {
         assertTrue("复合层不许碰 EPA", !newCode.contains("Epa."))
     }
 
+    /**
+     * 行尾归一后再算 sha256（仓库形态＝LF）。
+     *
+     * 为什么必须归一（2026-11-25 修 emit #310）：`.gitattributes` 是 `* text=auto`、
+     * 本机 `core.autocrlf=true` ⇒ Windows 工作树是 CRLF、索引/CI（Linux）是 LF。
+     * 直接对工作树字节取摘要，同一个提交在两平台会得到**两份指纹**：
+     * 862 最初钉的三个值是 CRLF 形态，本机绿、CI 红（Gjk 实测 `baf8cfa8…` 就是 LF 形态）。
+     * 口径同 285／645／637：**指纹以仓库内形态（LF）为基准**，算之前把 `\r\n` 折成 `\n`。
+     */
+    private fun sha256Lf(text: String): String {
+        val bytes = text.replace("\r\n", "\n").toByteArray(Charsets.UTF_8)
+        return MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
     @Test
     fun 六五五三文件哈希与基线逐字相等() {
+        // 基线＝仓库形态（LF）的 sha256，由 `git show HEAD:<path>` 的字节算出
         val baseline = mapOf(
-            "Gjk.kt" to "f3a94b8de9b953db8ffd0b620189b8b7e2056f33681b7b6dae09b3c3dff6bcd9",
-            "Epa.kt" to "e54bd6af67ef9eee301e63093a15d54a22400d8c2d6ff4b63a5b6f0834ab4c73",
-            "Shapes.kt" to "2ca479fb37f0d9f5da514ca67a8938c64f381c7eef23824d75798c9106a96358",
+            "Gjk.kt" to "baf8cfa8cb7d1cd6232415983cae0ca1ebb9fd0da0f5ad651aa6f55bff39c5b1",
+            "Epa.kt" to "c6affab11b84145d3eabba80fd99bfcf7f586cbdaf5004c904a604f34d8948ee",
+            "Shapes.kt" to "619c9af044a92c1006668963ee30257079e7aa3ce15405de93357ff30071b7ef",
         )
         for ((name, expected) in baseline) {
-            val digest = MessageDigest.getInstance("SHA-256").digest(sourceFile(name).readBytes())
-            val actual = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val actual = sha256Lf(sourceFile(name).readText())
             assertEquals("655 算法文件被改动：$name", expected, actual)
         }
+    }
+
+    @Test
+    fun 行尾归一同一内容CRLF与LF得同一指纹() {
+        assertEquals(sha256Lf("a\nb\n"), sha256Lf("a\r\nb\r\n"))
     }
 
     @Test
