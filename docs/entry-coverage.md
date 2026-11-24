@@ -9,12 +9,12 @@
 
 | 口径 | 数 |
 |---|---:|
-| 顶层公开面（app/src/main/java，剥注释后计数） | 1127 |
-| 生产可达（有生产引用，含同文件） | 1087 |
+| 顶层公开面（app/src/main/java，剥注释后计数） | 1144 |
+| 生产可达（有生产引用，含同文件） | 1103 |
 | A 有定义无调用 | 4 |
-| B 只有测试在调 | 36 |
+| B 只有测试在调 | 37 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **34** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **35** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -53,6 +53,7 @@
 | `Containment` | `app/src/main/java/com/example/zhengdao/baopu/state/containment/Containment.kt:14` | `app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:78`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:133`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentBoundaryTest.kt:134` | 接线 | 谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝容纳判定的总入口（档位＋三态＋文案）。 |
 | `StanceLegality` | `app/src/main/java/com/example/zhengdao/baopu/state/containment/StanceLegality.kt:52` | `app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt:23`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentCouplingTest.kt:106`、`app/src/test/java/com/example/zhengdao/baopu/state/containment/ContainmentFixtures.kt:215` | 接线 | 谁接：**后续装配单**（741 派工单边界为「空间容纳与受限姿态」判据层，8 生产件全新增、零改既有、零装配）；本件为纯档位与三态判定，无 IO、无时钟、无坐标。装配单落地时由「谁给出场景空间与站位」那一层调用。 本件＝**唯一的度量桥**（全包只有它碰 655 的四项判定，距离算一次即丢、返回里无坐标无毫米）。 |
 | `EnvironmentSolver` | `app/src/main/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolver.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/causal/CausalScenarios.kt:11`、`app/src/test/java/com/example/zhengdao/baopu/state/causal/CausalScenarios.kt:32`、`app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSolverTest.kt:31` | 接线 | 谁接：657 派工单「统一并入 SceneState.environment」——SceneState 本体归 660（人体模型批）建，本批只交公式层与槽值 EnvironmentState（sun/wind/humidity/sweat/sand 五分项），与 660 零相交；660 建 SceneState 时挂本槽即接线。其余五件顶层公开面（EnvironmentNotes/SolarSolver/WindTable/HumiditySolver/EnvironmentState）由本件生产代码引用，计生产可达。 |
+| `ErectChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/erect/ErectChecks.kt:65` | `app/src/test/java/com/example/zhengdao/baopu/state/erect/ErectChecksTest.kt:14`、`app/src/test/java/com/example/zhengdao/baopu/state/erect/ErectChecksTest.kt:22`、`app/src/test/java/com/example/zhengdao/baopu/state/erect/ErectChecksTest.kt:29` | 接线 | 谁接：**后续装配单**（810 派工单边界为「勃起动态两态判定层」，6 生产件全新增、零改既有、零装配）；本件＝六件齐＋硬度尺寸独立＋禁数值＋包皮位取804六档＋pending 占位五条判据的唯一出口（`all()`／`sceneLine()`）。**注：本包未全 internal（ErectSheet/ErectGrades/ErectReading 等由本件同包引用而计入生产可达），真正的零消费方靠本结论表而非编译期挡住。** |
 | `ProseExtractor` | `app/src/main/java/com/example/zhengdao/baopu/state/extract/ProseExtractor.kt:11` | `app/src/test/java/com/example/zhengdao/baopu/state/extract/ExtractSourceAssertTest.kt:99`、`app/src/test/java/com/example/zhengdao/baopu/state/extract/ExtractSourceAssertTest.kt:107`、`app/src/test/java/com/example/zhengdao/baopu/state/extract/ExtractSourceAssertTest.kt:124` | 接线 | 谁接：**817 外观卡的输入端（后续接线单）**；853 边界为「纯函数抽取层」，新包 5 文件全新增、零改 casting、零装配。本件＝唯一出口 `extract(text, table)`。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
 | `TwoBodyCollision` | `app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt:24` | `app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt:103`、`app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt:104`、`app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt:25` | 唯一实现·待消费 | 谁接：660 形体线（几何内核是其数学真源）与 670 角色轨。两者未接 ⇒ 生产暂无调用点，但本件是**唯一实现**（零第三方物理库、零时间积分、零随机/时钟，源码断言钉住），660/670 落地直接读它、不另抄一份。用途：两体解析碰撞（动量/能量守恒 ±5%），660 双人互动姿态校验用它。【706 sole-impl 档：本件全仓唯一实现（机检声明计数=1）；待消费方 660 接线，合入即须回填；到期未回填自动降 NOT_WIRED。】 |
 | `MicroAnchors` | `app/src/main/java/com/example/zhengdao/baopu/state/micro/MicroAnchors.kt:16` | `app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt:65`、`app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt:66`、`app/src/test/java/com/example/zhengdao/baopu/state/micro/MicroLinkageTest.kt:67` | 接线 | 谁接：**后续装配单**（821 派工单边界为「微观描写判定层」，两包全新增、零改既有、零装配）；本件＝速率/走势锚点常量表（六轴各带 rate/edge 的挂靠声明）。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
