@@ -2066,6 +2066,105 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/presence/PresenceChecks.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 10,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（896 派工单边界为「在场者与私密性档」，新包 4 生产件全新增、零改既有、零装配）；本件＝两条红线与三类提示的唯一出口（`all()`／`issues()`／`output()`／`sceneLine()`），六场所常态度矩阵只作参考、kinAvoidance 只写进 why 的倾向段。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.presence",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "PresenceChecks",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 33
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 40
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 45
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 62
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 63
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 66
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 74
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 75
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 83
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 84
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 93
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 94
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 101
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 102
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 103
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 111
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 112
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 119
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/presence/PresenceChecksTest.kt",
+      "line": 120
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/subzone/SubzoneAnatomy.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -2539,11 +2638,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 34,
+  "B": 35,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 32,
-  "production_top_level_public": 1174,
-  "wired": 1136
+  "not_wired": 33,
+  "production_top_level_public": 1194,
+  "wired": 1155
  }
 }
