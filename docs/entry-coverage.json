@@ -1310,6 +1310,105 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/extract/ProseExtractor.kt",
+    "file_mates_wired": false,
+    "kind": "object",
+    "line": 11,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**817 外观卡的输入端（后续接线单）**；853 边界为「纯函数抽取层」，新包 5 文件全新增、零改 casting、零装配。本件＝唯一出口 `extract(text, table)`。**注：本包未全 internal，零消费方靠结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.extract",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ProseExtractor",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ExtractSourceAssertTest.kt",
+      "line": 99
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ExtractSourceAssertTest.kt",
+      "line": 107
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ExtractSourceAssertTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 18
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 24
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 34
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 43
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 85
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 92
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 101
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 113
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 124
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 136
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 145
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 146
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 153
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 162
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 165
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 174
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/extract/ProseExtractorTest.kt",
+      "line": 183
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollision.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -2289,11 +2388,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 32,
+  "B": 33,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 30,
-  "production_top_level_public": 996,
-  "wired": 960
+  "not_wired": 31,
+  "production_top_level_public": 1009,
+  "wired": 972
  }
 }
