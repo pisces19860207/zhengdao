@@ -177,6 +177,12 @@ class OdorJudgeTest {
         assertTrue(Odor.judge(plainLower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
         val unmodeled = base().copy(note = "会阴有异味")
         assertTrue(Odor.judge(unmodeled).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        val pendingPerineum = base().copy(
+            odorRegion = setOf(OdorRegion.SCROTUM),
+            lowerBodyOrigins = setOf(SmegmaSource(1)),
+            note = "会阴有味",
+        )
+        assertTrue(Odor.judge(pendingPerineum).reds.any { it.code == OdorCodes.REGION_REDLINE })
         listOf("下体并没有异味", "下体没有明显异味", "下体不存在异味", "下体并无异味").forEach { note ->
             assertTrue(note, Odor.judge(base().copy(note = note)).ok)
         }
@@ -184,7 +190,8 @@ class OdorJudgeTest {
         assertTrue(Odor.judge(assertedLower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
         listOf(
             "下体没有烟味，但有异味", "下体没有烟味但有异味", "下体没有烟味，有异味",
-            "下体不是无味", "下体不是完全无味", "下体无味，但仍有异味", "下体无味，但有异味",
+            "下体不是无味", "下体不是完全无味", "下体不是全无味", "下体并非全然无味",
+            "下体无味，但仍有异味", "下体无味，但有异味",
         ).forEach { note ->
             assertTrue(note, Odor.judge(base().copy(note = note)).reds.any {
                 it.code == OdorCodes.LOWER_NO_SOURCE

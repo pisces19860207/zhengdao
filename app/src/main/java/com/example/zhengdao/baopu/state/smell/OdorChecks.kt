@@ -21,13 +21,14 @@ internal object OdorChecks {
             "|" + ODOR_TERM + """\s*""" + INTENSITY_ADVERB + """\s*""" + INTENSITY_LINK +
             """\s*(?:第)?[0-9一二三四五六七八九十]+""" +
             "|" + ODOR_TERM +
-            """[^。！？；;\n]{0,4}(?:特别重|很重|极重|较重|偏重|很浓|极浓|浓烈|强烈|重|浓|强)""" + WORD_END,
+            """[^。！？；;\n]{0,4}(?:特别重|很重|极重|较重|偏重|很浓|极浓|浓烈|强烈|重|浓|强|""" +
+            """很轻|极轻|较轻|偏轻|很淡|极淡|较淡|偏淡|淡)""" + WORD_END,
     )
     private val INTENSITY_FORMULA =
         Regex("""(?:气味|强度|汗味|体味|下体味|烟味|油味|酸味|异味)[^。！？\n]{0,16}[+\-*/][^。！？\n]{0,16}""")
     private val PERFUME_TERM = Regex("""(?:香水|香味|香气|香体喷雾)""")
     private val PERFUME_ADVICE = Regex(
-        """(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|试试|尝试|提醒|叮嘱|要求|命令|禁止|不许|买|喷|用|抹|洒|拿|借助|靠|使用|利用)"""
+        """(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|试试|尝试|提醒|叮嘱|要求|命令|禁止|不许|(?<![没无未不有])(?:买|喷|用|抹|洒|拿|借助|靠|使用|利用)(?![了过]))"""
     )
     private val PERFUME_INTENT = Regex(
         """(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|试试|尝试)"""
@@ -35,12 +36,17 @@ internal object OdorChecks {
     private val PERFUME_HISTORY = Regex("""(?:上次|之前|以前|刚才|昨天|曾经|当时|已经|用了|喷了|抹了|洒了)""")
     private val PERFUME_REPORT = Regex("""(?:说|称|告诉|提醒|叮嘱|要求|命令|禁止|不许)""")
     private val PERFUME_FUTURE_ADVICE = Regex(
-        """(?:以后|之后|下次|今后|往后|应当|应该|要|需|请|让|叫|建议|推荐|可以|最好|试试|尝试)"""
+        """(?:今天|现在|此时|此刻|当下|目前|这会儿|以后|之后|下次|今后|往后|应当|应该|要|需|请|让|叫|建议|推荐|可以|最好|试试|尝试)"""
     )
     private val PERFUME_REPORTED_ADVICE = Regex(
-        PERFUME_REPORT.pattern + """[^。！？；;\n]{0,16}""" + PERFUME_FUTURE_ADVICE.pattern +
-            """[^。！？；;\n]{0,12}""" + PERFUME_ADVICE.pattern + """[^。！？；;\n]{0,12}""" +
-            """(?:香水|香味|香气|香体喷雾)"""
+        PERFUME_REPORT.pattern + """[，,]?""" + """[^，,。！？；;\n]{0,16}""" +
+            PERFUME_FUTURE_ADVICE.pattern + """[^，,。！？；;\n]{0,12}""" + PERFUME_ADVICE.pattern +
+            """[^，,。！？；;\n]{0,12}""" + """(?:香水|香味|香气|香体喷雾)"""
+    )
+    private val PERFUME_PURCHASE_ADVICE = Regex(
+        "(?:" + PERFUME_FUTURE_ADVICE.pattern +
+            """[^，,。！？；;\n]{0,12}|(?:叮嘱|提醒|要求|命令|禁止|不许)[^，,。！？；;\n]{0,12})""" +
+            """(?<![没无未不有])买(?![了过])[^，,。！？；;\n]{0,12}(?:香水|香味|香气|香体喷雾)"""
     )
     private val PERFUME_INTENT_BEFORE = Regex(
         PERFUME_INTENT.pattern + """[^，,。！？；;\n]{0,12}(?:香水|香味|香气|香体喷雾)"""
@@ -64,9 +70,9 @@ internal object OdorChecks {
     private const val OCCUPATION_ROLE =
         "(?:" + NON_OCCUPATION_ROLE + """[^，,。！？；;\n]{1,12}""" +
             "(?:家长|主板|保安|保洁|译者|记者|师|员|工|民|兵|生|士|机|领|手|家|长|主|板|理|售|服|" +
-            "夫|户|匠|警|医|护|厨|贩)|警察|记者)"
+            "夫|户|匠|警|医|护|厨|贩)|警察|记者|商人)"
     private const val OCCUPATION_NOUNS =
-        "(?:职业|工人|农民|士兵|当兵|医生|护士|厨师|司机|程序员|白领|教师|警察|记者)"
+        "(?:职业|工人|农民|士兵|当兵|医生|护士|厨师|司机|程序员|白领|教师|警察|记者|商人)"
     private const val OCCUPATION_SUBJECT =
         """(?:(?:他|她|对方|本人|这位|此人)(?:的)?(?:职业|工作)?(?:是|为|当|干)""" + OCCUPATION_ROLE +
             """|(?:他|她|对方|本人|这位|此人)\s*做""" + OCCUPATION_ROLE +
@@ -95,13 +101,16 @@ internal object OdorChecks {
             """[^。！？；;\n]{0,8}(?:上次|之前|以前|刚才|昨天|上周|上个月|去年|前几天|日前|曾经|当时)""",
     )
     private val CONTINUOUS_HISTORY = Regex(
-        """(?:自|从)?(?:上次|之前|以前|刚才|昨天|上周|上个月|去年|前几天|日前|曾经|当时)""" +
-            """[^。！？；;\n]{0,8}(?:以来|起|至今|到现在|到今日|到今天)"""
+        """(?:(?:自|从)(?:上次|之前|以前|刚才|昨天|上周|上个月|去年|前几天|日前|曾经|当时)""" +
+            """(?:\s*(?:[一二三四五六七八九十\d]+[日号]?|周[一二三四五六日天]|""" +
+            """星期[一二三四五六日天]|礼拜[一二三四五六日天]))?\s*(?:一直|始终)|""" +
+            """(?:自|从)?(?:上次|之前|以前|刚才|昨天|上周|上个月|去年|前几天|日前|曾经|当时)""" +
+            """[^。！？；;\n]{0,8}(?:以来|起|至今|到现在|到今日|到今天))"""
     )
     private val CONTINUOUS_NEGATED_ODOR = Regex(
         CONTINUOUS_HISTORY.pattern +
-            """(?:一直|始终|仍然|仍|还|都)?[^，,。！？；;\n]{0,8}\s*""" +
-            """(?:并)?(?:没有|没|无|未)\s*""" +
+            """(?:一直|始终|至今|仍然|仍|还|都|从来|历来)*\s*""" +
+            """(?:并)?(?:没有|没|无|未(?:有)?)\s*""" +
             """(?:明显|很|太|特别|有点|略微|轻微|一点|一些|淡淡|什么)*""" +
             """(?:汗味|体味|烟味|油味|气味|异味)(?:了|啊|呀|呢|吧|吗)?"""
     )
@@ -111,7 +120,7 @@ internal object OdorChecks {
     private val CURRENT_TIME = Regex("""(?:今天|现在|此时|此刻|当下|目前|这会儿)""")
     private val NEGATED_ODOR = Regex(
         """(?:他|她|对方|本人|自己)?(?:今天|现在|此时|此刻|当下|目前|这会儿)?""" +
-            """\s*(?:并)?(?:没有|没|无)\s*""" +
+            """\s*(?:并)?(?:没有|没|无|未(?:有)?)\s*""" +
             """(?:明显|很|太|特别|有点|略微|轻微|一点|一些|淡淡|什么)*""" +
             """(?:汗味|体味|烟味|油味|气味|异味)(?:了|啊|呀|呢|吧|吗)?"""
     )
@@ -123,6 +132,7 @@ internal object OdorChecks {
         "(?:身上|体味|汗味|衣物|本人|自己)[^。！？；;\\n]{0,8}(?:汗味|体味|油味|烟味|气味|异味)",
     )
     private val PERIANAL_TERM = Regex("""(?:肛周|肛门)""")
+    private val PERINEUM_TERM = Regex("""会阴""")
     private const val LOWER_BODY_TERM =
         "(?:下体|阴部|会阴|生殖器|外阴|阴茎|包皮|龟头|阴囊|股间|腹股沟)"
     private val LOWER_BODY_TERM_REGEX = Regex(LOWER_BODY_TERM)
@@ -145,7 +155,7 @@ internal object OdorChecks {
     )
     private val LOWER_NOTE_DOUBLE_NEGATED = Regex(
         LOWER_BODY_TERM + """[^。！？；;\n]{0,8}(?:不是|并非|并不是)""" +
-            """(?:完全|丝毫|一点|有些|有点|真的|确实|明显|很|太|特别)*""" +
+            """(?:完全|全|全然|丝毫|一点|有些|有点|真的|确实|明显|很|太|特别)*""" +
             """(?:没有|没|无|未|不)[^。！？；;\n]{0,4}""" + NOTE_ODOR_TERM,
     )
 
@@ -254,6 +264,9 @@ internal object OdorChecks {
 
     private fun noteRegionIssues(claim: OdorClaim): List<OdorIssue> = buildList {
         if (PERIANAL_TERM.containsMatchIn(claim.note)) add(regionIssue())
+        if (PERINEUM_TERM.containsMatchIn(claim.note)) {
+            add(issue(OdorCodes.REGION_REDLINE, "会阴待 e1：本批不展开"))
+        }
         val present = claim.odorPresent
         val lowerConfirmed = OdorRules.hasLowerBody(claim.odorRegion) &&
             OdorRules.hasValidLowerBodyOrigin(claim.lowerBodyOrigins)
@@ -323,6 +336,7 @@ internal object OdorChecks {
                             !PERFUME_HISTORY.containsMatchIn(clause)) ||
                             (PERFUME_ADVICE.containsMatchIn(clause) &&
                                 (PERFUME_INTENT_BEFORE.containsMatchIn(clause) ||
+                                    PERFUME_PURCHASE_ADVICE.containsMatchIn(clause) ||
                                     (!PERFUME_HISTORY.containsMatchIn(clause) &&
                                         PERFUME_ACTION.containsMatchIn(clause)))))
                 }
