@@ -94,8 +94,8 @@ internal object PersonaLanguage {
         }
     }
 
-    fun stigma(text: String, position: ClinicalPosition = ClinicalPosition.AUTO): List<CheckItem> =
-        STIGMA_TERMS.mapNotNull { term ->
+    fun stigma(text: String, position: ClinicalPosition = ClinicalPosition.AUTO): List<CheckItem> {
+        val findings = STIGMA_TERMS.mapNotNull { term ->
             val hits = occurrences(text, term)
             if (hits.isEmpty()) return@mapNotNull null
             if (hits.all { positionAt(text, it, position) == ClinicalPosition.DIALOGUE }) {
@@ -104,6 +104,12 @@ internal object PersonaLanguage {
                 CheckItem(Severity.ERROR, "STIGMA_NARRATOR", "叙述者定型蔑称：$term")
             }
         }
+        return if (findings.any { it.severity == Severity.ERROR }) {
+            findings.filter { it.severity == Severity.ERROR }
+        } else {
+            findings
+        }
+    }
 
     fun determinism(text: String): List<CheckItem> = DETERMINISM_TERMS
         .filter { it in text }
@@ -147,7 +153,7 @@ internal object PersonaLanguage {
     }
 
     private fun isAsciiLetterOrDigit(ch: Char?): Boolean =
-        ch != null && ch.code <= 127 && ch.isLetterOrDigit()
+        ch != null && ch.code <= 127 && (ch.isLetterOrDigit() || ch == '_')
 
     private fun positionAt(text: String, index: Int, forced: ClinicalPosition): ClinicalPosition {
         if (forced != ClinicalPosition.AUTO) return forced
@@ -160,17 +166,13 @@ internal object PersonaLanguage {
             val end = SENTENCE_BREAKS.asIterable()
                 .mapNotNull { text.indexOf(it, start).takeIf { index -> index >= 0 } }
                 .minOrNull() ?: text.length
-            index in start until end && completeIntroducedSpeech(text.substring(start, end))
+            index in start until end && !startsWithQuote(text.substring(start, end))
         }
         return if (quoted || introduced) ClinicalPosition.DIALOGUE else ClinicalPosition.NARRATOR
     }
 
-    private fun completeIntroducedSpeech(speech: String): Boolean = when {
-        speech.startsWith("「") -> "」" in speech
-        speech.startsWith("“") -> "”" in speech
-        speech.startsWith("\"") -> "\"" in speech.substring(1)
-        else -> true
-    }
+    private fun startsWithQuote(speech: String): Boolean =
+        speech.startsWith("「") || speech.startsWith("“") || speech.startsWith("\"")
 
     private fun medicalUncertain(text: String, index: Int, role: ClinicalSubjectRole): Boolean =
         role != ClinicalSubjectRole.NONE && UNCERTAINTY_TERMS.any { it in sentenceAt(text, index) }

@@ -58,8 +58,26 @@ class Persona930LanguageTest {
     }
 
     @Test
+    fun `闭合引号外同句叙述仍按叙述者判红`() {
+        val cases = listOf(
+            "他说：「你是NPD」，他是PTSD。",
+            "她说：“你是NPD”，她是PTSD。",
+            "他说:\"你是NPD\", 他是PTSD.",
+        )
+        cases.forEach { text ->
+            assertEquals(text, listOf("DIAGNOSIS"), PersonaLanguage.clinical(text).map { it.code })
+            val stigmaText = text.replace("NPD", "舔狗").replace("PTSD", "废物")
+            assertEquals(
+                stigmaText,
+                listOf("STIGMA_NARRATOR"),
+                PersonaLanguage.stigma(stigmaText).map { it.code },
+            )
+        }
+    }
+
+    @Test
     fun `同形词负例不命中且不做运行时联想`() {
-        listOf("他依赖我", "回避（动词）", "边缘", "PNPD", "attachments").forEach { text ->
+        listOf("他依赖我", "回避（动词）", "边缘", "PNPD", "attachments", "NPD_备注").forEach { text ->
             assertTrue(text, PersonaLanguage.clinical(text).isEmpty())
         }
     }
