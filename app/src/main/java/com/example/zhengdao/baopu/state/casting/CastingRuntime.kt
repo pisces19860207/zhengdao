@@ -13,6 +13,9 @@
 package com.example.zhengdao.baopu.state.casting
 
 import com.example.zhengdao.baopu.calibration.CalibrationWiring
+import com.example.zhengdao.baopu.state.bodyparts.TorsoChecks
+import com.example.zhengdao.baopu.state.bodyparts.TorsoPerson
+import com.example.zhengdao.baopu.state.bodyparts.TorsoRuntime
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -86,10 +89,13 @@ internal object CastingRuntime {
         observed: Map<String, List<String>>,
         sceneTraces: Set<String>,
         cards: List<CastingCard> = currentCards(),
+        persons: List<TorsoPerson> = TorsoRuntime.currentPersons(),
     ): SceneReport {
         val report = SceneCheck.check(cards, observed, sceneTraces)
+        val torso = TorsoChecks.scene(persons)
         writtenScenes.incrementAndGet()
         trace("写后 场=$sceneId 结论=${report.overall.label} 明细=${report.line().replace("\n", " ／ ")}")
+        TorsoRuntime.record(sceneId, torso)
         return report
     }
 

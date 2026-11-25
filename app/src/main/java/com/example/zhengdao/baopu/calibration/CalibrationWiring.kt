@@ -65,6 +65,10 @@ internal object CalibrationWiring {
     @Volatile
     var castingProvider: (() -> List<String>)? = null
 
+    /** 870 装配缝：本期只做写后校验，notes 不新增注入；未装配 ⇒ 与没有本单逐字节一致。 */
+    @Volatile
+    var torsoProvider: (() -> List<String>)? = null
+
     /**
      * 本轮注入文本。纯决策后短路：未命中／开关关／未装配三行 ⇒ 空表，零索引读取。
      * 返回值直接进 ContextAssembler.extraNotes（不进任何闸、不改判定）。
@@ -94,6 +98,8 @@ internal object CalibrationWiring {
         // 所以 722 三行与敏感层预算的读数与本单之前逐字相同（判据④）。
         val casting = runCatching { castingProvider?.invoke() }.getOrDefault(emptyList()).orEmpty()
         notes += casting
+        val torso = runCatching { torsoProvider?.invoke() }.getOrDefault(emptyList()).orEmpty()
+        notes += torso
         if (notes.isNotEmpty()) notesObserver?.invoke(notes)
         return notes
     }
@@ -124,5 +130,6 @@ internal object CalibrationWiring {
         notesObserver = null
         textbookNotesProvider = null
         castingProvider = null
+        torsoProvider = null
     }
 }

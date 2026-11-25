@@ -532,6 +532,8 @@ internal object BaopuRuntime {
         // （剧本人物表 CharBible.traits 是自由文本，660 连续量→档的阈值 747 标 ○待核不许猜）。
         // 未绑 ⇒ sceneNotes 恒空 ⇒ 主链输出与"没有本单"逐字节一致；真源单落地只改这一个实参。
         com.example.zhengdao.baopu.state.casting.CastingRuntime.install()
+        // 八百七十批：躯干写后校验并入 852 唯一写后口；人源未绑，可见位由调用方提供（pending:687）。
+        com.example.zhengdao.baopu.state.bodyparts.TorsoRuntime.install()
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }
