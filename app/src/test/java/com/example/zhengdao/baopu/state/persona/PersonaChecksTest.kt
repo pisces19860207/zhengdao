@@ -88,8 +88,8 @@ class PersonaChecksTest {
     }
 
     @Test
-    fun `判据_禁心理诊断依恋类型与量表一律红`() {
-        val terms = listOf("依恋类型", "回避依恋", "attachment", "量表", "大五人格", "MBTI")
+    fun `判据_禁心理诊断依恋类型与人格量表一律红`() {
+        val terms = listOf("依恋类型", "回避依恋", "attachment", "人格量表", "色彩性格", "MBTI")
         assertEquals(6, terms.size)
         terms.forEach { term ->
             val poisoned = PersonaFixture.core().copy(
@@ -98,6 +98,34 @@ class PersonaChecksTest {
             val r = PersonaChecks.check(PersonaFixture.persona().copy(core = poisoned))
             assertTrue("命中'$term'须红：$term", "DIAGNOSIS" in codes(r))
         }
+    }
+
+    @Test
+    fun `930_台词临床词放行台词污名词只WARN`() {
+        val original = PersonaFixture.voiceA()
+        val voice = original.copy(
+            lines = listOf(
+                VoiceLine(
+                    "他说：「你是NPD。」你这个舔狗。",
+                    LineFeatures(SentenceLength.LONG, DictionLevel.LITERARY, "叫全名", "说实在的"),
+                ),
+            ),
+        )
+        val report = PersonaChecks.check(PersonaFixture.persona().copy(voice = voice))
+        assertFalse("DIAGNOSIS" in codes(report))
+        assertTrue("STIGMA_DIALOGUE" in report.warnings.map { it.code })
+    }
+
+    @Test
+    fun `930_surface标签合法且core标签越界红`() {
+        val legal = PersonaFixture.persona().copy(
+            surface = PersonaFixture.persona().surface.copy(tags = listOf("傲娇")),
+        )
+        assertTrue(PersonaChecks.check(legal).passed)
+        val poisoned = PersonaFixture.core().copy(
+            drives = PersonaFixture.core().drives.map { it.copy(trigger = "她很傲娇") },
+        )
+        assertTrue("ANIME_TAG_OFF_SURFACE" in codes(PersonaChecks.check(PersonaFixture.persona().copy(core = poisoned))))
     }
 
     @Test

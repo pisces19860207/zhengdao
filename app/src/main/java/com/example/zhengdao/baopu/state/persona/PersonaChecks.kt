@@ -16,15 +16,6 @@ object PersonaChecks {
     /** 口头禅上限字数。 */
     const val CATCHPHRASE_MAX = 6
 
-    /**
-     * 禁心理诊断词：依恋类型与量表一律不进。
-     * 命中即红（不论出现在哪一层）；这些不是性格描述，是诊断标签。
-     */
-    private val FORBIDDEN_TERMS = listOf(
-        "依恋类型", "安全依恋", "焦虑依恋", "回避依恋", "混乱依恋",
-        "attachment", "量表", "心理测量", "人格测验", "MBTI", "大五人格", "九型人格",
-    )
-
     /** 归属硬规矩的稳定归因措辞与临时归因措辞。 */
     private val STABLE_WORDS = listOf("他就是这种人", "她就是这种人", "本性", "天性", "一贯", "向来")
     private val MOMENT_WORDS = listOf("今天这样", "这会儿", "此刻", "刚刚", "一时")
@@ -36,7 +27,7 @@ object PersonaChecks {
         items += traitChecks(p.trait)
         items += surfaceChecks(p.surface)
         items += voiceChecks(p.voice)
-        items += diagnosisChecks(p)
+        items += languageChecks(p)
         return CheckReport(items)
     }
 
@@ -79,6 +70,7 @@ object PersonaChecks {
         if (surface.levels.any { it.source.isBlank() }) {
             out += err("SURFACE_NO_SOURCE", "表层必须写明由哪条 670 状态推出；只有'性格开朗'⇒红")
         }
+        out += PersonaLanguage.surfaceTags(surface.tags)
         return out
     }
 
@@ -99,15 +91,27 @@ object PersonaChecks {
         return out
     }
 
-    /** 禁心理诊断：扫描三层文本 + 语声文本，命中词即红。 */
-    private fun diagnosisChecks(p: Persona): List<CheckItem> {
-        val texts = ArrayList<String>()
-        p.core.drives.forEach { texts += it.coreFear; texts += it.trigger }
+    /** 三态语言闸：叙述文本扫 clinical/stigma/决定论/越界标签；台词按 DIALOGUE 判定。 */
+    private fun languageChecks(p: Persona): List<CheckItem> {
+        val narrative = mutableListOf<String>()
+        p.core.drives.forEach {
+            narrative += it.coreFear
+            narrative += it.trigger
+        }
         val v = p.voice.dimensions
-        texts += listOfNotNull(v.address, v.catchphrase, v.modalParticle, v.pauseEllipsis, v.breakdown)
-        p.voice.lines.forEach { texts += it.text }
-        val hits = FORBIDDEN_TERMS.filter { term -> texts.any { term in it } }
-        return if (hits.isEmpty()) emptyList() else listOf(err("DIAGNOSIS", "禁心理诊断，命中：${hits.joinToString("、")}"))
+        narrative += listOfNotNull(v.address, v.catchphrase, v.modalParticle, v.pauseEllipsis, v.breakdown)
+        val out = narrative.flatMap {
+            PersonaLanguage.clinical(it) +
+                PersonaLanguage.stigma(it) +
+                PersonaLanguage.determinism(it) +
+                PersonaLanguage.offSurfaceTags(listOf(it))
+        }.toMutableList()
+        p.voice.lines.forEach { line ->
+            out += PersonaLanguage.clinical(line.text, ClinicalPosition.DIALOGUE)
+            out += PersonaLanguage.stigma(line.text, ClinicalPosition.DIALOGUE)
+            out += PersonaLanguage.determinism(line.text)
+        }
+        return out
     }
 
     /**
