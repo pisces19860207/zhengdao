@@ -3477,6 +3477,9 @@ internal class RunEngine(
         extraNotes = extraNotes +
             com.example.zhengdao.baopu.ImpactMailbox.drain() +
             com.example.zhengdao.baopu.subconscious.InspirationMailbox.drain() +
+            // 第五百三十四批（534 灵感捕获与关联唤醒）：点开「关联到的念头」那一行才放行的原文。
+            // 不点 ⇒ 信箱空 ⇒ 空表 ⇒ 与接线前逐字节一致（判据③「不点不进上下文」的拼装侧）。
+            com.example.zhengdao.baopu.insight.InsightMailbox.drain() +
             com.example.zhengdao.baopu.MediatorWiring.promptNotes() +
             AnswerReflow.notes(currentRoundId) +
             // 第四百零五批：最近同类经验一行（轮开跑算好的一份）。null ⇒ 空表 ⇒ 与接线前
