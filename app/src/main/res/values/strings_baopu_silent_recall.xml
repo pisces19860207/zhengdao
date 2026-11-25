@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  第六百二十五批 · 静默回想：页签内一行字／点开后的两格事实／设置页开关。
+  单独成文件（共享 strings.xml 高冲突，本批零改）；键与 values-en 一一对应。
+  文案只陈述账上事实，没有动作词与情绪词（源码门禁扫禁词）。
+-->
+<resources>
+    <string name="silent_recall_line">想起一条账 · %1$s</string>
+    <string name="silent_recall_detail">账行 %1$s\n想起缘由：%2$s</string>
+    <string name="baopu_silent_recall_card">静默回想</string>
+    <string name="baopu_silent_recall_title">静默回想</string>
+    <string name="baopu_silent_recall_desc">每天至多一行字；点开才看是哪条账和为什么想起。</string>
+</resources>

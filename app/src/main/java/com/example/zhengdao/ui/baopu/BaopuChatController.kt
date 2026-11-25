@@ -1540,6 +1540,82 @@ internal class BaopuChatController(context: Context) {
     private fun inspirationLedgerFile() =
         com.example.zhengdao.baopu.subconscious.InspirationLedger.fileOf(workspaceRoot)
 
+    // ── 625 静默回想（装配层；判据本体在 subconscious 纯层） ──────────────────
+
+    /**
+     * 打开「建议」页签时算一轮静默回想（机会式、零后台调度；不是第二个执行器）。
+     *
+     * 只从既有账行/L0 取候选，先过 676/677/625 共享 24h 去重，再按日历日闸取一条。
+     * 开关关 ⇒ 连算都不算（第一行就返回），零 publish、零落账、零上下文增量。
+     */
+    fun refreshSilentRecall() {
+        if (!com.example.zhengdao.baopu.subconscious.SilentRecallSwitch.get(appCtx)) {
+            com.example.zhengdao.baopu.subconscious.SilentLineStore.publish(null)
+            silentLine = null
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val now = System.currentTimeMillis()
+                val ws = workspaceRoot
+                val own = com.example.zhengdao.baopu.subconscious.SilentRecallLedger.fileOf(ws)
+                val items = com.example.zhengdao.baopu.ledger.LedgerStore.items(ws)
+                val scan = com.example.zhengdao.baopu.subconscious.InspirationStore(
+                    com.example.zhengdao.baopu.subconscious.InspirationStore.dirOf(ws),
+                ).scan()
+                val knownIds = items.map { it.id } + scan.records.map { it.id }
+                val files = buildList {
+                    com.example.zhengdao.baopu.DecisionLedger.installedRoot()?.let { root ->
+                        add(java.io.File(root, com.example.zhengdao.baopu.subconscious.ECHO_LEDGER_FILE))
+                    }
+                    add(inspirationLedgerFile())
+                    add(own)
+                }
+                val line = com.example.zhengdao.baopu.subconscious.selectSilentLine(
+                    candidates = com.example.zhengdao.baopu.subconscious.recallCandidate(
+                        items, scan.records, now,
+                    ),
+                    knownIds = knownIds.toSet(),
+                    nowMs = now,
+                    lastFloatedDay = com.example.zhengdao.baopu.subconscious.SilentRecallLedger
+                        .lastFloatedDay(com.example.zhengdao.baopu.subconscious.SilentRecallLedger.read(own)),
+                    recentKeys = com.example.zhengdao.baopu.subconscious.SharedRecallDedupe.readKeys(files, now),
+                )
+                com.example.zhengdao.baopu.subconscious.SilentLineStore.publish(line)
+                withContext(Dispatchers.Main) { silentLine = line }
+                if (line != null) {
+                    com.example.zhengdao.baopu.subconscious.SilentRecallLedger.append(
+                        own,
+                        com.example.zhengdao.baopu.subconscious.SilentRecallLedger.floatedEvent(now, line),
+                    )
+                }
+                RunLog.log("静默回想：${if (line == null) "本轮不浮" else "浮一行·账行 ${line.ledgerId}"}")
+            }.onFailure { RunLog.log("静默回想没跑成：${it.javaClass.simpleName}") }
+        }
+    }
+
+    /** 点开那一行字＝唯一的回响放行口；同一行重复点不再往上下文塞东西。 */
+    fun onSilentRecallOpened() {
+        val line = com.example.zhengdao.baopu.subconscious.SilentLineStore.consumeOpen() ?: return
+        com.example.zhengdao.baopu.subconscious.SilentMailbox.offer(
+            buildString {
+                append("【静默回想·用户点开】账行 ").append(line.ledgerId)
+                append('\n').append(line.reason)
+                append("\n（来源 ").append(line.sourceLabel)
+                append("；仅因用户点开放行本轮，用完即清）")
+            },
+        )
+        RunLog.log("静默回想点开：账行 ${line.ledgerId} 的缘由放行一次")
+        scope.launch(Dispatchers.IO) {
+            com.example.zhengdao.baopu.subconscious.SilentRecallLedger.append(
+                com.example.zhengdao.baopu.subconscious.SilentRecallLedger.fileOf(workspaceRoot),
+                com.example.zhengdao.baopu.subconscious.SilentRecallLedger.openedEvent(
+                    System.currentTimeMillis(), line,
+                ),
+            )
+        }
+    }
+
     /**
      * 近期上下文信号（IO 上调）：当前会话最近若干条 text 消息的正文＋最新时刻＋
      * 用户最近一句话。会话没有/读不到 ⇒ 全空信号 ⇒ 判据层如实判「缺近期上下文」，不编。
@@ -1583,6 +1659,10 @@ internal class BaopuChatController(context: Context) {
      * 页签自动重组；屏幕层只渲染，不自己判）。
      */
     var replayRows by mutableStateOf<List<DecisionCenterRow>>(emptyList())
+        private set
+
+    /** 625 的一行字（不是页签行、不是卡；页签只读它，点开副作用走 [onSilentRecallOpened]）。 */
+    var silentLine by mutableStateOf<com.example.zhengdao.baopu.subconscious.SilentLine?>(null)
         private set
 
     /** 行槽 → 页签行（重放类 typeLabel；行自带稳定 id 与 L0 指针）。 */

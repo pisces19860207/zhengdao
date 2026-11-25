@@ -13,6 +13,7 @@
 // 与 `DecisionCardRules`；点行打开同款决策卡（设计稿 W7）。
 package com.example.zhengdao.ui.baopu
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -436,9 +437,12 @@ private fun SuggestionsTab(
     // 522/678：进页签算一轮海马重放（机会式——用户打开页签才算，零后台调度，不是
     // 第二个执行器；跑不跑归 subconscious 纯层判据：空闲窗口＋一天 ≤1 次）。
     LaunchedEffect(Unit) { controller.refreshReplayRows() }
+    // 625：进页签算一轮静默回想（机会式、零后台调度）；只浮一行字，不推卡、不弹窗。
+    LaunchedEffect(Unit) { controller.refreshSilentRecall() }
     var showCapture by remember { mutableStateOf(false) }
     var replayUndoNote by remember { mutableStateOf<String?>(null) }
     val rows = controller.decisionCenterSuggestionRows()
+    val silent = controller.silentLine
     Column(Modifier.fillMaxSize()) {
         InspirationCaptureRow(onClick = { showCapture = true })
         // 522/678 一键撤销（判据④）：有重放行才显示；点一下＝建议区与状态回到重放前。
@@ -457,6 +461,32 @@ private fun SuggestionsTab(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
+        }
+        // 625：只有一行字。点开才显示「哪条账 + 为什么想起」并把那一份附注放行一次；
+        // 不点 ⇒ 信箱空 ⇒ 会话提示词与没有本功能时逐字节相同。不是卡、不是弹窗。
+        if (silent != null) {
+            var opened by remember(silent) { mutableStateOf(false) }
+            val lineText = stringResource(R.string.silent_recall_line, silent.ledgerId)
+            val detailText = stringResource(R.string.silent_recall_detail, silent.ledgerId, silent.reason)
+            Text(
+                text = lineText,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 2.dp)
+                    .clickable {
+                        opened = true
+                        controller.onSilentRecallOpened()
+                    },
+            )
+            if (opened) {
+                Text(
+                    text = detailText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
         }
         DecisionTabBody(DecisionTab.SUGGESTIONS, empty = rows.isEmpty()) {
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {

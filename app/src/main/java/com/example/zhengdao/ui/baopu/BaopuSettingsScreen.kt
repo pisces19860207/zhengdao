@@ -68,6 +68,7 @@ import com.example.zhengdao.baopu.BaopuRuntime
 import com.example.zhengdao.baopu.BaopuWorkspace
 import com.example.zhengdao.baopu.ImpactPrefs
 import com.example.zhengdao.baopu.subconscious.InspirationSwitch
+import com.example.zhengdao.baopu.subconscious.SilentRecallSwitch
 import com.example.zhengdao.baopu.MemoryScope
 import com.example.zhengdao.baopu.ModelParams
 import com.example.zhengdao.baopu.PersonaApplyResult
@@ -518,6 +519,41 @@ internal fun BaopuSettingsScreen(
                             InspirationSwitch.set(ctx, want)
                             inspOn = want
                             RunLog.log("抱朴设置：灵感闪回 = $want")
+                        },
+                        colors = zhengdaoSwitchColors(),
+                    )
+                }
+            }
+
+            // ── 静默回想（625）：默认开（可关）──
+            // 关掉 ⇒ refreshSilentRecall 第一行就返回：零行、零落账、零上下文增量。
+            Spacer(Modifier.height(12.dp))
+            SectionCard(stringResource(R.string.baopu_silent_recall_card)) {
+                var silentOn by rememberSaveable { mutableStateOf(SilentRecallSwitch.get(ctx)) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.baopu_silent_recall_title),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.baopu_silent_recall_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = silentOn,
+                        onCheckedChange = { want ->
+                            SilentRecallSwitch.set(ctx, want)
+                            silentOn = want
+                            RunLog.log("抱朴设置：静默回想 = $want")
                         },
                         colors = zhengdaoSwitchColors(),
                     )

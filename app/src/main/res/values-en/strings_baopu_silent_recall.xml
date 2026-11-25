@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch 625 · Silent recall: the single line on the tab, the two factual fields shown
+  after a tap, and the settings switch. Own file (shared strings.xml is high-conflict).
+  Keys mirror values/strings_baopu_silent_recall.xml one-to-one.
+-->
+<resources>
+    <string name="silent_recall_line">A ledger entry came to mind · %1$s</string>
+    <string name="silent_recall_detail">Ledger line %1$s\nWhy it surfaced: %2$s</string>
+    <string name="baopu_silent_recall_card">Silent recall</string>
+    <string name="baopu_silent_recall_title">Silent recall</string>
+    <string name="baopu_silent_recall_desc">At most one line a day. Open it to see which ledger line it is and why it surfaced.</string>
+</resources>
