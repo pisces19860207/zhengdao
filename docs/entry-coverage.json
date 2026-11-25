@@ -593,6 +593,61 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/SizeRules.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 67,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（920 派工单边界为「下体尺寸与身高体重年龄解耦」，6 生产件全新增、零改 660／815／775／865、零装配）；本件＝独立性矩阵（48 格全过）与报告唯一出口（`inspect()`／`report()`）。为什么这条 B 是刻意的：本单要证明的是「没有推导边」，所以生产侧**不该**有第二个读尺寸记录的人——谁要读，先在这条欠账上登记。**注：本包未全 internal（SizeProfile／SizeGate／SizeGuard／SizeContext 等由本件同包引用而计入生产可达），真正的零消费方靠本结论表而非编译期挡住。**",
+    "package": "com.example.zhengdao.baopu.state.bodyparts",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "SizeRules",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 24
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 25
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 25
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 39
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 51
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 61
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeCombosTest.kt",
+      "line": 69
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeIndependenceTest.kt",
+      "line": 81
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeIndependenceTest.kt",
+      "line": 125
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodytype/BuildChecks.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -2638,11 +2693,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 35,
+  "B": 36,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 33,
-  "production_top_level_public": 1194,
-  "wired": 1155
+  "not_wired": 34,
+  "production_top_level_public": 1209,
+  "wired": 1169
  }
 }
