@@ -193,7 +193,7 @@ SurfaceState(levels: List<SurfaceLevel>, tags: List<String> = emptyList())
 
 - 台词：放行，不产生临床词 finding；
 - 叙述者＋显式医疗角色＋同句不确定词：WARN `CLINICAL_MEDICAL_UNCERTAIN`；
-- 叙述者＋无豁免：ERROR `CLINICAL_NARRATOR`；
+- 叙述者＋无豁免：ERROR `DIAGNOSIS`（沿用 819 稳定红码）；
 - 同一输入同时含红与黄时只保留红，不降级。
 
 ### 4.4 污名词
