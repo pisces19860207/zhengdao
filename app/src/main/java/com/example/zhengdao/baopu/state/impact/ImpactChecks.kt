@@ -99,7 +99,7 @@ internal object ImpactChecks {
         out.add(finding("④作用力矩阵", matrixOk(), "七力齐、每力≥3子区异档、扭转只写现象、负压给消退"))
         out.add(finding("⑤日常动作豁免", ImpactRoutine.routineClean(), "routine 不进矩阵，rare 封顶 1"))
         out.add(finding("⑥无伤情分级", wordsClean(), "词表不含伤情/疼痛分级红线词"))
-        out.add(finding("⑧event字段一致", eventConsistent(result), "event 三字段与冲击档/恢复档同源，不各算一份"))
+        out.add(finding("⑧event字段一致", eventConsistent(input, result), "event 与冲击/恢复同源，提睾档指 730、后果档指 727"))
         coverageNote(input)?.let { out.add(it) }
         return out
     }
@@ -110,9 +110,13 @@ internal object ImpactChecks {
         why = why,
     )
 
-    /** 真值复核：event 的 justHit / recovery 必须由同一输出的冲击档 / 恢复档推出。 */
-    private fun eventConsistent(r: ImpactResult): Boolean =
+    /** 真值复核：event 的三字段与两个来源档必须由同一结果推出。 */
+    private fun eventConsistent(input: ImpactInput, r: ImpactResult): Boolean =
         r.event.justHit == (r.impact.level > 0) &&
             r.event.recovery == r.recovery.level &&
+            r.event.cremasteric == (r.event.cremastericTier.level > 0) &&
+            r.event.cremastericTier == input.cremastericTier &&
+            r.event.consequenceTier == r.consequence &&
+            r.event.sources == setOf("730", "727") &&
             r.event.source == "727"
 }

@@ -76,7 +76,7 @@ class ZoneStateReferenceTest {
     fun `727作用点逐类映射到十三区且不按枚举名猜`() {
         val expected = mapOf(
             ImpactSite.GLANS to "glans",
-            ImpactSite.CORONA to "sulcus",
+            ImpactSite.CORONA to "corona",
             ImpactSite.FRENULUM to "frenulum",
             ImpactSite.MEATUS to "meatus",
             ImpactSite.PREPUCE_INNER to "prepuce",
@@ -98,6 +98,7 @@ class ZoneStateReferenceTest {
                     assertTrue(requireNotNull(state.event.recovery) > 0)
                     assertTrue(requireNotNull(state.pose.flatten) > 0)
                     assertEquals("727", state.evidenceFor("event.recovery").from)
+                    assertEquals("730/727", state.evidenceFor("event.cremasteric").from)
                 } else {
                     assertEquals(0, state.event.recovery)
                     assertEquals(0, state.pose.flatten)

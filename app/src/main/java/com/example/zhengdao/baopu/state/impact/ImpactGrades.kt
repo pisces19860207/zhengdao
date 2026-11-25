@@ -10,6 +10,8 @@ import com.example.zhengdao.baopu.state.cavity.NormalBucket
 import com.example.zhengdao.baopu.state.prepuce.AreaLevel
 import com.example.zhengdao.baopu.state.prepuce.CoverState
 import com.example.zhengdao.baopu.state.prepuce.SkinAmount
+import com.example.zhengdao.baopu.state.subzone.SubzoneId
+import com.example.zhengdao.baopu.state.thermo.CremastericGrade
 
 /** 输入来源编号（进源码而非只进注释：判据⑦要求「未引用 ⇒ 提示」可被机器查到）。 */
 internal const val COVERAGE_SOURCE_IDS: String = "804/831"
@@ -100,13 +102,12 @@ internal enum class ConsequenceTier(val level: Int, val label: String) {
 }
 
 /**
- * 下体子区（13 项，逐字来自本单§追加·作用力矩阵的子区清单）。
- * 775 的细分（龟头四 / 柱身三 / 睾丸三）尚未落地：本单只用这 13 个区级名，
- * 不自造细分层名；细分层统一写作 [FINE_SUBZONE_PENDING]。
+ * 下体子区（13 个粗行为桶，逐字来自本单§追加·作用力矩阵的子区清单）。
+ * 细地址只取 775 的 [SubzoneId]，由 [SUBZONE_SITE] 显式归并到本表。
  */
 internal enum class ImpactSite(val label: String, val zoneId: String) {
     GLANS("龟头", "glans"),
-    CORONA("冠状沟", "sulcus"),
+    CORONA("冠状沟", "corona"),
     FRENULUM("系带", "frenulum"),
     MEATUS("尿道口", "meatus"),
     PREPUCE_INNER("包皮内板", "prepuce.inner"),
@@ -119,10 +120,6 @@ internal enum class ImpactSite(val label: String, val zoneId: String) {
     PUBIS("耻骨", "mons"),
     PERINEUM("会阴", "perineum.x1"),
     ;
-
-    companion object {
-        const val FINE_SUBZONE_PENDING: String = "子区细分 id 待 775"
-    }
 }
 
 /** 撞型四类（§追加·下体子区级撞击）：挤压 / 钝击 / 摩擦牵扯 / 贯穿型。 */
@@ -171,18 +168,19 @@ internal data class ImpactHit(val speed: SpeedTier, val mass: MassTier, val area
 /**
  * 判定输入。覆盖位（804 / 831）与皮量松紧（810）为可缺省输入：缺了按无缓冲算并出「提示」。
  * [other] 非空表示同帧第二次撞击：取更强的一次并标 multi，绝不累加。
- * [cremasteric] 由 730 / 726 供给，727 只透传、不判定。
+ * [cremastericTier] 只接收 730 的 [CremastericGrade]，727 不判定、不推进温湿状态。
  */
 internal data class ImpactInput(
     val speed: SpeedTier,
     val mass: MassTier,
     val area: AreaTier,
+    val cremastericTier: CremastericGrade,
+    val subzone: SubzoneId? = null,
     val site: ImpactSite? = null,
     val coverage: AreaLevel? = null,
     val cover: CoverState? = null,
     val skin: SkinAmount? = null,
     val normal: NormalBucket = NormalBucket.PLUS_Y,
-    val cremasteric: Boolean = false,
     val rounds: Int = 0,
     val other: ImpactHit? = null,
 ) {
@@ -191,11 +189,14 @@ internal data class ImpactInput(
     }
 }
 
-/** 对齐 731 §一 event 字段：刚受击? / 提睾中? / 恢复档 0–3。 */
+/** 对齐 731 §一 event 字段，并保留 730 提睾档与 727 后果档两个来源。 */
 internal data class ImpactEvent(
     val justHit: Boolean,
     val cremasteric: Boolean,
     val recovery: Int,
+    val cremastericTier: CremastericGrade,
+    val consequenceTier: ConsequenceTier,
+    val sources: Set<String>,
     val source: String = "727",
 )
 
@@ -208,6 +209,7 @@ internal data class ImpactResult(
     val words: List<String>,
     val event: ImpactEvent,
     val site: ImpactSite?,
+    val subzone: SubzoneId?,
     val multi: Boolean,
     val consequence: ConsequenceTier,
     val why: String,

@@ -90,10 +90,10 @@ data class DownstreamReference(
 
 object SubzoneRefs {
 
-    private const val IMPACT_GRADES =
-        "app/src/main/java/com/example/zhengdao/baopu/state/impact/ImpactGrades.kt"
     private const val IMPACT_MATRIX =
         "app/src/main/java/com/example/zhengdao/baopu/state/impact/ImpactMatrix.kt"
+    private const val IMPACT_SHEET =
+        "app/src/main/java/com/example/zhengdao/baopu/state/impact/ImpactSheet.kt"
 
     val Codes: Set<String> = setOf(
         "apex", "glansbody", "corona", "sulcus", "frenulum",
@@ -107,19 +107,24 @@ object SubzoneRefs {
             consumer = "727",
             status = ReferenceStatus.REFERENCED,
             form = ReferenceForm.INDIRECT,
-            codes = setOf(
-                "apex", "frenulum", "shaftProximal", "shaftMid", "shaftDistal", "radix", "meatusRim",
-            ),
+            codes = Codes,
             evidence = """
-                apex → ImpactSite.GLANS：$IMPACT_GRADES:108 `GLANS("龟头", "glans"),`
-                frenulum → ImpactSite.FRENULUM：$IMPACT_GRADES:110 `FRENULUM("系带", "frenulum"),`
-                meatusRim → ImpactSite.MEATUS：$IMPACT_GRADES:111 `MEATUS("尿道口", "meatus"),`
-                shaftProximal → ImpactSite.SHAFT：$IMPACT_GRADES:114 `SHAFT("柱身", "shaft"),`
-                shaftMid → ImpactSite.SHAFT：$IMPACT_GRADES:114 `SHAFT("柱身", "shaft"),`
-                shaftDistal → ImpactSite.SHAFT：$IMPACT_GRADES:114 `SHAFT("柱身", "shaft"),`
-                radix → ImpactSite.ROOT：$IMPACT_GRADES:115 `ROOT("根部", "radix"),`
-                力矩阵按 site.ordinal 取档：$IMPACT_MATRIX:91 `val base = MATRIX_TIER.getValue(force)[site.ordinal]`
-                七类力矩阵行：$IMPACT_MATRIX:14 `internal val MATRIX_TIER: Map<ForceKind, IntArray> = mapOf(`
+                apex → ImpactSite.GLANS：$IMPACT_MATRIX:51 `SubzoneId.APEX to ImpactSite.GLANS,`
+                glansbody → ImpactSite.GLANS：$IMPACT_MATRIX:52 `SubzoneId.GLANS_BODY to ImpactSite.GLANS,`
+                corona → ImpactSite.CORONA：$IMPACT_MATRIX:53 `SubzoneId.GLANS_CROWN to ImpactSite.CORONA,`
+                sulcus → ImpactSite.CORONA：$IMPACT_MATRIX:54 `SubzoneId.SULCUS to ImpactSite.CORONA,`
+                frenulum → ImpactSite.FRENULUM：$IMPACT_MATRIX:55 `SubzoneId.FRENULUM to ImpactSite.FRENULUM,`
+                shaftProximal → ImpactSite.SHAFT：$IMPACT_MATRIX:56 `SubzoneId.SHAFT_PROXIMAL to ImpactSite.SHAFT,`
+                shaftMid → ImpactSite.SHAFT：$IMPACT_MATRIX:57 `SubzoneId.SHAFT_MID to ImpactSite.SHAFT,`
+                shaftDistal → ImpactSite.SHAFT：$IMPACT_MATRIX:58 `SubzoneId.SHAFT_DISTAL to ImpactSite.SHAFT,`
+                radix → ImpactSite.ROOT：$IMPACT_MATRIX:59 `SubzoneId.RADIX to ImpactSite.ROOT,`
+                meatusRim → ImpactSite.MEATUS：$IMPACT_MATRIX:60 `SubzoneId.MEATUS_RIM to ImpactSite.MEATUS,`
+                meatusSlit → ImpactSite.MEATUS：$IMPACT_MATRIX:61 `SubzoneId.MEATUS_SLIT to ImpactSite.MEATUS,`
+                prepuceInner → ImpactSite.PREPUCE_INNER：$IMPACT_MATRIX:62 `SubzoneId.PREPUCE_INNER to ImpactSite.PREPUCE_INNER,`
+                prepuceOuter → ImpactSite.PREPUCE_OUTER：$IMPACT_MATRIX:63 `SubzoneId.PREPUCE_OUTER to ImpactSite.PREPUCE_OUTER,`
+                prepuceOrifice → ImpactSite.PREPUCE_INNER：$IMPACT_MATRIX:65 `SubzoneId.PREPUCE_ORIFICE to ImpactSite.PREPUCE_INNER,`
+                全表完整性：$IMPACT_MATRIX:107 `require(SUBZONE_SITE.keys == SubzoneId.entries.toSet()) { "775 真 id 必须恰好映射十四个" }`
+                真 id 敏感/稳健分离：$IMPACT_MATRIX:174 `fun sensitivitySeparated(): Boolean = ForceKind.entries.all { force ->`
             """.trimIndent(),
         ),
         DownstreamReference(
@@ -138,10 +143,13 @@ object SubzoneRefs {
         ),
         DownstreamReference(
             consumer = "886",
-            status = ReferenceStatus.PLANNED,
+            status = ReferenceStatus.REFERENCED,
             form = ReferenceForm.FULL_TABLE,
             codes = Codes,
-            evidence = "接入时点=886 合入后：占位回填接入；届时以 SubzoneId.entries.map { it.code } 读全表，当前尚未接入。",
+            evidence = """
+                完整真 id 映射：$IMPACT_MATRIX:107 `require(SUBZONE_SITE.keys == SubzoneId.entries.toSet()) { "775 真 id 必须恰好映射十四个" }`
+                出口保留真地址：$IMPACT_SHEET:45 `subzone = input.subzone,`
+            """.trimIndent(),
         ),
     )
 

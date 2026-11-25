@@ -209,7 +209,11 @@ internal class ZoneAdapters(
     private fun eventEvidence(dim: String, zoneId: String): ZoneEvidence = when {
         target == null -> pending(dim, "727", "727", "727 读数缺席，不补默认零")
         target.perineum -> pending(dim, "877", "877", "会阴未定案")
-        target.zoneId == zoneId -> present(dim, "727", "727 作用点 ${target.zoneId} 的区级事件")
+        target.zoneId == zoneId -> if (dim == "event.cremasteric") {
+            present(dim, "730/727", "730 提睾档经 727 event 透传到区级事件")
+        } else {
+            present(dim, "727", "727 作用点 ${target.zoneId} 的区级事件")
+        }
         else -> present(dim, "727", "727 作用点 ${target.zoneId}；本区非目标区，显式 false/0")
     }
 

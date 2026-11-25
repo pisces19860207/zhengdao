@@ -15,6 +15,7 @@ private const val SEP: Char = '|'
 internal object ImpactSheet {
 
     /** 从输入算五输出。纯函数：无随机、无时钟、无 IO；同输入逐字一致。 */
+    // 同拍受击由调用方以 730 ThermoInput.steps = 1 取结论；727 只接收档，不推进温湿状态。
     fun of(input: ImpactInput): ImpactResult {
         val primary = ImpactTable.impact(input.speed, input.mass, input.area)
         val impact = if (input.other == null) {
@@ -24,7 +25,8 @@ internal object ImpactSheet {
         }
         val multi = input.other != null
         val recovery = ImpactTable.recoveryAt(impact, input.rounds)
-        val (consequence, why) = subzoneConsequence(impact, input)
+        val site = siteOf(input)
+        val (consequence, why) = subzoneConsequence(impact, site, input)
         val result = ImpactResult(
             impact = impact,
             displace = ImpactTable.displace(impact),
@@ -33,10 +35,14 @@ internal object ImpactSheet {
             words = ImpactTable.words(impact),
             event = ImpactEvent(
                 justHit = impact.level > 0,
-                cremasteric = input.cremasteric,
+                cremasteric = input.cremastericTier.level > 0,
                 recovery = recovery.level,
+                cremastericTier = input.cremastericTier,
+                consequenceTier = consequence,
+                sources = setOf("730", "727"),
             ),
-            site = input.site,
+            site = site,
+            subzone = input.subzone,
             multi = multi,
             consequence = consequence,
             why = why,
@@ -48,15 +54,25 @@ internal object ImpactSheet {
         return result
     }
 
+    private fun siteOf(input: ImpactInput): ImpactSite? {
+        val mapped = input.subzone?.let(ImpactMatrix::siteOf)
+        require(input.site == null || mapped == null || input.site == mapped) { "给定子区与粗作用点不一致" }
+        return mapped ?: input.site
+    }
+
     /**
      * 下体子区后果：同一强度下敏感区（龟头 / 系带 / 冠沟）比柱身 / 根部高一档。
      * 只是观察后果档，不是伤情 / 疼痛分级。
      */
-    private fun subzoneConsequence(impact: ImpactTier, input: ImpactInput): Pair<ConsequenceTier, String> {
-        val site = input.site ?: return ConsequenceTier.of(impact.level.coerceAtMost(3)) to
+    private fun subzoneConsequence(
+        impact: ImpactTier,
+        site: ImpactSite?,
+        input: ImpactInput,
+    ): Pair<ConsequenceTier, String> {
+        val resolvedSite = site ?: return ConsequenceTier.of(impact.level.coerceAtMost(3)) to
             "◐ 未给子区：按冲击档直接取观察后果档，不做部位细分"
-        val base = MATRIX_TIER.getValue(ForceKind.BLUNT)[site.ordinal].coerceAtLeast(0)
-        val lift = if (site in SENSITIVE_SITES && site in BUFFERED_SITES) {
+        val base = MATRIX_TIER.getValue(ForceKind.BLUNT)[resolvedSite.ordinal].coerceAtLeast(0)
+        val lift = if (resolvedSite in SENSITIVE_SITES && resolvedSite in BUFFERED_SITES) {
             val covered = input.coverage != null && input.coverage.order <= 2
             val ample = input.skin == SkinAmount.AMPLE
             if (!covered && !ample) 1 else 0
@@ -64,7 +80,7 @@ internal object ImpactSheet {
             0
         }
         val tier = (base + lift).coerceAtMost(3)
-        return ConsequenceTier.of(tier) to ImpactMatrix.basisOf(site)
+        return ConsequenceTier.of(tier) to ImpactMatrix.basisOf(resolvedSite)
     }
 
     /**

@@ -149,6 +149,30 @@ class ImpactSourceAssertTest {
     }
 
     @Test
+    fun `段B_提睾只引用730结论且事件双来源双档齐全`() {
+        val grades = codeOf("ImpactGrades.kt")
+        listOf(
+            "val subzone: SubzoneId?",
+            "val consequenceTier: ConsequenceTier",
+            "val sources: Set<String>",
+        ).forEach { field -> assertTrue("事件契约缺 $field", grades.contains(field)) }
+        assertEquals(
+            "ImpactInput 与 ImpactEvent 必须各有一份 730 提睾档",
+            2,
+            Regex("val cremastericTier: CremastericGrade").findAll(grades).count(),
+        )
+        val text = code()
+        listOf(
+            "ThermoInput", "Thermo.judge", "ThermoEval", "ThermoSolver", "ThermoClock",
+            "ThermalBand", "HumidityBand", "CremasterTrigger",
+        ).forEach { token -> assertFalse("727 不得自判或重算提睾：$token", text.contains(token)) }
+        val sheetSource = SrcRoots.find(dir + "ImpactSheet.kt").readText()
+        assertTrue("同拍受击契约须写明 steps = 1", sheetSource.contains("steps = 1"))
+        assertTrue("出口须透传 730 档", codeOf("ImpactSheet.kt").contains("cremastericTier = input.cremastericTier"))
+        assertTrue("出口须透传 727 后果档", codeOf("ImpactSheet.kt").contains("consequenceTier = consequence"))
+    }
+
+    @Test
     fun `边界_无积分器无装配无IO无随机`() {
         val text = code()
         impureTokens.forEach { tok -> assertFalse("边界被碰：$tok", text.contains(tok)) }

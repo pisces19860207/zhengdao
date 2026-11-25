@@ -17,6 +17,7 @@ import com.example.zhengdao.baopu.state.impact.SpeedTier
 import com.example.zhengdao.baopu.state.prepuce.AreaLevel
 import com.example.zhengdao.baopu.state.prepuce.CoverState
 import com.example.zhengdao.baopu.state.prepuce.SkinAmount
+import com.example.zhengdao.baopu.state.thermo.CremastericGrade
 import com.example.zhengdao.baopu.state.thermo.CremasterTrigger
 import com.example.zhengdao.baopu.state.thermo.Direction
 import com.example.zhengdao.baopu.state.thermo.HumidityBand
@@ -71,8 +72,8 @@ internal object ZoneFixtures {
             speed = SpeedTier.FAST,
             mass = MassTier.HEAVY,
             area = AreaTier.POINT,
+            cremastericTier = if (cremasteric) CremastericGrade.UP else CremastericGrade.LOOSE,
             site = site,
-            cremasteric = cremasteric,
             rounds = rounds,
         ),
     )

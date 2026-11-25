@@ -11,6 +11,7 @@ import com.example.zhengdao.baopu.state.geometry.Vec3
 import com.example.zhengdao.baopu.state.geometry.TwoBodyCollision
 import com.example.zhengdao.baopu.state.prepuce.AreaLevel
 import com.example.zhengdao.baopu.state.prepuce.SkinAmount
+import com.example.zhengdao.baopu.state.thermo.CremastericGrade
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -32,6 +33,7 @@ class ImpactBehaviorTest {
         speed = SpeedTier.of(speed),
         mass = MassTier.of(mass),
         area = AreaTier.of(area),
+        cremastericTier = CremastericGrade.LOOSE,
         site = site,
         coverage = coverage,
         skin = skin,

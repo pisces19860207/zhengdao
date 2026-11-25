@@ -117,45 +117,52 @@ class SubzoneRefsTest {
     }
 
     @Test
-    fun 已引用727_七个code逐个对应枚举名且证据行可复现() {
+    fun 已引用727_十四个code逐个对应枚举名且证据行可复现() {
         val ref = SubzoneRefs.downstreamRefs.single { it.consumer == "727" }
         assertEquals(ReferenceStatus.REFERENCED, ref.status)
         assertEquals(ReferenceForm.INDIRECT, ref.form)
-        assertEquals(
-            setOf("apex", "frenulum", "shaftProximal", "shaftMid", "shaftDistal", "radix", "meatusRim"),
-            ref.codes,
-        )
+        assertEquals(SubzoneRefs.Codes, ref.codes)
         val mappings = listOf(
             "apex" to "ImpactSite.GLANS",
+            "glansbody" to "ImpactSite.GLANS",
+            "corona" to "ImpactSite.CORONA",
+            "sulcus" to "ImpactSite.CORONA",
             "frenulum" to "ImpactSite.FRENULUM",
-            "meatusRim" to "ImpactSite.MEATUS",
             "shaftProximal" to "ImpactSite.SHAFT",
             "shaftMid" to "ImpactSite.SHAFT",
             "shaftDistal" to "ImpactSite.SHAFT",
             "radix" to "ImpactSite.ROOT",
+            "meatusRim" to "ImpactSite.MEATUS",
+            "meatusSlit" to "ImpactSite.MEATUS",
+            "prepuceInner" to "ImpactSite.PREPUCE_INNER",
+            "prepuceOuter" to "ImpactSite.PREPUCE_OUTER",
+            "prepuceOrifice" to "ImpactSite.PREPUCE_INNER",
         )
         for ((code, site) in mappings) {
             assertTrue("$code 未逐 code 指向 $site", ref.evidence.contains("$code → $site"))
         }
-        val evidenceLines = ref.evidence.lines().filter { it.contains(".kt:") }
-        assertTrue("727 七个 code 与两条矩阵证据都要给文件:行", evidenceLines.size >= 9)
-        for (line in evidenceLines) {
-            val match = Regex("""(app/src/main/java/[^\s`]+\.kt):([1-9]\d*) `([^`]+)`$""").find(line)
-            assertTrue("证据行末必须同时给文件:行与那一行原文：$line", match != null)
-            val path = match!!.groupValues[1]
-            val lineNo = match.groupValues[2].toInt()
-            val source = sourceLine(path, lineNo)
-            assertEquals("$path:$lineNo 必须与同一行所贴原文一致：$line", source, match.groupValues[3])
-        }
-        assertTrue("力矩阵取档缝也要有行号", ref.evidence.contains("ImpactMatrix.kt:91"))
+        assertEvidenceLines(ref.evidence, 16)
+        assertTrue("全表完整性证据行须重贴", ref.evidence.contains("ImpactMatrix.kt:107"))
+        assertTrue("真 id 分离证据行须重贴", ref.evidence.contains("ImpactMatrix.kt:174"))
     }
 
     @Test
-    fun 计划中869875886_必须全表且写清各单接入时点() {
+    fun 已引用886_全表且出口保留真地址() {
+        val ref = SubzoneRefs.downstreamRefs.single { it.consumer == "886" }
+        assertEquals(ReferenceStatus.REFERENCED, ref.status)
+        assertEquals(ReferenceForm.FULL_TABLE, ref.form)
+        assertEquals(SubzoneRefs.Codes, ref.codes)
+        assertEquals("全表（${SubzoneRefs.Codes.size}）", ref.scope)
+        assertEvidenceLines(ref.evidence, 2)
+        assertTrue("886 完整映射证据须在场", ref.evidence.contains("ImpactMatrix.kt:107"))
+        assertTrue("886 出口真地址证据须在场", ref.evidence.contains("ImpactSheet.kt:45"))
+    }
+
+    @Test
+    fun 计划中869875_必须全表且写清各单接入时点() {
         val timings = mapOf(
             "869" to "869 合入后：四组接入",
             "875" to "875 合入后：外观隆起接入",
-            "886" to "886 合入后：占位回填接入",
         )
         for ((consumer, timing) in timings) {
             val ref = SubzoneRefs.downstreamRefs.single { it.consumer == consumer }
@@ -164,6 +171,19 @@ class SubzoneRefsTest {
             assertEquals("$consumer 的全表范围必须跟随 Codes", SubzoneRefs.Codes, ref.codes)
             assertEquals("全表（${SubzoneRefs.Codes.size}）", ref.scope)
             assertTrue("$consumer 必须写接入时点", ref.evidence.contains("接入时点=$timing"))
+        }
+    }
+
+    private fun assertEvidenceLines(evidence: String, minimum: Int) {
+        val evidenceLines = evidence.lines().filter { it.contains(".kt:") }
+        assertTrue("证据行至少 $minimum 行", evidenceLines.size >= minimum)
+        for (line in evidenceLines) {
+            val match = Regex("""(app/src/main/java/[^\s`]+\.kt):([1-9]\d*) `([^`]+)`$""").find(line)
+            assertTrue("证据行末必须同时给文件:行与那一行原文：$line", match != null)
+            val path = match!!.groupValues[1]
+            val lineNo = match.groupValues[2].toInt()
+            val source = sourceLine(path, lineNo)
+            assertEquals("$path:$lineNo 必须与同一行所贴原文一致：$line", source, match.groupValues[3])
         }
     }
 

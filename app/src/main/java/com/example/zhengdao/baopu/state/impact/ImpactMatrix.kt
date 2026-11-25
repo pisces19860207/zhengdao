@@ -9,6 +9,7 @@ package com.example.zhengdao.baopu.state.impact
 
 import com.example.zhengdao.baopu.state.prepuce.AreaLevel
 import com.example.zhengdao.baopu.state.prepuce.SkinAmount
+import com.example.zhengdao.baopu.state.subzone.SubzoneId
 
 /** 子区顺序＝[ImpactSite] 声明序：龟头 冠沟 系带 尿道口 内板 外板 柱身 根部 阴囊 睾丸 精索 耻骨 会阴。 */
 internal val MATRIX_TIER: Map<ForceKind, IntArray> = mapOf(
@@ -45,6 +46,34 @@ internal val BUFFERED_SITES: Set<ImpactSite> = setOf(
     ImpactSite.PREPUCE_INNER, ImpactSite.PREPUCE_OUTER, ImpactSite.SHAFT,
 )
 
+/** 775 十四个真 id → 727 十三个粗行为桶；显式列举，不按枚举序号猜。 */
+internal val SUBZONE_SITE: Map<SubzoneId, ImpactSite> = mapOf(
+    SubzoneId.APEX to ImpactSite.GLANS,
+    SubzoneId.GLANS_BODY to ImpactSite.GLANS,
+    SubzoneId.GLANS_CROWN to ImpactSite.CORONA,
+    SubzoneId.SULCUS to ImpactSite.CORONA,
+    SubzoneId.FRENULUM to ImpactSite.FRENULUM,
+    SubzoneId.SHAFT_PROXIMAL to ImpactSite.SHAFT,
+    SubzoneId.SHAFT_MID to ImpactSite.SHAFT,
+    SubzoneId.SHAFT_DISTAL to ImpactSite.SHAFT,
+    SubzoneId.RADIX to ImpactSite.ROOT,
+    SubzoneId.MEATUS_RIM to ImpactSite.MEATUS,
+    SubzoneId.MEATUS_SLIT to ImpactSite.MEATUS,
+    SubzoneId.PREPUCE_INNER to ImpactSite.PREPUCE_INNER,
+    SubzoneId.PREPUCE_OUTER to ImpactSite.PREPUCE_OUTER,
+    // 粗桶不区分内板与口缘；真地址仍由 prepuceOrifice 保留。
+    SubzoneId.PREPUCE_ORIFICE to ImpactSite.PREPUCE_INNER,
+)
+
+internal val SENSITIVE_SUBZONE_IDS: Set<SubzoneId> = setOf(
+    SubzoneId.APEX, SubzoneId.GLANS_BODY, SubzoneId.GLANS_CROWN,
+    SubzoneId.SULCUS, SubzoneId.FRENULUM,
+)
+
+internal val ROBUST_SUBZONE_IDS: Set<SubzoneId> = setOf(
+    SubzoneId.SHAFT_PROXIMAL, SubzoneId.SHAFT_MID, SubzoneId.SHAFT_DISTAL, SubzoneId.RADIX,
+)
+
 internal val SENSITIVE_SITES: Set<ImpactSite> =
     setOf(ImpactSite.GLANS, ImpactSite.CORONA, ImpactSite.FRENULUM)
 
@@ -73,6 +102,12 @@ internal data class MatrixCell(
 
 /** 覆盖位缓冲：覆盖（804 FULL_COVER / ALMOST_ALL / OVER_HALF）与 810 皮量富余各减一档，下限 0。 */
 internal object ImpactMatrix {
+
+    init {
+        require(SUBZONE_SITE.keys == SubzoneId.entries.toSet()) { "775 真 id 必须恰好映射十四个" }
+    }
+
+    fun siteOf(subzone: SubzoneId): ImpactSite = SUBZONE_SITE.getValue(subzone)
 
     fun bufferSteps(coverage: AreaLevel?, skin: SkinAmount?): Int {
         var steps = 0
@@ -138,8 +173,8 @@ internal object ImpactMatrix {
      */
     fun sensitivitySeparated(): Boolean = ForceKind.entries.all { force ->
         val base = MATRIX_TIER.getValue(force)
-        val sensitive = SENSITIVE_SITES.map { base[it.ordinal] }.filter { it >= 0 }
-        val robust = ROBUST_SITES.map { base[it.ordinal] }.filter { it >= 0 }
+        val sensitive = SENSITIVE_SUBZONE_IDS.map { base[siteOf(it).ordinal] }.filter { it >= 0 }
+        val robust = ROBUST_SUBZONE_IDS.map { base[siteOf(it).ordinal] }.filter { it >= 0 }
         sensitive.isEmpty() || robust.isEmpty() || sensitive.min() > robust.max()
     }
 
