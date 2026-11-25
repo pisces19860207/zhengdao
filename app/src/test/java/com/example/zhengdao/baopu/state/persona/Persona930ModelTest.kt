@@ -77,4 +77,14 @@ class Persona930ModelTest {
             it.code == "VALUES_AXES" && it.message.contains("FAMILY")
         })
     }
+
+    @Test
+    fun `动态状态只记录压力与说明不反推稳定层`() {
+        assertTrue(PersonaStateChecks.check(Persona930Fixture.state()).isEmpty())
+        val bad = Persona930Fixture.state().copy(pressure = 4)
+        assertEquals(
+            "STATE_PRESSURE",
+            PersonaStateChecks.check(bad).single { it.severity == Severity.ERROR }.code,
+        )
+    }
 }

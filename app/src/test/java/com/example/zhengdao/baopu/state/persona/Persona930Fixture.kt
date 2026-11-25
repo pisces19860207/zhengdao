@@ -26,4 +26,11 @@ internal object Persona930Fixture {
         values().weights.map { if (it.axis == ValueAxis.FAMILY) it.copy(tier = 0) else it } +
             ValueWeight(ValueAxis.FAMILY, 3),
     )
+
+    fun state(): PersonaMoodState = PersonaMoodState(
+        mood = MoodTier.STEADY,
+        emotion = Emotion.CALM,
+        pressure = 1,
+        note = "此刻有些紧",
+    )
 }
