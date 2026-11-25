@@ -2163,7 +2163,7 @@
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefs.kt",
     "file_mates_wired": true,
     "kind": "object",
-    "line": 33,
+    "line": 91,
     "list": "B",
     "member_scan": [],
     "member_scan_more": 0,
@@ -2175,39 +2175,83 @@
     "test_refs": [
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 20
+      "line": 21
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 23
+      "line": 24
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 29
+      "line": 30
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 38
+      "line": 39
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 40
+      "line": 41
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 47
+      "line": 48
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 52
+      "line": 53
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 59
+      "line": 60
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 69
+      "line": 70
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 79
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 82
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 97
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 105
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 114
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 116
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 121
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 161
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 164
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 175
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
+      "line": 180
      }
     ],
     "verdict": "wired",
@@ -2499,7 +2543,7 @@
   "C": 4,
   "gates_with_write_path": 5,
   "not_wired": 32,
-  "production_top_level_public": 1171,
-  "wired": 1133
+  "production_top_level_public": 1174,
+  "wired": 1136
  }
 }
