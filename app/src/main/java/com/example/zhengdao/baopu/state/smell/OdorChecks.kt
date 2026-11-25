@@ -16,19 +16,19 @@ internal object OdorChecks {
         "(?:已经|现已|目前|现在|大概|大约|估计|约略|实际|确实|明显|略微|比较|较为|相当|十分|非常|很|极|更|最|偏)*"
     private val INTENSITY_CLAIM = Regex(
         """(?:气味)?强度\s*""" + INTENSITY_ADVERB + """\s*""" + INTENSITY_LINK + """\s*(?:第)?""" +
-            """(?:[0-9一二三四五六七八九十]+|十分|很|极|明显|隐约|重|轻|""" +
+            """(?:[0-9一二三四五六七八九十]+|十分|很|极|明显|隐约|中等|较大|较小|重|轻|""" +
             """较[大小低高强弱轻重]|偏[高低强轻重])""" +
             "|" + ODOR_TERM + """\s*""" + INTENSITY_ADVERB + """\s*""" + INTENSITY_LINK +
             """\s*(?:第)?[0-9一二三四五六七八九十]+""" +
             "|" + ODOR_TERM +
-            """[^。！？；;\n]{0,4}(?:特别重|很重|极重|较重|偏重|很浓|极浓|浓烈|强烈|重|浓|强|""" +
+            """[^。！？；;\n]{0,4}(?:特别重|很重|极重|较重|偏重|很浓|极浓|浓烈|强烈|中等|较大|较小|重|浓|强|""" +
             """很轻|极轻|较轻|偏轻|很淡|极淡|较淡|偏淡|淡)""" + WORD_END,
     )
     private val INTENSITY_FORMULA =
-        Regex("""(?:气味|强度|汗味|体味|下体味|烟味|油味|酸味|异味)[^。！？\n]{0,16}[+\-*/][^。！？\n]{0,16}""")
+        Regex("""(?:气味|强度|汗味|体味|下体味|烟味|油味|酸味|异味)[^。！？\n]{0,16}[+\-*/×÷][^。！？\n]{0,16}""")
     private val PERFUME_TERM = Regex("""(?:香水|香味|香气|香体喷雾)""")
     private val PERFUME_ADVICE = Regex(
-        """(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|试试|尝试|提醒|叮嘱|要求|命令|禁止|不许|(?<![没无未不有])(?:买|喷|用|抹|洒|拿|借助|靠|使用|利用)(?![了过]))"""
+        """(?:(?<![没无未不有非])(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|试试|尝试|提醒|叮嘱|要求|命令|禁止|不许)|(?<![没无未不有])(?:买|喷|用|抹|洒|拿|借助|靠|使用|利用)(?![了过]))"""
     )
     private val PERFUME_INTENT = Regex(
         """(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|试试|尝试)"""
@@ -57,6 +57,11 @@ internal object OdorChecks {
     )
     private val PERFUME_MASK = Regex(
         """(?:香水|香味|香气|香体喷雾)[^。！？；;\n]{0,12}(?:掩盖|遮蔽|遮|盖|压住|压过)"""
+    )
+    private val MASKING_PRODUCT = Regex("""(?:除臭剂|止汗剂|香体露)""")
+    private val MASKING_INTENT = Regex(
+        """(?<![没无未不有非])(?:建议|推荐|可以|应该|应当|需要|不妨|请|叫|让|要|想要|想|打算|准备|最好|""" +
+            """试试|尝试|提醒|叮嘱|要求|命令|禁止|不许|不要)"""
     )
     private val VALUE_DIRTY = Regex(
         """(?:你|他|她|对方|本人|自己|这个人|身上)(?:今天|现在|总是|明明|确实|果然)?""" +
@@ -134,7 +139,7 @@ internal object OdorChecks {
     private val PERIANAL_TERM = Regex("""(?:肛周|肛门)""")
     private val PERINEUM_TERM = Regex("""会阴""")
     private const val LOWER_BODY_TERM =
-        "(?:下体|阴部|会阴|生殖器|外阴|阴茎|包皮|龟头|阴囊|股间|腹股沟)"
+        "(?:下体|阴部|会阴|生殖器|外阴|阴茎|包皮|龟头|阴囊|冠状沟|根部|私处|股间|腹股沟)"
     private val LOWER_BODY_TERM_REGEX = Regex(LOWER_BODY_TERM)
     private const val NOTE_ODOR_TERM =
         "(?:气味|汗味|体味|烟味|油味|酸味|异味|臭味|味道|味)"
@@ -242,6 +247,14 @@ internal object OdorChecks {
         return emptyList()
     }
 
+    private val SWEAT_REGIONS = setOf(OdorRegion.AXILLA, OdorRegion.SCALP, OdorRegion.FOOT)
+    private val AMBIENT_REGIONS = setOf(
+        OdorRegion.AXILLA,
+        OdorRegion.SCALP,
+        OdorRegion.ORAL,
+        OdorRegion.FOOT,
+    )
+
     private fun sourceIssues(claim: OdorClaim): List<OdorIssue> {
         val present = claim.odorPresent ?: return emptyList()
         if (present == OdorPresence.NONE) return emptyList()
@@ -254,7 +267,26 @@ internal object OdorChecks {
         if (claim.odorSource.isEmpty() && !(lowerOnly && validOrigin)) {
             return listOf(issue(OdorCodes.CORE_SOURCE, "有气味却缺来源 odorSource 或下体来源"))
         }
+        val unmatched = claim.odorRegion
+            .filterNot { it.lowerBody }
+            .filter { region -> claim.odorSource.none { sourceCoversRegion(it, region) } }
+        if (unmatched.isNotEmpty()) {
+            return listOf(issue(OdorCodes.CORE_SOURCE, "有气味却缺与分区相容的来源"))
+        }
         return emptyList()
+    }
+
+    private fun sourceCoversRegion(source: OdorSource, region: OdorRegion): Boolean = when (source) {
+        OdorSource.BODY_SWEAT -> region in SWEAT_REGIONS
+        OdorSource.SCALP_OIL -> region == OdorRegion.SCALP
+        OdorSource.ORAL -> region == OdorRegion.ORAL
+        OdorSource.FOOT -> region == OdorRegion.FOOT
+        OdorSource.CLOTHING_COOKING_FUME,
+        OdorSource.CLOTHING_SMOKE,
+        OdorSource.CLOTHING_DETERGENT,
+        OdorSource.ENV_ALCOHOL,
+        OdorSource.ENV_MEDICINE,
+        OdorSource.ENV_PERFUME -> region in AMBIENT_REGIONS
     }
 
     private fun regionIssue(): OdorIssue = issue(
@@ -323,6 +355,9 @@ internal object OdorChecks {
         if (perfumeGuidance) {
             add(issue(OdorCodes.BEHAVIOR_GUIDANCE, "不得给出香水相关的行为指导"))
         }
+        if (maskingProductGuidanceStated(text)) {
+            add(issue(OdorCodes.BEHAVIOR_GUIDANCE, "不得给出除臭/止汗类产品的行为指导"))
+        }
         addAll(occupationIssues(text))
         addAll(washedTextIssues(text))
     }
@@ -342,12 +377,41 @@ internal object OdorChecks {
                 }
         }
 
-    private fun behaviorGuidanceWords(text: String, guidanceStated: Boolean): List<String> =
-        if (!guidanceStated && historicalPerfumeMaskStated(text)) {
-            OdorWords.BEHAVIOR_GUIDANCE.filterNot { it.endsWith("掩盖") }
-        } else {
-            OdorWords.BEHAVIOR_GUIDANCE
+    private fun maskingProductGuidanceStated(text: String): Boolean =
+        text.split(Regex("""[。！？；;\n]""")).any { sentence ->
+            sentence.split(Regex("""[,，]""")).any { clause ->
+                MASKING_PRODUCT.containsMatchIn(clause) && MASKING_INTENT.containsMatchIn(clause)
+            }
         }
+
+    private fun behaviorGuidanceWords(text: String, guidanceStated: Boolean): List<String> {
+        val historicalMask = !guidanceStated && historicalPerfumeMaskStated(text)
+        return OdorWords.BEHAVIOR_GUIDANCE.filter { word ->
+            !(historicalMask && isMaskingGuidanceWord(word)) && wordOccursPositively(text, word)
+        }
+    }
+
+    private fun isMaskingGuidanceWord(word: String): Boolean =
+        word.endsWith("掩盖") || (word.length == 2 && word.endsWith("味"))
+
+    private fun wordOccursPositively(text: String, word: String): Boolean {
+        var start = 0
+        while (true) {
+            val index = text.indexOf(word, start, ignoreCase = true)
+            if (index < 0) return false
+            if (!negatedAdviceBefore(text, index)) return true
+            start = index + word.length
+        }
+    }
+
+    private fun negatedAdviceBefore(text: String, index: Int): Boolean {
+        val before = text.substring(maxOf(0, index - 6), index)
+        return NEGATED_ADVICE_PREFIX.containsMatchIn(before)
+    }
+
+    private val NEGATED_ADVICE_PREFIX = Regex(
+        """(?:没|没有|无|未|并未|未曾|无需|不必)(?:再|曾|会)?$|(?<!不得)不(?:再|曾|会)?$"""
+    )
 
     private fun historicalPerfumeMaskStated(text: String): Boolean =
         text.split(Regex("""[。！？；;\n]""")).any { sentence ->

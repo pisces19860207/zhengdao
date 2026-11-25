@@ -141,6 +141,9 @@ class OdorJudgeTest {
         )
         assertTrue(Odor.judge(claim).reds.any { it.code == OdorCodes.CORE_SOURCE })
         assertTrue(Odor.judge(claim.copy(odorSource = setOf(OdorSource.BODY_SWEAT))).ok)
+        assertTrue(Odor.judge(claim.copy(odorSource = setOf(OdorSource.ORAL))).reds.any {
+            it.code == OdorCodes.CORE_SOURCE
+        })
     }
 
     @Test
@@ -175,6 +178,11 @@ class OdorJudgeTest {
         assertTrue(Odor.judge(lower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
         val plainLower = base().copy(note = "下体有味")
         assertTrue(Odor.judge(plainLower).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
+        listOf("冠状沟有异味", "根部有异味", "私处有异味").forEach { note ->
+            assertTrue(note, Odor.judge(base().copy(note = note)).reds.any {
+                it.code == OdorCodes.LOWER_NO_SOURCE
+            })
+        }
         val unmodeled = base().copy(note = "会阴有异味")
         assertTrue(Odor.judge(unmodeled).reds.any { it.code == OdorCodes.LOWER_NO_SOURCE })
         val pendingPerineum = base().copy(

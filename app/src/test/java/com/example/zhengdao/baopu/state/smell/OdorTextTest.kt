@@ -40,7 +40,7 @@ class OdorTextTest {
     @Test
     fun `行为指导_出现即红`() {
         listOf(
-            "推荐香水", "遮味", "就医", "用些香水", "借助香味遮蔽体味",
+            "推荐香水", "遮味", "就医", "用些香水", "借助香味遮蔽体味", "建议用除臭剂盖住气味",
             "已经打算用香水", "最好拿香水应急", "上次建议用香水", "之前推荐香水",
             "他说要洗澡，以后买香水", "以后买香水", "下次买香水",
             "他说要洗澡，叮嘱他买香水", "他提醒我买香水", "他要求我买香水",
@@ -94,6 +94,7 @@ class OdorTextTest {
             "汗味很重", "汗味很重啊", "汗味很重了", "汗味很重的", "气味=2+1", "体味2", "气味很浓",
             "气味强度等于2", "气味强度达到2", "气味强度≈2", "体味约为2", "气味强度已经达到2",
             "汗味已经达到2", "气味很轻", "气味较轻", "气味极淡",
+            "气味强度中等", "汗味较大", "气味×2",
         ).forEach { note ->
             val verdict = Odor.judge(base(note))
             assertTrue(note, verdict.reds.any { it.code == OdorCodes.INTENSITY_UNSOURCED })
@@ -131,11 +132,12 @@ class OdorTextTest {
             "上次香水掩盖了汗味", "上次买了香水，今天要洗澡", "上次买了香水今天要洗澡",
             "他说要洗澡，上次买了香水", "他买了香水", "昨天买香水",
             "他说今天有雨，他今天已经用香水",
+            "不用香水", "没推荐香水", "没有推荐香水", "上次用香水遮味",
             "昨天说今天用了香水", "他昨天说今天已经用了香水", "昨天说今天买了香水",
             "昨天说今天没用香水", "昨天说今天没有用香水", "昨天说今天没买香水",
         ).forEach { text ->
             val verdict = Odor.judge(base(text))
-            assertTrue(text, verdict.ok)
+            assertTrue(text + " " + verdict.issues.joinToString { it.line() }, verdict.ok)
             assertEquals(text, verdict.value?.note)
         }
         listOf(
