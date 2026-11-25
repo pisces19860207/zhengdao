@@ -89,5 +89,23 @@ class SurfaceDeriverTest {
         }
     }
 
+    @Test
+    fun `930_三组既有surface轴串与819基线逐字节一致`() {
+        val base = PersonaFixture.snapshot()
+        val cases = listOf(
+            base to "PATIENCE|3|轮数0·显性度Lv1|INTOXICATION|0|外部喂入酒意信号|FATIGUE|0|外部喂入疲惫信号|SHAME|0|防守阶段S0·立场中立|TENSION|0|显性度Lv1·硬否决=false",
+            base.copy(turns = 4, salience = 3, dStage = 3, stanceLabel = "排斥", intoxication = 1, fatigue = 2) to
+                "PATIENCE|1|轮数4·显性度Lv3|INTOXICATION|1|外部喂入酒意信号|FATIGUE|2|外部喂入疲惫信号|SHAME|2|防守阶段S3·立场排斥|TENSION|2|显性度Lv3·硬否决=false",
+            base.copy(turns = 8, salience = 4, dStage = 6, stanceLabel = "排斥", vetoActive = true, intoxication = 3, fatigue = 3) to
+                "PATIENCE|0|轮数8·显性度Lv4|INTOXICATION|3|外部喂入酒意信号|FATIGUE|3|外部喂入疲惫信号|SHAME|3|防守阶段S6·立场排斥|TENSION|3|显性度Lv4·硬否决=true",
+        )
+        cases.forEach { (snapshot, expected) ->
+            val surface = SurfaceDeriver.derive(snapshot)
+            val actual = surface.levels.joinToString("|") { "${it.axis.name}|${it.tier}|${it.source}" }
+            assertEquals(expected, actual)
+            assertTrue(surface.tags.isEmpty())
+        }
+    }
+
     private fun SurfaceLevel.line(): String = "$axis=$tier($source)"
 }

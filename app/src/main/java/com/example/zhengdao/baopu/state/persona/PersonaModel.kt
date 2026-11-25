@@ -35,7 +35,7 @@ data class CoreDrive(
 /** 底层 core：3–5 条条文。 */
 data class CoreLayer(val drives: List<CoreDrive>)
 
-// ============================================================ ② 稳定特质 trait（七轴）
+// ============================================================ ② 稳定特质 trait（819 七轴 + 930 五因子）
 
 enum class Sociability(val label: String) { EXTROVERT("外向"), INTROVERT("内向") }
 enum class Directness(val label: String) { DIRECT("直接"), INDIRECT("迂回") }
@@ -45,7 +45,7 @@ enum class SelfControl(val label: String) { HIGH("自控高"), LOW("自控低") 
 enum class Aggressiveness(val label: String) { HIGH("攻击性高"), LOW("攻击性低") }
 enum class Humor(val label: String) { COLD("冷幽默"), WARM("暖幽默"), NONE("无幽默") }
 
-/** 稳定特质七轴，全部必填——少一轴不算齐。 */
+/** 稳定特质：保留 819 七轴，追加默认中档的 930 五因子。 */
 data class TraitLayer(
     val sociability: Sociability,
     val directness: Directness,
@@ -54,7 +54,40 @@ data class TraitLayer(
     val selfControl: SelfControl,
     val aggressiveness: Aggressiveness,
     val humor: Humor,
-)
+    val openness: AxisValue = AxisValue(1, "DEFAULT"),
+    val conscientiousness: AxisValue = AxisValue(1, "DEFAULT"),
+    val extraversion: AxisValue = AxisValue(1, "DEFAULT"),
+    val agreeableness: AxisValue = AxisValue(1, "DEFAULT"),
+    val emotionalStability: AxisValue = AxisValue(1, "DEFAULT"),
+) {
+    data class AxisValue(val tier: Int, val source: String) {
+        init {
+            require(tier in 0..3) { "五因子档位只取 0–3：$tier" }
+            require(source == "DEFAULT" || source == "EXPLICIT") { "五因子来源只收 DEFAULT/EXPLICIT" }
+        }
+    }
+
+    companion object {
+        const val OPENNESS = "openness"
+        const val CONSCIENTIOUSNESS = "conscientiousness"
+        const val EXTRAVERSION = "extraversion"
+        const val AGREEABLENESS = "agreeableness"
+        const val EMOTIONAL_STABILITY = "emotionalStability"
+        val BIG_FIVE_AXES = listOf(OPENNESS, CONSCIENTIOUSNESS, EXTRAVERSION, AGREEABLENESS, EMOTIONAL_STABILITY)
+
+        fun explicit(tier: Int): AxisValue = AxisValue(tier, "EXPLICIT")
+    }
+
+    fun bigFiveLevels(): List<Pair<String, AxisValue>> = listOf(
+        OPENNESS to openness,
+        CONSCIENTIOUSNESS to conscientiousness,
+        EXTRAVERSION to extraversion,
+        AGREEABLENESS to agreeableness,
+        EMOTIONAL_STABILITY to emotionalStability,
+    )
+
+    fun bigFiveTier(axis: String): Int? = bigFiveLevels().firstOrNull { it.first == axis }?.second?.tier
+}
 
 // ============================================================ ③ 表层 state（由 670 推）
 
@@ -90,7 +123,10 @@ data class SurfaceLevel(val axis: SurfaceAxis, val tier: Int, val source: String
 }
 
 /** 表层状态：五轴齐，每轴带推导依据。 */
-data class SurfaceState(val levels: List<SurfaceLevel>)
+data class SurfaceState(
+    val levels: List<SurfaceLevel>,
+    val tags: List<String> = emptyList(),
+)
 
 // ============================================================ 语声十维
 

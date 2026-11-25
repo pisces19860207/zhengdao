@@ -155,6 +155,15 @@ class PersonaChecksTest {
     }
 
     @Test
+    fun `930_特质快照明确819七轴演进为十二轴`() {
+        val report = PersonaChecks.check(PersonaFixture.persona())
+        val text = report.items.first { it.code == "TRAIT_AXES" }.message
+        assertTrue(text.contains("819 七轴 → 930 十二轴"))
+        TraitLayer.BIG_FIVE_AXES.forEach { axis -> assertTrue(text.contains(axis)) }
+        assertTrue(text.contains("1(DEFAULT)"))
+    }
+
+    @Test
     fun `判据_同输入同结论逐字一致`() {
         val a = PersonaChecks.check(PersonaFixture.persona())
         val b = PersonaChecks.check(PersonaFixture.persona())

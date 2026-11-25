@@ -59,14 +59,15 @@ object PersonaChecks {
         return out
     }
 
-    /** ②稳定特质：七轴由非空数据类保证齐全；此处只留一句可核对的快照。 */
-    private fun traitChecks(trait: TraitLayer): List<CheckItem> = listOf(
-        CheckItem(
-            Severity.WARNING, "TRAIT_AXES",
-            "七轴齐：${trait.sociability.label}/${trait.directness.label}/${trait.stance.label}/" +
-                "${trait.orientation.label}/${trait.selfControl.label}/${trait.aggressiveness.label}/${trait.humor.label}",
-        ),
-    )
+    /** ②稳定特质：819 七轴 + 930 五因子；此处保留稳定码并给出可核对快照。 */
+    private fun traitChecks(trait: TraitLayer): List<CheckItem> {
+        val old = listOf(
+            trait.sociability.label, trait.directness.label, trait.stance.label,
+            trait.orientation.label, trait.selfControl.label, trait.aggressiveness.label, trait.humor.label,
+        ).joinToString("/")
+        val five = trait.bigFiveLevels().joinToString("/") { (axis, value) -> "$axis=${value.tier}(${value.source})" }
+        return listOf(CheckItem(Severity.WARNING, "TRAIT_AXES", "819 七轴 → 930 十二轴（新增五因子）：$old/$five"))
+    }
 
     /** ③表层：五轴齐、档位在 0–3、每轴 source 非空；source 空即"只有笼统性格、推不出状态" ⇒ 红。 */
     private fun surfaceChecks(surface: SurfaceState): List<CheckItem> {
