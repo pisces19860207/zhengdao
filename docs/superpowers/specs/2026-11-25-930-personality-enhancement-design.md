@@ -44,15 +44,15 @@ PersonaEnhancement(
 
 ### 3.1 traits：819 七轴 → 930 十二轴
 
-`TraitLayer` 新增：
+`TraitLayer` 新增五个 `AxisValue(tier, source)` 字段：
 
-- `openness: Int`
-- `conscientiousness: Int`
-- `extraversion: Int`
-- `agreeableness: Int`
-- `emotionalStability: Int`
+- `openness: AxisValue = AxisValue(1, "DEFAULT")`
+- `conscientiousness: AxisValue = AxisValue(1, "DEFAULT")`
+- `extraversion: AxisValue = AxisValue(1, "DEFAULT")`
+- `agreeableness: AxisValue = AxisValue(1, "DEFAULT")`
+- `emotionalStability: AxisValue = AxisValue(1, "DEFAULT")`
 
-五个轴均强制 `0..3`，不设默认值，避免“少一轴也算齐”。`TraitLayer` 提供稳定轴名常量与 `bigFiveLevels()`，不新增特质枚举。
+`AxisValue` 嵌套在 `TraitLayer` 内，不新增顶层公开类型。`tier` 强制 `0..3`；`source` 只接受 `DEFAULT` 或 `EXPLICIT`。五轴允许省略，省略时为中档 `1` 且明确标记 `source=DEFAULT`；显式构造使用 `source=EXPLICIT`。`TraitLayer` 提供稳定轴名常量与 `bigFiveLevels()`，不新增特质枚举。
 
 `PersonaChecks.traitChecks` 的提示文本与注释同批改为“819 七轴 → 930 十二轴（新增五因子）”，并展示十二轴。既有七轴不排除、不改名。
 
@@ -123,14 +123,14 @@ SurfaceState(levels: List<SurfaceLevel>, tags: List<String> = emptyList())
 
 新增 `TraitContradiction(highAxis, lowAxis, note)`。
 
-- 轴名必须来自 `TraitLayer` 新增的五个 Big-Five 整数轴；既有七轴是枚举，不伪造数值档位；
+- 轴名必须来自 `TraitLayer` 新增的五个 Big-Five 轴；既有七轴是枚举，不伪造数值档位；
 - high 与 low 不得相同；
 - high 档位 `>=2`，low 档位 `<=1`；
 - 说明非空；
 - 不满足 ⇒ 红 `TRAIT_CONTRADICTION_INVALID`；
 - 列表为空 ⇒ WARN `TRAIT_CONTRADICTION_MISSING`，消息包含“可能是人设不是人格”。
 
-主夹具固定为“高宜人性／低尽责性”：`agreeableness=3`、`conscientiousness=0`。测试同时读取实际档位与检查结果，不用注释代替证据。
+主夹具固定为“高宜人性／低尽责性”：`agreeableness=AxisValue(3, "EXPLICIT")`、`conscientiousness=AxisValue(0, "EXPLICIT")`。测试同时读取实际档位、source 与检查结果，不用注释代替证据。
 
 ### 4.3 临床词：静态四列表
 
@@ -141,7 +141,7 @@ SurfaceState(levels: List<SurfaceLevel>, tags: List<String> = emptyList())
 3. `allowedPosition`：台词；
 4. `exemption`：叙述者＋显式医生或心理从业者＋同句不确定词 ⇒ WARN。
 
-匹配不区分英文大小写；不用单字匹配，不做语义判断，不做同义词、向量或模型扩展。
+匹配不区分英文大小写；不用单字匹配，不做语义判断，不做同义词、向量或模型扩展。词表不含 `Big-Five`；本单五因子是模型字段，不是伪心理标签。
 
 | 词组 | 类目 | 允许位置 | 豁免条件 |
 |---|---|---|---|
@@ -172,13 +172,13 @@ SurfaceState(levels: List<SurfaceLevel>, tags: List<String> = emptyList())
 | 精神分裂 | 精神科诊断 | 台词 | 同上 |
 | 多动症 | 精神科诊断 | 台词 | 同上 |
 | 创伤后应激障碍 | 精神科诊断 | 台词 | 同上 |
-| 量表 | 伪心理标签 | 台词 | 同上 |
+| 人格量表 | 伪心理标签 | 台词 | 同上 |
+| 心理量表 | 伪心理标签 | 台词 | 同上 |
 | 心理测量 | 伪心理标签 | 台词 | 同上 |
 | 人格测验 | 伪心理标签 | 台词 | 同上 |
 | MBTI | 伪心理标签 | 台词 | 同上 |
-| 大五人格 | 伪心理标签 | 台词 | 同上 |
+| 色彩性格 | 伪心理标签 | 台词 | 同上 |
 | 九型人格 | 伪心理标签 | 台词 | 同上 |
-| 读心术 | 伪心理标签 | 台词 | 同上 |
 
 位置判定顺序固定：
 
@@ -198,7 +198,7 @@ SurfaceState(levels: List<SurfaceLevel>, tags: List<String> = emptyList())
 
 ### 4.4 污名词
 
-静态词组表：精神病、直男癌、舔狗、神经病、变态、下贱、恶心、活该、该死。
+静态词组表只收针对人的定型蔑称：直男癌、舔狗、精神病、神经病、娘炮、废物、太监。“恶心／活该／该死／变态”是普通情绪词，不进污名词表。
 
 - 台词 ⇒ WARN `STIGMA_DIALOGUE`，只提示人物语言偏激，不评价人物；
 - 叙述者或其他非台词位置 ⇒ ERROR `STIGMA_NARRATOR`；
@@ -277,7 +277,7 @@ PATIENCE|0|轮数8·显性度Lv4|INTOXICATION|3|外部喂入酒意信号|FATIGUE
 - `Persona930ModelTest.kt`：values 完整性、冲突 WARN、同轴冲突红、927 三根、矛盾夹具、确定性。
 - `Persona930LanguageTest.kt`：34 条三态、同形词负例、医疗 WARN、污名词三态、标签越界。
 - `Persona930SourceAssertTest.kt`：单一真相、禁止推导边、唯一 SurfaceDeriver、静态词表、tags 单落点。
-- `PersonaChecksTest.kt` 与 `PersonaFixture.kt`：十二轴构造、既有断言更新留痕、surface 基线串。
+- `PersonaChecksTest.kt` 与 `PersonaFixture.kt`：十二轴构造、五轴默认 `1/DEFAULT` 与显式 `EXPLICIT`、既有断言更新留痕、surface 基线串；旧黑名单用例的“大五人格”改为“色彩性格”，避免与 930 五因子模型自相矛盾。
 
 新测试不创建临时目录；源码断言只读仓库文件。
 
@@ -300,19 +300,28 @@ PATIENCE|0|轮数8·显性度Lv4|INTOXICATION|3|外部喂入酒意信号|FATIGUE
 - 全量单测后水位 `<=315`，不得用定向测试冒充全量读数；
 - 新函数 `<=59` 行、复杂度 `<=14`，不得用 `@Suppress` 或抬高预算过关。
 
-## 9. preflight 现状与开工门槛
+## 9. preflight 复查与查重留痕
 
-2026-11-25 在 `wt-930` 重跑修订范围 preflight，退出码 1：
+2026-11-26 在 `wt-930` 重跑修订范围 preflight，原始日志为 `build/preflight-930-r2.log`，退出码 1。脚本把任何关键词命中都列为待处理项；本次剩余 5 项全部是已核实的查重证据，不是重复实现：
 
+| 关键词 | 命中数 | 已核，非重复 |
+|---|---:|---|
+| 人格 | 28 | 05b1615be 是本单设计稿；6f595d779/114a94659 是 819 既有基座；其余是其他域用词，930 只做同包增强。 |
+| 性格 | 56 | 819 提供唯一 TraitLayer/CoreLayer/SurfaceState；882 职业池等命中不提供八轴 values 或动态 mood，本单不重复其职责。 |
+| personality | 45 | 命中是卡片人设、导入格式与终端历史等；没有第二套 traits/values/states/expression 模型。 |
+| persona | 342 | 819 及既有 persona 包正是本单复用对象；新增文件在包内补 values/state/判据，不重建 core/trait/surface。 |
+| PersonaValues | 1 | 仅命中本单设计提交 05b1615be；生产文件尚未创建，历史无同名实现。 |
+
+其余检查全部通过：
+
+- 私有账修复提交 `151f3fc` 已确认；
+- 在飞表 3 行活动记录，两两占用无相交；
 - 远端同步、复活检测、账本重复检测、测试平台无关闸均通过；
-- 关键词命中包括已确认的 819 `6f595d779` / `114a94659`，不是重复新建；
-- 唯一结构性阻塞是 `_zd-private/docs/在飞.md:63` 既有的列表行插入表格，导致“表格结构被销行脚本打断”；
-- 该共享账不属于 930 改动范围，不修、不改格式、不走 hook bypass；
-- 生产代码实现前需用户明确批准“带此既有阻塞继续”。
+- 不修改共享在飞账，不走 hook bypass，不需要“带阻塞继续”批准。
 
 ## 10. 交付物
 
-工作区根目录报告：`930-人格维度-交付-2026-11-25.md`。
+工作区根目录报告：`930-人格维度-交付-2026-11-26.md`。
 
 第一行必须是：
 
@@ -330,5 +339,5 @@ DONE · <9位提交SHA> · <提交标题原文>
 - core 零改、唯一 SurfaceDeriver、surface 三组逐字节基线；
 - 单一真相 grep 与源码断言清单；
 - detekt、lint、全量单测、水位实测；
-- preflight 既有阻塞与批准记录；
+- preflight 复查日志与 5 组关键词“已核，非重复”逐条证据；
 - 本地分支未推远端的证明。
