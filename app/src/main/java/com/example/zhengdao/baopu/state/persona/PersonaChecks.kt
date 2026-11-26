@@ -110,6 +110,7 @@ object PersonaChecks {
             out += PersonaLanguage.clinical(line.text, ClinicalPosition.DIALOGUE)
             out += PersonaLanguage.stigma(line.text, ClinicalPosition.DIALOGUE)
             out += PersonaLanguage.determinism(line.text)
+            out += PersonaLanguage.offSurfaceTags(listOf(line.text))
         }
         return out
     }

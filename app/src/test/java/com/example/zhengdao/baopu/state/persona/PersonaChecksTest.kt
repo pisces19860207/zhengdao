@@ -106,7 +106,7 @@ class PersonaChecksTest {
         val voice = original.copy(
             lines = listOf(
                 VoiceLine(
-                    "他说：「你是NPD。」你这个舔狗。",
+                    "他说：「你是NPD。」你这个舔狗。她很傲娇。",
                     LineFeatures(SentenceLength.LONG, DictionLevel.LITERARY, "叫全名", "说实在的"),
                 ),
             ),
@@ -114,6 +114,7 @@ class PersonaChecksTest {
         val report = PersonaChecks.check(PersonaFixture.persona().copy(voice = voice))
         assertFalse("DIAGNOSIS" in codes(report))
         assertTrue("STIGMA_DIALOGUE" in report.warnings.map { it.code })
+        assertTrue("ANIME_TAG_OFF_SURFACE" in codes(report))
     }
 
     @Test
