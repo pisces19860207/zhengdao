@@ -10,11 +10,11 @@
 | 口径 | 数 |
 |---|---:|
 | 顶层公开面（app/src/main/java，剥注释后计数） | 1210 |
-| 生产可达（有生产引用，含同文件） | 1170 |
+| 生产可达（有生产引用，含同文件） | 1171 |
 | A 有定义无调用 | 4 |
-| B 只有测试在调 | 36 |
+| B 只有测试在调 | 35 |
 | C 已接线默认关、无开启路径 | 4 |
-| **NOT_WIRED（结论=接线，接线欠账）** | **34** |
+| **NOT_WIRED（结论=接线，接线欠账）** | **33** |
 
 ## A 有定义无调用（生产侧零引用，含同文件）
 
@@ -60,8 +60,7 @@
 | `OccupationGate` | `app/src/main/java/com/example/zhengdao/baopu/state/occupation/OccChecks.kt:43` | `app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt:51`、`app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt:58`、`app/src/test/java/com/example/zhengdao/baopu/state/occupation/OccDriveTest.kt:70` | 接线 | 谁接：**后续装配单**（882 派工单边界为「职业池分类×驱动面」，17 生产件全新增、零改既有、零装配）；本件＝十三道判据 C1–C13 的唯一出口，70 行工种表与五档年代可用集都只经它被读出来——**在装配单落地之前，四面方向（体型／皮肤手／衣物磨损／汗量味型）不进任何提示词**。
   口径钉两条，防后来人误解这个 B：① 交接面 `Handoff` 的三条禁区值（883 个体意愿档／条件档本身／派生档）按设计就该被本件引用、却永不被生产表引用——「表里 0 次」才是绿，装配单不许把它接成职业→卫生；② 年代与驻勤这两条只交**可用集与时段**（`ERA_VENUE_883`／`DUTY_WINDOW_883`），883 的 `washCondition` 档位本身仍归 883 定。
   **注：本包未全 internal，零消费方靠结论表而非编译期挡住。** |
-| `PersonaChecks` | `app/src/main/java/com/example/zhengdao/baopu/state/persona/PersonaChecks.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt:18`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt:37`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaChecksTest.kt:38` | 接线 | 谁接：**后续装配单**（819 派工单边界为「性格与语声判定层」，4 生产件全新增、零改既有、零装配）；本件＝三层性格（底层 3–5 条带触发／稳定七轴／表层五维由 670 只读状态现推）＋语声十维＋台词互换≥2 处的总检。**注：本包未全 internal（PersonaModel 29 个顶层 public），零消费方靠结论表而非编译期挡住。** |
-| `SurfaceDeriver` | `app/src/main/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriver.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaFixture.kt:81`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt:16`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt:26` | 接线 | 谁接：**后续装配单**（同上 819 边界）；本件＝表层五维（耐心/酒意/疲惫/羞耻/紧张）由 670 角色轨状态推导，每维带来源、不改 670。**注：未全 internal。** |
+| `SurfaceDeriver` | `app/src/main/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriver.kt:10` | `app/src/test/java/com/example/zhengdao/baopu/state/persona/Persona930SourceAssertTest.kt:268`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/PersonaFixture.kt:81`、`app/src/test/java/com/example/zhengdao/baopu/state/persona/SurfaceDeriverTest.kt:16` | 接线 | 谁接：**后续装配单**（同上 819 边界）；本件＝表层五维（耐心/酒意/疲惫/羞耻/紧张）由 670 角色轨状态推导，每维带来源、不改 670。**注：未全 internal。** |
 | `FlaccidTable` | `app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt:122` | `app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:89`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:92`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:110` | 接线 | 谁接：**后续装配单**（同上 804 边界）；本件＝疲软态暴露表（9 行基础表×长短×冷热，钳五档，每条结论带行号＋理由，空依据构造不出来）。**注：未全 internal。** |
 | `PrepuceGrade` | `app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposure.kt:232` | `app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:242`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:243`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceExposureTest.kt:244` | 接线 | 谁接：**后续装配单**（804 派工单边界为「包皮＝775 子区」判定层，3 生产件全新增、零改既有、零装配）；本件＝位图→五档的判定本体（12 子区、冠与沟各独立一组、面积只许数格子得出不许反推 —— 反推路径类型上不可达）。**注：本包未全 internal（18 个顶层 public），零消费方靠结论表而非编译期挡住。** |
 | `PrepuceUnknownStats` | `app/src/main/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStats.kt:15` | `app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt:27`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt:37`、`app/src/test/java/com/example/zhengdao/baopu/state/prepuce/PrepuceUnknownStatsTest.kt:45` | 接线 | 谁接：**后续装配单**（831 派工单边界为「退至冠后补档＋未定治理」，新增 1 生产件＋1 测试件、零改 804 位图与四型、零装配）；本件＝未定率统计入口（逐条按 resolved 反读、未定 n/N×100 可复算、严格 >5% 判档表缺陷并提示补档、空样本红）。**注：零消费方靠结论表而非编译期，与同批 PrepuceCoverage 同档。** |
