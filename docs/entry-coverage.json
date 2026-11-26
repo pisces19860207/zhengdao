@@ -636,11 +636,11 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeIndependenceTest.kt",
-      "line": 81
+      "line": 92
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/SizeIndependenceTest.kt",
-      "line": 125
+      "line": 136
      }
     ],
     "verdict": "wired",
@@ -828,6 +828,18 @@
     "symbol": "ProxyLegality",
     "test_refs": [
      {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
+      "line": 46
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
+      "line": 54
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
+      "line": 331
+     },
+     {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
       "line": 39
      },
@@ -866,6 +878,10 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/ProxyLegalityTest.kt",
       "line": 222
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
+      "line": 50
      }
     ],
     "verdict": "wired",
@@ -1055,6 +1071,42 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/environment/EnvironmentSourceAssertTest.kt",
       "line": 90
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorJudgeTest.kt",
+      "line": 3
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorJudgeTest.kt",
+      "line": 18
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorJudgeTest.kt",
+      "line": 20
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorJudgeTest.kt",
+      "line": 22
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorJudgeTest.kt",
+      "line": 24
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorModelTest.kt",
+      "line": 3
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorModelTest.kt",
+      "line": 17
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorTextTest.kt",
+      "line": 3
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/smell/OdorTextTest.kt",
+      "line": 18
      }
     ],
     "verdict": "wired",
@@ -1126,6 +1178,10 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/erect/ErectChecksTest.kt",
       "line": 89
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/erect/ErectFlaccidTest.kt",
+      "line": 56
      }
     ],
     "verdict": "wired",
@@ -1329,6 +1385,46 @@
     "symbol": "TwoBodyCollision",
     "test_refs": [
      {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
+      "line": 9
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
+      "line": 57
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
+      "line": 21
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
+      "line": 203
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
+      "line": 216
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
+      "line": 307
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
+      "line": 25
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
+      "line": 26
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
+      "line": 29
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
+      "line": 61
+     },
+     {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
       "line": 103
      },
@@ -1367,34 +1463,6 @@
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
       "line": 93
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
-      "line": 103
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
-      "line": 111
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
-      "line": 116
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
-      "line": 121
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/TwoBodyCollisionTest.kt",
-      "line": 127
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/impact/ImpactBehaviorTest.kt",
-      "line": 11
-     },
-     {
-      "file": "app/src/test/java/com/example/zhengdao/baopu/state/impact/ImpactBehaviorTest.kt",
-      "line": 280
      }
     ],
     "verdict": "wired(sole-impl)",
@@ -2393,19 +2461,19 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 161
+      "line": 124
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 164
+      "line": 151
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 175
+      "line": 154
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/subzone/SubzoneRefsTest.kt",
-      "line": 180
+      "line": 168
      }
     ],
     "verdict": "wired",
@@ -2697,7 +2765,7 @@
   "C": 4,
   "gates_with_write_path": 5,
   "not_wired": 34,
-  "production_top_level_public": 1209,
-  "wired": 1169
+  "production_top_level_public": 1210,
+  "wired": 1170
  }
 }
