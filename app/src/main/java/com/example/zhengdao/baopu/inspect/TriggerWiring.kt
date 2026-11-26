@@ -17,6 +17,7 @@
 package com.example.zhengdao.baopu.inspect
 
 import android.content.Context
+import com.example.zhengdao.baopu.brain.BrainShadow
 import com.example.zhengdao.baopu.habit.habitOnRunSettled
 import com.example.zhengdao.baopu.insula.insulaOnRunSettled
 import com.example.zhengdao.baopu.subconscious.subconsciousOnRunSettled
@@ -51,6 +52,20 @@ internal object TriggerWiring {
         // 内部逐件兜底、本行整段再被 safe 吞掉：收工链与"没有它"逐字节一致（判据③）。
         // 不计入 ran：读数不是"跑了一件活"，ran 的口径（给门禁与日志）一字不动。
         safe("六体读数") { BioReadoutWiring.onRunSettled(ctx, sessionId) }
+        // 第八百二十九批：影子是旁路，不参与产出计数。开关由装配层注入，默认关；
+        // 偏好读取异常由外层 safe 统一记录；账根路径解析不归本单；
+        // 生产侧尚无轮次/物类读数生产者，缺项只记降级日志。
+        safe("脑影") {
+            ShadowWiring.onRunSettled(
+                enabledProvider = {
+                    ctx.getSharedPreferences("zhengdao-brain-shadow", Context.MODE_PRIVATE)
+                        .getBoolean("brain_shadow", false)
+                },
+                run = { root, round, feeds ->
+                    BrainShadow.onRoundEnd(root, round, feeds, enabled = true)
+                },
+            )
+        }
         return ran
     }
 
