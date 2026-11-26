@@ -58,9 +58,10 @@ object PoseValidity {
         chain: ChainPose? = null,
         adjacent: Set<Pair<String, String>> = emptySet(),
         contactTolCm: Double = 0.0,
+        compounds: Map<String, CompoundProxy> = emptyMap(),
     ): PoseVerdict {
         val violations = ArrayList<Violation>()
-        violations += selfCollisions(segments, adjacent, contactTolCm)
+        violations += selfCollisions(segments, adjacent, contactTolCm, compounds)
         violations += groundViolations(segments, env)
         violations += limitViolations(chain)
         return PoseVerdict(violations.isEmpty(), violations)
@@ -70,6 +71,7 @@ object PoseValidity {
         segments: List<SegmentProxy>,
         adjacent: Set<Pair<String, String>>,
         tol: Double,
+        compounds: Map<String, CompoundProxy>,
     ): List<Violation> {
         val out = ArrayList<Violation>()
         for (i in segments.indices) {
@@ -77,9 +79,10 @@ object PoseValidity {
                 val a = segments[i]
                 val b = segments[j]
                 if (isAdjacent(a.name, b.name, adjacent)) continue
-                val dist = Gjk.distance(a.shape, b.shape).distanceCm
+                val reading = CompoundPairs.read(a, b, compounds)
+                val dist = reading?.distanceCm ?: Gjk.distance(a.shape, b.shape).distanceCm
                 if (dist > tol) continue
-                val depth = Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0
+                val depth = reading?.depthCm ?: Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0
                 if (depth > tol) {
                     out.add(
                         Violation(

@@ -60,8 +60,10 @@ object ProxyLegality {
         anchors: Map<String, String>,
         adjacent: Set<Pair<String, String>>,
     ): List<LegalityReading> {
+        val compounds = CompoundWiring.compoundsFor(proxies.map { it.id })
         val verdict = PoseValidity.check(
             proxies.map { SegmentProxy(it.id, it.shape) }, env, pose, adjacent, CavityTolerances.CONTACT_TOL_CM,
+            compounds = compounds,
         )
         val out = ArrayList<LegalityReading>()
         for (p in proxies.sortedBy { it.id }) {

@@ -75,6 +75,7 @@ import com.example.zhengdao.baopu.agent.multiagent.TaskDecomposition
 import com.example.zhengdao.baopu.agent.multiagent.VaultSubTaskWriteGuard
 import com.example.zhengdao.baopu.consequence.CanaryBand
 import com.example.zhengdao.baopu.consequence.ConsequenceWiring
+import com.example.zhengdao.baopu.calibration.CalibrationWiring
 import com.example.zhengdao.baopu.escalate.BoundaryTable
 import com.example.zhengdao.baopu.evolution.DepthEvalFeed
 import com.example.zhengdao.baopu.evolution.DepthFactsWiring
@@ -534,6 +535,11 @@ internal object BaopuRuntime {
         com.example.zhengdao.baopu.state.casting.CastingRuntime.install()
         // 八百七十批：躯干写后校验并入 852 唯一写后口；人源未绑，可见位由调用方提供（pending:687）。
         com.example.zhengdao.baopu.state.bodyparts.TorsoRuntime.install()
+        com.example.zhengdao.baopu.state.cavity.CompoundWiring.install(
+            registrations = { CalibrationWiring.compoundProvider?.invoke().orEmpty() },
+            enabled = false,
+            trace = { RunLog.log(it) },
+        )
         // 492 B②：索引浏览/检索两件（index_browse/index_search）的 Context 注入口——
         // 走 PhoneSearch/IndexBrowse 门面读 search.db，工具层自己不认识 Context（同上房型）。
         com.example.zhengdao.baopu.agent.IndexTools.ctx = { appCtx }

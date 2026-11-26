@@ -9,6 +9,8 @@
 // 不检索、不调模型，只按决策调 provider 并把结果交给纯函数 CalibrationInject。
 package com.example.zhengdao.baopu.calibration
 
+import com.example.zhengdao.baopu.state.cavity.CompoundRegistration
+import com.example.zhengdao.baopu.state.cavity.CompoundWiring
 import com.example.zhengdao.baopu.state.readback.ReadbackLines
 
 /** 校准注入的装配缝。所有 provider 都是 @Volatile，装配层可热替换；测试可重置。 */
@@ -68,6 +70,9 @@ internal object CalibrationWiring {
     /** 870 装配缝：本期只做写后校验，notes 不新增注入；未装配 ⇒ 与没有本单逐字节一致。 */
     @Volatile
     var torsoProvider: (() -> List<String>)? = null
+
+    @Volatile
+    var compoundProvider: (() -> List<CompoundRegistration>)? = null
 
     /**
      * 本轮注入文本。纯决策后短路：未命中／开关关／未装配三行 ⇒ 空表，零索引读取。
@@ -131,5 +136,7 @@ internal object CalibrationWiring {
         textbookNotesProvider = null
         castingProvider = null
         torsoProvider = null
+        compoundProvider = null
+        CompoundWiring.detach()
     }
 }

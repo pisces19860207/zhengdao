@@ -30,6 +30,7 @@ object TwoBodyCollision {
         v2: Vec3,
         normal: Vec3,
         restitution: Double,
+        candidate: (() -> Boolean)? = null,
     ): CollisionResult {
         require(mass1 > 0.0 && mass2 > 0.0) { "质量为正" }
         require(restitution in 0.0..1.0) { "恢复系数在 [0,1]" }
@@ -39,6 +40,9 @@ object TwoBodyCollision {
         val u2 = v2.dot(n)
         val pBefore = v1 * mass1 + v2 * mass2
         val keBefore = 0.5 * mass1 * v1.normSq() + 0.5 * mass2 * v2.normSq()
+        if (candidate?.invoke() == false) {
+            return CollisionResult(v1, v2, pBefore, pBefore, keBefore, keBefore, false)
+        }
         if (u1 - u2 <= 0.0) {
             return CollisionResult(v1, v2, pBefore, pBefore, keBefore, keBefore, false)
         }
