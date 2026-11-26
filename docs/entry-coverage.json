@@ -593,6 +593,37 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/ShapeSheet.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 33,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（935 派工单边界为「形态不推性评价」，5 生产件全新增、零改 805/920/810/868/911/747/934、零装配）。本件＝两表唯一出口（形态表／来源表／判据行，render() 与 shapeTable()）；为什么这条 B 是刻意的：本单要证明「形态与性评价之间没有推导边」，所以生产侧**不该**有第二个读形态单的人——谁要读，先在这条欠账上登记。同包其余六件（ShapeJudge／ShapeRules／ShapeRumorCatalog／ShapeGuard／ShapeCatalog 的公开类型）由本件与彼此互相引用，计生产可达；未全 internal 与 805／920 同档，已在本批报告「挂账」写明。",
+    "package": "com.example.zhengdao.baopu.state.bodyparts",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "ShapeSheet",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/ShapeJudgeTest.kt",
+      "line": 45
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/ShapeJudgeTest.kt",
+      "line": 168
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/ShapeJudgeTest.kt",
+      "line": 171
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/SizeRules.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -2670,11 +2701,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 35,
+  "B": 36,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 33,
-  "production_top_level_public": 1210,
-  "wired": 1171
+  "not_wired": 34,
+  "production_top_level_public": 1227,
+  "wired": 1187
  }
 }

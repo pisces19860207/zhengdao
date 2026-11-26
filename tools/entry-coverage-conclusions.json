@@ -19,6 +19,10 @@
     }
   },
   "B": {
+    "ShapeSheet": {
+      "verdict": "wired",
+      "note": "谁接：**后续装配单**（935 派工单边界为「形态不推性评价」，5 生产件全新增、零改 805/920/810/868/911/747/934、零装配）。本件＝两表唯一出口（形态表／来源表／判据行，render() 与 shapeTable()）；为什么这条 B 是刻意的：本单要证明「形态与性评价之间没有推导边」，所以生产侧**不该**有第二个读形态单的人——谁要读，先在这条欠账上登记。同包其余六件（ShapeJudge／ShapeRules／ShapeRumorCatalog／ShapeGuard／ShapeCatalog 的公开类型）由本件与彼此互相引用，计生产可达；未全 internal 与 805／920 同档，已在本批报告「挂账」写明。"
+    },
     "AnchorBodyBridge": {
       "verdict": "not_urgent",
       "note": "理由：747 批 BODY 维→660 的只读桥（AnchorBodyBridge.kt:58），工单判据⑦ 明写「660 未合⇒留接口标未接入、不许自造字段」，本批交付形态就是接口＋名册：13 行 ROSTER 逐条回查 660 源码（AnchorSourceAssertTest.kt:141－147 的源断言臂，12 个真字段名命中、4 行标「660 无口径」），带 660 输入时读数分 CONNECTED 5／PARTIAL 4（body.fat／muscle／ratio＋g.testis，规格没给阈值⇒○ 待核）／NOT_IN_660 4（body.frame／legs／chest／hands，按判据⑦ 只留标不造字段）。消费方＝660 的读取面与锚定面板（未派），生产侧现在只从测试调是刻意的，不是漏接；桥本身零写入 660（`.copy(` 在桥源码里被闸判红）。"
