@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.insight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -108,7 +109,12 @@ class InsightSourceGateTest {
             )
         }
         val wake = pkgSources[PKG + "InsightWake.kt"] ?: error("缺 InsightWake.kt")
-        assertTrue("wake 必须调 625 runner", stripComments(wake).contains("SubconsciousRunner.run("))
+        // 625 的门禁（HabitSourceGateTest）要求 `SubconsciousRunner.run(` 全仓**只许一处**，
+        // 所以 wake 只能经唯一入口 `runSubconsciousOnce(` 进执行器，不许直调。
+        // 2026-11-26 修 ci #2173/#2174：534 起初直调 ⇒ 两条门禁互相打架；现在直调只剩装配层那一处。
+        val wakeCode = stripComments(wake)
+        assertTrue("wake 必须经唯一入口调 625 执行器", wakeCode.contains("runSubconsciousOnce("))
+        assertFalse("wake 不许直调 SubconsciousRunner.run（625 判据②：全仓唯一入口）", wakeCode.contains("SubconsciousRunner.run("))
     }
 
     @Test

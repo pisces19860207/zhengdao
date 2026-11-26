@@ -96,6 +96,33 @@ internal fun echoHourOfDay(nowMs: Long): Int =
     Instant.ofEpochMilli(nowMs).atZone(ZoneId.systemDefault()).hour
 
 /**
+ * 下意识执行器的**唯一入口**（625 门禁：`SubconsciousRunner.run(` 全仓只许出现在本文件一处）。
+ *
+ * 为什么：候选从哪来、浮几枚、落哪本账，各消费方（676 回响／677 灵感／678 重放／534 关联唤醒）
+ * 可以不同；但**执行器只能有一个 choke point**——多开一个直接调用，天闸与去重表就分成两套，
+ * 「三账共享 24h 去重」这条判据当场失效。
+ *
+ * 534 的直接调用就是被这条门禁咬住的（ci #2173/#2174）：改成经此函数进。
+ */
+internal fun runSubconsciousOnce(
+    candidates: List<SubconsciousCandidate>,
+    nowMs: Long,
+    grant: QuietGrant?,
+    shape: SessionShape,
+    lastRunDayKey: Long?,
+    suggestedAtByKey: Map<String, Long>,
+    picker: EchoPicker?,
+): EchoOutcome = SubconsciousRunner.run(
+    candidates = candidates,
+    nowMs = nowMs,
+    grant = grant,
+    shape = shape,
+    lastRunDayKey = lastRunDayKey,
+    suggestedAtByKey = suggestedAtByKey,
+    picker = picker,
+)
+
+/**
  * 下意识执行器的生产装配（收工触发；调用方在 IO 上串行驱动）。
  *
  * @return 这轮真跑了吗（过了天闸且左相放行 ⇒ 非 null，可能 0 信号）；
@@ -114,7 +141,7 @@ internal fun runSubconsciousEcho(
     val lastRunDayKey = readEchoState(root)
         ?.optLong("lastRunDayKey", -1L)
         ?.takeIf { it >= 0 }
-    val outcome = SubconsciousRunner.run(
+    val outcome = runSubconsciousOnce(
         candidates = echoCandidatesOf(LedgerStore.items(BaopuRuntime.workspaceRoot(ctx)), nowMs),
         nowMs = nowMs,
         grant = grant,

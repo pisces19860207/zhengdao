@@ -6,6 +6,7 @@
 package com.example.zhengdao.baopu.insight
 
 import android.content.Context
+import androidx.core.content.edit
 
 /** 捕获与关联唤醒开关（独立 prefs；读失败按默认开——不让一次 IO 故障悄悄关掉）。 */
 internal object InsightSwitch {
@@ -18,10 +19,10 @@ internal object InsightSwitch {
 
     fun set(ctx: Context, on: Boolean) {
         runCatching {
-            ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_ENABLED, on)
-                .apply()
+            // UseKtx：用 androidx.core 的 edit {} 扩展（534 的 lint 新增告警就这一条）
+            ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+                putBoolean(KEY_ENABLED, on)
+            }
         }
     }
 

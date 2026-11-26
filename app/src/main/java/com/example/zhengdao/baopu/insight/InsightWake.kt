@@ -3,7 +3,8 @@
 // 第五百三十四批 · 534 灵感捕获与关联唤醒 ③ wake —— 被关联到的念头浮一行。
 //
 // 与 625 **共用**执行器与去重表（待发提示词 ④，判据③④）：
-//   · 执行器＝[SubconsciousRunner.run]（676/625 的那一枚，本包零 Runner 类）；
+//   · 执行器＝[runSubconsciousOnce]（676/625 的那一枚的唯一入口；本包零 Runner 类，
+//     534 起初直调 SubconsciousRunner.run ⇒ 被 625 的「全仓唯一入口」门禁咬红，见 ci #2173）；
 //   · 去重表＝625 的 `suggestedAtByKey(root)` 读回的同一张表——同一念头 3 天冷却
 //     （≥24h），两次关联只浮一次；账也写回同一张 `回响.jsonl`（格式与 625 相同，
 //     why 前缀同为 `676 回响`，让 625 的去重表读得见本包的念头）。
@@ -21,7 +22,7 @@ import com.example.zhengdao.baopu.agent.SessionShape
 import com.example.zhengdao.baopu.safety.DiaryEvent
 import com.example.zhengdao.baopu.subconscious.EchoKind
 import com.example.zhengdao.baopu.subconscious.SubconsciousCandidate
-import com.example.zhengdao.baopu.subconscious.SubconsciousRunner
+import com.example.zhengdao.baopu.subconscious.runSubconsciousOnce
 import com.example.zhengdao.baopu.subconscious.SubconsciousSignal
 
 /** 一轮唤醒的产出（rows 至多 1 行；note 说明为什么没浮——失败兜底）。 */
@@ -91,7 +92,7 @@ internal fun runInsightWake(
     lastRunDayKey: Long?,
     suggestedAtByKey: Map<String, Long>,
 ): InsightWakeRound {
-    val outcome = SubconsciousRunner.run(
+    val outcome = runSubconsciousOnce(
         candidates = candidatesOf(associations),
         nowMs = nowMs,
         grant = grant,
