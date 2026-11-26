@@ -23,6 +23,12 @@ const val ERECT_AS_OF: String = "2026-11-24"
 /** 硬度档的字符串引用口径：对齐 facts.json 的 fb.hardness_ehs，不 import 660 类型。 */
 const val HARDNESS_REF: String = "fb.hardness_ehs"
 
+/**
+ * 906：唯一允许出现 absent 的位置——**真的不知道**疲软态时才渲染它。
+ * 疲软是已知状态，走 FullnessTier.FLACCID，永不使用本常量。
+ */
+const val FULLNESS_ABSENT: String = "absent"
+
 /** 包皮位档的字符串引用口径：对齐 804/831 的六档覆盖档，不 import prepuce 类型。 */
 const val PREPUCE_REF: String = "804/831 六档覆盖档"
 

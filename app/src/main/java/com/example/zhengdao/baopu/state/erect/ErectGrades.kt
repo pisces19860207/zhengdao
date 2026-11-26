@@ -3,8 +3,9 @@
 //
 // 第八百一十批 · 五件档位：增长分型／增长档／角度方向／硬度 EHS／廓形变化。
 //
-// 五套枚举互不通兑：分型是质性归类、增长档是量级、角度是方向、硬度独立成账、
+// 五套枚举互不通兑（810）：分型是质性归类、增长档是量级、角度是方向、硬度独立成账、
 // 廓形是形状变化。把两套档揉成一个字段，编译期就进不来。
+// 906 补第六套 FullnessTier 与硬度并列：疲软是已知状态，不占 EHS 1..4 的任何一格。
 //
 // 全档位、零数值：label 只有中文档名，level 只表先后不是物理量。
 package com.example.zhengdao.baopu.state.erect
@@ -108,6 +109,35 @@ enum class HardnessTier(val label: String, val ehs: Int) {
         fun of(ehs: Int): HardnessTier =
             entries.firstOrNull { it.ehs == ehs }
                 ?: throw IllegalArgumentException("EHS 档越界：$ehs（本单只有 1..4）")
+    }
+}
+
+/**
+ * ⑥ 906 疲软档：与 [HardnessTier] 1..4 **并列**的独立字段，不是往 EHS 里塞 0。
+ *
+ * 素材硬度分级只有 1–4；`FLACCID(0)` 是临床 EHS 口径由本单补入
+ * （○ 工程假设，非素材实证；素材里"疲软"说的是尺寸/形态，不是硬度 0 级）。
+ * 非勃起态不细分：只有 FLACCID 一个已知档；半勃属 868，本单不新增硬度分级。
+ * 真的不知道时该字段为 null（渲染为 [FULLNESS_ABSENT]）——null 绝不是疲软。
+ */
+enum class FullnessTier(val label: String, val fullness: Int) {
+    FLACCID("疲软", 0),
+    ;
+
+    companion object {
+        const val COUNT = 1
+        const val FLACCID_EHS = 0
+
+        init {
+            require(entries.size == COUNT) { "疲软档只收一档：非勃起态不细分" }
+            require(entries.map { it.fullness } == listOf(FLACCID_EHS)) {
+                "疲软档只对齐 EHS 0（素材无 0 级，本单按临床口径补）"
+            }
+        }
+
+        fun of(fullness: Int): FullnessTier =
+            entries.firstOrNull { it.fullness == fullness }
+                ?: throw IllegalArgumentException("疲软档越界：$fullness（本单只有 EHS 0）")
     }
 }
 

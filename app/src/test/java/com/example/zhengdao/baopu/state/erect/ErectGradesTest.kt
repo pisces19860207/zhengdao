@@ -50,6 +50,7 @@ class ErectGradesTest {
         GrowthTier.entries.forEach { assertEquals(it, GrowthTier.of(it.level)) }
         ErectAngle.entries.forEach { assertEquals(it, ErectAngle.of(it.level)) }
         HardnessTier.entries.forEach { assertEquals(it, HardnessTier.of(it.ehs)) }
+        FullnessTier.entries.forEach { assertEquals(it, FullnessTier.of(it.fullness)) }
         ErectProfile.entries.forEach { assertEquals(it, ErectProfile.of(it.level)) }
         assertThrows(IllegalArgumentException::class.java) { GrowthTier.of(9) }
         assertThrows(IllegalArgumentException::class.java) { ErectAngle.of(-1) }
@@ -59,7 +60,7 @@ class ErectGradesTest {
     fun `档名无数值_五套label里不出现数码与敏感词`() {
         val labels = GrowthType.entries.map { it.label } + GrowthTier.entries.map { it.label } +
             ErectAngle.entries.map { it.label } + HardnessTier.entries.map { it.label } +
-            ErectProfile.entries.map { it.label }
+            FullnessTier.entries.map { it.label } + ErectProfile.entries.map { it.label }
         labels.forEach { label ->
             assertTrue("档名不得含数码：$label", label.none { it.isDigit() })
             ErectGuard.rejectFactor(label)

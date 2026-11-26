@@ -4,7 +4,8 @@
 // 第八百一十批 · 五行各自的读数类型。
 //
 // 关键结构约束（判据② 硬度与尺寸独立）：
-// · 硬度读数 [HardnessState] **只有**硬度档一个字段，没有大小字段——想写「大且硬」没有入口；
+// · 硬度读数 [HardnessState] 只有硬度档（810 的 EHS 1..4）＋906 并列的疲软档，没有大小字段
+//   ——想写「大且硬」没有入口；
 // · 大小读数 [SizeState] 只有分型＋增长档，没有硬度字段；
 // · 两者拼进对照表时是两行，不是一格。{大} 不等于 {硬}。
 package com.example.zhengdao.baopu.state.erect
@@ -50,13 +51,25 @@ data class SizeState(val type: GrowthType, val tier: GrowthTier) : SheetRow {
 }
 
 /**
- * ④ 硬度读数：只有硬度档。**没有、也不许有大小字段**——这是判据②的结构落点。
+ * ④ 硬度读数：810 的 [tier]（EHS 1..4）与 906 新增的 [flaccidness] **并列**。
+ * **没有、也不许有大小字段**——这是判据②的结构落点；
  * 谁想在这里写「大而硬」，类型上就没有位置，只能另开一行 SizeState。
+ *
+ * flaccidness = FLACCID 表示"当前疲软"（已知状态，有明确档）；
+ * null 表示真的不知道，只渲染 [FULLNESS_ABSENT]，绝不拿来冒充疲软。
  */
-data class HardnessState(val tier: HardnessTier) : SheetRow {
+data class HardnessState(
+    val tier: HardnessTier,
+    val flaccidness: FullnessTier? = FullnessTier.FLACCID,
+) : SheetRow {
     override val key: String get() = SheetRow.HARDNESS
     override fun line(): String {
-        val text = "硬度=" + tier.label
+        val flaccidText = if (flaccidness == null) {
+            FULLNESS_ABSENT
+        } else {
+            flaccidness.label + "(" + flaccidness.name + ")"
+        }
+        val text = "硬度=" + flaccidText + "／勃起=" + tier.label
         gate(text)
         return text
     }

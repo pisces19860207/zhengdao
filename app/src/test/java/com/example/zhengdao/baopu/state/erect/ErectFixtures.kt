@@ -11,7 +11,17 @@ internal object ErectFixtures {
     fun angle(f: ErectAngle = ErectAngle.FLAT, e: ErectAngle = ErectAngle.SLIGHT_UP) =
         AnglePair(f, e)
 
-    fun hardness(tier: HardnessTier = HardnessTier.EHS3) = HardnessState(tier)
+    fun hardness(tier: HardnessTier = HardnessTier.EHS3,
+                 flaccidness: FullnessTier? = FullnessTier.FLACCID) =
+        HardnessState(tier, flaccidness)
+
+    /** 906 夹具 A：疲软是已知状态，给明确档，不是 absent。 */
+    fun flaccid(tier: HardnessTier = HardnessTier.EHS3) =
+        HardnessState(tier, FullnessTier.FLACCID)
+
+    /** 906 夹具 B：真的不知道，才用 null 渲染 absent。 */
+    fun unknownHardness(tier: HardnessTier = HardnessTier.EHS3) =
+        HardnessState(tier, null)
 
     fun prepuce(f: String = "完全覆盖", e: String = "完全露出") = PrepuceState(f, e)
 

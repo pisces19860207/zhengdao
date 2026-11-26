@@ -128,13 +128,49 @@ class ErectSourceAssertTest {
     fun `计数锁_六枚举一接口五行`() {
         val text = code()
         assertEquals(5, files.size)
-        // 生产源码里的 enum class：GrowthType/GrowthTier/ErectAngle/HardnessTier/ErectProfile（ErectGrades）＋ErectVerdict（ErectChecks）
-        assertEquals(6, countIn(text, "enum class"))
+        // 生产源码里的 enum class：GrowthType/GrowthTier/ErectAngle/HardnessTier/FullnessTier/ErectProfile（ErectGrades）＋ErectVerdict（ErectChecks）
+        assertEquals(7, countIn(text, "enum class"))
         assertEquals(1, countIn(text, "interface SheetRow"))
         assertEquals(5, countIn(text, ") : SheetRow {"))
         assertEquals(5, SheetRow.ALL_KEYS.size)
         assertEquals(4, GrowthTier.COUNT)
         assertEquals(4, HardnessTier.COUNT)
+    }
+
+    // ── 906 源码闸：810 零改／疲软独立／疲软≠未知 ────────────────
+
+    @Test
+    fun `906_810四级断言仍在源码_零改`() {
+        val text = code()
+        assertTrue("1..4 断言必须仍在", text.contains("entries.map { it.ehs } == (1..4).toList()"))
+        assertEquals(4, HardnessTier.COUNT)
+        assertEquals((1..4).toList(), HardnessTier.entries.map { it.ehs })
+        // 负例：把断言改成 0..4，闸必须红
+        val mutated = text.replace("(1..4).toList()", "(0..4).toList()")
+        assertFalse("负例必须红", mutated.contains("entries.map { it.ehs } == (1..4).toList()"))
+    }
+
+    @Test
+    fun `906_疲软独立字段在册_不塞进EHS`() {
+        val text = code()
+        assertTrue("疲软档独立成枚举", text.contains("enum class FullnessTier"))
+        assertTrue("疲软档对齐 EHS 0", text.contains("FLACCID(\"疲软\", 0)"))
+        assertTrue("与硬度并列成字段", text.contains("val flaccidness: FullnessTier?"))
+        assertTrue("absent 常量在册", text.contains("const val FULLNESS_ABSENT"))
+        assertTrue("absent 只走 null 分支", text.contains("if (flaccidness == null)"))
+        // 负例：把 FLACCID 挪进 HardnessTier 的名字，闸必须红
+        val mutated = text.replace("FLACCID(\"疲软\", 0)", "F0(\"无反应\", 0)")
+        assertFalse("负例必须红", mutated.contains("FLACCID(\"疲软\", 0)"))
+    }
+
+    @Test
+    fun `906_不写欲望能力字段与医学词`() {
+        val text = code()
+        val forbidden = listOf("欲望", "能力", "性欲", "功能障碍", "阳痿", "病因", "治疗")
+        forbidden.forEach { tok -> assertFalse("810 状态层不写 $tok", text.contains(tok)) }
+        // 负例：真注入必须被咬住
+        assertTrue("负例必须红", forbidden.any { "这里写欲望".contains(it) })
+        assertTrue("负例必须红", forbidden.any { "建议治疗".contains(it) })
     }
 
     // ── 闸有牙：负例注入自检 ───────────────────────────────────
