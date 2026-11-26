@@ -1,6 +1,7 @@
 package com.example.zhengdao.baopu.state.persona
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -133,5 +134,26 @@ class Persona930ModelTest {
         invalidCases.forEach { (changed, items) ->
             assertTrue("TRAIT_CONTRADICTION_INVALID" in TraitContradictionChecks.check(changed, items).map { it.code })
         }
+    }
+
+    @Test
+    fun `930聚合总检合法且同输入逐字一致`() {
+        val a = PersonaEnhancementChecks.check(Persona930Fixture.enhancement())
+        val b = PersonaEnhancementChecks.check(Persona930Fixture.enhancement())
+        assertTrue(a.line(), a.passed)
+        assertEquals(a, b)
+        assertEquals(a.line(), b.line())
+    }
+
+    @Test
+    fun `930动态说明临床词按台词与叙述者三态接入`() {
+        val dialogue = Persona930Fixture.enhancement().copy(
+            state = Persona930Fixture.state().copy(note = "他说：「我是NPD。」"),
+        )
+        assertFalse("DIAGNOSIS" in PersonaEnhancementChecks.check(dialogue).errors.map { it.code })
+        val narration = Persona930Fixture.enhancement().copy(
+            state = Persona930Fixture.state().copy(note = "他是NPD。"),
+        )
+        assertTrue("DIAGNOSIS" in PersonaEnhancementChecks.check(narration).errors.map { it.code })
     }
 }

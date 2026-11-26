@@ -41,4 +41,17 @@ internal object Persona930Fixture {
             note = "愿意体谅别人，但自己的承诺常常没跟上",
         ),
     )
+
+    fun enhancement(): PersonaEnhancement = PersonaEnhancement(
+        base = PersonaFixture.persona().copy(
+            trait = PersonaFixture.trait().copy(
+                agreeableness = TraitLayer.explicit(3),
+                conscientiousness = TraitLayer.explicit(0),
+            ),
+            surface = PersonaFixture.persona().surface.copy(tags = listOf("傲娇")),
+        ),
+        values = values(),
+        state = state(),
+        contradictions = contradictions(),
+    )
 }
