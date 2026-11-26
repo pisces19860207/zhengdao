@@ -33,4 +33,12 @@ internal object Persona930Fixture {
         pressure = 1,
         note = "此刻有些紧",
     )
+
+    fun contradictions(): List<TraitContradiction> = listOf(
+        TraitContradiction(
+            highAxis = TraitLayer.AGREEABLENESS,
+            lowAxis = TraitLayer.CONSCIENTIOUSNESS,
+            note = "愿意体谅别人，但自己的承诺常常没跟上",
+        ),
+    )
 }

@@ -87,4 +87,51 @@ class Persona930ModelTest {
             PersonaStateChecks.check(bad).single { it.severity == Severity.ERROR }.code,
         )
     }
+
+    @Test
+    fun `927单事件改特质红latent与longterm可带事件`() {
+        val before = PersonaFixture.trait()
+        val after = before.copy(agreeableness = TraitLayer.explicit(3))
+        val eventOnly = TraitChanges.review(before, after, TraitChangeEvidence(eventRef = "e1"))
+        assertEquals(listOf("agreeableness"), TraitChanges.changedAxes(before, after))
+        assertTrue("TRAIT_CHANGE_SINGLE_EVENT" in eventOnly.errors.map { it.code })
+        val latent = TraitChanges.review(before, after, TraitChangeEvidence(eventRef = "e1", latentRef = "l1"))
+        assertTrue(latent.passed)
+        val longterm = TraitChanges.review(before, after, TraitChangeEvidence(longtermRef = "t1"))
+        assertTrue(longterm.passed)
+        assertEquals(latent.line(), TraitChanges.review(before, after, TraitChangeEvidence(eventRef = "e1", latentRef = "l1")).line())
+    }
+
+    @Test
+    fun `927无根红无变化提示`() {
+        val trait = PersonaFixture.trait()
+        val noRoot = TraitChanges.review(trait, trait.copy(humor = Humor.WARM), TraitChangeEvidence())
+        assertTrue("TRAIT_CHANGE_NO_ROOT" in noRoot.errors.map { it.code })
+        val none = TraitChanges.review(trait, trait, TraitChangeEvidence(longtermRef = "t1"))
+        assertTrue("TRAIT_CHANGE_NONE" in none.warnings.map { it.code })
+    }
+
+    @Test
+    fun `内部矛盾高宜人低尽责有实际读数`() {
+        val trait = PersonaFixture.trait().copy(
+            agreeableness = TraitLayer.explicit(3),
+            conscientiousness = TraitLayer.explicit(0),
+        )
+        val report = TraitContradictionChecks.check(trait, Persona930Fixture.contradictions())
+        assertTrue(report.isEmpty())
+        assertEquals(3, trait.bigFiveTier(TraitLayer.AGREEABLENESS))
+        assertEquals(0, trait.bigFiveTier(TraitLayer.CONSCIENTIOUSNESS))
+        val missing = TraitContradictionChecks.check(trait, emptyList())
+        assertEquals("TRAIT_CONTRADICTION_MISSING", missing.single().code)
+        assertTrue(missing.single().message.contains("可能是人设不是人格"))
+        val invalidCases = listOf(
+            trait.copy(agreeableness = TraitLayer.explicit(1)) to Persona930Fixture.contradictions(),
+            trait to listOf(TraitContradiction(TraitLayer.AGREEABLENESS, TraitLayer.AGREEABLENESS, "同轴")),
+            trait to listOf(TraitContradiction("unknown", TraitLayer.CONSCIENTIOUSNESS, "未知轴")),
+            trait to listOf(TraitContradiction(TraitLayer.AGREEABLENESS, TraitLayer.CONSCIENTIOUSNESS, "")),
+        )
+        invalidCases.forEach { (changed, items) ->
+            assertTrue("TRAIT_CONTRADICTION_INVALID" in TraitContradictionChecks.check(changed, items).map { it.code })
+        }
+    }
 }
