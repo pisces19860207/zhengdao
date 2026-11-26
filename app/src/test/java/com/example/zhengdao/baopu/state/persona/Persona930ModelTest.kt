@@ -146,11 +146,42 @@ class Persona930ModelTest {
     }
 
     @Test
+    fun `930聚合总检按四层检查顺序组合完整条目`() {
+        val base = PersonaFixture.persona().copy(
+            core = PersonaFixture.core().copy(
+                drives = PersonaFixture.core().drives.map {
+                    if (it.need == CoreNeed.RECOGNITION) it.copy(coreFear = "NPD") else it
+                },
+            ),
+        )
+        val x = PersonaEnhancement(
+            base = base,
+            values = Persona930Fixture.duplicateFamilyValues(),
+            state = Persona930Fixture.state().copy(pressure = 4, note = null),
+            contradictions = listOf(TraitContradiction(TraitLayer.AGREEABLENESS, TraitLayer.AGREEABLENESS, "同轴")),
+        )
+        val expected = PersonaChecks.check(x.base).items +
+            PersonaValueChecks.check(x.values, x.base.core) +
+            PersonaStateChecks.check(x.state) +
+            TraitContradictionChecks.check(x.base.trait, x.contradictions)
+        val actual = PersonaEnhancementChecks.check(x).items
+        assertEquals(expected, actual)
+        assertTrue(listOf("DIAGNOSIS", "VALUES_AXES", "STATE_PRESSURE", "TRAIT_CONTRADICTION_INVALID").all {
+            code -> actual.any { it.code == code }
+        })
+    }
+
+    @Test
     fun `930动态说明临床词按台词与叙述者三态接入`() {
         val dialogue = Persona930Fixture.enhancement().copy(
-            state = Persona930Fixture.state().copy(note = "他说：「我是NPD。」"),
+            state = Persona930Fixture.state().copy(note = "他说：「我是NPD。」又说：「你这个舔狗。」她很傲娇。人格决定命运。"),
         )
-        assertFalse("DIAGNOSIS" in PersonaEnhancementChecks.check(dialogue).errors.map { it.code })
+        val dialogueReport = PersonaEnhancementChecks.check(dialogue)
+        assertFalse("DIAGNOSIS" in dialogueReport.errors.map { it.code })
+        val dialogueCodes = dialogueReport.items.map { it.code }
+        assertTrue("STIGMA_DIALOGUE" in dialogueCodes)
+        assertTrue("ANIME_TAG_OFF_SURFACE" in dialogueCodes)
+        assertTrue("DETERMINISM_FORBIDDEN" in dialogueCodes)
         val narration = Persona930Fixture.enhancement().copy(
             state = Persona930Fixture.state().copy(note = "他是NPD。"),
         )
