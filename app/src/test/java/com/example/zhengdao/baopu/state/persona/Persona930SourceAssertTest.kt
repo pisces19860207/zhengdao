@@ -16,6 +16,9 @@ class Persona930SourceAssertTest {
     private val base819Files = listOf("PersonaModel.kt", "PersonaChecks.kt", "SurfaceDeriver.kt", "VoiceSwap.kt")
     private val zoneSurfaceState = "app/src/main/java/com/example/zhengdao/baopu/state/zone/ZoneState.kt"
     private val declarationKeywords = setOf("fun", "val", "var", "class", "object", "interface", "enum", "typealias")
+    private val visibilityKeywords = setOf("internal", "private")
+    private val DERIVER_DECLARATION = Regex(declaredAs("\\w*Deriver"))
+    private val scannedModules = listOf("app", "core", "native-core", "policy", "macrobenchmark")
 
     @Test
     fun `全仓核心人格类型各声明一次且无平行personality包`() {
@@ -34,20 +37,39 @@ class Persona930SourceAssertTest {
             setOf(dir + "PersonaModel.kt", zoneSurfaceState),
             sources.filterValues { typePattern("SurfaceState").containsMatchIn(it) }.keys.toSet(),
         )
+        assertEquals(
+            "SurfaceState 出现次数必须与钉住的两个文件一一对应，钉住的文件里再加第二份也红",
+            2,
+            occurrences(typePattern("SurfaceState"), sources.values),
+        )
+        assertEquals(
+            "扫描模块集合必须与 settings.gradle.kts 的 include 同步，新增模块要同时改本闸",
+            settingsDeclaredModules().toSet(),
+            scannedModules.toSet(),
+        )
+        scannedModules.forEach { module ->
+            assertTrue("$module 必须真的扫到生产源码，不许清单在而扫描空", sources.keys.any { it.startsWith("$module/src/") })
+        }
         assertFalse(sources.keys.any { it.contains("/state/personality/") })
         assertFalse(sources.values.any { packageOf(it) == "com.example.zhengdao.baopu.state.personality" })
     }
 
     @Test
     fun `人格包文件集合封闭且930新层只许internal`() {
-        val persona = productionSources().filterValues { packageOf(it) == personaPackage }
+        val expected = (base819Files + newFiles).map { dir + it }.sorted()
+        val scoped = personaScopeSources()
         assertEquals(
-            "人格包生产文件必须留在已知集合内，新增第二套模型文件要同时改本清单",
-            (base819Files + newFiles).toSet(),
-            persona.keys.map { it.substringAfterLast('/') }.toSet(),
+            "人格包按目录与按包名两个口径的并集必须封闭在已知九件内（躲进本目录换包名、躲在本包名换目录都红）",
+            expected,
+            scoped.keys.sorted(),
+        )
+        assertEquals(
+            "按包名与按目录两个口径今天必须重合，否则说明有人把人格层文件搬出目录却留着包名",
+            scoped.keys.sorted(),
+            productionSources().filterValues { packageOf(it) == personaPackage }.keys.sorted(),
         )
         val layers = internalLayerSources()
-        assertEquals(newFiles.toSet(), layers.keys.map { it.substringAfterLast('/') }.toSet())
+        assertEquals(newFiles.map { dir + it }.sorted(), layers.keys.sorted())
         layers.forEach { (path, text) ->
             assertTrue("$path 必须 internal", text.contains("internal "))
             assertEquals("$path 存在公开顶层声明", emptyList<String>(), publicTopLevelDeclarations(text))
@@ -73,6 +95,29 @@ class Persona930SourceAssertTest {
             "private fun hidden() = Unit",
             "@JvmStatic\ninternal fun s() = Unit",
         ).forEach { assertEquals("internal 代码不得误判：$it", emptyList<String>(), publicTopLevelDeclarations(it)) }
+        listOf(
+            "class Twin internal constructor(private val a: Int)",
+            "data class PublicTwin private constructor(val a: Int)",
+            "@Deprecated(\"d\") object PublicTwin3",
+            "@Deprecated(\"d\") fun leakedToo() = Unit",
+            "interface TwinInterface",
+            "object TwinObject",
+        ).forEach { assertTrue("构造可见性与同行注解不得成为逃逸口：$it", publicTopLevelDeclarations(it).isNotEmpty()) }
+        assertEquals(
+            "类型闸必须认得 interface 形式的同名双胞胎",
+            1,
+            occurrences(typePattern("CoreLayer"), listOf("interface CoreLayer { val a = 1 }")),
+        )
+        assertEquals(
+            "类型闸必须认得 object 形式的同名双胞胎",
+            1,
+            occurrences(typePattern("TraitLayer"), listOf("sealed object TraitLayer")),
+        )
+        assertEquals(
+            "同一份文本里的两处声明必须计两次",
+            2,
+            occurrences(Regex("\\bval\\s+tags\\s*:"), listOf("val tags: List<String> = emptyList()\nval tags: Set<String> = emptySet()")),
+        )
         assertTrue("公开面夹具必须能被闸看见", publicTopLevelDeclarations(code("PersonaModel.kt")).isNotEmpty())
     }
 
@@ -108,12 +153,15 @@ class Persona930SourceAssertTest {
             1,
             occurrences(Regex("\\bobject\\s+SurfaceDeriver\\b"), sources.values),
         )
-        val persona = sources.filterValues { packageOf(it) == personaPackage }
+        val persona = personaScopeSources()
         val extraDerivers = persona
             .filterKeys { it != dir + "SurfaceDeriver.kt" }
-            .filterValues { Regex("\\b(?:object|class|interface)\\s+\\w*Deriver\\b").containsMatchIn(it) }
+            .filterValues { DERIVER_DECLARATION.containsMatchIn(it) }
             .keys.toList()
         assertEquals("人格包除 SurfaceDeriver.kt 外不得再声明 Deriver", emptyList<String>(), extraDerivers)
+        listOf("internal data class ExpressionDeriver(val a: Int)", "object FooDeriver", "interface BarDeriver")
+            .forEach { assertTrue("Deriver 闸必须认得它：$it", DERIVER_DECLARATION.containsMatchIn(it)) }
+        assertFalse("不相干类型名不得被 Deriver 闸误伤", DERIVER_DECLARATION.containsMatchIn("data class TraitLayer(val a: Int)"))
         internalLayerSources().forEach { (path, text) ->
             assertFalse("$path 不得出现推导函数", Regex("\\bfun\\s+derive\\b").containsMatchIn(text))
         }
@@ -125,7 +173,7 @@ class Persona930SourceAssertTest {
         listOf("synonym", "vector", "embedding", "semantic", "同义", "向量").forEach {
             assertFalse("语言闸不得运行时联想 $it", language.contains(it))
         }
-        val persona = productionSources().filterValues { packageOf(it) == personaPackage }
+        val persona = personaScopeSources()
         assertTrue("必须扫描到人格包生产源码", persona.isNotEmpty())
         assertEquals(
             "标签字段在人格包内必须恰好一处",
@@ -158,24 +206,49 @@ class Persona930SourceAssertTest {
         )
     }
 
-    private fun internalLayerSources(): Map<String, String> = productionSources()
-        .filterValues { packageOf(it) == personaPackage }
+    private fun internalLayerSources(): Map<String, String> = personaScopeSources()
         .filterKeys { it.substringAfterLast('/') !in base819Files }
+
+    /** 按目录 **或** 按包名，两个口径取并集：搬家与换包名两条逃避路一起堵。 */
+    private fun personaScopeSources(): Map<String, String> =
+        productionSources().filter { (path, text) -> path.startsWith(dir) || packageOf(text) == personaPackage }
 
     private fun occurrences(pattern: Regex, texts: Iterable<String>): Int =
         texts.sumOf { pattern.findAll(it).count() }
 
-    private fun typePattern(name: String): Regex = Regex("\\b(?:data\\s+)?class\\s+$name\\b")
+    private fun typePattern(name: String): Regex = Regex(declaredAs(name))
+
+    private fun declaredAs(name: String): String =
+        "\\b(?:data\\s+|sealed\\s+|enum\\s+|value\\s+|annotation\\s+)?(?:class|interface|object)\\s+$name\\b"
+
+    private fun settingsDeclaredModules(): List<String> =
+        Regex("^include\\(\":([A-Za-z0-9_-]+)\"\\)", RegexOption.MULTILINE)
+            .findAll(File(repositoryRoot(), "settings.gradle.kts").readText())
+            .map { it.groupValues[1] }
+            .toList()
 
     private fun packageOf(code: String): String? =
         Regex("(?m)^[ \\t]*package[ \\t]+([A-Za-z0-9_.]+)[ \\t]*;?[ \\t]*$").find(code)?.groupValues?.get(1)
 
     private fun publicTopLevelDeclarations(code: String): List<String> =
         topLevelOnly(code).lines().map { it.trim() }.filter { line ->
-            val words = line.substringBefore('(').split(Regex("[\\s<>=:.,?]+")).filter { it.isNotEmpty() }
+            val words = declarationWords(line)
             line.isNotEmpty() && !line.startsWith("package ") && !line.startsWith("import ") &&
-                words.any { it in declarationKeywords } && words.none { it == "internal" || it == "private" }
+                words.indexOfFirst { it in declarationKeywords }.let { idx ->
+                    idx >= 0 && words.take(idx).none { it in visibilityKeywords }
+                }
         }
+
+    /** 括号里的东西（注解实参、构造参数、调用实参）不属于声明头，但括号**后面**的关键字必须还在。 */
+    private fun declarationWords(line: String): List<String> {
+        var text = line
+        while (true) {
+            val stripped = text.replace(Regex("\\([^()]*\\)"), " ")
+            if (stripped == text) break
+            text = stripped
+        }
+        return text.split(Regex("[\\s<>=:.,?{}]+")).filter { it.isNotEmpty() }
+    }
 
     private fun topLevelOnly(code: String): String {
         val out = StringBuilder(code.length)
@@ -229,8 +302,7 @@ class Persona930SourceAssertTest {
 
     private fun productionFiles(): List<File> {
         val root = repositoryRoot()
-        val modules = listOf("app", "core", "native-core", "policy", "macrobenchmark")
-        return modules.flatMap { module ->
+        return scannedModules.flatMap { module ->
             val src = File(root, "$module/src")
             if (!src.isDirectory) emptyList() else src.walkTopDown()
                 .filter { it.isFile && it.extension in setOf("kt", "java") }
