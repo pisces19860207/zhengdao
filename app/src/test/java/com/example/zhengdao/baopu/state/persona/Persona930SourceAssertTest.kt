@@ -10,8 +10,10 @@ import java.io.File
 class Persona930SourceAssertTest {
     private val dir = "app/src/main/java/com/example/zhengdao/baopu/state/persona/"
     private val personaPackage = "com.example.zhengdao.baopu.state.persona"
+    // 940 同包新增三件：文件集合基线扩到 12 件，但零 import／零公开顶层声明／无推导动词三条规则一条不松。
     private val newFiles = listOf(
         "PersonaValues.kt", "PersonaMoodState.kt", "PersonaLanguage.kt", "TraitChanges.kt", "PersonaEnhancement.kt",
+        "GestureCatalog.kt", "GestureModel.kt", "GestureChecks.kt",
     )
     private val base819Files = listOf("PersonaModel.kt", "PersonaChecks.kt", "SurfaceDeriver.kt", "VoiceSwap.kt")
     private val zoneSurfaceState = "app/src/main/java/com/example/zhengdao/baopu/state/zone/ZoneState.kt"
@@ -102,11 +104,11 @@ class Persona930SourceAssertTest {
     }
 
     @Test
-    fun `人格包九件零import`() {
+    fun `人格包十二件零import`() {
         val scoped = personaScopeSources()
         assertTrue("必须扫描到人格包生产源码", scoped.isNotEmpty())
         assertEquals(
-            "人格包九件一旦允许 import，就能拼出第二套人格模型；今天全是零 import，故钉死",
+            "人格包十二件一旦允许 import，就能拼出第二套人格模型；今天全是零 import，故钉死",
             emptyList<String>(),
             scoped.filterValues { importLine.containsMatchIn(it) }.keys.sorted(),
         )
@@ -164,11 +166,11 @@ class Persona930SourceAssertTest {
         scoped.values.flatMap { text -> declaredNames(topLevelOnly(text)) }.distinct().sorted()
 
     @Test
-    fun `人格包文件集合封闭且930新层只许internal`() {
+    fun `人格包文件集合封闭且930与940新层只许internal`() {
         val expected = (base819Files + newFiles).map { dir + it }.sorted()
         val scoped = personaScopeSources()
         assertEquals(
-            "人格包按目录与按包名两个口径的并集必须封闭在已知九件内（躲进本目录换包名、躲在本包名换目录都红）",
+            "人格包按目录与按包名两个口径的并集必须封闭在已知十二件内（躲进本目录换包名、躲在本包名换目录都红）",
             expected,
             scoped.keys.sorted(),
         )
@@ -341,7 +343,7 @@ class Persona930SourceAssertTest {
     }
 
     @Test
-    fun `五个新文件零IO随机时钟且不碰747710921`() {
+    fun `930与940新层零IO随机时钟且不碰747710921`() {
         val layers = internalLayerSources()
         assertEquals(newFiles.toSet(), layers.keys.map { it.substringAfterLast('/') }.toSet())
         val text = layers.values.joinToString("\n")
