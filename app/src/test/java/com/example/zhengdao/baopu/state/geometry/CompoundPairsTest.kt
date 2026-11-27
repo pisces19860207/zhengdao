@@ -21,7 +21,7 @@ class CompoundPairsTest {
         assertFalse(read.intersecting)
         assertEquals(0.0, read.depthCm, 0.0)
         assertEquals("c0", read.nearestChunkId)
-        assertEquals(proxy.anyHit(other), read.intersecting)
+        assertEquals(proxy.anyHit(other).intersecting, read.intersecting)
         assertEquals(nearest.distanceCm, read.distanceCm, 0.0)
         assertEquals(nearest.iterations, read.iterations)
         println("PAIR_SINGLE distance=${read.distanceCm} depth=${read.depthCm} iterations=${read.iterations} chunks=${read.chunkCount}")
@@ -55,7 +55,7 @@ class CompoundPairsTest {
 
     @Test
     fun 单复合对凸体_变换块的EPA也在世界坐标计算() {
-        val rotation = Rot3.fromAxisAngle(Vec3.UNIT_Z, -Math.PI / 2.0)
+        val rotation = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Z, -Math.PI / 2.0))
         val proxy = CompoundProxy(
             "a",
             listOf(
@@ -86,7 +86,7 @@ class CompoundPairsTest {
         val b = CompoundProxy(
             "b",
             listOf(
-                ProxyChunk("near-a", Sphere(Vec3.ZERO, 1.0), LocalTransform(Vec3(0.0, 0.0, 0.0), Rot3.IDENTITY)),
+                ProxyChunk("near-a", Sphere(Vec3.ZERO, 1.0), LocalTransform(Vec3(0.2, 0.0, 0.0), Rot3.IDENTITY)),
                 ProxyChunk("near-b", Sphere(Vec3.ZERO, 1.0), LocalTransform(Vec3(9.4, 0.0, 0.0), Rot3.IDENTITY)),
             ),
         )

@@ -39,10 +39,14 @@ object Reachability {
         tolCm: Double = 0.5,
         samples: Int = 1024,
     ): ReachResult {
+        if (!targetDistanceCm.isFinite() || !tolCm.isFinite()) return unknown("目标距离或容差非有限数", 0)
         require(targetDistanceCm >= 0.0 && tolCm >= 0.0 && samples >= 1) { "距离/容差非负，采样数为正" }
+        chainBoundary(chain)?.let { return unknown(it, 0) }
         val lengths = chain.joints.map { it.lengthCm }
         val total = lengths.sum()
+        if (!total.isFinite()) return unknown("连杆总长非有限数", 0)
         val lower = max(0.0, 2.0 * lengths.max() - total)
+        if (!lower.isFinite()) return unknown("链长下界计算溢出", 0)
         if (beyond(targetDistanceCm, lower, total, tolCm)) {
             return ReachResult(State.UNREACHABLE, 0.0, 0, CLOSED)
         }
@@ -50,6 +54,19 @@ object Reachability {
         if (chain.joints.size == 2) return twoLinks(lengths, chain.joints[1].limit, targetDistanceCm, tolCm)
         return sampled(chain, targetDistanceCm, tolCm, samples)
     }
+
+    private fun chainBoundary(chain: JointChain): String? {
+        if (!vec3IsFinite(chain.rootPosCm) || !chain.rootRot.isOrthonormal()) return "根位姿无效"
+        for (joint in chain.joints) {
+            if (!joint.lengthCm.isFinite()) return "连杆长非有限数"
+            if (!joint.limit.minRad.isFinite() || !joint.limit.maxRad.isFinite()) return "关节限位非有限数"
+            if (Rot3.fromAxisAngle(joint.axis, 0.0) == null) return "关节轴无效"
+        }
+        return null
+    }
+
+    private fun unknown(reason: String, samplesTried: Int): ReachResult =
+        ReachResult(State.UNKNOWN, Double.NaN, samplesTried, "可达性不可判：$reason")
 
     private fun oneLink(length: Double, d: Double, tol: Double): ReachResult {
         val err = abs(d - length)
@@ -64,6 +81,7 @@ object Reachability {
         val cross = 2.0 * lengths[0] * lengths[1]
         val dMin = sqrt(max(0.0, base + cross * cMin))
         val dMax = sqrt(max(0.0, base + cross * cMax))
+        if (!dMin.isFinite() || !dMax.isFinite()) return unknown("两连杆闭式读数非有限数", 0)
         val state = if (beyond(d, dMin, dMax, tol)) State.UNREACHABLE else State.REACHABLE
         return ReachResult(state, 0.0, 0, CLOSED)
     }
@@ -88,8 +106,11 @@ object Reachability {
                 val u = halton(k + 1 + (i / BASES.size) * samples, BASES[i % BASES.size])
                 j.limit.minRad + u * (j.limit.maxRad - j.limit.minRad)
             }
-            val end = chain.pose(angles).endEffectorCm
+            val pose = chain.pose(angles)
+            if (pose.status == KernelStatus.Unsupported) return unknown(pose.reason ?: "关节位姿无效", k + 1)
+            val end = pose.endEffectorCm
             val err = abs((end - chain.rootPosCm).norm() - d)
+            if (!err.isFinite()) return unknown("可达性采样读数非有限数", k + 1)
             if (err < best) best = err
             if (best == 0.0 || best < tol) return ReachResult(State.REACHABLE, best, k + 1, SAMPLED)
         }

@@ -35,7 +35,15 @@ data class GjkResult(
     val assumption: String = GJK_ASSUMPTION,
     val note: String = GeometryNotes.NOT_MEASUREMENT,
     internal val simplex: List<MinkPoint> = emptyList(),
-)
+    val status: KernelStatus = KernelStatus.Success,
+    val reason: String? = null,
+) {
+    override fun toString(): String =
+        "GjkResult(distanceCm=$distanceCm, witnessA=$witnessA, witnessB=$witnessB, " +
+            "iterations=$iterations, intersecting=$intersecting, assumption=$assumption, " +
+            "note=$note, simplex=$simplex" +
+            if (status == KernelStatus.Success && reason == null) ")" else ", status=$status, reason=$reason)"
+}
 
 private const val GJK_ASSUMPTION =
     "GJK 最近距离：凸体支撑函数＋单纯形迭代，相对收敛容差 1e-12，上限 64 轮；" +
@@ -80,7 +88,25 @@ private val DBL_EPS = Math.ulp(1.0)     // IEEE754 双精度机器舍入 2^-52�
 /** GJK 距离求解（纯函数，无状态）。 */
 object Gjk {
 
-    fun distance(a: ConvexShape, b: ConvexShape): GjkResult {
+    fun distance(a: ConvexShape, b: ConvexShape): GjkResult = try {
+        val boundary = kernelBoundary(a, b)
+        if (boundary.status == KernelStatus.Unsupported) {
+            unsupported(boundary.reason ?: "输入超出支持域")
+        } else {
+            val result = distanceCore(a, b)
+            if (!vec3IsFinite(result.witnessA) || !vec3IsFinite(result.witnessB) ||
+                !result.distanceCm.isFinite() || result.simplex.any { !vec3IsFinite(it.w) }
+            ) {
+                unsupported("GJK 数值结果非有限数")
+            } else {
+                result.copy(status = boundary.status, reason = boundary.reason)
+            }
+        }
+    } catch (e: Exception) {
+        unsupported("GJK 边界异常：${e.javaClass.simpleName}")
+    }
+
+    private fun distanceCore(a: ConvexShape, b: ConvexShape): GjkResult {
         val dupTol = dupTolSq(a, b) // 822：重复点阈值由形体标尺 L 推出，不再用绝对常数
         var simplex = listOf(minkSupport(a, b, Vec3.UNIT_X))
         var last = bestFeature(simplex)
@@ -104,6 +130,16 @@ object Gjk {
         return finish(last, simplex, iter, false)
     }
 
+    private fun unsupported(reason: String): GjkResult = GjkResult(
+        Double.POSITIVE_INFINITY,
+        Vec3.ZERO,
+        Vec3.ZERO,
+        0,
+        false,
+        status = KernelStatus.Unsupported,
+        reason = reason,
+    )
+
     private fun finish(f: Feature, simplex: List<MinkPoint>, iter: Int, hit: Boolean): GjkResult {
         var wa = Vec3.ZERO
         var wb = Vec3.ZERO
@@ -122,16 +158,19 @@ internal fun minkSupport(a: ConvexShape, b: ConvexShape, dir: Vec3) =
     MinkPoint(a.support(dir), b.support(-dir))
 
 /** 包围盒对角线：±三轴支撑探针给出凸体的精确 AABB，返回其对角线长。 */
-private fun bboxDiag(s: ConvexShape): Double {
+internal fun shapeScaleLen(s: ConvexShape): Double {
     val ex = s.support(Vec3.UNIT_X).x - s.support(-Vec3.UNIT_X).x
     val ey = s.support(Vec3.UNIT_Y).y - s.support(-Vec3.UNIT_Y).y
     val ez = s.support(Vec3.UNIT_Z).z - s.support(-Vec3.UNIT_Z).z
+    if (!ex.isFinite() || !ey.isFinite() || !ez.isFinite() || ex < 0.0 || ey < 0.0 || ez < 0.0) {
+        return Double.NaN
+    }
     return Math.sqrt(ex * ex + ey * ey + ez * ez)
 }
 
 /** 822 形体标尺 L：两形体包围盒对角线之和，下限 SCALE_FLOOR_CM 兜底（判据③退化保护）。 */
 internal fun pairScaleLen(a: ConvexShape, b: ConvexShape): Double {
-    val l = bboxDiag(a) + bboxDiag(b)
+    val l = shapeScaleLen(a) + shapeScaleLen(b)
     return if (l < SCALE_FLOOR_CM) SCALE_FLOOR_CM else l
 }
 

@@ -103,4 +103,42 @@ class ReachabilityTest {
         assertTrue(r.assumption.isNotBlank())
         assertEquals("模拟非测量", r.note)
     }
+
+    @Test
+    fun 非有限目标容差与闭式溢出_返回UNKNOWN() {
+        val c = chain(listOf(1.0, 1.0), listOf(full, full))
+        val invalidInputs = listOf(
+            Double.NaN to 0.5,
+            Double.POSITIVE_INFINITY to 0.5,
+            1.5 to Double.NaN,
+            1.5 to Double.POSITIVE_INFINITY,
+        )
+        for ((distance, tolerance) in invalidInputs) {
+            val result = Reachability.ofChain(c, distance, tolCm = tolerance)
+            assertEquals(Reachability.State.UNKNOWN, result.state)
+            assertEquals(0, result.samplesTried)
+            assertTrue(result.bestErrorCm.isNaN())
+        }
+        val huge = chain(listOf(1e200, 1e200), listOf(full, full))
+        val overflow = Reachability.ofChain(huge, 1e200)
+        assertEquals(Reachability.State.UNKNOWN, overflow.state)
+        assertTrue(overflow.bestErrorCm.isNaN())
+    }
+
+    @Test
+    fun 无效根位姿与近零轴_返回UNKNOWN不误报可达() {
+        val badRoot = chain(listOf(1.0), listOf(full)).let {
+            JointChain(it.joints, rootRot = Rot3(Vec3.UNIT_X, Vec3.UNIT_X, Vec3.UNIT_Z))
+        }
+        val nearZeroAxis = JointChain(
+            listOf(JointSpec("j", 1.0, Vec3(1e-13, 0.0, 0.0), full)),
+        )
+        for (invalid in listOf(badRoot, nearZeroAxis)) {
+            val result = Reachability.ofChain(invalid, 0.0)
+            assertEquals(Reachability.State.UNKNOWN, result.state)
+            assertEquals(0, result.samplesTried)
+            assertTrue(result.bestErrorCm.isNaN())
+            assertTrue(result.assumption.contains("不可判"))
+        }
+    }
 }

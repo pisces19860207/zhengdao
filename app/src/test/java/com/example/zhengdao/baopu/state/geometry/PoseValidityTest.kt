@@ -143,4 +143,53 @@ class PoseValidityTest {
         val verdict = PoseValidity.check(emptyList(), env, chain = chain.pose(listOf(3.0)))
         assertTrue(verdict.valid)
     }
+
+    @Test
+    fun 非有限段几何_自碰撞与地面都失败关闭() {
+        val segments = listOf(
+            seg("a", Vec3(Double.NaN, 5.0, 0.0)),
+            seg("b", Vec3(1.0, 5.0, 0.0)),
+        )
+        val verdict = PoseValidity.check(segments, env)
+        assertFalse(verdict.valid)
+        assertTrue(verdict.violations.any { it.kind == ViolationKind.SELF_COLLISION && it.detail.contains("不可判") })
+        assertTrue(verdict.violations.any { it.kind == ViolationKind.GROUND_PENETRATION && it.detail.contains("不可判") })
+    }
+
+    @Test
+    fun EPA边界异常_不得被NaN深度放行() {
+        val throwingOnDiagonal = object : ConvexShape {
+            private val ball = Sphere(Vec3.ZERO, 1.0)
+            override fun support(dir: Vec3): Vec3 {
+                if (dir.x != 0.0 && dir.y != 0.0 && dir.z != 0.0) error("EPA diagonal boom")
+                return ball.support(dir)
+            }
+        }
+        val segments = listOf(
+            SegmentProxy("a", throwingOnDiagonal),
+            SegmentProxy("b", Sphere(Vec3(1.0, 0.0, 0.0), 1.0)),
+        )
+        val gjk = Gjk.distance(segments[0].shape, segments[1].shape)
+        val epa = Epa.penetration(segments[0].shape, segments[1].shape)
+        assertEquals(KernelStatus.Success, gjk.status)
+        assertEquals(KernelStatus.Unsupported, epa?.status)
+        val verdict = PoseValidity.check(segments, Environment(0.0, 0.0))
+        assertFalse(verdict.valid)
+        assertTrue(verdict.violations.any { it.kind == ViolationKind.SELF_COLLISION && it.detail.contains("不可判") })
+    }
+
+    @Test
+    fun 无效关节链位姿_失败关闭而非空违规放行() {
+        val badRoot = JointChain(
+            listOf(JointSpec("j", 1.0, Vec3.UNIT_Z, JointLimit(-PI, PI))),
+            rootRot = Rot3(Vec3.UNIT_X, Vec3.UNIT_X, Vec3.UNIT_Z),
+        )
+        val pose = badRoot.pose(listOf(0.0))
+        val verdict = PoseValidity.check(emptyList(), env, chain = pose)
+        assertFalse(verdict.valid)
+        val violation = verdict.violations.single()
+        assertEquals(ViolationKind.LIMIT_EXCEEDED, violation.kind)
+        assertEquals("chain", violation.segment)
+        assertTrue(violation.detail.contains("不可判"))
+    }
 }

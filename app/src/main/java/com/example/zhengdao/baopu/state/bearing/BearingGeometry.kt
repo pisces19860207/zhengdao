@@ -91,7 +91,7 @@ internal object BearingGeometry {
                 JointSpec("wrist_$side", body.frame.cm("hand"), Vec3.UNIT_Y, wrist),
             ),
             rootPosCm = Vec3(x, body.frame.layout.shoulderY, 0.0),
-            rootRot = Rot3.fromAxisAngle(Vec3.UNIT_Z, -PI / 2),
+            rootRot = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Z, -PI / 2)),
         )
     }
 

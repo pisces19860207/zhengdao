@@ -21,6 +21,20 @@ data class EpaResult(
     val iterations: Int,
     val assumption: String = EPA_ASSUMPTION,
     val note: String = GeometryNotes.NOT_MEASUREMENT,
+    val status: KernelStatus = KernelStatus.Success,
+    val reason: String? = null,
+) {
+    override fun toString(): String =
+        "EpaResult(depthCm=$depthCm, normal=$normal, iterations=$iterations, " +
+            "assumption=$assumption, note=$note" +
+            if (status == KernelStatus.Success && reason == null) ")" else ", status=$status, reason=$reason)"
+}
+
+internal enum class InitialTetraSource { GJK_SIMPLEX, STRICT_SCAN, NONE }
+
+internal data class InitialTetraTrace(
+    val vertices: List<MinkPoint>,
+    val source: InitialTetraSource,
 )
 
 private const val EPA_ASSUMPTION = "EPA 穿透深度：支撑点扩张多面体，改进容差 1e-9（绝对＋相对），" +
@@ -42,43 +56,101 @@ private data class Face(val i0: Int, val i1: Int, val i2: Int, val normal: Vec3,
 
 private data class Polytope(val verts: List<MinkPoint>, val faces: List<Face>)
 
-/** EPA 穿透深度求解（纯函数）。不相交返回 null；接触/退化相交深度为 0。 */
+/** EPA 穿透深度求解（纯函数）。不相交返回 null；边界状态由 status/reason 显式给出。 */
 object Epa {
 
-    fun penetration(a: ConvexShape, b: ConvexShape): EpaResult? {
+    fun penetration(a: ConvexShape, b: ConvexShape): EpaResult? = try {
         val gjk = Gjk.distance(a, b)
-        if (gjk.distanceCm > CONTACT_DIST) return null
+        if (gjk.status == KernelStatus.Unsupported) {
+            unsupported(gjk.iterations, gjk.reason ?: "GJK 输入超出支持域")
+        } else if (a is Sphere && b is Sphere && a.center == b.center && a.radius == b.radius) {
+            // 同心等球没有唯一分离方向；其它退化体仍可保留有限深度。
+            degenerate(0.0, gjk.iterations, gjk.reason ?: "同心等球缺少唯一分离方向")
+        } else if (gjk.distanceCm > CONTACT_DIST) {
+            if (gjk.status == KernelStatus.Success) {
+                null
+            } else {
+                degenerate(0.0, gjk.iterations, gjk.reason ?: "退化形体分离")
+            }
+        } else if (!gjk.intersecting) {
+            degenerate(0.0, gjk.iterations, "分离近贴无穿透深度")
+        } else {
+            penetrate(gjk, a, b)
+        }
+    } catch (e: Exception) {
+        unsupported(0, "EPA 边界异常：${e.javaClass.simpleName}")
+    }
+
+    internal fun initialTetraTrace(a: ConvexShape, b: ConvexShape): InitialTetraTrace {
+        val gjk = Gjk.distance(a, b)
+        if (gjk.status == KernelStatus.Unsupported) return InitialTetraTrace(emptyList(), InitialTetraSource.NONE)
+        return initialTetra(gjk, a, b)
+    }
+
+    private fun penetrate(gjk: GjkResult, a: ConvexShape, b: ConvexShape): EpaResult {
         val dupTol = dupTolSq(a, b) // 822：随形体标尺 L 走，与 GJK stuck 同源同标定
-        val verts = initialVertices(gjk.simplex, a, b)
-            ?: return EpaResult(0.0, Vec3.UNIT_Y, 0)
+        val initial = initialTetra(gjk, a, b)
+        val verts = initial.vertices
+        if (initial.source == InitialTetraSource.NONE) {
+            return degenerate(0.0, gjk.iterations, "无严格含原点的初始四面体")
+        }
+        if (verts.size != 4) return degenerate(0.0, gjk.iterations, "初始四面体顶点不足")
         var poly = Polytope(verts, tetraFaces(verts))
+        if (poly.faces.size < 4) return degenerate(0.0, gjk.iterations, "初始四面体面集不足")
         var iter = 0
         while (iter < EPA_MAX_ITER) {
             iter++
-            val face = poly.faces[closestFaceIndex(poly.faces)]
-            if (face.dist < 0.0) return EpaResult(0.0, face.normal, iter)
+            val faceIndex = closestFaceIndex(poly.faces) ?: return degenerate(0.0, iter, "扩张面集为空")
+            val face = poly.faces[faceIndex]
+            if (!vec3IsFinite(face.normal) || !face.dist.isFinite()) {
+                return unsupported(iter, "EPA 面读数非有限数")
+            }
+            if (face.dist < 0.0) return degenerate(0.0, iter, "EPA 最近面距离为负")
             val m = minkSupport(a, b, face.normal)
+            if (!vec3IsFinite(m.w)) return unsupported(iter, "EPA 支撑点非有限数")
             val gain = m.w.dot(face.normal) - face.dist
             val dup = poly.verts.any { (it.w - m.w).normSq() < dupTol }
+            if (!gain.isFinite()) return unsupported(iter, "EPA 改进量非有限数")
             if (gain <= EPA_EPS_ABS + EPA_EPS_REL * face.dist || dup) {
-                return EpaResult(face.dist, face.normal, iter)
+                return EpaResult(face.dist, face.normal, iter, status = gjk.status, reason = gjk.reason)
             }
             poly = expand(poly, m)
+            if (poly.faces.size < 4) return degenerate(0.0, iter, "扩张后面集不足")
         }
-        val face = poly.faces[closestFaceIndex(poly.faces)]
-        return EpaResult(maxOf(0.0, face.dist), face.normal, iter)
+        val faceIndex = closestFaceIndex(poly.faces) ?: return degenerate(0.0, iter, "最终面集为空")
+        val face = poly.faces[faceIndex]
+        if (!vec3IsFinite(face.normal) || !face.dist.isFinite()) {
+            return unsupported(iter, "EPA 最终面读数非有限数")
+        }
+        if (face.dist < 0.0) return degenerate(0.0, iter, "EPA 最终面距离为负")
+        return EpaResult(face.dist, face.normal, iter, status = gjk.status, reason = gjk.reason)
     }
 
-    private fun closestFaceIndex(faces: List<Face>): Int =
-        faces.indices.minByOrNull { faces[it].dist } ?: 0
+    private fun closestFaceIndex(faces: List<Face>): Int? =
+        faces.indices.minByOrNull { faces[it].dist }
+
+    private fun degenerate(depth: Double, iterations: Int, reason: String): EpaResult = EpaResult(
+        depth,
+        Vec3.UNIT_Y,
+        iterations,
+        status = KernelStatus.Degenerate,
+        reason = reason,
+    )
+
+    private fun unsupported(iterations: Int, reason: String): EpaResult = EpaResult(
+        Double.NaN,
+        Vec3.UNIT_Y,
+        iterations,
+        status = KernelStatus.Unsupported,
+        reason = reason,
+    )
 }
 
-/** 初始四面体：优先 GJK 终端单纯形；退化时从轴向＋四面体向支撑点里挑严格含原点的最大体积四面体。 */
-private fun initialVertices(simplex: List<MinkPoint>, a: ConvexShape, b: ConvexShape): List<MinkPoint>? {
-    if (simplex.size == 4 && tetraVolume(simplex) > 1e-12 &&
-        originInside(simplex.map { it.w }, strict = false)
-    ) {
-        return simplex
+/** 初始四面体：优先严格含原点的 GJK 终端单纯形；否则只从严格候选里挑最大体积。 */
+private fun initialTetra(gjk: GjkResult, a: ConvexShape, b: ConvexShape): InitialTetraTrace {
+    val simplex = gjk.simplex
+    if (simplex.size == 4 && tetraVolume(simplex) > 1e-12 && originInside(simplex.map { it.w }, strict = false)) {
+        return InitialTetraTrace(simplex, InitialTetraSource.GJK_SIMPLEX)
     }
     val s = 1.0 / sqrt(3.0)
     val dirs = listOf(
@@ -86,10 +158,15 @@ private fun initialVertices(simplex: List<MinkPoint>, a: ConvexShape, b: ConvexS
         Vec3(s, s, s), Vec3(s, -s, -s), Vec3(-s, s, -s), Vec3(-s, -s, s),
     )
     val candidates = simplex + dirs.map { minkSupport(a, b, it) }
-    return pickTetra(candidates, strict = true) ?: pickTetra(candidates, strict = false)
+    val picked = pickTetra(candidates)
+    return if (picked == null) {
+        InitialTetraTrace(emptyList(), InitialTetraSource.NONE)
+    } else {
+        InitialTetraTrace(picked, InitialTetraSource.STRICT_SCAN)
+    }
 }
 
-private fun pickTetra(c: List<MinkPoint>, strict: Boolean): List<MinkPoint>? {
+private fun pickTetra(c: List<MinkPoint>): List<MinkPoint>? {
     var best: List<MinkPoint>? = null
     var bestVol = 1e-12
     for (i in c.indices) {
@@ -97,8 +174,9 @@ private fun pickTetra(c: List<MinkPoint>, strict: Boolean): List<MinkPoint>? {
             for (k in j + 1 until c.size) {
                 for (l in k + 1 until c.size) {
                     val t = listOf(c[i], c[j], c[k], c[l])
+                    if (t.any { !vec3IsFinite(it.w) }) continue
                     val vol = tetraVolume(t)
-                    if (vol > bestVol && originInside(t.map { it.w }, strict)) {
+                    if (vol.isFinite() && vol > bestVol && originInside(t.map { it.w }, strict = true)) {
                         best = t
                         bestVol = vol
                     }
@@ -114,11 +192,9 @@ private fun tetraVolume(t: List<MinkPoint>): Double {
     return abs((w[1] - w[0]).dot((w[2] - w[0]).cross(w[3] - w[0]))) / 6.0
 }
 
-/**
- * 原点是否在四面体内：每面用「对顶点在同侧」定向（绕向无关），
- * 再要求原点也在该侧。strict=true 要求严格在内部，不含边界。
- */
+/** 原点含入判定：GJK 单纯形沿用 -1e-12 裕度，严格扫描沿用 1e-9 裕度。 */
 private fun originInside(w: List<Vec3>, strict: Boolean): Boolean {
+    if (w.size != 4 || w.any { !vec3IsFinite(it) }) return false
     val faces = listOf(
         listOf(0, 1, 2) to 3, listOf(0, 1, 3) to 2,
         listOf(0, 2, 3) to 1, listOf(1, 2, 3) to 0,
@@ -127,8 +203,10 @@ private fun originInside(w: List<Vec3>, strict: Boolean): Boolean {
     return faces.all { (tri, opp) ->
         val (p, q, r) = tri.map { w[it] }
         val n = (q - p).cross(r - p)
+        if (!vec3IsFinite(n) || n == Vec3.ZERO) return@all false
         val side = if (n.dot(w[opp] - p) >= 0.0) 1.0 else -1.0
-        side * n.dot(-p) >= margin
+        val sideDistance = side * n.dot(-p)
+        sideDistance.isFinite() && sideDistance >= margin
     }
 }
 

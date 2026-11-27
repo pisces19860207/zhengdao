@@ -44,7 +44,7 @@ class CompoundProxyTest {
         for (f in fixtures) {
             val proxy = CompoundDecompose.decompose(specOf(f.name, f.u, f.v))
             val probe = notchProbe(f.u, f.v)
-            val compoundHit = proxy.anyHit(probe)
+            val compoundHit = proxy.anyHit(probe).intersecting
             val singleHit = Gjk.distance(singleCapsule(f.u, f.v), probe).intersecting
             val compoundCm = proxy.minDistance(probe).distanceCm
             val singleCm = Gjk.distance(singleCapsule(f.u, f.v), probe).distanceCm
@@ -62,7 +62,7 @@ class CompoundProxyTest {
             val read = proxy.minDistance(notchProbe(f.u, f.v))
             assertFalse("${f.name} 凹口探针不该命中", read.intersecting)
             assertTrue("${f.name} 凹口距离须为正：${read.distanceCm}", read.distanceCm > 0.0)
-            assertEquals(read.intersecting, proxy.anyHit(notchProbe(f.u, f.v)))
+            assertEquals(read.intersecting, proxy.anyHit(notchProbe(f.u, f.v)).intersecting)
         }
     }
 
@@ -117,7 +117,7 @@ class CompoundProxyTest {
         val ball = Sphere(Vec3.ZERO, 2.0)
         val id = LocalTransform.IDENTITY
         assertEquals(Vec3(2.0, 0.0, 0.0), id.worldPoint(ball.support(Vec3.UNIT_X)))
-        val turned = Rot3.fromAxisAngle(Vec3.UNIT_Y, PI / 2.0)
+        val turned = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Y, PI / 2.0))
         val local = ball.support(turned.transposeTimes(Vec3.UNIT_X))
         val world = turned.times(local)
         // 球旋转不变：世界方向 X 问进去，转回世界后支撑点仍应沿 X（不是沿旋转后的局部轴）。
@@ -160,7 +160,7 @@ class CompoundProxyTest {
         val read = proxy.minDistance(probe)
         val direct = chunks.map { Gjk.distance(it.shape, probe) }
         assertEquals(direct.minOf { it.distanceCm }, read.distanceCm, 0.0)
-        assertEquals(read.intersecting, proxy.anyHit(probe))
+        assertEquals(read.intersecting, proxy.anyHit(probe).intersecting)
         assertEquals(direct.any { it.intersecting }, read.intersecting)
         assertTrue(read.iterations <= 64)
         assertTrue(read.distanceCm >= 0.0)

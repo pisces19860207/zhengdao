@@ -108,14 +108,27 @@ class EpaDupToleranceTest {
         assertAnchor("点入盒", ConvexHull(listOf(Vec3(0.2, 0.1, 0.0))), Box(Vec3.ZERO, Vec3(1.0, 1.0, 1.0)), 5, 0.8, 1e-15)
     }
 
+    private fun assertDegeneratePlate(t: Double) {
+        val a = plateAt(t, 0.0)
+        val b = plateAt(t, t / 2)
+        val gjk = Gjk.distance(a, b)
+        val r = Epa.penetration(a, b)
+        val trace = Epa.initialTetraTrace(a, b)
+        assertNotNull("共面薄板不抛且显式给出边界状态", r)
+        assertEquals(KernelStatus.Degenerate, gjk.status)
+        assertEquals(KernelStatus.Degenerate, r!!.status)
+        assertEquals(0.0, r.depthCm, 0.0)
+        assertEquals(gjk.iterations, r.iterations)
+        assertTrue(r.reason?.isNotBlank() == true)
+        assertEquals(InitialTetraSource.NONE, trace.source)
+        assertTrue(trace.vertices.isEmpty())
+    }
+
     @Test
     fun 判据二_锚点_近共面薄板不受重复点阈收紧影响() {
-        // 两块同厚 t 的板：A 中心 z=0、B 中心 z=t/2 ⇒ z 向重叠恰为 t/2（解析深度）。
-        // t=1e-3：支撑点最近距离 4e-18 远高于新阈 ⇒ 由 gain 判据停（3 轮）；
-        // t=1e-12：最近距离 4e-24 低于新阈（≈3.2e-23）⇒ 仍由重复点判据停（1 轮）。
-        // 两种停法在 822 前后逐位一致（交付报告 §三）。
+        // t=1e-3 仍走正常 EPA；t=1e-12 没有严格初始四面体，按退化契约返回。
         assertAnchor("薄板 t=1e-3", plateAt(1e-3, 0.0), plateAt(1e-3, 5e-4), 3, 5e-4, 1e-15)
-        assertAnchor("薄板 t=1e-12（重复点判据仍开火）", plateAt(1e-12, 0.0), plateAt(1e-12, 5e-13), 1, 5e-13, 1e-24)
+        assertDegeneratePlate(1e-12)
     }
 
     // ── 判据② 失败面：应相交构型零 null、退化不抛 ────────────────────────
@@ -216,12 +229,8 @@ class EpaDupToleranceTest {
         // 如实记：**dup 判据在本测域内是冗余的** —— 交付报告 §三/§四 的 V3 对照（把 dup 整个
         // 关掉）在 20,000 例扫查上读数逐位相同，因此本断言不会因 dup 口径变化而红。它锁的是
         // "读数入册"（822 前 = 822 后 = 关闭 dup 三态同值），dup 口径本身由判据一的换算表锁死。
-        // 这两个构型的重复点最近距离分别落在新阈之下（薄板 t=1e-12）与远高于新阈（盒盒），
-        // 覆盖"靠 dup 停"与"靠 gain 停"两条路。
-        assertEquals(
-            1,
-            Epa.penetration(plateAt(1e-12, 0.0), plateAt(1e-12, 5e-13))!!.iterations,
-        )
+        // 正常盒盒仍覆盖"靠 gain 停"；共面薄板显式退化，不再复用垃圾四面体读数。
+        assertDegeneratePlate(1e-12)
         val box = Box(Vec3.ZERO, Vec3(1.0, 1.0, 1.0))
         assertEquals(3, Epa.penetration(box, Box(Vec3(1.5, 0.0, 0.0), Vec3(1.0, 1.0, 1.0)))!!.iterations)
     }

@@ -1,12 +1,13 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 //
-// 第八百六十二批 · 源码门禁：禁优化迭代（带负例注入）＋655 三文件零 diff 复算。
+// 第九百一十五批 · 源码门禁：禁优化迭代＋655 边界版指纹与绝对阈值锁定。
 package com.example.zhengdao.baopu.state.geometry
 
 import java.io.File
 import java.security.MessageDigest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -79,17 +80,25 @@ class CompoundSourceAssertTest {
     }
 
     @Test
-    fun 六五五三文件哈希与基线逐字相等() {
-        // 基线＝仓库形态（LF）的 sha256，由 `git show HEAD:<path>` 的字节算出
+    fun 六五五边界版哈希锁定且形体算法未动() {
         val baseline = mapOf(
-            "Gjk.kt" to "baf8cfa8cb7d1cd6232415983cae0ca1ebb9fd0da0f5ad651aa6f55bff39c5b1",
-            "Epa.kt" to "c6affab11b84145d3eabba80fd99bfcf7f586cbdaf5004c904a604f34d8948ee",
+            "Gjk.kt" to "a9302574d39997f82d0255dc67b311e68d3f4b46649544d4f6f8bc82affcbf31",
+            "Epa.kt" to "c06de6ea2b087a6d05a2a924ea32775d324d2f904b4059e8b458de63bab919a4",
             "Shapes.kt" to "619c9af044a92c1006668963ee30257079e7aa3ce15405de93357ff30071b7ef",
         )
         for ((name, expected) in baseline) {
             val actual = sha256Lf(sourceFile(name).readText())
-            assertEquals("655 算法文件被改动：$name", expected, actual)
+            assertEquals("915 锁定文件被改动：$name", expected, actual)
         }
+    }
+
+    @Test
+    fun EPA绝对体积阈值未动且非严格兜底与空面零值已移除() {
+        val code = stripped(sourceFile("Epa.kt").readText())
+        assertEquals(1, Regex("var bestVol = 1e-12").findAll(code).count())
+        assertFalse(code.contains("pickTetra(candidates, strict = false)"))
+        assertFalse(code.contains("faces.indices.minByOrNull { faces[it].dist } ?: 0"))
+        assertFalse(code.contains("EpaResult(maxOf(0.0, face.dist)"))
     }
 
     @Test

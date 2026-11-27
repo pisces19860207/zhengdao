@@ -79,25 +79,73 @@ object PoseValidity {
                 val a = segments[i]
                 val b = segments[j]
                 if (isAdjacent(a.name, b.name, adjacent)) continue
-                val reading = CompoundPairs.read(a, b, compounds)
-                val dist = reading?.distanceCm ?: Gjk.distance(a.shape, b.shape).distanceCm
-                if (dist > tol) continue
-                val depth = reading?.depthCm ?: Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0
-                if (depth > tol) {
-                    out.add(
-                        Violation(
-                            ViolationKind.SELF_COLLISION,
-                            a.name,
-                            b.name,
-                            amountMilli = milliOf(depth),
-                            detail = "段间穿透",
-                        ),
-                    )
-                }
+                selfCollision(a, b, tol, compounds)?.let(out::add)
             }
         }
         return out
     }
+
+    private fun selfCollision(
+        a: SegmentProxy,
+        b: SegmentProxy,
+        tol: Double,
+        compounds: Map<String, CompoundProxy>,
+    ): Violation? {
+        val reading = CompoundPairs.read(a, b, compounds)
+        return if (reading != null) {
+            compoundSelfCollision(a, b, reading, tol)
+        } else {
+            plainSelfCollision(a, b, tol)
+        }
+    }
+
+    private fun compoundSelfCollision(
+        a: SegmentProxy,
+        b: SegmentProxy,
+        reading: CompoundPairReading,
+        tol: Double,
+    ): Violation? {
+        if (reading.status == KernelStatus.Unsupported || !reading.distanceCm.isFinite() || !reading.depthCm.isFinite()) {
+            return unsupportedSelfCollision(a, b, reading.reason)
+        }
+        if (reading.distanceCm > tol || reading.depthCm <= tol) return null
+        return Violation(
+            ViolationKind.SELF_COLLISION,
+            a.name,
+            b.name,
+            amountMilli = milliOf(reading.depthCm),
+            detail = "段间穿透",
+        )
+    }
+
+    private fun plainSelfCollision(a: SegmentProxy, b: SegmentProxy, tol: Double): Violation? {
+        val gjk = Gjk.distance(a.shape, b.shape)
+        if (gjk.status == KernelStatus.Unsupported || !gjk.distanceCm.isFinite()) {
+            return unsupportedSelfCollision(a, b, gjk.reason)
+        }
+        if (gjk.distanceCm > tol) return null
+        val epa = Epa.penetration(a.shape, b.shape)
+        if (epa != null && (epa.status == KernelStatus.Unsupported || !epa.depthCm.isFinite())) {
+            return unsupportedSelfCollision(a, b, epa.reason)
+        }
+        val depth = epa?.depthCm ?: 0.0
+        if (depth <= tol) return null
+        return Violation(
+            ViolationKind.SELF_COLLISION,
+            a.name,
+            b.name,
+            amountMilli = milliOf(depth),
+            detail = "段间穿透",
+        )
+    }
+
+    private fun unsupportedSelfCollision(a: SegmentProxy, b: SegmentProxy, reason: String?): Violation =
+        Violation(
+            ViolationKind.SELF_COLLISION,
+            a.name,
+            b.name,
+            detail = "段间几何不可判：${reason ?: "输入超出支持域"}",
+        )
 
     private fun isAdjacent(a: String, b: String, adjacent: Set<Pair<String, String>>): Boolean =
         (a to b) in adjacent || (b to a) in adjacent
@@ -110,32 +158,63 @@ object PoseValidity {
     private fun groundViolations(segments: List<SegmentProxy>, env: Environment): List<Violation> {
         val out = ArrayList<Violation>()
         for (s in segments) {
-            val lowest = s.shape.lowestY()
-            if (lowest < env.groundYCm) {
-                out.add(
-                    Violation(
-                        ViolationKind.GROUND_PENETRATION,
-                        s.name,
-                        amountMilli = milliOf(env.groundYCm - lowest),
-                        detail = "穿地",
-                    ),
-                )
-            } else if (lowest < env.sandYCm) {
-                out.add(
-                    Violation(
-                        ViolationKind.SAND_PENETRATION,
-                        s.name,
-                        amountMilli = milliOf(env.sandYCm - lowest),
-                        detail = "穿沙",
-                    ),
-                )
-            }
+            groundViolation(s, env)?.let(out::add)
         }
         return out
     }
 
-    private fun limitViolations(chain: ChainPose?): List<Violation> =
-        chain?.joints.orEmpty().filter { !it.withinLimit }.map {
+    private fun groundViolation(segment: SegmentProxy, env: Environment): Violation? {
+        val boundary = try {
+            shapeBoundary(segment.shape)
+        } catch (e: Exception) {
+            return unsupportedGroundViolation(segment, "最低点探测异常：${e.javaClass.simpleName}")
+        }
+        if (boundary.status == KernelStatus.Unsupported) {
+            return unsupportedGroundViolation(segment, boundary.reason)
+        }
+        val lowest = try {
+            segment.shape.lowestY()
+        } catch (e: Exception) {
+            return unsupportedGroundViolation(segment, "最低点探测异常：${e.javaClass.simpleName}")
+        }
+        if (!lowest.isFinite()) return unsupportedGroundViolation(segment, "最低点非有限数")
+        if (lowest < env.groundYCm) {
+            return Violation(
+                ViolationKind.GROUND_PENETRATION,
+                segment.name,
+                amountMilli = milliOf(env.groundYCm - lowest),
+                detail = "穿地",
+            )
+        }
+        if (lowest < env.sandYCm) {
+            return Violation(
+                ViolationKind.SAND_PENETRATION,
+                segment.name,
+                amountMilli = milliOf(env.sandYCm - lowest),
+                detail = "穿沙",
+            )
+        }
+        return null
+    }
+
+    private fun unsupportedGroundViolation(segment: SegmentProxy, reason: String?): Violation =
+        Violation(
+            ViolationKind.GROUND_PENETRATION,
+            segment.name,
+            detail = "地面几何不可判：${reason ?: "输入超出支持域"}",
+        )
+
+    private fun limitViolations(chain: ChainPose?): List<Violation> {
+        if (chain?.status == KernelStatus.Unsupported) {
+            return listOf(
+                Violation(
+                    ViolationKind.LIMIT_EXCEEDED,
+                    "chain",
+                    detail = "关节链不可判：${chain.reason ?: "输入超出支持域"}",
+                ),
+            )
+        }
+        return chain?.joints.orEmpty().filter { !it.withinLimit }.map {
             Violation(
                 ViolationKind.LIMIT_EXCEEDED,
                 it.name,
@@ -144,4 +223,5 @@ object PoseValidity {
                 detail = "请求 ${it.requestedRad} 截到 ${it.appliedRad}",
             )
         }
+    }
 }

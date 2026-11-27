@@ -46,6 +46,8 @@ data class ChainPose(
     val endEffectorCm: Vec3,
     val assumption: String = "关节链正向运动学：逐关节截断到限位后沿链传播（静态映射，无时间积分）",
     val note: String = GeometryNotes.NOT_MEASUREMENT,
+    val status: KernelStatus = KernelStatus.Success,
+    val reason: String? = null,
 )
 
 /**
@@ -63,13 +65,34 @@ class JointChain(
 
     fun pose(angles: List<Double>): ChainPose {
         require(angles.size == joints.size) { "角度数必须等于关节数" }
+        if (!vec3IsFinite(rootPosCm) || !rootRot.isOrthonormal()) {
+            return ChainPose(emptyList(), Vec3.ZERO, status = KernelStatus.Unsupported, reason = "根位姿无效")
+        }
+        if (angles.any { !it.isFinite() }) {
+            return ChainPose(emptyList(), rootPosCm, status = KernelStatus.Unsupported, reason = "关节角非有限数")
+        }
         var p = rootPosCm
         var rot = rootRot
-        val states = joints.mapIndexed { i, j ->
+        val states = mutableListOf<JointState>()
+        for (i in joints.indices) {
+            val j = joints[i]
+            if (!j.lengthCm.isFinite()) {
+                return ChainPose(states, p, status = KernelStatus.Unsupported, reason = "连杆长非有限数")
+            }
+            if (!j.limit.minRad.isFinite() || !j.limit.maxRad.isFinite()) {
+                return ChainPose(states, p, status = KernelStatus.Unsupported, reason = "关节限位非有限数")
+            }
             val applied = j.limit.clamp(angles[i])
-            rot = rot * Rot3.fromAxisAngle(j.axis, applied)
-            p += rot.times(Vec3(j.lengthCm, 0.0, 0.0))
-            JointState(j.name, angles[i], applied, j.limit.contains(angles[i]), p)
+            val jointRot = Rot3.fromAxisAngle(j.axis, applied)
+                ?: return ChainPose(states, p, status = KernelStatus.Unsupported, reason = "关节轴或角度无效")
+            val nextRot = rot * jointRot
+            val nextP = p + nextRot.times(Vec3(j.lengthCm, 0.0, 0.0))
+            if (!vec3IsFinite(nextP)) {
+                return ChainPose(states, p, status = KernelStatus.Unsupported, reason = "关节位置溢出")
+            }
+            rot = nextRot
+            p = nextP
+            states += JointState(j.name, angles[i], applied, j.limit.contains(angles[i]), p)
         }
         return ChainPose(states, p)
     }

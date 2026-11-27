@@ -1,6 +1,6 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
-// 第八百九十五批 · 源码门禁：只落注入点、862 零改、凹深档只接收。
+// 第九百一十五批 · 源码门禁：边界状态先于数值、复合指纹锁定、凹深档只接收。
 package com.example.zhengdao.baopu.state.geometry
 
 import java.io.File
@@ -35,12 +35,17 @@ class CompoundSourceGuardTest {
     }
 
     @Test
-    fun PoseValidity只在距离与深度两点注入且保留原调用() {
+    fun PoseValidity保留单次查询并在读数值前检查边界状态() {
         val code = stripped(source("PoseValidity.kt"))
         assertTrue(code.contains("compounds: Map<String, CompoundProxy> = emptyMap()"))
         assertEquals(1, count(code, "CompoundPairs.read(a, b, compounds)"))
-        assertEquals(1, count(code, "Gjk.distance(a.shape, b.shape).distanceCm"))
-        assertEquals(1, count(code, "Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0"))
+        assertEquals(1, count(code, "Gjk.distance(a.shape, b.shape)"))
+        assertEquals(1, count(code, "Epa.penetration(a.shape, b.shape)"))
+        assertTrue(code.contains("reading.status == KernelStatus.Unsupported"))
+        assertTrue(code.contains("gjk.status == KernelStatus.Unsupported"))
+        assertTrue(code.contains("epa.status == KernelStatus.Unsupported"))
+        assertFalse(code.contains("Gjk.distance(a.shape, b.shape).distanceCm"))
+        assertFalse(code.contains("Epa.penetration(a.shape, b.shape)?.depthCm ?: 0.0"))
         val pairs = stripped(source("CompoundPairs.kt"))
         assertEquals(1, Regex("\\.anyHit\\(").findAll(pairs).count())
         assertEquals(1, Regex("\\.minDistance\\(").findAll(pairs).count())
@@ -84,12 +89,12 @@ class CompoundSourceGuardTest {
     }
 
     @Test
-    fun 八六二复合代理整文件与基线逐字相同() {
-        val expected = "490fcd41abe6e372a6ac173e6b781174a05cb1bb65de7baa37175156139f0472"
+    fun 九一五复合代理边界版整文件指纹锁定() {
+        val expected = "036d1537482d6ad86ac6fb32b0f9b09d623943e54c1fd99c14a34ff19d5e54c7"
         val actual = MessageDigest.getInstance("SHA-256")
             .digest(source("CompoundProxy.kt").replace("\r\n", "\n").toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        assertEquals("862 分解算法与 LocalTransform 都不许改", expected, actual)
+        assertEquals("915 边界状态 propagation 与既有分解算法都不许再漂", expected, actual)
     }
 
     @Test

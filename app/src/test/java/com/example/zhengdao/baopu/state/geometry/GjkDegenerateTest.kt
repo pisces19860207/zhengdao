@@ -8,6 +8,7 @@ package com.example.zhengdao.baopu.state.geometry
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.cos
@@ -148,6 +149,22 @@ class GjkDegenerateTest {
         assertEquals(0.0, r.distanceCm, 0.0)
         val depth = Epa.penetration(a, b)
         assertTrue("近贴 EPA 深度应近零：${depth?.depthCm}", depth != null && depth.depthCm <= 1e-6)
+    }
+
+    @Test
+    fun 同心等球_显式退化且没有伪深度() {
+        val ball = Sphere(Vec3.ZERO, 50.0)
+        val gjk = Gjk.distance(ball, ball)
+        val epa = Epa.penetration(ball, ball)
+
+        assertEquals(KernelStatus.Degenerate, gjk.status)
+        assertTrue(gjk.reason?.isNotBlank() == true)
+        assertNotNull(epa)
+        assertEquals(KernelStatus.Degenerate, epa!!.status)
+        assertEquals(0.0, epa.depthCm, 0.0)
+        assertEquals(Vec3.UNIT_Y, epa.normal)
+        assertEquals(gjk.iterations, epa.iterations)
+        assertTrue(epa.reason?.isNotBlank() == true)
     }
 
     // ── 单纯形四点不变量：崩溃路径总开关的结构性回归 ─────────────────────

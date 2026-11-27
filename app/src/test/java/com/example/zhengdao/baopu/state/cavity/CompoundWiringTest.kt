@@ -285,8 +285,8 @@ class CompoundWiringTest {
         val farCenter = capsule.a + axis * 7.0 + radial * 5.5
         val nearLocal = Vec3(1.0, 2.0, 0.0)
         val farLocal = Vec3(-2.0, 1.0, 0.0)
-        val nearRotation = Rot3.fromAxisAngle(Vec3.UNIT_Z, Math.PI / 2.0)
-        val farRotation = Rot3.fromAxisAngle(Vec3.UNIT_X, Math.PI / 3.0)
+        val nearRotation = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Z, Math.PI / 2.0))
+        val farRotation = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_X, Math.PI / 3.0))
         return CompoundProxy(
             "probe",
             listOf(

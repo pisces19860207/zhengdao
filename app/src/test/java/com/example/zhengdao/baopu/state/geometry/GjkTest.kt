@@ -68,7 +68,7 @@ class GjkTest {
 
     @Test
     fun rotatedBoxMatchesAnalytic() {
-        val rot = Rot3.fromAxisAngle(Vec3.UNIT_Z, Math.PI / 4.0)
+        val rot = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Z, Math.PI / 4.0))
         val box = Box(Vec3.ZERO, Vec3(1.0, 1.0, 1.0), rot)
         val r = Gjk.distance(box, Sphere(Vec3(5.0, 0.0, 0.0), 1.0))
         val exact = 5.0 - sqrt(2.0) - 1.0

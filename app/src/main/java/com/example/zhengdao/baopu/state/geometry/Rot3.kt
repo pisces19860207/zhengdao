@@ -19,11 +19,27 @@ data class Rot3(val ax: Vec3, val ay: Vec3, val az: Vec3) {
 
     operator fun times(o: Rot3) = Rot3(times(o.ax), times(o.ay), times(o.az))
 
+    fun determinant(): Double = ax.dot(ay.cross(az))
+
+    fun isOrthonormal(tolerance: Double = 1e-9): Boolean =
+        tolerance.isFinite() && tolerance >= 0.0 &&
+            vec3IsFinite(ax) && vec3IsFinite(ay) && vec3IsFinite(az) &&
+            kotlin.math.abs(ax.normSq() - 1.0) <= tolerance &&
+            kotlin.math.abs(ay.normSq() - 1.0) <= tolerance &&
+            kotlin.math.abs(az.normSq() - 1.0) <= tolerance &&
+            kotlin.math.abs(ax.dot(ay)) <= tolerance &&
+            kotlin.math.abs(ay.dot(az)) <= tolerance &&
+            kotlin.math.abs(az.dot(ax)) <= tolerance &&
+            kotlin.math.abs(determinant() - 1.0) <= tolerance
+
     companion object {
         val IDENTITY = Rot3(Vec3.UNIT_X, Vec3.UNIT_Y, Vec3.UNIT_Z)
 
-        /** 绕单位轴 axis 转 rad（Rodrigues 公式，闭式）。 */
-        fun fromAxisAngle(axis: Vec3, rad: Double): Rot3 {
+        /** 绕单位轴 axis 转 rad（Rodrigues 公式，闭式）；无效轴或角度返回 null。 */
+        fun fromAxisAngle(axis: Vec3, rad: Double): Rot3? {
+            if (!vec3IsFinite(axis) || !rad.isFinite()) return null
+            val norm = axis.norm()
+            if (!norm.isFinite() || norm <= 1e-12) return null
             val a = axis.normalized()
             val c = cos(rad)
             val s = sin(rad)

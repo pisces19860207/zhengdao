@@ -5,7 +5,7 @@
 // 为什么：一根凸胶囊会把腋下/胯/颈侧/腹股沟的凹口填平，导致「探针明明在凹口里」
 // 却被判成相交。本单只做规则化刚体摆放——查表、常量算术、闭式旋转，
 // 不做曲面重建、不做最优分解、不做任何目标函数迭代。
-// 距离唯一来源＝655 的 Gjk.distance；Gjk/Epa/Shapes 三个算法文件零改。
+// 距离唯一来源＝655 的 Gjk.distance；边界状态显式传递，不把异常折成零。
 // 边界：不做网格化、不做接触流形、不改 686/741/742 的既有代理体。
 package com.example.zhengdao.baopu.state.geometry
 
@@ -61,9 +61,18 @@ data class ProxyChunk(
 private class TransformedChunk(
     private val base: ConvexShape,
     private val tf: LocalTransform,
-) : ConvexShape {
+) : BoundaryAwareShape {
     override fun support(dir: Vec3): Vec3 =
         tf.worldPoint(base.support(tf.rotation.transposeTimes(dir)))
+
+    override fun boundary(): KernelBoundary {
+        if (!vec3IsFinite(tf.offset) || !tf.rotation.isOrthonormal()) {
+            return KernelBoundary(KernelStatus.Unsupported, "块刚体变换无效")
+        }
+        return shapeBoundary(base)
+    }
+
+    override fun scaleLength(): Double = boundaryScaleLen(base)
 }
 
 private const val COMPOUND_ASSUMPTION =
@@ -82,6 +91,14 @@ data class CompoundDistance(
     val nearestChunkId: String,
     val assumption: String = COMPOUND_ASSUMPTION,
     val note: String = GeometryNotes.NOT_MEASUREMENT,
+    val status: KernelStatus = KernelStatus.Success,
+    val reason: String? = null,
+)
+
+data class CompoundHitResult(
+    val intersecting: Boolean,
+    val status: KernelStatus,
+    val reason: String? = null,
 )
 
 /** 复合代理：块数闭集 2..6，查询只循环调用 Gjk.distance。 */
@@ -93,32 +110,78 @@ class CompoundProxy(val id: String, val chunks: List<ProxyChunk>) {
             "复合代理块数须在 2..6，实际 ${chunks.size}"
         }
         require(chunks.map { it.id }.distinct().size == chunks.size) { "块 id 重复" }
-        require(chunks.all { it.transform.rotation.let { r -> abs(r.ax.dot(r.ay)) < 1e-9 && abs(r.ay.dot(r.az)) < 1e-9 } }) {
-            "块局部变换必须是正交标架"
+    }
+
+    internal val inputBoundary: KernelBoundary = chunks.fold(KernelBoundary(KernelStatus.Success)) { acc, chunk ->
+        if (!vec3IsFinite(chunk.transform.offset) || !chunk.transform.rotation.isOrthonormal()) {
+            mergeKernelBoundary(acc, KernelBoundary(KernelStatus.Unsupported, "块 ${chunk.id} 刚体变换无效"))
+        } else {
+            acc
         }
     }
 
     /** 任一凸块与 other 相交/接触即命中；不先取并集凸包（那会重新填平凹口）。 */
-    fun anyHit(other: ConvexShape): Boolean =
-        chunks.any { Gjk.distance(world(it), other).intersecting }
+    fun anyHit(other: ConvexShape): CompoundHitResult {
+        if (inputBoundary.status == KernelStatus.Unsupported) {
+            return CompoundHitResult(false, KernelStatus.Unsupported, inputBoundary.reason)
+        }
+        var boundary = inputBoundary
+        var hit = false
+        for (chunk in chunks) {
+            val reading = Gjk.distance(world(chunk), other)
+            boundary = mergeKernelBoundary(
+                boundary,
+                KernelBoundary(reading.status, reading.reason?.let { "${chunk.id}: $it" }),
+            )
+            hit = hit || reading.intersecting
+        }
+        return CompoundHitResult(
+            if (boundary.status == KernelStatus.Unsupported) false else hit,
+            boundary.status,
+            boundary.reason,
+        )
+    }
 
     /** 逐块 GJK，取最近距离；只读各块结果，不重算、不加权。 */
     fun minDistance(other: ConvexShape): CompoundDistance {
+        if (inputBoundary.status == KernelStatus.Unsupported) return unsupportedDistance(inputBoundary.reason)
+        var boundary = inputBoundary
         var best: GjkResult? = null
         var bestId = ""
         for (chunk in chunks) {
             val reading = Gjk.distance(world(chunk), other)
-            if (best == null || reading.distanceCm < best.distanceCm) {
+            boundary = mergeKernelBoundary(
+                boundary,
+                KernelBoundary(reading.status, reading.reason?.let { "${chunk.id}: $it" }),
+            )
+            if (reading.status != KernelStatus.Unsupported &&
+                (best == null || reading.distanceCm < best.distanceCm)
+            ) {
                 best = reading
                 bestId = chunk.id
             }
         }
-        val chosen = best ?: error("复合代理块数不可能为空")
+        if (boundary.status == KernelStatus.Unsupported) return unsupportedDistance(boundary.reason)
+        val chosen = best ?: return unsupportedDistance("复合代理没有可用块读数")
         return CompoundDistance(
             chosen.distanceCm, chosen.witnessA, chosen.witnessB, chosen.intersecting,
             chosen.iterations, chunks.size, bestId,
+            status = boundary.status,
+            reason = boundary.reason,
         )
     }
+
+    private fun unsupportedDistance(reason: String?): CompoundDistance = CompoundDistance(
+        Double.POSITIVE_INFINITY,
+        Vec3.ZERO,
+        Vec3.ZERO,
+        false,
+        0,
+        chunks.size,
+        "",
+        status = KernelStatus.Unsupported,
+        reason = reason ?: "复合代理输入超出支持域",
+    )
 
     private fun world(chunk: ProxyChunk): ConvexShape =
         TransformedChunk(chunk.shape, chunk.transform)

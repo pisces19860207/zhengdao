@@ -116,7 +116,7 @@ class OrganProxyTest {
         assertEquals(expect.map { it.x }, f.map { it.point.x })
         assertEquals(expect.map { it.y }, f.map { it.point.y })
         assertEquals(expect.map { it.z }, f.map { it.point.z })
-        val rot = Rot3.fromAxisAngle(Vec3.UNIT_Z, 1.5707963267948966)
+        val rot = checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Z, 1.5707963267948966))
         val turned = CavityFixtures.ellipsoid("r", Vec3.ZERO, Vec3(1.0, 2.0, 3.0), rot).features().points
         assertTrue("转 90° 后 +X 极应落到 +Y", abs(turned[0].point.y - 1.0) < 1e-9)
     }
@@ -168,7 +168,7 @@ class OrganProxyTest {
     fun `包围盒保守_装得下全部特征点也装得下全部支撑点`() {
         for (p in listOf(
             CavityFixtures.sphereAtZ("s", 1.0), CavityFixtures.capsule("c", Vec3.ZERO, Vec3(0.0, 2.0, 0.0), 0.5),
-            CavityFixtures.ellipsoid("e", Vec3(1.0, 1.0, 1.0), Vec3(1.0, 2.0, 3.0), Rot3.fromAxisAngle(Vec3.UNIT_X, 0.7)),
+            CavityFixtures.ellipsoid("e", Vec3(1.0, 1.0, 1.0), Vec3(1.0, 2.0, 3.0), checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_X, 0.7))),
             CavityFixtures.bigHull("h"),
         )) {
             val box = p.aabb()
@@ -183,7 +183,7 @@ class OrganProxyTest {
 
     @Test
     fun `包围半径取半对角线_确实包住形状`() {
-        val p = CavityFixtures.ellipsoid("e", Vec3(1.0, 1.0, 1.0), Vec3(1.0, 3.0, 2.0), Rot3.fromAxisAngle(Vec3.UNIT_Y, 0.9))
+        val p = CavityFixtures.ellipsoid("e", Vec3(1.0, 1.0, 1.0), Vec3(1.0, 3.0, 2.0), checkNotNull(Rot3.fromAxisAngle(Vec3.UNIT_Y, 0.9)))
         val c = p.aabb().center()
         for (d in dirs) assertTrue((p.shape.support(d) - c).norm() <= p.boundingRadiusCm() + 1e-9)
     }
