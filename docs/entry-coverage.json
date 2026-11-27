@@ -593,6 +593,69 @@
    },
    {
     "debug_only_refs": [],
+    "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/PubertySheet.kt",
+    "file_mates_wired": true,
+    "kind": "object",
+    "line": 45,
+    "list": "B",
+    "member_scan": [],
+    "member_scan_more": 0,
+    "note": "谁接：**后续装配单**（939 派工单边界为「青春发育史：五维只给档＋里程碑顺序表＋purposeCheck」，4 生产件全新增、零改 805/935 与包内既有 22 件、零装配）。本件＝发育单唯一出口（tierTable()／milestoneTable()／render() 三段输出），生产侧现在只有测试在读；为什么不接：本单判的是「目的」与两条禁令，读发育单必须先有装配面（谁在什么时候要一份发育史），那属于后续装配单的账——谁要读，先在这条欠账上登记。同包其余三件（PubertyJudge／PubertyGuard／PubertyCatalog）由本件与彼此互相引用，计生产可达；未全 internal 与 805／935 同档，已在本批报告「挂账」写明。",
+    "package": "com.example.zhengdao.baopu.state.bodyparts",
+    "proguard_hits": [],
+    "self_file_refs": 0,
+    "symbol": "PubertySheet",
+    "test_refs": [
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyCatalogTest.kt",
+      "line": 60
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyCatalogTest.kt",
+      "line": 102
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyCatalogTest.kt",
+      "line": 105
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyCatalogTest.kt",
+      "line": 108
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyCatalogTest.kt",
+      "line": 108
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyJudgeTest.kt",
+      "line": 20
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyJudgeTest.kt",
+      "line": 144
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyJudgeTest.kt",
+      "line": 179
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyJudgeTest.kt",
+      "line": 180
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyJudgeTest.kt",
+      "line": 191
+     },
+     {
+      "file": "app/src/test/java/com/example/zhengdao/baopu/state/bodyparts/PubertyJudgeTest.kt",
+      "line": 192
+     }
+    ],
+    "verdict": "wired",
+    "wrapper_scan": []
+   },
+   {
+    "debug_only_refs": [],
     "file": "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/ShapeSheet.kt",
     "file_mates_wired": true,
     "kind": "object",
@@ -860,11 +923,11 @@
     "test_refs": [
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
-      "line": 46
+      "line": 50
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
-      "line": 54
+      "line": 58
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
@@ -1421,7 +1484,7 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundBaselineSnapshotTest.kt",
-      "line": 57
+      "line": 61
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/cavity/CompoundWiringTest.kt",
@@ -2701,11 +2764,11 @@
  },
  "summary": {
   "A": 4,
-  "B": 36,
+  "B": 37,
   "C": 4,
   "gates_with_write_path": 5,
-  "not_wired": 34,
-  "production_top_level_public": 1229,
-  "wired": 1189
+  "not_wired": 35,
+  "production_top_level_public": 1242,
+  "wired": 1201
  }
 }
