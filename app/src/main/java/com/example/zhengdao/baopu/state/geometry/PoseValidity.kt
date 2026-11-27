@@ -118,7 +118,14 @@ object PoseValidity {
         )
     }
 
-    private fun plainSelfCollision(a: SegmentProxy, b: SegmentProxy, tol: Double): Violation? {
+    // 签名折行不是风格问题：310 的 FLOAT_RETURN 正则（`fun x(...): Double` 单行形态）
+    // 会把**形参类型**当成返回浮点 ⇒ 本文件含 PoseVerdict 时整文件红（ci #2046 踩过、
+    // 915 这次又踩：ci #2189 / emit #340）。多行签名即绕开，语义一字不改。
+    private fun plainSelfCollision(
+        a: SegmentProxy,
+        b: SegmentProxy,
+        tol: Double,
+    ): Violation? {
         val gjk = Gjk.distance(a.shape, b.shape)
         if (gjk.status == KernelStatus.Unsupported || !gjk.distanceCm.isFinite()) {
             return unsupportedSelfCollision(a, b, gjk.reason)

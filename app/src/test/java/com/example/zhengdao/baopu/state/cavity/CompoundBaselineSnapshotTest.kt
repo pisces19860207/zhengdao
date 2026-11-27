@@ -23,7 +23,11 @@ class CompoundBaselineSnapshotTest {
                 .joinToString("") { "%02x".format(it.toInt() and 0xff) }
             println("BASELINE_BYTES=${text.toByteArray(Charsets.UTF_8).size}")
             println("BASELINE_SHA256=$digest")
-            assertEquals("79f6d85827a4ca42ef69cdacd4bd65eedce46b1dd7cc00d25ee42d1df6a1bce2", digest)
+            // 2026-11-27 重钉（emit #340 / ci #2189）：915 把内核边界显式化后，既有夹具的输出摘要
+            // 有两处**有意的**变化——① 同心等球不再造伪深度（degenerate，depth 0）；
+            // ② PoseValidity 对 compound 读数走 status 分支（Unsupported 另有 detail）。
+            // 旧 79f6d858… 是 915 之前的口径；新 71c0a9cc… 与 CI 实测逐字相同（两台机器同值，非漂移）。
+            assertEquals("71c0a9ccca62fa9ea1f1f3628dc0f3c6d0234764187ccb72fc2d79a2b749ddab", digest)
         } finally {
             CompoundWiring.detach()
         }

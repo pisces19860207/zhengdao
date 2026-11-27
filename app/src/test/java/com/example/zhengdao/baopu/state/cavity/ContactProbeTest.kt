@@ -62,13 +62,18 @@ class ContactProbeTest {
         var seen = 0
         for (k in 0..12) {
             val gap = 3.0 - k * 0.25
+            // 同心等球（gap 0.0）是**显式退化**：915 的边界语义说「没有唯一分离方向 ⇒
+            // 不造假深度」，由 GjkDegenerateTest#同心等球_显式退化且没有伪深度 与
+            // KernelFuzzTest D1 钉住。它不是「更深一档的接触」，故不参与单调扫——
+            // 2026-11-27 修 emit #340：原来把它算作第 9 档，0mm < 17mm 当场红。
+            if (gap == 0.0) continue
             val r = ContactProbe.read(CavityFixtures.sphereAtZ("a", 0.0), CavityFixtures.sphereAtZ("b", gap))
             if (r == null) continue
             seen++
             assertTrue("距离 $gap 的深度 ${r.depthMilli} 不该小于上一档 $prev", r.depthMilli >= prev)
             prev = r.depthMilli
         }
-        assertEquals("应有九档进入接触或相交", 9, seen)
+        assertEquals("应有八档进入接触或相交（gap 0.0 是显式退化，已跳过）", 8, seen)
     }
 
     @Test
