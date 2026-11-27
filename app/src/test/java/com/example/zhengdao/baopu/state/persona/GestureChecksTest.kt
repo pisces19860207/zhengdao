@@ -169,13 +169,13 @@ class GestureChecksTest {
         val two = GestureChecks.check(
             listOf(GestureFixture.profileA().copy(beats = listOf(GestureFixture.beat(text = "她抿嘴，又皱眉。")))),
         )
-        assertTrue("GESTURE_CLIHE_NARRATOR" in GestureFixture.codes(two))
-        assertTrue("GESTURE_CLIHE_REPEAT" in GestureFixture.codes(two))
+        assertTrue("叙述范式码缺失：${two.line()}", "GESTURE_CLIHE_NARRATOR" in GestureFixture.codes(two))
+        assertTrue("同段重复码缺失：${two.line()}", "GESTURE_CLIHE_REPEAT" in GestureFixture.codes(two))
         val one = GestureChecks.check(
             listOf(GestureFixture.profileA().copy(beats = listOf(GestureFixture.beat(text = "她抿嘴。")))),
         )
-        assertTrue("GESTURE_CLIHE_NARRATOR" in GestureFixture.codes(one))
-        assertFalse("GESTURE_CLIHE_REPEAT" in GestureFixture.codes(one))
+        assertTrue("单条范式码缺失：${one.line()}", "GESTURE_CLIHE_NARRATOR" in GestureFixture.codes(one))
+        assertFalse("单条不该有 REPEAT：${one.line()}", "GESTURE_CLIHE_REPEAT" in GestureFixture.codes(one))
     }
 
     @Test
