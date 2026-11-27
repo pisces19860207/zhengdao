@@ -293,6 +293,55 @@ rootfs 五项（**v2.0.14 ~ v2.1.1 七版逐字节相同、digest 一致** —�
 
 `THIRD-PARTY-LICENSES.md` §7「Debian rootfs」一节据此加了指向本节的一行。
 
+#### v2.2.1 / v2.3.0 发布资产（2026-11-27 第八百七十八批补，只增不改）
+
+> 取数口径同上节：从公开地址回读 GitHub REST
+> `/repos/pisces19860207/zhengdao/releases/tags/<tag>` 的 `assets[].digest`（GitHub 自算 `sha256:`）。
+> 本批只**新增** v2.2.1 / v2.3.0 两段与差异表，**未改动上方任何旧行**（B-F3 只增不改）。
+> tag 追溯（B-F2）：`v2.2.1` → tag object `3975683c8` → commit `2f2a71a82faf515ca7d6559de284bb870a823ea0`
+> （Release `published_at 2026-10-23T13:53:12Z`，`target_commitish main`）；
+> `v2.3.0` → tag object `75fbe00f1` → commit `9ad2419f7aea5f72b2f96434f9f9b661cf11ad04`
+> （Release `published_at 2026-11-18T15:08:26Z`，`target_commitish main`）。
+> 两版各 **8 件资产**，每件都挂在各自 tag 的 Release 上 ⇒ 无"指不到 tag"的资产。
+
+| 版本 | 资产 | 字节 | SHA256（GitHub digest） |
+|---|---|---|---|
+| v2.2.1 | `zhengdao-2.2.1-release.apk` | 10,022,498 | `956cf8e5bffcd950ae4113fae52e5bfbb43726e1ce572b066c6de62bb4640aa0` |
+| v2.2.1 | `debian-13.7-base-arm64.tar.zst` | 200,223,802 | `8d2f32e5a505ef0680b29e93d8b7422e0c0ea7b4212cd0df09c1adebdd473683` |
+| v2.2.1 | `debian-13.7-base-arm64.tar.zst.sha256` | 65 | `63c5c613650eb1712fc222d1ceaa98e5a49ea6aa259e97d4449fe32598e3f678` |
+| v2.2.1 | `debian-13.7-copyright.tar.zst` | 326,575 | `6b328993573e28a07e6b8510f1322c6b4df441058b23e54aa1afcf93e8615f5d` |
+| v2.2.1 | `debian-13.7-copyright.tar.zst.sha256` | 65 | `88b31ed51dea6f6de59d80f32c1bf4c09b14cb181924074da03005c2b7acc8ea` |
+| v2.2.1 | `rootfs-index.json` | 469 | `2f7755f509871e1cf06be80e70d9f3e0e563c2354171d1d092c751733e1268fb` |
+| v2.2.1 | `rootfs-manifest.txt` | 2,117,771 | `eefa3bb3e4941797c1c631eaed019d4e570f298ce74f3acf0515ac8a651b40c4` |
+| v2.2.1 | `rootfs-manifest.txt.sha256` | 65 | `bce8e9c9859ab24a181bafa42902617974aa925d99aaf65339cc4e15e7ccf2db` |
+| v2.3.0 | `zhengdao-2.3.0-release.apk` | 11,540,669 | `5f38054510c5ef9b8a1397d0a5b845af3a11e6a44e049a37048c1e533f02e032` |
+| v2.3.0 | `debian-13.7-base-arm64.tar.zst` | 200,223,802 | `8d2f32e5a505ef0680b29e93d8b7422e0c0ea7b4212cd0df09c1adebdd473683` |
+| v2.3.0 | `debian-13.7-base-arm64.tar.zst.sha256` | 65 | `63c5c613650eb1712fc222d1ceaa98e5a49ea6aa259e97d4449fe32598e3f678` |
+| v2.3.0 | `debian-13.7-copyright.tar.zst` | 326,575 | `6b328993573e28a07e6b8510f1322c6b4df441058b23e54aa1afcf93e8615f5d` |
+| v2.3.0 | `debian-13.7-copyright.tar.zst.sha256` | 65 | `88b31ed51dea6f6de59d80f32c1bf4c09b14cb181924074da03005c2b7acc8ea` |
+| v2.3.0 | `rootfs-index.json` | 469 | `2f7755f509871e1cf06be80e70d9f3e0e563c2354171d1d092c751733e1268fb` |
+| v2.3.0 | `rootfs-manifest.txt` | 2,117,771 | `eefa3bb3e4941797c1c631eaed019d4e570f298ce74f3acf0515ac8a651b40c4` |
+| v2.3.0 | `rootfs-manifest.txt.sha256` | 65 | `bce8e9c9859ab24a181bafa42902617974aa925d99aaf65339cc4e15e7ccf2db` |
+
+**逐项差异表（B-F1，v2.3.0 vs v2.2.1，按 digest 比对）**：
+
+| 资产 | v2.2.1 | v2.3.0 | 差异 |
+|---|---|---|---|
+| `zhengdao-<ver>-release.apk` | 10,022,498 B / `956cf8e5…` | 11,540,669 B / `5f380545…` | **变**（版本号入文件名，APK 重构建；+1,518,171 B） |
+| `debian-13.7-base-arm64.tar.zst` | 200,223,802 B / `8d2f32e5…` | 同左 | 同 |
+| `debian-13.7-base-arm64.tar.zst.sha256` | 65 B / `63c5c613…` | 同左 | 同 |
+| `debian-13.7-copyright.tar.zst` | 326,575 B / `6b328993…` | 同左 | 同 |
+| `debian-13.7-copyright.tar.zst.sha256` | 65 B / `88b31ed5…` | 同左 | 同 |
+| `rootfs-index.json` | 469 B / `2f7755f5…` | 同左 | 同 |
+| `rootfs-manifest.txt` | 2,117,771 B / `eefa3bb3…` | 同左 | 同 |
+| `rootfs-manifest.txt.sha256` | 65 B / `bce8e9c9…` | 同左 | 同 |
+
+⇒ **8 件里 7 件逐字节相同**（rootfs 整包 / 版权归档 / index / manifest 及三份 `.sha256` 边车
+在 v2.2.1→v2.3.0 之间未动）；**唯一变化的是 APK 本体**（重构建，体积 +1.5 MB）。
+注：rootfs 这组 digest（`8d2f32e5…` / 200,223,802 B）与上方 v2.0.14~v2.1.1 那组
+（`d80639e7…` / 201,632,517 B）**不同** —— 终端于 2026-10-27 拆出后 rootfs 已重做，
+v2.2.1 起用新这组；旧组属 ≤v2.1.1 历史包，按"只增不改"原样保留在上文。
+
 ### 字体（终端默认正文，2026-10-10 固化）
 
 来源：`SpaceTimee/Fusion-JetBrainsMapleMono` release **1.2304.79**（2025-12-05）的
@@ -486,4 +535,5 @@ PROVENANCE.md（政策与原创性声明）
 | 2026-10-28 | 文首注：终端拆出后的口径澄清 | 256 批 |
 | 2026-11-16 | 补 versionCode 口径一句（683） | 683 批 |
 | **2026-11-23** | **本节：实测口径 + 缺口 + 互指 + 可执行核验清单** | 876 批 |
+| **2026-11-27** | **补 v2.2.1 / v2.3.0 发布资产表 + 逐项差异表（只增不改）；Rust §9 取证复核（dep-info 33 复算＝登记表、30 条未取证逐条书面理由、SPDX 归一）** | 878 批 |
 | 下次 | **每次发版前**（`--check` 绿）＋ **每 30 天**复读 A/B 节 | 本节 D |

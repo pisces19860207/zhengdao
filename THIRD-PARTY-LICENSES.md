@@ -255,6 +255,13 @@
 BSD-3-Clause 第 1／2 条要求源码与二进制分发都复现版权声明）。随包的两份正文是**通用模板**
 （第一行是 `<year> <owner>` 占位符），署名就落在 `licenses/MIT.txt` ＋ `licenses/NOTICES.txt` 第 2 段。
 
+> **SPDX 写法（第八百七十八批归一）**：下方生成块「表 9-A」的许可列一律用**标准 SPDX 表达式**
+> （双许可写 `X OR Y`）。上游 `Cargo.toml` 的 `license` 字段里有 3 条用了旧的斜杠分隔写法
+> ——`cesu8` 的 `Apache-2.0/MIT`、`filetime`／`jni` 的 `MIT/Apache-2.0`——斜杠在 cargo 旧约定里即「OR」，
+> 本批已在登记表 `tools/notices-evidence.json` 里把这三条的 `license` 字段归一为 `… OR …`，
+> 其 `raw` 字段仍逐字保留上游原文；再下方 §9.2 人工快照表的「许可」列标题写明是「`Cargo.toml` 的
+> `license` 字段**原文**」，故那 3 行仍照抄斜杠形态，属**原文留档**、非 SPDX 主张，两处不冲突。
+
 <!-- gen-notices:begin:rust -->
 > **本节由 `tools/gen-notices.py` 生成**（标记 `gen-notices:rust` 之间）。
 > 坐标 / 版本 / 来源来自 `Cargo.lock`（workspace 根；派工单写的 `rust/core/Cargo.lock` 不存在）；
@@ -271,14 +278,14 @@ BSD-3-Clause 第 1／2 条要求源码与二进制分发都复现版权声明）
 | `block-buffer@0.10.4` | `0.10.4` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← digest-0.10.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `bytes@1.12.1` | `1.12.1` | MIT | 是（进 .so，dep-info） | 传递（← combine-4.6.8；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `cc@1.6.0` | `1.6.0` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← sha2-asm-0.6.4, zstd-sys-2.1.0+zstd.1.5.7；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
-| `cesu8@1.1.0` | `1.1.0` | Apache-2.0/MIT | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `cesu8@1.1.0` | `1.1.0` | Apache-2.0 OR MIT | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `cfg-if@1.0.5` | `1.0.5` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← crc32fast-1.5.2, filetime-0.2.29, getrandom-0.4.3 ＋2；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `combine@4.6.8` | `4.6.8` | MIT | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `cpufeatures@0.2.17` | `0.2.17` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← sha2-0.10.9；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `crc32fast@1.5.2` | `1.5.2` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← flate2-1.1.10；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `crypto-common@0.1.7` | `0.1.7` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← digest-0.10.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `digest@0.10.7` | `0.10.7` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← sha2-0.10.9；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
-| `filetime@0.2.29` | `0.2.29` | MIT/Apache-2.0 | 是（进 .so，dep-info） | 传递（← tar-0.4.46；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `filetime@0.2.29` | `0.2.29` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← tar-0.4.46；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `find-msvc-tools@0.1.14` | `0.1.14` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← cc-1.6.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
 | `flate2@1.1.10` | `1.1.10` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `generic-array@0.14.7` | `0.14.7` | MIT | 是（进 .so，dep-info） | 传递（← block-buffer-0.10.4, crypto-common-0.1.7；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
@@ -287,7 +294,7 @@ BSD-3-Clause 第 1／2 条要求源码与二进制分发都复现版权声明）
 | `jni-sys-macros@0.4.1` | `0.4.1` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← jni-sys-0.4.1；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
 | `jni-sys@0.3.1` | `0.3.1` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `jni-sys@0.4.1` | `0.4.1` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（Cargo.lock 依赖边，引入方未取证） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
-| `jni@0.21.1` | `0.21.1` | MIT/Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
+| `jni@0.21.1` | `0.21.1` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 直接（rust/core/Cargo.toml） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `jobserver@0.1.35` | `0.1.35` | 未取证（该包不进 .so，421 批未对非随包件取证） | 否（dep-info 未出现） | 传递（← cc-1.6.0；Cargo.lock 依赖边） | 无（不进分发物，无随包义务；421 批只对随包 33 条取证，本机无 .crate 元数据） |
 | `libc@0.2.190` | `0.2.190` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← cc-1.6.0, cpufeatures-0.2.17, filetime-0.2.29 ＋3；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
 | `log@0.4.34` | `0.4.34` | MIT OR Apache-2.0 | 是（进 .so，dep-info） | 传递（← jni-0.21.1；Cargo.lock 依赖边） | 登记表：第四百二十一批 .crate SHA256 == Cargo.lock checksum 绑定后读 Cargo.toml license 字段 |
@@ -388,6 +395,10 @@ BSD-3-Clause 第 1／2 条要求源码与二进制分发都复现版权声明）
   `Unlicense OR MIT`（`memchr`）。22＋6＋2＋3 ＝ 33。
   **零 GPL、零 LGPL、零 AGPL、零 MPL**（这里的「零」指这 33 条的 `license` 字段实测，不看下面的可选分支）
   ⇒ 无传染，不需要换依赖，本批照补登记。
+  📐 **第八百七十八批 SPDX 归一**：上面「原文」分组保留上游 3 种写法是**取证事实**；登记表的规范
+  `license` 字段（即生成块「表 9-A」许可列）已把 `MIT/Apache-2.0`／`Apache-2.0/MIT` 两条斜杠写法
+  统一成标准 SPDX `MIT OR Apache-2.0`／`Apache-2.0 OR MIT`，归一后双许可只剩一种标准写法（22 条），
+  斜杠原文仍逐字留在各条 `raw` 字段与本 §9.2 快照表，**留档与主张分离、不丢证据**。
 - **双许可怎么取**：`MIT OR Apache-2.0` 这类按「择一分支即合规」处理，本项目**取 MIT 分支**
   （随包 `MIT.txt`）；`Apache-2.0.txt` 同时在包里，取 Apache 分支也成立。取 MIT 就必须给版权行
   ⇒ 那 33 行的署名逐条进了 `licenses/NOTICES.txt` 第 2 段。
