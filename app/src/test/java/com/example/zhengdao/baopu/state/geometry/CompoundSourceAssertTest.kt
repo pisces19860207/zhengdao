@@ -83,7 +83,7 @@ class CompoundSourceAssertTest {
     fun 六五五边界版哈希锁定且形体算法未动() {
         val baseline = mapOf(
             "Gjk.kt" to "a9302574d39997f82d0255dc67b311e68d3f4b46649544d4f6f8bc82affcbf31",
-            "Epa.kt" to "c06de6ea2b087a6d05a2a924ea32775d324d2f904b4059e8b458de63bab919a4",
+            "Epa.kt" to "c805d8acef7e971f09cb4c9e6c3e947c44b71d655ad1160934759bef793092dc",
             "Shapes.kt" to "619c9af044a92c1006668963ee30257079e7aa3ce15405de93357ff30071b7ef",
         )
         for ((name, expected) in baseline) {

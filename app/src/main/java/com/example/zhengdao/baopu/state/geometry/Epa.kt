@@ -30,6 +30,16 @@ data class EpaResult(
             if (status == KernelStatus.Success && reason == null) ")" else ", status=$status, reason=$reason)"
 }
 
+private sealed interface EpaStepOutcome {
+    data class Done(val result: EpaResult) : EpaStepOutcome
+    data class Grown(val poly: Polytope) : EpaStepOutcome
+}
+
+private sealed interface FacePick {
+    data class Ok(val face: Face) : FacePick
+    data class Bad(val result: EpaResult) : FacePick
+}
+
 internal enum class InitialTetraSource { GJK_SIMPLEX, STRICT_SCAN, NONE }
 
 internal data class InitialTetraTrace(
@@ -100,30 +110,66 @@ object Epa {
         var iter = 0
         while (iter < EPA_MAX_ITER) {
             iter++
-            val faceIndex = closestFaceIndex(poly.faces) ?: return degenerate(0.0, iter, "扩张面集为空")
-            val face = poly.faces[faceIndex]
-            if (!vec3IsFinite(face.normal) || !face.dist.isFinite()) {
-                return unsupported(iter, "EPA 面读数非有限数")
+            when (val step = expandOnce(poly, a, b, dupTol, iter, gjk)) {
+                is EpaStepOutcome.Done -> return step.result
+                is EpaStepOutcome.Grown -> {
+                    poly = step.poly
+                    if (poly.faces.size < 4) return degenerate(0.0, iter, "扩张后面集不足")
+                }
             }
-            if (face.dist < 0.0) return degenerate(0.0, iter, "EPA 最近面距离为负")
-            val m = minkSupport(a, b, face.normal)
-            if (!vec3IsFinite(m.w)) return unsupported(iter, "EPA 支撑点非有限数")
-            val gain = m.w.dot(face.normal) - face.dist
-            val dup = poly.verts.any { (it.w - m.w).normSq() < dupTol }
-            if (!gain.isFinite()) return unsupported(iter, "EPA 改进量非有限数")
-            if (gain <= EPA_EPS_ABS + EPA_EPS_REL * face.dist || dup) {
-                return EpaResult(face.dist, face.normal, iter, status = gjk.status, reason = gjk.reason)
-            }
-            poly = expand(poly, m)
-            if (poly.faces.size < 4) return degenerate(0.0, iter, "扩张后面集不足")
         }
-        val faceIndex = closestFaceIndex(poly.faces) ?: return degenerate(0.0, iter, "最终面集为空")
+        return finalFace(poly, iter, gjk)
+    }
+
+    /** 单步扩张；三种失败结论与原文逐字一致（面集空/读数非有限/距离为负 各走各的）。 */
+    private fun expandOnce(
+        poly: Polytope,
+        a: ConvexShape,
+        b: ConvexShape,
+        dupTol: Double,
+        iter: Int,
+        gjk: GjkResult,
+    ): EpaStepOutcome {
+        val face = iterationFace(poly, iter)
+        if (face is FacePick.Bad) return EpaStepOutcome.Done(face.result)
+        val ok = (face as FacePick.Ok).face
+        val m = minkSupport(a, b, ok.normal)
+        if (!vec3IsFinite(m.w)) return EpaStepOutcome.Done(unsupported(iter, "EPA 支撑点非有限数"))
+        val gain = m.w.dot(ok.normal) - ok.dist
+        if (!gain.isFinite()) return EpaStepOutcome.Done(unsupported(iter, "EPA 改进量非有限数"))
+        val dup = poly.verts.any { (it.w - m.w).normSq() < dupTol }
+        if (gain <= EPA_EPS_ABS + EPA_EPS_REL * ok.dist || dup) {
+            return EpaStepOutcome.Done(EpaResult(ok.dist, ok.normal, iter, status = gjk.status, reason = gjk.reason))
+        }
+        return EpaStepOutcome.Grown(expand(poly, m))
+    }
+
+    /** 迭代耗尽后的收口；三条结论与原文一致（最终面集空/最终读数非有限/最终距离为负）。 */
+    private fun finalFace(poly: Polytope, iter: Int, gjk: GjkResult): EpaResult {
+        val face = finalPick(poly, iter)
+        if (face is FacePick.Bad) return face.result
+        val ok = (face as FacePick.Ok).face
+        return EpaResult(ok.dist, ok.normal, iter, status = gjk.status, reason = gjk.reason)
+    }
+
+    private fun iterationFace(poly: Polytope, iter: Int): FacePick {
+        val faceIndex = closestFaceIndex(poly.faces) ?: return FacePick.Bad(degenerate(0.0, iter, "扩张面集为空"))
         val face = poly.faces[faceIndex]
         if (!vec3IsFinite(face.normal) || !face.dist.isFinite()) {
-            return unsupported(iter, "EPA 最终面读数非有限数")
+            return FacePick.Bad(unsupported(iter, "EPA 面读数非有限数"))
         }
-        if (face.dist < 0.0) return degenerate(0.0, iter, "EPA 最终面距离为负")
-        return EpaResult(face.dist, face.normal, iter, status = gjk.status, reason = gjk.reason)
+        if (face.dist < 0.0) return FacePick.Bad(degenerate(0.0, iter, "EPA 最近面距离为负"))
+        return FacePick.Ok(face)
+    }
+
+    private fun finalPick(poly: Polytope, iter: Int): FacePick {
+        val faceIndex = closestFaceIndex(poly.faces) ?: return FacePick.Bad(degenerate(0.0, iter, "最终面集为空"))
+        val face = poly.faces[faceIndex]
+        if (!vec3IsFinite(face.normal) || !face.dist.isFinite()) {
+            return FacePick.Bad(unsupported(iter, "EPA 最终面读数非有限数"))
+        }
+        if (face.dist < 0.0) return FacePick.Bad(degenerate(0.0, iter, "EPA 最终面距离为负"))
+        return FacePick.Ok(face)
     }
 
     private fun closestFaceIndex(faces: List<Face>): Int? =

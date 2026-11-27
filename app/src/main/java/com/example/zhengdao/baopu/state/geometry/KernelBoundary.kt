@@ -82,43 +82,65 @@ private fun boxBoundary(shape: Box): KernelBoundary = when {
 }
 
 private fun hullBoundary(vertices: List<Vec3>): KernelBoundary {
-    if (vertices.any { !vec3IsFinite(it) }) return KernelBoundary(KernelStatus.Unsupported, "凸包顶点非有限数")
+    if (vertices.any { !vec3IsFinite(it) }) {
+        return KernelBoundary(KernelStatus.Unsupported, "凸包顶点非有限数")
+    }
     val p0 = vertices[0]
+    val span = maxSpan(vertices, p0)
+    if (span == null) return KernelBoundary(KernelStatus.Unsupported, "凸包坐标跨度溢出")
+    if (span.norm == 0.0) return KernelBoundary(KernelStatus.Degenerate, "凸包退化为点")
+    val u = span.vec / span.norm
+    val cross = maxCross(vertices, p0, u, span.norm)
+    if (cross == null) return KernelBoundary(KernelStatus.Unsupported, "凸包仿射维数计算溢出")
+    if (cross.norm <= AFFINE_REL) return KernelBoundary(KernelStatus.Degenerate, "凸包退化为线段")
+    val normal = cross.vec / cross.norm
+    val height = maxHeight(vertices, p0, normal, span.norm)
+    if (height == null) return KernelBoundary(KernelStatus.Unsupported, "凸包仿射维数计算溢出")
+    if (height <= AFFINE_REL) return KernelBoundary(KernelStatus.Degenerate, "凸包退化为平面")
+    return KernelBoundary(KernelStatus.Success)
+}
+
+private class SpanScan(val vec: Vec3, val norm: Double)
+
+private fun maxSpan(vertices: List<Vec3>, p0: Vec3): SpanScan? {
     var scale = 0.0
     var first = Vec3.ZERO
     for (v in vertices.drop(1)) {
         val d = v - p0
-        if (!vec3IsFinite(d)) return KernelBoundary(KernelStatus.Unsupported, "凸包坐标跨度溢出")
+        if (!vec3IsFinite(d)) return null
         val n = d.norm()
-        if (!n.isFinite()) return KernelBoundary(KernelStatus.Unsupported, "凸包尺度溢出")
+        if (!n.isFinite()) return null
         if (n > scale) {
             scale = n
             first = d
         }
     }
-    if (scale == 0.0) return KernelBoundary(KernelStatus.Degenerate, "凸包退化为点")
-    val u = first / scale
+    return SpanScan(first, scale)
+}
+
+private fun maxCross(vertices: List<Vec3>, p0: Vec3, u: Vec3, scale: Double): SpanScan? {
     var crossNorm = 0.0
     var second = Vec3.ZERO
     for (v in vertices.drop(1)) {
         val c = u.cross((v - p0) / scale)
         val n = c.norm()
-        if (!n.isFinite()) return KernelBoundary(KernelStatus.Unsupported, "凸包仿射维数计算溢出")
+        if (!n.isFinite()) return null
         if (n > crossNorm) {
             crossNorm = n
             second = c
         }
     }
-    if (crossNorm <= AFFINE_REL) return KernelBoundary(KernelStatus.Degenerate, "凸包退化为线段")
-    val normal = second / crossNorm
+    return SpanScan(second, crossNorm)
+}
+
+private fun maxHeight(vertices: List<Vec3>, p0: Vec3, normal: Vec3, scale: Double): Double? {
     var height = 0.0
     for (v in vertices.drop(1)) {
         val h = kotlin.math.abs(normal.dot((v - p0) / scale))
-        if (!h.isFinite()) return KernelBoundary(KernelStatus.Unsupported, "凸包仿射维数计算溢出")
+        if (!h.isFinite()) return null
         if (h > height) height = h
     }
-    if (height <= AFFINE_REL) return KernelBoundary(KernelStatus.Degenerate, "凸包退化为平面")
-    return KernelBoundary(KernelStatus.Success)
+    return height
 }
 
 private fun genericBoundary(shape: ConvexShape): KernelBoundary {
