@@ -162,6 +162,10 @@ object SubzoneRefs {
      *
      * 804 的引用是按**组**对的：它的 `SubRegion.group`（GLANS／CORONA／SULCUS／FRENULUM／
      * MEATUS／SHAFT）与本表的 `zoneId` 同名对上，所以它按面记、本表按段记，两边在区一级能 join。
+     *
+     * 两个「组」别混（887）：下面 note 里出现的「CORONA 组」「SULCUS 组」指的是 **804 的
+     * `RegionGroup`（面组——这张皮盖住哪个面）**，不是本表的 [SubzoneGroup]（解剖归类）。
+     * 冠在 804 必须单列一组（否则「退至冠后」判不出来），在本表仍归「龟头」组——两边都对。
      */
     private val REFS: Map<SubzoneId, List<SubzoneRef>> = mapOf(
         SubzoneId.APEX to listOf(
@@ -174,7 +178,7 @@ object SubzoneRefs {
             SubzoneRef(P867, "饱满度与中线同冠部隆起的组合"),
         ),
         SubzoneId.GLANS_CROWN to listOf(
-            SubzoneRef(P804, "CORONA 组：冠单独一组，永不与沟合并"),
+            SubzoneRef(P804, "804 的 CORONA 组（面组，不是本表 group）：冠单独一组，永不与沟合并"),
             SubzoneRef(P867, "冠部隆起与沟深浅的组合"),
         ),
         SubzoneId.SULCUS to listOf(

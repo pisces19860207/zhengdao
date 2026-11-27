@@ -11,6 +11,13 @@
 //
 // id 稳定性：**只许加，不许改名**。code 一旦出门就被 804／727／867 直接引用（见 [SubzoneRefs]），
 // 改名等于把三单的引用打断。要加新子区，请同单改三处消费者并在报告里登记。
+//
+// 第八百八十七批 · 三层归口（887 定死，规范页 `docs/区域总表-下体.md` §一）：
+// · **区（zone，13 个）**＝判定与状态机的单位（731 只按区算；790 的几何也只到区代理体）；
+// · **组（group）**＝解剖归类与呈现分组（「龟头」含冠部）——不参与任何对象级判定；
+// · **子区（subzone，14 个 code）**＝力／敏感／质地的落点（727／804／867／875 按 code 取）。
+// ⇒ 判定读 [SubzoneId.zoneId]，呈现读 [SubzoneId.group]，施力／敏感读 [SubzoneId.code]；
+//   三者永不互相顶替。三层是三种投影、不是父子继承：龟头组横跨 glans 与 corona 两个区。
 package com.example.zhengdao.baopu.state.subzone
 
 /**
@@ -35,6 +42,9 @@ object ZoneRef {
  *
  * 组与 [SubzoneId.zoneId] 不是一回事：龟头组里「冠部」的宿主是 13 区的 `corona`（龟头冠自成一区），
  * 「体部／尖端」的宿主才是 `glans`。组是观察口径，宿主是词表口径，两个都留给下游，免得让下游猜。
+ *
+ * 组的边界（887）：只用于**呈现分组**与 775 自己的**表内自洽校验**；对象级判定（731／790／660）
+ * 一律读 [SubzoneId.zoneId]，不读这里。别把 group 当「上级区」用——龟头组是两个区的并集，不是第三个区。
  */
 enum class SubzoneGroup(val label: String) {
     GLANS("龟头"),
@@ -72,6 +82,11 @@ enum class SubzoneSide(val label: String) {
  *   即收腰那一段），不改链名，也不把 `neckTaper` 搬成独立区（13 区不变）。
  * · 尿道口两子区＝口缘／裂隙方向：口缘记厚薄，裂隙方向记走向（偏腹侧纵裂是硬常识的落点）。
  * · 包皮三子区＝内板／外板／口缘：内板贴龟头（黏膜面）、外板朝外（皮肤面）、口缘是那圈边。
+ *
+ * 两个字段各管一件事（887 定死，别合并）：
+ * · [zoneId] 是**判定单位**——落到 13 区里的一区，731／790／660 都按它算；
+ * · [group] 是**解剖归类**——人读与呈现按它分组，不参与对象级判定。
+ * 冠部（[GLANS_CROWN]）是这条的口径样例：zone 是 13 区里单列的 `corona`，group 仍是「龟头」。
  */
 enum class SubzoneId(
     val code: String,
@@ -82,6 +97,8 @@ enum class SubzoneId(
 ) {
     APEX("apex", "龟头·尖端", SubzoneGroup.GLANS, ZoneRef.GLANS, SubzoneSide.AXIS),
     GLANS_BODY("glansbody", "龟头·体部", SubzoneGroup.GLANS, ZoneRef.GLANS, SubzoneSide.RING),
+    // 887 的标准答案：zoneId=corona（13 区里单列的一区，判定单位）＋ group=龟头（解剖归类）——两个都留。
+    // 只留 zoneId=glans 会改写 13 区（连坐 731／660／804）；只留 group 会让 727／867 找不到判定单位。
     GLANS_CROWN("corona", "龟头·冠部", SubzoneGroup.GLANS, ZoneRef.CORONA, SubzoneSide.RING),
 
     SULCUS("sulcus", "冠状沟", SubzoneGroup.SULCUS, ZoneRef.SULCUS, SubzoneSide.RING),

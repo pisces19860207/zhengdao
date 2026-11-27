@@ -143,11 +143,19 @@ class BearingReachTest {
     }
 
     @Test
-    fun 判据五_请求子区即incomplete_不假装判到子区() {
+    fun 判据五_不在册子区即incomplete_不假装判到子区() {
         val inc = incompleteOf("glans", Bearing6.FRONT, DistanceTier.CONTACT, "背侧")
         assertTrue("缺轴须点名子区", inc.missing.first().startsWith("子区"))
-        assertTrue("须点名 775 未落地", inc.missing.first().contains("775"))
+        assertTrue("须点名来源（775 已落地，清单在 state/subzone）", inc.missing.first().contains("775"))
         assertTrue(inc.missing.first().contains("背侧"))
+    }
+
+    @Test
+    fun 判据五_在册子区照收_回显子区但几何仍按区() {
+        val v = judged("glans", Bearing6.FRONT, DistanceTier.CONTACT, "apex")
+        assertTrue("在册子区不得判 incomplete（口径：只有不在册才缺轴）", v.subzoneRequested)
+        assertEquals("几何仍按区代理体判（子区级几何不在 790）", BearingGranularity.ZONE, v.granularity)
+        assertTrue("须如实标原因", v.granularityReason.contains("apex"))
     }
 
     @Test

@@ -221,7 +221,7 @@
       "source": "规则",
       "status": "独立验证",
       "callWhen": "三轴（目标区、六方位、四距离档）给齐、要判断手够不够得到并知道关节档时。",
-      "banWhen": "三轴缺一即 incomplete 不判；subzone 不在 SubzoneSource.of 时 incomplete（775 未落地该表恒空）；只判到区，不判进入可行性/空间容纳/穿透后果；baseline 恒 fixture 未接真形体；不做连续 IK/时间积分。",
+      "banWhen": "三轴缺一即 incomplete 不判；subzone 不在 SubzoneSource.of（775 已落地，转发 SubzoneId）时 incomplete，在册子区照收但几何仍只判到区；只判到区，不判进入可行性/空间容纳/穿透后果；baseline 恒 fixture 未接真形体；不做连续 IK/时间积分。",
       "onFailure": "缺轴返回 Incomplete 逐项列 missing 与给定值；链长三角界闭式判 UNREACHABLE 标 blockedBy；几何原语异常 catch 保守记卡 fail-closed；输出 Locale.ROOT 定点格式逐字节一致。",
       "acceptance": [
         "BearingReachTest.kt",

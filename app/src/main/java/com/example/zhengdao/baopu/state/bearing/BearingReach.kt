@@ -52,7 +52,14 @@ object BearingReach {
 
     // ── 三轴与实例解析 ─────────────────────────────────────────────────────
 
-    /** 缺轴清单，顺序固定：目标区→子区→方位→距离（判据②⑤：缺一即 incomplete，不许默认补全）。 */
+    /**
+     * 缺轴清单，顺序固定：目标区→子区→方位→距离（判据②⑤：缺一即 incomplete，不许默认补全）。
+     *
+     * 子区这一轴只在**不在册**时算缺（887 把口径写清，免得按旧用例名读成「请求子区就 incomplete」）：
+     * 在册的子区随结论回显（`subzoneRequested=true`），几何仍按**区代理体**判，`granularity` 记 ZONE
+     * 并在 `granularityReason` 里如实写「子区级几何不在本单」；不在册的子区当场 incomplete，不猜近义词。
+     * 清单唯一来源＝[SubzoneSource]（转发 `subzone/SubzoneId`，775 已落地，887 认账不回退）。
+     */
     private fun missingAxes(body: BodyState, zoneId: String, subzone: String?, bearing: Bearing6?, distance: DistanceTier?): List<String> {
         val missing = ArrayList<String>()
         if (zoneId.isBlank() || instancesOf(body, zoneId).isEmpty()) {
