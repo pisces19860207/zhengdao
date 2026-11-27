@@ -912,7 +912,7 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
-      "line": 50
+      "line": 55
      }
     ],
     "verdict": "wired",
@@ -1453,7 +1453,7 @@
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/CompoundSourceGuardTest.kt",
-      "line": 61
+      "line": 66
      },
      {
       "file": "app/src/test/java/com/example/zhengdao/baopu/state/geometry/GeometrySourceAssertTest.kt",
@@ -2705,7 +2705,7 @@
   "C": 4,
   "gates_with_write_path": 5,
   "not_wired": 34,
-  "production_top_level_public": 1227,
-  "wired": 1187
+  "production_top_level_public": 1229,
+  "wired": 1189
  }
 }
