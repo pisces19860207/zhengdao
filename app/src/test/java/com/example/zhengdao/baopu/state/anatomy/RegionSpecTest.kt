@@ -178,6 +178,16 @@ class RegionSpecTest {
             emptyList(),
             listOf(PERINEAL_EXTENSION_SLOT),
         )
+        val reservedWithoutSlots = RegionSpec.declare(
+            ANATOMY_SCHEMA_VERSION,
+            ANATOMY_REGION_CATALOG_VERSION,
+            RegionId("reserved-no-slot"),
+            RegionType("perineal"),
+            emptyList(),
+            emptySet(),
+            emptyList(),
+            emptyList(),
+        )
         val withoutSlots = valueOf(
             RegionCatalog.create(
                 ANATOMY_SCHEMA_VERSION,
@@ -188,12 +198,14 @@ class RegionSpecTest {
         )
         println("OUTPUT=appended $appended")
         println("OUTPUT=reserved-declaration $reserved")
+        println("OUTPUT=reserved-without-slots $reservedWithoutSlots")
         println("OUTPUT=empty-slot-catalog $withoutSlots")
 
         val extended = valueOf(appended)
         assertEquals(listOf("torso", "chest"), extended.regions.map { it.regionId.value })
         assertEquals("anatomy.catalog.v1", extended.regionCatalogVersion)
         assertEquals(AbsenceReason.RESERVED_REGION_TYPE, absentOf(reserved).reason)
+        assertEquals(AbsenceReason.RESERVED_REGION_TYPE, absentOf(reservedWithoutSlots).reason)
         assertTrue(PERINEAL_EXTENSION_SLOT.enabledType == null)
         assertTrue(withoutSlots.extensionSlots.single().enabledType == null)
     }

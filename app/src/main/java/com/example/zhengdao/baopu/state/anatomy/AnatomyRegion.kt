@@ -40,6 +40,10 @@ internal data class AnatomicalRegionModel(
 ) {
     init {
         require(schemaVersion == ANATOMY_SCHEMA_VERSION) { "不支持的 schemaVersion" }
+        require(
+            regionType.key != PERINEAL_EXTENSION_SLOT.key ||
+                PERINEAL_EXTENSION_SLOT.enabledType == regionType,
+        ) { "会阴扩展位本批未启用" }
         val completenessFindings = completenessValidation(provenance.completeness).findings
         require(validation.findings.containsAll(completenessFindings)) {
             "validation 必须包含 provenance.completeness 的校验结论"

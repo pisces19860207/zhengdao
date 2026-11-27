@@ -110,6 +110,12 @@ internal class RegionSpec private constructor(
             if (zeroConsumer != null) {
                 return Resolution.Absent(zeroConsumer.name, AbsenceReason.NO_CONSUMER)
             }
+            if (
+                regionType.key == PERINEAL_EXTENSION_SLOT.key &&
+                PERINEAL_EXTENSION_SLOT.enabledType != regionType
+            ) {
+                return Resolution.Absent(regionType.key, AbsenceReason.RESERVED_REGION_TYPE)
+            }
             val slot = extensionSlots.firstOrNull { it.key == regionType.key }
             if (slot != null && slot.enabledType != regionType) {
                 return Resolution.Absent(regionType.key, AbsenceReason.RESERVED_REGION_TYPE)

@@ -48,10 +48,13 @@ class AnatomyRegionTest {
 
         val inconsistent = runCatching { model.copy(validation = ValidationReport(emptyList())) }
         val unsupported = runCatching { model.copy(schemaVersion = "anatomy.schema.future") }
+        val reserved = runCatching { model.copy(regionType = RegionType("perineal")) }
         println("OUTPUT=inconsistent-validation $inconsistent")
         println("OUTPUT=unsupported-schema $unsupported")
+        println("OUTPUT=reserved-region-type $reserved")
         assertTrue(inconsistent.exceptionOrNull() is IllegalArgumentException)
         assertTrue(unsupported.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(reserved.exceptionOrNull() is IllegalArgumentException)
     }
 
     @Test
