@@ -835,6 +835,11 @@ dependencies {
         exclude(group = "org.apache.logging.log4j", module = "log4j-core")
     }
 
+    // 2026-11-28 · 安全修复（OSV GHSA-qv9r-c865-cp47 / CVE-2026-49844）：POI 5.5.1 的 POM
+    // 传进来的 log4j-api 是 2.24.3，落在受影响区间 [2.13.1, 2.25.5)；官方修复版 2.25.5。
+    // 这里只把**传递进来的 api** 显式钉到已修版本 —— 「不引 log4j-core」的结论不变（上面 exclude 照旧）。
+    implementation(libs.log4j.api)
+
     implementation(libs.androidx.navigation.compose)
     // 746 折叠感知：FoldingFeature → FoldState 映射（唯一依赖 androidx.window 的文件）。
     implementation(libs.androidx.window)

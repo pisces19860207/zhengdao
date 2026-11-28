@@ -405,6 +405,12 @@
       "pom_sha256": "569b6977ee4603c965c1c46c3058fa6e969291b0160eb6964dd092cd89eadd94",
       "raw": "Eclipse Public License 1.0"
     },
+    "org.apache.logging.log4j:log4j-api:2.25.5": {
+      "license": "Apache-2.0",
+      "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-api/2.25.5/214797155b00469cc53ffb33ca76055f0b2bc755/log4j-api-2.25.5.pom",
+      "pom_sha256": "035b3e6057d26535cac74e5333403a797460ebef0b9313b844826140ed36de67",
+      "raw": "Apache License, Version 2.0"
+    },
     "org.apache.poi:poi:5.5.1": {
       "license": "Apache-2.0",
       "origin": "本地 Gradle 缓存 POM caches/modules-2/files-2.1/org.apache.poi/poi/5.5.1/3d7a4c8f6c8c24574b744b45d83c80daa98844a1/poi-5.5.1.pom",

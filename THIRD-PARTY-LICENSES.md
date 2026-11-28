@@ -127,7 +127,7 @@
 > `tools/notices-evidence.json` 的离线登记表兜底（带 POM 原文与 sha256）。全程不联网；
 > 两处都没有证据的坐标 ⇒ 写「未取证」，不按 group 猜。
 
-**表 8-A · 直接声明的 Maven 依赖**（29 条；随包 17 / 不随包 12 / 许可未取证 0）
+**表 8-A · 直接声明的 Maven 依赖**（30 条；随包 18 / 不随包 12 / 许可未取证 0）
 
 | 坐标 | 版本 | 许可 | 随包？ | 来源 | 许可取证 |
 |---|---|---|---|---|---|
@@ -158,6 +158,7 @@
 | `com.squareup.okhttp3:okhttp:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `io.gitlab.arturbosch.detekt:detekt-cli:1.23.8` | `1.23.8` | Apache-2.0 | 否（detektCli） | app/build.gradle.kts（detektCli）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `junit:junit:4.13.2` | `4.13.2` | EPL-1.0 | 否（testImplementation） | app/build.gradle.kts（testImplementation）；core/build.gradle.kts（testImplementation）；native-core/build.gradle.kts（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
+| `org.apache.logging.log4j:log4j-api:2.25.5` | `2.25.5` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `org.apache.poi:poi:5.5.1` | `5.5.1` | Apache-2.0 | 是（implementation） | app/build.gradle.kts（implementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 | `org.json:json:20240303` | `20240303` | PublicDomain | 否（testImplementation） | app/build.gradle.kts（testImplementation）；core/build.gradle.kts（testImplementation）；版本=版本目录 | 离线取证（本地 Gradle 缓存 POM 或登记表，不联网） |
 
