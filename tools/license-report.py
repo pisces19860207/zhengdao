@@ -276,8 +276,22 @@ def find_latest_sbom() -> Path | None:
     return Path(cands[-1]) if cands else None
 
 
+# 本仓模块在 SBOM 里的 group（:app/:core/:policy/:native-core 都是这个 group）：
+# 它们没有仓库里的 POM，也不是第三方 ⇒ 不许按「POM 拉取失败」报许可未知（ci #2200 三条假告警）。
+FIRST_PARTY_GROUP = "com.example.zhengdao"
+
 def analyze_component(comp: dict) -> dict:
     group, name, version = comp["group"], comp["name"], comp["version"]
+    if group == FIRST_PARTY_GROUP:
+        # 第一方模块：许可真源是 licenses/FIRST-PARTY.md，不拉 POM、不查最新版
+        return {
+            "group": group, "name": name, "version": version,
+            "purl": "pkg:maven/%s/%s@%s" % (group, name, version),
+            "licenses": [], "license_names_raw": [], "unknown_license_names": [],
+            "pom_fetched": False, "pom_error": "", "latest_version": None,
+            "major_lag": None, "first_party": True,
+            "notes": ["第一方模块（本仓产出，无外部 POM；许可按 licenses/FIRST-PARTY.md）"],
+        }
     chain = pom_license_chain(group, name, version)
     spdx, unknown = to_spdx(chain["licenses"])
     latest, _ = metadata_latest(group, name)
@@ -428,7 +442,8 @@ def main() -> int:
     print("[license] 主清单 %d 构件：落后主版本 ≥1 的 %d 个；需人看的许可事项 %d 条"
           % (len(results), lag, unknown))
     for r in results:
-        if r["notes"]:
+        # 第一方模块只进报告、不挂注解（它的「未知」不是风险）
+        if r["notes"] and not r.get("first_party"):
             print("::warning title=许可事项::%s:%s@%s — %s"
                   % (r["group"], r["name"], r["version"], "；".join(r["notes"])))
     return 0

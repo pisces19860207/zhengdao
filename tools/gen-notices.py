@@ -612,6 +612,11 @@ def refresh_maven(root: Path, gradle_home: Path, evidence: dict) -> tuple[dict, 
     return evidence, hit, miss
 
 
+# 2026-11-28：selftest 里 `--check` 的**负例**会走同一段打印，而 GitHub 只认注解语法、
+# 不认「这是自检」⇒ 绿轮也挂两条 `::error title=第三方声明生成门禁`（ci #2200 实测）。
+# 真跑才用注解，自检退化成普通文本。
+_ANNOTATE = True
+
 # ── 主流程 ──────────────────────────────────────────────────────────────────
 def run(root: Path, gradle_home: Path, evidence_path: Path, doc_path: Path,
         check: bool, stats_only: bool) -> int:
@@ -636,8 +641,11 @@ def run(root: Path, gradle_home: Path, evidence_path: Path, doc_path: Path,
         if new == old:
             print("通过：THIRD-PARTY-LICENSES.md 的两个生成块与依赖真源一致（--check）")
             return 0
-        print("::error title=第三方声明生成门禁::清单与依赖真源不一致 —— 跑一次 "
-              "`python3 tools/gen-notices.py` 再把产物提交")
+        msg = ("清单与依赖真源不一致 —— 跑一次 `python3 tools/gen-notices.py` 再把产物提交")
+        if _ANNOTATE:
+            print("::error title=第三方声明生成门禁::" + msg)
+        else:
+            print("[selftest] 负例（刻意不一致，不作为 CI 注解）：" + msg)
         print(diff_summary(old, new))
         for line in list(difflib.unified_diff(
                 old.splitlines(), new.splitlines(), fromfile="清单现存", tofile="应生成", lineterm=""))[:80]:
@@ -791,6 +799,8 @@ def _row_for(body: str, coord: str) -> str:
 
 
 def selftest() -> int:
+    global _ANNOTATE
+    _ANNOTATE = False  # 负例不打注解（见主流程上方注释）
     cases: list[tuple[str, bool, str]] = []
 
     def case(name: str, ok: bool, detail: str = "") -> None:
@@ -925,6 +935,7 @@ def selftest() -> int:
              and "    ~ x:y:1: 1 -> 2" in summary,
              summary.replace("\n", " / "))
     finally:
+        _ANNOTATE = True
         shutil.rmtree(tmp, ignore_errors=True)
 
     bad = [c for c in cases if not c[1]]
