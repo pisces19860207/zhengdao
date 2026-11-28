@@ -1,16 +1,30 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第九百三十五批 · 体相传闻门禁。
-// 唯一真相是 ShapeRumorCatalog 的七类闭集；本文件不抄第二份话术，
-// 夹具固定在这里，所以删掉表里一行 ⇒ 对应夹具由红转绿。
+// 第九百四十三批 · 表搬 manifest：唯一真相是 blacklist-manifest.json 的 935-shape-myth 类
+// （经 ShapeRumorCatalog 读端读出）；本文件不抄第二份话术，夹具固定在这里，
+// 所以删掉 manifest 一行 ⇒ 对应夹具由红转绿。总数与小计从 manifest 读，不写条数字面量。
 package com.example.zhengdao.baopu.state.bodyparts
 
+import com.example.zhengdao.BlacklistManifestFeed
+import com.example.zhengdao.baopu.policy.BlacklistManifest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.BeforeClass
 import org.junit.Test
 
 class ShapeRumorGateTest {
+
+    companion object {
+        /** 943：表在 manifest，先把 935 行喂进读端再跑（其余测试类同）。 */
+        @BeforeClass
+        @JvmStatic
+        fun feedManifestRows() {
+            BlacklistManifestFeed.installShapeMyth()
+        }
+    }
+
 
     private fun red(text: String, voice: Voice = Voice.NARRATOR, plot: Boolean = false): List<ShapeFinding> =
         ShapeJudge.judgeText(text, voice, plot).filter { it.verdict == Verdict.DENY }
@@ -42,16 +56,15 @@ class ShapeRumorGateTest {
         assertEquals("七类闭集", 7, RumorClass.COUNT)
         assertEquals("七类一个不漏", RumorClass.entries.map { it.tag }, listOf("A", "B", "C", "D", "E", "F", "G"))
         val byClass = ShapeRumorCatalog.countByClass()
-        val expected = mapOf(
-            RumorClass.BODY to 4, RumorClass.FACE to 4, RumorClass.HAIR to 4, RumorClass.POSTURE to 3,
-            RumorClass.FORTUNE to 5, RumorClass.FLUID to 4, RumorClass.DRESS to 3,
-        )
-        expected.forEach { (klass, n) ->
-            assertEquals(klass.tag + " 类条数", n, byClass.getValue(klass))
+        val subs = BlacklistManifestFeed.subtotals(BlacklistManifest.KIND_SHAPE_MYTH)
+        val total = BlacklistManifestFeed.total(BlacklistManifest.KIND_SHAPE_MYTH)
+        RumorClass.entries.forEach { klass ->
+            assertEquals(klass.tag + " 类条数与 manifest 小计一致", subs.getValue(klass.tag), byClass.getValue(klass))
         }
-        assertEquals("总数＝各类小计之和", ShapeRumorCatalog.entries.size, expected.values.sum())
-        assertEquals("总数变了要同步报告", 27, ShapeRumorCatalog.entries.size)
-        println("RUMOR-READING total=" + ShapeRumorCatalog.entries.size + " byClass=" + byClass)
+        assertEquals("总数＝各类小计之和", total, subs.values.sum())
+        assertEquals("行数与 manifest totals 一致（改表要同步计数，解析层也把守）",
+            total, ShapeRumorCatalog.entries.size)
+        println("RUMOR-READING total=" + ShapeRumorCatalog.entries.size + " byClass=" + byClass + " from manifest")
     }
 
     @Test

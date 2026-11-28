@@ -1,0 +1,768 @@
+{
+  "schema": 1,
+  "source": "943 · 黑名单唯一 manifest：934 句式黑名单与 935 体相传闻同一口径、同一处维护、不共用行；934 行搬自 docs/去滤镜.md 的 DEFILTER-BLACKLIST 表（该块自此冻结为历史记录），935 行搬自 ShapeRumorCatalog 代码内表（代码只留读端）；判定逻辑与文案零改动。",
+  "kinds": [
+    {
+      "id": "934-de-filter",
+      "label": "去滤镜·七类句式黑名单（身份/长相/钱权 → 品性）",
+      "columns": [
+        "id",
+        "category",
+        "sub",
+        "template",
+        "direction",
+        "expect"
+      ],
+      "rows": [
+        {
+          "id": "JOB01",
+          "category": "职业",
+          "sub": "医生",
+          "template": "医生都是…冷静",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB02",
+          "category": "职业",
+          "sub": "医生",
+          "template": "医生都…冷漠",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB03",
+          "category": "职业",
+          "sub": "商人",
+          "template": "商人都是…奸诈",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB04",
+          "category": "职业",
+          "sub": "商人",
+          "template": "商人都是…讲义气",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB05",
+          "category": "职业",
+          "sub": "教师",
+          "template": "教师都…正经",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB06",
+          "category": "职业",
+          "sub": "教师",
+          "template": "教师都…刻板",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB07",
+          "category": "职业",
+          "sub": "卫生",
+          "template": "当医生的…消毒水味",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB08",
+          "category": "职业",
+          "sub": "卫生",
+          "template": "干这行的…肯定不干净",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB09",
+          "category": "职业",
+          "sub": "作息",
+          "template": "上夜班的…都懒散",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "JOB10",
+          "category": "职业",
+          "sub": "处境",
+          "template": "跑业务的…都圆滑",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK01",
+          "category": "外貌",
+          "sub": "面相",
+          "template": "鹰钩鼻所以…阴险",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK02",
+          "category": "外貌",
+          "sub": "面相",
+          "template": "肥头大耳所以…油腻",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK03",
+          "category": "外貌",
+          "sub": "面相",
+          "template": "獐头鼠目…不是好人",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK04",
+          "category": "外貌",
+          "sub": "长相",
+          "template": "长相出众…所以善良",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK05",
+          "category": "外貌",
+          "sub": "长相",
+          "template": "长得丑…心眼坏",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK06",
+          "category": "外貌",
+          "sub": "长相",
+          "template": "清瘦…阴郁",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "LOOK07",
+          "category": "外貌",
+          "sub": "卫生",
+          "template": "长得好看…肯定干净",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-M01",
+          "category": "钱权能力",
+          "sub": "钱",
+          "template": "有钱所以…有教养",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-M02",
+          "category": "钱权能力",
+          "sub": "钱",
+          "template": "有钱所以…更值得尊重",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-M03",
+          "category": "钱权能力",
+          "sub": "钱",
+          "template": "穷所以…卑微",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-M04",
+          "category": "钱权能力",
+          "sub": "钱",
+          "template": "穷人都…脏",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-A01",
+          "category": "钱权能力",
+          "sub": "权",
+          "template": "有权所以…靠得住",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-A02",
+          "category": "钱权能力",
+          "sub": "权",
+          "template": "当官的…必然贪",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-A03",
+          "category": "钱权能力",
+          "sub": "权",
+          "template": "有权的人…都不干净",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-C01",
+          "category": "钱权能力",
+          "sub": "能力",
+          "template": "能力强所以…人品好",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-C02",
+          "category": "钱权能力",
+          "sub": "能力",
+          "template": "技术那么好…那点毛病算什么",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-C03",
+          "category": "钱权能力",
+          "sub": "能力",
+          "template": "能力差所以…卑劣",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-S01",
+          "category": "钱权能力",
+          "sub": "成功学",
+          "template": "他能坐这个位置…说明他…",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-S02",
+          "category": "钱权能力",
+          "sub": "成功学",
+          "template": "混得好…做人好",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "ADV-S03",
+          "category": "钱权能力",
+          "sub": "阶层",
+          "template": "学历低…品性",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI01",
+          "category": "军警消政府",
+          "sub": "军人",
+          "template": "军人必然…忠诚刚直",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI02",
+          "category": "军警消政府",
+          "sub": "军人",
+          "template": "军人必然…大男子",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI03",
+          "category": "军警消政府",
+          "sub": "警察",
+          "template": "警察都…正义",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI04",
+          "category": "军警消政府",
+          "sub": "警察",
+          "template": "穿制服的…都不是好人",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI05",
+          "category": "军警消政府",
+          "sub": "消防",
+          "template": "消防员必然…无私",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI06",
+          "category": "军警消政府",
+          "sub": "公务员",
+          "template": "公务员必然…混日子",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI07",
+          "category": "军警消政府",
+          "sub": "公务员",
+          "template": "公务员都…正直",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "UNI08",
+          "category": "军警消政府",
+          "sub": "警察",
+          "template": "当警察的…都粗暴",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "SCENE01",
+          "category": "场域",
+          "sub": "场域切换",
+          "template": "在外一套…在家另一套…人格分裂",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "SCENE02",
+          "category": "场域",
+          "sub": "场域切换",
+          "template": "对家里人都这样…骨子里坏",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "SCENE03",
+          "category": "场域",
+          "sub": "场域切换",
+          "template": "对家人这么好…一定是好人",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "SCENE04",
+          "category": "场域",
+          "sub": "场域切换",
+          "template": "两副面孔…",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "SCENE05",
+          "category": "场域",
+          "sub": "场域切换",
+          "template": "所有男人都这样…",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "SCENE06",
+          "category": "场域",
+          "sub": "场域切换",
+          "template": "在家暴躁…变态",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "FATE01",
+          "category": "命理",
+          "sub": "面相",
+          "template": "面相…决定命运",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "FATE02",
+          "category": "命理",
+          "sub": "面相",
+          "template": "看骨相…就知道他…",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "FATE03",
+          "category": "命理",
+          "sub": "八字",
+          "template": "八字…所以…品性",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "FATE04",
+          "category": "命理",
+          "sub": "手相",
+          "template": "手相…注定…",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "FATE05",
+          "category": "命理",
+          "sub": "命理",
+          "template": "命理…决定他…好坏",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "DRESS01",
+          "category": "服装配饰",
+          "sub": "服装",
+          "template": "穿金链…没文化",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "DRESS02",
+          "category": "服装配饰",
+          "sub": "服装",
+          "template": "穿得暴露…轻浮",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "DRESS03",
+          "category": "服装配饰",
+          "sub": "服装",
+          "template": "名牌加身…有教养",
+          "direction": "好",
+          "expect": "RED"
+        },
+        {
+          "id": "DRESS04",
+          "category": "服装配饰",
+          "sub": "服装",
+          "template": "衣衫褴褛…低贱",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "DRESS05",
+          "category": "服装配饰",
+          "sub": "配饰",
+          "template": "戴眼镜…书呆子",
+          "direction": "坏",
+          "expect": "RED"
+        },
+        {
+          "id": "DRESS06",
+          "category": "服装配饰",
+          "sub": "配饰",
+          "template": "打扮精致…心机深",
+          "direction": "坏",
+          "expect": "RED"
+        }
+      ]
+    },
+    {
+      "id": "935-shape-myth",
+      "label": "形态不推性评价·七类体相传闻（体相 → 性评价）",
+      "columns": [
+        "id",
+        "class",
+        "classLabel",
+        "template",
+        "targets",
+        "expect"
+      ],
+      "rows": [
+        {
+          "id": "A01",
+          "class": "A",
+          "classLabel": "体型与骨架",
+          "template": "个子矮…那处一定大",
+          "targets": [
+            "SIZE"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "A02",
+          "class": "A",
+          "classLabel": "体型与骨架",
+          "template": "个子高…那处一定大",
+          "targets": [
+            "SIZE"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "A03",
+          "class": "A",
+          "classLabel": "体型与骨架",
+          "template": "骨架宽…能力强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "A04",
+          "class": "A",
+          "classLabel": "体型与骨架",
+          "template": "肩宽…更猛",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "B01",
+          "class": "B",
+          "classLabel": "面部",
+          "template": "鼻子大…下面一定大",
+          "targets": [
+            "SIZE"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "B02",
+          "class": "B",
+          "classLabel": "面部",
+          "template": "鼻子小…不行",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "B03",
+          "class": "B",
+          "classLabel": "面部",
+          "template": "嘴唇厚…欲望强",
+          "targets": [
+            "TENSION"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "B04",
+          "class": "B",
+          "classLabel": "面部",
+          "template": "下巴宽…那方面强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "C01",
+          "class": "C",
+          "classLabel": "毛发与皮肤",
+          "template": "体毛多…雄性激素足…能力强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "C02",
+          "class": "C",
+          "classLabel": "毛发与皮肤",
+          "template": "秃顶…那方面不行",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "C03",
+          "class": "C",
+          "classLabel": "毛发与皮肤",
+          "template": "秃顶…更猛",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "C04",
+          "class": "C",
+          "classLabel": "毛发与皮肤",
+          "template": "青筋明显…能力强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "D01",
+          "class": "D",
+          "classLabel": "姿态与行为",
+          "template": "岔腿坐…那方面强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "D02",
+          "class": "D",
+          "classLabel": "姿态与行为",
+          "template": "走路带风…很猛",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "D03",
+          "class": "D",
+          "classLabel": "姿态与行为",
+          "template": "说话慢…持久",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "E01",
+          "class": "E",
+          "classLabel": "命理与伪分类",
+          "template": "血型…决定…那方面",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "E02",
+          "class": "E",
+          "classLabel": "命理与伪分类",
+          "template": "星座…合不合",
+          "targets": [
+            "TENSION"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "E03",
+          "class": "E",
+          "classLabel": "命理与伪分类",
+          "template": "手相…看得出…",
+          "targets": [
+            "MORAL"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "E04",
+          "class": "E",
+          "classLabel": "命理与伪分类",
+          "template": "面相…天生淫",
+          "targets": [
+            "EXPERIENCE"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "E05",
+          "class": "E",
+          "classLabel": "命理与伪分类",
+          "template": "出生时辰…命里…",
+          "targets": [
+            "MORAL"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "F01",
+          "class": "F",
+          "classLabel": "体液与生理量",
+          "template": "精液少…不行",
+          "targets": [
+            "FERTILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "F02",
+          "class": "F",
+          "classLabel": "体液与生理量",
+          "template": "前液多…经验丰富",
+          "targets": [
+            "EXPERIENCE"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "F03",
+          "class": "F",
+          "classLabel": "体液与生理量",
+          "template": "勃起角度…所以很强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "F04",
+          "class": "F",
+          "classLabel": "体液与生理量",
+          "template": "汗多…虚",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "G01",
+          "class": "G",
+          "classLabel": "服装与配饰",
+          "template": "骑电动车…没本事",
+          "targets": [
+            "MORAL"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "G02",
+          "class": "G",
+          "classLabel": "服装与配饰",
+          "template": "手表贵…混得好…人就行",
+          "targets": [
+            "MORAL"
+          ],
+          "expect": "RED"
+        },
+        {
+          "id": "G03",
+          "class": "G",
+          "classLabel": "服装与配饰",
+          "template": "鞋干净…讲究…能力强",
+          "targets": [
+            "ABILITY"
+          ],
+          "expect": "RED"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "934": 55,
+    "935": 27
+  },
+  "subtotals": {
+    "934": {
+      "职业": 10,
+      "外貌": 7,
+      "钱权能力": 13,
+      "军警消政府": 8,
+      "场域": 6,
+      "命理": 5,
+      "服装配饰": 6
+    },
+    "935": {
+      "A": 4,
+      "B": 4,
+      "C": 4,
+      "D": 3,
+      "E": 5,
+      "F": 4,
+      "G": 3
+    }
+  }
+}

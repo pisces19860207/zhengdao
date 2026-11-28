@@ -1,11 +1,14 @@
 // 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
 //
 // 第九百三十四批 · 去滤镜门禁。
-// 黑名单句式只有一张表：docs/去滤镜.md 的 DEFILTER-BLACKLIST-BEGIN/END 块；
-// 本文件只读它、不抄第二份模板。夹具固定在代码里，所以删掉表里一行 ⇒ 对应夹具由红转绿。
+// 第九百四十三批 · 表搬 manifest：黑名单句式唯一表改读 assets/policy/blacklist-manifest.json
+// 的 934-de-filter 类（与 935 体相传闻同一处维护、不共用行）；docs/去滤镜.md 的表块自此
+// 冻结为历史记录，不再机读。总数与小计一律从 manifest 读——本文件不许出现总数条数字面量
+// （BlacklistManifestGateTest 机检）。夹具仍固定在代码里，所以删掉 manifest 一行 ⇒ 对应夹具由红转绿。
 // 总则只有一句：对任何人都不设滤镜；不做道德评判（写行为/处境/代价，不写判词）。
 package com.example.zhengdao
 
+import com.example.zhengdao.baopu.policy.BlacklistManifest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -89,6 +92,9 @@ class DeFilterGateTest {
         RedCase("DRESS06", "她打扮精致所以心机深。", "DRESS06"),
     )
 
+    /** 夹具编号集（943 双向一致性测试用：manifest 行 ⇄ 夹具，差集必须空）。 */
+    internal val deFilterFixtureIds: Set<String> get() = redCases.map { it.id }.toSet()
+
     /** 变异入口：给替身文档的绝对路径；不给就读仓库里的唯一表。 */
     private fun docFile(): File {
         val override = System.getenv("DEFILTER_DOC")
@@ -115,9 +121,9 @@ class DeFilterGateTest {
             .map { line -> line.trim().trim('|').split('|').map { cell -> cell.trim() } }
             .filter { cols -> cols.size >= 2 && cols[0] != "编号" && cols[0].any { it != '-' && it != ':' && it != ' ' } }
 
-    private fun rules(): List<Rule> = rows("DEFILTER-BLACKLIST-BEGIN", "DEFILTER-BLACKLIST-END").map { c ->
-        check(c.size == 5) { "黑名单表必须是 5 列：$c" }
-        Rule(c[0], c[1], c[2], c[3], c[4])
+    /** 黑名单行（943 起唯一表在 manifest 的 934-de-filter 类；解析层已验过结构与计数）。 */
+    private fun rules(): List<Rule> = BlacklistManifestFeed.deFilterRows().map {
+        Rule(it.id, it.category, it.sub, it.template, it.direction)
     }
 
     /** `…` 是任意填充；其余片段按字面量钉住，不做语义推断。 */
@@ -155,16 +161,15 @@ class DeFilterGateTest {
     @Test
     fun `七类表条数从唯一表复现_且只含句式模板`() {
         val rs = rules()
-        assertEquals("表条数变了要同步报告，不许偷改", 55, rs.size)
-        val expected = mapOf(
-            "职业" to 10, "外貌" to 7, "钱权能力" to 13,
-            "军警消政府" to 8, "场域" to 6, "命理" to 5, "服装配饰" to 6,
-        )
-        expected.forEach { (cat, n) -> assertEquals("$cat 条数", n, rs.count { it.category == cat }) }
-        assertEquals("类别必须恰好七类", expected.keys.toList(), rs.map { it.category }.distinct())
+        val total = BlacklistManifestFeed.total(BlacklistManifest.KIND_DE_FILTER)
+        val subs = BlacklistManifestFeed.subtotals(BlacklistManifest.KIND_DE_FILTER)
+        assertEquals("行数与 manifest totals 一致（改表要同步计数，解析层也把守）", total, rs.size)
+        assertEquals("小计之和必须等于总数", total, subs.values.sum())
+        subs.forEach { (cat, n) -> assertEquals("$cat 条数与 manifest 小计一致", n, rs.count { it.category == cat }) }
+        assertEquals("类别必须恰好七类", SEVEN_CATEGORIES, rs.map { it.category }.distinct())
         assertTrue("只收句式模板：必须带 … 占位且不是单词", rs.all { it.template.contains('…') && it.template.length >= 4 })
         assertEquals(setOf("好", "坏"), rs.map { it.direction }.toSet())
-        println("DEFILTER-READING table total=${rs.size} byCategory=$expected")
+        println("DEFILTER-READING table total=$total byCategory=$subs from manifest")
     }
 
     @Test
@@ -224,7 +229,8 @@ class DeFilterGateTest {
     fun `面相学叙述者一律红_角色一律WARN`() {
         val rs = rules()
         val faceIds = rs.filter { it.sub == "面相" }.map { it.id }.toSet()
-        assertEquals("面相句式固定五条", 5, faceIds.size)
+        assertEquals("面相句式闭集（小计从 manifest 实数复现）",
+            setOf("LOOK01", "LOOK02", "LOOK03", "FATE01", "FATE02"), faceIds)
         val checked = redCases.filter { it.ruleId in faceIds }
         checked.forEach { c ->
             assertTrue("面相叙述者必须红：${c.id}", judge(c.text, Voice.NARRATOR, rs).any { it.code == c.ruleId && it.message.startsWith("叙述者滤镜") })
@@ -325,5 +331,12 @@ class DeFilterGateTest {
         val dropped = rs.filter { it.id != target.id }
         assertFalse("删行后必须转绿", judge(sample.text, Voice.NARRATOR, dropped).any { it.code == target.id })
         println("DEFILTER-READING mutation selfcheck ${target.id}: RED->GREEN")
+    }
+
+    companion object {
+        /** 七类闭集（顺序即 manifest 行序）；小计数值不在这里——从 manifest 读。 */
+        private val SEVEN_CATEGORIES = listOf(
+            "职业", "外貌", "钱权能力", "军警消政府", "场域", "命理", "服装配饰",
+        )
     }
 }

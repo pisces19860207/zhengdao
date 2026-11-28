@@ -2,16 +2,18 @@
 // 可参考的官方资料清单见仓库根目录 PROVENANCE.md。
 //
 // 第九百三十五批 · 体相传闻唯一表（七类闭集）。
+// 第九百四十三批 · 表搬 manifest：assets/policy/blacklist-manifest.json 的 935-shape-myth 类
+// 成为唯一行数据；本文件**只留读端**——七类闭集、查询与匹配的口径一字不变。
 //
 // 口径：这些说法**只作个人偏好**，不作客观评价；叙述者复述即红，角色相信只 WARN 且须标偏见，
 // 剧情把它「验证」成真即红（那等于变相背书，最容易被漏掉的一条）。
 //
 // 七类 A–G 是闭集：A 体型骨架／B 面部／C 毛发皮肤／D 姿态行为／E 命理伪分类／F 体液生理量／
-// G 服装配饰。**凡未列的一条都不许新造**；新造一条要被改本表，不许在别处另立第二张表。
+// G 服装配饰。**凡未列的一条都不许新造**；新造一条要改 manifest，不许在别处另立第二张表。
 //
-// 与 934 的关系：934 的 55 条句式收的是「身份/长相/钱权 → 品性」，本表收的是「体相 → 性评价」。
-// 两表不合并——934 的条数与七类小计是它自己的硬判据（55／七类），并进来会同时破两单的边界；
-// 本表只与它**同一口径**（句式模板、方向、叙述者红/角色 WARN），不共用行。
+// 与 934 的关系：934 的句式黑名单收「身份/长相/钱权 → 品性」，本表收「体相 → 性评价」。
+// 943 起两类**同一处维护**（同一份 manifest、同一口径：句式模板、叙述者红/角色 WARN），
+// 行不共用；行数与分类小计的锁跟着表走 manifest，测试从 manifest 实数复现。
 package com.example.zhengdao.baopu.state.bodyparts
 
 /**
@@ -69,63 +71,38 @@ data class Rumor(
     }
 }
 
-/** 传闻表的唯一真相。条数与分类小计由测试从本表实数复现，不手写在断言之外。 */
+/**
+ * 传闻表的**读端**（943 起）：行住在 assets/policy/blacklist-manifest.json 的
+ * 935-shape-myth 类，由装配侧 [install] 喂入后才可读。本类零 IO（源码门禁），
+ * 也不内置任何一行——表不存在于代码里，「读不到就回退内置表」从数据上不可能。
+ */
 object ShapeRumorCatalog {
 
-    val entries: List<Rumor> = listOf(
-        // A 体型与骨架：全部禁推尺寸/张力/能力（920 已禁身高体重，924 已禁体积↔质量互推）
-        Rumor("A01", RumorClass.BODY, "个子矮…那处一定大", setOf(RumorTarget.SIZE)),
-        Rumor("A02", RumorClass.BODY, "个子高…那处一定大", setOf(RumorTarget.SIZE)),
-        Rumor("A03", RumorClass.BODY, "骨架宽…能力强", setOf(RumorTarget.ABILITY)),
-        Rumor("A04", RumorClass.BODY, "肩宽…更猛", setOf(RumorTarget.ABILITY)),
+    @Volatile
+    private var installed: List<Rumor>? = null
 
-        // B 面部：鼻子那条最多；面相学另归 E 类
-        Rumor("B01", RumorClass.FACE, "鼻子大…下面一定大", setOf(RumorTarget.SIZE)),
-        Rumor("B02", RumorClass.FACE, "鼻子小…不行", setOf(RumorTarget.ABILITY)),
-        Rumor("B03", RumorClass.FACE, "嘴唇厚…欲望强", setOf(RumorTarget.TENSION)),
-        Rumor("B04", RumorClass.FACE, "下巴宽…那方面强", setOf(RumorTarget.ABILITY)),
+    /** 唯一表的读端：manifest 装配后才有数据；未装配即抛——绝不静默空表。 */
+    val entries: List<Rumor>
+        get() = installed
+            ?: error("传闻表未装配：943 起唯一表在 assets/policy/blacklist-manifest.json（935-shape-myth），装配侧须先 install")
 
-        // C 毛发与皮肤：脱发与雄激素有关，但禁推性能力——最容易越界的一条
-        Rumor("C01", RumorClass.HAIR, "体毛多…雄性激素足…能力强", setOf(RumorTarget.ABILITY)),
-        Rumor("C02", RumorClass.HAIR, "秃顶…那方面不行", setOf(RumorTarget.ABILITY)),
-        Rumor("C03", RumorClass.HAIR, "秃顶…更猛", setOf(RumorTarget.ABILITY)),
-        Rumor("C04", RumorClass.HAIR, "青筋明显…能力强", setOf(RumorTarget.ABILITY)),
-
-        // D 姿态与行为：只作习惯与状态；说话方式属 930 的 expression
-        Rumor("D01", RumorClass.POSTURE, "岔腿坐…那方面强", setOf(RumorTarget.ABILITY)),
-        Rumor("D02", RumorClass.POSTURE, "走路带风…很猛", setOf(RumorTarget.ABILITY)),
-        Rumor("D03", RumorClass.POSTURE, "说话慢…持久", setOf(RumorTarget.ABILITY)),
-
-        // E 命理与伪分类：叙述者层面**直接红**，不走 WARN 提示分支
-        Rumor("E01", RumorClass.FORTUNE, "血型…决定…那方面", setOf(RumorTarget.ABILITY)),
-        Rumor("E02", RumorClass.FORTUNE, "星座…合不合", setOf(RumorTarget.TENSION)),
-        Rumor("E03", RumorClass.FORTUNE, "手相…看得出…", setOf(RumorTarget.MORAL)),
-        Rumor("E04", RumorClass.FORTUNE, "面相…天生淫", setOf(RumorTarget.EXPERIENCE)),
-        Rumor("E05", RumorClass.FORTUNE, "出生时辰…命里…", setOf(RumorTarget.MORAL)),
-
-        // F 体液与生理量：前四项禁作能力/经验/健康判断；后两项只按 810/868 实测档写
-        Rumor("F01", RumorClass.FLUID, "精液少…不行", setOf(RumorTarget.FERTILITY)),
-        Rumor("F02", RumorClass.FLUID, "前液多…经验丰富", setOf(RumorTarget.EXPERIENCE)),
-        Rumor("F03", RumorClass.FLUID, "勃起角度…所以很强", setOf(RumorTarget.ABILITY)),
-        Rumor("F04", RumorClass.FLUID, "汗多…虚", setOf(RumorTarget.ABILITY)),
-
-        // G 服装与配饰：混得好≠做人好（934 已禁），这里再钉住「由物看能力」
-        Rumor("G01", RumorClass.DRESS, "骑电动车…没本事", setOf(RumorTarget.MORAL)),
-        Rumor("G02", RumorClass.DRESS, "手表贵…混得好…人就行", setOf(RumorTarget.MORAL)),
-        Rumor("G03", RumorClass.DRESS, "鞋干净…讲究…能力强", setOf(RumorTarget.ABILITY)),
-    )
+    /**
+     * 装配入口（幂等）：喂 manifest 的 935 行。
+     * 行结构（模板带 …、targets 非空）由 [Rumor] 的 init 把守；编号唯一与七类齐在这里把守；
+     * 行数与 totals／subtotals 的一致性在 manifest 解析层（BlacklistManifest）把守。
+     */
+    fun install(rows: List<Rumor>) {
+        require(rows.isNotEmpty()) { "传闻表不许空装（唯一表在 manifest 的 935-shape-myth 类）" }
+        require(rows.size == rows.map { it.id }.toSet().size) { "传闻编号重复" }
+        val missing = RumorClass.entries.filter { k -> rows.none { it.klass == k } }
+        require(missing.isEmpty()) { "七类必须每类都有条目，缺：" + missing.joinToString { it.tag } }
+        installed = ArrayList(rows)
+    }
 
     /** 命理词：与结论同句即红（叙述者层面直接红）。单独出现不算——防误杀纯记录。 */
     val FORTUNE_TOKENS: List<String> = listOf(
         "血型", "星座", "生肖", "手相", "掌纹", "面相", "八字", "时辰", "第几胎", "骨相",
     )
-
-    init {
-        require(entries.size == entries.map { it.id }.toSet().size) { "传闻编号重复" }
-        val missing = RumorClass.entries.filter { k -> entries.none { it.klass == k } }
-        require(missing.isEmpty()) { "七类必须每类都有条目，缺：" + missing.joinToString { it.tag } }
-        require(entries.size == 27) { "表条数变了要同步报告，不许偷改" }
-    }
 
     /** 按类取条目，顺序＝表内顺序。 */
     fun byClass(klass: RumorClass): List<Rumor> = entries.filter { it.klass == klass }

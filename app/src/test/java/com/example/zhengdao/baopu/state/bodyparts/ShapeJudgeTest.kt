@@ -2,15 +2,27 @@
 //
 // 第九百三十五批 · 判据测试。
 // 每条用例打印完整输入与判定行——873 第一步要的「完整输出」就从这里取。
+// 第九百四十三批 · 表搬 manifest：传闻行从 blacklist-manifest.json 装配（读端只认喂入的表）。
 package com.example.zhengdao.baopu.state.bodyparts
 
+import com.example.zhengdao.BlacklistManifestFeed
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.BeforeClass
 import org.junit.Test
 
 class ShapeJudgeTest {
+
+    companion object {
+        /** 943：judgeText 默认参数读 ShapeRumorCatalog.entries，先把 manifest 行喂进去。 */
+        @BeforeClass
+        @JvmStatic
+        fun feedManifestRows() {
+            BlacklistManifestFeed.installShapeMyth()
+        }
+    }
 
     private fun findings(claims: List<Claim>): List<ShapeFinding> = ShapeJudge.all(claims)
 

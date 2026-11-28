@@ -2,6 +2,7 @@
 //
 // 第九百三十五批 · 源码门禁：只读本单 5 个生产源码，钉住六条边界与四张计数锁。
 // 每道闸都配负例注入自检——不是「文件里含某个词」就过。
+// 第九百四十三批 · 表搬 manifest：传闻条数锁改从 manifest totals 复现（源码内无表亦无条数字面量）。
 //
 // 六条边界：
 // ① 零 IO（不读影像、不读文件、不碰内容提供者）；
@@ -12,13 +13,26 @@
 // ⑥ 来源表里没有形态这一格（「无形态推导边」的静态证明）。
 package com.example.zhengdao.baopu.state.bodyparts
 
+import com.example.zhengdao.BlacklistManifestFeed
 import com.example.zhengdao.SrcRoots
+import com.example.zhengdao.baopu.policy.BlacklistManifest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.BeforeClass
 import org.junit.Test
 
 class ShapeSourceAssertTest {
+
+    companion object {
+        /** 943：读端只认 manifest 喂入的表，先装配再数。 */
+        @BeforeClass
+        @JvmStatic
+        fun feedManifestRows() {
+            BlacklistManifestFeed.installShapeMyth()
+        }
+    }
+
 
     private val dir = "app/src/main/java/com/example/zhengdao/baopu/state/bodyparts/"
     private val files = listOf(
@@ -108,8 +122,12 @@ class ShapeSourceAssertTest {
         assertEquals("传闻目标七值", 7, RumorTarget.entries.size)
         assertEquals(RumorTarget.COUNT, RumorTarget.entries.size)
         assertEquals("判定三值", 3, ShapeFinding.COUNT_VERDICTS)
-        assertEquals("传闻条数", 27, ShapeRumorCatalog.entries.size)
-        println("SOURCE-READING counts 14/6/10/3/7/7/3/27")
+        assertEquals(
+            "传闻条数与 manifest totals 一致（943：表在 manifest，源码内无表亦无条数字面量）",
+            BlacklistManifestFeed.total(BlacklistManifest.KIND_SHAPE_MYTH),
+            ShapeRumorCatalog.entries.size,
+        )
+        println("SOURCE-READING counts 14/6/10/3/7/7/3 + rumors from manifest=" + ShapeRumorCatalog.entries.size)
     }
 
     @Test
