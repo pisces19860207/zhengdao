@@ -688,6 +688,13 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
+        with:
+          # 2026-11-28（修 SBOM 链）：本 job 跑 tools/sbom.py → -I tools/sbom-init.gradle.kts :sbomDump，
+          # 而 :app 的 versionCode 由提交派生（683）；浅克隆（默认 depth=1）数不出提交总数 ⇒
+          # Gradle 在配置期直接拒：「浅克隆数不出提交总数…请 git fetch --unshallow 或 -Pzhengdao.versionCode」
+          # ⇒ SBOM 生不出来，紧接着的「许可与版本新鲜度报告 / OSV 扫描 / 直连依赖断言」全报
+          # 「找不到 SBOM」。与 verify job 同口径给全历史（那边 fetch-depth: 0 另有两条硬需求）。
+          fetch-depth: 0
 
       # 352：daemon 统一 JDK 25.0.3（gradle/gradle-daemon-jvm.properties 钉 major 25，
       # runner 预装没有 25，不显式装就走 foojay "Downloading toolchain"——352 判据②
